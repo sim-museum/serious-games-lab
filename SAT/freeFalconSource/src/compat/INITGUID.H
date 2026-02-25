@@ -1,0 +1,1 @@
+initguid.h

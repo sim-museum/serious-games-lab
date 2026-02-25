@@ -1,0 +1,131 @@
+
+------------------------------------- READ THIS PLEASE !!!
+-------------------------------------
+
+High all together !
+
+Time for a new track, and this time i am proudly present "Siracusa de
+Sicily" or in english "Syracuse".  A few words before the first lap.
+I don't know if you ever did an addon for gpl, it does'nt matter, but
+please try to understand how difficult it is, to get informations
+about a track from the 60's. And don't forget, it is a '67
+non-championship track !  I have searched the whole www for infos and
+pics of Syracuse, the result are 35 pics, 27 of them are from
+http://www.latphoto.co.uk (thank you guys): 1 of the pits 1 of the
+start 1 of the backstraight 1 ferrari 16 of corner 1 7 of corner 2.
+So, with this huge amount of data, i started to create the track (have
+i told i had 4 different pics of the layout?).
+
+This is the result, and please don't flame me if there is a visitor
+not on his original place (lol).
+
+
+This is what you get for your money :
+
+- bad AI, cost: 55 Euro for Grand Tourismo 3, today for free bad
+- performance, cost: 45 Euro for ColinMcRae2.0, today for free no
+- support, cost: 40 Euro for F1 Racing Championship and waiting for
+- the patch, today for free
+
+
+Installation: - Unzip "Syracuse_1.0.zip" and use Trackinstall.exe to
+install - close your eyes and play Syracuse.wav to get the right
+feeling for the track !  - run it
+
+
+Performance: - my console: 1300 Athlon, 256 Mb Ram, GeForce2 Ti 450,
+36 FPS in D3D and OpenGl in training mode 1280*1024, standart
+installation - standart installation is the "Hires" version of the
+track - because of the amount of trees, the track is really hardware
+hungry - complete Glide compatible (mip-size), testet by me in OGL and
+D3D without probs - recommend to set TossHighestMip = 0 in your
+Core.ini - use OpenGl - dissable "Dynamic Lighting" in your grapfic
+options (thanks to Jason) - there's a fps-help available
+"syra_light.zip"
+ 
+
+the AI: - not the best, but it's priceless
+
+		
+
+The Track: - located on the eastcoast of Sicily, near the city
+Siracusa - lenght is 5566 m - lap times high 1.40 min
+
+
+		Results in 1967: 21 May - Sicily: 313.562 km (5.599 km
+		x 56 Laps)
+
+		Fastest Lap: Ludovico Scarfiotti (Ferrari 312),
+		1:41.0, 121.82mph Pole Position: Mike Parkes (Ferrari
+		312), 1:41.6
+
+		Results:
+
+		1 Mike Parkes Ferrari 312 '0012' 1h40m58.4 = Ludovico
+		Scarfiotti Ferrari 312 '0011' 1h40m58.4 3 Jo Siffert
+		Cooper-Maserati T81 'F1-2-66' 54 laps 4 Chris Irwin
+		Lotus-BRM 25 'R13' 53 laps 5 Jo Bonnier
+		Cooper-Maserati T81 'F1-5-66' 53 laps
+
+		Did Not Finish:
+	
+  		Mike Spence BRM P261 23 Oil pressure Silvio Moser
+  		Cooper T -ATS 12 Clutch
+
+
+Features of the GPL-Version (not to much):
+
+		- inredible amount of trees (1400 ?) around the track
+		- and inside (maybe more than the Nordschleife?)  two
+		- bumpy corners, be carefull while driving if you
+		- drive the first laps slowly and you see some camera
+		- man around the track, raise the hand friendly,they
+		- recording the TV1 cams for your replay every little
+		- mistake damages you car (damn walls) sky is from
+		- Simon (first idea was to put a dl-link in this
+		- readme, but as i heard his site is down, i decided
+		- to include the sky in the track-download) medium and
+		- light version available
+
+
+knowing bugs : - camera sometimes blind of the trees - pitbuilding has
+no collision - major clipping problems (if you drive in the wrong
+direction) - corner 3 ("Road Closed") is'nt ready jet, will be updated
+be me
+
+Addons: - if you have plans to bring 16bit versions of the trees,
+asphalt, grass and walls, make sure a GeForce 5 5800 Ti is available
+in stores (lol), - feel free to release whatever you want (except a
+new lap record)
+
+
+Credits: - Papy for some textures of Nascar 4 - the guys they did the
+16 bit version of Bathurst for the camera man - Simon Stobart for the
+Silverstone sky
+
+
+Thanks to : - Phil Flack 'Guru' for many track creating tools - Martin
+Granberg for track installer - Klaus Hörbrand for Winmip - Dave
+Noonan for 3DOED - Paul Hoad - Jonas Matton and Martin Granberg for
+GPLRA - François Dubuc for LPEditor - Christian Wohlfahrt for
+OneTwo3Do - the GPLEA for everything - Papy and Sierra for GPL - Simon
+Stobart (Sky) - all the others i forgot here
+
+
+
+next project: - Version 2 of my home track "Schleizer Dreieck", please
+upgrade your PC's
+
+
+
+
+
+
+This is may way to thanks all that people and that community keeping
+that Sim alive with their addons.
+
+THANK YOU !!
+		
+
+mfg, Tormentor
+

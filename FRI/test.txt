@@ -1,0 +1,9 @@
+Teams Match Results
+N/S Team: N/S Team
+E/W Team: E/W Team
+
+Final Score: 14 - 0 IMPs
+
+Board |   Open Contract | Open N/S | Closed Contract | Closed N/S |   IMP
+----------------------------------------------------------------------
+  120 |        5♦X E -5 |    +1100 |          2♦ E = |       -90 |   +14

@@ -1,0 +1,77 @@
+TUE Scoring
+eSports for Engineers 24041LTS
+
+Note: save your replay files after each session.  For Battle of Britain,
+these are .cam files in BattleOfBritain/WP.  For MiG Alley, these are
+.cam files in MigAlley/WP.  Copy your replay files, along with
+screenshot .png files, to the TUE/afterGameReport directory, calculate
+your score as described below, and then enter your score using the launcher.
+
+Note: these OKRs can be completed with any of the flight simulation
+programs available on TUE (Battle of Britain, FlightGear, MiG Alley,
+FS9, WWI SDOE, WWII SDOE).
+
+OBJECTIVE #1: LEARN FLIGHT SIMULATION WELL ENOUGH TO FLY MISSIONS
+OBJECTIVE #2: (ASPIRATIONAL) COMPLETE A FULL CAMPAIGN
+OBJECTIVE #3: USER DEFINED (can be regular or aspirational)
+---------------------------------------------------------------
+OKR #1, 1, first key result for objective "learn flight simulation"
+
+Complete a basic flight training session in FlightGear using
+the Cessna (basicFlightTraining).  Practice takeoff, level flight,
+turns, and landing.
+
+score=.1 if you completed a training session and can perform
+basic maneuvers.  score=0 otherwise.
+---------------------------------------------------------------
+OKR #1, 2
+
+Fly one of the warbird trainers in FlightGear (Spitfire, Me 109,
+P-51D, F-86, or MiG-15).  Complete a circuit and land successfully.
+
+score=.1 if you completed the flight and landed successfully.
+score=0 otherwise.
+---------------------------------------------------------------
+OKR #1, 3
+
+Complete a mission in Battle of Britain or MiG Alley (if installed).
+Review the debriefing.
+
+score=.1 if you completed the mission.  score=.05 if you attempted
+but did not complete the mission and reviewed what went wrong.
+---------------------------------------------------------------
+OKR #1, 4
+
+Study the documentation for one aircraft.  For Battle of Britain,
+see TUE/BattleOfBritain/DOC/.  For MiG Alley, see TUE/MigAlley/DOC/.
+Apply what you learned in a training session.
+
+score=.1 if completed.  score=0 otherwise.
+---------------------------------------------------------------
+OKR #1, 5
+
+The following tasks are worth .05 points each:
+
+Read the getting started guide for your simulator
+(e.g., TUE/MigAlley/DOC/GettingStartedGuide_TUE.pdf)
+
+Skim all documentation in one of the TUE DOC directories
+
+Complete a FS9 training flight (if installed)
+
+Study dogfighting tactics from TUE/MigAlley/DOC/dogfightingSummary.md
+
+Complete a campaign mission in Battle of Britain or MiG Alley and
+save the campaign progress
+---------------------------------------------------------------
+OKR #2, 1
+
+Complete a full campaign (all missions) in Battle of Britain or
+MiG Alley.  If you complete the campaign, give yourself a score
+of 1 good for the next month.
+
+If you have not completed the full campaign:
+score=0.7*(missions_completed/total_missions), with maximum score of .7
+
+Note: Your daily total is the sum of your OKR scores (subject to an
+upper limit of 0.7 unless you have an aspirational OKR score above 0.7).

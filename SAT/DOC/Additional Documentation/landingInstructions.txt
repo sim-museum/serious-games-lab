@@ -1,0 +1,36 @@
+Landing Instructions
+
+1. Initial Approach. Align your aircraft with the landing runway at 1,500 feet above ground level (AGL) and 300
+knots calibrated airspeed (KCAS).
+
+2. Overhead Break. Break left or right over the desired touchdown point, set throttle to about 80% RPM, and
+open the speedbrakes. Fly the break at about 70 deg of bank and 3-4 G. Align the HUD Flight Path Marker with
+the Horizon Line to maintain a level turn.
+
+3. Downwind Leg. Roll out on the downwind leg opposite the landing heading at about 200-220 KCAS and
+1,500 feet AGL. Extend the landing gear and confirm three green gear down indications. Reduce speed as
+required to prevent excessive airspeed buildup in the base turn and trim to an angle of attack (AOA) of 11
+degrees.
+
+4. Base Turn. Initiate the base turn when abeam the rollout point. You may estimate this position by starting the
+turn when your wingtip is at the end of the runway when viewed from the cockpit. Lower the nose to 8-10
+degrees and fly the turn at 11 degrees AOA.
+
+5. Final Turn. Use your throttle to control airspeed while using the stick maintain 8-10 degrees nose low and 11
+degrees AOA through the turn. Roll out on final and raise the nose to maintain proper glide path. The goal is to
+roll out in line with the runway at approximately 300 feet AGL one mile from the touchdown point. Align the HUD
+flight path marker and 2.5-degree pitch ladder with the runway threshold to ensure proper glidepath while
+maintaining 11-degrees AOA.
+
+6. Short Final. When over the overrun, the portion of the runway before the primary surface starts, shift the
+flight path marker forward to a point 300-500 down the runway. Gently pull back on the stick to flare and reduce
+the descent rate but do not level off. Pull the throttle back to idle and touchdown with a maximum AOA of 13
+degrees. More than 15 degrees during the landing roll-out may cause the speedbrakes or engine nozzle to
+contact the runway so use gentle stick inputs to avoid overcontrolling the aircraft.
+
+7. Roll-Out. Maintain 13 degrees nose-up attitude for two-point aerodynamic braking until your airspeed has
+reduced to approximately 100 knots. Reduce back stick pressure and lower the nosewheel to the runway. Open
+the speedbrakes fully and maintain full aft stick for maximum braking effectiveness.
+Apply moderate to heavy braking to slow the aircraft. Engage nosewheel steering when below 30 knots unless it
+is required earlier to prevent departure from the runway.
+

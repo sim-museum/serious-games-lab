@@ -1,0 +1,100 @@
+
+vvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+
+! ! ! PLEASE READ THIS STUFF ! ! !
+
+vvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+
+  *** Le Mans Circuit de la Sarthe ***
+
+Light version: If you find the frame-rates on this track too bad,
+there is also a "Light" version available, with reduced eye-candy and
+increased frame-rates. The two versions are perfectly compatible. You
+can download this version via http://home.swipnet.se/~w-36707/sarthe
+
+Software mode* & Dedicated Server version: On some computers (probably
+mostly newer ones), this track might not work in software mode, while
+on others it does work fine in software mode. We do not know the
+reason for this, but it is the same with (probably) all add-on
+tracks. If you are running a dedicated server on a computer that does
+not have a 3d-accelerator card, and find that this track does not work
+in software mode on this computer, there is however a special
+"Dedicated Server" version of the track available, which does not
+include any textures or objects (and is thus undriveable), but should
+work in software mode on all computers. This version can be downloaded
+via the same URL as the "Light" version above.
+
+* Software mode = Running GPL without a 3d-accelerator card.
+
+Pitboard position: Like in real life, the pitbord is shown where the
+"signalling pits" at the Le Mans circuit is placed, just after
+Mulsanne corner. The information you get on the pitboard is the same
+as if the board was placed just before the start/finish line. Note:
+This means, that when you are on the last lap, with half a lap to go,
+your pitboard will say that you have 0 (zero) laps remaining.
+
+Important AI-Note: If you use modified gpl_ai.ini and/or driver.ini
+files, the AI cars might crash too often. So please try using the
+original AI files from your GPL CD, if you experience any AI problems.
+
+AI tip: Due to a shortcoming in the GPL AI, AI cars do not gain speed
+by slipstreaming. Also, the top-speed of an AI-Cooper is virtuially
+the same as an AI-Eagle. Therefore, the top-speed of the AI cars on
+the straight is set pretty high. If you usually drive slower cars, you
+may find the AI cars too fast on the straight. If so, however, you can
+easily alter the AI car's top-speed by opening up the track.ini file
+(which after installation will be found in your new gpl\tracks\bsarthe
+folder) and editing the line:
+
+dlong_speed_maximum = x.xxxxx
+
+The higher you set it, the higher the AI top-speed will be, and vice
+versa.
+
+Credits:
+
+Roland Ehnström - Track layout, altitudes, scenery, some texture
+mips, simple object 3do's, modifications to Dunlop Bridge 3do
+originally made for Kyalami by Raymond Geering, positioning of
+objects, AI-modifications, default setups.
+
+Jussi Kaskia - Texture mips.
+
+Phil Flack (GPLEA) - 3do's for grandstands and pit building, fixes to
+other 3do's, help.
+
+David Noonan - AI.
+
+Greger Huttu - Groove, frame rate improvements.
+
+Pedro Johansson - TV2 cameras, 3do's for two houses in Maison Blanche
+section.
+
+Jesse Laakso - TV1 cameras, beta-testing.
+
+Meik Thiemann - Program-cover and trackmaps.
+
+Matthew Knutsen (GPLEA) - Original single-tree textures (mainly
+borrowed from Crystal Palace and used with the kind permission of the
+GPLEA), track info, help.
+
+Martijn Keizer (GPLEA) - Frame rate improvements, help.
+
+Edward Solheim (GPLEA) - Track info, help.
+
+Gilles Sauthon - Track info, beta-testing.
+
+Julien Millour - Track info, beta-testing.
+
+Graham Endeacott - Track info, beta-testing.
+
+Joe Lafrite (GPLEA) - Track info, beta-testing.
+
+Martin Granberg - This great installer, help.
+
+vvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+
+                ! ! ! THANK YOU ! ! !
+
+vvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+

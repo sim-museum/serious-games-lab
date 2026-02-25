@@ -1,0 +1,14 @@
+# BEN Bridge deal filter
+
+.version = 8.1
+.description.eng = "N/S hands in the slam area"
+.description.deu = "N/S Blätter im Schlemmbereich"
+.description.fra = "mains dans la zone de chelem en N/S"
+.description.ita = "mani per N/S in area slam"
+.description.dan = "N/S-hænder i slemzonen"
+.description.pol = "rêce N/S w strefie szlemowej"
+
+join = A
+search = 100
+N/S.join = A
+N/S.total = 34.*

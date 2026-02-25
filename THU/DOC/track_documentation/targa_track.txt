@@ -1,0 +1,52 @@
+
+51° Targa Florio for GPLegends Piccolo circuito delle Madonie 1967
+Palermo, Italy
+
+Standard version ver. 1 Made by the Targa TEAM.
+
+Track Start/Finish Location: Cerda, Palermo-Italy Track Type : Road
+Track Track Length : 72km.- 44.74mi.  Track Num. Turns : 567 Track
+Year : 1967 ---------------------------------------
+
+Track Editors : Ginetto Richard Cooke Richard Neville Sergio Loro
+
+Horizon : Svend Seegert Sky : Jackseller
+
+AI : Nigel Pattinson
+
+Historic Cars : Paul Skingley Shaun Collins Stefano Zampedri
+
+Great Textures : Remy Roesz Robert Zeugin Svend Seegert
+
+
+LongTrack Tools : Phil Flack Paul Thurston Nigel Pattinson
+
+Pictures and Movies : Mauro Alcamisi Mauro Licciardello
+
+Program Cover : John Bradley
+
+
+Beta Testers : Carsten Meurer Ferdinand Sommereder Greg Liebzeit
+					Jackseller Jay Beckwith Paul
+					Skingley Robert Hunter
+
+
+Web Page : Keith s-g AKA dangermouse
+
+------------------------------------- This project was possible thanks
+to the discovery of Nigel Pattinson who developed the Long Track
+Patch.  ------------------------------------- A Special Thanks to Bill
+Cooper with his sites, The GPL Repository for giving us the chance of
+having a private forum and The SimRacing Mirror Zone for hosting the
+track.  -------------------------------------- Thanks to:
+
+All the special guys that developed the tools for editing every GPL
+related thing!  All the community for giving the right support for
+doing this!  The notorious Papyrus for giving lots of fun!
+-------------------------------------- Enjoy,
+
+The Targa TEAM ===================================
+
+Italy, 30 july 2009
+
+

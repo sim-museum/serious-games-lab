@@ -1,0 +1,10 @@
+If ps-eval doesn't work, rebuild it as follows:
+
+cd INSTALL/pokerstove
+rm -rf build
+mkdir build
+cd build
+cmake ..
+make -j$(nproc)
+cd bin
+cp ps-eval ../../../..

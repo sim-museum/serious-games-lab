@@ -1,0 +1,2 @@
+wBridge5 is free, but not open source: http://bridgez.net/
+bcalc: http://bcalc.w8.pl/

@@ -1,0 +1,47 @@
+Basic GPL diff settings video:
+https://www.youtube.com/watch?v=awLhSsy5IqY
+
+transcript:
+
+
+We’ll focus on ramp angles for now, this is 85/35. The first number can be seen as “Power” and second as “Coast”. A high “Power” and low “Coast” will feel easier and more stable to drive. 
+
+
+
+(Power 85/ Coast 130)  With an 85 “Power” setting, the car will react nice and easy to the throttle.  And with “Coast” at 30, the car won’t oversteer to much under braking. This is a good setup for beginners, it’s very stable. But the car won’t feel very nimble, it doesn’t like to rotate much. But it’s easier to be consistent so it could be a good race setup.  Next we will change the “Coast” settings from 30 to 85 (maximum). 
+
+
+
+(85/85) This is a 85/85 setup, the “Coast” setting is very aggressive. Now when you lift, the car wants to rotate a lot causing oversteer. But it’s also a lot more agile when you steer into a corner.  This can be quite tricky to drive it requires much more control. The car still reacts the same under power, it doesn’t rotate too much. So next we will lower the “Power” setting from 85 to 30. 
+
+
+
+(Power 30/ Coast 85) With 30/85 you’ll get the most aggressive Ramp Angles. It will rotate easily under power, as well as under lifting/braking. This can be very hard to control, as the car feels very aggressive. But it’s extremely agile as the car will like to rotate a lot. Some of the fastest GPL drivers will use setups like this. For me as a gamepad player, it’s a bit too much to handle.  
+
+
+
+The next setting we will look at is the number of clutches. This number can (and should be) different for each car. A good rule of thumb= low number for cars that are light/have lots of torque. Heavy cars/cars with little torque can use a higher amount of clutches. To show the difference we’ll use two cars that are each opposites. 
+
+
+
+The Brabham is light and has a good amount of torque.  The BRM is heavy and it’s torque isn’t that good. It has six gears. Let’s see how the amount of clutches affect the handling of these cars. While using a 85/45 Ramp Angle. 
+
+
+
+Brabham-5 clutches: With five clutches the differential will be very stiff under power. The rear wheels push the car in a straight line giving heavy understeer. This really doesn’t work for a car like the Brabham. 
+
+
+
+Brabham- 1 clutch:  This number works a lot better. The car reacts as you would expect with a 85/45 Ramp Angle. Now let’s compare this to the BRM.
+
+
+
+BRM-1 clutch: For the heavy BRM 1 clutch will make the car feel unpredictable. It creates massive oversteer. For cars like this you will need a high amount of clutches. Let’s see how the BRM drives with 5 clutches.
+
+
+
+BRM- 5 clutches: The Bramham has massive understeer with 5 clutches but for the BRM 5 clutches results in better handling. Using the same 80/45 Ramp Angles the car handles like you would expect. The amount of clutches you should use is different for every car. 
+
+
+
+The GPL guide recommends 2 clutches for the Lotus 49.

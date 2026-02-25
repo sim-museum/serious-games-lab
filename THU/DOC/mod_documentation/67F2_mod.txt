@@ -1,0 +1,156 @@
+
+1967F2 Mod for Grand Prix Legends
+
+
+In order to allow the community to begin enjoying this Mod without
+further delay, we have decided to release the 1967 F2 Mod in two
+parts.  Originally, it was intended that this Mod would utilise the
+facility to have race specific track.ini files, as used in the 66, 69
+extra and GT mods, in order to recreate the 10 rounds of the 1967
+European Formula Two Championship. However, the extra work required to
+achieve this will still take a number of months to complete, and so it
+has been decided that since the physics for this Mod are complete and
+because we have a full working generic carset for the Mod for both AI
+and online use, there is no need to delay the release of this Mod
+while these other files are prepared.
+
+Due to the way in which this Mod is constructed, these additional AI
+files can be released after the Mod as an add-on without affecting the
+operation of the mod itself.
+
+Along with these race-specific AI, it is also intended that we will
+update and improve some details of the various car models and car
+skins, but again this is not possible on the time scale of a Christmas
+2011 initial release. In particular, the Ferrari car model needs some
+work in order to complete it to the standard of the other car
+models. Since the Ferrari 166 was not extensively raced during the
+1967 Formula Two season, and when it was used it was fairly
+uncompetitive, and since none of the generic AI is assigned to use
+that car, we do not feel that the use of the current Ferrari model as
+a place holder until the final version can be completed detracts
+particularly from the Mod as presented here.
+
+The driver line up in the generic AI that we are shipping with the Mod
+represents a spectrum of the drivers who regularly competed in the
+1967 European Formula Two Championship rounds, and has also been
+chosen to utilise the range of available cars within the mod, while
+not over representing some of the more successful models above some of
+the privateer teams. All of the AI drivers have also been selected to
+use a car number, car model and car skin that each selected driver did
+actually use during the 1967 European F2 championship. Even with the
+future release of the track specific car skins for all ten European F2
+rounds, this generic AI line up will remain in place for any other
+tracks selected to race this Mod on where a dedicated track.ini does
+not exist.
+
+We hope that the community can understand that while this release is
+not the "final" or "complete" version of this mod, the Mod itself is
+"finished" in terms of physics and usability and all future updates
+will be graphical and cosmetic to improve the visual appearance of
+this Mod while not affecting its use in any way.
+
+
+1967F2 Mod credit list
+
+Modding/Texturing/Testing
+
+Charles Mark Richard Cooke Remy Roesz Paul Skingley Lee Bowden Tommie
+van Ostade Martin E. Huiskes Ginetto Francesco Molteni Jackseller Rob
+Hunter Martin Hunt
+
+Gilles Maltais, who worked on the very early version
+
+
+1967F2 expert and info provider
+
+Michel Vigneres
+
+
+Layout
+
+Michel Vigneres Arturo Pereira
+
+
+Sounds
+
+Wolfgang Buthe
+
+
+Additionnal info providers
+
+Swen Beuchert Duncan S
+
+
+Default setups
+
+John Roberts
+
+
+Additional testers
+
+Stuart Bartosiak Stefan Roess Andreas Gebhardt Bob Simpson Julien
+Mondragon
+
+
+Special thanks to Stefan Roess and Paul Whitfield for hosting the Mod
+and building the F2 Website
+
+
+Promotion video
+
+Absolutely stunnig video by the Master : Rudolf Goertz aka Slowmoe
+
+
+
+Tracks :
+
+First, we recommend you install the following add-on tracks, the
+installer will add Mod specific program covers. It's not mandatory,
+but the track folders will be created and stay almost empty
+
+-Brands67 Hockenheim Jarama
+
+Get Enna track here :
+
+http://srmz.net/inde...?showtopic=7533
+
+
+
+
+
+
+Installation :
+
+1/ Run the installer, check the path for installation is correct.Vista
+and W7 users may have to run it as "administrator" and will probably
+have to reboot, even if it isn't a GPL requirement, sorry for that.
+
+2/ Launch Gpl.exe from your GPL install and create your F2 driver
+
+3/Start gem/carsets and activate "GPLF2" Make sure "GPLF2" physics are
+selected.
+
+4/Select your 67F2 Mod player and select "1967 Formula 2" for the
+player. Check that "carsF2" has been selected.
+
+5/Exit Gem and a gplcf2.exe will be created.
+
+
+Ingame, don't forget to select the Formula 2 level and adjust
+graphics, sounds and other features to your taste
+
+
+OPTIONS :
+
+Have a look at the cars subfolders, you'll find many Type7 dashboards
+(Rast V2 required) and several player options
+
+
+
+The F2 Mod Team, December 2011
+
+GPL67F2 Site
+
+
+Have fun!
+

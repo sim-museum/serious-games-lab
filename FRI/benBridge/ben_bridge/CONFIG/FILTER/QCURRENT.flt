@@ -1,0 +1,13 @@
+# BEN Bridge deal filter
+
+.version = 8.5
+.description.eng = "last set filter"
+
+join = A
+search = 100
+South.join = A
+South.hcp = 12.14
+South.Spade = 2.4
+South.Heart = 2.4
+South.Diamond = 2.5
+South.Club = 2.5

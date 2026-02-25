@@ -1,0 +1,25 @@
+All the FRI games are active open source projects.  Installed linux versions are provided and documented here for your convenience, but
+you can install them yourself from the original web sites if desired.
+gnugo:
+sudo apt install -y gnugo
+
+kigo (gnugo gui)
+sudo apt install -y kigo
+
+drago: https://www.godrago.net/
+
+go review partners: https://github.com/pnprog/goreviewpartner
+
+katrain: 
+pip3 install katrain
+or
+https://github.com/sanderland/katrain
+
+sabaki: https://github.com/SabakiHQ/Sabaki
+
+q5go:
+https://github.com/bernds/q5Go
+
+katago:
+https://github.com/lightvector/KataGo
+

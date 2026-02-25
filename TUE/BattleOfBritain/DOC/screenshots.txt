@@ -1,0 +1,37 @@
+How to do hires screenshots:
+
+- You need irfanview. if you do not have it yet, download it for free from http://irfanview.tuwien.ac.at .
+-You have to set two variables in bdg.txt with an ascii editor:
+Set BOB_SCREENSHOT_MODE to 3. The possible modes are 0 = "normal" stills, 1 = video, 2 = panoramic 3 = tiled (large to huge screenies) 4 = lenticular.
+Set NO_OF_HIRES_SCREENIE_TILES to the number of tiles across. Say you run 1024 x 768 and choose "4". Then you will actually
+get 16 tiles and the complete screenie will be 4096 x 3072 pixels (4*1024 x 4*768). 
+- I suggest removing all screenies from "stills" so you know which ones are new.
+- Run BoB and switch off everything that you do not want to be in each of the tiles like art. horizon ("h"), EPI (BDG/game stiings), infoline ("i").
+- Go into pause to freeze movement and propellor
+- Choose FoV and view direction
+- Press "print screen". See the image "zoom in". Press printscreen alltogether NO_OF_HIRES_SCREENIE_TILES*NO_OF_HIRES_SCREENIE_TILES 
+times in slow succesion. It will "zoom out" again afterwards (at least once).
+- For a first test, you can skip this step.
+Unfortunately, there is a one pixel broken line all around the picture. To remove, go into IrfanView,File/Batch conversion/rename. 
+Add all the pictures and go into "set advanced options". Activate crop. As left, input "1", as widht 2 less than the total width.
+Example: You have 1024 before, so you want a new width of 1022. Manage Height in the same way. Click "ok" and in the
+dialog press the Start button. This will convert the pictures, removing the bad lines. As output format I choose also BMP, 
+since it is lossless (don't use JPG or so).
+
+- have a look at the tiles and understand how they are laid out. For me, BoB decided to start with image shot_039.
+The screenies start at the top right corner of the complete view and go down.
+
+For example:
+right most column, top to bottom: 39..46
+next column: 47..54
+next column: 55..62
+etc
+left most column: 95..102
+
+- Go into Irfan view.
+Load image 39. Say "image/create panorama/vertical" and add image 40 to 46. You can do this via MultiSelect. Save as "new39.bmp".
+Load image 47. Say "image/create panorama/vertical" and add image 48 to 54. Save as "new47.bmp".
+etc
+
+- When done, you have loaded new95.bmp. Say "image/create Panorama/horizontal" and add new87, new79 etc to new39.
+You now have (in the example) a 110MB, 7k x 5 k pixel image :-).

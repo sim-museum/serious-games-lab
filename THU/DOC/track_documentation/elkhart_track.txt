@@ -1,0 +1,13 @@
+
+Road America 1995 Wisconsin Gran Prix for Grand Prix Legends
+
+--------------------------------------------------------------------------------
+Country: USA Circuit Type: Racetrack Track Type: Real Track Turns 14
+Meters 6437 Miles 4.000 Track Folder Name: elkhart Track Author: David
+Noonan (converter) Released: March 24, 2000
+--------------------------------------------------------------------------------
+    
+    
+Comments: You need the ICR2/CART game and also need to buy the full
+converter (i2n2gpl.exe)
+

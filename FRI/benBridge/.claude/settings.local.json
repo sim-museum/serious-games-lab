@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(nm:*)",
+      "Bash(python3:*)",
+      "Bash(./venv/bin/python3:*)",
+      "Bash(gcc:*)",
+      "Bash(LD_PRELOAD=./DecisionHoldem/PokerAI/path_redirect.so ./venv/bin/python3:*)",
+      "Bash(timeout 3 strace:*)",
+      "Bash(timeout 5 strace:*)",
+      "Bash(LD_PRELOAD=./path_redirect.so cat:*)",
+      "Bash(xxd:*)",
+      "Bash(timeout 3 bash -c 'export LD_PRELOAD=./path_redirect.so; /home/g/sgl/SUN/pokerIQ/venv/bin/python3 -c \"\"\nimport sys\nfrom ctypes import cdll\nprint\\(\\\\\"\"Starting load...\\\\\"\", flush=True\\)\nsys.stdout.flush\\(\\)\nlib = cdll.LoadLibrary\\(\\\\\"\"./AlascasiaHoldem.so\\\\\"\"\\)\nprint\\(\\\\\"\"Loaded successfully!\\\\\"\", flush=True\\)\n\"\" 2>&1')",
+      "Bash(ls:*)",
+      "Bash(timeout 10 bash -c 'export LD_PRELOAD=./path_redirect.so; /home/g/sgl/SUN/pokerIQ/venv/bin/python3 -c \"\"\nimport sys\nfrom ctypes import cdll\nprint\\(\\\\\"\"Loading blueprint.so \\(lighter weight\\)...\\\\\"\", flush=True\\)\nlib = cdll.LoadLibrary\\(\\\\\"\"./blueprint.so\\\\\"\"\\)\nprint\\(\\\\\"\"Loaded successfully!\\\\\"\", flush=True\\)\n\"\" 2>&1')",
+      "Bash(sudo mkdir:*)",
+      "Bash(sudo ln:*)",
+      "Bash(du:*)",
+      "Bash(git restore:*)"
+    ]
+  }
+}

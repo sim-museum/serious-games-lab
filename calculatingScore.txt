@@ -1,0 +1,44 @@
+Calculating Score
+eSports for Engineers 24041LTS
+
+OVERVIEW
+
+Each day of the week has its own set of OKRs (Objectives and Key Results)
+that define how to calculate a score for that day's activities.
+
+Your daily score ranges from 0 to 1.  The launcher tracks a rolling
+7-day average of your scores across all days.
+
+WORKFLOW
+
+1. Play or study the games for a given day
+2. Save your game output (replays, screenshots, analysis files)
+   to the day's afterGameReport directory
+3. From the day's menu in the launcher, select "How to Calculate Score"
+   to read the scoring criteria for that day
+4. Select "Enter New Score" to record your score
+
+The launcher will archive your afterGameReport files and record
+your score in filesForLauncher/launcherScores.csv.
+
+EXPORTING
+
+Use "Export Scores and game output files" from the main menu to
+create a tar.gz archive of all your score records and game output
+archives, along with a sha256 checksum for verification.
+
+PER-DAY SCORING
+
+Each day directory contains a calculatingScore.txt with detailed
+scoring criteria specific to that day's theme:
+
+  MON - Poker
+  TUE - Historical Flight/War Sim
+  WED - Deep Learning Chess
+  THU - Historical Sim Racing
+  FRI - Duplicate Bridge
+  SAT - Flight/War Sim (Advanced)
+  SUN - Deep Learning Weiqi
+
+Access per-day scoring documentation from within each day's menu
+by selecting "How to Calculate Score".

@@ -1,0 +1,178 @@
+
+Montlhéry 66 - New track for Papyrus' Grand Prix Legends
+======================================================== Title:
+Montlhéry66 Archive: Montlh66v1.zip Date: 24/10/2004 Author: Alain
+Bosco E-Mail: a.bosco@free.fr Web Site:
+http://a.bosco.free.fr/gpl/gpl.htm
+
+My new track for GPL after Road67, Pau67 and Albi67.
+
+
+Version ======= 1.0 - First version 1.0b - Small update to fix a
+texture conflict with the Honda.  1.0c - Small update to fix a Shift+R
+problem at the last chicane
+
+Track description ================= Crossing through a military camp
+and including a banking, several layouts was used for F3, F2 and GT
+Sportcar races.  Montlhéry is a very fast track , in the same
+spirit than Monza. Aspiration played a big part there but the military
+part of the track is a big challenge too.  One of the fastest track
+along F2 season at that time.  In 1966, Montlhéry was used for a F2
+race where the best Formula one drivers were there at the start.  You
+can see the full result on the following Url :
+http://www.formula2.net/F266_15.htm
+
+As Michel Needforspeed say :
+
+" 1966 year would present another new feature in track history : At
+the end of August a second chicane was just completed. Competitors
+would stay in pack more longer, and these esses were praised for their
+selectiveness.  Together with a new concrete on the banking, it's a
+"refurbished" Montlhéry that welcomed another Trophée de France
+F2 round with drivers like Brabham, Clark, Hill, Stewart.  Strangely
+enough, it was the last time F2 cars would race there.
+ 
+On its last years, mainly the 80 s and 90 s Montlhéry was the home
+of many successful historical races, in the same spirit of Goodwood.
+ 
+It has been decided Monthlery, a mythic 80 years old track for Paris
+people, would be destroyed, and an historic race held just the 03
+october 2004 was the last one. There is still a petition on the air.
+You can sign against that stupid bloody thing !
+ 
+So, no Montlhéry is not dead ! At least, thanks to GPL, you can now
+try to participate to its revival, by driving there !"
+
+
+Installation ============ To install, unzip the contents of
+monthl66v1.zip into a temporary folder and run "trackinstall.exe", the
+track should install automatically.
+
+
+Copyright Notes =============== This track is free. It must be
+distributed without change.  My permission must be asked before to do
+any addons or changes to this track.  Authors may not use this track
+as a base to build additional tracks.  You must include this readme
+file with the archive.  This track may not, partially or in full, be
+posted at any other sites without express permission.  You may link to
+my web site, but not directly to the files.  Track is (c)2004 by Alain
+Bosco.  Thanks in advance.
+
+
+Thanks ====== Thanks to all the people who have made the tools that I
+used to do this new track.  I hope to forget nobody and to make no
+mistake : - Phil Flack for Ase23do, Trk23dow, Mipman, Txt2Gtk, The
+Racing Line and for his small but great help (I promise, no more
+problem with the groove ;-) ) - Paul Hoad for GplEditor - Peter
+Prochazka for GplTrk - Jonas Matton and Martin Granberg for GplRa -
+Nigel Pattinson for RpyToLp - Francois Dubuc for LpEdit - Klaus
+Horbrand for WinMip - Dave Noonan for 3doEd - Martin Granberg for
+Trackinstall - Joachim Blum for TrkCamEdit - All the Gplea team
+
+- Michel aka M Needforspeed as always for all his photographies, his
+- notes and his advices all along this project.  Jacques Bossy and
+- William Brequin for all the datas sent to me.  Jussi Kaskia for some
+- textures (some advertisements).  Simon Stobbart from
+- "http://www.dixierunners.speedgeezers.com" for the sky.  Dave and
+- Pete Allam for the Dunlop bridges textures.  Someone for the bushes
+- but impossible to remember who.  My beta testors team.  RSC and his
+- forum : http://forum.rscnet.org/forum.php Sierra and Papyrus of
+- course.  Me for 3doclass and for all the rest : Track layout,
+- altitudes, 3d objects, textures, Ai, Cameras ... :-)
+
+
+****** FRANCAIS *************************************************
+
+Montlhéry 66 - Nouveau circuit pour Grand Prix Legends de Papyrus
+=================================================================
+Titre: Monthléry66 Archive: monthl66v1.zip Date: 24/10/2004 Auteur:
+Alain Bosco E-Mail: a.bosco@free.fr Site Web:
+http://a.bosco.free.fr/gpl/gpl.htm
+
+Mon nouveau circuit pour GPL après Road67, Pau67 et Albi67.
+
+
+Version ======= 1.0 - Première version 1.0b - Petite mise à jour
+pour corriger un conflict avec la Honda.  1.0c - Petite mise à jour
+pour corriger un problème de Shift+R à la dernière chicane
+
+Description du circuit ====================== Tranversant un camp
+militaire et comprenant un virage relevé, plusieurs tracés
+étaient utilisés pour la F3, F2 et les
+sport-prototypes. Montlhéry est une piste très rapide dans le
+même esprit que Monza. L'aspiration joue une grande part ici mais
+la partie militaire de la piste propose aussi des grandes
+difficultées.  Une des pistes de la saison de F2 de cette
+époque.  En 1966 Montlhéry fut utilisé pour une course de F2
+où les plus grands pilotes de F1 du moment étaient au départ.
+Vous pouvez voir les résultats complets à cette adresse :
+http://www.formula2.net/F266_15.htm
+
+Comme le dit Michel Needforspeed :
+
+" l'année 1966 présentait une nouvelle étape dans l'histoire
+de cette piste : A la fin d'Aout une seconde chicane avait juste
+été terminée. Les compétiteurs ne pourraient plus rester
+en paquet et ces esses étaient loués pour leurs
+sélectivités.  Avec un nouveau revètement sur le banking,
+c'est un Montlhéry resurfacé qui accueillit une course de F2 du
+Trophée de France, avec des pilotes comme Brabham, Clark, Hill,
+Stewart.  Assez étrangement ce fut la dernière fois que des F2
+coururent là.
+
+Dans les dernière années, principalement les 80 et 90,
+Montlhéry était l'endroit de beaucoup de courses historiques
+populaires, dans le même esprit que Goodwood.
+
+Il a été décidé que Montlhéry, circuit vieux de 80 ans
+et mythique pour les habitants de Paris, serait détruit et une
+dernière course historique c'est déroulé le 03 octobre
+2004. Il y a toujours une pétition en cours.  Vous pouvez signer
+contre cette chose stupide !
+
+Ainsi, non Montlhéry n'est pas mort ! Au moins, merci à GPL,
+vous pouvez maintenant essayer de participer à sa renaissance en
+pilotant là ! "
+
+
+Installation ============ Pour installer le circuit copier tous les
+fichiers de montlh66v1.zip dans un dossier temporaire et lancer
+"trackinstall.exe", le circuit devrait s'installer automatiquement.
+
+
+Copyright ========= Ce circuit est gratuit. Il doit être
+distribué sans modification.  Mon autorisation doit être
+demandée avant de faire des ajouts ou des modifications à ce
+circuit.  Les auteurs de circuits ne doivent pas utiliser cette piste
+comme base pour d'autres circuits.  Vous devez inclure ce fichier
+d'information avec l'archive.  Ce circuit de doit pas être,
+partiellement ou en intégrité, envoyé à d'autres sites
+sans ma permission.  Vous pouvez rediriger vers mon site internet mais
+pas directement vers les fichiers.  Ce circuit est (c)2004 par Alain
+Bosco.  Merci d'avance.
+
+
+Remerciements ============= Merci à toutes les personnes qui ont
+réalisé les outils qui m'ont permis de faire ce circuit.
+J'espère n'oublier personne et ne pas faire d'erreur : - Phil Flack
+pour Ase23do, Trk23dow, Mipman, Txt2Gtk, The Racing Line et pour sa
+petite mais importante aide (je promets, plus de problème avec la
+groove ;-) ) - Paul Hoad pour GplEditor - Peter Prochazka pour GplTrk
+- Jonas Matton et Martin Granberg pour GplRa - Nigel Pattinson pour
+RpyToLp - Francois Dubuc pour LpEdit - Klaus Horbrand pour WinMip -
+Dave Noonan pour 3doEd - Martin Granberg pour Trackinstall - Joachim
+Blum pour TrkCamEdit - Tout l'équipe Gplea
+
+- Michel aka M Needforspeed comme d'habitude pour les informations
+- transmises, les conseils et le soutien pendant ce projet.  Jacques
+- Bossy et William Brequin pour les nombreux documents transmis
+- notamment.  Jussi Kaskia pour les certaines textures de
+- publicités.  Simon Stobbart du
+- "http://www.dixierunners.speedgeezers.com" pour les textures du
+- ciel.  Dave and Pete Allam pour les textures des ponts Dunlop.
+- Quelqu'un pour les buissons mais impossible de retrouver qui.  Mon
+- équipe de béta testeurs.  RSC et son forum :
+- http://forum.rscnet.org/forum.php Sierra et Papyrus bien sur.  Moi
+- pour 3doclass et pour tout le reste : Tracé, altitudes, objets
+- 3d, textures, Ai, Caméras ... :-)
+

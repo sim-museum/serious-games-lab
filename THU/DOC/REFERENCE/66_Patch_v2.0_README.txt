@@ -1,0 +1,207 @@
+66_Patch_v2.0
+
+enables -
+
+1/ Use of long tracks so that you can run Targa, IoM etc.
+
+2/ Revised collision detection.
+
+3/ Extra car liveries for Coopers at Monaco, new Brabham dashes, other car updates and fixes.
+
+
+IMPORTANT NOTE 1
+It is ESSENTIAL to remove the gpl66 folder from mods/gem+ before installing this version.
+
+NOTE 2
+You may lose previously recorded lap times from your 66 player.ini . 
+To overcome this, make a backup of your 66 player.ini and paste in the lap times after installing the patch and rebuilding gplc66.exe.
+
+NOTE TO BETA TESTERS
+If you have a previous long track option in Gem+ do not check the long track option box for new 66 or 65 
+because long track support is already built into these versions.
+
+
+INSTALLATION
+
+A full working version of 66mod must already be installed before installing this update.
+
+Run the installer.
+Check the install path. The default install path is C:\Sierra\GPL.
+IF YOUR GPL INSTALL HAS A DIFFERENT PATH YOU MUST CHANGE THE PATH WHEN PROMPTED.
+
+Remove gplc66.exe and rebuild with Gem+
+
+Credits
+
+Nigel Pattinson
+Richard Cooke
+Paul Skingley
+Tommie Van Ostade
+Remy Roesz
+
+Beta testers
+
+Robert Hunter
+Remy Roesz
+John Roberts
+Paul Skingley
+
+
+
+FRANCAIS
+========
+
+66_Patch_v2.0
+
+Nouveautés -
+
+1/ Il permet l'utilisation de circuits longs tel que Targa Florio, IoM etc.
+
+2/ La gestion des collisions a été améliorée (Collision box)
+
+3/ Contient des correctifs et améliorations pour les voitures. Une Cooper spécifique à Monaco, de nouveaux tableaux de bord Brabham, etc...
+
+
+
+NOTE 1 
+IMPORTANT! Il est indispensable de supprimer le dossier "gpl66" dans mods/gem+ avant l'installation du patch
+
+NOTE 2
+Sauvegardez votre(vos) player66.ini, car vous risquez de perdre vos meilleurs temps. Il suffira de l'installer à nouveau à la fin des opérations. 
+
+NOTE AUX BETA TESTEURS
+Si vous avez des versions antérieures, l'option "Long Track" ne doit pas être cochée dans GEM+ car elle est incluse dans le nouveau patche et peut causer un disfonctionnement de GPL. 
+
+
+INSTALLATION
+
+Une version complète du Mod66 doit être intallée avant de lancer l'installateur de ce patche.
+
+Exécutez le programme d'installation. 
+Vérifiez le chemin d'installation. Le chemin d'installation par défaut est C: \ Sierra \ GPL. 
+SI VOTRE INSTALLATION GPL A UN CHEMIN DIFFERENT, VOUS DEVEZ LE CHANGER A L'INVITE. 
+
+Supprimez gplc66.exe et lancer GEM+ afin de le reconstruire. 
+
+Credits
+
+Nigel Pattinson
+Richard Cooke
+Paul Skingley
+Tommie Van Ostade
+Remy Roesz
+
+Beta testeurs
+
+Robert Hunter
+Remy Roesz
+John Roberts
+Paul Skingley
+
+
+
+GERMAN
+======
+
+66_Patch_v2.0
+
+ermöglicht -
+
+1/ Die Nutzung von langen Strecken, so dass Targa und IoM, usw. gefahren werden können
+
+2/ Überarbeitete Kollisionsabfrage
+
+3/ Verschiedene Auto Updates und Fehlerbehebungen, u.a. extra Auto "liveries" für den Cooper in Monaco, neue Brabham "dashes".
+
+
+WICHTIGER HINWEIS 1
+Es ist essentiell den gpl66 Ordner aus mods/gem+ zu löschen, bevor diese Version installiert wird.
+
+HINWEIS 2
+Frühere gespeicherte Rundenzeiten der 66er player.ini können verloren gehen.
+Um dies zu vermeiden, mache eine Sicherung deiner 66er player.ini und kopiere die Rundenzeiten nach der Installation des Patches und Neuerstellung der gplc66.exe (durch Beenden von GEM+) wieder hinein.
+
+HINWEIS FÜR BETA TESTER
+Falls du eine frühere Version der Long Track Option in GEM+ hast, setzte nicht den Haken für die Long Track Option in GEM+ für die neue 66er oder 65er Version, denn die Unterstützung für lange Strecken ist bereits in diese Versionen implementiert.
+
+
+INSTALLATION
+
+Eine komplett funktionierende Version des 66 Mod muss installiert sein, bevor dieses Update installiert wird.
+
+Führe den Installer aus.
+Überprüfe den Installationspfad. Der Standardpfad ist C:\Sierra\GPL.
+FALLS DEINE GPL INSTALLATION EINEN ANDEREN PFAD HAT, MUSST DU DEN PFAD ÄNDERN WENN DU DAZU AUFGEFORDERT WIRST.
+
+Entferne die gplc66.exe und erstelle sie mit GEM+ (durch Beenden von GEM+) neu.
+
+
+Credits
+
+Nigel Pattinson
+Richard Cooke
+Paul Skingley
+Tommie Van Ostade
+Remy Roesz
+
+Beta testers
+
+Robert Hunter
+Remy Roesz
+John Roberts
+Paul Skingley
+
+
+
+SPANISH
+=======
+
+66mod Patch v2.0
+
+Este patch incluye:
+
+1/ el uso de pistas largas, de forma que Ud. va a poder manejar en la Targa Florio, IOM, etc.;
+
+2/ detección de colisiones revisada;
+
+3/ pinturas adicionales para los Coopers en Mónaco, nuevos tableros para los Brabham, otras actualizaciones para los autos y correciones.
+
+NOTA 1 - IMPORTANTE
+Es ESENCIAL remover el directorio \gpl66 ubicado en \Mods\GEM+ ANTES de instalar esta versión.
+
+NOTA 2
+Ud. puede perder los tiempos de vuelta previamente registrados en su player.ini para el modo 66.
+Para evitar esto, haga un backup de su plac66.ini y pegue en el mismo los tiempos de vuelta anteriores a la instalación de este patch, después de ejecutar esa instalación y de la reconstrucción del gplc66.exe.
+
+NOTA a los BETATESTERS
+Si Uds. tenían la opción "Long Track Support" activada antes de la instalación de este patch, NO la activen para los nuevos patches para los modos 65 y 66 dado que el "Long Track Support" esta incluído dentro de ambos patches.
+
+INSTALACIÓN
+Una copia completa del modo 66 debe estar instalada ANTES de aplicar esta actualización.
+
+a. ejecute el instalador del patch;
+b. verifique el directorio donde esta instalado el GPL, por defecto C:\Sierra\GPL. SI SU INSTALACIÓN DE gpl ESTA EN UNA RUTA DIFERENTE, UD. DEBE CAMBIAR LA RUTA CUANDO EL INSTALADOR LO REQUIERA.
+c. borre el gplc66.exe y deje que GEM+ lo reconstruya.
+
+
+Créditos
+
+Nigel Pattinson
+Richard Cooke
+Paul Skingley
+Tommie Van Ostade
+Remy Roesz
+
+Beta testers
+
+Robert Hunter
+Remy Roesz
+John Roberts
+Paul Skingley
+
+
+
+
+
+
+

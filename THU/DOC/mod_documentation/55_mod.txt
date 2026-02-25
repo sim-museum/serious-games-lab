@@ -1,0 +1,57 @@
+
+
+55Mod Update Patch
+
+55Mod Update Patch
+
+ITEM 1: There are unique 3dos and mips for the Maser, Lancia and
+Mercedes W196r to give the proper brake drum backing plates on the
+front wheels.  Also, for the Mercedes W196s there are changed wheel
+3do files to give the appearance of in-board drum brakes all around.
+ITEM 2: The Gordini T16 has a graphics representation of the second
+exhaust pipe and slightly larger suspension openings.  These include
+the AI, player, default and all of the online carskins.  Some of the
+darker blue carskins were left with the single exhaust, which is
+carried over from some of the race-specific AI cars that are being
+prepared.  ITEM 3: The Collins #36 car has the front grill trident
+removed.  This is the '54 style chassis which the Owen Racing
+Organization painted a darker green than the other British teams.
+ITEM 4: Includes yellow #2 online Gordini.  ITEM 5: Includes alternate
+brake temp fade indicator mip in the brabham car sub-folder. Cool
+state for brakes is no longer 'green' but 'indicator off'.  ITEM 6:
+Includes player car #4 of Moss's 1954 Aintree 200 Maser 250F.  ITEM 7:
+Includes player car #4 of Pilette's 1954 Spa Gordini T16.  ITEM 8:
+Changes to all car main 3do files to eliminate stub arms when 'no
+driver arms' selected.  ITEM 9: Added Merc W196 online 1024x1024
+carskin #40; added Maser 250F online 1024x1024 carskin #34.  ITEM 10:
+Lighting angle on Connaught and Ferrari 625 mirrors adjusted.  ITEM
+11: Ferrari 625 windscreen, dash and cockpit texture updates.  ITEM
+12: Lancia D50 grill update. New Lancia D50 and Ferrari 555 mirrors.
+ITEM 13: Tire textures given a more 3D shadowing.
+
+Installation: Un-zip this archive into your GPL folder (or for
+separate installs, your GPL55Mod folder) allowing over-writing of
+files.  The 55Mod car files will be placed into the cars55
+sub-folders.
+
+Option: To use the alternate brake temp fade indicator, copy the
+tempfade.mip file from the sub-folder in the brabham folder to the
+brabham folder.
+
+Credits: All carskins are made from the original 55Mod carskins
+created by Royale, Shaun, MECH, sky, Border Reiver, francesco and
+ginetto.  Fix to driver arms view for all cars was made by MECH.
+Adjustment to Connaught and Ferrari 625 mirrors reflections was made
+by hagapito40 - original textures by sky.  Ferrari 625 windscreen,
+dash and cockpit texture updates were made by hagapito40 - original
+textures by ginetto.  Lancia D50 grill update was made by hagapito40 -
+original texture by sky.  New Lancia D50 and Ferrari 555 mirrors
+updates were made by hagapito40 - original textures by ginetto.  Tire
+texture updates were made by hagapito40 - original textures by
+ginetto.
+
+The 55Mod Team hope that you enjoy these updates.
+
+21 July 2017 
+
+

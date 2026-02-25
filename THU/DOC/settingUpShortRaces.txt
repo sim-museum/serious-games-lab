@@ -1,0 +1,134 @@
+http://srmz.net/index.php?showtopic=14379&hl=
+
+Alternative To Svg-Editor.exe Which Works With All Gpl Mods
+
+Started by prize, Sep 25 2021 - 05:46 PM
+0 replies to this topic
+
+#1 prize
+
+Posted Sep 25 2021 - 05:46 PM
+Is there an alternative to the SVG-Editor.exe utility which works with all mods, not just the 65, 67 and 67x mods?
+
+There are utilities that allow you to change order in the race lineup, but are there any that do everything SVG_Editor.exe does (see below)?
+
+After saving my practice setting I use the SVG-Editor.exe utility to
+1. make myself #1 on the grid
+2. set damage to full
+3. set number of laps to 3
+4. give all the AI drivers F2 cars (or, if I'm new to a track, f3 cars)
+
+This works great, and is a fun way to learn a track racing offline against the AI.
+
+#2 paul skingley
+
+Posted Sep 27 2021 - 08:33 AM
+
+Why not just slow down the AI ?
+
+#3 prize
+
+Posted Sep 27 2021 - 01:40 PM
+I also want to have a very short race, say 3 laps, with full damage.  This creates a short, exciting race.
+
+If I change the AI speed on the GEM screen from 1 to 2, does that just slow down the AI, or does that also alter AI behavior?
+
+#4 paul skingley
+
+Posted Sep 27 2021 - 02:38 PM
+Always best to make a copy of the file before you start editing so you can go back.
+
+Normally I set the AI speed in the track.ini in the track folder you are using.
+
+[ GP ]
+dlong_speed_adj_coeff =
+
+reducing "dlong_speed_adj_coeff" will slow the AI. Increase will speed up.
+Try adjusting in 0.01 intervals.
+
+For race length I normally adjust the season file that has the track.
+If you only have 67season it will be in there.
+
+example
+
+[Eventxx]
+name=Grand Prix d'Albi
+shortname=GP d'Albi
+trackShortName=Albi
+trackDirectory=albi67
+flag=franflg
+month=7
+day=13
+numberOfLaps=80
+startingGrid=5
+
+80 will be full Grand Prix length.
+Long will be 30% distance = 24 laps
+Short will be 15% distance = 12 laps
+novice will be 8% = 7 laps
+
+If you reduced the GP race length to 40 laps you would get a 3 or 4 laps race in novice mode.
+
+#5 prize
+
+Posted Sep 27 2021 - 07:38 PM
+Thanks for this description of how to change AI speed and number of laps in a race.
+
+The one other thing I want to do is have full damage in a short race for improved realism.   Is there a way to set damage to full for a 3 or 4 lap race?
+
+#6 paul skingley
+
+
+Posted Sep 28 2021 - 08:25 AM
+Yes you can run a Pro/Short race with laps set to 20 in the season ini will give you a 3 laps race, 26 laps will give a 4 lap race.
+
+Then you can easy double the race length by using Pro/Long which will give you 6 and 8 lap races.
+
+#7 prize
+
+Posted Oct 01 2021 - 10:25 PM
+How can I change the race order so that I am #1 on the grid?  Previously I did that by editing the saved practice result file used Svg-Editor.exe method.  But Svg-Editor.exe is only works with the 65, 67 and 67x mods.
+
+Is there a way to change grid order for any mod?
+
+Thanks!
+
+#8 lalb2001
+
+Posted Oct 05 2021 - 10:56 AM
+
+View Postpaul skingley, on Sep 27 2021 - 02:38 PM, said:
+Normally I set the AI speed in the track.ini in the track folder you are using.
+
+[ GP ]
+dlong_speed_adj_coeff =
+
+reducing "dlong_speed_adj_coeff" will slow the AI. Increase will speed up.
+Try adjusting in 0.01 intervals.
+
+The last time I tried this, the AI still drove the same lap times (I used the right track.ini file). The only way for me to adjust the AI speed remains to be adjusting the corresponding gplai.ini, where I mainly adjust npt_override. Also, does dlong_speed_adj_coeff work in the same way as npt_override, meaning increased speed into and out of corners, or does it also affect the top speed?
+
+Edited by lalb2001, Oct 05 2021 - 10:56 AM.
+
+#9 paul skingley
+
+Posted Oct 05 2021 - 11:17 AM
+
+View Postlalb2001, on Oct 05 2021 - 10:56 AM, said:
+The last time I tried this, the AI still drove the same lap times (I used the right track.ini file). The only way for me to adjust the AI speed remains to be adjusting the corresponding gplai.ini, where I mainly adjust npt_override. Also, does dlong_speed_adj_coeff work in the same way as npt_override, meaning increased speed into and out of corners, or does it also affect the top speed?
+
+That is strange because I always do it that way and it works well for me. But if you are using a mod there may be a mod track ini ( 65mod = track65 etc..) that overides the track.ini
+
+I have npt_override = 1 for all my gplai.ini
+
+I think npt_override = 1 means that no matter how fast you go, the AI will lap at the speed set in dlong_speed_adj_coeff
+
+#10 lalb2001
+
+Posted Oct 05 2021 - 01:22 PM
+That was what I meant, I even edited track.ini and track67.ini to be sure, but nothing changed about the AI's speed. It's been some time since I did that though, so I guess I will take a look at again sometime soon to see if I missed out on something and report back.
+
+#11 JonnyA
+
+Posted Oct 06 2021 - 07:45 AM
+Look at the end of the track.ini (or track67.ini etc.) file. Some of them have a section called DEFAULT that also has values for dlong_speed_adj_coeff that override the vales earlier in the file.

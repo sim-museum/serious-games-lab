@@ -1,0 +1,14 @@
+# BEN Bridge deal filter
+
+.version = 8.1
+.description.eng = "strong South hands with 17+ hcp"
+.description.deu = "starke Südblätter mit 17+ FP"
+.description.fra = "mains fortes en Sud, avec 17+ PH"
+.description.ita = "mani forti per Sud con almeno 17 punti"
+.description.dan = "stærk Syd-hånd med 17+ hp"
+.description.pol = "rêka S silna, od 17 PC"
+
+join = A
+search = 100
+South.join = A
+South.hcp = 17.*

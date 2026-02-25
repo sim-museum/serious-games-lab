@@ -1,0 +1,5 @@
+Your brake bias is mostly dependent on your brake system, Load Cell braking can use much more forward bias, with G27 I used ~50 but with LC 54-56. You can control braking much better and even slightly release it...
+
+Make a test with hard braking and then watch it from the TV view replay wich wheels are locking, this way I find my brake bias
+
+

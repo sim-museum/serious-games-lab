@@ -1,0 +1,3 @@
+1. Turning off music in Free Falcon will also turn off the superfluous radio chatter
+2. In SETUP/Simulation, select "Radio Calls Use Bullseye" and "Smart Scaling" for improved realism"
+3. In SETUP/Simulation, select "Display Infobar" and "Display Radio Subtitles" as training aids

@@ -1,0 +1,101 @@
+Jarama 1968 for Grand Prix Legends =======================
+
+Title: Jarama68 Archive: jarama_v10.rar Date: 20/02/2005 Authors:
+Fernando Montero "Arch" (Layout) Sergio Loro (Graphics)
+
+Web Site: http://jarama.gaiztor.com E-Mail: jarama@gaiztor.com
+
+the great and beatiful cover was made by John Bradley :) thanks
+john!!!
+
+Version =======
+
+1.0 - First released version.
+
+Editors Note I : Since the track use big "drawing ahead" distances may
+you get low fps at some parts of tracks, in that case you can use the
+jarama.3do placed on the jarama_low_detail.zip file, just unpack this
+file at your gpl/tracks/jarama folder.  All textures are Voodo
+friendly :)
+
+Editors Note II : the original track do not include brake signs, as it
+was on 1968 race, but you can use brake signs if you unpack the mip
+files placed on "jarama_bs.zip" file, just unpack this files at your
+gpl/tracks/jarama folder.
+
+Track description =================
+
+Jarama is a track located 27 Km in the north of Madrid. It was built
+in 1967 designed by famous circuit designer John Hugenholz, who had
+laid out both Zandvoort and Suzuka, and hosted a Non Championship race
+in 1967, which was won by the great Jim Clark. After that, Jarama
+hosted Spanish Grand Prix in the even years from 1968 to 1976,
+alternating with Montjuich track on odd years, until the fatal
+accident of Rolf Stommelen at Montjuich in 1975. The accident was the
+end for Montjuic Park and in the late 1970s Jarama hosted all the
+races. In 1980, with the war FISA vs FOCA, Jarama hosted an GP with
+only FOCA cars running, but the race was considered illegal and did
+not count to the World Championship. Jarama hosted his last Spanish
+Grand Prix in 1981 in a slightly modified layout (a bit longer main
+straigth and a little modification at Bugatti turn), and that was one
+of the best F1 races ever, with Gilles Villenueve winning after
+leading a queue of cars behind him for 67 laps, with the fifth only
+1,24 s from Gilles at the finish line.
+
+After 1981, F1 never raced again here because of the bad facilities of
+the track due to the lack of interest of the Royal Automobile Club of
+Spain, which seemed to be more interested in the golf course next to
+the circuit than in the circuit itself.
+
+We did the 1968 layout, as realistic as we could. The base for the
+layout is a high resolution satellite picture, and all the atmosphere
+we created was based on pictures from that years.
+
+
+
+Installation ============
+
+To install the track you must have a copy of GPL or GPL 2004 Demo
+installed. Just unzip all the files on to a directory and run
+Trackinstall.exe.
+
+
+
+Thanks ======
+
+And our thanks goes to (in no particular order):
+
+- Papyrus and David Kaemmer for making this great Sim.  Dave Noonan
+- for 3doEd.  Phil Flack for Ase23do,xt2Gtk, Mipman, trk23dowT.  Alex
+- Murcia and Eduardo Sanchez for the great information that they gave
+- about track altitudes and camber.  Alex Murcia (again) for making
+- those beautiful Setups.  Paul Hoad for GplEditor.  Peter Prochazka
+- for GplTrk.  Eduardo Sanchez (Cosworth) for Satellite Picture of the
+- track.  Jonas Matton and Martin Granberg for GplRa.  Pau Freire for
+- Web Design.  Klaus Horbrand for WinMip.  Martin Granberg for
+- Trackinstall.  Jorge Nieva for his interest and his diary question
+- "Did you finished it yet?"  Gaizka López for the web hosting.
+- Joachim Blum for TrkCamEdit.  Marck Beckman for his AI guides.
+- RaulV for his help making the layout.  Jacques Bossy for build the
+- AI files Robert Zeugin for create a beatiful mips Manuel Roda (MAX
+- EL ONE) for his great encyclopedia.  The historic subforums (in
+- Spanish) from www.thef1.com for the big amount of pictures of the
+- track I found in them.  And finally the beta testers of the track
+- (Eduardo Sánchez, Manuel Zamora, Pau Freire, Gabriel
+- Tobar(Z.Zar), Alex Murcia and Gaizka López) for his comments.
+
+Thank you all, guys!
+
+
+
+Copyright Notes ===============
+
+This track is free. It must be distributed without change.  My
+permission must be asked before to do any addons or changes to this
+track.  Authors may NOT use this track as a base to build additional
+tracks.  You must include this readme file with the archive.  This
+track may not, partially or in full, be posted at any other sites
+without express permission.  You may link to my web site, but not
+directly to the files.
+
+

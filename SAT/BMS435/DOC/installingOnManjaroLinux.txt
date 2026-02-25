@@ -1,0 +1,21 @@
+What follows is a list of the commands that were used to set up the 4.35 directory.   Manjaro linux version 20.2 was used.  This command transcript is provided for reference only; you do not need to execute these commands because they have already been executed.
+
+# install up-to-date wine packages
+pamac install --no-confirm wine-staging winetricks 
+
+#if using an nvidia graphics card, check that the most recent nvidia driver
+#455.45.01 as of 21/27/2020, is being used
+nvidia-smi
+
+#create wine prefix
+export WINEPREFIX=$PWD/WP
+
+#populate WINEPREFIX C: driver
+winecfg
+
+# install the vulkan driver.  Without this, BMS 4.35 will run with poor frame rate, or not at all.
+winetricks --self-update
+winetricks dxvk
+
+# install the .NET user interface library used by Weapon Delivery Planner
+winetricks dotnet40

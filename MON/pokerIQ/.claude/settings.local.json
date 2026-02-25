@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(pgrep:*)",
+      "Bash(pkill:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(DISPLAY=:0 timeout 5 python:*)",
+      "Bash(dmesg:*)",
+      "Bash(journalctl:*)",
+      "Bash(echo:*)",
+      "Bash(w:*)",
+      "Bash(DISPLAY=:2 scrot:*)",
+      "Bash(DISPLAY=:2 xdotool search:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(DISPLAY=:2 python:*)",
+      "Bash(git mv:*)",
+      "Bash(git tag:*)",
+      "Bash(timeout 5 python:*)",
+      "Bash(python pokerIQ.py:*)"
+    ]
+  }
+}

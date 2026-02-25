@@ -1,0 +1,14 @@
+name,lutris wine runner,path to executable,bits,enable dxvk and vkd3d
+battle of britain,Lutris-6.0-x86_64,/home/m/ese/THU/BattleOfBritain/WP/drive_c/Program Files (x86)/Rowan Software/Battle Of Britain/bob.exe,64,yes
+BMS432,Lutris-5.6-5-x86_64,/home/g/ese/SAT/BMS432/BMS432-v41/WP/drive_c/Falcon BMS 4.32/Launcher.exe,32,no
+BMS435,wine-ge-8-26-x86_64(default),/home/m/ese/SAT/BMS435/WP/drive_c/Falcon BMS 4.35/Launcher.exe,64,yes
+falconAF,Lutris-5.6.5-x86_64,/home/g/ese/SAT/WP/drive_c/Program Files/Lead Pursuit/Battlefield Operations/FalconAF.exe,32,no
+free falcon,Lutris-6.21-6-x86_64,/home/g/ese/SAT/WP/drive_c/FreeFalcon6/FFViper.exe,32,yes
+GPL,wine-ge-8-26-x86_64(default),/home/m/ese/TUE/WP/drive_c/Program Files/GPLSecrets/GEM+/GEMP2.exe,32,no
+GPL replay analyzer,wine-ge-8-26-x86_64(default),/home/m/ese/TUE/WP/drive_c/Program Files/GPL Replay Analyser/GPLReplayAnalyser.exe,32,no
+MA,Lutris-5.21-x86_64,/home/m/ese/THU/MigAlley/WP/drive_c/rowan/mig/Mig.exe,32,no
+MS World of Flight,Lutris-65.6-5-x86_64,/home/g/ese/THU/FS9/WP/drive_c/Program Files/Microsoft Games/Flight Simulator 9/fs9.exe,32,no
+NR2003,wine-ge-8-26-x86_64(default),/home/g/ese/TUE/NR2003/WP/drive_c/Papyrus/NASCAR Racing 2003 Season/NR2003.exe,32,yes
+qplus bridge 17,wine-ge-8-26-x86_64(default),/home/m/ese/MON/WP/drive_c/games/qbridge17/QBRIDGE.EXE,32,yes
+rFactor,wine-ge-8-26-x86_64(default),/home/m/ese/TUE/rFactor/WP/drive_c/Program Files/rFactor/rFactor.exe,32,yes
+wbridge5,Lutris-fshack-5.7-x86_64,,32,no

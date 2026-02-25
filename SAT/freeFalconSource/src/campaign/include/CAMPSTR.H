@@ -1,0 +1,1 @@
+campstr.h

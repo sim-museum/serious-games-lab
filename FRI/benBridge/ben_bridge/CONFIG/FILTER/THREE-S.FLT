@@ -1,0 +1,15 @@
+# BEN Bridge deal filter
+
+.version = 8.1
+.description.eng = "three suited South hands"
+.description.deu = "Süd mit Dreifärber"
+.description.fra = "mains tricolores en Sud"
+.description.ita = "mani tricolori per Sud"
+.description.dan = "trefarvede Syd-hænder"
+.description.pol = "rêka S trójkolorowa"
+
+join = A
+search = 300
+South.join = A
+South.hcp = 12.*
+South.S3 = 4.*

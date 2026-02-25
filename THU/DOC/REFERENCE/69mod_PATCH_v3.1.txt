@@ -1,0 +1,268 @@
+ENGLISH
+
+69 Patch
+
+enables -
+
+
+1/ More tracks feature ( 1024 tracks ) same as 66 mod.
+
+2/ Best Laps screen shows all lap times for any track you have installed and raced on.
+
+3/ AI improvements
+
+4/ Enabling use of long tracks so that you can run Targa, IoM etc. when the they are released.
+
+5/ Revised collision detection
+
+
+NOTE 1
+Before installing this patch you should already have a complete working version of 69mod.
+
+NOTE 2
+You may lose previously recorded lap times from your 69 player.ini . 
+To overcome this, make a backup of your 69 player.ini and paste in the lap times after installing the patch and rebuilding gplc69.exe.
+
+NOTE 3
+If you wish to be able to go back to original/unpatched 69 easily, make a backup of your layout and mods folders and drv69w.ini  
+then store them somewhere. When/if you want to go back to unpatched 69 just reinstate the backed up folders and files and rebuild the 69 exe.
+
+
+NOTE TO BETA TESTERS
+If you have previous versions of the 69 patch installed you should remove the gpl69 folder from gpl/mods/gem+ before installing this version.
+ 
+SERVERS
+All online servers should be patched. This will still allow non patched players to join the patched server.
+
+
+
+INSTALLATION
+
+
+
+IT IS ESSENTIAL to REMOVE the gpl69 folder from gpl/mods/gem+ BEFORE installing the patch
+
+
+
+Run the installer.
+Check the install path. The default install path is C:\Sierra\GPL.
+IF YOUR GPL INSTALL HAS A DIFFERENT PATH YOU MUST CHANGE THE PATH WHEN PROMPTED.
+
+Remove gplc69.exe and rebuild with Gem+
+
+Credits
+
+Nigel Pattinson
+Richard Cooke
+Paul Skingley
+
+Beta testers
+
+Robert Hunter
+Remy Roesz
+John Roberts
+Paul Skingley
+GPLRACER League
+
+
+
+FRANCAIS
+
+65 Patch 
+
+
+Il permet : -- 
+
+
+
+1 / D'installer 1024 circuits sur le fichier season (64 précédemment) comme pour le mod 66. 
+
+2 / En plus des circuits originaux, l'écran des meilleurs temps affiche tous les circuits installés (à condition d'y avoir roulé). 
+
+3 / L'AI a été améliorée 
+
+4 / Le code pour l'utilisation de circuits long a été activé
+
+5 / La gestion des collisions a été améliorée (Collision box)
+ 
+NOTE 1 
+Avant d'utiliser ce patch, il faut que le Mod69 soit installé . 
+
+NOTE 2 
+Important : sauvegardez votre player.ini 69, car vous risquez de perdre vos meilleurs temps. Il suffira de l'installer à nouveau à la fin des opérations. 
+
+NOTE 3 
+Pour revenir à une version non patchée, il vous suffit de sauvegarder les dossiers "layout" et  "mods" ainsi que le fichier "drv69w.ini" afin de les réinstaller ultérieurement.
+Il faudra également reconstruire un exe par le biais de GEM+
+
+
+NOTE AUX BETA TESTEURS 
+Si vous avez des versions antérieures, il faudra d'abord supprimer le dossier gpl69 dans gpl/mods/gem+ avant d'installer cette version.
+  
+SERVEURS 
+Tous les serveurs en ligne devraient être patchés. Les joueurs non patchés pourront les joindre. 
+
+
+
+INSTALLATION
+
+
+
+Il est essentiel de supprimer le dossier de gpl69 gpl / mods / bijou + AVANT d'installer le patch 
+
+Exécutez le programme d'installation. 
+Vérifiez le chemin d'installation. Le chemin d'installation par défaut est C: \ Sierra \ GPL. 
+SI VOTRE INSTALLATION GPL A UN CHEMIN DIFFERENT, VOUS DEVEZ LE CHANGER A L'INVITE. 
+
+Supprimez gplc69.exe et lancer GEM++ afin de le reconstruire. 
+
+Crédits 
+
+Nigel Pattinson 
+Richard Cooke 
+Paul Skingley 
+
+Beta testeurs 
+
+Robert Hunter 
+Remy Roesz 
+John Roberts 
+Paul Skingley 
+GPLRACER Ligue
+
+
+
+GERMAN
+
+65 Patch 
+
+
+ermöglicht - 
+
+
+1 / Weitere Strecken Eigenschaften (1024 Strecken) wie beim 66er mod. 
+
+2 / Der beste Runden Bildschirm zeigt alle Rundenzeiten für jede Strecke, die Sie installiert haben und gefahren sind. 
+
+3 / AI Verbesserungen 
+
+4 / Ermöglich die Verwendung von langen Strecken, so dass Sie Targa, IOM usw. fahren können, wenn diese veröffentlicht werden. 
+
+5 / Überarbeitete Kollisionserkennung
+
+ANMERKUNG 1 
+Vor der Installation dieses Updates sollten Sie bereits eine komplett funktionsfähige Version des 69er Mod haben. 
+
+ANMERKUNG 2 
+Sie können zuvor gespeicherte Rundenzeiten von Ihrer 69er player.ini verlieren. 
+Um dies zu überwinden, machen Sie eine Sicherungskopie der 69er player.ini und kopieren Sie die Rundenzeiten nach der Installation und der Neuerstellung der gplc69.exe (durch Beenden von GEM+) wieder hinein.
+
+Anmerkung 3 
+Falls Sie zur ursprünglichen / ungepatchten 65er Version zurück wollen, machen Sie eine Sicherungskopie der Ordner "layout" und "mods" und der "drv69w.ini" 
+und speichern diese irgendwo. Wenn Sie zur ungepatchten Version zurück möchten, 
+setzen Sie die kopierten Ordner und Dateien wieder ein und erstellen Sie die 69er exe neu (durch Beenden von GEM+). 
+
+Anmerkung für Beta-Tester 
+Wenn Sie frühere Versionen des 65 Patch installiert haben, sollten Sie den Ordner "gpl69" in gpl\Mods\GEM+ entfernen, bevor Sie diese Version installieren.
+  
+SERVER
+Alle Online Server sollten gepatcht werden. Dies wird nicht gepatchte Spieler auch ermöglichen gepatchten Servern beizutreten.
+
+
+
+INSTALLATION 
+
+
+
+
+Es ist wichtig, die REMOVE gpl69 Ordner aus GPL / mods / GEM + vor der Installation des Patches
+
+Führen Sie das Installationsprogrammm aus. 
+Überprüfen Sie den Installationspfad. Der Standard-Installationspfad ist C:\Sierra\GPL. 
+WENN IHRE GPL INSTALLATION EINEN ANDEREN PFAD HAT, MÜSSEN SIE DIESEN ÄNDERN,
+WENN SIE DAZU AUFGEFORDERT WERDEN. 
+
+Entfernen Sie die gplc69.exe und lassen Sie sie durch Beenden von GEM+ neu erstellen. 
+
+
+Credits 
+
+Nigel Pattinson 
+Richard Cooke 
+Paul Skingley 
+
+
+Beta-Tester 
+
+Robert Hunter 
+Remy Roesz 
+John Roberts 
+Paul Skingley 
+GPLRACER League
+
+
+
+SPANISH
+
+65 Revisión 
+ 
+ 
+permite -- 
+ 
+
+ 
+1 / Posibilidad de incluir hasta 1024 pistas en el 65season.ini, al igual que en el Modo 1966.
+ 
+2 / Pantalla de Mejores Vueltas para todas las pistas que el jugador haya instalado y en las que haya competido 
+ 
+3 / Mejoras en la AI 
+
+4 / Habilitar el uso de pistas de largo para que pueda ejecutar Targa, etc cuando la OIM son liberadas. 
+
+5 / Revisado la detección de colisiones
+ 
+NOTA 1 
+Antes de instalar este parche ya debe tener una versión completa del 69mod instalada. 
+ 
+NOTA 2 
+Usted puede perder los tiempos de vuelta grabados anteriormente en su 69 player.ini. 
+Para evitar esto, realice una copia de seguridad de su 69 player.ini y pegue en los tiempos de vuelta después de instalar el parche y de reconstruir con GEM+ su gplc69.exe. 
+ 
+NOTA 3 
+Si desea estar en condiciones de volver al original / 69 sin parchear fácilmente, haga una copia de seguridad de las carpetas \layout y \Mods y del drv69w.ini 
+A continuación, guárdelos en alguna otra parte. Cuando / si desea volver a la versión sin parchear del Modo 69, instale la copia de seguridad de carpetas y archivos, y reconstruya el gplc69.exe
+
+
+NOTA A LOS BETA TESTERS 
+Si tiene versiones anteriores de los 69 parches instalados debe quitar la carpeta de mods gpl69 gpl/mods/gem + antes de instalar esta versión.
+  
+SERVIDORES 
+Todos los servidores online deberían ser parcheados.Esto todavía no parcheada permiten a los jugadores unirse al servidor parcheado.
+
+
+ 
+INSTALACIÓN 
+
+
+Es esencial RETIRE la carpeta de gpl69 gpl / mods / gem + ANTES de instalar el parche
+
+ 
+Ejecute el instalador. 
+Compruebe la ruta de instalación. La ruta de instalación por defecto es C: \ Sierra \ GPL. 
+SI SU INSTALACIÓN DE GPL se ubica en una ruta diferente, HA USTED DEBE cambiar la ruta cuando se le solicite. 
+ 
+Borre el Gplc69.exe y reconstrúyalo con GEM+
+ 
+Créditos 
+ 
+Nigel Pattinson 
+Richard Cooke 
+Paul Skingley 
+ 
+Beta testers 
+ 
+Robert Hunter 
+Remy Roesz 
+John Roberts 
+Paul Skingley 
+GPLRACER Liga

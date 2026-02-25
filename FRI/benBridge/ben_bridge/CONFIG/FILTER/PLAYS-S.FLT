@@ -1,0 +1,15 @@
+# BEN Bridge deal filter
+
+.version = 8.1
+.description.eng = "strong South hands with a long suit"
+.description.deu = "starke Südblätter mit langer Farbe"
+.description.fra = "mains fortes en Sud, avec une couleur longue"
+.description.ita = "mani forti per Sud con un colore lungo"
+.description.dan = "stærk Syd-hånd med en lang farve"
+.description.pol = "rêka S silna z d³ugim kolorem"
+
+join = A
+search = 100
+South.join = A
+South.hcp = 15.*
+South.S1 = 6.*

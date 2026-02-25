@@ -1,0 +1,34 @@
+
+Setup type: Complete GPL SCV2 Mod Installation
+
+Selected components: GPL SC V2 Mod 2.1.1 Repository\1967SCV2
+
+Internal XML: 95.xml.en GPL: C:\SIERRA\gpl\GPL.EXE App.ini:
+C:\SIERRA\gpl\app.ini Rasterizer: rd3d7v2 ResultTrackChecks: Some or
+all tracks are missing. Please correct before procee
+
+
+
+Welcome to the 1967 Sports Cars Mod for Grand Prix Legends which
+models the 1967 International Manufacturers Championship for over 2.0
+liter prototype cars.
+
+Here is the link to the new 1967 Sports Cars Mod website with updated
+information and photos.  Inside, you will find the download link to
+the mod installer file:
+
+http://www.sportscarlegends.net
+
+Once again, be sure to read the mod release notes which you will find
+on the website, in the repository/SCGT67 directory after the mod is
+installed, and here:
+
+http://srmz.net/inde...opic=6200&st=51
+
+Also attached is GPL Setup Manager v1.1.8 which handles the sports
+cars.
+
+Enjoy the mod!
+
+The 1967 Sports Cars Mod Team
+

@@ -1,0 +1,16 @@
+# BEN Bridge deal filter
+
+.version = 8.1
+.description.eng = "N/S and E/W with a long suit"
+.description.deu = "N/S und O/W mit langer Farbe"
+.description.fra = "mains avec de longues en N/S et E/O"
+.description.ita = "N/S e E/O con un colore lungo"
+.description.dan = "N/S og Ø/V med en lang farve"
+.description.pol = "rêce z d³ugimi kolorami na N/S i W/E"
+
+join = A
+search = 300
+N/S.join = A
+N/S.S1 = 9.*
+E/W.join = A
+E/W.S1 = 9.*

@@ -1,0 +1,54 @@
+from a discussion at srmz.net:
+
+We know that the model of GPL has much less parameters than in "modern sims", but I find it analogous to the components of a gokart when compared to a F1. You well may have a lot of complexity but that complexity does not guarantee a significantly better feeling. Obviously, all of us would say that a F1 is better than a gokart, but when you compare the resources invested in one and the other and the feeling they have, I'd rather say those resources are much more reasonably used in the gokart.
+
+The best possible model is that rendering "the reality" as best as possible by using the less costly resources. If those resources were free, the best choice would be to buy a real Lotus 49 and a track course and race there. But they obviously aren't. They are cheaper than in 1998 but still are there, so the question is if these increased amount of parameters and resources significanly improves your feeling. I tried iRacing and Assetto Corsa and think they don't.
+
+Concerning the previous discussion I just want to add two things. Complexity is not synonym of realism. And realism is not synonym of fun. That explains why many people still prefer GPL over "modern sims" even having rigs and resources to race iRacing. And also explains why, in GPL, many (most?) people prefer to race the original Papy cars than the mods.
+
+Lastly, about the estimation of realism, no sim has "the true feeling of driving a 1967 F1 car". All of them are approximations (models) to that based not on the real thing (only Jackie Stewart and a few more alive people know how was to drive those cars to the limit) but on "reasonability" of the feeling. Or how logical are the reactions when compared to the cars we did drive.
+
+To compare GPL with any other modern carsim is pointless, imho. It´s like comparing a Ferrari 250 GTO with a Ferrari 488. There are people who would love to drive the 250 GTO while other people would love the 488. Both are Ferraris, both should be red, both have the cavallino logos, but they are completely different cars. It is clear that GPL was designed in 1996/1997/1998 and the computer power available by then was much less than the one we can have access nowadays. This is a key factor when we talk about the complexity of GPL when compared with modern carsims. Modern computers are much more powerful than the ones available in the late 90s and they can handle things as complex as a modern car suspension/tyre/track surface interaction closer to the real thing, but still they are not the real thing, basically because the real thing packed into a computer still costs thousands of dollars and we, the people, could not afford it.
+
+However, GPL is the best carsim available if anybody would want to learn about the history of motorsports, and it will be the same for many years to come.
+
+until a sim can model real G force loads on the players own body then no sim/mod can FEEL like the real thing so therefor this thread is pointless
+
+but for me GPL is the best sim out there after all its the only sim that has 60's cars racing on the same 60's tracks that they race on back in the day
+
+do the cars handle the same as the real cars NO but who cares are the tracks perfect in every detail NO but who cares are they fun to drive HELL YES
+
+and that's all i care about the fun factor
+
+Since everyone is calling for facts, let's go for some shall we? So, in which ways vanilla GPL lacks compared to newer sims?
+
+    no tyre wear
+    no dirt on tyres
+    no brake wear, temperature, fade
+    no dinamic track conditions (rubbering, dirt, oil, road temperature, humidity etc)
+    no dinamic weather conditions (rain, 24h cycle)
+    track not made based on LiDar or photoscan data
+    no environment simulation (air temperature, air density, humidity, altitude, wind speed and direction)
+    no transmission modelling
+    simplified aero
+    simplified gearbox
+    no stalling
+    no engine wear
+    way lower FFB speed rate, thus accuracy
+
+And I am sure I missed something along the way, without taking into account some aspects that are not relevant for GPL like Turbo modelling for example. Now, surely some members of the community will not like this, or start saying that some things have been implemented later on the way (yet with simplistic formulas, still due to GPL limitations) but you have to realise that you can love this sim even though you accept its physics are way inferior to today standards. And for good measure, would be a disaster if the simworld hadn't made a single progress in 20 years.
+
+I still love it. What GPL has that no other sim today has is atmosphere, and that's it.
+
+I have driven a lot of car sims since I drove GPL for the first time, I think in december 1999. Nascar Racing 2003 (NASCAR, TPTCC, GTP mods), rFactor1 (CART98, Enduracers, GTPC mods), rFactor2 (tin tops mostly, McLaren M23, Brabham BT44, Brabham BT19, etc..) Assetto Corsa, Asseto Corsa Competizione, Dirt Rally, Dirt Rally 2, Automobilista, and I betatested iRacing since it was barely a 2003 patch.
+
+What´s the main difference between GPL with all the other carsims? That to really come to grips to any modern sim AND an specific mod, I had to learn a lot about modern car racing engineering and, ideally, I would have needed a team of engineers behind me to really focus on testing only. I remember a 2.4 hs of LeMans with the GTPC mod driving a Porsche 956. I think I did about 300 laps at LeMans testing different setups, fuel wear, tyre wear and checking changes between day and night and their influence on the handling. The race was about 35 laps long. That was a race I liked to race and, after all that effort, I could win in the last lap just because I made the right choice with the pitstops and fuel loads. Almost the same happened with almost all modern cars I raced in leagues, so I had to be well prepared, and all that effort to be barely competitive with the top 10 drivers, probably winning less than 10 races in 15 years.
+
+So why I keep on racing GPL? Because, even if I take racing very seriously, I have fun no matter the final result. To discuss which car sim is better is like discussing if Pele was better than Maradona, and if Messi is better than both of them and so on. Different eras, different fields, different balls, different football shoes, etc.. Same with carsims.
+
+It´s pointless.
+
+In this day i have tested Assetto Corsa with the same cars and track of GPL.The track was Monza66 and Brands Hatch. On Brands there is some difference in 2 curves.I don't know if the AC layout is modern compared to GPL. My opinion is that i have not found a superior feeling with AC ,rather,driving the Ferrari 330P at Brands,in GPL I had a better feeling of control. Better breaking in GPL but this could be a problem of device set up.I use Fanatec Wheel and pedals and i have not changed the setup in the Fanatec properties. Graphics:for sure during the replay AC is superior but in Monza 66 I had difficulty identifying the chord point of the Ascari.With GPL no problem to enter at full gas with the Eagle.Older graphics are clearer? What I have noticed is that with AC a higher speed can be achieved in the 2 Lesmo.Here there is no problem with the chord point,since we have the low wall. What leon_90 writes about brake fading and 24h cycles is not totally true.He perhaps does not know the 55 mod with brake fade and the Lee patch for day and night.There is also a patch for the rain. Other points in favour of GPL are better cockpit and the complete historical seasons reproduced. In conclusion i don't see,for the moment,to abandon GPL for another simulation,unless you want to deal with a more modern period
+
+It doesn't matter to me how good the physics are in other sims. If it doesn't have a championship with all the cars, tracks, and drivers for the whole season. It's just spec racing and hot lapping.
+

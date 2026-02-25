@@ -1,0 +1,16 @@
+All the WED games are available for download from active websites.  
+Installed linux versions are provided and documented here for your convenience, but
+you can install them yourself from the original web sites if desired.
+scid:
+sudo apt install -y scid stockfish phalanx xboard
+or
+http://scid.sourceforge.net/
+
+nibbler:
+https://github.com/fohristiwhirl/nibbler
+
+banksiagui:
+https://github.com/nguyenpham/banksia
+
+the lc0 deep learning chess engine is here:
+https://lczero.org/play/download/

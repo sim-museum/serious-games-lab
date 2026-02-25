@@ -1,0 +1,58 @@
+
+
+Autodromo 17 de Octubre Circuito n. 2 - Buenos Aires Argentina
+ver. 1.0 for GPLegends
+
+Made by Ginetto.
+
+Track Location: Buenos Aires Argentina Track Type : Race Track Track
+Length : 3.912km.- 2.43mi.  Track Num. Turns : 11 Track Year : 1955
+
+Track Editor : Ginetto
+
+--------------------------------------
+
+INFOS:
+
+This track reproduces the circuito n.2 of the Buenos Aires Autodromo
+in 1955.
+ 
+--------------------------------------
+
+Thanks to :
+ 
+The 55 MOD team for testing.
+
+Arturo Pereira for all the data and knowledge he provided.
+
+Greg Liebzeit for helping a lot.
+
+Remy Roesz for his beautiful textures.
+
+Stefano Zampedri for the cars and trucks 3do.
+
+Martin Smogbike Pitts for some objects used from his ba2 track.
+
+The GPL Repository for hosting the private forum.
+
+The SimRacingMirrorZone for hosting the track.
+
+--------------------------------------
+
+Thanks to:
+
+All the community for giving us the right support for doing this!
+
+All the special guys that developed the tools for editing every GPL
+related thing!
+
+The notorious Papyrus for giving me lots of fun!
+
+--------------------------------------
+
+Enjoy,
+
+yours GINETTO ============================
+
+Italy, 16 Nov 2016
+

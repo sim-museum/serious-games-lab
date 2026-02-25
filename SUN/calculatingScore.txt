@@ -1,0 +1,76 @@
+SUN Scoring
+eSports for Engineers 24041LTS
+
+Note: save your .sgf game files after each session.  Copy your .sgf
+files, along with screenshot .png files showing your games and analysis,
+to the SUN/afterGameReport directory, calculate your score as described
+below, and then enter your score using the launcher.
+
+Note: these OKRs can be completed with any of the Go programs
+available on SUN (KaTrain, q5go, sabaki, igowin, goreviewpartner).
+
+OBJECTIVE #1: LEARN GO WELL ENOUGH TO PLAY ON A SERVER
+OBJECTIVE #2: (ASPIRATIONAL) ACHIEVE A COMPETITIVE RATING
+OBJECTIVE #3: USER DEFINED (can be regular or aspirational)
+---------------------------------------------------------------
+OKR #1, 1, first key result for objective "learn Go"
+
+Play a game against KaTrain at your current skill level.
+After the game, review KaTrain's AI analysis of your moves.
+
+score=.1 if you played a complete game and reviewed the AI
+analysis, identifying at least 2 moves where you lost significant
+points.  score=0 otherwise.
+---------------------------------------------------------------
+OKR #1, 2
+
+Use igowin to measure your current rating.  Play at least 10
+games to get a stable rating estimate.
+
+score=.1 if you completed 10+ games and recorded your rating.
+score=0 otherwise.
+---------------------------------------------------------------
+OKR #1, 3
+
+Study one Go concept (e.g., life and death, joseki, fuseki,
+endgame counting).  Use q5go or sabaki to review professional
+games that illustrate the concept.
+
+score=.1 if completed.  score=0 otherwise.
+---------------------------------------------------------------
+OKR #1, 4
+
+Play a game on a 19x19 board against AI at a level where you
+win about 50% of the time.
+
+If you win: score=.1
+If you lose by less than 10 points: score=.05
+If you lose by more than 10 points but reviewed your mistakes: score=.025
+---------------------------------------------------------------
+OKR #1, 5
+
+The following tasks are worth .05 points each:
+
+Read the Go basics documentation in SUN/DOC/
+
+Solve 10 tsumego (life and death) problems
+
+Play 5 games on a 9x9 board to practice tactics
+
+Use goreviewpartner to analyze a saved game
+
+Study one joseki sequence and practice it in 3 games
+---------------------------------------------------------------
+OKR #2, 1
+
+Achieve a stable rating on an online Go server (OGS, KGS, etc.)
+or against KaTrain at the strongest human-like level.
+
+If your rating improves by one full rank:
+score=1 good for the next month.
+
+If not:
+score=0.7*(current_rank/target_rank), with maximum score of .7
+
+Note: Your daily total is the sum of your OKR scores (subject to an
+upper limit of 0.7 unless you have an aspirational OKR score above 0.7).

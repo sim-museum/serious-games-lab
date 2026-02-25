@@ -1,0 +1,5 @@
+Optional: advice on setting up a joystick
+
+
+Bind your POV/hats for TMS, DMS, CMS, TRIM, and COMMS (VHF/UHF/IFF In/IFF Out), and some way to control the RADAR Cursor (TGP/WPN/etc.) so this can be a challenge if your stick does not have enough 4-way HAT's to fit that, even when using shift-states. After that, if you're trying to model your HOTAS switches to match the F-16 as closely as possible, you just have a small selection of switches from Idle Cutoff to NWS/Missile Step, your actual Weapons Release and 2-Stage Trigger, a TRIM Reset, a method for moving/toggling Airbrakes, a method for activating DGFT/MRM (and/or deactivating with CLR key or center 'off' method), and a few others such as Uncage, MPO, etc., and a few dials for Radar Range and Radar Elevation -- past that you also might want your own keys for helpers, non-standard HOTAS keys like maybe toe brakes if you don't use rudder pedals, or even toggle Parking Brake…
+

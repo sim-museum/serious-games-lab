@@ -1,0 +1,263 @@
+
+Here's how I chose the nine championship tracks for the LoG mod.
+
+The idea was to choose one track from each mod that best represented
+that mod year or was used for many years over several different mods.
+I also wanted to use tracks that had been recently updated with better
+graphics if possible.
+
+For better or worse, here's what I came up with:
+
+1.  '55 F1 Mod: Monza10K using the banking.  Monza was raced for F1
+mods from '55 to '69 and the '67 Sports Car mod.  The banking was used
+for F1 in 1955, 1956, 1960, and 1961.  The Monza 1000KM sports car
+race used the banking from 1965 to 1969.
+
+2.  '65 F1 Mod: Monaco.  Monaco was raced for F1 mods from '55 to '69.
+
+3.  '66 F1 Mod: Zandvoort.  Zandy was raced for F1 mods from '55 to
+'69 and the '67 F2 mod.
+
+4.  '66 CanAm Mod: Mosport.  Mosport was raced for F1 mods from '67 to
+'69 and the '66 and '71 CanAm mods.
+
+5.  '67 F1 Mod: Spa67.  Spa was raced for F1 mods from '55 to '67 and
+the '67 Sport Car mod.
+
+6.  '67 F2 Mod: Nurburgring.  The Ring was raced for F1 mods from '55
+to '69, the '67 F2 mod, and the '67 Sports Car mod.
+
+7.  '67 Sports Car Mod: LeMans Sarthe.  No brainer...the definitive
+sports car track.
+
+8.  '69 F1 Mod: Silverstone.  Silverstone was raced from the '66 to
+'69 F1 mods and the '67 F2 mod.
+
+9.  '71 CanAm Mod: Watkins Glen CA71.  The Glen was raced from 1961
+through 1970 for F1 and 1969 through 1971 for CanAm.
+
+These choices leave out at least three tracks that were raced
+extensively or now have great graphics:
+
+1.  Reims 2.  Riverside 71 3.  Targa Florio
+
+
+I chose 19 AI drivers for the LoG mod.
+
+The goal is to have the Drivers Champion as the primary driver for
+each team, then add a secondary driver that either drove for the same
+team or, if not possible, drove the same car for a competing team.  No
+driver is listed twice.
+
+Here are the primary drivers who won the Drivers Championship (except
+for Hill):
+
+1.  '55 F1 Mod: Fangio
+
+2.  '65 F1 Mod: Clark
+
+3.  '66 F1 Mod: Brabham
+
+4.  '66 CanAm Mod: Surtees
+
+5.  '67 F1 Mod: Hulme
+
+6.  '67 F1 Mod: Hill (1998 Papyrus Lotus 49 graphics demo driver)
+
+7.  '67 F2 Mod: Ickx
+
+8.  '67 Sports Cars Mod: Bandini.  There wasn't a driver's
+championship, but Ferrari won the Manufacturers Championship and
+Bandini was their primary driver before he died.
+
+9.  '69 F1 Mod: Stewart
+
+10.  '71 CanAm: Revson
+
+Here are the secondary drivers for each team:
+
+1.  '55 F1 Mod: Moss
+
+2.  '65 F1 Mod: Spence
+
+3.  '66 F1 Mod: Anderson.  Hulme was the actual secondary driver for
+Motor Racing Developments (Team Brabham) in 1966, but he is already
+taken as the '67 F1 Mod champion.  No one else drove a BT19 or BT20 in
+1966.  Anderson drove a BT11/Coventry Climax 2.8L in '66 as a
+privateer.  He is also a 1967 Brabham BT24 driver in the 1998 GPL.
+
+4.  '66 CanAm Mod: Donohue.  Hill was the actual secondary driver for
+Team Surtees, but he is already taken for the 1998 Papyrus Lotus 49
+graphics demo.  Donohue drove a Lola T70 MkII for the Roger Penske
+team.
+
+5.  '67 F1 Mod: Ligier.  Brabham was the actual secondary driver for
+Motor Racing Developments (Team Brabham) in '67, but he is already
+taken as the '66 F1 Mod champion.  Ligier drove a 1966 BT20 with its
+lower horsepower type 620 engine in 1967 as a privateer and is the
+best remaining driver for the BT24.  He is also a 1967 Brabham BT24
+driver in the 1998 GPL.
+
+6.  '67 F2 Mod: Servoz-Gavin.  Rindt had more points than Ickx, but
+was an "A" rated driver, didn't qualify for the F2 championship, and
+drove a Brabham instead of a Matra.  Beltoise and Servoz-Gavin drove
+Matra MS5/7s in '67 for Team Matra, but Beltoise is better as the
+secondary driver in '69.
+
+7.  '67 Sports Cars Mod: Amon.  There wasn't a driver's championship,
+but Ferrari won the Manufacturers Championship and Amon was their
+secondary driver.
+
+8.  '69 F1 Mod: Beltoise
+
+9.  '71 CanAm: Adamowicz.  Donohue was the actual secondary driver for
+Team McLaren, but he is already taken for the '66 CanAm mod.  There
+were several privateer McLaren drivers that drove older McLaren cars
+in '71 and Adamowicz was the best of the lot.
+
+
+Legends of GPL Mod v1.0 28 March 2018 Lee Bowden
+
+---------- Introduction:
+
+The 2018 Legends of GPL mod includes one car from each of the nine
+major mods plus one car as a graphics demonstration.  It is a gift to
+the GPL community on GPL's 20th annivesary.  The mod is also a tribute
+to the original Papyrus team that developed GPL back in 1998 and the
+many modders, too numerous to mention, who have kept this racing
+simulation alive and vibrant for the last 20 years.  Thanks to all the
+talented people who created GPL and the mods that made the Legends of
+GPL mod possible.
+
+The included cars were the championship driver's car from each the of
+the mod years.
+
+Most of the cars use updated graphics from their original mod;
+however, the physics are the same as used for each car in its original
+mod.  So the '55 Mercedes W196 uses its car graphics and physics from
+the '55 F1 Mod, .etc.
+
+As a special treat, the iconic '67 Lotus 49 is added.  It uses the
+original 1998 Papyrus graphics which is a real eyesore now, but
+dramatically demonstrates how far car graphics have improved in the
+last 20 years.
+
+The mod uses a special patch to ensure that each car's physics is the
+same as its original mod.  Each car performs and feels the same as it
+always has.  The '55 Mod Mercedes W196 has player brake fade, but the
+other cars do not.
+
+The mod includes the following cars:
+
+1.  1955 Mercedes W196 2.  1965 Lotus 33 3.  1966 Brabham BT19 4.
+1966 Lola T70 MkII CanAm 5.  1967 Brabham BT24 6.  1967 Lotus 49--uses
+original 1998 Papyrus graphics 7.  1967 Matra MS5 F2 8.  1967 Ferrari
+330/P4 9.  1969 Matra MS80 10.  1971 McLaren M8F CanAm
+
+---------- Installation Instructions:
+
+
+1.  Start with a fresh GPL installation; preferably one provided by
+Bernd's All-In-One installer.  At the very least, use a basic GPL
+installation that is updated to v1.2.0.2, then start GPL, create a new
+player, then exit GPL.
+
+You can use the auto installer program OR do a manual installation
+yourself.  Here's how to do a manual installation:
+
+2.  Installation Directory.  Copy the following files: A.  drvc18.ini
+	B.  gpla18.ini C.  LGhc.pbf 3.  Cars Directory.  Copy the
+	entire cars18 directory.  4.  Layout Directory.  Copy all the
+	LG prefixed .lyt and .pbf files.  5.  Mods/GEM+ Directory.
+	Copy the following: A.  gplLoG directory B.  gplLoG.cst file
+	C.  gplLoG.eph file 6.  Seasons Directory.  Copy the following
+	files: A.  c18.ini B.  LGSeason.ini 6.  Setups Directory.
+	Copy the entire setupsLG directory.  7.  Sound Directory.
+	Copy all the LoG prefixed sound .wav files.
+
+Start GEM+: 1.  Add the new mod installation 2.  Select the player
+name you created before in the player drop down list 3.  Select
+Carsets and move the GPLLOG carset to the active list 4. Select "2018
+Legends Of GPL (GPLLOG)" in the carsets drop down list 5.  Select
+"cars18" in the cars drop down list 6.  Select "LGSeason" in the
+season drop down list 7.  Press the green button and let GEM+ build
+and start the new gplc18.exe file.
+
+----------
+
+Layout PBFs Notes:
+
+The layout .pbf files were randomly chosen from each mod.
+
+AI Notes:
+
+The 19 AI drivers include the 9 driver champions from each mod.  The
+other 10 AI drivers were either the champion's teammate or another
+team driver that drove the same car when possible.
+
+The AI files work well for almost all cars at all championship tracks.
+I wrote a special patch so that the AI use their original mod braking
+efficiency setting.
+
+Track Notes:
+
+The championship season includes one track from each mod year that I
+thought best represented that mod or was used by several mods over the
+years.  The tracks are:
+
+1.  1955 Mod: Monza10K with banking, but no chicanes 2.  1965 Mod:
+Monaco 3.  1966 Mod: Zandvoort 4.  1966 CanAm Mod: Mosport 5.  1967
+Mod: Spa67 6.  1967 F2 Mod: Nurburgring 7.  1967 Sports Car Mod:
+LeMans bSarthe 8.  1969 Mod: Silverstone 9.  1971 CanAm Mod: Watkins
+Glen CA71
+
+Unfortunately, this list leaves out several great tracks such as the
+Targa Florio and Reims, but you can't include them all for the
+championship.
+
+GPL Rank ID: gpl18LG
+
+Car Setup Suffixes: "za" through "zj".  Default setups from the
+original mods are included.
+
+Special Settings For Modders:
+
+1.  Default Setups Directory: setupsLG 2.  Default Setup File: setLG
+3.  TrackIniName: trackLG.ini 4.  LPExtension: lLG.ini (that's a small
+case "L" in front) 5.  3DOExtension: 3LG.ini 6.  SRBExtension: sLG.ini
+7.  MIPExtension: mLG.ini 8.  TrkExtension: tLG.ini 9.  Page0PBF:
+page0LG.pbf 10.  FlagPBFSuffix: fLG.ini
+
+
+
+Legends of GPL Mod Installer Read Me v.1 14 Feb 2018
+
+This is my first try at making a mod installer so be careful about
+where you point it.  :)
+
+It's a relatively simple program that copies all the LoG mod files to
+their necessary places in your installation directory.  It's easy to
+use, just select the gpl.exe in your installation directory and let
+the installer do its thing.  Then create a player, start GEM+, and let
+it build the mod .exe.
+
+I've tested it several times with a fresh gpl installation and it
+works OK for me...of course.  But I'd recommend you don't try to
+install to an important installation directory as I don't want to
+screw up anyone's good installation.
+
+In my tests, it will not overwrite existing files that are not part of
+the LoG mod.
+
+If you're not comfortable testing it, then just do a manual install as
+usual.
+
+The program is written in the dead language VB6 so it needs the VB
+runtime file which should be included with all Windows versions
+including Windows 10.  However, it also needs the scrrun.dll file.  On
+my PC with Windows 7, the .dll is in the Windows/SysWOW64 directory
+but I'm not sure if it comes on later Windows versions.  I'd like your
+feedback on this.
+
+
+

@@ -1,0 +1,26 @@
+GPL AI Tutorial Driver.ini Files
+Version 4.0
+January 2006
+Lee Bowden
+
+Here are the driver.ini files that contain the new settings described in the GPL AI Tutorial.
+
+1.  Make a back up copy of your existing driver.ini files in case you want to revert.  The files are located in your GPL directory.  The file names are:
+
+Original GPL:  driver.ini
+1965 Mod:  driv65.ini
+1969 Mod:  drv69w.ini
+
+2.  Then copy each of the new driver.ini files to your GPL directory and allow them to overwrite the old files.
+
+3.  You may adjust the overall speed of the AI by changing the npt_override setting in the gpl_ai.ini file.  The basic setting is 1.00.  To speed up the AI, lower the setting below 1.00; to slow the AI, raise the setting above 1.00.
+
+The npt_override setting is found in the following files:
+
+Original GPL:  gpl_ai.ini
+1965 Mod:  gpla65.ini
+1969 Mod:  gpla69.ini
+
+4.  Also in each gpl_ai.ini file, set the mechanical_failure_chance setting to 10.0 to achieve the correct number of car malfunctions during a race.  If the number of malfunctions is more than desired, simply reset the mechanical_failure_chance setting to the default of 5.00.
+
+Enjoy!

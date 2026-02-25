@@ -1,0 +1,17 @@
+# BEN Bridge deal filter
+
+.version = 8.1
+.description.eng = "fair N/S hands with a major fit"
+.description.deu = "brauchbare N/S Blätter mit OF-Fit"
+.description.fra = "mains de N/S fitteés en majeure"
+.description.ita = "mani buone per N/S con un fit nobile"
+.description.dan = "rimelige N/S-hænder med et major-fit"
+.description.pol = "niez³e rêce ze starszym kolorem uzgodnionym na linii N/S"
+
+join = A
+search = 300
+N/S.join = A
+N/S.total = 20.*
+N/S.Diamond = *.7
+N/S.Club = *.7
+N/S.S1 = 8.*

@@ -1,0 +1,188 @@
+
+1969 Xtra mod for Grand Prix Legends by Charles Mark, Paul Skingley,
+Remy Roesz, Tommie van Ostade and Stuart Bartosiak.
+
+
+This mod is named " 69-extra" and uses a physics named "69-extra" and
+"cars69" carset.  This is to allow it to run independently without
+interfering with your original 69mod ( 1969 Grand Prix ) which can
+still be used as normal.
+
+You should have these 13 tracks installed before running the
+installer.  [Event1] name=South African Grand Prix shortname=South
+African GP trackDirectory=kyalami month=3 day=1 numberOfLaps=80
+startingGrid=4 displayName=Kyalami 1969
+
+[event2] name=Brands Grand Prix shortname=Brands GP
+trackDirectory=brands67 day=16 month=3 numberOfLaps=87 startingGrid=6
+displayName=Brands Hatch ROC
+             
+[Event3] name=Spanish Grand Prix shortname=Spanish GP
+trackDirectory=montjuic month=5 day=4 numberOfLaps=90 startingGrid=4
+displayName=Montjuic 1969
+
+[Event4] name=Monaco Grand Prix shortname=Monaco GP
+trackDirectory=monaco month=5 day=18 numberOfLaps=80 startingGrid=4
+displayName=Monaco 1969
+
+[Event5] name=Dutch Grand Prix shortname=Dutch GP
+trackDirectory=zandvort month=6 day=21 numberOfLaps=90 startingGrid=6
+displayName=Zandvoort 1969
+
+[Event6] name=French Grand Prix shortname=French GP
+trackDirectory=clermont month=7 day=6 numberOfLaps=38 startingGrid=3
+displayName=Charade Clermont-Ferrand 1969
+
+[Event7] name=British Grand Prix shortname=British GP
+trackDirectory=silver month=7 day=19 numberOfLaps=84 startingGrid=10
+displayName=Silverstone 1969
+
+[Event8] name=German Grand Prix shortname=German GP
+trackDirectory=nurburg month=8 day=3 numberOfLaps=14 startingGrid=9
+displayName=Nürburgring 1969
+
+[event9] name=Oulton Park Gold Cup shortname=Oulton Park
+trackDirectory=oulton day=16 month=8 numberOfLaps=60 startingGrid=4
+displayName=Oulton Park Gold Cup
+
+[Event10] name=Italian Grand Prix shortname=Italian GP
+trackDirectory=monza month=9 day=7 numberOfLaps=68 startingGrid=6
+displayName=Monza 1969
+
+[Event11] name=Canadian Grand Prix shortname=Canadian GP
+trackDirectory=mosport month=9 day=20 numberOfLaps=90 startingGrid=6
+displayName=Mosport Park 1969
+
+[Event12] name=United States Grand Prix shortname=U.S.A. GP
+trackDirectory=watglen month=10 day=5 numberOfLaps=108 startingGrid=4
+displayName=Watkins Glen Int. 1969
+
+[Event13] name=Mexican Grand Prix shortname=Mexican GP
+trackDirectory=mexico month=10 day=19 numberOfLaps=65 startingGrid=4
+displayName=Mexico 1969
+
+Installation.
+
+1/( for beta testers ) If you have previous versions of "69-Extra"
+installed you should remove or rename these files BEFORE installing
+this version :- "cars69 folder" ( gpl/cars ), "69-Extra" folder (
+gpl/mods/gem+ ), "gplx69.exe" ( gpl )
+
+2/Run the installer. Check the path for installation is correct.
+
+3/Start gem/carsets and activate "69-extra" Make sure "69-extra"
+physics are selected.
+
+4/Select your 69mod player and select "69-extra" for the player. Check
+that "cars69" has been selected.
+
+5/Exit Gem and a gplx69.exe will be created.
+
+
+You can use gplx69.exe independently from the original gplc69.exe.
+
+
+cars69 folder contains all the original cars from 69Hwng,69Lwng,69Mwng
+plus some new car folders.  AI use correct cars and numbers at each
+track.  New player number #27 because #4 is used by AI.  Player can
+select from car options to use the correct car for each championship
+track. The car options have descriptions.
+
+example = M7B FR-GB-DE The car is the Mclaren M7b used at the French
+GP, British GP and German GP. The pictures in the player/team info
+have matching descriptions
+
+To keep things relatively simple we have restricted the amount of
+teams ( physics slots ) to 15.  This means that for example, all
+Mclaren M7 cars use the same physics slot, as do all Ferrari 312, all
+Matra MS80, all Lotus 49B etc.... We have also grouped all the BRM
+P126, P138 and P139 into one slot.
+
+The teams ( physics slots drivable by the user ) are as follows.
+
+slot 1 - Brabham BT26A with 3 graphic car options slot 2 - BRM P126,
+P138 and P139 with 6 graphic car options slot 3 - Lotus 63 with 2
+graphic car options slot 4 - Mclaren M7 A,B,and C with 9 graphic car
+options slot 5 - Ferrari 312 with 7 graphic car options slot 6 - Lotus
+49B with 5 graphic car options slot 7 - Matra MS80 with 5 graphic car
+options slot 8 - Lotus 49 with 1 graphic car option ( driven by
+Attwood at Monaco ) slot 9 - Matra MS10 with 1 graphic car option (
+driven by Stewart and Beltoise at Kyalami ) slot 10 - Matra MS84 with
+1 graphic car option ( driven by Beltoise and Servose-Gavin ) slot 11
+- Brabham BT20 with 1 graphic car option ( driven by DeKlerk at
+Kyalami ) slot 12 - Brabham BT24 with 1 graphic car option ( driven by
+Tingle at Kyalami ) slot 13 - Cooper T86B with 1 graphic car option (
+driven by Elford at Monaco ) slot 14 - Eagle AAR 101 with 1 graphic
+car option ( driven by Pease at Mosport ) slot 15 - Mclaren M9A with 1
+graphic car option ( driven by Bell at Silverstone )
+
+If you count up the graphic car options you can see there are 45. This
+means 45 car folders in the "cars69" folder.
+
+Although the overall feel of the new 69mod physics remains the same,
+we have reduced the overall grip in the new mod which will means lap
+times are a little slower but closer to the real life lap times of
+1969.  The same goes for the drafting/tow effect which was considered
+by many to be too strong in the original 69mod. So in the new mod this
+effect is reduced.
+
+
+
+
+Special Notes.
+
+1/Because graphics for the cars have to change for each race, it is
+advisable to exit gpl after completing a race and reload before the
+next race.
+
+2/With so many cars to load you can expect load times to be longer.
+
+3/For online racing.  GPL can only remember your last car option
+choice, and graphic options cannot be selected via iGor, so.... when
+you are in chat before an online race and you want to select the
+historically correct car graphics options for the track you are
+racing, you must first start GPL offline and select the car graphics
+options you want from the list and exit. Now, when you start the
+online race via iGor you will have the car you selected offline
+provided you select the same slot in iGor that you selected offline.
+
+If you run the same race online more than once with the same car/slot,
+the previous car graphics option is still in place so you can just
+race.
+
+The graphics you see for other online competitors will depend on what
+car graphics they have selected.  So, if everyone in the race takes
+the steps outlined above then your online race will "look"
+historically correct as far as graphic options.
+
+
+
+
+08-05-11 LEGAL NOTICE
+
+ 
+
+This software is freeware ( i.e. non commercial use )
+
+No part may be distributed on any media ( such as CD Rom or Diskette )
+for which money is charged nor on media distributed with ( for example
+) a magazine for which money is charged without the authors permission
+
+This software is provided " as is " without warranty of any kind,
+either express or implied, You use at your own risk.
+
+UPDATES No updates to the GPL69 mod may be posted for SIX MONTHS after
+the the initial release of the component updated , unless prior
+permission is given by me.
+
+CONVERSIONS No Conversions to other sim platforms should be undertaken
+unless prior permission is given by me.
+
+Paul Skingley
+
+paul@skingley9999.freeserve.co.uk
+
+ 
+
+THIS IS NOT A SIERRA/PAPYRUS PRODUCT
+

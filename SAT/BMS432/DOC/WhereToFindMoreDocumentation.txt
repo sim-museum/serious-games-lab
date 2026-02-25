@@ -1,0 +1,3 @@
+Extensive documentation relevant to all versions of Falcon 4, from
+Free Falcon to BMS 4.32, BMS 4.33 and BMS 4.34 is in the directory
+esports-for-engineers-v31/SAT/Doc

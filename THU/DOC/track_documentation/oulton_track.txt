@@ -1,0 +1,66 @@
+
+Oulton Park, 1960s Version ==========================
+
+Made by John Black and Meik Thiemann, with help from Rick Osborn.
+
+This is a version of Oulton Park as it was in the 1960s.  As you'll
+see, it's not really a finished version, but since I don't know when
+I'll be able to do much more work on it, I've decided to release this
+version as it is, and hope to improve on it later.
+
+These are the main area which need finishing:-
+
+ - some objects don't have any textures, or only have rough textures.
+
+ - some scenery is missing.
+
+ - the AI run wide in a few places.  I should point out that the AI
+   was done by Meik Thiemann, but it's not at all his fault that there
+   are problems with them.  The problems are becuase I've changed the
+   track layout in places after he made the AI files.
+
+ - I'm planning to make some alternative 3do objects to display at
+   long distance, but these aren't done yet so in some places scenery
+   may 'pop up' as you drive towards it.
+
+ - There's no racing groove yet.
+
+Hopefully these shouldn't stop you trying the track out.
+
+I've also not done much testing of framerates, which could possibly be
+a problem since in some places there are very long drawing distances,
+since the track doubles back on itself in a long loop.  However it
+does run reasonably on a PII350/Voodoo3 machine (admittedly just with
+the standard carset), so hopefully there won't be too many problems.
+
+Alternative Covers ------------------ There were two meetings run for
+Formula 1 in 1967: the Spring Cup in April and the Gold Cup in
+September.  By default the track will install with the programme cover
+for the Spring Cup, but if you prefer you can convert it to the Gold
+Cup by unzipping the ColdCupCover.zip file into your 'oulton' track
+directory.  To change back to the Spring Cup simply remove the files
+page0.pbf, page1.pbf and event.pbf from the 'oulton' directory.
+
+Race Lengths ------------ The real race lengths were 45 laps for the
+Gold Cup, and 2 heats of 10 laps and a final of 30 laps for the Spring
+Cup.  However these make for very short races when run at Novice or
+Int Short, so I've set the number of laps to 60 which gives a more
+usual race length.
+
+Note on Textures ---------------- Most textures have been done by
+Meik, with some from myself and from Rick, but there's a few taken
+from other tracks.  Unfortunately I've lost track of where I got some
+of them from.  If you spot any of your own textures that I've used,
+please let me know and I'll gladly add a credit or remove them if you
+want.  I know there are a few textures taken from some of the GPLEA
+tracks, in particular Crystal Palace and Snetterton '67, so thanks to
+the authors of those tracks.
+
+
+Credits and Thanks ------------------ Thanks to:- Meik and Rick for
+help with the track and general encouragement.  Martin Granberg for
+the excellent GPL Track Installer.  GPLEA for the 'borrowed' textures,
+and link from their webpage.  Anybody else who's textures I've used
+without realising.  The Programme Covers project
+(http://progcovers.m4driving.sm/) for programme covers.
+

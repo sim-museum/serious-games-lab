@@ -1,0 +1,53 @@
+DOCTYPE: BDL 17.1
+.description.eng = "log file from Jan/28/2026"
+
+Scoring      :  Team (IMP)
+.Bidding cnv :  N/S: BEN-NN (BEN Neural Network)
+.            :  E/W: BEN-NN (BEN Neural Network)
+.Lead cnv.   :  N/S.Suit   : -hiA-lo2-ln4-lwN-3cH-
+.            :  N/S.Notrump: -hiA-lo2-ln4-lwN-3cH-
+.            :  E/W.Suit   : -hiA-lo2-ln4-lwN-3cH-
+.            :  E/W.Notrump: -hiA-lo2-ln4-lwN-3cH-
+.Signal cnv. :  N/S: -ldA-lwN-paA-pwN-dcC-maH-mcH-pcY-dsN-dnN-
+.            :  E/W: -ldA-lwN-paA-pwN-dcC-maH-mcH-pcY-dsN-dnN-
+.Strength    :  72,c18,q7,r0,t1  Bs auto  E QPR  Mm 5
+.Cheating    :  Never
+
+Deal         :   26Jan28-207
+Deal-text    :   BEN Bridge Deal #207
+Dealer       :   South
+Vuln         :   N/S  
+Cards        :                  A T 7 2 
+             :                  - 
+             :                  A Q 9 7 5 
+             :                  T 8 5 2 
+             :   K 9 8 6 3                     Q J 
+             :   K J 8 6 2                     5 
+             :   8                             J T 6 4 3 
+             :   7 3                           A K J 6 4 
+             :                  5 4 
+             :                  A Q T 9 7 4 3 
+             :                  K 2 
+             :                  Q 9 
+
+Trick-prep   : W 
+Contract     :  3h   South     +0
+
+Tricks       :  1  W    s6   sA+  sJ   s5       S 
+             :  2  N    sT   sQ-  s4   s3           S 
+             :  3  E    cA-  c9   c7   c2           C 
+             :  4  E    cK-  cQ   c3   c5           C 
+             :  5  E    d4   d2   d8   d9+      D 
+             :  6  N    d5   dJ   dK   h2-          H 
+             :  7  W    h6   s2   h5   h7+      H 
+             :  8  S    hT   hJ-  s7   c6           H 
+             :  9  W    s9   d7   cJ   h3+      H 
+             : 10  S    h9+  h8   c8   d3       H 
+             : 11  S    hA+  hK   cT   dT       H 
+             : 12  S    hQ+  sK   dQ   d6       H 
+             : 13  S    h4+  s8   dA   c4       H 
+
+Result       :  3h   South    -1      -100      26Jan28-207
+
+************************************************************
+

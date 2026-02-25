@@ -1,0 +1,45 @@
+before installing BMS4.32, you need to buy the original Falcon 4.0 game from 1998.
+You can buy it for a nominal price at gog games at
+https://www.gog.com/game/falcon_collection
+
+During BMS 4.32 install you need to point to a directory containing
+the file falcon4.exe.  Note that all you need to install BMS 4.32 is
+this file; you do not need the whole Falcon 4 game directory.
+
+A good place to put falcon4.exe is in ../BMS432/WP/drive_c
+then simply choose the C: icon when installing BMS 4.32
+
+After installing BMS 4.32, you'll need initialize countermeasures programs,
+display settings and other cockpit customizations by copying the file
+BMS432/INSTALL/Viper.ini to BMS432/WP/drive_c/Falcon BMS 4.32/User/Config
+
+A very helpful add-on to BMS is the Weapon Delivery Planner (WDP) utility.
+This utility generates maps and schedule sheets for your missions and makes it
+easy to view and change your cockpit settings.
+
+To install WDP, first download it from this link:
+https://web.archive.org/web/20160330163200/http://weapondeliveryplanner.nl/files/wdp/Weapon_Delivery_Planner_3.7.2.69.7z
+
+This will download Weapon_Delivery_Planner_3.7.2.69, the version of WDP what was tested with BMS432
+
+Unpack the .7z compressed file, then install as follows
+
+cd to the BMS432 directory
+
+prepare to install into the BMS4.32 wine container at (path)/BMS432/WP via the terminal command
+export WINEPREFIX=$PWD/WP
+
+Now cd into the WDP directory and issue the command
+wine setup.exe
+
+Optional: install Tacview176Setup.exe so you can review your flight recordings
+
+copy the Tacview17Setup.exe file from SAT/INSTALL
+prepare to install into the BMS4.32 wine container at (path)/BMS432/WP via the terminal command
+export WINEPREFIX=$PWD/WP
+
+Note: the current version of WDP, which can be downloaded from 
+http://www.weapondeliveryplanner.nl/
+may work with the old BMS432 software, but this has not been tested.
+
+

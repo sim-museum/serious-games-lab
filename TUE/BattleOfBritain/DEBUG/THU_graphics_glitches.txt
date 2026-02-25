@@ -1,0 +1,98 @@
+# if you follow the installation and configuration instructions in
+# introduction.txt, you are unlikely to have graphics problems with
+# Battle of Britain; read introduction.txt first!  January 2021
+
+What follows assumes you have a dual monitor setup, with one monitor
+displaying the sim output and the other available for adjusting Ubuntu
+graphics settings.  If you only have one monitor and find the methods
+described here aren’t working, use the techniques described in the THU
+directory instead.
+
+Let’s start with Mig Alley.  Make sure you are using wine-development,
+which is probably wine-5.5.
+
+wine –version
+
+If not, install it via
+
+sudo apt install wine-development
+
+Next, run
+
+./setWineDisplayResolution.sh
+
+In the Wine configuration Graphics tab, make sure that all the tick
+boxes are unchecked.
+
+Right click on an empty Ubuntu desktop and select Display Settings.
+For both Mig Alley and Battle of Britain, make sure both displays are
+set to their maximum resolution before starting the game.  You can use
+the supplied delayedMonitorReset.sh script.  This script takes one
+integer argument, the number of minutes to wait before resetting the
+monitor(s) to max resolution.  To set the monitors to max resolution,
+run the script as follows:
+
+./delayedMonitorReset.sh 0
+
+When using a dual monitor setup, you can protect against monitor
+lockup when you enter the 3D view by running this script in a terminal
+on your second monitor.  If you will spend at most 5 minutes in the 3D
+view, for example, you might run the script as follows before entering
+the 3D view:
+
+./delayedMonitorReset.sh 5
+
+This will cause the monitors to reset after 5 minutes, resolving any
+monitor lockup condition that may happen in the interim.
+
+Now you are ready to run Mig Alley.  In Mig Alley, whenever you get a
+chance check the PREFERENCES menu to see that Mig Alley is set for its
+maximum resolution, in this case 1024x768.  For both THU sims, it’s a
+good idea to use your second monitor to keep resetting your display to
+its maximum resolution, using either the right-click Ubuntu Display
+settings or via
+
+./delayedMonitorReset.sh 0
+
+so long as you’re not in the 3D view.  This gives you excellent
+resolution on the 2D campaign screen.  You have to let the sims decide
+what resolution to use for the 3D view, but enter 1024x768 whenever
+you can.
+
+2D campaign screen icons often become unresponsive or disappear in Mig
+Alley, but there’s a way to cope.  As soon at the 2D campaign screen
+appears, click on the “resize” icon on the upper right.  This icon is
+just to the left of the Quit icon and just below the “Toggle Show/Hide
+Toolbar” icon.  This undocks the main canvas which was previously
+full-screen.
+
+Now every time icons become unresponsive, drag the edge of the canvas.
+Then click “Toggle Show/Hide Toolbar” to make the canvas icons
+disappear.  Click “Toggle Show/Hide Toolbar” one more time to make the
+icons active.  Otherwise Mig Alley works well under Ubuntu/wine.  As
+you come to appreciate the design and gameplay, you’ll see why fans of
+the genre think Mig Alley was special.
+
+Battle of Britain will not work with wine-development.  Your best bet
+is to install the staging version of wine as described at this link:
+wiki.winehq.org.  Notice that if you are using Ubuntu 20.04 LTE you’ll
+want the “focal” version, if using Ubuntu 20.10 you’ll want the
+“groovy” version.  Use this staging version only with Battle of
+Britain; before playing another sim restore the previous version of
+wine via
+
+sudo apt install wine-development
+
+as before.  Once you have the staging version of wine installed,
+general workaround guidelines are similar to what was already
+described for Mig Alley.  One difference: in the
+./setWineConfiguration.sh graphics tab you want the third box ticked,
+the “manage window ..” box.  Whenever you’re on a 2D campaign screen
+use your second monitor to set the display resolution to maximum.  Let
+the sim set the 3D view resolution, but go into PC Config and set the
+display resolution to 1024x768 every time you get a chance.  As with
+Mig Alley, be sure both monitors are set for max resolution before
+starting the sim.  Icons can disappear in the Battle of Britain 2D
+campaign window too, but if you follow all these steps that should not
+happen.
+

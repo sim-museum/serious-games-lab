@@ -1,0 +1,73 @@
+SAT Scoring
+eSports for Engineers 24041LTS
+
+Note: save your replay files after each session.  For FreeFalcon and
+Falcon BMS, these are .vhs files.  Copy your replay files, along with
+screenshot .png files and debriefing files, to the SAT/afterGameReport
+directory, calculate your score as described below, and then enter your
+score using the launcher.
+
+Note: these OKRs can be completed with any of the combat flight
+programs available on SAT (FreeFalcon, Falcon AF, BMS 4.32, BMS 4.35, CFL).
+
+OBJECTIVE #1: LEARN COMBAT FLIGHT SIMULATION AT AN ADVANCED LEVEL
+OBJECTIVE #2: (ASPIRATIONAL) COMPLETE A FULL CAMPAIGN
+OBJECTIVE #3: USER DEFINED (can be regular or aspirational)
+---------------------------------------------------------------
+OKR #1, 1, first key result for objective "learn combat flight sim"
+
+Complete the ramp start procedure and take off successfully in
+FreeFalcon or Falcon BMS.  Use rampStartTrainer if available.
+
+score=.1 if you completed the ramp start and took off.
+score=0 otherwise.
+---------------------------------------------------------------
+OKR #1, 2
+
+Complete a training mission: air-to-air intercept or air-to-ground
+strike.  Review the ACMI replay (.vhs file) afterward.
+
+score=.1 if you completed the mission and reviewed the replay.
+score=0 otherwise.
+---------------------------------------------------------------
+OKR #1, 3
+
+Study the F-16 documentation in SAT/DOC/ (basic orientation,
+commands summary, tactical references).  Apply what you learned
+in a training sortie.
+
+score=.1 if completed.  score=0 otherwise.
+---------------------------------------------------------------
+OKR #1, 4
+
+Complete a campaign mission in Falcon BMS or FreeFalcon.  Save
+the debriefing and replay files.
+
+If mission successful: score=.1
+If mission attempted but failed, and you reviewed what went wrong: score=.05
+---------------------------------------------------------------
+OKR #1, 5
+
+The following tasks are worth .05 points each:
+
+Read SAT/DOC/basic_F16_orientation.md
+
+Skim all documentation in the SAT/DOC directory
+
+Complete the ramp start from memory without the trainer
+
+Complete an air-to-air refueling or formation flight exercise
+
+Use the FlightGear F-16 or MiG-21 trainer for basic jet handling
+---------------------------------------------------------------
+OKR #2, 1
+
+Complete a full campaign (Falcon BMS or FreeFalcon).  If you
+complete the campaign successfully, give yourself a score of
+1 good for the next month.
+
+If you have not completed the full campaign:
+score=0.7*(missions_completed/total_missions), with maximum score of .7
+
+Note: Your daily total is the sum of your OKR scores (subject to an
+upper limit of 0.7 unless you have an aspirational OKR score above 0.7).

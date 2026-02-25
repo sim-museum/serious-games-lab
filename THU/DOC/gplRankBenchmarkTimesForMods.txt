@@ -1,0 +1,68 @@
+GPLrank benchmark times
+reference: https://gplrank.schuerkamp.de/php-pub/gplrank.php
+
+GPL55Rank
+        Monaco 1967                 1:41.000
+        Zandvoort 1967              1:40.000
+        Aintree 1955                2:00.400
+        Monza 10k                   2:46.500
+        Spa 1967                    4:18.100
+        Buenos Aires 1955           1:43.100
+
+
+GPL65v2Rank
+        East London 1967            1:26.334
+        Watkins Glen Int. 1967      1:09.587
+        Silverstone Circuit 1967    1:33.014
+        Monaco 1967                 1:29.639
+        Zandvoort 1967              1:29.010
+        Monza 1967                  1:37.523
+        Mexico 1967                 1:53.222
+        Spa Francorchamps 1967      3:38.125
+        Nürburgring 1967            8:27.564
+        Clermont-Ferrand 1965       3:22.238
+
+GPL66Rank 
+        Reims 1967                  2:07.800
+        Watkins Glen Int. 1967      1:08.420
+        Monaco 1967                 1:29.900
+        Zandvoort 1967              1:28.100
+        Monza 1967                  1:32.771
+        Mexico 1967                 1:53.180
+        Spa Francorchamps 1967      3:38.000
+        Nürburgring 1967            8:23.947
+        Brands Hatch 1967           1:35.917
+
+66 CanAmRank
+        St Jovite - Mont Tremblant  1:37.300
+        Mosport Park 1967           1:23.100
+        Laguna Seca 1967            1:05.310
+        Bridgehampton               1:33.200
+        Stardust 1967               1:34.500
+        Riverside 1966              1:44.700
+
+GPLRank (1967)
+        Watkins Glen Int. 1967      1:06.912
+        Silverstone Circuit 1967    1:30.907
+        Monaco 1967                 1:29.326
+        Zandvoort 1967              1:26.848
+        Monza 1967                  1:30.202
+        Rouen-les-Essarts 1967      1:59.277
+        Mexico 1967                 1:50.478
+        Spa 1967                    3:20.342
+        Kyalami 1967                1:20.861
+        Mosport Park 1967           1:23.134
+        Nürburgring 1967            8:21.931
+
+GPL69XRank 
+        Watkins Glen Int. 1967      1:03.620
+        Silverstone Circuit 1967    1:20.800
+        Monaco 1967                 1:24.600
+        Zandvoort 1967              1:20.850
+        Monza 1967                  1:25.480
+        Mexico 1967                 1:42.900
+        Kyalami 1967                1:20.000
+        Mosport Park 1967           1:17.400
+        Nürburgring 1967            7:42.100
+        Clermont-Ferrand 1965       3:00.600
+        Montjuic Parque v1 1969     1:25.700

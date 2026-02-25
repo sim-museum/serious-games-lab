@@ -1,0 +1,512 @@
+Grand Prix Legends demo is free but not open source.  For more information see: http://gplworld.de/en/grand-prix-legends/gpl-easy-installation-guide
+There is an active Grand Prix Legends support forum: http://srmz.net/
+---------------------------------------------------------------------------
+Recreating this install, which contains about 80 cars and 30 tracks, would take many hours.  If you want to use this install on Windows 10, simply copy the GPLSecrets, Sierra and Program Files (x86)/GPL Replay Analyser directories onto the Windows 10 C: drive and then create a desktop shortcut to C:\GPLSecrets\GEM+\GEMP2.exe (configured to run in Windows 7 compatibility mode)
+---------------------------------------------------------------------------
+
+If you want to use a force feedback steering wheel game controller, the Logitech G25 or G27 is recommended.  These wheels require no device drivers and run well on linux.
+
+---------------------------------------------------------------------------
+GPL track guides
+http://wiki.grandprixlegends.info/index.php?title=LOR_track_guides
+
+---------------------------------------------------------------------------
+GPL maps and race brochures
+http://www.trilon.com/bapom/misc.shtml
+
+------------------------------------
+GPL 67x mod replay files
+https://docs.google.com/spreadsheets/d/1GjLA-avYqTusPlg3XNU1-XsIrbtvNRqIjjWM2goS39Y/pubhtml
+
+---------------------------------------------------------------------------
+Video explaining Limited Slip Differential
+https://www.youtube.com/watch?v=PEdnH7_7_yc
+
+---------------------------------------------------------------------------
+Alternate GPL installer (in French)
+https://www.grandprixlegends.fr/telechargements
+
+---------------------------------------------------------------------------
+GPL 67 mod setups for all tracks
+http://ferdinandschulze.de/gpl_setup_ferdi.html
+
+All setup folders have the same names as in the original installation, i.e.:
+Unzip and copy all folders to gpl - players - (name) - setups
+
+All setup-folders are named as in installation, so:
+Unzip and copy all folders to gpl - players - (name) - setups 
+
+---------------------------------------------------------------------------
+setup files from GPL weekly website (must pass website quiz first)
+http://www.formulado.hu/weekly/?p:crank/files/
+
+---------------------------------------------------------------------------
+GPL which frame rate to choose, 35 or 60 FPS?
+https://www.youtube.com/watch?v=hBZlIQFEySM
+
+---------------------------------------------------------------------------
+GPL season.ini file tutorial
+https://www.youtube.com/watch?v=mwe-RmMppHU
+
+---------------------------------------------------------------------------
+GPL GPLMotec telemetry documentation 
+http://srmz.net/index.php?showtopic=13990
+
+---------------------------------------------------------------------------
+GPL 67 sports cars mod brake lights
+http://srmz.net/index.php?showtopic=13320
+
+---------------------------------------------------------------------------
+GPL best tracks created or updated since 2019, according to srmz forum
+1 Montjuic Parque v2  
+2 Goodwood Motor Racing Circuit  1965
+3 Isle Of Man Mountain Course (37.75 mile)
+4 Road America  1971
+5 Interlagos  1971
+6 Nassau  1966
+7 Tandil
+8 Stardust International Raceway
+9 Zolder  1967
+10 Donington Park  1937
+But ... if you don't know the challenges of Bremgarten, Sachsenring, Brno49, you definitely don't know the essence of the GPL.
+
+the new kit to  improve thruxton  ,and the kit to improve oulton park now they are top notch track  , monza 67 for the lighting 
+
+Isle Of Man Mountain Course (37.75 mile)
+
+Road America  1971
+
+Dundrod
+
+Monza 67 
+
+Pukekohe, and the recent South American tracks.
+
+Phillip Island
+
+http://srmz.net/index.php?showtopic=14002
+
+---------------------------------------------------------------------------
+GPL  telemetry app video tutorial
+https://www.youtube.com/watch?v=8chN3pOgb5c&feature=youtu.be http://srmz.net/index.php?s=387ceb35e5ca7701930bc1e023d70d46&showtopic=13990
+
+---------------------------------------------------------------------------
+GPL How to increase pribluda font size
+in PRIBLUDA.INI, set
+outlineOpenglFontSize = 9
+
+---------------------------------------------------------------------------
+GPL how to remove spurious IP address when trying to connect online
+ifdown tun0
+(replace tun0 with name of spurious IP address)
+
+---------------------------------------------------------------------------
+GPL track packages for GPL Rank
+http://srmz.net/index.php?showtopic=13167&hl=gplrank
+
+---------------------------------------------------------------------------
+GPL setup guide
+http://www.clockey.co.uk/gpl/guide/gplsug.htm
+
+---------------------------------------------------------------------------
+GPL Article
+https://ravsim.com/author/shrapnel1977/
+---------------------------------------------------------------------------
+GPL links
+https://github.com/grand-prix-legends-links/site
+---------------------------------------------------------------------------
+An explanation of the impact of differential settings is here:
+https://www.youtube.com/watch?v=awLhSsy5IqY
+
+Details of the GPL differential are here:
+http://gplmotorworks.gplworld.de/GPL-Differential-Info.html
+
+setup guides GPL
+https://www.youtube.com/watch?v=awLhSsy5IqY
+
+setup in-depth guide
+http://alison.hine.net/gpl/smith.htm
+
+note power/coast
+power 85 open
+coast 30 faux abs
+https://www.youtube.com/watch?v=awLhSsy5IqY
+
+open diff on coast - easy turn in but watch out for oversteer
+closed diff on coast - understeer, more stable, but turn in earlier
+https://www.youtube.com/watch?v=awLhSsy5IqY
+
+---------------------------------------------------------------------------
+http://srmz.net/index.php?showtopic=1140
+There is a good line taken from the movie Days of Thunder, "loose is fast, but on the edge of control" This is perfectly true both in real life racing and in GPL.
+
+I like a loose racecar, but not an out of control one. So let's see if we can build a setup to do just that.
+
+Disclaimer:
+This document is not going to make you the next Greger Huttu or Greg Stewart. Hopefully what it will do is lower your lap times and more importantly improve your consistency. The text within these pages are based on knowledge I have picked up from racing my own cars and asking people in the know a lot of questions. Everything in here should not be taken as gospel, there are a lot of different ideas on how to make a car fast. What I want to do is to be able to drive quickly (relatively speaking) and do it with the least amount of drama possible.
+
+No responsibility will be taken for bent rollover hoops, broken wishbones or square tyres.
+
+Setups are all about compromise, every action has a reaction. Its how to get a nice balance that is the hard bit.
+
+For starters, let's talk about the chassis and its reactions to setup changes.
+
+The car will behave differently under different conditions and loads placed on it. For setup building, a fairly good understanding of how a car behaves is needed, this can be broken down quite easily. We really only need to concentrate on grip levels, the level of grip is entirely dependant on the ability of the tyre to adhere to the road surface.
+
+There is two types of grip in a racecar, the first is aero-grip. This has no relevance to GPL at all, as the cars dont have wings. The second type of grip is mechanical grip. This is the grip generated by the suspension, allowing the tyres to create maximum friction with the road. This grip is both created and lost by the cars suspension and the loads placed upon it.
+
+The more rubber in contact with the road, the more grip is generated. The weight of the car determines to a large extent the tyre contact, too little weight and the tyre will spin as the friction (in relation to the road surface) is not as great. If the weight placed on any one tyre is excessive, then the tyre will slide. The hard tyre, plus the suspension being loaded from the extra weight will lose all forgiveness in the chassis, so grip will be lost.
+
+How the weight of the car reacts is the number one thing in setting up a car. The cars centre of gravity and roll-centres determine how much, and in what direction weight transfer is applied during the three phases of a racecar movement, acceleration, cornering and braking. We can't really delve into roll-centres because we do not know much about the cars suspension. We really have to look at it to work out roll-centres, so we will have to leave that.
+
+Under hard acceleration the car will want to lean backward, that is the nose will move upwards and the rear of the car will be pushed downwards. Under heavy braking the car will do the opposite and under cornering the car will place more weight onto the outside of the chassis.
+
+If the car is too soft the car will compress the tyres and suspension to an extent that grip will be lost because there is no give in it any more. If you overload a ute or similar type of vehicle, nearly every bump is felt because the suspension is transferring the road surface to the body of the car. The suspension has lost its ability to take the bumps out of the road. If the car is too hard there will be no "give in the suspension and the car will behave in a similar way to the above example.
+
+Our aim then is to control this weight transfer, and use it to our advantage.
+
+
+Anti-roll Bars:
+A soft racecar will put the power down better to an extent, although the car will lose responsiveness, and will feel like a tug. That is the car "leans" its way around the track.
+
+A stiffer car will be more direct in its feel, but overall grip is compromised.
+
+It is my opinion (at the moment) to use less roll resistance at the front of the car. The front end has less weight, so should roll less under load. The engine/gearbox ass contributes to the overall weight of the car a lot, so my theory is to keep stiffer bars in the rear of the car, to counter the weight transfer effect.
+
+If the bars are set too soft, especially the rear bar, the car will tend to spin the inside rear wheel more under hard acceleration. This can give an even bigger sense of either understeer, if mild wheel spin in maintained. Or snap oversteer if the spinning wheel grabs, the diff locking effect will oversteer the car.
+
+More bar at the front/ less at the rear, makes the car stable by adding understeer. Less bar at front / more at rear, makes the car oversteer and will be less stable.
+
+Most of the setups available use the bars set the first way, this will of cause add stability, these setups need all they can get because of the shock/spring/diff settings they have.
+
+
+Wheel rates:
+Wheel rate should be set to approximately equal weight distribution of the chassis, again soft equals more grip, but the car will wallow about a bit. Too soft will allow the car to bottom out, so the trade off is to raise the ride height. This adds to the body roll and causes further problems by creating more roll in the corners. The anti roll bars can then be used to help hold the unweighted side of the car to the road. This isn't a bad way to have a car behave, but a fair bit of tweaking is needed to tune everything correctly. The other end of the scale is to stiffen the car too much. This will cause the car to be very slidey and will feel skittish. There is really nothing you can do with a stiff car, except drive it very directly with the inputs given to it. The car has to be driven with precision or the tyres will overheat.
+
+
+Bump/ rebound:
+Shock absorbers are arguably what make a good racecar, it is a black art to a certain extent. The money spent in this area in the Australian V8Supercar series by the TWR operation for example is why they win so many races. Thank god we don't deal with four-way adjustable shocks in GPL. Two-way is hard enough.
+
+Soft bump is good for braking, a lot of weight is transferred to the front wheels under heavy braking. The nose of the car tries to bury itself into the track surface. The down side is a car which will bottom out under braking, this isn't good as the car will tend to pivot off the front end, thus losing the rear. Although, the more we resist this weight transfer by making the front bump stronger, the more load the tyres have to cope with, and will lock easily.
+
+Soft bump at the rear is good for power down at low speeds, the weight transfer will help get the torque to the road, it will also make the car feel unresponsive in the steering because the car is light at the front.
+
+Stiff rebound will make the car more stable on corner exit at high speeds.
+
+This is seriously hard to explain, so I think I will leave this section till some open testing is done. It will make much more sense to actually do it rather that read the same words over and over again. Results will be added here.
+
+
+Tyre pressures:
+Tyre pressures need to be set low enough so that they will not build up excessive pressure/temperature. The hotter a tyre gets, the less grip it will have. Setting pressures too low will result in excessive temperatures at the edges of the tyre, and will make the car very unstable for the first few laps. A nicely balanced car will keep its temperatures fairly even, although it should not be a concern if they are quite different because all racetracks are different. Salzburgring for example consists mainly of hard right hand turns, so naturally the left side tyres are going to be working harder.
+
+
+Camber:
+Camber is the angle of the wheel in relation to the road. Looking north-south at a car, the angle of the wheel is what we are after. If the top of the wheel is leaning into the car, this is negative camber. Negative camber allows the wheel to stay flat on the road as the chassis rolls from cornering forces. Nearly always use some negative camber at the front at least, and a little at the rear. More at the front will improve cornering grip, especially at turn in. More at the rear will enhance this turn in ability but will give more rear grip, so the car understeers a bit.
+
+The only exception to this is with a NASCAR or oval based car, with a NASCAR you place a fair bit if positive camber on the left side of the vehicle.
+
+
+Internet setups:
+This section will sound like I am disagreeing with every one else's theory on setups, I am not. I am just trying to make setups, which are nice, and easy to drive, put which can also be quick enough to get decent times out of. I suppose until people start posting times for the two tracks last attempted (Red Rock Speedway and Salzburgring) we will not know just how fast they really are. My opinion at the moment is that my times achieved are about what I would expect from myself. If this is correct, then these setups should be able to help individuals to lower their rank to at least negative, and hopefully have a bit more enjoyment out of it at the same time.
+
+
+Loose setups:
+In order to get into the corners quick, a radical diff is used to allow for maximum trail-braking effect, this compromises grip both in the centre of the corner and the exit, right when power down is crucial. The lack of stability = more speed, at the effective loss of drivability.
+
+The setups available tend to "fight" each other, this is, the diff is normally so loose on the coast side that less sway bar at the rear will delete some of that looseness. This works of course, but the car normally ends up very twitchy and "on the edge". The power side angles are normally quite low, meaning more locking effect, the rear dampers are normally set with more rebound, this aids corner exit grip. This once again deletes some of the loosening effects of the diff.
+
+So the car is made loose by the diff settings, and is then some of that looseness is pulled out of the car by the suspension adding more rear grip. The compromise here is a huge one.
+
+The cars are obviously very fast setup this way, but my opinion is that the cars are even harder to drive with these types of settings. The aim is to complete as many laps as possible, the sooner a driver can be comfortable with the handling of his car, the sooner a good pace can be maintained.
+
+Any new setup, at any track will make for spins and written off cars, but if the chassis is more manageable, then the car will be easier to catch from a slide, and will be a lot more fun to drive. I have just completed four laps at Mexico and four at Monaco, and set new Cooper pb's at each. I donï¿½t think that I have ever set a pb within so few laps before. And I haven't been to either track for at least six weeks.
+
+
+Differential settings:
+The differential is the most powerful setup tool we have in GPL. How the car behaves is greatly affected by what settings we choose.
+
+
+Power side:
+Less Locking (85) = inside wheel spins, less power to the ground, more forgiving oversteer (will oversteer if too much inside spin is invoked) "Easy" driving, feels slow.
+
+More locking (30) = inside wheel spins less, better acceleration, can understeer, will snap oversteer with too much throttle.
+
+"Touchy" setup, very good throttle control needed.
+
+
+Coast side:
+Less locking (85) = oversteer, will pull car to either side under braking depending on track surface or steering angle. Less locking will mean one of the rear wheels can lock because the wheels are "free-wheeling" more.
+
+More locking (30) = understeer, more stable under braking, will lock both rear wheels at the same time in theory, will understeer on turn in.
+
+Just remember...
+Lower number = more locking
+More locking = more understeer under braking
+
+
+Clutches:
+Less clutches = less locking effect
+More clutches = more locking effect
+
+Lower number means the diff will act like an open diff (road car) this allows freewheeling both under braking and under power.
+
+This has the effect of oversteer into the corners (because the inside wheel can lock) and understeer on the way out of the corner. The exception to this is when to much inside wheel slippage results in oversteer, but this is generally a very gradual thing with a low number of clutches.
+
+Higher number lets you shorten braking distances and brake with more confidence, the rear wheels are "mechanically attached" thus the diff gives a sense of "ABS" on the rear. The brakes cannot be used as much after turn in (trailbraking), further to this, the extra clutches mean more of a locked diff feel on the exits of corners. This will give better acceleration, but the result is too often massive power oversteer. This is due to the fact that when the inside rear wheel does spin, the outside wheel spins as well.
+
+---------------------------------------------------------------------------
+How to run a race by yourself with no AI cars (if you want to)
+To race a particular driver, edit the gplaAI.ini file (or the one for the Mod you are using) in a text editor and set n_ai_cars = 1 Next, make a copy of the driver.ini file (or the one for the Mod you are using). If you have a driver.ini in a track folder ... edit that one. Then, edit driver.ini in a text editor and delete all drivers except the one that you want. Be certain that the header for that driver is [ driver_1 ]. Also, be certain to save the text file as ANSI encoding.
+
+I just discovered that it's possible to run a race with 0 AI by editing the mod's gpla.ini file. Years ago when i was doing AI testing, I thought the minimum was 2, but I just retested and was able to set it to 0.
+
+Open up the mod's gpla.ini file...be sure to get the correct file for the mod, and edit the line:
+
+n_ai_cars = 0 ; overrides # of AI cars set in UI (use -1.0 to ignore this override)
+
+Seems to work OK for the gplc67.ini file.
+
+You'll probably have to start the mod .exe directly and not use GEM+; otherwise GEM+ will overwrite your setting.
+
+
+---------------------------------------------------------------------------
+GPL more opinions about differential settings from srmz.net forum
+http://srmz.net/index.php?showtopic=13985
+
+I started in 98 when the game came out at that time there were no simulators that managed the differential and I, like almost all other players, used the differential of defaul, which was normally 85/30 5 or similar. For me the revolution was when I started to use the differential and other values well, starting from 45/60 1 or better 30/85 1 or 2, which allowed me to drive as I wanted, I solved the problem of blocking in front braking, managing well the accelerator and brake pedals. So I learned to brake well and to have the right insertion in the curve. Normally I bring the braking to 49%. Over time I've realised that using other people's setups is good for some things, such as gear ratios or the car's balance, but a lot depends on the type of steering wheel and how you set it up.
+
+    check your GPL Rank to verify if you are competitive enough = as an average, 3s slower than the WRs.
+
+Similar for me. I had kind of reached a plateau in improving my times, then started adjusting the diff (there is a great video tutorial here: https://www.youtube....h?v=awLhSsy5IqY). I found that when I really loaded up the power side, it matched my natural style and I started to improve again, even with cars I'd never done well with before. These days I start with 30/60 or 30/45 and go from there playing with the clutches.
+
+generally (For me) most can be tamed by adjusting the power and coast diff settings (Higher setting for power side - more stable under acceleration - Lower setting for coast - more stable under braking).Clutches increases the effect of both. Along with "brake bias. (Higher %age figure - more stable under braking. but longer braking distance). Other than that once you have found a combination which means you don't kill yourself every lap concentrate on tyre temperatures across the tyre in the set up screen. A few degrees of higher temp on the insides of the tyre is good IMO and a overall tyre pressure of 24 - 26 PSI is good to go.
+
+For original GPL and most mods, the ideal tyre temp is 270F and ideal pressure is 24PSI. Above these, the grip will drop off dramatically, so better to be just under rather than just over. Also there is no wear at all, so no need to worry about that. For camber, adjust until your temps are relatively even across the tyre. So long as the inside part of the tyre reaches 270F you should be generating max grip. Too much camber will affect grip under braking/acceleration and there is really no need for anything above 1 degree.
+
+I believe in GPL that the ideal spring settings should match the weight distribution of the cars, which is mostly around 40/60 to the rear. So if you run 100lbs rear springs, ideally you should run 66lbs front. The spring rates will affect how weight moves around in the car, so a softer car will feel more sloppy and a stiffer car will feel more responsive (more rapid weight transfer). The heavier cars have more rear weight bias so stiffen the rear a few more clicks for those.
+
+A lot of the alien setups use very low spring rates, like 75lbs on the rear. If you use these in real life the suspension wouldn't support the weight of the car and will hit the ground (as I once found out in my FFord), but in GPL it seems acceptable as there is no hard bump stop to stop the springs compressing. Just adjust strength based on handling preferences. Alien setups are also designed to be unstable, so while these ideas won't give you the FASTEST setups, they should give you the most controllable. 
+
+---------------------------------------------------------------------------
+GPL driving etiquette 
+http://wiki.grandprixlegends.info/index.php?title=GPL_Recommended_Driver_Behaviour
+
+---------------------------------------------------------------------------
+GPL 67 setups by one of the fastest GPL drivers
+http://srmz.net/index.php?showtopic=13398
+
+---------------------------------------------------------------------------
+GPL field of view calculator
+http://srmz.net/index.php?showtopic=13398
+
+---------------------------------------------------------------------------
+GPL setup advice: camber
+I've been driving Papyrus sims for many years, Indycar, Nascar and GPL. Originally, I tried to adjust my setups so that the temps were even across the width of all tyres. My thinking was that this would maximise the size of the contact patch at the "correct" temperature, and give me maximum grip. However, after reading Steve Smith's and Doug Arnao's comments in "Four-Wheel Drift" (p45-46), I decided to experiment, and I found that I actually got better turn-in performance with GPL if I adjusted my front tyre camber so that the inner edge was 2-3 degrees higher than the outer edge. They refer to this effect as "camber thrust", and although I am not an expert, and can't verify the physics of what they said, my experience is generally that it works. I now try to achieve this with all my setups, with all mods. 
+
+---------------------------------------------------------------------------
+---------------------------------------------------------------------------
+rFactor guides, reviews, tutorials
+---------------------------------------------------------------------------
+http://lilian.guillard.free.fr/
+https://www.youtube.com/watch?v=GjNW-MLbTcU
+https://rfactorcentral.com/list.cfm?cat=mod%20tools
+
+---------------------------------------------------------------------------
+rFactor FAQ
+http://www.thepits.us/board/viewtopic.php?t=1537
+
+Q) I heard there are cheat codes...what are they, and what do they do?
+A) You have to enter a racetrack (testing or race mode, offline or online doesn't matter) and below the box that says 'chat', there is a small dark line which is where you actually chat from.  In that box, you can type these codes...
+ISI_BABYFACTORY - you own all cars from that series and have 2 mil to boot in hard cash
+ISI_SKIDMORE - gives you back a percentage of the money you currently own, must be typed multiple times if you are low on cash
+ISI_SKENDERBEU - gives you a percentage of experience points that you currently have, again, must type multiple times if you don't have much experience 
+
+ To check the FPS, us CTRL-FI will be posting frequently asked questions in this thread with the answers.
+
+Q) The cockpit vibration seems excessive.  How do I turn it down?
+A) Go into the game, the Settings Menu > Controller > Rates.  Adjust Head Movement down.
+Alternatively, you can go into your rFactor/UserData/<username>/<username>.plr file and manipulate this value under "Graphics Options":Cockpit Vibration Mult1="1.00000"  (make it a lower value).
+
+Q) How do I get my own car/team into rFactor?
+A) Download , READ THE README, and you should be well on your way.
+
+Q) I keep seeing metric and I want English measurments!
+A) Go into your rFactor/UserData/<username>/<username>.plr file and manipulate this value under Game Options: Measurement Units="0"  Set it to "1"
+
+Q) The laps seem all screwed up for counting down...what lap am I on?
+A) Go into your rFactor/UserData/<username>/<username>.plr file and manipulate this value under Game Options: Show Extra Lap="0"  Set it to "1"
+
+Q) Why won't my server show up in the in-game race list? Why does my server show up sometimes, but not others in the in-game race list?
+A) In multiplayer.ini (for your profile), edit the following line:
+Concurrent Server Updates="40"
+Make it "150" or higher.
+
+Q) How do I switch cars in the replay?
+A) use the numeric keypad + or - keys
+
+Q) How do I get rid of the steering wheel?
+Under the Graphics section in your .PLR file...
+Steering Wheel="0" // 0=moving steering wheel, 1=non-moving steering
+wheel, 2=no steering wheel
+
+Q) I heard there are cheat codes...what are they, and what do they do?
+A) You have to enter a racetrack (testing or race mode, offline or online doesn't matter) and below the box that says 'chat', there is a small dark line which is where you actually chat from.  In that box, you can type these codes...
+ISI_BABYFACTORY - you own all cars from that series and have 2 mil to boot in hard cash
+ISI_SKIDMORE - gives you back a percentage of the money you currently own, must be typed multiple times if you are low on cash
+ISI_SKENDERBEU - gives you a percentage of experience points that you currently have, again, must type multiple times if you don't have much experience
+
+Q) My car keeps dying if I crash or come to a stop!
+A) You need to go to your options and turn on "Automatic Clutch"
+
+Q) How do I have a night race!
+A) In your race setup options, make the time later in the day.
+
+Q) How do I get different menu music in rFactor!
+A) Just add mp3s to your \music directory, you can also erase the original one.  rFactor plays any mp3s found there (but over 192 kbps may not play).
+
+Q) Why do I keep seeing these little ugly grey box-cars when I'm racing in multiplayer?
+A) The grey cars are designed to load when you are on the track and a new player connects.  To avoid a 'stutter' caused by loading a multi-poly new car as well as a 1-2 megapixel graphic, you get the temp car until you go back to the garage and the new texture gets loaded.  If you continue seeing the 'temp' car, it's probably because they have a car that you do not have in your directory.
+
+Q) How do I back up my Trymedia keys so I don't have to ask for them again?
+A) Back up this folder in a zip file:
+\Documents and Settings\All Users\Application Data\Trymedia\
+When you install a new game on a new HD, unzip the zip file back to that location.  You can do it before or after you've done your install.
+
+Q) What if I want rFactor but I don't have a credit card?
+A) Check out by Tim McArthur.
+
+Q) I'm getting horrible FPS on my system...help!  How do I check my FPS (frames per second)?
+A) To check the FPS, us CTRL-F  For the rest of the answer, thanks to Dave Henrie.
+
+"Here is something you can do to help your fps.  This involves editing your .plr file.  So make sure you backup the file before you begin to edit.
+
+open your .plr file with a text editor and look for this line in the [graphic options] section
+
+Load Opponent Cockpits="0" // Whether to load gauges and LCD for opponents, don't turn off if you're planning on hot-swapping vehicles in multiplayer
+
+  Make this = to zero.    Since we don't swap cars or drivers,  you don't need those cockpits loaded.  
+
+next further down in the same section:
+
+Max Visible Vehicles="10"
+Extra Visible Vehicles="10" // Extra vehicles shown in non-driving situations
+
+  These default to a pretty high number,  especially the 2nd one.   something like 104 vehicles.   That is just WAY to much stuff to worry about.
+
+Finally near the bottom of the [graphic options] section is another few lines you can change;
+
+Display Icons="2" // Icons displayed if HUD is off: 0 = none, 1 = flags only, 2 = all
+
+ I changed this to =2 so that all the icons show up all the time.  This one is very valuable in the pits or when  you get a black flag.  
+
+Max Headlights="4" // Max headlights visible relative to your car.
+
+     again,  making this change reduces realism slightly but reduces the load on your system.
+
+   Next go into the main menu and choose the options section of the multiplayer screen.   There you can choose the speed of your connection.   Reduce it as much as possible.   I have a 5mbs cable line but I choose either DSL or ISDN.  The server will attempt to send you as much information as you can accept.  But doing so will bog down other cars.  So go online with the servers during the practice weeks and see how low you can adjust the connection speed without the track getting jerky when you corner.  If you see that,  you've set it too low.  
+
+  Also from the main menu,   you can choose to change your display options.   Go to display\options and reduce the number of visible cars.   This isn't like Nascar at Daytona where you can see all the cars going around a corner.  You only need to be aware of the cars closest to you on-track.  
+
+  Your 3d config probably can match your desktop screen size and refresh rate,  but you might want to try reducing the screen size slightly and lowering the refresh rate.   Previous ISI sims would run the 3d config utility and then display a polygon rate.  This was a good way to judge how well your card performed.   rF has a texture bar on the upper left when you activate the fps counter.  THis should be GREEN.  If you have a yellow texture bar,  then you are stressing your system.  Reduce screen resolution until you have at least a partial bar that is all green."
+
+Q) Someone sent me a setup...how do I find it?
+A) If someone send you a setup, you will get a message saying "<so and
+so> has sent a garage setup". The setup will be under the driver's
+name who sent it in your <Received> folder with the track names under
+Setups in the garage. Select the setup, load it, then save it to the
+folder you'd like to keep it in.  If you don't load the setup you received and save it somewhere other than the "Received" folder, you will lose it when the track reloads.
+
+Q) I'd like to see the amount of fuel I want to add, not the total amount...how do I do that?
+A) Find the following line in your "...rFactor\UserData\<player
+name>\<player name>.plr" file:
+
+Relative Fuel Strategy="0" // Show how much fuel to ADD, rather than how much TOTAL fuel to fill the tank up to
+
+Change the "0" to a "1", and you will see in the garage that  a "+" sign appears next to the amount of fuel for each stop.  That amount of fuel will be added when you pit.
+
+Q) I went into my car, and my camera was going crazy...all over the screen, up, down, right, left...it seemed like the mouse was controlling it!  What the heck happened?
+A) You accidentally went into 'Free Look' mode.  The default key to toggle â€œFree Lookâ€ (mouse) is "U"
+
+Q) Is there a way to turn down the compression on screen shots in rFactor?
+A) go to your player file (plr) and set the "Screenshot File Type" to either 1 (for bitmap) or 3 (for PNG)
+
+Q) How do you set the opponent interval display in rFactor to be similar to the F2 display in N2003--in other words, a display where can see how far in front and behind other cars are in realtime?
+A) Left arrow-key while in cockpit
+
+--------------------------------------------------
+MoTeC telemetry for rFactor
+---------------------------------------------------------------------------
+http://en.gpvwc.com/wiki/index.php?title=MoTeC
+
+---------------------------------------------------------------------------
+rFactor commands
+HOME: outboard camera, free camera, view car at any angle using 
+numpad keys
+I: AI driver takes over
+INSERT: 3 cockpit views
+ENTER: cycle LCD display (like F4 DED), then arrow keys to modify
+PGUP: swingman camera
+PGDN: circuit camera
+END: stationary camera
+NUMPAD +/-: next/previous driver
+Y: restart race
+MOTEC plugin for telemetry in rF1(?)
+
+S: schedule pit stop
+[: more forward brake bias on the fly(?)
+]: more rear brake bias on the fly
+R: replay
+TAB: driver name labels
+NUMPAD 7/9: zoom in/out
+
+----------------------------------------------------------------------------
+setting up Thrustmaster TX force feedback wheel on linux
+http://srmz.net/index.php?showtopic=14386
+
+-------------------------------------------------------
+rearranging cars on the race startup grid thread on srmz:
+
+
+http://srmz.net/index.php?showtopic=14341
+Because when you use the gridding tool it is time-consuming to write the names manually into the grid.txt file and typos can easily occur when copying...sometimes I had written a small tool that can automatically create the file from a replay.
+Simply put the contents of the zip file into the gridding folder.
+Then open the GridausReplay.ini with the editor, change my path to your path to your replay folder.
+Then you can use the tool: At first put in number 0 if you want reverse grid or put in number 1 if you want a grid like race result in saved race.
+Second step is put in a name of a replayfile.
+That's it I hope (I have made the tool 10 years or so before now) to create the file.
+
+
+    Members
+    Pip
+    3 posts
+
+    Gender:Male
+    Interests:Racing
+    Sim interest:GPL
+
+Posted Aug 31 2021 - 02:06 PM
+Hi everybody :)
+
+This little tool allows you to set up the field of starters to your own liking.
+An installation of (at least) .NET 3.5 on the machine it's used on is needed.
+
+Usage:
+
+Name convention: just write the first and last name of the driver without underscores.
+
+1. Unpack the archive. Location doesn't matter, it just has to be on the same machine the GPL server runs on, since it directly manipulates what it finds in the memory and doesn't need any program paths. You can put shortcuts to GplGridding.exe and Grid.txt to your servers desktop.
+
+2.: Open  'GplGridding.ini',  and in the 'Common' section change 'Firstname Lastname' to your servers driver name. Only neccessary on first use ;)  
+
+3.: In the Grid.txt file, replace the placeholders with the driver names in the desired order. Server driver name (Firstname Lastname) has to be changed to your server driver name and has to be put last in the order.
+
+4.: Start the GplGridding.exe. It looks up for the 'Grid.txt' and waits. Minimize the window, fire up GPL, set training to a time that allows all drivers to join. Even if someone does a qualifying time, the tool will override it.
+
+If it doesn't work, it's most likely the server driver name put in wrong, so check that.
+
+Have fun :)
+
+The known history:
+This tool has originally been written by someone at Virtualracing.org, but I don't have any clue who it was. After GPL was let go by VR, one of the guys who was at Gentlemen's League as well as at EOLC got the sourcecode  from the original author and rewrote it to suit post-W98 machines.
+Attached Files
+http://srmz.net/index.php?showtopic=14343

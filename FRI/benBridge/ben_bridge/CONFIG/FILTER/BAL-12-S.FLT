@@ -1,0 +1,18 @@
+# BEN Bridge deal filter
+
+.version = 8.1
+.description.eng = "balanced South hands, 12-14"
+.description.deu = "ausgeglichene Südblätter, 12-14"
+.description.fra = "mains régulières en Sud, 12-14"
+.description.ita = "mani bilanciate di Sud, 12-14"
+.description.dan = "jævne Syd-hænder, 12-14"
+.description.pol = "rêce S zrównowa¿one, 12-14"
+
+join = A
+search = 100
+South.join = A
+South.hcp = 12.14
+South.Spade = 2.4
+South.Heart = 2.4
+South.Diamond = 2.5
+South.Club = 2.5

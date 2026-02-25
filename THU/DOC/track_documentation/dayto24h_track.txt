@@ -1,0 +1,59 @@
+
+
+Daytona Continental 24 Hours - Daytona Beach ,Florida USA ver. 1.0 for
+GPLegends GT MOD
+
+Made by Ginetto and Sergio Loro.
+
+Track Location: Daytona Beach FL-USA Track Type : Race Track Track
+Length : 6.132km.- 3.81mi.  Track Num. Turns : 10 Track Year : 1967
+
+Track Editor : Ginetto and Sergio Loro
+
+--------------------------------------
+
+INFOS:
+
+This track was developed by Sergio Loro and myself, it reproduces the
+1967 Daytona 24 hours.  Sergio started the project then passed it to
+me to be revised and fine tuned, we did a lot of research to find out
+how exactly was the layout in 67 and it is quite different than how it
+started, I did my best to recreate it the most accurate as possible,
+keeping an eye to the performance on the lower systems as mine is.
+The track is a mandatory addon for the SportCar MOD.
+ 
+--------------------------------------
+
+Thanks to :
+ 
+The GT MOD team for testing .
+
+John Bradley for the wonderful Program Cover.
+
+Stefano Zampedri for the cars and trucks 3do.
+
+Phil W. for helping with the flags srbs and CAM file.
+
+The GPL Repository for hosting the private forum.
+
+The SimRacingMirrorZone for hosting the track.
+
+--------------------------------------
+
+Thanks to:
+
+All the community for giving us the right support for doing this!
+
+All the special guys that developed the tools for editing every GPL
+related thing!
+
+The notorious Papyrus for giving me lots of fun!
+
+--------------------------------------
+
+Enjoy,
+
+yours GINETTO ============================
+
+Italy, 12 Sept. 2010
+

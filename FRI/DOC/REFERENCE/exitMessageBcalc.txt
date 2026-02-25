@@ -1,0 +1,24 @@
+Bridge Calculator is set of freeware/donationware programs written by Piotr Beling which solve problems in the Bridge card game.
+
+    Newest version (19.08.0 from 4 VIII 2019) includes:
+    double dummy problem solver more...
+    single dummy solver more...
+    deals generator more...
+    API to double dummy solver for programmers more...
+
+http://bcalc.w8.pl/
+
+Programs are free to use and are available in multiple languages: English and Polish. Applications are multi-platform, supporting: MS Windows and GNU/Linux (API is available also for MAC OS). Installation is not required (just extract and run).
+
+Creation of Bridge Calculator is my hobby. Besides, its engine is developed as a part of my PhD thesis and scientific papers:
+
+    Piotr Beling: Partition Search Revisited IEEE Transactions on Computational Intelligence and AI in Games, Volume: 9, Issue: 1, Pages: 76-87, 2017, DOI: 10.1109/TCIAIG.2015.2505240
+    Piotr Beling: Efektywne rozwiązanie problemu rozgrywki w otwarte karty w brydżu Metody Informatyki Stosowanej 3/2011, page 5 [PL]
+
+I hope that you will find the software useful. If so, you can make a donation for it.
+
+I wish you pleasure using of the program.
+At the same time I would be very grateful to you for any advice and help,
+Piotr Beling, PhD
+
+

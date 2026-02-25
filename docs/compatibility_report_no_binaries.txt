@@ -1,0 +1,185 @@
+SGL Compatibility Report — Games Not Requiring sglBinaries
+==========================================================
+
+System Information (for WineHQ reports)
+---------------------------------------
+OS:           Ubuntu 24.04 LTS
+Hardware:     Dell OptiPlex 3010
+CPU:          Intel Core i7-3770 x4
+Memory:       16 GB
+Storage:      3.3 TB HD
+GPU:          NVIDIA GeForce GTX 1660 Super 6 GB
+GPU Driver:   NVIDIA 590
+Monitors:     Dual, 1920x1080 each
+
+Test Date:    February 2026
+
+
+=== FRI: Contract Bridge ===
+
+1. tensorflow bridge (benBridge/run.sh)
+   Game:        Ben Bridge (TensorFlow bridge AI)
+   Technology:  Native Linux (Python/PyQt, venv, TensorFlow, libdds.so)
+   Wine:        Not used
+   Status:      PLATINUM — runs perfectly out of the box
+   Notes:       Installs via pip into a Python venv. No binary dependencies
+                beyond standard Python packages.
+
+2. mental math training (mathQuiz/run.sh)
+   Game:        Math Quiz (adaptive PyQt6 math trainer)
+   Technology:  Native Linux (Python/PyQt6, venv)
+   Wine:        Not used
+   Status:      PLATINUM — runs perfectly out of the box
+   Notes:       Pure Python application with PyQt6 GUI.
+
+3. memory training (dual_nback/run.sh)
+   Game:        Dual N-Back (cognitive training)
+   Technology:  Native Linux (Python/PyQt6, venv, espeak for audio)
+   Wine:        Not used
+   Status:      PLATINUM — runs perfectly out of the box
+   Notes:       Requires espeak for audio cues.
+
+4. double dummy calculator (bcalc.sh)
+   Game:        BCalc (bridge double-dummy calculator)
+   Technology:  Native Linux binary (auto-downloads from bcalc.w8.pl)
+   Wine:        Not used
+   Status:      PLATINUM — runs perfectly out of the box
+   Notes:       Downloads its own Linux binary if not present.
+
+
+=== THU: Historical Sim Racing ===
+
+   (All TUE games require sglBinaries — none listed here)
+
+
+=== WED: Deep Learning Chess ===
+
+1. traditional engine (scid.sh)
+   Game:        Scid (Shane's Chess Information Database)
+   Technology:  Native Linux (installed via apt: sudo apt install scid)
+   Wine:        Not used
+   Status:      Not yet tested
+   Notes:       Installed from Ubuntu apt repository. No sglBinaries needed.
+
+2. neural net engine (nibbler.sh)
+   Game:        Nibbler v2.5.3 (chess GUI for Leela Chess Zero)
+   Technology:  Native Linux (AppImage, auto-downloads from GitHub)
+   Wine:        Not used
+   Status:      Not yet tested
+   Notes:       Downloads AppImage from GitHub. lc0 engine built or
+                provided separately.
+
+3. neural net, stats displays (banksiaGui.sh)
+   Game:        BanksiaGui v0.58 (chess GUI with statistics)
+   Technology:  Native Linux (auto-downloads binary from banksiagui.com)
+   Wine:        Not used
+   Status:      Not yet tested
+   Notes:       Downloads its own binary if not present.
+
+4. opening helper (openingRepertoire/run_opening_repertoire.sh)
+   Game:        Chess Opening Repertoire Trainer
+   Technology:  Native Linux (Python/venv)
+   Wine:        Not used
+   Status:      Not yet tested
+   Notes:       Pure Python application for practicing chess openings.
+
+
+=== TUE: Historical Flight/War Sim ===
+
+1. Basic flight training (flightgear/basicFlightTraining.sh)
+   Game:        FlightGear — Cessna 172P
+   Technology:  Native Linux (AppImage)
+   Wine:        Not used
+   Status:      Not yet tested
+
+2. RAF training — Spitfire (flightgear/training_spitfire.sh)
+   Game:        FlightGear — Spitfire
+   Technology:  Native Linux (AppImage)
+   Wine:        Not used
+   Status:      Not yet tested
+
+3. Axis training — Me 109 (flightgear/training_me109.sh)
+   Game:        FlightGear — Messerschmitt Bf 109
+   Technology:  Native Linux (AppImage)
+   Wine:        Not used
+   Status:      Not yet tested
+
+4. US training — P-51D Mustang (flightgear/training_p51d_startInAir.sh)
+   Game:        FlightGear — P-51D Mustang (start in air)
+   Technology:  Native Linux (AppImage)
+   Wine:        Not used
+   Status:      Not yet tested
+
+5. UN training — F-86 Sabre (flightgear/training_F86.sh)
+   Game:        FlightGear — F-86 Sabre
+   Technology:  Native Linux (AppImage)
+   Wine:        Not used
+   Status:      Not yet tested
+
+6. Red training — MiG-15 (flightgear/training_MiG15.sh)
+   Game:        FlightGear — MiG-15
+   Technology:  Native Linux (AppImage)
+   Wine:        Not used
+   Status:      Not yet tested
+
+
+=== SUN: Deep Learning Weiqi ===
+
+1. graphics and training (KaTrain/KaTrain.sh)
+   Game:        KaTrain (Go AI tutor with KataGo)
+   Technology:  Native Linux (pip install into venv)
+   Wine:        Not used
+   Status:      Not yet tested
+   Notes:       Installed via pip. Uses KataGo engine for analysis.
+
+2. board with training (q5go.sh)
+   Game:        q5Go (Go GUI)
+   Technology:  Native Linux (apt or snap install)
+   Wine:        Not used
+   Status:      Not yet tested
+   Notes:       Tries apt first, then snap.
+
+3. polished board (sabaki.sh)
+   Game:        Sabaki v0.52.2 (Go board GUI)
+   Technology:  Native Linux (AppImage, auto-downloads from GitHub)
+   Wine:        Not used
+   Status:      Not yet tested
+
+
+=== SAT: Flight/War Sim (Advanced) ===
+
+1. US training — F-16 (flightgear/training_F16.sh)
+   Game:        FlightGear — F-16 CJ Block 52
+   Technology:  Native Linux (AppImage)
+   Wine:        Not used
+   Status:      Not yet tested
+
+2. Soviet training — MiG-21 (flightgear/training_MiG21.sh)
+   Game:        FlightGear — MiG-21
+   Technology:  Native Linux (AppImage)
+   Wine:        Not used
+   Status:      Not yet tested
+
+
+=== MON: Poker ===
+
+1. Texas hold 'em (pokerth.sh)
+   Game:        PokerTH v1.1.2
+   Technology:  Native Linux (apt install, or bundled binary)
+   Wine:        Not used
+   Status:      Not yet tested
+   Notes:       Available via apt. Fallback binary bundled in INSTALL/.
+
+2. general analysis (generalPokerEvaluator.sh)
+   Game:        ps-eval (pokerstove CLI equity calculator)
+   Technology:  Native Linux (builds from source via cmake/git)
+   Wine:        Not used
+   Status:      Not yet tested
+   Notes:       Clones and builds from GitHub if binary not present.
+
+3. poker with analysis (pokerIQ/run.sh)
+   Game:        Poker IQ (Python poker trainer with TexasSolver)
+   Technology:  Native Linux (Python/venv)
+   Wine:        Not used
+   Status:      Not yet tested
+   Notes:       Pure Python application using TexasSolver for analysis.

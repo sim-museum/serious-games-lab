@@ -1,0 +1,53 @@
+/*
+ * FreeFalcon Linux Port - cISO646 compatibility
+ *
+ * This header provides the alternative operator representations.
+ * In modern C++11 and later, these are built-in keywords.
+ */
+
+#ifndef FF_COMPAT_CISO646
+#define FF_COMPAT_CISO646
+
+/* In C++11 and later, and/or/not etc. are keywords - no definitions needed */
+/* For C and older C++ standards, define the macros */
+
+#ifndef __cplusplus
+/* C mode - define the macros */
+#ifndef and
+#define and     &&
+#endif
+#ifndef and_eq
+#define and_eq  &=
+#endif
+#ifndef bitand
+#define bitand  &
+#endif
+#ifndef bitor
+#define bitor   |
+#endif
+#ifndef compl
+#define compl   ~
+#endif
+#ifndef not
+#define not     !
+#endif
+#ifndef not_eq
+#define not_eq  !=
+#endif
+#ifndef or
+#define or      ||
+#endif
+#ifndef or_eq
+#define or_eq   |=
+#endif
+#ifndef xor
+#define xor     ^
+#endif
+#ifndef xor_eq
+#define xor_eq  ^=
+#endif
+#endif /* !__cplusplus */
+
+/* C++11 and later have these as keywords, nothing needed */
+
+#endif /* FF_COMPAT_CISO646 */

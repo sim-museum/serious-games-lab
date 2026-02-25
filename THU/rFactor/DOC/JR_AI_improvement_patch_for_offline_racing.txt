@@ -1,0 +1,28 @@
+
+Love rFactor? Then this is essential!
+
+    Thread starter Tarmac Terrorist Start date Mar 7, 2018 4 4895 
+
+Tarmac Terrorist
+Tarmac Terrorist
+Paul McCaffrey
+
+    Mar 7, 2018 
+
+    #1
+
+Ok so if you're like me and love this game and many of the exceptionally high quality mods that are availible for it and probably have several install's amounting to well over 60gig, then its probably massively dissapointing to you that unless you are in an online club or league, you can't really use them for anything more than doing hotlaps because the final buld of rFactors A.I. pretty much act like they don't know you're there. If they're right beside you on a straight side by side they will just move across and push you of the track, or just constantly ram you from behind, andI mean ram, not tap.
+
+Well I have discovered a plugin that has changed my whole rFactor experience and I've gotta share it with you if you don't already know about it, all those great mods like Endurance series, Blancpain, Historic GT, Renult Clio's, Trucks, the list go's on. You ca now enjoy them even if there's no-one online using them. Letting rfactor run by itself under A.I. control its amazing to watch a P1 car make its way through a full field of GT back markers without destroying itself is quite amazing.
+
+Now just to put things in perspective this plugin is not perfect bbecause there are so many different tracks and mods, some are still going to have a not so good AIW file, and different mods and tracks vary a bit in how they work with this mod, but over all if you find a decent track and mod, let it run by itself for a while and watch, or just give it a quick try, then its a massive improvement, but always make sure you have the A.I. aggression at 0% (at least to sart off with) and let the A.I. run a full qualifying session on accelerated time (or at least press 'Finish Session') Before going to race and this will give you the best experience.
+
+The A.I. will still fight you tooth and nail, don't worry about that, but if you're half a cars length beside them going into a corner they will no longer squeeze you out like you're not there, they will not try and drive stright through you on a straight either (really detrimental if you like to race with 100% damage like I do), but they will still give you a little tap if you're really holding them up. I've had full 30 min rac'es with mods where all the parts can come off and kill the car and ive not had to pit for anything more than Tire's usually finish with nothing more than some dented body work or a nice pristine car. Thats not to say I hav'nt had the odd damaging crash but thats mainly down to my driving.
+
+One last thing, just like you do online KEEP A EYE ON YOUR MIRRORS! Just like racing online if they see a gap they will go for it and miss you by inch'es, so if you see an A.I. going for it, make sure to give a little room as they do come close, it is after all rFactor A.I.
+
+Couple of very minor issues: It will make switching between sessions hang for just a second longer. For some reason all the buttons when you're in the pits you need to click nearer thetop of the button. IT DOES NOT WORK ONLINE! So if you're going online just remove the plugin, very easy! YOU DO NOT HAVE TO RUN IT IN WINDOWED MODE! The mod's readme tells you to run it in windowed mode, don't bother! This is only so you can see the alternative menu which shows you all the stuff you already have, like car stats. Lastly, for some reason it doe'st display names correctly over the cars or in the standings only initials, so not really a problem as you still know who's who from the initials
+
+Anyway, I can't praise this plugin enough, well done to JR who made it. I'd love to post the file up into the plugins section for rFactor downloads here but im not sure about the rules of posting other peoples mods. Im off to set up a one hour race with the Virtua LM mod in a mixed field, a mod ive never had the chance to race online, and now I can race the A.I. Yay!
+
+So here it is: https://www.rfactorcentral.com/detail.cfm?ID=rFactor AI improvement

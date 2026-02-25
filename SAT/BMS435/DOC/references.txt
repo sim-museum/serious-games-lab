@@ -1,0 +1,122 @@
+There is no active user community for Free Falcon at this time.
+The source code is here: https://github.com/FreeFalcon
+------------------------------------------------------------------
+You can download Free Falcon and four theaters at this link:
+http://thomasclark.us/falcon/freefalcon/
+The sha256sum for this package is
+8022700604f66b0f2b34472991c0b32f6cb08e070c0cf19f4acc44bb934d9e14  FreeFalcon.tar.gz
+------------------------------------------------------------------
+Instructions for buying Falcon 4 original game from gog.com (needed for BMS versions)
+You pay for something called "Falcon Collection" and you get several things in your game library (Falcon, Falcon A.T., Falcon Gold) but none of those are exactly what you need .. you have to drill down to the "extras" or "goodies" section of "Falcon Gold" and download the 367MB thing called "Falcon 4.0".
+
+screenshot showing how to buy on gog.com:
+https://imgur.com/a/QJMMnGR
+
+https://www.gog.com/game/falcon_collection
+
+pro-tip: also download the uber classic "Art of the Kill" pdf while you're there.
+------------------------------------------------------------------
+Falcon 4 reviews, guides, links
+http://www.combatsim.com/proddata/falcon4/falcon4.htm
+
+http://blu3wolf.com/falconbms/falcon4.exe
+
+http://falcon.blu3wolf.com/Docs/Fighter%20Combat-Tactics%20and%20Maneuvering.pdf
+
+how to install on Windows
+https://www.youtube.com/watch?v=_fjv1Ot2KNM
+
+------------------------------------------------------------------
+Falcon 4 Allied Force reviews, guides, links
+
+http://www.simhq.com/_air5/air_164a.html
+http://www.simhq.com/_air5/air_168a.html
+http://www.simhq.com/_air4/air_135e.html
+
+https://www.myabandonware.com/game/falcon-4-0-allied-force-e53
+------------------------------------------------------------------
+
+Information specific to Falcon BMS 
+
+https://www.youtube.com/results?search_query=falcon+bms+4.35+training
+
+BMS 4.35 Balkans tour
+https://www.youtube.com/watch?v=hHycwvJXTGg
+
+BMS 4.35 training videos
+https://www.youtube.com/playlist?list=PLjlHzet_-E-_e1xWixhgS5NfUpcpR-QJE
+------------------------------------------------------------------
+Alternate download links:
+
+The complete installation files for Free Falcon, along
+with the theaters provided here and two additional
+theaters (Aegean, Taiwan) are at this link:
+
+http://thomasclark.us/falcon/freefalcon/
+
+
+------------------------------------------------------------------
+Information about webcam head tracking in linux:
+
+here's a current build of opentrack for Ubuntu 20.04 based Linux systems. It contains just the minimum stuff to get head-tracking working (I'm using the DelanClip with a ps/eye webcam, so nothing fancy), but I hope some folks may find it useful still:
+
+
+
+
+o input plugins: pointracker, test, UDP over network
+
+o output protocols: libevdev, udp, flightgear, wine,
+
+o filters: Accelera
+
+https://www.magentacloud.de/lnk/jwBpmS02 (26MB)
+
+Installation: extract to your /opt/ directory as "root" (for write permissions):
+
+sudo tar -C /opt -xvpf opentrack_ubuntu_20_04.tar.gz
+
+Alternatively, use the archive manager of your choice to extract the contents.
+
+
+
+All the best & happy holidays!
+
+Uwe
+
+
+
+https://www.magentacloud.de/lnk/jwBpmS02
+
+https://www.benchmarksims.org/forum/showthread.php?16825-ANN-opentrack-2-0-beta-1-released!/page11
+
+---------------
+
+Using opentrack with standalone/steam DCS:
+
+https://github.com/opentrack/opentrack
+Opentrack works out of the box with libevdev joystick output, however this requires you to bind headtracking for every aircraft (and doesn't play well with Il-2 BoX or Falcon BMS).
+
+A better option is to enable wine (freetrack and npclient) output instead of joystick axis output.
+
+https://aur.archlinux.org/packages/opentrack/
+If you are building opentrack from the AUR, you can modify the PKGBUILD.
+Replace line 34 -DSDK_WINE_PREFIX=/ \ with -DSDK_WINE=ON/ \
+
+Otherwise, download the source code from the github and follow these instructions:
+https://github.com/opentrack/opentrack/wiki/Building-on-Linux
+After you cd into the directory, run ccmake ., press c to configure, turn ON SDK_WINE, c to configure and g to generate.
+
+DCS still requires HeadTracker.dll in the bin directory for opentrack to function.
+Download Eagle Dynamics API interface DLL (64-bit) from http://facetracknoir.sourceforge.net/information_links/download.htm
+
+You must open opentrack and start tracking before you launch DCS. Be sure to point the output to the correct wine/proton prefix. In addition, you'll need to launch DCS with WINEESYNC=1 or WINEFSYNC=1 if you enable those in the wine output settings.
+
+Screenshot_20201222_001754
+
+Side note: Some good news. Unlike 4.34, Falcon BMS 4.35 seems to be working great on linux.
+
+The HeadTracker.dll step is only required for DCS and not for BMS.
+
+https://github.com/ValveSoftware/Proton/issues/1722#issuecomment-749061952
+
+

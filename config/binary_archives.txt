@@ -1,0 +1,16 @@
+# Serious Games Lab - Binary Archive Manifest
+# Format: name|description|affected_days
+#
+# These archives contain binary game data (Wine prefixes, installers, ISOs, etc.)
+# distributed separately from the git repository due to their size.
+#
+# To install: place the .tar.gz file (or extracted directory) in the downloads/ folder
+# and run launcher/install_binaries.sh
+#
+sglBinaries_1.tar.gz|Core binary games for all days (Wine prefixes, installers, DOC)|MON,TUE,WED,THU,FRI,SAT,SUN
+sglBinaries_2.tar.gz|BMS 4.32 + CFL Preinstalled + Republic|SAT
+sglBinaries_3.tar.gz|rFactor advanced install (tracks and mods)|TUE
+sglBinaries_4.tar.gz|Chessmaster, WSOP, Bridge installers|WED,SUN,MON
+sglBinaries_5.tar.gz|ISOs and installers (GPL, FS9, rFactor, SDOE, NR2003, SpeedDreams)|TUE,THU,MON
+sglBinaries_6.tar.gz|BMS 4.35 core + Mideast/Israel/Balkans theaters|SAT
+sglBinaries_7.tar.gz|BMS 4.35 theaters (Somalia/Taiwan/Vietnam) + Falcon ISOs + tools|SAT

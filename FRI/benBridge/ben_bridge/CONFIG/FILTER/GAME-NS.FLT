@@ -1,0 +1,14 @@
+# BEN Bridge deal filter
+
+.version = 8.1
+.description.eng = "game going N/S hands"
+.description.deu = "N/S im Vollspielbereich"
+.description.fra = "mains de manche en N/S"
+.description.ita = "mani da manche per N/S"
+.description.dan = "udgangsstyrke på N/S-hænderne"
+.description.pol = "rêce N/S w strefie koñcówki"
+
+join = A
+search = 100
+N/S.join = A
+N/S.total = 27.*

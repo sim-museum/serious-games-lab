@@ -1,0 +1,467 @@
+❯ when mig alley is run in windows, it works fine in compatibility mode. When it's run under wine, an occluding black box partially overlaps the 3D view, oftentimes. However, with a
+two monitor setup, with the monitors both at the same resolution, the black box will often attach to the other monitor, allowing unobstructed 3D view in the main monitor. Also, with
+a very high resolution monitor, the black box may default to a small size, e.g. 1024x768, and be a minor annoyance. Looking at the original mig alley code in the repo, before you
+started porting it, can you see why this black box artifact occurs, and what might be done in the ubuntu 24.04/wine environment to prevent the box from appearing or otherwise prevent
+it from overlapping the 3D view?
+
+● I'll explore the MiG Alley code in the repository to understand the black box issue.
+
+● Explore(Explore MiG Alley codebase)
+⎿  Done (42 tool uses · 86.8k tokens · 1m 36s)
+
+● Let me look at the launch script and some key configuration files for more context.
+
+● Searched for 6 patterns, read 8 files (ctrl+o to expand)
+
+● Based on my analysis of the MiG Alley codebase, I can explain the black box artifact and suggest mitigations.
+
+Root Cause Analysis
+
+The black box you're seeing is almost certainly a DirectDraw primary surface or overlay that MiG Alley creates for its 2D UI layer. Looking at the code structure:
+
+The Technical Issue
+
+    Dual Rendering Architecture: MiG Alley (released 1999) uses a mixed rendering approach:
+        DirectDraw for 2D UI elements (menus, HUD, OCX controls)
+        Direct3D for the 3D flight simulation view
+
+    OCX Controls: The game loads 13 custom Rowan Software ActiveX controls (RTabs.ocx, RListBox.ocx, Rbutton.ocx, etc.) that create Windows HWND child windows for UI elements. Under Wine,
+    these may create unrendered or improperly composited overlay windows.
+
+    DirectDraw Surface Issue: Games from this era typically created a DirectDraw "primary surface" at a fixed resolution (often 640x480, 800x600, or 1024x768). Wine's ddraw.dll must
+    translate this to modern OpenGL/Vulkan, and the black box is likely:
+        A DirectDraw clipper region that isn't being properly hidden
+        A secondary surface meant to hold UI that Wine is rendering as opaque black
+        The "software driver" fallback surface the game creates (mentioned in readme.txt line 157)
+
+    Why Dual Monitors Help
+
+    When you have two monitors of equal resolution, Wine's DirectDraw wrapper positions the black overlay surface on the second monitor because:
+        DirectDraw exclusive mode captures one display
+        The overlay surface coordinates extend beyond the primary display bounds
+        Wine interprets the surface position literally, pushing it to monitor 2
+
+    Why High Resolution Helps
+
+    The game's maximum supported resolution is 1152x864 (per migAlley.sh line 71-72). On a 4K display:
+        The black box remains at its original size (e.g., 1024x768)
+        It occupies only a small portion of the screen
+        The 3D view renders at higher resolution, making the overlap proportionally smaller
+
+    Potential Mitigations
+
+    Wine Registry Tweaks
+
+    Try adding these to your Wine prefix's registry:
+    cd /home/g/ese/THU/MigAlley
+    export WINEPREFIX="$PWD/WP"
+    wine regedit
+
+    Add under HKEY_CURRENT_USER\Software\Wine\Direct3D:
+        DirectDrawRenderer = "opengl" (string)
+        OffscreenRenderingMode = "fbo" (string)
+
+    Add under HKEY_CURRENT_USER\Software\Wine\DirectDraw:
+        DefaultSurfaceType = "gdi" (string)
+
+    Virtual Desktop Mode
+
+    Run Wine in virtual desktop mode to contain the surface positioning:
+    wine explorer /desktop=MigAlley,1152x864 Mig.exe
+
+    This forces all Wine windows into a single virtual desktop, preventing the black box from "escaping" to other areas.
+
+    Update ddraw.dll Wrapper
+
+    The custom ddraw.dll in your install (dated Jan 5, 2025) was likely compiled to address this. Check if there's a newer dgVoodoo2 or Wine-staging version with better DirectDraw overlay
+    handling.
+
+    Disable Window Decoration (Already Done)
+
+    Your script already does this (winecfg disabling window decoration), which is correct.
+
+    Try DXWnd
+
+    DXWnd is a DirectX wrapper that can intercept and modify how DirectDraw surfaces are created, potentially preventing the black box entirely by forcing windowed mode rendering.
+
+    The black box isn't in the original MiG Alley code per se—it's an artifact of how Wine translates DirectDraw's exclusive fullscreen mode and overlay surfaces to modern Linux graphics. The
+    game code expects Windows to handle surface compositing natively, which Wine can only approximate.
+
+✻ Cooked for 3m 5s
+
+❯ what do the wine registry tweaks do?
+
+● Here's what each registry setting controls:
+
+Direct3D Settings
+
+(HKEY_CURRENT_USER\Software\Wine\Direct3D)
+
+DirectDrawRenderer = "opengl"
+
+    Forces Wine to use OpenGL (instead of GDI) for translating DirectDraw calls
+
+    DirectDraw was designed for direct framebuffer access on Windows; Wine must translate this to something modern Linux understands
+
+    OpenGL mode uses hardware acceleration and proper surface compositing
+
+    Alternative value "gdi" uses software rendering, which is slower but sometimes more compatible
+
+    OffscreenRenderingMode = "fbo"
+
+    FBO = Framebuffer Objects (an OpenGL feature)
+
+    Controls how Wine renders surfaces that aren't displayed directly on screen
+
+    With "fbo", off-screen surfaces (like the UI overlay buffer) render to GPU memory and composite properly
+
+    Alternative "backbuffer" mode can cause the exact black box artifact you're seeing because it allocates a separate backbuffer that may not composite correctly with the primary 3D surface
+
+    DirectDraw Settings
+
+    (HKEY_CURRENT_USER\Software\Wine\DirectDraw)
+
+    DefaultSurfaceType = "gdi"
+
+    Controls how DirectDraw primary/overlay surfaces are created
+
+    "gdi" mode makes DirectDraw surfaces behave like regular Windows GDI windows
+
+    This means the overlay surface gets proper window manager integration rather than trying to do exclusive fullscreen tricks
+
+    The black box likely appears because Wine's default DirectDraw surface type creates an opaque, unmanaged surface that sits on top of everything
+
+    Why These Might Help
+
+    MiG Alley creates at least two surfaces:
+        A Direct3D surface for the 3D cockpit/world view
+        A DirectDraw surface for 2D UI elements (HUD, menus, OCX controls)
+
+    The black box is likely surface #2 being rendered as an opaque black rectangle because Wine doesn't know what to fill it with, or it's being positioned/sized incorrectly. The registry
+    tweaks change how Wine allocates and composites these surfaces together.
+
+❯ how to check if there's a newer dgVoodoo2 or Wine-staging version of ddraw.dll with better DirectDraw overlay
+handling.
+
+● Checking dgVoodoo2
+
+dgVoodoo2 is a DirectX 1-11 to Direct3D 11/12 wrapper (not Wine-specific, but works under Wine).
+
+Current Version
+
+Check the official site: http://dege.freeweb.hu/dgVoodoo2/dgVoodoo2/
+Check what you currently have (if any)
+
+ls -la /home/g/ese/THU/MigAlley/WP/drive_c/rowan/mig/d3d*.dll
+ls -la /home/g/ese/THU/MigAlley/WP/drive_c/rowan/mig/ddraw.dll
+
+The latest dgVoodoo2 version is typically 2.8x. Download the zip, and you'll find:
+
+    MS/x86/DDraw.dll - DirectDraw wrapper
+    MS/x86/D3DImm.dll - Direct3D immediate mode wrapper
+
+    dgVoodooCpl.exe - Configuration tool
+
+    Installing dgVoodoo2
+    Extract to game directory
+
+    cd /home/g/ese/THU/MigAlley/WP/drive_c/rowan/mig
+    Copy the x86 (32-bit) versions since MiG Alley is 32-bit
+
+    cp /path/to/dgVoodoo2/MS/x86/DDraw.dll ./ddraw.dll
+    cp /path/to/dgVoodoo2/MS/x86/D3DImm.dll ./d3dimm.dll
+
+    Run dgVoodooCpl.exe under Wine to configure it - you can disable the dgVoodoo watermark and tweak overlay behavior.
+
+    Checking Wine-Staging ddraw.dll
+
+    Your Current Wine Version
+
+    wine --version
+
+    Check Wine-Staging Availability
+    Ubuntu 24.04
+
+    apt search wine-staging
+    apt policy wine-staging
+
+    Wine-Staging ddraw.dll Location
+
+    If Wine-staging is installed, its ddraw.dll lives at:
+    ls -la /usr/lib/i386-linux-gnu/wine/ddraw.dll.so
+    or
+
+    ls -la /opt/wine-staging/lib/wine/i386-unix/ddraw.dll.so
+
+    Compare Versions
+    Check your custom ddraw.dll date
+
+    ls -la /home/g/ese/THU/MigAlley/WP/drive_c/rowan/mig/ddraw.dll
+    Check system Wine's ddraw
+
+    ls -la /usr/lib/i386-linux-gnu/wine/ddraw.dll.so
+
+    Your current ddraw.dll (606KB, Jan 5 2025) appears to be a custom Wine-built DLL already. To test with the system default:
+    Backup current
+
+    mv /home/g/ese/THU/MigAlley/WP/drive_c/rowan/mig/ddraw.dll \
+    /home/g/ese/THU/MigAlley/WP/drive_c/rowan/mig/ddraw.dll.backup
+    Wine will now use system ddraw.dll.so instead
+
+    Checking for Updates
+
+    dgVoodoo2 Changelog
+
+    The developer posts updates at:
+    http://dege.freeweb.hu/dgVoodoo2/dgVoodoo2/
+
+    Vogons forum: https://www.vogons.org/viewtopic.php?f=59&t=47089
+
+    Wine Staging Changelog
+    Check Wine bug tracker for ddraw fixes
+    https://bugs.winehq.org - search "ddraw overlay"
+    Or check git log
+
+    git clone https://github.com/wine-mirror/wine.git
+    cd wine
+    git log --oneline dlls/ddraw/ | head -30
+
+    Quick Test Matrix
+    ┌───────────────────┬───────────────────────────────────────────┐
+    │ Configuration │ How to Test │
+    ├───────────────────┼───────────────────────────────────────────┤
+    │ System Wine ddraw │ Remove custom ddraw.dll from game folder │
+    ├───────────────────┼───────────────────────────────────────────┤
+    │ dgVoodoo2 │ Copy dgVoodoo2's DDraw.dll to game folder │
+    ├───────────────────┼───────────────────────────────────────────┤
+    │ Your current │ Keep existing ddraw.dll (Jan 2025 build) │
+    ├───────────────────┼───────────────────────────────────────────┤
+    │ DXVK + WineD3D │ Set WINEDLLOVERRIDES="ddraw=n,b" │
+    └───────────────────┴───────────────────────────────────────────┘
+    Test each to see which produces the least black box interference.
+
+❯ mig alley runs with older versions of wine under lutris, such as lutris-4.21-x86-64, it doesn't run well with wine 9.0, the default under ubuntu 24.04. Using virtual desktop usually
+prevents the black box from appearing, but it also prevents some or all icons on the 2D campaign management screen from appearing. Does this shed light on the issue?
+
+● Yes, this is very revealing. The symptoms point to a specific issue with how Wine handles DirectDraw clipper regions and child window positioning.
+
+What This Tells Us
+
+The OCX/Child Window Theory Confirmed
+
+The campaign management screen uses those Rowan OCX controls (RTabs.ocx, RListBox.ocx, etc.) which create Win32 child windows (HWNDs). Here's what's happening:
+┌────────────────────────┬───────────┬────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Mode │ Black Box │ Campaign Icons │ Why │
+├────────────────────────┼───────────┼────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Fullscreen (Wine 9.0) │ Appears │ Work │ Child windows positioned relative to screen origin (0,0) │
+├────────────────────────┼───────────┼────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Virtual Desktop │ Gone │ Broken │ Child windows positioned relative to screen origin, but now clipped by virtual desktop bounds │
+├────────────────────────┼───────────┼────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Fullscreen (Wine 4.21) │ Less/None │ Work │ Older DirectDraw implementation handled clipper regions differently │
+└────────────────────────┴───────────┴────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────┘
+The Root Cause
+
+MiG Alley likely does something like this:
+
+    Creates a DirectDraw primary surface in exclusive fullscreen mode
+
+    Creates a DirectDraw clipper attached to the main window
+
+    Creates child windows (OCX controls) for 2D UI elements
+
+    The clipper is supposed to define which regions of the primary surface are visible vs. obscured by child windows
+
+    Wine 9.0's problem: The clipper region or the child window z-ordering isn't being handled correctly, so:
+        The "clipped" region renders as black instead of being transparent/hidden
+        In virtual desktop mode, child window coordinates are still calculated relative to absolute screen position (0,0) rather than the virtual desktop origin, so they appear off-screen or
+        clipped
+
+    Why Older Wine Works Better
+
+    Wine 4.21 (circa 2019) used a different DirectDraw implementation that:
+        Handled exclusive fullscreen mode more like Windows 98/XP did
+        Had different (more permissive) child window coordinate handling
+        Used an older wined3d backend with different surface compositing logic
+
+    Between Wine 4.x and 9.x, the DirectDraw code was significantly refactored for "correctness" which broke compatibility with games that relied on quirky legacy behavior.
+
+    Potential Solutions
+
+    Use the Older Wine Runner
+
+    Since lutris-4.21 works, you could extract its ddraw.dll.so and use it:
+    Find lutris wine location
+
+    ls ~/.local/share/lutris/runners/wine/lutris-4.21-x86_64/lib/wine/
+    Copy the 32-bit ddraw
+
+    cp ~/.local/share/lutris/runners/wine/lutris-4.21-x86_64/lib/wine/i386-windows/ddraw.dll \
+    /home/g/ese/THU/MigAlley/WP/drive_c/rowan/mig/
+
+    Force Wine to Use Older Code Paths
+
+    Add to your launch script before wine Mig.exe:
+    export WINEDLLOVERRIDES="ddraw=n,b" # native then builtin
+    export STAGING_SHARED_MEMORY=0
+    export __GL_THREADED_OPTIMIZATIONS=0
+
+    Try Wine's "Desktop Window" Hack
+
+    Instead of virtual desktop, try:
+    In winecfg, Graphics tab:
+    - Enable "Emulate a virtual desktop"
+    - BUT set resolution to match your actual monitor exactly
+    This sometimes preserves child window positioning while containing surfaces
+
+    Patch the OCX Registration
+
+    The child windows might be using WS_POPUP style instead of WS_CHILD, causing them to position relative to screen rather than parent. You could try re-registering the OCX controls:
+
+    cd /home/g/ese/THU/MigAlley/WP/drive_c/rowan/mig
+    wine regsvr32 /u RTabs.ocx
+    wine regsvr32 RTabs.ocx
+    Repeat for other .ocx files
+
+    Use Lutris Wine as Primary Runner
+
+    Modify migAlley.sh to use the Lutris Wine instead of system Wine:
+
+    export WINE=~/.local/share/lutris/runners/wine/lutris-4.21-x86_64/bin/wine
+    $WINE Mig.exe
+
+    The fact that virtual desktop mode affects both the black box AND the campaign icons strongly suggests they're both symptoms of the same underlying issue: Wine 9.0's DirectDraw child
+    window/clipper handling doesn't match what MiG Alley expects from Windows 98/XP era DirectDraw.
+
+✻ Baked for 38s
+
+❯ how can I tell what the other .ocx files are, vis. your statement: cd /home/g/ese/THU/MigAlley/WP/drive_c/rowan/mig
+
+wine regsvr32 /u RTabs.ocx                                                                                                                                                                
+
+wine regsvr32 RTabs.ocx                                                                                                                                                                   
+
+# Repeat for other .ocx files                                                                                                                                                             
+
+● From my earlier search, here are all the OCX files in the MiG Alley directory:
+
+Rbutton.ocx - Button control
+RCombo.ocx - Combo box (dropdown) control
+Redit.ocx - Text edit control
+REdtBt.ocx - Edit button control
+RJoyCfg.ocx - Joystick configuration control
+RListBox.ocx - List box control
+RRadio.ocx - Radio button control
+Rscrlbar.ocx - Scrollbar control
+RSpinBut.ocx - Spinner button control
+RSpltBar.ocx - Splitter bar control
+RStatic.ocx - Static text/label control
+RTabs.ocx - Tabbed dialog control
+RTickBox.ocx - Checkbox/tickbox control
+
+To list them yourself:
+
+ls /home/g/ese/THU/MigAlley/WP/drive_c/rowan/mig/*.ocx
+
+To re-register all of them in one go:
+
+cd /home/g/ese/THU/MigAlley/WP/drive_c/rowan/mig
+export WINEPREFIX="$PWD/../../.."
+export WINEARCH=win32
+
+for ocx in *.ocx; do
+echo "Re-registering $ocx..."
+wine regsvr32 /u "$ocx" 2>/dev/null
+wine regsvr32 "$ocx"
+done
+
+These are all custom Rowan Software controls (dated April 2000) that implement the 2D UI elements - the campaign map icons, mission selection tabs, pilot roster lists, etc. The missing
+icons in virtual desktop mode are likely rendered by one of RTabs.ocx, RListBox.ocx, or Rbutton.ocx.
+
+how to get mig alley to run in the highest resolution possible? In some configurations, it repeatedly runs in 1440x900
+
+● MiG Alley's resolution is controlled in a few places:
+
+    The settings.mig File
+
+    This binary file stores your graphics preferences:
+
+    ls -la /home/g/ese/THU/MigAlley/WP/drive_c/rowan/mig/SaveGame/settings.mig
+
+    Deleting it forces the game to re-detect available resolutions:
+
+    rm /home/g/ese/THU/MigAlley/WP/drive_c/rowan/mig/SaveGame/settings.mig
+
+    In-Game Preferences
+
+    The original game maxed out at 1152x864, but the BDG 0.85F patch added higher resolution support. From the main menu:
+
+    Select PREFERENCES
+
+    Look for the resolution dropdown
+
+    Select the highest available option
+
+    Force Resolution via Wine
+
+    The game queries DirectDraw for available display modes. You can control what Wine reports:
+    Check current Wine display settings
+
+    cd /home/g/ese/THU/MigAlley
+    export WINEPREFIX="$PWD/WP"
+    export WINEARCH=win32
+    winecfg
+
+    In Graphics tab, if "Emulate a virtual desktop" is checked, the resolution there limits what the game sees.
+
+    Check What Resolutions DirectDraw Reports
+
+    Create a test to see what modes Wine is advertising:
+
+    cd /home/g/ese/THU/MigAlley
+    export WINEPREFIX="$PWD/WP"
+    export WINEARCH=win32
+    WINEDEBUG=+ddraw wine Mig.exe 2>&1 | grep -i "mode|resolution|display"
+
+    Override Display Modes via Registry
+
+    Add custom resolutions to Wine's DirectDraw:
+
+    wine regedit
+
+    Navigate to HKEY_CURRENT_USER\Software\Wine\Explorer\Desktops and add string values for resolutions you want available.
+
+    Or via command line:
+
+    wine reg add "HKEY_CURRENT_USER\Software\Wine\Explorer" /v "Desktop" /t REG_SZ /d "1920x1080" /f
+
+    The 1440x900 Issue
+
+    This specific resolution suggests Wine is detecting your monitor's native resolution (or a scaled version). The game may be locking to it because:
+        settings.mig has it cached
+        Wine's DirectDraw is only reporting modes matching your display's aspect ratio (16:10)
+        The game is running in windowed/borderless mode rather than true fullscreen
+
+    Try forcing a specific resolution in the launch script:
+    Add to migAlley.sh before wine Mig.exe
+
+    export WINE_FULLSCREEN_INTEGER_SCALING=1
+    wine explorer /desktop=MigAlley,1920x1080 Mig.exe
+
+    Check Your Monitor's Reported Modes
+
+    xrandr | grep -w connected -A 20
+
+    This shows what resolutions your system supports. MiG Alley's DirectDraw wrapper can only offer modes that exist here (unless virtual desktop is used).
+
+    Summary
+
+    To get maximum resolution:
+
+    Delete SaveGame/settings.mig
+
+    Disable virtual desktop in winecfg (or set it to your max resolution)
+
+    Launch game, go to PREFERENCES, select highest resolution
+
+    If limited options appear, check xrandr output and Wine's DirectDraw debug log
+

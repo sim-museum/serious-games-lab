@@ -1,0 +1,34 @@
+Note: For our purposes we can think of the BMS 4 sims as newer and more complicated versions of Free Falcon.  
+Most youtube training videos are for the BMS 4 versions, but these sims are so similar to Free Falcon that 
+the videos work as Free Falcon training also.
+
+Note: The BMS versions run under linux/wine, but require purchase of the original Falcon 4 game.  See 
+"Comparing Free Falcon vs BMS.pdf" in SAT/DOC for details.
+
+Falcon BMS 4.32 - Install to Combat Ready in 1 Hour (Tutorial)
+https://www.youtube.com/watch?v=uU3pmXvnc0k
+
+F16 FALCON BMS vs FREE FALCON 5.5.5 HD
+https://www.youtube.com/watch?v=Xzdh_h7OvAU
+
+Collection of BMS 4.32 tutorials
+https://www.youtube.com/watch?v=LiUYrtpW7ww&list=PL3E09AA94FF0EACEC
+
+Weapon Delivery Planner utility for BMS
+http://www.weapondeliveryplanner.nl/movies/index.html
+
+Falcon BMS 4.33U3 - Install to Combat Ready (Redux)
+https://www.youtube.com/watch?v=n5ffdfPpHBk
+
+FALCON BMS 4.34 TUTORIAL - NAVIGATION
+https://www.youtube.com/watch?v=Rcj85h1hBtI
+
+F16 Cockpit orientation
+https://www.youtube.com/watch?v=ojj_IRQ-aLE&feature=youtu.be&bx_sender_conversion_id=18274549&utm_source=newsletter&utm_medium=mail&utm_campaign=weekend_news
+
+air to air refueling
+https://www.youtube.com/watch?v=5Ekj7DxP0pg&list=PL3E09AA94FF0EACEC&index=22
+
+data link
+https://www.youtube.com/watch?v=XWyvJ99L2k4&list=PL3E09AA94FF0EACEC&index=5
+
