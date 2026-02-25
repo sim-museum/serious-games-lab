@@ -1,0 +1,101 @@
+GPLPS Track Installer for F1 1965 season
+
+This installer will install the missing tracks Clermont-Ferrand 65,
+East London and Charade Clermont-Ferrand (For GPL Rank 65 V1). Also it
+includes Goodwood, Syracuse, Enna, Brands Hatch and Killarne. All
+credits belong to the original track developers.
+
+Status: beta
+
+Link: http://gem.grandprixlegends.info/GPL65ModTracks_0.5.exe
+
+Setup type: Normal GPL trackpack installation
+
+Selected components: GPL Tracks Addon for GPL 1965 0.5 East London by
+      Jonathan Merry Clermont-Ferrand 1965 by GPLEA Charade
+      Clermont-Ferrand 1970 by Gilles Sauthon Standard Version Brands
+      Hatch 67 fixed by Ginetto and friends Standard Edition by
+      Ginetto and friends Cape South Easter Grand Prix Killarney Gran
+      Premio di Siracusa Goodwood Motor Circuit Gran Premio del
+      Mediterraneo Updates for Tracks East London Updates East London
+      Addon by Balue (Tom Clark) Clermont-Ferrand Updates Bridge fix
+      (by Jumi I believe?)  Fix for the AI made by Jaques Bossy FPS
+      fix (reduced drawing distace) by Ginetto Charade
+      Clermont-Ferrand 1970 Updates 16 Bit Addon by Kenny Cape South
+      Easter Grand Prix Killarney Updates Bridge by G.Spinning Gran
+      Premio di Siracusa Updates nes High 3DO Replays for Tracks
+      Repository
+
+
+This installer basically installs a complete GPL 1965 F1 Mod Version
+2.0.2. To allow a one-click installation this installer is a merged
+installation of the original GPL 1965 F1 Mod Version 2.0.1, the high
+res version of the Lotus 33 and the later published Version
+2.0.2. Additional the recommended steering wheel fix from MECH is
+included as well. You will find the 65mod raised add-on from MECH in
+the repository\GPL65\MECH folder as well as an option in the
+Select Components. You have the choice to
+select the original, full installation, a customized, a historic ride
+height or a historic ride height with 2D helmets. Theres
+still some interesting debate as to the ride height of the original
+mod or the changed one from MECH is the right one. Due to the zillion
+options Ill leave that to you and so I have limited the
+options to basically 2 when you want to use the ride height fix from
+MECH.  Just to add that the ride height fix from MECH is included as
+well as an AI XML option for GEM+ which is kindly provided by maddog!
+
+Credits
+
+GPL65 and all its parts is a team effort of the following people.
+Special Thanks go to Brian Wong for being the first race list host
+
+Team 1965 F1 version 1.1 Programming Christoph Frick, Martin Granberg,
+Paul Thurston, Phil Flack, Tom de Muer Models David Wright, Gary Tall,
+Gustavo Olivera, Steffen Weitzdoerfer Textures Bill Guillaume, David
+Wright, Doug Hardy, Gary Tall, Gustavo Olivera, John Franson, Rolf
+Farrell, Sam Dobie, Steffen Weitzdoerfer Physics Arturo Pereira, Bill
+Guillaume, Dan Archey, David Wright, Gene Fryman, George Smiley, John
+W King, Paul Moss, Paul Thurston, Phil Flack, Richard Cooke, Roland
+Ehnstrom, Steffen Weitzdoerfer, Tom de Muer Sounds Sam Dobie Layouts
+Bill Guillaume, David Wright, Doug Hardy, John Basara, John Bradley
+Movies Jason Woods, Kevin Clark Historical Research Arturo Pereira,
+Bill Guillaume, Bob Berman, Dan Archey, David Wright, Doug Nye, Gary
+Tall, Gene Fryman, John Basara, John W King, Nils Ruwisch, Paul Moss,
+Paul Thurston, Phil Flack, Richard Cooke, Rolf Farrell, Steffen
+Weitzdoerfer Testing Alejandro Mira, Arturo Pereira, Bill Guillaume,
+Bob Berman, Charles Fox, Christoph Frick, Claudio Navonne, Damian
+Baldi, Dan Archey, Dave Butters, David Wright, Doug Hardy, Ed Hut,
+Eddie Urbanski, Gary Simpson, Gary Tall, Gene Fryman, Geordie Pugh,
+Greg Stewart, Gustavo Olivera, Jason Woods, Jeff Duncan, Jim Pearson,
+John Basara, John Roberts, John W King, Kevin Clark, Malcolm Edeson,
+Mark Beckman, Martin Pitts  Smogbike, Mick Brown, Mike
+Taylor, Nev Roberts, Owain Shaw, Paul Cogan, Paul Jackson, Paul Moss,
+Paul Smith, Paul Thurston, Paul Villiers, Pete Gaimari, Phil Flack,
+Pierre Dietze aka Tormentor, Pierre Robitaille, Richard Bellavance,
+Richard Cooke, Robert Gravel, Roland Ehnstrom, Rolf Farrell, Sam
+Dobie, Steffen Weitzdoerfer, Steven Davis, Svend Seegert, Tim Stelten,
+Tom de Muer, Tom Johnson General Support Alan Dickeson, Alison Hine,
+Andy Evans, Arturo Pereira, Bart Westra, Bill Guillaume, Bob Berman,
+Brian Wong, Christoph Frick, Damian Baldi, Dan Archey, Dave Gymer,
+David Wright, Doug Hardy, Ed Hut, Gary Simpson, Gary Tall, Gene
+Fryman, George Smiley, Greg Stewart, Gustavo Olivera, Jason Woods,
+Jeff Duncan, Jeff Robbins, John Basara, John Roberts, John W King,
+Karsten Borchers, Kevin Clark, Magnus Thome, Martin Granberg, Martin
+Pitts  Smogbike, Nev Roberts, Nils Ruwisch, Owain Shaw,
+Paul Jackson, Paul Moss, Paul Smith, Paul Thurston, Paul Villiers,
+Pete Gaimari, Phil Flack, Phil Lee, Rafael Garcia, Richard Cooke,
+Roland Ehnstrom, Rolf Farrell, Rory Gibson, Sam Dobie, Steffen
+Weitzdoerfer, Svend Seegert, Tim Stelten, Tim Wheatley, Todd 'norbs'
+Norbury, Tom de Muer
+
+Team 1965 F1 version 2.0.1 Richard DeLong, Sam Dobie, Rolf Farrell,
+Bill Guillaume, Doug Hardy, Gustavo Olivera, Gary Tall, Neil Vaughn,
+Rémy, Steffen Weitzdoerfer, David Wright, Björn Team
+screens based on FantAsys screens
+
+Team 1965 F1 version 2.0.2 Nigel Pattinson, Richard Cooke, Paul
+Skingley Beta testers Robert Hunter, Remy Roesz, John Roberts, Paul
+Skingley, GPLRACER League And also big thanks go to the following guys
+which had helped a lot: MECH for the steering wheel fix as well as for
+the ride height option Ducwolf for his sounds Tifos for his sounds
+

@@ -1,0 +1,33 @@
+#!/bin/bash
+[[ -d "$HOME/.local/share/flightgear/bin" ]] && export PATH="$HOME/.local/share/flightgear/bin:$PATH"
+
+# learn cockpit instruments, practice takeoff and landing in a P-51D Mustang
+
+if ! command -v fgfs &>/dev/null; then
+	echo "The FlightGear open source flight simulator is not installed."
+	echo "Run: ./scripts/setup_flightgear.sh"
+	exit 1
+fi
+
+
+# Find the fgaddon aircraft directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FGADDON_DIR="$(ls -d "$SCRIPT_DIR"/Aircraft/org.flightgear.fgaddon.* "$HOME/.fgfs/Aircraft/org.flightgear.fgaddon.*" 2>/dev/null | head -1)"
+
+if [ -z "$FGADDON_DIR" ]; then
+	bash "$SCRIPT_DIR/installFlightgear.sh"
+	exit 1
+fi
+
+
+# set the aircraft to bf106g
+# set time to noon on June 1, 2020 at the user's location
+
+echo " "; echo "For landing help select View/Toggle Glide Slope Tunnel"; echo " ";
+echo "study the cockpit instruments and practice take off and landing."
+echo " "
+echo "To unpause the simulation, press p"
+echo " "
+
+fgfs --start-date-sys=2020:06:01:12:00:00 --aircraft=p51d-jsbsim --fg-aircraft=$FGADDON_DIR/Aircraft --in-air --altitude=10000 --vc=200 --enable-freeze 2>/dev/null 1>/dev/null
+

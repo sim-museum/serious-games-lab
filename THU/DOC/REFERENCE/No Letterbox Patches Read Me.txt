@@ -1,0 +1,5 @@
+These two patches remove the black bar from either the top or top and bottom of the display screen.  This modifieds the normal letterbox view.
+
+v3 removes both black bars from the player cockpit view and the upper black bar from the replay view.
+
+v4 removes both black bars from the player cockpit and the replay views.

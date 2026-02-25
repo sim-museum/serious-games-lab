@@ -1,0 +1,1 @@
+This small booklet contains the results of my tests of the AI speed and how to best control them.  Also included are new driver.ini files for the 1965 mod, 1967 original .exe, and the 1969 mod.

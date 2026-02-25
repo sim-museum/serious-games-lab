@@ -1,0 +1,59 @@
+
+Riverside International Raceway 1966 ver. 1.0 for GPLegends CanAm66
+MOD
+
+Made by Ginetto.
+
+Track Location: Riverside - California, USA Track Type : Race Track
+Track elevation: 490 m. above sea level Track Length : 5.271 km.-
+3.275 mil.  Track Num. Turns : 9 Track Year : 1966
+
+Track Editor : Ginetto
+
+--------------------------------------
+
+Historical Note:
+
+The road course opened on September 21st, 1957, and operated until
+1988. The dragstrip operated from 1959 through 1970, and from 1983
+through 1986.  All time statistics tracks fatal casualties all over
+the world shows Riverside road course on the podium, just after
+Nürburgring and Brands Hatch.  Now the track is gone for good; you
+can see some pictures from 2001 of what remain back then here:
+http://www.tamsoldracecarsite.net/RiversideToday.html
+
+-------------------------------------- Credits :
+
+Textures and Horizon: Remy Roesz.
+
+3DO cars: Gaus.
+
+3DO motorhomes: Stefano Zampedri.
+
+Historic research and Pictures: Pavel.
+
+Beta testing: all the CanAm MOD team.
+
+Hosting the private forum: the GPL Repository.
+
+Hosting the track: the SimRacing MirrorZone.
+--------------------------------------
+
+Special thanks to:
+
+All the community for giving me the right support for making this
+happens!
+
+All the special guys that developed the tools for editing every GPL
+related thing!
+
+The notorious Papyrus for giving me lots of fun!
+
+--------------------------------------
+
+Enjoy, Yours GINETTO
+
+============================
+
+Bergamo Italy, 13 Dec 2015
+

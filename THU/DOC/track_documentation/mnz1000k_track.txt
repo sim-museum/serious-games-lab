@@ -1,0 +1,69 @@
+
+1000 Chilometri di Monza trofeo Caracciolo - Monza - Italia ver. 1.0
+for GPLegends GT MOD
+
+Made by Ginetto and John Basara.
+
+Track Location: Monza - ITA Track Type : Race Track Track Length :
+10.078 km.- 6.26 mil.  Track Num. Turns : 11 Track Year : 1967
+
+Track Editor : Ginetto and John Basara
+
+--------------------------------------
+
+INFOS:
+
+This track is a rework of John Basara's Monza 10km. I've added the 2
+chicanes before the bankings that were created in 1967 for safety
+purposes.  The major part of textures and 3DO objects are from GPL
+track Monza 10km, all credits to the original authors.  I did tweak
+some textures and create some 3dos to represent the 1967 Sports Car
+Race.  I also tried to make it a little less heavy for the system,
+especially with the Sports car MOD that is very heavy by itself.
+
+You find 3 .jpg files for GEM+: mnz1000k-GT.jpg : the GT version
+(default) mnz1000k-F1.jpg : F1 version mnz1000k.jpg : the one which is
+actually used by GEM+, rename to this whatever you like of the above
+
+
+The track is a mandatory addon if you want to do the championship with
+the SportCar MOD.
+ 
+--------------------------------------
+
+Thanks to :
+
+John Basara Ray Geering Anders Vähäkuopus for the amazing work
+on Monza 10 km. track, really a masterpiece!
+
+The GT MOD team for testing.
+
+John Bradley for the wonderful Program Cover.
+
+Stefano Zampedri for billboard mips and 3do.
+
+The GPL Repository for hosting the private forum.
+
+The SimRacingMirrorZone for hosting the track.
+
+--------------------------------------
+
+Special Thanks:
+
+Phil Flack Paul Jackson Svend Seegert
+
+All the community for giving us the right support for doing this!
+
+All the special guys that developed the tools for editing every GPL
+related thing!
+
+The notorious Papyrus for giving me lots of fun!
+
+--------------------------------------
+
+Enjoy,
+
+yours GINETTO ============================
+
+Italy, 22 Oct 2010
+

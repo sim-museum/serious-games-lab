@@ -1,0 +1,409 @@
+
+Setup type: Complete 1966 F1 Mod Installation
+
+Selected components: GPL F1 1966 Mod 1.0 Mono GPL F1 1966 Mod Sounds
+      1.0
+
+1966mod_readme
+
+1966 mod for Grand Prix Legends
+
+Before installing 1966 mod, first install Gem+ 2.5.8 and new iGor for
+online racing. http://gem.ebi-service.de/
+
+Requires a full version of Grand prix Legends version 1.2.0.2 You can
+use the GPL 2004 Demo, a self patched GPL with the 1.2.0.2 patch, the
+latest All-In-One patch, or the GPLPS Installer.
+
+
+If you do not have them already, we recommend you install these add-on
+tracks used in the 1966 Championship and Non-Championship races from
+the GPL Track Data Base http://gpltd.bcsims.com/ or by following the
+links provided.
+
+East London http://gplmz.bcsims.net/tracks/eastlndn_GPL.zip
+
+Syracuse http://home.arcor.de/pierre.dietze/pierre.dietze/syracuse.htm
+
+Reims ( reims 1967 ) http://gpltd.bcsims.com/tracks/reims_gpl.zip
+
+Brands Hatch ( brands67 )
+http://dixierunners.speedgeezers.net/brands1967/
+
+Oulton Park ( Oulton Park 1967 )
+http://www.zenadsl5531.zen.co.uk/Tracks/Oulton/
+
+Monza10k http://www.dixierunners.speedgeezers.net/monza10k/
+
+By default "66SEASON" will be selected for the 66mod which is why we
+recommend you install the add-on tracks listed.
+
+
+
+Installing the 1966 mod : Run the installer. When prompted by the
+installer check the path to your GPL installation is correct.
+
+Create a player in GPL for 1966. Exit GPL
+
+Start Gem+ 2.5.8 Click on the Carsets button to open the "Select and
+Modify Carsets" box.  Move 1966 Grand Prix into the "active" ( right
+hand ) column Click on 1966 Grand Prix and check " GPL66 " is selected
+in the physics box.  Click "ok " to close the "Select and Modify
+Carsets" box.  Select your 1966 player from the player drop down.
+Select "1966 Grand Prix (GPL66)" for your player.  Finally, click on
+the green GPL button to launch 1966 mod and build a new "gplc66.exe
+
+
+The 1966 Season.  Hailed as the "return to power" the 1966 season saw
+the start of the new 3 litre formula.  Some teams were more ready than
+others and as a consequence a wide variety of engines and chassis were
+used ranging from Ferrari's new purpose built 3 litre V12 ( 312 ) to
+modified 65 season engines which were bored out to 2 litres.  There
+were also various 4 cylinder Climax engines plus a 2.4 litre V6 ( 246
+) Ferrari based on the "Dino" engine.
+
+Brabham : Jack Brabham's "Brabham Racing Organisation" had
+commissioned "Repco" to build a 3 litre V8 loosely based on a alloy
+Buick engine. Mounted in the new light and nimble BT19 chassis the
+combination would go on to win the 1966 World Championship.  Although
+not the most powerful in the field it proved to be a most reliable
+contender. A later BT20 fitted with the same engine was campaigned by
+Brabham's team mate Denny Hulme.  Team Brabham also ran a BT11 chassis
+fitted with a 2.5 lt 4 cylinder Climax engine for Hulme in the first
+few races of the 1966 season.  "DW Racing Enterprises" ran a similar
+but privately entered BT11 powered by a longer stroke 2.7 lt 4
+cylinder Climax engine in the hands of their driver Bob Anderson.  A
+third BT11 chassis was also campaigned by David Bridges Racing and Rob
+Walker teams. This car was powered by a high revving BRM 2 litre V8.
+
+BRM : The "Owen Racing Organisation" otherwise know as BRM was one of
+the teams caught on the hop.  Tony Rudd who was the chief designer at
+BRM made the fateful decision to build the complex "H16"
+engine. Although the engine promised an abundance of power the reality
+was that the engine's weight negated any power advantage. Besides this
+it took longer than expected to build and develop which meant the team
+starting the season with last years V8 engines modified and bored out
+to just under 2 litres.  When the H16 finally did arrive it was mated
+to the new P83 chassis. In the mean time the older P261 chassis was
+used in conjunction with the 2 litre v8.  The P261 in the hands of
+Jackie Stewart won the Monaco Grand Prix while Graham Hill was placed
+2nd at the Dutch Grand Prix and 3rd at the British Grand Prix but from
+then on good results were thin on the ground.  Another P261 also with
+the 2 litre V8 was privately entered by "Team Chamaco Collect" and
+mostly driven by Bob Bondurant.
+
+Cooper : The "Cooper Car Company" had recently been taken over by the
+Chipstead Group who were also the UK distributors for Maserati.
+Although the Maserati engine had its origins in the 50's, politics
+dictated that the team would use the Tipo 9 2.5 litre V12 which was
+bored out to 3 litres and fitted to the new T81 chassis.  As well as
+running the works cars driven by Rindt and Ginther ( the later on loan
+from Honda ), Cooper also supplied cars to privateers Rob Walker
+Racing, Guy Ligier and Jo Bonnier teams.  Later in the season John
+Surtees joined the team after leaving Ferrari. There is no doubt that
+Surtees's influence in developing the car greatly improved its
+capabilities and this culminated with Surtees winning the last race of
+the year at Mexico City.
+
+Anglo American Racers : The Eagle T1G designed by Len Terry for Dan
+Gurney's "Anglo American Racers" started the 1966 season powered by a
+2.7 litre 4 cylinder Climax engine with which Gurney had some success,
+being placed 5th at the French and Mexican Grand Prix and a 7th at the
+German Grand Prix.  The Climax engine was always intended as a stop
+gap because Gurney has commissioned Harry Weslake to build him a brand
+new 3 litre V12 engine. The Weslake V12 eventually arrived late in the
+season to make an appearance at Monza and Watkins Glen but reliability
+issues meant Gurney running the last race of the season with the
+sturdy and reliable Climax unit.
+
+Ferrari : While other teams were arguing with the governing bodies and
+trying to get the 3 litre formula changed to 2.5 litres, Ferrari just
+got on with it and produced an all new 3 litre V12 to be known as the
+312.  John Surtees was Ferrari's top driver and was given the car to
+start the season. Lorenzo Bandini had to make do with a 2.6 litre V6
+based on the "Dino" mounted in last years chassis to start the
+season. But despite this Bandini almost won the Monaco Grand Prix but
+had to retire with throttle linkage problems.  In the next race at
+Spa-Francorchamps the 312 and John Surtees was unbeatable. Mike Parkes
+driving the second 312 scored a creditable 2nd at the French Grand
+Prix. Unfortunately Surtees and Ferrari parted company before the
+French Grand Prix but the 312 went on to dominate the Grand Prix of
+Italy at Monza coming home 1st and 2nd in the hands of Scarfiotti and
+Parkes.
+
+Lotus : Colin Chapman's "Team Lotus" was another team without a 3
+litre engine so they were forced to use last year's Climax V8 modified
+and bored out to 2 litres. This was fitted into the Lotus 33 chassis
+also from the 1965 season.  Eventually a deal was done with BRM to use
+the H16 engine which was fitted into the all new Lotus 43 chassis but
+unfortunately the Lotus Team suffered the same fate as BRM with this
+complex and overweight engine which rarely finished a race.  One
+exception to this was the United States Grand Prix at Watkins Glen
+where Jim Clark who was Chapman's number one driver managed to hold
+the car together long enough to cross the line in first place giving
+the H16 its only win in 1966.  Lotus also supplied cars to privateer
+"Reg Parnell Racing" who entered a Lotus 33 chassis powered by a BRM 2
+litre V8 and driven by Mike Spence.
+
+Honda : The 3 litre V12 car known as the Honda RA273 arrived late in
+the season to make its debut at Monza where it qualified well being
+just over a second off pole. Unfortunately Richie Ginther crashed the
+car and did not finish the race.  In the next race at Watkins Glen the
+car was once more on the pace, this time less than one second off
+pole, but again it did not finish.  The last race of the season saw
+the RA273 less than half a second off the pace and 4th on the grid. At
+the start it blasted into the lead with phenomenal acceleration. But
+tyre troubles later in the race would see it slip down the leader
+board eventually finishing one lap down.
+
+Mclaren : Bruce Mclaren had served his apprenticeship with Brabham and
+Cooper. For 1966 he decided he wanted to build his own cars and thus
+was founded one of the most well known names in racing to this day.
+The Mclaren for 1966 was the M2B designed by Robin Herd and powered by
+an Indy Car based Ford V8 of 3 litres. As the season progressed
+Mclaren would try out the Serenissima V8 but returned to the Ford V8
+which gave him most success including a 6th place in the British Grand
+Prix and a 5th at Watkins Glen.
+
+
+The 1966 mod.  All of the 16 different chassis engine combinations
+mentioned above are available for the user to drive in the 66mod. Each
+with its own individual physics and characteristics and accurately
+portrayed 3D car models. The cars can be driven online against real
+opponents or against a line up of historically accurate AI which use
+the cars and car numbers used in the real 1966 season races.  Because
+the AI is different for every championship race, the "team Info"
+screen can now be accessed from the race weekend page.
+
+
+Physics : The 66 mod team have spent the last 2 years developing
+physics produced by Richard Cooke which include new code features from
+Nigel Pattinson and Gene Fryman. We have striven to bring you as
+accurate a representation of the 1966 Grand Prix Season as possible.
+New features include high speed body lift and enhanced slipstreaming
+code as well as new tyre models for 1966. There have also been many
+advances in AI performance giving the off-line user a realistic and
+challenging experience.
+
+Options : When scrolling through the "Player Info" screens you will
+see some car pics with two different cars depicted. This means there
+is a choice of graphics for that car which can be selected in game by
+clicking the GRAPHICS drop down.  As well as the "in game" graphic
+options there are others which have to be selected manually from the
+car folders in gpl/cars66.  There you will find player options to
+drive different cars eg. in folder "c07" you will find options to
+drive the "Team Chamaco Collect" cars by copying the contents of the
+desired folder into the c07 folder. Check the rest of the car folders
+to look for other player options to drive.  Each car folder also
+contains 2D wheel options and 2D helmet options. These are activated
+by copying the contents of the option folder into the car folder.
+
+Mono sounds are shipped as Standard. In the sounds folder you will
+find a folder named "66 stereo soundpack" which contains Stereo
+versions of the 66 sounds which can be used by copying into the sounds
+folder.
+
+Other Features : When using 66mod, Seasons can hold up to 1024 tracks
+( instead of 64 ) and every lap time you set will be stored and
+displayed in your best laps screen. We hope to extend this feature to
+all mods and 67 in the near future.
+
+Engines now run unevenly at low RPM which is more realistic for a 60's
+racing engine. The engines start to run cleanly at different RPM
+depending on the engine. For example the BRM H16 will run unevenly up
+to 6000 RPM or so and then run cleanly as it reaches it's working rev
+range.
+
+
+
+Per track driver.ini "driv66.ini" are used to allow AI to change cars
+and/or car numbers throughout the entire season.  A generic driver ini
+is used where there is no "per track driver.ini" present. Per track
+driv66.ini are shipped with the mod for the 1966 Championship tracks.
+You can add your own driv66.ini to any track by naming it "driv66.ini"
+and placing it in the track folder.
+
+The car numbers that are supported in the 66 mod are
+1,2,3,4,5,6,7,8,9,10,11,12,14,15,16,17,18,19,20,
+21,22,24,25,26,27,28,30,32,34,36,38,40,42,44,46(player),48.
+
+Per tracks "track66.ini" are supported. Per track "track66.ini" are
+shipped with the mod for the 1966 Championship tracks.  You can add
+your own Per track "track66.ini" to any track by naming it
+"track66.ini" and placing it in the track folder.
+ 
+Mod Specific Graphics as used in the 69 mod are also supported in the
+66 mod. Mod specific files can be created and placed in the intended
+track folder using these extensions.  mip = m66 3do = 366 trk = t66
+page0.pbf = page066.pbf bwpic.pbf = bwpic66.pbf
+
+
+We at the 66mod team hope you will enjoy using the 66mod as much as we
+have enjoyed producing it.  We suggest you start off with one of the
+lower powered cars and take a few laps to get used to the mod before
+you move onto the more powerful cars.
+
+
+
+Credits
+
+Programming (Physics)
+
+Richard Cooke Nigel Pattinson Paul Skingley Gene Fryman ( Codehound )
+Lee Bowden
+
+Gem+ support
+
+Paul Thurston
+
+iGor support
+
+Phil Flack Christoph Frick
+
+ 
+Programming (Graphics) The 1966 carset is based on work by the GPLEA
+and the 65mod team, modified for 66 by :-
+
+Charles Mark ( CJM ) Paul Skingley Marco Medici ( Irridux ) Remy Roesz
+( remy67 ) Tommie van Ostade ( TvO ) David Wright ( Lo67 ) Arturo
+Pereira Doug Hardy ( Do0g ) Sam Dobie Jackseller Pascal Celton Dede
+Marc Ostermann Luc Van Gossum
+
+
+Sound
+
+Jeroen Goedhart tifo
+
+
+Beta Testers
+
+John King Steve Cloyd ( SteveC43 ) Tom Johnson Michele Sprovieri (
+ayrtonsp ) Robby Hunter ( Border Reiver ) Stuart Bartosiak ( sbart UK
+) Arturo Pereira Stefan Roess Dan Archey ( Bentcam ) Remy Roesz (
+remy67 ) Uli Pilz-Volmerding ( ziege ) Bob Berman ( Royale ) Ken
+Murray Danny Thomas Clyde Ransom ( lt1 ) John Ollis Paul Thurston
+Terry Worth Paul Skingley John Smith Tommie van Ostade ( TvO ) John
+Roberts Syd Drake Ihsan Gin ( GeNiE ) Bob Simpson Pete Gaimari Bernd
+Nowak Sergio M. Loro
+
+
+Web site design Bernd Nowak Gallery Images
+
+Martin Huiskes ( MECH )
+
+  
+
+File hosting and web space Paul Jackson ( SpeedGeezers ) Bill Cooper (
+BCsims )
+  
+
+1966 Mod for GPL is produced by Paul Skingley
+paul@skingley9999.freeserve.co.uk
+
+TRACK: jarama
+
+
+Jarama 1968 for Grand Prix Legends =======================
+
+Title: Jarama68 Archive: jarama_v10.rar Date: 20/02/2005 Authors:
+Fernando Montero "Arch" (Layout) Sergio Loro (Graphics)
+
+Web Site: http://jarama.gaiztor.com E-Mail: jarama@gaiztor.com
+
+the great and beatiful cover was made by John Bradley :) thanks
+john!!!
+
+Version =======
+
+1.0 - First released version.
+
+Editors Note I : Since the track use big "drawing ahead" distances may
+you get low fps at some parts of tracks, in that case you can use the
+jarama.3do placed on the jarama_low_detail.zip file, just unpack this
+file at your gpl/tracks/jarama folder.  All textures are Voodo
+friendly :)
+
+Editors Note II : the original track do not include brake signs, as it
+was on 1968 race, but you can use brake signs if you unpack the mip
+files placed on "jarama_bs.zip" file, just unpack this files at your
+gpl/tracks/jarama folder.
+
+Track description =================
+
+Jarama is a track located 27 Km in the north of Madrid. It was built
+in 1967 designed by famous circuit designer John Hugenholz, who had
+laid out both Zandvoort and Suzuka, and hosted a Non Championship race
+in 1967, which was won by the great Jim Clark. After that, Jarama
+hosted Spanish Grand Prix in the even years from 1968 to 1976,
+alternating with Montjuich track on odd years, until the fatal
+accident of Rolf Stommelen at Montjuich in 1975. The accident was the
+end for Montjuic Park and in the late 1970s Jarama hosted all the
+races. In 1980, with the war FISA vs FOCA, Jarama hosted an GP with
+only FOCA cars running, but the race was considered illegal and did
+not count to the World Championship. Jarama hosted his last Spanish
+Grand Prix in 1981 in a slightly modified layout (a bit longer main
+straigth and a little modification at Bugatti turn), and that was one
+of the best F1 races ever, with Gilles Villenueve winning after
+leading a queue of cars behind him for 67 laps, with the fifth only
+1,24 s from Gilles at the finish line.
+
+After 1981, F1 never raced again here because of the bad facilities of
+the track due to the lack of interest of the Royal Automobile Club of
+Spain, which seemed to be more interested in the golf course next to
+the circuit than in the circuit itself.
+
+We did the 1968 layout, as realistic as we could. The base for the
+layout is a high resolution satellite picture, and all the atmosphere
+we created was based on pictures from that years.
+
+
+
+Installation ============
+
+To install the track you must have a copy of GPL or GPL 2004 Demo
+installed. Just unzip all the files on to a directory and run
+Trackinstall.exe.
+
+
+
+Thanks ======
+
+And our thanks goes to (in no particular order):
+
+- Papyrus and David Kaemmer for making this great Sim.  Dave Noonan
+- for 3doEd.  Phil Flack for Ase23do,xt2Gtk, Mipman, trk23dowT.  Alex
+- Murcia and Eduardo Sanchez for the great information that they gave
+- about track altitudes and camber.  Alex Murcia (again) for making
+- those beautiful Setups.  Paul Hoad for GplEditor.  Peter Prochazka
+- for GplTrk.  Eduardo Sanchez (Cosworth) for Satellite Picture of the
+- track.  Jonas Matton and Martin Granberg for GplRa.  Pau Freire for
+- Web Design.  Klaus Horbrand for WinMip.  Martin Granberg for
+- Trackinstall.  Jorge Nieva for his interest and his diary question
+- "Did you finished it yet?"  Gaizka López for the web hosting.
+- Joachim Blum for TrkCamEdit.  Marck Beckman for his AI guides.
+- RaulV for his help making the layout.  Jacques Bossy for build the
+- AI files Robert Zeugin for create a beatiful mips Manuel Roda (MAX
+- EL ONE) for his great encyclopedia.  The historic subforums (in
+- Spanish) from www.thef1.com for the big amount of pictures of the
+- track I found in them.  And finally the beta testers of the track
+- (Eduardo Sánchez, Manuel Zamora, Pau Freire, Gabriel
+- Tobar(Z.Zar), Alex Murcia and Gaizka López) for his comments.
+
+Thank you all, guys!
+
+
+
+Copyright Notes ===============
+
+This track is free. It must be distributed without change.  My
+permission must be asked before to do any addons or changes to this
+track.  Authors may NOT use this track as a base to build additional
+tracks.  You must include this readme file with the archive.  This
+track may not, partially or in full, be posted at any other sites
+without express permission.  You may link to my web site, but not
+directly to the files.
+
+
+
+
+

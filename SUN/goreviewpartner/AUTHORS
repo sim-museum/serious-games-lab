@@ -1,0 +1,18 @@
+# git shortlog -sn | cut -c8- with manually removed duplicates (taken from Leela Zero project)
+
+pnprog
+Boris NA
+Wonsik Kim
+wonderingabout
+Isaac Deutsch
+Tomasz Warniełło
+chermes
+Adrian Petrescu
+Adam Bender
+Brandon Sloane
+J. Brian Jordan
+Michael Kelley
+Mikita Herasiutsin
+Tomasz
+Vladimir Medvedev
+Wuyou Jiang

@@ -1,0 +1,104 @@
+DATman
+A freeware utility for Grand Prix Legends written by Fred Simms
+
+In order to make the following exposition easy to read, enable Word Wrap if your text editor provides this facility.
+
+
+INTRODUCTION
+============
+
+Some time ago I was wondering how to convert MIPs etc to BMPs in order to view them in a VB6 program (just like in WinMip2 or GPL Image Viewer). When I had figured it out, I wondered if I could put this knowledge to some practical use. One thing we didn't have was a facility to view images contained in a .dat file, so just for fun I wrote this little program that you may find useful.
+
+I know it's no great hassle to extract files using dooDAT or WinMip, run them through GPL Image Viewer and then delete the unwanted files afterwards, but you may prefer the directness and convenience of a purpose built tool.
+
+I didn't want the utility to be just a viewer so I've added some other facilities: you can save image files (MIPs, SRBs and PBFs) as BMPs or JPEGs; pack or unpack files (all types of files, not just images); add or remove files; rename etc.
+
+Please note that there's no standard for DAT files: a DAT file is tailor made for the application that uses it. DATman will only work with GPL DAT files.
+
+
+VISUAL BASIC RUNTIME FILES
+==========================
+
+Programs created in Visual Basic require common Visual Basic runtime files (usually DLLs).
+
+These files are included with Windows 2000, XP, ME and later, but if you are using Windows 95 or 98 you may need to install them.
+
+vbrun60sp6.exe is a self-extracting executable file that installs the Microsoft Visual Basic runtime files required by all applications created with Visual Basic 6.0. (The files will be installed in your C:\Windows\System folder). 
+
+If needed, you can download vbrun60sp6.exe from Microsoft at:
+
+http://msdn.microsoft.com/vstudio/downloads/updates/sp/vs6/sp6/download/default.aspx
+
+
+LIST BOX
+========
+
+When you open a DAT file, the filenames contained in that DAT will be displayed in alphabetical order in the list box. A mouse click selects an item in the list. To move the focus to the next or previous item, use the arrow keys. When you select an item, you will see a preview picture of that item (if it's an image file) and it's properties. Double-click on an item to see a full size image.
+
+You can select multiple files (for example when extracting, saving as BMPs etc.) using normal Windows file selection conventions, viz. press and hold down the Shift key and click the mouse (or press one of the arrow keys) to span the selection. This will highlight all the items between the previously selected item and the current selection. Press Ctrl and click the mouse to select or deselect an item in the list. When you select more than one item, no preview picture or status bar info will appear.
+
+Right-click on the list box to activate a popup menu.
+
+
+FULL SIZE MODE
+==============
+
+After you've opened a DAT file, you can preview an image by clicking on a filename in the list box. If you double-click a filename or click on the preview picture you will see the image full size. However, if an image is larger than the viewing area (e.g. 1024 pixels in width or height), it will be scaled down to fit within the available space.
+
+In this mode you can run through your images (backwards or forwards) by either:
+
+1. left or right clicking
+2. pressing backspace or spacebar
+3. pressing the right or left arrow keys
+4. rotating the mousewheel backwards or forwards (one notch at a time)
+
+Images will wrap around. Press Home to go to the first image; press End to go to the last image.
+
+To return to the main GUI press Esc.
+
+
+FILE EXTENSIONS
+==============
+
+In previous versions of DATman, only the following extensions were recognised by the program:
+3do, bb1, bb2, bb3, bmp, br1, br2, br3, cam, co1, co2, co3, ea1, ea2, ea3, fb, fe1, fe2, fe3, gp, grv, ini, lo1, lo2, lo3, lp, lyt, mip, mu1, mu2, mu3, org, pbf, srb, tex, trk, tso, wav, win, wob
+
+DATman v1.2, however, will recognise ANY three character extension plus the following two character extensions: fb, gp, lp (case is unimportant). The implications of this are that now you can use the utility to pack all mod specific files into a dat e.g. M69, S69, 369, T69, L69 (MIPs, SRBs, 3DOs, TRKs and LPs relating to the 1969 mod), and mod specific images can be viewed.
+
+DATman needs to know whether the currently selected file is an image file, 3do or other non-image file. Previous versions of DATman did this simply by reference to the file extension. Now that certain file extensions can be variable (due to mod specificity), the program determines file types from information contained in the file header.
+
+In overcoming the file extension limitation imposed by earlier versions of DATman, v1.2 has introduced a very minor problem:
+
+In a dat file header, there are 12 positions allocated for each GPL file's filename - i.e. a maximum of eight positions for the name, one position for the dot separator, and three positions for the extension. DATman v1.2 locates the first dot it encounters and assumes this to be the separator. It then assumes that the next three characters after the dot is the file extension (unless the extension is a supported two character extension - at present fb, gp and lp). So if the filename contains a dot in addition to the dot separator, DATman will get it wrong e.g. a file named abc.defg.mip will be incorrectly identified as abc.def, whereas a file named abcdefgh.mip will be correctly identified.
+
+This will not be a problem when creating a new DAT (in the example quoted above, the new DAT will correctly contain the file abc.defg.mip) or when viewing the image. The problem will only arise when extracting the file (it will be extracted as abc.def), saving as BMP (it will be saved as abc.bmp) or saving as JPG (it will be saved as abc.jpg). In these cases, after extracting or saving as, you will need to rename the file abc.defg.mip, abc.defg.bmp or abc.defg.jpg respectively.
+
+
+NOTES
+=====
+
+When saving Type 2 or Type 5 files as BMPs, the program will also produce transparency bitmaps with a "_ti" suffix.
+
+When saving as BMPs or JPGs, any type of file may be selected, but file types other than MIPs, SRBs or PBFs will be ignored.
+
+The higher the selected JPEG image quality, the lower the compression and, hence, the greater the JPEG file size.
+
+When creating a new dat or adding files, files with filenames longer than 8 characters will be ignored, as will files with the extension .dat.
+
+No warnings will be issued prior to overwriting files. If you're extracting to a folder that contains files with the same names as the one's you're extracting, the original files will be overwritten. Similarly, if you're creating a new DAT file, and you supply the same filename as an existing DAT file in the destination folder, the existing DAT file will be overwritten.
+
+When adding files, if the DAT contains files with the same filenames as the one's you're adding, the original files will be overwritten. No prior warnings will be issued.
+
+Prior to writing to a read-only DAT file (i.e. by adding, removing or renaming files), the read-only attribute will be removed.
+
+
+DISCLAIMER
+==========
+
+This software is provided "as is" without warranty of any kind, either expressed or implied. The user acknowledges that any use of this software will be at his or her own risk, and the copyright owner accepts no responsibility arising from the use or misuse of the software.
+
+This is not a Sierra or Papyrus product.
+
+
+
+Copyright Fred Simms, September 2006

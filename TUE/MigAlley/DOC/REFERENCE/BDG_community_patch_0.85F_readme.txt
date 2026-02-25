@@ -1,0 +1,126 @@
+                       MiG Alley Alpha Test Version 0.85F
+
+  20:12 02.05.2005 - Retro
+
+   This is work in progress, please report all feedback, good or bad.
+
+Installation
+
+    1. Install MiG Alley from the CD - make sure you set "Windows 98
+       compatibiliy mode" for the setup.exe file
+    2. Install the patch 1.23
+    3. Execute the alpha installer.
+
+   Please note that currently only the english version is supported ! If
+   you are using another language version, copy the
+   ./ENGLISH/TEXT/MIGLANG.DLL file into .//TEXT folder, this will change
+   all in/game text to english !
+
+New Features over 0.80
+
+     * TrackIR Vector Support
+       MiG now supports 4 out of the 6 axis offered by the vector
+       expansion - pitch/yaw/roll and the z (fore/back) axis, which
+       controls the view FOV. You need to enable the TRACKIR and
+       TRACKIR6DOF switches in the bdg.txt for this to work. If you do not
+       own the vector expansion, only enable TRACKIR. If you disable
+       TrackIR while in-game, or move the dot out of the tracker's field
+       of view, the game will revert view control back to the
+       keyboard/mouse (depending on your controller settings).
+     * Falcon4-style crashlogs
+       If the game crashes while in the 3d a "crashlog.txt" file will be
+       created in your MiG Alley root folder. This file contains
+       information about where the crash occured, and will help us
+       correcting the issue.
+     * Labels
+       The [SHIFT][T] key combination will toggle aircraft name labels.
+       Colour and label range is configurable, see the section about
+       bdg.txt settings.
+     * Customizable command mapping
+       By editing the /KEYBOARD/keymaps.xml file you are able to change
+       MiG's keyboard and joystick button mappings, you can also use
+       [1]this GUI tool to change the mappings.
+     * New BDG UI
+       Thanks to Parano we now have an in-game sheets for most of the bdg
+       settings.
+
+(Attempted) Bugfixes
+
+     * Unpredictable behaviour of waypoint detail button has been fixed
+       See [2]this link.
+     * Fighter-Bombers not returning to base
+       AI figher-bomber packages will now stop attacking their targets if
+       all fighters have hit the "bingo" fuel limit, this still might be
+       too late for some targets though.
+     * Osram fixed a major leak of GDI objects which could lead to CTDs in
+       the campaign screen
+     * Fixed CTD when entering the 3d
+     * Fixed CTD with NO_FRIENDLY_COLLISIONS
+     * Buddye addressed two Problems
+       1. Red skill always equals blue skill and 2. The mig pilots never
+       eject problem
+
+Known Issues
+
+     * Landscape problems at high FOV values
+       At high FOV settings, at the edge of the screen at the horizon
+       line, a flickering triangle may appear - cause unknown
+     * Some flickering at the edge of the map screen
+
+Added BDG.TXT settings
+
+   Labels
+   LABELCOLOUR_FRIENDLY Sets the colour of allied airplane labels
+   LABELCOLOUR_ENEMY Sets the colour of enemy aircraft labels
+   LABEL_FULL_ALPHA Distance (in meters) where labels will have their full
+   alpha (and be most visible)
+   LABEL_HALF_ALPHA Distance (in meters) where labels will have 50% alpha
+   LABEL_ZERO_ALPHA Distance (in meters) where labels will start to appear
+   on the screen
+   Misc. Stuff
+   PERIPHERAL_VISION_RANGE Distance (in meters) where aircraft will be
+   displayed on the edge of the screen
+   MINIDUMPLOG_TYPE If set to "0" or "1" a dumplog.dmp file will be
+   created whenever MiG crashes in the 3d. It basically contains the same
+   information as the crashlog.txt. Only activate this when asked by one
+   of the BDG programers.
+   INTRO_VIDEO Set to OFF to disable the intro video.
+   GET_KEY_MAPS_FROM_FILE If this is enable MiG will scan the
+   ./KEYBOARD/KEYMAPS.XML file for changed keymappings. This XML file will
+   be created automatically if it does not exist, just set this switch to
+   ON and start MiG once.
+   TrackIR
+   TRACKIR Enable this if you want to use trackir (vector enhanced or not)
+   in MiG. Be sure to start the naturalpoint UI before starting MiG.
+   TRACKIR6DOF ONLY enable this if you own the vector expansion and want
+   to use it to control the roll and fov axis.
+   Notes on FOV control
+   The FOV_MINIMAL setting will be mapped to the extreme forward position,
+   the FOV_MAXMIMAL setting to the extreme backward position. FOV_INITIAL
+   is the FOV setting while the TrackIR is in its center position.
+   PADLOCK_OVERRIDES_TRACKIR If this setting is enabled, the game will
+   take control over the view as soon as you have padlocked a target,
+   ignoring any trackir inputs.
+
+Feedback
+
+   Please post feedback in [3]this thread.
+
+Acknowledgements
+
+   Thanks go out to Parano for doing the BDG UI, Julian "Codec" Onions for
+   the crashhandler code and the new build system, Buddye for fixing the
+   cut off contrails and some AI changes, the usual suspects for the rest.
+
+   Mig Alley uses the [4]expat XML parser.
+     __________________________________________________________________
+
+                                [5]BoB-MA.org
+
+References
+
+   1. http://stud3.tuwien.ac.at/~e9826217/MA/085/KeybMan2_MiG_085_B.zip
+   2. http://www.simhq.com/simhq3/sims/boards/bbs/ultimatebb.php?ubb=get_topic;f=34;t=000853
+   3. http://www.bob-ma.org/modules.php?name=Forums&file=viewtopic&t=447
+   4. http://www.libexpat.org/
+   5. http://bob-ma.org/

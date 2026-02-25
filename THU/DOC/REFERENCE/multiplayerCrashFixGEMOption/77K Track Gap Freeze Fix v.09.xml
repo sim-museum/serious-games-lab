@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+<GPLPatch>
+
+Fixes Track Gap Freeze for all mods
+Fixes buggy 23.xml for 69X mod
+
+-----
+
+   <ExeSection>
+      <Name>modtext</Name>
+      <MinimumFileSize>0x00008B00</MinimumFileSize>
+   </ExeSection>
+
+   <ExeSection>
+      <Name>moddata</Name>
+      <MinimumFileSize>0x0000D800</MinimumFileSize>
+   </ExeSection>
+
+-----
+
+Track Gap Freeze Fix
+   <BinaryPatch>
+      <VirtualAddress>0x00A0D470</VirtualAddress>
+      <Data>
+         CDCCCCBD
+      </Data>
+   </BinaryPatch>
+
+   <BinaryPatch>
+      <VirtualAddress>0x004CB6BF</VirtualAddress>
+      <Data>
+         70D4A000
+      </Data>
+   </BinaryPatch>
+
+-----
+
+23.xml Bug Fixes
+   <BinaryPatch>
+      <VirtualAddress>0x00497F49</VirtualAddress>
+      <Data>
+        D8
+      </Data>
+   </BinaryPatch>
+
+   <BinaryPatch>
+      <VirtualAddress>0x00497F71</VirtualAddress>
+      <Data>
+        D8
+      </Data>
+   </BinaryPatch>
+
+   <BinaryPatch>
+      <VirtualAddress>0x00497FB0</VirtualAddress>
+      <Data>
+        D9
+      </Data>
+   </BinaryPatch>
+
+   <BinaryPatch>
+      <VirtualAddress>0x00497FD4</VirtualAddress>
+      <Data>
+        D9
+      </Data>
+   </BinaryPatch>
+
+-----
+</GPLPatch>

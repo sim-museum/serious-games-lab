@@ -1,0 +1,24 @@
+Chose THU OKR #1,2 compare laptime (driving a lotus 49 from the 67 mod) on the spa67 track vs GPL rank benchmark laptime of 3 minutes, 20 seconds.
+
+I set up a short 3 lap race at the spa67 track vs. AI opponents in F2 cars as follows:
+
+    select the Lotus 49 car
+    examine the replay of a fast lap with a lotus 47 at spa67, where the replay file name is THU/WP/drive_c/Sierra/GPL/fs_spa67_lotus_32364_60fps.rpy, using both the REPLAY command within GPL and using the replay analyzer. (The replay analyzer is invoked from the TUE directory via ./replay.sh
+    run a standard 15 minute practice vs. the AI
+    When the green button on lower right appears indicating that the race is about to start, select the red button on lower left instead and save the practice session.
+    run ./editRaceLineup.sh in the TUE directory, edit THU/WP/drive_c/GPL/players/67__Driver/spa67.html, select all AI oppontents have the slower formula 2 (F2) cars, set race length of 3 laps, and make me #1 on the starting grid. Save the modified spa67.html file.
+    Run GPL, selecting the '67 lotus 49 at spa67, and select restore saved practice results.
+
+Note that after a race the spa67.html file is deleted, so be sure to save a copy of this file before the race. Copy that saved file to spa67.html before starting your next race, if you want to continue to use the modified race settings.
+
+Comparing my replay results with fs_spa67_lotus_32364_60fps.rpy showed that while I shifted gears at mostly the same points, I was much slower. I was 100 km/hr slower at the Masta Kink than the car in the fs_spa67_lotus_32364_60fps.rpy replay file!
+
+Complete race results summary files are included.
+
+Note that I also ran the GPLMotec telemetry program via ./twpMonitorTelemetry.sh. The GPLMotec screenshot shows that my tire temperatures are 60-70 degrees C, much lower than the optimum tire temperature of 127 degrees C for the '67 lotus 49 listed in THU/DOC/GPL cars spreadsheet.xls. This much lower temperature probably reduced tire grip by more than 20%, vis. THU/DOC/GPL_gripVsTirePressureAndTemp.pdf
+
+MY best laptime was 4 minutes, 17 seconds. Comparing that vs the '67 GPL rank spa67 benchmark time of 3 minutes, 20 seconds, I calculate my score for THU OKR #1,2 as described in THU/calculatingScore.txt:
+
+gpl rank ratio = (my benchmark time - gpl rank benchmark time) / (gpl rank benchmark time) = (4+17/60-(3+20/60))/(3+20/60)=.285
+
+Thus my TUE score is (1-3*.285)/10=.0145

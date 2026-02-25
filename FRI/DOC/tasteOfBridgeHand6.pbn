@@ -1,0 +1,35 @@
+[Event "TASTE OF BRIDGE PRACTICE HAND #6"]
+[Dealer "S"]
+[Date "2021.06.20"]
+[North "WBridge5"]
+[East "WBridge5"]
+[South "Joueur"]
+[West "WBridge5"]
+[Vulnerable "EW"]
+[Deal "N:AQ62.752.A9.Q973 4.J983.QT7542.K2 JT987.A4.K63.AJ5 K53.KQT6.J8.T864"]
+{
+                   North
+                S: A Q 6 2
+                H: 7 5 2
+                D: A 9
+                C: Q 9 7 3
+    West                         East
+S: K 5 3                      S: 4
+H: K Q10 6                    H: J 9 8 3
+D: J 8                        D: Q10 7 5 4 2
+C:10 8 6 4                    C: K 2
+                    South
+                S: J10 9 8 7
+                H: A 4
+                D: K 6 3
+                C: A J 5
+}
+[Declarer "S"]
+[Contract "4S"]
+[Auction "S"]
+ 1S  PASS  4S  PASS 
+PASS PASS           
+{enchères à deux}
+[Play "W"]
+HK 
+ 

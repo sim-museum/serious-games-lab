@@ -1,0 +1,15 @@
+How to heat up tires
+
+It is both a learned technique and dependent on a good setup, GPL originally came with a second manual (The Art of Four Wheel Drift) describing it.  Essentially you must balance the weight of the car such that you induce a controlled slide on corner entry - an initial oversteer so the back end slides, quick countersteer to catch that, enough throttle to maintain that sideways drift through the corner so on exit you are perfectly lined up for the next straight, then just power out.  As much as learning how to do this is learning when not to do it, as it isn't suitable for every turn.  
+
+Once wings and, later, undercar tunnels providing massive downforce became the norm this technique virtually disappeared since the last thing you want in a high downforce car is for it to move sideways.
+
+Hi TP, when I was learning to drive GPL I found make big increases to the roll bars (e.g. 25%+) made it easier to learn to drift - even if the lap times were slower because those settings were too much for that.
+
+The moment I realised how to drift was through the dunes at Zandvoort - don't go flat out, go fast enough to go through the turns just lifting off the throttle, no braking. If you lift off sharply the rear of the car comes out, then you can steer the car through the turn on the throttle. After I got comfortable doing that, I started combining drifting through and out of the turns with drifting into them, by trail braking.
+
+Then for me the final thing was being aware of the difference between rotating the car and turning it through the corner, and using the brakes to control the former. 
+
+One thing is for sure, you can control/manage your tiretemps by your driving. Pushing more on entries when the fronts are too cold, and pushing more on exits when the rears are too cold. And keeping the momentum/speed up. This all helped by having a fitting setup for your driving style. With F2 always used to use 30/85/1 diff. 
+
+For optimal tire temperatures and pressures for a given mod and car, see "GPL cars spreadsheet.xls"

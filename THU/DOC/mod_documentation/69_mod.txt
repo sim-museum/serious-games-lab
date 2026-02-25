@@ -1,0 +1,178 @@
+
+1969mod
+
+requires:-
+
+Gem+ 2.4.64 or higher version installed, http://gem.ebi-service.de/
+GPL full installation updated to version 1.2.02 Carsound patch
+applied.
+
+both "driver textures ( and in mirrors )" boxes checked ( ticked ) in
+gpl graphics options or carset will CTD.
+
+
+INSTALLATION
+
+
+installing GPL 1969mod :-
+
+First, if you do not have them already, we recommend you install these
+addon tracks
+ 
+Montjuich Park ( 1969 Spanish GP ) http://montjuich.speedgeezers.com/
+Clermont-Ferrand ( 1969 French GP )
+http://gplmz.bcsims.com/index.php?showtopic=921&st=0&p=6104&#entry6104
+Brands Hatch ( 1969 Race of Champions )
+http://dixierunners.speedgeezers.com/brands1967/ Oulton Park ( 1969
+Gold Cup ) http://www.zenadsl5531.zen.co.uk/Tracks/Oulton/
+
+IMPORTANT !  For users that have Part 1 or 2 of the 1969 mod installed
+it is IMPORTANT to remove these files from your gpl installation
+BEFORE running the installer.
+
+Remove from GPL/Mods/Gem+ folder :- gpl69 folder
+
+Remove from GPL/cars folder :- 69Hwng and 69Lwng carset folders.
+
+
+
+
+1/ Run the 1969mod installer.  Check the install path. The default
+install path is C:\Sierra\GPL. IF YOUR GPL INSTALL HAS A DIFFERENT
+PATH YOU MUST CHANGE THE PATH WHEN PROMPTED.
+ 
+2 /Create a player in GPL ( or use your existing 69mod player )
+
+3 /Start gem+ 2.4.64, Click CARSETS and make 1969 Grand Prix ACTIVE,
+then make sure your 69mod player is using 1969 Grand Prix.
+
+Physics :- The physics now have a more realistic slipstreaming
+effect. This is most noticable on long straights such as at Monza
+
+The Cars :-
+ 
+The 69mod contains 3 complete carsets plus car options. To change
+carsets select 69Hwng, 69Lwng or 69Mwng in Gem+
+
+69Hwng represents the 1969 cars from the early part of 1969 with high
+mounted wings.  69Lwng represents the 1969 cars from the later part of
+1969 with lower mounted wings.  69Mwng represents the 1969 cars from
+the Monaco and Monza GPs where some teams demounted wings. You should
+use " No Wing " setting from the car setup screen for these cars.
+
+Each carset contains car options which have to switched manually.  You
+can check which car you want to use by looking at the GEMPIC in each
+car folder.  To switch cars eg. 69Hwng, Mclaren M7a for Mclaren M7b (
+default ). Delete the eagle folder from the carset, copy the eagle
+folder from the Mclaren M7a folder into the carset folder.  To switch
+back to the Mclaren M7b, delete the eagle folder from the carset
+folder, copy the eagle folder from the Mclaren M7b folder into the
+carset folder.
+
+Frame rate increase options :- Every car folder has 3 sub folder which
+can be used to improve frame rate. You can use some or all of these to
+improve frame rate.  1/ Low-res.  Copy the low resolution files into
+the car folder.  2/ 2D wheels.  Copy the 2D wheel files into the car
+folder.  3/ 2D Helmets.  Copy the 2d helmet files into the car folder.
+
+
+Other features :-
+
+1/ Best laps screen.  The Best laps screen has been modified to show
+the 1969 World Championship tracks, the lap times from these tracks
+will be stored in your players/player name/"plac69.ini"
+
+
+2/ 1969 World Championship.  When using World Championship mode you
+now have the correct tracks for the 1969 World Championship.
+
+
+3/ Newspapers.  The newspapers at the end of a race have been modified
+to show the correct team names and a picture from 1969.  For the
+Championship tracks we have included individual pictures that are
+installed with the mod. For other tracks a generic 1969 picture is
+used.  To add other 1969 pictures to other tracks add a bwpic69.pbf to
+the track folder.
+
+
+4/ Program covers.  Program covers are now mod specific. The programs
+for the 1969 Championship tracks plus Brands race of Champions (
+Brands67 ) and Oulton Park Gold Cup are installed with the mod.  These
+will only be shown when using 1969mod.  To add 1969 mod specific
+program covers to other tracks, add a pageo69.pbf to the track folder.
+ 
+
+5/ Track Records Fastest laps for every track are now mod
+specific. New record inis ( rec69.ini ) are installed with the mod for
+the 1969 Championship tracks. These only record lap times for 1969mod
+so leaving your 67 lap times untouched.  A new record ini ( rec69.ini
+) is created when you use other tracks with 69mod.
+
+
+6/ Mod specific track inis and lp files It is now possible to use mod
+specific track inis ( track69.ini ) and lp files ( l69 ) The track
+inis can be used to adjust the ai performance where needed without
+changing 67 etc. The lps can be used to create 69mod lp laps without
+effecting your originals. Some track69.inis and lps are installed with
+the mod. You can create your own for other tracks.  track.ini =
+track69.ini.  lp = l69
+
+
+
+7/ Mod specific track graphics.  Users can now create track graphics
+specifically for the 1969 season using one track folder.  An example
+of this is installed with the mod for Brands67. The makers of Brands67
+included an option for adding the Lucas building at Paddock and the
+Dunlop bridge before Druids which were added to the track in
+1968. These are now only seen using 1969mod but not seen if using 67
+GPL.
+
+To use your own 3do, mips, srb or trk for extra track graphics that
+are specific to 1969, rename the file extensions to :- 3DO = 369 mip =
+m69 srb = s69 trk = t69 Place your 1969 specific graphics into the
+track, these will only be seen using 69mod.
+
+
+8/ Default setups.  The default car setups are specific to 69mod so
+giving the user a basic usable setup to start with.  The default
+setups for the Championship tracks are by Steve Cloyd. For other
+tracks there is a 69mod generic default setup.
+
+
+9/ AI Improvements The AI now select wings suitable for tracks and
+also use the slipstreaming effect.  The passing of backmarkers has
+also been improved.  These new features combine to increase the fun
+and excitement when racing the AI.
+
+
+For a full list of credits and some history of the 69mod development
+see the "details" readme.
+
+
+LEGAL NOTICE
+
+This software is freeware ( i.e. non commercial use )
+
+No part may be distributed on any media ( such as CD Rom or Diskette )
+for which money is charged nor on media distributed with ( for example
+) a magazine for which money is charged without the authors permission
+
+This software is provided " as is " without warranty of any kind,
+either express or implied, You use at your own risk.
+
+UPDATES No updates to the GPL69 mod may be posted for SIX MONTHS after
+the the initial release of the component updated , unless prior
+permission is given by me.
+
+CONVERSIONS No Conversions to other sim platforms should be undertaken
+unless prior permission is given by me.
+
+Paul Skingley
+
+paul@skingley9999.freeserve.co.uk
+
+ 
+
+THIS IS NOT A SIERRA/PAPYRUS PRODUCT
+
+

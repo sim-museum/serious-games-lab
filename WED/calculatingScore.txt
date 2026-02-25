@@ -1,0 +1,78 @@
+WED Scoring
+eSports for Engineers 24041LTS
+
+Note: save your .pgn files after each session.  Copy your .pgn files,
+along with screenshot .png files showing your games and analysis, to
+the WED/afterGameReport directory, calculate your score as described
+below, and then enter your score using the launcher.
+
+Note: these OKRs can be completed with any combination of the chess
+programs available on WED (nibbler, scid, banksiaGui, Chessmaster,
+openingRepertoire).
+
+OBJECTIVE #1: LEARN CHESS WELL ENOUGH TO PLAY IN A TOURNAMENT
+OBJECTIVE #2: (ASPIRATIONAL) ACHIEVE A COMPETITIVE RATING
+OBJECTIVE #3: USER DEFINED (can be regular or aspirational)
+---------------------------------------------------------------
+OKR #1, 1, first key result for objective "learn chess"
+
+Play a game against the AI at your current skill level.  Use
+nibbler or banksiaGui to analyze the game afterward with a neural
+network engine.
+
+score=.1 if you played a complete game and analyzed it with an
+engine, identifying at least 2 mistakes or missed tactics.
+score=0 otherwise.
+---------------------------------------------------------------
+OKR #1, 2
+
+Study one chess concept from WED/DOC/chessConceptsBySeriwan.md
+or from the recommended videos in WED/DOC/recommendedVideos.txt.
+Play 2 games where you apply that concept.
+
+score=.1 if completed.  score=0 otherwise.
+---------------------------------------------------------------
+OKR #1, 3
+
+Use openingRepertoire to study one opening line.  Practice the
+line until you can play the first 10 moves from memory.
+
+score=.1 if completed.  score=0 otherwise.
+---------------------------------------------------------------
+OKR #1, 4
+
+Play a complete game against Chessmaster training mode (if installed)
+or against AI at a level where you win about 50% of the time.
+
+If you win: score=.1
+If you draw: score=.05
+If you lose but can identify your critical mistake: score=.025
+---------------------------------------------------------------
+OKR #1, 5
+
+The following tasks are worth .05 points each:
+
+Skim all documentation in the WED/DOC directory
+
+Watch an instructional chess video from WED/DOC/recommendedVideos.txt
+
+Solve 10 tactical puzzles (available online or in scid)
+
+Use scid to build a database of your games and review patterns
+
+Study one endgame position (K+P vs K, K+R vs K, etc.) until you
+can win it reliably
+---------------------------------------------------------------
+OKR #2, 1
+
+Play a rated game (online or against strong AI) and achieve a
+performance rating above your current rating.
+
+If your performance exceeds your current rating:
+score=1 good for the next month.
+
+If not:
+score=0.7*(performance/target_rating), with maximum score of .7
+
+Note: Your daily total is the sum of your OKR scores (subject to an
+upper limit of 0.7 unless you have an aspirational OKR score above 0.7).

@@ -1,0 +1,66 @@
+
+Zeltweg Airfield 1967
+
+REAL TRACK
+
+Track Location: Zeltweg, Austria
+
+Track Type : Airfield Track Length : 3.2 kms.- 2.00 mi.  Track
+Num. Turns : 5 Track Year : 1958-1969
+
+Track Editor : Sergio Loro (mips,3dos,cam, srb, AI files, etc..)
+
+Special Thanks to
+
+Ginetto for his support for this track.  Raul Valenzuela to allow me
+to use some of his stuff.
+
+
+Editor Note I : I used some mips, 3dos and srb files from other's
+tracks.  Full credit to their authors.  Editor Note II : this work is
+based in previus raul's Zeltweg 64 track, since i change last part of
+circuit and i dont add bumps i decided to release this one as a
+individual track.
+
+Zeltweg Airfield 1967 ----------------- 1.988 mile airfield circuit
+used between 1958 and 1969, and was the site of the first Austrian GP
+in 1964. It had a very bumpy concrete surface, and was superseded by
+the new Oesterreichring in 1969.  -----------------
+
+Austrian SC Grand Prix 1967 --------------------------------- August
+20 157 laps x 3200 m = 502.4 kms Pole P.: Jochen Rindt 1'09.59"
+(Porsche 910) Fastest Lap: Dennis Hulme (GT40), 1'09.40
+
+------------- 1-Paul Hawkins Ford GT40 2-William Bradley/Richard
+Attwood Porsche 906 3-Nino Vaccarella/Umberto Maglioli Ford GT40
+4-David Piper/David Skailes Ferrari 250LM 5-Edward Nelson Ford GT40
+6-Rico Steinemann/Dieter Spoerry Porsche 906 -------------
+
+Thanks to:
+
+GPL Mirror Zone for hosting this track.
+
+GPL Repository for hosting "my" private forum.
+
+to the "Alternate GPL Track Database" http://gpltd.bcsims.com/
+
+All people who made the tools to create tracks, 3dos, mips, lp files,
+altitudes, etc, etc.
+
+All the GPL Community!!!
+
+The RaceSimCentral forums.
+
+www.m4driving.sm for hosting my previous tracks.
+
+www.gplpp.com for letting me know about the latest GPL news.
+
+The GPL Track Database and its manager Magnus.  Visit trackdb.d2g.com
+and submit your rating!!!!
+
+Enjoy the drive...
+
+
+
+SERGIO LORO
+

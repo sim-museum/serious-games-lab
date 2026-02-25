@@ -1,0 +1,17 @@
+http://srmz.net/index.php?showtopic=13500#entry148638
+
+GEM.ini, which is located at:
+
+EngineeringWeek/TUE/WP/drive_c/users/Public/Documents/GEM+/GEM.ini
+
+is not a GPL file but is a file used by the community-created GEM+ launcher program.  It contains
+data about GPL installations on the PC as well at GEM's own settings.  When you point GEM to
+a new GPL installation (and it can handle several at once), it scans this new GPL directory
+and copies some information form the GPL .ini files into its own GEM.ini.
+
+When you activate a new mod in GPL, GEM adds all mod related information to GEM.ini.  So
+there is no need to edit the GEM.ini file.  It's only needed by the GEM program.  If you
+try to edit it and then run GEM, GEM will examine the GPL folder(s) and overwrite 
+what you added to GEM.ini.  Check GEM.ini just to ensure that GEM sees the GPL files
+and mods.  If something doesn't work, check the GEM debug file, or look for the
+problem in GPL files.

@@ -1,0 +1,111 @@
+reference: http://srmz.net/index.php?showtopic=13990
+
+QUESTION
+GPLMotec works in Windows 10 with no problems.  There was no need to change Windows Defender settings as described in the documentation.
+
+ANSWER
+Yes, but Windows Defender could scan your files in a few hours and quarantine the program. This is what happened with me.
+With Kaspersky it's worse: it blocked the start of my software lol
+If everything is going well with GPLMotec on your PCs, then don't make unnecessary exclusions.
+
+QUESTION
+Please explain the display in the "Differential and Brake" technical module.  What does "hits" mean?  What does it mean when one of the wheel icons flashes a pink color?
+
+ANSWER
+The "hits" are the number of times the wheel on the same axle has had a "big" difference in rotational speed compared to the other.
+LED blink : Marks which wheel has more hits difference on this axle.
+LED high-speed blink: It's the same but for very big difference.
+
+It is not extremely precise in terms of the number of hits, but it does give an interesting indication of which wheel(s) lock up during braking for example.
+Sometimes this allows me to fine-tune the proportion of the front/rear braking force, because I don't realize this while driving, unless i'm really very far from the good setting.
+
+QUESTION
+In your example you say the power-on ramp angle is too aggressive for full-throttle acceleration through the Monza Curva Grande.  Do you mean that you have too much locking for a full-throttle accelerating turn, risking traction loss on the right rear tire (power-on oversteer), and that you want to decrease power DiLo?
+
+ANSWER
+So for this particular case I don't think my software can help.
+You can see the number of hits vary enormously for example if you put the car stationary with one wheel on the grass and the other on the track, when you go in 1st gear, the hits will go up on the grass side.
+Unfortunately it doesn't happen that way at high speed, I haven't been able to draw any conclusions about the number of hits in high speed.
+So to adjust my differential angles I still have the feeling...
+
+As for the ramps, everyone must adapt it to their driving style.
+Personally I am a follower of 30/85 1 or 45/60 1
+Because I run the car with power: the wheels slide (like a go-cart) and the car stays in line.
+If I have too much oversteer I know my ramp from 30 should go down to 40 or 45 ...
+You have to test.
+Besides, setups that are built this way don't work if you're "slow".
+To get all the benefits from these setups you have to act like the pilot who created the setup...
+
+I am not a professional for GPL setups, but experience and numerous tests make me say that today ... 
+
+QUESTION
+What does it mean when one of the wheel icons flashes a pink color?
+
+ANSWER
+The fuchsia flashes are the realtime "hits", nothing else.
+Sometimes when you come back to the garage some will stay ON (i.e. colored), it doesn't matter.
+It stays ON because it's in the status of the last wheel speed difference test. 
+
+QUESTION
+In the Differential and Brake technical module, why are there separate hits displays for the brakes and for the differential?  What does it mean if there are hits on the left wheel in the differential section, but none in the brake section?
+
+ANSWER
+The left part only works when the car is gaining speed, 2 wheels (throttle pedal >10%).
+The right part when you brake, 4 wheels (Brake pedal > 10% AND throttle pedal 0%).
+This way you see slippage when accelerating and braking, separately.
+
+QUESTION
+What do the flashing lights next to the wheels in the Differential and Brake technical module mean?  Do these lights only flash when on the setup screen?
+
+ANSWER
+The LEDs light up when you leave the track (on any screen in the game, not necessarily the setup page), it draws attention to the wheels that have slipped a lot.
+
+QUESTION
+What do the bar graphs in the Traction/Brake G-Force technical module mean?  Why are there two different bar charts for each gear in the traction section?
+
+ANSWER
+on the right of this module you can see the maximum G force obtained during the last braking.
+This can be used to test braking forces with different tire pressures and temperatures, or different methods of managing the brake pedal (mixed with shift-down).
+To do these tests I load a track with an endless straight line ...
+
+on the left on the module you have 2 bar graph for each gear ratio, and an LED between each gear ratio.
+
+The left bar with the red tip: this is the maximum G force that you obtained with this gear at this time.
+The bar with the blue tip is the representation of the force in real time.
+The LED, if it turns green when you go to the next gear, means that the force obtained with this new gear (shift up) is a good continuation of the force compared to the previous gear.
+This module can be important for the BRM.
+On the attached screenshot I purposely went up to 5th gear too early, the LED is red because the upper gear force was too low, I lost strength and therefore i lost time...
+
+Obviously it is not a question of doing everything so that it is green, because sometimes it is necessary to up a gear "too early" to benefit from a flexibility at the exit of a curve (for example Monza Parabolica).
+But in other cases it is necessary to seek the maximum force at each shift-up.
+
+
+GForce-Lap and Best GForce indicates the force scrore per lap, and the highest force obtained in this run. 
+
+QUESTION
+Sometimes CTRL-T works for me as expected, sometimes it seems to do nothing.  I have temperature set to average, of course.  Suppose I press CTRL-T to see the tire temperatures for right turns as well as the average temperatures.  Are the right-turn tire temperatures displayed only when in the GPL setup menu, for example, or only after a certain number of laps?
+
+ANSWER
+Very good question :)
+
+When you start a session with the average temperature, the labels which should receive these values display "---".
+When the average temperature of the tires will rise to approximately 85° Celsius, the rectangle around the checkbox "Avg." will light up green, and you hear "beep".
+from this moment the values will be displayed, and the average calculated.
+Sometimes it takes 3 laps, sometimes 2 ...
+
+I have to wait to start the calculations, because if I start with cold tires, the overall average will be unusually low.
+
+Note: On the 1966 mod the threshold is lower because the tires heat less. 
+
+QUESTION
+Livetime telemetry is very suitable for multitaskers. Unfortunately I'm not a multitasker.
+That's why the logger part is more interesting for me.
+A question: If I use GPLMotec_Logger: Can I switch to ContactPatchTemps (the temps which changes very fast) with Ctrl-A...and display the values afterwards with GP2L? Is it correct?
+
+ANSWER
+The LOGs created by GPLMotec and Logger for GP2L only relate to lap times and fuel consumption, that's all Zozo offers in its software, nothing else.
+
+You don't have to be multitasking with GPLMotec, because when you come back to the garage after having done for example 4 laps of the tracks, the situation is frozen on the GPLMotec screen with regard to the temperatures and pressures of the tires.
+You have plenty of time to analyze the result and correct your setup if necessary.
+See the examples in the documentation. 
+

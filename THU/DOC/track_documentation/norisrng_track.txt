@@ -1,0 +1,68 @@
+
+General Info: ------------- To install, unzip the contents of this zip
+file to a TEMP folder and run 'trackinstall.exe', the track should
+install automatically.
+
+This install is ready for GEM+ integration.  It will utilize the
+67season.ini editing capabilites of this great tool created by Paul
+Thurston.  To use this track with GEM+ you must copy two files from
+the install archive after installing the track.
+
+Copy the files tgem.ini and screenshot.bmp to the norisrng folder
+after install.
+
+
+For Manual Install: --------------- Create folder in
+\sierra\gpl\tracks called norisrng
+
+unzip all files in archive to \sierra\gpl\tracks\norisrng folder
+
+edit \sierra\seasons\67season.ini and \sierra\seasons\gp.ini by adding
+the following
+
+[EventXX] name=Nuernberg Grand Prix shortname=Norisring
+trackDirectory=norisrng month=5 day=14 numberOfLaps=128 startingGrid=4
+
+Dont forget to increment the numEvents=XX line at the top of
+each... and make sure the XX's agree.
+
+Thanks to: ---------- Http://www.cruisekids.com for sponsoring my
+tracks.  Please visit.
+
+Phil Flack, Martijn Keizer and the entire GPLEA for the design tools
+and advice.  Christian Wohlfahrt for 123do and hours of encouragement.
+Eric Bourgouin, Meik Theimann and the entire Team Friendship for
+horizon, original program pages, and original AI Greger Huttu - hot
+lap replay and groove.  Mark Beckman - Final AI Martin Granberg for
+GPLRA Groove Tool and track installer.  Don Dodge for the program
+cover and the entire membership of the OSRL and LGRGPL leagues for
+beta testing.  Arvid Steinberg and Smudo for providing real racing
+experience
+
+and... anyone else I forgot to mention.  My appologies...
+
+Misc ---- This program is freeware, use it whenever you want and
+distribute it as much as you want as long as there is no money
+charged. The program may not be distributed on a media (such as a
+CD-Rom or a diskette) for which money is charged OR on a media
+distributed with for example a magazine for which money is charged
+without the author's permission.
+
+This track may not, partially or in full, be posted at any other sites
+without express permission!  You may link to this page, but not
+directly to the files.
+
+The Artwork and graphics contained in this track may not in whole or
+in part be copied without express permission of the author.
+
+Thank you!
+
+
+DISCLAIMER ---------- This software is provided "as is" without
+warranty of any kind, either expressed or implied. Use it at your own
+risk.
+
+THIS IS NOT A SIERRA/PAPYRUS PRODUCT
+
+Lou Magyar ljmagyar@yahoo.com
+

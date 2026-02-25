@@ -1,0 +1,147 @@
+
+Bridgehampton - An Appreciation - by Steve Smith:
+================================================== Bridgehampton was
+probably the greatest of all the post-war U.S. tracks.  Its only
+competition: Riverside (the Esses and Turn Six were fabulous; the rest
+of the track was a bore), Elkhart Lake (beautiful...but little more
+than drag races between bog-simple corners), Road Atlanta (a great
+circuit...until the Can-Am cars started doing back
+flips--"blowovers"--and they had to emasculate it), Lime Rock (another
+beautiful setting, but a one- or two-gear track), and the pre-Boot
+Watkins Glen (gorgeous, but with only a handful of turns).
+
+"The Bridge," built in 1957 after road racing was kicked off NY's
+public highways, was a lot like Zandvoort--a very fast, challenging
+circuit draped over sand dunes with a lovely view of the sea.  Not
+that drivers spent much time admiring the view.  There were 13 turns
+in six groups (the two downhills, the run down into Echo Valley,
+climbing the hill behind the pits, the long series of downhill
+asymmetrical lefts, the climbing hairpin, the the last two turns
+before the uphill straight), and you were busy every minute of every
+lap.
+
+Bridgehampton separated the real racers from the wannabes.  I stood in
+awe as Walt Hansgen, in John Mecom's rear-engined Scarab, swept over
+the hill at the end of the straight without lifting and with a faint
+flick of the wrist, arrowed through the first two downhill turns in an
+impeccable arc that brought him to the very edge of the pavement...and
+within millimeters of the line he'd carved there the lap before.
+
+I also watched Ken Miles, Bob Holbert and Bob Bondurant in 427 Cobras
+powerslide up the hill behind the pits and bellow down the other side
+in a formation as tight as the Blue Angels.  (And watched Cale
+Yarborough, Lee Roy Yarbrough and Richard Petty repeat the stunt in
+thundering stock cars.)  And watched an unflappable Jim Hall gun the
+first of the winged Chapparals up the climbing hairpin without a trace
+of wheelspin.  And watched John Fitch and Bob Grossman put 25 hours on
+one of Briggs Cunningham's 1960 Corvettes destined for Le Mans.
+
+I tried to master the course myself (I did hundreds of laps there in
+street cars testing for Car and Driver, a lot more laps in an EP
+Porsche Speedster in SCCA races, and a few laps in a Formula
+Atlantic), but neither I nor any of the other legions of amateur
+racers ever came close to the mastery and grace of the really great
+drivers who prevailed there.  It's like riding a horse: anybody can do
+it, but few can do it well.
+
+After literally years in the making, Lou Magyar (whose Norisring is a
+classic) has finally released his recreation of "The Bridge," and it's
+as close to the real deal as any track in GPL.  As my friend John said
+in another context, "It is as it was."
+
+--Steve Smith
+
+
+Interesting fact: ================= Before he was a Formula 1 driver,
+Mario Andretti came to road racing at the 'Bridge in a Ferrari 275P,
+where he raced against the likes of Walt Hansgen, Jim Hall, Pedro
+Rodriguez, Hap Sharp and Skip Barber.  The September 19, 1965 USRRC
+(United States Road Racing Championship) race at the 'Bridge was
+Mario's first attempt at road racing.  He had a DNF that day, but went
+on to become one of the best known 'American' racers of our time.
+
+General Install Info: ===================== If the track installs, but
+you get a "Could Not Load Track" error, simply go to the
+"c:\sierra\gpl\tracks\bhampton" folder and rename the file "dat" to
+"bhampton.dat" and the track should load.
+
+This release contains a special file to allow GEM+ to more easily
+access the track.  To use this feature, copy the file "tgem.ini" from
+the zip archive to the "c:\sierra\gpl\tracks\bhampton" folder after
+install.
+
+If the install totally fails, add as follows:
+
+create folder in c:\sierra\gpl\tracks called 'bhampton' unzip all
+files in the archive to c:\sierra\gpl\tracks\bhampton folder
+
+rename the 'dat' file to 'bhampton.dat'
+
+move the rpy file to the c:\sierra\gpl\replay folder and rename
+bridgehampton.rpy
+
+edit c:\sierra\seasons\67season.ini and (optional)
+c:\sierra\seasons\gp.ini by adding the following:
+
+[EventXX] name=Long Island Grand Prix shortname=The Bridge
+trackDirectory=bhampton month=9 day=21 numberOfLaps=63 startingGrid=4
+
+Dont forget to increment the numEvents=XX line at the top of the
+file... and make sure the XX's agree.
+
+Thanks to: =========== Http://www.cruisekids.com for sponsoring my
+tracks.  <shameless plug>Cruisekids makes great clothes for little
+'cruisers' that includes a line of "Formula1" clothing. </shameless
+plug>
+
+Papyrus Phil Flack, Martijn Keizer and the GPLEA for the design tools.
+Christian Wohlfahrt for 123do and hours of encouragement.  Martin
+Granberg for GPLRA Groove Tool and track installer, Alison Hine - AI
+Laps, Groove Lap, WR Replay, Default Setups, and Beta Testing Eric
+Bourgouin and Paul Jackson - Texturing and beta testing Peter Forster
+- Final AI laps and LP files Don Dodge - AI Laps, textures and beta
+testing John Bradley - Programs and Beta Testing Steve Smith -
+Badgering, taunting, slave-driving and otherwise forcing the issue
+<VBG>...  (Beta Tester #1, write-up author.  Without Steve's constant
+input and encouragement, this project would likely still be on the
+table or just another hack-job of a track.)  Johnny "Redmist"
+Beunaventura Michael Hausknecht Jim Moore Mark Beckman Tom Slipp
+...for hours of beta testing and lots of valuable input, and anyone
+else I forgot to mention.  My appologies...
+
+Miscellaneous ------------- This program is freeware, use it whenever
+you want and distribute it as much as you want as long as there is no
+money charged. The program may not be distributed on a media (such as
+a CD-Rom or a diskette) for which money is charged OR on a media
+distributed with for example a magazine for which money is charged
+without the author's permission.
+
+This "README.txt" file must be included in all re-distributions
+
+This track may not, partially or in full, be posted at any other sites
+without express permission!  You may link to this page, but not
+directly to the files.  Thank you!
+
+
+DISCLAIMER ---------- This software is provided "as is" without
+warranty of any kind, either expressed or implied. Use it at your own
+risk.
+
+THIS IS NOT A SIERRA/PAPYRUS PRODUCT
+
+Lou Magyar ljmagyar@yahoo.com
+
+
+v1.01 UPDATE (12-14-2014) ------------- Because of reported troubles
+with the track installer, Bridgehampton has been recompiled using
+Bernd Nowak's new GPL Track Installer v1.15. At the same time, the
+excellent track update by Rich DeLong recommended by Lou, has been
+added to the install, to get the user completely up to date regarding
+the track.
+
+The installer also includes files to enhance support for the upcoming
+1966 Can-Am mod, made possible by G.Spinning. You'll be able to enjoy
+new program covers and newspaper pictures when you race the 1966
+Can-Am mod, as well as different advertisements around the track, to
+reflect the track as it was during the 1966 Can-Am round.
+

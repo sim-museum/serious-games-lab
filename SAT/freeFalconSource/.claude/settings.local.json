@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(cmake:*)",
+      "Bash(make:*)",
+      "Bash(ln:*)",
+      "Bash(ls:*)",
+      "Bash(echo \"sudo apt update && sudo apt install -y \\\\\"\necho \" build-essential \\\\\")",
+      "Bash(echo \"  cmake \\\\\"\necho \" g++ \\\\\")",
+      "Bash(echo \"  libsdl2-dev \\\\\"\necho \" libglew-dev \\\\\")",
+      "Bash(echo \"  libopenal-dev \\\\\"\necho \" libgl1-mesa-dev \\\\\")",
+      "Bash(echo \"  libglu1-mesa-dev \\\\\"\necho \" libpthread-stubs0-dev\"\necho \"\"\necho \"Current status - checking which are already installed... \")",
+      "Bash(dpkg:*)",
+      "Bash(find:*)",
+      "Bash(ninja:*)",
+      "Bash(grep:*)",
+      "Bash(git diff:*)",
+      "Bash(cppcheck:*)",
+      "Bash(clang-tidy:*)",
+      "Bash(timeout 15 ./build/src/ffviper/FFViper:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(pkill:*)",
+      "Bash(timeout 10 ./build/src/ffviper/FFViper:*)",
+      "Bash(timeout 5 ./build/src/ffviper/FFViper:*)",
+      "Bash(identify:*)",
+      "Bash(convert:*)",
+      "Bash(pgrep:*)"
+    ]
+  }
+}

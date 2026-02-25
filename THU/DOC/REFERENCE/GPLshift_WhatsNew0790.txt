@@ -1,0 +1,929 @@
+
+WHAT's New in GPLshift+ versions:
+
+*******************************************************************************
+v0.7.9.0:
+
+* Support for Logitech's DFGT many buttons (not tested)
+
+* First version of the Support for Fanatec GT3 RS Wheel Display: (LED)
+
+GPLshift.ini:
+-------------------------------------------------------------------------------
+[ FANATEC GT3RS WHEEL LED ]----------------------------------------------------
+                            ;The following is GPLshift Support for Fanatec GT3 
+                            ;RS Wheels Display (LED) with GPL in different ways
+                            ;Requires driver version 104 (or newer) from Fanatec
+DisplayFollowingInfoSt = 1  ;OPTIONS:             0    1               ;EFFECT:
+                            ;1 = Support following Player CAR Info in GPL Play 
+                            ;    mode (only), select one of them or more:      
+                            ;OPTION:  SPEED FUEL OP OT FP RPM RPS GEAR FPS     
+
+DisplayFollowingInfo = "SPEED FUEL RPM"             ;RPM = 1/10, RPS = Pr. sec.
+
+                            ;Remember to keep the info names inside quotation  
+                            ;marks                                             
+                            ;--------------------------------------------------
+SwBetweenInfo_Button = 1    ;OPTIONS:          #    ##                 ;EFFECT:
+                            ;1 = Selected GT3RS Wheel Button 1 to switch between
+                            ;"DisplayFollowingInfo = SPEED FUEL..." info on the
+                            ;GT3 Display - NB: Press & hold the button about 2 
+                            ;second and the first info will be display again   
+                            ;--------------------------------------------------
+OneButton4EachInfo = 1      ;OPTIONS:             0    1               ;EFFECT:
+                            ;1 = Enabled using of one GT3 Wheel Button for one 
+                            ;Info on GT3 Wheel Display (no effect in Replay)   
+
+                            ;NB: If you have enabled "DisplayFollowingInfo ="  
+                            ;Part (DisplayFollowingInfoSt = 1) then will info  
+                            ;below only be displayed as long as you pressing   
+                            ;the button, but Double click with the button      
+                            ;will switch permanent to the info                 
+
+                            ;OPTIONS:	      #	     ##	           ;EFFECT:
+
+                            ;Here follows demo. of GT3 wheel Pad/buttons setup:
+                            ;NB: Your cannot use other game ctrl. buttons here 
+                            ;and GT3 Wheel D-Pad acts here as Button 21, 22, 23
+                            ;& 24 					           
+
+SPEED_Button =              ;GT3 Wheel ........ for displaying the             
+                            ;Player Car SPEED   (KM/H or MPH)  		   
+
+FUEL_Button =               ;GT3 Wheel ........ for Displaying the             
+                            ;Fuel Level (Liters)		                   
+
+OP_Button = 23              ;GT3 Wheel D-Pad Down selected for Displaying the  
+                            ;Oil Pressure					   
+
+...
+
+
+                            ;--------------------------------------------------
+DisplaySpeedInReplay = 1    ;OPTIONS:             0    1               ;EFFECT:
+                            ;1 = Display the Player CAR Speed (KM/H, MPH) in   
+                            ;Replays, other info NOT supported in replays.     
+--------------------------------------------------------------------------------
+
+Please notice that the GT3 Display support only works if GPLshift finds Fanatec
+plugin "PorcsheWheelPlugin.dll" file in ...\GPL\ root
+ 
+Go to Fanatec webside and download the lates GT3RS Wheel Driver: 
+July 2010: www.fanatec.com / SUPPORT, PC: "Porsche 911 GT3 Wheel (PC)" 
+Download Driver PW32 104 or PW64 104 (or later)
+
+Unzip PW_XX_Driver_104.zip & copy porscheWheelplugin.dll from this package to 
+GPL's Root (where you have GPL.EXE)
+
+Install the Fanatec software, it will create a "Porsche Wheel Property Page" icon
+
+This Fanatec Plugin does not support GPL direct! to get around this problem do 
+the following, (once and for all) 
+
+Click on the "Porsche Wheel Property Page" icon and you should see a list over
+installed Game Device, 
+
+Click on the "Properties" button for "Porche Wheel"
+
+click on "Telemetry Data" TAB, for it seems to fix 2 problems: 
+"GT3LED not display anything" & GT3 wheel's button & Shifter have wrong numbers,
+Do NOT change the telemetry setup, it's only for "rFactor" racing sim. and has
+no effect for GPL!
+
+The support has already been enabled + set up with buttons in GPLshift.ini: 
+Shows Player Car's "SPEED" (default) and switch to "FUEL" & "RPM" (1:10) with
+GT3 Wheel's button 1, see under [ FANATEC GT3RS WHEEL LED ] in GPLshift.ini for
+all setups/changes. 
+
+-------------------------------------------------------------------------------
+Fixed Problems:
+
+[ TripleHead2Go Adjustment ]'s "Adjust_InCarView = AUTO" should no longer 
+block for use of GEM+ 2 (v2.5.32) tool's "Field of View" setup, so long as you 
+don't using the TH2G Unit and the [ ZOOM ] support is disabled.
+
+Moved Pitboard up in TH2G's 5040x1080, to get free off front tire. (not tested)
+
+Moved side mirrors inside center Monitor in TH2G's 5040x1080. (not tested)
+
+I have just bought myself a 24" Monitor & my beloved GPL running now 1920x1080 
+for first time, and could see [ ZOOM ],s Default & Max. positions needed to be 
+adjust - Fixed now.
+
+PRIBLUDA will not overwrite GPLshift messages, anymore
+GPLshift.ini:
+
+[ PRIBLUDA ]-------------------------------------------------------------------
+PrevPribludaDeleteText = 1  ;OPTIONS:          0             1         ;EFFECT:
+                            ;1 = Prevent PRIBLUDA (c) A. Karmal/D. Fedorov(?)  
+                            ;overwriting "GPLShift: Has Detected..." messages, 
+                            ;PRIBLUDA will come back with GPL Cars info after  
+                            ;GPLshift has deleted owne text, this function has 
+                            ;been found Okay with Pribluda v0.97, 1.121 JULY 3,
+                            ;v2.000 Updated by Mike/Ntoxicated(?)              
+
+------------------------------- END of .INI file ------------------------------
+-------------------------------------------------------------------------------
+
+
+
+JSJ
+
+August 3, 2010
+*******************************************************************************
+
+
+v0.7.8.1:
+
+* Fixed missed support for some of Logitech G27 Buttons
+
+Nov. 26, 2009
+*******************************************************************************
+v0.7.8.0: (Only out for private test)
+
+* AUTOmatic Detecting and Support for Logitech G27 Wheel Buttons & Shifter
+
+Nov. 14, 2009
+*******************************************************************************
+v0.7.7.1:
+
+* Button #17 and higher didn't work in [ SEND CHAT MESSAGE ] function, Okay now
+
+July 19, 2009 
+*******************************************************************************
+v0.7.7.0:
+
+* Adjust The TripleHeadGo View, so you have GPL's InCarView AND PitBoard on the
+  center monitor and use good old [ ZOOM ] Function to change the default 
+  position, save it with the HOME key, same way as when using singe monitor:
+
+
+[ TripleHead2Go Adjustment ]---------------------------------------------------
+Adjust_InCarView = AUTO     ;OPTIONS:          OFF       AUTO          ;EFFECT:
+                            ;AUTO = Will move the CAR with Mirror inside Center
+                            ;       Monitor (Default) - Please notice: The AUTO
+                            ;       Mode will also Enable the needed [ ZOOM ]  
+                            ;       Function in "Zoom_In_Out_Mode = KA" Mode   
+                            ;       if GPLshift find it Disabled, (OFF) But you
+                            ;       can always change [ ZOOM ] Mode to using   
+                            ;       POV or BUTTONs, See under here for saving  
+                            ;       changed (TH2G) position, ("UserDefineFOV") 
+                            ;--------------------------------------------------
+[ ZOOM ]-----------------------------------------------------------------------
+
+
+FIXED:
+
+I have just received loooong waited LT G25 w/Shifter (2� years) and found that 
+button 16 - 19 not working in GPL, Fixed now.
+
+GPLshift's different functions should also work now with button #17 and higher 
+
+Wrong CHAT name "NotProblem" -> "No Problem"
+
+The conflick between GPL's old Look Left/Right 45deg. via Z,X keys, with GPshift 
+73/122Deg. Support.
+
+Smaller problems with using .POV 
+
+
+July 17, 2009
+
+*******************************************************************************
+v0.7.6.0:
+
+* Reset TellTale via Button, instead of with Shift+T Keys:
+
+[ TELLTALE RESET ]
+Device&ButtonNumber = 1.8 	;e.g.: 1st. Game controller's Button 8 
+
+
+* Fixed the missed support for TrackIR 5th. Generation software
+
+June 26, 2009
+
+*******************************************************************************
+v0.7.5.0:
+
+* Support for Fanatec Porsche 911 Wheel's Shifter & all Buttons:				
+
+[ FANATEC PORSCHE WHEEL ]------------------------------------------------------
+ButtonsInNumericalOrder = 1 ;OPTIONS:             0    1               ;EFFECT:
+                            ;1 = Button 1 2 3... on the wheel as number 1 2 3..
+                            ;    instead of 18 17 19...  ( Shifter as 13 - 19 )
+ 	
+                            ;    This is only for the Porsche911 Wheel and need
+                            ;    Driver version 8.0.4.8 (or newer) from Fanatec
+                            ;    to work (PWT_driver_048.zip)	 	   
+                            ;--------------------------------------------------
+
+
+
+* GPL counts button from 1 (one) instead of 0: (zero)
+
+[ GPL BUTTONS ]--------------------------------------------------------------- 
+CountingButtonsFromOne = 1  ;OPTIONS:          0             1         ;EFFECT:
+                            ;1 = GPL counting buttons from 1 (one) instead of 0
+                            ;    in this .INI file and GPL큦 Set Contollers    
+                            ;-------------------------------------------------
+
+
+
+* GPL Support now 32 Button instead of only 16 with the Porsche 911 wheel:
+
+Fanatec Porsche Wheel have 12 buttons and GPL can see 16 so it should be enough,
+but if the Porsche Wheel running e.g as 3rd. gamecontroller then we have problems:
+
+1st. GamePad takeing 10 buttons ---> 6 left
+2nd. Joystick takeing 3 buttons	---> 3 left 		
+3rd. only 3 of Porsche Wheel's 12 buttons can be uset 
+
+With GPL 32 Buttons support enabled: can all 12 buttons be uset in GPL's 
+"Set Controllers" no need for disconnect other game Device
+
+
+CHANGES:
+GPLshift Support for old GPL version 1.2.0.1 has been disabled.
+GPLpatch.exe file has been renamed to GPLshift_Patch.exe
+(okay delete old GPLshift's GPLpatch.exe)
+
+WhatsNew.txt   ---> GPLshift_WhatsNew####.txt
+ReadMe###.txt. ---> GPLshift_Readme####.txt
+
+
+
+
+May 3, 2008
+
+*******************************************************************************
+v0.7.4.0:
+Support for the new Dec. 2007 released CAR66 Mod with 16 different Cars + the 3
+Grapfic: 
+
+Fixed the CTD when enable ShftErr.wav support (Clutch_Shift_Sound =)
+Fixed the missed [ DRIVER VIEW ] moving 
+Fixed the missed part of TrackIR moving 
+
+Other problems:
+Fixed the Look Right 45 degress on wrong button (Look_Right45d_Button =)
+Fixed the mixture between [ ZOOM ] & [ DRIVER VIEW ] support on ARROW keys
+
+About the Logitech G25 Shifter support in Janpan:
+Added search for "Logicool G25 Racing Wheel USB"
+
+
+
+February 1, 2008
+
+JSJ
+
+*******************************************************************************
+v0.7.3.2: 
+
+Fixed the "Logitech G25 Wheel w/Shifter Support without ACT LABS Box installed"
+problem in 0.7.3.1, hope the different Shifter Supports works now.
+
+
+BTW: Remember that the Logitech Shifter support only gives currect GPL gear 
+shift with this setup of G25 Shifter buttons:
+
+G25 Shifter: ..... GPL gear positions: 
+
+Button 8 (9th.).......1st. gear
+Button 9..............2nd. gear
+Button 10.............3rd. gear
+Button 11.............4th. gear
+Button 12.............5th. gear
+Button 13.............6th. gear
+Button 14.............R. gear
+
+(remember that buttons counts from 0)
+
+Feb. 1, 2007 
+
+*******************************************************************************
+v0.7.3.1:
+Fixed some problem with Logitech G25 Racing together with ACT LABS device:
+
+You can now use LT G25 Wheel with AL Shifter connected to AL USB Box.
+LT G25 Wheel+Shifter with AL Perf. 3Pedals unit connected to AL Box should also
+work now
+
+Removed the Driver Arm animation & sound when goto neutral position with LT G25
+Shifter (same way as with AL Shifter) 
+ 
+Jan. 27, 2007
+
+*******************************************************************************
+v0.7.3.0:
+
+* Automatic Detecting and Support for Logitech G25 Shifter 
+
+Oct 17, 2006
+
+*******************************************************************************
+v0.7.2.0:
+
+
+NEWS:
+* Automatic Detecting and Support for NP's TrackIR + Message below In Car / 
+  Arcade View if found (no need for "LookAroundMode = 1.TIR" setup anymore) 
+
+* Use TrackIR Unit + Buttons/POV for LOOK AROUND & Quick LOOK Left/Right in 
+  73/122 deg.
+
+* Support for Ghostve's FFShifter software keys gearshift and keep the Joystick 
+  FFB effect: (no need for unplug, plug back the FF Joystick)
+
+[ FFShifter Support ]----------------------------------------------------------
+FFShifter_Keys_Support = 1  ;OPTIONS:               0    1             ;EFFECT:
+			    ;1 = Enable key support for Ghostve큦 FFShifter sw.
+  			    ;if found: W:1 S:2 E:3 D:4 R:5 G:6 Q:Reverse gear  
+                            ;--------------------------------------------------
+                            ;Do not Initial following FFShifter Joystick in GPL
+                            ;for examble in my case Logitech FF Joystick: 	   
+			    ;(max 64 character AND only inside quotation marks)
+
+JoystickNameInWindowsGameOption = "Logitech WingMan Strike Force 3D USB"       
+
+                            ;it should prevent GPL disable FFShifter Joystick큦
+                            ;FFB, it means that you will not need to unplug,   
+                            ;plug back the Joystick uset by Ghostve큦 FFShifter  
+                            ;software each time starting GPL, and no need for  
+                            ;pressing FFshifter Ctrl 1 keys (hope it works 4u)  
+                            ;Please notice that the Shifter unit supp. must be 
+                            ;in AUTO mode("Shifter_Mode = AUTO" see at the top)
+                            ;to get the FFShifter support to work, AND this has		   
+			    ;only been tested under WinXP Home DK(SP2) & W2K US
+			    ;(SP4) with FFShifter's 6_gears_R.fff Setup under
+			    ;"ForceField File Loaded" 
+                            ;--------------------------------------------------
+-------------------------------------------------------------------------------
+
+* Automatic Setup of Font size dependented on GPL's resolution:
+
+[ GPL Font ]-------------------------------------------------------------------
+Auto_Set_GPL_Font_Size = 1  ;OPTIONS:         0   1   2   3   4        ;EFFECT:
+                            ;1 = Automatic setting of GPL text size, dependent 
+                            ;    on GPL resolution, will e.g use optx15b & 16b 
+                            ;    font at resolution 1280x1024 instead of the   
+                            ;    default size optx9b.bff & optx10b.bff	   
+
+                            ;2 - 4 = Also Auto. setting, but with bigger text  
+                            ;        e.g for smaller monitors:     		   
+			    ;2 = e.g. 17" monitor in high resolution	
+                            ;3 = e.g. 16" monitor in high resolution        
+                            ;4 = e.g. 15" monitor in 1280x1024 (optx20b.bff)
+
+                            ;Please notice that these setting has no effect on 
+                            ;GPLshift큦 TrackIR & Shifter message text size	   
+                            ;--------------------------------------------------
+-------------------------------------------------------------------------------
+
+* Direct FrexGP 6Speed Shifter (Hshift+) support 
+  when GPLshift's "Shifter_Model = AUTO" can't detected installed MS SideWinder
+  software, or installed with <None> Scheme setup
+  I have created this support because I couldn't install the MS SideWinder US
+  software (v3.02/v4.0) for Win98 under WinXP Home (SP2) Danish version 
+  (admin. country bug?)
+
+* Added "SetDeadZoneViaNumKeyb = 0":
+
+		            ;--------------------------------------------------
+                            ;OPTIONS:          0           1           ;EFFECT:
+SetDeadZoneViaNumKeyb = 0   ;1 = You can also use the number keyboard큦 # 0-9  
+                            ;    for changing the DeadZone size, 		   
+                            ;    Remember that Num Lock must be on 		   
+                            ;    (DeadZone also uset by Look_Up_Down function) 
+                            ;-------------------------------------------------- 
+
+CHANGED:
+"ReCenter =" ---> "RecenterButton ="
+
+"UserDefineFOV = 3FAE3DA8" ---> "= 78.0" (Field Of View in degress)
+
+"LookLRMaxAngle = 30" ---> "= 45"
+
+DeadZone Maximun level from 90% ---> about 60%
+
+Changed the version numbering 0.710/0.711/0.720 to GPL's concept: 0.7.2.0
+
+Removed the unrealistic "UserDefineSOV ="
+
+
+FIXED:
+The wrong TrackIR ReCenter position
+
+
+KNOWN ERRORs:
+"Switch_Between_Modes =" does not work 
+
+
+May 4, 2006
+
+*******************************************************************************
+v0.711:
+Fixed missed [ DRIVER VIEW ] Support with GEM2+ CAR69
+Fixed the problem with GEM2 69CAR driver head on the rear wing
+Fixed missed TrackIR 4 Unit Vector Expansion Support
+Fixed the CTD in [ LOOK AROUND ] "ViewCarEngine&RearWheel = 0" function
+
+December 25, 2005 
+*******************************************************************************
+0.710:
+Added TrackIR VE Move Up/Down (Y) support
+
+May 28, 2005
+*******************************************************************************
+0.702: Fixed the missed [ DRIVER VIEW ] support with TC-MOD Cars
+
+April 22, 2005 
+*******************************************************************************
+0.701: 
+Fixed the missed TrackIR Vector Expansion effect under Windows 2000 
+
+Feb. 24, 2005
+*******************************************************************************
+0.700:
+
+*TrackIR Vector Expansion support (6DOF): X (move Side to Side) Z (move In/Out)
+ Enabling af TrackIR Vector Expansion support --> "LooKAroundMode = 1.TIR" 
+ in GPLshift.ini under  "[ LOOK AROUND ]"
+
+Changed [ LOOK LEFT/RIGHT ] name to [ LOOK AROUND ] because of the the TrackIR
+6DOF support
+
+Changes in GPLshift.ini because of TrackIR VE support:
+ "[ LOOK LEFT/RIGHT ]" name, changed to "[ LOOK AROUND ]"
+ "Look_Up_Down = 0" setting, changed to "= 1"
+
+------------------------------------------------------------------------------
+TrackIR 6DOF Y (Move Up/Down) support will come in next GPLshift+ vers, I Hope 
+
+January 19, 2005
+*******************************************************************************
+0.601:
+Fixed CTD problem with ACT LABS 2-IN-1 Box support, second time :(
+
+January 11, 2005
+*******************************************************************************
+0.600:
+
+* GPLshift+ runs now with NaturalPoint 4. generation software (v4.00 Build 18): 
+  Supports NP's 2D/6DOF LOOK Left/Right, Up/Down (Yaw, Pitch) in GPL
+  (6DOF Z support will come later in next version if possible, I hope)
+
+* Autoloading of GPL profile (not with old NP version 2.* / 3.* ,yet)
+
+December 13, 2004
+*******************************************************************************
+0.592:
+
+Fixed CTD in the AL Shifter support (connected to 2-in-1 box)
+
+December 1, 2004
+*******************************************************************************
+0.591:
+
+Fixed Look Left 45 deg. bug (button mode)
+
+November 21, 2004
+*******************************************************************************
+0.590:
+
+* In TrackIR Enhanced mode support for Look Left/Right, and now also Up/Down: 
+  (no irritated TIR moving of the cursor e.g. under replay)
+
+[ LOOK LEFT/RIGHT ]------------------------------------------------------------
+Left_Right_Mode = 1.TIR     ;OPTIONS: OFF  #.BUT  #.POV  1.MOU  1.TIR  ;EFFECT:
+
+...
+
+Look_Up_Down = 1            ;OPTIONS:          0             1         ;EFFECT:
+                            ;1 = Look also up & down with the TrackIR unit in  
+                            ;    Enhanced mode	   			   
+-------------------------------------------------------------------------------
+
+* Adjust the Driver View Up/Down & Forward/Back position (3D moving) in GPL's 
+  In Car View: (this is only a supplemant/alternetiv to GPLSA's GPLDV part) 
+
+[ DRIVER VIEW ]----------------------------------------------------------------
+Up&Down = 1           	    ;OPTIONS:            0       1            ;EFFECT:
+
+                            ;0 =   OFF
+                            ;1 =   Move the DRIVER VIEW up & down by using 
+                            ;      left Shift key with ARROW keys:             
+
+                            ;      Up    =  Up
+                            ;      Down  =  Down 
+                            ;      Right =  Not uset yet
+                            ;      Left  =  Back to default position  
+
+Forward&Back = 1      	    ;0 =   OFF  		  
+                            ;1 =   Move the DRIVER VIEW forward & back by
+                            ;      using left Ctrl key with ARROW keys:              
+
+                            ;      Up    =  Forward              	   
+                            ;      Down  =  Back 	   
+                            ;      Right =  Not uset yet
+                            ;      Left  =  Back to default position
+ 
+NB: You can't save the DRIVER VIEW positions in this first version, and there 
+    can be some problems with the maximum moving and the driver's head position
+-------------------------------------------------------------------------------
+
+* Lift your real left arm/hand (with a DOT) and the driver in GPL "In Car View" 
+  will do the same: (emulate Space key)
+
+[ TrackIR LIFT ARM ]-----------------------------------------------------------
+LiftRightArmLevel = 3       ;OPTIONS:    0    1    2    3    4    5    ;EFFECT:
+                            ;0 =    OFF    					   
+                            ;1 =    Lift your real right arm with the (1st/2nd)
+                            ;	    DOT up to level 1, and the driver will do
+                            ;	    the same In Car view			   
+                            ;5 =    Highest level	   			   
+
+-------------------------------------------------------------------------------
+
+* Have now moved the text "GPLshift+ has detected...Shifter..." to 2nd. line to
+  avoid conflict with F10 arcade view & S. Magnusson's GPLDDM Util.
+
+-------------------------------------------------------------------------------
+
+Missing:
+
+GPLshift+ does not auto load a eventuel TrackIR GPL profile (gpl.tir) because 
+it request support in gamesupport.np file, as I understand it.
+
+GPLshift+ can't setup TrackIR (NP software) in Enhanced mode, so remember 
+pressing NaturalPoint software key for switch to Enhanced mode. (default F8) 
+
+Right mouse button single/double Click for Look L/R "reset to front of view" 
+has been disabled in TrackIR Enhanced mode (1.TIR)
+
+LookLRResetButton support with TrackIR In Enhanced mode works only with NP v3.11
+or higher
+
+I will try to fix some of these problems in next version, if possible
+
+Sorry for my English, I am Danish
+
+
+September 15, 2004
+
+********************************************************************************
+****************************** OLDER VERSIONS: *********************************
+********************************************************************************
+0.581:
+
+AUTO detecting of ACT LABS Shifter connected to the new 2-in-1 USB Adapter Box 
+     (together with the Performance Pedals unit)
+
+*******************************************************************************
+0..580:
+
+Some small news for Look L/R MOUse support: 
+
+* Linear moving now, instead of non-linear
+
+* And 3 new commandos for Mouse compatible device (e.g TrackIR unit) with 
+   following example of a Look L/R window:
+
+LookLRStartAngle = 0	;OPTIONS:    #	     ##	      ###	   ;EFFECT:
+			;Set the start angle your can see with the MOUse
+			;compatible device up tp 122 degrees.
+			;Please notice: use only number(s)	           
+   
+
+LookLRMaxAngle = 30	;OPTIONS:    #	    ##	      ###   	   ;EFFECT:
+			;Set the maximum angle your can see with the MOUse 
+			;compatible device, between 20 and 122 degrees	   
+			;Please notice: use only number(s)	           
+                        
+
+LookLRResetButton = 1.8 ;OPTIONS:   	   #.#	      #.##         ;EFFECT:
+			;Select a button (e.g. Steering Wheel button) for 
+			;resetting the Look L/R back to front of view 
+			;(instead of using TrackIR software F12 key)
+			;Notice: The Un/Freeze state will not be change
+                       
+* Use the number keyboard (0 - 9) to change DeadZone setup in GPLshift.ini 
+
+* Use a gamectrl. button for reseting Look L/R back to front of view
+  (instead of TrackIR F12 key)
+
+N.B.: You can't change the DeadZone via the # keyboard under replay, because
+      GPL using it for the videomachine functions. 
+
+    And the changed LookLRstart & LookLRMaxAngle setup has no effect under
+     replay
+
+
+    Don't worry about the changing of Look L/R to 73/122/141 degrees angle, 
+    it's still the same view as before with 85/135/180 deg. in older version of 
+    GPLshift+
+
+*******************************************************************************
+0.571: 
+Now with current GPLshift.ini, in the .ZIP file, Sorry for the trouble
+
+*******************************************************************************
+0.570:
+
+
+NEWS:
+
+*Use your MS Compatible mouse/TrackIR for analogic Look L/R in 0 to 135/180
+ degree angle, and use right mouse button for Freeze/Reset to front of view 
+ Singe click: Un/Freeze the view
+ Double Click: Back to front of view in off mode
+ 
+"Left_Right_Mode = 1.MOU" ON/OFF state under GPL upstart: (Default)
+
+ Play mode:	ON
+ Replay Mode:	OFF  (click right mouse button for ON state)
+
+Notice: "ViewCarEngine&RearWheel = 1" don't work (disabled) vent using 
+ mouse/TIR for Look L/R (to many bug, need more time to fix it)
+
+Change: 
+
+ CHAT message "Watch it" has been change to "No Problem"
+
+
+BUGs: (hold on)
+
+ All the old still there + Some problems with the new Look L/R MOUse support:
+ Look 45, 85 135deg. don't work, with the MOUse enabled, sorry 
+ (will try to fix in later version)
+
+ Be aware of you can't shift to the follow views if you are looking left/right: 
+ F1O view, Replays camera view: Roll Bar, Nose, Gearbox Front Susp. Rear Susp. 
+ and maybe others, But it works if you are in front of view or inside DeadZone
+ area (Double click the right mouse button and you are back in FOV with MOU 
+ support disabled) 
+ 
+ Another little problem: When you press Shift, Ctrl Alt keys then the Look will
+ jump back to front of view, so long as you the key down
+
+*******************************************************************************
+0.560:
+
+*Support & AUTOmatic detecting of FrexGP Hshift+ unit 
+*And show the name & controller ID number In Car view, if found
+
+*Shifter_Behaviour mode 9: also good for Hshift+ with 5 gear Cars
+
+	1   3   5  -
+	2   4   R  -
+
+*******************************************************************************
+0.551:
+
+Only fixed some "GPLshift+ has detected..." wrong text message
+
+*******************************************************************************
+0.550:
+
+NEWS:
+
+*Show the Cars engine and rear wheel in Look L/R 135 degrees
+
+*Set FPS display on (once for all) under GPL upstart (instead of using ALT-F)
+
+*Display the "GPL USB Shifter" game controller name under GPL upstart, if found
+
+*add Shifting_Behaviour = 8 
+
+	R   2   4  (6)
+	1   3   5   -
+
+*Use only 2 buttons (e.g steering wheel) for Look Left & Right 45, 85, 135 
+ degrees by using Double* or TripleClick, e.g through this setup for Look left:
+
+Enabling of Triple Click:
+ Left_Right_Mode = 1.but
+ Look_Left45d_Button = 0      
+ Look_Left85d_Button = 0  
+ Look_Left135d_Button = 0
+
+Press the button: Look Left 45 
+
+OR
+
+1st click: 85  
+2nd click: 135 
+
+
+DoubleClick:
+ Look_Left45d_Button =       
+ Look_Left85d_Button = 0  
+ Look_Left135d_Button = 0
+
+Press the button: 85 degree view
+
+OR
+
+Click button: 135
+
+
+My TripleClick setup for Force RS Wheel buttons 
+(with a GPL USB Shifter)
+
+ Left_Right_Mode = 1.but   <-- Force RS have gamecontroller ID number 1 
+
+ Look_Left45d_Button = 0   <-- Left Paddle   
+ Look_Left85d_Button = 0  
+ Look_Left135d_Button = 0
+ Look_Right45d_Button = 1  <-- Right Paddle
+ Look_Right85d_Button = 1
+ Look_Right135d_Button = 1
+
+
+DON'T USE SAME BUTTON for Look Left & Right
+
+
+BUG fixed:
+ Shifting_Behaviour = 7      ;didn't work
+
+ [ Clutch Device ] Clutch Threshold: only 90% work (#5)
+
+ LOOK RIGHT 85 degrees Ok now.
+
+ Volume Crtl. & Look L/R can also share POV now:
+  Up & Dw for Volume ctrl. - all other positions for Look L/R
+
+
+Known BUGs in 0.551:
+ The GPL gearstick still moving before the driver ARM
+
+ The car stand still in the PIT, but you can see the rear wheels sometime 
+  roll. slow (in the wind?), (to you press the brake pedal) this is not a 
+  GPLshift+ error, but a GPL replay problem, I thing, 
+  also some graphic error in this view
+
+ Text conflict e.g between "GPLshift+ has detected..." and GPL own F10 view
+  (cockpit info), PAUSE, etc
+
+ Other multiplayers can't hear you missing gear shift (ShftErr.wav) because
+  GPL don't support any gear sound in local Multiplay, I don't know about GPL
+  own gearshft.wav in online (VROC) Multiplay
+
+*******************************************************************************
+0.541:
+
+BUG fixed: Some empty "_Button = " lines under [ SEND CHAT MESSAGE] & 
+            [ VOLUME CONTROL ] could give problems and bloking for other 
+            functions 
+
+*******************************************************************************
+0.540:
+
+
+NEWS:
+
+*Send 4 CHAT mess. under Multiplay: "PO" "PI" "Sorry!" "Watch it" via POV/Buttons
+
+*Change GPL volume control via POV/Buttons (instead of in GPL Options/Setup) 
+
+*Using a GPLshift.ini without extra ";comment......." lines  (GPLshft2.ini) 
+
+*Share same POV Hat & the keyboard ARROW Keys between some functions:
+
+LOOK L/R & ZOOM, sharing POV Hat
+ Left up    = Look L   45degree
+ Left       = Look L.  85  "
+ Left Down  = Look L. 135  "
+ Right up   = Look R.  45  "
+ Right      = Look R.  85  "
+ Right Down = Look R. 135  "              
+ UP         = ZOOM forward		
+ Down       = ZOOM back
+
+ZOOM & GPL Volume Control Level sharing POV/ARROW keys:
+ Left       = Volume Down
+ Right      = Volume Up
+ UP         = ZOOM forward		
+ Down       = ZOOM back
+
+
+BUG Fixed: 
+ This should work now with only 2 buttons, (e.g)  
+ [ ZOOM ] 
+ Zoom_In_Out_Mode = 1.BUT
+ Zoom_Out_Button =
+ Zoom_In_Button =
+ Zoom_Reset_Button = 3
+ Zoom2UserDefineFOV_SOV_Butt = 4
+
+ 
+ The Pitboard Zooming problem (that was hard)
+
+*******************************************************************************
+0.530:
+
+* You can (again) use keyboard for GPL good old Look L/R 45 deg. (e.g Z X)
+   undependent of the setup of the 85/135 view in GPLshift.ini
+* Change ZOOM position via keyboard ARROW keys (KA mode)
+* Press the keyboards HOME key for saving ZOOM 2 diff position (FOV & SOV) 
+   These saved position (UserDefineFOV/SOV =) will also be uset next time you 
+   starting GPL 
+
+Here is how to save ZOOM positions, by some exemble:
+
+Part of GPLshift.ini:
+-----------------------
+[ LOOK LEFT/RIGHT ]
+Look_left85d_Button = 7
+
+[ ZOOM ]
+Zoom_In_Out_More = KA    ;Keyboard Arrow key
+-------------------------
+
+SAVE FRONT OF VIEW ZOOM POSITION: (also for 45 deg. side view) 
+ Set the ZOOM as you wish, by pressing the Up/Dw Arrow key, then press the
+ HOME key and the position will be saved in the line:
+
+UserDefineFOV = 3F9A9DA8 ;My preferred, because I still can see necessary 
+                         ;part of the Pitboard 
+
+SAVE SIDE OF VIEW ZOOM POSITION: (85/135 deg.)
+ Press button 7 and HOLD it, and then press Up/Dw Arrow for current setting of
+ position, final press the "HOME" key (still holding buttons 7) and the SOV 
+ will be save in line: 
+
+UserDefineSOV = 3FBF5DA8 
+
+*******************************************************************************
+0.521:
+
+Only bugFix: GPL crached (CTD) when you have enabled GPLshift+ LOOK L/R or/and 
+ ZOOM support and in the same time assign. buttons for Look left, Right in GPL's
+ OPTIONS/CONTROLS 
+
+*******************************************************************************
+0.520:
+
+2 new POV options for ZOOM function:  
+POV Left  = Reset ZOOM to nomaly view
+POV Right = ZOOM max (closes to the dashboard)
+
+More zooming (forward)
+
+New Shifting_Behavior mode: (#7)
+
+R	2	4      (6)
+-	1	3	5
+
+*******************************************************************************
+0.510:
+
+LOOK L/R and ZOOM functions has been splited up, so it can use diff. game contr.
+ buttons/POV
+
+Prevent GPL USB Shifter reserve 2 AXIS, seems to have a effect under WinXP
+where you can't set the game controller as you wish, and in som case also giving
+the FFB effect back to Force RS Wheel (I don't know about others FBB game dev.)
+
+Use all GPL 16 AXIS support between 5 Game Controller, instead of only 2,
+so you don't have to disconnect your 3rd game conn. (e.g FFB JoyStick) each
+time you run GPL, - and I can now use my game controllers without losing AXIS:
+
+ACT LABS Force RS 	    	(4 AXIS)
+ACT LABS Performance Pedals 	(5 AXIS)
+LW GamePad                      (2 AXIS) (not use here)
+ACT LABS USB Shifter            (0 AXIS) 
+
+*******************************************************************************
+0.505:
+
+ Fixet another jump back to window (CTD) under GPL upstart, when selecting 
+ button(s) for SHIFT UP / DOWN in GPL CONTROLS setup 
+
+*******************************************************************************
+0.504:
+ 
+ Fixed a serious Jump back to window Desktop BUG, when using this options:
+  Clutch_Shift_Sound = 1
+
+ Fixed a wrong Shifting_Behaviour mode when sw from BRM to a 5 gear car
+
+*******************************************************************************
+0.500:
+
+Fixed BUGs 
+
+ GPL will now stay in current gear after reset CAR commando (R-SHIFT/Button)   
+
+ The BRM Car left gearbox support should also work now in ALL GPL training 
+  modes 
+
+ It is not necessary anymore to setup SHIFT UP/DOWN to 2 button 
+  in GPL SETUP/CONTROLS,    ok with the GPL default keypad + - 
+  
+ You don't need to set disable_network = 0  (in core.ini) anymore
+
+*******************************************************************************
+
+
+

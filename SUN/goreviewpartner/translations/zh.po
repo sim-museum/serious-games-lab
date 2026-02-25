@@ -1,0 +1,842 @@
+
+############ Main panel
+#1.1
+msgid "This is GoReviewPartner"
+msgstr "GoReviewPartner欢迎您"
+
+#1.2
+msgid "Run a SGF file analysis"
+msgstr "分析SGF/RSGF文件"
+
+#1.3
+msgid "Run a live analysis"
+msgstr "对战实时分析"
+
+#1.4
+msgid "Open a RSGF file for review"
+msgstr "回顾RSGF文件"
+
+#1.5
+msgid "Convert RSGF file to SGF file"
+msgstr "把RSGF文件转换为SGF文件"
+
+#1.6
+msgid "Download a SGF file for analysis"
+msgstr "下载并分析一个SGF文件"
+
+#1.7
+msgid "Settings"
+msgstr "参数设置"
+
+#1.8
+msgid "The file %s has been converted to %s"
+msgstr "文件 %s 已经被转换为 %s"
+
+#1.9
+msgid "Convert RSGF file to CSV file"
+msgstr "把RSGF文件转换为CSV文件"
+
+############## Analysis setting
+#2.1
+msgid "Bot to use for analysis:"
+msgstr "用来分析的狗"
+
+#2.2
+msgid "Select variation to be analysed"
+msgstr "选择要分析的变化分支"
+
+#2.3
+msgid "Select moves to be analysed"
+msgstr "选择要分析的手数"
+
+#2.4
+msgid "Analyse all %i moves"
+msgstr "分析全部%i手"
+
+#2.5
+msgid "Analyse only those moves:"
+msgstr "只分析这几手:"
+
+#2.6
+msgid "Select colors to be analysed"
+msgstr "选择要分析的黑白方"
+
+#2.7
+msgid "Black & white"
+msgstr "黑方和白方"
+
+#2.8
+msgid "Black only"
+msgstr "仅黑方"
+
+#2.9
+msgid "White only"
+msgstr "仅白方"
+
+#2.10
+msgid "Confirm the value of komi"
+msgstr "确认贴目数"
+
+#2.11
+msgid "Stop the analysis if the bot resigns"
+msgstr "如果狗认输则停止分析"
+
+#2.12
+msgid "Variation %i (%i moves)"
+msgstr "变化分支 %i (%i 手)"
+
+#2.13
+msgid "Start"
+msgstr "开始"
+
+#2.14
+msgid "Incorrect value for komi (%s), please double check."
+msgstr "贴 (%s)目不正确,请核实."
+
+#2.15
+msgid "Could not make sense of the moves range."
+msgstr "手数设定错误."
+
+#2.16
+msgid "Please indicate one or more move intervals (e.g. \"10-20, 40,50-51,63,67\")"
+msgstr "请设定一个或多个手数区间(例如: \"10-20, 40,50-51,63,67\")"
+
+#2.17
+msgid "Error while reading komi value, please check:"
+msgstr "读取贴目数时出错，请检查:"
+
+
+############## SGF download
+#3.1
+msgid "Paste the URL to the SGF file (http or https):"
+msgstr "粘贴SGF文件的URL地址 (http ou https):"
+
+#3.2
+msgid "Get"
+msgstr "获取"
+
+#3.3
+msgid "Could not open the URL"
+msgstr "无法下载这个URL"
+
+#3.4
+msgid "Not a valid SGF file!"
+msgstr "不是一个SGF文件F!"
+
+#3.5
+msgid "This analysis will be performed on an already analysed SGF file."
+msgstr "对旧的RSGF文件进行分析!"
+
+#3.6
+msgid "What to do with the existing variations?"
+msgstr "以前的分析成果还要么？"
+
+#3.7
+msgid "Keep existing variations"
+msgstr "继续以前的分析"
+
+#3.8
+msgid "Replace existing variations"
+msgstr "重新开始分析"
+
+############## Analysis running ###
+#4.1
+msgid "Analysis of: %s"
+msgstr "%s分析"
+
+#4.2
+msgid "Remaining time: %ih, %im, %is"
+msgstr "剩余时间: %i小时, %i分钟, %i秒"
+
+#4.3
+msgid "Currently at move %i/%i"
+msgstr "当前手数 %i/%i手"
+
+#4.4
+msgid "Completed"
+msgstr "完成"
+
+#4.5
+msgid "Start the review"
+msgstr "开始复盘"
+
+#4.6
+msgid "Now closing, please wait..."
+msgstr "正在关闭，请稍等..."
+
+
+############## RSGF review
+
+#5.3
+msgid "Graphs"
+msgstr "胜率图表"
+
+#5.4
+msgid "Table"
+msgstr "表格"
+msgid "Comments"
+msgstr ""
+
+#5.7
+msgid "Go to first move."
+msgstr "回到开局"
+
+#5.8
+msgid "Go back 10 moves."
+msgstr "倒退10手"
+
+#5.9
+msgid "Go back one move. Shortcut: keyboard left key."
+msgstr "倒退1手。快捷键:←键"
+
+#5.10
+msgid "Go forward one move. Shortcut: keyboard right key."
+msgstr "前进1手。快捷键: →键"
+
+#5.11
+msgid "Go forward 10 moves."
+msgstr "前进10手"
+
+#5.12
+msgid "Go to final move."
+msgstr "前进到终局"
+
+#5.13
+msgid "<Ctrl+Q> to save the goban as an image."
+msgstr "<Ctrl+Q> 保存盘面为图像."
+msgid "Use mouse middle click or wheel to undo move."
+msgstr ""
+
+#5.14
+msgid "<Ctrl+W> to save the goban as an image."
+msgstr "<Ctrl+W> 保存盘面为图像文件."
+
+#5.15
+msgid "Use mouse wheel or keyboard up/down keys to display the sequence move by move."
+msgstr "使用鼠标滚轴或键盘↑/↓键来打谱."
+
+#5.16
+msgid "Actual game"
+msgstr ""
+
+#5.17
+msgid "Keep pressed to show map."
+msgstr ""
+
+#5.18
+msgid "Maps"
+msgstr ""
+
+#5.19
+msgid "Show"
+msgstr ""
+
+#5.20
+msgid "Territories"
+msgstr ""
+
+#5.21
+msgid "Influence"
+msgstr ""
+
+#5.22
+msgid "Heat map"
+msgstr ""
+
+#5.23
+msgid "Display"
+msgstr ""
+
+#5.24
+msgid "Not available"
+msgstr ""
+
+############## Open position
+#6.1
+msgid "Undo"
+msgstr "撤销"
+
+#6.2
+msgid "Play one move"
+msgstr "走一手"
+
+#6.3
+msgid "Play as white"
+msgstr "执白"
+
+#6.4
+msgid "Play as black"
+msgstr "执黑"
+
+#6.7
+msgid "Undo last move. Shortcut: mouse middle button."
+msgstr "悔一手棋。快捷键: 点下鼠标中间按钮（滚轴）"
+
+#6.8
+msgid "Select a bot"
+msgstr "选条狗"
+
+#6.12
+msgid "Let the bot take both sides and play against itself."
+msgstr "狗左右互博"
+
+#6.13
+msgid "Ask the bot for a quick evaluation"
+msgstr "请狗快速评估"
+
+#6.15
+msgid "White"
+msgstr "白方"
+
+#6.16
+msgid "Black"
+msgstr "黑方"
+
+#6.17
+msgid "Action"
+msgstr ""
+
+#6.18
+msgid "No bot"
+msgstr ""
+
+#6.19
+msgid "Do nothing"
+msgstr ""
+
+
+
+############## Graphs
+#7.1
+msgid "Win rate"
+msgstr "胜率"
+
+#7.2
+msgid "Black win rate delta"
+msgstr "黑方胜率变化量"
+
+#7.3
+msgid "White win rate delta"
+msgstr "白方胜率变化量"
+
+#7.4
+msgid "Value Network win rate"
+msgstr "价值网络胜率"
+
+#7.5
+msgid "Black Value Network win rate delta"
+msgstr "黑方价值网络胜率变化量"
+
+#7.6
+msgid "White Value Network win rate delta"
+msgstr "白方价值网络胜率变化量"
+
+#7.7
+msgid "Monte Carlo win rate"
+msgstr "蒙特卡洛搜索胜率"
+
+#7.8
+msgid "Black Monte Carlo win rate delta"
+msgstr "黑方蒙特卡洛搜索胜率变化量"
+
+#7.9
+msgid "White Monte Carlo win rate delta"
+msgstr "白方蒙特卡洛搜索胜率变化量"
+
+#7.10
+msgid "Score estimation"
+msgstr "点目"
+
+
+#7.11
+msgid "Black win rate"
+msgstr "黑方胜率"
+
+#7.12
+msgid "Move %i (%s), black/white win rate: "
+msgstr "第 %i (%s)手胜率（黑/白）: "
+
+#7.13
+msgid "Move %i: win rate of Black's move: %s; win rate of computer move: %s"
+msgstr "第 %i手: 黑方实战胜率: %s, 狗招胜率: %s"
+msgid "Move %i: win rate of White's move: %s; win rate of computer move: %s"
+msgstr "第 %i手: 白方实战胜率: %s, 狗招胜率: %s"
+
+#7.14
+msgid "The computer believes the actual move is %.2fpp better than it's best move."
+msgstr "狗认为实战这手的胜率比狗招高 %.2fpp"
+
+#7.15
+msgid "The computer believes it's own move win rate would be %.2fpp higher."
+msgstr "狗认为它这招的胜率比实战高出 %.2fpp"
+
+#7.16
+msgid "Move %i (%s), estimated score: "
+msgstr "第 %i 手(%s), 局势判断: "
+
+#7.17
+msgid "Win for White"
+msgstr "白胜"
+
+#7.18
+msgid "Win for Black"
+msgstr "黑胜"
+
+#7.19
+msgid "<Ctrl+Q> to save the graph as an image."
+msgstr "<Ctrl+Q> 保存分析图表为图像."
+
+############## GRP Settings
+#8.1
+msgid "%s settings"
+msgstr "%s 设置"
+
+#8.2
+msgid "General parameters"
+msgstr "通用参数"
+
+#8.3
+msgid "Language"
+msgstr "语言"
+
+#8.4
+msgid "Parameters for the analysis"
+msgstr "分析参数"
+
+#8.5
+msgid "Maximum number of variations to record during analysis"
+msgstr "最多分析的分支数量"
+
+#8.6
+msgid "Only keep variations where game move and bot move differ"
+msgstr "仅当狗招和实战不同时，才保存该变化分支。"
+
+#8.7
+msgid "Save bot command line into RSGF file"
+msgstr "保存狗的设置参数到RSGF文件中"
+
+#8.8
+msgid "Parameters for the review"
+msgstr "查阅参数"
+
+#8.9
+msgid "Natural stone placement"
+msgstr "模糊落子位置"
+
+#8.10
+msgid "Real game sequence deepness"
+msgstr "显示实战手数"
+
+#8.12
+msgid "Maximum number of variations to display during review"
+msgstr "分析中记录变化分支的最大数量"
+
+#8.13
+msgid "Blue/red coloring of the variations"
+msgstr "变化分支显示的颜色（蓝色/红色）"
+
+#8.14
+msgid "Labels for the variations"
+msgstr "变化分支的标签"
+
+#8.15
+msgid "Inverted mouse wheel"
+msgstr "反向滚动鼠标滚轮"
+
+#8.16
+msgid "Save settings"
+msgstr "保存设置"
+
+#8.17
+msgid "The best variation in blue"
+msgstr "最佳变化分支用蓝色显示"
+
+#8.18
+msgid "Win rate > 50% in blue"
+msgstr "胜率>50%的变化分支用蓝色显示"
+
+#8.19
+msgid "Variations better than actual game move in blue"
+msgstr "优于实战的变化分支用蓝色显示"
+
+#8.20
+msgid "Percentages"
+msgstr "胜率"
+
+#8.21
+msgid "Letters"
+msgstr "字母"
+
+
+
+
+
+############## Bots Settings
+#9.1
+msgid "Slow profile parameters"
+msgstr "慢棋模式参数"
+
+#9.2
+msgid "Command"
+msgstr "程序路径"
+
+#9.3
+msgid "Parameters"
+msgstr "参数"
+
+#9.4
+msgid "Time per move (s)"
+msgstr "每手用时"
+
+#9.5
+msgid "Test"
+msgstr "测试"
+
+#9.6
+msgid "Fast profile parameters"
+msgstr "快棋模式参数"
+
+#9.12
+msgid "Maximum number of variations"
+msgstr "变化分支的最大数量"
+
+#9.13
+msgid "Deepness for each variation"
+msgstr "变化分支的深度"
+
+#9.14
+msgid "See AQ parameters in \"aq_config.txt\""
+msgstr "AQ的参数请到\"aq_config.txt\"中设定"
+
+#9.15
+msgid "Slow profile"
+msgstr "慢棋"
+
+#9.16
+msgid "Fast profile"
+msgstr "快棋"
+
+############## Data description and display
+#10.1
+msgid "Move %i"
+#e.g. Move 244
+msgstr "第 %i 手"
+
+#10.2
+msgid "White to play. In the game, white played %s"
+#e.g. White to play. In the game, white played D16
+msgstr "白方下在 %s"
+msgid "Black to play. In the game, black played %s"
+msgstr "黑方下在 %s"
+
+#10.3
+msgid "For this position, %s would play: %s"
+#e.g. For this position, Leela would play: D16
+msgstr ""
+
+#10.4
+msgid "Black win probability:"
+msgstr "黑方胜率:"
+msgid "White win probability:"
+msgstr "白方胜率:"
+
+#10.5
+msgid "before %s"
+msgstr "%s 之前"
+
+#10.6
+msgid "after %s"
+msgstr "%s 之后"
+
+#10.7
+msgid "Black Value Network win probability:"
+msgstr "黑方价值网络胜率:"
+msgid "White Value Network win probability:"
+msgstr "白方价值网络胜率:"
+
+#10.8
+msgid "Black Monte Carlo win probability:"
+msgstr "黑方蒙特卡洛搜索胜率:"
+msgid "White Monte Carlo win probability:"
+msgstr "白方蒙特卡洛搜索胜率:"
+
+#10.9
+msgid "Move"
+msgstr "手"
+
+#10.10
+msgid "Policy Network value"
+msgstr "策略网络值"
+
+#10.11
+msgid "Playouts"
+msgstr "模拟量"
+
+#10.12
+msgid "Evaluation"
+msgstr "评估"
+
+#10.13
+msgid "RAVE"
+msgstr "随机落子"
+
+#10.14
+msgid "black/white win probability for this variation: %s"
+msgstr "这个变化分支的 黑/白 胜率: %s"
+
+#10.15
+msgid "Policy network value for this variation: %s"
+msgstr "这个变化分支的策略网络值: %s"
+
+#10.16
+msgid "Monte Carlo win probability for this variation: %s"
+msgstr "这个变化分支的蒙特卡洛搜索胜率: %s"
+
+#10.17
+msgid "Value network black/white win probability for this variation: %s"
+msgstr "这个变化图的价值网络胜率（黑/白）: %s"
+
+#10.18
+msgid "Number of playouts used to estimate this variation: %s"
+msgstr "用于评估这个变化分支的模拟量: %s"
+
+#10.19
+msgid "Evaluation for this variation: %s"
+msgstr "这个变化分支的评估: %s"
+
+#10.20
+msgid "RAVE(x%% : y) for this variation: %s"
+msgstr "这一手随机落子在 (x%%: y) : %s"
+
+#10.21
+msgid "Score estimation for this variation: %s"
+msgstr "这个变化的形势判断: %s"
+
+#10.22
+msgid "Analysis by GoReviewPartner"
+msgstr "分析工具GoReviewPartner"
+
+#10.23
+msgid "Bot"
+msgstr "狗"
+
+#10.24
+msgid "Intervals"
+msgstr "间隔"
+
+#10.25
+msgid "Command line"
+msgstr "命令行"
+
+#10.26
+msgid "Book move"
+msgstr "标记的一手"
+
+############## Live analysis settings
+#11.1
+msgid "Bot used for analysis"
+msgstr "狗"
+
+#11.2
+msgid "Black player"
+msgstr "黑方"
+
+#11.3
+msgid "White player"
+msgstr "白方"
+
+#11.4
+msgid "No overlap thinking time"
+msgstr "人想棋时狗不跑"
+
+#11.5
+msgid "Board size"
+msgstr "棋盘尺寸"
+
+#11.6
+msgid "Komi"
+msgstr "贴目"
+
+#11.7
+msgid "Handicap stones"
+msgstr "让子"
+
+#11.8
+msgid "SGF file name"
+msgstr "SGF文件名"
+
+#11.9
+msgid "Human player"
+msgstr "人"
+
+#11.10
+msgid "Please place %i handicap stones on the board."
+msgstr "让 %i 子"
+
+#11.11
+msgid "The game is now starting!"
+msgstr "对局开始"
+
+
+############## Live analysis
+#12.1
+msgid "Game"
+msgstr "开始对局"
+
+#12.2
+msgid "Currently at move %i"
+msgstr "当前在第 %i手"
+
+#12.3
+msgid "Pause"
+msgstr "暂停"
+
+#12.4
+msgid "Analysis"
+msgstr "分析"
+
+#12.5
+msgid "Analysis by %s"
+msgstr " %s 在分析"
+
+#12.6
+msgid "Status:"
+msgstr "分析状态:"
+
+#12.7
+msgid "Ready to start"
+msgstr "可以开始了"
+
+#12.8
+msgid "Resume"
+msgstr "继续"
+
+#12.9
+msgid "Pass"
+msgstr "停一手"
+
+#12.10
+msgid "Waiting for next move"
+msgstr "等待落子"
+
+#12.11
+msgid "Pause the game"
+msgstr "暂停对局"
+
+#12.12
+msgid "Pass for this move"
+msgstr "这一手弃权"
+
+#12.13
+msgid "Undo to previous move"
+msgstr "退一手"
+
+#12.14
+msgid "Live game"
+msgstr ""
+
+############## GTP terminal
+#13.1
+msgid "Send GTP command"
+msgstr "发送GTP指令"
+
+
+
+############## Popups
+#14.1
+msgid "Choose a filename"
+msgstr "选择一个文件名"
+
+#14.2
+msgid "Select a file"
+msgstr "选择一个文件"
+
+#14.3
+msgid "SGF file"
+msgstr "SGF文件"
+
+#14.4
+msgid "Reviewed SGF file"
+msgstr "分析过的RSGF文件"
+
+#14.5
+msgid "PNG image"
+msgstr "PNG图像"
+
+msgid "Error"
+msgstr "出错"
+
+msgid "Information"
+msgstr "信息"
+
+############## error messages
+
+msgid "Could not open the RSGF file: "
+msgstr ""
+
+msgid "Could not save the RSGF file: "
+msgstr "无法保存RSGF文件: "
+
+msgid "Could not save the SGF file: "
+msgstr "无法保存SGF文件: "
+
+msgid "Could not open the SGF file: "
+msgstr "无法打开SGF文件"
+
+msgid "Error while initializing the GTP bot:"
+msgstr "初始化GTP程序时出错:"
+
+msgid "Error while initializing the graphical interface:"
+msgstr "初始化图形界面时出错:"
+
+msgid "Aborted"
+msgstr "中断"
+
+msgid "Analysis aborted:"
+msgstr "分析中断"
+
+msgid "GnuGo thread failed:"
+msgstr "GnuGo线程失败"
+
+msgid "Could not run %s using the command from config.ini file:"
+#e.g. Could not run Leela using the command from config.ini file:
+msgstr "不能使用config.ini文件中的指令来运行 %s :"
+
+msgid "%s did not reply as expected to the GTP name command:"
+#e.g. Leela did not replied as exepected to the GTP name command:
+msgstr "%s 没有正确应答GTP名字的指令:"
+
+msgid "%s did not identify itself as expected:"
+#e.g. Leela did not identify itself as expected:
+msgstr "%s 没有正确识别自己:"
+
+msgid "%s did not reply as expected to the GTP version command:"
+#e.g. Leela did not replied as expected to the GTP version command:
+msgstr "%s 没有正确应答GTP版本的指令:"
+
+msgid "Could not set the goboard size using GTP command. Check that %s is running in GTP mode."
+#e.g. Could not set the goboard size using the GTP command. Check that Leela is running in GTP mode.
+msgstr "未能用GTP指令来设置棋盘尺寸，请核对 %s 是否运行在GTP模式下"
+
+msgid "%s rejected this board size (%ix%i)"
+#e.g. Leela Zero rejected this board size (9x9)
+msgstr "%s 拒绝了这个棋盘尺寸 (%ix%i)"
+
+msgid "Could not run the program:"
+msgstr "不能运行程序:"
+
+msgid "Leela Zero is currently running the OpenCL SGEMM tuner. It may take several minutes until Leela Zero is ready."
+msgstr "Leela Zero试图使用OpenCL加速功能，这个过程可能需要几分钟。"
+
+msgid "Ray is currently running the OpenCL SGEMM tuner. It may take several minutes until Ray is ready."
+msgstr "Ray试图使用OpenCL加速功能，这个过程可能需要几分钟。"
+
+msgid "The config.ini file does not contain %s entry for %s !"
+#e.g. The config.ini file does not contain TimePerMove entry for Leela !
+msgstr "config.ini文件没有包含 %s 的接口!"
+
+msgid "The config.ini file %s entry for %s is empty!"
+#e.g. The config.ini file TimePerMove entry for Leela is empty!
+msgstr "config.ini文件 %s 的 %s 接口是空的!"
+
+

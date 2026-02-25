@@ -1,0 +1,119 @@
+PATCH BOB TO VERSION 0.98 AND 0.99(patches included)
+
+Copy files in " bob main" to your Rowanbob main, copy and replace.
+
+PV'S 2014 GROUND TERRAIN MESH EDIT is included. To use the original mesh see the "rowan BACKUP folder" in the landscap folder.
+
+rowanbob version 0.99 and the mod , works on my WIN764 bit system, not sure if it would work on later windows 8 0r 10.
+
+
+Everything is setup to work on my system. This seems to be the best setup I can manage. If you can improve on it please let me know on the bob2 forum.
+
+
+
+Run in xp SP2 MODE TO ENABLE CAMPAIGN  MAP AND COCKPIT VOICE AND SOUNDS. 
+
+After installing the mod you will have to select your joystick in the controls setup if it is not already done. YOU MAY HAVE TO DO THIS EVERY TIME BEFORE PLAYING THE SIM IF YOU EXPERIENCE PROBLEMS.
+
+Set your resolution.
+
+set ground collisions to OFF TO AVOID SPIN OF DEATH ON MISSION TAKE OFF OR LAnding.
+
+
+
+
+----------------------------------------------------------------------------
+
+I have included my keyboard folder with my setup as an option.
+My key config :
+
+F2: MAG1
+F3: MAG2
+F4: FUELSELECTOR1
+F5:FUELSELECTOR2
+F6: PRIMER
+F7: START
+
+
+
+MOUSE: MOUSELOOK
+
+I use a LOGITECH EXTREME PRO JOYSTICK with 12 keys for these settings.
+
+
+After installing the mod you will have to select your joystick in the controls setup if it is not already done..
+
+JOYSTICK SLIDER: PITCH
+JOYSTICK 11 :POV TOGGLE   
+
+SOME JOYSTICK KEYS ARE HARD CODED FOR CERTAIN COMMANDS AND WILL DISPLAY DOUBLE FUNCTIONS IF YOU ASSIGN A NEW FUNCTION TO THEM.
+
+JOYTOKEY:  place the folder anywhere on hdd , mine is on the desktop.
+execute joytokey and leave it open for the duration of gameplay.
+
+
+JOY TO KEY is used to map the HAT to throttle to free up your left hand for mouselook:
+
+HAT DOWN: 0 THROTTLE
+
+joystick5, hatleft, hatright, joystick6  are mapped to throttle in ascending order.
+
+HAT UP : FULL THROTTLE
+
+
+THE HAT IS HARD CODED TO FUNCTION AS POV, BUT I ASSIGNED THROTTLE FUNCTIONS TO IT. WHEN USING IT FOR THROTTLE USE QUICKLY TO AVOID POV CHANGE. IT IS NOT IDEAL BUT IS USABLE.
+
+
+-------------------------------------------------------------------
+Near /Far horizon settings 
+
+One of the main improvements that Bob2 brought to the table was the fartiles function which renders the terrain tiles in the distance.
+
+In Rowanbob the near horizon is claustrophobic in bad weather and the far horizon setting in good weather renders just flat colour tiles in the distance.
+
+ A compromise can be reached and I've included the settings in the BDG.TXT file provided. Unfortunately when  toggling the map the horizon is reset to the default far setting.
+For this reason I use 'R' rather than the map to issue radio commands.  
+
+
+Refer to Patch manual 0.98 section "2.1.2.27" for further info.
+
+-----------------------------------------------------------------------
+SINGLE PLAYER OR squadron  CAMPAIGN NOTES:
+
+There is no single pilot as we know it in bob2, but by using directives to micromanage squadrons we can play a campaign lite version and still play a psuedo single player campaign, pretty easy once you get the hang of it.
+
+
+Start a campaign. 
+Set directives for squadron deploment.
+Frag into squadron to fly as individual pilot as and when  you see fit.
+
+Read the 0.98 patch manual section "3.3.3" for more info. 
+
+
+
+----------------------------------------------------------------------------
+As far as I know nobody supports or sells this retro title and the source code is freely available on the net, so I am providing a link to a free version.
+
+https://www.old-games.com/download/6503/rowan-s-battle-of-britain
+
+There are two download options, fast(you pay) or slow(free),and it is slow. I tested it to see if it works and it indicated the dowNload duration as 18 hours.
+
+It will probably have a crack exe which you will not have to use as the BDG patches will replace the original exe file.
+
+
+$$$$$I have in the past downloaded retro titles from this site and have had no problems, it's up to you to investigate and use your own discretion.$$$$$$
+
+
+CREDITS:
+
+AIRCRAFT SKINS CREATED FROM IL2 CLOD SCREENSHOTS
+
+TERRAIN FILES EDITED FROM MARTIN'S ENGLAND GROUND IL2 1946 TERRAIN .
+
+BOB2 TEXTURES USED TO RE-SKIN BUILDINGS AND SHIPS.
+
+PV'S 2014 GROUND TERRAIN MESH EDIT .
+
+SOME OF HAZZIE'S SOUND FILES AND TOWER OF LONDON TEXTURES.
+
+ARIS WOFF CLOUDS.

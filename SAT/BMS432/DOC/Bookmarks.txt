@@ -1,0 +1,30 @@
+# Falcon BMS 4.32 - Install to Combat Ready in 1 Hour (Tutorial)
+
+https://www.youtube.com/watch?v=uU3pmXvnc0k
+
+# Falcon 4 BMS 4.32 Tutorials 
+
+https://www.youtube.com/playlist?list=PL3E09AA94FF0EACEC
+
+# Falcon 4 BMS Tutorials Cockpit Orientation, Navigation, and Formation Flying
+
+https://www.youtube.com/watch?v=RWPEGNZB09Y&list=PL3E09AA94FF0EACEC&index=14&t=0s
+
+# Falcon 4 BMS Tutorials: Controls and Data Cartridge
+
+https://www.youtube.com/watch?v=2BQVD-SbEcY&list=PL3E09AA94FF0EACEC&index=9&t=0s
+
+# Falcon 4 BMS Tutorial Ramp Start / Takeoff / Startup
+
+https://www.youtube.com/watch?v=eUtpZQNt-Tg&list=PL3E09AA94FF0EACEC&index=21&t=0s
+
+BMS key bindings
+https://veterans-gaming.com/index.php?/blogs/entry/18-falcon-bms-keybindings-for-new-players/
+
+Targeting Pod (note: because BMS 4.32 and BMS 4.33 do not implement IFF, you may need to
+use the targeting pod to identify aircraft.  See minute 34:00 in the video link below for
+instructions on how to do this
+https://www.youtube.com/watch?v=tIO3OGNlXJ0
+
+Complete installation files for BMS 4.32 and add-on theaters are at this link:
+http://thomasclark.us/falcon/432/

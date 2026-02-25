@@ -1,0 +1,16 @@
+# PyQt Math Quiz Application Dependencies
+# Install with: pip install -r requirements.txt
+
+# GUI Framework
+PyQt6>=6.6.0
+
+# Mathematics
+sympy>=1.12
+numpy>=1.26.0
+scipy>=1.11.0
+
+# Plotting
+matplotlib>=3.8.0
+
+# For potential Maxima integration
+pexpect>=4.9.0

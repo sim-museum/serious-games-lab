@@ -1,0 +1,66 @@
+
+Stardust International Raceway for GPL ver. 1.0
+
+
+Made by Ginetto.
+
+Track Location: Las Vegas NV, USA Track Type : Race Track Track
+elevation: 730 m. above sea level Track Length : 4.828 km.- 3.0 mil.
+Track Num. Turns : 10 Track Year : 1967
+
+Track Editor : Ginetto
+
+--------------------------------------
+
+Long time gone track, Stardust was built in 1965 by the Stardust Hotel
+and Casino.  It hosted the season finale of the Can-Am Championship
+between 1966 and 1968.  In 1969 the Stardust hotel was sold and the
+new owners largely abandoned the track; leased for a while then the
+whole land was sold.  In 1970 track was closed and Spring Valley
+community took its place.
+
+--------------------------------------
+
+In the folder you will find a Stardust_Type_7_Horizon.7z file
+containing the 32 bits version Horizon made by Remy.  V2 rasterizers
+are required for type 7 files.  If you want a smooth sky, extract the
+files into the folder.
+
+--------------------------------------
+
+Credits :
+
+Horizon and Textures: Remy Roesz.
+
+Camera file: Greg Liebzeit
+
+3DO cars: Gaus, Stefano Zampedri.
+
+Historic research and Pictures: Pavel, Greg Liebzeit.
+
+Beta testing: all the CanAm MOD team
+
+Hosting the private forum: the GPL Repository.
+
+Hosting the track: the SimRacing Mirror Zone.
+
+--------------------------------------
+
+Special thanks to:
+
+All the community for giving me the right support for making this
+happens!
+
+All the special guys that developed the tools for editing every GPL
+related thing!
+
+The notorious Papyrus for giving me lots of fun!
+
+--------------------------------------
+
+Enjoy, Yours GINETTO
+
+============================
+
+Bergamo Italy, 15 June 2013
+

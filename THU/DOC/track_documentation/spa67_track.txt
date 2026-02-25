@@ -1,0 +1,159 @@
+Spa-Francorchamps 1967 for TRAGrand Prix Legends Made By
+
+John Basara, Hatzi, Thomas Laechele, ginetto, sky, Stefano Zampedri,
+and others.
+
+
+
+
+Location : Francorchamps, Stavelot, Belgium Type : Road Circuit
+Elevation: 400 m. above sea level Length : 14.112 km. - 8.769 miles
+Turns : 21 Year : 1967
+
+>> Click here to view Spa67 Gallery <<
+
+Check out the preview movie made by Stefan Roess: The Story of Spa67
+
+The first time, John Basaras files were posted, was in
+2006, he made the ribbon of the whole track thinking that the
+elevations were final and the track needed a total make up. But till
+2010 there was no one working with the files. At this time, the track
+was only the road and grass on the trackside. The layout was in many
+ways different to the original papy track. There were no 3DOs placed
+or built, the altitudes of the track only edited until Les Combes and
+the textures were only placeholders.
+
+Hatzi came to the project in March 2010. He started to correct the
+existing altitudes. Roman (sky) was already in the team and supported
+Hatzi and ginetto. Hatzi also started working on the gtk file in
+building the landscape. He also added some existing 3DOs. With the
+help of ginetto he started to correct the layout. So ginetto is the
+good angel of the development who had always helped immediately when
+Hatzi didn't know how to do something, because he never made a
+complete GPL track. After the first year the track was an
+alpha-version and on a promising way.
+
+Hatzi started to build new 3DOs for bushes, trees and areas which
+couldn't be built with the traces and walls within the GTK, like the
+Eau Rouge bridge section. At this time, Roman started the work on his
+extraordinary ground textures. This kind of realistic and high
+resolution textures were never seen before on a GPL track. The next
+big step was the joining of Thomas Laechele (thl) to the group. Thomas
+had made excellent texture updates for existing tracks. His skills in
+creating textures of the horizon, all kinds of vegetation, houses and
+hills vastly enhanced the look and feel of Spa '67.
+
+Stefano built the houses and their textures at La Source and other
+places, and contributed the trackside vehicles and many further
+details. Thomas and Hatzi started to build the houses and hill
+3DOs. Hatzi made the 3DOs and Thomas created the textures. Most of
+them were basically pictures of the buildings which are still there,
+or sometimes inspired by Google street-view. Most textures were
+completely new creations. Hatzi also started adding all sorts of stuff
+(poles, spectators, electricity cables, more trees, more
+bushes). Meanwhile Michel supported the group with friendly research,
+and Duncan provided further photos and info. Rob Hunter offered advice
+at various stages of development.
+
+In 2012 Phil entered the group and made 3DOs for the pit buildings,
+the main grandstands and the ad-boards at Stavelot and
+start-finish. Remy Roesz joined in November 2012 and painted some pit
+adverts, those on the left wall at La Source and the boards after the
+pits. To have a case of more realism, we also decided to reflect the
+weather and sunshine conditions on the textures. At this time it was
+clear that there must be different versions of the track 3DO and
+different versions of the resolution of the textures, so slower
+computers could also make the track drivable. In May or June 2013
+Duncan came back. He had already been part of the group some years
+before but then left without any information of his plans. He made
+some textures and did an extremely detailed research work for all
+parts of the track. Together with Hatzi he edited the altitudes in
+many parts of the track. So the last 2 years were a time of
+fine-tuning.
+
+Greg Liebzeit helped to bring the project close to completion. He made
+the camera file with the help of Michel's photos and keen direction,
+optimised the AI behaviour, and created AI sets which replicate
+history with remarkable accuracy across several seasons. He also
+tested with zeal, as did Michel. Chris (silence) created some textures
+and chose the resolutions for the standard texture pack. Stefan Roess
+made an online grid and volunteered to host the track files, while TvO
+designed the Spa '67 website.
+
+In April 2014 ginetto took over the leadership of the group, made
+numerous fixes and optimisations, and managed the finalizing of the
+track folder and the installer. But he had to leave in July for some
+months. In October Hatzi was back again and the group decided not to
+wait for ginetto's return. The hard voluntary work of the team with
+its ups and downs, times of great progress and periods of stagnation,
+times of conflicts, personal crises, but always with the aim to create
+something extraordinary, in mind now comes to an end. We hope that
+many people all over the world will have a great challenge, when
+driving on this extraordinary legendary racetrack!
+
+The team of Spa67 Installation
+
+To install Spa67, run the installer and follow the instruction
+carefully.  Note: Installed Spa67 track folder is located in [game
+folder]\tracks\spa67
+
+
+IMPORTANT: To run the track with '67 F1 cars you MUST install GPL 67
+Patch v1.3.  If you cannot find gplc67.exe in your GPL game folder,
+that means you haven't installed 1.3 patch or configured with GEM+.
+Please download the patch from GPL 67 Patch v1.3 or at SRMZ and follow
+the instruction carefully.  After installing the 1.3 patch, GPL will
+still display "GPL.1.2.0.2" in game.  To play, run the game via GEM+
+or gplc67.exe instead.
+
+The track also requires V2 rasterizers, available here: V2 Rasterizers
+or at SRMZ
+
+
+Configure & Troubleshoot: If you get the error "Could not initialize
+replay system" or have FPS problems, use the standard textures (not
+the hires update). If you still have problems, use the lowres texture
+pack and/or the LITE 3DOs.
+
+Please reduce the graphics detail level from 100 to 99 to cure
+graphical glitches.  You can set this in GEM+ by clicking the
+'Graphics' button.
+
+On the website you will find a spa67_LITE.7z package.  This LITE
+version features fewer objects and shorter draw distances, for older
+PCs. Extract its files in the spa67 main folder to activate.  You can
+also use the LITE trackside 3DOs with the FULL spa67.3DO; to do so
+simply delete the loose spa67.3do you have just extracted.
+
+You can also download alternative texture packs: The high-res pack
+increases the resolution of some textures, for modern powerful PCs.
+The low-res pack reduces some textures, for older PCs.
+
+On the website you will find a spa67_SERVER.7z archive.  This contains
+the bare server version, including Stefan's wide grid.
+
+Fog effect: When running the '65 F1 and '67 GT mods, fog is displayed
+to simulate a rainy atmosphere. To remove the fog, open "track65.ini"
+or "trackGT.ini" and make the following change: [ fog ] type = 0
+
+
+There are additional archives inside the installed track folder: AI
+seasons: Want to know why Graham Hill is so slow in the practice
+sessions and then starts from the rear of the grid? Do you find that
+Michael Parks crashes very, very frequently in the practice sessions?
+To answer these and many other questions unarchive the _AI.7z file to
+your spa67 folder and find the 'Race reports - AI explanations'
+folder. Please install the realistic AI and historically correct
+carsets by following the instructions within the folders 'Global AI
+files', '1967 Historical Spa Sports Cars', '1967 Historical Spa F1
+Carset' and '1965 Historical Spa F1 Carset'.
+
+Team Pit Boards: The _TeamPitBoards.7z archive contains a pit
+signalling man for each 1967 F1 team. To use this option, unzip and
+copy the board.srb file from the relevant team folder into the spa67
+main folder.
+
+
+1967 Belgian GP Race Reports: To read a huge collection of articles
+about the real race posted by Michel, click here.
+

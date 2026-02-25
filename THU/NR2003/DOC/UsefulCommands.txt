@@ -1,0 +1,7 @@
+Type "r" to turn on ideal track line graphic.
+
+In Garage, select the "fast" setup, much better than the default setup.
+
+Disable all driver aids, including the more sensitive steering at low speeds aid in Garage/Advanced.
+
+If you have a wheel, set steering to linear

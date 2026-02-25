@@ -1,0 +1,64 @@
+
+ 12 Hours of Sebring For The Alitalia Airlines Trophy - Sebring FL-USA
+ver. 1.0 for GPLegends GT MOD
+
+Made by Ginetto.
+
+Track Location: sebring FL-USA Track Type : Airfield Track Track
+Length : 8.354 km.- 5.19 mil.  Track Num. Turns : 11 Track Year : 1967
+
+Track Editor : Ginetto
+
+--------------------------------------
+
+INFOS:
+
+This track has a complete new layout from the previous creation for
+GPL, I recreated the 1967 Sebring 12 hours.  I did a lot of research
+to find out how exactly was the layout in '67, I did my best to
+recreate it the most accurate as possible, keeping an eye to the
+performance on the lower systems.  A few leftover .3do and .mip are
+still from the older sebring 1959 by Smogbike, credits to the original
+authors.
+
+You find 3 .jpg files for GEM+: sebr67-GT.jpg : the GT version
+(default) sebr67-F1.jpg : F1 version sebr67.jpg : the one which is
+actually used by GEM+, rename to this whatever you like of the above
+
+
+The track is a mandatory addon if you want to do the championship with
+the SportCar MOD.
+ 
+--------------------------------------
+
+Thanks to :
+ 
+The GT MOD team for testing .
+
+John Bradley for the wonderful Program Cover.
+
+Stefano Zampedri for the cars and cables 3do.
+
+The GPL Repository for hosting the private forum.
+
+The SimRacingMirrorZone for hosting the track.
+
+--------------------------------------
+
+Thanks to:
+
+All the community for giving us the right support for doing this!
+
+All the special guys that developed the tools for editing every GPL
+related thing!
+
+The notorious Papyrus for giving me lots of fun!
+
+--------------------------------------
+
+Enjoy,
+
+yours GINETTO ============================
+
+Italy, 09 Oct 2010
+

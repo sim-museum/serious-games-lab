@@ -1,0 +1,86 @@
+
+
+in recon in 2D mission view - designate as trg stpt gives exact lat/long, then check and save in 2D DTC view
+
+default frequency is what you get when you enter the 3D world
+
+right click/set Preplanned Threat Stpt, then open 2D DTC and save
+
+pinky switch gives normal/expand view
+
+MSL step - (short press ) cycle stations & (long press) cycle type
+
+in ACM TMS up:  boresight
+
+in ACM TMS right:  30x20
+
+DMS left/right: cycle left/right MFD pages
+
+CMS up: run current chaff/flare program
+
+CMS left: run program 6
+
+paddle switch: hold to temporarily turn off autopilot
+
+CMS left/right: data link send target at your FCR cursor to wingman (Air to Air/Air to Ground)
+
+AG sel jet wpn release
+
+AG missle step CCRP/CCIP 
+
+AG 1st detent: laser 2nd detent: gun
+
+Free Falcon channel 1 flight (BMS UHF 297.50, or make this the default VHS (VHS 138.05))
+
+Free Falcon  channel 6 package (BMS UHF 349.00)
+
+Free Falcon channel 15 tower (varies)
+
+try backup/set channel 15/ preset
+
+selective jettison - master arm must be set to arm or simulate
+
+TGP only works in master arm on or master arm simulate
+
+ICP MARK then SEQ right to FCR then ENTR
+switch to MARK STPT (#26)
+
+fire all HARMS, then AI attack my target
+
+Data link IDM CONT
+
+comms switch left > .5 sec
+
+chaff/flare program 5 slap switch
+
+chaff/flare program 6 CMS left
+
+AUTO will auto drop countermeasures on missile launch detect
+
+TMS right long: cycle RWS, TWS
+
+press D for ACM mode
+
+press TMS up to turn on radar  
+
+TMS up: bore
+
+TMS right: 30x20
+
+TMS down: Vertical Scan or, with lock, 30x20
+
+TMS left short: IFF scan
+
+TMS left long: locked target or area near radar cursor
+
+can fire AIM-120 with radar off.  The missile use its own on-board radar to 
+lock on to a target directly in front of it  (target within circle)
+
+CCRP with TGP cursors
+
+CMS means countermeasures
+
+CMS auto: switch on, CMS right to disable, CMS down to enable
+
+ASGN to CONT then hold CTRL o data link
+

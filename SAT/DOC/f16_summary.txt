@@ -1,0 +1,1017 @@
+ My name is Chuck Gager and today I'm going to walk you through
+everything you need to know about getting started with Falcon BMS 4.32
+So the first thing you need to know is how and where to get the game.
+So you get the game from Benchmark Sims and the first thing you need
+to do to get the actual game from them is you need to go to their
+website. So you're going to open up your browser here and you're going
+to go to Google and you're going to type in Benchmark Sims. And it
+should be the first link in the page, BenchmarkSims.org. And you'll
+follow this link and then you'll get to this lovely website here. And
+unfortunately to use all of the services on the website, including the
+download section, you need to create a login. So I've already made one
+starting to do that, but first thing you get here is you're going to
+go to the top right and click login. And you're going to give them
+your email and everything and make a login for the website. And once
+you've done that, you're going to go to the download section that you
+just now gained access to. And you're going to find the thread titled
+Falcon BMS 4.32 Full Installer. And you click on this guy. Alrighty.
+And you no longer in the past you had to do this weird thing where you
+applied patches to the installer and then installed the game. You
+don't have to do any of that anymore. All you have to do is download
+this Falcon 4 or Falcon BMS setup either through Torrent or one of
+these mirrors. And you just run the setup and the game will install it
+and you don't have to worry about any of that other stuff that you had
+to do in the past. So I've already downloaded this. And once you
+download it, you'll get a folder that looks like this and you'll just
+run the setup.exe in here. I'm not going to run this because I already
+have the game installed and I can't install two versions over each
+other. But one thing to note, it's pretty straightforward. You just
+show it where, like any other game you install, you just show it where
+to go. But Falcon BMS is a mod for the original Falcon 4 game. So to
+install Falcon BMS, you have to have purchased the original Falcon 4.
+And how they check that you've bought the original Falcon 4 is during
+setup it'll ask you to point it towards this original Falcon 4.exe
+that came with the original game. If you need help on instructions on
+how to obtain a Falcon 4.exe through a proper channel, you can
+personal message me at my YouTube address here or at my Reddit
+username, Chuck underscore Jaeger, which is spelled just the same way
+as my user one. And I can help you out on how to get a Falcon 4.exe
+through the proper channels. And with that, that is how you install
+the game. And next we'll actually go through to some of the important
+things you need to know about actually using the F16. Alrighty. Now
+that you've installed the game, we're going to go over some of the
+setup and configuration options you have with BMS. So when you first
+start up the game, you'll get this little menu here. And the first one
+will actually launch the game. But underneath of that, there's a
+little configuration button you can click here. And if you go in here,
+you'll see you have all of these options for changing all sorts of
+different things about how the game runs. For now, I would leave most
+of this stuff as default. But if you start playing the game and you
+find something you don't like, like for example, you don't like your
+field of view, you can come back here and change your field of view to
+be something else. And any other kind of tweaks and things like that
+that you want to change about the game is all done back here through
+the Falcon BMS config. And the next thing that's kind of important to
+talk about here is this third button will direct you to all of the
+manuals for BMS. And in here is the actual BMS full manual. So this
+manual covers everything that I'm going to go over in this video
+rather briefly. This manual covers it in excruciating detail. So if
+you ever need to know how to do something in much more detail, this
+manual will show you how to do it in just way more detail than you
+probably need to know. But everything you'd ever need to know about
+the F16 in the game is in this manual if you ever get lost. Alrighty,
+now we're actually ready to start up the game and create our first
+pilot and start setting up some of our controls and whatnot. So now
+we're actually going to launch the game. And when you first start the
+game and get to your main menu, the first thing you want to do is you
+want to make your first pilot profile. And you do that under your
+logbook. And mine's already filled in with my pilot, but when you guys
+get in here, you're going to click new to make your first pilot. And
+then you're going to put in a call sign and a name for the pilot you
+want and then you're going to hit save. And after you've made this
+pilot, all of your controls and your difficulty settings and some
+statistics about your campaigns and whatnot will all save this
+logbook. So it's very important that you come in here and create that
+pilot, name it something and save it. Okay. And after you've done
+that, you're actually ready to start setting up some controls. All of
+that is done under setup. Under setup, you have all the options for
+the difficulty of the game, to graphics that you'll set yourself,
+sound options. And then under controllers is where you'll find most of
+your graphic options. Or sorry, not graphic options, control mappings.
+The first thing you need to map in here is probably your joystick axes
+for your Y and X axis for pitching the role in the actual aircraft.
+And that's under advanced. If you go under advanced to flight control,
+you'll find all of these dropdown menus where you can map different
+axes on your joystick or your rudder pedals to whatever you'd like
+them to be. And the same thing goes here for avionics control. If
+you've got a mini stick on your joystick, you can also map the mini
+stick in the F-16 to X and Y axis or whatever axes you want. And by
+default, I think the game will load up a key file called BMS key file.
+And it'll have most of the controls you want in here. And as you start
+playing the game and watching tutorials and you find controls that you
+want to map to your stick or your keyboard, you'll just find the
+corresponding control here in this list. And click to the left of
+whatever control you want to set and press the corresponding key in
+your joystick or keyboard to change that control. And then once you've
+made a bunch of changes in here that you want to save, hit save. And
+you can type in your own name for a key file like my key file. And
+it's a text document that gets saved in your BMS folder that has all
+of these options in there saved for you. Okay. I don't really have
+everyone's sticks a little bit different so I unfortunately can't tell
+you everything you need to map right now. So hopefully as you watch
+this tutorial and other people's tutorials, it'll become clear to you
+what you need to map on your joystick. Most things in this game have a
+key command that's actually on the keyboard. So hopefully you'll just
+start out pressing those keys on the keyboard and then as you find
+controls that you want to have more access to, you'll come in here and
+map those to your stick. But for now, this is everything you need to
+know about where to go to map your controls once you figure out where
+you want them to be placed on your stick. Sorry, one more thing that
+should be noted I guess before I get into some of the actual flying
+tutorials here is that if I ever say a key command in game like press
+TMS left and you don't know what the heck TMS left is or where it is,
+you'll come here into setups into controllers, and you'll look through
+this list until you find whatever key command told you to press so
+there it is TMS left, and you'll see that for you, it might be
+different. It's bound to control left arrow. So again, if I ever in a
+tutorial and I say you need to press, you know, TMS up to lock a
+target and you don't know that's bound to you'll come into your
+controller file here and you'll find it in the controls and you'll
+just look it up and that's what it is bound for you. Because
+everyone's key files are a little bit different depending on which one
+you loaded up by default. Alrighty, and with that, we are actually
+ready to go into the game, the actual game world and certainly how to
+start up the aircraft. So how most of the training goes in this game
+is there actually isn't like a step by step training there is in DCS.
+There's all of these pre made tactical engagements under this tactical
+engagement trainings tab. And these are basically just preset
+scenarios that will require you to do something there's not actually
+like a step by step guide that you can read. These are just scenarios
+that put you into, like a pre made mission where you have to employ
+something that you're trying to train up on. So for now, we go to
+tactical engagement training, and we're going to select ramp start,
+and we're going to commit to start up the ramp start tutorial. And
+this game map world is what you'll see most of the time when you're
+flying BMS or planning missions. And here on the left, there'll be a
+list of all the flights you can join right now there's only one it's
+the training flight. And you can select one of the F16s down here to
+join that slot and that's a slot you'll actually fly as when you
+commit to the game world. And you see here we have a takeoff time of
+eight o'clock, and it's 730 right now. So what will happen is when we
+hit takeoff, it'll actually accelerate game time up into our takeoff
+time. So we're going to now select this first slot here doesn't really
+matter. And we're going to hit takeoff. And we're going to select ramp
+start. And what this will do is it will stop the game time 20 minutes
+before takeoff, and it will give us 20 minutes to start up the
+aircraft and get onto the runway by our designated takeoff time. If I
+clicked runway, it would just fast forward it would do the ramp start
+for me and it would just spawn my aircraft on the runway ready to go
+one minute before I designated takeoff time. For training purposes
+we're going to select ramp start. Okay, here we are in the aircraft
+and Chris knows this is really fucking loud. So the first thing you
+need to do is you need power to all of your avionics. You're going to
+come down to your electronics panel here and you're going to switch
+this to main power. And while you're down here and go to your fuel
+panel and you're going to make sure this master switches up and you're
+going to set your engine feed to normal. Okay. And then after that,
+you're going to come down to your right panel here and you're going to
+set your air source to normal. And after that's all set, you're going
+to turn on your jet fuel starter, which is over here in the left
+panel, and you're going to turn that to start to. And you're going to
+wait a little bit because it takes a little bit of time to spool up.
+And you're going to look down here to your RPM gauge and you're going
+to wait until this hits about 25. Oh, and one thing I forgot is while
+you're doing that is you probably want to put your parking brake on to
+make sure the aircraft doesn't roll away. And it's also courteous when
+you're starting up your aircraft to turn on your lights just to let
+everyone know. And these are all of your lighting panels here. And
+this little switch here is your master fuel. This will turn all of
+your lights off or on. And then these are the specific options for
+your lights. Okay. So that's at about 25. And what you're going to do
+now is the game is a little bit finicky for some reason. You're going
+to put your throttle at about half and then you're going to hit Alt I
+to move it past the throttle detent is what that does in real life.
+And because this game is so finicky, you're going to wiggle your
+throttle around a little bit until you see this RPM jump. It's just it
+takes the game a little while to register that you actually moved the
+throttle past that detent. And as soon as it starts blowing up, you're
+going to come all the way back to flight idle. Otherwise, you're just
+going to rocket forward away from you. Okay. And now the aircraft
+engine has started up. We're going to start getting some of our
+avionics online here. We're going to come down to this right panel,
+avionics power, and we're going to flip all these switches to on. And
+very important, we're going to left click here to turn our IS to norm
+because this takes about eight minutes to align. I want to get that
+going as fast as possible. Next, while we're here, we're going to turn
+on some of our sensor power. We're going to turn on our left and right
+hard points. We're going to turn on our radar and we're turning our
+radar altimeter to standby for now. And then if it was dark, you could
+also change your lighting down here too, but it's not. So we'll leave
+all of this to off. Okay. And then you'll come up here to your data
+entry display and you'll notice at the top here it says INS 0.5 out of
+90. When this reads 8.0 out of 90, it'll start flashing ready. And
+you're actually ready to go at that point, but it takes about eight
+minutes. So we'll work on some other systems while it's starting up.
+Next thing we're going to do is we're going to turn on the HUD.
+There's a little wheel here that will turn on the brightness of the
+HUD. You just scroll all the way forward and there's your HUD. We're
+going to wait for this bit test to complete before we do anything. And
+while we're here, we're also going to turn off our, sorry, arm our
+ejection seat. You can get rid of that master caution there. Next,
+we're going to turn on some of our countermeasures. We're going to
+come down here to the bottom left. We're going to turn our jammer RWR
+on. All of these switches are going to go on. And then we're going to
+put our mode onto manual and just leave that on program one for now.
+And then while we're down here, we're also going to hit this power
+button for our RWR and activate our RWR and get that going. And then
+next we're going to come down back to our left panel here. We're going
+to turn our tach an knob here to UFC for up-point controls. We're
+going to turn on our ECM. We're going to set our radio levels. By
+default, these audio knobs are all the way down. These are audio knobs
+that you can change in-game, so if someone's coming over really loud
+over radio two, you can actually lower the volume there. And then
+we're going to set our radio transmit to both. And don't touch any of
+this stuff, you can just leave that as is. Okay, and we're not going
+to actually sit here and wait for eight minutes. You can actually
+speed up time in the game by default. You can hit shift tab on the
+keyboard a few times and up here in the top you'll see this little
+multiplier number. You can hit that a couple times all the way up to
+64X and the game world will start whizzing by at a million miles an
+hour. And as you can see here, we're already at eight minutes. And
+then you hit shift-caps lock to slow back down to normal game time a
+bunch of times until you're back at 1X. So now that this is flashing
+ready, we're going to come down here back to our INS panel and we're
+going to left click again to put this to nav. And then once we're on
+nav, everything should flash away and everything should be good to go.
+We're going to go ahead and hit return on our upfront controls to come
+back to this default menu here. This is what you see most of the time
+in AF16 is just this default upfront controls that shows your UHF
+channel and VHF radio channels that you're talking on and your
+currently selected steer point. Okay, after that you also have to load
+your data cartridge. This is a custom cartridge that you set before
+flight and you can actually save it and have it persistent between
+jets. And that's something we'll go over a little bit later. It's
+something that has all of your presets on the plane like which MFDs do
+you want and your kind of customization options for your jet. But to
+load it, you will press an MFD button once to select that button where
+you want it to go. You'll press it again and you'll get this page and
+you'll select DTE. And here you can see my data cartridge with my ID
+Chuck Ramp Start and you'll hit load at the top there. It'll take a
+minute to load everything up. All right, it's loaded and now you can
+see it has all of my MFD presets. So in my data cartridge I specified
+that I want my targeting pod SMS on these positions on the MFD. And
+that's all stuff we'll go over in a little bit after we're done with
+the Ramp Start. And with that you've successfully Ramp Started the
+F-16. You'll notice there in the top left it says chocks in place. To
+get rid of those you'll have to press U and talk to the tower and
+click and press 8 to request him to remove chocks. And then you can
+actually pull forward and take off. And with that, that is how you
+Ramp Start the F-16. Okay, as promised in the last section before we
+go any further, now I'm going to teach you how to load up your data
+cartridge. So before any flight, before you start any flight here at
+the map screen, down here in the bottom right there's a little button
+labeled data cartridge. And if you open this up, this will pull up
+this whole dialog box where you can customize all sorts of things
+about your aircraft before you start up. Some of the most important
+things in here are your EWS programs, which are your chaff and flare
+programs. And you can set these to whatever you want. And if you
+remember during the startup there was a little knob that we could
+switch between four programs on our chaff and flare, our
+countermeasures panel. And this is where you set what those four
+programs do. So for example for me, my first program drops one flare
+and no chaff, and my second program drops one chaff and no flare. But
+you can set these up to be whatever you want. And you can also
+customize which MFDs are displayed by default so every time you get in
+the plane you don't have to load the ones you want up. So there's the
+five different master modes in the plane. And again you can change
+which MFDs are displaying what by default by changing the primary,
+secondary, and tertiary boxes here. So for example when I'm in nav
+mode, my first MFD will have my radar on the left button, nothing in
+the middle button, and my train following radar on the right button.
+And my second MFD will have my HSD, TGP, and SMS on those three
+bottoms on the right. And the HSD will be pulled up, that's what this
+current means, primary. My HSD will be pulled up by default whenever I
+go into nav mode. And you can also set preset radio channels. You can
+see these are all by default, I usually don't touch them. I usually
+set uniform 15, UHF 15, to the tower frequency. And you can just press
+set tower there and it will automatically put your preset uniform 15
+channel to the tower out of whatever you're flying out of. So once
+you've set everything how you want, you can just hit save and close
+this out. And you are ready to fly. And next time you load up your
+data cartridge in game, all of that stuff will be saved. And you only
+have to do this once. Between every mission this is saved. Every time
+you just come in here and hit load, and it will load up the last data
+cartridge you used. Alrighty, now I'll let you know how to use a data
+cartridge. We're actually going to learn how to take the aircraft off
+and play around with the upfront controls. So I'm in the takeoff
+techno engagement and we're going to go ahead and select takeoff. And
+we're going to select runway so the game fast forwards us right
+towards our takeoff time and we don't have to sit through and ramp
+start the aircraft every time. Alright, here we are ready to take off.
+And probably the first thing you want to do when you're on the
+centerline lined up is you want to turn your nosewheel steering off so
+you don't accidentally jerk the wheels out from underneath of you
+whenever you're taking off. And when you're taking off, depending on
+your loadout, you can either go all the way up to full mill on the
+throttle, which is just below afterburner, or if it's short runway and
+you have to have your payload you can actually go all the way up to
+full afterburner. We're going to use full afterburner here for this
+takeoff since we have fuel to burn. And you're going to keep it on
+centerline and you're going to wait until you get around 160 170 and
+that's about when you rotate. And then make sure you get your gear up
+before you're going 300. If your gear is down when you're going above
+300 knots it's just going to get ripped clean off. That's no good. So
+while we're here I'll go ahead and point out some things on the HUD.
+Right now we're in nav mode by default and this little balloon here
+represents which way we need to turn to go towards our first nav
+point. And what you do is you put your little flight path marker right
+here inside, or you put the balloon inside the flight path marker to
+be flying directly towards your wave point. You can also hit on the
+keyboard by default, you can hit S and shift S to cycle through your
+wave points. And you see here on the bottom how it's cycling. Right
+now this bottom right number is the number of the steer point I've
+selected and this number to the left of it is the range of that steer
+point. So I can hit S a few times to select the third steer point and
+it will also put a little diamond on the ground where that steer point
+is and it will give me a range here in the bottom left. You'll also
+see here on the HSD when I hit S and shift S it will fill in the steer
+point I have selected. Okay now we're going to talk a little bit more
+about the HUD and the up front controls. An important thing on your
+HUD, let me actually zoom in here for you. An important thing on your
+HUD here, this bottom left set of numbers is your bearing and distance
+to Bullseye. So if at any time you need to call out your location to
+your wingman, you'll call out these two numbers. And what this means
+is that my bearing from Bullseye is 191 and I'm 85 miles away from
+Bullseye. Some other important things here is this number on the top
+left is your G and this number here is your Mach number. So right now
+we're going Mach 0.93. This is your indicated airspeed, this is your
+radar altitude and this is your barometric altitude. This AL 300
+represents the altitude at which Betty will come on to you and say,
+altitude warning, just to prevent you from wrecking into the ground.
+Okay now we're going to talk a little bit about the up front controls
+here, which is this little block right here. The best part of this
+aircraft is that you'll do everything that you ever need to do through
+the up front controls. You switch radio channels and you set
+frequencies and you do everything through the up front controls.
+There's no knobs you have to turn. So for example, let's say I wanted
+to change my radio channel to the tower frequency. I would press COM 1
+on the up front controls and say my data cartridge, I preset that to
+channel 15. I would type in 15 and I would hit enter. And now you see
+that I'm on uniform channel 15 and when I go to talk, or when I press
+my COM switch for UHF, it'll actually light up which radio I'm talking
+over. And that's how you switch channels. And the same goes for VHF 9,
+sorry for your VHF radio. Hit COM 2 and you'll type in either a new
+radio channel or a preset channel or a whole new radio channel. You
+can also type in a manual frequency and talk over it that way. I'll
+level out here so I don't get too high. Okay, some other important
+things. Changing TACAN channel for finding tankers in the air is done
+by pressing 1. You see it's labeled T I L S. And let's say there was a
+tanker on channel 11. I would type in 11 on the up front controls and
+I would hit enter. And then if it was on Yankee, I would hit 0 and
+then enter to change it to Yankee. And you can just hit 0 and enter to
+switch between those. And at the same token, I can press sequence to
+change whether or not it's an airborne TACAN AA or it's a ground based
+TACAN TR. And the same goes for changing my frequency for I L S
+landings if you also want to do. And any time with the up front
+controls, if you need to go back to the default page, you just hit
+return. If you get confused or you're messing up, you just hit return
+a bunch of times and you'll come back to this default page here. Next
+thing you can change in up front controls is allow here. This will
+change the altitude at which Betty yells at. So let's say I want Betty
+to yell at me at 500 feet. I can type in 500 feet and put that in. And
+you'll notice on the top right of my HUD, it now says allow 500, which
+means that Betty will yell at me when I get 500 feet off the deck. At
+the same time, I can also scroll down using these two keys on the up
+front controls to move up or down on the data entry display. And I can
+also change another altitude warning that Betty will also yell at me
+at 10,000 feet. Let's say I wanted her to yell at me at 5,000. I would
+just type in 5,000 feet and I would hit enter. And then to go back to
+the main screen, I just hit return on the up front controls. Okay,
+next thing you can change is if you don't want to hit S or shift S to
+cycle between steer points, you can just hit 4 on the up front
+controls and type in a steer point manually. So let's say I just want
+to go straight to steer point 5. I'll just hit 5, enter. And then now
+I have steer point 5 selected. Okay, next important thing is this
+cruise button here. People say the F-16 has got short legs, but it
+really doesn't if you know how to manipulate this cruise page and fly
+around in optimal settings. So the data entry display, or the F-16
+itself, will actually calculate everything you need to know to fly the
+F-16 in the most fuel efficient manner. So if you hit sequence, you'll
+cycle between all of these different pages, which will give you all
+sorts of different fuel information. So the most important one I feel
+like is the range page, and that will tell you how much fuel you've
+got left at your current flight settings when you get to the steer
+point. So you can see if I go up to full afterburner, this number will
+go way down and it will tell me that I only have 1800 pounds of fuel
+when I get to now 5. At the same token, if I cycle through these
+pages, there's different information here. If I go to the homepage, it
+will show me the optimal altitude I need to fly at to save the most
+fuel. And if I go to the EDR page, it will also tell me the optimum
+Mach speed that I need to fly at to save the most fuel. At the same
+time, I can also hit M select, or 0, to highlight this range, and if I
+highlight any of these pages, it will draw a little carrot on my HUD
+of where that optimum speed I need to hold is. So I don't have to keep
+referencing the data entry display, I can just look straight at my HUD
+and know what speed I need to fly to save the most fuel. So it's
+pretty important on the F16 if you're really deep and you want to know
+if you're going to make it home with enough fuel. Again, hit return to
+go back to the main page. Next important thing is if you go to list,
+you'll get all of these options to go to pages that aren't hotkeyed on
+your up front controls. The most important of which being this bingo
+page, it's labeled by 2, so if I hit 2, I can set the bingo at which
+Betty will give me a fuel warning. So say I don't like 2500 pounds, I
+want Betty to yell at me when I have 1500 pounds of fuel, I'll type in
+1500 and I'll hit enter, and Betty will give me a fuel warning and
+call bingo when I have 1500 pounds of fuel left. And again, I can
+change that just by typing in any number I want and then hitting
+enter. Okay, and with that, that's the quick and dirty of the most
+important functions of the up front controls, and next we'll actually
+go over some of our air to air and air to ground master modes.
+Alrighty, I taught you how to take the aircraft off, so I guess I got
+to teach you how to land it. Here we are on final to our runway here,
+and make sure when you're coming down on final that you get under 300
+knots before you drop that gear, otherwise they'll get ripped off. And
+as you can see, this aircraft is really hard to slow down, we're all
+the way out at flight idle and it's not coming down any slower. So as
+soon as you're under 300 knots, go ahead and drop the gear, and the
+flaps are automatic, it also dropped the flaps for us, so that'll
+start slowing us way down. And you want to hold about 200 knots on
+your way in, and the HUD changes when you put the gear down. One of
+the most important things that changes is you get this little dashed
+line here that represents 3 degrees, and that is your optimum glide
+slope for the way in. So if you put that dotted line right over the
+1000 footers for the markers for the runway, and you line your flight
+path marker up with that, you'll be perfectly on glide slope all the
+way in for the runway. So when you get a little bit closer, start
+slowing down, coming down to 180, you want to aim to touch the
+aircraft down at about 160 is the optimum speed. And as soon as you
+get over the threshold of the runway and you're sure you're going to
+make it, go ahead and put the flight path marker towards the horizon
+and pull the throttle out and just let it gently set itself down.
+Okay, and if I look over the stick right now, my plane will actually
+keep its nose in the air and it will aerobrake all the way down the
+end of the runway. But just be careful if the runway isn't long enough
+for an aerobrake, it's a really short runway, you really got to get on
+those wheel brakes soon to drop the nose down out of the air and hold
+them until you're all the way stopped, otherwise you're going to skid
+right off the end of the runway. And with that, that is the quick and
+dirty of how you land the F-16. Alright, now that you know how to take
+off and land, we're actually ready to get into some combat here. And
+the first thing we're going to talk about is air to air combat and
+more specifically, the radar. So the radar is a little bit confusing,
+if you've never played a flight sim before that has radar in it.
+Basically, the F-16's radar scans in a big cone out in front of it and
+can only scan so much area at one time. And to help illustrate this, I
+have wonderfully drawn up a demonstration here in Microsoft Paint. So
+here in the bottom right, we have a little picture of the MFD with the
+radar screen as it would look in game. And then here we have a diagram
+of what's actually going on in real life with your actual F-16 being
+represented by this picture of an F-16, and enemy fighters or just
+aircraft being represented by these red squares. So if you look at the
+radar in game, the first thing that you need to know is that this view
+right here is a top-down view of what's going on. This number here on
+the left is the scale. You can change the scale in game, I think, by
+pressing F3 and F4. F3 and F4 are the default keys on the keyboard.
+And what that means is that the top of this MFD here is 20 miles. The
+middle of this MFD represents targets that are 10 miles away. And if
+you see a square at the bottom, it's right on top of you. And these
+little white squares here are of course aircraft. And you'll have a
+little cursor that you can slew around that's two white vertical bars.
+And to the right of that cursor, there will be two numbers, a white
+one on top and a blue one on the bottom. And that represents how high
+and how low your radar is scanning. So this 20 at the top means that
+my radar is scanning up to 20,000 feet, and this blue number at the
+bottom means it's scanning all the way down to 9,000 feet. So if there
+was a guy below 9,000 feet and in front of me, I wouldn't be able to
+see him. Now remember that that is only wherever your cursor is. So if
+I move this cursor closer to me so that it was displaying targets
+right here at 5 nautical miles, it might only be showing targets from
+like 10,000 feet down to 4,000 feet. So just keep that in mind that as
+aircraft get closer to you, you're scanning a smaller cone in front of
+you. And aircraft that are farther away, you can scan a wider section
+of the sky. Okay, there's the last couple numbers here you need to
+know about. Here is this A6 and this 4B. The A6, there changes how
+wide you're scanning left, right. And if you hit F8 by default on the
+keyboard, you'll actually narrow your scan down. You'll get two bars
+on the left and right, and you can cycle between A6, A3, and A1, and
+it will change how wide you're scanning. At the same time, this 4B
+means that your radar is making four sweeps of the sky. So it'll make
+one sweep of the sky from left to right at this altitude, and then
+it'll transition down and it'll make another sweep of the sky at this
+altitude. And then it'll come down and make another sweep of the sky
+at this altitude, and then it'll come down one more and make a sweep
+of the sky at this altitude before resetting back up to the top and
+scanning all the way down. You can change this to 2B or 1B, and it
+will change from scanning four different areas to just one area. So
+you could narrow how high your radar is scanning. Instead of scanning
+it from 20,000 feet to 9,000 feet, you could tell it to only scan at
+say 20,000 feet by changing this to 1B. And then these numbers on the
+right, 1, 2, 3, 4, if you press the MFD button next to them, it will
+actually put a 1, 2, 3, or 4 over the target that you selected, and it
+will data link it to all of your flightmates if you've got that going.
+And with that, that's the quick and dirty of how radar works in the
+air. It's a little bit confusing, but hopefully it'll become a little
+more clear as we actually get in the game and show it to you.
+Alrighty, now that you know a little bit about how the radar works,
+we're actually ready to load up the air-to-air radar mode to active
+engagement and play the radar and actually shoot some missiles. So
+we're going to go ahead and commit here. And just a word of warning,
+things happen kind of fast because these aircraft are actually closing
+at us pretty fast, so I'll just pause and unpause the mission kind of
+quickly to demonstrate something to you before unpausing it. So we're
+going to go ahead and pause the mission right now real quick. And if
+we'll come down here and look at our radar, our FCR, you'll see that
+we've got four little boxes, little squares here, and those are all
+aircraft returns that our radar has gotten. And let's say we wanted to
+lock this guy here that's at 20,000 feet, and we know that he's at
+20,000 feet because when we move our cursor over to touch him, it will
+pop up his range in white text just below the square. So to lock a
+target, all you do is move this cursor over the target that you want
+to lock and you hit TMS up once. So I'm going to go ahead and do that
+real quick and then repause. Okay, so when we hit TMS up once, we do
+what we're calling soft locking the guy, which means that we're not
+devoting all of our radar's energy to locking him. We're actually
+using some of the energy to lock him and some of the energy to
+continue to scan for targets around him. So I can see the guy here I'm
+locking at 20,000 feet because he's got a little yellow circle around
+him, but I can also see white squares of targets that are around him
+because my radar is still scanning. I'll get some information about
+the target too and I'll lock him up, the most important of which is
+his altitude there at 20,000, and also there's a little yellow line
+that shows his direction of travel. And the longer that line is, the
+faster he's going. So he's got a really short line, it means he's
+going really slow. There's also a couple numbers here at the top. This
+number here in the top left, 170, means it's his current heading. He's
+heading 170. This number in the top right, it's his speed. He's going
+345 knots. This number right here, this 826K with a plus means we're
+closing 826 knots. If that was a minus instead of a plus, it would
+mean that he was going away from us at 826 knots. Or, yeah, we were
+losing speed at 826 knots. These two white numbers here in the bottom
+left represent his bullseye location. So this target is currently from
+bullseye bearing 143 and it's 76 miles away from bullseye. And then
+these blue numbers here in the bottom left are my bearing and distance
+from bullseye. Okay, so now what we're going to do is we're going to
+go ahead and press TMS up one more time while selecting it while our
+cursor is over him and this will hard lock him. Okay, so now that
+we're hard locking him, all of our radar energy is going towards
+tracking this one target. And as a result, we can't see any of the
+other targets around him, but all of our radar is going towards
+keeping track of this one guy. So there's the least amount of chance
+that we're going to lose the lock. And we're actually ready to fire a
+missile at him right now, but there's a couple things that we've got
+to do before that. First thing you notice is that we're actually in a
+nav mode here and we can't fire missiles in nav mode. You've got to
+put the aircraft into air-to-air mode. So one of the ways you can do
+that is you can hit air-to-air on the upfront controls or you can hit
+enter on the keyboard, which is the key command to cycle between which
+kind of missiles you're going to fire. So right now we have four
+AMRAAMs and two Sidewinders. And if I hit enter on the keyboard, it
+would cycle between whether or not I was going to shoot an AMRAAM or a
+Sidewinder at him. So I'm going to go ahead and unpause and hit enter
+to select AMRAAMs. Okay, so now I've got some different symbols here
+in my HUD and you'll notice that my HUD has changed. Instead of nav
+mode, it says four MRMs, which means I've got four medium range
+missiles or AMRAAMs left. And then also my master arm is on is what
+this arm means because your master arm has to be on before you can
+fire missiles. We also get some new symbology here on the right and in
+the middle of the HUD, which is also replicated here on your radar.
+And I'm just going to talk through what this symbology means here. So
+on the right here, this is basically the range of the target, but it's
+the range of the target and it also indicates the percent chance that
+your missile is going to hit the target if you fired it right now. So
+this carrot here on the left with the 854 and the 3F will move up and
+down the scale here on the right depending on the distance. If he's
+really far away, the carrot would be way up here towards the top. And
+this 854 is just his closure speed again and this 3F represents his
+range from us again. So here on the right, we'll just start at the top
+here. This little triangle here at the top represents the maximum
+range I can fire the missile at. So if this carrot is above the
+triangle here, I can't fire the missile. If this carrot is in line
+with this circle right here, it means I can fire the missile and if he
+doesn't maneuver at all, the missile will just barely make it there.
+If this carrot comes down into this region with a solid line, it means
+that I have a 60-70% chance of the missile hitting. He could probably
+still turn around and use full afterburner to outrun the missile. And
+if the carrot gets all the way down into this solid box region, it
+means there's a guaranteed kill. It means that that guy can't do
+anything. Even if he turned around and used full afterburner, he
+couldn't outrun the missile. The missile is always going to hit. And
+then this circle here that's flashing right now represents our shoot
+window. So if this little circle right here represents where we need
+to put our nose to have a shoot window. So if this circle comes way
+outside of the big circle, it means that my nose is pointing away from
+the guy or something and I can't fire the missile and have it turn
+around. So if I center the dot, which means I put this little circle
+right in the middle of this big circle, it means that my missile won't
+have to turn at all to reach the target. If this little circle is way
+out here towards the edge, the missile might have to do a really high
+G turn to get off my plane and hit the guy. So as a rule of thumb, you
+always want to center the dot before you fire the missile. And with
+that, we're actually ready to fire the missile. So we're going to
+unpause and we're going to hold our weapon release button until the
+missile fires. And the call for an AMRAM is FOX3. And you'll notice
+that when my guy called pitbull on the top left, that means that the
+missile has started using its own guidance. And there's a splash. And
+in case you didn't notice, it draws a square over your target and if
+it's off your HUD, it will draw a line towards that target wherever it
+is. Okay, and the same thing goes for Sidewinders. If I hit enter to
+select short range missiles, I'll get the same range cues and
+everything as I did for the AMRAM. You'll just notice that it's a much
+shorter range missile. So again, I see this carrot moving down on the
+bottom right side of the screen. And it's usually a good idea to wait
+until it gets into this line region here before I fire the missile.
+And same thing with a Sidewinder, you just lock them up, wait until
+you've got a good shot, and then you hold the missile release weapon
+to fire the missile. And the call for a Sidewinder is FOX2. And this
+might not hit because as you noticed, we shot a little bit beyond
+range. There you go, it still hit. And with that, that's all you need
+to know to use missiles to guide missiles using the radar in a BVR
+situation. And next we'll talk about dogfight mode. Alrighty, so here
+we are. And let's say everything goes south and you're out of missiles
+and now it's time to gunsfight with someone. So now we're going to
+talk you through dogfight mode. So right now we're still in air-to-air
+mode. And we have enemy F-14 Tomcat logged up that we're going to
+start dogfighting here. And what happens when I unpause is I'm going
+to put the plane in dogfight mode. And by default, you press D to go
+into dogfight mode and you hit C to cancel that or get out of dogfight
+mode and go back to nav or air-to-air or whatever you were in last.
+And I'll sort of talk you through what you need to do when you're
+dogfighting and some of the symbology. But as a rule of thumb, the
+F-16 dogfights at a very fast speed. So you want to try and hold about
+400 knots whenever you're turning and that will get you your maximum
+turn rate. So we're going to go ahead and hit D and go into dogfight
+mode and you'll see our HUD gets super clean here. And also, one thing
+I also forgot is when you're dogfighting is you can hit shift insert a
+couple times to turn on your helmet sight. And when you're dogfighting
+with someone, you can hold TMS up long to get a little circle and if
+you move the circle over the enemy plane, it will lock him. And again,
+always try and hold 400 for your best turn rate. We're coming around,
+we'll try and pull the trigger here, not that time. So again, very
+important, you don't let yourself get too slow. You always want to
+hold 400 knots in the F-16 and you can see that's your speed there in
+the top left. And unfortunately, my foe has just wrecked into the
+ground. But regardless, the same principles still apply whenever
+you're fighting stupid F-14s or actual MiG-29s. The F-16 dogfights
+fast, so no matter what you do, you want to hold about 400 knots. I
+see a lot of pilots online that pull as far back on the stick as they
+can, but you don't want to do that. You want to hold 400 knots as the
+magic number in the F-16 to get your maximum turn rate. And if you're
+getting too slow, just let off the turn and get back up to speed. It
+will help you out in the long run. And while we're here, we might as
+well talk about some symbology that I was going to talk about when I
+fired my gun at that guy, but he killed himself for me. So what I'm
+going to do is, this is the holy thing that you need to know in
+dogfight mode. This cross right here is your gun cross. That's where
+your bolts are going to go if you pull the trigger. And this gun
+funnel here at the bottom will move with the funnel. And it's there to
+help you line up where your shots are going to go. But honestly, I
+don't use most of that stuff. I just use my gun cross and when I get
+close enough, just put your gun cross a little bit in front of the
+aircraft you're trying to kill and pull the trigger and walk your
+targets on. If the tracers are going behind him, just pull back a
+little bit more until they're going in front of him. And don't let all
+the symbology get in the way of you. Just watch where your tracers are
+going and walk the tracers onto the target. And that's about the best
+advice I can give for quick and dirty dogfighting. Again, it takes a
+lot of practice to get good at it. And remember to get out of dogfight
+mode, just hit C on the keyboard and you'll go back to whatever mode
+you were in last. And with that, that's quick and dirty of dogfight
+mode. And I assure you, most of your targets will not wreck themselves
+into the ground for you. Alright, now that we're done with air to air,
+we're actually going to go learn how to drop laser guided bombs on
+targets. We're going to start with our air to ground now. And just
+note, for now, we're not going to worry about the air to ground radar.
+We're just going to go over how to use a targeting pod and drop laser
+guided bombs. Okay, so first thing we need to do here is the target
+area is at 0.5, so we're going to hit S to select that. And we also
+need to get out of nav mode and into air to ground mode. So we're
+going to hit backspace, which is the default key to cycle hard points
+between what kind of air to ground weapon you're going to drop. And
+again, by default, here it'll pull up the FCR, which is now in air to
+ground mode. We're not going to worry about any of this right now.
+We're just going to hit CZ to center it on Steer Point 5. And by
+default, my targeting pod will slew to my radar. So if my radar is in
+Steer Point 5, my targeting pod is as well. So now we're going to turn
+on our targeting pod. We're going to press the targeting pod button.
+We're going to click standby, and then we're going to go to air to
+ground. And now I'm going to hit DMS down to make my targeting pod
+sensor of interest. And I'm going to hit TMS up once to put it in area
+mode, and now I can suit around. And then you'll suit around and
+you'll find a target. And you can press the sensor of interest field
+of view cycle to zoom in a little bit. And let's find a target here.
+Let's drop on these F4 phantoms over here. Okay. And now, before we
+start the attack, we want to make sure that our master arm and our
+laser arm is also on since we're dropping laser-cutter bombs. And
+we'll see this vertical line here, which is where I need to fly my
+aircraft to get this drop. I want this vertical line to be lined up
+perfectly with my flight path marker for a good drop. And here in the
+bottom right, we'll see our distance to target here, and then the
+number above that is our time to first drop. This first number we see,
+20 seconds, is the countdown timer to lobbing the bomb. So in 15
+seconds, if we wanted, we could press the weapon release button while
+pulling the nose back, and we would actually lob the bomb. But we
+don't want to do that. We're going to wait for this to pass, and then
+we'll get a second time. You can see this time's countdown. And we let
+that window pass because we're not going to lob the bomb. And now
+there's 20 seconds to a normal release. And you can see this little
+line coming down at us. When this line is even with our flight path
+marker, that's when we're going to drop the bomb. So about 5 seconds
+before, we're going to hold the weapon release button. Hold it down,
+don't release it. And as soon as that line meets our flight path
+marker, the bomb will drop. And there it is, pay-boy. And now we can
+release. So now we're going to go back down to our targeting pod, and
+we're going to make sure that we keep our targeting pod on the target.
+It doesn't stray anywhere. If it's a tank, we're going to track it.
+And about 6 seconds before the bomb hits, that little L in the bottom
+right will start flashing, and that means our laser's on. And it will
+automatically turn the laser on for you. You don't have to worry about
+any of that. And there it is, target destroyed. And the laser will
+stay on for a little bit after, just to make sure the bomb finds its
+target. And with that, that is the quick and dirty of dropping laser-
+guided bombs. Alright, now that we went over LGBs, we're actually
+ready to learn how to use HARMS, which are anti-radiation missiles
+used to attack enemy surface-to-air missile sites. Okay, first thing
+you've got to do when you get here on the plane is you'll notice that
+we're in NAV mode again. So we're going to hit backspace to go into
+air-to-ground mode and select HARMS. And HARMS are also a missile that
+you have to activate, you have to turn them on. So we're going to come
+down here to our SMS page, and with HARMS selected there, so you have
+four AGM-88s, which are HARMS, we're going to hit the power on button.
+And now they're turned on. Then, we're going to come down here to our
+left MFD and we're going to pull up our HAD. And again, if these
+aren't on the bottom of MFDs, you can press any one of these bottom
+three MFD buttons and then replace it with the proper MFD screen. So
+we're going to put the HAD up here. So, looking here at the HAD, these
+yellow and green numbers and letters represent different radar
+emission sites that we found. So this 2 represents an SA-2 site, this
+3 is an SA-3 site, this U is an unknown site, and these S's are
+searches. And this green means that it's not actively emitting, but
+our HAD remembers that there was something there. And if any of these
+numbers are red, it means that they're shooting at someone, they're
+putting out an unusually high amount of radiation. So let's say we
+want to kill this SA-3 site over here. We're going to make our HAD,
+our SOE, by using DMS down. And then we're going to slew our cursor
+over it and hit TMS up to lock it up and there will be a little square
+over it. Now on our HUD, we're going to turn into the target, which is
+indicated by this line coming off our gun cross. And just like the
+AMRAAM, this carrot here on the right represents our range. And once
+this carrot is inside this box, or this circle is flashing, we have a
+good shooting and fire the missile. So we're going to go ahead and
+fire the missile now. And the call for shooting harm is a magnum, and
+that's fire and forget. If I wanted to, I could totally turn around
+and run away now. The missile is on its merry way and I don't have to
+do anything else. But just be advised that SAM sites are kind of smart
+sometimes. If you turn around and run, they might turn their radar off
+so that the missile won't hit because they don't have any chance of
+shooting missiles at you. So sometimes it's a good idea to keep flying
+towards the target, but again, be careful not to shoot at someone. You
+don't have to. Once you've fired the missile, it's fire and forget and
+it's on its merry way and it's going to hit the target. And with that,
+that's all you need to know about harms. Alright, now you know how to
+use harms in laser guided bombs. Now we're going to go over how using
+dumb bombs. And it doesn't sound like you're ever going to want to use
+dumb bombs on a fancy F-16, but dumb bombs are actually how you... The
+way you drop dumb bombs is the same way you drop runway bombs for
+attacking runaways. So it's so important to know how to use these
+modes. We're going to go over how to drop iron bombs in CCIP mode. So
+again, we're in nav mode and we need to get into air-to-ground mode.
+So we're going to hit backspace to smash this into air-to-ground mode.
+And we're going to come down here to our SMS page. And you can see in
+the top right there, this is the kind of weapon we have selected. So
+we can cycle between our two different kinds of bombs. We're going to
+practice with the BD-33s, which are just a dumb bomb without an
+explosive in it. And you'll notice here I've got all these options
+about the bomb. I can set whether I want to drop a single or a pair,
+and how many I want to ripple. I can drop one bomb or I can drop three
+bombs. But for now, we're just going to ripple one bomb off. And if I
+want to change it from CCRP to CCIP, I'm just going to hit this top
+MMT button and select CCIP. And now, you'll see that I've got some
+different symbols here in my HUD. And I've got this big old line
+coming from my flight path marker down to this little circle here. And
+that's where my bomb is going to hit when I press the weapon release
+button. So it's as simple as putting this little circle over whatever
+I want to drop the bomb on, and pressing the weapon release button. So
+we're going to go ahead and drop on those four targets there in the
+middle. And just put the circle over it and hit the button. And the
+F-16 actually uses its radar to calculate CCIP solutions. So CCIP bomb
+drops in F-16 are actually really accurate, as you can see. So again,
+it's as easy as just putting the little circle over whatever you want
+to die, and just press the weapon release button to drop however many
+bombs you want. And with that, that's everything you need to know
+about CCIP. Alright, the last air-to-ground weapon we're going to go
+over today is the MAVRC, the air-to-ground MAVRC. And we'll also go
+over a little bit of the radar modes here, because this missile takes
+a while to spool up here. So it takes about three minutes to align the
+weapon. So the first thing we're going to do is we're in NAV mode
+again, so we're going to hit backspace to get an air-to-ground. And
+we're going to start spooling up our MAVRCs. So we're going to go to
+our SMS page, and we're going to hit power on, and make sure that
+power on is for both of our MAVRC sets, both our Ds and our Bs. And
+then if you go back over here to your left MFD, both on your FCR and
+your weapon page, you'll see a countdown timer here in the bottom left
+that shows you approximately how much time is remaining for the
+missile to be ready to use. So we've got about two minutes. So for
+those two minutes, I'll kind of briefly walk over the air-to-ground
+radar. So by default, when you go into air-to-ground mode, you'll get
+this SDR page, which is GM mode. That's what this top left here means.
+And this radar is returning only stationary targets. So all of these
+white little specks here on the radar, those are stationary targets
+that I have returned. So most of the time, they're just buildings. But
+if you see a long, straight line like you do right there, that usually
+means it's an enemy column stopped and parked. The radar has one more
+old trick up its sleeve. If you hit that top left button where it says
+GM, and you select GMT, this is now ground moving target mode. And now
+my radar is only returning things that are moving. So that means
+vehicles. So now everything that shows up on this radar screen is
+something that's moving. So if I see a big old white spec or line, I
+know that it's a column of targets because I know that anything that I
+show up now on this screen is moving. So I'm going to put that back in
+GM for now. And if we go and look at our window, we'll see there's
+actually a big old armor battle going on down there. But
+unfortunately, our Mavericks aren't quite yet ready to... sorry,
+aren't quite ready yet. So we're going to have to loophole that to
+wait for those to get spooled up the rest of the way. Alrighty, so
+here we are again with our Mavericks all spooled up. And by default,
+the Maverick is in pre-mode. But I actually like to put it into visual
+mode. And you just press this button to cycle through different kinds,
+and I like to put it in visual mode. And what that does is it actually
+puts up a little square here on your HUD that you can slew around to
+move over the target area. But before you can see an image on your
+Maverick, you have to uncage it, which is you by default on the
+keyboard. And now you actually get an image in your Maverick secret
+head that you can use. So once you've kind of oriented yourself with
+the target, just move the crosshairs over the target you want to
+engage and hit TMS up. And once you hit TMS up and you've got a good
+lock, the crosshair will stop flashing. And once this carrot is inside
+of this bracket here on the right, you're in range, and you can go
+ahead and hit the open release button to fire the Maverick. And every
+time you fire a Maverick, you have to uncage the next one to be able
+to see a secret head. So every time you fire a Maverick, you hit that
+uncage button to fire another one. And with that, that is everything
+you need to know about firing Mavricks. Alrighty, there is one last
+thing I want to show you guys before I turn you loose, and that's how
+to play online with friends. So if a friend of yours has BMS and he
+wants to host a game, you come up here to your comms, and you'll
+create a new entry for him. And you'll name the entry in your logbook
+whatever you want, and then you have to type in the IP address to his
+server, whatever it happens to be, like so. And then you also have to
+specify a connection bandwidth. So this will actually tell BMS how
+much of your upload speed to use. So if you've only got a 1 megabit
+per second upload internet connection, you might want to put in like
+800 megabits in here so that BMS isn't using all of your upload. And
+if you put in this blank, it will use the maximum amount of upload and
+then everything else will start lagging. It's kind of finicky. There's
+no safeguards on it. At the same time, if you want to host a game for
+a friend, you'll also come into those comms and instead of putting in
+an IP address, you'll put in all zeros in here. And then this
+connection bandwidth will be how much of your upload you want to have
+available for other people to use on your server. So if you've got
+like a 10 megabit per second upload, you might want to set this to
+like 9,000 or something. And that will use 9 megabits of your upload
+speed for hosting. Because again, if you don't put anything in here,
+it's going to use all of your upload speed for just one person who
+connects to your server and everything is going to start lagging. And
+if you want to host an IVC server, which is the in-game VoIP, you can
+just check these boxes. And for the dedicated IVC server, you'll put
+in the same IP you do for when you're connecting to your friend's
+server. And once you're connected, if he made a campaign, you'll come
+to campaign and you'll come to the online tab. And if you're not
+already connected, it will just bring up this comms page again. And
+then you'll see your friend's campaign here on this online tab.
+Alternatively, if he starts a dogfight, you have to go to dogfight and
+click the online tab. And he'll make games under these tabs for you to
+join. And with that, that's everything you need to know about joining
+an online game. Alright, that concludes the weapons portion of this
+tutorial. By now you should know how to use all the weapons in the
+F16. Now I'm going to show you how to start and some of the ins and
+outs of starting your first campaign in this game. So we're going to
+go up here and select campaign. And then there's three different
+campaigns you can play. This top one is a blue floor advantage, this
+middle one is neutral, and the bottom one is an op floor advantage.
+This is going to play as a middle one, rolling fire. And you're going
+to select the squadron you want to fly out of. We're going to pick the
+36, make sure it's got F16s. And we'll hit commit. And it will first
+ask you the mission priorities that you want to set, but by default I
+just have this set by HQ. And then you'll go ahead and click start
+campaign. And within a couple of seconds here, the blue floor
+commander should automatically give you submissions for your squadron.
+And you can select any mission you want to fly assigned by the
+commander. Let's say I want to fly in this bar cap. Or we'll take this
+other one here, 543. Let's say I want to fly in this bar cap. All I
+have to do to fly in this bar cap is I'll select the role I want to
+fly. Here I'll take flight lead. And before I go out I can set some
+data cartridge options. Remember here in your data cartridge you can
+set your chaff and flare programs as well as your MFDs. It's important
+here to always remember to set your tower frequency to something. I
+always set the tower to uniform 15 is what I always do. You can just
+come here to preset number 15 on your UHF radio and hit set tower. And
+it will automatically change that frequency to the tower. There's a
+couple other things you can do with your data cartridge. You can draw
+lines that will show up on your map in game. How you do that is you
+right click anywhere on the map and come down here to steer point
+lines and you can draw up to 4 different lines. Go ahead and add an
+additional steer point in line 1. And you can keep adding points to
+this line until you've drawn the shape that you want. I always like to
+draw the DMZ so I know whether or not I'm north or south. Whether I'm
+in enemy or friendly territory. Let's say during this next mission I'm
+flying out here and I find an SA-2 site over here on the coast. I can
+also add a pre-planned threat steer point by right clicking the map
+and going to set a pre-planned threat steer point. And it will be a
+little green diamond and I can move it around and put it wherever I
+thought the site was. And then I can double click on it and select
+what kind of site it was. Say I found an SA-2 site out there. You can
+select SA-2 and you can also change which steer point it is in your
+aircraft. So I can say that steer point 56 is the SA-2 site and I know
+the steer clear there. And once I've changed all that I'll hit accept
+and you'll see it will draw a red circle in game as well as in this
+map. Just letting you know if there's an SA-2 site there and that's
+it's engagement range. Next thing before I go out is to set my
+loadout. So I'll come down here to my loadout. And I have my plane and
+my wingman here and I can change both of our loadouts or adjust myself
+or the other depending on which one I have highlighted. So in here
+under the loadout screen you have all of the possible munitions you
+can take and to load on your aircraft you just find this corresponding
+pylon and load it up. And I like to take all AMRAAMs by default. My
+philosophy is that you've got your gun for anything that gets close to
+you. And I always think 6 AMRAAMs is better to take than 4 AMRAAMs and
+2 Sidewinders or anything like that. And it's a good idea to always
+take the jammer there. That's under all and it's the ALQ-184. And
+since we don't need anything on those inner pylons, we can't carry
+missiles there, I go and take a couple of fuel bags. And just because
+I always get into a habit of always taking the targeting pod and the
+HTS. Those are always good habits to get into. Just to always take
+though because you never know. And you'll hit OK when you're done with
+that. And just a good habit is to make sure you click save on your
+data cartridge before you fly. And with that you're actually ready to
+go into the game world and fly your sortie. So we'll go ahead and
+click take off. And we'll select runway unless you want to RAM start.
+If you really like RAM starting the jet you can select RAM start every
+time and it will give you 20 minutes to your take off time to RAM
+start the aircraft. But for now we're just going to click runway. If
+you don't want to sit at the screen you can watch what's going on in
+the campaign. You can speed up the time to 64x here in the game screen
+but just make sure you don't go past your take off time which is 5.43
+for us. And this just gives you a little better idea of what you're
+going up against. So we're going to go ahead and recommit take off so
+it goes by our time. And we'll take off and we'll fly our sortie. Ok
+so here we are flying our sortie and there's just a few more things I
+want to show you guys before I set you loose. As you'll notice here on
+my HSD here's the line I drew for the DMZ and there's that SA2 site
+that I set. And this little circle right here is the bullseye. So when
+you get into game you're going to be talking to AWACS a lot. And how
+you get to talk to AWACS is you press Q to bring up this menu. And
+what you're going to do most of the time is hit Q twice to cycle to
+the second menu and you press 1 to request a vector to the threat. And
+this is just how you keep your situation and what's going on. So she
+told us that there's MIG21s at Bullseye 2-5 at 15. So how we figure
+out where that is, is if we make our HSD our sensor of interest by
+hitting DMS down we can move a little cursor around that will tell us.
+And you see in the bottom left here, this is the Bullseye location of
+this cursor. So I can just move this around until it says 2-3-5 for
+15. 2-3-5 for 15. Okay, so more or less those MIGs are somewhere to
+our left close to Bullseye. And anytime we ask AWACS it's how we're
+going to figure out where the enemy bandits are. And since we're
+flying a bar cap it's our job to get out here and take down enemy
+bandits. So I'm going to go ahead and go to air to air mode by hitting
+enter. I'm going to turn my master mode on. I'm going to turn my
+master on there. And I'm going to turn my radar to start looking out
+towards Bullseye where AWACS is called, where those MIGs are being
+from. Now if you look at the FCR you'll notice I see a bunch of yellow
+carrots here. And what that means is that that person has their ECM on
+which means they're jamming my radar and I can't get a good range on
+them. But as I get closer that will eventually go away and I'll get a
+good lock on the target. So let's say there are friendlies in the
+area. So let's say I have a radar return on this guy right here but I
+have no idea whether or not he's friendly. I can pull up the AWACS
+menu again and I can press Q and then 2 and ask for a declare. And
+AWACS will come back and tell me whether or not the target I'm locking
+is friendly or enemy. And if she's got enough information she'll
+actually tell me what type of aircraft it is. If your AWACS is down or
+destroyed or whatever you can also pull up your targeting pod here and
+click standby and put it in air to air mode. And this guy is too far
+away but your targeting pod will look at whatever you're locking. So I
+locked up this F-16 over here and I can look at my targeting pod and I
+can tell... Oh, that's an F-16. And my targeting pod will
+automatically slew to whatever I've locked on my FCR and that's a much
+faster way of identifying targets. So if I was to lock something and I
+saw a MUC-29 in my targeting pod I'd obviously know it's friendly...
+Or sorry, enemy, and I wouldn't have to ask AWACS for that declare
+because you can get pretty backed up sometimes. And the last thing you
+need to know that I forgot about a long time ago was putting your
+aircraft in cat3 or cat1 stores config. This basically, in cat3 your
+aircraft is limited to how many Gs it can pull because we're carrying
+big fuel bags and if we pulled too many Gs we'd rip them right off.
+But if I dump my fuel bags, let's say I do an emergency storage
+jettison which dumps everything that is in an air to air weapon... And
+now all I've got is MRAMs. I'll get a master caution telling me that
+I'm not in cat1 which means that I'm in the wrong stores config. So I
+can put myself into cat1 now and this master caution will go away and
+that now means that my aircraft is unlimited in its Gs. I can pull the
+maximum possible Gs that my aircraft can sustain. Whereas when I'm in
+cat3 my aircraft automatically limits itself so it doesn't pull more
+Gs than my ordnance can sustain. So just be sure whenever you dump all
+of your air to ground ordnance to go back to cat1. And alternatively
+if you have air to ground ordnance make sure you're in cat3 otherwise
+you're going to break something. And with that, that concludes my
+tutorial on Falcon BMS and hopefully you know everything you need to
+get started with this game. Again you can personal message me if you
+have any questions and again the best way to start learning this stuff
+is to go run a campaign or do tactical engagements and just start
+flying the aircraft. And as you go on you'll learn what needs to be
+mapped to what and you'll start getting the hang of it. And again best
+of luck in your future F-16 knitters. Thank you. Hello everyone, this
+is Crosscheck and welcome to starting your first Falcon BMS campaign.
+This video of course is intended for new players that already have the
+simulator installed and configured. If you are a new player and
+haven't gone through the basics of setting everything up check my
+Falcon BMS Beginners Guide. That is going to be extremely helpful for
+you. I would recommend that video first before this one. But nah, you
+can still do whatever you want. Anyway, link to that video is in this
+video's description. Anyway, even though this video is intended for
+new players it may still prove useful to people with a couple of hours
+in it already and or entertaining for even veterans. So be sure to
+stick around. Let's start by launching, well, the launcher. Of course
+we are using the Falcon BMS alternative launcher. This is the only way
+to go. And before opening BMS let me tell you some of the really cool
+things that we are going to be doing on this video. We are going to of
+course launch this.

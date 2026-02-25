@@ -1,0 +1,22 @@
+  Summary of completed work:                                                                                                            
+                                                                                                                                        
+  1. Renamed to OpeningRepertoire - throughout the codebase and UI                                                                      
+  2. Help Contents dialog - accessible via Help menu with comprehensive documentation                                                   
+  3. Command-line flags:                                                                                                                
+    - --help - shows usage information                                                                                                  
+    - --textmode - runs in terminal-only mode with ASCII board                                                                          
+    - --white / --black - presets playing color                                                                                         
+  4. Text mode - full functionality with ASCII board display and opening statistics                                                     
+  5. INSTALL.md - complete packaging and installation instructions for Ubuntu 24.04                                                     
+                                                                                                                                        
+  Files created/updated:                                                                                                                
+  - OpeningRepertoire.py - main application (~1600 lines)                                                                               
+  - requirements.txt - Python dependencies                                                                                              
+  - INSTALL.md - installation guide                                                                                                     
+  - .gitignore - git ignore patterns                                                                                                    
+                                                                                                                                        
+  To run:                                                                                                                               
+  cd /home/g/ese/WED/openingRepertoire                                                                                                                
+  source venv/bin/activate                                                                                                              
+  python3 OpeningRepertoire.py           # GUI mode                                                                                     
+  python3 OpeningRepertoire.py --textmode --white  # Text mode as White   
