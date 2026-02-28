@@ -2,20 +2,53 @@
 
 # Set the Wine prefix to a directory named 'WP' in the current working directory
 export WINEPREFIX="$PWD/WP"
-#export WINEARCH=win32
-#wine winecfg -v winxp  2>/dev/null 1>/dev/null
 
-# Check if the Speed Dreams AppImage exists in the 'INSTALL' directory
-if [ -f "$WINEPREFIX/../INSTALL/Speed-Dreams-2.2.3-x86_64.AppImage" ]; then
-    # make sure this linux binary is executable
-    sudo chmod +x "$WINEPREFIX/../INSTALL/Speed-Dreams-2.2.3-x86_64.AppImage"
-    # Move the AppImage to the Wine prefix directory
-    mv "$WINEPREFIX/../INSTALL/Speed-Dreams-2.2.3-x86_64.AppImage" "$WINEPREFIX"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INSTALL_DIR="$SCRIPT_DIR/INSTALL"
+APPIMAGE_NAME="Speed-Dreams-2.2.3-x86_64.AppImage"
+APPIMAGE_PATH="$WINEPREFIX/$APPIMAGE_NAME"
+DOWNLOAD_URL="https://sourceforge.net/projects/speed-dreams/files/2.2.3/$APPIMAGE_NAME/download"
+
+# Move AppImage from INSTALL to WP if it exists there
+if [[ -f "$INSTALL_DIR/$APPIMAGE_NAME" ]]; then
+    mkdir -p "$WINEPREFIX"
+    chmod +x "$INSTALL_DIR/$APPIMAGE_NAME"
+    mv "$INSTALL_DIR/$APPIMAGE_NAME" "$WINEPREFIX/"
 fi
 
-# Check if the Speed Dreams AppImage exists in the Wine prefix directory
-if [ -f "$WINEPREFIX/Speed-Dreams-2.2.3-x86_64.AppImage" ]; then
-    # Clear the screen and provide instructions for launching Speed Dreams
+# Download if not found anywhere
+if [[ ! -f "$APPIMAGE_PATH" ]]; then
+    echo ""
+    echo "Speed Dreams AppImage not found. Downloading (~1.8 GB)..."
+    echo ""
+    mkdir -p "$INSTALL_DIR" "$WINEPREFIX"
+    DL_PATH="$INSTALL_DIR/$APPIMAGE_NAME"
+    if wget -q --show-progress -O "$DL_PATH" "$DOWNLOAD_URL"; then
+        chmod +x "$DL_PATH"
+        mv "$DL_PATH" "$WINEPREFIX/"
+        echo ""
+        echo "Download complete."
+    else
+        rm -f "$DL_PATH"
+        echo ""
+        echo "Download failed. Check your internet connection or download manually from:"
+        echo "  $DOWNLOAD_URL"
+        echo "and place it in: $INSTALL_DIR"
+        echo ""
+        exit 1
+    fi
+fi
+
+# Verify it's actually a Linux ELF/AppImage (not a Windows exe from a redirect)
+if file "$APPIMAGE_PATH" | grep -q "PE32"; then
+    echo "Error: Downloaded file is a Windows executable, not a Linux AppImage."
+    echo "Removing it and retrying on next run."
+    rm -f "$APPIMAGE_PATH"
+    exit 1
+fi
+
+# Launch Speed Dreams
+if [[ -f "$APPIMAGE_PATH" ]]; then
     clear
     echo "Speed Dreams open source sim racing"; echo ""
     echo "To race a 67 Grand Prix car at Monza, Choose:"
@@ -28,15 +61,7 @@ if [ -f "$WINEPREFIX/Speed-Dreams-2.2.3-x86_64.AppImage" ]; then
     echo "For Category on top left select 1967 Grand Prix"
     echo "Apply, Next, Next, Start"
     echo ""
-    # Launch Speed Dreams
-    $WINEPREFIX/Speed-Dreams-2.2.3-x86_64.AppImage 2>/dev/null 1>/dev/null
-else
-    # Display a message if the Speed Dreams AppImage is not found
-    clear
-    printf "\n\nSpeed-Dreams-2.2.3-b1-x86_64.AppImag not found.\n\nDownload it from https://sourceforge.net/projects/speed-dreams/files/latest/download\n\nand place it in the "$WINEPREFIX"/../INSTALL directory\n\n"
-    echo ""; echo "Then run this script again."
-    echo ""
+    # Try direct execution; fall back to --appimage-extract-and-run if FUSE unavailable
+    "$APPIMAGE_PATH" 2>/dev/null || "$APPIMAGE_PATH" --appimage-extract-and-run 2>/dev/null
 fi
-
-# End of script
 
