@@ -91,9 +91,7 @@ class CardWidget(QWidget):
         self.update()
 
     def mousePressEvent(self, event):
-        print(f"DEBUG CardWidget.mousePressEvent: card={self.card.to_str() if self.card else None}, selectable={self.selectable}", flush=True)
         if self.card and self.selectable and event.button() == Qt.MouseButton.LeftButton:
-            print(f"DEBUG CardWidget.mousePressEvent: emitting card_clicked for {self.card.to_str()}", flush=True)
             self.card_clicked.emit(self.card)
 
     def enterEvent(self, event):
@@ -463,7 +461,6 @@ class TrickAreaWidget(QFrame):
             cw.set_highlighted(s == seat)
 
     def clear_trick(self):
-        print(f"DEBUG TrickAreaWidget.clear_trick: hiding {len(self.played_cards)} cards", flush=True)
         self.played_cards.clear()
         self.winner = None
         for cw in self.card_widgets.values():
@@ -788,7 +785,6 @@ class TableView(QWidget):
         self.tricks_panel.setVisible(False)
 
     def _on_card_selected(self, seat: Seat, card: Card):
-        print(f"DEBUG TableView._on_card_selected: seat={seat}, card={card.to_str()}", flush=True)
         self.card_played.emit(seat, card)
 
     def set_board(self, board: BoardState):
@@ -970,7 +966,7 @@ class TableView(QWidget):
             elif seat == Seat.WEST:
                 ds = Seat.EAST
         if selectable:
-            print(f"DEBUG set_hand_selectable: seat={seat}, ds={ds}, swapped={self.swapped_positions}, lead_suit={lead_suit}", flush=True)
+            pass
         self.hand_widgets[ds].set_selectable(selectable)
         if selectable:
             self.hand_widgets[ds].highlight_legal(lead_suit)
@@ -992,7 +988,6 @@ class TableView(QWidget):
             elif seat == Seat.WEST:
                 ds = Seat.EAST
                 trick_seat = Seat.EAST
-        print(f"DEBUG play_card_to_trick: seat={seat}, trick_seat={trick_seat}, ds={ds}, swapped={self.swapped_positions}", flush=True)
         self.trick_area.play_card(trick_seat, card, is_winner)
         self.hand_widgets[ds].remove_card(card)
 
@@ -1011,7 +1006,6 @@ class TableView(QWidget):
         self.trick_area.set_winner(display_winner)
 
     def clear_trick(self):
-        print(f"DEBUG TableView.clear_trick: clearing trick display", flush=True)
         self.trick_area.clear_trick()
 
     def update_tricks(self, dec_tricks: int, def_tricks: int):

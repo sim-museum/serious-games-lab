@@ -37,7 +37,8 @@ def exception_hook(exc_type, exc_value, exc_tb):
 
 def main():
     # Set up logging (file + console)
-    logger = setup_logging()
+    from logging_config import get_default_log_path
+    logger = setup_logging(log_file=get_default_log_path(), console=False)
     logger.info("Starting BEN Bridge application")
 
     # Install global exception handler

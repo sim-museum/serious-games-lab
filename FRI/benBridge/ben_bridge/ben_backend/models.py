@@ -355,30 +355,24 @@ class Trick:
         winning_idx = 0
         winning_card = self.cards[0]
 
-        print(f"DEBUG _determine_winner: leader={self.leader}, trump={trump}, lead_suit={lead_suit}", flush=True)
-        print(f"DEBUG _determine_winner: cards={[c.to_str() for c in self.cards]}", flush=True)
 
         for i, card in enumerate(self.cards[1:], 1):
             is_trump = trump is not None and card.suit == trump
             winning_is_trump = trump is not None and winning_card.suit == trump
 
             if is_trump and not winning_is_trump:
-                print(f"DEBUG _determine_winner: card[{i}]={card.to_str()} is trump, beats {winning_card.to_str()}", flush=True)
                 winning_idx = i
                 winning_card = card
             elif is_trump and winning_is_trump and card.rank < winning_card.rank:
-                print(f"DEBUG _determine_winner: card[{i}]={card.to_str()} higher trump, beats {winning_card.to_str()}", flush=True)
                 winning_idx = i
                 winning_card = card
             elif not is_trump and not winning_is_trump:
                 if card.suit == lead_suit and card.rank < winning_card.rank:
-                    print(f"DEBUG _determine_winner: card[{i}]={card.to_str()} higher in lead suit, beats {winning_card.to_str()}", flush=True)
                     winning_idx = i
                     winning_card = card
 
         # Use .value explicitly to ensure correct arithmetic with IntEnum
         winner_seat = Seat((self.leader.value + winning_idx) % 4)
-        print(f"DEBUG _determine_winner: winning_idx={winning_idx}, winning_card={winning_card.to_str()}, winner={winner_seat}", flush=True)
         return winner_seat
 
     def is_complete(self) -> bool:

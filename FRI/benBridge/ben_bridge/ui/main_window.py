@@ -72,9 +72,7 @@ class EngineWorker(QThread):
 
     def request_card(self, board: BoardState, seat: Seat, trick_cards=None):
         if self.isRunning():
-            print(f"DEBUG EngineWorker.request_card: BUSY - already running, will NOT process seat={seat}", flush=True)
             return False  # Indicate request was not started
-        print(f"DEBUG EngineWorker.request_card: seat={seat}, trick_cards={[c.to_str() for c in (trick_cards or [])]}", flush=True)
         self.task = 'card'
         self.board = board
         self.seat = seat
@@ -84,7 +82,6 @@ class EngineWorker(QThread):
 
     def run(self):
         try:
-            print(f"DEBUG EngineWorker.run: task={self.task}, seat={self.seat}", flush=True)
             if self.task == 'bid':
                 response = self.engine.get_bid(self.board, self.seat)
                 self.bid_ready.emit(response)
@@ -96,18 +93,14 @@ class EngineWorker(QThread):
                     (not self.board.current_trick or len(self.board.current_trick.cards) == 0)
                 )
                 if is_opening_lead:
-                    print(f"DEBUG EngineWorker.run: getting opening lead", flush=True)
                     response = self.engine.get_opening_lead(self.board)
                 else:
-                    print(f"DEBUG EngineWorker.run: getting card play for seat={self.seat}", flush=True)
                     response = self.engine.get_card_play(
                         self.board, self.seat, self.trick_cards
                     )
-                print(f"DEBUG EngineWorker.run: got response, action={response.action if response else None}", flush=True)
                 self.card_ready.emit(response)
         except Exception as e:
             import traceback
-            print(f"DEBUG EngineWorker.run: EXCEPTION: {e}", flush=True)
             traceback.print_exc()
             self.error.emit(str(e))
 
@@ -165,26 +158,22 @@ class GameController:
         # During play, check if human controls this seat
         if self.current_phase == 'play':
             result = self._human_controls_seat(self.current_seat)
-            print(f"DEBUG is_human_turn: phase=play, seat={self.current_seat}, result={result}", flush=True)
             return result
         else:
-            print(f"DEBUG is_human_turn: phase={self.current_phase} (not play), seat={self.current_seat}, falling through", flush=True)
+            pass
 
         return self.players[self.current_seat].player_type == PlayerType.HUMAN
 
     def _human_controls_seat(self, seat: Seat) -> bool:
         """Check if human controls this seat (either as player or declarer controlling dummy)"""
         if self.players[seat].player_type == PlayerType.HUMAN:
-            print(f"DEBUG _human_controls_seat({seat}): player is HUMAN -> True")
             return True
 
         # If human is declarer/dummy, they control both hands
         if self.human_controls_declarer:
             result = seat in (self.declarer, self.dummy)
-            print(f"DEBUG _human_controls_seat({seat}): human_controls_declarer=True, declarer={self.declarer}, dummy={self.dummy}, result={result}")
             return result
 
-        print(f"DEBUG _human_controls_seat({seat}): human_controls_declarer=False -> False")
         return False
 
     def make_bid(self, bid: Bid) -> bool:
@@ -252,9 +241,7 @@ class GameController:
 
         # Check if human controls the declarer side
         human_seat = None
-        print(f"DEBUG _setup_play: player types = {[(s, p.player_type) for s, p in self.players.items()]}")
         for seat, player in self.players.items():
-            print(f"DEBUG _setup_play: checking seat={seat}, player_type={player.player_type}, is_human={player.player_type == PlayerType.HUMAN}, type={type(player.player_type)}")
             if player.player_type == PlayerType.HUMAN:
                 human_seat = seat
                 break
@@ -262,9 +249,8 @@ class GameController:
         if human_seat is not None:
             # Human controls declarer if they are declarer OR dummy
             self.human_controls_declarer = (human_seat == self.declarer or human_seat == self.dummy)
-            print(f"DEBUG _setup_play: human_seat={human_seat}, declarer={self.declarer}, dummy={self.dummy}, human_controls_declarer={self.human_controls_declarer}")
         else:
-            print(f"DEBUG _setup_play: No human player found!")
+            pass
 
         self.current_phase = 'play'
         self.current_seat = self.opening_leader
@@ -280,17 +266,14 @@ class GameController:
 
         # Add to current trick
         if not self.board.current_trick:
-            print(f"DEBUG play_card: Creating NEW trick with leader={self.current_seat}", flush=True)
             self.board.current_trick = Trick(leader=self.current_seat)
 
         trump = self.board.contract.suit if self.board.contract.suit != Suit.NOTRUMP else None
-        print(f"DEBUG play_card: Adding card {card.to_str()} by {self.current_seat} to trick (trump={trump})", flush=True)
         self.board.current_trick.add_card(card, trump)
 
         # Check if trick is complete
         if self.board.current_trick.is_complete():
             winner = self.board.current_trick.winner
-            print(f"DEBUG play_card: Trick complete! winner={winner}, cards={[c.to_str() for c in self.board.current_trick.cards]}", flush=True)
             self.board.tricks.append(self.board.current_trick)
 
             # Update tricks won
@@ -307,7 +290,6 @@ class GameController:
             # Enter waiting state for "Next Card" button
             self.current_phase = 'waiting_next'
             self.current_seat = winner
-            print(f"DEBUG play_card: Set current_seat to winner={winner}", flush=True)
             return True
         else:
             self.current_seat = self.current_seat.next()
@@ -985,16 +967,12 @@ class MainWindow(QMainWindow):
         still_in_bidding = (self.controller.current_phase == 'bidding' or
                            (self.controller.board and not self.controller.board.contract))
 
-        print(f"DEBUG _on_next_deal: still_in_bidding={still_in_bidding}, "
-              f"phase={self.controller.current_phase}, "
-              f"teams_match={self.teams_match is not None}", flush=True)
 
         # If in teams match mode during bidding, user wants to discard this hand
         if self.teams_match is not None and self.match_controller is not None:
             if still_in_bidding:
                 # User wants to discard this hand and start fresh
                 # Don't show score dialog, just reset and go back to opening screen
-                print("DEBUG: Discarding hand during bidding, returning to opening screen", flush=True)
                 self.match_controller.stop_closed_room()  # Stop any running closed room
                 self.teams_match = None
                 self.match_controller = None
@@ -2284,7 +2262,6 @@ For more information, see the README file."""
 
     def _on_network_connected(self, mode: str, my_seat: str, partner_seat: str, client_role: str):
         """Handle successful network connection."""
-        print(f"DEBUG _on_network_connected: mode={mode}, my_seat={my_seat}, partner_seat={partner_seat}, client_role={client_role}", flush=True)
         self.disconnect_action.setEnabled(True)
 
         # Close connect dialog if open
@@ -2296,9 +2273,7 @@ For more information, see the README file."""
         partner = Seat.from_char(partner_seat)
 
         # Configure players for network mode
-        print(f"DEBUG _on_network_connected: calling _configure_network_players", flush=True)
         self._configure_network_players()
-        print(f"DEBUG _on_network_connected: network_controller.my_seats={self.network_controller.my_seats}", flush=True)
 
         # Build status message based on role
         role_desc = "partner" if client_role == "partner" else "opponent"
@@ -2342,9 +2317,6 @@ For more information, see the README file."""
 
     def _on_network_deal_received(self, board: BoardState):
         """Handle receiving a deal from the server (client mode)."""
-        print(f"DEBUG _on_network_deal_received: board #{board.board_number}, dealer={board.dealer}", flush=True)
-        print(f"DEBUG _on_network_deal_received: network_controller._my_seat={self.network_controller._my_seat}, my_seats={self.network_controller.my_seats}", flush=True)
-        print(f"DEBUG _on_network_deal_received: player types before: {[(s, self.controller.players[s].player_type) for s in Seat]}", flush=True)
         self.controller.board = board
         self.controller.current_phase = 'bidding'
         self.controller.current_seat = board.dealer
@@ -2408,7 +2380,6 @@ For more information, see the README file."""
 
     def _on_network_dummy_revealed(self, dummy_seat: Seat, dummy_hand: Hand):
         """Handle receiving dummy's hand when play starts (client mode)."""
-        print(f"DEBUG _on_network_dummy_revealed: dummy_seat={dummy_seat}, cards={len(dummy_hand.cards)}", flush=True)
         # Update the board with dummy's actual hand
         self.controller.board.hands[dummy_seat] = dummy_hand
         # Show dummy's hand
@@ -2423,21 +2394,17 @@ For more information, see the README file."""
 
     def _on_network_trick_clear(self):
         """Handle receiving trick clear from remote player (they clicked 'next card')."""
-        print(f"DEBUG _on_network_trick_clear: received, phase={self.controller.current_phase}", flush=True)
         if self.controller.current_phase == 'waiting_next':
             self.controller.advance_to_next_trick()
             self.table_view.clear_trick()
             self.next_card_btn.setEnabled(False)
-            print(f"DEBUG _on_network_trick_clear: cleared trick, advancing game", flush=True)
             self._advance_game()
 
     def _configure_network_players(self):
         """Configure player types for network play based on network controller state."""
-        print(f"DEBUG _configure_network_players: my_seats={self.network_controller.my_seats}, remote_seats={self.network_controller.remote_seats}", flush=True)
         for seat in Seat:
             player_type = self.network_controller.get_player_type_for_seat(seat)
             self.controller.players[seat].player_type = player_type
-            print(f"DEBUG _configure_network_players: {seat} -> {player_type}", flush=True)
 
     def _configure_single_player(self):
         """Revert to single-player mode."""
@@ -2609,29 +2576,23 @@ For more information, see the README file."""
 
     def _on_next_card(self):
         """Advance to next trick after a trick completes"""
-        print(f"DEBUG _on_next_card ENTRY: phase={self.controller.current_phase}, current_seat={self.controller.current_seat}", flush=True)
-        print(f"DEBUG _on_next_card: declarer={self.controller.declarer}, dummy={self.controller.dummy}, human_controls_declarer={self.controller.human_controls_declarer}", flush=True)
 
         # Debug: verify current_seat matches the last trick winner
         last_winner = self.controller.get_trick_winner()
-        print(f"DEBUG _on_next_card: last trick winner={last_winner}, current_seat={self.controller.current_seat}", flush=True)
         if last_winner and self.controller.current_seat != last_winner:
-            print(f"DEBUG _on_next_card: WARNING! current_seat ({self.controller.current_seat}) != last_winner ({last_winner})", flush=True)
+            pass
 
         if self.controller.current_phase == 'waiting_next':
             # In network mode, broadcast to sync the other player
             if self.network_controller.is_active:
-                print(f"DEBUG _on_next_card: broadcasting trick_clear to peer", flush=True)
                 self.network_controller.broadcast_trick_clear()
 
             self.controller.advance_to_next_trick()
             self.table_view.clear_trick()
             self.next_card_btn.setEnabled(False)
-            print(f"DEBUG _on_next_card: after advance, phase={self.controller.current_phase}, current_seat={self.controller.current_seat}", flush=True)
-            print(f"DEBUG _on_next_card: calling _advance_game()", flush=True)
             self._advance_game()
         else:
-            print(f"DEBUG _on_next_card: SKIPPED because phase is not 'waiting_next'", flush=True)
+            pass
 
     # Game flow
 
@@ -2660,22 +2621,16 @@ For more information, see the README file."""
 
     def _on_card_played(self, seat: Seat, card: Card):
         """Handle human card play"""
-        print(f"DEBUG _on_card_played: seat={seat}, card={card.to_str()}", flush=True)
-        print(f"DEBUG _on_card_played: phase={self.controller.current_phase}, current_seat={self.controller.current_seat}", flush=True)
 
         if self.controller.current_phase != 'play':
-            print(f"DEBUG _on_card_played: REJECTED - phase is not 'play'", flush=True)
             return
 
         if seat != self.controller.current_seat:
-            print(f"DEBUG _on_card_played: REJECTED - seat {seat} != current_seat {self.controller.current_seat}", flush=True)
             return
 
         if not self.controller.is_human_turn():
-            print(f"DEBUG _on_card_played: REJECTED - not human turn", flush=True)
             return
 
-        print(f"DEBUG _on_card_played: ACCEPTED - playing card", flush=True)
 
         # Validate the card is legal
         lead_suit = self.controller.get_lead_suit()
@@ -2707,7 +2662,6 @@ For more information, see the README file."""
                 dummy = self.controller.dummy
                 dummy_hand = self.controller.board.hands.get(dummy)
                 if dummy and dummy_hand:
-                    print(f"DEBUG _on_card_played: Revealing dummy {dummy} with {len(dummy_hand.cards)} cards", flush=True)
                     self.network_controller.broadcast_dummy_reveal(dummy, dummy_hand)
 
         self._advance_game()
@@ -2733,7 +2687,6 @@ For more information, see the README file."""
         if self.network_controller.is_active:
             is_mine = self.network_controller.is_my_seat(current_seat)
             is_remote = self.network_controller.is_remote_seat(current_seat)
-            print(f"DEBUG _advance_bidding: seat={current_seat}, is_mine={is_mine}, is_remote={is_remote}", flush=True)
             if is_mine:
                 # My turn - enable bidding
                 self.bidding_box.set_enabled(True)
@@ -2751,10 +2704,8 @@ For more information, see the README file."""
                 return
             else:
                 # AI seat
-                print(f"DEBUG _advance_bidding: AI seat", flush=True)
                 if self.network_controller.is_client:
                     # Client waits for server to broadcast AI bid
-                    print(f"DEBUG _advance_bidding: client waiting for AI bid from server", flush=True)
                     self.bidding_box.set_enabled(False)
                     self.status_label.setText(f"Waiting for AI ({current_seat.to_char()})...")
                     return
@@ -2782,9 +2733,6 @@ For more information, see the README file."""
         """Advance play phase"""
         trick = self.controller.board.current_trick
         trick_info = f"cards={[c.to_str() for c in trick.cards]}, leader={trick.leader}" if trick else "None"
-        print(f"DEBUG _advance_play START: phase={self.controller.current_phase}, seat={self.controller.current_seat}, trick={trick_info}", flush=True)
-        print(f"DEBUG _advance_play: declarer={self.controller.declarer}, dummy={self.controller.dummy}, human_controls_declarer={self.controller.human_controls_declarer}", flush=True)
-        print(f"DEBUG _advance_play: engine_worker running={self.engine_worker.isRunning() if self.engine_worker else 'N/A'}", flush=True)
         self.bidding_box.set_enabled(False)
 
         # Setup declarer play if just starting
@@ -2813,7 +2761,6 @@ For more information, see the README file."""
         current_seat = self.controller.current_seat
         is_human = self.controller.is_human_turn()
         autoplay_active = self.autoplay_btn.isChecked()
-        print(f"DEBUG _advance_play: current_seat={current_seat}, is_human_turn={is_human}, autoplay={autoplay_active}", flush=True)
 
         # Check if we're in network mode
         if self.network_controller.is_active:
@@ -2824,11 +2771,9 @@ For more information, see the README file."""
             # If current seat is dummy, declarer plays it
             actual_player = declarer if current_seat == dummy else current_seat
 
-            print(f"DEBUG _advance_play: Network mode - current={current_seat}, declarer={declarer}, dummy={dummy}, actual_player={actual_player}", flush=True)
 
             if self.network_controller.is_my_seat(actual_player):
                 # My turn - enable hand selection (could be my hand or dummy if I'm declarer)
-                print(f"DEBUG _advance_play: Network mode - I play {current_seat}", flush=True)
                 self.table_view.set_hand_selectable(current_seat, True, lead_suit)
                 if current_seat == dummy:
                     self.status_label.setText(f"Play dummy ({current_seat.to_char()})")
@@ -2837,16 +2782,13 @@ For more information, see the README file."""
                 return
             elif self.network_controller.is_remote_seat(actual_player):
                 # Remote player's turn - wait
-                print(f"DEBUG _advance_play: Network mode - waiting for remote to play {current_seat}", flush=True)
                 who = "partner" if self.network_controller.client_role == "partner" else "opponent"
                 self.status_label.setText(f"Waiting for {who} ({current_seat.to_char()})...")
                 return
             else:
                 # AI seat
-                print(f"DEBUG _advance_play: Network mode - AI seat {current_seat}", flush=True)
                 if self.network_controller.is_client:
                     # Client waits for server to broadcast AI card
-                    print(f"DEBUG _advance_play: Network mode - client waiting for AI card from server", flush=True)
                     self.status_label.setText(f"Waiting for AI ({current_seat.to_char()})...")
                     return
                 # Server runs the AI - fall through to engine handling
@@ -2855,7 +2797,6 @@ For more information, see the README file."""
         # If autoplay is on, use engine for all seats including human
         if is_human and not autoplay_active:
             # Enable the current hand for human
-            print(f"DEBUG _advance_play: Enabling hand for seat={current_seat}", flush=True)
             self.table_view.set_hand_selectable(
                 current_seat, True, lead_suit
             )
@@ -2866,30 +2807,24 @@ For more information, see the README file."""
             self.status_label.setText(
                 f"Thinking ({current_seat.to_char()})..."
             )
-            print(f"DEBUG _advance_play: Computer's turn, seat={current_seat}")
 
             # Request card from engine
             if self.engine_worker:
                 trick_cards = []
                 if self.controller.board.current_trick:
                     trick_cards = self.controller.board.current_trick.cards
-                print(f"DEBUG _advance_play: Requesting card, trick_cards={[c.to_str() for c in trick_cards]}")
                 started = self.engine_worker.request_card(
                     self.controller.board, current_seat, trick_cards
                 )
                 if not started:
                     # Worker was busy, retry after a delay
-                    print(f"DEBUG _advance_play: Engine busy, scheduling retry in 200ms", flush=True)
                     QTimer.singleShot(200, self._advance_play)
             else:
-                print("DEBUG _advance_play: No engine_worker available!")
+                pass
 
     def _handle_trick_complete(self):
         """Handle completed trick - show winner and wait for Next Card"""
         winner = self.controller.get_trick_winner()
-        print(f"DEBUG _handle_trick_complete: winner={winner}, current_seat={self.controller.current_seat}", flush=True)
-        print(f"DEBUG _handle_trick_complete: declarer={self.controller.declarer}, dummy={self.controller.dummy}", flush=True)
-        print(f"DEBUG _handle_trick_complete: human_controls_declarer={self.controller.human_controls_declarer}", flush=True)
         if winner is not None:
             self.table_view.show_trick_winner(winner)
 
@@ -2913,26 +2848,22 @@ For more information, see the README file."""
 
                     i_played_last = self.network_controller.is_my_seat(actual_player)
                     ai_played_last = self.network_controller.is_ai_seat(actual_player)
-                    print(f"DEBUG _handle_trick_complete: network mode, last_player={last_player_seat}, actual_player={actual_player}, i_played_last={i_played_last}, ai_played_last={ai_played_last}", flush=True)
 
                     # Determine who should control "next card"
                     # Rule: Remote human played last -> wait for their broadcast
                     #       Otherwise (I or AI played last) -> I get the button
                     remote_played_last = self.network_controller.is_remote_seat(actual_player)
-                    print(f"DEBUG _handle_trick_complete: network mode, last_player={last_player_seat}, actual_player={actual_player}, i_played_last={i_played_last}, ai_played_last={ai_played_last}, remote_played_last={remote_played_last}", flush=True)
 
                     if remote_played_last:
                         # Remote human played last - wait for their broadcast
                         self.next_card_btn.setEnabled(False)
                         who = "partner" if self.network_controller.client_role == "partner" else "opponent"
                         self.status_label.setText(f"Trick won by {winner.to_char()}. Waiting for {who}...")
-                        print(f"DEBUG _handle_trick_complete: remote played last, waiting for broadcast", flush=True)
                         return
                     else:
                         # I played last or AI played last - I get the button
                         self.next_card_btn.setEnabled(True)
                         self.status_label.setText(f"Trick won by {winner.to_char()}. Click 'Next card' to continue.")
-                        print(f"DEBUG _handle_trick_complete: I/AI played last, I get button", flush=True)
                         return
 
             # Standard single-player mode
@@ -2940,23 +2871,19 @@ For more information, see the README file."""
 
             # Check if next player is human (South or dummy controlled by human)
             next_is_human = self.controller._human_controls_seat(winner)
-            print(f"DEBUG _handle_trick_complete: next_is_human={next_is_human}, autoplay={self.autoplay_btn.isChecked()}", flush=True)
 
             if next_is_human or self.autoplay_btn.isChecked():
                 # Auto-advance when it's human's turn or autoplay is on
                 self.status_label.setText(f"Trick won by {winner.to_char()}.")
-                print(f"DEBUG _handle_trick_complete: scheduling auto-advance in 600ms", flush=True)
                 QTimer.singleShot(600, self._on_next_card)
             else:
                 self.status_label.setText(
                     f"Trick won by {winner.to_char()}. Click 'Next card' to continue."
                 )
-                print(f"DEBUG _handle_trick_complete: waiting for manual 'Next card' click", flush=True)
 
     def _show_result(self):
         """Show deal result"""
         board = self.controller.board
-        print(f"DEBUG _show_result: teams_match={self.teams_match is not None}, match_controller={self.match_controller is not None}", flush=True)
 
         self.next_card_btn.setEnabled(False)
         self.next_deal_btn.setVisible(True)  # Show next deal button when finished
@@ -2999,9 +2926,7 @@ For more information, see the README file."""
         self.status_label.setText(f"Deal complete: {contract.to_str()} {result_str}")
 
         # If this is a teams match, show the end-of-hand dialog
-        print(f"DEBUG _show_result: Checking for teams match dialog...", flush=True)
         if self.teams_match is not None and self.match_controller is not None:
-            print(f"DEBUG _show_result: Teams match active, showing EndOfHandDialog", flush=True)
             # Complete the open room result
             self.match_controller.complete_open_room(board.board_number, board)
 
@@ -3117,18 +3042,13 @@ For more information, see the README file."""
         """Handle card from engine"""
         # Get the seat that was requested (stored in engine_worker)
         requested_seat = self.engine_worker.seat if self.engine_worker else None
-        print(f"DEBUG _on_engine_card: phase={self.controller.current_phase}, current_seat={self.controller.current_seat}, requested_seat={requested_seat}", flush=True)
-        print(f"DEBUG _on_engine_card: response.action={response.action}, response.who={getattr(response, 'who', 'N/A')}", flush=True)
 
         if self.controller.current_phase != 'play':
-            print("DEBUG _on_engine_card: Not in play phase, ignoring", flush=True)
             return
 
         # Verify the response is for the current seat
         if requested_seat and requested_seat != self.controller.current_seat:
-            print(f"DEBUG _on_engine_card: WARNING! Seat mismatch - requested_seat={requested_seat} != current_seat={self.controller.current_seat}", flush=True)
             # Don't play the card if it's for the wrong seat
-            print(f"DEBUG _on_engine_card: Discarding response and re-requesting for correct seat", flush=True)
             QTimer.singleShot(100, self._advance_game)
             return
 
@@ -3171,7 +3091,6 @@ For more information, see the README file."""
                 dummy = self.controller.dummy
                 dummy_hand = self.controller.board.hands.get(dummy)
                 if dummy and dummy_hand:
-                    print(f"DEBUG _on_engine_card: Revealing dummy {dummy} with {len(dummy_hand.cards)} cards", flush=True)
                     self.network_controller.broadcast_dummy_reveal(dummy, dummy_hand)
 
         # Continue after delay

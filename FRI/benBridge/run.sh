@@ -13,7 +13,7 @@ source venv/bin/activate
 export LD_LIBRARY_PATH="$(pwd)/ben/bin${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 cd ben_bridge
-python3 main.py "$@"
+python3 main.py "$@" 2>/dev/null
 exit_code=$?
 
 if [[ $exit_code -ne 0 ]]; then

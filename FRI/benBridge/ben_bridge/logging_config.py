@@ -29,6 +29,7 @@ def setup_logging(
     # Create logger
     logger = logging.getLogger('ben_bridge')
     logger.setLevel(log_level)
+    logger.propagate = False
 
     # Clear existing handlers
     logger.handlers.clear()
