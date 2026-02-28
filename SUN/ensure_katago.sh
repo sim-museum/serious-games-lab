@@ -31,6 +31,11 @@ _katago_download() {
 }
 
 # --- 1. Ensure KataGo binary ---
+# Also rebuild if the binary exists but can't run (e.g. missing shared libraries)
+if [[ -x "$KATAGO_BIN" ]] && ! "$KATAGO_BIN" version &>/dev/null; then
+    echo "KataGo binary exists but cannot run (missing libraries). Rebuilding from source..."
+    rm -f "$KATAGO_BIN"
+fi
 if [[ ! -x "$KATAGO_BIN" ]]; then
     mkdir -p "$KATAGO_DIR"
     echo "KataGo binary not found. Downloading OpenCL release v${KATAGO_VERSION}..."
@@ -104,24 +109,30 @@ _katago_needs_tuning() {
 
 if [[ -x "$KATAGO_BIN" && -f "$MAIN_MODEL" && -f "$HUMAN_MODEL" ]] && \
    _katago_needs_tuning "$_KATAGO_TUNE_DIR"; then
-    echo ""
-    echo "Running one-time KataGo GPU autotuning (this takes 1-2 minutes)..."
-    echo "This must complete before Go GUIs can use the engine."
-    echo ""
+    # Verify katago can actually run before attempting tuning
+    if "$KATAGO_BIN" version &>/dev/null; then
+        echo ""
+        echo "Running one-time KataGo GPU autotuning (this takes 1-2 minutes)..."
+        echo "This must complete before Go GUIs can use the engine."
+        echo ""
 
-    # Tune main model (mv14) then human model (mv15) in one invocation.
-    # GTP mode accepts "quit" cleanly. Using the human rank config so both
-    # -model and -human-model are loaded and tuned.
-    echo "quit" | "$KATAGO_BIN" gtp \
-        -model "$MAIN_MODEL" \
-        -human-model "$HUMAN_MODEL" \
-        -config "${DEFAULT_CONFIG:-$KATAGO_DIR/default_gtp.cfg}" \
-        2>&1 | grep -E '(Tuning|tuning|Done|ERROR|OpenCL|FP16|backend)'
+        # Tune main model (mv14) then human model (mv15) in one invocation.
+        # GTP mode accepts "quit" cleanly. Using the human rank config so both
+        # -model and -human-model are loaded and tuned.
+        echo "quit" | timeout 180 "$KATAGO_BIN" gtp \
+            -model "$MAIN_MODEL" \
+            -human-model "$HUMAN_MODEL" \
+            -config "${DEFAULT_CONFIG:-$KATAGO_DIR/default_gtp.cfg}" \
+            2>&1 | grep -E '(Tuning|tuning|Done|ERROR|OpenCL|FP16|backend)' || true
 
-    if _katago_needs_tuning "$_KATAGO_TUNE_DIR"; then
-        echo "WARNING: GPU autotuning may not have completed successfully."
+        if _katago_needs_tuning "$_KATAGO_TUNE_DIR"; then
+            echo "WARNING: GPU autotuning may not have completed successfully."
+        else
+            echo "GPU autotuning complete."
+        fi
     else
-        echo "GPU autotuning complete."
+        echo "WARNING: KataGo binary cannot run (missing libraries?). Skipping autotuning."
+        echo "Try: ldd $KATAGO_BIN | grep 'not found'"
     fi
 fi
 
