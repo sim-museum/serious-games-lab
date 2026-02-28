@@ -12,7 +12,7 @@ fi
 
 # Find the fgaddon aircraft directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FGADDON_DIR="$(ls -d "$SCRIPT_DIR"/Aircraft/org.flightgear.fgaddon.* "$HOME/.fgfs/Aircraft/org.flightgear.fgaddon.*" 2>/dev/null | head -1)"
+FGADDON_DIR="$(ls -d "$SCRIPT_DIR"/Aircraft/org.flightgear.fgaddon.* "$HOME"/.fgfs/Aircraft/org.flightgear.fgaddon.* 2>/dev/null | head -1)"
 
 if [ -z "$FGADDON_DIR" ]; then
 	bash "$SCRIPT_DIR/installFlightgear.sh"
