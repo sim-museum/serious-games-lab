@@ -30,7 +30,7 @@ check_dependencies() {
 
 check_nvidia_32bit() {
     local nvidia_ver
-    nvidia_ver=$(dpkg -l 2>/dev/null | grep -oP 'nvidia-driver-\K[0-9]+' | head -1)
+    nvidia_ver=$(dpkg -l 2>/dev/null | grep -oP 'nvidia-driver-\K[0-9]+' | head -1 || true)
     if [[ -n "$nvidia_ver" ]] && ! dpkg -s "libnvidia-gl-${nvidia_ver}:i386" &>/dev/null 2>&1; then
         echo ""
         msg_warn "NVIDIA driver $nvidia_ver detected but 32-bit OpenGL library is missing."
