@@ -173,6 +173,8 @@ apt-get install -y \
     libqt5widgets5 \
     libqt5multimedia5 \
     libqt5sql5 \
+    qtbase5-dev qt5-qmake qtmultimedia5-dev libqt5svg5-dev \
+    xclip \
     libopenblas-dev \
     libeigen3-dev \
     libboost-all-dev \

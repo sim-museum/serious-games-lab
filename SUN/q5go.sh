@@ -53,6 +53,20 @@ elif command -v q5go &>/dev/null; then
 else
     echo ""
     echo "q5go not found. Building from source..."
+
+    # Install Qt5 build dependencies if needed
+    QT5_DEPS=(qtbase5-dev qt5-qmake qtmultimedia5-dev libqt5svg5-dev)
+    QT5_MISSING=()
+    for pkg in "${QT5_DEPS[@]}"; do
+        if ! dpkg -s "$pkg" &>/dev/null; then
+            QT5_MISSING+=("$pkg")
+        fi
+    done
+    if [[ ${#QT5_MISSING[@]} -gt 0 ]]; then
+        echo "Installing Qt5 build dependencies: ${QT5_MISSING[*]}"
+        sudo apt-get install -y "${QT5_MISSING[@]}"
+    fi
+
     if [[ ! -d "$SCRIPT_DIR/q5go_build" ]]; then
         git clone https://github.com/bernds/q5Go.git "$SCRIPT_DIR/q5go_build"
     fi
@@ -67,6 +81,6 @@ else
         disown
     else
         echo "Build failed. Install Qt5 dev packages and retry:"
-        echo "  sudo apt install qtbase5-dev qt5-qmake qtmultimedia5-dev libqt5svg5-dev"
+        echo "  sudo apt install ${QT5_DEPS[*]}"
     fi
 fi
