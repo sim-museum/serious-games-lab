@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$ROOT/katrain_venv"
 
-# Ensure KataGo + models are present
-source "$ROOT/ensure_katago.sh"
+# Ensure KataGo + models are present (skip if already sourced by caller)
+if [[ -z "${KATAGO_BIN:-}" ]]; then
+    source "$ROOT/ensure_katago.sh"
+fi
+
+# Ensure xclip is available (needed by Kivy clipboard)
+if ! command -v xclip &>/dev/null; then
+    echo "Installing xclip (needed by KaTrain)..."
+    sudo apt-get install -y xclip 2>/dev/null || echo "Note: xclip not installed. Clipboard may not work."
+fi
 
 echo "Setting up KaTrain in virtual environment..."
 
@@ -22,8 +29,10 @@ echo "Installing KaTrain..."
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip
 # Install Kivy 2.3.0 first (2.3.1+ has freeze-on-move bug), then KaTrain 1.17.1
-# with --no-deps to bypass its Kivy>=2.3.1 requirement.
+# with --no-deps to bypass its Kivy>=2.3.1 requirement. Install KaTrain's other
+# dependencies explicitly since --no-deps skips them.
 pip install 'Kivy==2.3.0' 'kivymd==0.104.1'
+pip install chardet docutils ffpyplayer screeninfo urllib3
 pip install --no-deps 'KaTrain==1.17.1'
 
 # Auto-configure KaTrain engine paths if config exists

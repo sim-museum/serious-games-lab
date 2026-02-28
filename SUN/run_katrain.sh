@@ -32,9 +32,16 @@ fi
 
 # Set up venv if needed
 if [[ ! -d "$SCRIPT_DIR/katrain_venv" ]]; then
-    echo "KaTrain venv not found. Run setup_katrain.sh first, or installing now..."
+    echo "KaTrain venv not found. Installing now..."
     bash "$SCRIPT_DIR/setup_katrain.sh"
 fi
 
+if [[ ! -f "$SCRIPT_DIR/katrain_venv/bin/activate" ]]; then
+    echo "Error: KaTrain installation failed. Try running setup_katrain.sh manually."
+    exit 1
+fi
+
 source "$SCRIPT_DIR/katrain_venv/bin/activate"
-katrain "$@"
+# Suppress Kivy debug/warning noise (cutbuffer, config upgrade, etc.)
+export KIVY_LOG_LEVEL=error
+katrain "$@" 2>/dev/null
