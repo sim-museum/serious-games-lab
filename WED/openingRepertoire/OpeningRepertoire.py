@@ -147,6 +147,10 @@ class OpeningBook:
                 book_moves = [BookMove(**m) for m in moves_list]
                 self._positions[fen] = BookPosition(moves=book_moves)
 
+            if not self._positions:
+                print("Cache is empty, ignoring")
+                return False
+
             print(f"Loaded {len(self._positions)} positions from cache")
             return True
         except Exception as e:
@@ -155,6 +159,8 @@ class OpeningBook:
 
     def _save_to_cache(self):
         """Save the compiled opening book to a pickle cache file."""
+        if not self._positions:
+            return
         try:
             print(f"Saving opening book cache to: {self._cache_path}")
 
@@ -775,19 +781,20 @@ class MainWindow(QMainWindow):
 
     MAX_PLAYOUT_DEPTH = 10  # Maximum plies for hover preview
 
-    def __init__(self, preset_color: Optional[chess.Color] = None):
+    def __init__(self, preset_color: Optional[chess.Color] = None, pgn_path: Optional[str] = None):
         """
         Initialize the main window.
 
         Args:
             preset_color: If specified, skip color selection dialog and use this color.
+            pgn_path: If specified, use this PGN file for the opening book.
         """
         super().__init__()
         self.setWindowTitle("OpeningRepertoire")
         self.setMinimumSize(1100, 700)
 
         # Initialize opening book
-        self.book = OpeningBook()
+        self.book = OpeningBook(pgn_path)
 
         # User's color (may be preset from command line)
         self.user_color = chess.WHITE
@@ -1344,10 +1351,10 @@ class TextModeApp:
     Runs in the terminal without any GUI dependencies.
     """
 
-    def __init__(self, user_color: chess.Color):
+    def __init__(self, user_color: chess.Color, pgn_path: Optional[str] = None):
         self.board = chess.Board()
         self.user_color = user_color
-        self.book = OpeningBook()
+        self.book = OpeningBook(pgn_path)
         self.move_list: list[str] = []
         self.in_book = True
 
@@ -1549,6 +1556,10 @@ Examples:
 
     parser.add_argument('--textmode', action='store_true',
                         help='Run in text-only mode (no GUI)')
+    parser.add_argument('--pgn', metavar='PATH',
+                        help='Path to PGN file for the opening book')
+    parser.add_argument('--build-cache', action='store_true',
+                        help='Build opening book cache and exit (no GUI)')
 
     color_group = parser.add_mutually_exclusive_group()
     color_group.add_argument('--white', action='store_true',
@@ -1561,6 +1572,18 @@ Examples:
 
 def main():
     args = parse_arguments()
+    pgn_path = args.pgn
+
+    # Build cache and exit (no GUI)
+    if args.build_cache:
+        print("Building opening book cache...")
+        book = OpeningBook(pgn_path)
+        if book._positions:
+            print(f"Cache built successfully: {len(book._positions)} positions")
+        else:
+            print("Warning: No positions loaded, cache not built")
+            sys.exit(1)
+        sys.exit(0)
 
     # Determine user color
     if args.white:
@@ -1586,7 +1609,7 @@ def main():
                     break
                 print("Please enter 'w' for White or 'b' for Black.")
 
-        text_app = TextModeApp(user_color)
+        text_app = TextModeApp(user_color, pgn_path=pgn_path)
         text_app.run()
         return
 
@@ -1598,7 +1621,7 @@ def main():
     font.setPointSize(14)
     app.setFont(font)
 
-    window = MainWindow(preset_color=user_color)
+    window = MainWindow(preset_color=user_color, pgn_path=pgn_path)
     window.show()
 
     sys.exit(app.exec())
