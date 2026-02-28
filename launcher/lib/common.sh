@@ -46,6 +46,15 @@ msg_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 has_binary_data() {
     local day="$1"
     local script="$2"
+
+    # Check that the required sglBinaries archive has been extracted
+    local archive_num
+    archive_num="$(game_archive "$script")"
+    if [[ "$archive_num" -gt 0 ]]; then
+        local marker="$DOWNLOADS_DIR/.extracted_sglBinaries_${archive_num}.tar.gz"
+        [[ -f "$marker" ]] || return 1
+    fi
+
     local script_dir="${script%/*}"
     # If no directory in path, script is at day level
     if [[ "$script_dir" == "$script" ]]; then
