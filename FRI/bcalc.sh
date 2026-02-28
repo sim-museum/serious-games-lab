@@ -29,7 +29,7 @@ if [[ ! -x "$BCALC_BIN" ]]; then
 
     echo "Attempting automatic download..."
     mkdir -p "$BCALC_DIR"
-    DOWNLOAD_URL="http://bcalc.w8.pl/BCalc_lin64.tar.gz"
+    DOWNLOAD_URL="http://bcalc.w8.pl/download/bcalc19080_linux_x86-64.tar.gz"
     echo "Downloading from $DOWNLOAD_URL ..."
     if curl -fL -o /tmp/bcalc_download.tar.gz "$DOWNLOAD_URL" 2>&1; then
         tar xzf /tmp/bcalc_download.tar.gz -C "$BCALC_DIR" 2>/dev/null
