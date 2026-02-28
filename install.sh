@@ -191,60 +191,72 @@ fi
 echo ""
 
 # ============================================================
+# Check if any binary games were distributed (WP directories exist)
+# ============================================================
+shopt -s nullglob
+_WP_DIRS=("$REPO_ROOT"/*/WP/ "$REPO_ROOT"/*/*/WP/)
+shopt -u nullglob
+HAS_BINARY_GAMES=${#_WP_DIRS[@]}
+
+# ============================================================
 # PHASE 4: Download Lutris wine runners (as real user)
 # ============================================================
 echo "PHASE 4: Setting up Lutris wine runners..."
 echo ""
 
-CSV_FILE="$REPO_ROOT/config/wine_runners.csv"
-RUNNERS_DIR="$REAL_HOME/.local/share/lutris/runners/wine"
-
-if [[ -f "$CSV_FILE" ]]; then
-    sudo -u "$REAL_USER" mkdir -p "$RUNNERS_DIR"
-
-    # Extract unique runners from CSV (skip header, column 2)
-    mapfile -t RUNNERS < <(tail -n +2 "$CSV_FILE" | cut -d',' -f2 | sort -u)
-
-    for runner in "${RUNNERS[@]}"; do
-        if [[ -d "$RUNNERS_DIR/$runner" ]]; then
-            echo "  [OK] $runner"
-            continue
-        fi
-
-        # Build download URL
-        asset="wine-${runner}.tar.xz"
-        base_runner="$runner"
-        base_runner="${base_runner%-x86_64}"
-        base_runner="${base_runner%-i686}"
-
-        if [[ "$runner" == *GE-Proton* ]]; then
-            tag="${base_runner#lutris-}"
-            url="https://github.com/GloriousEggroll/wine-ge-custom/releases/download/${tag}/${asset}"
-        elif [[ "$runner" == *fshack* ]]; then
-            tag="${base_runner//-fshack/}"
-            url="https://github.com/lutris/wine/releases/download/${tag}/${asset}"
-        else
-            tag="$base_runner"
-            url="https://github.com/lutris/wine/releases/download/${tag}/${asset}"
-        fi
-
-        echo "  [DOWNLOAD] $runner ..."
-        tmpfile="$(mktemp /tmp/runner-XXXXXX.tar.xz)"
-        if sudo -u "$REAL_USER" curl -fSL --progress-bar -o "$tmpfile" "$url"; then
-            sudo -u "$REAL_USER" tar -xJf "$tmpfile" -C "$RUNNERS_DIR/"
-            rm -f "$tmpfile"
-            if [[ -d "$RUNNERS_DIR/$runner" ]]; then
-                echo "  [OK] $runner installed"
-            else
-                echo "  [WARN] $runner: extracted but directory name mismatch"
-            fi
-        else
-            echo "  [WARN] Failed to download $runner"
-            rm -f "$tmpfile"
-        fi
-    done
+if [[ $HAS_BINARY_GAMES -eq 0 ]]; then
+    echo "  No binary games installed; skipping wine runner setup."
 else
-    echo "  No wine_runners.csv found; skipping."
+    CSV_FILE="$REPO_ROOT/config/wine_runners.csv"
+    RUNNERS_DIR="$REAL_HOME/.local/share/lutris/runners/wine"
+
+    if [[ -f "$CSV_FILE" ]]; then
+        sudo -u "$REAL_USER" mkdir -p "$RUNNERS_DIR"
+
+        # Extract unique runners from CSV (skip header, column 2)
+        mapfile -t RUNNERS < <(tail -n +2 "$CSV_FILE" | cut -d',' -f2 | sort -u)
+
+        for runner in "${RUNNERS[@]}"; do
+            if [[ -d "$RUNNERS_DIR/$runner" ]]; then
+                echo "  [OK] $runner"
+                continue
+            fi
+
+            # Build download URL
+            asset="wine-${runner}.tar.xz"
+            base_runner="$runner"
+            base_runner="${base_runner%-x86_64}"
+            base_runner="${base_runner%-i686}"
+
+            if [[ "$runner" == *GE-Proton* ]]; then
+                tag="${base_runner#lutris-}"
+                url="https://github.com/GloriousEggroll/wine-ge-custom/releases/download/${tag}/${asset}"
+            elif [[ "$runner" == *fshack* ]]; then
+                tag="${base_runner//-fshack/}"
+                url="https://github.com/lutris/wine/releases/download/${tag}/${asset}"
+            else
+                tag="$base_runner"
+                url="https://github.com/lutris/wine/releases/download/${tag}/${asset}"
+            fi
+
+            echo "  [DOWNLOAD] $runner ..."
+            tmpfile="$(mktemp /tmp/runner-XXXXXX.tar.xz)"
+            if sudo -u "$REAL_USER" curl -fSL --progress-bar -o "$tmpfile" "$url"; then
+                sudo -u "$REAL_USER" tar -xJf "$tmpfile" -C "$RUNNERS_DIR/"
+                rm -f "$tmpfile"
+                if [[ -d "$RUNNERS_DIR/$runner" ]]; then
+                    echo "  [OK] $runner installed"
+                else
+                    echo "  [WARN] $runner: extracted but directory name mismatch"
+                fi
+            else
+                echo "  [WARN] Failed to download $runner"
+                rm -f "$tmpfile"
+            fi
+        done
+    else
+        echo "  No wine_runners.csv found; skipping."
+    fi
 fi
 
 echo ""
@@ -255,7 +267,7 @@ echo ""
 echo "PHASE 5: Applying Wine fixes for Rowan games..."
 echo ""
 
-if [[ -d "$REPO_ROOT/TUE/MigAlley/WP" ]] || [[ -d "$REPO_ROOT/TUE/BattleOfBritain/WP" ]]; then
+if [[ -d "$REPO_ROOT/TUE/MigAlley/WP" ]] && [[ -d "$REPO_ROOT/TUE/BattleOfBritain/WP" ]]; then
     sudo -u "$REAL_USER" "$REPO_ROOT/scripts/fix_rowan_games.sh" all || true
 else
     echo "  Rowan games not yet installed; skipping."
