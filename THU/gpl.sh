@@ -13,7 +13,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 # Set WINEPREFIX to the current working directory with /WP appended
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
-wine winecfg -v winxp  2>/dev/null 1>/dev/null
+# Set Windows XP mode silently (no GUI)
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
 # Check if the GPL executable does not exist in the specified directory
 if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
@@ -39,17 +40,19 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
         # Install GPL using wine
         wine INSTALL/gplinstall_beta_1.08.exe 2>/dev/null 1>/dev/null
     else
-        # Install the free demo version of GPL or full version if iso is downloaded
-        echo ""; echo "Installing the free Grand Prix Legends demo version or "
-        echo "(optional) the full version if you have downloaded the iso"; echo ""
-        echo ""; echo "Note: you can download the iso at this link: https://www.myabandonware.com/game/grand-prix-legends-9zz"
-        echo ""; echo "If you have a copy of the Grand Prix Legends (GPL) iso, and have not mounted it yet then"
-        echo "1. press CTRL C to exit"; echo ""
-        echo "2. cd to the THU directory, mount your GPL iso to the isoDir directory via the command"
-        echo "sudo mount -o loop <path>/<name of GPL iso>.iso $WINEPREFIX/../isoDir"; echo ""
-        echo "3. run this script again."; echo ""
-        echo "Press ENTER to install the free GPL demo version"
-        echo "or press CTRL C and download the GPL iso (recommended)."
+        # GPL ISO not found — it's provided by sglBinaries_5
+        echo ""
+        echo "GPL ISO not found. The full GPL installation requires sglBinaries_5."
+        echo "Place sglBinaries_5.tar.gz (or sglBinaries_5/ directory) in the downloads/ folder"
+        echo "and re-run the launcher to extract it."
+        echo ""
+        echo "Alternatively, download the iso from:"
+        echo "  https://www.myabandonware.com/game/grand-prix-legends-9zz"
+        echo "and place it as: $WINEPREFIX/../INSTALL/gpl.iso"
+        echo "Then run this script again."
+        echo ""
+        echo "Press ENTER to install the free GPL demo version instead,"
+        echo "or press CTRL+C to exit and obtain the full ISO (recommended)."
         read replyString
 
         echo ""; echo "Installing free GPL demo ..."; echo ""
