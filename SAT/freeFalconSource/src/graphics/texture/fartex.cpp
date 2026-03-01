@@ -755,14 +755,37 @@ void FarTexDB::Select(ContextMPR *localContext, TextureID texID)
     ShiAssert(texID >= 0);
     ShiAssert(texID < (DWORD) texCount);
 
+#ifdef FF_LINUX
+    if (texID >= (DWORD)texCount) {
+        return;
+    }
+#endif
+
     // Make sure the texture we're trying to use is local to MPR
     if (texArray[texID].handle == NULL)
     {
+#ifdef FF_LINUX
+        // FF_LINUX: bits may not be loaded yet if Request() wasn't called.
+        // Load on demand to prevent crash.
+        if (texArray[texID].bits == NULL) {
+            Load(texID);
+        }
+        if (texArray[texID].bits == NULL) {
+            return;
+        }
+#else
         ShiAssert(texArray[texID].bits);
+#endif
         Activate(texID);
     }
 
+#ifdef FF_LINUX
+    if (texArray[texID].handle == 0) {
+        return;
+    }
+#else
     ShiAssert(texArray[texID].handle);
+#endif
     localContext->SelectTexture1(texArray[texID].handle);
 }
 

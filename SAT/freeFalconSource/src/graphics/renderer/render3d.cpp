@@ -870,7 +870,15 @@ void Render3D::DrawSquare(ThreeDVertex* v0, ThreeDVertex* v1, ThreeDVertex* v2, 
 
     if (CullFlag)
     {
-        if (CullFlag == CULL_ALLOW_CW)
+        // FF_LINUX: Flip._13 = 1.0f (vs -1.0f on Windows) reverses screen-space winding.
+        // Swap the CW/CCW interpretation for software face culling to compensate.
+#ifdef FF_LINUX
+        bool cwCheck = (CullFlag != CULL_ALLOW_CW);  // reversed
+#else
+        bool cwCheck = (CullFlag == CULL_ALLOW_CW);
+#endif
+
+        if (cwCheck)
         {
             // Decide if either of the two triangles are back facing
             if (useFirst)
@@ -950,7 +958,13 @@ void Render3D::DrawTriangle(ThreeDVertex* v0, ThreeDVertex* v1, ThreeDVertex* v2
 
     if (CullFlag)
     {
-        if (CullFlag == CULL_ALLOW_CW)
+#ifdef FF_LINUX
+        bool cwCheck = (CullFlag != CULL_ALLOW_CW);  // reversed for Flip._13 winding
+#else
+        bool cwCheck = (CullFlag == CULL_ALLOW_CW);
+#endif
+
+        if (cwCheck)
         {
             // Decide if back facing CW
             if (((v2->y - v1->y)) * ((v0->x - v1->x)) > ((v2->x - v1->x)) * ((v0->y - v1->y)))

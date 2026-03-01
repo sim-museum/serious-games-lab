@@ -15,7 +15,25 @@
 #ifdef FF_LINUX
 extern "C" void glDisable(unsigned int cap);
 extern "C" void glEnable(unsigned int cap);
+extern "C" unsigned char glIsEnabled(unsigned int cap);
+extern "C" void glGetIntegerv(unsigned int pname, int* params);
+extern "C" void glGetFloatv(unsigned int pname, float* params);
 #define FF_GL_FOG 0x0B60
+#define GL_FOG 0x0B60
+#define GL_LIGHTING 0x0B50
+#define GL_ALPHA_TEST 0x0BC0
+#define GL_BLEND 0x0BE2
+#define GL_DEPTH_TEST 0x0B71
+#define GL_SCISSOR_TEST 0x0C11
+#define GL_STENCIL_TEST 0x0B90
+#define GL_CULL_FACE 0x0B44
+#define GL_FOG_MODE 0x0B65
+#define GL_FOG_START 0x0B63
+#define GL_FOG_END 0x0B64
+#define GL_FOG_COLOR 0x0B66
+#define GL_ALPHA_TEST_FUNC 0x0BC1
+#define GL_ALPHA_TEST_REF 0x0BC2
+#define GL_FOG_COORD_SRC 0x8450
 #endif
 #include "falclib/include/debuggr.h"
 #include "timemgr.h"
@@ -1240,6 +1258,47 @@ void RenderOTW::DrawGroundAndObjects(ObjectDisplayList *objectList)
 {
     SpanListEntry* span;
 
+#ifdef FF_LINUX
+    // FF_LINUX_DIAG: Log terrain rendering state once
+    {
+        static int terrDiagOnce = 0;
+        if (terrDiagOnce < 3) {
+            terrDiagOnce++;
+            fprintf(stderr, "[TERRAIN_DIAG] ground_color=(%.3f,%.3f,%.3f) haze_ground=(%.3f,%.3f,%.3f)\n",
+                ground_color.r, ground_color.g, ground_color.b,
+                haze_ground_color.r, haze_ground_color.g, haze_ground_color.b);
+            fprintf(stderr, "[TERRAIN_DIAG] far_clip=%.1f haze_start=%.1f haze_depth=%.1f hazed=%d\n",
+                far_clip, haze_start, haze_depth, hazed);
+            fprintf(stderr, "[TERRAIN_DIAG] lightAmbient=%.3f lightDiffuse=%.3f lightSpecular=%.3f\n",
+                lightAmbient, lightDiffuse, lightSpecular);
+            fprintf(stderr, "[TERRAIN_DIAG] GL_LIGHTING=%d GL_FOG=%d GL_ALPHA_TEST=%d GL_BLEND=%d GL_DEPTH_TEST=%d\n",
+                glIsEnabled(GL_LIGHTING), glIsEnabled(FF_GL_FOG), glIsEnabled(GL_ALPHA_TEST),
+                glIsEnabled(GL_BLEND), glIsEnabled(GL_DEPTH_TEST));
+            fprintf(stderr, "[TERRAIN_DIAG] GL_SCISSOR_TEST=%d GL_STENCIL_TEST=%d GL_CULL_FACE=%d\n",
+                glIsEnabled(GL_SCISSOR_TEST), glIsEnabled(GL_STENCIL_TEST), glIsEnabled(GL_CULL_FACE));
+            GLint fogMode;
+            glGetIntegerv(GL_FOG_MODE, &fogMode);
+            GLfloat fogStart, fogEnd;
+            glGetFloatv(GL_FOG_START, &fogStart);
+            glGetFloatv(GL_FOG_END, &fogEnd);
+            GLfloat fogColor[4];
+            glGetFloatv(GL_FOG_COLOR, fogColor);
+            fprintf(stderr, "[TERRAIN_DIAG] fogMode=0x%x fogStart=%.1f fogEnd=%.1f fogColor=(%.2f,%.2f,%.2f,%.2f)\n",
+                fogMode, fogStart, fogEnd, fogColor[0], fogColor[1], fogColor[2], fogColor[3]);
+            GLint alphaFunc;
+            GLfloat alphaRef;
+            glGetIntegerv(GL_ALPHA_TEST_FUNC, &alphaFunc);
+            glGetFloatv(GL_ALPHA_TEST_REF, &alphaRef);
+            fprintf(stderr, "[TERRAIN_DIAG] alphaFunc=0x%x alphaRef=%.4f\n", alphaFunc, alphaRef);
+            // Check fog coord source
+            GLint fogCoordSrc;
+            glGetIntegerv(GL_FOG_COORD_SRC, &fogCoordSrc);
+            fprintf(stderr, "[TERRAIN_DIAG] FOG_COORD_SRC=0x%x (FRAG_DEPTH=0x8452, FOG_COORD=0x8457)\n", fogCoordSrc);
+            fflush(stderr);
+        }
+    }
+#endif
+
 #ifdef TWO_D_MAP_AVAILABLE
 
     if (twoDmode)
@@ -1462,6 +1521,7 @@ void RenderOTW::DrawGroundAndObjects(ObjectDisplayList *objectList)
 
     // Turn off all non-default rendering parameters
     context.RestoreState(STATE_SOLID);
+
 }
 
 
@@ -2010,6 +2070,18 @@ void RenderOTW::ComputeVertexColor(TerrainVertex *vert, Tpost *post, float dista
     vert->g = g;
     vert->b = b;
     vert->a = alpha;
+
+#ifdef FF_LINUX
+    {
+        static int vtxDiagCount = 0;
+        if (vtxDiagCount < 5) {
+            vtxDiagCount++;
+            fprintf(stderr, "[VERT_COLOR] r=%.3f g=%.3f b=%.3f a=%.3f dist=%.1f scale=%.3f state=%d colorIdx=%d\n",
+                r, g, b, alpha, distance, min(distance / far_clip, 1.f), vert->RenderingStateHandle, post->colorIndex);
+            fflush(stderr);
+        }
+    }
+#endif
 
     context.SetTVmode(FALSE);
     context.SetIRmode(FALSE);

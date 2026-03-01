@@ -114,7 +114,15 @@ BOOL CreateSimCursors()
 
         // Open the input file
         result = texFile.glOpenFileMem(pFilePath);
+#ifdef FF_LINUX
+        if (result != 1) {
+            fprintf(stderr, "[CreateSimCursors] Failed to open cursor image: %s\n", pFilePath);
+            gpSimCursors[i].CursorBuffer->Unlock();
+            continue;
+        }
+#else
         ShiAssert(result == 1);
+#endif
 
         // Read the image data (note that ReadTextureImage will close texFile for us)
         texFile.glReadFileMem();
@@ -122,10 +130,22 @@ BOOL CreateSimCursors()
 
         if (result not_eq GOOD_READ)
         {
+#ifdef FF_LINUX
+            fprintf(stderr, "[CreateSimCursors] Failed to read cursor bitmap: %s\n", pFilePath);
+            continue;
+#else
             ShiError("Failed to read bitmap.  CD Error?");
+#endif
         }
 
+#ifdef FF_LINUX
+        if (!texFile.image.palette || !texFile.image.image) {
+            fprintf(stderr, "[CreateSimCursors] Cursor image missing palette/data: %s\n", pFilePath);
+            continue;
+        }
+#else
         ShiAssert(texFile.image.palette);
+#endif
         ShiAssert(texFile.image.width == gpSimCursors[i].Width);
         ShiAssert(texFile.image.height == gpSimCursors[i].Height);
 

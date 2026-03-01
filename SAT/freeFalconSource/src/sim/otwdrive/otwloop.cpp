@@ -236,6 +236,23 @@ void OTWDriverClass::Cycle(void)
 {
     //START_PROFILE("OTWCYCLE");
 
+#ifdef FF_LINUX
+    // FF_LINUX: Handle cross-thread view mode change requests
+    {
+        extern volatile int g_requestedViewMode;
+        if (g_requestedViewMode >= 0) {
+            int mode = g_requestedViewMode;
+            g_requestedViewMode = -1;
+            switch (mode) {
+                case 0: SetOTWDisplayMode(ModeHud); break;
+                case 1: SetOTWDisplayMode(Mode2DCockpit); break;
+                case 2: SetOTWDisplayMode(ModeChase); break;
+                case 3: SetOTWDisplayMode(ModeOrbit); break;
+            }
+        }
+    }
+#endif
+
     frameStart = timeGetTime();
     frameTime = (frameTime * 7 + (frameStart - lastFrame)) / 8;
     lastFrame = frameStart;

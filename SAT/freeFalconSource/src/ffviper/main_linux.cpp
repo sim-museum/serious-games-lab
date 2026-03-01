@@ -115,12 +115,14 @@ typedef struct WSAData {
 extern "C" int initialize_windows_sockets(WSADATA *wsaData);
 
 // Default data directory - can be overridden with -d flag or FF_DATA_DIR env var
-// NULL means "auto-detect from binary location" (see main())
+// Use -d <path> to point at your FreeFalcon6 game data directory
 #define DEFAULT_DATA_DIR nullptr
 
 // Window settings - must match UI resolution (1024x768 for HiRes UI)
 #define WINDOW_WIDTH 1024
 #define WINDOW_HEIGHT 768
+int g_nWindowWidth = WINDOW_WIDTH;
+int g_nWindowHeight = WINDOW_HEIGHT;
 #define WINDOW_TITLE "Free Falcon 6 Linux Port"
 
 // External globals from falclib
@@ -302,6 +304,9 @@ static bool g_gameInitialized = false;
 static bool g_autoTestInstantAction = false;  // TEST: Set by auto-launch code
 bool g_testInstantActionFlag = false;  // Command-line flag for auto-testing
 volatile int g_requestedPanel = -1;  // Set by main thread, read by sim thread for view testing
+volatile int g_requestedViewMode = -1;  // Set by main thread, -1=none, 0=HUD, 1=cockpit, 2=chase, 3=orbit
+volatile int g_screenshotRequest = 0;   // Set by main thread, read by sim thread to take screenshot
+const char* g_screenshotFilename = "/tmp/ff_screenshot.bmp"; // Filename for next screenshot
 
 // These globals are defined in ui/src/winmain.cpp - use extern
 extern HWND mainAppWnd;
@@ -2403,36 +2408,49 @@ static void main_loop(void) {
         // Automatic UI tests disabled - use manual testing
         // (The test code was automatically clicking Setup button after 3 seconds)
 
-        // Auto view cycling during -test-ia for cockpit view testing
-        // Sets g_requestedPanel which the sim thread reads in otwloop
+        // Auto view cycling during -test-ia for cockpit panel testing
+        // Tests all cockpit panels: front(1100), left(600), right(700), down(100)
         if (g_testInstantActionFlag && !doUI) {
             static Uint32 simStartTime = 0;
             static int viewPhase = 0;
             if (simStartTime == 0) simStartTime = currentTime;
             Uint32 simElapsed = currentTime - simStartTime;
-            // Phase 0: front view (default) at t=0
-            // Phase 1: left view at t=10s
-            // Phase 2: right view at t=20s
-            // Phase 3: down view at t=30s
-            // Phase 4: back to front at t=40s
-            if (viewPhase == 0 && simElapsed >= 10000) {
-                viewPhase = 1;
-                g_requestedPanel = 600;
-                fprintf(stderr, "[VIEW_TEST] Requesting LEFT view (panel 600)\n");
-            } else if (viewPhase == 1 && simElapsed >= 20000) {
-                viewPhase = 2;
-                g_requestedPanel = 700;
-                fprintf(stderr, "[VIEW_TEST] Requesting RIGHT view (panel 700)\n");
-            } else if (viewPhase == 2 && simElapsed >= 30000) {
-                viewPhase = 3;
-                g_requestedPanel = 100;
-                fprintf(stderr, "[VIEW_TEST] Requesting DOWN view (panel 100)\n");
-            } else if (viewPhase == 3 && simElapsed >= 40000) {
-                viewPhase = 4;
-                g_requestedPanel = 1100;
-                fprintf(stderr, "[VIEW_TEST] Requesting FRONT view (panel 1100)\n");
-            }
 
+            struct ViewTestStep {
+                Uint32 timeMs;
+                int viewMode;     // -1=no change, 0=HUD, 1=cockpit
+                int panel;        // -1=no change, panel ID otherwise
+                const char* screenshotFile; // NULL=no screenshot
+                const char* desc;
+            };
+            static const ViewTestStep steps[] = {
+                {  3000, 1, 1100, NULL,                       "Cockpit front panel" },
+                {  6000, -1, -1, "/tmp/ff_pit_front.bmp",     "Screenshot front" },
+                {  8000, -1, 600, NULL,                       "Left panel" },
+                { 11000, -1, -1, "/tmp/ff_pit_left.bmp",      "Screenshot left" },
+                { 13000, -1, 700, NULL,                       "Right panel" },
+                { 16000, -1, -1, "/tmp/ff_pit_right.bmp",     "Screenshot right" },
+                { 18000, -1, 100, NULL,                       "Down panel" },
+                { 21000, -1, -1, "/tmp/ff_pit_down.bmp",      "Screenshot down" },
+                { 23000, 0, -1, NULL,                         "HUD-only view" },
+                { 26000, -1, -1, "/tmp/ff_view_hud.bmp",      "Screenshot HUD" },
+                { 28000, 3, -1, NULL,                         "Orbit view" },
+                { 31000, -1, -1, "/tmp/ff_view_orbit.bmp",    "Screenshot orbit" },
+                { 33000, 1, 1100, NULL,                       "Back to cockpit front" },
+            };
+            static const int numSteps = sizeof(steps) / sizeof(steps[0]);
+
+            if (viewPhase < numSteps && simElapsed >= steps[viewPhase].timeMs) {
+                const ViewTestStep& s = steps[viewPhase];
+                fprintf(stderr, "[VIEW_TEST] Phase %d: %s\n", viewPhase, s.desc);
+                if (s.viewMode >= 0) g_requestedViewMode = s.viewMode;
+                if (s.panel >= 0) g_requestedPanel = s.panel;
+                if (s.screenshotFile) {
+                    g_screenshotFilename = s.screenshotFile;
+                    g_screenshotRequest = 1;
+                }
+                viewPhase++;
+            }
         }
 
         // Simple frame rate limiting
@@ -2489,34 +2507,17 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Auto-detect data directory from binary location if not specified
-    // Binary is at: SAT/freeFalconSource/build/src/ffviper/FFViper
-    // Game data at: SAT/WP/drive_c/FreeFalcon6
-    static char autoDataDir[4096];
-    if (!dataDir) {
-        char exePath[4096];
-        ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
-        if (len > 0) {
-            exePath[len] = '\0';
-            // Walk up from binary to SAT/ (5 levels: ffviper/ src/ build/ freeFalconSource/ SAT/)
-            char* p = exePath;
-            for (int i = 0; i < 5 && p; i++) {
-                p = strrchr(exePath, '/');
-                if (p) *p = '\0';
-            }
-            if (p || exePath[0]) {
-                snprintf(autoDataDir, sizeof(autoDataDir), "%s/WP/drive_c/FreeFalcon6", exePath);
-                dataDir = autoDataDir;
-            }
-        }
-        if (!dataDir) {
-            dataDir = "WP/drive_c/FreeFalcon6";  // Last resort relative path
-        }
-    }
-
     // Export testInstantAction flag for use in main loop
     extern bool g_testInstantActionFlag;
     g_testInstantActionFlag = testInstantAction;
+
+    // Require a data directory
+    if (!dataDir) {
+        fprintf(stderr, "\nError: No game data directory specified.\n");
+        fprintf(stderr, "Use -d /path/to/FreeFalcon6 or set FF_DATA_DIR.\n\n");
+        print_usage(argv[0]);
+        return 1;
+    }
 
     // Initialize data directory
     if (!init_data_directory(dataDir)) {

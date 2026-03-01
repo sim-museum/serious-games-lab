@@ -994,23 +994,8 @@ static HRESULT STDMETHODCALLTYPE D3D7Dev_DrawIndexedPrimitive(IDirect3DDevice7* 
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_LIGHTING);
 
-        // FF_LINUX: D3D7 uses the specular color alpha byte as per-vertex fog factor
-        // (0xFF = no fog, 0x00 = full fog). The software rasterizer ALWAYS computes
-        // fog values in specular alpha, even in clear weather when FOGENABLE isn't set.
-        // D3D7 hardware applies this automatically for TLVERTEX; GL needs explicit setup.
-        // Save fog params so we can restore them for subsequent depth-based fog draws.
-        if ((dwVertexTypeDesc & D3DFVF_SPECULAR) && !restoredViewportDIP) {
-            glGetIntegerv(GL_FOG_MODE, &savedFogModeDIP);
-            glGetFloatv(GL_FOG_START, &savedFogStartDIP);
-            glGetFloatv(GL_FOG_END, &savedFogEndDIP);
-            glEnable(GL_FOG);
-            glFogi(GL_FOG_COORD_SRC, GL_FOG_COORD);
-            glFogi(GL_FOG_MODE, GL_LINEAR);
-            glFogf(GL_FOG_START, 1.0f);
-            glFogf(GL_FOG_END, 0.0f);
-        } else {
-            glDisable(GL_FOG);
-        }
+        // FF_LINUX: Disable fog for all XYZRHW draws.
+        glDisable(GL_FOG);
     }
 
 #ifdef FF_LINUX
@@ -1094,12 +1079,6 @@ static HRESULT STDMETHODCALLTYPE D3D7Dev_DrawIndexedPrimitive(IDirect3DDevice7* 
         if (prevDIP_Lighting) glEnable(GL_LIGHTING); else glDisable(GL_LIGHTING);
         // Restore fog to previous state
         if (prevDIP_Fog) glEnable(GL_FOG); else glDisable(GL_FOG);
-        if ((dwVertexTypeDesc & D3DFVF_SPECULAR) && !restoredViewportDIP) {
-            glFogi(GL_FOG_COORD_SRC, GL_FRAGMENT_DEPTH);
-            glFogi(GL_FOG_MODE, savedFogModeDIP);
-            glFogf(GL_FOG_START, savedFogStartDIP);
-            glFogf(GL_FOG_END, savedFogEndDIP);
-        }
         // Restore viewport and scissor state
         if (restoredViewportDIP) {
             glViewport(savedViewportDIP[0], savedViewportDIP[1], savedViewportDIP[2], savedViewportDIP[3]);
@@ -1195,7 +1174,7 @@ static HRESULT STDMETHODCALLTYPE D3D7Dev_DrawIndexedPrimitiveVB(IDirect3DDevice7
     }
 
     // FF_LINUX: Save and set up orthographic projection for XYZRHW vertices
-    GLboolean prevLighting2 = GL_FALSE, prevFog2 = GL_FALSE, prevDepthTest2 = GL_FALSE;
+    GLboolean prevLighting2 = GL_FALSE, prevFog2 = GL_FALSE, prevDepthTest2 = GL_FALSE, prevAlphaTest2 = GL_FALSE, prevBlend2 = GL_FALSE;
     GLint savedViewportVB[4] = {0};
     bool restoredViewportVB = false;
     GLboolean prevScissorVB = GL_FALSE;
@@ -1267,21 +1246,17 @@ static HRESULT STDMETHODCALLTYPE D3D7Dev_DrawIndexedPrimitiveVB(IDirect3DDevice7
         // (cockpit instruments are 2D overlays that should always render)
         glDisable(GL_LIGHTING);
 
-        // FF_LINUX: D3D7 uses the specular color alpha byte as per-vertex fog factor.
-        // The software rasterizer ALWAYS computes fog values in specular alpha, even
-        // in clear weather. Don't apply fog in FBO rendering (cockpit instruments).
-        // Save fog params so we can restore them for subsequent depth-based fog draws.
-        if ((fvf & D3DFVF_SPECULAR) && !restoredViewportVB) {
-            glGetIntegerv(GL_FOG_MODE, &savedFogModeVB);
-            glGetFloatv(GL_FOG_START, &savedFogStartVB);
-            glGetFloatv(GL_FOG_END, &savedFogEndVB);
-            glEnable(GL_FOG);
-            glFogi(GL_FOG_COORD_SRC, GL_FOG_COORD);
-            glFogi(GL_FOG_MODE, GL_LINEAR);
-            glFogf(GL_FOG_START, 1.0f);
-            glFogf(GL_FOG_END, 0.0f);
-        } else {
-            glDisable(GL_FOG);
+        // FF_LINUX: Disable fog for all XYZRHW draws. The terrain vertex fog is
+        // baked into vertex colors by the 3D engine; re-applying fog in GL causes
+        // double-darkening. D3D7 XYZRHW fog should be handled differently.
+        glDisable(GL_FOG);
+
+        // FF_LINUX: Save alpha test and blend state for potential override below.
+        // We only disable alpha test for textures WITHOUT color key (terrain).
+        // Textures WITH color key (cockpit panel) keep alpha test for chroma rejection.
+        if (!restoredViewportVB) {
+            prevAlphaTest2 = glIsEnabled(GL_ALPHA_TEST);
+            prevBlend2 = glIsEnabled(GL_BLEND);
         }
 
         if (restoredViewportVB) {
@@ -1331,6 +1306,113 @@ static HRESULT STDMETHODCALLTYPE D3D7Dev_DrawIndexedPrimitiveVB(IDirect3DDevice7
         glAlphaFunc(GL_GEQUAL, 0.5f);
     }
 #endif
+
+#ifdef FF_LINUX
+    // FF_LINUX_DIAG: Log terrain draw state - XYZRHW with textures on screen rendering
+    {
+        static int terrDrawDiag = 0;
+        // Only capture terrain batches: more than 4 vertices indicates batched terrain
+        // OR 256x256 texture indicates terrain tile
+        D3D7Surface* diagTex = (D3D7Surface*)dev->textures[0];
+        bool isTerrain = (dwNumVertices > 4) || (diagTex && diagTex->width == 256 && diagTex->height == 256);
+        if (isXYZRHW && texCount > 0 && !restoredViewportVB && isTerrain && terrDrawDiag < 20) {
+            terrDrawDiag++;
+            // Read first vertex data
+            const char* v0 = (const char*)vb->data + (lpwIndices[0] + dwStartVertex) * vertexSize;
+            const float* pos0 = (const float*)v0;
+            DWORD col0 = *(const DWORD*)(v0 + posSize);
+            DWORD spec0 = *(const DWORD*)(v0 + posSize + sizeof(DWORD));
+            const float* tc0 = (const float*)(v0 + texOffset);
+
+            GLint vp[4]; glGetIntegerv(GL_VIEWPORT, vp);
+            GLint texEnvMode; glGetTexEnviv(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, &texEnvMode);
+            GLint combineRGB; glGetTexEnviv(GL_TEXTURE_ENV, GL_COMBINE_RGB, &combineRGB);
+            GLint src0RGB; glGetTexEnviv(GL_TEXTURE_ENV, GL_SOURCE0_RGB, &src0RGB);
+            GLint src1RGB; glGetTexEnviv(GL_TEXTURE_ENV, GL_SOURCE1_RGB, &src1RGB);
+            GLboolean tex2d0 = glIsEnabled(GL_TEXTURE_2D);
+            glActiveTexture(GL_TEXTURE1);
+            GLboolean tex2d1 = glIsEnabled(GL_TEXTURE_2D);
+            glActiveTexture(GL_TEXTURE0);
+
+            fprintf(stderr, "[TERR_DRAW #%d] idxCnt=%d verts=%d fvf=0x%x vertSize=%d\n",
+                terrDrawDiag, dwIndexCount, dwNumVertices, fvf, vertexSize);
+            fprintf(stderr, "  v0: pos=(%.1f,%.1f,%.3f,%.3f) col=0x%08X spec=0x%08X tc=(%.3f,%.3f)\n",
+                pos0[0], pos0[1], pos0[2], pos0[3], col0, spec0, tc0[0], tc0[1]);
+            GLint blendSrc, blendDst, alphaFunc;
+            GLfloat alphaRef;
+            glGetIntegerv(GL_BLEND_SRC, &blendSrc);
+            glGetIntegerv(GL_BLEND_DST, &blendDst);
+            glGetIntegerv(GL_ALPHA_TEST_FUNC, &alphaFunc);
+            glGetFloatv(GL_ALPHA_TEST_REF, &alphaRef);
+            fprintf(stderr, "  GL: vp=%d,%d,%d,%d blend=%d alphaTest=%d depthTest=%d fog=%d\n",
+                vp[0], vp[1], vp[2], vp[3],
+                glIsEnabled(GL_BLEND), glIsEnabled(GL_ALPHA_TEST),
+                glIsEnabled(GL_DEPTH_TEST), glIsEnabled(GL_FOG));
+            fprintf(stderr, "  BLEND: src=0x%x dst=0x%x ALPHA_FUNC=0x%x ref=%.4f\n",
+                blendSrc, blendDst, alphaFunc, alphaRef);
+            fprintf(stderr, "  TEX: unit0_2D=%d unit1_2D=%d tex[0]=%p envMode=0x%x combine=0x%x src0=0x%x src1=0x%x\n",
+                tex2d0, tex2d1, dev->textures[0], texEnvMode, combineRGB, src0RGB, src1RGB);
+            GLint fogCoordSrc; glGetIntegerv(GL_FOG_COORD_SRC, &fogCoordSrc);
+            GLfloat fogS, fogE; glGetFloatv(GL_FOG_START, &fogS); glGetFloatv(GL_FOG_END, &fogE);
+            GLint fogMode; glGetIntegerv(GL_FOG_MODE, &fogMode);
+            GLfloat fogCol[4]; glGetFloatv(GL_FOG_COLOR, fogCol);
+            fprintf(stderr, "  FOG: coordSrc=0x%x mode=0x%x start=%.1f end=%.1f col=(%.2f,%.2f,%.2f)\n",
+                fogCoordSrc, fogMode, fogS, fogE, fogCol[0], fogCol[1], fogCol[2]);
+            // Also dump the bound texture's pixel data
+            D3D7Surface* boundTex = (D3D7Surface*)dev->textures[0];
+            if (boundTex && boundTex->pixelData && boundTex->width >= 16) {
+                DWORD* pix = (DWORD*)boundTex->pixelData;
+                int mid = boundTex->width * (boundTex->height / 2) + boundTex->width / 2;
+                fprintf(stderr, "  TEXDATA: %dx%d bpp=%d pix[0]=0x%08X pix[mid]=0x%08X hasColorKey=%d glTex=%u\n",
+                    boundTex->width, boundTex->height,
+                    boundTex->pixelFormat.dwRGBBitCount,
+                    pix[0], pix[mid], boundTex->hasColorKey, boundTex->glTexture);
+                // Show the ARGB interpretation of first pixel
+                DWORD px = pix[0];
+                fprintf(stderr, "  ARGB: A=%d R=%d G=%d B=%d\n",
+                    (px>>24)&0xFF, (px>>16)&0xFF, (px>>8)&0xFF, px&0xFF);
+            }
+            fflush(stderr);
+        }
+    }
+    // Cockpit panel overlay diagnostic
+    {
+        static int cpDiag = 0;
+        D3D7Surface* diagTex2 = (D3D7Surface*)dev->textures[0];
+        bool isCockpitPanel = isXYZRHW && !restoredViewportVB && dwNumVertices <= 6 && diagTex2 && diagTex2->hasColorKey;
+        if (isCockpitPanel && cpDiag < 3) {
+            cpDiag++;
+            GLint bSrc, bDst; glGetIntegerv(GL_BLEND_SRC, &bSrc); glGetIntegerv(GL_BLEND_DST, &bDst);
+            // Check a pixel that should be chroma key
+            DWORD* cpPix = (DWORD*)diagTex2->pixelData;
+            DWORD samplePix = cpPix ? cpPix[0] : 0xDEAD;
+            fprintf(stderr, "[CP_DRAW #%d] %dx%d verts=%d colorKey=0x%08X blend=%d alphaTest=%d bSrc=0x%x bDst=0x%x pix[0]=0x%08X\n",
+                cpDiag, diagTex2->width, diagTex2->height, dwNumVertices,
+                diagTex2->colorKeyLow, glIsEnabled(GL_BLEND), glIsEnabled(GL_ALPHA_TEST),
+                bSrc, bDst, samplePix);
+            fflush(stderr);
+        }
+    }
+#endif
+
+    // FF_LINUX_DIAG: Force terrain draws to green to verify geometry visibility
+    static int terrForceGreen = 0;
+    bool forcedGreen = false;
+    {
+        D3D7Surface* dt = (D3D7Surface*)dev->textures[0];
+        bool isTerr = (dwNumVertices > 4) || (dt && dt->width >= 49 && dt->height >= 49 && !dt->hasColorKey);
+        if (isXYZRHW && !restoredViewportVB && isTerr && terrForceGreen < 5) {
+            terrForceGreen++;
+            forcedGreen = true;
+            glDisable(GL_TEXTURE_2D);
+            glDisable(GL_ALPHA_TEST);
+            glDisable(GL_BLEND);
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_STENCIL_TEST);
+            glDisable(GL_SCISSOR_TEST);
+            glColor4f(0.0f, 1.0f, 0.0f, 1.0f); // Bright green
+        }
+    }
 
     glBegin(primType);
     for (DWORD i = 0; i < dwIndexCount; i++) {
@@ -1390,6 +1472,32 @@ static HRESULT STDMETHODCALLTYPE D3D7Dev_DrawIndexedPrimitiveVB(IDirect3DDevice7
     }
     glEnd();
 
+    // FF_LINUX_DIAG: Readback framebuffer after forced-green terrain draw
+    if (forcedGreen) {
+        glFlush();
+        // Read pixel at first vertex position
+        const char* v0 = (const char*)vb->data + (lpwIndices[0] + dwStartVertex) * vertexSize;
+        const float* pos0 = (const float*)v0;
+        int px = (int)pos0[0], py = 768 - (int)pos0[1]; // GL y-flip
+        unsigned char pixel[4];
+        glReadPixels(px, py, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+        // Also read back before pixel and center pixel
+        unsigned char pixCenter[4];
+        glReadPixels(512, 384, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixCenter);
+        GLint depthFunc; glGetIntegerv(GL_DEPTH_FUNC, &depthFunc);
+        GLint stencilTest = glIsEnabled(GL_STENCIL_TEST);
+        GLint drawBuf; glGetIntegerv(GL_DRAW_BUFFER, &drawBuf);
+        GLint fboBound; glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fboBound);
+        GLenum err = glGetError();
+        fprintf(stderr, "[FB_READ] pos=(%d,%d) RGBA=(%d,%d,%d,%d) center=(%d,%d,%d,%d) depthFunc=0x%x stencil=%d drawBuf=0x%x fbo=%d glErr=%d\n",
+            (int)pos0[0], (int)pos0[1], pixel[0], pixel[1], pixel[2], pixel[3],
+            pixCenter[0], pixCenter[1], pixCenter[2], pixCenter[3],
+            depthFunc, stencilTest, drawBuf, fboBound, err);
+        // Re-enable what we disabled
+        glEnable(GL_TEXTURE_2D);
+        fflush(stderr);
+    }
+
     // FF_LINUX: Restore GL_TEXTURE_2D if we disabled it for a null-texture draw
     if (disabledTexForNullBinding) {
         glEnable(GL_TEXTURE_2D);
@@ -1404,11 +1512,10 @@ static HRESULT STDMETHODCALLTYPE D3D7Dev_DrawIndexedPrimitiveVB(IDirect3DDevice7
         if (prevLighting2) glEnable(GL_LIGHTING); else glDisable(GL_LIGHTING);
         // Restore fog to previous state
         if (prevFog2) glEnable(GL_FOG); else glDisable(GL_FOG);
-        if ((fvf & D3DFVF_SPECULAR) && !restoredViewportVB) {
-            glFogi(GL_FOG_COORD_SRC, GL_FRAGMENT_DEPTH);
-            glFogi(GL_FOG_MODE, savedFogModeVB);
-            glFogf(GL_FOG_START, savedFogStartVB);
-            glFogf(GL_FOG_END, savedFogEndVB);
+        // Restore alpha test and blend state for screen draws
+        if (!restoredViewportVB) {
+            if (prevAlphaTest2) glEnable(GL_ALPHA_TEST); else glDisable(GL_ALPHA_TEST);
+            if (prevBlend2) glEnable(GL_BLEND); else glDisable(GL_BLEND);
         }
         // Restore glViewport and depth test if we changed them
         if (restoredViewportVB) {
@@ -1603,6 +1710,34 @@ static HRESULT STDMETHODCALLTYPE D3D7Dev_SetTexture(IDirect3DDevice7* This, DWOR
 
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surf->width, surf->height, 0,
                              format, type, surf->pixelData);
+
+#ifdef FF_LINUX
+                // FF_LINUX_DIAG: Log texture pixel data for terrain texture debugging
+                {
+                    static int texUploadDiag = 0;
+                    if (bpp == 4 && texUploadDiag < 20 && surf->width >= 64) {
+                        texUploadDiag++;
+                        DWORD* pix = (DWORD*)surf->pixelData;
+                        int mid = surf->width * (surf->height / 2) + surf->width / 2;
+                        // Sample 4 pixels: first, center, and two others
+                        DWORD p0 = pix[0], p1 = pix[mid], p2 = pix[surf->width + 10];
+                        fprintf(stderr, "[TEX_UPLOAD #%d] %dx%d bpp=%d fmt=0x%x type=0x%x hasColorKey=%d alphaPix=%d\n",
+                            texUploadDiag, surf->width, surf->height, bpp*8,
+                            format, type, surf->hasColorKey,
+                            (surf->pixelFormat.dwFlags & DDPF_ALPHAPIXELS) ? 1 : 0);
+                        fprintf(stderr, "  pix[0]=0x%08X pix[center]=0x%08X pix[w+10]=0x%08X\n",
+                            p0, p1, p2);
+                        // Show as BGRA components (what GL sees with GL_BGRA + _8_8_8_8_REV)
+                        fprintf(stderr, "  p0: R=%d G=%d B=%d A=%d (BGRA_REV: B=%d G=%d R=%d A=%d)\n",
+                            (p0>>16)&0xFF, (p0>>8)&0xFF, p0&0xFF, (p0>>24)&0xFF,
+                            p0&0xFF, (p0>>8)&0xFF, (p0>>16)&0xFF, (p0>>24)&0xFF);
+                        fprintf(stderr, "  p1: R=%d G=%d B=%d A=%d (BGRA_REV: B=%d G=%d R=%d A=%d)\n",
+                            (p1>>16)&0xFF, (p1>>8)&0xFF, p1&0xFF, (p1>>24)&0xFF,
+                            p1&0xFF, (p1>>8)&0xFF, (p1>>16)&0xFF, (p1>>24)&0xFF);
+                        fflush(stderr);
+                    }
+                }
+#endif
 
                 glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
                 glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
@@ -2583,50 +2718,8 @@ void D3D7Device::DrawVertices(D3DPRIMITIVETYPE primType, DWORD fvf, const void* 
         // XYZRHW bypasses D3D lighting pipeline only
         glDisable(GL_LIGHTING);
 
-        // FF_LINUX: D3D7 uses the specular color alpha byte as per-vertex fog factor
-        // (0xFF = no fog, 0x00 = full fog). The software rasterizer ALWAYS computes
-        // fog values in specular alpha (via SetSpecularFog/m_colFOG), even in clear
-        // weather when FOGENABLE isn't set. D3D7 hardware/drivers apply this
-        // automatically for TLVERTEX; GL needs explicit fog coord setup.
-        // When specular alpha is 0xFF (no fog), fog_factor=1.0, no visual change.
-        // Save fog params so we can restore them for subsequent depth-based fog draws.
-        if (fvf & D3DFVF_SPECULAR) {
-            glGetIntegerv(GL_FOG_MODE, &savedFogModeDV);
-            glGetFloatv(GL_FOG_START, &savedFogStartDV);
-            glGetFloatv(GL_FOG_END, &savedFogEndDV);
-            glEnable(GL_FOG);
-            glFogi(GL_FOG_COORD_SRC, GL_FOG_COORD);
-            glFogi(GL_FOG_MODE, GL_LINEAR);
-            glFogf(GL_FOG_START, 1.0f);
-            glFogf(GL_FOG_END, 0.0f);
-            // DIAG: Log GL_TEXTURE_2D state for terrain draws
-            {
-                static int texDiagDV = 0;
-                static unsigned long lastFrame = 0;
-                if (g_RenderFrameCount != lastFrame && g_RenderFrameCount == 3) {
-                    lastFrame = g_RenderFrameCount;
-                    texDiagDV = 0;
-                }
-                if (texDiagDV < 40 && g_RenderFrameCount == 3) {
-                    GLboolean tex2dOn = glIsEnabled(GL_TEXTURE_2D);
-                    GLint boundTex = 0;
-                    glGetIntegerv(GL_TEXTURE_BINDING_2D, &boundTex);
-                    // Sample first vertex diffuse and specular
-                    DWORD diff0 = 0, spec0 = 0;
-                    if (count > 0) {
-                        int off = 4*sizeof(float); // skip XYZRHW
-                        if (fvf & D3DFVF_DIFFUSE) { diff0 = *(const DWORD*)((const char*)vertices + off); off += sizeof(DWORD); }
-                        if (fvf & D3DFVF_SPECULAR) { spec0 = *(const DWORD*)((const char*)vertices + off); }
-                    }
-                    const float* pos0 = (const float*)vertices;
-                    fprintf(stderr, "[TEX_DIAG] DV#%d: tex2d=%d boundTex=%d verts=%d diff=0x%08X spec=0x%08X pos=(%.0f,%.0f,%.4f)\n",
-                            texDiagDV, tex2dOn, boundTex, count, diff0, spec0, pos0[0], pos0[1], pos0[2]);
-                    texDiagDV++;
-                }
-            }
-        } else {
-            glDisable(GL_FOG);
-        }
+        // FF_LINUX: Disable fog for all XYZRHW draws.
+        glDisable(GL_FOG);
 
     }
 
@@ -2735,13 +2828,6 @@ void D3D7Device::DrawVertices(D3DPRIMITIVETYPE primType, DWORD fvf, const void* 
         if (prevLighting) glEnable(GL_LIGHTING); else glDisable(GL_LIGHTING);
         // Restore fog to previous state. We may have enabled it for specular-alpha fog.
         if (prevFog) glEnable(GL_FOG); else glDisable(GL_FOG);
-        if (fvf & D3DFVF_SPECULAR) {
-            // Restore fog coord source and parameters for subsequent depth-based fog draws
-            glFogi(GL_FOG_COORD_SRC, GL_FRAGMENT_DEPTH);
-            glFogi(GL_FOG_MODE, savedFogModeDV);
-            glFogf(GL_FOG_START, savedFogStartDV);
-            glFogf(GL_FOG_END, savedFogEndDV);
-        }
         // Restore glViewport and depth test if we changed them
         if (restoredViewportDV) {
             glViewport(savedViewportDV[0], savedViewportDV[1], savedViewportDV[2], savedViewportDV[3]);
@@ -3336,13 +3422,24 @@ extern "C" void FF_GetHandleStats(int* ok, int* lazy, int* noImage, int* createF
 extern "C" void FF_GetHandleStatsReset();
 
 void SaveGLFramebufferAsBMP(const char* filename) {
-    GLint vp[4];
-    glGetIntegerv(GL_VIEWPORT, vp);
-    int w = vp[2], h = vp[3];
+    // Use full window dimensions, not just current viewport
+    extern int g_nWindowWidth, g_nWindowHeight;
+    int w = g_nWindowWidth, h = g_nWindowHeight;
+    if (w <= 0 || h <= 0) {
+        // Fallback to viewport
+        GLint vp[4];
+        glGetIntegerv(GL_VIEWPORT, vp);
+        w = vp[2]; h = vp[3];
+    }
     if (w <= 0 || h <= 0) return;
 
+    // Set pack alignment to 1 to avoid row padding mismatch
+    GLint oldAlign;
+    glGetIntegerv(GL_PACK_ALIGNMENT, &oldAlign);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+
     unsigned char* pixels = (unsigned char*)malloc(w * h * 3);
-    if (!pixels) return;
+    if (!pixels) { glPixelStorei(GL_PACK_ALIGNMENT, oldAlign); return; }
     glReadPixels(0, 0, w, h, GL_BGR, GL_UNSIGNED_BYTE, pixels);
 
     #pragma pack(push, 1)
@@ -3370,6 +3467,44 @@ void SaveGLFramebufferAsBMP(const char* filename) {
         fprintf(stderr, "[Screenshot] Saved %dx%d framebuffer to %s\n", w, h, filename);
     }
     free(pixels);
+    glPixelStorei(GL_PACK_ALIGNMENT, oldAlign);
+}
+
+void FF_LogGLState() {
+    fprintf(stderr, "[DIAG] Pre-screenshot GL state:\n");
+    fprintf(stderr, "  GL_FOG=%d GL_LIGHTING=%d GL_CULL_FACE=%d GL_ALPHA_TEST=%d GL_DEPTH_TEST=%d GL_BLEND=%d GL_STENCIL_TEST=%d\n",
+        glIsEnabled(GL_FOG), glIsEnabled(GL_LIGHTING), glIsEnabled(GL_CULL_FACE),
+        glIsEnabled(GL_ALPHA_TEST), glIsEnabled(GL_DEPTH_TEST), glIsEnabled(GL_BLEND), glIsEnabled(GL_STENCIL_TEST));
+    float fogColor[4];
+    glGetFloatv(GL_FOG_COLOR, fogColor);
+    float fogStart, fogEnd;
+    glGetFloatv(GL_FOG_START, &fogStart);
+    glGetFloatv(GL_FOG_END, &fogEnd);
+    GLint fogMode;
+    glGetIntegerv(GL_FOG_MODE, &fogMode);
+    fprintf(stderr, "  Fog: color=(%.2f,%.2f,%.2f,%.2f) start=%.1f end=%.1f mode=0x%x\n",
+        fogColor[0], fogColor[1], fogColor[2], fogColor[3], fogStart, fogEnd, fogMode);
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    fprintf(stderr, "  Viewport: %d,%d %dx%d\n", viewport[0], viewport[1], viewport[2], viewport[3]);
+    GLint frontFace, cullFaceMode;
+    glGetIntegerv(GL_FRONT_FACE, &frontFace);
+    glGetIntegerv(GL_CULL_FACE_MODE, &cullFaceMode);
+    fprintf(stderr, "  Cull: frontFace=0x%x cullMode=0x%x\n", frontFace, cullFaceMode);
+    GLint polyMode[2];
+    glGetIntegerv(GL_POLYGON_MODE, polyMode);
+    fprintf(stderr, "  GL_POLYGON_MODE: front=0x%x back=0x%x\n", polyMode[0], polyMode[1]);
+    fprintf(stderr, "  GL_DITHER=%d GL_POLYGON_STIPPLE=%d GL_LINE_SMOOTH=%d GL_POLYGON_SMOOTH=%d GL_MULTISAMPLE=%d\n",
+        glIsEnabled(GL_DITHER), glIsEnabled(GL_POLYGON_STIPPLE), glIsEnabled(GL_LINE_SMOOTH),
+        glIsEnabled(GL_POLYGON_SMOOTH), glIsEnabled(GL_MULTISAMPLE));
+    GLint alphaFunc;
+    GLfloat alphaRef;
+    glGetIntegerv(GL_ALPHA_TEST_FUNC, &alphaFunc);
+    glGetFloatv(GL_ALPHA_TEST_REF, &alphaRef);
+    fprintf(stderr, "  AlphaFunc=0x%x AlphaRef=%.3f\n", alphaFunc, alphaRef);
+    GLfloat clearColor[4];
+    glGetFloatv(GL_COLOR_CLEAR_VALUE, clearColor);
+    fprintf(stderr, "  ClearColor=(%.2f,%.2f,%.2f,%.2f)\n", clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
 }
 
 void FF_SimFrameEnd() {

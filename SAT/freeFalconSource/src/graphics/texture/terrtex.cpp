@@ -416,6 +416,14 @@ void TextureDB::StoreMPRPalette(SetEntry *pSet)
     BYTE  *to, *from, *stop;
     FLOAT tmpR, tmpG, tmpB, h, s, v;
 
+    // FF_LINUX DIAG: Print lightColor once
+    static int lcPrintCount = 0;
+    if (lcPrintCount < 3) {
+        fprintf(stderr, "[StoreMPRPalette] lightColor=(%.3f, %.3f, %.3f) lightLevel=%.3f\n",
+            lightColor.r, lightColor.g, lightColor.b, lightLevel);
+        lcPrintCount++;
+    }
+
     ShiAssert(pSet->palette);
     ShiAssert(pSet->palHandle);
 
@@ -1256,6 +1264,11 @@ void TextureDB::Select(ContextMPR *localContext, TextureID texID)
     // FF_LINUX: Select may be called before Setup completes (race condition during sim startup).
     // Return early if not ready rather than crashing.
     if (!IsReady()) {
+        static int notReadyCount = 0;
+        if (notReadyCount < 5) {
+            fprintf(stderr, "[TextureDB::Select] NOT READY! texID=0x%x (call #%d)\n", texID, notReadyCount);
+            notReadyCount++;
+        }
         return;
     }
 #else
@@ -1266,6 +1279,17 @@ void TextureDB::Select(ContextMPR *localContext, TextureID texID)
     int set = ExtractSet(texID);
     int tile = ExtractTile(texID);
     int res = ExtractRes(texID);
+    {
+        static int selectCount = 0;
+        if (selectCount < 5) {
+            fprintf(stderr, "[TextureDB::Select] texID=0x%x set=%d tile=%d res=%d handle=%p (call #%d)\n",
+                texID, set, tile, res,
+                (set >= 0 && set < numSets && tile >= 0 && tile < TextureSets[set].numTiles)
+                    ? TextureSets[set].tiles[tile].handle[res] : NULL,
+                selectCount);
+            selectCount++;
+        }
+    }
 
     ShiAssert(set >= 0);
     ShiAssert(set < numSets);
