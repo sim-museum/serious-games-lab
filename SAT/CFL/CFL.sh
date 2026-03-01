@@ -106,6 +106,43 @@ fi
 
 echo "=== CFL (Madden NFL 08 + CFL mod) installer ==="
 echo ""
+
+# --- Check for preinstalled game directory ---
+PREINSTALLED="$SCRIPT_DIR/INSTALL/CFLpreinstalled"
+if [[ -d "$PREINSTALLED/EA Sports/Madden NFL 08" && -f "$PREINSTALLED/EA Sports/Madden NFL 08/mainapp.exe" ]]; then
+    echo "Installing from preinstalled game files..."
+    echo ""
+
+    # Create Wine prefix
+    echo "[1/3] Creating Wine prefix ..."
+    WINEDEBUG=-all wineboot -u 2>/dev/null || true
+
+    # Copy game files into Wine prefix
+    echo "[2/3] Copying game files ..."
+    mkdir -p "$GAME_DIR"
+    cp -a "$PREINSTALLED/EA Sports/Madden NFL 08/." "$GAME_DIR/"
+
+    # Overlay CFL mod data if present (roster, dat files)
+    if [[ -d "$PREINSTALLED/Madden NFL 08" ]]; then
+        cp -a "$PREINSTALLED/Madden NFL 08/." "$GAME_DIR/" 2>/dev/null || true
+    fi
+
+    # Create Documents directory
+    echo "[3/3] Setting up configuration ..."
+    DOCS_DIR="$WINEPREFIX/drive_c/users/$USER/Documents/Madden NFL 08"
+    mkdir -p "$DOCS_DIR"
+    for d in CustomArt Music Playbooks Replays Rosters Saved Scrnshots Spawn Stats System Teams Temp Users; do
+        mkdir -p "$DOCS_DIR/$d"
+    done
+    [[ -f "$GAME_DIR/madden.ini" ]] && cp "$GAME_DIR/madden.ini" "$DOCS_DIR/"
+
+    echo ""
+    echo "=== Installation complete ==="
+    echo ""
+    echo "Run this script again to play CFL."
+    exit 0
+fi
+
 echo "Building from original ISO + mod files (no Windows needed)."
 echo ""
 
