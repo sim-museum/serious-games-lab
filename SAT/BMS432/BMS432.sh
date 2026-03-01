@@ -35,7 +35,7 @@ INSTALL_DIR="$SCRIPT_DIR/INSTALL"
 if [[ -d "$GAME_DIR" && -f "$GAME_DIR/Launcher.exe" ]]; then
     echo "Starting Falcon BMS 4.32 ..."
     cd "$GAME_DIR"
-    wine Launcher.exe -window 2>/dev/null
+    wine explorer /desktop=BMS432,1024x768 Launcher.exe -window 2>/dev/null
     exit 0
 fi
 
