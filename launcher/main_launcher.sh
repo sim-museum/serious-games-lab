@@ -58,6 +58,7 @@ check_binaries() {
         echo ""
 
         local pending=0
+        # Check for unextracted .tar.gz archives
         for f in "$DOWNLOADS_DIR"/sglBinaries_*.tar.gz; do
             [[ -f "$f" ]] || continue
             local base
@@ -67,27 +68,53 @@ check_binaries() {
                 break
             fi
         done
+        # Check for unprocessed bare directories
+        if [[ $pending -eq 0 ]]; then
+            for d in "$DOWNLOADS_DIR"/sglBinaries_*/; do
+                [[ -d "$d" ]] || continue
+                local dname
+                dname="$(basename "$d")"
+                if [[ ! -f "$DOWNLOADS_DIR/.extracted_${dname}.tar.gz" ]]; then
+                    pending=1
+                    break
+                fi
+            done
+        fi
 
         if [[ $pending -eq 1 ]]; then
-            echo "  Unextracted archives detected in downloads/."
+            echo "  Unprocessed sglBinaries detected in downloads/."
             read -rp "  Run install_binaries.sh now? (Y/n): " reply
             if [[ ! "$reply" =~ ^[Nn]$ ]]; then
                 "$SCRIPT_DIR/install_binaries.sh"
             fi
         fi
     else
+        local pending=0
         for f in "$DOWNLOADS_DIR"/sglBinaries_*.tar.gz; do
             [[ -f "$f" ]] || continue
             local base
             base="$(basename "$f")"
             if [[ ! -f "$DOWNLOADS_DIR/.extracted_${base}" ]]; then
-                msg_info "New archive detected: $base"
-                read -rp "  Extract it now? (Y/n): " reply
-                if [[ ! "$reply" =~ ^[Nn]$ ]]; then
-                    "$SCRIPT_DIR/install_binaries.sh" "$f"
-                fi
+                pending=1
+                break
             fi
         done
+        for d in "$DOWNLOADS_DIR"/sglBinaries_*/; do
+            [[ -d "$d" ]] || continue
+            local dname
+            dname="$(basename "$d")"
+            if [[ ! -f "$DOWNLOADS_DIR/.extracted_${dname}.tar.gz" ]]; then
+                pending=1
+                break
+            fi
+        done
+        if [[ $pending -eq 1 ]]; then
+            msg_info "New sglBinaries detected in downloads/."
+            read -rp "  Process them now? (Y/n): " reply
+            if [[ ! "$reply" =~ ^[Nn]$ ]]; then
+                "$SCRIPT_DIR/install_binaries.sh"
+            fi
+        fi
     fi
 }
 
