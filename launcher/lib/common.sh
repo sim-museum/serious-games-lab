@@ -100,7 +100,7 @@ is_source_game() {
 is_nonviolent_game() {
     local script="$1"
     case "$script" in
-        CFL/CFL.sh|republic/republic.sh) return 0 ;;
+        CFL/CFL.sh|republic/republic.sh|tacview/tacview.sh) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -123,8 +123,8 @@ game_archive() {
         FS9/fs9.sh|SDOE/WWI_SDOE.sh|SDOE/WWII_SDOE.sh) echo 5 ;;
         # sglBinaries_6: BMS 4.35
         BMS435/BMS435.sh) echo 6 ;;
-        # sglBinaries_7: Falcon AF ISO
-        FalconAF.sh) echo 7 ;;
+        # sglBinaries_7: Falcon AF ISO, Tacview
+        FalconAF.sh|tacview/tacview.sh) echo 7 ;;
         # Everything else binary is in sglBinaries_1
         *) echo 1 ;;
     esac
@@ -171,6 +171,7 @@ script_display_name() {
         BMS435/BMS435.sh)      echo "very advanced"; return ;;
         CFL/CFL.sh)            echo "CFL"; return ;;
         republic/republic.sh)  echo "psychohistory"; return ;;
+        tacview/tacview.sh)    echo "flight recorder"; return ;;
         # SUN - Go
         run_katrain.sh)        echo "graphics and training"; return ;;
         q5go.sh)               echo "board with training"; return ;;
