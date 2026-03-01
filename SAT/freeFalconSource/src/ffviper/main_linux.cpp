@@ -2511,10 +2511,38 @@ int main(int argc, char** argv) {
     extern bool g_testInstantActionFlag;
     g_testInstantActionFlag = testInstantAction;
 
-    // Require a data directory
+    // Auto-detect game data from binary location if not specified.
+    // When built from the serious-games-lab repo with buildFFViper.sh,
+    // the binary is at:  SAT/freeFalconSource/build/src/ffviper/FFViper
+    // and game data at:  SAT/WP/drive_c/FreeFalcon6
+    // (installed by freeFalcon.sh via Wine)
+    static char autoDataDir[4096];
     if (!dataDir) {
-        fprintf(stderr, "\nError: No game data directory specified.\n");
-        fprintf(stderr, "Use -d /path/to/FreeFalcon6 or set FF_DATA_DIR.\n\n");
+        char exePath[4096];
+        ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
+        if (len > 0) {
+            exePath[len] = '\0';
+            // Walk up 5 levels: ffviper/ src/ build/ freeFalconSource/ SAT/
+            for (int i = 0; i < 5; i++) {
+                char* p = strrchr(exePath, '/');
+                if (p) *p = '\0';
+            }
+            if (exePath[0]) {
+                snprintf(autoDataDir, sizeof(autoDataDir),
+                         "%s/WP/drive_c/FreeFalcon6", exePath);
+                if (access(autoDataDir, R_OK) == 0) {
+                    dataDir = autoDataDir;
+                    fprintf(stderr, "Auto-detected game data: %s\n", dataDir);
+                }
+            }
+        }
+    }
+
+    if (!dataDir) {
+        fprintf(stderr, "\nError: No game data directory found.\n");
+        fprintf(stderr, "Expected game data at: SAT/WP/drive_c/FreeFalcon6\n");
+        fprintf(stderr, "  (run freeFalcon.sh first to install via Wine)\n");
+        fprintf(stderr, "Or specify manually: %s -d /path/to/FreeFalcon6\n\n", argv[0]);
         print_usage(argv[0]);
         return 1;
     }
