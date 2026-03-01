@@ -33,8 +33,19 @@ if [[ ! -d "$SOURCE_DIR" ]]; then
 fi
 
 if [[ ! -d "$GAME_DATA" ]]; then
-    echo "Error: Game data not found at $GAME_DATA"
-    echo "Run ./freeFalcon.sh first to install FreeFalcon 6 via Wine."
+    echo ""
+    echo "Error: FreeFalcon 6 game data not found."
+    echo ""
+    echo "  Expected at: $GAME_DATA"
+    echo ""
+    echo "  The native Linux build requires game data (art, terrain, campaign"
+    echo "  files, etc.) from the Windows FreeFalcon 6 installation."
+    echo ""
+    echo "  To install, run:  ./freeFalcon.sh"
+    echo ""
+    echo "  This will install FreeFalcon 6 via Wine into the WP/ directory."
+    echo "  Wine must be installed first:  sudo apt install wine wine32:i386"
+    echo ""
     exit 1
 fi
 
