@@ -9,6 +9,7 @@ wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /
 # Function to display installation instructions
 display_install_instructions() {
     clear
+    mkdir -p "$WINEPREFIX/../isoMnt"
     printf "\nCut and paste the commands below at a terminal prompt:\n"
     printf "export WINEPREFIX=\$PWD/WP\n"
     printf "winetricks d3dx9 directplay 2>/dev/null 1>/dev/null\n"

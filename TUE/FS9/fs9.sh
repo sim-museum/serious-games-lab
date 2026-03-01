@@ -90,7 +90,7 @@ if [ ! -f "$INSTALL_DIR/isoMnt/Setup.Exe" ]; then
     if [ -f "$INSTALL_DIR/Microsoft Flight Simulator 2004/FS_OEM.mdf" ]; then
         echo "Mounting FS9 ISO (requires sudo)..."
         mkdir -p "$INSTALL_DIR/isoMnt"
-        sudo mount -o loop "$INSTALL_DIR/Microsoft Flight Simulator 2004/FS_OEM.mdf" "$INSTALL_DIR/isoMnt" && echo "ISO mounted. Continuing installation..." || {
+        sudo mount -o loop "$INSTALL_DIR/Microsoft Flight Simulator 2004/FS_OEM.mdf" "$INSTALL_DIR/isoMnt" && { echo "ISO mounted. Run this script again to install."; exit 0; } || {
             printf "Auto-mount failed. To install Flight Simulator 9, run the following command in a terminal:\n\nsudo mount -o loop \"$INSTALL_DIR/Microsoft Flight Simulator 2004/FS_OEM.mdf\" \"$INSTALL_DIR/isoMnt\"\n\nThen run this script again.\n"
             exit 0
         }
@@ -112,8 +112,66 @@ if [ -f "$INSTALL_DIR/isoMnt/Setup.Exe" ]; then
     read replyString
     wine "Setup.exe" 2>/dev/null 1>/dev/null
 
-    # Kill any lingering Wine processes to prevent disk thrashing after install
-    wineserver -k 2>/dev/null
+    # Wait for the installer to finish (wine returns early when InstallShield spawns a subprocess)
+    wineserver -w 2>/dev/null
+
+    # Post-install: extract scenery cab files and fix scenery.cfg paths
+    # The OEM installer does a compact install that leaves scenery in cab files
+    # and omits Local= paths (expecting the CD-ROM for Remote= access)
+    local_game_dir="$WINEPREFIX/drive_c/Program Files/Microsoft Games/Flight Simulator 9"
+    if [ -d "$local_game_dir/Scenery" ]; then
+        echo "Extracting scenery cab files..."
+        cd "$local_game_dir/Scenery"
+        for cab in *.cab; do
+            [ -f "$cab" ] || continue
+            dir="${cab%.cab}"
+            if [ ! -d "$dir" ]; then
+                mkdir -p "$dir" && cabextract -q -d "$dir" "$cab"
+            fi
+        done
+
+        # Also extract city scenery cabs from ISO if mounted
+        if [ -d "$INSTALL_DIR/isoMnt/SCENERY/CITIES" ]; then
+            for cab in "$INSTALL_DIR/isoMnt/SCENERY/CITIES/"*.cab; do
+                [ -f "$cab" ] || continue
+                dir="Cities/$(basename "${cab%.cab}")"
+                if [ ! -d "$dir" ]; then
+                    mkdir -p "$dir" && cabextract -q -d "$dir" "$cab"
+                fi
+            done
+        fi
+
+        # Fix scenery.cfg: add Local= paths for entries missing them
+        cfg="$local_game_dir/scenery.cfg"
+        if [ -f "$cfg" ] && grep -q '^\[Area\.001\]' "$cfg" && ! grep -A3 '^\[Area\.001\]' "$cfg" | grep -q '^Local='; then
+            echo "Fixing scenery.cfg paths..."
+            sed -i '/^\[Area\.001\]/{n;n;/^Layer=/i Local=Scenery\\World
+}' "$cfg"
+            sed -i '/^\[Area\.003\]/{n;/^Layer=/i Local=Scenery\\Afri
+}' "$cfg"
+            sed -i '/^\[Area\.004\]/{n;/^Layer=/i Local=Scenery\\Asia
+}' "$cfg"
+            sed -i '/^\[Area\.005\]/{n;/^Layer=/i Local=Scenery\\Aust
+}' "$cfg"
+            sed -i '/^\[Area\.011\]/{n;/^Layer=/i Local=Scenery\\Ocen
+}' "$cfg"
+            sed -i '/^\[Area\.012\]/{n;/^Layer=/i Local=Scenery\\Same
+}' "$cfg"
+            # Fix city entries missing Local= paths
+            declare -A city_map=(
+                ["013"]="Amsterd" ["014"]="Anchor" ["015"]="Atlanta" ["016"]="Chicago"
+                ["019"]="Heathrow" ["020"]="Hongkong" ["021"]="Kittyhwk" ["022"]="Lasvegas"
+                ["023"]="La" ["024"]="Miami" ["026"]="Niagara" ["028"]="Paris"
+                ["029"]="Phoenix" ["030"]="Sanfran" ["033"]="Sydney" ["034"]="Tokyo"
+            )
+            for area in "${!city_map[@]}"; do
+                dir="${city_map[$area]}"
+                sed -i "/^\[Area\.${area}\]/{n;/^Layer=/i Local=Scenery\\\\Cities\\\\${dir}
+}" "$cfg"
+            done
+        fi
+        cd "$INSTALL_DIR/isoMnt/"
+    fi
 
     printf "\n\nInstallation completed.  Run this script again to start fs9.  (Ignore missing font warnings). \n"
     exit 0

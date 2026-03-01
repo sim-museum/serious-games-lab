@@ -87,6 +87,9 @@ if [ ! -f "$install_dir/pro-wsp08.iso" ]; then
     unzip World-Series-of-Poker-2008-Battle-for-the-Bracelets_Win_EN.zip
 fi    
 
+# Ensure mount point directory exists
+mkdir -p "$install_dir/isoMnt"
+
 # Check if SETUP.exe file is not found
 if [ ! -f "$install_dir/isoMnt/SETUP.exe" ]; then
     clear

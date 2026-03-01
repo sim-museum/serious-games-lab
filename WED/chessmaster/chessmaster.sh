@@ -50,6 +50,8 @@ else
         cd "$WINEPREFIX/../INSTALL/"
         unzip Chessmaster-Grandmaster-Edition_Win_EN-FR.zip >/dev/null 2>&1
         clear
+        # Ensure mount point directory exists
+        mkdir -p "$WINEPREFIX/../INSTALL/isoMnt"
         # Display instructions for mounting ISO
         printf "To install Chessmaster, run the following command in a terminal,\nthen run this script again.\n\nsudo mount -o loop "$WINEPREFIX"/../INSTALL/itw-cge.iso "$WINEPREFIX"/../INSTALL/isoMnt\n"
         exit 0
