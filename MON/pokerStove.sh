@@ -12,6 +12,12 @@ fi
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
 
+# Initialise Wine prefix if it doesn't exist yet
+if [ ! -d "$WINEPREFIX" ]; then
+    echo "Creating Wine prefix..."
+    wineboot -i 2>/dev/null
+fi
+
 # Set Windows XP mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
@@ -23,9 +29,15 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/PokerStove/PokerStove.exe" ]; then
 fi
 
 # Install PokerStove
+if [ ! -f "./INSTALL/PokerStoveSetup124.exe" ]; then
+    echo "Error: PokerStoveSetup124.exe not found in ./INSTALL/"
+    echo "This file is provided by sglBinaries_1. Extract it first."
+    exit 1
+fi
+
 cd "./INSTALL/"
 echo "Installing PokerStove..."
-wine PokerStoveSetup124.exe 2>/dev/null 1>/dev/null
+WINEDEBUG=-all wine PokerStoveSetup124.exe
 
 if [ -f "$WINEPREFIX/drive_c/Program Files/PokerStove/PokerStove.exe" ]; then
     echo "PokerStove installed. Launching..."

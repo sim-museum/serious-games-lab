@@ -12,5 +12,5 @@ NR2003/NR2003.sh,lutris-6.21-6-x86_64,32,yes
 qplus.sh,lutris-6.21-6-x86_64,32,yes
 rFactor/rFactor.sh,lutris-fshack-7.2-x86_64,32,yes
 wBridge5.sh,lutris-fshack-5.7-x86_64,32,no
-pokerStove.sh,lutris-5.7-x86_64,32,no
+pokerStove.sh,,32,no
 bracelets.sh,lutris-5.7-x86_64,32,no
