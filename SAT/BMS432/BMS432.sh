@@ -55,9 +55,9 @@ if [[ ! -f "$INSTALL_DIR/Falcon BMS 4.32 Setup Upd. 1-7/Setup.exe" ]]; then
     exit 1
 fi
 
-# --- Step 1: Create Wine prefix ---
+# --- Step 1: Create/update Wine prefix ---
 echo "[1/6] Creating Wine prefix ..."
-WINEDEBUG=-all wineboot -i 2>/dev/null
+WINEDEBUG=-all wineboot -u 2>/dev/null || true
 
 # --- Step 2: Install winetricks dependencies ---
 echo "[2/6] Installing winetricks dependencies ..."
@@ -65,7 +65,7 @@ echo "[2/6] Installing winetricks dependencies ..."
 # Delivery Planner install — it hangs the wineserver on Wine 5.7
 # and requires a manual wineserver -k to continue.
 WINEDEBUG=-all winetricks -q remove_mono 2>/dev/null || true
-WINEDEBUG=-all winetricks -q vcrun2015 winxp 2>/dev/null
+WINEDEBUG=-all winetricks -q vcrun2015 winxp 2>/dev/null || true
 
 # --- Step 3: Install Falcon BMS 4.32 ---
 echo "[3/6] Installing Falcon BMS 4.32 ..."
