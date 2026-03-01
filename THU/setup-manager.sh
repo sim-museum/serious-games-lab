@@ -7,7 +7,7 @@ export WINEPREFIX="$PWD/WP"
 if [ -d "$WINEPREFIX/drive_c/Sierra" ]; then
   # Navigate to the GPL Setup Manager directory and run the executable
   cd "$WINEPREFIX/drive_c/Program Files/GPLSecrets/GPL Setup Manager" || exit 1
-  wine 'GPL Setup Manager.exe' 2>/dev/null 1>/dev/null
+  wine "GPL Setup Manager.exe" 2>/dev/null 1>/dev/null
   exit 0
 else
    # Display a message if GPL Setup Manager is not installed

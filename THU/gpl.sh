@@ -40,10 +40,10 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
         # Install GPL using wine
         wine INSTALL/gplinstall_beta_1.08.exe 2>/dev/null 1>/dev/null
     else
-        # GPL ISO not found — it's provided by sglBinaries_5
+        # GPL ISO not found — it's provided by sglBinaries_1
         echo ""
-        echo "GPL ISO not found. The full GPL installation requires sglBinaries_5."
-        echo "Place sglBinaries_5.tar.gz (or sglBinaries_5/ directory) in the downloads/ folder"
+        echo "GPL ISO not found. The full GPL installation requires sglBinaries_1."
+        echo "Place sglBinaries_1.tar.gz (or sglBinaries_1/ directory) in the downloads/ folder"
         echo "and re-run the launcher to extract it."
         echo ""
         echo "Alternatively, download the iso from:"
@@ -192,12 +192,18 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
     # Install additional carsets and mods
     
     # Install GPL 1965 alternative carset
+    # NOTE: This installer can hang silently under Wine. If it does, the gpl65
+    # mod won't appear in GEM+. To install manually afterwards:
+    #   cd /home/m/sgl/THU && wine INSTALL/carsets/GPL65F1_Alternative__2.0.2.exe
     wine "$WINEPREFIX/../INSTALL/carsets/GPL65F1_Alternative__2.0.2.exe" 2>/dev/null 1>/dev/null
-    
+
     # Install GPL 1966 carset
     wine "$WINEPREFIX/../INSTALL/carsets/gpl1966_1.0.exe" 2>/dev/null 1>/dev/null
-    
+
     # Remove existing GPL66 mod directory and install 1966 Mod Patch
+    # NOTE: The 1966 PATCH installer shows a harmless "no Windows program
+    # configured to open this type of file" error at the end — it tries to
+    # open a readme file. Click OK to dismiss; the patch itself installs fine.
     rm -rf "$WINEPREFIX/drive_c/Sierra/GPL/Mods/GEM+/GPL66"
     wine "$WINEPREFIX/../INSTALL/carsets/1966_Mod_PATCH_v2.0/1966mod_PATCH_v2.0_Setup.exe" 2>/dev/null 1>/dev/null
     
