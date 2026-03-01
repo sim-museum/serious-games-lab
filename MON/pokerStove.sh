@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Check that Wine is available
+if ! command -v wine &>/dev/null; then
+    echo "Error: Wine is not installed. Install it with:"
+    echo "  sudo apt install wine wine32:i386 wine64 winetricks"
+    echo "Or re-run the launcher — it will auto-install Wine when sglBinaries are present."
+    exit 1
+fi
+
 # Set Wine prefix directory
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32

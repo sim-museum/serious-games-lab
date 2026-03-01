@@ -114,8 +114,9 @@ typedef struct WSAData {
 } WSADATA;
 extern "C" int initialize_windows_sockets(WSADATA *wsaData);
 
-// Default data directory - can be overridden with -d flag or env var
-#define DEFAULT_DATA_DIR "/home/g/ese/SAT/WP/drive_c/FreeFalcon6"
+// Default data directory - can be overridden with -d flag or FF_DATA_DIR env var
+// NULL means "auto-detect from binary location" (see main())
+#define DEFAULT_DATA_DIR nullptr
 
 // Window settings - must match UI resolution (1024x768 for HiRes UI)
 #define WINDOW_WIDTH 1024
@@ -2485,6 +2486,31 @@ int main(int argc, char** argv) {
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             print_usage(argv[0]);
             return 0;
+        }
+    }
+
+    // Auto-detect data directory from binary location if not specified
+    // Binary is at: SAT/freeFalconSource/build/src/ffviper/FFViper
+    // Game data at: SAT/WP/drive_c/FreeFalcon6
+    static char autoDataDir[4096];
+    if (!dataDir) {
+        char exePath[4096];
+        ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
+        if (len > 0) {
+            exePath[len] = '\0';
+            // Walk up from binary to SAT/ (5 levels: ffviper/ src/ build/ freeFalconSource/ SAT/)
+            char* p = exePath;
+            for (int i = 0; i < 5 && p; i++) {
+                p = strrchr(exePath, '/');
+                if (p) *p = '\0';
+            }
+            if (p || exePath[0]) {
+                snprintf(autoDataDir, sizeof(autoDataDir), "%s/WP/drive_c/FreeFalcon6", exePath);
+                dataDir = autoDataDir;
+            }
+        }
+        if (!dataDir) {
+            dataDir = "WP/drive_c/FreeFalcon6";  // Last resort relative path
         }
     }
 
