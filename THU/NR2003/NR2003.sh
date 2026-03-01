@@ -86,6 +86,7 @@ fi
 
 # Mount ISO if not already mounted
 if [ ! -f "$WINEPREFIX/../isoMnt/autorun.exe" ]; then
+    mkdir -p "$WINEPREFIX/../isoMnt"
     clear
     printf "Mounting ISO. Enter sudo password if prompted.\n"
     sudo mount -o loop "$WINEPREFIX/../INSTALL/NR2003.iso" "$WINEPREFIX/../isoMnt"
