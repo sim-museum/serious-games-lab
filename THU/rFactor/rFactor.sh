@@ -22,7 +22,8 @@ fi
 SCRIPT_DIR="$PWD"
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
-wine winecfg -v win7 2>/dev/null 1>/dev/null
+# Set Windows 7 mode silently (no GUI)
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d win7 /f &>/dev/null
 
 # --- Already installed: launch rFactor ---
 if [ -f "$WINEPREFIX/drive_c/Program Files/rFactor/rFactor.exe" ]; then

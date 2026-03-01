@@ -12,7 +12,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 # Set WINEPREFIX
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
-wine winecfg -v win98  2>/dev/null 1>/dev/null
+# Set Windows 98 mode silently (no GUI)
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d win98 /f &>/dev/null
 
 # Define variables for readability
 export INSTALL_DIR="$WINEPREFIX/../INSTALL"

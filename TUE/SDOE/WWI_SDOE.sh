@@ -24,7 +24,8 @@ export WINEARCH=win32
 if [ -f "$WINEPREFIX/drive_c/Program Files/FS-WWI/Sdemons.exe" ]
 then
 	export WINEDLLOVERRIDES="winegstreamer=d"
-	wine winecfg -v win98 2>/dev/null 1>/dev/null
+	# Set Windows 98 mode silently (no GUI)
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d win98 /f &>/dev/null
 	cd "$WINEPREFIX/drive_c/Program Files/FS-WWI"
 	wine explorer /desktop=SDOE,1920x1080 Sdemons.exe 2>/dev/null 1>/dev/null
 	wineserver -k 2>/dev/null

@@ -1,45 +1,38 @@
 #!/bin/bash
-# freeFalcon.sh - Install game data (via Wine) and run native Linux FFViper
+# freeFalcon.sh - Install and run FreeFalcon 6 under Wine
 #
-# Flow:
-#   1. If game data not installed: run Wine installers to extract game data
-#   2. If native binary not built: build FFViper from source
-#   3. Launch native Linux FFViper pointing at the game data
+# A native Linux port (alpha) can be built separately with:
+#   ./buildFFViper.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$SCRIPT_DIR/INSTALL"
 WINEPREFIX_DIR="$SCRIPT_DIR/WP"
 GAME_DATA="$WINEPREFIX_DIR/drive_c/FreeFalcon6"
-SOURCE_DIR="$SCRIPT_DIR/freeFalconSource"
-BUILD_DIR="$SOURCE_DIR/build"
-FFVIPER_BIN="$BUILD_DIR/src/ffviper/FFViper"
 
-# ── Step 1: Install game data via Wine if not present ──────────────────
+export WINEPREFIX="$WINEPREFIX_DIR"
+export WINEARCH=win32
+# Set Windows XP mode silently (no GUI)
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
-install_game_data() {
+# ── Install if not present ─────────────────────────────────────────────
+
+if [[ ! -d "$GAME_DATA" ]]; then
     if ! command -v wine &>/dev/null; then
-        echo "Error: Wine is not installed. Wine is needed to run the FreeFalcon"
-        echo "installers that extract the game data files."
-        echo ""
+        echo "Error: Wine is not installed."
         echo "  Install with:  sudo apt install wine wine32:i386 wine64 winetricks"
         echo "  Or re-run the launcher — it auto-installs Wine when sglBinaries are present."
-        return 1
+        exit 1
     fi
 
     if [[ ! -d "$INSTALL_DIR/FF6d" ]]; then
         echo "Error: FreeFalcon installer not found at $INSTALL_DIR/FF6d"
         echo "  Make sure sglBinaries_1 has been extracted."
-        return 1
+        exit 1
     fi
 
     echo ""
-    echo "FreeFalcon game data not found. Installing via Wine..."
-    echo "(Wine is only used for installation — the game itself runs natively on Linux.)"
+    echo "FreeFalcon game data not found. Installing..."
     echo ""
-
-    export WINEPREFIX="$WINEPREFIX_DIR"
-    export WINEARCH=win32
-    wine winecfg -v winxp 2>/dev/null 1>/dev/null
 
     echo "Step 1 of 4: Installing Free Falcon 6"
     echo "When you reach the final install screen, deselect 'Launch Free Falcon 6 Config Editor'"
@@ -69,7 +62,7 @@ install_game_data() {
         echo ""
         echo "Error: Installation did not create $GAME_DATA"
         echo "  Something went wrong with the Wine installers."
-        return 1
+        exit 1
     fi
 
     # Post-install configuration
@@ -79,7 +72,7 @@ install_game_data() {
     # Remove outdated documentation (ignore if missing)
     rm -f "$GAME_DATA/_the_MANUAL/FF6 COMPANION_v.5.5.pdf"
 
-    # Move movie directories (Wine can't play them; they crash the game)
+    # Move movie directories (they crash the game under Wine)
     [[ -d "$GAME_DATA/movies" ]] && mv "$GAME_DATA/movies" "$GAME_DATA/movies_DoNotPlayInGame"
     [[ -d "$GAME_DATA/Theaters/Israel/movies" ]] && mv "$GAME_DATA/Theaters/Israel/movies" "$GAME_DATA/Theaters/Israel/movies_DoNotPlayInGame"
 
@@ -94,71 +87,12 @@ install_game_data() {
     fi
 
     echo "Game data installation complete."
-    return 0
-}
-
-# ── Step 2: Build FFViper from source if not present ───────────────────
-
-build_ffviper() {
-    if [[ ! -d "$SOURCE_DIR" ]]; then
-        echo "Error: FreeFalcon source not found at $SOURCE_DIR"
-        return 1
-    fi
-
-    echo ""
-    echo "Building FFViper from source..."
-    echo ""
-
-    # Install build dependencies if needed
-    local BUILD_DEPS=(libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev
-                      libgl-dev libglew-dev libopenal-dev
-                      cmake ninja-build build-essential)
-    local MISSING=()
-    for pkg in "${BUILD_DEPS[@]}"; do
-        if ! dpkg -s "$pkg" &>/dev/null 2>&1; then
-            MISSING+=("$pkg")
-        fi
-    done
-    if [[ ${#MISSING[@]} -gt 0 ]]; then
-        echo "Installing build dependencies: ${MISSING[*]}"
-        sudo apt-get install -y "${MISSING[@]}"
-    fi
-
-    mkdir -p "$BUILD_DIR"
-    cd "$BUILD_DIR"
-    cmake -G Ninja -DCMAKE_BUILD_TYPE=Release "$SOURCE_DIR"
-    ninja
-
-    if [[ ! -x "$FFVIPER_BIN" ]]; then
-        echo ""
-        echo "Error: Build failed — $FFVIPER_BIN not found."
-        echo "  Check the build output above for errors."
-        return 1
-    fi
-
-    echo ""
-    echo "FFViper built successfully."
-    return 0
-}
-
-# ── Main ───────────────────────────────────────────────────────────────
-
-cd "$SCRIPT_DIR"
-
-# Ensure game data is installed
-if [[ ! -d "$GAME_DATA" ]]; then
-    install_game_data || exit 1
 fi
 
-# Ensure native binary is built
-if [[ ! -x "$FFVIPER_BIN" ]]; then
-    build_ffviper || exit 1
-fi
+# ── Launch FreeFalcon under Wine ───────────────────────────────────────
 
-# Launch native FFViper with game data path
 echo ""
-echo "Launching FFViper (native Linux)..."
-echo "  Data: $GAME_DATA"
+echo "Launching FreeFalcon 6..."
 echo ""
 cd "$GAME_DATA"
-"$FFVIPER_BIN" -d "$GAME_DATA" -w 2>/dev/null
+wine FFViper.exe 2>/dev/null 1>/dev/null
