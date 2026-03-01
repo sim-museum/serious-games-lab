@@ -21,7 +21,9 @@ fi
 # Set the Wine prefix
 export WINEPREFIX=$PWD/WP
 export WINEARCH=win32
-wine winecfg -v winxp  2>/dev/null 1>/dev/null
+
+# Set Windows XP mode silently (no GUI)
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
 
 # Define frequently used directory paths
@@ -94,12 +96,6 @@ if [ ! -f "$install_dir/isoMnt/SETUP.exe" ]; then
     echo "Then run this script again."
     exit 0     
 fi
-
-# Display instructions for Wine configuration
-echo "In the wine configuration dialog, select Windows XP as the Windows Version."
-echo "Press return to continue ..."
-read -r replyString
-winecfg  &>/dev/null
 
 # Pre-install DirectX 9c via winetricks (the game's bundled DX installer
 # fails inside Wine with "An internal system error occurred")
