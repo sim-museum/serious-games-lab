@@ -97,7 +97,6 @@ move_file "sglBinaries_4" "Chessmaster-Grandmaster-Edition_Patch_Win_EN-FR_patch
 move_file "sglBinaries_4" "World-Series-of-Poker-2008-Battle-for-the-Bracelets_Win_EN.zip"   "MON/INSTALL"
 
 # --- sglBinaries_5 ---
-move_file "sglBinaries_5" "gpl.iso"                                                           "THU/INSTALL"
 move_file "sglBinaries_5" "rF.iso"                                                            "THU/rFactor/INSTALL"
 move_file "sglBinaries_5" "rFactor.exe"                                                       "THU/rFactor/INSTALL"
 move_file "sglBinaries_5" "Fighter_Squadron_SDOE_DVD.iso"                                     "TUE/SDOE/INSTALL"
