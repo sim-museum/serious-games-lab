@@ -91,6 +91,169 @@ check_binaries() {
     fi
 }
 
+# Check if any sglBinaries have been extracted; if so, ensure Wine, Lutris,
+# and wine runners are installed.  Runs once per machine (creates a marker).
+ensure_wine() {
+    # Only relevant if at least one sglBinaries archive has been extracted
+    local has_extracted=false
+    for marker in "$DOWNLOADS_DIR"/.extracted_sglBinaries_*.tar.gz; do
+        [[ -f "$marker" ]] && { has_extracted=true; break; }
+    done
+    $has_extracted || return 0
+
+    # Skip if Wine is already usable (system wine OR a Lutris wine runner)
+    if command -v wine &>/dev/null; then
+        # Wine is installed — now ensure Lutris wine runners are set up too
+        ensure_wine_runners
+        return 0
+    fi
+
+    echo ""
+    msg_warn "Binary game data is installed but Wine is not available."
+    echo "  Wine is required to run Windows-based games."
+    echo ""
+    msg_info "Installing Wine, Lutris, and wine runners..."
+    echo ""
+
+    # Enable 32-bit architecture
+    sudo dpkg --add-architecture i386
+
+    # Update package lists
+    sudo apt-get update
+
+    # Install Wine
+    sudo apt-get install -y \
+        wine wine32:i386 wine64 winetricks
+
+    # Install 32-bit graphics/audio/font libraries needed by Wine games
+    sudo apt-get install -y \
+        libgl1-mesa-dri:i386 \
+        libgl1:i386 \
+        mesa-vulkan-drivers \
+        mesa-vulkan-drivers:i386 \
+        libvulkan1 \
+        libvulkan1:i386 \
+        vulkan-tools \
+        libpulse0:i386 \
+        libasound2-plugins:i386 \
+        libsdl2-2.0-0:i386 \
+        fonts-wine \
+        fonts-liberation \
+        fonts-dejavu-core \
+        cabextract p7zip-full unzip xdg-utils
+
+    # Install NVIDIA 32-bit OpenGL if applicable
+    local nvidia_ver
+    nvidia_ver=$(dpkg -l 2>/dev/null | grep -oP 'nvidia-driver-\K[0-9]+' | head -1 || true)
+    if [[ -n "$nvidia_ver" ]] && ! dpkg -s "libnvidia-gl-${nvidia_ver}:i386" &>/dev/null; then
+        sudo apt-get install -y "libnvidia-gl-${nvidia_ver}:i386" || true
+    fi
+
+    # Install Lutris
+    sudo apt-get install -y lutris || true
+
+    # Install bundled .deb packages from sglBinaries_1 (if present)
+    for deb in "$REPO_ROOT"/libssl*.deb "$REPO_ROOT"/libzip*.deb; do
+        if [[ -f "$deb" ]]; then
+            msg_info "Installing $(basename "$deb") ..."
+            sudo dpkg -i "$deb" || true
+        fi
+    done
+
+    if command -v wine &>/dev/null; then
+        msg_ok "Wine installed successfully."
+    else
+        msg_error "Wine installation failed. Install manually: sudo apt install wine"
+    fi
+
+    # Set up wine runners
+    ensure_wine_runners
+}
+
+# Install Lutris wine runners (non-interactive version of setup_lutris.sh)
+ensure_wine_runners() {
+    local csv="$REPO_ROOT/config/wine_runners.csv"
+    local runners_dir="$HOME/.local/share/lutris/runners/wine"
+    local marker="$DOWNLOADS_DIR/.wine_runners_installed"
+
+    [[ -f "$csv" ]] || return 0
+    [[ -f "$marker" ]] && return 0
+
+    mkdir -p "$runners_dir"
+
+    # Extract unique non-empty runners from CSV (skip header, column 2)
+    local -a runners=()
+    while IFS=',' read -r _ runner _; do
+        [[ -n "$runner" ]] && runners+=("$runner")
+    done < <(tail -n +2 "$csv")
+
+    # Deduplicate
+    local -A seen=()
+    local -a unique_runners=()
+    for r in "${runners[@]}"; do
+        if [[ -z "${seen[$r]:-}" ]]; then
+            seen[$r]=1
+            unique_runners+=("$r")
+        fi
+    done
+
+    local -a missing=()
+    for runner in "${unique_runners[@]}"; do
+        [[ -d "$runners_dir/$runner" ]] || missing+=("$runner")
+    done
+
+    if [[ ${#missing[@]} -eq 0 ]]; then
+        touch "$marker"
+        return 0
+    fi
+
+    echo ""
+    msg_info "Installing ${#missing[@]} Lutris wine runner(s)..."
+
+    local failed=0
+    for runner in "${missing[@]}"; do
+        local url asset base arch_suffix
+        asset="wine-${runner}.tar.xz"
+        base="$runner"
+        base="${base%-x86_64}"
+        base="${base%-i686}"
+
+        if [[ "$runner" == *GE-Proton* ]]; then
+            local tag="${base#lutris-}"
+            url="https://github.com/GloriousEggroll/wine-ge-custom/releases/download/${tag}/${asset}"
+        elif [[ "$runner" == *fshack* ]]; then
+            local tag="${base//-fshack/}"
+            url="https://github.com/lutris/wine/releases/download/${tag}/${asset}"
+        else
+            local tag="$base"
+            url="https://github.com/lutris/wine/releases/download/${tag}/${asset}"
+        fi
+
+        echo "  Downloading: $(basename "$url")"
+        local tmpfile
+        tmpfile="$(mktemp /tmp/runner-XXXXXX.tar.xz)"
+        if curl -fSL --progress-bar -o "$tmpfile" "$url" 2>/dev/null; then
+            tar -xJf "$tmpfile" -C "$runners_dir/" 2>/dev/null
+            if [[ -d "$runners_dir/$runner" ]]; then
+                msg_ok "  $runner"
+            else
+                msg_warn "  $runner extracted but directory name differs"
+            fi
+        else
+            msg_warn "  Failed to download $runner"
+            ((failed++)) || true
+        fi
+        rm -f "$tmpfile"
+    done
+
+    if [[ $failed -eq 0 ]]; then
+        touch "$marker"
+        msg_ok "All wine runners installed."
+    else
+        msg_warn "$failed runner(s) failed. Re-run launcher to retry, or run scripts/setup_lutris.sh"
+    fi
+}
+
 # --- Data loading ---
 
 # Associative arrays: DAY_GAMES[day] = newline-separated "script|display|available|type|archive"
@@ -476,6 +639,7 @@ main() {
     check_dependencies
     check_nvidia_32bit
     check_binaries
+    ensure_wine
     load_games
     read_scores
 

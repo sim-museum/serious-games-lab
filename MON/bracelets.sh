@@ -1,5 +1,6 @@
+#!/bin/bash
 # Script Outline:
-
+#
 # Set the Wine prefix.
 # Check if the game executable exists. If yes, run it and display game overview.
 # Move the game files if not found.
@@ -9,7 +10,13 @@
 # Display instructions for Wine configuration.
 # Install Battle of the Bracelets.
 
-#!/bin/bash
+# Check that Wine is available
+if ! command -v wine &>/dev/null; then
+    echo "Error: Wine is not installed. Install it with:"
+    echo "  sudo apt install wine wine32:i386 wine64 winetricks"
+    echo "Or re-run the launcher — it will auto-install Wine when sglBinaries are present."
+    exit 1
+fi
 
 # Set the Wine prefix
 export WINEPREFIX=$PWD/WP
