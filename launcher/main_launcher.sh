@@ -212,7 +212,7 @@ ensure_wine_runners() {
 
     local failed=0
     for runner in "${missing[@]}"; do
-        local url asset base arch_suffix
+        local asset base urls=()
         asset="wine-${runner}.tar.xz"
         base="$runner"
         base="${base%-x86_64}"
@@ -220,19 +220,32 @@ ensure_wine_runners() {
 
         if [[ "$runner" == *GE-Proton* ]]; then
             local tag="${base#lutris-}"
-            url="https://github.com/GloriousEggroll/wine-ge-custom/releases/download/${tag}/${asset}"
+            urls+=("https://github.com/GloriousEggroll/wine-ge-custom/releases/download/${tag}/${asset}")
         elif [[ "$runner" == *fshack* ]]; then
+            # Tag format varies: lutris-X.Y or lutris-wine-X.Y
             local tag="${base//-fshack/}"
-            url="https://github.com/lutris/wine/releases/download/${tag}/${asset}"
+            local ver="${tag#lutris-}"
+            urls+=("https://github.com/lutris/wine/releases/download/${tag}/${asset}")
+            urls+=("https://github.com/lutris/wine/releases/download/lutris-wine-${ver}/${asset}")
         else
+            # Tag format varies: lutris-X.Y or lutris-wine-X.Y
             local tag="$base"
-            url="https://github.com/lutris/wine/releases/download/${tag}/${asset}"
+            local ver="${tag#lutris-}"
+            urls+=("https://github.com/lutris/wine/releases/download/${tag}/${asset}")
+            urls+=("https://github.com/lutris/wine/releases/download/lutris-wine-${ver}/${asset}")
         fi
 
-        echo "  Downloading: $(basename "$url")"
-        local tmpfile
+        echo "  Downloading: $(basename "${urls[0]}")"
+        local tmpfile downloaded=false
         tmpfile="$(mktemp /tmp/runner-XXXXXX.tar.xz)"
-        if curl -fSL --progress-bar -o "$tmpfile" "$url" 2>/dev/null; then
+        for url in "${urls[@]}"; do
+            if curl -fSL --progress-bar -o "$tmpfile" "$url" 2>/dev/null; then
+                downloaded=true
+                break
+            fi
+        done
+
+        if $downloaded; then
             tar -xJf "$tmpfile" -C "$runners_dir/" 2>/dev/null
             if [[ -d "$runners_dir/$runner" ]]; then
                 msg_ok "  $runner"

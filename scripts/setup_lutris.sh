@@ -87,9 +87,10 @@ download_and_extract() {
     fi
 }
 
-# Build download URL based on runner name pattern
+# Build download URLs based on runner name pattern
 # Runner dir names are lutris-*, but GitHub asset filenames are wine-lutris-*
-get_download_url() {
+# Returns newline-separated URLs (primary + fallback) since tag naming varies
+get_download_urls() {
     local runner="$1"
     local asset="wine-${runner}.tar.xz"
 
@@ -100,27 +101,24 @@ get_download_url() {
 
     if [[ "$runner" == *GE-Proton* ]]; then
         # GE-Proton runners from GloriousEggroll/wine-ge-custom
-        # Dir:   lutris-GE-Proton8-26-x86_64
-        # Tag:   GE-Proton8-26
-        # Asset: wine-lutris-GE-Proton8-26-x86_64.tar.xz
         local tag="${base#lutris-}"
         echo "https://github.com/GloriousEggroll/wine-ge-custom/releases/download/${tag}/${asset}"
 
     elif [[ "$runner" == *fshack* ]]; then
         # Fshack runners from lutris/wine — fshack is only in asset name, not tag
-        # Dir:   lutris-fshack-5.7-x86_64
-        # Tag:   lutris-5.7 (NOT lutris-fshack-5.7)
-        # Asset: wine-lutris-fshack-5.7-x86_64.tar.xz
+        # Tag format varies: lutris-X.Y or lutris-wine-X.Y (newer releases)
         local tag="${base//-fshack/}"
+        local ver="${tag#lutris-}"
         echo "https://github.com/lutris/wine/releases/download/${tag}/${asset}"
+        echo "https://github.com/lutris/wine/releases/download/lutris-wine-${ver}/${asset}"
 
     else
         # Standard lutris runners from lutris/wine
-        # Dir:   lutris-6.0-x86_64
-        # Tag:   lutris-6.0
-        # Asset: wine-lutris-6.0-x86_64.tar.xz
+        # Tag format varies: lutris-X.Y or lutris-wine-X.Y (newer releases)
         local tag="$base"
+        local ver="${tag#lutris-}"
         echo "https://github.com/lutris/wine/releases/download/${tag}/${asset}"
+        echo "https://github.com/lutris/wine/releases/download/lutris-wine-${ver}/${asset}"
     fi
 }
 
@@ -129,8 +127,15 @@ echo "Downloading ${#missing[@]} runner(s)..."
 
 failed=()
 for runner in "${missing[@]}"; do
-    url="$(get_download_url "$runner")"
-    if ! download_and_extract "$url" "$runner"; then
+    mapfile -t urls < <(get_download_urls "$runner")
+    downloaded=false
+    for url in "${urls[@]}"; do
+        if download_and_extract "$url" "$runner"; then
+            downloaded=true
+            break
+        fi
+    done
+    if ! $downloaded; then
         failed+=("$runner")
     fi
 done
