@@ -106,7 +106,8 @@ winetricks vcrun2003 2>/dev/null 1>/dev/null
 
 # Set Windows XP mode and virtual desktop
 wine reg add "HKCU\\Software\\Wine\\Explorer\\Desktops" /v Default /t REG_SZ /d 1920x1080 /f 2>/dev/null 1>/dev/null
-wine winecfg -v winxp 2>/dev/null 1>/dev/null
+# Set Windows XP mode silently (no GUI)
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
 # Install NR2003
 clear

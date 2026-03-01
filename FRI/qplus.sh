@@ -13,7 +13,8 @@
 # Set Wine prefix directory
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
-wine winecfg -v winxp  2>/dev/null 1>/dev/null
+# Set Windows XP mode silently (no GUI)
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
 # GUI harness directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -86,7 +87,7 @@ else
         # Guide user on how to install Qplus Bridge
         echo " "; echo "To install Qplus Bridge, follow these steps:"
         echo "1. Download qplus171.exe from https://www.q-plus.com/engl/download/download_f.htm"
-        echo "2. Copy the exe into the MON/INSTALL directory"
+        echo "2. Copy the exe into the FRI/INSTALL directory"
         echo "3. Run this script again."; echo " "
     fi
 fi

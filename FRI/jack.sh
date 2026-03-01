@@ -8,7 +8,8 @@
 # Set the Wine prefix directory
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
-wine winecfg -v winxp  2>/dev/null 1>/dev/null
+# Set Windows XP mode silently (no GUI)
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
 # Check if the Jack 6 demo directory exists in the Wine prefix
 if [ -d "$WINEPREFIX/drive_c/Program Files/Jack 6 demo" ]; then

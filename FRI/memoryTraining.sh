@@ -20,7 +20,8 @@
 # Set Wine prefix directory
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
-wine winecfg -v winxp
+# Set Windows XP mode silently (no GUI)
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
 # Check if Brain Workshop is already installed
 if [ -d "$WINEPREFIX/drive_c/Program Files/Brain Workshop" ]; then

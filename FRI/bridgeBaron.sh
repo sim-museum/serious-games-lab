@@ -6,7 +6,8 @@
 # Set the Wine prefix directory
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
-wine winecfg -v winxp  2>/dev/null 1>/dev/null
+# Set Windows XP mode silently (no GUI)
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
 # Check if Bridge Baron 29 is installed
 if [ -d "$WINEPREFIX/drive_c/Program Files/Great Game Products/Bridge Baron 29" ]; then
@@ -34,7 +35,7 @@ else
         # Guide user on how to install Bridge Baron
         echo " "; echo "To install Bridge Baron, follow these steps:"
         echo "1. download BB29WinEngDownload.exe from https://www.greatgameproducts.com/download"
-        echo "2. copy the exe into the MON/INSTALL directory"
+        echo "2. copy the exe into the FRI/INSTALL directory"
         echo "3. run this script again."; echo " "
     fi
 fi

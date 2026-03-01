@@ -19,7 +19,8 @@ clear
 # Set Wine prefix directory
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
-wine winecfg -v win98  2>/dev/null 1>/dev/null
+# Set Windows 98 mode silently (no GUI)
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d win98 /f &>/dev/null
 
 # Check if Bridge Baron 12 is already installed
 if [ -f "$WINEPREFIX/Bridge Baron/Baron.exe" ]; then
@@ -46,8 +47,8 @@ unzip Bridge-Baron-12_Win_EN.zip 2>/dev/null 1>/dev/null
 #clear
 #printf "In the wine configuration dialog box select Windows 98 for the Windows version,\nthen in the graphics tab select virtual desktop, and enter a screen resolution, such as 800x600.\nDeselect allow the window manager to decorate the windows.\n\nPress any key to continue.\n\n\n"
 #read replyString
-WINEARCH=win32 winecfg 2>/dev/null 1>/dev/null
-wine winecfg -v win98  2>/dev/null 1>/dev/null
+# Set Windows 98 mode silently (no GUI)
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d win98 /f &>/dev/null
 
 # Inform user about successful installation
 clear
