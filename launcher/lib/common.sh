@@ -171,7 +171,7 @@ script_display_name() {
         BMS435/BMS435.sh)      echo "very advanced"; return ;;
         CFL/CFL.sh)            echo "CFL"; return ;;
         republic/republic.sh)  echo "psychohistory"; return ;;
-        tacview/tacview.sh)    echo "flight recorder"; return ;;
+        tacview/tacview.sh)    echo "flight analysis"; return ;;
         # SUN - Go
         run_katrain.sh)        echo "graphics and training"; return ;;
         q5go.sh)               echo "board with training"; return ;;
