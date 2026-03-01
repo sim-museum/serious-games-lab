@@ -1,1 +1,0 @@
-cresmgr.h

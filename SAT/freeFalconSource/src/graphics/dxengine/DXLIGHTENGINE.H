@@ -1,1 +1,0 @@
-dxlightengine.h

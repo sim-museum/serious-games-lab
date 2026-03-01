@@ -1,1 +1,0 @@
-cpindicator.h

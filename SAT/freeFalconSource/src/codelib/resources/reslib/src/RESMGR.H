@@ -1,1 +1,0 @@
-resmgr.h

@@ -1,1 +1,0 @@
-campcell.h

@@ -1,1 +1,0 @@
-winampfrontend.h

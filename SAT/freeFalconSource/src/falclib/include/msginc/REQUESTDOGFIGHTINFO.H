@@ -1,1 +1,0 @@
-requestdogfightinfo.h

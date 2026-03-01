@@ -1,1 +1,0 @@
-cvictory.h

@@ -1,1 +1,0 @@
-../mgapiall.h

@@ -1,1 +1,0 @@
-NVDXT_OPTIONS.h

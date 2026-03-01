@@ -1,1 +1,0 @@
-cmpawacs.h

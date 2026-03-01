@@ -1,1 +1,0 @@
-stratedi.h

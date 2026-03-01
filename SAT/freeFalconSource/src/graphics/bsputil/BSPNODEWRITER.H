@@ -1,1 +1,0 @@
-bspnodewriter.h

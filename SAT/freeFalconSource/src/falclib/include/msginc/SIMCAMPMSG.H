@@ -1,1 +1,0 @@
-simcampmsg.h

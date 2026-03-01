@@ -1,1 +1,0 @@
-campeventtrigmsg.h
