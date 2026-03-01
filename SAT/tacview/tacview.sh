@@ -5,14 +5,17 @@
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 INSTALLER="$(ls INSTALL/Tacview*Setup*.exe 2>/dev/null | sort -V | tail -1)"
-TACVIEW_EXE="$PWD/WP/drive_c/Program Files/Tacview/Tacview64.exe"
+TACVIEW_EXE="$PWD/WP/drive_c/Program Files (x86)/Tacview/Tacview64.exe"
 
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win64
 
 # --- Already installed: just launch ---
 if [ -f "$TACVIEW_EXE" ]; then
-    wine "$TACVIEW_EXE" "$@" 2>/dev/null
+    echo "Starting Tacview..."
+    echo "To open a recording, use File > Open inside Tacview."
+    echo ""
+    wine explorer /desktop=Tacview,1280x800 "$TACVIEW_EXE" "$@" 2>/dev/null
     exit 0
 fi
 
