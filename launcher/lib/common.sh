@@ -100,7 +100,7 @@ is_source_game() {
 is_nonviolent_game() {
     local script="$1"
     case "$script" in
-        CFL/CFL.sh|republic/republic.sh|tacview/tacview.sh) return 0 ;;
+        CFL/CFL.sh|republic/republic.sh) return 0 ;;
         *) return 1 ;;
     esac
 }
