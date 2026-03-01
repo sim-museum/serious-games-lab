@@ -13,16 +13,32 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 export INSTALL_DIR="$PWD/INSTALL"
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
-wine winecfg -v winxp  2>/dev/null 1>/dev/null
+# Set Windows XP mode silently (no GUI)
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
 
 export MA_ISO="$INSTALL_DIR/MA_iso"
 
 # Check if Mig Alley setup exists in the Wine prefix
 if [ -f "$WINEPREFIX/drive_c/rowan/mig/Mig.exe" ]; then
-    # Launch Mig Alley
     # Disable winegstreamer to prevent crash when exiting 3D view
     export WINEDLLOVERRIDES="winegstreamer=d"
+    # ============================================================================
+    # EXIT CRASH: null pointer in rstatic.dll (MFC42 window cleanup)
+    # ============================================================================
+    # Same Rowan engine as Battle of Britain. When exiting the 3D flight view,
+    # custom ActiveX controls (rstatic.dll, rbutton.dll, etc.) attempt to access
+    # freed MFC42 window handles during cleanup, causing a page fault.
+    # This is a bug in the original Rowan engine code, not Wine.
+    #
+    # IMPACT: If the crash happens during campaign mode, the mission result
+    # may not be recorded (the campaign save occurs after the 3D exit).
+    #
+    # PREVENTION: After a 3D mission, do NOT close the game immediately.
+    # Wait for the campaign debrief screen to fully load and the mission
+    # result to be recorded before exiting. The crash is triggered by rapid
+    # window destruction during the 3D-to-2D transition.
+    # ============================================================================
     cd "$WINEPREFIX/drive_c/rowan/mig"
     wine Mig.exe &>/dev/null
     exit 0
@@ -146,15 +162,9 @@ if [ ! -f "$MA_ISO/setup.EXE" ]; then
     exit 1
 fi
 
-# Provide instructions for Wine configuration
+# Install prerequisites
 clear
-echo "In the Wine configuration dialog box, which appears next, select the 'Graphics' tab."
-echo "Select Windows XP as the windows version."
-echo "In the Graphics tab, unselect 'Allow the window manager to decorate the windows'"
-echo "Then select OK to continue the installation.\n"
-echo "Press enter to display the Wine configuration dialog box."
-read -r replyString
-winecfg &>/dev/null
+echo "Installing prerequisites..."
 winetricks vcrun6 &>/dev/null
 wine "$MA_ISO/setup.EXE" &>/dev/null
 clear
@@ -162,7 +172,8 @@ echo "Select 'CANCEL' in the DirectX(R) Setup dialog box, then press ENTER to co
 read -r replyString
 clear
 echo "When Mig Alley starts, select PREFERENCES and set graphics resolution to the highest"
-echo "resolution listed, which is probably 1152x864."
+echo "resolution listed, which is probably 1152x864. Higher resolution is better!"
+echo "If you want higher resolution, use an agent like Claude Code to add it for you."
 echo "Set all other graphics options to maximum values."
 
 # Launch Mig Alley and copy necessary files
