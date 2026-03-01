@@ -10,10 +10,17 @@ TACVIEW_EXE="$PWD/WP/drive_c/Program Files (x86)/Tacview/Tacview64.exe"
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win64
 
-# --- Install Wine Mono if missing (Tacview needs .NET) ---
+# --- Install Wine Mono if missing (Tacview addons need .NET) ---
+MONO_VER="9.0.0"
+MONO_MSI="$HOME/.cache/wine/wine-mono-${MONO_VER}-x86.msi"
 if [ -d "$WINEPREFIX" ] && ! wine uninstaller --list 2>/dev/null | grep -qi mono; then
     echo "Installing Wine Mono (.NET support)..."
-    winetricks -q mono 2>/dev/null
+    if [ ! -f "$MONO_MSI" ]; then
+        mkdir -p "$HOME/.cache/wine"
+        curl -L -o "$MONO_MSI" \
+            "https://dl.winehq.org/wine/wine-mono/${MONO_VER}/wine-mono-${MONO_VER}-x86.msi"
+    fi
+    wine msiexec /i "$MONO_MSI" 2>/dev/null
 fi
 
 # --- Already installed: just launch ---
