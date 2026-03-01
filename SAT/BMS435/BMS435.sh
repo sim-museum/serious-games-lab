@@ -16,10 +16,15 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 # Set the Wine prefix directory
 export WINEPREFIX="$PWD/WP"
 
-# DXVK/Vulkan requires explicit NVIDIA ICD and Esync/Fsync for thread sync
-export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
+# Esync/Fsync for thread sync
 export WINEESYNC=1
 export WINEFSYNC=1
+# Point DXVK at the correct Vulkan ICD for the available GPU
+if [ -f /usr/share/vulkan/icd.d/nvidia_icd.json ]; then
+    export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
+elif [ -f /usr/share/vulkan/icd.d/intel_icd.x86_64.json ]; then
+    export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/intel_icd.x86_64.json
+fi
 
 # Define common directory paths for readability
 export INSTALL_DIR="$PWD/INSTALL"
@@ -30,9 +35,33 @@ if [ -d "$FALCON_DIR" ]; then
     cd "$FALCON_DIR"
     clear
     echo "Starting Falcon BMS 4.35"
-    echo "If BMS fails to start, try running it from the Lutris GUI instead."
     echo ""
-    wine Launcher.exe -nomovie 2>/dev/null 1>/dev/null
+
+    # Try DXVK 2.x first, fall back to DXVK-Sarek if GPU lacks Vulkan 1.3
+    if [ ! -f "$WINEPREFIX/.dxvk_sarek" ]; then
+        wine Launcher.exe -nomovie 2>"$WINEPREFIX/.dxvk_log"
+        if grep -q "No adapters found\|maintenance5\|DXGIFactory" "$WINEPREFIX/.dxvk_log"; then
+            echo "DXVK 2.x not supported on this GPU. Installing DXVK-Sarek fallback..."
+            sarek_ver="v1.11.0"
+            sarek_tar="/tmp/dxvk-sarek-${sarek_ver}.tar.gz"
+            if [ ! -f "$sarek_tar" ]; then
+                gh release download "$sarek_ver" -R pythonlover02/DXVK-Sarek \
+                    -p "dxvk-sarek-${sarek_ver}.tar.gz" -D /tmp 2>/dev/null
+            fi
+            sarek_dir="/tmp/dxvk-sarek-${sarek_ver#v}"
+            [ -d "$sarek_dir" ] || tar xzf "$sarek_tar" -C /tmp
+            cp "$sarek_dir/x64/d3d9.dll" "$WINEPREFIX/drive_c/windows/system32/"
+            cp "$sarek_dir/x64/dxgi.dll" "$WINEPREFIX/drive_c/windows/system32/"
+            cp "$sarek_dir/x64/d3d11.dll" "$WINEPREFIX/drive_c/windows/system32/"
+            cp "$sarek_dir/x64/d3d10core.dll" "$WINEPREFIX/drive_c/windows/system32/"
+            touch "$WINEPREFIX/.dxvk_sarek"
+            echo "DXVK-Sarek installed. Launching BMS..."
+            wine Launcher.exe -nomovie 2>/dev/null
+        fi
+    else
+        wine Launcher.exe -nomovie 2>/dev/null
+    fi
+    rm -f "$WINEPREFIX/.dxvk_log"
     exit 0
 fi
 
