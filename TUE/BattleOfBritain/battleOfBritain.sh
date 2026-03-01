@@ -31,7 +31,8 @@ fi
 # Define variables for readability
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
-wine winecfg -v winxp  2>/dev/null 1>/dev/null
+# Set Windows XP mode silently (no GUI)
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
 export BoB_INSTALL="$PWD/INSTALL"
 
@@ -39,6 +40,23 @@ export BoB_INSTALL="$PWD/INSTALL"
 if [ -f "$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain/bob.exe" ]; then
     # Disable winegstreamer to prevent crash on video playback
     export WINEDLLOVERRIDES="winegstreamer=d"
+    # ============================================================================
+    # EXIT CRASH: null pointer in rstatic.dll (MFC42 window cleanup)
+    # ============================================================================
+    # When exiting the 3D flight view, the game's custom ActiveX controls
+    # (rstatic.dll, rbutton.dll, etc.) attempt to access freed MFC42 window
+    # handles during cleanup, causing a page fault at 0x10a0249b.
+    # This is a bug in the original Rowan engine code, not Wine.
+    #
+    # IMPACT: If the crash happens during campaign mode, the mission result
+    # may not be recorded (the campaign save occurs after the 3D exit).
+    #
+    # PREVENTION: After a 3D mission, do NOT close the game immediately.
+    # Instead, wait for the campaign debrief screen to fully load and the
+    # mission result to be recorded before exiting. The crash is triggered
+    # by rapid window destruction during the 3D-to-2D transition — letting
+    # the debrief screen settle avoids the race condition.
+    # ============================================================================
     wine start /d "C:\\Program Files\\Rowan Software\\Battle Of Britain" bob.exe 2>/dev/null 1>/dev/null
     exit 0
 fi
