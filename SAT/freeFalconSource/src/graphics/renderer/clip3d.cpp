@@ -216,8 +216,14 @@ void Render3D::ClipAndDraw3DFan(ThreeDVertex** vertPointers, unsigned count, int
             }
 #endif
             // Only clockwise triangles are accepted
+            // FF_LINUX: Flip._13 = 1.0f reverses screen-space winding; swap < to >
+#ifdef FF_LINUX
+            if ((((*(v + 1))->y - (*v)->y)) * (((*p)->x - (*v)->x)) >
+                (((*(v + 1))->x - (*v)->x)) * (((*p)->y - (*v)->y)))
+#else
             if ((((*(v + 1))->y - (*v)->y)) * (((*p)->x - (*v)->x)) <
                 (((*(v + 1))->x - (*v)->x)) * (((*p)->y - (*v)->y)))
+#endif
             {
                 // Accept
                 break;
@@ -251,8 +257,14 @@ void Render3D::ClipAndDraw3DFan(ThreeDVertex** vertPointers, unsigned count, int
             }
 #endif
             // Only clockwise triangles are accepted
+            // FF_LINUX: Flip._13 = 1.0f reverses screen-space winding; swap >= to <=
+#ifdef FF_LINUX
+            if ((((*(v + 1))->y - (*v)->y)) * (((*p)->x - (*v)->x)) <=
+                (((*(v + 1))->x - (*v)->x)) * (((*p)->y - (*v)->y)))
+#else
             if ((((*(v + 1))->y - (*v)->y)) * (((*p)->x - (*v)->x)) >=
                 (((*(v + 1))->x - (*v)->x)) * (((*p)->y - (*v)->y)))
+#endif
             {
                 // Reject
                 break;

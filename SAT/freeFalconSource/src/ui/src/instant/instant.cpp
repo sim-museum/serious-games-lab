@@ -962,9 +962,11 @@ static void HookupIAControls(long ID)
 
     if (clk)
     {
-        //clk->SetHour(12);
         //THW 2004-02-18 Random daytime
         hour = (4 + (rand() % 15));
+#ifdef FF_LINUX
+        hour = 12; // FF_LINUX: Fixed noon for consistent testing
+#endif
         clk->SetHour(hour);
 
         //Sunrise ~4:40h, Sunset ~19:10h

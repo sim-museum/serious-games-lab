@@ -1594,7 +1594,10 @@ void CDXEngine::FlushInit(void)
     // Light On
     m_pD3DD->SetRenderState(D3DRENDERSTATE_LIGHTING, TRUE);
     // Culling
-#ifndef DEBUG_ENGINE
+#ifdef FF_LINUX
+    // FF_LINUX_DIAG: Force no culling to test if striping is caused by incorrect cull direction
+    m_pD3DD->SetRenderState(D3DRENDERSTATE_CULLMODE, D3DCULL_NONE);
+#elif !defined(DEBUG_ENGINE)
     m_pD3DD->SetRenderState(D3DRENDERSTATE_CULLMODE, D3DCULL_CW);
 #else
     m_pD3DD->SetRenderState(D3DRENDERSTATE_CULLMODE, (m_bCullEnable) ? D3DCULL_CW : D3DCULL_NONE);

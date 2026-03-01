@@ -1075,6 +1075,18 @@ void ImageBuffer::SwapBuffers(bool bDontFlip)
     extern int doUI;
     extern void FF_SwapBuffers();
     if (!doUI) {
+        // FF_LINUX: Handle screenshot requests (before swap, full frame is rendered)
+        {
+            extern volatile int g_screenshotRequest;
+            extern const char* g_screenshotFilename;
+            if (g_screenshotRequest) {
+                g_screenshotRequest = 0;
+                extern void FF_LogGLState();
+                FF_LogGLState();
+                extern void SaveGLFramebufferAsBMP(const char*);
+                SaveGLFramebufferAsBMP(g_screenshotFilename);
+            }
+        }
         // FF_LINUX: Log per-frame diagnostics and reset counters before presenting
         extern void FF_SimFrameEnd();
         FF_SimFrameEnd();
