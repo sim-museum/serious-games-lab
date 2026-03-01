@@ -339,13 +339,21 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
     cd "$WINEPREFIX/../INSTALL/gpl_additionalCarsets_67F2_CA66/mods/CA66/"
     wine gplcanam1966_1.16.04.12.exe 2>/dev/null 1>/dev/null
     
-    # Configuration instructions for Wine
-    echo ""; echo "In the Wine Configuration dialog, select the Graphics tab."
-    echo "Select Emulate a virtual desktop.  Enter your monitor resolution in the"
-    echo "Desktop size boxes. Then select OK"
-    echo "Press enter to continue to the Wine Configuration dialog"
-    read userInput
-    winecfg 2>/dev/null 1>/dev/null
+    # Configure virtual desktop to match monitor resolution
+    # (replaces interactive winecfg dialog)
+    MONITOR_RES=$(xdpyinfo 2>/dev/null | grep dimensions | awk '{print $2}' | head -1)
+    if [ -z "$MONITOR_RES" ]; then
+        MONITOR_RES=$(xrandr 2>/dev/null | grep '\*' | awk '{print $1}' | head -1)
+    fi
+    if [ -n "$MONITOR_RES" ]; then
+        RES_X=$(echo "$MONITOR_RES" | cut -d'x' -f1)
+        RES_Y=$(echo "$MONITOR_RES" | cut -d'x' -f2)
+        wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\Explorer\\Desktops" /v Default /t REG_SZ /d "${RES_X}x${RES_Y}" /f &>/dev/null
+        wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\Explorer" /v Desktop /t REG_SZ /d Default /f &>/dev/null
+        echo "Virtual desktop configured at ${RES_X}x${RES_Y}"
+    else
+        echo "Could not detect monitor resolution. Run 'winecfg' manually to set virtual desktop."
+    fi
 
 # Close the installation clause
 fi  
