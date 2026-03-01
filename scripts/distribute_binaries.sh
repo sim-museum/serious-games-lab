@@ -79,7 +79,17 @@ move_file "sglBinaries_2" "Xmod 7-18-14.7z"                                     
 move_file "sglBinaries_2" "CFL 15 V2.zip"                                                     "SAT/CFL/INSTALL"
 move_file "sglBinaries_2" "JSGME.exe"                                                          "SAT/CFL/INSTALL"
 move_dir  "sglBinaries_2" "CFLpreinstalled"                                                    "SAT/CFL/INSTALL"
-move_dir  "sglBinaries_2" "BMS432-v41"                                                        "SAT"
+# Move BMS432-v41 contents (WP, INSTALL) into SAT/BMS432/ where the scripts live
+if [ -d "$DL/sglBinaries_2/BMS432-v41" ]; then
+    mkdir -p "$REPO_ROOT/SAT/BMS432"
+    for item in "$DL/sglBinaries_2/BMS432-v41"/*; do
+        [ -e "$item" ] || continue
+        base="$(basename "$item")"
+        if [ ! -e "$REPO_ROOT/SAT/BMS432/$base" ]; then
+            mv "$item" "$REPO_ROOT/SAT/BMS432/" 2>/dev/null || true
+        fi
+    done
+fi
 move_file "sglBinaries_2" "Republic-The-Revolution_Win_EN.exe"                                 "SAT/republic/INSTALL"
 
 # --- sglBinaries_3 ---
@@ -126,7 +136,7 @@ move_file "sglBinaries_7" "Mission_Commander_0.5.20.685.7z"                     
 move_file "sglBinaries_7" "Weapon_Delivery_Planner_3.7.19.208.7z"                           "SAT/BMS435/INSTALL"
 move_file "sglBinaries_7" "Somalia 4.35.3.rar"                                               "SAT/BMS435/INSTALL"
 move_file "sglBinaries_7" "Taiwan 4.35.3.rar"                                                "SAT/BMS435/INSTALL"
-move_file "sglBinaries_7" "Tacview187Setup.exe"                                              "SAT/INSTALL"
+move_file "sglBinaries_7" "Tacview187Setup.exe"                                              "SAT/tacview/INSTALL"
 
 # Remove "(copy)" duplicate files left behind in sglBinaries dirs
 for d in "$DL"/sglBinaries_*/; do
