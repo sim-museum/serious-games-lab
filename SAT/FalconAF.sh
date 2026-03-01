@@ -57,6 +57,6 @@ if [ ! -f "$FALCON_EXE_PATH" ]; then
     fi
 fi
 
-# Launch FalconAF
-wine "$FALCON_EXE_PATH" 2>/dev/null 1>/dev/null
+# Launch FalconAF in virtual desktop (prevents black screen fullscreen capture)
+wine explorer /desktop=FalconAF,1024x768 "$FALCON_EXE_PATH" 2>/dev/null 1>/dev/null
 
