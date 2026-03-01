@@ -210,9 +210,11 @@ echo " "; echo "Setting resolution on monitors to maximum resolution to avoid Ba
 wine "Z:$(echo "$BoB_INSTALL/BoB_iso/Setup.exe" | sed 's|/|\\|g')" 2>/dev/null 1>/dev/null
 
 # Installation instructions
-echo "When Battle of Britain starts, select PC CONFIG and set graphics resolution to 1440x1050."
-echo "If 1440x1050 is not listed, use an agent like Claude Code to add it for you."
-echo "Higher resolution is better! Set all other graphics options to maximum values."
+echo "When Battle of Britain starts, select PC CONFIG and set graphics resolution to the highest"
+echo "available. BoB resolution is limited only by your monitor and graphics card — 3840x2160"
+echo "has been achieved and looks great. If your desired resolution is not listed, use an agent"
+echo "like Claude Code to add it for you. Higher resolution is better!"
+echo "Set all other graphics options to maximum values."
 echo "If the mouse cursor disappears, hold down"
 echo "CTRL F6 to show the mouse cursor. To view online documentation, install wine gecko when"
 echo "prompted. If asked to wait or force quit, use <ALT> TAB to find this gecko prompt dialog."

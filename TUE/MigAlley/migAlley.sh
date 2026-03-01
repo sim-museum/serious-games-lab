@@ -171,9 +171,9 @@ clear
 echo "Select 'CANCEL' in the DirectX(R) Setup dialog box, then press ENTER to continue."
 read -r replyString
 clear
-echo "When Mig Alley starts, select PREFERENCES and set graphics resolution to the highest"
-echo "resolution listed, which is probably 1152x864. Higher resolution is better!"
-echo "If you want higher resolution, use an agent like Claude Code to add it for you."
+echo "When Mig Alley starts, select PREFERENCES and set graphics resolution to 1440x1050."
+echo "If 1440x1050 is not listed, use an agent like Claude Code to add it for you."
+echo "Higher resolution is better! Max resolution for Mig Alley is 1440x1050."
 echo "Set all other graphics options to maximum values."
 
 # Launch Mig Alley and copy necessary files
