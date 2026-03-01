@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # install_binaries.sh - Extract sglBinaries archives into downloads/
 #
-# Scans downloads/ for sglBinaries_*.tar.gz files.
-# Extracts into downloads/ (not the repo tree), creates .extracted_* marker.
+# Scans downloads/ for sglBinaries_*.tar.gz files and pre-extracted
+# sglBinaries_*/ directories.
+# Extracts archives into downloads/ (not the repo tree), creates .extracted_* marker.
 # After extraction, runs distribute_binaries.sh to move files to game INSTALL/ dirs.
 #
 # Usage:
-#   install_binaries.sh              # Process all pending archives
+#   install_binaries.sh              # Process all pending archives/dirs
 #   install_binaries.sh <file.tar.gz>  # Process a specific archive
 
 set -euo pipefail
@@ -15,6 +16,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 mkdir -p "$DOWNLOADS_DIR"
+
+# Marker file path for a given sglBinaries name (e.g. "sglBinaries_1")
+_marker_for() {
+    echo "$DOWNLOADS_DIR/.extracted_${1}.tar.gz"
+}
 
 extract_archive() {
     local archive="$1"
@@ -71,10 +77,25 @@ for f in "$DOWNLOADS_DIR"/sglBinaries_*.tar.gz; do
     fi
 done
 
+# Handle pre-extracted directories (sglBinaries_N/ placed directly in downloads/)
+for d in "$DOWNLOADS_DIR"/sglBinaries_*/; do
+    [[ -d "$d" ]] || continue
+    found=1
+    base="$(basename "$d")"
+    marker="$(_marker_for "$base")"
+    if [[ -f "$marker" ]]; then
+        msg_ok "Already processed: $base/"
+    else
+        msg_info "Found pre-extracted directory: $base/"
+        touch "$marker"
+        msg_ok "Marked as ready: $base/"
+    fi
+done
+
 if [[ $found -eq 0 ]]; then
-    msg_warn "No sglBinaries archives found in $DOWNLOADS_DIR/"
+    msg_warn "No sglBinaries archives or directories found in $DOWNLOADS_DIR/"
     echo ""
-    echo "  Place sglBinaries_*.tar.gz files in: $DOWNLOADS_DIR/"
+    echo "  Place sglBinaries_*.tar.gz or sglBinaries_*/ directories in: $DOWNLOADS_DIR/"
     echo ""
     echo "  Available archives (see config/binary_archives.txt):"
     if [[ -f "$CONFIG_DIR/binary_archives.txt" ]]; then

@@ -48,9 +48,9 @@ echo "Distributing binary files to game INSTALL directories..."
 # --ignore-existing ensures repo-tracked files are never overwritten
 #
 # sglBinaries_1 uses the original day-theme mapping which differs from the current one:
-#   archive MON (bridge) -> repo FRI,  archive TUE (racing) -> repo THU,
-#   archive THU (hist flight) -> repo TUE,  archive FRI (go) -> repo SUN,
-#   archive SUN (poker) -> repo MON.  WED and SAT are unchanged.
+#   archive MON (bridge) -> repo FRI,  archive FRI (go) -> repo SUN,
+#   archive SUN (poker) -> repo MON.
+#   TUE, WED, THU, SAT are unchanged.
 if [ -d "$DL/sglBinaries_1" ]; then
     echo "  Syncing sglBinaries_1 into repo tree..."
     # Remap day directories from archive layout to current layout
@@ -58,11 +58,9 @@ if [ -d "$DL/sglBinaries_1" ]; then
         [ -d "$DL/sglBinaries_1/$src_day" ] || continue
         case "$src_day" in
             MON) dest_day="FRI" ;;   # bridge
-            TUE) dest_day="THU" ;;   # racing
-            THU) dest_day="TUE" ;;   # hist flight
             FRI) dest_day="SUN" ;;   # go
             SUN) dest_day="MON" ;;   # poker
-            *)   dest_day="$src_day" ;;  # WED, SAT unchanged
+            *)   dest_day="$src_day" ;;  # TUE, WED, THU, SAT unchanged
         esac
         rsync -a --ignore-existing "$DL/sglBinaries_1/$src_day/" "$REPO_ROOT/$dest_day/"
     done
