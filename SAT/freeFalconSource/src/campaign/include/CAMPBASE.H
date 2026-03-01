@@ -1,1 +1,0 @@
-campbase.h

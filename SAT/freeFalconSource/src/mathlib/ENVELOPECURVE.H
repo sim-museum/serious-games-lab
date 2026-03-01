@@ -1,1 +1,0 @@
-envelopecurve.h

@@ -1,1 +1,0 @@
-cbitmap.h

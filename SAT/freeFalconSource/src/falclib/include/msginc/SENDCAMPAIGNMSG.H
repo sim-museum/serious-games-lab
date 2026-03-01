@@ -1,1 +1,0 @@
-sendcampaignmsg.h

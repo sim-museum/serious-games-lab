@@ -1,1 +1,0 @@
-landingmessage.h

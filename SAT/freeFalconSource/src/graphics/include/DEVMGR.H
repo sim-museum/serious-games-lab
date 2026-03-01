@@ -1,1 +1,0 @@
-Devmgr.h

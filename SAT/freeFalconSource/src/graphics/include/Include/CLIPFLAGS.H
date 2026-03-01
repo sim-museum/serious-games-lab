@@ -1,1 +1,0 @@
-../clipflags.h

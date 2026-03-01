@@ -1,1 +1,0 @@
-inpFunc.h
