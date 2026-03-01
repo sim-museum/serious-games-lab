@@ -10,6 +10,12 @@ TACVIEW_EXE="$PWD/WP/drive_c/Program Files (x86)/Tacview/Tacview64.exe"
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win64
 
+# --- Install Wine Mono if missing (Tacview needs .NET) ---
+if [ -d "$WINEPREFIX" ] && ! wine uninstaller --list 2>/dev/null | grep -qi mono; then
+    echo "Installing Wine Mono (.NET support)..."
+    winetricks -q mono 2>/dev/null
+fi
+
 # --- Already installed: just launch ---
 if [ -f "$TACVIEW_EXE" ]; then
     echo "Starting Tacview..."
