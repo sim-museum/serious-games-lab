@@ -96,9 +96,33 @@ if [[ -d "$GAME_DIR" && -f "$GAME_DIR/mainapp.exe" ]]; then
         done
     ) &
 
-    # Use Wine's built-in D3D9 (OpenGL) instead of DXVK (Vulkan) —
-    # DXVK requires Vulkan 1.3 which Intel HD 620 lacks.
-    WINEDLLOVERRIDES="d3d9,dxgi=b" wine explorer /desktop=CFL,1024x768 ./mainapp.exe 2>/dev/null
+    # Try DXVK 2.x first, fall back to DXVK-Sarek if GPU lacks Vulkan 1.3
+    if [ ! -f "$WINEPREFIX/.dxvk_sarek" ]; then
+        WINEDLLOVERRIDES="d3d9,d3d11,dxgi=n,b" \
+            wine explorer /desktop=CFL,1024x768 ./mainapp.exe 2>"$WINEPREFIX/.dxvk_log"
+        if grep -q "No adapters found\|maintenance5\|DXGIFactory" "$WINEPREFIX/.dxvk_log"; then
+            echo "DXVK 2.x not supported on this GPU. Installing DXVK-Sarek fallback..."
+            sarek_ver="v1.11.0"
+            sarek_tar="/tmp/dxvk-sarek-${sarek_ver}.tar.gz"
+            if [ ! -f "$sarek_tar" ]; then
+                gh release download "$sarek_ver" -R pythonlover02/DXVK-Sarek \
+                    -p "dxvk-sarek-${sarek_ver}.tar.gz" -D /tmp 2>/dev/null
+            fi
+            sarek_dir="/tmp/dxvk-sarek-${sarek_ver#v}"
+            [ -d "$sarek_dir" ] || tar xzf "$sarek_tar" -C /tmp
+            cp "$sarek_dir/x32/d3d9.dll" "$WINEPREFIX/drive_c/windows/system32/"
+            cp "$sarek_dir/x32/dxgi.dll" "$WINEPREFIX/drive_c/windows/system32/"
+            cp "$sarek_dir/x32/d3d11.dll" "$WINEPREFIX/drive_c/windows/system32/"
+            touch "$WINEPREFIX/.dxvk_sarek"
+            echo "DXVK-Sarek installed. Launching CFL..."
+            WINEDLLOVERRIDES="d3d9,d3d11,dxgi=n,b" \
+                wine explorer /desktop=CFL,1024x768 ./mainapp.exe 2>/dev/null
+        fi
+    else
+        WINEDLLOVERRIDES="d3d9,d3d11,dxgi=n,b" \
+            wine explorer /desktop=CFL,1024x768 ./mainapp.exe 2>/dev/null
+    fi
+    rm -f "$WINEPREFIX/.dxvk_log"
     exit 0
 fi
 
