@@ -71,13 +71,13 @@ if [ -d "$DL/sglBinaries_1" ]; then
 fi
 
 # --- sglBinaries_2 ---
-move_file "sglBinaries_2" "Madden-NFL-08_Win_EN_US-ISO.zip"                                    "SAT/CFL/INSTALL"
-move_file "sglBinaries_2" "Madden-NFL-08_Patch_Win_EN_v3-US.zip"                               "SAT/CFL/INSTALL"
-move_file "sglBinaries_2" "Madden-NFL-08_NoCD_Win_EN_NoDVD.zip"                                "SAT/CFL/INSTALL"
-move_file "sglBinaries_2" "Madden-NFL-08_Misc_Win_EN_Serial-keys.txt"                          "SAT/CFL/INSTALL"
-move_file "sglBinaries_2" "Xmod 7-18-14.7z"                                                   "SAT/CFL/INSTALL"
-move_file "sglBinaries_2" "CFL 15 V2.zip"                                                     "SAT/CFL/INSTALL"
-move_file "sglBinaries_2" "JSGME.exe"                                                          "SAT/CFL/INSTALL"
+move_file "sglBinaries_2/CFL" "Madden-NFL-08_Win_EN_US-ISO.zip"                                "SAT/CFL/INSTALL"
+move_file "sglBinaries_2/CFL" "Madden-NFL-08_Patch_Win_EN_v3-US.zip"                           "SAT/CFL/INSTALL"
+move_file "sglBinaries_2/CFL" "Madden-NFL-08_NoCD_Win_EN_NoDVD.zip"                            "SAT/CFL/INSTALL"
+move_file "sglBinaries_2/CFL" "Madden-NFL-08_Misc_Win_EN_Serial-keys.txt"                      "SAT/CFL/INSTALL"
+move_file "sglBinaries_2/CFL" "Xmod 7-18-14.7z"                                               "SAT/CFL/INSTALL"
+move_file "sglBinaries_2/CFL" "CFL 15 V2.zip"                                                 "SAT/CFL/INSTALL"
+move_file "sglBinaries_2/CFL" "JSGME.exe"                                                     "SAT/CFL/INSTALL"
 move_dir  "sglBinaries_2" "CFLpreinstalled"                                                    "SAT/CFL/INSTALL"
 # Move BMS432-v41 contents (WP, INSTALL) into SAT/BMS432/ where the scripts live
 if [ -d "$DL/sglBinaries_2/BMS432-v41" ]; then
