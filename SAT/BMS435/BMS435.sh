@@ -41,6 +41,7 @@ if [ -d "$FALCON_DIR" ]; then
     if [ ! -f "$WINEPREFIX/.dxvk_sarek" ]; then
         wine Launcher.exe -nomovie 2>"$WINEPREFIX/.dxvk_log"
         if grep -q "No adapters found\|maintenance5\|DXGIFactory" "$WINEPREFIX/.dxvk_log"; then
+            wineserver -k 2>/dev/null || true
             echo "DXVK 2.x not supported on this GPU. Installing DXVK-Sarek fallback..."
             sarek_ver="v1.11.0"
             sarek_tar="/tmp/dxvk-sarek-${sarek_ver}.tar.gz"
