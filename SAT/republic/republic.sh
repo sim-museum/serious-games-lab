@@ -1,6 +1,6 @@
 #!/bin/bash
 # Republic: The Revolution (2003) - Elixir Studios / Demis Hassabis
-# GOG edition, runs via Wine with DXVK (DX8 → Vulkan)
+# GOG edition, runs via Wine with DXVK (D3D8 → Vulkan)
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -20,18 +20,11 @@ find_exe() {
     GAME_EXE_DIR="$(dirname "$GAME_EXE")"
 }
 
-# Configure Wine prefix for virtual desktop (prevents game from crashing desktop)
-setup_virtual_desktop() {
-    wine reg add "HKCU\\Software\\Wine\\Explorer\\Desktops" /v Default /t REG_SZ /d 1024x768 /f 2>/dev/null
-    wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v d3d8 /t REG_SZ /d native /f 2>/dev/null
-    wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v d3d9 /t REG_SZ /d native /f 2>/dev/null
-    wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v dxgi /t REG_SZ /d native /f 2>/dev/null
-}
-
 # --- Already installed: just launch ---
 if find_exe 2>/dev/null && [ -d "$WINEPREFIX" ]; then
     cd "$GAME_EXE_DIR"
-    wine Republic.exe
+    wine explorer /desktop=Republic,1024x768 Republic.exe 2>/dev/null
+    wineserver -k 2>/dev/null
     exit 0
 fi
 
@@ -78,13 +71,17 @@ cp "$DXVK_DIR/d3d8.dll" "$GAME_EXE_DIR/"
 cp "$DXVK_DIR/d3d9.dll" "$GAME_EXE_DIR/"
 cp "$DXVK_DIR/dxgi.dll" "$GAME_EXE_DIR/"
 
+# Create DXVK config to force windowed mode (fixes mouse input)
+cat > "$GAME_EXE_DIR/dxvk.conf" << 'DXVKEOF'
+d3d9.forceWindowed = True
+DXVKEOF
+
 # Create Wine prefix
 echo "Creating Wine prefix..."
 wineboot --init 2>/dev/null
 sleep 2
 wine reg add "HKCU\\Software\\Wine" /v Version /t REG_SZ /d winxp /f 2>/dev/null
-setup_virtual_desktop
 
 # Launch
 cd "$GAME_EXE_DIR"
-wine Republic.exe
+wine explorer /desktop=Republic,1024x768 Republic.exe 2>/dev/null
