@@ -101,6 +101,7 @@ if [[ -d "$GAME_DIR" && -f "$GAME_DIR/mainapp.exe" ]]; then
         WINEDLLOVERRIDES="d3d9,d3d11,dxgi=n,b" \
             wine explorer /desktop=CFL,1024x768 ./mainapp.exe 2>"$WINEPREFIX/.dxvk_log"
         if grep -q "No adapters found\|maintenance5\|DXGIFactory" "$WINEPREFIX/.dxvk_log"; then
+            wineserver -k 2>/dev/null || true
             echo "DXVK 2.x not supported on this GPU. Installing DXVK-Sarek fallback..."
             sarek_ver="v1.11.0"
             sarek_tar="/tmp/dxvk-sarek-${sarek_ver}.tar.gz"
