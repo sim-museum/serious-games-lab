@@ -49,7 +49,7 @@ if [ -d "$FALCON_DIR" ]; then
                 gh release download "$sarek_ver" -R pythonlover02/DXVK-Sarek \
                     -p "dxvk-sarek-${sarek_ver}.tar.gz" -D /tmp 2>/dev/null
             fi
-            sarek_dir="/tmp/dxvk-sarek-${sarek_ver#v}"
+            sarek_dir="/tmp/dxvk-sarek-${sarek_ver}"
             [ -d "$sarek_dir" ] || tar xzf "$sarek_tar" -C /tmp
             cp "$sarek_dir/x64/d3d9.dll" "$WINEPREFIX/drive_c/windows/system32/"
             cp "$sarek_dir/x64/dxgi.dll" "$WINEPREFIX/drive_c/windows/system32/"
