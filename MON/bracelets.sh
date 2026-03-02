@@ -33,7 +33,27 @@ export install_dir="$WINEPREFIX/../INSTALL"
 # Check if the game executable exists
 if [ -f "$game_dir/WSOPBFTB.exe" ]; then
     cd "$game_dir"
-    wine WSOPBFTB.exe &>/dev/null
+
+    # Install DXVK-Sarek on first run (Vulkan 1.1 compatible, speeds up D3D9)
+    if [ ! -f "$WINEPREFIX/.dxvk_sarek" ]; then
+        echo "Installing DXVK-Sarek for Vulkan acceleration..."
+        sarek_ver="v1.11.0"
+        sarek_tar="/tmp/dxvk-sarek-${sarek_ver}.tar.gz"
+        if [ ! -f "$sarek_tar" ]; then
+            gh release download "$sarek_ver" -R pythonlover02/DXVK-Sarek \
+                -p "dxvk-sarek-${sarek_ver}.tar.gz" -D /tmp 2>/dev/null
+        fi
+        sarek_dir="/tmp/dxvk-sarek-${sarek_ver}"
+        [ -d "$sarek_dir" ] || tar xzf "$sarek_tar" -C /tmp
+        cp "$sarek_dir/x32/d3d9.dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null
+        cp "$sarek_dir/x32/dxgi.dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null
+        cp "$sarek_dir/x32/d3d11.dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null
+        wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v d3d9 /t REG_SZ /d native /f 2>/dev/null
+        wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v dxgi /t REG_SZ /d native /f 2>/dev/null
+        touch "$WINEPREFIX/.dxvk_sarek"
+    fi
+
+    WINEDLLOVERRIDES="d3d9,dxgi=n,b" wine WSOPBFTB.exe &>/dev/null
     cd "$WINEPREFIX/.."
 
     # Clear the screen and display game overview
