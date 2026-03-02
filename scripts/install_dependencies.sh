@@ -189,7 +189,7 @@ echo "Installing simulation and utility packages..."
 apt-get install -y \
     dosbox \
     libfuse2t64 \
-    bchunk unrar 7zip \
+    bchunk unrar 7zip innoextract \
     vim okular filelight \
     cabextract p7zip-full unzip xdg-utils
 
