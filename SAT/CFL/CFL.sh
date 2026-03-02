@@ -96,7 +96,9 @@ if [[ -d "$GAME_DIR" && -f "$GAME_DIR/mainapp.exe" ]]; then
         done
     ) &
 
-    wine explorer /desktop=CFL,1024x768 ./mainapp.exe 2>/dev/null
+    # Use Wine's built-in D3D9 (OpenGL) instead of DXVK (Vulkan) —
+    # DXVK requires Vulkan 1.3 which Intel HD 620 lacks.
+    WINEDLLOVERRIDES="d3d9,dxgi=b" wine explorer /desktop=CFL,1024x768 ./mainapp.exe 2>/dev/null
     exit 0
 fi
 
