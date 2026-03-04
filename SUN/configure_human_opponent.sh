@@ -78,6 +78,11 @@ cp "$TEMPLATE_CFG" "$CONFIG_FILE"
 # We replace it with our chosen profile
 sed -i "s/^humanSLProfile = .*/humanSLProfile = $PROFILE/" "$CONFIG_FILE"
 
+# Set logDir to an absolute path so KataGo works regardless of CWD
+# (Sabaki and other GUIs launch KataGo from their own working directory)
+mkdir -p "$KATAGO_DIR/gtp_logs"
+sed -i "s|^logDir = .*|logDir = $KATAGO_DIR/gtp_logs|" "$CONFIG_FILE"
+
 echo "Created config file: $CONFIG_FILE"
 
 # Build the engine command
