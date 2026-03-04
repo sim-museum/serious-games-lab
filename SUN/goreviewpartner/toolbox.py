@@ -1289,7 +1289,8 @@ def bot_starting_procedure(bot_name,bot_gtp_name,bot_gtp,sgf_g,profile,silentfai
 
 		if bot_gtp_name!='GtpBot':
 			if answer!=bot_gtp_name:
-				raise GRPException((_("%s did not identify itself as expected:")%bot_name)+"\n'"+bot_gtp_name+"' != '"+answer+"'")
+				log("Note: engine identified as '"+answer+"' (expected '"+bot_gtp_name+"'), proceeding anyway")
+				bot_gtp_name=answer
 		else:
 			bot_gtp_name=answer
 
