@@ -41,41 +41,52 @@ if ! python3 -c "import tkinter" 2>/dev/null; then
     sudo apt-get install -y python3-tk
 fi
 
-# Auto-configure Leela Zero in GoReviewPartner's config.ini
-GRP_CONFIG="$GRP_DIR/config.ini"
-LEELAZ_CMD="$(command -v leelaz)"
-LEELAZ_PARAMS="--gtp --noponder --weights $LEELAZ_WEIGHTS"
-if [[ -f "$GRP_CONFIG" ]] && grep -q "^\[LeelaZero-0\]" "$GRP_CONFIG"; then
-    python3 -c "
-import configparser, sys
-cfg = configparser.ConfigParser()
-cfg.read('$GRP_CONFIG')
-for section in cfg.sections():
-    if section.startswith('LeelaZero-'):
-        cfg.set(section, 'command', '$LEELAZ_CMD')
-        cfg.set(section, 'parameters', '$LEELAZ_PARAMS')
-with open('$GRP_CONFIG', 'w') as f:
-    cfg.write(f)
-"
-fi
-
 # --- KataGo engine (via ensure_katago.sh) ---
 source "$SCRIPT_DIR/ensure_katago.sh"
 
-if [[ -x "$KATAGO_BIN" && -f "$MAIN_MODEL" && -f "$ANALYSIS_CFG" && -f "$GRP_CONFIG" ]]; then
-    python3 -c "
-import configparser
+# Auto-configure engines in GoReviewPartner's config.ini
+GRP_CONFIG="$GRP_DIR/config.ini"
+LEELAZ_CMD="$(command -v leelaz)"
+LEELAZ_PARAMS="--gtp --noponder --weights $LEELAZ_WEIGHTS"
+KATAGO_GTP_CFG="$KATAGO_DIR/default_gtp.cfg"
+KATAGO_LOG_DIR="$KATAGO_DIR/gtp_logs"
+mkdir -p "$KATAGO_LOG_DIR"
+
+if [[ -f "$GRP_CONFIG" ]]; then
+    python3 - "$GRP_CONFIG" "$LEELAZ_CMD" "$LEELAZ_PARAMS" "$KATAGO_BIN" "$MAIN_MODEL" "$KATAGO_GTP_CFG" "$KATAGO_LOG_DIR" << 'PYEOF'
+import configparser, sys
+config_path, leelaz_cmd, leelaz_params, katago_bin, main_model, katago_cfg, katago_logdir = sys.argv[1:8]
 cfg = configparser.ConfigParser()
-cfg.read('$GRP_CONFIG')
+cfg.read(config_path)
+
+# Configure Leela Zero profiles (19x19 only)
+for section in cfg.sections():
+    if section.startswith('LeelaZero-') and section != 'LeelaZero-2':
+        cfg.set(section, 'command', leelaz_cmd)
+        cfg.set(section, 'parameters', leelaz_params)
+
+# Configure KataGo as a LeelaZero profile (supports all board sizes)
+section = 'LeelaZero-2'
+if not cfg.has_section(section):
+    cfg.add_section(section)
+cfg.set(section, 'profile', 'KataGo (all board sizes)')
+cfg.set(section, 'command', katago_bin)
+cfg.set(section, 'parameters',
+    f'gtp -model {main_model} -config {katago_cfg} -override-config logDir={katago_logdir}')
+cfg.set(section, 'timepermove', '10')
+
+# Also keep KataGo as a GTP bot for live play
 section = 'GTP bot-0'
 if not cfg.has_section(section):
     cfg.add_section(section)
 cfg.set(section, 'profile', 'KataGo')
-cfg.set(section, 'command', '$KATAGO_BIN')
-cfg.set(section, 'parameters', 'gtp -model $MAIN_MODEL -config $ANALYSIS_CFG')
-with open('$GRP_CONFIG', 'w') as f:
+cfg.set(section, 'command', katago_bin)
+cfg.set(section, 'parameters',
+    f'gtp -model {main_model} -config {katago_cfg} -override-config logDir={katago_logdir}')
+
+with open(config_path, 'w') as f:
     cfg.write(f)
-"
+PYEOF
 fi
 
 cd "$GRP_DIR"
