@@ -6,7 +6,7 @@ KATAGO_DIR="$ROOT/katago"
 GUI_DIR="$ROOT/gui"
 
 # KataGo version and URLs
-KATAGO_VERSION="1.15.3"
+KATAGO_VERSION="1.16.4"
 KATAGO_TARBALL="katago-v${KATAGO_VERSION}-opencl-linux-x64.zip"
 KATAGO_URL="https://github.com/lightvector/KataGo/releases/download/v${KATAGO_VERSION}/${KATAGO_TARBALL}"
 HUMANSL_MODEL_URL="https://github.com/lightvector/KataGo/releases/download/v1.15.0/b18c384nbt-humanv0.bin.gz"
@@ -52,6 +52,17 @@ if [[ -d "$KATAGO_DIR/katago-v${KATAGO_VERSION}-opencl-linux-x64" ]]; then
 fi
 
 chmod +x "$KATAGO_DIR/katago"
+
+# Verify the binary actually runs on this system
+if "$KATAGO_DIR/katago" version &>/dev/null; then
+    echo "KataGo binary verified."
+else
+    echo "WARNING: Downloaded KataGo binary has missing libraries:"
+    ldd "$KATAGO_DIR/katago" 2>/dev/null | grep "not found" || true
+    echo "Falling back to CPU build from source..."
+    rm -f "$KATAGO_DIR/katago"
+    bash "$(dirname "$0")/build_katago_cpu.sh"
+fi
 
 echo "Downloading Human SL model..."
 download "$HUMANSL_MODEL_URL" "$KATAGO_DIR/b18c384nbt-humanv0.bin.gz"
