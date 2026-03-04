@@ -352,24 +352,48 @@ class Leela_Zero_gtp(gtp):
 					if err_line[0]==" ":
 						#log(err_line)
 						variation=Variation()
-						
+
 						one_answer=err_line.strip().split(" ")[0]
 						variation["first move"]=one_answer
-						
+
 						nodes=err_line.strip().split("(")[0].split("->")[1].replace(" ","")
 						variation["playouts"]=nodes
-						
+
 						value_network=err_line.split("(V:")[1].split('%')[0].strip()+"%"
 						variation["value network win rate"]=value_network #for Leela Zero, the value network is used as win rate
-						
+
 						policy_network=err_line.split("(N:")[1].split('%)')[0].strip()+"%"
 						variation["policy network value"]=policy_network
-						
+
 						sequence=err_line.split("PV: ")[1].strip()
 						variation["sequence"]=sequence.upper()
-						
+
 						#answers=[[one_answer,sequence,value_network,policy_network,nodes]]+answers
 						position_evaluation['variations']=[variation]+position_evaluation['variations']
+				# KataGo stderr format:
+				# C4  : T  75.38c W  78.10c S ... P 11.58% ... N     274  --  C4 E3 C6
+				elif " : T " in err_line and " -- " in err_line and " N " in err_line:
+					import re
+					variation=Variation()
+					one_answer=err_line.strip().split()[0]
+					variation["first move"]=one_answer
+					# winrate from W field (centipawns, convert to percentage)
+					w_match=re.search(r'W\s+(-?[\d.]+)c', err_line)
+					if w_match:
+						winrate_cp=float(w_match.group(1))
+						variation["value network win rate"]="%.2f%%"%((winrate_cp+100)/2)
+					# policy from P field
+					p_match=re.search(r'P\s+([\d.]+)%', err_line)
+					if p_match:
+						variation["policy network value"]=p_match.group(1)+"%"
+					# visits from N field
+					n_match=re.search(r'N\s+(\d+)', err_line)
+					if n_match:
+						variation["playouts"]=n_match.group(1)
+					# PV sequence after --
+					pv=err_line.split(" -- ")[1].strip()
+					variation["sequence"]=pv.upper()
+					position_evaluation['variations']=[variation]+position_evaluation['variations']
 			except:
 				pass
 

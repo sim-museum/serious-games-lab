@@ -72,7 +72,7 @@ if not cfg.has_section(section):
 cfg.set(section, 'profile', 'KataGo (all board sizes)')
 cfg.set(section, 'command', katago_bin)
 cfg.set(section, 'parameters',
-    f'gtp -model {main_model} -config {katago_cfg} -override-config logDir={katago_logdir}')
+    f'gtp -model {main_model} -config {katago_cfg} -override-config logDir={katago_logdir},logToStderr=true,logSearchInfo=true')
 cfg.set(section, 'timepermove', '10')
 
 # Also keep KataGo as a GTP bot for live play
