@@ -144,7 +144,7 @@ class LeelaZeroAnalysis():
 		heat_map=""
 		for i in range(self.size):
 			for j in range(self.size):
-				if raw_heat_map[i][j]>=0.01:#ignore values lower than 1% to avoid generating heavy RSGF file
+				if isinstance(raw_heat_map[i][j],(int,float)) and raw_heat_map[i][j]>=0.01:#ignore values lower than 1% to avoid generating heavy RSGF file
 					heat_map+=ij2sgf([i, j])+str(round(raw_heat_map[i][j],2))+","
 		
 		if heat_map:
