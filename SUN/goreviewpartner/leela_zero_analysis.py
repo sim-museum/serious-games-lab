@@ -20,11 +20,12 @@ class LeelaZeroAnalysis():
 		log("move",str(current_move))
 		
 		#additional_comments=""
+		engine_name=getattr(leela_zero,'bot_name','Leela Zero')
 		if player_color in ('w',"W"):
-			log("leela Zero play white")
+			log(engine_name,"play white")
 			answer=leela_zero.play_white()
 		else:
-			log("leela Zero play black")
+			log(engine_name,"play black")
 			answer=leela_zero.play_black()
 		
 		if current_move>1:
