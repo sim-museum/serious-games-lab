@@ -64,6 +64,20 @@ if [ -d "$DL/sglBinaries_1" ]; then
         esac
         rsync -a --ignore-existing "$DL/sglBinaries_1/$src_day/" "$REPO_ROOT/$dest_day/"
     done
+    # The archive's day directories mix content from old day assignments.
+    # After rsync, move misplaced INSTALL files to their correct homes.
+    # Poker files (archive MON/) land in FRI/ but belong in MON/:
+    for poker_file in PokerStoveSetup124.exe World-Series-of-Poker-2008-Battle-for-the-Bracelets_Win_EN; do
+        if [ -e "$REPO_ROOT/FRI/INSTALL/$poker_file" ] && [ ! -e "$REPO_ROOT/MON/INSTALL/$poker_file" ]; then
+            mkdir -p "$REPO_ROOT/MON/INSTALL"
+            mv "$REPO_ROOT/FRI/INSTALL/$poker_file" "$REPO_ROOT/MON/INSTALL/"
+        fi
+    done
+    # igowin (Go game, archive SUN/) lands in MON/ but belongs in SUN/:
+    if [ -e "$REPO_ROOT/MON/INSTALL/igowin" ] && [ ! -e "$REPO_ROOT/SUN/INSTALL/igowin" ]; then
+        mkdir -p "$REPO_ROOT/SUN/INSTALL"
+        mv "$REPO_ROOT/MON/INSTALL/igowin" "$REPO_ROOT/SUN/INSTALL/"
+    fi
     # Sync non-day files (debs, etc.) directly
     rsync -a --ignore-existing --exclude='MON/' --exclude='TUE/' --exclude='WED/' \
         --exclude='THU/' --exclude='FRI/' --exclude='SAT/' --exclude='SUN/' \
