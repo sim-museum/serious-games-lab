@@ -44,40 +44,28 @@ move_dir() {
 echo "Distributing binary files to game INSTALL directories..."
 
 # --- sglBinaries_1 ---
-# Sync full directory tree into repo (scripts, DOC, LINUX binaries, INSTALL dirs, etc.)
-# --ignore-existing ensures repo-tracked files are never overwritten
+# The archive uses an old day-theme mapping (MON=poker, FRI=go, SUN=bridge) that
+# differs from the current repo (MON=poker, FRI=bridge, SUN=go). Scripts and DOC
+# files are already tracked in the repo at their correct locations, so we only
+# sync INSTALL/ directories (binary data) and .deb packages from the archive.
 #
-# sglBinaries_1 uses the original day-theme mapping which differs from the current one:
-#   archive MON (bridge) -> repo FRI,  archive FRI (go) -> repo SUN,
-#   archive SUN (poker) -> repo MON.
-#   TUE, WED, THU, SAT are unchanged.
+# Archive day → repo day mapping for INSTALL dirs:
+#   archive MON/INSTALL (poker installers) → repo MON/INSTALL
+#   archive FRI/INSTALL (go installers)    → repo SUN/INSTALL
+#   archive SUN/INSTALL (igowin)           → repo SUN/INSTALL
+#   TUE, WED, THU, SAT                    → unchanged
 if [ -d "$DL/sglBinaries_1" ]; then
-    echo "  Syncing sglBinaries_1 into repo tree..."
-    # Remap day directories from archive layout to current layout
+    echo "  Distributing sglBinaries_1 INSTALL files..."
     for src_day in MON TUE WED THU FRI SAT SUN; do
-        [ -d "$DL/sglBinaries_1/$src_day" ] || continue
+        [ -d "$DL/sglBinaries_1/$src_day/INSTALL" ] || continue
         case "$src_day" in
-            MON) dest_day="FRI" ;;   # bridge
-            FRI) dest_day="SUN" ;;   # go
-            SUN) dest_day="MON" ;;   # poker
-            *)   dest_day="$src_day" ;;  # TUE, WED, THU, SAT unchanged
+            FRI) dest_day="SUN" ;;   # archive FRI (go) → repo SUN
+            SUN) dest_day="SUN" ;;   # archive SUN (igowin) → repo SUN
+            *)   dest_day="$src_day" ;;
         esac
-        rsync -a --ignore-existing "$DL/sglBinaries_1/$src_day/" "$REPO_ROOT/$dest_day/"
+        mkdir -p "$REPO_ROOT/$dest_day/INSTALL"
+        rsync -a --ignore-existing "$DL/sglBinaries_1/$src_day/INSTALL/" "$REPO_ROOT/$dest_day/INSTALL/"
     done
-    # The archive's day directories mix content from old day assignments.
-    # After rsync, move misplaced INSTALL files to their correct homes.
-    # Poker files (archive MON/) land in FRI/ but belong in MON/:
-    for poker_file in PokerStoveSetup124.exe World-Series-of-Poker-2008-Battle-for-the-Bracelets_Win_EN; do
-        if [ -e "$REPO_ROOT/FRI/INSTALL/$poker_file" ] && [ ! -e "$REPO_ROOT/MON/INSTALL/$poker_file" ]; then
-            mkdir -p "$REPO_ROOT/MON/INSTALL"
-            mv "$REPO_ROOT/FRI/INSTALL/$poker_file" "$REPO_ROOT/MON/INSTALL/"
-        fi
-    done
-    # igowin (Go game, archive SUN/) lands in MON/ but belongs in SUN/:
-    if [ -e "$REPO_ROOT/MON/INSTALL/igowin" ] && [ ! -e "$REPO_ROOT/SUN/INSTALL/igowin" ]; then
-        mkdir -p "$REPO_ROOT/SUN/INSTALL"
-        mv "$REPO_ROOT/MON/INSTALL/igowin" "$REPO_ROOT/SUN/INSTALL/"
-    fi
     # Sync non-day files (debs, etc.) directly
     rsync -a --ignore-existing --exclude='MON/' --exclude='TUE/' --exclude='WED/' \
         --exclude='THU/' --exclude='FRI/' --exclude='SAT/' --exclude='SUN/' \
