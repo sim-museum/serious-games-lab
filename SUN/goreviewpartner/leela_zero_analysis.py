@@ -206,9 +206,16 @@ class Leela_Zero_gtp(gtp):
 			self.stderr_queue.get()
 		self.write("heatmap average")
 		one_line=self.readline() #empty line
+		# Check if engine rejected the command (KataGo doesn't support heatmap)
+		if one_line and "?" in one_line:
+			return [["NA" for i in range(self.size)] for j in range(self.size)]
 		buff=[]
-		while len(buff)<self.size+2:
-			buff.append(self.stderr_queue.get())
+		import queue as _queue
+		try:
+			while len(buff)<self.size+2:
+				buff.append(self.stderr_queue.get(timeout=5))
+		except _queue.Empty:
+			return [["NA" for i in range(self.size)] for j in range(self.size)]
 		buff.reverse()
 		number_coordinate=1
 		letters="ABCDEFGHJKLMNOPQRST"[:self.size]
