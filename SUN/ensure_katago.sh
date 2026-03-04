@@ -12,7 +12,7 @@ HUMAN_MODEL="$KATAGO_DIR/b18c384nbt-humanv0.bin.gz"
 TEMPLATE_CFG="$KATAGO_DIR/gtp_human5k_example.cfg"
 ANALYSIS_CFG="$KATAGO_DIR/analysis_example.cfg"
 
-KATAGO_VERSION="1.15.3"
+KATAGO_VERSION="1.16.4"
 KATAGO_ZIP="katago-v${KATAGO_VERSION}-opencl-linux-x64.zip"
 KATAGO_URL="https://github.com/lightvector/KataGo/releases/download/v${KATAGO_VERSION}/${KATAGO_ZIP}"
 HUMANSL_MODEL_URL="https://github.com/lightvector/KataGo/releases/download/v1.15.0/b18c384nbt-humanv0.bin.gz"
@@ -49,7 +49,16 @@ if [[ ! -x "$KATAGO_BIN" ]]; then
             rmdir "$NESTED"
         fi
         chmod +x "$KATAGO_BIN"
-        echo "KataGo OpenCL binary installed."
+        # Verify the downloaded binary actually works on this system
+        if "$KATAGO_BIN" version &>/dev/null; then
+            echo "KataGo OpenCL v${KATAGO_VERSION} binary installed and verified."
+        else
+            echo "Downloaded KataGo binary has missing libraries:"
+            ldd "$KATAGO_BIN" 2>/dev/null | grep "not found" || true
+            echo "Falling back to CPU build from source..."
+            rm -f "$KATAGO_BIN"
+            bash "$KATAGO_SCRIPT_DIR/build_katago_cpu.sh"
+        fi
     else
         rm -f "$KATAGO_DIR/$KATAGO_ZIP"
         echo "OpenCL download failed. Falling back to CPU build from source..."

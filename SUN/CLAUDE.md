@@ -12,7 +12,7 @@ This repository provides scripts to set up and run KataGo with Human SL (Supervi
 ```bash
 ./setup_katago_humansl_and_guis.sh
 ```
-Downloads KataGo 1.15.3, Human SL model, strong model, Sabaki, Kaya, and LizGoban.
+Downloads KataGo 1.16.4, Human SL model, strong model, Sabaki, Kaya, and LizGoban.
 
 ### Configure Human Opponent Rating
 ```bash
