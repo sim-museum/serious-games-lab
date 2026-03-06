@@ -57,6 +57,17 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain/bob.
     # by rapid window destruction during the 3D-to-2D transition — letting
     # the debrief screen settle avoids the race condition.
     # ============================================================================
+
+    # Enforce windowed mode on single-monitor setups to prevent black screen
+    # caused by the DirectDraw spurious window (see KNOWN ISSUE below).
+    # Fullscreen requires dual monitors so the overlay surface is pushed
+    # to the second display.
+    BOB_BDG="$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain/bdg.txt"
+    numMonitors=$(xrandr -q | grep -c ' connected ')
+    if [ "$numMonitors" -lt 2 ]; then
+        sed -i 's/FORCE_WINDOWED_MODE=OFF/FORCE_WINDOWED_MODE=ON/' "$BOB_BDG"
+    fi
+
     wine start /d "C:\\Program Files\\Rowan Software\\Battle Of Britain" bob.exe 2>/dev/null 1>/dev/null
     exit 0
 fi
@@ -96,6 +107,9 @@ fi
 #      Wine's DirectDraw positions the overlay surface coordinates beyond the
 #      primary display bounds, pushing the spurious window to the second
 #      monitor, leaving the 3D view unobstructed on the primary monitor.
+#      If the black box still occludes the game on a dual monitor setup,
+#      try setting the primary display to the other monitor (via display
+#      settings or xrandr --output <other> --primary).
 #
 #   2. Virtual desktop mode (wine explorer /desktop=...)
 #      Hides the spurious window, but causes 2D campaign screen icons to
@@ -190,6 +204,7 @@ if [ ! -f "$BoB_INSTALL/BoB_iso/Setup.exe" ]; then
 #    fi
     echo "Before you can install Battle of Britain, you must mount the Battle of Britain iso."
     echo " "
+    mkdir -p "$PWD/INSTALL/BoB_iso"
     echo "Mount the Battle of Britain CD-ROM iso using this command:"
     echo " "; echo "sudo mount -o loop $PWD/INSTALL/BATTLEOFBRITAIN.iso $PWD/INSTALL/BoB_iso"; echo " "
     echo "Then run this script again."

@@ -47,6 +47,7 @@ if [ ! -f "$FALCON_EXE_PATH" ]; then
         echo ""
         echo "FalconAF is not installed, and the FalconAF iso is not mounted at $ISO_MNT_DIR for installation."
         echo ""
+        mkdir -p "$ISO_MNT_DIR"
         echo "To install FalconAF, follow these 3 steps:"
         echo "1. download the iso from, e.g., https://www.myabandonware.com/game/falcon-4-0-allied-force-e53"
         echo "2. mount the iso to the $ISO_MNT_DIR directory via"
