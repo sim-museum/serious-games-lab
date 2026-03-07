@@ -11,7 +11,9 @@
 # If Qplus Bridge 15 is not installed, it guides the user through the installation process.
 
 # Set Wine prefix directory
-export WINEPREFIX="$PWD/WP"
+cd "$(dirname "${BASH_SOURCE[0]}")"
+BASE_DIR="$PWD"
+export WINEPREFIX="$BASE_DIR/WP"
 export WINEARCH=win32
 # Set Windows XP mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
@@ -45,10 +47,10 @@ if [ -n "$QBRIDGE_DIR" ]; then
     # Run Qplus Bridge
     cd "$QBRIDGE_DIR"
     wine QBRIDGE.EXE 2>/dev/null 1>/dev/null
-    cd "$WINEPREFIX/.."
+    cd "$BASE_DIR"
     clear
     # Display exit message
-    cat "$WINEPREFIX/../DOC/REFERENCE/exitMessageQplus.txt"
+    cat "$BASE_DIR/DOC/REFERENCE/exitMessageQplus.txt"
     echo ""; echo ""
     exit 0
 else
@@ -61,26 +63,26 @@ else
     fi
 
     # If Qplus Bridge is not installed and Wine version is compatible, check if installation file exists
-    if [ -f "$WINEPREFIX/../INSTALL/qplus171.exe" ]; then
+    if [ -f "$BASE_DIR/INSTALL/qplus171.exe" ]; then
         # If installation file exists, initiate the installation process
         clear
         echo "Installing Qplus Bridge for the first time; simply accept all defaults."
         echo ""
-        wine "$WINEPREFIX/../INSTALL/qplus171.exe" 2>/dev/null 1>/dev/null
+        wine "$BASE_DIR/INSTALL/qplus171.exe" 2>/dev/null 1>/dev/null
         clear
         # Display exit message
-        cat "$WINEPREFIX/../DOC/REFERENCE/exitMessageQplus.txt"
+        cat "$BASE_DIR/DOC/REFERENCE/exitMessageQplus.txt"
         echo ""; echo ""
         exit 0
-    elif [ -f "$WINEPREFIX/../INSTALL/qplus15-eng.exe" ]; then
+    elif [ -f "$BASE_DIR/INSTALL/qplus15-eng.exe" ]; then
         # Fallback to older installer if available
         clear
         echo "Installing Qplus Bridge for the first time; simply accept all defaults."
         echo ""
-        wine "$WINEPREFIX/../INSTALL/qplus15-eng.exe" 2>/dev/null 1>/dev/null
+        wine "$BASE_DIR/INSTALL/qplus15-eng.exe" 2>/dev/null 1>/dev/null
         clear
         # Display exit message
-        cat "$WINEPREFIX/../DOC/REFERENCE/exitMessageQplus.txt"
+        cat "$BASE_DIR/DOC/REFERENCE/exitMessageQplus.txt"
         echo ""; echo ""
         exit 0
     else

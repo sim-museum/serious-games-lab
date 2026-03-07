@@ -66,6 +66,15 @@ if [ -d "$DL/sglBinaries_1" ]; then
         mkdir -p "$REPO_ROOT/$dest_day/INSTALL"
         rsync -a --ignore-existing "$DL/sglBinaries_1/$src_day/INSTALL/" "$REPO_ROOT/$dest_day/INSTALL/"
     done
+    # Archive FRI/INSTALL also contains bridge installers that belong in repo FRI
+    if [ -d "$DL/sglBinaries_1/FRI/INSTALL" ]; then
+        mkdir -p "$REPO_ROOT/FRI/INSTALL"
+        for f in qplus171.exe Wbridge5_setup.exe; do
+            [ -e "$DL/sglBinaries_1/FRI/INSTALL/$f" ] || continue
+            [ -e "$REPO_ROOT/FRI/INSTALL/$f" ] && continue
+            cp "$DL/sglBinaries_1/FRI/INSTALL/$f" "$REPO_ROOT/FRI/INSTALL/"
+        done
+    fi
     # Sync non-day files (debs, etc.) directly
     rsync -a --ignore-existing --exclude='MON/' --exclude='TUE/' --exclude='WED/' \
         --exclude='THU/' --exclude='FRI/' --exclude='SAT/' --exclude='SUN/' \
