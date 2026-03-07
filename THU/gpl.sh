@@ -10,6 +10,29 @@
 #!/bin/bash
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+# Set up Wine runner environment
+setup_wine_runner() {
+    local runner_name="$1"
+    local runner_dir="$HOME/.local/share/lutris/runners/wine/$runner_name"
+    if [[ -d "$runner_dir" && -x "$runner_dir/bin/wine" ]]; then
+        export PATH="$runner_dir/bin:$PATH"
+        export WINE="$runner_dir/bin/wine"
+        export WINELOADER="$runner_dir/bin/wine"
+        export WINESERVER="$runner_dir/bin/wineserver"
+        export LD_LIBRARY_PATH="$runner_dir/lib64:$runner_dir/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export WINEDLLPATH="$runner_dir/lib64/wine/x86_64-unix:$runner_dir/lib/wine/i386-unix${WINEDLLPATH:+:$WINEDLLPATH}"
+    fi
+}
+
+# GE-Proton for InstallShield installers, 5.7 for running (GUI apps need X11 driver)
+RUNNER_INSTALL="lutris-GE-Proton8-26-x86_64"
+RUNNER_GAME="lutris-5.7-x86_64"
+
+# Set up game runner unless already configured by the launcher
+if [[ -z "${SGL_GAME_SCRIPT:-}" ]]; then
+    setup_wine_runner "$RUNNER_GAME"
+fi
+
 # Set WINEPREFIX to the current working directory with /WP appended
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
@@ -18,6 +41,8 @@ wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /
 
 # Check if the GPL executable does not exist in the specified directory
 if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
+    # Use GE-Proton runner for installation (InstallShield compatibility)
+    setup_wine_runner "$RUNNER_INSTALL"
     clear # Clear the terminal
 
     # Auto-mount GPL ISO if available but not yet mounted
