@@ -18,6 +18,42 @@ setup_wine_runner() {
 RUNNER_INSTALL="lutris-5.7-11-x86_64"
 RUNNER_GAME="lutris-fshack-5.7-x86_64"
 
+DGVOODOO_URL="https://github.com/dege-diosg/dgVoodoo2/releases/download/v2.86.5/dgVoodoo2_86_5.zip"
+
+# Install dgVoodoo2 x86 DLLs into Wine system32 for DirectDraw/Direct3D support
+install_dgvoodoo2() {
+    local sys32="$WINEPREFIX/drive_c/windows/system32"
+    local ddraw="$sys32/ddraw.dll"
+    # Skip if already installed (Wine placeholder is ~5KB, dgVoodoo2 is ~250KB)
+    if [ -f "$ddraw" ] && [ "$(stat -c%s "$ddraw")" -gt 50000 ]; then
+        return 0
+    fi
+    echo "Installing dgVoodoo2 (DirectDraw/Direct3D wrapper)..."
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    if ! curl -sL -o "$tmpdir/dgvoodoo2.zip" "$DGVOODOO_URL"; then
+        echo "Warning: failed to download dgVoodoo2. 3D acceleration may not work."
+        rm -rf "$tmpdir"
+        return 1
+    fi
+    if ! unzip -qo "$tmpdir/dgvoodoo2.zip" 'MS/x86/*' -d "$tmpdir"; then
+        echo "Warning: failed to extract dgVoodoo2."
+        rm -rf "$tmpdir"
+        return 1
+    fi
+    cp "$tmpdir/MS/x86/DDraw.dll"  "$sys32/ddraw.dll"
+    cp "$tmpdir/MS/x86/D3DImm.dll" "$sys32/d3dimm.dll"
+    cp "$tmpdir/MS/x86/D3D8.dll"   "$sys32/d3d8.dll"
+    cp "$tmpdir/MS/x86/D3D9.dll"   "$sys32/d3d9.dll"
+    rm -rf "$tmpdir"
+    # Set video memory size so FS9 detects GPU
+    local vram
+    vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null)
+    wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\Direct3D" \
+        /v VideoMemorySize /t REG_SZ /d "${vram:-2048}" /f &>/dev/null
+    echo "dgVoodoo2 installed."
+}
+
 # Set up runner unless already configured by the launcher
 if [[ -z "${SGL_GAME_SCRIPT:-}" ]]; then
     setup_wine_runner "$RUNNER_GAME"
@@ -32,6 +68,7 @@ wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /
 
 # Check if Flight Simulator executable exists
 if [ -f "$WINEPREFIX/drive_c/Program Files/Microsoft Games/Flight Simulator 9/fs9.exe" ]; then
+    install_dgvoodoo2
     clear
 
     # Disable NVIDIA threaded optimizations (causes issues with Wine)
@@ -172,6 +209,8 @@ if [ -f "$INSTALL_DIR/isoMnt/Setup.Exe" ]; then
         fi
         cd "$INSTALL_DIR/isoMnt/"
     fi
+
+    install_dgvoodoo2
 
     printf "\n\nInstallation completed.  Run this script again to start fs9.  (Ignore missing font warnings). \n"
     exit 0
