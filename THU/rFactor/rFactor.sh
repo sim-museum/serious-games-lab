@@ -31,35 +31,7 @@ wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\Direct3D" /v VideoMemorySize /t
 if [ -f "$WINEPREFIX/drive_c/Program Files/rFactor/rFactor.exe" ]; then
     cd "$WINEPREFIX/drive_c/Program Files/rFactor"
 
-    # Try DXVK 2.x first (installed by winetricks), fall back to DXVK-Sarek
-    # if GPU lacks Vulkan 1.3/maintenance5
-    if [ ! -f "$WINEPREFIX/.dxvk_sarek" ]; then
-        # Try DXVK 2.x (native DLLs from winetricks)
-        WINEDLLOVERRIDES="d3d9,d3d11,dxgi=n,b" wine rFactor.exe 2>"$WINEPREFIX/.dxvk_log"
-        # Check if DXVK failed due to missing Vulkan features
-        if grep -q "No adapters found\|maintenance5" "$WINEPREFIX/.dxvk_log"; then
-            echo "DXVK 2.x not supported on this GPU. Installing DXVK-Sarek fallback..."
-            # Download and install DXVK-Sarek (Vulkan 1.1 compatible fork)
-            sarek_ver="v1.11.0"
-            sarek_tar="/tmp/dxvk-sarek-${sarek_ver}.tar.gz"
-            if [ ! -f "$sarek_tar" ]; then
-                gh release download "$sarek_ver" -R pythonlover02/DXVK-Sarek \
-                    -p "dxvk-sarek-${sarek_ver}.tar.gz" -D /tmp 2>/dev/null
-            fi
-            sarek_dir="/tmp/dxvk-sarek-${sarek_ver}"
-            [ -d "$sarek_dir" ] || tar xzf "$sarek_tar" -C /tmp
-            cp "$sarek_dir/x32/d3d9.dll" "$WINEPREFIX/drive_c/windows/system32/"
-            cp "$sarek_dir/x32/dxgi.dll" "$WINEPREFIX/drive_c/windows/system32/"
-            cp "$sarek_dir/x32/d3d11.dll" "$WINEPREFIX/drive_c/windows/system32/"
-            touch "$WINEPREFIX/.dxvk_sarek"
-            echo "DXVK-Sarek installed. Launching rFactor..."
-            WINEDLLOVERRIDES="d3d9,d3d11,dxgi=n,b" wine rFactor.exe 2>/dev/null
-        fi
-    else
-        # DXVK-Sarek already installed from a previous fallback
-        WINEDLLOVERRIDES="d3d9,d3d11,dxgi=n,b" wine rFactor.exe 2>/dev/null
-    fi
-    rm -f "$WINEPREFIX/.dxvk_log"
+    WINEDLLOVERRIDES="d3d9,d3d11,dxgi=n,b" wine rFactor.exe 2>/dev/null
 
     printf "\nrFactor Optional Scripts\n\nTelemetry:\n$SCRIPT_DIR/addTelemetryLoggerToRfactor.sh\n\nImprove AI:\n$SCRIPT_DIR/offlineAIimprovement_rFactor.sh\n\nConfigure Graphics:\n$SCRIPT_DIR/graphicsConfig_rFactor.sh\n\nTip: to become owner of all cars in a mod, type the code \"ISI_BABYFACTORY\" in\nthe chat window. (The chat window is at lower left on the screen just before\nyou enter the 3D view.)\n\n"
     exit 0
