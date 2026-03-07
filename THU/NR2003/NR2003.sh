@@ -21,8 +21,10 @@ if [[ -z "${SGL_GAME_SCRIPT:-}" ]]; then
 fi
 
 # Set the Wine prefix directory
-export WINEPREFIX="$PWD/WP"
+BASE_DIR="$PWD"
+export WINEPREFIX="$BASE_DIR/WP"
 export WINEARCH=win32
+INSTALL_DIR="$BASE_DIR/INSTALL"
 
 # Check if game directory exists — launch the game
 if [ -d "$WINEPREFIX/drive_c/Papyrus/NASCAR Racing 2003 Season" ]; then
@@ -30,14 +32,14 @@ if [ -d "$WINEPREFIX/drive_c/Papyrus/NASCAR Racing 2003 Season" ]; then
     wine NR2003.exe 2>/dev/null 1>/dev/null
     clear
     printf "NR2003 Optional Scripts:\n\n"
-    printf "Add additional 1960's era cars and tracks:\n$WINEPREFIX/../additionalCarsAndTracks.sh\n\n"
-    printf "Change NR2003 track parameters, AI, etc:\n$WINEPREFIX/../trackEditor.sh\n\n\n\n"
+    printf "Add additional 1960's era cars and tracks:\n$BASE_DIR/additionalCarsAndTracks.sh\n\n"
+    printf "Change NR2003 track parameters, AI, etc:\n$BASE_DIR/trackEditor.sh\n\n\n\n"
     printf "Tip: always run NR2003 with the same version of Wine\nthat was used to install it, to avoid an 'installation\nappears to be incorrect' error message.\n\n"
     exit 0
 fi
 
 # Check if installation files are missing
-if [ ! -f "$WINEPREFIX/../INSTALL/NASCAR-Racing-2003-Season_Win_EN_ISO-Version.zip" ]; then
+if [ ! -f "$INSTALL_DIR/NASCAR-Racing-2003-Season_Win_EN_ISO-Version.zip" ]; then
     clear
     echo "Nascar Racing 2003 install files not found in the directory THU/NR2003/INSTALL"
     echo ""
@@ -58,39 +60,39 @@ if [ ! -f "$WINEPREFIX/../INSTALL/NASCAR-Racing-2003-Season_Win_EN_ISO-Version.z
 fi
 
 # Check if required files are missing
-if [ ! -f "$WINEPREFIX/../INSTALL/NASCAR-Racing-2003-Season_Fix_Win_EN_Fix-for-Version-1201.exe" ]; then
+if [ ! -f "$INSTALL_DIR/NASCAR-Racing-2003-Season_Fix_Win_EN_Fix-for-Version-1201.exe" ]; then
     printf "INSTALL/NASCAR-Racing-2003-Season_Fix_Win_EN_Fix-for-Version-1201.exe missing\n\n"
     exit 0
 fi
-if [ ! -f "$WINEPREFIX/../INSTALL/NASCAR-Racing-2003-Season_NoCD_Win_EN.zip" ]; then
+if [ ! -f "$INSTALL_DIR/NASCAR-Racing-2003-Season_NoCD_Win_EN.zip" ]; then
     printf "NASCAR-Racing-2003-Season_NoCD_Win_EN.zip missing\n\n"
     exit 0
 fi
-if [ ! -f "$WINEPREFIX/../INSTALL/NASCAR-Racing-2003-Season_Patch_Win_EN_Patch-1201.exe" ]; then
+if [ ! -f "$INSTALL_DIR/NASCAR-Racing-2003-Season_Patch_Win_EN_Patch-1201.exe" ]; then
     printf "NASCAR-Racing-2003-Season_Patch_Win_EN_Patch-1201.exe missing\n\n"
     exit 0
 fi
 
 # Unpack required files if ISO doesn't exist yet
-if [ ! -f "$WINEPREFIX/../INSTALL/NR2003.iso" ]; then
+if [ ! -f "$INSTALL_DIR/NR2003.iso" ]; then
     clear
     echo "Unpacking files..."
-    cd "$WINEPREFIX/../INSTALL"
+    cd "$INSTALL_DIR"
     unzip -o NASCAR-Racing-2003-Season_Win_EN_ISO-Version.zip
     unzip -o NASCAR-Racing-2003-Season_NoCD_Win_EN.zip
     cd NASCAR_Racing_2003_Season_ISO
     bchunk Nascar_Racing_2003_Season.FLT.ShareReactor.BIN Nascar_Racing_2003_Season.FLT.ShareReactor.CUE NR2003.iso 2>/dev/null 1>/dev/null
-    mv NR2003.iso01.iso "$WINEPREFIX/../INSTALL/NR2003.iso"
-    cd "$WINEPREFIX/.."
+    mv NR2003.iso01.iso "$INSTALL_DIR/NR2003.iso"
+    cd "$BASE_DIR"
 fi
 
 # Mount ISO if not already mounted
-if [ ! -f "$WINEPREFIX/../isoMnt/autorun.exe" ]; then
-    mkdir -p "$WINEPREFIX/../isoMnt"
+if [ ! -f "$BASE_DIR/isoMnt/autorun.exe" ]; then
+    mkdir -p "$BASE_DIR/isoMnt"
     clear
     printf "Mounting ISO. Enter sudo password if prompted.\n"
-    sudo mount -o loop "$WINEPREFIX/../INSTALL/NR2003.iso" "$WINEPREFIX/../isoMnt"
-    if [ ! -f "$WINEPREFIX/../isoMnt/autorun.exe" ]; then
+    sudo mount -o loop "$INSTALL_DIR/NR2003.iso" "$BASE_DIR/isoMnt"
+    if [ ! -f "$BASE_DIR/isoMnt/autorun.exe" ]; then
         printf "Failed to mount ISO.\n"
         exit 1
     fi
@@ -119,28 +121,28 @@ printf "When asked for a serial number, enter\nRAB2-RAB2-RAB2-RAB2-8869\n\n"
 printf "Press ENTER to begin installation ...\n"
 read -r replyString
 
-cd "$WINEPREFIX/../isoMnt"
+cd "$BASE_DIR/isoMnt"
 wine autorun.exe 2>/dev/null 1>/dev/null
 
 # Install 1201 patch
 clear
 printf "\nPress ENTER to install the 1201 patch\n"
 read -r replyString
-cd "$WINEPREFIX/../INSTALL"
+cd "$INSTALL_DIR"
 wine NASCAR-Racing-2003-Season_Patch_Win_EN_Patch-1201.exe 2>/dev/null 1>/dev/null
 
 # Copy NoCD crack
-cp "$WINEPREFIX/../INSTALL/Nascar_Racing_2003_Season_1201_NoCD/NR2003.exe" "$WINEPREFIX/drive_c/Papyrus/NASCAR Racing 2003 Season"
+cp "$INSTALL_DIR/Nascar_Racing_2003_Season_1201_NoCD/NR2003.exe" "$WINEPREFIX/drive_c/Papyrus/NASCAR Racing 2003 Season"
 
 # Install DXVK
 printf "\nInstalling DXVK...\n"
 winetricks dxvk 2>/dev/null 1>/dev/null
 
 # Unmount ISO
-sudo umount "$WINEPREFIX/../isoMnt" 2>/dev/null
+sudo umount "$BASE_DIR/isoMnt" 2>/dev/null
 
 printf "\nNascar Racing 2003 Season installed.\n\n"
 printf "To install optional 1960's era cars and tracks in NR2003, run:\n"
-printf "$WINEPREFIX/../additionalCarsAndTracks.sh\n\n"
+printf "$BASE_DIR/additionalCarsAndTracks.sh\n\n"
 printf "Run this script again to race.\n"
 exit 0
