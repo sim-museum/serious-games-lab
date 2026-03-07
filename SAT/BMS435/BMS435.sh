@@ -126,26 +126,30 @@ then
 fi
 
 
-# Install DXVK 2.6.2 from Lutris runtime (2.7.1 requires VK_KHR_maintenance5
-# which older NVIDIA drivers lack; winetricks would install the incompatible version)
-DXVK_DIR="$HOME/.local/share/lutris/runtime/dxvk/v2.6.2"
-if [ -d "$DXVK_DIR" ]; then
-    clear
-    echo "Installing DXVK 2.6.2..."
-    cp "$DXVK_DIR/x64/"*.dll "$WINEPREFIX/drive_c/windows/system32/"
-    cp "$DXVK_DIR/x32/"*.dll "$WINEPREFIX/drive_c/windows/syswow64/" 2>/dev/null
-    # Set DLL overrides to native for DXVK
-    wine reg add 'HKCU\Software\Wine\DllOverrides' /v dxgi /d native /f 2>/dev/null 1>/dev/null
-    wine reg add 'HKCU\Software\Wine\DllOverrides' /v d3d11 /d native /f 2>/dev/null 1>/dev/null
-    wine reg add 'HKCU\Software\Wine\DllOverrides' /v d3d10core /d native /f 2>/dev/null 1>/dev/null
-    wine reg add 'HKCU\Software\Wine\DllOverrides' /v d3d9 /d native /f 2>/dev/null 1>/dev/null
-    echo "DXVK 2.6.2 installed."
-else
-    clear
-    echo "Installing DXVK via winetricks..."
-    winetricks dxvk 2>/dev/null 1>/dev/null
-    echo "DXVK installed."
+# Install DXVK 2.6.2 (newer versions require VK_KHR_maintenance5 which
+# older NVIDIA drivers lack; winetricks installs the latest incompatible version)
+DXVK_VER="2.6.2"
+DXVK_DIR="$HOME/.local/share/lutris/runtime/dxvk/v${DXVK_VER}"
+if [ ! -d "$DXVK_DIR" ]; then
+    # Download DXVK 2.6.2 if Lutris runtime is not available
+    DXVK_DIR="/tmp/dxvk-${DXVK_VER}"
+    if [ ! -d "$DXVK_DIR" ]; then
+        echo "Downloading DXVK ${DXVK_VER}..."
+        curl -sL "https://github.com/doitsujin/dxvk/releases/download/v${DXVK_VER}/dxvk-${DXVK_VER}.tar.gz" \
+            -o "/tmp/dxvk-${DXVK_VER}.tar.gz"
+        tar xzf "/tmp/dxvk-${DXVK_VER}.tar.gz" -C /tmp/
+        rm -f "/tmp/dxvk-${DXVK_VER}.tar.gz"
+    fi
 fi
+clear
+echo "Installing DXVK ${DXVK_VER}..."
+cp "$DXVK_DIR/x64/"*.dll "$WINEPREFIX/drive_c/windows/system32/"
+cp "$DXVK_DIR/x32/"*.dll "$WINEPREFIX/drive_c/windows/syswow64/" 2>/dev/null
+# Set DLL overrides to native for DXVK
+for dll in dxgi d3d11 d3d10core d3d9; do
+    wine reg add 'HKCU\Software\Wine\DllOverrides' /v "$dll" /d native /f 2>/dev/null 1>/dev/null
+done
+echo "DXVK ${DXVK_VER} installed."
 echo ""
 echo "Note: the Weapon Delivery Planner utility is recommended."
 echo "You can download this utility at http://www.weapondeliveryplanner.nl/"

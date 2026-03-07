@@ -205,24 +205,30 @@ echo "[2/8] Installing DirectX and DXVK (this takes a few minutes) ..."
 # not supported by NVIDIA 535.x drivers).
 WINEDEBUG=-all winetricks -q d3dcompiler_43 d3dx9 d3dcompiler_47 2>/dev/null
 
-# Install DXVK 2.6.2 from Lutris runtime (compatible with older drivers)
-DXVK_DIR="$HOME/.local/share/lutris/runtime/dxvk/v2.6.2"
-SYS32="$WINEPREFIX/drive_c/windows/system32"
-if [[ -d "$DXVK_DIR/x32" ]]; then
-    for dll in d3d9.dll d3d10core.dll d3d11.dll dxgi.dll d3d8.dll; do
-        cp "$DXVK_DIR/x32/$dll" "$SYS32/$dll"
-    done
-    # Set native DLL overrides for DXVK
-    for dllname in d3d9 d3d10core d3d11 dxgi; do
-        WINEDEBUG=-all wine reg add "HKCU\\Software\\Wine\\DllOverrides" \
-            /v "*$dllname" /t REG_SZ /d "native" /f 2>/dev/null
-    done
-    echo "  Installed DXVK 2.6.2 from Lutris runtime."
-else
-    echo "  WARNING: DXVK 2.6.2 not found at $DXVK_DIR"
-    echo "  Falling back to winetricks dxvk (may require Vulkan 1.3)."
-    WINEDEBUG=-all winetricks -q dxvk 2>/dev/null
+# Install DXVK 2.6.2 (compatible with older drivers; newer versions
+# require Vulkan 1.3 / maintenance5 not supported by NVIDIA 535.x)
+DXVK_VER="2.6.2"
+DXVK_DIR="$HOME/.local/share/lutris/runtime/dxvk/v${DXVK_VER}"
+if [[ ! -d "$DXVK_DIR/x32" ]]; then
+    DXVK_DIR="/tmp/dxvk-${DXVK_VER}"
+    if [[ ! -d "$DXVK_DIR" ]]; then
+        echo "  Downloading DXVK ${DXVK_VER}..."
+        curl -sL "https://github.com/doitsujin/dxvk/releases/download/v${DXVK_VER}/dxvk-${DXVK_VER}.tar.gz" \
+            -o "/tmp/dxvk-${DXVK_VER}.tar.gz"
+        tar xzf "/tmp/dxvk-${DXVK_VER}.tar.gz" -C /tmp/
+        rm -f "/tmp/dxvk-${DXVK_VER}.tar.gz"
+    fi
 fi
+SYS32="$WINEPREFIX/drive_c/windows/system32"
+for dll in d3d9.dll d3d10core.dll d3d11.dll dxgi.dll d3d8.dll; do
+    cp "$DXVK_DIR/x32/$dll" "$SYS32/$dll"
+done
+# Set native DLL overrides for DXVK
+for dllname in d3d9 d3d10core d3d11 dxgi; do
+    WINEDEBUG=-all wine reg add "HKCU\\Software\\Wine\\DllOverrides" \
+        /v "*$dllname" /t REG_SZ /d "native" /f 2>/dev/null
+done
+echo "  Installed DXVK ${DXVK_VER}."
 
 # --- Step 3: Extract game files from ISO ---
 echo "[3/8] Extracting Madden NFL 08 from ISO ..."

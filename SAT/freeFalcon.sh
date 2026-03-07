@@ -95,4 +95,4 @@ echo ""
 echo "Launching FreeFalcon 6..."
 echo ""
 cd "$GAME_DATA"
-wine FFViper.exe 2>/dev/null 1>/dev/null
+wine explorer /desktop=FreeFalcon,1024x768 FFViper.exe 2>/dev/null 1>/dev/null
