@@ -90,12 +90,14 @@ move_file "sglBinaries_2/CFL" "Xmod 7-18-14.7z"                                 
 move_file "sglBinaries_2/CFL" "CFL 15 V2.zip"                                                 "SAT/CFL/INSTALL"
 move_file "sglBinaries_2/CFL" "JSGME.exe"                                                     "SAT/CFL/INSTALL"
 move_dir  "sglBinaries_2" "CFLpreinstalled"                                                    "SAT/CFL/INSTALL"
-# Move BMS432-v41 contents (WP, INSTALL) into SAT/BMS432/ where the scripts live
+# Move BMS432-v41 contents (INSTALL, docs) into SAT/BMS432/ where the scripts live
+# Skip WP — games must be installed from original files, not pre-built prefixes
 if [ -d "$DL/sglBinaries_2/BMS432-v41" ]; then
     mkdir -p "$REPO_ROOT/SAT/BMS432"
     for item in "$DL/sglBinaries_2/BMS432-v41"/*; do
         [ -e "$item" ] || continue
         base="$(basename "$item")"
+        [[ "$base" == "WP" ]] && continue
         if [ ! -e "$REPO_ROOT/SAT/BMS432/$base" ]; then
             mv "$item" "$REPO_ROOT/SAT/BMS432/" 2>/dev/null || true
         fi

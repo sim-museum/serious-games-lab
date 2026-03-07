@@ -29,6 +29,14 @@ export WINEARCH=win32
 GAME_DIR="$WINEPREFIX/drive_c/Falcon BMS 4.32"
 INSTALL_DIR="$SCRIPT_DIR/INSTALL"
 
+# Remove prefix if it has the wrong architecture (e.g. from sglBinaries)
+if [[ -f "$WINEPREFIX/system.reg" ]]; then
+    if grep -q '#arch=win64' "$WINEPREFIX/system.reg"; then
+        echo "Removing win64 prefix (BMS 4.32 requires win32)..."
+        rm -rf "$WINEPREFIX"
+    fi
+fi
+
 # =====================================================================
 # Already installed → launch
 # =====================================================================
