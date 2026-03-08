@@ -44,37 +44,18 @@ move_dir() {
 echo "Distributing binary files to game INSTALL directories..."
 
 # --- sglBinaries_1 ---
-# The archive uses an old day-theme mapping (MON=poker, FRI=go, SUN=bridge) that
-# differs from the current repo (MON=poker, FRI=bridge, SUN=go). Scripts and DOC
-# files are already tracked in the repo at their correct locations, so we only
-# sync INSTALL/ directories (binary data) and .deb packages from the archive.
-#
-# Archive day → repo day mapping for INSTALL dirs:
-#   archive MON/INSTALL (poker installers) → repo MON/INSTALL
-#   archive FRI/INSTALL (go installers)    → repo SUN/INSTALL
-#   archive SUN/INSTALL (igowin)           → repo SUN/INSTALL
-#   TUE, WED, THU, SAT                    → unchanged
+# Archive day-of-week directories match the repo layout directly:
+#   MON=poker, TUE=flight sims, WED=chess, THU=racing,
+#   FRI=bridge, SAT=combat/CFL, SUN=go
+# Only INSTALL/ directories and game subdirectories contain binary data;
+# scripts and DOC files are tracked in the repo.
 if [ -d "$DL/sglBinaries_1" ]; then
     echo "  Distributing sglBinaries_1 INSTALL files..."
-    for src_day in MON TUE WED THU FRI SAT SUN; do
-        [ -d "$DL/sglBinaries_1/$src_day/INSTALL" ] || continue
-        case "$src_day" in
-            FRI) dest_day="SUN" ;;   # archive FRI (go) → repo SUN
-            SUN) dest_day="SUN" ;;   # archive SUN (igowin) → repo SUN
-            *)   dest_day="$src_day" ;;
-        esac
-        mkdir -p "$REPO_ROOT/$dest_day/INSTALL"
-        rsync -a --ignore-existing "$DL/sglBinaries_1/$src_day/INSTALL/" "$REPO_ROOT/$dest_day/INSTALL/"
+    for day in MON TUE WED THU FRI SAT SUN; do
+        [ -d "$DL/sglBinaries_1/$day/INSTALL" ] || continue
+        mkdir -p "$REPO_ROOT/$day/INSTALL"
+        rsync -a --ignore-existing "$DL/sglBinaries_1/$day/INSTALL/" "$REPO_ROOT/$day/INSTALL/"
     done
-    # Archive FRI/INSTALL also contains bridge installers that belong in repo FRI
-    if [ -d "$DL/sglBinaries_1/FRI/INSTALL" ]; then
-        mkdir -p "$REPO_ROOT/FRI/INSTALL"
-        for f in qplus171.exe Wbridge5_setup.exe; do
-            [ -e "$DL/sglBinaries_1/FRI/INSTALL/$f" ] || continue
-            [ -e "$REPO_ROOT/FRI/INSTALL/$f" ] && continue
-            cp "$DL/sglBinaries_1/FRI/INSTALL/$f" "$REPO_ROOT/FRI/INSTALL/"
-        done
-    fi
     # Sync non-day files (debs, etc.) directly
     rsync -a --ignore-existing --exclude='MON/' --exclude='TUE/' --exclude='WED/' \
         --exclude='THU/' --exclude='FRI/' --exclude='SAT/' --exclude='SUN/' \

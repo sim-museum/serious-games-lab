@@ -190,7 +190,7 @@ apt-get install -y \
     dosbox \
     libfuse2t64 \
     bchunk unrar 7zip innoextract \
-    vim okular filelight \
+    vim okular filelight freeplane \
     cabextract p7zip-full unzip xdg-utils
 
 if $INSTALL_WINE; then
