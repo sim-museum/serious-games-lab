@@ -12,6 +12,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 ERRORS=0
+REAL_USER="${SUDO_USER:-$USER}"
+REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 
 echo "=============================================="
 echo "  Serious Games Lab - Dependency Installer"
@@ -244,9 +246,6 @@ fi
 # --- Clone git dependencies (as the invoking user, not root) ---
 echo ""
 echo "Cloning git dependencies..."
-
-REAL_USER="${SUDO_USER:-$USER}"
-REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 
 if [[ ! -d "$REPO_ROOT/FRI/benBridge/ben" ]]; then
     echo "  Cloning ben (Bridge Engine)..."
