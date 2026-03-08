@@ -138,6 +138,21 @@ echo ""
 mkdir -p "$DOWNLOADS_DIR"
 chown "$REAL_USER:$REAL_USER" "$DOWNLOADS_DIR"
 
+# Extract sglBinaries_*.tar.gz archives before distributing
+for f in "$DOWNLOADS_DIR"/sglBinaries_*.tar.gz; do
+    [[ -f "$f" ]] || continue
+    base="$(basename "$f")"
+    marker="$DOWNLOADS_DIR/.extracted_${base}"
+    if [[ -f "$marker" ]]; then
+        echo "  Already extracted: $base"
+    else
+        echo "  Extracting $base ..."
+        sudo -u "$REAL_USER" tar xzf "$f" -C "$DOWNLOADS_DIR/"
+        sudo -u "$REAL_USER" touch "$marker"
+        echo "  [OK] Extracted: $base"
+    fi
+done
+
 # Distribute binary files from downloads/sglBinaries_* to game INSTALL directories
 echo "  Distributing binary files to game INSTALL directories..."
 sudo -u "$REAL_USER" "$REPO_ROOT/scripts/distribute_binaries.sh"

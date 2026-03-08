@@ -51,11 +51,13 @@ echo "Distributing binary files to game INSTALL directories..."
 # scripts and DOC files are tracked in the repo.
 if [ -d "$DL/sglBinaries_1" ]; then
     echo "  Distributing sglBinaries_1 INSTALL files..."
-    for day in MON TUE WED THU FRI SAT SUN; do
-        [ -d "$DL/sglBinaries_1/$day/INSTALL" ] || continue
-        mkdir -p "$REPO_ROOT/$day/INSTALL"
-        rsync -a --ignore-existing "$DL/sglBinaries_1/$day/INSTALL/" "$REPO_ROOT/$day/INSTALL/"
-    done
+    # Find all INSTALL dirs at any depth under each day directory
+    while IFS= read -r install_dir; do
+        # Get path relative to sglBinaries_1/ (e.g. TUE/BattleOfBritain/INSTALL)
+        rel="${install_dir#$DL/sglBinaries_1/}"
+        mkdir -p "$REPO_ROOT/$rel"
+        rsync -a --ignore-existing "$install_dir/" "$REPO_ROOT/$rel/"
+    done < <(find "$DL/sglBinaries_1" -type d -name INSTALL)
     # Sync non-day files (debs, etc.) directly
     rsync -a --ignore-existing --exclude='MON/' --exclude='TUE/' --exclude='WED/' \
         --exclude='THU/' --exclude='FRI/' --exclude='SAT/' --exclude='SUN/' \
