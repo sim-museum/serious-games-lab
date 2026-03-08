@@ -4,8 +4,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Ensure KataGo + models are present
 source "$SCRIPT_DIR/ensure_katago.sh"
 
-# Auto-configure KaTrain engine paths if config exists
+# Set up venv if needed
+if [[ ! -d "$SCRIPT_DIR/katrain_venv" ]]; then
+    echo "KaTrain venv not found. Installing now..."
+    bash "$SCRIPT_DIR/setup_katrain.sh"
+fi
+
+if [[ ! -f "$SCRIPT_DIR/katrain_venv/bin/activate" ]]; then
+    echo "Error: KaTrain installation failed. Try running setup_katrain.sh manually."
+    exit 1
+fi
+
+source "$SCRIPT_DIR/katrain_venv/bin/activate"
+
+# If KaTrain config doesn't exist yet, do a quick launch to create the default,
+# then immediately patch it with our KataGo paths.
 KATRAIN_CONFIG="$HOME/.katrain/config.json"
+if [[ ! -f "$KATRAIN_CONFIG" ]]; then
+    echo "Creating initial KaTrain config..."
+    # KaTrain copies its package config on first import
+    python3 -c "import katrain" 2>/dev/null
+fi
+
+# Auto-configure KaTrain engine paths (runs every launch to keep paths current)
 if [[ -f "$KATRAIN_CONFIG" ]] && command -v python3 &>/dev/null; then
     python3 - "$KATRAIN_CONFIG" "$KATAGO_BIN" "$MAIN_MODEL" "$HUMAN_MODEL" "$ANALYSIS_CFG" << 'PYEOF'
 import json, sys
@@ -30,18 +51,6 @@ except Exception as e:
 PYEOF
 fi
 
-# Set up venv if needed
-if [[ ! -d "$SCRIPT_DIR/katrain_venv" ]]; then
-    echo "KaTrain venv not found. Installing now..."
-    bash "$SCRIPT_DIR/setup_katrain.sh"
-fi
-
-if [[ ! -f "$SCRIPT_DIR/katrain_venv/bin/activate" ]]; then
-    echo "Error: KaTrain installation failed. Try running setup_katrain.sh manually."
-    exit 1
-fi
-
-source "$SCRIPT_DIR/katrain_venv/bin/activate"
 # Suppress Kivy debug/warning noise (cutbuffer, config upgrade, etc.)
 export KIVY_LOG_LEVEL=error
 katrain "$@" 2>/dev/null
