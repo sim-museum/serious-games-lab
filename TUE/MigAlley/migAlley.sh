@@ -1,5 +1,7 @@
 # Checks if Mig Alley setup exists in the Wine prefix. If found, launches Mig Alley.
-# Checks the number of connected monitors and prompts the user if not 2.
+# Offers two launch modes:
+#   1. Basic (2 monitors) - no virtual desktop, spurious window goes to 2nd monitor
+#   2. Advanced (1 monitor) - virtual desktop hides spurious window, OCX workarounds needed
 # Checks if winetricks is installed. If not, displays an error message and exits.
 # Checks if Mig Alley setup files exist. If not, provides instructions for mounting the iso and exits.
 # Guides the user through Wine configuration for installation.
@@ -19,10 +21,68 @@ wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /
 
 export MA_ISO="$INSTALL_DIR/MA_iso"
 
-# Check if Mig Alley setup exists in the Wine prefix
-if [ -f "$WINEPREFIX/drive_c/rowan/mig/Mig.exe" ]; then
+# --- Launch mode selection ---
+# Mode is persisted in .migalley_mode (basic or advanced)
+MODE_FILE="$PWD/.migalley_mode"
+
+select_mode() {
+    echo ""
+    echo "=== MiG Alley Launch Mode ==="
+    echo ""
+    echo "  1. Basic (2 monitors)"
+    echo "     Requires dual monitors at the same resolution."
+    echo "     The spurious DirectDraw window is pushed to the second monitor,"
+    echo "     leaving the 3D view unobstructed on the primary monitor."
+    echo "     No workarounds needed."
+    echo ""
+    echo "  2. Advanced (1 monitor)"
+    echo "     Uses Wine virtual desktop to hide the spurious window."
+    echo "     After returning from 3D view, OCX icons may become non-functional."
+    echo "     Workaround: click Shape (upper right), resize the window to restore"
+    echo "     icons. If fully broken, run: ./migAlleyHelper.sh restart"
+    echo "     Then Load Game -> select autosave."
+    echo ""
+    while true; do
+        read -rp "Select mode (1 or 2): " choice
+        case "$choice" in
+            1) echo "basic" > "$MODE_FILE"; echo "Mode set to: Basic (2 monitors)"; return ;;
+            2) echo "advanced" > "$MODE_FILE"; echo "Mode set to: Advanced (1 monitor)"; return ;;
+            *) echo "Please enter 1 or 2." ;;
+        esac
+    done
+}
+
+# Load saved mode or prompt for selection
+if [ -f "$MODE_FILE" ]; then
+    MODE=$(cat "$MODE_FILE")
+else
+    MODE=""
+fi
+
+if [[ "$MODE" != "basic" && "$MODE" != "advanced" ]]; then
+    select_mode
+    MODE=$(cat "$MODE_FILE")
+fi
+
+# Allow --select-mode flag to re-choose
+if [[ "${1:-}" == "--select-mode" ]]; then
+    select_mode
+    MODE=$(cat "$MODE_FILE")
+fi
+
+launch_mig() {
     # Disable winegstreamer to prevent crash when exiting 3D view
     export WINEDLLOVERRIDES="winegstreamer=d"
+    cd "$WINEPREFIX/drive_c/rowan/mig"
+    if [[ "$MODE" == "advanced" ]]; then
+        wine explorer /desktop=MigAlley,1440x1050 Mig.exe &>/dev/null
+    else
+        wine Mig.exe &>/dev/null
+    fi
+}
+
+# Check if Mig Alley setup exists in the Wine prefix
+if [ -f "$WINEPREFIX/drive_c/rowan/mig/Mig.exe" ]; then
     # ============================================================================
     # EXIT CRASH: null pointer in rstatic.dll (MFC42 window cleanup)
     # ============================================================================
@@ -39,8 +99,7 @@ if [ -f "$WINEPREFIX/drive_c/rowan/mig/Mig.exe" ]; then
     # result to be recorded before exiting. The crash is triggered by rapid
     # window destruction during the 3D-to-2D transition.
     # ============================================================================
-    cd "$WINEPREFIX/drive_c/rowan/mig"
-    wine Mig.exe &>/dev/null
+    launch_mig
     exit 0
 fi
 
@@ -74,23 +133,44 @@ fi
 #
 # WORKAROUNDS FOR THE SPURIOUS WINDOW:
 #
-#   1. Dual monitors at the same resolution (best option)
+#   1. Dual monitors at the same resolution (best option - "basic" mode)
 #      Wine's DirectDraw positions the overlay surface coordinates beyond the
 #      primary display bounds, pushing the spurious window to the second
 #      monitor, leaving the 3D view unobstructed on the primary monitor.
 #
-#   2. Virtual desktop mode (wine explorer /desktop=...)
+#   2. Virtual desktop mode (wine explorer /desktop=...) ("advanced" mode)
 #      Hides the spurious window, but causes 2D campaign screen icons to
-#      disappear (OCX controls position relative to screen origin, not
-#      virtual desktop origin). Workaround: when the 2D campaign window
-#      appears, immediately click "Shape" at upper right to deselect
-#      full-screen view. Now every time you resize the window, the icons
-#      will be redrawn and activated - useful if they've disappeared or
-#      become inactive. Save the game at this point - return to this
-#      snapshot if the campaign 2D window goes full-screen and the icons
-#      disappear, as will likely happen if you enter the 3D view to recon
-#      a target. When entering 3D view, ALT+TAB to make sure the game
-#      window has the focus.
+#      become offset after returning from 3D view (recon, mission, etc).
+#      The icons are rendered at one position but their click detection
+#      areas are at a different position, due to Wine's X11-to-Win32
+#      coordinate mapping breaking after DirectDraw mode switches.
+#
+#      ROOT CAUSE (from source code analysis of SRC/MFC/MAINFRM.CPP,
+#      SRC/MFC/RTOOLBAR.CPP, SRC/MFC/RBUTTON.CPP):
+#        - OCX controls use GetWindowRect() for positioning
+#        - Bitmaps are reloaded via SetDIBitsToDevice() on each WM_PAINT
+#        - After 3D exit, Inst3d::RestoreDirectX() -> RecalcLayout() runs
+#        - But Wine's virtual desktop coordinate context is stale, so
+#          Win32 positions no longer match X11 rendering positions
+#        - WM_SIZE / InvalidateRect from external tools cannot fix this
+#          because the coordinate bug is in Wine's window management layer
+#        - DLL injection (AppInit_DLLs) was tested but the Lutris wine
+#          runner (4.11-staging) does not support it
+#
+#      WORKAROUND:
+#        After returning from 3D to 2D campaign view:
+#        a) Click "Shape" (upper right) to exit full-screen view
+#        b) Resize the window border to refresh icons
+#        c) You may get 1-2 icon clicks before they break again;
+#           resize again to restore them
+#        d) When entering 3D view, ALT+TAB to ensure game has focus
+#
+#      FALLBACK - migAlleyHelper.sh:
+#        If icons are completely non-functional after 3D exit, run:
+#          ./migAlleyHelper.sh restart
+#        Then Load Game -> select autosave. The game auto-saves before
+#        3D missions, so campaign progress is preserved. The helper uses
+#        the Lutris wine runner and handles kill/restart automatically.
 #
 #   3. gamescope compositor - not fully explored, may cause the spurious
 #      window to disappear. Shows both surfaces as separate overlapping
@@ -134,16 +214,6 @@ fi
 #   A local copy of the Mig Alley source is at ../migAlleySource/
 # ============================================================================
 
-# Check the number of connected monitors no longer needed, thanks to Mig Alley DLL files and wine improvements
-#numMonitors=$(xrandr -q | grep connected | grep -v disconnected | wc -l)
-#if [ "$numMonitors" -ne 2 ]; then
-#    echo -e "\nTo avoid graphics glitches, a dual monitor setup is recommended for Mig Alley."
-#    echo -e "\n$numMonitors monitors were detected."
-#    echo -e "\nTo stop this script and set up dual monitors, press <CTRL> C."
-#    echo -e "To continue with your current monitor setup, press Enter\n"
-#    read -r replyString
-#fi
-
 # Check if winetricks is installed
 if [ ! -f "/usr/bin/winetricks" ]; then
     echo "\nERROR: winetricks not found. This program is needed to install a wine library "
@@ -156,8 +226,10 @@ fi
 if [ ! -f "$MA_ISO/setup.EXE" ]; then
     clear
     echo "Before you can install Mig Alley, you must mount the Mig Alley iso."
-    echo "\nMount the Mig Alley CD-ROM iso using this command:"
-    echo "\nsudo mount -o loop $INSTALL_DIR/'Mig Alley V1.1.iso' $MA_ISO\n"
+    echo " "
+    mkdir -p "$MA_ISO"
+    echo "Mount the Mig Alley CD-ROM iso using this command:"
+    echo " "; echo "sudo mount -o loop $INSTALL_DIR/'Mig Alley V1.1.iso' $MA_ISO"; echo " "
     echo "Then run this script again."
     exit 1
 fi
@@ -191,6 +263,4 @@ rm "$WINEPREFIX/drive_c/rowan/mig/mfc42.dll" &>/dev/null
 cd "$WINEPREFIX/drive_c/rowan/mig"
 
 # Launch Mig Alley
-wine Mig.exe &>/dev/null
-
-
+launch_mig
