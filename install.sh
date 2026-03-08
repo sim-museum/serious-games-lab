@@ -240,7 +240,7 @@ else
             fi
 
             echo "  [DOWNLOAD] $runner ..."
-            tmpfile="$(mktemp /tmp/runner-XXXXXX.tar.xz)"
+            tmpfile="$(sudo -u "$REAL_USER" mktemp /tmp/runner-XXXXXX.tar.xz)"
             if sudo -u "$REAL_USER" curl -fSL --progress-bar -o "$tmpfile" "$url"; then
                 sudo -u "$REAL_USER" tar -xJf "$tmpfile" -C "$RUNNERS_DIR/"
                 rm -f "$tmpfile"
