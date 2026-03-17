@@ -132,8 +132,8 @@ sgfout/
 .installed_*
 
 # After-game reports (machine-specific)
-**/afterGameReport/*
-!**/afterGameReport/.gitkeep
+**/afterGamesReport/*
+!**/afterGamesReport/.gitkeep
 
 # Launcher scores (machine-specific)
 filesForLauncher/launcherScores.csv

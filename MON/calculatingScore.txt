@@ -2,7 +2,7 @@ MON Scoring
 eSports for Engineers 24041LTS
 
 Note: save screenshots and hand histories after each session.
-Copy your game output files to the MON/afterGameReport directory,
+Copy your game output files to the MON/afterGamesReport directory,
 calculate your score as described below, and then enter your score
 using the launcher.
 

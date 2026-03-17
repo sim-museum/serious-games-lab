@@ -3,7 +3,7 @@ eSports for Engineers 24041LTS
 
 Note: save your .sgf game files after each session.  Copy your .sgf
 files, along with screenshot .png files showing your games and analysis,
-to the SUN/afterGameReport directory, calculate your score as described
+to the SUN/afterGamesReport directory, calculate your score as described
 below, and then enter your score using the launcher.
 
 Note: these OKRs can be completed with any of the Go programs

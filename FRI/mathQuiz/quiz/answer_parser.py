@@ -209,6 +209,26 @@ class AnswerParser:
 
         return text
 
+    def evaluate_formula(self, user_input: str) -> str:
+        """
+        Evaluate a formula to a numeric string with 4 significant figures.
+
+        If the input is or contains a formula (e.g. "(3.4+1.2)/3.3"),
+        evaluate it and return the result as a string. If evaluation
+        fails, return the original input unchanged.
+        """
+        result = self._parse_expression(user_input)
+        if result is None:
+            return user_input
+        try:
+            val = float(sp.N(result))
+            # Format to 4 significant figures
+            if val == 0:
+                return "0"
+            return f"{val:.4g}"
+        except (TypeError, ValueError):
+            return user_input
+
     def parse_numeric(self, user_input: str) -> Optional[float]:
         """
         Parse input as a numeric value.

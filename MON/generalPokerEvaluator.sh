@@ -90,7 +90,9 @@ echo "Without --board, ps-eval enumerates all possible 5-card boards."
 echo "With a flop, it only needs to check the remaining 2 cards."
 echo ""
 echo "Type 'exit' to return to the launcher."
+echo "(All input and output will be logged.)"
 echo ""
 
 cd "$SCRIPT_DIR"
-exec bash --norc --noprofile -i
+LOG_FILE="$SCRIPT_DIR/ps_eval_log_$(date '+%y%m%d_%H%M').txt"
+script -q -c "bash --norc --noprofile -i" "$LOG_FILE"

@@ -4,7 +4,7 @@ eSports for Engineers 24041LTS
 Note: save your replay files after each session.  For Battle of Britain,
 these are .cam files in BattleOfBritain/WP.  For MiG Alley, these are
 .cam files in MigAlley/WP.  Copy your replay files, along with
-screenshot .png files, to the TUE/afterGameReport directory, calculate
+screenshot .png files, to the TUE/afterGamesReport directory, calculate
 your score as described below, and then enter your score using the launcher.
 
 Note: these OKRs can be completed with any of the flight simulation

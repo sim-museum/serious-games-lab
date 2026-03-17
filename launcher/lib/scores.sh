@@ -88,7 +88,7 @@ export_scores() {
     fi
 
     local ts
-    ts="$(date '+%Y-%m-%d_%H-%M-%S')"
+    ts="$(date '+%y%m%d_%H%M')"
     local dir_name="${user_name}_seriousGamesLab-24041LTS_${average_score}_${ts}"
     local export_dir="$LAUNCHER_FILES_DIR/$dir_name"
 
@@ -113,6 +113,21 @@ export_scores() {
     if [[ "$found_any" == false ]]; then
         msg_warn "No score archives found to export."
     fi
+
+    # Copy afterGamesReport directories from each day
+    for i in {0..6}; do
+        local day="${DAY_ORDER[$i]}"
+        local agr_dir="$REPO_ROOT/$day/afterGamesReport"
+        if [[ -d "$agr_dir" ]]; then
+            local agr_count
+            agr_count="$(find "$agr_dir" -type f 2>/dev/null | wc -l)"
+            if [[ "$agr_count" -gt 0 ]]; then
+                mkdir -p "$export_dir/$day/afterGamesReport"
+                cp -r "$agr_dir/." "$export_dir/$day/afterGamesReport/"
+                found_any=true
+            fi
+        fi
+    done
 
     # Copy scores CSV
     [[ -f "$SCORES_FILE" ]] && cp "$SCORES_FILE" "$export_dir/"
@@ -182,25 +197,25 @@ enter_score() {
     local day_idx="$2"
     local day_dir="$REPO_ROOT/$day"
 
-    # Create afterGameReport directory
-    mkdir -p "$day_dir/afterGameReport"
+    # Create afterGamesReport directory
+    mkdir -p "$day_dir/afterGamesReport"
 
     # Run copyRecentFiles script if it exists
     local copy_script="$day_dir/copyRecentFilesToAfterGameReport.sh"
     if [[ -f "$copy_script" ]]; then
-        msg_info "Copying recent files to afterGameReport..."
+        msg_info "Copying recent files to afterGamesReport..."
         (cd "$day_dir" && bash "$copy_script") 2>/dev/null || true
     fi
 
-    # Check if afterGameReport has any files
+    # Check if afterGamesReport has any files
     local file_count
-    file_count="$(find "$day_dir/afterGameReport" -type f 2>/dev/null | wc -l)"
+    file_count="$(find "$day_dir/afterGamesReport" -type f 2>/dev/null | wc -l)"
     if [[ "$file_count" -eq 0 ]]; then
         msg_info "No game output files to archive for $day."
     else
         echo ""
-        msg_info "Files in $day/afterGameReport/:"
-        ls "$day_dir/afterGameReport/"
+        msg_info "Files in $day/afterGamesReport/:"
+        ls "$day_dir/afterGamesReport/"
         echo ""
     fi
 
@@ -223,21 +238,19 @@ enter_score() {
         msg_error "Invalid score. Please enter a number between 0 and 1."
     done
 
-    # Create tar.gz archive of afterGameReport
-    local timestamp
-    timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
+    # Create tar.gz archive of afterGamesReport
     local sanitized_ts
-    sanitized_ts="$(echo "$timestamp" | tr ' :' '_-')"
+    sanitized_ts="$(date '+%y%m%d_%H%M')"
     local archive_name="${day}_score_${sanitized_ts}.tar.gz"
 
     if [[ "$file_count" -gt 0 ]]; then
         tar -czf "$LAUNCHER_FILES_DIR/$archive_name" \
-            -C "$day_dir" afterGameReport
+            -C "$day_dir" afterGamesReport
         msg_ok "Archived game files to $archive_name"
     fi
 
-    # Clean afterGameReport
-    rm -rf "$day_dir/afterGameReport"
+    # Clean afterGamesReport
+    rm -rf "$day_dir/afterGamesReport"
 
     # Append score to CSV (create with header if needed)
     if [[ ! -f "$SCORES_FILE" ]]; then

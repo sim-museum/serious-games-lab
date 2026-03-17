@@ -11,6 +11,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/scores.sh"
+source "$SCRIPT_DIR/lib/after_game_report.sh"
 
 # --- Pre-flight checks ---
 
@@ -649,6 +650,10 @@ run_game() {
     msg_info "Launching: $day/$script"
     echo ""
 
+    # Record start time for after-game report collection
+    local game_start_epoch
+    game_start_epoch="$(date +%s)"
+
     (
         set +euo pipefail
         export REPO_ROOT="$REPO_ROOT"
@@ -670,11 +675,21 @@ run_game() {
             bash "$script"
         fi
     )
+
+    # Collect game output files created during the session
+    collect_after_game_report "$day" "$script" "$game_start_epoch"
 }
 
 # --- Main loop ---
 
+ensure_after_game_report_dirs() {
+    for day in "${DAY_ORDER[@]}"; do
+        mkdir -p "$REPO_ROOT/$day/afterGamesReport"
+    done
+}
+
 main() {
+    ensure_after_game_report_dirs
     kill_stale_wine
     check_dependencies
     check_nvidia_32bit
