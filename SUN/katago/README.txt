@@ -1,4 +1,4 @@
-KataGo v1.15.3
+KataGo v1.16.4
 https://github.com/lightvector/KataGo
 
 For neural nets from the latest run, download from here:
@@ -87,7 +87,7 @@ Print version:
 
 
 -----------------------------------------------------
-OPENCL VS CUDA VS TENSORRT VS EIGEN:
+OPENCL VS CUDA VS TENSORRT VS EIGEN VS METAL:
 -----------------------------------------------------
 Explanation of the various versions available at https://github.com/lightvector/KataGo/releases
 
@@ -100,6 +100,7 @@ Eigen AVX2 - Use this if you have no good GPU, but you have an Intel or AMD CPU 
 Eigen - Use this if you don't have a GPU or your GPU is too old to work, and your CPU turns out not to support AVX2 or FMA. This is a pure CPU version for KataGo for
 This is the pure CPU version of KataGo, with no special instructions, which should hopefully run just about anywhere.
 
+Metal - Specific to MacOS, try this with Apple system gpus/accelerators.
 
 -----------------------------------------------------
 TUNING FOR PERFORMANCE:

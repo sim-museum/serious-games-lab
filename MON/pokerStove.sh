@@ -58,6 +58,8 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/PokerStove/PokerStove.exe" ]; then
         snapshot=0
     fi
 
+    # Mark game start so afterGamesReport only collects files from gameplay, not install
+    [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     wine "C:\\Program Files\\PokerStove\\PokerStove.exe" 2>/dev/null
 
     # Extract only the new results appended during this session
@@ -88,6 +90,8 @@ WINEDEBUG=-all wine PokerStoveSetup124.exe
 if [ -f "$WINEPREFIX/drive_c/Program Files/PokerStove/PokerStove.exe" ]; then
     echo "PokerStove installed. Launching..."
     cd "$WINEPREFIX/drive_c/Program Files/PokerStove/"
+    # Mark game start so afterGamesReport only collects files from gameplay, not install
+    [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     wine PokerStove.exe 2>/dev/null
 else
     echo "Installation may have failed. Run this script again to retry."

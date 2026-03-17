@@ -73,6 +73,8 @@ if [[ -d "$GAME_DIR" && -f "$GAME_DIR/mainapp.exe" ]]; then
     echo "  Tip: click and drag on the lower right of the CFL splash screen,"
     echo "  then select 'click to begin'."
     cd "$GAME_DIR"
+    # Mark game start so afterGamesReport only collects files from gameplay, not install
+    [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
 
     # Auto-dismiss the EA online matchmaking notice dialog that appears
     # behind the game window.  See lesson #4 above.

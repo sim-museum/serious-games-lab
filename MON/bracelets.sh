@@ -53,6 +53,8 @@ if [ -f "$game_dir/WSOPBFTB.exe" ]; then
         touch "$WINEPREFIX/.dxvk_sarek"
     fi
 
+    # Mark game start so afterGamesReport only collects files from gameplay, not install
+    [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     WINEDLLOVERRIDES="d3d9,dxgi=n,b" wine WSOPBFTB.exe &>/dev/null
     cd "$WINEPREFIX/.."
 
@@ -118,14 +120,19 @@ fi
 # Ensure mount point directory exists
 mkdir -p "$install_dir/isoMnt"
 
-# Check if SETUP.exe file is not found
+# Auto-mount ISO if not already mounted
 if [ ! -f "$install_dir/isoMnt/SETUP.exe" ]; then
-    clear
-    printf "To install Battle of the Bracelets, run the following command in a terminal:\n\n"
-    echo "sudo mount -o loop $install_dir/pro-wsp08.iso $install_dir/isoMnt"
-    echo ""
-    echo "Then run this script again."
-    exit 0     
+    if [ -f "$install_dir/pro-wsp08.iso" ]; then
+        echo "Mounting Battle of the Bracelets ISO (requires sudo)..."
+        sudo mount -o loop "$install_dir/pro-wsp08.iso" "$install_dir/isoMnt" || {
+            printf "\nAuto-mount failed. Run manually:\n\nsudo mount -o loop \"%s/pro-wsp08.iso\" \"%s/isoMnt\"\n\nThen run this script again.\n" "$install_dir" "$install_dir"
+            exit 0
+        }
+    else
+        echo "ISO not found: $install_dir/pro-wsp08.iso"
+        echo "Run this script again after placing the ISO in the INSTALL directory."
+        exit 0
+    fi
 fi
 
 # Pre-install DirectX 9c via winetricks (the game's bundled DX installer

@@ -27,5 +27,11 @@ fi
 echo " "; echo "For landing help select View/Toggle Glide Slope Tunnel"; echo " ";
 echo "study the cockpit instruments and practice take off and landing."
 
-fgfs --start-date-sys=2020:06:01:12:00:00 --aircraft=F-86F --fg-aircraft=$FGADDON_DIR/Aircraft --in-air --altitude=10000 --vc=200 --enable-freeze 2>/dev/null 1>/dev/null
+# Install flight logging protocol
+_FG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_FG_PROTO="$_FG_DIR/.fgfs/fgdata_2024_1/Protocol"
+[[ -d "$_FG_PROTO" ]] && cp -n "$_FG_DIR/fg_log_protocol.xml" "$_FG_PROTO/" 2>/dev/null
+
+fgfs --start-date-sys=2020:06:01:12:00:00 --aircraft=F-86F --fg-aircraft=$FGADDON_DIR/Aircraft --in-air --altitude=10000 --vc=200 --enable-freeze \
+    --generic=file,out,1,fg_log.csv,fg_log_protocol 2>/dev/null 1>/dev/null
 

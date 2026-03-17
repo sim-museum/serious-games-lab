@@ -68,7 +68,9 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain/bob.
         sed -i 's/FORCE_WINDOWED_MODE=OFF/FORCE_WINDOWED_MODE=ON/' "$BOB_BDG"
     fi
 
-    wine start /d "C:\\Program Files\\Rowan Software\\Battle Of Britain" bob.exe 2>/dev/null 1>/dev/null
+    # Mark game start so afterGamesReport only collects files from gameplay, not install
+    [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
+    wine start /wait /d "C:\\Program Files\\Rowan Software\\Battle Of Britain" bob.exe 2>/dev/null 1>/dev/null
     exit 0
 fi
 
@@ -194,21 +196,21 @@ fi
 #    read -r replyString
 #fi
 
-# Check if BoB installation ISO exists
+# Check if BoB installation ISO exists; auto-mount if needed
 if [ ! -f "$BoB_INSTALL/BoB_iso/Setup.exe" ]; then
-    clear;
-#    if wine --version | grep "wine-6.0"; then
-#        clear
-#        printf "Version 6.0 of wine detected.\nWine version 7 is recommended for installing Battle of Britain.\n\nFrom the ese directory, run \n\n./wine_experimental.sh\n\nto install wine 7.\n\nThen run this script again.\n\n"
-#        exit 0
-#    fi
-    echo "Before you can install Battle of Britain, you must mount the Battle of Britain iso."
-    echo " "
     mkdir -p "$PWD/INSTALL/BoB_iso"
-    echo "Mount the Battle of Britain CD-ROM iso using this command:"
-    echo " "; echo "sudo mount -o loop $PWD/INSTALL/BATTLEOFBRITAIN.iso $PWD/INSTALL/BoB_iso"; echo " "
-    echo "Then run this script again."
-    exit 1
+    if [ -f "$PWD/INSTALL/BATTLEOFBRITAIN.iso" ]; then
+        echo "Mounting Battle of Britain ISO (requires sudo)..."
+        sudo mount -o loop "$PWD/INSTALL/BATTLEOFBRITAIN.iso" "$PWD/INSTALL/BoB_iso" || {
+            printf "\nAuto-mount failed. Run manually:\n\nsudo mount -o loop \"$PWD/INSTALL/BATTLEOFBRITAIN.iso\" \"$PWD/INSTALL/BoB_iso\"\n\nThen run this script again.\n"
+            exit 1
+        }
+    else
+        clear
+        echo "Battle of Britain ISO not found: $PWD/INSTALL/BATTLEOFBRITAIN.iso"
+        echo "Place the ISO in the INSTALL directory and run this script again."
+        exit 1
+    fi
 fi
 
 # Configuration before installation
@@ -241,5 +243,7 @@ rsync -a "$BoB_INSTALL/RR ROWANBOB GRAPHICS MOD/bobMain/" "$WINEPREFIX/drive_c/P
 cp "$BoB_INSTALL/keys.xml" "$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain/KEYBOARD"
 # skip videos to prevent quartz VMR7 crash under Wine
 sed -i 's/SKIP_QUICKVIDEOS=OFF/SKIP_QUICKVIDEOS=ON/g; s/SKIP_VIDEOS=OFF/SKIP_VIDEOS=ON/g' "$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain/bdg.txt"
-WINEDLLOVERRIDES="winegstreamer=d" wine start /d "C:\\Program Files\\Rowan Software\\Battle Of Britain" bob.exe 2>/dev/null 1>/dev/null
+# Mark game start so afterGamesReport only collects files from gameplay, not install
+[[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
+WINEDLLOVERRIDES="winegstreamer=d" wine start /wait /d "C:\\Program Files\\Rowan Software\\Battle Of Britain" bob.exe 2>/dev/null 1>/dev/null
 

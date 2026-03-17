@@ -37,6 +37,12 @@ echo "For Latitude, negative means South"
 echo "For Longitude, negative means West"
 echo " "
 
+# Install flight logging protocol
+_FG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_FG_PROTO="$_FG_DIR/.fgfs/fgdata_2024_1/Protocol"
+[[ -d "$_FG_PROTO" ]] && cp -n "$_FG_DIR/fg_log_protocol.xml" "$_FG_PROTO/" 2>/dev/null
+
 # Launch FlightGear
-fgfs --start-date-sys=2020:06:01:12:00:00 --httpd=8080 --aircraft=c172p 2>/dev/null 1>/dev/null
+fgfs --start-date-sys=2020:06:01:12:00:00 --httpd=8080 --aircraft=c172p \
+    --generic=file,out,1,fg_log.csv,fg_log_protocol 2>/dev/null 1>/dev/null
 
