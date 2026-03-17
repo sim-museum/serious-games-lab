@@ -31,6 +31,8 @@ wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\Direct3D" /v VideoMemorySize /t
 if [ -f "$WINEPREFIX/drive_c/Program Files/rFactor/rFactor.exe" ]; then
     cd "$WINEPREFIX/drive_c/Program Files/rFactor"
 
+    # Mark game start so afterGamesReport only collects files from gameplay, not install
+    [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     WINEDLLOVERRIDES="d3d9,d3d11,dxgi=n,b" wine rFactor.exe 2>/dev/null
 
     printf "\nrFactor Optional Scripts\n\nTelemetry:\n$SCRIPT_DIR/addTelemetryLoggerToRfactor.sh\n\nImprove AI:\n$SCRIPT_DIR/offlineAIimprovement_rFactor.sh\n\nConfigure Graphics:\n$SCRIPT_DIR/graphicsConfig_rFactor.sh\n\nTip: to become owner of all cars in a mod, type the code \"ISI_BABYFACTORY\" in\nthe chat window. (The chat window is at lower left on the screen just before\nyou enter the 3D view.)\n\n"

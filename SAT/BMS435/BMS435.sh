@@ -37,6 +37,8 @@ if [ -d "$FALCON_DIR" ]; then
     echo "Starting Falcon BMS 4.35"
     echo ""
 
+    # Mark game start so afterGamesReport only collects files from gameplay, not install
+    [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     # Try DXVK 2.x first, fall back to DXVK-Sarek if GPU lacks Vulkan 1.3
     if [ ! -f "$WINEPREFIX/.dxvk_sarek" ]; then
         wine Launcher.exe -nomovie 2>"$WINEPREFIX/.dxvk_log"

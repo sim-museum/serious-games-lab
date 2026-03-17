@@ -41,5 +41,11 @@ echo "Help/Aircraft Help"
 echo "MiG-15bis"
 echo " "
 
-fgfs --start-date-sys=2020:06:01:12:00:00 --aircraft=MiG-15bis 2>/dev/null 1>/dev/null
+# Install flight logging protocol
+_FG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_FG_PROTO="$_FG_DIR/.fgfs/fgdata_2024_1/Protocol"
+[[ -d "$_FG_PROTO" ]] && cp -n "$_FG_DIR/fg_log_protocol.xml" "$_FG_PROTO/" 2>/dev/null
+
+fgfs --start-date-sys=2020:06:01:12:00:00 --aircraft=MiG-15bis \
+    --generic=file,out,1,fg_log.csv,fg_log_protocol 2>/dev/null 1>/dev/null
 

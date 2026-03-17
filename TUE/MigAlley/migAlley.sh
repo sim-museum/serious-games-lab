@@ -74,6 +74,12 @@ launch_mig() {
     # Disable winegstreamer to prevent crash when exiting 3D view
     export WINEDLLOVERRIDES="winegstreamer=d"
     cd "$WINEPREFIX/drive_c/rowan/mig"
+    # Mark game start so afterGamesReport only collects files from gameplay, not install.
+    # Sleep 1s to ensure the marker is strictly newer than any install-created files.
+    if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
+        sleep 1
+        touch "$SGL_GAME_STARTED_MARKER"
+    fi
     if [[ "$MODE" == "advanced" ]]; then
         wine explorer /desktop=MigAlley,1440x1050 Mig.exe &>/dev/null
     else
@@ -222,23 +228,43 @@ if [ ! -f "/usr/bin/winetricks" ]; then
     exit 1
 fi
 
-# Check if Mig Alley setup files exist
+# Check if Mig Alley setup files exist; auto-mount ISO if needed
 if [ ! -f "$MA_ISO/setup.EXE" ]; then
-    clear
-    echo "Before you can install Mig Alley, you must mount the Mig Alley iso."
-    echo " "
     mkdir -p "$MA_ISO"
-    echo "Mount the Mig Alley CD-ROM iso using this command:"
-    echo " "; echo "sudo mount -o loop $INSTALL_DIR/'Mig Alley V1.1.iso' $MA_ISO"; echo " "
-    echo "Then run this script again."
-    exit 1
+    if [ -f "$INSTALL_DIR/Mig Alley V1.1.iso" ]; then
+        echo "Mounting Mig Alley ISO (requires sudo)..."
+        sudo mount -o loop "$INSTALL_DIR/Mig Alley V1.1.iso" "$MA_ISO" || {
+            printf "\nAuto-mount failed. Run manually:\n\nsudo mount -o loop \"$INSTALL_DIR/Mig Alley V1.1.iso\" \"$MA_ISO\"\n\nThen run this script again.\n"
+            exit 1
+        }
+    else
+        clear
+        echo "Mig Alley ISO not found: $INSTALL_DIR/Mig Alley V1.1.iso"
+        echo "Place the ISO in the INSTALL directory and run this script again."
+        exit 1
+    fi
 fi
 
 # Install prerequisites
 clear
 echo "Installing prerequisites..."
 winetricks vcrun6 &>/dev/null
+# Auto-dismiss the bogus "not enough disk space" dialogs from InstallShield.
+# The old 32-bit GetDiskFreeSpace() overflows on large modern filesystems,
+# producing an absurd "requires 1.6 TB" message.  The dialog appears multiple
+# times during install, so keep dismissing it until setup.EXE exits.
+(   while true; do
+        WID=$(xdotool search --name "^Install$" 2>/dev/null | head -1)
+        if [[ -n "$WID" ]]; then
+            sleep 0.3
+            xdotool windowactivate --sync "$WID" key Tab Tab Return 2>/dev/null
+        fi
+        sleep 0.5
+    done
+) &
+_DISMISS_PID=$!
 wine "$MA_ISO/setup.EXE" &>/dev/null
+kill "$_DISMISS_PID" 2>/dev/null; wait "$_DISMISS_PID" 2>/dev/null
 clear
 echo "Select 'CANCEL' in the DirectX(R) Setup dialog box, then press ENTER to continue."
 read -r replyString

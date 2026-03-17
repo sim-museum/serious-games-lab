@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # after_game_report.sh - Collect game output files after a game session
 # Sourced after common.sh; uses globals from common.sh.
+#
+# Game scripts should touch "$WINEPREFIX/.sgl_game_started" (or
+# "$SGL_GAME_STARTED_MARKER" if set) right before launching the game
+# executable.  collect_after_game_report uses this marker's timestamp
+# to distinguish files created during gameplay from files created
+# during installation.  Falls back to the script start epoch if no
+# marker is found.
 
 # Map a game script to the file extensions/paths to search for output files.
 # Returns newline-separated "search_dir|pattern" pairs relative to the day dir.
@@ -43,12 +50,12 @@ _game_output_patterns() {
             echo "./WP/drive_c/Program Files/Activision Value/WSOP 2008/Saves|*.sav"
             ;;
         # TUE - Historical flight: .cam replay, .sav campaign, .bsL/.bsR campaigns
-        MigAlley.sh|MigAlley/MigAlley.sh)
+        MigAlley.sh|MigAlley/migAlley.sh|MigAlley/MigAlley.sh)
             echo "./MigAlley/WP/drive_c/rowan/mig/Videos|*.cam"
-            echo ".|*.sav"
+            echo "./MigAlley/WP/drive_c/rowan/mig/SaveGame|*.sav"
             ;;
-        BattleOfBritain.sh|BattleOfBritain/BattleOfBritain.sh)
-            echo "./BattleOfBritain/WP/drive_c/Program Files (x86)/Rowan Software/Battle Of Britain/VIDEOS|*.cam"
+        BattleOfBritain.sh|BattleOfBritain/battleOfBritain.sh|BattleOfBritain/BattleOfBritain.sh)
+            echo "./BattleOfBritain/WP/drive_c/Program Files/Rowan Software/Battle Of Britain/VIDEOS|*.cam"
             echo ".|*.bsL"
             echo ".|*.bsR"
             ;;
@@ -90,8 +97,11 @@ _game_output_patterns() {
             echo ".|*.rsgf"
             echo ".|*.rsgf.csv"
             ;;
-        # FlightGear scenarios
+        # FlightGear scenarios: saved state, logs, CSV logging output
         flightgear/*.sh)
+            echo "./flightgear/.fgfs/aircraft-data|*.xml"
+            echo "./flightgear/.fgfs|fgfs*.log"
+            echo ".|fg_log*.csv"
             ;;
         # Tacview
         tacview/tacview.sh)
@@ -128,6 +138,19 @@ collect_after_game_report() {
     local game_name
     game_name="$(_game_short_name "$script")"
 
+    # Use the game-started marker timestamp if available.  Game scripts
+    # touch this marker right before launching the actual game executable,
+    # so files created during installation (before the marker) are excluded.
+    # When using the marker, compare strictly greater-than (not >=) to
+    # exclude files created in the same second as the marker.
+    local marker="$day_dir/.sgl_game_started"
+    local compare_op="-ge"
+    if [[ -f "$marker" ]]; then
+        start_epoch="$(stat -c %Y "$marker")"
+        compare_op="-gt"
+        rm -f "$marker"
+    fi
+
     # Build timestamp-based subdirectory name: YYMMDD_HHMM_gamename
     local subdir_name
     subdir_name="$(date -d "@$start_epoch" '+%y%m%d_%H%M')_${game_name}"
@@ -163,7 +186,7 @@ collect_after_game_report() {
             while IFS= read -r -d '' file; do
                 local file_epoch
                 file_epoch="$(stat -c %Y "$file" 2>/dev/null)" || continue
-                if [[ "$file_epoch" -ge "$start_epoch" ]]; then
+                if [ "$file_epoch" $compare_op "$start_epoch" ]; then
                     if [[ "$found_files" == false ]]; then
                         mkdir -p "$report_dir"
                         found_files=true
@@ -181,7 +204,7 @@ collect_after_game_report() {
         while IFS= read -r -d '' file; do
             local file_epoch
             file_epoch="$(stat -c %Y "$file" 2>/dev/null)" || continue
-            if [[ "$file_epoch" -ge "$start_epoch" ]]; then
+            if [ "$file_epoch" $compare_op "$start_epoch" ]; then
                 if [[ "$found_files" == false ]]; then
                     mkdir -p "$report_dir"
                     found_files=true

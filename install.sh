@@ -102,6 +102,57 @@ else
     AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
 fi
 
+# --- Display resolution ---
+CURRENT_RES=$(sudo -u "$REAL_USER" xdpyinfo 2>/dev/null | grep -oP 'dimensions:\s+\K[0-9]+x[0-9]+' | head -1)
+if [[ -n "$CURRENT_RES" ]]; then
+    RES_W="${CURRENT_RES%x*}"
+    RES_H="${CURRENT_RES#*x}"
+    if (( RES_W >= 1920 && RES_H >= 1080 )); then
+        echo "  [OK]   Display: ${CURRENT_RES}"
+    else
+        echo "  [WARN] Display: ${CURRENT_RES} — 1920x1080 or greater recommended"
+        AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
+    fi
+else
+    echo "  [WARN] Display: could not detect resolution — 1920x1080 or greater recommended"
+    AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
+fi
+
+# --- GPU memory ---
+VRAM_MB=""
+if command -v nvidia-smi &>/dev/null; then
+    VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1)
+fi
+if [[ -z "$VRAM_MB" ]] && [[ -d /sys/class/drm ]]; then
+    for card in /sys/class/drm/card[0-9]*/device; do
+        mem_file="$card/mem_info_vram_total"
+        if [[ -f "$mem_file" ]]; then
+            VRAM_BYTES=$(cat "$mem_file" 2>/dev/null)
+            if [[ -n "$VRAM_BYTES" && "$VRAM_BYTES" -gt 0 ]] 2>/dev/null; then
+                VRAM_MB=$(( VRAM_BYTES / 1048576 ))
+                break
+            fi
+        fi
+    done
+fi
+if [[ -z "$VRAM_MB" ]] && command -v glxinfo &>/dev/null; then
+    VRAM_LINE=$(sudo -u "$REAL_USER" glxinfo 2>/dev/null | grep -iP '(video memory|dedicated video|vram)' | grep -oP '[0-9]+' | head -1)
+    if [[ -n "$VRAM_LINE" && "$VRAM_LINE" -gt 0 ]] 2>/dev/null; then
+        VRAM_MB="$VRAM_LINE"
+    fi
+fi
+if [[ -n "$VRAM_MB" ]]; then
+    if (( VRAM_MB >= 1024 )); then
+        echo "  [OK]   GPU memory: ${VRAM_MB} MB"
+    else
+        echo "  [WARN] GPU memory: ${VRAM_MB} MB — 1 GB or greater recommended"
+        AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
+    fi
+else
+    echo "  [WARN] GPU memory: could not detect — 1 GB or greater recommended"
+    AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
+fi
+
 # --- sglBinaries_1.tar.gz ---
 shopt -s nullglob
 WP_DIRS=("$REPO_ROOT"/*/WP/ "$REPO_ROOT"/*/*/WP/)

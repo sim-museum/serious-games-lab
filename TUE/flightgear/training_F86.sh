@@ -40,8 +40,14 @@ echo " "; echo "For help on this aircraft, see:"
 echo "Help/Aircraft Help"
 echo "Sabre"; echo " "
 
+# Install flight logging protocol
+_FG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_FG_PROTO="$_FG_DIR/.fgfs/fgdata_2024_1/Protocol"
+[[ -d "$_FG_PROTO" ]] && cp -n "$_FG_DIR/fg_log_protocol.xml" "$_FG_PROTO/" 2>/dev/null
+
 # Start FlightGear with specified options
-fgfs --start-date-sys=2020:06:01:12:00:00 --aircraft=F-86F 2>/dev/null 1>/dev/null
+fgfs --start-date-sys=2020:06:01:12:00:00 --aircraft=F-86F \
+    --generic=file,out,1,fg_log.csv,fg_log_protocol 2>/dev/null 1>/dev/null
 
 clear
 printf "F-86F optional script\n\nStart with the F-86F in the air:\n%s\n\n" "$flight_script"

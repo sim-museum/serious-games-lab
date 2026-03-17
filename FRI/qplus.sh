@@ -46,6 +46,8 @@ if [ -n "$QBRIDGE_DIR" ]; then
 
     # Run Qplus Bridge
     cd "$QBRIDGE_DIR"
+    # Mark game start so afterGamesReport only collects files from gameplay, not install
+    [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     wine QBRIDGE.EXE 2>/dev/null 1>/dev/null
     cd "$BASE_DIR"
     clear

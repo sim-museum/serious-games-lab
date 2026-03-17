@@ -49,12 +49,15 @@ else
         echo "Unpacking Chessmaster ISO file in $WINEPREFIX/../INSTALL/chessmaster"
         cd "$WINEPREFIX/../INSTALL/"
         unzip Chessmaster-Grandmaster-Edition_Win_EN-FR.zip >/dev/null 2>&1
-        clear
-        # Ensure mount point directory exists
+    fi
+    # Auto-mount ISO if not already mounted
+    if [ ! -f "$WINEPREFIX/../INSTALL/isoMnt/Chessmaster Grandmaster Edition En/setup.exe" ] && [ -f "$WINEPREFIX/../INSTALL/itw-cge.iso" ]; then
         mkdir -p "$WINEPREFIX/../INSTALL/isoMnt"
-        # Display instructions for mounting ISO
-        printf "To install Chessmaster, run the following command in a terminal,\nthen run this script again.\n\nsudo mount -o loop "$WINEPREFIX"/../INSTALL/itw-cge.iso "$WINEPREFIX"/../INSTALL/isoMnt\n"
-        exit 0
+        echo "Mounting Chessmaster ISO (requires sudo)..."
+        sudo mount -o loop "$WINEPREFIX/../INSTALL/itw-cge.iso" "$WINEPREFIX/../INSTALL/isoMnt" || {
+            printf "\nAuto-mount failed. Run manually:\n\nsudo mount -o loop \"%s/../INSTALL/itw-cge.iso\" \"%s/../INSTALL/isoMnt\"\n\nThen run this script again.\n" "$WINEPREFIX" "$WINEPREFIX"
+            exit 0
+        }
     fi
     if [ -f "$WINEPREFIX/../INSTALL/isoMnt/Chessmaster Grandmaster Edition En/setup.exe" ]; then
         # Navigate to ISO mounted directory

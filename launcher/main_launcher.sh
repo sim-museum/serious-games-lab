@@ -658,10 +658,14 @@ run_game() {
         set +euo pipefail
         export REPO_ROOT="$REPO_ROOT"
         export SGL_GAME_SCRIPT="$script"
+        export SGL_GAME_STARTED_MARKER="$day_dir/.sgl_game_started"
         FG_BIN="$HOME/.local/share/flightgear/bin"
         [[ -d "$FG_BIN" ]] && export PATH="$FG_BIN:$PATH"
         cd "$day_dir"
         if [[ -f "$REPO_ROOT/launcher/lib/wine_runner.sh" ]]; then
+            # Disable IBus/input-method frameworks to prevent ibus-daemon
+            # memory leak when Wine triggers GTK IM context queries
+            unset GTK_IM_MODULE QT_IM_MODULE XMODIFIERS
             source "$REPO_ROOT/launcher/lib/wine_runner.sh"
         fi
         if [[ "$script" == *.py ]]; then

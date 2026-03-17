@@ -25,6 +25,8 @@ wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /
 # Check if Wbridge5 is already installed
 if [ -d "$WINEPREFIX/drive_c/wbridge5" ]; then
     # If installed, run Wbridge5
+    # Mark game start so afterGamesReport only collects files from gameplay, not install
+    [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     wine "$WINEPREFIX/drive_c/wbridge5/Wbridge5.exe" 2>/dev/null 1>/dev/null
     clear
     # Display exit message

@@ -54,6 +54,11 @@ install_dgvoodoo2() {
     echo "dgVoodoo2 installed."
 }
 
+# Disable IBus input method to prevent ibus-daemon memory leak under Wine
+unset GTK_IM_MODULE
+unset QT_IM_MODULE
+unset XMODIFIERS
+
 # Set up runner unless already configured by the launcher
 if [[ -z "${SGL_GAME_SCRIPT:-}" ]]; then
     setup_wine_runner "$RUNNER_GAME"
