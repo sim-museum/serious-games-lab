@@ -49,7 +49,12 @@ _game_output_patterns() {
         bracelets.sh)
             echo "./WP/drive_c/Program Files/Activision Value/WSOP 2008/Saves|*.sav"
             ;;
-        # TUE - Historical flight: .cam replay, .sav campaign, .bsL/.bsR campaigns
+        # TUE - Historical flight: saved flights, replays, campaigns
+        FS9/fs9.sh)
+            echo "./FS9/WP/drive_c/Program Files/Microsoft Games/Flight Simulator 9/Flights|*.FLT"
+            echo "./FS9/WP/drive_c/Program Files/Microsoft Games/Flight Simulator 9/Flights|*.WX"
+            echo "./FS9/WP/drive_c/Program Files/Microsoft Games/Flight Simulator 9|*.LBK"
+            ;;
         MigAlley.sh|MigAlley/migAlley.sh|MigAlley/MigAlley.sh)
             echo "./MigAlley/WP/drive_c/rowan/mig/Videos|*.cam"
             echo "./MigAlley/WP/drive_c/rowan/mig/SaveGame|*.sav"
