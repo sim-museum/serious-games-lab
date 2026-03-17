@@ -1,4 +1,24 @@
 #!/bin/bash
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+# Set up Wine runner environment (use lutris-fshack-5.7 for MFC dialog compatibility)
+setup_wine_runner() {
+    local runner_name="lutris-fshack-5.7-x86_64"
+    local runner_dir="$HOME/.local/share/lutris/runners/wine/$runner_name"
+    if [[ -d "$runner_dir" && -x "$runner_dir/bin/wine" ]]; then
+        export PATH="$runner_dir/bin:$PATH"
+        export WINE="$runner_dir/bin/wine"
+        export WINELOADER="$runner_dir/bin/wine"
+        export WINESERVER="$runner_dir/bin/wineserver"
+        export LD_LIBRARY_PATH="$runner_dir/lib64:$runner_dir/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export WINEDLLPATH="$runner_dir/lib64/wine/x86_64-unix:$runner_dir/lib/wine/i386-unix${WINEDLLPATH:+:$WINEDLLPATH}"
+    fi
+}
+
+# Set up runner unless already configured by the launcher
+if [[ -z "${SGL_GAME_SCRIPT:-}" ]]; then
+    setup_wine_runner
+fi
 
 # Check that Wine is available
 if ! command -v wine &>/dev/null; then
@@ -23,8 +43,34 @@ wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /
 
 # Check if PokerStove.exe exists
 if [ -f "$WINEPREFIX/drive_c/Program Files/PokerStove/PokerStove.exe" ]; then
+    echo ""
+    echo "Note: File > Open and File > Save As do not work (known Wine bug)."
+    echo "Evaluation results are automatically appended to pokerstove.txt"
+    echo "in the PokerStove directory."
+    echo ""
     cd "$WINEPREFIX/drive_c/Program Files/PokerStove/"
-    wine PokerStove.exe 2>/dev/null
+
+    # Snapshot pokerstove.txt before launch so we can extract only new results
+    local snapshot=""
+    if [[ -f pokerstove.txt ]]; then
+        snapshot="$(wc -c < pokerstove.txt)"
+    else
+        snapshot=0
+    fi
+
+    wine "C:\\Program Files\\PokerStove\\PokerStove.exe" 2>/dev/null
+
+    # Extract only the new results appended during this session
+    if [[ -f pokerstove.txt ]]; then
+        local new_size
+        new_size="$(wc -c < pokerstove.txt)"
+        if [[ "$new_size" -gt "$snapshot" ]]; then
+            tail -c +"$((snapshot + 1))" pokerstove.txt > "$WINEPREFIX/../pokerstove_$(date '+%y%m%d_%H%M').txt"
+            # Restore pokerstove.txt to its pre-session state
+            head -c "$snapshot" pokerstove.txt > pokerstove.txt.tmp
+            mv pokerstove.txt.tmp pokerstove.txt
+        fi
+    fi
     exit
 fi
 

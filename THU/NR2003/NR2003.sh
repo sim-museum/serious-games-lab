@@ -141,8 +141,39 @@ winetricks dxvk 2>/dev/null 1>/dev/null
 # Unmount ISO
 sudo umount "$BASE_DIR/isoMnt" 2>/dev/null
 
-printf "\nNascar Racing 2003 Season installed.\n\n"
-printf "To install optional 1960's era cars and tracks in NR2003, run:\n"
-printf "$BASE_DIR/additionalCarsAndTracks.sh\n\n"
-printf "Run this script again to race.\n"
+printf "\nNascar Racing 2003 Season base game installed.\n\n"
+
+# Automatically install additional 1960's era cars and tracks
+if [ -f "$INSTALL_DIR/NR2003_additionalCarsAndTracks.tar.gz" ]; then
+    printf "Installing additional 1960's era cars and tracks...\n\n"
+    cd "$INSTALL_DIR"
+    tar xzf NR2003_additionalCarsAndTracks.tar.gz 2>/dev/null 1>/dev/null
+    cd NR2003_additionalCarsAndTracks
+
+    # Copy tracks
+    printf "Tracks:\nBrands Hatch\nBridgehamption\nDundrod\nMonaco\nRouen\nWatkins Glen 1964\nZandervoort\n"
+    rsync -a tracks/ "$WINEPREFIX/drive_c/Papyrus/NASCAR Racing 2003 Season/tracks/" 2>/dev/null 1>/dev/null
+
+    # Add Grand National 1963 cars
+    printf "\nAdding Grand National 1963 cars\n"
+    cp -r gn63 "$WINEPREFIX/drive_c/Papyrus/NASCAR Racing 2003 Season/series/"
+
+    # Install optional components if available
+    cd "$INSTALL_DIR"
+    if [ -f n2003_nurburgring_1970_v1.0.exe ]; then
+        echo "Adding Nurburgring track"
+        wine n2003_nurburgring_1970_v1.0.exe 2>/dev/null 1>/dev/null
+    fi
+    if [ -f AD67_v1.0.exe ]; then
+        printf "Adding 1967 sports cars\n"
+        wine AD67_v1.0.exe 2>/dev/null 1>/dev/null
+    fi
+
+    printf "\nAdditional cars and tracks installed.\n"
+else
+    printf "Note: NR2003_additionalCarsAndTracks.tar.gz not found in INSTALL/.\n"
+    printf "Advanced tracks and carsets were not installed.\n"
+fi
+
+printf "\nRun this script again to race.\n"
 exit 0

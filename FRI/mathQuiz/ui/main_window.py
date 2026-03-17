@@ -679,6 +679,17 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(right_panel)
 
+        # Formula hint label (shown for Hard/Very Hard)
+        self.formula_hint = QLabel()
+        self.formula_hint.setFont(QFont("DejaVu Sans", 10))
+        self.formula_hint.setStyleSheet("color: #1565c0; font-style: italic;")
+        self.formula_hint.setText(
+            "Tip: You may enter a formula (e.g. (3.4+1.2)/3.3) — "
+            "it will be evaluated to 4 significant figures."
+        )
+        self.formula_hint.hide()
+        input_layout.insertWidget(input_layout.indexOf(self.answer_input), self.formula_hint)
+
         # Track current question
         self._current_question: Optional[Question] = None
 
@@ -730,7 +741,9 @@ class MainWindow(QMainWindow):
             "mathematics problems for physics and engineering.\n\n"
             "• Answer correctly to increase difficulty and earn more points\n"
             "• Use hints sparingly (no penalty, but shows you're learning)\n"
-            "• Trivial answers on hard questions are penalized extra\n\n"
+            "• Trivial answers on hard questions are penalized extra\n"
+            "• Hard/Very Hard: enter formulas like (3.4+1.2)/3.3 — "
+            "they'll be evaluated automatically\n\n"
             "Press 'Start Quiz' when ready!"
         )
         self.plot_widget.hide()
@@ -816,6 +829,12 @@ class MainWindow(QMainWindow):
         else:
             self.plot_widget.hide()
 
+        # Show formula hint for Hard/Very Hard questions
+        if question.difficulty in (DifficultyLevel.HARD, DifficultyLevel.VERY_HARD):
+            self.formula_hint.show()
+        else:
+            self.formula_hint.hide()
+
         # Handle multiple choice vs text input
         if question.choices:
             self.answer_input.hide()
@@ -868,6 +887,10 @@ class MainWindow(QMainWindow):
             answer = self.answer_input.text().strip()
             if not answer:
                 return
+
+            # For Hard/Very Hard: evaluate formula input to a number
+            if self._current_question.difficulty in (DifficultyLevel.HARD, DifficultyLevel.VERY_HARD):
+                answer = self.engine.answer_parser.evaluate_formula(answer)
 
         # Save question info before submission clears engine state
         question = self._current_question

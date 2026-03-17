@@ -87,6 +87,14 @@ if [ -f "$game_dir/WSOPBFTB.exe" ]; then
     echo "Shift key            Poker Tools"
     echo "F2                   Blackjack/Video Poker"
     echo "F1                   Hand Rankings/Help Screen"
+    echo ""
+    echo "SAVE FILES"
+    echo ""
+    echo "  $game_dir/Saves/"
+    echo ""
+    echo "  To restore an old career, copy a .sav file back to this directory."
+    echo ""
+    ls "$game_dir/Saves/"*.sav 2>/dev/null && echo "" || echo "  (no saves found)"
     exit 0
 fi
 

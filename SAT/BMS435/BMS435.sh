@@ -197,9 +197,62 @@ cp "$INSTALL_DIR/Viper.lbk" "$FALCON_DIR/User/Config"
 cp "$INSTALL_DIR/Viper.pop" "$FALCON_DIR/User/Config"
 cp "$INSTALL_DIR/Viper.plc" "$FALCON_DIR/User/Config"
 
+# --- Automatically install all available theaters ---
+echo ""
+echo "Installing available add-on theaters..."
+echo ""
+
+SCRIPT_BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Install each theater (scripts check for already-installed and missing files)
+for theater_script in \
+    "$SCRIPT_BASE/installTheater_Balkans.sh" \
+    "$SCRIPT_BASE/installTheater_Somalia.sh" \
+    "$SCRIPT_BASE/installTheater_Vietnam.sh" \
+    "$SCRIPT_BASE/installTheater_Iran_Iraq.sh" \
+    "$SCRIPT_BASE/installTheater_Taiwan.sh" \
+    "$SCRIPT_BASE/installTheater_Israel.sh"; do
+    if [[ -f "$theater_script" ]]; then
+        theater_name="$(basename "$theater_script" .sh)"
+        theater_name="${theater_name#installTheater_}"
+        echo "--- Installing $theater_name theater ---"
+        (cd "$SCRIPT_BASE" && bash "$theater_script") || true
+        echo ""
+    fi
+done
+
+# --- Apply BMS 4.35.3 radar XML patch ---
+echo "--- Applying BMS 4.35.3 radar XML patch ---"
+
+# Move patch from downloads if needed
+mv "$WINEPREFIX/../../downloads/bms-4.35.3-radar-xml-patch.exe" "$INSTALL_DIR" 2>/dev/null || true
+
+if [[ -f "$INSTALL_DIR/bms-4.35.3-radar-xml-patch.exe" ]]; then
+    cd "$INSTALL_DIR"
+    wine "bms-4.35.3-radar-xml-patch.exe" 2>/dev/null 1>/dev/null
+    echo "BMS 4.35.3 radar XML patch applied."
+else
+    echo "Note: bms-4.35.3-radar-xml-patch.exe not found in INSTALL/."
+    echo "Download it from www.falcon-bms.com and run bmsPatch.sh later."
+fi
+echo ""
+
+# --- Fix theater list ---
+echo "--- Updating theater list ---"
+if [[ -f "$INSTALL_DIR/theater.lst" ]]; then
+    cp "$INSTALL_DIR/theater.lst" "$FALCON_DIR/Data/TerrData/TheaterDefinition/"
+    echo "Theater list updated."
+else
+    echo "Note: theater.lst not found in INSTALL/. Run runIfTheaterMissing.sh if needed."
+fi
+
 # Final instructions
-echo "" 
+echo ""
 clear
-printf "Falcon BMS 4.35.3 installed.\n\nNext steps are:\n\n1. install optional add-on theaters; Iran/Iraq/Kuwait, Balkans, Israel, Somalia, Vietnam and Taiwan are available.\n\n2. run "$WINEPREFIX"/../INSTALL/bmsPatch.sh to patch the theaters.\n\n3. install optional utilities via "$WINEPREFIX"/../INSTALL/tacview.sh, "$WINEPREFIX"/../INSTALL/weaponDeliveryPlanner.sh and "$WINEPREFIX"/../INSTALL/missionCommander.sh\n4. If installed theaters are not listed in BMS, run\n
-"$WINEPREFIX"/../runIfTheaterMissing.sh\n\n"
+printf "Falcon BMS 4.35.3 installed with all available theaters.\n\n"
+printf "Optional utilities:\n"
+printf "  - Weapon Delivery Planner: $SCRIPT_BASE/wdp.sh\n"
+printf "  - Mission Commander:       $SCRIPT_BASE/mc.sh\n"
+printf "  - Tacview:                 $SCRIPT_BASE/tacview.sh\n\n"
+printf "Run this script again to fly.\n\n"
 
