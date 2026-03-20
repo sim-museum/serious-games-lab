@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Ensure KataGo + models are present
 source "$SCRIPT_DIR/ensure_katago.sh"
+source "$SCRIPT_DIR/analyze_new_sgf.sh"
 
 # Auto-configure q5go engine if not already set
 Q5GO_RC="$HOME/.config/q5go/q5gorc"
@@ -42,14 +43,18 @@ EOF
     echo "Created q5go config with KataGo Human SL engine."
 fi
 
+# Snapshot SGF files and touch game-started marker
+snapshot_sgf_files
+if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
+    touch "$SGL_GAME_STARTED_MARKER"
+fi
+
 # Launch q5go — prefer local build, then system-installed
 Q5GO_LOCAL="$SCRIPT_DIR/q5go_install/bin/q5go"
 if [[ -x "$Q5GO_LOCAL" ]]; then
-    "$Q5GO_LOCAL" &
-    disown
+    "$Q5GO_LOCAL"
 elif command -v q5go &>/dev/null; then
-    q5go &
-    disown
+    q5go
 else
     echo ""
     echo "q5go not found. Building from source..."
@@ -77,10 +82,12 @@ else
     make install
     cd "$SCRIPT_DIR"
     if [[ -x "$Q5GO_LOCAL" ]]; then
-        "$Q5GO_LOCAL" &
-        disown
+        "$Q5GO_LOCAL"
     else
         echo "Build failed. Install Qt5 dev packages and retry:"
         echo "  sudo apt install ${QT5_DEPS[*]}"
     fi
 fi
+
+# Run KataGo analysis on any new SGF files
+analyze_new_sgf_files

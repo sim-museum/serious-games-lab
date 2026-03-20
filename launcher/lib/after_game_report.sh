@@ -28,8 +28,8 @@ _game_output_patterns() {
             ;;
             echo ".|*.pbn"
             ;;
-        # FRI - Math quiz (no persistent output files)
-        mathQuiz/run.sh|dual_nback/run.sh)
+        # FRI - Math quiz, memory training (no persistent output files)
+        mathQuiz/run.sh|dual_nback/run.sh|memoryTraining.sh)
             ;;
         # MON - Poker
         pokerth.sh)
@@ -93,11 +93,13 @@ _game_output_patterns() {
             echo ".|*.acmi"
             echo ".|*.vhs"
             ;;
-        # SUN - Go: .sgf and .rsgf files
+        # SUN - Go: .sgf and .rsgf files (GUIs may save to home config dirs)
         run_katrain.sh|q5go.sh|sabaki.sh|igowin.sh|goreviewpartner.sh)
             echo ".|*.sgf"
             echo ".|*.rsgf"
             echo ".|*.rsgf.csv"
+            echo "HOMESCAN|*.sgf"
+            echo "HOMESCAN|*.rsgf"
             ;;
         # FlightGear scenarios: saved state, logs, CSV logging output
         flightgear/*.sh)

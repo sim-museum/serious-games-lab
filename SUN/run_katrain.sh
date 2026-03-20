@@ -3,6 +3,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Ensure KataGo + models are present
 source "$SCRIPT_DIR/ensure_katago.sh"
+source "$SCRIPT_DIR/analyze_new_sgf.sh"
 
 # Set up venv if needed
 if [[ ! -d "$SCRIPT_DIR/katrain_venv" ]]; then
@@ -51,6 +52,15 @@ except Exception as e:
 PYEOF
 fi
 
+# Snapshot SGF files and touch game-started marker
+snapshot_sgf_files
+if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
+    touch "$SGL_GAME_STARTED_MARKER"
+fi
+
 # Suppress Kivy debug/warning noise (cutbuffer, config upgrade, etc.)
 export KIVY_LOG_LEVEL=error
 katrain "$@" 2>/dev/null
+
+# Run KataGo analysis on any new SGF files
+analyze_new_sgf_files

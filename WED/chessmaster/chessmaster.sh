@@ -17,14 +17,84 @@ wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /
 
 # Check if Chessmaster executable exists
 if [ -f "$WINEPREFIX/drive_c/Program Files/Ubisoft/Chessmaster Grandmaster Edition/Chessmaster.exe" ]; then
-    # Navigate to Chessmaster directory
-    cd "$WINEPREFIX/drive_c/Program Files/Ubisoft/Chessmaster Grandmaster Edition"
-    # Run Chessmaster
+    CM_DIR="$WINEPREFIX/drive_c/Program Files/Ubisoft/Chessmaster Grandmaster Edition"
+    CM_USERS_DIR="$CM_DIR/Data/Users"
+    SCRIPT_DIR="$PWD"
+
+    # Snapshot existing PGN files before launching
+    pgn_snapshot=$(mktemp)
+    find "$CM_USERS_DIR" -name "*.PGN" -o -name "*.pgn" 2>/dev/null | sort > "$pgn_snapshot"
+
+    # Touch game-started marker for afterGamesReport collection
+    if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
+        touch "$SGL_GAME_STARTED_MARKER"
+    fi
+
+    # Navigate to Chessmaster directory and run
+    cd "$CM_DIR"
     wine Chessmaster.exe >/dev/null 2>&1
-    # Clear the terminal
-    clear
-    # Display optional scripts
-    printf "Chessmaster optional scripts\n\nConvert chessmaster output pgn into standard format:\nfixAnnotationsInChessmasterOutputPgnFile.sh\n\n"
+
+    # Find PGN files created or modified during the game session
+    pgn_after=$(mktemp)
+    find "$CM_USERS_DIR" -name "*.PGN" -o -name "*.pgn" 2>/dev/null | sort > "$pgn_after"
+    new_pgn_files=$(comm -13 "$pgn_snapshot" "$pgn_after")
+
+    # Also check for PGN files modified since game start
+    if [[ -f "$pgn_snapshot" ]]; then
+        snapshot_time=$(stat -c %Y "$pgn_snapshot")
+        while IFS= read -r f; do
+            fmod=$(stat -c %Y "$f" 2>/dev/null) || continue
+            if [[ "$fmod" -gt "$snapshot_time" ]]; then
+                new_pgn_files=$(printf '%s\n%s' "$new_pgn_files" "$f")
+            fi
+        done < "$pgn_after"
+    fi
+    rm -f "$pgn_snapshot" "$pgn_after"
+
+    # De-duplicate
+    new_pgn_files=$(echo "$new_pgn_files" | sort -u | sed '/^$/d')
+
+    if [[ -n "$new_pgn_files" ]]; then
+        echo ""
+        echo "Converting and analysing Chessmaster PGN files..."
+
+        # Determine the day directory for afterGamesReport output
+        day_dir="${REPO_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}/WED"
+
+        # Set up venv with python-chess for stockfish annotation
+        VENV_DIR="$SCRIPT_DIR/../openingRepertoire/venv"
+        STOCKFISH="$(command -v stockfish 2>/dev/null || echo /usr/games/stockfish)"
+
+        while IFS= read -r pgn_file; do
+            [[ -z "$pgn_file" ]] && continue
+            base=$(basename "$pgn_file")
+            echo "  Processing: $base"
+
+            # Step 1: Fix Chessmaster hex annotations → standard PGN
+            converted=$(mktemp --suffix=.pgn)
+            sed 's/\x8b/K/g; s/\x89/Q/g; s/\x86/B/g; s/\x87/N/g; s/\x88/R/g' "$pgn_file" \
+                | tr -cd '[:print:]\n\r\t' > "$converted"
+
+            # Step 2: Run Stockfish analysis if venv and engine available
+            annotated="$day_dir/${base%.PGN}.pgn"
+            if [[ -d "$VENV_DIR" && -x "$STOCKFISH" ]]; then
+                "$VENV_DIR/bin/python3" "$SCRIPT_DIR/stockfish_annotate.py" \
+                    "$converted" "$annotated" --engine "$STOCKFISH" --depth 15 \
+                    && echo "  Stockfish analysis complete: $(basename "$annotated")" \
+                    || { echo "  Stockfish analysis failed, saving converted PGN."; cp "$converted" "$annotated"; }
+            else
+                echo "  Stockfish or python-chess venv not available, saving converted PGN."
+                cp "$converted" "$annotated"
+            fi
+            rm -f "$converted"
+        done <<< "$new_pgn_files"
+
+        echo "PGN files saved to $day_dir/ for afterGamesReport collection."
+    fi
+
+    # Sync saved games
+    rsync -a "$CM_USERS_DIR/" "$SCRIPT_DIR/savedGames/" 2>/dev/null || true
+
     exit 0
 fi
 

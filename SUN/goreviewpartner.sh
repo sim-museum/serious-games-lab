@@ -89,5 +89,16 @@ with open(config_path, 'w') as f:
 PYEOF
 fi
 
+# Set up post-game analysis
+source "$SCRIPT_DIR/analyze_new_sgf.sh"
+snapshot_sgf_files
+if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
+    touch "$SGL_GAME_STARTED_MARKER"
+fi
+
 cd "$GRP_DIR"
 python3 main.py
+
+# Run KataGo analysis on any new SGF files
+cd "$SCRIPT_DIR"
+analyze_new_sgf_files
