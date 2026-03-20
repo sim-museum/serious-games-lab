@@ -78,4 +78,50 @@ echo "To use: in nibbler, set weights path to a Maia file instead of tinygyal-8.
 echo ""
 
 cd "$NIBBLER_DIR"
+
+# Touch game-started marker for afterGamesReport collection
+if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
+    touch "$SGL_GAME_STARTED_MARKER"
+fi
+
+# Snapshot existing PGN files before launching
+pgn_snapshot=$(mktemp)
+DAY_DIR="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}/WED"
+find "$DAY_DIR" -maxdepth 1 -name "*.pgn" -type f 2>/dev/null | sort > "$pgn_snapshot"
+snapshot_time=$(stat -c %Y "$pgn_snapshot")
+
 ./nibbler --no-sandbox 2>/dev/null
+
+# Find PGN files created or modified during the session
+new_pgn_files=""
+while IFS= read -r -d '' f; do
+    fmod=$(stat -c %Y "$f" 2>/dev/null) || continue
+    if [[ "$fmod" -gt "$snapshot_time" ]]; then
+        new_pgn_files=$(printf '%s\n%s' "$new_pgn_files" "$f")
+    fi
+done < <(find "$DAY_DIR" -maxdepth 1 -name "*.pgn" -type f -print0 2>/dev/null)
+rm -f "$pgn_snapshot"
+
+new_pgn_files=$(echo "$new_pgn_files" | sed '/^$/d')
+
+if [[ -n "$new_pgn_files" ]]; then
+    echo ""
+    echo "Running Stockfish analysis on saved PGN files..."
+    VENV_DIR="$SCRIPT_DIR/openingRepertoire/venv"
+    STOCKFISH="$(command -v stockfish 2>/dev/null || echo /usr/games/stockfish)"
+
+    if [[ -d "$VENV_DIR" && -x "$STOCKFISH" ]]; then
+        while IFS= read -r pgn_file; do
+            [[ -z "$pgn_file" ]] && continue
+            base=$(basename "$pgn_file")
+            annotated="${pgn_file%.pgn}_analysed.pgn"
+            echo "  Analysing: $base"
+            "$VENV_DIR/bin/python3" "$SCRIPT_DIR/chessmaster/stockfish_annotate.py" \
+                "$pgn_file" "$annotated" --engine "$STOCKFISH" --depth 15 \
+                && { mv "$annotated" "$pgn_file"; echo "  Done: $base"; } \
+                || { rm -f "$annotated"; echo "  Analysis failed for $base"; }
+        done <<< "$new_pgn_files"
+    else
+        echo "  Stockfish or python-chess venv not available, skipping analysis."
+    fi
+fi

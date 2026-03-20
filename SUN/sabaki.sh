@@ -11,6 +11,7 @@ SABAKI_APPIMAGE="sabaki-v${SABAKI_VERSION}-linux-x64.AppImage"
 
 # Ensure KataGo + models are present
 source "$SCRIPT_DIR/ensure_katago.sh"
+source "$SCRIPT_DIR/analyze_new_sgf.sh"
 
 # Auto-configure Sabaki engine if not already set
 SABAKI_CONFIG="$HOME/.config/Sabaki/settings.json"
@@ -82,5 +83,14 @@ if [[ -z "$SABAKI_PATH" ]]; then
     fi
 fi
 
+# Snapshot SGF files and touch game-started marker
+snapshot_sgf_files
+if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
+    touch "$SGL_GAME_STARTED_MARKER"
+fi
+
 chmod +x "$SABAKI_PATH" 2>/dev/null
 "$SABAKI_PATH" --no-sandbox 2>/dev/null 1>/dev/null
+
+# Run KataGo analysis on any new SGF files
+analyze_new_sgf_files

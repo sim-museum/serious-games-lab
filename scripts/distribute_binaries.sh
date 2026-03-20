@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# distribute_binaries.sh - Move installer files from downloads/sglBinaries_* to game INSTALL/ dirs
+# distribute_binaries.sh - Move files from downloads/sglBinaries_* to game dirs
 #
-# Moves binary installer files (ISOs, zips, exes, etc.) from the
-# downloads/sglBinaries_* directories to the correct game-specific
-# INSTALL/ directories so game scripts can find them.
+# Distributes binary installer files (ISOs, zips, exes), documentation (DOC/),
+# and other game assets from sglBinaries_* archives to the correct game
+# directories so game scripts can find them.
 #
-# Uses mv (move, not copy) for disk efficiency.
-# Creates INSTALL/ directories as needed.
+# Uses mv (move, not copy) for disk efficiency where possible.
+# Creates target directories as needed.
 # After all moves, deletes emptied sglBinaries_* directories.
 
 set -euo pipefail
@@ -16,7 +16,7 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 DL="$REPO_ROOT/downloads"
 
 # move_file SRC_BINARIES_DIR FILENAME DEST_DIR
-#   Moves a file from a sglBinaries dir to the given INSTALL directory.
+#   Moves a file from a sglBinaries dir to the given directory.
 move_file() {
     local src="$DL/$1/$2"
     local dest_dir="$REPO_ROOT/$3"
@@ -29,7 +29,7 @@ move_file() {
 }
 
 # move_dir SRC_BINARIES_DIR DIRNAME DEST_DIR
-#   Moves a directory from a sglBinaries dir into the given INSTALL directory.
+#   Moves a directory from a sglBinaries dir into the given directory.
 move_dir() {
     local src="$DL/$1/$2"
     local dest_dir="$REPO_ROOT/$3"
@@ -41,23 +41,20 @@ move_dir() {
     fi
 }
 
-echo "Distributing binary files to game INSTALL directories..."
+echo "Distributing binary files to game directories..."
 
 # --- sglBinaries_1 ---
-# Archive day-of-week directories match the repo layout directly:
+# Archive day-of-week directories match the repo layout:
 #   MON=poker, TUE=flight sims, WED=chess, THU=racing,
 #   FRI=bridge, SAT=combat/CFL, SUN=go
-# Only INSTALL/ directories and game subdirectories contain binary data;
-# scripts and DOC files are tracked in the repo.
 if [ -d "$DL/sglBinaries_1" ]; then
-    echo "  Distributing sglBinaries_1 INSTALL files..."
-    # Find all INSTALL dirs at any depth under each day directory
-    while IFS= read -r install_dir; do
-        # Get path relative to sglBinaries_1/ (e.g. TUE/BattleOfBritain/INSTALL)
-        rel="${install_dir#$DL/sglBinaries_1/}"
+    echo "  Distributing sglBinaries_1 INSTALL and DOC files..."
+    # Find all INSTALL and DOC dirs at any depth under each day directory
+    while IFS= read -r dir; do
+        rel="${dir#$DL/sglBinaries_1/}"
         mkdir -p "$REPO_ROOT/$rel"
-        rsync -a --ignore-existing "$install_dir/" "$REPO_ROOT/$rel/"
-    done < <(find "$DL/sglBinaries_1" -type d -name INSTALL)
+        rsync -a --ignore-existing "$dir/" "$REPO_ROOT/$rel/"
+    done < <(find "$DL/sglBinaries_1" -type d \( -name INSTALL -o -name DOC \))
     # Sync non-day files (debs, etc.) directly
     rsync -a --ignore-existing --exclude='MON/' --exclude='TUE/' --exclude='WED/' \
         --exclude='THU/' --exclude='FRI/' --exclude='SAT/' --exclude='SUN/' \
@@ -73,7 +70,7 @@ move_file "sglBinaries_2/CFL" "Xmod 7-18-14.7z"                                 
 move_file "sglBinaries_2/CFL" "CFL 15 V2.zip"                                                 "SAT/CFL/INSTALL"
 move_file "sglBinaries_2/CFL" "JSGME.exe"                                                     "SAT/CFL/INSTALL"
 move_dir  "sglBinaries_2" "CFLpreinstalled"                                                    "SAT/CFL/INSTALL"
-# Move BMS432-v41 contents (INSTALL, docs) into SAT/BMS432/ where the scripts live
+# Move BMS432-v41 contents (INSTALL, DOC) into SAT/BMS432/ where the scripts live
 # Skip WP — games must be installed from original files, not pre-built prefixes
 if [ -d "$DL/sglBinaries_2/BMS432-v41" ]; then
     mkdir -p "$REPO_ROOT/SAT/BMS432"
