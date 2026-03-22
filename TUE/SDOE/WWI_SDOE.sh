@@ -27,6 +27,7 @@ then
 	# Set Windows 98 mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d win98 /f &>/dev/null
 	cd "$WINEPREFIX/drive_c/Program Files/FS-WWI"
+	[[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
 	wine explorer /desktop=SDOE,1920x1080 Sdemons.exe 2>/dev/null 1>/dev/null
 	wineserver -k 2>/dev/null
 	exit 0

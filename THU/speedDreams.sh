@@ -62,6 +62,7 @@ if [[ -f "$APPIMAGE_PATH" ]]; then
     echo "Apply, Next, Next, Start"
     echo ""
     # Try direct execution; fall back to --appimage-extract-and-run if FUSE unavailable
+    [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     "$APPIMAGE_PATH" 2>/dev/null || "$APPIMAGE_PATH" --appimage-extract-and-run 2>/dev/null
 fi
 

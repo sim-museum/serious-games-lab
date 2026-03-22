@@ -6,12 +6,14 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if command -v pokerth &>/dev/null; then
+    [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     pokerth 2>/dev/null 1>/dev/null
 elif [[ -x "$SCRIPT_DIR/INSTALL/PokerTH-1.1.2/pokerth" ]]; then
     install_dir="$SCRIPT_DIR/INSTALL/PokerTH-1.1.2"
     LD_LIBRARY_PATH="$install_dir/libs"
     export LD_LIBRARY_PATH
     export QT_QPA_FONTDIR="$install_dir/data/fonts"
+    [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     "$install_dir/pokerth" 2>/dev/null 1>/dev/null
 else
     echo "pokerth not found."

@@ -27,9 +27,11 @@ from PyQt6.QtGui import QFont, QKeyEvent, QColor, QPalette
 try:
     import pyttsx3
     TTS_AVAILABLE = True
-except ImportError:
+except (ImportError, Exception):
     TTS_AVAILABLE = False
-    print("Warning: pyttsx3 not available. Install with: pip install pyttsx3")
+    # Only warn if espeak is also unavailable (espeak is the preferred fallback)
+    if not shutil.which('espeak') and not shutil.which('espeak-ng'):
+        print("Warning: No TTS backend available. Install espeak: sudo apt install espeak")
 
 
 @dataclass

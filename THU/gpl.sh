@@ -65,10 +65,10 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
         # Install GPL using wine
         wine INSTALL/gplinstall_beta_1.08.exe 2>/dev/null 1>/dev/null
     else
-        # GPL ISO not found — it's provided by sglBinaries_1
+        # GPL ISO not found — it's provided by sglBinaries_5
         echo ""
-        echo "GPL ISO not found. The full GPL installation requires sglBinaries_1."
-        echo "Place sglBinaries_1.tar.gz (or sglBinaries_1/ directory) in the downloads/ folder"
+        echo "GPL ISO not found. The full GPL installation requires sglBinaries_5."
+        echo "Place sglBinaries_5.tar.gz (or sglBinaries_5/ directory) in the downloads/ folder"
         echo "and re-run the launcher to extract it."
         echo ""
         echo "Alternatively, download the iso from:"

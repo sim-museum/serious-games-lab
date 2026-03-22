@@ -31,9 +31,43 @@ wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\Direct3D" /v VideoMemorySize /t
 if [ -f "$WINEPREFIX/drive_c/Program Files/rFactor/rFactor.exe" ]; then
     cd "$WINEPREFIX/drive_c/Program Files/rFactor"
 
+    # Install DXVK-Sarek on first run (Vulkan 1.1 compatible, works with NVIDIA 535)
+    if [ ! -f "$WINEPREFIX/.dxvk_sarek" ]; then
+        echo "Installing DXVK-Sarek for Vulkan acceleration..."
+        sarek_ver="v1.11.0"
+        sarek_tar="/tmp/dxvk-sarek-${sarek_ver}.tar.gz"
+        if [ ! -f "$sarek_tar" ]; then
+            gh release download "$sarek_ver" -R pythonlover02/DXVK-Sarek \
+                -p "dxvk-sarek-${sarek_ver}.tar.gz" -D /tmp 2>/dev/null
+        fi
+        sarek_dir="/tmp/dxvk-sarek-${sarek_ver}"
+        [ -d "$sarek_dir" ] || tar xzf "$sarek_tar" -C /tmp
+        cp "$sarek_dir/x32/d3d9.dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null
+        cp "$sarek_dir/x32/dxgi.dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null
+        cp "$sarek_dir/x32/d3d11.dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null
+        wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v d3d9 /t REG_SZ /d native /f 2>/dev/null
+        wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v dxgi /t REG_SZ /d native /f 2>/dev/null
+        touch "$WINEPREFIX/.dxvk_sarek"
+    fi
+
+    # Detect unconfigured install (empty VideoGUID means rF Config was never run)
+    if grep -q '^VideoGUID=$' Config.ini 2>/dev/null; then
+        echo ""
+        echo "rFactor video settings not configured. Running rF Config..."
+        echo ""
+        echo "In the rFactor Config tool:"
+        echo "  - Select your display adapter"
+        echo "  - Choose a resolution (e.g. 1920x1080)"
+        echo "  - Set Shader Level to Quality (DX9)"
+        echo "  - Set Anti-Aliasing to Level 4"
+        echo "  - Check the Windowed checkbox"
+        echo ""
+        WINEDLLOVERRIDES="d3d9,dxgi=n,b" wine "rF Config.exe" 2>/dev/null
+    fi
+
     # Mark game start so afterGamesReport only collects files from gameplay, not install
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
-    WINEDLLOVERRIDES="d3d9,d3d11,dxgi=n,b" wine rFactor.exe 2>/dev/null
+    WINEDLLOVERRIDES="d3d9,dxgi=n,b" wine rFactor.exe 2>/dev/null
 
     printf "\nrFactor Optional Scripts\n\nTelemetry:\n$SCRIPT_DIR/addTelemetryLoggerToRfactor.sh\n\nImprove AI:\n$SCRIPT_DIR/offlineAIimprovement_rFactor.sh\n\nConfigure Graphics:\n$SCRIPT_DIR/graphicsConfig_rFactor.sh\n\nTip: to become owner of all cars in a mod, type the code \"ISI_BABYFACTORY\" in\nthe chat window. (The chat window is at lower left on the screen just before\nyou enter the 3D view.)\n\n"
     exit 0
@@ -69,9 +103,9 @@ fi
 clear
 printf "Installing rFactor\n\n"
 
-# Install DXVK via winetricks (sets up DLLs and overrides correctly)
-printf "Installing DXVK via winetricks...\n"
-winetricks dxvk 2>/dev/null 1>/dev/null
+# WineD3D is used instead of DXVK (DXVK 2.7+ requires Vulkan features
+# that older NVIDIA drivers don't support; rFactor is DX9 and runs well
+# with WineD3D)
 
 printf "\nIn the rFactor Video Setup screen, choose:\n"
 printf "  Shader Level: Quality (DX9)\n"

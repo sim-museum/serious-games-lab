@@ -12,6 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/scores.sh"
 source "$SCRIPT_DIR/lib/after_game_report.sh"
+source "$SCRIPT_DIR/lib/auto_select.sh"
 
 # --- Pre-flight checks ---
 
@@ -394,10 +395,12 @@ display_top_menu() {
         printf "    %d)  ${CYAN}${BOLD}%s${NC} - %s\n" "$num" "$day" "$theme"
     done
     echo ""
-    echo "    8)  Export Scores and game output files"
-    echo "    9)  Read Documentation"
-    echo "   10)  Reset Scores"
-    echo "   11)  Exit"
+    echo "    8)  Automatically select next game"
+    echo ""
+    echo "    9)  Export Scores and game output files"
+    echo "   10)  Read Documentation"
+    echo "   11)  Reset Scores"
+    echo "   12)  Exit"
 }
 
 display_day_menu() {
@@ -693,6 +696,11 @@ ensure_after_game_report_dirs() {
 }
 
 main() {
+    local auto_mode=false
+    if [[ "${1:-}" == "-auto" ]]; then
+        auto_mode=true
+    fi
+
     ensure_after_game_report_dirs
     kill_stale_wine
     check_dependencies
@@ -702,35 +710,47 @@ main() {
     load_games
     read_scores
 
+    # -auto flag: run auto-select once and exit
+    if $auto_mode; then
+        auto_select_game
+        exit 0
+    fi
+
     while true; do
         display_top_menu
 
         echo ""
         read -rp "  Select: " choice
 
-        if ! [[ "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > 11 )); then
+        if ! [[ "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > 12 )); then
             msg_error "Invalid choice: $choice"
             continue
         fi
 
-        # 8 = Export Scores
+        # 8 = Automatically select next game
         if (( choice == 8 )); then
+            auto_select_game
+            continue
+        fi
+
+        # 9 = Export Scores
+        if (( choice == 9 )); then
             export_scores
         fi
 
-        # 9 = Read Documentation
-        if (( choice == 9 )); then
+        # 10 = Read Documentation
+        if (( choice == 10 )); then
             read_documentation
             continue
         fi
 
-        # 10 = Reset Scores
-        if (( choice == 10 )); then
+        # 11 = Reset Scores
+        if (( choice == 11 )); then
             reset_scores
         fi
 
-        # 11 = Exit
-        if (( choice == 11 )); then
+        # 12 = Exit
+        if (( choice == 12 )); then
             echo ""
             echo "Goodbye!"
             exit 0
@@ -802,6 +822,7 @@ main() {
                         msg_error "$fg_display is not installed."
                     else
                         run_game "$day" "$fg_script" || true
+                        prompt_game_comment "$day" "$fg_script"
                     fi
 
                     echo ""
@@ -836,6 +857,7 @@ main() {
                         msg_warn "$nv_display needs binary data. Install sglBinaries_${nv_archive} first."
                     else
                         run_game "$day" "$nv_script" || true
+                        prompt_game_comment "$day" "$nv_script"
                     fi
 
                     echo ""
@@ -851,6 +873,7 @@ main() {
                 read -rp "Press Enter to continue..." _
             else
                 run_game "$day" "$script" || true
+                prompt_game_comment "$day" "$script"
                 echo ""
                 read -rp "Press Enter to continue..." _
             fi

@@ -9,6 +9,9 @@
 # during installation.  Falls back to the script start epoch if no
 # marker is found.
 
+# Path to the last after-game report directory (set by collect_after_game_report)
+LAST_REPORT_DIR=""
+
 # Map a game script to the file extensions/paths to search for output files.
 # Returns newline-separated "search_dir|pattern" pairs relative to the day dir.
 _game_output_patterns() {
@@ -145,23 +148,26 @@ collect_after_game_report() {
     local game_name
     game_name="$(_game_short_name "$script")"
 
-    # Use the game-started marker timestamp if available.  Game scripts
-    # touch this marker right before launching the actual game executable,
-    # so files created during installation (before the marker) are excluded.
-    # When using the marker, compare strictly greater-than (not >=) to
-    # exclude files created in the same second as the marker.
+    # Only collect files if the game script touched the started marker.
+    # This ensures installation artifacts are never collected — the marker
+    # is only touched after installation completes, right before the game
+    # executable launches.
     local marker="$day_dir/.sgl_game_started"
-    local compare_op="-ge"
-    if [[ -f "$marker" ]]; then
-        start_epoch="$(stat -c %Y "$marker")"
-        compare_op="-gt"
-        rm -f "$marker"
+    if [[ ! -f "$marker" ]]; then
+        LAST_REPORT_DIR=""
+        return 0
     fi
+    start_epoch="$(stat -c %Y "$marker")"
+    local compare_op="-gt"
+    rm -f "$marker"
 
     # Build timestamp-based subdirectory name: YYMMDD_HHMM_gamename
     local subdir_name
     subdir_name="$(date -d "@$start_epoch" '+%y%m%d_%H%M')_${game_name}"
     local report_dir="$day_dir/afterGamesReport/$subdir_name"
+
+    # Always set the report dir path so prompt_game_comment can find it
+    LAST_REPORT_DIR="$report_dir"
 
     local found_files=false
 
@@ -228,4 +234,52 @@ collect_after_game_report() {
         count="$(find "$report_dir" -type f | wc -l)"
         msg_ok "Collected $count file(s) to $day/afterGamesReport/$subdir_name/"
     fi
+}
+
+# Prompt the user for a comment about their game session.
+# Only called for games, not utilities.
+# Args: day script
+prompt_game_comment() {
+    local day="$1"
+    local script="$2"
+
+    # Don't prompt for utilities
+    is_utility "$script" && return 0
+
+    local day_dir="$REPO_ROOT/$day"
+
+    echo ""
+    read -rp "Add a comment about this game session? (y/N): " reply
+    if [[ ! "$reply" =~ ^[Yy]$ ]]; then
+        return 0
+    fi
+
+    echo "Enter your comment (empty line to finish):"
+    local comment=""
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && break
+        if [[ -n "$comment" ]]; then
+            comment+=$'\n'
+        fi
+        comment+="$line"
+    done
+
+    if [[ -z "$comment" ]]; then
+        return 0
+    fi
+
+    # Use the report directory from collect_after_game_report, creating if needed
+    local report_dir="$LAST_REPORT_DIR"
+    if [[ -z "$report_dir" || ! -d "$report_dir" ]]; then
+        local game_name
+        game_name="$(_game_short_name "$script")"
+        local subdir_name
+        subdir_name="$(date '+%y%m%d_%H%M')_${game_name}"
+        report_dir="$day_dir/afterGamesReport/$subdir_name"
+        mkdir -p "$report_dir"
+    fi
+
+    local comment_file="$report_dir/session_comment.txt"
+    echo "$comment" > "$comment_file"
+    msg_ok "Comment saved to $(basename "$(dirname "$comment_file")")/session_comment.txt"
 }

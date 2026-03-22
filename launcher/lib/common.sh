@@ -96,6 +96,33 @@ is_source_game() {
     esac
 }
 
+# Determine if a script is a utility/analysis tool (not a game)
+# Utilities are not prompted for post-game comments and are excluded
+# from the auto-select random game picker.
+is_utility() {
+    local script="$1"
+    case "$script" in
+        # WED - Chess utility
+        openingRepertoire/run_opening_repertoire.sh) return 0 ;;
+        # FRI - Training/analysis utilities
+        mathQuiz/run.sh) return 0 ;;
+        dual_nback/run.sh) return 0 ;;
+        bcalc.sh) return 0 ;;
+        # MON - Poker analysis
+        generalPokerEvaluator.sh) return 0 ;;
+        pokerStove.sh) return 0 ;;
+        # SAT - Flight analysis / training aids
+        tacview/tacview.sh) return 0 ;;
+        rampStartTrainer.sh) return 0 ;;
+        # SUN - Go analysis
+        goreviewpartner.sh) return 0 ;;
+        # THU - Racing utilities
+        setup-manager.sh) return 0 ;;
+        replay.sh) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Check if a script is a "non-violent" game (shown in submenu)
 is_nonviolent_game() {
     local script="$1"

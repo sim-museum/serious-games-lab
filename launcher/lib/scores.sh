@@ -225,7 +225,7 @@ enter_score() {
         read -rp "Enter score for $day (0 to 1, or 'c' to cancel): " score_input
         if [[ "$score_input" == "c" || "$score_input" == "C" ]]; then
             echo "Score entry cancelled."
-            return 0
+            return 1
         fi
         # Validate: must be a number between 0 and 1
         if echo "$score_input" | grep -qE '^[0-9]*\.?[0-9]+$'; then

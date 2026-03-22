@@ -24,6 +24,7 @@ echo ""
 if command -v scid &>/dev/null; then
     cd "$SCRIPT_DIR/INSTALL" 2>/dev/null || cd "$SCRIPT_DIR"
     clear
+    [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     scid 2>/dev/null 1>/dev/null
     clear
     echo -e "Scid optional scripts:\n\nRandomly choose opening book move (to practice different positions):\ngrandmasterOpeningMove.sh\n\n"
@@ -36,6 +37,7 @@ else
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
         cd "$SCRIPT_DIR/INSTALL" 2>/dev/null || cd "$SCRIPT_DIR"
         clear
+        [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
         wine "$WINEPREFIX/drive_c/Scid-4.7.0/bin/scid.exe" 2>/dev/null 1>/dev/null
         clear
         echo -e "Scid optional scripts:\n\nRandomly choose opening book move (to practice different positions):\ngrandmasterOpeningMove.sh\n\n"
