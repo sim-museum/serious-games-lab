@@ -23,6 +23,7 @@ find_exe() {
 # --- Already installed: just launch ---
 if find_exe 2>/dev/null && [ -d "$WINEPREFIX" ]; then
     cd "$GAME_EXE_DIR"
+    [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     wine explorer /desktop=Republic,1024x768 Republic.exe 2>/dev/null
     wineserver -k 2>/dev/null
     exit 0
@@ -84,4 +85,5 @@ wine reg add "HKCU\\Software\\Wine" /v Version /t REG_SZ /d winxp /f 2>/dev/null
 
 # Launch
 cd "$GAME_EXE_DIR"
+[[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
 wine explorer /desktop=Republic,1024x768 Republic.exe 2>/dev/null

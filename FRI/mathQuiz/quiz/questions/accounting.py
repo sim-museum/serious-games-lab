@@ -57,7 +57,7 @@ class AccountingEquationQuestion(QuestionGenerator):
                 text = f"A company has assets of ${assets:,} and liabilities of ${liabilities:,}.\nWhat is the total equity?"
                 explanation = f"Equity = Assets - Liabilities = ${assets:,} - ${liabilities:,} = ${answer:,}"
 
-            latex = "\\text{Assets} = \\text{Liabilities} + \\text{Equity}"
+            latex = "\\mathrm{Assets} = \\mathrm{Liabilities} + \\mathrm{Equity}"
             hint = "Use the accounting equation: Assets = Liabilities + Equity"
 
             # Balance sheet visualization
@@ -105,7 +105,7 @@ class AccountingEquationQuestion(QuestionGenerator):
                 text = f"A company starts with:\n- Assets: ${initial_assets:,}\n- Liabilities: ${initial_liabilities:,}\n- Equity: ${initial_equity:,}\n\nThey pay off ${payment:,} of debt.\nWhat are the new total liabilities?"
                 explanation = f"Paying debt decreases both assets (cash) and liabilities.\nNew Liabilities = ${initial_liabilities:,} - ${payment:,} = ${answer:,}"
 
-            latex = "\\text{Assets} = \\text{Liabilities} + \\text{Equity}"
+            latex = "\\mathrm{Assets} = \\mathrm{Liabilities} + \\mathrm{Equity}"
             hint = "Think about which accounts are affected by the transaction."
             plot_data = None
 
@@ -236,7 +236,7 @@ class ProfitLossQuestion(QuestionGenerator):
             answer = revenue - expenses
 
             text = f"A company has:\n- Total Revenue: ${revenue:,}\n- Total Expenses: ${expenses:,}\n\nWhat is the profit (or loss)?"
-            latex = "\\text{Profit} = \\text{Revenue} - \\text{Expenses}"
+            latex = "\\mathrm{Profit} = \\mathrm{Revenue} - \\mathrm{Expenses}"
             explanation = f"Profit = ${revenue:,} - ${expenses:,} = ${answer:,}"
             hint = "Profit = Revenue - Expenses"
 
@@ -538,7 +538,7 @@ Known account balances:
 What must be the balance of {hidden_key}?
 (Positive = asset/expense, Negative = liability/revenue/equity)"""
 
-            latex = "\\sum_{\\text{all accounts}} \\text{balance} = 0"
+            latex = "\\sum_{\\mathrm{all accounts}} \\mathrm{balance} = 0"
             explanation = f"Sum of visible accounts: ${sum(visible.values()):,}\n{hidden_key} must be ${answer:,} for the sum to equal zero."
             hint = "The sum of all accounts must be zero (double-entry principle)."
             plot_data = None

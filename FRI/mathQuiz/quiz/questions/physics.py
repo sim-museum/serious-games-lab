@@ -31,7 +31,7 @@ class KinematicsQuestion(QuestionGenerator):
             answer = v0 + a * t
 
             text = "Find the final velocity (answer as number only, no units):"
-            latex = rf"v_0 = {v0} \text{{ m/s}}, \quad a = {a} \text{{ m/s}}^2, \quad t = {t} \text{{ s}}"
+            latex = rf"v_0 = {v0} \mathrm{{ m/s}}, \quad a = {a} \mathrm{{ m/s}}^2, \quad t = {t} \mathrm{{ s}}"
             explanation = f"v = v₀ + at = {v0} + {a}×{t} = {answer} m/s"
             hint = "Use v = v₀ + at"
 
@@ -43,7 +43,7 @@ class KinematicsQuestion(QuestionGenerator):
             answer = v0 * t + (a * t * t) // 2
 
             text = "Find the displacement (answer as number only, no units):"
-            latex = rf"v_0 = {v0} \text{{ m/s}}, \quad a = {a} \text{{ m/s}}^2, \quad t = {t} \text{{ s}}"
+            latex = rf"v_0 = {v0} \mathrm{{ m/s}}, \quad a = {a} \mathrm{{ m/s}}^2, \quad t = {t} \mathrm{{ s}}"
             explanation = f"x = v₀t + ½at² = {v0}×{t} + ½×{a}×{t}² = {answer} m"
             hint = "Use x = v₀t + ½at²"
 
@@ -58,7 +58,7 @@ class KinematicsQuestion(QuestionGenerator):
             answer = a
 
             text = "Find the acceleration (answer as number only, no units):"
-            latex = rf"v_0 = {v0} \text{{ m/s}}, \quad v = {v} \text{{ m/s}}, \quad t = {t} \text{{ s}}"
+            latex = rf"v_0 = {v0} \mathrm{{ m/s}}, \quad v = {v} \mathrm{{ m/s}}, \quad t = {t} \mathrm{{ s}}"
             explanation = f"a = (v - v₀)/t = ({v} - {v0})/{t} = {answer} m/s²"
             hint = "Rearrange v = v₀ + at to find a"
 
@@ -71,7 +71,7 @@ class KinematicsQuestion(QuestionGenerator):
             answer = t
 
             text = "Find the time (answer as number only, no units):"
-            latex = rf"v_0 = {v0} \text{{ m/s}}, \quad v = {v} \text{{ m/s}}, \quad a = {a} \text{{ m/s}}^2"
+            latex = rf"v_0 = {v0} \mathrm{{ m/s}}, \quad v = {v} \mathrm{{ m/s}}, \quad a = {a} \mathrm{{ m/s}}^2"
             explanation = f"t = (v - v₀)/a = ({v} - {v0})/{a} = {answer} s"
             hint = "Rearrange v = v₀ + at to find t"
 
@@ -99,7 +99,7 @@ class WorkEnergyQuestion(QuestionGenerator):
         W = F * d
 
         text = "Calculate the work done (answer as number only, no units):"
-        latex = rf"F = {F} \text{{ N}}, \quad d = {d} \text{{ m}}"
+        latex = rf"F = {F} \mathrm{{ N}}, \quad d = {d} \mathrm{{ m}}"
 
         explanation = f"W = F × d = {F} × {d} = {W} J"
 
@@ -194,7 +194,7 @@ class ProjectileMotionQuestion(QuestionGenerator):
                 answer = h_max
 
                 text = f"A ball is thrown straight up with initial speed {v0} m/s.\nFind the maximum height (use g = {g} m/s², answer as number only):"
-                latex = rf"v_0 = {v0} \text{{ m/s}}, \quad g = {g} \text{{ m/s}}^2"
+                latex = rf"v_0 = {v0} \mathrm{{ m/s}}, \quad g = {g} \mathrm{{ m/s}}^2"
                 explanation = f"h_max = v₀²/(2g) = {v0}²/(2×{g}) = {answer} m"
                 hint = "At max height, all kinetic energy converts to potential energy: ½mv₀² = mgh"
 
@@ -205,7 +205,7 @@ class ProjectileMotionQuestion(QuestionGenerator):
                 answer = t_total
 
                 text = f"A ball is thrown straight up with initial speed {v0} m/s.\nFind the total time in the air (use g = {g} m/s², answer as number only):"
-                latex = rf"v_0 = {v0} \text{{ m/s}}, \quad g = {g} \text{{ m/s}}^2"
+                latex = rf"v_0 = {v0} \mathrm{{ m/s}}, \quad g = {g} \mathrm{{ m/s}}^2"
                 explanation = f"t_total = 2v₀/g = 2×{v0}/{g} = {answer} s"
                 hint = "Time up = v₀/g, total time = 2 × time up"
 
@@ -217,7 +217,7 @@ class ProjectileMotionQuestion(QuestionGenerator):
             answer = R
 
             text = f"A projectile is launched at 45° with initial speed {v0} m/s.\nFind the horizontal range (use g = {g} m/s², answer as number only):"
-            latex = rf"v_0 = {v0} \text{{ m/s}}, \quad \theta = 45°, \quad g = {g} \text{{ m/s}}^2"
+            latex = rf"v_0 = {v0} \mathrm{{ m/s}}, \quad \theta = 45°, \quad g = {g} \mathrm{{ m/s}}^2"
             explanation = f"R = v₀²sin(2θ)/g = {v0}²×sin(90°)/{g} = {v0}²/{g} = {answer} m"
             hint = "Range formula: R = v₀²sin(2θ)/g. At 45°, sin(90°) = 1"
 
@@ -251,7 +251,7 @@ class EnergyConservationQuestion(QuestionGenerator):
             answer = v
 
             text = f"An object is dropped from height {h} m.\nFind its speed just before hitting the ground (use g = {g} m/s², answer as number only):"
-            latex = rf"h = {h} \text{{ m}}, \quad g = {g} \text{{ m/s}}^2"
+            latex = rf"h = {h} \mathrm{{ m}}, \quad g = {g} \mathrm{{ m/s}}^2"
             explanation = f"Using mgh = ½mv²: v = √(2gh) = √(2×{g}×{h}) = √{v_squared} = {answer} m/s"
             hint = "Use energy conservation: mgh = ½mv², solve for v"
 
@@ -267,7 +267,7 @@ class EnergyConservationQuestion(QuestionGenerator):
                 answer = h
 
                 text = f"An object slides up a frictionless ramp with initial speed {v0} m/s.\nHow high does it rise? (use g = {g} m/s², answer as number only):"
-                latex = rf"v_0 = {v0} \text{{ m/s}}, \quad g = {g} \text{{ m/s}}^2"
+                latex = rf"v_0 = {v0} \mathrm{{ m/s}}, \quad g = {g} \mathrm{{ m/s}}^2"
                 explanation = f"Using ½mv₀² = mgh: h = v₀²/(2g) = {v0}²/(2×{g}) = {answer} m"
                 hint = "Initial kinetic energy converts entirely to potential energy at max height"
 
@@ -278,7 +278,7 @@ class EnergyConservationQuestion(QuestionGenerator):
                 answer = h1
 
                 text = f"A ball rolls down a frictionless hill of height {h1} m, then up another hill.\nWhat maximum height does it reach on the second hill? (answer as number only):"
-                latex = rf"h_1 = {h1} \text{{ m}}"
+                latex = rf"h_1 = {h1} \mathrm{{ m}}"
                 explanation = f"Energy conservation: mgh₁ = mgh₂, so h₂ = h₁ = {answer} m"
                 hint = "On a frictionless surface, mechanical energy is conserved"
 

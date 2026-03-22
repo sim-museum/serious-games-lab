@@ -29,6 +29,6 @@ fi
 
 cd "$WINEPREFIX/drive_c/Program Files/rFactor"
 
-wine "rF Config.exe"
+WINEDLLOVERRIDES="d3d9,dxgi=n,b" wine "rF Config.exe"
 
 exit 0

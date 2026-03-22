@@ -39,5 +39,6 @@ echo "Help/Aircraft Help"
 echo "MiG-21bis"
 
 # Start FlightGear simulator
+[[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
 fgfs --start-date-sys=2020:06:01:12:00:00 --aircraft=MiG-21bis 2>/dev/null 1>/dev/null
 

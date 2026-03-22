@@ -41,5 +41,6 @@ echo "F-16CJ Block 52"
 echo " "
 
 # Start FlightGear simulator with specified settings
+[[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
 fgfs --start-date-sys=2020:06:01:12:00:00 --aircraft=f16-block-52 2>/dev/null 1>/dev/null
 

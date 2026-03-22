@@ -26,6 +26,7 @@ wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d win98 /
 if [ -f "$WINEPREFIX/Bridge Baron/Baron.exe" ]; then
     # If installed, change directory and run Bridge Baron 12
     cd "$WINEPREFIX/Bridge Baron"
+    [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     wine Baron.exe 2>/dev/null 1>/dev/null
     clear
     exit 0

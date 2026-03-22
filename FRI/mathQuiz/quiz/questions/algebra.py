@@ -125,7 +125,7 @@ class LCMQuestion(QuestionGenerator):
         result = (a * b) // math_gcd(a, b)
 
         text = "Find the least common multiple (LCM):"
-        latex = rf"\text{{lcm}}({a}, {b})"
+        latex = rf"\mathrm{{lcm}}({a}, {b})"
 
         explanation = f"LCM({a}, {b}) = {result}"
 

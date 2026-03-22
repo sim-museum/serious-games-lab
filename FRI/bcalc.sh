@@ -51,6 +51,7 @@ if [[ ! -x "$BCALC_BIN" ]]; then
 fi
 
 cd "$BCALC_DIR"
+[[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
 ./bcalcgui 2>/dev/null
 
 clear
