@@ -329,8 +329,8 @@ create_venv "$REPO_ROOT/WED/openingRepertoire" -r "$REPO_ROOT/WED/openingReperto
 # MON/pokerIQ - poker trainer (PyQt6 + eval7)
 create_venv "$REPO_ROOT/MON/pokerIQ" -r "$REPO_ROOT/MON/pokerIQ/requirements.txt"
 
-# FRI/guiHarness - Q-plus bridge hand entry automation (pyautogui)
-create_venv "$REPO_ROOT/FRI/guiHarness" pyautogui
+# FRI/guiHarness - Q-plus bridge hand entry and comparison harness (PyQt5 + pyautogui)
+create_venv "$REPO_ROOT/FRI/guiHarness" PyQt5 pyautogui
 
 echo "  All virtual environments processed."
 

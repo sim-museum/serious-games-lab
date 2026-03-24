@@ -32,16 +32,13 @@ elif [ -d "$WINEPREFIX/drive_c/games/qbridge15" ]; then
 fi
 
 if [ -n "$QBRIDGE_DIR" ]; then
-    # Launch GUI harness in a separate terminal if venv is available
+    # Launch GUI harness if venv is available
     if [ -x "$HARNESS_VENV/bin/python" ]; then
-        gnome-terminal -- bash -c "
-            cd '$HARNESS_DIR'
+        (
+            cd "$HARNESS_DIR"
             source venv/bin/activate
-            echo 'GUI Harness ready. Open Hand Input dialog in Q-plus, then run:'
-            echo '  python bridge_input.py'
-            echo ''
-            exec bash
-        " 2>/dev/null &
+            python bridge_harness.py 2>/dev/null &
+        )
     fi
 
     # Run Qplus Bridge

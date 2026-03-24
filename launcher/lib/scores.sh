@@ -161,10 +161,15 @@ read_documentation() {
     fi
 }
 
-# Remove scores CSV and all .gz archives in filesForLauncher, exit 0
+# Remove all saved state: scores, archives, afterGamesReport dirs, auto-select memory
 reset_scores() {
     echo ""
-    read -rp "Are you sure you want to reset all scores? (y/N): " reply
+    echo "This will erase:"
+    echo "  - All scores and archives"
+    echo "  - All afterGamesReport directories"
+    echo "  - Auto-select memory (games played, days played)"
+    echo ""
+    read -rp "Are you sure you want to reset all saved state? (y/N): " reply
     if [[ ! "$reply" =~ ^[Yy]$ ]]; then
         echo "Reset cancelled."
         return 0
@@ -173,7 +178,16 @@ reset_scores() {
     rm -f "$SCORES_FILE"
     rm -f "$LAUNCHER_FILES_DIR"/*.tar.gz
 
-    msg_ok "Scores and archives have been reset."
+    # Clear auto-select tracking state
+    rm -f "$LAUNCHER_FILES_DIR/.auto_days_played"
+    rm -f "$LAUNCHER_FILES_DIR/.auto_games_played"
+
+    # Remove afterGamesReport directories for each day
+    for day in "${DAY_ORDER[@]}"; do
+        rm -rf "$REPO_ROOT/$day/afterGamesReport"
+    done
+
+    msg_ok "All scores, archives, reports, and auto-select state have been reset."
     exit 0
 }
 
