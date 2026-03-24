@@ -567,6 +567,246 @@ class BridgeEngine:
                     print(f"Error in DD solve: {e}")
                 return None
 
+    def get_mc_card_play(self, board: BoardState, seat: Seat,
+                         current_trick_cards: List[Card] = None,
+                         num_samples: int = 40) -> EngineResponse:
+        """Get card play using Monte Carlo simulation with DDS.
+
+        Generates random deals consistent with known information, solves each
+        double-dummy, and picks the card with highest average trick count.
+
+        This is the same technique used by Bridge Baron and other strong programs.
+        """
+        import random
+        import ctypes
+
+        if not self._initialized:
+            if not self.initialize():
+                return EngineResponse(action=None, who="Error")
+
+        with self._lock:
+            try:
+                ben_path = self._find_ben_path()
+                src_path = os.path.join(ben_path, 'src')
+                original_cwd = os.getcwd()
+                os.chdir(src_path)
+
+                try:
+                    from ddsolver import dds
+                    from ddsolver.ddsolver import DDSolver
+
+                    hand = board.hands.get(seat)
+                    if not hand or not hand.cards:
+                        return EngineResponse(action=None, who="NoCards")
+
+                    # Get legal cards
+                    lead_suit = None
+                    if current_trick_cards:
+                        lead_suit = current_trick_cards[0].suit
+                    if lead_suit is not None:
+                        suit_cards = [c for c in hand.cards if c.suit == lead_suit]
+                        legal_cards = suit_cards if suit_cards else hand.cards[:]
+                    else:
+                        legal_cards = hand.cards[:]
+
+                    if len(legal_cards) <= 1:
+                        return EngineResponse(
+                            action=legal_cards[0] if legal_cards else None,
+                            who="MC-Forced"
+                        )
+
+                    # Collect known information
+                    # - Our hand
+                    # - Dummy's hand (if visible)
+                    # - Cards already played
+                    my_cards = set(c.code52() for c in hand.cards)
+
+                    known_cards = {}  # seat -> set of card codes
+                    known_cards[seat] = set(my_cards)
+
+                    # Add dummy's cards if we can see them
+                    if board.contract:
+                        dummy_seat = board.contract.declarer.partner()
+                        dummy_hand = board.hands.get(dummy_seat)
+                        if dummy_hand and dummy_hand.cards:
+                            known_cards[dummy_seat] = set(c.code52() for c in dummy_hand.cards)
+
+                    # Cards played so far
+                    played_cards = set()
+                    for trick in board.tricks:
+                        for c in trick.cards:
+                            played_cards.add(c.code52())
+                    if current_trick_cards:
+                        for c in current_trick_cards:
+                            played_cards.add(c.code52())
+
+                    # Track which suits each opponent has shown out of
+                    shown_out = {s: set() for s in Seat}
+                    for trick in board.tricks:
+                        if trick.cards:
+                            led_s = trick.cards[0].suit
+                            for i, c in enumerate(trick.cards):
+                                player = Seat((trick.leader + i) % 4)
+                                if c.suit != led_s:
+                                    shown_out[player].add(led_s)
+
+                    # Unknown cards = all 52 minus known minus played
+                    all_known = set()
+                    for s_cards in known_cards.values():
+                        all_known |= s_cards
+                    all_known |= played_cards
+                    unknown_cards = [c for c in range(52) if c not in all_known]
+
+                    # Determine which seats need random cards
+                    unknown_seats = [s for s in Seat if s not in known_cards]
+
+                    # Count how many cards each unknown seat should have
+                    cards_per_seat = {}
+                    total_remaining = 52 - len(played_cards)
+                    for s in Seat:
+                        if s in known_cards:
+                            cards_per_seat[s] = len(known_cards[s])
+                        else:
+                            # Estimate from total remaining
+                            orig_hand = board.hands.get(s)
+                            if orig_hand:
+                                cards_per_seat[s] = len(orig_hand.cards)
+                            else:
+                                cards_per_seat[s] = (total_remaining - sum(
+                                    len(known_cards.get(ss, [])) for ss in Seat
+                                    if ss in known_cards
+                                )) // max(1, len(unknown_seats))
+
+                    # Generate random samples
+                    trump_suit = board.contract.suit if board.contract else Suit.NOTRUMP
+                    # DDS solve() expects strain_i 1-based: 1=S,2=H,3=D,4=C,5=NT
+                    # Suit enum: S=0,H=1,D=2,C=3,NT=4 → strain_i = value + 1
+
+                    # Determine current leader for DDS
+                    if current_trick_cards:
+                        trick_leader = Seat((seat - len(current_trick_cards)) % 4)
+                    else:
+                        if board.tricks:
+                            trick_leader = board.tricks[-1].winner
+                        elif board.contract:
+                            trick_leader = board.contract.declarer.next()
+                        else:
+                            trick_leader = seat
+
+                    # Current trick for DDS format
+                    current_trick_52 = []
+                    if current_trick_cards:
+                        for c in current_trick_cards:
+                            current_trick_52.append(c.code52())
+
+                    sample_hands_pbn = []
+                    for _ in range(num_samples):
+                        # Shuffle unknown cards
+                        pool = list(unknown_cards)
+                        random.shuffle(pool)
+
+                        # Distribute to unknown seats respecting shown_out
+                        sample = dict(known_cards)  # copy known hands
+                        valid = True
+                        idx = 0
+                        for s in unknown_seats:
+                            need = cards_per_seat.get(s, 0)
+                            assigned = []
+                            for c52 in pool[idx:]:
+                                if len(assigned) >= need:
+                                    break
+                                # Check shown_out constraint
+                                c_suit = Suit(c52 // 13)
+                                if c_suit in shown_out[s]:
+                                    continue
+                                assigned.append(c52)
+                            if len(assigned) < need:
+                                valid = False
+                                break
+                            sample[s] = set(assigned)
+                            # Remove assigned from pool
+                            for a in assigned:
+                                pool.remove(a)
+                            idx = 0  # reset for next seat
+
+                        if not valid:
+                            continue
+
+                        # Build PBN string
+                        hand_strs = []
+                        for s in [Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST]:
+                            suits = [[], [], [], []]
+                            for c52 in sorted(sample.get(s, [])):
+                                si = c52 // 13
+                                ri = c52 % 13
+                                suits[si].append('AKQJT98765432'[ri])
+                            hand_strs.append('.'.join(''.join(s) if s else '-' for s in suits))
+                        pbn = 'N:' + ' '.join(hand_strs)
+                        sample_hands_pbn.append(pbn)
+
+                    if not sample_hands_pbn:
+                        # Fallback if sampling failed
+                        return self.get_card_play(board, seat, current_trick_cards)
+
+                    # Use DDS to solve all samples
+                    local_dds = DDSolver(dds_mode=1)
+                    try:
+                        dd_results = local_dds.solve(
+                            trump_suit.value + 1,  # strain_i: 1=S,2=H,3=D,4=C,5=NT
+                            trick_leader.value,
+                            current_trick_52,
+                            sample_hands_pbn,
+                            3  # solutions=3: all legal cards with scores
+                        )
+                    except Exception as e:
+                        if self.verbose:
+                            print(f"MC DDS solve error: {e}")
+                        return self.get_card_play(board, seat, current_trick_cards)
+
+                    if not dd_results:
+                        return self.get_card_play(board, seat, current_trick_cards)
+
+                    # Find best card by average tricks
+                    avg_tricks = {}
+                    for card52, tricks_list in dd_results.items():
+                        avg_tricks[card52] = sum(tricks_list) / len(tricks_list)
+
+                    # Filter to legal cards only
+                    legal_codes = set(c.code52() for c in legal_cards)
+                    legal_results = {c: t for c, t in avg_tricks.items() if c in legal_codes}
+
+                    if not legal_results:
+                        # DDS returned cards we don't recognize as legal
+                        return self.get_card_play(board, seat, current_trick_cards)
+
+                    best_card52 = max(legal_results, key=legal_results.get)
+                    best_card = Card.from_code52(best_card52)
+
+                    candidates = []
+                    for c52, avg in sorted(legal_results.items(), key=lambda x: x[1], reverse=True):
+                        c = Card.from_code52(c52)
+                        candidates.append(CardCandidate(
+                            card=c,
+                            score=avg,
+                            expected_tricks=avg
+                        ))
+
+                    return EngineResponse(
+                        action=best_card,
+                        candidates=candidates,
+                        who="MC"
+                    )
+
+                finally:
+                    os.chdir(original_cwd)
+
+            except Exception as e:
+                if self.verbose:
+                    print(f"Error in MC card play: {e}")
+                    import traceback
+                    traceback.print_exc()
+                return self.get_card_play(board, seat, current_trick_cards)
+
     def get_dd_card_play(self, board: BoardState, seat: Seat,
                          current_trick_cards: List[Card] = None) -> EngineResponse:
         """Get optimal card using double-dummy solver.

@@ -106,6 +106,7 @@ class BridgePreferences:
 
     # Card play options
     use_double_dummy_play: bool = False
+    use_monte_carlo_play: bool = True  # Monte Carlo simulation (default)
 
 
 class ConfigIO:

@@ -123,12 +123,29 @@ class PreferencesDialog(QDialog):
         play_group = QGroupBox("Computer Card Play")
         play_layout = QVBoxLayout()
 
-        self.dd_play_check = QCheckBox("Use double-dummy optimal card play")
-        self.dd_play_check.setToolTip(
-            "When enabled, computer players will use the double-dummy solver\n"
-            "to find optimal card plays. This is stronger but slower."
+        self.play_mode_group = QButtonGroup(self)
+        self.play_mc_radio = QRadioButton("Monte Carlo simulation (recommended)")
+        self.play_mc_radio.setToolTip(
+            "Generates random deals consistent with known information,\n"
+            "solves each double-dummy, and picks the best card on average.\n"
+            "Strong and practical — the same technique used by Bridge Baron."
         )
-        play_layout.addWidget(self.dd_play_check)
+        self.play_engine_radio = QRadioButton("BEN neural network engine")
+        self.play_engine_radio.setToolTip(
+            "Uses BEN's neural network for card play decisions.\n"
+            "Fast but often makes poor plays."
+        )
+        self.play_dd_radio = QRadioButton("Double-dummy optimal play")
+        self.play_dd_radio.setToolTip(
+            "Uses the double-dummy solver assuming all cards are visible.\n"
+            "Unrealistically strong — sees through the backs of cards."
+        )
+        self.play_mode_group.addButton(self.play_mc_radio, 0)
+        self.play_mode_group.addButton(self.play_engine_radio, 1)
+        self.play_mode_group.addButton(self.play_dd_radio, 2)
+        play_layout.addWidget(self.play_mc_radio)
+        play_layout.addWidget(self.play_engine_radio)
+        play_layout.addWidget(self.play_dd_radio)
 
         play_group.setLayout(play_layout)
         layout.addWidget(play_group)
@@ -306,8 +323,13 @@ class PreferencesDialog(QDialog):
 
         self.anim_slider.setValue(int(self.prefs.moved_cards_speed * 100))
 
-        # DD play setting
-        self.dd_play_check.setChecked(self.prefs.use_double_dummy_play)
+        # Play mode setting
+        if self.prefs.use_monte_carlo_play:
+            self.play_mc_radio.setChecked(True)
+        elif self.prefs.use_double_dummy_play:
+            self.play_dd_radio.setChecked(True)
+        else:
+            self.play_engine_radio.setChecked(True)
 
         # Display settings
         if self.prefs.suit_layout == SuitLayout.SHDC:
@@ -335,8 +357,9 @@ class PreferencesDialog(QDialog):
         self.prefs.single_click = self.single_click_radio.isChecked()
         self.prefs.moved_cards_speed = self.anim_slider.value() / 100.0
 
-        # DD play setting
-        self.prefs.use_double_dummy_play = self.dd_play_check.isChecked()
+        # Play mode setting
+        self.prefs.use_monte_carlo_play = self.play_mc_radio.isChecked()
+        self.prefs.use_double_dummy_play = self.play_dd_radio.isChecked()
 
         # Display settings
         if self.suit_layout_combo.currentIndex() == 0:

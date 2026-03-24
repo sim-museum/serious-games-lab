@@ -95,9 +95,21 @@ class EngineWorker(QThread):
                 if is_opening_lead:
                     response = self.engine.get_opening_lead(self.board)
                 else:
-                    response = self.engine.get_card_play(
-                        self.board, self.seat, self.trick_cards
-                    )
+                    # Route to the selected play engine
+                    from ben_backend.config import get_config_manager
+                    prefs = get_config_manager().config.preferences
+                    if prefs.use_monte_carlo_play:
+                        response = self.engine.get_mc_card_play(
+                            self.board, self.seat, self.trick_cards
+                        )
+                    elif prefs.use_double_dummy_play:
+                        response = self.engine.get_dd_card_play(
+                            self.board, self.seat, self.trick_cards
+                        )
+                    else:
+                        response = self.engine.get_card_play(
+                            self.board, self.seat, self.trick_cards
+                        )
                 self.card_ready.emit(response)
         except Exception as e:
             import traceback

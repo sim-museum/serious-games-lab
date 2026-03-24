@@ -79,6 +79,7 @@ class PreferencesConfig:
     moved_cards_speed: float = 0.5
     language: str = "eng"
     use_double_dummy_play: bool = False
+    use_monte_carlo_play: bool = True  # Monte Carlo simulation (default - strongest)
     legacy_colors: bool = False  # Use legacy 2-color mode (red and black only)
     show_ben_bid_analysis: bool = False  # Show BEN bid analysis panel (disabled by default)
 
@@ -286,6 +287,8 @@ class ConfigManager:
             self.config.preferences.moved_cards_speed = float(data["preference.moved_cards"])
         if "preference.use_dd_play" in data:
             self.config.preferences.use_double_dummy_play = data["preference.use_dd_play"] == "1"
+        if "preference.use_mc_play" in data:
+            self.config.preferences.use_monte_carlo_play = data["preference.use_mc_play"] == "1"
         if "preference.legacy_colors" in data:
             self.config.preferences.legacy_colors = data["preference.legacy_colors"] == "1"
         if "preference.show_ben_bid_analysis" in data:
@@ -303,6 +306,7 @@ class ConfigManager:
             "preference.moved_cards": str(self.config.preferences.moved_cards_speed),
             "preference.language": self.config.preferences.language,
             "preference.use_dd_play": "1" if self.config.preferences.use_double_dummy_play else "0",
+            "preference.use_mc_play": "1" if self.config.preferences.use_monte_carlo_play else "0",
             "preference.legacy_colors": "1" if self.config.preferences.legacy_colors else "0",
             "preference.show_ben_bid_analysis": "1" if self.config.preferences.show_ben_bid_analysis else "0",
         }

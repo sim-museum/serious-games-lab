@@ -8,7 +8,11 @@ from PyQt6.QtWidgets import (
     QLabel, QFrame, QPushButton, QSizePolicy, QSpacerItem
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QTimer, QRect, QPoint
-from PyQt6.QtGui import QFont, QColor, QPalette, QPainter, QBrush, QPen, QPolygon, QFontMetrics
+from PyQt6.QtGui import (
+    QFont, QColor, QPalette, QPainter, QBrush, QPen, QPolygon, QFontMetrics,
+    QPixmap, QImage
+)
+import os
 
 from ben_backend.models import (
     BoardState, Card, Hand, Seat, Suit, Trick, Vulnerability, Contract, Rank
@@ -33,15 +37,15 @@ COLORS = {
     'selectable_border': '#ff0000',
 }
 
-# Card dimensions - LARGE for 1080p
-CARD_WIDTH = 120
-CARD_HEIGHT = 170
-CARD_OVERLAP = 55  # How much cards overlap (shows ~65px per card)
-SUIT_GAP = 60  # Extra gap between suits in face-up hands - very visible separation
+# Card dimensions - sized to fill 1920x1080 screen
+CARD_WIDTH = 140
+CARD_HEIGHT = 198
+CARD_OVERLAP = 75  # How much cards overlap (shows ~65px per card)
+SUIT_GAP = 55  # Extra gap between suits — creates clear visual grouping
 
 
 class CardWidget(QWidget):
-    """Large playing card widget with proper face card graphics"""
+    """Playing card widget using traditional card images from tmcgui deck."""
 
     card_clicked = pyqtSignal(object)
 
@@ -51,6 +55,119 @@ class CardWidget(QWidget):
         Suit.DIAMONDS: '♦',
         Suit.CLUBS: '♣',
     }
+
+    # Cache for loaded and processed card images
+    _image_cache: Dict[str, QPixmap] = {}
+    _back_pixmap: Optional[QPixmap] = None
+    _images_dir: Optional[str] = None
+
+    @classmethod
+    def _get_images_dir(cls) -> str:
+        if cls._images_dir is None:
+            # Find the card images relative to this file
+            here = os.path.dirname(os.path.abspath(__file__))
+            candidate = os.path.join(here, '..', '..', 'ben', 'src', 'tmcgui',
+                                     'images', 'deck', 'width 100')
+            cls._images_dir = os.path.normpath(candidate)
+        return cls._images_dir
+
+    @classmethod
+    def _get_card_pixmap(cls, card: 'Card') -> Optional[QPixmap]:
+        """Load and cache a card image, recoloring for 4-color mode."""
+        suit_char = {Suit.SPADES: 'S', Suit.HEARTS: 'H',
+                     Suit.DIAMONDS: 'D', Suit.CLUBS: 'C'}[card.suit]
+        # Image naming: rank 2-10=2-10, J=11, Q=12, K=13, A=14
+        rank_num = 14 - card.rank.value  # ACE=0→14, KING=1→13, ..., TWO=12→2
+        key = f"{suit_char}{rank_num}"
+
+        if key not in cls._image_cache:
+            path = os.path.join(cls._get_images_dir(), f"{key}.png")
+            if not os.path.exists(path):
+                return None
+
+            img = QImage(path)
+            # Scale to card size
+            img = img.scaled(CARD_WIDTH, CARD_HEIGHT,
+                             Qt.AspectRatioMode.IgnoreAspectRatio,
+                             Qt.TransformationMode.SmoothTransformation)
+
+            # Apply 4-color tinting for diamonds (→blue) and clubs (→green)
+            from ben_backend.config import get_config_manager
+            try:
+                legacy = get_config_manager().config.preferences.legacy_colors
+            except Exception:
+                legacy = False
+
+            if not legacy:
+                if card.suit == Suit.DIAMONDS:
+                    cls._recolor_image(img, Suit.DIAMONDS, QColor(0, 0, 204))
+                elif card.suit == Suit.CLUBS:
+                    cls._recolor_image(img, Suit.CLUBS, QColor(0, 100, 0))
+
+            cls._image_cache[key] = QPixmap.fromImage(img)
+
+        return cls._image_cache.get(key)
+
+    @classmethod
+    def _get_back_pixmap(cls) -> QPixmap:
+        if cls._back_pixmap is None:
+            path = os.path.join(cls._get_images_dir(), 'blue_back.png')
+            if os.path.exists(path):
+                img = QImage(path)
+                img = img.scaled(CARD_WIDTH, CARD_HEIGHT,
+                                 Qt.AspectRatioMode.IgnoreAspectRatio,
+                                 Qt.TransformationMode.SmoothTransformation)
+                cls._back_pixmap = QPixmap.fromImage(img)
+            else:
+                cls._back_pixmap = QPixmap(CARD_WIDTH, CARD_HEIGHT)
+                cls._back_pixmap.fill(QColor('#1a3a8c'))
+        return cls._back_pixmap
+
+    @staticmethod
+    def _recolor_image(img: QImage, suit: 'Suit', to_color: QColor):
+        """Recolor card image suit symbols and rank text for 4-color mode.
+
+        For diamonds: any reddish pixel (r > g*1.3 and r > b*1.3) → blue
+        For clubs: any dark/gray pixel (max channel < 160, not white bg) → green
+        Preserves brightness while shifting the hue.
+        """
+        tr, tg, tb = to_color.red(), to_color.green(), to_color.blue()
+
+        for y in range(img.height()):
+            for x in range(img.width()):
+                px = img.pixelColor(x, y)
+                r, g, b, a = px.red(), px.green(), px.blue(), px.alpha()
+                if a < 10:
+                    continue
+
+                is_match = False
+                if suit == Suit.DIAMONDS:
+                    # Match any reddish pixel including anti-aliased pink edges
+                    # Red channel dominates AND pixel is not background-white
+                    is_match = (r > 40 and r > g * 1.3 and r > b * 1.3
+                                and r + g + b < 650)
+                elif suit == Suit.CLUBS:
+                    # Match any dark/gray pixel (club symbols, rank text, edges)
+                    # Skip white/light background (r+g+b > 500) and colored pixels
+                    mx = max(r, g, b)
+                    is_match = (mx < 170 and r + g + b < 450
+                                and abs(r - g) < 40 and abs(r - b) < 40)
+
+                if is_match:
+                    # Map pixel brightness to target color, with minimum brightness
+                    # so dark source pixels become visible in the target color
+                    lum = (r + g + b) / 3.0
+                    target_lum = (tr + tg + tb) / 3.0
+                    # Use brightness ratio but ensure dark pixels stay visible
+                    if lum < 40:
+                        # Dark pixel: use target color at full/near-full intensity
+                        scale = max(0.7, lum / max(1.0, target_lum))
+                    else:
+                        scale = lum / max(1.0, target_lum)
+                    nr = min(255, int(tr * scale))
+                    ng = min(255, int(tg * scale))
+                    nb = min(255, int(tb * scale))
+                    img.setPixelColor(x, y, QColor(nr, ng, nb, a))
 
     @staticmethod
     def get_suit_color(suit: Suit) -> str:
@@ -63,6 +180,12 @@ class CardWidget(QWidget):
             Suit.CLUBS: 'clubs',
         }
         return get_suit_color(suit_names.get(suit, 'spades'))
+
+    @classmethod
+    def clear_image_cache(cls):
+        """Clear cached images (call after changing color settings)."""
+        cls._image_cache.clear()
+        cls._back_pixmap = None
 
     def __init__(self, card: Card = None, face_up: bool = True, parent=None):
         super().__init__(parent)
@@ -111,125 +234,42 @@ class CardWidget(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         w, h = self.width(), self.height()
 
         if not self.card or not self.face_up:
-            # Face down card with decorative back
-            painter.setBrush(QBrush(QColor(COLORS['card_back'])))
-            painter.setPen(QPen(QColor(COLORS['card_border']), 2))
-            painter.drawRoundedRect(1, 1, w-2, h-2, 8, 8)
-            # Decorative border
-            painter.setPen(QPen(QColor('#4a5a7a'), 1))
-            painter.drawRoundedRect(6, 6, w-12, h-12, 5, 5)
-            # Cross-hatch pattern
-            painter.setPen(QPen(QColor('#3a4a6a'), 1))
-            for i in range(10, w-10, 12):
-                for j in range(10, h-10, 12):
-                    painter.drawLine(i, j, i+6, j+6)
-                    painter.drawLine(i+6, j, i, j+6)
+            # Face-down card
+            back = self._get_back_pixmap()
+            painter.drawPixmap(0, 0, w, h, back)
         else:
-            # Face up card with proper borders
-            color = QColor(self.get_suit_color(self.card.suit))
-            bg = QColor(COLORS['highlight']) if self.highlighted else QColor(COLORS['card_face'])
-
-            painter.setBrush(QBrush(bg))
-            border_color = QColor(COLORS['selectable_border']) if self.selectable else QColor('#888888')
-            painter.setPen(QPen(border_color, 3 if self.selectable else 1))
-            painter.drawRoundedRect(1, 1, w-2, h-2, 8, 8)
-
-            rank_char = self.card.rank.to_char()
-            suit_sym = self.SUIT_SYMBOLS.get(self.card.suit, '?')
-
-            # Top-left corner
-            painter.setPen(color)
-            painter.setFont(QFont("Arial", 24, QFont.Weight.Bold))
-            painter.drawText(6, 26, rank_char)
-            painter.setFont(QFont("Arial", 18))
-            painter.drawText(6, 48, suit_sym)
-
-            # Bottom-right corner (rotated)
-            painter.save()
-            painter.translate(w, h)
-            painter.rotate(180)
-            painter.setFont(QFont("Arial", 24, QFont.Weight.Bold))
-            painter.drawText(6, 26, rank_char)
-            painter.setFont(QFont("Arial", 18))
-            painter.drawText(6, 48, suit_sym)
-            painter.restore()
-
-            # Center content
-            cx, cy = w // 2, h // 2
-
-            if self.card.rank in (Rank.KING, Rank.QUEEN, Rank.JACK):
-                # Face card with decorative graphics
-                self._draw_face_card(painter, cx, cy, color)
-            elif self.card.rank == Rank.ACE:
-                # Large center suit symbol
-                painter.setFont(QFont("Arial", 60, QFont.Weight.Bold))
-                fm = painter.fontMetrics()
-                tw = fm.horizontalAdvance(suit_sym)
-                painter.drawText(cx - tw//2, cy + 22, suit_sym)
+            # Face-up card — use traditional card images
+            pixmap = self._get_card_pixmap(self.card)
+            if pixmap:
+                painter.drawPixmap(0, 0, w, h, pixmap)
             else:
-                # Number cards - draw pip pattern
-                pip_count = 10 - self.card.rank.value
-                painter.setFont(QFont("Arial", 28))
-                self._draw_pips(painter, cx, cy, suit_sym, pip_count)
+                # Fallback: plain white card with rank/suit text
+                painter.setBrush(QBrush(QColor('#fffff8')))
+                painter.setPen(QPen(QColor('#000000'), 1))
+                painter.drawRoundedRect(1, 1, w-2, h-2, 6, 6)
+                color = QColor(self.get_suit_color(self.card.suit))
+                painter.setPen(color)
+                rank_char = self.card.rank.to_char()
+                suit_sym = self.SUIT_SYMBOLS.get(self.card.suit, '?')
+                painter.setFont(QFont("Arial", 24, QFont.Weight.Bold))
+                painter.drawText(8, 28, rank_char)
+                painter.setFont(QFont("Arial", 20))
+                painter.drawText(8, 50, suit_sym)
 
-    def _draw_face_card(self, painter, cx, cy, color):
-        """Draw decorative face card"""
-        rank = self.card.rank
-        suit_sym = self.SUIT_SYMBOLS.get(self.card.suit, '?')
+            # Draw selection/highlight overlay
+            if self.selectable:
+                painter.setPen(QPen(QColor(COLORS['selectable_border']), 3))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawRoundedRect(1, 1, w-2, h-2, 6, 6)
 
-        # Draw decorative frame
-        painter.setPen(QPen(color, 2))
-        frame_w, frame_h = 60, 85
-        painter.drawRect(cx - frame_w//2, cy - frame_h//2, frame_w, frame_h)
-
-        # Crown/tiara above letter
-        if rank == Rank.KING:
-            painter.setFont(QFont("Arial", 28))
-            fm = painter.fontMetrics()
-            tw = fm.horizontalAdvance("♔")
-            painter.drawText(cx - tw//2, cy - 18, "♔")
-        elif rank == Rank.QUEEN:
-            painter.setFont(QFont("Arial", 28))
-            fm = painter.fontMetrics()
-            tw = fm.horizontalAdvance("♕")
-            painter.drawText(cx - tw//2, cy - 18, "♕")
-        elif rank == Rank.JACK:
-            painter.setFont(QFont("Arial", 22))
-            fm = painter.fontMetrics()
-            tw = fm.horizontalAdvance(suit_sym)
-            painter.drawText(cx - tw//2, cy - 20, suit_sym)
-
-        # Letter in center
-        painter.setFont(QFont("Arial", 44, QFont.Weight.Bold))
-        letter = {Rank.KING: 'K', Rank.QUEEN: 'Q', Rank.JACK: 'J'}[rank]
-        fm = painter.fontMetrics()
-        tw = fm.horizontalAdvance(letter)
-        painter.drawText(cx - tw//2, cy + 18, letter)
-
-        # Suit symbol below letter
-        painter.setFont(QFont("Arial", 20))
-        fm = painter.fontMetrics()
-        tw = fm.horizontalAdvance(suit_sym)
-        painter.drawText(cx - tw//2, cy + 38, suit_sym)
-
-    def _draw_pips(self, painter, cx, cy, sym, count):
-        # Pip positions for cards
-        positions = {
-            2: [(0, -30), (0, 30)],
-            3: [(0, -35), (0, 0), (0, 35)],
-            4: [(-18, -28), (18, -28), (-18, 28), (18, 28)],
-            5: [(-18, -28), (18, -28), (0, 0), (-18, 28), (18, 28)],
-            6: [(-18, -35), (18, -35), (-18, 0), (18, 0), (-18, 35), (18, 35)],
-            7: [(-18, -35), (18, -35), (0, -14), (-18, 0), (18, 0), (-18, 35), (18, 35)],
-            8: [(-18, -35), (18, -35), (0, -18), (-18, 0), (18, 0), (0, 18), (-18, 35), (18, 35)],
-            9: [(-18, -38), (18, -38), (-18, -14), (18, -14), (0, 0), (-18, 14), (18, 14), (-18, 38), (18, 38)],
-            10: [(-18, -40), (18, -40), (0, -26), (-18, -10), (18, -10), (-18, 10), (18, 10), (0, 26), (-18, 40), (18, 40)],
-        }
-        for dx, dy in positions.get(count, []):
-            painter.drawText(cx + dx - 10, cy + dy + 10, sym)
+            if self.highlighted:
+                painter.setBrush(QBrush(QColor(255, 255, 200, 60)))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.drawRoundedRect(1, 1, w-2, h-2, 6, 6)
 
 
 class FannedHandWidget(QWidget):
@@ -254,8 +294,8 @@ class FannedHandWidget(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(3)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         # Label - smaller font
         self.label = QLabel()
@@ -363,13 +403,13 @@ class FannedHandWidget(QWidget):
 class TrickAreaWidget(QFrame):
     """Green table center with played cards at fixed compass positions"""
 
-    # Trick area size - increased height to fit all cards
-    AREA_WIDTH = 340
-    AREA_HEIGHT = 420
+    # Trick area — fits between N and S hands
+    AREA_WIDTH = 460
+    AREA_HEIGHT = 400
 
-    # Use smaller cards in trick area to fit
-    TRICK_CARD_WIDTH = 80
-    TRICK_CARD_HEIGHT = 115
+    # Trick cards — large and readable
+    TRICK_CARD_WIDTH = 110
+    TRICK_CARD_HEIGHT = 155
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -634,53 +674,52 @@ class TableView(QWidget):
         self.is_play_phase = False
 
         self.setStyleSheet(f"background-color: {COLORS['background']};")
-        self.setMinimumHeight(850)  # Ensure enough height for trick area
         self._setup_ui()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(5)
-        layout.setContentsMargins(10, 5, 10, 5)
-
-        # Top bar
-        top_bar = QHBoxLayout()
-
-        top_bar.addStretch()
-
-        self.info_panel = InfoPanel()
-        il = QVBoxLayout(self.info_panel)
-        il.setContentsMargins(10, 5, 10, 5)
-        self.dealer_label = QLabel("Dealer:")
-        self.dealer_label.setFont(QFont("Arial", 12))
-        il.addWidget(self.dealer_label)
-        self.vuln_label = QLabel("Vul.:")
-        self.vuln_label.setFont(QFont("Arial", 12))
-        il.addWidget(self.vuln_label)
-        top_bar.addWidget(self.info_panel)
-
-        layout.addLayout(top_bar)
+        layout.setSpacing(0)
+        layout.setContentsMargins(5, 0, 5, 0)
 
         # Create all hand widgets first
         self.hand_widgets = {}
         for seat in Seat:
             self.hand_widgets[seat] = FannedHandWidget(seat, horizontal=True)
-            self.hand_widgets[seat].label.setVisible(False)  # We use our own labels
+            self.hand_widgets[seat].label.setVisible(False)
 
-        # North label (always visible during bidding, changes during play)
+        # North row: label + hand + info panel all on one line
+        north_row = QHBoxLayout()
+        north_row.setSpacing(0)
+        north_row.setContentsMargins(0, 0, 0, 0)
+
+        # North label
         self.north_label = QLabel("N: BEN")
         self.north_label.setFont(QFont("Arial", 10))
-        self.north_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
+        self.north_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 2px 8px; border-radius: 3px; }")
         self.north_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.north_label, alignment=Qt.AlignmentFlag.AlignHCenter)
+        self.north_label.setFixedWidth(90)
 
-        # North hand area (hidden during bidding, shown during play when N is dummy)
+        # North hand
         self.hand_widgets[Seat.NORTH].set_player_info(is_human=False)
-        north_hand_layout = QHBoxLayout()
-        north_hand_layout.addStretch()
-        north_hand_layout.addWidget(self.hand_widgets[Seat.NORTH])
-        north_hand_layout.addStretch()
-        self.hand_widgets[Seat.NORTH].setVisible(False)  # Hidden during bidding
-        layout.addLayout(north_hand_layout)
+        self.hand_widgets[Seat.NORTH].setVisible(False)
+
+        # Info panel (dealer/vuln) — floated to right of north row
+        self.info_panel = InfoPanel()
+        il = QVBoxLayout(self.info_panel)
+        il.setContentsMargins(8, 2, 8, 2)
+        self.dealer_label = QLabel("Dealer:")
+        self.dealer_label.setFont(QFont("Arial", 11))
+        il.addWidget(self.dealer_label)
+        self.vuln_label = QLabel("Vul.:")
+        self.vuln_label.setFont(QFont("Arial", 11))
+        il.addWidget(self.vuln_label)
+
+        north_row.addWidget(self.north_label, alignment=Qt.AlignmentFlag.AlignTop)
+        north_row.addStretch()
+        north_row.addWidget(self.hand_widgets[Seat.NORTH])
+        north_row.addStretch()
+        north_row.addWidget(self.info_panel, alignment=Qt.AlignmentFlag.AlignTop)
+        layout.addLayout(north_row)
 
         # Middle section with E/W areas and trick area
         middle_layout = QHBoxLayout()
@@ -730,23 +769,28 @@ class TableView(QWidget):
 
         layout.addLayout(middle_layout, stretch=1)
 
-        # Add spacing before south label to ensure it's outside the trick area
-        layout.addSpacing(10)
+        # South row: label + hand on one line
+        south_row = QHBoxLayout()
+        south_row.setSpacing(0)
+        south_row.setContentsMargins(0, 0, 0, 0)
 
-        # South label (small, just the text) - above the cards
         self.south_label = QLabel("S: HUMAN")
         self.south_label.setFont(QFont("Arial", 10))
         self.south_label.setStyleSheet("QLabel { background-color: #88ccff; color: black; padding: 2px 8px; border-radius: 3px; }")
         self.south_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.south_label, alignment=Qt.AlignmentFlag.AlignHCenter)
+        self.south_label.setFixedWidth(90)
 
-        # South hand (fanned out)
         self.hand_widgets[Seat.SOUTH].set_player_info(is_human=True)
-        south_layout = QHBoxLayout()
-        south_layout.addStretch()
-        south_layout.addWidget(self.hand_widgets[Seat.SOUTH])
-        south_layout.addStretch()
-        layout.addLayout(south_layout)
+
+        south_row.addWidget(self.south_label, alignment=Qt.AlignmentFlag.AlignBottom)
+        south_row.addStretch()
+        south_row.addWidget(self.hand_widgets[Seat.SOUTH])
+        south_row.addStretch()
+        # Spacer to balance info panel on north side
+        spacer = QWidget()
+        spacer.setFixedWidth(90)
+        south_row.addWidget(spacer, alignment=Qt.AlignmentFlag.AlignBottom)
+        layout.addLayout(south_row)
 
         # Bottom bar with contract and tricks
         bottom_bar = QHBoxLayout()
