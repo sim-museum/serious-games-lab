@@ -1,0 +1,484 @@
+GOLD STANDARD ACMI RECORDING - FALCON 4.0 VARIANTS
+====================================================
+
+A "gold standard" ACMI is a complete recording of a mission where all
+entities remain disaggregated (fully simulated) throughout, so the ACMI
+captures every aircraft, SAM, and ground unit without pop-in/pop-out
+artifacts caused by the aggregation bubble.
+
+The key technique: fly a non-combat "camera ship" that shadows the
+mission of interest, keeping your player bubble centered on the action
+while AI flies the actual mission.
+
+
+========================================================================
+PART 1: FREEFALCON
+========================================================================
+
+FreeFalcon uses the open-sourced Falcon 4.0 codebase with modifications.
+ACMI files are written as .vhs in the Acmi subdirectory.
+
+METHOD A: TACTICAL ENGAGEMENT (RECOMMENDED)
+--------------------------------------------
+
+This is the most reliable path. TE missions keep all placed entities
+disaggregated for the entire mission -- no bubble limitations.
+
+1. Launch FreeFalcon, select Tactical Engagement, then Editor.
+
+2. Set the theater and weather as desired.
+
+3. Place the PRIMARY FLIGHT (the mission you want to capture):
+   - Select the appropriate airbase or air start
+   - Choose mission type (CAP, Strike, CAS, etc.)
+   - Set waypoints for the full mission profile
+   - Set AI skill level as desired
+   - This flight will be AI-flown
+
+4. Place all OPPOSING FORCES:
+   - Enemy fighter flights (with appropriate waypoints)
+   - SAM sites (place individual SAM battalions on the map)
+   - Ground targets (armor columns, convoys, airfields, etc.)
+   - Any other units you want captured in the ACMI
+
+5. Place FRIENDLY SUPPORT as needed:
+   - AWACS
+   - Tanker flights
+   - SEAD flights
+   - Any other package elements
+
+6. Place the CAMERA SHIP flight:
+   - Same coalition as the primary flight
+   - Aircraft type: F-16 (or any available type)
+   - Mission type: Sweep (preferred) or Escort
+   - Waypoints: mirror the primary flight's route at 2-5nm lateral
+     offset, same altitude block (+/- 2000ft)
+   - If using Escort, set the primary flight as the escorted package
+     element
+   - Flight size: 1 aircraft is sufficient (minimizes distraction)
+   - Skill: Veteran or Ace for any AI wingmen
+
+7. Save the TE mission.
+
+8. Fly the mission:
+   - Select your camera ship flight/slot as the player aircraft
+   - Start the mission
+   - ACMI recording should begin automatically; if not, press the
+     ACMI toggle key (check key bindings, typically in the SIM section)
+   - Maintain position near the primary flight -- stay within 10nm
+   - Do not engage targets; your job is to observe
+   - Let the AI fight the mission
+
+9. After the mission ends (or you exit), the .vhs file is saved in
+   the FreeFalcon Acmi directory.
+
+METHOD B: CAMPAIGN (LIMITED)
+-----------------------------
+
+FreeFalcon's campaign missions are subject to the disaggregation bubble.
+
+1. Start or load a campaign.
+
+2. On the mission schedule/frag screen, identify the mission of interest.
+
+3. Look for a second flight in the same package or same geographic area.
+   If none exists, you may be able to request additional missions via
+   the ATO interface (results vary by campaign state).
+
+4. Join the second flight as player. This is your camera ship.
+
+5. Fly near the primary mission's area of operations.
+
+6. ACMI will capture everything within your disaggregation bubble
+   (~30nm radius).
+
+LIMITATIONS:
+- FreeFalcon's bubble size is generally not user-configurable
+- Entities outside the bubble will aggregate and vanish from ACMI
+- Campaign ACMI will almost never be truly "gold standard" -- some
+  entities will pop in/out as the engagement area shifts
+- FreeFalcon is no longer actively maintained; expect occasional
+  stability issues with ACMI recording
+
+
+========================================================================
+PART 2: FALCON 4.0 ALLIED FORCE (AF)
+========================================================================
+
+Allied Force is Lead Pursuit's commercial update. ACMI files are .vhs
+format, viewable in the built-in ACMI viewer.
+
+METHOD A: TACTICAL ENGAGEMENT (RECOMMENDED)
+--------------------------------------------
+
+Same principle as FreeFalcon -- TE keeps all entities disaggregated.
+
+1. Launch Falcon AF, select Tactical Engagement, then Editor.
+
+2. Set theater and conditions.
+
+3. Place the PRIMARY FLIGHT:
+   - Select airbase or air start position
+   - Set mission type (CAP, Strike, Intercept, CAS, etc.)
+   - Plan full waypoint route
+   - This flight is AI-controlled
+
+4. Place OPPOSING FORCES:
+   - Enemy air flights with waypoints
+   - SAM batteries (SA-2, SA-3, SA-6, etc.)
+   - AAA emplacements
+   - Ground target arrays
+   - Naval units if relevant
+
+5. Place FRIENDLY SUPPORT:
+   - AWACS, tankers, SEAD, escort flights as needed
+   - Each adds to the ACMI recording fidelity
+
+6. Place the CAMERA SHIP:
+   - Same side as primary flight
+   - Mission type: Sweep or Escort
+   - Route: parallel to primary flight, 2-5nm offset
+   - Altitude: co-altitude or slightly above for visibility
+   - Single-ship flight recommended
+   - If Escort mission type is available, assign it to escort
+     the primary flight's package
+
+7. Save the TE.
+
+8. Fly the mission:
+   - Select camera ship as player slot
+   - Ensure ACMI recording is enabled (check Options or key bindings)
+   - Shadow the primary flight throughout the mission
+   - Remain within 10nm of the action
+   - Do not engage; observe only
+
+9. The .vhs file saves to the User\Acmi\ directory (or equivalent
+   AF path).
+
+METHOD B: CAMPAIGN
+-------------------
+
+1. Start or load a campaign.
+
+2. Check the mission schedule for the mission of interest.
+
+3. Find or wait for a second flight in the same package or nearby area.
+
+4. Join that second flight as player (camera ship).
+
+5. Fly to and remain near the primary mission's area.
+
+6. ACMI records everything within the disaggregation bubble.
+
+LIMITATIONS:
+- AF does NOT expose the disaggregation bubble size in config files
+- The bubble is fixed at approximately 30-40nm
+- No Mission Commander utility in AF -- you work with whatever the
+  ATO generates
+- Campaign gold-standard ACMI is not reliably achievable in AF
+- TE is strongly recommended for gold-standard work
+
+
+========================================================================
+PART 3: FALCON BMS 4.32
+========================================================================
+
+BMS 4.32 has significantly improved ACMI support over AF and FreeFalcon.
+ACMI files are .vhs, viewable in the BMS ACMI viewer or convertible
+for use with TacView.
+
+METHOD A: TACTICAL ENGAGEMENT (MOST RELIABLE)
+-----------------------------------------------
+
+1. Launch BMS 4.32, select Tactical Engagement, then Editor.
+
+2. Configure theater, time of day, and weather.
+
+3. Place the PRIMARY FLIGHT:
+   - Choose airbase or air start
+   - Set mission type
+   - Plan complete waypoint route with appropriate altitudes,
+     speeds, and steerpoint actions
+   - Assign AI skill level (Ace recommended for realistic behavior)
+
+4. Place OPPOSING FORCES:
+   - Enemy flights with full waypoint routes
+   - SAM battalions (BMS 4.32 has detailed SAM placement including
+     associated radar and support vehicles)
+   - Ground units, naval groups, etc.
+
+5. Place FRIENDLY SUPPORT:
+   - AWACS, tanker, SEAD, and escort flights
+   - Make sure package assignments are correct
+
+6. Place the CAMERA SHIP:
+   - Same coalition
+   - Mission type: SWEEP is best (no engagement tasking)
+   - Waypoints: shadow the primary flight at 3-5nm lateral offset
+   - Altitude: same block or 2000ft above
+   - Single-ship flight (flight of 1)
+   - Set ROE to weapons hold if the TE editor allows per-flight ROE
+
+7. Save the TE.
+
+8. Fly the mission:
+   - Select camera ship slot
+   - ACMI recording: press the ACMI key (default binding varies;
+     check Setup > Key Mapping > SIM category for "ACMI Toggle"
+     or "Toggle ACMI")
+   - Alternatively, set auto-ACMI in Falcon BMS.cfg:
+       set g_bACMIAutoRecord 1
+   - Shadow the primary flight
+   - Stay within 10nm of the engagement
+   - Do not engage
+
+9. ACMI saved to User\Acmi\ within the BMS installation.
+
+METHOD B: CAMPAIGN WITH MISSION COMMANDER
+-------------------------------------------
+
+BMS 4.32 includes Mission Commander, which gives you more control over
+the ATO and mission scheduling than AF or FreeFalcon.
+
+1. Start or load a campaign, advance to the desired time window.
+
+2. Open the MISSION SCHEDULE (frag screen).
+
+3. Identify the mission of interest.
+
+4. Using MISSION COMMANDER:
+   - You can adjust mission priority to ensure the mission of interest
+     is fragged and dispatched
+   - You can add additional flights to the same package
+   - Create a sweep or escort mission in the same area
+   - Assign yourself to this new flight (camera ship)
+
+5. If Mission Commander does not allow creating a new flight directly:
+   - Look for existing flights in the same package
+   - Or look for any flight operating in the same geographic area
+     at the same time
+   - Join that flight as player
+
+6. Fly the mission:
+   - Proceed to the area of the primary mission
+   - Maintain position within 10nm of the action
+   - ACMI records everything in your bubble
+
+7. CONFIG OPTIMIZATION -- expand the disaggregation bubble:
+   Open Falcon BMS.cfg (in the User\Config\ directory) and set:
+
+       set g_nDeaggregationRange <value>
+
+   Default is typically around 30-40nm. Increasing to 60-80 captures
+   more of the battle but costs performance. Values above 100 may
+   cause instability in 4.32.
+
+   Additional useful ACMI-related config settings in 4.32:
+       set g_bACMIAutoRecord 1       (auto-start ACMI recording)
+       set g_nACMIFileSize <MB>      (max ACMI file size; increase
+                                      for long missions)
+
+METHOD C: CAMPAIGN WITHOUT MISSION COMMANDER
+----------------------------------------------
+
+If you prefer not to use Mission Commander or want a simpler approach:
+
+1. Start or load the campaign.
+
+2. Browse the frag screen for available missions.
+
+3. Find a mission near the area of interest and join it.
+
+4. Fly to the engagement area.
+
+5. The ACMI captures what is in your bubble, but you have less control
+   over what missions are available and when.
+
+6. Use the bubble expansion config tweak (see Method B step 7) to
+   maximize coverage.
+
+LIMITATIONS OF CAMPAIGN ACMI IN BMS 4.32:
+- Even with expanded bubble, distant parts of large engagements
+  will re-aggregate
+- Long missions may hit ACMI file size limits (increase in config)
+- Multiplayer trick: if available, a second BMS instance on a
+  networked PC can provide a second bubble, doubling coverage
+
+
+========================================================================
+PART 4: FALCON BMS 4.35
+========================================================================
+
+BMS 4.35 (and 4.35 U1/U2/U3 updates) includes improved ACMI recording,
+better AI behavior, and enhanced mission editing tools. The workflow is
+similar to 4.32 but with some improvements.
+
+METHOD A: TACTICAL ENGAGEMENT (MOST RELIABLE)
+-----------------------------------------------
+
+1. Launch BMS 4.35, select Tactical Engagement, then Editor.
+
+2. Configure theater (BMS 4.35 supports multiple theaters: Korea,
+   Balkans, Israel, etc.), time, and weather.
+
+3. Place the PRIMARY FLIGHT:
+   - Choose airbase or air start
+   - Set mission type and full waypoint route
+   - BMS 4.35 has improved waypoint action options -- use these to
+     set up realistic mission profiles (e.g., pop-up attacks,
+     specific ingress altitudes)
+   - Set AI pilot skill (Ace recommended)
+
+4. Place OPPOSING FORCES:
+   - Enemy flights with waypoints
+   - SAM battalions -- BMS 4.35 has expanded SAM types and improved
+     SAM AI
+   - Ground units, naval groups
+   - BMS 4.35 allows more precise placement of ground units
+
+5. Place FRIENDLY SUPPORT:
+   - AWACS, tanker, SEAD, escort
+   - BMS 4.35 has improved package management in the TE editor
+
+6. Place the CAMERA SHIP:
+   - Same coalition
+   - Mission type: SWEEP (avoids engagement tasking)
+   - Route: parallel to primary flight, 3-5nm offset
+   - Single-ship flight
+   - BMS 4.35 note: the improved AI means sweep-tasked aircraft
+     are less likely to randomly engage, making them better
+     camera ships
+
+7. Save the TE.
+
+8. Fly the mission:
+   - Select camera ship slot
+   - ACMI recording: use ACMI toggle key or auto-record config
+   - In Falcon BMS.cfg:
+       set g_bACMIAutoRecord 1
+   - BMS 4.35 ACMI improvements: better entity tracking, reduced
+     ACMI artifacts compared to 4.32
+   - Shadow the primary flight, stay within 10nm
+
+9. ACMI saved to User\Acmi\.
+
+10. BMS 4.35 ACMI files work well with TacView -- export or open
+    the .vhs file in TacView for enhanced 3D playback and analysis.
+
+METHOD B: CAMPAIGN WITH MISSION COMMANDER
+-------------------------------------------
+
+BMS 4.35 Mission Commander is more capable than 4.32's version.
+
+1. Start or load a campaign.
+
+2. Open the MISSION SCHEDULE.
+
+3. Identify the mission of interest.
+
+4. Using MISSION COMMANDER in 4.35:
+   - Frag additional flights to the package
+   - Adjust mission timing to ensure deconfliction
+   - Create a sweep/escort mission in the same AO
+   - Assign yourself to the new camera ship flight
+   - BMS 4.35 allows better control over flight composition
+     and tasking through Mission Commander
+
+5. Alternatively, look for existing flights in the package and
+   join one as player.
+
+6. Fly the camera ship near the action.
+
+7. CONFIG OPTIMIZATION for BMS 4.35:
+   Open Falcon BMS.cfg and set:
+
+       set g_nDeaggregationRange <value>
+
+   BMS 4.35 handles larger bubble sizes somewhat better than 4.32
+   due to performance optimizations. Values of 60-80nm are generally
+   stable. Test higher values on your hardware.
+
+   Additional config settings:
+       set g_bACMIAutoRecord 1
+       set g_nACMIFileSize <MB>       (increase for long missions)
+
+   BMS 4.35 may also have:
+       set g_bACMIRecordGroundUnits 1 (if available -- check the
+                                       BMS documentation for your
+                                       specific 4.35 update)
+
+METHOD C: CAMPAIGN WITHOUT MISSION COMMANDER
+----------------------------------------------
+
+Same as BMS 4.32 Method C:
+
+1. Browse the frag screen for missions near your area of interest.
+2. Join an appropriate flight.
+3. Fly to the engagement area.
+4. Use bubble expansion config tweaks.
+5. Accept that coverage will be bubble-limited.
+
+METHOD D: MULTIPLAYER BUBBLE EXPANSION (BMS 4.35)
+---------------------------------------------------
+
+BMS 4.35 has robust multiplayer support. Use this for maximum coverage:
+
+1. Set up a BMS 4.35 multiplayer session (LAN or online).
+
+2. Player 1 flies the actual mission (or a camera ship near the
+   primary action).
+
+3. Player 2 flies a second camera ship positioned to cover a
+   different part of the engagement area.
+
+4. Each player's bubble disaggregates their surrounding area.
+
+5. Both players record ACMI independently.
+
+6. Merge or compare the ACMI files for complete coverage of the
+   engagement.
+
+This is the closest you can get to a true campaign gold-standard ACMI
+without TE, as the combined bubbles can cover a much larger area.
+
+
+========================================================================
+PART 5: GENERAL TIPS FOR ALL VARIANTS
+========================================================================
+
+CAMERA SHIP BEST PRACTICES:
+- Use a single-ship flight (flight of 1) to minimize AI interference
+- Sweep mission type is ideal -- no engagement tasking, no specific
+  target area, AI will not seek combat
+- Position 3-5nm lateral offset from the primary flight, co-altitude
+  or slightly above
+- If the engagement is expected to move (e.g., a running fight),
+  plan waypoints that keep you centered on the expected engagement area
+- Do not carry live weapons or set master arm to OFF to avoid
+  accidental engagement
+- In TE, you can set very high fuel loads so the camera ship never
+  needs to RTB for fuel
+
+ACMI FILE MANAGEMENT:
+- Gold-standard .vhs files can be large (hundreds of MB for long
+  missions with many entities)
+- Rename ACMI files after recording to identify them (the default
+  names are based on date/time)
+- Back up gold-standard files -- they are not reproducible since
+  AI behavior has random elements
+
+TE VS CAMPAIGN SUMMARY:
+- TE = guaranteed gold standard (all entities always disaggregated)
+- Campaign = best-effort (bubble-limited, even with camera ship)
+- For documentation, training analysis, or reference material,
+  always use TE
+- For capturing "how a campaign mission actually played out," use
+  the campaign camera ship method and accept the bubble limitation
+
+TACVIEW COMPATIBILITY:
+- BMS 4.32 and 4.35 .vhs files can be opened in TacView
+- TacView provides superior 3D playback, timeline scrubbing, and
+  analysis tools compared to the built-in ACMI viewer
+- FreeFalcon and AF .vhs files may also work with TacView but
+  compatibility varies
+- TacView can export to .acmi format for sharing
