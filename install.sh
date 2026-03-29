@@ -102,8 +102,17 @@ else
     AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
 fi
 
-# --- Display resolution ---
-CURRENT_RES=$(sudo -u "$REAL_USER" xdpyinfo 2>/dev/null | grep -oP 'dimensions:\s+\K[0-9]+x[0-9]+' | head -1)
+# --- Display resolution (primary monitor, not combined span) ---
+CURRENT_RES=""
+if command -v xrandr &>/dev/null; then
+    # Pick the highest-resolution connected monitor
+    CURRENT_RES=$(sudo -u "$REAL_USER" xrandr 2>/dev/null \
+        | grep -oP '\d+x\d+(?=\+)' \
+        | sort -t'x' -k1 -rn | head -1)
+fi
+if [[ -z "$CURRENT_RES" ]]; then
+    CURRENT_RES=$(sudo -u "$REAL_USER" xdpyinfo 2>/dev/null | grep -oP 'dimensions:\s+\K[0-9]+x[0-9]+' | head -1)
+fi
 if [[ -n "$CURRENT_RES" ]]; then
     RES_W="${CURRENT_RES%x*}"
     RES_H="${CURRENT_RES#*x}"
@@ -157,10 +166,15 @@ fi
 shopt -s nullglob
 WP_DIRS=("$REPO_ROOT"/*/WP/ "$REPO_ROOT"/*/*/WP/)
 shopt -u nullglob
+shopt -s nullglob
+SGL_BIN_DIRS=("$DOWNLOADS_DIR"/sglBinaries_*/)
+shopt -u nullglob
 if [[ -f "$DOWNLOADS_DIR/sglBinaries_1.tar.gz" ]]; then
     echo "  [OK]   sglBinaries_1.tar.gz found in downloads/"
 elif [[ -f "$DOWNLOADS_DIR/.extracted_sglBinaries_1.tar.gz" ]]; then
     echo "  [OK]   sglBinaries_1.tar.gz (already extracted)"
+elif [[ ${#SGL_BIN_DIRS[@]} -gt 0 ]]; then
+    echo "  [OK]   sglBinaries data found in downloads/ (${#SGL_BIN_DIRS[@]} dir(s))"
 elif [[ ${#WP_DIRS[@]} -gt 0 ]]; then
     echo "  [OK]   Binary game data already distributed"
 else
@@ -172,8 +186,8 @@ fi
 echo ""
 
 if [[ $AUDIT_WARNINGS -gt 0 ]]; then
-    read -rp "Warnings found. Continue? (Y/n) " answer
-    if [[ "$answer" =~ ^[Nn]$ ]]; then
+    read -rp "Warnings found. Continue? (y/N) " answer
+    if [[ ! "$answer" =~ ^[Yy]$ ]]; then
         echo "Aborting."
         exit 1
     fi

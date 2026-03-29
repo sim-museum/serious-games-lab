@@ -48,17 +48,27 @@ echo "Distributing binary files to game directories..."
 #   MON=poker, TUE=flight sims, WED=chess, THU=racing,
 #   FRI=bridge, SAT=combat/CFL, SUN=go
 if [ -d "$DL/sglBinaries_1" ]; then
-    echo "  Distributing sglBinaries_1 INSTALL and DOC files..."
-    # Find all INSTALL and DOC dirs at any depth under each day directory
-    while IFS= read -r dir; do
-        rel="${dir#$DL/sglBinaries_1/}"
-        mkdir -p "$REPO_ROOT/$rel"
-        rsync -a --ignore-existing "$dir/" "$REPO_ROOT/$rel/"
-    done < <(find "$DL/sglBinaries_1" -type d \( -name INSTALL -o -name DOC \))
-    # Sync non-day files (debs, etc.) directly
-    rsync -a --ignore-existing --exclude='MON/' --exclude='TUE/' --exclude='WED/' \
+    echo "  Distributing sglBinaries_1 contents to game directories..."
+    # Sync entire day directories, skipping stale venvs and pre-built WP dirs from the archive
+    # WP directories contain pre-installed Wine prefixes; games must be installed fresh.
+    for day in MON TUE WED THU FRI SAT SUN; do
+        if [ -d "$DL/sglBinaries_1/$day" ]; then
+            rsync -a --ignore-existing --exclude='venv/' --exclude='WP/' \
+                "$DL/sglBinaries_1/$day/" "$REPO_ROOT/$day/"
+            rm -rf "$DL/sglBinaries_1/$day" 2>/dev/null || true
+        fi
+    done
+    # Sync non-day files (debs, etc.) directly, skip stale venvs
+    rsync -a --ignore-existing --remove-source-files --exclude='venv/' \
+        --exclude='MON/' --exclude='TUE/' --exclude='WED/' \
         --exclude='THU/' --exclude='FRI/' --exclude='SAT/' --exclude='SUN/' \
         "$DL/sglBinaries_1/" "$REPO_ROOT/"
+    # Remove non-day files that already exist at destination (rsync --ignore-existing skips them)
+    for f in "$DL/sglBinaries_1"/*; do
+        [ -f "$f" ] || continue
+        base="$(basename "$f")"
+        [ -e "$REPO_ROOT/$base" ] && rm -f "$f" 2>/dev/null || true
+    done
 fi
 
 # --- sglBinaries_2 ---
@@ -70,18 +80,12 @@ move_file "sglBinaries_2/CFL" "Xmod 7-18-14.7z"                                 
 move_file "sglBinaries_2/CFL" "CFL 15 V2.zip"                                                 "SAT/CFL/INSTALL"
 move_file "sglBinaries_2/CFL" "JSGME.exe"                                                     "SAT/CFL/INSTALL"
 move_dir  "sglBinaries_2" "CFLpreinstalled"                                                    "SAT/CFL/INSTALL"
-# Move BMS432-v41 contents (INSTALL, DOC) into SAT/BMS432/ where the scripts live
-# Skip WP — games must be installed from original files, not pre-built prefixes
+# Sync BMS432-v41 contents (INSTALL, DOC) into SAT/BMS432/ where the scripts live
+# Skip WP — games must be installed fresh, not from pre-built Wine prefixes.
 if [ -d "$DL/sglBinaries_2/BMS432-v41" ]; then
     mkdir -p "$REPO_ROOT/SAT/BMS432"
-    for item in "$DL/sglBinaries_2/BMS432-v41"/*; do
-        [ -e "$item" ] || continue
-        base="$(basename "$item")"
-        [[ "$base" == "WP" ]] && continue
-        if [ ! -e "$REPO_ROOT/SAT/BMS432/$base" ]; then
-            mv "$item" "$REPO_ROOT/SAT/BMS432/" 2>/dev/null || true
-        fi
-    done
+    rsync -a --ignore-existing --exclude='WP/' "$DL/sglBinaries_2/BMS432-v41/" "$REPO_ROOT/SAT/BMS432/"
+    rm -rf "$DL/sglBinaries_2/BMS432-v41" 2>/dev/null || true
 fi
 move_file "sglBinaries_2" "Republic-The-Revolution_Win_EN.exe"                                 "SAT/republic/INSTALL"
 
@@ -131,6 +135,11 @@ move_file "sglBinaries_7" "Weapon_Delivery_Planner_3.7.19.208.7z"               
 move_file "sglBinaries_7" "Somalia 4.35.3.rar"                                               "SAT/BMS435/INSTALL"
 move_file "sglBinaries_7" "Taiwan 4.35.3.rar"                                                "SAT/BMS435/INSTALL"
 move_file "sglBinaries_7" "Tacview187Setup.exe"                                              "SAT/tacview/INSTALL"
+# Remove stale venvs from sglBinaries (machine-specific, recreated at install/launch)
+for d in "$DL"/sglBinaries_*/; do
+    [ -d "$d" ] || continue
+    find "$d" -type d -name venv -exec rm -rf {} + 2>/dev/null || true
+done
 
 # Remove "(copy)" duplicate files left behind in sglBinaries dirs
 for d in "$DL"/sglBinaries_*/; do
