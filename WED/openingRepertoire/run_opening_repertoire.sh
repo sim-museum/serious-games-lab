@@ -29,7 +29,14 @@ build_cache() {
     fi
     echo "Building opening book cache (this may take a few minutes)..."
     rm -f "$cache"
-    source venv/bin/activate
+    if [[ ! -d venv ]]; then
+        echo "Creating virtual environment..."
+        python3 -m venv venv
+        source venv/bin/activate
+        pip install -q -r requirements.txt
+    else
+        source venv/bin/activate
+    fi
     python3 OpeningRepertoire.py --pgn "$pgn" --build-cache
 }
 
@@ -144,5 +151,12 @@ if [[ -f "$PGN_FILE" && ! -f "$CACHE_FILE" ]]; then
 fi
 
 # --- Launch the application ---
-source venv/bin/activate
+if [[ ! -d venv ]]; then
+    echo "Creating virtual environment..."
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install -q -r requirements.txt
+else
+    source venv/bin/activate
+fi
 python3 OpeningRepertoire.py --pgn "$PGN_FILE" "$@"

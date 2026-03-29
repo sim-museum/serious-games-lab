@@ -1151,7 +1151,7 @@ class BridgeHarness(QMainWindow):
         name_row.addWidget(QLabel("Source game:"))
         self.wf_game_name = QComboBox()
         self.wf_game_name.setEditable(True)
-        self.wf_game_name.addItems(["wbridge5", "benbridge", "bridgebaron", "bb12", "jack", "tenace"])
+        self.wf_game_name.addItems(["wbridge5", "benbridge", "bb12", "tenace"])
         name_row.addWidget(self.wf_game_name, stretch=1)
         s4_layout.addLayout(name_row)
 

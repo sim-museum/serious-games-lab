@@ -143,7 +143,7 @@ game_archive() {
     case "$script" in
         # sglBinaries_2: BMS 4.32 + CFL preinstalled + Republic
         BMS432/BMS432.sh|CFL/CFL.sh|republic/republic.sh) echo 2 ;;
-        # sglBinaries_4: Chessmaster, Bridge Baron, WSOP/bracelets
+        # sglBinaries_4: Chessmaster, BB12, WSOP/bracelets
         chessmaster/chessmaster.sh|bb12/bb12.sh|bracelets.sh) echo 4 ;;
         # sglBinaries_5: ISOs/installers (NR2003, rFactor, FS9, SDOE)
         NR2003/NR2003.sh|rFactor/rFactor.sh) echo 5 ;;

@@ -114,7 +114,7 @@ if $INSTALL_WINE; then
         vulkan-tools
 
     # --- NVIDIA 32-bit OpenGL library (needed for GPU-accelerated Wine games) ---
-    NVIDIA_VER=$(dpkg -l 2>/dev/null | grep -oP 'nvidia-driver-\K[0-9]+' | head -1)
+    NVIDIA_VER=$(dpkg -l 2>/dev/null | grep -oP 'nvidia-driver-\K[0-9]+' | head -1 || true)
     if [[ -n "$NVIDIA_VER" ]] && ! dpkg -s "libnvidia-gl-${NVIDIA_VER}:i386" &>/dev/null; then
         echo ""
         echo "Installing 32-bit NVIDIA OpenGL library (driver $NVIDIA_VER)..."
@@ -314,7 +314,7 @@ fi
 # libdds.so can find it at runtime via LD_LIBRARY_PATH set in run.sh.
 BEN_BIN_DIR="$REPO_ROOT/FRI/benBridge/ben/bin"
 if [[ -f "$BEN_BIN_DIR/libdds.so" ]] && [[ ! -e "$BEN_BIN_DIR/libboost_thread.so.1.74.0" ]]; then
-    SYSTEM_BOOST=$(ldconfig -p | grep 'libboost_thread\.so\.[0-9]' | head -1 | awk '{print $NF}')
+    SYSTEM_BOOST=$(ldconfig -p | grep 'libboost_thread\.so\.[0-9]' | head -1 | awk '{print $NF}' || true)
     if [[ -n "$SYSTEM_BOOST" ]]; then
         sudo -u "$REAL_USER" ln -sf "$SYSTEM_BOOST" "$BEN_BIN_DIR/libboost_thread.so.1.74.0"
         echo "  Created libboost_thread symlink: $(basename "$SYSTEM_BOOST") -> 1.74.0"
