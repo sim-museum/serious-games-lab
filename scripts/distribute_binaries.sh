@@ -79,7 +79,6 @@ move_file "sglBinaries_2/CFL" "Madden-NFL-08_Misc_Win_EN_Serial-keys.txt"       
 move_file "sglBinaries_2/CFL" "Xmod 7-18-14.7z"                                               "SAT/CFL/INSTALL"
 move_file "sglBinaries_2/CFL" "CFL 15 V2.zip"                                                 "SAT/CFL/INSTALL"
 move_file "sglBinaries_2/CFL" "JSGME.exe"                                                     "SAT/CFL/INSTALL"
-move_dir  "sglBinaries_2" "CFLpreinstalled"                                                    "SAT/CFL/INSTALL"
 # Sync BMS432-v41 contents (INSTALL, DOC) into SAT/BMS432/ where the scripts live
 # Skip WP — games must be installed fresh, not from pre-built Wine prefixes.
 if [ -d "$DL/sglBinaries_2/BMS432-v41" ]; then

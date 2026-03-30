@@ -97,4 +97,4 @@ echo ""
 cd "$GAME_DATA"
 # Mark game start so afterGamesReport only collects files from gameplay, not install
 [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
-wine explorer /desktop=FreeFalcon,1024x768 FFViper.exe 2>/dev/null 1>/dev/null
+wine FFViper.exe 2>/dev/null 1>/dev/null

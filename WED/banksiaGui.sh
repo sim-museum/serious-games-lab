@@ -33,7 +33,7 @@ if [[ ! -f "$BANKSIA_SH" ]]; then
 
     DOWNLOAD_URL="https://banksiagui.com/dl/BanksiaGui-0.58-linux64.zip"
     if curl -fL -o /tmp/banksia_download.zip "$DOWNLOAD_URL" 2>&1; then
-        unzip -o /tmp/banksia_download.zip -d "$SCRIPT_DIR/INSTALL/" >/dev/null 2>&1
+        unzip -o /tmp/banksia_download.zip -d "$SCRIPT_DIR/INSTALL/"
         rm -f /tmp/banksia_download.zip
 
         if [[ ! -f "$BANKSIA_SH" ]]; then
