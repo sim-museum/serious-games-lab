@@ -98,7 +98,7 @@ for cfg in "$KATAGO_DIR"/gtp_human_rank_*.cfg; do
     [[ -f "$cfg" ]] && DEFAULT_CONFIG="$cfg" && break
 done
 
-# --- 6. Run OpenCL autotuning if needed ---
+# --- 6. Run OpenCL autotuning if needed (skip for CPU/Eigen backend) ---
 # KataGo tunes per GPU per model version. Tuning takes ~1 min per model and
 # must complete uninterrupted; GUI clients may kill KataGo before it finishes,
 # leaving a corrupt tuning file. Running it here ensures tuning is done once
@@ -116,7 +116,12 @@ _katago_needs_tuning() {
     [[ "$count" -lt 2 ]]
 }
 
-if [[ -x "$KATAGO_BIN" && -f "$MAIN_MODEL" && -f "$HUMAN_MODEL" ]] && \
+_katago_is_opencl() {
+    [[ -x "$KATAGO_BIN" ]] && "$KATAGO_BIN" version 2>&1 | grep -q "OpenCL"
+}
+
+if _katago_is_opencl && \
+   [[ -x "$KATAGO_BIN" && -f "$MAIN_MODEL" && -f "$HUMAN_MODEL" ]] && \
    _katago_needs_tuning "$_KATAGO_TUNE_DIR"; then
     # Verify katago can actually run before attempting tuning
     if "$KATAGO_BIN" version &>/dev/null; then

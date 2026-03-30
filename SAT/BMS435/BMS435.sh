@@ -30,8 +30,49 @@ fi
 export INSTALL_DIR="$PWD/INSTALL"
 export FALCON_DIR="$WINEPREFIX/drive_c/Falcon BMS 4.35"
 
+# --- Install missing theaters (runs both on first install and subsequent launches) ---
+install_missing_theaters() {
+    local SCRIPT_BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local any_missing=false
+
+    for theater_script in \
+        "$SCRIPT_BASE/installTheater_Balkans.sh" \
+        "$SCRIPT_BASE/installTheater_Somalia.sh" \
+        "$SCRIPT_BASE/installTheater_Vietnam.sh" \
+        "$SCRIPT_BASE/installTheater_Iran_Iraq.sh" \
+        "$SCRIPT_BASE/installTheater_Taiwan.sh" \
+        "$SCRIPT_BASE/installTheater_Israel.sh"; do
+        if [[ ! -f "$theater_script" ]]; then
+            continue
+        fi
+        theater_name="$(basename "$theater_script" .sh)"
+        theater_name="${theater_name#installTheater_}"
+        # Check if this theater's Add-On directory already exists
+        local addon_dir
+        case "$theater_name" in
+            Iran_Iraq) addon_dir="$FALCON_DIR/Data/Add-On Mideast128" ;;
+            *)         addon_dir="$FALCON_DIR/Data/Add-On $theater_name" ;;
+        esac
+        if [[ -d "$addon_dir" ]]; then
+            continue
+        fi
+        any_missing=true
+        echo "--- Installing $theater_name theater ---"
+        (cd "$SCRIPT_BASE" && bash "$theater_script") || true
+        echo ""
+    done
+
+    # Update theater list if we installed anything
+    if $any_missing && [[ -f "$INSTALL_DIR/theater.lst" ]]; then
+        cp "$INSTALL_DIR/theater.lst" "$FALCON_DIR/Data/TerrData/TheaterDefinition/"
+    fi
+}
+
 # Check if Falcon BMS 4.35 is already installed
 if [ -d "$FALCON_DIR" ]; then
+    # Install any missing theaters before launching
+    install_missing_theaters
+
     cd "$FALCON_DIR"
     clear
     echo "Starting Falcon BMS 4.35"
@@ -203,25 +244,7 @@ cp "$INSTALL_DIR/Viper.plc" "$FALCON_DIR/User/Config"
 echo ""
 echo "Installing available add-on theaters..."
 echo ""
-
-SCRIPT_BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Install each theater (scripts check for already-installed and missing files)
-for theater_script in \
-    "$SCRIPT_BASE/installTheater_Balkans.sh" \
-    "$SCRIPT_BASE/installTheater_Somalia.sh" \
-    "$SCRIPT_BASE/installTheater_Vietnam.sh" \
-    "$SCRIPT_BASE/installTheater_Iran_Iraq.sh" \
-    "$SCRIPT_BASE/installTheater_Taiwan.sh" \
-    "$SCRIPT_BASE/installTheater_Israel.sh"; do
-    if [[ -f "$theater_script" ]]; then
-        theater_name="$(basename "$theater_script" .sh)"
-        theater_name="${theater_name#installTheater_}"
-        echo "--- Installing $theater_name theater ---"
-        (cd "$SCRIPT_BASE" && bash "$theater_script") || true
-        echo ""
-    fi
-done
+install_missing_theaters
 
 # --- Apply BMS 4.35.3 radar XML patch ---
 echo "--- Applying BMS 4.35.3 radar XML patch ---"
@@ -244,8 +267,6 @@ echo "--- Updating theater list ---"
 if [[ -f "$INSTALL_DIR/theater.lst" ]]; then
     cp "$INSTALL_DIR/theater.lst" "$FALCON_DIR/Data/TerrData/TheaterDefinition/"
     echo "Theater list updated."
-else
-    echo "Note: theater.lst not found in INSTALL/. Run runIfTheaterMissing.sh if needed."
 fi
 
 # Final instructions
@@ -253,8 +274,8 @@ echo ""
 clear
 printf "Falcon BMS 4.35.3 installed with all available theaters.\n\n"
 printf "Optional utilities:\n"
-printf "  - Weapon Delivery Planner: $SCRIPT_BASE/wdp.sh\n"
-printf "  - Mission Commander:       $SCRIPT_BASE/mc.sh\n"
-printf "  - Tacview:                 $SCRIPT_BASE/tacview.sh\n\n"
+printf "  - Weapon Delivery Planner: ./wdp.sh\n"
+printf "  - Mission Commander:       ./mc.sh\n"
+printf "  - Tacview:                 ./tacview.sh\n\n"
 printf "Run this script again to fly.\n\n"
 
