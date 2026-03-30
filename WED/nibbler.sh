@@ -77,29 +77,47 @@ echo "Maia weights (human-like play, ELO 1100-1900) are in: $MAIA_DIR/"
 echo "To use: in nibbler, set weights path to a Maia file instead of tinygyal-8.pb.gz"
 echo ""
 
-cd "$NIBBLER_DIR"
-
 # Touch game-started marker for afterGamesReport collection
 if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
     touch "$SGL_GAME_STARTED_MARKER"
 fi
 
-# Snapshot existing PGN files before launching
+# Launch opening repertoire helper alongside the chess GUI
+if [[ -x "$SCRIPT_DIR/openingRepertoire/run_opening_repertoire.sh" ]]; then
+    echo "Launching Opening Repertoire helper..."
+    bash "$SCRIPT_DIR/openingRepertoire/run_opening_repertoire.sh" &
+fi
+
+# Snapshot existing PGN files before launching (check both WED/ and nibbler dir)
 pgn_snapshot=$(mktemp)
-DAY_DIR="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}/WED"
-find "$DAY_DIR" -maxdepth 1 -name "*.pgn" -type f 2>/dev/null | sort > "$pgn_snapshot"
-snapshot_time=$(stat -c %Y "$pgn_snapshot")
+find "$SCRIPT_DIR" -maxdepth 1 -name "*.pgn" -type f 2>/dev/null | sort > "$pgn_snapshot"
+find "$NIBBLER_DIR" -maxdepth 1 -name "*.pgn" -type f 2>/dev/null | sort >> "$pgn_snapshot"
+snapshot_time=$(date +%s)
 
-./nibbler --no-sandbox 2>/dev/null
+# Launch nibbler from WED/ so default saves land in WED/
+cd "$SCRIPT_DIR"
+"$NIBBLER_DIR/nibbler" --no-sandbox 2>/dev/null
 
-# Find PGN files created or modified during the session
+# Find PGN files created or modified during the session (check both locations)
 new_pgn_files=""
-while IFS= read -r -d '' f; do
-    fmod=$(stat -c %Y "$f" 2>/dev/null) || continue
-    if [[ "$fmod" -gt "$snapshot_time" ]]; then
-        new_pgn_files=$(printf '%s\n%s' "$new_pgn_files" "$f")
-    fi
-done < <(find "$DAY_DIR" -maxdepth 1 -name "*.pgn" -type f -print0 2>/dev/null)
+for search_dir in "$SCRIPT_DIR" "$NIBBLER_DIR"; do
+    while IFS= read -r -d '' f; do
+        fmod=$(stat -c %Y "$f" 2>/dev/null) || continue
+        if [[ "$fmod" -gt "$snapshot_time" ]]; then
+            # Move files from nibbler dir to WED/ so afterGamesReport finds them
+            if [[ "$search_dir" == "$NIBBLER_DIR" && "$f" == "$NIBBLER_DIR"/* ]]; then
+                mv "$f" "$SCRIPT_DIR/"
+                f="$SCRIPT_DIR/$(basename "$f")"
+            fi
+            # Add .pgn extension if missing
+            if [[ "$f" != *.pgn ]]; then
+                mv "$f" "${f}.pgn"
+                f="${f}.pgn"
+            fi
+            new_pgn_files=$(printf '%s\n%s' "$new_pgn_files" "$f")
+        fi
+    done < <(find "$search_dir" -maxdepth 1 \( -name "*.pgn" -o -name "[0-9][0-9][0-9][0-9][0-9][0-9]*" \) -type f -print0 2>/dev/null)
+done
 rm -f "$pgn_snapshot"
 
 new_pgn_files=$(echo "$new_pgn_files" | sed '/^$/d')

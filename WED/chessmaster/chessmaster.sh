@@ -30,6 +30,13 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/Ubisoft/Chessmaster Grandmaster Editi
         touch "$SGL_GAME_STARTED_MARKER"
     fi
 
+    # Launch opening repertoire helper alongside the chess GUI
+    WED_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+    if [[ -x "$WED_DIR/openingRepertoire/run_opening_repertoire.sh" ]]; then
+        echo "Launching Opening Repertoire helper..."
+        bash "$WED_DIR/openingRepertoire/run_opening_repertoire.sh" &
+    fi
+
     # Navigate to Chessmaster directory and run
     cd "$CM_DIR"
     wine Chessmaster.exe >/dev/null 2>&1

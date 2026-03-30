@@ -198,7 +198,7 @@ auto_select_game() {
 
     # Prompt for score — if cancelled, roll back everything
     echo ""
-    if ! enter_score "$day" "$day_idx"; then
+    if ! enter_score "$day" "$day_idx" --keep-report; then
         # Score cancelled — remove afterGamesReport files from this session
         if [[ -n "$session_report_dir" && -d "$session_report_dir" ]]; then
             rm -rf "$session_report_dir"

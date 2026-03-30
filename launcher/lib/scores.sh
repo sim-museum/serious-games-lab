@@ -90,31 +90,23 @@ export_scores() {
     local ts
     ts="$(date '+%y%m%d_%H%M')"
     local dir_name="${user_name}_seriousGamesLab-24041LTS_${average_score}_${ts}"
-    local export_dir="$LAUNCHER_FILES_DIR/$dir_name"
+    local export_dir="$REPO_ROOT/$dir_name"
 
     mkdir -p "$export_dir"
 
-    # Copy matching .gz archives for each day that has a score
+    # Copy per-day score archives (from manual mode)
     local found_any=false
     for i in {0..6}; do
         [[ -z "${score_times[$i]}" ]] && continue
         local day="${DAY_ORDER[$i]}"
-        # Sanitize timestamp same way as archive naming: tr ' :' '_-'
-        local sanitized
-        sanitized="$(echo "${score_times[$i]}" | tr ' :' '_-')"
-        # Glob for matching archives
-        for f in "$LAUNCHER_FILES_DIR/${day}_score_"*".tar.gz"; do
+        for f in "$REPO_ROOT/${day}_score_"*".tar.gz"; do
             [[ -f "$f" ]] || continue
             cp "$f" "$export_dir/"
             found_any=true
         done
     done
 
-    if [[ "$found_any" == false ]]; then
-        msg_warn "No score archives found to export."
-    fi
-
-    # Copy afterGamesReport directories from each day
+    # Copy afterGamesReport directories from each day (auto mode keeps these intact)
     for i in {0..6}; do
         local day="${DAY_ORDER[$i]}"
         local agr_dir="$REPO_ROOT/$day/afterGamesReport"
@@ -129,12 +121,16 @@ export_scores() {
         fi
     done
 
+    if [[ "$found_any" == false ]]; then
+        msg_warn "No game output files found to export."
+    fi
+
     # Copy scores CSV
     [[ -f "$SCORES_FILE" ]] && cp "$SCORES_FILE" "$export_dir/"
 
     # Create tar.gz of the export directory
     local tar_file="${export_dir}.tar.gz"
-    tar -czf "$tar_file" -C "$LAUNCHER_FILES_DIR" "$dir_name"
+    tar -czf "$tar_file" -C "$REPO_ROOT" "$dir_name"
 
     # Show sha256sum
     echo ""
@@ -177,6 +173,7 @@ reset_scores() {
 
     rm -f "$SCORES_FILE"
     rm -f "$LAUNCHER_FILES_DIR"/*.tar.gz
+    rm -f "$REPO_ROOT"/*_score_*.tar.gz
 
     # Clear auto-select tracking state
     rm -f "$LAUNCHER_FILES_DIR/.auto_days_played"
@@ -206,9 +203,13 @@ show_day_score_doc() {
 }
 
 # Full score entry workflow for a day
+# Usage: enter_score DAY DAY_IDX [--keep-report]
+#   --keep-report: skip archiving and keep afterGamesReport (used in auto mode)
 enter_score() {
     local day="$1"
     local day_idx="$2"
+    local keep_report=false
+    [[ "${3:-}" == "--keep-report" ]] && keep_report=true
     local day_dir="$REPO_ROOT/$day"
 
     # Create afterGamesReport directory
@@ -219,6 +220,25 @@ enter_score() {
     if [[ -f "$copy_script" ]]; then
         msg_info "Copying recent files to afterGamesReport..."
         (cd "$day_dir" && bash "$copy_script") 2>/dev/null || true
+    fi
+
+    # Collect screenshots taken since last game start into the game subdirectory
+    local screenshots_dir="$HOME/Pictures/Screenshots"
+    local latest_report_dir="$LAST_REPORT_DIR"
+    if [[ -d "$screenshots_dir" && -n "$latest_report_dir" ]]; then
+        # Use the report dir's mtime as the game start reference
+        local ref_epoch
+        ref_epoch="$(stat -c %Y "$latest_report_dir" 2>/dev/null)" || ref_epoch=0
+        while IFS= read -r -d '' sfile; do
+            local sfile_epoch
+            sfile_epoch="$(stat -c %Y "$sfile" 2>/dev/null)" || continue
+            if [[ "$sfile_epoch" -ge "$ref_epoch" ]]; then
+                mkdir -p "$latest_report_dir"
+                cp "$sfile" "$latest_report_dir/"
+            fi
+        done < <(find "$screenshots_dir" -maxdepth 1 -type f \
+                    \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.bmp" \) \
+                    -print0 2>/dev/null)
     fi
 
     # Check if afterGamesReport has any files
@@ -252,19 +272,21 @@ enter_score() {
         msg_error "Invalid score. Please enter a number between 0 and 1."
     done
 
-    # Create tar.gz archive of afterGamesReport
-    local sanitized_ts
-    sanitized_ts="$(date '+%y%m%d_%H%M')"
-    local archive_name="${day}_score_${sanitized_ts}.tar.gz"
+    if ! $keep_report; then
+        # Archive afterGamesReport and clean up (normal/manual mode)
+        local sanitized_ts
+        sanitized_ts="$(date '+%y%m%d_%H%M')"
+        local archive_name="${day}_score_${sanitized_ts}.tar.gz"
 
-    if [[ "$file_count" -gt 0 ]]; then
-        tar -czf "$LAUNCHER_FILES_DIR/$archive_name" \
-            -C "$day_dir" afterGamesReport
-        msg_ok "Archived game files to $archive_name"
+        if [[ "$file_count" -gt 0 ]]; then
+            tar -czf "$REPO_ROOT/$archive_name" \
+                -C "$day_dir" afterGamesReport
+            msg_ok "Archived game files to $archive_name"
+        fi
+
+        # Clean afterGamesReport
+        rm -rf "$day_dir/afterGamesReport"
     fi
-
-    # Clean afterGamesReport
-    rm -rf "$day_dir/afterGamesReport"
 
     # Append score to CSV (create with header if needed)
     if [[ ! -f "$SCORES_FILE" ]]; then
