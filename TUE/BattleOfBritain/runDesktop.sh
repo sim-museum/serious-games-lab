@@ -6,7 +6,7 @@ echo  "To run full screen mode, ensure 2 monitors are plugged in and run the scr
 
 # Set Wine prefix and change to game directory
 export WINEPREFIX="$PWD/WP"
-cd "$WINEPREFIX/drive_c/Program Files (x86)/Rowan Software/Battle Of Britain"
+cd "$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain"
 
 # Update configuration file to enable full screen mode
 if [ -f "bdg.txt" ]; then
