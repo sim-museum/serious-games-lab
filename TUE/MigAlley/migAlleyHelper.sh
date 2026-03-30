@@ -78,6 +78,8 @@ start_mig() {
 
     # Set Windows XP mode
     "$WINE" reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
+    # Prevent Wine from grabbing keyboard/mouse exclusively in fullscreen 3D mode
+    "$WINE" reg add "HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver" /v GrabFullscreen /t REG_SZ /d N /f &>/dev/null
 
     # Disable winegstreamer to prevent crash when exiting 3D view
     export WINEDLLOVERRIDES="winegstreamer=d"
