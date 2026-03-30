@@ -62,15 +62,28 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain/bob.
     # caused by the DirectDraw spurious window (see KNOWN ISSUE below).
     # Fullscreen requires dual monitors so the overlay surface is pushed
     # to the second display.
-    BOB_BDG="$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain/bdg.txt"
+    BOB_DIR="$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain"
+    BOB_BDG="$BOB_DIR/bdg.txt"
+    # FORCE_WINDOWED_MODE=ON crashes 3D under Wine, so always keep it OFF.
+    # For single-monitor, use Wine virtual desktop instead.
+    sed -i 's/FORCE_WINDOWED_MODE=ON/FORCE_WINDOWED_MODE=OFF/' "$BOB_BDG"
+
     numMonitors=$(xrandr -q | grep -c ' connected ')
-    if [ "$numMonitors" -lt 2 ]; then
-        sed -i 's/FORCE_WINDOWED_MODE=OFF/FORCE_WINDOWED_MODE=ON/' "$BOB_BDG"
-    fi
+
+    # Prevent Wine from grabbing keyboard/mouse exclusively in fullscreen 3D mode
+    wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver" /v GrabFullscreen /t REG_SZ /d N /f &>/dev/null
+    wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver" /v GrabPointer /t REG_SZ /d N /f &>/dev/null
+    wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\DirectInput" /v MouseWarpOverride /t REG_SZ /d disable /f &>/dev/null
+    wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver" /v DXGrab /t REG_SZ /d N /f &>/dev/null
 
     # Mark game start so afterGamesReport only collects files from gameplay, not install
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
-    wine start /wait /d "C:\\Program Files\\Rowan Software\\Battle Of Britain" bob.exe 2>/dev/null 1>/dev/null
+    if [ "$numMonitors" -lt 2 ]; then
+        # Single monitor: use virtual desktop to contain the spurious window
+        wine explorer /desktop=BoB,1920x1080 "C:\\Program Files\\Rowan Software\\Battle Of Britain\\bob.exe" 2>/dev/null 1>/dev/null
+    else
+        wine start /wait /d "C:\\Program Files\\Rowan Software\\Battle Of Britain" bob.exe 2>/dev/null 1>/dev/null
+    fi
     exit 0
 fi
 
