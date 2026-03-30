@@ -114,6 +114,12 @@ if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
     touch "$SGL_GAME_STARTED_MARKER"
 fi
 
+# Launch opening repertoire helper alongside the chess GUI
+if [[ -x "$SCRIPT_DIR/openingRepertoire/run_opening_repertoire.sh" ]]; then
+    echo "Launching Opening Repertoire helper..."
+    bash "$SCRIPT_DIR/openingRepertoire/run_opening_repertoire.sh" &
+fi
+
 # Snapshot existing PGN files before launching
 pgn_snapshot=$(mktemp)
 DAY_DIR="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}/WED"

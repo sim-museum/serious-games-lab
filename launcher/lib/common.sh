@@ -102,7 +102,8 @@ is_source_game() {
 is_utility() {
     local script="$1"
     case "$script" in
-        # WED - Chess utility
+        # WED - Chess utilities
+        scid.sh) return 0 ;;
         openingRepertoire/run_opening_repertoire.sh) return 0 ;;
         # FRI - Training/analysis utilities
         mathQuiz/run.sh) return 0 ;;

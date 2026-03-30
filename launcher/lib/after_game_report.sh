@@ -20,8 +20,11 @@ _game_output_patterns() {
 
     case "$script" in
         # WED - Chess: .pgn files
-        scid.sh|nibbler.sh|banksiaGui.sh|chessmaster/chessmaster.sh|openingRepertoire/run_opening_repertoire.sh)
+        scid.sh|nibbler.sh|banksiaGui.sh|chessmaster/chessmaster.sh)
             echo ".|*.pgn"
+            ;;
+        # WED - Opening repertoire is a helper utility, no files to collect
+        openingRepertoire/run_opening_repertoire.sh)
             ;;
         # FRI - Bridge: .pbn files
         wBridge5.sh)
@@ -158,7 +161,7 @@ collect_after_game_report() {
         return 0
     fi
     start_epoch="$(stat -c %Y "$marker")"
-    local compare_op="-gt"
+    local compare_op="-ge"
     rm -f "$marker"
 
     # Build timestamp-based subdirectory name: YYMMDD_HHMM_gamename
@@ -207,7 +210,9 @@ collect_after_game_report() {
                     cp "$file" "$report_dir/"
                 fi
             done < <(find "$abs_search_dir" -maxdepth "$max_depth" -name "$pattern" -type f \
-                        -not -path "*/afterGamesReport/*" -print0 2>/dev/null)
+                        -not -path "*/afterGamesReport/*" \
+                        -not -path "*/INSTALL/*" \
+                        -not -path "*/openingRepertoire/*" -print0 2>/dev/null)
         done <<< "$patterns"
     fi
 

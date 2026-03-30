@@ -27,7 +27,7 @@ if command -v scid &>/dev/null; then
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     scid 2>/dev/null 1>/dev/null
     clear
-    echo -e "Scid optional scripts:\n\nRandomly choose opening book move (to practice different positions):\ngrandmasterOpeningMove.sh\n\n"
+    echo ""
 else
     # Fall back to Wine version if available
     export WINEPREFIX="$SCRIPT_DIR/WP"
@@ -40,7 +40,7 @@ wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /
         [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
         wine "$WINEPREFIX/drive_c/Scid-4.7.0/bin/scid.exe" 2>/dev/null 1>/dev/null
         clear
-        echo -e "Scid optional scripts:\n\nRandomly choose opening book move (to practice different positions):\ngrandmasterOpeningMove.sh\n\n"
+        echo ""
     else
         echo "scid not found. Install with: sudo apt install scid"
     fi

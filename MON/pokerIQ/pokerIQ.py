@@ -4084,7 +4084,10 @@ class PokerWindow(QMainWindow):
         _use_legacy_colors = self.legacy_colors
 
     def _capture_street_stats(self, street):
-        """Capture player stats for the hand summary display."""
+        """Capture player stats for the hand summary display.
+        Always calculates true equities (actual hands vs each other) since the
+        summary is shown after the hand ends when all cards are known.
+        """
         game_state = {
             'board': [str(c) for c in self.board],
             'pot': self.pot,
@@ -4092,26 +4095,22 @@ class PokerWindow(QMainWindow):
             'current_bet': self.current_bet
         }
 
-        # Calculate true equities in god mode
+        # Calculate true equities using actual hands (not random opponents)
         true_equities = {}
-        if self.god_mode:
-            active_hands = [(p, p.hand) for p in self.players if p.active and p.hand]
-            if active_hands:
-                true_equities = calc_multiway_equity(
-                    active_hands,
-                    [str(c) for c in self.board],
-                    iterations=500
-                )
+        active_hands = [(p, p.hand) for p in self.players if p.active and p.hand]
+        if active_hands:
+            true_equities = calc_multiway_equity(
+                active_hands,
+                [str(c) for c in self.board],
+                iterations=500
+            )
 
         stats = []
         for p in self.players:
             if p.hand:
                 perceived_equity, pot_odds, _ = p.calculate_current_stats(game_state, False)
-                if self.god_mode:
-                    true_equity = true_equities.get(p, 0.0)
-                    stats.append((p.name, true_equity, perceived_equity, pot_odds, p.active, p.style == 'human'))
-                else:
-                    stats.append((p.name, None, perceived_equity, pot_odds, p.active, p.style == 'human'))
+                true_equity = true_equities.get(p, 0.0)
+                stats.append((p.name, true_equity, perceived_equity, pot_odds, p.active, p.style == 'human'))
             else:
                 stats.append((p.name, None, 0, 0, p.active, p.style == 'human'))
 
@@ -6955,8 +6954,9 @@ def clear_screen():
 
 def check_resolution():
     """Check if screen resolution is adequate for GUI mode.
-    Returns (width, height) or (0, 0) if unable to detect.
+    Returns the largest (width, height) across all screens, or (0, 0) if unable to detect.
     """
+    best_w, best_h = 0, 0
     try:
         from PyQt6.QtWidgets import QApplication
         from PyQt6.QtGui import QGuiApplication
@@ -6965,14 +6965,17 @@ def check_resolution():
         if temp_app is None:
             temp_app = QApplication([])
 
-        screen = QGuiApplication.primaryScreen()
-        if screen:
+        for screen in QGuiApplication.screens():
             geometry = screen.geometry()
-            return geometry.width(), geometry.height()
+            if geometry.width() > best_w:
+                best_w = geometry.width()
+                best_h = geometry.height()
+        if best_w > 0:
+            return best_w, best_h
     except Exception:
         pass
 
-    # Fallback: try xrandr on Linux
+    # Fallback: try xrandr on Linux — pick the highest-resolution active mode
     try:
         import subprocess
         result = subprocess.run(['xrandr'], capture_output=True, text=True)
@@ -6982,11 +6985,14 @@ def check_resolution():
                 for part in parts:
                     if 'x' in part and part[0].isdigit():
                         w, h = part.split('x')
-                        return int(w), int(h.split('+')[0].split('_')[0])
+                        w = int(w)
+                        h = int(h.split('+')[0].split('_')[0])
+                        if w > best_w:
+                            best_w, best_h = w, h
     except Exception:
         pass
 
-    return 0, 0
+    return best_w, best_h
 
 
 def prompt_resolution_choice(width, height):
