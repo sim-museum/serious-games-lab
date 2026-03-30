@@ -16,7 +16,11 @@ fi
 
 echo "Setting up KaTrain in virtual environment..."
 
-# Create virtual environment
+# Create virtual environment (recreate if broken)
+if [[ -d "$VENV_DIR" && ! -f "$VENV_DIR/bin/activate" ]]; then
+    echo "Virtual environment is broken (missing bin/activate). Recreating..."
+    rm -rf "$VENV_DIR"
+fi
 if [[ -d "$VENV_DIR" ]]; then
     echo "Virtual environment already exists at $VENV_DIR"
 else

@@ -18,17 +18,15 @@ fi
 
 source "$SCRIPT_DIR/katrain_venv/bin/activate"
 
-# If KaTrain config doesn't exist yet, do a quick launch to create the default,
-# then immediately patch it with our KataGo paths.
+# Ensure KaTrain config exists and is up-to-date.
+# KaTrain overwrites config.json on import when it detects an older version,
+# so we must: (1) let the import/upgrade happen first, (2) patch paths after.
 KATRAIN_CONFIG="$HOME/.katrain/config.json"
-if [[ ! -f "$KATRAIN_CONFIG" ]]; then
-    echo "Creating initial KaTrain config..."
-    # KaTrain copies its package config on first import
-    python3 -c "import katrain" 2>/dev/null
-fi
+echo "Ensuring KaTrain config is current..."
+python3 -c "import katrain" 2>/dev/null
 
-# Auto-configure KaTrain engine paths (runs every launch to keep paths current)
-if [[ -f "$KATRAIN_CONFIG" ]] && command -v python3 &>/dev/null; then
+# Patch engine paths (runs every launch — KaTrain upgrades wipe custom paths)
+if command -v python3 &>/dev/null; then
     python3 - "$KATRAIN_CONFIG" "$KATAGO_BIN" "$MAIN_MODEL" "$HUMAN_MODEL" "$ANALYSIS_CFG" << 'PYEOF'
 import json, sys
 config_path, katago_bin, main_model, human_model, analysis_cfg = sys.argv[1:6]

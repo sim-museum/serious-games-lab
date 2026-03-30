@@ -17,6 +17,8 @@ export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
 # Set Windows XP mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
+# Prevent Wine from grabbing keyboard/mouse exclusively in fullscreen 3D mode
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver" /v GrabFullscreen /t REG_SZ /d N /f &>/dev/null
 
 
 export MA_ISO="$INSTALL_DIR/MA_iso"
