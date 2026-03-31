@@ -286,19 +286,14 @@ create_venv "$REPO_ROOT/FRI/mathQuiz" -r "$REPO_ROOT/FRI/mathQuiz/requirements.t
 # FRI/dual_nback - dual n-back trainer (PyQt6 + pyttsx3)
 create_venv "$REPO_ROOT/FRI/dual_nback" -r "$REPO_ROOT/FRI/dual_nback/requirements.txt"
 
-# Patch ben's pyproject.toml for Linux (upstream targets Windows)
-if [[ -f "$BEN_PYPROJECT" ]]; then
-    sed -i \
-        -e 's/tensorflow-intel==2.18.0/tensorflow==2.18/' \
-        -e 's/numpy==1.26.4/numpy>=1.26.4/' \
-        -e 's/keras==3.6.0/keras>=3.6.0/' \
-        -e 's/requires-python = "==3.12"/requires-python = ">=3.12"/' \
-        "$BEN_PYPROJECT"
-fi
-    echo "    Installed: PyQt6 colorama ben (editable)"
-else
-    echo "    ERROR: ben editable install failed"
-    ERRORS=$((ERRORS + 1))
+# ben's src/ is added to PYTHONPATH in run.sh (no editable install needed).
+# Install ben's runtime deps (tensorflow, numpy, etc.) into the venv.
+if [[ -f "$BEN_REQUIREMENTS" ]]; then
+        -r "$BEN_REQUIREMENTS" 2>/dev/null; then
+        echo "    Installed: ben runtime dependencies"
+    else
+        echo "    WARNING: some ben dependencies failed (tensorflow may need specific Python version)"
+    fi
 fi
 
 # The bundled libdds.so links against libboost_thread.so.1.74.0 but the
