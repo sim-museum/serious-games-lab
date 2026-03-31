@@ -12,6 +12,9 @@ source venv/bin/activate
 # libdds.so needs libboost_thread; ensure ben/bin/ is in library search path
 export LD_LIBRARY_PATH="$(pwd)/ben/bin${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
+# ben's source modules (nn, ddsolver, etc.) live in ben/src/
+export PYTHONPATH="$(pwd)/ben/src${PYTHONPATH:+:$PYTHONPATH}"
+
 cd ben_bridge
 [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
 python3 main.py "$@" 2>/dev/null

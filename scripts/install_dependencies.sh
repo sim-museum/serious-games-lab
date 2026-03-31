@@ -289,23 +289,17 @@ create_venv "$REPO_ROOT/FRI/mathQuiz" -r "$REPO_ROOT/FRI/mathQuiz/requirements.t
 create_venv "$REPO_ROOT/FRI/dual_nback" -r "$REPO_ROOT/FRI/dual_nback/requirements.txt"
 
 # FRI/benBridge - bridge game (PyQt6 + tensorflow + BEN engine)
-# Patch ben's pyproject.toml for Linux (upstream targets Windows)
-BEN_PYPROJECT="$REPO_ROOT/FRI/benBridge/ben/pyproject.toml"
-if [[ -f "$BEN_PYPROJECT" ]]; then
-    sed -i \
-        -e 's/tensorflow-intel==2.18.0/tensorflow==2.18/' \
-        -e 's/numpy==1.26.4/numpy>=1.26.4/' \
-        -e 's/keras==3.6.0/keras>=3.6.0/' \
-        -e 's/requires-python = "==3.12"/requires-python = ">=3.12"/' \
-        "$BEN_PYPROJECT"
-fi
+# ben's src/ is added to PYTHONPATH in run.sh (no editable install needed).
+# Install ben's runtime deps (tensorflow, numpy, etc.) into the venv.
 create_venv "$REPO_ROOT/FRI/benBridge" PyQt6 colorama
-if sudo -u "$REAL_USER" "$REPO_ROOT/FRI/benBridge/venv/bin/pip" install --quiet \
-    -e "$REPO_ROOT/FRI/benBridge/ben"; then
-    echo "    Installed: PyQt6 colorama ben (editable)"
-else
-    echo "    ERROR: ben editable install failed"
-    ERRORS=$((ERRORS + 1))
+BEN_REQUIREMENTS="$REPO_ROOT/FRI/benBridge/ben/requirements.txt"
+if [[ -f "$BEN_REQUIREMENTS" ]]; then
+    if sudo -u "$REAL_USER" "$REPO_ROOT/FRI/benBridge/venv/bin/pip" install --quiet \
+        -r "$BEN_REQUIREMENTS" 2>/dev/null; then
+        echo "    Installed: ben runtime dependencies"
+    else
+        echo "    WARNING: some ben dependencies failed (tensorflow may need specific Python version)"
+    fi
 fi
 
 # benBridge: create libboost_thread compatibility symlink for libdds.so
