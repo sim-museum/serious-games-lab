@@ -20,6 +20,7 @@ if [[ -z "${SGL_GAME_SCRIPT:-}" ]]; then
 fi
 
 export WINEPREFIX="$PWD/WP"
+INSTALL_DIR="$PWD/INSTALL"
 if [ ! -d "$WINEPREFIX/drive_c/Program Files/rFactor/Plugins/rFactor Data Acquisition Plugin" ]
 then
        echo ""; echo "Installing telemetry logger.  During installation, deselect check for updates."
@@ -30,9 +31,9 @@ then
        echo "To view telemetry data, exit rFactor and examine the csv files in the directory"
        echo "$WINEPREFIX/drive_c/Program Files/rFactor/UserData/LOG/MoTeC"
        echo ""
-       wine "$WINEPREFIX/../INSTALL/rFactorDAQPluginSetup_1.3.2.exe" 2>/dev/null 1>/dev/null
+       wine "$INSTALL_DIR/rFactorDAQPluginSetup_1.3.2.exe" 2>/dev/null 1>/dev/null
        # switch log file format to .csv (the default is MoTec)
-       cp "$WINEPREFIX/../INSTALL/DataAcquisitionPlugin.ini" "$WINEPREFIX/drive_c/Program Files/rFactor"
+       cp "$INSTALL_DIR/DataAcquisitionPlugin.ini" "$WINEPREFIX/drive_c/Program Files/rFactor"
 else
       echo " "; echo "The rFactor telemetry logger is already installed."; echo ""
 fi

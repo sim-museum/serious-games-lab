@@ -20,7 +20,9 @@
 # Set Wine prefix directory
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
+INSTALL_DIR="$PWD/INSTALL"
 # Set Windows XP mode silently (no GUI)
+mkdir -p "$WINEPREFIX"
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
 # Check if Brain Workshop is already installed
@@ -46,7 +48,7 @@ else
     # If Brain Workshop is not installed and Wine version is compatible, install it
     echo "Installing Brain Workshop; simply accept all defaults."
     echo ""
-    wine "$WINEPREFIX/../INSTALL/brainworkshop-4.8.4-win32-setup.exe" 2>/dev/null 1>/dev/null
+    wine "$INSTALL_DIR/brainworkshop-4.8.4-win32-setup.exe" 2>/dev/null 1>/dev/null
     clear
     # Display README instructions
     cat "$WINEPREFIX/drive_c/Program Files/Brain Workshop/Readme-instructions.txt"

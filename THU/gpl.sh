@@ -36,6 +36,9 @@ fi
 # Set WINEPREFIX to the current working directory with /WP appended
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
+INSTALL_DIR="$PWD/INSTALL"
+ISO_DIR="$PWD/isoDir"
+mkdir -p "$WINEPREFIX"
 # Set Windows XP mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
@@ -46,14 +49,14 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
     clear # Clear the terminal
 
     # Auto-mount GPL ISO if available but not yet mounted
-    if [ ! -f "$WINEPREFIX/../isoDir/SETUP.EXE" ] && [ -f "$WINEPREFIX/../INSTALL/gpl.iso" ]; then
+    if [ ! -f "$ISO_DIR/SETUP.EXE" ] && [ -f "$INSTALL_DIR/gpl.iso" ]; then
         echo "Mounting GPL ISO (requires sudo)..."
-        mkdir -p "$WINEPREFIX/../isoDir"
-        sudo mount -o loop "$WINEPREFIX/../INSTALL/gpl.iso" "$WINEPREFIX/../isoDir"
+        mkdir -p "$ISO_DIR"
+        sudo mount -o loop "$INSTALL_DIR/gpl.iso" "$ISO_DIR"
     fi
 
     # Check if the setup executable exists in the isoDir directory
-    if [ -f "$WINEPREFIX/../isoDir/SETUP.EXE" ]; then
+    if [ -f "$ISO_DIR/SETUP.EXE" ]; then
         echo ""; echo "Installing using mounted GPL iso ..."; echo ""
         echo ""; echo "Step 1 of 2: install GPL version 1.08"; 
         echo "If asked whether to install wine-mono package, select Cancel."
@@ -73,7 +76,7 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
         echo ""
         echo "Alternatively, download the iso from:"
         echo "  https://www.myabandonware.com/game/grand-prix-legends-9zz"
-        echo "and place it as: $WINEPREFIX/../INSTALL/gpl.iso"
+        echo "and place it as: $INSTALL_DIR/gpl.iso"
         echo "Then run this script again."
         echo ""
         echo "Press ENTER to install the free GPL demo version instead,"
@@ -94,7 +97,7 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
         read replayString
 
         # Install GPL demo using wine
-        wine "$WINEPREFIX/../INSTALL/gpl_2004_demo.exe" 2>/dev/null 1>/dev/null
+        wine "$INSTALL_DIR/gpl_2004_demo.exe" 2>/dev/null 1>/dev/null
 
         # Check if GPL executable exists after installation
         if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
@@ -110,13 +113,13 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
         fi
 
         # Install GPL rasterizer
-        wine "$WINEPREFIX/../INSTALL/gplrast_v2.5.exe" 2>/dev/null 1>/dev/null
+        wine "$INSTALL_DIR/gplrast_v2.5.exe" 2>/dev/null 1>/dev/null
 
         # Replace rd3d7v2.dll with roglv2.dll in app.ini
 #        sed -i 's/rd3d7v2.dll/roglv2.dll/' "$WINEPREFIX/drive_c/Sierra/GPL/App.ini"
 
         # Install GPL 1967 patch
-        wine "$WINEPREFIX/../INSTALL/GPL_67_PATCH/1967_PATCH_v1.3_Setup.exe" 2>/dev/null 1>/dev/null
+        wine "$INSTALL_DIR/GPL_67_PATCH/1967_PATCH_v1.3_Setup.exe" 2>/dev/null 1>/dev/null
     fi
 
     # Step 2: Install GEM+ car, track switcher/multiplayer/setup manager
@@ -129,17 +132,17 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
     mkdir "$WINEPREFIX/drive_c/Sierra/GPL/players"
     
     # Copy player-related files to GPL directory
-    cp -r "$WINEPREFIX/../INSTALL/"*__Driver "$WINEPREFIX/drive_c/Sierra/GPL/players"
-    cp "$WINEPREFIX/../INSTALL/app.ini" "$WINEPREFIX/drive_c/Sierra/GPL/"
+    cp -r "$INSTALL_DIR/"*__Driver "$WINEPREFIX/drive_c/Sierra/GPL/players"
+    cp "$INSTALL_DIR/app.ini" "$WINEPREFIX/drive_c/Sierra/GPL/"
     
     # Install GEMPackage
     wine INSTALL/GEMPackage_2.5.0.32.exe 2>/dev/null 1>/dev/null
 
-    cp "$WINEPREFIX/../INSTALL/GEM.ini" "$WINEPREFIX/drive_c/Program Files/GPLSecrets/GEM+/"
+    cp "$INSTALL_DIR/GEM.ini" "$WINEPREFIX/drive_c/Program Files/GPLSecrets/GEM+/"
 
     # also the GEM+ configuration directory under users/Public/Documents doesn't install correctly
     # rm -rf "$WINEPREFIX/drive_c/users/Public/Documents/GEM+"
-    # cp -R "$WINEPREFIX/../INSTALL/GEM+" "$WINEPREFIX/drive_c/users/Public/Documents"
+    # cp -R "$INSTALL_DIR/GEM+" "$WINEPREFIX/drive_c/users/Public/Documents"
     
     # Backup GEM.ini, copy new GEM.ini, and modify iGOR.ini
     # must remove ini file so GEM initializes correctly
@@ -148,29 +151,29 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
     
     # Remove existing GPL Setup Manager directory, version 1.16, then copy new one, version 2.7
     rm -rf "$WINEPREFIX/drive_c/Program Files/GPLSecrets/GPL Setup Manager"
-    cp -R "$WINEPREFIX/../INSTALL/GPL Setup Manager" "$WINEPREFIX/drive_c/Program Files/GPLSecrets"
+    cp -R "$INSTALL_DIR/GPL Setup Manager" "$WINEPREFIX/drive_c/Program Files/GPLSecrets"
     
     # Copy additional files for Pribluda and GEM+
     # installing pribluda needed if using GPL free demo, redundant if using GPL iso
-    cp "$WINEPREFIX/../INSTALL/pribluda/"*.* "$WINEPREFIX/drive_c/Sierra/GPL"
+    cp "$INSTALL_DIR/pribluda/"*.* "$WINEPREFIX/drive_c/Sierra/GPL"
     # make options, such as pribluda telemetry and head movement, available in GEM+
-    cp "$WINEPREFIX/../INSTALL/GEM_options/"*.* "$WINEPREFIX/drive_c/Program Files/GPLSecrets/GEM+/Options"
+    cp "$INSTALL_DIR/GEM_options/"*.* "$WINEPREFIX/drive_c/Program Files/GPLSecrets/GEM+/Options"
     
     # Step 1 of 8: Install Challenge Rank tracks
     echo " "; echo "step 1 of 8"; echo " "
     echo ""; echo "Installing Challenge Rank tracks ..."; echo ""
-    rsync -a "$WINEPREFIX/../INSTALL/Challenge Rank/" "$WINEPREFIX/drive_c/Sierra/GPL/tracks"
+    rsync -a "$INSTALL_DIR/Challenge Rank/" "$WINEPREFIX/drive_c/Sierra/GPL/tracks"
     
     # Step 2 of 8: Install Historical Rank tracks
     echo " "; echo "step 2 of 8"; echo " "
     echo "Installing Historical Rank tracks ..."; echo ""
-    rsync -a "$WINEPREFIX/../INSTALL/Historic Rank/" "$WINEPREFIX/drive_c/Sierra/GPL/tracks"
+    rsync -a "$INSTALL_DIR/Historic Rank/" "$WINEPREFIX/drive_c/Sierra/GPL/tracks"
     
     # Copy 67*.ini files to seasons directory
-    cp $WINEPREFIX/../INSTALL/67*.ini "$WINEPREFIX/drive_c/Sierra/GPL/seasons"
+    cp $INSTALL_DIR/67*.ini "$WINEPREFIX/drive_c/Sierra/GPL/seasons"
     
     # Copy GPL 1967 F1 Extra Mod files
-    rsync -a "$WINEPREFIX/../INSTALL/carsets/GPL 1967 F1 Extra Mod - Online Edition (2018)/GPL/" "$WINEPREFIX/drive_c/Sierra/GPL/"
+    rsync -a "$INSTALL_DIR/carsets/GPL 1967 F1 Extra Mod - Online Edition (2018)/GPL/" "$WINEPREFIX/drive_c/Sierra/GPL/"
     
     # If mods directory exists, move its contents to Mods directory
     # if GPL/mods is present, iGor fails with the message "could not open gplmods.ini"
@@ -181,15 +184,15 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
     fi
     
     # Copy SVG_EDIT and GPLMotecAdd directories
-    cp -r "$WINEPREFIX/../INSTALL/SVG_EDIT" "$WINEPREFIX/drive_c"
-    cp -r "$WINEPREFIX/../INSTALL/GPLMotecAdd" "$WINEPREFIX/drive_c"
+    cp -r "$INSTALL_DIR/SVG_EDIT" "$WINEPREFIX/drive_c"
+    cp -r "$INSTALL_DIR/GPLMotecAdd" "$WINEPREFIX/drive_c"
     
     # Step 3 of 8: Adding additional tracks
     echo " "; echo "step 3 of 8"; echo " "
     # Define directory paths
-    additionalTracksDir="$WINEPREFIX/../INSTALL/additionalTracks"
+    additionalTracksDir="$INSTALL_DIR/additionalTracks"
     gplTracksDir="$WINEPREFIX/drive_c/Sierra/GPL/tracks"
-    gplCarsetsDir="$WINEPREFIX/../INSTALL/gpl_additionalCarsets_67F2_CA66/tracks"
+    gplCarsetsDir="$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/tracks"
     
     # Install additional tracks
     wine "$additionalTracksDir/GPL_Montjuic_Park_1969_v1.0.02.exe" 2>/dev/null 1>/dev/null
@@ -208,11 +211,11 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
     rsync -a "$additionalTracksDir/skidfun_No-lava_cones-for-women/skidfun/" "$gplTracksDir/skidfun/"
     echo ""; echo "adding additional tracks needed by carsets"
     wine "$additionalTracksDir/GPL65ModTracks_0.5.exe" 2>/dev/null 1>/dev/null
-    rsync -a "$WINEPREFIX/../INSTALL/tracks/" "$WINEPREFIX/drive_c/Sierra/GPL/tracks/"
+    rsync -a "$INSTALL_DIR/tracks/" "$WINEPREFIX/drive_c/Sierra/GPL/tracks/"
     echo " "; echo "step 4 of 8"; echo " "
     echo ""; echo "installing 55, 65, 66, 67 sports cars, 69 carsets"; echo ""
-    wine "$WINEPREFIX/../INSTALL/carsets/GPL55F1_1.0.3.exe" 2>/dev/null 1>/dev/null
-    rsync -a "$WINEPREFIX/../INSTALL/carsets/55Mod_Update_Patch/" "$WINEPREFIX/drive_c/Sierra/GPL/"
+    wine "$INSTALL_DIR/carsets/GPL55F1_1.0.3.exe" 2>/dev/null 1>/dev/null
+    rsync -a "$INSTALL_DIR/carsets/55Mod_Update_Patch/" "$WINEPREFIX/drive_c/Sierra/GPL/"
     
     # Install additional carsets and mods
     
@@ -220,42 +223,42 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
     # NOTE: This installer can hang silently under Wine. If it does, the gpl65
     # mod won't appear in GEM+. To install manually afterwards:
     #   cd /home/m/sgl/THU && wine INSTALL/carsets/GPL65F1_Alternative__2.0.2.exe
-    wine "$WINEPREFIX/../INSTALL/carsets/GPL65F1_Alternative__2.0.2.exe" 2>/dev/null 1>/dev/null
+    wine "$INSTALL_DIR/carsets/GPL65F1_Alternative__2.0.2.exe" 2>/dev/null 1>/dev/null
 
     # Install GPL 1966 carset
-    wine "$WINEPREFIX/../INSTALL/carsets/gpl1966_1.0.exe" 2>/dev/null 1>/dev/null
+    wine "$INSTALL_DIR/carsets/gpl1966_1.0.exe" 2>/dev/null 1>/dev/null
 
     # Remove existing GPL66 mod directory and install 1966 Mod Patch
     # NOTE: The 1966 PATCH installer shows a harmless "no Windows program
     # configured to open this type of file" error at the end — it tries to
     # open a readme file. Click OK to dismiss; the patch itself installs fine.
     rm -rf "$WINEPREFIX/drive_c/Sierra/GPL/Mods/GEM+/GPL66"
-    wine "$WINEPREFIX/../INSTALL/carsets/1966_Mod_PATCH_v2.0/1966mod_PATCH_v2.0_Setup.exe" 2>/dev/null 1>/dev/null
+    wine "$INSTALL_DIR/carsets/1966_Mod_PATCH_v2.0/1966mod_PATCH_v2.0_Setup.exe" 2>/dev/null 1>/dev/null
     
     # Install GPL Sound Carset Extra
-    wine "$WINEPREFIX/../INSTALL/carsets/GPLSC_EXTRA_1.1.exe" 2>/dev/null 1>/dev/null
+    wine "$INSTALL_DIR/carsets/GPLSC_EXTRA_1.1.exe" 2>/dev/null 1>/dev/null
     
     # Install 1969 Extra carset
-    wine "$WINEPREFIX/../INSTALL/carsets/69mod X'tra for Grand Prix Legends.exe" 2>/dev/null 1>/dev/null
+    wine "$INSTALL_DIR/carsets/69mod X'tra for Grand Prix Legends.exe" 2>/dev/null 1>/dev/null
     
     # Copy mods directory to Mods directory
     rsync -a "$WINEPREFIX/drive_c/Sierra/GPL/mods/" "$WINEPREFIX/drive_c/Sierra/GPL/Mods/" 2>/dev/null 1>/dev/null
     
     # Copy original driver ini files to GPL directory
-    cp -r "$WINEPREFIX/../INSTALL/originalDriverIniFiles" "$WINEPREFIX/drive_c/Sierra/GPL"
+    cp -r "$INSTALL_DIR/originalDriverIniFiles" "$WINEPREFIX/drive_c/Sierra/GPL"
     
     # Step 5 of 8: Install Replay Analyzer utility
     echo " "; echo "step 5 of 8"; echo " "
     echo ""; echo "Install Replay Analyzer utility"; echo ""
-    wine "$WINEPREFIX/../INSTALL/replayAnalyzerInstall.exe" 2>/dev/null 1>/dev/null
+    wine "$INSTALL_DIR/replayAnalyzerInstall.exe" 2>/dev/null 1>/dev/null
     
     # Copy replay files to GPL replay directory
-    rsync -a "$WINEPREFIX/../INSTALL/replay/" "$WINEPREFIX/drive_c/Sierra/GPL/replay/"
+    rsync -a "$INSTALL_DIR/replay/" "$WINEPREFIX/drive_c/Sierra/GPL/replay/"
     
     # Backup and switch gpl_ai.ini files for frame rate switching
     mkdir "$WINEPREFIX/drive_c/Sierra/GPL/bak"
     cp "$WINEPREFIX/drive_c/Sierra/GPL/gpl_ai.ini" "$WINEPREFIX/drive_c/Sierra/GPL/bak"
-    cp $WINEPREFIX/../INSTALL/frameRateSwitching/gpl_ai*.ini "$WINEPREFIX/drive_c/Sierra/GPL"
+    cp $INSTALL_DIR/frameRateSwitching/gpl_ai*.ini "$WINEPREFIX/drive_c/Sierra/GPL"
     
     # Remove existing options directories for frame rate switching
     # GPL demo sometimes creates options directories, sometimes with the demo
@@ -289,7 +292,7 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
     mkdir "${COMMON_PATH}69-extra/Options"
    
     # Copy frame rate switching XML files to options directories
-    FRAME_RATE_SWITCHING="$WINEPREFIX/../INSTALL/frameRateSwitching"
+    FRAME_RATE_SWITCHING="$INSTALL_DIR/frameRateSwitching"
     GPL_MODS="$WINEPREFIX/drive_c/Sierra/GPL/Mods/GEM+"
     
     # Use the variables in the cp commands
@@ -303,7 +306,7 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
     cp $FRAME_RATE_SWITCHING/*.ini $WINEPREFIX/drive_c/Sierra/GPL
    
     # Copy additional track pictures
-    GEMpics_dir="$WINEPREFIX/../INSTALL/addGEMpics"
+    GEMpics_dir="$INSTALL_DIR/addGEMpics"
     GPL_tracks_dir="$WINEPREFIX/drive_c/Sierra/GPL/tracks"
     
     # Copy each file using the variables
@@ -322,27 +325,27 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
     echo " "; echo "step 6 of 8"; echo " "
     echo ""; echo "installing tracks needed by 66 Can Am carset."; echo ""
     echo ""; echo "installing St. Jovite"; echo ""
-    cd "$WINEPREFIX/../INSTALL/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod/gpl_stjovite"
+    cd "$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod/gpl_stjovite"
     wine trackInstall.exe 2>/dev/null 1>/dev/null
     
     echo ""; echo "installing BHampton"; echo ""
-    cd "$WINEPREFIX/../INSTALL/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod/GPL_Bhampton_v1.01"
+    cd "$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod/GPL_Bhampton_v1.01"
     wine GPL_Bhampton_v1.01.exe 2>/dev/null 1>/dev/null
     
     echo ""; echo "installing Riverside 66"; echo ""
-    cd "$WINEPREFIX/../INSTALL/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod/GPL_Riverside_66_6v1.0"
+    cd "$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod/GPL_Riverside_66_6v1.0"
     wine GPL_Riverside_66_6v1.0.exe 2>/dev/null 1>/dev/null
     
     echo ""; echo "installing Nassau"; echo ""
-    cd "$WINEPREFIX/../INSTALL/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod/GPL_Nassau_v1.0"
+    cd "$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod/GPL_Nassau_v1.0"
     wine GPL_Nassau_v1.0.exe 2>/dev/null 1>/dev/null
     
     echo ""; echo "installing Stardust"; echo ""
-    cd "$WINEPREFIX/../INSTALL/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod/Stardust v1.0"
+    cd "$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod/Stardust v1.0"
     wine "Stardust v1.0.exe" 2>/dev/null 1>/dev/null
     
     # Sync additional track files
-    common_path="$WINEPREFIX/../INSTALL/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod"
+    common_path="$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod"
     tracks_path="$WINEPREFIX/drive_c/Sierra/GPL/tracks"
     
     rsync -a "$common_path/TrackINI_fix/" "$tracks_path/nassau/" 2>/dev/null 1>/dev/null
@@ -350,18 +353,18 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
     rsync -a "$common_path/CanAm gfx x Stardust/stardust/" "$tracks_path/stardust" 2>/dev/null 1>/dev/null
      
         # Copy additional track pictures
-        cp "$WINEPREFIX/../INSTALL/addGEMpics/stjovite.jpg" "$WINEPREFIX/drive_c/Sierra/GPL/tracks/stjovite"
+        cp "$INSTALL_DIR/addGEMpics/stjovite.jpg" "$WINEPREFIX/drive_c/Sierra/GPL/tracks/stjovite"
         
     # Step 7 of 8: Install 67 Formula 2 carset
     echo " "; echo "step 7 of 8"; echo " "
     echo ""; echo "installing 67 Formula 2 carset"; echo ""
-    cd "$WINEPREFIX/../INSTALL/gpl_additionalCarsets_67F2_CA66/mods/67F2/"
+    cd "$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/mods/67F2/"
     wine 67F2_Mod_for_Grand_Prix_Legends_v1.0.exe 2>/dev/null 1>/dev/null
     
     # Step 8 of 8: Install 66 Can Am carset
     echo " "; echo "step 8 of 8"; echo " "
     echo ""; echo "installing 66 Can Am carset"; echo ""
-    cd "$WINEPREFIX/../INSTALL/gpl_additionalCarsets_67F2_CA66/mods/CA66/"
+    cd "$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/mods/CA66/"
     wine gplcanam1966_1.16.04.12.exe 2>/dev/null 1>/dev/null
     
     # Configure virtual desktop to match monitor resolution
@@ -397,7 +400,7 @@ wine "$WINEPREFIX/drive_c/Program Files/GPLSecrets/GEM+/GEMP2.exe" 2>/dev/null 1
 
 # Print optional scripts information
 clear
-printf "Grand Prix Legends Optional Scripts:\n\nReal-time telemetry for 55, 66, 67 and 67x mods:\n"$WINEPREFIX"/../twoMonitorTelemetry.sh\n\nReduce number of laps in a race:\n"$WINEPREFIX"/../setRaceLaps.py\n\nReduce speed of AI cars:\n"$WINEPREFIX"/../slowDownGplAiCars.py\n\nUbuntu 24.04 configuration recommendations:\nIf the display isn't right, try different rasterizer choices (D3D, OpenGL) on the initial GEM+ screen\nFor smoother animation, select 60 fps - see\n$WINEPREFIX/../match_AI_to_frame_rate\n\n"
+printf "Grand Prix Legends Optional Scripts:\n\nReal-time telemetry for 55, 66, 67 and 67x mods:\n$PWD/twoMonitorTelemetry.sh\n\nReduce number of laps in a race:\n$PWD/setRaceLaps.py\n\nReduce speed of AI cars:\n$PWD/slowDownGplAiCars.py\n\nUbuntu 24.04 configuration recommendations:\nIf the display isn't right, try different rasterizer choices (D3D, OpenGL) on the initial GEM+ screen\nFor smoother animation, select 60 fps - see\n$PWD/match_AI_to_frame_rate\n\n"
 
 # Exit
 exit 0

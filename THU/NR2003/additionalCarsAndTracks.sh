@@ -21,6 +21,7 @@ fi
 
 # Set Wine prefix
 export WINEPREFIX="$PWD/WP"
+INSTALL_DIR="$PWD/INSTALL"
 
 # Check if NR2003 is installed
 if [ ! -d "$WINEPREFIX/drive_c/Papyrus/NASCAR Racing 2003 Season" ]; then
@@ -36,7 +37,7 @@ printf "\n\nOptional: Download the 1970 Nurburgring at this link\n\nhttps://www.
 read replyString
 
 # Extract additional cars and tracks
-cd "$WINEPREFIX/../INSTALL"
+cd "$INSTALL_DIR"
 tar xzf NR2003_additionalCarsAndTracks.tar.gz 2>/dev/null 1>/dev/null
 cd NR2003_additionalCarsAndTracks
 
@@ -49,7 +50,7 @@ printf "\nAdding Grand National 1963 cars\n"
 cp -r gn63 "$WINEPREFIX/drive_c/Papyrus/NASCAR Racing 2003 Season/series/"
 
 # Install optional components if available
-cd "$WINEPREFIX/../INSTALL"
+cd "$INSTALL_DIR"
 if [ -f n2003_nurburgring_1970_v1.0.exe ]; then
     echo "Adding Nurburgring track"
     wine n2003_nurburgring_1970_v1.0.exe 2>/dev/null 1>/dev/null

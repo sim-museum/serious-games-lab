@@ -1,17 +1,19 @@
 clear
 
 export WINEPREFIX=$PWD/WP
+INSTALL_DIR="$PWD/INSTALL"
+DOWNLOADS_DIR="$PWD/../../downloads"
 
-if [ -f "$WINEPREFIX/../INSTALL/wdp/WeaponDeliveryPlanner.exe" ]
+if [ -f "$INSTALL_DIR/wdp/WeaponDeliveryPlanner.exe" ]
 then
-	wine "$WINEPREFIX/../INSTALL/wdp/WeaponDeliveryPlanner.exe" 2>/dev/null 1>/dev/null
+	wine "$INSTALL_DIR/wdp/WeaponDeliveryPlanner.exe" 2>/dev/null 1>/dev/null
 	clear
 	exit 0
 fi
 
-mv "$WINEPREFIX/../../downloads/Weapon_Delivery_Planner_3.7.19.208.7z" $WINEPREFIX/../INSTALL 2>/dev/null 1>/dev/null
+mv "$DOWNLOADS_DIR/Weapon_Delivery_Planner_3.7.19.208.7z" $INSTALL_DIR 2>/dev/null 1>/dev/null
 
-if [ ! -f "$WINEPREFIX/../INSTALL/Weapon_Delivery_Planner_3.7.19.208.7z" ]
+if [ ! -f "$INSTALL_DIR/Weapon_Delivery_Planner_3.7.19.208.7z" ]
 then
 	printf "Weapon_Delivery_Planner_3.7.19.208.7z file not found in BMS435/INSTALL.\nFrom https://www.weapondeliveryplanner.nl/download/index.html,\nDownload this file:\n\nWeapon_Delivery_Planner_3.7.19.208.7z\n\nPlace this file in the BMS435/INSTALL directory,\n\nthen run this script again.\n\n"
 	exit 0
@@ -26,12 +28,12 @@ printf "Installing WDP.  Your callsign is \"Viper\".\nChanging the theater (at t
 read replyString
 clear
 
-cd "$WINEPREFIX/../INSTALL"
+cd "$INSTALL_DIR"
 mkdir wdp
 mv Weapon_Delivery_Planner_3.7.19.208.7z wdp
-cd "$WINEPREFIX/../INSTALL/wdp"
+cd "$INSTALL_DIR/wdp"
 p7zip -d Weapon_Delivery_Planner_3.7.19.208.7z
-cp "$WINEPREFIX/../INSTALL/wdpSetup.ini" Setup.ini
+cp "$INSTALL_DIR/wdpSetup.ini" Setup.ini
 clear
 printf "\nWeapon Delivery Planner (WDP) installed successfully.  Run this script again to start WDP\n"
 exit 0

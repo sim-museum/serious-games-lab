@@ -1,6 +1,8 @@
 clear
 
 export WINEPREFIX=$PWD/WP
+INSTALL_DIR="$PWD/INSTALL"
+DOWNLOADS_DIR="$PWD/../../downloads"
 
 if [ ! -f "$WINEPREFIX/drive_c/Falcon BMS 4.35/Launcher.exe" ]
 then
@@ -14,19 +16,19 @@ then
         exit 0
 fi
 
-mv "$WINEPREFIX/../../downloads/Somalia 4.35.3.rar" $WINEPREFIX/../INSTALL 2>/dev/null 1>/dev/null
+mv "$DOWNLOADS_DIR/Somalia 4.35.3.rar" $INSTALL_DIR 2>/dev/null 1>/dev/null
 
-if [ ! -f "$WINEPREFIX/../INSTALL/Somalia 4.35.3.rar" ]
+if [ ! -f "$INSTALL_DIR/Somalia 4.35.3.rar" ]
 then
 	printf "Somalia theater file not found in BMS435/INSTALL.\nFrom the theaters section of www.falcon-bms.com,\nDownload the latest BMS 4.35.3 Somalia theater file:\n\nSomalia 4.35.3.rar\n\nPlace this file in the BMS435/INSTALL directory,\n\nthen run this script again.\n\n"
 	exit 0
 fi
 
 echo "unpacking rar file.  This may take several mintes ..."
-cd "$WINEPREFIX/../INSTALL"
+cd "$INSTALL_DIR"
 mkdir somaliaInstall
 mv "Somalia 4.35.3.rar" somaliaInstall
-cd "$WINEPREFIX/../INSTALL/somaliaInstall"
+cd "$INSTALL_DIR/somaliaInstall"
 
 unrar e "Somalia 4.35.3.rar" 2>/dev/null 1>/dev/null
 wine "Somalia v4.35.3.exe" 2>/dev/null 1>/dev/null

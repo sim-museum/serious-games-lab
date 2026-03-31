@@ -15,6 +15,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 # Set the Wine prefix directory
 export WINEPREFIX="$PWD/WP"
+mkdir -p "$WINEPREFIX"
 
 # Esync/Fsync for thread sync
 export WINEESYNC=1
@@ -202,7 +203,7 @@ echo ""
 cd "$INSTALL_DIR"
 if [ ! -f 'Falcon BMS 4.35 Setup (Full).zip' ]; then
     clear
-    printf "Download this file:\n\n'Falcon BMS 4.35 Setup (Full).zip'\n\nfrom www.falcon-bms.com and put it in the "$WINEPREFIX"/../INSTALL directory.\nThen run this script again.\n\n"
+    printf "Download this file:\n\n'Falcon BMS 4.35 Setup (Full).zip'\n\nfrom www.falcon-bms.com and put it in the $INSTALL_DIR directory.\nThen run this script again.\n\n"
     exit 0
 fi
 
@@ -250,7 +251,7 @@ install_missing_theaters
 echo "--- Applying BMS 4.35.3 radar XML patch ---"
 
 # Move patch from downloads if needed
-mv "$WINEPREFIX/../../downloads/bms-4.35.3-radar-xml-patch.exe" "$INSTALL_DIR" 2>/dev/null || true
+mv "$PWD/../../downloads/bms-4.35.3-radar-xml-patch.exe" "$INSTALL_DIR" 2>/dev/null || true
 
 if [[ -f "$INSTALL_DIR/bms-4.35.3-radar-xml-patch.exe" ]]; then
     cd "$INSTALL_DIR"

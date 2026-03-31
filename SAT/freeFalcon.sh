@@ -11,6 +11,7 @@ GAME_DATA="$WINEPREFIX_DIR/drive_c/FreeFalcon6"
 
 export WINEPREFIX="$WINEPREFIX_DIR"
 export WINEARCH=win32
+mkdir -p "$WINEPREFIX"
 # Set Windows XP mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 

@@ -44,14 +44,15 @@ check_nvidia_32bit() {
 }
 
 check_binaries() {
-    local has_any_wp=false
+    local has_any_data=false
     for day in "${DAY_ORDER[@]}"; do
-        if compgen -G "$REPO_ROOT/$day/WP" "$REPO_ROOT/$day/*/WP" >/dev/null 2>&1; then
-            has_any_wp=true
+        if compgen -G "$REPO_ROOT/$day/WP" "$REPO_ROOT/$day/*/WP" \
+                      "$REPO_ROOT/$day/INSTALL" "$REPO_ROOT/$day/*/INSTALL" >/dev/null 2>&1; then
+            has_any_data=true
             break
         fi
     done
-    if [[ "$has_any_wp" == false ]]; then
+    if [[ "$has_any_data" == false ]]; then
         echo ""
         msg_warn "No binary game data installed yet."
         echo "  Source-only games are still available."

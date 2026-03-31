@@ -22,13 +22,16 @@ fi
 export WINEPREFIX=$PWD/WP
 export WINEARCH=win32
 
+# Ensure Wine prefix directory exists
+mkdir -p "$WINEPREFIX"
+
 # Set Windows XP mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
 
 # Define frequently used directory paths
 export game_dir="$WINEPREFIX/drive_c/Program Files/Activision Value/WSOP 2008"
-export install_dir="$WINEPREFIX/../INSTALL"
+export install_dir="$PWD/INSTALL"
 
 # Check if the game executable exists
 if [ -f "$game_dir/WSOPBFTB.exe" ]; then
@@ -153,6 +156,6 @@ echo ""
 printf "Press return to continue ...\n"
 read -r replyString
 wine SETUP.exe 2>/dev/null 1>/dev/null
-cd "$WINEPREFIX/../.."
+cd "$(dirname "$install_dir")"
 
 

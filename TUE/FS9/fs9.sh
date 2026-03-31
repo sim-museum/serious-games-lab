@@ -67,6 +67,7 @@ fi
 # Set Wine prefix
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
+mkdir -p "$WINEPREFIX"
 # Set Windows XP mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
@@ -94,7 +95,7 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/Microsoft Games/Flight Simulator 9/fs
 fi
 
 # Define commonly used directory path
-export INSTALL_DIR="$WINEPREFIX/../INSTALL"
+export INSTALL_DIR="$PWD/INSTALL"
 
 # Check if installation files exist
 if [ ! -f "$INSTALL_DIR/Microsoft-Flight-Simulator-2004-A-Century-of-Flight_Win_EN_OEM-version-Updated-to-91.zip" ]; then

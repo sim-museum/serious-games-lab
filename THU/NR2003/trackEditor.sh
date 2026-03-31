@@ -20,6 +20,7 @@ if [[ -z "${SGL_GAME_SCRIPT:-}" ]]; then
 fi
 
 export WINEPREFIX=$PWD/WP
+INSTALL_DIR="$PWD/INSTALL"
 
 if [ ! -d "$WINEPREFIX/drive_c/Papyrus/NASCAR Racing 2003 Season" ]
 then
@@ -38,4 +39,4 @@ fi
 #install needed Visual Basic 6 runtime
 winetricks vb6run 2>/dev/null 1>/dev/null
 
-wine "$WINEPREFIX/../INSTALL/editorForNR2003/NR2003 Editor.exe" 2>/dev/null 1>/dev/null
+wine "$INSTALL_DIR/editorForNR2003/NR2003 Editor.exe" 2>/dev/null 1>/dev/null

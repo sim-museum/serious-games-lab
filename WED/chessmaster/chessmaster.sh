@@ -12,7 +12,9 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 # Set the Wine prefix to the current directory's "WP" folder
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
+INSTALL_DIR="$PWD/INSTALL"
 # Set Windows XP mode silently (no GUI)
+mkdir -p "$WINEPREFIX"
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
 # Check if Chessmaster executable exists
@@ -106,46 +108,46 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/Ubisoft/Chessmaster Grandmaster Editi
 fi
 
 # Check if Chessmaster installation files are present
-if [ ! -f "$WINEPREFIX/../INSTALL/Chessmaster-Grandmaster-Edition_Win_EN-FR.zip" ]; then
+if [ ! -f "$INSTALL_DIR/Chessmaster-Grandmaster-Edition_Win_EN-FR.zip" ]; then
     # Display instructions for obtaining installation files
     clear
-    echo "Chessmaster install files not found in the directory $WINEPREFIX/../INSTALL/"
+    echo "Chessmaster install files not found in the directory $INSTALL_DIR/"
     echo ""
     echo "Download the following 2 files from the link below:"
     echo "1. Chessmaster-Grandmaster-Edition_Win_EN-FR.zip" 
     echo "2. Chessmaster-Grandmaster-Edition_Patch_Win_EN-FR_patch-v102.exe" 
     echo ""
-    echo "Place these files in the $WINEPREFIX/../INSTALL/ directory."
+    echo "Place these files in the $INSTALL_DIR/ directory."
     echo ""
     echo "Then run this script again."
     echo ""
     exit 0
 else        
-    if [ ! -f "$WINEPREFIX/../INSTALL/itw-cge.iso" ]; then
+    if [ ! -f "$INSTALL_DIR/itw-cge.iso" ]; then
         # Unpack Chessmaster ISO file
-        echo "Unpacking Chessmaster ISO file in $WINEPREFIX/../INSTALL/chessmaster"
-        cd "$WINEPREFIX/../INSTALL/"
+        echo "Unpacking Chessmaster ISO file in $INSTALL_DIR/chessmaster"
+        cd "$INSTALL_DIR/"
         unzip Chessmaster-Grandmaster-Edition_Win_EN-FR.zip >/dev/null 2>&1
     fi
     # Auto-mount ISO if not already mounted
-    if [ ! -f "$WINEPREFIX/../INSTALL/isoMnt/Chessmaster Grandmaster Edition En/setup.exe" ] && [ -f "$WINEPREFIX/../INSTALL/itw-cge.iso" ]; then
-        mkdir -p "$WINEPREFIX/../INSTALL/isoMnt"
+    if [ ! -f "$INSTALL_DIR/isoMnt/Chessmaster Grandmaster Edition En/setup.exe" ] && [ -f "$INSTALL_DIR/itw-cge.iso" ]; then
+        mkdir -p "$INSTALL_DIR/isoMnt"
         echo "Mounting Chessmaster ISO (requires sudo)..."
-        sudo mount -o loop "$WINEPREFIX/../INSTALL/itw-cge.iso" "$WINEPREFIX/../INSTALL/isoMnt" || {
-            printf "\nAuto-mount failed. Run manually:\n\nsudo mount -o loop \"%s/../INSTALL/itw-cge.iso\" \"%s/../INSTALL/isoMnt\"\n\nThen run this script again.\n" "$WINEPREFIX" "$WINEPREFIX"
+        sudo mount -o loop "$INSTALL_DIR/itw-cge.iso" "$INSTALL_DIR/isoMnt" || {
+            printf "\nAuto-mount failed. Run manually:\n\nsudo mount -o loop \"%s/itw-cge.iso\" \"%s/isoMnt\"\n\nThen run this script again.\n" "$INSTALL_DIR" "$INSTALL_DIR"
             exit 0
         }
     fi
-    if [ -f "$WINEPREFIX/../INSTALL/isoMnt/Chessmaster Grandmaster Edition En/setup.exe" ]; then
+    if [ -f "$INSTALL_DIR/isoMnt/Chessmaster Grandmaster Edition En/setup.exe" ]; then
         # Navigate to ISO mounted directory
-        cd "$WINEPREFIX/../INSTALL/isoMnt/Chessmaster Grandmaster Edition En"
+        cd "$INSTALL_DIR/isoMnt/Chessmaster Grandmaster Edition En"
         clear
         # Display installation instructions
         printf "Chessmaster installation instructions:\n\n1. If asked whether to install Mono, do not install it.\n2. Do not install the Adobe PDF reader (clear the checkbox next to Adobe).\n3. After Chessmaster is installed and the update dialog appears, exit from Chessmaster.\n\nPress any key to begin installation.\n\n"
         read replyString
         # Run setup.exe using Wine
         wine setup.exe >/dev/null 2>&1
-        cd "$WINEPREFIX/../INSTALL/"
+        cd "$INSTALL_DIR/"
         # Apply patch
         wine Chessmaster-Grandmaster-Edition_Patch_Win_EN-FR_patch-v102.exe >/dev/null 2>&1
         printf "\nInstallation completed. Run this script again to start Chessmaster.\n"

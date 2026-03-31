@@ -39,8 +39,9 @@ fi
 
 
 export WINEPREFIX="$PWD/WP"
+INSTALL_DIR="$PWD/INSTALL"
 # initialize cockpit settings: callsign is Viper
-cp $WINEPREFIX/../INSTALL/Viper.ini "$WINEPREFIX/drive_c/Falcon BMS 4.32/User/Config"
+cp "$INSTALL_DIR/Viper.ini" "$WINEPREFIX/drive_c/Falcon BMS 4.32/User/Config"
 exit 0
 
 

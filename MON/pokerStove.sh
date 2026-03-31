@@ -1,5 +1,6 @@
 #!/bin/bash
 cd "$(dirname "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$PWD"
 
 # Set up Wine runner environment (use lutris-fshack-5.7 for MFC dialog compatibility)
 setup_wine_runner() {
@@ -67,7 +68,7 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/PokerStove/PokerStove.exe" ]; then
         local new_size
         new_size="$(wc -c < pokerstove.txt)"
         if [[ "$new_size" -gt "$snapshot" ]]; then
-            tail -c +"$((snapshot + 1))" pokerstove.txt > "$WINEPREFIX/../pokerstove_$(date '+%y%m%d_%H%M').txt"
+            tail -c +"$((snapshot + 1))" pokerstove.txt > "$SCRIPT_DIR/pokerstove_$(date '+%y%m%d_%H%M').txt"
             # Restore pokerstove.txt to its pre-session state
             head -c "$snapshot" pokerstove.txt > pokerstove.txt.tmp
             mv pokerstove.txt.tmp pokerstove.txt
