@@ -20,7 +20,7 @@ SAVEDIR="$GAMEDIR/SaveGame"
 MAX_BACKUPS=5
 
 # Wine runner configuration
-LUTRIS_WINE_ROOT="/home/g/.local/share/lutris/runners/wine/lutris-5.21-x86_64"
+LUTRIS_WINE_ROOT="$HOME/.local/share/lutris/runners/wine/lutris-5.21-x86_64"
 
 setup_wine_env() {
     export PATH="$LUTRIS_WINE_ROOT/bin:$PATH"

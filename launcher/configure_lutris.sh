@@ -25,9 +25,9 @@ GAME_DIR="${2:-}"
 
 normalize_exe_path() {
     local original_path="$1"
-    # Strip /home/{g,m}/ese/ prefix and rebuild with REPO_ROOT
+    # Strip /home/<user>/<repodir>/ prefix and rebuild with REPO_ROOT
     local relative_path
-    relative_path=$(echo "$original_path" | sed -E 's|^/home/[^/]+/ese/||')
+    relative_path=$(echo "$original_path" | sed -E 's|^/home/[^/]+/[^/]+/||')
     echo "$REPO_ROOT/$relative_path"
 }
 
