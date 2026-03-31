@@ -1,6 +1,8 @@
 clear
 
 export WINEPREFIX=$PWD/WP
+INSTALL_DIR="$PWD/INSTALL"
+DOWNLOADS_DIR="$PWD/../../downloads"
 
 if [ ! -f "$WINEPREFIX/drive_c/Falcon BMS 4.35/Launcher.exe" ]
 then
@@ -14,19 +16,19 @@ then
         exit 0
 fi
 
-mv "$WINEPREFIX/../../downloads/Add-On Vietnam 4.35.U1.2.zip" $WINEPREFIX/../INSTALL 2>/dev/null 1>/dev/null
+mv "$DOWNLOADS_DIR/Add-On Vietnam 4.35.U1.2.zip" $INSTALL_DIR 2>/dev/null 1>/dev/null
 
-if [ ! -f "$WINEPREFIX/../INSTALL/Add-On Vietnam 4.35.U1.2.zip" ]
+if [ ! -f "$INSTALL_DIR/Add-On Vietnam 4.35.U1.2.zip" ]
 then
 	printf "Vietnam theater file not found in BMS435/INSTALL.\nFrom the theaters section of www.falcon-bms.com,\nDownload the latest BMS 4.35.3 Vietnam theater file:\n\nAdd-On Vietnam 4.35.U1.2.zip\n\nPlace this file in the BMS435/INSTALL directory,\n\nthen run this script again.\n\n"
 	exit 0
 fi
 
 echo "unpacking zip file.  This may take several mintes ..."
-cd "$WINEPREFIX/../INSTALL"
+cd "$INSTALL_DIR"
 mkdir vietnamInstall
 mv "Add-On Vietnam 4.35.U1.2.zip" vietnamInstall
-cd "$WINEPREFIX/../INSTALL/vietnamInstall"
+cd "$INSTALL_DIR/vietnamInstall"
 
 unzip "Add-On Vietnam 4.35.U1.2.zip" 2>/dev/null 1>/dev/null
 wine "Add-On Vietnam 4.35.U1.2 .exe" 2>/dev/null 1>/dev/null

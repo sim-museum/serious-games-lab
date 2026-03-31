@@ -49,11 +49,10 @@ echo "Distributing binary files to game directories..."
 #   FRI=bridge, SAT=combat/CFL, SUN=go
 if [ -d "$DL/sglBinaries_1" ]; then
     echo "  Distributing sglBinaries_1 contents to game directories..."
-    # Sync entire day directories, skipping stale venvs and pre-built WP dirs from the archive
-    # WP directories contain pre-installed Wine prefixes; games must be installed fresh.
+    # Sync entire day directories, skipping stale venvs from the archive
     for day in MON TUE WED THU FRI SAT SUN; do
         if [ -d "$DL/sglBinaries_1/$day" ]; then
-            rsync -a --ignore-existing --exclude='venv/' --exclude='WP/' \
+            rsync -a --ignore-existing --exclude='venv/' \
                 "$DL/sglBinaries_1/$day/" "$REPO_ROOT/$day/"
             rm -rf "$DL/sglBinaries_1/$day" 2>/dev/null || true
         fi
@@ -69,6 +68,7 @@ if [ -d "$DL/sglBinaries_1" ]; then
         base="$(basename "$f")"
         [ -e "$REPO_ROOT/$base" ] && rm -f "$f" 2>/dev/null || true
     done
+    touch "$DL/.extracted_sglBinaries_1.tar.gz"
 fi
 
 # --- sglBinaries_2 ---
@@ -79,14 +79,14 @@ move_file "sglBinaries_2/CFL" "Madden-NFL-08_Misc_Win_EN_Serial-keys.txt"       
 move_file "sglBinaries_2/CFL" "Xmod 7-18-14.7z"                                               "SAT/CFL/INSTALL"
 move_file "sglBinaries_2/CFL" "CFL 15 V2.zip"                                                 "SAT/CFL/INSTALL"
 move_file "sglBinaries_2/CFL" "JSGME.exe"                                                     "SAT/CFL/INSTALL"
-# Sync BMS432-v41 contents (INSTALL, DOC) into SAT/BMS432/ where the scripts live
-# Skip WP — games must be installed fresh, not from pre-built Wine prefixes.
+# Sync BMS432-v41 contents (INSTALL, DOC, WP) into SAT/BMS432/ where the scripts live
 if [ -d "$DL/sglBinaries_2/BMS432-v41" ]; then
     mkdir -p "$REPO_ROOT/SAT/BMS432"
-    rsync -a --ignore-existing --exclude='WP/' "$DL/sglBinaries_2/BMS432-v41/" "$REPO_ROOT/SAT/BMS432/"
+    rsync -a --ignore-existing "$DL/sglBinaries_2/BMS432-v41/" "$REPO_ROOT/SAT/BMS432/"
     rm -rf "$DL/sglBinaries_2/BMS432-v41" 2>/dev/null || true
 fi
 move_file "sglBinaries_2" "Republic-The-Revolution_Win_EN.exe"                                 "SAT/republic/INSTALL"
+touch "$DL/.extracted_sglBinaries_2.tar.gz"
 
 # --- sglBinaries_3 ---
 # rFactorINSTALL/ directory contents go into THU/rFactor/INSTALL/
@@ -94,6 +94,7 @@ if [ -d "$DL/sglBinaries_3/rFactorINSTALL" ]; then
     mkdir -p "$REPO_ROOT/THU/rFactor/INSTALL"
     rsync -a --remove-source-files "$DL/sglBinaries_3/rFactorINSTALL/" "$REPO_ROOT/THU/rFactor/INSTALL/"
 fi
+touch "$DL/.extracted_sglBinaries_3.tar.gz"
 
 # --- sglBinaries_4 ---
 move_file "sglBinaries_4" "Bridge-Baron-12_Win_EN.zip"                                        "FRI/bb12/INSTALL"
@@ -101,6 +102,7 @@ move_file "sglBinaries_4" "Bridge-Deluxe-2-With-Omar-Sharif_Win_EN_RIP-Version.z
 move_file "sglBinaries_4" "Chessmaster-Grandmaster-Edition_Win_EN-FR.zip"                     "WED/chessmaster/INSTALL"
 move_file "sglBinaries_4" "Chessmaster-Grandmaster-Edition_Patch_Win_EN-FR_patch-v102.exe"    "WED/chessmaster/INSTALL"
 move_file "sglBinaries_4" "World-Series-of-Poker-2008-Battle-for-the-Bracelets_Win_EN.zip"   "MON/INSTALL"
+touch "$DL/.extracted_sglBinaries_4.tar.gz"
 
 # --- sglBinaries_5 ---
 move_file "sglBinaries_5" "gpl.iso"                                                            "THU/INSTALL"
@@ -116,12 +118,14 @@ move_file "sglBinaries_5" "NASCAR-Racing-2003-Season_Patch_Win_EN_Patch-1201.exe
 move_file "sglBinaries_5" "NASCAR-Racing-2003-Season_NoCD_Win_EN.zip"                         "THU/NR2003/INSTALL"
 move_file "sglBinaries_5" "AD67_v1.0.exe"                                                     "THU/NR2003/INSTALL"
 move_file "sglBinaries_5" "n2003_nurburgring_1970_v1.0.exe"                                   "THU/NR2003/INSTALL"
+touch "$DL/.extracted_sglBinaries_5.tar.gz"
 
 # --- sglBinaries_6 ---
 move_file "sglBinaries_6" "Falcon BMS 4.35 Setup (Full).zip"                                 "SAT/BMS435/INSTALL"
 move_file "sglBinaries_6" "Add-On Mideast128 4-35-U3v10.zip"                                 "SAT/BMS435/INSTALL"
 move_file "sglBinaries_6" "Balkans_Theater_4.35.3.zip"                                       "SAT/BMS435/INSTALL"
 move_file "sglBinaries_6" "Israel_Theater_4.35.3.zip"                                        "SAT/BMS435/INSTALL"
+touch "$DL/.extracted_sglBinaries_6.tar.gz"
 
 # --- sglBinaries_7 ---
 move_file "sglBinaries_7" "falcon4Cd.iso"                                                     "SAT/BMS435/INSTALL"
@@ -134,6 +138,8 @@ move_file "sglBinaries_7" "Weapon_Delivery_Planner_3.7.19.208.7z"               
 move_file "sglBinaries_7" "Somalia 4.35.3.rar"                                               "SAT/BMS435/INSTALL"
 move_file "sglBinaries_7" "Taiwan 4.35.3.rar"                                                "SAT/BMS435/INSTALL"
 move_file "sglBinaries_7" "Tacview187Setup.exe"                                              "SAT/tacview/INSTALL"
+touch "$DL/.extracted_sglBinaries_7.tar.gz"
+
 # Remove stale venvs from sglBinaries (machine-specific, recreated at install/launch)
 for d in "$DL"/sglBinaries_*/; do
     [ -d "$d" ] || continue

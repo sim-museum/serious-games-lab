@@ -22,6 +22,7 @@ fi
 SCRIPT_DIR="$PWD"
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
+mkdir -p "$WINEPREFIX"
 # Set Windows 7 mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d win7 /f &>/dev/null
 # Override reported VRAM for Intel integrated GPUs (wined3d misreports it)

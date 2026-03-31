@@ -19,7 +19,9 @@ clear
 # Set Wine prefix directory
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
+INSTALL_DIR="$PWD/INSTALL"
 # Set Windows 98 mode silently (no GUI)
+mkdir -p "$WINEPREFIX"
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d win98 /f &>/dev/null
 
 # Check if Bridge Baron 12 is already installed
@@ -33,14 +35,14 @@ if [ -f "$WINEPREFIX/Bridge Baron/Baron.exe" ]; then
 fi
 
 # Check if installation file exists
-if [ ! -f "$WINEPREFIX/../INSTALL/Bridge-Baron-12_Win_EN.zip" ]; then
+if [ ! -f "$INSTALL_DIR/Bridge-Baron-12_Win_EN.zip" ]; then
     # If installation file not found, provide instructions for downloading and placing the file
-    printf "Bridge-Baron-12_Win_EN.zip file not found in $WINEPREFIX/../INSTALL\n\nFrom \n\nhttps://www.myabandonware.com/game/bridge-baron-12-f44#download\n\nDownload this file:\n\nBridge-Baron-12_Win_EN.zip\n\nPlace this file in the $WINEPREFIX/../INSTALL directory,\n\nthen run this script again.\n\n\n"
+    printf "Bridge-Baron-12_Win_EN.zip file not found in $INSTALL_DIR\n\nFrom \n\nhttps://www.myabandonware.com/game/bridge-baron-12-f44#download\n\nDownload this file:\n\nBridge-Baron-12_Win_EN.zip\n\nPlace this file in the $INSTALL_DIR directory,\n\nthen run this script again.\n\n\n"
     exit 0
 fi
 
 # Move the installation file to the Wine prefix directory and unzip it
-mv "$WINEPREFIX/../INSTALL/Bridge-Baron-12_Win_EN.zip" "$WINEPREFIX"
+mv "$INSTALL_DIR/Bridge-Baron-12_Win_EN.zip" "$WINEPREFIX"
 cd "$WINEPREFIX"
 unzip Bridge-Baron-12_Win_EN.zip 2>/dev/null 1>/dev/null
 

@@ -11,6 +11,7 @@ export ISO_MNT_DIR="$PWD/isoMnt"
 export INSTALL_DIR="$PWD/INSTALL"
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
+mkdir -p "$WINEPREFIX"
 # Set Windows XP mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 

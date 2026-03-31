@@ -1,17 +1,19 @@
 clear
 
 export WINEPREFIX=$PWD/WP
+INSTALL_DIR="$PWD/INSTALL"
+DOWNLOADS_DIR="$PWD/../../downloads"
 
-if [ -f "$WINEPREFIX/../INSTALL/mc/Mission Commander.exe" ]
+if [ -f "$INSTALL_DIR/mc/Mission Commander.exe" ]
 then
-	wine "$WINEPREFIX/../INSTALL/mc/Mission Commander.exe" 2>/dev/null 1>/dev/null
+	wine "$INSTALL_DIR/mc/Mission Commander.exe" 2>/dev/null 1>/dev/null
 	clear
 	exit 0
 fi
 
-mv "$WINEPREFIX/../../downloads/Mission_Commander_0.5.20.685.7z" $WINEPREFIX/../INSTALL 2>/dev/null 1>/dev/null
+mv "$DOWNLOADS_DIR/Mission_Commander_0.5.20.685.7z" $INSTALL_DIR 2>/dev/null 1>/dev/null
 
-if [ ! -f "$WINEPREFIX/../INSTALL/Mission_Commander_0.5.20.685.7z" ]
+if [ ! -f "$INSTALL_DIR/Mission_Commander_0.5.20.685.7z" ]
 then
 	printf "Mission_Commander_0.5.20.685.7z file not found in BMS435/INSTALL.\nFrom https://www.weapondeliveryplanner.nl/download/index.html,\nDownload this file:\n\nMission_Commander_0.5.20.685.7z\n\nPlace this file in the BMS435/INSTALL directory,\n\nthen run this script again.\n\n"
 	exit 0
@@ -24,10 +26,10 @@ read replyString
 
 clear
 
-cd "$WINEPREFIX/../INSTALL"
+cd "$INSTALL_DIR"
 mkdir mc 
 mv Mission_Commander_0.5.20.685.7z mc
-cd "$WINEPREFIX/../INSTALL/mc"
+cd "$INSTALL_DIR/mc"
 p7zip -d Mission_Commander_0.5.20.685.7z
 
 clear

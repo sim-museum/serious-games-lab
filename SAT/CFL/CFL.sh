@@ -58,6 +58,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Use system wine (not a Lutris runner) — GE-Proton causes black screen.
 export WINEPREFIX="$SCRIPT_DIR/WP"
 export WINEARCH=win32
+mkdir -p "$WINEPREFIX"
 
 GAME_DIR="$WINEPREFIX/drive_c/Program Files/EA SPORTS/Madden NFL 08"
 

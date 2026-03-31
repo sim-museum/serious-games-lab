@@ -6,17 +6,18 @@ if [ $? -ne 0 ]; then
 fi
 
 export WINEPREFIX="$PWD/WP"
+INSTALL_DIR="$PWD/INSTALL"
 if [ ! -d $WINEPREFIX/drive_c/FreeFalcon6 ]
 then
 	# free falcon not installed yet
 	echo ""; echo "Run freeFalcon.sh, then run this script again."; echo ""
 fi
 
-if [ ! -f $WINEPREFIX/../INSTALL/alreadyRanDoghouseFlag.txt ]
+if [ ! -f "$INSTALL_DIR/alreadyRanDoghouseFlag.txt" ]
 then
 	echo ""; echo " installing mfc42 windows component needed by f4doghouse"; echo ""
 	winetricks mfc42
-	touch $WINEPREFIX/../INSTALL/alreadyRanDoghouseFlag.txt
+	touch "$INSTALL_DIR/alreadyRanDoghouseFlag.txt"
 fi
 clear
 echo "To view graphs of flight performance, open an aircraft .dat file in the following directory:"

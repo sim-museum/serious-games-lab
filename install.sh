@@ -85,6 +85,33 @@ else
     echo "  [OK]   Graphics: non-NVIDIA GPU (no action needed)"
 fi
 
+# --- 32-bit (i386) NVIDIA GL support ---
+# Binary games run under Wine and require 32-bit NVIDIA GL libraries.
+# Some NVIDIA driver versions (e.g. 570) do not install i386 libs automatically.
+# Running install.sh without 32-bit support breaks binary game installs irreparably.
+if dpkg -l 2>/dev/null | grep -q 'nvidia-driver-'; then
+    if dpkg --print-foreign-architectures 2>/dev/null | grep -q i386; then
+        # i386 arch is enabled — check for the 32-bit GL library
+        NVIDIA_VER_32=$(dpkg -l 2>/dev/null | grep -oP 'nvidia-driver-\K[0-9]+' | head -1)
+        if dpkg -l "libnvidia-gl-${NVIDIA_VER_32}:i386" 2>/dev/null | grep -q '^ii'; then
+            echo "  [OK]   32-bit NVIDIA GL: libnvidia-gl-${NVIDIA_VER_32}:i386 installed"
+        else
+            echo "  [ERROR] 32-bit NVIDIA GL libraries missing!"
+            echo "          libnvidia-gl-${NVIDIA_VER_32}:i386 is not installed."
+            echo "          Binary games (Wine/DXVK) require 32-bit GL support."
+            echo "          Fix: sudo dpkg --add-architecture i386 && sudo apt update && sudo apt install libnvidia-gl-${NVIDIA_VER_32}:i386"
+            echo "          Running install.sh without this will break binary game installs."
+            exit 1
+        fi
+    else
+        echo "  [ERROR] i386 architecture not enabled — 32-bit support unavailable!"
+        echo "          Binary games (Wine/DXVK) require 32-bit GL support."
+        echo "          Fix: sudo dpkg --add-architecture i386 && sudo apt update && sudo apt install libnvidia-gl-$(dpkg -l 2>/dev/null | grep -oP 'nvidia-driver-\K[0-9]+' | head -1):i386"
+        echo "          Running install.sh without this will break binary game installs."
+        exit 1
+    fi
+fi
+
 # --- Joystick ---
 shopt -s nullglob
 JS_DEVICES=(/dev/input/js*)

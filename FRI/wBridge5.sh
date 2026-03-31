@@ -18,7 +18,9 @@
 # Set Wine prefix directory
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
+INSTALL_DIR="$PWD/INSTALL"
 # Set Windows XP mode silently (no GUI)
+mkdir -p "$WINEPREFIX"
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
 
@@ -30,7 +32,7 @@ if [ -d "$WINEPREFIX/drive_c/wbridge5" ]; then
     wine "$WINEPREFIX/drive_c/wbridge5/Wbridge5.exe" 2>/dev/null 1>/dev/null
     clear
     # Display exit message
-    cat "$WINEPREFIX/../DOC/REFERENCE/exitMessageWbridge5.txt"
+    cat "$PWD/DOC/REFERENCE/exitMessageWbridge5.txt"
     echo ""; echo ""
     exit 0
 else
@@ -46,10 +48,10 @@ else
     echo ""
     echo "Install gecko when prompted."
     echo "this will cause online help, as well as file load and save, to work."; echo ""
-    wine "$WINEPREFIX/../INSTALL/Wbridge5_setup.exe" 2>/dev/null 1>/dev/null
+    wine "$INSTALL_DIR/Wbridge5_setup.exe" 2>/dev/null 1>/dev/null
     clear
     # Display exit message
-    cat "$WINEPREFIX/../DOC/REFERENCE/exitMessageWbridge5.txt"
+    cat "$PWD/DOC/REFERENCE/exitMessageWbridge5.txt"
     echo ""; echo ""   
     exit 0
 fi

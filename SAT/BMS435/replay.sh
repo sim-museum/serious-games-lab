@@ -40,6 +40,7 @@ if [ ! -f Tacview184Setup.exe ]; then
 fi
 
 export WINEPREFIX=$PWD/WP
+INSTALL_DIR="$PWD/INSTALL"
 echo " "; echo "Tacview Recordings are in My Computer/drive_c/Falcon BMS 4.35/User/Acmi"; echo " "
 
 if [ -f "$WINEPREFIX/drive_c/Program Files (x86)/Tacview/Tacview64.exe" ]; then
@@ -48,6 +49,6 @@ if [ -f "$WINEPREFIX/drive_c/Program Files (x86)/Tacview/Tacview64.exe" ]; then
 	 exit 0
 fi
 
-cd $WINEPREFIX/../INSTALL
+cd $INSTALL_DIR
 wine Tacview184Setup.exe 2>/dev/null 1>/dev/null
 

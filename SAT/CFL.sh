@@ -3,17 +3,20 @@
 # Set the Wine prefix directory
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
+INSTALL_DIR="$PWD/INSTALL"
+ISO_MNT="$PWD/isoMnt"
 # Set Windows XP mode silently (no GUI)
+mkdir -p "$WINEPREFIX"
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
 # Function to display installation instructions
 display_install_instructions() {
     clear
-    mkdir -p "$WINEPREFIX/../isoMnt"
+    mkdir -p "$ISO_MNT"
     printf "\nCut and paste the commands below at a terminal prompt:\n"
     printf "export WINEPREFIX=\$PWD/WP\n"
     printf "winetricks d3dx9 directplay 2>/dev/null 1>/dev/null\n"
-    printf "sudo mount -o loop $WINEPREFIX/../INSTALL/Madden.iso $WINEPREFIX/../isoMnt\n\n"
+    printf "sudo mount -o loop $INSTALL_DIR/Madden.iso $ISO_MNT\n\n"
     printf "then run this script again.\n"
 }
 
@@ -26,7 +29,7 @@ if [ -d "$WINEPREFIX/drive_c/Program Files/EA SPORTS/Madden NFL 08" ]; then
 
     # Handle the use case where, if an ese directory tree with CFL already installed is copied to a new computer, the folder in $HOME/Documents is missing"
     if [ ! -d "$HOME/Documents/Madden NFL 08/MODS" ]; then
-         rsync -a  "$WINEPREFIX/../INSTALL/CFLpreinstalled/Madden NFL 08/" "$WINEPREFIX/drive_c/users/$USER/Documents/Madden NFL 08/"
+         rsync -a  "$INSTALL_DIR/CFLpreinstalled/Madden NFL 08/" "$WINEPREFIX/drive_c/users/$USER/Documents/Madden NFL 08/"
     fi
 
     cd "$WINEPREFIX/drive_c/Program Files/EA SPORTS/Madden NFL 08"
@@ -49,9 +52,9 @@ clear
 echo "Unpacking installation files, this will take a minute ..."
 echo ""
 # Check for pre-installed archive
-if [ -f "$WINEPREFIX/../../tar/CFLpreinstalled.tar.gz" ]; then
-    mv "$WINEPREFIX/../../tar/CFLpreinstalled.tar.gz" "$WINEPREFIX/../INSTALL/"
-    cd "$WINEPREFIX/../INSTALL"
+if [ -f "$PWD/../tar/CFLpreinstalled.tar.gz" ]; then
+    mv "$PWD/../tar/CFLpreinstalled.tar.gz" "$INSTALL_DIR/"
+    cd "$INSTALL_DIR"
     tar xzf CFLpreinstalled.tar.gz
 #    sudo chmod -R 777 CFLpreinstalled
     
@@ -61,11 +64,11 @@ if [ -f "$WINEPREFIX/../../tar/CFLpreinstalled.tar.gz" ]; then
     mkdir -p "$WINEPREFIX/drive_c/users/$USER/Documents/Madden NFL 08"
     
     # Move the installed game directories
-#    rsync -a "$WINEPREFIX/../INSTALL/CFLpreinstalled/EA SPORTS/Madden NFL 08/" "$WINEPREFIX/drive_c/Program Files/EA SPORTS/Madden NFL 08/"
+#    rsync -a "$INSTALL_DIR/CFLpreinstalled/EA SPORTS/Madden NFL 08/" "$WINEPREFIX/drive_c/Program Files/EA SPORTS/Madden NFL 08/"
     # Use realpath to resolve the actual path
-SOURCE_PATH=$(realpath "${WINEPREFIX}/../INSTALL/CFLpreinstalled/EA Sports/Madden NFL 08")
+SOURCE_PATH=$(realpath "${INSTALL_DIR}/CFLpreinstalled/EA Sports/Madden NFL 08")
 rsync -a "${SOURCE_PATH}/" "${WINEPREFIX}/drive_c/Program Files/EA SPORTS/Madden NFL 08/"
-    rsync -a  "$WINEPREFIX/../INSTALL/CFLpreinstalled/Madden NFL 08/" "$WINEPREFIX/drive_c/users/$USER/Documents/Madden NFL 08/"
+    rsync -a  "$INSTALL_DIR/CFLpreinstalled/Madden NFL 08/" "$WINEPREFIX/drive_c/users/$USER/Documents/Madden NFL 08/"
     
     printf "\nPre-installed Madden NFL 08 with CFL mod has been set up.\n"
     printf "Run this script again to play a Canadian Football League game.\n\n"
@@ -73,24 +76,24 @@ rsync -a "${SOURCE_PATH}/" "${WINEPREFIX}/drive_c/Program Files/EA SPORTS/Madden
 fi
 
 # Move required files to INSTALL directory
-mv "$WINEPREFIX/../../tar/Madden-NFL-08_Misc_Win_EN_Serial-keys.txt" "$WINEPREFIX/../INSTALL" 2>/dev/null 1>/dev/null
-mv "$WINEPREFIX/../../tar/Madden-NFL-08_NoCD_Win_EN_NoDVD.zip" "$WINEPREFIX/../INSTALL" 2>/dev/null 1>/dev/null
-mv "$WINEPREFIX/../../tar/Madden-NFL-08_Patch_Win_EN_v3-US.zip" "$WINEPREFIX/../INSTALL" 2>/dev/null 1>/dev/null
-mv "$WINEPREFIX/../../tar/Madden-NFL-08_Win_EN_US-ISO.zip" "$WINEPREFIX/../INSTALL" 2>/dev/null 1>/dev/null
-mv "$WINEPREFIX/../../tar/JSGME.exe" "$WINEPREFIX/../INSTALL" 2>/dev/null 1>/dev/null
-mv "$WINEPREFIX/../../tar/CFL 15 V2.zip" "$WINEPREFIX/../INSTALL" 2>/dev/null 1>/dev/null
-mv "$WINEPREFIX/../../tar/Xmod 7-18-14.7z" "$WINEPREFIX/../INSTALL" 2>/dev/null 1>/dev/null
+mv "$PWD/../tar/Madden-NFL-08_Misc_Win_EN_Serial-keys.txt" "$INSTALL_DIR" 2>/dev/null 1>/dev/null
+mv "$PWD/../tar/Madden-NFL-08_NoCD_Win_EN_NoDVD.zip" "$INSTALL_DIR" 2>/dev/null 1>/dev/null
+mv "$PWD/../tar/Madden-NFL-08_Patch_Win_EN_v3-US.zip" "$INSTALL_DIR" 2>/dev/null 1>/dev/null
+mv "$PWD/../tar/Madden-NFL-08_Win_EN_US-ISO.zip" "$INSTALL_DIR" 2>/dev/null 1>/dev/null
+mv "$PWD/../tar/JSGME.exe" "$INSTALL_DIR" 2>/dev/null 1>/dev/null
+mv "$PWD/../tar/CFL 15 V2.zip" "$INSTALL_DIR" 2>/dev/null 1>/dev/null
+mv "$PWD/../tar/Xmod 7-18-14.7z" "$INSTALL_DIR" 2>/dev/null 1>/dev/null
 
 # Check if installation files exist
-if [ ! -f "$WINEPREFIX/../INSTALL/Madden-NFL-08_Win_EN_US-ISO.zip" ]; then
+if [ ! -f "$INSTALL_DIR/Madden-NFL-08_Win_EN_US-ISO.zip" ]; then
     clear
     echo "Madden NFL 08 install files not found in the INSTALL directory"
     exit 1
 fi
 
 # Check if autorun exists in mounted ISO
-if [ -f "$WINEPREFIX/../isoMnt/AutoRun.exe" ]; then
-    cd "$WINEPREFIX/../isoMnt"
+if [ -f "$ISO_MNT/AutoRun.exe" ]; then
+    cd "$ISO_MNT"
     
     # Configure Wine
     clear
@@ -120,7 +123,7 @@ wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /
     fi
     
     # Install patch
-    cd "$WINEPREFIX/../INSTALL"
+    cd "$INSTALL_DIR"
     unzip "Madden-NFL-08_Patch_Win_EN_v3-US.zip"
     wine patch.exe 2>/dev/null 1>/dev/null
     
@@ -152,7 +155,7 @@ fi
 # Unpack required files
 clear
 echo "Unpacking files..."
-cd "$WINEPREFIX/../INSTALL"
+cd "$INSTALL_DIR"
 unzip "Madden-NFL-08_Win_EN_US-ISO.zip"
 mv "Madden NFL 08 (USA).iso" "Madden.iso"
 wineboot

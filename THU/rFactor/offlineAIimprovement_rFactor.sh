@@ -20,10 +20,11 @@ if [[ -z "${SGL_GAME_SCRIPT:-}" ]]; then
 fi
 
 export WINEPREFIX=$PWD/WP
-if [ ! -d $WINEPREFIX/../INSTALL ]
+INSTALL_DIR="$PWD/INSTALL"
+if [ ! -d "$INSTALL_DIR" ]
 then
         clear
-        echo "$WINEPREFIX/../INSTALL not found.  Download the directory before proceeding."; echo ""
+        echo "$INSTALL_DIR not found.  Download the directory before proceeding."; echo ""
         echo "See the file 'additionalGames.txt' for information about where to download the"
         echo "INSTALL add-on package. Unpack this file into the INSTALL directory."
 	echo "Then run this script again."
@@ -50,7 +51,7 @@ echo "Make sure rFactor is set to run in a window via graphicsConfig_rFactor.sh"
 echo ""
 
 echo "Installing java runtime environment ..."
-wine $WINEPREFIX/../INSTALL/jre-8u291-windows-i586.exe /s 2>/dev/null 1>/dev/null
+wine "$INSTALL_DIR/jre-8u291-windows-i586.exe" /s 2>/dev/null 1>/dev/null
 echo "Installing AI improvement plugin v. 1.21"
-rsync -a "$WINEPREFIX/../INSTALL/Plugins/"   "$WINEPREFIX/drive_c/Program Files/rFactor/Plugins/"
+rsync -a "$INSTALL_DIR/Plugins/"   "$WINEPREFIX/drive_c/Program Files/rFactor/Plugins/"
 echo ""
