@@ -137,7 +137,8 @@ _game_short_name() {
     # For scripts like BMS435/BMS435.sh, use the filename part
     # For run.sh / run_*.sh in subdirs, use the parent dir name
     case "$name" in
-        run|run_*) name="${script%%/*}" ;;
+        run_*) name="${name#run_}" ;;
+        run) name="${script%%/*}" ;;
     esac
     # Sanitize: lowercase, replace spaces with underscores
     echo "$name" | tr '[:upper:]' '[:lower:]' | tr ' ' '_' | tr -cd '[:alnum:]_-'
@@ -207,7 +208,6 @@ collect_after_game_report() {
             local -a find_excludes=(
                 -not -path "*/INSTALL/*"
                 -not -path "*/openingRepertoire/*"
-                -not -name "*_analysed.sgf"
             )
             if [[ "$search_dir" != *afterGameReport* ]]; then
                 find_excludes+=(-not -path "*/afterGameReport/*")

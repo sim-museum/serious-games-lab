@@ -22,7 +22,6 @@ snapshot_sgf_files() {
 analyze_new_sgf_files() {
     local day_dir="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}/SUN"
     local annotate_script="$SCRIPT_DIR/katago_annotate.py"
-    local report_dir="$day_dir/afterGameReport"
 
     # Find SGF files newer than the snapshot — search the whole day dir
     # (including afterGameReport where users may save directly) plus
@@ -70,39 +69,16 @@ analyze_new_sgf_files() {
     echo ""
     echo "Running KataGo analysis on saved SGF files..."
 
-    # Determine the afterGameReport subdirectory.
-    # The launcher's collect_after_game_report may have already created a
-    # timestamped subdirectory.  Find the most recent one, or create one.
-    local dest_dir=""
-    if [[ -d "$report_dir" ]]; then
-        dest_dir=$(find "$report_dir" -mindepth 1 -maxdepth 1 -type d \
-                       -printf '%T@ %p\n' 2>/dev/null \
-                   | sort -rn | head -1 | cut -d' ' -f2-)
-    fi
-    if [[ -z "$dest_dir" || ! -d "$dest_dir" ]]; then
-        # Determine game name from calling script
-        local game_name="go"
-        local caller="${BASH_SOURCE[2]:-${BASH_SOURCE[1]:-}}"
-        if [[ -n "$caller" ]]; then
-            game_name=$(basename "$caller" .sh | tr '[:upper:]' '[:lower:]' | tr ' ' '_')
-            # Clean up common prefixes
-            game_name="${game_name#run_}"
-        fi
-        dest_dir="$report_dir/$(date '+%y%m%d_%H%M')_${game_name}"
-    fi
-    mkdir -p "$dest_dir"
-
+    # Create _analysed.sgf next to each original.
+    # The launcher's collect_after_game_report runs AFTER this and will
+    # pick up both the original and _analysed files.
     while IFS= read -r sgf_file; do
         [[ -z "$sgf_file" ]] && continue
-        local base
+        local base dir stem annotated
         base=$(basename "$sgf_file")
-        local stem="${base%.sgf}"
-        local annotated="${dest_dir}/${stem}_analysed.sgf"
-
-        # Copy the original to the report dir if not already there
-        if [[ "$(dirname "$sgf_file")" != "$dest_dir" ]]; then
-            cp "$sgf_file" "$dest_dir/$base"
-        fi
+        dir=$(dirname "$sgf_file")
+        stem="${base%.sgf}"
+        annotated="${dir}/${stem}_analysed.sgf"
 
         python3 "$annotate_script" "$sgf_file" "$annotated" \
             --katago "$KATAGO_BIN" --model "$MAIN_MODEL" --config "$cfg" \
