@@ -128,7 +128,7 @@ def add_comment_to_node(node_text, comment):
 
 
 def run_katago_analysis(sgf_path, katago_bin, model_path, config_path, visits=100):
-    """Run KataGo GTP analysis on each position and return per-move evaluations."""
+    """Run KataGo analysis engine on each position and return per-move evaluations."""
     with open(sgf_path) as f:
         sgf_text = f.read()
 
@@ -139,8 +139,12 @@ def run_katago_analysis(sgf_path, katago_bin, model_path, config_path, visits=10
     if not moves:
         return sgf_text  # No moves to analyze
 
-    # Start KataGo in GTP mode
-    cmd = [katago_bin, "gtp", "-model", model_path, "-config", config_path]
+    import json
+
+    # Use KataGo's analysis engine (JSON protocol) instead of GTP.
+    # The analysis engine accepts JSON queries on stdin and returns
+    # JSON responses on stdout — one per line, no streaming.
+    cmd = [katago_bin, "analysis", "-model", model_path, "-config", config_path]
     proc = subprocess.Popen(
         cmd,
         stdin=subprocess.PIPE,
@@ -149,21 +153,8 @@ def run_katago_analysis(sgf_path, katago_bin, model_path, config_path, visits=10
         text=True,
     )
 
-    def send_gtp(command):
-        proc.stdin.write(command + "\n")
-        proc.stdin.flush()
-        response = ""
-        while True:
-            line = proc.stdout.readline()
-            if line.strip() == "" and response:
-                break
-            response += line
-        return response.strip()
-
-    send_gtp(f"boardsize {board_size}")
-    send_gtp(f"komi {komi}")
-    send_gtp("clear_board")
-
+    # Build the position incrementally and query after each move
+    played_moves = []  # list of [color, gtp_coord] for the analysis engine
     evaluations = []
 
     for i, move in enumerate(moves):
@@ -171,37 +162,45 @@ def run_katago_analysis(sgf_path, katago_bin, model_path, config_path, visits=10
             evaluations.append(None)
             continue
 
-        # Get evaluation BEFORE playing the move
-        kata_resp = send_gtp(f"kata-analyze {move['color'].lower()} interval 0 maxmoves 1")
+        gtp_coord = coord_to_gtp(move["coord"], board_size)
+        color_word = "B" if move["color"] == "B" else "W"
 
-        # Parse kata-analyze response for winrate and score
+        # Query position BEFORE this move is played
+        query = {
+            "id": str(i),
+            "moves": [m for m in played_moves],
+            "rules": "japanese",
+            "komi": komi,
+            "boardXSize": board_size,
+            "boardYSize": board_size,
+            "analyzeTurns": [len(played_moves)],
+            "maxVisits": visits,
+        }
+        proc.stdin.write(json.dumps(query) + "\n")
+        proc.stdin.flush()
+
+        # Read response (one JSON line per query)
+        resp_line = proc.stdout.readline()
         winrate = None
         score = None
-        info_line = ""
-        for line in kata_resp.split("\n"):
-            if "winrate" in line:
-                info_line = line
-                break
+        try:
+            resp = json.loads(resp_line)
+            if "rootInfo" in resp:
+                root = resp["rootInfo"]
+                winrate = root.get("winrate")
+                score = root.get("scoreLead")
+        except (json.JSONDecodeError, KeyError):
+            pass
 
-        wr_match = re.search(r"winrate\s+([\d.]+)", info_line)
-        sc_match = re.search(r"scoreLead\s+([-\d.]+)", info_line)
-
-        if wr_match:
-            winrate = float(wr_match.group(1))
-        if sc_match:
-            score = float(sc_match.group(1))
-
-        # Play the move
-        gtp_coord = coord_to_gtp(move["coord"], board_size)
-        color_word = "black" if move["color"] == "B" else "white"
-        send_gtp(f"play {color_word} {gtp_coord}")
+        # Add this move to the position for the next query
+        played_moves.append([color_word, gtp_coord])
 
         evaluations.append({"winrate": winrate, "score": score})
 
-        if (i + 1) % 20 == 0:
+        if (i + 1) % 10 == 0 or (i + 1) == len(moves):
             print(f"  Analyzed {i + 1}/{len(moves)} moves...", file=sys.stderr)
 
-    send_gtp("quit")
+    proc.stdin.close()
     proc.wait()
 
     # Build annotated SGF
