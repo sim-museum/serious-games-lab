@@ -56,7 +56,7 @@ if [ -f "$game_dir/WSOPBFTB.exe" ]; then
         touch "$WINEPREFIX/.dxvk_sarek"
     fi
 
-    # Mark game start so afterGamesReport only collects files from gameplay, not install
+    # Mark game start so afterGameReport only collects files from gameplay, not install
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     WINEDLLOVERRIDES="d3d9,dxgi=n,b" wine WSOPBFTB.exe &>/dev/null
     cd "$WINEPREFIX/.."

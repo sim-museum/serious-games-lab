@@ -247,11 +247,51 @@ fi
 echo ""
 echo "Cloning git dependencies..."
 
-if [[ ! -d "$REPO_ROOT/FRI/benBridge/ben" ]]; then
+if [[ ! -d "$REPO_ROOT/FRI/benBridge/ben/src" ]]; then
     echo "  Cloning ben (Bridge Engine)..."
     sudo -u "$REAL_USER" git clone https://github.com/lorserker/ben "$REPO_ROOT/FRI/benBridge/ben"
 else
     echo "  ben already present, skipping clone."
+fi
+
+# ben: download config files if missing (not stored in repo, or lost during clone)
+BEN_CONFIG_DIR="$REPO_ROOT/FRI/benBridge/ben/src/config"
+BEN_GITHUB_RAW="https://raw.githubusercontent.com/lorserker/ben/main"
+if [[ ! -f "$BEN_CONFIG_DIR/default.conf" ]]; then
+    echo "  Downloading ben config files..."
+    for _conf in default.conf BEN-21GF.conf BEN-Sayc.conf GIB-BBO.conf; do
+        sudo -u "$REAL_USER" curl -fSL -o "$BEN_CONFIG_DIR/$_conf" \
+            "$BEN_GITHUB_RAW/src/config/$_conf" 2>/dev/null \
+            && echo "    Downloaded: $_conf" \
+            || echo "    WARNING: failed to download $_conf"
+    done
+fi
+
+# ben: download TF2 neural-network model files if missing (Git LFS objects)
+BEN_MODELS_DIR="$REPO_ROOT/FRI/benBridge/ben/models/TF2models"
+mkdir -p "$BEN_MODELS_DIR"
+_model_count=$(find "$BEN_MODELS_DIR" -name "*.keras" -size +1k 2>/dev/null | wc -l)
+if [[ "$_model_count" -lt 16 ]]; then
+    echo "  Downloading ben TF2 model files (≈107 MB total)..."
+    # Models referenced by default.conf
+    _ben_models=(
+        Contract_2024-12-09-E50.keras  Tricks_2024-12-09-E50.keras
+        GIB-BBO-8730_2025-04-19-E30.keras  GIB-BBOInfo-8730_2025-04-19-E30.keras
+        Lead-NT_2024-11-04-E200.keras  Lead-Suit_2024-11-04-E200.keras
+        SD_2024-07-08-E20.keras  RPDD_2024-07-08-E02.keras
+        lefty_nt_2024-07-08-E20.keras  lefty_suit_2024-07-08-E20.keras
+        righty_nt_2024-07-16-E20.keras  righty_suit_2024-07-16-E20.keras
+        dummy_nt_2024-07-08-E20.keras  dummy_suit_2024-07-08-E20.keras
+        decl_nt_2024-07-08-E20.keras  decl_suit_2024-07-08-E20.keras
+    )
+    for _m in "${_ben_models[@]}"; do
+        if [[ ! -f "$BEN_MODELS_DIR/$_m" ]] || [[ $(stat -c%s "$BEN_MODELS_DIR/$_m" 2>/dev/null) -lt 1024 ]]; then
+            sudo -u "$REAL_USER" curl -fSL -o "$BEN_MODELS_DIR/$_m" \
+                "https://github.com/lorserker/ben/raw/main/models/TF2models/$_m" 2>/dev/null \
+                && echo "    Downloaded: $_m" \
+                || echo "    WARNING: failed to download $_m"
+        fi
+    done
 fi
 
 if [[ ! -d "$REPO_ROOT/SUN/gui/lizgoban" ]]; then
@@ -302,18 +342,19 @@ if [[ -f "$BEN_REQUIREMENTS" ]]; then
     fi
 fi
 
-# benBridge: create libboost_thread compatibility symlink for libdds.so
-# The bundled libdds.so links against libboost_thread.so.1.74.0 but the
-# system may have a newer version (e.g. 1.83.0). Create a symlink so
-# libdds.so can find it at runtime via LD_LIBRARY_PATH set in run.sh.
+# benBridge: ensure libdds.so is available for the DDS solver.
+# The upstream ben repo ships a Windows/Mac binary but not a Linux one.
+# On Ubuntu the system package libdds0 provides libdds.so.0; we symlink
+# it into ben/bin/ so the engine's ctypes loader finds it.
 BEN_BIN_DIR="$REPO_ROOT/FRI/benBridge/ben/bin"
-if [[ -f "$BEN_BIN_DIR/libdds.so" ]] && [[ ! -e "$BEN_BIN_DIR/libboost_thread.so.1.74.0" ]]; then
-    SYSTEM_BOOST=$(ldconfig -p | grep 'libboost_thread\.so\.[0-9]' | head -1 | awk '{print $NF}' || true)
-    if [[ -n "$SYSTEM_BOOST" ]]; then
-        sudo -u "$REAL_USER" ln -sf "$SYSTEM_BOOST" "$BEN_BIN_DIR/libboost_thread.so.1.74.0"
-        echo "  Created libboost_thread symlink: $(basename "$SYSTEM_BOOST") -> 1.74.0"
+mkdir -p "$BEN_BIN_DIR"
+if [[ ! -f "$BEN_BIN_DIR/libdds.so" ]]; then
+    SYSTEM_DDS=$(ldconfig -p | grep 'libdds\.so' | head -1 | awk '{print $NF}' || true)
+    if [[ -n "$SYSTEM_DDS" ]]; then
+        sudo -u "$REAL_USER" ln -sf "$SYSTEM_DDS" "$BEN_BIN_DIR/libdds.so"
+        echo "  Created libdds.so symlink -> $SYSTEM_DDS"
     else
-        echo "  WARNING: libboost_thread not found; benBridge DDS solver may not work"
+        echo "  WARNING: libdds not found; install libdds0: apt install libdds0"
     fi
 fi
 

@@ -13,12 +13,12 @@ WORKFLOW
 
 1. Play or study the games for a given day
 2. Save your game output (replays, screenshots, analysis files)
-   to the day's afterGamesReport directory
+   to the day's afterGameReport directory
 3. From the day's menu in the launcher, select "How to Calculate Score"
    to read the scoring criteria for that day
 4. Select "Enter New Score" to record your score
 
-The launcher will archive your afterGamesReport files and record
+The launcher will archive your afterGameReport files and record
 your score in filesForLauncher/launcherScores.csv.
 
 EXPORTING

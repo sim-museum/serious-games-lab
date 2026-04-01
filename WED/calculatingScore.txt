@@ -3,7 +3,7 @@ eSports for Engineers 24041LTS
 
 Note: save your .pgn files after each session.  Copy your .pgn files,
 along with screenshot .png files showing your games and analysis, to
-the WED/afterGamesReport directory, calculate your score as described
+the WED/afterGameReport directory, calculate your score as described
 below, and then enter your score using the launcher.
 
 Note: these OKRs can be completed with any combination of the chess

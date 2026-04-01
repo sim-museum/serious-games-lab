@@ -9,11 +9,63 @@ fi
 
 source venv/bin/activate
 
-# libdds.so needs libboost_thread; ensure ben/bin/ is in library search path
-export LD_LIBRARY_PATH="$(pwd)/ben/bin${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# --- Self-heal: ensure engine prerequisites are in place ---
 
-# ben's source modules (nn, ddsolver, etc.) live in ben/src/
-export PYTHONPATH="$(pwd)/ben/src${PYTHONPATH:+:$PYTHONPATH}"
+BEN_DIR="$(pwd)/ben"
+BEN_GITHUB_RAW="https://raw.githubusercontent.com/lorserker/ben/main"
+
+# 1. Config files (not included in a plain git clone)
+if [[ ! -f "$BEN_DIR/src/config/default.conf" ]]; then
+    echo "Downloading ben config files..."
+    for _conf in default.conf BEN-21GF.conf BEN-Sayc.conf GIB-BBO.conf; do
+        curl -fSL -o "$BEN_DIR/src/config/$_conf" \
+            "$BEN_GITHUB_RAW/src/config/$_conf" 2>/dev/null \
+            && echo "  OK: $_conf" || echo "  FAILED: $_conf"
+    done
+fi
+
+# 2. TF2 model files (Git LFS objects, not fetched without git-lfs)
+MODEL_DIR="$BEN_DIR/models/TF2models"
+mkdir -p "$MODEL_DIR"
+_model_count=$(find "$MODEL_DIR" -name "*.keras" -size +1k 2>/dev/null | wc -l)
+if [[ "$_model_count" -lt 16 ]]; then
+    echo "Downloading ben TF2 model files (~107 MB)..."
+    _ben_models=(
+        Contract_2024-12-09-E50.keras  Tricks_2024-12-09-E50.keras
+        GIB-BBO-8730_2025-04-19-E30.keras  GIB-BBOInfo-8730_2025-04-19-E30.keras
+        Lead-NT_2024-11-04-E200.keras  Lead-Suit_2024-11-04-E200.keras
+        SD_2024-07-08-E20.keras  RPDD_2024-07-08-E02.keras
+        lefty_nt_2024-07-08-E20.keras  lefty_suit_2024-07-08-E20.keras
+        righty_nt_2024-07-16-E20.keras  righty_suit_2024-07-16-E20.keras
+        dummy_nt_2024-07-08-E20.keras  dummy_suit_2024-07-08-E20.keras
+        decl_nt_2024-07-08-E20.keras  decl_suit_2024-07-08-E20.keras
+    )
+    for _m in "${_ben_models[@]}"; do
+        if [[ ! -f "$MODEL_DIR/$_m" ]] || [[ $(stat -c%s "$MODEL_DIR/$_m" 2>/dev/null) -lt 1024 ]]; then
+            echo -n "  $_m ... "
+            curl -fSL -o "$MODEL_DIR/$_m" \
+                "https://github.com/lorserker/ben/raw/main/models/TF2models/$_m" 2>/dev/null \
+                && echo "OK" || echo "FAILED"
+        fi
+    done
+fi
+
+# 3. libdds.so for the DDS solver (system libdds0 package)
+if [[ ! -f "$BEN_DIR/bin/libdds.so" ]]; then
+    mkdir -p "$BEN_DIR/bin"
+    SYSTEM_DDS=$(ldconfig -p 2>/dev/null | grep 'libdds\.so' | head -1 | awk '{print $NF}' || true)
+    if [[ -n "$SYSTEM_DDS" ]]; then
+        ln -sf "$SYSTEM_DDS" "$BEN_DIR/bin/libdds.so"
+        echo "Created libdds.so symlink -> $SYSTEM_DDS"
+    else
+        echo "WARNING: libdds not found. Install with: sudo apt install libdds0"
+    fi
+fi
+
+# --- Launch ---
+
+export LD_LIBRARY_PATH="$BEN_DIR/bin${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export PYTHONPATH="$BEN_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
 
 cd ben_bridge
 [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
@@ -23,11 +75,6 @@ exit_code=$?
 if [[ $exit_code -ne 0 ]]; then
     echo ""
     echo "benBridge exited with error code $exit_code"
-    echo "If the engine failed to initialize, check:"
-    echo "  - tensorflow: python3 -c 'import tensorflow'"
-    echo "  - dds module: python3 -c 'import dds'"
-    echo "  - ben module: python3 -c 'import ben'"
-    echo ""
     echo "Re-run with verbose output:"
-    echo "  cd $(pwd) && python3 main.py 2>&1 | head -50"
+    echo "  cd $(pwd) && source ../venv/bin/activate && python3 main.py 2>&1 | head -50"
 fi

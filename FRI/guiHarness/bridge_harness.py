@@ -7,7 +7,7 @@ Features:
   - Always displays base-72 hand code for the current deal
   - Automates hand entry into Q-Plus Bridge via mouse control
   - Workflow: play in another program (e.g. wbridge5) → enter same hand into qplus
-    → collect qplus log → convert & copy to afterGamesReport
+    → collect qplus log → convert & copy to afterGameReport
 """
 
 import json
@@ -1082,7 +1082,7 @@ class BridgeHarness(QMainWindow):
 
         layout.addWidget(QLabel(
             "Compare a hand played in another program (e.g. wBridge5) with Q-Plus Bridge.\n"
-            "The source PBN and Q-Plus results are collected into afterGamesReport."
+            "The source PBN and Q-Plus results are collected into afterGameReport."
         ))
 
         # Step 1: load source PBN
@@ -1145,7 +1145,7 @@ class BridgeHarness(QMainWindow):
         layout.addWidget(s3)
 
         # Step 4: source game name + copy
-        s4 = QGroupBox("Step 4 — Convert & copy to afterGamesReport")
+        s4 = QGroupBox("Step 4 — Convert & copy to afterGameReport")
         s4_layout = QVBoxLayout(s4)
         name_row = QHBoxLayout()
         name_row.addWidget(QLabel("Source game:"))
@@ -1155,7 +1155,7 @@ class BridgeHarness(QMainWindow):
         name_row.addWidget(self.wf_game_name, stretch=1)
         s4_layout.addLayout(name_row)
 
-        self.wf_copy_btn = QPushButton("Convert PBN & copy both files to afterGamesReport")
+        self.wf_copy_btn = QPushButton("Convert PBN & copy both files to afterGameReport")
         self.wf_copy_btn.setStyleSheet("font-weight: bold; padding: 6px;")
         self.wf_copy_btn.clicked.connect(self._wf_copy_to_report)
         s4_layout.addWidget(self.wf_copy_btn)
@@ -1441,8 +1441,8 @@ class BridgeHarness(QMainWindow):
             QMessageBox.warning(self, "Error", "Enter a source game name.")
             return
 
-        # Find or create afterGamesReport directory
-        report_base = FRI_DIR / "afterGamesReport"
+        # Find or create afterGameReport directory
+        report_base = FRI_DIR / "afterGameReport"
         report_base.mkdir(exist_ok=True)
 
         # Look for the most recent directory matching this game name

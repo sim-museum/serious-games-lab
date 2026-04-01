@@ -39,8 +39,14 @@ pip install 'Kivy==2.3.0' 'kivymd==0.104.1'
 pip install chardet docutils ffpyplayer screeninfo urllib3
 pip install --no-deps 'KaTrain==1.17.1'
 
-# Auto-configure KaTrain engine paths if config exists
+# Create KaTrain config if it doesn't exist yet (first install)
 KATRAIN_CONFIG="$HOME/.katrain/config.json"
+if [[ ! -f "$KATRAIN_CONFIG" ]]; then
+    echo "Creating initial KaTrain config..."
+    python3 -c "import katrain" 2>/dev/null
+fi
+
+# Auto-configure KaTrain engine paths
 if [[ -f "$KATRAIN_CONFIG" ]] && command -v python3 &>/dev/null; then
     python3 - "$KATRAIN_CONFIG" "$KATAGO_BIN" "$MAIN_MODEL" "$HUMAN_MODEL" "$ANALYSIS_CFG" << 'PYEOF'
 import json, sys

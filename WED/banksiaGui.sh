@@ -8,13 +8,13 @@ INSTALL_DIR="$SCRIPT_DIR/INSTALL/BanksiaGui"
 BANKSIA_SH="$INSTALL_DIR/BanksiaGUI.sh"
 
 # --- Ensure lc0 engine is available (build from source, fall back to pre-built) ---
-echo "Building lc0 from source..."
-if bash "$SCRIPT_DIR/install_lc0.sh" 2>&1; then
-    echo "lc0 built successfully."
-elif [[ -x "$SCRIPT_DIR/INSTALL/lc0_cpu" ]]; then
-    echo "Build failed; using pre-built lc0 binary."
-else
-    echo "WARNING: lc0 not available. Build failed and no pre-built binary found."
+if [[ ! -x "$SCRIPT_DIR/INSTALL/lc0_cpu" ]]; then
+    echo "lc0 engine not found. Building from source..."
+    if bash "$SCRIPT_DIR/install_lc0.sh" 2>&1; then
+        echo "lc0 built successfully."
+    else
+        echo "WARNING: lc0 not available. Build failed and no pre-built binary found."
+    fi
 fi
 if [[ -x "$SCRIPT_DIR/INSTALL/lc0_cpu" ]]; then
     echo "lc0 engine path: $SCRIPT_DIR/INSTALL/lc0_cpu"
@@ -88,7 +88,7 @@ fi
 echo "Launching BanksiaGui..."
 cd "$INSTALL_DIR"
 
-# Touch game-started marker for afterGamesReport collection
+# Touch game-started marker for afterGameReport collection
 if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
     touch "$SGL_GAME_STARTED_MARKER"
 fi

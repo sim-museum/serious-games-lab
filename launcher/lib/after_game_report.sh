@@ -103,8 +103,10 @@ _game_output_patterns() {
             echo ".|*.vhs"
             ;;
         # SUN - Go: .sgf and .rsgf files (GUIs may save to home config dirs)
+        # Users may save directly to afterGameReport/, so also scan there.
         run_katrain.sh|q5go.sh|sabaki.sh|igowin.sh|goreviewpartner.sh)
             echo ".|*.sgf"
+            echo "./afterGameReport|*.sgf"
             echo ".|*.rsgf"
             echo ".|*.rsgf.csv"
             echo "HOMESCAN|*.sgf"
@@ -167,7 +169,7 @@ collect_after_game_report() {
     # Build timestamp-based subdirectory name: YYMMDD_HHMM_gamename
     local subdir_name
     subdir_name="$(date -d "@$start_epoch" '+%y%m%d_%H%M')_${game_name}"
-    local report_dir="$day_dir/afterGamesReport/$subdir_name"
+    local report_dir="$day_dir/afterGameReport/$subdir_name"
 
     # Always set the report dir path so prompt_game_comment can find it
     LAST_REPORT_DIR="$report_dir"
@@ -198,6 +200,22 @@ collect_after_game_report() {
             fi
             [[ -d "$abs_search_dir" ]] || continue
 
+            # Build find exclusions — skip INSTALL and openingRepertoire always.
+            # Skip afterGameReport subdirs unless we're explicitly searching there
+            # (users may save SGFs directly to afterGameReport/).
+            local -a find_excludes=(
+                -not -path "*/INSTALL/*"
+                -not -path "*/openingRepertoire/*"
+                -not -name "*_analysed.sgf"
+            )
+            if [[ "$search_dir" != *afterGameReport* ]]; then
+                find_excludes+=(-not -path "*/afterGameReport/*")
+            else
+                # When scanning afterGameReport, only pick up files at the top level
+                # (not files already inside a timestamped subdirectory)
+                max_depth=1
+            fi
+
             # Find files matching pattern that are newer than start_epoch
             while IFS= read -r -d '' file; do
                 local file_epoch
@@ -210,9 +228,7 @@ collect_after_game_report() {
                     cp "$file" "$report_dir/"
                 fi
             done < <(find "$abs_search_dir" -maxdepth "$max_depth" -name "$pattern" -type f \
-                        -not -path "*/afterGamesReport/*" \
-                        -not -path "*/INSTALL/*" \
-                        -not -path "*/openingRepertoire/*" -print0 2>/dev/null)
+                        "${find_excludes[@]}" -print0 2>/dev/null)
         done <<< "$patterns"
     fi
 
@@ -237,7 +253,7 @@ collect_after_game_report() {
     if [[ "$found_files" == true ]]; then
         local count
         count="$(find "$report_dir" -type f | wc -l)"
-        msg_ok "Collected $count file(s) to $day/afterGamesReport/$subdir_name/"
+        msg_ok "Collected $count file(s) to $day/afterGameReport/$subdir_name/"
     fi
 }
 
@@ -280,7 +296,7 @@ prompt_game_comment() {
         game_name="$(_game_short_name "$script")"
         local subdir_name
         subdir_name="$(date '+%y%m%d_%H%M')_${game_name}"
-        report_dir="$day_dir/afterGamesReport/$subdir_name"
+        report_dir="$day_dir/afterGameReport/$subdir_name"
         mkdir -p "$report_dir"
     fi
 

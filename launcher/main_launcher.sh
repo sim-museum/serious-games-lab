@@ -692,7 +692,7 @@ run_game() {
 
 ensure_after_game_report_dirs() {
     for day in "${DAY_ORDER[@]}"; do
-        mkdir -p "$REPO_ROOT/$day/afterGamesReport"
+        mkdir -p "$REPO_ROOT/$day/afterGameReport"
     done
 }
 

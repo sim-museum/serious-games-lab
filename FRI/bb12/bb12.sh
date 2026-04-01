@@ -29,8 +29,34 @@ if [ -f "$WINEPREFIX/Bridge Baron/Baron.exe" ]; then
     # If installed, change directory and run Bridge Baron 12
     cd "$WINEPREFIX/Bridge Baron"
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
+    # Snapshot existing PPL files before launching
+    _bb12_snapshot_time=$(date +%s)
     wine Baron.exe 2>/dev/null 1>/dev/null
     clear
+
+    # Convert any new/modified .ppl files to .bdl in afterGameReport
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    FRI_DIR="$(dirname "$SCRIPT_DIR")"
+    REPORT_DIR="$FRI_DIR/afterGameReport"
+    HARNESS_DIR="$FRI_DIR/guiHarness"
+    mkdir -p "$REPORT_DIR"
+    while IFS= read -r -d '' ppl_file; do
+        fmod=$(stat -c %Y "$ppl_file" 2>/dev/null) || continue
+        [[ "$fmod" -le "$_bb12_snapshot_time" ]] && continue
+        base=$(basename "$ppl_file" .ppl)
+        [[ "$base" == "Sample" ]] && continue
+        cp "$ppl_file" "$REPORT_DIR/${base}.ppl"
+        if [[ -f "$HARNESS_DIR/ppl_to_pbn.py" && -x "$HARNESS_DIR/venv/bin/python3" ]]; then
+            PYTHONPATH="$HARNESS_DIR" "$HARNESS_DIR/venv/bin/python3" -c "
+import ppl_to_pbn
+bdl = ppl_to_pbn.ppl_to_bdl('$REPORT_DIR/${base}.ppl')
+with open('$REPORT_DIR/${base}.bdl', 'w') as f:
+    f.write(bdl)
+print('  Converted ${base}.ppl -> ${base}.bdl')
+" 2>/dev/null && true
+        fi
+    done < <(find "$WINEPREFIX/Bridge Baron" -maxdepth 1 -name "*.ppl" -type f -print0 2>/dev/null)
+
     exit 0
 fi
 

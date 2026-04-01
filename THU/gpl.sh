@@ -399,7 +399,7 @@ cd "$WINEPREFIX/.."
 echo ""; echo "Running GEM+ ..."; echo ""
 echo "If the display isn't right, try different rasterizer choices (D3D, OpenGL) on the initial GEM+ screen"
 echo ""
-# Mark game start so afterGamesReport only collects files from gameplay, not install
+# Mark game start so afterGameReport only collects files from gameplay, not install
 [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
 wine "$WINEPREFIX/drive_c/Program Files/GPLSecrets/GEM+/GEMP2.exe" 2>/dev/null 1>/dev/null
 

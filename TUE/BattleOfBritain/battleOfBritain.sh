@@ -77,7 +77,7 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain/bob.
     wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\DirectInput" /v MouseWarpOverride /t REG_SZ /d disable /f &>/dev/null
     wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver" /v DXGrab /t REG_SZ /d N /f &>/dev/null
 
-    # Mark game start so afterGamesReport only collects files from gameplay, not install
+    # Mark game start so afterGameReport only collects files from gameplay, not install
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     if [ "$numMonitors" -lt 2 ]; then
         # Single monitor: use virtual desktop to contain the spurious window
@@ -257,7 +257,7 @@ rsync -a "$BoB_INSTALL/RR ROWANBOB GRAPHICS MOD/bobMain/" "$WINEPREFIX/drive_c/P
 cp "$BoB_INSTALL/keys.xml" "$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain/KEYBOARD"
 # skip videos to prevent quartz VMR7 crash under Wine
 sed -i 's/SKIP_QUICKVIDEOS=OFF/SKIP_QUICKVIDEOS=ON/g; s/SKIP_VIDEOS=OFF/SKIP_VIDEOS=ON/g' "$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain/bdg.txt"
-# Mark game start so afterGamesReport only collects files from gameplay, not install
+# Mark game start so afterGameReport only collects files from gameplay, not install
 [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
 WINEDLLOVERRIDES="winegstreamer=d" wine start /wait /d "C:\\Program Files\\Rowan Software\\Battle Of Britain" bob.exe 2>/dev/null 1>/dev/null
 

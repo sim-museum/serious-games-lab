@@ -92,6 +92,15 @@ if ! ls "$KATAGO_DIR"/gtp_human_rank_*.cfg &>/dev/null; then
     fi
 fi
 
+# --- 4b. Fix logDir in existing rank configs if they point to a wrong home directory ---
+mkdir -p "$KATAGO_DIR/gtp_logs"
+for cfg in "$KATAGO_DIR"/gtp_human_rank_*.cfg; do
+    [[ -f "$cfg" ]] || continue
+    if grep -q "^logDir = " "$cfg" && ! grep -q "^logDir = $KATAGO_DIR/gtp_logs" "$cfg"; then
+        sed -i "s|^logDir = .*|logDir = $KATAGO_DIR/gtp_logs|" "$cfg"
+    fi
+done
+
 # --- 5. Set DEFAULT_CONFIG to the first available rank config ---
 DEFAULT_CONFIG=""
 for cfg in "$KATAGO_DIR"/gtp_human_rank_*.cfg; do
@@ -106,14 +115,20 @@ done
 _KATAGO_TUNE_DIR="$HOME/.katago/opencltuning"
 _KATRAIN_TUNE_DIR="$HOME/.katrain/opencltuning"
 
-_katago_needs_tuning() {
-    # Returns 0 (true) if any expected tuning file is missing or if KataGo
-    # reports it invalid. We check for mv14 (main model) and mv15 (human model).
+_katago_needs_mv14_tuning() {
     local dir="$1"
     [[ ! -d "$dir" ]] && return 0
-    local count
-    count=$(ls "$dir"/tune*_mv14.txt "$dir"/tune*_mv15.txt 2>/dev/null | wc -l)
-    [[ "$count" -lt 2 ]]
+    ls "$dir"/tune*_mv14.txt &>/dev/null && return 1 || return 0
+}
+
+_katago_needs_mv15_tuning() {
+    local dir="$1"
+    [[ ! -d "$dir" ]] && return 0
+    ls "$dir"/tune*_mv15.txt &>/dev/null && return 1 || return 0
+}
+
+_katago_needs_tuning() {
+    _katago_needs_mv14_tuning "$1" || _katago_needs_mv15_tuning "$1"
 }
 
 _katago_is_opencl() {
@@ -126,18 +141,30 @@ if _katago_is_opencl && \
     # Verify katago can actually run before attempting tuning
     if "$KATAGO_BIN" version &>/dev/null; then
         echo ""
-        echo "Running one-time KataGo GPU autotuning (this takes 1-2 minutes)..."
+        echo "Running one-time KataGo GPU autotuning (this may take several minutes)..."
         echo "This must complete before Go GUIs can use the engine."
         echo ""
 
-        # Tune main model (mv14) then human model (mv15) in one invocation.
-        # GTP mode accepts "quit" cleanly. Using the human rank config so both
-        # -model and -human-model are loaded and tuned.
-        echo "quit" | timeout 180 "$KATAGO_BIN" gtp \
-            -model "$MAIN_MODEL" \
-            -human-model "$HUMAN_MODEL" \
-            -config "${DEFAULT_CONFIG:-$KATAGO_DIR/default_gtp.cfg}" \
-            2>&1 | grep -E '(Tuning|tuning|Done|ERROR|OpenCL|FP16|backend)' || true
+        # Tune each model separately with its own timeout so one completing
+        # doesn't eat into the other's budget.
+        _TUNE_CFG="${DEFAULT_CONFIG:-$KATAGO_DIR/default_gtp.cfg}"
+
+        if _katago_needs_mv14_tuning "$_KATAGO_TUNE_DIR"; then
+            echo "Tuning main model (mv14)..."
+            echo "quit" | timeout 300 "$KATAGO_BIN" gtp \
+                -model "$MAIN_MODEL" \
+                -config "$_TUNE_CFG" \
+                2>&1 | grep -E '(Tuning|tuning|Done|ERROR|OpenCL|FP16|backend)' || true
+        fi
+
+        if _katago_needs_mv15_tuning "$_KATAGO_TUNE_DIR"; then
+            echo "Tuning human model (mv15)..."
+            echo "quit" | timeout 300 "$KATAGO_BIN" gtp \
+                -model "$MAIN_MODEL" \
+                -human-model "$HUMAN_MODEL" \
+                -config "$_TUNE_CFG" \
+                2>&1 | grep -E '(Tuning|tuning|Done|ERROR|OpenCL|FP16|backend)' || true
+        fi
 
         if _katago_needs_tuning "$_KATAGO_TUNE_DIR"; then
             echo "WARNING: GPU autotuning may not have completed successfully."

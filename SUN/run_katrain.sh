@@ -6,8 +6,8 @@ source "$SCRIPT_DIR/ensure_katago.sh"
 source "$SCRIPT_DIR/analyze_new_sgf.sh"
 
 # Set up venv if needed
-if [[ ! -d "$SCRIPT_DIR/katrain_venv" ]]; then
-    echo "KaTrain venv not found. Installing now..."
+if [[ ! -f "$SCRIPT_DIR/katrain_venv/bin/activate" ]]; then
+    echo "KaTrain venv not found or broken. Installing now..."
     bash "$SCRIPT_DIR/setup_katrain.sh"
 fi
 

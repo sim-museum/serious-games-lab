@@ -3,7 +3,7 @@ eSports for Engineers 24041LTS
 
 Note: save your replay files after each session.  For FreeFalcon and
 Falcon BMS, these are .vhs files.  Copy your replay files, along with
-screenshot .png files and debriefing files, to the SAT/afterGamesReport
+screenshot .png files and debriefing files, to the SAT/afterGameReport
 directory, calculate your score as described below, and then enter your
 score using the launcher.
 

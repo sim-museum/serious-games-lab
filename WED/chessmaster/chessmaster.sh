@@ -27,7 +27,7 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/Ubisoft/Chessmaster Grandmaster Editi
     pgn_snapshot=$(mktemp)
     find "$CM_USERS_DIR" -name "*.PGN" -o -name "*.pgn" 2>/dev/null | sort > "$pgn_snapshot"
 
-    # Touch game-started marker for afterGamesReport collection
+    # Touch game-started marker for afterGameReport collection
     if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
         touch "$SGL_GAME_STARTED_MARKER"
     fi
@@ -67,7 +67,7 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/Ubisoft/Chessmaster Grandmaster Editi
         echo ""
         echo "Converting and analysing Chessmaster PGN files..."
 
-        # Determine the day directory for afterGamesReport output
+        # Determine the day directory for afterGameReport output
         day_dir="${REPO_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}/WED"
 
         # Set up venv with python-chess for stockfish annotation
@@ -98,7 +98,7 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/Ubisoft/Chessmaster Grandmaster Editi
             rm -f "$converted"
         done <<< "$new_pgn_files"
 
-        echo "PGN files saved to $day_dir/ for afterGamesReport collection."
+        echo "PGN files saved to $day_dir/ for afterGameReport collection."
     fi
 
     # Sync saved games

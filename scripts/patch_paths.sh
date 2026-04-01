@@ -50,7 +50,7 @@ fi
 if grep -q '^print(' SUN/copyRecentFilesToAfterGameReport.sh 2>/dev/null; then
     cat > SUN/copyRecentFilesToAfterGameReport.sh << 'EOF'
 #!/bin/bash
-echo "Copy screenshots in ~/Pictures and other game output to ./afterGamesReport manually."
+echo "Copy screenshots in ~/Pictures and other game output to ./afterGameReport manually."
 EOF
     echo "  Fixed: SUN/copyRecentFilesToAfterGameReport.sh"
 else
