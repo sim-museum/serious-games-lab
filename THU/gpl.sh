@@ -194,39 +194,44 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
     gplTracksDir="$WINEPREFIX/drive_c/Sierra/GPL/tracks"
     gplCarsetsDir="$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/tracks"
     
-    # Install additional tracks
-    wine "$additionalTracksDir/GPL_Montjuic_Park_1969_v1.0.02.exe" 2>/dev/null 1>/dev/null
+    # Install additional tracks (Inno Setup installers use /VERYSILENT /DIR=)
+    echo "installing Montjuic Park ..."
+    wine "$additionalTracksDir/GPL_Montjuic_Park_1969_v1.0.02.exe" /VERYSILENT /DIR="C:\\Sierra\\GPL" 2>/dev/null 1>/dev/null
     rm -rf "$gplTracksDir/thruxton"
-    wine "$additionalTracksDir/gpltrackinstall_thruxton_v1.0.exe" 2>/dev/null 1>/dev/null
+    echo "installing Thruxton ..."
+    wine "$additionalTracksDir/gpltrackinstall_thruxton_v1.0.exe" /VERYSILENT /DIR="C:\\Sierra\\GPL" 2>/dev/null 1>/dev/null
     rsync -a "$additionalTracksDir/Thruxton_DB_extra_files/gpl/" "$gplTracksDir/"
     rsync -a "$additionalTracksDir/Thruxton_PS_mpost_update/gpl/" "$gplTracksDir/"
     cp "$additionalTracksDir/Thruxton_High_Res_textures/"*.* "$gplTracksDir/thruxton"
-    wine "$additionalTracksDir/GPL_goodwd65_v1.0.exe" 2>/dev/null 1>/dev/null
-    wine "$additionalTracksDir/spa67.exe" 2>/dev/null 1>/dev/null
+    echo "installing Goodwood 65 ..."
+    wine "$additionalTracksDir/GPL_goodwd65_v1.0.exe" /VERYSILENT /DIR="C:\\Sierra\\GPL" 2>/dev/null 1>/dev/null
+    echo "installing Spa 67 ..."
+    wine "$additionalTracksDir/spa67.exe" /VERYSILENT /DIR="C:\\Sierra\\GPL" 2>/dev/null 1>/dev/null
+    echo "installing Isle of Man ..."
     cd "$gplCarsetsDir/other/IsleMan"
     wine TrackInstall.exe 2>/dev/null 1>/dev/null
-    wine "$additionalTracksDir/gpltrackinstall_Beal60s_v1.12.exe" 2>/dev/null 1>/dev/null
-    wine "$additionalTracksDir/GPL_Wilmot_v1.0.exe" 2>/dev/null 1>/dev/null
-    wine "$additionalTracksDir/GPL_Skidfun_v1.0.exe" 2>/dev/null 1>/dev/null
+    echo "installing Beal60s ..."
+    wine "$additionalTracksDir/gpltrackinstall_Beal60s_v1.12.exe" /VERYSILENT /DIR="C:\\Sierra\\GPL" 2>/dev/null 1>/dev/null
+    echo "installing Wilmot ..."
+    wine "$additionalTracksDir/GPL_Wilmot_v1.0.exe" /VERYSILENT /DIR="C:\\Sierra\\GPL" 2>/dev/null 1>/dev/null
+    echo "installing Skidfun ..."
+    wine "$additionalTracksDir/GPL_Skidfun_v1.0.exe" /VERYSILENT /DIR="C:\\Sierra\\GPL" 2>/dev/null 1>/dev/null
     rsync -a "$additionalTracksDir/skidfun_No-lava_cones-for-women/skidfun/" "$gplTracksDir/skidfun/"
     echo ""; echo "adding additional tracks needed by carsets"
-    wine "$additionalTracksDir/GPL65ModTracks_0.5.exe" 2>/dev/null 1>/dev/null
+    wine "$additionalTracksDir/GPL65ModTracks_0.5.exe" /VERYSILENT /DIR="C:\\Sierra\\GPL" 2>/dev/null 1>/dev/null
     rsync -a "$INSTALL_DIR/tracks/" "$WINEPREFIX/drive_c/Sierra/GPL/tracks/"
     echo " "; echo "step 4 of 8"; echo " "
     echo ""; echo "installing 55, 65, 66, 67 sports cars, 69 carsets"; echo ""
-    wine "$INSTALL_DIR/carsets/GPL55F1_1.0.3.exe" 2>/dev/null 1>/dev/null
+    wine "$INSTALL_DIR/carsets/GPL55F1_1.0.3.exe" /VERYSILENT /DIR="C:\\Sierra\\GPL" 2>/dev/null 1>/dev/null
     rsync -a "$INSTALL_DIR/carsets/55Mod_Update_Patch/" "$WINEPREFIX/drive_c/Sierra/GPL/"
-    
+
     # Install additional carsets and mods
-    
+
     # Install GPL 1965 alternative carset
-    # NOTE: This installer can hang silently under Wine. If it does, the gpl65
-    # mod won't appear in GEM+. To install manually afterwards:
-    #   cd /home/m/sgl/THU && wine INSTALL/carsets/GPL65F1_Alternative__2.0.2.exe
-    wine "$INSTALL_DIR/carsets/GPL65F1_Alternative__2.0.2.exe" 2>/dev/null 1>/dev/null
+    wine "$INSTALL_DIR/carsets/GPL65F1_Alternative__2.0.2.exe" /VERYSILENT /DIR="C:\\Sierra\\GPL" 2>/dev/null 1>/dev/null
 
     # Install GPL 1966 carset
-    wine "$INSTALL_DIR/carsets/gpl1966_1.0.exe" 2>/dev/null 1>/dev/null
+    wine "$INSTALL_DIR/carsets/gpl1966_1.0.exe" /VERYSILENT /DIR="C:\\Sierra\\GPL" 2>/dev/null 1>/dev/null
 
     # Remove existing GPL66 mod directory and install 1966 Mod Patch
     # NOTE: The 1966 PATCH installer shows a harmless "no Windows program
@@ -236,7 +241,7 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
     wine "$INSTALL_DIR/carsets/1966_Mod_PATCH_v2.0/1966mod_PATCH_v2.0_Setup.exe" 2>/dev/null 1>/dev/null
     
     # Install GPL Sound Carset Extra
-    wine "$INSTALL_DIR/carsets/GPLSC_EXTRA_1.1.exe" 2>/dev/null 1>/dev/null
+    wine "$INSTALL_DIR/carsets/GPLSC_EXTRA_1.1.exe" /VERYSILENT /DIR="C:\\Sierra\\GPL" 2>/dev/null 1>/dev/null
     
     # Install 1969 Extra carset
     wine "$INSTALL_DIR/carsets/69mod X'tra for Grand Prix Legends.exe" 2>/dev/null 1>/dev/null

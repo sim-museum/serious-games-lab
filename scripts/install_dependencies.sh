@@ -337,7 +337,7 @@ if [[ $ERRORS -eq 0 ]]; then
     echo "  All dependencies installed successfully!"
     echo ""
     echo "  Next steps:"
-    echo "    1. Place sglBinaries_*.tar.gz in downloads/"
+    echo "    1. Place sglBinaries_*.tar.gz in sgl/downloads/"
     echo "    2. Run: ./launcher/install_binaries.sh"
     echo "    3. Run: ./launcher/main_launcher.sh"
     echo ""

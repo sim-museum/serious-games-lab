@@ -74,11 +74,17 @@ if lsmod | grep -q nouveau; then
     echo "         Fix: sudo ubuntu-drivers autoinstall && sudo reboot"
     AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
 elif NVIDIA_VER=$(dpkg -l 2>/dev/null | grep -oP 'nvidia-driver-\K[0-9]+' | head -1) && [[ -n "$NVIDIA_VER" ]]; then
-    if [[ $NVIDIA_VER -ge 525 && $NVIDIA_VER -le 575 ]]; then
+    if [[ $NVIDIA_VER -eq 535 ]]; then
         echo "  [OK]   Graphics: NVIDIA driver $NVIDIA_VER (DXVK compatible)"
+    elif [[ $NVIDIA_VER -ge 525 && $NVIDIA_VER -le 575 ]]; then
+        echo "  [WARN] Graphics: NVIDIA driver $NVIDIA_VER — driver 535 is recommended"
+        echo "         Purge the existing driver before installing 535:"
+        echo "         Fix: sudo apt-get purge -y 'nvidia-*-${NVIDIA_VER}*' && sudo apt-get install -y nvidia-driver-535 && sudo reboot"
+        AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
     else
         echo "  [WARN] Graphics: NVIDIA driver $NVIDIA_VER — not DXVK compatible"
-        echo "         Fix: sudo apt install nvidia-driver-535 && sudo reboot"
+        echo "         Purge the existing driver before installing 535:"
+        echo "         Fix: sudo apt-get purge -y 'nvidia-*-${NVIDIA_VER}*' && sudo apt-get install -y nvidia-driver-535 && sudo reboot"
         AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
     fi
 else
@@ -298,12 +304,12 @@ fi
 echo ""
 
 # ============================================================
-# Check if any binary games were distributed (WP directories exist)
+# Check if any binary games were distributed (INSTALL directories exist)
 # ============================================================
 shopt -s nullglob
-_WP_DIRS=("$REPO_ROOT"/*/WP/ "$REPO_ROOT"/*/*/WP/)
+_INSTALL_DIRS=("$REPO_ROOT"/*/INSTALL/ "$REPO_ROOT"/*/*/INSTALL/)
 shopt -u nullglob
-HAS_BINARY_GAMES=${#_WP_DIRS[@]}
+HAS_BINARY_GAMES=${#_INSTALL_DIRS[@]}
 
 # ============================================================
 # PHASE 4: Download Lutris wine runners (as real user)
@@ -312,7 +318,8 @@ echo "PHASE 4: Setting up Lutris wine runners..."
 echo ""
 
 if [[ $HAS_BINARY_GAMES -eq 0 ]]; then
-    echo "  No binary games installed; skipping wine runner setup."
+    echo "  No binary games distributed yet; skipping wine runner setup."
+    echo "  Wine runners will be downloaded on first game launch."
 else
     CSV_FILE="$REPO_ROOT/config/wine_runners.csv"
     RUNNERS_DIR="$REAL_HOME/.local/share/lutris/runners/wine"
@@ -377,7 +384,8 @@ echo ""
 if [[ -d "$REPO_ROOT/TUE/MigAlley/WP" ]] && [[ -d "$REPO_ROOT/TUE/BattleOfBritain/WP" ]]; then
     sudo -u "$REAL_USER" "$REPO_ROOT/scripts/fix_rowan_games.sh" all || true
 else
-    echo "  Rowan games not yet installed; skipping."
+    echo "  Rowan game Wine prefixes not yet created; skipping."
+    echo "  Fixes will be applied on first launch."
 fi
 
 echo ""
@@ -390,5 +398,5 @@ echo "  To launch the game menu:"
 echo "    ./launcher/main_launcher.sh"
 echo ""
 echo "  To add more binary game archives:"
-echo "    Place sglBinaries_* dirs in downloads/ and re-run sudo ./install.sh"
+echo "    Place sglBinaries_* dirs in sgl/downloads/ and re-run sudo ./install.sh"
 echo "=============================================="
