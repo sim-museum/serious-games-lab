@@ -40,23 +40,41 @@ if [ -f "$WINEPREFIX/Bridge Baron/Baron.exe" ]; then
     FRI_DIR="$(dirname "$BB12_DIR")"
     REPORT_DIR="$FRI_DIR/afterGameReport"
     HARNESS_DIR="$FRI_DIR/guiHarness"
-    mkdir -p "$REPORT_DIR"
+
+    # Find the launcher's timestamped report dir (most recent bb12 subdir)
+    _bb12_dest=""
+    if [[ -d "$REPORT_DIR" ]]; then
+        _bb12_dest=$(find "$REPORT_DIR" -mindepth 1 -maxdepth 1 -type d -name "*_bb12" \
+                         -printf '%T@ %p\n' 2>/dev/null \
+                     | sort -rn | head -1 | cut -d' ' -f2-)
+    fi
+    if [[ -z "$_bb12_dest" || ! -d "$_bb12_dest" ]]; then
+        _bb12_dest="$REPORT_DIR/$(date '+%y%m%d_%H%M')_bb12"
+    fi
+    mkdir -p "$_bb12_dest"
+
+    # Search Wine prefix, FRI dir, and the report dir for new .ppl files
     while IFS= read -r -d '' ppl_file; do
         fmod=$(stat -c %Y "$ppl_file" 2>/dev/null) || continue
         [[ "$fmod" -le "$_bb12_snapshot_time" ]] && continue
         base=$(basename "$ppl_file" .ppl)
         [[ "$base" == "Sample" ]] && continue
-        cp "$ppl_file" "$REPORT_DIR/${base}.ppl"
+        # Copy to report dir if not already there
+        if [[ "$(dirname "$ppl_file")" != "$_bb12_dest" ]]; then
+            cp "$ppl_file" "$_bb12_dest/${base}.ppl"
+        fi
+        # Convert to BDL
         if [[ -f "$HARNESS_DIR/ppl_to_pbn.py" && -x "$HARNESS_DIR/venv/bin/python3" ]]; then
             PYTHONPATH="$HARNESS_DIR" "$HARNESS_DIR/venv/bin/python3" -c "
 import ppl_to_pbn
-bdl = ppl_to_pbn.ppl_to_bdl('$REPORT_DIR/${base}.ppl')
-with open('$REPORT_DIR/${base}.bdl', 'w') as f:
+bdl = ppl_to_pbn.ppl_to_bdl('$_bb12_dest/${base}.ppl')
+with open('$_bb12_dest/${base}.bdl', 'w') as f:
     f.write(bdl)
 print('  Converted ${base}.ppl -> ${base}.bdl')
 " 2>/dev/null && true
         fi
-    done < <(find "$WINEPREFIX/Bridge Baron" -maxdepth 1 -name "*.ppl" -type f -print0 2>/dev/null)
+    done < <(find "$WINEPREFIX/Bridge Baron" "$FRI_DIR" "$_bb12_dest" \
+                 -maxdepth 1 -name "*.ppl" -type f -print0 2>/dev/null)
 
     exit 0
 fi

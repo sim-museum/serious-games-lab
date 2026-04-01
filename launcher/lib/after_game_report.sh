@@ -32,7 +32,11 @@ _game_output_patterns() {
             echo "HOMESCAN|*.txt"
             echo "HOMESCAN|*.pbn"
             ;;
-        bcalc.sh|benBridge/run.sh|qplus.sh|bb12/bb12.sh|tenace.sh)
+        bb12/bb12.sh)
+            echo ".|*.pbn"
+            echo ".|*.ppl"
+            ;;
+        bcalc.sh|benBridge/run.sh|qplus.sh|tenace.sh)
             echo ".|*.pbn"
             ;;
         # FRI - Math quiz, memory training (no persistent output files)

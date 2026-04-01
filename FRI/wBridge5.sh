@@ -38,23 +38,41 @@ if [ -d "$WINEPREFIX/drive_c/wbridge5" ]; then
     FRI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     REPORT_DIR="$FRI_DIR/afterGameReport"
     HARNESS_DIR="$FRI_DIR/guiHarness"
-    mkdir -p "$REPORT_DIR"
+
+    # Find the launcher's timestamped report dir (most recent wbridge5 subdir)
+    _wb5_dest=""
+    if [[ -d "$REPORT_DIR" ]]; then
+        _wb5_dest=$(find "$REPORT_DIR" -mindepth 1 -maxdepth 1 -type d -name "*_wbridge5" \
+                        -printf '%T@ %p\n' 2>/dev/null \
+                    | sort -rn | head -1 | cut -d' ' -f2-)
+    fi
+    if [[ -z "$_wb5_dest" || ! -d "$_wb5_dest" ]]; then
+        _wb5_dest="$REPORT_DIR/$(date '+%y%m%d_%H%M')_wbridge5"
+    fi
+    mkdir -p "$_wb5_dest"
+
+    # Search Wine prefix and FRI dir for new .pbn files
     while IFS= read -r -d '' pbn_file; do
         fmod=$(stat -c %Y "$pbn_file" 2>/dev/null) || continue
         [[ "$fmod" -le "$_wb5_snapshot_time" ]] && continue
         base=$(basename "$pbn_file" .pbn)
         [[ "$base" == "precedent" ]] && continue
-        cp "$pbn_file" "$REPORT_DIR/${base}.pbn"
+        # Copy to report dir if not already there
+        if [[ "$(dirname "$pbn_file")" != "$_wb5_dest" ]]; then
+            cp "$pbn_file" "$_wb5_dest/${base}.pbn"
+        fi
+        # Convert to BDL
         if [[ -f "$HARNESS_DIR/bridge_harness.py" && -x "$HARNESS_DIR/venv/bin/python3" ]]; then
             PYTHONPATH="$HARNESS_DIR" "$HARNESS_DIR/venv/bin/python3" -c "
 import bridge_harness as bh
-bdl = bh.pbn_file_to_bdl('$REPORT_DIR/${base}.pbn', source_label='WB')
-with open('$REPORT_DIR/${base}.bdl', 'w') as f:
+bdl = bh.pbn_file_to_bdl('$_wb5_dest/${base}.pbn', source_label='WB')
+with open('$_wb5_dest/${base}.bdl', 'w') as f:
     f.write(bdl)
 print('  Converted ${base}.pbn -> ${base}.bdl')
 " 2>/dev/null && true
         fi
-    done < <(find "$WINEPREFIX/drive_c/wbridge5" "$FRI_DIR" -maxdepth 1 -name "*.pbn" -type f -print0 2>/dev/null)
+    done < <(find "$WINEPREFIX/drive_c/wbridge5" "$FRI_DIR" "$_wb5_dest" \
+                 -maxdepth 1 -name "*.pbn" -type f -print0 2>/dev/null)
 
     # Display exit message
     cat "$PWD/DOC/REFERENCE/exitMessageWbridge5.txt"
