@@ -35,8 +35,9 @@ if [ -f "$WINEPREFIX/Bridge Baron/Baron.exe" ]; then
     clear
 
     # Convert any new/modified .ppl files to .bdl in afterGameReport
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    FRI_DIR="$(dirname "$SCRIPT_DIR")"
+    # WINEPREFIX was set from $PWD before cd to Wine prefix, so derive paths from it
+    BB12_DIR="$(dirname "$WINEPREFIX")"
+    FRI_DIR="$(dirname "$BB12_DIR")"
     REPORT_DIR="$FRI_DIR/afterGameReport"
     mkdir -p "$REPORT_DIR"
     while IFS= read -r -d '' ppl_file; do
