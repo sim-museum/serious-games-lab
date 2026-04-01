@@ -869,7 +869,7 @@ main() {
                 echo ""
                 read -rp "Press Enter to continue..." _
             elif [[ "$available" == "missing_data" ]]; then
-                msg_warn "$display needs sglBinaries_${archive}. Place sglBinaries_${archive}.tar.gz in downloads/ and run launcher/install_binaries.sh"
+                msg_warn "$display needs sglBinaries_${archive}. Place sglBinaries_${archive}.tar.gz in sgl/downloads/ and run launcher/install_binaries.sh"
                 echo ""
                 read -rp "Press Enter to continue..." _
             else

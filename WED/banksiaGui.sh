@@ -7,27 +7,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$SCRIPT_DIR/INSTALL/BanksiaGui"
 BANKSIA_SH="$INSTALL_DIR/BanksiaGUI.sh"
 
-# --- Ensure lc0 engine is available ---
+# --- Ensure lc0 engine is available (build from source, fall back to pre-built) ---
+echo "Building lc0 from source..."
+if bash "$SCRIPT_DIR/install_lc0.sh" 2>&1; then
+    echo "lc0 built successfully."
+elif [[ -x "$SCRIPT_DIR/INSTALL/lc0_cpu" ]]; then
+    echo "Build failed; using pre-built lc0 binary."
+else
+    echo "WARNING: lc0 not available. Build failed and no pre-built binary found."
+fi
 if [[ -x "$SCRIPT_DIR/INSTALL/lc0_cpu" ]]; then
     echo "lc0 engine path: $SCRIPT_DIR/INSTALL/lc0_cpu"
     echo "Weights file:    $SCRIPT_DIR/INSTALL/tinygyal-8.pb.gz"
     echo "Maia human-like weights (ELO 1100-1900) are also available in $SCRIPT_DIR/INSTALL/maia_weights/"
-else
-    echo ""
-    echo "lc0 engine not found. Building from source..."
-    bash "$SCRIPT_DIR/install_lc0.sh"
-    if [[ -x "$SCRIPT_DIR/INSTALL/lc0_cpu" ]]; then
-        echo ""
-        echo "lc0 built successfully."
-        echo "lc0 engine path: $SCRIPT_DIR/INSTALL/lc0_cpu"
-        echo "Weights file:    $SCRIPT_DIR/INSTALL/tinygyal-8.pb.gz"
-        echo "Maia human-like weights (ELO 1100-1900) are also available in $SCRIPT_DIR/INSTALL/maia_weights/"
-    fi
 fi
 echo ""
 
 # --- Download BanksiaGui if not present ---
-if [[ ! -f "$BANKSIA_SH" ]]; then
+if [[ ! -x "$INSTALL_DIR/bin/BanksiaGUI" ]]; then
     echo "BanksiaGui not found. Downloading..."
     mkdir -p "$SCRIPT_DIR/INSTALL"
 
@@ -52,56 +49,38 @@ if [[ ! -f "$BANKSIA_SH" ]]; then
     fi
 fi
 
-# --- Configure lc0 as default engine if not already configured ---
+# --- Ensure Maia weights are available ---
+MAIA_WEIGHTS="$SCRIPT_DIR/INSTALL/maia_weights/maia-1100.pb.gz"
+if [[ -x "$SCRIPT_DIR/INSTALL/lc0_cpu" ]] && [[ ! -f "$MAIA_WEIGHTS" ]]; then
+    echo "Downloading Maia 1100 weights..."
+    mkdir -p "$SCRIPT_DIR/INSTALL/maia_weights"
+    curl -fSL --progress-bar -o "$MAIA_WEIGHTS" \
+        "https://github.com/CSSLab/maia-chess/releases/download/v1.0/maia-1100.pb.gz" || {
+        echo "  WARNING: Failed to download Maia weights."
+        rm -f "$MAIA_WEIGHTS"
+    }
+fi
+
+# --- Place lc0 in BanksiaGui's engine scan directory ---
+BSG_ENGINES="$INSTALL_DIR/bin/bsg-engines"
+if [[ -x "$SCRIPT_DIR/INSTALL/lc0_cpu" ]] && [[ ! -x "$BSG_ENGINES/lc0" ]]; then
+    cat > "$BSG_ENGINES/lc0" << 'WRAPPER_EOF'
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")/../../../../" && pwd)"
+exec "$SCRIPT_DIR/INSTALL/lc0_cpu" --weights="$SCRIPT_DIR/INSTALL/maia_weights/maia-1100.pb.gz" "$@"
+WRAPPER_EOF
+    chmod +x "$BSG_ENGINES/lc0"
+    echo "Created lc0 wrapper in BanksiaGui engine directory."
+fi
+
+# --- Configure lc0 with Maia weights and set as default engine ---
 BANKSIA_CONFIG_DIR="$HOME/.config/BanksiaGUI"
 BANKSIA_ENGINES="$BANKSIA_CONFIG_DIR/banksiaengines.json"
 if [[ -x "$SCRIPT_DIR/INSTALL/lc0_cpu" ]]; then
-    # Write lc0 engine config with maia-1100 weights (beginner-level human-like play)
-    if [[ ! -f "$BANKSIA_ENGINES" ]] || ! grep -q "lc0" "$BANKSIA_ENGINES" 2>/dev/null; then
-        mkdir -p "$BANKSIA_CONFIG_DIR"
-        cat > "$BANKSIA_ENGINES" << ENGINES_EOF
-[
-  {
-    "app" :
-    {
-      "arguments" : [],
-      "author" : "LeelaChessZero Contributors",
-      "color" : 4288092609,
-      "command" : "$SCRIPT_DIR/INSTALL/lc0_cpu",
-      "elo" : 1100,
-      "gpu" : false,
-      "idName" : "lc0",
-      "initStrings" : [],
-      "name" : "lc0 (Maia 1100)",
-      "protocol" : "uci",
-      "working folder" : "$SCRIPT_DIR/INSTALL"
-    },
-    "comment" : "Maia 1100 weights with movetime 0.1s (approx nibbler level 2)",
-    "options" : [
-      {
-        "default" : "",
-        "name" : "WeightsFile",
-        "type" : "string",
-        "value" : "$SCRIPT_DIR/INSTALL/maia_weights/maia-1100.pb.gz"
-      }
-    ]
-  }
-]
-ENGINES_EOF
-        echo "Configured lc0 with Maia 1100 weights as default engine in BanksiaGui."
-    fi
-    # Set time control to movetime 0.1s (equivalent to nibbler level 2: ~2 nodes)
-    BANKSIA_MAIN="$BANKSIA_CONFIG_DIR/banksiamain.json"
-    if [[ -f "$BANKSIA_MAIN" ]]; then
-        python3 -c "
-import json, sys
-with open('$BANKSIA_MAIN') as f:
-    cfg = json.load(f)
-cfg['time control'] = {'mode': 'movetime', 'time': 0.1}
-cfg['demo']['time control'] = {'mode': 'movetime', 'time': 0.1}
-with open('$BANKSIA_MAIN', 'w') as f:
-    json.dump(cfg, f, indent=2)
-" 2>/dev/null && echo "Set time control to movetime 0.1s (beginner level)."
+    # Remove stale config so BanksiaGui re-scans and picks up lc0
+    if [[ -f "$BANKSIA_ENGINES" ]] && ! grep -q "lc0" "$BANKSIA_ENGINES" 2>/dev/null; then
+        rm -f "$BANKSIA_ENGINES"
+        echo "Cleared stale engine config to trigger lc0 detection."
     fi
 fi
 
