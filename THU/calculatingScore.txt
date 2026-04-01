@@ -4,7 +4,7 @@ eSports for Engineers 24041LTS
 Note: save your replay file after each race.  For Grand Prix Legends, these files are stored in
 THU/WP/drive_c/Sierra/GPL/replay.  Copy your .rpy files, along with
 setup files, screenshot .png files showing your games and analysis, to
-the THU/afterGamesReport directory, calculate your score as described
+the THU/afterGameReport directory, calculate your score as described
 below, and then enter your score using launcher.py
 
 Note: these OKRs can be completed with either Grand Prix Legends or rFactor 1.

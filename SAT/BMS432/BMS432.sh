@@ -43,7 +43,7 @@ fi
 if [[ -d "$GAME_DIR" && -f "$GAME_DIR/Launcher.exe" ]]; then
     echo "Starting Falcon BMS 4.32 ..."
     cd "$GAME_DIR"
-    # Mark game start so afterGamesReport only collects files from gameplay, not install
+    # Mark game start so afterGameReport only collects files from gameplay, not install
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     wine explorer /desktop=BMS432,1024x768 Launcher.exe -window 2>/dev/null
     exit 0

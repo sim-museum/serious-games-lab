@@ -3,7 +3,7 @@
 #
 # Source this file after ensure_katago.sh. Call analyze_new_sgf_files after
 # the game exits to find new .sgf files, run KataGo analysis, and save
-# annotated versions for afterGamesReport collection.
+# annotated versions alongside the originals in afterGameReport.
 #
 # Requires: KATAGO_BIN, MAIN_MODEL, ANALYSIS_CFG (set by ensure_katago.sh)
 
@@ -13,36 +13,35 @@ snapshot_sgf_files() {
     _SGF_SNAPSHOT=$(mktemp)
     _SGF_SNAPSHOT_TIME=$(date +%s)
     local day_dir="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}/SUN"
-    find "$day_dir" -maxdepth 1 -name "*.sgf" -type f 2>/dev/null | sort > "$_SGF_SNAPSHOT"
+    find "$day_dir" -name "*.sgf" -type f 2>/dev/null | sort > "$_SGF_SNAPSHOT"
 }
 
 # Find new/modified SGF files and run KataGo analysis on each.
+# Produces an _analysed.sgf alongside the original in afterGameReport.
 # Call this after the game exits.
 analyze_new_sgf_files() {
     local day_dir="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}/SUN"
     local annotate_script="$SCRIPT_DIR/katago_annotate.py"
+    local report_dir="$day_dir/afterGameReport"
 
-    # Find SGF files newer than the snapshot
+    # Find SGF files newer than the snapshot — search the whole day dir
+    # (including afterGameReport where users may save directly) plus
+    # common GUI config dirs.
     local new_sgf=""
-    while IFS= read -r -d '' f; do
-        local fmod
-        fmod=$(stat -c %Y "$f" 2>/dev/null) || continue
-        if [[ "$fmod" -gt "$_SGF_SNAPSHOT_TIME" ]]; then
-            new_sgf=$(printf '%s\n%s' "$new_sgf" "$f")
-        fi
-    done < <(find "$day_dir" -maxdepth 1 -name "*.sgf" -type f \
-                -not -path "*/afterGamesReport/*" -print0 2>/dev/null)
+    local search_dirs=("$day_dir")
+    for d in "$HOME/.katrain" "$HOME/.config/q5go" "$HOME/.config/Sabaki"; do
+        [[ -d "$d" ]] && search_dirs+=("$d")
+    done
 
-    # Also check home directory for SGF files saved by GUIs
-    for search_dir in "$HOME/.katrain" "$HOME/.config/q5go" "$HOME/.config/Sabaki"; do
-        [[ -d "$search_dir" ]] || continue
+    for search_dir in "${search_dirs[@]}"; do
         while IFS= read -r -d '' f; do
             local fmod
             fmod=$(stat -c %Y "$f" 2>/dev/null) || continue
             if [[ "$fmod" -gt "$_SGF_SNAPSHOT_TIME" ]]; then
                 new_sgf=$(printf '%s\n%s' "$new_sgf" "$f")
             fi
-        done < <(find "$search_dir" -maxdepth 3 -name "*.sgf" -type f -print0 2>/dev/null)
+        done < <(find "$search_dir" -maxdepth 4 -name "*.sgf" -type f \
+                    -not -name "*_analysed.sgf" -print0 2>/dev/null)
     done
 
     rm -f "$_SGF_SNAPSHOT"
@@ -71,15 +70,43 @@ analyze_new_sgf_files() {
     echo ""
     echo "Running KataGo analysis on saved SGF files..."
 
+    # Determine the afterGameReport subdirectory.
+    # The launcher's collect_after_game_report may have already created a
+    # timestamped subdirectory.  Find the most recent one, or create one.
+    local dest_dir=""
+    if [[ -d "$report_dir" ]]; then
+        dest_dir=$(find "$report_dir" -mindepth 1 -maxdepth 1 -type d \
+                       -printf '%T@ %p\n' 2>/dev/null \
+                   | sort -rn | head -1 | cut -d' ' -f2-)
+    fi
+    if [[ -z "$dest_dir" || ! -d "$dest_dir" ]]; then
+        # Determine game name from calling script
+        local game_name="go"
+        local caller="${BASH_SOURCE[2]:-${BASH_SOURCE[1]:-}}"
+        if [[ -n "$caller" ]]; then
+            game_name=$(basename "$caller" .sh | tr '[:upper:]' '[:lower:]' | tr ' ' '_')
+            # Clean up common prefixes
+            game_name="${game_name#run_}"
+        fi
+        dest_dir="$report_dir/$(date '+%y%m%d_%H%M')_${game_name}"
+    fi
+    mkdir -p "$dest_dir"
+
     while IFS= read -r sgf_file; do
         [[ -z "$sgf_file" ]] && continue
         local base
         base=$(basename "$sgf_file")
-        local annotated="$day_dir/${base%.sgf}_analysed.sgf"
+        local stem="${base%.sgf}"
+        local annotated="${dest_dir}/${stem}_analysed.sgf"
+
+        # Copy the original to the report dir if not already there
+        if [[ "$(dirname "$sgf_file")" != "$dest_dir" ]]; then
+            cp "$sgf_file" "$dest_dir/$base"
+        fi
 
         python3 "$annotate_script" "$sgf_file" "$annotated" \
             --katago "$KATAGO_BIN" --model "$MAIN_MODEL" --config "$cfg" \
-            && { mv "$annotated" "$sgf_file"; echo "  Done: $base"; } \
+            && echo "  Done: $base -> ${stem}_analysed.sgf" \
             || { rm -f "$annotated"; echo "  Analysis failed for $base"; }
     done <<< "$new_sgf"
 }

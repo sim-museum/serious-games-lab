@@ -86,7 +86,7 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/Microsoft Games/Flight Simulator 9/fs
 
     printf "If a blue title bar flashes, drag it a short distance to cause the run to proceed.\n\n"
 
-    # Mark game start so afterGamesReport only collects files from gameplay, not install
+    # Mark game start so afterGameReport only collects files from gameplay, not install
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
 
     # Run Flight Simulator

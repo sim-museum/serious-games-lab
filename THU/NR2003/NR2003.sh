@@ -29,7 +29,7 @@ INSTALL_DIR="$BASE_DIR/INSTALL"
 # Check if game directory exists — launch the game
 if [ -d "$WINEPREFIX/drive_c/Papyrus/NASCAR Racing 2003 Season" ]; then
     cd "$WINEPREFIX/drive_c/Papyrus/NASCAR Racing 2003 Season"
-    # Mark game start so afterGamesReport only collects files from gameplay, not install
+    # Mark game start so afterGameReport only collects files from gameplay, not install
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     wine NR2003.exe 2>/dev/null 1>/dev/null
     clear

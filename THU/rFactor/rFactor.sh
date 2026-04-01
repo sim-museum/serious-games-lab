@@ -66,9 +66,9 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/rFactor/rFactor.exe" ]; then
         WINEDLLOVERRIDES="d3d9,dxgi=n,b" wine "rF Config.exe" 2>/dev/null
     fi
 
-    # Mark game start so afterGamesReport only collects files from gameplay, not install
+    # Mark game start so afterGameReport only collects files from gameplay, not install
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
-    WINEDLLOVERRIDES="d3d9,dxgi=n,b" wine rFactor.exe 2>/dev/null
+    WINEDLLOVERRIDES="d3d9,dxgi=n,b" wine rFactor.exe >/dev/null 2>&1
 
     printf "\nrFactor Optional Scripts\n\nTelemetry:\n$SCRIPT_DIR/addTelemetryLoggerToRfactor.sh\n\nImprove AI:\n$SCRIPT_DIR/offlineAIimprovement_rFactor.sh\n\nConfigure Graphics:\n$SCRIPT_DIR/graphicsConfig_rFactor.sh\n\nTip: to become owner of all cars in a mod, type the code \"ISI_BABYFACTORY\" in\nthe chat window. (The chat window is at lower left on the screen just before\nyou enter the 3D view.)\n\n"
     exit 0

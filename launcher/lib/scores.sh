@@ -106,16 +106,16 @@ export_scores() {
         done
     done
 
-    # Copy afterGamesReport directories from each day (auto mode keeps these intact)
+    # Copy afterGameReport directories from each day (auto mode keeps these intact)
     for i in {0..6}; do
         local day="${DAY_ORDER[$i]}"
-        local agr_dir="$REPO_ROOT/$day/afterGamesReport"
+        local agr_dir="$REPO_ROOT/$day/afterGameReport"
         if [[ -d "$agr_dir" ]]; then
             local agr_count
             agr_count="$(find "$agr_dir" -type f 2>/dev/null | wc -l)"
             if [[ "$agr_count" -gt 0 ]]; then
-                mkdir -p "$export_dir/$day/afterGamesReport"
-                cp -r "$agr_dir/." "$export_dir/$day/afterGamesReport/"
+                mkdir -p "$export_dir/$day/afterGameReport"
+                cp -r "$agr_dir/." "$export_dir/$day/afterGameReport/"
                 found_any=true
             fi
         fi
@@ -140,6 +140,14 @@ export_scores() {
     # Cleanup the temporary directory
     rm -rf "$export_dir"
 
+    # Clean up source afterGameReport directories and per-day score archives
+    # now that they are safely in the export tar.gz
+    for i in {0..6}; do
+        local day="${DAY_ORDER[$i]}"
+        rm -rf "$REPO_ROOT/$day/afterGameReport"
+        rm -f "$REPO_ROOT/${day}_score_"*".tar.gz"
+    done
+
     echo ""
     msg_ok "Export complete."
     exit 0
@@ -157,12 +165,12 @@ read_documentation() {
     fi
 }
 
-# Remove all saved state: scores, archives, afterGamesReport dirs, auto-select memory
+# Remove all saved state: scores, archives, afterGameReport dirs, auto-select memory
 reset_scores() {
     echo ""
     echo "This will erase:"
     echo "  - All scores and archives"
-    echo "  - All afterGamesReport directories"
+    echo "  - All afterGameReport directories"
     echo "  - Auto-select memory (games played, days played)"
     echo ""
     read -rp "Are you sure you want to reset all saved state? (y/N): " reply
@@ -179,9 +187,9 @@ reset_scores() {
     rm -f "$LAUNCHER_FILES_DIR/.auto_days_played"
     rm -f "$LAUNCHER_FILES_DIR/.auto_games_played"
 
-    # Remove afterGamesReport directories for each day
+    # Remove afterGameReport directories for each day
     for day in "${DAY_ORDER[@]}"; do
-        rm -rf "$REPO_ROOT/$day/afterGamesReport"
+        rm -rf "$REPO_ROOT/$day/afterGameReport"
     done
 
     msg_ok "All scores, archives, reports, and auto-select state have been reset."
@@ -204,7 +212,7 @@ show_day_score_doc() {
 
 # Full score entry workflow for a day
 # Usage: enter_score DAY DAY_IDX [--keep-report]
-#   --keep-report: skip archiving and keep afterGamesReport (used in auto mode)
+#   --keep-report: skip archiving and keep afterGameReport (used in auto mode)
 enter_score() {
     local day="$1"
     local day_idx="$2"
@@ -212,13 +220,13 @@ enter_score() {
     [[ "${3:-}" == "--keep-report" ]] && keep_report=true
     local day_dir="$REPO_ROOT/$day"
 
-    # Create afterGamesReport directory
-    mkdir -p "$day_dir/afterGamesReport"
+    # Create afterGameReport directory
+    mkdir -p "$day_dir/afterGameReport"
 
     # Run copyRecentFiles script if it exists
     local copy_script="$day_dir/copyRecentFilesToAfterGameReport.sh"
     if [[ -f "$copy_script" ]]; then
-        msg_info "Copying recent files to afterGamesReport..."
+        msg_info "Copying recent files to afterGameReport..."
         (cd "$day_dir" && bash "$copy_script") 2>/dev/null || true
     fi
 
@@ -241,15 +249,15 @@ enter_score() {
                     -print0 2>/dev/null)
     fi
 
-    # Check if afterGamesReport has any files
+    # Check if afterGameReport has any files
     local file_count
-    file_count="$(find "$day_dir/afterGamesReport" -type f 2>/dev/null | wc -l)"
+    file_count="$(find "$day_dir/afterGameReport" -type f 2>/dev/null | wc -l)"
     if [[ "$file_count" -eq 0 ]]; then
         msg_info "No game output files to archive for $day."
     else
         echo ""
-        msg_info "Files in $day/afterGamesReport/:"
-        ls "$day_dir/afterGamesReport/"
+        msg_info "Files in $day/afterGameReport/:"
+        ls "$day_dir/afterGameReport/"
         echo ""
     fi
 
@@ -273,19 +281,19 @@ enter_score() {
     done
 
     if ! $keep_report; then
-        # Archive afterGamesReport and clean up (normal/manual mode)
+        # Archive afterGameReport and clean up (normal/manual mode)
         local sanitized_ts
         sanitized_ts="$(date '+%y%m%d_%H%M')"
         local archive_name="${day}_score_${sanitized_ts}.tar.gz"
 
         if [[ "$file_count" -gt 0 ]]; then
             tar -czf "$REPO_ROOT/$archive_name" \
-                -C "$day_dir" afterGamesReport
+                -C "$day_dir" afterGameReport
             msg_ok "Archived game files to $archive_name"
         fi
 
-        # Clean afterGamesReport
-        rm -rf "$day_dir/afterGamesReport"
+        # Clean afterGameReport
+        rm -rf "$day_dir/afterGameReport"
     fi
 
     # Append score to CSV (create with header if needed)

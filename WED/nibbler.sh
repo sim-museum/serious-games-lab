@@ -77,7 +77,7 @@ echo "Maia weights (human-like play, ELO 1100-1900) are in: $MAIA_DIR/"
 echo "To use: in nibbler, set weights path to a Maia file instead of tinygyal-8.pb.gz"
 echo ""
 
-# Touch game-started marker for afterGamesReport collection
+# Touch game-started marker for afterGameReport collection
 if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
     touch "$SGL_GAME_STARTED_MARKER"
 fi
@@ -104,7 +104,7 @@ for search_dir in "$SCRIPT_DIR" "$NIBBLER_DIR"; do
     while IFS= read -r -d '' f; do
         fmod=$(stat -c %Y "$f" 2>/dev/null) || continue
         if [[ "$fmod" -gt "$snapshot_time" ]]; then
-            # Move files from nibbler dir to WED/ so afterGamesReport finds them
+            # Move files from nibbler dir to WED/ so afterGameReport finds them
             if [[ "$search_dir" == "$NIBBLER_DIR" && "$f" == "$NIBBLER_DIR"/* ]]; then
                 mv "$f" "$SCRIPT_DIR/"
                 f="$SCRIPT_DIR/$(basename "$f")"

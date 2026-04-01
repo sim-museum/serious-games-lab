@@ -77,7 +77,7 @@ launch_mig() {
     # Disable winegstreamer to prevent crash when exiting 3D view
     export WINEDLLOVERRIDES="winegstreamer=d"
     cd "$WINEPREFIX/drive_c/rowan/mig"
-    # Mark game start so afterGamesReport only collects files from gameplay, not install.
+    # Mark game start so afterGameReport only collects files from gameplay, not install.
     # Sleep 1s to ensure the marker is strictly newer than any install-created files.
     if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
         sleep 1

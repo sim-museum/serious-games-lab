@@ -72,8 +72,15 @@ else
         sudo apt-get install -y "${QT5_MISSING[@]}"
     fi
 
-    if [[ ! -d "$SCRIPT_DIR/q5go_build" ]]; then
-        git clone https://github.com/bernds/q5Go.git "$SCRIPT_DIR/q5go_build"
+    # Clone or re-clone if previous attempt left a broken directory
+    if [[ ! -f "$SCRIPT_DIR/q5go_build/src/q5go.pro" ]]; then
+        rm -rf "$SCRIPT_DIR/q5go_build"
+        git clone --depth 1 https://github.com/bernds/q5Go.git "$SCRIPT_DIR/q5go_build"
+    fi
+    if [[ ! -f "$SCRIPT_DIR/q5go_build/src/q5go.pro" ]]; then
+        echo "Clone failed — could not find src/q5go.pro"
+        echo "Check your network connection and retry."
+        exit 1
     fi
     mkdir -p "$SCRIPT_DIR/q5go_build/build"
     cd "$SCRIPT_DIR/q5go_build/build"

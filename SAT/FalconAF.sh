@@ -60,7 +60,7 @@ if [ ! -f "$FALCON_EXE_PATH" ]; then
 fi
 
 # Launch FalconAF in virtual desktop (prevents black screen fullscreen capture)
-# Mark game start so afterGamesReport only collects files from gameplay, not install
+# Mark game start so afterGameReport only collects files from gameplay, not install
 [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
 wine explorer /desktop=FalconAF,1024x768 "$FALCON_EXE_PATH" 2>/dev/null 1>/dev/null
 

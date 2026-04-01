@@ -3,7 +3,7 @@ eSports for Engineers 24041LTS
 
 Note: save your .pbn files after each session.  Copy your .pbn files,
 along with screenshot .png files showing your games and analysis, to
-the FRI/afterGamesReport directory, calculate your score as described
+the FRI/afterGameReport directory, calculate your score as described
 below, and then enter your score using the launcher.
 
 Note: these OKRs can be completed with any of the bridge programs
