@@ -82,6 +82,15 @@ if [[ -d "$GAME_DIR" && -f "$GAME_DIR/mainapp.exe" ]]; then
     # In virtual desktop mode, all Wine windows are rendered inside one
     # X window, so xdotool cannot find individual dialogs.  We Alt+Tab
     # within Wine to bring the hidden dialog to the front, then Enter.
+    if ! command -v xdotool &>/dev/null || ! command -v xte &>/dev/null; then
+        echo ""
+        echo "  WARNING: xdotool and xautomation are required to auto-dismiss"
+        echo "  the EA matchmaking dialog. Without them the game will freeze."
+        echo "  Install with:  sudo apt install xdotool xautomation"
+        echo ""
+        echo "  As a workaround, try Alt+Tab then press Enter after the splash appears."
+        echo ""
+    fi
     (
         sleep 12
         for _i in $(seq 1 15); do

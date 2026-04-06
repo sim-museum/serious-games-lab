@@ -2901,6 +2901,12 @@ For more information, see the README file."""
         self.next_deal_btn.setVisible(True)  # Show next deal button when finished
         self.right_panel.setVisible(True)  # Show right panel again
 
+        # Refresh tricks display so it reflects all 13 tricks
+        self.table_view.update_tricks(
+            board.declarer_tricks,
+            board.defense_tricks
+        )
+
         if board.is_passed_out():
             self.status_label.setText("Passed out")
             self.analysis_label.setText("All four players passed.\nNo score.")

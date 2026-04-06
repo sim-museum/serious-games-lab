@@ -193,13 +193,10 @@ auto_select_game() {
     # Remember the report dir so we can clean up on cancel
     local session_report_dir="$LAST_REPORT_DIR"
 
-    # Prompt for a session comment
-    prompt_game_comment "$day" "$script"
-
-    # Prompt for score — if cancelled, roll back everything
+    # Prompt for self-assessment (score + explanation)
     echo ""
-    if ! enter_score "$day" "$day_idx" --keep-report; then
-        # Score cancelled — remove afterGameReport files from this session
+    if ! prompt_self_assessment "$day" "$script" "$day_idx" --keep-report; then
+        # Assessment skipped — remove afterGameReport files from this session
         if [[ -n "$session_report_dir" && -d "$session_report_dir" ]]; then
             rm -rf "$session_report_dir"
             msg_info "Removed session files from afterGameReport."

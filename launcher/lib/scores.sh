@@ -74,18 +74,34 @@ read_scores() {
     average_score="$(printf "%.3f" "$(echo "scale=6; $sum / 7" | bc -l)")"
 }
 
-# Create export directory with matching archives, tar+sha256sum, cleanup, exit 0
-export_scores() {
-    # Prompt for user name
+# Get or prompt for the player name, storing it persistently
+get_player_name() {
+    if [[ -f "$PLAYER_NAME_FILE" ]]; then
+        cat "$PLAYER_NAME_FILE"
+        return
+    fi
     local raw_name=""
     read -rp "  Enter your name: " raw_name
-    # Replace spaces with dashes, strip non-alphabetic/non-dash characters
     local user_name
     user_name="$(echo "$raw_name" | tr ' ' '-' | tr -cd 'A-Za-z-' | sed 's/^-*//;s/-*$//')"
+    if [[ -n "$user_name" ]]; then
+        echo "$user_name" > "$PLAYER_NAME_FILE"
+    fi
+    echo "$user_name"
+}
+
+# Create export directory with matching archives, tar+sha256sum, cleanup, exit 0
+# Saves the archive to ~/sgl/<player_name>/ and runs Claude Code analysis.
+export_scores() {
+    local user_name
+    user_name="$(get_player_name)"
     if [[ -z "$user_name" ]]; then
         msg_warn "No name entered. Export cancelled."
         return 0
     fi
+
+    local player_dir="$REPO_ROOT/$user_name"
+    mkdir -p "$player_dir"
 
     local ts
     ts="$(date '+%y%m%d_%H%M')"
@@ -128,29 +144,230 @@ export_scores() {
     # Copy scores CSV
     [[ -f "$SCORES_FILE" ]] && cp "$SCORES_FILE" "$export_dir/"
 
-    # Create tar.gz of the export directory
-    local tar_file="${export_dir}.tar.gz"
+    # Create tar.gz in player directory
+    local tar_file="$player_dir/${dir_name}.tar.gz"
     tar -czf "$tar_file" -C "$REPO_ROOT" "$dir_name"
 
-    # Show sha256sum
     echo ""
     msg_info "Export archive created:"
     sha256sum "$tar_file"
 
-    # Cleanup the temporary directory
+    # Cleanup temporary directory
     rm -rf "$export_dir"
 
     # Clean up source afterGameReport directories and per-day score archives
-    # now that they are safely in the export tar.gz
     for i in {0..6}; do
         local day="${DAY_ORDER[$i]}"
         rm -rf "$REPO_ROOT/$day/afterGameReport"
         rm -f "$REPO_ROOT/${day}_score_"*".tar.gz"
     done
 
+    # Run Claude Code analysis on all exports
     echo ""
-    msg_ok "Export complete."
+    run_claude_analysis "$player_dir" "$tar_file" "$user_name"
+
+    echo ""
+    msg_ok "Export complete. Archive saved to $tar_file"
     exit 0
+}
+
+# Run Claude Code CLI to analyze all exports in the player directory.
+# Calculates a revised score, provides rationale, trends, and suggestions.
+# Saves analysis into the per-day afterGameReport dirs of the latest tar.gz.
+# Args: player_dir latest_tar player_name
+run_claude_analysis() {
+    local player_dir="$1"
+    local latest_tar="$2"
+    local player_name="$3"
+
+    if ! command -v claude &>/dev/null; then
+        msg_warn "Claude Code CLI not found. Skipping analysis."
+        return 1
+    fi
+
+    local tmpdir
+    tmpdir="$(mktemp -d)"
+
+    # Extract latest archive
+    tar -xzf "$latest_tar" -C "$tmpdir"
+    local latest_dir
+    latest_dir="$(find "$tmpdir" -maxdepth 1 -mindepth 1 -type d | head -1)"
+
+    if [[ -z "$latest_dir" ]]; then
+        msg_warn "Could not extract latest archive for analysis."
+        rm -rf "$tmpdir"
+        return 1
+    fi
+
+    # Build the analysis prompt
+    local prompt_file="$tmpdir/analysis_prompt.txt"
+
+    {
+        cat << 'HEADER'
+You are analyzing a student's performance in the Serious Games Lab (SGL), a weekly training program spanning 7 strategic domains (MON=Poker, TUE=Historical Flight Sim, WED=Chess, THU=Sim Racing, FRI=Duplicate Bridge, SAT=Modern Flight Sim, SUN=Go).
+
+Provide your analysis with these sections:
+
+## Revised Score
+Calculate a revised per-day score (0-1) and overall average based on the OKR scoring criteria and all available evidence. Show your work for each day.
+
+## Rationale
+Explain your scoring with specific reference to these three learning framework documents:
+- fourElementsOfMentalFunctioning.txt (executive function, emotional regulation, memory, creativity)
+- metaLearning.txt (deep processing, desirable difficulty, deliberate practice, interleaving, spaced practice)
+- ObjectivesAndKeyResults_OKR.txt (committed vs aspirational OKRs, the 0.7 target for aspirational goals)
+
+## Trends
+Compare the latest export with any previous ones. Comment on improvement, regression, or consistency across days and overall.
+
+## Suggestions
+Provide both general and concrete day-specific suggestions for improvement. Be actionable.
+
+Here is all the data:
+
+HEADER
+
+        echo "=========================================="
+        echo "SCORING CRITERIA"
+        echo "=========================================="
+        echo ""
+
+        if [[ -f "$REPO_ROOT/calculatingScore.txt" ]]; then
+            echo "--- Overall Scoring Overview ---"
+            cat "$REPO_ROOT/calculatingScore.txt"
+            echo ""
+        fi
+
+        for day in "${DAY_ORDER[@]}"; do
+            local doc="$REPO_ROOT/$day/calculatingScore.txt"
+            if [[ -f "$doc" ]]; then
+                echo "--- $day Scoring Criteria ---"
+                cat "$doc"
+                echo ""
+            fi
+        done
+
+        echo "=========================================="
+        echo "LEARNING FRAMEWORK DOCUMENTS"
+        echo "=========================================="
+        echo ""
+
+        for doc in "$HOME/Downloads/fourElementsOfMentalFunctioning.txt" \
+                   "$HOME/Downloads/metaLearning.txt" \
+                   "$HOME/Downloads/ObjectivesAndKeyResults_OKR.txt"; do
+            if [[ -f "$doc" ]]; then
+                echo "--- $(basename "$doc") ---"
+                cat "$doc"
+                echo ""
+            fi
+        done
+
+        echo "=========================================="
+        echo "CURRENT EXPORT: $(basename "$latest_tar")"
+        echo "=========================================="
+        echo ""
+
+        if [[ -f "$latest_dir/launcherScores.csv" ]]; then
+            echo "--- Scores CSV ---"
+            cat "$latest_dir/launcherScores.csv"
+            echo ""
+        fi
+
+        for day in "${DAY_ORDER[@]}"; do
+            local agr_dir="$latest_dir/$day/afterGameReport"
+            [[ -d "$agr_dir" ]] || continue
+            echo "--- $day Game Sessions ---"
+            for sa in "$agr_dir"/*/self_assessment.txt "$agr_dir"/*/session_comment.txt; do
+                [[ -f "$sa" ]] || continue
+                echo "  [$(basename "$(dirname "$sa")")/$(basename "$sa")]"
+                cat "$sa"
+                echo ""
+            done
+            # List other collected game files
+            local other_files
+            other_files="$(find "$agr_dir" -type f \
+                ! -name "self_assessment.txt" \
+                ! -name "session_comment.txt" \
+                ! -name "claude_analysis.txt" \
+                -printf "  %P\n" 2>/dev/null)"
+            if [[ -n "$other_files" ]]; then
+                echo "  [Other collected files]"
+                echo "$other_files"
+                echo ""
+            fi
+        done
+
+        echo "=========================================="
+        echo "PREVIOUS EXPORTS (for trend analysis)"
+        echo "=========================================="
+        echo ""
+
+        local has_previous=false
+        for pt in "$player_dir"/*.tar.gz; do
+            [[ -f "$pt" ]] || continue
+            [[ "$pt" == "$latest_tar" ]] && continue
+            has_previous=true
+
+            echo "--- $(basename "$pt") ---"
+            local ptmp
+            ptmp="$(mktemp -d)"
+            if tar -xzf "$pt" -C "$ptmp" 2>/dev/null; then
+                local pdir
+                pdir="$(find "$ptmp" -maxdepth 1 -mindepth 1 -type d | head -1)"
+                if [[ -n "$pdir" ]]; then
+                    if [[ -f "$pdir/launcherScores.csv" ]]; then
+                        echo "Scores:"
+                        cat "$pdir/launcherScores.csv"
+                        echo ""
+                    fi
+                    for day in "${DAY_ORDER[@]}"; do
+                        for sa in "$pdir/$day/afterGameReport/"*/self_assessment.txt \
+                                  "$pdir/$day/afterGameReport/"*/session_comment.txt; do
+                            [[ -f "$sa" ]] || continue
+                            echo "$day/$(basename "$(dirname "$sa")")/$(basename "$sa"):"
+                            cat "$sa"
+                            echo ""
+                        done
+                    done
+                fi
+            fi
+            rm -rf "$ptmp"
+        done
+
+        if [[ "$has_previous" == false ]]; then
+            echo "No previous exports found. This is the first export for $player_name."
+        fi
+
+    } > "$prompt_file"
+
+    msg_info "Analyzing with Claude Code (this may take a moment)..."
+    echo ""
+
+    # Call Claude Code CLI
+    local analysis
+    if analysis="$(claude -p "$(cat "$prompt_file")" 2>/dev/null)"; then
+        # Print to screen
+        echo "$analysis"
+        echo ""
+
+        # Save analysis to each day's afterGameReport dir that exists
+        for day in "${DAY_ORDER[@]}"; do
+            local agr_dir="$latest_dir/$day/afterGameReport"
+            if [[ -d "$agr_dir" ]]; then
+                echo "$analysis" > "$agr_dir/claude_analysis.txt"
+            fi
+        done
+
+        # Re-archive with analysis files included
+        local dir_name
+        dir_name="$(basename "$latest_dir")"
+        tar -czf "$latest_tar" -C "$tmpdir" "$dir_name"
+        msg_ok "Analysis saved to archive."
+    else
+        msg_warn "Claude Code analysis could not be completed."
+    fi
+
+    rm -rf "$tmpdir"
 }
 
 # Display calculatingScore.txt from repo root
@@ -196,117 +413,3 @@ reset_scores() {
     exit 0
 }
 
-# Display per-day calculatingScore.txt
-show_day_score_doc() {
-    local day="$1"
-    local doc_file="$REPO_ROOT/$day/calculatingScore.txt"
-    if [[ -f "$doc_file" ]]; then
-        less "$doc_file"
-    else
-        msg_warn "No scoring documentation found for $day"
-        echo "  Expected: $doc_file"
-        echo ""
-        read -rp "Press Enter to continue..." _
-    fi
-}
-
-# Full score entry workflow for a day
-# Usage: enter_score DAY DAY_IDX [--keep-report]
-#   --keep-report: skip archiving and keep afterGameReport (used in auto mode)
-enter_score() {
-    local day="$1"
-    local day_idx="$2"
-    local keep_report=false
-    [[ "${3:-}" == "--keep-report" ]] && keep_report=true
-    local day_dir="$REPO_ROOT/$day"
-
-    # Create afterGameReport directory
-    mkdir -p "$day_dir/afterGameReport"
-
-    # Run copyRecentFiles script if it exists
-    local copy_script="$day_dir/copyRecentFilesToAfterGameReport.sh"
-    if [[ -f "$copy_script" ]]; then
-        msg_info "Copying recent files to afterGameReport..."
-        (cd "$day_dir" && bash "$copy_script") 2>/dev/null || true
-    fi
-
-    # Collect screenshots taken since last game start into the game subdirectory
-    local screenshots_dir="$HOME/Pictures/Screenshots"
-    local latest_report_dir="$LAST_REPORT_DIR"
-    if [[ -d "$screenshots_dir" && -n "$latest_report_dir" ]]; then
-        # Use the report dir's mtime as the game start reference
-        local ref_epoch
-        ref_epoch="$(stat -c %Y "$latest_report_dir" 2>/dev/null)" || ref_epoch=0
-        while IFS= read -r -d '' sfile; do
-            local sfile_epoch
-            sfile_epoch="$(stat -c %Y "$sfile" 2>/dev/null)" || continue
-            if [[ "$sfile_epoch" -ge "$ref_epoch" ]]; then
-                mkdir -p "$latest_report_dir"
-                cp "$sfile" "$latest_report_dir/"
-            fi
-        done < <(find "$screenshots_dir" -maxdepth 1 -type f \
-                    \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.bmp" \) \
-                    -print0 2>/dev/null)
-    fi
-
-    # Check if afterGameReport has any files
-    local file_count
-    file_count="$(find "$day_dir/afterGameReport" -type f 2>/dev/null | wc -l)"
-    if [[ "$file_count" -eq 0 ]]; then
-        msg_info "No game output files to archive for $day."
-    else
-        echo ""
-        msg_info "Files in $day/afterGameReport/:"
-        ls "$day_dir/afterGameReport/"
-        echo ""
-    fi
-
-    # Prompt for score
-    local score_input
-    while true; do
-        read -rp "Enter score for $day (0 to 1, or 'c' to cancel): " score_input
-        if [[ "$score_input" == "c" || "$score_input" == "C" ]]; then
-            echo "Score entry cancelled."
-            return 1
-        fi
-        # Validate: must be a number between 0 and 1
-        if echo "$score_input" | grep -qE '^[0-9]*\.?[0-9]+$'; then
-            local valid
-            valid="$(echo "$score_input <= 1" | bc -l)"
-            if [[ "$valid" -eq 1 ]]; then
-                break
-            fi
-        fi
-        msg_error "Invalid score. Please enter a number between 0 and 1."
-    done
-
-    if ! $keep_report; then
-        # Archive afterGameReport and clean up (normal/manual mode)
-        local sanitized_ts
-        sanitized_ts="$(date '+%y%m%d_%H%M')"
-        local archive_name="${day}_score_${sanitized_ts}.tar.gz"
-
-        if [[ "$file_count" -gt 0 ]]; then
-            tar -czf "$REPO_ROOT/$archive_name" \
-                -C "$day_dir" afterGameReport
-            msg_ok "Archived game files to $archive_name"
-        fi
-
-        # Clean afterGameReport
-        rm -rf "$day_dir/afterGameReport"
-    fi
-
-    # Append score to CSV (create with header if needed)
-    if [[ ! -f "$SCORES_FILE" ]]; then
-        echo "timeStamp,day,score" > "$SCORES_FILE"
-    fi
-    # Use full timestamp with fractional seconds like Python version
-    local full_ts
-    full_ts="$(date '+%Y-%m-%d %H:%M:%S.%N')"
-    echo "$full_ts,$day_idx,$score_input" >> "$SCORES_FILE"
-
-    msg_ok "Score $score_input recorded for $day"
-
-    # Refresh scores
-    read_scores
-}

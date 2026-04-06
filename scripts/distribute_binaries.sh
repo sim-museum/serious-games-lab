@@ -86,6 +86,8 @@ if [ -d "$DL/sglBinaries_2/BMS432-v41" ]; then
     rm -rf "$DL/sglBinaries_2/BMS432-v41" 2>/dev/null || true
 fi
 move_file "sglBinaries_2" "Republic-The-Revolution_Win_EN.exe"                                 "SAT/republic/INSTALL"
+move_dir  "sglBinaries_2/republic" "DOC"                                                       "SAT/republic"
+move_dir  "sglBinaries_2/CFL"     "DOC"                                                       "SAT/CFL"
 touch "$DL/.extracted_sglBinaries_2.tar.gz"
 
 # --- sglBinaries_3 ---

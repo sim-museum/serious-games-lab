@@ -176,7 +176,7 @@ collect_after_game_report() {
     subdir_name="$(date -d "@$start_epoch" '+%y%m%d_%H%M')_${game_name}"
     local report_dir="$day_dir/afterGameReport/$subdir_name"
 
-    # Always set the report dir path so prompt_game_comment can find it
+    # Always set the report dir path so prompt_self_assessment can find it
     LAST_REPORT_DIR="$report_dir"
 
     local found_files=false
@@ -261,39 +261,82 @@ collect_after_game_report() {
     fi
 }
 
-# Prompt the user for a comment about their game session.
-# Only called for games, not utilities.
-# Args: day script
-prompt_game_comment() {
+# Prompt the user for a self-assessment after their game session.
+# Replaces the old comment system: asks for score 0-1 and an explanation
+# referencing the collected game files.
+# Args: day script day_idx [--keep-report]
+# Returns 1 if cancelled/skipped.
+prompt_self_assessment() {
     local day="$1"
     local script="$2"
+    local day_idx="$3"
+    local keep_report=false
+    [[ "${4:-}" == "--keep-report" ]] && keep_report=true
 
     # Don't prompt for utilities
     is_utility "$script" && return 0
 
     local day_dir="$REPO_ROOT/$day"
 
-    echo ""
-    read -rp "Add a comment about this game session? (y/N): " reply
-    if [[ ! "$reply" =~ ^[Yy]$ ]]; then
-        return 0
+    # Run copyRecentFiles script if it exists (catch files missed by collect)
+    local copy_script="$day_dir/copyRecentFilesToAfterGameReport.sh"
+    if [[ -f "$copy_script" ]]; then
+        (cd "$day_dir" && bash "$copy_script") 2>/dev/null || true
     fi
 
-    echo "Enter your comment (empty line to finish):"
-    local comment=""
-    while IFS= read -r line; do
-        [[ -z "$line" ]] && break
-        if [[ -n "$comment" ]]; then
-            comment+=$'\n'
+    # Show files in afterGameReport
+    local file_count
+    file_count="$(find "$day_dir/afterGameReport" -type f 2>/dev/null | wc -l)"
+
+    echo ""
+    if [[ "$file_count" -gt 0 ]]; then
+        msg_info "Files in $day/afterGameReport/:"
+        find "$day_dir/afterGameReport" -type f -printf "  %P\n" 2>/dev/null
+        echo ""
+    else
+        msg_info "No game output files collected for $day."
+        echo ""
+    fi
+
+    # Flush keyboard buffer before prompting
+    read -r -d '' -t 0.1 -n 10000 2>/dev/null || true
+
+    # Prompt for score
+    local score_input
+    while true; do
+        read -rp "Rate your performance for $day (0 to 1, or 's' to skip): " score_input
+        if [[ "$score_input" == "s" || "$score_input" == "S" ]]; then
+            echo "Score entry skipped."
+            return 1
         fi
-        comment+="$line"
+        if [[ -z "$score_input" ]]; then
+            msg_error "Please enter a score (0 to 1) or 's' to skip."
+            continue
+        fi
+        if echo "$score_input" | grep -qE '^[0-9]*\.?[0-9]+$'; then
+            local valid
+            valid="$(echo "$score_input <= 1" | bc -l)"
+            if [[ "$valid" -eq 1 ]]; then
+                break
+            fi
+        fi
+        msg_error "Invalid score. Enter a number between 0 and 1."
     done
 
-    if [[ -z "$comment" ]]; then
-        return 0
-    fi
+    # Prompt for explanation referencing the collected files
+    echo ""
+    echo "Explain why you gave yourself this score (reference the game files above)."
+    echo "Type your explanation (empty line to finish):"
+    local explanation=""
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && break
+        if [[ -n "$explanation" ]]; then
+            explanation+=$'\n'
+        fi
+        explanation+="$line"
+    done
 
-    # Use the report directory from collect_after_game_report, creating if needed
+    # Save self-assessment to report directory
     local report_dir="$LAST_REPORT_DIR"
     if [[ -z "$report_dir" || ! -d "$report_dir" ]]; then
         local game_name
@@ -304,7 +347,41 @@ prompt_game_comment() {
         mkdir -p "$report_dir"
     fi
 
-    local comment_file="$report_dir/session_comment.txt"
-    echo "$comment" > "$comment_file"
-    msg_ok "Comment saved to $(basename "$(dirname "$comment_file")")/session_comment.txt"
+    {
+        echo "Score: $score_input"
+        echo "Date: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "Game: $(script_display_name "$script")"
+        echo ""
+        echo "Explanation:"
+        echo "$explanation"
+    } > "$report_dir/self_assessment.txt"
+    msg_ok "Self-assessment saved to $(basename "$report_dir")/self_assessment.txt"
+
+    # Archive afterGameReport (manual mode) or keep intact (auto mode)
+    if ! $keep_report; then
+        local sanitized_ts
+        sanitized_ts="$(date '+%y%m%d_%H%M')"
+        local archive_name="${day}_score_${sanitized_ts}.tar.gz"
+
+        local total_files
+        total_files="$(find "$day_dir/afterGameReport" -type f 2>/dev/null | wc -l)"
+        if [[ "$total_files" -gt 0 ]]; then
+            tar -czf "$REPO_ROOT/$archive_name" -C "$day_dir" afterGameReport
+            msg_ok "Archived game files to $archive_name"
+        fi
+        rm -rf "$day_dir/afterGameReport"
+    fi
+
+    # Record score to CSV
+    if [[ ! -f "$SCORES_FILE" ]]; then
+        echo "timeStamp,day,score" > "$SCORES_FILE"
+    fi
+    local full_ts
+    full_ts="$(date '+%Y-%m-%d %H:%M:%S.%N')"
+    echo "$full_ts,$day_idx,$score_input" >> "$SCORES_FILE"
+
+    msg_ok "Score $score_input recorded for $day"
+    read_scores
+
+    return 0
 }

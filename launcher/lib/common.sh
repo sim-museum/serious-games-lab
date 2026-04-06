@@ -19,6 +19,7 @@ CSV_FILE="$REPO_ROOT/filesForLauncher/launcherScripts.csv"
 DEPS_MARKER="$REPO_ROOT/.deps_installed"
 SCORES_FILE="$REPO_ROOT/filesForLauncher/launcherScores.csv"
 LAUNCHER_FILES_DIR="$REPO_ROOT/filesForLauncher"
+PLAYER_NAME_FILE="$LAUNCHER_FILES_DIR/.player_name"
 
 # Terminal colors (only if stdout is a terminal)
 if [[ -t 1 ]]; then
