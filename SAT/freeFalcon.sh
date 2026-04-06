@@ -90,6 +90,18 @@ if [[ ! -d "$GAME_DATA" ]]; then
     echo "Game data installation complete."
 fi
 
+# ── Ensure joystick support is enabled ────────────────────────────────
+
+# Enable WineBus (joystick/gamepad HID driver) — default is disabled (Start=3)
+wine reg add "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\WineBus" \
+    /v Start /t REG_DWORD /d 2 /f &>/dev/null
+# Enable SDL joystick input (required for most USB gamepads/sticks)
+wine reg add "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\WineBus\\Parameters" \
+    /v "Enable SDL" /t REG_DWORD /d 1 /f &>/dev/null
+wine reg add "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\WineBus\\Parameters" \
+    /v "Enable hidraw" /t REG_DWORD /d 1 /f &>/dev/null
+wineserver -w 2>/dev/null
+
 # ── Launch FreeFalcon under Wine ───────────────────────────────────────
 
 echo ""

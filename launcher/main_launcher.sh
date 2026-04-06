@@ -401,7 +401,8 @@ display_top_menu() {
     echo "    9)  Export Scores and game output files"
     echo "   10)  Read Documentation"
     echo "   11)  Reset Scores"
-    echo "   12)  Exit"
+    echo ""
+    echo "   Enter)  Exit"
 }
 
 display_day_menu() {
@@ -502,21 +503,11 @@ display_day_menu() {
         printf "    ${GREEN}%2d)${NC} %s\n" "$idx" "Non-violent options"
     fi
 
-    # Score entries before Back
-    echo ""
-    ((idx++)) || true
-    DAY_MENU_ENTRIES+=("calc_score||||")
-    printf "    %2d) How to Calculate Score\n" "$idx"
-
-    ((idx++)) || true
-    DAY_MENU_ENTRIES+=("enter_score||||")
-    printf "    %2d) Enter New Score\n" "$idx"
-
-    # Back option as last numbered entry
+    # Back option
     ((idx++)) || true
     DAY_MENU_ENTRIES+=("back||||")
     echo ""
-    printf "    %2d) Back\n" "$idx"
+    printf "    %2d) Back (or press Enter)\n" "$idx"
 }
 
 display_fg_menu() {
@@ -552,11 +543,11 @@ display_fg_menu() {
         esac
     done <<< "${DAY_FG[$day]}"
 
-    # Back option as last numbered entry
+    # Back option
     ((idx++)) || true
     FG_MENU_ENTRIES+=("back||")
     echo ""
-    printf "    %2d) Back\n" "$idx"
+    printf "    %2d) Back (or press Enter)\n" "$idx"
 }
 
 display_nv_menu() {
@@ -595,7 +586,7 @@ display_nv_menu() {
     ((idx++)) || true
     NV_MENU_ENTRIES+=("back|||")
     echo ""
-    printf "    %2d) Back\n" "$idx"
+    printf "    %2d) Back (or press Enter)\n" "$idx"
 }
 
 # --- Kill leftover wine processes ---
@@ -723,6 +714,13 @@ main() {
         echo ""
         read -rp "  Select: " choice
 
+        # Enter = exit
+        if [[ -z "$choice" ]]; then
+            echo ""
+            echo "Goodbye!"
+            exit 0
+        fi
+
         if ! [[ "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > 12 )); then
             msg_error "Invalid choice: $choice"
             continue
@@ -767,10 +765,13 @@ main() {
             echo ""
             read -rp "  Select: " game_choice
 
+            # Enter = back
+            if [[ -z "$game_choice" ]]; then
+                break
+            fi
+
             if ! [[ "$game_choice" =~ ^[0-9]+$ ]] || (( game_choice < 1 || game_choice > ${#DAY_MENU_ENTRIES[@]} )); then
                 msg_error "Invalid choice: $game_choice"
-                echo ""
-                read -rp "Press Enter to continue..." _
                 continue
             fi
 
@@ -782,20 +783,6 @@ main() {
                 break
             fi
 
-            # Score documentation
-            if [[ "$entry_type" == "calc_score" ]]; then
-                show_day_score_doc "$day"
-                continue
-            fi
-
-            # Enter new score
-            if [[ "$entry_type" == "enter_score" ]]; then
-                enter_score "$day" "$day_idx"
-                echo ""
-                read -rp "Press Enter to continue..." _
-                continue
-            fi
-
             if [[ "$entry_type" == "flightgear" ]]; then
                 # --- Level 3: FlightGear submenu ---
                 while true; do
@@ -804,10 +791,13 @@ main() {
                     echo ""
                     read -rp "  Select: " fg_choice
 
+                    # Enter = back
+                    if [[ -z "$fg_choice" ]]; then
+                        break
+                    fi
+
                     if ! [[ "$fg_choice" =~ ^[0-9]+$ ]] || (( fg_choice < 1 || fg_choice > ${#FG_MENU_ENTRIES[@]} )); then
                         msg_error "Invalid choice: $fg_choice"
-                        echo ""
-                        read -rp "Press Enter to continue..." _
                         continue
                     fi
 
@@ -823,7 +813,7 @@ main() {
                         msg_error "$fg_display is not installed."
                     else
                         run_game "$day" "$fg_script" || true
-                        prompt_game_comment "$day" "$fg_script"
+                        prompt_self_assessment "$day" "$fg_script" "$day_idx" || true
                     fi
 
                     echo ""
@@ -837,10 +827,13 @@ main() {
                     echo ""
                     read -rp "  Select: " nv_choice
 
+                    # Enter = back
+                    if [[ -z "$nv_choice" ]]; then
+                        break
+                    fi
+
                     if ! [[ "$nv_choice" =~ ^[0-9]+$ ]] || (( nv_choice < 1 || nv_choice > ${#NV_MENU_ENTRIES[@]} )); then
                         msg_error "Invalid choice: $nv_choice"
-                        echo ""
-                        read -rp "Press Enter to continue..." _
                         continue
                     fi
 
@@ -858,7 +851,7 @@ main() {
                         msg_warn "$nv_display needs binary data. Install sglBinaries_${nv_archive} first."
                     else
                         run_game "$day" "$nv_script" || true
-                        prompt_game_comment "$day" "$nv_script"
+                        prompt_self_assessment "$day" "$nv_script" "$day_idx" || true
                     fi
 
                     echo ""
@@ -874,7 +867,7 @@ main() {
                 read -rp "Press Enter to continue..." _
             else
                 run_game "$day" "$script" || true
-                prompt_game_comment "$day" "$script"
+                prompt_self_assessment "$day" "$script" "$day_idx" || true
                 echo ""
                 read -rp "Press Enter to continue..." _
             fi
