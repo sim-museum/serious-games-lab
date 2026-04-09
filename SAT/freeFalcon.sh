@@ -100,7 +100,21 @@ wine reg add "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\WineBus\\
     /v "Enable SDL" /t REG_DWORD /d 1 /f &>/dev/null
 wine reg add "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\WineBus\\Parameters" \
     /v "Enable hidraw" /t REG_DWORD /d 1 /f &>/dev/null
+# Disable XInput controller mapping — FreeFalcon uses DirectInput, and XInput
+# mapping causes flight sticks to appear as Xbox gamepads (invisible to dinput)
+wine reg add "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\WineBus\\Parameters" \
+    /v "Map Controllers" /t REG_DWORD /d 0 /f &>/dev/null
+# Also ensure we don't lose the joystick to the XInput-only path
+wine reg add "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\WineBus\\Parameters" \
+    /v "DisableHidraw" /t REG_DWORD /d 0 /f &>/dev/null
 wineserver -w 2>/dev/null
+
+# Ensure user can access joystick input devices (hidraw needs 'input' group)
+if ! id -nG | grep -qw input; then
+    echo "NOTE: Adding user to 'input' group for joystick hidraw access."
+    echo "      You may need to log out and back in for this to take effect."
+    sudo usermod -aG input "$USER" 2>/dev/null || true
+fi
 
 # ── Launch FreeFalcon under Wine ───────────────────────────────────────
 

@@ -41,7 +41,7 @@ COLORS = {
 CARD_WIDTH = 140
 CARD_HEIGHT = 198
 CARD_OVERLAP = 75  # How much cards overlap (shows ~65px per card)
-SUIT_GAP = 55  # Extra gap between suits — creates clear visual grouping
+SUIT_GAP = 90  # Extra gap between suits — creates clear visible gap
 
 
 class CardWidget(QWidget):

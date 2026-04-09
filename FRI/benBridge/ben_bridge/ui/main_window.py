@@ -1266,19 +1266,19 @@ class MainWindow(QMainWindow):
         self._advance_game()
 
     def _on_open_file(self):
-        """Open a deal file"""
+        """Open a deal file (PBN or BDL)"""
         filename, _ = QFileDialog.getOpenFileName(
             self, "Open Deal File", "",
-            "PBN Files (*.pbn);;All Files (*)"
+            "Bridge files (*.pbn *.bdl);;PBN Files (*.pbn);;BDL Files (*.bdl);;All Files (*)"
         )
         if filename:
-            self.status_label.setText(f"Loaded: {os.path.basename(filename)}")
+            self._on_open_file_path(filename)
 
     def _on_save_file(self):
         """Save deals to file"""
         filename, _ = QFileDialog.getSaveFileName(
             self, "Save Deals", "",
-            "PBN Files (*.pbn);;All Files (*)"
+            "PBN Files (*.pbn);;BDL Files (*.bdl);;All Files (*)"
         )
         if filename:
             self.status_label.setText(f"Saved: {os.path.basename(filename)}")
@@ -1692,19 +1692,123 @@ For more information, see the README file."""
                 QMessageBox.warning(self, "Error", f"Could not load file: {e}")
 
     def _on_open_file_path(self, filepath: str):
-        """Open a deal file by path"""
-        # Delegate to existing open file logic
-        # This is a simplified implementation
+        """Open a deal file by path — supports PBN and BDL with replay and commentary."""
         from pathlib import Path
         p = Path(filepath)
-        if p.suffix.lower() == '.pbn':
-            with open(filepath, 'r') as f:
-                content = f.read()
-            # Parse first deal from PBN
-            # Simplified - would need full PBN parser
-            self.status_label.setText(f"Loaded {p.name}")
-        elif p.suffix.lower() == '.bdl':
-            self.status_label.setText(f"BDL file loading - coming soon")
+
+        if p.suffix.lower() == '.bdl':
+            try:
+                from ben_backend.bdl_reader import BDLReader
+                reader = BDLReader()
+                deals = reader.read_file(p)
+                if not deals:
+                    QMessageBox.warning(self, "BDL Error", "No deals found in file.")
+                    return
+
+                # Show a BDL replay dialog with all deals
+                self._show_bdl_replay(deals, p.name)
+                self.status_label.setText(f"Loaded {len(deals)} deal(s) from {p.name}")
+            except Exception as exc:
+                QMessageBox.warning(self, "BDL Error", str(exc))
+
+        elif p.suffix.lower() == '.pbn':
+            try:
+                from ben_backend.pbn_exporter import PBNParser
+                boards = PBNParser.parse_file(str(p))
+                if boards:
+                    self.status_label.setText(f"Loaded {len(boards)} board(s) from {p.name}")
+                else:
+                    QMessageBox.warning(self, "PBN Error", "No boards found in file.")
+            except Exception as exc:
+                QMessageBox.warning(self, "PBN Error", str(exc))
+
+    def _show_bdl_replay(self, deals, filename):
+        """Show a dialog to browse and replay deals from a BDL file."""
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QListWidget, QTextEdit, QPushButton, QLabel, QSplitter
+        from PyQt6.QtCore import Qt
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"BDL Replay — {filename}")
+        dialog.resize(900, 650)
+
+        layout = QVBoxLayout(dialog)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        # Left: deal list
+        list_widget = QListWidget()
+        for i, deal in enumerate(deals):
+            label = f"Deal {i+1}"
+            if deal.contract:
+                label += f" — {deal.contract}"
+            if deal.commentary:
+                label += " [+commentary]"
+            list_widget.addItem(label)
+        splitter.addWidget(list_widget)
+
+        # Right: detail view
+        detail = QTextEdit()
+        detail.setReadOnly(True)
+        detail.setFontFamily("monospace")
+        splitter.addWidget(detail)
+
+        splitter.setSizes([250, 650])
+        layout.addWidget(splitter)
+
+        def show_deal(idx):
+            if idx < 0 or idx >= len(deals):
+                return
+            deal = deals[idx]
+            text = []
+            text.append(f"{'='*50}")
+            text.append(f"Deal {idx+1}")
+            if deal.pavlicek_id:
+                text.append(f"Pavlicek ID: {deal.pavlicek_id}")
+            text.append(f"Dealer: {deal.dealer.name}    Vulnerability: {deal.vulnerability.name}")
+            text.append("")
+
+            # Show hands
+            for seat in [Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST]:
+                hand = deal.hands.get(seat)
+                if hand:
+                    suits = []
+                    for suit in [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]:
+                        suit_cards = sorted([c for c in hand.cards if c.suit == suit],
+                                            key=lambda c: c.rank, reverse=True)
+                        symbol = {Suit.SPADES: '♠', Suit.HEARTS: '♥',
+                                  Suit.DIAMONDS: '♦', Suit.CLUBS: '♣'}[suit]
+                        suits.append(f"{symbol} {''.join(c.rank.to_char() for c in suit_cards)}")
+                    text.append(f"  {seat.name:5s}: {' '.join(suits)}")
+
+            text.append("")
+            if deal.contract:
+                text.append(f"Contract: {deal.contract}")
+            if deal.tricks_made:
+                text.append(f"Tricks made: {deal.tricks_made}")
+            if deal.ns_score or deal.ew_score:
+                text.append(f"Score: NS={deal.ns_score}  EW={deal.ew_score}")
+
+            if deal.commentary:
+                text.append("")
+                text.append(f"{'─'*50}")
+                text.append("CLAUDE ANALYSIS:")
+                text.append(deal.commentary)
+
+            detail.setPlainText("\n".join(text))
+
+        list_widget.currentRowChanged.connect(show_deal)
+        if deals:
+            list_widget.setCurrentRow(0)
+
+        # Close button
+        btn_layout = QHBoxLayout()
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        btn_layout.addStretch()
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+        dialog.exec()
 
     def _on_configure_players(self):
         """Show player configuration dialog"""

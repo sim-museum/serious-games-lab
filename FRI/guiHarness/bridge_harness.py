@@ -15,6 +15,7 @@ import os
 import re
 import random
 import shutil
+import subprocess
 import sys
 import time
 from collections import defaultdict
@@ -311,6 +312,148 @@ def parse_pbn_file(path: str):
         current[section_key] = section_lines
     if current:
         boards.append(current)
+    return boards
+
+
+def parse_bdl_file(path: str):
+    """Parse a .bdl file, returning a list of board dicts compatible with parse_pbn_file output.
+
+    Extracts Deal (as PBN deal string), Dealer, Vulnerable, Contract, and Result
+    from each deal in the BDL file.  The Cards section uses a 12-line layout:
+      Lines 1-4:  North (S, H, D, C)
+      Lines 5-8:  West (left) / East (right)
+      Lines 9-12: South (S, H, D, C)
+    """
+    BDL_RANK = {"A": "A", "K": "K", "Q": "Q", "J": "J", "T": "T",
+                "10": "T", "9": "9", "8": "8", "7": "7", "6": "6",
+                "5": "5", "4": "4", "3": "3", "2": "2"}
+    boards = []
+
+    with open(path, "r", errors="replace") as f:
+        lines = f.readlines()
+
+    i = 0
+    board_num = 0
+    while i < len(lines):
+        line = lines[i].rstrip("\n\r")
+
+        # Look for the start of a deal: "Deal " or "Cards"
+        if line.startswith("Cards") and ":" in line:
+            board_num += 1
+            card_lines = []
+            # First card line is on the same line as "Cards        :"
+            first = line.split(":", 1)[1] if ":" in line else ""
+            card_lines.append(first)
+            # Read next 11 lines
+            for j in range(1, 12):
+                if i + j < len(lines):
+                    cl = lines[i + j].rstrip("\n\r")
+                    if ":" in cl:
+                        card_lines.append(cl.split(":", 1)[1])
+                    else:
+                        card_lines.append(cl)
+            i += 12
+
+            # Parse the 12 card lines into 4 hands
+            # Each line has space-separated rank characters
+            def parse_ranks(text):
+                """Extract rank chars from a text fragment."""
+                return [BDL_RANK.get(r, r) for r in text.split() if r in BDL_RANK]
+
+            # North: lines 0-3 (centered)
+            n_suits = [parse_ranks(card_lines[j]) if j < len(card_lines) else [] for j in range(4)]
+            # West/East: lines 4-7, split at midpoint
+            w_suits = []
+            e_suits = []
+            for j in range(4, 8):
+                if j < len(card_lines):
+                    cl = card_lines[j]
+                    # Split at large whitespace gap (West is left, East is right)
+                    # Find the gap: look for 4+ consecutive spaces in the middle
+                    mid = len(cl) // 2
+                    # Search for a gap of 4+ spaces near the middle
+                    best_gap_start = -1
+                    best_gap_len = 0
+                    in_gap = False
+                    gap_start = 0
+                    for k, ch in enumerate(cl):
+                        if ch == ' ':
+                            if not in_gap:
+                                in_gap = True
+                                gap_start = k
+                        else:
+                            if in_gap:
+                                gap_len = k - gap_start
+                                if gap_len > best_gap_len:
+                                    best_gap_len = gap_len
+                                    best_gap_start = gap_start
+                                in_gap = False
+                    if in_gap:
+                        gap_len = len(cl) - gap_start
+                        if gap_len > best_gap_len:
+                            best_gap_len = gap_len
+                            best_gap_start = gap_start
+
+                    if best_gap_len >= 4 and best_gap_start > 0:
+                        w_suits.append(parse_ranks(cl[:best_gap_start]))
+                        e_suits.append(parse_ranks(cl[best_gap_start + best_gap_len:]))
+                    else:
+                        w_suits.append(parse_ranks(cl))
+                        e_suits.append([])
+                else:
+                    w_suits.append([])
+                    e_suits.append([])
+
+            # South: lines 8-11
+            s_suits = [parse_ranks(card_lines[j]) if j < len(card_lines) else [] for j in range(8, 12)]
+
+            # Build PBN deal string: "N:S.H.D.C E.H.D.C S.H.D.C W.H.D.C"
+            def suits_to_pbn(suits_list):
+                return ".".join("".join(s) for s in suits_list)
+
+            pbn_deal = f"N:{suits_to_pbn(n_suits)} {suits_to_pbn(e_suits)} {suits_to_pbn(s_suits)} {suits_to_pbn(w_suits)}"
+
+            # Collect metadata from surrounding lines
+            board = {"Deal": pbn_deal, "Board": str(board_num)}
+
+            # Look backwards for Dealer, Vuln, Deal-text
+            for back in range(1, 10):
+                idx = i - 12 - back
+                if idx < 0:
+                    break
+                bl = lines[idx].rstrip()
+                if bl.startswith("Dealer"):
+                    board["Dealer"] = bl.split(":", 1)[1].strip().rstrip()
+                elif bl.startswith("Vuln"):
+                    v = bl.split(":", 1)[1].strip()
+                    board["Vulnerable"] = v.replace("None", "-").replace("Both", "All").strip()
+                elif bl.startswith("Deal-text"):
+                    dt = bl.split(":", 1)[1].strip()
+                    board["Board"] = dt
+
+            # Look forwards for Contract, Result
+            for fwd in range(13):
+                idx = i + fwd
+                if idx >= len(lines):
+                    break
+                fl = lines[idx].rstrip()
+                if fl.startswith("Contract"):
+                    parts = fl.split(":", 1)[1].strip().split()
+                    if parts:
+                        board["Contract"] = parts[0].upper()
+                    if len(parts) > 1:
+                        board["Declarer"] = parts[1][0] if parts[1] else ""
+                elif fl.startswith("Result"):
+                    parts = fl.split(":", 1)[1].strip().split()
+                    # Result format: contract declarer +/-tricks score deal_id
+                    if len(parts) >= 4:
+                        board["Result"] = parts[2]  # e.g. "+0", "-5", "="
+                elif fl.startswith("****"):
+                    break
+            boards.append(board)
+            continue
+        i += 1
+
     return boards
 
 
@@ -956,12 +1099,66 @@ class BridgeHarness(QMainWindow):
         self._worker = None
         self._source_pbn_path = None  # for workflow
 
-        tabs = QTabWidget()
-        tabs.addTab(self._build_entry_tab(), "Hand Entry")
-        tabs.addTab(self._build_workflow_tab(), "Comparison Workflow")
-        self.setCentralWidget(tabs)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self._build_entry_tab(), "Hand Entry")
+        self.tabs.addTab(self._build_workflow_tab(), "Comparison Workflow")
+        self.setCentralWidget(self.tabs)
 
         self.statusBar().showMessage("Ready")
+
+    def load_source(self, path: str, game_name: str = ""):
+        """Pre-load a PBN or BDL file into the Comparison Workflow tab.
+
+        Called via --source CLI argument so the harness opens ready for
+        the Q-Plus comparison step.
+        """
+        p = Path(path)
+        if not p.is_file():
+            return
+        # For BDL files, look for the original PBN alongside
+        pbn_path = path
+        if p.suffix.lower() == ".bdl":
+            pbn_candidate = p.with_suffix(".pbn")
+            orig_candidate = p.parent / f"{p.stem.replace('.bdl', '')}_original.pbn"
+            if pbn_candidate.is_file():
+                pbn_path = str(pbn_candidate)
+            elif orig_candidate.is_file():
+                pbn_path = str(orig_candidate)
+            else:
+                # Search for any .pbn in same directory
+                pbn_files = list(p.parent.glob("*.pbn"))
+                if pbn_files:
+                    pbn_path = str(pbn_files[0])
+                else:
+                    pbn_path = path  # fall back to the BDL itself
+
+        self.wf_pbn_path.setText(pbn_path)
+        self._source_pbn_path = pbn_path
+
+        # Try to load boards and display deal
+        try:
+            if pbn_path.lower().endswith(".pbn"):
+                boards = self._load_pbn_boards(pbn_path, self.wf_board_combo)
+                if boards:
+                    deal_str = boards[0].get("Deal", "")
+                    self.hands = parse_pbn_deal_string(deal_str)
+                    self._show_deal(self.hands, self.wf_hand_display, self.wf_base72)
+                    self._show_deal(self.hands, self.hand_display, self.base72_display)
+                    self._update_info()
+        except Exception as exc:
+            self.statusBar().showMessage(f"Could not parse source: {exc}")
+
+        # Auto-detect source game name
+        if game_name:
+            idx = self.wf_game_name.findText(game_name.lower())
+            if idx >= 0:
+                self.wf_game_name.setCurrentIndex(idx)
+            else:
+                self.wf_game_name.setEditText(game_name.lower())
+
+        # Switch to Comparison Workflow tab
+        self.tabs.setCurrentIndex(1)
+        self.statusBar().showMessage(f"Source loaded: {Path(pbn_path).name}")
 
     # ---- Hand Entry tab ---------------------------------------------------
 
@@ -1003,7 +1200,7 @@ class BridgeHarness(QMainWindow):
         self.src_buttons = QButtonGroup(self)
         self.rb_random = QRadioButton("Random deal")
         self.rb_pbn_str = QRadioButton("PBN string")
-        self.rb_pbn_file = QRadioButton("PBN file")
+        self.rb_pbn_file = QRadioButton("PBN / BDL file")
         self.rb_base72 = QRadioButton("Base-72 code")
         for i, rb in enumerate([self.rb_random, self.rb_pbn_str, self.rb_pbn_file, self.rb_base72]):
             self.src_buttons.addButton(rb, i)
@@ -1027,7 +1224,7 @@ class BridgeHarness(QMainWindow):
         self.input_field.setPlaceholderText("Enter PBN deal or base-72 code...")
         src_layout.addWidget(self.input_field)
 
-        self.browse_btn = QPushButton("Browse PBN file...")
+        self.browse_btn = QPushButton("Browse PBN / BDL file...")
         self.browse_btn.clicked.connect(self._browse_pbn)
         src_layout.addWidget(self.browse_btn)
 
@@ -1229,11 +1426,14 @@ class BridgeHarness(QMainWindow):
     # ---- Source actions ----------------------------------------------------
 
     def _browse_pbn(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Open PBN file", str(FRI_DIR), "PBN files (*.pbn);;All (*)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Open PBN / BDL file", str(FRI_DIR),
+            "Bridge files (*.pbn *.bdl);;PBN files (*.pbn);;BDL files (*.bdl);;All (*)"
+        )
         if path:
             self.input_field.setText(path)
             self.rb_pbn_file.setChecked(True)
-            self._load_pbn_boards(path, self.board_combo)
+            self._load_boards_from_file(path, self.board_combo)
 
     def _load_pbn_boards(self, path, combo):
         try:
@@ -1255,6 +1455,30 @@ class BridgeHarness(QMainWindow):
             QMessageBox.warning(self, "PBN Error", "No boards found in file.")
         return boards
 
+    def _load_boards_from_file(self, path, combo):
+        """Load boards from either a .pbn or .bdl file."""
+        if path.lower().endswith(".bdl"):
+            try:
+                boards = parse_bdl_file(path)
+            except Exception as exc:
+                QMessageBox.warning(self, "BDL Error", str(exc))
+                return []
+            combo.clear()
+            if len(boards) > 1:
+                combo.setVisible(True)
+                for i, b in enumerate(boards):
+                    label = f"Board {b.get('Board', i + 1)}"
+                    combo.addItem(label, b)
+            elif len(boards) == 1:
+                combo.setVisible(False)
+                combo.addItem("Board 1", boards[0])
+            else:
+                combo.setVisible(False)
+                QMessageBox.warning(self, "BDL Error", "No deals found in BDL file.")
+            return boards
+        else:
+            return self._load_pbn_boards(path, combo)
+
     def _load_deal(self):
         src = self.src_buttons.checkedId()
         try:
@@ -1263,15 +1487,15 @@ class BridgeHarness(QMainWindow):
                 self.hands = generate_random_deal(target_hcp=hcp)
             elif src == 1:  # PBN string
                 self.hands = parse_pbn_deal_string(self.input_field.text())
-            elif src == 2:  # PBN file
+            elif src == 2:  # PBN / BDL file
                 path = self.input_field.text()
                 if not path:
-                    QMessageBox.warning(self, "Error", "No PBN file selected.")
+                    QMessageBox.warning(self, "Error", "No file selected.")
                     return
                 idx = max(0, self.board_combo.currentIndex())
                 board = self.board_combo.itemData(idx)
                 if board is None:
-                    boards = self._load_pbn_boards(path, self.board_combo)
+                    boards = self._load_boards_from_file(path, self.board_combo)
                     if not boards:
                         return
                     board = boards[0]
@@ -1337,13 +1561,14 @@ class BridgeHarness(QMainWindow):
 
     def _wf_browse_source(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open source PBN file", str(FRI_DIR), "PBN files (*.pbn);;All (*)"
+            self, "Open source PBN / BDL file", str(FRI_DIR),
+            "Bridge files (*.pbn *.bdl);;PBN files (*.pbn);;BDL files (*.bdl);;All (*)"
         )
         if not path:
             return
         self.wf_pbn_path.setText(path)
         self._source_pbn_path = path
-        boards = self._load_pbn_boards(path, self.wf_board_combo)
+        boards = self._load_boards_from_file(path, self.wf_board_combo)
         if boards:
             board = boards[0]
             deal_str = board.get("Deal", "")
@@ -1468,9 +1693,12 @@ class BridgeHarness(QMainWindow):
             converted_path = report_dir / f"{src_stem}.bdl"
             converted_path.write_text(converted_text, encoding="utf-8")
 
-            # 2. Copy actual qplus log file
+            # 2. Copy actual qplus log file (ensure .bdl extension)
             log_src = Path(log_path)
-            log_dest = report_dir / f"qplus_log_{log_src.name}"
+            if log_src.suffix.lower() == ".bdl":
+                log_dest = report_dir / f"qplus_{log_src.name}"
+            else:
+                log_dest = report_dir / f"qplus_log_{log_src.stem}.bdl"
             shutil.copy2(str(log_src), str(log_dest))
 
             # 3. Also copy the original source PBN for reference
@@ -1481,12 +1709,34 @@ class BridgeHarness(QMainWindow):
             rel_dir = report_dir.relative_to(REPO_ROOT)
             self.wf_status.setText(f"Copied to {rel_dir}/")
             self.statusBar().showMessage(f"Files saved to {rel_dir}/")
+
+            # 4. Trigger Claude Code annotation comparing both BDL files
+            annotate_script = FRI_DIR / "claude_annotate_bridge.sh"
+            annotated_path = report_dir / f"{src_stem}_annotated.bdl"
+            claude_msg = ""
+            if annotate_script.is_file():
+                self.statusBar().showMessage("Running Claude Code bridge annotation...")
+                QApplication.processEvents()
+                try:
+                    result = subprocess.run(
+                        ["bash", str(annotate_script),
+                         str(converted_path), str(log_dest), str(annotated_path)],
+                        capture_output=True, text=True, timeout=300,
+                    )
+                    if annotated_path.is_file():
+                        claude_msg = f"\n  \u2022 {annotated_path.name}  (Claude-annotated comparison)"
+                    if result.stdout.strip():
+                        print(result.stdout.strip())
+                except (subprocess.TimeoutExpired, OSError) as e:
+                    print(f"Claude annotation error: {e}")
+
             QMessageBox.information(
                 self, "Success",
                 f"Saved to {rel_dir}/:\n"
-                f"  \u2022 {converted_path.name}  (PBN converted to BDL format)\n"
-                f"  \u2022 {log_dest.name}  (Q-Plus log)\n"
-                f"  \u2022 {orig_dest.name}  (original PBN)",
+                f"  \u2022 {converted_path.name}  (human play BDL)\n"
+                f"  \u2022 {log_dest.name}  (Q-Plus computer play BDL)\n"
+                f"  \u2022 {orig_dest.name}  (original PBN)"
+                f"{claude_msg}",
             )
         except Exception as exc:
             QMessageBox.critical(self, "Error", f"Failed to copy files:\n{exc}")
@@ -1497,11 +1747,23 @@ class BridgeHarness(QMainWindow):
 # ---------------------------------------------------------------------------
 
 def main():
-    app = QApplication(sys.argv)
+    import argparse
+
+    # Parse --source and --game before QApplication consumes Qt args
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--source", default="", help="Pre-load PBN/BDL into Comparison Workflow")
+    parser.add_argument("--game", default="", help="Source game name (wbridge5, bb12, etc.)")
+    known, remaining = parser.parse_known_args()
+
+    app = QApplication(remaining)
     app.setStyle("Fusion")
 
     window = BridgeHarness()
     window.show()
+
+    if known.source:
+        window.load_source(known.source, game_name=known.game)
+
     sys.exit(app.exec_())
 
 

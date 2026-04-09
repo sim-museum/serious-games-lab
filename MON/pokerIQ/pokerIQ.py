@@ -4229,6 +4229,52 @@ class PokerWindow(QMainWindow):
                         cards = format_cards(p.hand) if p.hand else "?? ??"
                         f.write(f"    {p.name:<15} Cards: {cards}  Equity: {equity:.1%}  PotOdds: {pot_odds:.1%}\n")
 
+    def _get_current_hand_log(self):
+        """Extract the current hand's log text from the log file."""
+        try:
+            with open(self.log_filename, 'r') as f:
+                content = f.read()
+            # Find the last HAND #N block
+            import re
+            blocks = re.split(r'(?=={60}\nHAND #\d+)', content)
+            for block in reversed(blocks):
+                if re.match(r'={60}\nHAND #', block):
+                    return block.strip()
+        except (OSError, IOError):
+            pass
+        return ""
+
+    def _get_claude_hand_critique(self, hand_text, callback):
+        """Get Claude critique of a poker hand in a background thread.
+        Calls callback(critique_text) on completion."""
+        import shutil
+        import subprocess
+        import threading
+
+        def _run():
+            try:
+                if not shutil.which('claude'):
+                    return
+                prompt = (
+                    "Briefly critique this poker hand (3 sentences max). "
+                    "Was Hero's play correct? What was the key decision? "
+                    "Plain text only, no markdown.\n\n"
+                    f"{hand_text}"
+                )
+                result = subprocess.run(
+                    ['claude', '-p', '--max-turns', '1', prompt],
+                    capture_output=True, text=True, timeout=120
+                )
+                if result.returncode == 0 and len(result.stdout.strip()) > 10:
+                    critique = result.stdout.strip()
+                    # Save to log file
+                    self.write_log(f"\n  [CLAUDE ANALYSIS]\n  {critique}\n")
+                    callback(critique)
+            except Exception:
+                pass  # Claude unavailable — game continues without commentary
+
+        threading.Thread(target=_run, daemon=True).start()
+
     def setup_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
@@ -6075,6 +6121,33 @@ class PokerWindow(QMainWindow):
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
+        # Claude critique section (appears asynchronously)
+        claude_label = QLabel("")
+        claude_label.setFont(QFont('Arial', 14))
+        claude_label.setWordWrap(True)
+        claude_label.setStyleSheet("color: #8f8; background-color: #1a2a1a; padding: 10px; border-radius: 5px;")
+        claude_label.setVisible(False)
+        layout.insertWidget(layout.count() - 1, claude_label)  # Before button row
+
+        import shutil
+        if shutil.which('claude'):
+            claude_label.setText("Claude is analyzing your play...")
+            claude_label.setVisible(True)
+            hand_log = self._get_current_hand_log()
+            if hand_log:
+                def on_critique(text):
+                    # Use QTimer.singleShot to safely update UI from main thread
+                    from PyQt6.QtCore import QTimer
+                    QTimer.singleShot(0, lambda: _update_claude_label(text))
+
+                def _update_claude_label(text):
+                    try:
+                        claude_label.setText(f"Claude: {text}")
+                    except RuntimeError:
+                        pass  # Dialog may have been closed
+
+                self._get_claude_hand_critique(hand_log, on_critique)
+
         dialog.show()  # Non-blocking show instead of exec()
 
     def _show_stats_from_dialog(self, parent_dialog):
@@ -7861,6 +7934,92 @@ def run_text_mode(args):
     game.run()
 
 
+def replay_log_file(log_path):
+    """Replay a poker session from a log file, showing hands one at a time."""
+    import re
+    if not os.path.isfile(log_path):
+        print(f"Error: File not found: {log_path}")
+        return
+
+    with open(log_path, 'r') as f:
+        content = f.read()
+
+    # Split into hands by the "HAND #N" delimiter
+    hand_blocks = re.split(r'(?=={60}\nHAND #\d+)', content)
+    hands = [b for b in hand_blocks if re.match(r'={60}\nHAND #', b)]
+
+    if not hands:
+        print("No hands found in log file.")
+        return
+
+    # Check for Claude annotations (in _annotated.txt companion)
+    annotations = {}
+    annotated_path = log_path.replace('.txt', '_annotated.txt')
+    if os.path.isfile(annotated_path):
+        with open(annotated_path, 'r') as f:
+            ann_content = f.read()
+        ann_blocks = re.split(r'(?=={60}\nHAND #\d+)', ann_content)
+        for block in ann_blocks:
+            m = re.search(r'HAND #(\d+)', block)
+            if m:
+                hand_num = int(m.group(1))
+                # Extract any Claude commentary (text after HAND INTERPRETATION that differs)
+                annotations[hand_num] = block
+
+    print(f"\n{'='*60}")
+    print(f"POKER SESSION REPLAY — {os.path.basename(log_path)}")
+    print(f"Found {len(hands)} hands")
+    if annotations:
+        print(f"Claude annotations available ({len(annotations)} hands)")
+    print(f"{'='*60}")
+    print("\nControls: [Enter]=next hand, [N]=jump to hand #N, [Q]=quit\n")
+
+    idx = 0
+    while idx < len(hands):
+        hand_text = hands[idx].strip()
+        m = re.search(r'HAND #(\d+)', hand_text)
+        hand_num = int(m.group(1)) if m else idx + 1
+
+        print(f"\n{'='*60}")
+        print(hand_text)
+
+        # Show annotation if available
+        if hand_num in annotations:
+            ann = annotations[hand_num]
+            # Find commentary that goes beyond the basic log
+            commentary_match = re.search(r'(CLAUDE.*?ANALYSIS|STRATEGIC.*?REVIEW|COMMENTARY)(.*?)(?=\n={60}|\Z)',
+                                         ann, re.DOTALL | re.IGNORECASE)
+            if commentary_match:
+                print(f"\n{'─'*40}")
+                print("CLAUDE ANALYSIS:")
+                print(commentary_match.group(0).strip())
+
+        print(f"\n[Hand {idx+1} of {len(hands)}]")
+        try:
+            cmd = input("> ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            break
+
+        if cmd == 'q':
+            break
+        elif cmd.isdigit():
+            target = int(cmd)
+            # Find hand by number
+            found = False
+            for j, h in enumerate(hands):
+                hm = re.search(r'HAND #(\d+)', h)
+                if hm and int(hm.group(1)) == target:
+                    idx = j
+                    found = True
+                    break
+            if not found:
+                print(f"Hand #{target} not found.")
+        else:
+            idx += 1
+
+    print("\nReplay complete.")
+
+
 def main():
     import argparse
 
@@ -7873,6 +8032,7 @@ Examples:
   python pokerIQ.py --textmode         # Text-only mode
   python pokerIQ.py --god              # GUI with God Mode enabled
   python pokerIQ.py --theoryOfMind     # Text mode with Theory of Mind view
+  python pokerIQ.py --replay log.txt   # Replay a saved session
 
 Note: --theoryOfMind cannot be combined with --god or --tells
         """
@@ -7886,8 +8046,15 @@ Note: --theoryOfMind cannot be combined with --god or --tells
                         help="Show tells/statistics panel")
     parser.add_argument("-theoryOfMind", "--theoryOfMind", action="store_true",
                         help="Enable Theory of Mind analysis (text mode only, cannot combine with -god or -tells)")
+    parser.add_argument("--replay", metavar="LOGFILE",
+                        help="Replay a saved poker session from a log file")
 
     args = parser.parse_args()
+
+    # Replay mode
+    if args.replay:
+        replay_log_file(args.replay)
+        return
 
     # Validate: --theoryOfMind cannot be combined with --god or --tells
     if args.theoryOfMind and (args.god or args.tells):

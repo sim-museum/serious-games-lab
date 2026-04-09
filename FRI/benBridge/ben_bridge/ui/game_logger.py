@@ -1,8 +1,10 @@
 """
-Game Logger - Saves completed hands in BDL format.
+Game Logger - Saves completed hands in BDL and PBN format, with optional Claude critique.
 """
 
 import os
+import shutil
+import subprocess
 from datetime import datetime
 from typing import Optional, List
 from pathlib import Path
@@ -333,7 +335,14 @@ Scoring      :  Team (IMP)
         with open(self.current_log_file, 'a') as f:
             f.write("\n".join(entry_lines))
 
+        # Also save in PBN format
+        self._save_pbn_alongside(board, original_hands)
+
         print(f"Hand logged to {self.current_log_file}")
+
+        # Get Claude critique as a fully detached process (cannot block game exit)
+        hand_text = "\n".join(entry_lines)
+        self._background_critique(hand_text)
 
     def _calculate_score(self, contract: Contract, tricks_made: int, vulnerable: bool) -> int:
         """Calculate the score for a contract."""
@@ -506,6 +515,10 @@ Scoring      :  Team (IMP)
 
         print(f"Closed room hand logged to {self.current_log_file}")
 
+        # Get Claude critique in background thread (non-blocking)
+        hand_text = "\n".join(entry_lines)
+        self._background_critique(hand_text)
+
     def _format_tricks_from_run(self, board_run) -> str:
         """Format the tricks section from a BenBoardRun."""
         lines = []
@@ -560,3 +573,122 @@ Scoring      :  Team (IMP)
         self.log_number += 1
         self.current_log_file = self.log_dir / f"log-{self.log_number:03d}.bdl"
         self._write_header()
+
+    def _background_critique(self, hand_bdl_text: str):
+        """Launch Claude critique as a fully detached shell process.
+
+        Uses a shell script that runs independently of the Python process,
+        so it cannot prevent the game from exiting cleanly.
+        Fails silently if Claude is unavailable or anything goes wrong.
+        """
+        try:
+            if not shutil.which('claude'):
+                return
+        except Exception:
+            return
+
+        import tempfile
+        # Write hand text to a temp file for the shell script to read
+        tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False,
+                                          dir=str(self.log_dir))
+        tmp.write(hand_bdl_text)
+        tmp.close()
+
+        bdl_path = str(self.current_log_file)
+        # Shell script: call claude, insert commentary before last **** in BDL, cleanup
+        script = f'''#!/bin/bash
+critique=$(timeout 120 claude -p --max-turns 1 \
+  "Briefly critique this bridge hand (3 sentences max). What was the key decision and was it right? South is the human player. Plain text only.
+
+$(cat "{tmp.name}")" 2>/dev/null)
+rm -f "{tmp.name}"
+[ -z "$critique" ] && exit 0
+# Format as BDL Commentary block
+commentary=""
+first=true
+while IFS= read -r line; do
+    if $first; then
+        commentary="Commentary   :  $line"
+        first=false
+    else
+        commentary="$commentary
+.            :  $line"
+    fi
+done <<< "$critique"
+# Insert before last **** separator
+if grep -q '\\*\\*\\*\\*' "{bdl_path}"; then
+    python3 -c "
+import sys
+with open('{bdl_path}', 'r') as f:
+    content = f.read()
+last = content.rfind('****')
+if last >= 0:
+    content = content[:last] + sys.stdin.read() + '\\n\\n' + content[last:]
+    with open('{bdl_path}', 'w') as f:
+        f.write(content)
+" <<< "$commentary"
+    echo "Claude commentary added to {bdl_path}"
+fi
+'''
+        # Launch fully detached — cannot block Python exit
+        try:
+            subprocess.Popen(
+                ['bash', '-c', script],
+                start_new_session=True,
+                stdin=subprocess.DEVNULL,
+                stdout=None,  # inherit terminal for status messages
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass  # Claude unavailable — game continues without commentary
+
+    def _save_pbn_alongside(self, board: BoardState, original_hands: dict = None):
+        """Save the hand in PBN format alongside the BDL file."""
+        pbn_file = self.current_log_file.with_suffix('.pbn')
+
+        hands = original_hands if original_hands else board.hands
+        suit_order = [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]
+
+        def hand_to_pbn(hand):
+            parts = []
+            for suit in suit_order:
+                cards = sorted([c for c in hand.cards if c.suit == suit],
+                               key=lambda c: c.rank, reverse=True)
+                parts.append("".join(c.rank.to_char() for c in cards))
+            return ".".join(parts)
+
+        seat_order = [Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST]
+        deal_str = "N:" + " ".join(hand_to_pbn(hands[s]) for s in seat_order)
+
+        vuln_map = {
+            Vulnerability.NONE: "None", Vulnerability.NS: "NS",
+            Vulnerability.EW: "EW", Vulnerability.BOTH: "All"
+        }
+        dealer_map = {Seat.NORTH: "N", Seat.EAST: "E", Seat.SOUTH: "S", Seat.WEST: "W"}
+
+        lines = []
+        lines.append(f'[Event "BenBridge Session"]')
+        lines.append(f'[Board "{board.board_number}"]')
+        lines.append(f'[Dealer "{dealer_map[board.dealer]}"]')
+        lines.append(f'[Vulnerable "{vuln_map.get(board.vulnerability, "None")}"]')
+        lines.append(f'[Deal "{deal_str}"]')
+        if board.contract:
+            suit_chars = {Suit.SPADES: 'S', Suit.HEARTS: 'H', Suit.DIAMONDS: 'D',
+                          Suit.CLUBS: 'C', Suit.NOTRUMP: 'NT'}
+            contract_str = f"{board.contract.level}{suit_chars[board.contract.suit]}"
+            if board.contract.redoubled:
+                contract_str += "XX"
+            elif board.contract.doubled:
+                contract_str += "X"
+            lines.append(f'[Contract "{contract_str}"]')
+            lines.append(f'[Declarer "{dealer_map[board.contract.declarer]}"]')
+            if board.declarer_tricks is not None:
+                target = board.contract.target_tricks()
+                diff = board.declarer_tricks - target
+                result = f"+{diff}" if diff > 0 else ("=" if diff == 0 else str(diff))
+                lines.append(f'[Result "{board.declarer_tricks}"]')
+        lines.append("")
+
+        # Append to PBN file (one file can hold multiple boards)
+        with open(pbn_file, 'a') as f:
+            f.write("\n".join(lines) + "\n")

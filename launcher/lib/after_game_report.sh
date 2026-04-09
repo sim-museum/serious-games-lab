@@ -26,18 +26,28 @@ _game_output_patterns() {
         # WED - Opening repertoire is a helper utility, no files to collect
         openingRepertoire/run_opening_repertoire.sh)
             ;;
-        # FRI - Bridge: .pbn files
+        # FRI - Bridge: .pbn and .bdl files
         wBridge5.sh)
             echo ".|*.pbn"
+            echo ".|*.bdl"
             echo "HOMESCAN|*.txt"
             echo "HOMESCAN|*.pbn"
             ;;
         bb12/bb12.sh)
             echo ".|*.pbn"
             echo ".|*.ppl"
+            echo ".|*.bdl"
             ;;
-        bcalc.sh|benBridge/run.sh|qplus.sh|tenace.sh)
+        benBridge/run.sh)
+            echo "./benBridge/ben/DATA/LOG|*.bdl"
+            echo "./benBridge/ben/DATA/LOG|*.pbn"
+            echo "./benBridge/ben/DATA/LOG|*.ppl"
             echo ".|*.pbn"
+            echo ".|*.bdl"
+            ;;
+        bcalc.sh|qplus.sh|tenace.sh)
+            echo ".|*.pbn"
+            echo ".|*.bdl"
             ;;
         # FRI - Math quiz, memory training (no persistent output files)
         mathQuiz/run.sh|dual_nback/run.sh|memoryTraining.sh)
@@ -131,6 +141,19 @@ _game_output_patterns() {
     esac
 }
 
+# Return true (0) if a game's output files should be KEPT in place after collection.
+# Most games have files moved (cleaned up); tactical engagement/flight sim saves are exempt.
+_exempt_from_cleanup() {
+    local script="$1"
+    case "$script" in
+        # SAT - Falcon tactical engagements: keep ACMI/VHS replays in place
+        freeFalcon.sh|FalconAF.sh|BMS432/BMS432.sh|BMS435/BMS435.sh) return 0 ;;
+        # TUE - Flight sim saves should persist
+        flightgear/*.sh) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Derive a short game name from the script path for directory naming
 _game_short_name() {
     local script="$1"
@@ -198,10 +221,10 @@ collect_after_game_report() {
                 max_depth=5
             elif [[ "$search_dir" == ~/* ]]; then
                 abs_search_dir="$HOME/${search_dir#\~/}"
-                max_depth=3
+                max_depth=5
             else
                 abs_search_dir="$day_dir/$search_dir"
-                max_depth=3
+                max_depth=5
             fi
             [[ -d "$abs_search_dir" ]] || continue
 
@@ -221,6 +244,12 @@ collect_after_game_report() {
             fi
 
             # Find files matching pattern that are newer than start_epoch
+            # Non-exempt games: move files to afterGameReport (restoring clean state)
+            # Exempt games (tactical engagements) and HOMESCAN paths: copy only
+            local use_move=false
+            if [[ "$search_dir" != "HOMESCAN" ]] && ! _exempt_from_cleanup "$script"; then
+                use_move=true
+            fi
             while IFS= read -r -d '' file; do
                 local file_epoch
                 file_epoch="$(stat -c %Y "$file" 2>/dev/null)" || continue
@@ -229,7 +258,11 @@ collect_after_game_report() {
                         mkdir -p "$report_dir"
                         found_files=true
                     fi
-                    cp "$file" "$report_dir/"
+                    if [[ "$use_move" == true ]]; then
+                        mv "$file" "$report_dir/"
+                    else
+                        cp "$file" "$report_dir/"
+                    fi
                 fi
             done < <(find "$abs_search_dir" -maxdepth "$max_depth" -name "$pattern" -type f \
                         "${find_excludes[@]}" -print0 2>/dev/null)
@@ -357,20 +390,8 @@ prompt_self_assessment() {
     } > "$report_dir/self_assessment.txt"
     msg_ok "Self-assessment saved to $(basename "$report_dir")/self_assessment.txt"
 
-    # Archive afterGameReport (manual mode) or keep intact (auto mode)
-    if ! $keep_report; then
-        local sanitized_ts
-        sanitized_ts="$(date '+%y%m%d_%H%M')"
-        local archive_name="${day}_score_${sanitized_ts}.tar.gz"
-
-        local total_files
-        total_files="$(find "$day_dir/afterGameReport" -type f 2>/dev/null | wc -l)"
-        if [[ "$total_files" -gt 0 ]]; then
-            tar -czf "$REPO_ROOT/$archive_name" -C "$day_dir" afterGameReport
-            msg_ok "Archived game files to $archive_name"
-        fi
-        rm -rf "$day_dir/afterGameReport"
-    fi
+    # Keep afterGameReport intact — it will be collected by export_scores()
+    # when the user chooses "Export" from the main menu.
 
     # Record score to CSV
     if [[ ! -f "$SCORES_FILE" ]]; then

@@ -48,6 +48,9 @@ class BDLDeal:
     ns_score: int = 0
     ew_score: int = 0
 
+    # Claude commentary (if present in BDL file)
+    commentary: str = ""
+
     def to_board_state(self) -> BoardState:
         """Convert to BoardState for replay"""
         board = BoardState(
@@ -88,7 +91,7 @@ class BDLReader:
                 continue
 
             # Deal separator or start
-            if stripped.startswith('===') or stripped.startswith('---'):
+            if stripped.startswith('===') or stripped.startswith('---') or stripped.startswith('****'):
                 if self.current_deal and self._is_deal_valid(self.current_deal):
                     deals.append(self.current_deal)
                 self.current_deal = BDLDeal()
@@ -109,6 +112,34 @@ class BDLReader:
                     self.current_deal = BDLDeal()
                 i += 1
                 continue
+
+            # Handle continuation lines (key is empty, starts with spaces then colon)
+            if ':' in line and self.current_deal:
+                before_colon = line.split(':', 1)[0]
+                after_colon = line.split(':', 1)[1]
+                # BDL continuation: "             :   content"
+                if before_colon.strip() == '' or before_colon.strip() == '.':
+                    # Card continuation lines (during card parsing mode)
+                    if hasattr(self, '_card_lines') and self._card_lines is not None:
+                        self._card_lines.append(after_colon)
+                        if len(self._card_lines) >= 12:
+                            self._parse_card_block(self.current_deal, self._card_lines)
+                            self._card_lines = None
+                            self.current_section = None
+                        i += 1
+                        continue
+                    # Commentary continuation
+                    if (self.current_deal.commentary
+                            and not stripped.startswith('.Bidding')
+                            and not stripped.startswith('.Lead')
+                            and not stripped.startswith('.Signal')
+                            and not stripped.startswith('.Strength')
+                            and not stripped.startswith('.Cheating')
+                            and not stripped.startswith('.Source')
+                            and not stripped.startswith('.description')):
+                        self.current_deal.commentary += "\n" + after_colon.strip()
+                        i += 1
+                        continue
 
             # Parse content based on current section
             if self.current_deal:
@@ -165,8 +196,17 @@ class BDLReader:
                     deal.board_number = int(value)
                 except ValueError:
                     pass
-            elif key in ['pavlicek', 'deal id', 'deal_id']:
+            elif key in ['pavlicek', 'deal id', 'deal_id', 'deal']:
                 deal.pavlicek_id = value
+            elif key in ['deal-text', 'deal_text', 'description']:
+                try:
+                    # Try to extract board number from text like "Board #924"
+                    import re
+                    m = re.search(r'#(\d+)', value)
+                    if m:
+                        deal.board_number = int(m.group(1))
+                except (ValueError, AttributeError):
+                    pass
             elif key in ['date', 'datetime']:
                 deal.date = value
             elif key in ['scoring', 'scoring type']:
@@ -176,7 +216,7 @@ class BDLReader:
                     deal.dealer = Seat.from_char(value[0].upper())
                 except (ValueError, IndexError):
                     pass
-            elif key in ['vulnerability', 'vul']:
+            elif key in ['vulnerability', 'vul', 'vuln']:
                 deal.vulnerability = self._parse_vulnerability(value)
             elif key in ['contract']:
                 deal.contract = self._parse_contract(value)
@@ -200,6 +240,25 @@ class BDLReader:
                     deal.ew_score = int(value)
                 except ValueError:
                     pass
+            elif key in ['commentary', 'comment', 'analysis']:
+                deal.commentary = value
+            elif key in ['cards']:
+                # Start card parsing mode - value has first North suit line
+                self.current_section = 'cards'
+                self._card_lines = [value]
+            elif key in ['tricks', 'trick-prep']:
+                self.current_section = None  # Reset section
+            elif key in ['result']:
+                # Parse result: contract declarer +/-tricks score deal_id
+                parts = value.split()
+                if len(parts) >= 4:
+                    try:
+                        score = int(parts[3])
+                        # Determine NS or EW score based on declarer
+                        deal.ns_score = score
+                    except (ValueError, IndexError):
+                        pass
+                self.current_section = None
             return
 
         # Hand line: N: S AKJ5 H Q87 D K43 C 1065
@@ -255,6 +314,84 @@ class BDLReader:
                 pass
         elif key in ['vulnerability', 'vul']:
             deal.vulnerability = self._parse_vulnerability(value)
+
+    def _parse_card_block(self, deal: BDLDeal, card_lines: list):
+        """Parse 12-line BDL Cards block into 4 hands.
+
+        Layout: lines 0-3 = North (S,H,D,C), lines 4-7 = West/East, lines 8-11 = South.
+        """
+        RANK_MAP = {'A': Rank.ACE, 'K': Rank.KING, 'Q': Rank.QUEEN, 'J': Rank.JACK,
+                    'T': Rank.TEN, '10': Rank.TEN, '9': Rank.NINE, '8': Rank.EIGHT,
+                    '7': Rank.SEVEN, '6': Rank.SIX, '5': Rank.FIVE, '4': Rank.FOUR,
+                    '3': Rank.THREE, '2': Rank.TWO}
+        SUIT_ORDER = [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]
+
+        def parse_ranks(text):
+            cards = []
+            for token in text.split():
+                if token in RANK_MAP:
+                    cards.append(token)
+                elif token == '-':
+                    pass  # void suit
+            return cards
+
+        def make_hand(suit_lines):
+            cards = []
+            for j, suit in enumerate(SUIT_ORDER):
+                if j < len(suit_lines):
+                    for rank_str in parse_ranks(suit_lines[j]):
+                        if rank_str in RANK_MAP:
+                            cards.append(Card(suit, RANK_MAP[rank_str]))
+            return Hand(cards) if cards else None
+
+        # North: lines 0-3
+        n_hand = make_hand([card_lines[j] if j < len(card_lines) else '' for j in range(4)])
+        if n_hand:
+            deal.hands[Seat.NORTH] = n_hand
+
+        # West/East: lines 4-7, split at largest whitespace gap
+        w_suits, e_suits = [], []
+        for j in range(4, 8):
+            cl = card_lines[j] if j < len(card_lines) else ''
+            # Find the largest gap of spaces to split West and East
+            best_start, best_len = -1, 0
+            in_gap, gap_start = False, 0
+            for k, ch in enumerate(cl):
+                if ch == ' ':
+                    if not in_gap:
+                        in_gap = True
+                        gap_start = k
+                else:
+                    if in_gap:
+                        gl = k - gap_start
+                        if gl > best_len:
+                            best_len = gl
+                            best_start = gap_start
+                        in_gap = False
+            if in_gap:
+                gl = len(cl) - gap_start
+                if gl > best_len:
+                    best_len = gl
+                    best_start = gap_start
+
+            if best_len >= 4 and best_start > 0:
+                w_suits.append(cl[:best_start])
+                e_suits.append(cl[best_start + best_len:])
+            else:
+                w_suits.append(cl)
+                e_suits.append('')
+
+        w_hand = make_hand(w_suits)
+        e_hand = make_hand(e_suits)
+        if w_hand:
+            deal.hands[Seat.WEST] = w_hand
+        if e_hand:
+            deal.hands[Seat.EAST] = e_hand
+
+        # South: lines 8-11
+        s_hand = make_hand([card_lines[j] if j < len(card_lines) else '' for j in range(8, 12)])
+        if s_hand:
+            deal.hands[Seat.SOUTH] = s_hand
 
     def _parse_vulnerability(self, value: str) -> Vulnerability:
         """Parse vulnerability string"""
