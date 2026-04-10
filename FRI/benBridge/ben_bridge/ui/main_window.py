@@ -1815,6 +1815,10 @@ For more information, see the README file."""
         dialog = PlayerConfigDialog(self.controller.players, self)
         if dialog.exec():
             self.controller.players = dialog.get_players()
+            # Update game logger with human player names for Claude critique
+            human_names = {seat: p.name for seat, p in self.controller.players.items()
+                           if p.player_type == PlayerType.HUMAN}
+            self.game_logger.set_human_players(human_names)
 
     def _on_configure_systems(self):
         """Show bidding systems dialog"""

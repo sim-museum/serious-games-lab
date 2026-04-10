@@ -574,6 +574,28 @@ Scoring      :  Team (IMP)
         self.current_log_file = self.log_dir / f"log-{self.log_number:03d}.bdl"
         self._write_header()
 
+    def _get_human_prompt_fragment(self):
+        """Return a prompt fragment describing which seats are human."""
+        names = getattr(self, '_human_names', {})
+        if not names:
+            return "South is the human player."
+        parts = []
+        seat_names = {0: "North", 1: "East", 2: "South", 3: "West"}
+        for seat, name in names.items():
+            s = seat_names.get(seat.value if hasattr(seat, 'value') else seat, str(seat))
+            parts.append(f"{s} ({name})")
+        if len(parts) == 1:
+            return f"{parts[0]} is the human player."
+        return "The human players are: " + ", ".join(parts) + "."
+
+    def set_human_players(self, human_names: dict):
+        """Set which seats are human and their names, for Claude critique.
+
+        Args:
+            human_names: dict mapping Seat to player name, e.g. {Seat.SOUTH: "Alice"}
+        """
+        self._human_names = human_names
+
     def _background_critique(self, hand_bdl_text: str):
         """Launch Claude critique as a fully detached shell process.
 
@@ -598,7 +620,7 @@ Scoring      :  Team (IMP)
         # Shell script: call claude, insert commentary before last **** in BDL, cleanup
         script = f'''#!/bin/bash
 critique=$(timeout 120 claude -p --max-turns 1 \
-  "Briefly critique this bridge hand (3 sentences max). What was the key decision and was it right? South is the human player. Plain text only.
+  "Briefly critique this bridge hand (3 sentences max). What was the key decision and was it right? {self._get_human_prompt_fragment()} Plain text only.
 
 $(cat "{tmp.name}")" 2>/dev/null)
 rm -f "{tmp.name}"
@@ -692,3 +714,92 @@ fi
         # Append to PBN file (one file can hold multiple boards)
         with open(pbn_file, 'a') as f:
             f.write("\n".join(lines) + "\n")
+
+        # Also save PPL
+        self._save_ppl_alongside(board, original_hands)
+
+    def _save_ppl_alongside(self, board: BoardState, original_hands: dict = None):
+        """Save the hand in Bridge Baron PPL binary format alongside the BDL file.
+
+        PPL format (774 bytes):
+          0x00-0x01: Version (01 04)
+          0x02-0x0B: Deal name (10 bytes, null-terminated)
+          0x0C-0x2F: Description (36 bytes, null-terminated)
+          0x30-0x4F: Hand bitmasks: 4 players × 4 suits × 2 bytes LE
+                     Player order: N,E,S,W  Suit order: C,D,H,S
+                     Bit 0 = rank '2', bit 12 = 'A'
+          0x50-0x77: Game data (dealer, vuln, contract, etc.)
+          0x78-0xAB: 52-byte play permutation (or zeros if no play)
+          0xAC:      Terminator (52)
+          0xAD-0xAF: Marker (FF FF FF)
+          0xEA-0x16F: Commentary (null-terminated)
+        """
+        import struct
+
+        ppl_file = self.current_log_file.with_suffix('.ppl')
+        hands = original_hands if original_hands else board.hands
+
+        # BB12 suit/rank encoding
+        BB12_SUITS = {Suit.CLUBS: 0, Suit.DIAMONDS: 1, Suit.HEARTS: 2, Suit.SPADES: 3}
+        BB12_RANKS = {
+            Rank.TWO: 0, Rank.THREE: 1, Rank.FOUR: 2, Rank.FIVE: 3,
+            Rank.SIX: 4, Rank.SEVEN: 5, Rank.EIGHT: 6, Rank.NINE: 7,
+            Rank.TEN: 8, Rank.JACK: 9, Rank.QUEEN: 10, Rank.KING: 11, Rank.ACE: 12
+        }
+        SEAT_ORDER = [Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST]
+
+        try:
+            buf = bytearray(774)
+            buf[0] = 0x01; buf[1] = 0x04  # Version
+
+            # Deal name
+            name = f"Board {board.board_number}"[:9]
+            buf[0x02:0x02 + len(name)] = name.encode('ascii')
+
+            # Description
+            desc = f"BenBridge"[:35]
+            buf[0x0C:0x0C + len(desc)] = desc.encode('ascii')
+
+            # Hand bitmasks: 4 players × 4 suits × 2 bytes LE
+            for pi, seat in enumerate(SEAT_ORDER):
+                hand = hands.get(seat)
+                if not hand:
+                    continue
+                for card in hand.cards:
+                    si = BB12_SUITS.get(card.suit)
+                    ri = BB12_RANKS.get(card.rank)
+                    if si is not None and ri is not None:
+                        offset = 0x30 + (pi * 4 + si) * 2
+                        mask = struct.unpack_from('<H', buf, offset)[0]
+                        mask |= (1 << ri)
+                        struct.pack_into('<H', buf, offset, mask)
+
+            # Dealer (0x50): N=0, E=1, S=2, W=3
+            dealer_map = {Seat.NORTH: 0, Seat.EAST: 1, Seat.SOUTH: 2, Seat.WEST: 3}
+            buf[0x50] = dealer_map.get(board.dealer, 0)
+
+            # Vulnerability (0x51): 0=None, 1=NS, 2=EW, 3=Both
+            vuln_map = {Vulnerability.NONE: 0, Vulnerability.NS: 1,
+                        Vulnerability.EW: 2, Vulnerability.BOTH: 3}
+            buf[0x51] = vuln_map.get(board.vulnerability, 0)
+
+            # Play permutation (zeros if no play recorded)
+            # Card ID = suit_idx * 13 + rank_idx (BB12 encoding: C=0, D=1, H=2, S=3)
+            if board.tricks:
+                play_idx = 0
+                for trick in board.tricks:
+                    for card in trick.cards:
+                        si = BB12_SUITS.get(card.suit, 0)
+                        ri = BB12_RANKS.get(card.rank, 0)
+                        card_id = si * 13 + ri
+                        buf[0x78 + play_idx] = card_id
+                        play_idx += 1
+                        if play_idx >= 52:
+                            break
+                buf[0xAC] = 52  # Terminator
+                buf[0xAD] = 0xFF; buf[0xAE] = 0xFF; buf[0xAF] = 0xFF
+
+            with open(ppl_file, 'wb') as f:
+                f.write(buf)
+        except Exception:
+            pass  # PPL generation is best-effort

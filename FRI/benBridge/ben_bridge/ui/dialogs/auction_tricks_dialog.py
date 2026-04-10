@@ -177,7 +177,7 @@ class AuctionTricksDialog(QDialog):
         else:
             level = bid.level
             suit = bid.suit
-            if suit:
+            if suit is not None:
                 suit_name = suit.name.upper()
                 symbol = self.SUIT_SYMBOLS.get(suit_name, suit_name[0])
                 color = self._get_suit_color(suit_name)

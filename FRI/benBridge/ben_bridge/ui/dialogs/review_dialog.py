@@ -243,7 +243,7 @@ class ReviewDialog(QDialog):
             return "XX"
         elif hasattr(bid, 'level') and hasattr(bid, 'suit'):
             level = bid.level
-            if bid.suit:
+            if bid.suit is not None:
                 suit_name = bid.suit.name.upper()
                 symbol = self.SUIT_SYMBOLS.get(suit_name, suit_name[0])
                 color = self.SUIT_COLORS.get(suit_name, '#000000')
