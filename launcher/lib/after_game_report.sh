@@ -234,6 +234,9 @@ collect_after_game_report() {
             local -a find_excludes=(
                 -not -path "*/INSTALL/*"
                 -not -path "*/openingRepertoire/*"
+                -not -path "*/.local/share/Trash/*"
+                -not -path "*/.Trash*"
+                -not -name "*.trashinfo"
             )
             if [[ "$search_dir" != *afterGameReport* ]]; then
                 find_excludes+=(-not -path "*/afterGameReport/*")
@@ -253,6 +256,11 @@ collect_after_game_report() {
             while IFS= read -r -d '' file; do
                 local file_epoch
                 file_epoch="$(stat -c %Y "$file" 2>/dev/null)" || continue
+                # Skip files that existed before the game launched (e.g. MiG Alley
+                # install replays whose mtimes get bumped by Wine on startup)
+                if [[ -n "${_SGL_PRE_EXISTING_FILES:-}" && -f "$_SGL_PRE_EXISTING_FILES" ]]; then
+                    grep -qFx "$file" "$_SGL_PRE_EXISTING_FILES" 2>/dev/null && continue
+                fi
                 if [ "$file_epoch" $compare_op "$start_epoch" ]; then
                     if [[ "$found_files" == false ]]; then
                         mkdir -p "$report_dir"
