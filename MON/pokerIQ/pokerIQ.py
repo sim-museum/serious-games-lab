@@ -7960,9 +7960,9 @@ def run_gui_mode(args):
     # Configure human players
     if names and len(names) > 0:
         for i, name in enumerate(names[:4]):
-            if i < len(window.game.players):
-                window.game.players[i].name = name
-                window.game.players[i].style = 'human'
+            if i < len(window.players):
+                window.players[i].name = name
+                window.players[i].style = 'human'
 
     window.show()
     sys.exit(app.exec())
