@@ -12,20 +12,22 @@ Your daily score ranges from 0 to 1.  The launcher tracks a rolling
 WORKFLOW
 
 1. Play or study the games for a given day
-2. Save your game output (replays, screenshots, analysis files)
-   to the day's afterGameReport directory
-3. From the day's menu in the launcher, select "How to Calculate Score"
-   to read the scoring criteria for that day
-4. Select "Enter New Score" to record your score
+2. Game output files (replays, analysis, screenshots) are collected
+   automatically to the day's afterGameReport directory
+3. After the game exits, rate your performance (0-1) and explain
+   your reasoning — the launcher prompts you automatically
+4. To review the scoring criteria at any time, select "How to
+   Calculate Score" from the day's menu
 
-The launcher will archive your afterGameReport files and record
-your score in filesForLauncher/launcherScores.csv.
+The launcher records your score in filesForLauncher/launcherScores.csv.
 
 EXPORTING
 
 Use "Export Scores and game output files" from the main menu to
-create a tar.gz archive of all your score records and game output
-archives, along with a sha256 checksum for verification.
+create a tar.gz archive of all your score records and game output.
+Claude Code then reviews your archive and produces a PDF report
+with revised scores, rationale, trends, and suggestions.  The
+final archive filename includes the Claude-determined score.
 
 PER-DAY SCORING
 

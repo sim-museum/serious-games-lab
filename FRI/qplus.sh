@@ -41,6 +41,9 @@ if [ -n "$QBRIDGE_DIR" ]; then
         )
     fi
 
+    # Snapshot existing BDL log files before launching
+    _qp_snapshot_time=$(date +%s)
+
     # Run Qplus Bridge
     cd "$QBRIDGE_DIR"
     # Mark game start so afterGameReport only collects files from gameplay, not install
@@ -48,6 +51,41 @@ if [ -n "$QBRIDGE_DIR" ]; then
     wine QBRIDGE.EXE 2>/dev/null 1>/dev/null
     cd "$BASE_DIR"
     clear
+
+    # Find new BDL log files created during the session and annotate with Claude
+    ANNOTATE_SCRIPT="$BASE_DIR/claude_annotate_bridge_single.sh"
+    REPORT_DIR="$BASE_DIR/afterGameReport"
+    if [[ -x "$ANNOTATE_SCRIPT" ]]; then
+        _qp_found_bdl=false
+        while IFS= read -r -d '' bdl_file; do
+            fmod=$(stat -c %Y "$bdl_file" 2>/dev/null) || continue
+            [[ "$fmod" -le "$_qp_snapshot_time" ]] && continue
+            _qp_found_bdl=true
+
+            # Create afterGameReport subdir if needed
+            _qp_dest=""
+            if [[ -d "$REPORT_DIR" ]]; then
+                _qp_dest=$(find "$REPORT_DIR" -mindepth 1 -maxdepth 1 -type d -name "*_qplus" \
+                               -printf '%T@ %p\n' 2>/dev/null \
+                           | sort -rn | head -1 | cut -d' ' -f2-)
+            fi
+            if [[ -z "$_qp_dest" || ! -d "$_qp_dest" ]]; then
+                _qp_dest="$REPORT_DIR/$(date '+%y%m%d_%H%M')_qplus"
+            fi
+            mkdir -p "$_qp_dest"
+
+            base=$(basename "$bdl_file" .bdl)
+            cp "$bdl_file" "$_qp_dest/${base}.bdl"
+            echo ""
+            echo "Running Claude annotation on Q-Plus game log..."
+            bash "$ANNOTATE_SCRIPT" "$_qp_dest/${base}.bdl" "$_qp_dest/${base}_annotated.bdl"
+        done < <(find "$QBRIDGE_DIR/DATA/LOG" -maxdepth 1 -name "*.bdl" -type f -print0 2>/dev/null)
+
+        if [[ "$_qp_found_bdl" == true ]]; then
+            echo ""
+        fi
+    fi
+
     # Display exit message
     cat "$BASE_DIR/DOC/REFERENCE/exitMessageQplus.txt"
     echo ""; echo ""

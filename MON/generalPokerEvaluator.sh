@@ -96,3 +96,7 @@ echo ""
 cd "$SCRIPT_DIR"
 LOG_FILE="$SCRIPT_DIR/ps_eval_log_$(date '+%y%m%d_%H%M').txt"
 script -q -c "bash --norc --noprofile -i" "$LOG_FILE"
+
+# Annotate session log with Claude Code
+source "$SCRIPT_DIR/claude_annotate_poker.sh"
+claude_annotate_poker "$LOG_FILE"

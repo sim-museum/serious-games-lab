@@ -7,7 +7,9 @@ the FRI/afterGameReport directory, calculate your score as described
 below, and then enter your score using the launcher.
 
 Note: these OKRs can be completed with any of the bridge programs
-available on FRI (bcalc, Q-plus Bridge, benBridge, Bridge Baron, wBridge5).
+available on FRI (bcalc, Q-plus Bridge, benBridge, Bridge Baron 12,
+wBridge5, tenace).  FRI also includes dual_nback (memory training)
+and mathQuiz (mental math training) as supplementary exercises.
 
 OBJECTIVE #1: LEARN DUPLICATE BRIDGE WELL ENOUGH TO PLAY IN A CLUB GAME
 OBJECTIVE #2: (ASPIRATIONAL) CONSISTENTLY WIN AGAINST ADVANCED AI OPPONENTS
@@ -50,7 +52,7 @@ The following tasks are worth .05 points each:
 
 Read one chapter from a recommended bridge book (see FRI/DOC/recommendedBooks.txt)
 
-Skim all documentation in the MON/DOC directory
+Skim all documentation in the FRI/DOC directory
 
 Watch an instructional bridge video (see FRI/DOC/instructionalBridgeVideos.txt)
 

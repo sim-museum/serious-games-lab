@@ -52,6 +52,7 @@ if [ -d "$WINEPREFIX/drive_c/wbridge5" ]; then
     mkdir -p "$_wb5_dest"
 
     # Search Wine prefix and FRI dir for new .pbn files
+    _wb5_last_pbn=""
     while IFS= read -r -d '' pbn_file; do
         fmod=$(stat -c %Y "$pbn_file" 2>/dev/null) || continue
         [[ "$fmod" -le "$_wb5_snapshot_time" ]] && continue
@@ -61,6 +62,7 @@ if [ -d "$WINEPREFIX/drive_c/wbridge5" ]; then
         if [[ "$(dirname "$pbn_file")" != "$_wb5_dest" ]]; then
             cp "$pbn_file" "$_wb5_dest/${base}.pbn"
         fi
+        _wb5_last_pbn="$_wb5_dest/${base}.pbn"
         # Convert to BDL
         if [[ -f "$HARNESS_DIR/bridge_harness.py" && -x "$HARNESS_DIR/venv/bin/python3" ]]; then
             PYTHONPATH="$HARNESS_DIR" "$HARNESS_DIR/venv/bin/python3" -c "
@@ -73,6 +75,42 @@ print('  Converted ${base}.pbn -> ${base}.bdl')
         fi
     done < <(find "$WINEPREFIX/drive_c/wbridge5" "$FRI_DIR" "$_wb5_dest" \
                  -maxdepth 1 -name "*.pbn" -type f -print0 2>/dev/null)
+
+    # Offer Q-Plus comparison workflow
+    if [[ -n "$_wb5_last_pbn" && -f "$HARNESS_DIR/bridge_harness.py" && -x "$HARNESS_DIR/venv/bin/python" ]]; then
+        QBRIDGE_DIR=""
+        [[ -d "$WINEPREFIX/drive_c/games/qbridge17" ]] && QBRIDGE_DIR="$WINEPREFIX/drive_c/games/qbridge17"
+        [[ -z "$QBRIDGE_DIR" && -d "$WINEPREFIX/drive_c/games/qbridge15" ]] && QBRIDGE_DIR="$WINEPREFIX/drive_c/games/qbridge15"
+
+        if [[ -n "$QBRIDGE_DIR" ]]; then
+            echo ""
+            read -rp "Compare this hand with Q-Plus Bridge? (y/N): " _wb5_compare
+            if [[ "$_wb5_compare" =~ ^[Yy]$ ]]; then
+                echo "Launching Q-Plus Bridge and GUI Harness..."
+                echo "Use the Comparison Workflow tab (source is pre-loaded)."
+                echo "  1. Open Q-Plus → Own Deals → Enter, then click 'Enter into Q-Plus'"
+                echo "  2. Play the hand in Q-Plus"
+                echo "  3. Click 'Auto-detect latest' to find Q-Plus log"
+                echo "  4. Click 'Convert & copy' to save and annotate with Claude"
+                echo ""
+
+                # Launch harness with source pre-loaded
+                (
+                    cd "$HARNESS_DIR"
+                    source venv/bin/activate
+                    python bridge_harness.py --source "$_wb5_last_pbn" --game wbridge5 2>/dev/null &
+                )
+
+                # Launch Q-Plus
+                cd "$QBRIDGE_DIR"
+                wine QBRIDGE.EXE 2>/dev/null 1>/dev/null
+                cd "$FRI_DIR"
+
+                # Wait briefly for harness to finish any pending work
+                sleep 1
+            fi
+        fi
+    fi
 
     # Display exit message
     cat "$PWD/DOC/REFERENCE/exitMessageWbridge5.txt"

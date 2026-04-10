@@ -54,27 +54,69 @@ if [ -f "$WINEPREFIX/Bridge Baron/Baron.exe" ]; then
     mkdir -p "$_bb12_dest"
 
     # Search Wine prefix, FRI dir, and the report dir for new .ppl files
+    _bb12_last_pbn=""
     while IFS= read -r -d '' ppl_file; do
         fmod=$(stat -c %Y "$ppl_file" 2>/dev/null) || continue
-        [[ "$fmod" -le "$_bb12_snapshot_time" ]] && continue
+        [[ "$fmod" -lt "$_bb12_snapshot_time" ]] && continue
         base=$(basename "$ppl_file" .ppl)
         [[ "$base" == "Sample" ]] && continue
         # Copy to report dir if not already there
         if [[ "$(dirname "$ppl_file")" != "$_bb12_dest" ]]; then
             cp "$ppl_file" "$_bb12_dest/${base}.ppl"
         fi
-        # Convert to BDL
+        # Convert to BDL and PBN
         if [[ -f "$HARNESS_DIR/ppl_to_pbn.py" && -x "$HARNESS_DIR/venv/bin/python3" ]]; then
             PYTHONPATH="$HARNESS_DIR" "$HARNESS_DIR/venv/bin/python3" -c "
 import ppl_to_pbn
 bdl = ppl_to_pbn.ppl_to_bdl('$_bb12_dest/${base}.ppl')
 with open('$_bb12_dest/${base}.bdl', 'w') as f:
     f.write(bdl)
-print('  Converted ${base}.ppl -> ${base}.bdl')
-" 2>/dev/null && true
+pbn = ppl_to_pbn.ppl_to_pbn('$_bb12_dest/${base}.ppl')
+with open('$_bb12_dest/${base}.pbn', 'w') as f:
+    f.write(pbn)
+print('  Converted ${base}.ppl -> ${base}.bdl + ${base}.pbn')
+" 2>/dev/null && _bb12_last_pbn="$_bb12_dest/${base}.pbn" || true
         fi
-    done < <(find "$WINEPREFIX/Bridge Baron" "$FRI_DIR" "$_bb12_dest" \
+    done < <(find "$WINEPREFIX/Bridge Baron" "$FRI_DIR" "$FRI_DIR/bb12" "$REPORT_DIR" "$_bb12_dest" \
                  -maxdepth 1 -name "*.ppl" -type f -print0 2>/dev/null)
+
+    # Offer Q-Plus comparison workflow
+    if [[ -n "$_bb12_last_pbn" && -f "$HARNESS_DIR/bridge_harness.py" && -x "$HARNESS_DIR/venv/bin/python" ]]; then
+        # Q-Plus uses FRI/WP (shared Wine prefix with other FRI bridge games)
+        FRI_WP="$FRI_DIR/WP"
+        QBRIDGE_DIR=""
+        [[ -d "$FRI_WP/drive_c/games/qbridge17" ]] && QBRIDGE_DIR="$FRI_WP/drive_c/games/qbridge17"
+        [[ -z "$QBRIDGE_DIR" && -d "$FRI_WP/drive_c/games/qbridge15" ]] && QBRIDGE_DIR="$FRI_WP/drive_c/games/qbridge15"
+
+        if [[ -n "$QBRIDGE_DIR" ]]; then
+            echo ""
+            read -rp "Compare this hand with Q-Plus Bridge? (y/N): " _bb12_compare
+            if [[ "$_bb12_compare" =~ ^[Yy]$ ]]; then
+                echo "Launching Q-Plus Bridge and GUI Harness..."
+                echo "Use the Comparison Workflow tab (source is pre-loaded from Bridge Baron 12)."
+                echo "  1. Open Q-Plus → Own Deals → Enter, then click 'Enter into Q-Plus'"
+                echo "  2. Play the hand in Q-Plus"
+                echo "  3. Click 'Auto-detect latest' to find Q-Plus log"
+                echo "  4. Click 'Convert & copy' to save and annotate with Claude"
+                echo ""
+
+                # Launch harness with source pre-loaded
+                (
+                    cd "$HARNESS_DIR"
+                    source venv/bin/activate
+                    python bridge_harness.py --source "$_bb12_last_pbn" --game bb12 2>/dev/null &
+                )
+
+                # Launch Q-Plus (use FRI Wine prefix)
+                export WINEPREFIX="$FRI_WP"
+                export WINEARCH=win32
+                wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
+                cd "$QBRIDGE_DIR"
+                wine QBRIDGE.EXE 2>/dev/null 1>/dev/null
+                cd "$BB12_DIR"
+            fi
+        fi
+    fi
 
     exit 0
 fi

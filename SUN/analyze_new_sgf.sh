@@ -72,6 +72,7 @@ analyze_new_sgf_files() {
     # Create _analysed.sgf next to each original.
     # The launcher's collect_after_game_report runs AFTER this and will
     # pick up both the original and _analysed files.
+    local analysed_files=""
     while IFS= read -r sgf_file; do
         [[ -z "$sgf_file" ]] && continue
         local base dir stem annotated
@@ -80,9 +81,23 @@ analyze_new_sgf_files() {
         stem="${base%.sgf}"
         annotated="${dir}/${stem}_analysed.sgf"
 
-        python3 "$annotate_script" "$sgf_file" "$annotated" \
-            --katago "$KATAGO_BIN" --model "$MAIN_MODEL" --config "$cfg" \
-            && echo "  Done: $base -> ${stem}_analysed.sgf" \
-            || { rm -f "$annotated"; echo "  Analysis failed for $base"; }
+        if python3 "$annotate_script" "$sgf_file" "$annotated" \
+            --katago "$KATAGO_BIN" --model "$MAIN_MODEL" --config "$cfg"; then
+            echo "  Done: $base -> ${stem}_analysed.sgf"
+            analysed_files=$(printf '%s\n%s' "$analysed_files" "$annotated")
+        else
+            rm -f "$annotated"
+            echo "  Analysis failed for $base"
+        fi
     done <<< "$new_sgf"
+
+    # Add English-language annotations via Claude Code
+    analysed_files=$(echo "$analysed_files" | sed '/^$/d')
+    if [[ -n "$analysed_files" ]]; then
+        source "$SCRIPT_DIR/claude_annotate_sgf.sh"
+        while IFS= read -r analysed_sgf; do
+            [[ -z "$analysed_sgf" ]] && continue
+            claude_annotate_sgf "$analysed_sgf"
+        done <<< "$analysed_files"
+    fi
 }

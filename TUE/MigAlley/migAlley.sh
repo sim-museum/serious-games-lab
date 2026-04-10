@@ -1,7 +1,7 @@
 # Checks if Mig Alley setup exists in the Wine prefix. If found, launches Mig Alley.
 # Offers two launch modes:
-#   1. Basic (2 monitors) - no virtual desktop, spurious window goes to 2nd monitor
-#   2. Advanced (1 monitor) - virtual desktop hides spurious window, OCX workarounds needed
+#   1. Single monitor (default) - virtual desktop hides spurious window, OCX workarounds needed
+#   2. Dual monitors (fallback) - no virtual desktop, spurious window goes to 2nd monitor
 # Checks if winetricks is installed. If not, displays an error message and exits.
 # Checks if Mig Alley setup files exist. If not, provides instructions for mounting the iso and exits.
 # Guides the user through Wine configuration for installation.
@@ -32,24 +32,25 @@ select_mode() {
     echo ""
     echo "=== MiG Alley Launch Mode ==="
     echo ""
-    echo "  1. Basic (2 monitors)"
-    echo "     Requires dual monitors at the same resolution."
-    echo "     The spurious DirectDraw window is pushed to the second monitor,"
-    echo "     leaving the 3D view unobstructed on the primary monitor."
-    echo "     No workarounds needed."
-    echo ""
-    echo "  2. Advanced (1 monitor)"
-    echo "     Uses Wine virtual desktop to hide the spurious window."
+    echo "  1. Single monitor (default)"
+    echo "     Uses Wine virtual desktop to hide the spurious DirectDraw window."
     echo "     After returning from 3D view, OCX icons may become non-functional."
     echo "     Workaround: click Shape (upper right), resize the window to restore"
     echo "     icons. If fully broken, run: ./migAlleyHelper.sh restart"
     echo "     Then Load Game -> select autosave."
     echo ""
+    echo "  2. Dual monitors (fallback if single monitor doesn't work)"
+    echo "     Requires dual monitors at the same resolution."
+    echo "     The spurious DirectDraw window is pushed to the second monitor,"
+    echo "     leaving the 3D view unobstructed on the primary monitor."
+    echo "     No workarounds needed."
+    echo ""
     while true; do
-        read -rp "Select mode (1 or 2): " choice
+        read -rp "Select mode (1 or 2) [1]: " choice
+        choice="${choice:-1}"
         case "$choice" in
-            1) echo "basic" > "$MODE_FILE"; echo "Mode set to: Basic (2 monitors)"; return ;;
-            2) echo "advanced" > "$MODE_FILE"; echo "Mode set to: Advanced (1 monitor)"; return ;;
+            1) echo "advanced" > "$MODE_FILE"; echo "Mode set to: Single monitor"; return ;;
+            2) echo "basic" > "$MODE_FILE"; echo "Mode set to: Dual monitors"; return ;;
             *) echo "Please enter 1 or 2." ;;
         esac
     done
@@ -77,17 +78,32 @@ launch_mig() {
     # Disable winegstreamer to prevent crash when exiting 3D view
     export WINEDLLOVERRIDES="winegstreamer=d"
     cd "$WINEPREFIX/drive_c/rowan/mig"
-    # Mark game start so afterGameReport only collects files from gameplay, not install.
-    # Sleep 1s to ensure the marker is strictly newer than any install-created files.
+
+    # Snapshot existing .cam and .sav filenames BEFORE launch.
+    # MiG Alley touches ALL files in Videos/ during initialization, giving
+    # pre-installed replays a fresh mtime that tricks the afterGameReport
+    # collector.  Export the snapshot so collect_after_game_report can
+    # use it (via the _SGL_PRE_EXISTING_FILES env var).
+    _pre_files=$(mktemp)
+    find "$WINEPREFIX/drive_c/rowan/mig/Videos" -maxdepth 1 -name "*.cam" -type f \
+        -printf '%p\n' 2>/dev/null > "$_pre_files"
+    find "$WINEPREFIX/drive_c/rowan/mig/SaveGame" -maxdepth 1 -name "*.sav" -type f \
+        -printf '%p\n' 2>/dev/null >> "$_pre_files"
+    export _SGL_PRE_EXISTING_FILES="$_pre_files"
+
     if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
-        sleep 1
         touch "$SGL_GAME_STARTED_MARKER"
     fi
+
     if [[ "$MODE" == "advanced" ]]; then
-        wine explorer /desktop=MigAlley,1440x1050 Mig.exe &>/dev/null
+        # Use double-width virtual desktop so the spurious DirectDraw window
+        # is pushed to the right half, away from the visible 3D game area.
+        wine explorer /desktop=MigAlley,2880x1050 Mig.exe &>/dev/null
     else
         wine Mig.exe &>/dev/null
     fi
+
+    rm -f "$_pre_files"
 }
 
 # Check if Mig Alley setup exists in the Wine prefix
