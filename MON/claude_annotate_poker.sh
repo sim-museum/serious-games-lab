@@ -13,9 +13,20 @@ claude_annotate_poker() {
     [[ -f "$log_file" ]] || return 0
     command -v claude &>/dev/null || return 0
 
-    # Skip binary files (e.g. PokerTH .pdb databases)
-    if file -b "$log_file" | grep -qi "data\|binary\|database\|sqlite"; then
-        return 0
+    # Convert PokerTH .pdb (SQLite) to readable text first
+    if file -b "$log_file" | grep -qi "sqlite\|database"; then
+        local converter="$(dirname "$log_file")/../pokerth_pdb_to_text.py"
+        [[ -f "$converter" ]] || converter="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pokerth_pdb_to_text.py"
+        if [[ -f "$converter" ]]; then
+            local text_file="${dir}/${stem}.txt"
+            python3 "$converter" "$log_file" "$text_file" 2>/dev/null || return 0
+            log_file="$text_file"
+            base="$(basename "$text_file")"
+            stem="${base%.*}"
+            annotated="${dir}/${stem}_annotated.txt"
+        else
+            return 0  # No converter available, skip
+        fi
     fi
 
     local base dir stem annotated
