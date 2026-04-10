@@ -194,7 +194,8 @@ apt-get install -y \
     bchunk unrar 7zip innoextract \
     vim okular filelight freeplane \
     cabextract p7zip-full unzip xdg-utils \
-    xdotool xautomation
+    xdotool xautomation \
+    plantuml pandoc wkhtmltopdf
 
 if $INSTALL_WINE; then
     # --- Lutris (for Wine game management) ---

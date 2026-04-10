@@ -52,10 +52,14 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/PokerStove/PokerStove.exe" ]; then
     if [[ -f pokerstove.txt ]]; then
         new_size="$(wc -c < pokerstove.txt)"
         if [[ "$new_size" -gt "$snapshot" ]]; then
-            tail -c +"$((snapshot + 1))" pokerstove.txt > "$SCRIPT_DIR/pokerstove_$(date '+%y%m%d_%H%M').txt"
+            local_session_file="$SCRIPT_DIR/pokerstove_$(date '+%y%m%d_%H%M').txt"
+            tail -c +"$((snapshot + 1))" pokerstove.txt > "$local_session_file"
             # Restore pokerstove.txt to its pre-session state
             head -c "$snapshot" pokerstove.txt > pokerstove.txt.tmp
             mv pokerstove.txt.tmp pokerstove.txt
+            # Annotate session results with Claude Code
+            source "$SCRIPT_DIR/claude_annotate_poker.sh"
+            claude_annotate_poker "$local_session_file"
         fi
     fi
     exit

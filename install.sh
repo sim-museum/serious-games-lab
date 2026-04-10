@@ -195,6 +195,16 @@ else
     AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
 fi
 
+# --- Claude Code CLI ---
+if command -v claude &>/dev/null; then
+    CLAUDE_VER=$(claude --version 2>/dev/null | head -1)
+    echo "  [OK]   Claude Code: ${CLAUDE_VER:-available}"
+else
+    echo "  [WARN] Claude Code: not found — post-game AI annotations will be skipped"
+    echo "         Install: https://docs.anthropic.com/en/docs/claude-code"
+    AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
+fi
+
 # --- sglBinaries_1.tar.gz ---
 shopt -s nullglob
 WP_DIRS=("$REPO_ROOT"/*/WP/ "$REPO_ROOT"/*/*/WP/)

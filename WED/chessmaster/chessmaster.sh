@@ -23,9 +23,15 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/Ubisoft/Chessmaster Grandmaster Editi
     CM_USERS_DIR="$CM_DIR/Data/Users"
     SCRIPT_DIR="$PWD"
 
-    # Snapshot existing PGN files before launching
+    # Snapshot existing PGN files and their sizes before launching.
+    # This lets us detect both new files and new content appended to
+    # cumulative files like "Rated Games.PGN".
     pgn_snapshot=$(mktemp)
+    pgn_sizes=$(mktemp)
     find "$CM_USERS_DIR" -name "*.PGN" -o -name "*.pgn" 2>/dev/null | sort > "$pgn_snapshot"
+    while IFS= read -r f; do
+        echo "$f $(wc -c < "$f" 2>/dev/null || echo 0)" >> "$pgn_sizes"
+    done < "$pgn_snapshot"
 
     # Touch game-started marker for afterGameReport collection
     if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
@@ -43,22 +49,46 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/Ubisoft/Chessmaster Grandmaster Editi
     cd "$CM_DIR"
     wine Chessmaster.exe >/dev/null 2>&1
 
-    # Find PGN files created or modified during the game session
+    # Find PGN files created or modified during the game session.
+    # For cumulative files (like "Rated Games.PGN") that existed before the
+    # session, extract only the newly appended game(s) into a temp file
+    # so we don't re-analyze old games.
     pgn_after=$(mktemp)
     find "$CM_USERS_DIR" -name "*.PGN" -o -name "*.pgn" 2>/dev/null | sort > "$pgn_after"
-    new_pgn_files=$(comm -13 "$pgn_snapshot" "$pgn_after")
+    snapshot_time=$(stat -c %Y "$pgn_snapshot")
 
-    # Also check for PGN files modified since game start
-    if [[ -f "$pgn_snapshot" ]]; then
-        snapshot_time=$(stat -c %Y "$pgn_snapshot")
-        while IFS= read -r f; do
-            fmod=$(stat -c %Y "$f" 2>/dev/null) || continue
-            if [[ "$fmod" -gt "$snapshot_time" ]]; then
+    new_pgn_files=""
+    # Brand-new files (not in pre-launch snapshot)
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        new_pgn_files=$(printf '%s\n%s' "$new_pgn_files" "$f")
+    done <<< "$(comm -13 "$pgn_snapshot" "$pgn_after")"
+
+    # Modified existing files: extract only content added since snapshot
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        fmod=$(stat -c %Y "$f" 2>/dev/null) || continue
+        [[ "$fmod" -le "$snapshot_time" ]] && continue
+        # Look up pre-launch size
+        pre_size=$(grep -F "$f " "$pgn_sizes" 2>/dev/null | awk '{print $NF}')
+        pre_size="${pre_size:-0}"
+        cur_size=$(wc -c < "$f" 2>/dev/null || echo 0)
+        if [[ "$cur_size" -gt "$pre_size" ]]; then
+            # File grew — extract only the new bytes (new games appended)
+            new_content=$(mktemp --suffix=.PGN)
+            tail -c +"$((pre_size + 1))" "$f" > "$new_content"
+            # Only use the extract if it contains a valid PGN header
+            if grep -q '^\[Event ' "$new_content" 2>/dev/null; then
+                new_pgn_files=$(printf '%s\n%s' "$new_pgn_files" "$new_content")
+            else
+                rm -f "$new_content"
                 new_pgn_files=$(printf '%s\n%s' "$new_pgn_files" "$f")
             fi
-        done < "$pgn_after"
-    fi
-    rm -f "$pgn_snapshot" "$pgn_after"
+        else
+            new_pgn_files=$(printf '%s\n%s' "$new_pgn_files" "$f")
+        fi
+    done < "$pgn_snapshot"
+    rm -f "$pgn_snapshot" "$pgn_after" "$pgn_sizes"
 
     # De-duplicate
     new_pgn_files=$(echo "$new_pgn_files" | sort -u | sed '/^$/d')
@@ -97,6 +127,15 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/Ubisoft/Chessmaster Grandmaster Editi
             fi
             rm -f "$converted"
         done <<< "$new_pgn_files"
+
+        # Add English-language annotations via Claude Code
+        source "$SCRIPT_DIR/../claude_annotate_pgn.sh"
+        for pgn_annotated in "$day_dir"/*.pgn; do
+            [[ -f "$pgn_annotated" ]] || continue
+            # Only annotate files just created in this session
+            fmod=$(stat -c %Y "$pgn_annotated" 2>/dev/null) || continue
+            [[ "$fmod" -gt "$snapshot_time" ]] && claude_annotate_pgn "$pgn_annotated"
+        done
 
         echo "PGN files saved to $day_dir/ for afterGameReport collection."
     fi

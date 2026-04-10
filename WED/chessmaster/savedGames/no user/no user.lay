@@ -118,7 +118,7 @@ board_size=1800
 board_angle=795
 board_rotation=6027
 WallpaperType=bitmap
-WallpaperFile=C:\Program Files (x86)\Ubisoft\Chessmaster Grandmaster Edition\Data\Skin\Default\Scrn_Default.bmp
+WallpaperFile=C:\Program Files\Ubisoft\Chessmaster Grandmaster Edition\Data\Skin\Default\Scrn_Default.bmp
 gradient=0 0
 [gameroom]
 Chessmaster=0 0 1280 996 0 0

@@ -139,4 +139,11 @@ if [[ -n "$new_pgn_files" ]]; then
     else
         echo "  Stockfish or python-chess venv not available, skipping analysis."
     fi
+
+    # Add English-language annotations via Claude Code
+    source "$SCRIPT_DIR/claude_annotate_pgn.sh"
+    while IFS= read -r pgn_file; do
+        [[ -z "$pgn_file" ]] && continue
+        claude_annotate_pgn "$pgn_file"
+    done <<< "$new_pgn_files"
 fi

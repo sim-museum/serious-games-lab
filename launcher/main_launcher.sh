@@ -503,10 +503,15 @@ display_day_menu() {
         printf "    ${GREEN}%2d)${NC} %s\n" "$idx" "Non-violent options"
     fi
 
+    # How to Calculate Score option
+    echo ""
+    ((idx++)) || true
+    DAY_MENU_ENTRIES+=("calculatescore||||")
+    printf "    %2d) How to Calculate Score\n" "$idx"
+
     # Back option
     ((idx++)) || true
     DAY_MENU_ENTRIES+=("back||||")
-    echo ""
     printf "    %2d) Back (or press Enter)\n" "$idx"
 }
 
@@ -781,6 +786,19 @@ main() {
             # Back
             if [[ "$entry_type" == "back" ]]; then
                 break
+            fi
+
+            # How to Calculate Score
+            if [[ "$entry_type" == "calculatescore" ]]; then
+                local score_doc="$REPO_ROOT/$day/calculatingScore.txt"
+                if [[ -f "$score_doc" ]]; then
+                    less "$score_doc"
+                else
+                    msg_warn "No scoring documentation found for $day."
+                    echo ""
+                    read -rp "Press Enter to continue..." _
+                fi
+                continue
             fi
 
             if [[ "$entry_type" == "flightgear" ]]; then
