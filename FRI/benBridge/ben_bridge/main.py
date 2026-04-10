@@ -183,11 +183,13 @@ def main():
         window = MainWindow()
         logger.info("Main window created successfully")
 
-        # Close splash and show window
+        # Close splash and show window, then prompt for player setup
         def show_main():
             splash.finish(window)
             window.show()
             logger.info("Application ready")
+            # Show player config dialog at startup so players can choose seats
+            QTimer.singleShot(200, window._on_configure_players)
 
         QTimer.singleShot(1000, show_main)
 

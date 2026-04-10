@@ -7943,27 +7943,136 @@ def run_gui_mode(args):
     palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
     app.setPalette(palette)
 
+    # Show player setup dialog before creating the main window
+    human_names = getattr(args, 'humans', None)
+    names = None
+    if human_names:
+        # CLI provided names
+        names = [n.strip() for n in human_names.split(',') if n.strip()]
+    else:
+        # Show interactive setup dialog
+        names = _show_player_setup_dialog(app)
+        if names is None:
+            sys.exit(0)  # User cancelled
+
     window = PokerWindow(god_mode=args.god, show_stats=args.tells)
 
-    # Configure multiple human players if requested
-    human_names = getattr(args, 'humans', None)
-    if human_names:
-        names = [n.strip() for n in human_names.split(',') if n.strip()]
-        if len(names) > 4:
-            print("Warning: Maximum 4 human players. Using first 4.")
-            names = names[:4]
-        # Check uniqueness
-        if len(names) != len(set(names)):
-            print("Error: Human player names must be unique.")
-            sys.exit(1)
-        # Replace AI players with humans
-        for i, name in enumerate(names):
+    # Configure human players
+    if names and len(names) > 0:
+        for i, name in enumerate(names[:4]):
             if i < len(window.game.players):
                 window.game.players[i].name = name
                 window.game.players[i].style = 'human'
 
     window.show()
     sys.exit(app.exec())
+
+
+def _show_player_setup_dialog(app):
+    """Show a startup dialog to choose number of human players and their names.
+    Returns list of names, or None if cancelled."""
+    from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+                                  QSpinBox, QLineEdit, QPushButton, QGroupBox,
+                                  QFormLayout, QMessageBox)
+    from PyQt6.QtGui import QFont
+
+    dialog = QDialog()
+    dialog.setWindowTitle("PokerIQ — Player Setup")
+    dialog.setMinimumWidth(400)
+    dialog.setStyleSheet("background-color: #2b2b2b; color: white;")
+
+    layout = QVBoxLayout(dialog)
+
+    title = QLabel("How many human players?")
+    title.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+    layout.addWidget(title)
+
+    spin_layout = QHBoxLayout()
+    spin = QSpinBox()
+    spin.setRange(1, 4)
+    spin.setValue(1)
+    spin.setFixedWidth(60)
+    spin.setStyleSheet("background-color: #3b3b3b; color: white; font-size: 16px; padding: 4px;")
+    spin_layout.addWidget(spin)
+    spin_layout.addStretch()
+    layout.addLayout(spin_layout)
+
+    # Name fields group
+    names_group = QGroupBox("Player Names")
+    names_group.setStyleSheet("QGroupBox { color: white; border: 1px solid #555; padding-top: 16px; margin-top: 8px; }")
+    names_layout = QFormLayout(names_group)
+
+    name_fields = []
+    for i in range(4):
+        field = QLineEdit()
+        field.setPlaceholderText(f"Player {i+1} name")
+        field.setStyleSheet("background-color: #3b3b3b; color: white; padding: 4px;")
+        field.setVisible(i == 0)  # Only first visible initially
+        if i == 0:
+            field.setText("Hero")
+        label = QLabel(f"Seat {i+1}:")
+        label.setVisible(i == 0)
+        names_layout.addRow(label, field)
+        name_fields.append((label, field))
+
+    layout.addWidget(names_group)
+
+    # Update visibility when spin changes
+    def on_count_changed(n):
+        for i, (lbl, fld) in enumerate(name_fields):
+            lbl.setVisible(i < n)
+            fld.setVisible(i < n)
+        # For single player, pre-fill "Hero"
+        if n == 1 and not name_fields[0][1].text():
+            name_fields[0][1].setText("Hero")
+
+    spin.valueChanged.connect(on_count_changed)
+
+    # Buttons
+    btn_layout = QHBoxLayout()
+    btn_layout.addStretch()
+
+    start_btn = QPushButton("Start Game")
+    start_btn.setStyleSheet("background-color: #363; color: white; padding: 8px 20px; font-size: 14px;")
+    btn_layout.addWidget(start_btn)
+
+    cancel_btn = QPushButton("Cancel")
+    cancel_btn.setStyleSheet("background-color: #633; color: white; padding: 8px 20px; font-size: 14px;")
+    btn_layout.addWidget(cancel_btn)
+
+    layout.addLayout(btn_layout)
+
+    result = [None]
+
+    def on_start():
+        n = spin.value()
+        names = []
+        for i in range(n):
+            name = name_fields[i][1].text().strip()
+            if not name:
+                QMessageBox.warning(dialog, "Name Required",
+                                    f"Please enter a name for Seat {i+1}.")
+                name_fields[i][1].setFocus()
+                return
+            names.append(name)
+        if len(names) != len(set(names)):
+            QMessageBox.warning(dialog, "Duplicate Names",
+                                "Each human player must have a unique name.")
+            return
+        result[0] = names
+        dialog.accept()
+
+    start_btn.clicked.connect(on_start)
+    start_btn.setDefault(True)  # Enter key triggers Start
+    cancel_btn.clicked.connect(dialog.reject)
+
+    # Focus the first name field
+    name_fields[0][1].selectAll()
+    name_fields[0][1].setFocus()
+
+    if dialog.exec():
+        return result[0]
+    return None
 
 
 def run_text_mode(args):
