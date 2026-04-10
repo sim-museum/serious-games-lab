@@ -1234,8 +1234,6 @@ class MainWindow(QMainWindow):
         self.undo_btn.setEnabled(False)
 
         self.table_view.set_board(board)
-        self.table_view.update_tricks(0, 0)  # Reset tricks display for new deal
-        self.table_view.clear_trick()  # Clear any cards on the table
         self.bidding_box.clear()
         self.bidding_box.set_auction([], board.dealer)
         self.bidding_box.setVisible(True)  # Show bidding box for new deal
@@ -1817,10 +1815,6 @@ For more information, see the README file."""
         dialog = PlayerConfigDialog(self.controller.players, self)
         if dialog.exec():
             self.controller.players = dialog.get_players()
-            # Update game logger with human player names for Claude critique
-            human_names = {seat: p.name for seat, p in self.controller.players.items()
-                           if p.player_type == PlayerType.HUMAN}
-            self.game_logger.set_human_players(human_names)
 
     def _on_configure_systems(self):
         """Show bidding systems dialog"""
@@ -2991,12 +2985,14 @@ For more information, see the README file."""
             # Standard single-player mode
             self.next_card_btn.setEnabled(True)
 
-            if self.autoplay_btn.isChecked():
-                # Autoplay: advance quickly
+            # Check if next player is human (South or dummy controlled by human)
+            next_is_human = self.controller._human_controls_seat(winner)
+
+            if next_is_human or self.autoplay_btn.isChecked():
+                # Auto-advance when it's human's turn or autoplay is on
                 self.status_label.setText(f"Trick won by {winner.to_char()}.")
                 QTimer.singleShot(600, self._on_next_card)
             else:
-                # Always require "Next card" click so the user sees every trick
                 self.status_label.setText(
                     f"Trick won by {winner.to_char()}. Click 'Next card' to continue."
                 )

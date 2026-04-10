@@ -4255,25 +4255,9 @@ class PokerWindow(QMainWindow):
             try:
                 if not shutil.which('claude'):
                     return
-                # Identify human players for the critique
-                human_players = [p.name for p in self.players if p.style == 'human']
-                if len(human_players) == 1:
-                    human_desc = f"The human player is {human_players[0]}."
-                else:
-                    human_desc = f"The human players are: {', '.join(human_players)}."
                 prompt = (
-                    "You are a poker coach drawing on these books: "
-                    "Sklansky's 'Theory of Poker', Harrington's 'Hold 'em', "
-                    "Chen's 'Mathematics of Poker', Janda's 'Applications of No-Limit Hold 'em', "
-                    "Ed Miller's 'Small Stakes Hold 'em' and 'Playing the Player', "
-                    "Tommy Angelo's 'Elements of Poker'. "
-                    f"{human_desc} "
-                    "Analyze this hand in 5-8 sentences. Cover: "
-                    "(1) Were the human player(s)' pre-flop plays correct for position and hand strength? "
-                    "(2) Post-flop: were bet sizes and decisions correct given pot odds and equity? "
-                    "(3) Key mistake or best decision, citing which book concept applies "
-                    "(e.g. Sklansky's Fundamental Theorem, Harrington's M-ratio, pot odds). "
-                    "(4) One specific improvement suggestion. "
+                    "Briefly critique this poker hand (3 sentences max). "
+                    "Was Hero's play correct? What was the key decision? "
                     "Plain text only, no markdown.\n\n"
                     f"{hand_text}"
                 )
@@ -5199,12 +5183,9 @@ class PokerWindow(QMainWindow):
             panel.set_active_turn(i == idx)
 
     def enable_human_actions(self):
-        """Enable action buttons for the current human player."""
+        """Enable action buttons for human player."""
         self.waiting_for_human = True
-        if self.network_mode == "client" and self.my_seat is not None:
-            hero_seat = self.my_seat
-        else:
-            hero_seat = self.current_player_idx  # Supports multiple local human seats
+        hero_seat = self.my_seat if self.network_mode == "client" and self.my_seat is not None else 0
         player = self.players[hero_seat]
         to_call = max(0, self.current_bet - player.bet_in_round)
 
@@ -5256,10 +5237,9 @@ class PokerWindow(QMainWindow):
             self.waiting_for_human = False
             return
 
-        # Local play — use current player (supports multiple human seats)
-        idx = self.current_player_idx
-        player = self.players[idx]
-        self.process_action(player, idx, action, amount)
+        # Local play
+        player = self.players[0]
+        self.process_action(player, 0, action, amount)
 
     def show_raise_dialog(self):
         """Show dialog to select raise amount."""
@@ -6141,23 +6121,18 @@ class PokerWindow(QMainWindow):
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
-        # Claude critique section (appears asynchronously, scrollable for longer analysis)
-        claude_scroll = QScrollArea()
-        claude_scroll.setWidgetResizable(True)
-        claude_scroll.setMaximumHeight(200)
-        claude_scroll.setStyleSheet("QScrollArea { border: none; background-color: #1a2a1a; border-radius: 5px; }")
-        claude_scroll.setVisible(False)
+        # Claude critique section (appears asynchronously)
         claude_label = QLabel("")
         claude_label.setFont(QFont('Arial', 14))
         claude_label.setWordWrap(True)
-        claude_label.setStyleSheet("color: #8f8; background-color: #1a2a1a; padding: 10px;")
-        claude_scroll.setWidget(claude_label)
-        layout.insertWidget(layout.count() - 1, claude_scroll)  # Before button row
+        claude_label.setStyleSheet("color: #8f8; background-color: #1a2a1a; padding: 10px; border-radius: 5px;")
+        claude_label.setVisible(False)
+        layout.insertWidget(layout.count() - 1, claude_label)  # Before button row
 
         import shutil
         if shutil.which('claude'):
             claude_label.setText("Claude is analyzing your play...")
-            claude_scroll.setVisible(True)
+            claude_label.setVisible(True)
             hand_log = self._get_current_hand_log()
             if hand_log:
                 def on_critique(text):
@@ -7943,136 +7918,10 @@ def run_gui_mode(args):
     palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
     app.setPalette(palette)
 
-    # Show player setup dialog before creating the main window
-    human_names = getattr(args, 'humans', None)
-    names = None
-    if human_names:
-        # CLI provided names
-        names = [n.strip() for n in human_names.split(',') if n.strip()]
-    else:
-        # Show interactive setup dialog
-        names = _show_player_setup_dialog(app)
-        if names is None:
-            sys.exit(0)  # User cancelled
-
     window = PokerWindow(god_mode=args.god, show_stats=args.tells)
-
-    # Configure human players
-    if names and len(names) > 0:
-        for i, name in enumerate(names[:4]):
-            if i < len(window.players):
-                window.players[i].name = name
-                window.players[i].style = 'human'
-
     window.show()
+
     sys.exit(app.exec())
-
-
-def _show_player_setup_dialog(app):
-    """Show a startup dialog to choose number of human players and their names.
-    Returns list of names, or None if cancelled."""
-    from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                                  QSpinBox, QLineEdit, QPushButton, QGroupBox,
-                                  QFormLayout, QMessageBox)
-    from PyQt6.QtGui import QFont
-
-    dialog = QDialog()
-    dialog.setWindowTitle("PokerIQ — Player Setup")
-    dialog.setMinimumWidth(400)
-    dialog.setStyleSheet("background-color: #2b2b2b; color: white;")
-
-    layout = QVBoxLayout(dialog)
-
-    title = QLabel("How many human players?")
-    title.setFont(QFont("Arial", 16, QFont.Weight.Bold))
-    layout.addWidget(title)
-
-    spin_layout = QHBoxLayout()
-    spin = QSpinBox()
-    spin.setRange(1, 4)
-    spin.setValue(1)
-    spin.setFixedWidth(60)
-    spin.setStyleSheet("background-color: #3b3b3b; color: white; font-size: 16px; padding: 4px;")
-    spin_layout.addWidget(spin)
-    spin_layout.addStretch()
-    layout.addLayout(spin_layout)
-
-    # Name fields group
-    names_group = QGroupBox("Player Names")
-    names_group.setStyleSheet("QGroupBox { color: white; border: 1px solid #555; padding-top: 16px; margin-top: 8px; }")
-    names_layout = QFormLayout(names_group)
-
-    name_fields = []
-    for i in range(4):
-        field = QLineEdit()
-        field.setPlaceholderText(f"Player {i+1} name")
-        field.setStyleSheet("background-color: #3b3b3b; color: white; padding: 4px;")
-        field.setVisible(i == 0)  # Only first visible initially
-        if i == 0:
-            field.setText("Hero")
-        label = QLabel(f"Seat {i+1}:")
-        label.setVisible(i == 0)
-        names_layout.addRow(label, field)
-        name_fields.append((label, field))
-
-    layout.addWidget(names_group)
-
-    # Update visibility when spin changes
-    def on_count_changed(n):
-        for i, (lbl, fld) in enumerate(name_fields):
-            lbl.setVisible(i < n)
-            fld.setVisible(i < n)
-        # For single player, pre-fill "Hero"
-        if n == 1 and not name_fields[0][1].text():
-            name_fields[0][1].setText("Hero")
-
-    spin.valueChanged.connect(on_count_changed)
-
-    # Buttons
-    btn_layout = QHBoxLayout()
-    btn_layout.addStretch()
-
-    start_btn = QPushButton("Start Game")
-    start_btn.setStyleSheet("background-color: #363; color: white; padding: 8px 20px; font-size: 14px;")
-    btn_layout.addWidget(start_btn)
-
-    cancel_btn = QPushButton("Cancel")
-    cancel_btn.setStyleSheet("background-color: #633; color: white; padding: 8px 20px; font-size: 14px;")
-    btn_layout.addWidget(cancel_btn)
-
-    layout.addLayout(btn_layout)
-
-    result = [None]
-
-    def on_start():
-        n = spin.value()
-        names = []
-        for i in range(n):
-            name = name_fields[i][1].text().strip()
-            if not name:
-                QMessageBox.warning(dialog, "Name Required",
-                                    f"Please enter a name for Seat {i+1}.")
-                name_fields[i][1].setFocus()
-                return
-            names.append(name)
-        if len(names) != len(set(names)):
-            QMessageBox.warning(dialog, "Duplicate Names",
-                                "Each human player must have a unique name.")
-            return
-        result[0] = names
-        dialog.accept()
-
-    start_btn.clicked.connect(on_start)
-    start_btn.setDefault(True)  # Enter key triggers Start
-    cancel_btn.clicked.connect(dialog.reject)
-
-    # Focus the first name field
-    name_fields[0][1].selectAll()
-    name_fields[0][1].setFocus()
-
-    if dialog.exec():
-        return result[0]
-    return None
 
 
 def run_text_mode(args):
@@ -8179,12 +8028,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python pokerIQ.py                           # Normal GUI mode (1 human)
-  python pokerIQ.py --humans "Alice,Bob"      # 2 human players
-  python pokerIQ.py --humans "A,B,C,D"        # 4 human players
-  python pokerIQ.py --textmode                # Text-only mode
-  python pokerIQ.py --god                     # GUI with God Mode enabled
-  python pokerIQ.py --replay log.txt          # Replay a saved session
+  python pokerIQ.py                    # Normal GUI mode
+  python pokerIQ.py --textmode         # Text-only mode
+  python pokerIQ.py --god              # GUI with God Mode enabled
+  python pokerIQ.py --theoryOfMind     # Text mode with Theory of Mind view
+  python pokerIQ.py --replay log.txt   # Replay a saved session
 
 Note: --theoryOfMind cannot be combined with --god or --tells
         """
@@ -8200,9 +8048,6 @@ Note: --theoryOfMind cannot be combined with --god or --tells
                         help="Enable Theory of Mind analysis (text mode only, cannot combine with -god or -tells)")
     parser.add_argument("--replay", metavar="LOGFILE",
                         help="Replay a saved poker session from a log file")
-    parser.add_argument("--humans", metavar="NAMES",
-                        help="Comma-separated names for human players (up to 4). "
-                             "First name takes seat 0, second seat 1, etc.")
 
     args = parser.parse_args()
 

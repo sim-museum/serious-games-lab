@@ -62,125 +62,19 @@ if [[ ! -f "$BEN_DIR/bin/libdds.so" ]]; then
     fi
 fi
 
-# --- Clean up log files from previous sessions (afterGameReport will have moved them) ---
-
-LOG_DIR="$BEN_DIR/DATA/LOG"
-rm -f "$LOG_DIR"/log-*.bdl "$LOG_DIR"/log-*.pbn "$LOG_DIR"/log-*.ppl 2>/dev/null
-
 # --- Launch ---
 
 export LD_LIBRARY_PATH="$BEN_DIR/bin${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export PYTHONPATH="$BEN_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
 
 cd ben_bridge
-_ben_snapshot_time=$(date +%s)
 [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
-
-# Run benBridge in background and monitor for GUI window close.
-# benBridge's PyQt app hangs after the window closes (zombie child from
-# claude subprocess).  xdotool can't detect this because PyQt keeps
-# hidden X11 windows alive.  Instead, detect when the main window is no
-# longer mapped (visible) by checking WM_STATE with xprop.
-python3 main.py "$@" 2>/dev/null &
-MAIN_PID=$!
-
-# Wait for a visible window to appear (up to 30s)
-_ben_main_wid=""
-for _ in $(seq 1 30); do
-    kill -0 "$MAIN_PID" 2>/dev/null || break
-    for wid in $(xdotool search --pid "$MAIN_PID" 2>/dev/null); do
-        if xprop -id "$wid" WM_STATE 2>/dev/null | grep -q 'state: Normal'; then
-            _ben_main_wid="$wid"
-            break 2
-        fi
-    done
-    sleep 1
-done
-
-# Poll until the main window is no longer in Normal (visible) state
-if [[ -n "$_ben_main_wid" ]]; then
-    while kill -0 "$MAIN_PID" 2>/dev/null; do
-        if ! xprop -id "$_ben_main_wid" WM_STATE 2>/dev/null | grep -q 'state: Normal'; then
-            sleep 3
-            kill "$MAIN_PID" 2>/dev/null || true
-            break
-        fi
-        sleep 2
-    done
-else
-    # Fallback: no window found, just wait for the process
-    wait "$MAIN_PID" 2>/dev/null || true
-fi
-wait "$MAIN_PID" 2>/dev/null || true
+python3 main.py "$@" 2>/dev/null
 exit_code=$?
 
-if [[ $exit_code -ne 0 && $exit_code -ne 143 ]]; then
+if [[ $exit_code -ne 0 ]]; then
     echo ""
     echo "benBridge exited with error code $exit_code"
     echo "Re-run with verbose output:"
     echo "  cd $(pwd) && source ../venv/bin/activate && python3 main.py 2>&1 | head -50"
-fi
-
-# Post-game: find new BDL files, convert to PBN and PPL, run Claude annotation
-BEN_LOG_DIR="$BEN_DIR/DATA/LOG"
-FRI_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-HARNESS_DIR="$FRI_DIR/guiHarness"
-ANNOTATE_SCRIPT="$FRI_DIR/claude_annotate_bridge_single.sh"
-
-if [[ -d "$BEN_LOG_DIR" ]]; then
-    while IFS= read -r -d '' bdl_file; do
-        fmod=$(stat -c %Y "$bdl_file" 2>/dev/null) || continue
-        [[ "$fmod" -lt "$_ben_snapshot_time" ]] && continue
-        base=$(basename "$bdl_file" .bdl)
-
-        # Convert BDL to PBN (for scid/xboard import)
-        if [[ -f "$HARNESS_DIR/ppl_to_pbn.py" && -x "$HARNESS_DIR/venv/bin/python3" ]]; then
-            pbn_file="${bdl_file%.bdl}.pbn"
-            if [[ ! -f "$pbn_file" ]]; then
-                PYTHONPATH="$HARNESS_DIR" "$HARNESS_DIR/venv/bin/python3" -c "
-import ppl_to_pbn, sys
-try:
-    data = ppl_to_pbn.bdl_to_ppl('$bdl_file')
-    # Also generate PBN via bridge_harness
-    import bridge_harness as bh
-    pbn = bh.pbn_file_to_bdl('$bdl_file', source_label='BN')
-except Exception:
-    pass
-# Direct BDL→PBN: parse BDL and produce PBN-like output
-try:
-    board = ppl_to_pbn._parse_bdl_file('$bdl_file')
-    # Minimal PBN from BDL
-    lines = []
-    for key in ['Event','Dealer','Deal','Declarer','Contract','Result']:
-        if key in board:
-            lines.append(f'[{key} \"{board[key]}\"]')
-    with open('$pbn_file', 'w') as f:
-        f.write('\n'.join(lines) + '\n')
-    print('  Converted $base.bdl -> $base.pbn')
-except Exception as e:
-    print(f'  PBN conversion failed: {e}', file=sys.stderr)
-" 2>/dev/null || true
-            fi
-        fi
-
-        # Convert BDL to PPL (for Bridge Baron 12 import)
-        if [[ -f "$HARNESS_DIR/ppl_to_pbn.py" && -x "$HARNESS_DIR/venv/bin/python3" ]]; then
-            ppl_file="${bdl_file%.bdl}.ppl"
-            if [[ ! -f "$ppl_file" ]]; then
-                PYTHONPATH="$HARNESS_DIR" "$HARNESS_DIR/venv/bin/python3" -c "
-import ppl_to_pbn
-ppl_to_pbn.bdl_to_ppl('$bdl_file', '$ppl_file')
-print('  Converted $base.bdl -> $base.ppl')
-" 2>/dev/null || true
-            fi
-        fi
-
-        # Run Claude Code annotation on the BDL
-        if [[ -x "$ANNOTATE_SCRIPT" ]]; then
-            annotated="${bdl_file%.bdl}_annotated.bdl"
-            if [[ ! -f "$annotated" ]]; then
-                bash "$ANNOTATE_SCRIPT" "$bdl_file" "$annotated"
-            fi
-        fi
-    done < <(find "$BEN_LOG_DIR" -maxdepth 1 -name "*.bdl" -type f -print0 2>/dev/null)
 fi

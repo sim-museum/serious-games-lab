@@ -183,21 +183,18 @@ def main():
         window = MainWindow()
         logger.info("Main window created successfully")
 
-        # Close splash and show window, then prompt for player setup
+        # Close splash and show window
         def show_main():
             splash.finish(window)
             window.show()
             logger.info("Application ready")
-            # Show player config dialog at startup so players can choose seats
-            QTimer.singleShot(200, window._on_configure_players)
 
         QTimer.singleShot(1000, show_main)
 
         # Run application
         exit_code = app.exec()
         logger.info(f"Application exiting with code {exit_code}")
-        # Force immediate exit — TensorFlow cleanup hangs for minutes otherwise
-        os._exit(exit_code)
+        sys.exit(exit_code)
 
     except Exception as e:
         logger.exception("Failed to start application")
