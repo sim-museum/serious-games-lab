@@ -13,6 +13,11 @@ claude_annotate_poker() {
     [[ -f "$log_file" ]] || return 0
     command -v claude &>/dev/null || return 0
 
+    # Skip binary files (e.g. PokerTH .pdb databases)
+    if file -b "$log_file" | grep -qi "data\|binary\|database\|sqlite"; then
+        return 0
+    fi
+
     local base dir stem annotated
     base="$(basename "$log_file")"
     dir="$(dirname "$log_file")"
