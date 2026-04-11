@@ -16,8 +16,15 @@ class EvaluateDialog(QDialog):
     def __init__(self, parent=None, current_seat=None):
         super().__init__(parent)
         self.setWindowTitle("Evaluate")
-        self.setMinimumWidth(400)
+        self.setMinimumWidth(550)
+        self.setMinimumHeight(350)
+        self.resize(600, 400)
         apply_dialog_style(self)
+        self.setStyleSheet(self.styleSheet() + """
+            QLabel { font-size: 15px; }
+            QPushButton { font-size: 14px; padding: 8px 14px; }
+            QRadioButton { font-size: 14px; }
+        """)
 
         self.current_seat = current_seat
         self.ask_who = None

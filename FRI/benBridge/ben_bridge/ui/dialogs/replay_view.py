@@ -20,7 +20,7 @@ from ben_backend.models import (
 class MiniHandWidget(QWidget):
     """Small widget displaying a hand's cards."""
 
-    FONT_SIZE = 24  # Large font for visibility
+    FONT_SIZE = 28  # Large font for 1920x1080 readability
 
     def __init__(self, seat: Seat, parent=None):
         super().__init__(parent)
@@ -115,7 +115,7 @@ class ReplayViewDialog(QDialog):
         # Size to fill most of screen height
         from PyQt6.QtWidgets import QApplication
         screen = QApplication.primaryScreen().geometry()
-        self.resize(700, int(screen.height() * 0.85))
+        self.resize(850, int(screen.height() * 0.9))
 
         apply_dialog_style(self)
 

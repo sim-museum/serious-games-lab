@@ -21,8 +21,9 @@ class BidListDialog(QDialog):
     def __init__(self, parent=None, possible_bids=None, seat=None, auction=None):
         super().__init__(parent)
         self.setWindowTitle("Possible Bids")
-        self.setMinimumWidth(600)
-        self.setMinimumHeight(400)
+        self.setMinimumWidth(800)
+        self.setMinimumHeight(500)
+        self.resize(850, 550)
         apply_dialog_style(self)
 
         self.possible_bids = possible_bids or []

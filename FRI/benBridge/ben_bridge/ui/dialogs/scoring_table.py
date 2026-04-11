@@ -24,9 +24,16 @@ class ScoringTableDialog(QDialog):
         self.scoring_table = scoring_table or ScoringTable()
 
         self.setWindowTitle("Scoring Table")
-        self.setMinimumWidth(700)
-        self.setMinimumHeight(500)
+        self.setMinimumWidth(950)
+        self.setMinimumHeight(550)
+        self.resize(1050, 600)
         apply_dialog_style(self)
+        self.setStyleSheet(self.styleSheet() + """
+            QLabel { font-size: 14px; }
+            QTableWidget { font-size: 13px; }
+            QPushButton { font-size: 13px; padding: 6px 12px; }
+            QGroupBox { font-size: 14px; }
+        """)
         self._setup_ui()
         self._populate_table()
 

@@ -30,16 +30,27 @@ class HandEvaluationDialog(QDialog):
         seat_name = seat.name.capitalize() if seat else "Player"
         ask_name = ask_seat.name.capitalize() if ask_seat else seat_name
         self.setWindowTitle(f"Bidround {bid_round}: {ask_name}'s evaluation of {seat_name}'s hand")
-        self.setMinimumWidth(700)
-        self.setMinimumHeight(500)
+        self.setMinimumWidth(950)
+        self.setMinimumHeight(650)
+        self.resize(1000, 700)
         apply_dialog_style(self)
+        # Scale fonts for 1920x1080 readability
+        self.setStyleSheet(self.styleSheet() + """
+            QLabel { font-size: 14px; }
+            QLineEdit { font-size: 14px; padding: 3px; }
+            QComboBox { font-size: 14px; padding: 3px; }
+            QCheckBox { font-size: 14px; }
+            QPushButton { font-size: 14px; padding: 6px 12px; }
+            QGroupBox { font-size: 14px; }
+            QFrame QLabel { font-size: 13px; }
+        """)
 
         self._setup_ui()
         self._populate_values()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
+        layout.setSpacing(10)
 
         # Top row: bid, artificial, forcing, name
         top_row = QHBoxLayout()

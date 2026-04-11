@@ -39,8 +39,9 @@ class AuctionTricksDialog(QDialog):
     def __init__(self, parent=None, board=None, tricks=None):
         super().__init__(parent)
         self.setWindowTitle("Record (current)")
-        self.setMinimumWidth(400)
-        self.setMinimumHeight(450)
+        self.setMinimumWidth(650)
+        self.setMinimumHeight(600)
+        self.resize(700, 650)
         apply_dialog_style(self)
 
         # Allow user to move the dialog (not locked to center)
