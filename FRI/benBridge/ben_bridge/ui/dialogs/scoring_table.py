@@ -52,8 +52,11 @@ class ScoringTableDialog(QDialog):
         summary_group.setLayout(summary_layout)
         layout.addWidget(summary_group)
 
-        # Results table
+        # Results table (click a row to review that hand)
         self.table = QTableWidget()
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.cellDoubleClicked.connect(self._on_row_double_clicked)
         self._setup_table_columns()
         layout.addWidget(self.table)
 
@@ -337,3 +340,71 @@ class ScoringTableDialog(QDialog):
         if reply == QMessageBox.StandardButton.Yes:
             self.scoring_table.results.clear()
             self._populate_table()
+
+    def _on_row_double_clicked(self, row, col):
+        """Double-click a row to review that hand."""
+        if row < 0 or row >= len(self.scoring_table.results):
+            return
+
+        result = self.scoring_table.results[row]
+
+        # Build a summary of the hand for the review dialog
+        contract_str = result.contract.to_str() if result.contract else "Passed out"
+        declarer_str = result.declarer.to_char() if result.declarer else "—"
+        target = result.contract.target_tricks() if result.contract else 0
+        diff = result.tricks_made - target
+
+        if diff > 0:
+            result_text = f"made with {diff} overtrick{'s' if diff > 1 else ''}"
+        elif diff == 0:
+            result_text = "made exactly"
+        else:
+            result_text = f"down {abs(diff)}"
+
+        # Show review dialog
+        review = QDialog(self)
+        review.setWindowTitle(f"Board {result.board_number} — Review")
+        review.setMinimumSize(500, 350)
+        review.setStyleSheet("QDialog { background-color: #e8e8f0; color: #000; }")
+
+        layout = QVBoxLayout(review)
+
+        # Result summary (yellow highlight like Q-Plus)
+        summary = QLabel(
+            f"<div style='background-color: #ffffcc; padding: 15px; border: 1px solid #ccc; "
+            f"border-radius: 5px; text-align: center;'>"
+            f"<p style='font-size: 20px; font-weight: bold;'>Board {result.board_number}</p>"
+            f"<p style='font-size: 18px;'>{declarer_str} {contract_str} — {result_text}</p>"
+            f"<p style='font-size: 16px;'>N/S: {result.ns_score:+d}    E/W: {result.ew_score:+d}</p>"
+            f"</div>"
+        )
+        summary.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(summary)
+
+        # Deal ID and details
+        details = QLabel(
+            f"<p>Deal ID: {result.pavlicek_id}</p>"
+            f"<p>Dealer: {result.dealer.to_char()}    "
+            f"Vulnerability: {result.vulnerability.name}</p>"
+            f"<p>Tricks: {result.tricks_made}</p>"
+        )
+        details.setFont(QFont("Arial", 12))
+        details.setStyleSheet("padding: 10px;")
+        layout.addWidget(details)
+
+        # Notes / Claude commentary if available
+        if result.notes:
+            notes_label = QLabel(f"<b>Notes:</b> {result.notes}")
+            notes_label.setFont(QFont("Arial", 11))
+            notes_label.setWordWrap(True)
+            notes_label.setStyleSheet("background-color: #f0f8f0; padding: 10px; "
+                                      "border: 1px solid #aaa; border-radius: 3px;")
+            layout.addWidget(notes_label)
+
+        # Close button
+        close_btn = QPushButton("Close")
+        close_btn.setFixedSize(100, 35)
+        close_btn.clicked.connect(review.accept)
+        layout.addWidget(close_btn)
+
+        review.exec()
