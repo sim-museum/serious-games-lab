@@ -111,9 +111,10 @@ if [[ -n "$_newest_pbn" ]]; then
             echo "Launching Q-Plus Bridge and GUI Harness..."
             echo "Use the Comparison Workflow tab (source is pre-loaded from BEN Bridge)."
             echo "  1. In Q-Plus: Own Deals → Enter, then click 'Enter into Q-Plus' in harness"
-            echo "  2. Play the hand in Q-Plus"
-            echo "  3. Click 'Auto-detect latest' to find Q-Plus log"
-            echo "  4. Click 'Convert & copy' to save and annotate with Claude"
+            echo "  2. Play the hand in Q-Plus — do NOT exit Q-Plus yet"
+            echo "  3. In harness: click 'Auto-detect latest' to find Q-Plus log"
+            echo "  4. In harness: click 'Convert & copy' to save and annotate with Claude"
+            echo "  5. Exit Q-Plus"
             echo ""
 
             # Launch harness with source pre-loaded (background)
@@ -125,16 +126,25 @@ if [[ -n "$_newest_pbn" ]]; then
                     python3 -m venv venv && source venv/bin/activate
                     pip install -q PyQt5 pyautogui 2>/dev/null
                 fi
-                python3 bridge_harness.py --source "$(realpath "$_newest_pbn")" --game benbridge 2>/dev/null &
-            )
+                python3 bridge_harness.py --source "$(realpath "$_newest_pbn")" --game benbridge 2>/dev/null
+            ) &
+            _harness_pid=$!
 
-            # Launch Q-Plus
+            # Launch Q-Plus (foreground — blocks until user exits)
             export WINEPREFIX="$FRI_WP"
             export WINEARCH=win32
             wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
             cd "$QBRIDGE_DIR"
             wine QBRIDGE.EXE 2>/dev/null 1>/dev/null
             cd "$SCRIPT_DIR"
+
+            # Wait for harness to complete (user may still be doing steps 3-4)
+            if kill -0 "$_harness_pid" 2>/dev/null; then
+                echo ""
+                echo "Waiting for GUI Harness to finish..."
+                echo "(Complete steps 3-4 in the harness, then close it)"
+                wait "$_harness_pid" 2>/dev/null
+            fi
         fi
     fi
 else
