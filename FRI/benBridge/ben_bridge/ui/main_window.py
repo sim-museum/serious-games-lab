@@ -3065,10 +3065,6 @@ For more information, see the README file."""
         self.analysis_label.setText(text)
         self.status_label.setText(f"Deal complete: {contract.to_str()} {result_str}")
 
-        # Auto-run closed room for IMP comparison (even in normal play)
-        if self.teams_match is None and self.match_controller is None:
-            self._auto_closed_room(board, contract, tricks, result_str, score)
-
         # If this is a teams match, show the end-of-hand dialog
         if self.teams_match is not None and self.match_controller is not None:
             # Complete the open room result
@@ -3123,9 +3119,6 @@ For more information, see the README file."""
         except Exception as e:
             print(f"Error logging hand: {e}", flush=True)
 
-        # Show Claude analysis dialog (synchronous — blocks until Claude responds)
-        self._show_claude_hand_analysis(board, contract, tricks, result_str, score)
-
         # Add result to scoring table
         try:
             hands_for_pavlicek = self.original_hands or board.hands
@@ -3169,6 +3162,15 @@ For more information, see the README file."""
         # Show all hands at end
         for seat in Seat:
             self.table_view.set_hand_visible(seat, True)
+
+        # Post-hand sequence (normal play only, not teams match):
+        # 1. Run closed room (AI plays same hand for IMP comparison)
+        # 2. Show Claude analysis dialog
+        # 3. Show scoring table with both results
+        if self.teams_match is None and self.match_controller is None:
+            self._auto_closed_room(board, contract, tricks, result_str, score)
+            self._show_claude_hand_analysis(board, contract, tricks, result_str, score)
+            self._on_show_scores()
 
     def _show_claude_hand_analysis(self, board, contract, tricks, result_str, score):
         """Show a progress bar while Claude analyzes, then display results in a dialog."""
@@ -3443,9 +3445,6 @@ For more information, see the README file."""
             f"Deal complete: {contract.to_str()} {result_str}"
             + (f" | IMP: {imp_swing:+d}" if imp_swing is not None else "")
         )
-
-        # Auto-show the scoring table after closed room completes
-        self._on_show_scores()
 
     @pyqtSlot(object)
     def _on_engine_bid(self, response):
