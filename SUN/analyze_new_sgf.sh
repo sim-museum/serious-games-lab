@@ -39,8 +39,26 @@ analyze_new_sgf_files() {
             if [[ "$fmod" -gt "$_SGF_SNAPSHOT_TIME" ]]; then
                 new_sgf=$(printf '%s\n%s' "$new_sgf" "$f")
             fi
-        done < <(find "$search_dir" -maxdepth 4 -name "*.sgf" -type f \
+        done < <(find "$search_dir" -maxdepth 4 \( -name "*.sgf" -o -name "*.rsgf" \) -type f \
                     -not -name "*_analysed.sgf" -print0 2>/dev/null)
+        # Also check for SGF files saved without extension (e.g. from Sabaki)
+        while IFS= read -r -d '' f; do
+            local fmod
+            fmod=$(stat -c %Y "$f" 2>/dev/null) || continue
+            if [[ "$fmod" -gt "$_SGF_SNAPSHOT_TIME" ]]; then
+                # Check if it's actually an SGF file by content
+                if head -1 "$f" 2>/dev/null | grep -q '^(;GM\[1\]'; then
+                    # Rename with .sgf extension so KataGo can process it
+                    mv "$f" "${f}.sgf" 2>/dev/null && f="${f}.sgf"
+                    new_sgf=$(printf '%s\n%s' "$new_sgf" "$f")
+                fi
+            fi
+        done < <(find "$search_dir" -maxdepth 4 -type f \
+                    -not -name "*.sgf" -not -name "*.rsgf" -not -name "*.py" \
+                    -not -name "*.sh" -not -name "*.txt" -not -name "*.md" \
+                    -not -name "*.json" -not -name "*.pkl" -not -name "*.cfg" \
+                    -not -path "*/INSTALL/*" -not -path "*/.git/*" \
+                    -newer "$_SGF_SNAPSHOT" -print0 2>/dev/null)
     done
 
     rm -f "$_SGF_SNAPSHOT"
