@@ -3186,6 +3186,19 @@ For more information, see the README file."""
                        if p.player_type == PlayerType.HUMAN]
         human_desc = ", ".join(human_seats) if human_seats else "South"
 
+        # Play last remaining card to the table so the final trick is visible
+        try:
+            last_trick = board.tricks[-1] if board.tricks else None
+            if last_trick and len(last_trick.cards) == 4:
+                self.table_view.clear_trick()
+                for i, card in enumerate(last_trick.cards):
+                    seat = Seat((last_trick.leader.value + i) % 4)
+                    is_winner = (seat == last_trick.winner)
+                    self.table_view.play_card_to_trick(seat, card, is_winner)
+                QApplication.processEvents()
+        except Exception:
+            pass
+
         # Show progress dialog while Claude thinks
         progress = QDialog(self)
         progress.setWindowTitle("Claude Analysis")
@@ -3242,34 +3255,29 @@ For more information, see the README file."""
         except Exception:
             pass
 
-        # Show analysis dialog — light grey background matching bid dialog
+        # Show analysis dialog — light grey background, large readable text
         dialog = QDialog(self)
         dialog.setWindowTitle("Claude Analysis")
-        dialog.setMinimumSize(550, 300)
-        dialog.resize(650, 400)
+        dialog.setMinimumSize(700, 400)
+        dialog.resize(800, 500)
         dialog.setStyleSheet("QDialog { background-color: #e8e8f0; color: #000; }")
 
         layout = QVBoxLayout(dialog)
-
-        title = QLabel("Claude's Hand Analysis")
-        title.setFont(QFont("Arial", 16, QFont.Weight.Bold))
-        title.setStyleSheet("color: #2a6a4a; padding: 5px;")
-        layout.addWidget(title)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea { border: 1px solid #aaa; background-color: #f8f8f8; }")
         analysis_label = QLabel(critique)
-        analysis_label.setFont(QFont("Arial", 13))
+        analysis_label.setFont(QFont("Arial", 22))
         analysis_label.setWordWrap(True)
-        analysis_label.setStyleSheet("color: #000; background-color: #f8f8f8; padding: 12px;")
+        analysis_label.setStyleSheet("color: #000; background-color: #f8f8f8; padding: 15px;")
         scroll.setWidget(analysis_label)
         layout.addWidget(scroll)
 
         ok_btn = QPushButton("OK")
-        ok_btn.setFixedSize(100, 35)
+        ok_btn.setFixedSize(120, 40)
         ok_btn.setStyleSheet("QPushButton { background-color: #d0d0d0; color: #000; "
-                             "border: 1px solid #999; border-radius: 3px; font-size: 14px; }")
+                             "border: 1px solid #999; border-radius: 3px; font-size: 16px; }")
         ok_btn.clicked.connect(dialog.accept)
         layout.addWidget(ok_btn)
 
