@@ -3101,6 +3101,9 @@ For more information, see the README file."""
         except Exception as e:
             print(f"Error logging hand: {e}", flush=True)
 
+        # Show Claude analysis dialog (synchronous — blocks until Claude responds)
+        self._show_claude_hand_analysis(board, contract, tricks, result_str, score)
+
         # Add result to scoring table
         try:
             hands_for_pavlicek = self.original_hands or board.hands
@@ -3127,6 +3130,112 @@ For more information, see the README file."""
         # Show all hands at end
         for seat in Seat:
             self.table_view.set_hand_visible(seat, True)
+
+    def _show_claude_hand_analysis(self, board, contract, tricks, result_str, score):
+        """Show a dialog with Claude's analysis of the completed hand."""
+        import shutil
+        import subprocess
+
+        if not shutil.which('claude'):
+            return
+
+        # Build a concise hand summary for Claude
+        seat_names = {Seat.NORTH: 'N', Seat.EAST: 'E', Seat.SOUTH: 'S', Seat.WEST: 'W'}
+        suit_symbols = {Suit.SPADES: 'S', Suit.HEARTS: 'H', Suit.DIAMONDS: 'D',
+                        Suit.CLUBS: 'C', Suit.NOTRUMP: 'NT'}
+
+        hand_text = f"Contract: {contract.level}{suit_symbols.get(contract.suit, '?')}"
+        if contract.doubled:
+            hand_text += "X"
+        if contract.redoubled:
+            hand_text += "XX"
+        hand_text += f" by {seat_names[contract.declarer]}\n"
+        hand_text += f"Result: {tricks} tricks ({result_str}), Score: {score:+d}\n"
+        hand_text += f"Vulnerability: {board.vulnerability.name}\n\n"
+
+        # Add hands
+        hands = self.original_hands or board.hands
+        for seat in [Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST]:
+            hand = hands.get(seat)
+            if hand:
+                suits = []
+                for suit in [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]:
+                    cards = sorted([c for c in hand.cards if c.suit == suit],
+                                   key=lambda c: c.rank, reverse=True)
+                    sym = {Suit.SPADES: 'S', Suit.HEARTS: 'H',
+                           Suit.DIAMONDS: 'D', Suit.CLUBS: 'C'}[suit]
+                    suits.append(f"{sym}:{''.join(c.rank.to_char() for c in cards)}")
+                hand_text += f"{seat_names[seat]}: {' '.join(suits)}\n"
+
+        # Add auction
+        if board.auction:
+            hand_text += "\nAuction: "
+            bids = []
+            for bid in board.auction:
+                if bid.is_pass:
+                    bids.append("Pass")
+                elif bid.is_double:
+                    bids.append("X")
+                elif bid.is_redouble:
+                    bids.append("XX")
+                else:
+                    s = suit_symbols.get(bid.suit, '?') if bid.suit is not None else 'NT'
+                    bids.append(f"{bid.level}{s}")
+            hand_text += " - ".join(bids) + "\n"
+
+        # Identify human players
+        human_seats = [f"{seat_names[s]} ({p.name})"
+                       for s, p in self.controller.players.items()
+                       if p.player_type == PlayerType.HUMAN]
+        human_desc = ", ".join(human_seats) if human_seats else "South"
+
+        try:
+            result = subprocess.run(
+                ['claude', '-p', '--max-turns', '1',
+                 f"You are a bridge teacher. Briefly analyze this hand (3-5 sentences). "
+                 f"The human player(s): {human_desc}. "
+                 f"Was the bidding sound? Was the play/defense correct? "
+                 f"What was the key decision? Plain text only.\n\n{hand_text}"],
+                capture_output=True, text=True, timeout=120
+            )
+            if result.returncode == 0 and len(result.stdout.strip()) > 10:
+                critique = result.stdout.strip()
+            else:
+                return
+        except Exception:
+            return
+
+        # Show dialog
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QScrollArea
+        from PyQt6.QtGui import QFont
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Claude Analysis")
+        dialog.setMinimumSize(500, 300)
+        dialog.resize(600, 350)
+
+        layout = QVBoxLayout(dialog)
+
+        title = QLabel("Claude's Hand Analysis")
+        title.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        title.setStyleSheet("color: #4a9; padding: 5px;")
+        layout.addWidget(title)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        analysis_label = QLabel(critique)
+        analysis_label.setFont(QFont("Arial", 13))
+        analysis_label.setWordWrap(True)
+        analysis_label.setStyleSheet("padding: 10px;")
+        scroll.setWidget(analysis_label)
+        layout.addWidget(scroll)
+
+        ok_btn = QPushButton("OK")
+        ok_btn.setFixedSize(100, 35)
+        ok_btn.clicked.connect(dialog.accept)
+        layout.addWidget(ok_btn)
+
+        dialog.exec()
 
     @pyqtSlot(object)
     def _on_engine_bid(self, response):
