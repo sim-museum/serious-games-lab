@@ -3132,28 +3132,30 @@ For more information, see the README file."""
             self.table_view.set_hand_visible(seat, True)
 
     def _show_claude_hand_analysis(self, board, contract, tricks, result_str, score):
-        """Show a dialog with Claude's analysis of the completed hand."""
+        """Show a progress bar while Claude analyzes, then display results in a dialog."""
         import shutil
         import subprocess
+        import threading
+        from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton,
+                                      QScrollArea, QProgressBar)
+        from PyQt6.QtGui import QFont
+        from PyQt6.QtCore import QTimer
 
         if not shutil.which('claude'):
             return
 
-        # Build a concise hand summary for Claude
+        # Build hand summary for Claude
         seat_names = {Seat.NORTH: 'N', Seat.EAST: 'E', Seat.SOUTH: 'S', Seat.WEST: 'W'}
         suit_symbols = {Suit.SPADES: 'S', Suit.HEARTS: 'H', Suit.DIAMONDS: 'D',
                         Suit.CLUBS: 'C', Suit.NOTRUMP: 'NT'}
 
         hand_text = f"Contract: {contract.level}{suit_symbols.get(contract.suit, '?')}"
-        if contract.doubled:
-            hand_text += "X"
-        if contract.redoubled:
-            hand_text += "XX"
+        if contract.doubled: hand_text += "X"
+        if contract.redoubled: hand_text += "XX"
         hand_text += f" by {seat_names[contract.declarer]}\n"
         hand_text += f"Result: {tricks} tricks ({result_str}), Score: {score:+d}\n"
         hand_text += f"Vulnerability: {board.vulnerability.name}\n\n"
 
-        # Add hands
         hands = self.original_hands or board.hands
         for seat in [Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST]:
             hand = hands.get(seat)
@@ -3167,71 +3169,107 @@ For more information, see the README file."""
                     suits.append(f"{sym}:{''.join(c.rank.to_char() for c in cards)}")
                 hand_text += f"{seat_names[seat]}: {' '.join(suits)}\n"
 
-        # Add auction
         if board.auction:
             hand_text += "\nAuction: "
             bids = []
             for bid in board.auction:
-                if bid.is_pass:
-                    bids.append("Pass")
-                elif bid.is_double:
-                    bids.append("X")
-                elif bid.is_redouble:
-                    bids.append("XX")
+                if bid.is_pass: bids.append("Pass")
+                elif bid.is_double: bids.append("X")
+                elif bid.is_redouble: bids.append("XX")
                 else:
                     s = suit_symbols.get(bid.suit, '?') if bid.suit is not None else 'NT'
                     bids.append(f"{bid.level}{s}")
             hand_text += " - ".join(bids) + "\n"
 
-        # Identify human players
         human_seats = [f"{seat_names[s]} ({p.name})"
                        for s, p in self.controller.players.items()
                        if p.player_type == PlayerType.HUMAN]
         human_desc = ", ".join(human_seats) if human_seats else "South"
 
-        try:
-            result = subprocess.run(
-                ['claude', '-p', '--max-turns', '1',
-                 f"You are a bridge teacher. Briefly analyze this hand (3-5 sentences). "
-                 f"The human player(s): {human_desc}. "
-                 f"Was the bidding sound? Was the play/defense correct? "
-                 f"What was the key decision? Plain text only.\n\n{hand_text}"],
-                capture_output=True, text=True, timeout=120
-            )
-            if result.returncode == 0 and len(result.stdout.strip()) > 10:
-                critique = result.stdout.strip()
-            else:
-                return
-        except Exception:
+        # Show progress dialog while Claude thinks
+        progress = QDialog(self)
+        progress.setWindowTitle("Claude Analysis")
+        progress.setFixedSize(400, 100)
+        progress.setStyleSheet("background-color: #e8e8f0; color: #000;")
+        p_layout = QVBoxLayout(progress)
+        p_label = QLabel("Claude is analyzing the hand...")
+        p_label.setFont(QFont("Arial", 12))
+        p_label.setStyleSheet("color: #000;")
+        p_layout.addWidget(p_label)
+        p_bar = QProgressBar()
+        p_bar.setRange(0, 0)  # Indeterminate
+        p_bar.setStyleSheet("QProgressBar { border: 1px solid #aaa; border-radius: 3px; }"
+                            "QProgressBar::chunk { background-color: #4a9; }")
+        p_layout.addWidget(p_bar)
+        progress.show()
+        QApplication.processEvents()
+
+        # Run Claude in background thread
+        result_holder = [None]
+
+        def _run_claude():
+            try:
+                r = subprocess.run(
+                    ['claude', '-p', '--max-turns', '1',
+                     f"You are a bridge teacher. Briefly analyze this hand (3-5 sentences). "
+                     f"The human player(s): {human_desc}. "
+                     f"Was the bidding sound? Was the play/defense correct? "
+                     f"What was the key decision? Plain text only.\n\n{hand_text}"],
+                    capture_output=True, text=True, timeout=120
+                )
+                if r.returncode == 0 and len(r.stdout.strip()) > 10:
+                    result_holder[0] = r.stdout.strip()
+            except Exception:
+                pass
+
+        thread = threading.Thread(target=_run_claude, daemon=True)
+        thread.start()
+
+        # Poll until thread finishes (keeps UI responsive)
+        while thread.is_alive():
+            QApplication.processEvents()
+            thread.join(timeout=0.1)
+
+        progress.close()
+
+        critique = result_holder[0]
+        if not critique:
             return
 
-        # Show dialog
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QScrollArea
-        from PyQt6.QtGui import QFont
+        # Save to BDL file
+        try:
+            self.game_logger._append_commentary_to_bdl(critique)
+        except Exception:
+            pass
 
+        # Show analysis dialog — light grey background matching bid dialog
         dialog = QDialog(self)
         dialog.setWindowTitle("Claude Analysis")
-        dialog.setMinimumSize(500, 300)
-        dialog.resize(600, 350)
+        dialog.setMinimumSize(550, 300)
+        dialog.resize(650, 400)
+        dialog.setStyleSheet("QDialog { background-color: #e8e8f0; color: #000; }")
 
         layout = QVBoxLayout(dialog)
 
         title = QLabel("Claude's Hand Analysis")
         title.setFont(QFont("Arial", 16, QFont.Weight.Bold))
-        title.setStyleSheet("color: #4a9; padding: 5px;")
+        title.setStyleSheet("color: #2a6a4a; padding: 5px;")
         layout.addWidget(title)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: 1px solid #aaa; background-color: #f8f8f8; }")
         analysis_label = QLabel(critique)
         analysis_label.setFont(QFont("Arial", 13))
         analysis_label.setWordWrap(True)
-        analysis_label.setStyleSheet("padding: 10px;")
+        analysis_label.setStyleSheet("color: #000; background-color: #f8f8f8; padding: 12px;")
         scroll.setWidget(analysis_label)
         layout.addWidget(scroll)
 
         ok_btn = QPushButton("OK")
         ok_btn.setFixedSize(100, 35)
+        ok_btn.setStyleSheet("QPushButton { background-color: #d0d0d0; color: #000; "
+                             "border: 1px solid #999; border-radius: 3px; font-size: 14px; }")
         ok_btn.clicked.connect(dialog.accept)
         layout.addWidget(ok_btn)
 

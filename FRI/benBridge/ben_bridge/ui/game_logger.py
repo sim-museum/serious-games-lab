@@ -694,6 +694,25 @@ fi
         with open(pbn_file, 'a') as f:
             f.write("\n".join(lines) + "\n")
 
+    def _append_commentary_to_bdl(self, commentary: str):
+        """Append a Commentary block to the current BDL file before the last **** separator."""
+        if not commentary or not self.current_log_file or not self.current_log_file.exists():
+            return
+        lines = commentary.split('\n')
+        formatted = []
+        for i, line in enumerate(lines):
+            if i == 0:
+                formatted.append(f"Commentary   :  {line}")
+            else:
+                formatted.append(f".            :  {line}")
+        block = "\n".join(formatted) + "\n"
+
+        content = self.current_log_file.read_text()
+        last_sep = content.rfind("****")
+        if last_sep >= 0:
+            content = content[:last_sep] + block + "\n" + content[last_sep:]
+            self.current_log_file.write_text(content)
+
     def _save_ppl_alongside(self, board: BoardState, original_hands: dict = None):
         """Save the hand in Bridge Baron PPL binary format (774 bytes per deal).
 
