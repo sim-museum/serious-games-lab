@@ -3065,6 +3065,10 @@ For more information, see the README file."""
         self.analysis_label.setText(text)
         self.status_label.setText(f"Deal complete: {contract.to_str()} {result_str}")
 
+        # Auto-run closed room for IMP comparison (even in normal play)
+        if self.teams_match is None and self.match_controller is None:
+            self._auto_closed_room(board, contract, tricks, result_str, score)
+
         # If this is a teams match, show the end-of-hand dialog
         if self.teams_match is not None and self.match_controller is not None:
             # Complete the open room result
@@ -3317,6 +3321,104 @@ For more information, see the README file."""
         layout.addWidget(ok_btn)
 
         dialog.exec()
+
+    def _auto_closed_room(self, board, contract, tricks, result_str, score):
+        """Automatically run closed room (all AI) for IMP comparison after each hand."""
+        import time
+        import uuid
+        from ben_backend.models import BenTeamsMatch, BenTable
+        from ben_backend.match_controller import TeamsMatchController
+
+        board_num = board.board_number
+        ns_score = score if contract.declarer.is_ns() else -score
+
+        # Create a temporary teams match for this single board
+        temp_match = BenTeamsMatch(
+            match_id=str(uuid.uuid4()),
+            num_boards=1,
+            current_board=board_num,
+        )
+        temp_controller = TeamsMatchController(self.engine, temp_match)
+
+        # Register the open room result
+        temp_controller.start_board(board_num, board)
+        temp_controller.complete_open_room(board_num, board)
+
+        # Run closed room with progress
+        self.status_label.setText("Running closed room (all AI)...")
+        QApplication.processEvents()
+
+        temp_controller.start_closed_room_async(board_num)
+
+        # Wait for completion (max 60s, keep UI responsive)
+        start_time = time.time()
+        while not temp_controller.is_board_complete(board_num):
+            QApplication.processEvents()
+            time.sleep(0.1)
+            if time.time() - start_time > 60:
+                self.status_label.setText("Closed room timed out")
+                return
+
+        # Get results
+        imp_swing = temp_match.get_imp_swing(board_num)
+        closed_run = temp_match.board_runs.get(board_num, {}).get(BenTable.CLOSED)
+
+        # Update the BoardResult in scoring table with closed room data
+        if self.scoring_table.results:
+            last_result = self.scoring_table.results[-1]
+            if last_result.board_number == board_num:
+                last_result.imps = imp_swing
+                if closed_run and closed_run.contract:
+                    closed_contract = closed_run.contract.to_str()
+                    closed_tricks = closed_run.declarer_tricks
+                    closed_ns = closed_run.ns_score
+                    last_result.notes = (
+                        f"Closed: {closed_contract} by {closed_run.contract.declarer.to_char()} "
+                        f"({closed_tricks} tricks, NS {closed_ns:+d}). "
+                        f"IMP: {imp_swing:+d}"
+                    )
+                    # Store the closed room run for replay
+                    last_result.closed_room_run = closed_run
+
+        # Log the closed room result
+        try:
+            if closed_run:
+                self.game_logger.log_board_run(closed_run)
+        except Exception:
+            pass
+
+        # Show result with IMP comparison
+        if closed_run and closed_run.contract:
+            closed_str = closed_run.contract.to_str()
+            closed_decl = closed_run.contract.declarer.to_char()
+            closed_tricks_val = closed_run.declarer_tricks
+            closed_target = closed_run.contract.target_tricks()
+            closed_diff = closed_tricks_val - closed_target
+            if closed_diff > 0:
+                closed_result = f"+{closed_diff}"
+            elif closed_diff == 0:
+                closed_result = "="
+            else:
+                closed_result = str(closed_diff)
+            closed_ns_score = closed_run.ns_score
+
+            imp_text = f"IMP: {imp_swing:+d} {'(N/S)' if imp_swing >= 0 else '(E/W)'}"
+            imp_color = "#0a0" if imp_swing >= 0 else "#a00"
+
+            self.analysis_label.setText(
+                f"Contract: {contract.to_str()} by {contract.declarer.to_char()}\n"
+                f"Result: {tricks} tricks ({result_str})\n"
+                f"Score: {ns_score:+d} (N/S)\n\n"
+                f"Closed room: {closed_str} by {closed_decl}\n"
+                f"Result: {closed_tricks_val} tricks ({closed_result})\n"
+                f"Score: {closed_ns_score:+d} (N/S)\n\n"
+                f"{imp_text}"
+            )
+
+        self.status_label.setText(
+            f"Deal complete: {contract.to_str()} {result_str}"
+            + (f" | IMP: {imp_swing:+d}" if imp_swing is not None else "")
+        )
 
     @pyqtSlot(object)
     def _on_engine_bid(self, response):
