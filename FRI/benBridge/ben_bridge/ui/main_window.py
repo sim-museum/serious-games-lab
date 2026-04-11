@@ -3112,6 +3112,22 @@ For more information, see the README file."""
             ns_score = score if contract.declarer.is_ns() else -score
             ew_score = -ns_score
 
+            # Create a BenBoardRun for replay from the score table
+            from ben_backend.models import BenBoardRun, BenTable
+            board_run = BenBoardRun(
+                table=BenTable.OPEN,
+                board_number=board.board_number,
+                pavlicek_id=pavlicek_id,
+                original_hands=self.original_hands or board.hands,
+                auction=list(board.auction) if board.auction else [],
+                tricks=list(board.tricks) if board.tricks else [],
+                contract=contract,
+                declarer_tricks=tricks,
+                ns_score=ns_score,
+                ew_score=ew_score,
+                played=True,
+            )
+
             result = BoardResult(
                 board_number=board.board_number,
                 pavlicek_id=pavlicek_id,
@@ -3122,6 +3138,7 @@ For more information, see the README file."""
                 tricks_made=tricks,
                 ns_score=ns_score,
                 ew_score=ew_score,
+                board_run=board_run,
             )
             self.scoring_table.add_result(result)
         except Exception as e:
@@ -3724,7 +3741,15 @@ For more information, see the README file."""
         dialog.exec()
 
     def closeEvent(self, event):
-        """Clean up resources before closing to prevent TensorFlow segfaults."""
+        """Auto-save scores and clean up resources."""
+        # Auto-save scoring table if any boards were played
+        if self.scoring_table and self.scoring_table.results:
+            try:
+                path = self.scoring_table.save_to_local_matches()
+                print(f"Match scores auto-saved to {path}")
+            except Exception as e:
+                print(f"Could not auto-save scores: {e}")
+
         # Stop the engine worker thread if running
         if self.engine_worker is not None:
             if self.engine_worker.isRunning():

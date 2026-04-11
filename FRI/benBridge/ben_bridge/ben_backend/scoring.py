@@ -33,6 +33,7 @@ class BoardResult:
     notes: str = ""
     ns_bidding_system: str = "BEN-NN"
     ew_bidding_system: str = "BEN-NN"
+    board_run: object = None  # BenBoardRun for replay (not serialized)
 
 
 # IMP conversion table (difference -> IMPs)

@@ -342,13 +342,23 @@ class ScoringTableDialog(QDialog):
             self._populate_table()
 
     def _on_row_double_clicked(self, row, col):
-        """Double-click a row to review that hand."""
+        """Double-click a row to review that hand with full replay."""
         if row < 0 or row >= len(self.scoring_table.results):
             return
 
         result = self.scoring_table.results[row]
 
-        # Build a summary of the hand for the review dialog
+        # If we have a BenBoardRun, show the full replay dialog
+        if result.board_run is not None and hasattr(result.board_run, 'played') and result.board_run.played:
+            try:
+                from .replay_view import ReplayViewDialog
+                dialog = ReplayViewDialog(result.board_run, self)
+                dialog.exec()
+                return
+            except Exception as e:
+                print(f"Replay error: {e}")
+
+        # Fallback: show summary dialog with hand reconstruction from pavlicek_id
         contract_str = result.contract.to_str() if result.contract else "Passed out"
         declarer_str = result.declarer.to_char() if result.declarer else "—"
         target = result.contract.target_tricks() if result.contract else 0
@@ -361,12 +371,10 @@ class ScoringTableDialog(QDialog):
         else:
             result_text = f"down {abs(diff)}"
 
-        # Show review dialog
         review = QDialog(self)
         review.setWindowTitle(f"Board {result.board_number} — Review")
-        review.setMinimumSize(500, 350)
+        review.setMinimumSize(550, 450)
         review.setStyleSheet("QDialog { background-color: #e8e8f0; color: #000; }")
-
         layout = QVBoxLayout(review)
 
         # Result summary (yellow highlight like Q-Plus)
@@ -381,27 +389,53 @@ class ScoringTableDialog(QDialog):
         summary.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(summary)
 
-        # Deal ID and details
+        # Reconstruct and show hands from pavlicek_id
+        try:
+            from ben_backend.pavlicek import parse_deal_number
+            from ben_backend.models import Seat, Suit
+            hands = parse_deal_number(result.pavlicek_id)
+            if hands:
+                suit_symbols = {'SPADES': '♠', 'HEARTS': '♥', 'DIAMONDS': '♦', 'CLUBS': '♣'}
+                hand_text = "<pre style='font-size: 14px; font-family: monospace;'>\n"
+                for seat in [Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST]:
+                    hand = hands.get(seat)
+                    if hand:
+                        suits = []
+                        for suit in [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]:
+                            cards = sorted([c for c in hand.cards if c.suit == suit],
+                                           key=lambda c: c.rank, reverse=True)
+                            sym = suit_symbols.get(suit.name, '?')
+                            suits.append(f"{sym} {''.join(c.rank.to_char() for c in cards)}")
+                        winner = " ★" if seat == result.declarer else ""
+                        hand_text += f"  {seat.to_char()}: {' '.join(suits)}{winner}\n"
+                hand_text += "</pre>"
+                hands_label = QLabel(hand_text)
+                hands_label.setTextFormat(Qt.TextFormat.RichText)
+                hands_label.setStyleSheet("background-color: #fff; padding: 10px; "
+                                          "border: 1px solid #aaa; border-radius: 3px;")
+                layout.addWidget(hands_label)
+        except Exception:
+            pass
+
+        # Details
         details = QLabel(
-            f"<p>Deal ID: {result.pavlicek_id}</p>"
-            f"<p>Dealer: {result.dealer.to_char()}    "
-            f"Vulnerability: {result.vulnerability.name}</p>"
-            f"<p>Tricks: {result.tricks_made}</p>"
+            f"<p>Deal ID: {result.pavlicek_id}    "
+            f"Dealer: {result.dealer.to_char()}    "
+            f"Vuln: {result.vulnerability.name}</p>"
         )
-        details.setFont(QFont("Arial", 12))
-        details.setStyleSheet("padding: 10px;")
+        details.setFont(QFont("Arial", 11))
+        details.setStyleSheet("padding: 5px;")
         layout.addWidget(details)
 
-        # Notes / Claude commentary if available
+        # Notes / Claude commentary
         if result.notes:
-            notes_label = QLabel(f"<b>Notes:</b> {result.notes}")
+            notes_label = QLabel(f"<b>Claude:</b> {result.notes}")
             notes_label.setFont(QFont("Arial", 11))
             notes_label.setWordWrap(True)
             notes_label.setStyleSheet("background-color: #f0f8f0; padding: 10px; "
                                       "border: 1px solid #aaa; border-radius: 3px;")
             layout.addWidget(notes_label)
 
-        # Close button
         close_btn = QPushButton("Close")
         close_btn.setFixedSize(100, 35)
         close_btn.clicked.connect(review.accept)
