@@ -194,7 +194,8 @@ def main():
         # Run application
         exit_code = app.exec()
         logger.info(f"Application exiting with code {exit_code}")
-        sys.exit(exit_code)
+        # Force immediate exit — TensorFlow cleanup hangs for minutes otherwise
+        os._exit(exit_code)
 
     except Exception as e:
         logger.exception("Failed to start application")
