@@ -78,3 +78,62 @@ if [[ $exit_code -ne 0 ]]; then
     echo "Re-run with verbose output:"
     echo "  cd $(pwd) && source ../venv/bin/activate && python3 main.py 2>&1 | head -50"
 fi
+
+# --- Chain to Q-Plus Bridge for comparison ---
+# Find the newest PBN from this session
+cd "$SCRIPT_DIR"
+_newest_pbn=""
+for f in benBridge/ben/DATA/LOG/*.pbn; do
+    [[ -f "$f" ]] || continue
+    fmod=$(stat -c %Y "$f" 2>/dev/null) || continue
+    if [[ -z "$_newest_pbn" ]] || [[ "$fmod" -gt "$_newest_pbn_mod" ]]; then
+        _newest_pbn="$f"
+        _newest_pbn_mod="$fmod"
+    fi
+done
+
+if [[ -n "$_newest_pbn" ]]; then
+    FRI_DIR="$SCRIPT_DIR"
+    HARNESS_DIR="$FRI_DIR/guiHarness"
+
+    # Check if Q-Plus Bridge is installed
+    FRI_WP="$FRI_DIR/WP"
+    QBRIDGE_DIR=""
+    [[ -d "$FRI_WP/drive_c/games/qbridge17" ]] && QBRIDGE_DIR="$FRI_WP/drive_c/games/qbridge17"
+    [[ -z "$QBRIDGE_DIR" && -d "$FRI_WP/drive_c/games/qbridge15" ]] && QBRIDGE_DIR="$FRI_WP/drive_c/games/qbridge15"
+
+    if [[ -n "$QBRIDGE_DIR" && -f "$HARNESS_DIR/bridge_harness.py" ]]; then
+        echo ""
+        read -rp "Compare this hand with Q-Plus Bridge? (y/N): " _ben_compare
+        if [[ "$_ben_compare" =~ ^[Yy]$ ]]; then
+            echo ""
+            echo "Launching Q-Plus Bridge and GUI Harness..."
+            echo "Use the Comparison Workflow tab (source is pre-loaded from BEN Bridge)."
+            echo "  1. In Q-Plus: Own Deals → Enter, then click 'Enter into Q-Plus' in harness"
+            echo "  2. Play the hand in Q-Plus"
+            echo "  3. Click 'Auto-detect latest' to find Q-Plus log"
+            echo "  4. Click 'Convert & copy' to save and annotate with Claude"
+            echo ""
+
+            # Launch harness with source pre-loaded (background)
+            (
+                cd "$HARNESS_DIR"
+                if [[ -d venv ]]; then
+                    source venv/bin/activate
+                else
+                    python3 -m venv venv && source venv/bin/activate
+                    pip install -q PyQt5 pyautogui 2>/dev/null
+                fi
+                python3 bridge_harness.py --source "$(realpath "$_newest_pbn")" --game benbridge 2>/dev/null &
+            )
+
+            # Launch Q-Plus
+            export WINEPREFIX="$FRI_WP"
+            export WINEARCH=win32
+            wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
+            cd "$QBRIDGE_DIR"
+            wine QBRIDGE.EXE 2>/dev/null 1>/dev/null
+            cd "$SCRIPT_DIR"
+        fi
+    fi
+fi
