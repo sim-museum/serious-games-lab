@@ -102,7 +102,7 @@ fi
 # Snapshot existing PGN files before launching
 pgn_snapshot=$(mktemp)
 DAY_DIR="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}/WED"
-find "$DAY_DIR" -maxdepth 1 -name "*.pgn" -type f 2>/dev/null | sort > "$pgn_snapshot"
+find "$DAY_DIR" -maxdepth 3 -name "*.pgn" -not -path "*/INSTALL/*" -not -path "*/chessmaster/*" -type f 2>/dev/null | sort > "$pgn_snapshot"
 snapshot_time=$(stat -c %Y "$pgn_snapshot")
 
 bash BanksiaGUI.sh 2>/dev/null
@@ -114,7 +114,7 @@ while IFS= read -r -d '' f; do
     if [[ "$fmod" -gt "$snapshot_time" ]]; then
         new_pgn_files=$(printf '%s\n%s' "$new_pgn_files" "$f")
     fi
-done < <(find "$DAY_DIR" -maxdepth 1 -name "*.pgn" -type f -print0 2>/dev/null)
+done < <(find "$DAY_DIR" -maxdepth 3 -name "*.pgn" -not -path "*/INSTALL/*" -not -path "*/chessmaster/*" -not -path "*/afterGameReport/*" -type f -print0 2>/dev/null)
 rm -f "$pgn_snapshot"
 
 new_pgn_files=$(echo "$new_pgn_files" | sed '/^$/d')
