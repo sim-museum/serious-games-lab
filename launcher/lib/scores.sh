@@ -400,7 +400,8 @@ HEADER
 
     # Call Claude Code CLI — output is Markdown
     local analysis_md="$tmpdir/claude_analysis.md"
-    if timeout 300 claude -p --max-turns 1 "$(cat "$prompt_file")" > "$analysis_md" 2>/dev/null; then
+    local claude_stderr="$tmpdir/claude_stderr.txt"
+    if timeout 300 claude -p --max-turns 1 "$(cat "$prompt_file")" > "$analysis_md" 2>"$claude_stderr"; then
         # Print to screen
         cat "$analysis_md"
         echo ""
@@ -478,6 +479,12 @@ HEADER
         msg_ok "Analysis saved to archive."
     else
         msg_warn "Claude Code analysis could not be completed."
+        if [[ -s "$claude_stderr" ]]; then
+            echo "  Error: $(head -5 "$claude_stderr")"
+        fi
+        if [[ -s "$analysis_md" ]]; then
+            echo "  Output (first 3 lines): $(head -3 "$analysis_md")"
+        fi
     fi
 
     rm -rf "$tmpdir"
