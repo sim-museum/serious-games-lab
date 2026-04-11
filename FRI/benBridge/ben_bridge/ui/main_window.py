@@ -1006,8 +1006,8 @@ class MainWindow(QMainWindow):
                 self._return_to_opening_screen()
             return
 
-        # For normal play, return to opening screen so user can choose next action
-        self._return_to_opening_screen()
+        # For normal play, deal the next hand immediately
+        self._on_new_deal()
         self.status_label.setText("Choose an option to start a new deal")
 
     def _return_to_opening_screen(self):
@@ -3225,8 +3225,14 @@ For more information, see the README file."""
                        if p.player_type == PlayerType.HUMAN]
         human_desc = ", ".join(human_seats) if human_seats else "South"
 
-        # Play last remaining card to the table so the final trick is visible
+        # Clear remaining cards from hands and show last trick on table
         try:
+            # Remove all cards from hand displays (all 52 cards have been played)
+            for seat in Seat:
+                hw = self.table_view.hand_widgets.get(seat)
+                if hw:
+                    hw.clear()
+            # Show the last trick on the green table
             last_trick = board.tricks[-1] if board.tricks else None
             if last_trick and len(last_trick.cards) == 4:
                 self.table_view.clear_trick()
@@ -3234,7 +3240,7 @@ For more information, see the README file."""
                     seat = Seat((last_trick.leader.value + i) % 4)
                     is_winner = (seat == last_trick.winner)
                     self.table_view.play_card_to_trick(seat, card, is_winner)
-                QApplication.processEvents()
+            QApplication.processEvents()
         except Exception:
             pass
 
@@ -3415,10 +3421,31 @@ For more information, see the README file."""
                 f"{imp_text}"
             )
 
+        # Add closed room result as a separate row in scoring table
+        if closed_run and closed_run.contract:
+            closed_result_obj = BoardResult(
+                board_number=board_num,
+                pavlicek_id=last_result.pavlicek_id if self.scoring_table.results else "",
+                dealer=board.dealer,
+                vulnerability=board.vulnerability,
+                contract=closed_run.contract,
+                declarer=closed_run.contract.declarer,
+                tricks_made=closed_run.declarer_tricks,
+                ns_score=closed_run.ns_score,
+                ew_score=closed_run.ew_score,
+                imps=-imp_swing if imp_swing is not None else None,
+                notes="(Closed room — all AI)",
+                board_run=closed_run,
+            )
+            self.scoring_table.add_result(closed_result_obj)
+
         self.status_label.setText(
             f"Deal complete: {contract.to_str()} {result_str}"
             + (f" | IMP: {imp_swing:+d}" if imp_swing is not None else "")
         )
+
+        # Auto-show the scoring table after closed room completes
+        self._on_show_scores()
 
     @pyqtSlot(object)
     def _on_engine_bid(self, response):
