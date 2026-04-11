@@ -3421,7 +3421,7 @@ For more information, see the README file."""
                 f"{imp_text}"
             )
 
-        # Add closed room result as a separate row in scoring table
+        # Add closed room result as companion entry (same board, shown in right columns)
         if closed_run and closed_run.contract:
             closed_result_obj = BoardResult(
                 board_number=board_num,
@@ -3434,10 +3434,10 @@ For more information, see the README file."""
                 ns_score=closed_run.ns_score,
                 ew_score=closed_run.ew_score,
                 imps=-imp_swing if imp_swing is not None else None,
-                notes="(Closed room — all AI)",
+                notes="Closed room",
                 board_run=closed_run,
             )
-            self.scoring_table.add_result(closed_result_obj)
+            self.scoring_table.results.append(closed_result_obj)
 
         self.status_label.setText(
             f"Deal complete: {contract.to_str()} {result_str}"

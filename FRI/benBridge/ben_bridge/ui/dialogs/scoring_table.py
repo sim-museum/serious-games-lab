@@ -92,127 +92,117 @@ class ScoringTableDialog(QDialog):
         layout.addLayout(button_layout)
 
     def _setup_table_columns(self):
-        """Setup table columns based on scoring type."""
-        columns = ["Board", "Deal ID", "Contract", "By", "Result", "N/S", "E/W"]
-
-        if self.scoring_table.scoring_type == ScoringType.TEAMS:
-            columns.append("IMPs")
-        elif self.scoring_table.scoring_type == ScoringType.PAIRS:
-            columns.append("MP")
-
-        columns.append("Notes")
+        """Setup table columns — Q-Plus style with open room (left) and closed room (right)."""
+        columns = [
+            "Contract 1", "N/S 1", "IMP",  # Open room (human)
+            "Board",                         # Center
+            "Contract 2", "N/S 2", "IMP",  # Closed room (AI)
+        ]
 
         self.table.setColumnCount(len(columns))
         self.table.setHorizontalHeaderLabels(columns)
 
-        # Set column widths
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Board
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Deal ID
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Contract
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # By
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Result
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # N/S
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)  # E/W
-        if len(columns) > 8:
-            header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)  # IMPs/MP
-            header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)  # Notes
-        else:
+        for i in range(len(columns)):
+            header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+        if len(columns) > 0:
             header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)  # Notes
 
     def _populate_table(self):
-        """Populate table with results."""
+        """Populate table — one row per board, open room left, closed room right."""
         self.table.setRowCount(0)
+        self._board_rows = {}  # Map row -> (open_result, closed_result)
 
-        ns_total = 0
-        ew_total = 0
-        ns_imps = 0
-        ns_mp = 0.0
+        ns_imps_total = 0
 
+        # Group results by board number, separating open and closed room
+        boards = {}
         for result in self.scoring_table.results:
+            bn = result.board_number
+            if bn not in boards:
+                boards[bn] = {'open': None, 'closed': None}
+            if result.notes and "Closed room" in result.notes:
+                boards[bn]['closed'] = result
+            elif boards[bn]['open'] is None:
+                boards[bn]['open'] = result
+            else:
+                boards[bn]['closed'] = result
+
+        num_boards = 0
+        for bn in sorted(boards.keys()):
+            open_r = boards[bn]['open']
+            closed_r = boards[bn]['closed']
+            if not open_r:
+                continue
+
+            num_boards += 1
             row = self.table.rowCount()
             self.table.insertRow(row)
+            self._board_rows[row] = (open_r, closed_r)
 
-            # Board number
-            self.table.setItem(row, 0, QTableWidgetItem(str(result.board_number)))
+            # --- Left: Open room (human) ---
+            contract_str = self._format_contract(open_r)
+            diff = self._format_diff(open_r)
+            self.table.setItem(row, 0, QTableWidgetItem(f"{contract_str} {diff}"))
+            ns_item = self._colored_item(open_r.ns_score)
+            self.table.setItem(row, 1, ns_item)
 
-            # Deal ID (truncated Pavlicek)
-            deal_id = result.pavlicek_id[:12] if result.pavlicek_id else ""
-            self.table.setItem(row, 1, QTableWidgetItem(deal_id))
+            imp_val = open_r.imps
+            if imp_val is not None:
+                ns_imps_total += imp_val
+            imp_item = self._colored_item(imp_val, fmt="+d") if imp_val is not None else QTableWidgetItem("")
+            self.table.setItem(row, 2, imp_item)
 
-            # Contract
-            contract_str = result.contract.to_str() if result.contract else "Passed"
-            self.table.setItem(row, 2, QTableWidgetItem(contract_str))
+            # --- Center: Board ---
+            board_item = QTableWidgetItem(str(bn))
+            board_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            board_item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+            self.table.setItem(row, 3, board_item)
 
-            # Declarer
-            declarer_str = result.declarer.to_char() if result.declarer else ""
-            self.table.setItem(row, 3, QTableWidgetItem(declarer_str))
-
-            # Result
-            if result.contract:
-                target = result.contract.target_tricks()
-                diff = result.tricks_made - target
-                if diff >= 0:
-                    result_str = f"{result.tricks_made} (={diff:+d})" if diff > 0 else f"{result.tricks_made} (=)"
-                else:
-                    result_str = f"{result.tricks_made} ({diff})"
+            # --- Right: Closed room (AI) ---
+            if closed_r:
+                contract_str2 = self._format_contract(closed_r)
+                diff2 = self._format_diff(closed_r)
+                self.table.setItem(row, 4, QTableWidgetItem(f"{contract_str2} {diff2}"))
+                ns_item2 = self._colored_item(closed_r.ns_score)
+                self.table.setItem(row, 5, ns_item2)
+                closed_imp = closed_r.imps
+                imp_item2 = self._colored_item(closed_imp, fmt="+d") if closed_imp is not None else QTableWidgetItem("")
+                self.table.setItem(row, 6, imp_item2)
             else:
-                result_str = ""
-            self.table.setItem(row, 4, QTableWidgetItem(result_str))
+                for c in (4, 5, 6):
+                    self.table.setItem(row, c, QTableWidgetItem(""))
 
-            # N/S score
-            ns_item = QTableWidgetItem(str(result.ns_score) if result.ns_score else "")
-            if result.ns_score > 0:
-                ns_item.setForeground(QColor(0, 128, 0))  # Green for positive
-            elif result.ns_score < 0:
-                ns_item.setForeground(QColor(192, 0, 0))  # Red for negative
-            self.table.setItem(row, 5, ns_item)
-            ns_total += result.ns_score
+        # Update summary
+        self.boards_label.setText(f"Boards: {num_boards}")
+        self.ns_total_label.setText(f"N/S IMPs: {ns_imps_total:+d}")
+        self.ew_total_label.setText(f"E/W IMPs: {-ns_imps_total:+d}")
 
-            # E/W score
-            ew_item = QTableWidgetItem(str(result.ew_score) if result.ew_score else "")
-            if result.ew_score > 0:
-                ew_item.setForeground(QColor(0, 128, 0))
-            elif result.ew_score < 0:
-                ew_item.setForeground(QColor(192, 0, 0))
-            self.table.setItem(row, 6, ew_item)
-            ew_total += result.ew_score
+    def _format_contract(self, result):
+        if not result or not result.contract:
+            return "Pass"
+        decl = result.declarer.to_char() if result.declarer else ""
+        return f"{decl} {result.contract.to_str()}"
 
-            col = 7
-            # IMPs or Matchpoints
-            if self.scoring_table.scoring_type == ScoringType.TEAMS:
-                imps_str = f"{result.imps:+d}" if result.imps is not None else ""
-                imps_item = QTableWidgetItem(imps_str)
-                if result.imps is not None:
-                    if result.imps > 0:
-                        imps_item.setForeground(QColor(0, 128, 0))
-                    elif result.imps < 0:
-                        imps_item.setForeground(QColor(192, 0, 0))
-                    ns_imps += result.imps
-                self.table.setItem(row, col, imps_item)
-                col += 1
-            elif self.scoring_table.scoring_type == ScoringType.PAIRS:
-                mp_str = f"{result.matchpoints:.1f}" if result.matchpoints is not None else ""
-                self.table.setItem(row, col, QTableWidgetItem(mp_str))
-                if result.matchpoints is not None:
-                    ns_mp += result.matchpoints
-                col += 1
+    def _format_diff(self, result):
+        if not result or not result.contract:
+            return ""
+        target = result.contract.target_tricks()
+        diff = result.tricks_made - target
+        if diff > 0: return f"+{diff}"
+        elif diff == 0: return "="
+        return str(diff)
 
-            # Notes
-            self.table.setItem(row, col, QTableWidgetItem(result.notes))
-
-        # Update summary labels
-        self.boards_label.setText(f"Boards: {len(self.scoring_table.results)}")
-
-        if self.scoring_table.scoring_type == ScoringType.TEAMS:
-            self.ns_total_label.setText(f"N/S IMPs: {ns_imps:+d}")
-            self.ew_total_label.setText(f"E/W IMPs: {-ns_imps:+d}")
-        elif self.scoring_table.scoring_type == ScoringType.PAIRS:
-            self.ns_total_label.setText(f"N/S MP: {ns_mp:.1f}")
-            self.ew_total_label.setText("")
-        else:
-            self.ns_total_label.setText(f"N/S: {ns_total}")
-            self.ew_total_label.setText(f"E/W: {ew_total}")
+    def _colored_item(self, value, fmt="d"):
+        if value is None:
+            return QTableWidgetItem("")
+        text = f"{value:{fmt}}" if fmt == "+d" else str(value)
+        item = QTableWidgetItem(text)
+        if value > 0:
+            item.setForeground(QColor(0, 128, 0))
+        elif value < 0:
+            item.setForeground(QColor(192, 0, 0))
+        return item
 
     def add_result(self, result: BoardResult):
         """Add a new result to the table."""
@@ -342,11 +332,19 @@ class ScoringTableDialog(QDialog):
             self._populate_table()
 
     def _on_row_double_clicked(self, row, col):
-        """Double-click a row to review that hand with full replay."""
-        if row < 0 or row >= len(self.scoring_table.results):
+        """Double-click a row to review that hand with full replay.
+        Left columns (0-2) → open room, right columns (4-6) → closed room."""
+        if row not in self._board_rows:
             return
 
-        result = self.scoring_table.results[row]
+        open_r, closed_r = self._board_rows[row]
+        # Pick open or closed based on which column was clicked
+        if col >= 4 and closed_r is not None:
+            result = closed_r
+        else:
+            result = open_r
+        if result is None:
+            return
 
         # If we have a BenBoardRun, show the full replay dialog
         if result.board_run is not None and hasattr(result.board_run, 'played') and result.board_run.played:
