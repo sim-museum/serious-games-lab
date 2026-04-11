@@ -115,7 +115,7 @@ ${human_content}
 
 === BDL #2: Q-PLUS COMPUTER PLAY ===
 
-${qplus_content}" > "$tmp_out" 2>/dev/null; then
+${qplus_content}" > "$tmp_out" 2>&1; then
     # Strip markdown code fences that Claude sometimes wraps around output
     sed -i '/^```/d' "$tmp_out"
 

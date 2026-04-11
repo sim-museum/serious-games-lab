@@ -84,7 +84,7 @@ if timeout 120 claude -p --max-turns 1 "${prompt}
 
 Here is the Q-Plus BDL game log:
 
-${bdl_content}" > "$tmp_out" 2>/dev/null; then
+${bdl_content}" > "$tmp_out" 2>&1; then
     # Strip markdown code fences that Claude sometimes wraps around output
     sed -i '/^```/d' "$tmp_out"
 
