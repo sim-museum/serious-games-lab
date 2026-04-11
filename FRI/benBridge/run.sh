@@ -83,16 +83,17 @@ fi
 # Find the newest PBN from this session
 cd "$SCRIPT_DIR"
 _newest_pbn=""
-for f in ben/DATA/LOG/*.pbn; do
-    [[ -f "$f" ]] || continue
+_newest_pbn_mod=0
+while IFS= read -r -d '' f; do
     fmod=$(stat -c %Y "$f" 2>/dev/null) || continue
-    if [[ -z "$_newest_pbn" ]] || [[ "$fmod" -gt "$_newest_pbn_mod" ]]; then
+    if [[ "$fmod" -gt "$_newest_pbn_mod" ]]; then
         _newest_pbn="$f"
         _newest_pbn_mod="$fmod"
     fi
-done
+done < <(find "$SCRIPT_DIR/ben/DATA/LOG" -maxdepth 1 -name "*.pbn" -type f -print0 2>/dev/null)
 
 if [[ -n "$_newest_pbn" ]]; then
+    echo "Found PBN: $_newest_pbn"
     FRI_DIR="$SCRIPT_DIR"
     HARNESS_DIR="$FRI_DIR/guiHarness"
 
@@ -136,4 +137,6 @@ if [[ -n "$_newest_pbn" ]]; then
             cd "$SCRIPT_DIR"
         fi
     fi
+else
+    echo "(No PBN found in $SCRIPT_DIR/ben/DATA/LOG/ — skipping Q-Plus comparison)"
 fi
