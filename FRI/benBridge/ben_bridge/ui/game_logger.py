@@ -335,8 +335,9 @@ Scoring      :  Team (IMP)
         with open(self.current_log_file, 'a') as f:
             f.write("\n".join(entry_lines))
 
-        # Also save in PBN format
+        # Also save in PBN and PPL formats
         self._save_pbn_alongside(board, original_hands)
+        self._save_ppl_alongside(board, original_hands)
 
         print(f"Hand logged to {self.current_log_file}")
 
@@ -692,3 +693,64 @@ fi
         # Append to PBN file (one file can hold multiple boards)
         with open(pbn_file, 'a') as f:
             f.write("\n".join(lines) + "\n")
+
+    def _save_ppl_alongside(self, board: BoardState, original_hands: dict = None):
+        """Save the hand in Bridge Baron PPL binary format (774 bytes per deal).
+
+        PPL layout: hand bitmasks at 0x30 (4 players × 4 suits × 2 bytes LE,
+        bit 0=rank '2', bit 12='A', suit order C/D/H/S, player order N/E/S/W),
+        play permutation at 0x78 (card ID = suit_idx*13 + rank_idx).
+        """
+        import struct
+        ppl_file = self.current_log_file.with_suffix('.ppl')
+        hands = original_hands if original_hands else board.hands
+
+        BB12_SUITS = {Suit.CLUBS: 0, Suit.DIAMONDS: 1, Suit.HEARTS: 2, Suit.SPADES: 3}
+        BB12_RANKS = {
+            Rank.TWO: 0, Rank.THREE: 1, Rank.FOUR: 2, Rank.FIVE: 3,
+            Rank.SIX: 4, Rank.SEVEN: 5, Rank.EIGHT: 6, Rank.NINE: 7,
+            Rank.TEN: 8, Rank.JACK: 9, Rank.QUEEN: 10, Rank.KING: 11, Rank.ACE: 12
+        }
+        SEAT_ORDER = [Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST]
+
+        try:
+            buf = bytearray(774)
+            buf[0] = 0x01; buf[1] = 0x04
+
+            name = f"Board {board.board_number}"[:9]
+            buf[0x02:0x02 + len(name)] = name.encode('ascii')
+            desc = "BenBridge"[:35]
+            buf[0x0C:0x0C + len(desc)] = desc.encode('ascii')
+
+            # Hand bitmasks
+            for pi, seat in enumerate(SEAT_ORDER):
+                hand = hands.get(seat)
+                if not hand:
+                    continue
+                for card in hand.cards:
+                    si = BB12_SUITS.get(card.suit)
+                    ri = BB12_RANKS.get(card.rank)
+                    if si is not None and ri is not None:
+                        offset = 0x30 + (pi * 4 + si) * 2
+                        mask = struct.unpack_from('<H', buf, offset)[0]
+                        mask |= (1 << ri)
+                        struct.pack_into('<H', buf, offset, mask)
+
+            # Play permutation
+            if board.tricks:
+                play_idx = 0
+                for trick in board.tricks:
+                    for card in trick.cards:
+                        si = BB12_SUITS.get(card.suit, 0)
+                        ri = BB12_RANKS.get(card.rank, 0)
+                        buf[0x78 + play_idx] = si * 13 + ri
+                        play_idx += 1
+                        if play_idx >= 52:
+                            break
+                buf[0xAC] = 52
+                buf[0xAD] = 0xFF; buf[0xAE] = 0xFF; buf[0xAF] = 0xFF
+
+            with open(ppl_file, 'wb') as f:
+                f.write(buf)
+        except Exception:
+            pass  # PPL generation is best-effort
