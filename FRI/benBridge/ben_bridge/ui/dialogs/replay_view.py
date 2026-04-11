@@ -86,7 +86,7 @@ class MiniHandWidget(QWidget):
                 for card in suit_cards:
                     rank = card.rank.to_char()
                     if card in played_cards:
-                        parts.append(f"<span style='color:#808080'>{rank}</span>")
+                        parts.append(f"<span style='background-color:#404040;color:#fff;padding:0 2px;border-radius:2px'>{rank}</span>")
                     else:
                         parts.append(rank)
                 card_str = " ".join(parts)
@@ -394,10 +394,10 @@ class ReplayViewDialog(QDialog):
         return f'<span style="color:{color}">{sym}</span>{rank}'
 
     def _on_prev_trick(self):
-        """Go to previous trick."""
+        """Go to previous trick — show all 4 cards."""
         if self.current_trick_idx > 0:
             self.current_trick_idx -= 1
-            self.current_card_idx = 0
+            self.current_card_idx = 4  # Show complete trick
             self._update_display()
 
     def _on_prev_card(self):
@@ -422,9 +422,42 @@ class ReplayViewDialog(QDialog):
         self._update_display()
 
     def _on_next_trick(self):
-        """Go to next trick."""
+        """Go to next trick — show all 4 cards."""
         tricks = self.board_run.tricks
         if self.current_trick_idx < len(tricks) - 1:
             self.current_trick_idx += 1
+            self.current_card_idx = 4  # Show complete trick
+            self._update_display()
+
+    def _on_prev_trick_full(self):
+        """Go to previous trick — show all 4 cards."""
+        if self.current_trick_idx > 0:
+            self.current_trick_idx -= 1
+            self.current_card_idx = 4  # Show complete trick
+            self._update_display()
+
+    def keyPressEvent(self, event):
+        """Keyboard shortcuts for replay navigation."""
+        key = event.key()
+        from PyQt6.QtCore import Qt
+        if key == Qt.Key.Key_Right:
+            self._on_next_card()
+        elif key == Qt.Key.Key_Left:
+            self._on_prev_card()
+        elif key == Qt.Key.Key_PageDown or key == Qt.Key.Key_Down:
+            self._on_next_trick()
+        elif key == Qt.Key.Key_PageUp or key == Qt.Key.Key_Up:
+            self._on_prev_trick_full()
+        elif key == Qt.Key.Key_Home:
+            self.current_trick_idx = 0
             self.current_card_idx = 0
             self._update_display()
+        elif key == Qt.Key.Key_End:
+            if self.board_run.tricks:
+                self.current_trick_idx = len(self.board_run.tricks) - 1
+                self.current_card_idx = 4
+                self._update_display()
+        elif key == Qt.Key.Key_Escape:
+            self.accept()
+        else:
+            super().keyPressEvent(event)

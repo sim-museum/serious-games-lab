@@ -19,15 +19,17 @@ class HandEvaluationDialog(QDialog):
     SUIT_SYMBOLS = {'S': '\u2660', 'H': '\u2665', 'D': '\u2666', 'C': '\u2663'}
     SUIT_COLORS = {'S': '#000000', 'H': '#cc0000', 'D': '#cc0000', 'C': '#000000'}
 
-    def __init__(self, parent=None, seat=None, hand=None, bid_round=1, board=None):
+    def __init__(self, parent=None, seat=None, hand=None, bid_round=1, board=None, ask_seat=None):
         super().__init__(parent)
         self.seat = seat
         self.hand = hand
         self.bid_round = bid_round
         self.board = board
+        self.ask_seat = ask_seat
 
         seat_name = seat.name.capitalize() if seat else "Player"
-        self.setWindowTitle(f"Bidround {bid_round}: {seat_name}'s evaluation of {seat_name}'s hand")
+        ask_name = ask_seat.name.capitalize() if ask_seat else seat_name
+        self.setWindowTitle(f"Bidround {bid_round}: {ask_name}'s evaluation of {seat_name}'s hand")
         self.setMinimumWidth(700)
         self.setMinimumHeight(500)
         apply_dialog_style(self)

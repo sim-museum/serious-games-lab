@@ -2610,9 +2610,27 @@ For more information, see the README file."""
             self.analysis_label.setText(text)
 
         elif self.controller.current_phase == 'play':
-            # Get hint for current position
-            lead_suit = self.controller.get_lead_suit()
-            text = f"Lead suit: {lead_suit.symbol() if lead_suit else 'Any'}\n"
+            # Get card suggestion from engine
+            trick_cards = []
+            if self.controller.board.current_trick:
+                trick_cards = self.controller.board.current_trick.cards
+            try:
+                response = self.engine.get_card(
+                    self.controller.board, self.controller.current_seat, trick_cards
+                )
+                if response and response.action:
+                    card = response.action
+                    text = f"Hint: play {card.to_str()}\n"
+                    if response.candidates:
+                        text += "\nCandidates:\n"
+                        for cand in response.candidates[:5]:
+                            text += f"  {cand.card.to_str()}: {cand.score:.3f}\n"
+                else:
+                    lead_suit = self.controller.get_lead_suit()
+                    text = f"Lead suit: {lead_suit.symbol() if lead_suit else 'Any'}\n"
+            except Exception as e:
+                lead_suit = self.controller.get_lead_suit()
+                text = f"Lead suit: {lead_suit.symbol() if lead_suit else 'Any'}\n"
             self.analysis_label.setText(text)
 
         self.status_label.setText("Ready")
@@ -3428,11 +3446,23 @@ For more information, see the README file."""
                     )
                     eval_dialog.exec()
             else:
-                # Ask specific player about specific hand
-                # This would query the BEN engine for evaluation
-                self.status_label.setText(
-                    f"Ask {dialog.ask_who} about {dialog.about_whom}'s hand - not yet implemented"
-                )
+                # Ask specific player about specific hand using engine evaluation
+                ask_seat = dialog.ask_who
+                about_seat = dialog.about_whom
+                about_hand = self.controller.board.hands.get(about_seat)
+                if about_hand:
+                    bid_round = len(self.controller.board.auction) // 4 + 1
+                    eval_dialog = HandEvaluationDialog(
+                        self,
+                        seat=about_seat,
+                        hand=about_hand,
+                        bid_round=bid_round,
+                        board=self.controller.board,
+                        ask_seat=ask_seat,
+                    )
+                    eval_dialog.exec()
+                else:
+                    self.status_label.setText(f"No hand data for {about_seat}")
 
     def _on_view_auction_tricks(self):
         """Show the auction and played tricks dialog."""
