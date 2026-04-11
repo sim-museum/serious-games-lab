@@ -83,7 +83,7 @@ fi
 # Find the newest PBN from this session
 cd "$SCRIPT_DIR"
 _newest_pbn=""
-for f in benBridge/ben/DATA/LOG/*.pbn; do
+for f in ben/DATA/LOG/*.pbn; do
     [[ -f "$f" ]] || continue
     fmod=$(stat -c %Y "$f" 2>/dev/null) || continue
     if [[ -z "$_newest_pbn" ]] || [[ "$fmod" -gt "$_newest_pbn_mod" ]]; then
