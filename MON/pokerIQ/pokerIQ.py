@@ -4244,36 +4244,32 @@ class PokerWindow(QMainWindow):
             pass
         return ""
 
-    def _get_claude_hand_critique(self, hand_text, callback):
-        """Get Claude critique of a poker hand in a background thread.
-        Calls callback(critique_text) on completion."""
+    def _get_claude_hand_critique_sync(self, hand_text):
+        """Get Claude critique of a poker hand synchronously.
+        Returns critique text, or empty string if unavailable."""
         import shutil
         import subprocess
-        import threading
 
-        def _run():
-            try:
-                if not shutil.which('claude'):
-                    return
-                prompt = (
-                    "Briefly critique this poker hand (3 sentences max). "
-                    "Was Hero's play correct? What was the key decision? "
-                    "Plain text only, no markdown.\n\n"
-                    f"{hand_text}"
-                )
-                result = subprocess.run(
-                    ['claude', '-p', '--max-turns', '1', prompt],
-                    capture_output=True, text=True, timeout=120
-                )
-                if result.returncode == 0 and len(result.stdout.strip()) > 10:
-                    critique = result.stdout.strip()
-                    # Save to log file
-                    self.write_log(f"\n  [CLAUDE ANALYSIS]\n  {critique}\n")
-                    callback(critique)
-            except Exception:
-                pass  # Claude unavailable — game continues without commentary
-
-        threading.Thread(target=_run, daemon=True).start()
+        try:
+            if not shutil.which('claude'):
+                return ""
+            prompt = (
+                "Briefly critique this poker hand (3 sentences max). "
+                "Was Hero's play correct? What was the key decision? "
+                "Plain text only, no markdown.\n\n"
+                f"{hand_text}"
+            )
+            result = subprocess.run(
+                ['claude', '-p', '--max-turns', '1', prompt],
+                capture_output=True, text=True, timeout=120
+            )
+            if result.returncode == 0 and len(result.stdout.strip()) > 10:
+                critique = result.stdout.strip()
+                self.write_log(f"\n  [CLAUDE ANALYSIS]\n  {critique}\n")
+                return critique
+        except Exception:
+            pass
+        return ""
 
     def setup_ui(self):
         central = QWidget()
@@ -6121,32 +6117,20 @@ class PokerWindow(QMainWindow):
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
-        # Claude critique section (appears asynchronously)
-        claude_label = QLabel("")
-        claude_label.setFont(QFont('Arial', 14))
-        claude_label.setWordWrap(True)
-        claude_label.setStyleSheet("color: #8f8; background-color: #1a2a1a; padding: 10px; border-radius: 5px;")
-        claude_label.setVisible(False)
-        layout.insertWidget(layout.count() - 1, claude_label)  # Before button row
-
+        # Claude critique — run synchronously so it's visible when dialog opens
         import shutil
         if shutil.which('claude'):
-            claude_label.setText("Claude is analyzing your play...")
-            claude_label.setVisible(True)
             hand_log = self._get_current_hand_log()
             if hand_log:
-                def on_critique(text):
-                    # Use QTimer.singleShot to safely update UI from main thread
-                    from PyQt6.QtCore import QTimer
-                    QTimer.singleShot(0, lambda: _update_claude_label(text))
-
-                def _update_claude_label(text):
-                    try:
-                        claude_label.setText(f"Claude: {text}")
-                    except RuntimeError:
-                        pass  # Dialog may have been closed
-
-                self._get_claude_hand_critique(hand_log, on_critique)
+                critique = self._get_claude_hand_critique_sync(hand_log)
+                if critique:
+                    claude_label = QLabel(f"Claude: {critique}")
+                    claude_label.setFont(QFont('Arial', 14))
+                    claude_label.setWordWrap(True)
+                    claude_label.setStyleSheet(
+                        "color: #8f8; background-color: #1a2a1a; padding: 10px; border-radius: 5px;"
+                    )
+                    layout.insertWidget(layout.count() - 1, claude_label)
 
         dialog.show()  # Non-blocking show instead of exec()
 
