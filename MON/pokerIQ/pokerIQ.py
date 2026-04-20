@@ -7166,8 +7166,9 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
 
     def _join_game(self):
         """Join a network game."""
-        # First show connect dialog
-        join_dialog = JoinGameDialog("Hero (Client)", self)
+        # First show connect dialog. Default placeholder is a short,
+        # within-12-char name; the user is expected to replace it.
+        join_dialog = JoinGameDialog("Guest", self)
         if join_dialog.exec() == QDialog.DialogCode.Accepted:
             self.network_client = join_dialog.get_client()
             if self.network_client:
@@ -7181,7 +7182,8 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                         "QPushButton { font-size: 15px; background-color: #336; }"
                     )
                     self.network_btn.setText("Network*")
-                    self.setWindowTitle("PokerIQ - Client")
+                    my_name = self.network_client.player_name or "Guest"
+                    self.setWindowTitle(f"PokerIQ - Client ({my_name})")
 
                     # Connect client signals for game events
                     self._connect_client_signals()
@@ -7257,16 +7259,20 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
     def _on_my_seat_selected(self, seat_index: int):
         """Handle our seat selection confirmation."""
         self.my_seat = seat_index
-        # Update hero player to this seat
+        # Update hero player to this seat — use the name the user entered
+        # in JoinGameDialog, not a hardcoded placeholder.
+        my_name = (self.network_client.player_name
+                   if self.network_client and self.network_client.player_name
+                   else "Guest")
         self.players[seat_index].style = 'human'
-        self.players[seat_index].name = "Hero (Client)"
+        self.players[seat_index].name = my_name
 
         # Mark server host player (seat 0) as network_human so ToM creates a tab
         if seat_index != 0:
             seats = self.network_client.seats if self.network_client else {}
             if 0 in seats and seats[0] is not None:
                 self.players[0].style = 'network_human'
-                self.players[0].name = seats[0]  # e.g. "Hero (Server)"
+                self.players[0].name = seats[0]  # host's chosen short name
 
         # Refresh Theory of Mind tabs to include all non-hero players
         if hasattr(self, 'tom_panel'):
