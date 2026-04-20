@@ -73,20 +73,5 @@ wineserver -w 2>/dev/null
 # Launch FalconAF in virtual desktop (prevents black screen fullscreen capture)
 # Mark game start so afterGameReport only collects files from gameplay, not install
 [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
-wine explorer /desktop=FalconAF,1024x768 "$FALCON_EXE_PATH" 2>/dev/null 1>/dev/null &
-FALCON_PID=$!
-
-# Wait for the Falcon window to appear, then grab focus
-sleep 3
-for _ in $(seq 1 10); do
-    WID=$(xdotool search --name "FalconAF" 2>/dev/null | head -1)
-    if [[ -n "$WID" ]]; then
-        xdotool windowactivate --sync "$WID" 2>/dev/null
-        xdotool windowfocus "$WID" 2>/dev/null
-        break
-    fi
-    sleep 1
-done
-
-wait "$FALCON_PID" 2>/dev/null
+wine "$FALCON_EXE_PATH" 2>/dev/null 1>/dev/null
 

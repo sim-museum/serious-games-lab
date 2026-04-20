@@ -92,19 +92,42 @@ if [[ -d "$GAME_DIR" && -f "$GAME_DIR/mainapp.exe" ]]; then
         echo ""
     fi
     (
-        sleep 12
-        for _i in $(seq 1 15); do
+        sleep 8
+        WID=""
+        for _i in $(seq 1 20); do
             WID=$(xdotool search --name "CFL" 2>/dev/null | head -1)
-            if [[ -n "$WID" ]]; then
-                xdotool windowactivate --sync "$WID" 2>/dev/null
-                sleep 0.3
-                # Alt+Tab within Wine to bring the hidden dialog forward
-                xte 'keydown Alt_L' 'key Tab' 'keyup Alt_L' 2>/dev/null
-                sleep 0.5
-                xte 'key Return' 2>/dev/null
-                exit 0
+            [[ -n "$WID" ]] && break
+            sleep 1
+        done
+        [[ -z "$WID" ]] && exit 0
+
+        # Retry for up to ~60 s: the matchmaking dialog may appear late,
+        # and a single Alt+Tab+Return often fails (focus goes to the
+        # splash instead of the hidden dialog).  Cycle through Wine's
+        # window list several times and hit Return each time.  Wine
+        # honors XTestFakeKeyEvent (xte, xdotool without --window) but
+        # ignores XSendEvent (xdotool --window key).
+        for _i in $(seq 1 20); do
+            xdotool windowactivate --sync "$WID" 2>/dev/null
+            sleep 0.2
+            # Click inside the virtual desktop so Wine's internal focus
+            # lands on an app window (not the desktop itself).
+            WGEO=$(xdotool getwindowgeometry --shell "$WID" 2>/dev/null)
+            WX=$(echo "$WGEO" | awk -F= '/^X=/{print $2}')
+            WY=$(echo "$WGEO" | awk -F= '/^Y=/{print $2}')
+            WW=$(echo "$WGEO" | awk -F= '/^WIDTH=/{print $2}')
+            WH=$(echo "$WGEO" | awk -F= '/^HEIGHT=/{print $2}')
+            if [[ -n "$WX" && -n "$WY" && -n "$WW" && -n "$WH" ]]; then
+                CX=$((WX + WW/2))
+                CY=$((WY + WH/2))
+                xte "mousemove $CX $CY" 'mouseclick 1' 2>/dev/null
             fi
-            sleep 2
+            sleep 0.3
+            # Alt+Tab within Wine to surface any hidden dialog.
+            xte 'keydown Alt_L' 'key Tab' 'keyup Alt_L' 2>/dev/null
+            sleep 0.4
+            xte 'key Return' 2>/dev/null
+            sleep 3
         done
     ) &
 
