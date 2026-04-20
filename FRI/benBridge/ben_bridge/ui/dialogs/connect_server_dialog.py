@@ -6,10 +6,11 @@ Allows a player to connect to a hosted bridge game.
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
     QLabel, QLineEdit, QSpinBox, QPushButton, QProgressBar,
-    QRadioButton, QButtonGroup
+    QComboBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
+from ben_backend.models import Seat
 from .dialog_style import apply_dialog_style
 
 
@@ -17,15 +18,13 @@ class ConnectServerDialog(QDialog):
     """
     Dialog for connecting to a LAN server.
 
-    Allows the user to:
-    - Enter server host/IP
-    - Enter port (default 7777)
-    - Enter player name
-    - Choose role (partner or opponent)
-    - Shows connection progress
+    The guest enters host/port/name and picks ANY of the four seats. The
+    server tells the client which seats are already taken; if the guest's
+    choice collides with the host (or another guest who connected first)
+    the dialog re-opens listing which seats are still free.
     """
 
-    # Emitted when user clicks Connect: host, port, name, role
+    # Emitted when user clicks Connect: host, port, name, seat_char
     connect_requested = pyqtSignal(str, int, str, str)
 
     def __init__(self, parent=None):
@@ -64,34 +63,24 @@ class ConnectServerDialog(QDialog):
         self.name_edit.setText("Guest")
         settings_layout.addWidget(self.name_edit, 2, 1)
 
+        # Seat selection - guest picks any seat; server validates it is free
+        settings_layout.addWidget(QLabel("Your seat:"), 3, 0)
+        self.seat_combo = QComboBox()
+        self.seat_combo.addItem("North (N)", Seat.NORTH)
+        self.seat_combo.addItem("East (E)",  Seat.EAST)
+        self.seat_combo.addItem("South (S)", Seat.SOUTH)
+        self.seat_combo.addItem("West (W)",  Seat.WEST)
+        settings_layout.addWidget(self.seat_combo, 3, 1)
+
+        settings_hint = QLabel(
+            "If the seat is already taken, the server will tell you which\n"
+            "seats are still free."
+        )
+        settings_hint.setWordWrap(True)
+        settings_hint.setStyleSheet("color: #555; font-size: 11px;")
+        settings_layout.addWidget(settings_hint, 4, 0, 1, 2)
+
         layout.addWidget(settings_group)
-
-        # Role selection group
-        role_group = QGroupBox("Your Role")
-        role_layout = QVBoxLayout(role_group)
-
-        self.role_buttons = QButtonGroup(self)
-
-        self.partner_radio = QRadioButton("Partner - Play with the host (same team)")
-        self.partner_radio.setChecked(True)
-        self.role_buttons.addButton(self.partner_radio, 0)
-        role_layout.addWidget(self.partner_radio)
-
-        partner_desc = QLabel("You and the host will play N/S or E/W together against the AI.")
-        partner_desc.setStyleSheet("color: #666; margin-left: 20px; font-size: 11px;")
-        partner_desc.setWordWrap(True)
-        role_layout.addWidget(partner_desc)
-
-        self.opponent_radio = QRadioButton("Opponent - Play against the host")
-        self.role_buttons.addButton(self.opponent_radio, 1)
-        role_layout.addWidget(self.opponent_radio)
-
-        opponent_desc = QLabel("You will play the opposing partnership, competing against the host.")
-        opponent_desc.setStyleSheet("color: #666; margin-left: 20px; font-size: 11px;")
-        opponent_desc.setWordWrap(True)
-        role_layout.addWidget(opponent_desc)
-
-        layout.addWidget(role_group)
 
         # Status group (shown during connection)
         self.status_group = QGroupBox("Connection Status")
@@ -134,14 +123,15 @@ class ConnectServerDialog(QDialog):
         host = self.host_edit.text().strip()
         port = self.port_spin.value()
         name = self.name_edit.text().strip() or "Guest"
-        role = "partner" if self.partner_radio.isChecked() else "opponent"
+        seat = self.seat_combo.currentData()
+        seat_char = seat.to_char() if seat is not None else "S"
 
         if not host:
             self.show_error("Please enter a server address")
             return
 
         self.set_connecting(True)
-        self.connect_requested.emit(host, port, name, role)
+        self.connect_requested.emit(host, port, name, seat_char)
 
     def set_connecting(self, connecting: bool):
         """Set the connecting state (shows progress indicator)."""
@@ -152,8 +142,7 @@ class ConnectServerDialog(QDialog):
         self.host_edit.setEnabled(not connecting)
         self.port_spin.setEnabled(not connecting)
         self.name_edit.setEnabled(not connecting)
-        self.partner_radio.setEnabled(not connecting)
-        self.opponent_radio.setEnabled(not connecting)
+        self.seat_combo.setEnabled(not connecting)
         self.error_label.setVisible(False)
 
         if connecting:
@@ -177,11 +166,12 @@ class ConnectServerDialog(QDialog):
         Get the configured connection settings.
 
         Returns:
-            Dict with 'host', 'port', 'name', and 'role'
+            Dict with 'host', 'port', 'name', and 'seat' (seat char N/E/S/W)
         """
+        seat = self.seat_combo.currentData()
         return {
             'host': self.host_edit.text().strip(),
             'port': self.port_spin.value(),
             'name': self.name_edit.text().strip() or "Guest",
-            'role': "partner" if self.partner_radio.isChecked() else "opponent",
+            'seat': seat.to_char() if seat is not None else "S",
         }

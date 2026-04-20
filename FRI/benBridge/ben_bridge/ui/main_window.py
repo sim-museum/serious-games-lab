@@ -2327,7 +2327,8 @@ For more information, see the README file."""
     def _on_start_server(self):
         """Show start server dialog and start hosting."""
         if self.network_controller.is_active:
-            QMessageBox.warning(
+            from .dialogs.dialog_style import styled_warning
+            styled_warning(
                 self, "Already Connected",
                 "You are already in a network game. Disconnect first."
             )
@@ -2345,7 +2346,8 @@ For more information, see the README file."""
                     f"Server started on port {settings['port']}. Waiting for player..."
                 )
             else:
-                QMessageBox.warning(
+                from .dialogs.dialog_style import styled_warning
+                styled_warning(
                     self, "Server Error",
                     "Failed to start server. Check if the port is available."
                 )
@@ -2353,7 +2355,8 @@ For more information, see the README file."""
     def _on_connect_server(self):
         """Show connect dialog and connect to a server."""
         if self.network_controller.is_active:
-            QMessageBox.warning(
+            from .dialogs.dialog_style import styled_warning
+            styled_warning(
                 self, "Already Connected",
                 "You are already in a network game. Disconnect first."
             )
@@ -2363,9 +2366,15 @@ For more information, see the README file."""
         self._connect_dialog.connect_requested.connect(self._do_connect_to_server)
         self._connect_dialog.show()
 
-    def _do_connect_to_server(self, host: str, port: int, name: str, role: str):
-        """Actually connect to the server."""
-        self.network_controller.connect_to_server(host, port, name, role)
+    def _do_connect_to_server(self, host: str, port: int, name: str, seat_char: str):
+        """Actually connect to the server.
+
+        The dialog now emits a seat char (N/E/S/W) picked by the guest. The
+        server tells us if the seat is taken and lists which are free, and
+        that is surfaced as a styled error from _on_network_error.
+        """
+        self.network_controller.connect_to_server(host, port, name,
+                                                   requested_seat=seat_char)
 
     def _on_network_disconnect(self):
         """Disconnect from network game."""

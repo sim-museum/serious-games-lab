@@ -87,24 +87,18 @@ class StartServerDialog(QDialog):
         self.seat_combo.currentIndexChanged.connect(self._on_seat_changed)
         settings_layout.addWidget(self.seat_combo, 2, 1)
 
-        # Partner seat (auto-calculated)
+        # Partner seat (auto-calculated, for information only)
         settings_layout.addWidget(QLabel("Partner seat:"), 3, 0)
         self.partner_label = QLabel("North (N)")
         self.partner_label.setStyleSheet("font-style: italic;")
         settings_layout.addWidget(self.partner_label, 3, 1)
 
-        # Guest seat
-        settings_layout.addWidget(QLabel("Guest will play:"), 4, 0)
-        self.guest_label = QLabel("North (N)")
-        self.guest_label.setStyleSheet("font-style: italic;")
-        settings_layout.addWidget(self.guest_label, 4, 1)
-
         layout.addWidget(settings_group)
 
         # Instructions
         info_label = QLabel(
-            "When you start the server, give your IP address and port to "
-            "the other player so they can connect."
+            "When you start the server, share your IP address and port with the\n"
+            "other players. Each guest will pick any seat that is still free."
         )
         info_label.setWordWrap(True)
         info_label.setStyleSheet("color: #666; margin: 10px 0;")
@@ -161,7 +155,6 @@ class StartServerDialog(QDialog):
                 Seat.WEST: "West (W)",
             }
             self.partner_label.setText(seat_names[partner])
-            self.guest_label.setText(seat_names[partner])
 
     def get_settings(self) -> dict:
         """

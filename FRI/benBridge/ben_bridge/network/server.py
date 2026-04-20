@@ -23,13 +23,14 @@ class BridgeServer(QObject):
     """
     TCP server for hosting a LAN bridge game.
 
-    Supports a single client connection. The client can choose to be:
-    - Partner: plays on the same team as the host
-    - Opponent: plays against the host
+    Host picks their own seat. Up to 3 guests may join, each choosing any
+    seat still free.  When a guest requests an occupied seat the server
+    replies with CONNECT_REJECT containing the list of seats that are
+    still free, so the guest dialog can re-prompt.
     """
 
     # Signals
-    client_connected = pyqtSignal(str, str)  # client_name, role
+    client_connected = pyqtSignal(str, str)  # client_name, role (legacy)
     client_disconnected = pyqtSignal()
     message_received = pyqtSignal(object)  # NetworkMessage
     error_occurred = pyqtSignal(str)  # error message
@@ -40,12 +41,22 @@ class BridgeServer(QObject):
         super().__init__(parent)
 
         self._server: Optional[QTcpServer] = None
-        self._client_socket: Optional[QTcpSocket] = None
         self._buffer = b""
+
+        # Map of seat -> socket for all connected guests (host is not here).
+        self._clients: dict = {}  # Seat -> QTcpSocket
+        self._client_names: dict = {}  # Seat -> str
+        # Per-socket receive buffers
+        self._socket_buffers: dict = {}  # id(socket) -> bytes
+        # Sockets that haven't completed handshake yet
+        self._pending_sockets: list = []
 
         # Server configuration
         self._server_name = "Host"
         self._server_seat: Optional[Seat] = None
+        # Legacy single-client fields kept for backward compatibility with
+        # callers that still read them. They always point to the *first*
+        # connected guest.
         self._client_name = ""
         self._client_seat: Optional[Seat] = None
         self._client_partner_seat: Optional[Seat] = None
@@ -68,9 +79,29 @@ class BridgeServer(QObject):
 
     @property
     def is_client_connected(self) -> bool:
-        """Check if a client is connected."""
-        return (self._client_socket is not None and
-                self._client_socket.state() == QTcpSocket.SocketState.ConnectedState)
+        """Check if at least one client is connected."""
+        return any(
+            s is not None and s.state() == QTcpSocket.SocketState.ConnectedState
+            for s in self._clients.values()
+        )
+
+    @property
+    def num_clients(self) -> int:
+        """Number of currently connected guests (does not include host)."""
+        return len(self._clients)
+
+    def occupied_seats(self) -> list:
+        """Return list of Seat objects that are currently occupied (host + guests)."""
+        occ = []
+        if self._server_seat is not None:
+            occ.append(self._server_seat)
+        occ.extend(self._clients.keys())
+        return occ
+
+    def free_seats(self) -> list:
+        """Return list of Seat objects that are currently free."""
+        occupied = set(self.occupied_seats())
+        return [s for s in Seat if s not in occupied]
 
     @property
     def server_seat(self) -> Optional[Seat]:
@@ -136,18 +167,32 @@ class BridgeServer(QObject):
         return True
 
     def stop(self):
-        """Stop the server and disconnect any client."""
+        """Stop the server and disconnect all clients."""
         # Stop heartbeat
         self._heartbeat_timer.stop()
         self._heartbeat_check_timer.stop()
 
-        # Disconnect client
-        if self._client_socket is not None:
-            if self._client_socket.state() == QTcpSocket.SocketState.ConnectedState:
-                self.send_message(make_disconnect("Server shutting down"))
-                self._client_socket.disconnectFromHost()
-            self._client_socket.deleteLater()
-            self._client_socket = None
+        # Disconnect each guest
+        for seat, sock in list(self._clients.items()):
+            try:
+                if sock.state() == QTcpSocket.SocketState.ConnectedState:
+                    sock.write(make_disconnect("Server shutting down").to_bytes())
+                    sock.disconnectFromHost()
+                sock.deleteLater()
+            except Exception:
+                pass
+        self._clients.clear()
+        self._client_names.clear()
+        self._socket_buffers.clear()
+
+        # Reject any still-pending sockets
+        for sock in list(self._pending_sockets):
+            try:
+                sock.disconnectFromHost()
+                sock.deleteLater()
+            except Exception:
+                pass
+        self._pending_sockets.clear()
 
         # Stop server
         if self._server is not None:
@@ -157,160 +202,249 @@ class BridgeServer(QObject):
 
         self._buffer = b""
         self._sequence = 0
+        # Reset legacy fields
+        self._client_name = ""
+        self._client_seat = None
+        self._client_partner_seat = None
         logger.info("Server stopped")
         self.server_stopped.emit()
 
-    def send_message(self, message: NetworkMessage) -> bool:
+    def send_message(self, message: NetworkMessage, target_seat: Optional[Seat] = None) -> bool:
         """
-        Send a message to the connected client.
+        Send a message to connected clients.
 
         Args:
             message: Message to send
+            target_seat: If given, send only to that guest. Otherwise broadcast
+                to every connected guest.
 
         Returns:
-            True if message was sent successfully
+            True if at least one client successfully received the message.
         """
         if not self.is_client_connected:
             return False
 
-        # Update sequence number for game messages
+        # Update sequence number for game messages (heartbeats keep their own flow)
         if message.type not in (MessageType.HEARTBEAT, MessageType.HEARTBEAT_ACK):
             self._sequence += 1
             message.sequence = self._sequence
 
         data = message.to_bytes()
-        bytes_written = self._client_socket.write(data)
-
-        if bytes_written == -1:
-            logger.error(f"Failed to send message: {self._client_socket.errorString()}")
-            return False
-
-        return True
+        targets = [self._clients[target_seat]] if (target_seat is not None and target_seat in self._clients) \
+                  else list(self._clients.values())
+        ok = False
+        for sock in targets:
+            try:
+                if sock.state() != QTcpSocket.SocketState.ConnectedState:
+                    continue
+                if sock.write(data) != -1:
+                    ok = True
+            except Exception as ex:
+                logger.error(f"Failed to send to {sock}: {ex}")
+        return ok
 
     def get_next_sequence(self) -> int:
         """Get the next sequence number."""
         return self._sequence + 1
 
     def _on_new_connection(self):
-        """Handle new incoming connection."""
-        pending_socket = self._server.nextPendingConnection()
+        """Handle a new pending socket. Seat is assigned on CONNECT_REQUEST."""
+        sock = self._server.nextPendingConnection()
 
-        if self._client_socket is not None:
-            # Already have a client - reject
-            reject_msg = make_connect_reject("Server already has a player connected")
-            pending_socket.write(reject_msg.to_bytes())
-            pending_socket.disconnectFromHost()
-            pending_socket.deleteLater()
-            logger.info("Rejected connection - already have a client")
+        # Already have 3 guests? Reject immediately. Do NOT deleteLater here —
+        # that would race the pending write. The disconnected signal will
+        # schedule cleanup once the socket closes gracefully.
+        if len(self._clients) >= 3:
+            try:
+                sock.write(make_connect_reject(
+                    "Table is full (host + 3 guests)",
+                    free_seats=[s.to_char() for s in self.free_seats()],
+                ).to_bytes())
+                sock.flush()
+                sock.disconnectFromHost()
+            except Exception:
+                pass
+            logger.info("Rejected connection - table full")
             return
 
-        self._client_socket = pending_socket
-        self._client_socket.readyRead.connect(self._on_ready_read)
-        self._client_socket.disconnected.connect(self._on_client_disconnected)
-        self._client_socket.errorOccurred.connect(self._on_socket_error)
+        self._pending_sockets.append(sock)
+        self._socket_buffers[id(sock)] = b""
+        sock.readyRead.connect(lambda s=sock: self._on_ready_read(s))
+        sock.disconnected.connect(lambda s=sock: self._on_client_disconnected(s))
+        sock.errorOccurred.connect(lambda _err, s=sock: self._on_socket_error(s))
 
-        logger.info(f"Client connecting from {self._client_socket.peerAddress().toString()}")
+        try:
+            logger.info(f"Incoming connection from {sock.peerAddress().toString()}")
+        except Exception:
+            pass
 
-    def _on_ready_read(self):
-        """Handle incoming data from client."""
-        if self._client_socket is None:
+    def _on_ready_read(self, sock: QTcpSocket):
+        """Handle incoming data from a specific client socket."""
+        if sock is None:
             return
-
-        self._buffer += bytes(self._client_socket.readAll())
-
-        # Process complete messages (newline-delimited)
-        while b'\n' in self._buffer:
-            line, self._buffer = self._buffer.split(b'\n', 1)
+        buf = self._socket_buffers.get(id(sock), b"") + bytes(sock.readAll())
+        while b'\n' in buf:
+            line, buf = buf.split(b'\n', 1)
             if line:
                 try:
                     message = NetworkMessage.from_bytes(line)
-                    self._handle_message(message)
+                    self._handle_message(message, sock)
                 except Exception as e:
                     logger.error(f"Failed to parse message: {e}")
+        self._socket_buffers[id(sock)] = buf
 
-    def _handle_message(self, message: NetworkMessage):
-        """Handle a received message."""
+    def _handle_message(self, message: NetworkMessage, sock: QTcpSocket):
+        """Handle a received message from a specific socket."""
         logger.debug(f"Server received: {message.type.value}")
 
         if message.type == MessageType.CONNECT_REQUEST:
-            self._handle_connect_request(message)
+            self._handle_connect_request(message, sock)
         elif message.type == MessageType.DISCONNECT:
-            self._handle_disconnect(message)
+            self._handle_disconnect(message, sock)
         elif message.type == MessageType.HEARTBEAT:
-            self.send_message(make_heartbeat_ack())
+            # Reply ONLY to the socket that asked
+            try:
+                sock.write(make_heartbeat_ack().to_bytes())
+            except Exception:
+                pass
         elif message.type == MessageType.HEARTBEAT_ACK:
             self._last_heartbeat_received = self._get_timestamp()
         else:
             # Forward other messages to the application
             self.message_received.emit(message)
 
-    def _handle_connect_request(self, message: NetworkMessage):
-        """Handle a client connection request."""
-        self._client_name = message.payload.get("player_name", "Guest")
-        self._client_role = message.payload.get("role", "partner")
+    def _seat_of_socket(self, sock: QTcpSocket) -> Optional[Seat]:
+        for seat, s in self._clients.items():
+            if s is sock:
+                return seat
+        return None
 
-        # Assign client seat based on role
-        if self._client_role == "partner":
-            # Client plays as host's partner (same team)
-            self._client_seat = self._server_seat.partner()
-            self._client_partner_seat = self._server_seat  # Host is client's partner
+    def _handle_connect_request(self, message: NetworkMessage, sock: QTcpSocket):
+        """Handle a client connection request. Assign the requested seat if free."""
+        payload = message.payload
+        player_name = payload.get("player_name", "Guest")
+        requested = (payload.get("requested_seat") or "").upper()
+        legacy_role = payload.get("role", "partner")
+
+        # Determine target seat
+        target_seat: Optional[Seat] = None
+        if requested in ("N", "E", "S", "W"):
+            try:
+                target_seat = Seat.from_char(requested)
+            except Exception:
+                target_seat = None
         else:
-            # Client plays as opponent (opposite team)
-            # Client gets one of the opponent seats (the one after host's seat)
-            self._client_seat = self._server_seat.next()  # E.g., if host is S, client gets W
-            self._client_partner_seat = self._client_seat.partner()  # Client's partner
+            # Legacy role-based assignment kept for older clients
+            if legacy_role == "partner":
+                target_seat = self._server_seat.partner()
+            else:
+                target_seat = self._server_seat.next()
 
-        # Send acceptance with seat assignments
+        occupied = set(self.occupied_seats())
+        if target_seat in occupied:
+            # Reject with free-seat list so the client can re-prompt
+            free_chars = [s.to_char() for s in self.free_seats()]
+            try:
+                sock.write(make_connect_reject(
+                    f"Seat {target_seat.to_char()} is already taken",
+                    free_seats=free_chars,
+                ).to_bytes())
+                sock.flush()
+                sock.disconnectFromHost()
+            except Exception:
+                pass
+            logger.info(f"Rejected '{player_name}' -> seat {target_seat.to_char()} already taken")
+            return
+
+        # Accept and register
+        if sock in self._pending_sockets:
+            self._pending_sockets.remove(sock)
+        self._clients[target_seat] = sock
+        self._client_names[target_seat] = player_name
+
+        # Update legacy single-client fields so older readers keep working
+        self._client_name = player_name
+        self._client_seat = target_seat
+        self._client_partner_seat = target_seat.partner()
+        # Derive a role label for display: partner if same team as host, else opponent
+        if target_seat == self._server_seat.partner():
+            self._client_role = "partner"
+        else:
+            self._client_role = "opponent"
+
         accept_msg = make_connect_accept(
             server_name=self._server_name,
             server_seat=self._server_seat.to_char(),
-            client_seat=self._client_seat.to_char(),
-            client_partner_seat=self._client_partner_seat.to_char(),
+            client_seat=target_seat.to_char(),
+            client_partner_seat=target_seat.partner().to_char(),
             role=self._client_role,
         )
-        self.send_message(accept_msg)
+        try:
+            sock.write(accept_msg.to_bytes())
+        except Exception as ex:
+            logger.error(f"Failed to send accept to new client: {ex}")
 
-        # Start heartbeat
+        # Start heartbeat (shared across all clients)
         self._last_heartbeat_received = self._get_timestamp()
-        self._heartbeat_timer.start(HEARTBEAT_INTERVAL_MS)
-        self._heartbeat_check_timer.start(HEARTBEAT_INTERVAL_MS)
+        if not self._heartbeat_timer.isActive():
+            self._heartbeat_timer.start(HEARTBEAT_INTERVAL_MS)
+            self._heartbeat_check_timer.start(HEARTBEAT_INTERVAL_MS)
 
-        logger.info(f"Client '{self._client_name}' connected as {self._client_seat.to_char()} (role: {self._client_role})")
-        self.client_connected.emit(self._client_name, self._client_role)
+        logger.info(f"Client '{player_name}' seated at {target_seat.to_char()} ({self._client_role})")
+        self.client_connected.emit(player_name, self._client_role)
 
-    def _handle_disconnect(self, message: NetworkMessage):
+    def _handle_disconnect(self, message: NetworkMessage, sock: QTcpSocket):
         """Handle client disconnect message."""
         reason = message.payload.get("reason", "")
-        logger.info(f"Client disconnected: {reason}")
-        self._cleanup_client()
+        seat = self._seat_of_socket(sock)
+        logger.info(f"Client ({seat}) disconnected: {reason}")
+        self._cleanup_client(sock)
 
-    def _on_client_disconnected(self):
+    def _on_client_disconnected(self, sock: QTcpSocket):
         """Handle client socket disconnection."""
         logger.info("Client socket disconnected")
-        self._cleanup_client()
+        self._cleanup_client(sock)
 
-    def _on_socket_error(self, error):
-        """Handle socket error."""
-        if self._client_socket:
-            error_str = self._client_socket.errorString()
-            logger.error(f"Socket error: {error_str}")
-            self.error_occurred.emit(f"Connection error: {error_str}")
+    def _on_socket_error(self, sock: QTcpSocket):
+        """Handle socket error on a specific client socket."""
+        try:
+            error_str = sock.errorString()
+        except Exception:
+            error_str = "unknown"
+        logger.error(f"Socket error: {error_str}")
+        self.error_occurred.emit(f"Connection error: {error_str}")
 
-    def _cleanup_client(self):
-        """Clean up client connection state."""
-        self._heartbeat_timer.stop()
-        self._heartbeat_check_timer.stop()
+    def _cleanup_client(self, sock: Optional[QTcpSocket] = None):
+        """Clean up state for a specific client socket (or for all on None)."""
+        if sock is None:
+            targets = list(self._clients.values()) + list(self._pending_sockets)
+        else:
+            targets = [sock]
 
-        if self._client_socket is not None:
-            self._client_socket.deleteLater()
-            self._client_socket = None
+        for s in targets:
+            seat = self._seat_of_socket(s)
+            if seat is not None:
+                self._clients.pop(seat, None)
+                self._client_names.pop(seat, None)
+            if s in self._pending_sockets:
+                self._pending_sockets.remove(s)
+            self._socket_buffers.pop(id(s), None)
+            try:
+                s.deleteLater()
+            except Exception:
+                pass
 
-        self._buffer = b""
-        self._client_name = ""
+        if not self._clients:
+            self._heartbeat_timer.stop()
+            self._heartbeat_check_timer.stop()
+            self._client_name = ""
+            self._client_seat = None
+            self._client_partner_seat = None
+
         self.client_disconnected.emit()
 
     def _send_heartbeat(self):
-        """Send heartbeat to client."""
+        """Send heartbeat to every connected client."""
         if self.is_client_connected:
             self.send_message(make_heartbeat())
 

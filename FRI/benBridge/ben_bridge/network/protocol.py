@@ -87,17 +87,21 @@ class NetworkMessage:
 
 # Connection protocol messages
 
-def make_connect_request(player_name: str, role: str = "partner") -> NetworkMessage:
+def make_connect_request(player_name: str, requested_seat: str = "",
+                          role: str = "partner") -> NetworkMessage:
     """Create a connection request message.
 
     Args:
-        player_name: Name of the connecting player
-        role: Either "partner" (play with host) or "opponent" (play against host)
+        player_name: Name of the connecting player.
+        requested_seat: Seat character the guest wants to play (N/E/S/W).
+            Empty string falls back to legacy role-based assignment.
+        role: Legacy. Only used if requested_seat is empty.
     """
     return NetworkMessage(
         type=MessageType.CONNECT_REQUEST,
         payload={
             "player_name": player_name,
+            "requested_seat": requested_seat,
             "role": role,
         }
     )
@@ -131,11 +135,20 @@ def make_connect_accept(
     )
 
 
-def make_connect_reject(reason: str) -> NetworkMessage:
-    """Create a connection rejection message."""
+def make_connect_reject(reason: str, free_seats: Optional[list] = None) -> NetworkMessage:
+    """Create a connection rejection message.
+
+    Args:
+        reason: Human-readable reason string.
+        free_seats: Optional list of seat chars (N/E/S/W) still available,
+            so the client can re-prompt with just the free seats.
+    """
+    payload = {"reason": reason}
+    if free_seats is not None:
+        payload["free_seats"] = list(free_seats)
     return NetworkMessage(
         type=MessageType.CONNECT_REJECT,
-        payload={"reason": reason}
+        payload=payload,
     )
 
 

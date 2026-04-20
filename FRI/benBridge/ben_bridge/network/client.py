@@ -41,7 +41,8 @@ class BridgeClient(QObject):
 
         # Client configuration
         self._client_name = "Guest"
-        self._role = "partner"  # "partner" or "opponent"
+        self._role = "partner"  # "partner" or "opponent" (derived)
+        self._requested_seat = ""  # seat char the guest asked for (N/E/S/W), or ""
         self._my_seat: Optional[Seat] = None
         self._partner_seat: Optional[Seat] = None
         self._server_name = ""
@@ -91,7 +92,9 @@ class BridgeClient(QObject):
         return self._client_name
 
     def connect_to_server(self, host: str, port: int = DEFAULT_PORT,
-                          name: str = "Guest", role: str = "partner") -> bool:
+                          name: str = "Guest",
+                          requested_seat: str = "",
+                          role: str = "partner") -> bool:
         """
         Connect to a bridge server.
 
@@ -99,7 +102,9 @@ class BridgeClient(QObject):
             host: Server hostname or IP address
             port: Server port
             name: Client player name
-            role: "partner" (play with host) or "opponent" (play against host)
+            requested_seat: Seat char (N/E/S/W) the guest wants. If taken,
+                the server replies with CONNECT_REJECT listing free seats.
+            role: Legacy fallback used only if requested_seat is empty.
 
         Returns:
             True if connection attempt started (not yet complete)
@@ -108,6 +113,7 @@ class BridgeClient(QObject):
             self.disconnect_from_server()
 
         self._client_name = name
+        self._requested_seat = requested_seat
         self._role = role
         self._connection_pending = True
 
@@ -117,7 +123,7 @@ class BridgeClient(QObject):
         self._socket.readyRead.connect(self._on_ready_read)
         self._socket.errorOccurred.connect(self._on_socket_error)
 
-        logger.info(f"Connecting to {host}:{port} as '{name}' (role: {role})")
+        logger.info(f"Connecting to {host}:{port} as '{name}' (requested seat: {requested_seat or '<legacy role>'})")
         self.connecting.emit()
 
         self._socket.connectToHost(host, port)
@@ -164,11 +170,17 @@ class BridgeClient(QObject):
 
     def _on_socket_connected(self):
         """Handle successful socket connection."""
-        logger.info(f"Socket connected, sending connect request (role: {self._role})")
+        logger.info(
+            f"Socket connected, sending connect request (seat: {self._requested_seat or '<auto>'})"
+        )
         self._connection_timer.stop()
 
-        # Send connection request with role
-        request = make_connect_request(self._client_name, self._role)
+        # Send connection request with requested seat
+        request = make_connect_request(
+            self._client_name,
+            requested_seat=self._requested_seat,
+            role=self._role,
+        )
         data = request.to_bytes()
         self._socket.write(data)
 
@@ -268,7 +280,12 @@ class BridgeClient(QObject):
     def _handle_connect_reject(self, message: NetworkMessage):
         """Handle connection rejection from server."""
         self._connection_timer.stop()
-        reason = message.payload.get("reason", "Connection rejected")
+        payload = message.payload
+        reason = payload.get("reason", "Connection rejected")
+        free_seats = payload.get("free_seats") or []
+        if free_seats:
+            pretty = ", ".join(free_seats)
+            reason = f"{reason}. Free seats: {pretty}."
         logger.warning(f"Connection rejected: {reason}")
         self._cleanup()
         self.connection_failed.emit(reason)

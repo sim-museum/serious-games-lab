@@ -229,7 +229,9 @@ class NetworkGameController(QObject):
 
     # Client mode
 
-    def connect_to_server(self, host: str, port: int, name: str, role: str = "partner") -> bool:
+    def connect_to_server(self, host: str, port: int, name: str,
+                          requested_seat: str = "",
+                          role: str = "partner") -> bool:
         """
         Connect to a server.
 
@@ -237,7 +239,10 @@ class NetworkGameController(QObject):
             host: Server hostname or IP
             port: Server port
             name: Client player name
-            role: "partner" (same team as host) or "opponent" (vs host)
+            requested_seat: Seat char (N/E/S/W) the guest wants. Overrides
+                `role` when present. If the seat is taken the server replies
+                with CONNECT_REJECT including a list of free seats.
+            role: Legacy fallback used only if requested_seat is empty.
 
         Returns:
             True if connection attempt started
@@ -253,7 +258,9 @@ class NetworkGameController(QObject):
 
         self._my_name = name
         self._client_role = role
-        return self._client.connect_to_server(host, port, name, role)
+        return self._client.connect_to_server(host, port, name,
+                                              requested_seat=requested_seat,
+                                              role=role)
 
     def _on_connected_to_server(self, server_name: str, my_seat: str, partner_seat: str, role: str):
         """Handle successful connection to server."""
