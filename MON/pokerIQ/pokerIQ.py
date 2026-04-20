@@ -14,12 +14,14 @@ from PyQt6.QtWidgets import (
     QPushButton, QLabel, QSlider, QSpinBox, QMessageBox, QFrame,
     QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, QGraphicsTextItem,
     QGraphicsRectItem, QDialog, QDialogButtonBox, QCheckBox, QGroupBox,
-    QTabWidget, QTextEdit, QScrollArea, QComboBox, QFormLayout
+    QTabWidget, QTextEdit, QScrollArea, QComboBox, QFormLayout,
+    QProgressBar,
 )
-from PyQt6.QtCore import Qt, QTimer, QRectF, QPointF, QSettings
+from PyQt6.QtCore import Qt, QTimer, QRectF, QPointF, QSettings, QThread, pyqtSignal
 from PyQt6.QtGui import (
     QPainter, QColor, QBrush, QPen, QFont, QLinearGradient,
-    QRadialGradient, QPainterPath, QPolygonF, QPalette, QPixmap, QIcon
+    QRadialGradient, QPainterPath, QPolygonF, QPalette, QPixmap, QIcon,
+    QAction,
 )
 
 # --- Configuration & Constants ---
@@ -3887,45 +3889,77 @@ class PokerTableWidget(QWidget):
 
 # --- Action Dialog ---
 class RaiseDialog(QDialog):
-    """Dialog for entering raise amount."""
+    """Dialog for entering a raise.
 
-    def __init__(self, min_raise, max_raise, pot, parent=None, bb_amount=2):
+    The amount the user enters is the RAISE itself — the chips they put in
+    ON TOP of what it costs to call. Example: if to_call is $2 and the
+    player raises $6, their total commitment this round is $8.
+
+    The dialog's `get_value()` returns the total commitment (call + raise),
+    matching what the game loop expects to add to the player's round bet.
+    """
+
+    def __init__(self, to_call, min_raise_above, max_raise_above, pot,
+                 parent=None, bb_amount=2):
         super().__init__(parent)
         self.setWindowTitle("Raise Amount")
-        self.min_raise = min_raise
-        self.max_raise = max_raise
+        self.to_call = int(to_call)
+        self.min_raise_above = int(min_raise_above)
+        self.max_raise_above = int(max_raise_above)
+        # Legacy aliases (in TOTAL commitment) so any old code reading these
+        # still sees sensible bounds.
+        self.min_raise = self.to_call + self.min_raise_above
+        self.max_raise = self.to_call + self.max_raise_above
         self.pot = pot
         self.bb = bb_amount
 
         layout = QVBoxLayout(self)
 
-        # Info label
-        info = QLabel(f"Min: ${min_raise}  |  Max: ${max_raise}  |  Pot: ${pot}  |  BB: ${bb_amount}")
+        # Info label — stated in terms of the RAISE above the call
+        info_text = (
+            f"To call: ${self.to_call}   |  "
+            f"Raise min: ${self.min_raise_above}   "
+            f"max: ${self.max_raise_above}   |  "
+            f"Pot: ${pot}   |  BB: ${bb_amount}"
+        )
+        info = QLabel(info_text)
         info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(info)
 
-        # Slider
+        prompt = QLabel(
+            "Raise amount (above the call):")
+        prompt.setStyleSheet("color: #bbb;")
+        layout.addWidget(prompt)
+
+        # Slider (values are the RAISE increment, NOT total commitment)
         self.slider = QSlider(Qt.Orientation.Horizontal)
-        self.slider.setMinimum(min_raise)
-        self.slider.setMaximum(max_raise)
-        self.slider.setValue(min_raise)
+        self.slider.setMinimum(self.min_raise_above)
+        self.slider.setMaximum(self.max_raise_above)
+        self.slider.setValue(self.min_raise_above)
         self.slider.valueChanged.connect(self.update_spinbox)
         layout.addWidget(self.slider)
 
         # Spinbox
         self.spinbox = QSpinBox()
-        self.spinbox.setMinimum(min_raise)
-        self.spinbox.setMaximum(max_raise)
-        self.spinbox.setValue(min_raise)
+        self.spinbox.setMinimum(self.min_raise_above)
+        self.spinbox.setMaximum(self.max_raise_above)
+        self.spinbox.setValue(self.min_raise_above)
         self.spinbox.valueChanged.connect(self.update_slider)
         layout.addWidget(self.spinbox)
 
-        # BB multiplier buttons
+        # Total-commitment preview
+        self.total_label = QLabel()
+        self.total_label.setStyleSheet("color: #ff0; font-weight: bold;")
+        layout.addWidget(self.total_label)
+        self._refresh_total_label(self.min_raise_above)
+
+        # BB multiplier buttons — interpreted as raise-above-call in BBs
         bb_layout = QHBoxLayout()
-        bb_label = QLabel("BB Multiplier:")
+        bb_label = QLabel("Raise = N × BB:")
         bb_layout.addWidget(bb_label)
         for mult in [2, 3, 4, 5, 10]:
-            val = min(max_raise, bb_amount * mult)
+            val = max(self.min_raise_above,
+                      min(self.max_raise_above, bb_amount * mult))
             btn = QPushButton(f"{mult}x")
             btn.setFixedWidth(50)
             btn.clicked.connect(lambda checked, v=val: self.set_value(v))
@@ -3933,45 +3967,132 @@ class RaiseDialog(QDialog):
         bb_layout.addStretch()
         layout.addLayout(bb_layout)
 
-        # Pot-based quick buttons
+        # Pot-based quick buttons — interpreted as raise = fraction of pot
         pot_layout = QHBoxLayout()
-        pot_label = QLabel("Pot Size:")
+        pot_label = QLabel("Raise = pot fraction:")
         pot_layout.addWidget(pot_label)
         for label, mult in [("1/2", 0.5), ("2/3", 0.67), ("3/4", 0.75), ("Pot", 1.0), ("All-In", None)]:
             btn = QPushButton(label)
             btn.setFixedWidth(60)
             if mult is None:
-                btn.clicked.connect(lambda checked, v=max_raise: self.set_value(v))
+                btn.clicked.connect(
+                    lambda checked, v=self.max_raise_above: self.set_value(v))
             else:
-                val = max(min_raise, min(max_raise, int(pot * mult)))
+                val = max(self.min_raise_above,
+                          min(self.max_raise_above, int(pot * mult)))
                 btn.clicked.connect(lambda checked, v=val: self.set_value(v))
             pot_layout.addWidget(btn)
         pot_layout.addStretch()
         layout.addLayout(pot_layout)
 
         # Dialog buttons
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _refresh_total_label(self, raise_above):
+        total = self.to_call + int(raise_above)
+        self.total_label.setText(
+            f"Total committed this round: ${total}   "
+            f"(call ${self.to_call} + raise ${raise_above})"
+        )
 
     def update_spinbox(self, value):
         self.spinbox.blockSignals(True)
         self.spinbox.setValue(value)
         self.spinbox.blockSignals(False)
+        self._refresh_total_label(value)
 
     def update_slider(self, value):
         self.slider.blockSignals(True)
         self.slider.setValue(value)
         self.slider.blockSignals(False)
+        self._refresh_total_label(value)
 
-    def set_value(self, value):
-        value = max(self.min_raise, min(self.max_raise, value))
-        self.slider.setValue(value)
-        self.spinbox.setValue(value)
+    def set_value(self, raise_above):
+        raise_above = max(self.min_raise_above,
+                          min(self.max_raise_above, int(raise_above)))
+        self.slider.setValue(raise_above)
+        self.spinbox.setValue(raise_above)
+        self._refresh_total_label(raise_above)
 
-    def get_value(self):
-        return self.spinbox.value()
+    def get_raise_above(self) -> int:
+        """Return the raise amount chosen above the call."""
+        return int(self.spinbox.value())
+
+    def get_value(self) -> int:
+        """Return the TOTAL commitment this round (call + raise)."""
+        return self.to_call + int(self.spinbox.value())
+
+
+class ClaudeAnalysisThread(QThread):
+    """Runs one or more Claude CLI calls off the GUI thread.
+
+    Emits `progress(done, total, label)` as each POV completes and
+    `finished_analyses(list-of-dicts)` with items
+    {'player': str, 'seat': int, 'text': str}.
+    """
+
+    progress = pyqtSignal(int, int, str)
+    finished_analyses = pyqtSignal(list)
+
+    def __init__(self, hand_text: str, povs: list, parent=None):
+        """
+        Args:
+            hand_text: The full hand log to critique.
+            povs: list of {'name': str, 'seat': int} — one per POV to analyze.
+                  For single-player use a single entry like
+                  [{'name': 'Hero', 'seat': 0}].
+        """
+        super().__init__(parent)
+        self._hand_text = hand_text
+        self._povs = list(povs)
+        self._cancelled = False
+
+    def cancel(self):
+        self._cancelled = True
+
+    def run(self):
+        import shutil
+        import subprocess
+
+        results = []
+        total = max(1, len(self._povs))
+        if not shutil.which('claude'):
+            # No Claude available — emit empty list, caller falls back cleanly.
+            self.finished_analyses.emit([])
+            return
+
+        for i, pov in enumerate(self._povs):
+            if self._cancelled:
+                break
+            name = pov.get('name', 'Hero')
+            seat = pov.get('seat', -1)
+            self.progress.emit(i, total, f"Analyzing for {name}…")
+
+            prompt = (
+                f"Critique this poker hand from {name}'s perspective "
+                f"(3 sentences max). Was {name}'s play correct? "
+                f"What was {name}'s key decision? "
+                "Plain text only, no markdown.\n\n"
+                f"{self._hand_text}"
+            )
+            try:
+                result = subprocess.run(
+                    ['claude', '-p', '--max-turns', '1', prompt],
+                    capture_output=True, text=True, timeout=120,
+                )
+                text = ""
+                if result.returncode == 0 and len(result.stdout.strip()) > 10:
+                    text = result.stdout.strip()
+            except Exception as ex:
+                text = f"(analysis failed: {ex})"
+            results.append({'player': name, 'seat': seat, 'text': text})
+            self.progress.emit(i + 1, total, f"Finished {name}")
+
+        self.finished_analyses.emit(results)
 
 
 # --- Main Game Window ---
@@ -4019,6 +4140,9 @@ class PokerWindow(QMainWindow):
         self.street_idx = 0
         self.current_player_idx = 0
         self.waiting_for_human = False
+        self._hero_folded_spectating = False
+        self._spectator_continue_all = False
+        self._spectator_waiting = False
         self.last_raiser = -1
         self.raises_this_round = 0
         self.action_log = []
@@ -4272,6 +4396,10 @@ class PokerWindow(QMainWindow):
         return ""
 
     def setup_ui(self):
+        # Menu bar (Network / Help) — by default the game runs single-player.
+        # Network is opt-in via the Network menu.
+        self._build_menubar()
+
         central = QWidget()
         self.setCentralWidget(central)
 
@@ -4690,6 +4818,85 @@ class PokerWindow(QMainWindow):
             hero_bet=hero.bet_in_round,  # Pass hero's current bet
             hero_position=hero_position  # Pass hero's position
         )
+
+        # Multiplayer: when hosting, push personalized advice to each client
+        # so they see advice tailored to THEIR seat, not the host's view.
+        if self.network_mode == "host" and self.network_server:
+            try:
+                advice_map = self._compose_tom_advice_for_clients(current_street)
+                if advice_map:
+                    self.network_server.broadcast_tom_advice_per_client(advice_map)
+            except Exception as ex:
+                print(f"[ToM] per-client advice broadcast failed: {ex}")
+
+    def _compose_tom_advice_for_clients(self, current_street: str) -> dict:
+        """Build a {seat_index: {'advice': str, 'notation': str}} map for
+        each client seated at the table. Keeps it concise — one short
+        paragraph per client — so the advice reaches the Advisor tab and
+        remains readable on the client side.
+        """
+        advice_map: dict = {}
+        seats = self.network_server.get_seats()  # {seat_index: player_name or None}
+        for seat_index, player_name in seats.items():
+            if seat_index == self.network_server.host_seat:
+                continue  # host sees its own local ToM panel
+            if not player_name:
+                continue
+            if seat_index >= len(self.players):
+                continue
+            p = self.players[seat_index]
+            hand_str = " ".join(str(c) for c in p.hand) if p.hand else "(not dealt)"
+            board_str = " ".join(str(c) for c in self.board) if self.board else "—"
+            pot = getattr(self, 'pot', 0)
+            to_call = max(0, getattr(self, 'current_bet', 0) - getattr(p, 'bet_in_round', 0))
+
+            # Position label specific to this client's seat.
+            position = self._position_for_seat(seat_index)
+
+            # Short, plain-text advice tailored to THIS client's perspective.
+            lines = [
+                f"Hi {player_name} — advice for seat {seat_index + 1}:",
+                f"  Your hand: {hand_str}",
+                f"  Street: {current_street}   Position: {position}",
+                f"  Pot: ${pot:.0f}   To call: ${to_call:.0f}",
+                f"  Board: {board_str}",
+            ]
+            if to_call <= 0 and current_street != "Preflop":
+                lines.append("  No bet to face. Consider checking or betting for value if ahead.")
+            elif to_call > 0 and pot > 0:
+                pot_odds = to_call / (pot + to_call) * 100
+                lines.append(
+                    f"  Pot odds ≈ {pot_odds:.1f}%. Call only with equity beating that.")
+            advice_map[seat_index] = {
+                'advice': "\n".join(lines),
+                'notation': "",
+            }
+        return advice_map
+
+    def _position_for_seat(self, seat_index: int) -> str:
+        """Same rules as get_hero_position but for an arbitrary seat."""
+        if not hasattr(self, 'dealer_idx'):
+            return 'MP'
+        num_players = len(self.players)
+        sb_idx = (self.dealer_idx + 1) % num_players
+        bb_idx = (self.dealer_idx + 2) % num_players
+        utg_idx = (bb_idx + 1) % num_players
+        while not self.players[utg_idx].active and utg_idx != bb_idx:
+            utg_idx = (utg_idx + 1) % num_players
+        co_idx = (self.dealer_idx - 1) % num_players
+        while not self.players[co_idx].active and co_idx != self.dealer_idx:
+            co_idx = (co_idx - 1) % num_players
+        if seat_index == self.dealer_idx:
+            return 'BTN'
+        if seat_index == sb_idx:
+            return 'SB'
+        if seat_index == bb_idx:
+            return 'BB'
+        if seat_index == utg_idx:
+            return 'UTG'
+        if seat_index == co_idx:
+            return 'CO'
+        return 'MP'
 
     def get_hero_position(self):
         """Calculate hero's position based on dealer button."""
@@ -5216,12 +5423,90 @@ class PokerWindow(QMainWindow):
         self.tom_call_btn.setEnabled(False)
         self.tom_raise_btn.setEnabled(False)
 
+    def _enter_spectator_mode(self):
+        """After hero folds, enable God Mode + Show Tells and show spectator controls."""
+        self._hero_folded_spectating = True
+        self._spectator_continue_all = False
+
+        # Turn on God Mode and Show Tells
+        if not self.god_mode_cb.isChecked():
+            self.god_mode_cb.setChecked(True)
+        if not self.stats_cb.isChecked():
+            self.stats_cb.setChecked(True)
+
+        # Show spectator buttons in place of action buttons
+        self.fold_btn.setVisible(False)
+        self.call_btn.setVisible(False)
+        self.raise_btn.setVisible(False)
+
+        if not hasattr(self, '_spectator_next_btn'):
+            btn_style = ("QPushButton { font-size: 18px; font-weight: bold; "
+                         "border-radius: 5px; padding: 6px; "
+                         "background-color: #357; color: white; }"
+                         "QPushButton:hover { background-color: #468; }")
+            self._spectator_next_btn = QPushButton("Next Street (Space)")
+            self._spectator_next_btn.setFixedSize(200, 55)
+            self._spectator_next_btn.setStyleSheet(btn_style)
+            self._spectator_next_btn.setShortcut("Space")
+            self._spectator_next_btn.clicked.connect(self._spectator_next)
+
+            self._spectator_continue_btn = QPushButton("Continue (Enter)")
+            self._spectator_continue_btn.setFixedSize(200, 55)
+            self._spectator_continue_btn.setStyleSheet(
+                btn_style.replace('#357', '#553').replace('#468', '#664'))
+            self._spectator_continue_btn.setShortcut("Return")
+            self._spectator_continue_btn.clicked.connect(self._spectator_continue)
+
+            # Insert into the action button layout
+            action_layout = self.fold_btn.parentWidget().layout()
+            action_layout.addWidget(self._spectator_next_btn)
+            action_layout.addWidget(self._spectator_continue_btn)
+
+        self._spectator_next_btn.setVisible(True)
+        self._spectator_next_btn.setEnabled(False)
+        self._spectator_continue_btn.setVisible(True)
+        self._spectator_continue_btn.setEnabled(False)
+
+    def _exit_spectator_mode(self):
+        """Restore normal UI after spectator hand ends."""
+        self._hero_folded_spectating = False
+        self._spectator_continue_all = False
+
+        # Hide spectator buttons, restore action buttons
+        if hasattr(self, '_spectator_next_btn'):
+            self._spectator_next_btn.setVisible(False)
+            self._spectator_continue_btn.setVisible(False)
+        self.fold_btn.setVisible(True)
+        self.call_btn.setVisible(True)
+        self.raise_btn.setVisible(True)
+
+    def _spectator_next(self):
+        """Spectator presses Next — advance one street."""
+        if hasattr(self, '_spectator_waiting') and self._spectator_waiting:
+            self._spectator_waiting = False
+            self._spectator_next_btn.setEnabled(False)
+            self._spectator_continue_btn.setEnabled(False)
+            self._resume_after_spectator_pause()
+
+    def _spectator_continue(self):
+        """Spectator presses Continue — play out rest of hand without pausing."""
+        self._spectator_continue_all = True
+        if hasattr(self, '_spectator_waiting') and self._spectator_waiting:
+            self._spectator_waiting = False
+            self._spectator_next_btn.setEnabled(False)
+            self._spectator_continue_btn.setEnabled(False)
+            self._resume_after_spectator_pause()
+
     def human_action(self, action, amount):
         """Process human player's action."""
         if not self.waiting_for_human:
             return
 
         self.disable_human_actions()
+
+        # If hero folds, enter spectator mode
+        if action == 'f':
+            self._enter_spectator_mode()
 
         # If in network client mode, send action to server
         if self.network_mode == "client" and self.network_client:
@@ -5238,23 +5523,35 @@ class PokerWindow(QMainWindow):
         self.process_action(player, 0, action, amount)
 
     def show_raise_dialog(self):
-        """Show dialog to select raise amount."""
+        """Show dialog to select a raise.
+
+        Semantics: the dialog asks for the RAISE amount above the call. It
+        returns the TOTAL commitment this round (call + raise) via
+        get_value(), which is what process_action() expects.
+        """
         # Use the correct hero seat (seat 0 for local/host, my_seat for client)
         hero_seat = self.my_seat if self.network_mode == "client" and self.my_seat is not None else 0
         player = self.players[hero_seat]
         to_call = int(self.current_bet - player.bet_in_round)
         _, bb_amount = BLIND_LEVELS[self.blind_level]
-        min_raise = int(to_call + bb_amount)
-        max_raise = int(player.stack)
-
-        if max_raise <= min_raise:
-            # Can't raise, just go all-in
-            self.human_action('r', max_raise)
+        min_raise_above = int(bb_amount)  # minimum raise is 1 BB above call
+        max_raise_above = int(player.stack) - to_call  # can't raise more than stack
+        if max_raise_above < 1:
+            # No chips left to raise with — treat as call / all-in.
+            self.human_action('r', int(player.stack))
             return
 
-        dialog = RaiseDialog(min_raise, max_raise, int(self.pot), self, bb_amount)
+        if max_raise_above <= min_raise_above:
+            # Only room to shove.
+            self.human_action('r', int(player.stack))
+            return
+
+        dialog = RaiseDialog(
+            to_call, min_raise_above, max_raise_above,
+            int(self.pot), self, bb_amount,
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            amount = dialog.get_value()
+            amount = dialog.get_value()  # total commitment (call + raise)
             self.human_action('r', amount)
 
     def process_bot_action(self):
@@ -5455,13 +5752,34 @@ class PokerWindow(QMainWindow):
         self.update_all_panels()
         self.update_stats_display()
 
+        # If hero folded and is spectating, pause before next street
+        if self._hero_folded_spectating and not self._spectator_continue_all:
+            self._spectator_waiting = True
+            self._spectator_next_btn.setEnabled(True)
+            self._spectator_continue_btn.setEnabled(True)
+            # Store resume state so we can continue when user clicks
+            self._spectator_resume_street = True
+            return
+
         # Start new betting round (from dealer + 1)
+        self._start_next_betting_round()
+
+    def _resume_after_spectator_pause(self):
+        """Called when spectator clicks Next or Continue."""
+        if hasattr(self, '_spectator_resume_street') and self._spectator_resume_street:
+            self._spectator_resume_street = False
+            self._start_next_betting_round()
+
+    def _start_next_betting_round(self):
+        """Start a new betting round (from dealer + 1)."""
         self.current_player_idx = (self.dealer_idx + 1) % len(self.players)
         self.betting_round_init()
 
     def end_hand(self):
         """End the hand and determine winner."""
         self.disable_human_actions()
+        if self._hero_folded_spectating:
+            self._exit_spectator_mode()
 
         # Capture final street stats before ending (guard against out-of-bounds
         # since end_betting_round already increments street_idx past the last street)
@@ -6117,22 +6435,174 @@ class PokerWindow(QMainWindow):
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
-        # Claude critique — run synchronously so it's visible when dialog opens
-        import shutil
-        if shutil.which('claude'):
-            hand_log = self._get_current_hand_log()
-            if hand_log:
-                critique = self._get_claude_hand_critique_sync(hand_log)
-                if critique:
-                    claude_label = QLabel(f"Claude: {critique}")
-                    claude_label.setFont(QFont('Arial', 14))
-                    claude_label.setWordWrap(True)
-                    claude_label.setStyleSheet(
-                        "color: #8f8; background-color: #1a2a1a; padding: 10px; border-radius: 5px;"
-                    )
-                    layout.insertWidget(layout.count() - 1, claude_label)
+        # Claude critique — runs in a background thread with a progress bar
+        # so the UI doesn't look hung while waiting.
+        self._attach_claude_analysis_to_dialog(dialog, layout)
 
         dialog.show()  # Non-blocking show instead of exec()
+
+    def _attach_claude_analysis_to_dialog(self, dialog, layout):
+        """Kick off (or wait for) Claude critique(s) and show progress in
+        `dialog`. Host/single-player runs Claude locally in a thread and
+        broadcasts to clients; clients just wait for the incoming bundle.
+        """
+        # Remember the live summary dialog so a later HAND_ANALYSIS msg can
+        # render into it directly.
+        self._active_summary_dialog = dialog
+        self._active_summary_layout = layout
+        self._active_summary_placeholder = None
+
+        def _clear_on_close():
+            self._active_summary_dialog = None
+            self._active_summary_layout = None
+            self._active_summary_placeholder = None
+        dialog.destroyed.connect(_clear_on_close)
+
+        # Client branch: Claude runs on the host. We just display incoming
+        # analyses (or already-cached ones) when they arrive.
+        if self.network_mode == "client":
+            cached = getattr(self, '_latest_hand_analyses', None)
+            if cached:
+                self._on_hand_analysis_received(cached, 0)
+                self._latest_hand_analyses = None
+                return
+            placeholder = QLabel("Waiting for Claude analysis from host…")
+            placeholder.setFont(QFont('Arial', 13))
+            placeholder.setStyleSheet(
+                "color: #bff; background: #1a1a2a; padding: 10px;"
+                " border-radius: 5px;"
+            )
+            layout.insertWidget(layout.count() - 1, placeholder)
+            self._active_summary_placeholder = placeholder
+            return
+
+        import shutil
+        if not shutil.which('claude'):
+            return
+
+        hand_log = self._get_current_hand_log()
+        if not hand_log:
+            return
+
+        povs = self._claude_povs_for_this_hand()
+        if not povs:
+            return
+
+        # Progress container (progress bar + status label). Insert just
+        # before the button row so it stays visible while analysis runs.
+        progress_box = QGroupBox("Claude analysis")
+        progress_box.setStyleSheet(
+            "QGroupBox { color: #bff; font-size: 13px; padding: 10px; }"
+        )
+        pbox_layout = QVBoxLayout(progress_box)
+        status_label = QLabel("Starting Claude…")
+        status_label.setFont(QFont('Arial', 12))
+        status_label.setStyleSheet("color: #bff;")
+        pbox_layout.addWidget(status_label)
+        bar = QProgressBar()
+        bar.setRange(0, max(1, len(povs)))
+        bar.setValue(0)
+        bar.setFormat("%v / %m")
+        pbox_layout.addWidget(bar)
+        layout.insertWidget(layout.count() - 1, progress_box)
+
+        # Container for analysis labels added one-by-one when done.
+        analysis_container = QWidget()
+        analysis_layout = QVBoxLayout(analysis_container)
+        analysis_layout.setContentsMargins(0, 0, 0, 0)
+        layout.insertWidget(layout.count() - 1, analysis_container)
+
+        thread = ClaudeAnalysisThread(hand_log, povs)
+
+        def on_progress(done, total, label):
+            try:
+                bar.setValue(done)
+                status_label.setText(label)
+            except RuntimeError:
+                pass  # dialog was closed
+
+        def on_finished(analyses):
+            # Remove progress display
+            try:
+                progress_box.deleteLater()
+            except RuntimeError:
+                pass
+            # Show each analysis as its own labeled block
+            for a in analyses:
+                name = a.get('player', '?')
+                text = a.get('text', '').strip()
+                if not text:
+                    continue
+                block = QLabel(f"Claude — {name}:\n{text}")
+                block.setFont(QFont('Arial', 14))
+                block.setWordWrap(True)
+                block.setStyleSheet(
+                    "color: #8f8; background-color: #1a2a1a; padding: 10px;"
+                    " border-radius: 5px; margin: 4px 0;"
+                )
+                analysis_layout.addWidget(block)
+
+            # If hosting, broadcast so every client sees the same bundle.
+            if (self.network_mode == "host" and self.network_server
+                    and analyses):
+                try:
+                    self.network_server.broadcast_hand_analysis(
+                        analyses, hand_number=getattr(self, 'hand_number', 0))
+                except Exception as ex:
+                    print(f"[Claude] broadcast failed: {ex}")
+
+            thread.deleteLater()
+
+        thread.progress.connect(on_progress)
+        thread.finished_analyses.connect(on_finished)
+
+        # Cancel analysis if the dialog closes first.
+        def on_dialog_destroyed():
+            try:
+                thread.cancel()
+            except Exception:
+                pass
+        dialog.destroyed.connect(on_dialog_destroyed)
+
+        # Keep a strong ref so the thread isn't GC'd mid-run.
+        if not hasattr(self, '_claude_threads'):
+            self._claude_threads = []
+        self._claude_threads.append(thread)
+        thread.start()
+
+    def _claude_povs_for_this_hand(self) -> list:
+        """Return the list of POVs to analyze.
+
+        Single-player (or client-side): just Hero.
+        Host in multiplayer: Hero (host) + every seated human client.
+        """
+        povs = []
+        # Always include the local hero's perspective first.
+        hero_seat = self.my_seat if self.my_seat is not None else 0
+        if hero_seat < len(self.players):
+            povs.append({
+                'name': self.players[hero_seat].name or 'Hero',
+                'seat': hero_seat,
+            })
+
+        # If hosting, add one POV per seated client.
+        if self.network_mode == "host" and self.network_server:
+            try:
+                seats = self.network_server.get_seats()
+                host_seat = self.network_server.host_seat
+                for seat_index, player_name in seats.items():
+                    if not player_name or seat_index == host_seat:
+                        continue
+                    # Avoid duplicating the host's own POV
+                    if seat_index == hero_seat:
+                        continue
+                    povs.append({
+                        'name': player_name,
+                        'seat': seat_index,
+                    })
+            except Exception as ex:
+                print(f"[Claude] could not enumerate clients for POVs: {ex}")
+        return povs
 
     def _show_stats_from_dialog(self, parent_dialog):
         """Show the graphical hand summary from the text summary dialog."""
@@ -6525,6 +6995,89 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
 
         dialog.accept()
 
+    # --- Menubar ------------------------------------------------------------
+
+    def _build_menubar(self):
+        """Build the top menubar with a Network menu.
+
+        Selecting nothing leaves the game in its default single-player mode;
+        the Network menu is the only way to enter host or client mode.
+        """
+        menubar = self.menuBar()
+        net_menu = menubar.addMenu("&Network")
+
+        self.act_host = QAction("Host Game...", self)
+        self.act_host.setStatusTip("Start a local server for other players to join")
+        self.act_host.triggered.connect(self._menu_host)
+        net_menu.addAction(self.act_host)
+
+        self.act_join = QAction("Join Game...", self)
+        self.act_join.setStatusTip("Connect to a poker server on your network")
+        self.act_join.triggered.connect(self._menu_join)
+        net_menu.addAction(self.act_join)
+
+        net_menu.addSeparator()
+
+        self.act_status = QAction("Network Status...", self)
+        self.act_status.setEnabled(False)
+        self.act_status.triggered.connect(self._menu_status)
+        net_menu.addAction(self.act_status)
+
+        self.act_disconnect = QAction("Disconnect", self)
+        self.act_disconnect.setEnabled(False)
+        self.act_disconnect.triggered.connect(self._menu_disconnect)
+        net_menu.addAction(self.act_disconnect)
+
+        if not NETWORK_AVAILABLE:
+            self.act_host.setEnabled(False)
+            self.act_join.setEnabled(False)
+            net_menu.setToolTip("Network module not available")
+
+        help_menu = menubar.addMenu("&Help")
+        act_help = QAction("Help...", self)
+        act_help.triggered.connect(self.show_help)
+        help_menu.addAction(act_help)
+        act_about = QAction("About", self)
+        act_about.triggered.connect(self.show_about)
+        help_menu.addAction(act_about)
+
+    def _menu_host(self):
+        if self.network_mode:
+            self._menu_status()
+            return
+        self._start_hosting()
+        self._refresh_network_menu()
+
+    def _menu_join(self):
+        if self.network_mode:
+            self._menu_status()
+            return
+        self._join_game()
+        self._refresh_network_menu()
+
+    def _menu_status(self):
+        if not self.network_mode:
+            QMessageBox.information(self, "Not connected",
+                "You are playing single-player.\n"
+                "Use Network > Host Game… or Network > Join Game… to go multiplayer.")
+            return
+        self._show_network_status_dialog()
+
+    def _menu_disconnect(self):
+        if self.network_mode:
+            self._disconnect_network()
+            self._refresh_network_menu()
+
+    def _refresh_network_menu(self):
+        """Enable/disable menu items based on current network state."""
+        if not hasattr(self, 'act_status'):
+            return
+        active = bool(self.network_mode)
+        self.act_host.setEnabled(not active and NETWORK_AVAILABLE)
+        self.act_join.setEnabled(not active and NETWORK_AVAILABLE)
+        self.act_status.setEnabled(active)
+        self.act_disconnect.setEnabled(active)
+
     # --- Network Methods ---
 
     def show_network_dialog(self):
@@ -6592,9 +7145,10 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                 )
                 self.network_btn.setText("Network*")
 
-                # Rename hero to indicate server role
-                self.players[0].name = "Hero (Server)"
-                self.setWindowTitle("PokerIQ - Server")
+                # Use the short host name chosen in the dialog
+                host_name = dialog.get_host_name() or "Host"
+                self.players[0].name = host_name
+                self.setWindowTitle(f"PokerIQ - Server ({host_name})")
                 self.update_all_panels()
 
                 # Connect server signals
@@ -6652,6 +7206,53 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         client.hand_ended.connect(self._on_hand_ended)
         client.active_player_changed.connect(self._on_active_player_changed)
         client.feature_toggle_received.connect(self._on_feature_toggle_received)
+        client.tom_advice_received.connect(self._on_tom_advice_received)
+        client.hand_analysis_received.connect(self._on_hand_analysis_received)
+
+    def _on_hand_analysis_received(self, analyses: list, hand_number: int):
+        """Host-supplied Claude analyses arrived: route into the live summary
+        dialog (if any), otherwise cache for the next one that opens.
+        """
+        self._latest_hand_analyses = list(analyses)
+        target = getattr(self, '_active_summary_dialog', None)
+        target_layout = getattr(self, '_active_summary_layout', None)
+        if target is None or target_layout is None:
+            return
+        try:
+            # Clear the "waiting on host" placeholder if still present
+            placeholder = getattr(self, '_active_summary_placeholder', None)
+            if placeholder is not None:
+                placeholder.deleteLater()
+                self._active_summary_placeholder = None
+            for a in analyses:
+                name = a.get('player', '?')
+                text = (a.get('text') or '').strip()
+                if not text:
+                    continue
+                block = QLabel(f"Claude — {name}:\n{text}")
+                block.setFont(QFont('Arial', 14))
+                block.setWordWrap(True)
+                block.setStyleSheet(
+                    "color: #8f8; background-color: #1a2a1a; padding: 10px;"
+                    " border-radius: 5px; margin: 4px 0;"
+                )
+                target_layout.insertWidget(target_layout.count() - 1, block)
+        except RuntimeError:
+            pass  # dialog closed before we could render
+
+    def _on_tom_advice_received(self, advice: str, notation: str, for_seat: int):
+        """Display personalized Theory-of-Mind advice from the host."""
+        if not hasattr(self, 'tom_panel'):
+            return
+        # Sanity check: the message is addressed to us.
+        if for_seat >= 0 and self.my_seat is not None and for_seat != self.my_seat:
+            return
+        try:
+            self.tom_panel.advisor_advice.setText(advice or "")
+            # Switch to the Advisor tab so the user notices the new advice.
+            self.tom_panel.tabs.setCurrentIndex(0)
+        except Exception as ex:
+            print(f"[ToM] could not render remote advice: {ex}")
 
     def _on_my_seat_selected(self, seat_index: int):
         """Handle our seat selection confirmation."""

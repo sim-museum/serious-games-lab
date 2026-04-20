@@ -10,8 +10,10 @@ from PyQt6.QtNetwork import QTcpServer, QTcpSocket, QHostAddress
 
 from .protocol import (
     NetworkMessage, MessageType, DEFAULT_PORT, HEARTBEAT_INTERVAL_MS,
+    MAX_NAME_LEN,
     make_connect_accept, make_connect_reject, make_seat_list,
-    make_seat_confirm, make_heartbeat
+    make_seat_confirm, make_heartbeat, make_tom_advice,
+    make_hand_analysis,
 )
 
 
@@ -166,7 +168,32 @@ class PokerServer(QObject):
             return
 
         if msg.type == MessageType.CONNECT_REQUEST:
-            player_name = msg.payload.get('player_name', f'Player_{client_id}')
+            player_name = (msg.payload.get('player_name') or '').strip()
+
+            # Name validation: non-empty, short, unique.
+            if not player_name:
+                self._reject_and_close(
+                    client_id, "Name cannot be empty.", "name_empty")
+                return
+            if len(player_name) > MAX_NAME_LEN:
+                self._reject_and_close(
+                    client_id,
+                    f"Name is too long ({len(player_name)} chars); max is {MAX_NAME_LEN}.",
+                    "name_too_long")
+                return
+            if self._is_name_taken(player_name):
+                taken = self._names_in_use()
+                self._reject_and_close(
+                    client_id,
+                    f"Name '{player_name}' is already in use. Taken: {', '.join(sorted(taken))}.",
+                    "name_taken")
+                return
+            # Check for free seats before accepting.
+            if self._free_seat_count() == 0:
+                self._reject_and_close(
+                    client_id, "Table is full.", "full")
+                return
+
             client.player_name = player_name
 
             # Accept connection and send seat list
@@ -403,3 +430,76 @@ class PokerServer(QObject):
             payload={'player_name': player_name, 'features': features}
         )
         self._broadcast(msg)
+
+    def send_tom_advice(self, client_id: str, advice: str,
+                        notation: str = "", for_seat: int = -1) -> bool:
+        """Send a Theory-of-Mind advice blob to one client."""
+        if client_id not in self._clients:
+            return False
+        msg = make_tom_advice(advice, notation=notation, for_seat=for_seat)
+        self._send_to_client(client_id, msg)
+        return True
+
+    def broadcast_hand_analysis(self, analyses: list, hand_number: int = 0):
+        """Broadcast a bundle of Claude hand critiques (one per human player)
+        to every connected client so they all see the same analysis.
+        """
+        msg = make_hand_analysis(analyses, hand_number=hand_number)
+        self._broadcast(msg)
+
+    def broadcast_tom_advice_per_client(self, advice_for_seat: Dict[int, Dict[str, str]]):
+        """Send personalized ToM advice to each seated client.
+
+        Args:
+            advice_for_seat: {seat_index: {'advice': str, 'notation': str}}
+                Only seats that map to a real client receive a message; the
+                host's own seat is ignored (host sees its panel locally).
+        """
+        for seat_index, blob in advice_for_seat.items():
+            cid = self.get_client_for_seat(seat_index)
+            if not cid:
+                continue
+            self.send_tom_advice(
+                cid,
+                blob.get('advice', ''),
+                notation=blob.get('notation', ''),
+                for_seat=seat_index,
+            )
+
+    # --- Name uniqueness helpers -------------------------------------------
+
+    def _names_in_use(self) -> list:
+        """Return all names currently in use (host + connected clients with a name)."""
+        names = []
+        if self.host_name:
+            names.append(self.host_name)
+        for client in self._clients.values():
+            if client.player_name:
+                names.append(client.player_name)
+        return names
+
+    def _is_name_taken(self, name: str) -> bool:
+        """Case-insensitive uniqueness check."""
+        lc = name.strip().lower()
+        if self.host_name and self.host_name.strip().lower() == lc:
+            return True
+        for client in self._clients.values():
+            if client.player_name and client.player_name.strip().lower() == lc:
+                return True
+        return False
+
+    def _free_seat_count(self) -> int:
+        return sum(1 for v in self._seats.values() if v is None)
+
+    def _reject_and_close(self, client_id: str, reason: str, code: str):
+        """Send CONNECT_REJECT with a machine-readable code, then close the socket."""
+        client = self._clients.get(client_id)
+        if client is None:
+            return
+        try:
+            client.socket.write(make_connect_reject(reason, code).to_bytes())
+            client.socket.flush()
+            client.socket.disconnectFromHost()
+        except Exception as ex:
+            print(f"Error rejecting client: {ex}")
+        print(f"Rejected connect ({code}): {reason}")

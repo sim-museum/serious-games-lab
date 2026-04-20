@@ -52,6 +52,8 @@ class PokerClient(QObject):
     player_left = pyqtSignal(str)
     active_player_changed = pyqtSignal(int)  # seat index of player whose turn it is
     feature_toggle_received = pyqtSignal(str, dict)  # player_name, features dict
+    tom_advice_received = pyqtSignal(str, str, int)  # advice, notation, for_seat
+    hand_analysis_received = pyqtSignal(list, int)   # analyses list, hand_number
     chat_received = pyqtSignal(str, str)
     error_occurred = pyqtSignal(str)
 
@@ -280,6 +282,17 @@ class PokerClient(QObject):
             player_name = msg.payload.get('player_name', '')
             features = msg.payload.get('features', {})
             self.feature_toggle_received.emit(player_name, features)
+
+        elif msg.type == MessageType.TOM_ADVICE:
+            advice = msg.payload.get('advice', '')
+            notation = msg.payload.get('notation', '')
+            for_seat = msg.payload.get('for_seat', -1)
+            self.tom_advice_received.emit(advice, notation, for_seat)
+
+        elif msg.type == MessageType.HAND_ANALYSIS:
+            analyses = msg.payload.get('analyses', []) or []
+            hand_number = msg.payload.get('hand_number', 0)
+            self.hand_analysis_received.emit(analyses, hand_number)
 
         elif msg.type == MessageType.GAME_START:
             pass  # Handle as needed

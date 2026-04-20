@@ -13,6 +13,9 @@ DEFAULT_PORT = 7778
 HEARTBEAT_INTERVAL_MS = 5000
 CONNECTION_TIMEOUT_MS = 10000
 
+# Player name constraints — keep names short so seat labels / ToM tabs fit.
+MAX_NAME_LEN = 12
+
 
 class MessageType(Enum):
     """Message types for poker network protocol."""
@@ -55,6 +58,12 @@ class MessageType(Enum):
 
     # Features
     FEATURE_TOGGLE = auto()    # Broadcast feature activation (God Mode, Tells, ToM)
+
+    # Theory of Mind - host sends per-client personalized advice
+    TOM_ADVICE = auto()
+
+    # Claude hand analysis - host computes per-player critiques, ships bundle
+    HAND_ANALYSIS = auto()
 
     # Chat
     CHAT_MESSAGE = auto()
@@ -114,11 +123,44 @@ def make_connect_accept(client_id: str, server_name: str) -> NetworkMessage:
     )
 
 
-def make_connect_reject(reason: str) -> NetworkMessage:
-    """Create a connection rejection message."""
+def make_connect_reject(reason: str, code: str = "") -> NetworkMessage:
+    """Create a connection rejection message.
+
+    Args:
+        reason: Human-readable reason.
+        code: Machine-readable tag. One of "name_taken", "name_empty",
+            "name_too_long", "full", or "" for other errors.
+    """
     return NetworkMessage(
         type=MessageType.CONNECT_REJECT,
-        payload={'reason': reason}
+        payload={'reason': reason, 'code': code}
+    )
+
+
+def make_hand_analysis(analyses: list, hand_number: int = 0) -> NetworkMessage:
+    """Bundle of per-player Claude critiques for the most-recent hand.
+
+    Args:
+        analyses: list of {'player': str, 'seat': int, 'text': str}
+        hand_number: Hand index (for sanity checks on the client side)
+    """
+    return NetworkMessage(
+        type=MessageType.HAND_ANALYSIS,
+        payload={'analyses': list(analyses), 'hand_number': hand_number}
+    )
+
+
+def make_tom_advice(advice: str, notation: str = "", for_seat: int = -1) -> NetworkMessage:
+    """Personalized Theory-of-Mind advice from host for one client.
+
+    Args:
+        advice: Prose advice (plain text, one screen worth).
+        notation: Optional PokerStove-style range notation to display.
+        for_seat: The recipient's seat index (for client-side sanity check).
+    """
+    return NetworkMessage(
+        type=MessageType.TOM_ADVICE,
+        payload={'advice': advice, 'notation': notation, 'for_seat': for_seat}
     )
 
 

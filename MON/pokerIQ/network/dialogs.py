@@ -9,9 +9,19 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
 
-from .protocol import DEFAULT_PORT
+from .protocol import DEFAULT_PORT, MAX_NAME_LEN
 from .server import PokerServer
 from .client import PokerClient
+
+
+def _validate_short_name(name: str) -> Optional[str]:
+    """Return an error string if name is invalid, else None."""
+    stripped = (name or "").strip()
+    if not stripped:
+        return "Name cannot be empty."
+    if len(stripped) > MAX_NAME_LEN:
+        return f"Name too long ({len(stripped)} chars). Max is {MAX_NAME_LEN}."
+    return None
 
 
 class HostGameDialog(QDialog):
@@ -23,6 +33,7 @@ class HostGameDialog(QDialog):
         self.setMinimumWidth(350)
 
         self.server: Optional[PokerServer] = None
+        self.host_name: str = "Host"
         self._setup_ui()
 
     def _setup_ui(self):
@@ -32,21 +43,27 @@ class HostGameDialog(QDialog):
         settings_group = QGroupBox("Server Settings")
         settings_layout = QGridLayout()
 
-        settings_layout.addWidget(QLabel("Table Name:"), 0, 0)
-        self.name_edit = QLineEdit("Poker Table")
-        settings_layout.addWidget(self.name_edit, 0, 1)
+        settings_layout.addWidget(QLabel("Your Name:"), 0, 0)
+        self.host_name_edit = QLineEdit("Host")
+        self.host_name_edit.setMaxLength(MAX_NAME_LEN)
+        self.host_name_edit.setPlaceholderText(f"Short name (≤{MAX_NAME_LEN} chars)")
+        settings_layout.addWidget(self.host_name_edit, 0, 1)
 
-        settings_layout.addWidget(QLabel("Port:"), 1, 0)
+        settings_layout.addWidget(QLabel("Table Name:"), 1, 0)
+        self.name_edit = QLineEdit("Poker Table")
+        settings_layout.addWidget(self.name_edit, 1, 1)
+
+        settings_layout.addWidget(QLabel("Port:"), 2, 0)
         self.port_spin = QSpinBox()
         self.port_spin.setRange(1024, 65535)
         self.port_spin.setValue(DEFAULT_PORT)
-        settings_layout.addWidget(self.port_spin, 1, 1)
+        settings_layout.addWidget(self.port_spin, 2, 1)
 
-        settings_layout.addWidget(QLabel("Seats:"), 2, 0)
+        settings_layout.addWidget(QLabel("Seats:"), 3, 0)
         self.seats_spin = QSpinBox()
         self.seats_spin.setRange(2, 10)
         self.seats_spin.setValue(6)
-        settings_layout.addWidget(self.seats_spin, 2, 1)
+        settings_layout.addWidget(self.seats_spin, 3, 1)
 
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
@@ -68,12 +85,21 @@ class HostGameDialog(QDialog):
 
     def _start_server(self):
         """Start the poker server."""
-        name = self.name_edit.text() or "Poker Table"
+        host_name = self.host_name_edit.text()
+        err = _validate_short_name(host_name)
+        if err:
+            self.status_label.setText(err)
+            self.status_label.setStyleSheet("color: red;")
+            return
+        host_name = host_name.strip()
+
+        table_name = self.name_edit.text() or "Poker Table"
         port = self.port_spin.value()
         num_seats = self.seats_spin.value()
 
-        self.server = PokerServer(server_name=name, num_seats=num_seats,
-                                   host_seat=0, host_name="Hero (Server)")
+        self.host_name = host_name
+        self.server = PokerServer(server_name=table_name, num_seats=num_seats,
+                                   host_seat=0, host_name=host_name)
 
         if self.server.start(port):
             self.status_label.setText(f"Server running on port {port}")
@@ -88,6 +114,10 @@ class HostGameDialog(QDialog):
     def get_server(self) -> Optional[PokerServer]:
         """Get the created server instance."""
         return self.server
+
+    def get_host_name(self) -> str:
+        """Get the chosen host display name."""
+        return self.host_name
 
 
 class JoinGameDialog(QDialog):
@@ -111,6 +141,8 @@ class JoinGameDialog(QDialog):
 
         conn_layout.addWidget(QLabel("Your Name:"), 0, 0)
         self.name_edit = QLineEdit(self.player_name)
+        self.name_edit.setMaxLength(MAX_NAME_LEN)
+        self.name_edit.setPlaceholderText(f"Short name (≤{MAX_NAME_LEN} chars)")
         conn_layout.addWidget(self.name_edit, 0, 1)
 
         conn_layout.addWidget(QLabel("Server IP:"), 1, 0)
@@ -143,7 +175,14 @@ class JoinGameDialog(QDialog):
 
     def _connect(self):
         """Connect to the poker server."""
-        name = self.name_edit.text() or "Player"
+        name = self.name_edit.text()
+        err = _validate_short_name(name)
+        if err:
+            self.status_label.setText(err)
+            self.status_label.setStyleSheet("color: red;")
+            return
+        name = name.strip()
+
         host = self.host_edit.text() or "localhost"
         port = self.port_spin.value()
 
