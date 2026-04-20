@@ -90,10 +90,29 @@ get_player_name() {
     echo "$user_name"
 }
 
+# Parse the "Overall Average" score out of a Claude analysis markdown file.
+# Writes a single decimal (e.g. "0.72") to stdout if found, nothing otherwise.
+# Accepts the formats Claude actually produces in practice:
+#   **Overall Average: 0.105**
+#   **Overall Average**: 0.72
+#   Overall Average score: 0.72
+#   Overall revised score: **0.105**
+parse_claude_overall_score() {
+    local md_file="$1"
+    [[ -r "$md_file" ]] || return 1
+    # Match "overall" + "average" or "revised score" with any junk between, then
+    # the first 0.xxx / 1.x / X.xx that follows on the same line.
+    grep -oEi '(overall[ ]+(average|revised[ ]+score))[^0-9]*[0-9]+\.[0-9]+' "$md_file" \
+        | head -1 \
+        | grep -oE '[0-9]+\.[0-9]+' \
+        | head -1
+}
+
 # Create export directory with matching archives, tar+sha256sum, cleanup, exit 0
 # Saves the archive to ~/sgl/<player_name>/ and runs Claude Code analysis.
-# The initial tar.gz has no score in the filename; only the Claude review
-# determines the score, which appears in the final re-archived filename.
+# The initial tar.gz has no score in the filename; once the Claude review
+# completes, the score is parsed out of the report and appended to the
+# final re-archived filename (e.g. ..._260419_1824_0.72.tar.gz).
 export_scores() {
     local user_name
     user_name="$(get_player_name)"
@@ -164,9 +183,17 @@ export_scores() {
         rm -f "$REPO_ROOT/${day}_score_"*".tar.gz"
     done
 
-    # Run Claude Code analysis on all exports — produces PDF in archive root
+    # Run Claude Code analysis on all exports — produces PDF in archive root.
+    # The analysis step rewrites the tarball (with the Claude report inside)
+    # and, if it could parse an overall score from the report, renames the
+    # archive to include that score. The new path is returned via the
+    # SGL_ANALYZED_TAR_FILE global.
     echo ""
+    SGL_ANALYZED_TAR_FILE=""
     run_claude_analysis "$player_dir" "$tar_file" "$user_name"
+    if [[ -n "${SGL_ANALYZED_TAR_FILE:-}" ]]; then
+        tar_file="$SGL_ANALYZED_TAR_FILE"
+    fi
 
     echo ""
     msg_ok "Export complete. Archive saved to $tar_file"
@@ -470,13 +497,38 @@ HEADER
             msg_ok "Analysis saved as claude_analysis.md in archive root."
         fi
 
-        # Re-archive with report in root directory only
+        # Re-archive with report in root directory. If we can extract an
+        # overall score from Claude's report, bake it into the tarball's
+        # filename so it's visible without unpacking.
         local dir_name
         dir_name="$(basename "$latest_dir")"
-        tar -czf "$latest_tar" -C "$tmpdir" "$dir_name"
 
-        # Score is recorded in the Claude analysis report only, not in the filename
-        msg_ok "Analysis saved to archive."
+        local overall_score
+        overall_score="$(parse_claude_overall_score "$tmpdir/claude_analysis.md" || true)"
+
+        local final_tar="$latest_tar"
+        if [[ -n "$overall_score" ]]; then
+            # Strip the existing .tar.gz suffix, append _<score>, re-suffix.
+            local base="${latest_tar%.tar.gz}"
+            final_tar="${base}_${overall_score}.tar.gz"
+        fi
+
+        tar -czf "$final_tar" -C "$tmpdir" "$dir_name"
+
+        # Remove the pre-analysis archive if we wrote to a new path
+        if [[ "$final_tar" != "$latest_tar" && -f "$latest_tar" ]]; then
+            rm -f "$latest_tar"
+        fi
+
+        # Report the new path back to the caller via a global variable so
+        # export_scores can print the final "Export complete" line correctly.
+        SGL_ANALYZED_TAR_FILE="$final_tar"
+
+        if [[ -n "$overall_score" ]]; then
+            msg_ok "Analysis saved. Score $overall_score embedded in filename."
+        else
+            msg_ok "Analysis saved to archive."
+        fi
     else
         msg_warn "Claude Code analysis could not be completed."
         if [[ -s "$claude_stderr" ]]; then
