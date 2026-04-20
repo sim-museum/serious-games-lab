@@ -401,7 +401,7 @@ HEADER
     # Call Claude Code CLI — output is Markdown
     local analysis_md="$tmpdir/claude_analysis.md"
     local claude_stderr="$tmpdir/claude_stderr.txt"
-    if timeout 300 claude -p --max-turns 1 "$(cat "$prompt_file")" > "$analysis_md" 2>"$claude_stderr"; then
+    if timeout 600 claude -p --max-turns 3 "$(cat "$prompt_file")" > "$analysis_md" 2>"$claude_stderr"; then
         # Print to screen
         cat "$analysis_md"
         echo ""
