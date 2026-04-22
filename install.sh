@@ -196,33 +196,37 @@ else
 fi
 
 # --- Claude Code CLI ---
-if command -v claude &>/dev/null; then
-    CLAUDE_VER=$(claude --version 2>/dev/null | head -1)
-    echo "  [OK]   Claude Code: ${CLAUDE_VER:-available}"
+# Check as the real user: under sudo, PATH is reset to secure_path and won't
+# include per-user install dirs like ~/.local/bin or ~/.npm-global/bin.
+CLAUDE_PATH=$(sudo -u "$REAL_USER" -i bash -c 'command -v claude' 2>/dev/null || true)
+if [[ -n "$CLAUDE_PATH" ]]; then
+    CLAUDE_VER=$(sudo -u "$REAL_USER" -i bash -c 'claude --version 2>/dev/null | head -1' || true)
+    echo "  [OK]   Claude Code: ${CLAUDE_VER:-available} ($CLAUDE_PATH)"
 else
     echo "  [WARN] Claude Code: not found — post-game AI annotations will be skipped"
     echo "         Install: https://docs.anthropic.com/en/docs/claude-code"
     AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
 fi
 
-# --- sglBinaries_1.tar.gz ---
+# --- sglBinaries archives ---
 shopt -s nullglob
 WP_DIRS=("$REPO_ROOT"/*/WP/ "$REPO_ROOT"/*/*/WP/)
-shopt -u nullglob
-shopt -s nullglob
 SGL_BIN_DIRS=("$DOWNLOADS_DIR"/sglBinaries_*/)
+SGL_BIN_ARCHIVES=("$DOWNLOADS_DIR"/sglBinaries_*.tar "$DOWNLOADS_DIR"/sglBinaries_*.tar.gz)
+SGL_BIN_MARKERS=("$DOWNLOADS_DIR"/.extracted_sglBinaries_*.tar "$DOWNLOADS_DIR"/.extracted_sglBinaries_*.tar.gz)
 shopt -u nullglob
-if [[ -f "$DOWNLOADS_DIR/sglBinaries_1.tar.gz" ]]; then
-    echo "  [OK]   sglBinaries_1.tar.gz found in downloads/"
-elif [[ -f "$DOWNLOADS_DIR/.extracted_sglBinaries_1.tar.gz" ]]; then
-    echo "  [OK]   sglBinaries_1.tar.gz (already extracted)"
+if [[ ${#SGL_BIN_ARCHIVES[@]} -gt 0 ]]; then
+    echo "  [OK]   sglBinaries archives found in downloads/ (${#SGL_BIN_ARCHIVES[@]} file(s))"
+elif [[ ${#SGL_BIN_MARKERS[@]} -gt 0 ]]; then
+    echo "  [OK]   sglBinaries archives (already extracted)"
 elif [[ ${#SGL_BIN_DIRS[@]} -gt 0 ]]; then
     echo "  [OK]   sglBinaries data found in downloads/ (${#SGL_BIN_DIRS[@]} dir(s))"
 elif [[ ${#WP_DIRS[@]} -gt 0 ]]; then
     echo "  [OK]   Binary game data already distributed"
 else
-    echo "  [WARN] sglBinaries_1.tar.gz not found in downloads/"
+    echo "  [WARN] sglBinaries archives not found in downloads/"
     echo "         Recommended — contains core binary games for all days."
+    echo "         Download from https://archive.org/details/sglBinaries_1"
     AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
 fi
 
@@ -246,20 +250,22 @@ echo ""
 mkdir -p "$DOWNLOADS_DIR"
 chown "$REAL_USER:$REAL_USER" "$DOWNLOADS_DIR"
 
-# Extract sglBinaries_*.tar.gz archives before distributing
-for f in "$DOWNLOADS_DIR"/sglBinaries_*.tar.gz; do
-    [[ -f "$f" ]] || continue
+# Extract sglBinaries_*.tar and sglBinaries_*.tar.gz archives before distributing.
+# `tar xf` auto-detects compression, so the same command handles both.
+shopt -s nullglob
+for f in "$DOWNLOADS_DIR"/sglBinaries_*.tar "$DOWNLOADS_DIR"/sglBinaries_*.tar.gz; do
     base="$(basename "$f")"
     marker="$DOWNLOADS_DIR/.extracted_${base}"
     if [[ -f "$marker" ]]; then
         echo "  Already extracted: $base"
     else
         echo "  Extracting $base ..."
-        sudo -u "$REAL_USER" tar xzf "$f" -C "$DOWNLOADS_DIR/"
+        sudo -u "$REAL_USER" tar xf "$f" -C "$DOWNLOADS_DIR/"
         sudo -u "$REAL_USER" touch "$marker"
         echo "  [OK] Extracted: $base"
     fi
 done
+shopt -u nullglob
 
 # Distribute binary files from downloads/sglBinaries_* to game INSTALL directories
 echo "  Distributing binary files to game INSTALL directories..."

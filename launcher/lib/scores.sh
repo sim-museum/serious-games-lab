@@ -190,7 +190,7 @@ export_scores() {
     # SGL_ANALYZED_TAR_FILE global.
     echo ""
     SGL_ANALYZED_TAR_FILE=""
-    run_claude_analysis "$player_dir" "$tar_file" "$user_name"
+    run_claude_analysis "$player_dir" "$tar_file" "$user_name" || true
     if [[ -n "${SGL_ANALYZED_TAR_FILE:-}" ]]; then
         tar_file="$SGL_ANALYZED_TAR_FILE"
     fi
