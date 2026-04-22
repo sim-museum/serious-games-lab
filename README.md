@@ -15,13 +15,16 @@ This is a software development project. No game binaries or installers are distr
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/sim-museum/serious-games-lab.git
-cd serious-games-lab
+git clone https://github.com/sim-museum/serious-games-lab.git ~/sgl
+cd ~/sgl
 
-# 2. Install system dependencies
-sudo ./scripts/install_dependencies.sh
+# 2. (Recommended) Download binary game archives to ~/sgl/downloads
 
-# 3. Launch the game menu
+# 3. Run the installer (apt deps, FlightGear, Lutris runners, wine fixes,
+#    and distribution of any binaries placed in downloads/)
+sudo ./install.sh
+
+# 4. Launch the game menu
 ./launcher/main_launcher.sh
 ```
 
@@ -86,4 +89,4 @@ serious-games-lab/
 
 ## Portability
 
-All paths within the repository are relative. The entire directory can be moved or copied to another machine — just re-run `scripts/install_dependencies.sh` on the new system.
+All paths within the repository are relative. The entire directory can be moved or copied to another machine — just re-run `sudo ./install.sh` on the new system.
