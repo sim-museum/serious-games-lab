@@ -12,6 +12,16 @@ DAY_ORDER=("MON" "TUE" "WED" "THU" "FRI" "SAT" "SUN")
 DAY_NAMES=("Monday" "Tuesday" "Wednesday" "Thursday" "Friday" "Saturday" "Sunday")
 DAY_THEMES=("Poker" "Historical Flight Sim" "Chess" "Sim Racing" "Duplicate Bridge" "Modern Flight Sim" "Go")
 
+# /usr/games holds apt-installed game binaries (pokerth_client, scid,
+# stockfish, xboard, tenace, deal, kigo, ...). Ubuntu 26.04 dropped it
+# from the default profile PATH, so launcher-invoked day scripts can't
+# find these binaries via `command -v`. Append it (system /usr/bin
+# entries still win) so all child scripts see /usr/games.
+case ":$PATH:" in
+    *":/usr/games:"*) ;;
+    *) export PATH="$PATH:/usr/games:/usr/local/games" ;;
+esac
+
 # Directories
 DOWNLOADS_DIR="$REPO_ROOT/downloads"
 CONFIG_DIR="$REPO_ROOT/config"

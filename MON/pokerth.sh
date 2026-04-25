@@ -1,9 +1,20 @@
 #!/bin/bash
 
 # PokerTH - Texas Hold'em poker game
-# Try apt-installed pokerth first, fall back to INSTALL/ binary
+# Modern Debian/Ubuntu PokerTH 2.x ships the binary as pokerth_client
+# in /usr/games/. Older releases used the name pokerth. The bundled
+# INSTALL/PokerTH-1.1.2/ binary ships its own libdrm/libGL from ~2014
+# that crashes on modern NVIDIA libnvidia-egl-gbm.so.1 ("undefined
+# symbol: drmGetDevices2"), so it's only a last-resort fallback.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Ensure /usr/games is on PATH when this script is run directly
+# (Ubuntu 26.04 dropped /usr/games from the default profile PATH).
+case ":$PATH:" in
+    *":/usr/games:"*) ;;
+    *) PATH="$PATH:/usr/games" ;;
+esac
 
 # Clean up old log files from previous sessions (afterGameReport already collected them)
 rm -f "$HOME/.pokerth/log-files/"pokerth-log*.pdb 2>/dev/null
@@ -11,9 +22,17 @@ rm -f "$HOME/.pokerth/log-files/"pokerth-log*.txt 2>/dev/null
 
 snapshot_time=$(date +%s)
 
-if command -v pokerth &>/dev/null; then
+pokerth_bin=
+for cand in pokerth_client pokerth; do
+    if command -v "$cand" &>/dev/null; then
+        pokerth_bin=$cand
+        break
+    fi
+done
+
+if [[ -n "$pokerth_bin" ]]; then
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
-    pokerth 2>/dev/null 1>/dev/null
+    "$pokerth_bin" 2>/dev/null 1>/dev/null
 elif [[ -x "$SCRIPT_DIR/INSTALL/PokerTH-1.1.2/pokerth" ]]; then
     install_dir="$SCRIPT_DIR/INSTALL/PokerTH-1.1.2"
     LD_LIBRARY_PATH="$install_dir/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
