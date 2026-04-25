@@ -192,6 +192,12 @@ collect_after_game_report() {
     fi
     start_epoch="$(stat -c %Y "$marker")"
     local compare_op="-ge"
+    # Pre-existing files snapshot (game scripts may write a sibling
+    # ".pre_existing" file next to the started-marker listing absolute
+    # paths to skip during collection — useful for games whose install
+    # or startup touches shipped data files in a way that makes them
+    # look newer than the marker).
+    local pre_existing_path="${marker}.pre_existing"
     rm -f "$marker"
 
     # Build timestamp-based subdirectory name: YYMMDD_HHMM_gamename
@@ -257,9 +263,11 @@ collect_after_game_report() {
                 local file_epoch
                 file_epoch="$(stat -c %Y "$file" 2>/dev/null)" || continue
                 # Skip files that existed before the game launched (e.g. MiG Alley
-                # install replays whose mtimes get bumped by Wine on startup)
-                if [[ -n "${_SGL_PRE_EXISTING_FILES:-}" && -f "$_SGL_PRE_EXISTING_FILES" ]]; then
-                    grep -qFx "$file" "$_SGL_PRE_EXISTING_FILES" 2>/dev/null && continue
+                # install replays whose mtimes get bumped by Wine on startup).
+                # Game scripts write the absolute paths to a sibling file of
+                # the started-marker; see migAlley.sh for an example.
+                if [[ -f "$pre_existing_path" ]]; then
+                    grep -qFx "$file" "$pre_existing_path" 2>/dev/null && continue
                 fi
                 if [ "$file_epoch" $compare_op "$start_epoch" ]; then
                     if [[ "$found_files" == false ]]; then
@@ -294,6 +302,8 @@ collect_after_game_report() {
                     \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.bmp" \) \
                     -print0 2>/dev/null)
     fi
+
+    rm -f "$pre_existing_path"
 
     if [[ "$found_files" == true ]]; then
         local count

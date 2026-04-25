@@ -80,16 +80,20 @@ launch_mig() {
     cd "$WINEPREFIX/drive_c/rowan/mig"
 
     # Snapshot existing .cam and .sav filenames BEFORE launch.
-    # MiG Alley touches ALL files in Videos/ during initialization, giving
-    # pre-installed replays a fresh mtime that tricks the afterGameReport
-    # collector.  Export the snapshot so collect_after_game_report can
-    # use it (via the _SGL_PRE_EXISTING_FILES env var).
-    _pre_files=$(mktemp)
-    find "$WINEPREFIX/drive_c/rowan/mig/Videos" -maxdepth 1 -name "*.cam" -type f \
-        -printf '%p\n' 2>/dev/null > "$_pre_files"
-    find "$WINEPREFIX/drive_c/rowan/mig/SaveGame" -maxdepth 1 -name "*.sav" -type f \
-        -printf '%p\n' 2>/dev/null >> "$_pre_files"
-    export _SGL_PRE_EXISTING_FILES="$_pre_files"
+    # MiG Alley (and the cp loop in this script's install path) touches files
+    # in Videos/ and SaveGame/, giving pre-installed replays mtimes that look
+    # newer than the game-started marker and trick the afterGameReport
+    # collector into moving them. Write the list to a fixed path next to
+    # the started-marker so collect_after_game_report (which runs in
+    # main_launcher.sh, a parent process) can find it via the filesystem
+    # rather than an env var that wouldn't propagate upward.
+    local pre_existing_path="${SGL_GAME_STARTED_MARKER:-$WINEPREFIX/.sgl_game_started}.pre_existing"
+    {
+        find "$WINEPREFIX/drive_c/rowan/mig/Videos" -maxdepth 1 -name "*.cam" -type f \
+            -printf '%p\n' 2>/dev/null
+        find "$WINEPREFIX/drive_c/rowan/mig/SaveGame" -maxdepth 1 -name "*.sav" -type f \
+            -printf '%p\n' 2>/dev/null
+    } > "$pre_existing_path"
 
     if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
         touch "$SGL_GAME_STARTED_MARKER"
@@ -102,8 +106,7 @@ launch_mig() {
     else
         wine Mig.exe &>/dev/null
     fi
-
-    rm -f "$_pre_files"
+    # collect_after_game_report deletes pre_existing_path when it's done.
 }
 
 # Check if Mig Alley setup exists in the Wine prefix
