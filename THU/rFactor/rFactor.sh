@@ -104,9 +104,11 @@ fi
 clear
 printf "Installing rFactor\n\n"
 
-# WineD3D is used instead of DXVK (DXVK 2.7+ requires Vulkan features
-# that older NVIDIA drivers don't support; rFactor is DX9 and runs well
-# with WineD3D)
+# rFactor is D3D9; first run installs DXVK-Sarek (Vulkan 1.1) into the
+# prefix above, which is enough for any GPU with a working Vulkan ICD.
+# We don't pull in DXVK 2.x here because Sarek already gives smooth D3D9
+# and avoids tying this script to whichever Vulkan extensions the latest
+# DXVK happens to require.
 
 printf "\nIn the rFactor Video Setup screen, choose:\n"
 printf "  Shader Level: Quality (DX9)\n"
