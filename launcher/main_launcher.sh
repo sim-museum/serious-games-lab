@@ -45,13 +45,20 @@ check_nvidia_32bit() {
 
 check_binaries() {
     local has_any_data=false
+    # `compgen -G` only honors a single glob pattern — when given more than
+    # one argument it ignores all but the first. Use nullglob expansion
+    # plus literal -d checks so all four shapes are tested.
+    shopt -s nullglob
     for day in "${DAY_ORDER[@]}"; do
-        if compgen -G "$REPO_ROOT/$day/WP" "$REPO_ROOT/$day/*/WP" \
-                      "$REPO_ROOT/$day/INSTALL" "$REPO_ROOT/$day/*/INSTALL" >/dev/null 2>&1; then
+        local matches=("$REPO_ROOT/$day"/*/WP "$REPO_ROOT/$day"/*/INSTALL)
+        if [[ ${#matches[@]} -gt 0 \
+              || -d "$REPO_ROOT/$day/WP" \
+              || -d "$REPO_ROOT/$day/INSTALL" ]]; then
             has_any_data=true
             break
         fi
     done
+    shopt -u nullglob
     if [[ "$has_any_data" == false ]]; then
         echo ""
         msg_warn "No binary game data installed yet."
