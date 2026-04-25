@@ -7,6 +7,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NIBBLER_VERSION="2.5.3"
 NIBBLER_DIR="$SCRIPT_DIR/INSTALL/nibbler-${NIBBLER_VERSION}-linux"
 
+# Ensure /usr/games is on PATH so `command -v stockfish` resolves when this
+# script is run directly (Ubuntu 26.04 dropped /usr/games from the
+# default profile PATH).
+case ":$PATH:" in
+    *":/usr/games:"*) ;;
+    *) PATH="$PATH:/usr/games" ;;
+esac
+
 clear
 
 echo "The first time you run the default Leela Chess Zero (lc0) front end, named nibbler,"

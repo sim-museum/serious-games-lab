@@ -7,6 +7,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$SCRIPT_DIR/INSTALL/BanksiaGui"
 BANKSIA_SH="$INSTALL_DIR/BanksiaGUI.sh"
 
+# Ensure /usr/games is on PATH so `command -v stockfish` resolves when this
+# script is run directly (Ubuntu 26.04 dropped /usr/games from the
+# default profile PATH).
+case ":$PATH:" in
+    *":/usr/games:"*) ;;
+    *) PATH="$PATH:/usr/games" ;;
+esac
+
 # --- Ensure lc0 engine is available (build from source, fall back to pre-built) ---
 if [[ ! -x "$SCRIPT_DIR/INSTALL/lc0_cpu" ]]; then
     echo "lc0 engine not found. Building from source..."

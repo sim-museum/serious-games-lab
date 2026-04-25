@@ -6,6 +6,13 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Ensure /usr/games is on PATH when this script is run directly
+# (Ubuntu 26.04 dropped /usr/games from the default profile PATH).
+case ":$PATH:" in
+    *":/usr/games:"*) ;;
+    *) PATH="$PATH:/usr/games" ;;
+esac
+
 echo "The first time you run Scid you should specify the path to the lc0 chess engine."
 echo "From the menu select Tools/Analysis Engine.../New and specify the name and path for the lc0 executable."
 if [[ -x "$SCRIPT_DIR/INSTALL/lc0_cpu" ]]; then
