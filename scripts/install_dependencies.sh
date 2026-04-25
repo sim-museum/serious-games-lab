@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # install_dependencies.sh - Master apt installer for Serious Games Lab
 # Installs all system dependencies needed for source and binary games
-# on a clean Ubuntu 24.04 LTS installation.
+# on a clean Ubuntu 26.04 LTS installation.
+# (For Ubuntu 24.04, use the 24.04 branch.)
 #
 # Merged from:
 #   - ese/runThisScriptFirst.sh (game-specific packages)
@@ -17,7 +18,7 @@ REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 
 echo "=============================================="
 echo "  Serious Games Lab - Dependency Installer"
-echo "  Ubuntu 24.04 LTS  (idempotent - safe to re-run)"
+echo "  Ubuntu 26.04 LTS  (idempotent - safe to re-run)"
 echo "=============================================="
 echo ""
 
@@ -27,7 +28,7 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# --- Check for CD-ROM apt source bug (Ubuntu 22.04/24.04 install bug) ---
+# --- Check for CD-ROM apt source bug (Ubuntu install-media artifact) ---
 if grep -q "^deb cdrom" /etc/apt/sources.list 2>/dev/null; then
     echo "WARNING: Ubuntu is set to install packages from a CD-ROM instead"
     echo "of the internet. To fix this, run:"
@@ -140,6 +141,7 @@ if $INSTALL_WINE; then
 fi
 
 # --- Python ---
+# Ubuntu 26.04 ships Python 3.14; python3-venv depends on python3.14-venv.
 echo ""
 echo "Installing Python dependencies..."
 apt-get install -y \
@@ -148,7 +150,6 @@ apt-get install -y \
     python3-venv \
     python3-pyqt6 \
     python3-pandas \
-    python3.12-venv \
     libncurses-dev \
     libxcb-cursor0 \
     espeak
@@ -172,20 +173,22 @@ echo ""
 echo "Installing game-specific libraries..."
 apt-get install -y \
     liblua5.2-dev \
-    libqt5widgets5 \
+    libqt5widgets5t64 \
     libqt5multimedia5 \
-    libqt5sql5 \
+    libqt5sql5t64 \
     qtbase5-dev qt5-qmake qtmultimedia5-dev libqt5svg5-dev \
     xclip \
     libopenblas-dev \
     libeigen3-dev \
     libboost-all-dev \
     protobuf-compiler libprotobuf-dev \
-    zlib1g-dev libstdc++-14-dev \
+    zlib1g-dev \
     qml-module-qtquick-shapes \
     qml-module-org-kde-kcoreaddons
 
 # --- Simulation and utility packages ---
+# Note: 26.04 dropped p7zip-full (use the 7zip package above) and
+# wkhtmltopdf (scores.sh guards its use with command -v).
 echo ""
 echo "Installing simulation and utility packages..."
 apt-get install -y \
@@ -193,9 +196,9 @@ apt-get install -y \
     libfuse2t64 \
     bchunk unrar 7zip innoextract \
     vim okular filelight freeplane \
-    cabextract p7zip-full unzip xdg-utils \
+    cabextract unzip xdg-utils \
     xdotool xautomation \
-    plantuml pandoc wkhtmltopdf
+    plantuml pandoc
 
 if $INSTALL_WINE; then
     # --- Lutris (for Wine game management) ---

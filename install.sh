@@ -46,14 +46,14 @@ AUDIT_WARNINGS=0
 # --- OS version ---
 if [[ -f /etc/os-release ]]; then
     . /etc/os-release
-    if [[ "$ID" == "ubuntu" && "$VERSION_ID" == "24.04" ]]; then
+    if [[ "$ID" == "ubuntu" && "$VERSION_ID" == "26.04" ]]; then
         echo "  [OK]   OS: Ubuntu ${VERSION_ID} (${PRETTY_NAME})"
     else
-        echo "  [WARN] OS: ${PRETTY_NAME:-$ID $VERSION_ID} — Ubuntu 24.04 expected"
+        echo "  [WARN] OS: ${PRETTY_NAME:-$ID $VERSION_ID} — Ubuntu 26.04 LTS required (use the 24.04 branch for Ubuntu 24.04)"
         AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
     fi
 else
-    echo "  [WARN] OS: could not detect — Ubuntu 24.04 expected"
+    echo "  [WARN] OS: could not detect — Ubuntu 26.04 LTS required"
     AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
 fi
 
@@ -74,17 +74,11 @@ if lsmod | grep -q nouveau; then
     echo "         Fix: sudo ubuntu-drivers autoinstall && sudo reboot"
     AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
 elif NVIDIA_VER=$(dpkg -l 2>/dev/null | grep -oP 'nvidia-driver-\K[0-9]+' | head -1) && [[ -n "$NVIDIA_VER" ]]; then
-    if [[ $NVIDIA_VER -eq 535 ]]; then
+    if [[ $NVIDIA_VER -ge 470 ]]; then
         echo "  [OK]   Graphics: NVIDIA driver $NVIDIA_VER (DXVK compatible)"
-    elif [[ $NVIDIA_VER -ge 525 && $NVIDIA_VER -le 575 ]]; then
-        echo "  [WARN] Graphics: NVIDIA driver $NVIDIA_VER — driver 535 is recommended"
-        echo "         Purge the existing driver before installing 535:"
-        echo "         Fix: sudo apt-get purge -y 'nvidia-*-${NVIDIA_VER}*' && sudo apt-get install -y nvidia-driver-535 && sudo reboot"
-        AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
     else
-        echo "  [WARN] Graphics: NVIDIA driver $NVIDIA_VER — not DXVK compatible"
-        echo "         Purge the existing driver before installing 535:"
-        echo "         Fix: sudo apt-get purge -y 'nvidia-*-${NVIDIA_VER}*' && sudo apt-get install -y nvidia-driver-535 && sudo reboot"
+        echo "  [WARN] Graphics: NVIDIA driver $NVIDIA_VER — too old for DXVK (need >= 470)"
+        echo "         Fix: sudo ubuntu-drivers autoinstall && sudo reboot"
         AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
     fi
 else

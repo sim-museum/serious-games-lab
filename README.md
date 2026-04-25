@@ -1,6 +1,8 @@
 # Serious Games Lab
 
-Scripts and source code for collaborative development of AI-assisted games on Ubuntu 24.04 LTS. This repository contains launcher scripts, configuration, and original Python/C++ source projects — not game binaries. The games referenced here are open-source or freely available demos that users obtain independently from their respective project sites.
+Scripts and source code for collaborative development of AI-assisted games on Ubuntu 26.04 LTS. This repository contains launcher scripts, configuration, and original Python/C++ source projects — not game binaries. The games referenced here are open-source or freely available demos that users obtain independently from their respective project sites.
+
+> **Branches:** `main` targets Ubuntu 26.04 LTS. For Ubuntu 24.04, use the [`24.04`](https://github.com/sim-museum/serious-games-lab/tree/24.04) branch.
 
 ## What This Repository Contains
 
@@ -75,7 +77,7 @@ serious-games-lab/
 
 ## Prerequisites
 
-- Ubuntu 24.04 LTS (22.04 may work with minor adjustments)
+- Ubuntu 26.04 LTS (use the `24.04` branch for Ubuntu 24.04)
 - ~2GB disk for source projects
 - Dedicated GPU recommended for 3D simulations
 
