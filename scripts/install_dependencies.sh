@@ -202,18 +202,11 @@ apt-get install -y \
 
 if $INSTALL_WINE; then
     # --- Lutris (for Wine game management) ---
+    # 26.04 universe ships a current Lutris (0.5.22+); the older deb-get
+    # fallback is gone because deb-get itself doesn't recognize Resolute.
     echo ""
     echo "Installing Lutris..."
-    apt-get install -y curl
-    if command -v deb-get &>/dev/null; then
-        deb-get install lutris || apt-get install -y lutris || true
-    else
-        if curl -sL https://raw.githubusercontent.com/wimpysworld/deb-get/main/deb-get | bash /dev/stdin install deb-get 2>/dev/null; then
-            deb-get install lutris || apt-get install -y lutris || true
-        else
-            apt-get install -y lutris || true
-        fi
-    fi
+    apt-get install -y curl lutris
 
     # --- ProtonUp-Qt (for downloading Wine-GE runners for Lutris) ---
     echo ""
@@ -335,15 +328,68 @@ create_venv "$REPO_ROOT/FRI/dual_nback" -r "$REPO_ROOT/FRI/dual_nback/requiremen
 
 # FRI/benBridge - bridge game (PyQt6 + tensorflow + BEN engine)
 # ben's src/ is added to PYTHONPATH in run.sh (no editable install needed).
-# Install ben's runtime deps (tensorflow, numpy, etc.) into the venv.
-create_venv "$REPO_ROOT/FRI/benBridge" PyQt6 colorama
-BEN_REQUIREMENTS="$REPO_ROOT/FRI/benBridge/ben/requirements.txt"
+# TensorFlow's wheels lag behind the latest CPython release — TF 2.18.x
+# tops out at Python 3.13. On systems whose default python3 is newer
+# (Ubuntu 26.04 ships 3.14, with no other interpreters in the archive),
+# we provision a 3.12 interpreter via uv just for this venv. uv installs
+# a self-contained CPython into ~/.local/share/uv/python — no system mods.
+BENBRIDGE_DIR="$REPO_ROOT/FRI/benBridge"
+BENBRIDGE_VENV="$BENBRIDGE_DIR/venv"
+BEN_REQUIREMENTS="$BENBRIDGE_DIR/ben/requirements.txt"
+TF_MAX_PY="3.13"
+SYS_PY=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+SYS_PY_TOO_NEW=false
+if [[ "$(printf '%s\n%s\n' "$SYS_PY" "$TF_MAX_PY" | sort -V | tail -1)" == "$SYS_PY" \
+      && "$SYS_PY" != "$TF_MAX_PY" ]]; then
+    SYS_PY_TOO_NEW=true
+fi
+
+if $SYS_PY_TOO_NEW; then
+    BEN_PY="3.12"
+    UV_BIN="$REAL_HOME/.local/bin/uv"
+    if [[ ! -x "$UV_BIN" ]]; then
+        echo "  Installing uv (standalone Python manager) for benBridge..."
+        sudo -u "$REAL_USER" bash -c \
+            'curl -LsSf https://astral.sh/uv/install.sh | sh' >/dev/null 2>&1 \
+            || { echo "    ERROR: uv install failed"; ERRORS=$((ERRORS + 1)); }
+    fi
+
+    if [[ -x "$UV_BIN" ]]; then
+        echo "  Provisioning Python ${BEN_PY} for benBridge via uv (idempotent)..."
+        sudo -u "$REAL_USER" "$UV_BIN" python install "$BEN_PY" 2>&1 | tail -1
+
+        # Recreate the venv if it's currently on the wrong interpreter.
+        if [[ -x "$BENBRIDGE_VENV/bin/python" ]]; then
+            CUR_PY=$(sudo -u "$REAL_USER" "$BENBRIDGE_VENV/bin/python" -c \
+                'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' \
+                2>/dev/null || echo missing)
+            if [[ "$CUR_PY" != "$BEN_PY" ]]; then
+                echo "  Recreating benBridge venv on Python ${BEN_PY} (was ${CUR_PY})..."
+                rm -rf "$BENBRIDGE_VENV"
+            fi
+        fi
+
+        if [[ ! -x "$BENBRIDGE_VENV/bin/python" ]]; then
+            sudo -u "$REAL_USER" "$UV_BIN" venv --seed --python "$BEN_PY" "$BENBRIDGE_VENV"
+        fi
+
+        if sudo -u "$REAL_USER" "$BENBRIDGE_VENV/bin/pip" install --quiet PyQt6 colorama; then
+            echo "    Installed: PyQt6 colorama"
+        else
+            echo "    ERROR: PyQt6/colorama install failed for benBridge"
+            ERRORS=$((ERRORS + 1))
+        fi
+    fi
+else
+    create_venv "$BENBRIDGE_DIR" PyQt6 colorama
+fi
+
 if [[ -f "$BEN_REQUIREMENTS" ]]; then
-    if sudo -u "$REAL_USER" "$REPO_ROOT/FRI/benBridge/venv/bin/pip" install --quiet \
-        -r "$BEN_REQUIREMENTS" 2>/dev/null; then
+    if sudo -u "$REAL_USER" "$BENBRIDGE_VENV/bin/pip" install --quiet \
+        -r "$BEN_REQUIREMENTS"; then
         echo "    Installed: ben runtime dependencies"
     else
-        echo "    WARNING: some ben dependencies failed (tensorflow may need specific Python version)"
+        echo "    WARNING: some ben dependencies failed"
     fi
 fi
 
@@ -367,7 +413,18 @@ fi
 create_venv "$REPO_ROOT/WED/openingRepertoire" -r "$REPO_ROOT/WED/openingRepertoire/requirements.txt"
 
 # MON/pokerIQ - poker trainer (PyQt6 + eval7)
-create_venv "$REPO_ROOT/MON/pokerIQ" -r "$REPO_ROOT/MON/pokerIQ/requirements.txt"
+# eval7 has no Python 3.14 wheel and its setup.py imports Cython at
+# build time without declaring it as a PEP 517 build-system requires.
+# Pre-install Cython+wheel into the venv and build with
+# --no-build-isolation so eval7 can see them.
+create_venv "$REPO_ROOT/MON/pokerIQ" Cython wheel setuptools
+if sudo -u "$REAL_USER" "$REPO_ROOT/MON/pokerIQ/venv/bin/pip" install --quiet \
+    --no-build-isolation -r "$REPO_ROOT/MON/pokerIQ/requirements.txt"; then
+    echo "    Installed: pokerIQ requirements (eval7 built from source)"
+else
+    echo "    ERROR: pokerIQ requirements install failed"
+    ERRORS=$((ERRORS + 1))
+fi
 
 # FRI/guiHarness - Q-plus bridge hand entry and comparison harness (PyQt5 + pyautogui)
 create_venv "$REPO_ROOT/FRI/guiHarness" PyQt5 pyautogui
