@@ -6,6 +6,13 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Ensure /usr/games is on PATH when this script is run directly
+# (Ubuntu 26.04 dropped /usr/games from the default profile PATH).
+case ":$PATH:" in
+    *":/usr/games:"*) ;;
+    *) PATH="$PATH:/usr/games" ;;
+esac
+
 # Ensure KataGo + models are present
 source "$SCRIPT_DIR/ensure_katago.sh"
 source "$SCRIPT_DIR/analyze_new_sgf.sh"
