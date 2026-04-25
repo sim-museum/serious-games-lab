@@ -59,7 +59,10 @@ has_binary_games() {
     compgen -G "$REPO_ROOT/downloads/sglBinaries_*" >/dev/null 2>&1 && return 0
     compgen -G "$REPO_ROOT/downloads/.extracted_sglBinaries_*" >/dev/null 2>&1 && return 0
     for day in MON TUE WED THU FRI SAT SUN; do
-        compgen -G "$REPO_ROOT/$day/WP" "$REPO_ROOT/$day/*/WP" >/dev/null 2>&1 && return 0
+        # compgen -G only honors a single pattern; check the literal and
+        # the glob separately.
+        [[ -d "$REPO_ROOT/$day/WP" ]] && return 0
+        compgen -G "$REPO_ROOT/$day/*/WP" >/dev/null 2>&1 && return 0
     done
     return 1
 }
