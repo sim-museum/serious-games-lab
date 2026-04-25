@@ -68,6 +68,20 @@ else
     echo "  [OK]   Disk space: ${AVAIL_GB} GB available (${RECOMMENDED_GB} GB recommended)"
 fi
 
+# --- Swap space ---
+# Tight swap risks systemd-oomd killing this script during the
+# TensorFlow venv install in PHASE 2 (benBridge).
+SWAP_MB=$(free -m | awk '/^Swap:/ {print $2+0}')
+RECOMMENDED_SWAP_GB=8
+SWAP_GB=$(( SWAP_MB / 1024 ))
+if [[ $SWAP_MB -lt $((RECOMMENDED_SWAP_GB * 1024)) ]]; then
+    echo "  [WARN] Swap: ${SWAP_GB} GB available (${RECOMMENDED_SWAP_GB} GB recommended)"
+    echo "         Resize /swap.img: sudo swapoff /swap.img && sudo rm /swap.img && sudo fallocate -l ${RECOMMENDED_SWAP_GB}G /swap.img && sudo chmod 600 /swap.img && sudo mkswap /swap.img && sudo swapon /swap.img"
+    AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
+else
+    echo "  [OK]   Swap: ${SWAP_GB} GB available (${RECOMMENDED_SWAP_GB} GB recommended)"
+fi
+
 # --- Graphics driver ---
 if lsmod | grep -q nouveau; then
     echo "  [WARN] Graphics: nouveau driver — proprietary NVIDIA recommended (not essential)"
