@@ -170,7 +170,7 @@ ensure_wine() {
         fonts-wine \
         fonts-liberation \
         fonts-dejavu-core \
-        cabextract p7zip-full unzip xdg-utils
+        cabextract 7zip unzip xdg-utils
 
     # Install NVIDIA 32-bit OpenGL if applicable
     local nvidia_ver
