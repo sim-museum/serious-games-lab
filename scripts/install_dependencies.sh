@@ -202,18 +202,11 @@ apt-get install -y \
 
 if $INSTALL_WINE; then
     # --- Lutris (for Wine game management) ---
+    # 26.04 universe ships a current Lutris (0.5.22+); the older deb-get
+    # fallback is gone because deb-get itself doesn't recognize Resolute.
     echo ""
     echo "Installing Lutris..."
-    apt-get install -y curl
-    if command -v deb-get &>/dev/null; then
-        deb-get install lutris || apt-get install -y lutris || true
-    else
-        if curl -sL https://raw.githubusercontent.com/wimpysworld/deb-get/main/deb-get | bash /dev/stdin install deb-get 2>/dev/null; then
-            deb-get install lutris || apt-get install -y lutris || true
-        else
-            apt-get install -y lutris || true
-        fi
-    fi
+    apt-get install -y curl lutris
 
     # --- ProtonUp-Qt (for downloading Wine-GE runners for Lutris) ---
     echo ""
@@ -330,12 +323,53 @@ create_venv "$REPO_ROOT/FRI/mathQuiz" -r "$REPO_ROOT/FRI/mathQuiz/requirements.t
 create_venv "$REPO_ROOT/FRI/dual_nback" -r "$REPO_ROOT/FRI/dual_nback/requirements.txt"
 
 # ben's src/ is added to PYTHONPATH in run.sh (no editable install needed).
-# Install ben's runtime deps (tensorflow, numpy, etc.) into the venv.
+# TensorFlow's wheels lag behind the latest CPython release — TF 2.18.x
+# tops out at Python 3.13. On systems whose default python3 is newer
+# (Ubuntu 26.04 ships 3.14, with no other interpreters in the archive),
+# we provision a 3.12 interpreter via uv just for this venv. uv installs
+# a self-contained CPython into ~/.local/share/uv/python — no system mods.
+TF_MAX_PY="3.13"
+SYS_PY=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+SYS_PY_TOO_NEW=false
+if [[ "$(printf '%s\n%s\n' "$SYS_PY" "$TF_MAX_PY" | sort -V | tail -1)" == "$SYS_PY" \
+      && "$SYS_PY" != "$TF_MAX_PY" ]]; then
+    SYS_PY_TOO_NEW=true
+fi
+
+if $SYS_PY_TOO_NEW; then
+    BEN_PY="3.12"
+    UV_BIN="$REAL_HOME/.local/bin/uv"
+    if [[ ! -x "$UV_BIN" ]]; then
+        sudo -u "$REAL_USER" bash -c \
+            'curl -LsSf https://astral.sh/uv/install.sh | sh' >/dev/null 2>&1 \
+            || { echo "    ERROR: uv install failed"; ERRORS=$((ERRORS + 1)); }
+    fi
+
+    if [[ -x "$UV_BIN" ]]; then
+        sudo -u "$REAL_USER" "$UV_BIN" python install "$BEN_PY" 2>&1 | tail -1
+
+        # Recreate the venv if it's currently on the wrong interpreter.
+                'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' \
+                2>/dev/null || echo missing)
+            if [[ "$CUR_PY" != "$BEN_PY" ]]; then
+            fi
+        fi
+
+        fi
+
+            echo "    Installed: PyQt6 colorama"
+        else
+            ERRORS=$((ERRORS + 1))
+        fi
+    fi
+else
+fi
+
 if [[ -f "$BEN_REQUIREMENTS" ]]; then
-        -r "$BEN_REQUIREMENTS" 2>/dev/null; then
+        -r "$BEN_REQUIREMENTS"; then
         echo "    Installed: ben runtime dependencies"
     else
-        echo "    WARNING: some ben dependencies failed (tensorflow may need specific Python version)"
+        echo "    WARNING: some ben dependencies failed"
     fi
 fi
 
@@ -356,6 +390,13 @@ fi
 # WED/openingRepertoire - chess opening trainer (PyQt6 + python-chess)
 create_venv "$REPO_ROOT/WED/openingRepertoire" -r "$REPO_ROOT/WED/openingRepertoire/requirements.txt"
 
+# eval7 has no Python 3.14 wheel and its setup.py imports Cython at
+# build time without declaring it as a PEP 517 build-system requires.
+# Pre-install Cython+wheel into the venv and build with
+# --no-build-isolation so eval7 can see them.
+else
+    ERRORS=$((ERRORS + 1))
+fi
 
 
 echo "  All virtual environments processed."
