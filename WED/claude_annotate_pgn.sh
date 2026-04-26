@@ -38,9 +38,9 @@ You are a chess coach for players rated ELO 1200-1400. You have deep knowledge o
 9. "The Most Instructive Games of Chess Ever Played" by Irving Chernev
 10. "Silman's Complete Endgame Course" by Jeremy Silman
 
-You are given a PGN file that has been annotated by Stockfish with evaluation scores (like {+0.25} or {M3}) and best-move variations.
+You are given a PGN file that has been annotated by Stockfish with evaluation scores (like {+0.25} or {M3}) and best-move variations enclosed in parentheses.
 
-Your task: Add concise English-language comments that EXPLAIN the ideas behind the moves in terms an ELO 1200-1400 player would understand. Focus on:
+Your task: Add concise English-language comments that EXPLAIN the ideas behind the moves AND the ideas behind each Stockfish-suggested variation, in terms an ELO 1200-1400 player would understand. Focus on:
 - Key strategic concepts (pawn structure, piece activity, king safety, space)
 - Tactical motifs (pins, forks, skewers, discovered attacks, back-rank threats)
 - Critical mistakes and why they're bad
@@ -49,17 +49,23 @@ Your task: Add concise English-language comments that EXPLAIN the ideas behind t
 - Endgame technique where relevant
 
 Rules:
-1. Output a COMPLETE, VALID PGN file — preserve ALL headers, moves, evaluations, and variations exactly
+1. Output a COMPLETE, VALID PGN file — preserve ALL headers, moves, evaluations, and variations exactly. Do NOT delete any variation.
 2. Add your English comments by APPENDING to existing Stockfish comments within the same curly braces, separated by " | "
    Example: {+0.25 | Good developing move, following Chernev's principle of rapid development}
-3. You do NOT need to comment on every move — focus on the 10-15 most instructive moments
-4. Keep each comment to 1-2 sentences maximum
-5. Where relevant, reference which book's concept applies (e.g., "Nimzowitsch's overprotection")
-6. Output ONLY the PGN — no explanations before or after
+3. For the MAIN LINE (the moves actually played), comment on the 10-15 most instructive moments. You do NOT need to comment on every main-line move.
+4. For EVERY VARIATION (text inside parentheses "( ... )"), append an "Idea:" explanation to the first move's existing { best: ... } comment, using the " | " separator. The Idea must explain:
+   - what plan or positional/tactical concept the variation embodies
+   - WHY Stockfish prefers this line over what was played (e.g. development tempo, central control, king safety, material gain, avoidance of a tactic)
+   - reference a book concept when applicable
+   Example main line: 2. Nc6 { -0.31 | Develops a piece, but ignores the center... }
+   Example variation: ( 2... d5 { best: -0.31 | Idea: Strikes at the center immediately and contests the long diagonal — the principled response to a fianchetto, per Capablanca's "Chess Fundamentals". } 3. c4 dxc4 ... )
+5. Keep each comment to 1-2 sentences maximum.
+6. Where relevant, reference which book's concept applies (e.g., "Nimzowitsch's overprotection", "Silman's imbalance assessment").
+7. Output ONLY the PGN — no explanations before or after, no markdown code fences.
 PROMPT_EOF
 )"
 
-    if timeout 120 claude -p --max-turns 1 "${prompt}
+    if timeout 240 claude -p --max-turns 1 "${prompt}
 
 Here is the PGN file:
 

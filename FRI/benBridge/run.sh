@@ -79,8 +79,9 @@ if [[ $exit_code -ne 0 ]]; then
     echo "  cd $(pwd) && source ../venv/bin/activate && python3 main.py 2>&1 | head -50"
 fi
 
-# --- Chain to Q-Plus Bridge for comparison ---
-# Find the newest PBN from this session
+# --- Annotate the most recent BEN PBN with Claude ---
+# Q-Plus gold-standard comparison: arranged manually by the user in a
+# separate qplus.sh session on the same board.
 cd "$SCRIPT_DIR"
 _newest_pbn=""
 _newest_pbn_mod=0
@@ -93,60 +94,40 @@ while IFS= read -r -d '' f; do
 done < <(find "$SCRIPT_DIR/ben/DATA/LOG" -maxdepth 1 -name "*.pbn" -type f -print0 2>/dev/null)
 
 if [[ -n "$_newest_pbn" ]]; then
-    echo "Found PBN: $_newest_pbn"
     FRI_DIR="$SCRIPT_DIR"
     HARNESS_DIR="$FRI_DIR/guiHarness"
+    REPORT_DIR="$FRI_DIR/afterGameReport"
 
-    # Check if Q-Plus Bridge is installed
-    FRI_WP="$FRI_DIR/WP"
-    QBRIDGE_DIR=""
-    [[ -d "$FRI_WP/drive_c/games/qbridge17" ]] && QBRIDGE_DIR="$FRI_WP/drive_c/games/qbridge17"
-    [[ -z "$QBRIDGE_DIR" && -d "$FRI_WP/drive_c/games/qbridge15" ]] && QBRIDGE_DIR="$FRI_WP/drive_c/games/qbridge15"
-
-    if [[ -n "$QBRIDGE_DIR" && -f "$HARNESS_DIR/bridge_harness.py" ]]; then
-        echo ""
-        read -rp "Compare this hand with Q-Plus Bridge? (y/N): " _ben_compare
-        if [[ "$_ben_compare" =~ ^[Yy]$ ]]; then
-            echo ""
-            echo "Launching Q-Plus Bridge and GUI Harness..."
-            echo "Use the Comparison Workflow tab (source is pre-loaded from BEN Bridge)."
-            echo "  1. In Q-Plus: Own Deals → Enter, then click 'Enter into Q-Plus' in harness"
-            echo "  2. Play the hand in Q-Plus — do NOT exit Q-Plus yet"
-            echo "  3. In harness: click 'Auto-detect latest' to find Q-Plus log"
-            echo "  4. In harness: click 'Convert & copy' to save and annotate with Claude"
-            echo "  5. Exit Q-Plus"
-            echo ""
-
-            # Launch harness with source pre-loaded (background)
-            (
-                cd "$HARNESS_DIR"
-                if [[ -d venv ]]; then
-                    source venv/bin/activate
-                else
-                    python3 -m venv venv && source venv/bin/activate
-                    pip install -q PyQt5 pyautogui 2>/dev/null
-                fi
-                python3 bridge_harness.py --source "$(realpath "$_newest_pbn")" --game benbridge 2>/dev/null
-            ) &
-            _harness_pid=$!
-
-            # Launch Q-Plus (foreground — blocks until user exits)
-            export WINEPREFIX="$FRI_WP"
-            export WINEARCH=win32
-            wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
-            cd "$QBRIDGE_DIR"
-            wine QBRIDGE.EXE 2>/dev/null 1>/dev/null
-            cd "$SCRIPT_DIR"
-
-            # Wait for harness to complete (user may still be doing steps 3-4)
-            if kill -0 "$_harness_pid" 2>/dev/null; then
-                echo ""
-                echo "Waiting for GUI Harness to finish..."
-                echo "(Complete steps 3-4 in the harness, then close it)"
-                wait "$_harness_pid" 2>/dev/null
-            fi
-        fi
+    # Reuse the launcher's most recent benbridge subdir if present, else
+    # create one keyed on the current minute.
+    _ben_dest=""
+    if [[ -d "$REPORT_DIR" ]]; then
+        _ben_dest=$(find "$REPORT_DIR" -mindepth 1 -maxdepth 1 -type d -name "*_benbridge" \
+                        -printf '%T@ %p\n' 2>/dev/null \
+                    | sort -rn | head -1 | cut -d' ' -f2-)
     fi
-else
-    echo "(No PBN found in $SCRIPT_DIR/ben/DATA/LOG/ — skipping Q-Plus comparison)"
+    if [[ -z "$_ben_dest" || ! -d "$_ben_dest" ]]; then
+        _ben_dest="$REPORT_DIR/$(date '+%y%m%d_%H%M')_benbridge"
+    fi
+    mkdir -p "$_ben_dest"
+
+    base=$(basename "$_newest_pbn" .pbn)
+    cp "$_newest_pbn" "$_ben_dest/${base}.pbn"
+
+    # Convert PBN → BDL via the harness's library function.
+    if [[ -f "$HARNESS_DIR/bridge_harness.py" && -x "$HARNESS_DIR/venv/bin/python3" ]]; then
+        PYTHONPATH="$HARNESS_DIR" "$HARNESS_DIR/venv/bin/python3" -c "
+import bridge_harness as bh
+bdl = bh.pbn_file_to_bdl('$_ben_dest/${base}.pbn', source_label='BEN')
+with open('$_ben_dest/${base}.bdl', 'w') as f:
+    f.write(bdl)
+print('  Converted ${base}.pbn -> ${base}.bdl')
+" 2>/dev/null || true
+    fi
+
+    if [[ -f "$_ben_dest/${base}.bdl" && -x "$FRI_DIR/claude_annotate_bridge_single.sh" ]]; then
+        echo "Running Claude annotation on BEN deal log..."
+        bash "$FRI_DIR/claude_annotate_bridge_single.sh" \
+            "$_ben_dest/${base}.bdl" "$_ben_dest/${base}_annotated.bdl"
+    fi
 fi

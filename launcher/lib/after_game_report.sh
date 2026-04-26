@@ -141,6 +141,126 @@ _game_output_patterns() {
     esac
 }
 
+# Human-readable label for the type of save file a game produces.  Empty
+# string means the game does not produce a save file (e.g. utilities, or
+# vision-only games like bracelets).  Used in the "no save file" protest.
+_game_save_label() {
+    local script="$1"
+    case "$script" in
+        scid.sh|nibbler.sh|banksiaGui.sh|chessmaster/chessmaster.sh) echo "PGN game file" ;;
+        wBridge5.sh|qplus.sh|bcalc.sh|tenace.sh)                    echo "PBN/BDL deal file" ;;
+        bb12/bb12.sh)                                                echo "PPL deal file" ;;
+        benBridge/run.sh)                                            echo "PBN deal file" ;;
+        run_katrain.sh|q5go.sh|sabaki.sh|igowin.sh|goreviewpartner.sh) echo "SGF game file" ;;
+        pokerth.sh|pokerIQ/run.sh|generalPokerEvaluator.sh|pokerStove.sh) echo "session log" ;;
+        *) ;;
+    esac
+}
+
+# Hint shown alongside the protest, telling the user how to save in this game.
+_game_save_hint() {
+    local script="$1"
+    case "$script" in
+        nibbler.sh)                  echo "In Nibbler: File menu > Save PGN before exiting" ;;
+        banksiaGui.sh)               echo "In Banksia GUI: Save game as PGN before exiting" ;;
+        chessmaster/chessmaster.sh)  echo "In Chessmaster: Save Game from menu before exit (also enables Stockfish annotation pipeline)" ;;
+        scid.sh)                     echo "In Scid: File > Save before exit" ;;
+        wBridge5.sh)                 echo "In WBridge5: Save current deal as PBN before exit" ;;
+        bb12/bb12.sh)                echo "In Bridge Baron 12: File > Save current deal (writes a .ppl file)" ;;
+        benBridge/run.sh)            echo "BEN writes PBN files to ben/DATA/LOG automatically when you finish a hand" ;;
+        qplus.sh)                    echo "In Q-Plus Bridge: complete a deal so Q-Plus writes a BDL log to DATA/LOG/" ;;
+        run_katrain.sh)              echo "In KaTrain: Save as SGF before exit" ;;
+        q5go.sh)                     echo "In q5go: File > Save SGF before exit" ;;
+        sabaki.sh)                   echo "In Sabaki: File > Save (Ctrl+S) before exit" ;;
+        igowin.sh)                   echo "In Igowin: save the game to disk before exit" ;;
+        goreviewpartner.sh)          echo "In GoReviewPartner: File > Save SGF before exit" ;;
+        pokerth.sh)                  echo "PokerTH writes session logs automatically; check ~/.pokerth permissions if missing" ;;
+        pokerIQ/run.sh)              echo "PokerIQ writes poker_log_*.txt to its run dir per session" ;;
+        *) ;;
+    esac
+}
+
+# Vision-only games: have no useful machine-readable save file, so we run
+# Claude vision over screenshots taken during play.
+_is_vision_game() {
+    local script="$1"
+    case "$script" in
+        bracelets.sh) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Run Claude with screenshots in the report dir as input.  The script
+# argument selects the coaching prompt.  Writes the response to
+# claude_vision_analysis.txt in the report dir.  Silent no-op if claude
+# is not on PATH.
+_run_vision_analysis() {
+    local report_dir="$1"
+    local script="$2"
+    [[ -d "$report_dir" ]] || return 0
+    command -v claude &>/dev/null || return 0
+
+    local -a screenshots=()
+    while IFS= read -r -d '' f; do
+        screenshots+=("$f")
+    done < <(find "$report_dir" -maxdepth 1 -type f \
+                \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) -print0 2>/dev/null)
+    [[ ${#screenshots[@]} -eq 0 ]] && return 0
+
+    msg_info "Running Claude vision analysis on ${#screenshots[@]} screenshot(s)..."
+
+    local prompt
+    case "$script" in
+        bracelets.sh)
+            prompt='You are a poker coach for amateur Texas Hold'\''em players. You have deep knowledge of these classic instructional poker books:
+
+1. "The Theory of Poker" by David Sklansky
+2. "Harrington on Hold'\''em" Vol 1-3 by Dan Harrington
+3. "Super System" by Doyle Brunson
+4. "Every Hand Revealed" by Gus Hansen
+5. "Elements of Poker" by Tommy Angelo
+6. "The Mental Game of Poker" by Jared Tendler & Barry Carter
+7. "Small Stakes Hold'\''em" by Miller, Sklansky & Malmuth
+8. "Applications of No-Limit Hold'\''em" by Matthew Janda
+9. "Poker'\''s 1%" by Ed Miller
+10. "Modern Poker Theory" by Michael Acevedo
+
+You are given screenshots from a session of "World Series of Poker 2008: Battle for the Bracelets". Read each screenshot with the Read tool, then analyse the hands shown:
+- Stage of hand (preflop, flop, turn, river)
+- Position, stack sizes, pot odds where visible
+- Hand strength relative to board texture
+- Whether the action taken (call/raise/fold) was sound
+- Reference relevant book concepts (e.g. Sklansky'\''s Fundamental Theorem, Harrington'\''s M-zones, Brunson on aggression)
+
+Be concise. Cover the 3-5 most instructive moments across all screenshots.
+Output plain text only — no markdown headings.'
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+
+    # Embed absolute paths in the prompt and let Claude read each image via
+    # its Read tool — claude -p accepts only one positional argument, so we
+    # cannot pass images as separate args.
+    local file_list=""
+    local f
+    for f in "${screenshots[@]}"; do
+        file_list+="- $f"$'\n'
+    done
+    local full_prompt
+    full_prompt="$prompt"$'\n\nScreenshot files (use the Read tool to view each):\n'"$file_list"
+
+    local out_file="$report_dir/claude_vision_analysis.txt"
+    if timeout 240 claude -p --max-turns 8 "$full_prompt" > "$out_file" 2>/dev/null \
+        && [[ -s "$out_file" ]]; then
+        msg_ok "Vision analysis written to $(basename "$report_dir")/$(basename "$out_file")"
+    else
+        rm -f "$out_file"
+        msg_warn "Claude vision analysis failed or returned empty output."
+    fi
+}
+
 # Return true (0) if a game's output files should be KEPT in place after collection.
 # Most games have files moved (cleaned up); tactical engagement/flight sim saves are exempt.
 _exempt_from_cleanup() {
@@ -309,6 +429,66 @@ collect_after_game_report() {
         local count
         count="$(find "$report_dir" -type f | wc -l)"
         msg_ok "Collected $count file(s) to $day/afterGameReport/$subdir_name/"
+    fi
+
+    # ----- Post-collection feedback hooks -----
+    # 1. Protest if the game expects a save file but none landed anywhere
+    #    under afterGameReport during this session (the launcher's
+    #    collector OR a script's own exit logic — qplus.sh, the chess
+    #    scripts, etc. populate the report dir directly).
+    # 2. For vision-only games (bracelets), run Claude vision over any
+    #    screenshots collected this session.
+    local game_save_label
+    game_save_label="$(_game_save_label "$script")"
+
+    if [[ -n "$game_save_label" ]]; then
+        local any_save_landed=false
+        if [[ -d "$day_dir/afterGameReport" ]]; then
+            while IFS= read -r -d '' d; do
+                local d_mod
+                d_mod="$(stat -c %Y "$d" 2>/dev/null)" || continue
+                [ "$d_mod" $compare_op "$start_epoch" ] || continue
+                # Look for any "save"-like file in this dir (i.e. not
+                # self_assessment, not a screenshot, not the vision
+                # analysis we may have just written).
+                if find "$d" -maxdepth 1 -type f \
+                    -not -name "self_assessment.txt" \
+                    -not -name "claude_vision_analysis.txt" \
+                    -not -iname "*.png" -not -iname "*.jpg" \
+                    -not -iname "*.jpeg" -not -iname "*.bmp" \
+                    2>/dev/null | grep -q .; then
+                    any_save_landed=true
+                    break
+                fi
+            done < <(find "$day_dir/afterGameReport" -mindepth 1 -maxdepth 1 \
+                        -type d -print0 2>/dev/null)
+        fi
+        if [[ "$any_save_landed" == false ]]; then
+            echo ""
+            msg_warn "No $game_save_label was saved this session — engine + Claude annotation cannot run."
+            local hint
+            hint="$(_game_save_hint "$script")"
+            [[ -n "$hint" ]] && echo "       $hint"
+            echo "       Save your game next time so AI feedback ends up in afterGameReport."
+            echo ""
+        fi
+    fi
+
+    if _is_vision_game "$script"; then
+        local screenshot_count=0
+        if [[ -d "$report_dir" ]]; then
+            screenshot_count="$(find "$report_dir" -maxdepth 1 -type f \
+                \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) 2>/dev/null | wc -l)"
+        fi
+        if [[ "$screenshot_count" -eq 0 ]]; then
+            echo ""
+            msg_warn "No screenshots were taken this session — AI poker analysis cannot run."
+            echo "       Press Print Screen during play to capture key hands; screenshots"
+            echo "       are auto-collected from ~/Pictures/Screenshots into afterGameReport."
+            echo ""
+        else
+            _run_vision_analysis "$report_dir" "$script"
+        fi
     fi
 }
 

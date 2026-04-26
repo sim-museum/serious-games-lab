@@ -9,10 +9,37 @@
 #!/bin/bash
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+# Pin Lutris wine runner if not already set up by the caller (WWI/WWII_SDOE.sh).
+# Required on Ubuntu 26.04: system wine 10 in wow64 mode silently rejects
+# WINEARCH=win32 and leaves the prefix empty — the installer then runs
+# against nothing and produces no Sdemons.exe.  fshack-7.2 also dodges the
+# DDraw 32→16 BPP refusal that crashes the game on entering 3D.
+if [[ -z "${WINELOADER:-}" || "$WINELOADER" != *"/lutris/runners/wine/"* ]]; then
+    RUNNER_NAME="lutris-fshack-7.2-x86_64"
+    RUNNER_DIR="$HOME/.local/share/lutris/runners/wine/$RUNNER_NAME"
+    if [[ ! -x "$RUNNER_DIR/bin/wine" ]]; then
+        echo "ERROR: Lutris wine runner '$RUNNER_NAME' not installed at $RUNNER_DIR" >&2
+        echo "       Install it: sudo $(cd ../.. && pwd)/install.sh" >&2
+        exit 1
+    fi
+    export PATH="$RUNNER_DIR/bin:$PATH"
+    export WINE="$RUNNER_DIR/bin/wine"
+    export WINELOADER="$RUNNER_DIR/bin/wine"
+    export WINESERVER="$RUNNER_DIR/bin/wineserver"
+    export LD_LIBRARY_PATH="$RUNNER_DIR/lib64:$RUNNER_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export WINEDLLPATH="$RUNNER_DIR/lib64/wine/x86_64-unix:$RUNNER_DIR/lib/wine/i386-unix${WINEDLLPATH:+:$WINEDLLPATH}"
+fi
+
 # Set WINEPREFIX
 export WINEPREFIX="$PWD/WP"
 export WINEARCH=win32
 mkdir -p "$WINEPREFIX"
+
+# Synchronously initialize the prefix before any other wine call.  Without
+# this, `wine reg add` can return before wineserver finishes its implicit
+# wineboot, racing subsequent calls.
+wine wineboot --init >/dev/null 2>&1
+
 # Set Windows 98 mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d win98 /f &>/dev/null
 

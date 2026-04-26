@@ -73,51 +73,17 @@ with open('$_wb5_dest/${base}.bdl', 'w') as f:
 print('  Converted ${base}.pbn -> ${base}.bdl')
 " 2>/dev/null && true
         fi
+        # Add Claude annotation alongside the converted BDL.
+        if [[ -f "$_wb5_dest/${base}.bdl" && -x "$FRI_DIR/claude_annotate_bridge_single.sh" ]]; then
+            echo "Running Claude annotation on WBridge5 deal log..."
+            bash "$FRI_DIR/claude_annotate_bridge_single.sh" \
+                "$_wb5_dest/${base}.bdl" "$_wb5_dest/${base}_annotated.bdl"
+        fi
     done < <(find "$WINEPREFIX/drive_c/wbridge5" "$FRI_DIR" "$_wb5_dest" \
                  -maxdepth 1 -name "*.pbn" -type f -print0 2>/dev/null)
 
-    # Offer Q-Plus comparison workflow
-    if [[ -n "$_wb5_last_pbn" && -f "$HARNESS_DIR/bridge_harness.py" && -x "$HARNESS_DIR/venv/bin/python" ]]; then
-        QBRIDGE_DIR=""
-        [[ -d "$WINEPREFIX/drive_c/games/qbridge17" ]] && QBRIDGE_DIR="$WINEPREFIX/drive_c/games/qbridge17"
-        [[ -z "$QBRIDGE_DIR" && -d "$WINEPREFIX/drive_c/games/qbridge15" ]] && QBRIDGE_DIR="$WINEPREFIX/drive_c/games/qbridge15"
-
-        if [[ -n "$QBRIDGE_DIR" ]]; then
-            echo ""
-            read -rp "Compare this hand with Q-Plus Bridge? (y/N): " _wb5_compare
-            if [[ "$_wb5_compare" =~ ^[Yy]$ ]]; then
-                echo "Launching Q-Plus Bridge and GUI Harness..."
-                echo "Use the Comparison Workflow tab (source is pre-loaded)."
-                echo "  1. Open Q-Plus → Own Deals → Enter, then click 'Enter into Q-Plus'"
-                echo "  2. Play the hand in Q-Plus — do NOT exit Q-Plus yet"
-                echo "  3. In harness: click 'Auto-detect latest' to find Q-Plus log"
-                echo "  4. In harness: click 'Convert & copy' to save and annotate with Claude"
-                echo "  5. Exit Q-Plus"
-                echo ""
-
-                # Launch harness with source pre-loaded (background)
-                (
-                    cd "$HARNESS_DIR"
-                    source venv/bin/activate
-                    python bridge_harness.py --source "$_wb5_last_pbn" --game wbridge5 2>/dev/null
-                ) &
-                _harness_pid=$!
-
-                # Launch Q-Plus (foreground — blocks until user exits)
-                cd "$QBRIDGE_DIR"
-                wine QBRIDGE.EXE 2>/dev/null 1>/dev/null
-                cd "$FRI_DIR"
-
-                # Wait for harness to complete (user may still be doing steps 3-4)
-                if kill -0 "$_harness_pid" 2>/dev/null; then
-                    echo ""
-                    echo "Waiting for GUI Harness to finish..."
-                    echo "(Complete steps 3-4 in the harness, then close it)"
-                    wait "$_harness_pid" 2>/dev/null
-                fi
-            fi
-        fi
-    fi
+    # Q-Plus gold-standard comparison: arranged manually by the user in a
+    # separate qplus.sh session on the same board.
 
     # Display exit message
     cat "$PWD/DOC/REFERENCE/exitMessageWbridge5.txt"
