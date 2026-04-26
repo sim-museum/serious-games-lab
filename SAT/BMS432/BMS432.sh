@@ -43,6 +43,49 @@ fi
 if [[ -d "$GAME_DIR" && -f "$GAME_DIR/Launcher.exe" ]]; then
     echo "Starting Falcon BMS 4.32 ..."
     cd "$GAME_DIR"
+
+    # DXVK-Sarek for D3D9 acceleration. The actual game binary
+    # (Bin/x86/Falcon BMS.exe) imports d3d9.dll + d3dx9_43.dll. wined3d
+    # works fine but Sarek gives 2-5x higher draw-call throughput. Same
+    # detection-by-content + curl-based install used in rFactor / bracelets
+    # / BMS435 / CFL — gh CLI is NOT a hard dep and silently fails when
+    # missing, so don't use it.
+    if ! strings "$WINEPREFIX/drive_c/windows/system32/d3d9.dll" 2>/dev/null \
+            | grep -q dxvk; then
+        echo "Installing DXVK-Sarek for Vulkan acceleration..."
+        sarek_ver="v1.11.0"
+        sarek_tar="/tmp/dxvk-sarek-${sarek_ver}.tar.gz"
+        sarek_url="https://github.com/pythonlover02/DXVK-Sarek/releases/download/${sarek_ver}/dxvk-sarek-${sarek_ver}.tar.gz"
+        [ -s "$sarek_tar" ] || curl -sL -o "$sarek_tar" "$sarek_url"
+        if [ -s "$sarek_tar" ]; then
+            sarek_dir="/tmp/dxvk-sarek-${sarek_ver}"
+            [ -d "$sarek_dir" ] || tar xzf "$sarek_tar" -C /tmp
+            cp "$sarek_dir/x32/d3d9.dll"     "$WINEPREFIX/drive_c/windows/system32/"
+            cp "$sarek_dir/x32/dxgi.dll"     "$WINEPREFIX/drive_c/windows/system32/"
+            cp "$sarek_dir/x32/d3d11.dll"    "$WINEPREFIX/drive_c/windows/system32/"
+            cp "$sarek_dir/x32/d3d10core.dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null || true
+            # Write all 4 overrides via a single regedit invocation; doing
+            # them one-by-one with `wine reg add` races wineserver flush
+            # and the values can fail to land.
+            cat > /tmp/bms432_dxvk_overrides.reg <<'EOF'
+REGEDIT4
+
+[HKEY_CURRENT_USER\Software\Wine\DllOverrides]
+"d3d9"="native"
+"d3d10core"="native"
+"d3d11"="native"
+"dxgi"="native"
+EOF
+            wine regedit /S /tmp/bms432_dxvk_overrides.reg &>/dev/null
+            wineserver -k 2>/dev/null
+            sleep 1
+        fi
+        if ! strings "$WINEPREFIX/drive_c/windows/system32/d3d9.dll" 2>/dev/null \
+                | grep -q dxvk; then
+            echo "WARNING: DXVK-Sarek install did not land — BMS 4.32 will use slow wined3d."
+        fi
+    fi
+
     # Mark game start so afterGameReport only collects files from gameplay, not install
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
     wine explorer /desktop=BMS432,1024x768 Launcher.exe -window 2>/dev/null

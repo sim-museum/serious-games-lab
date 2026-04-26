@@ -163,7 +163,7 @@ game_archive() {
         # sglBinaries_6: BMS 4.35
         BMS435/BMS435.sh) echo 6 ;;
         # sglBinaries_7: Falcon AF ISO, Tacview
-        FalconAF.sh|tacview/tacview.sh) echo 7 ;;
+        FalconAF/FalconAF.sh|tacview/tacview.sh) echo 7 ;;
         # Everything else binary is in sglBinaries_1
         *) echo 1 ;;
     esac
@@ -204,8 +204,8 @@ script_display_name() {
         qplus.sh)              echo "strong, advanced GUI"; return ;;
         bb12/bb12.sh)          echo "simple"; return ;;
         # SAT - Modern Flight Sim
-        freeFalcon.sh)         echo "combat"; return ;;
-        FalconAF.sh)           echo "simple combat"; return ;;
+        freeFalcon/freeFalcon.sh) echo "combat"; return ;;
+        FalconAF/FalconAF.sh)  echo "simple combat"; return ;;
         BMS432/BMS432.sh)      echo "advanced combat"; return ;;
         BMS435/BMS435.sh)      echo "very advanced"; return ;;
         CFL/CFL.sh)            echo "CFL"; return ;;

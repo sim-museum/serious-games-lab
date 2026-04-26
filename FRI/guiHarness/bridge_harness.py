@@ -961,7 +961,7 @@ def interpolate_grid(top_left, bottom_right, rows=4, cols=13):
 class AutomationWorker(QThread):
     """Run hand-entry mouse automation in a background thread."""
     progress = pyqtSignal(str)
-    finished = pyqtSignal(bool, str)
+    done = pyqtSignal(bool, str)  # not 'finished' — that name shadows QThread.finished
 
     def __init__(self, hands, grid_coords, player_positions, ok_pos, clear_pos):
         super().__init__()
@@ -1000,9 +1000,9 @@ class AutomationWorker(QThread):
             self.progress.emit("Clicking OK...")
             pyautogui.moveTo(*self.ok_pos, duration=0.2)
             pyautogui.click()
-            self.finished.emit(True, "Hand entered successfully.")
+            self.done.emit(True, "Hand entered successfully.")
         except Exception as exc:
-            self.finished.emit(False, str(exc))
+            self.done.emit(False, str(exc))
 
 
 # ---------------------------------------------------------------------------
@@ -1105,6 +1105,11 @@ class BridgeHarness(QMainWindow):
         self.setCentralWidget(self.tabs)
 
         self.statusBar().showMessage("Ready")
+
+    def closeEvent(self, event):
+        if self._worker is not None and self._worker.isRunning():
+            self._worker.wait(5000)
+        super().closeEvent(event)
 
     def load_source(self, path: str, game_name: str = ""):
         """Pre-load a PBN or BDL file into the Comparison Workflow tab.
@@ -1545,13 +1550,18 @@ class BridgeHarness(QMainWindow):
         self.wf_enter_btn.setEnabled(False)
         self._worker = AutomationWorker(hands, grid_coords, player_pos, ok_pos, clear_pos)
         self._worker.progress.connect(lambda msg: self.statusBar().showMessage(msg))
-        self._worker.finished.connect(self._on_automation_done)
+        self._worker.done.connect(self._on_automation_done)
         self._worker.start()
 
     def _on_automation_done(self, success, msg):
         self.enter_btn.setEnabled(True)
         self.wf_enter_btn.setEnabled(True)
-        self._worker = None
+        # Wait for QThread to fully unwind before dropping our reference,
+        # otherwise the C++ destructor fires while isRunning() is still true
+        # and Qt aborts with "QThread: Destroyed while thread is still running".
+        if self._worker is not None:
+            self._worker.wait(2000)
+            self._worker = None
         if success:
             self.statusBar().showMessage(msg)
         else:

@@ -96,14 +96,14 @@ _game_output_patterns() {
             echo ".|*.rpy"
             ;;
         # SAT - Falcon: .acmi/.vhs files, .txt briefing/debrief, .frc/.cam/.his analysis
-        freeFalcon.sh)
+        freeFalcon/freeFalcon.sh)
             echo "./WP/drive_c/FreeFalcon6/acmibin|*.vhs"
             echo "./WP/drive_c/FreeFalcon6|*.txt"
             echo "./WP/drive_c/FreeFalcon6|*.frc"
             echo "./WP/drive_c/FreeFalcon6|*.cam"
             echo "./WP/drive_c/FreeFalcon6|*.his"
             ;;
-        FalconAF.sh)
+        FalconAF/FalconAF.sh)
             echo ".|*.acmi"
             echo ".|*.vhs"
             ;;
@@ -147,7 +147,7 @@ _exempt_from_cleanup() {
     local script="$1"
     case "$script" in
         # SAT - Falcon tactical engagements: keep ACMI/VHS replays in place
-        freeFalcon.sh|FalconAF.sh|BMS432/BMS432.sh|BMS435/BMS435.sh) return 0 ;;
+        freeFalcon/freeFalcon.sh|FalconAF/FalconAF.sh|BMS432/BMS432.sh|BMS435/BMS435.sh) return 0 ;;
         # TUE - Flight sim saves should persist
         flightgear/*.sh) return 0 ;;
         *) return 1 ;;

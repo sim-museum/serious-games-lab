@@ -126,6 +126,60 @@ if dpkg -l 2>/dev/null | grep -q 'nvidia-driver-'; then
     fi
 fi
 
+# --- Vulkan ---
+# DXVK (used by chessmaster.sh and any future D3D-heavy launcher) requires
+# a hardware Vulkan ICD. llvmpipe (software-only) "works" but is unusably
+# slow for 3D games; without any Vulkan at all, DXVK-installed prefixes
+# fail at launch with a cryptic d3d9.dll load error. Surface this now so
+# it's visible during install rather than at first DXVK-game launch.
+if command -v vulkaninfo &>/dev/null; then
+    # Count driverName lines that are NOT llvmpipe — at least one means a
+    # hardware Vulkan ICD is registered. (Note: grep -qv on a piped input
+    # returns 1 when it should return 0 due to SIGPIPE early-exit; -cv
+    # which counts is reliable.)
+    HW_VK_COUNT=$(vulkaninfo --summary 2>/dev/null | grep -E '^\s*driverName' | grep -cv llvmpipe)
+    if [[ "$HW_VK_COUNT" -gt 0 ]]; then
+        HW_DRIVERS=$(vulkaninfo --summary 2>/dev/null \
+            | awk -F'=' '/^[[:space:]]*driverName/ {gsub(/^[[:space:]]+|[[:space:]]+$/,"",$2); if ($2 != "llvmpipe") print $2}' \
+            | sort -u | paste -sd, -)
+        echo "  [OK]   Vulkan: ${HW_DRIVERS:-hardware ICD detected}"
+    else
+        echo "  [WARN] Vulkan: only llvmpipe (software) — DXVK games will be unusably slow"
+        echo "         For NVIDIA: ensure libnvidia-gl-\$VER and its :i386 variant are installed"
+        echo "         For Mesa:   sudo apt install mesa-vulkan-drivers mesa-vulkan-drivers:i386"
+        AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
+    fi
+else
+    echo "  [WARN] Vulkan: vulkaninfo not found — DXVK-installed games will fail at launch"
+    echo "         Install: sudo apt install vulkan-tools mesa-vulkan-drivers mesa-vulkan-drivers:i386"
+    AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
+fi
+
+# --- System wine wow64 mode ---
+# Ubuntu 26.04 ships wine 10, which runs in wow64 mode and silently rejects
+# WINEARCH=win32 — every 32-bit binary game in this repo would fail if it
+# resolved to /usr/bin/wine. Detect this so the user knows the installer
+# only routes 32-bit work through Lutris runners.
+SYS_WINE="$(command -v wine 2>/dev/null || true)"
+if [[ -n "$SYS_WINE" ]]; then
+    SYS_WINE_VER=$(sudo -u "$REAL_USER" "$SYS_WINE" --version 2>/dev/null | head -1 || true)
+    SYS_WINE_MAJOR=$(echo "$SYS_WINE_VER" | grep -oP 'wine-\K[0-9]+' | head -1 || true)
+    WINE_WOW64=0
+    if sudo -u "$REAL_USER" env WINEARCH=win32 WINEPREFIX=/tmp/.sgl_wine_arch_probe.$$ \
+            "$SYS_WINE" --version 2>&1 | grep -q 'not supported in wow64 mode'; then
+        WINE_WOW64=1
+    fi
+    rm -rf "/tmp/.sgl_wine_arch_probe.$$"
+    if [[ $WINE_WOW64 -eq 1 ]]; then
+        echo "  [INFO] System wine: ${SYS_WINE_VER:-v$SYS_WINE_MAJOR} (wow64 mode — rejects WINEARCH=win32)"
+        echo "         All 32-bit games will use Lutris runners; system wine will not be invoked for them."
+    else
+        echo "  [OK]   System wine: ${SYS_WINE_VER:-installed} (accepts WINEARCH=win32)"
+    fi
+else
+    echo "  [OK]   System wine: not installed (Lutris runners handle all wine launches)"
+fi
+
 # --- Joystick ---
 shopt -s nullglob
 JS_DEVICES=(/dev/input/js*)
@@ -351,8 +405,10 @@ else
     if [[ -f "$CSV_FILE" ]]; then
         sudo -u "$REAL_USER" mkdir -p "$RUNNERS_DIR"
 
-        # Extract unique runners from CSV (skip header, column 2)
-        mapfile -t RUNNERS < <(tail -n +2 "$CSV_FILE" | cut -d',' -f2 | sort -u)
+        # Extract unique runners from CSV (skip header, column 2).
+        # Some rows have an empty runner (source-only games like freefalcon,
+        # CFL, tacview) — drop those so we don't try to "install" "".
+        mapfile -t RUNNERS < <(tail -n +2 "$CSV_FILE" | awk -F',' '$2 != "" {print $2}' | sort -u)
 
         for runner in "${RUNNERS[@]}"; do
             if [[ -d "$RUNNERS_DIR/$runner" ]]; then
@@ -392,6 +448,79 @@ else
                 rm -f "$tmpfile"
             fi
         done
+
+        # ----------------------------------------------------------
+        # Verify each installed runner can actually write to a WINEPREFIX.
+        # Some runners launch but fail silently when a system library is
+        # missing (libfreetype, libgnutls, 32-bit GL, etc.) — wineboot
+        # returns 0 yet leaves the prefix empty. Catch that here so the
+        # game launchers don't appear to "do nothing" later.
+        # ----------------------------------------------------------
+        echo ""
+        echo "  Verifying wine runners can initialize a WINEPREFIX..."
+
+        WINE_TEST_FAIL=0
+        for runner in "${RUNNERS[@]}"; do
+            runner_dir="$RUNNERS_DIR/$runner"
+            if [[ ! -x "$runner_dir/bin/wine" ]]; then
+                echo "  [SKIP] $runner: wine binary not found"
+                continue
+            fi
+
+            test_prefix="$(sudo -u "$REAL_USER" mktemp -d /tmp/wine-test-prefix-XXXXXX)"
+            # Create err_log as root (the redirecting shell), not as REAL_USER.
+            # Ubuntu's fs.protected_regular sysctl blocks root from opening with
+            # O_CREAT a file it doesn't own in a world-writable sticky dir like
+            # /tmp, so a sudo-created file would EACCES the redirect on line below.
+            err_log="$(mktemp /tmp/wine-test-XXXXXX.log)"
+
+            wine_env=(
+                HOME="$REAL_HOME"
+                PATH="$runner_dir/bin:/usr/bin:/bin"
+                WINE="$runner_dir/bin/wine"
+                WINELOADER="$runner_dir/bin/wine"
+                WINESERVER="$runner_dir/bin/wineserver"
+                LD_LIBRARY_PATH="$runner_dir/lib64:$runner_dir/lib"
+                WINEDLLPATH="$runner_dir/lib64/wine/x86_64-unix:$runner_dir/lib/wine/i386-unix"
+                WINEPREFIX="$test_prefix"
+                WINEDEBUG=-all
+                WINEDLLOVERRIDES="mscoree=;mshtml="
+            )
+
+            sudo -u "$REAL_USER" env "${wine_env[@]}" \
+                timeout 180 "$runner_dir/bin/wine" wineboot --init >"$err_log" 2>&1 || true
+
+            # Tear down the wineserver daemon so prefixes don't pile up across
+            # iterations. -k kills the server for this prefix; -w waits for exit
+            # (without -w, winedevice.exe children can outlive the rm -rf below
+            # and spin at 100% CPU forever, with no prefix dir left to recover).
+            sudo -u "$REAL_USER" env "${wine_env[@]}" \
+                "$runner_dir/bin/wineserver" -k -w >>"$err_log" 2>&1 || true
+
+            # drive_c/windows/system32 is created synchronously by wineboot;
+            # it's a reliable "the runner wrote to the prefix" signal. Don't
+            # check *.reg files — those are flushed to disk only when
+            # wineserver shuts down, which races the check.
+            if [[ -d "$test_prefix/drive_c/windows/system32" ]]; then
+                echo "  [OK]   $runner can write to WINEPREFIX"
+            else
+                echo "  [FAIL] $runner: WINEPREFIX not initialized — runner cannot write to a prefix"
+                echo "         Likely a missing system library (32-bit GL, libfreetype, libgnutls, libsdl, ...)."
+                echo "         Diagnose with: ldd $runner_dir/bin/wine | grep 'not found'"
+                if [[ -s "$err_log" ]]; then
+                    echo "         Last lines of wineboot output:"
+                    tail -5 "$err_log" | sed 's/^/           /'
+                fi
+                WINE_TEST_FAIL=$((WINE_TEST_FAIL + 1))
+            fi
+            rm -rf "$test_prefix" "$err_log"
+        done
+
+        if [[ $WINE_TEST_FAIL -gt 0 ]]; then
+            echo ""
+            echo "  [WARN] $WINE_TEST_FAIL wine runner(s) failed the prefix-write test."
+            echo "         Game launchers using these runners may appear to do nothing on launch."
+        fi
     else
         echo "  No wine_runners.csv found; skipping."
     fi

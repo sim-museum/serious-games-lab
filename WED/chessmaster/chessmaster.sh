@@ -9,17 +9,31 @@
 #!/bin/bash
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-# Set the Wine prefix to the current directory's "WP" folder
+# Set the Wine prefix to the current directory's "WP" folder.
+# WINEARCH is intentionally unset: wine 10+ on Ubuntu 26.04 ships in wow64
+# mode and rejects WINEARCH=win32, which silently broke prefix creation.
 export WINEPREFIX="$PWD/WP"
-export WINEARCH=win32
 INSTALL_DIR="$PWD/INSTALL"
 # Set Windows XP mode silently (no GUI)
 mkdir -p "$WINEPREFIX"
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
+# Locate Chessmaster.exe wherever it landed. wow64 prefixes (default on
+# wine 10 / Ubuntu 26.04) install 32-bit apps into "Program Files (x86)";
+# pre-wow64 win32 prefixes use "Program Files". Check both so the same
+# script works against either layout.
+CM_EXE=""
+for _pf in "Program Files (x86)" "Program Files"; do
+    _cand="$WINEPREFIX/drive_c/$_pf/Ubisoft/Chessmaster Grandmaster Edition/Chessmaster.exe"
+    if [ -f "$_cand" ]; then
+        CM_EXE="$_cand"
+        break
+    fi
+done
+
 # Check if Chessmaster executable exists
-if [ -f "$WINEPREFIX/drive_c/Program Files/Ubisoft/Chessmaster Grandmaster Edition/Chessmaster.exe" ]; then
-    CM_DIR="$WINEPREFIX/drive_c/Program Files/Ubisoft/Chessmaster Grandmaster Edition"
+if [ -n "$CM_EXE" ]; then
+    CM_DIR="$(dirname "$CM_EXE")"
     CM_USERS_DIR="$CM_DIR/Data/Users"
     SCRIPT_DIR="$PWD"
 
@@ -184,11 +198,34 @@ else
         # Display installation instructions
         printf "Chessmaster installation instructions:\n\n1. If asked whether to install Mono, do not install it.\n2. Do not install the Adobe PDF reader (clear the checkbox next to Adobe).\n3. After Chessmaster is installed and the update dialog appears, exit from Chessmaster.\n\nPress any key to begin installation.\n\n"
         read replyString
-        # Run setup.exe using Wine
-        wine setup.exe >/dev/null 2>&1
+        # Run setup.exe using Wine. Log output so a silent failure is
+        # diagnosable rather than masquerading as success.
+        WINE_LOG="$INSTALL_DIR/wine-install.log"
+        : > "$WINE_LOG"
+        wine setup.exe >>"$WINE_LOG" 2>&1
         cd "$INSTALL_DIR/"
+        # Re-locate Chessmaster.exe — same wow64-vs-win32 ambiguity as above.
+        CM_EXE=""
+        for _pf in "Program Files (x86)" "Program Files"; do
+            _cand="$WINEPREFIX/drive_c/$_pf/Ubisoft/Chessmaster Grandmaster Edition/Chessmaster.exe"
+            if [ -f "$_cand" ]; then
+                CM_EXE="$_cand"
+                break
+            fi
+        done
+        if [ -z "$CM_EXE" ]; then
+            printf "\nChessmaster setup did not complete — Chessmaster.exe is missing.\nSee %s for wine output.\n" "$WINE_LOG"
+            exit 1
+        fi
+        # Install DXVK (D3D → Vulkan translation). The bundled wined3d
+        # renders Chessmaster's 3D board via OpenGL and is markedly slow
+        # even on modern NVIDIA hardware; DXVK gives a 2–5× speedup.
+        # winetricks -q dxvk is idempotent; if already installed it's a no-op.
+        echo "Installing DXVK for faster 3D rendering..."
+        winetricks -q dxvk >>"$WINE_LOG" 2>&1 || \
+            printf "\nWarning: DXVK install failed — Chessmaster will fall back to wined3d (slower). See %s.\n" "$WINE_LOG"
         # Apply patch
-        wine Chessmaster-Grandmaster-Edition_Patch_Win_EN-FR_patch-v102.exe >/dev/null 2>&1
+        wine Chessmaster-Grandmaster-Edition_Patch_Win_EN-FR_patch-v102.exe >>"$WINE_LOG" 2>&1
         printf "\nInstallation completed. Run this script again to start Chessmaster.\n"
         exit 0
     fi

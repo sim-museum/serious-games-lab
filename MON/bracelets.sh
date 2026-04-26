@@ -37,23 +37,33 @@ export install_dir="$PWD/INSTALL"
 if [ -f "$game_dir/WSOPBFTB.exe" ]; then
     cd "$game_dir"
 
-    # Install DXVK-Sarek on first run (Vulkan 1.1 compatible, speeds up D3D9)
-    if [ ! -f "$WINEPREFIX/.dxvk_sarek" ]; then
+    # DXVK-Sarek (Vulkan 1.1 fork of DXVK 1.x) for D3D9 acceleration. Detect
+    # presence by content (strings | grep dxvk in d3d9.dll) so a partially-
+    # installed/touch-marker-but-files-missing state forces a retry. Uses
+    # Sarek not mainline DXVK 2.x because DXVK 2.x requires
+    # VK_KHR_maintenance5 which not all NVIDIA driver/hardware combos
+    # expose. Curl-based download (gh isn't a hard dependency in the audit).
+    if ! strings "$WINEPREFIX/drive_c/windows/system32/d3d9.dll" 2>/dev/null \
+            | grep -q dxvk; then
         echo "Installing DXVK-Sarek for Vulkan acceleration..."
         sarek_ver="v1.11.0"
         sarek_tar="/tmp/dxvk-sarek-${sarek_ver}.tar.gz"
-        if [ ! -f "$sarek_tar" ]; then
-            gh release download "$sarek_ver" -R pythonlover02/DXVK-Sarek \
-                -p "dxvk-sarek-${sarek_ver}.tar.gz" -D /tmp 2>/dev/null
+        sarek_url="https://github.com/pythonlover02/DXVK-Sarek/releases/download/${sarek_ver}/dxvk-sarek-${sarek_ver}.tar.gz"
+        [ -s "$sarek_tar" ] || curl -sL -o "$sarek_tar" "$sarek_url"
+        if [ -s "$sarek_tar" ]; then
+            sarek_dir="/tmp/dxvk-sarek-${sarek_ver}"
+            [ -d "$sarek_dir" ] || tar xzf "$sarek_tar" -C /tmp
+            cp "$sarek_dir/x32/d3d9.dll"  "$WINEPREFIX/drive_c/windows/system32/"
+            cp "$sarek_dir/x32/dxgi.dll"  "$WINEPREFIX/drive_c/windows/system32/"
+            cp "$sarek_dir/x32/d3d11.dll" "$WINEPREFIX/drive_c/windows/system32/"
+            cp "$sarek_dir/x32/d3d10core.dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null || true
+            wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v d3d9 /t REG_SZ /d native /f &>/dev/null
+            wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v dxgi /t REG_SZ /d native /f &>/dev/null
         fi
-        sarek_dir="/tmp/dxvk-sarek-${sarek_ver}"
-        [ -d "$sarek_dir" ] || tar xzf "$sarek_tar" -C /tmp
-        cp "$sarek_dir/x32/d3d9.dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null
-        cp "$sarek_dir/x32/dxgi.dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null
-        cp "$sarek_dir/x32/d3d11.dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null
-        wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v d3d9 /t REG_SZ /d native /f 2>/dev/null
-        wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v dxgi /t REG_SZ /d native /f 2>/dev/null
-        touch "$WINEPREFIX/.dxvk_sarek"
+        if ! strings "$WINEPREFIX/drive_c/windows/system32/d3d9.dll" 2>/dev/null \
+                | grep -q dxvk; then
+            echo "WARNING: DXVK-Sarek did not install — bracelets will use slow wined3d."
+        fi
     fi
 
     # Mark game start so afterGameReport only collects files from gameplay, not install
