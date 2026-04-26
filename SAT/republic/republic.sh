@@ -4,6 +4,24 @@
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+# --- Wine runner pin (lutris-fshack-7.2-x86_64, per config/wine_runners.csv) ---
+# Republic is a 32-bit DX8 game using DXVK 2.4 (which requires wine >= 7.1).
+# Ubuntu 26.04 ships wine 10 in wow64 mode and silently rejects WINEARCH=win32,
+# so falling through to /usr/bin/wine creates no prefix and the launch no-ops.
+RUNNER_NAME="lutris-fshack-7.2-x86_64"
+RUNNER_DIR="$HOME/.local/share/lutris/runners/wine/$RUNNER_NAME"
+if [[ ! -x "$RUNNER_DIR/bin/wine" ]]; then
+    echo "ERROR: Lutris wine runner '$RUNNER_NAME' not installed at $RUNNER_DIR" >&2
+    echo "       Install it: sudo $(cd ../.. && pwd)/install.sh" >&2
+    exit 1
+fi
+export PATH="$RUNNER_DIR/bin:$PATH"
+export WINE="$RUNNER_DIR/bin/wine"
+export WINELOADER="$RUNNER_DIR/bin/wine"
+export WINESERVER="$RUNNER_DIR/bin/wineserver"
+export LD_LIBRARY_PATH="$RUNNER_DIR/lib64:$RUNNER_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export WINEDLLPATH="$RUNNER_DIR/lib64/wine/x86_64-unix:$RUNNER_DIR/lib/wine/i386-unix${WINEDLLPATH:+:$WINEDLLPATH}"
+
 INSTALLER="INSTALL/Republic-The-Revolution_Win_EN.exe"
 GAME_DIR="game"
 DXVK_VER="2.4"
@@ -24,8 +42,13 @@ find_exe() {
 if find_exe 2>/dev/null && [ -d "$WINEPREFIX" ]; then
     cd "$GAME_EXE_DIR"
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
-    wine explorer /desktop=Republic,1024x768 Republic.exe 2>/dev/null
-    wineserver -k 2>/dev/null
+    # NOTE: no /desktop= here. Republic's launcher/menu windows position
+    # themselves using GetSystemMetrics(SM_CXSCREEN/SM_CYSCREEN), so inside
+    # a 1024x768 virtual desktop they get drawn at X>1920 (off the visible
+    # area) and the desktop appears black. Letting them land on the host
+    # display puts them where the user can actually see and click them.
+    wine Republic.exe
+    wineserver -k
     exit 0
 fi
 
@@ -79,11 +102,11 @@ DXVKEOF
 
 # Create Wine prefix
 echo "Creating Wine prefix..."
-wineboot --init 2>/dev/null
-sleep 2
-wine reg add "HKCU\\Software\\Wine" /v Version /t REG_SZ /d winxp /f 2>/dev/null
+wineboot --init
+wineserver -w
+wine reg add "HKCU\\Software\\Wine" /v Version /t REG_SZ /d winxp /f
 
-# Launch
+# Launch (no /desktop= — see comment in the already-installed branch above)
 cd "$GAME_EXE_DIR"
 [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
-wine explorer /desktop=Republic,1024x768 Republic.exe 2>/dev/null
+wine Republic.exe

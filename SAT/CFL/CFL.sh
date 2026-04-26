@@ -19,10 +19,14 @@
 #      reset fails.  Always launch via:
 #        wine explorer /desktop=CFL,1024x768 ./mainapp.exe
 #
-#   2. USE SYSTEM WINE, NOT GE-PROTON: GE-Proton8-26 with the full Lutris
-#      WINEDLLOVERRIDES causes a black screen inside the virtual desktop.
-#      System wine 9 with DXVK 2.6.2 in the prefix works correctly.
-#      The wine_runners.csv entry for CFL must have an empty runner field.
+#   2. AVOID GE-PROTON, USE A PLAIN LUTRIS RUNNER: GE-Proton8-26 with the
+#      full Lutris WINEDLLOVERRIDES causes a black screen inside the virtual
+#      desktop. Plain wine (system wine 9 originally, now lutris-6.21-6) +
+#      DXVK 2.6.2 in the prefix works correctly. The script used to fall
+#      through to /usr/bin/wine, but Ubuntu 26.04 ships wine 10 in wow64
+#      mode and silently rejects WINEARCH=win32 — so we pin a Lutris runner
+#      explicitly. Picked 6.21-6 (used by NR2003.sh with DXVK), NOT a
+#      GE-Proton variant.
 #
 #   3. ISO MANUAL EXTRACT WORKS: The ISO installer shows a "DX9c missing"
 #      showstopper dialog.  Bypass it by extracting files directly with 7z.
@@ -54,8 +58,25 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# --- Wine runner pin (lutris-6.21-6-x86_64, per config/wine_runners.csv) ---
+# See Lesson #2 above: plain Lutris runner is fine, GE-Proton is not. The
+# system /usr/bin/wine on 26.04 (wine 10 wow64) silently no-ops WINEARCH=win32,
+# so we must pin a runner explicitly or step [1/8] falls through.
+RUNNER_NAME="lutris-9.22-staging-x86_64"
+RUNNER_DIR="$HOME/.local/share/lutris/runners/wine/$RUNNER_NAME"
+if [[ ! -x "$RUNNER_DIR/bin/wine" ]]; then
+    echo "ERROR: Lutris wine runner '$RUNNER_NAME' not installed at $RUNNER_DIR" >&2
+    echo "       Install it: sudo $(cd "$SCRIPT_DIR/../.." && pwd)/install.sh" >&2
+    exit 1
+fi
+export PATH="$RUNNER_DIR/bin:$PATH"
+export WINE="$RUNNER_DIR/bin/wine"
+export WINELOADER="$RUNNER_DIR/bin/wine"
+export WINESERVER="$RUNNER_DIR/bin/wineserver"
+export LD_LIBRARY_PATH="$RUNNER_DIR/lib64:$RUNNER_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export WINEDLLPATH="$RUNNER_DIR/lib64/wine/x86_64-unix:$RUNNER_DIR/lib/wine/i386-unix${WINEDLLPATH:+:$WINEDLLPATH}"
+
 # --- Wine prefix setup ---
-# Use system wine (not a Lutris runner) — GE-Proton causes black screen.
 export WINEPREFIX="$SCRIPT_DIR/WP"
 export WINEARCH=win32
 mkdir -p "$WINEPREFIX"
@@ -91,6 +112,16 @@ if [[ -d "$GAME_DIR" && -f "$GAME_DIR/mainapp.exe" ]]; then
         echo "  As a workaround, try Alt+Tab then press Enter after the splash appears."
         echo ""
     fi
+    # NOTE: auto-dismiss xdotool loop is DISABLED for this test (2026-04-25).
+    # On modern wine + GTX 1660 SUPER + 6.21-6 runner, the loop's
+    # `xdotool windowactivate --sync` repeatedly steals mouse focus to the
+    # CFL wine virtual desktop window every 3 seconds, making the rest of
+    # the system unusable. Diagnostic showed the game's actual I/O during
+    # the loop was ~30 KB/s — consistent with a polling timeout (likely
+    # EA matchmaking servers, defunct since 2008), not real loading.
+    # Try without the dismiss loop first; if a hidden dialog actually
+    # surfaces, manually click it.
+    if false; then
     (
         sleep 8
         WID=""
@@ -101,17 +132,9 @@ if [[ -d "$GAME_DIR" && -f "$GAME_DIR/mainapp.exe" ]]; then
         done
         [[ -z "$WID" ]] && exit 0
 
-        # Retry for up to ~60 s: the matchmaking dialog may appear late,
-        # and a single Alt+Tab+Return often fails (focus goes to the
-        # splash instead of the hidden dialog).  Cycle through Wine's
-        # window list several times and hit Return each time.  Wine
-        # honors XTestFakeKeyEvent (xte, xdotool without --window) but
-        # ignores XSendEvent (xdotool --window key).
         for _i in $(seq 1 20); do
             xdotool windowactivate --sync "$WID" 2>/dev/null
             sleep 0.2
-            # Click inside the virtual desktop so Wine's internal focus
-            # lands on an app window (not the desktop itself).
             WGEO=$(xdotool getwindowgeometry --shell "$WID" 2>/dev/null)
             WX=$(echo "$WGEO" | awk -F= '/^X=/{print $2}')
             WY=$(echo "$WGEO" | awk -F= '/^Y=/{print $2}')
@@ -123,13 +146,13 @@ if [[ -d "$GAME_DIR" && -f "$GAME_DIR/mainapp.exe" ]]; then
                 xte "mousemove $CX $CY" 'mouseclick 1' 2>/dev/null
             fi
             sleep 0.3
-            # Alt+Tab within Wine to surface any hidden dialog.
             xte 'keydown Alt_L' 'key Tab' 'keyup Alt_L' 2>/dev/null
             sleep 0.4
             xte 'key Return' 2>/dev/null
             sleep 3
         done
     ) &
+    fi
 
     # Try DXVK 2.x first, fall back to DXVK-Sarek if GPU lacks Vulkan 1.3
     if [ ! -f "$WINEPREFIX/.dxvk_sarek" ]; then
@@ -140,19 +163,25 @@ if [[ -d "$GAME_DIR" && -f "$GAME_DIR/mainapp.exe" ]]; then
             echo "DXVK 2.x not supported on this GPU. Installing DXVK-Sarek fallback..."
             sarek_ver="v1.11.0"
             sarek_tar="/tmp/dxvk-sarek-${sarek_ver}.tar.gz"
-            if [ ! -f "$sarek_tar" ]; then
-                gh release download "$sarek_ver" -R pythonlover02/DXVK-Sarek \
-                    -p "dxvk-sarek-${sarek_ver}.tar.gz" -D /tmp 2>/dev/null
-            fi
+            sarek_url="https://github.com/pythonlover02/DXVK-Sarek/releases/download/${sarek_ver}/dxvk-sarek-${sarek_ver}.tar.gz"
+            # curl, not gh — see comment in BMS435.sh / rFactor.sh / bracelets.sh
+            [ -s "$sarek_tar" ] || curl -sL -o "$sarek_tar" "$sarek_url"
             sarek_dir="/tmp/dxvk-sarek-${sarek_ver}"
             [ -d "$sarek_dir" ] || tar xzf "$sarek_tar" -C /tmp
-            cp "$sarek_dir/x32/d3d9.dll" "$WINEPREFIX/drive_c/windows/system32/"
-            cp "$sarek_dir/x32/dxgi.dll" "$WINEPREFIX/drive_c/windows/system32/"
+            cp "$sarek_dir/x32/d3d9.dll"  "$WINEPREFIX/drive_c/windows/system32/"
+            cp "$sarek_dir/x32/dxgi.dll"  "$WINEPREFIX/drive_c/windows/system32/"
             cp "$sarek_dir/x32/d3d11.dll" "$WINEPREFIX/drive_c/windows/system32/"
-            touch "$WINEPREFIX/.dxvk_sarek"
-            echo "DXVK-Sarek installed. Launching CFL..."
-            WINEDLLOVERRIDES="d3d9,d3d11,dxgi=n,b" \
-                wine explorer /desktop=CFL,1024x768 ./mainapp.exe 2>/dev/null
+            cp "$sarek_dir/x32/d3d10core.dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null || true
+            if strings "$WINEPREFIX/drive_c/windows/system32/d3d9.dll" 2>/dev/null \
+                    | grep -q dxvk; then
+                touch "$WINEPREFIX/.dxvk_sarek"
+                echo "DXVK-Sarek installed. Launching CFL..."
+                WINEDLLOVERRIDES="d3d9,d3d11,dxgi=n,b" \
+                    wine explorer /desktop=CFL,1024x768 ./mainapp.exe 2>/dev/null
+            else
+                echo "WARNING: DXVK-Sarek install failed; CFL will run on slow wined3d."
+                echo "         Retry: curl -L $sarek_url -o $sarek_tar"
+            fi
         fi
     else
         WINEDLLOVERRIDES="d3d9,d3d11,dxgi=n,b" \
@@ -220,25 +249,41 @@ fi
 # --- Step 1: Create Wine prefix ---
 echo ""
 echo "[1/8] Creating Wine prefix ..."
-WINEDEBUG=-all wineboot -i 2>/dev/null
+WINEDEBUG=-all wineboot -i
+# Wait for wineboot's wineserver to fully complete prefix init before any
+# follow-up wine call — otherwise winetricks's own "wine cmd.exe /c echo
+# %AppData%" sanity check can race and return empty, aborting the install.
+wineserver -w
 
 # Set Windows XP (required for this era of game)
 WINEDEBUG=-all wine reg add \
     "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion" \
-    /v CurrentVersion /t REG_SZ /d "5.1" /f 2>/dev/null
+    /v CurrentVersion /t REG_SZ /d "5.1" /f
 WINEDEBUG=-all wine reg add \
     "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion" \
-    /v CSDVersion /t REG_SZ /d "Service Pack 3" /f 2>/dev/null
+    /v CSDVersion /t REG_SZ /d "Service Pack 3" /f
 WINEDEBUG=-all wine reg add \
     "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion" \
-    /v CurrentBuildNumber /t REG_SZ /d "2600" /f 2>/dev/null
+    /v CurrentBuildNumber /t REG_SZ /d "2600" /f
+wineserver -w  # ensure reg adds flushed before winetricks reads the prefix
 
 # --- Step 2: Install winetricks dependencies ---
 echo "[2/8] Installing DirectX and DXVK (this takes a few minutes) ..."
-# Install DirectX components via winetricks (but NOT dxvk — winetricks
-# installs the latest DXVK which requires Vulkan 1.3 / maintenance5,
-# not supported by NVIDIA 535.x drivers).
-WINEDEBUG=-all winetricks -q d3dcompiler_43 d3dx9 d3dcompiler_47 2>/dev/null
+# Idempotent: if the three winetricks-installed DLLs are already in place,
+# skip winetricks entirely. winetricks intermittently aborts with
+# "wine cmd.exe ... returned empty string" on the launcher's exact env;
+# bypassing it on re-runs makes the script reliable once the prefix is built.
+SYS32_CHECK="$WINEPREFIX/drive_c/windows/system32"
+if [[ -f "$SYS32_CHECK/d3dcompiler_43.dll" \
+   && -f "$SYS32_CHECK/d3dcompiler_47.dll" \
+   && -f "$SYS32_CHECK/d3dx9_43.dll" ]]; then
+    echo "  d3dcompiler_43, d3dcompiler_47, d3dx9 already installed — skipping winetricks"
+else
+    # Install DirectX components via winetricks (but NOT dxvk — winetricks
+    # installs the latest DXVK which requires Vulkan 1.3 / maintenance5,
+    # not supported by NVIDIA 535.x drivers).
+    WINEDEBUG=-all winetricks -q d3dcompiler_43 d3dx9 d3dcompiler_47
+fi
 
 # Install DXVK 2.6.2 (compatible with older drivers; newer versions
 # require Vulkan 1.3 / maintenance5 not supported by NVIDIA 535.x)

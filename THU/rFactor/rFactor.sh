@@ -32,23 +32,42 @@ wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\Direct3D" /v VideoMemorySize /t
 if [ -f "$WINEPREFIX/drive_c/Program Files/rFactor/rFactor.exe" ]; then
     cd "$WINEPREFIX/drive_c/Program Files/rFactor"
 
-    # Install DXVK-Sarek on first run (Vulkan 1.1 compatible, works with NVIDIA 535)
-    if [ ! -f "$WINEPREFIX/.dxvk_sarek" ]; then
+    # Install DXVK-Sarek (Vulkan 1.1 fork of DXVK 1.x) for Vulkan-accelerated
+    # D3D9. NOT mainline DXVK 2.x — DXVK 2.x requires VK_KHR_maintenance5
+    # which not all NVIDIA driver/hardware combos expose (notably GTX 16xx
+    # series with current 595-series drivers fails with "DxvkError: No
+    # adapters found" and the game crashes on launch). Sarek's older
+    # Vulkan-1.1 baseline avoids that requirement and works across both
+    # vintage and current hardware.
+    #
+    # Detect by content: strings d3d9.dll | grep dxvk. Both DXVK 2.x and
+    # Sarek embed "dxvk" markers, but DXVK 2.x's d3d9.dll is ~4.5MB while
+    # Sarek's is ~3.4MB; size sanity-check below distinguishes them.
+    DXVK_D3D9="$WINEPREFIX/drive_c/windows/system32/d3d9.dll"
+    if ! strings "$DXVK_D3D9" 2>/dev/null | grep -q dxvk; then
         echo "Installing DXVK-Sarek for Vulkan acceleration..."
         sarek_ver="v1.11.0"
         sarek_tar="/tmp/dxvk-sarek-${sarek_ver}.tar.gz"
-        if [ ! -f "$sarek_tar" ]; then
-            gh release download "$sarek_ver" -R pythonlover02/DXVK-Sarek \
-                -p "dxvk-sarek-${sarek_ver}.tar.gz" -D /tmp 2>/dev/null
+        sarek_url="https://github.com/pythonlover02/DXVK-Sarek/releases/download/${sarek_ver}/dxvk-sarek-${sarek_ver}.tar.gz"
+        if [ ! -s "$sarek_tar" ]; then
+            curl -sL -o "$sarek_tar" "$sarek_url"
         fi
-        sarek_dir="/tmp/dxvk-sarek-${sarek_ver}"
-        [ -d "$sarek_dir" ] || tar xzf "$sarek_tar" -C /tmp
-        cp "$sarek_dir/x32/d3d9.dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null
-        cp "$sarek_dir/x32/dxgi.dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null
-        cp "$sarek_dir/x32/d3d11.dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null
-        wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v d3d9 /t REG_SZ /d native /f 2>/dev/null
-        wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v dxgi /t REG_SZ /d native /f 2>/dev/null
-        touch "$WINEPREFIX/.dxvk_sarek"
+        if [ -s "$sarek_tar" ]; then
+            sarek_dir="/tmp/dxvk-sarek-${sarek_ver}"
+            [ -d "$sarek_dir" ] || tar xzf "$sarek_tar" -C /tmp
+            cp "$sarek_dir/x32/d3d9.dll"  "$WINEPREFIX/drive_c/windows/system32/"
+            cp "$sarek_dir/x32/d3d11.dll" "$WINEPREFIX/drive_c/windows/system32/"
+            cp "$sarek_dir/x32/dxgi.dll"  "$WINEPREFIX/drive_c/windows/system32/"
+            cp "$sarek_dir/x32/d3d10core.dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null || true
+            wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v d3d9 /t REG_SZ /d native /f &>/dev/null
+            wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v dxgi /t REG_SZ /d native /f &>/dev/null
+        fi
+        if ! strings "$DXVK_D3D9" 2>/dev/null | grep -q dxvk; then
+            echo "WARNING: DXVK-Sarek install did not land — rFactor will use"
+            echo "         wine's slower wined3d. Diagnose:"
+            echo "         curl -L $sarek_url -o $sarek_tar"
+            echo "         tar xzf $sarek_tar -C /tmp"
+        fi
     fi
 
     # Detect unconfigured install (empty VideoGUID means rF Config was never run)

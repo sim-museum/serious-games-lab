@@ -11,15 +11,83 @@
 #!/bin/bash
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+# --- Wine runner pin (lutris-fshack-7.2-x86_64, per config/wine_runners.csv) ---
+# Use the wine-7.2 fshack runner — confirmed working 2026-04-25 with software
+# rendering (Preferences → Rendering = Software in-game). wine 4.11 / 5.7 /
+# 6.21 / 7.2-non-fshack all hang or crash; only fshack-7.2 reaches stable
+# in-flight state. Ubuntu 26.04 ships wine 10 in wow64 mode and rejects
+# WINEARCH=win32, so falling through to /usr/bin/wine would silently fail
+# every wine call below.
+RUNNER_NAME="lutris-fshack-7.2-x86_64"
+RUNNER_DIR="$HOME/.local/share/lutris/runners/wine/$RUNNER_NAME"
+if [[ ! -x "$RUNNER_DIR/bin/wine" ]]; then
+    echo "ERROR: Lutris wine runner '$RUNNER_NAME' not installed at $RUNNER_DIR" >&2
+    echo "       Install it: sudo $(cd ../.. && pwd)/install.sh" >&2
+    exit 1
+fi
+export PATH="$RUNNER_DIR/bin:$PATH"
+export WINE="$RUNNER_DIR/bin/wine"
+export WINELOADER="$RUNNER_DIR/bin/wine"
+export WINESERVER="$RUNNER_DIR/bin/wineserver"
+export LD_LIBRARY_PATH="$RUNNER_DIR/lib64:$RUNNER_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export WINEDLLPATH="$RUNNER_DIR/lib64/wine/x86_64-unix:$RUNNER_DIR/lib/wine/i386-unix${WINEDLLPATH:+:$WINEDLLPATH}"
+
+# Mig Alley is a 32-bit Windows app; force a win32 prefix on first creation.
+# Safe with the pinned Lutris runner (wine 7.2 fshack, pre-wow64). The wow64
+# reject is a system-wine-10 issue only — bypassed because we PATH-prepend
+# the runner.
+export WINEARCH=win32
+
 # Store commonly used directory paths in variables for readability
 export INSTALL_DIR="$PWD/INSTALL"
 export WINEPREFIX="$PWD/WP"
-export WINEARCH=win32
 mkdir -p "$WINEPREFIX"
+
+# Synchronously wineboot the prefix BEFORE any other wine work. On a fresh
+# prefix, `wine reg add` returns before wineserver finishes its implicit
+# wineboot — meaning subsequent wine calls (notably `winetricks`, which
+# queries %AppData% via `wine cmd.exe`) can race and see an unpopulated
+# registry, returning empty and aborting. `wineboot --init` blocks until
+# the prefix is fully initialized.
+wine wineboot --init >/dev/null 2>&1
+
 # Set Windows XP mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 # Prevent Wine from grabbing keyboard/mouse exclusively in fullscreen 3D mode
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver" /v GrabFullscreen /t REG_SZ /d N /f &>/dev/null
+
+# Rowan-engine Wine tweaks (mirrors scripts/fix_rowan_games.sh, minus the
+# 1024x768 Default virtual desktop — basic mode needs no virtual desktop and
+# advanced mode supplies its own via 'wine explorer /desktop=…').
+# Decorated=N removes the X11 frame so background clicks don't hit a WM
+# minimize/close button. The DirectDraw renderer/surface tweaks reduce the
+# Wine-vs-Rowan engine impedance mismatch around exclusive-fullscreen.
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver" /v Decorated /t REG_SZ /d N /f &>/dev/null
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\Direct3D" /v DirectDrawRenderer /t REG_SZ /d opengl /f &>/dev/null
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\Direct3D" /v OffscreenRenderingMode /t REG_SZ /d fbo /f &>/dev/null
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\DirectDraw" /v DefaultSurfaceType /t REG_SZ /d gdi /f &>/dev/null
+
+# Joystick / DirectInput config — same as FalconAF.sh. Without these, wine 7.2
+# fshack maps the Logitech Extreme 3D Pro through xinput's controller-mapper,
+# which scrambles the hat switch and Z-axis (twist) — they end up reporting
+# as different button/axis indices than the game expects. With Map Controllers=0
+# wine passes the raw DInput descriptor through, and the SDL+hidraw paths give
+# better hat-switch fidelity than the default udev path.
+wine reg add "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\WineBus" \
+    /v Start /t REG_DWORD /d 2 /f &>/dev/null
+wine reg add "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\WineBus\\Parameters" \
+    /v "Enable SDL" /t REG_DWORD /d 1 /f &>/dev/null
+wine reg add "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\WineBus\\Parameters" \
+    /v "Enable hidraw" /t REG_DWORD /d 1 /f &>/dev/null
+wine reg add "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\WineBus\\Parameters" \
+    /v "Map Controllers" /t REG_DWORD /d 0 /f &>/dev/null
+
+# Flush the registry to disk before winetricks runs. wineserver buffers reg
+# writes in memory until shutdown; winetricks may spawn its own wineserver
+# instance and load the registry from disk — if our adds haven't been
+# flushed, winetricks sees an incomplete registry and aborts mfc42 install.
+wineserver -k 2>/dev/null || true
+sleep 1
 
 
 export MA_ISO="$INSTALL_DIR/MA_iso"
@@ -76,7 +144,12 @@ fi
 
 launch_mig() {
     # Disable winegstreamer to prevent crash when exiting 3D view
-    export WINEDLLOVERRIDES="winegstreamer=d"
+    # winegstreamer=d  → avoids the documented 3D-exit crash
+    # ddraw=b;wined3d=b → force the runner's builtin DDraw + wined3d. Must be
+    # builtin only because the wine-3.18-built native DLLs that used to ship
+    # in INSTALL/"Mig Alley DLL/" hang the loader on every modern wine.
+    # Confirmed working with software rendering on lutris-fshack-7.2-x86_64.
+    export WINEDLLOVERRIDES="winegstreamer=d;ddraw=b;wined3d=b"
     cd "$WINEPREFIX/drive_c/rowan/mig"
 
     # Snapshot existing .cam and .sav filenames BEFORE launch.
@@ -152,12 +225,15 @@ fi
 #   Rscrlbar.ocx, RSpinBut.ocx, RSpltBar.ocx, RStatic.ocx, RTickBox.ocx) that
 #   create Win32 child windows for UI elements.
 #
-# CUSTOM DLLs:
-#   The game directory contains custom Wine-built ddraw.dll, wined3d.dll, and
-#   libwine.dll (from INSTALL/"Mig Alley DLL/"). These are REQUIRED - removing
-#   them causes the game to flash 3D briefly, show the preferences screen, then
-#   freeze on a black splash screen. The runner's built-in ddraw cannot properly
-#   initialize DirectDraw exclusive fullscreen mode for this game.
+# CUSTOM DLLs (HISTORICAL — DO NOT RE-ENABLE):
+#   INSTALL/"Mig Alley DLL/" contains custom-built ddraw.dll, wined3d.dll, and
+#   libwine.dll. Strings in libwine.dll show they were built against wine 3.18.
+#   They are INCOMPATIBLE with every wine version this repo ships (4.11 through
+#   8.0): the engine spins forever on Mig.exe resource remapping during
+#   "Loading landscape" and the mission never starts. Removed from the install
+#   path 2026-04-25. The earlier "REQUIRED" claim referred to a wine-3.18 era
+#   that no longer applies — modern wine's builtin ddraw handles this game's
+#   DirectDraw exclusive-fullscreen path.
 #
 # WORKAROUNDS FOR THE SPURIOUS WINDOW:
 #
@@ -267,10 +343,49 @@ if [ ! -f "$MA_ISO/setup.EXE" ]; then
     fi
 fi
 
-# Install prerequisites
+# Install prerequisites — mfc42 is required for the Rowan engine's ActiveX
+# OCX controls (rstatic, rbutton, etc). Without it the game crashes ~1s
+# after launch. We install in two passes:
+#   1. Fast path: if the winetricks cache from a previous run has the inner
+#      vcredist.exe, cabextract mfc42 directly. This avoids both winetricks
+#      itself (which fails on wine 4.11 fresh prefixes — see (2)) and the
+#      VC6RedistSetup.exe wine-launch step (which needs DISPLAY).
+#   2. Fallback: full winetricks -q mfc42. wine 4.11's `wineboot --init`
+#      doesn't always create %AppData% or HKCU\Volatile Environment\APPDATA,
+#      so we pre-create the dir and pre-set the registry value before
+#      calling winetricks.
 clear
-echo "Installing prerequisites..."
-winetricks vcrun6 &>/dev/null
+echo "Installing prerequisites (mfc42)..."
+
+VCREDIST_CACHE="$HOME/.cache/winetricks/vcrun6/vcredist.exe"
+if [[ -f "$VCREDIST_CACHE" ]]; then
+    echo "  Using cached vcredist.exe → cabextract mfc42*.dll into system32"
+    cabextract -q "$VCREDIST_CACHE" \
+        -d "$WINEPREFIX/drive_c/windows/system32" \
+        -F 'mfc42*.dll' 2>/dev/null || true
+fi
+
+if [[ ! -f "$WINEPREFIX/drive_c/windows/system32/mfc42.dll" ]]; then
+    echo "  No cached vcredist; falling back to winetricks."
+    mkdir -p "$WINEPREFIX/drive_c/users/$USER/AppData/Roaming"
+    wine reg add "HKEY_CURRENT_USER\\Volatile Environment" /v APPDATA /t REG_SZ \
+        /d "C:\\users\\$USER\\AppData\\Roaming" /f &>/dev/null || true
+    wineserver -k 2>/dev/null || true
+    sleep 1
+    winetricks -q mfc42 || true
+fi
+
+if [[ ! -f "$WINEPREFIX/drive_c/windows/system32/mfc42.dll" ]]; then
+    echo "ERROR: mfc42.dll was not installed into $WINEPREFIX/drive_c/windows/system32/."
+    echo "       The Rowan engine's OCX controls need mfc42 — without it, the game"
+    echo "       crashes ~1s after launch (black screen flash, then back to shell)."
+    echo ""
+    echo "       Tried two install paths (cabextract from cache, then winetricks)."
+    echo "       Diagnose by running winetricks manually:"
+    echo "         WINEPREFIX=\"$WINEPREFIX\" winetricks mfc42"
+    echo "       Current DISPLAY=${DISPLAY:-(unset)}"
+    exit 1
+fi
 # Auto-dismiss the bogus "not enough disk space" dialogs from InstallShield.
 # The old 32-bit GetDiskFreeSpace() overflows on large modern filesystems,
 # producing an absurd "requires 1.6 TB" message.  The dialog appears multiple
@@ -306,7 +421,13 @@ cp "$INSTALL_DIR/SaveGame/"*.* "$WINEPREFIX/drive_c/rowan/mig/SaveGame"
 cp "$INSTALL_DIR/Videos/"*.* "$WINEPREFIX/drive_c/rowan/mig/Videos"
 cp "$INSTALL_DIR/keys.xml" "$WINEPREFIX/drive_c/rowan/mig/KEYBOARD"
 
-rsync -a "$INSTALL_DIR/Mig Alley DLL/" "$WINEPREFIX/drive_c/rowan/mig/"
+# Custom ddraw.dll/wined3d.dll/libwine.dll in INSTALL/"Mig Alley DLL/" are
+# wine-3.18-built (libwine.dll embeds the version string) and break the 3D
+# resource loader on every wine we currently bundle (4.11, 5.7, 6.21, 7.2,
+# 8.0). With them present the engine spins on Mig.exe resource remap during
+# "Loading landscape"; the runner's builtin ddraw + wined3d work better.
+# The rsync is intentionally NOT done here. Sync the small `mfc42.dll` only
+# so the local copy doesn't shadow the vcrun6-installed one in system32.
 rm "$WINEPREFIX/drive_c/rowan/mig/mfc42.dll" &>/dev/null
 cd "$WINEPREFIX/drive_c/rowan/mig"
 

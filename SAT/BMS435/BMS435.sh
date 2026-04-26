@@ -89,19 +89,28 @@ if [ -d "$FALCON_DIR" ]; then
             echo "DXVK 2.x not supported on this GPU. Installing DXVK-Sarek fallback..."
             sarek_ver="v1.11.0"
             sarek_tar="/tmp/dxvk-sarek-${sarek_ver}.tar.gz"
-            if [ ! -f "$sarek_tar" ]; then
-                gh release download "$sarek_ver" -R pythonlover02/DXVK-Sarek \
-                    -p "dxvk-sarek-${sarek_ver}.tar.gz" -D /tmp 2>/dev/null
-            fi
+            sarek_url="https://github.com/pythonlover02/DXVK-Sarek/releases/download/${sarek_ver}/dxvk-sarek-${sarek_ver}.tar.gz"
+            # Use curl, not `gh` — gh isn't in the install audit's required-tools
+            # list and silently fails when missing (download produces a 9-byte
+            # 404 body, then the cp/touch sequence pretends success).
+            [ -s "$sarek_tar" ] || curl -sL -o "$sarek_tar" "$sarek_url"
             sarek_dir="/tmp/dxvk-sarek-${sarek_ver}"
             [ -d "$sarek_dir" ] || tar xzf "$sarek_tar" -C /tmp
             cp "$sarek_dir/x64/d3d9.dll" "$WINEPREFIX/drive_c/windows/system32/"
             cp "$sarek_dir/x64/dxgi.dll" "$WINEPREFIX/drive_c/windows/system32/"
             cp "$sarek_dir/x64/d3d11.dll" "$WINEPREFIX/drive_c/windows/system32/"
             cp "$sarek_dir/x64/d3d10core.dll" "$WINEPREFIX/drive_c/windows/system32/"
-            touch "$WINEPREFIX/.dxvk_sarek"
-            echo "DXVK-Sarek installed. Launching BMS..."
-            wine Launcher.exe -nomovie 2>/dev/null
+            # Verify Sarek actually landed before marking install successful.
+            if strings "$WINEPREFIX/drive_c/windows/system32/d3d9.dll" 2>/dev/null \
+                    | grep -q dxvk; then
+                touch "$WINEPREFIX/.dxvk_sarek"
+                echo "DXVK-Sarek installed. Launching BMS..."
+                wine Launcher.exe -nomovie 2>/dev/null
+            else
+                echo "WARNING: DXVK-Sarek install failed (curl/extract/copy did not produce"
+                echo "         a working d3d9.dll). BMS will run on slow wined3d."
+                echo "         Retry: curl -L $sarek_url -o $sarek_tar"
+            fi
         fi
     else
         wine Launcher.exe -nomovie 2>/dev/null

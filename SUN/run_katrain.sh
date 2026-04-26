@@ -5,25 +5,37 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/ensure_katago.sh"
 source "$SCRIPT_DIR/analyze_new_sgf.sh"
 
-# Set up venv if needed
-if [[ ! -f "$SCRIPT_DIR/katrain_venv/bin/activate" ]]; then
-    echo "KaTrain venv not found or broken. Installing now..."
+# Set up venv if needed (missing, broken, or katrain itself not installed —
+# e.g. a previous install on Ubuntu 26.04 where Python 3.14 silently rejected
+# KaTrain's <3.14 requirement).
+venv_has_katrain() {
+    [[ -x "$SCRIPT_DIR/katrain_venv/bin/python" ]] && \
+        "$SCRIPT_DIR/katrain_venv/bin/python" -c "import katrain" 2>/dev/null
+}
+if [[ ! -f "$SCRIPT_DIR/katrain_venv/bin/activate" ]] || ! venv_has_katrain; then
+    echo "KaTrain venv not found or incomplete. Installing now..."
     bash "$SCRIPT_DIR/setup_katrain.sh"
 fi
 
-if [[ ! -f "$SCRIPT_DIR/katrain_venv/bin/activate" ]]; then
+if ! venv_has_katrain; then
     echo "Error: KaTrain installation failed. Try running setup_katrain.sh manually."
     exit 1
 fi
 
 source "$SCRIPT_DIR/katrain_venv/bin/activate"
 
-# Ensure KaTrain config exists and is up-to-date.
-# KaTrain overwrites config.json on import when it detects an older version,
-# so we must: (1) let the import/upgrade happen first, (2) patch paths after.
+# Ensure KaTrain config exists. KaTrain only writes config.json when the GUI
+# launches, so seed it from the package default on first run; later launches
+# just patch the engine paths (KaTrain upgrades wipe custom paths).
 KATRAIN_CONFIG="$HOME/.katrain/config.json"
 echo "Ensuring KaTrain config is current..."
-python3 -c "import katrain" 2>/dev/null
+if [[ ! -f "$KATRAIN_CONFIG" ]]; then
+    mkdir -p "$(dirname "$KATRAIN_CONFIG")"
+    PKG_DEFAULT_CONFIG="$(python3 -c 'import katrain, os; print(os.path.join(os.path.dirname(katrain.__file__), "config.json"))' 2>/dev/null)"
+    if [[ -n "$PKG_DEFAULT_CONFIG" && -f "$PKG_DEFAULT_CONFIG" ]]; then
+        cp "$PKG_DEFAULT_CONFIG" "$KATRAIN_CONFIG"
+    fi
+fi
 
 # Patch engine paths (runs every launch — KaTrain upgrades wipe custom paths)
 if command -v python3 &>/dev/null; then
