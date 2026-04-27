@@ -878,6 +878,24 @@ def board_to_bdl(hands, board_info, source_label="WB"):
     return "\n".join(out)
 
 
+def pbn_file_to_base72(path: str, board_idx: int = 0) -> str:
+    """Read a .pbn file and return the base-72 Pavlicek code for its deal.
+
+    Used by the post-game flow in wBridge5.sh and bb12.sh to hand the played
+    deal straight to the harness via `--base72 CODE`, so the user doesn't
+    have to re-enter it.  Returns "" if the file has no parsable deal.
+    """
+    boards = parse_pbn_file(path)
+    if not boards:
+        return ""
+    board = boards[min(max(board_idx, 0), len(boards) - 1)]
+    deal_str = board.get("Deal", "")
+    if not deal_str:
+        return ""
+    hands = parse_pbn_deal_string(deal_str)
+    return deal_to_base72(hands)
+
+
 def pbn_file_to_bdl(path: str, source_label: str = "WB") -> str:
     """Convert an entire PBN file to BDL format."""
     boards = parse_pbn_file(path)
@@ -1164,6 +1182,37 @@ class BridgeHarness(QMainWindow):
         # Switch to Comparison Workflow tab
         self.tabs.setCurrentIndex(1)
         self.statusBar().showMessage(f"Source loaded: {Path(pbn_path).name}")
+
+    def load_base72(self, code: str, game_name: str = ""):
+        """Pre-load a deal from a base-72 Pavlicek code.
+
+        Called via --base72 CLI argument by the wBridge5 / bb12 post-game
+        flow: the launcher converts PBN -> BDL, extracts the deal's
+        base-72 code, and starts the harness with it so the user doesn't
+        have to re-enter the hand for the Q-Plus comparison step.
+        """
+        code = code.strip()
+        if not code:
+            return
+        try:
+            self.hands = base72_to_deal(code)
+        except Exception as exc:
+            self.statusBar().showMessage(f"Invalid base-72 code: {exc}")
+            return
+
+        self._show_deal(self.hands, self.hand_display, self.base72_display)
+        self._show_deal(self.hands, self.wf_hand_display, self.wf_base72)
+        self._update_info()
+
+        if game_name:
+            idx = self.wf_game_name.findText(game_name.lower())
+            if idx >= 0:
+                self.wf_game_name.setCurrentIndex(idx)
+            else:
+                self.wf_game_name.setEditText(game_name.lower())
+
+        self.tabs.setCurrentIndex(1)
+        self.statusBar().showMessage(f"Loaded base-72 code: {code}")
 
     # ---- Hand Entry tab ---------------------------------------------------
 
@@ -1759,9 +1808,10 @@ class BridgeHarness(QMainWindow):
 def main():
     import argparse
 
-    # Parse --source and --game before QApplication consumes Qt args
+    # Parse --source / --base72 / --game before QApplication consumes Qt args
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--source", default="", help="Pre-load PBN/BDL into Comparison Workflow")
+    parser.add_argument("--base72", default="", help="Pre-load deal from base-72 Pavlicek code")
     parser.add_argument("--game", default="", help="Source game name (wbridge5, bb12, etc.)")
     known, remaining = parser.parse_known_args()
 
@@ -1771,7 +1821,9 @@ def main():
     window = BridgeHarness()
     window.show()
 
-    if known.source:
+    if known.base72:
+        window.load_base72(known.base72, game_name=known.game)
+    elif known.source:
         window.load_source(known.source, game_name=known.game)
 
     sys.exit(app.exec_())

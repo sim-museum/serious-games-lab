@@ -86,8 +86,43 @@ print('  Converted ${base}.ppl -> ${base}.bdl + ${base}.pbn')
     done < <(find "$WINEPREFIX/Bridge Baron" "$FRI_DIR" "$FRI_DIR/bb12" "$REPORT_DIR" "$_bb12_dest" \
                  -maxdepth 1 -name "*.ppl" -type f -print0 2>/dev/null)
 
-    # Q-Plus gold-standard comparison: arranged manually by the user in a
-    # separate qplus.sh session on the same board.
+    # Q-Plus gold-standard comparison flow.
+    # Extract base-72 code from the last hand played, then auto-launch
+    # Q-Plus Bridge + the GUI harness with the deal pre-loaded so the
+    # user doesn't have to re-enter the hand.  Q-Plus lives in a
+    # separate wineprefix (FRI/WP) — override WINEPREFIX in the subshell.
+    if [[ -n "$_bb12_last_pbn" && -f "$HARNESS_DIR/bridge_harness.py" \
+          && -x "$HARNESS_DIR/venv/bin/python3" ]]; then
+        _bb12_b72=$(PYTHONPATH="$HARNESS_DIR" "$HARNESS_DIR/venv/bin/python3" -c "
+import bridge_harness as bh
+print(bh.pbn_file_to_base72('$_bb12_last_pbn'))
+" 2>/dev/null)
+
+        QBRIDGE_DIR=""
+        QPLUS_PREFIX="$FRI_DIR/WP"
+        [[ -d "$QPLUS_PREFIX/drive_c/games/qbridge17" ]] && QBRIDGE_DIR="$QPLUS_PREFIX/drive_c/games/qbridge17"
+        [[ -z "$QBRIDGE_DIR" && -d "$QPLUS_PREFIX/drive_c/games/qbridge15" ]] && QBRIDGE_DIR="$QPLUS_PREFIX/drive_c/games/qbridge15"
+
+        if [[ -n "$_bb12_b72" ]]; then
+            echo ""
+            if [[ -n "$QBRIDGE_DIR" ]]; then
+                echo "Launching Q-Plus Bridge + GUI Harness for comparison..."
+                echo "  Hand pre-loaded (base-72): $_bb12_b72"
+                (
+                    export WINEPREFIX="$QPLUS_PREFIX"
+                    cd "$QBRIDGE_DIR"
+                    wine QBRIDGE.EXE 2>/dev/null 1>/dev/null
+                ) &
+            else
+                echo "Q-Plus not installed; launching GUI Harness only."
+                echo "  Hand pre-loaded (base-72): $_bb12_b72"
+            fi
+            (cd "$HARNESS_DIR" && \
+                PYTHONPATH="$HARNESS_DIR" "$HARNESS_DIR/venv/bin/python3" \
+                    bridge_harness.py --base72 "$_bb12_b72" --game bb12 \
+                    2>/dev/null)
+        fi
+    fi
 
     exit 0
 fi
