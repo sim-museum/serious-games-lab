@@ -58,11 +58,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# --- Wine runner pin (lutris-6.21-6-x86_64, per config/wine_runners.csv) ---
-# See Lesson #2 above: plain Lutris runner is fine, GE-Proton is not. The
-# system /usr/bin/wine on 26.04 (wine 10 wow64) silently no-ops WINEARCH=win32,
-# so we must pin a runner explicitly or step [1/8] falls through.
-RUNNER_NAME="lutris-9.22-staging-x86_64"
+# --- Wine runner pin (lutris-5.7-x86_64) ---
+# 2008 game; modern wine (9.22 staging, 6.21-6) reproducibly hangs at
+# splash with the EA matchmaking dialog and DXVK Sarek/wine handshake
+# issues that don't reproduce on older wine.  Using the oldest plain
+# Lutris runner installed (wine 5.7 from 2020) — closest to the game's
+# release-era runtime.
+# See Lesson #2 above: plain Lutris runner is fine, GE-Proton is not.
+# The system /usr/bin/wine on 26.04 (wine 10 wow64) silently no-ops
+# WINEARCH=win32, so we must pin a runner explicitly.
+RUNNER_NAME="lutris-5.7-x86_64"
 RUNNER_DIR="$HOME/.local/share/lutris/runners/wine/$RUNNER_NAME"
 if [[ ! -x "$RUNNER_DIR/bin/wine" ]]; then
     echo "ERROR: Lutris wine runner '$RUNNER_NAME' not installed at $RUNNER_DIR" >&2
@@ -88,6 +93,34 @@ GAME_DIR="$WINEPREFIX/drive_c/Program Files/EA SPORTS/Madden NFL 08"
 # =====================================================================
 if [[ -d "$GAME_DIR" && -f "$GAME_DIR/mainapp.exe" ]]; then
     # Kill any stale wineserver to avoid BadWindow X errors on relaunch.
+    wineserver -k 2>/dev/null || true
+    sleep 1
+
+    # Per-launch registry tweaks (idempotent).
+    # Decorated=N — game window inside the wine virtual desktop has its
+    #   own title bar by default; clicks on that "frame" zone steal focus
+    #   from the game's menu and made PLAY NOW etc. unclickable until we
+    #   removed the inner decorations.
+    # NOTE: GrabFullscreen=N was tried 2026-04-26 and rolled back —
+    #   it stops wine from grabbing keyboard, which means Alt+Tab leaks
+    #   to mutter (greying the wine desktop title bar) instead of going
+    #   in-wine to surface the hidden EA matchmaking dialog.  Default
+    #   (grab on) is required for the auto-dismiss xte sequence to work.
+    # WineBus / Map Controllers=0 + Enable SDL/hidraw — same fix Mig
+    #   Alley uses for Logitech 3DX: pass raw DInput device descriptors
+    #   through instead of letting xinput's controller-mapper rewrite
+    #   axis/button indices.  Without this, Madden detects the gamepad
+    #   but cannot let you select it on the controller-assignment screen.
+    WINEDEBUG=-all wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver" \
+        /v Decorated /t REG_SZ /d N /f &>/dev/null
+    WINEDEBUG=-all wine reg add "HKLM\\System\\CurrentControlSet\\Services\\WineBus" \
+        /v Start /t REG_DWORD /d 2 /f &>/dev/null
+    WINEDEBUG=-all wine reg add "HKLM\\System\\CurrentControlSet\\Services\\WineBus\\Parameters" \
+        /v "Enable SDL" /t REG_DWORD /d 1 /f &>/dev/null
+    WINEDEBUG=-all wine reg add "HKLM\\System\\CurrentControlSet\\Services\\WineBus\\Parameters" \
+        /v "Enable hidraw" /t REG_DWORD /d 1 /f &>/dev/null
+    WINEDEBUG=-all wine reg add "HKLM\\System\\CurrentControlSet\\Services\\WineBus\\Parameters" \
+        /v "Map Controllers" /t REG_DWORD /d 0 /f &>/dev/null
     wineserver -k 2>/dev/null || true
     sleep 1
 
@@ -595,7 +628,11 @@ Video Texture Depth [0/16/32] = 0
 Video Texture Resolution [Low/Medium/High] = High
 Video Vertical Sync [On/Off] = On
 Weather Effects [0-4] = 4
-Windowed Mode [Yes/No] = No
+// Windowed Mode = Yes is required: fullscreen mode-switch (default
+// "No") triggers mutter to destroy wine's child windows mid-switch
+// when running inside a virtual desktop, leaving a black window with
+// the game's main thread alive but with nothing to render onto.
+Windowed Mode [Yes/No] = Yes
 
 // Option Group: Detail Settings
 Field Detail [Low/Medium/High/Highest] = Highest

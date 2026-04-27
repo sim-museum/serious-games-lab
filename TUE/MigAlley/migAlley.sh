@@ -12,12 +12,12 @@
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 # --- Wine runner pin (lutris-fshack-7.2-x86_64, per config/wine_runners.csv) ---
-# Use the wine-7.2 fshack runner — confirmed working 2026-04-25 with software
-# rendering (Preferences → Rendering = Software in-game). wine 4.11 / 5.7 /
-# 6.21 / 7.2-non-fshack all hang or crash; only fshack-7.2 reaches stable
-# in-flight state. Ubuntu 26.04 ships wine 10 in wow64 mode and rejects
-# WINEARCH=win32, so falling through to /usr/bin/wine would silently fail
-# every wine call below.
+# Use the wine-7.2 fshack runner — confirmed working 2026-04-26 end-to-end in
+# both hardware and software rendering modes (Preferences → Rendering in-game).
+# wine 4.11 / 5.7 / 6.21 / 7.2-non-fshack all hang or crash; only fshack-7.2
+# reaches stable in-flight state. Ubuntu 26.04 ships wine 10 in wow64 mode and
+# rejects WINEARCH=win32, so falling through to /usr/bin/wine would silently
+# fail every wine call below.
 RUNNER_NAME="lutris-fshack-7.2-x86_64"
 RUNNER_DIR="$HOME/.local/share/lutris/runners/wine/$RUNNER_NAME"
 if [[ ! -x "$RUNNER_DIR/bin/wine" ]]; then
@@ -148,7 +148,7 @@ launch_mig() {
     # ddraw=b;wined3d=b → force the runner's builtin DDraw + wined3d. Must be
     # builtin only because the wine-3.18-built native DLLs that used to ship
     # in INSTALL/"Mig Alley DLL/" hang the loader on every modern wine.
-    # Confirmed working with software rendering on lutris-fshack-7.2-x86_64.
+    # Confirmed working on lutris-fshack-7.2-x86_64 in both HW and SW rendering.
     export WINEDLLOVERRIDES="winegstreamer=d;ddraw=b;wined3d=b"
     cd "$WINEPREFIX/drive_c/rowan/mig"
 
