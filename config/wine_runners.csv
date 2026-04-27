@@ -1,5 +1,5 @@
 script,runner,arch,dxvk
-BattleOfBritain/battleOfBritain.sh,lutris-5.7-x86_64,32,no
+BattleOfBritain/battleOfBritain.sh,lutris-5.7-11-x86_64,32,no
 BMS435/BMS435.sh,lutris-GE-Proton8-26-x86_64,64,yes
 FalconAF/FalconAF.sh,lutris-5.7-x86_64,32,no
 freeFalcon/freeFalcon.sh,lutris-9.22-staging-x86_64,32,no

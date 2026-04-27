@@ -11,7 +11,13 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 # Set up Wine runner environment
 setup_wine_runner() {
-    local runner_name="lutris-5.7-x86_64"
+    # NOTE: must be the plain 5.7-11 build, NOT lutris-5.7-x86_64.
+    # The lutris-5.7-x86_64 runner is wine-5.7 with TkG-Staging-Esync-Fsync-
+    # Vkd3d-DXVK-Compatible patches; on Wayland+NVIDIA those patches cause a
+    # deterministic null-deref in BoB's 3D-entry code (page fault at
+    # bob.exe+0x103fde, EAX=0). lutris-5.7-11-x86_64 is the same wine 5.7
+    # but without the Vkd3d/DXVK patches and 3D entry works there.
+    local runner_name="lutris-5.7-11-x86_64"
     local runner_dir="$HOME/.local/share/lutris/runners/wine/$runner_name"
     if [[ -d "$runner_dir" && -x "$runner_dir/bin/wine" ]]; then
         export PATH="$runner_dir/bin:$PATH"
@@ -39,6 +45,11 @@ export BoB_INSTALL="$PWD/INSTALL"
 
 # Check if BoB is installed
 if [ -f "$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain/bob.exe" ]; then
+    # Defend against stale wineserver shm state (e.g. post-failed-boot) that
+    # causes non-deterministic null-deref crashes on 3D entry.
+    source "$(dirname "${BASH_SOURCE[0]}")/../../launcher/lib/clean_wineserver.sh"
+    clean_wineserver
+
     # Disable winegstreamer to prevent crash on video playback
     export WINEDLLOVERRIDES="winegstreamer=d"
     # ============================================================================
@@ -71,11 +82,17 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain/bob.
 
     numMonitors=$(xrandr -q | grep -c ' connected ')
 
-    # Prevent Wine from grabbing keyboard/mouse exclusively in fullscreen 3D mode
-    wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver" /v GrabFullscreen /t REG_SZ /d N /f &>/dev/null
-    wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver" /v GrabPointer /t REG_SZ /d N /f &>/dev/null
-    wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\DirectInput" /v MouseWarpOverride /t REG_SZ /d disable /f &>/dev/null
-    wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver" /v DXGrab /t REG_SZ /d N /f &>/dev/null
+    # Disabled 2026-04-26: these four input-grab tweaks were intended to keep
+    # Wine from grabbing keyboard/mouse exclusively in fullscreen 3D, but on
+    # wine-5.7 + Wayland + NVIDIA they cause a deterministic null-deref in
+    # BoB's multimedia-timer callback during 3D entry (page fault at
+    # bob.exe+0x103fde, EAX=0). The install path that doesn't add them works.
+    # If a future setup actually exhibits the input-grab problem, re-enable
+    # selectively rather than as a block.
+    # wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver" /v GrabFullscreen /t REG_SZ /d N /f &>/dev/null
+    # wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver" /v GrabPointer /t REG_SZ /d N /f &>/dev/null
+    # wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\DirectInput" /v MouseWarpOverride /t REG_SZ /d disable /f &>/dev/null
+    # wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver" /v DXGrab /t REG_SZ /d N /f &>/dev/null
 
     # Mark game start so afterGameReport only collects files from gameplay, not install
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
@@ -158,13 +175,19 @@ fi
 #   - Single monitor with second display disabled - spurious window overlaps game
 #
 # WINE RUNNER CONSTRAINTS:
-#   - lutris-5.7-x86_64: Best overall (fullscreen mode switch, joystick, good FPS)
-#     but exhibits the spurious window
+#   - lutris-5.7-11-x86_64: CURRENT PIN. Plain wine-5.7 (TkG Staging Esync Fsync,
+#     no Vkd3d/DXVK). 3D entry and flight work on Wayland+NVIDIA.
+#   - lutris-5.7-x86_64: Same wine 5.7 but with Vkd3d/DXVK-Compatible patches.
+#     Was the pin until 2026-04-26 when it started crashing 3D entry deterministically
+#     on Wayland+NVIDIA (null deref at bob.exe+0x103fde). The DXVK shim seems to
+#     interfere with BoB's DirectDraw init.
 #   - lutris-GE-Proton8-26-x86_64: Best joystick support (all axes including
 #     twist/throttle) but doesn't do proper DirectDraw exclusive fullscreen mode
 #     switches - game renders at low resolution in corner of display
 #   - lutris-fshack-7.2-x86_64: Good FPS/textures but severe fullscreen flickering;
 #     windowed mode works but limits resolution to 1024x768
+#   - lutris-fshack-5.7-x86_64: 3D entry works but OCX UI buttons (Back, Begin)
+#     have an X/Y hit-test offset; menus barely usable.
 #   - Wine 5.7 properly handles DirectDraw exclusive fullscreen mode switches
 #     (actually changes monitor resolution), while newer Wine versions don't
 #
