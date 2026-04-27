@@ -154,11 +154,26 @@ if [[ -d "$GAME_DIR" && -f "$GAME_DIR/mainapp.exe" ]]; then
     ) &
     fi
 
+    # Capture full wine stderr+stdout to wine_crash.log so the
+    # "splash appears then disappears" failure mode is diagnosable.
+    # The file is overwritten on each launch but never deleted on success.
+    WINE_LOG="$SCRIPT_DIR/wine_crash.log"
+
+    # WINEDEBUG=+seh dumps unhandled-exception backtraces to stderr.
+    # AeDebug Auto=0 stops wine from launching the interactive winedbg
+    # dialog (which can pop on a secondary monitor and look like a hang
+    # to the user).  Together: a crash dumps a real backtrace into
+    # wine_crash.log and wine exits cleanly.
+    export WINEDEBUG="+seh"
+    wine reg add "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\AeDebug" \
+        /v Auto /t REG_SZ /d 0 /f &>/dev/null
+
     # Try DXVK 2.x first, fall back to DXVK-Sarek if GPU lacks Vulkan 1.3
     if [ ! -f "$WINEPREFIX/.dxvk_sarek" ]; then
         WINEDLLOVERRIDES="d3d9,d3d11,dxgi=n,b" \
-            wine explorer /desktop=CFL,1024x768 ./mainapp.exe 2>"$WINEPREFIX/.dxvk_log"
-        if grep -q "No adapters found\|maintenance5\|DXGIFactory" "$WINEPREFIX/.dxvk_log"; then
+            wine explorer /desktop=CFL,1024x768 ./mainapp.exe \
+            > "$WINE_LOG" 2>&1
+        if grep -q "No adapters found\|maintenance5\|DXGIFactory" "$WINE_LOG"; then
             wineserver -k 2>/dev/null || true
             echo "DXVK 2.x not supported on this GPU. Installing DXVK-Sarek fallback..."
             sarek_ver="v1.11.0"
@@ -177,7 +192,8 @@ if [[ -d "$GAME_DIR" && -f "$GAME_DIR/mainapp.exe" ]]; then
                 touch "$WINEPREFIX/.dxvk_sarek"
                 echo "DXVK-Sarek installed. Launching CFL..."
                 WINEDLLOVERRIDES="d3d9,d3d11,dxgi=n,b" \
-                    wine explorer /desktop=CFL,1024x768 ./mainapp.exe 2>/dev/null
+                    wine explorer /desktop=CFL,1024x768 ./mainapp.exe \
+                    > "$WINE_LOG" 2>&1
             else
                 echo "WARNING: DXVK-Sarek install failed; CFL will run on slow wined3d."
                 echo "         Retry: curl -L $sarek_url -o $sarek_tar"
@@ -185,9 +201,14 @@ if [[ -d "$GAME_DIR" && -f "$GAME_DIR/mainapp.exe" ]]; then
         fi
     else
         WINEDLLOVERRIDES="d3d9,d3d11,dxgi=n,b" \
-            wine explorer /desktop=CFL,1024x768 ./mainapp.exe 2>/dev/null
+            wine explorer /desktop=CFL,1024x768 ./mainapp.exe \
+            > "$WINE_LOG" 2>&1
     fi
-    rm -f "$WINEPREFIX/.dxvk_log"
+
+    if grep -qE 'err:|wine: Unhandled|Assertion|Backtrace|Fatal' "$WINE_LOG" 2>/dev/null; then
+        echo ""
+        echo "Wine reported errors — see $WINE_LOG"
+    fi
     exit 0
 fi
 

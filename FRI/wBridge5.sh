@@ -79,8 +79,34 @@ print('  Converted ${base}.pbn -> ${base}.bdl')
     done < <(find "$WINEPREFIX/drive_c/wbridge5" "$FRI_DIR" "$_wb5_dest" \
                  -maxdepth 1 -name "*.pbn" -type f -print0 2>/dev/null)
 
-    # Q-Plus gold-standard comparison: arranged manually by the user in a
-    # separate qplus.sh session on the same board.
+    # Q-Plus gold-standard comparison flow.
+    # Extract base-72 code from the last hand played, then auto-launch
+    # Q-Plus Bridge (same wineprefix) + the GUI harness with the deal
+    # pre-loaded so the user doesn't have to re-enter the hand.
+          && -x "$HARNESS_DIR/venv/bin/python3" ]]; then
+        _wb5_b72=$(PYTHONPATH="$HARNESS_DIR" "$HARNESS_DIR/venv/bin/python3" -c "
+print(bh.pbn_file_to_base72('$_wb5_last_pbn'))
+" 2>/dev/null)
+
+        QBRIDGE_DIR=""
+        [[ -d "$WINEPREFIX/drive_c/games/qbridge17" ]] && QBRIDGE_DIR="$WINEPREFIX/drive_c/games/qbridge17"
+        [[ -z "$QBRIDGE_DIR" && -d "$WINEPREFIX/drive_c/games/qbridge15" ]] && QBRIDGE_DIR="$WINEPREFIX/drive_c/games/qbridge15"
+
+        if [[ -n "$_wb5_b72" ]]; then
+            echo ""
+            if [[ -n "$QBRIDGE_DIR" ]]; then
+                echo "Launching Q-Plus Bridge + GUI Harness for comparison..."
+                echo "  Hand pre-loaded (base-72): $_wb5_b72"
+                (cd "$QBRIDGE_DIR" && wine QBRIDGE.EXE 2>/dev/null 1>/dev/null) &
+            else
+                echo "Q-Plus not installed; launching GUI Harness only."
+                echo "  Hand pre-loaded (base-72): $_wb5_b72"
+            fi
+            (cd "$HARNESS_DIR" && \
+                PYTHONPATH="$HARNESS_DIR" "$HARNESS_DIR/venv/bin/python3" \
+                    2>/dev/null)
+        fi
+    fi
 
     # Display exit message
     cat "$PWD/DOC/REFERENCE/exitMessageWbridge5.txt"
