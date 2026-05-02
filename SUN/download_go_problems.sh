@@ -22,17 +22,33 @@ echo "=== Downloading Go Problem Collections ==="
 echo ""
 
 # --- 1. Go Game Guru weekly problems ---
+# Presence check counts actual SGFs rather than just the parent dir, because
+# the gogameguru/ tree can exist with templates/ and zip.sh while the
+# difficulty subdirs are empty (e.g. an interrupted clone, or a previous
+# install that ran zip.sh + cleanup). Without this, the script short-
+# circuits and the 422 SGFs are never fetched.
 GGG_DIR="$PROBLEMS_DIR/gogameguru"
+ggg_sgf_count=0
 if [ -d "$GGG_DIR/weekly-go-problems" ]; then
-    echo "[OK] Go Game Guru problems already downloaded."
+    ggg_sgf_count=$(find "$GGG_DIR/weekly-go-problems" -name '*.sgf' -type f 2>/dev/null | wc -l)
+fi
+if [ "$ggg_sgf_count" -ge 400 ]; then
+    echo "[OK] Go Game Guru problems already downloaded ($ggg_sgf_count SGFs)."
 else
     echo "[DOWNLOAD] Go Game Guru weekly problems (422 SGFs)..."
     echo "  Source: https://github.com/gogameguru/go-problems"
     echo "  License: CC BY-NC-SA 4.0"
+    if [ "$ggg_sgf_count" -gt 0 ]; then
+        echo "  Found $ggg_sgf_count SGFs — incomplete; topping up from upstream."
+    fi
     echo ""
-    git clone --depth 1 https://github.com/gogameguru/go-problems.git "$GGG_DIR"
-    # Remove git metadata to save space
-    rm -rf "$GGG_DIR/.git"
+    # Clone to a temp dir and merge so any local customisations under
+    # $GGG_DIR are preserved (rsync --ignore-existing only fills gaps).
+    ggg_tmp="$(mktemp -d)"
+    git clone --depth 1 https://github.com/gogameguru/go-problems.git "$ggg_tmp/clone"
+    mkdir -p "$GGG_DIR"
+    rsync -a --ignore-existing "$ggg_tmp/clone/" "$GGG_DIR/"
+    rm -rf "$ggg_tmp" "$GGG_DIR/.git"
     echo "[OK] Go Game Guru problems installed."
 fi
 echo ""

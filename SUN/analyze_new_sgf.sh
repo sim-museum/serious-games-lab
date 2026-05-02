@@ -7,8 +7,16 @@
 #
 # Requires: KATAGO_BIN, MAIN_MODEL, ANALYSIS_CFG (set by ensure_katago.sh)
 
+# Source the launcher's post_game_subdir helper for stable subdir naming
+# under concurrent-game conditions.
+_REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+[[ -f "$_REPO_ROOT/launcher/lib/post_game_subdir.sh" ]] \
+    && source "$_REPO_ROOT/launcher/lib/post_game_subdir.sh"
+
 # Snapshot SGF files before the game launches.
-# Call this right before touching SGL_GAME_STARTED_MARKER.
+# Call this right before touching SGL_GAME_STARTED_MARKER, then call
+# capture_marker_epoch (from post_game_subdir.sh, sourced above) right
+# AFTER touching the marker so we record the game's true start time.
 snapshot_sgf_files() {
     _SGF_SNAPSHOT=$(mktemp)
     _SGF_SNAPSHOT_TIME=$(date +%s)
@@ -87,9 +95,25 @@ analyze_new_sgf_files() {
     echo ""
     echo "Running KataGo analysis on saved SGF files..."
 
-    # Create _analysed.sgf next to each original.
-    # The launcher's collect_after_game_report runs AFTER this and will
-    # pick up both the original and _analysed files.
+    # Move each SGF into the timestamped afterGameReport subdir BEFORE
+    # KataGo + Claude annotation so a concurrent game's
+    # collect_after_game_report can't grab them mid-annotation.  Files
+    # inside afterGameReport are excluded from collect's search.
+    local report_subdir=""
+    if type post_game_subdir &>/dev/null; then
+        report_subdir="$(post_game_subdir "$day_dir" go)"
+    fi
+    local moved_sgf=""
+    while IFS= read -r sgf_file; do
+        [[ -z "$sgf_file" ]] && continue
+        if [[ -n "$report_subdir" ]] && [[ "$sgf_file" != "$report_subdir"/* ]]; then
+            local target="$report_subdir/$(basename "$sgf_file")"
+            cp "$sgf_file" "$target" 2>/dev/null && sgf_file="$target"
+        fi
+        moved_sgf=$(printf '%s\n%s' "$moved_sgf" "$sgf_file")
+    done <<< "$new_sgf"
+    new_sgf=$(echo "$moved_sgf" | sed '/^$/d')
+
     local analysed_files=""
     while IFS= read -r sgf_file; do
         [[ -z "$sgf_file" ]] && continue
@@ -118,4 +142,8 @@ analyze_new_sgf_files() {
             claude_annotate_sgf "$analysed_sgf"
         done <<< "$analysed_files"
     fi
+
+    # Restore the marker mtime so the launcher's collect_after_game_report
+    # derives the same subdir name we used.
+    type restore_marker_epoch &>/dev/null && restore_marker_epoch
 }

@@ -52,6 +52,11 @@ if [ -n "$CM_EXE" ]; then
         touch "$SGL_GAME_STARTED_MARKER"
     fi
 
+    # Capture marker mtime so a concurrent game can't perturb our subdir name.
+    REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+    source "$REPO_ROOT/launcher/lib/post_game_subdir.sh"
+    capture_marker_epoch
+
     # Launch opening repertoire helper alongside the chess GUI
     WED_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
     if [[ -x "$WED_DIR/openingRepertoire/run_opening_repertoire.sh" ]]; then
@@ -111,13 +116,17 @@ if [ -n "$CM_EXE" ]; then
         echo ""
         echo "Converting and analysing Chessmaster PGN files..."
 
-        # Determine the day directory for afterGameReport output
+        # Determine the day directory and write the converted/annotated PGN
+        # straight into the timestamped afterGameReport subdir so a
+        # concurrent game's collect_after_game_report can't race in.
         day_dir="${REPO_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}/WED"
+        report_subdir="$(post_game_subdir "$day_dir" chessmaster)"
 
         # Set up venv with python-chess for stockfish annotation
         VENV_DIR="$SCRIPT_DIR/../openingRepertoire/venv"
         STOCKFISH="$(command -v stockfish 2>/dev/null || echo /usr/games/stockfish)"
 
+        annotated_files=""
         while IFS= read -r pgn_file; do
             [[ -z "$pgn_file" ]] && continue
             base=$(basename "$pgn_file")
@@ -128,8 +137,9 @@ if [ -n "$CM_EXE" ]; then
             sed 's/\x8b/K/g; s/\x89/Q/g; s/\x86/B/g; s/\x87/N/g; s/\x88/R/g' "$pgn_file" \
                 | tr -cd '[:print:]\n\r\t' > "$converted"
 
-            # Step 2: Run Stockfish analysis if venv and engine available
-            annotated="$day_dir/${base%.PGN}.pgn"
+            # Step 2: Run Stockfish analysis if venv and engine available.
+            # Output lands directly in $report_subdir.
+            annotated="$report_subdir/${base%.PGN}.pgn"
             if [[ -d "$VENV_DIR" && -x "$STOCKFISH" ]]; then
                 "$VENV_DIR/bin/python3" "$SCRIPT_DIR/stockfish_annotate.py" \
                     "$converted" "$annotated" --engine "$STOCKFISH" --depth 15 \
@@ -140,23 +150,25 @@ if [ -n "$CM_EXE" ]; then
                 cp "$converted" "$annotated"
             fi
             rm -f "$converted"
+            annotated_files=$(printf '%s\n%s' "$annotated_files" "$annotated")
         done <<< "$new_pgn_files"
+        annotated_files=$(echo "$annotated_files" | sed '/^$/d')
 
-        # Add English-language annotations via Claude Code
+        # Add English-language annotations via Claude Code (in-place in $report_subdir)
         source "$SCRIPT_DIR/../claude_annotate_pgn.sh"
-        for pgn_annotated in "$day_dir"/*.pgn; do
+        while IFS= read -r pgn_annotated; do
+            [[ -z "$pgn_annotated" ]] && continue
             [[ -f "$pgn_annotated" ]] || continue
-            # Only annotate files just created in this session
-            fmod=$(stat -c %Y "$pgn_annotated" 2>/dev/null) || continue
-            [[ "$fmod" -gt "$snapshot_time" ]] && claude_annotate_pgn "$pgn_annotated"
-        done
+            claude_annotate_pgn "$pgn_annotated"
+        done <<< "$annotated_files"
 
-        echo "PGN files saved to $day_dir/ for afterGameReport collection."
+        echo "PGN files saved to afterGameReport/$(basename "$report_subdir")/"
     fi
 
     # Sync saved games
     rsync -a "$CM_USERS_DIR/" "$SCRIPT_DIR/savedGames/" 2>/dev/null || true
 
+    restore_marker_epoch
     exit 0
 fi
 

@@ -5,9 +5,13 @@ export WINEPREFIX="$PWD/WP"
 
 # Check if the Sierra directory exists in the Wine prefix
 if [ -d "$WINEPREFIX/drive_c/Sierra" ]; then
+  # Scale wine's logical DPI so the legacy form is legible on hi-DPI displays.
+  # 96 = default, 144 = 1.5x. Going higher overflows the fixed-pixel controls.
+  wine reg add "HKCU\\Control Panel\\Desktop" /v LogPixels /t REG_DWORD /d 144 /f &>/dev/null
+
   # Navigate to the GPL Setup Manager directory and run the executable
   cd "$WINEPREFIX/drive_c/Program Files/GPLSecrets/GPL Setup Manager" || exit 1
-  wine "GPL Setup Manager.exe" 2>/dev/null 1>/dev/null
+  wine "GPL Setup Manager.exe"
   exit 0
 else
    # Display a message if GPL Setup Manager is not installed

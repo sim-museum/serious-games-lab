@@ -2,7 +2,14 @@
 cd "$(dirname "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$PWD"
 
-# PokerStove works fine with system wine — no special runner needed
+# Resolve the Lutris wine runner mapped in config/wine_runners.csv. Necessary
+# because Ubuntu 26.04's system wine is 10 wow64, which silently fails against
+# this script's WINEARCH=win32 prefix. The launcher sets these vars itself, so
+# only set them here for the direct-invocation path.
+: "${REPO_ROOT:=$(cd "$SCRIPT_DIR/.." && pwd)}"
+: "${SGL_GAME_SCRIPT:=pokerStove.sh}"
+export REPO_ROOT SGL_GAME_SCRIPT
+[[ -f "$REPO_ROOT/launcher/lib/wine_runner.sh" ]] && source "$REPO_ROOT/launcher/lib/wine_runner.sh"
 
 # Check that Wine is available
 if ! command -v wine &>/dev/null; then
@@ -46,13 +53,20 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/PokerStove/PokerStove.exe" ]; then
 
     # Mark game start so afterGameReport only collects files from gameplay, not install
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
-    wine "C:\\Program Files\\PokerStove\\PokerStove.exe" 2>/dev/null
+    REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+    source "$REPO_ROOT/launcher/lib/post_game_subdir.sh"
+    capture_marker_epoch
+    wine "C:\\Program Files\\PokerStove\\PokerStove.exe"
 
     # Extract only the new results appended during this session
     if [[ -f pokerstove.txt ]]; then
         new_size="$(wc -c < pokerstove.txt)"
         if [[ "$new_size" -gt "$snapshot" ]]; then
-            local_session_file="$SCRIPT_DIR/pokerstove_$(date '+%y%m%d_%H%M').txt"
+            # Write the session log straight into the timestamped
+            # afterGameReport subdir so a concurrent game's collect can't
+            # grab it mid-annotation.
+            report_subdir="$(post_game_subdir "$SCRIPT_DIR" pokerstove)"
+            local_session_file="$report_subdir/pokerstove_$(date '+%y%m%d_%H%M').txt"
             tail -c +"$((snapshot + 1))" pokerstove.txt > "$local_session_file"
             # Restore pokerstove.txt to its pre-session state
             head -c "$snapshot" pokerstove.txt > pokerstove.txt.tmp
@@ -60,8 +74,10 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/PokerStove/PokerStove.exe" ]; then
             # Annotate session results with Claude Code
             source "$SCRIPT_DIR/claude_annotate_poker.sh"
             claude_annotate_poker "$local_session_file"
+            echo "  Annotated session log saved to afterGameReport/$(basename "$report_subdir")/"
         fi
     fi
+    restore_marker_epoch
     exit
 fi
 
@@ -82,7 +98,7 @@ if [ -f "$WINEPREFIX/drive_c/Program Files/PokerStove/PokerStove.exe" ]; then
     cd "$WINEPREFIX/drive_c/Program Files/PokerStove/"
     # Mark game start so afterGameReport only collects files from gameplay, not install
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
-    wine PokerStove.exe 2>/dev/null
+    wine PokerStove.exe
 else
     echo "Installation may have failed. Run this script again to retry."
 fi

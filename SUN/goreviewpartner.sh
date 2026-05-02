@@ -95,6 +95,7 @@ snapshot_sgf_files
 if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
     touch "$SGL_GAME_STARTED_MARKER"
 fi
+type capture_marker_epoch &>/dev/null && capture_marker_epoch
 
 cd "$GRP_DIR"
 python3 main.py

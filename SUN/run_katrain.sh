@@ -67,6 +67,7 @@ snapshot_sgf_files
 if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
     touch "$SGL_GAME_STARTED_MARKER"
 fi
+type capture_marker_epoch &>/dev/null && capture_marker_epoch
 
 # Suppress Kivy debug/warning noise (cutbuffer, config upgrade, etc.)
 export KIVY_LOG_LEVEL=error

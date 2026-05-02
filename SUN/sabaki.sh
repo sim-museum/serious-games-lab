@@ -88,6 +88,7 @@ snapshot_sgf_files
 if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
     touch "$SGL_GAME_STARTED_MARKER"
 fi
+type capture_marker_epoch &>/dev/null && capture_marker_epoch
 
 chmod +x "$SABAKI_PATH" 2>/dev/null
 "$SABAKI_PATH" --no-sandbox 2>/dev/null 1>/dev/null

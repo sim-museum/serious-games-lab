@@ -55,6 +55,7 @@ snapshot_sgf_files
 if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
     touch "$SGL_GAME_STARTED_MARKER"
 fi
+type capture_marker_epoch &>/dev/null && capture_marker_epoch
 
 # Launch q5go — prefer local build, then system-installed
 Q5GO_LOCAL="$SCRIPT_DIR/q5go_install/bin/q5go"

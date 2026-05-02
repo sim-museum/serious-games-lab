@@ -178,10 +178,19 @@ if _katago_is_opencl && \
 fi
 
 # --- 7. Ensure Go problem collections are downloaded ---
+# Count SGFs rather than test for the parent dir — gogameguru/ in particular
+# can survive a partial clone (templates/ + zip.sh present, difficulty subdirs
+# empty), and a dir-only check would skip the re-download silently.
 PROBLEMS_DIR="$KATAGO_SCRIPT_DIR/problems"
-if [[ ! -d "$PROBLEMS_DIR/gogameguru" || ! -d "$PROBLEMS_DIR/mygogrinder" ]]; then
+_ggg_sgf=0
+_xxqj_sgf=0
+[[ -d "$PROBLEMS_DIR/gogameguru/weekly-go-problems" ]] \
+    && _ggg_sgf=$(find "$PROBLEMS_DIR/gogameguru/weekly-go-problems" -name '*.sgf' -type f 2>/dev/null | wc -l)
+[[ -d "$PROBLEMS_DIR/mygogrinder/xuan-xuan-qi-jing" ]] \
+    && _xxqj_sgf=$(find "$PROBLEMS_DIR/mygogrinder/xuan-xuan-qi-jing" -name '*.sgf' -type f 2>/dev/null | wc -l)
+if (( _ggg_sgf < 400 || _xxqj_sgf < 300 )); then
     echo ""
-    echo "Downloading Go problem collections..."
+    echo "Downloading Go problem collections (gogameguru:$_ggg_sgf, xuan-xuan:$_xxqj_sgf SGFs)..."
     bash "$KATAGO_SCRIPT_DIR/download_go_problems.sh"
 fi
 

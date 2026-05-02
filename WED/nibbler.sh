@@ -90,6 +90,11 @@ if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
     touch "$SGL_GAME_STARTED_MARKER"
 fi
 
+# Capture marker mtime so a concurrent game can't perturb our subdir name.
+REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+source "$REPO_ROOT/launcher/lib/post_game_subdir.sh"
+capture_marker_epoch
+
 # Launch opening repertoire helper alongside the chess GUI
 if [[ -x "$SCRIPT_DIR/openingRepertoire/run_opening_repertoire.sh" ]]; then
     echo "Launching Opening Repertoire helper..."
@@ -131,6 +136,20 @@ rm -f "$pgn_snapshot"
 new_pgn_files=$(echo "$new_pgn_files" | sed '/^$/d')
 
 if [[ -n "$new_pgn_files" ]]; then
+    # Move PGN(s) into the timestamped afterGameReport subdir BEFORE
+    # annotation so a concurrent game's collect_after_game_report can't
+    # race in and grab them mid-annotation.
+    report_subdir="$(post_game_subdir "$SCRIPT_DIR" nibbler)"
+    moved_pgn_files=""
+    while IFS= read -r pgn_file; do
+        [[ -z "$pgn_file" ]] && continue
+        [[ -f "$pgn_file" ]] || continue
+        target="$report_subdir/$(basename "$pgn_file")"
+        mv -f "$pgn_file" "$target"
+        moved_pgn_files=$(printf '%s\n%s' "$moved_pgn_files" "$target")
+    done <<< "$new_pgn_files"
+    new_pgn_files=$(echo "$moved_pgn_files" | sed '/^$/d')
+
     echo ""
     echo "Running Stockfish analysis on saved PGN files..."
     VENV_DIR="$SCRIPT_DIR/openingRepertoire/venv"
@@ -157,4 +176,8 @@ if [[ -n "$new_pgn_files" ]]; then
         [[ -z "$pgn_file" ]] && continue
         claude_annotate_pgn "$pgn_file"
     done <<< "$new_pgn_files"
+
+    echo "  Annotated PGN(s) saved to afterGameReport/$(basename "$report_subdir")/"
 fi
+
+restore_marker_epoch

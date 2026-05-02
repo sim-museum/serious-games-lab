@@ -17,6 +17,7 @@ snapshot_sgf_files
 if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then
     touch "$SGL_GAME_STARTED_MARKER"
 fi
+type capture_marker_epoch &>/dev/null && capture_marker_epoch
 
 cd "$INSTALL_DIR/igowin"
 wine igowin.exe 2>/dev/null 1>/dev/null

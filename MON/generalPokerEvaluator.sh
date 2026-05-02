@@ -94,9 +94,24 @@ echo "(All input and output will be logged.)"
 echo ""
 
 cd "$SCRIPT_DIR"
+REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+source "$REPO_ROOT/launcher/lib/post_game_subdir.sh"
+# This script is a calculator, not a "game" — don't touch the started
+# marker (would trigger a launcher self-assessment prompt). capture
+# still works via its wall-clock fallback.
+capture_marker_epoch
+
 LOG_FILE="$SCRIPT_DIR/ps_eval_log_$(date '+%y%m%d_%H%M').txt"
 script -q -c "bash --norc --noprofile -i" "$LOG_FILE"
 
+# Move log into the timestamped afterGameReport subdir BEFORE annotation
+# so a concurrent game's collect_after_game_report can't grab it mid-run.
+report_subdir="$(post_game_subdir "$SCRIPT_DIR" pseval)"
+target="$report_subdir/$(basename "$LOG_FILE")"
+mv -f "$LOG_FILE" "$target"
+
 # Annotate session log with Claude Code
 source "$SCRIPT_DIR/claude_annotate_poker.sh"
-claude_annotate_poker "$LOG_FILE"
+claude_annotate_poker "$target"
+
+echo "  Annotated log saved to afterGameReport/$(basename "$report_subdir")/"
