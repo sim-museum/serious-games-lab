@@ -48,6 +48,9 @@ if [ -n "$QBRIDGE_DIR" ]; then
     cd "$QBRIDGE_DIR"
     # Mark game start so afterGameReport only collects files from gameplay, not install
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
+    REPO_ROOT="${REPO_ROOT:-$(cd "$BASE_DIR/.." && pwd)}"
+    source "$REPO_ROOT/launcher/lib/post_game_subdir.sh"
+    capture_marker_epoch
     wine QBRIDGE.EXE 2>/dev/null 1>/dev/null
     cd "$BASE_DIR"
     clear
@@ -62,17 +65,10 @@ if [ -n "$QBRIDGE_DIR" ]; then
             [[ "$fmod" -le "$_qp_snapshot_time" ]] && continue
             _qp_found_bdl=true
 
-            # Create afterGameReport subdir if needed
-            _qp_dest=""
-            if [[ -d "$REPORT_DIR" ]]; then
-                _qp_dest=$(find "$REPORT_DIR" -mindepth 1 -maxdepth 1 -type d -name "*_qplus" \
-                               -printf '%T@ %p\n' 2>/dev/null \
-                           | sort -rn | head -1 | cut -d' ' -f2-)
-            fi
-            if [[ -z "$_qp_dest" || ! -d "$_qp_dest" ]]; then
-                _qp_dest="$REPORT_DIR/$(date '+%y%m%d_%H%M')_qplus"
-            fi
-            mkdir -p "$_qp_dest"
+            # Create afterGameReport subdir using the marker's mtime so the
+            # name matches what collect_after_game_report will derive even
+            # if a concurrent game perturbs the marker mid-annotation.
+            _qp_dest="$(post_game_subdir "$BASE_DIR" qplus)"
 
             base=$(basename "$bdl_file" .bdl)
             cp "$bdl_file" "$_qp_dest/${base}.bdl"
@@ -89,6 +85,7 @@ if [ -n "$QBRIDGE_DIR" ]; then
     # Display exit message
     cat "$BASE_DIR/DOC/REFERENCE/exitMessageQplus.txt"
     echo ""; echo ""
+    restore_marker_epoch
     exit 0
 else
     # Check Wine version for compatibility

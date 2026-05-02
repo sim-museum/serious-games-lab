@@ -65,20 +65,38 @@ Rules:
 PROMPT_EOF
 )"
 
-    if timeout 240 claude -p --max-turns 1 "${prompt}
+    # Count structural features in the input so we can verify nothing was
+    # silently dropped.  PGN games can be hundreds of moves with dense
+    # Stockfish variations; weaker models truncate or skip moves.
+    # Count "{ best:" — uniquely marks the start of every Stockfish
+    # variation comment and won't appear in English-prose annotations.
+    local in_variations in_results in_event
+    in_variations="$(grep -o '{ best:' "$pgn_file" | wc -l)"
+    in_results="$(grep -oE '(1-0|0-1|1/2-1/2)' "$pgn_file" | tail -1)"
+    in_event="$(grep -c '^\[Event ' "$pgn_file")"
+
+    if timeout 600 claude -p --max-turns 1 --model sonnet --no-session-persistence "${prompt}
 
 Here is the PGN file:
 
-${pgn_content}" > "$tmp_out" 2>/dev/null; then
+${pgn_content}" < /dev/null > "$tmp_out" 2>/dev/null; then
         # Strip markdown code fences that Claude sometimes wraps around output
         sed -i '/^```/d' "$tmp_out"
 
-        # Validate: must contain at least one PGN header and move text
-        if grep -q '^\[Event ' "$tmp_out" && grep -qE '1\.' "$tmp_out"; then
+        local out_variations out_event
+        out_variations="$(grep -o '{ best:' "$tmp_out" | wc -l)"
+        out_event="$(grep -c '^\[Event ' "$tmp_out")"
+
+        # Validate: header present, every variation preserved, and the
+        # result tag still on the last line.  If any drop, keep the
+        # Stockfish-only version rather than overwriting with truncated output.
+        if [[ "$out_event" -ge "$in_event" ]] \
+            && [[ "$out_variations" -eq "$in_variations" ]] \
+            && grep -q "$in_results\$" "$tmp_out"; then
             cp "$tmp_out" "$pgn_file"
             echo "  Done: English annotations added to $base"
         else
-            echo "  Claude output was not valid PGN, keeping Stockfish-only version."
+            echo "  Claude output dropped content (variations: $in_variations→$out_variations, events: $in_event→$out_event); keeping Stockfish-only version."
         fi
     else
         echo "  Claude annotation failed, keeping Stockfish-only version."

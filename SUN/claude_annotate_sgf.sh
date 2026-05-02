@@ -61,11 +61,11 @@ Rules:
 PROMPT_EOF
 )"
 
-    if timeout 120 claude -p --max-turns 1 "${prompt}
+    if timeout 300 claude -p --max-turns 1 --model haiku "${prompt}
 
 Here is the SGF file:
 
-${sgf_content}" > "$tmp_out" 2>/dev/null; then
+${sgf_content}" < /dev/null > "$tmp_out" 2>/dev/null; then
         # Strip markdown code fences that Claude sometimes wraps around output
         sed -i '/^```/d' "$tmp_out"
 

@@ -29,29 +29,24 @@ if [ -f "$WINEPREFIX/Bridge Baron/Baron.exe" ]; then
     # If installed, change directory and run Bridge Baron 12
     cd "$WINEPREFIX/Bridge Baron"
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
+    BB12_DIR="$(dirname "$WINEPREFIX")"
+    FRI_DIR="$(dirname "$BB12_DIR")"
+    REPO_ROOT="${REPO_ROOT:-$(cd "$FRI_DIR/.." && pwd)}"
+    source "$REPO_ROOT/launcher/lib/post_game_subdir.sh"
+    capture_marker_epoch
     # Snapshot existing PPL files before launching
     _bb12_snapshot_time=$(date +%s)
     wine Baron.exe 2>/dev/null 1>/dev/null
     clear
 
     # Convert any new/modified .ppl files to .bdl in afterGameReport
-    # WINEPREFIX was set from $PWD before cd to Wine prefix, so derive paths from it
-    BB12_DIR="$(dirname "$WINEPREFIX")"
-    FRI_DIR="$(dirname "$BB12_DIR")"
     REPORT_DIR="$FRI_DIR/afterGameReport"
     HARNESS_DIR="$FRI_DIR/guiHarness"
 
-    # Find the launcher's timestamped report dir (most recent bb12 subdir)
-    _bb12_dest=""
-    if [[ -d "$REPORT_DIR" ]]; then
-        _bb12_dest=$(find "$REPORT_DIR" -mindepth 1 -maxdepth 1 -type d -name "*_bb12" \
-                         -printf '%T@ %p\n' 2>/dev/null \
-                     | sort -rn | head -1 | cut -d' ' -f2-)
-    fi
-    if [[ -z "$_bb12_dest" || ! -d "$_bb12_dest" ]]; then
-        _bb12_dest="$REPORT_DIR/$(date '+%y%m%d_%H%M')_bb12"
-    fi
-    mkdir -p "$_bb12_dest"
+    # Subdir derived from the marker's mtime so it matches what
+    # collect_after_game_report will derive, even if a concurrent game
+    # has perturbed the marker.
+    _bb12_dest="$(post_game_subdir "$FRI_DIR" bb12)"
 
     # Search Wine prefix, FRI dir, and the report dir for new .ppl files
     _bb12_last_pbn=""
@@ -124,6 +119,7 @@ print(bh.pbn_file_to_base72('$_bb12_last_pbn'))
         fi
     fi
 
+    restore_marker_epoch
     exit 0
 fi
 

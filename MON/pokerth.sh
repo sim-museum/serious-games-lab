@@ -30,8 +30,12 @@ for cand in pokerth_client pokerth; do
     fi
 done
 
+REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+source "$REPO_ROOT/launcher/lib/post_game_subdir.sh"
+
 if [[ -n "$pokerth_bin" ]]; then
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
+    capture_marker_epoch
     "$pokerth_bin" 2>/dev/null 1>/dev/null
 elif [[ -x "$SCRIPT_DIR/INSTALL/PokerTH-1.1.2/pokerth" ]]; then
     install_dir="$SCRIPT_DIR/INSTALL/PokerTH-1.1.2"
@@ -39,6 +43,7 @@ elif [[ -x "$SCRIPT_DIR/INSTALL/PokerTH-1.1.2/pokerth" ]]; then
     export LD_LIBRARY_PATH
     export QT_QPA_FONTDIR="$install_dir/data/fonts"
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
+    capture_marker_epoch
     "$install_dir/pokerth"
 else
     echo "pokerth not found."
@@ -47,8 +52,10 @@ else
     exit 1
 fi
 
-# Find the most recent PokerTH log file from this session and annotate with Claude
-source "$SCRIPT_DIR/claude_annotate_poker.sh"
+# Find the most recent PokerTH log file from this session.  Move it into
+# the timestamped afterGameReport subdir BEFORE running Claude annotation
+# so a concurrent game's collect_after_game_report can't grab it
+# mid-annotation.
 _newest_pdb=""
 _newest_mod=0
 for search_dir in "$HOME/.pokerth/log-files" "$HOME" "$SCRIPT_DIR"; do
@@ -62,5 +69,12 @@ for search_dir in "$HOME/.pokerth/log-files" "$HOME" "$SCRIPT_DIR"; do
     done < <(find "$search_dir" -maxdepth 5 \( -name "pokerth-log*" -o -name "PokerTH*Log*" \) -type f -print0 2>/dev/null)
 done
 if [[ -n "$_newest_pdb" ]]; then
-    claude_annotate_poker "$_newest_pdb"
+    report_subdir="$(post_game_subdir "$SCRIPT_DIR" pokerth)"
+    target="$report_subdir/$(basename "$_newest_pdb")"
+    cp "$_newest_pdb" "$target"
+    source "$SCRIPT_DIR/claude_annotate_poker.sh"
+    claude_annotate_poker "$target"
+    echo "  Annotated PokerTH log saved to afterGameReport/$(basename "$report_subdir")/"
 fi
+
+restore_marker_epoch

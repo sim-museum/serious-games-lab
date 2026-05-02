@@ -161,11 +161,14 @@ launch_mig() {
     # main_launcher.sh, a parent process) can find it via the filesystem
     # rather than an env var that wouldn't propagate upward.
     local pre_existing_path="${SGL_GAME_STARTED_MARKER:-$WINEPREFIX/.sgl_game_started}.pre_existing"
+    # Emit canonical absolute paths (-exec realpath) so the collector's
+    # grep -qFx against its own find output matches even when the search
+    # root contains a "/./" segment from $day_dir/$search_dir composition.
     {
         find "$WINEPREFIX/drive_c/rowan/mig/Videos" -maxdepth 1 -name "*.cam" -type f \
-            -printf '%p\n' 2>/dev/null
+            -exec realpath {} + 2>/dev/null
         find "$WINEPREFIX/drive_c/rowan/mig/SaveGame" -maxdepth 1 -name "*.sav" -type f \
-            -printf '%p\n' 2>/dev/null
+            -exec realpath {} + 2>/dev/null
     } > "$pre_existing_path"
 
     if [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]]; then

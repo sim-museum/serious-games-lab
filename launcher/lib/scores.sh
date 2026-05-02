@@ -126,7 +126,7 @@ export_scores() {
 
     local ts
     ts="$(date '+%y%m%d_%H%M')"
-    local dir_name="${user_name}_seriousGamesLab-24041LTS_${ts}"
+    local dir_name="${user_name}_seriousGamesLab-2604LTS_${ts}"
     local export_dir="$REPO_ROOT/$dir_name"
 
     mkdir -p "$export_dir"

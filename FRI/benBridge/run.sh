@@ -67,8 +67,14 @@ fi
 export LD_LIBRARY_PATH="$BEN_DIR/bin${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export PYTHONPATH="$BEN_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FRI_DIR="$(dirname "$SCRIPT_DIR")"
+REPO_ROOT="${REPO_ROOT:-$(cd "$FRI_DIR/.." && pwd)}"
+source "$REPO_ROOT/launcher/lib/post_game_subdir.sh"
+
 cd ben_bridge
 [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
+capture_marker_epoch
 python3 main.py "$@" 2>/dev/null
 exit_code=$?
 
@@ -94,22 +100,13 @@ while IFS= read -r -d '' f; do
 done < <(find "$SCRIPT_DIR/ben/DATA/LOG" -maxdepth 1 -name "*.pbn" -type f -print0 2>/dev/null)
 
 if [[ -n "$_newest_pbn" ]]; then
-    FRI_DIR="$SCRIPT_DIR"
     HARNESS_DIR="$FRI_DIR/guiHarness"
     REPORT_DIR="$FRI_DIR/afterGameReport"
 
-    # Reuse the launcher's most recent benbridge subdir if present, else
-    # create one keyed on the current minute.
-    _ben_dest=""
-    if [[ -d "$REPORT_DIR" ]]; then
-        _ben_dest=$(find "$REPORT_DIR" -mindepth 1 -maxdepth 1 -type d -name "*_benbridge" \
-                        -printf '%T@ %p\n' 2>/dev/null \
-                    | sort -rn | head -1 | cut -d' ' -f2-)
-    fi
-    if [[ -z "$_ben_dest" || ! -d "$_ben_dest" ]]; then
-        _ben_dest="$REPORT_DIR/$(date '+%y%m%d_%H%M')_benbridge"
-    fi
-    mkdir -p "$_ben_dest"
+    # Subdir derived from the marker's mtime so it matches what
+    # collect_after_game_report will derive, even if a concurrent game
+    # has perturbed the marker.
+    _ben_dest="$(post_game_subdir "$FRI_DIR" benbridge)"
 
     base=$(basename "$_newest_pbn" .pbn)
     cp "$_newest_pbn" "$_ben_dest/${base}.pbn"
@@ -131,3 +128,5 @@ print('  Converted ${base}.pbn -> ${base}.bdl')
             "$_ben_dest/${base}.bdl" "$_ben_dest/${base}_annotated.bdl"
     fi
 fi
+
+restore_marker_epoch

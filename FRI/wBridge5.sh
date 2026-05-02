@@ -29,27 +29,23 @@ if [ -d "$WINEPREFIX/drive_c/wbridge5" ]; then
     # If installed, run Wbridge5
     # Mark game start so afterGameReport only collects files from gameplay, not install
     [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
+    FRI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    REPO_ROOT="${REPO_ROOT:-$(cd "$FRI_DIR/.." && pwd)}"
+    source "$REPO_ROOT/launcher/lib/post_game_subdir.sh"
+    capture_marker_epoch
     # Snapshot existing PBN files before launching
     _wb5_snapshot_time=$(date +%s)
     wine "$WINEPREFIX/drive_c/wbridge5/Wbridge5.exe" 2>/dev/null 1>/dev/null
     clear
 
     # Convert any new/modified .pbn files to .bdl in afterGameReport
-    FRI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     REPORT_DIR="$FRI_DIR/afterGameReport"
     HARNESS_DIR="$FRI_DIR/guiHarness"
 
-    # Find the launcher's timestamped report dir (most recent wbridge5 subdir)
-    _wb5_dest=""
-    if [[ -d "$REPORT_DIR" ]]; then
-        _wb5_dest=$(find "$REPORT_DIR" -mindepth 1 -maxdepth 1 -type d -name "*_wbridge5" \
-                        -printf '%T@ %p\n' 2>/dev/null \
-                    | sort -rn | head -1 | cut -d' ' -f2-)
-    fi
-    if [[ -z "$_wb5_dest" || ! -d "$_wb5_dest" ]]; then
-        _wb5_dest="$REPORT_DIR/$(date '+%y%m%d_%H%M')_wbridge5"
-    fi
-    mkdir -p "$_wb5_dest"
+    # Subdir name derived from the marker's mtime so it matches the one
+    # collect_after_game_report will derive, even if a concurrent game
+    # has perturbed the marker.
+    _wb5_dest="$(post_game_subdir "$FRI_DIR" wbridge5)"
 
     # Search Wine prefix and FRI dir for new .pbn files
     _wb5_last_pbn=""
@@ -117,6 +113,7 @@ print(bh.pbn_file_to_base72('$_wb5_last_pbn'))
     # Display exit message
     cat "$PWD/DOC/REFERENCE/exitMessageWbridge5.txt"
     echo ""; echo ""
+    restore_marker_epoch
     exit 0
 else
     # Check Wine version for compatibility

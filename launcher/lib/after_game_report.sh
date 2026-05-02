@@ -353,6 +353,11 @@ collect_after_game_report() {
                 max_depth=5
             fi
             [[ -d "$abs_search_dir" ]] || continue
+            # Canonicalize so find -printf paths match the snapshot paths in
+            # $pre_existing_path. Without this, "$day_dir/./MigAlley/..." and
+            # "$day_dir/MigAlley/..." compare unequal under grep -qFx, and the
+            # snapshot skip-list silently fails to match.
+            abs_search_dir="$(realpath "$abs_search_dir" 2>/dev/null || echo "$abs_search_dir")"
 
             # Build find exclusions — skip INSTALL and openingRepertoire always.
             # Skip afterGameReport subdirs unless we're explicitly searching there
@@ -388,6 +393,9 @@ collect_after_game_report() {
                 # the started-marker; see migAlley.sh for an example.
                 if [[ -f "$pre_existing_path" ]]; then
                     grep -qFx "$file" "$pre_existing_path" 2>/dev/null && continue
+                    local file_canonical
+                    file_canonical="$(realpath "$file" 2>/dev/null)"
+                    [[ -n "$file_canonical" ]] && grep -qFx "$file_canonical" "$pre_existing_path" 2>/dev/null && continue
                 fi
                 if [ "$file_epoch" $compare_op "$start_epoch" ]; then
                     if [[ "$found_files" == false ]]; then
