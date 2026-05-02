@@ -4716,8 +4716,7 @@ class PokerWindow(QMainWindow):
     def toggle_god_mode(self, state):
         self.god_mode = self.god_mode_cb.isChecked()
         if self.god_mode:
-            hero_name = self.players[0].name if self.players else "Hero (You)"
-            self.hand_assists_used.setdefault(hero_name, set()).add("God Mode")
+            self._record_assist_used_locally("God Mode")
         self.update_all_panels()
         self.update_checkbox_states()
         self._refresh_feature_status()
@@ -4726,12 +4725,27 @@ class PokerWindow(QMainWindow):
     def toggle_stats(self, state):
         self.show_stats = self.stats_cb.isChecked()
         if self.show_stats:
-            hero_name = self.players[0].name if self.players else "Hero (You)"
-            self.hand_assists_used.setdefault(hero_name, set()).add("Show Tells")
+            self._record_assist_used_locally("Show Tells")
         self.update_stats_display()
         self.update_checkbox_states()
         self._refresh_feature_status()
         self._broadcast_features()
+
+    def _record_assist_used_locally(self, assist_name: str):
+        """Flag the local hero as having used an assist mid-hand, but only
+        if (a) they're still active in the current hand and (b) the toggle
+        wasn't an automatic spectator-mode toggle (which kicks in AFTER the
+        hero folded)."""
+        if getattr(self, '_spectator_auto_toggle', False):
+            return
+        hero_seat = self.my_seat if self.my_seat is not None else 0
+        if hero_seat >= len(self.players):
+            return
+        hero = self.players[hero_seat]
+        if not getattr(hero, 'active', True):
+            return
+        hero_name = hero.name or "Hero"
+        self.hand_assists_used.setdefault(hero_name, set()).add(assist_name)
 
     def toggle_theory_of_mind(self, state):
         is_checked = self.tom_cb.isChecked()
@@ -4983,8 +4997,12 @@ class PokerWindow(QMainWindow):
                 self.log_label.setText(f"{mode} active")
 
     def _broadcast_features(self):
-        """Broadcast feature toggles to the other network instance."""
+        """Broadcast feature toggles to the other network instance.
+        Skip while the spectator-mode auto-toggle is in flight — that is
+        not a real opt-in, it's an automatic side effect of folding."""
         if not self.network_mode:
+            return
+        if getattr(self, '_spectator_auto_toggle', False):
             return
         features = {
             'god_mode': self.god_mode_cb.isChecked(),
@@ -5000,12 +5018,22 @@ class PokerWindow(QMainWindow):
     def _on_feature_toggle_received(self, player_name: str, features: dict):
         """Handle feature toggle from the other network instance."""
         active = []
+        # Find that player's seat to check if they're still active in the
+        # current hand. If they already folded, this toggle is just their
+        # spectator-mode auto-enable and should NOT be flagged in the summary.
+        toggling_player_active = True
+        for p in self.players:
+            if p.name == player_name:
+                toggling_player_active = bool(getattr(p, 'active', True))
+                break
         if features.get('god_mode'):
             active.append("God Mode")
-            self.hand_assists_used.setdefault(player_name, set()).add("God Mode")
+            if toggling_player_active:
+                self.hand_assists_used.setdefault(player_name, set()).add("God Mode")
         if features.get('tells'):
             active.append("Tells")
-            self.hand_assists_used.setdefault(player_name, set()).add("Show Tells")
+            if toggling_player_active:
+                self.hand_assists_used.setdefault(player_name, set()).add("Show Tells")
         if features.get('theory_of_mind'):
             active.append("Theory of Mind")
         if active:
@@ -5134,13 +5162,21 @@ class PokerWindow(QMainWindow):
         self.equity_cache_key = None
 
         # Track which players used assists at any point during this hand
-        # {player_name: set of assist names}
+        # {player_name: set of assist names}.  Only flag assists used while
+        # the player is still in the hand — assists auto-toggled after a fold
+        # (spectator mode) don't count.
         self.hand_assists_used = {}
-        hero_name = self.players[0].name if self.players else "Hero (You)"
-        if self.god_mode:
-            self.hand_assists_used.setdefault(hero_name, set()).add("God Mode")
-        if self.show_stats:
-            self.hand_assists_used.setdefault(hero_name, set()).add("Show Tells")
+        hero_seat = self.my_seat if self.my_seat is not None else 0
+        if hero_seat < len(self.players):
+            hero_name = self.players[hero_seat].name or "Hero"
+            if self.god_mode:
+                self.hand_assists_used.setdefault(hero_name, set()).add("God Mode")
+            if self.show_stats:
+                self.hand_assists_used.setdefault(hero_name, set()).add("Show Tells")
+
+        # Reset spectator state so a previous hand's snapshots don't leak in
+        self._spectator_street_snapshots = []
+        self._spectator_view_idx = -1
 
         # Reset hand history for interpretation
         self.hand_history = {
@@ -5424,15 +5460,22 @@ class PokerWindow(QMainWindow):
         self.tom_raise_btn.setEnabled(False)
 
     def _enter_spectator_mode(self):
-        """After hero folds, enable God Mode + Show Tells and show spectator controls."""
+        """After fold, enable God Mode + Show Tells and show ◀ ▶ street nav.
+        Spectators do NOT block gameplay — the game keeps proceeding for the
+        active players; nav buttons just scroll through snapshots."""
         self._hero_folded_spectating = True
         self._spectator_continue_all = False
 
-        # Turn on God Mode and Show Tells
-        if not self.god_mode_cb.isChecked():
-            self.god_mode_cb.setChecked(True)
-        if not self.stats_cb.isChecked():
-            self.stats_cb.setChecked(True)
+        # Turn on God Mode and Show Tells. Mark these as auto-toggled (so the
+        # mid-hand-assist tracking knows NOT to flag them in the summary).
+        self._spectator_auto_toggle = True
+        try:
+            if not self.god_mode_cb.isChecked():
+                self.god_mode_cb.setChecked(True)
+            if not self.stats_cb.isChecked():
+                self.stats_cb.setChecked(True)
+        finally:
+            self._spectator_auto_toggle = False
 
         # Show spectator buttons in place of action buttons
         self.fold_btn.setVisible(False)
@@ -5443,59 +5486,136 @@ class PokerWindow(QMainWindow):
             btn_style = ("QPushButton { font-size: 18px; font-weight: bold; "
                          "border-radius: 5px; padding: 6px; "
                          "background-color: #357; color: white; }"
-                         "QPushButton:hover { background-color: #468; }")
-            self._spectator_next_btn = QPushButton("Next Street (Space)")
+                         "QPushButton:hover { background-color: #468; }"
+                         "QPushButton:disabled { background-color: #234; color: #678; }")
+            self._spectator_prev_btn = QPushButton("◀ Previous Street")
+            self._spectator_prev_btn.setFixedSize(200, 55)
+            self._spectator_prev_btn.setStyleSheet(
+                btn_style.replace('#357', '#553').replace('#468', '#664'))
+            self._spectator_prev_btn.setShortcut("Left")
+            self._spectator_prev_btn.clicked.connect(self._spectator_prev)
+
+            self._spectator_next_btn = QPushButton("Next Street ▶")
             self._spectator_next_btn.setFixedSize(200, 55)
             self._spectator_next_btn.setStyleSheet(btn_style)
-            self._spectator_next_btn.setShortcut("Space")
+            self._spectator_next_btn.setShortcut("Right")
             self._spectator_next_btn.clicked.connect(self._spectator_next)
-
-            self._spectator_continue_btn = QPushButton("Continue (Enter)")
-            self._spectator_continue_btn.setFixedSize(200, 55)
-            self._spectator_continue_btn.setStyleSheet(
-                btn_style.replace('#357', '#553').replace('#468', '#664'))
-            self._spectator_continue_btn.setShortcut("Return")
-            self._spectator_continue_btn.clicked.connect(self._spectator_continue)
 
             # Insert into the action button layout
             action_layout = self.fold_btn.parentWidget().layout()
+            action_layout.addWidget(self._spectator_prev_btn)
             action_layout.addWidget(self._spectator_next_btn)
-            action_layout.addWidget(self._spectator_continue_btn)
 
+        self._spectator_prev_btn.setVisible(True)
         self._spectator_next_btn.setVisible(True)
-        self._spectator_next_btn.setEnabled(False)
-        self._spectator_continue_btn.setVisible(True)
-        self._spectator_continue_btn.setEnabled(False)
+
+        # If viewing latest, snap view index to current street_idx
+        if not hasattr(self, '_spectator_view_idx'):
+            self._spectator_view_idx = -1
+        self._update_spectator_nav_buttons()
 
     def _exit_spectator_mode(self):
         """Restore normal UI after spectator hand ends."""
         self._hero_folded_spectating = False
         self._spectator_continue_all = False
+        self._spectator_view_idx = -1
+        self._spectator_street_snapshots = []
 
         # Hide spectator buttons, restore action buttons
         if hasattr(self, '_spectator_next_btn'):
             self._spectator_next_btn.setVisible(False)
-            self._spectator_continue_btn.setVisible(False)
+        if hasattr(self, '_spectator_prev_btn'):
+            self._spectator_prev_btn.setVisible(False)
         self.fold_btn.setVisible(True)
         self.call_btn.setVisible(True)
         self.raise_btn.setVisible(True)
 
-    def _spectator_next(self):
-        """Spectator presses Next — advance one street."""
-        if hasattr(self, '_spectator_waiting') and self._spectator_waiting:
-            self._spectator_waiting = False
-            self._spectator_next_btn.setEnabled(False)
-            self._spectator_continue_btn.setEnabled(False)
-            self._resume_after_spectator_pause()
+    def _spectator_snapshot_count(self) -> int:
+        return len(getattr(self, '_spectator_street_snapshots', []))
 
-    def _spectator_continue(self):
-        """Spectator presses Continue — play out rest of hand without pausing."""
-        self._spectator_continue_all = True
-        if hasattr(self, '_spectator_waiting') and self._spectator_waiting:
-            self._spectator_waiting = False
-            self._spectator_next_btn.setEnabled(False)
-            self._spectator_continue_btn.setEnabled(False)
-            self._resume_after_spectator_pause()
+    def _update_spectator_nav_buttons(self):
+        """Enable/disable ◀ ▶ buttons based on snapshot list."""
+        if not hasattr(self, '_spectator_prev_btn'):
+            return
+        n = self._spectator_snapshot_count()
+        view = getattr(self, '_spectator_view_idx', -1)
+        # view == -1 means "live / latest". Treat as last snapshot index.
+        cur = (n - 1) if view < 0 else view
+        try:
+            self._spectator_prev_btn.setEnabled(n > 0 and cur > 0)
+            # Forward navigation only useful when viewing a past snapshot
+            self._spectator_next_btn.setEnabled(n > 0 and cur < n - 1)
+        except RuntimeError:
+            pass  # buttons deleted
+
+    def _spectator_record_snapshot(self, street: str, street_idx: int,
+                                    board, action_log):
+        """Record a per-street snapshot for spectator navigation."""
+        if not hasattr(self, '_spectator_street_snapshots'):
+            self._spectator_street_snapshots = []
+        snap = {
+            'street': street,
+            'street_idx': int(street_idx),
+            'board': [str(c) for c in board],
+            'action_log': list(action_log),
+        }
+        for i, existing in enumerate(self._spectator_street_snapshots):
+            if existing.get('street_idx') == snap['street_idx']:
+                self._spectator_street_snapshots[i] = snap
+                self._update_spectator_nav_buttons()
+                return
+        self._spectator_street_snapshots.append(snap)
+        self._update_spectator_nav_buttons()
+
+    def _spectator_show_snapshot(self, idx: int):
+        """Render the snapshot at idx (board cards + action log)."""
+        snaps = getattr(self, '_spectator_street_snapshots', [])
+        if not snaps or idx < 0 or idx >= len(snaps):
+            return
+        snap = snaps[idx]
+        board_cards = []
+        for c in snap.get('board', []):
+            try:
+                board_cards.append(eval7.Card(c))
+            except Exception:
+                pass
+        try:
+            self.table.set_board(board_cards)
+            self.table.set_street(snap.get('street', ''))
+            self.table.update()
+        except Exception:
+            pass
+        # Replace the action log row with this street's tail.
+        try:
+            log = snap.get('action_log', [])
+            self.action_log = list(log)[-5:]
+            self.log_label.setText(" | ".join(self.action_log))
+        except Exception:
+            pass
+
+    def _spectator_prev(self):
+        """View previous street snapshot."""
+        n = self._spectator_snapshot_count()
+        if n == 0:
+            return
+        view = getattr(self, '_spectator_view_idx', -1)
+        cur = (n - 1) if view < 0 else view
+        if cur > 0:
+            self._spectator_view_idx = cur - 1
+            self._spectator_show_snapshot(self._spectator_view_idx)
+            self._update_spectator_nav_buttons()
+
+    def _spectator_next(self):
+        """View next street snapshot."""
+        n = self._spectator_snapshot_count()
+        if n == 0:
+            return
+        view = getattr(self, '_spectator_view_idx', -1)
+        cur = (n - 1) if view < 0 else view
+        if cur < n - 1:
+            self._spectator_view_idx = cur + 1
+            self._spectator_show_snapshot(self._spectator_view_idx)
+            self._update_spectator_nav_buttons()
 
     def human_action(self, action, amount):
         """Process human player's action."""
@@ -5734,6 +5854,16 @@ class PokerWindow(QMainWindow):
         if self.network_mode == "host" and self.network_server:
             cards = [str(c) for c in self.board]
             self.network_server.broadcast_community_cards(cards, street)
+            # Snapshot the new street so folded clients can navigate to it.
+            self.network_server.broadcast_board_snapshot(
+                street, self.street_idx, cards, list(self.action_log))
+            # Re-push hole cards to any folded clients so they keep seeing
+            # all cards as new streets arrive.
+            self._refresh_spectator_hole_cards()
+
+        # Locally record a snapshot too (for the host's own spectator nav).
+        self._spectator_record_snapshot(
+            street, self.street_idx, self.board, self.action_log)
 
         # Track board and hero equity for interpretation
         self.hand_history['board_by_street'][street] = [str(c) for c in self.board]
@@ -5748,27 +5878,28 @@ class PokerWindow(QMainWindow):
             equity, _, _ = hero.calculate_current_stats(game_state, True)
             self.hand_history['street_equities'][street] = equity
 
-        # Update displays
-        self.update_all_panels()
-        self.update_stats_display()
+        # Update displays (only when viewing the live snapshot — if the
+        # spectator has scrolled back to a past street, leave their view).
+        if not getattr(self, '_hero_folded_spectating', False) or \
+                getattr(self, '_spectator_view_idx', -1) < 0:
+            self.update_all_panels()
+            self.update_stats_display()
+        else:
+            # Still recompute equities/panels offscreen but don't move the
+            # board view; the snapshot is what's on screen.
+            self.update_all_panels()
+            self.update_stats_display()
+            self._spectator_show_snapshot(self._spectator_view_idx)
+        self._update_spectator_nav_buttons()
 
-        # If hero folded and is spectating, pause before next street
-        if self._hero_folded_spectating and not self._spectator_continue_all:
-            self._spectator_waiting = True
-            self._spectator_next_btn.setEnabled(True)
-            self._spectator_continue_btn.setEnabled(True)
-            # Store resume state so we can continue when user clicks
-            self._spectator_resume_street = True
-            return
-
-        # Start new betting round (from dealer + 1)
+        # Spectators DO NOT block gameplay — keep dealing the next betting
+        # round immediately so bots and remaining humans can act.
         self._start_next_betting_round()
 
     def _resume_after_spectator_pause(self):
-        """Called when spectator clicks Next or Continue."""
-        if hasattr(self, '_spectator_resume_street') and self._spectator_resume_street:
-            self._spectator_resume_street = False
-            self._start_next_betting_round()
+        """No-op kept for backwards compatibility — spectator no longer
+        pauses the game."""
+        pass
 
     def _start_next_betting_round(self):
         """Start a new betting round (from dealer + 1)."""
@@ -6273,13 +6404,6 @@ class PokerWindow(QMainWindow):
         lines.append(f"Hand #{self.hand_number} Analysis")
         lines.append("-" * 40)
 
-        # Note if assists were used during this hand (per player)
-        assists_used = getattr(self, 'hand_assists_used', {})
-        if assists_used:
-            for player_name, assist_set in sorted(assists_used.items()):
-                lines.append(f"[{player_name} used: {', '.join(sorted(assist_set))}]")
-            lines.append("")
-
         # Show all players' hole cards (God Mode knowledge)
         lines.append("HOLE CARDS:")
         for p in self.players:
@@ -6388,34 +6512,104 @@ class PokerWindow(QMainWindow):
         self.write_log("HAND INTERPRETATION:")
         for line in lines:
             self.write_log(f"  {line}")
+        # Also log the assists banner (separate from the interpretation text)
+        assists_used = getattr(self, 'hand_assists_used', {})
+        if assists_used:
+            for player_name, assist_set in sorted(assists_used.items()):
+                self.write_log(f"  [{player_name} used while still in hand: "
+                               f"{', '.join(sorted(assist_set))}]")
         self.write_log("=" * 40)
 
-        # Display in a moveable non-modal dialog with large font and scrolling
         interpretation_text = "\n".join(lines)
+        # Serialize assists_used for transport (sets → sorted lists).
+        assists_payload = {name: sorted(list(s))
+                           for name, s in assists_used.items()}
+
+        # Broadcast to clients before rendering locally.
+        if self.network_mode == "host" and self.network_server:
+            try:
+                self.network_server.broadcast_hand_interpretation(
+                    interpretation_text,
+                    hand_number=getattr(self, 'hand_number', 0),
+                    assists_used=assists_payload,
+                )
+            except Exception as ex:
+                print(f"[host] hand interpretation broadcast failed: {ex}")
+
+        self._show_hand_interpretation_text(
+            interpretation_text,
+            getattr(self, 'hand_number', 0),
+            assists_payload,
+        )
+
+    def _show_hand_interpretation_text(self, interpretation_text: str,
+                                        hand_number: int,
+                                        assists_used: dict):
+        """Build the Hand Summary dialog used by both host and clients.
+
+        Layout: a single QScrollArea wraps the entire content (assists
+        banner + interpretation text + Claude analysis blocks) so each
+        block expands to its full word-wrapped height — fixing the per-
+        block clipping that happened when blocks lived outside the scroll
+        area."""
         dialog = QDialog(self)
         dialog.setWindowTitle("Hand Summary")
         dialog.setMinimumSize(600, 500)
-        dialog.resize(650, 600)  # Larger default size
-        dialog.setModal(False)  # Non-modal so user can interact with main window
+        dialog.resize(720, 720)
+        dialog.setModal(False)
 
-        layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(20, 20, 20, 20)
+        outer = QVBoxLayout(dialog)
+        outer.setContentsMargins(20, 20, 20, 20)
 
-        # Use scroll area to allow scrolling for long summaries
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setStyleSheet("QScrollArea { border: none; background-color: #2a2a2a; }")
+        scroll_area.setStyleSheet(
+            "QScrollArea { border: none; background-color: #2a2a2a; }")
+
+        content = QWidget()
+        content.setStyleSheet("background-color: #2a2a2a;")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(15, 15, 15, 15)
+        content_layout.setSpacing(8)
+        content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        # Bright assists banner — only shown if anyone used God Mode / Tells
+        # while still in the hand.  All players see this after the hand.
+        if assists_used:
+            assists_box = QLabel()
+            lines = ["⚠ ASSISTS USED WHILE STILL IN THE HAND ⚠"]
+            for name, used in sorted(assists_used.items()):
+                used_list = sorted(used) if not isinstance(used, list) else used
+                lines.append(f"  {name}: {', '.join(used_list)}")
+            assists_box.setText("\n".join(lines))
+            assists_box.setFont(QFont('Arial', 14, QFont.Weight.Bold))
+            assists_box.setWordWrap(True)
+            assists_box.setStyleSheet(
+                "color: #ffe066; background-color: #5a1a1a; padding: 12px;"
+                " border: 2px solid #ff4444; border-radius: 6px;")
+            content_layout.addWidget(assists_box)
 
         text_label = QLabel(interpretation_text)
         text_label.setFont(QFont('Arial', 18))
         text_label.setWordWrap(True)
-        text_label.setStyleSheet("color: white; background-color: #2a2a2a; padding: 15px;")
+        text_label.setStyleSheet(
+            "color: white; background-color: #2a2a2a; padding: 4px;")
         text_label.setAlignment(Qt.AlignmentFlag.AlignTop)
+        content_layout.addWidget(text_label)
 
-        scroll_area.setWidget(text_label)
-        layout.addWidget(scroll_area)
+        # Anchor at the bottom for Claude analysis insertions.
+        analysis_anchor = QWidget()
+        analysis_anchor.setStyleSheet("background-color: #2a2a2a;")
+        analysis_anchor_layout = QVBoxLayout(analysis_anchor)
+        analysis_anchor_layout.setContentsMargins(0, 0, 0, 0)
+        analysis_anchor_layout.setSpacing(6)
+        content_layout.addWidget(analysis_anchor)
+        content_layout.addStretch(1)
 
-        # Stats button to show graphical summary
+        scroll_area.setWidget(content)
+        outer.addWidget(scroll_area)
+
+        # Stats + OK buttons stay outside the scroll area
         stats_btn = QPushButton("Stats")
         stats_btn.setFixedSize(100, 40)
         stats_btn.setFont(QFont('Arial', 14, QFont.Weight.Bold))
@@ -6433,21 +6627,19 @@ class PokerWindow(QMainWindow):
         btn_layout.addSpacing(20)
         btn_layout.addWidget(ok_btn)
         btn_layout.addStretch()
-        layout.addLayout(btn_layout)
+        outer.addLayout(btn_layout)
 
-        # Claude critique — runs in a background thread with a progress bar
-        # so the UI doesn't look hung while waiting.
-        self._attach_claude_analysis_to_dialog(dialog, layout)
+        # Claude analysis blocks attach into the inner anchor layout so they
+        # share the scroll area with the rest of the content.
+        self._attach_claude_analysis_to_dialog(dialog, analysis_anchor_layout)
 
-        dialog.show()  # Non-blocking show instead of exec()
+        dialog.show()
 
     def _attach_claude_analysis_to_dialog(self, dialog, layout):
-        """Kick off (or wait for) Claude critique(s) and show progress in
-        `dialog`. Host/single-player runs Claude locally in a thread and
-        broadcasts to clients; clients just wait for the incoming bundle.
-        """
-        # Remember the live summary dialog so a later HAND_ANALYSIS msg can
-        # render into it directly.
+        """Kick off (or wait for) Claude critique(s). `layout` is the inner
+        anchor layout inside the dialog's scroll area; analysis widgets are
+        appended to it directly (each one expands to its full word-wrapped
+        height because the scroll area is widget-resizable)."""
         self._active_summary_dialog = dialog
         self._active_summary_layout = layout
         self._active_summary_placeholder = None
@@ -6468,11 +6660,12 @@ class PokerWindow(QMainWindow):
                 return
             placeholder = QLabel("Waiting for Claude analysis from host…")
             placeholder.setFont(QFont('Arial', 13))
+            placeholder.setWordWrap(True)
             placeholder.setStyleSheet(
                 "color: #bff; background: #1a1a2a; padding: 10px;"
                 " border-radius: 5px;"
             )
-            layout.insertWidget(layout.count() - 1, placeholder)
+            layout.addWidget(placeholder)
             self._active_summary_placeholder = placeholder
             return
 
@@ -6488,8 +6681,6 @@ class PokerWindow(QMainWindow):
         if not povs:
             return
 
-        # Progress container (progress bar + status label). Insert just
-        # before the button row so it stays visible while analysis runs.
         progress_box = QGroupBox("Claude analysis")
         progress_box.setStyleSheet(
             "QGroupBox { color: #bff; font-size: 13px; padding: 10px; }"
@@ -6504,13 +6695,14 @@ class PokerWindow(QMainWindow):
         bar.setValue(0)
         bar.setFormat("%v / %m")
         pbox_layout.addWidget(bar)
-        layout.insertWidget(layout.count() - 1, progress_box)
+        layout.addWidget(progress_box)
 
-        # Container for analysis labels added one-by-one when done.
         analysis_container = QWidget()
+        analysis_container.setStyleSheet("background-color: #2a2a2a;")
         analysis_layout = QVBoxLayout(analysis_container)
         analysis_layout.setContentsMargins(0, 0, 0, 0)
-        layout.insertWidget(layout.count() - 1, analysis_container)
+        analysis_layout.setSpacing(6)
+        layout.addWidget(analysis_container)
 
         thread = ClaudeAnalysisThread(hand_log, povs)
 
@@ -6605,9 +6797,36 @@ class PokerWindow(QMainWindow):
         return povs
 
     def _show_stats_from_dialog(self, parent_dialog):
-        """Show the graphical hand summary from the text summary dialog."""
+        """Show the graphical hand summary from the text summary dialog.
+        Clients use the cached HAND_END payload (the host's data); host /
+        single-player builds it locally from `hand_history`.
+        """
         parent_dialog.close()
-        self.show_hand_summary()
+        if self.network_mode == "client":
+            self._show_cached_graphical_summary()
+        else:
+            self.show_hand_summary()
+
+    def _show_cached_graphical_summary(self):
+        """Open the graphical HandSummaryDialog using the cached HAND_END
+        payload (client-side path)."""
+        cached = getattr(self, '_cached_hand_summary', None)
+        if not cached or not cached.get('street_stats'):
+            return
+        try:
+            dialog = HandSummaryDialog(
+                street_stats=cached['street_stats'],
+                street_actions=cached['street_actions'],
+                board_by_street=cached['board_by_street'],
+                player_results=cached['player_results'],
+                player_hands=cached['player_hands'],
+                made_hands_by_street=cached['made_hands_by_street'],
+                parent=self,
+            )
+            dialog.setModal(False)
+            dialog.show()
+        except Exception as ex:
+            print(f"[client] graphical hand summary failed: {ex}")
 
     def show_help(self):
         """Show help dialog with game instructions."""
@@ -7151,6 +7370,12 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                 self.setWindowTitle(f"PokerIQ - Server ({host_name})")
                 self.update_all_panels()
 
+                # Register persona names so the server can mask other guests'
+                # real names from each guest. Personas come from the original
+                # bot-persona names assigned to each seat at startup.
+                personas = {seat: info[0] for seat, info in self.original_player_info.items()}
+                self.network_server.set_personas(personas)
+
                 # Connect server signals
                 self.network_server.client_connected.connect(self._on_client_connected)
                 self.network_server.client_disconnected.connect(self._on_client_disconnected)
@@ -7210,6 +7435,88 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         client.feature_toggle_received.connect(self._on_feature_toggle_received)
         client.tom_advice_received.connect(self._on_tom_advice_received)
         client.hand_analysis_received.connect(self._on_hand_analysis_received)
+        client.seat_list_received.connect(self._on_seat_list_updated)
+        client.all_hole_cards_received.connect(self._on_all_hole_cards_received)
+        client.board_snapshot_received.connect(self._on_board_snapshot_received)
+        client.hand_interpretation_received.connect(self._on_hand_interpretation_received)
+
+    def _on_seat_list_updated(self, seats: dict):
+        """Update player panel names when seat list arrives so every guest
+        sees every other player's real entered name (not the bot persona).
+        Empty seats keep their local bot persona name."""
+        try:
+            for seat_index, name in seats.items():
+                seat_index = int(seat_index)
+                if not (0 <= seat_index < len(self.players)):
+                    continue
+                if name:
+                    self.players[seat_index].name = name
+                else:
+                    # Empty seat — restore local bot persona name
+                    fallback = self.original_player_info.get(seat_index)
+                    if fallback:
+                        self.players[seat_index].name = fallback[0]
+            if hasattr(self, 'tom_panel'):
+                try:
+                    self.tom_panel.setup_tabs(self.players)
+                except Exception:
+                    pass
+            self.update_all_panels()
+        except Exception as ex:
+            print(f"[client] failed to apply seat-list update: {ex}")
+
+    def _on_all_hole_cards_received(self, cards_by_seat: dict):
+        """Server pushed every active seat's hole cards (we just folded and
+        are now spectating) — populate player.hand for each seat and refresh.
+        """
+        try:
+            for seat, cards in cards_by_seat.items():
+                seat = int(seat)
+                if 0 <= seat < len(self.players) and cards:
+                    self.players[seat].hand = [eval7.Card(c) for c in cards]
+            # If we're spectating, force God Mode on so cards are visible.
+            if getattr(self, '_hero_folded_spectating', False):
+                if not self.god_mode_cb.isChecked():
+                    self.god_mode_cb.setChecked(True)
+            self.update_all_panels()
+            self.update_stats_display()
+        except Exception as ex:
+            print(f"[client] failed to apply ALL_HOLE_CARDS: {ex}")
+
+    def _on_board_snapshot_received(self, street: str, street_idx: int,
+                                     board: list, action_log: list):
+        """Cache a per-street snapshot so the spectator can scroll back/forth
+        through past streets."""
+        if not hasattr(self, '_spectator_street_snapshots'):
+            self._spectator_street_snapshots = []
+            self._spectator_view_idx = -1
+        snap = {
+            'street': street,
+            'street_idx': int(street_idx),
+            'board': list(board),
+            'action_log': list(action_log),
+        }
+        # Replace existing snapshot for this street_idx if we already have one
+        replaced = False
+        for i, existing in enumerate(self._spectator_street_snapshots):
+            if existing.get('street_idx') == snap['street_idx']:
+                self._spectator_street_snapshots[i] = snap
+                replaced = True
+                break
+        if not replaced:
+            self._spectator_street_snapshots.append(snap)
+        # Update spectator nav buttons if they exist
+        self._update_spectator_nav_buttons()
+
+    def _on_hand_interpretation_received(self, text: str, hand_number: int,
+                                          assists_used: dict):
+        """Host sent us the narrative summary — show the same Hand Summary
+        dialog (with bright assists banner + Claude analysis blocks)."""
+        try:
+            self._latest_assists_used = assists_used or {}
+            self._show_hand_interpretation_text(text, hand_number, assists_used or {})
+        except Exception as ex:
+            print(f"[client] failed to render hand interpretation: {ex}")
 
     def _on_hand_analysis_received(self, analyses: list, hand_number: int):
         """Host-supplied Claude analyses arrived: route into the live summary
@@ -7221,7 +7528,6 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         if target is None or target_layout is None:
             return
         try:
-            # Clear the "waiting on host" placeholder if still present
             placeholder = getattr(self, '_active_summary_placeholder', None)
             if placeholder is not None:
                 placeholder.deleteLater()
@@ -7238,7 +7544,7 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                     "color: #8f8; background-color: #1a2a1a; padding: 10px;"
                     " border-radius: 5px; margin: 4px 0;"
                 )
-                target_layout.insertWidget(target_layout.count() - 1, block)
+                target_layout.addWidget(block)
         except RuntimeError:
             pass  # dialog closed before we could render
 
@@ -7356,6 +7662,9 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         if action_lower == 'fold':
             player.active = False
             self.log_action(f"{player.name}: Folds")
+            # Push every active seat's hole cards to the folded client so
+            # their God-mode display is meaningful.
+            self._send_spectator_hole_cards_to_seat(self.current_player_idx)
         elif action_lower == 'check':
             self.log_action(f"{player.name}: Checks")
         elif action_lower == 'call':
@@ -7421,6 +7730,38 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             else:
                 self.process_next_player()
 
+    # --- Host helpers for spectator support ---
+
+    def _send_spectator_hole_cards_to_seat(self, seat_index: int):
+        """Push every active seat's hole cards to the client at seat_index.
+        Called when that client folds so they immediately see God-mode cards.
+        """
+        if self.network_mode != "host" or not self.network_server:
+            return
+        client_id = self.network_server.get_client_for_seat(seat_index)
+        if not client_id:
+            return  # Host fold (no remote client to push to)
+        cards_by_seat = {}
+        for i, p in enumerate(self.players):
+            if p.hand:
+                cards_by_seat[i] = [str(c) for c in p.hand]
+        self.network_server.send_all_hole_cards(client_id, cards_by_seat)
+
+    def _refresh_spectator_hole_cards(self):
+        """When a new street is dealt, re-push hole cards to every client
+        that has already folded so their view stays in sync."""
+        if self.network_mode != "host" or not self.network_server:
+            return
+        cards_by_seat = {}
+        for i, p in enumerate(self.players):
+            if p.hand:
+                cards_by_seat[i] = [str(c) for c in p.hand]
+        for seat in list(self.network_human_seats):
+            if seat < len(self.players) and not self.players[seat].active:
+                client_id = self.network_server.get_client_for_seat(seat)
+                if client_id:
+                    self.network_server.send_all_hole_cards(client_id, cards_by_seat)
+
     # --- Network Event Handlers (Client) ---
 
     def _on_disconnected_from_server(self):
@@ -7439,7 +7780,6 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
     def _on_community_cards_received(self, cards: list, street: str):
         """Handle receiving community cards."""
         self.board = [eval7.Card(c) for c in cards]
-        self.table.set_board(self.board)
         # Track street index for Theory of Mind
         street_map = {"Flop": 1, "Turn": 2, "River": 3}
         if street in street_map:
@@ -7451,6 +7791,13 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         self.action_log = []
         self.log_action(f"--- {street} ---")
         self.update_all_panels()
+        # If the spectator has scrolled to a past snapshot, leave their view
+        # alone; otherwise show the new (live) board.
+        if (getattr(self, '_hero_folded_spectating', False)
+                and getattr(self, '_spectator_view_idx', -1) >= 0):
+            self._spectator_show_snapshot(self._spectator_view_idx)
+        else:
+            self.table.set_board(self.board)
 
     def _on_action_requested(self, valid_actions: list, to_call: float,
                              min_raise: float, max_raise: float, pot: float):
@@ -7515,6 +7862,14 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         self.action_history = []
         self.current_bet = 0
 
+        # Fresh hand → fresh spectator state. Anyone who was spectating must
+        # exit spectator mode so they can act in the new hand.
+        if getattr(self, '_hero_folded_spectating', False):
+            self._exit_spectator_mode()
+        self._spectator_street_snapshots = []
+        self._spectator_view_idx = -1
+        self.hand_assists_used = {}
+
         # Reset bet_in_round for all players
         for p in self.players:
             p.bet_in_round = 0
@@ -7531,7 +7886,13 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         self.log_action(f"Hand #{hand_num} starting...")
 
     def _on_hand_ended(self, winners: list, pot: float, shown_hands: dict, hand_summary: dict = None):
-        """Handle hand end from server."""
+        """Handle hand end from server.
+
+        Cache the graphical-stats payload so the text-summary dialog's
+        ``Stats`` button can render it when the user clicks. The text
+        summary itself arrives as a separate HAND_INTERPRETATION message
+        and is rendered by `_on_hand_interpretation_received`.
+        """
         # Show results
         winner_names = [self.players[w].name for w in winners]
         self.update_status(f"Winners: {', '.join(winner_names)} - Pot: ${pot:.0f}")
@@ -7542,7 +7903,10 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
 
         self.update_all_panels()
 
-        # Show hand summary dialog if server sent the data
+        # Folded clients exit spectator UI now that the hand is over.
+        if getattr(self, '_hero_folded_spectating', False):
+            self._exit_spectator_mode()
+
         if hand_summary:
             try:
                 street_stats = {}
@@ -7551,27 +7915,22 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                 street_actions = hand_summary.get('street_actions', {})
                 board_by_street = hand_summary.get('board_by_street', {})
                 player_results = hand_summary.get('player_results', {})
-                # Convert player_results values from lists to tuples
                 for k, v in player_results.items():
                     if isinstance(v, list):
                         player_results[k] = tuple(v)
                 player_hands = hand_summary.get('player_hands', {})
                 made_hands_by_street = hand_summary.get('made_hands_by_street', {})
 
-                if street_stats:
-                    dialog = HandSummaryDialog(
-                        street_stats=street_stats,
-                        street_actions=street_actions,
-                        board_by_street=board_by_street,
-                        player_results=player_results,
-                        player_hands=player_hands,
-                        made_hands_by_street=made_hands_by_street,
-                        parent=self
-                    )
-                    dialog.setModal(False)
-                    dialog.show()  # Non-blocking to avoid disrupting heartbeats
+                self._cached_hand_summary = {
+                    'street_stats': street_stats,
+                    'street_actions': street_actions,
+                    'board_by_street': board_by_street,
+                    'player_results': player_results,
+                    'player_hands': player_hands,
+                    'made_hands_by_street': made_hands_by_street,
+                }
             except Exception as e:
-                print(f"Error showing hand summary on client: {e}")
+                print(f"Error caching hand summary on client: {e}")
 
     def enable_action_buttons(self, to_call: float, min_raise: float, max_raise: float):
         """Enable appropriate action buttons for network play."""

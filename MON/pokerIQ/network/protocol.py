@@ -65,6 +65,17 @@ class MessageType(Enum):
     # Claude hand analysis - host computes per-player critiques, ships bundle
     HAND_ANALYSIS = auto()
 
+    # Spectator support: server pushes every active player's hole cards to a
+    # client that just folded so its God-mode display is meaningful.
+    ALL_HOLE_CARDS = auto()
+
+    # Spectator nav: server snapshots board cards as each street is dealt so
+    # folded clients can scroll back/forward through past streets.
+    BOARD_SNAPSHOT = auto()
+
+    # Host's narrative hand interpretation (the green-Claude-blocks dialog).
+    HAND_INTERPRETATION = auto()
+
     # Chat
     CHAT_MESSAGE = auto()
 
@@ -307,6 +318,51 @@ def make_heartbeat() -> NetworkMessage:
 def make_heartbeat_ack() -> NetworkMessage:
     """Create heartbeat acknowledgment."""
     return NetworkMessage(type=MessageType.HEARTBEAT_ACK, payload={})
+
+
+def make_all_hole_cards(cards_by_seat: Dict[int, list]) -> NetworkMessage:
+    """Reveal every active seat's hole cards to a single (folded) client.
+
+    Args:
+        cards_by_seat: {seat_index: [card_str, card_str]}
+    """
+    return NetworkMessage(
+        type=MessageType.ALL_HOLE_CARDS,
+        payload={'cards_by_seat': {int(k): list(v) for k, v in cards_by_seat.items()}}
+    )
+
+
+def make_board_snapshot(street: str, street_idx: int, board: list,
+                        action_log: list) -> NetworkMessage:
+    """Snapshot of a street the host just dealt — lets folded clients
+    navigate back and forth between past streets.
+    """
+    return NetworkMessage(
+        type=MessageType.BOARD_SNAPSHOT,
+        payload={
+            'street': street,
+            'street_idx': street_idx,
+            'board': list(board),
+            'action_log': list(action_log),
+        }
+    )
+
+
+def make_hand_interpretation(text: str, hand_number: int = 0,
+                              assists_used: Optional[Dict[str, list]] = None
+                              ) -> NetworkMessage:
+    """Host's narrative interpretation text (Hand #N Analysis) plus the
+    bright-coloured assists-used flags so all clients can render the same
+    dialog the host sees.
+    """
+    return NetworkMessage(
+        type=MessageType.HAND_INTERPRETATION,
+        payload={
+            'text': text,
+            'hand_number': hand_number,
+            'assists_used': assists_used or {},
+        }
+    )
 
 
 def make_chat_message(sender: str, text: str) -> NetworkMessage:
