@@ -1,6 +1,13 @@
 #!/bin/bash
 # Launch the Ben Bridge AI
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Pidfile dir for background Claude critiques (see ben_bridge/ui/game_logger.py).
+# Polled at script exit so the launcher doesn't move the BDL mid-insert.
+CRITIQUE_PID_DIR="/tmp/ben_bridge_critiques_$$"
+export CRITIQUE_PID_DIR
+mkdir -p "$CRITIQUE_PID_DIR"
 
 if [[ ! -d venv ]]; then
     echo "Error: venv not found. Run install_dependencies.sh first."
@@ -79,21 +86,44 @@ if [[ $exit_code -ne 0 ]]; then
     echo "  cd $(pwd) && source ../venv/bin/activate && python3 main.py 2>&1 | head -50"
 fi
 
-# --- Chain to Q-Plus Bridge for comparison ---
-# Find the newest PBN from this session
+# --- Wait for any in-flight Claude critiques before the launcher moves files ---
 cd "$SCRIPT_DIR"
-_newest_pbn=""
-_newest_pbn_mod=0
+if [[ -d "$CRITIQUE_PID_DIR" ]]; then
+    _wait_deadline=$(( $(date +%s) + 180 ))
+    while :; do
+        _alive=0
+        shopt -s nullglob
+        for _pidfile in "$CRITIQUE_PID_DIR"/*.pid; do
+            _pid=$(cat "$_pidfile" 2>/dev/null) || { rm -f "$_pidfile"; continue; }
+            if [[ -n "$_pid" ]] && kill -0 "$_pid" 2>/dev/null; then
+                _alive=1
+            else
+                rm -f "$_pidfile"
+            fi
+        done
+        shopt -u nullglob
+        (( _alive == 0 )) && break
+        (( $(date +%s) >= _wait_deadline )) && { echo "Critique wait timed out; continuing." ; break; }
+        echo "Waiting for Claude critique to finish..."
+        sleep 2
+    done
+    rmdir "$CRITIQUE_PID_DIR" 2>/dev/null || true
+fi
+
+# --- Chain to Q-Plus Bridge for comparison ---
+# Find the newest BDL from this session (ben writes .bdl; .pbn/.ppl are derived later)
+_newest_bdl=""
+_newest_bdl_mod=0
 while IFS= read -r -d '' f; do
     fmod=$(stat -c %Y "$f" 2>/dev/null) || continue
-    if [[ "$fmod" -gt "$_newest_pbn_mod" ]]; then
-        _newest_pbn="$f"
-        _newest_pbn_mod="$fmod"
+    if [[ "$fmod" -gt "$_newest_bdl_mod" ]]; then
+        _newest_bdl="$f"
+        _newest_bdl_mod="$fmod"
     fi
-done < <(find "$SCRIPT_DIR/ben/DATA/LOG" -maxdepth 1 -name "*.pbn" -type f -print0 2>/dev/null)
+done < <(find "$SCRIPT_DIR/ben/DATA/LOG" -maxdepth 1 -name "*.bdl" -type f -print0 2>/dev/null)
 
-if [[ -n "$_newest_pbn" ]]; then
-    echo "Found PBN: $_newest_pbn"
+if [[ -n "$_newest_bdl" ]]; then
+    echo "Found BDL: $_newest_bdl"
     FRI_DIR="$SCRIPT_DIR"
     HARNESS_DIR="$FRI_DIR/guiHarness"
 
@@ -126,7 +156,7 @@ if [[ -n "$_newest_pbn" ]]; then
                     python3 -m venv venv && source venv/bin/activate
                     pip install -q PyQt5 pyautogui 2>/dev/null
                 fi
-                python3 bridge_harness.py --source "$(realpath "$_newest_pbn")" --game benbridge 2>/dev/null
+                python3 bridge_harness.py --source "$(realpath "$_newest_bdl")" --game benbridge 2>/dev/null
             ) &
             _harness_pid=$!
 
@@ -148,5 +178,5 @@ if [[ -n "$_newest_pbn" ]]; then
         fi
     fi
 else
-    echo "(No PBN found in $SCRIPT_DIR/ben/DATA/LOG/ — skipping Q-Plus comparison)"
+    echo "(No BDL found in $SCRIPT_DIR/ben/DATA/LOG/ — skipping Q-Plus comparison)"
 fi

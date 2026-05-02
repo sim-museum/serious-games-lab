@@ -420,6 +420,9 @@ class MainWindow(QMainWindow):
         self.teams_match: Optional[BenTeamsMatch] = None
         self.match_controller: Optional[TeamsMatchController] = None
 
+        # Parallel closed room worker (started at deal time, joined at hand end)
+        self._pending_closed_room: Optional[dict] = None
+
         # Network game controller for LAN play
         self.network_controller = NetworkGameController(self)
         self._setup_network_signals()
@@ -1261,6 +1264,10 @@ class MainWindow(QMainWindow):
         self.next_card_btn.setEnabled(False)
 
         self.status_label.setText(f"Board {board.board_number}: {board.dealer.to_char()} deals")
+
+        # Closed room (AI vs AI) is started after the human finishes the
+        # hand — running it in parallel with human play made both sides
+        # contend for the BEN engine and the game appeared to hang.
 
         # Start bidding
         self._advance_game()
@@ -2600,49 +2607,298 @@ For more information, see the README file."""
             self._advance_game()
 
     def _on_hint(self):
-        """Get a hint from the engine"""
-        if not self.controller.board or not self.controller.current_seat:
+        """Ask Claude what to do next, with a progress bar and result dialog.
+
+        BEN's own engine suggestion is included in the prompt as context so
+        Claude can agree, disagree, or explain it.
+        """
+        board = self.controller.board
+        seat = self.controller.current_seat
+        phase = self.controller.current_phase
+        if not board or not seat or phase not in ('bidding', 'play'):
             return
 
-        self.status_label.setText("Thinking...")
+        # Pull BEN's own suggestion first — it's fast and gives Claude context.
+        engine_text = ""
+        try:
+            if phase == 'bidding':
+                resp = self.engine.get_bid(board, seat)
+                if resp and resp.action:
+                    engine_text = f"BEN suggests: {resp.action.symbol()}"
+                    if resp.candidates:
+                        cands = ", ".join(f"{c.bid.symbol()} ({c.score:.2f})"
+                                          for c in resp.candidates[:5])
+                        engine_text += f"\nBEN candidates: {cands}"
+            else:
+                trick_cards = board.current_trick.cards if board.current_trick else []
+                resp = self.engine.get_card(board, seat, trick_cards)
+                if resp and resp.action:
+                    engine_text = f"BEN suggests: play {resp.action.to_str()}"
+                    if resp.candidates:
+                        cands = ", ".join(f"{c.card.to_str()} ({c.score:.2f})"
+                                          for c in resp.candidates[:5])
+                        engine_text += f"\nBEN candidates: {cands}"
+        except Exception as e:
+            engine_text = f"(BEN engine error: {e!r})"
+
+        state_text = self._build_hint_state_text(board, seat, phase)
+        prompt = self._build_hint_prompt(phase, seat, state_text, engine_text)
+
+        self._run_claude_with_dialog(
+            prompt=prompt,
+            title=f"Claude hint — {'bidding' if phase == 'bidding' else 'card play'}",
+            wait_label=f"Claude is thinking about your {'bid' if phase == 'bidding' else 'card'}...",
+            timeout_seconds=90,
+            preamble=engine_text + "\n\n" if engine_text else "",
+        )
+
+    def _build_hint_state_text(self, board, seat, phase) -> str:
+        """Serialize the current board state for a Claude hint prompt."""
+        seat_names = {Seat.NORTH: 'N', Seat.EAST: 'E', Seat.SOUTH: 'S', Seat.WEST: 'W'}
+        suit_symbols = {Suit.SPADES: 'S', Suit.HEARTS: 'H', Suit.DIAMONDS: 'D',
+                        Suit.CLUBS: 'C', Suit.NOTRUMP: 'NT'}
+        suit_chars = {Suit.SPADES: 'S', Suit.HEARTS: 'H',
+                      Suit.DIAMONDS: 'D', Suit.CLUBS: 'C'}
+
+        lines = []
+        lines.append(f"Board {board.board_number}")
+        lines.append(f"Dealer: {seat_names[board.dealer]}")
+        lines.append(f"Vulnerability: {board.vulnerability.name}")
+        lines.append(f"It is {seat_names[seat]}'s turn ({phase}).")
+        # Spell out seat relationships so Claude can't misattribute bids.
+        partner = seat.partner()
+        lho = seat.next()
+        rho = partner.next()
+        lines.append(
+            f"You are {seat_names[seat]}. Your partner is {seat_names[partner]}. "
+            f"Your LHO (left-hand opponent) is {seat_names[lho]}. "
+            f"Your RHO (right-hand opponent) is {seat_names[rho]}."
+        )
+
+        # Show the current player's hand (what they can see)
+        hand = board.hands.get(seat) if board.hands else None
+        if hand:
+            suit_lines = []
+            for suit in [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]:
+                cards = sorted([c for c in hand.cards if c.suit == suit],
+                               key=lambda c: c.rank, reverse=True)
+                suit_lines.append(f"{suit_chars[suit]}:{''.join(c.rank.to_char() for c in cards) or '-'}")
+            lines.append(f"Your hand ({seat_names[seat]}): {' '.join(suit_lines)}")
+
+        # Auction so far — label every bid with its seat so Claude doesn't have
+        # to count around the table and misattribute bids.
+        if board.auction:
+            lines.append("Auction so far (chronological, each bid labeled with bidder):")
+            bidder = board.dealer
+            for bid in board.auction:
+                if bid.is_pass:
+                    bid_str = "Pass"
+                elif bid.is_double:
+                    bid_str = "X (double)"
+                elif bid.is_redouble:
+                    bid_str = "XX (redouble)"
+                else:
+                    s = suit_symbols.get(bid.suit, '?') if bid.suit is not None else 'NT'
+                    bid_str = f"{bid.level}{s}"
+                role = ""
+                if bidder == seat:
+                    role = " [you]"
+                elif bidder == seat.partner():
+                    role = " [your partner]"
+                else:
+                    role = " [opponent]"
+                lines.append(f"  {seat_names[bidder]}: {bid_str}{role}")
+                bidder = bidder.next()
+
+        if phase == 'play':
+            contract = getattr(board, 'contract', None)
+            if contract:
+                lines.append(f"Contract: {contract.to_str()} by {seat_names[contract.declarer]}")
+
+            # Dummy hand is visible to everyone during play
+            declarer = contract.declarer if contract else None
+            dummy_seat = declarer.partner() if declarer and hasattr(declarer, 'partner') else None
+            if dummy_seat and dummy_seat != seat:
+                d_hand = board.hands.get(dummy_seat)
+                if d_hand:
+                    suit_lines = []
+                    for suit in [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]:
+                        cards = sorted([c for c in d_hand.cards if c.suit == suit],
+                                       key=lambda c: c.rank, reverse=True)
+                        suit_lines.append(f"{suit_chars[suit]}:{''.join(c.rank.to_char() for c in cards) or '-'}")
+                    lines.append(f"Dummy ({seat_names[dummy_seat]}): {' '.join(suit_lines)}")
+
+            # Tricks played
+            tricks_played = getattr(board, 'tricks', None) or []
+            if tricks_played:
+                lines.append(f"Tricks completed: {len(tricks_played)}")
+                for i, tr in enumerate(tricks_played[-3:], start=max(1, len(tricks_played) - 2)):
+                    leader = tr.leader
+                    parts = []
+                    for j, card in enumerate(tr.cards):
+                        player_seat = Seat((leader.value + j) % 4)
+                        marker = "*" if player_seat == tr.winner else ""
+                        parts.append(f"{seat_names[player_seat]}:{card.to_str()}{marker}")
+                    lines.append(f"  Trick {i}: {' '.join(parts)}")
+
+            # Current trick in progress
+            current_trick = getattr(board, 'current_trick', None)
+            if current_trick and current_trick.cards:
+                leader = current_trick.leader
+                parts = []
+                for j, card in enumerate(current_trick.cards):
+                    player_seat = Seat((leader.value + j) % 4)
+                    parts.append(f"{seat_names[player_seat]}:{card.to_str()}")
+                lines.append(f"Current trick: {' '.join(parts)} (your turn)")
+            else:
+                lines.append("You are leading to the next trick.")
+
+        return "\n".join(lines)
+
+    def _build_hint_prompt(self, phase: str, seat, state_text: str, engine_text: str) -> str:
+        """Assemble the Claude prompt for a hint query."""
+        seat_names = {Seat.NORTH: 'N', Seat.EAST: 'E', Seat.SOUTH: 'S', Seat.WEST: 'W'}
+        action = "bid" if phase == 'bidding' else "card to play"
+        engine_block = f"\n\n{engine_text}" if engine_text else ""
+        return (
+            f"You are a bridge teacher advising {seat_names[seat]} on the next {action}. "
+            f"Recommend exactly one action and explain the reasoning in 2-4 sentences. "
+            f"If the BEN engine suggestion is shown, say whether you agree. "
+            f"Plain text only.\n\n{state_text}{engine_block}"
+        )
+
+    def _run_claude_with_dialog(self, prompt: str, title: str, wait_label: str,
+                                 timeout_seconds: int = 120, preamble: str = ""):
+        """Run claude -p with a progress dialog, then show the result.
+
+        Shared between the end-of-hand analysis and the Hint button. Shows an
+        error dialog if claude fails so the user never sees silent failure.
+        """
+        import shutil
+        import subprocess
+        import threading
+        from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton,
+                                      QScrollArea, QProgressBar)
+        from PyQt6.QtGui import QFont
+
+        if not shutil.which('claude'):
+            self._show_plain_dialog(title,
+                                    "Claude CLI is not installed on this machine.\n"
+                                    "Install it to enable this feature.",
+                                    error=True)
+            return
+
+        # Progress dialog
+        progress = QDialog(self)
+        progress.setWindowTitle(title)
+        progress.setFixedSize(420, 110)
+        progress.setStyleSheet("background-color: #e8e8f0; color: #000;")
+        p_layout = QVBoxLayout(progress)
+        p_label = QLabel(wait_label)
+        p_label.setFont(QFont("Arial", 12))
+        p_label.setStyleSheet("color: #000;")
+        p_layout.addWidget(p_label)
+        p_bar = QProgressBar()
+        p_bar.setRange(0, 0)  # Indeterminate
+        p_bar.setStyleSheet("QProgressBar { border: 1px solid #aaa; border-radius: 3px; }"
+                            "QProgressBar::chunk { background-color: #4a9; }")
+        p_layout.addWidget(p_bar)
+        progress.show()
         QApplication.processEvents()
 
-        if self.controller.current_phase == 'bidding':
-            response = self.engine.get_bid(
-                self.controller.board, self.controller.current_seat
-            )
-            text = f"Hint: {response.action.symbol()}\n"
-            if response.candidates:
-                text += "\nCandidates:\n"
-                for cand in response.candidates[:5]:
-                    text += f"  {cand.bid.symbol()}: {cand.score:.3f}\n"
-            self.analysis_label.setText(text)
-
-        elif self.controller.current_phase == 'play':
-            # Get card suggestion from engine
-            trick_cards = []
-            if self.controller.board.current_trick:
-                trick_cards = self.controller.board.current_trick.cards
+        # Pidfile so run.sh waits for us (belt + suspenders)
+        pidfile = None
+        pid_dir = os.environ.get('CRITIQUE_PID_DIR')
+        if pid_dir:
             try:
-                response = self.engine.get_card(
-                    self.controller.board, self.controller.current_seat, trick_cards
-                )
-                if response and response.action:
-                    card = response.action
-                    text = f"Hint: play {card.to_str()}\n"
-                    if response.candidates:
-                        text += "\nCandidates:\n"
-                        for cand in response.candidates[:5]:
-                            text += f"  {cand.card.to_str()}: {cand.score:.3f}\n"
-                else:
-                    lead_suit = self.controller.get_lead_suit()
-                    text = f"Lead suit: {lead_suit.symbol() if lead_suit else 'Any'}\n"
-            except Exception as e:
-                lead_suit = self.controller.get_lead_suit()
-                text = f"Lead suit: {lead_suit.symbol() if lead_suit else 'Any'}\n"
-            self.analysis_label.setText(text)
+                os.makedirs(pid_dir, exist_ok=True)
+                pidfile = os.path.join(pid_dir, f"{os.getpid()}-hint-{id(prompt)}.pid")
+                with open(pidfile, 'w') as f:
+                    f.write(str(os.getpid()))
+            except Exception:
+                pidfile = None
 
-        self.status_label.setText("Ready")
+        result_holder = {'text': None, 'error': None}
+
+        def _run_claude():
+            try:
+                r = subprocess.run(
+                    ['claude', '-p', '--max-turns', '1', prompt],
+                    capture_output=True, text=True, timeout=timeout_seconds
+                )
+                stdout = (r.stdout or '').strip()
+                stderr = (r.stderr or '').strip()
+                if r.returncode == 0 and len(stdout) > 5:
+                    result_holder['text'] = stdout
+                else:
+                    parts = [f"claude exited {r.returncode}"]
+                    if stderr:
+                        parts.append(f"stderr: {stderr[:500]}")
+                    if stdout:
+                        parts.append(f"stdout: {stdout[:500]}")
+                    result_holder['error'] = "\n".join(parts)
+            except subprocess.TimeoutExpired:
+                result_holder['error'] = f"claude timed out after {timeout_seconds} seconds."
+            except Exception as e:
+                result_holder['error'] = f"claude call failed: {e!r}"
+
+        thread = threading.Thread(target=_run_claude, daemon=True)
+        thread.start()
+        while thread.is_alive():
+            QApplication.processEvents()
+            thread.join(timeout=0.1)
+        progress.close()
+
+        if pidfile:
+            try:
+                os.unlink(pidfile)
+            except OSError:
+                pass
+
+        text = result_holder['text']
+        error = result_holder['error']
+        if text:
+            self._show_plain_dialog(title, f"{preamble}{text}", error=False)
+        else:
+            self._show_plain_dialog(
+                title,
+                f"{preamble}Claude did not return a response.\n\n{error or 'No output received.'}",
+                error=True,
+            )
+
+    def _show_plain_dialog(self, title: str, body: str, error: bool = False):
+        """Show a scrollable result dialog with OK button (shared helper)."""
+        from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton,
+                                      QScrollArea)
+        from PyQt6.QtGui import QFont
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setMinimumSize(700, 350)
+        dialog.resize(800, 450)
+        dialog.setStyleSheet("QDialog { background-color: #e8e8f0; color: #000; }")
+        layout = QVBoxLayout(dialog)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: 1px solid #aaa; background-color: #f8f8f8; }")
+        label = QLabel(body)
+        label.setFont(QFont("Arial", 16 if error else 20))
+        label.setWordWrap(True)
+        label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        label.setStyleSheet(
+            f"color: {'#803030' if error else '#000'}; background-color: #f8f8f8; padding: 15px;"
+        )
+        scroll.setWidget(label)
+        layout.addWidget(scroll)
+
+        ok_btn = QPushButton("OK")
+        ok_btn.setFixedSize(120, 40)
+        ok_btn.setStyleSheet("QPushButton { background-color: #d0d0d0; color: #000; "
+                             "border: 1px solid #999; border-radius: 3px; font-size: 16px; }")
+        ok_btn.clicked.connect(dialog.accept)
+        layout.addWidget(ok_btn)
+        dialog.exec()
 
     def _on_undo(self):
         """Undo last card play (only works during current trick before it completes)"""
@@ -3231,6 +3487,36 @@ For more information, see the README file."""
                     bids.append(f"{bid.level}{s}")
             hand_text += " - ".join(bids) + "\n"
 
+        # Pull the closed-room result (populated by _auto_closed_room) so Claude
+        # and the dialog can show the human/AI comparison for this board.
+        # _auto_closed_room appends a second BoardResult for the closed table, so
+        # walk backwards to find the OPEN-room entry that carries closed_room_run.
+        closed_run = None
+        imp_swing = None
+        for r in reversed(self.scoring_table.results):
+            if r.board_number != board.board_number:
+                continue
+            if getattr(r, 'closed_room_run', None) is not None:
+                closed_run = r.closed_room_run
+                imp_swing = getattr(r, 'imps', None)
+                break
+
+        closed_summary = ""
+        if closed_run and closed_run.contract:
+            c_target = closed_run.contract.target_tricks()
+            c_diff = closed_run.declarer_tricks - c_target
+            c_result = f"+{c_diff}" if c_diff > 0 else ("=" if c_diff == 0 else str(c_diff))
+            closed_summary = (
+                f"\nClosed room (AI both sides): "
+                f"{closed_run.contract.to_str()} by {closed_run.contract.declarer.to_char()}, "
+                f"{closed_run.declarer_tricks} tricks ({c_result}), "
+                f"NS {closed_run.ns_score:+d}"
+            )
+            if imp_swing is not None:
+                closed_summary += f"\nIMP swing vs open room: {imp_swing:+d} ({'N/S' if imp_swing >= 0 else 'E/W'})"
+            closed_summary += "\n"
+        hand_text += closed_summary
+
         human_seats = [f"{seat_names[s]} ({p.name})"
                        for s, p in self.controller.players.items()
                        if p.player_type == PlayerType.HUMAN]
@@ -3273,8 +3559,29 @@ For more information, see the README file."""
         progress.show()
         QApplication.processEvents()
 
+        # Write a pidfile so run.sh can wait for us before exiting (and before
+        # the launcher moves the BDL out from under _append_commentary_to_bdl).
+        pidfile = None
+        pid_dir = os.environ.get('CRITIQUE_PID_DIR')
+        if pid_dir:
+            try:
+                os.makedirs(pid_dir, exist_ok=True)
+                pidfile = os.path.join(pid_dir, f"{os.getpid()}-{id(board)}.pid")
+                with open(pidfile, 'w') as f:
+                    f.write(str(os.getpid()))
+            except Exception:
+                pidfile = None
+
         # Run Claude in background thread
-        result_holder = [None]
+        result_holder = {'critique': None, 'error': None}
+
+        comparison_note = ""
+        if closed_run:
+            comparison_note = (
+                " Compare the open-room result (the human player's table) "
+                "with the closed-room result (BEN on both sides) "
+                "and comment on who did better and why."
+            )
 
         def _run_claude():
             try:
@@ -3283,13 +3590,24 @@ For more information, see the README file."""
                      f"You are a bridge teacher. Briefly analyze this hand (3-5 sentences). "
                      f"The human player(s): {human_desc}. "
                      f"Was the bidding sound? Was the play/defense correct? "
-                     f"What was the key decision? Plain text only.\n\n{hand_text}"],
+                     f"What was the key decision?{comparison_note} Plain text only.\n\n{hand_text}"],
                     capture_output=True, text=True, timeout=120
                 )
-                if r.returncode == 0 and len(r.stdout.strip()) > 10:
-                    result_holder[0] = r.stdout.strip()
-            except Exception:
-                pass
+                stdout = (r.stdout or '').strip()
+                stderr = (r.stderr or '').strip()
+                if r.returncode == 0 and len(stdout) > 10:
+                    result_holder['critique'] = stdout
+                else:
+                    parts = [f"claude exited {r.returncode}"]
+                    if stderr:
+                        parts.append(f"stderr: {stderr[:500]}")
+                    if stdout:
+                        parts.append(f"stdout: {stdout[:500]}")
+                    result_holder['error'] = "\n".join(parts)
+            except subprocess.TimeoutExpired:
+                result_holder['error'] = "claude timed out after 120 seconds."
+            except Exception as e:
+                result_holder['error'] = f"claude call failed: {e!r}"
 
         thread = threading.Thread(target=_run_claude, daemon=True)
         thread.start()
@@ -3301,17 +3619,25 @@ For more information, see the README file."""
 
         progress.close()
 
-        critique = result_holder[0]
-        if not critique:
-            return
+        critique = result_holder['critique']
+        error = result_holder['error']
 
-        # Save to BDL file
-        try:
-            self.game_logger._append_commentary_to_bdl(critique)
-        except Exception:
-            pass
+        # Save critique to BDL file
+        if critique:
+            try:
+                self.game_logger._append_commentary_to_bdl(critique)
+            except Exception as e:
+                print(f"Failed to append commentary to BDL: {e}", flush=True)
 
-        # Show analysis dialog — light grey background, large readable text
+        # Remove pidfile now that critique is written — run.sh can stop waiting.
+        if pidfile:
+            try:
+                os.unlink(pidfile)
+            except OSError:
+                pass
+
+        # Show analysis dialog — light grey background, large readable text.
+        # Always shown, even on failure, so the user gets feedback.
         dialog = QDialog(self)
         dialog.setWindowTitle("Claude Analysis")
         dialog.setMinimumSize(700, 400)
@@ -3323,10 +3649,41 @@ For more information, see the README file."""
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea { border: 1px solid #aaa; background-color: #f8f8f8; }")
-        analysis_label = QLabel(critique)
-        analysis_label.setFont(QFont("Arial", 22))
+        # Prepend objective open/closed-room summary so the numbers are visible
+        # even if Claude fails.
+        summary_header = ""
+        if closed_run and closed_run.contract:
+            c_target = closed_run.contract.target_tricks()
+            c_diff = closed_run.declarer_tricks - c_target
+            c_result = f"+{c_diff}" if c_diff > 0 else ("=" if c_diff == 0 else str(c_diff))
+            ns_open = score if contract.declarer.is_ns() else -score
+            summary_header = (
+                f"Open room:   {contract.to_str()} by {contract.declarer.to_char()}  "
+                f"{tricks} tricks ({result_str})  NS {ns_open:+d}\n"
+                f"Closed room: {closed_run.contract.to_str()} by {closed_run.contract.declarer.to_char()}  "
+                f"{closed_run.declarer_tricks} tricks ({c_result})  NS {closed_run.ns_score:+d}"
+            )
+            if imp_swing is not None:
+                summary_header += f"\nIMP: {imp_swing:+d} ({'N/S' if imp_swing >= 0 else 'E/W'})"
+            summary_header += "\n\n"
+
+        if critique:
+            body_text = f"{summary_header}{critique}"
+            body_color = "#000"
+            font_size = 22
+        else:
+            body_text = (
+                f"{summary_header}"
+                "Claude did not return an analysis for this hand.\n\n"
+                f"{error or 'No output received.'}"
+            )
+            body_color = "#803030"
+            font_size = 16
+        analysis_label = QLabel(body_text)
+        analysis_label.setFont(QFont("Arial", font_size))
         analysis_label.setWordWrap(True)
-        analysis_label.setStyleSheet("color: #000; background-color: #f8f8f8; padding: 15px;")
+        analysis_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        analysis_label.setStyleSheet(f"color: {body_color}; background-color: #f8f8f8; padding: 15px;")
         scroll.setWidget(analysis_label)
         layout.addWidget(scroll)
 
@@ -3339,62 +3696,157 @@ For more information, see the README file."""
 
         dialog.exec()
 
+    def _start_parallel_closed_room(self, board):
+        """Kick off the all-AI closed room the moment a new deal is dealt.
+
+        The closed room then runs in parallel with the human's play, and when
+        the human finishes _auto_closed_room just joins the pending worker
+        instead of starting a fresh (slow) run.
+        """
+        # Skip when teams/match modes manage their own closed room.
+        if self.teams_match is not None or self.match_controller is not None:
+            return
+        # Cancel any previous pending room (e.g. user hit "Next deal" early).
+        self._cancel_pending_closed_room()
+        try:
+            import uuid
+            from ben_backend.models import BenTeamsMatch
+            from ben_backend.match_controller import TeamsMatchController
+
+            board_num = board.board_number
+            temp_match = BenTeamsMatch(
+                match_id=str(uuid.uuid4()),
+                num_boards=1,
+                current_board=board_num,
+            )
+            temp_controller = TeamsMatchController(self.engine, temp_match)
+            temp_controller.start_board(board_num, board)
+            temp_controller.start_closed_room_async(board_num)
+            self._pending_closed_room = {
+                'controller': temp_controller,
+                'match': temp_match,
+                'board_num': board_num,
+            }
+            self.status_label.setText(
+                f"Board {board_num}: closed room (AI) started in background"
+            )
+        except Exception as e:
+            print(f"Failed to start parallel closed room: {e}", flush=True)
+            self._pending_closed_room = None
+
+    def _cancel_pending_closed_room(self):
+        """Stop any running closed-room worker and discard its pending record."""
+        pending = getattr(self, '_pending_closed_room', None)
+        if not pending:
+            return
+        try:
+            pending['controller'].stop_closed_room()
+        except Exception:
+            pass
+        self._pending_closed_room = None
+
     def _auto_closed_room(self, board, contract, tricks, result_str, score):
-        """Automatically run closed room (all AI) for IMP comparison after each hand."""
+        """Join the parallel closed-room worker and post its result.
+
+        Started by _start_parallel_closed_room at deal time. If the user
+        finishes faster than the AI, waits for completion with a progress dialog.
+        Falls back to starting the closed room here if none was pre-started.
+        """
         import time
         import uuid
         from ben_backend.models import BenTeamsMatch, BenTable
         from ben_backend.match_controller import TeamsMatchController
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QProgressBar
+        from PyQt6.QtGui import QFont
 
         board_num = board.board_number
         ns_score = score if contract.declarer.is_ns() else -score
 
-        # Create a temporary teams match for this single board
-        temp_match = BenTeamsMatch(
-            match_id=str(uuid.uuid4()),
-            num_boards=1,
-            current_board=board_num,
-        )
-        temp_controller = TeamsMatchController(self.engine, temp_match)
+        # Reuse the pre-started pending worker if it's for this board.
+        pending = getattr(self, '_pending_closed_room', None)
+        if pending and pending.get('board_num') == board_num:
+            temp_controller = pending['controller']
+            temp_match = pending['match']
+            # Record the open-room outcome the user just played.
+            try:
+                temp_controller.complete_open_room(board_num, board)
+            except Exception:
+                pass
+        else:
+            # No pre-started worker — fall back to running it now.
+            temp_match = BenTeamsMatch(
+                match_id=str(uuid.uuid4()),
+                num_boards=1,
+                current_board=board_num,
+            )
+            temp_controller = TeamsMatchController(self.engine, temp_match)
+            temp_controller.start_board(board_num, board)
+            temp_controller.complete_open_room(board_num, board)
+            temp_controller.start_closed_room_async(board_num)
 
-        # Register the open room result
-        temp_controller.start_board(board_num, board)
-        temp_controller.complete_open_room(board_num, board)
+        # If the closed room hasn't finished yet, show a progress dialog while we wait.
+        waiting_dialog = None
+        if not temp_controller.is_board_complete(board_num):
+            waiting_dialog = QDialog(self)
+            waiting_dialog.setWindowTitle("Closed Room")
+            waiting_dialog.setFixedSize(400, 110)
+            waiting_dialog.setStyleSheet("background-color: #e8e8f0; color: #000;")
+            w_layout = QVBoxLayout(waiting_dialog)
+            w_label = QLabel("Finishing closed room (AI vs AI)...")
+            w_label.setFont(QFont("Arial", 12))
+            w_label.setStyleSheet("color: #000;")
+            w_layout.addWidget(w_label)
+            w_bar = QProgressBar()
+            w_bar.setRange(0, 0)  # Indeterminate
+            w_bar.setStyleSheet("QProgressBar { border: 1px solid #aaa; border-radius: 3px; }"
+                                "QProgressBar::chunk { background-color: #4a9; }")
+            w_layout.addWidget(w_bar)
+            waiting_dialog.show()
+            QApplication.processEvents()
 
-        # Run closed room with progress
-        self.status_label.setText("Running closed room (all AI)...")
+        self.status_label.setText("Waiting for closed room (all AI)...")
         QApplication.processEvents()
 
-        temp_controller.start_closed_room_async(board_num)
-
-        # Wait for completion (max 60s, keep UI responsive)
+        # Wait for completion (max 120s, keep UI responsive)
         start_time = time.time()
         while not temp_controller.is_board_complete(board_num):
             QApplication.processEvents()
             time.sleep(0.1)
-            if time.time() - start_time > 60:
+            if time.time() - start_time > 120:
                 self.status_label.setText("Closed room timed out")
+                if waiting_dialog is not None:
+                    waiting_dialog.close()
+                self._pending_closed_room = None
                 return
+
+        if waiting_dialog is not None:
+            waiting_dialog.close()
 
         # Get results
         imp_swing = temp_match.get_imp_swing(board_num)
         closed_run = temp_match.board_runs.get(board_num, {}).get(BenTable.CLOSED)
+        self._pending_closed_room = None  # done with this one
 
         # Update the BoardResult in scoring table with closed room data
         if self.scoring_table.results:
             last_result = self.scoring_table.results[-1]
             if last_result.board_number == board_num:
                 last_result.imps = imp_swing
-                if closed_run and closed_run.contract:
-                    closed_contract = closed_run.contract.to_str()
-                    closed_tricks = closed_run.declarer_tricks
-                    closed_ns = closed_run.ns_score
-                    last_result.notes = (
-                        f"Closed: {closed_contract} by {closed_run.contract.declarer.to_char()} "
-                        f"({closed_tricks} tricks, NS {closed_ns:+d}). "
-                        f"IMP: {imp_swing:+d}"
-                    )
-                    # Store the closed room run for replay
+                if closed_run and closed_run.played:
+                    if closed_run.contract:
+                        closed_summary_text = (
+                            f"Closed: {closed_run.contract.to_str()} "
+                            f"by {closed_run.contract.declarer.to_char()} "
+                            f"({closed_run.declarer_tricks} tricks, "
+                            f"NS {closed_run.ns_score:+d}). "
+                            f"IMP: {imp_swing:+d}"
+                        )
+                    else:
+                        closed_summary_text = (
+                            f"Closed: passed out (NS {closed_run.ns_score:+d}). "
+                            f"IMP: {imp_swing:+d}"
+                        )
+                    last_result.notes = closed_summary_text
                     last_result.closed_room_run = closed_run
 
         # Log the closed room result
@@ -3404,44 +3856,50 @@ For more information, see the README file."""
         except Exception:
             pass
 
-        # Show result with IMP comparison
-        if closed_run and closed_run.contract:
-            closed_str = closed_run.contract.to_str()
-            closed_decl = closed_run.contract.declarer.to_char()
-            closed_tricks_val = closed_run.declarer_tricks
-            closed_target = closed_run.contract.target_tricks()
-            closed_diff = closed_tricks_val - closed_target
-            if closed_diff > 0:
-                closed_result = f"+{closed_diff}"
-            elif closed_diff == 0:
-                closed_result = "="
+        # Show result with IMP comparison in the side panel
+        if closed_run and closed_run.played:
+            if closed_run.contract:
+                closed_target = closed_run.contract.target_tricks()
+                closed_diff = closed_run.declarer_tricks - closed_target
+                if closed_diff > 0:
+                    closed_result_diff = f"+{closed_diff}"
+                elif closed_diff == 0:
+                    closed_result_diff = "="
+                else:
+                    closed_result_diff = str(closed_diff)
+                closed_display = (
+                    f"{closed_run.contract.to_str()} by "
+                    f"{closed_run.contract.declarer.to_char()} — "
+                    f"{closed_run.declarer_tricks} tricks ({closed_result_diff})"
+                )
             else:
-                closed_result = str(closed_diff)
-            closed_ns_score = closed_run.ns_score
+                closed_display = "Passed out"
 
             imp_text = f"IMP: {imp_swing:+d} {'(N/S)' if imp_swing >= 0 else '(E/W)'}"
-            imp_color = "#0a0" if imp_swing >= 0 else "#a00"
 
             self.analysis_label.setText(
                 f"Contract: {contract.to_str()} by {contract.declarer.to_char()}\n"
                 f"Result: {tricks} tricks ({result_str})\n"
                 f"Score: {ns_score:+d} (N/S)\n\n"
-                f"Closed room: {closed_str} by {closed_decl}\n"
-                f"Result: {closed_tricks_val} tricks ({closed_result})\n"
-                f"Score: {closed_ns_score:+d} (N/S)\n\n"
+                f"Closed room: {closed_display}\n"
+                f"Score: {closed_run.ns_score:+d} (N/S)\n\n"
                 f"{imp_text}"
             )
 
-        # Add closed room result as companion entry (same board, shown in right columns)
-        if closed_run and closed_run.contract:
+        # Add closed-room result as companion entry so it shows on the
+        # scoring table (Contract 2 / N/S 2). Also added for passed-out
+        # closed hands — their "Pass" entry is still informative.
+        if closed_run and closed_run.played:
+            pav_id = (self.scoring_table.results[-1].pavlicek_id
+                      if self.scoring_table.results else "")
             closed_result_obj = BoardResult(
                 board_number=board_num,
-                pavlicek_id=last_result.pavlicek_id if self.scoring_table.results else "",
+                pavlicek_id=pav_id,
                 dealer=board.dealer,
                 vulnerability=board.vulnerability,
-                contract=closed_run.contract,
-                declarer=closed_run.contract.declarer,
-                tricks_made=closed_run.declarer_tricks,
+                contract=closed_run.contract,  # may be None → shown as "Pass"
+                declarer=closed_run.contract.declarer if closed_run.contract else None,
+                tricks_made=closed_run.declarer_tricks or 0,
                 ns_score=closed_run.ns_score,
                 ew_score=closed_run.ew_score,
                 imps=-imp_swing if imp_swing is not None else None,
