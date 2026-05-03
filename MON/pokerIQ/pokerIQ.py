@@ -5180,6 +5180,8 @@ class PokerWindow(QMainWindow):
         # Drop any cached Claude analyses from the prior hand
         self._latest_hand_analyses = None
         self._latest_hand_analyses_hand = None
+        # Dismiss any prior-hand summary / stats dialogs left open
+        self._close_open_hand_dialogs()
 
         # Reset hand history for interpretation
         self.hand_history = {
@@ -6421,7 +6423,9 @@ class PokerWindow(QMainWindow):
             made_hands_by_street=made_hands_by_street,
             parent=self
         )
-        dialog.exec()
+        dialog.setModal(False)
+        self._track_hand_dialog(dialog)
+        dialog.show()
 
     def show_hand_interpretation(self, active_players, winners, hand_results):
         """Generate and display a narrative interpretation of the hand with poker terminology."""
@@ -6571,6 +6575,28 @@ class PokerWindow(QMainWindow):
             assists_payload,
         )
 
+    def _track_hand_dialog(self, dialog):
+        """Remember an end-of-hand dialog so it can be auto-dismissed when
+        the next HAND_START arrives. Self-cleans on dialog destroy."""
+        if not hasattr(self, '_open_hand_dialogs'):
+            self._open_hand_dialogs = []
+        self._open_hand_dialogs.append(dialog)
+        dialog.destroyed.connect(
+            lambda _=None, d=dialog: self._open_hand_dialogs.remove(d)
+            if hasattr(self, '_open_hand_dialogs') and d in self._open_hand_dialogs
+            else None
+        )
+
+    def _close_open_hand_dialogs(self):
+        """Close every tracked end-of-hand dialog (text summary + stats)."""
+        dialogs = list(getattr(self, '_open_hand_dialogs', []) or [])
+        for d in dialogs:
+            try:
+                d.close()
+            except RuntimeError:
+                pass
+        self._open_hand_dialogs = []
+
     def _show_hand_interpretation_text(self, interpretation_text: str,
                                         hand_number: int,
                                         assists_used: dict):
@@ -6662,6 +6688,7 @@ class PokerWindow(QMainWindow):
         # share the scroll area with the rest of the content.
         self._attach_claude_analysis_to_dialog(dialog, analysis_anchor_layout)
 
+        self._track_hand_dialog(dialog)
         dialog.show()
 
     def _attach_claude_analysis_to_dialog(self, dialog, layout):
@@ -6859,6 +6886,7 @@ class PokerWindow(QMainWindow):
                 parent=self,
             )
             dialog.setModal(False)
+            self._track_hand_dialog(dialog)
             dialog.show()
         except Exception as ex:
             print(f"[client] graphical hand summary failed: {ex}")
@@ -7916,6 +7944,8 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         # Drop any cached Claude analyses from the prior hand
         self._latest_hand_analyses = None
         self._latest_hand_analyses_hand = None
+        # Dismiss any prior-hand summary / stats dialogs left open
+        self._close_open_hand_dialogs()
 
         # Reset bet_in_round for all players
         for p in self.players:
