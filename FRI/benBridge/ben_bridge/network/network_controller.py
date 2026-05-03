@@ -500,14 +500,27 @@ class NetworkGameController(QObject):
 
         self._current_board = board
 
+        hands_dict = {
+            seat.to_char(): board.hands[seat].to_dict(hidden=False)
+            for seat in board.hands
+        }
+        # DIAGNOSTIC: log which guests are connected and how many cards
+        # are about to be packed into the broadcast (pre-personalization).
+        try:
+            seats = list(self._server.client_seats) if self._server else []
+            print(f"[host broadcast_deal] connected guest seats: "
+                  f"{[s.to_char() for s in seats]}", flush=True)
+            for k, v in hands_dict.items():
+                n = len(v.get('cards') or [])
+                print(f"  pre-mask hand[{k}]: {n} cards", flush=True)
+        except Exception as ex:
+            print(f"[host broadcast_deal] diagnostic failed: {ex}", flush=True)
+
         message = make_deal_start(
             board_number=board.board_number,
             dealer=board.dealer.to_char(),
             vulnerability=board.vulnerability.value,
-            hands={
-                seat.to_char(): board.hands[seat].to_dict(hidden=False)
-                for seat in board.hands
-            },
+            hands=hands_dict,
             sequence=self._server.get_next_sequence()
         )
         self._send_message(message)

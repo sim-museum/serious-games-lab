@@ -437,6 +437,13 @@ class MainWindow(QMainWindow):
         # Parallel closed room worker (started at deal time, joined at hand end)
         self._pending_closed_room: Optional[dict] = None
 
+        # The seat the local user actually wants to play. This is the
+        # canonical record across network connect/disconnect transitions:
+        # after the host disconnects we keep the guest at this seat instead
+        # of resetting to South. Only set_local_seat() and the user
+        # picking a different seat in the lobby change it.
+        self._user_seat: Seat = Seat.SOUTH
+
         # Network game controller for LAN play
         self.network_controller = NetworkGameController(self)
         self._setup_network_signals()
@@ -1278,7 +1285,7 @@ class MainWindow(QMainWindow):
             self.table_view.set_hand_visible(seat, visible)
 
         # Always show human's hand (South by default)
-        self.table_view.set_hand_visible(Seat.SOUTH, True)
+        self.table_view.set_hand_visible(self._user_seat, True)
 
         # Enable buttons
         self.next_card_btn.setEnabled(False)
@@ -1485,7 +1492,7 @@ For more information, see the README file."""
             visible = player.player_type == PlayerType.HUMAN
             self.table_view.set_hand_visible(seat, visible)
 
-        self.table_view.set_hand_visible(Seat.SOUTH, True)
+        self.table_view.set_hand_visible(self._user_seat, True)
         self.next_card_btn.setEnabled(False)
         self.next_deal_btn.setVisible(True)
 
@@ -1626,7 +1633,7 @@ For more information, see the README file."""
                 visible = player.player_type == PlayerType.HUMAN
                 self.table_view.set_hand_visible(seat, visible)
 
-            self.table_view.set_hand_visible(Seat.SOUTH, True)
+            self.table_view.set_hand_visible(self._user_seat, True)
             self.next_card_btn.setEnabled(False)
 
             self.status_label.setText(f"Board {board.board_number}: {board.dealer.to_char()} deals")
@@ -1700,7 +1707,7 @@ For more information, see the README file."""
             visible = player.player_type == PlayerType.HUMAN
             self.table_view.set_hand_visible(seat, visible)
 
-        self.table_view.set_hand_visible(Seat.SOUTH, True)
+        self.table_view.set_hand_visible(self._user_seat, True)
         self.next_card_btn.setEnabled(False)
 
         self.status_label.setText(f"Board {board.board_number}: {board.dealer.to_char()} deals")
@@ -2476,6 +2483,10 @@ For more information, see the README file."""
         seat = Seat.from_char(my_seat)
         partner = Seat.from_char(partner_seat)
 
+        # Remember the seat the user actually claimed so disconnect
+        # recovery doesn't drop them back to South.
+        self._user_seat = seat
+
         # Guest mode: keep the connect dialog open in lobby mode so the
         # guest can see the live seat board until the host starts the
         # game. The dialog dismisses itself on GAME_START.
@@ -2607,7 +2618,9 @@ For more information, see the README file."""
             return
 
         # Client mode: keep playing locally with BEN as every other seat.
-        my_seat = self.network_controller.my_seat or Seat.SOUTH
+        # Prefer the canonical _user_seat (set when the guest claimed
+        # their seat) over the controller's possibly-cleared field.
+        my_seat = self._user_seat or self.network_controller.my_seat or Seat.SOUTH
         self.disconnect_action.setEnabled(False)
         styled_info(
             self, "Host Disconnected",
@@ -2638,6 +2651,33 @@ For more information, see the README file."""
         self.controller.board = board
         self.controller.current_phase = 'bidding'
         self.controller.current_seat = board.dealer
+
+        # DIAGNOSTIC — surface enough to debug "guest sees no cards":
+        # which seat the local user is at, what cards arrived per seat,
+        # and which physical widget will end up showing the local hand.
+        try:
+            my_seat = self.network_controller.my_seat
+            print(f"[net deal] my_seat={my_seat.to_char() if my_seat else None}, "
+                  f"dealer={board.dealer.to_char()}, "
+                  f"table_view._local_seat={self.table_view._local_seat.to_char()}, "
+                  f"rotation_quarters={self.table_view._rotation_quarters}",
+                  flush=True)
+            for s in Seat:
+                hand = board.hands.get(s)
+                n = len(hand.cards) if hand else 0
+                print(f"  hand[{s.to_char()}]: {n} cards", flush=True)
+        except Exception as ex:
+            print(f"[net deal] diagnostic failed: {ex}", flush=True)
+
+        # If set_local_seat hasn't been applied (e.g. signal-ordering quirk),
+        # apply it now so the bottom widget is the right one before set_board.
+        try:
+            ms = self.network_controller.my_seat
+            if ms is not None and self.table_view._local_seat != ms:
+                print(f"[net deal] late set_local_seat({ms.to_char()})", flush=True)
+                self.table_view.set_local_seat(ms)
+        except Exception:
+            pass
 
         # Store original hands
         self.original_hands = {}
@@ -2733,12 +2773,18 @@ For more information, see the README file."""
             self.controller.players[seat].player_type = player_type
 
     def _configure_single_player(self):
-        """Revert to single-player mode."""
+        """Revert to single-player mode (South-as-human, no rotation)."""
         for seat in Seat:
             if seat == Seat.SOUTH:
                 self.controller.players[seat].player_type = PlayerType.HUMAN
             else:
                 self.controller.players[seat].player_type = PlayerType.COMPUTER
+        # Make sure the canonical user seat and the table rotation also
+        # reset to the single-player default; otherwise a previous
+        # network claim (e.g. North) lingers and the bottom widget keeps
+        # showing the wrong hand on the next deal.
+        self._user_seat = Seat.SOUTH
+        self.table_view.set_local_seat(Seat.SOUTH)
 
     def _start_network_game(self):
         """Start a network game (server generates deal)."""
