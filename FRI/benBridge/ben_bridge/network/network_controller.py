@@ -18,8 +18,35 @@ from .protocol import (
 from ben_backend.models import Seat, Bid, Card, BoardState, Hand, PlayerType
 
 import logging
+import os
+import subprocess
 
 logger = logging.getLogger(__name__)
+
+
+def get_app_version() -> str:
+    """Build identifier for the current ben_bridge revision so the host
+    and joining guests can verify they're on the same code. Uses git
+    rev-parse first; falls back to the modification time of this file."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    try:
+        result = subprocess.run(
+            ['git', '-C', here, 'rev-parse', '--short=12', 'HEAD'],
+            capture_output=True, text=True, timeout=2,
+        )
+        if result.returncode == 0:
+            v = result.stdout.strip()
+            if v:
+                return v
+    except Exception:
+        pass
+    try:
+        return f"mtime:{int(os.path.getmtime(os.path.abspath(__file__)))}"
+    except Exception:
+        return "unknown"
+
+
+APP_VERSION = get_app_version()
 
 
 class NetworkGameController(QObject):
@@ -176,9 +203,10 @@ class NetworkGameController(QObject):
         if self._server is not None or self._client is not None:
             self.disconnect()
 
-        self._server = BridgeServer(self)
+        self._server = BridgeServer(self, app_version=APP_VERSION)
         self._server.client_connected.connect(self._on_client_connected)
         self._server.client_disconnected.connect(self._on_client_disconnected)
+        self._server.seat_swap.connect(self._on_seat_swap)
         self._server.message_received.connect(self._on_message_received)
         self._server.error_occurred.connect(self._on_error)
         self._server.server_started.connect(self._on_server_started)
@@ -227,6 +255,11 @@ class NetworkGameController(QObject):
         logger.info("Client disconnected")
         self.connection_lost.emit("Client disconnected")
 
+    def _on_seat_swap(self, seat_char: str, old_label: str, new_label: str):
+        """Log a bot↔human seat swap so post-game review can see who was
+        controlling each seat at any point in the game."""
+        logger.info(f"[seat swap] {seat_char}: {old_label} → {new_label}")
+
     # Client mode
 
     def connect_to_server(self, host: str, port: int, name: str,
@@ -250,7 +283,7 @@ class NetworkGameController(QObject):
         if self._server is not None or self._client is not None:
             self.disconnect()
 
-        self._client = BridgeClient(self)
+        self._client = BridgeClient(self, app_version=APP_VERSION)
         self._client.connected.connect(self._on_connected_to_server)
         self._client.disconnected.connect(self._on_disconnected_from_server)
         self._client.connection_failed.connect(self._on_connection_failed)

@@ -33,8 +33,12 @@ class BridgeClient(QObject):
     message_received = pyqtSignal(object)  # NetworkMessage
     connecting = pyqtSignal()  # Emitted when connection attempt starts
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, app_version: str = ""):
         super().__init__(parent)
+
+        # Build identifier sent in CONNECT_REQUEST so the host can reject
+        # mismatched clients with code "version_mismatch".
+        self.app_version: str = (app_version or "").strip()
 
         self._socket: Optional[QTcpSocket] = None
         self._buffer = b""
@@ -175,11 +179,13 @@ class BridgeClient(QObject):
         )
         self._connection_timer.stop()
 
-        # Send connection request with requested seat
+        # Send connection request with requested seat + our app version so
+        # the host can reject us if the build doesn't match.
         request = make_connect_request(
             self._client_name,
             requested_seat=self._requested_seat,
             role=self._role,
+            app_version=self.app_version,
         )
         data = request.to_bytes()
         self._socket.write(data)

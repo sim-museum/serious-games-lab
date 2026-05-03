@@ -32,13 +32,19 @@ class BridgeServer(QObject):
     # Signals
     client_connected = pyqtSignal(str, str)  # client_name, role (legacy)
     client_disconnected = pyqtSignal()
+    seat_swap = pyqtSignal(str, str, str)    # seat_char, old_label, new_label
     message_received = pyqtSignal(object)  # NetworkMessage
     error_occurred = pyqtSignal(str)  # error message
     server_started = pyqtSignal(int)  # port number
     server_stopped = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, app_version: str = ""):
         super().__init__(parent)
+
+        # Build identifier (typically a short git commit hash). When set,
+        # the server rejects clients whose CONNECT_REQUEST carries a
+        # different (or empty) app_version with code "version_mismatch".
+        self.app_version: str = (app_version or "").strip()
 
         self._server: Optional[QTcpServer] = None
         self._buffer = b""
@@ -229,19 +235,34 @@ class BridgeServer(QObject):
             self._sequence += 1
             message.sequence = self._sequence
 
-        data = message.to_bytes()
-        targets = [self._clients[target_seat]] if (target_seat is not None and target_seat in self._clients) \
-                  else list(self._clients.values())
+        if target_seat is not None and target_seat in self._clients:
+            target_pairs = [(target_seat, self._clients[target_seat])]
+        else:
+            target_pairs = list(self._clients.items())
         ok = False
-        for sock in targets:
+        for seat, sock in target_pairs:
             try:
                 if sock.state() != QTcpSocket.SocketState.ConnectedState:
                     continue
-                if sock.write(data) != -1:
+                # _personalize is currently a passthrough — it gives us a
+                # seam to rewrite per-recipient fields later (e.g. mask
+                # opponents' card data) without touching every send site.
+                out = self._personalize(message, seat)
+                if sock.write(out.to_bytes()) != -1:
                     ok = True
             except Exception as ex:
                 logger.error(f"Failed to send to {sock}: {ex}")
         return ok
+
+    def _personalize(self, message: NetworkMessage,
+                     recipient_seat: Seat) -> NetworkMessage:
+        """Hook for per-recipient message rewriting. Currently a passthrough.
+
+        Override (or extend in-place) when a future feature needs to mask
+        or rewrite payload fields based on which seat is receiving the
+        message — same pattern as pokerIQ.network.server._personalize.
+        """
+        return message
 
     def get_next_sequence(self) -> int:
         """Get the next sequence number."""
@@ -325,6 +346,27 @@ class BridgeServer(QObject):
         player_name = payload.get("player_name", "Guest")
         requested = (payload.get("requested_seat") or "").upper()
         legacy_role = payload.get("role", "partner")
+        client_version = (payload.get("app_version") or "").strip()
+
+        # Reject mismatched builds early so guests don't desync over wire-
+        # format changes. Empty host version disables the check.
+        if self.app_version and client_version != self.app_version:
+            shown_client = client_version or "unknown"
+            try:
+                sock.write(make_connect_reject(
+                    f"Version mismatch: host is on '{self.app_version}', "
+                    f"you are on '{shown_client}'. Update both sides to "
+                    "the same ben_bridge revision and reconnect.",
+                    code="version_mismatch",
+                ).to_bytes())
+                sock.flush()
+                sock.disconnectFromHost()
+            except Exception:
+                pass
+            logger.info(
+                f"Rejected '{player_name}' — version mismatch "
+                f"(host {self.app_version!r} vs client {client_version!r})")
+            return
 
         # Determine target seat
         target_seat: Optional[Seat] = None
@@ -391,6 +433,12 @@ class BridgeServer(QObject):
             self._heartbeat_check_timer.start(HEARTBEAT_INTERVAL_MS)
 
         logger.info(f"Client '{player_name}' seated at {target_seat.to_char()} ({self._client_role})")
+        # Emit the seat swap so the network controller can write a
+        # log-friendly "[seat swap] AI replaced by Guest at N" line.
+        try:
+            self.seat_swap.emit(target_seat.to_char(), "AI", player_name)
+        except Exception:
+            pass
         self.client_connected.emit(player_name, self._client_role)
 
     def _handle_disconnect(self, message: NetworkMessage, sock: QTcpSocket):
@@ -424,8 +472,14 @@ class BridgeServer(QObject):
         for s in targets:
             seat = self._seat_of_socket(s)
             if seat is not None:
+                old_name = self._client_names.get(seat, "Guest")
                 self._clients.pop(seat, None)
                 self._client_names.pop(seat, None)
+                # Emit the swap so the controller can log the AI takeover.
+                try:
+                    self.seat_swap.emit(seat.to_char(), old_name, "AI")
+                except Exception:
+                    pass
             if s in self._pending_sockets:
                 self._pending_sockets.remove(s)
             self._socket_buffers.pop(id(s), None)

@@ -88,7 +88,8 @@ class NetworkMessage:
 # Connection protocol messages
 
 def make_connect_request(player_name: str, requested_seat: str = "",
-                          role: str = "partner") -> NetworkMessage:
+                          role: str = "partner",
+                          app_version: str = "") -> NetworkMessage:
     """Create a connection request message.
 
     Args:
@@ -96,6 +97,9 @@ def make_connect_request(player_name: str, requested_seat: str = "",
         requested_seat: Seat character the guest wants to play (N/E/S/W).
             Empty string falls back to legacy role-based assignment.
         role: Legacy. Only used if requested_seat is empty.
+        app_version: Build identifier (typically a short git commit hash)
+            so the host can reject mismatched clients with code
+            "version_mismatch" in the rejection payload.
     """
     return NetworkMessage(
         type=MessageType.CONNECT_REQUEST,
@@ -103,6 +107,7 @@ def make_connect_request(player_name: str, requested_seat: str = "",
             "player_name": player_name,
             "requested_seat": requested_seat,
             "role": role,
+            "app_version": app_version,
         }
     )
 
@@ -135,17 +140,22 @@ def make_connect_accept(
     )
 
 
-def make_connect_reject(reason: str, free_seats: Optional[list] = None) -> NetworkMessage:
+def make_connect_reject(reason: str, free_seats: Optional[list] = None,
+                         code: str = "") -> NetworkMessage:
     """Create a connection rejection message.
 
     Args:
         reason: Human-readable reason string.
         free_seats: Optional list of seat chars (N/E/S/W) still available,
             so the client can re-prompt with just the free seats.
+        code: Optional machine-readable tag, e.g. "version_mismatch",
+            "seat_taken", "table_full". Empty string for unspecified.
     """
     payload = {"reason": reason}
     if free_seats is not None:
         payload["free_seats"] = list(free_seats)
+    if code:
+        payload["code"] = code
     return NetworkMessage(
         type=MessageType.CONNECT_REJECT,
         payload=payload,
