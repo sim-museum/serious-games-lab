@@ -2684,6 +2684,7 @@ For more information, see the README file."""
                                key=lambda c: c.rank, reverse=True)
                 suit_lines.append(f"{suit_chars[suit]}:{''.join(c.rank.to_char() for c in cards) or '-'}")
             lines.append(f"Your hand ({seat_names[seat]}): {' '.join(suit_lines)}")
+            lines.append(f"Your HCP: {hand.hcp()} (use this number; do not recount).")
 
         # Auction so far — label every bid with its seat so Claude doesn't have
         # to count around the table and misattribute bids.
@@ -2727,6 +2728,7 @@ For more information, see the README file."""
                                        key=lambda c: c.rank, reverse=True)
                         suit_lines.append(f"{suit_chars[suit]}:{''.join(c.rank.to_char() for c in cards) or '-'}")
                     lines.append(f"Dummy ({seat_names[dummy_seat]}): {' '.join(suit_lines)}")
+                    lines.append(f"Dummy HCP: {d_hand.hcp()} (use this number; do not recount).")
 
             # Tricks played
             tricks_played = getattr(board, 'tricks', None) or []
