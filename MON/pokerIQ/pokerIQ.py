@@ -6928,14 +6928,21 @@ class PokerWindow(QMainWindow):
         )
 
     def _close_open_hand_dialogs(self):
-        """Close every tracked end-of-hand dialog (text summary + stats)."""
-        dialogs = list(getattr(self, '_open_hand_dialogs', []) or [])
-        for d in dialogs:
-            try:
-                d.close()
-            except RuntimeError:
-                pass
-        self._open_hand_dialogs = []
+        """Close every tracked end-of-hand dialog (text summary + stats).
+        Suppresses the Stats→Hand-Summary restore callback so the user
+        lands on the table view, not back on Hand Summary, when a new
+        hand starts."""
+        self._suppress_parent_restore = True
+        try:
+            dialogs = list(getattr(self, '_open_hand_dialogs', []) or [])
+            for d in dialogs:
+                try:
+                    d.close()
+                except RuntimeError:
+                    pass
+            self._open_hand_dialogs = []
+        finally:
+            self._suppress_parent_restore = False
 
     def _show_hand_interpretation_text(self, interpretation_text: str,
                                         hand_number: int,
@@ -7230,8 +7237,12 @@ class PokerWindow(QMainWindow):
 
     def _restore_parent_dialog(self, parent_dialog):
         """Re-show + raise the Hand Summary text dialog after the Stats
-        dialog was dismissed."""
+        dialog was dismissed — unless we're closing everything for a new
+        hand, in which case the user wants the table view, not Hand
+        Summary again."""
         if parent_dialog is None:
+            return
+        if getattr(self, '_suppress_parent_restore', False):
             return
         try:
             parent_dialog.show()
