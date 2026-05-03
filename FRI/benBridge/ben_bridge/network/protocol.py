@@ -23,6 +23,10 @@ class MessageType(Enum):
     HEARTBEAT = "heartbeat"
     HEARTBEAT_ACK = "heartbeat_ack"
 
+    # Lobby
+    SEAT_LIST = "seat_list"
+    GAME_START = "game_start"
+
     # Game state
     DEAL_START = "deal_start"
 
@@ -160,6 +164,31 @@ def make_connect_reject(reason: str, free_seats: Optional[list] = None,
         type=MessageType.CONNECT_REJECT,
         payload=payload,
     )
+
+
+def make_seat_list(seats: Dict[str, Optional[str]],
+                    host_seat: str = "") -> NetworkMessage:
+    """Broadcast the live seat occupancy to all connected clients.
+
+    Args:
+        seats: Dict mapping seat char (N/E/S/W) to player name or None if free.
+        host_seat: Seat char of the host (so clients can flag who is host).
+    """
+    return NetworkMessage(
+        type=MessageType.SEAT_LIST,
+        payload={
+            "seats": dict(seats),
+            "host_seat": host_seat,
+        },
+    )
+
+
+def make_game_start() -> NetworkMessage:
+    """Tell all clients the lobby is closing and the deal is about to begin.
+
+    Sent by the host once the lobby fills or the host clicks Start Game.
+    """
+    return NetworkMessage(type=MessageType.GAME_START)
 
 
 def make_disconnect(reason: str = "") -> NetworkMessage:

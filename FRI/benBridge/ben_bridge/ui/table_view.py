@@ -670,11 +670,27 @@ class TableView(QWidget):
         self.declarer: Optional[Seat] = None
         self.dummy: Optional[Seat] = None
         self.human_controls_declarer = False
-        self.swapped_positions = False
+        # _local_seat is the seat the local human is playing. The view is
+        # rotated so this seat sits at the bottom physical position. Defaults
+        # to South for single-player; main_window calls set_local_seat() in
+        # network mode so a guest at East/N/W sees their own hand at the
+        # bottom of the screen.
+        self._local_seat: Seat = Seat.SOUTH
+        self._rotation_quarters: int = 0  # number of 90° steps applied
         self.is_play_phase = False
 
         self.setStyleSheet(f"background-color: {COLORS['background']};")
         self._setup_ui()
+
+    def _display_seat(self, logical_seat: Seat) -> Seat:
+        """Map a logical seat (player identity) to the physical widget that
+        currently displays its hand."""
+        return Seat((logical_seat.value + self._rotation_quarters) % 4)
+
+    def _logical_seat(self, physical_seat: Seat) -> Seat:
+        """Inverse of _display_seat — given a physical widget position, the
+        logical seat whose cards it is showing."""
+        return Seat((physical_seat.value - self._rotation_quarters) % 4)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -828,6 +844,68 @@ class TableView(QWidget):
         # Hide tricks panel during bidding
         self.tricks_panel.setVisible(False)
 
+    def set_local_seat(self, seat: Seat):
+        """Rotate the table so the given seat is at the bottom (South widget).
+
+        Called from the network connection handler in main_window so a guest
+        at East/N/W sees their own hand at the bottom. Single-player keeps
+        the default (South).
+        """
+        if seat is None:
+            seat = Seat.SOUTH
+        self._local_seat = seat
+        self._rotation_quarters = (Seat.SOUTH.value - seat.value) % 4
+        # Re-key each widget's logical_seat. We only re-render the hands if
+        # a board is already loaded; otherwise set_board() will do it.
+        for physical_seat in Seat:
+            self.hand_widgets[physical_seat].logical_seat = self._logical_seat(physical_seat)
+        if self.board is not None:
+            self._reapply_orientation()
+
+    def _reapply_orientation(self):
+        """Refresh hand contents and labels for the current rotation."""
+        if self.board is None:
+            return
+        for physical_seat in Seat:
+            logical = self._logical_seat(physical_seat)
+            widget = self.hand_widgets[physical_seat]
+            widget.logical_seat = logical
+            hand = self.board.hands.get(logical)
+            face_up = (logical == self._local_seat) or widget.isVisible()
+            if hand is not None and widget.isVisible():
+                widget.set_hand(hand, face_up=face_up)
+        # Refresh seat-name labels (per-seat role labels are owned by
+        # setup_declarer_play and set_board so we don't override them here).
+        self._refresh_seat_labels()
+
+    def _refresh_seat_labels(self):
+        """Set the four position labels to identify the logical seat in each
+        physical position. Called whenever rotation changes; downstream
+        helpers (setup_declarer_play, set_board) are free to overwrite with
+        role info ("Dummy", "Declarer", etc.) afterwards."""
+        char_names = {Seat.NORTH: 'N', Seat.EAST: 'E',
+                      Seat.SOUTH: 'S', Seat.WEST: 'W'}
+        labels = {
+            Seat.NORTH: self.north_label,
+            Seat.EAST: self.east_label,
+            Seat.SOUTH: self.south_label,
+            Seat.WEST: self.west_label,
+        }
+        for physical_seat, label in labels.items():
+            logical = self._logical_seat(physical_seat)
+            if logical == self._local_seat:
+                label.setText(f"{char_names[logical]}: HUMAN")
+                label.setStyleSheet(
+                    "QLabel { background-color: #88ccff; color: black; "
+                    "padding: 2px 8px; border-radius: 3px; }"
+                )
+            else:
+                label.setText(f"{char_names[logical]}: BEN")
+                label.setStyleSheet(
+                    "QLabel { background-color: #d0d0e0; color: black; "
+                    "padding: 2px 8px; border-radius: 3px; }"
+                )
+
     def _on_card_selected(self, seat: Seat, card: Card):
         self.card_played.emit(seat, card)
 
@@ -835,34 +913,32 @@ class TableView(QWidget):
         self.board = board
         self.declarer = None
         self.dummy = None
-        self.swapped_positions = False
+        # Rotation is owned by _local_seat and persists across deals.
         self.is_play_phase = False
 
         self.dealer_label.setText(f"Dealer: {board.dealer.to_char()}")
         vuln_map = {Vulnerability.NONE: 'None', Vulnerability.NS: 'N-S', Vulnerability.EW: 'E-W', Vulnerability.BOTH: 'Both'}
         self.vuln_label.setText(f"Vul.: {vuln_map[board.vulnerability]}")
 
-        # Update player labels
-        self.north_label.setText("N: BEN")
-        self.north_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
-        self.east_label.setText("E: BEN")
-        self.west_label.setText("W: BEN")
-        self.south_label.setText("S: HUMAN")
-        self.south_label.setStyleSheet("QLabel { background-color: #88ccff; color: black; padding: 2px 8px; border-radius: 3px; }")
+        # Repaint the per-position labels based on _local_seat. Keeps
+        # "<seat char>: HUMAN" on the local user's seat regardless of which
+        # physical position they sit in after rotation.
+        self._refresh_seat_labels()
 
-        # Hide North's hand during bidding (will show during play if dummy)
-        self.hand_widgets[Seat.NORTH].setVisible(False)
-
-        # Only show South's hand (face up) during bidding
-        for seat in Seat:
-            self.hand_widgets[seat].logical_seat = seat
-            self.hand_widgets[seat].set_player_info(is_human=(seat == Seat.SOUTH))
-            if seat == Seat.SOUTH and seat in board.hands:
-                self.hand_widgets[seat].setVisible(True)
-                self.hand_widgets[seat].set_hand(board.hands[seat], face_up=True)
+        # During bidding only the local user's hand is shown face up. Each
+        # physical widget displays the logical seat dictated by rotation.
+        local_physical = self._display_seat(self._local_seat)
+        for physical_seat in Seat:
+            logical = self._logical_seat(physical_seat)
+            widget = self.hand_widgets[physical_seat]
+            widget.logical_seat = logical
+            widget.set_player_info(is_human=(logical == self._local_seat))
+            if physical_seat == local_physical and logical in board.hands:
+                widget.setVisible(True)
+                widget.set_hand(board.hands[logical], face_up=True)
             else:
-                self.hand_widgets[seat].setVisible(False)
-                self.hand_widgets[seat].clear()
+                widget.setVisible(False)
+                widget.clear()
 
         self.trick_area.clear_trick()
         self.trick_area.set_show_bidding(True)
@@ -884,170 +960,106 @@ class TableView(QWidget):
         self.dummy = contract.declarer.partner()
         self.is_play_phase = True
 
-        # Update labels for declarer/dummy
-        for seat in Seat:
-            is_dec = (seat == self.declarer)
-            is_dum = (seat == self.dummy)
-            is_hum = seat in (Seat.SOUTH, Seat.NORTH) and (self.declarer in (Seat.NORTH, Seat.SOUTH))
-            self.hand_widgets[seat].set_player_info(is_human=is_hum, is_dummy=is_dum, is_declarer=is_dec)
+        local = self._local_seat
+        char_names = {Seat.NORTH: 'N', Seat.EAST: 'E',
+                      Seat.SOUTH: 'S', Seat.WEST: 'W'}
 
-        # Handle position swapping if North is declarer
-        if self.declarer == Seat.NORTH:
-            self._swap_ns()
+        # Per-widget role flags. is_human marks the *local* user's seat
+        # only — defenders' AI hands keep BEN labels regardless of which
+        # team won the contract. This is the fix for the East-guest bug
+        # where the old NS-only `is_hum` ignored the local seat entirely.
+        for physical_seat in Seat:
+            logical = self._logical_seat(physical_seat)
+            self.hand_widgets[physical_seat].logical_seat = logical
+            self.hand_widgets[physical_seat].set_player_info(
+                is_human=(logical == local),
+                is_dummy=(logical == self.dummy),
+                is_declarer=(logical == self.declarer),
+            )
 
-        # Show South's hand (always visible - the human player)
-        self.hand_widgets[Seat.SOUTH].setVisible(True)
+        # Always show the local user's hand at the bottom, face up.
+        local_widget = self.hand_widgets[self._display_seat(local)]
+        local_widget.setVisible(True)
+        if local in self.board.hands:
+            local_widget.set_hand(self.board.hands[local], face_up=True)
 
-        # ALWAYS show dummy's hand face-up (bridge rules)
-        # Show dummy in the North widget position (top of screen)
-        if self.dummy == Seat.NORTH:
-            # North is dummy
-            self.north_label.setText("N: Dummy")
-            self.north_label.setStyleSheet("QLabel { background-color: #ff6688; color: black; padding: 3px 8px; border-radius: 3px; }")
-            self.south_label.setText("S: Declarer" if self.declarer == Seat.SOUTH else "S: HUMAN")
-            style = "QLabel { background-color: #88ff88; color: black; padding: 3px 8px; border-radius: 3px; }" if self.declarer == Seat.SOUTH else "QLabel { background-color: #88ccff; color: black; padding: 2px 8px; border-radius: 3px; }"
-            self.south_label.setStyleSheet(style)
-            if Seat.NORTH in self.board.hands:
-                self.hand_widgets[Seat.NORTH].set_hand(self.board.hands[Seat.NORTH], face_up=True)
-                self.hand_widgets[Seat.NORTH].setVisible(True)
-        elif self.dummy == Seat.SOUTH:
-            # South is dummy (North is declarer) - positions swapped by _swap_ns()
-            # After swap: top shows South's cards (dummy), bottom shows North's cards (declarer)
-            self.north_label.setText("S: Dummy")  # Top label - showing South's cards
-            self.north_label.setStyleSheet("QLabel { background-color: #ff6688; color: black; padding: 3px 8px; border-radius: 3px; }")
-            self.south_label.setText("N: Declarer")  # Bottom label - showing North's cards
-            self.south_label.setStyleSheet("QLabel { background-color: #88ff88; color: black; padding: 3px 8px; border-radius: 3px; }")
-            # _swap_ns() already set up the hands, but ensure dummy is visible
-            self.hand_widgets[Seat.NORTH].setVisible(True)
-        elif self.dummy == Seat.EAST:
-            # East is dummy (West is declarer) - show East's cards at RIGHT (natural position)
-            self.north_label.setText("N: BEN")
-            self.north_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
-            self.east_label.setText("E: Dummy")
-            self.east_label.setStyleSheet("QLabel { background-color: #ff6688; color: black; padding: 3px 8px; border-radius: 3px; }")
-            self.west_label.setText("W: Declarer")
-            self.west_label.setStyleSheet("QLabel { background-color: #88ff88; color: black; padding: 3px 8px; border-radius: 3px; }")
-            self.south_label.setText("S: HUMAN")
-            self.south_label.setStyleSheet("QLabel { background-color: #88ccff; color: black; padding: 2px 8px; border-radius: 3px; }")
-            if Seat.EAST in self.board.hands:
-                self.hand_widgets[Seat.EAST].set_hand(self.board.hands[Seat.EAST], face_up=True)
-                self.hand_widgets[Seat.EAST].logical_seat = Seat.EAST
-                self.hand_widgets[Seat.EAST].setVisible(True)
-        elif self.dummy == Seat.WEST:
-            # West is dummy (East is declarer) - show West's cards at LEFT (natural position)
-            self.north_label.setText("N: BEN")
-            self.north_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
-            self.west_label.setText("W: Dummy")
-            self.west_label.setStyleSheet("QLabel { background-color: #ff6688; color: black; padding: 3px 8px; border-radius: 3px; }")
-            self.east_label.setText("E: Declarer")
-            self.east_label.setStyleSheet("QLabel { background-color: #88ff88; color: black; padding: 3px 8px; border-radius: 3px; }")
-            self.south_label.setText("S: HUMAN")
-            self.south_label.setStyleSheet("QLabel { background-color: #88ccff; color: black; padding: 2px 8px; border-radius: 3px; }")
-            if Seat.WEST in self.board.hands:
-                self.hand_widgets[Seat.WEST].set_hand(self.board.hands[Seat.WEST], face_up=True)
-                self.hand_widgets[Seat.WEST].logical_seat = Seat.WEST
-                self.hand_widgets[Seat.WEST].setVisible(True)
+        # ALWAYS reveal dummy face up (bridge rule).
+        dummy_widget = self.hand_widgets[self._display_seat(self.dummy)]
+        if self.dummy in self.board.hands:
+            dummy_widget.set_hand(self.board.hands[self.dummy], face_up=True)
+            dummy_widget.setVisible(True)
+
+        # When the local player controls the declarer side (single-player
+        # partnership control, or any seat where they ARE declarer/dummy),
+        # show declarer face up too. Network defenders never see declarer
+        # face up. main_window flips human_controls_declarer before calling
+        # us so we can read it without knowing about player types.
+        if self.human_controls_declarer and self.declarer in self.board.hands:
+            dec_widget = self.hand_widgets[self._display_seat(self.declarer)]
+            dec_widget.set_hand(self.board.hands[self.declarer], face_up=True)
+            dec_widget.setVisible(True)
+
+        # Per-position labels — derive from the LOGICAL seat at each
+        # physical position so a guest at East sees their own seat at the
+        # bottom labelled with the correct role (Declarer / HUMAN / etc.).
+        labels = {
+            Seat.NORTH: self.north_label,
+            Seat.EAST: self.east_label,
+            Seat.SOUTH: self.south_label,
+            Seat.WEST: self.west_label,
+        }
+        styles = {
+            'declarer': "QLabel { background-color: #88ff88; color: black; padding: 3px 8px; border-radius: 3px; }",
+            'dummy':    "QLabel { background-color: #ff6688; color: black; padding: 3px 8px; border-radius: 3px; }",
+            'human':    "QLabel { background-color: #88ccff; color: black; padding: 2px 8px; border-radius: 3px; }",
+            'ai':       "QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }",
+        }
+        for physical_seat, label in labels.items():
+            logical = self._logical_seat(physical_seat)
+            char = char_names[logical]
+            if logical == self.declarer and logical == local:
+                label.setText(f"{char}: Declarer (you)")
+                label.setStyleSheet(styles['declarer'])
+            elif logical == self.declarer:
+                label.setText(f"{char}: Declarer")
+                label.setStyleSheet(styles['declarer'])
+            elif logical == self.dummy and logical == local:
+                label.setText(f"{char}: Dummy (you)")
+                label.setStyleSheet(styles['dummy'])
+            elif logical == self.dummy:
+                label.setText(f"{char}: Dummy")
+                label.setStyleSheet(styles['dummy'])
+            elif logical == local:
+                label.setText(f"{char}: HUMAN")
+                label.setStyleSheet(styles['human'])
+            else:
+                label.setText(f"{char}: BEN")
+                label.setStyleSheet(styles['ai'])
 
         self.contract_label.setText(f"{contract.declarer.to_char()} {contract.to_str()}")
         self.trick_area.set_show_bidding(False)
         self.tricks_panel.setVisible(True)
 
-    def _swap_ns(self):
-        """Swap N/S and E/W positions when North is declarer.
-        This rotates the view 180 degrees so declarer (N) is at the bottom."""
-        self.swapped_positions = True
-
-        # Swap N/S hands
-        n_hand = self.board.hands.get(Seat.NORTH)
-        s_hand = self.board.hands.get(Seat.SOUTH)
-        self.hand_widgets[Seat.NORTH].logical_seat = Seat.SOUTH
-        self.hand_widgets[Seat.SOUTH].logical_seat = Seat.NORTH
-        if s_hand:
-            self.hand_widgets[Seat.NORTH].set_hand(s_hand, face_up=True)
-        if n_hand:
-            self.hand_widgets[Seat.SOUTH].set_hand(n_hand, face_up=True)
-
-        # Swap E/W hands
-        e_hand = self.board.hands.get(Seat.EAST)
-        w_hand = self.board.hands.get(Seat.WEST)
-        self.hand_widgets[Seat.EAST].logical_seat = Seat.WEST
-        self.hand_widgets[Seat.WEST].logical_seat = Seat.EAST
-        if w_hand:
-            self.hand_widgets[Seat.EAST].set_hand(w_hand, face_up=False)  # W's cards at E position
-        if e_hand:
-            self.hand_widgets[Seat.WEST].set_hand(e_hand, face_up=False)  # E's cards at W position
-
-        # Swap E/W labels
-        self.east_label.setText("W: BEN")
-        self.west_label.setText("E: BEN")
-
     def set_hand_visible(self, seat: Seat, visible: bool):
         if self.board and seat in self.board.hands:
-            ds = seat
-            if self.swapped_positions:
-                if seat == Seat.NORTH:
-                    ds = Seat.SOUTH
-                elif seat == Seat.SOUTH:
-                    ds = Seat.NORTH
-                elif seat == Seat.EAST:
-                    ds = Seat.WEST
-                elif seat == Seat.WEST:
-                    ds = Seat.EAST
-            # Make the widget visible and set the hand
+            ds = self._display_seat(seat)
             self.hand_widgets[ds].setVisible(visible)
             if visible:
                 self.hand_widgets[ds].set_hand(self.board.hands[seat], face_up=True)
 
     def set_hand_selectable(self, seat: Seat, selectable: bool, lead_suit: Optional[Suit] = None):
-        ds = seat
-        if self.swapped_positions:
-            if seat == Seat.NORTH:
-                ds = Seat.SOUTH
-            elif seat == Seat.SOUTH:
-                ds = Seat.NORTH
-            elif seat == Seat.EAST:
-                ds = Seat.WEST
-            elif seat == Seat.WEST:
-                ds = Seat.EAST
-        if selectable:
-            pass
+        ds = self._display_seat(seat)
         self.hand_widgets[ds].set_selectable(selectable)
         if selectable:
             self.hand_widgets[ds].highlight_legal(lead_suit)
 
     def play_card_to_trick(self, seat: Seat, card: Card, is_winner: bool = False):
-        ds = seat  # Display seat (which widget to remove card from)
-        trick_seat = seat  # Position in trick area
-        if self.swapped_positions:
-            # When N is declarer, all positions are rotated 180 degrees
-            if seat == Seat.NORTH:
-                ds = Seat.SOUTH
-                trick_seat = Seat.SOUTH
-            elif seat == Seat.SOUTH:
-                ds = Seat.NORTH
-                trick_seat = Seat.NORTH
-            elif seat == Seat.EAST:
-                ds = Seat.WEST
-                trick_seat = Seat.WEST
-            elif seat == Seat.WEST:
-                ds = Seat.EAST
-                trick_seat = Seat.EAST
-        self.trick_area.play_card(trick_seat, card, is_winner)
+        ds = self._display_seat(seat)
+        self.trick_area.play_card(ds, card, is_winner)
         self.hand_widgets[ds].remove_card(card)
 
     def show_trick_winner(self, winner: Seat):
-        display_winner = winner
-        if self.swapped_positions:
-            # Rotate 180 degrees
-            if winner == Seat.NORTH:
-                display_winner = Seat.SOUTH
-            elif winner == Seat.SOUTH:
-                display_winner = Seat.NORTH
-            elif winner == Seat.EAST:
-                display_winner = Seat.WEST
-            elif winner == Seat.WEST:
-                display_winner = Seat.EAST
-        self.trick_area.set_winner(display_winner)
+        self.trick_area.set_winner(self._display_seat(winner))
 
     def clear_trick(self):
         self.trick_area.clear_trick()

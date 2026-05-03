@@ -32,6 +32,7 @@ from .dialogs.replay_view import ReplayViewDialog
 from .dialogs.deal_converter import DealConverterDialog
 from .dialogs.start_server_dialog import StartServerDialog
 from .dialogs.connect_server_dialog import ConnectServerDialog
+from .dialogs.network_lobby_dialog import NetworkLobbyDialog
 
 from ben_backend import BridgeEngine, BoardState
 from network import NetworkGameController
@@ -1168,6 +1169,10 @@ class MainWindow(QMainWindow):
         self.network_controller.remote_card_received.connect(self._on_network_remote_card)
         self.network_controller.trick_clear_received.connect(self._on_network_trick_clear)
         self.network_controller.error_occurred.connect(self._on_network_error)
+        # Lobby — drive both the host's NetworkLobbyDialog and the guest's
+        # ConnectServerDialog from the same SEAT_LIST stream.
+        self.network_controller.seat_map_changed.connect(self._on_network_seat_map)
+        self.network_controller.game_starting.connect(self._on_network_game_starting)
 
     def _initialize_engine(self):
         """Initialize the BEN engine"""
@@ -2356,14 +2361,64 @@ For more information, see the README file."""
                 settings['seat']
             ):
                 self.status_label.setText(
-                    f"Server started on port {settings['port']}. Waiting for player..."
+                    f"Server started on port {settings['port']}. Waiting for players..."
                 )
+                # Open the persistent lobby. It stays open while guests
+                # connect, auto-accepts when 4 seats are filled, and gives
+                # the host a Start Game button to begin early.
+                self._open_host_lobby(settings)
             else:
                 from .dialogs.dialog_style import styled_warning
                 styled_warning(
                     self, "Server Error",
                     "Failed to start server. Check if the port is available."
                 )
+
+    def _open_host_lobby(self, settings: dict):
+        """Show the host lobby and wire its signals back to the controller."""
+        # Pull the same IP list the StartServerDialog showed so the host
+        # has it handy while waiting for guests.
+        from PyQt6.QtNetwork import QNetworkInterface, QAbstractSocket
+        ip_addresses = []
+        for iface in QNetworkInterface.allInterfaces():
+            flags = iface.flags()
+            if not (flags & QNetworkInterface.InterfaceFlag.IsUp):
+                continue
+            if flags & QNetworkInterface.InterfaceFlag.IsLoopBack:
+                continue
+            for entry in iface.addressEntries():
+                ip = entry.ip()
+                if ip.protocol() == QAbstractSocket.NetworkLayerProtocol.IPv4Protocol:
+                    ip_addresses.append(ip.toString())
+
+        self._lobby_dialog = NetworkLobbyDialog(
+            host_name=settings['name'],
+            host_seat=settings['seat'],
+            port=settings['port'],
+            ip_addresses=ip_addresses,
+            parent=self,
+        )
+        self._lobby_dialog.start_game_requested.connect(self._on_lobby_start_clicked)
+        # Tear down the server if the host cancels the lobby.
+        self._lobby_dialog.rejected.connect(self._on_lobby_cancelled)
+        # Seed the board with the host already seated.
+        self._lobby_dialog.update_seat_map(self.network_controller.current_seat_map())
+        self._lobby_dialog.show()
+
+    def _on_lobby_start_clicked(self):
+        """Host has clicked Start Game (or the lobby auto-filled)."""
+        self._lobby_dialog = None
+        self.network_controller.start_game()
+        # Mirror the previous "first guest auto-deals" behaviour, but now
+        # gated by the host explicitly closing the lobby.
+        QTimer.singleShot(200, self._start_network_game)
+
+    def _on_lobby_cancelled(self):
+        """Host cancelled the lobby before starting — stop the server."""
+        self._lobby_dialog = None
+        if self.network_controller.is_active:
+            self.network_controller.disconnect()
+        self.status_label.setText("Lobby cancelled. Server stopped.")
 
     def _on_connect_server(self):
         """Show connect dialog and connect to a server."""
@@ -2402,13 +2457,20 @@ For more information, see the README file."""
         """Handle successful network connection."""
         self.disconnect_action.setEnabled(True)
 
-        # Close connect dialog if open
-        if hasattr(self, '_connect_dialog') and self._connect_dialog:
-            self._connect_dialog.accept()
-            self._connect_dialog = None
-
         seat = Seat.from_char(my_seat)
         partner = Seat.from_char(partner_seat)
+
+        # Guest mode: keep the connect dialog open in lobby mode so the
+        # guest can see the live seat board until the host starts the
+        # game. The dialog dismisses itself on GAME_START.
+        connect = getattr(self, '_connect_dialog', None)
+        if mode == "client" and connect is not None:
+            connect.enter_lobby(seat)
+
+        # Rotate the table view so the local user's seat is at the bottom.
+        # Single-player keeps the default (South); a guest at E/N/W now sees
+        # their own hand at the bottom of the screen.
+        self.table_view.set_local_seat(seat)
 
         # Configure players for network mode
         self._configure_network_players()
@@ -2429,16 +2491,20 @@ For more information, see the README file."""
     def _on_network_client_joined(self, client_name: str, client_role: str):
         """Handle client joining (server mode).
 
-        First guest auto-starts a deal so the legacy 1v1 flow keeps working.
-        Subsequent guests (the server now accepts up to 3) get the current
-        deal re-broadcast instead — restarting the deal each time someone
-        joined would clobber any in-progress hand.
+        While the lobby is on screen, do nothing destructive — the host will
+        click Start Game (or auto-accept fires when 4 seats fill) which then
+        triggers _start_network_game. After the game has begun, late joiners
+        receive the current deal state instead of a fresh deal.
         """
         role_desc = "as your partner" if client_role == "partner" else "as your opponent"
         self.status_label.setText(
             f"'{client_name}' has joined {role_desc}!"
         )
         self._configure_network_players()
+
+        # Lobby still open → wait for host's Start Game click.
+        if getattr(self, '_lobby_dialog', None) is not None:
+            return
 
         already_in_progress = (
             self.controller.board is not None
@@ -2455,6 +2521,31 @@ For more information, see the README file."""
         else:
             QTimer.singleShot(500, self._start_network_game)
 
+    def _on_network_seat_map(self, seats: dict):
+        """Live seat-occupancy update from the server. Routes to whichever
+        lobby/seat-picker dialog is currently visible."""
+        lobby = getattr(self, '_lobby_dialog', None)
+        if lobby is not None:
+            lobby.update_seat_map(seats)
+        connect = getattr(self, '_connect_dialog', None)
+        if connect is not None:
+            connect.update_seat_map(
+                seats,
+                host_seat=self.network_controller.host_seat_char(),
+                my_seat=self.network_controller.my_seat,
+            )
+
+    def _on_network_game_starting(self):
+        """Host has broadcast GAME_START (or our own host-side equivalent).
+        Close the guest's lobby view and let the deal flow take over."""
+        connect = getattr(self, '_connect_dialog', None)
+        if connect is not None:
+            try:
+                connect.accept()
+            except Exception:
+                pass
+            self._connect_dialog = None
+
     def _on_network_server_started(self, port: int):
         """Handle server start confirmation."""
         self.disconnect_action.setEnabled(True)
@@ -2467,6 +2558,8 @@ For more information, see the README file."""
             self, "Disconnected",
             f"Network connection lost: {reason}"
         )
+        # Reset the rotation back to single-player default (South-at-bottom).
+        self.table_view.set_local_seat(Seat.SOUTH)
         self._configure_single_player()
         self.setWindowTitle("BEN Bridge")
         self.status_label.setText("Disconnected from network game")
@@ -3174,6 +3267,12 @@ For more information, see the README file."""
 
         # Setup declarer play if just starting
         if self.controller.board.contract and not self.table_view.declarer:
+            # Mirror the controller's "does the local user control the
+            # declarer partnership" flag onto the table view so it can
+            # decide whether to reveal declarer face up.
+            self.table_view.human_controls_declarer = bool(
+                getattr(self.controller, 'human_controls_declarer', False)
+            )
             self.table_view.setup_declarer_play(self.controller.board.contract)
             self.table_view.set_auction_complete("bidding finished")
             # Hide right panel (bidding box + analysis) and next deal button during card play

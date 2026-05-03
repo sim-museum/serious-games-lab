@@ -32,6 +32,8 @@ class BridgeClient(QObject):
     connection_failed = pyqtSignal(str)  # reason
     message_received = pyqtSignal(object)  # NetworkMessage
     connecting = pyqtSignal()  # Emitted when connection attempt starts
+    seat_map_changed = pyqtSignal(dict)  # {seat_char: name_or_None}
+    game_starting = pyqtSignal()  # Host has closed the lobby
 
     def __init__(self, parent=None, app_version: str = ""):
         super().__init__(parent)
@@ -50,6 +52,10 @@ class BridgeClient(QObject):
         self._my_seat: Optional[Seat] = None
         self._partner_seat: Optional[Seat] = None
         self._server_name = ""
+        # Latest SEAT_LIST broadcast from the server. Updated continuously
+        # while the lobby is open so dialogs can re-query host_seat after a
+        # late connect.
+        self._host_seat_char: str = ""
 
         # Connection state
         self._connection_pending = False
@@ -89,6 +95,11 @@ class BridgeClient(QObject):
     def server_name(self) -> str:
         """Get server player name."""
         return self._server_name
+
+    @property
+    def host_seat_char(self) -> str:
+        """Seat char of the host as reported by the latest SEAT_LIST."""
+        return self._host_seat_char
 
     @property
     def client_name(self) -> str:
@@ -255,6 +266,12 @@ class BridgeClient(QObject):
             self.send_message(make_heartbeat_ack())
         elif message.type == MessageType.HEARTBEAT_ACK:
             self._last_heartbeat_received = self._get_timestamp()
+        elif message.type == MessageType.SEAT_LIST:
+            seats = message.payload.get("seats") or {}
+            self._host_seat_char = (message.payload.get("host_seat") or "").upper()
+            self.seat_map_changed.emit(seats)
+        elif message.type == MessageType.GAME_START:
+            self.game_starting.emit()
         else:
             # Forward other messages to the application
             self.message_received.emit(message)

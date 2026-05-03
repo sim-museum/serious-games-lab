@@ -8,7 +8,7 @@ from PyQt6.QtNetwork import QTcpServer, QTcpSocket, QHostAddress
 from .protocol import (
     NetworkMessage, MessageType,
     make_connect_accept, make_connect_reject, make_disconnect,
-    make_heartbeat, make_heartbeat_ack,
+    make_heartbeat, make_heartbeat_ack, make_seat_list, make_game_start,
     DEFAULT_PORT, HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS,
 )
 from ben_backend.models import Seat
@@ -33,6 +33,7 @@ class BridgeServer(QObject):
     client_connected = pyqtSignal(str, str)  # client_name, role (legacy)
     client_disconnected = pyqtSignal()
     seat_swap = pyqtSignal(str, str, str)    # seat_char, old_label, new_label
+    seat_map_changed = pyqtSignal(dict)      # {seat_char: name_or_None}
     message_received = pyqtSignal(object)  # NetworkMessage
     error_occurred = pyqtSignal(str)  # error message
     server_started = pyqtSignal(int)  # port number
@@ -108,6 +109,32 @@ class BridgeServer(QObject):
         """Return list of Seat objects that are currently free."""
         occupied = set(self.occupied_seats())
         return [s for s in Seat if s not in occupied]
+
+    def seat_map(self) -> dict:
+        """Return the current seat occupancy as {seat_char: name_or_None}.
+
+        Used to broadcast lobby state to every connected client and to the
+        host's own lobby UI. Free seats map to None; occupied seats map to
+        the player name (host name for the host's own seat).
+        """
+        out = {s.to_char(): None for s in Seat}
+        if self._server_seat is not None:
+            out[self._server_seat.to_char()] = self._server_name
+        for seat, name in self._client_names.items():
+            out[seat.to_char()] = name
+        return out
+
+    def broadcast_seat_list(self):
+        """Send the current seat map to every connected guest."""
+        if not self._clients:
+            return
+        host_char = self._server_seat.to_char() if self._server_seat else ""
+        msg = make_seat_list(self.seat_map(), host_seat=host_char)
+        self.send_message(msg)
+
+    def broadcast_game_start(self):
+        """Tell every guest the host is starting the game (lobby is closing)."""
+        self.send_message(make_game_start())
 
     @property
     def server_seat(self) -> Optional[Seat]:
@@ -261,13 +288,42 @@ class BridgeServer(QObject):
 
     def _personalize(self, message: NetworkMessage,
                      recipient_seat: Seat) -> NetworkMessage:
-        """Hook for per-recipient message rewriting. Currently a passthrough.
+        """Per-recipient message rewriting. Used to hide opponent hands so
+        a guest at East cannot see North/South/West cards in the deal
+        broadcast.
 
-        Override (or extend in-place) when a future feature needs to mask
-        or rewrite payload fields based on which seat is receiving the
-        message — same pattern as pokerIQ.network.server._personalize.
+        DEAL_START is the only message that carries private state today.
+        Each recipient's own seat (and dummy after the opening lead, which
+        is handled by a separate broadcast_dummy_reveal) is unmasked; every
+        other seat in the payload is replaced with a hidden stub.
         """
-        return message
+        if message.type != MessageType.DEAL_START:
+            return message
+        # The dummy reveal message is also DEAL_START with reveal_dummy set.
+        # Don't touch those — the dummy hand should be visible to everyone.
+        if message.payload.get("reveal_dummy"):
+            return message
+        hands = message.payload.get("hands") or {}
+        my_char = recipient_seat.to_char() if recipient_seat else ""
+        masked = {}
+        for seat_char, hand_data in hands.items():
+            if seat_char == my_char:
+                masked[seat_char] = hand_data
+            else:
+                # Strip card contents but preserve count so the UI can lay
+                # out face-down cards.
+                count = 13
+                if isinstance(hand_data, dict) and "cards" in hand_data:
+                    try:
+                        count = len(hand_data["cards"])
+                    except Exception:
+                        count = 13
+                masked[seat_char] = {"hidden": True, "count": count}
+        new_payload = dict(message.payload)
+        new_payload["hands"] = masked
+        return NetworkMessage(
+            type=message.type, payload=new_payload, sequence=message.sequence
+        )
 
     def get_next_sequence(self) -> int:
         """Get the next sequence number."""
@@ -460,6 +516,10 @@ class BridgeServer(QObject):
         except Exception:
             pass
         self.client_connected.emit(player_name, self._client_role)
+        # Push the new lobby state to everyone (the new guest included) so
+        # all open seat-picker dialogs update in real time.
+        self.broadcast_seat_list()
+        self.seat_map_changed.emit(self.seat_map())
 
     def _handle_disconnect(self, message: NetworkMessage, sock: QTcpSocket):
         """Handle client disconnect message."""
@@ -516,6 +576,13 @@ class BridgeServer(QObject):
             self._client_partner_seat = None
 
         self.client_disconnected.emit()
+        # Refresh lobby state for any guests still connected, so a guest's
+        # seat-picker reflects the seat that just freed up.
+        try:
+            self.broadcast_seat_list()
+            self.seat_map_changed.emit(self.seat_map())
+        except Exception:
+            pass
 
     def _send_heartbeat(self):
         """Send heartbeat to every connected client."""

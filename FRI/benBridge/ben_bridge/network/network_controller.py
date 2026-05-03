@@ -67,6 +67,10 @@ class NetworkGameController(QObject):
     client_joined = pyqtSignal(str, str)  # client_name, client_role
     server_started = pyqtSignal(int)  # port
 
+    # Lobby signals (used by host lobby + guest seat-picker dialogs)
+    seat_map_changed = pyqtSignal(dict)  # {seat_char: name_or_None}
+    game_starting = pyqtSignal()  # Host has closed the lobby
+
     # Game signals
     deal_received = pyqtSignal(object)  # BoardState
     dummy_revealed = pyqtSignal(object, object)  # dummy_seat (Seat), dummy_hand (Hand)
@@ -207,6 +211,7 @@ class NetworkGameController(QObject):
         self._server.client_connected.connect(self._on_client_connected)
         self._server.client_disconnected.connect(self._on_client_disconnected)
         self._server.seat_swap.connect(self._on_seat_swap)
+        self._server.seat_map_changed.connect(self.seat_map_changed)
         self._server.message_received.connect(self._on_message_received)
         self._server.error_occurred.connect(self._on_error)
         self._server.server_started.connect(self._on_server_started)
@@ -293,6 +298,8 @@ class NetworkGameController(QObject):
         self._client.disconnected.connect(self._on_disconnected_from_server)
         self._client.connection_failed.connect(self._on_connection_failed)
         self._client.message_received.connect(self._on_message_received)
+        self._client.seat_map_changed.connect(self.seat_map_changed)
+        self._client.game_starting.connect(self.game_starting)
 
         self._my_name = name
         self._client_role = role
@@ -334,6 +341,39 @@ class NetworkGameController(QObject):
         logger.warning(f"Connection failed: {reason}")
         self.error_occurred.emit(reason)
         self._cleanup()
+
+    # Lobby helpers
+
+    def current_seat_map(self) -> dict:
+        """Return the current seat occupancy if hosting, else an empty dict.
+
+        Used by the host's lobby dialog to render the initial state before
+        any guest has joined.
+        """
+        if self._server is not None:
+            return self._server.seat_map()
+        return {}
+
+    def host_seat_char(self) -> str:
+        """Return the host's seat char.
+
+        On the host this is just self._my_seat. On guests we read whatever
+        the server most recently broadcast via SEAT_LIST.
+        """
+        if self._role == NetworkRole.SERVER and self._my_seat is not None:
+            return self._my_seat.to_char()
+        if self._client is not None:
+            return self._client.host_seat_char
+        return ""
+
+    def start_game(self):
+        """Host fires this to close the lobby and begin the deal flow.
+
+        Broadcasts GAME_START to every guest so their seat-picker dialogs
+        can dismiss themselves and switch to game UI.
+        """
+        if self._role == NetworkRole.SERVER and self._server is not None:
+            self._server.broadcast_game_start()
 
     # Common methods
 
@@ -438,9 +478,12 @@ class NetworkGameController(QObject):
 
     def broadcast_deal(self, board: BoardState):
         """
-        Broadcast a new deal to the remote player.
+        Broadcast a new deal to every connected guest.
 
-        Only the server should call this.
+        The hands dict contains every seat's full hand; the server's
+        _personalize hook strips it down to just the recipient's own seat
+        before each socket write, so a guest at East never receives the
+        N/S/W cards.
         """
         if self._role != NetworkRole.SERVER:
             logger.warning("Only server can broadcast deals")
@@ -448,16 +491,12 @@ class NetworkGameController(QObject):
 
         self._current_board = board
 
-        # Hide opponent hands from the client
-        hidden_seats = self.my_seats  # Hide server's hands from client
-
-        # Create deal message
         message = make_deal_start(
             board_number=board.board_number,
             dealer=board.dealer.to_char(),
             vulnerability=board.vulnerability.value,
             hands={
-                seat.to_char(): board.hands[seat].to_dict(hidden=seat in hidden_seats)
+                seat.to_char(): board.hands[seat].to_dict(hidden=False)
                 for seat in board.hands
             },
             sequence=self._server.get_next_sequence()
