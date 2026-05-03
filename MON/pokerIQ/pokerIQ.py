@@ -7046,30 +7046,18 @@ class PokerWindow(QMainWindow):
             self._active_summary_placeholder = None
         dialog.destroyed.connect(_clear_on_close)
 
-        # Client branch: Claude runs on the host. We just display incoming
-        # analyses (or already-cached ones) when they arrive.
+        # If we already have an analysis from the host for THIS hand, render
+        # it now — it's the host's POV and may have richer god-mode context.
+        # We then ALSO run claude locally below so a guest still gets their
+        # own analysis even when the host has no claude binary.
         if self.network_mode == "client":
             cached = getattr(self, '_latest_hand_analyses', None)
             cached_hand = getattr(self, '_latest_hand_analyses_hand', None)
             current_hand = int(getattr(self, 'hand_number', 0) or 0)
-            # Only consume the cache if it belongs to the SAME hand we're
-            # showing the dialog for — otherwise it's stale (the previous
-            # hand's analysis) and we should wait for HAND_ANALYSIS.
             if cached and cached_hand == current_hand:
                 self._on_hand_analysis_received(cached, cached_hand)
                 self._latest_hand_analyses = None
                 self._latest_hand_analyses_hand = None
-                return
-            placeholder = QLabel("Waiting for Claude analysis from host…")
-            placeholder.setFont(QFont('Arial', 13))
-            placeholder.setWordWrap(True)
-            placeholder.setStyleSheet(
-                "color: #bff; background: #1a1a2a; padding: 10px;"
-                " border-radius: 5px;"
-            )
-            layout.addWidget(placeholder)
-            self._active_summary_placeholder = placeholder
-            return
 
         def _post_diag(msg, color="#fc6"):
             """Add a small visible reason in the dialog so the user knows
