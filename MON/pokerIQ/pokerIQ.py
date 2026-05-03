@@ -9483,7 +9483,7 @@ class TextModeGame:
 
 def run_gui_mode(args):
     """Run the graphical interface."""
-    app = QApplication(sys.argv)
+    app = QApplication.instance() or QApplication(sys.argv)
 
     # Set dark theme
     app.setStyle('Fusion')
