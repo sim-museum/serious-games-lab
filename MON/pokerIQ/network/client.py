@@ -205,7 +205,6 @@ class PokerClient(QObject):
 
         elif msg.type == MessageType.CONNECT_REJECT:
             reason = msg.payload.get('reason', 'Connection rejected')
-            self._socket.disconnectFromHost()
             self.connection_failed.emit(reason)
 
         elif msg.type == MessageType.SEAT_LIST:

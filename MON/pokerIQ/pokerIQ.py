@@ -8661,7 +8661,7 @@ def check_resolution():
 
         temp_app = QApplication.instance()
         if temp_app is None:
-            temp_app = QApplication([])
+            temp_app = QApplication(sys.argv)
 
         for screen in QGuiApplication.screens():
             geometry = screen.geometry()

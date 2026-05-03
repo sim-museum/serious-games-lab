@@ -216,7 +216,13 @@ class JoinGameDialog(QDialog):
         self.status_label.setText(f"Failed: {reason}")
         self.status_label.setStyleSheet("color: red;")
         self.connect_btn.setEnabled(True)
-        self.client = None
+        # Defer destruction — this signal may fire from inside the
+        # client's readyRead handler; destroying the client (and its
+        # QTcpSocket) synchronously while Qt is still processing
+        # socket data causes a segfault.
+        if self.client:
+            self.client.deleteLater()
+            self.client = None
 
     def _cancel(self):
         """Cancel and clean up."""
