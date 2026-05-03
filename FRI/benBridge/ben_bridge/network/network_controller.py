@@ -70,6 +70,7 @@ class NetworkGameController(QObject):
     # Lobby signals (used by host lobby + guest seat-picker dialogs)
     seat_map_changed = pyqtSignal(dict)  # {seat_char: name_or_None}
     game_starting = pyqtSignal()  # Host has closed the lobby
+    seat_request_rejected = pyqtSignal(str)  # Soft seat-taken rejection
 
     # Game signals
     deal_received = pyqtSignal(object)  # BoardState
@@ -300,6 +301,7 @@ class NetworkGameController(QObject):
         self._client.message_received.connect(self._on_message_received)
         self._client.seat_map_changed.connect(self.seat_map_changed)
         self._client.game_starting.connect(self.game_starting)
+        self._client.seat_request_rejected.connect(self.seat_request_rejected)
 
         self._my_name = name
         self._client_role = role
@@ -374,6 +376,13 @@ class NetworkGameController(QObject):
         """
         if self._role == NetworkRole.SERVER and self._server is not None:
             self._server.broadcast_game_start()
+
+    def request_seat(self, seat_char: str) -> bool:
+        """Guest-side: claim a seat from the live SEAT_LIST. Used by the
+        post-connect lobby seat picker."""
+        if self._client is not None:
+            return self._client.request_seat(seat_char)
+        return False
 
     # Common methods
 

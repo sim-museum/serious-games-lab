@@ -7,7 +7,7 @@ from PyQt6.QtNetwork import QTcpSocket, QAbstractSocket
 
 from .protocol import (
     NetworkMessage, MessageType,
-    make_connect_request, make_disconnect,
+    make_connect_request, make_disconnect, make_seat_request,
     make_heartbeat, make_heartbeat_ack,
     DEFAULT_PORT, CONNECTION_TIMEOUT_MS, HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS,
 )
@@ -34,6 +34,7 @@ class BridgeClient(QObject):
     connecting = pyqtSignal()  # Emitted when connection attempt starts
     seat_map_changed = pyqtSignal(dict)  # {seat_char: name_or_None}
     game_starting = pyqtSignal()  # Host has closed the lobby
+    seat_request_rejected = pyqtSignal(str)  # Soft "seat_taken" rejection
 
     def __init__(self, parent=None, app_version: str = ""):
         super().__init__(parent)
@@ -160,6 +161,22 @@ class BridgeClient(QObject):
             self._socket = None
 
         self._cleanup()
+
+    def request_seat(self, seat_char: str) -> bool:
+        """Send a SEAT_REQUEST while the dialog is in lobby phase.
+
+        Bypasses the is_connected guard because the socket is open but the
+        seat handshake hasn't completed yet (waiting on CONNECT_ACCEPT
+        after this request succeeds).
+        """
+        if self._socket is None or self._socket.state() != QTcpSocket.SocketState.ConnectedState:
+            return False
+        try:
+            data = make_seat_request(seat_char).to_bytes()
+            return self._socket.write(data) != -1
+        except Exception as ex:
+            logger.error(f"Failed to send SEAT_REQUEST: {ex}")
+            return False
 
     def send_message(self, message: NetworkMessage) -> bool:
         """
@@ -301,11 +318,29 @@ class BridgeClient(QObject):
         )
 
     def _handle_connect_reject(self, message: NetworkMessage):
-        """Handle connection rejection from server."""
-        self._connection_timer.stop()
+        """Handle connection rejection from server.
+
+        A `seat_taken` code is a soft rejection: the socket stays open
+        because the server's still happy to host us — the user just
+        picked a busy seat. Emit a separate signal so the dialog can
+        keep its lobby view and offer another seat.
+        """
         payload = message.payload
+        code = (payload.get("code") or "").strip()
         reason = payload.get("reason", "Connection rejected")
         free_seats = payload.get("free_seats") or []
+
+        if code == "seat_taken":
+            if free_seats:
+                pretty = ", ".join(free_seats)
+                reason = f"{reason}. Free seats: {pretty}."
+            logger.info(f"Soft seat rejection: {reason}")
+            self.seat_request_rejected.emit(reason)
+            return
+
+        # Hard rejection (version mismatch, table full, …) — server has
+        # closed or is closing the socket; do the local cleanup too.
+        self._connection_timer.stop()
         if free_seats:
             pretty = ", ".join(free_seats)
             reason = f"{reason}. Free seats: {pretty}."

@@ -25,6 +25,7 @@ class MessageType(Enum):
 
     # Lobby
     SEAT_LIST = "seat_list"
+    SEAT_REQUEST = "seat_request"
     GAME_START = "game_start"
 
     # Game state
@@ -180,6 +181,19 @@ def make_seat_list(seats: Dict[str, Optional[str]],
             "seats": dict(seats),
             "host_seat": host_seat,
         },
+    )
+
+
+def make_seat_request(seat: str) -> NetworkMessage:
+    """Guest claims a specific seat after seeing the live SEAT_LIST.
+
+    Used by the post-connect seat picker: the guest first connects with
+    an empty seat (lobby observer), receives the seat board, and then
+    sends SEAT_REQUEST when they click an available seat.
+    """
+    return NetworkMessage(
+        type=MessageType.SEAT_REQUEST,
+        payload={"requested_seat": (seat or "").upper()},
     )
 
 

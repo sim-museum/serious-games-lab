@@ -1,11 +1,8 @@
 """
-Connect to Server Dialog for LAN play.
-
-Two-phase flow modelled on pokerIQ's seat picker:
-1. Connection form — enter host/port/name.
-2. Lobby view — graphical 4-seat board with live occupancy. The guest
-   picks an empty seat (server confirms) and waits there until the host
-   broadcasts GAME_START.
+Connect to Server Dialog for LAN play — pokerIQ-style two-phase flow:
+1. Connection form (host/port/name only).
+2. Lobby with the live 4-seat board; the guest clicks an empty seat to
+   claim it. Stays open until host broadcasts GAME_START.
 """
 
 from PyQt6.QtWidgets import (
@@ -22,31 +19,33 @@ from .seat_board_widget import SeatBoardWidget
 class ConnectServerDialog(QDialog):
     """Dialog that walks a guest through connecting and seat selection."""
 
-    # Emitted when the guest clicks Connect with an attempted seat
-    # (host, port, name, seat_char). If the seat is rejected, the dialog
-    # surfaces the error inline and lets the user pick a different seat.
-    connect_requested = pyqtSignal(str, int, str, str)
+    # Phase 1 → main_window: open the socket. (host, port, name)
+    # The dialog no longer carries a pre-picked seat — that's claimed in
+    # the lobby phase via seat_clicked.
+    connect_requested = pyqtSignal(str, int, str)
+
+    # Phase 2 → main_window: claim this seat (sends SEAT_REQUEST).
+    seat_clicked = pyqtSignal(object)  # Seat enum
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Connect to Network Game")
-        self.setMinimumWidth(520)
+        self.setMinimumWidth(560)
         apply_dialog_style(self)
 
         self._connecting = False
-        self._selected_seat: Seat = Seat.SOUTH
+        self._my_seat: Seat = None
         self._setup_ui()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-
         self._stack = QStackedWidget()
         self._stack.addWidget(self._build_form_page())
         self._stack.addWidget(self._build_lobby_page())
         layout.addWidget(self._stack)
 
     # ------------------------------------------------------------------ #
-    # Phase 1: connection form (host/port/name + seat board)
+    # Phase 1: connection form
     # ------------------------------------------------------------------ #
     def _build_form_page(self) -> QWidget:
         page = QWidget()
@@ -72,20 +71,15 @@ class ConnectServerDialog(QDialog):
         settings_layout.addWidget(self.name_edit, 2, 1)
         layout.addWidget(settings_group)
 
-        # Pre-connection seat board. Without a server yet there is no live
-        # state to render — the guest just clicks the seat they would like.
-        # If it turns out to be taken the server replies with the free list
-        # and the lobby phase shows live updates.
-        self._form_board = SeatBoardWidget(allow_click=True)
-        self._form_board.set_seats({}, host_seat="")
-        self._form_board.seat_clicked.connect(self._on_seat_clicked_form)
-        layout.addWidget(self._form_board)
+        hint = QLabel(
+            "After connecting you'll see the live seat board and can pick\n"
+            "any seat the host hasn't already taken."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #555;")
+        layout.addWidget(hint)
 
-        self._form_seat_status = QLabel(f"Seat selected: {self._selected_seat.to_char()}")
-        self._form_seat_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self._form_seat_status)
-
-        # Status (shown during the connection attempt).
+        # Status (shown while the connection is being attempted).
         self.status_group = QGroupBox("Connection Status")
         status_layout = QVBoxLayout(self.status_group)
         self.status_label = QLabel("Not connected")
@@ -115,18 +109,27 @@ class ConnectServerDialog(QDialog):
         return page
 
     # ------------------------------------------------------------------ #
-    # Phase 2: lobby — visible after the connection succeeds
+    # Phase 2: lobby — live seat board
     # ------------------------------------------------------------------ #
     def _build_lobby_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
 
-        self.lobby_status = QLabel("Waiting for the host to start the game…")
+        self.lobby_status = QLabel(
+            "Connected. Click an empty seat to claim it."
+        )
         self.lobby_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.lobby_status)
 
-        self._lobby_board = SeatBoardWidget(allow_click=False)
+        self._lobby_board = SeatBoardWidget(allow_click=True)
+        self._lobby_board.seat_clicked.connect(self._on_lobby_seat_clicked)
         layout.addWidget(self._lobby_board)
+
+        self.lobby_error = QLabel()
+        self.lobby_error.setStyleSheet("color: #c00; font-weight: bold;")
+        self.lobby_error.setWordWrap(True)
+        self.lobby_error.setVisible(False)
+        layout.addWidget(self.lobby_error)
 
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -142,17 +145,33 @@ class ConnectServerDialog(QDialog):
     def update_seat_map(self, seats: dict, host_seat: str = "",
                         my_seat: Seat = None):
         """Apply a fresh seat list. Routed from NetworkGameController."""
-        self._form_board.set_seats(seats, host_seat=host_seat, my_seat=my_seat)
+        self._my_seat = my_seat
         self._lobby_board.set_seats(seats, host_seat=host_seat, my_seat=my_seat)
 
-    def enter_lobby(self, my_seat: Seat):
+    def enter_lobby(self, my_seat: Seat = None):
         """Switch the dialog to the lobby (post-connection) view."""
-        self._selected_seat = my_seat or self._selected_seat
-        self._lobby_board.set_my_seat(self._selected_seat)
+        self._my_seat = my_seat
+        self._lobby_board.set_my_seat(my_seat)
         self._stack.setCurrentIndex(1)
-        self.setWindowTitle(
-            f"Network Game Lobby — seated at {self._selected_seat.to_char()}"
-        )
+        title = "Network Game Lobby"
+        if my_seat is not None:
+            title += f" — seated at {my_seat.to_char()}"
+        self.setWindowTitle(title)
+        self.lobby_error.setVisible(False)
+        if my_seat is None:
+            self.lobby_status.setText(
+                "Connected. Click an empty seat to claim it."
+            )
+        else:
+            self.lobby_status.setText(
+                f"Seated at {my_seat.to_char()}. Waiting for the host to start the game…"
+            )
+
+    def show_seat_taken_error(self, message: str):
+        """Display an inline error when the user clicks a seat that is
+        already taken (race condition with another guest)."""
+        self.lobby_error.setText(message)
+        self.lobby_error.setVisible(True)
 
     def show_lobby_status(self, message: str):
         self.lobby_status.setText(message)
@@ -160,23 +179,24 @@ class ConnectServerDialog(QDialog):
     # ------------------------------------------------------------------ #
     # Internal handlers
     # ------------------------------------------------------------------ #
-    def _on_seat_clicked_form(self, seat: Seat):
-        self._selected_seat = seat
-        self._form_seat_status.setText(f"Seat selected: {seat.to_char()}")
-        self._form_board.set_my_seat(seat)
+    def _on_lobby_seat_clicked(self, seat: Seat):
+        if self._my_seat is not None and seat == self._my_seat:
+            return  # Already mine.
+        self.lobby_error.setVisible(False)
+        self.lobby_status.setText(f"Requesting seat {seat.to_char()}…")
+        self.seat_clicked.emit(seat)
 
     def _on_connect_clicked(self):
         host = self.host_edit.text().strip()
         port = self.port_spin.value()
         name = self.name_edit.text().strip() or "Guest"
-        seat_char = self._selected_seat.to_char()
 
         if not host:
             self.show_error("Please enter a server address")
             return
 
         self.set_connecting(True)
-        self.connect_requested.emit(host, port, name, seat_char)
+        self.connect_requested.emit(host, port, name)
 
     def set_connecting(self, connecting: bool):
         self._connecting = connecting
@@ -190,8 +210,13 @@ class ConnectServerDialog(QDialog):
         self.status_label.setText("Connecting…" if connecting else "Not connected")
 
     def show_error(self, message: str):
+        # If the dialog is on the lobby page, surface the error inline so
+        # the user can pick a different seat instead of being kicked back
+        # to the form.
+        if self._stack.currentIndex() == 1:
+            self.show_seat_taken_error(message)
+            return
         self.error_label.setText(message)
         self.error_label.setVisible(True)
         self.set_connecting(False)
-        # Stay on the form page so the user can re-pick a seat / retry.
         self._stack.setCurrentIndex(0)

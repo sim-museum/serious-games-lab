@@ -9,6 +9,7 @@ from .protocol import (
     NetworkMessage, MessageType,
     make_connect_accept, make_connect_reject, make_disconnect,
     make_heartbeat, make_heartbeat_ack, make_seat_list, make_game_start,
+    make_seat_request,
     DEFAULT_PORT, HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS,
 )
 from ben_backend.models import Seat
@@ -57,6 +58,10 @@ class BridgeServer(QObject):
         self._socket_buffers: dict = {}  # id(socket) -> bytes
         # Sockets that haven't completed handshake yet
         self._pending_sockets: list = []
+        # Lobby-observer sockets: have sent a CONNECT_REQUEST with no seat
+        # and are waiting on the seat board to send SEAT_REQUEST. Maps
+        # id(sock) -> player name so SEAT_LIST can label them as "Joining".
+        self._lobby_pending: dict = {}
 
         # Server configuration
         self._server_name = "Host"
@@ -381,6 +386,8 @@ class BridgeServer(QObject):
 
         if message.type == MessageType.CONNECT_REQUEST:
             self._handle_connect_request(message, sock)
+        elif message.type == MessageType.SEAT_REQUEST:
+            self._handle_seat_request(message, sock)
         elif message.type == MessageType.DISCONNECT:
             self._handle_disconnect(message, sock)
         elif message.type == MessageType.HEARTBEAT:
@@ -444,82 +451,119 @@ class BridgeServer(QObject):
                 f"(host {self.app_version!r} vs client {client_version!r})")
             return
 
-        # Determine target seat
-        target_seat: Optional[Seat] = None
-        if requested in ("N", "E", "S", "W"):
+        # Empty `requested_seat` is the post-connect-lobby flow: the guest
+        # connects first, the server pushes them the live SEAT_LIST, and
+        # the guest then picks an available seat (SEAT_REQUEST). Hold them
+        # in the lobby-pending pool until that arrives.
+        if requested not in ("N", "E", "S", "W"):
+            self._lobby_pending[id(sock)] = player_name
             try:
-                target_seat = Seat.from_char(requested)
-            except Exception:
-                target_seat = None
-        else:
-            # Legacy role-based assignment kept for older clients
-            if legacy_role == "partner":
-                target_seat = self._server_seat.partner()
-            else:
-                target_seat = self._server_seat.next()
-
-        occupied = set(self.occupied_seats())
-        if target_seat in occupied:
-            # Reject with free-seat list so the client can re-prompt
-            free_chars = [s.to_char() for s in self.free_seats()]
-            try:
-                sock.write(make_connect_reject(
-                    f"Seat {target_seat.to_char()} is already taken",
-                    free_seats=free_chars,
-                ).to_bytes())
-                sock.flush()
-                sock.disconnectFromHost()
-            except Exception:
-                pass
-            logger.info(f"Rejected '{player_name}' -> seat {target_seat.to_char()} already taken")
+                host_char = self._server_seat.to_char() if self._server_seat else ""
+                sock.write(make_seat_list(self.seat_map(), host_seat=host_char).to_bytes())
+            except Exception as ex:
+                logger.error(f"Failed to send lobby SEAT_LIST: {ex}")
+            logger.info(f"'{player_name}' joined lobby, waiting for SEAT_REQUEST")
             return
 
-        # Accept and register
+        # Explicit seat path: validate and seat the guest immediately.
+        try:
+            target_seat = Seat.from_char(requested)
+        except Exception:
+            target_seat = None
+
+        self._seat_client(sock, player_name, target_seat)
+
+    def _seat_client(self, sock: QTcpSocket, player_name: str,
+                     target_seat: Optional[Seat]) -> bool:
+        """Move `sock` from pending/lobby state into _clients[target_seat].
+
+        Sends CONNECT_ACCEPT on success, or CONNECT_REJECT (with code
+        "seat_taken" so the client knows to stay connected and let the
+        user pick a different seat). Used by both the legacy explicit-
+        seat path and the new SEAT_REQUEST flow.
+        """
+        occupied = set(self.occupied_seats())
+        if target_seat is None or target_seat in occupied:
+            free_chars = [s.to_char() for s in self.free_seats()]
+            seat_label = target_seat.to_char() if target_seat else "?"
+            try:
+                sock.write(make_connect_reject(
+                    f"Seat {seat_label} is already taken",
+                    free_seats=free_chars,
+                    code="seat_taken",
+                ).to_bytes())
+                sock.flush()
+            except Exception:
+                pass
+            logger.info(f"Rejected '{player_name}' -> seat {seat_label} already taken")
+            return False
+
         if sock in self._pending_sockets:
             self._pending_sockets.remove(sock)
+        self._lobby_pending.pop(id(sock), None)
         self._clients[target_seat] = sock
         self._client_names[target_seat] = player_name
 
-        # Update legacy single-client fields so older readers keep working
+        # Update legacy single-client fields
         self._client_name = player_name
         self._client_seat = target_seat
         self._client_partner_seat = target_seat.partner()
-        # Derive a role label for display: partner if same team as host, else opponent
         if target_seat == self._server_seat.partner():
             self._client_role = "partner"
         else:
             self._client_role = "opponent"
 
-        accept_msg = make_connect_accept(
-            server_name=self._server_name,
-            server_seat=self._server_seat.to_char(),
-            client_seat=target_seat.to_char(),
-            client_partner_seat=target_seat.partner().to_char(),
-            role=self._client_role,
-        )
         try:
-            sock.write(accept_msg.to_bytes())
+            sock.write(make_connect_accept(
+                server_name=self._server_name,
+                server_seat=self._server_seat.to_char(),
+                client_seat=target_seat.to_char(),
+                client_partner_seat=target_seat.partner().to_char(),
+                role=self._client_role,
+            ).to_bytes())
         except Exception as ex:
             logger.error(f"Failed to send accept to new client: {ex}")
+            return False
 
-        # Start heartbeat (shared across all clients)
         self._last_heartbeat_received = self._get_timestamp()
         if not self._heartbeat_timer.isActive():
             self._heartbeat_timer.start(HEARTBEAT_INTERVAL_MS)
             self._heartbeat_check_timer.start(HEARTBEAT_INTERVAL_MS)
 
         logger.info(f"Client '{player_name}' seated at {target_seat.to_char()} ({self._client_role})")
-        # Emit the seat swap so the network controller can write a
-        # log-friendly "[seat swap] AI replaced by Guest at N" line.
         try:
             self.seat_swap.emit(target_seat.to_char(), "AI", player_name)
         except Exception:
             pass
         self.client_connected.emit(player_name, self._client_role)
-        # Push the new lobby state to everyone (the new guest included) so
-        # all open seat-picker dialogs update in real time.
         self.broadcast_seat_list()
         self.seat_map_changed.emit(self.seat_map())
+        return True
+
+    def _handle_seat_request(self, message: NetworkMessage, sock: QTcpSocket):
+        """Lobby-pending guest is claiming a seat from the live SEAT_LIST."""
+        player_name = self._lobby_pending.get(id(sock))
+        if player_name is None:
+            # Unknown socket — treat as protocol violation, ignore.
+            logger.warning("SEAT_REQUEST from unknown socket, ignoring")
+            return
+        requested = (message.payload.get("requested_seat") or "").upper()
+        if requested not in ("N", "E", "S", "W"):
+            try:
+                free_chars = [s.to_char() for s in self.free_seats()]
+                sock.write(make_connect_reject(
+                    "Invalid seat", free_seats=free_chars,
+                ).to_bytes())
+            except Exception:
+                pass
+            return
+        try:
+            target_seat = Seat.from_char(requested)
+        except Exception:
+            target_seat = None
+        # If rejected the socket stays in lobby_pending so the user can
+        # click another seat. Don't disconnect on a soft seat-taken error.
+        self._seat_client(sock, player_name, target_seat)
 
     def _handle_disconnect(self, message: NetworkMessage, sock: QTcpSocket):
         """Handle client disconnect message."""
@@ -562,6 +606,7 @@ class BridgeServer(QObject):
                     pass
             if s in self._pending_sockets:
                 self._pending_sockets.remove(s)
+            self._lobby_pending.pop(id(s), None)
             self._socket_buffers.pop(id(s), None)
             try:
                 s.deleteLater()

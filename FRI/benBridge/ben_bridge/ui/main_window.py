@@ -1186,6 +1186,8 @@ class MainWindow(QMainWindow):
         # ConnectServerDialog from the same SEAT_LIST stream.
         self.network_controller.seat_map_changed.connect(self._on_network_seat_map)
         self.network_controller.game_starting.connect(self._on_network_game_starting)
+        self.network_controller.seat_request_rejected.connect(
+            self._on_network_seat_rejected)
 
     def _initialize_engine(self):
         """Initialize the BEN engine"""
@@ -2445,17 +2447,18 @@ For more information, see the README file."""
 
         self._connect_dialog = ConnectServerDialog(self)
         self._connect_dialog.connect_requested.connect(self._do_connect_to_server)
+        self._connect_dialog.seat_clicked.connect(self._on_lobby_seat_clicked)
         self._connect_dialog.show()
 
-    def _do_connect_to_server(self, host: str, port: int, name: str, seat_char: str):
-        """Actually connect to the server.
-
-        The dialog now emits a seat char (N/E/S/W) picked by the guest. The
-        server tells us if the seat is taken and lists which are free, and
-        that is surfaced as a styled error from _on_network_error.
-        """
+    def _do_connect_to_server(self, host: str, port: int, name: str):
+        """Open the socket. The seat is claimed later from the lobby
+        seat board via _on_lobby_seat_clicked → request_seat."""
         self.network_controller.connect_to_server(host, port, name,
-                                                   requested_seat=seat_char)
+                                                   requested_seat="")
+
+    def _on_lobby_seat_clicked(self, seat: Seat):
+        """Forward the guest's seat click to the server as SEAT_REQUEST."""
+        self.network_controller.request_seat(seat.to_char())
 
     def _on_network_disconnect(self):
         """Disconnect from network game."""
@@ -2542,11 +2545,26 @@ For more information, see the README file."""
             lobby.update_seat_map(seats)
         connect = getattr(self, '_connect_dialog', None)
         if connect is not None:
+            my_seat = self.network_controller.my_seat
             connect.update_seat_map(
                 seats,
                 host_seat=self.network_controller.host_seat_char(),
-                my_seat=self.network_controller.my_seat,
+                my_seat=my_seat,
             )
+            # First SEAT_LIST after a successful socket connect signals
+            # "lobby join confirmed" — switch from the form page to the
+            # live seat board so the user can pick a seat.
+            if connect._stack.currentIndex() == 0:
+                connect.set_connecting(False)
+                connect.enter_lobby(my_seat)
+
+    def _on_network_seat_rejected(self, reason: str):
+        """Server rejected the guest's SEAT_REQUEST as taken. Surface the
+        error inline on the lobby seat board without closing the socket."""
+        connect = getattr(self, '_connect_dialog', None)
+        if connect is not None:
+            connect.show_seat_taken_error(reason)
+            connect.show_lobby_status("Pick another seat.")
 
     def _on_network_game_starting(self):
         """Host has broadcast GAME_START (or our own host-side equivalent).
@@ -2564,18 +2582,56 @@ For more information, see the README file."""
         self.disconnect_action.setEnabled(True)
 
     def _on_network_disconnected(self, reason: str):
-        """Handle network disconnection."""
-        self.disconnect_action.setEnabled(False)
+        """Handle network disconnection.
+
+        Two very different cases share this signal:
+
+        * Server mode — a guest dropped. The host stays hosting, BEN
+          takes over the freed seat(s) automatically because
+          _configure_network_players reads from the live remote_seats
+          list. Don't tear down the rotation or revert to South.
+        * Client mode — we lost the host. Keep the user at their current
+          seat, fill every other seat with BEN locally so the user can
+          finish the hand offline, and clean up the controller state so
+          the disconnect button reflects "no network game".
+        """
         from .dialogs.dialog_style import styled_info
+
+        if self.network_controller.is_server:
+            # A guest left. Refresh player ownership; AI now controls the
+            # freed seat. Do not exit network mode.
+            self._configure_network_players()
+            self.status_label.setText(
+                f"Guest disconnected ({reason}); BEN now controls the freed seat."
+            )
+            return
+
+        # Client mode: keep playing locally with BEN as every other seat.
+        my_seat = self.network_controller.my_seat or Seat.SOUTH
+        self.disconnect_action.setEnabled(False)
         styled_info(
-            self, "Disconnected",
-            f"Network connection lost: {reason}"
+            self, "Host Disconnected",
+            f"Lost connection to the host ({reason}). "
+            f"BEN will take over the other three seats so you can finish the hand."
         )
-        # Reset the rotation back to single-player default (South-at-bottom).
-        self.table_view.set_local_seat(Seat.SOUTH)
-        self._configure_single_player()
-        self.setWindowTitle("BEN Bridge")
-        self.status_label.setText("Disconnected from network game")
+        # Drop the network controller back to idle so other code paths
+        # (next-deal, hint, save) treat us as offline again.
+        try:
+            self.network_controller.disconnect()
+        except Exception:
+            pass
+        # Local takeover: only the user's seat is human; the rest are AI.
+        for seat in Seat:
+            if seat == my_seat:
+                self.controller.players[seat].player_type = PlayerType.HUMAN
+            else:
+                self.controller.players[seat].player_type = PlayerType.COMPUTER
+        # Keep the rotation so the user's hand stays at the bottom.
+        self.table_view.set_local_seat(my_seat)
+        self.setWindowTitle(f"BEN Bridge (offline — {my_seat.to_char()})")
+        self.status_label.setText(
+            f"Host disconnected; you are now playing offline as {my_seat.to_char()}."
+        )
 
     def _on_network_deal_received(self, board: BoardState):
         """Handle receiving a deal from the server (client mode)."""
