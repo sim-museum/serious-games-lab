@@ -1495,6 +1495,94 @@ def _advance_partner_overcall(state, e: HandEval, system: str) -> Bid:
 # Public engine class
 # ---------------------------------------------------------------------------
 
+def _highest_strain_bid(auction: List[Bid]) -> Optional[Bid]:
+    """Return the highest level+suit bid in the auction (ignoring X/XX/Pass),
+    or None if no strain bid has been made."""
+    out = None
+    for b in auction:
+        if b.is_pass or b.is_double or b.is_redouble:
+            continue
+        if b.suit is None:
+            continue
+        if out is None:
+            out = b
+            continue
+        if b.level > out.level or (
+            b.level == out.level and _BID_RANK[b.suit] > _BID_RANK[out.suit]
+        ):
+            out = b
+    return out
+
+
+def _legalize_bid(chosen: Bid, state: AuctionState) -> Bid:
+    """Coerce a candidate bid into a legal one given the current auction.
+
+    The rule-based bidder occasionally fires a "raise to game" or "advance
+    a takeout double" branch that picks a fixed level (e.g. 4H) without
+    consulting the current auction height — illegal once the opponents
+    have already pushed past that level. This guard upgrades insufficient
+    suit bids to the next legal step in the same denomination, falling
+    back to Pass when even 7-of-the-suit is below the current contract.
+    Doubles are only kept when RHO's last call was a strain bid;
+    redoubles only when RHO doubled our partnership's bid.
+    """
+    if chosen is None:
+        return passb()
+    if chosen.is_pass:
+        return chosen
+
+    if chosen.is_double:
+        if not state.rho_bids:
+            return passb()
+        last_rho = state.rho_bids[-1]
+        if last_rho.is_pass or last_rho.is_double or last_rho.is_redouble:
+            return passb()
+        if last_rho.suit is None:
+            return passb()
+        return chosen
+
+    if chosen.is_redouble:
+        # Walk backward looking for the most recent non-pass call. It must
+        # be an opponent's double of our partnership's last strain bid.
+        last_call = None
+        for s, b in reversed(state.bids):
+            if not b.is_pass:
+                last_call = (s, b)
+                break
+        if last_call is None or not last_call[1].is_double:
+            return passb()
+        # Ensure the doubler is an opponent.
+        partner = state.seat.partner()
+        if last_call[0] in (state.seat, partner):
+            return passb()
+        return chosen
+
+    # Strain bid: must outrank the highest prior strain bid.
+    high = _highest_strain_bid([b for _, b in state.bids])
+    if high is None:
+        return chosen  # First strain bid in the auction — always legal.
+
+    if chosen.level > high.level or (
+        chosen.level == high.level and _BID_RANK[chosen.suit] > _BID_RANK[high.suit]
+    ):
+        return chosen
+
+    # Insufficient: try to upgrade to the lowest legal level in the same
+    # denomination. If even 7-of-the-suit isn't enough, pass.
+    target_level = high.level
+    if _BID_RANK[chosen.suit] <= _BID_RANK[high.suit]:
+        target_level += 1
+    if target_level > 7:
+        return passb()
+    return Bid(
+        level=target_level,
+        suit=chosen.suit,
+        alert=chosen.alert,
+        explanation=chosen.explanation
+        + f" [legalized from {chosen.level}{chosen.suit.to_char()}]",
+    )
+
+
 class NativeBiddingEngine:
     """Plug-compatible with BridgeEngine for bidding only.
 
@@ -1533,6 +1621,7 @@ class NativeBiddingEngine:
             eval_ = evaluate_hand(hand)
             state = parse_auction(seat=seat, dealer=board.dealer, auction=board.auction)
             chosen = decide_bid(state, eval_, system=self.system)
+            chosen = _legalize_bid(chosen, state)
 
             return EngineResponse(
                 action=chosen,
