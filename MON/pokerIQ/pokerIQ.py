@@ -6681,8 +6681,11 @@ class PokerWindow(QMainWindow):
         if parent_to_restore is not None:
             for d in new_dialogs:
                 try:
-                    d.destroyed.connect(
-                        lambda _=None, p=parent_to_restore:
+                    # `finished` fires whenever the dialog is dismissed
+                    # (close button, ESC, accept/reject) — `destroyed` only
+                    # fires on actual object delete, which most paths skip.
+                    d.finished.connect(
+                        lambda _=0, p=parent_to_restore:
                             self._restore_parent_dialog(p))
                 except RuntimeError:
                     pass
@@ -7269,8 +7272,10 @@ class PokerWindow(QMainWindow):
             dialog.setModal(False)
             self._track_hand_dialog(dialog)
             if parent_to_restore is not None:
-                dialog.destroyed.connect(
-                    lambda _=None, p=parent_to_restore:
+                # `finished` fires on every dismiss path; `destroyed` only
+                # fires on object delete, which most close paths skip.
+                dialog.finished.connect(
+                    lambda _=0, p=parent_to_restore:
                         self._restore_parent_dialog(p))
             dialog.show()
         except Exception as ex:
