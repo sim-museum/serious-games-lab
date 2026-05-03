@@ -6376,6 +6376,28 @@ class PokerWindow(QMainWindow):
 
         return f"lost with {loser_desc} vs {winner_desc}"
 
+    def _show_local_graphical_summary(self, parent_to_restore=None):
+        """Host/single-player wrapper around show_hand_summary that wires
+        the parent-restore callback so dismissing Stats brings the text
+        Hand Summary back to the front."""
+        # Capture the dialog created inside show_hand_summary by tracking
+        # the latest one appended to _open_hand_dialogs.
+        before = list(getattr(self, '_open_hand_dialogs', []) or [])
+        self.show_hand_summary()
+        after = list(getattr(self, '_open_hand_dialogs', []) or [])
+        new_dialogs = [d for d in after if d not in before]
+        if parent_to_restore is not None:
+            for d in new_dialogs:
+                try:
+                    d.destroyed.connect(
+                        lambda _=None, p=parent_to_restore:
+                            self._restore_parent_dialog(p))
+                except RuntimeError:
+                    pass
+        if not new_dialogs:
+            # Nothing opened (e.g. no street_stats); restore immediately.
+            self._restore_parent_dialog(parent_to_restore)
+
     def show_hand_summary(self):
         """Show the graphical hand summary dialog with stacked bar charts."""
         # Build player results (start, end, change)
@@ -6859,21 +6881,40 @@ class PokerWindow(QMainWindow):
         return povs
 
     def _show_stats_from_dialog(self, parent_dialog):
-        """Show the graphical hand summary from the text summary dialog.
-        Clients use the cached HAND_END payload (the host's data); host /
-        single-player builds it locally from `hand_history`.
-        """
-        parent_dialog.close()
-        if self.network_mode == "client":
-            self._show_cached_graphical_summary()
-        else:
-            self.show_hand_summary()
+        """Open the graphical Stats dialog from the text Hand Summary.
 
-    def _show_cached_graphical_summary(self):
+        Hide (not close) the parent so dismissing Stats brings the Hand
+        Summary back to the front. Clients use the cached HAND_END payload
+        (the host's data); host / single-player builds it locally from
+        `hand_history`.
+        """
+        try:
+            parent_dialog.hide()
+        except RuntimeError:
+            parent_dialog = None  # already destroyed
+        if self.network_mode == "client":
+            self._show_cached_graphical_summary(parent_to_restore=parent_dialog)
+        else:
+            self._show_local_graphical_summary(parent_to_restore=parent_dialog)
+
+    def _restore_parent_dialog(self, parent_dialog):
+        """Re-show + raise the Hand Summary text dialog after the Stats
+        dialog was dismissed."""
+        if parent_dialog is None:
+            return
+        try:
+            parent_dialog.show()
+            parent_dialog.raise_()
+            parent_dialog.activateWindow()
+        except RuntimeError:
+            pass  # parent was destroyed (e.g. new hand started)
+
+    def _show_cached_graphical_summary(self, parent_to_restore=None):
         """Open the graphical HandSummaryDialog using the cached HAND_END
         payload (client-side path)."""
         cached = getattr(self, '_cached_hand_summary', None)
         if not cached or not cached.get('street_stats'):
+            self._restore_parent_dialog(parent_to_restore)
             return
         try:
             dialog = HandSummaryDialog(
@@ -6887,9 +6928,14 @@ class PokerWindow(QMainWindow):
             )
             dialog.setModal(False)
             self._track_hand_dialog(dialog)
+            if parent_to_restore is not None:
+                dialog.destroyed.connect(
+                    lambda _=None, p=parent_to_restore:
+                        self._restore_parent_dialog(p))
             dialog.show()
         except Exception as ex:
             print(f"[client] graphical hand summary failed: {ex}")
+            self._restore_parent_dialog(parent_to_restore)
 
     def show_help(self):
         """Show help dialog with game instructions."""
