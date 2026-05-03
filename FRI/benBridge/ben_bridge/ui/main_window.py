@@ -1269,6 +1269,12 @@ class MainWindow(QMainWindow):
         # hand — running it in parallel with human play made both sides
         # contend for the BEN engine and the game appeared to hang.
 
+        # Push the deal to all connected guests so a host-side New Deal
+        # click also resets every guest's table (otherwise multi-guest
+        # sessions desync the moment the host starts a fresh hand).
+        if self.network_controller.is_active and self.network_controller.is_server:
+            self.network_controller.broadcast_deal(board)
+
         # Start bidding
         self._advance_game()
 
@@ -2421,15 +2427,33 @@ For more information, see the README file."""
         self.setWindowTitle(f"BEN Bridge - LAN Game ({mode_str}: {my_seat}/{partner_seat})")
 
     def _on_network_client_joined(self, client_name: str, client_role: str):
-        """Handle client joining (server mode)."""
+        """Handle client joining (server mode).
+
+        First guest auto-starts a deal so the legacy 1v1 flow keeps working.
+        Subsequent guests (the server now accepts up to 3) get the current
+        deal re-broadcast instead — restarting the deal each time someone
+        joined would clobber any in-progress hand.
+        """
         role_desc = "as your partner" if client_role == "partner" else "as your opponent"
         self.status_label.setText(
-            f"'{client_name}' has joined {role_desc}! Starting game..."
+            f"'{client_name}' has joined {role_desc}!"
         )
-        # Reconfigure players now that we know the client's role
         self._configure_network_players()
-        # Now we can start a deal
-        QTimer.singleShot(500, self._start_network_game)
+
+        already_in_progress = (
+            self.controller.board is not None
+            and self.controller.current_phase in ('bidding', 'play', 'waiting_next')
+        )
+        if already_in_progress:
+            # Late joiner — push the current deal state so they can follow along.
+            self.network_controller.broadcast_deal(self.controller.board)
+            if self.controller.dummy and self.controller.current_phase != 'bidding':
+                dummy_hand = self.controller.board.hands.get(self.controller.dummy)
+                if dummy_hand:
+                    self.network_controller.broadcast_dummy_reveal(
+                        self.controller.dummy, dummy_hand)
+        else:
+            QTimer.singleShot(500, self._start_network_game)
 
     def _on_network_server_started(self, port: int):
         """Handle server start confirmation."""
@@ -2525,11 +2549,19 @@ For more information, see the README file."""
             self._connect_dialog.show_error(error)
 
     def _on_network_trick_clear(self):
-        """Handle receiving trick clear from remote player (they clicked 'next card')."""
+        """Handle receiving trick clear from remote player (they clicked 'next card').
+
+        Clears the green-felt trick widgets unconditionally — leaving the
+        previous trick on the felt while the next trick is laid on top is
+        much worse than skipping a redundant controller advance when our
+        phase has already moved on. Server fan-out to other guests is
+        handled by `BridgeServer._relay_to_others`.
+        """
+        self.table_view.clear_trick()
+        self.next_card_btn.setEnabled(False)
+
         if self.controller.current_phase == 'waiting_next':
             self.controller.advance_to_next_trick()
-            self.table_view.clear_trick()
-            self.next_card_btn.setEnabled(False)
             self._advance_game()
 
     def _configure_network_players(self):
@@ -2630,14 +2662,18 @@ For more information, see the README file."""
                                           for c in resp.candidates[:5])
                         engine_text += f"\nBEN candidates: {cands}"
             else:
-                trick_cards = board.current_trick.cards if board.current_trick else []
-                resp = self.engine.get_card(board, seat, trick_cards)
-                if resp and resp.action:
-                    engine_text = f"BEN suggests: play {resp.action.to_str()}"
-                    if resp.candidates:
-                        cands = ", ".join(f"{c.card.to_str()} ({c.score:.2f})"
-                                          for c in resp.candidates[:5])
-                        engine_text += f"\nBEN candidates: {cands}"
+                # Skip BEN suggestion when we don't have the seat's hand
+                # (guest in network mode only has its own + visible hands).
+                hand = board.hands.get(seat)
+                if hand and hand.cards:
+                    trick_cards = board.current_trick.cards if board.current_trick else []
+                    resp = self.engine.get_card_play(board, seat, trick_cards)
+                    if resp and resp.action:
+                        engine_text = f"BEN suggests: play {resp.action.to_str()}"
+                        if resp.candidates:
+                            cands = ", ".join(f"{c.card.to_str()} ({c.score:.2f})"
+                                              for c in resp.candidates[:5])
+                            engine_text += f"\nBEN candidates: {cands}"
         except Exception as e:
             engine_text = f"(BEN engine error: {e!r})"
 

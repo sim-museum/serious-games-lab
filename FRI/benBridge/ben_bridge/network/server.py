@@ -120,6 +120,11 @@ class BridgeServer(QObject):
         return self._client_seat
 
     @property
+    def client_seats(self) -> list:
+        """All seats currently held by connected guests (host not included)."""
+        return list(self._clients.keys())
+
+    @property
     def client_partner_seat(self) -> Optional[Seat]:
         """Get the client player's partner seat."""
         return self._client_partner_seat
@@ -331,8 +336,23 @@ class BridgeServer(QObject):
         elif message.type == MessageType.HEARTBEAT_ACK:
             self._last_heartbeat_received = self._get_timestamp()
         else:
+            # Relay this guest's game message to every other guest, then let
+            # the host's app handle it locally. Without this relay a 2nd or
+            # 3rd guest would never see the 1st guest's bids or card plays.
+            self._relay_to_others(message, sock)
             # Forward other messages to the application
             self.message_received.emit(message)
+
+    def _relay_to_others(self, message: NetworkMessage, source_sock: QTcpSocket):
+        """Forward a game message from one guest to every other connected guest."""
+        for seat, s in list(self._clients.items()):
+            if s is source_sock:
+                continue
+            try:
+                if s.state() == QTcpSocket.SocketState.ConnectedState:
+                    s.write(message.to_bytes())
+            except Exception as ex:
+                logger.error(f"Failed to relay to {seat}: {ex}")
 
     def _seat_of_socket(self, sock: QTcpSocket) -> Optional[Seat]:
         for seat, s in self._clients.items():

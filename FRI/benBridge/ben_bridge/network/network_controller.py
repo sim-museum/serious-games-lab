@@ -227,20 +227,20 @@ class NetworkGameController(QObject):
         self.server_started.emit(port)
 
     def _on_client_connected(self, client_name: str, client_role: str):
-        """Handle client connection."""
+        """Handle client connection.
+
+        Accumulates remote_seats from every connected guest — the server
+        accepts up to 3 guests, each picking any free seat, so this signal
+        fires once per guest and remote_seats must reflect all of them.
+        Without this, the host would re-run the AI for earlier guests'
+        seats and double-control them.
+        """
         logger.info(f"Client connected: {client_name} as {client_role}")
         self._client_role = client_role
 
-        # Set remote seats based on client role
-        # Partner mode: client controls one seat (server's partner), AI controls opponents
-        # Opponent mode: client controls their partnership (2 seats)
-        if client_role == "partner":
-            client_seat = self._server._client_seat
-            self._remote_seats = [client_seat]
-        else:
-            client_seat = self._server._client_seat
-            client_partner = self._server._client_partner_seat
-            self._remote_seats = [client_seat, client_partner]
+        # Pull every connected guest's seat directly from the server so we
+        # don't lose earlier guests when later ones join.
+        self._remote_seats = list(self._server.client_seats)
 
         self.client_joined.emit(client_name, client_role)
         self.connection_established.emit(
@@ -251,8 +251,13 @@ class NetworkGameController(QObject):
         )
 
     def _on_client_disconnected(self):
-        """Handle client disconnection."""
+        """Handle client disconnection. Refresh remote_seats from the server's
+        live roster so the host stops treating the departed guest's seat as
+        remote (and resumes AI for it). connection_lost is emitted to keep
+        the legacy single-guest UI flow alive."""
         logger.info("Client disconnected")
+        if self._server is not None:
+            self._remote_seats = list(self._server.client_seats)
         self.connection_lost.emit("Client disconnected")
 
     def _on_seat_swap(self, seat_char: str, old_label: str, new_label: str):
