@@ -4117,6 +4117,21 @@ class ClaudeAnalysisThread(QThread):
                 text = ""
                 if result.returncode == 0 and len(result.stdout.strip()) > 10:
                     text = result.stdout.strip()
+                else:
+                    # Surface why claude produced nothing usable: exit code
+                    # + first line of stderr if any. The on_finished
+                    # callback turns empty text into a yellow diagnostic
+                    # block, so this gets folded into a longer message via
+                    # the player-name prefix on display.
+                    err_first = ''
+                    if result.stderr:
+                        err_first = result.stderr.strip().splitlines()[0]
+                    detail = f"exit={result.returncode}"
+                    if err_first:
+                        detail += f"; {err_first[:160]}"
+                    text = f"(claude failed: {detail})"
+            except subprocess.TimeoutExpired:
+                text = "(claude timed out after 120s)"
             except Exception as ex:
                 text = f"(analysis failed: {ex})"
             results.append({'player': name, 'seat': seat, 'text': text})
@@ -7141,11 +7156,30 @@ class PokerWindow(QMainWindow):
                 progress_box.deleteLater()
             except RuntimeError:
                 pass
-            # Show each analysis as its own labeled block
+            if not analyses:
+                _post_diag(
+                    "Claude returned no analyses (the analysis thread "
+                    "produced an empty list — claude may have exited "
+                    "early or been cancelled).",
+                    color="#fc6")
+            # Show each analysis as its own labeled block. Empty-text
+            # entries (claude failed for that POV) get a visible yellow
+            # diagnostic block so the user knows why nothing rendered.
             for a in analyses:
                 name = a.get('player', '?')
                 text = a.get('text', '').strip()
                 if not text:
+                    fail_block = QLabel(
+                        f"Claude — {name}: (no analysis returned — "
+                        "claude may have failed, timed out, or hit a "
+                        "rate limit; check the terminal for stderr)")
+                    fail_block.setFont(QFont('Arial', 13))
+                    fail_block.setWordWrap(True)
+                    fail_block.setStyleSheet(
+                        "color: #fc6; background-color: #2a1a1a; padding: 10px;"
+                        " border-radius: 5px; margin: 4px 0;"
+                    )
+                    analysis_layout.addWidget(fail_block)
                     continue
                 block = QLabel(f"Claude — {name}:\n{text}")
                 block.setFont(QFont('Arial', 14))
@@ -8060,8 +8094,18 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                 name = a.get('player', '?')
                 text = (a.get('text') or '').strip()
                 if not text:
+                    fail_block = QLabel(
+                        f"Claude — {name} (host): (no analysis — host's "
+                        "claude returned nothing for this POV)")
+                    fail_block.setFont(QFont('Arial', 13))
+                    fail_block.setWordWrap(True)
+                    fail_block.setStyleSheet(
+                        "color: #fc6; background-color: #2a1a1a; padding: 10px;"
+                        " border-radius: 5px; margin: 4px 0;"
+                    )
+                    target_layout.addWidget(fail_block)
                     continue
-                block = QLabel(f"Claude — {name}:\n{text}")
+                block = QLabel(f"Claude — {name} (host):\n{text}")
                 block.setFont(QFont('Arial', 14))
                 block.setWordWrap(True)
                 block.setStyleSheet(
