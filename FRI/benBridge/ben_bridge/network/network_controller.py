@@ -145,19 +145,16 @@ class NetworkGameController(QObject):
     def my_seats(self) -> List[Seat]:
         """Get list of seats I control.
 
-        In partner mode: just my seat (partner is controlled by remote player)
-        In opponent mode: my seat and my partner's seat (full partnership)
+        Always just my own seat. The legacy "opponent mode" had the host
+        play a whole partnership when only one guest was at the table —
+        that produced the host-bids-for-North bug when a guest sat West.
+        Empty seats are now AI on every connected client; if N also has
+        a guest, that guest's controller will list N as my_seats[0] on
+        their side, and the host's remote_seats will include N.
         """
         if self._my_seat is None:
             return []
-        if self._client_role == "partner":
-            # Partner mode: each player controls one seat
-            return [self._my_seat]
-        else:
-            # Opponent mode: each player controls their partnership
-            if self._partner_seat is not None:
-                return [self._my_seat, self._partner_seat]
-            return [self._my_seat]
+        return [self._my_seat]
 
     @property
     def remote_seats(self) -> List[Seat]:
@@ -318,15 +315,16 @@ class NetworkGameController(QObject):
         self._client_role = role
         logger.info(f"_on_connected_to_server: set _my_seat={self._my_seat}, _partner_seat={self._partner_seat}, _client_role={self._client_role}")
 
-        # Set remote seats (what the server controls)
-        # Partner mode: server controls their seat (our partner_seat), AI controls opponents
-        # Opponent mode: server controls their partnership (opposite of ours)
-        if role == "partner":
-            self._remote_seats = [self._partner_seat]
-        else:
-            all_seats = set(Seat)
-            our_seats = {self._my_seat, self._my_seat.partner()}
-            self._remote_seats = list(all_seats - our_seats)
+        # Each player controls only their own seat. Remote seats start
+        # with just the host's seat; SEAT_LIST broadcasts later teach us
+        # about additional guests at other seats. Empty seats are local
+        # AI on the guest side too.
+        host_char = (self._client.host_seat_char or "").upper() if self._client else ""
+        try:
+            host_seat = Seat.from_char(host_char) if host_char else None
+        except Exception:
+            host_seat = None
+        self._remote_seats = [host_seat] if host_seat is not None else [self._partner_seat]
         logger.info(f"_on_connected_to_server: remote_seats={self._remote_seats}")
 
         logger.info(f"Connected to '{server_name}' as {my_seat}, partner {partner_seat}, role {role}")

@@ -1054,32 +1054,19 @@ class MainWindow(QMainWindow):
         self._set_toolbar_mode('opening')
 
     def _setup_bid_info_window(self):
-        """Setup the floating bidding information window with Bid/Points/Help columns"""
-        self.bid_info_dock = QDockWidget("Information about the bids ...", self)
-        self.bid_info_dock.setFeatures(
-            QDockWidget.DockWidgetFeature.DockWidgetMovable |
-            QDockWidget.DockWidgetFeature.DockWidgetFloatable |
-            QDockWidget.DockWidgetFeature.DockWidgetClosable
-        )
-        # Style the dock widget with light title bar
-        self.bid_info_dock.setStyleSheet("""
-            QDockWidget {
-                background-color: #f0f0f0;
-                color: #000000;
-                titlebar-close-icon: url(close.png);
-                titlebar-normal-icon: url(undock.png);
-            }
-            QDockWidget::title {
-                background-color: #e0e0e0;
-                color: #000000;
-                padding: 6px;
-                border: 1px solid #a0a0a0;
-            }
-        """)
+        """Setup the bidding-information window as an independent top-level
+        window. Previously a QDockWidget — that hybrid behaviour caused it
+        to sometimes dock back into the main window and sometimes hide
+        behind it on a single-monitor setup. A plain top-level QWidget
+        with Qt.WindowType.Window is always free-floating, draggable, and
+        keeps the same show/hide API the rest of main_window relies on.
+        """
+        self.bid_info_dock = QWidget(None, Qt.WindowType.Window)
+        self.bid_info_dock.setWindowTitle("Information about the bids ...")
+        self.bid_info_dock.setStyleSheet("background-color: #f8f8f8;")
 
-        # Content widget
-        bid_info_widget = QWidget()
-        bid_info_widget.setStyleSheet("background-color: #f8f8f8;")
+        # Content widget — laid out directly inside the top-level window.
+        bid_info_widget = self.bid_info_dock
         bid_info_layout = QVBoxLayout(bid_info_widget)
         bid_info_layout.setContentsMargins(5, 5, 5, 5)
         bid_info_layout.setSpacing(2)
@@ -1137,14 +1124,9 @@ class MainWindow(QMainWindow):
         avail_scroll.setWidget(self.available_bids_widget)
         bid_info_layout.addWidget(avail_scroll)
 
-        self.bid_info_dock.setWidget(bid_info_widget)
         self.bid_info_dock.setMinimumWidth(450)
-
-        # Make it floating by default
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.bid_info_dock)
-        self.bid_info_dock.setFloating(True)
-        self.bid_info_dock.move(30, 100)
         self.bid_info_dock.resize(480, 500)
+        self.bid_info_dock.move(30, 100)
 
     def _setup_statusbar(self):
         """Setup the status bar"""
@@ -2730,6 +2712,14 @@ For more information, see the README file."""
     def _on_network_remote_card(self, seat_char: str, card: Card):
         """Handle receiving a card play from the remote player."""
         seat = Seat.from_char(seat_char)
+
+        # Force current_seat to match the broadcasting player before
+        # play_card removes the card from the right hand. Without this
+        # the local controller would happily strip a card from whichever
+        # seat it last advanced to, which drifts host vs guest after a
+        # trick boundary or after an AI play arrived in unexpected order.
+        if self.controller.board is not None:
+            self.controller.current_seat = seat
 
         # Apply the card play
         self.table_view.play_card_to_trick(seat, card)
