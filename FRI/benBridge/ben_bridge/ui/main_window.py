@@ -84,7 +84,20 @@ class EngineWorker(QThread):
     def run(self):
         try:
             if self.task == 'bid':
-                response = self.engine.get_bid(self.board, self.seat)
+                # Route bidding to the native engine when the preference is
+                # set, falling back to BEN for any error or for "BEN".
+                bidder = self.engine
+                try:
+                    from ben_backend.config import get_config_manager
+                    prefs = get_config_manager().config.preferences
+                    if getattr(prefs, 'bidding_engine', 'BEN') == 'native':
+                        from ben_backend.native_bidder import NativeBiddingEngine
+                        bidder = NativeBiddingEngine(
+                            system=getattr(prefs, 'native_bidding_system', 'SAYC')
+                        )
+                except Exception:
+                    bidder = self.engine
+                response = bidder.get_bid(self.board, self.seat)
                 self.bid_ready.emit(response)
             elif self.task == 'card':
                 # Check if this is the opening lead (first card of play phase)

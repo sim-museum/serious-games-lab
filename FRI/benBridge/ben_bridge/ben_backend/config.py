@@ -82,6 +82,13 @@ class PreferencesConfig:
     use_monte_carlo_play: bool = True  # Monte Carlo simulation (default - strongest)
     legacy_colors: bool = False  # Use legacy 2-color mode (red and black only)
     show_ben_bid_analysis: bool = False  # Show BEN bid analysis panel (disabled by default)
+    # Which engine bots consult for bidding. "BEN" → the original neural-net
+    # engine; "native" → the rule-based bidder in ben_backend.native_bidder
+    # (Qplus-style). Card play always stays with BEN regardless of this flag.
+    bidding_engine: str = "BEN"
+    # System used by the native bidder. "SAYC" is a SAYC/2-over-1 hybrid;
+    # "Precision" is a single-variant strong-club system.
+    native_bidding_system: str = "SAYC"
 
 
 @dataclass
@@ -293,6 +300,14 @@ class ConfigManager:
             self.config.preferences.legacy_colors = data["preference.legacy_colors"] == "1"
         if "preference.show_ben_bid_analysis" in data:
             self.config.preferences.show_ben_bid_analysis = data["preference.show_ben_bid_analysis"] == "1"
+        if "preference.bidding_engine" in data:
+            v = data["preference.bidding_engine"].strip()
+            if v in ("BEN", "native"):
+                self.config.preferences.bidding_engine = v
+        if "preference.native_bidding_system" in data:
+            v = data["preference.native_bidding_system"].strip()
+            if v in ("SAYC", "Precision"):
+                self.config.preferences.native_bidding_system = v
 
     def save_preferences(self):
         """Save user preferences."""
@@ -309,6 +324,8 @@ class ConfigManager:
             "preference.use_mc_play": "1" if self.config.preferences.use_monte_carlo_play else "0",
             "preference.legacy_colors": "1" if self.config.preferences.legacy_colors else "0",
             "preference.show_ben_bid_analysis": "1" if self.config.preferences.show_ben_bid_analysis else "0",
+            "preference.bidding_engine": self.config.preferences.bidding_engine,
+            "preference.native_bidding_system": self.config.preferences.native_bidding_system,
         }
         self._write_config_file(filepath, data, description="BEN Bridge preferences")
 

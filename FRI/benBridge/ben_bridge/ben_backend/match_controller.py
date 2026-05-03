@@ -76,9 +76,24 @@ class ClosedRoomWorker(QThread):
         consecutive_passes = 0
         first_bid_made = False
 
+        # Resolve the bidder once: BEN by default, native engine if the
+        # preference is set. Closed-room replays the same kind of auction
+        # the user is bidding live, so we honour the toggle here too.
+        bidder = self.engine
+        try:
+            from .config import get_config_manager
+            prefs = get_config_manager().config.preferences
+            if getattr(prefs, 'bidding_engine', 'BEN') == 'native':
+                from .native_bidder import NativeBiddingEngine
+                bidder = NativeBiddingEngine(
+                    system=getattr(prefs, 'native_bidding_system', 'SAYC')
+                )
+        except Exception:
+            bidder = self.engine
+
         while not self._stop_requested:
             # Get bid from engine
-            response = self.engine.get_bid(board, current_bidder)
+            response = bidder.get_bid(board, current_bidder)
             bid = response.action
 
             board.auction.append(bid)

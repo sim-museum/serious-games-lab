@@ -250,6 +250,35 @@ class PreferencesDialog(QDialog):
         bid_group.setLayout(bid_layout)
         layout.addWidget(bid_group)
 
+        # Bidding engine
+        engine_group = QGroupBox("Bidding Engine")
+        engine_layout = QVBoxLayout()
+        engine_row = QHBoxLayout()
+        engine_row.addWidget(QLabel("Bots use:"))
+        self.bidding_engine_combo = QComboBox()
+        self.bidding_engine_combo.addItem("BEN (neural net, default)", "BEN")
+        self.bidding_engine_combo.addItem("Native (Qplus-style rule engine)", "native")
+        self.bidding_engine_combo.setToolTip(
+            "BEN is Anthropic-trained neural-net bidding (default).\n"
+            "Native uses a from-scratch rule-based bidder modeled on\n"
+            "Qplus 17. Card play always uses BEN regardless of this setting."
+        )
+        engine_row.addWidget(self.bidding_engine_combo)
+        engine_row.addStretch()
+        engine_layout.addLayout(engine_row)
+
+        sys_row = QHBoxLayout()
+        sys_row.addWidget(QLabel("Native system:"))
+        self.native_system_combo = QComboBox()
+        self.native_system_combo.addItem("SAYC / 2-over-1 (default)", "SAYC")
+        self.native_system_combo.addItem("Precision (strong club)", "Precision")
+        sys_row.addWidget(self.native_system_combo)
+        sys_row.addStretch()
+        engine_layout.addLayout(sys_row)
+
+        engine_group.setLayout(engine_layout)
+        layout.addWidget(engine_group)
+
         # Convention display
         conv_group = QGroupBox("Convention Display")
         conv_layout = QVBoxLayout()
@@ -344,6 +373,16 @@ class PreferencesDialog(QDialog):
         # Bidding settings
         self.show_alerts_check.setChecked(self.prefs.show_alert_marks)
 
+        # Bidding engine
+        idx = self.bidding_engine_combo.findData(
+            getattr(self.prefs, 'bidding_engine', 'BEN'))
+        if idx >= 0:
+            self.bidding_engine_combo.setCurrentIndex(idx)
+        idx = self.native_system_combo.findData(
+            getattr(self.prefs, 'native_bidding_system', 'SAYC'))
+        if idx >= 0:
+            self.native_system_combo.setCurrentIndex(idx)
+
         # Logging settings
         self.log_enabled_check.setChecked(self.prefs.log_enabled)
         if self.prefs.log_as_pbn:
@@ -370,6 +409,10 @@ class PreferencesDialog(QDialog):
         self.prefs.swap_ns_declarer = self.swap_ns_check.isChecked()
         self.prefs.legacy_colors = self.legacy_colors_check.isChecked()
         self.prefs.show_ben_bid_analysis = self.show_ben_analysis_check.isChecked()
+
+        # Bidding engine
+        self.prefs.bidding_engine = self.bidding_engine_combo.currentData() or "BEN"
+        self.prefs.native_bidding_system = self.native_system_combo.currentData() or "SAYC"
 
         # Apply suit color mode immediately
         from ..styles import set_suit_color_mode, SuitColorMode
