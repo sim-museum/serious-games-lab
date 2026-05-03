@@ -4225,6 +4225,225 @@ class PokerWindow(QMainWindow):
             f.write(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write("=" * 60 + "\n\n")
 
+        # WSOP-2008-Bracelets-style cumulative stats (logged to the file
+        # so the post-game annotation has the same per-player and
+        # per-hole-card breakdowns the bracelets pause menu shows).
+        self._table_stats = {}     # {player_name: {hands_played, hands_won,
+                                   #               showdowns_seen, showdowns_won, all_ins}}
+        self._hole_card_stats = {} # {class_label: {hands_seen, hands_played,
+                                   #                hands_won, hands_lost,
+                                   #                cash_gained, cash_lost, net_cash}}
+                                   # tracked from the local hero's POV
+        self._game_status_logged = False
+        self._original_player_count = None  # filled in on first deal_hand
+        self._original_blinds = None
+        self._current_hero_hand_class = None
+        self._current_hero_starting_stack = None
+        self._all_in_seen_this_hand = set()  # names that went all-in this hand
+
+    @staticmethod
+    def _fresh_table_stats() -> dict:
+        return {
+            'hands_played': 0,
+            'hands_won': 0,
+            'showdowns_seen': 0,
+            'showdowns_won': 0,
+            'all_ins': 0,
+        }
+
+    @staticmethod
+    def _fresh_hole_class_stats() -> dict:
+        return {
+            'hands_seen': 0,
+            'hands_played': 0,
+            'hands_won': 0,
+            'hands_lost': 0,
+            'cash_gained': 0,
+            'cash_lost': 0,
+            'net_cash': 0,
+        }
+
+    @staticmethod
+    def _hand_class(hand) -> str:
+        """Return canonical 169-class hole-card label like 'AA', 'AKs', 'AKo'."""
+        if not hand or len(hand) < 2:
+            return "??"
+        c1, c2 = str(hand[0]), str(hand[1])
+        r1, r2 = c1[0], c2[0]
+        s1, s2 = c1[1], c2[1]
+        order = '23456789TJQKA'
+        a, b = sorted([r1, r2], key=lambda r: order.index(r), reverse=True)
+        if r1 == r2:
+            return f"{a}{a}"
+        return f"{a}{b}{'s' if s1 == s2 else 'o'}"
+
+    def _record_hand_start_stats(self):
+        """Bump per-player hands_played and per-hole-class hands_seen for
+        the local hero. Called from deal_hand."""
+        for p in self.players:
+            if p.active:
+                self._table_stats.setdefault(
+                    p.name, self._fresh_table_stats()
+                )['hands_played'] += 1
+        hero_seat = self.my_seat if self.my_seat is not None else 0
+        if 0 <= hero_seat < len(self.players):
+            hero = self.players[hero_seat]
+            if hero.hand:
+                cls = self._hand_class(hero.hand)
+                s = self._hole_card_stats.setdefault(
+                    cls, self._fresh_hole_class_stats())
+                s['hands_seen'] += 1
+                # "Played" in bracelets = the hand actually got into action
+                # rather than a fold-without-acting; we tally it once the
+                # hand ends and the hero made it past preflop. Track the
+                # entry stack here so we can compute cash delta later.
+                self._current_hero_hand_class = cls
+                self._current_hero_starting_stack = int(hero.stack)
+        self._all_in_seen_this_hand = set()
+
+    def _record_all_in(self, player_name: str):
+        """Bump all_ins count for player_name (called from action handlers
+        when a player ends an action with stack==0)."""
+        if player_name in self._all_in_seen_this_hand:
+            return
+        self._all_in_seen_this_hand.add(player_name)
+        self._table_stats.setdefault(
+            player_name, self._fresh_table_stats()
+        )['all_ins'] += 1
+
+    def _finalize_hand_stats(self, winners_names, showdown_active_names):
+        """Bump hands_won / showdowns at end of hand; update hero hole-class
+        cash delta + win/loss; called from end_hand / _on_hand_ended."""
+        for n in winners_names or []:
+            self._table_stats.setdefault(
+                n, self._fresh_table_stats()
+            )['hands_won'] += 1
+        for n in showdown_active_names or []:
+            ts = self._table_stats.setdefault(n, self._fresh_table_stats())
+            ts['showdowns_seen'] += 1
+            if n in (winners_names or []):
+                ts['showdowns_won'] += 1
+        # Hero hole-card cash delta
+        cls = getattr(self, '_current_hero_hand_class', None)
+        start_stack = getattr(self, '_current_hero_starting_stack', None)
+        if cls and start_stack is not None:
+            hero_seat = self.my_seat if self.my_seat is not None else 0
+            if 0 <= hero_seat < len(self.players):
+                hero = self.players[hero_seat]
+                delta = int(hero.stack) - int(start_stack)
+                s = self._hole_card_stats.setdefault(
+                    cls, self._fresh_hole_class_stats())
+                s['hands_played'] += 1
+                if delta >= 0:
+                    s['cash_gained'] += delta
+                    if delta > 0:
+                        s['hands_won'] += 1
+                else:
+                    s['cash_lost'] += -delta
+                    s['hands_lost'] += 1
+                s['net_cash'] = s['cash_gained'] - s['cash_lost']
+        self._current_hero_hand_class = None
+        self._current_hero_starting_stack = None
+
+    def _log_game_status(self):
+        """Write the bracelets-style GAME STATUS block at the start of the
+        session so post-game annotation knows what kind of game was played."""
+        sb, bb = BLIND_LEVELS[self.blind_level]
+        next_increase_in = HANDS_PER_BLIND_LEVEL - (self.hand_number % HANDS_PER_BLIND_LEVEL)
+        if next_increase_in == HANDS_PER_BLIND_LEVEL:
+            next_increase_in = 0
+        next_marker = (f"Hand #{self.hand_number + next_increase_in}"
+                       if self.blind_level < len(BLIND_LEVELS) - 1
+                       else "Max blinds reached")
+        if self._original_player_count is None:
+            self._original_player_count = sum(1 for p in self.players if p.stack > 0)
+            self._original_blinds = (sb, bb)
+        current_players = sum(1 for p in self.players if p.stack > 0)
+        mode_label = "PokerIQ Local"
+        if self.network_mode == "host":
+            mode_label = "PokerIQ Network (Host)"
+        elif self.network_mode == "client":
+            mode_label = "PokerIQ Network (Client)"
+        self.write_log("\n=== GAME STATUS ===")
+        self.write_log(f"  Game Name: {mode_label}")
+        self.write_log("  Game Type: Texas Hold 'em")
+        self.write_log("  Limit Type: No Limit")
+        self.write_log(f"  Starting Chips: ${STARTING_STACK}")
+        self.write_log(f"  Hands Dealt: {self.hand_number}")
+        self.write_log(f"  Next Blind Increase: {next_marker}")
+        self.write_log(f"  # Players (Original/Current): "
+                       f"{self._original_player_count}/{current_players}")
+        ob = self._original_blinds or (sb, bb)
+        self.write_log(f"  Blinds (Original/Current): "
+                       f"${ob[0]}/${ob[1]} → ${sb}/${bb}")
+        self.write_log("  Ante: None")
+        self.write_log("  Limits: N/A")
+        self.write_log("===================\n")
+
+    def _log_chip_count(self):
+        """Bracelets CHIP COUNT screen — current stacks for every seat."""
+        self.write_log("--- CHIP COUNT ---")
+        for p in self.players:
+            self.write_log(f"  {p.name}: ${p.stack}")
+
+    def _log_table_stats(self):
+        """Bracelets TABLE STATS screen — cumulative per-player counters."""
+        self.write_log("\n=== TABLE STATS ===")
+        self.write_log(
+            "  {:<16} {:>10} {:>14} {:>11} {:>20} {:>9}".format(
+                "Name", "Status", "Hands Played", "Hands Won",
+                "Showdowns W/Total", "All Ins"))
+        for p in self.players:
+            ts = self._table_stats.get(p.name, self._fresh_table_stats())
+            self.write_log(
+                "  {:<16} {:>10} {:>14} {:>11} {:>20} {:>9}".format(
+                    p.name[:16],
+                    f"${p.stack}",
+                    ts['hands_played'],
+                    ts['hands_won'],
+                    f"{ts['showdowns_won']}/{ts['showdowns_seen']}",
+                    ts['all_ins']))
+        self.write_log("===================\n")
+
+    def _log_hole_card_stats(self):
+        """Bracelets HOLE CARD STATS — hero's per-starting-hand breakdown,
+        sorted by net cash descending."""
+        if not self._hole_card_stats:
+            return
+        self.write_log("\n=== HOLE CARD STATS (Hero) ===")
+        self.write_log(
+            "  {:<5} {:>5} {:>7} {:>5} {:>5} {:>13} {:>11} {:>9}".format(
+                "Hand", "Seen", "Played", "Won", "Lost",
+                "Cash Gained", "Cash Lost", "Net"))
+        rows = sorted(self._hole_card_stats.items(),
+                      key=lambda kv: (-kv[1]['net_cash'], kv[0]))
+        for cls, s in rows:
+            self.write_log(
+                "  {:<5} {:>5} {:>7} {:>5} {:>5} {:>13} {:>11} {:>9}".format(
+                    cls,
+                    s['hands_seen'],
+                    s['hands_played'],
+                    s['hands_won'],
+                    s['hands_lost'],
+                    f"${s['cash_gained']}",
+                    f"${s['cash_lost']}",
+                    f"${s['net_cash']:+d}"))
+        self.write_log("============================\n")
+
+    def _log_session_summary(self):
+        """Dump TABLE STATS + HOLE CARD STATS at session end (close)."""
+        try:
+            self.write_log("\n" + "#" * 60)
+            self.write_log("SESSION SUMMARY")
+            self.write_log("#" * 60)
+            self._log_table_stats()
+            self._log_hole_card_stats()
+            self._log_chip_count()
+            self.write_log(
+                f"Ended: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        except Exception as ex:
+            print(f"[log] session summary failed: {ex}")
+
     def _load_bot_preferences(self):
         """Load bot preferences from QSettings."""
         for seat in range(len(self.players)):
@@ -4363,6 +4582,17 @@ class PokerWindow(QMainWindow):
                 self.range_accuracy_stats['misses'] += 1
                 results.append(f"  {player.name}: {hand_notation} NOT IN RANGE (weight={weight:.1%})")
         return results
+
+    def closeEvent(self, event):
+        """Flush bracelets-style cumulative stats + chip count to the log
+        before the window closes so post-game annotation has the same
+        per-player and per-hole-card breakdowns the WSOP-2008 pause menu
+        shows."""
+        try:
+            self._log_session_summary()
+        except Exception as ex:
+            print(f"[log] session summary on close failed: {ex}")
+        super().closeEvent(event)
 
     def write_log(self, msg, include_stats=False):
         """Write a message to the log file."""
@@ -5212,6 +5442,10 @@ class PokerWindow(QMainWindow):
         self._latest_hand_analyses_hand = None
         # Dismiss any prior-hand summary / stats dialogs left open
         self._close_open_hand_dialogs()
+        # First hand of the session: log GAME STATUS (bracelets-style)
+        if not getattr(self, '_game_status_logged', False):
+            self._log_game_status()
+            self._game_status_logged = True
 
         # Reset hand history for interpretation
         self.hand_history = {
@@ -5275,6 +5509,8 @@ class PokerWindow(QMainWindow):
         hero = self.players[0]
         self.hand_history['hero_cards'] = [str(c) for c in hero.hand]
         self.hand_history['hero_hand_name'] = get_hand_name(hero.hand)
+        # Bracelets-style hands_played + hole-class hands_seen tracking
+        self._record_hand_start_stats()
 
         # Post blinds - find active players for SB and BB positions
         sb_idx = (self.dealer_idx + 1) % len(self.players)
@@ -5850,6 +6086,10 @@ class PokerWindow(QMainWindow):
 
         player.actions_this_round += 1
 
+        # Bracelets-style all-in counter
+        if player.stack == 0 and action != 'f':
+            self._record_all_in(player.name)
+
         # Broadcast action to network clients (host mode)
         if self.network_mode == "host" and self.network_server:
             action_name = {'f': 'fold', 'r': 'raise', 'c': 'call'}.get(action, 'check')
@@ -6082,6 +6322,21 @@ class PokerWindow(QMainWindow):
                     self.write_log(f"  {p.name}: -${abs(change)}")
                 else:
                     self.write_log(f"  {p.name}: $0 (broke even)")
+
+        # Bracelets-style per-hand stat updates + CHIP COUNT screen + table
+        # snapshot so post-game annotation has them per-hand.
+        try:
+            winners_in_scope = active if len(active) == 1 else (winners if 'winners' in locals() else [])
+            winners_names = [w.name for w in winners_in_scope] if winners_in_scope else []
+            showdown_active_names = (
+                [p.name for p in active] if getattr(self, 'at_showdown', False)
+                else []
+            )
+            self._finalize_hand_stats(winners_names, showdown_active_names)
+            self._log_chip_count()
+            self._log_table_stats()
+        except Exception as ex:
+            print(f"[log] per-hand stat update failed: {ex}")
 
         # Log range accuracy analysis (get ranges from ToM panel)
         if hasattr(self, 'tom_panel') and self.tom_panel.final_range_estimates:
@@ -7928,6 +8183,9 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
 
         player.actions_this_round += 1
 
+        if player.stack == 0 and action_lower != 'fold':
+            self._record_all_in(player.name)
+
         # Broadcast action to all clients
         if self.network_server:
             self.network_server.broadcast_action(
@@ -8056,6 +8314,12 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             except Exception:
                 pass
             self.write_log(f"Your hole cards: {' '.join(cards)}")
+            # Bracelets-style per-hand-start counters (hero only on client;
+            # we don't see other players' cards so per-class stats are local)
+            try:
+                self._record_hand_start_stats()
+            except Exception:
+                pass
 
     def _on_community_cards_received(self, cards: list, street: str):
         """Handle receiving community cards."""
@@ -8119,6 +8383,9 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         elif action_lower == 'all-in':
             player.stack = 0
 
+        if player.stack == 0 and action_lower != 'fold':
+            self._record_all_in(player_name)
+
         self.table.set_pot(pot)
 
         # Highlight the player who just acted
@@ -8157,6 +8424,10 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         self._latest_hand_analyses_hand = None
         # Dismiss any prior-hand summary / stats dialogs left open
         self._close_open_hand_dialogs()
+        # First hand of the session: log GAME STATUS (bracelets-style)
+        if not getattr(self, '_game_status_logged', False):
+            self._log_game_status()
+            self._game_status_logged = True
 
         # Reset bet_in_round for all players
         for p in self.players:
@@ -8244,6 +8515,19 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                         start, end = vals[0], vals[1]
                         change = (vals[2] if len(vals) >= 3 else end - start)
                         self.write_log(f"  {name}: ${end} (Δ${change:+.0f})")
+            # Bracelets-style per-hand stat updates + CHIP COUNT + table
+            # snapshot so the guest's post-game annotation has them too.
+            try:
+                self._finalize_hand_stats(
+                    [self.players[w].name for w in winners
+                     if 0 <= w < len(self.players)],
+                    [self.players[w].name for w in winners
+                     if 0 <= w < len(self.players)] if shown_hands else []
+                )
+                self._log_chip_count()
+                self._log_table_stats()
+            except Exception as ex:
+                print(f"[client] per-hand stat update failed: {ex}")
         except Exception as ex:
             print(f"[client] hand-end log failed: {ex}")
 
