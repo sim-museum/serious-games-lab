@@ -5297,15 +5297,25 @@ class PokerWindow(QMainWindow):
         # current hand. If they already folded, this toggle is just their
         # spectator-mode auto-enable and should NOT be flagged in the summary.
         toggling_player_active = True
-        for p in self.players:
+        toggling_seat = None
+        for i, p in enumerate(self.players):
             if p.name == player_name:
                 toggling_player_active = bool(getattr(p, 'active', True))
+                toggling_seat = i
                 break
         if features.get('god_mode'):
             active.append("God Mode")
             if toggling_player_active:
                 self.hand_assists_used.setdefault(player_name, set()).add("God Mode")
+            # Host: push all hole cards to the client that enabled God Mode
+            if (self.network_mode == "host" and self.network_server
+                    and toggling_seat is not None):
+                self._send_spectator_hole_cards_to_seat(toggling_seat)
         if features.get('tells'):
+            # Host: push hole cards so the client can compute equity for all players
+            if (self.network_mode == "host" and self.network_server
+                    and toggling_seat is not None):
+                self._send_spectator_hole_cards_to_seat(toggling_seat)
             active.append("Tells")
             if toggling_player_active:
                 self.hand_assists_used.setdefault(player_name, set()).add("Show Tells")
