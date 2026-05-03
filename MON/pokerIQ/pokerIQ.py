@@ -7584,6 +7584,8 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
     def _on_all_hole_cards_received(self, cards_by_seat: dict):
         """Server pushed every active seat's hole cards (we just folded and
         are now spectating) — populate player.hand for each seat and refresh.
+        Also write each revealed hand to the log so post-game Claude
+        annotation has the spectator view of the table.
         """
         try:
             for seat, cards in cards_by_seat.items():
@@ -7596,6 +7598,13 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                     self.god_mode_cb.setChecked(True)
             self.update_all_panels()
             self.update_stats_display()
+            # Log every revealed hand so the annotated transcript has them
+            self.write_log("All Hole Cards (spectator view):")
+            for seat in sorted(cards_by_seat.keys(), key=lambda x: int(x)):
+                seat_i = int(seat)
+                if 0 <= seat_i < len(self.players):
+                    name = self.players[seat_i].name
+                    self.write_log(f"  {name}: {' '.join(cards_by_seat[seat])}")
         except Exception as ex:
             print(f"[client] failed to apply ALL_HOLE_CARDS: {ex}")
 
@@ -7627,9 +7636,25 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
     def _on_hand_interpretation_received(self, text: str, hand_number: int,
                                           assists_used: dict):
         """Host sent us the narrative summary — show the same Hand Summary
-        dialog (with bright assists banner + Claude analysis blocks)."""
+        dialog (with bright assists banner + Claude analysis blocks) and
+        write the full interpretation to the log so the post-game annotated
+        report has the same context the host has."""
         try:
             self._latest_assists_used = assists_used or {}
+            # Mirror the host's HAND INTERPRETATION block in the log
+            try:
+                self.write_log("\n" + "=" * 40)
+                self.write_log("HAND INTERPRETATION:")
+                for line in (text or '').split('\n'):
+                    self.write_log(f"  {line}")
+                if assists_used:
+                    for name, used in sorted(assists_used.items()):
+                        used_list = sorted(used) if not isinstance(used, list) else used
+                        self.write_log(f"  [{name} used while still in hand: "
+                                       f"{', '.join(used_list)}]")
+                self.write_log("=" * 40)
+            except Exception as ex:
+                print(f"[client] interpretation log failed: {ex}")
             self._show_hand_interpretation_text(text, hand_number, assists_used or {})
         except Exception as ex:
             print(f"[client] failed to render hand interpretation: {ex}")
@@ -7894,6 +7919,13 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             player = self.players[self.my_seat]
             player.hand = [eval7.Card(c) for c in cards]
             self.update_all_panels()
+            # Track for hand interpretation + annotation
+            self.hand_history['hero_cards'] = list(cards)
+            try:
+                self.hand_history['hero_hand_name'] = get_hand_name(player.hand)
+            except Exception:
+                pass
+            self.write_log(f"Your hole cards: {' '.join(cards)}")
 
     def _on_community_cards_received(self, cards: list, street: str):
         """Handle receiving community cards."""
@@ -7908,6 +7940,9 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         self.current_bet = 0
         self.action_log = []
         self.log_action(f"--- {street} ---")
+        # Track + log the per-street board so Claude annotation can see it
+        self.hand_history.setdefault('board_by_street', {})[street] = list(cards)
+        self.write_log(f"Board ({street}): {' '.join(cards)}")
         self.update_all_panels()
         # If the spectator has scrolled to a past snapshot, leave their view
         # alone; otherwise show the new (live) board.
@@ -8008,6 +8043,24 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         self.table.set_pot(self.pot)
         self.log_action(f"Hand #{hand_num} starting...")
 
+        # Mirror the host's per-hand log header so post-game Claude
+        # annotation has hole-card / board-texture context.
+        try:
+            self.write_log(f"\n{'='*60}")
+            self.write_log(f"HAND #{hand_num} - {datetime.now().strftime('%H:%M:%S')}")
+            self.write_log(f"{'='*60}")
+            sb = blinds[0] if isinstance(blinds, (tuple, list)) and len(blinds) >= 1 else 0
+            bb = blinds[1] if isinstance(blinds, (tuple, list)) and len(blinds) >= 2 else 0
+            self.write_log(f"Blinds: ${sb}/${bb}")
+            if 0 <= button < len(self.players):
+                self.write_log(f"Dealer: {self.players[button].name}")
+            self.write_log("Stacks:")
+            for seat in sorted(stacks.keys(), key=lambda x: int(x)):
+                p = self.players[int(seat)]
+                self.write_log(f"  {p.name}: ${stacks[seat]}")
+        except Exception as ex:
+            print(f"[client] hand-start log failed: {ex}")
+
     def _on_hand_ended(self, winners: list, pot: float, shown_hands: dict, hand_summary: dict = None):
         """Handle hand end from server.
 
@@ -8025,6 +8078,44 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             self.players[seat].hand = [eval7.Card(c) for c in cards]
 
         self.update_all_panels()
+
+        # Write a per-hand showdown block to the log so the post-game
+        # Claude annotation can see hole cards, board textures, winners,
+        # and final stacks for THIS hand.
+        try:
+            self.write_log("--- Showdown ---")
+            if self.board:
+                self.write_log(f"Final Board: {format_cards(self.board)}")
+            # Prefer hand_summary['player_hands'] (covers folded players too)
+            player_hands = (hand_summary or {}).get('player_hands', {}) or {}
+            if player_hands:
+                self.write_log("All Hole Cards:")
+                for name, cards in sorted(player_hands.items()):
+                    self.write_log(f"  {name}: {' '.join(cards)}")
+            elif shown_hands:
+                self.write_log("Revealed Hands:")
+                for seat, cards in shown_hands.items():
+                    name = self.players[int(seat)].name
+                    self.write_log(f"  {name}: {' '.join(cards)}")
+            self.write_log(f"Winner(s): {', '.join(winner_names)} - Pot: ${pot:.0f}")
+            # Per-street boards (informational; clients also log per arrival)
+            board_by_street = (hand_summary or {}).get('board_by_street', {}) or {}
+            if board_by_street:
+                for street in ['Preflop', 'Flop', 'Turn', 'River']:
+                    cards = board_by_street.get(street)
+                    if cards:
+                        self.write_log(f"  Board @ {street}: {' '.join(cards)}")
+            # Final stacks
+            player_results = (hand_summary or {}).get('player_results', {}) or {}
+            if player_results:
+                self.write_log("Final Stacks:")
+                for name, vals in sorted(player_results.items()):
+                    if isinstance(vals, (list, tuple)) and len(vals) >= 2:
+                        start, end = vals[0], vals[1]
+                        change = (vals[2] if len(vals) >= 3 else end - start)
+                        self.write_log(f"  {name}: ${end} (Δ${change:+.0f})")
+        except Exception as ex:
+            print(f"[client] hand-end log failed: {ex}")
 
         # Folded clients exit spectator UI now that the hand is over.
         if getattr(self, '_hero_folded_spectating', False):
