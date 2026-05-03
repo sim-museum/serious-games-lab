@@ -51,12 +51,14 @@ class PokerServer(QObject):
     error_occurred = pyqtSignal(str)
 
     def __init__(self, server_name: str = "Poker Table", num_seats: int = 6,
-                 host_seat: int = 0, host_name: str = "Hero (Server)", parent=None):
+                 host_seat: int = 0, host_name: str = "Hero (Server)",
+                 app_version: str = "", parent=None):
         super().__init__(parent)
         self.server_name = server_name
         self.num_seats = num_seats
         self.host_seat = host_seat
         self.host_name = host_name
+        self.app_version = (app_version or '').strip()
 
         self._server = QTcpServer(self)
         self._clients: Dict[str, ClientConnection] = {}
@@ -174,6 +176,20 @@ class PokerServer(QObject):
 
         if msg.type == MessageType.CONNECT_REQUEST:
             player_name = (msg.payload.get('player_name') or '').strip()
+            client_version = (msg.payload.get('app_version') or '').strip()
+
+            # Reject if the host advertised a non-empty version and the
+            # client either didn't send one or sent a different one. Empty
+            # host version means version checks are disabled.
+            if self.app_version and client_version != self.app_version:
+                shown_client = client_version or 'unknown'
+                self._reject_and_close(
+                    client_id,
+                    f"Version mismatch: host is on '{self.app_version}', "
+                    f"you are on '{shown_client}'. Update both to the same "
+                    "pokerIQ revision and reconnect.",
+                    "version_mismatch")
+                return
 
             # Name validation: non-empty, short, unique.
             if not player_name:

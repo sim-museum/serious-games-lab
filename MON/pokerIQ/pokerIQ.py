@@ -25,6 +25,36 @@ from PyQt6.QtGui import (
 )
 
 # --- Configuration & Constants ---
+
+
+def get_app_version() -> str:
+    """Return a short identifier for the current pokerIQ build so the host
+    and joining guests can verify they're on the same revision. Tries the
+    repo's git short hash first; falls back to the modification time of
+    pokerIQ.py if git isn't available."""
+    import subprocess
+    here = os.path.dirname(os.path.abspath(__file__))
+    try:
+        result = subprocess.run(
+            ['git', '-C', here, 'rev-parse', '--short=12', 'HEAD'],
+            capture_output=True, text=True, timeout=2,
+        )
+        if result.returncode == 0:
+            v = result.stdout.strip()
+            if v:
+                return v
+    except Exception:
+        pass
+    try:
+        mtime = int(os.path.getmtime(os.path.abspath(__file__)))
+        return f"mtime:{mtime}"
+    except Exception:
+        return "unknown"
+
+
+APP_VERSION = get_app_version()
+
+
 STREETS = ["Preflop", "Flop", "Turn", "River"]
 STARTING_STACK = 200
 HANDS_PER_BLIND_LEVEL = 10  # Blinds increase every N hands
@@ -7763,23 +7793,72 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         self.update_status(f"{player_name} connected")
 
     def _on_client_disconnected(self, client_id: str):
-        """Handle client disconnection (host only)."""
+        """Handle client disconnection (host only).
+
+        Swap the dropped seat back to its original bot persona/style and
+        log "human X replaced by bot Y" so post-game annotation captures
+        the change. If the dropped client had the action, hand off to the
+        bot immediately so play continues."""
         self.update_status("A player disconnected")
-        # Remove from human seats
+        was_current_player_seat = None
         for seat in list(self.network_human_seats):
             if self.network_server.get_client_for_seat(seat) is None:
+                # The seat lost its remote owner — turn it back into a bot.
                 self.network_human_seats.discard(seat)
-                self.players[seat].style = self.original_player_info[seat][1]
-                self.players[seat].name = self.original_player_info[seat][0]
+                old_name = self.players[seat].name
+                bot_name, bot_style = self.original_player_info[seat]
+                self.players[seat].style = bot_style
+                self.players[seat].name = bot_name
+                self.write_log(
+                    f"[seat swap] {old_name} (human) replaced by {bot_name} (bot)")
+                self.log_action(f"{old_name} → {bot_name} (bot)")
+                if seat == getattr(self, 'current_player_idx', -1):
+                    was_current_player_seat = seat
+
+        # Push the updated seat list to remaining clients so their panels
+        # show the bot persona name for the now-vacated seat.
+        try:
+            self.network_server._broadcast_seat_list()
+        except Exception:
+            pass
+
         self.update_all_panels()
 
+        # If we were waiting on the dropped client's action, kick the bot
+        # in so the hand keeps moving.
+        if (was_current_player_seat is not None
+                and getattr(self, 'waiting_for_network_action', False)):
+            self.waiting_for_network_action = False
+            QTimer.singleShot(0, self.process_bot_action)
+
     def _on_seat_assigned(self, client_id: str, seat_index: int):
-        """Handle seat assignment (host only)."""
-        # Mark this seat as human-controlled
+        """Handle seat assignment (host only). Logs the bot→human swap and,
+        if the new client took an active seat mid-hand, sends them the
+        seat's current hole cards so they can immediately participate.
+        """
+        old_name = self.players[seat_index].name
+        was_bot = seat_index not in self.network_human_seats
+
         self.network_human_seats.add(seat_index)
         player_name = self.network_server._clients[client_id].player_name
         self.players[seat_index].style = 'network_human'
         self.players[seat_index].name = player_name
+
+        if was_bot:
+            self.write_log(
+                f"[seat swap] {old_name} (bot) replaced by {player_name} (human)")
+            self.log_action(f"{old_name} → {player_name} (human)")
+
+        # If a hand is in progress and this seat already has hole cards,
+        # send them privately to the joining client so they take over the
+        # seat seamlessly. Stops them from staring at a blank panel.
+        try:
+            if self.players[seat_index].hand:
+                cards = [str(c) for c in self.players[seat_index].hand]
+                self.network_server.send_hole_cards(client_id, cards)
+        except Exception as ex:
+            print(f"[host] mid-hand hole-card forward failed: {ex}")
+
         self.update_all_panels()
         self.update_status(f"{player_name} took seat {seat_index + 1}")
 
@@ -7908,9 +7987,60 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
     # --- Network Event Handlers (Client) ---
 
     def _on_disconnected_from_server(self):
-        """Handle disconnection from server."""
-        QMessageBox.warning(self, "Disconnected", "Lost connection to the server.")
-        self._disconnect_network()
+        """Handle disconnection from server.
+
+        Don't kick the user back to the menu — instead, fall back to local
+        single-player. All other seats become bots (their original
+        personas), the user's seat becomes the local hero (preserving the
+        name they joined with), and the next New Hand is local."""
+        if self.network_mode != "client":
+            return
+
+        # Capture the guest's identity before we tear down network state.
+        guest_name = None
+        if self.my_seat is not None and 0 <= self.my_seat < len(self.players):
+            guest_name = self.players[self.my_seat].name
+
+        # Log the host exit so post-game annotation captures it.
+        try:
+            self.write_log("[network] Host disconnected — switching to local play.")
+        except Exception:
+            pass
+
+        # Tear down network state without resetting player names
+        if self.network_client:
+            try:
+                self.network_client.disconnect_from_server()
+            except Exception:
+                pass
+        self.network_client = None
+        self.network_mode = None
+        self.my_seat = None
+        self.network_human_seats.clear()
+        self.network_btn.setStyleSheet("QPushButton { font-size: 15px; }")
+        self.network_btn.setText("Network")
+        self.setWindowTitle("PokerIQ - Local (host exited)")
+        self.new_hand_btn.setEnabled(True)
+
+        # All seats become local bots (their original personas)…
+        for seat, (name, style) in self.original_player_info.items():
+            self.players[seat].name = name
+            self.players[seat].style = style
+        self._apply_bot_preferences()
+
+        # …except seat 0 which becomes the local human hero, keeping the
+        # name the user joined with so their identity is preserved.
+        self.players[0].style = 'human'
+        if guest_name:
+            self.players[0].name = guest_name
+
+        # Close any open prior-hand summary dialogs from the network game.
+        self._close_open_hand_dialogs()
+        self.update_all_panels()
+        QMessageBox.information(
+            self, "Host disconnected",
+            "The host left the game. You can keep playing locally — bots "
+            "will fill all other seats. Click New Hand to start.")
 
     def _on_hole_cards_received(self, cards: list):
         """Handle receiving our hole cards."""

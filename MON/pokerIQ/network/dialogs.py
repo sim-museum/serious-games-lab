@@ -98,8 +98,13 @@ class HostGameDialog(QDialog):
         num_seats = self.seats_spin.value()
 
         self.host_name = host_name
+        try:
+            from pokerIQ import APP_VERSION
+        except Exception:
+            APP_VERSION = ""
         self.server = PokerServer(server_name=table_name, num_seats=num_seats,
-                                   host_seat=0, host_name=host_name)
+                                   host_seat=0, host_name=host_name,
+                                   app_version=APP_VERSION)
 
         if self.server.start(port):
             self.status_label.setText(f"Server running on port {port}")
@@ -186,7 +191,11 @@ class JoinGameDialog(QDialog):
         host = self.host_edit.text() or "localhost"
         port = self.port_spin.value()
 
-        self.client = PokerClient(player_name=name)
+        try:
+            from pokerIQ import APP_VERSION
+        except Exception:
+            APP_VERSION = ""
+        self.client = PokerClient(player_name=name, app_version=APP_VERSION)
         self.client.connected.connect(self._on_connected)
         self.client.connection_failed.connect(self._on_connection_failed)
 

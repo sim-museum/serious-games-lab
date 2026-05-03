@@ -60,9 +60,11 @@ class PokerClient(QObject):
     chat_received = pyqtSignal(str, str)
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, player_name: str = "Player", parent=None):
+    def __init__(self, player_name: str = "Player", app_version: str = "",
+                 parent=None):
         super().__init__(parent)
         self.player_name = player_name
+        self.app_version = (app_version or '').strip()
         self.client_id: Optional[str] = None
         self.server_name: Optional[str] = None
         self.my_seat: Optional[int] = None
@@ -147,8 +149,9 @@ class PokerClient(QObject):
         self._connecting = False
         self._connect_timer.stop()
 
-        # Send connect request
-        msg = make_connect_request(self.player_name)
+        # Send connect request (include our app version so the host can
+        # reject mismatched clients).
+        msg = make_connect_request(self.player_name, app_version=self.app_version)
         self._send(msg)
 
     def _on_disconnected(self):

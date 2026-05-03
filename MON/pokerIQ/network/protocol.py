@@ -118,11 +118,17 @@ class NetworkMessage:
 
 # Helper functions for creating common messages
 
-def make_connect_request(player_name: str) -> NetworkMessage:
-    """Create a connection request message."""
+def make_connect_request(player_name: str, app_version: str = '') -> NetworkMessage:
+    """Create a connection request message.
+
+    Args:
+        player_name: Display name the joining player chose.
+        app_version: Build identifier (typically a short git commit hash) so
+            the server can reject mismatched clients.
+    """
     return NetworkMessage(
         type=MessageType.CONNECT_REQUEST,
-        payload={'player_name': player_name}
+        payload={'player_name': player_name, 'app_version': app_version}
     )
 
 
