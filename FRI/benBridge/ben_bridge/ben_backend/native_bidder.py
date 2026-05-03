@@ -452,11 +452,21 @@ def decide_bid(state: AuctionState, eval_: HandEval, system: str) -> Bid:
 
 def _respond_to_partner_opening(state, e, system):
     op = state.opening_bid
-    hcp = e.hcp
-
-    # Defenders' overcalls in between are handled separately. If RHO bid, this
-    # is "opening + overcall + me", treated as competitive responses.
     rho_intervened = bool(state.rho_bids)
+
+    # Precision-specific paths take precedence: 1C is strong artificial,
+    # 2C is natural clubs (11-15), 1D is the catch-all 11-15.
+    if system == "Precision":
+        if op.level == 1 and op.suit == Suit.CLUBS:
+            return _respond_to_precision_1c(state, e)
+        if op.level == 2 and op.suit == Suit.CLUBS:
+            return _respond_to_precision_2c(state, e)
+        if op.level == 1 and op.suit == Suit.DIAMONDS:
+            if rho_intervened:
+                return _respond_to_minor_competitive(state, e)
+            return _respond_to_precision_1d(state, e)
+        # 1NT (14-16), 1H/1S (11-15 5+suit), 2D (weak), preempts —
+        # responses mirror SAYC; 1NT range is just slightly lower.
 
     # 1NT openings — Stayman, transfers, etc. (regardless of intervention,
     # but only the simple non-comp version here). Lebensohl handles 1NT-(2X).
@@ -468,9 +478,8 @@ def _respond_to_partner_opening(state, e, system):
     if op.level == 2 and op.suit == Suit.NOTRUMP:
         return _respond_to_2nt(e)
 
-    # Strong 2C — by SAYC/2-over-1 convention 2C is always artificial GF
-    # so we don't depend on the alert flag (auctions read off the wire
-    # may not preserve it).
+    # Strong 2C in SAYC (Precision was handled above so we won't reach here
+    # for Precision 2C).
     if op.level == 2 and op.suit == Suit.CLUBS:
         return _respond_to_strong_2c(e)
 
@@ -494,6 +503,143 @@ def _respond_to_partner_opening(state, e, system):
         return _respond_to_major(state, e)
 
     return passb()
+
+
+# ---------------------------------------------------------------------------
+# Precision: response to 1C (strong, 16+ HCP, artificial)
+# ---------------------------------------------------------------------------
+
+def _respond_to_precision_1c(state, e: HandEval) -> Bid:
+    """Standard simple Precision response to 1C:
+        1D  = 0-7 HCP (negative, catch-all)
+        1H  = 8+ HCP, 5+ hearts
+        1S  = 8+ HCP, 5+ spades
+        1NT = 8-13 HCP balanced, no 5-card major
+        2C  = 8+ HCP, 5+ clubs (positive)
+        2D  = 8+ HCP, 5+ diamonds (positive)
+        2NT = 14-16 HCP balanced (slam invite)
+        3NT = 17+ HCP balanced
+    """
+    hcp = e.hcp
+    if hcp <= 7:
+        return bid(1, Suit.DIAMONDS, alert=True,
+                   why="Precision: 0-7 HCP negative response to 1C")
+
+    # 14+ HCP balanced → quantitative game/slam invite
+    if hcp >= 17 and e.is_balanced:
+        return bid(3, Suit.NOTRUMP, alert=True,
+                   why="Precision: 17+ HCP balanced, slam-going")
+    if 14 <= hcp <= 16 and e.is_balanced:
+        return bid(2, Suit.NOTRUMP, alert=True,
+                   why="Precision: 14-16 HCP balanced")
+
+    # 5-card major positive
+    if e.suit_lengths[Suit.HEARTS] >= 5:
+        return bid(1, Suit.HEARTS, alert=True,
+                   why="Precision: 8+ HCP, 5+ hearts")
+    if e.suit_lengths[Suit.SPADES] >= 5:
+        return bid(1, Suit.SPADES, alert=True,
+                   why="Precision: 8+ HCP, 5+ spades")
+
+    # 5+ minor positive
+    if e.suit_lengths[Suit.DIAMONDS] >= 5:
+        return bid(2, Suit.DIAMONDS, alert=True,
+                   why="Precision: 8+ HCP, 5+ diamonds")
+    if e.suit_lengths[Suit.CLUBS] >= 5:
+        return bid(2, Suit.CLUBS, alert=True,
+                   why="Precision: 8+ HCP, 5+ clubs")
+
+    # Balanced / semi-balanced 8-13 → 1NT
+    return bid(1, Suit.NOTRUMP, alert=True,
+               why="Precision: 8-13 HCP balanced, no 5-card suit")
+
+
+# ---------------------------------------------------------------------------
+# Precision: response to 1D (11-15 HCP, no 5-card major, < 6 clubs)
+# ---------------------------------------------------------------------------
+
+def _respond_to_precision_1d(state, e: HandEval) -> Bid:
+    """Responses to a Precision 1D opening (similar to a SAYC 1m response,
+    but the diamond opening doesn't promise a particular length so we
+    treat it as a catch-all 11-15 limited opening):
+        Pass = 0-5 HCP junk
+        1H/1S = 6+ HCP, 4+ in suit (forcing 1 round)
+        1NT  = 6-10 balanced no 4-card major
+        2D   = 6-10, 4+ diamonds (raise)
+        2C/2H/2S (new suit at 2-level) = 11+ GF
+        2NT  = 11-12 invitational, no 4cM
+        3D   = limit raise (10-12, 5+ diamonds)
+        3NT  = 13-15 balanced to play
+    """
+    hcp = e.hcp
+
+    if hcp <= 5:
+        return passb(why="Precision 1D: insufficient values")
+
+    # 6-9 with a 4-card major: bid the major up the line
+    if 6 <= hcp <= 18:
+        if e.suit_lengths[Suit.HEARTS] >= 4 and e.suit_lengths[Suit.HEARTS] >= e.suit_lengths[Suit.SPADES]:
+            return bid(1, Suit.HEARTS, why="Precision 1D: 4+ hearts, 6+ HCP")
+        if e.suit_lengths[Suit.SPADES] >= 4:
+            return bid(1, Suit.SPADES, why="Precision 1D: 4+ spades, 6+ HCP")
+
+    # No 4cM
+    if 6 <= hcp <= 10:
+        if e.suit_lengths[Suit.DIAMONDS] >= 4:
+            return bid(2, Suit.DIAMONDS, why="Precision 1D: 6-10 raise (4+ diamonds)")
+        return bid(1, Suit.NOTRUMP, why="Precision 1D: 6-10 balanced")
+    if 11 <= hcp <= 12:
+        return bid(2, Suit.NOTRUMP, why="Precision 1D: 11-12 invitational")
+    if 13 <= hcp <= 15:
+        if e.suit_lengths[Suit.DIAMONDS] >= 4:
+            return bid(3, Suit.DIAMONDS, why="Precision 1D: 13-15 with diamond fit")
+        return bid(3, Suit.NOTRUMP, why="Precision 1D: 13-15 balanced game")
+
+    # 16+ slam-zone with no major fit
+    return bid(2, Suit.NOTRUMP, why="Precision 1D: 16+ HCP, exploring slam")
+
+
+# ---------------------------------------------------------------------------
+# Precision: response to 2C (11-15 HCP, 6+ clubs)
+# ---------------------------------------------------------------------------
+
+def _respond_to_precision_2c(state, e: HandEval) -> Bid:
+    """Responses to a Precision 2C opening:
+        Pass = 0-7 HCP no fit
+        2D   = inquiry (asks opener for shape / 4-card major)
+        2H/2S = natural 5+ in suit, 8+ HCP, forcing 1 round
+        2NT  = inquiry (alternative — kept simple: just shape)
+        3C   = preemptive raise (6-9, 3+ clubs)
+        3NT  = to-play (13+ balanced with stopper-equivalent)
+    """
+    hcp = e.hcp
+    if hcp <= 7 and e.suit_lengths[Suit.CLUBS] < 3:
+        return passb(why="Precision 2C: insufficient values, no fit")
+
+    # 5-card major with values → bid naturally
+    if hcp >= 8 and e.suit_lengths[Suit.HEARTS] >= 5:
+        return bid(2, Suit.HEARTS, why="Precision 2C: natural 5+ hearts")
+    if hcp >= 8 and e.suit_lengths[Suit.SPADES] >= 5:
+        return bid(2, Suit.SPADES, why="Precision 2C: natural 5+ spades")
+
+    # GF inquiry with 13+ balanced (asks opener for shape)
+    if hcp >= 13 and e.is_balanced:
+        return bid(2, Suit.DIAMONDS, alert=True,
+                   why="Precision 2C-2D: GF inquiry asking for shape / 4cM")
+
+    # Preemptive club raise
+    if 6 <= hcp <= 9 and e.suit_lengths[Suit.CLUBS] >= 3:
+        return bid(3, Suit.CLUBS, why="Precision 2C: preemptive club raise")
+
+    # Invitational raise
+    if 10 <= hcp <= 12 and e.suit_lengths[Suit.CLUBS] >= 3:
+        return bid(2, Suit.NOTRUMP, why="Precision 2C: invitational, no major")
+
+    # Game-going balanced
+    if hcp >= 13 and e.is_balanced:
+        return bid(3, Suit.NOTRUMP, why="Precision 2C: game in NT")
+
+    return passb(why="Precision 2C: no clear action")
 
 
 def _respond_to_1nt(e: HandEval) -> Bid:
@@ -816,6 +962,149 @@ def _respond_to_major_competitive(state, e: HandEval) -> Bid:
 # Opener's rebid
 # ---------------------------------------------------------------------------
 
+def _precision_1c_rebid(state, e: HandEval, p_last: Bid) -> Bid:
+    """Opener's rebid after 1C-X (Precision strong club).
+
+    1D negative (0-7):
+        1H/1S = natural 5+ in suit, 16-21 unbalanced
+        1NT   = 16-19 balanced
+        2C    = natural 6+ clubs, 16-21
+        2D    = natural 5+ diamonds, 16-21
+        2NT   = 22-24 balanced
+        3-of-suit jump shift = stronger
+        3NT   = 25+ balanced
+
+    Positive responses (1H, 1S, 2C, 2D, 1NT, 2NT, 3NT) — auction is GF;
+    raise partner's suit with support, otherwise show shape.
+    """
+    hcp = e.hcp
+
+    # Negative response: 1D = 0-7
+    if p_last.level == 1 and p_last.suit == Suit.DIAMONDS:
+        # Natural 5-card suit takes priority for unbalanced hands
+        if not e.is_balanced:
+            if e.suit_lengths[Suit.SPADES] >= 5:
+                return bid(1, Suit.SPADES, why="Precision 1C-1D: 5+ spades, 16+")
+            if e.suit_lengths[Suit.HEARTS] >= 5:
+                return bid(1, Suit.HEARTS, why="Precision 1C-1D: 5+ hearts, 16+")
+            if e.suit_lengths[Suit.DIAMONDS] >= 5:
+                return bid(2, Suit.DIAMONDS, why="Precision 1C-1D: 5+ diamonds, 16+")
+            if e.suit_lengths[Suit.CLUBS] >= 5:
+                return bid(2, Suit.CLUBS, why="Precision 1C-1D: 5+ clubs, 16+")
+        # Balanced rebids by HCP zone
+        if 16 <= hcp <= 19:
+            return bid(1, Suit.NOTRUMP, why="Precision 1C-1D: 16-19 balanced")
+        if 20 <= hcp <= 21:
+            return bid(2, Suit.NOTRUMP, why="Precision 1C-1D: 20-21 balanced")
+        if 22 <= hcp <= 24:
+            return bid(2, Suit.NOTRUMP, why="Precision 1C-1D: 22-24 balanced")
+        if hcp >= 25:
+            return bid(3, Suit.NOTRUMP, why="Precision 1C-1D: 25+ balanced")
+        # Fallback for hands with no clear suit and not perfectly balanced.
+        return bid(1, Suit.NOTRUMP, why="Precision 1C-1D: rebid 1NT (no clear shape)")
+
+    # Positive 1H / 1S response (5+ cards in major, 8+ HCP) — set GF and
+    # raise with 3+ support, else show own shape.
+    if p_last.level == 1 and p_last.suit in (Suit.HEARTS, Suit.SPADES):
+        major = p_last.suit
+        if e.suit_lengths[major] >= 3:
+            if e.hcp >= 20 or e.controls >= 5:
+                return bid(4, Suit.NOTRUMP, alert=True,
+                           why="Precision 1C-1M: RKC after fit, slam interest")
+            return bid(3, major, why="Precision 1C-1M: simple raise (GF)")
+        # No fit → bid own 5-card suit
+        for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
+            if s == major:
+                continue
+            if e.suit_lengths[s] >= 5:
+                level = 2 if _BID_RANK[s] < _BID_RANK[major] else 2
+                return bid(level, s, why=f"Precision 1C-1M: own {s.to_char()} suit")
+        # Balanced no-fit → 2NT or 3NT depending on HCP
+        if hcp <= 19:
+            return bid(2, Suit.NOTRUMP, why="Precision 1C-1M: balanced no fit")
+        return bid(3, Suit.NOTRUMP, why="Precision 1C-1M: extras balanced")
+
+    # Positive 1NT response (8-13 balanced)
+    if p_last.level == 1 and p_last.suit == Suit.NOTRUMP:
+        if hcp >= 22 and e.is_balanced:
+            return bid(4, Suit.NOTRUMP, alert=True,
+                       why="Precision 1C-1NT: quantitative slam invite")
+        if e.suit_lengths[Suit.SPADES] >= 5:
+            return bid(2, Suit.SPADES, why="Precision 1C-1NT: 5+ spades")
+        if e.suit_lengths[Suit.HEARTS] >= 5:
+            return bid(2, Suit.HEARTS, why="Precision 1C-1NT: 5+ hearts")
+        if hcp >= 19:
+            return bid(3, Suit.NOTRUMP, why="Precision 1C-1NT: 19+ balanced")
+        return bid(2, Suit.NOTRUMP, why="Precision 1C-1NT: invitational")
+
+    # Positive 2C / 2D response (5+ in minor, 8+ HCP)
+    if p_last.level == 2 and p_last.suit in (Suit.CLUBS, Suit.DIAMONDS):
+        minor = p_last.suit
+        if e.suit_lengths[minor] >= 3:
+            return bid(3, minor, why=f"Precision 1C-2{minor.to_char()}: raise with fit")
+        if e.suit_lengths[Suit.SPADES] >= 5:
+            return bid(2, Suit.SPADES, why=f"Precision 1C-2{minor.to_char()}: 5+ spades")
+        if e.suit_lengths[Suit.HEARTS] >= 5:
+            return bid(2, Suit.HEARTS, why=f"Precision 1C-2{minor.to_char()}: 5+ hearts")
+        return bid(2, Suit.NOTRUMP, why=f"Precision 1C-2{minor.to_char()}: balanced rebid")
+
+    # Positive 2NT (14-16 balanced) → drive to slam if our hand is huge
+    if p_last.level == 2 and p_last.suit == Suit.NOTRUMP:
+        if hcp >= 18:
+            return bid(6, Suit.NOTRUMP, why="Precision 1C-2NT: slam in NT")
+        return bid(3, Suit.NOTRUMP, why="Precision 1C-2NT: stop in 3NT")
+
+    # Positive 3NT (17+ balanced) → cooperative slam exploration
+    if p_last.level == 3 and p_last.suit == Suit.NOTRUMP:
+        if hcp >= 17:
+            return bid(6, Suit.NOTRUMP, why="Precision 1C-3NT: slam values")
+        return passb()
+
+    return passb(why="Precision 1C: no clear rebid")
+
+
+def _precision_2c_rebid(state, e: HandEval, p_last: Bid) -> Bid:
+    """Opener's rebid after 2C-X (Precision natural club opening).
+
+    Standard responses to handle:
+        2D = inquiry — show 4-card major if any, else 2NT (no major) or 3C (min)
+        2H/2S = natural forcing — raise with fit, otherwise show shape
+        2NT = invitational — accept with max
+        3C = preemptive raise — pass
+        3NT = to play — pass
+    """
+    hcp = e.hcp
+
+    if p_last.level == 2 and p_last.suit == Suit.DIAMONDS:
+        # 2D inquiry: show 4-card major if available
+        if e.suit_lengths[Suit.SPADES] >= 4:
+            return bid(2, Suit.SPADES, why="Precision 2C-2D: 4+ spades")
+        if e.suit_lengths[Suit.HEARTS] >= 4:
+            return bid(2, Suit.HEARTS, why="Precision 2C-2D: 4+ hearts")
+        # No major: show range. Min (11-12) → 3C, max (13-15) → 2NT.
+        if 13 <= hcp <= 15:
+            return bid(2, Suit.NOTRUMP, why="Precision 2C-2D: max no major")
+        return bid(3, Suit.CLUBS, why="Precision 2C-2D: min no major")
+
+    if p_last.level == 2 and p_last.suit in (Suit.HEARTS, Suit.SPADES):
+        major = p_last.suit
+        if e.suit_lengths[major] >= 3:
+            if hcp >= 14:
+                return bid(4, major, why=f"Precision 2C-2{major.to_char()}: max raise")
+            return bid(3, major, why=f"Precision 2C-2{major.to_char()}: simple raise")
+        if hcp <= 12:
+            return bid(3, Suit.CLUBS, why=f"Precision 2C-2{major.to_char()}: rebid clubs (min)")
+        return bid(2, Suit.NOTRUMP, why=f"Precision 2C-2{major.to_char()}: balanced extras")
+
+    if p_last.level == 2 and p_last.suit == Suit.NOTRUMP:
+        # Invitational — accept with max (14-15)
+        if hcp >= 14:
+            return bid(3, Suit.NOTRUMP, why="Precision 2C-2NT: accept invite")
+        return bid(3, Suit.CLUBS, why="Precision 2C-2NT: decline invite")
+
+    return passb()
+
+
 def _opener_rebid(state, e: HandEval, system: str) -> Bid:
     if not state.partner_bids:
         # Partner passed — auction is dying. With a strong rebiddable hand,
@@ -824,6 +1113,16 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
 
     p_last = state.partner_bids[-1]
     op = state.opening_bid
+
+    # Precision-specific opener rebids run before the SAYC paths.
+    if system == "Precision":
+        # 1C strong: structured rebids over partner's 1D negative or
+        # positive response.
+        if op.level == 1 and op.suit == Suit.CLUBS:
+            return _precision_1c_rebid(state, e, p_last)
+        # 2C natural: respond to partner's 2D shape inquiry.
+        if op.level == 2 and op.suit == Suit.CLUBS:
+            return _precision_2c_rebid(state, e, p_last)
 
     # Stayman (1NT-2C)
     if op.level == 1 and op.suit == Suit.NOTRUMP and p_last.level == 2 and p_last.suit == Suit.CLUBS:
@@ -866,8 +1165,9 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
     if op.level == 1 and op.suit != Suit.NOTRUMP:
         return _opener_suit_rebid(state, e, op, p_last, system)
 
-    # Strong 2C openings: rebid in the longest natural suit at the 2-level
-    if op.level == 2 and op.suit == Suit.CLUBS and op.alert:
+    # Strong 2C openings (SAYC only — Precision 2C was routed above):
+    # rebid in the longest natural suit at the 2-level.
+    if op.level == 2 and op.suit == Suit.CLUBS:
         if e.suit_lengths[Suit.SPADES] >= 5:
             return bid(2, Suit.SPADES, why="Natural rebid 2S (5+ spades)")
         if e.suit_lengths[Suit.HEARTS] >= 5:

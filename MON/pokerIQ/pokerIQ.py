@@ -2019,10 +2019,16 @@ class TheoryOfMindPanel(QWidget):
             else:
                 self.equity_label.setStyleSheet("color: #0af; padding: 8px; background: #222; border: 2px solid #444;")
 
+            # Always compute a guaranteed-no-peek equity figure (vs estimated
+            # ranges) so the advice tab shows a pokerStove-style number even
+            # when the user has the "learning mode" peek toggle on.
+            no_peek_equity = self.calculate_equity_vs_ranges(hero_hand, all_ranges, board)
+
             # Generate strategy advice with expanded context
             # Build context dictionary with all relevant info
             advice_context = {
                 'equity': hero_equity,
+                'no_peek_equity': no_peek_equity,
                 'pot': pot,
                 'pot_odds': pot_odds,
                 'to_call': to_call,
@@ -2038,8 +2044,9 @@ class TheoryOfMindPanel(QWidget):
                 'hero_position': self.hero_position,  # Pass hero's position
             }
 
+            header = self._build_pot_odds_header(advice_context)
             main_advice = self.get_strategy_advice_v2(advice_context)
-            self.advisor_advice.setText(main_advice)
+            self.advisor_advice.setText(header + "\n\n" + main_advice)
         else:
             self.equity_label.setText("Hero Equity vs Ranges: --")
             self.equity_label.setStyleSheet("color: #0af; padding: 8px; background: #222; border: 2px solid #444;")
@@ -2270,6 +2277,47 @@ class TheoryOfMindPanel(QWidget):
                 lines.append("WARNING: Monotone board - someone likely has flush!")
             if board_paired:
                 lines.append("CAUTION: Paired board - full houses possible.")
+
+        return "\n".join(lines)
+
+    def _build_pot_odds_header(self, ctx):
+        """Render the always-visible pot-odds + no-peek equity block that
+        sits at the top of the Advisor tab text. The equity here is the
+        pokerStove-style number computed against the estimated range of
+        every active opponent — never against their actual hole cards —
+        so it stays accurate even if the user has Learning Mode enabled.
+        """
+        pot = ctx.get('pot', 0) or 0
+        to_call = ctx.get('to_call', 0) or 0
+        pot_odds = ctx.get('pot_odds', 0) or 0
+        no_peek = ctx.get('no_peek_equity', None)
+        num_opps = ctx.get('num_opponents', 0) or 0
+        street = ctx.get('street', 'Preflop')
+
+        lines = ["═══ POT ODDS & EQUITY ═══"]
+
+        if to_call > 0:
+            ratio = (pot / to_call) if to_call > 0 else 0
+            lines.append(
+                f"Pot ${pot}  |  To call ${to_call}  |  "
+                f"Pot odds {ratio:.1f}:1 (need {pot_odds*100:.1f}% equity)"
+            )
+        elif pot > 0:
+            lines.append(f"Pot ${pot}  |  No bet to call right now")
+        else:
+            lines.append("No pot yet")
+
+        if no_peek is not None:
+            margin = (no_peek - pot_odds) * 100 if to_call > 0 else None
+            opp_label = f"vs {num_opps} opp range" + ("s" if num_opps != 1 else "")
+            line = f"Hand equity ({opp_label}, {street}): {no_peek*100:.1f}%"
+            if margin is not None:
+                if margin >= 0:
+                    line += f"   →   +{margin:.1f}% over pot odds (+EV call)"
+                else:
+                    line += f"   →   {margin:.1f}% under pot odds (-EV call)"
+            lines.append(line)
+            lines.append("(No-peek: computed vs estimated ranges, never actual cards.)")
 
         return "\n".join(lines)
 
