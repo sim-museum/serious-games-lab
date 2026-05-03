@@ -6166,18 +6166,25 @@ class PokerWindow(QMainWindow):
         self._spectator_record_snapshot(
             street, self.street_idx, self.board, self.action_log)
 
-        # Track board and hero equity for interpretation
+        # Track board + per-human-player equity for interpretation. We
+        # capture every human (seat 0 plus all network_human_seats) so the
+        # post-hand summary can name everyone, not just the host.
         self.hand_history['board_by_street'][street] = [str(c) for c in self.board]
-        hero = self.players[0]
-        if hero.active and hero.hand:
-            game_state = {
-                'board': [str(c) for c in self.board],
-                'pot': self.pot,
-                'players': self.players,
-                'current_bet': self.current_bet
-            }
-            equity, _, _ = hero.calculate_current_stats(game_state, True)
-            self.hand_history['street_equities'][street] = equity
+        game_state = {
+            'board': [str(c) for c in self.board],
+            'pot': self.pot,
+            'players': self.players,
+            'current_bet': self.current_bet,
+        }
+        human_seats = {0} | set(getattr(self, 'network_human_seats', set()) or set())
+        equities_for_street = {}
+        for seat in human_seats:
+            if 0 <= seat < len(self.players):
+                p = self.players[seat]
+                if p.active and p.hand:
+                    eq, _, _ = p.calculate_current_stats(game_state, True)
+                    equities_for_street[p.name] = eq
+        self.hand_history['street_equities'][street] = equities_for_street
 
         # Update displays (only when viewing the live snapshot — if the
         # spectator has scrolled back to a past street, leave their view).
@@ -6735,16 +6742,24 @@ class PokerWindow(QMainWindow):
         dialog.show()
 
     def show_hand_interpretation(self, active_players, winners, hand_results):
-        """Generate and display a narrative interpretation of the hand with poker terminology."""
-        hero = self.players[0]
-        hero_cards = self.hand_history.get('hero_cards', [])
-        hero_hand_name = self.hand_history.get('hero_hand_name', 'unknown hand')
+        """Generate and display a narrative interpretation of the hand using
+        explicit player names (no pronouns) so the same text reads correctly
+        on every guest's screen."""
+        # Identify every human seat from the host's POV: seat 0 (local hero)
+        # plus every network_human_seat. Their per-street equities and
+        # per-player win/loss/fold lines are all named explicitly.
+        humans = []
+        seen = set()
+        for seat in [0] + sorted(getattr(self, 'network_human_seats', set()) or []):
+            if 0 <= seat < len(self.players) and seat not in seen:
+                humans.append(self.players[seat])
+                seen.add(seat)
 
         lines = []
         lines.append(f"Hand #{self.hand_number} Analysis")
         lines.append("-" * 40)
 
-        # Show all players' hole cards (God Mode knowledge)
+        # Hole cards for everyone (God Mode knowledge — host has full view)
         lines.append("HOLE CARDS:")
         for p in self.players:
             if p.hand:
@@ -6753,49 +6768,69 @@ class PokerWindow(QMainWindow):
                 lines.append(f"  {p.name}: {hand_str} ({preflop_strength})")
 
         lines.append("")
+        # Starting hand classification per HUMAN player
+        for h in humans:
+            if h.hand:
+                lines.append(
+                    f"{h.name} held: {get_hand_name(h.hand)} "
+                    f"({' '.join(str(c) for c in h.hand)})")
 
-        # Starting hand analysis
-        if hero_cards:
-            lines.append(f"Your hand: {hero_hand_name} ({' '.join(hero_cards)})")
-
-        # Track equity journey through streets
+        # Per-street boards + per-human equities
         equities = self.hand_history.get('street_equities', {})
         boards = self.hand_history.get('board_by_street', {})
 
+        def _eq_dict(s):
+            v = equities.get(s, {})
+            # Backward-compat: an older snapshot might still be a single float.
+            if isinstance(v, (int, float)):
+                return {humans[0].name: float(v)} if humans else {}
+            return v or {}
+
         for street in ['Flop', 'Turn', 'River']:
-            if street in boards:
-                board_cards = boards[street]
-                eq = equities.get(street, 0)
+            if street not in boards:
+                continue
+            board_cards = boards[street]
+            eq_now = _eq_dict(street)
 
-                if street == 'Flop' and len(board_cards) >= 3:
-                    lines.append(f"\n{street}: {' '.join(board_cards[:3])}")
-                    lines.append(f"  Your equity: {eq:.0%}")
+            if street == 'Flop' and len(board_cards) >= 3:
+                lines.append(f"\n{street}: {' '.join(board_cards[:3])}")
+                for h in humans:
+                    if h.name in eq_now:
+                        lines.append(f"  {h.name} equity: {eq_now[h.name]:.0%}")
+                # Made hands for non-human active players
+                human_names = {h.name for h in humans}
+                for p in active_players:
+                    if p.hand and p.name not in human_names:
+                        made_hand = self.describe_made_hand(p.hand, board_cards[:3])
+                        lines.append(f"  {p.name}: {made_hand}")
 
-                    # Analyze what each active player had
-                    for p in active_players:
-                        if p.hand and p.name != hero.name:
-                            made_hand = self.describe_made_hand(p.hand, board_cards[:3])
-                            lines.append(f"  {p.name}: {made_hand}")
+            elif street in ['Turn', 'River']:
+                new_card = board_cards[-1]
+                prev_street = 'Flop' if street == 'Turn' else 'Turn'
+                eq_prev = _eq_dict(prev_street)
 
-                elif street in ['Turn', 'River']:
-                    new_card = board_cards[-1]
-                    prev_street = 'Flop' if street == 'Turn' else 'Turn'
-                    prev_eq = equities.get(prev_street, eq)
+                lines.append(f"\n{street}: {new_card}")
 
-                    lines.append(f"\n{street}: {new_card}")
+                card_impact = self.analyze_card_impact(new_card, board_cards, active_players)
+                if card_impact:
+                    lines.append(f"  {card_impact}")
 
-                    # Describe what the card did
-                    card_impact = self.analyze_card_impact(new_card, board_cards, active_players)
-                    if card_impact:
-                        lines.append(f"  {card_impact}")
-
-                    delta = eq - prev_eq
+                for h in humans:
+                    if h.name not in eq_now:
+                        continue
+                    cur = eq_now[h.name]
+                    prev = eq_prev.get(h.name, cur)
+                    delta = cur - prev
                     if delta > 0.15:
-                        lines.append(f"  Your equity improved: {prev_eq:.0%} -> {eq:.0%}")
+                        lines.append(
+                            f"  {h.name} equity improved: {prev:.0%} → {cur:.0%}")
                     elif delta < -0.15:
-                        lines.append(f"  Your equity dropped: {prev_eq:.0%} -> {eq:.0%}")
+                        lines.append(
+                            f"  {h.name} equity dropped: {prev:.0%} → {cur:.0%}")
+                    else:
+                        lines.append(f"  {h.name} equity: {cur:.0%}")
 
-        # Final result with detailed analysis
+        # Showdown results
         lines.append("")
         lines.append("=" * 30)
         lines.append("SHOWDOWN RESULTS:")
@@ -6806,46 +6841,41 @@ class PokerWindow(QMainWindow):
 
             lines.append("")
 
-            # Analyze why winner won
             if winners:
-                winner = winners[0]
                 if len(winners) > 1:
                     net_each = (self.pot // len(winners)) - winners[0].total_invested
                     lines.append(f"SPLIT POT: {len(winners)} ways, ${net_each} each")
                     lines.append(f"Winners: {', '.join(w.name for w in winners)}")
                 else:
-                    net_profit = self.pot - winner.total_invested
-                    lines.append(f"WINNER: {winner.name} wins ${net_profit}")
+                    net_profit = self.pot - winners[0].total_invested
+                    lines.append(f"WINNER: {winners[0].name} wins ${net_profit}")
 
-                # Explain why others lost and summarize winners
                 lines.append("")
                 lines.append("Analysis:")
 
-                # Show what winners had
                 for w in winners:
                     if w.hand:
                         made_hand = self.describe_made_hand(w.hand, self.board)
                         lines.append(f"  {w.name}: won with {made_hand}")
 
-                # Explain why losers lost
                 for p in active_players:
                     if p not in winners and p.hand:
                         loss_reason = self.explain_loss(p, winners[0], self.board)
                         lines.append(f"  {p.name}: {loss_reason}")
 
-                if hero in winners:
-                    lines.append(f"  YOU WON with {hero_hand_name}!")
-                elif hero in active_players:
-                    lines.append(f"  You lost with {hero_hand_name}")
-                elif hero.hand:
-                    lines.append(f"  You folded {hero_hand_name}")
+                # Per-human result line, by name (no pronouns)
+                for h in humans:
+                    h_hand_name = get_hand_name(h.hand) if h.hand else "no hand"
+                    if h in winners:
+                        lines.append(f"  {h.name} WON with {h_hand_name}!")
+                    elif h in active_players:
+                        lines.append(f"  {h.name} lost with {h_hand_name}")
+                    elif h.hand:
+                        lines.append(f"  {h.name} folded {h_hand_name}")
         else:
             winner = winners[0]
             net_profit = self.pot - winner.total_invested
-            if hero in winners:
-                lines.append(f"You won ${net_profit} - all opponents folded!")
-            else:
-                lines.append(f"{winner.name} wins ${net_profit} uncontested")
+            lines.append(f"{winner.name} wins ${net_profit} uncontested")
 
         # Write interpretation to log file
         self.write_log("\n" + "=" * 40)
@@ -7038,16 +7068,41 @@ class PokerWindow(QMainWindow):
             self._active_summary_placeholder = placeholder
             return
 
+        def _post_diag(msg, color="#fc6"):
+            """Add a small visible reason in the dialog so the user knows
+            why no Claude annotation appeared."""
+            try:
+                lbl = QLabel(msg)
+                lbl.setFont(QFont('Arial', 12))
+                lbl.setWordWrap(True)
+                lbl.setStyleSheet(
+                    f"color: {color}; background: #1a1a1a; padding: 8px;"
+                    " border-radius: 5px;")
+                layout.addWidget(lbl)
+            except RuntimeError:
+                pass
+
         import shutil
         if not shutil.which('claude'):
+            _post_diag(
+                "Claude analysis skipped: 'claude' binary not on PATH. "
+                "Install Claude Code (or add it to PATH for this shell) "
+                "to enable per-hand critique.")
             return
 
         hand_log = self._get_current_hand_log()
         if not hand_log:
+            _post_diag(
+                "Claude analysis skipped: couldn't extract this hand's log "
+                f"from {self.log_filename}. The HAND # block may not have "
+                "been written yet.")
             return
 
         povs = self._claude_povs_for_this_hand()
         if not povs:
+            _post_diag(
+                "Claude analysis skipped: no human players (POVs) to "
+                "analyze for this hand.")
             return
 
         progress_box = QGroupBox("Claude analysis")
