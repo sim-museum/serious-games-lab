@@ -8479,6 +8479,39 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             self.players[seat].active = True
             self.players[seat].hand = None
 
+        # Match host: show BT / SB / BB / UTG / CO position tags on each
+        # PlayerPanel. We derive them from the dealer (button) seat the
+        # host just sent.
+        try:
+            n = len(self.players)
+            sb_idx = (button + 1) % n
+            while not self.players[sb_idx].active and sb_idx != button:
+                sb_idx = (sb_idx + 1) % n
+            bb_idx = (sb_idx + 1) % n
+            while not self.players[bb_idx].active and bb_idx != sb_idx:
+                bb_idx = (bb_idx + 1) % n
+            utg_idx = (bb_idx + 1) % n
+            while not self.players[utg_idx].active and utg_idx != bb_idx:
+                utg_idx = (utg_idx + 1) % n
+            co_idx = (button - 1) % n
+            while not self.players[co_idx].active and co_idx != button:
+                co_idx = (co_idx - 1) % n
+            for idx, panel in self.player_panels:
+                if idx == button:
+                    panel.set_position("BT")
+                elif idx == sb_idx:
+                    panel.set_position("SB")
+                elif idx == bb_idx:
+                    panel.set_position("BB")
+                elif idx == utg_idx and utg_idx != button:
+                    panel.set_position("UTG")
+                elif idx == co_idx and co_idx not in (sb_idx, bb_idx, utg_idx):
+                    panel.set_position("CO")
+                else:
+                    panel.set_position("")
+        except Exception as ex:
+            print(f"[client] position tag update failed: {ex}")
+
         self.update_all_panels()
         self.table.set_board([])
         self.table.set_pot(self.pot)
