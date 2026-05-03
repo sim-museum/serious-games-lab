@@ -5177,6 +5177,9 @@ class PokerWindow(QMainWindow):
         # Reset spectator state so a previous hand's snapshots don't leak in
         self._spectator_street_snapshots = []
         self._spectator_view_idx = -1
+        # Drop any cached Claude analyses from the prior hand
+        self._latest_hand_analyses = None
+        self._latest_hand_analyses_hand = None
 
         # Reset hand history for interpretation
         self.hand_history = {
@@ -5466,6 +5469,12 @@ class PokerWindow(QMainWindow):
         self._hero_folded_spectating = True
         self._spectator_continue_all = False
 
+        # Remember the pre-spectator state so we can restore it on exit.
+        # If the user already had God Mode / Show Tells on manually, those
+        # stay on; the spectator-auto-enabled ones go back off.
+        self._pre_spectator_god_mode = self.god_mode_cb.isChecked()
+        self._pre_spectator_stats = self.stats_cb.isChecked()
+
         # Turn on God Mode and Show Tells. Mark these as auto-toggled (so the
         # mid-hand-assist tracking knows NOT to flag them in the summary).
         self._spectator_auto_toggle = True
@@ -5515,7 +5524,12 @@ class PokerWindow(QMainWindow):
         self._update_spectator_nav_buttons()
 
     def _exit_spectator_mode(self):
-        """Restore normal UI after spectator hand ends."""
+        """Restore normal UI after spectator hand ends.
+        Roll God Mode / Show Tells back to whatever they were BEFORE we
+        auto-toggled them on for spectator viewing — so a folded player
+        starts the next hand with the assists off (unless they had them on
+        manually before folding)."""
+        was_spectating = self._hero_folded_spectating
         self._hero_folded_spectating = False
         self._spectator_continue_all = False
         self._spectator_view_idx = -1
@@ -5529,6 +5543,21 @@ class PokerWindow(QMainWindow):
         self.fold_btn.setVisible(True)
         self.call_btn.setVisible(True)
         self.raise_btn.setVisible(True)
+
+        # Restore prior God/Tells state, suppressing broadcast + assist
+        # tracking (this is just the inverse of the spectator auto-toggle).
+        if was_spectating:
+            self._spectator_auto_toggle = True
+            try:
+                if hasattr(self, '_pre_spectator_god_mode'):
+                    self.god_mode_cb.setChecked(self._pre_spectator_god_mode)
+                if hasattr(self, '_pre_spectator_stats'):
+                    self.stats_cb.setChecked(self._pre_spectator_stats)
+            finally:
+                self._spectator_auto_toggle = False
+            for attr in ('_pre_spectator_god_mode', '_pre_spectator_stats'):
+                if hasattr(self, attr):
+                    delattr(self, attr)
 
     def _spectator_snapshot_count(self) -> int:
         return len(getattr(self, '_spectator_street_snapshots', []))
@@ -6654,9 +6683,15 @@ class PokerWindow(QMainWindow):
         # analyses (or already-cached ones) when they arrive.
         if self.network_mode == "client":
             cached = getattr(self, '_latest_hand_analyses', None)
-            if cached:
-                self._on_hand_analysis_received(cached, 0)
+            cached_hand = getattr(self, '_latest_hand_analyses_hand', None)
+            current_hand = int(getattr(self, 'hand_number', 0) or 0)
+            # Only consume the cache if it belongs to the SAME hand we're
+            # showing the dialog for — otherwise it's stale (the previous
+            # hand's analysis) and we should wait for HAND_ANALYSIS.
+            if cached and cached_hand == current_hand:
+                self._on_hand_analysis_received(cached, cached_hand)
                 self._latest_hand_analyses = None
+                self._latest_hand_analyses_hand = None
                 return
             placeholder = QLabel("Waiting for Claude analysis from host…")
             placeholder.setFont(QFont('Arial', 13))
@@ -7414,6 +7449,13 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                     self._connect_client_signals()
                     self._refresh_feature_status()
 
+                    # Replay the seat list we already have so already-seated
+                    # guests' real names land in our player panels (the
+                    # SEAT_LIST broadcasts that occurred during seat selection
+                    # arrived before signals were connected).
+                    if self.network_client.seats:
+                        self._on_seat_list_updated(dict(self.network_client.seats))
+
                     # Disable New Hand on client (server controls game flow)
                     self.new_hand_btn.setEnabled(False)
                 else:
@@ -7521,8 +7563,10 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
     def _on_hand_analysis_received(self, analyses: list, hand_number: int):
         """Host-supplied Claude analyses arrived: route into the live summary
         dialog (if any), otherwise cache for the next one that opens.
-        """
+        Cache is keyed by hand_number so the next hand's dialog never picks
+        up a previous hand's analysis."""
         self._latest_hand_analyses = list(analyses)
+        self._latest_hand_analyses_hand = int(hand_number)
         target = getattr(self, '_active_summary_dialog', None)
         target_layout = getattr(self, '_active_summary_layout', None)
         if target is None or target_layout is None:
@@ -7869,6 +7913,9 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         self._spectator_street_snapshots = []
         self._spectator_view_idx = -1
         self.hand_assists_used = {}
+        # Drop any cached Claude analyses from the prior hand
+        self._latest_hand_analyses = None
+        self._latest_hand_analyses_hand = None
 
         # Reset bet_in_round for all players
         for p in self.players:
