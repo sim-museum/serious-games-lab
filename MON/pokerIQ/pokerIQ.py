@@ -7746,6 +7746,31 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
 
         dialog.exec()
 
+    def _apply_table_size(self, num_seats: int):
+        """Resize the active table to `num_seats`. Seats beyond this index
+        are hidden + flagged out (stack=0, active=False, hand cleared) so
+        deal_hand skips them and the table looks like an N-seat table.
+
+        Pass num_seats=len(self.players) to restore the default 6-seat
+        layout."""
+        total = len(self.player_panels)
+        n = max(2, min(int(num_seats), total))
+        self.network_num_seats = n
+        for idx, panel in self.player_panels:
+            visible = idx < n
+            try:
+                panel.setVisible(visible)
+            except RuntimeError:
+                pass
+            if not visible:
+                p = self.players[idx]
+                p.stack = 0
+                p.active = False
+                p.hand = []
+                p.bet_in_round = 0
+                p.total_invested = 0
+        self.update_all_panels()
+
     def _start_hosting(self):
         """Start hosting a network game."""
         dialog = HostGameDialog(self)
@@ -7762,6 +7787,9 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                 host_name = dialog.get_host_name() or "Host"
                 self.players[0].name = host_name
                 self.setWindowTitle(f"PokerIQ - Server ({host_name})")
+                # Hide + disable seats above the chosen table size so the
+                # game actually plays N-handed.
+                self._apply_table_size(self.network_server.num_seats)
                 self.update_all_panels()
 
                 # Register persona names so the server can mask other guests'
@@ -7792,7 +7820,12 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             self.network_client = join_dialog.get_client()
             if self.network_client:
                 # Now show seat selection
-                seat_dialog = SeatSelectionDialog(self.network_client, 6, self)
+                # If the seat list has already arrived during the connect
+                # handshake, use its size; otherwise fall back to 6.
+                seats_known = (len(self.network_client.seats)
+                               if getattr(self.network_client, 'seats', None)
+                               else 6)
+                seat_dialog = SeatSelectionDialog(self.network_client, seats_known, self)
                 seat_dialog.seat_selected.connect(self._on_my_seat_selected)
 
                 if seat_dialog.exec() == QDialog.DialogCode.Accepted:
@@ -7844,8 +7877,12 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
     def _on_seat_list_updated(self, seats: dict):
         """Update player panel names when seat list arrives so every guest
         sees every other player's real entered name (not the bot persona).
-        Empty seats keep their local bot persona name."""
+        Empty seats keep their local bot persona name. Also resize the
+        local table to match the host's num_seats (derived from how many
+        seats the seat list contains)."""
         try:
+            if seats:
+                self._apply_table_size(len(seats))
             for seat_index, name in seats.items():
                 seat_index = int(seat_index)
                 if not (0 <= seat_index < len(self.players)):
@@ -8036,6 +8073,9 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             self.players[seat].name = name
             self.players[seat].style = style
         self._apply_bot_preferences()
+        # Restore the full 6-seat table after exiting a smaller-table
+        # network game.
+        self._apply_table_size(len(self.players))
         self.update_all_panels()
 
         if dialog:
