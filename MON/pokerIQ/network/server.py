@@ -402,11 +402,24 @@ class PokerServer(QObject):
         self._send_to_client(client_id, msg)
 
     def broadcast_action(self, seat_index: int, player_name: str,
-                         action: str, amount: float, pot: float):
-        """Broadcast a player's action to all clients."""
+                         action: str, amount: float, pot: float,
+                         stacks: Optional[Dict[int, float]] = None):
+        """Broadcast a player's action to all clients.
+
+        If ``stacks`` is provided, also broadcast an authoritative STACK_UPDATE
+        right after, so guests get the host's exact post-action stack values
+        rather than reconstructing them from the action amount.
+        """
         from .protocol import make_action_broadcast
         msg = make_action_broadcast(seat_index, player_name, action, amount, pot)
         self._broadcast(msg)
+        if stacks is not None:
+            self.broadcast_stack_update(stacks)
+
+    def broadcast_stack_update(self, stacks: Dict[int, float]):
+        """Broadcast authoritative per-seat stacks to all clients."""
+        from .protocol import make_stack_update
+        self._broadcast(make_stack_update(stacks))
 
     def broadcast_active_player(self, seat_index: int):
         """Broadcast whose turn it is to all clients."""

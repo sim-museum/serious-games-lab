@@ -316,6 +316,19 @@ def make_hand_end(
     )
 
 
+def make_stack_update(stacks: Dict[int, float]) -> NetworkMessage:
+    """Authoritative per-seat stack values from the host.
+
+    Sent after every player action and after pot distribution at hand end so
+    guests don't have to reconstruct stacks from action amounts (which is
+    fragile — calls with amount=0, raises clamped by min-raise / stack, etc.).
+    """
+    return NetworkMessage(
+        type=MessageType.STACK_UPDATE,
+        payload={'stacks': {int(k): v for k, v in stacks.items()}}
+    )
+
+
 def make_heartbeat() -> NetworkMessage:
     """Create heartbeat message."""
     return NetworkMessage(type=MessageType.HEARTBEAT, payload={})

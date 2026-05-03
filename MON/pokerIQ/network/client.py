@@ -47,6 +47,7 @@ class PokerClient(QObject):
     action_requested = pyqtSignal(list, float, float, float, float)
     action_broadcast = pyqtSignal(int, str, str, float, float)
     hand_started = pyqtSignal(int, int, tuple, dict)
+    stack_update_received = pyqtSignal(dict)  # {seat_index: stack}
     hand_ended = pyqtSignal(list, float, dict, dict)  # winners, pot, shown_hands, hand_summary
     player_joined = pyqtSignal(str)
     player_left = pyqtSignal(str)
@@ -324,4 +325,6 @@ class PokerClient(QObject):
             pass  # Handle as needed
 
         elif msg.type == MessageType.STACK_UPDATE:
-            pass  # Handle as needed
+            stacks = {int(k): v for k, v in msg.payload.get('stacks', {}).items()}
+            if stacks:
+                self.stack_update_received.emit(stacks)

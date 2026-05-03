@@ -6110,8 +6110,10 @@ class PokerWindow(QMainWindow):
             action_name = {'f': 'fold', 'r': 'raise', 'c': 'call'}.get(action, 'check')
             if action == 'c' and to_call == 0:
                 action_name = 'check'
+            stacks = {i: p.stack for i, p in enumerate(self.players)}
             self.network_server.broadcast_action(
-                player_idx, player.name, action_name, amount, self.pot
+                player_idx, player.name, action_name, amount, self.pot,
+                stacks=stacks
             )
 
         # Update display
@@ -6428,6 +6430,13 @@ class PokerWindow(QMainWindow):
                 print(f"Error broadcasting hand summary: {e}")
                 # Fall back to basic hand_end without summary
                 self.network_server.broadcast_hand_end(winner_indices, self.pot, shown_hands)
+
+            # Authoritative post-pot-distribution stacks so guests pick up the
+            # winner's chip gain immediately (and any losers' chips stay 0
+            # rather than reflecting the pre-distribution heuristic).
+            self.network_server.broadcast_stack_update(
+                {i: p.stack for i, p in enumerate(self.players)}
+            )
 
         # Update display
         self.update_all_panels()
@@ -7956,6 +7965,7 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         client.community_cards_received.connect(self._on_community_cards_received)
         client.action_requested.connect(self._on_action_requested)
         client.action_broadcast.connect(self._on_action_broadcast_received)
+        client.stack_update_received.connect(self._on_stack_update_received)
         client.hand_started.connect(self._on_hand_started)
         client.hand_ended.connect(self._on_hand_ended)
         client.active_player_changed.connect(self._on_active_player_changed)
@@ -8331,8 +8341,10 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
 
         # Broadcast action to all clients
         if self.network_server:
+            stacks = {i: p.stack for i, p in enumerate(self.players)}
             self.network_server.broadcast_action(
-                self.current_player_idx, player.name, action, amount, self.pot
+                self.current_player_idx, player.name, action, amount, self.pot,
+                stacks=stacks
             )
 
         # Update display
@@ -8539,6 +8551,18 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         self.log_action(action_text)
         self.update_all_panels()
         self.table.update()
+
+    def _on_stack_update_received(self, stacks: dict):
+        """Authoritative per-seat stacks from the host. Overwrites the local
+        heuristic in `_on_action_broadcast_received` (which can be wrong for
+        zero-amount calls or clamped raises) and also picks up the winner's
+        chip gain after pot distribution at hand end.
+        """
+        for seat, stack in stacks.items():
+            seat = int(seat)
+            if 0 <= seat < len(self.players):
+                self.players[seat].stack = stack
+        self.update_all_panels()
 
     def _on_active_player_changed(self, seat: int):
         """Handle active player broadcast from server."""
