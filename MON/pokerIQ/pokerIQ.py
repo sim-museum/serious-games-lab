@@ -7985,9 +7985,12 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         if not player:
             return
 
-        # Enable/disable buttons based on valid actions
+        # Enable/disable buttons based on valid actions.
+        # If to_call exceeds our stack we can still call — for less. Host
+        # caps the call to min(to_call, stack) and side-pot mechanics handle
+        # the overage.
         can_check = to_call == 0
-        can_call = to_call > 0 and player.stack >= to_call
+        can_call = to_call > 0 and player.stack > 0
         can_raise = player.stack > to_call
 
         self.fold_btn.setEnabled(True)
@@ -7997,7 +8000,11 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         if can_check:
             self.call_btn.setText("Check")
         elif can_call:
-            self.call_btn.setText(f"Call ${to_call:.0f}")
+            if player.stack < to_call:
+                # Calling for less than the bet — we'll be all-in.
+                self.call_btn.setText(f"Call ${player.stack:.0f} (all-in)")
+            else:
+                self.call_btn.setText(f"Call ${to_call:.0f}")
         else:
             self.call_btn.setText("Call")
 
