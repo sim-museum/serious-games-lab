@@ -2644,6 +2644,11 @@ For more information, see the README file."""
             self.status_label.setText(
                 f"Guest disconnected ({reason}); BEN now controls the freed seat."
             )
+            # If we were mid-hand waiting on the (now-departed) guest's
+            # turn, kick the engine so BEN takes over and play resumes
+            # instead of stalling on "Waiting for partner…".
+            if self.controller.current_phase in ('bidding', 'play', 'waiting_next'):
+                self._advance_game()
             return
 
         # Client mode: keep playing locally with BEN as every other seat.

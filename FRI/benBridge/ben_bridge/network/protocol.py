@@ -391,5 +391,9 @@ def make_chat_message(sender: str, message: str) -> NetworkMessage:
 # Protocol constants
 DEFAULT_PORT = 7777
 HEARTBEAT_INTERVAL_MS = 5000  # 5 seconds
-HEARTBEAT_TIMEOUT_MS = 15000  # 15 seconds
+# 60s rather than 15s: BEN's first opening-lead inference can hold the
+# GIL long enough on a fresh deal that a 15s window misclassifies a busy
+# host as a dead one. 60s still flags genuinely dropped connections in a
+# reasonable time.
+HEARTBEAT_TIMEOUT_MS = 60000
 CONNECTION_TIMEOUT_MS = 10000  # 10 seconds
