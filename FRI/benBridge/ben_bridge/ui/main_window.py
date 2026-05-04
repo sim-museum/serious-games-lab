@@ -3466,7 +3466,12 @@ For more information, see the README file."""
         self.bidding_box.set_enabled(False)
 
         # Setup declarer play if just starting
-        if self.controller.board.contract and not self.table_view.declarer:
+        # `self.table_view.declarer` is a Seat (IntEnum where NORTH == 0),
+        # so `not …declarer` would re-fire setup_declarer_play (and the
+        # dummy-reveal broadcast inside it) on every _advance_play tick
+        # whenever declarer is North. Use an explicit None check.
+        if (self.controller.board.contract
+                and self.table_view.declarer is None):
             # Mirror the controller's "does the local user control the
             # declarer partnership" flag onto the table view so it can
             # decide whether to reveal declarer face up.
