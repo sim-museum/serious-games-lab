@@ -633,6 +633,59 @@ class BenBoardRun:
     ns_bidding_system: str = "BEN-NN"
     ew_bidding_system: str = "BEN-NN"
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize for network transport (host → guest closed-room sync)."""
+        return {
+            "table": self.table.value,
+            "board_number": self.board_number,
+            "pavlicek_id": self.pavlicek_id,
+            "hands": {s.to_char(): h.to_dict() for s, h in self.original_hands.items()},
+            "auction": [b.to_dict() for b in self.auction],
+            "tricks": [
+                {
+                    "leader": t.leader.to_char(),
+                    "cards": [c.to_dict() for c in t.cards],
+                    "winner": t.winner.to_char() if t.winner else None,
+                }
+                for t in self.tricks
+            ],
+            "contract": self.contract.to_dict() if self.contract else None,
+            "declarer_tricks": self.declarer_tricks,
+            "ns_score": self.ns_score,
+            "ew_score": self.ew_score,
+            "played": self.played,
+            "ns_bidding_system": self.ns_bidding_system,
+            "ew_bidding_system": self.ew_bidding_system,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'BenBoardRun':
+        hands = {Seat.from_char(sc): Hand.from_dict(hd)
+                 for sc, hd in (data.get("hands") or {}).items()}
+        tricks = []
+        for t in data.get("tricks") or []:
+            tricks.append(Trick(
+                leader=Seat.from_char(t["leader"]),
+                cards=[Card.from_dict(c) for c in t.get("cards") or []],
+                winner=Seat.from_char(t["winner"]) if t.get("winner") else None,
+            ))
+        contract = Contract.from_dict(data["contract"]) if data.get("contract") else None
+        return cls(
+            table=BenTable(data.get("table", "open")),
+            board_number=data.get("board_number", 0),
+            pavlicek_id=data.get("pavlicek_id", ""),
+            original_hands=hands,
+            auction=[Bid.from_dict(b) for b in data.get("auction") or []],
+            tricks=tricks,
+            contract=contract,
+            declarer_tricks=data.get("declarer_tricks", 0),
+            ns_score=data.get("ns_score", 0),
+            ew_score=data.get("ew_score", 0),
+            played=data.get("played", False),
+            ns_bidding_system=data.get("ns_bidding_system", "BEN-NN"),
+            ew_bidding_system=data.get("ew_bidding_system", "BEN-NN"),
+        )
+
 
 # IMP conversion table for teams scoring
 IMP_TABLE = [

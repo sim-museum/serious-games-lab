@@ -607,6 +607,81 @@ def load_bdl_file(filepath: str) -> List[BDLDeal]:
     return reader.read_file(Path(filepath))
 
 
+def bdl_deal_to_board_run(deal: BDLDeal, table=None) -> Optional['BenBoardRun']:
+    """Convert a parsed BDLDeal into a BenBoardRun for the score sheet.
+
+    BDL stores tricks as plain card strings in play order; we recover the
+    leader/winner per trick by replaying the play with the contract's trump
+    suit. Returns None if the BDL is too sparse to replay (no contract or
+    no hands).
+    """
+    from .models import BenBoardRun, BenTable
+    if table is None:
+        table = BenTable.CLOSED
+
+    if not deal.hands or not deal.contract:
+        return None
+
+    declarer = deal.declarer or deal.contract.declarer
+    contract = deal.contract
+    if declarer is None:
+        # Couldn't pin a declarer — give up rather than fabricating one.
+        return None
+    contract.declarer = declarer
+
+    rebuilt_tricks: List[Trick] = []
+    declarer_tricks = 0
+    next_leader = Seat((declarer.value + 1) % 4)  # opening leader
+    trump = contract.suit if contract.suit != Suit.NOTRUMP else None
+
+    for trick_cards in deal.tricks:
+        cards: List[Card] = []
+        for s in trick_cards:
+            try:
+                cards.append(Card.from_str(s))
+            except Exception:
+                pass
+        if not cards:
+            continue
+        trick = Trick(cards=cards, leader=next_leader)
+        # Trick._determine_winner runs only when 4 cards are pushed via
+        # add_card. For a fully recorded trick we replay the determination.
+        if len(cards) == 4:
+            lead_suit = cards[0].suit
+            winning_idx = 0
+            for i in range(1, 4):
+                c = cards[i]
+                w = cards[winning_idx]
+                if trump is not None and c.suit == trump and w.suit != trump:
+                    winning_idx = i
+                elif c.suit == w.suit and c.rank > w.rank:
+                    winning_idx = i
+            trick.winner = Seat((next_leader.value + winning_idx) % 4)
+            if trick.winner.is_ns() == declarer.is_ns():
+                declarer_tricks += 1
+            next_leader = trick.winner
+        rebuilt_tricks.append(trick)
+
+    if declarer_tricks == 0 and deal.tricks_made:
+        # Some BDLs only record the count and skip per-trick details;
+        # fall back to the recorded trick total.
+        declarer_tricks = deal.tricks_made
+
+    return BenBoardRun(
+        table=table,
+        board_number=deal.board_number,
+        pavlicek_id=deal.pavlicek_id,
+        original_hands=dict(deal.hands),
+        auction=list(deal.auction),
+        tricks=rebuilt_tricks,
+        contract=contract,
+        declarer_tricks=declarer_tricks,
+        ns_score=deal.ns_score,
+        ew_score=deal.ew_score,
+        played=True,
+    )
+
+
 def load_deal_by_pavlicek(log_dir: str, pavlicek_id: str) -> Optional[BDLDeal]:
     """Find and load a deal by its Pavlicek ID"""
     reader = BDLReader()

@@ -10,6 +10,7 @@ from .simulation import SimulationDialog
 from .end_of_hand import EndOfHandDialog, PassedOutDialog
 from .teams_score import TeamsScoreDialog
 from .replay_view import ReplayViewDialog
+from .compare_replay import CompareReplayDialog
 from .deal_converter import DealConverterDialog
 from .evaluate_dialog import EvaluateDialog
 from .hand_evaluation_dialog import HandEvaluationDialog
@@ -32,6 +33,7 @@ __all__ = [
     'PassedOutDialog',
     'TeamsScoreDialog',
     'ReplayViewDialog',
+    'CompareReplayDialog',
     'DealConverterDialog',
     'EvaluateDialog',
     'HandEvaluationDialog',

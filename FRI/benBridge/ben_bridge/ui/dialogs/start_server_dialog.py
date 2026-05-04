@@ -146,7 +146,7 @@ class StartServerDialog(QDialog):
     def _update_partner_display(self):
         """Update partner seat display based on current selection."""
         seat = self.seat_combo.currentData()
-        if seat:
+        if seat is not None:
             partner = seat.partner()
             seat_names = {
                 Seat.NORTH: "North (N)",

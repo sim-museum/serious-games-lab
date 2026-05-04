@@ -40,6 +40,11 @@ class MessageType(Enum):
     TRICK_CLEAR = "trick_clear"  # Signal to clear trick area (sync "next card")
     BOARD_COMPLETE = "board_complete"
 
+    # Closed-room ingest: host has manually replayed a deal in Q-Plus and
+    # is pushing the resulting BenBoardRun to all connected guests so they
+    # can see the comparison row in their own score sheet.
+    CLOSED_ROOM_INGESTED = "closed_room_ingested"
+
     # Sync/recovery
     STATE_REQUEST = "state_request"
     STATE_RESPONSE = "state_response"
@@ -343,6 +348,18 @@ def make_board_complete(
             "ew_score": ew_score,
         },
         sequence=sequence
+    )
+
+
+def make_closed_room_ingested(board_run: Dict[str, Any], sequence: int = 0) -> NetworkMessage:
+    """Host → guest: a Q-Plus closed room has been ingested.
+
+    Payload is `BenBoardRun.to_dict()` for the closed-room run.
+    """
+    return NetworkMessage(
+        type=MessageType.CLOSED_ROOM_INGESTED,
+        payload={"board_run": board_run},
+        sequence=sequence,
     )
 
 

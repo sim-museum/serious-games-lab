@@ -309,7 +309,10 @@ class BridgeServer(QObject):
         if message.payload.get("reveal_dummy"):
             return message
         hands = message.payload.get("hands") or {}
-        my_char = recipient_seat.to_char() if recipient_seat else ""
+        # Seat is an IntEnum where NORTH == 0, so `if recipient_seat` is False
+        # for North and the recipient's own hand gets masked along with the
+        # opponents'. Use an explicit None check.
+        my_char = recipient_seat.to_char() if recipient_seat is not None else ""
         masked = {}
         for seat_char, hand_data in hands.items():
             if seat_char == my_char:

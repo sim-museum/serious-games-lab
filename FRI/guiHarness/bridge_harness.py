@@ -1160,6 +1160,29 @@ class BridgeHarness(QMainWindow):
         self.tabs.setCurrentIndex(1)
         self.statusBar().showMessage(f"Source loaded: {Path(pbn_path).name}")
 
+    def load_base72(self, code: str):
+        """Pre-load a deal by base-72 code into the Hand Entry tab.
+
+        Used by ben_bridge after each hand so the host can immediately
+        replay the deal in Q-Plus for closed-room comparison.
+        """
+        code = (code or "").strip()
+        if not code:
+            return
+        try:
+            self.hands = base72_to_deal(code)
+        except Exception as exc:
+            self.statusBar().showMessage(f"Bad base-72 code: {exc}")
+            return
+        self.rb_base72.setChecked(True)
+        self.input_field.setText(code)
+        self._show_deal(self.hands, self.hand_display, self.base72_display)
+        self._update_info()
+        # Hand Entry tab is index 0; bring it forward so the harness opens
+        # ready for the user to click Enter Deal into Q-Plus.
+        self.tabs.setCurrentIndex(0)
+        self.statusBar().showMessage(f"Deal loaded from base-72: {code}")
+
     # ---- Hand Entry tab ---------------------------------------------------
 
     def _build_entry_tab(self):
@@ -1753,6 +1776,7 @@ def main():
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--source", default="", help="Pre-load PBN/BDL into Comparison Workflow")
     parser.add_argument("--game", default="", help="Source game name (wbridge5, bb12, etc.)")
+    parser.add_argument("--base72", default="", help="Pre-load a deal by base-72 code")
     known, remaining = parser.parse_known_args()
 
     app = QApplication(remaining)
@@ -1763,6 +1787,8 @@ def main():
 
     if known.source:
         window.load_source(known.source, game_name=known.game)
+    if known.base72:
+        window.load_base72(known.base72)
 
     sys.exit(app.exec_())
 

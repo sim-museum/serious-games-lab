@@ -40,7 +40,7 @@ from ben_backend.models import (
     Seat, Suit, Vulnerability, Bid, Card, Contract, Hand, PlayerType, Player, Trick,
     BenTable, BenBoardRun, BenTeamsMatch
 )
-from ben_backend.pavlicek import number_to_deal, parse_deal_number, deal_to_number, format_deal_base62
+from ben_backend.pavlicek import number_to_deal, parse_deal_number, deal_to_number, format_deal_base62, int_to_base72
 from ben_backend.config import get_config_manager, ConfigManager
 from ben_backend.scoring import ScoringTable, ScoringType, BoardResult, calculate_contract_score
 from ben_backend.match_controller import TeamsMatchController
@@ -236,6 +236,11 @@ class GameController:
             if not bid.is_pass and not bid.is_double and not bid.is_redouble:
                 level = bid.level
                 suit = bid.suit
+                # A new suit/level call clears any prior X/XX — doubles only
+                # apply to the contract that becomes final, not to bids that
+                # were later overcalled.
+                doubled = False
+                redoubled = False
                 bidder_seat = Seat((self.board.dealer.value + i) % 4)
 
                 # Find first bid of this suit by this side
@@ -264,6 +269,19 @@ class GameController:
         self.declarer = declarer
         self.dummy = declarer.partner()
         self.opening_leader = declarer.next()
+        # DIAGNOSTIC: capture board number, auction, and computed
+        # declarer/opening_leader so we can see why host vs guest disagree.
+        try:
+            auc = " ".join(b.symbol() for b in auction)
+            print(f"[_setup_play] board={self.board.board_number} "
+                  f"dealer={self.board.dealer.to_char()} "
+                  f"auction=[{auc}] "
+                  f"contract={self.board.contract.to_str()} "
+                  f"declarer={declarer.to_char()} "
+                  f"opening_leader={self.opening_leader.to_char()}",
+                  flush=True)
+        except Exception:
+            pass
 
         # Check if human controls the declarer side
         human_seat = None
@@ -436,6 +454,10 @@ class MainWindow(QMainWindow):
 
         # Parallel closed room worker (started at deal time, joined at hand end)
         self._pending_closed_room: Optional[dict] = None
+        # Snapshot of the just-finished hand awaiting Claude analysis. Set
+        # by _show_result, consumed by _maybe_run_pending_claude after a
+        # Q-Plus ingest or before the next deal.
+        self._claude_pending: Optional[dict] = None
 
         # The seat the local user actually wants to play. This is the
         # canonical record across network connect/disconnect transitions:
@@ -806,6 +828,17 @@ class MainWindow(QMainWindow):
         rubber_action.triggered.connect(self._on_rubber_scoring)
         extras_menu.addAction(rubber_action)
 
+        extras_menu.addSeparator()
+
+        # Q-Plus closed-room ingest. Greyed out when Q-Plus isn't
+        # installed; guests can't ingest (the host pushes the run to them
+        # via CLOSED_ROOM_INGESTED) so the action stays disabled for them
+        # too. Updated dynamically by _refresh_qplus_ingest_action_state.
+        self.ingest_qplus_action = QAction("&Ingest Q-Plus Closed Room...", self)
+        self.ingest_qplus_action.triggered.connect(self._on_ingest_qplus_closed_room)
+        extras_menu.addAction(self.ingest_qplus_action)
+        self._refresh_qplus_ingest_action_state()
+
         # Network menu
         network_menu = menubar.addMenu("&Network")
         network_menu.setStyleSheet(self._menu_style)
@@ -1003,6 +1036,13 @@ class MainWindow(QMainWindow):
         still_in_bidding = (self.controller.current_phase == 'bidding' or
                            (self.controller.board and not self.controller.board.contract))
 
+        # Flush any pending Claude analysis from the previous hand. If the
+        # user ingested a Q-Plus closed room, Claude already ran on ingest
+        # (idempotent flag); otherwise we run it now with just the open
+        # room so the user sees a critique before moving on.
+        if not still_in_bidding:
+            self._maybe_run_pending_claude()
+
 
         # If in teams match mode during bidding, user wants to discard this hand
         if self.teams_match is not None and self.match_controller is not None:
@@ -1171,6 +1211,7 @@ class MainWindow(QMainWindow):
         self.network_controller.remote_card_received.connect(self._on_network_remote_card)
         self.network_controller.trick_clear_received.connect(self._on_network_trick_clear)
         self.network_controller.error_occurred.connect(self._on_network_error)
+        self.network_controller.closed_room_ingested.connect(self._on_network_closed_room_ingested)
         # Lobby — drive both the host's NetworkLobbyDialog and the guest's
         # ConnectServerDialog from the same SEAT_LIST stream.
         self.network_controller.seat_map_changed.connect(self._on_network_seat_map)
@@ -2457,10 +2498,12 @@ For more information, see the README file."""
             self.status_label.setText("Disconnected from network game")
             # Revert to single-player mode
             self._configure_single_player()
+            self._refresh_qplus_ingest_action_state()
 
     def _on_network_connected(self, mode: str, my_seat: str, partner_seat: str, client_role: str):
         """Handle successful network connection."""
         self.disconnect_action.setEnabled(True)
+        self._refresh_qplus_ingest_action_state()
 
         seat = Seat.from_char(my_seat)
         partner = Seat.from_char(partner_seat)
@@ -2522,9 +2565,12 @@ For more information, see the README file."""
         if already_in_progress:
             # Late joiner — push the current deal state so they can follow along.
             self.network_controller.broadcast_deal(self.controller.board)
-            if self.controller.dummy and self.controller.current_phase != 'bidding':
+            # Seat is an IntEnum (NORTH == 0); use explicit None check or
+            # a North dummy would be skipped on every late-joiner push.
+            if (self.controller.dummy is not None
+                    and self.controller.current_phase != 'bidding'):
                 dummy_hand = self.controller.board.hands.get(self.controller.dummy)
-                if dummy_hand:
+                if dummy_hand is not None and dummy_hand.cards:
                     self.network_controller.broadcast_dummy_reveal(
                         self.controller.dummy, dummy_hand)
         else:
@@ -2573,6 +2619,7 @@ For more information, see the README file."""
     def _on_network_server_started(self, port: int):
         """Handle server start confirmation."""
         self.disconnect_action.setEnabled(True)
+        self._refresh_qplus_ingest_action_state()
 
     def _on_network_disconnected(self, reason: str):
         """Handle network disconnection.
@@ -2602,7 +2649,13 @@ For more information, see the README file."""
         # Client mode: keep playing locally with BEN as every other seat.
         # Prefer the canonical _user_seat (set when the guest claimed
         # their seat) over the controller's possibly-cleared field.
-        my_seat = self._user_seat or self.network_controller.my_seat or Seat.SOUTH
+        # NOTE: Seat is an IntEnum where NORTH == 0; bare truthiness chains
+        # would silently skip a North-seated guest, so test for None.
+        my_seat = self._user_seat
+        if my_seat is None:
+            my_seat = self.network_controller.my_seat
+        if my_seat is None:
+            my_seat = Seat.SOUTH
         self.disconnect_action.setEnabled(False)
         styled_info(
             self, "Host Disconnected",
@@ -2639,7 +2692,7 @@ For more information, see the README file."""
         # and which physical widget will end up showing the local hand.
         try:
             my_seat = self.network_controller.my_seat
-            print(f"[net deal] my_seat={my_seat.to_char() if my_seat else None}, "
+            print(f"[net deal] my_seat={my_seat.to_char() if my_seat is not None else None}, "
                   f"dealer={board.dealer.to_char()}, "
                   f"table_view._local_seat={self.table_view._local_seat.to_char()}, "
                   f"rotation_quarters={self.table_view._rotation_quarters}",
@@ -2728,10 +2781,51 @@ For more information, see the README file."""
 
     def _on_network_dummy_revealed(self, dummy_seat: Seat, dummy_hand: Hand):
         """Handle receiving dummy's hand when play starts (client mode)."""
+        # DIAGNOSTIC — track exactly when the guest's UI gets the dummy.
+        try:
+            n_cards = len(dummy_hand.cards) if dummy_hand else 0
+            tv_decl = self.table_view.declarer
+            print(
+                f"[guest dummy_reveal] dummy_seat={dummy_seat.to_char()} "
+                f"cards={n_cards} controller.dummy={self.controller.dummy} "
+                f"table_view.declarer={tv_decl} "
+                f"phase={self.controller.current_phase}",
+                flush=True,
+            )
+        except Exception:
+            pass
         # Update the board with dummy's actual hand
         self.controller.board.hands[dummy_seat] = dummy_hand
         # Show dummy's hand
         self.table_view.set_hand_visible(dummy_seat, True)
+        # DIAGNOSTIC — confirm the widget got the cards.
+        try:
+            ds = self.table_view._display_seat(dummy_seat)
+            w = self.table_view.hand_widgets[ds]
+            print(
+                f"[guest dummy_reveal] widget at physical {ds}: "
+                f"visible={w.isVisible()} "
+                f"hand_cards={len(w.hand.cards) if getattr(w, 'hand', None) else 0} "
+                f"size={w.size().width()}x{w.size().height()}",
+                flush=True,
+            )
+        except Exception as ex:
+            print(f"[guest dummy_reveal] post-set diag failed: {ex}", flush=True)
+
+    def _on_network_closed_room_ingested(self, run):
+        """Guest received a manually-ingested closed-room run from the host.
+
+        Attach it to the matching BoardResult (by pavlicek_id, falling back
+        to board number) so the score sheet's Compare button lights up for
+        the guest too.
+        """
+        try:
+            self._attach_closed_room_run(run)
+            self.status_label.setText(
+                f"Closed room received from host (board {run.board_number})."
+            )
+        except Exception as e:
+            print(f"[net closed_room_ingested] error: {e}", flush=True)
 
     def _on_network_error(self, error: str):
         """Handle network error."""
@@ -2845,7 +2939,8 @@ For more information, see the README file."""
         board = self.controller.board
         seat = self.controller.current_seat
         phase = self.controller.current_phase
-        if not board or not seat or phase not in ('bidding', 'play'):
+        # Seat is an IntEnum (NORTH == 0); use explicit None checks.
+        if board is None or seat is None or phase not in ('bidding', 'play'):
             return
 
         # Pull BEN's own suggestion first — it's fast and gives Claude context.
@@ -3296,7 +3391,7 @@ For more information, see the README file."""
             if is_opening_lead and self.network_controller.is_server:
                 dummy = self.controller.dummy
                 dummy_hand = self.controller.board.hands.get(dummy)
-                if dummy and dummy_hand:
+                if dummy is not None and dummy_hand is not None and dummy_hand.cards:
                     self.network_controller.broadcast_dummy_reveal(dummy, dummy_hand)
 
         self._advance_game()
@@ -3385,6 +3480,20 @@ For more information, see the README file."""
             self.next_deal_btn.setVisible(False)
             # Hide bid info window during card play
             self.bid_info_dock.hide()
+            # Strict-bridge would defer dummy until after the opening lead,
+            # but the host's setup_declarer_play already shows it now (it
+            # has all four hands locally). Push the same view to guests so
+            # both screens match — otherwise a defender-guest looks at an
+            # empty dummy slot until the opening lead lands.
+            if (self.network_controller.is_active
+                    and self.network_controller.is_server
+                    and self.controller.dummy is not None):
+                dummy_seat = self.controller.dummy
+                dummy_hand = self.controller.board.hands.get(dummy_seat)
+                if dummy_hand is not None and dummy_hand.cards:
+                    self.network_controller.broadcast_dummy_reveal(
+                        dummy_seat, dummy_hand
+                    )
 
         # Update tricks display
         self.table_view.update_tricks(
@@ -3620,19 +3729,29 @@ For more information, see the README file."""
             dialog.view_other_table.connect(self._on_view_teams_score)
             dialog.exec()
 
-        # Log the completed hand
-        try:
-            self.game_logger.log_hand(board, self.original_hands)
-        except Exception as e:
-            print(f"Error logging hand: {e}", flush=True)
+        # Log the completed hand. The logger needs all four original hands
+        # to compute the Pavlicek deal id; a guest only ever has its own
+        # seat, so the call would KeyError. Skip on guests.
+        if not (self.network_controller.is_active
+                and not self.network_controller.is_server):
+            try:
+                self.game_logger.log_hand(board, self.original_hands)
+            except Exception as e:
+                print(f"Error logging hand: {e}", flush=True)
 
         # Add result to scoring table
         try:
-            hands_for_pavlicek = self.original_hands or board.hands
-            pavlicek_id = format_deal_base62(deal_to_number(hands_for_pavlicek))
-
             ns_score = score if contract.declarer.is_ns() else -score
             ew_score = -ns_score
+
+            # pavlicek_id needs all four hands. A guest only has its own seat
+            # (and dummy after the reveal), so the encoding will KeyError —
+            # don't let that drop the whole result from the score table.
+            hands_for_pavlicek = self.original_hands or board.hands
+            try:
+                pavlicek_id = format_deal_base62(deal_to_number(hands_for_pavlicek))
+            except Exception:
+                pavlicek_id = ""
 
             # Create a BenBoardRun for replay from the score table
             from ben_backend.models import BenBoardRun, BenTable
@@ -3671,13 +3790,63 @@ For more information, see the README file."""
             self.table_view.set_hand_visible(seat, True)
 
         # Post-hand sequence (normal play only, not teams match):
-        # 1. Run closed room (AI plays same hand for IMP comparison)
-        # 2. Show Claude analysis dialog
-        # 3. Show scoring table with both results
+        # 1. Launch the GUI harness so the host can manually replay the
+        #    deal in Q-Plus — that's the only closed room ben_bridge runs;
+        #    AI vs AI replay is no longer fired automatically (it doubled
+        #    engine load on the network and isn't a real comparison).
+        # 2. Show scoring table.
+        #
+        # Claude analysis is intentionally NOT triggered here — it runs
+        # later, either right after a Q-Plus ingest (so it can compare
+        # both rooms) or, if no ingest happens, at "Next Deal" time so
+        # the user gets at least an open-room critique. _claude_pending
+        # tracks the last completed board so we don't re-run Claude.
+        is_guest = (self.network_controller.is_active
+                    and not self.network_controller.is_server)
         if self.teams_match is None and self.match_controller is None:
-            self._auto_closed_room(board, contract, tricks, result_str, score)
-            self._show_claude_hand_analysis(board, contract, tricks, result_str, score)
+            if not is_guest:
+                self._launch_qplus_harness(board)
+                # Snapshot enough context to fire Claude on demand later.
+                self._claude_pending = {
+                    'board': board,
+                    'contract': contract,
+                    'tricks': tricks,
+                    'result_str': result_str,
+                    'score': score,
+                    'analyzed': False,
+                }
             self._on_show_scores()
+
+    def _launch_qplus_harness(self, board):
+        """Spawn the guiHarness (bridgeHarness.sh) preloaded with this deal's
+        base-72 code, so the host can manually play the closed room in Q-Plus
+        without leaving ben_bridge. No-op if the harness script can't be
+        located or if the deal has no full hand data.
+        """
+        import os
+        import subprocess
+        try:
+            hands = self.original_hands or board.hands
+            if not all(s in hands and len(hands[s].cards) == 13 for s in Seat):
+                # Hands have already been played — original_hands is the
+                # canonical pre-play snapshot. If it's missing seats, skip.
+                return
+            code = int_to_base72(deal_to_number(hands))
+            # bridgeHarness.sh sits at FRI/bridgeHarness.sh — three levels
+            # above this file (ui/main_window.py → ben_bridge → benBridge → FRI).
+            script = os.path.normpath(os.path.join(
+                os.path.dirname(__file__), "..", "..", "..", "bridgeHarness.sh"
+            ))
+            if not os.path.isfile(script):
+                return
+            subprocess.Popen(
+                [script, "--base72", code],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception as e:
+            print(f"[qplus harness] launch failed: {e}", flush=True)
 
     def _show_claude_hand_analysis(self, board, contract, tricks, result_str, score):
         """Show a progress bar while Claude analyzes, then display results in a dialog."""
@@ -3729,18 +3898,18 @@ For more information, see the README file."""
                     bids.append(f"{bid.level}{s}")
             hand_text += " - ".join(bids) + "\n"
 
-        # Pull the closed-room result (populated by _auto_closed_room) so Claude
-        # and the dialog can show the human/AI comparison for this board.
-        # _auto_closed_room appends a second BoardResult for the closed table, so
-        # walk backwards to find the OPEN-room entry that carries closed_room_run.
+        # Pull the closed-room result (populated by Q-Plus ingest) so Claude
+        # can compare the human's table against the manual closed room.
+        # Look for a BoardResult tagged "Closed room" for this board and
+        # carrying a played BenBoardRun.
         closed_run = None
-        imp_swing = None
-        for r in reversed(self.scoring_table.results):
+        for r in self.scoring_table.results:
             if r.board_number != board.board_number:
                 continue
-            if getattr(r, 'closed_room_run', None) is not None:
-                closed_run = r.closed_room_run
-                imp_swing = getattr(r, 'imps', None)
+            if (r.notes and "Closed room" in r.notes
+                    and r.board_run is not None
+                    and getattr(r.board_run, 'played', False)):
+                closed_run = r.board_run
                 break
 
         closed_summary = ""
@@ -3748,14 +3917,23 @@ For more information, see the README file."""
             c_target = closed_run.contract.target_tricks()
             c_diff = closed_run.declarer_tricks - c_target
             c_result = f"+{c_diff}" if c_diff > 0 else ("=" if c_diff == 0 else str(c_diff))
+            ns_diff = score - closed_run.ns_score if contract.declarer.is_ns() \
+                      else (-score) - closed_run.ns_score
             closed_summary = (
-                f"\nClosed room (AI both sides): "
+                f"\nClosed room (Q-Plus, manual replay by host): "
                 f"{closed_run.contract.to_str()} by {closed_run.contract.declarer.to_char()}, "
                 f"{closed_run.declarer_tricks} tricks ({c_result}), "
                 f"NS {closed_run.ns_score:+d}"
             )
-            if imp_swing is not None:
-                closed_summary += f"\nIMP swing vs open room: {imp_swing:+d} ({'N/S' if imp_swing >= 0 else 'E/W'})"
+            from ben_backend.scoring import diff_to_imps
+            try:
+                imps = diff_to_imps(ns_diff)
+                closed_summary += (
+                    f"\nIMP swing of open vs closed (NS perspective): "
+                    f"{imps:+d}"
+                )
+            except Exception:
+                pass
             closed_summary += "\n"
         hand_text += closed_summary
 
@@ -3821,7 +3999,7 @@ For more information, see the README file."""
         if closed_run:
             comparison_note = (
                 " Compare the open-room result (the human player's table) "
-                "with the closed-room result (BEN on both sides) "
+                "with the closed-room result (Q-Plus, manual replay) "
                 "and comment on who did better and why."
             )
 
@@ -4239,7 +4417,7 @@ For more information, see the README file."""
             if is_opening_lead:
                 dummy = self.controller.dummy
                 dummy_hand = self.controller.board.hands.get(dummy)
-                if dummy and dummy_hand:
+                if dummy is not None and dummy_hand is not None and dummy_hand.cards:
                     self.network_controller.broadcast_dummy_reveal(dummy, dummy_hand)
 
         # Continue after delay
@@ -4606,6 +4784,269 @@ For more information, see the README file."""
 
         dialog = RubberScoringDialog(self)
         dialog.exec()
+
+    def _maybe_run_pending_claude(self):
+        """Run Claude on the most recently finished hand if it's still
+        pending. Idempotent — sets `analyzed=True` so subsequent calls
+        from a different trigger (ingest then next-deal, etc.) are a
+        no-op. By the time Claude actually runs, the score sheet has
+        whatever closed-room data the user managed to attach (or none),
+        so the prompt automatically gets the comparison form when a
+        Q-Plus row is present and the open-room-only form otherwise.
+        """
+        pending = self._claude_pending
+        if not pending or pending.get('analyzed'):
+            return
+        pending['analyzed'] = True
+        try:
+            self._show_claude_hand_analysis(
+                pending['board'],
+                pending['contract'],
+                pending['tricks'],
+                pending['result_str'],
+                pending['score'],
+            )
+        except Exception as e:
+            print(f"[claude] deferred analysis failed: {e}", flush=True)
+
+    # ------------------------------------------------------------------
+    # Q-Plus closed-room ingest
+    # ------------------------------------------------------------------
+
+    def _refresh_qplus_ingest_action_state(self):
+        """Enable/disable the ingest menu item based on Q-Plus install
+        and current network role. Guests get the score-sheet Compare
+        button via host broadcast; they don't ingest themselves."""
+        if not hasattr(self, 'ingest_qplus_action'):
+            return
+        try:
+            from ben_backend.qplus import qplus_available
+            installed = qplus_available()
+        except Exception:
+            installed = False
+        is_guest = (self.network_controller.is_active
+                    and not self.network_controller.is_server)
+        enabled = installed and not is_guest
+        self.ingest_qplus_action.setEnabled(enabled)
+        if not installed:
+            self.ingest_qplus_action.setToolTip(
+                "Q-Plus Bridge isn't installed. Run FRI/qplus.sh once to install it."
+            )
+        elif is_guest:
+            self.ingest_qplus_action.setToolTip(
+                "Closed-room ingest happens on the host; the result will appear here automatically."
+            )
+        else:
+            self.ingest_qplus_action.setToolTip("")
+
+    def _on_ingest_qplus_closed_room(self):
+        """File picker → BDL parse → attach run to score sheet → broadcast.
+
+        If multiple deals are present in the BDL, picks the one matching
+        the most recent open-room result (by pavlicek_id, falling back
+        to board number); if none match, asks the user.
+        """
+        from ben_backend.qplus import qplus_bdl_log_dir, newest_bdl_path
+        from ben_backend.bdl_reader import load_bdl_file, bdl_deal_to_board_run
+        from ben_backend.models import BenTable
+
+        # Default the picker to the qplus log dir + newest BDL.
+        log_dir = qplus_bdl_log_dir()
+        default_path = ""
+        newest = newest_bdl_path()
+        if newest is not None:
+            default_path = str(newest)
+        elif log_dir is not None:
+            default_path = str(log_dir)
+
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Select Q-Plus BDL file", default_path,
+            "BDL files (*.bdl);;All files (*)"
+        )
+        if not filename:
+            return
+
+        try:
+            deals = load_bdl_file(filename)
+        except Exception as e:
+            QMessageBox.warning(self, "BDL Read Error",
+                                f"Could not parse BDL file:\n{e}")
+            return
+        if not deals:
+            QMessageBox.warning(self, "Empty BDL",
+                                "No deals were found in the selected BDL file.")
+            return
+
+        # Pick the deal that matches an existing open-room result, if any.
+        chosen = self._pick_bdl_deal_for_ingest(deals)
+        if chosen is None:
+            return
+
+        run = bdl_deal_to_board_run(chosen, table=BenTable.CLOSED)
+        if run is None:
+            QMessageBox.warning(self, "Incomplete BDL",
+                                "The selected deal is missing the contract or "
+                                "the four hands; can't build a closed-room run.")
+            return
+
+        attached = self._attach_closed_room_run(run, replace_ai_run=True)
+        if not attached:
+            QMessageBox.information(
+                self, "Closed Room Ingested",
+                f"Loaded board {run.board_number}, but no matching open-room "
+                "result was found — added as a standalone score-sheet entry."
+            )
+        else:
+            self.status_label.setText(
+                f"Closed room ingested for board {run.board_number}."
+            )
+
+        # Push to guests so they get the Compare button too.
+        if (self.network_controller.is_active
+                and self.network_controller.is_server):
+            try:
+                self.network_controller.broadcast_closed_room_ingested(run)
+            except Exception as e:
+                print(f"[ingest qplus] broadcast failed: {e}", flush=True)
+
+        # Now that the closed-room run is attached, kick Claude with the
+        # comparison form of the prompt. If the hand was passed out or
+        # otherwise didn't queue a pending analysis, this is a no-op.
+        self._maybe_run_pending_claude()
+
+    def _pick_bdl_deal_for_ingest(self, deals):
+        """Choose which BDL deal corresponds to the open-room hand.
+
+        Strategy:
+        1. If there's only one deal, use it.
+        2. Otherwise, score each candidate by match strength against the
+           score sheet's existing open-room results (pavlicek_id beats
+           board_number) and pick the strongest match.
+        3. If still ambiguous, fall back to the newest deal.
+        """
+        if len(deals) == 1:
+            return deals[0]
+
+        existing = list(self.scoring_table.results) if self.scoring_table else []
+        existing_pavs = {r.pavlicek_id for r in existing if r.pavlicek_id}
+        existing_boards = {r.board_number for r in existing}
+
+        # Strongest: pavlicek match. Next: board_number match.
+        for d in deals:
+            if d.pavlicek_id and d.pavlicek_id in existing_pavs:
+                return d
+        for d in deals:
+            if d.board_number in existing_boards:
+                return d
+
+        # No match — let the user pick from a simple list.
+        from PyQt6.QtWidgets import QInputDialog
+        labels = [
+            f"Board {d.board_number}"
+            + (f" — {d.contract.to_str()} by {d.declarer.to_char()}"
+               if d.contract and d.declarer else "")
+            for d in deals
+        ]
+        choice, ok = QInputDialog.getItem(
+            self, "Pick Deal", "Multiple deals in this BDL — which is the closed room?",
+            labels, 0, False,
+        )
+        if not ok:
+            return None
+        return deals[labels.index(choice)]
+
+    def _attach_closed_room_run(self, run, replace_ai_run: bool = True) -> bool:
+        """Attach a closed-room BenBoardRun to the matching BoardResult.
+
+        Match priority:
+          1. pavlicek_id equality
+          2. board_number equality
+          3. most-recent open-room row without a closed-room sibling
+             (Q-Plus and ben_bridge use independent board numbering, so
+             after the user has just played a hand and done the closed
+             room manually, the latest unpaired row is almost always the
+             intended target).
+
+        If matched, the closed run's board_number is overridden to the
+        open-room's number so the score-sheet groups them on the same row.
+
+        Returns True if a matching open-room result was found, False if
+        the row was added standalone.
+        """
+        from ben_backend.scoring import BoardResult
+        from ben_backend.models import BenTable
+
+        if self.scoring_table is None:
+            return False
+
+        def _is_closed(r):
+            return r.notes and "Closed room" in (r.notes or "")
+
+        results = self.scoring_table.results
+
+        # Pavlicek match — only meaningful when both sides recorded a non-
+        # empty pavlicek_id. ben_bridge skips it on guests; Q-Plus may not
+        # write it at all. So most ingest paths fall through to step 2/3.
+        match_idx = None
+        if run.pavlicek_id:
+            for i, r in enumerate(results):
+                if (not _is_closed(r)
+                        and r.pavlicek_id
+                        and r.pavlicek_id == run.pavlicek_id):
+                    match_idx = i
+                    break
+
+        # Board-number match.
+        if match_idx is None:
+            for i, r in enumerate(results):
+                if not _is_closed(r) and r.board_number == run.board_number:
+                    match_idx = i
+                    break
+
+        # Fallback: latest open-room row that doesn't already have a
+        # closed-room sibling. Walk from newest to oldest.
+        if match_idx is None:
+            paired_boards = {r.board_number for r in results if _is_closed(r)}
+            for i in range(len(results) - 1, -1, -1):
+                r = results[i]
+                if not _is_closed(r) and r.board_number not in paired_boards:
+                    match_idx = i
+                    break
+
+        # If matched, snap the closed-run's board_number onto the open one
+        # so they group together in the score sheet.
+        if match_idx is not None:
+            target_board = results[match_idx].board_number
+        else:
+            target_board = run.board_number
+
+        # Remove any existing closed-room row for the target board so the
+        # manual qplus run replaces the AI auto-closed-room.
+        if replace_ai_run:
+            self.scoring_table.results = [
+                r for r in self.scoring_table.results
+                if not (r.board_number == target_board and _is_closed(r))
+            ]
+
+        # Build the closed-room BoardResult. Dealer/vulnerability are
+        # placeholders — the score sheet only displays board number,
+        # contract, and scores per row, and we don't lose anything by
+        # not threading the BDL header values all the way through.
+        closed_result = BoardResult(
+            board_number=target_board,
+            pavlicek_id=run.pavlicek_id,
+            dealer=Seat.NORTH,
+            vulnerability=Vulnerability.NONE,
+            contract=run.contract,
+            declarer=run.contract.declarer if run.contract else None,
+            tricks_made=run.declarer_tricks,
+            ns_score=run.ns_score,
+            ew_score=run.ew_score,
+            notes="Closed room (Q-Plus)",
+            board_run=run,
+        )
+        self.scoring_table.add_result(closed_result)
+        return match_idx is not None
 
     def closeEvent(self, event):
         """Auto-save scores and clean up resources."""

@@ -95,6 +95,8 @@ class MenuDefinition:
         ("&Connect to Server...", None, "connect_server"),
         None,
         ("&Disconnect", None, "network_disconnect"),
+        None,
+        ("&Ingest Q-Plus Closed Room...", None, "ingest_qplus_closed_room"),
     ]
 
     HELP_MENU = [

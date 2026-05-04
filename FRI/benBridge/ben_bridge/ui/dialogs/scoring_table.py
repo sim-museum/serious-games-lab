@@ -70,6 +70,27 @@ class ScoringTableDialog(QDialog):
         # Buttons
         button_layout = QHBoxLayout()
 
+        # Side-by-side comparison of open + closed runs for the selected row.
+        # Disabled until the selection has both an open-room and a closed-room
+        # BenBoardRun; selection-change handler updates state.
+        self.compare_btn = QPushButton("Compare")
+        self.compare_btn.setToolTip(
+            "Side-by-side replay of open vs closed room (needs both runs)."
+        )
+        self.compare_btn.setEnabled(False)
+        self.compare_btn.clicked.connect(self._on_compare)
+        button_layout.addWidget(self.compare_btn)
+
+        # Single-row replay (kept alongside Compare so users can still
+        # walk through a single run independently).
+        self.replay_btn = QPushButton("Replay")
+        self.replay_btn.setToolTip("Replay the selected open or closed run on its own.")
+        self.replay_btn.setEnabled(False)
+        self.replay_btn.clicked.connect(self._on_replay_selected)
+        button_layout.addWidget(self.replay_btn)
+
+        self.table.itemSelectionChanged.connect(self._refresh_action_buttons)
+
         save_btn = QPushButton("Save...")
         save_btn.clicked.connect(self._on_save)
         button_layout.addWidget(save_btn)
@@ -139,7 +160,7 @@ class ScoringTableDialog(QDialog):
         for bn in sorted(boards.keys()):
             open_r = boards[bn]['open']
             closed_r = boards[bn]['closed']
-            if not open_r:
+            if not open_r and not closed_r:
                 continue
 
             num_boards += 1
@@ -148,17 +169,24 @@ class ScoringTableDialog(QDialog):
             self._board_rows[row] = (open_r, closed_r)
 
             # --- Left: Open room (human) ---
-            contract_str = self._format_contract(open_r)
-            diff = self._format_diff(open_r)
-            self.table.setItem(row, 0, QTableWidgetItem(f"{contract_str} {diff}"))
-            ns_item = self._colored_item(open_r.ns_score)
-            self.table.setItem(row, 1, ns_item)
+            if open_r is not None:
+                contract_str = self._format_contract(open_r)
+                diff = self._format_diff(open_r)
+                self.table.setItem(row, 0, QTableWidgetItem(f"{contract_str} {diff}"))
+                ns_item = self._colored_item(open_r.ns_score)
+                self.table.setItem(row, 1, ns_item)
 
-            imp_val = open_r.imps
-            if imp_val is not None:
-                ns_imps_total += imp_val
-            imp_item = self._colored_item(imp_val, fmt="+d") if imp_val is not None else QTableWidgetItem("")
-            self.table.setItem(row, 2, imp_item)
+                imp_val = open_r.imps
+                if imp_val is not None:
+                    ns_imps_total += imp_val
+                imp_item = self._colored_item(imp_val, fmt="+d") if imp_val is not None else QTableWidgetItem("")
+                self.table.setItem(row, 2, imp_item)
+            else:
+                # Closed-room-only row (e.g. ingested Q-Plus result with
+                # no matching ben_bridge open-room hand). Leave the open
+                # cells blank rather than dropping the row entirely.
+                for col in (0, 1, 2):
+                    self.table.setItem(row, col, QTableWidgetItem(""))
 
             # --- Center: Board ---
             board_item = QTableWidgetItem(str(bn))
@@ -184,6 +212,12 @@ class ScoringTableDialog(QDialog):
         self.boards_label.setText(f"Boards: {num_boards}")
         self.ns_total_label.setText(f"N/S IMPs: {ns_imps_total:+d}")
         self.ew_total_label.setText(f"E/W IMPs: {-ns_imps_total:+d}")
+
+        # Compare / Replay buttons start in "no selection" state; the
+        # selection-changed handler will turn them on if the user picks
+        # a row with the right runs attached.
+        if hasattr(self, 'compare_btn'):
+            self._refresh_action_buttons()
 
     def _format_contract(self, result):
         if not result or not result.contract:
@@ -337,6 +371,61 @@ class ScoringTableDialog(QDialog):
         if reply == QMessageBox.StandardButton.Yes:
             self.scoring_table.results.clear()
             self._populate_table()
+
+    def _refresh_action_buttons(self):
+        """Update Compare/Replay enable state based on the current selection."""
+        rows = self.table.selectionModel().selectedRows() if self.table.selectionModel() else []
+        if not rows:
+            self.compare_btn.setEnabled(False)
+            self.replay_btn.setEnabled(False)
+            return
+        row = rows[0].row()
+        open_r, closed_r = self._board_rows.get(row, (None, None))
+
+        def has_run(r):
+            return (r is not None
+                    and r.board_run is not None
+                    and getattr(r.board_run, 'played', False))
+
+        self.replay_btn.setEnabled(has_run(open_r) or has_run(closed_r))
+        self.compare_btn.setEnabled(has_run(open_r) and has_run(closed_r))
+
+    def _on_compare(self):
+        """Open side-by-side replay for the selected row."""
+        rows = self.table.selectionModel().selectedRows() if self.table.selectionModel() else []
+        if not rows:
+            return
+        row = rows[0].row()
+        open_r, closed_r = self._board_rows.get(row, (None, None))
+        if not (open_r and closed_r and open_r.board_run and closed_r.board_run):
+            return
+        try:
+            from .compare_replay import CompareReplayDialog
+            CompareReplayDialog(open_r.board_run, closed_r.board_run, parent=self).exec()
+        except Exception as e:
+            QMessageBox.warning(self, "Compare error", f"Could not open compare view: {e}")
+
+    def _on_replay_selected(self):
+        """Replay whichever side has a run on the selected row.
+
+        If both sides have runs, prefers the open-room (consistent with
+        the existing double-click behaviour on the left columns).
+        """
+        rows = self.table.selectionModel().selectedRows() if self.table.selectionModel() else []
+        if not rows:
+            return
+        row = rows[0].row()
+        open_r, closed_r = self._board_rows.get(row, (None, None))
+        target = (open_r if (open_r and open_r.board_run
+                             and getattr(open_r.board_run, 'played', False))
+                  else closed_r)
+        if not target or not target.board_run:
+            return
+        try:
+            from .replay_view import ReplayViewDialog
+            ReplayViewDialog(target.board_run, self).exec()
+        except Exception as e:
+            QMessageBox.warning(self, "Replay error", f"Could not open replay: {e}")
 
     def _on_row_double_clicked(self, row, col):
         """Double-click a row to review that hand with full replay.

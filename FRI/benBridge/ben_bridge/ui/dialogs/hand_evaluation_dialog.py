@@ -27,8 +27,8 @@ class HandEvaluationDialog(QDialog):
         self.board = board
         self.ask_seat = ask_seat
 
-        seat_name = seat.name.capitalize() if seat else "Player"
-        ask_name = ask_seat.name.capitalize() if ask_seat else seat_name
+        seat_name = seat.name.capitalize() if seat is not None else "Player"
+        ask_name = ask_seat.name.capitalize() if ask_seat is not None else seat_name
         self.setWindowTitle(f"Bidround {bid_round}: {ask_name}'s evaluation of {seat_name}'s hand")
         self.setMinimumWidth(950)
         self.setMinimumHeight(650)

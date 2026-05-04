@@ -14,8 +14,9 @@ from .protocol import (
     NetworkMessage, MessageType, NetworkRole,
     make_deal_start, make_bid_made, make_card_played,
     make_trick_complete, make_trick_clear, make_board_complete,
+    make_closed_room_ingested,
 )
-from ben_backend.models import Seat, Bid, Card, BoardState, Hand, PlayerType
+from ben_backend.models import Seat, Bid, Card, BoardState, Hand, PlayerType, BenBoardRun
 
 import logging
 import os
@@ -80,6 +81,7 @@ class NetworkGameController(QObject):
     trick_completed = pyqtSignal(str, int, int)  # winner_seat, declarer_tricks, defense_tricks
     trick_clear_received = pyqtSignal()  # Remote player clicked "next card"
     board_completed = pyqtSignal(dict)  # result data
+    closed_room_ingested = pyqtSignal(object)  # BenBoardRun (closed-room run pushed by host)
 
     # Error signal
     error_occurred = pyqtSignal(str)
@@ -426,6 +428,8 @@ class NetworkGameController(QObject):
             self._handle_trick_clear(message)
         elif message.type == MessageType.BOARD_COMPLETE:
             self._handle_board_complete(message)
+        elif message.type == MessageType.CLOSED_ROOM_INGESTED:
+            self._handle_closed_room_ingested(message)
 
     def _handle_deal_start(self, message: NetworkMessage):
         """Handle deal start message or dummy reveal."""
@@ -472,6 +476,17 @@ class NetworkGameController(QObject):
         """Handle trick clear message (remote player clicked 'next card')."""
         logger.debug("Received trick clear from remote player")
         self.trick_clear_received.emit()
+
+    def _handle_closed_room_ingested(self, message: NetworkMessage):
+        """Host has manually replayed a deal in Q-Plus. Hand the deserialized
+        BenBoardRun off to the UI so guests can attach it to their score
+        sheet alongside the open-room run."""
+        try:
+            run_data = message.payload.get("board_run") or {}
+            run = BenBoardRun.from_dict(run_data)
+            self.closed_room_ingested.emit(run)
+        except Exception as ex:
+            logger.warning(f"Failed to deserialize closed-room run: {ex}")
 
     # Broadcasting methods (for server/client to send state)
 
@@ -576,6 +591,18 @@ class NetworkGameController(QObject):
     def broadcast_trick_clear(self):
         """Broadcast trick clear to the remote player (sync 'next card')."""
         message = make_trick_clear()
+        self._send_message(message)
+
+    def broadcast_closed_room_ingested(self, run: BenBoardRun):
+        """Host → guests: a Q-Plus closed room has been ingested. Guests
+        attach the run to their score sheet so they can compare too."""
+        if self._role != NetworkRole.SERVER:
+            logger.warning("Only server can broadcast closed_room_ingested")
+            return
+        message = make_closed_room_ingested(
+            run.to_dict(),
+            sequence=self._server.get_next_sequence(),
+        )
         self._send_message(message)
 
     def get_player_type_for_seat(self, seat: Seat) -> PlayerType:
