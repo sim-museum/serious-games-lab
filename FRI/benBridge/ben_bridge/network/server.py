@@ -586,6 +586,8 @@ class BridgeServer(QObject):
             error_str = sock.errorString()
         except Exception:
             error_str = "unknown"
+        print(f"[server sock_err] t={self._get_timestamp()} err={error_str!r}",
+              flush=True)
         logger.error(f"Socket error: {error_str}")
         self.error_occurred.emit(f"Connection error: {error_str}")
 
@@ -635,6 +637,7 @@ class BridgeServer(QObject):
     def _send_heartbeat(self):
         """Send heartbeat to every connected client."""
         if self.is_client_connected:
+            print(f"[server hb] send t={self._get_timestamp()}", flush=True)
             self.send_message(make_heartbeat())
 
     def _check_heartbeat_timeout(self):
@@ -643,6 +646,8 @@ class BridgeServer(QObject):
             return
 
         elapsed = self._get_timestamp() - self._last_heartbeat_received
+        print(f"[server hb] check elapsed={elapsed}ms timeout={HEARTBEAT_TIMEOUT_MS}",
+              flush=True)
         if elapsed > HEARTBEAT_TIMEOUT_MS:
             logger.warning("Client heartbeat timeout")
             self.error_occurred.emit("Connection lost: heartbeat timeout")

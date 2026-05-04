@@ -952,6 +952,9 @@ class MainWindow(QMainWindow):
 
         self.hint_btn = ToolbarButton("Hint")
         self.hint_btn.clicked.connect(self._on_hint)
+        # Off by default — _advance_game / _refresh_hint_button_state
+        # turn it on only when the local user is on lead.
+        self.hint_btn.setEnabled(False)
         layout.addWidget(self.hint_btn)
         self.ingame_buttons.append(self.hint_btn)
 
@@ -2223,19 +2226,23 @@ For more information, see the README file."""
     def _on_show_scores(self):
         """Show score table.
 
+        Shown non-modally (`show()` not `exec()`): a modal dialog blocks
+        the main thread's QTcpSocket readyRead processing on both host
+        and guest, so heartbeats stop arriving and the connection times
+        out. Keep a reference on `self` so the dialog isn't garbage-
+        collected as soon as we return.
+
         If a teams match is active, shows the TeamsScoreDialog with
         clickable contracts to view replays. Otherwise shows the
         regular ScoringTableDialog.
         """
         if self.teams_match is not None:
-            # Show teams score dialog (allows clicking on contracts to replay)
-            dialog = TeamsScoreDialog(self.teams_match, self)
-            dialog.contract_clicked.connect(self._on_replay_board)
-            dialog.exec()
+            self._scores_dialog = TeamsScoreDialog(self.teams_match, self)
+            self._scores_dialog.contract_clicked.connect(self._on_replay_board)
         else:
-            # Show regular score table
-            dialog = ScoringTableDialog(self.scoring_table, self)
-            dialog.exec()
+            self._scores_dialog = ScoringTableDialog(self.scoring_table, self)
+        self._scores_dialog.show()
+        self._scores_dialog.raise_()
 
     def _on_dd_analysis(self):
         """Run double dummy analysis"""
@@ -2935,6 +2942,28 @@ For more information, see the README file."""
         if checked and self.controller.current_phase not in ('idle', 'finished'):
             self._advance_game()
 
+    def _is_local_user_turn(self) -> bool:
+        """True if the locally-controlled human is on lead right now.
+
+        Network mode: maps `current_seat` through dummy → declarer (the
+        declarer controls dummy's plays) and checks ownership against
+        `is_my_seat`. Single-player: trusts the controller's flag, which
+        already accounts for human-controls-declarer.
+        """
+        seat = self.controller.current_seat
+        if seat is None:
+            return False
+        if self.network_controller.is_active:
+            phase = self.controller.current_phase
+            if phase == 'play':
+                dummy = self.controller.dummy
+                declarer = self.controller.declarer
+                actual = declarer if (dummy is not None and seat == dummy
+                                      and declarer is not None) else seat
+                return self.network_controller.is_my_seat(actual)
+            return self.network_controller.is_my_seat(seat)
+        return self.controller.is_human_turn()
+
     def _on_hint(self):
         """Ask Claude what to do next, with a progress bar and result dialog.
 
@@ -2946,6 +2975,16 @@ For more information, see the README file."""
         phase = self.controller.current_phase
         # Seat is an IntEnum (NORTH == 0); use explicit None checks.
         if board is None or seat is None or phase not in ('bidding', 'play'):
+            return
+        # Hint is only allowed when it's the local user's turn — otherwise
+        # the prompt would expose the active seat's hand to whoever clicked
+        # the button. Defense in depth: the toolbar button is also greyed
+        # out off-turn (see _refresh_hint_button_state), but that can be
+        # bypassed if the click lands while the state is stale.
+        if not self._is_local_user_turn():
+            self.status_label.setText(
+                "Hint is only available when it's your turn."
+            )
             return
 
         # Pull BEN's own suggestion first — it's fast and gives Claude context.
@@ -3392,12 +3431,10 @@ For more information, see the README file."""
         if self.network_controller.is_active:
             self.network_controller.broadcast_card(seat, card)
 
-            # Reveal dummy after opening lead (server only)
-            if is_opening_lead and self.network_controller.is_server:
-                dummy = self.controller.dummy
-                dummy_hand = self.controller.board.hands.get(dummy)
-                if dummy is not None and dummy_hand is not None and dummy_hand.cards:
-                    self.network_controller.broadcast_dummy_reveal(dummy, dummy_hand)
+            # Dummy reveal is now broadcast at the start of the play
+            # phase (in _advance_play right after setup_declarer_play)
+            # so the guest sees dummy at the same moment as the host.
+            # No second post-opening-lead broadcast needed here.
 
         self._advance_game()
 
@@ -3411,6 +3448,21 @@ For more information, see the README file."""
             self._handle_trick_complete()
         elif self.controller.current_phase == 'finished':
             self._show_result()
+        # Refresh Hint enable state — only on the local user's turn so
+        # players can't peek at another seat's hand by clicking Hint
+        # while it isn't their turn.
+        self._refresh_hint_button_state()
+
+    def _refresh_hint_button_state(self):
+        """Grey the Hint toolbar button when it isn't the user's turn."""
+        if not hasattr(self, 'hint_btn'):
+            return
+        try:
+            self.hint_btn.setEnabled(self._is_local_user_turn())
+        except Exception:
+            # Button enable state is cosmetic — don't let a transient
+            # state error block the game flow.
+            pass
 
     def _advance_bidding(self):
         """Advance bidding phase"""
@@ -3913,6 +3965,7 @@ For more information, see the README file."""
         # Look for a BoardResult tagged "Closed room" for this board and
         # carrying a played BenBoardRun.
         closed_run = None
+        imp_swing = None
         for r in self.scoring_table.results:
             if r.board_number != board.board_number:
                 continue
@@ -3927,23 +3980,24 @@ For more information, see the README file."""
             c_target = closed_run.contract.target_tricks()
             c_diff = closed_run.declarer_tricks - c_target
             c_result = f"+{c_diff}" if c_diff > 0 else ("=" if c_diff == 0 else str(c_diff))
-            ns_diff = score - closed_run.ns_score if contract.declarer.is_ns() \
-                      else (-score) - closed_run.ns_score
+            ns_open = score if contract.declarer.is_ns() else -score
+            ns_diff = ns_open - closed_run.ns_score
+            from ben_backend.scoring import diff_to_imps
+            try:
+                imp_swing = diff_to_imps(ns_diff)
+            except Exception:
+                imp_swing = None
             closed_summary = (
                 f"\nClosed room (Q-Plus, manual replay by host): "
                 f"{closed_run.contract.to_str()} by {closed_run.contract.declarer.to_char()}, "
                 f"{closed_run.declarer_tricks} tricks ({c_result}), "
                 f"NS {closed_run.ns_score:+d}"
             )
-            from ben_backend.scoring import diff_to_imps
-            try:
-                imps = diff_to_imps(ns_diff)
+            if imp_swing is not None:
                 closed_summary += (
                     f"\nIMP swing of open vs closed (NS perspective): "
-                    f"{imps:+d}"
+                    f"{imp_swing:+d}"
                 )
-            except Exception:
-                pass
             closed_summary += "\n"
         hand_text += closed_summary
 
@@ -4383,8 +4437,11 @@ For more information, see the README file."""
         if self.controller.current_phase != 'play':
             return
 
-        # Verify the response is for the current seat
-        if requested_seat and requested_seat != self.controller.current_seat:
+        # Verify the response is for the current seat. Seat is an IntEnum
+        # (NORTH==0); use an explicit None check so a NORTH-requested card
+        # doesn't fall through the truthiness gate.
+        if (requested_seat is not None
+                and requested_seat != self.controller.current_seat):
             # Don't play the card if it's for the wrong seat
             QTimer.singleShot(100, self._advance_game)
             return
@@ -4421,14 +4478,16 @@ For more information, see the README file."""
 
         # Broadcast to network if we're the server
         if self.network_controller.is_active and self.network_controller.is_server:
+            from PyQt6.QtCore import QDateTime
+            print(f"[host engine_card] t={QDateTime.currentMSecsSinceEpoch()} "
+                  f"seat={seat.to_char()} card={card.to_str()} "
+                  f"is_opening_lead={is_opening_lead}",
+                  flush=True)
             self.network_controller.broadcast_card(seat, card)
 
-            # Reveal dummy after opening lead
-            if is_opening_lead:
-                dummy = self.controller.dummy
-                dummy_hand = self.controller.board.hands.get(dummy)
-                if dummy is not None and dummy_hand is not None and dummy_hand.cards:
-                    self.network_controller.broadcast_dummy_reveal(dummy, dummy_hand)
+            # Dummy was already broadcast at start of play phase via
+            # _advance_play.setup_declarer_play. Skipping the redundant
+            # post-opening-lead broadcast.
 
         # Continue after delay
         if self.controller.current_phase == 'waiting_next':

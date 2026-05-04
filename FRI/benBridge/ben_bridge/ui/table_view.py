@@ -297,9 +297,11 @@ class FannedHandWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Label - smaller font
+        # Label - bumped to 14pt: at 1920x1080 the previous 11pt seat
+        # badges (especially "E / Dummy" / "W / Declarer") were nearly
+        # unreadable from a normal viewing distance.
         self.label = QLabel()
-        self.label.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+        self.label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._update_label()
         layout.addWidget(self.label, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -710,10 +712,10 @@ class TableView(QWidget):
 
         # North label
         self.north_label = QLabel("N: BEN")
-        self.north_label.setFont(QFont("Arial", 10))
+        self.north_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
         self.north_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 2px 8px; border-radius: 3px; }")
         self.north_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.north_label.setFixedWidth(90)
+        self.north_label.setFixedWidth(140)
 
         # North hand
         self.hand_widgets[Seat.NORTH].set_player_info(is_human=False)
@@ -744,7 +746,7 @@ class TableView(QWidget):
         # West side - label and hand widget (vertical stack)
         west_vbox = QVBoxLayout()
         self.west_label = QLabel("W: BEN")
-        self.west_label.setFont(QFont("Arial", 10))
+        self.west_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
         self.west_label.setFixedWidth(70)
         self.west_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
         self.west_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -772,7 +774,7 @@ class TableView(QWidget):
         # East side - label and hand widget (vertical stack)
         east_vbox = QVBoxLayout()
         self.east_label = QLabel("E: BEN")
-        self.east_label.setFont(QFont("Arial", 10))
+        self.east_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
         self.east_label.setFixedWidth(70)
         self.east_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
         self.east_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -791,10 +793,10 @@ class TableView(QWidget):
         south_row.setContentsMargins(0, 0, 0, 0)
 
         self.south_label = QLabel("S: HUMAN")
-        self.south_label.setFont(QFont("Arial", 10))
+        self.south_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
         self.south_label.setStyleSheet("QLabel { background-color: #88ccff; color: black; padding: 2px 8px; border-radius: 3px; }")
         self.south_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.south_label.setFixedWidth(90)
+        self.south_label.setFixedWidth(140)
 
         self.hand_widgets[Seat.SOUTH].set_player_info(is_human=True)
 
@@ -804,7 +806,7 @@ class TableView(QWidget):
         south_row.addStretch()
         # Spacer to balance info panel on north side
         spacer = QWidget()
-        spacer.setFixedWidth(90)
+        spacer.setFixedWidth(140)
         south_row.addWidget(spacer, alignment=Qt.AlignmentFlag.AlignBottom)
         layout.addLayout(south_row)
 

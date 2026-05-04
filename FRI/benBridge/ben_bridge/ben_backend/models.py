@@ -232,7 +232,10 @@ class Bid:
     @classmethod
     def from_str(cls, s: str) -> 'Bid':
         s = s.upper().strip()
-        if s in ('PASS', 'P', '--'):
+        # Q-Plus appends '~' to alerted bids; strip it before parsing.
+        s = s.rstrip('~').strip()
+        if s in ('PASS', 'P', '--', '-'):
+            # Q-Plus uses bare '-' as a pass placeholder in BDL bidding rows.
             return cls.make_pass()
         if s in ('X', 'DBL', 'DOUBLE', 'DB'):
             return cls.make_double()

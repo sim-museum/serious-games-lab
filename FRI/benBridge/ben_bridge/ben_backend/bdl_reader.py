@@ -6,7 +6,7 @@ This reader parses BDL files and reconstructs game state from them.
 """
 
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -39,8 +39,10 @@ class BDLDeal:
     contract: Optional[Contract] = None
     declarer: Optional[Seat] = None
 
-    # Play
-    tricks: List[List[str]] = field(default_factory=list)
+    # Play. Each entry is {"cards": [card_str, …], "leader": Optional[Seat]}.
+    # Q-Plus records the leader of each trick explicitly; older formats
+    # only have the cards and the leader is computed from the contract.
+    tricks: List[Dict[str, Any]] = field(default_factory=list)
     opening_lead: Optional[str] = None
 
     # Result
@@ -128,6 +130,38 @@ class BDLReader:
                             self.current_section = None
                         i += 1
                         continue
+                    # Trick continuation lines (e.g. Q-Plus's per-trick rows):
+                    #   ``Tricks       :  1 N h2 hA+ h6 h4 H``
+                    #   ``             :  2 E sK sQ sA+ s2 S``
+                    # Once the Tricks header opened the section, every
+                    # continuation row is another trick. End-of-block is
+                    # signalled by a separator line ('===' / '---') which
+                    # is handled at the top of the outer loop.
+                    if self.current_section == 'tricks':
+                        self._parse_play_line(after_colon, self.current_deal)
+                        i += 1
+                        continue
+                    # Bidding continuation rows from Q-Plus:
+                    #   ``Bids   :   N    E    S    W``
+                    #   ``       :   -    2c~  2h   2s``
+                    # ASCII rule lines like "------" or "======" must be
+                    # skipped — but a row of three lone "-" (each a pass)
+                    # must NOT be skipped, so we filter on whether the
+                    # row contains a multi-dash/equals token.
+                    if self.current_section == 'bidding':
+                        clean = after_colon.strip()
+                        # Pure separator rule: all chars in the line are
+                        # '-' / '=' / whitespace AND any token is longer
+                        # than one char (so a real "-" pass survives).
+                        is_rule = (
+                            clean
+                            and set(clean) <= set('-= ')
+                            and any(len(tok) > 1 for tok in clean.split())
+                        )
+                        if clean and not is_rule:
+                            self._parse_bidding_line(after_colon, self.current_deal)
+                        i += 1
+                        continue
                     # Commentary continuation
                     if (self.current_deal.commentary
                             and not stripped.startswith('.Bidding')
@@ -160,6 +194,16 @@ class BDLReader:
     def _parse_line(self, stripped: str, original: str):
         """Parse a single line based on current section"""
         deal = self.current_deal
+
+        # A "Key: value" header line means a new section is starting —
+        # let the auto-detector re-classify so we don't keep feeding new
+        # rows into the previous section's parser. (Hand lines `N: …` /
+        # `E: …` / etc. are continuations, not new sections.)
+        if ':' in stripped:
+            before = stripped.split(':', 1)[0].strip()
+            if before and before.upper() not in ('N', 'E', 'S', 'W'):
+                self._auto_detect_and_parse(stripped, original)
+                return
 
         # Try to detect section from content if not in a named section
         if self.current_section is None:
@@ -220,6 +264,19 @@ class BDLReader:
                 deal.vulnerability = self._parse_vulnerability(value)
             elif key in ['contract']:
                 deal.contract = self._parse_contract(value)
+                # Q-Plus appends the declarer's seat name to the contract
+                # row, e.g. "Contract  :  4s    West". Pull it so the
+                # closed-room run attributes tricks to the right side.
+                for tok in value.split():
+                    upper = tok.upper()
+                    if upper in ('NORTH', 'EAST', 'SOUTH', 'WEST'):
+                        try:
+                            deal.declarer = Seat.from_char(upper[0])
+                            if deal.contract is not None:
+                                deal.contract.declarer = deal.declarer
+                        except Exception:
+                            pass
+                        break
             elif key in ['declarer']:
                 try:
                     deal.declarer = Seat.from_char(value[0].upper())
@@ -229,7 +286,13 @@ class BDLReader:
                 try:
                     deal.tricks_made = int(value)
                 except ValueError:
-                    pass
+                    # Q-Plus packs the first trick onto the "Tricks" key
+                    # row ("Tricks  :  1  N  h2  hA+ …"). Treat the value
+                    # as the first trick and open the section so any
+                    # continuation rows land in _parse_play_line.
+                    self.current_section = 'tricks'
+                    if value:
+                        self._parse_play_line(value, deal)
             elif key in ['ns score', 'n/s score', 'ns']:
                 try:
                     deal.ns_score = int(value)
@@ -242,12 +305,23 @@ class BDLReader:
                     pass
             elif key in ['commentary', 'comment', 'analysis']:
                 deal.commentary = value
+            elif key in ['bids', 'bidding', 'auction']:
+                # Q-Plus header row: "Bids   :   N    E    S    W". Open
+                # the bidding section so continuation rows reach the bid
+                # parser. The header itself has no real bids, but the
+                # bid parser is tolerant.
+                self.current_section = 'bidding'
+                if value:
+                    self._parse_bidding_line(value, deal)
             elif key in ['cards']:
                 # Start card parsing mode - value has first North suit line
                 self.current_section = 'cards'
                 self._card_lines = [value]
-            elif key in ['tricks', 'trick-prep']:
-                self.current_section = None  # Reset section
+            elif key in ['trick-prep']:
+                # Reserved for header-only "Tricks: 10"-style rows. The
+                # 'tricks' key itself is handled above (it tries an int
+                # parse first, then falls through to per-trick parsing).
+                self.current_section = 'tricks'
             elif key in ['result']:
                 # Parse result: contract declarer +/-tricks score deal_id
                 parts = value.split()
@@ -484,7 +558,10 @@ class BDLReader:
             try:
                 bid = Bid.from_str(part)
                 deal.auction.append(bid)
-            except (ValueError, IndexError):
+            except (ValueError, IndexError, KeyError):
+                # Bid.from_str raises KeyError when an unrecognised char
+                # ends up at suit_char (e.g. "10" — int(s[0])=1 then
+                # s[1]='0' fails the suit lookup). Silently skip junk.
                 pass
 
     def _parse_alert_line(self, line: str, deal: BDLDeal):
@@ -499,20 +576,55 @@ class BDLReader:
                 deal.alerts[parts[0].strip()] = parts[1].strip()
 
     def _parse_play_line(self, line: str, deal: BDLDeal):
-        """Parse trick: Trick 1: SQ SA S2 S3"""
-        # Remove "Trick N:" prefix
-        if ':' in line:
-            line = line.split(':', 1)[1].strip()
+        """Parse a trick line.
 
-        # Parse cards
-        cards = []
-        for part in line.split():
-            part = part.strip().upper()
-            if len(part) >= 2 and part[0] in 'SHDC':
-                cards.append(part)
+        Two formats are supported:
+
+          1. Legacy "Trick 1: SQ SA S2 S3" — cards only, leader computed
+             later from the contract.
+          2. Q-Plus "1  N    h2   hA+  h6   h4      H " — leading number,
+             leader seat, four cards (lowercase suits, optional ``+``/``-``
+             markers), and a trailing trump-or-suit code.
+
+        Cards are normalised to upper-case canonical strings (e.g. ``SA``)
+        so the rest of the pipeline doesn't have to know which dialect
+        wrote them.
+        """
+        body = line
+        if ':' in body:
+            body = body.split(':', 1)[1]
+        body = body.strip()
+        if not body:
+            return
+
+        tokens = body.split()
+        leader = None
+
+        # Q-Plus prefix: <trick_no> <leader>
+        # Match the trick number first so the trailing tokens are uniform
+        # regardless of whether a leader letter is present.
+        if tokens and tokens[0].isdigit():
+            tokens = tokens[1:]
+        if tokens and tokens[0].upper() in ('N', 'E', 'S', 'W'):
+            try:
+                leader = Seat.from_char(tokens[0].upper())
+            except Exception:
+                leader = None
+            tokens = tokens[1:]
+
+        cards: List[str] = []
+        for raw in tokens:
+            t = raw.strip().rstrip('+-').upper()
+            if len(t) < 2:
+                continue
+            if t[0] in 'SHDC' and len(t) >= 2:
+                rank = t[1:]
+                if rank in ('A', 'K', 'Q', 'J', 'T', '10',
+                            '2', '3', '4', '5', '6', '7', '8', '9'):
+                    cards.append(t)
 
         if cards:
-            deal.tricks.append(cards)
+            deal.tricks.append({"cards": cards, "leader": leader})
 
     def _parse_result_line(self, line: str, deal: BDLDeal):
         """Parse result field"""
@@ -634,7 +746,16 @@ def bdl_deal_to_board_run(deal: BDLDeal, table=None) -> Optional['BenBoardRun']:
     next_leader = Seat((declarer.value + 1) % 4)  # opening leader
     trump = contract.suit if contract.suit != Suit.NOTRUMP else None
 
-    for trick_cards in deal.tricks:
+    for entry in deal.tricks:
+        # Backward compatibility: older parses stored bare lists of card
+        # strings; the new format wraps them as {"cards": …, "leader": …}.
+        if isinstance(entry, dict):
+            trick_cards = entry.get("cards") or []
+            recorded_leader = entry.get("leader")
+        else:
+            trick_cards = entry
+            recorded_leader = None
+
         cards: List[Card] = []
         for s in trick_cards:
             try:
@@ -643,9 +764,13 @@ def bdl_deal_to_board_run(deal: BDLDeal, table=None) -> Optional['BenBoardRun']:
                 pass
         if not cards:
             continue
-        trick = Trick(cards=cards, leader=next_leader)
+
+        leader = recorded_leader if recorded_leader is not None else next_leader
+        trick = Trick(cards=cards, leader=leader)
         # Trick._determine_winner runs only when 4 cards are pushed via
         # add_card. For a fully recorded trick we replay the determination.
+        # Note: Rank is an IntEnum where ACE=0, …, TWO=12, so a *lower*
+        # rank value is the higher card. Compare with `<` not `>`.
         if len(cards) == 4:
             lead_suit = cards[0].suit
             winning_idx = 0
@@ -654,9 +779,9 @@ def bdl_deal_to_board_run(deal: BDLDeal, table=None) -> Optional['BenBoardRun']:
                 w = cards[winning_idx]
                 if trump is not None and c.suit == trump and w.suit != trump:
                     winning_idx = i
-                elif c.suit == w.suit and c.rank > w.rank:
+                elif c.suit == w.suit and c.rank < w.rank:
                     winning_idx = i
-            trick.winner = Seat((next_leader.value + winning_idx) % 4)
+            trick.winner = Seat((leader.value + winning_idx) % 4)
             if trick.winner.is_ns() == declarer.is_ns():
                 declarer_tricks += 1
             next_leader = trick.winner
