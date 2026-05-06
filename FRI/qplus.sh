@@ -31,13 +31,8 @@ elif [ -d "$WINEPREFIX/drive_c/games/qbridge15" ]; then
 fi
 
 if [ -n "$QBRIDGE_DIR" ]; then
-    # Launch GUI harness if venv is available
-    if [ -x "$HARNESS_VENV/bin/python" ]; then
-        (
-            cd "$HARNESS_DIR"
-            source venv/bin/activate
-        )
-    fi
+    # after each hand with the deal pre-loaded, so launching another
+    # one from here just produced an empty duplicate window. Use
 
     # Snapshot existing BDL log files before launching
     _qp_snapshot_time=$(date +%s)
