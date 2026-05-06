@@ -3164,8 +3164,47 @@ For more information, see the README file."""
         seat_names = {Seat.NORTH: 'N', Seat.EAST: 'E', Seat.SOUTH: 'S', Seat.WEST: 'W'}
         action = "bid" if phase == 'bidding' else "card to play"
         engine_block = f"\n\n{engine_text}" if engine_text else ""
+        # Tell Claude which bidding system the table is actually using so a
+        # Precision-configured user gets Precision-style recommendations
+        # ("1♣ = 16+", strong-club responses, etc.) instead of generic SAYC.
+        # Card-play hints don't depend on the system, so this only kicks
+        # in during bidding.
+        system_clause = ""
+        if phase == 'bidding':
+            try:
+                from ben_backend.config import get_config_manager
+                prefs = get_config_manager().config.preferences
+                engine = (prefs.bidding_engine or 'BEN').strip()
+                native = (prefs.native_bidding_system or 'SAYC').strip()
+                if engine.lower() == 'native':
+                    if native.lower() == 'precision':
+                        system_clause = (
+                            " The table is playing **Precision** "
+                            "(strong-club, 1♣ = 16+, 1NT = 14-16, 2♣ = 11-15 "
+                            "with 6+ clubs, transfer responses to 1♣). Apply "
+                            "Precision conventions and bid descriptions "
+                            "rather than SAYC."
+                        )
+                    else:
+                        system_clause = (
+                            f" The table is playing **{native}** "
+                            "(SAYC / 2-over-1 hybrid: 5-card majors, strong "
+                            "1NT 15-17, 2♣ Stayman, Jacoby transfers, "
+                            "weak 2-bids, Blackwood). Apply this system's "
+                            "conventions."
+                        )
+                else:
+                    system_clause = (
+                        " The table is using BEN's neural-net bidder "
+                        "(SAYC-flavoured). Apply standard SAYC / 2-over-1 "
+                        "conventions when explaining."
+                    )
+            except Exception:
+                # Config not available — fall back to a system-agnostic prompt.
+                pass
         return (
-            f"You are a bridge teacher advising {seat_names[seat]} on the next {action}. "
+            f"You are a bridge teacher advising {seat_names[seat]} on the next {action}."
+            f"{system_clause} "
             f"Recommend exactly one action and explain the reasoning in 2-4 sentences. "
             f"If the BEN engine suggestion is shown, say whether you agree. "
             f"Plain text only.\n\n{state_text}{engine_block}"
