@@ -2692,6 +2692,18 @@ For more information, see the README file."""
         self.status_label.setText(
             f"Host disconnected; you are now playing offline as {my_seat.to_char()}."
         )
+        # Re-enable Next-card / Hint / engine flow now that we're in
+        # local single-player mode. Without this the toolbar buttons
+        # stay disabled in whatever state they had at the moment the
+        # host dropped, and the user has no way to finish the hand.
+        self.next_card_btn.setEnabled(False)  # cleared; _advance_play will set as needed
+        self.bidding_box.set_enabled(False)
+        if self.controller.current_phase in ('bidding', 'play', 'waiting_next'):
+            self._advance_game()
+        # Hint refresh follows the regular path inside _advance_game; if
+        # nothing advanced (e.g. board not started), make sure Hint is at
+        # least correctly disabled.
+        self._refresh_hint_button_state()
 
     def _on_network_deal_received(self, board: BoardState):
         """Handle receiving a deal from the server (client mode)."""
@@ -4447,7 +4459,11 @@ For more information, see the README file."""
             return
 
         if not response.action:
-            # Engine returned no card - try to play any legal card as fallback
+            # Engine returned no card - try to play any legal card as fallback.
+            # IMPORTANT: this branch must broadcast just like the success
+            # path; otherwise a guest never sees the engine-fallback card
+            # (which is exactly how W's opening lead used to disappear from
+            # the guest while showing on the host).
             self.status_label.setText(f"Engine error: {response.who}. Trying fallback...")
             seat = self.controller.current_seat
             hand = self.controller.board.hands.get(seat)
@@ -4460,6 +4476,14 @@ For more information, see the README file."""
                     card = hand.cards[0]
                 self.table_view.play_card_to_trick(seat, card)
                 self.controller.play_card(card)
+                if (self.network_controller.is_active
+                        and self.network_controller.is_server):
+                    from PyQt6.QtCore import QDateTime
+                    print(f"[host engine_card-fallback] "
+                          f"t={QDateTime.currentMSecsSinceEpoch()} "
+                          f"seat={seat.to_char()} card={card.to_str()}",
+                          flush=True)
+                    self.network_controller.broadcast_card(seat, card)
                 QTimer.singleShot(300, self._advance_game)
             else:
                 self.status_label.setText("Error: No cards available to play")
@@ -5115,6 +5139,19 @@ For more information, see the README file."""
             board_run=run,
         )
         self.scoring_table.add_result(closed_result)
+
+        # Refresh an open Scoring Table dialog (now non-modal) so the
+        # newly attached closed-room row shows up immediately and the
+        # Compare button has the data to light up. Without this the user
+        # still sees the pre-ingest snapshot until they re-open the dialog.
+        scores = getattr(self, '_scores_dialog', None)
+        if scores is not None and scores.isVisible():
+            try:
+                scores._populate_table()
+            except Exception as e:
+                print(f"[ingest qplus] score dialog refresh failed: {e}",
+                      flush=True)
+
         return match_idx is not None
 
     def closeEvent(self, event):
