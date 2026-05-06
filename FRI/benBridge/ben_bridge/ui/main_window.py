@@ -3166,9 +3166,14 @@ For more information, see the README file."""
         engine_block = f"\n\n{engine_text}" if engine_text else ""
         # Tell Claude which bidding system the table is actually using so a
         # Precision-configured user gets Precision-style recommendations
-        # ("1♣ = 16+", strong-club responses, etc.) instead of generic SAYC.
-        # Card-play hints don't depend on the system, so this only kicks
-        # in during bidding.
+        # ("1♣ = 16+", strong-club responses, etc.) and an SAYC-configured
+        # user gets strict SAYC. Card-play hints don't depend on the
+        # system, so this only kicks in during bidding.
+        #
+        # The clause is deliberately strict: Claude must apply the chosen
+        # system's natural meanings only. No "SAYC-flavoured" hedging, no
+        # crossing systems mid-recommendation, no falling back on a
+        # different convention if the chosen system has nothing to say.
         system_clause = ""
         if phase == 'bidding':
             try:
@@ -3176,29 +3181,33 @@ For more information, see the README file."""
                 prefs = get_config_manager().config.preferences
                 engine = (prefs.bidding_engine or 'BEN').strip()
                 native = (prefs.native_bidding_system or 'SAYC').strip()
-                if engine.lower() == 'native':
-                    if native.lower() == 'precision':
-                        system_clause = (
-                            " The table is playing **Precision** "
-                            "(strong-club, 1♣ = 16+, 1NT = 14-16, 2♣ = 11-15 "
-                            "with 6+ clubs, transfer responses to 1♣). Apply "
-                            "Precision conventions and bid descriptions "
-                            "rather than SAYC."
-                        )
-                    else:
-                        system_clause = (
-                            f" The table is playing **{native}** "
-                            "(SAYC / 2-over-1 hybrid: 5-card majors, strong "
-                            "1NT 15-17, 2♣ Stayman, Jacoby transfers, "
-                            "weak 2-bids, Blackwood). Apply this system's "
-                            "conventions."
-                        )
-                else:
-                    system_clause = (
-                        " The table is using BEN's neural-net bidder "
-                        "(SAYC-flavoured). Apply standard SAYC / 2-over-1 "
-                        "conventions when explaining."
+                if engine.lower() == 'native' and native.lower() == 'precision':
+                    chosen, summary = (
+                        "Precision",
+                        "strong-club: 1♣ = 16+ any shape; 1♦ = 11-15 (often "
+                        "2-card minor with 4441 / 4-4-4-1); 1♥/1♠ = 11-15 "
+                        "with 5+; 1NT = 14-16 balanced; 2♣ = 11-15 with 6+ "
+                        "clubs; 2♦ = three-suiter 11-15 short diamonds; "
+                        "2♥/2♠ = weak two; 1♣-1♦ = 0-7 negative; positive "
+                        "responses 8+ HCP",
                     )
+                else:
+                    # Both BEN-NN and the rule-based "SAYC" map to strict SAYC.
+                    chosen, summary = (
+                        "SAYC (Standard American Yellow Card)",
+                        "5-card majors; strong 1NT 15-17 balanced; 2♣ Stayman; "
+                        "Jacoby transfers; weak 2♦/2♥/2♠; 2♣ = 22+ HCP or "
+                        "any game-forcing strong hand; Blackwood 4NT for aces; "
+                        "negative doubles through 2♠; standard takeout doubles",
+                    )
+                system_clause = (
+                    f" The table is playing strict **{chosen}**. Apply "
+                    f"only this system's bid meanings — {summary}. Do "
+                    "NOT mix in conventions from any other system. If a "
+                    "previous bid in the auction is naturally interpreted "
+                    f"differently in {chosen}, treat it as the {chosen} "
+                    "meaning even if BEN's suggestion implies otherwise."
+                )
             except Exception:
                 # Config not available — fall back to a system-agnostic prompt.
                 pass
