@@ -4135,6 +4135,7 @@ class ClaudeAnalysisThread(QThread):
     def run(self):
         import shutil
         import subprocess
+        import json as _json
 
         results = []
         total = max(1, len(self._povs))
@@ -4157,20 +4158,25 @@ class ClaudeAnalysisThread(QThread):
                 "Plain text only, no markdown.\n\n"
                 f"{self._hand_text}"
             )
+            text = ""
+            model_label = ""
             try:
                 result = subprocess.run(
-                    ['claude', '-p', '--max-turns', '1', prompt],
+                    ['claude', '-p', '--max-turns', '1',
+                     '--model', 'opus',
+                     '--output-format', 'json', prompt],
                     capture_output=True, text=True, timeout=120,
                 )
-                text = ""
-                if result.returncode == 0 and len(result.stdout.strip()) > 10:
-                    text = result.stdout.strip()
-                else:
-                    # Surface why claude produced nothing usable: exit code
-                    # + first line of stderr if any. The on_finished
-                    # callback turns empty text into a yellow diagnostic
-                    # block, so this gets folded into a longer message via
-                    # the player-name prefix on display.
+                if result.returncode == 0 and result.stdout.strip():
+                    try:
+                        payload = _json.loads(result.stdout)
+                        text = (payload.get('result') or '').strip()
+                        model_label = self._friendly_model_label(
+                            payload.get('modelUsage') or {})
+                    except Exception:
+                        # Fall back to raw stdout if JSON parsing fails.
+                        text = result.stdout.strip()
+                if not text or len(text) <= 10:
                     err_first = ''
                     if result.stderr:
                         err_first = result.stderr.strip().splitlines()[0]
@@ -4182,10 +4188,44 @@ class ClaudeAnalysisThread(QThread):
                 text = "(claude timed out after 120s)"
             except Exception as ex:
                 text = f"(analysis failed: {ex})"
-            results.append({'player': name, 'seat': seat, 'text': text})
+            results.append({
+                'player': name, 'seat': seat,
+                'text': text, 'model': model_label,
+            })
             self.progress.emit(i + 1, total, f"Finished {name}")
 
         self.finished_analyses.emit(results)
+
+    @staticmethod
+    def _friendly_model_label(model_usage: dict) -> str:
+        """Pick the dominant model from `modelUsage` and prettify the
+        slug, e.g. 'claude-haiku-4-5-20251001' -> 'Claude Haiku 4.5'."""
+        if not model_usage:
+            return ""
+
+        def _score(entry):
+            if not isinstance(entry, dict):
+                return 0
+            return (int(entry.get('inputTokens') or 0)
+                    + int(entry.get('outputTokens') or 0)
+                    + int(entry.get('cacheReadInputTokens') or 0)
+                    + int(entry.get('cacheCreationInputTokens') or 0))
+
+        slug = max(model_usage.keys(), key=lambda k: _score(model_usage[k]))
+        # Strip an "[1m]"-style suffix and the trailing -YYYYMMDD date.
+        core = slug.split('[', 1)[0]
+        parts = core.split('-')
+        if parts and parts[-1].isdigit() and len(parts[-1]) == 8:
+            parts = parts[:-1]
+        # parts now look like e.g. ['claude', 'haiku', '4', '5'] or
+        # ['claude', 'opus', '4', '7'].  Re-emit with title case and
+        # join the trailing version digits with a dot.
+        if len(parts) >= 4 and parts[0] == 'claude':
+            family = parts[1].title()
+            ver = '.'.join(parts[2:])
+            return f"Claude {family} {ver}"
+        # Fallback: just title-case the slug.
+        return ' '.join(p.title() for p in parts) or slug
 
 
 # --- Main Game Window ---
@@ -4303,6 +4343,7 @@ class PokerWindow(QMainWindow):
         self._current_hero_hand_class = None
         self._current_hero_starting_stack = None
         self._all_in_seen_this_hand = set()  # names that went all-in this hand
+        self._hand_in_progress = False  # gates re-clicks of "New Hand"
 
     @staticmethod
     def _fresh_table_stats() -> dict:
@@ -5275,7 +5316,31 @@ class PokerWindow(QMainWindow):
         self.action_log.append(msg)
         if len(self.action_log) > 5:
             self.action_log = self.action_log[-5:]
-        self.log_label.setText(" | ".join(self.action_log))
+        spectating = getattr(self, '_hero_folded_spectating', False)
+        view_idx = getattr(self, '_spectator_view_idx', -1)
+        # Don't repaint the visible strip while a folded spectator is
+        # parked on a past street — they choose when to advance.
+        if not (spectating and view_idx >= 0):
+            self.log_label.setText(" | ".join(self.action_log))
+        # Keep the current-street snapshot's action_log fresh while the
+        # hero is in spectator mode, so flipping back to "now" via Next
+        # Street shows the live tail (and so the hero's own fold message
+        # ends up in the preflop-fold snapshot, which is captured before
+        # the fold message is logged).  If the user is currently parked
+        # on this same street's snapshot, also refresh the displayed log
+        # so events on their viewed street appear without forcing them
+        # to navigate.
+        if spectating and self.street_idx < len(STREETS):
+            try:
+                self._spectator_record_snapshot(
+                    STREETS[self.street_idx], self.street_idx,
+                    self.board, self.action_log)
+                snaps = getattr(self, '_spectator_street_snapshots', [])
+                if (0 <= view_idx < len(snaps)
+                        and snaps[view_idx].get('street_idx') == self.street_idx):
+                    self._spectator_show_snapshot(view_idx)
+            except Exception:
+                pass
         # Also write to file
         self.write_log(msg, include_stats=include_stats)
         # Track for Theory of Mind analysis
@@ -5470,6 +5535,17 @@ class PokerWindow(QMainWindow):
 
     def deal_hand(self):
         """Start a new hand."""
+        # Block re-entry while a hand is in progress so the human can't
+        # click "New Hand" mid-hand and burn other players' blinds.
+        if getattr(self, '_hand_in_progress', False):
+            return
+        # If the hero is still parked in spectator mode from the previous
+        # hand (paging through streets), tear that UI down before starting
+        # the next hand.
+        if getattr(self, '_hero_folded_spectating', False):
+            self._exit_spectator_mode()
+        self._hand_in_progress = True
+        self.new_hand_btn.setEnabled(False)
         self.hand_number += 1
         self.action_log = []
         self.action_history = []  # Reset for Theory of Mind
@@ -5543,6 +5619,8 @@ class PokerWindow(QMainWindow):
         # Check if hero is busted
         hero = self.players[0]
         if hero.stack <= 0:
+            self._hand_in_progress = False
+            self.new_hand_btn.setEnabled(True)
             reply = QMessageBox.question(
                 self, "Game Over",
                 "You're out of chips! Would you like to start a new game?",
@@ -5554,6 +5632,8 @@ class PokerWindow(QMainWindow):
 
         active_count = sum(1 for p in self.players if p.active)
         if active_count < 2:
+            self._hand_in_progress = False
+            self.new_hand_btn.setEnabled(True)
             QMessageBox.information(self, "Game Over", "You've won! All opponents are eliminated!")
             return
 
@@ -5859,10 +5939,26 @@ class PokerWindow(QMainWindow):
         self._spectator_prev_btn.setVisible(True)
         self._spectator_next_btn.setVisible(True)
 
-        # If viewing latest, snap view index to current street_idx
-        if not hasattr(self, '_spectator_view_idx'):
-            self._spectator_view_idx = -1
+        # Pin the view to a snapshot of the moment-of-fold so the live
+        # game (which keeps running for active players) doesn't drag the
+        # board / log forward on the spectator's screen.  They click
+        # Next Street to advance at their own pace.
+        self._capture_spectator_snapshot()
+        n = self._spectator_snapshot_count()
+        self._spectator_view_idx = max(0, n - 1)
+        self._spectator_show_snapshot(self._spectator_view_idx)
         self._update_spectator_nav_buttons()
+
+    def _capture_spectator_snapshot(self):
+        """Capture a snapshot of the current street's state.  Used at
+        fold time and at hand end so the spectator can navigate through
+        every street including the showdown."""
+        try:
+            street = STREETS[self.street_idx] if self.street_idx < len(STREETS) else "Showdown"
+        except Exception:
+            street = "Preflop"
+        self._spectator_record_snapshot(
+            street, self.street_idx, self.board, self.action_log)
 
     def _exit_spectator_mode(self):
         """Restore normal UI after spectator hand ends.
@@ -5955,11 +6051,13 @@ class PokerWindow(QMainWindow):
             self.table.update()
         except Exception:
             pass
-        # Replace the action log row with this street's tail.
+        # Replace the visible action-log strip with this snapshot's tail.
+        # Only touch the displayed label — self.action_log stays as the
+        # live log so future snapshots and outgoing broadcasts keep
+        # working unchanged.
         try:
             log = snap.get('action_log', [])
-            self.action_log = list(log)[-5:]
-            self.log_label.setText(" | ".join(self.action_log))
+            self.log_label.setText(" | ".join(list(log)[-5:]))
         except Exception:
             pass
 
@@ -6201,6 +6299,20 @@ class PokerWindow(QMainWindow):
         current_street = STREETS[self.street_idx]
         self._capture_street_stats(current_street)
 
+        # Snapshot the JUST-ENDED street so a folded spectator can
+        # navigate back to it (with this street's full action tail).
+        # Broadcast it so guests get the same history.
+        try:
+            self._spectator_record_snapshot(
+                current_street, self.street_idx, self.board, self.action_log)
+            if (self.network_mode == "host" and self.network_server
+                    and hasattr(self.network_server, "broadcast_board_snapshot")):
+                self.network_server.broadcast_board_snapshot(
+                    current_street, self.street_idx,
+                    [str(c) for c in self.board], list(self.action_log))
+        except Exception:
+            pass
+
         # Reset bets for next round
         for p in self.players:
             p.bet_in_round = 0
@@ -6292,8 +6404,15 @@ class PokerWindow(QMainWindow):
     def end_hand(self):
         """End the hand and determine winner."""
         self.disable_human_actions()
-        if self._hero_folded_spectating:
-            self._exit_spectator_mode()
+        # Hand is complete — re-enable "New Hand".  Network-client mode
+        # keeps the button disabled separately (the host controls flow).
+        self._hand_in_progress = False
+        if self.network_mode != "client":
+            self.new_hand_btn.setEnabled(True)
+        # NOTE: do NOT exit spectator mode here.  A folded player should
+        # be able to keep paging through streets (including showdown)
+        # until they're ready to start the next hand.  The exit happens
+        # when deal_hand() begins.
 
         # Capture final street stats before ending (guard against out-of-bounds
         # since end_betting_round already increments street_idx past the last street)
@@ -6498,6 +6617,32 @@ class PokerWindow(QMainWindow):
 
         # Update display
         self.update_all_panels()
+
+        # Capture a final "showdown" snapshot so a folded spectator can
+        # navigate to the completed board + winner message.  Stored under
+        # an out-of-range street_idx so it sits after Preflop/Flop/Turn/
+        # River.  Host broadcasts so each client sees the same final
+        # frame.
+        showdown_idx = len(STREETS)
+        try:
+            self._spectator_record_snapshot(
+                "Showdown", showdown_idx, self.board, self.action_log)
+            if (self.network_mode == "host" and self.network_server
+                    and hasattr(self.network_server, "broadcast_board_snapshot")):
+                self.network_server.broadcast_board_snapshot(
+                    "Showdown", showdown_idx,
+                    [str(c) for c in self.board],
+                    list(self.action_log))
+        except Exception:
+            pass
+        # If hero is parked in spectator mode, refresh nav button states
+        # and restore their frozen snapshot view (end_hand has been
+        # mutating the live board/pot which would otherwise leak through).
+        if getattr(self, '_hero_folded_spectating', False):
+            self._update_spectator_nav_buttons()
+            view_idx = getattr(self, '_spectator_view_idx', -1)
+            if view_idx >= 0:
+                self._spectator_show_snapshot(view_idx)
 
         # Move dealer button to next player with chips
         self.dealer_idx = (self.dealer_idx + 1) % len(self.players)
@@ -7235,12 +7380,13 @@ class PokerWindow(QMainWindow):
             for a in analyses:
                 name = a.get('player', '?')
                 text = a.get('text', '').strip()
+                model = (a.get('model') or '').strip() or 'Claude'
                 if not text:
                     fail_block = QLabel(
-                        f"Claude — {name}: (no analysis returned — "
+                        f"{model} — {name}: (no analysis returned — "
                         "claude may have failed, timed out, or hit a "
                         "rate limit; check the terminal for stderr)")
-                    fail_block.setFont(QFont('Arial', 13))
+                    fail_block.setFont(QFont('Arial', 18))
                     fail_block.setWordWrap(True)
                     fail_block.setStyleSheet(
                         "color: #fc6; background-color: #2a1a1a; padding: 10px;"
@@ -7248,8 +7394,8 @@ class PokerWindow(QMainWindow):
                     )
                     analysis_layout.addWidget(fail_block)
                     continue
-                block = QLabel(f"Claude — {name}:\n{text}")
-                block.setFont(QFont('Arial', 14))
+                block = QLabel(f"{model} — {name}:\n{text}")
+                block.setFont(QFont('Arial', 18))
                 block.setWordWrap(True)
                 block.setStyleSheet(
                     "color: #8f8; background-color: #1a2a1a; padding: 10px;"
@@ -8161,11 +8307,12 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             for a in analyses:
                 name = a.get('player', '?')
                 text = (a.get('text') or '').strip()
+                model = (a.get('model') or '').strip() or 'Claude'
                 if not text:
                     fail_block = QLabel(
-                        f"Claude — {name} (host): (no analysis — host's "
+                        f"{model} — {name} (host): (no analysis — host's "
                         "claude returned nothing for this POV)")
-                    fail_block.setFont(QFont('Arial', 13))
+                    fail_block.setFont(QFont('Arial', 18))
                     fail_block.setWordWrap(True)
                     fail_block.setStyleSheet(
                         "color: #fc6; background-color: #2a1a1a; padding: 10px;"
@@ -8173,8 +8320,8 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                     )
                     target_layout.addWidget(fail_block)
                     continue
-                block = QLabel(f"Claude — {name} (host):\n{text}")
-                block.setFont(QFont('Arial', 14))
+                block = QLabel(f"{model} — {name} (host):\n{text}")
+                block.setFont(QFont('Arial', 18))
                 block.setWordWrap(True)
                 block.setStyleSheet(
                     "color: #8f8; background-color: #1a2a1a; padding: 10px;"
@@ -8789,9 +8936,13 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         except Exception as ex:
             print(f"[client] hand-end log failed: {ex}")
 
-        # Folded clients exit spectator UI now that the hand is over.
+        # Folded clients stay parked in spectator mode so they can keep
+        # paging through streets (including the showdown snapshot the
+        # host broadcasts).  Spectator UI tears down only when the next
+        # hand begins (server pushes a new "hand_start").  Refresh nav
+        # button enabled-state in case the showdown snapshot just arrived.
         if getattr(self, '_hero_folded_spectating', False):
-            self._exit_spectator_mode()
+            self._update_spectator_nav_buttons()
 
         if hand_summary:
             try:
