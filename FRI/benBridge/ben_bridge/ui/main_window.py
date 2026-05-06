@@ -3140,6 +3140,23 @@ For more information, see the README file."""
             else:
                 lines.append("You are leading to the next trick.")
 
+            # Cards still outstanding (not played in any trick or current
+            # trick). Pre-computed so Claude doesn't have to recount from
+            # the trick history — anchors the answer with concrete totals.
+            try:
+                remaining = board.remaining_cards_by_suit()
+                lines.append(
+                    "Remaining cards (not yet played; you / partner / opponents "
+                    "still hold these):"
+                )
+                for suit in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
+                    ranks = remaining.get(suit, [])
+                    sym = suit_chars[suit]
+                    rank_str = ''.join(r.to_char() for r in ranks) if ranks else '-'
+                    lines.append(f"  {sym}: {rank_str} ({len(ranks)})")
+            except Exception:
+                pass
+
         return "\n".join(lines)
 
     def _build_hint_prompt(self, phase: str, seat, state_text: str, engine_text: str) -> str:

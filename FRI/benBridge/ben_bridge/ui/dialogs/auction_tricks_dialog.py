@@ -127,7 +127,61 @@ class AuctionTricksDialog(QDialog):
 
             layout.addWidget(tricks_frame)
 
+        # Outstanding cards by suit — useful for spotting "I hold all
+        # the remaining diamonds" situations at a glance.
+        if self.board is not None:
+            remaining_frame = self._build_remaining_frame()
+            if remaining_frame is not None:
+                layout.addWidget(remaining_frame)
+
         layout.addStretch()
+
+    def _build_remaining_frame(self):
+        """Build the 'Cards still out' frame, one row per suit listing
+        ranks not yet played (in any completed trick or the current trick).
+        Returns None if the board can't supply the data.
+        """
+        try:
+            remaining = self.board.remaining_cards_by_suit()
+        except AttributeError:
+            return None
+        except Exception:
+            return None
+        if not remaining:
+            return None
+
+        from ben_backend.models import Suit
+        frame = QFrame()
+        frame.setStyleSheet(
+            "QFrame { background-color: #f0e8e8; border: 1px solid #a0a0a0;"
+            " border-radius: 4px; }"
+        )
+        v = QVBoxLayout(frame)
+        fs = self.SYMBOL_FONT_SIZE
+        title = QLabel(
+            f'<b style="font-size:{fs}px">Cards still out</b>'
+        )
+        v.addWidget(title)
+
+        suit_order = [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]
+        suit_names_full = {
+            Suit.SPADES: 'SPADES', Suit.HEARTS: 'HEARTS',
+            Suit.DIAMONDS: 'DIAMONDS', Suit.CLUBS: 'CLUBS',
+        }
+        for suit in suit_order:
+            ranks = remaining.get(suit, [])
+            symbol = self.SUIT_SYMBOLS.get(suit_names_full[suit], '?')
+            color = self._get_suit_color(suit_names_full[suit])
+            # Rank.to_char() already produces 'A','K','Q','J','T','9'…'2'
+            # in declaration order, so the joined string reads high → low.
+            rank_chars = ' '.join(r.to_char() for r in ranks) if ranks else '—'
+            row = QLabel(
+                f'<span style="color:{color};font-size:{fs}px">{symbol}</span>'
+                f'<span style="font-size:{fs}px">  {rank_chars}'
+                f'   <span style="color:#666">({len(ranks)})</span></span>'
+            )
+            v.addWidget(row)
+        return frame
 
     def _populate_auction(self):
         """Fill in the auction bids."""

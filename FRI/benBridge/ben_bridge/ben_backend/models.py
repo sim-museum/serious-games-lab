@@ -509,6 +509,26 @@ class BoardState:
                 total += self.hands[seat].hcp()
         return total
 
+    def remaining_cards_by_suit(self) -> Dict[Suit, List[Rank]]:
+        """Cards still outstanding (not yet played in any trick).
+
+        Walks completed tricks plus any in-progress trick. For each suit
+        returns ranks in display order (ACE first). Useful for "what's
+        still out" annotations in the play UI and for AI/Claude prompts
+        that would otherwise have to recount from the trick history.
+        """
+        played: set = set()
+        for trick in self.tricks:
+            for card in trick.cards:
+                played.add((card.suit, card.rank))
+        if self.current_trick:
+            for card in self.current_trick.cards:
+                played.add((card.suit, card.rank))
+        result: Dict[Suit, List[Rank]] = {}
+        for suit in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
+            result[suit] = [r for r in Rank if (suit, r) not in played]
+        return result
+
     def to_dict(self, hidden_seats: List[Seat] = None) -> Dict[str, Any]:
         """Serialize board state to dict for network transmission.
 
