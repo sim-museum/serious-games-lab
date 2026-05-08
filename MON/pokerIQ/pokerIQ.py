@@ -1013,7 +1013,12 @@ class PlayerPanel(QFrame):
         # handled purely by font sizing in the name label.
         self.setFrameStyle(QFrame.Shape.Box | QFrame.Shadow.Raised)
         self.setLineWidth(3)
-        self.setFixedSize(240, 235)
+        # 235 wasn't tall enough to fit name (~30) + stack (~30) + cards
+        # (112) + bet line (~30) + best-hand line (~30) plus margins,
+        # so the made-hand label at the bottom — "two pair", "A-high",
+        # "bottom pair (3s)" etc. — got clipped by the panel border.
+        # Bump to 285 so the whole stack of rows shows comfortably.
+        self.setFixedSize(240, 285)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
@@ -1066,11 +1071,15 @@ class PlayerPanel(QFrame):
 
         layout.addWidget(cards_widget)
 
-        # Bet amount
+        # Bet amount — hidden by default; only takes space when the
+        # player has chips committed this round. The earlier always-
+        # visible empty label was the blank rectangle that appeared
+        # between the cards and the made-hand label on every panel.
         self.bet_label = QLabel("")
         self.bet_label.setFont(QFont('Arial', 15, QFont.Weight.Bold))
         self.bet_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.bet_label.setStyleSheet("color: yellow;")
+        self.bet_label.setVisible(False)
         layout.addWidget(self.bet_label)
 
         # "Current best hand" line — shown for any player whose cards are
@@ -1133,8 +1142,10 @@ class PlayerPanel(QFrame):
 
         if self.player.bet_in_round > 0:
             self.bet_label.setText(f"Bet: ${self.player.bet_in_round}")
+            self.bet_label.setVisible(True)
         else:
             self.bet_label.setText("")
+            self.bet_label.setVisible(False)
 
         # Update position label
         self.pos_label.setText(self.position_label_text)
@@ -4904,7 +4915,7 @@ class ClaudeAnalysisThread(QThread):
     finished_analyses = pyqtSignal(list)
 
     def __init__(self, hand_text: str, povs: list, parent=None, *,
-                 mode: str = 'critique'):
+                 mode: str = 'critique', retro_word_limit: int = 80):
         """
         Args:
             hand_text: The full hand log to critique / annotate.
@@ -4912,12 +4923,18 @@ class ClaudeAnalysisThread(QThread):
                   For single-player use a single entry like
                   [{'name': 'Hero', 'seat': 0}].
             mode: 'critique' (default) or 'annotate'.
+            retro_word_limit: word ceiling for the RETROSPECTIVE block in
+                annotate mode. Caller scales by hand-loss severity so a
+                bad beat triggers a longer post-mortem (more help when
+                the player needs it) and a small loss / win stays
+                terse.
         """
         super().__init__(parent)
         self._hand_text = hand_text
         self._povs = list(povs)
         self._cancelled = False
         self._mode = mode
+        self._retro_word_limit = max(40, int(retro_word_limit))
 
     def cancel(self):
         self._cancelled = True
@@ -4945,27 +4962,19 @@ class ClaudeAnalysisThread(QThread):
                 "(2) After all per-action annotations, on a NEW line, "
                 "output the literal marker:\n"
                 "  RETROSPECTIVE:\n"
-                "Then 4-8 short paragraphs (one blank line between each) "
-                f"reviewing the hand WITH FULL INFORMATION, since you "
-                f"now know everyone's hole cards, the pot at every "
-                f"street (in the '=== end of <street>' lines), each "
-                f"player's made hand at each street, and equity at "
-                f"each street. Cover at minimum:\n"
-                f"  • The strategic picture: who actually had what, "
-                f"who was ahead/behind on each street, how the equity "
-                f"swung as the board ran out.\n"
-                f"  • Whether {name}'s line was correct given the "
-                f"perfect information you have now (vs. the imperfect "
-                f"info {name} had at the table).\n"
-                f"  • The single most important decision in the hand "
-                f"and the cheaper alternative if {name} chose poorly.\n"
-                f"  • What {name} could not have known but should "
-                f"watch for next time (action-from-villain tells, "
-                f"sizing tells, board-texture spots).\n"
-                f"  • Pot-size context — was the pot the right size "
-                f"for the hand strength on each street?\n\n"
-                "Plain text only, no markdown headings, no bullets — "
-                "just paragraphs separated by blank lines.\n\n"
+                f"Then ≤{self._retro_word_limit} words total. Cover, "
+                "with full hindsight (everyone's hole cards + made-hand "
+                "+ equity on each street are visible to you):\n"
+                f"  • The single biggest decision {name} faced and "
+                f"whether the line was correct.\n"
+                f"  • One concrete takeaway for the next similar spot.\n"
+                f"  • If the word budget allows (>=160 words), also "
+                f"comment on equity swings street-by-street and what "
+                f"{name} could not have known at the table but should "
+                f"watch for next time.\n"
+                f"Hard limit: {self._retro_word_limit} words. Be terse, "
+                "no preamble, no bullets, no markdown — just short "
+                "paragraphs separated by blank lines.\n\n"
                 f"Annotate from {name}'s perspective. Hand log:\n\n"
                 f"{self._hand_text}"
             )
@@ -5869,7 +5878,11 @@ class PokerWindow(QMainWindow):
             panel = PlayerPanel(self.players[i], i)
             self.player_panels.append((i, panel))
             left_panel.addWidget(panel)
-            left_panel.addSpacing(20)
+            # 50-px gap between Tim and Bruce (was 20). Some of the
+            # vertical space recovered from the now-hidden empty
+            # bet_label is spent here so the two left-column panels
+            # don't bump against each other.
+            left_panel.addSpacing(50)
         left_panel.addStretch()
         game_layout.addLayout(left_panel)
 
@@ -5908,7 +5921,8 @@ class PokerWindow(QMainWindow):
         panel = PlayerPanel(self.players[1], 1)
         self.player_panels.append((1, panel))
         right_panel.addWidget(panel)
-        right_panel.addSpacing(20)
+        # 50-px gap between Steve and Angela, mirroring the left column.
+        right_panel.addSpacing(50)
         panel = PlayerPanel(self.players[2], 2)
         self.player_panels.append((2, panel))
         right_panel.addWidget(panel)
@@ -5967,12 +5981,42 @@ class PokerWindow(QMainWindow):
         action_layout.addWidget(self.raise_btn)
 
         action_layout.addStretch()
+        # Stash the QHBoxLayout reference so spectator-mode code can
+        # add its ◀ ▶ Close buttons to the action ROW, not the outer
+        # vertical layout. Going via fold_btn.parentWidget().layout()
+        # used to return game_container_layout (vertical), which made
+        # the spectator buttons stack instead of share one row.
+        self._action_layout = action_layout
         game_container_layout.addLayout(action_layout)
 
-        # Graphical Stats Panel (inside game container)
+        # Graphical Stats Panel (inside game container) + spectator
+        # button column.  The two share a horizontal row so the ◀ ▶
+        # Close-View buttons appear directly to the right of the
+        # Pot Odds / Equity columns when the hero folds, instead of
+        # being squeezed into the action-button row above where they
+        # would overlap the player panels and the
+        # "<winner> wins $X" message.  The button column stays
+        # hidden until _enter_spectator_mode flips it on.
+        stats_row = QWidget()
+        stats_row_layout = QHBoxLayout(stats_row)
+        stats_row_layout.setContentsMargins(0, 0, 0, 0)
+        stats_row_layout.setSpacing(8)
+
         self.stats_panel = StatsPanel()
         self.stats_panel.setVisible(self.show_stats)
-        game_container_layout.addWidget(self.stats_panel)
+        stats_row_layout.addWidget(self.stats_panel, stretch=1)
+
+        self._spectator_button_box = QWidget()
+        self._spectator_button_box.setFixedWidth(190)
+        spec_col = QVBoxLayout(self._spectator_button_box)
+        spec_col.setContentsMargins(6, 6, 6, 6)
+        spec_col.setSpacing(8)
+        self._spectator_button_box.setVisible(False)
+        # Buttons themselves are populated lazily in _enter_spectator_mode.
+        self._spectator_button_col_layout = spec_col
+        stats_row_layout.addWidget(self._spectator_button_box)
+
+        game_container_layout.addWidget(stats_row)
 
         main_layout.addWidget(self.game_container, stretch=1)
 
@@ -7200,30 +7244,30 @@ class PokerWindow(QMainWindow):
                     pass
 
         if not hasattr(self, '_spectator_next_btn'):
-            btn_style = ("QPushButton { font-size: 18px; font-weight: bold; "
-                         "border-radius: 5px; padding: 6px; "
+            btn_style = ("QPushButton { font-size: 14px; font-weight: bold; "
+                         "border-radius: 5px; padding: 6px 10px; "
                          "background-color: #357; color: white; }"
                          "QPushButton:hover { background-color: #468; }"
                          "QPushButton:disabled { background-color: #234; color: #678; }")
+            # Three compact buttons stacked vertically inside the
+            # spectator button column on the RIGHT of the stats panel.
+            # 170×44 each + 8 px spacing = ~152 px tall, fits inside
+            # the StatsPanel's 260-300 px height.
             self._spectator_prev_btn = QPushButton("◀ Previous Street")
-            self._spectator_prev_btn.setFixedSize(200, 55)
+            self._spectator_prev_btn.setFixedSize(170, 44)
             self._spectator_prev_btn.setStyleSheet(
                 btn_style.replace('#357', '#553').replace('#468', '#664'))
             self._spectator_prev_btn.setShortcut("Left")
             self._spectator_prev_btn.clicked.connect(self._spectator_prev)
 
             self._spectator_next_btn = QPushButton("Next Street ▶")
-            self._spectator_next_btn.setFixedSize(200, 55)
+            self._spectator_next_btn.setFixedSize(170, 44)
             self._spectator_next_btn.setStyleSheet(btn_style)
             self._spectator_next_btn.setShortcut("Right")
             self._spectator_next_btn.clicked.connect(self._spectator_next)
 
-            # "Close View" — the only path back to the default table
-            # view from the folded-spectator state. Sits below the
-            # ◀ ▶ nav buttons so the user can scrub the hand and
-            # then dismiss when they're done.
             self._spectator_close_btn = QPushButton("Close View")
-            self._spectator_close_btn.setFixedSize(200, 45)
+            self._spectator_close_btn.setFixedSize(170, 44)
             self._spectator_close_btn.setStyleSheet(
                 btn_style.replace('#357', '#633').replace('#468', '#844')
             )
@@ -7235,11 +7279,34 @@ class PokerWindow(QMainWindow):
             )
             self._spectator_close_btn.clicked.connect(self._exit_spectator_mode)
 
-            # Insert into the action button layout
-            action_layout = self.fold_btn.parentWidget().layout()
-            action_layout.addWidget(self._spectator_prev_btn)
-            action_layout.addWidget(self._spectator_next_btn)
-            action_layout.addWidget(self._spectator_close_btn)
+            # Drop the three buttons into the dedicated column to the
+            # RIGHT of the stats panel — built in _build_ui at the same
+            # time the StatsPanel is constructed. Using the stats-row
+            # column keeps them out of the action button row (which
+            # would overlap the table's "<winner> wins $X" message
+            # and the bottom edges of the player panels).
+            spec_col = getattr(self, '_spectator_button_col_layout', None)
+            if spec_col is not None:
+                spec_col.addWidget(self._spectator_prev_btn)
+                spec_col.addWidget(self._spectator_next_btn)
+                spec_col.addWidget(self._spectator_close_btn)
+                spec_col.addStretch()
+            else:
+                # Defensive fallback — older builds without the stats-
+                # row column. Keep the buttons in the action row so
+                # spectator mode at least works.
+                fallback = getattr(self, '_action_layout', None) \
+                    or self.fold_btn.parentWidget().layout()
+                fallback.addWidget(self._spectator_prev_btn)
+                fallback.addSpacing(12)
+                fallback.addWidget(self._spectator_next_btn)
+                fallback.addSpacing(12)
+                fallback.addWidget(self._spectator_close_btn)
+
+        # Show the dedicated button column (no-op if we used the
+        # fallback path above).
+        if hasattr(self, '_spectator_button_box'):
+            self._spectator_button_box.setVisible(True)
 
         self._spectator_prev_btn.setVisible(True)
         self._spectator_next_btn.setVisible(True)
@@ -7279,13 +7346,15 @@ class PokerWindow(QMainWindow):
         self._spectator_view_idx = -1
         self._spectator_street_snapshots = []
 
-        # Hide spectator buttons, restore action buttons.
+        # Hide spectator buttons + the dedicated column, restore action buttons.
         if hasattr(self, '_spectator_next_btn'):
             self._spectator_next_btn.setVisible(False)
         if hasattr(self, '_spectator_prev_btn'):
             self._spectator_prev_btn.setVisible(False)
         if hasattr(self, '_spectator_close_btn'):
             self._spectator_close_btn.setVisible(False)
+        if hasattr(self, '_spectator_button_box'):
+            self._spectator_button_box.setVisible(False)
         # Bring back the regular fold/check/call/raise rows AND the ToM
         # tab's mirror buttons; whether they're enabled is decided
         # later by enable_human_actions / disable_human_actions.
@@ -7469,18 +7538,37 @@ class PokerWindow(QMainWindow):
         msg = QMessageBox(self)
         msg.setIcon(QMessageBox.Icon.Warning)
         msg.setWindowTitle("Confirm big bet")
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        # Big headline ($amount + percentage) then a quieter subtitle.
+        # Rich text lets us size each line independently; the dialog
+        # stylesheet still pins the base font to 18 pt for buttons and
+        # any plain QLabel children.
         msg.setText(
-            f"This {label} commits ${amount} — {pct}% of your stack."
+            f"<div style='font-size:24px; font-weight:bold; "
+            f"color:#000; margin-bottom:6px;'>"
+            f"This {label} commits "
+            f"<span style='color:#a00000'>${amount:,}</span> — "
+            f"<span style='color:#a00000'>{pct}%</span> of your stack."
+            f"</div>"
+            f"<div style='font-size:18px; color:#333; margin-top:4px;'>"
+            f"Are you sure you want to continue?"
+            f"</div>"
         )
-        msg.setInformativeText("Continue?")
         msg.setStandardButtons(
             QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
         )
         msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
-        try:
-            msg.setStyleSheet(self._GAME_OVER_STYLE)
-        except AttributeError:
-            pass
+        # Style: same family as the Game Over palette but with extra
+        # padding so the larger headline doesn't feel cramped, and a
+        # wider min-width so the dollar / percentage line never wraps
+        # mid-amount.
+        msg.setStyleSheet(
+            "QMessageBox { background-color: #f0f0f0; }"
+            "QMessageBox QLabel { color: #000; background-color: transparent;"
+            " font-size: 18px; min-width: 540px; padding: 14px 10px; }"
+            "QMessageBox QPushButton { font-size: 18px; padding: 10px 28px;"
+            " min-width: 120px; }"
+        )
         return msg.exec() == QMessageBox.StandardButton.Ok
 
     def show_raise_dialog(self):
@@ -9154,7 +9242,17 @@ class PokerWindow(QMainWindow):
                      if 0 <= hero_seat < len(self.players) else "Hero")
         povs = [{'name': hero_name, 'seat': hero_seat}]
 
-        thread = ClaudeAnalysisThread(log_text, povs, mode='annotate')
+        # Loss-severity-scaled retrospective length: a flat 80-word
+        # post-mortem felt right for small losses, but if the hero
+        # just got crushed they probably need more help, not less.
+        # Scale linearly between 80 words (no loss) and 320 words
+        # (catastrophic loss) using the hand's net delta on the hero
+        # vs. their pre-hand stack.
+        loss_pct = self._compute_hero_loss_pct()
+        retro_words = int(round(80 + 240 * max(0.0, min(1.0, loss_pct))))
+
+        thread = ClaudeAnalysisThread(log_text, povs, mode='annotate',
+                                       retro_word_limit=retro_words)
 
         def on_progress(done, total, label):
             try:
@@ -9197,6 +9295,34 @@ class PokerWindow(QMainWindow):
         thread.start()
 
         dialog.show()
+
+    def _compute_hero_loss_pct(self) -> float:
+        """How badly did the hero lose this hand, as a fraction in [0, 1]?
+
+        0 = won or broke even, 1 = busted (lost the entire pre-hand
+        stack). Used to scale the Claude retrospective length: a small
+        loss / win gets the terse 80-word post-mortem, a catastrophic
+        loss gets up to 4× that. The idea is that the more help the
+        player needs, the more verbose Claude becomes.
+
+        Falls back to 0 (terse) when we don't have a starting stack
+        snapshot — better to under-talk than to spam on hands where the
+        delta is unknown.
+        """
+        try:
+            start = getattr(self, '_current_hero_starting_stack', None)
+            if start is None or start <= 0:
+                return 0.0
+            hero_seat = self.my_seat if self.my_seat is not None else 0
+            if not (0 <= hero_seat < len(self.players)):
+                return 0.0
+            current = int(self.players[hero_seat].stack)
+            delta = current - int(start)
+            if delta >= 0:
+                return 0.0           # won or broke even — no loss to atone for
+            return min(1.0, -delta / float(start))
+        except Exception:
+            return 0.0
 
     def _attach_claude_analysis_to_dialog(self, dialog, layout):
         """Kick off (or wait for) Claude critique(s). `layout` is the inner
@@ -9893,6 +10019,18 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         the Network menu is the only way to enter host or client mode.
         """
         menubar = self.menuBar()
+
+        # File menu — currently just an Exit entry, leftmost so it
+        # follows the standard desktop convention. Ctrl+Q is wired up
+        # alongside the menu click so power users don't have to mouse
+        # over to quit.
+        file_menu = menubar.addMenu("&File")
+        act_exit = QAction("E&xit", self)
+        act_exit.setShortcut("Ctrl+Q")
+        act_exit.setStatusTip("Quit PokerIQ")
+        act_exit.triggered.connect(self.close)
+        file_menu.addAction(act_exit)
+
         net_menu = menubar.addMenu("&Network")
 
         self.act_host = QAction("Host Game...", self)
