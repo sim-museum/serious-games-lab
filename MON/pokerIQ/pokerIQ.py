@@ -153,22 +153,34 @@ BOT_CUTE_NAMES = {
 DEFAULT_BOT_LINEUP = [
     # (seat_index, character_name, style_id). Five different approaches:
     # one calling station (Loose Bruce), one rock (Tight Tim), one
-    # opponent-modeller (Fluid Fiona), and two of the strongest
-    # raise-happy bots in the codebase — Sharkey Steve (GTO-leaning,
-    # polarised raises ~85% pot) and Aggro Angela (LAG, raises wide).
-    # Bots that hardly ever raise gave too quiet a game; this lineup
-    # forces the human to face frequent pre- and post-flop pressure.
-    # Seats 4 and 3 are the LEFT column of the table view
-    # (left_panel iterates [4, 3] top-to-bottom in MainWindow), so
-    # putting Sharkey Steve and Aggro Angela there is what gives
-    # them the requested left-side seats. Tim/Bruce land on the
-    # right column (seats 1, 2).
-    (1, "Tight Tim",      "tight"),      # rock — punishes loose play
-    (2, "Loose Bruce",    "loose"),      # calling station — variety
-    (3, "Aggro Angela",   "aggressive"), # LAG, raises wide and often (lower-left)
-    (4, "Sharkey Steve",  "shark"),      # GTO-leaning, value-raises hard (upper-left)
-    (5, "Fluid Fiona",    "tom"),        # opponent-modelling Theory-of-Mind
+    # opponent-modeller (Fluid Fiona), one GTO-leaning hard-raiser
+    # (Sharkey Steve) and one LAG (Aggro Angela). The seat numbers
+    # here are nominal — _make_random_bot_lineup() reshuffles the
+    # five bots across seats 1..5 every game so the hero never knows
+    # which personality is on their left versus their right.
+    (1, "Tight Tim",      "tight"),
+    (2, "Loose Bruce",    "loose"),
+    (3, "Aggro Angela",   "aggressive"),
+    (4, "Sharkey Steve",  "shark"),
+    (5, "Fluid Fiona",    "tom"),
 ]
+
+
+def _make_random_bot_lineup():
+    """Return ``[(name, style), ...]`` for the five bot seats with the
+    five canonical personalities placed in random order.
+
+    The hero is always seat 0, so this only shuffles seats 1..5. We
+    keep the canonical set of five personalities (so every game has
+    one of each: rock, calling station, LAG, shark, ToM) — the
+    randomisation is purely positional. That way the player can't
+    rely on "Steve is always on my left" to narrow ranges; they have
+    to read each bot from scratch each game.
+    """
+    import random
+    pool = [(name, style) for _seat, name, style in DEFAULT_BOT_LINEUP]
+    random.shuffle(pool)
+    return pool
 
 
 class PokerIQBotAdapter:
@@ -4252,7 +4264,9 @@ class HandSummaryDialog(QDialog):
 
     def __init__(self, street_stats, street_actions, board_by_street, player_results,
                  player_hands=None, made_hands_by_street=None,
-                 pot_by_street=None, parent=None):
+                 pot_by_street=None, street_reflections=None,
+                 reflection_status="Awaiting Claude (Opus 4.7) — perfect-hindsight reflections will appear under each street as they finish.",
+                 parent=None):
         super().__init__(parent)
         self.street_stats = street_stats  # {street: [(name, true_eq, perc_eq, pot_odds, active, is_hero), ...]}
         self.street_actions = street_actions  # {street: ["Player: action", ...]}
@@ -4261,6 +4275,13 @@ class HandSummaryDialog(QDialog):
         self.player_hands = player_hands or {}  # {name: [card_strs]}
         self.made_hands_by_street = made_hands_by_street or {}  # {street: {name: "hand description"}}
         self.pot_by_street = pot_by_street or {}  # {street: pot_after_street}
+        # Perfect-hindsight reflection paragraph for each street, written
+        # by Claude after the hand. Populated lazily — the dialog opens
+        # with placeholder text and `set_street_reflections` swaps it in
+        # once Claude finishes.
+        self.street_reflections = dict(street_reflections or {})
+        self._reflection_status = reflection_status
+        self._reflection_labels = {}  # {street: QLabel}
 
         self.setWindowTitle("Hand Summary - Stats")
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
@@ -4311,6 +4332,13 @@ class HandSummaryDialog(QDialog):
             panel.setMinimumHeight(panel_height)
             panel.setMaximumHeight(panel_height + 20)  # Slight flexibility
             streets_layout.addWidget(panel)
+            # Per-street perfect-hindsight reflection from Claude. Sits
+            # immediately under the equity/actions panel so the
+            # commentary lines up with the street it describes. Hidden
+            # for streets the hand never reached.
+            reflection_widget = self._create_reflection_widget(street)
+            if reflection_widget is not None:
+                streets_layout.addWidget(reflection_widget)
 
         # Don't add stretch - let panels take their natural size
         scroll_area.setWidget(streets_widget)
@@ -4344,6 +4372,70 @@ class HandSummaryDialog(QDialog):
         btn_layout.addWidget(back_btn)
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
+
+    def _create_reflection_widget(self, street):
+        """Yellow italic block under each street panel showing Claude's
+        perfect-hindsight commentary for that street.
+
+        Returns None for streets the hand never reached (no stats AND
+        no actions) so we don't leave dead "(not played)" gaps.
+        """
+        has_stats = street in self.street_stats
+        has_actions = bool(self.street_actions.get(street))
+        if not (has_stats or has_actions):
+            return None
+        text = (self.street_reflections.get(street)
+                or self._reflection_status)
+        is_placeholder = street not in self.street_reflections
+        wrap = QWidget()
+        wrap.setStyleSheet(
+            "background-color: #2a2410; border-left: 4px solid #ffd966;"
+            " border-radius: 6px;")
+        wrap_layout = QVBoxLayout(wrap)
+        wrap_layout.setContentsMargins(20, 10, 20, 12)
+        wrap_layout.setSpacing(6)
+        head = QLabel(f"Hindsight — {street}")
+        head.setStyleSheet(
+            "font-size: 16px; font-weight: bold; color: #ffd966;"
+            " background: transparent; border: none;")
+        wrap_layout.addWidget(head)
+        body = QLabel(text)
+        body.setWordWrap(True)
+        body.setStyleSheet(
+            "font-size: 17px; color: %s; background: transparent;"
+            " border: none; font-style: %s;"
+            % ("#bcae7a" if is_placeholder else "#ffd966",
+               "italic" if is_placeholder else "normal"))
+        wrap_layout.addWidget(body)
+        self._reflection_labels[street] = body
+        return wrap
+
+    def set_street_reflections(self, reflections: dict,
+                                status_text: str = ""):
+        """Swap in Claude's per-street paragraphs after the dialog is
+        already showing. Called from the host's analysis callback once
+        the annotate-mode Claude run finishes.
+
+        ``reflections`` is ``{street: paragraph}``. Streets missing from
+        the dict keep showing the placeholder; if the model produced
+        nothing useful, callers pass an empty dict and a ``status_text``
+        like "Claude returned no reflections." so the user knows why
+        the placeholder remained.
+        """
+        self.street_reflections = dict(reflections or {})
+        for street, label in list(self._reflection_labels.items()):
+            try:
+                if street in self.street_reflections:
+                    label.setText(self.street_reflections[street])
+                    label.setStyleSheet(
+                        "font-size: 17px; color: #ffd966;"
+                        " background: transparent; border: none;"
+                        " font-style: normal;")
+                elif status_text:
+                    label.setText(status_text)
+            except RuntimeError:
+                # Dialog was closed mid-flight; drop silently.
+                pass
 
     def create_street_panel(self, street):
         """Create a panel for one street with bar chart and actions."""
@@ -5231,19 +5323,36 @@ class ClaudeAnalysisThread(QThread):
                 "(2) After all per-action annotations, on a NEW line, "
                 "output the literal marker:\n"
                 "  RETROSPECTIVE:\n"
-                f"Then ≤{self._retro_word_limit} words total. Cover, "
-                "with full hindsight (everyone's hole cards + made-hand "
-                "+ equity on each street are visible to you):\n"
-                f"  • The single biggest decision {name} faced and "
-                f"whether the line was correct.\n"
-                f"  • One concrete takeaway for the next similar spot.\n"
-                f"  • If the word budget allows (>=160 words), also "
-                f"comment on equity swings street-by-street and what "
-                f"{name} could not have known at the table but should "
-                f"watch for next time.\n"
-                f"Hard limit: {self._retro_word_limit} words. Be terse, "
-                "no preamble, no bullets, no markdown — just short "
-                "paragraphs separated by blank lines.\n\n"
+                "Then a SEPARATE perfect-hindsight paragraph for EACH "
+                "street the hand reached, each prefixed by its own "
+                "literal STREET[<name>]: marker on its own line. "
+                "Streets that weren't played (e.g. hand folded preflop) "
+                "MUST be omitted entirely — do not emit a STREET[] "
+                "marker for them.\n\n"
+                "Format EXACTLY like this (omit any unreached street):\n"
+                "  STREET[Preflop]:\n"
+                f"  <hindsight on {name}'s preflop play, 1 short paragraph>\n"
+                "  STREET[Flop]:\n"
+                f"  <hindsight on {name}'s flop play, 1 short paragraph>\n"
+                "  STREET[Turn]:\n"
+                f"  <hindsight on {name}'s turn play, 1 short paragraph>\n"
+                "  STREET[River]:\n"
+                f"  <hindsight on {name}'s river play, 1 short paragraph>\n\n"
+                "Each paragraph has FULL hindsight — everyone's hole "
+                "cards, made-hand classes, and equity on that street "
+                "are visible to you. For each street the hero acted on:\n"
+                f"  • Was {name}'s decision correct given what could "
+                "be known at the table on that street?\n"
+                "  • What does the hindsight view (full information) "
+                f"reveal that {name} couldn't see?\n"
+                "  • One concrete takeaway for the next similar spot.\n\n"
+                f"Total budget across all street paragraphs: "
+                f"≤{self._retro_word_limit} words. Allocate roughly "
+                "evenly across the streets the hand reached, but spend "
+                "more on the pivotal street (biggest decision or "
+                f"biggest equity swing for {name}). Plain text only, "
+                "no preamble, no markdown — just short paragraphs "
+                "under each STREET[] marker.\n\n"
                 f"Annotate from {name}'s perspective. Hand log:\n\n"
                 f"{self._hand_text}"
             )
@@ -5362,17 +5471,14 @@ class PokerWindow(QMainWindow):
         # Initialize QSettings for preferences persistence
         self.settings = QSettings("PokerIQ", "PokerIQ")
 
-        # Initialize game state — keep this in sync with
-        # DEFAULT_BOT_LINEUP up top so reset_bots_to_default_lineup()
-        # reaches the same state.
-        self.players = [
-            Player("Hero (You)",      "human"),
-            Player("Tight Tim",       "tight"),       # right column, top
-            Player("Loose Bruce",     "loose"),       # right column, bottom
-            Player("Aggro Angela",    "aggressive"),  # left column, bottom
-            Player("Sharkey Steve",   "shark"),       # left column, top
-            Player("Fluid Fiona",     "tom"),         # opponent-modelling ToM
-        ]
+        # Hero stays at seat 0; the five bot personalities are placed
+        # at random across seats 1..5 every launch so the player has
+        # to identify each one by play, not by table position.
+        self.players = (
+            [Player("Hero (You)", "human")]
+            + [Player(name, style)
+               for name, style in _make_random_bot_lineup()]
+        )
 
         # Store original names and styles for restoring defaults
         self.original_player_info = {
@@ -5845,16 +5951,17 @@ class PokerWindow(QMainWindow):
                 player.clear_piq_bot()
 
     def reset_bots_to_default_lineup(self):
-        """Wipe every saved per-seat preference and apply DEFAULT_BOT_LINEUP.
+        """Wipe every saved per-seat preference and re-shuffle bots.
 
-        After this each non-human seat plays a genuinely different
-        approach (equity-pure / GTO-leaning / loose / exploit /
-        Theory-of-Mind) rather than five seats of the same style with
-        rotating names. Persists the cleared prefs to QSettings so the
-        next launch starts clean too.
+        Applies a fresh random arrangement of the canonical five
+        personalities across seats 1..5 (hero stays at seat 0), so
+        the user effectively gets a "deal me a new lineup" button.
+        Persists the cleared prefs to QSettings so the next launch
+        starts clean too.
         """
-        # Apply canonical lineup to the in-memory players.
-        for seat, name, style in DEFAULT_BOT_LINEUP:
+        # Apply a freshly shuffled lineup to the in-memory players.
+        shuffled = _make_random_bot_lineup()
+        for seat, (name, style) in enumerate(shuffled, start=1):
             if 0 <= seat < len(self.players):
                 self.players[seat].name = name
                 self.players[seat].style = style
@@ -6012,6 +6119,121 @@ class PokerWindow(QMainWindow):
         except (OSError, IOError):
             pass
         return ""
+
+    def _get_cached_hand_reflections(self):
+        """Return the cached Claude annotation/reflection bundle for the
+        current hand (``hand_number``), or None if nothing is cached.
+
+        The cache is populated by ``_ensure_hand_reflections_thread``'s
+        finished callback. Hand Summary and Hand Log share it so we
+        only ever spend one Claude call per hand even when the user
+        opens both dialogs.
+        """
+        cache = getattr(self, '_hand_reflection_cache', None) or {}
+        return cache.get(int(getattr(self, 'hand_number', 0) or 0))
+
+    def _ensure_hand_reflections_thread(self):
+        """Start the per-hand annotate-mode Claude thread if it hasn't
+        been started for this hand yet. Returns the running thread (so
+        the caller can connect a one-shot listener to its
+        ``finished_analyses`` signal) or ``None`` if Claude is
+        unavailable / no log to analyse.
+        """
+        hand = int(getattr(self, 'hand_number', 0) or 0)
+        if not hasattr(self, '_hand_reflection_threads'):
+            self._hand_reflection_threads = {}
+        if not hasattr(self, '_hand_reflection_cache'):
+            self._hand_reflection_cache = {}
+        existing = self._hand_reflection_threads.get(hand)
+        if existing is not None:
+            return existing
+        if hand in self._hand_reflection_cache:
+            return None  # already finished, nothing to subscribe to
+
+        import shutil
+        if not shutil.which('claude'):
+            return None
+        log_text = self._get_current_hand_log()
+        if not log_text:
+            return None
+
+        hero_seat = self.my_seat if self.my_seat is not None else 0
+        if not (0 <= hero_seat < len(self.players)):
+            return None
+        hero_name = self.players[hero_seat].name
+        povs = [{'name': hero_name, 'seat': hero_seat}]
+
+        loss_pct = self._compute_hero_loss_pct()
+        retro_words = int(round(80 + 240 * max(0.0, min(1.0, loss_pct))))
+
+        thread = ClaudeAnalysisThread(log_text, povs, mode='annotate',
+                                       retro_word_limit=retro_words)
+        self._hand_reflection_threads[hand] = thread
+
+        def _on_finished(analyses):
+            try:
+                if not analyses:
+                    self._hand_reflection_cache[hand] = {
+                        'annotations': {},
+                        'street_reflections': {},
+                        'retrospective_raw': '',
+                        'status': 'Claude returned no annotations.',
+                    }
+                else:
+                    ann_text = (analyses[0].get('text', '') or '').strip()
+                    actions_text, retro = self._split_retrospective(ann_text)
+                    self._hand_reflection_cache[hand] = {
+                        'annotations':
+                            self._parse_claude_annotations(actions_text),
+                        'street_reflections':
+                            self._parse_per_street_retrospective(retro),
+                        'retrospective_raw': retro,
+                        'status': '',
+                    }
+            finally:
+                self._hand_reflection_threads.pop(hand, None)
+                try:
+                    thread.deleteLater()
+                except Exception:
+                    pass
+
+        thread.finished_analyses.connect(_on_finished)
+        if not hasattr(self, '_claude_threads'):
+            self._claude_threads = []
+        self._claude_threads.append(thread)
+        thread.start()
+        return thread
+
+    def _subscribe_summary_to_reflections(self, dialog):
+        """Wire a ``HandSummaryDialog`` to the shared per-hand Claude
+        thread so its yellow placeholders are replaced with real
+        hindsight paragraphs as soon as the analysis finishes.
+
+        Safe to call multiple times for the same hand — every dialog
+        gets its own one-shot listener; the underlying thread is
+        shared.
+        """
+        thread = self._ensure_hand_reflections_thread()
+        if thread is None:
+            cached = self._get_cached_hand_reflections() or {}
+            try:
+                dialog.set_street_reflections(
+                    cached.get('street_reflections', {}),
+                    status_text=cached.get('status') or
+                    "Claude unavailable — no hindsight reflections.")
+            except RuntimeError:
+                pass
+            return
+
+        def _on_finished(analyses):
+            cached = self._get_cached_hand_reflections() or {}
+            try:
+                dialog.set_street_reflections(
+                    cached.get('street_reflections', {}),
+                    status_text=cached.get('status') or '')
+            except RuntimeError:
+                pass
+        thread.finished_analyses.connect(_on_finished)
 
     def _get_claude_hand_critique_sync(self, hand_text):
         """Get Claude critique of a poker hand synchronously.
@@ -7805,21 +8027,22 @@ class PokerWindow(QMainWindow):
         regardless of which window's stylesheet we descend from.
         """
         msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Icon.Warning)
+        # NoIcon removes the big red ! glyph and the wide blank column it
+        # used to reserve on the left side of the dialog.
+        msg.setIcon(QMessageBox.Icon.NoIcon)
         msg.setWindowTitle("Confirm big bet")
         msg.setTextFormat(Qt.TextFormat.RichText)
-        # Big headline ($amount + percentage) then a quieter subtitle.
-        # Rich text lets us size each line independently; the dialog
-        # stylesheet still pins the base font to 18 pt for buttons and
-        # any plain QLabel children.
+        # Both lines render at the same 24px weight so the "Are you sure"
+        # confirmation reads with the same emphasis as the headline.
         msg.setText(
             f"<div style='font-size:24px; font-weight:bold; "
-            f"color:#000; margin-bottom:6px;'>"
+            f"color:#000; margin-bottom:8px;'>"
             f"This {label} commits "
             f"<span style='color:#a00000'>${amount:,}</span> — "
             f"<span style='color:#a00000'>{pct}%</span> of your stack."
             f"</div>"
-            f"<div style='font-size:18px; color:#333; margin-top:4px;'>"
+            f"<div style='font-size:24px; font-weight:bold; "
+            f"color:#000; margin-top:4px;'>"
             f"Are you sure you want to continue?"
             f"</div>"
         )
@@ -7827,14 +8050,12 @@ class PokerWindow(QMainWindow):
             QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
         )
         msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
-        # Style: same family as the Game Over palette but with extra
-        # padding so the larger headline doesn't feel cramped, and a
-        # wider min-width so the dollar / percentage line never wraps
-        # mid-amount.
+        # min-width bumped to 720 so "100% of your stack" can't get
+        # truncated by the QMessageBox auto-sizer.
         msg.setStyleSheet(
             "QMessageBox { background-color: #f0f0f0; }"
             "QMessageBox QLabel { color: #000; background-color: transparent;"
-            " font-size: 18px; min-width: 540px; padding: 14px 10px; }"
+            " font-size: 24px; min-width: 720px; padding: 14px 10px; }"
             "QMessageBox QPushButton { font-size: 18px; padding: 10px 28px;"
             " min-width: 120px; }"
         )
@@ -8781,6 +9002,12 @@ class PokerWindow(QMainWindow):
         if not street_stats:
             return
 
+        # If we already have cached reflections for this hand (e.g. the
+        # user opened Hand Log first), seed the dialog with them instead
+        # of showing the "Awaiting Claude" placeholder.
+        cached = self._get_cached_hand_reflections()
+        seed_reflections = (cached or {}).get('street_reflections', {})
+
         dialog = HandSummaryDialog(
             street_stats=street_stats,
             street_actions=street_actions,
@@ -8789,11 +9016,18 @@ class PokerWindow(QMainWindow):
             player_hands=player_hands,
             made_hands_by_street=made_hands_by_street,
             pot_by_street=self.hand_history.get('pot_by_street', {}),
+            street_reflections=seed_reflections,
             parent=self
         )
         dialog.setModal(False)
         self._track_hand_dialog(dialog)
         dialog.show()
+        # Kick off (or subscribe to) the shared Claude analysis run for
+        # this hand. The callback feeds reflections into the dialog
+        # live, so the user sees yellow placeholder rows first and
+        # then hindsight paragraphs as Claude returns.
+        if not seed_reflections:
+            self._subscribe_summary_to_reflections(dialog)
 
     def show_hand_interpretation(self, active_players, winners, hand_results):
         """Generate and display a narrative interpretation of the hand using
@@ -9221,6 +9455,38 @@ class PokerWindow(QMainWindow):
                 numbered.append(f"{idx:2d}.{line}")
         return "\n".join(numbered), lines
 
+    def _parse_per_street_retrospective(self, retrospective_text: str) -> dict:
+        """Parse the post-RETROSPECTIVE: block into {street: paragraph}.
+
+        Claude is asked (in annotate mode) to emit one paragraph per
+        street under literal ``STREET[Preflop]:`` / ``STREET[Flop]:``
+        / ``STREET[Turn]:`` / ``STREET[River]:`` markers. Streets the
+        hand never reached are omitted by Claude.
+
+        Falls back to ``{}`` if no markers are present (older prompt
+        style or model ignored the format) — callers display the raw
+        retrospective elsewhere in that case.
+        """
+        out = {}
+        if not retrospective_text:
+            return out
+        import re
+        pat = re.compile(
+            r'(?im)^\s*STREET\s*\[\s*(Preflop|Flop|Turn|River)\s*\]\s*:\s*$'
+        )
+        matches = list(pat.finditer(retrospective_text))
+        if not matches:
+            return out
+        for i, m in enumerate(matches):
+            street = m.group(1).capitalize()
+            start = m.end()
+            end = matches[i + 1].start() if (i + 1) < len(matches) \
+                else len(retrospective_text)
+            chunk = retrospective_text[start:end].strip()
+            if chunk:
+                out[street] = chunk
+        return out
+
     def _split_retrospective(self, annotation_text: str) -> tuple:
         """Split Claude's reply into (per-action text, retrospective text).
 
@@ -9266,9 +9532,13 @@ class PokerWindow(QMainWindow):
                                           retrospective: str = "") -> str:
         """Re-render the hand log as HTML with each numbered action
         followed by its Claude annotation (if any) styled in green —
-        chess-PGN style.  When `retrospective` is non-empty, append a
-        post-mortem block at the bottom (full information, after-the-fact
-        review by Claude).
+        chess-PGN style.
+
+        The ``retrospective`` parameter is accepted for backward
+        compatibility but is intentionally ignored — perfect-hindsight
+        commentary now lives in the Hand Summary stats screen
+        (interspersed under each street panel), not at the bottom of
+        the hand log.
 
         Each line is its own <div> so long annotations wrap onto the next
         line within the dialog width (no horizontal scroll). Annotation
@@ -9341,32 +9611,7 @@ class PokerWindow(QMainWindow):
                 if comment:
                     push_annotation(comment)
 
-        # Retrospective — appended after the per-action log when Claude
-        # produced a 'RETROSPECTIVE:' section.  Yellow band so it reads
-        # as a separate post-mortem rather than another inline note.
-        if retrospective:
-            out.append(
-                '<div style="margin-top: 18px; padding: 10px 12px; '
-                'background-color: #2a2410; border-left: 4px solid '
-                f'{retro_color}; color: {retro_color}; '
-                'white-space: normal; word-wrap: break-word; '
-                'font-weight: bold; font-style: italic;">'
-                'Claude retrospective (full information):'
-                '</div>'
-            )
-            for paragraph in retrospective.split('\n\n'):
-                p = paragraph.strip()
-                if not p:
-                    continue
-                esc = escape(p).replace('\n', '<br>')
-                out.append(
-                    f'<div style="color: {retro_color}; '
-                    'padding: 6px 12px; '
-                    'white-space: normal; word-wrap: break-word; '
-                    'line-height: 1.4;">'
-                    + esc + '</div>'
-                )
-
+        # Retrospective intentionally NOT rendered here — see docstring.
         out.append('</div>')
         return "".join(out) if out else "(no actions recorded)"
 
@@ -9497,31 +9742,25 @@ class PokerWindow(QMainWindow):
             except RuntimeError:
                 pass
 
-        # If claude isn't installed, render the log immediately with no
-        # annotations.
-        import shutil
-        if not shutil.which('claude'):
+        # If we already have cached annotations for this hand (the user
+        # opened the Hand Summary first and the analysis has finished),
+        # render immediately and skip the spinner entirely.
+        cached = self._get_cached_hand_reflections()
+        if cached is not None:
+            _show_merged(cached.get('annotations', {}), "",
+                         cached.get('status') or '')
+            dialog.show()
+            return
+
+        # Otherwise subscribe to the shared thread (Hand Summary may
+        # have already kicked it off). _ensure_hand_reflections_thread
+        # returns None when Claude is unavailable.
+        thread = self._ensure_hand_reflections_thread()
+        if thread is None:
             _show_merged({}, "",
                          "Claude binary not on PATH — annotations skipped.")
             dialog.show()
             return
-
-        hero_seat = self.my_seat if self.my_seat is not None else 0
-        hero_name = (self.players[hero_seat].name
-                     if 0 <= hero_seat < len(self.players) else "Hero")
-        povs = [{'name': hero_name, 'seat': hero_seat}]
-
-        # Loss-severity-scaled retrospective length: a flat 80-word
-        # post-mortem felt right for small losses, but if the hero
-        # just got crushed they probably need more help, not less.
-        # Scale linearly between 80 words (no loss) and 320 words
-        # (catastrophic loss) using the hand's net delta on the hero
-        # vs. their pre-hand stack.
-        loss_pct = self._compute_hero_loss_pct()
-        retro_words = int(round(80 + 240 * max(0.0, min(1.0, loss_pct))))
-
-        thread = ClaudeAnalysisThread(log_text, povs, mode='annotate',
-                                       retro_word_limit=retro_words)
 
         def on_progress(done, total, label):
             try:
@@ -9531,38 +9770,17 @@ class PokerWindow(QMainWindow):
             except RuntimeError:
                 pass
 
-        def on_finished(analyses):
-            if not analyses:
-                _show_merged({}, "", "Claude returned no annotations.")
-                try:
-                    thread.deleteLater()
-                except Exception:
-                    pass
-                return
-            ann_text = (analyses[0].get('text', '') or '').strip()
-            # Split into per-action notes and the post-mortem retrospective.
-            actions_text, retrospective = self._split_retrospective(ann_text)
-            annotations = self._parse_claude_annotations(actions_text)
-            _show_merged(annotations, retrospective)
-            try:
-                thread.deleteLater()
-            except Exception:
-                pass
+        def on_finished(_analyses):
+            cached_now = self._get_cached_hand_reflections() or {}
+            _show_merged(cached_now.get('annotations', {}), "",
+                         cached_now.get('status') or '')
 
         thread.progress.connect(on_progress)
         thread.finished_analyses.connect(on_finished)
 
-        def on_dialog_destroyed():
-            try:
-                thread.cancel()
-            except Exception:
-                pass
-        dialog.destroyed.connect(on_dialog_destroyed)
-        if not hasattr(self, '_claude_threads'):
-            self._claude_threads = []
-        self._claude_threads.append(thread)
-        thread.start()
-
+        # Don't cancel the shared thread on dialog close — the Hand
+        # Summary may still be subscribed to it. The thread cleans
+        # itself up via _ensure_hand_reflections_thread's finalizer.
         dialog.show()
 
     def _compute_hero_loss_pct(self) -> float:
@@ -9838,6 +10056,7 @@ class PokerWindow(QMainWindow):
             self._restore_parent_dialog(parent_to_restore)
             return
         try:
+            seed = (self._get_cached_hand_reflections() or {})
             dialog = HandSummaryDialog(
                 street_stats=cached['street_stats'],
                 street_actions=cached['street_actions'],
@@ -9846,10 +10065,13 @@ class PokerWindow(QMainWindow):
                 player_hands=cached['player_hands'],
                 made_hands_by_street=cached['made_hands_by_street'],
                 pot_by_street=cached.get('pot_by_street', {}),
+                street_reflections=seed.get('street_reflections', {}),
                 parent=self,
             )
             dialog.setModal(False)
             self._track_hand_dialog(dialog)
+            if not seed.get('street_reflections'):
+                self._subscribe_summary_to_reflections(dialog)
             if parent_to_restore is not None:
                 # `finished` fires on every dismiss path; `destroyed` only
                 # fires on object delete, which most close paths skip.
@@ -11610,15 +11832,13 @@ class TextModeGame:
         self.show_tells = show_tells
         self.theory_of_mind = theory_of_mind
 
-        # Initialize players — mirror PokerWindow / DEFAULT_BOT_LINEUP.
-        self.players = [
-            Player("Hero (You)",      "human"),
-            Player("Sharkey Steve",   "shark"),
-            Player("Aggro Angela",    "aggressive"),
-            Player("Loose Bruce",     "loose"),
-            Player("Tight Tim",       "tight"),
-            Player("Fluid Fiona",     "tom"),
-        ]
+        # Initialize players — mirror PokerWindow's randomised lineup.
+        # Hero pinned to seat 0; bots shuffled across seats 1..5.
+        self.players = (
+            [Player("Hero (You)", "human")]
+            + [Player(name, style)
+               for name, style in _make_random_bot_lineup()]
+        )
 
         # Game state
         self.deck = None
