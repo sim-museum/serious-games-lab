@@ -1425,47 +1425,38 @@ class HeroOutsTab(QWidget):
         title.setStyleSheet("color: #fff;")
         outer.addWidget(title)
 
-        # Cards on their own row first.  The commitment-math frame
-        # used to share this row but the HBoxLayout pinned its height
-        # to the card height, which clipped the body label whenever
-        # the SPR + zone description wrapped to four or more lines.
-        # Lifting it to a separate row gives it the full panel width
-        # and lets the label grow vertically as needed.
+        # Cards row: hero hole cards on the left, commitment-math
+        # block stretched to the right of the same row so the empty
+        # space next to the cards earns its keep. We use a single
+        # styled QLabel with rich-text HTML for the math block —
+        # nesting QLabels inside a QFrame caused the inner labels to
+        # render invisibly under some Qt themes (the QFrame's QSS
+        # bled into the children even with explicit overrides).
         cards_row = QHBoxLayout()
-        cards_row.setSpacing(15)
+        cards_row.setSpacing(20)
         self._card1 = CardWidget()
         self._card2 = CardWidget()
         cards_row.addWidget(self._card1)
         cards_row.addWidget(self._card2)
-        cards_row.addStretch()
-        outer.addLayout(cards_row)
+        cards_row.addSpacing(20)
 
-        # Commitment-math frame on its own row, below the cards.
-        commit_frame = QFrame()
-        commit_frame.setStyleSheet(
-            "QFrame { background: #1a1a1a; border: 1px solid #333;"
-            " border-radius: 6px; padding: 12px; }"
-        )
-        commit_layout = QVBoxLayout(commit_frame)
-        commit_layout.setSpacing(6)
-        commit_title = QLabel("Pot Commitment")
-        commit_title.setFont(QFont('Arial', 22, QFont.Weight.Bold))
-        commit_title.setStyleSheet(
-            "color: #fff; background: transparent; border: none;")
-        commit_layout.addWidget(commit_title)
-        self._commit_label = QLabel(
-            "(no live action — commitment math will appear here when "
-            "there's a bet to call)"
-        )
+        self._commit_label = QLabel()
         self._commit_label.setWordWrap(True)
         self._commit_label.setTextFormat(Qt.TextFormat.RichText)
-        self._commit_label.setFont(QFont('Arial', 18))
         self._commit_label.setStyleSheet(
-            "color: #cccccc; background: transparent; border: none;")
+            "QLabel { background-color: #1a1a1a; color: #cccccc;"
+            " border: 1px solid #333; border-radius: 6px;"
+            " padding: 14px; font-size: 18px; }"
+        )
         self._commit_label.setAlignment(
             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        commit_layout.addWidget(self._commit_label)
-        outer.addWidget(commit_frame)
+        self._commit_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        cards_row.addWidget(self._commit_label, stretch=1)
+        outer.addLayout(cards_row)
+        # Seed the placeholder so the panel has visible content at
+        # construction time (before any hand has been dealt).
+        self._refresh_commit_panel(None, None, None, None)
 
         # ----- Made-hand line + outs count -----
         info_row = QHBoxLayout()
@@ -1733,6 +1724,11 @@ class HeroOutsTab(QWidget):
         except (TypeError, ValueError):
             pot_v = tc_v = stk_v = None
 
+        title_html = (
+            "<div style='font-size:18pt; font-weight:bold;"
+            " color:#ffffff; margin-bottom:8px;'>Pot Commitment</div>"
+        )
+
         # No live bet to face — but we can still surface the going-in
         # SPR (stack / pot) so the user knows roughly how much room
         # they have to fold a future bet.
@@ -1753,18 +1749,22 @@ class HeroOutsTab(QWidget):
                             "future bet without burning a meaningful "
                             "share of your stack.")
                 self._commit_label.setText(
-                    "<span style='color:#cccccc;'>"
+                    title_html
+                    + "<div style='color:#cccccc; font-size:13pt;"
+                    " line-height:140%;'>"
                     f"No live bet to face. Pot is <b>${pot_v:,}</b>, "
                     f"you have <b>${stk_v:,}</b> behind.<br>"
-                    f"<b>Stack-to-Pot Ratio (SPR)</b>: "
-                    f"<b>{spr_now:.2f}</b><br>"
-                    f"&nbsp;→ {zone}</span>"
+                    f"<b style='color:#ffffff;'>Stack-to-Pot Ratio "
+                    f"(SPR)</b>: <b>{spr_now:.2f}</b><br>"
+                    f"&nbsp;→ {zone}</div>"
                 )
             else:
                 self._commit_label.setText(
-                    "<span style='color:#888;'>(no live bet to call — "
-                    "commitment math will appear here when there's a "
-                    "bet to face)</span>")
+                    title_html
+                    + "<div style='color:#999; font-size:13pt;'>"
+                    "(no live bet to call — commitment math will "
+                    "appear here when there's a bet to face)</div>"
+                )
             return
 
         stack_after = max(0, stk_v - tc_v)
@@ -1812,13 +1812,17 @@ class HeroOutsTab(QWidget):
                 equity_block = ""
 
         html = (
+            title_html
+            + "<div style='color:#dddddd; font-size:13pt;"
+            " line-height:140%;'>"
             f"You'd put in <b>${tc_v:,}</b> with <b>${stk_v:,}</b> "
             f"left, leaving <b>${stack_after:,}</b> behind in a pot "
             f"of <b>${pot_after:,}</b>.<br><br>"
-            f"<b>Stack-to-Pot Ratio (SPR)</b> after call: "
-            f"<b>{spr:.2f}</b><br>"
+            f"<b style='color:#ffffff;'>Stack-to-Pot Ratio (SPR)</b> "
+            f"after call: <b>{spr:.2f}</b><br>"
             f"&nbsp;→ {zone}"
             f"{equity_block}"
+            "</div>"
         )
         self._commit_label.setText(html)
 
