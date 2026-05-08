@@ -50,10 +50,21 @@ class ScoringTableDialog(QDialog):
         self.boards_label = QLabel(f"Boards: {len(self.scoring_table.results)}")
         summary_layout.addWidget(self.boards_label, 0, 1)
 
-        self.ns_total_label = QLabel("N/S: 0")
+        # Running IMP total — the cumulative IMP swing across every
+        # paired board in the session, signed from N/S's perspective.
+        # This is the "how is the human doing" number; the per-board
+        # IMP columns above split it by row.
+        self.ns_total_label = QLabel("Running IMPs (N/S): 0")
+        self.ns_total_label.setToolTip(
+            "Cumulative IMP swing across every board with both an open- "
+            "and closed-room result, signed from N/S's perspective."
+        )
         summary_layout.addWidget(self.ns_total_label, 0, 2)
 
-        self.ew_total_label = QLabel("E/W: 0")
+        self.ew_total_label = QLabel("Running IMPs (E/W): 0")
+        self.ew_total_label.setToolTip(
+            "Same running total, viewed from E/W (the negative of the N/S figure)."
+        )
         summary_layout.addWidget(self.ew_total_label, 0, 3)
 
         summary_group.setLayout(summary_layout)
@@ -120,21 +131,42 @@ class ScoringTableDialog(QDialog):
         layout.addLayout(button_layout)
 
     def _setup_table_columns(self):
-        """Setup table columns — Q-Plus style with open room (left) and closed room (right)."""
+        """Setup table columns — Q-Plus style with open room (left) and closed room (right).
+
+        Column meanings — kept here in one place so the UI labels and the
+        tooltips stay in sync. "Open" = the human's table, "Closed" = the
+        same deal replayed by the engine or ingested from a database.
+        """
+        # The "Board" column intentionally carries dealer + vulnerability
+        # alongside the bare number, so the user doesn't have to mentally
+        # apply the duplicate-bridge 16-board cycle to know who dealt
+        # and who was vulnerable. Format: "816  Dlr W  Vul E-W".
         columns = [
-            "Contract 1", "N/S 1", "IMP",  # Open room (human)
-            "Board",                         # Center
-            "Contract 2", "N/S 2", "IMP",  # Closed room (AI)
+            "Open: Contract", "Open N/S", "Open IMP",
+            "Board / Dlr / Vul",
+            "Closed: Contract", "Closed N/S", "Closed IMP",
+        ]
+        tooltips = [
+            "Contract bid at the open (human) table, with overtricks/undertricks.",
+            "N/S score from the open table (positive = N/S earned points).",
+            "IMPs scored at the open table, signed from N/S's perspective.",
+            "Board number, with dealer and vulnerability spelled out so you "
+            "don't have to apply the 16-board cycle by hand.",
+            "Contract bid at the closed (AI / database) table.",
+            "N/S score from the closed table.",
+            "IMPs scored at the closed table, signed from N/S's perspective.",
         ]
 
         self.table.setColumnCount(len(columns))
         self.table.setHorizontalHeaderLabels(columns)
+        for i, tip in enumerate(tooltips):
+            item = self.table.horizontalHeaderItem(i)
+            if item is not None:
+                item.setToolTip(tip)
 
         header = self.table.horizontalHeader()
         for i in range(len(columns)):
             header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
-        if len(columns) > 0:
-            header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)  # Notes
 
     def _populate_table(self):
         """Populate table — one row per board, open room left, closed room right."""
@@ -188,10 +220,47 @@ class ScoringTableDialog(QDialog):
                 for col in (0, 1, 2):
                     self.table.setItem(row, col, QTableWidgetItem(""))
 
-            # --- Center: Board ---
-            board_item = QTableWidgetItem(str(bn))
+            # --- Center: Board number + dealer + vulnerability ---
+            # Pull dealer / vul from the result if it carries them
+            # (open-room rows do); otherwise derive from the board
+            # number using the duplicate cycle.
+            ref = open_r if open_r is not None else closed_r
+            dealer_char = ""
+            vul_str = ""
+            if ref is not None and getattr(ref, 'dealer', None):
+                try:
+                    dealer_char = ref.dealer.to_char()
+                except Exception:
+                    dealer_char = ""
+            if ref is not None and getattr(ref, 'vulnerability', None):
+                vul_map = {
+                    "NONE": "None", "NS": "N-S", "EW": "E-W", "BOTH": "Both"
+                }
+                try:
+                    vul_str = vul_map.get(ref.vulnerability.name, "None")
+                except Exception:
+                    vul_str = ""
+            if not dealer_char or not vul_str:
+                # Fallback: derive from board number's standard cycle.
+                try:
+                    from ben_backend.models import BoardState
+                    d, v = BoardState._board_dealer_vuln(bn)
+                    if not dealer_char:
+                        dealer_char = d.to_char()
+                    if not vul_str:
+                        vul_str = {"NONE": "None", "NS": "N-S",
+                                   "EW": "E-W", "BOTH": "Both"
+                                   }.get(v.name, "None")
+                except Exception:
+                    pass
+            board_text = f"{bn}  Dlr {dealer_char}  Vul {vul_str}".strip()
+            board_item = QTableWidgetItem(board_text)
             board_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             board_item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+            board_item.setToolTip(
+                f"Board {bn} — dealer {dealer_char or '?'}, "
+                f"vulnerability {vul_str or '?'}"
+            )
             self.table.setItem(row, 3, board_item)
 
             # --- Right: Closed room (AI) ---
@@ -208,10 +277,10 @@ class ScoringTableDialog(QDialog):
                 for c in (4, 5, 6):
                     self.table.setItem(row, c, QTableWidgetItem(""))
 
-        # Update summary
+        # Update summary — running totals across the whole session.
         self.boards_label.setText(f"Boards: {num_boards}")
-        self.ns_total_label.setText(f"N/S IMPs: {ns_imps_total:+d}")
-        self.ew_total_label.setText(f"E/W IMPs: {-ns_imps_total:+d}")
+        self.ns_total_label.setText(f"Running IMPs (N/S): {ns_imps_total:+d}")
+        self.ew_total_label.setText(f"Running IMPs (E/W): {-ns_imps_total:+d}")
 
         # Compare / Replay buttons start in "no selection" state; the
         # selection-changed handler will turn them on if the user picks
@@ -521,14 +590,12 @@ class ScoringTableDialog(QDialog):
         details.setStyleSheet("padding: 5px;")
         layout.addWidget(details)
 
-        # Notes / Claude commentary
-        if result.notes:
-            notes_label = QLabel(f"<b>Claude:</b> {result.notes}")
-            notes_label.setFont(QFont("Arial", 11))
-            notes_label.setWordWrap(True)
-            notes_label.setStyleSheet("background-color: #f0f8f0; padding: 10px; "
-                                      "border: 1px solid #aaa; border-radius: 3px;")
-            layout.addWidget(notes_label)
+        # Claude commentary intentionally omitted from this summary
+        # view — the per-board hand log (View → Hand Log) shows Claude's
+        # annotated BDL, which is the authoritative version. Earlier
+        # versions duplicated a short blurb here from result.notes, but
+        # that copy got out of sync with the BDL annotation and the user
+        # was reading the less-accurate one. Drop it.
 
         close_btn = QPushButton("Close")
         close_btn.setFixedSize(100, 35)

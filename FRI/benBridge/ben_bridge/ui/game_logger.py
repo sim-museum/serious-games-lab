@@ -7,13 +7,288 @@ writes into the BDL via _append_commentary_to_bdl below.
 
 import os
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pathlib import Path
 
 from ben_backend.models import (
-    BoardState, Card, Seat, Suit, Vulnerability, Contract, Trick, Rank
+    BoardState, Card, Seat, Suit, Vulnerability, Contract, Trick, Rank, Bid, Hand
 )
 from ben_backend.pavlicek import deal_to_number, format_deal_base62
+
+
+_SUIT_CHARS = {Suit.SPADES: 'S', Suit.HEARTS: 'H',
+               Suit.DIAMONDS: 'D', Suit.CLUBS: 'C'}
+_SEAT_CHARS = {Seat.NORTH: 'N', Seat.EAST: 'E',
+               Seat.SOUTH: 'S', Seat.WEST: 'W'}
+_SEAT_NAMES = {Seat.NORTH: 'North', Seat.EAST: 'East',
+               Seat.SOUTH: 'South', Seat.WEST: 'West'}
+_VUL_NAMES = {Vulnerability.NONE: 'None',
+              Vulnerability.NS: 'N/S',
+              Vulnerability.EW: 'E/W',
+              Vulnerability.BOTH: 'Both'}
+
+
+def _suit_str(hand: Optional[Hand], suit: Suit) -> str:
+    if hand is None:
+        return '?'
+    cards = [c for c in hand.cards if c.suit == suit]
+    if not cards:
+        return '-'
+    cards.sort(key=lambda c: c.rank)  # ACE=0 sorts highest first
+    return ' '.join(c.rank.to_char() for c in cards)
+
+
+def _bid_to_bdl(bid: Bid) -> str:
+    if bid.is_pass:
+        return 'p'
+    if bid.is_double:
+        return 'X'
+    if bid.is_redouble:
+        return 'XX'
+    suit_char = (_SUIT_CHARS.get(bid.suit, '?').lower()
+                 if bid.suit is not None and bid.suit != Suit.NOTRUMP
+                 else 'nt')
+    return f"{bid.level}{suit_char}"
+
+
+def _format_cards_block_for(hands: Dict[Seat, Optional[Hand]]) -> List[str]:
+    """BDL Cards block. Hands map may contain None for hidden seats —
+    those are emitted as '?' so Claude knows the cards are concealed.
+    """
+    n = hands.get(Seat.NORTH)
+    e = hands.get(Seat.EAST)
+    s = hands.get(Seat.SOUTH)
+    w = hands.get(Seat.WEST)
+
+    lines = []
+    # North block
+    lines.append(f"Cards        :                  {_suit_str(n, Suit.SPADES)} ")
+    lines.append(f"             :                  {_suit_str(n, Suit.HEARTS)} ")
+    lines.append(f"             :                  {_suit_str(n, Suit.DIAMONDS)} ")
+    lines.append(f"             :                  {_suit_str(n, Suit.CLUBS)} ")
+    # West / East side-by-side
+    for suit in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
+        ws = _suit_str(w, suit)
+        es = _suit_str(e, suit)
+        lines.append(f"             :   {ws:<20}          {es} ")
+    # South
+    lines.append(f"             :                  {_suit_str(s, Suit.SPADES)} ")
+    lines.append(f"             :                  {_suit_str(s, Suit.HEARTS)} ")
+    lines.append(f"             :                  {_suit_str(s, Suit.DIAMONDS)} ")
+    lines.append(f"             :                  {_suit_str(s, Suit.CLUBS)} ")
+    return lines
+
+
+def _format_bidding_block(auction: List[Bid], dealer: Seat) -> List[str]:
+    """BDL-style bidding block: column headers N/E/S/W and one row per
+    auction round, with '-' filling the cells before dealer's first bid."""
+    if not auction:
+        return []
+    lines = ["Bids         :   N    E    S    W"]
+    bidder = dealer
+    pos = bidder.value  # 0=N, 1=E, 2=S, 3=W
+    row: List[str] = ['-' for _ in range(4)]
+    # Pre-fill cells before dealer's first bid with '-' (already there)
+    # Walk through bids, advancing seat after each.
+    pre_pads = ['-'] * pos  # not used directly, but kept for clarity
+    col = pos
+    for i, bid in enumerate(auction):
+        row[col] = _bid_to_bdl(bid)
+        col += 1
+        if col >= 4:
+            lines.append("             :   "
+                         + "    ".join(f"{c:<4}" for c in row).rstrip())
+            row = ['-' for _ in range(4)]
+            col = 0
+    if any(c != '-' for c in row):
+        lines.append("             :   "
+                     + "    ".join(f"{c:<4}" for c in row).rstrip())
+    return lines
+
+
+def _format_tricks_block(tricks: List[Trick],
+                         contract: Optional[Contract]) -> List[str]:
+    if not tricks or contract is None:
+        return []
+    declarer = contract.declarer
+    declarer_side_ns = declarer.is_ns() if declarer is not None else False
+    lines: List[str] = []
+    for i, trick in enumerate(tricks):
+        leader = trick.leader
+        winner = trick.winner
+        declarer_won = (winner.is_ns() == declarer_side_ns
+                        if winner is not None else False)
+        card_strs = []
+        for j, card in enumerate(trick.cards):
+            cstr = f"{_SUIT_CHARS[card.suit].lower()}{card.rank.to_char()}"
+            player_seat = Seat((leader.value + j) % 4)
+            if winner is not None and player_seat == winner:
+                cstr += "+" if declarer_won else "-"
+            card_strs.append(f"{cstr:<4}")
+        winning_suit = trick.cards[0].suit
+        if winner is not None:
+            winner_idx = (winner.value - leader.value) % 4
+            if winner_idx < len(trick.cards):
+                winning_suit = trick.cards[winner_idx].suit
+        suit_indicator = _SUIT_CHARS.get(winning_suit, '')
+        spacing = "     " if declarer_won else "         "
+        prefix = "Tricks       : " if i == 0 else "             : "
+        lines.append(
+            f"{prefix}{i + 1:2d}  {_SEAT_CHARS[leader]}    "
+            f"{' '.join(card_strs)}{spacing}{suit_indicator} "
+        )
+    return lines
+
+
+def build_bdl_snapshot(board: BoardState,
+                       original_hands: Optional[Dict[Seat, Hand]] = None,
+                       viewer_seat: Optional[Seat] = None,
+                       phase: Optional[str] = None,
+                       dummy_visible_to_viewer: bool = True,
+                       contract: Optional[Contract] = None,
+                       result_summary: Optional[str] = None,
+                       deal_id: str = "",
+                       current_seat: Optional[Seat] = None,
+                       include_footer: bool = True) -> str:
+    """Render the current state of `board` as BDL text.
+
+    Designed for Claude prompts: every seat is labelled in the same way
+    BDL files are labelled (N/E/S/W headers in Bids, leader + winner
+    markers in Tricks, fixed N/W-E/S layout in Cards), so the model has
+    no chance to misattribute who did what.
+
+    Args:
+        board: the in-progress or finished board.
+        original_hands: pre-play snapshot of all four hands. When given,
+            the Cards block is built from these (so cards already played
+            still show in the diagram). Falls back to board.hands.
+        viewer_seat: if set, only this seat's hand (and dummy when
+            visible) is shown — others are masked as '?'. None means
+            "show every hand we have" (use for end-of-hand summaries).
+        phase: 'bidding' or 'play' or 'finished'. Drives the trailing
+            "Currently…" footer.
+        dummy_visible_to_viewer: during play, whether dummy is face-up.
+        contract: explicit contract override (defaults to board.contract).
+        result_summary: free-form text appended at the bottom (e.g. the
+            tricks-made / score line for end-of-hand prompts).
+        deal_id: pavlicek/base-62 deal id, written into the Deal: line.
+    """
+    contract = contract or board.contract
+    hands_for_cards = original_hands if original_hands else board.hands
+
+    masked: Dict[Seat, Optional[Hand]] = {}
+    for seat in (Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST):
+        h = hands_for_cards.get(seat) if hands_for_cards else None
+        if viewer_seat is None:
+            masked[seat] = h
+        else:
+            show = (seat == viewer_seat)
+            if (not show
+                    and contract is not None
+                    and dummy_visible_to_viewer
+                    and seat == contract.declarer.partner()):
+                show = True
+            masked[seat] = h if show else None
+
+    out: List[str] = []
+    out.append("DOCTYPE: BDL 17.1 (live snapshot)")
+    out.append("")
+    if deal_id:
+        out.append(f"Deal         :   {deal_id}")
+    out.append(f"Deal-text    :   Board #{board.board_number}")
+    out.append(f"Dealer       :   {_SEAT_NAMES[board.dealer]}")
+    out.append(f"Vuln         :   {_VUL_NAMES.get(board.vulnerability, 'None')}  ")
+    out.extend(_format_cards_block_for(masked))
+    out.append("")
+
+    if board.auction:
+        out.extend(_format_bidding_block(list(board.auction), board.dealer))
+        out.append("")
+
+    if contract is not None:
+        decl = contract.declarer
+        decl_str = _SEAT_NAMES[decl] if decl is not None else "?"
+        suit_char = (_SUIT_CHARS[contract.suit].lower()
+                     if contract.suit != Suit.NOTRUMP else 'nt')
+        dbl = ""
+        if contract.redoubled:
+            dbl = "xx"
+        elif contract.doubled:
+            dbl = "x"
+        out.append(f"Contract     :  {contract.level}{suit_char}{dbl}   {decl_str}")
+        # Opening leader is declarer.next() — Trick-prep aids the reader.
+        if decl is not None:
+            out.append(f"Trick-prep   : {_SEAT_CHARS[decl.next()]} ")
+        out.append("")
+
+    if board.tricks:
+        out.extend(_format_tricks_block(list(board.tricks), contract))
+        out.append("")
+
+    # In-progress trick (cards already played but trick not complete)
+    ct = getattr(board, 'current_trick', None)
+    if ct is not None and ct.cards and ct.leader is not None:
+        partial = []
+        for j, card in enumerate(ct.cards):
+            player_seat = Seat((ct.leader.value + j) % 4)
+            partial.append(
+                f"{_SEAT_CHARS[player_seat]}:"
+                f"{_SUIT_CHARS[card.suit].lower()}{card.rank.to_char()}"
+            )
+        out.append(f"Current trick: {' '.join(partial)} (incomplete)")
+        out.append("")
+
+    # Footer — viewer + phase context. Suppressed when callers want a
+    # pure BDL block (e.g. the hint dialog, where the footer adds clutter
+    # without telling Claude anything that isn't already in the BDL).
+    if include_footer:
+        footer_lines = []
+        if viewer_seat is not None:
+            partner = viewer_seat.partner()
+            lho = viewer_seat.next()
+            rho = partner.next()
+            footer_lines.append(
+                f"Viewer: {_SEAT_CHARS[viewer_seat]}. "
+                f"Partner: {_SEAT_CHARS[partner]}. "
+                f"LHO: {_SEAT_CHARS[lho]}. "
+                f"RHO: {_SEAT_CHARS[rho]}."
+            )
+            if hands_for_cards and viewer_seat in hands_for_cards:
+                try:
+                    footer_lines.append(
+                        f"Viewer HCP: {hands_for_cards[viewer_seat].hcp()}"
+                    )
+                except Exception:
+                    pass
+        if phase:
+            if phase == 'finished':
+                footer_lines.append("Phase: hand finished (full diagram above).")
+            elif phase == 'bidding':
+                current = current_seat
+                if current is None:
+                    current = board.dealer
+                    for _ in board.auction:
+                        current = current.next()
+                footer_lines.append(
+                    f"Phase: bidding. {_SEAT_CHARS[current]} to bid next."
+                )
+            elif phase == 'play':
+                current = current_seat
+                if current is None and ct is not None and ct.leader is not None:
+                    current = Seat((ct.leader.value + len(ct.cards)) % 4)
+                if current is not None:
+                    footer_lines.append(
+                        f"Phase: play. {_SEAT_CHARS[current]} to play next."
+                    )
+                else:
+                    footer_lines.append("Phase: play.")
+        if result_summary:
+            footer_lines.append(result_summary)
+        if footer_lines:
+            out.append("---")
+            out.extend(footer_lines)
+
+    return "\n".join(out)
 
 
 class GameLogger:

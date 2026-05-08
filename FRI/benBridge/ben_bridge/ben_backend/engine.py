@@ -75,7 +75,13 @@ class BridgeEngine:
 
     def __init__(self, config_path: Optional[str] = None, verbose: bool = False):
         import threading
-        self._lock = threading.Lock()  # Thread-safety lock
+        # Re-entrant lock so the MC path can call get_card_play() as a
+        # fallback without deadlocking on itself. The original Lock() was
+        # non-reentrant; whenever get_mc_card_play hit one of its
+        # "sampling failed → return self.get_card_play(...)" branches,
+        # the inner call tried to retake the lock and the worker thread
+        # parked on it forever (see freeze_reports/freeze-*-?.txt).
+        self._lock = threading.RLock()
         self.verbose = verbose
         self.models = None
         self.sampler = None

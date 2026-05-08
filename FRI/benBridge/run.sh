@@ -127,55 +127,58 @@ if [[ -n "$_newest_bdl" ]]; then
     FRI_DIR="$SCRIPT_DIR"
     HARNESS_DIR="$FRI_DIR/guiHarness"
 
-    # Check if Q-Plus Bridge is installed
+    # Check if Q-Plus Bridge is installed.  Q-Plus is the comparison
+    # target — without it the harness has nothing to do, so we skip BOTH
+    # when Q-Plus is missing (rather than launching a dangling harness).
     FRI_WP="$FRI_DIR/WP"
     QBRIDGE_DIR=""
     [[ -d "$FRI_WP/drive_c/games/qbridge17" ]] && QBRIDGE_DIR="$FRI_WP/drive_c/games/qbridge17"
     [[ -z "$QBRIDGE_DIR" && -d "$FRI_WP/drive_c/games/qbridge15" ]] && QBRIDGE_DIR="$FRI_WP/drive_c/games/qbridge15"
 
-    if [[ -n "$QBRIDGE_DIR" && -f "$HARNESS_DIR/bridge_harness.py" ]]; then
+    if [[ -z "$QBRIDGE_DIR" ]]; then
+        echo "(Q-Plus Bridge not installed under $FRI_WP — skipping harness + Q-Plus.)"
+    elif [[ ! -f "$HARNESS_DIR/bridge_harness.py" ]]; then
+        echo "(GUI harness not found at $HARNESS_DIR — skipping Q-Plus.)"
+    else
+        # Q-Plus is installed AND the harness is available — launch them
+        # together automatically (no y/N prompt).  The harness is what
+        # converts the Q-Plus output back into a BEN-readable BDL after
+        # the user finishes the closed-room replay, so the two need to
+        # come up at the same time.
         echo ""
-        read -rp "Compare this hand with Q-Plus Bridge? (y/N): " _ben_compare
-        if [[ "$_ben_compare" =~ ^[Yy]$ ]]; then
-            echo ""
-            echo "Launching Q-Plus Bridge and GUI Harness..."
-            echo "Use the Comparison Workflow tab (source is pre-loaded from BEN Bridge)."
-            echo "  1. In Q-Plus: Own Deals → Enter, then click 'Enter into Q-Plus' in harness"
-            echo "  2. Play the hand in Q-Plus — do NOT exit Q-Plus yet"
-            echo "  3. In harness: click 'Auto-detect latest' to find Q-Plus log"
-            echo "  4. In harness: click 'Convert & copy' to save and annotate with Claude"
-            echo "  5. Exit Q-Plus"
-            echo ""
+        echo "Launching Q-Plus Bridge and GUI Harness..."
+        echo "Use the Comparison Workflow tab (source is pre-loaded from BEN Bridge)."
+        echo "  1. In Q-Plus: Own Deals → Enter, then click 'Enter into Q-Plus' in harness"
+        echo "  2. Play the hand in Q-Plus — do NOT exit Q-Plus yet"
+        echo "  3. In harness: click 'Auto-detect latest' to find Q-Plus log"
+        echo "  4. In harness: click 'Convert & copy' to save and annotate with Claude"
+        echo "  5. Exit Q-Plus"
+        echo ""
 
-            # Launch harness with source pre-loaded (background)
-            (
-                cd "$HARNESS_DIR"
-                if [[ -d venv ]]; then
-                    source venv/bin/activate
-                else
-                    python3 -m venv venv && source venv/bin/activate
-                    pip install -q PyQt5 pyautogui 2>/dev/null
-                fi
-                python3 bridge_harness.py --source "$(realpath "$_newest_bdl")" --game benbridge 2>/dev/null
-            ) &
-            _harness_pid=$!
+        # Make sure the wine prefix is registered against winxp so Q-Plus
+        # behaves the same way as the manually-launched version. This was
+        # done before launching wine directly; the harness now spawns
+        # wine internally, but the registry key still has to be in place.
+        export WINEPREFIX="$FRI_WP"
+        export WINEARCH=win32
+        wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
-            # Launch Q-Plus (foreground — blocks until user exits)
-            export WINEPREFIX="$FRI_WP"
-            export WINEARCH=win32
-            wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
-            cd "$QBRIDGE_DIR"
-            wine QBRIDGE.EXE 2>/dev/null 1>/dev/null
-            cd "$SCRIPT_DIR"
-
-            # Wait for harness to complete (user may still be doing steps 3-4)
-            if kill -0 "$_harness_pid" 2>/dev/null; then
-                echo ""
-                echo "Waiting for GUI Harness to finish..."
-                echo "(Complete steps 3-4 in the harness, then close it)"
-                wait "$_harness_pid" 2>/dev/null
+        # Launch the harness (foreground — blocks until the user closes
+        # it). The harness now auto-launches Q-Plus on startup, so we
+        # don't run wine directly here any more.
+        (
+            cd "$HARNESS_DIR"
+            if [[ -d venv ]]; then
+                source venv/bin/activate
+            else
+                python3 -m venv venv && source venv/bin/activate
+                pip install -q PyQt5 pyautogui 2>/dev/null
             fi
-        fi
+            python3 bridge_harness.py \
+                --source "$(realpath "$_newest_bdl")" \
+                --game benbridge 2>/dev/null
+        )
+        cd "$SCRIPT_DIR"
     fi
 else
     echo "(No BDL found in $SCRIPT_DIR/ben/DATA/LOG/ — skipping Q-Plus comparison)"

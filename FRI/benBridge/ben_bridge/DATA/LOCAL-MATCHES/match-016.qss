@@ -1,0 +1,14 @@
+# BEN Bridge score sheet
+.version = 17.1
+.date = 2026-05-07
+scoring.method = Teams
+
+board.1.number = 72
+board.1.pavlicek = BoYJDzEOgODBtNfg
+board.1.contract = 3C
+board.1.declarer = S
+board.1.tricks = 6
+board.1.ns_score = -150
+board.1.ew_score = 150
+board.1.ns_system = BEN-NN
+board.1.ew_system = BEN-NN

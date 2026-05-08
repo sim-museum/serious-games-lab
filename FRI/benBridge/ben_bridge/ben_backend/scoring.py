@@ -200,25 +200,44 @@ class ScoringTable:
                 result.matchpoints = better + equal / 2.0
 
     def _calculate_imps(self):
-        """Calculate IMPs (teams scoring) for comparison pairs."""
-        # Pair results by board for closed room comparison
-        paired = []
-        unpaired = list(self.results)
+        """Calculate IMPs for every board that has BOTH an open- and a
+        closed-room result.
 
-        # Simple pairing: consecutive results on same board
-        i = 0
-        while i < len(unpaired) - 1:
-            if unpaired[i].board_number == unpaired[i + 1].board_number:
-                r1 = unpaired.pop(i)
-                r2 = unpaired.pop(i)  # Now at position i after first pop
-
-                diff = r1.ns_score - r2.ns_score
-                r1.imps = diff_to_imps(diff)
-                r2.imps = -r1.imps
-
-                paired.extend([r1, r2])
+        The previous implementation only paired consecutive same-board
+        rows, which silently dropped the IMP whenever an unrelated row
+        sat between them — a real failure mode once we batch-ingest a
+        closed-room LIN database alongside live open-room play.
+        """
+        # Group by board number; closed-room rows are tagged with
+        # "Closed room" in their notes (set by both the Q-Plus ingest
+        # path and the LIN loader). The first non-closed row on a
+        # board is open; if a board ends up with two non-closed rows
+        # (rare, but possible if a result was added via a non-standard
+        # path) treat the second as closed for pairing.
+        groups = {}
+        for r in self.results:
+            g = groups.setdefault(r.board_number,
+                                  {"open": None, "closed": None})
+            is_closed = bool(r.notes and "Closed room" in r.notes)
+            if is_closed:
+                g["closed"] = r
+            elif g["open"] is None:
+                g["open"] = r
             else:
-                i += 1
+                g["closed"] = r
+
+        # Reset every IMP first so removing one side later doesn't leave
+        # a stale value behind on the partner row.
+        for r in self.results:
+            r.imps = None
+
+        for pair in groups.values():
+            o, c = pair["open"], pair["closed"]
+            if o is None or c is None:
+                continue
+            diff = o.ns_score - c.ns_score
+            o.imps = diff_to_imps(diff)
+            c.imps = -o.imps
 
     def get_ns_total(self) -> int:
         """Get total N/S score."""

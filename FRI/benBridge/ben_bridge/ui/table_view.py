@@ -37,11 +37,19 @@ COLORS = {
     'selectable_border': '#ff0000',
 }
 
-# Card dimensions - sized to fill 1920x1080 screen
-CARD_WIDTH = 140
-CARD_HEIGHT = 198
-CARD_OVERLAP = 75  # How much cards overlap (shows ~65px per card)
-SUIT_GAP = 90  # Extra gap between suits — creates clear visible gap
+# Card dimensions - sized to fill 1920x1080 screen.
+# Bumped from 140×198 → 160×224 so the south human hand reads more
+# easily and the dummy 4-row layout has bigger pip / rank text.
+CARD_WIDTH = 160
+CARD_HEIGHT = 224
+CARD_OVERLAP = 84  # How much cards overlap (shows ~76px per card — proportional to 75/140 before)
+# Inter-suit gap. We earlier had to dial this down to 55 because the
+# south row also carried a 140-px right spacer which pushed the fan
+# off-screen at SUIT_GAP=100. The spacer is now gone (south_row uses
+# stretches on both sides), so we can restore a visibly clearer gap.
+# 105 lands the 13-card fan at ~1402 px which fits comfortably with
+# the south label (140) on a 1920-wide window.
+SUIT_GAP = 105  # Extra gap between suits — creates clear visible gap
 
 
 class CardWidget(QWidget):
@@ -73,7 +81,14 @@ class CardWidget(QWidget):
 
     @classmethod
     def _get_card_pixmap(cls, card: 'Card') -> Optional[QPixmap]:
-        """Load and cache a card image, recoloring for 4-color mode."""
+        """Load and cache a card image.
+
+        The bundled deck (deckofcards, 4-color) already has diamonds in
+        blue and clubs in green, so no runtime recoloring is needed. The
+        ``legacy_colors`` preference still recolors blue→red diamonds /
+        green→black clubs on the fly for users who want a traditional
+        2-color look.
+        """
         suit_char = {Suit.SPADES: 'S', Suit.HEARTS: 'H',
                      Suit.DIAMONDS: 'D', Suit.CLUBS: 'C'}[card.suit]
         # Image naming: rank 2-10=2-10, J=11, Q=12, K=13, A=14
@@ -91,18 +106,20 @@ class CardWidget(QWidget):
                              Qt.AspectRatioMode.IgnoreAspectRatio,
                              Qt.TransformationMode.SmoothTransformation)
 
-            # Apply 4-color tinting for diamonds (→blue) and clubs (→green)
+            # Optional: legacy 2-color override.  The bundled images are
+            # already 4-color, so when the user asks for legacy we have
+            # to invert the recolor (blue→red diamonds, green→black
+            # clubs).  Defaults to 4-color (no recolor pass).
             from ben_backend.config import get_config_manager
             try:
                 legacy = get_config_manager().config.preferences.legacy_colors
             except Exception:
                 legacy = False
-
-            if not legacy:
+            if legacy:
                 if card.suit == Suit.DIAMONDS:
-                    cls._recolor_image(img, Suit.DIAMONDS, QColor(0, 0, 204))
+                    cls._recolor_blue_to_red(img)
                 elif card.suit == Suit.CLUBS:
-                    cls._recolor_image(img, Suit.CLUBS, QColor(0, 100, 0))
+                    cls._recolor_green_to_black(img)
 
             cls._image_cache[key] = QPixmap.fromImage(img)
 
@@ -111,17 +128,57 @@ class CardWidget(QWidget):
     @classmethod
     def _get_back_pixmap(cls) -> QPixmap:
         if cls._back_pixmap is None:
-            path = os.path.join(cls._get_images_dir(), 'blue_back.png')
-            if os.path.exists(path):
-                img = QImage(path)
-                img = img.scaled(CARD_WIDTH, CARD_HEIGHT,
-                                 Qt.AspectRatioMode.IgnoreAspectRatio,
-                                 Qt.TransformationMode.SmoothTransformation)
-                cls._back_pixmap = QPixmap.fromImage(img)
+            # The bundled deck ships its back image as back.png.  Older
+            # forks of this code looked for blue_back.png; we still fall
+            # back to that name so a custom replacement deck can use
+            # either filename.
+            for filename in ('back.png', 'blue_back.png'):
+                path = os.path.join(cls._get_images_dir(), filename)
+                if os.path.exists(path):
+                    img = QImage(path).scaled(
+                        CARD_WIDTH, CARD_HEIGHT,
+                        Qt.AspectRatioMode.IgnoreAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation)
+                    cls._back_pixmap = QPixmap.fromImage(img)
+                    break
             else:
                 cls._back_pixmap = QPixmap(CARD_WIDTH, CARD_HEIGHT)
                 cls._back_pixmap.fill(QColor('#1a3a8c'))
         return cls._back_pixmap
+
+    @staticmethod
+    def _recolor_blue_to_red(img: QImage):
+        """Re-tint blue diamond pips/text → red, for legacy 2-color mode.
+
+        The bundled deck has diamonds drawn in vivid blue (~#0000cc).
+        Anything noticeably more blue than red/green that isn't pure
+        background gets shifted to red while preserving brightness.
+        """
+        for y in range(img.height()):
+            for x in range(img.width()):
+                px = img.pixelColor(x, y)
+                r, g, b, a = px.red(), px.green(), px.blue(), px.alpha()
+                if a < 10:
+                    continue
+                if b > 40 and b > r * 1.3 and b > g * 1.3 and r + g + b < 650:
+                    lum = (r + g + b) / 3.0
+                    f = (255 - lum) / 255.0
+                    nr = int(220 * f + lum * (1 - f))
+                    ng = int(20 * f + lum * (1 - f))
+                    nb = int(20 * f + lum * (1 - f))
+                    img.setPixelColor(x, y, QColor(nr, ng, nb, a))
+
+    @staticmethod
+    def _recolor_green_to_black(img: QImage):
+        """Re-tint green club pips/text → black, for legacy 2-color mode."""
+        for y in range(img.height()):
+            for x in range(img.width()):
+                px = img.pixelColor(x, y)
+                r, g, b, a = px.red(), px.green(), px.blue(), px.alpha()
+                if a < 10:
+                    continue
+                if g > 40 and g > r * 1.3 and g > b * 1.3 and r + g + b < 650:
+                    img.setPixelColor(x, y, QColor(0, 0, 0, a))
 
     @staticmethod
     def _recolor_image(img: QImage, suit: 'Suit', to_color: QColor):
@@ -289,6 +346,11 @@ class FannedHandWidget(QWidget):
         self.is_dummy = False
         self.is_declarer = False
         self.is_human = False
+        # When true, lay out the hand as 4 vertical columns of cards
+        # (one per suit, sorted high-to-low). Used for the opposing-side
+        # dummy so the human-as-defender can read it like a real table
+        # dummy. Set via set_four_column_layout(); ignored unless face_up.
+        self.four_column_layout = False
 
         self._setup_ui()
 
@@ -297,12 +359,18 @@ class FannedHandWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Label - bumped to 14pt: at 1920x1080 the previous 11pt seat
-        # badges (especially "E / Dummy" / "W / Declarer") were nearly
-        # unreadable from a normal viewing distance.
+        # Label — bumped to 18pt and widened so the longer role badges
+        # ("S / Declarer", "N / Dummy") never get clipped to "Dumr" /
+        # "Declar". The label sizes itself to its content; we just stop
+        # the parent layout from squeezing it below the natural width.
         self.label = QLabel()
-        self.label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        self.label.setFont(QFont("Arial", 18, QFont.Weight.Bold))
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # 200 px easily fits "S / Declarer" + the 10-px horizontal padding.
+        self.label.setMinimumWidth(200)
+        # Don't elide; if the label is forced narrower it will overflow
+        # rather than display "...".
+        self.label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         self._update_label()
         layout.addWidget(self.label, alignment=Qt.AlignmentFlag.AlignCenter)
 
@@ -315,6 +383,14 @@ class FannedHandWidget(QWidget):
             # Fan width: first card full + 12 cards with overlap + 3 suit gaps
             fan_width = CARD_WIDTH + (12 * (CARD_WIDTH - CARD_OVERLAP)) + (3 * SUIT_GAP)
             self.cards_container.setMinimumSize(fan_width, CARD_HEIGHT + 10)
+            # Also propagate the fan width up to the outer widget. With
+            # absolute-positioned card children, Qt can't infer a
+            # sizeHint for cards_container, so the parent layout would
+            # happily allocate it less than fan_width — which clipped
+            # the rightmost card on a typical 1920-wide window. Setting
+            # the outer widget's minimum width explicitly forces the
+            # parent layout to honour the full fan.
+            self.setMinimumWidth(fan_width)
         layout.addWidget(self.cards_container)
 
     def _update_label(self):
@@ -345,6 +421,14 @@ class FannedHandWidget(QWidget):
         self.face_up = face_up
         self._rebuild_cards()
 
+    def set_four_column_layout(self, enabled: bool):
+        """Switch between horizontal-fan and 4-column dummy display."""
+        if self.four_column_layout == enabled:
+            return
+        self.four_column_layout = enabled
+        if self.hand:
+            self._rebuild_cards()
+
     def set_selectable(self, selectable: bool):
         self.selectable = selectable
         for cw in self.card_widgets:
@@ -358,6 +442,10 @@ class FannedHandWidget(QWidget):
     def _rebuild_cards(self):
         self.clear()
         if not self.hand:
+            return
+
+        if self.four_column_layout and self.face_up:
+            self._rebuild_cards_four_columns()
             return
 
         sorted_cards = sorted(self.hand.cards, key=lambda c: (c.suit, c.rank))
@@ -383,6 +471,64 @@ class FannedHandWidget(QWidget):
             x_pos += step
             prev_suit = card.suit
 
+    def _rebuild_cards_four_columns(self):
+        """4-row dummy layout: one horizontal row per suit, sorted high-to-low.
+
+        Mirrors how a real-table dummy is laid down: cards in each suit
+        spread horizontally with mild overlap, suits stacked vertically.
+        Each row above the bottom one is partially occluded by the row
+        below, but the rank+suit corner of every card always shows. The
+        method name kept "four_columns" for backwards compatibility with
+        callers that flip the layout flag.
+        """
+        # Horizontal step inside a row — borrowed from the regular fan
+        # so the look is familiar.
+        h_step = CARD_WIDTH - CARD_OVERLAP  # 65 px
+        # Vertical step between rows — exposes the top corner of each
+        # row above the bottom one. 60 keeps the rank+suit visible
+        # without burying the next row's index too far down.
+        row_v_step = 60
+
+        # Group cards by suit; sort each suit high-to-low (Rank is an
+        # IntEnum where ACE=0 < TWO=12 — smaller value = higher rank).
+        by_suit: Dict[Suit, List[Card]] = {s: [] for s in
+                                           (Suit.SPADES, Suit.HEARTS,
+                                            Suit.DIAMONDS, Suit.CLUBS)}
+        for c in self.hand.cards:
+            if c.suit in by_suit:
+                by_suit[c.suit].append(c)
+        for s in by_suit:
+            by_suit[s].sort(key=lambda c: c.rank)
+
+        suits_order = [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]
+
+        # Lay out the rows: row 0 (spades) sits at y=0 and is partly
+        # covered by row 1, etc. The last row is fully visible.
+        max_cards_in_row = max((len(by_suit[s]) for s in suits_order),
+                               default=0)
+        for row_idx, suit in enumerate(suits_order):
+            cards = by_suit[suit]
+            y = row_idx * row_v_step
+            x = 0
+            for card in cards:
+                cw = CardWidget(card, True, self.cards_container)
+                cw.set_selectable(self.selectable)
+                cw.card_clicked.connect(
+                    lambda c, s=self.logical_seat: self.card_selected.emit(s, c)
+                )
+                cw.move(int(x), int(y))
+                cw.show()
+                cw.raise_()
+                self.card_widgets.append(cw)
+                x += h_step
+
+        # Container size: max row width + total stacked height.
+        total_w = (CARD_WIDTH + max(0, max_cards_in_row - 1) * h_step
+                   if max_cards_in_row > 0 else CARD_WIDTH)
+        total_h = (len(suits_order) - 1) * row_v_step + CARD_HEIGHT
+        self.cards_container.setMinimumSize(total_w, total_h + 10)
+        self.cards_container.resize(total_w, total_h + 10)
+
     def remove_card(self, card: Card):
         if self.hand:
             self.hand.remove_card(card)
@@ -405,13 +551,20 @@ class FannedHandWidget(QWidget):
 class TrickAreaWidget(QFrame):
     """Green table center with played cards at fixed compass positions"""
 
-    # Trick area — fits between N and S hands
+    # Trick area — fits between N and S hands. Even at 440 tall the
+    # parent layout was squeezing this widget on 1080-px windows
+    # (north row + south row + bottom bar + middle stretches > window
+    # height), and a Qt fixed-size widget that's allocated less than
+    # its requested size lets its absolute-positioned children draw
+    # outside the painted QFrame — which is what cut off the bottom
+    # of the south played card. Tightening cards to 130×182 and the
+    # area to 380 keeps the south card 4 px clear of the bottom and
+    # makes the whole row fit comfortably without clipping.
     AREA_WIDTH = 460
     AREA_HEIGHT = 400
 
-    # Trick cards — large and readable
-    TRICK_CARD_WIDTH = 110
-    TRICK_CARD_HEIGHT = 155
+    TRICK_CARD_WIDTH = 130
+    TRICK_CARD_HEIGHT = 182
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -438,39 +591,58 @@ class TrickAreaWidget(QFrame):
         w, h = self.AREA_WIDTH, self.AREA_HEIGHT
         tcw, tch = self.TRICK_CARD_WIDTH, self.TRICK_CARD_HEIGHT
 
-        # Card positions - arranged around center with spacing
+        # Card positions — arranged around center with extra margin so
+        # the cards never overlap the compass chevrons (the previous
+        # layout left 35-px chevrons at the edges with cards starting
+        # essentially at chevron-bottom, so the N/S cards crowded the
+        # arrows).
         center_x, center_y = w // 2, h // 2
-        gap = 5  # Gap between cards
+        chevron_size = 40
+        chevron_margin = 6   # gap between the chevron and the table border
+        # Gap between a played card and the chevron above/below it. Must
+        # be > 0 so the card never visually merges with the arrow.
+        chevron_to_card_gap = 18
 
         positions = {
-            Seat.NORTH: (center_x - tcw // 2, center_y - tch - gap),
-            Seat.SOUTH: (center_x - tcw // 2, center_y + gap),
-            Seat.WEST: (center_x - tcw - gap, center_y - tch // 2),
-            Seat.EAST: (center_x + gap, center_y - tch // 2),
+            Seat.NORTH: (center_x - tcw // 2,
+                         chevron_margin + chevron_size + chevron_to_card_gap),
+            Seat.SOUTH: (center_x - tcw // 2,
+                         h - chevron_margin - chevron_size
+                         - chevron_to_card_gap - tch),
+            Seat.WEST:  (chevron_margin + chevron_size + chevron_to_card_gap,
+                         center_y - tch // 2),
+            Seat.EAST:  (w - chevron_margin - chevron_size
+                         - chevron_to_card_gap - tcw,
+                         center_y - tch // 2),
         }
 
-        # Create card widgets with fixed positions (smaller size for trick area)
+        # Create card widgets with fixed positions
         for seat in Seat:
             cw_widget = CardWidget(parent=self)
-            cw_widget.setFixedSize(tcw, tch)  # Use smaller size
+            cw_widget.setFixedSize(tcw, tch)
             cw_widget.setVisible(False)
             cw_widget.move(positions[seat][0], positions[seat][1])
             self.card_widgets[seat] = cw_widget
 
-        # Direction arrows at edges
+        # Direction arrows at the edges, sized 40 so the labels inside
+        # render legibly at the bigger area dimensions.
         arrow_positions = {
-            'N': (center_x - 17, 8),
-            'S': (center_x - 17, h - 43),
-            'W': (8, center_y - 17),
-            'E': (w - 43, center_y - 17),
+            'N': (center_x - chevron_size // 2, chevron_margin),
+            'S': (center_x - chevron_size // 2, h - chevron_margin - chevron_size),
+            'W': (chevron_margin, center_y - chevron_size // 2),
+            'E': (w - chevron_margin - chevron_size, center_y - chevron_size // 2),
         }
         for d, pos in arrow_positions.items():
             arrow = DirectionArrow(d, self)
+            arrow.setFixedSize(chevron_size, chevron_size)
             arrow.move(pos[0], pos[1])
 
         # Bidding table overlay in center
         self.bidding_widget = BiddingTableWidget(self)
-        bw, bh = 260, 200
+        # Bumped from 260×200 to 320×260 so the Q-Plus-style 70×40
+        # cells (4 columns + small padding) plus header + status row
+        # fit cleanly without the right-edge cells getting clipped.
+        bw, bh = 320, 260
         self.bidding_widget.move((w - bw) // 2, (h - bh) // 2)
         self.bidding_widget.setFixedSize(bw, bh)
 
@@ -515,7 +687,9 @@ class DirectionArrow(QWidget):
     def __init__(self, direction: str, parent=None):
         super().__init__(parent)
         self.direction = direction
-        self.setFixedSize(35, 35)
+        # Default size — callers (TrickAreaWidget) override via setFixedSize
+        # if they want bigger chevrons.
+        self.setFixedSize(40, 40)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -533,39 +707,55 @@ class DirectionArrow(QWidget):
         painter.drawPolygon(QPolygon(pts.get(self.direction, [])))
 
         painter.setPen(QColor('#ffffff'))
-        painter.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        # Scale the label font with the arrow widget so the letter is
+        # always readable, regardless of the size the parent picked.
+        font_pt = max(10, int(min(w, h) * 0.35))
+        painter.setFont(QFont("Arial", font_pt, QFont.Weight.Bold))
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.direction)
 
 
 class BiddingTableWidget(QFrame):
-    """Bidding table overlay in center"""
+    """Bidding table overlay in center — Q-Plus style.
+
+    Columns are reordered so the DEALER's column is on the left, and
+    bidding fills in left-to-right one row at a time. The seat that
+    is on the spot to bid next gets a "?" cell. This is the format
+    Q-Plus Bridge uses (and is much easier to read than the fixed
+    N/E/S/W version we started with).
+    """
+
+    # Cell sizing kept here so set_auction can reproduce it without
+    # the magic numbers drifting between the header row and the body.
+    _CELL_W = 70
+    _CELL_H = 40
+    _HEADER_FS = 18
+    _CELL_FS = 18
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet("QFrame { background-color: #e8e8e8; border: 1px solid #888; border-radius: 5px; }")
-        self.setMinimumSize(200, 150)
+        self.setStyleSheet(
+            "QFrame { background-color: #f0f0f0; border: 1px solid #555;"
+            " border-radius: 6px; }"
+        )
+        self.setMinimumSize(260, 180)
         self._setup_ui()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(2)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
 
-        # Header - moderate font size for green area
-        header = QHBoxLayout()
-        for d in ['N', 'E', 'S', 'W']:
-            lbl = QLabel(d)
-            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lbl.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-            lbl.setFixedWidth(55)
-            lbl.setStyleSheet("background-color: #c0c0c0; border: 1px solid #888;")
-            header.addWidget(lbl)
-        layout.addLayout(header)
+        # Header row — populated lazily in set_auction so the column
+        # order can rotate to put the dealer first.
+        self.header_layout = QHBoxLayout()
+        self.header_layout.setSpacing(2)
+        layout.addLayout(self.header_layout)
 
+        # Body grid (one HBoxLayout per row of 4 cells).
         self.bids_widget = QWidget()
         self.bids_layout = QVBoxLayout(self.bids_widget)
         self.bids_layout.setContentsMargins(0, 0, 0, 0)
-        self.bids_layout.setSpacing(1)
+        self.bids_layout.setSpacing(2)
         layout.addWidget(self.bids_widget)
 
         self.status_label = QLabel("")
@@ -573,78 +763,121 @@ class BiddingTableWidget(QFrame):
         self.status_label.setFont(QFont("Arial", 12))
         layout.addWidget(self.status_label)
 
-    def set_auction(self, auction, dealer: Seat):
-        while self.bids_layout.count():
-            item = self.bids_layout.takeAt(0)
+        # Render an empty header so the widget looks right pre-deal.
+        self._render_header(Seat.NORTH)
+
+    def _clear_layout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
             elif item.layout():
-                while item.layout().count():
-                    sub = item.layout().takeAt(0)
-                    if sub.widget():
-                        sub.widget().deleteLater()
+                self._clear_layout(item.layout())
 
-        if not auction:
-            return
+    def _render_header(self, dealer: Seat):
+        """Render the column header N/E/S/W rotated so that `dealer`
+        is the first column (Q-Plus convention)."""
+        self._clear_layout(self.header_layout)
+        seat_chars = ['N', 'E', 'S', 'W']
+        for offset in range(4):
+            seat_char = seat_chars[(dealer.value + offset) % 4]
+            lbl = QLabel(seat_char)
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl.setFont(QFont("Arial", self._HEADER_FS, QFont.Weight.Bold))
+            lbl.setFixedSize(self._CELL_W, self._CELL_H - 6)
+            lbl.setStyleSheet(
+                "background-color: #d8d8d8; color: #000;"
+                " border: 1px solid #888; border-radius: 3px;"
+            )
+            self.header_layout.addWidget(lbl)
 
-        dealer_idx = dealer.value
+    def _make_cell(self, text: str, *, kind: str = 'bid',
+                   suit=None) -> QLabel:
+        """Build one bid cell with the right colour for its bid type."""
+        lbl = QLabel(text)
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl.setFont(QFont("Arial", self._CELL_FS,
+                          QFont.Weight.Bold if kind != 'pad' else QFont.Weight.Normal))
+        lbl.setFixedSize(self._CELL_W, self._CELL_H)
+        if kind == 'pass':
+            style = "color: #006400;"
+        elif kind == 'double':
+            style = "color: blue; font-weight: bold;"
+        elif kind == 'redouble':
+            style = "color: #00008B; font-weight: bold;"
+        elif kind == 'suit' and suit is not None:
+            from .styles import get_suit_color
+            suit_names = {Suit.SPADES: 'spades', Suit.HEARTS: 'hearts',
+                          Suit.DIAMONDS: 'diamonds', Suit.CLUBS: 'clubs'}
+            color = get_suit_color(suit_names.get(suit, 'spades'))
+            style = f"color: {color}; font-weight: bold;"
+        elif kind == 'next':
+            style = "color: #777; font-weight: bold;"
+        elif kind == 'pad':
+            style = "color: #888;"
+        else:
+            style = "color: #111;"
+        lbl.setStyleSheet(
+            "QLabel { background-color: #ffffff; border: 1px solid #bbb;"
+            f" border-radius: 3px; padding: 2px; {style} }}"
+        )
+        return lbl
+
+    def set_auction(self, auction, dealer: Seat):
+        # Header rotates to put dealer first.
+        self._render_header(dealer)
+
+        # Clear body.
+        self._clear_layout(self.bids_layout)
+
+        # Build rows of four cells. Position 0 in each row is dealer's
+        # seat — bids feed in dealer-first order.
         col = 0
         current_row = None
 
-        for i in range(dealer_idx):
-            if col == 0:
-                current_row = QHBoxLayout()
-                current_row.setSpacing(0)
-            lbl = QLabel("-")
-            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lbl.setFixedWidth(55)
-            lbl.setFont(QFont("Arial", 13))
-            lbl.setStyleSheet("border: 1px solid #ccc;")
-            current_row.addWidget(lbl)
-            col += 1
+        def _new_row():
+            nonlocal current_row
+            current_row = QHBoxLayout()
+            current_row.setSpacing(2)
 
         for bid in auction:
             if col == 0:
-                current_row = QHBoxLayout()
-                current_row.setSpacing(0)
-
-            text = bid.symbol() if hasattr(bid, 'symbol') else str(bid)
-            lbl = QLabel(text)
-            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lbl.setFixedWidth(55)
-            lbl.setFont(QFont("Arial", 13))
-
-            if hasattr(bid, 'is_pass') and bid.is_pass:
-                lbl.setStyleSheet("border: 1px solid #ccc; color: #666;")
-            elif hasattr(bid, 'is_double') and bid.is_double:
-                lbl.setStyleSheet("border: 1px solid #ccc; color: blue; font-weight: bold;")
-            elif hasattr(bid, 'is_redouble') and bid.is_redouble:
-                lbl.setStyleSheet("border: 1px solid #ccc; color: #00008B; font-weight: bold;")
-            elif hasattr(bid, 'suit') and bid.suit is not None:
-                # Use centralized suit colors (respects 4-color mode)
-                from .styles import get_suit_color
-                suit_names = {Suit.SPADES: 'spades', Suit.HEARTS: 'hearts',
-                             Suit.DIAMONDS: 'diamonds', Suit.CLUBS: 'clubs'}
-                color = get_suit_color(suit_names.get(bid.suit, 'spades'))
-                lbl.setStyleSheet(f"border: 1px solid #ccc; color: {color}; font-weight: bold;")
+                _new_row()
+            if getattr(bid, 'is_pass', False):
+                cell = self._make_cell("Pass", kind='pass')
+            elif getattr(bid, 'is_double', False):
+                cell = self._make_cell("X", kind='double')
+            elif getattr(bid, 'is_redouble', False):
+                cell = self._make_cell("XX", kind='redouble')
+            elif getattr(bid, 'suit', None) is not None:
+                text = bid.symbol() if hasattr(bid, 'symbol') else str(bid)
+                cell = self._make_cell(text, kind='suit', suit=bid.suit)
             else:
-                lbl.setStyleSheet("border: 1px solid #ccc; color: black; font-weight: bold;")
-
-            current_row.addWidget(lbl)
+                text = bid.symbol() if hasattr(bid, 'symbol') else str(bid)
+                cell = self._make_cell(text, kind='bid')
+            current_row.addWidget(cell)
             col += 1
             if col >= 4:
                 self.bids_layout.addLayout(current_row)
                 current_row = None
                 col = 0
 
-        if current_row and col > 0:
+        # Mark the next bidder with a "?" placeholder cell, then pad
+        # any remaining cells in the row with empty placeholders so
+        # the grid stays rectangular.
+        if not auction and col == 0:
+            _new_row()
+        if col == 0 and auction:
+            # New row will only be created if we still want to show "?"
+            _new_row()
+        # We still want to show "?" cell for the seat that's about to act.
+        if current_row is not None or not auction:
+            if current_row is None:
+                _new_row()
+            current_row.addWidget(self._make_cell("?", kind='next'))
+            col += 1
             while col < 4:
-                lbl = QLabel("?")
-                lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                lbl.setFixedWidth(55)
-                lbl.setFont(QFont("Arial", 13))
-                lbl.setStyleSheet("border: 1px solid #ccc; color: #888;")
-                current_row.addWidget(lbl)
+                current_row.addWidget(self._make_cell("", kind='pad'))
                 col += 1
             self.bids_layout.addLayout(current_row)
 
@@ -680,6 +913,11 @@ class TableView(QWidget):
         self._local_seat: Seat = Seat.SOUTH
         self._rotation_quarters: int = 0  # number of 90° steps applied
         self.is_play_phase = False
+        # True once dummy is visible. setup_declarer_play() flips this
+        # off when the opposing side declared so dummy stays hidden
+        # until the human-side opening lead lands; main_window calls
+        # reveal_dummy() after the opening lead is played.
+        self.dummy_revealed = True
 
         self.setStyleSheet(f"background-color: {COLORS['background']};")
         self._setup_ui()
@@ -739,15 +977,25 @@ class TableView(QWidget):
         north_row.addWidget(self.info_panel, alignment=Qt.AlignmentFlag.AlignTop)
         layout.addLayout(north_row)
 
-        # Middle section with E/W areas and trick area
+        # Middle section with E/W areas and trick area.
+        # Side columns are wrapped in QWidgets (not bare layouts) so we
+        # can pin both to the same minimum width via _balance_side_columns
+        # — without that, an empty W column + a wide 4-row dummy on E
+        # pulled the trick area off-centre and the green felt landed in
+        # the upper-left of the screen instead of the middle.
         middle_layout = QHBoxLayout()
         middle_layout.setSpacing(10)
 
-        # West side - label and hand widget (vertical stack)
-        west_vbox = QVBoxLayout()
+        # West column
+        self.west_column = QWidget()
+        west_vbox = QVBoxLayout(self.west_column)
+        west_vbox.setContentsMargins(0, 0, 0, 0)
         self.west_label = QLabel("W: BEN")
         self.west_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
-        self.west_label.setFixedWidth(70)
+        # 160 px easily fits "W: Declarer" / "E: Dummy" with the 8-px
+        # horizontal padding. Was 70, which clipped both Declarer and
+        # Dummy down to "D".
+        self.west_label.setMinimumWidth(160)
         self.west_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
         self.west_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         west_vbox.addStretch()
@@ -755,12 +1003,16 @@ class TableView(QWidget):
         west_vbox.addWidget(self.hand_widgets[Seat.WEST])
         self.hand_widgets[Seat.WEST].setVisible(False)  # Hidden by default
         west_vbox.addStretch()
-        middle_layout.addLayout(west_vbox, stretch=1)
+        middle_layout.addWidget(self.west_column, stretch=1)
 
-        # Trick area in center - wrap in layouts to ensure proper centering
-        trick_container = QVBoxLayout()
+        # Trick area in center - wrap in layouts to ensure proper centering.
+        # The center column has stretch=0 so it stays at the trick area's
+        # natural width and doesn't stretch asymmetrically; the side
+        # columns absorb extra horizontal space equally (stretch=1 each).
+        trick_container_widget = QWidget()
+        trick_container = QVBoxLayout(trick_container_widget)
+        trick_container.setContentsMargins(0, 0, 0, 0)
         trick_container.addStretch()
-        # Horizontal wrapper to ensure horizontal centering
         trick_h_wrapper = QHBoxLayout()
         trick_h_wrapper.addStretch()
         self.trick_area = TrickAreaWidget()
@@ -768,14 +1020,16 @@ class TableView(QWidget):
         trick_h_wrapper.addStretch()
         trick_container.addLayout(trick_h_wrapper)
         trick_container.addStretch()
-        # Use stretch=1 so the center column gets equal space distribution
-        middle_layout.addLayout(trick_container, stretch=1)
+        middle_layout.addWidget(trick_container_widget, stretch=0)
 
-        # East side - label and hand widget (vertical stack)
-        east_vbox = QVBoxLayout()
+        # East column
+        self.east_column = QWidget()
+        east_vbox = QVBoxLayout(self.east_column)
+        east_vbox.setContentsMargins(0, 0, 0, 0)
         self.east_label = QLabel("E: BEN")
         self.east_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
-        self.east_label.setFixedWidth(70)
+        # See west_label note — 160 fits "Declarer" / "Dummy" cleanly.
+        self.east_label.setMinimumWidth(160)
         self.east_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
         self.east_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         east_vbox.addStretch()
@@ -783,9 +1037,17 @@ class TableView(QWidget):
         east_vbox.addWidget(self.hand_widgets[Seat.EAST])
         self.hand_widgets[Seat.EAST].setVisible(False)  # Hidden by default
         east_vbox.addStretch()
-        middle_layout.addLayout(east_vbox, stretch=1)
+        middle_layout.addWidget(self.east_column, stretch=1)
 
         layout.addLayout(middle_layout, stretch=1)
+
+        # No fixed spacer here — the trick_container's add-stretch above
+        # and below the green area already gives it natural breathing
+        # room. A 100-px spacer here forced middle_layout to give back
+        # 100 px on a 1080-tall window, which was enough to clip the
+        # green area's bottom edge (and the S chevron with it). Letting
+        # middle_layout claim that space restores the full trick area
+        # and the south hand sits as low as the layout permits.
 
         # South row: label + hand on one line
         south_row = QHBoxLayout()
@@ -804,10 +1066,13 @@ class TableView(QWidget):
         south_row.addStretch()
         south_row.addWidget(self.hand_widgets[Seat.SOUTH])
         south_row.addStretch()
-        # Spacer to balance info panel on north side
-        spacer = QWidget()
-        spacer.setFixedWidth(140)
-        south_row.addWidget(spacer, alignment=Qt.AlignmentFlag.AlignBottom)
+        # The earlier 140-px spacer here only existed to make the south
+        # row visually balance the info-panel block on the north row.
+        # On 1920-wide windows that left the 13-card fan no room to
+        # breathe and the rightmost card got clipped. Dropping the
+        # spacer reclaims the width; the trick area is centered
+        # independently in the middle layout, so the asymmetry isn't
+        # noticeable.
         layout.addLayout(south_row)
 
         # Bottom bar with contract and tricks
@@ -951,6 +1216,11 @@ class TableView(QWidget):
         # Hide tricks during bidding
         self.tricks_panel.setVisible(False)
 
+        # Centre the trick area between the side columns from the start
+        # of the bidding phase, before any dummy widget changes its
+        # natural width.
+        self._balance_side_columns()
+
     def update_auction(self, auction, dealer: Seat):
         self.trick_area.set_auction(auction, dealer)
 
@@ -985,11 +1255,34 @@ class TableView(QWidget):
         if local in self.board.hands:
             local_widget.set_hand(self.board.hands[local], face_up=True)
 
-        # ALWAYS reveal dummy face up (bridge rule).
+        # Dummy reveal: bridge rule says dummy is laid down AFTER the
+        # opening lead has been played. We honour that strictly when
+        # the opposing side declared (local user is on defense and
+        # dummy is also opposing). When the local user's side declares
+        # — including when the user IS dummy — dummy goes up at once,
+        # since the user already needs the cards visible to plan declarer
+        # play. main_window flips dummy_revealed back on via
+        # reveal_dummy() once the opening lead lands.
         dummy_widget = self.hand_widgets[self._display_seat(self.dummy)]
-        if self.dummy in self.board.hands:
+        opposing_side_declared = (
+            self.dummy != local and self.dummy != local.partner()
+        )
+        # Reset the layout flag on every (non-dummy) widget so a previous
+        # deal where the dummy was at, say, East doesn't leave East stuck
+        # in 4-column mode when the next deal puts dummy elsewhere.
+        for hw in self.hand_widgets.values():
+            if hw is not dummy_widget:
+                hw.set_four_column_layout(False)
+        dummy_widget.set_four_column_layout(opposing_side_declared)
+
+        self.dummy_revealed = not opposing_side_declared
+        if self.dummy_revealed and self.dummy in self.board.hands:
             dummy_widget.set_hand(self.board.hands[self.dummy], face_up=True)
             dummy_widget.setVisible(True)
+        else:
+            # Keep dummy hidden until the opening lead lands.
+            dummy_widget.setVisible(False)
+            dummy_widget.clear()
 
         # When the local player controls the declarer side (single-player
         # partnership control, or any seat where they ARE declarer/dummy),
@@ -1042,12 +1335,63 @@ class TableView(QWidget):
         self.trick_area.set_show_bidding(False)
         self.tricks_panel.setVisible(True)
 
+        # Side columns may have been resized by the dummy widget
+        # switching into 4-column mode (or back). Sync them so the
+        # trick area lands roughly in the centre of the window.
+        self._balance_side_columns()
+
+    def _balance_side_columns(self):
+        """Pin the W and E columns to the same minimum width so the
+        trick area stays roughly in the middle of the screen.
+
+        Without this, an empty west column (declarer hidden) plus a
+        wide 4-row dummy on east shoves the entire green-felt block
+        into the upper-left of the window. We compute each column's
+        natural sizeHint, pick the larger, and set both column
+        widgets to that minimum. The trick area still has its own
+        fixed width and gets centered between the two side columns
+        by the existing addStretch wrappers.
+        """
+        try:
+            w_hint = self.west_column.sizeHint().width()
+            e_hint = self.east_column.sizeHint().width()
+            target = max(w_hint, e_hint, 90)
+            self.west_column.setMinimumWidth(target)
+            self.east_column.setMinimumWidth(target)
+        except Exception:
+            pass
+
+    def reveal_dummy(self):
+        """Flip dummy face-up after the opening lead.
+
+        No-op if dummy was already up (single-player hands where the
+        user's side declared) or if the contract data isn't loaded yet.
+        """
+        if self.dummy_revealed or self.dummy is None or self.board is None:
+            return
+        self.dummy_revealed = True
+        if self.dummy in self.board.hands:
+            dummy_widget = self.hand_widgets[self._display_seat(self.dummy)]
+            dummy_widget.set_hand(self.board.hands[self.dummy], face_up=True)
+            dummy_widget.setVisible(True)
+        # Re-balance side columns now that the dummy widget is sized.
+        self._balance_side_columns()
+
     def set_hand_visible(self, seat: Seat, visible: bool):
+        # Re-balance side columns when an E or W hand toggles, so
+        # showing the dummy doesn't shove the trick area off-centre.
         if self.board and seat in self.board.hands:
             ds = self._display_seat(seat)
             self.hand_widgets[ds].setVisible(visible)
+            if ds in (Seat.EAST, Seat.WEST):
+                self._balance_side_columns()
             if visible:
                 self.hand_widgets[ds].set_hand(self.board.hands[seat], face_up=True)
+                # Showing dummy via the network reveal path also flips
+                # the deferred-reveal flag so subsequent reveal_dummy()
+                # calls become no-ops.
+                if seat == self.dummy:
+                    self.dummy_revealed = True
 
     def set_hand_selectable(self, seat: Seat, selectable: bool, lead_suit: Optional[Suit] = None):
         ds = self._display_seat(seat)

@@ -44,12 +44,23 @@ class AuctionTricksDialog(QDialog):
         self.resize(700, 650)
         apply_dialog_style(self)
 
-        # Allow user to move the dialog (not locked to center)
+        # Detach from the parent window: Qt.Dialog is a "tool" window
+        # that some window managers (Mutter / KWin) keep glued to the
+        # parent's screen, so it can't be dragged onto a second monitor.
+        # Promote to a real top-level Qt.Window with min/max/close
+        # buttons; the caller is expected to use show() instead of
+        # exec() so the user can interact with the main window in
+        # parallel. Qt.WA_DeleteOnClose makes sure each open/close
+        # cycle still cleans up properly.
         self.setWindowFlags(
-            Qt.WindowType.Dialog |
+            Qt.WindowType.Window |
             Qt.WindowType.WindowTitleHint |
+            Qt.WindowType.WindowSystemMenuHint |
+            Qt.WindowType.WindowMinMaxButtonsHint |
             Qt.WindowType.WindowCloseButtonHint
         )
+        self.setModal(False)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
 
         self.board = board
         self.tricks = tricks or []
@@ -313,11 +324,26 @@ class AuctionTricksDialog(QDialog):
         return f'<span style="font-size:{fs}px">{str(card)}</span>'
 
     def _rank_to_char(self, rank):
-        """Convert rank to display character."""
-        if hasattr(rank, 'value'):
-            rank_val = rank.value
-        else:
-            rank_val = rank
+        """Convert rank to display character.
 
-        rank_chars = {12: 'A', 11: 'K', 10: 'Q', 9: 'J', 8: 'T'}
-        return rank_chars.get(rank_val, str(rank_val + 2))
+        The model's Rank IntEnum is ace-high-low (ACE=0, KING=1, …,
+        TWO=12) so its value is NOT the printed rank. Earlier this
+        method assumed the opposite mapping (12=A) which made every
+        card render with the wrong rank: an Ace came out as "2", a
+        Five came out as "J", and the Cards-still-out list ended up
+        inconsistent with the played-tricks display. Just delegate
+        to Rank.to_char() which already uses the canonical
+        'AKQJT98765432' table.
+        """
+        if hasattr(rank, 'to_char'):
+            try:
+                return rank.to_char()
+            except Exception:
+                pass
+        # Fall-through for plain ints / strings — try the model's
+        # Rank class so the same canonical table is used.
+        try:
+            from ben_backend.models import Rank
+            return Rank(int(rank)).to_char()
+        except Exception:
+            return str(rank)

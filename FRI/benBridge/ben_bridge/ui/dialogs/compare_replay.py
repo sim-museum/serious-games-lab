@@ -27,6 +27,10 @@ class _ReplayPanel(QWidget):
     area, and tricks-won line. Driven externally by `set_position`.
     """
 
+    # Trick area font: keep in sync with the hand-row font so the cards
+    # in the centre read at the same weight as those in N/E/S/W.
+    TRICK_FS = 22
+
     def __init__(self, run: BenBoardRun, title: str, parent=None):
         super().__init__(parent)
         self.run = run
@@ -36,7 +40,7 @@ class _ReplayPanel(QWidget):
         layout.setSpacing(6)
 
         # Title strip — distinguishes "open" vs "closed".
-        title_lbl = QLabel(f'<span style="font-size:14px"><b>{title}</b></span>')
+        title_lbl = QLabel(f'<span style="font-size:18px"><b>{title}</b></span>')
         title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title_lbl)
 
@@ -98,17 +102,28 @@ class _ReplayPanel(QWidget):
         grid.addWidget(self.south, 2, 1)
 
         center = QFrame()
+        # 4 lines of card text + 1 trick title at TRICK_FS=22px need
+        # ~5 × 30 = 150px of vertical room before any padding; we add
+        # a small margin on top and bottom but no centering whitespace,
+        # so the 4th card never gets eaten by the bottom border.
         center.setStyleSheet(
             "QFrame { background-color: #e8ece8; border: 1px solid #c0c0c0;"
-            " border-radius: 4px; min-width: 110px; min-height: 70px; }"
+            " border-radius: 4px; min-width: 180px; min-height: 200px; }"
         )
         c_layout = QVBoxLayout(center)
-        c_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.trick_label = QLabel('<span style="font-size:13px"><b>Auction</b></span>')
+        c_layout.setContentsMargins(8, 6, 8, 6)
+        c_layout.setSpacing(2)
+        c_layout.setAlignment(Qt.AlignmentFlag.AlignTop
+                              | Qt.AlignmentFlag.AlignHCenter)
+        fs = self.TRICK_FS
+        self.trick_label = QLabel(
+            f'<span style="font-size:{fs}px"><b>Trick 1</b></span>'
+        )
         self.trick_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         c_layout.addWidget(self.trick_label)
         self.trick_cards_label = QLabel("")
         self.trick_cards_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.trick_cards_label.setTextFormat(Qt.TextFormat.RichText)
         c_layout.addWidget(self.trick_cards_label)
         grid.addWidget(center, 1, 1)
 
@@ -116,62 +131,30 @@ class _ReplayPanel(QWidget):
 
         # Tricks-won line.
         trick_line = QHBoxLayout()
-        self.declarer_lbl = QLabel('<span style="font-size:13px">Declarer: 0</span>')
+        self.declarer_lbl = QLabel('<span style="font-size:16px">Declarer: 0</span>')
         trick_line.addWidget(self.declarer_lbl)
         trick_line.addStretch()
-        self.defense_lbl = QLabel('<span style="font-size:13px">Defense: 0</span>')
+        self.defense_lbl = QLabel('<span style="font-size:16px">Defense: 0</span>')
         trick_line.addWidget(self.defense_lbl)
         layout.addLayout(trick_line)
 
     # ------------------------------------------------------------------
     # Position model
     #
-    # Positions are flat: the auction occupies indices [0, len(auction)],
-    # play occupies [len(auction)+1 .. len(auction)+1+sum(len(t.cards))].
-    # A panel "freezes" once its own length is exceeded — useful when the
-    # two runs disagree in auction or trick count.
+    # Position 0 is "trick 1, no card yet". Each step adds one card to
+    # the current trick; once 4 cards land we move on to trick N+1.
+    # The auction is shown in its own dialog (see BiddingLogDialog),
+    # so we don't intermix bids and cards in the navigation any more.
+    # The panel freezes at its last card if the other side ran longer.
     # ------------------------------------------------------------------
 
     def total_steps(self) -> int:
-        play_steps = sum(len(t.cards) for t in self.run.tricks)
-        return len(self.run.auction) + play_steps
+        return sum(len(t.cards) for t in self.run.tricks)
 
     def set_position(self, step: int):
-        """Render the panel at the global step index (0..total_steps).
-
-        Step 0 is "no bids yet"; bumping the step shows one more bid until
-        all bids are visible, then one more card per step. Excess steps
-        are clamped so this panel just shows its final state.
-        """
+        """Render the panel at card-step `step` (0..total_steps())."""
         step = max(0, min(step, self.total_steps()))
-        auction_len = len(self.run.auction)
-
-        if step <= auction_len:
-            self._render_auction(bids_shown=step)
-        else:
-            self._render_play(card_step=step - auction_len)
-
-    def _render_auction(self, bids_shown: int):
-        # During bidding all four hands are visible (post-mortem); no cards
-        # have been played yet.
-        played_cards = {s: [] for s in Seat}
-        self._update_hands(played_cards)
-        if bids_shown == 0:
-            self.trick_label.setText('<span style="font-size:13px"><b>Auction (start)</b></span>')
-        else:
-            self.trick_label.setText(
-                f'<span style="font-size:13px"><b>Auction: {bids_shown}/{len(self.run.auction)}</b></span>'
-            )
-        # Show the auction so far as a compact strip.
-        if self.run.auction:
-            shown = self.run.auction[:bids_shown]
-            self.trick_cards_label.setText(
-                "<span style='font-size:13px'>" + " ".join(b.symbol() for b in shown) + "</span>"
-            )
-        else:
-            self.trick_cards_label.setText("")
-        self.declarer_lbl.setText('<span style="font-size:13px">Declarer: 0</span>')
-        self.defense_lbl.setText('<span style="font-size:13px">Defense: 0</span>')
+        self._render_play(card_step=step)
 
     def _render_play(self, card_step: int):
         tricks = self.run.tricks
@@ -203,25 +186,28 @@ class _ReplayPanel(QWidget):
 
         self._update_hands(played_cards)
 
+        fs = self.TRICK_FS
         # Trick area
         if current_trick_idx < len(tricks):
             trick = tricks[current_trick_idx]
             self.trick_label.setText(
-                f'<span style="font-size:13px"><b>Trick {current_trick_idx + 1}</b></span>'
+                f'<span style="font-size:{fs}px"><b>Trick {current_trick_idx + 1}</b></span>'
             )
             shown_cards = []
             for ci in range(cards_in_current):
                 card = trick.cards[ci]
                 seat = Seat((trick.leader.value + ci) % 4)
                 shown_cards.append(
-                    f'<span style="font-size:13px">{seat.to_char()}: {self._fmt_card(card)}</span>'
+                    f'<span style="font-size:{fs}px">{seat.to_char()}: {self._fmt_card(card)}</span>'
                 )
             self.trick_cards_label.setText(
                 "<br>".join(shown_cards) if shown_cards else
-                '<span style="font-size:13px">(lead)</span>'
+                f'<span style="font-size:{fs}px">(lead)</span>'
             )
         else:
-            self.trick_label.setText('<span style="font-size:13px"><b>Complete</b></span>')
+            self.trick_label.setText(
+                f'<span style="font-size:{fs}px"><b>Complete</b></span>'
+            )
             self.trick_cards_label.setText("")
 
         # Tricks-won
@@ -247,10 +233,10 @@ class _ReplayPanel(QWidget):
                 else:
                     def_won += 1
         self.declarer_lbl.setText(
-            f'<span style="font-size:13px">Declarer: {decl_won}</span>'
+            f'<span style="font-size:16px">Declarer: {decl_won}</span>'
         )
         self.defense_lbl.setText(
-            f'<span style="font-size:13px">Defense: {def_won}</span>'
+            f'<span style="font-size:16px">Defense: {def_won}</span>'
         )
 
     def _update_hands(self, played):
@@ -268,6 +254,149 @@ class _ReplayPanel(QWidget):
                  Suit.DIAMONDS: 'diamonds', Suit.CLUBS: 'clubs'}
         color = get_suit_color(names[card.suit])
         return f'<span style="color:{color}">{sym}</span>{card.rank.to_char()}'
+
+
+class _BiddingLogPanel(QWidget):
+    """One side's auction rendered as a 4-column N/E/S/W grid."""
+
+    HEADER_FS = 18
+    CELL_FS = 18
+
+    def __init__(self, run: BenBoardRun, title: str, parent=None):
+        super().__init__(parent)
+        from ..styles import get_suit_color
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
+
+        title_lbl = QLabel(f'<span style="font-size:18px"><b>{title}</b></span>')
+        title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title_lbl)
+
+        meta_bits = []
+        if run.contract:
+            decl = run.contract.declarer.to_char() if run.contract.declarer else "?"
+            meta_bits.append(f"Final contract: {run.contract.to_str()} by {decl}")
+        if run.contract:
+            target = run.contract.target_tricks()
+            diff = run.declarer_tricks - target
+            res = "=" if diff == 0 else (f"+{diff}" if diff > 0 else str(diff))
+            meta_bits.append(f"Result: {res}  (NS {run.ns_score:+d})")
+        if meta_bits:
+            meta_lbl = QLabel('<span style="font-size:14px">' + ' • '.join(meta_bits) + '</span>')
+            meta_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(meta_lbl)
+
+        # The grid: header row N/E/S/W + one row per round of bidding.
+        grid_frame = QFrame()
+        grid_frame.setStyleSheet(
+            "QFrame { background-color: #f8f8f8; border: 1px solid #a0a0a0;"
+            " border-radius: 4px; padding: 8px; }"
+        )
+        grid = QGridLayout(grid_frame)
+        grid.setHorizontalSpacing(20)
+        grid.setVerticalSpacing(2)
+        for col, seat_char in enumerate(['N', 'E', 'S', 'W']):
+            h = QLabel(
+                f'<span style="font-size:{self.HEADER_FS}px"><b>{seat_char}</b></span>'
+            )
+            h.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            h.setStyleSheet(
+                "QLabel { background-color: #d0d0d0; border: 1px solid #888;"
+                " padding: 4px 12px; }"
+            )
+            grid.addWidget(h, 0, col)
+
+        # Pad cells before the dealer's first bid with em dashes so each
+        # column lines up with its seat.
+        from ben_backend.models import Seat as _Seat
+        dealer_idx = (run.contract.declarer.value
+                      if run.contract and run.contract.declarer else 0)
+        # We don't actually have dealer on BenBoardRun directly; derive
+        # from board number when available, fallback to 'N'.
+        try:
+            from ben_backend.models import BoardState
+            dealer, _ = BoardState._board_dealer_vuln(run.board_number)
+            dealer_idx = dealer.value
+        except Exception:
+            dealer_idx = 0
+
+        suit_symbols = {0: '♠', 1: '♥', 2: '♦', 3: '♣'}
+        suit_names = {0: 'spades', 1: 'hearts', 2: 'diamonds', 3: 'clubs'}
+
+        col = 0
+        row = 1
+        # Pre-fill cells before dealer's first bid with em dashes.
+        for _ in range(dealer_idx):
+            cell = QLabel(
+                f'<span style="font-size:{self.CELL_FS}px;color:#999">—</span>'
+            )
+            cell.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            grid.addWidget(cell, row, col)
+            col += 1
+
+        for bid in run.auction:
+            if bid.is_pass:
+                text = f'<span style="font-size:{self.CELL_FS}px;color:#666">Pass</span>'
+            elif bid.is_double:
+                text = f'<span style="font-size:{self.CELL_FS}px;color:blue"><b>X</b></span>'
+            elif bid.is_redouble:
+                text = f'<span style="font-size:{self.CELL_FS}px;color:#00008B"><b>XX</b></span>'
+            else:
+                if bid.suit is not None and bid.suit.value < 4:
+                    color = get_suit_color(suit_names[bid.suit.value])
+                    sym = suit_symbols[bid.suit.value]
+                    text = (
+                        f'<span style="font-size:{self.CELL_FS}px"><b>{bid.level}</b>'
+                        f'<span style="color:{color}">{sym}</span></span>'
+                    )
+                else:
+                    text = f'<span style="font-size:{self.CELL_FS}px"><b>{bid.level}NT</b></span>'
+            cell = QLabel(text)
+            cell.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            grid.addWidget(cell, row, col)
+            col += 1
+            if col >= 4:
+                col = 0
+                row += 1
+
+        layout.addWidget(grid_frame)
+        layout.addStretch(1)
+
+
+class BiddingLogDialog(QDialog):
+    """Independent top-level window with the two auctions side-by-side.
+
+    Spawned by CompareReplayDialog when the user clicks "Bidding logs".
+    Lives in its own window so it can be dragged to a second monitor;
+    the main Compare window keeps the play replay.
+    """
+
+    def __init__(self, left: BenBoardRun, right: BenBoardRun,
+                 left_label: str, right_label: str, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Bidding logs: Board {left.board_number}")
+        apply_dialog_style(self)
+        from .dialog_style import make_detachable
+        make_detachable(self)
+        self.resize(900, 520)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.addWidget(_BiddingLogPanel(left, left_label))
+        splitter.addWidget(_BiddingLogPanel(right, right_label))
+        splitter.setSizes([1, 1])
+        layout.addWidget(splitter, stretch=1)
+
+        bottom = QHBoxLayout()
+        bottom.addStretch()
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        bottom.addWidget(close_btn)
+        layout.addLayout(bottom)
 
 
 class CompareReplayDialog(QDialog):
@@ -353,6 +482,13 @@ class CompareReplayDialog(QDialog):
         layout.addWidget(nav)
 
         bottom = QHBoxLayout()
+        self.bidding_btn = QPushButton("Bidding logs")
+        self.bidding_btn.setToolTip(
+            "Open both auction logs in a separate window so you can drag "
+            "them to a second monitor while the play replay continues here."
+        )
+        self.bidding_btn.clicked.connect(self._on_show_bidding_logs)
+        bottom.addWidget(self.bidding_btn)
         bottom.addStretch()
         close_btn = QPushButton("Close")
         close_btn.setDefault(True)
@@ -360,7 +496,25 @@ class CompareReplayDialog(QDialog):
         bottom.addWidget(close_btn)
         layout.addLayout(bottom)
 
+        self._left_label = left_label
+        self._right_label = right_label
+        self._bidding_dialog = None
+
         self._refresh()
+
+    def _on_show_bidding_logs(self):
+        """Pop the auctions into their own top-level window."""
+        existing = self._bidding_dialog
+        if existing is not None and existing.isVisible():
+            existing.raise_()
+            existing.activateWindow()
+            return
+        self._bidding_dialog = BiddingLogDialog(
+            self.left_run, self.right_run,
+            self._left_label, self._right_label, self,
+        )
+        self._bidding_dialog.show()
+        self._bidding_dialog.raise_()
 
     # ------------------------------------------------------------------
     # Navigation
@@ -404,35 +558,25 @@ class CompareReplayDialog(QDialog):
         self._refresh()
 
     def _on_prev_trick(self):
-        # Step back to the previous trick boundary on the longer run. We
-        # use the same trick-grid for both panels — auction first, then 4
-        # cards per trick — so this lines up with the panels naturally.
-        max_left = max(self.left_run.auction.__len__(), self.right_run.auction.__len__())
-        if self._step <= max_left:
-            self._step = 0
+        # Snap back to the start of the current trick, or one trick
+        # earlier if we're already at the start. Both runs share the
+        # same card-step grid (auction lives in its own dialog), so a
+        # single calculation drives both panels.
+        if self._step == 0:
+            return
+        within = (self._step - 1) % 4
+        if within == 0:
+            self._step = max(0, self._step - 4)
         else:
-            offset = self._step - max_left  # 1..N within play
-            # Snap to current trick start, or to previous trick if already at start.
-            within = (offset - 1) % 4
-            if within == 0:
-                # Currently on first card of a trick; move back one full trick.
-                self._step = max(max_left, self._step - 4)
-            else:
-                self._step -= within
+            self._step -= within
         self._refresh()
 
     def _on_next_trick(self):
-        max_left = max(self.left_run.auction.__len__(), self.right_run.auction.__len__())
-        if self._step < max_left:
-            # Skip the rest of bidding in one go.
-            self._step = max_left
+        within = self._step % 4
+        if within == 0:
+            self._step = min(self._max_step(), self._step + 4)
         else:
-            offset = self._step - max_left
-            within = offset % 4
-            if within == 0:
-                self._step = min(self._max_step(), self._step + 4)
-            else:
-                self._step = min(self._max_step(), self._step + (4 - within))
+            self._step = min(self._max_step(), self._step + (4 - within))
         self._refresh()
 
     def keyPressEvent(self, event):

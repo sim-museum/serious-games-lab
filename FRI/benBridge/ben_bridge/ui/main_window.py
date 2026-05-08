@@ -458,6 +458,13 @@ class MainWindow(QMainWindow):
         # by _show_result, consumed by _maybe_run_pending_claude after a
         # Q-Plus ingest or before the next deal.
         self._claude_pending: Optional[dict] = None
+        # Cache of Claude-annotated hand logs, keyed by (board_number,
+        # pavlicek_id). _show_claude_hand_analysis populates it on a
+        # successful run; subsequent calls for the same board (e.g. the
+        # user reopening "Hand Log" after returning from the summary
+        # view) replay the cached annotated BDL instead of paying for
+        # another Claude round-trip.
+        self._claude_hand_logs: Dict[tuple, dict] = {}
 
         # The seat the local user actually wants to play. This is the
         # canonical record across network connect/disconnect transitions:
@@ -775,6 +782,18 @@ class MainWindow(QMainWindow):
 
         view_menu.addSeparator()
 
+        # Hand Log — re-opens the most recent Claude annotated BDL for
+        # the current/last finished hand. Cached, so reselecting it
+        # doesn't pay for another Claude round-trip.
+        hand_log_action = QAction("&Hand Log (Claude Analysis)", self)
+        hand_log_action.setToolTip(
+            "Reopen the Claude-annotated BDL log for the current hand. "
+            "Cached after the first run so reselecting doesn't trigger "
+            "another Claude call."
+        )
+        hand_log_action.triggered.connect(self._on_show_hand_log)
+        view_menu.addAction(hand_log_action)
+
         edit_remark_action = QAction("&Edit Remark...", self)
         edit_remark_action.triggered.connect(self._on_edit_remark)
         view_menu.addAction(edit_remark_action)
@@ -838,6 +857,17 @@ class MainWindow(QMainWindow):
         self.ingest_qplus_action.triggered.connect(self._on_ingest_qplus_closed_room)
         extras_menu.addAction(self.ingest_qplus_action)
         self._refresh_qplus_ingest_action_state()
+
+        # LIN-format closed-room database loader. Loads played-out hands
+        # from a BBO vugraph LIN file and ingests them as closed-room
+        # results so the score sheet can compute IMPs against them.
+        self.ingest_lin_action = QAction("Load &Closed-Room Database (LIN)...", self)
+        self.ingest_lin_action.setToolTip(
+            "Load a BBO vugraph LIN file. Played-out deals are ingested as "
+            "closed-room results; IMPs vs the human's open room are then "
+            "shown in the score table.")
+        self.ingest_lin_action.triggered.connect(self._on_load_lin_database)
+        extras_menu.addAction(self.ingest_lin_action)
 
         # Network menu
         network_menu = menubar.addMenu("&Network")
@@ -949,6 +979,16 @@ class MainWindow(QMainWindow):
         self.next_card_btn.setEnabled(False)
         layout.addWidget(self.next_card_btn)
         self.ingame_buttons.append(self.next_card_btn)
+
+        # Spacebar shortcut for Next card. Use a window-scoped shortcut
+        # so the press fires regardless of which child widget has focus,
+        # and gate it on the button's enabled state inside the handler
+        # so we don't double-advance when auto-advance is in flight.
+        from PyQt6.QtGui import QShortcut
+        from PyQt6.QtCore import Qt as _Qt
+        self._next_card_shortcut = QShortcut(QKeySequence(_Qt.Key.Key_Space), self)
+        self._next_card_shortcut.setContext(_Qt.ShortcutContext.WindowShortcut)
+        self._next_card_shortcut.activated.connect(self._on_next_card_shortcut)
 
         self.hint_btn = ToolbarButton("Hint")
         self.hint_btn.clicked.connect(self._on_hint)
@@ -2366,31 +2406,65 @@ For more information, see the README file."""
         dialog.exec()
 
     def _on_show_imp_table(self):
-        """Show IMP conversion table"""
-        dialog = IMPTableDialog(self)
-        dialog.exec()
+        """Show IMP conversion table — detached so it can sit on a
+        second monitor for reference while play continues."""
+        self._imp_dialog = IMPTableDialog(self)
+        self._show_detached(self._imp_dialog)
 
     def _on_show_probabilities(self):
-        """Show probabilities table"""
-        dialog = ProbabilitiesDialog(self)
-        dialog.exec()
+        """Show probabilities table (detached)."""
+        self._prob_dialog = ProbabilitiesDialog(self)
+        self._show_detached(self._prob_dialog)
 
     def _on_show_scoring_reference(self):
-        """Show scoring reference tables"""
-        dialog = ScoringReferenceDialog(self)
-        dialog.exec()
+        """Show scoring reference tables (detached)."""
+        self._scoring_ref_dialog = ScoringReferenceDialog(self)
+        self._show_detached(self._scoring_ref_dialog)
+
+    def _show_detached(self, dialog):
+        """Promote `dialog` to a free-floating top-level window and
+        show it non-modally. Use for read-only / reference dialogs
+        that benefit from sitting on a second monitor next to the
+        main table view. Settings dialogs and anything that returns
+        a value via exec() should *not* go through this path."""
+        from .dialogs.dialog_style import make_detachable
+        make_detachable(dialog)
+        dialog.show()
+        dialog.raise_()
 
     def _on_about(self):
-        """Show about dialog"""
-        QMessageBox.about(
-            self, "About BEN Bridge",
-            "BEN Bridge\n\n"
-            "A bridge playing and analysis application\n"
-            "powered by the BEN neural network engine.\n\n"
-            "Classic desktop Bridge interface.\n\n"
-            "Engine: BEN v0.8.7.4\n"
-            "UI: PyQt6"
+        """Show about dialog with a light background.
+
+        QMessageBox.about() inherits the parent window's stylesheet,
+        which on the table view is dark blue — that left the body text
+        unreadable against the same blue tone. Construct the message
+        box explicitly and apply a light-grey palette so the text
+        always reads at full contrast regardless of which window we
+        descend from.
+        """
+        msg = QMessageBox(self)
+        msg.setWindowTitle("About BEN Bridge")
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setText(
+            "<h2 style='margin:0'>BEN Bridge</h2>"
+            "<p>A bridge playing and analysis application "
+            "powered by the BEN neural network engine.</p>"
+            "<p>Classic desktop Bridge interface.</p>"
+            "<p><b>Engine:</b> BEN v0.8.7.4<br>"
+            "<b>UI:</b> PyQt6</p>"
         )
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.setStyleSheet(
+            "QMessageBox { background-color: #f0f0f0; }"
+            "QMessageBox QLabel { color: #000; background-color: transparent;"
+            " font-size: 14px; min-width: 380px; padding: 4px; }"
+            "QMessageBox QPushButton { background-color: #e0e0e0;"
+            " color: #000; border: 1px solid #999; padding: 6px 18px;"
+            " border-radius: 3px; min-width: 80px; }"
+            "QMessageBox QPushButton:hover { background-color: #d0d0d0; }"
+        )
+        msg.exec()
 
     # Network menu handlers
 
@@ -3029,141 +3103,94 @@ For more information, see the README file."""
         state_text = self._build_hint_state_text(board, seat, phase)
         prompt = self._build_hint_prompt(phase, seat, state_text, engine_text)
 
+        # Route the result through the BDL-with-annotations renderer so
+        # Claude's reasoning lands inline next to the section it's
+        # commenting on instead of in a free-floating text block.
         self._run_claude_with_dialog(
             prompt=prompt,
             title=f"Claude hint — {'bidding' if phase == 'bidding' else 'card play'}",
             wait_label=f"Claude is thinking about your {'bid' if phase == 'bidding' else 'card'}...",
-            timeout_seconds=90,
+            timeout_seconds=300,
             preamble=engine_text + "\n\n" if engine_text else "",
+            bdl_text=state_text,
         )
 
     def _build_hint_state_text(self, board, seat, phase) -> str:
-        """Serialize the current board state for a Claude hint prompt."""
-        seat_names = {Seat.NORTH: 'N', Seat.EAST: 'E', Seat.SOUTH: 'S', Seat.WEST: 'W'}
-        suit_symbols = {Suit.SPADES: 'S', Suit.HEARTS: 'H', Suit.DIAMONDS: 'D',
-                        Suit.CLUBS: 'C', Suit.NOTRUMP: 'NT'}
-        suit_chars = {Suit.SPADES: 'S', Suit.HEARTS: 'H',
-                      Suit.DIAMONDS: 'D', Suit.CLUBS: 'C'}
+        """Serialize the current board state for a Claude hint prompt as
+        a partial BDL file. The BDL form keeps every bid, every card and
+        every trick attached to a fixed N/E/S/W column or leader marker,
+        which is the format Claude has the easiest time annotating
+        without confusing who did what.
+        """
+        from .game_logger import build_bdl_snapshot
 
-        lines = []
-        lines.append(f"Board {board.board_number}")
-        lines.append(f"Dealer: {seat_names[board.dealer]}")
-        lines.append(f"Vulnerability: {board.vulnerability.name}")
-        lines.append(f"It is {seat_names[seat]}'s turn ({phase}).")
-        # Spell out seat relationships so Claude can't misattribute bids.
-        partner = seat.partner()
-        lho = seat.next()
-        rho = partner.next()
-        lines.append(
-            f"You are {seat_names[seat]}. Your partner is {seat_names[partner]}. "
-            f"Your LHO (left-hand opponent) is {seat_names[lho]}. "
-            f"Your RHO (right-hand opponent) is {seat_names[rho]}."
+        # Dummy is visible to defenders only after the opening lead.
+        # During bidding it never is. Use the table-view's reveal flag
+        # (already accounts for human-side declarer).
+        dummy_visible = (phase == 'play'
+                         and getattr(self.table_view, 'dummy_revealed', True))
+
+        # Mark the pavlicek deal id when we know the full hand layout —
+        # gives Claude one more anchor when deciding which deal it is.
+        deal_id = ""
+        try:
+            hands_for_pavlicek = self.original_hands or board.hands
+            if all(s in hands_for_pavlicek for s in Seat):
+                deal_id = format_deal_base62(deal_to_number(hands_for_pavlicek))
+        except Exception:
+            deal_id = ""
+
+        # Hint dialog shows BDL + Claude annotations only — no footer
+        # (Viewer / HCP / Phase) and no "Remaining cards" appendix. The
+        # BDL block already encodes everything Claude needs (the seat
+        # whose hand is shown is implicit, and remaining cards are
+        # derivable from the Cards block + Tricks block).
+        bdl = build_bdl_snapshot(
+            board,
+            original_hands=self.original_hands,
+            viewer_seat=seat,
+            phase=phase,
+            dummy_visible_to_viewer=dummy_visible,
+            deal_id=deal_id,
+            current_seat=seat,
+            include_footer=False,
         )
-
-        # Show the current player's hand (what they can see)
-        hand = board.hands.get(seat) if board.hands else None
-        if hand:
-            suit_lines = []
-            for suit in [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]:
-                cards = sorted([c for c in hand.cards if c.suit == suit],
-                               key=lambda c: c.rank, reverse=True)
-                suit_lines.append(f"{suit_chars[suit]}:{''.join(c.rank.to_char() for c in cards) or '-'}")
-            lines.append(f"Your hand ({seat_names[seat]}): {' '.join(suit_lines)}")
-            lines.append(f"Your HCP: {hand.hcp()} (use this number; do not recount).")
-
-        # Auction so far — label every bid with its seat so Claude doesn't have
-        # to count around the table and misattribute bids.
-        if board.auction:
-            lines.append("Auction so far (chronological, each bid labeled with bidder):")
-            bidder = board.dealer
-            for bid in board.auction:
-                if bid.is_pass:
-                    bid_str = "Pass"
-                elif bid.is_double:
-                    bid_str = "X (double)"
-                elif bid.is_redouble:
-                    bid_str = "XX (redouble)"
-                else:
-                    s = suit_symbols.get(bid.suit, '?') if bid.suit is not None else 'NT'
-                    bid_str = f"{bid.level}{s}"
-                role = ""
-                if bidder == seat:
-                    role = " [you]"
-                elif bidder == seat.partner():
-                    role = " [your partner]"
-                else:
-                    role = " [opponent]"
-                lines.append(f"  {seat_names[bidder]}: {bid_str}{role}")
-                bidder = bidder.next()
-
-        if phase == 'play':
-            contract = getattr(board, 'contract', None)
-            if contract:
-                lines.append(f"Contract: {contract.to_str()} by {seat_names[contract.declarer]}")
-
-            # Dummy hand is visible to everyone during play
-            declarer = contract.declarer if contract else None
-            dummy_seat = declarer.partner() if declarer and hasattr(declarer, 'partner') else None
-            if dummy_seat and dummy_seat != seat:
-                d_hand = board.hands.get(dummy_seat)
-                if d_hand:
-                    suit_lines = []
-                    for suit in [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]:
-                        cards = sorted([c for c in d_hand.cards if c.suit == suit],
-                                       key=lambda c: c.rank, reverse=True)
-                        suit_lines.append(f"{suit_chars[suit]}:{''.join(c.rank.to_char() for c in cards) or '-'}")
-                    lines.append(f"Dummy ({seat_names[dummy_seat]}): {' '.join(suit_lines)}")
-                    lines.append(f"Dummy HCP: {d_hand.hcp()} (use this number; do not recount).")
-
-            # Tricks played
-            tricks_played = getattr(board, 'tricks', None) or []
-            if tricks_played:
-                lines.append(f"Tricks completed: {len(tricks_played)}")
-                for i, tr in enumerate(tricks_played[-3:], start=max(1, len(tricks_played) - 2)):
-                    leader = tr.leader
-                    parts = []
-                    for j, card in enumerate(tr.cards):
-                        player_seat = Seat((leader.value + j) % 4)
-                        marker = "*" if player_seat == tr.winner else ""
-                        parts.append(f"{seat_names[player_seat]}:{card.to_str()}{marker}")
-                    lines.append(f"  Trick {i}: {' '.join(parts)}")
-
-            # Current trick in progress
-            current_trick = getattr(board, 'current_trick', None)
-            if current_trick and current_trick.cards:
-                leader = current_trick.leader
-                parts = []
-                for j, card in enumerate(current_trick.cards):
-                    player_seat = Seat((leader.value + j) % 4)
-                    parts.append(f"{seat_names[player_seat]}:{card.to_str()}")
-                lines.append(f"Current trick: {' '.join(parts)} (your turn)")
-            else:
-                lines.append("You are leading to the next trick.")
-
-            # Cards still outstanding (not played in any trick or current
-            # trick). Pre-computed so Claude doesn't have to recount from
-            # the trick history — anchors the answer with concrete totals.
-            try:
-                remaining = board.remaining_cards_by_suit()
-                lines.append(
-                    "Remaining cards (not yet played; you / partner / opponents "
-                    "still hold these):"
-                )
-                for suit in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
-                    ranks = remaining.get(suit, [])
-                    sym = suit_chars[suit]
-                    rank_str = ''.join(r.to_char() for r in ranks) if ranks else '-'
-                    lines.append(f"  {sym}: {rank_str} ({len(ranks)})")
-            except Exception:
-                pass
-
-        return "\n".join(lines)
+        return bdl
 
     def _build_hint_prompt(self, phase: str, seat, state_text: str, engine_text: str) -> str:
         """Assemble the Claude prompt for a hint query."""
         seat_names = {Seat.NORTH: 'N', Seat.EAST: 'E', Seat.SOUTH: 'S', Seat.WEST: 'W'}
         action = "bid" if phase == 'bidding' else "card to play"
         engine_block = f"\n\n{engine_text}" if engine_text else ""
+
+        # During card play we want a full plan for the rest of the hand,
+        # not just a one-card recommendation. The clause below makes
+        # that explicit so the annotator lays out the line, key entries,
+        # threat suits and counting before naming the next card.
+        play_clause = ""
+        if phase == 'play':
+            play_clause = (
+                "\n\nCARD-PLAY HINT — produce a FULL PLAN for the rest of "
+                "the hand, not only the next card. The annotation block "
+                "must include:\n"
+                "  • A 'Plan:' line stating the line of play (e.g. "
+                "'establish hearts after losing one', 'cross-ruff', "
+                "'duck twice and run diamonds').\n"
+                "  • A 'Tricks needed:' line that counts top tricks and "
+                "names where the missing tricks come from.\n"
+                "  • An 'Entries:' line listing every entry to each hand "
+                "in order, since establishing length tricks usually hinges "
+                "on them.\n"
+                "  • A 'Threat / counting:' line covering the danger hand, "
+                "what cards opponents have shown / signalled, and what to "
+                "watch for as the hand unfolds.\n"
+                "  • A short trick-by-trick sketch (Trick T+1, T+2, …) "
+                "for the next 3-5 tricks of the plan.\n"
+                "  • Then the usual '>> Recommendation: <card>' line as "
+                "the very last annotation."
+            )
+
+
         # Tell Claude which bidding system the table is actually using so a
         # Precision-configured user gets Precision-style recommendations
         # ("1♣ = 16+", strong-club responses, etc.) and an SAYC-configured
@@ -3213,18 +3240,45 @@ For more information, see the README file."""
                 pass
         return (
             f"You are a bridge teacher advising {seat_names[seat]} on the next {action}."
-            f"{system_clause} "
-            f"Recommend exactly one action and explain the reasoning in 2-4 sentences. "
-            f"If the BEN engine suggestion is shown, say whether you agree. "
-            f"Plain text only.\n\n{state_text}{engine_block}"
+            f"{system_clause}{play_clause}\n\n"
+            "OUTPUT FORMAT — strictly required:\n"
+            "  • Echo the BDL block below VERBATIM, line by line, "
+            "preserving spacing.\n"
+            "  • After every BDL section that you have something to say "
+            "about, insert one or more annotation lines that BEGIN WITH "
+            "'>>' (two right angle brackets followed by a space). Use "
+            "annotations after the Bids block to comment on the auction, "
+            "after the Tricks block to comment on play, and again at the "
+            "very end of the file with your final recommendation.\n"
+            "  • Do NOT modify any non-annotation line. Do NOT add a "
+            "preamble or a trailing summary outside the BDL frame.\n"
+            "  • Keep most annotations under ~25 words; multiple short "
+            "ones beat one long one. The card-play 'Plan:' / 'Tricks "
+            "needed:' / 'Entries:' / 'Threat:' / 'Trick-sketch' lines may "
+            "each run to ~40 words to give a full picture.\n"
+            "  • End with a single '>> Recommendation: <bid-or-card>' "
+            "line that names exactly one action.\n\n"
+            "Read seat letters straight off the N/E/S/W column headers in "
+            "the Bids block and the leader/winner markers in the Tricks "
+            "block — do not infer seats from order alone. If the BEN "
+            "engine suggestion is shown, say whether you agree.\n\n"
+            f"BDL:\n{state_text}{engine_block}"
         )
 
     def _run_claude_with_dialog(self, prompt: str, title: str, wait_label: str,
-                                 timeout_seconds: int = 120, preamble: str = ""):
+                                 timeout_seconds: int = 300, preamble: str = "",
+                                 bdl_text: str = ""):
         """Run claude -p with a progress dialog, then show the result.
 
         Shared between the end-of-hand analysis and the Hint button. Shows an
         error dialog if claude fails so the user never sees silent failure.
+
+        When `bdl_text` is provided, the result is displayed via the
+        BDL-with-annotations renderer: Claude's reply (which the prompt
+        instructs it to format as the BDL with `>>` annotation lines
+        inserted) is shown verbatim with annotations highlighted. If
+        Claude failed to follow the format, the renderer falls back to
+        appending its free-form text after the BDL.
         """
         import shutil
         import subprocess
@@ -3274,8 +3328,15 @@ For more information, see the README file."""
 
         def _run_claude():
             try:
+                # Use Opus 4.7 with extended thinking — same invocation as
+                # the poker code uses for hand annotations.  The bare
+                # --thinking flag was rejected by older builds; the value
+                # variant works on every released CLI.
                 r = subprocess.run(
-                    ['claude', '-p', '--max-turns', '1', prompt],
+                    ['claude', '-p',
+                     '--model', 'claude-opus-4-7',
+                     '--thinking', 'enabled',
+                     '--max-turns', '1', prompt],
                     capture_output=True, text=True, timeout=timeout_seconds
                 )
                 stdout = (r.stdout or '').strip()
@@ -3309,6 +3370,31 @@ For more information, see the README file."""
 
         text = result_holder['text']
         error = result_holder['error']
+
+        if bdl_text:
+            # BDL-annotated rendering. Even on failure we still show the
+            # BDL so the user sees the same context Claude was given.
+            preface = preamble.rstrip()
+            framed = bdl_text
+            if preface:
+                framed = preface + "\n\n" + bdl_text
+            self._show_annotated_bdl_dialog(
+                title=title,
+                bdl_text=framed,
+                claude_text=text or "",
+                error=not text,
+            )
+            if not text:
+                # Surface the error inline at the top, since the
+                # annotated dialog itself doesn't show errors.
+                self._show_plain_dialog(
+                    title + " (claude error)",
+                    f"Claude did not return a response.\n\n"
+                    f"{error or 'No output received.'}",
+                    error=True,
+                )
+            return
+
         if text:
             self._show_plain_dialog(title, f"{preamble}{text}", error=False)
         else:
@@ -3317,6 +3403,149 @@ For more information, see the README file."""
                 f"{preamble}Claude did not return a response.\n\n{error or 'No output received.'}",
                 error=True,
             )
+
+    def _show_annotated_bdl_dialog(self, title: str, bdl_text: str,
+                                    claude_text: str, error: bool = False):
+        """Render the BDL printout with Claude's annotations interspersed.
+
+        Claude is asked to embed lines starting with ``>>`` at logical
+        breakpoints in the BDL (after the auction, after the tricks
+        block, at the end). The renderer below highlights those lines
+        in italic green so the file's structure stays visible while the
+        commentary sits inline next to whatever it's commenting on.
+
+        If Claude's reply doesn't contain any ``>>`` markers (it
+        ignored the format instruction), we fall back to showing the
+        BDL on top and Claude's text below, separated by a banner.
+        """
+        from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QPushButton,
+                                      QTextEdit)
+        from PyQt6.QtGui import QFont, QTextCharFormat, QColor, QTextCursor
+
+        # Pick the body text: if Claude returned a properly-annotated
+        # BDL with `>>` markers in it, use that verbatim; otherwise
+        # synthesize one by appending Claude's free-form text after the
+        # BDL with a `>>` header so the layout stays consistent.
+        if claude_text and ">>" in claude_text:
+            body_text = claude_text.rstrip() + "\n"
+        else:
+            extra = (claude_text or "").strip()
+            if not extra:
+                extra = "(Claude returned no response.)"
+            body_text = (
+                bdl_text.rstrip() + "\n\n"
+                ">> Claude (free-form, not interleaved):\n"
+                + "\n".join(
+                    ">> " + line if line.strip() else ">>"
+                    for line in extra.splitlines()
+                )
+                + "\n"
+            )
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setMinimumSize(960, 640)
+        dialog.resize(1100, 760)
+        dialog.setStyleSheet("QDialog { background-color: #e8e8f0; color: #000; }")
+        layout = QVBoxLayout(dialog)
+
+        # Build an HTML document so annotation lines can wrap inside the
+        # dialog width while BDL lines (which are column-aligned) stay
+        # untouched in <pre>. Annotation continuations hang-indent under
+        # the first character after `>> ` so the text reads like a margin
+        # comment rather than a free-form paragraph.
+        from html import escape
+        BDL_FONT_PT = 22       # was 18 — bumped per request
+        ANN_FONT_PT = 22
+        BDL_COLOR   = "#202020"
+        ANN_COLOR   = "#1a6020"
+        BG_COLOR    = "#f8f8f8"
+
+        # Group consecutive non-annotation lines into a single <pre> so
+        # multi-line BDL blocks render as one whitespace-preserved chunk.
+        html_parts = []
+
+        def flush_bdl(buf):
+            if not buf:
+                return
+            text = "\n".join(buf)
+            html_parts.append(
+                f'<pre style="font-family: Monospace; font-size: {BDL_FONT_PT}pt; '
+                f'color: {BDL_COLOR}; margin: 0; line-height: 1.3;">'
+                f'{escape(text)}</pre>'
+            )
+            buf.clear()
+
+        bdl_buf: list[str] = []
+        for line in body_text.splitlines():
+            if line.lstrip().startswith('>>'):
+                flush_bdl(bdl_buf)
+                # Strip the leading >> and any single space, then render the
+                # comment with the >> prefix inline AND a hanging indent so
+                # wrapped continuations align under the first character of
+                # the comment text (matching the BDL's left margin).
+                rest = line.lstrip()[2:]
+                if rest.startswith(' '):
+                    rest = rest[1:]
+                html_parts.append(
+                    f'<div style="font-family: Monospace; '
+                    f'font-size: {ANN_FONT_PT}pt; color: {ANN_COLOR}; '
+                    f'font-style: italic; font-weight: bold; '
+                    f'margin: 2px 0; padding-left: 3ch; '
+                    f'text-indent: -3ch; white-space: normal; '
+                    f'word-wrap: break-word; line-height: 1.3;">'
+                    f'&gt;&gt; {escape(rest)}</div>'
+                )
+            else:
+                bdl_buf.append(line)
+        flush_bdl(bdl_buf)
+
+        editor = QTextEdit()
+        editor.setReadOnly(True)
+        editor.setStyleSheet(
+            f"QTextEdit {{ background-color: {BG_COLOR}; color: #000;"
+            f" border: 1px solid #aaa; padding: 14px; }}"
+        )
+        editor.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        editor.setHtml("".join(html_parts))
+        editor.moveCursor(QTextCursor.MoveOperation.Start)
+
+        layout.addWidget(editor, stretch=1)
+
+        ok_btn = QPushButton("OK")
+        ok_btn.setFixedSize(140, 48)
+        ok_btn.setStyleSheet(
+            "QPushButton { background-color: #d0d0d0; color: #000;"
+            " border: 1px solid #999; border-radius: 3px; font-size: 18px; }"
+        )
+        ok_btn.clicked.connect(dialog.accept)
+        layout.addWidget(ok_btn)
+
+        # Detached: the user wants to leave it open on a second monitor
+        # next to the play view.
+        from .dialogs.dialog_style import make_detachable
+        make_detachable(dialog)
+        dialog.show()
+        dialog.raise_()
+        # Hold a reference so it isn't GC'd as soon as we return.
+        # Dialogs were promoted with WA_DeleteOnClose by make_detachable,
+        # so previous entries may have had their underlying C++ object
+        # destroyed already; calling isVisible() on a dead wrapper
+        # raises RuntimeError ("wrapped C/C++ object … has been
+        # deleted"), so guard the survivor sweep.
+        if not hasattr(self, '_annotated_bdl_dialogs'):
+            self._annotated_bdl_dialogs = []
+
+        survivors = []
+        for d in self._annotated_bdl_dialogs:
+            try:
+                if d.isVisible():
+                    survivors.append(d)
+            except RuntimeError:
+                # Wrapper outlived the C++ widget — drop it.
+                pass
+        survivors.append(dialog)
+        self._annotated_bdl_dialogs = survivors
 
     def _show_plain_dialog(self, title: str, body: str, error: bool = False):
         """Show a scrollable result dialog with OK button (shared helper)."""
@@ -3445,6 +3674,16 @@ For more information, see the README file."""
         else:
             pass
 
+    def _on_next_card_shortcut(self):
+        """Spacebar shortcut for Next card.
+
+        We honour the button's enabled state so the spacebar can't fire
+        when auto-advance has already queued up a callback or when the
+        opposing side hasn't finished yet (network).
+        """
+        if self.next_card_btn.isVisible() and self.next_card_btn.isEnabled():
+            self._on_next_card()
+
     # Game flow
 
     def _on_bid_made(self, bid: Bid):
@@ -3515,8 +3754,57 @@ For more information, see the README file."""
 
         self._advance_game()
 
+    def _maybe_reveal_dummy_after_lead(self):
+        """Bridge rule: dummy is laid down right after the opening lead.
+
+        Two independent state machines run here:
+          1. TableView.dummy_revealed — the host's *local* visibility.
+             setup_declarer_play() flips it on immediately when the
+             host's side declared (declarer needs the dummy to plan)
+             and off when the opposing side declared (defender mustn't
+             peek before leading).
+          2. self._dummy_broadcasted_for_board — whether the host has
+             yet pushed the dummy reveal to guests. Always deferred to
+             the opening lead, even when the host already sees dummy
+             locally, because a guest on defense should never see dummy
+             before the human-side opening lead lands.
+        """
+        board = self.controller.board
+        if board is None:
+            return
+        ct = board.current_trick
+        # Opening lead just landed when there are 0 completed tricks
+        # and exactly one card sits in the current trick.
+        if len(board.tricks) != 0 or ct is None or len(ct.cards) < 1:
+            return
+
+        # Local reveal — only matters when setup_declarer_play hid dummy.
+        if not getattr(self.table_view, 'dummy_revealed', True):
+            self.table_view.reveal_dummy()
+
+        # Network broadcast — always after opening lead, gated by a
+        # per-board flag so we don't spam the wire on every later card.
+        if (self.network_controller.is_active
+                and self.network_controller.is_server
+                and self.controller.dummy is not None
+                and not getattr(self, '_dummy_broadcasted_for_board', False)):
+            dummy_seat = self.controller.dummy
+            dummy_hand = board.hands.get(dummy_seat)
+            if dummy_hand is not None and dummy_hand.cards:
+                try:
+                    self.network_controller.broadcast_dummy_reveal(
+                        dummy_seat, dummy_hand
+                    )
+                    self._dummy_broadcasted_for_board = True
+                except Exception as e:
+                    print(f"[dummy reveal] broadcast failed: {e}", flush=True)
+
     def _advance_game(self):
         """Advance the game state"""
+        # If we just played the opening lead, dummy is now visible —
+        # check before per-phase dispatch so the next status update can
+        # already see the revealed dummy.
+        self._maybe_reveal_dummy_after_lead()
         if self.controller.current_phase == 'bidding':
             self._advance_bidding()
         elif self.controller.current_phase == 'play':
@@ -3612,6 +3900,10 @@ For more information, see the README file."""
             self.table_view.human_controls_declarer = bool(
                 getattr(self.controller, 'human_controls_declarer', False)
             )
+            # Reset the per-board "dummy already broadcast" flag the
+            # first time we enter play on this hand. Cheaper than
+            # resetting in every _on_new_deal / new-deal path.
+            self._dummy_broadcasted_for_board = False
             self.table_view.setup_declarer_play(self.controller.board.contract)
             self.table_view.set_auction_complete("bidding finished")
             # Hide right panel (bidding box + analysis) and next deal button during card play
@@ -3619,20 +3911,10 @@ For more information, see the README file."""
             self.next_deal_btn.setVisible(False)
             # Hide bid info window during card play
             self.bid_info_dock.hide()
-            # Strict-bridge would defer dummy until after the opening lead,
-            # but the host's setup_declarer_play already shows it now (it
-            # has all four hands locally). Push the same view to guests so
-            # both screens match — otherwise a defender-guest looks at an
-            # empty dummy slot until the opening lead lands.
-            if (self.network_controller.is_active
-                    and self.network_controller.is_server
-                    and self.controller.dummy is not None):
-                dummy_seat = self.controller.dummy
-                dummy_hand = self.controller.board.hands.get(dummy_seat)
-                if dummy_hand is not None and dummy_hand.cards:
-                    self.network_controller.broadcast_dummy_reveal(
-                        dummy_seat, dummy_hand
-                    )
+            # Dummy reveal is broadcast strictly after the opening lead
+            # — see _maybe_reveal_dummy_after_lead. Even when the host's
+            # side declared and dummy is already shown locally, guests
+            # on defense must wait for the lead before they get to peek.
 
         # Update tricks display
         self.table_view.update_tricks(
@@ -3708,67 +3990,368 @@ For more information, see the README file."""
                 if not started:
                     # Worker was busy, retry after a delay
                     QTimer.singleShot(200, self._advance_play)
+                else:
+                    # Watchdog: if the engine doesn't produce a card
+                    # within a reasonable window, force a legal-card
+                    # fallback so the table doesn't sit on
+                    # "Thinking (X)…" forever. Every successful
+                    # request bumps the token; only the most-recent
+                    # token's timer ever fires the rescue path.
+                    self._engine_card_token = (
+                        getattr(self, '_engine_card_token', 0) + 1
+                    )
+                    self._engine_card_seat = current_seat
+                    token = self._engine_card_token
+                    # Was 45 s — long enough that the user assumes the
+                    # game has frozen. 20 s is comfortably above BEN's
+                    # normal think-time on a 4-card-out endgame and
+                    # still gives the engine plenty of room before we
+                    # fall back to a legal card.
+                    QTimer.singleShot(
+                        20_000,
+                        lambda t=token, s=current_seat:
+                            self._engine_card_watchdog(t, s)
+                    )
             else:
                 pass
 
-    def _handle_trick_complete(self):
-        """Handle completed trick - show winner and wait for Next Card"""
-        winner = self.controller.get_trick_winner()
-        if winner is not None:
-            self.table_view.show_trick_winner(winner)
+    def _engine_card_watchdog(self, token: int, seat: 'Seat'):
+        """Rescue the table when the BEN engine never returns a card
+        for `seat`. We arm one of these per `request_card` and stamp it
+        with a token; if a later request supersedes us (token mismatch),
+        or if the controller has moved past play, this timer is a
+        no-op. Otherwise we synthesize a legal-card fallback (mirrors
+        the response.action == None path in _on_engine_card).
 
-            # Update tricks display
-            self.table_view.update_tricks(
-                self.controller.board.declarer_tricks,
-                self.controller.board.defense_tricks
+        Before falling back we capture a freeze report so the next
+        engine hang can be diagnosed without the user having to
+        remember the py-spy / gdb procedure — see
+        _capture_engine_freeze_report for what gets written.
+        """
+        if getattr(self, '_engine_card_token', 0) != token:
+            return  # superseded by a newer request
+        if self.controller.current_phase != 'play':
+            return
+        if self.controller.current_seat != seat:
+            return
+
+        # Capture diagnostics FIRST, before we mutate state with the
+        # fallback play. This way the worker thread is still parked in
+        # whatever frame caused the hang.
+        report_path = None
+        try:
+            report_path = self._capture_engine_freeze_report(seat)
+        except Exception as e:
+            print(f"[engine watchdog] freeze report capture failed: {e!r}",
+                  flush=True)
+
+        # Still waiting on the same seat after the timeout — pick a
+        # legal card and advance.
+        hand = self.controller.board.hands.get(seat)
+        if not hand or not hand.cards:
+            return
+        try:
+            lead_suit = self.controller.get_lead_suit()
+        except Exception:
+            lead_suit = None
+        if lead_suit is not None:
+            same_suit = [c for c in hand.cards if c.suit == lead_suit]
+            card = same_suit[0] if same_suit else hand.cards[0]
+        else:
+            card = hand.cards[0]
+        print(f"[engine watchdog] {seat.to_char()} timed out; "
+              f"playing {card.to_str()} as fallback", flush=True)
+        try:
+            self.table_view.play_card_to_trick(seat, card)
+            self.controller.play_card(card)
+            if (self.network_controller.is_active
+                    and self.network_controller.is_server):
+                self.network_controller.broadcast_card(seat, card)
+        except Exception as e:
+            print(f"[engine watchdog] fallback play failed: {e!r}", flush=True)
+            return
+        msg = f"Engine timeout for {seat.to_char()} — fallback played."
+        if report_path:
+            msg += f"  Freeze report: {report_path}"
+        self.status_label.setText(msg)
+        QTimer.singleShot(200, self._advance_game)
+
+    def _capture_engine_freeze_report(self, seat: 'Seat') -> str:
+        """Write a per-freeze diagnostic dump to DATA/freeze_reports/.
+
+        Bundles everything you'd want when an engine hang reproduces:
+          • Python stack of EVERY thread in this process via
+            ``sys._current_frames()`` — no ptrace needed, so it works
+            without sudo. The EngineWorker thread is the one whose top
+            frame is inside ben_backend (engine.py / pimc / sample.py
+            / nn / ddsolver), and that frame names the exact code
+            path that's stuck.
+          • A native (gdb) backtrace of every thread when ``gdb`` is
+            on PATH and ptrace_scope allows attaching to ourselves —
+            this is best-effort; if it fails the report still has the
+            Python side, which is the high-signal piece.
+          • Game state at the moment of the freeze: dealer, vulnerability,
+            contract, declarer, dummy, current_seat, all four hands,
+            recent action history, and the relevant preferences
+            (use_monte_carlo_play / use_double_dummy_play). That makes
+            the deal reproducible offline.
+
+        Returns the path to the written report (or '' on failure) so
+        the watchdog can surface it in the status bar.
+        """
+        import os
+        import sys
+        import datetime
+        import traceback as tb_mod
+        from pathlib import Path
+
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        # Sit alongside the BDL logs so the user has one obvious place
+        # to look for hand-related diagnostics.
+        try:
+            log_dir = Path(self.game_logger.log_dir).parent / "freeze_reports"
+        except Exception:
+            log_dir = Path(os.path.expanduser(
+                "~/.benBridge/freeze_reports"))
+        log_dir.mkdir(parents=True, exist_ok=True)
+        path = log_dir / f"freeze-{ts}-{seat.to_char()}.txt"
+
+        lines = []
+        lines.append(f"BEN Bridge engine-freeze report")
+        lines.append(f"timestamp:   {datetime.datetime.now().isoformat()}")
+        lines.append(f"pid:         {os.getpid()}")
+        lines.append(f"frozen seat: {seat.to_char()}")
+
+        # --- Game state ---
+        try:
+            board = self.controller.board
+            lines.append("")
+            lines.append("=== Game state ===")
+            lines.append(f"board #:       {getattr(board, 'board_number', '?')}")
+            lines.append(f"dealer:        {board.dealer.to_char() if board else '?'}")
+            lines.append(f"vulnerability: "
+                         f"{board.vulnerability.name if board else '?'}")
+            lines.append(f"current phase: {self.controller.current_phase}")
+            lines.append(f"current seat:  "
+                         f"{self.controller.current_seat.to_char() if self.controller.current_seat else '?'}")
+            if self.controller.declarer is not None:
+                lines.append(f"declarer:      {self.controller.declarer.to_char()}")
+            if self.controller.dummy is not None:
+                lines.append(f"dummy:         {self.controller.dummy.to_char()}")
+            if board and board.contract:
+                lines.append(f"contract:      {board.contract.to_str()} "
+                             f"by {board.contract.declarer.to_char()}")
+            lines.append("")
+            lines.append("Hands (current):")
+            from ben_backend.models import Suit as _Suit
+            for s in [Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST]:
+                h = board.hands.get(s) if board else None
+                if h is None:
+                    lines.append(f"  {s.to_char()}: (unknown)")
+                    continue
+                suit_strs = []
+                for suit in [_Suit.SPADES, _Suit.HEARTS,
+                             _Suit.DIAMONDS, _Suit.CLUBS]:
+                    cards = sorted([c for c in h.cards if c.suit == suit],
+                                   key=lambda c: c.rank)
+                    sym = {_Suit.SPADES: 'S', _Suit.HEARTS: 'H',
+                           _Suit.DIAMONDS: 'D', _Suit.CLUBS: 'C'}[suit]
+                    text = ''.join(c.rank.to_char() for c in cards) or '-'
+                    suit_strs.append(f"{sym}:{text}")
+                lines.append(f"  {s.to_char()}: {' '.join(suit_strs)}")
+            ct = getattr(board, 'current_trick', None) if board else None
+            if ct and ct.cards and ct.leader is not None:
+                played = []
+                for j, card in enumerate(ct.cards):
+                    p_seat = Seat((ct.leader.value + j) % 4)
+                    played.append(f"{p_seat.to_char()}:{card.to_str()}")
+                lines.append(f"current trick: {' '.join(played)}  "
+                             f"(leader {ct.leader.to_char()})")
+            tricks = getattr(board, 'tricks', []) if board else []
+            lines.append(f"tricks completed: {len(tricks)}")
+            if board and board.auction:
+                bidder = board.dealer
+                auction = []
+                for bid in board.auction:
+                    auction.append(f"{bidder.to_char()}:{bid.to_str()}")
+                    bidder = bidder.next()
+                lines.append("auction: " + " ".join(auction))
+        except Exception as e:
+            lines.append(f"(game-state capture failed: {e!r})")
+
+        # --- Preferences (so we know which engine path was on) ---
+        try:
+            prefs = self.config_manager.config.preferences
+            lines.append("")
+            lines.append("=== Preferences ===")
+            for attr in ('use_monte_carlo_play', 'use_double_dummy_play',
+                         'bidding_engine', 'native_bidding_system',
+                         'nosearch'):
+                if hasattr(prefs, attr):
+                    lines.append(f"  {attr}: {getattr(prefs, attr)}")
+        except Exception as e:
+            lines.append(f"(prefs capture failed: {e!r})")
+
+        # --- Python stacks of every live thread ---
+        # sys._current_frames() works in-process: no ptrace needed, no
+        # sudo. The EngineWorker thread is the one with a frame inside
+        # ben_backend; its topmost frame is the smoking gun.
+        lines.append("")
+        lines.append("=== Python thread stacks (sys._current_frames) ===")
+        try:
+            import threading
+            tid_to_name = {t.ident: t.name for t in threading.enumerate()}
+            for tid, frame in sys._current_frames().items():
+                name = tid_to_name.get(tid, f"tid {tid}")
+                lines.append("")
+                lines.append(f"--- Thread: {name} (tid {tid}) ---")
+                stack = tb_mod.format_stack(frame)
+                lines.extend(s.rstrip() for s in stack)
+        except Exception as e:
+            lines.append(f"(thread-stack capture failed: {e!r})")
+
+        # --- Native (gdb) backtrace, best-effort ---
+        # Skipped quietly when gdb is missing or ptrace_scope blocks
+        # us. Captures C-level frames inside DDS / native MC code,
+        # which is invisible to py-spy and sys._current_frames.
+        lines.append("")
+        lines.append("=== Native backtrace (gdb -batch) ===")
+        try:
+            import shutil
+            import subprocess
+            if shutil.which('gdb') is None:
+                lines.append("(gdb not installed — skipped)")
+            else:
+                gdb_cmd = [
+                    'gdb', '-p', str(os.getpid()), '-batch',
+                    '-ex', 'set pagination off',
+                    '-ex', 'thread apply all bt',
+                    '-ex', 'detach',
+                ]
+                r = subprocess.run(gdb_cmd, capture_output=True,
+                                   text=True, timeout=10)
+                if r.returncode == 0 and r.stdout:
+                    lines.append(r.stdout)
+                else:
+                    err = (r.stderr or '').splitlines()[:5]
+                    lines.append(
+                        "(gdb attach failed — likely "
+                        "/proc/sys/kernel/yama/ptrace_scope blocks "
+                        "self-attach. Run\n"
+                        "   echo 0 | sudo tee /proc/sys/kernel/yama/"
+                        "ptrace_scope\n"
+                        "to allow gdb here for the next freeze.)\n"
+                        "stderr head:\n  " + "\n  ".join(err))
+        except subprocess.TimeoutExpired:
+            lines.append("(gdb attach timed out after 10s — skipped)")
+        except Exception as e:
+            lines.append(f"(gdb attach failed: {e!r})")
+
+        try:
+            path.write_text("\n".join(lines) + "\n")
+        except Exception as e:
+            print(f"[freeze report] write failed: {e!r}", flush=True)
+            return ""
+        print(f"[engine watchdog] freeze report saved to {path}",
+              flush=True)
+        return str(path)
+
+    def _handle_trick_complete(self):
+        """Handle completed trick - auto-advance when the human side won
+        the trick (so the user just plays the next card without an
+        intervening click); enable Next-card otherwise.
+
+        Spacebar is wired up at construction time as a shortcut on the
+        Next-card button, so even when the button is enabled the user
+        doesn't have to reach for the mouse.
+        """
+        winner = self.controller.get_trick_winner()
+        if winner is None:
+            return
+
+        self.table_view.show_trick_winner(winner)
+        self.table_view.update_tricks(
+            self.controller.board.declarer_tricks,
+            self.controller.board.defense_tricks
+        )
+
+        human_side_won = self._winner_is_local_partnership(winner)
+
+        # Network mode: the host/guest who actually played the LAST
+        # card of the trick is responsible for emitting the trick-clear,
+        # so anyone else just waits. Independent of who *won*: the
+        # winning side may all be remote, in which case we still wait.
+        if self.network_controller.is_active:
+            last_trick = (self.controller.board.tricks[-1]
+                          if self.controller.board.tricks else None)
+            if last_trick and len(last_trick.cards) == 4:
+                last_player_seat = Seat((last_trick.leader.value + 3) % 4)
+                declarer = self.controller.declarer
+                dummy = self.controller.dummy
+                actual_player = (declarer if last_player_seat == dummy
+                                 else last_player_seat)
+                remote_played_last = self.network_controller.is_remote_seat(
+                    actual_player
+                )
+                if remote_played_last:
+                    self.next_card_btn.setEnabled(False)
+                    who = ("partner"
+                           if self.network_controller.client_role == "partner"
+                           else "opponent")
+                    self.status_label.setText(
+                        f"Trick won by {winner.to_char()}. Waiting for {who}..."
+                    )
+                    return
+
+                # I (or an AI seat I drive) played last. If our side won,
+                # auto-advance so the next lead drops straight in. If
+                # the opponents won, leave the button on so we can press
+                # 'next card' / spacebar deliberately.
+                if human_side_won or self.autoplay_btn.isChecked():
+                    self.next_card_btn.setEnabled(False)
+                    self.status_label.setText(f"Trick won by {winner.to_char()}.")
+                    QTimer.singleShot(400, self._on_next_card)
+                else:
+                    self.next_card_btn.setEnabled(True)
+                    self.status_label.setText(
+                        f"Trick won by {winner.to_char()}. "
+                        "Press Next card (or Space)."
+                    )
+                return
+
+        # Single-player.
+        if human_side_won or self.autoplay_btn.isChecked():
+            self.next_card_btn.setEnabled(False)
+            self.status_label.setText(f"Trick won by {winner.to_char()}.")
+            QTimer.singleShot(400, self._on_next_card)
+        else:
+            self.next_card_btn.setEnabled(True)
+            self.status_label.setText(
+                f"Trick won by {winner.to_char()}. Press Next card (or Space)."
             )
 
-            # In network mode, synchronize "next card" between players
-            if self.network_controller.is_active:
-                # Get the last player of the completed trick
-                last_trick = self.controller.board.tricks[-1] if self.controller.board.tricks else None
-                if last_trick and len(last_trick.cards) == 4:
-                    # The 4th card was played by: leader + 3
-                    last_player_seat = Seat((last_trick.leader.value + 3) % 4)
-                    # Determine who actually played (declarer plays dummy's cards)
-                    declarer = self.controller.declarer
-                    dummy = self.controller.dummy
-                    actual_player = declarer if last_player_seat == dummy else last_player_seat
-
-                    i_played_last = self.network_controller.is_my_seat(actual_player)
-                    ai_played_last = self.network_controller.is_ai_seat(actual_player)
-
-                    # Determine who should control "next card"
-                    # Rule: Remote human played last -> wait for their broadcast
-                    #       Otherwise (I or AI played last) -> I get the button
-                    remote_played_last = self.network_controller.is_remote_seat(actual_player)
-
-                    if remote_played_last:
-                        # Remote human played last - wait for their broadcast
-                        self.next_card_btn.setEnabled(False)
-                        who = "partner" if self.network_controller.client_role == "partner" else "opponent"
-                        self.status_label.setText(f"Trick won by {winner.to_char()}. Waiting for {who}...")
-                        return
-                    else:
-                        # I played last or AI played last - I get the button
-                        self.next_card_btn.setEnabled(True)
-                        self.status_label.setText(f"Trick won by {winner.to_char()}. Click 'Next card' to continue.")
-                        return
-
-            # Standard single-player mode
-            self.next_card_btn.setEnabled(True)
-
-            # Check if next player is human (South or dummy controlled by human)
-            next_is_human = self.controller._human_controls_seat(winner)
-
-            if next_is_human or self.autoplay_btn.isChecked():
-                # Auto-advance when it's human's turn or autoplay is on
-                self.status_label.setText(f"Trick won by {winner.to_char()}.")
-                QTimer.singleShot(600, self._on_next_card)
-            else:
-                self.status_label.setText(
-                    f"Trick won by {winner.to_char()}. Click 'Next card' to continue."
-                )
+    def _winner_is_local_partnership(self, winner: Seat) -> bool:
+        """Return True if the just-won trick was taken by a seat the
+        local human controls (themself, their partner if AI, or the
+        dummy when the human is declarer)."""
+        if self.network_controller.is_active:
+            # Network: the local player owns one or more seats. A win on
+            # any of those — or on a seat their *partner* (also a remote
+            # human) owns — counts as "our side". For simplicity we
+            # treat both partnership members as local if either is
+            # human-controlled by anybody at this client.
+            try:
+                if self.network_controller.is_my_seat(winner):
+                    return True
+                # If my seat's partner won, treat as my side too.
+                my_seats = list(self.network_controller.my_seats or [])
+                if my_seats and any(s.partner() == winner for s in my_seats):
+                    return True
+            except Exception:
+                pass
+            return False
+        # Single-player.
+        return bool(self.controller._human_controls_seat(winner))
 
     def _show_result(self):
         """Show deal result"""
@@ -3988,7 +4571,15 @@ For more information, see the README file."""
             print(f"[qplus harness] launch failed: {e}", flush=True)
 
     def _show_claude_hand_analysis(self, board, contract, tricks, result_str, score):
-        """Show a progress bar while Claude analyzes, then display results in a dialog."""
+        """Show a progress bar while Claude analyzes, then display results in a dialog.
+
+        If we've already analysed this exact board+deal in this session,
+        the result is replayed from `_claude_hand_logs` without spending
+        another Claude call. The persisted version on disk lives in the
+        BDL log (Commentary block, written by _append_commentary_to_bdl),
+        so even across restarts the user sees the same wording when
+        opening the BDL log file.
+        """
         import shutil
         import subprocess
         import threading
@@ -3997,45 +4588,65 @@ For more information, see the README file."""
         from PyQt6.QtGui import QFont
         from PyQt6.QtCore import QTimer
 
+        # Cache key: (board_number, pavlicek_id). Pavlicek differentiates
+        # two hands that happen to share a board number (replays etc.);
+        # if we couldn't compute it, the board number alone keys the
+        # cache for this session.
+        try:
+            hands_for_pavlicek = self.original_hands or board.hands
+            if all(s in hands_for_pavlicek for s in Seat):
+                cache_pavlicek = format_deal_base62(deal_to_number(hands_for_pavlicek))
+            else:
+                cache_pavlicek = ""
+        except Exception:
+            cache_pavlicek = ""
+        cache_key = (board.board_number, cache_pavlicek)
+        cached = self._claude_hand_logs.get(cache_key)
+        if cached is not None:
+            # Re-display the saved annotated BDL — no Claude call.
+            self._show_annotated_bdl_dialog(
+                title="Claude Analysis (cached)",
+                bdl_text=cached.get('bdl', ''),
+                claude_text=cached.get('claude', ''),
+                error=False,
+            )
+            return
+
         if not shutil.which('claude'):
             return
 
-        # Build hand summary for Claude
+        # Build hand summary for Claude as a full BDL snapshot. Claude
+        # reads seat letters off the BDL N/E/S/W column headers and the
+        # leader/winner markers in the Tricks block instead of trying to
+        # walk the auction order to attribute bids — that mis-attribution
+        # is what caused earlier annotations to confuse who did what.
         seat_names = {Seat.NORTH: 'N', Seat.EAST: 'E', Seat.SOUTH: 'S', Seat.WEST: 'W'}
         suit_symbols = {Suit.SPADES: 'S', Suit.HEARTS: 'H', Suit.DIAMONDS: 'D',
                         Suit.CLUBS: 'C', Suit.NOTRUMP: 'NT'}
 
-        hand_text = f"Contract: {contract.level}{suit_symbols.get(contract.suit, '?')}"
-        if contract.doubled: hand_text += "X"
-        if contract.redoubled: hand_text += "XX"
-        hand_text += f" by {seat_names[contract.declarer]}\n"
-        hand_text += f"Result: {tricks} tricks ({result_str}), Score: {score:+d}\n"
-        hand_text += f"Vulnerability: {board.vulnerability.name}\n\n"
+        from .game_logger import build_bdl_snapshot
+        deal_id = ""
+        try:
+            hands_for_pavlicek = self.original_hands or board.hands
+            if all(s in hands_for_pavlicek for s in Seat):
+                deal_id = format_deal_base62(deal_to_number(hands_for_pavlicek))
+        except Exception:
+            deal_id = ""
 
-        hands = self.original_hands or board.hands
-        for seat in [Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST]:
-            hand = hands.get(seat)
-            if hand:
-                suits = []
-                for suit in [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]:
-                    cards = sorted([c for c in hand.cards if c.suit == suit],
-                                   key=lambda c: c.rank, reverse=True)
-                    sym = {Suit.SPADES: 'S', Suit.HEARTS: 'H',
-                           Suit.DIAMONDS: 'D', Suit.CLUBS: 'C'}[suit]
-                    suits.append(f"{sym}:{''.join(c.rank.to_char() for c in cards)}")
-                hand_text += f"{seat_names[seat]}: {' '.join(suits)}\n"
-
-        if board.auction:
-            hand_text += "\nAuction: "
-            bids = []
-            for bid in board.auction:
-                if bid.is_pass: bids.append("Pass")
-                elif bid.is_double: bids.append("X")
-                elif bid.is_redouble: bids.append("XX")
-                else:
-                    s = suit_symbols.get(bid.suit, '?') if bid.suit is not None else 'NT'
-                    bids.append(f"{bid.level}{s}")
-            hand_text += " - ".join(bids) + "\n"
+        result_summary = (
+            f"Result: {tricks} tricks ({result_str}), declarer-side score "
+            f"{score:+d}."
+        )
+        hand_text = build_bdl_snapshot(
+            board,
+            original_hands=self.original_hands,
+            viewer_seat=None,           # end-of-hand: every hand is on display
+            phase='finished',
+            dummy_visible_to_viewer=True,
+            contract=contract,
+            result_summary=result_summary,
+            deal_id=deal_id,
+        ) + "\n"
 
         # Pull the closed-room result (populated by Q-Plus ingest) so Claude
         # can compare the human's table against the manual closed room.
@@ -4146,13 +4757,41 @@ For more information, see the README file."""
 
         def _run_claude():
             try:
+                analysis_prompt = (
+                    "You are a bridge teacher. Annotate this hand by "
+                    "echoing the BDL log VERBATIM and inserting "
+                    "annotation lines that BEGIN with '>>' (two right "
+                    "angle brackets followed by a space) at logical "
+                    "section breaks.\n\n"
+                    "MANDATORY OUTPUT FORMAT:\n"
+                    "  • Reproduce the BDL exactly, line by line, "
+                    "preserving every non-annotation line.\n"
+                    "  • After the Bids block, insert one or more '>>' "
+                    "lines that critique the auction (sound? off-shape? "
+                    "missed game?).\n"
+                    "  • After the Tricks block, insert '>>' lines that "
+                    "critique the play and defense, naming specific "
+                    "tricks where decisions mattered.\n"
+                    "  • At the very end, add a '>> Verdict:' line with "
+                    "your overall takeaway in one short sentence.\n"
+                    "  • Read seat letters straight from the N/E/S/W "
+                    "column headers in Bids and the leader/winner "
+                    "markers in Tricks — never infer a seat from order.\n"
+                    "  • Keep each annotation under ~25 words; multiple "
+                    "short ones beat one long paragraph.\n"
+                    "  • Do not output anything outside the BDL frame.\n\n"
+                    f"The human player(s) at the open room: {human_desc}."
+                    f"{comparison_note}\n\n"
+                    f"BDL:\n{hand_text}"
+                )
+                # Opus 4.7 with extended thinking, longer timeout to
+                # accommodate think-then-write for full hand annotations.
                 r = subprocess.run(
-                    ['claude', '-p', '--max-turns', '1',
-                     f"You are a bridge teacher. Briefly analyze this hand (3-5 sentences). "
-                     f"The human player(s): {human_desc}. "
-                     f"Was the bidding sound? Was the play/defense correct? "
-                     f"What was the key decision?{comparison_note} Plain text only.\n\n{hand_text}"],
-                    capture_output=True, text=True, timeout=120
+                    ['claude', '-p',
+                     '--model', 'claude-opus-4-7',
+                     '--thinking', 'enabled',
+                     '--max-turns', '1', analysis_prompt],
+                    capture_output=True, text=True, timeout=300
                 )
                 stdout = (r.stdout or '').strip()
                 stderr = (r.stderr or '').strip()
@@ -4166,7 +4805,7 @@ For more information, see the README file."""
                         parts.append(f"stdout: {stdout[:500]}")
                     result_holder['error'] = "\n".join(parts)
             except subprocess.TimeoutExpired:
-                result_holder['error'] = "claude timed out after 120 seconds."
+                result_holder['error'] = "claude timed out after 300 seconds."
             except Exception as e:
                 result_holder['error'] = f"claude call failed: {e!r}"
 
@@ -4197,65 +4836,54 @@ For more information, see the README file."""
             except OSError:
                 pass
 
-        # Show analysis dialog — light grey background, large readable text.
-        # Always shown, even on failure, so the user gets feedback.
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Claude Analysis")
-        dialog.setMinimumSize(700, 400)
-        dialog.resize(800, 500)
-        dialog.setStyleSheet("QDialog { background-color: #e8e8f0; color: #000; }")
-
-        layout = QVBoxLayout(dialog)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: 1px solid #aaa; background-color: #f8f8f8; }")
-        # Prepend objective open/closed-room summary so the numbers are visible
-        # even if Claude fails.
+        # Build a short open-vs-closed summary header so the user sees
+        # the objective numbers even if Claude failed; the BDL view then
+        # follows with Claude's annotations interspersed.
         summary_header = ""
         if closed_run and closed_run.contract:
             c_target = closed_run.contract.target_tricks()
             c_diff = closed_run.declarer_tricks - c_target
-            c_result = f"+{c_diff}" if c_diff > 0 else ("=" if c_diff == 0 else str(c_diff))
+            c_result = (f"+{c_diff}" if c_diff > 0
+                        else ("=" if c_diff == 0 else str(c_diff)))
             ns_open = score if contract.declarer.is_ns() else -score
             summary_header = (
                 f"Open room:   {contract.to_str()} by {contract.declarer.to_char()}  "
                 f"{tricks} tricks ({result_str})  NS {ns_open:+d}\n"
-                f"Closed room: {closed_run.contract.to_str()} by {closed_run.contract.declarer.to_char()}  "
-                f"{closed_run.declarer_tricks} tricks ({c_result})  NS {closed_run.ns_score:+d}"
+                f"Closed room: {closed_run.contract.to_str()} by "
+                f"{closed_run.contract.declarer.to_char()}  "
+                f"{closed_run.declarer_tricks} tricks ({c_result})  "
+                f"NS {closed_run.ns_score:+d}"
             )
             if imp_swing is not None:
-                summary_header += f"\nIMP: {imp_swing:+d} ({'N/S' if imp_swing >= 0 else 'E/W'})"
+                side = 'N/S' if imp_swing >= 0 else 'E/W'
+                summary_header += f"\nIMP: {imp_swing:+d} ({side})"
             summary_header += "\n\n"
 
+        framed_bdl = (summary_header + hand_text) if summary_header else hand_text
+        self._show_annotated_bdl_dialog(
+            title="Claude Analysis",
+            bdl_text=framed_bdl,
+            claude_text=critique or "",
+            error=not critique,
+        )
+        # Cache the successful analysis so reopening "Hand Log" later
+        # for this same hand redraws the saved annotated BDL instead of
+        # firing another Claude call. We deliberately don't cache
+        # failures — the user can retry on the next click.
         if critique:
-            body_text = f"{summary_header}{critique}"
-            body_color = "#000"
-            font_size = 22
-        else:
-            body_text = (
-                f"{summary_header}"
+            self._claude_hand_logs[cache_key] = {
+                'bdl': framed_bdl,
+                'claude': critique,
+                'board_number': board.board_number,
+                'pavlicek_id': cache_pavlicek,
+            }
+        if not critique:
+            self._show_plain_dialog(
+                "Claude Analysis (claude error)",
                 "Claude did not return an analysis for this hand.\n\n"
-                f"{error or 'No output received.'}"
+                f"{error or 'No output received.'}",
+                error=True,
             )
-            body_color = "#803030"
-            font_size = 16
-        analysis_label = QLabel(body_text)
-        analysis_label.setFont(QFont("Arial", font_size))
-        analysis_label.setWordWrap(True)
-        analysis_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        analysis_label.setStyleSheet(f"color: {body_color}; background-color: #f8f8f8; padding: 15px;")
-        scroll.setWidget(analysis_label)
-        layout.addWidget(scroll)
-
-        ok_btn = QPushButton("OK")
-        ok_btn.setFixedSize(120, 40)
-        ok_btn.setStyleSheet("QPushButton { background-color: #d0d0d0; color: #000; "
-                             "border: 1px solid #999; border-radius: 3px; font-size: 16px; }")
-        ok_btn.clicked.connect(dialog.accept)
-        layout.addWidget(ok_btn)
-
-        dialog.exec()
 
     def _start_parallel_closed_room(self, board):
         """Kick off the all-AI closed room the moment a new deal is dealt.
@@ -4638,7 +5266,13 @@ For more information, see the README file."""
                     self.status_label.setText(f"No hand data for {about_seat}")
 
     def _on_view_auction_tricks(self):
-        """Show the auction and played tricks dialog."""
+        """Show the Record (auction + played tricks) dialog detached.
+
+        Non-modal so the user can drag it to a second monitor and watch
+        the play unfold next to the main table view. The dialog is
+        marked WA_DeleteOnClose, so we just keep the latest reference
+        and overwrite it on the next open instead of bookkeeping a list.
+        """
         from .dialogs import AuctionTricksDialog
 
         if not self.controller.board:
@@ -4650,8 +5284,6 @@ For more information, see the README file."""
         board = self.controller.board
         if board.tricks:
             for trick in board.tricks:
-                # Convert Trick object to dict format expected by dialog
-                # Cards are played in order starting from leader
                 cards_dict = {}
                 for i, card in enumerate(trick.cards):
                     seat = Seat((trick.leader.value + i) % 4)
@@ -4665,12 +5297,87 @@ For more information, see the README file."""
                 }
                 tricks.append(trick_info)
 
-        dialog = AuctionTricksDialog(
+        # If a Record window is already open, close it so we can spawn
+        # a fresh one with the latest tricks. The dialog was promoted
+        # to a top-level Qt.Window with WA_DeleteOnClose so the C++
+        # widget is destroyed the moment the user dismisses it; the
+        # Python `_record_dialog` reference outlives that, and any
+        # method call on the dangling wrapper raises RuntimeError
+        # ("wrapped C/C++ object … has been deleted"). Catch that.
+        existing = getattr(self, '_record_dialog', None)
+        if existing is not None:
+            try:
+                if existing.isVisible():
+                    existing.close()
+            except RuntimeError:
+                # C++ side already deleted — drop the stale reference.
+                self._record_dialog = None
+            except Exception:
+                pass
+
+        self._record_dialog = AuctionTricksDialog(
             self,
             board=self.controller.board,
             tricks=tricks
         )
-        dialog.exec()
+        self._record_dialog.show()
+        self._record_dialog.raise_()
+
+    def _on_show_hand_log(self):
+        """Reopen the Claude-annotated BDL log for the current hand.
+
+        Order of preference for choosing what to display:
+          1. The cached annotated BDL for the most-recently-completed
+             hand (built after _show_claude_hand_analysis ran).
+          2. Any cached entry for the current board number.
+          3. The pending analysis from `_claude_pending` — fires
+             `_maybe_run_pending_claude` so we render the same dialog
+             as the post-hand path. From then on it's cached.
+          4. Status-bar message if there's nothing to show yet.
+        """
+        # Try the most recent cached hand first — pending snapshot has
+        # the right board+pavlicek even if the score sheet has moved on.
+        pending = self._claude_pending
+        if pending and pending.get('analyzed'):
+            board = pending.get('board')
+            try:
+                hands = self.original_hands or board.hands
+                pav = (format_deal_base62(deal_to_number(hands))
+                       if board and all(s in hands for s in Seat) else "")
+            except Exception:
+                pav = ""
+            if board is not None:
+                key = (board.board_number, pav)
+                cached = self._claude_hand_logs.get(key)
+                if cached is None:
+                    # Fallback: pavlicek may have differed slightly;
+                    # match on board number alone.
+                    for k, v in self._claude_hand_logs.items():
+                        if k[0] == board.board_number:
+                            cached = v
+                            break
+                if cached is not None:
+                    self._show_annotated_bdl_dialog(
+                        title=f"Hand Log — Board {board.board_number} (cached)",
+                        bdl_text=cached.get('bdl', ''),
+                        claude_text=cached.get('claude', ''),
+                        error=False,
+                    )
+                    return
+
+        # Nothing cached yet but there IS a pending hand — run / render
+        # for the first time. _maybe_run_pending_claude is idempotent
+        # via its 'analyzed' flag, so we clear that to force a render
+        # if the user explicitly asked.
+        if pending is not None:
+            pending['analyzed'] = False
+            self._maybe_run_pending_claude()
+            return
+
+        # Brand-new session, nothing to show.
+        self.status_label.setText(
+            "No hand analysis yet — finish a hand first."
+        )
 
     def _on_edit_remark(self):
         """Edit remark for current deal."""
@@ -4996,6 +5703,79 @@ For more information, see the README file."""
             )
         else:
             self.ingest_qplus_action.setToolTip("")
+
+    def _on_load_lin_database(self):
+        """Load a LIN file (BBO vugraph) as a closed-room database.
+
+        Each played-out deal in the file is ingested as a closed-room
+        BoardResult. If the open-room score sheet already has a row for
+        the same board, the LIN result attaches there (so IMPs compute);
+        otherwise the LIN deal stands alone in the score sheet, ready
+        for a future open-room hand to pair with.
+        """
+        from ben_backend.lin_reader import (
+            load_lin_file, lin_deal_to_board_run
+        )
+        from ben_backend.models import BenTable
+
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Select LIN file (BBO vugraph)", "",
+            "LIN files (*.lin);;All files (*)"
+        )
+        if not filename:
+            return
+
+        try:
+            deals = load_lin_file(filename)
+        except Exception as e:
+            QMessageBox.warning(self, "LIN Read Error",
+                                f"Could not parse LIN file:\n{e}")
+            return
+        if not deals:
+            QMessageBox.warning(self, "Empty LIN",
+                                "No deals were found in the selected LIN file.")
+            return
+
+        ingested = 0
+        skipped = 0
+        for deal in deals:
+            run = lin_deal_to_board_run(deal, table=BenTable.CLOSED)
+            if run is None:
+                skipped += 1
+                continue
+            try:
+                self._attach_closed_room_run(run, replace_ai_run=True)
+                ingested += 1
+            except Exception as e:
+                print(f"[lin ingest] attach failed for board "
+                      f"{deal.board_number}: {e}", flush=True)
+                skipped += 1
+
+        # Push the ingested deals to guests so their score sheets line up.
+        if (self.network_controller.is_active
+                and self.network_controller.is_server):
+            for deal in deals:
+                run = lin_deal_to_board_run(deal, table=BenTable.CLOSED)
+                if run is None:
+                    continue
+                try:
+                    self.network_controller.broadcast_closed_room_ingested(run)
+                except Exception as e:
+                    print(f"[lin ingest] broadcast failed: {e}", flush=True)
+
+        self.status_label.setText(
+            f"Loaded {ingested} LIN deal(s) as closed room"
+            + (f" ({skipped} skipped — no contract / no hands)" if skipped else "")
+        )
+
+        # Refresh an open Scoring Table dialog so the new rows show up
+        # without the user having to reopen it.
+        scores = getattr(self, '_scores_dialog', None)
+        if scores is not None and scores.isVisible():
+            try:
+                scores._populate_table()
+            except Exception:
+                pass
 
     def _on_ingest_qplus_closed_room(self):
         """File picker → BDL parse → attach run to score sheet → broadcast.

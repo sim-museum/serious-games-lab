@@ -156,6 +156,34 @@ def apply_dialog_style(dialog):
     dialog.setStyleSheet(DIALOG_STYLESHEET)
 
 
+def make_detachable(dialog):
+    """Promote a QDialog to a real top-level non-modal window.
+
+    Qt's default Qt.WindowType.Dialog is treated as a parent-bound
+    "tool" window by some window managers (Mutter / KWin), which keeps
+    it pinned to the parent's monitor and prevents the user from
+    dragging it onto a second screen. Switching to Qt.WindowType.Window
+    with the standard min/max/close buttons gives a fully-detached,
+    multi-monitor-friendly window. Caller still has to use show()
+    instead of exec() so the parent stays interactive.
+    """
+    from PyQt6.QtCore import Qt
+    flags = (
+        Qt.WindowType.Window
+        | Qt.WindowType.WindowTitleHint
+        | Qt.WindowType.WindowSystemMenuHint
+        | Qt.WindowType.WindowMinMaxButtonsHint
+        | Qt.WindowType.WindowCloseButtonHint
+    )
+    dialog.setWindowFlags(flags)
+    try:
+        dialog.setModal(False)
+    except AttributeError:
+        # Plain QWidget — no setModal, but the flag change is enough.
+        pass
+    dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+
+
 MESSAGEBOX_STYLESHEET = """
     QMessageBox {
         background-color: #f0f0f0;

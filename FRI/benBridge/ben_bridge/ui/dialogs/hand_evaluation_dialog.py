@@ -10,7 +10,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
-from .dialog_style import apply_dialog_style
+from .dialog_style import apply_dialog_style, make_detachable
+from ben_backend.models import Rank
 
 
 class HandEvaluationDialog(QDialog):
@@ -47,6 +48,11 @@ class HandEvaluationDialog(QDialog):
 
         self._setup_ui()
         self._populate_values()
+
+        # Promote to a real top-level window so the user can drag it off
+        # the main BEN Bridge window onto a second monitor (default Qt
+        # behavior pins QDialogs to the parent on most Linux WMs).
+        make_detachable(self)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -311,9 +317,12 @@ class HandEvaluationDialog(QDialog):
         self.point_edits['hp_min'].setText("")
         self.point_edits['hp_max'].setText("")
 
-        # Count aces and kings
-        aces = sum(1 for c in self.hand.cards if c.rank.value == 12)  # Ace
-        kings = sum(1 for c in self.hand.cards if c.rank.value == 11)  # King
+        # Count aces and kings.  In this codebase the Rank enum runs
+        # ACE=0, KING=1, …, TWO=12 (highest = lowest enum value), so
+        # the previous code (== 12 / == 11) was actually counting twos
+        # and threes.
+        aces = sum(1 for c in self.hand.cards if c.rank == Rank.ACE)
+        kings = sum(1 for c in self.hand.cards if c.rank == Rank.KING)
 
         self.aces_exp.setText(str(aces))
         self.aces_result.setText(str(aces))
@@ -341,14 +350,16 @@ class HandEvaluationDialog(QDialog):
             if widgets:
                 widgets['len_exp'].setText(str(length))
 
-                # Calculate suit HCP
-                suit_hcp = sum(max(0, c.rank.value - 9) for c in (suit_cards or []))
+                # Calculate suit HCP.  ACE=0→4 pts, KING=1→3, QUEEN=2→2,
+                # JACK=3→1, everything else 0 — i.e. max(0, 4 - rank.value).
+                suit_hcp = sum(
+                    max(0, 4 - c.rank.value) for c in (suit_cards or []))
                 widgets['hp_exp'].setText(f"{suit_hcp:.1f}")
 
-                # Check for honors
-                has_ace = any(c.rank.value == 12 for c in (suit_cards or []))
-                has_king = any(c.rank.value == 11 for c in (suit_cards or []))
-                has_queen = any(c.rank.value == 10 for c in (suit_cards or []))
+                # Check for honors (ACE=0, KING=1, QUEEN=2)
+                has_ace = any(c.rank == Rank.ACE for c in (suit_cards or []))
+                has_king = any(c.rank == Rank.KING for c in (suit_cards or []))
+                has_queen = any(c.rank == Rank.QUEEN for c in (suit_cards or []))
 
                 widgets['pct_a'].setText("100" if has_ace else "0")
                 widgets['pct_k'].setText("100" if has_king else "0")
