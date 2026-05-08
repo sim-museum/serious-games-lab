@@ -1089,7 +1089,7 @@ class CaptureButton(QPushButton):
 
 
 class BridgeHarness(QMainWindow):
-    def __init__(self):
+    def __init__(self, launch_qplus: bool = True):
         super().__init__()
         self.setWindowTitle("Bridge Harness \u2014 Q-Plus Bridge")
         self.setMinimumSize(780, 700)
@@ -1098,6 +1098,7 @@ class BridgeHarness(QMainWindow):
         self.calibration = load_calibration()
         self._worker = None
         self._source_pbn_path = None  # for workflow
+        self._qplus_proc = None       # Popen handle for the Q-Plus child
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_entry_tab(), "Hand Entry")
@@ -1105,6 +1106,62 @@ class BridgeHarness(QMainWindow):
         self.setCentralWidget(self.tabs)
 
         self.statusBar().showMessage("Ready")
+
+        # The harness drives Q-Plus through its window \u2014 auto-launch
+        # Q-Plus on startup so users always see them together. Callers
+        # that have already launched Q-Plus (the wrapping run.sh script)
+        # can pass launch_qplus=False to suppress the second instance.
+        if launch_qplus:
+            self._launch_qplus_if_installed()
+
+    def _qplus_install_dir(self):
+        """Path of the installed Q-Plus directory, or None if not installed."""
+        for subdir in ("WP/drive_c/games/qbridge17",
+                       "WP/drive_c/games/qbridge15"):
+            candidate = FRI_DIR / subdir
+            if candidate.is_dir():
+                return candidate
+        return None
+
+    def _launch_qplus_if_installed(self):
+        """Spawn Q-Plus in the background under wine. No-op if it isn't
+        installed (the harness still works for other workflows in that
+        case), or if `wine` is missing."""
+        import shutil
+        import subprocess
+        qplus_dir = self._qplus_install_dir()
+        if qplus_dir is None:
+            self.statusBar().showMessage(
+                "Ready (Q-Plus not installed under FRI/WP \u2014 comparison "
+                "workflow disabled).")
+            return
+        # bridgeHarness.sh sources launcher/lib/wine_runner.sh which
+        # exports WINE / WINESERVER / WINELOADER pointing at the
+        # Lutris runner pinned for qplus.sh in
+        # config/wine_runners.csv (lutris-6.21-6-x86_64). Prefer that
+        # absolute path over PATH lookup so we use the same wine
+        # version the regular launcher uses \u2014 /usr/bin/wine renders
+        # Q-Plus's Hand Input dialog with empty card-glyph boxes.
+        wine_bin = os.environ.get('WINE') or shutil.which('wine')
+        if not wine_bin:
+            self.statusBar().showMessage(
+                "Ready (wine not installed \u2014 Q-Plus cannot launch).")
+            return
+        env = os.environ.copy()
+        env['WINEPREFIX'] = str(FRI_DIR / "WP")
+        env['WINEARCH'] = 'win32'
+        try:
+            self._qplus_proc = subprocess.Popen(
+                [wine_bin, 'QBRIDGE.EXE'],
+                cwd=str(qplus_dir),
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.statusBar().showMessage(f"Q-Plus launched (PID {self._qplus_proc.pid}).")
+        except Exception as ex:
+            self.statusBar().showMessage(f"Q-Plus launch failed: {ex!r}")
+            self._qplus_proc = None
 
     def load_source(self, path: str, game_name: str = ""):
         """Pre-load a PBN or BDL file into the Comparison Workflow tab.
@@ -1777,12 +1834,14 @@ def main():
     parser.add_argument("--source", default="", help="Pre-load PBN/BDL into Comparison Workflow")
     parser.add_argument("--game", default="", help="Source game name (wbridge5, bb12, etc.)")
     parser.add_argument("--base72", default="", help="Pre-load a deal by base-72 code")
+    parser.add_argument("--no-launch-qplus", action="store_true",
+                        help="Don't auto-launch Q-Plus (caller has already launched it)")
     known, remaining = parser.parse_known_args()
 
     app = QApplication(remaining)
     app.setStyle("Fusion")
 
-    window = BridgeHarness()
+    window = BridgeHarness(launch_qplus=not known.no_launch_qplus)
     window.show()
 
     if known.source:
