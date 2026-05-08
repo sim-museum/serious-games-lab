@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, QGraphicsTextItem,
     QGraphicsRectItem, QDialog, QDialogButtonBox, QCheckBox, QGroupBox,
     QTabWidget, QTextEdit, QScrollArea, QComboBox, QFormLayout,
-    QProgressBar,
+    QProgressBar, QSizePolicy,
 )
 from PyQt6.QtCore import Qt, QTimer, QRectF, QPointF, QSettings, QThread, pyqtSignal
 from PyQt6.QtGui import (
@@ -109,6 +109,13 @@ BOT_TYPE_OPTIONS = [
     ("Loose", "loose", False),
     ("Aggressive", "aggressive", False),
     ("Theory of Mind", "tom", False),
+    # Stronger built-in styles, added later. 'shark' is a balanced GTO-leaning
+    # player; 'exploit' adapts to the table; 'icm' applies push/fold pressure
+    # like a late-stage tournament. All three are stronger than the original
+    # five styles and are eligible for the default lineup.
+    ("Shark (GTO-leaning)", "shark", False),
+    ("Exploit (adaptive)", "exploit", False),
+    ("ICM (tournament push/fold)", "icm", False),
 ]
 
 # Add poker_iq bots if available
@@ -130,10 +137,27 @@ BOT_CUTE_NAMES = {
     "loose": "Loose Bruce",
     "aggressive": "Aggro Angela",
     "tom": "Fluid Fiona",
+    "shark": "Sharkey Steve",
+    "exploit": "Exploit Eli",
+    "icm": "ICM Ian",
     "piq_basic_equity": "Equity Eddie",
     "piq_improved_equity": "Savvy Sarah",
     "piq_external_engine": "Engine Emma",
 }
+
+# The "default lineup" is the canonical set of five DIFFERENT
+# approaches — each seat plays a meaningfully different strategy,
+# not just the same strategy with a different cosmetic name. Used
+# by reset_bots_to_default_lineup() and by the spectator class so
+# both code paths stay in sync.
+DEFAULT_BOT_LINEUP = [
+    # (seat_index, character_name, style_id)
+    (1, "Optimal Olivia", "optimal"),    # equity-pure, no mixing
+    (2, "Sharkey Steve",  "shark"),      # GTO-leaning, polarised, mixed-strategy
+    (3, "Loose Bruce",    "loose"),      # calling station for value-extraction practice
+    (4, "Exploit Eli",    "exploit"),    # reads pool, counter-adjusts
+    (5, "Fluid Fiona",    "tom"),        # opponent-modelling Theory-of-Mind
+]
 
 
 class PokerIQBotAdapter:
@@ -597,6 +621,26 @@ class Player:
 
         equity, pot_odds, to_call = self.calculate_current_stats(game_state, is_god_mode)
 
+        # `equity` above is multi-way (vs every active opponent). That's
+        # the right number for FOLD decisions — you have to beat the
+        # whole field to win the pot. But raise thresholds were calibrated
+        # for heads-up play, so they're impossible to clear in a 5-handed
+        # pot where even AA tops out around 50 % equity.  Compute a
+        # heads-up equity ("would I raise this hand if it were 1-on-1?")
+        # and use that to gate the raise paths below.  Bug: previously
+        # bots almost never raised because the multi-way `equity` could
+        # not reach the 0.60/0.75/0.80 thresholds even with a monster.
+        if self.hand:
+            try:
+                hu_equity = calc_equity_hidden(
+                    self.hand, game_state['board'],
+                    iterations=200, num_opponents=1,
+                )
+            except Exception:
+                hu_equity = equity
+        else:
+            hu_equity = equity
+
         is_huge_bet = to_call > (self.stack * 0.25)
         if is_huge_bet:
             if equity < 0.60:
@@ -605,7 +649,7 @@ class Player:
         if self.style == 'tight':
             if equity < pot_odds + 0.15:
                 return 'f', 0
-            if equity > 0.75:
+            if hu_equity > 0.75:
                 return 'r', int(game_state['pot'] * 0.75)
             return 'c', 0
 
@@ -623,12 +667,12 @@ class Player:
             if self.actions_this_round > 2:
                 return 'c', 0
             rng = random.random()
-            if equity > 0.60:
+            if hu_equity > 0.60:
                 if rng < 0.80:
                     bet = int(game_state['pot'] * random.uniform(0.6, 1.0))
                     return 'r', max(bet, to_call + game_state.get('bb_amount', 2))
                 return 'c', 0
-            if equity < 0.40 and rng < 0.25:
+            if hu_equity < 0.40 and rng < 0.25:
                 bet = int(game_state['pot'] * 0.5)
                 return 'r', max(bet, to_call + game_state.get('bb_amount', 2))
             if equity < pot_odds:
@@ -638,14 +682,138 @@ class Player:
         elif self.style == 'optimal':
             if self.actions_this_round > 3:
                 return 'c', 0
-            if equity > 0.80:
+            if hu_equity > 0.80:
                 return 'r', int(game_state['pot'] * 0.8)
-            elif equity > 0.60:
+            elif hu_equity > 0.60:
                 return 'r', int(game_state['pot'] * 0.5)
             elif equity >= pot_odds:
                 return 'c', 0
             else:
                 return 'f', 0
+
+        elif self.style == 'shark':
+            # Sharkey Steve — GTO-leaning balanced player. The same
+            # hand can raise, call, or fold depending on a tiny bit of
+            # randomness, which makes him much harder to put on a hand
+            # than the deterministic 'optimal' player. Polarized bet
+            # sizing (big or check) plus a small calibrated bluff
+            # frequency (~12 % at clear bluff catchers).
+            if self.actions_this_round > 4:
+                return 'c', 0
+            bb = game_state.get('bb_amount', 2)
+            pot = max(1, game_state['pot'])
+            spr = self.stack / pot if pot > 0 else 10.0  # Stack-to-pot
+
+            # Mixed-strategy slow-play with monsters about 1 in 4 times
+            # so opponents can't auto-fold to our value bets.  Raise
+            # thresholds use heads-up equity (otherwise multi-way "fair
+            # share" pulls them out of reach).
+            if hu_equity > 0.85:
+                if random.random() < 0.25:
+                    return 'c', 0
+                bet = int(pot * (1.0 if spr > 2 else 0.7))
+                return 'r', max(bet, to_call + 2 * bb)
+            if hu_equity > 0.70:
+                # Polarised: 75 % pot value bet ⅔ of the time, otherwise call.
+                if random.random() < 0.66:
+                    bet = int(pot * 0.75)
+                    return 'r', max(bet, to_call + 2 * bb)
+                return 'c', 0
+            if hu_equity > 0.55:
+                # Bet small (½ pot) sometimes for thin value/protection.
+                if random.random() < 0.5 and to_call < pot * 0.4:
+                    bet = int(pot * 0.5)
+                    return 'r', max(bet, to_call + bb)
+                return 'c', 0
+            if equity >= pot_odds + 0.04:
+                return 'c', 0
+            # Bluff layer: ~12 % small bluffs at clear catchers (no big
+            # bet facing us, decent equity floor).
+            if (to_call < pot * 0.4 and equity > 0.20
+                    and random.random() < 0.12):
+                bet = int(pot * 0.55)
+                return 'r', max(bet, to_call + bb)
+            if to_call == 0:
+                return 'c', 0
+            return 'f', 0
+
+        elif self.style == 'exploit':
+            # Exploit Eli — reads the table's tendencies (active
+            # opponents' styles) and counter-adjusts. Against tight
+            # opposition he widens his bluff frequency and steals
+            # blinds; against loose tables he tightens up and
+            # value-bets bigger. Versus aggressive opponents he
+            # check-calls more (slowplay against bluffs) and
+            # 3-bet-bluffs less.
+            if self.actions_this_round > 4:
+                return 'c', 0
+            bb = game_state.get('bb_amount', 2)
+            pot = max(1, game_state['pot'])
+
+            opps = [p for p in game_state['players']
+                    if p is not self and p.active]
+            tight_n = sum(1 for p in opps if p.style in ('tight',))
+            loose_n = sum(1 for p in opps if p.style in ('loose', 'station'))
+            aggro_n = sum(1 for p in opps if p.style in ('aggressive',))
+
+            # Exploitative knobs.
+            steal_freq = 0.28 if tight_n > loose_n else 0.10
+            value_bet_size = 0.85 if loose_n > 0 else 0.65
+            slowplay_vs_aggro = (aggro_n > 0)
+
+            if hu_equity > 0.80:
+                if slowplay_vs_aggro and random.random() < 0.5:
+                    return 'c', 0  # Trap
+                bet = int(pot * value_bet_size)
+                return 'r', max(bet, to_call + 2 * bb)
+            if hu_equity > 0.60:
+                if slowplay_vs_aggro and to_call > 0:
+                    return 'c', 0  # Let aggro fire again
+                bet = int(pot * (value_bet_size * 0.7))
+                return 'r', max(bet, to_call + bb)
+            if equity >= pot_odds + 0.03:
+                return 'c', 0
+            if to_call == 0 and random.random() < steal_freq:
+                # Steal attempt — small bet.
+                bet = int(pot * 0.5)
+                return 'r', max(bet, 2 * bb)
+            if to_call == 0:
+                return 'c', 0
+            return 'f', 0
+
+        elif self.style == 'icm':
+            # ICM Ian — push/fold dynamics applied at every street.
+            # Approximates a tournament-mid-stage shortstack: when
+            # stack-to-pot is small enough that every chip matters,
+            # collapse decisions to "shove or fold" (the mathematically
+            # optimal strategy when SPR < ~3). With deeper stacks falls
+            # back to balanced play.
+            bb = game_state.get('bb_amount', 2)
+            pot = max(1, game_state['pot'])
+            spr = self.stack / pot if pot > 0 else 99.0
+
+            if spr < 3 and self.stack <= 25 * bb:
+                # Push/fold mode. Threshold tuned roughly to a
+                # 25-BB-effective Nash equilibrium: AA-22 / Ax / KQ /
+                # any pair on flop / strong draws all jam, fold rest.
+                # Push/fold uses heads-up equity since shoving thins
+                # the field — by the time it matters, most opponents
+                # have already folded.
+                shove_threshold = 0.55
+                if hu_equity >= shove_threshold:
+                    return 'r', self.stack + to_call  # shove all-in
+                if to_call > 0:
+                    return 'f', 0
+                return 'c', 0  # check when free
+            # Deep-stack mode: behave like 'optimal' but a touch
+            # tighter on calls because losing chips matters more.
+            if hu_equity > 0.80:
+                return 'r', int(pot * 0.8)
+            if hu_equity > 0.60:
+                return 'r', int(pot * 0.5)
+            if equity >= pot_odds + 0.03:
+                return 'c', 0
+            return 'f', 0
 
         elif self.style == 'tom':
             # Theory of Mind player - considers opponents' likely holdings
@@ -659,35 +827,41 @@ class Player:
             loose_opponents = sum(1 for p in opponents if p.style == 'loose')
             aggro_opponents = sum(1 for p in opponents if p.style == 'aggressive')
 
-            # Adjust equity estimate based on who's still in
-            adjusted_equity = equity
+            # Adjust HEADS-UP equity for raise decisions (so multi-way
+            # tables can still trigger a raise on a strong hand) and
+            # multi-way `equity` for fold decisions (you have to beat
+            # the field to win the pot).
+            adjusted_hu = hu_equity
 
             # If facing aggression from tight player, they likely have strong hand
             if tight_opponents > 0 and to_call > game_state['pot'] * 0.5:
-                adjusted_equity *= 0.8  # Discount our equity
+                adjusted_hu *= 0.8  # Discount our raise enthusiasm
 
             # Against loose players, our strong hands are more valuable
-            if loose_opponents > 0 and equity > 0.6:
-                adjusted_equity *= 1.1  # Boost equity slightly
+            if loose_opponents > 0 and hu_equity > 0.6:
+                adjusted_hu *= 1.1  # Boost raise threshold clearance
 
-            # Be more cautious against aggressive players
+            # Be more cautious against aggressive players: bluff-catch.
+            # This affects the call/fold leg, not the raise leg.
+            adjusted_eq_for_call = equity
             if aggro_opponents > 0 and to_call > 0:
-                # They might be bluffing, so call more often with marginal hands
                 if equity > 0.35:
-                    adjusted_equity = max(adjusted_equity, pot_odds + 0.05)
+                    adjusted_eq_for_call = max(equity, pot_odds + 0.05)
 
-            # Decision making with adjusted equity
-            if adjusted_equity > 0.75:
+            # Decision making — raise ladders read heads-up equity.
+            if adjusted_hu > 0.75:
                 return 'r', int(game_state['pot'] * 0.75)
-            elif adjusted_equity > 0.55:
+            elif adjusted_hu > 0.55:
                 if random.random() < 0.3:
                     return 'r', int(game_state['pot'] * 0.5)
                 return 'c', 0
-            elif adjusted_equity >= pot_odds:
+            elif adjusted_eq_for_call >= pot_odds:
                 return 'c', 0
             else:
-                # Occasional bluff
-                if random.random() < 0.15 and to_call < game_state['pot'] * 0.3:
+                # Occasional bluff (heads-up equity floor — don't bluff
+                # when the field is too strong to fold out).
+                if (random.random() < 0.15 and to_call < game_state['pot'] * 0.3
+                        and hu_equity > 0.35):
                     return 'r', int(game_state['pot'] * 0.6)
                 return 'f', 0
 
@@ -806,9 +980,15 @@ class PlayerPanel(QFrame):
         self.setup_ui()
 
     def setup_ui(self):
+        # Restore the original panel proportions + colours after the
+        # 290-wide variant ended up looking flat / pale next to the
+        # rest of the board. Panel size, frame style, and the right-
+        # side cosmetic spacer all match the version the user
+        # screenshotted as "good"; the long-name problem is now
+        # handled purely by font sizing in the name label.
         self.setFrameStyle(QFrame.Shape.Box | QFrame.Shadow.Raised)
         self.setLineWidth(3)
-        self.setFixedSize(240, 185)
+        self.setFixedSize(240, 235)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
@@ -823,13 +1003,20 @@ class PlayerPanel(QFrame):
         self.pos_label.setFixedWidth(35)
         top_row.addWidget(self.pos_label)
 
-        # Name
+        # Name. Default font is 14pt (down from the previous 16) so
+        # the canonical character names ("Sharkey Steve",
+        # "Optimal Olivia") fit in the original 240-wide panel
+        # without auto-shrink kicking in. _fit_name_label drops
+        # further to 12 / 11 pt if a longer name appears (custom
+        # name, "(#N)" duplicate suffix, etc).
         self.name_label = QLabel(self.player.name)
-        self.name_label.setFont(QFont('Arial', 16, QFont.Weight.Bold))
+        self.name_label.setFont(QFont('Arial', 14, QFont.Weight.Bold))
         self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.name_label.setSizePolicy(QSizePolicy.Policy.Ignored,
+                                      QSizePolicy.Policy.Preferred)
         top_row.addWidget(self.name_label, stretch=1)
 
-        # Spacer to balance
+        # Symmetric right-side spacer to balance the position label.
         top_row.addSpacing(35)
 
         layout.addLayout(top_row)
@@ -861,11 +1048,62 @@ class PlayerPanel(QFrame):
         self.bet_label.setStyleSheet("color: yellow;")
         layout.addWidget(self.bet_label)
 
+        # "Current best hand" line — shown for any player whose cards are
+        # visible (hero always; villains in god mode / at showdown).  Same
+        # font weight/size as the name and stack labels above.  Empty by
+        # default; populated via set_best_hand().
+        self.best_hand_label = QLabel("")
+        self.best_hand_label.setFont(QFont('Arial', 16, QFont.Weight.Bold))
+        self.best_hand_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.best_hand_label.setStyleSheet("color: #ffd966;")
+        self.best_hand_label.setWordWrap(True)
+        self.best_hand_label.setVisible(False)
+        layout.addWidget(self.best_hand_label)
+
         self.update_display()
+
+    def set_best_hand(self, text: str):
+        """Display the hero's current best hand (flop to river only).
+
+        Pass an empty string to hide.  Only the human seat ever calls this.
+        """
+        if text:
+            self.best_hand_label.setText(text)
+            self.best_hand_label.setVisible(True)
+        else:
+            self.best_hand_label.setText("")
+            self.best_hand_label.setVisible(False)
+
+    def _fit_name_label(self):
+        """Shrink the name font until the text fits the available width.
+
+        Panel is 240 wide with a 35-px pos label, a 35-px right
+        spacer, and 10-px margins on each side, so the name label
+        gets ~150 px. The canonical 5-bot lineup names all fit at
+        14 pt; the fallback only kicks in for custom or duplicate-
+        suffixed names. Walks 14 → 13 → 12 → 11 pt.
+        """
+        try:
+            from PyQt6.QtGui import QFontMetrics
+            text = self.name_label.text()
+            avail = max(40, self.name_label.width() or
+                        (self.width() - 20 - 35 - 35 - 6))
+            font = QFont('Arial', 14, QFont.Weight.Bold)
+            for size in (14, 13, 12, 11):
+                font.setPointSize(size)
+                metrics = QFontMetrics(font)
+                if metrics.horizontalAdvance(text) <= avail - 4:
+                    self.name_label.setFont(font)
+                    return
+            font.setPointSize(11)
+            self.name_label.setFont(font)
+        except Exception:
+            pass
 
     def update_display(self):
         # Update name (in case it changed due to bot preference)
         self.name_label.setText(self.player.name)
+        self._fit_name_label()
         self.stack_label.setText(f"${self.player.stack}")
 
         if self.player.bet_in_round > 0:
@@ -900,8 +1138,33 @@ class PlayerPanel(QFrame):
             self.card1.set_card(None, face_down=True)
             self.card2.set_card(None, face_down=True)
 
-        # Update style based on state
-        if not self.player.active:
+        # Update style based on state.
+        # If the panel is currently flashing (just raised), the flash color
+        # wins over the regular states so the user notices the raise.
+        # Tier (still chosen by raise size — normal/orange/red names kept
+        # for backward compatibility with _flash_color_for_raise):
+        #   * normal panel pulse for small raises (≤ 25% pot)
+        #   * orange for medium raises
+        #   * "red" tier for large raises / all-ins — but rendered in a
+        #     calmer magenta/pink palette than the original blood red,
+        #     which was visually alarming over a long session.
+        flash_color = getattr(self, '_flashing_raise_color', None)
+        if flash_color == 'red':
+            self.setStyleSheet(
+                "background-color: #4d1a3d; border: 4px solid #ff66cc;")
+            self.name_label.setStyleSheet("color: #fff; font-weight: bold;")
+        elif flash_color == 'orange':
+            self.setStyleSheet(
+                "background-color: #5b3a0a; border: 4px solid #ff9930;")
+            self.name_label.setStyleSheet("color: #fff; font-weight: bold;")
+        elif flash_color == 'normal':
+            # Brighten the existing green panel (no color change, just a
+            # stronger border / lighter bg) so a raise still pops without
+            # the alarmist red colour.
+            self.setStyleSheet(
+                "background-color: #2f5a2f; border: 4px solid #5cff90;")
+            self.name_label.setStyleSheet("color: #fff; font-weight: bold;")
+        elif not self.player.active:
             # Folded - gray, no border
             self.setStyleSheet("background-color: #444; color: #888; border: 3px solid #555;")
             self.name_label.setStyleSheet("color: #888;")
@@ -917,6 +1180,17 @@ class PlayerPanel(QFrame):
     def set_active_turn(self, active):
         self.is_active_turn = active
         self.update_display()
+
+    def flash_raise(self, ms: int = 600, color: str = 'red'):
+        """Disabled: raises used to flash the panel pink/orange/etc., but
+        the colour change interrupted focus mid-decision. Raises are now
+        called out by colouring the matching ticker line yellow at the
+        bottom of the screen (see _format_action_log_html), which is
+        peripheral and non-distracting. Kept as a no-op so existing
+        callers (`_flash_color_for_raise` → `panel.flash_raise(...)`)
+        stay valid without further surgery.
+        """
+        return
 
     def set_show_cards(self, show):
         self.show_cards = show
@@ -951,13 +1225,23 @@ class HandRangeGrid(QWidget):
                 else:
                     hand = f"{r1}{r2}"   # Pairs (on diagonal)
                 self.range_weights[hand] = 0.0
+        self.board_hits = {}
 
-    def set_range(self, range_dict):
-        """Set range weights from a dictionary."""
+    def set_range(self, range_dict, board_hits=None):
+        """Set range weights from a dictionary.
+
+        ``board_hits`` is an optional dict mapping the same hand keys to
+        a connection score in [0, 1] reflecting how well the hand makes
+        with the current board (top pair, set, made straight, OESD,
+        flush draw). Cells with a high connection get a yellow border so
+        the user can see at a glance which combos in the range "make
+        sense" given the call.
+        """
         self.init_empty_range()
         for hand, weight in range_dict.items():
             if hand in self.range_weights:
                 self.range_weights[hand] = weight
+        self.board_hits = dict(board_hits) if board_hits else {}
         self.update()
 
     def get_hand_at(self, row, col):
@@ -1011,9 +1295,22 @@ class HandRangeGrid(QWidget):
 
                 painter.fillRect(x, y, cell_w - 1, cell_h - 1, QColor(r, g, b))
 
-                # Draw border
-                painter.setPen(QPen(QColor(60, 60, 60), 1))
-                painter.drawRect(x, y, cell_w - 1, cell_h - 1)
+                # Border: yellow + thicker when this combo connects with
+                # the current board (top pair, set, made/draw straight,
+                # flush draw). Otherwise the standard dark border.
+                hit = (self.board_hits.get(hand, 0.0)
+                       if hasattr(self, 'board_hits') else 0.0)
+                if hit >= 0.6 and weight > 0.0:
+                    # Strong board connection — bright yellow ring,
+                    # thickness proportional to the hit score so a set
+                    # stands out more than a top-pair.
+                    border_w = 3 if hit >= 0.85 else 2
+                    painter.setPen(QPen(QColor(255, 220, 60), border_w))
+                    painter.drawRect(x + 1, y + 1,
+                                     cell_w - 2 - 1, cell_h - 2 - 1)
+                else:
+                    painter.setPen(QPen(QColor(60, 60, 60), 1))
+                    painter.drawRect(x, y, cell_w - 1, cell_h - 1)
 
                 # Draw hand text centered in cell
                 if weight > 0.5:
@@ -1081,9 +1378,14 @@ class TheoryOfMindTab(QWidget):
 
         layout.addLayout(right_layout, stretch=1)
 
-    def update_analysis(self, range_dict, notation, explanation):
-        """Update the tab with new range analysis."""
-        self.range_grid.set_range(range_dict)
+    def update_analysis(self, range_dict, notation, explanation, board_hits=None):
+        """Update the tab with new range analysis.
+
+        ``board_hits`` is an optional dict (hand → 0..1 connection score)
+        passed straight through to the grid so board-connecting combos
+        get the yellow callout border.
+        """
+        self.range_grid.set_range(range_dict, board_hits=board_hits)
         self.notation_text.setText(notation)
         self.explanation_text.setText(explanation)
 
@@ -1703,16 +2005,219 @@ class TheoryOfMindPanel(QWidget):
 
         return range_dict
 
+    # ------------------------------------------------------------------
+    # Board-connection scoring
+    #
+    # When a player CALLS postflop, the natural narrowing question is:
+    # which combos in their preflop range actually connect with the
+    # board well enough to justify continuing? We score every combo on
+    # a 0..1 scale (1 = monster hand, 0 = pure air) and then narrow the
+    # preflop range by that score so the grid reflects "what calls make
+    # sense given the texture", not just the raw preflop opening range.
+    # ------------------------------------------------------------------
+    _RANK_VAL = {'2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8,
+                 '9': 9, 'T': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14}
+
+    def _hand_ranks(self, hand_str):
+        """Pull the two rank chars + suitedness flag out of a hand label
+        like 'AKs'/'TT'/'J9o'. Returns (high_rank, low_rank, suited)."""
+        if not hand_str or len(hand_str) < 2:
+            return None
+        r1, r2 = hand_str[0], hand_str[1]
+        suited = (len(hand_str) >= 3 and hand_str[2] == 's')
+        if r1 == r2:
+            return (r1, r2, False)
+        v1 = self._RANK_VAL.get(r1, 0)
+        v2 = self._RANK_VAL.get(r2, 0)
+        if v1 < v2:
+            r1, r2 = r2, r1
+        return (r1, r2, suited)
+
+    def _board_connection_score(self, hand_str, board):
+        """Return a 0..1 score for how well `hand_str` connects with the
+        current board. Approximate; intentionally optimistic on draws so
+        the user sees the full "calling-station-with-equity" picture.
+
+        Categories used:
+          1.0  — set/quads/full house / overpair (board-aware)
+          0.95 — top pair top kicker
+          0.85 — top pair / two pair
+          0.75 — middle pair / open-ended straight draw / flush draw
+          0.55 — bottom pair / gutshot
+          0.30 — two overcards (live ace+king vs an under board)
+          0.10 — air
+        """
+        parts = self._hand_ranks(hand_str)
+        if parts is None or not board:
+            return 0.0
+        r1, r2, suited = parts
+        v1 = self._RANK_VAL[r1]
+        v2 = self._RANK_VAL[r2]
+        try:
+            board_ranks = []
+            board_suits = []
+            for c in board:
+                cs = str(c)
+                board_ranks.append(self._RANK_VAL.get(cs[0], 0))
+                board_suits.append(cs[1] if len(cs) > 1 else '')
+        except Exception:
+            return 0.1
+        board_ranks = [b for b in board_ranks if b > 0]
+        if not board_ranks:
+            return 0.0
+
+        top_board = max(board_ranks)
+        is_pair_hand = (r1 == r2)
+
+        # Pair hands: set if matched on board, overpair if all board
+        # ranks below, underpair otherwise.
+        if is_pair_hand:
+            if v1 in board_ranks:
+                return 1.0  # Set
+            if v1 > top_board:
+                return 1.0  # Overpair
+            # Underpair — its strength depends on how many overs we
+            # face; one over is fine, two or three is weak.
+            overs = sum(1 for b in board_ranks if b > v1)
+            if overs <= 1:
+                return 0.55
+            return 0.35
+
+        score = 0.10  # baseline air
+
+        # Pairs with the board.
+        if v1 in board_ranks and v2 in board_ranks:
+            score = max(score, 0.85)            # two pair
+        elif v1 == top_board:
+            # Top pair — bump for kicker quality (T+ kicker = top kicker)
+            score = max(score, 0.95 if v2 >= 10 else 0.85)
+        elif v1 in board_ranks:
+            score = max(score, 0.75)            # middle pair (high card on board)
+        elif v2 in board_ranks:
+            score = max(score, 0.55)            # second-card pair / bottom pair
+
+        # Two big overcards still have outs against an under-Ace board.
+        if v1 > top_board and v2 > top_board:
+            score = max(score, 0.30)
+
+        # Straight-draw probe: count how many ranks of the 5-card
+        # window centred on each possible straight contain a card we
+        # hold or that's on the board. Open-ended needs 4-in-a-row
+        # using both hole + ≥2 board; gutshot allows one gap.
+        all_ranks = set(board_ranks)
+        all_ranks.update([v1, v2])
+        # Treat ace as both 14 and 1 for the wheel.
+        if 14 in all_ranks:
+            all_ranks.add(1)
+        for low in range(1, 11):
+            window = set(range(low, low + 5))
+            present = window & all_ranks
+            need = window - all_ranks
+            # Need exactly the 5 cards for a made straight, or 4 of 5
+            # for a one-card draw. We require at least one of our hole
+            # cards to be in the window so we don't credit board-only
+            # draws.
+            uses_hole = (v1 in window) or (v2 in window) or (
+                14 in (v1, v2) and 1 in window
+            )
+            if not uses_hole:
+                continue
+            if len(present) >= 5:
+                score = max(score, 0.95)        # made straight
+                break
+            if len(present) == 4:
+                # Rough open vs gutshot: it's open-ended if either of
+                # the two ends of the run is the missing card; we
+                # simply check whether the missing card is at the edge
+                # of the window's run.
+                missing = next(iter(need))
+                run_high = max(present)
+                run_low = min(present)
+                if missing == run_high + 0 or missing == run_low - 0:
+                    pass  # endpoint; fall through to OESD/gutshot logic
+                # Cheap discriminator: if missing is at one of the two
+                # ends, treat as open-ended; otherwise gutshot.
+                if missing == low or missing == low + 4:
+                    score = max(score, 0.75)    # OESD
+                else:
+                    score = max(score, 0.55)    # gutshot
+
+        # Suited flush draws: 2 of our suit on the board.
+        if suited:
+            # Hand suit isn't carried in the hand_str (any suit works
+            # for the abstract grid label), so we approximate: if at
+            # least 2 board cards share a suit, every suited combo has
+            # some flush-draw equity.
+            for s in set(board_suits):
+                if s and board_suits.count(s) >= 2:
+                    score = max(score, 0.75)
+                    break
+
+        return min(1.0, score)
+
+    # Reraise ranges — much tighter than opens. The 3-bet column
+    # is what most players use for value 3-bets; 4-bet/5-bet collapse
+    # to top of value. Loose-mode adds bluff combos at the bottom of
+    # the range, tight-mode strips down to monsters only. Used by
+    # estimate_range when the action sequence shows the player re-raised
+    # preflop.
+    _THREE_BET_RANGES = {
+        'tight':      {'tight': "AA, KK",
+                       'neutral': "AA, KK, QQ, AKs",
+                       'loose':   "AA, KK, QQ, JJ, AKs, AKo"},
+        'optimal':    {'tight': "AA, KK, QQ",
+                       'neutral': "AA, KK, QQ, AKs, AKo",
+                       'loose':   "AA, KK, QQ, JJ, AKs, AKo, AQs"},
+        'tom':        {'tight': "AA, KK, QQ, AKs",
+                       'neutral': "AA, KK, QQ, AKs, AKo",
+                       'loose':   "AA, KK, QQ, JJ, AKs, AKo, AQs"},
+        'loose':      {'tight': "AA, KK, QQ, JJ",
+                       'neutral': "AA, KK, QQ, JJ, AKs, AKo, AQs",
+                       'loose':   "AA, KK, QQ, JJ, TT, AKs, AKo, AQs, AQo"},
+        'aggressive': {'tight': "AA, KK, QQ, JJ, AKs",
+                       'neutral': "AA, KK, QQ, JJ, AKs, AKo, AQs, AQo",
+                       'loose':   "AA, KK, QQ, JJ, TT, AKs, AKo, AQs, AQo, AJs, KQs"},
+    }
+    _FOUR_BET_RANGES = {
+        'tight':      "AA, KK",
+        'optimal':    "AA, KK, AKs",
+        'tom':        "AA, KK, QQ, AKs",
+        'loose':      "AA, KK, QQ, AKs",
+        'aggressive': "AA, KK, QQ, AKs, AKo",
+    }
+    _FIVE_BET_PLUS = "AA, KK"
+
     def estimate_range(self, player, street, actions_this_hand, board, style_override=None):
-        """Estimate a player's range based on their style and actions."""
+        """Estimate a player's range based on their style and actions.
+
+        Returns ``(range_dict, notation, explanation, board_hits)``. The
+        board_hits dict — same keys as range_dict — carries the 0..1
+        connection score per combo so the grid widget can visually call
+        out the cards that hit the board.
+        """
         style = style_override if style_override else player.style
         style_info = self.STYLE_RANGES.get(style, self.STYLE_RANGES['loose'])
 
         # Get the range mode (loose/neutral/tight)
         mode = self.range_mode
 
-        # Start with preflop range - select based on mode
-        if 'raised' in actions_this_hand:
+        # Start with the preflop range. Reraise tags shrink it
+        # dramatically — most 3-bets are value (AA/KK/QQ/AK-style) plus
+        # an occasional bluff in loose modes. Open raises stay on the
+        # full preflop_open range.
+        if 'five_bet_plus' in actions_this_hand:
+            base_notation = self._FIVE_BET_PLUS
+            action_desc = "5-bet+ preflop (premium-only)"
+        elif 'four_bet' in actions_this_hand:
+            base_notation = self._FOUR_BET_RANGES.get(
+                style, self._FOUR_BET_RANGES['optimal'])
+            action_desc = "4-bet preflop"
+        elif 'three_bet' in actions_this_hand:
+            three_bet = self._THREE_BET_RANGES.get(
+                style, self._THREE_BET_RANGES['optimal'])
+            base_notation = three_bet.get(mode, three_bet.get('neutral', ''))
+            action_desc = "3-bet preflop"
+        elif 'raised' in actions_this_hand:
             range_dict = style_info['preflop_open']
             base_notation = range_dict.get(mode, range_dict.get('neutral', ''))
             action_desc = "opened/raised preflop"
@@ -1765,7 +2270,65 @@ class TheoryOfMindPanel(QWidget):
             for hand in range_dict:
                 range_dict[hand] *= range_multiplier
 
-        return range_dict, base_notation, "\n".join(explanation_parts)
+        # Postflop refinement: a call on the flop or turn is much more
+        # likely with hands that connect with the board. Score every
+        # combo's connection and use it to narrow the preflop range —
+        # weight stays high for hands that hit (top pair, set, OESD,
+        # flush draw, made straights), drops sharply for pure air.
+        # Pre-bet/raise actions stay anchored on the preflop range
+        # since "raised postflop" already implies strong connection.
+        board_hits: Dict[str, float] = {}
+        if street != 'Preflop' and board:
+            postflop_call = ('called_postflop' in actions_this_hand
+                             and 'raised_postflop' not in actions_this_hand
+                             and 'bet_postflop' not in actions_this_hand)
+            for hand in list(range_dict.keys()):
+                if range_dict[hand] <= 0:
+                    continue
+                hit = self._board_connection_score(hand, board)
+                board_hits[hand] = hit
+                if postflop_call:
+                    # Floor the multiplier so we don't zero out hands —
+                    # a calling station can show up with anything, just
+                    # less often. Hands that obviously hit get a bump
+                    # so the grid emphasizes them visually.
+                    floor = 0.15
+                    bump = 1.0 + max(0.0, hit - 0.5)  # 1.0..1.5
+                    range_dict[hand] = max(0.0, range_dict[hand]
+                                              * max(floor, hit) * bump)
+                    range_dict[hand] = min(1.0, range_dict[hand])
+
+            if postflop_call:
+                # Build a one-line summary of which board-hitting
+                # categories are now amplified, so the explanation
+                # reads naturally.
+                ranks_on_board = sorted({c for c in board_hits.values()
+                                          if c >= 0.6})
+                strong_hits = [h for h, s in board_hits.items()
+                               if s >= 0.85 and range_dict.get(h, 0) > 0.2]
+                draw_hits = [h for h, s in board_hits.items()
+                             if 0.55 <= s < 0.85
+                             and range_dict.get(h, 0) > 0.2]
+                if strong_hits or draw_hits:
+                    explanation_parts.append("")
+                    explanation_parts.append(
+                        "Range narrowed by board connection — combos "
+                        "that hit the board are highlighted (yellow)."
+                    )
+                if strong_hits:
+                    explanation_parts.append(
+                        "Made hands likely: "
+                        + ", ".join(sorted(set(strong_hits))[:8])
+                        + ("…" if len(set(strong_hits)) > 8 else "")
+                    )
+                if draw_hits:
+                    explanation_parts.append(
+                        "Draws / second pair: "
+                        + ", ".join(sorted(set(draw_hits))[:8])
+                        + ("…" if len(set(draw_hits)) > 8 else "")
+                    )
+
+        return range_dict, base_notation, "\n".join(explanation_parts), board_hits
 
     def get_range_hands(self, range_dict, threshold=0.3):
         """Convert range dict to list of hand combos for equity calculation."""
@@ -1838,6 +2401,19 @@ class TheoryOfMindPanel(QWidget):
         # Apply range mode multiplier
         range_mult = self.get_range_multiplier()
 
+        # Have we seen ANY voluntary betting action yet this hand? Blinds
+        # and "Hero posts" lines don't count. Until at least one player has
+        # actually called/raised/checked, the per-bot range grids are blank
+        # — there's nothing to infer about anyone's hole cards yet.
+        def _is_real_action(line: str) -> bool:
+            ll = line.lower()
+            if 'posts' in ll or '---' in ll:
+                return False
+            return any(kw in ll for kw in
+                       ('raises', 'calls', 'checks', 'bets', 'folds'))
+
+        any_action_seen = any(_is_real_action(a) for a in action_history)
+
         for player in players:
             if player.style == 'human':
                 continue
@@ -1849,22 +2425,58 @@ class TheoryOfMindPanel(QWidget):
                 if 'Hero' in action:
                     self.update_hero_history(action, street)
 
-            # Determine actions this hand for this player
+            # Determine actions this hand for this player. Walk
+            # action_history in order so we can also tag 3-bet / 4-bet —
+            # without that, an open and a 3-bet both look like "raised"
+            # to the range estimator and Fiona's range stays as wide as
+            # her opening range even after she re-raised.
             actions = set()
+            current_street_label = 'Preflop'
+            preflop_raise_count = 0
+            my_first_raise_index = 0  # 1=open, 2=3bet, 3=4bet, …
             for action in action_history:
+                # Street markers in the ticker (e.g. "--- Flop ---").
+                if '--- Flop' in action:
+                    current_street_label = 'Flop'
+                    continue
+                if '--- Turn' in action:
+                    current_street_label = 'Turn'
+                    continue
+                if '--- River' in action:
+                    current_street_label = 'River'
+                    continue
+
+                is_preflop_line = (current_street_label == 'Preflop')
+                # Count voluntary raises in chronological order so we
+                # can label 3-bets and 4-bets per actor.
+                if is_preflop_line and ('Raises' in action or 'raises' in action):
+                    preflop_raise_count += 1
+                    if player.name in action and my_first_raise_index == 0:
+                        my_first_raise_index = preflop_raise_count
+
                 if player.name in action:
                     if 'Raises' in action or 'raises' in action:
-                        if 'Preflop' in str(street) or action_history.index(action) < 5:
+                        if is_preflop_line:
                             actions.add('raised')
                         else:
                             actions.add('raised_postflop')
                     elif 'Bets' in action or 'bets' in action:
                         actions.add('bet_postflop')
                     elif 'Calls' in action or 'calls' in action:
-                        if 'Preflop' in str(street) or action_history.index(action) < 5:
+                        if is_preflop_line:
                             actions.add('called')
                         else:
                             actions.add('called_postflop')
+
+            # Tag 3-bet / 4-bet / 5-bet+ from the preflop raise order so
+            # estimate_range can switch to the ultra-tight reraise range
+            # (AA/KK/QQ/AK for Fiona, etc.).
+            if my_first_raise_index == 2:
+                actions.add('three_bet')
+            elif my_first_raise_index == 3:
+                actions.add('four_bet')
+            elif my_first_raise_index >= 4:
+                actions.add('five_bet_plus')
 
             if not actions:
                 actions.add('called')  # Default assumption
@@ -1880,7 +2492,7 @@ class TheoryOfMindPanel(QWidget):
             else:
                 player_style_override = None
 
-            range_dict, notation, explanation = self.estimate_range(
+            range_dict, notation, explanation, board_hits = self.estimate_range(
                 player, street, actions, board, style_override=player_style_override
             )
 
@@ -1891,6 +2503,59 @@ class TheoryOfMindPanel(QWidget):
                         # Apply multiplier but keep minimum visibility for hands in range
                         new_weight = range_dict[hand] * range_mult
                         range_dict[hand] = max(0.25, min(1.0, new_weight))  # Min 25% for visibility
+
+            # Aggression-aware tightening: count raises and bets THIS player
+            # has made and squeeze the range toward the top-left (premium
+            # hands). Tight bots squeeze HARDER per aggressive action than
+            # loose bots; aggressive/optimal sit in the middle.
+            raises = sum(1 for a in action_history
+                         if player.name in a
+                         and ('raises' in a.lower() or 'bets' in a.lower()))
+            if raises > 0:
+                # Per-style tightening factor per aggressive action.
+                # Tighter style → smaller factor → range collapses faster.
+                tighten_per_action = {
+                    'tight':       0.55,
+                    'optimal':     0.65,
+                    'tom':         0.7,
+                    'loose':       0.8,
+                    'aggressive':  0.85,
+                }.get(player.style, 0.7)
+                # Compounded over each raise; clamp the effect so we don't
+                # nuke the entire range (always keep the strongest combos).
+                squeeze = max(0.15, tighten_per_action ** raises)
+                # Apply squeeze: hands keep `squeeze` fraction of their
+                # weight UNLESS they're premium (top-left of grid). The
+                # strongest pairs and AKs stay near full weight so the
+                # display visibly emphasizes the upper-left corner.
+                premium = {'AA', 'KK', 'QQ', 'JJ', 'AKs', 'AKo', 'AQs'}
+                for hand in list(range_dict.keys()):
+                    if range_dict[hand] <= 0:
+                        continue
+                    if hand in premium:
+                        # Lift premiums slightly so the corner is visible.
+                        range_dict[hand] = min(1.0, range_dict[hand] * 1.05)
+                    else:
+                        range_dict[hand] = max(0.0, range_dict[hand] * squeeze)
+                explanation += (
+                    f"\n\n[Aggression {raises}× → range tightened "
+                    f"toward premium combos (squeeze={squeeze:.2f})]"
+                )
+
+            # Until ANY voluntary action has occurred this hand, blank the
+            # grid for every bot — there's no betting evidence yet to
+            # narrow the prior.
+            if not any_action_seen:
+                blank_range = {}
+                if player.active:
+                    all_ranges[player.name] = blank_range
+                self.final_range_estimates[player.name] = blank_range
+                if player.name in self.bot_tabs:
+                    self.bot_tabs[player.name].update_analysis(
+                        blank_range, "(awaiting action)",
+                        "Range will populate once betting begins.",
+                        board_hits={})
+                continue
 
             if player.active:
                 all_ranges[player.name] = range_dict
@@ -1904,7 +2569,10 @@ class TheoryOfMindPanel(QWidget):
 
             # Update tab (keep grid visible even for folded players)
             if player.name in self.bot_tabs:
-                self.bot_tabs[player.name].update_analysis(range_dict, notation, explanation)
+                self.bot_tabs[player.name].update_analysis(
+                    range_dict, notation, explanation,
+                    board_hits=board_hits,
+                )
 
         # Highlight active player tabs with colored icons
         for player_name, tab_idx in self.tab_indices.items():
@@ -3278,7 +3946,8 @@ class HandSummaryDialog(QDialog):
     """Full-screen hand summary showing stacked bar charts for each street."""
 
     def __init__(self, street_stats, street_actions, board_by_street, player_results,
-                 player_hands=None, made_hands_by_street=None, parent=None):
+                 player_hands=None, made_hands_by_street=None,
+                 pot_by_street=None, parent=None):
         super().__init__(parent)
         self.street_stats = street_stats  # {street: [(name, true_eq, perc_eq, pot_odds, active, is_hero), ...]}
         self.street_actions = street_actions  # {street: ["Player: action", ...]}
@@ -3286,6 +3955,7 @@ class HandSummaryDialog(QDialog):
         self.player_results = player_results  # {name: (start_stack, end_stack, change)}
         self.player_hands = player_hands or {}  # {name: [card_strs]}
         self.made_hands_by_street = made_hands_by_street or {}  # {street: {name: "hand description"}}
+        self.pot_by_street = pot_by_street or {}  # {street: pot_after_street}
 
         self.setWindowTitle("Hand Summary - Stats")
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
@@ -3345,10 +4015,13 @@ class HandSummaryDialog(QDialog):
         results_panel = self.create_results_panel()
         layout.addWidget(results_panel)
 
-        # Close button
-        close_btn = QPushButton("Close")
-        close_btn.setFixedSize(150, 50)
-        close_btn.setStyleSheet("""
+        # NOTE: no OK / Close button — the hand summary persists until the
+        # next hand begins (PokerWindow._close_open_hand_dialogs handles
+        # dismissal in deal_hand). A discrete "Back" button still lets the
+        # user return to the parent text dialog.
+        back_btn = QPushButton("Back to Summary")
+        back_btn.setFixedSize(220, 50)
+        back_btn.setStyleSheet("""
             QPushButton {
                 background-color: #444;
                 color: white;
@@ -3360,10 +4033,10 @@ class HandSummaryDialog(QDialog):
                 background-color: #555;
             }
         """)
-        close_btn.clicked.connect(self.accept)
+        back_btn.clicked.connect(self.accept)
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        btn_layout.addWidget(close_btn)
+        btn_layout.addWidget(back_btn)
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
@@ -3419,6 +4092,13 @@ class HandSummaryDialog(QDialog):
             placeholder = QLabel("—" if street == "Preflop" else "")
             placeholder.setStyleSheet("font-size: 20px; color: #555;")
             left_layout.addWidget(placeholder)
+
+        # Pot size after this street, if recorded.
+        if street in self.pot_by_street:
+            pot_label = QLabel(f"Pot: ${int(self.pot_by_street[street])}")
+            pot_label.setStyleSheet(
+                "font-size: 18px; font-weight: bold; color: #ffd966; padding: 2px 0;")
+            left_layout.addWidget(pot_label)
 
         left_layout.addStretch()
         left_widget.setFixedWidth(140)
@@ -3975,10 +4655,13 @@ class RaiseDialog(QDialog):
 
     The dialog's `get_value()` returns the total commitment (call + raise),
     matching what the game loop expects to add to the player's round bet.
+
+    `min_raise_above` is enforced to be at least the previous raise size
+    (No-Limit minimum-raise rule), passed in by the caller.
     """
 
     def __init__(self, to_call, min_raise_above, max_raise_above, pot,
-                 parent=None, bb_amount=2):
+                 parent=None, bb_amount=2, prev_raise_size=0):
         super().__init__(parent)
         self.setWindowTitle("Raise Amount")
         self.to_call = int(to_call)
@@ -3990,8 +4673,14 @@ class RaiseDialog(QDialog):
         self.max_raise = self.to_call + self.max_raise_above
         self.pot = pot
         self.bb = bb_amount
+        self.prev_raise_size = int(prev_raise_size)
+
+        big_font = QFont('Arial', 18)
+        big_bold = QFont('Arial', 20, QFont.Weight.Bold)
+        btn_font = QFont('Arial', 16, QFont.Weight.Bold)
 
         layout = QVBoxLayout(self)
+        layout.setSpacing(10)
 
         # Info label — stated in terms of the RAISE above the call
         info_text = (
@@ -4000,12 +4689,15 @@ class RaiseDialog(QDialog):
             f"max: ${self.max_raise_above}   |  "
             f"Pot: ${pot}   |  BB: ${bb_amount}"
         )
+        if self.prev_raise_size > 0:
+            info_text += f"   |  Prev raise: ${self.prev_raise_size}"
         info = QLabel(info_text)
+        info.setFont(big_font)
         info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(info)
 
-        prompt = QLabel(
-            "Raise amount (above the call):")
+        prompt = QLabel("Raise amount (above the call):")
+        prompt.setFont(big_font)
         prompt.setStyleSheet("color: #bbb;")
         layout.addWidget(prompt)
 
@@ -4014,32 +4706,46 @@ class RaiseDialog(QDialog):
         self.slider.setMinimum(self.min_raise_above)
         self.slider.setMaximum(self.max_raise_above)
         self.slider.setValue(self.min_raise_above)
+        self.slider.setMinimumHeight(36)
         self.slider.valueChanged.connect(self.update_spinbox)
         layout.addWidget(self.slider)
 
         # Spinbox
         self.spinbox = QSpinBox()
+        self.spinbox.setFont(big_bold)
         self.spinbox.setMinimum(self.min_raise_above)
         self.spinbox.setMaximum(self.max_raise_above)
         self.spinbox.setValue(self.min_raise_above)
+        self.spinbox.setMinimumHeight(40)
         self.spinbox.valueChanged.connect(self.update_slider)
         layout.addWidget(self.spinbox)
 
-        # Total-commitment preview
+        # Total-commitment preview (BIG, two lines)
         self.total_label = QLabel()
-        self.total_label.setStyleSheet("color: #ff0; font-weight: bold;")
+        self.total_label.setFont(QFont('Arial', 22, QFont.Weight.Bold))
+        self.total_label.setStyleSheet("color: #ff0;")
+        self.total_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.total_label)
+
+        # Secondary "raise from previous bet" line
+        self.raise_label = QLabel()
+        self.raise_label.setFont(QFont('Arial', 18, QFont.Weight.Bold))
+        self.raise_label.setStyleSheet("color: #fc8;")
+        self.raise_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.raise_label)
         self._refresh_total_label(self.min_raise_above)
 
         # BB multiplier buttons — interpreted as raise-above-call in BBs
         bb_layout = QHBoxLayout()
         bb_label = QLabel("Raise = N × BB:")
+        bb_label.setFont(big_font)
         bb_layout.addWidget(bb_label)
         for mult in [2, 3, 4, 5, 10]:
             val = max(self.min_raise_above,
                       min(self.max_raise_above, bb_amount * mult))
             btn = QPushButton(f"{mult}x")
-            btn.setFixedWidth(50)
+            btn.setFont(btn_font)
+            btn.setFixedSize(70, 44)
             btn.clicked.connect(lambda checked, v=val: self.set_value(v))
             bb_layout.addWidget(btn)
         bb_layout.addStretch()
@@ -4048,10 +4754,14 @@ class RaiseDialog(QDialog):
         # Pot-based quick buttons — interpreted as raise = fraction of pot
         pot_layout = QHBoxLayout()
         pot_label = QLabel("Raise = pot fraction:")
+        pot_label.setFont(big_font)
         pot_layout.addWidget(pot_label)
-        for label, mult in [("1/2", 0.5), ("2/3", 0.67), ("3/4", 0.75), ("Pot", 1.0), ("All-In", None)]:
+        for label, mult in [("1/4", 0.25), ("1/3", 0.333), ("1/2", 0.5),
+                            ("2/3", 0.67), ("3/4", 0.75), ("Pot", 1.0),
+                            ("All-In", None)]:
             btn = QPushButton(label)
-            btn.setFixedWidth(60)
+            btn.setFont(btn_font)
+            btn.setFixedSize(80, 44)
             if mult is None:
                 btn.clicked.connect(
                     lambda checked, v=self.max_raise_above: self.set_value(v))
@@ -4066,14 +4776,33 @@ class RaiseDialog(QDialog):
         # Dialog buttons
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        for b in buttons.buttons():
+            b.setFont(btn_font)
+            b.setMinimumHeight(40)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
     def _refresh_total_label(self, raise_above):
-        total = self.to_call + int(raise_above)
+        raise_above = int(raise_above)
+        total = self.to_call + raise_above
+        # New TOTAL bet = my prior bet_in_round (caller fold) + total this turn.
+        # We don't have my prior bet_in_round here; the caller passes pot + to_call,
+        # but the meaningful poker quantity is the new "bet level" the table will
+        # face — that equals my (prev bet_in_round) + total this turn. The dialog
+        # only knows to_call (=current_bet - my bet_in_round) and the raise above
+        # the call, so the "new bet level" = current_bet + raise_above. The caller
+        # passes current_bet implicitly via to_call + my bet_in_round, but we want
+        # to show:  Total bet (the level others now face) and the raise (above the
+        # previous bet).  We approximate "previous bet" by current_bet, computable
+        # as to_call + my contribution; what we always know precisely is that the
+        # raise itself = raise_above and the total committed this turn = to_call +
+        # raise_above. Show both clearly.
         self.total_label.setText(
-            f"Total committed this round: ${total}   "
+            f"Total bet this round: ${total}"
+        )
+        self.raise_label.setText(
+            f"Raise of ${raise_above} above the previous bet "
             f"(call ${self.to_call} + raise ${raise_above})"
         )
 
@@ -4105,32 +4834,120 @@ class RaiseDialog(QDialog):
         return self.to_call + int(self.spinbox.value())
 
 
+# Claude model used for all annotations (per-hand critique, hand-log
+# annotations, etc.). Opus 4.7 with extended thinking gives the best results
+# for poker analysis at the cost of longer wall time.
+CLAUDE_ANNOTATION_MODEL = 'claude-opus-4-7'
+
+
+def _claude_invoke_args(prompt: str, *, mode: str = 'critique') -> list:
+    """Build argv for the `claude` CLI to invoke Opus 4.7 with thinking.
+
+    `mode` is informational only — both modes use the same model and
+    thinking flag; the prompt itself encodes the desired output shape.
+
+    NOTE: the CLI's `--thinking` option takes a value (enabled/adaptive/
+    disabled), so it MUST be passed as `--thinking enabled`, not bare.
+    """
+    return [
+        'claude', '-p',
+        '--model', CLAUDE_ANNOTATION_MODEL,
+        '--thinking', 'enabled',
+        '--max-turns', '1',
+        prompt,
+    ]
+
+
 class ClaudeAnalysisThread(QThread):
     """Runs one or more Claude CLI calls off the GUI thread.
 
     Emits `progress(done, total, label)` as each POV completes and
     `finished_analyses(list-of-dicts)` with items
     {'player': str, 'seat': int, 'text': str}.
+
+    Supports two modes:
+      mode='critique' — short per-POV critique (default, used by hand summary).
+      mode='annotate' — chess-engine-style annotations for the action log
+        keyed by line index; output is a JSON-shaped string the caller parses.
     """
 
     progress = pyqtSignal(int, int, str)
     finished_analyses = pyqtSignal(list)
 
-    def __init__(self, hand_text: str, povs: list, parent=None):
+    def __init__(self, hand_text: str, povs: list, parent=None, *,
+                 mode: str = 'critique'):
         """
         Args:
-            hand_text: The full hand log to critique.
+            hand_text: The full hand log to critique / annotate.
             povs: list of {'name': str, 'seat': int} — one per POV to analyze.
                   For single-player use a single entry like
                   [{'name': 'Hero', 'seat': 0}].
+            mode: 'critique' (default) or 'annotate'.
         """
         super().__init__(parent)
         self._hand_text = hand_text
         self._povs = list(povs)
         self._cancelled = False
+        self._mode = mode
 
     def cancel(self):
         self._cancelled = True
+
+    def _build_prompt(self, name: str) -> str:
+        if self._mode == 'annotate':
+            return (
+                "You are a poker coach producing chess-engine-style "
+                "annotations on a poker hand.\n\n"
+                "CRITICAL: the log lists every player's known hole cards "
+                "in a 'Hands (known)' header. The line tagged 'HERO' is "
+                f"the hero ({name}) — every other 'Hands' entry is a "
+                "villain. NEVER attribute a villain's hand to the hero or "
+                "vice-versa. If you describe what someone has on a given "
+                "street, use ONLY the cards listed for THAT player plus "
+                "the board cards listed for that street.\n\n"
+                "OUTPUT FORMAT — strictly two sections:\n\n"
+                "(1) Per-action annotations.  For EACH numbered action "
+                "line below, output a single line of the form:\n"
+                "  N. <one-sentence comment, optionally with !/!?/?!/? marker>\n"
+                "Use markers sparingly: ! = strong play, !? = interesting, "
+                "?! = dubious, ? = mistake. Comment ONLY on action lines "
+                f"taken by {name} (the hero) — skip villain actions, "
+                "blinds, dealing, and board reveals.\n\n"
+                "(2) After all per-action annotations, on a NEW line, "
+                "output the literal marker:\n"
+                "  RETROSPECTIVE:\n"
+                "Then 4-8 short paragraphs (one blank line between each) "
+                f"reviewing the hand WITH FULL INFORMATION, since you "
+                f"now know everyone's hole cards, the pot at every "
+                f"street (in the '=== end of <street>' lines), each "
+                f"player's made hand at each street, and equity at "
+                f"each street. Cover at minimum:\n"
+                f"  • The strategic picture: who actually had what, "
+                f"who was ahead/behind on each street, how the equity "
+                f"swung as the board ran out.\n"
+                f"  • Whether {name}'s line was correct given the "
+                f"perfect information you have now (vs. the imperfect "
+                f"info {name} had at the table).\n"
+                f"  • The single most important decision in the hand "
+                f"and the cheaper alternative if {name} chose poorly.\n"
+                f"  • What {name} could not have known but should "
+                f"watch for next time (action-from-villain tells, "
+                f"sizing tells, board-texture spots).\n"
+                f"  • Pot-size context — was the pot the right size "
+                f"for the hand strength on each street?\n\n"
+                "Plain text only, no markdown headings, no bullets — "
+                "just paragraphs separated by blank lines.\n\n"
+                f"Annotate from {name}'s perspective. Hand log:\n\n"
+                f"{self._hand_text}"
+            )
+        # Default: critique
+        return (
+            f"Critique this poker hand from {name}'s perspective "
+            f"(3 sentences max). Was {name}'s play correct? "
+            f"What was {name}'s key decision? "
+            "Plain text only, no markdown.\n\n"
+            f"{self._hand_text}"
+        )
 
     def run(self):
         import shutil
@@ -4150,17 +4967,12 @@ class ClaudeAnalysisThread(QThread):
             seat = pov.get('seat', -1)
             self.progress.emit(i, total, f"Analyzing for {name}…")
 
-            prompt = (
-                f"Critique this poker hand from {name}'s perspective "
-                f"(3 sentences max). Was {name}'s play correct? "
-                f"What was {name}'s key decision? "
-                "Plain text only, no markdown.\n\n"
-                f"{self._hand_text}"
-            )
+            prompt = self._build_prompt(name)
             try:
+                # Opus 4.7 with --thinking can take a while; bump the timeout.
                 result = subprocess.run(
-                    ['claude', '-p', '--max-turns', '1', prompt],
-                    capture_output=True, text=True, timeout=120,
+                    _claude_invoke_args(prompt, mode=self._mode),
+                    capture_output=True, text=True, timeout=240,
                 )
                 text = ""
                 if result.returncode == 0 and len(result.stdout.strip()) > 10:
@@ -4179,7 +4991,7 @@ class ClaudeAnalysisThread(QThread):
                         detail += f"; {err_first[:160]}"
                     text = f"(claude failed: {detail})"
             except subprocess.TimeoutExpired:
-                text = "(claude timed out after 120s)"
+                text = "(claude timed out after 240s)"
             except Exception as ex:
                 text = f"(analysis failed: {ex})"
             results.append({'player': name, 'seat': seat, 'text': text})
@@ -4207,12 +5019,19 @@ class PokerWindow(QMainWindow):
 
         # Initialize game state with original player names and styles
         self.players = [
+            # Default 6-seat lineup. The previous mix of 4 mid-strength
+            # bots + Fluid Fiona didn't have enough top-end variety, so
+            # Tight Tim and Aggro Angela have been replaced with the new
+            # Sharkey Steve (balanced GTO-leaning) and Exploit Eli
+            # (opponent-adapting). Loose Bruce stays for variety
+            # (calling-station spots are useful to learn against);
+            # everyone else upgraded.
             Player("Hero (You)", "human"),
             Player("Optimal Olivia", "optimal"),
-            Player("Tight Tim", "tight"),
-            Player("Loose Bruce", "loose"),
-            Player("Aggro Angela", "aggressive"),
-            Player("Fluid Fiona", "tom")  # Theory of Mind player
+            Player("Sharkey Steve", "shark"),       # NEW strong, GTO-leaning
+            Player("Loose Bruce", "loose"),         # variety
+            Player("Exploit Eli", "exploit"),       # NEW strong, adaptive
+            Player("Fluid Fiona", "tom"),           # ToM
         ]
 
         # Store original names and styles for restoring defaults
@@ -4255,6 +5074,19 @@ class PokerWindow(QMainWindow):
         # Preferences - load from settings with defaults
         self.use_visible_cards_only = self.settings.value("use_visible_cards_only", True, type=bool)
         self.legacy_colors = self.settings.value("legacy_colors", False, type=bool)
+        # When enabled, after the hero has won at least one game against
+        # the default bots, subsequent games randomly seat bots from the
+        # combined pool (defaults + advanced poker_iq bots).  Preserves
+        # the hero's per-seat preferences when set to a specific bot.
+        self.randomize_bots_enabled = self.settings.value(
+            "randomize_bots_enabled", True, type=bool)
+        # Persistent flag: has the hero won a game against the default
+        # bot lineup yet?  Once true, the random pool unlocks.
+        self.beat_defaults_unlocked = self.settings.value(
+            "beat_defaults_unlocked", False, type=bool)
+        # Track each hand's winners so we can flip the unlock flag once
+        # the hero claims a "game" win (currently: any session in which
+        # the hero ends as the last player with chips).
         self._apply_color_preference()
 
         # Hand history tracking for interpretation
@@ -4507,8 +5339,47 @@ class PokerWindow(QMainWindow):
         except Exception as ex:
             print(f"[log] session summary failed: {ex}")
 
+    # Bump this every time the default lineup changes meaning. When the
+    # saved version is older than this, _load_bot_preferences wipes any
+    # per-seat overrides — otherwise stale "tom"-on-every-seat configs
+    # from older sessions keep producing duplicate lineups even after we
+    # ship a new default.
+    BOT_PREFS_SCHEMA_VERSION = 2
+
     def _load_bot_preferences(self):
-        """Load bot preferences from QSettings."""
+        """Load bot preferences from QSettings.
+
+        If the saved schema version is older than BOT_PREFS_SCHEMA_VERSION
+        — or missing entirely — the per-seat overrides are dropped and the
+        default lineup applies. Avoids leaving the user with a stale
+        config that resolves multiple seats to the same character (the
+        "5 × Fluid Fiona" problem).
+        """
+        saved_version = 0
+        try:
+            saved_version = int(self.settings.value(
+                "bot_preference/schema_version", 0) or 0)
+        except (ValueError, TypeError):
+            saved_version = 0
+
+        if saved_version < self.BOT_PREFS_SCHEMA_VERSION:
+            # Wipe any per-seat overrides — the new schema's default
+            # lineup is what we want them to see.
+            try:
+                self.settings.beginGroup("bot_preference")
+                for k in self.settings.allKeys():
+                    self.settings.remove(k)
+                self.settings.endGroup()
+            except Exception:
+                pass
+            for seat in range(len(self.players)):
+                self.bot_preferences[seat] = "default"
+            self.settings.setValue(
+                "bot_preference/schema_version",
+                self.BOT_PREFS_SCHEMA_VERSION)
+            self.settings.sync()
+            return
+
         for seat in range(len(self.players)):
             key = f"bot_preference/seat_{seat}"
             bot_type_id = self.settings.value(key, "default")
@@ -4556,6 +5427,12 @@ class PokerWindow(QMainWindow):
         if street not in self.hand_history['board_by_street']:
             self.hand_history['board_by_street'][street] = [str(c) for c in self.board]
 
+        # Capture pot size at the END of this street so the hand summary's
+        # stats panel can show "Pot after Flop = $X" etc.
+        if 'pot_by_street' not in self.hand_history:
+            self.hand_history['pot_by_street'] = {}
+        self.hand_history['pot_by_street'][street] = int(self.pot)
+
     def _save_bot_preferences(self):
         """Save bot preferences to QSettings."""
         for seat, bot_type_id in self.bot_preferences.items():
@@ -4564,45 +5441,149 @@ class PokerWindow(QMainWindow):
         self.settings.sync()
 
     def _apply_bot_preferences(self):
-        """Apply bot preferences to all players."""
+        """Apply bot preferences to all players.
+
+        Two seats can end up with the same saved bot_type_id (e.g. both
+        configured to 'tom' in different sessions), which previously
+        rendered both as identical "Fluid Fiona" panels. We track the
+        names we've already used in this pass and disambiguate by
+        suffixing a seat number when a collision would happen.
+        """
+        # Every built-in style uses its own bot_type_id in BOT_CUTE_NAMES;
+        # listing them here keeps the per-seat-pref override path in
+        # sync with the lineup. New styles (shark / exploit / icm)
+        # were missing from the previous map, so a saved preference
+        # for them silently fell through to default behaviour.
+        style_map = {
+            "optimal": "optimal", "tight": "tight", "loose": "loose",
+            "aggressive": "aggressive", "tom": "tom",
+            "shark": "shark", "exploit": "exploit", "icm": "icm",
+        }
+
+        used_names = set()
+
+        def _disambiguate(name: str, seat: int) -> str:
+            """If `name` is already used, suffix the seat number; else
+            claim it. We deliberately don't pull from a pool of fake
+            alternative names — two seats of the same style ARE the
+            same approach, and the user should see that they
+            configured a duplicate rather than be presented with two
+            distinct-looking characters that play identically. The
+            canonical fix for "I want five different approaches" is
+            View → "Reset bots to default lineup" or just configuring
+            five different bot types."""
+            if name not in used_names:
+                used_names.add(name)
+                return name
+            cand = f"{name} (#{seat + 1})"
+            used_names.add(cand)
+            return cand
+
         for seat, player in enumerate(self.players):
             if seat in self.original_player_info and self.original_player_info[seat][1] == 'human':
-                # Human player, skip bot assignment
+                used_names.add(player.name)
                 continue
 
             bot_type_id = self.bot_preferences.get(seat, "default")
 
             if bot_type_id == "default":
-                # Restore original name, style, and behavior
                 if seat in self.original_player_info:
-                    player.name, player.style = self.original_player_info[seat]
+                    orig_name, orig_style = self.original_player_info[seat]
+                    player.name = _disambiguate(orig_name, seat)
+                    player.style = orig_style
                 player.clear_piq_bot()
             elif bot_type_id.startswith("piq_"):
-                # poker_iq bot selected - use cute name
-                if bot_type_id in BOT_CUTE_NAMES and BOT_CUTE_NAMES[bot_type_id] is not None:
-                    player.name = BOT_CUTE_NAMES[bot_type_id]
+                base = BOT_CUTE_NAMES.get(bot_type_id) or "Engine Bot"
+                player.name = _disambiguate(base, seat)
                 player.set_piq_bot(bot_type_id, seat)
             else:
-                # Original bot style selected from menu - restore that style's original name
-                style_map = {
-                    "optimal": "optimal",
-                    "tight": "tight",
-                    "loose": "loose",
-                    "aggressive": "aggressive",
-                    "tom": "tom",
-                }
                 if bot_type_id in style_map:
                     player.style = style_map[bot_type_id]
-                    # Use the cute name for this original style
-                    if bot_type_id in BOT_CUTE_NAMES and BOT_CUTE_NAMES[bot_type_id] is not None:
-                        player.name = BOT_CUTE_NAMES[bot_type_id]
+                    base = BOT_CUTE_NAMES.get(bot_type_id) or bot_type_id
+                    player.name = _disambiguate(base, seat)
                 player.clear_piq_bot()
+
+    def reset_bots_to_default_lineup(self):
+        """Wipe every saved per-seat preference and apply DEFAULT_BOT_LINEUP.
+
+        After this each non-human seat plays a genuinely different
+        approach (equity-pure / GTO-leaning / loose / exploit /
+        Theory-of-Mind) rather than five seats of the same style with
+        rotating names. Persists the cleared prefs to QSettings so the
+        next launch starts clean too.
+        """
+        # Apply canonical lineup to the in-memory players.
+        for seat, name, style in DEFAULT_BOT_LINEUP:
+            if 0 <= seat < len(self.players):
+                self.players[seat].name = name
+                self.players[seat].style = style
+                self.players[seat].clear_piq_bot()
+
+        # Refresh original_player_info so future "default" preference
+        # restores hit the canonical lineup, and clear saved overrides.
+        self.original_player_info = {
+            i: (p.name, p.style) for i, p in enumerate(self.players)
+        }
+        self.bot_preferences = {}
+        try:
+            self.settings.beginGroup('bot_preferences')
+            for k in self.settings.allKeys():
+                self.settings.remove(k)
+            self.settings.endGroup()
+            self.settings.sync()
+        except Exception:
+            pass
+
+        # Refresh visible labels.
+        self._apply_bot_preferences()
+        try:
+            for seat, panel in self.player_panels:
+                panel.update_display()
+        except Exception:
+            pass
+        try:
+            self.update_theory_of_mind()
+        except Exception:
+            pass
 
     def get_bot_type_display_name(self, bot_type_id: str) -> str:
         """Get display name for a bot type ID."""
         if bot_type_id in BOT_TYPE_MAP:
             return BOT_TYPE_MAP[bot_type_id][0]
         return bot_type_id
+
+    def _maybe_randomize_bots_for_game(self):
+        """If the hero has beaten the default bots at least once and the
+        randomize-bots option is enabled, randomly select a fresh bot for
+        each non-human seat at the start of a new game. Picks from the
+        combined pool of default styles + advanced poker_iq bots.
+
+        Only seats whose preference is "default" get re-rolled — if the
+        user has explicitly chosen a bot for a seat, we honor that.
+        """
+        if not getattr(self, 'randomize_bots_enabled', True):
+            return
+        if not getattr(self, 'beat_defaults_unlocked', False):
+            return
+        # Build the pool. Start with the original five styles.
+        pool = ['optimal', 'tight', 'loose', 'aggressive', 'tom']
+        if POKER_IQ_AVAILABLE:
+            pool.extend(['piq_basic_equity', 'piq_improved_equity',
+                         'piq_external_engine'])
+
+        for seat, p in enumerate(self.players):
+            if p.style == 'human':
+                continue
+            # Honor explicit per-seat preferences ('default' means
+            # re-roll; anything else = stick with the user's choice).
+            if self.bot_preferences.get(seat, 'default') != 'default':
+                continue
+            choice = random.choice(pool)
+            self.bot_preferences[seat] = choice
+            # Apply just this seat — don't disturb the rest.
+        # Re-apply preferences in one pass so the player names/styles
+        # update consistently.
+        self._apply_bot_preferences()
 
     def hand_to_range_notation(self, hand):
         """Convert actual hole cards to PokerStove range notation."""
@@ -4707,8 +5688,8 @@ class PokerWindow(QMainWindow):
                 f"{hand_text}"
             )
             result = subprocess.run(
-                ['claude', '-p', '--max-turns', '1', prompt],
-                capture_output=True, text=True, timeout=120
+                _claude_invoke_args(prompt),
+                capture_output=True, text=True, timeout=240
             )
             if result.returncode == 0 and len(result.stdout.strip()) > 10:
                 critique = result.stdout.strip()
@@ -4799,6 +5780,11 @@ class PokerWindow(QMainWindow):
         self.new_hand_btn.setFixedSize(130, 40)
         self.new_hand_btn.setStyleSheet("QPushButton { font-size: 15px; font-weight: bold; }")
         self.new_hand_btn.clicked.connect(self.deal_hand)
+        # Disabled until a hand completes — the user shouldn't be able to
+        # interrupt an in-flight hand by starting a new one. Enabled
+        # initially so the very first hand can be dealt; toggled off in
+        # deal_hand and back on in end_hand / _on_hand_ended.
+        self.new_hand_btn.setEnabled(True)
         top_bar.addWidget(self.new_hand_btn)
 
         main_layout.addLayout(top_bar)
@@ -4875,7 +5861,17 @@ class PokerWindow(QMainWindow):
         action_layout = QHBoxLayout()
         action_layout.addStretch()
 
-        btn_style = "QPushButton { font-size: 16px; font-weight: bold; }"
+        # Explicit :disabled style so the user can see at a glance which
+        # actions are not legal right now (e.g. Check is greyed when there
+        # is a bet to call; Call is greyed when checking is free).
+        btn_style = (
+            "QPushButton { font-size: 16px; font-weight: bold; "
+            "background-color: #555; color: white; "
+            "border: 1px solid #777; border-radius: 5px; }"
+            "QPushButton:hover:enabled { background-color: #666; }"
+            "QPushButton:disabled { background-color: #2a2a2a; "
+            "color: #666; border: 1px solid #333; }"
+        )
 
         self.fold_btn = QPushButton("Fold")
         self.fold_btn.setFixedSize(130, 55)
@@ -4883,6 +5879,15 @@ class PokerWindow(QMainWindow):
         self.fold_btn.clicked.connect(lambda: self.human_action('f', 0))
         self.fold_btn.setEnabled(False)
         action_layout.addWidget(self.fold_btn)
+
+        # Check is its own button — only one of {Fold, Check} is enabled
+        # at a time depending on whether checking is legal.
+        self.check_btn = QPushButton("Check")
+        self.check_btn.setFixedSize(130, 55)
+        self.check_btn.setStyleSheet(btn_style)
+        self.check_btn.clicked.connect(lambda: self.human_action('c', 0))
+        self.check_btn.setEnabled(False)
+        action_layout.addWidget(self.check_btn)
 
         self.call_btn = QPushButton("Call")
         self.call_btn.setFixedSize(130, 55)
@@ -4968,20 +5973,43 @@ class PokerWindow(QMainWindow):
         tom_action_layout = QHBoxLayout()
         tom_action_layout.addStretch()
 
-        tom_btn_style = "QPushButton { font-size: 18px; font-weight: bold; padding: 10px 20px; }"
+        # Per-action colored buttons with explicit :disabled greying so
+        # the user can see which actions are not currently legal.
+        tom_btn_base = (
+            "QPushButton { font-size: 18px; font-weight: bold; "
+            "padding: 10px 20px; color: white; border: 1px solid #777; "
+            "border-radius: 5px; }"
+            "QPushButton:disabled { background-color: #2a2a2a; "
+            "color: #666; border: 1px solid #333; }"
+        )
 
         self.tom_fold_btn = QPushButton("Fold")
         self.tom_fold_btn.setFixedSize(140, 60)
-        self.tom_fold_btn.setStyleSheet(tom_btn_style + "QPushButton { background-color: #633; }")
+        self.tom_fold_btn.setStyleSheet(
+            tom_btn_base + "QPushButton:enabled { background-color: #633; }"
+            "QPushButton:hover:enabled { background-color: #844; }")
         self.tom_fold_btn.clicked.connect(lambda: self.human_action('f', 0))
         self.tom_fold_btn.setEnabled(False)
         tom_action_layout.addWidget(self.tom_fold_btn)
 
         tom_action_layout.addSpacing(20)
 
+        self.tom_check_btn = QPushButton("Check")
+        self.tom_check_btn.setFixedSize(140, 60)
+        self.tom_check_btn.setStyleSheet(
+            tom_btn_base + "QPushButton:enabled { background-color: #363; }"
+            "QPushButton:hover:enabled { background-color: #484; }")
+        self.tom_check_btn.clicked.connect(lambda: self.human_action('c', 0))
+        self.tom_check_btn.setEnabled(False)
+        tom_action_layout.addWidget(self.tom_check_btn)
+
+        tom_action_layout.addSpacing(20)
+
         self.tom_call_btn = QPushButton("Call")
         self.tom_call_btn.setFixedSize(140, 60)
-        self.tom_call_btn.setStyleSheet(tom_btn_style + "QPushButton { background-color: #363; }")
+        self.tom_call_btn.setStyleSheet(
+            tom_btn_base + "QPushButton:enabled { background-color: #363; }"
+            "QPushButton:hover:enabled { background-color: #484; }")
         self.tom_call_btn.clicked.connect(lambda: self.human_action('c', 0))
         self.tom_call_btn.setEnabled(False)
         tom_action_layout.addWidget(self.tom_call_btn)
@@ -4990,7 +6018,9 @@ class PokerWindow(QMainWindow):
 
         self.tom_raise_btn = QPushButton("Raise")
         self.tom_raise_btn.setFixedSize(140, 60)
-        self.tom_raise_btn.setStyleSheet(tom_btn_style + "QPushButton { background-color: #336; }")
+        self.tom_raise_btn.setStyleSheet(
+            tom_btn_base + "QPushButton:enabled { background-color: #336; }"
+            "QPushButton:hover:enabled { background-color: #448; }")
         self.tom_raise_btn.clicked.connect(self.show_raise_dialog)
         self.tom_raise_btn.setEnabled(False)
         tom_action_layout.addWidget(self.tom_raise_btn)
@@ -5032,6 +6062,10 @@ class PokerWindow(QMainWindow):
         self.log_label.setStyleSheet("background-color: #111; color: #0f0; padding: 10px;")
         self.log_label.setWordWrap(True)
         self.log_label.setMaximumHeight(70)
+        # Rich text so individual ticker segments can be coloured —
+        # raises render in yellow so the user sees them at a glance
+        # without the panel-flash that used to interrupt focus.
+        self.log_label.setTextFormat(Qt.TextFormat.RichText)
         bottom_bar.addWidget(self.log_label, stretch=1)
 
         main_layout.addLayout(bottom_bar)
@@ -5275,13 +6309,33 @@ class PokerWindow(QMainWindow):
         self.action_log.append(msg)
         if len(self.action_log) > 5:
             self.action_log = self.action_log[-5:]
-        self.log_label.setText(" | ".join(self.action_log))
+        self.log_label.setText(self._format_action_log_html(self.action_log))
         # Also write to file
         self.write_log(msg, include_stats=include_stats)
         # Track for Theory of Mind analysis
         if hasattr(self, 'action_history'):
             self.action_history.append(msg)
             self.update_theory_of_mind()
+
+    def _format_action_log_html(self, entries):
+        """Render the bottom-bar action log as rich text.
+
+        Raise lines are highlighted in yellow so the user notices them
+        without the panel-flash dance. Everything else stays on the
+        green base (matched to log_label's stylesheet color).
+        """
+        from html import escape
+        parts = []
+        for entry in entries:
+            text = escape(str(entry))
+            lower = text.lower()
+            if 'raise' in lower or 'all-in' in lower or 'all in' in lower:
+                parts.append(
+                    f'<span style="color:#ffd633;font-weight:bold">{text}</span>'
+                )
+            else:
+                parts.append(text)
+        return ' | '.join(parts)
 
     def update_status(self, message: str):
         """Update the status display with a network/game status message."""
@@ -5381,6 +6435,29 @@ class PokerWindow(QMainWindow):
                 return panel
         return None
 
+    def _flash_color_for_raise(self, raise_size: float, pot_before: float) -> str:
+        """Choose flash color based on raise size relative to the pot.
+
+        - 'normal'  : ≤ 25% of pot (subtle pulse, no alarm color)
+        - 'orange'  : > 25% and < 50% of pot
+        - 'red'     : ≥ 50% of pot (e.g. an all-in or pot-sized shove)
+
+        Falls back to 'red' if pot_before is unknown / zero.
+        """
+        try:
+            r = float(raise_size or 0)
+            p = float(pot_before or 0)
+        except (TypeError, ValueError):
+            return 'red'
+        if p <= 0:
+            return 'red'
+        ratio = r / p
+        if ratio <= 0.25:
+            return 'normal'
+        if ratio < 0.5:
+            return 'orange'
+        return 'red'
+
     def update_blinds_display(self):
         """Update the blinds label with current blind level."""
         sb, bb = BLIND_LEVELS[self.blind_level]
@@ -5393,20 +6470,63 @@ class PokerWindow(QMainWindow):
         self.blinds_label.setText(f"Blinds: ${sb}/${bb}{next_level_text}")
 
     def update_all_panels(self):
+        try:
+            current_street = STREETS[self.street_idx] if 0 <= self.street_idx < len(STREETS) else ""
+        except Exception:
+            current_street = ""
+        hero_seat = self.my_seat if self.my_seat is not None else 0
+
+        def best_hand_for(player):
+            """Compute the made-hand description for a given player.
+
+            Preflop (no community cards yet): show the starting-hand name
+            (e.g. 'pocket Aces', 'Ace-King suited').  Postflop: show the
+            current best made hand on the board.
+            """
+            if not player.hand or len(player.hand) < 2:
+                return ""
+            try:
+                if not self.board:
+                    return get_hand_name(player.hand)
+                return self.describe_made_hand(
+                    player.hand, [str(c) for c in self.board])
+            except Exception:
+                return ""
+
         for idx, panel in self.player_panels:
             player = self.players[idx]
-            # Hero always sees their cards
+            # If this player has been busted out (zero chips, not in this
+            # hand), hide their panel completely so the seat looks vacant.
+            # The hero's own panel is never hidden — they get the busted
+            # game-over dialog instead.
+            if (player.stack <= 0 and not player.active
+                    and idx != hero_seat
+                    and not getattr(self, 'at_showdown', False)):
+                panel.setVisible(False)
+                if hasattr(panel, 'set_best_hand'):
+                    panel.set_best_hand("")
+                continue
+            else:
+                panel.setVisible(True)
+
+            # Decide whether this seat's hole cards are visible.
             if player.style == 'human':
                 panel.show_cards = True
-            # At showdown, show all active players' cards
             elif hasattr(self, 'at_showdown') and self.at_showdown and player.active:
                 panel.show_cards = True
-            # In god mode, show all cards
             elif self.god_mode:
                 panel.show_cards = True
             else:
                 panel.show_cards = False
             panel.update_display()
+
+            # Whenever cards are visible, show the corresponding best
+            # hand below them.  Cards hidden → label hidden.
+            if hasattr(panel, 'set_best_hand'):
+                if panel.show_cards and player.hand:
+                    panel.set_best_hand(best_hand_for(player))
+                else:
+                    panel.set_best_hand("")
 
     def update_stats_display(self):
         """Update the graphical stats panel."""
@@ -5470,10 +6590,21 @@ class PokerWindow(QMainWindow):
 
     def deal_hand(self):
         """Start a new hand."""
+        # If the user dealt a new hand straight from the folded-spectator
+        # view (without explicitly clicking "Close View"), tear that
+        # state down here so the next hand starts clean — God Mode /
+        # Show Tells revert to whatever they were before the fold,
+        # action buttons return, and the ◀ ▶ ● spectator row hides.
+        if getattr(self, '_hero_folded_spectating', False):
+            self._exit_spectator_mode()
+
         self.hand_number += 1
         self.action_log = []
         self.action_history = []  # Reset for Theory of Mind
         self.log_action("=== NEW HAND ===")
+        # Lock the New Hand button until this hand finishes.
+        if hasattr(self, 'new_hand_btn'):
+            self.new_hand_btn.setEnabled(False)
 
         # Log to file
         self.write_log(f"\n{'='*60}")
@@ -5529,7 +6660,8 @@ class PokerWindow(QMainWindow):
             'board_by_street': {},
             'villain_info': {},
             'street_stats': {},      # {street: [(name, true_eq, perc_eq, pot_odds, active, is_hero), ...]}
-            'street_actions': {}     # {street: ["Player: action", ...]}
+            'street_actions': {},    # {street: ["Player: action", ...]}
+            'pot_by_street': {},     # {street: pot_size_after_street}
         }
 
         for p in self.players:
@@ -5537,24 +6669,29 @@ class PokerWindow(QMainWindow):
             if p.stack <= 0:
                 p.active = False
 
+        # If the hero has unlocked the advanced bot pool, randomly seat
+        # bots from the combined pool at the start of each NEW hand. We
+        # only re-randomize at hand 1 of a game so personalities stay
+        # consistent within a game.
+        if self.hand_number == 1:
+            self._maybe_randomize_bots_for_game()
+
         # Save starting stacks for gain/loss tracking
         self.starting_stacks = {p.name: p.stack for p in self.players}
 
         # Check if hero is busted
         hero = self.players[0]
         if hero.stack <= 0:
-            reply = QMessageBox.question(
-                self, "Game Over",
-                "You're out of chips! Would you like to start a new game?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
+            reply = self._game_over_question(
+                "You're out of chips! Would you like to start a new game?")
             if reply == QMessageBox.StandardButton.Yes:
                 self.reset_game()
             return
 
         active_count = sum(1 for p in self.players if p.active)
         if active_count < 2:
-            QMessageBox.information(self, "Game Over", "You've won! All opponents are eliminated!")
+            self._game_over_information(
+                "You've won! All opponents are eliminated!")
             return
 
         # Deal hole cards
@@ -5686,6 +6823,13 @@ class PokerWindow(QMainWindow):
         """Initialize a betting round."""
         self.last_raiser = -1
         self.raises_this_round = 0
+        # Size of the most recent raise this round (above the previous bet
+        # level). The next legal raise must increase the bet by at least this.
+        # Reset to BB on each new street so a fresh open is allowed.
+        _, bb_amount = BLIND_LEVELS[self.blind_level]
+        # Preflop the BB itself counts as the opening "bet" of size BB, so
+        # min raise-over-call is also BB. Postflop start with BB as the floor.
+        self.last_raise_size = int(bb_amount)
 
         # Reset actions
         for p in self.players:
@@ -5766,29 +6910,69 @@ class PokerWindow(QMainWindow):
             panel.set_active_turn(i == idx)
 
     def enable_human_actions(self):
-        """Enable action buttons for human player."""
+        """Enable action buttons for human player.
+
+        The four action buttons are Fold, Check, Call, Raise. Exactly one
+        of {Fold, Check} is enabled at any moment depending on whether
+        checking is legal:
+          - to_call == 0  → Check enabled, Fold disabled, Call disabled.
+          - to_call > 0   → Check disabled, Fold enabled, Call enabled.
+        If everyone is all-in (no one can act further), shows a single
+        'Next Card' button instead.
+        """
         self.waiting_for_human = True
         hero_seat = self.my_seat if self.network_mode == "client" and self.my_seat is not None else 0
         player = self.players[hero_seat]
         to_call = max(0, self.current_bet - player.bet_in_round)
 
-        self.fold_btn.setEnabled(True)
-        self.tom_fold_btn.setEnabled(True)
+        # Auto-run-out only kicks in when the hero genuinely has nothing
+        # left to decide. Two situations qualify:
+        #   1. Hero is already all-in (stack == 0) — can't act.
+        #   2. All OTHER active players are all-in AND hero faces no
+        #      outstanding bet (to_call == 0) — there's nothing to call
+        #      and any further hero bets would only reach a side pot
+        #      with no caller, so the round just closes via Next Card.
+        # The previous condition `len(active_with_chips) <= 1` mis-fired
+        # whenever the hero was the last player with chips but still
+        # had to decide whether to call an opponent's all-in shove.
+        others_active = [p for p in self.players
+                         if p.active and p is not player]
+        others_can_act = any(p.stack > 0 for p in others_active)
+        hero_all_in = (player.stack <= 0)
+        all_in_mode = hero_all_in or (to_call <= 0 and not others_can_act)
+        self._show_next_card_button(all_in_mode)
+        if all_in_mode:
+            return
 
-        if to_call <= 0:
-            self.call_btn.setText("Check")
-            self.tom_call_btn.setText("Check")
+        can_check = (to_call <= 0)
+
+        # Fold ↔ Check mutual exclusion.
+        self.fold_btn.setEnabled(not can_check)
+        self.check_btn.setEnabled(can_check)
+        self.tom_fold_btn.setEnabled(not can_check)
+        self.tom_check_btn.setEnabled(can_check)
+
+        # Call only meaningful when there's something to call.
+        if can_check:
+            self.call_btn.setText("Call")
+            self.tom_call_btn.setText("Call")
+            self.call_btn.setEnabled(False)
+            self.tom_call_btn.setEnabled(False)
         else:
             self.call_btn.setText(f"Call ${to_call}")
             self.tom_call_btn.setText(f"Call ${to_call}")
-        self.call_btn.setEnabled(True)
-        self.tom_call_btn.setEnabled(True)
+            self.call_btn.setEnabled(True)
+            self.tom_call_btn.setEnabled(True)
 
-        _, bb_amount = BLIND_LEVELS[self.blind_level]
-        min_raise = to_call + bb_amount
-        if player.stack > min_raise:
-            self.raise_btn.setEnabled(True)
-            self.tom_raise_btn.setEnabled(True)
+        # Min raise enforces the No-Limit minimum: at least the size of the
+        # previous raise this round (last_raise_size).
+        min_raise_above = max(int(getattr(self, 'last_raise_size', 0)),
+                              int(BLIND_LEVELS[self.blind_level][1]))
+        if player.stack > to_call + min_raise_above or player.stack > to_call:
+            # If they have *any* extra above the call they can shove all-in
+            # even when they can't post the full minimum raise.
+            self.raise_btn.setEnabled(player.stack > to_call)
+            self.tom_raise_btn.setEnabled(player.stack > to_call)
         else:
             self.raise_btn.setEnabled(False)
             self.tom_raise_btn.setEnabled(False)
@@ -5797,11 +6981,80 @@ class PokerWindow(QMainWindow):
         """Disable action buttons."""
         self.waiting_for_human = False
         self.fold_btn.setEnabled(False)
+        self.check_btn.setEnabled(False)
         self.call_btn.setEnabled(False)
         self.raise_btn.setEnabled(False)
         self.tom_fold_btn.setEnabled(False)
+        self.tom_check_btn.setEnabled(False)
         self.tom_call_btn.setEnabled(False)
         self.tom_raise_btn.setEnabled(False)
+        self._show_next_card_button(False)
+
+    def _show_next_card_button(self, show: bool):
+        """Toggle a 'Next Card' button that replaces fold/check/call/raise
+        when all (or all-but-one) remaining players are all-in. Clicking it
+        runs out the rest of the board to showdown.
+        """
+        # Lazily create the button so older saves still work.
+        if not hasattr(self, 'next_card_btn'):
+            self.next_card_btn = QPushButton("Next Card")
+            self.next_card_btn.setFixedSize(420, 55)
+            self.next_card_btn.setStyleSheet(
+                "QPushButton { font-size: 18px; font-weight: bold; "
+                "background-color: #357; color: white; border-radius: 5px; }"
+                "QPushButton:hover { background-color: #468; }"
+            )
+            self.next_card_btn.clicked.connect(self._on_next_card_clicked)
+            try:
+                # Insert into the same horizontal layout as fold/call/raise.
+                action_layout = self.fold_btn.parentWidget().layout()
+                action_layout.addWidget(self.next_card_btn)
+            except Exception:
+                pass
+            self.next_card_btn.setVisible(False)
+
+        if show:
+            self.fold_btn.setVisible(False)
+            self.check_btn.setVisible(False)
+            self.call_btn.setVisible(False)
+            self.raise_btn.setVisible(False)
+            self.tom_fold_btn.setVisible(False)
+            self.tom_check_btn.setVisible(False)
+            self.tom_call_btn.setVisible(False)
+            self.tom_raise_btn.setVisible(False)
+            self.next_card_btn.setVisible(True)
+            self.next_card_btn.setEnabled(True)
+        else:
+            # While the hero is in folded-spectator mode the action
+            # row must stay hidden — disable_human_actions() ends up
+            # here as the hand resolves and was re-revealing the
+            # greyed-out fold/check/call/raise pixels on the green
+            # felt. Spectator mode owns visibility until Close View.
+            if getattr(self, '_hero_folded_spectating', False):
+                self.next_card_btn.setVisible(False)
+                return
+            self.fold_btn.setVisible(True)
+            self.check_btn.setVisible(True)
+            self.call_btn.setVisible(True)
+            self.raise_btn.setVisible(True)
+            self.tom_fold_btn.setVisible(True)
+            self.tom_check_btn.setVisible(True)
+            self.tom_call_btn.setVisible(True)
+            self.tom_raise_btn.setVisible(True)
+            self.next_card_btn.setVisible(False)
+
+    def _on_next_card_clicked(self):
+        """User clicked 'Next Card' during the all-in runout. Skip betting
+        for the remaining streets by closing the current betting round."""
+        if not getattr(self, 'waiting_for_human', False):
+            return
+        self.waiting_for_human = False
+        self._show_next_card_button(False)
+        # Mark everyone with chips as having acted so end_betting_round fires.
+        for p in self.players:
+            if p.active:
+                p.actions_this_round = max(1, p.actions_this_round)
+        self.end_betting_round()
 
     def _enter_spectator_mode(self):
         """After fold, enable God Mode + Show Tells and show ◀ ▶ street nav.
@@ -5827,10 +7080,22 @@ class PokerWindow(QMainWindow):
         finally:
             self._spectator_auto_toggle = False
 
-        # Show spectator buttons in place of action buttons
-        self.fold_btn.setVisible(False)
-        self.call_btn.setVisible(False)
-        self.raise_btn.setVisible(False)
+        # Show spectator buttons in place of action buttons. We hide
+        # both the regular toolbar set (fold/check/call/raise) AND the
+        # Theory-of-Mind tab's mirror buttons (tom_*_btn) so the user
+        # doesn't see a row of greyed-out controls floating in the
+        # spectator view. The lazy "Next Card" button (created on
+        # demand by _show_next_card_button) is hidden the same way.
+        for attr in ('fold_btn', 'check_btn', 'call_btn', 'raise_btn',
+                     'tom_fold_btn', 'tom_check_btn',
+                     'tom_call_btn', 'tom_raise_btn',
+                     'next_card_btn'):
+            btn = getattr(self, attr, None)
+            if btn is not None:
+                try:
+                    btn.setVisible(False)
+                except RuntimeError:
+                    pass
 
         if not hasattr(self, '_spectator_next_btn'):
             btn_style = ("QPushButton { font-size: 18px; font-weight: bold; "
@@ -5851,13 +7116,33 @@ class PokerWindow(QMainWindow):
             self._spectator_next_btn.setShortcut("Right")
             self._spectator_next_btn.clicked.connect(self._spectator_next)
 
+            # "Close View" — the only path back to the default table
+            # view from the folded-spectator state. Sits below the
+            # ◀ ▶ nav buttons so the user can scrub the hand and
+            # then dismiss when they're done.
+            self._spectator_close_btn = QPushButton("Close View")
+            self._spectator_close_btn.setFixedSize(200, 45)
+            self._spectator_close_btn.setStyleSheet(
+                btn_style.replace('#357', '#633').replace('#468', '#844')
+            )
+            self._spectator_close_btn.setShortcut("Esc")
+            self._spectator_close_btn.setToolTip(
+                "Return to the default table view (turns off God Mode "
+                "and Show Tells if they were auto-enabled by spectator "
+                "mode). Esc shortcut."
+            )
+            self._spectator_close_btn.clicked.connect(self._exit_spectator_mode)
+
             # Insert into the action button layout
             action_layout = self.fold_btn.parentWidget().layout()
             action_layout.addWidget(self._spectator_prev_btn)
             action_layout.addWidget(self._spectator_next_btn)
+            action_layout.addWidget(self._spectator_close_btn)
 
         self._spectator_prev_btn.setVisible(True)
         self._spectator_next_btn.setVisible(True)
+        self._spectator_close_btn.setVisible(True)
+        self._spectator_close_btn.setEnabled(True)
 
         # If viewing latest, snap view index to current street_idx
         if not hasattr(self, '_spectator_view_idx'):
@@ -5876,14 +7161,25 @@ class PokerWindow(QMainWindow):
         self._spectator_view_idx = -1
         self._spectator_street_snapshots = []
 
-        # Hide spectator buttons, restore action buttons
+        # Hide spectator buttons, restore action buttons.
         if hasattr(self, '_spectator_next_btn'):
             self._spectator_next_btn.setVisible(False)
         if hasattr(self, '_spectator_prev_btn'):
             self._spectator_prev_btn.setVisible(False)
-        self.fold_btn.setVisible(True)
-        self.call_btn.setVisible(True)
-        self.raise_btn.setVisible(True)
+        if hasattr(self, '_spectator_close_btn'):
+            self._spectator_close_btn.setVisible(False)
+        # Bring back the regular fold/check/call/raise rows AND the ToM
+        # tab's mirror buttons; whether they're enabled is decided
+        # later by enable_human_actions / disable_human_actions.
+        for attr in ('fold_btn', 'check_btn', 'call_btn', 'raise_btn',
+                     'tom_fold_btn', 'tom_check_btn',
+                     'tom_call_btn', 'tom_raise_btn'):
+            btn = getattr(self, attr, None)
+            if btn is not None:
+                try:
+                    btn.setVisible(True)
+                except RuntimeError:
+                    pass
 
         # Restore prior God/Tells state, suppressing broadcast + assist
         # tracking (this is just the inverse of the spectator auto-toggle).
@@ -5959,7 +7255,7 @@ class PokerWindow(QMainWindow):
         try:
             log = snap.get('action_log', [])
             self.action_log = list(log)[-5:]
-            self.log_label.setText(" | ".join(self.action_log))
+            self.log_label.setText(self._format_action_log_html(self.action_log))
         except Exception:
             pass
 
@@ -6018,13 +7314,17 @@ class PokerWindow(QMainWindow):
         Semantics: the dialog asks for the RAISE amount above the call. It
         returns the TOTAL commitment this round (call + raise) via
         get_value(), which is what process_action() expects.
+
+        Min raise = max(BB, last_raise_size) — enforces the No-Limit rule
+        that a raise must be at least as large as the previous raise.
         """
         # Use the correct hero seat (seat 0 for local/host, my_seat for client)
         hero_seat = self.my_seat if self.network_mode == "client" and self.my_seat is not None else 0
         player = self.players[hero_seat]
         to_call = int(self.current_bet - player.bet_in_round)
         _, bb_amount = BLIND_LEVELS[self.blind_level]
-        min_raise_above = int(bb_amount)  # minimum raise is 1 BB above call
+        prev_raise = int(getattr(self, 'last_raise_size', bb_amount))
+        min_raise_above = max(int(bb_amount), prev_raise)
         max_raise_above = int(player.stack) - to_call  # can't raise more than stack
         if max_raise_above < 1:
             # No chips left to raise with — treat as call / all-in.
@@ -6032,13 +7332,14 @@ class PokerWindow(QMainWindow):
             return
 
         if max_raise_above <= min_raise_above:
-            # Only room to shove.
+            # Only room to shove (an all-in is always allowed even if it's
+            # below the legal min raise).
             self.human_action('r', int(player.stack))
             return
 
         dialog = RaiseDialog(
             to_call, min_raise_above, max_raise_above,
-            int(self.pot), self, bb_amount,
+            int(self.pot), self, bb_amount, prev_raise_size=prev_raise,
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             amount = dialog.get_value()  # total commitment (call + raise)
@@ -6128,18 +7429,39 @@ class PokerWindow(QMainWindow):
                 self.log_action(f"{player.name}: Calls ${amt} (cap)")
             else:
                 _, bb_amount = BLIND_LEVELS[self.blind_level]
-                min_raise = to_call + bb_amount
-                actual_raise = max(amount, min_raise)
+                # Enforce No-Limit min-raise rule: a raise must be at least
+                # as large as the previous raise this round.
+                prev_raise = int(getattr(self, 'last_raise_size', bb_amount))
+                min_raise_above = max(int(bb_amount), prev_raise)
+                min_total = to_call + min_raise_above
+                actual_raise = max(amount, min_total)
                 if player.stack <= actual_raise:
                     actual_raise = player.stack
                 player.stack -= actual_raise
                 player.bet_in_round += actual_raise
                 player.total_invested += actual_raise
+                # Compute the new raise size *above the previous bet level*
+                # so the next raiser knows the new floor.
+                new_raise_size = max(0, player.bet_in_round - self.current_bet)
                 self.current_bet = player.bet_in_round
                 self.pot += actual_raise
                 self.log_action(f"{player.name}: Raises to ${player.bet_in_round}")
                 self.last_raiser = player_idx
                 self.raises_this_round += 1
+                # Only update last_raise_size when this raise is at least the
+                # min — an all-in for less ('short shove') doesn't reset the
+                # floor for subsequent raisers.
+                if new_raise_size >= min_raise_above:
+                    self.last_raise_size = int(new_raise_size)
+
+                # Visual cue — flash the raiser's panel.  Color graded by
+                # raise size: small (≤25% pot) is a quiet pulse, medium is
+                # orange, large (≥50% pot, e.g. all-in) is bright red.
+                panel = self.get_panel(player_idx)
+                if panel is not None and hasattr(panel, 'flash_raise'):
+                    pot_before = max(0, self.pot - actual_raise)
+                    color = self._flash_color_for_raise(new_raise_size, pot_before)
+                    panel.flash_raise(color=color)
 
                 # Reset actions so others must respond
                 for p in self.players:
@@ -6292,8 +7614,12 @@ class PokerWindow(QMainWindow):
     def end_hand(self):
         """End the hand and determine winner."""
         self.disable_human_actions()
-        if self._hero_folded_spectating:
-            self._exit_spectator_mode()
+        # Spectator (folded) view is intentionally NOT torn down here —
+        # the user gets to keep God Mode + Show Tells + the ◀▶ street
+        # nav active until they explicitly click "Close View" (or start
+        # a new hand). Hand-summary popups still appear because they're
+        # driven by show_hand_summary() further down the end-of-hand
+        # path and don't depend on spectator state.
 
         # Capture final street stats before ending (guard against out-of-bounds
         # since end_betting_round already increments street_idx past the last street)
@@ -6481,6 +7807,7 @@ class PokerWindow(QMainWindow):
                     'player_results': player_results,
                     'player_hands': player_hands,
                     'made_hands_by_street': made_hands_by_street,
+                    'pot_by_street': self.hand_history.get('pot_by_street', {}),
                 }
 
                 self.network_server.broadcast_hand_end(winner_indices, self.pot, shown_hands, hand_summary)
@@ -6506,11 +7833,62 @@ class PokerWindow(QMainWindow):
             self.dealer_idx = (self.dealer_idx + 1) % len(self.players)
             attempts += 1
 
+        # Hand has ended — re-enable the New Hand button so the user can
+        # start the next one.
+        if hasattr(self, 'new_hand_btn'):
+            self.new_hand_btn.setEnabled(True)
+
         # Check for game over (only one player with chips)
         players_with_chips = [p for p in self.players if p.stack > 0]
         if len(players_with_chips) == 1:
             winner = players_with_chips[0]
+            # If the hero won this game and they were playing the default
+            # lineup, flip the persistent unlock so future games can mix
+            # in the advanced bots.
+            try:
+                hero_seat = self.my_seat if self.my_seat is not None else 0
+                if (0 <= hero_seat < len(self.players)
+                        and winner is self.players[hero_seat]
+                        and not self.beat_defaults_unlocked):
+                    self.beat_defaults_unlocked = True
+                    self.settings.setValue("beat_defaults_unlocked", True)
+                    self.settings.sync()
+            except Exception:
+                pass
             self.show_game_over(winner)
+
+    # Game-over dialogs use a noticeably larger font than the system
+    # default — the standard 9-10pt left users squinting at the
+    # "out of chips / play again" prompt that ends a long session.
+    _GAME_OVER_STYLE = (
+        "QMessageBox { background-color: #f0f0f0; font-size: 18px; }"
+        "QMessageBox QLabel { color: #000; font-size: 18px; "
+        "min-width: 480px; padding: 6px; }"
+        "QMessageBox QPushButton { font-size: 16px; padding: 8px 22px; "
+        "min-width: 100px; }"
+    )
+
+    def _game_over_question(self, text: str,
+                            title: str = "Game Over") -> 'QMessageBox.StandardButton':
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setWindowTitle(title)
+        msg.setText(text)
+        msg.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg.setDefaultButton(QMessageBox.StandardButton.Yes)
+        msg.setStyleSheet(self._GAME_OVER_STYLE)
+        return msg.exec()
+
+    def _game_over_information(self, text: str,
+                                title: str = "Game Over") -> None:
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setWindowTitle(title)
+        msg.setText(text)
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.setStyleSheet(self._GAME_OVER_STYLE)
+        msg.exec()
 
     def show_game_over(self, winner):
         """Show game over dialog and offer to play again."""
@@ -6520,6 +7898,7 @@ class PokerWindow(QMainWindow):
         msg.setInformativeText("Would you like to play another game?")
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         msg.setDefaultButton(QMessageBox.StandardButton.Yes)
+        msg.setStyleSheet(self._GAME_OVER_STYLE)
 
         if msg.exec() == QMessageBox.StandardButton.Yes:
             self.reset_game()
@@ -6585,114 +7964,125 @@ class PokerWindow(QMainWindow):
                 return "offsuit junk"
 
     def describe_made_hand(self, hole_cards, board):
-        """Describe what made hand a player has using poker terminology."""
+        """Describe what made hand a player has using poker terminology.
+
+        Uses the eval7 evaluator (the same engine that picks the winner at
+        showdown) to decide the hand category, so the description always
+        agrees with the showdown result. Layers on specific
+        rank/kicker info on top of the category for nicer wording (e.g.
+        'top pair (Ks)', 'set of 9s').
+        """
         if not hole_cards or not board:
             return "no hand"
 
-        all_cards = [str(c) for c in hole_cards] + [str(c) for c in board]
-        all_ranks = [c[0] for c in all_cards]
-        all_suits = [c[1] for c in all_cards]
-        hole_ranks = [str(c)[0] for c in hole_cards]
-        hole_suits = [str(c)[1] for c in hole_cards]
-        board_ranks = [str(c)[0] for c in board]
+        # Convert to eval7 cards (the inputs are usually already eval7
+        # cards, but the function is also called with string-like inputs
+        # from the network path).
+        try:
+            hole_e7 = [c if isinstance(c, eval7.Card) else eval7.Card(str(c))
+                       for c in hole_cards]
+            board_e7 = [c if isinstance(c, eval7.Card) else eval7.Card(str(c))
+                        for c in board]
+        except Exception:
+            return "unknown"
 
-        # Count ranks
+        # eval7 needs at least 5 total cards to evaluate; with hole+board
+        # we always have at least 5 by the flop.
+        if len(hole_e7) + len(board_e7) < 5:
+            return "no hand"
+
+        rank_value_e7 = eval7.evaluate(hole_e7 + board_e7)
+        category = eval7.handtype(rank_value_e7).lower()  # e.g. "straight"
+
+        # Pull out useful per-rank info for prettier descriptions.
+        all_ranks = [str(c)[0] for c in hole_cards] + [str(c)[0] for c in board]
+        hole_ranks = [str(c)[0] for c in hole_cards]
+        board_ranks = [str(c)[0] for c in board]
         rank_counts = {}
         for r in all_ranks:
             rank_counts[r] = rank_counts.get(r, 0) + 1
-
-        # Count board ranks separately
         board_rank_counts = {}
         for r in board_ranks:
             board_rank_counts[r] = board_rank_counts.get(r, 0) + 1
 
-        # Check for flush
-        suit_counts = {}
-        for s in all_suits:
-            suit_counts[s] = suit_counts.get(s, 0) + 1
-
-        # Pair detection using hole cards
-        has_pair = hole_ranks[0] == hole_ranks[1]
-
-        # Rank comparison helper (A=0, K=1, ..., 2=12)
+        # Rank ordering for "top/middle/bottom" pair labelling.
         rank_order = 'AKQJT98765432'
-        def rank_value(r):
+        def rank_pos(r):
             return rank_order.index(r) if r in rank_order else 99
 
-        # Check for full house
-        trips_rank = None
-        pair_rank = None
-        for r, cnt in rank_counts.items():
-            if cnt >= 3:
-                trips_rank = r
-            elif cnt == 2:
-                pair_rank = r
-        if trips_rank and pair_rank:
-            return f"full house ({trips_rank}s full of {pair_rank}s)"
-
-        # Check for flush (hero must use at least one card)
-        for suit in hole_suits:
-            if suit_counts.get(suit, 0) >= 5:
-                return "flush"
-
-        # Check for set (pocket pair + one on board)
-        if has_pair and rank_counts.get(hole_ranks[0], 0) >= 3:
-            return f"set of {hole_ranks[0]}s"
-
-        # Check for trips (one hole card matches a PAIR on the board)
-        for hole_rank in hole_ranks:
-            if rank_counts.get(hole_rank, 0) >= 3:
-                if board_rank_counts.get(hole_rank, 0) >= 2:
-                    return f"trips ({hole_rank}s)"
-
-        # Check for straight
-        all_vals = sorted(set(rank_order.index(r) for r in all_ranks))
-        for i in range(len(all_vals) - 4):
-            if all_vals[i+4] - all_vals[i] == 4:
-                hero_vals = [rank_value(r) for r in hole_ranks]
-                straight_vals = all_vals[i:i+5]
-                if any(hv in straight_vals for hv in hero_vals):
-                    return "straight"
-
-        # Check for two pair
-        pairs = [r for r, cnt in rank_counts.items() if cnt >= 2]
-        hero_in_pairs = [r for r in hole_ranks if r in pairs]
-        if len(pairs) >= 2 and len(hero_in_pairs) >= 1:
-            return "two pair"
-
-        # Check for overpair
-        if has_pair and all(rank_value(hole_ranks[0]) < rank_value(br) for br in board_ranks):
-            return f"overpair ({hole_ranks[0]}{hole_ranks[0]})"
-        elif has_pair:
-            return f"pocket pair ({hole_ranks[0]}{hole_ranks[0]})"
-
-        # Check for pairs with board
-        paired_with_board = hole_ranks[0] in board_ranks or hole_ranks[1] in board_ranks
-        if paired_with_board:
-            paired_rank = hole_ranks[0] if hole_ranks[0] in board_ranks else hole_ranks[1]
-            sorted_board = sorted(board_ranks, key=lambda x: rank_value(x))
-            if paired_rank == sorted_board[0]:
-                return f"top pair ({paired_rank}s)"
-            elif len(sorted_board) > 1 and paired_rank == sorted_board[1]:
-                return f"second pair ({paired_rank}s)"
-            else:
-                return f"bottom pair ({paired_rank}s)"
-
-        # Check for draws (only if not river - 5 cards means no more to come)
-        is_river = len(board) >= 5
-        if not is_river:
-            # Check for flush draw
-            for suit in hole_suits:
-                if suit_counts.get(suit, 0) == 4:
-                    return "flush draw"
-
-            # Check for straight draw
-            for i in range(len(all_vals) - 3):
-                if all_vals[i+3] - all_vals[i] <= 4:
-                    return "straight draw"
-
-        high_card = min(hole_ranks, key=lambda r: rank_value(r))
-        return f"{high_card}-high"
+        # --- Category branches -------------------------------------------------
+        if category == 'straight flush':
+            return "straight flush"
+        if category == 'quads' or category == 'four of a kind':
+            quads = next((r for r, n in rank_counts.items() if n >= 4), None)
+            return f"quads ({quads}s)" if quads else "four of a kind"
+        if category == 'full house':
+            trips = next((r for r, n in rank_counts.items() if n >= 3), None)
+            pair = next((r for r, n in rank_counts.items()
+                         if n >= 2 and r != trips), None)
+            if trips and pair:
+                return f"full house ({trips}s full of {pair}s)"
+            return "full house"
+        if category == 'flush':
+            return "flush"
+        if category == 'straight':
+            return "straight"
+        if category in ('trips', 'three of a kind'):
+            trips = next((r for r, n in rank_counts.items() if n >= 3), None)
+            # "Set" = pocket pair matched on board; "trips" = one hole +
+            # board pair.
+            if trips and hole_ranks[0] == hole_ranks[1] == trips:
+                return f"set of {trips}s"
+            if trips and board_rank_counts.get(trips, 0) >= 2:
+                return f"trips ({trips}s)"
+            return "three of a kind"
+        if category == 'two pair':
+            pairs = [r for r, n in rank_counts.items() if n >= 2]
+            hero_in_pairs = [r for r in hole_ranks if r in pairs]
+            if hero_in_pairs:
+                return "two pair"
+            # Both pairs on the board → hero plays the board with a kicker.
+            return "two pair (board)"
+        if category == 'pair':
+            # Identify the pair's rank.
+            pair_rank = next((r for r, n in rank_counts.items() if n >= 2), None)
+            if not pair_rank:
+                return "pair"
+            # Pocket pair vs board pair.
+            if hole_ranks[0] == hole_ranks[1] == pair_rank:
+                if all(rank_pos(pair_rank) < rank_pos(br) for br in board_ranks):
+                    return f"overpair ({pair_rank}{pair_rank})"
+                return f"pocket pair ({pair_rank}{pair_rank})"
+            if pair_rank in hole_ranks and pair_rank in board_ranks:
+                # Top / second / bottom relative to the board.
+                sorted_board = sorted(set(board_ranks), key=rank_pos)
+                if pair_rank == sorted_board[0]:
+                    return f"top pair ({pair_rank}s)"
+                if len(sorted_board) > 1 and pair_rank == sorted_board[1]:
+                    return f"second pair ({pair_rank}s)"
+                return f"bottom pair ({pair_rank}s)"
+            # Pair lives entirely on the board → hero just plays the kicker.
+            return "pair on board"
+        if category == 'high card':
+            # Pre-river, surface obvious draws so the description is useful.
+            if len(board) < 5:
+                hole_suits = [str(c)[1] for c in hole_cards]
+                all_suits = [str(c)[1] for c in hole_cards] + [str(c)[1] for c in board]
+                suit_counts = {}
+                for s in all_suits:
+                    suit_counts[s] = suit_counts.get(s, 0) + 1
+                for suit in hole_suits:
+                    if suit_counts.get(suit, 0) == 4:
+                        return "flush draw"
+                # Straight draw — any 4 of 5 consecutive ranks (not the wheel).
+                vals = sorted(set(rank_pos(r) for r in all_ranks))
+                for i in range(len(vals) - 3):
+                    if vals[i+3] - vals[i] <= 4:
+                        return "straight draw"
+            high = min(hole_ranks, key=rank_pos)
+            return f"{high}-high"
+        # Fallback: trust eval7's category string.
+        return category
 
     def analyze_card_impact(self, new_card, board, active_players):
         """Analyze how a new card impacted the hand."""
@@ -6820,6 +8210,7 @@ class PokerWindow(QMainWindow):
             player_results=player_results,
             player_hands=player_hands,
             made_hands_by_street=made_hands_by_street,
+            pot_by_street=self.hand_history.get('pot_by_street', {}),
             parent=self
         )
         dialog.setModal(False)
@@ -7093,31 +8484,497 @@ class PokerWindow(QMainWindow):
         scroll_area.setWidget(content)
         outer.addWidget(scroll_area)
 
-        # Stats + OK buttons stay outside the scroll area
+        # Stats + Hand Log buttons stay outside the scroll area.
+        # NOTE: no "OK" — the summary persists until the next hand starts
+        # (handled by _close_open_hand_dialogs in deal_hand).
         stats_btn = QPushButton("Stats")
-        stats_btn.setFixedSize(100, 40)
+        stats_btn.setFixedSize(120, 40)
         stats_btn.setFont(QFont('Arial', 14, QFont.Weight.Bold))
         stats_btn.setStyleSheet("QPushButton { background-color: #363; }")
         stats_btn.clicked.connect(lambda: self._show_stats_from_dialog(dialog))
 
-        ok_btn = QPushButton("OK")
-        ok_btn.setFixedSize(100, 40)
-        ok_btn.setFont(QFont('Arial', 14, QFont.Weight.Bold))
-        ok_btn.clicked.connect(dialog.close)
+        log_btn = QPushButton("Hand Log")
+        log_btn.setFixedSize(140, 40)
+        log_btn.setFont(QFont('Arial', 14, QFont.Weight.Bold))
+        log_btn.setStyleSheet("QPushButton { background-color: #336; }")
+        log_btn.clicked.connect(lambda: self._show_hand_log_dialog(dialog))
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         btn_layout.addWidget(stats_btn)
         btn_layout.addSpacing(20)
-        btn_layout.addWidget(ok_btn)
+        btn_layout.addWidget(log_btn)
         btn_layout.addStretch()
         outer.addLayout(btn_layout)
 
-        # Claude analysis blocks attach into the inner anchor layout so they
-        # share the scroll area with the rest of the content.
-        self._attach_claude_analysis_to_dialog(dialog, analysis_anchor_layout)
+        # Claude analysis intentionally NOT attached to the Hand Summary
+        # any more — the per-POV "Claude — Hero (You):" blocks the
+        # auto-critique used to inject here drifted out of sync with
+        # the more accurate Hand Log annotations the user reads via the
+        # "Hand Log" button just above. The Hand Log path runs Claude
+        # against the full BDL/log file once and is the authoritative
+        # version, so we route users there instead of duplicating the
+        # critique here.
+        # (_attach_claude_analysis_to_dialog still exists; if the user
+        # ever wants the inline critique back, restore the call below.)
+        # self._attach_claude_analysis_to_dialog(dialog, analysis_anchor_layout)
 
         self._track_hand_dialog(dialog)
+        dialog.show()
+
+    def _format_hand_log_compact(self) -> tuple:
+        """Build a compact, readable per-action log of the most recent hand.
+
+        Returns (numbered_log_str, raw_lines).  Each numbered line is a
+        single action like:
+          ` 7. [Flop] Hero  raises to $24    pot=$56`
+        Skips chrome lines (CHIP COUNT, TABLE STATS, GAME STATUS, etc.) so
+        the Claude annotator only has to reason over real decisions.
+
+        Includes a "Hands" header listing every known hole-card pair —
+        Hero's always, plus any villain hands revealed at showdown — so
+        the Claude annotator never has to guess whose cards are whose.
+        """
+        sa = self.hand_history.get('street_actions', {}) or {}
+        board_by_street = self.hand_history.get('board_by_street', {}) or {}
+        hero_cards = self.hand_history.get('hero_cards', []) or []
+        # Build a {name: [card_strs]} map of every player whose hand we
+        # know.  Hero's cards always come from hand_history; villain
+        # cards come from the live Player objects (host) or the cached
+        # hand_summary (client).
+        known_hands = {}
+        hero_seat = self.my_seat if self.my_seat is not None else 0
+        if 0 <= hero_seat < len(self.players):
+            hero_name = self.players[hero_seat].name or "Hero"
+            if hero_cards:
+                known_hands[hero_name] = list(hero_cards)
+        # Add other revealed hands when available.
+        for p in self.players:
+            if p.hand and p.name not in known_hands:
+                # On the host, every Player.hand is set.  We only want
+                # hands that are revealed (showdown) — assume hands are
+                # OK to show by the time the user is reading the log.
+                known_hands[p.name] = [str(c) for c in p.hand]
+        # Client fallback: pull from cached hand summary if we have it.
+        cached = getattr(self, '_cached_hand_summary', None) or {}
+        for name, cards in (cached.get('player_hands', {}) or {}).items():
+            if name not in known_hands and cards:
+                known_hands[name] = list(cards)
+
+        # Pot size after each street (captured in _capture_street_stats).
+        pot_by_street = self.hand_history.get('pot_by_street', {}) or {}
+        # Equity of each human player at the end of each street, also
+        # captured at street boundaries.  Useful for the retrospective.
+        street_equities = self.hand_history.get('street_equities', {}) or {}
+
+        # Made-hand for each player at each post-flop street, computed
+        # post-mortem (fine to do here — we know everyone's cards).
+        made_by_street: dict = {}
+        for street in ['Flop', 'Turn', 'River']:
+            board_cards = board_by_street.get(street, [])
+            if not board_cards:
+                continue
+            made_by_street[street] = {}
+            for name, cards in known_hands.items():
+                try:
+                    made_by_street[street][name] = self.describe_made_hand(
+                        cards, board_cards)
+                except Exception:
+                    pass
+
+        lines = []
+        # Header section: explicit hero identity + every known hand so the
+        # annotator can't confuse hero with a villain.
+        lines.append(f"Hero is: {hero_name}")
+        if known_hands:
+            lines.append("Hands (known):")
+            for name, cards in known_hands.items():
+                tag = "  HERO" if name == hero_name else "      "
+                lines.append(f"{tag}  {name}: {' '.join(cards)}")
+        for street in ['Preflop', 'Flop', 'Turn', 'River']:
+            board = board_by_street.get(street, [])
+            actions = sa.get(street, []) or []
+            # Previous version dropped any street with no actions — that
+            # silently hid the river whenever the hand was decided by an
+            # all-in on the turn (river dealt, no betting, straight to
+            # showdown). Now we keep any street where the dealer
+            # actually put a card on the table OR where someone acted,
+            # and annotate the no-betting case so Claude has context.
+            if not actions and not board and street != 'Preflop':
+                continue
+            board_str = (" board=" + ' '.join(board)) if board and street != 'Preflop' else ""
+            lines.append(f"--- {street}{board_str} ---")
+            if not actions and street != 'Preflop':
+                lines.append("  (no betting — all-in earlier or all checked)")
+            for act in actions:
+                lines.append(f"  {act}")
+            # Post-street summary line: pot, made hands, equities.  The
+            # action-numbering logic below skips lines that start with
+            # the markers we use here ("===") so the per-action numbers
+            # stay clean.
+            tail = []
+            if street in pot_by_street:
+                tail.append(f"pot=${int(pot_by_street[street])}")
+            mh = made_by_street.get(street, {})
+            if mh:
+                hand_strs = []
+                for name, made in mh.items():
+                    if not made:
+                        continue
+                    tag = "*" if name == hero_name else ""
+                    hand_strs.append(f"{name}{tag}={made}")
+                if hand_strs:
+                    tail.append("hands={" + "; ".join(hand_strs) + "}")
+            eq = street_equities.get(street, {}) or {}
+            if eq:
+                eq_strs = [f"{name}={v:.0%}" for name, v in eq.items()]
+                tail.append("equity={" + ", ".join(eq_strs) + "}")
+            if tail:
+                lines.append("=== end of " + street + ": " + " | ".join(tail))
+        numbered = []
+        idx = 0
+        for line in lines:
+            if (line.startswith("---") or line.startswith("Hero is")
+                    or line.startswith("Hands") or line.startswith("  HERO")
+                    or line.startswith("      ") or line.startswith("===")):
+                numbered.append(line)
+            else:
+                idx += 1
+                numbered.append(f"{idx:2d}.{line}")
+        return "\n".join(numbered), lines
+
+    def _split_retrospective(self, annotation_text: str) -> tuple:
+        """Split Claude's reply into (per-action text, retrospective text).
+
+        The annotator is asked to emit a literal 'RETROSPECTIVE:' marker
+        between the two sections.  If the marker isn't present (model
+        ignored the instruction), everything is treated as per-action.
+        """
+        if not annotation_text:
+            return "", ""
+        import re
+        m = re.search(r'(?im)^\s*RETROSPECTIVE\s*:\s*$', annotation_text)
+        if not m:
+            return annotation_text, ""
+        return annotation_text[:m.start()].rstrip(), annotation_text[m.end():].strip()
+
+    def _parse_claude_annotations(self, annotation_text: str) -> dict:
+        """Parse Claude's annotation output into {action_index: comment}.
+
+        Claude returns lines like:
+            4. Correct laydown — 2c 5h is unplayable trash. !
+        We extract the leading integer and the rest of the line as the
+        comment. Ignores blank lines and lines without a leading number.
+        """
+        import re
+        out = {}
+        if not annotation_text:
+            return out
+        for raw in annotation_text.splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            m = re.match(r'^\s*(\d+)\s*[.\)]\s*(.+)$', line)
+            if not m:
+                continue
+            try:
+                idx = int(m.group(1))
+            except ValueError:
+                continue
+            out[idx] = m.group(2).strip()
+        return out
+
+    def _interleave_log_with_annotations(self, annotations: dict,
+                                          retrospective: str = "") -> str:
+        """Re-render the hand log as HTML with each numbered action
+        followed by its Claude annotation (if any) styled in green —
+        chess-PGN style.  When `retrospective` is non-empty, append a
+        post-mortem block at the bottom (full information, after-the-fact
+        review by Claude).
+
+        Each line is its own <div> so long annotations wrap onto the next
+        line within the dialog width (no horizontal scroll). Annotation
+        lines use a hanging indent so wrapped continuations stay aligned
+        under the first character of the comment.
+        """
+        from html import escape
+        sa = self.hand_history.get('street_actions', {}) or {}
+        board_by_street = self.hand_history.get('board_by_street', {}) or {}
+        hero_cards = self.hand_history.get('hero_cards', []) or []
+
+        log_color = "#dddddd"
+        ann_color = "#00d066"  # bright green for annotations
+        retro_color = "#ffd966"  # warm yellow for the retrospective
+        head_color = "#88ccff"
+
+        # Outer container — monospace font, no left margin, controlled
+        # line-height. We avoid <pre> so we can let annotation lines wrap.
+        out = [
+            '<div style="font-family: \'Courier\', \'Courier New\', monospace; '
+            'font-size: 18pt; color: ' + log_color + '; line-height: 1.35;">'
+        ]
+
+        def push_action(text):
+            # Action lines should NOT wrap — they're short and the leading
+            # number / column alignment is more readable as one line.
+            esc = escape(text).replace(' ', '&nbsp;')
+            out.append(
+                f'<div style="white-space: nowrap; color: {log_color};">{esc}</div>'
+            )
+
+        def push_header(text):
+            esc = escape(text).replace(' ', '&nbsp;')
+            out.append(
+                f'<div style="white-space: nowrap; color: {head_color}; '
+                f'font-weight: bold;">{esc}</div>'
+            )
+
+        def push_annotation(text):
+            # Annotations wrap. Use a hanging indent (text-indent negative
+            # of the padding) so the ↳ marker hangs out of the wrapped
+            # block visually.
+            esc = escape(text)
+            out.append(
+                '<div style="color: ' + ann_color + '; font-weight: bold; '
+                'padding-left: 56px; text-indent: -28px; '
+                'white-space: normal; word-wrap: break-word;">'
+                + '↳ ' + esc + '</div>'
+            )
+
+        if hero_cards:
+            push_header(f"Hero hole cards: {' '.join(hero_cards)}")
+        idx = 0
+        for street in ['Preflop', 'Flop', 'Turn', 'River']:
+            board = board_by_street.get(street, [])
+            actions = sa.get(street, []) or []
+            # Mirror _format_hand_log_compact: keep the street if a card
+            # was dealt OR somebody acted, so all-in-on-the-turn hands
+            # don't silently drop the river from the rendered log.
+            if not actions and not board and street != 'Preflop':
+                continue
+            board_str = (" board=" + ' '.join(board)) if board and street != 'Preflop' else ""
+            push_header(f"--- {street}{board_str} ---")
+            if not actions and street != 'Preflop':
+                push_action("  (no betting — all-in earlier or all checked)")
+            for act in actions:
+                idx += 1
+                push_action(f"{idx:2d}. {act}")
+                comment = annotations.get(idx)
+                if comment:
+                    push_annotation(comment)
+
+        # Retrospective — appended after the per-action log when Claude
+        # produced a 'RETROSPECTIVE:' section.  Yellow band so it reads
+        # as a separate post-mortem rather than another inline note.
+        if retrospective:
+            out.append(
+                '<div style="margin-top: 18px; padding: 10px 12px; '
+                'background-color: #2a2410; border-left: 4px solid '
+                f'{retro_color}; color: {retro_color}; '
+                'white-space: normal; word-wrap: break-word; '
+                'font-weight: bold; font-style: italic;">'
+                'Claude retrospective (full information):'
+                '</div>'
+            )
+            for paragraph in retrospective.split('\n\n'):
+                p = paragraph.strip()
+                if not p:
+                    continue
+                esc = escape(p).replace('\n', '<br>')
+                out.append(
+                    f'<div style="color: {retro_color}; '
+                    'padding: 6px 12px; '
+                    'white-space: normal; word-wrap: break-word; '
+                    'line-height: 1.4;">'
+                    + esc + '</div>'
+                )
+
+        out.append('</div>')
+        return "".join(out) if out else "(no actions recorded)"
+
+    def _show_hand_log_dialog(self, parent_dialog):
+        """Show the action log interspersed with Claude's chess-style
+        annotations (one comment per numbered action). Waits for Claude to
+        finish before rendering the merged view, so the user reads a single
+        coherent transcript instead of two separate panes.
+        """
+        try:
+            parent_dialog.hide()
+        except RuntimeError:
+            pass
+
+        log_text, _ = self._format_hand_log_compact()
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Hand Log")
+        dialog.setMinimumSize(820, 760)
+        dialog.resize(1100, 1000)
+        dialog.setModal(False)
+        dialog.setStyleSheet("background-color: #1a1a1a;")
+
+        # Match the hand-summary font size (18pt) consistently.
+        SUMMARY_PT = 18
+
+        outer = QVBoxLayout(dialog)
+        outer.setContentsMargins(20, 20, 20, 20)
+        outer.setSpacing(10)
+
+        title = QLabel("Hand Log")
+        title.setFont(QFont('Arial', 22, QFont.Weight.Bold))
+        title.setStyleSheet("color: #0af;")
+        outer.addWidget(title)
+
+        # Single scroll area showing first the progress, then the merged
+        # log+annotations once Claude finishes.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet(
+            "QScrollArea { border: none; background-color: #1a1a1a; }")
+
+        content = QWidget()
+        content.setStyleSheet("background-color: #1a1a1a;")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(10, 10, 10, 10)
+        content_layout.setSpacing(10)
+        content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        # While Claude is running we show progress; the merged view replaces
+        # this pane once it's done.
+        progress_label = QLabel("Running Claude (Opus 4.7 thinking)…")
+        progress_label.setFont(QFont('Arial', SUMMARY_PT))
+        progress_label.setStyleSheet("color: #bff;")
+        content_layout.addWidget(progress_label)
+        bar = QProgressBar()
+        bar.setRange(0, 1)
+        bar.setValue(0)
+        bar.setMinimumHeight(28)
+        content_layout.addWidget(bar)
+
+        # The merged log view — populated after Claude returns.  Wraps
+        # long annotation lines (no horizontal scroll); the action lines
+        # themselves stay nowrap because each <div> sets it locally.
+        # We give it stretch=1 (and no terminating addStretch) so it
+        # fills the entire scroll area below the progress strip — that
+        # eliminates the dead space that used to sit between the bottom
+        # of the text and the "Back to Summary" button.
+        merged_view = QTextEdit()
+        merged_view.setReadOnly(True)
+        merged_view.setFont(QFont('Courier', SUMMARY_PT))
+        merged_view.setStyleSheet(
+            "QTextEdit { background-color: #0e0e0e; color: #ddd;"
+            " border: 1px solid #333; padding: 10px; }")
+        merged_view.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        merged_view.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        merged_view.setSizePolicy(QSizePolicy.Policy.Expanding,
+                                  QSizePolicy.Policy.Expanding)
+        merged_view.setVisible(False)
+        content_layout.addWidget(merged_view, stretch=1)
+
+        scroll.setWidget(content)
+        outer.addWidget(scroll, stretch=1)
+
+        # Bottom: Back button (no OK — the parent summary persists until
+        # next hand).
+        back_btn = QPushButton("Back to Summary")
+        back_btn.setFixedSize(240, 48)
+        back_btn.setFont(QFont('Arial', SUMMARY_PT, QFont.Weight.Bold))
+        back_btn.setStyleSheet("QPushButton { background-color: #444; color: white; }")
+
+        def _back():
+            try:
+                dialog.close()
+            except RuntimeError:
+                pass
+            try:
+                parent_dialog.show()
+                parent_dialog.raise_()
+            except RuntimeError:
+                pass
+        back_btn.clicked.connect(_back)
+        bot_row = QHBoxLayout()
+        bot_row.addStretch()
+        bot_row.addWidget(back_btn)
+        bot_row.addStretch()
+        outer.addLayout(bot_row)
+
+        # Track this dialog so it auto-dismisses on the next hand.
+        self._track_hand_dialog(dialog)
+
+        def _show_merged(annotations: dict, retrospective: str = "",
+                         status_text: str = ""):
+            """Replace the progress pane with the merged log (HTML-rendered
+            so Claude's annotations show in green and the retrospective
+            in a yellow post-mortem block at the bottom)."""
+            try:
+                progress_label.setVisible(False)
+                bar.setVisible(False)
+                merged_view.setHtml(
+                    self._interleave_log_with_annotations(
+                        annotations, retrospective))
+                merged_view.setVisible(True)
+                if status_text:
+                    progress_label.setText(status_text)
+                    progress_label.setVisible(True)
+            except RuntimeError:
+                pass
+
+        # If claude isn't installed, render the log immediately with no
+        # annotations.
+        import shutil
+        if not shutil.which('claude'):
+            _show_merged({}, "",
+                         "Claude binary not on PATH — annotations skipped.")
+            dialog.show()
+            return
+
+        hero_seat = self.my_seat if self.my_seat is not None else 0
+        hero_name = (self.players[hero_seat].name
+                     if 0 <= hero_seat < len(self.players) else "Hero")
+        povs = [{'name': hero_name, 'seat': hero_seat}]
+
+        thread = ClaudeAnalysisThread(log_text, povs, mode='annotate')
+
+        def on_progress(done, total, label):
+            try:
+                bar.setRange(0, max(1, total))
+                bar.setValue(done)
+                progress_label.setText(label)
+            except RuntimeError:
+                pass
+
+        def on_finished(analyses):
+            if not analyses:
+                _show_merged({}, "", "Claude returned no annotations.")
+                try:
+                    thread.deleteLater()
+                except Exception:
+                    pass
+                return
+            ann_text = (analyses[0].get('text', '') or '').strip()
+            # Split into per-action notes and the post-mortem retrospective.
+            actions_text, retrospective = self._split_retrospective(ann_text)
+            annotations = self._parse_claude_annotations(actions_text)
+            _show_merged(annotations, retrospective)
+            try:
+                thread.deleteLater()
+            except Exception:
+                pass
+
+        thread.progress.connect(on_progress)
+        thread.finished_analyses.connect(on_finished)
+
+        def on_dialog_destroyed():
+            try:
+                thread.cancel()
+            except Exception:
+                pass
+        dialog.destroyed.connect(on_dialog_destroyed)
+        if not hasattr(self, '_claude_threads'):
+            self._claude_threads = []
+        self._claude_threads.append(thread)
+        thread.start()
+
         dialog.show()
 
     def _attach_claude_analysis_to_dialog(self, dialog, layout):
@@ -7150,10 +9007,11 @@ class PokerWindow(QMainWindow):
 
         def _post_diag(msg, color="#fc6"):
             """Add a small visible reason in the dialog so the user knows
-            why no Claude annotation appeared."""
+            why no Claude annotation appeared. Uses the same font size as
+            the surrounding hand summary text so it reads consistently."""
             try:
                 lbl = QLabel(msg)
-                lbl.setFont(QFont('Arial', 12))
+                lbl.setFont(QFont('Arial', 18))
                 lbl.setWordWrap(True)
                 lbl.setStyleSheet(
                     f"color: {color}; background: #1a1a1a; padding: 8px;"
@@ -7240,7 +9098,10 @@ class PokerWindow(QMainWindow):
                         f"Claude — {name}: (no analysis returned — "
                         "claude may have failed, timed out, or hit a "
                         "rate limit; check the terminal for stderr)")
-                    fail_block.setFont(QFont('Arial', 13))
+                    # Match the surrounding interpretation text size (18pt)
+                    # so the analysis block reads at the same visual weight
+                    # as the rest of the hand summary.
+                    fail_block.setFont(QFont('Arial', 18))
                     fail_block.setWordWrap(True)
                     fail_block.setStyleSheet(
                         "color: #fc6; background-color: #2a1a1a; padding: 10px;"
@@ -7249,7 +9110,7 @@ class PokerWindow(QMainWindow):
                     analysis_layout.addWidget(fail_block)
                     continue
                 block = QLabel(f"Claude — {name}:\n{text}")
-                block.setFont(QFont('Arial', 14))
+                block.setFont(QFont('Arial', 18))
                 block.setWordWrap(True)
                 block.setStyleSheet(
                     "color: #8f8; background-color: #1a2a1a; padding: 10px;"
@@ -7367,6 +9228,7 @@ class PokerWindow(QMainWindow):
                 player_results=cached['player_results'],
                 player_hands=cached['player_hands'],
                 made_hands_by_street=cached['made_hands_by_street'],
+                pot_by_street=cached.get('pot_by_street', {}),
                 parent=self,
             )
             dialog.setModal(False)
@@ -7715,6 +9577,32 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             note.setStyleSheet("font-size: 12px; color: #a66; margin-top: 15px;")
         ai_tab_layout.addWidget(note)
 
+        # Randomize bots toggle — only meaningful once the hero has won.
+        self.randomize_bots_cb = QCheckBox(
+            "Randomize bots from combined pool after winning a game")
+        self.randomize_bots_cb.setStyleSheet("font-size: 13px; color: #ddd; margin-top: 12px;")
+        self.randomize_bots_cb.setChecked(self.randomize_bots_enabled)
+        self.randomize_bots_cb.setToolTip(
+            "Once you have won at least one game against the default bots,"
+            "\nfuture games will randomly seat opponents from the full pool"
+            "\n(default styles + advanced poker_iq bots)."
+            "\nApplies only to seats whose preference is 'Default'."
+        )
+        ai_tab_layout.addWidget(self.randomize_bots_cb)
+
+        unlocked_text = (
+            "✓ You have beaten the default bots — random pool unlocked."
+            if self.beat_defaults_unlocked
+            else "Beat the default bots once to unlock the advanced random pool."
+        )
+        unlocked_label = QLabel(unlocked_text)
+        unlocked_label.setStyleSheet(
+            "font-size: 11px; color: " +
+            ("#6a6;" if self.beat_defaults_unlocked else "#a86;") +
+            " margin-left: 22px;"
+        )
+        ai_tab_layout.addWidget(unlocked_label)
+
         ai_tab_layout.addStretch()
         tabs.addTab(ai_tab, "AI Opponents")
 
@@ -7759,6 +9647,12 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         for seat, combo in self.bot_combos.items():
             bot_type_id = combo.currentData()
             self.bot_preferences[seat] = bot_type_id
+
+        # Save randomize-bots toggle
+        if hasattr(self, 'randomize_bots_cb'):
+            self.randomize_bots_enabled = self.randomize_bots_cb.isChecked()
+            self.settings.setValue(
+                "randomize_bots_enabled", self.randomize_bots_enabled)
 
         self._save_bot_preferences()
         self._apply_bot_preferences()
@@ -7805,6 +9699,20 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             self.act_host.setEnabled(False)
             self.act_join.setEnabled(False)
             net_menu.setToolTip("Network module not available")
+
+        # Bots menu — currently just the "reset to default lineup"
+        # action. Each line in DEFAULT_BOT_LINEUP is a genuinely
+        # different approach so this is the one-click way to
+        # un-stick a session where saved per-seat preferences left
+        # multiple seats playing the same style.
+        bots_menu = menubar.addMenu("&Bots")
+        act_reset_bots = QAction("Reset Bots to Default Lineup", self)
+        act_reset_bots.setStatusTip(
+            "Restore the canonical 5-bot lineup: Optimal Olivia, "
+            "Sharkey Steve, Loose Bruce, Exploit Eli, Fluid Fiona — "
+            "each playing a different approach.")
+        act_reset_bots.triggered.connect(self.reset_bots_to_default_lineup)
+        bots_menu.addAction(act_reset_bots)
 
         help_menu = menubar.addMenu("&Help")
         act_help = QAction("Help...", self)
@@ -8363,19 +10271,34 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             self.pot += call_amount
             self.log_action(f"{player.name}: Calls ${call_amount}")
         elif action_lower in ['bet', 'raise']:
-            bet_amount = amount
+            _, bb_amount = BLIND_LEVELS[self.blind_level]
+            to_call_now = max(0, self.current_bet - player.bet_in_round)
+            prev_raise = int(getattr(self, 'last_raise_size', bb_amount))
+            min_raise_above = max(int(bb_amount), prev_raise)
+            min_total = to_call_now + min_raise_above
+            bet_amount = max(int(amount), min_total)
             actual_bet = min(bet_amount, player.stack)
             player.stack -= actual_bet
             player.bet_in_round += actual_bet
             player.total_invested += actual_bet
             self.pot += actual_bet
             if player.bet_in_round > self.current_bet:
+                new_raise_size = player.bet_in_round - self.current_bet
                 self.current_bet = player.bet_in_round
                 self.last_raiser = self.current_player_idx
                 self.raises_this_round += 1
+                if new_raise_size >= min_raise_above:
+                    self.last_raise_size = int(new_raise_size)
                 for p in self.players:
                     if p != player:
                         p.actions_this_round = 0
+                # Visual cue — flash the raiser's panel.  Color graded by
+                # raise size relative to the pot before the raise.
+                panel = self.get_panel(self.current_player_idx)
+                if panel is not None and hasattr(panel, 'flash_raise'):
+                    pot_before = max(0, self.pot - actual_bet)
+                    color = self._flash_color_for_raise(new_raise_size, pot_before)
+                    panel.flash_raise(color=color)
             self.log_action(f"{player.name}: {'Raises to' if action_lower == 'raise' else 'Bets'} ${actual_bet}")
         elif action_lower == 'all-in':
             all_in_amount = player.stack
@@ -8545,6 +10468,12 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         for p in self.players:
             p.bet_in_round = 0
         self.current_bet = 0
+        # New street → next legal raise can be just one BB.
+        try:
+            _, bb_amt = BLIND_LEVELS[self.blind_level]
+            self.last_raise_size = int(bb_amt)
+        except Exception:
+            pass
         self.action_log = []
         self.log_action(f"--- {street} ---")
         # Track + log the per-street board so Claude annotation can see it
@@ -8593,8 +10522,30 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             if actual_bet > 0:
                 player.stack -= actual_bet
                 player.bet_in_round = getattr(player, 'bet_in_round', 0) + actual_bet
+            # Track the raise size so our local raise dialog enforces the
+            # No-Limit min-raise rule on the next decision. Approximated
+            # from the broadcast amount minus the prior to_call (we don't
+            # have the host's exact accounting, but amount is the chips
+            # added this turn — close enough for UI purposes).
+            try:
+                _, bb_amt = BLIND_LEVELS[self.blind_level]
+                self.last_raise_size = max(int(amount), int(bb_amt))
+            except Exception:
+                pass
+            # Visual cue — flash the raiser's panel.  Color graded by
+            # raise size relative to the pot BEFORE this raise (pot in
+            # the broadcast already includes the new chips, so subtract).
+            panel = self.get_panel(seat)
+            if panel is not None and hasattr(panel, 'flash_raise'):
+                pot_before = max(0, float(pot) - float(amount or 0))
+                color = self._flash_color_for_raise(amount, pot_before)
+                panel.flash_raise(color=color)
         elif action_lower == 'all-in':
             player.stack = 0
+            # All-ins are always significant — full red flash.
+            panel = self.get_panel(seat)
+            if panel is not None and hasattr(panel, 'flash_raise'):
+                panel.flash_raise(color='red')
 
         if player.stack == 0 and action_lower != 'fold':
             self._record_all_in(player_name)
@@ -8628,6 +10579,9 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
 
     def _on_hand_started(self, hand_num: int, button: int, blinds: tuple, stacks: dict):
         """Handle new hand start from server."""
+        # Lock the New Hand button while the hand is in flight.
+        if hasattr(self, 'new_hand_btn'):
+            self.new_hand_btn.setEnabled(False)
         self.hand_number = hand_num
         self.dealer_idx = button
         self.pot = blinds[0] + blinds[1]
@@ -8636,6 +10590,22 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         self.street_idx = 0
         self.action_history = []
         self.current_bet = 0
+        # Reset min-raise floor at start of hand to BB.
+        try:
+            self.last_raise_size = int(blinds[1])
+        except Exception:
+            self.last_raise_size = 2
+        # Fresh per-hand history so the Hand Log button has clean data.
+        self.hand_history = {
+            'hero_cards': [],
+            'hero_actions': [],
+            'street_equities': {},
+            'key_events': [],
+            'board_by_street': {},
+            'street_stats': {},
+            'street_actions': {},
+            'pot_by_street': {},
+        }
 
         # Fresh hand → fresh spectator state. Anyone who was spectating must
         # exit spectator mode so they can act in the new hand.
@@ -8728,6 +10698,11 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         summary itself arrives as a separate HAND_INTERPRETATION message
         and is rendered by `_on_hand_interpretation_received`.
         """
+        # Hand has ended — re-enable the New Hand button. (Host drives the
+        # actual deal; on the client this just keeps the button visually
+        # consistent with the host.)
+        if hasattr(self, 'new_hand_btn'):
+            self.new_hand_btn.setEnabled(True)
         # Show results
         winner_names = [self.players[w].name for w in winners]
         self.update_status(f"Winners: {', '.join(winner_names)} - Pot: ${pot:.0f}")
@@ -8807,6 +10782,7 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                 player_hands = hand_summary.get('player_hands', {})
                 made_hands_by_street = hand_summary.get('made_hands_by_street', {})
 
+                pot_by_street = hand_summary.get('pot_by_street', {})
                 self._cached_hand_summary = {
                     'street_stats': street_stats,
                     'street_actions': street_actions,
@@ -8814,31 +10790,48 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                     'player_results': player_results,
                     'player_hands': player_hands,
                     'made_hands_by_street': made_hands_by_street,
+                    'pot_by_street': pot_by_street,
                 }
+                # Also fold the host-authoritative hand history into our
+                # local view so the Hand Log button has data to format on
+                # the client side. Hero cards are filled in via
+                # _on_hole_cards_received earlier in the hand.
+                self.hand_history.setdefault('street_actions', {}).update(
+                    street_actions or {})
+                self.hand_history.setdefault('board_by_street', {}).update(
+                    board_by_street or {})
+                self.hand_history.setdefault('pot_by_street', {}).update(
+                    pot_by_street or {})
             except Exception as e:
                 print(f"Error caching hand summary on client: {e}")
 
     def enable_action_buttons(self, to_call: float, min_raise: float, max_raise: float):
-        """Enable appropriate action buttons for network play."""
+        """Enable appropriate action buttons for network play.
+
+        Same four-button rule as local play: Fold, Check, Call, Raise.
+        Exactly one of {Fold, Check} is enabled at a time.
+        """
         player = self.players[self.my_seat] if self.my_seat is not None else None
         if not player:
             return
 
-        # Enable/disable buttons based on valid actions.
-        # If to_call exceeds our stack we can still call — for less. Host
-        # caps the call to min(to_call, stack) and side-pot mechanics handle
-        # the overage.
+        active_with_chips = [p for p in self.players if p.active and p.stack > 0]
+        all_in_mode = (len(active_with_chips) <= 1)
+        self._show_next_card_button(all_in_mode)
+        if all_in_mode:
+            return
+
         can_check = to_call == 0
         can_call = to_call > 0 and player.stack > 0
         can_raise = player.stack > to_call
 
-        self.fold_btn.setEnabled(True)
-        self.call_btn.setEnabled(can_call or can_check)
+        # Fold ↔ Check mutual exclusion.
+        self.fold_btn.setEnabled(not can_check)
+        self.check_btn.setEnabled(can_check)
+        self.call_btn.setEnabled(can_call)
         self.raise_btn.setEnabled(can_raise)
 
-        if can_check:
-            self.call_btn.setText("Check")
-        elif can_call:
+        if can_call:
             if player.stack < to_call:
                 # Calling for less than the bet — we'll be all-in.
                 self.call_btn.setText(f"Call ${player.stack:.0f} (all-in)")
@@ -8847,9 +10840,10 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         else:
             self.call_btn.setText("Call")
 
-        # Also enable ToM buttons if visible
-        self.tom_fold_btn.setEnabled(True)
-        self.tom_call_btn.setEnabled(can_call or can_check)
+        # Mirror onto ToM-tab variants.
+        self.tom_fold_btn.setEnabled(not can_check)
+        self.tom_check_btn.setEnabled(can_check)
+        self.tom_call_btn.setEnabled(can_call)
         self.tom_raise_btn.setEnabled(can_raise)
         self.tom_call_btn.setText(self.call_btn.text())
 
