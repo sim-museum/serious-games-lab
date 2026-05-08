@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, QGraphicsTextItem,
     QGraphicsRectItem, QDialog, QDialogButtonBox, QCheckBox, QGroupBox,
     QTabWidget, QTextEdit, QScrollArea, QComboBox, QFormLayout,
-    QProgressBar, QSizePolicy,
+    QProgressBar, QSizePolicy, QGridLayout,
 )
 from PyQt6.QtCore import Qt, QTimer, QRectF, QPointF, QSettings, QThread, pyqtSignal
 from PyQt6.QtGui import (
@@ -1357,6 +1357,246 @@ class HandRangeGrid(QWidget):
                 painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, hand)
 
 
+class HeroOutsTab(QWidget):
+    """Hero's hole cards + outs visualisation, sibling to the per-bot
+    range tabs in the Theory of Mind panel.
+
+    Shows:
+      • The two hero hole cards in large card widgets.
+      • Current best hand on the table.
+      • A 4×13 grid of all 52 cards with each cell coloured by role:
+          - Hero's hole cards: blue background, bright text.
+          - Board cards: light grey, bold black text.
+          - Outs (cards that would improve the hero's hand class):
+            gold border + bright yellow text.
+          - Other unseen cards: dim grey.
+      • Outs count + textual list of which cards are outs.
+    """
+
+    # Order matches eval7's handtype ranking; lower index = stronger.
+    _HAND_CLASS_ORDER = [
+        "Straight Flush", "Four of a Kind", "Full House", "Flush",
+        "Straight", "Three of a Kind", "Two Pair", "Pair", "High Card",
+    ]
+    _SUITS_ORDER = ['s', 'h', 'd', 'c']
+    _RANKS_ORDER = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._cell_widgets = {}  # 'As'/'Kd'/etc → (cell_label, role)
+
+        outer = QVBoxLayout(self)
+        outer.setSpacing(12)
+        outer.setContentsMargins(15, 15, 15, 15)
+
+        # ----- Top: hero hole cards (live widgets) -----
+        title = QLabel("Your hand")
+        title.setFont(QFont('Arial', 18, QFont.Weight.Bold))
+        title.setStyleSheet("color: #fff;")
+        outer.addWidget(title)
+
+        cards_row = QHBoxLayout()
+        cards_row.setSpacing(15)
+        cards_row.addStretch()
+        self._card1 = CardWidget()
+        self._card2 = CardWidget()
+        cards_row.addWidget(self._card1)
+        cards_row.addWidget(self._card2)
+        cards_row.addStretch()
+        outer.addLayout(cards_row)
+
+        # ----- Made-hand line + outs count -----
+        info_row = QHBoxLayout()
+        self._made_label = QLabel("(deal a hand)")
+        self._made_label.setFont(QFont('Arial', 16, QFont.Weight.Bold))
+        self._made_label.setStyleSheet("color: #ffd966;")
+        info_row.addWidget(self._made_label)
+        info_row.addStretch()
+        self._outs_count_label = QLabel("Outs: —")
+        self._outs_count_label.setFont(QFont('Arial', 16, QFont.Weight.Bold))
+        self._outs_count_label.setStyleSheet("color: #88ff88;")
+        info_row.addWidget(self._outs_count_label)
+        outer.addLayout(info_row)
+
+        # ----- 4×13 grid of every card in the deck -----
+        grid_label = QLabel("Cards in the deck (yellow = your outs)")
+        grid_label.setFont(QFont('Arial', 14))
+        grid_label.setStyleSheet("color: #aaa;")
+        outer.addWidget(grid_label)
+
+        grid_frame = QFrame()
+        grid_frame.setStyleSheet(
+            "QFrame { background: #1a1a1a; border: 1px solid #333; "
+            "border-radius: 4px; padding: 6px; }"
+        )
+        grid = QGridLayout(grid_frame)
+        grid.setSpacing(2)
+        suit_symbols = {'s': '♠', 'h': '♥', 'd': '♦', 'c': '♣'}
+        for r_idx, suit in enumerate(self._SUITS_ORDER):
+            sym = suit_symbols[suit]
+            head = QLabel(sym)
+            head.setFont(QFont('Arial', 16, QFont.Weight.Bold))
+            head.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            head.setFixedSize(28, 28)
+            head.setStyleSheet("color: #ddd;")
+            grid.addWidget(head, r_idx, 0)
+            for c_idx, rank in enumerate(self._RANKS_ORDER):
+                cell = QLabel(rank)
+                cell.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                cell.setFixedSize(34, 28)
+                cell.setFont(QFont('Arial', 13, QFont.Weight.Bold))
+                grid.addWidget(cell, r_idx, c_idx + 1)
+                self._cell_widgets[rank + suit] = cell
+                self._paint_cell(cell, role='unknown')
+        outer.addWidget(grid_frame)
+
+        # ----- Outs list (textual) -----
+        self._outs_text = QLabel("")
+        self._outs_text.setFont(QFont('Courier', 14))
+        self._outs_text.setWordWrap(True)
+        self._outs_text.setStyleSheet(
+            "color: #ffd966; background: #1a1a1a; padding: 10px;"
+            " border: 1px solid #333; border-radius: 4px;"
+        )
+        outer.addWidget(self._outs_text)
+        outer.addStretch()
+
+    def _paint_cell(self, cell: QLabel, role: str):
+        """Apply per-role styling to a deck-grid cell."""
+        styles = {
+            'hole':    "color: #fff; background: #1a4d8a; border: 2px solid #66aaff; border-radius: 4px;",
+            'board':   "color: #000; background: #ffffff; border: 1px solid #ccc; border-radius: 4px;",
+            'out':     "color: #000; background: #ffd966; border: 2px solid #ffaa00; border-radius: 4px;",
+            'dead':    "color: #555; background: #2a2a2a; border: 1px dashed #555; border-radius: 4px;",
+            'unknown': "color: #888; background: #222; border: 1px solid #333; border-radius: 4px;",
+        }
+        cell.setStyleSheet("QLabel { " + styles.get(role, styles['unknown']) + " }")
+
+    def update_outs(self, hero_hand, board, dead_cards=None):
+        """Refresh hole-card display, made-hand summary, and outs grid.
+
+        Args:
+            hero_hand: list of 2 eval7.Card or card-like with str().
+            board:     list of 0-5 community cards.
+            dead_cards: optional iterable of cards revealed by villains
+                (e.g. at showdown / in god mode) — drawn dead-grey on
+                the grid so the user knows they can't draw to them.
+        """
+        # Reset every cell to "unknown" first.
+        for k, cell in self._cell_widgets.items():
+            cell.setText(k[0])  # Just the rank; suit shown by row header
+            self._paint_cell(cell, role='unknown')
+
+        # Hero hole cards.
+        try:
+            if hero_hand and len(hero_hand) >= 2:
+                self._card1.set_card(str(hero_hand[0]), face_down=False)
+                self._card2.set_card(str(hero_hand[1]), face_down=False)
+                for c in hero_hand[:2]:
+                    key = str(c)
+                    if key in self._cell_widgets:
+                        self._paint_cell(self._cell_widgets[key], role='hole')
+            else:
+                self._card1.set_card(None, face_down=True)
+                self._card2.set_card(None, face_down=True)
+        except Exception:
+            pass
+
+        # Board cards.
+        for c in board or []:
+            key = str(c)
+            if key in self._cell_widgets:
+                self._paint_cell(self._cell_widgets[key], role='board')
+
+        # Dead cards (known to be in opponents' hands).
+        for c in dead_cards or []:
+            key = str(c)
+            if key in self._cell_widgets:
+                self._paint_cell(self._cell_widgets[key], role='dead')
+
+        # ----- Made-hand label + outs computation -----
+        outs = []
+        made_label_text = ""
+        try:
+            import eval7
+            if hero_hand and len(hero_hand) >= 2 and 3 <= len(board or []) <= 4:
+                hero_e7 = [eval7.Card(str(c)) for c in hero_hand[:2]]
+                board_e7 = [eval7.Card(str(c)) for c in board]
+                cur_rank = eval7.evaluate(hero_e7 + board_e7)
+                cur_class = eval7.handtype(cur_rank)
+                made_label_text = f"Best now: {cur_class}"
+
+                # Build set of unseen cards.
+                used = {str(c) for c in hero_hand[:2]}
+                used.update(str(c) for c in board)
+                used.update(str(c) for c in (dead_cards or []))
+
+                pair_idx = self._class_index('Pair')
+                for key in self._cell_widgets:
+                    if key in used:
+                        continue
+                    new_rank = eval7.evaluate(
+                        hero_e7 + board_e7 + [eval7.Card(key)])
+                    new_class = eval7.handtype(new_rank)
+                    new_idx = self._class_index(new_class)
+                    cur_idx = self._class_index(cur_class)
+                    # Out = card that strictly improves hand category
+                    # AND lands at Two Pair or stronger. Without the
+                    # "Two Pair+" floor, a 4-flush draw shows 23 "outs"
+                    # because every pair-on-board card technically
+                    # improves "High Card → Pair" — but those don't
+                    # win pots, they just move us up one category.
+                    # Classic poker "outs" are cards that fold a draw
+                    # into a made hand strong enough to actually beat
+                    # what's out there.
+                    if new_idx < cur_idx and new_idx < pair_idx:
+                        outs.append(key)
+
+                for key in outs:
+                    cell = self._cell_widgets.get(key)
+                    if cell is not None:
+                        self._paint_cell(cell, role='out')
+            elif hero_hand and len(hero_hand) >= 2 and not board:
+                made_label_text = "Preflop — outs depend on flop"
+        except Exception as ex:
+            made_label_text = f"(could not evaluate: {ex})"
+
+        self._made_label.setText(made_label_text or "(deal a hand)")
+        self._outs_count_label.setText(
+            f"Outs: {len(outs)}" if outs else "Outs: 0"
+        )
+        if outs:
+            # Group by suit for readable listing.
+            grouped = {s: [] for s in self._SUITS_ORDER}
+            for key in outs:
+                if len(key) >= 2 and key[1] in grouped:
+                    grouped[key[1]].append(key[0])
+            symbols = {'s': '♠', 'h': '♥', 'd': '♦', 'c': '♣'}
+            parts = []
+            for s in self._SUITS_ORDER:
+                ranks = grouped[s]
+                if ranks:
+                    # Sort highest first per the canonical rank order.
+                    rank_order = {r: i for i, r in enumerate(self._RANKS_ORDER)}
+                    ranks.sort(key=lambda r: rank_order.get(r, 99))
+                    parts.append(f"{symbols[s]} {' '.join(ranks)}")
+            self._outs_text.setText("  ".join(parts) if parts else "")
+        else:
+            self._outs_text.setText("")
+
+    def _class_index(self, hand_class: str) -> int:
+        """Return rank index of a hand-type string (lower = stronger).
+
+        eval7 uses canonical hand-class names; an unknown name falls
+        through to the weakest tier so we never return False on an
+        improvement that we can't classify.
+        """
+        try:
+            return self._HAND_CLASS_ORDER.index(hand_class)
+        except ValueError:
+            return len(self._HAND_CLASS_ORDER)
+
+
 class TheoryOfMindTab(QWidget):
     """Tab content for a single bot's theory of mind analysis."""
 
@@ -1623,6 +1863,12 @@ class TheoryOfMindPanel(QWidget):
 
         advisor_layout.addWidget(advisor_scroll)
         self.tabs.addTab(advisor_tab, "Advisor")
+
+        # Hero tab — hole cards + outs visualisation. Sits right after
+        # Advisor so it's the second-most-prominent tab in the bar.
+        # update_analysis() routes hero cards + board into it.
+        self.hero_tab = HeroOutsTab()
+        self.tabs.addTab(self.hero_tab, "Hero")
 
         # Bot player tabs
         for i, player in enumerate(players):
@@ -2433,6 +2679,24 @@ class TheoryOfMindPanel(QWidget):
             self.board_texture_label.setText(f"Board: {texture} | {texture_info.get('flush', '')} | {texture_info.get('straight', '')}")
         else:
             self.board_texture_label.setText("Board: Preflop")
+
+        # Refresh the Hero outs tab on every update.  Dead cards =
+        # any villain hand we already know about (god-mode reveals,
+        # showdown).  Without those, an out we count could already be
+        # in someone else's pocket and silently un-drawable.
+        if hasattr(self, 'hero_tab') and self.hero_tab is not None:
+            try:
+                hero_hand_for_tab = list(hero_hand) if hero_hand else []
+                dead = []
+                for p in players:
+                    if (p.style != 'human' and p.active
+                            and p.hand and len(p.hand) >= 2):
+                        dead.extend(p.hand)
+                self.hero_tab.update_outs(
+                    hero_hand_for_tab, list(board) if board else [],
+                    dead_cards=dead)
+            except Exception:
+                pass
 
         # Apply range mode multiplier
         range_mult = self.get_range_multiplier()
