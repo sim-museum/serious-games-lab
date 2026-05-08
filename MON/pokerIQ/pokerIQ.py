@@ -1412,14 +1412,51 @@ class HeroOutsTab(QWidget):
         title.setStyleSheet("color: #fff;")
         outer.addWidget(title)
 
+        # Cards on the left; commitment-math panel on the right of the
+        # same row so the empty space next to the hole cards earns its
+        # keep. The commitment panel walks through "if you call X you'd
+        # have Y behind in a pot of Z, that's an SPR of S — committed
+        # / not committed" so the player doesn't have to do the math.
         cards_row = QHBoxLayout()
-        cards_row.setSpacing(15)
-        cards_row.addStretch()
+        cards_row.setSpacing(20)
+
+        cards_box = QHBoxLayout()
+        cards_box.setSpacing(15)
         self._card1 = CardWidget()
         self._card2 = CardWidget()
-        cards_row.addWidget(self._card1)
-        cards_row.addWidget(self._card2)
-        cards_row.addStretch()
+        cards_box.addWidget(self._card1)
+        cards_box.addWidget(self._card2)
+        cards_row.addLayout(cards_box)
+
+        cards_row.addSpacing(20)
+
+        commit_frame = QFrame()
+        commit_frame.setStyleSheet(
+            "QFrame { background: #1a1a1a; border: 1px solid #333;"
+            " border-radius: 6px; padding: 10px; }"
+        )
+        commit_layout = QVBoxLayout(commit_frame)
+        commit_layout.setSpacing(4)
+        commit_title = QLabel("Pot Commitment")
+        commit_title.setFont(QFont('Arial', 16, QFont.Weight.Bold))
+        commit_title.setStyleSheet(
+            "color: #fff; background: transparent; border: none;")
+        commit_layout.addWidget(commit_title)
+        self._commit_label = QLabel(
+            "(no live action — commitment math will appear here when "
+            "there's a bet to call)"
+        )
+        self._commit_label.setWordWrap(True)
+        self._commit_label.setTextFormat(Qt.TextFormat.RichText)
+        self._commit_label.setFont(QFont('Arial', 14))
+        self._commit_label.setStyleSheet(
+            "color: #cccccc; background: transparent; border: none;")
+        self._commit_label.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        commit_layout.addWidget(self._commit_label)
+        commit_layout.addStretch()
+
+        cards_row.addWidget(commit_frame, stretch=1)
         outer.addLayout(cards_row)
 
         # ----- Made-hand line + outs count -----
@@ -1489,8 +1526,11 @@ class HeroOutsTab(QWidget):
         }
         cell.setStyleSheet("QLabel { " + styles.get(role, styles['unknown']) + " }")
 
-    def update_outs(self, hero_hand, board, dead_cards=None):
-        """Refresh hole-card display, made-hand summary, and outs grid.
+    def update_outs(self, hero_hand, board, dead_cards=None,
+                    pot=None, to_call=None, hero_stack=None,
+                    equity_pct=None):
+        """Refresh hole-card display, made-hand summary, outs grid, and
+        the pot-commitment math panel on the right.
 
         Args:
             hero_hand: list of 2 eval7.Card or card-like with str().
@@ -1498,7 +1538,16 @@ class HeroOutsTab(QWidget):
             dead_cards: optional iterable of cards revealed by villains
                 (e.g. at showdown / in god mode) — drawn dead-grey on
                 the grid so the user knows they can't draw to them.
+            pot:       current pot size before any pending call.
+            to_call:   chips Hero owes to continue (0 means we're not
+                       facing a bet — commitment panel hides the math).
+            hero_stack: Hero's remaining stack BEFORE calling.
+            equity_pct: optional 0-100 equity vs villain ranges; when
+                       supplied, the panel adds "your equity X% vs
+                       pot odds Y% → call/fold" to make the commitment
+                       advice concrete.
         """
+        self._refresh_commit_panel(pot, to_call, hero_stack, equity_pct)
         # Reset every cell to "unknown" first.
         for k, cell in self._cell_widgets.items():
             cell.setText(k[0])  # Just the rank; suit shown by row header
@@ -1549,10 +1598,24 @@ class HeroOutsTab(QWidget):
                 used.update(str(c) for c in (dead_cards or []))
 
                 pair_idx = self._class_index('Pair')
+                high_card_idx = self._class_index('High Card')
                 # Ranks Hero holds in the hole and ranks already on the
                 # board — used to filter out "shared improvement" cards.
                 hero_ranks_held = {str(c)[0] for c in hero_hand[:2]}
                 board_rank_set = {str(c)[0] for c in board}
+                # Highest-ranked card on the board (lower index = higher
+                # rank in 'AKQJT98765432'). Used to decide whether
+                # 'High Card → Pair' counts as an out: pairing an
+                # overcard makes top pair (a real out); pairing a card
+                # below the highest board card makes middle / bottom
+                # pair, which often loses to a top-pair villain.
+                rank_order = 'AKQJT98765432'
+                board_rank_indices = [
+                    rank_order.index(c) for c in board_rank_set
+                    if c in rank_order
+                ]
+                board_high_idx = (min(board_rank_indices)
+                                  if board_rank_indices else 0)
                 for key in self._cell_widgets:
                     if key in used:
                         continue
@@ -1572,14 +1635,26 @@ class HeroOutsTab(QWidget):
                     if (new_card_rank in board_rank_set
                             and new_card_rank not in hero_ranks_held):
                         continue
-                    # Two paths to count this card as an out:
+                    # Three paths to count this card as an out:
                     # (a) Hand category strictly improves AND lands at
                     #     Pair or better — classic outs (drawing to
                     #     two pair / trips / straight / flush / etc.).
                     if new_idx < cur_idx and new_idx < pair_idx:
                         outs.append(key)
                         continue
-                    # (b) Same hand category, but Hero's hole-card
+                    # (b) High Card → Pair where the paired rank is at
+                    #     least the highest card on the board (top pair
+                    #     or overpair). Without this branch, KJ on T78
+                    #     showed only the gutshot 9 as outs and missed
+                    #     the 6 overcard pair outs (KK / JJ).
+                    if (cur_idx == high_card_idx
+                            and new_idx == pair_idx
+                            and new_card_rank in hero_ranks_held
+                            and new_card_rank in rank_order
+                            and rank_order.index(new_card_rank) <= board_high_idx):
+                        outs.append(key)
+                        continue
+                    # (c) Same hand category, but Hero's hole-card
                     #     kicker pairs up to give a *strictly stronger*
                     #     hand. This catches cases like K3 on Q-Q-2-2
                     #     where pairing the K leaves the category at
@@ -1625,6 +1700,88 @@ class HeroOutsTab(QWidget):
             self._outs_text.setText("  ".join(parts) if parts else "")
         else:
             self._outs_text.setText("")
+
+    def update_commit_panel(self, pot=None, to_call=None,
+                             hero_stack=None, equity_pct=None):
+        """Refresh just the pot-commitment math block. Lets the caller
+        update equity-aware advice after the equity Monte-Carlo run
+        finishes (which happens later in update_analysis than the
+        cheap card / outs render)."""
+        self._refresh_commit_panel(pot, to_call, hero_stack, equity_pct)
+
+    def _refresh_commit_panel(self, pot, to_call, hero_stack, equity_pct):
+        """Render the pot-commitment math block to the right of the
+        hero hole cards. Spells out SPR (Stack-to-Pot Ratio) since
+        not every player knows the acronym.
+        """
+        try:
+            pot_v = int(pot) if pot is not None else None
+            tc_v = int(to_call) if to_call is not None else None
+            stk_v = int(hero_stack) if hero_stack is not None else None
+        except (TypeError, ValueError):
+            pot_v = tc_v = stk_v = None
+
+        if pot_v is None or tc_v is None or stk_v is None or tc_v <= 0:
+            self._commit_label.setText(
+                "<span style='color:#888;'>(no live bet to call — "
+                "commitment math will appear here when there's a "
+                "bet to face)</span>")
+            return
+
+        stack_after = max(0, stk_v - tc_v)
+        pot_after = pot_v + tc_v
+        spr = (stack_after / pot_after) if pot_after > 0 else 0.0
+        pot_odds_pct = (100.0 * tc_v / pot_after) if pot_after > 0 else 0.0
+
+        # Commitment band thresholds borrowed from common
+        # SPR teaching tables: SPR < 1 is committed, 1-3 is the
+        # "decision" band, > 3 you've still got room to fold.
+        if spr < 1.0:
+            zone = "<b style='color:#ff7777;'>POT-COMMITTED zone</b> " \
+                   "(SPR &lt; 1) — any further bet from villain that " \
+                   "doesn't bust you would price you in to call."
+        elif spr < 3.0:
+            zone = "<span style='color:#ffd966;'>Borderline " \
+                   "(SPR 1–3)</span> — calling here means you'll " \
+                   "have to make another tough decision on the next " \
+                   "street with about a pot-sized commitment left."
+        else:
+            zone = "<span style='color:#88ff88;'>Not committed</span> " \
+                   f"(SPR ≥ 3) — you can still fold to a future " \
+                   "bet without burning a meaningful share of " \
+                   "your stack."
+
+        # Equity check — only shown when the caller passed it in,
+        # otherwise the panel sticks to pure stack/pot math.
+        equity_block = ""
+        if equity_pct is not None:
+            try:
+                eq = float(equity_pct)
+                verdict = ("<span style='color:#ff7777;'>"
+                           "<b>UNPROFITABLE call</b></span> — "
+                           "fold unless you have a strong read.") \
+                    if eq < pot_odds_pct else \
+                    ("<span style='color:#88ff88;'>"
+                     "<b>Profitable call</b></span> — pot odds met.")
+                equity_block = (
+                    "<br><br>"
+                    f"Pot odds: <b>{pot_odds_pct:.1f}%</b> &nbsp; "
+                    f"Equity vs ranges: <b>{eq:.1f}%</b><br>"
+                    f"&nbsp;→ {verdict}"
+                )
+            except (TypeError, ValueError):
+                equity_block = ""
+
+        html = (
+            f"You'd put in <b>${tc_v:,}</b> with <b>${stk_v:,}</b> "
+            f"left, leaving <b>${stack_after:,}</b> behind in a pot "
+            f"of <b>${pot_after:,}</b>.<br><br>"
+            f"<b>Stack-to-Pot Ratio (SPR)</b> after call: "
+            f"<b>{spr:.2f}</b><br>"
+            f"&nbsp;→ {zone}"
+            f"{equity_block}"
+        )
+        self._commit_label.setText(html)
 
     def _class_index(self, hand_class: str) -> int:
         """Return rank index of a hand-type string (lower = stronger).
@@ -2801,18 +2958,32 @@ class TheoryOfMindPanel(QWidget):
         # Refresh the Hero outs tab on every update.  Dead cards =
         # any villain hand we already know about (god-mode reveals,
         # showdown).  Without those, an out we count could already be
-        # in someone else's pocket and silently un-drawable.
+        # in someone else's pocket and silently un-drawable. We also
+        # pass pot / to_call / hero_stack so the commitment math panel
+        # to the right of the hole cards stays in sync. Equity is
+        # filled in later via update_commit_panel after the MC run.
         if hasattr(self, 'hero_tab') and self.hero_tab is not None:
             try:
                 hero_hand_for_tab = list(hero_hand) if hero_hand else []
                 dead = []
+                hero_player = None
                 for p in players:
                     if (p.style != 'human' and p.active
                             and p.hand and len(p.hand) >= 2):
                         dead.extend(p.hand)
+                    if p.style == 'human':
+                        hero_player = p
+                hero_stack_v = (int(hero_player.stack)
+                                if hero_player is not None else None)
+                to_call_v = max(0, int(current_bet) - int(hero_bet)) \
+                    if (current_bet or hero_bet) else 0
                 self.hero_tab.update_outs(
                     hero_hand_for_tab, list(board) if board else [],
-                    dead_cards=dead)
+                    dead_cards=dead,
+                    pot=int(pot) if pot is not None else None,
+                    to_call=to_call_v,
+                    hero_stack=hero_stack_v,
+                )
             except Exception:
                 pass
 
@@ -3095,6 +3266,23 @@ class TheoryOfMindPanel(QWidget):
                     hero_equity = self.calculate_equity_vs_ranges(hero_hand, all_ranges, board)
                     equity_mode = "vs Ranges"
             self.equity_label.setText(f"Equity ({equity_mode}): {hero_equity:.1%}")
+
+            # Feed the equity figure into the Hero tab's commitment
+            # panel so its "pot odds vs equity" verdict matches what
+            # the equity strip above the tabs is showing.
+            try:
+                if hasattr(self, 'hero_tab') and self.hero_tab is not None:
+                    hero_p = next(
+                        (p for p in players if p.style == 'human'), None)
+                    self.hero_tab.update_commit_panel(
+                        pot=int(pot) if pot is not None else None,
+                        to_call=max(0, int(current_bet) - int(hero_bet)),
+                        hero_stack=int(hero_p.stack)
+                            if hero_p is not None else None,
+                        equity_pct=float(hero_equity) * 100.0,
+                    )
+            except Exception:
+                pass
 
             # Color equity label based on comparison with pot odds
             if pot_odds > 0:
