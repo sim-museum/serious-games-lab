@@ -158,10 +158,15 @@ DEFAULT_BOT_LINEUP = [
     # polarised raises ~85% pot) and Aggro Angela (LAG, raises wide).
     # Bots that hardly ever raise gave too quiet a game; this lineup
     # forces the human to face frequent pre- and post-flop pressure.
-    (1, "Sharkey Steve",  "shark"),      # GTO-leaning, value-raises hard
-    (2, "Aggro Angela",   "aggressive"), # LAG, raises wide and often
-    (3, "Loose Bruce",    "loose"),      # calling station — variety
-    (4, "Tight Tim",      "tight"),      # rock — punishes loose play
+    # Seats 4 and 3 are the LEFT column of the table view
+    # (left_panel iterates [4, 3] top-to-bottom in MainWindow), so
+    # putting Sharkey Steve and Aggro Angela there is what gives
+    # them the requested left-side seats. Tim/Bruce land on the
+    # right column (seats 1, 2).
+    (1, "Tight Tim",      "tight"),      # rock — punishes loose play
+    (2, "Loose Bruce",    "loose"),      # calling station — variety
+    (3, "Aggro Angela",   "aggressive"), # LAG, raises wide and often (lower-left)
+    (4, "Sharkey Steve",  "shark"),      # GTO-leaning, value-raises hard (upper-left)
     (5, "Fluid Fiona",    "tom"),        # opponent-modelling Theory-of-Mind
 ]
 
@@ -5362,10 +5367,10 @@ class PokerWindow(QMainWindow):
         # reaches the same state.
         self.players = [
             Player("Hero (You)",      "human"),
-            Player("Sharkey Steve",   "shark"),       # GTO-leaning, raises hard
-            Player("Aggro Angela",    "aggressive"),  # LAG, raises wide
-            Player("Loose Bruce",     "loose"),       # calling station — variety
-            Player("Tight Tim",       "tight"),       # rock — punishes loose play
+            Player("Tight Tim",       "tight"),       # right column, top
+            Player("Loose Bruce",     "loose"),       # right column, bottom
+            Player("Aggro Angela",    "aggressive"),  # left column, bottom
+            Player("Sharkey Steve",   "shark"),       # left column, top
             Player("Fluid Fiona",     "tom"),         # opponent-modelling ToM
         ]
 
@@ -5680,7 +5685,7 @@ class PokerWindow(QMainWindow):
     # per-seat overrides — otherwise stale "tom"-on-every-seat configs
     # from older sessions keep producing duplicate lineups even after we
     # ship a new default.
-    BOT_PREFS_SCHEMA_VERSION = 3
+    BOT_PREFS_SCHEMA_VERSION = 4
 
     def _load_bot_preferences(self):
         """Load bot preferences from QSettings.
