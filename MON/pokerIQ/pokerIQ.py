@@ -1391,9 +1391,22 @@ class HeroOutsTab(QWidget):
     """
 
     # Order matches eval7's handtype ranking; lower index = stronger.
+    # eval7.handtype() returns the SHORT names ("Trips", "Quads", etc.) —
+    # the long names ("Three of a Kind", "Four of a Kind") cause
+    # _class_index() to fall through to the unknown-class fallback,
+    # which then mis-ranks Trips/Quads as weaker than Pair. Keep both
+    # spellings so any caller that produces either form lines up
+    # correctly.
     _HAND_CLASS_ORDER = [
-        "Straight Flush", "Four of a Kind", "Full House", "Flush",
-        "Straight", "Three of a Kind", "Two Pair", "Pair", "High Card",
+        "Straight Flush",
+        "Quads", "Four of a Kind",
+        "Full House",
+        "Flush",
+        "Straight",
+        "Trips", "Three of a Kind",
+        "Two Pair",
+        "Pair",
+        "High Card",
     ]
     _SUITS_ORDER = ['s', 'h', 'd', 'c']
     _RANKS_ORDER = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
@@ -1412,33 +1425,31 @@ class HeroOutsTab(QWidget):
         title.setStyleSheet("color: #fff;")
         outer.addWidget(title)
 
-        # Cards on the left; commitment-math panel on the right of the
-        # same row so the empty space next to the hole cards earns its
-        # keep. The commitment panel walks through "if you call X you'd
-        # have Y behind in a pot of Z, that's an SPR of S — committed
-        # / not committed" so the player doesn't have to do the math.
+        # Cards on their own row first.  The commitment-math frame
+        # used to share this row but the HBoxLayout pinned its height
+        # to the card height, which clipped the body label whenever
+        # the SPR + zone description wrapped to four or more lines.
+        # Lifting it to a separate row gives it the full panel width
+        # and lets the label grow vertically as needed.
         cards_row = QHBoxLayout()
-        cards_row.setSpacing(20)
-
-        cards_box = QHBoxLayout()
-        cards_box.setSpacing(15)
+        cards_row.setSpacing(15)
         self._card1 = CardWidget()
         self._card2 = CardWidget()
-        cards_box.addWidget(self._card1)
-        cards_box.addWidget(self._card2)
-        cards_row.addLayout(cards_box)
+        cards_row.addWidget(self._card1)
+        cards_row.addWidget(self._card2)
+        cards_row.addStretch()
+        outer.addLayout(cards_row)
 
-        cards_row.addSpacing(20)
-
+        # Commitment-math frame on its own row, below the cards.
         commit_frame = QFrame()
         commit_frame.setStyleSheet(
             "QFrame { background: #1a1a1a; border: 1px solid #333;"
-            " border-radius: 6px; padding: 10px; }"
+            " border-radius: 6px; padding: 12px; }"
         )
         commit_layout = QVBoxLayout(commit_frame)
-        commit_layout.setSpacing(4)
+        commit_layout.setSpacing(6)
         commit_title = QLabel("Pot Commitment")
-        commit_title.setFont(QFont('Arial', 16, QFont.Weight.Bold))
+        commit_title.setFont(QFont('Arial', 22, QFont.Weight.Bold))
         commit_title.setStyleSheet(
             "color: #fff; background: transparent; border: none;")
         commit_layout.addWidget(commit_title)
@@ -1448,16 +1459,13 @@ class HeroOutsTab(QWidget):
         )
         self._commit_label.setWordWrap(True)
         self._commit_label.setTextFormat(Qt.TextFormat.RichText)
-        self._commit_label.setFont(QFont('Arial', 14))
+        self._commit_label.setFont(QFont('Arial', 18))
         self._commit_label.setStyleSheet(
             "color: #cccccc; background: transparent; border: none;")
         self._commit_label.setAlignment(
             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         commit_layout.addWidget(self._commit_label)
-        commit_layout.addStretch()
-
-        cards_row.addWidget(commit_frame, stretch=1)
-        outer.addLayout(cards_row)
+        outer.addWidget(commit_frame)
 
         # ----- Made-hand line + outs count -----
         info_row = QHBoxLayout()
@@ -1713,6 +1721,10 @@ class HeroOutsTab(QWidget):
         """Render the pot-commitment math block to the right of the
         hero hole cards. Spells out SPR (Stack-to-Pot Ratio) since
         not every player knows the acronym.
+
+        When there's no live bet to face, we still show the *current*
+        SPR (stack / pot) so the user can see going-in commitment
+        before they have to make a decision.
         """
         try:
             pot_v = int(pot) if pot is not None else None
@@ -1721,11 +1733,38 @@ class HeroOutsTab(QWidget):
         except (TypeError, ValueError):
             pot_v = tc_v = stk_v = None
 
-        if pot_v is None or tc_v is None or stk_v is None or tc_v <= 0:
-            self._commit_label.setText(
-                "<span style='color:#888;'>(no live bet to call — "
-                "commitment math will appear here when there's a "
-                "bet to face)</span>")
+        # No live bet to face — but we can still surface the going-in
+        # SPR (stack / pot) so the user knows roughly how much room
+        # they have to fold a future bet.
+        if pot_v is None or stk_v is None or tc_v is None or tc_v <= 0:
+            if pot_v is not None and stk_v is not None and pot_v > 0:
+                spr_now = stk_v / pot_v
+                if spr_now < 1.0:
+                    zone = ("<b style='color:#ff7777;'>POT-COMMITTED</b> "
+                            "— any bet that doesn't bust you would "
+                            "price you in to call.")
+                elif spr_now < 3.0:
+                    zone = ("<span style='color:#ffd966;'>Borderline "
+                            "(SPR 1–3)</span> — facing a bet here "
+                            "tends to commit you on the next street.")
+                else:
+                    zone = ("<span style='color:#88ff88;'>Not committed</span> "
+                            "(SPR ≥ 3) — plenty of room to fold a "
+                            "future bet without burning a meaningful "
+                            "share of your stack.")
+                self._commit_label.setText(
+                    "<span style='color:#cccccc;'>"
+                    f"No live bet to face. Pot is <b>${pot_v:,}</b>, "
+                    f"you have <b>${stk_v:,}</b> behind.<br>"
+                    f"<b>Stack-to-Pot Ratio (SPR)</b>: "
+                    f"<b>{spr_now:.2f}</b><br>"
+                    f"&nbsp;→ {zone}</span>"
+                )
+            else:
+                self._commit_label.setText(
+                    "<span style='color:#888;'>(no live bet to call — "
+                    "commitment math will appear here when there's a "
+                    "bet to face)</span>")
             return
 
         stack_after = max(0, stk_v - tc_v)
@@ -4684,19 +4723,19 @@ class HandSummaryDialog(QDialog):
         wrap_layout = QVBoxLayout(wrap)
         wrap_layout.setContentsMargins(20, 10, 20, 12)
         wrap_layout.setSpacing(6)
-        # Hindsight type matches the surrounding stats text — 22pt for
-        # both the header and the body so nothing reads as "small print"
-        # next to the equity rows above.
+        # Hindsight type sits one notch above the surrounding stats —
+        # 28pt header, 26pt body — so the post-mortem reads as the most
+        # important block on the panel.
         head = QLabel(f"Hindsight — {street}")
         head.setStyleSheet(
-            "font-size: 22px; font-weight: bold; color: #ffd966;"
+            "font-size: 28px; font-weight: bold; color: #ffd966;"
             " background: transparent; border: none;")
         wrap_layout.addWidget(head)
         body = QLabel(text)
         body.setWordWrap(True)
         body.setStyleSheet(
-            "font-size: 22px; color: %s; background: transparent;"
-            " border: none; font-style: %s;"
+            "font-size: 26px; color: %s; background: transparent;"
+            " border: none; font-style: %s; line-height: 1.35;"
             % ("#bcae7a" if is_placeholder else "#ffd966",
                "italic" if is_placeholder else "normal"))
         wrap_layout.addWidget(body)
@@ -4721,9 +4760,9 @@ class HandSummaryDialog(QDialog):
                 if street in self.street_reflections:
                     label.setText(self.street_reflections[street])
                     label.setStyleSheet(
-                        "font-size: 22px; color: #ffd966;"
+                        "font-size: 26px; color: #ffd966;"
                         " background: transparent; border: none;"
-                        " font-style: normal;")
+                        " font-style: normal; line-height: 1.35;")
                 elif status_text:
                     label.setText(status_text)
             except RuntimeError:
@@ -5609,9 +5648,15 @@ class ClaudeAnalysisThread(QThread):
                 "street, use ONLY the cards listed for THAT player plus "
                 "the board cards listed for that street.\n\n"
                 "OUTPUT FORMAT — strictly two sections:\n\n"
-                "(1) Per-action annotations.  For EACH numbered action "
-                "line below, output a single line of the form:\n"
+                "(1) Per-action annotations.  Pick the action lines you "
+                "want to comment on and emit ONE line each of the form:\n"
                 "  N. <one-sentence comment, optionally with !/!?/?!/? marker>\n"
+                "where N is the EXACT integer printed at the start of "
+                "the action line in the log below — copy it verbatim.\n"
+                "Do NOT renumber.  Do NOT use a hero-only sequence "
+                "(1,2,3,4 for the four hero actions).  If hero acts on "
+                f"action 3 and again on action 10, the two annotations "
+                "must start with '3.' and '10.' respectively.\n"
                 "Use markers sparingly: ! = strong play, !? = interesting, "
                 "?! = dubious, ? = mistake. Comment ONLY on action lines "
                 f"taken by {name} (the hero) — skip villain actions, "
@@ -8952,23 +8997,28 @@ class PokerWindow(QMainWindow):
                 pass
             self.show_game_over(winner)
 
-    # Game-over dialogs use a noticeably larger font than the system
-    # default — the standard 9-10pt left users squinting at the
-    # "out of chips / play again" prompt that ends a long session.
+    # Game-over dialogs match the "Confirm big bet" treatment: 24pt
+    # bold body text, no warning glyph (which used to reserve a wide
+    # blank column on the left), and a 720px min-width so the prompt
+    # never wraps the question mid-sentence.
     _GAME_OVER_STYLE = (
-        "QMessageBox { background-color: #f0f0f0; font-size: 18px; }"
-        "QMessageBox QLabel { color: #000; font-size: 18px; "
-        "min-width: 480px; padding: 6px; }"
-        "QMessageBox QPushButton { font-size: 16px; padding: 8px 22px; "
-        "min-width: 100px; }"
+        "QMessageBox { background-color: #f0f0f0; }"
+        "QMessageBox QLabel { color: #000; background-color: transparent;"
+        " font-size: 24px; min-width: 720px; padding: 14px 10px; }"
+        "QMessageBox QPushButton { font-size: 18px; padding: 10px 28px; "
+        "min-width: 120px; }"
     )
 
     def _game_over_question(self, text: str,
                             title: str = "Game Over") -> 'QMessageBox.StandardButton':
         msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setIcon(QMessageBox.Icon.NoIcon)
         msg.setWindowTitle(title)
-        msg.setText(text)
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setText(
+            f"<div style='font-size:24px; font-weight:bold; color:#000;'>"
+            f"{text}</div>"
+        )
         msg.setStandardButtons(
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         msg.setDefaultButton(QMessageBox.StandardButton.Yes)
@@ -8978,9 +9028,13 @@ class PokerWindow(QMainWindow):
     def _game_over_information(self, text: str,
                                 title: str = "Game Over") -> None:
         msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setIcon(QMessageBox.Icon.NoIcon)
         msg.setWindowTitle(title)
-        msg.setText(text)
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setText(
+            f"<div style='font-size:24px; font-weight:bold; color:#000;'>"
+            f"{text}</div>"
+        )
         msg.setStandardButtons(QMessageBox.StandardButton.Ok)
         msg.setStyleSheet(self._GAME_OVER_STYLE)
         msg.exec()
@@ -8988,9 +9042,17 @@ class PokerWindow(QMainWindow):
     def show_game_over(self, winner):
         """Show game over dialog and offer to play again."""
         msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.NoIcon)
         msg.setWindowTitle("Game Over!")
-        msg.setText(f"{winner.name} wins the game with ${winner.stack}!")
-        msg.setInformativeText("Would you like to play another game?")
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setText(
+            f"<div style='font-size:24px; font-weight:bold; color:#000;"
+            f" margin-bottom:8px;'>"
+            f"{winner.name} wins the game with ${winner.stack}!"
+            f"</div>"
+            f"<div style='font-size:24px; font-weight:bold; color:#000;'>"
+            f"Would you like to play another game?</div>"
+        )
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         msg.setDefaultButton(QMessageBox.StandardButton.Yes)
         msg.setStyleSheet(self._GAME_OVER_STYLE)
