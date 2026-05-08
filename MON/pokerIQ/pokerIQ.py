@@ -151,11 +151,17 @@ BOT_CUTE_NAMES = {
 # by reset_bots_to_default_lineup() and by the spectator class so
 # both code paths stay in sync.
 DEFAULT_BOT_LINEUP = [
-    # (seat_index, character_name, style_id)
-    (1, "Optimal Olivia", "optimal"),    # equity-pure, no mixing
-    (2, "Sharkey Steve",  "shark"),      # GTO-leaning, polarised, mixed-strategy
-    (3, "Loose Bruce",    "loose"),      # calling station for value-extraction practice
-    (4, "Exploit Eli",    "exploit"),    # reads pool, counter-adjusts
+    # (seat_index, character_name, style_id). Five different approaches:
+    # one calling station (Loose Bruce), one rock (Tight Tim), one
+    # opponent-modeller (Fluid Fiona), and two of the strongest
+    # raise-happy bots in the codebase — Sharkey Steve (GTO-leaning,
+    # polarised raises ~85% pot) and Aggro Angela (LAG, raises wide).
+    # Bots that hardly ever raise gave too quiet a game; this lineup
+    # forces the human to face frequent pre- and post-flop pressure.
+    (1, "Sharkey Steve",  "shark"),      # GTO-leaning, value-raises hard
+    (2, "Aggro Angela",   "aggressive"), # LAG, raises wide and often
+    (3, "Loose Bruce",    "loose"),      # calling station — variety
+    (4, "Tight Tim",      "tight"),      # rock — punishes loose play
     (5, "Fluid Fiona",    "tom"),        # opponent-modelling Theory-of-Mind
 ]
 
@@ -664,17 +670,36 @@ class Player:
             return 'c', 0
 
         elif self.style == 'aggressive':
-            if self.actions_this_round > 2:
+            # LAG profile — raises wide and often. Earlier version
+            # capped to 2 actions per round and only raised at 60%+
+            # equity, which made the seat passive in practice. Now
+            # raises every street up to 4 times, value-raises
+            # starting at 50% equity, and bluff-raises ~35% of the
+            # time when down to 25-50% equity. Bet size grows with
+            # equity (60-110% pot) so monsters extract real value.
+            if self.actions_this_round > 4:
                 return 'c', 0
             rng = random.random()
-            if hu_equity > 0.60:
-                if rng < 0.80:
-                    bet = int(game_state['pot'] * random.uniform(0.6, 1.0))
-                    return 'r', max(bet, to_call + game_state.get('bb_amount', 2))
+            bb = game_state.get('bb_amount', 2)
+            pot = max(1, game_state['pot'])
+
+            if hu_equity > 0.80:
+                bet = int(pot * random.uniform(0.9, 1.1))
+                return 'r', max(bet, to_call + 2 * bb)
+            if hu_equity > 0.50:
+                if rng < 0.85:
+                    bet = int(pot * random.uniform(0.6, 0.95))
+                    return 'r', max(bet, to_call + 2 * bb)
                 return 'c', 0
-            if hu_equity < 0.40 and rng < 0.25:
-                bet = int(game_state['pot'] * 0.5)
-                return 'r', max(bet, to_call + game_state.get('bb_amount', 2))
+            if hu_equity > 0.25:
+                # Bluff-raise more often than the old 25% threshold —
+                # this is what makes Aggro Angela actually aggressive.
+                if rng < 0.35:
+                    bet = int(pot * random.uniform(0.5, 0.75))
+                    return 'r', max(bet, to_call + 2 * bb)
+                if equity >= pot_odds + 0.02:
+                    return 'c', 0
+                return 'f', 0
             if equity < pot_odds:
                 return 'f', 0
             return 'c', 0
@@ -4854,6 +4879,10 @@ def _claude_invoke_args(prompt: str, *, mode: str = 'critique') -> list:
         '--model', CLAUDE_ANNOTATION_MODEL,
         '--thinking', 'enabled',
         '--max-turns', '1',
+        # JSON output so the caller can parse `modelUsage` and surface
+        # a friendly model label ("Claude Opus 4.7 — Hero" rather than
+        # the bare "Claude").
+        '--output-format', 'json',
         prompt,
     ]
 
@@ -4952,6 +4981,7 @@ class ClaudeAnalysisThread(QThread):
     def run(self):
         import shutil
         import subprocess
+        import json as _json
 
         results = []
         total = max(1, len(self._povs))
@@ -4968,21 +4998,24 @@ class ClaudeAnalysisThread(QThread):
             self.progress.emit(i, total, f"Analyzing for {name}…")
 
             prompt = self._build_prompt(name)
+            text = ""
+            model_label = ""
             try:
                 # Opus 4.7 with --thinking can take a while; bump the timeout.
                 result = subprocess.run(
                     _claude_invoke_args(prompt, mode=self._mode),
                     capture_output=True, text=True, timeout=240,
                 )
-                text = ""
-                if result.returncode == 0 and len(result.stdout.strip()) > 10:
-                    text = result.stdout.strip()
-                else:
-                    # Surface why claude produced nothing usable: exit code
-                    # + first line of stderr if any. The on_finished
-                    # callback turns empty text into a yellow diagnostic
-                    # block, so this gets folded into a longer message via
-                    # the player-name prefix on display.
+                if result.returncode == 0 and result.stdout.strip():
+                    try:
+                        payload = _json.loads(result.stdout)
+                        text = (payload.get('result') or '').strip()
+                        model_label = self._friendly_model_label(
+                            payload.get('modelUsage') or {})
+                    except Exception:
+                        # Fall back to raw stdout if JSON parsing fails.
+                        text = result.stdout.strip()
+                if not text or len(text) <= 10:
                     err_first = ''
                     if result.stderr:
                         err_first = result.stderr.strip().splitlines()[0]
@@ -4994,10 +5027,44 @@ class ClaudeAnalysisThread(QThread):
                 text = "(claude timed out after 240s)"
             except Exception as ex:
                 text = f"(analysis failed: {ex})"
-            results.append({'player': name, 'seat': seat, 'text': text})
+            results.append({
+                'player': name, 'seat': seat,
+                'text': text, 'model': model_label,
+            })
             self.progress.emit(i + 1, total, f"Finished {name}")
 
         self.finished_analyses.emit(results)
+
+    @staticmethod
+    def _friendly_model_label(model_usage: dict) -> str:
+        """Pick the dominant model from `modelUsage` and prettify the
+        slug, e.g. 'claude-haiku-4-5-20251001' -> 'Claude Haiku 4.5'."""
+        if not model_usage:
+            return ""
+
+        def _score(entry):
+            if not isinstance(entry, dict):
+                return 0
+            return (int(entry.get('inputTokens') or 0)
+                    + int(entry.get('outputTokens') or 0)
+                    + int(entry.get('cacheReadInputTokens') or 0)
+                    + int(entry.get('cacheCreationInputTokens') or 0))
+
+        slug = max(model_usage.keys(), key=lambda k: _score(model_usage[k]))
+        # Strip an "[1m]"-style suffix and the trailing -YYYYMMDD date.
+        core = slug.split('[', 1)[0]
+        parts = core.split('-')
+        if parts and parts[-1].isdigit() and len(parts[-1]) == 8:
+            parts = parts[:-1]
+        # parts now look like e.g. ['claude', 'haiku', '4', '5'] or
+        # ['claude', 'opus', '4', '7'].  Re-emit with title case and
+        # join the trailing version digits with a dot.
+        if len(parts) >= 4 and parts[0] == 'claude':
+            family = parts[1].title()
+            ver = '.'.join(parts[2:])
+            return f"Claude {family} {ver}"
+        # Fallback: just title-case the slug.
+        return ' '.join(p.title() for p in parts) or slug
 
 
 # --- Main Game Window ---
@@ -5017,21 +5084,16 @@ class PokerWindow(QMainWindow):
         # Initialize QSettings for preferences persistence
         self.settings = QSettings("PokerIQ", "PokerIQ")
 
-        # Initialize game state with original player names and styles
+        # Initialize game state — keep this in sync with
+        # DEFAULT_BOT_LINEUP up top so reset_bots_to_default_lineup()
+        # reaches the same state.
         self.players = [
-            # Default 6-seat lineup. The previous mix of 4 mid-strength
-            # bots + Fluid Fiona didn't have enough top-end variety, so
-            # Tight Tim and Aggro Angela have been replaced with the new
-            # Sharkey Steve (balanced GTO-leaning) and Exploit Eli
-            # (opponent-adapting). Loose Bruce stays for variety
-            # (calling-station spots are useful to learn against);
-            # everyone else upgraded.
-            Player("Hero (You)", "human"),
-            Player("Optimal Olivia", "optimal"),
-            Player("Sharkey Steve", "shark"),       # NEW strong, GTO-leaning
-            Player("Loose Bruce", "loose"),         # variety
-            Player("Exploit Eli", "exploit"),       # NEW strong, adaptive
-            Player("Fluid Fiona", "tom"),           # ToM
+            Player("Hero (You)",      "human"),
+            Player("Sharkey Steve",   "shark"),       # GTO-leaning, raises hard
+            Player("Aggro Angela",    "aggressive"),  # LAG, raises wide
+            Player("Loose Bruce",     "loose"),       # calling station — variety
+            Player("Tight Tim",       "tight"),       # rock — punishes loose play
+            Player("Fluid Fiona",     "tom"),         # opponent-modelling ToM
         ]
 
         # Store original names and styles for restoring defaults
@@ -5135,6 +5197,7 @@ class PokerWindow(QMainWindow):
         self._current_hero_hand_class = None
         self._current_hero_starting_stack = None
         self._all_in_seen_this_hand = set()  # names that went all-in this hand
+        self._hand_in_progress = False  # gates re-clicks of "New Hand"
 
     @staticmethod
     def _fresh_table_stats() -> dict:
@@ -5344,7 +5407,7 @@ class PokerWindow(QMainWindow):
     # per-seat overrides — otherwise stale "tom"-on-every-seat configs
     # from older sessions keep producing duplicate lineups even after we
     # ship a new default.
-    BOT_PREFS_SCHEMA_VERSION = 2
+    BOT_PREFS_SCHEMA_VERSION = 3
 
     def _load_bot_preferences(self):
         """Load bot preferences from QSettings.
@@ -6309,7 +6372,38 @@ class PokerWindow(QMainWindow):
         self.action_log.append(msg)
         if len(self.action_log) > 5:
             self.action_log = self.action_log[-5:]
-        self.log_label.setText(self._format_action_log_html(self.action_log))
+        spectating = getattr(self, '_hero_folded_spectating', False)
+        view_idx = getattr(self, '_spectator_view_idx', -1)
+        # Don't repaint the visible strip while a folded spectator is
+        # parked on a past street — they choose when to advance.
+        if not (spectating and view_idx >= 0):
+            # Yellow-highlights raises and all-ins via the rich-text
+            # formatter; falls back to plain " | ".join when the
+            # formatter helper isn't available (older save format).
+            try:
+                self.log_label.setText(
+                    self._format_action_log_html(self.action_log))
+            except AttributeError:
+                self.log_label.setText(" | ".join(self.action_log))
+        # Keep the current-street snapshot's action_log fresh while the
+        # hero is in spectator mode, so flipping back to "now" via Next
+        # Street shows the live tail (and so the hero's own fold message
+        # ends up in the preflop-fold snapshot, which is captured before
+        # the fold message is logged).  If the user is currently parked
+        # on this same street's snapshot, also refresh the displayed log
+        # so events on their viewed street appear without forcing them
+        # to navigate.
+        if spectating and self.street_idx < len(STREETS):
+            try:
+                self._spectator_record_snapshot(
+                    STREETS[self.street_idx], self.street_idx,
+                    self.board, self.action_log)
+                snaps = getattr(self, '_spectator_street_snapshots', [])
+                if (0 <= view_idx < len(snaps)
+                        and snaps[view_idx].get('street_idx') == self.street_idx):
+                    self._spectator_show_snapshot(view_idx)
+            except Exception:
+                pass
         # Also write to file
         self.write_log(msg, include_stats=include_stats)
         # Track for Theory of Mind analysis
@@ -6590,14 +6684,18 @@ class PokerWindow(QMainWindow):
 
     def deal_hand(self):
         """Start a new hand."""
-        # If the user dealt a new hand straight from the folded-spectator
-        # view (without explicitly clicking "Close View"), tear that
-        # state down here so the next hand starts clean — God Mode /
-        # Show Tells revert to whatever they were before the fold,
-        # action buttons return, and the ◀ ▶ ● spectator row hides.
+        # Block re-entry while a hand is in progress so the human can't
+        # click "New Hand" mid-hand and burn other players' blinds.
+        if getattr(self, '_hand_in_progress', False):
+            return
+        # If the hero is still parked in spectator mode from the previous
+        # hand (paging through streets), tear that UI down before starting
+        # the next hand. God Mode / Show Tells revert to whatever they
+        # were before the fold and the spectator-nav row hides.
         if getattr(self, '_hero_folded_spectating', False):
             self._exit_spectator_mode()
-
+        self._hand_in_progress = True
+        self.new_hand_btn.setEnabled(False)
         self.hand_number += 1
         self.action_log = []
         self.action_history = []  # Reset for Theory of Mind
@@ -6682,6 +6780,8 @@ class PokerWindow(QMainWindow):
         # Check if hero is busted
         hero = self.players[0]
         if hero.stack <= 0:
+            self._hand_in_progress = False
+            self.new_hand_btn.setEnabled(True)
             reply = self._game_over_question(
                 "You're out of chips! Would you like to start a new game?")
             if reply == QMessageBox.StandardButton.Yes:
@@ -6690,6 +6790,8 @@ class PokerWindow(QMainWindow):
 
         active_count = sum(1 for p in self.players if p.active)
         if active_count < 2:
+            self._hand_in_progress = False
+            self.new_hand_btn.setEnabled(True)
             self._game_over_information(
                 "You've won! All opponents are eliminated!")
             return
@@ -7144,10 +7246,26 @@ class PokerWindow(QMainWindow):
         self._spectator_close_btn.setVisible(True)
         self._spectator_close_btn.setEnabled(True)
 
-        # If viewing latest, snap view index to current street_idx
-        if not hasattr(self, '_spectator_view_idx'):
-            self._spectator_view_idx = -1
+        # Pin the view to a snapshot of the moment-of-fold so the live
+        # game (which keeps running for active players) doesn't drag the
+        # board / log forward on the spectator's screen.  They click
+        # Next Street to advance at their own pace.
+        self._capture_spectator_snapshot()
+        n = self._spectator_snapshot_count()
+        self._spectator_view_idx = max(0, n - 1)
+        self._spectator_show_snapshot(self._spectator_view_idx)
         self._update_spectator_nav_buttons()
+
+    def _capture_spectator_snapshot(self):
+        """Capture a snapshot of the current street's state.  Used at
+        fold time and at hand end so the spectator can navigate through
+        every street including the showdown."""
+        try:
+            street = STREETS[self.street_idx] if self.street_idx < len(STREETS) else "Showdown"
+        except Exception:
+            street = "Preflop"
+        self._spectator_record_snapshot(
+            street, self.street_idx, self.board, self.action_log)
 
     def _exit_spectator_mode(self):
         """Restore normal UI after spectator hand ends.
@@ -7251,11 +7369,19 @@ class PokerWindow(QMainWindow):
             self.table.update()
         except Exception:
             pass
-        # Replace the action log row with this street's tail.
+        # Replace the visible action-log strip with this snapshot's tail.
+        # Only touch the displayed label — self.action_log stays as the
+        # live log so future snapshots and outgoing broadcasts keep
+        # working unchanged.
         try:
-            log = snap.get('action_log', [])
-            self.action_log = list(log)[-5:]
-            self.log_label.setText(self._format_action_log_html(self.action_log))
+            log = list(snap.get('action_log', []))[-5:]
+            # Live action_log stays untouched so future snapshots and
+            # broadcasts keep using the authoritative tail; only the
+            # visible strip flips to this snapshot's content.
+            try:
+                self.log_label.setText(self._format_action_log_html(log))
+            except AttributeError:
+                self.log_label.setText(" | ".join(log))
         except Exception:
             pass
 
@@ -7288,6 +7414,31 @@ class PokerWindow(QMainWindow):
         if not self.waiting_for_human:
             return
 
+        # Confirm any call or raise that would commit > 50 % of the
+        # hero's stack this round. Easy mis-clicks (mistaken Call,
+        # over-sized Raise) used to lose huge pots silently — pop
+        # OK / Cancel so the user has a moment to back out.
+        if action in ('c', 'r'):
+            hero_seat = self.my_seat if self.my_seat is not None else 0
+            if 0 <= hero_seat < len(self.players):
+                hero = self.players[hero_seat]
+                # `amount` is the TOTAL commitment-this-round for raises
+                # (call + raise above), 0 for plain calls. For a call
+                # we charge the difference between the table's current
+                # bet and what the hero already has in this round.
+                already_in = hero.bet_in_round
+                if action == 'r':
+                    extra = max(0, int(amount) - already_in)
+                else:
+                    extra = max(0, self.current_bet - already_in)
+                if hero.stack > 0 and extra > hero.stack * 0.5:
+                    pct = int(round(100 * extra / max(1, hero.stack)))
+                    label = "raise" if action == 'r' else "call"
+                    if not self._confirm_big_bet(label, extra, pct):
+                        # User cancelled — leave action buttons enabled
+                        # so they can pick again.
+                        return
+
         self.disable_human_actions()
 
         # If hero folds, enter spectator mode
@@ -7307,6 +7458,30 @@ class PokerWindow(QMainWindow):
         # Local play
         player = self.players[0]
         self.process_action(player, 0, action, amount)
+
+    def _confirm_big_bet(self, label: str, amount: int, pct: int) -> bool:
+        """OK/Cancel dialog when a single action commits > 50 % of stack.
+
+        Returns True iff the user clicks OK. Uses the same light-grey
+        palette as the Game Over dialog so the prompt is readable
+        regardless of which window's stylesheet we descend from.
+        """
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Warning)
+        msg.setWindowTitle("Confirm big bet")
+        msg.setText(
+            f"This {label} commits ${amount} — {pct}% of your stack."
+        )
+        msg.setInformativeText("Continue?")
+        msg.setStandardButtons(
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
+        )
+        msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        try:
+            msg.setStyleSheet(self._GAME_OVER_STYLE)
+        except AttributeError:
+            pass
+        return msg.exec() == QMessageBox.StandardButton.Ok
 
     def show_raise_dialog(self):
         """Show dialog to select a raise.
@@ -7523,6 +7698,20 @@ class PokerWindow(QMainWindow):
         current_street = STREETS[self.street_idx]
         self._capture_street_stats(current_street)
 
+        # Snapshot the JUST-ENDED street so a folded spectator can
+        # navigate back to it (with this street's full action tail).
+        # Broadcast it so guests get the same history.
+        try:
+            self._spectator_record_snapshot(
+                current_street, self.street_idx, self.board, self.action_log)
+            if (self.network_mode == "host" and self.network_server
+                    and hasattr(self.network_server, "broadcast_board_snapshot")):
+                self.network_server.broadcast_board_snapshot(
+                    current_street, self.street_idx,
+                    [str(c) for c in self.board], list(self.action_log))
+        except Exception:
+            pass
+
         # Reset bets for next round
         for p in self.players:
             p.bet_in_round = 0
@@ -7614,12 +7803,18 @@ class PokerWindow(QMainWindow):
     def end_hand(self):
         """End the hand and determine winner."""
         self.disable_human_actions()
+        # Hand is complete — re-enable "New Hand". Network-client mode
+        # keeps the button disabled separately (the host controls flow).
+        self._hand_in_progress = False
+        if self.network_mode != "client":
+            self.new_hand_btn.setEnabled(True)
         # Spectator (folded) view is intentionally NOT torn down here —
-        # the user gets to keep God Mode + Show Tells + the ◀▶ street
-        # nav active until they explicitly click "Close View" (or start
-        # a new hand). Hand-summary popups still appear because they're
-        # driven by show_hand_summary() further down the end-of-hand
-        # path and don't depend on spectator state.
+        # the user keeps God Mode + Show Tells + the ◀ ▶ street nav
+        # active until they explicitly click "Close View" or start the
+        # next hand (deal_hand calls _exit_spectator_mode). Hand-summary
+        # popups still appear because they're driven by
+        # show_hand_summary() further down and don't depend on
+        # spectator state.
 
         # Capture final street stats before ending (guard against out-of-bounds
         # since end_betting_round already increments street_idx past the last street)
@@ -7825,6 +8020,32 @@ class PokerWindow(QMainWindow):
 
         # Update display
         self.update_all_panels()
+
+        # Capture a final "showdown" snapshot so a folded spectator can
+        # navigate to the completed board + winner message.  Stored under
+        # an out-of-range street_idx so it sits after Preflop/Flop/Turn/
+        # River.  Host broadcasts so each client sees the same final
+        # frame.
+        showdown_idx = len(STREETS)
+        try:
+            self._spectator_record_snapshot(
+                "Showdown", showdown_idx, self.board, self.action_log)
+            if (self.network_mode == "host" and self.network_server
+                    and hasattr(self.network_server, "broadcast_board_snapshot")):
+                self.network_server.broadcast_board_snapshot(
+                    "Showdown", showdown_idx,
+                    [str(c) for c in self.board],
+                    list(self.action_log))
+        except Exception:
+            pass
+        # If hero is parked in spectator mode, refresh nav button states
+        # and restore their frozen snapshot view (end_hand has been
+        # mutating the live board/pot which would otherwise leak through).
+        if getattr(self, '_hero_folded_spectating', False):
+            self._update_spectator_nav_buttons()
+            view_idx = getattr(self, '_spectator_view_idx', -1)
+            if view_idx >= 0:
+                self._spectator_show_snapshot(view_idx)
 
         # Move dealer button to next player with chips
         self.dealer_idx = (self.dealer_idx + 1) % len(self.players)
@@ -9093,14 +9314,15 @@ class PokerWindow(QMainWindow):
             for a in analyses:
                 name = a.get('player', '?')
                 text = a.get('text', '').strip()
+                model = (a.get('model') or '').strip() or 'Claude'
                 if not text:
                     fail_block = QLabel(
-                        f"Claude — {name}: (no analysis returned — "
+                        f"{model} — {name}: (no analysis returned — "
                         "claude may have failed, timed out, or hit a "
                         "rate limit; check the terminal for stderr)")
-                    # Match the surrounding interpretation text size (18pt)
-                    # so the analysis block reads at the same visual weight
-                    # as the rest of the hand summary.
+                    # Match the surrounding interpretation text size
+                    # (18pt) so the analysis block reads at the same
+                    # weight as the rest of the hand summary.
                     fail_block.setFont(QFont('Arial', 18))
                     fail_block.setWordWrap(True)
                     fail_block.setStyleSheet(
@@ -9109,7 +9331,7 @@ class PokerWindow(QMainWindow):
                     )
                     analysis_layout.addWidget(fail_block)
                     continue
-                block = QLabel(f"Claude — {name}:\n{text}")
+                block = QLabel(f"{model} — {name}:\n{text}")
                 block.setFont(QFont('Arial', 18))
                 block.setWordWrap(True)
                 block.setStyleSheet(
@@ -10069,11 +10291,12 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             for a in analyses:
                 name = a.get('player', '?')
                 text = (a.get('text') or '').strip()
+                model = (a.get('model') or '').strip() or 'Claude'
                 if not text:
                     fail_block = QLabel(
-                        f"Claude — {name} (host): (no analysis — host's "
+                        f"{model} — {name} (host): (no analysis — host's "
                         "claude returned nothing for this POV)")
-                    fail_block.setFont(QFont('Arial', 13))
+                    fail_block.setFont(QFont('Arial', 18))
                     fail_block.setWordWrap(True)
                     fail_block.setStyleSheet(
                         "color: #fc6; background-color: #2a1a1a; padding: 10px;"
@@ -10081,8 +10304,8 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                     )
                     target_layout.addWidget(fail_block)
                     continue
-                block = QLabel(f"Claude — {name} (host):\n{text}")
-                block.setFont(QFont('Arial', 14))
+                block = QLabel(f"{model} — {name} (host):\n{text}")
+                block.setFont(QFont('Arial', 18))
                 block.setWordWrap(True)
                 block.setStyleSheet(
                     "color: #8f8; background-color: #1a2a1a; padding: 10px;"
@@ -10764,9 +10987,13 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         except Exception as ex:
             print(f"[client] hand-end log failed: {ex}")
 
-        # Folded clients exit spectator UI now that the hand is over.
+        # Folded clients stay parked in spectator mode so they can keep
+        # paging through streets (including the showdown snapshot the
+        # host broadcasts).  Spectator UI tears down only when the next
+        # hand begins (server pushes a new "hand_start").  Refresh nav
+        # button enabled-state in case the showdown snapshot just arrived.
         if getattr(self, '_hero_folded_spectating', False):
-            self._exit_spectator_mode()
+            self._update_spectator_nav_buttons()
 
         if hand_summary:
             try:
@@ -10976,14 +11203,14 @@ class TextModeGame:
         self.show_tells = show_tells
         self.theory_of_mind = theory_of_mind
 
-        # Initialize players (same as PokerWindow)
+        # Initialize players — mirror PokerWindow / DEFAULT_BOT_LINEUP.
         self.players = [
-            Player("Hero (You)", "human"),
-            Player("Optimal Olivia", "optimal"),
-            Player("Tight Tim", "tight"),
-            Player("Loose Bruce", "loose"),
-            Player("Aggro Angela", "aggressive"),
-            Player("Fluid Fiona", "tom")
+            Player("Hero (You)",      "human"),
+            Player("Sharkey Steve",   "shark"),
+            Player("Aggro Angela",    "aggressive"),
+            Player("Loose Bruce",     "loose"),
+            Player("Tight Tim",       "tight"),
+            Player("Fluid Fiona",     "tom"),
         ]
 
         # Game state
