@@ -1549,6 +1549,10 @@ class HeroOutsTab(QWidget):
                 used.update(str(c) for c in (dead_cards or []))
 
                 pair_idx = self._class_index('Pair')
+                # Ranks Hero holds in the hole and ranks already on the
+                # board — used to filter out "shared improvement" cards.
+                hero_ranks_held = {str(c)[0] for c in hero_hand[:2]}
+                board_rank_set = {str(c)[0] for c in board}
                 for key in self._cell_widgets:
                     if key in used:
                         continue
@@ -1557,16 +1561,37 @@ class HeroOutsTab(QWidget):
                     new_class = eval7.handtype(new_rank)
                     new_idx = self._class_index(new_class)
                     cur_idx = self._class_index(cur_class)
-                    # Out = card that strictly improves hand category
-                    # AND lands at Two Pair or stronger. Without the
-                    # "Two Pair+" floor, a 4-flush draw shows 23 "outs"
-                    # because every pair-on-board card technically
-                    # improves "High Card → Pair" — but those don't
-                    # win pots, they just move us up one category.
-                    # Classic poker "outs" are cards that fold a draw
-                    # into a made hand strong enough to actually beat
-                    # what's out there.
+                    new_card_rank = key[0]
+                    # "Shared improvement" filter — a card whose rank is
+                    # already on the board pairs the board for every
+                    # player, so the category bump is not exclusive to
+                    # Hero. Example: K3 on Q-Q-2-2 — eval7 says Q or 2
+                    # takes Hero from Two Pair → Full House, but every
+                    # opponent's category goes up the same amount and
+                    # anyone holding a Q makes quads. Skip those.
+                    if (new_card_rank in board_rank_set
+                            and new_card_rank not in hero_ranks_held):
+                        continue
+                    # Two paths to count this card as an out:
+                    # (a) Hand category strictly improves AND lands at
+                    #     Pair or better — classic outs (drawing to
+                    #     two pair / trips / straight / flush / etc.).
                     if new_idx < cur_idx and new_idx < pair_idx:
+                        outs.append(key)
+                        continue
+                    # (b) Same hand category, but Hero's hole-card
+                    #     kicker pairs up to give a *strictly stronger*
+                    #     hand. This catches cases like K3 on Q-Q-2-2
+                    #     where pairing the K leaves the category at
+                    #     Two Pair but the new pair (KK + QQ) beats the
+                    #     old (QQ + 22). Detect by comparing the eval7
+                    #     numeric rank — higher number = stronger hand
+                    #     in eval7's encoding when category is the
+                    #     same.
+                    if (new_card_rank in hero_ranks_held
+                            and new_idx == cur_idx
+                            and new_rank > cur_rank
+                            and new_idx <= pair_idx):
                         outs.append(key)
 
                 for key in outs:
@@ -2039,14 +2064,71 @@ class TheoryOfMindPanel(QWidget):
                 descriptions.append("Gutshot")
                 break
 
-        # Overcards (if no pair)
+        # Detect a paired board (QQ22, 779, etc.). Pairing one of
+        # Hero's hole-card ranks on a paired board is a real out so
+        # long as the resulting hand outranks the bare board played
+        # by villain.
+        board_pair_ranks = {
+            r for r in board_ranks if board_ranks.count(r) >= 2
+        }
+
+        # Overcards: hole-card ranks above every board rank that aren't
+        # already paired with the board. Each is worth ~3 outs (three
+        # of that rank remain in the deck).
         has_pair = any(r in board_ranks for r in [r1, r2])
         if not has_pair:
             board_high = min(ranks.index(br) for br in board_ranks)
             overcard_count = sum(1 for r in [r1, r2] if ranks.index(r) < board_high)
             if overcard_count > 0:
-                outs += overcard_count * 3  # ~3 outs per overcard
+                outs += overcard_count * 3
                 descriptions.append(f"{overcard_count} overcard(s)")
+
+        # Kicker pairing on a paired board (e.g. K3 on QQ22 — the K is
+        # already an overcard, but the 3 also pairs into "second pair
+        # beats anyone playing the board with a low kicker"). Counted
+        # independently of the overcard branch above.
+        if board_pair_ranks:
+            # Pick the lower of the two board pairs — pairing a hole
+            # card BETWEEN that pair and the higher one upgrades Hero
+            # to "best second pair available".
+            board_pair_indices = [ranks.index(p) for p in board_pair_ranks]
+            highest_pair_idx = min(board_pair_indices)  # lower index = higher rank
+            lowest_pair_idx = max(board_pair_indices)
+            kicker_ranks: list = []
+            for r in [r1, r2]:
+                if r in board_ranks:
+                    continue  # already paired with the board
+                idx = ranks.index(r)
+                # Pairing this rank gives Hero PP + (top board pair) +
+                # (low board pair as kicker), which beats anyone playing
+                # the board if r is between the two board pairs (or
+                # above both, which the overcard branch already counted
+                # — skip that case here to avoid double-counting).
+                if idx < highest_pair_idx:
+                    continue  # already counted as an overcard
+                if idx >= lowest_pair_idx:
+                    continue  # below both board pairs → no improvement
+                kicker_ranks.append(r)
+            # Hole-card ranks BELOW the lowest board pair — pairing
+            # those still upgrades to two pair if both Hole ranks are
+            # below the board's pairs and we pair the higher of the
+            # two (e.g. K3 on QQ22, pair the 3 → QQ + 33 + K beats QQ
+            # + 22 + any kicker).
+            below_pair_ranks = [
+                r for r in [r1, r2]
+                if r not in board_ranks and ranks.index(r) > lowest_pair_idx
+            ]
+            if below_pair_ranks:
+                # Take the *highest* of those (smallest index) — pairing
+                # it gives Hero the highest possible second pair, which
+                # beats anyone playing the board.
+                top_below = min(below_pair_ranks, key=lambda r: ranks.index(r))
+                if top_below not in kicker_ranks:
+                    kicker_ranks.append(top_below)
+            if kicker_ranks:
+                outs += len(kicker_ranks) * 3
+                descriptions.append(
+                    f"kicker pair ({'/'.join(kicker_ranks)})")
 
         # Set draw (pocket pair, need to hit 1 of 2 remaining)
         if r1 == r2 and rank_counts.get(r1, 0) == 2:
@@ -2057,7 +2139,13 @@ class TheoryOfMindPanel(QWidget):
         return outs, desc
 
     def calculate_scare_cards(self, hero_hand, board, opponents):
-        """Calculate cards that would be scary (help villain ranges)."""
+        """Calculate cards that would be scary (help villain ranges).
+
+        Excludes ranks Hero holds — pairing those is an OUT for Hero,
+        not a threat.  Also excludes ranks already paired on the board
+        (they make the same full house for everyone, which is mostly
+        bad for Hero already factored into the made-hand evaluation).
+        """
         if not board or len(board) < 3:
             return []
 
@@ -2065,6 +2153,13 @@ class TheoryOfMindPanel(QWidget):
         board_ranks = [c[0] for c in board_cards]
         board_suits = [c[1] for c in board_cards]
         ranks = 'AKQJT98765432'
+
+        # Ranks Hero holds — pairing one of these is an out, not a
+        # scare. Without this filter the engine was reporting K and A
+        # as "scares" even when Hero held the K as kicker.
+        hero_ranks = set()
+        if hero_hand and len(hero_hand) >= 2:
+            hero_ranks = {str(c)[0] for c in hero_hand[:2]}
 
         scare_cards = []
 
@@ -2089,19 +2184,25 @@ class TheoryOfMindPanel(QWidget):
             for j in range(len(test_vals) - 4):
                 if test_vals[j+4] - test_vals[j] == 4:
                     card_rank = ranks[i]
-                    if card_rank not in board_ranks:
+                    if (card_rank not in board_ranks
+                            and card_rank not in hero_ranks):
                         scare_cards.append(f"{card_rank} (straight)")
                     break
 
-        # Pairing cards (give two pair/trips)
+        # Pairing cards (give two pair/trips). Skip ranks already
+        # paired on the board (no extra information from another card
+        # of the same rank — counterfeits aside) and ranks Hero holds.
         for r in board_ranks:
-            if board_ranks.count(r) == 1:  # Unpaired board card
+            if board_ranks.count(r) == 1 and r not in hero_ranks:
                 scare_cards.append(f"{r} (pairs board)")
 
-        # High cards that hit likely ranges
+        # High cards that hit likely villain ranges, but only when
+        # Hero doesn't already hold them. A K with K-x is an OUT for
+        # Hero, not a scare.
         for r in 'AKQ':
-            if r not in board_ranks:
-                scare_cards.append(f"{r} (hits broadways)")
+            if r in board_ranks or r in hero_ranks:
+                continue
+            scare_cards.append(f"{r} (hits broadways)")
 
         # Remove duplicates and limit
         seen = set()
@@ -4300,7 +4401,7 @@ class HandSummaryDialog(QDialog):
 
         # Title
         title = QLabel("Hand Summary")
-        title.setStyleSheet("font-size: 36px; font-weight: bold; color: #0af;")
+        title.setStyleSheet("font-size: 42px; font-weight: bold; color: #0af;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
@@ -4321,10 +4422,11 @@ class HandSummaryDialog(QDialog):
         streets_layout.setSpacing(12)
         streets_layout.setContentsMargins(0, 0, 10, 0)
 
-        # Add panel for each street (all 4, even if not played)
-        # Calculate height based on number of players (34 pixels per player row + 50 for header)
+        # Add panel for each street (all 4, even if not played).
+        # Per-row height bumped 36→48 and header 50→70 to match the
+        # larger fonts in StreetBarChart (was 11-12pt, now 17-19pt).
         num_players = len(self.player_results) if self.player_results else 6
-        panel_height = 50 + (num_players * 36)  # header + player rows
+        panel_height = 70 + (num_players * 48)  # header + player rows
 
         streets_order = ["Preflop", "Flop", "Turn", "River"]
         for street in streets_order:
@@ -4353,12 +4455,12 @@ class HandSummaryDialog(QDialog):
         # dismissal in deal_hand). A discrete "Back" button still lets the
         # user return to the parent text dialog.
         back_btn = QPushButton("Back to Summary")
-        back_btn.setFixedSize(220, 50)
+        back_btn.setFixedSize(280, 60)
         back_btn.setStyleSheet("""
             QPushButton {
                 background-color: #444;
                 color: white;
-                font-size: 20px;
+                font-size: 24px;
                 font-weight: bold;
                 border-radius: 8px;
             }
@@ -4394,15 +4496,18 @@ class HandSummaryDialog(QDialog):
         wrap_layout = QVBoxLayout(wrap)
         wrap_layout.setContentsMargins(20, 10, 20, 12)
         wrap_layout.setSpacing(6)
+        # Hindsight type matches the surrounding stats text — 22pt for
+        # both the header and the body so nothing reads as "small print"
+        # next to the equity rows above.
         head = QLabel(f"Hindsight — {street}")
         head.setStyleSheet(
-            "font-size: 16px; font-weight: bold; color: #ffd966;"
+            "font-size: 22px; font-weight: bold; color: #ffd966;"
             " background: transparent; border: none;")
         wrap_layout.addWidget(head)
         body = QLabel(text)
         body.setWordWrap(True)
         body.setStyleSheet(
-            "font-size: 17px; color: %s; background: transparent;"
+            "font-size: 22px; color: %s; background: transparent;"
             " border: none; font-style: %s;"
             % ("#bcae7a" if is_placeholder else "#ffd966",
                "italic" if is_placeholder else "normal"))
@@ -4428,7 +4533,7 @@ class HandSummaryDialog(QDialog):
                 if street in self.street_reflections:
                     label.setText(self.street_reflections[street])
                     label.setStyleSheet(
-                        "font-size: 17px; color: #ffd966;"
+                        "font-size: 22px; color: #ffd966;"
                         " background: transparent; border: none;"
                         " font-style: normal;")
                 elif status_text:
@@ -4461,9 +4566,9 @@ class HandSummaryDialog(QDialog):
         # Street name - larger font
         street_label = QLabel(street)
         if has_stats:
-            street_label.setStyleSheet("font-size: 26px; font-weight: bold; color: #0af;")
+            street_label.setStyleSheet("font-size: 32px; font-weight: bold; color: #0af;")
         else:
-            street_label.setStyleSheet("font-size: 26px; font-weight: bold; color: #555;")
+            street_label.setStyleSheet("font-size: 32px; font-weight: bold; color: #555;")
         left_layout.addWidget(street_label)
 
         # Board cards for this street (show only NEW cards dealt)
@@ -4483,22 +4588,22 @@ class HandSummaryDialog(QDialog):
             cards_html = " ".join(self.format_card(c, use_html=True) for c in new_cards)
             cards_label = QLabel(cards_html)
             cards_label.setTextFormat(Qt.TextFormat.RichText)
-            cards_label.setStyleSheet("font-size: 22px; background-color: #f8f8f8; padding: 4px 8px; border-radius: 5px;")
+            cards_label.setStyleSheet("font-size: 28px; background-color: #f8f8f8; padding: 4px 8px; border-radius: 5px;")
             left_layout.addWidget(cards_label)
         else:
             placeholder = QLabel("—" if street == "Preflop" else "")
-            placeholder.setStyleSheet("font-size: 20px; color: #555;")
+            placeholder.setStyleSheet("font-size: 24px; color: #555;")
             left_layout.addWidget(placeholder)
 
         # Pot size after this street, if recorded.
         if street in self.pot_by_street:
             pot_label = QLabel(f"Pot: ${int(self.pot_by_street[street])}")
             pot_label.setStyleSheet(
-                "font-size: 18px; font-weight: bold; color: #ffd966; padding: 2px 0;")
+                "font-size: 22px; font-weight: bold; color: #ffd966; padding: 2px 0;")
             left_layout.addWidget(pot_label)
 
         left_layout.addStretch()
-        left_widget.setFixedWidth(140)
+        left_widget.setFixedWidth(170)
         panel_layout.addWidget(left_widget)
 
         # Center: Bar chart widget with hole cards and made hands
@@ -4511,12 +4616,13 @@ class HandSummaryDialog(QDialog):
                 player_hands=self.player_hands,
                 made_hands=street_made_hands
             )
-            # Height: 40 header + 34 per player row
-            chart_height = 40 + len(stats) * 34
+            # Height: 60 header + 46 per player row (matches the
+            # bar_height/start_y bumps in StreetBarChart.paintEvent).
+            chart_height = 60 + len(stats) * 46
             chart_widget.setMinimumHeight(chart_height)
         else:
             chart_widget = QLabel("Not played")
-            chart_widget.setStyleSheet("font-size: 20px; color: #444;")
+            chart_widget.setStyleSheet("font-size: 24px; color: #444;")
             chart_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
         panel_layout.addWidget(chart_widget, stretch=3)
 
@@ -4528,7 +4634,7 @@ class HandSummaryDialog(QDialog):
 
         # Add "Key Actions" header
         header = QLabel("Actions:")
-        header.setStyleSheet("font-size: 14px; color: #888; font-weight: bold;")
+        header.setStyleSheet("font-size: 20px; color: #888; font-weight: bold;")
         right_layout.addWidget(header)
 
         actions = self.street_actions.get(street, [])
@@ -4538,27 +4644,27 @@ class HandSummaryDialog(QDialog):
 
             # Highlight key decisions with different colors - larger font
             if 'all-in' in action_lower or 'all in' in action_lower:
-                action_label.setStyleSheet("font-size: 17px; color: #ff4444; font-weight: bold;")  # Red for all-in
+                action_label.setStyleSheet("font-size: 22px; color: #ff4444; font-weight: bold;")  # Red for all-in
             elif 'raises to' in action_lower and any(x in action_lower for x in ['$50', '$100', '$150', '$200']):
-                action_label.setStyleSheet("font-size: 17px; color: #ff8844; font-weight: bold;")  # Orange for big raises
+                action_label.setStyleSheet("font-size: 22px; color: #ff8844; font-weight: bold;")  # Orange for big raises
             elif 'folds' in action_lower:
-                action_label.setStyleSheet("font-size: 17px; color: #888;")  # Gray for folds
+                action_label.setStyleSheet("font-size: 22px; color: #888;")  # Gray for folds
             elif 'raises' in action_lower:
-                action_label.setStyleSheet("font-size: 17px; color: #ffcc00;")  # Yellow for raises
+                action_label.setStyleSheet("font-size: 22px; color: #ffcc00;")  # Yellow for raises
             elif 'bets' in action_lower:
-                action_label.setStyleSheet("font-size: 17px; color: #44ff44;")  # Green for bets
+                action_label.setStyleSheet("font-size: 22px; color: #44ff44;")  # Green for bets
             elif 'calls' in action_lower:
-                action_label.setStyleSheet("font-size: 17px; color: #44aaff;")  # Blue for calls
+                action_label.setStyleSheet("font-size: 22px; color: #44aaff;")  # Blue for calls
             elif 'checks' in action_lower:
-                action_label.setStyleSheet("font-size: 17px; color: #aaa;")  # Light gray for checks
+                action_label.setStyleSheet("font-size: 22px; color: #aaa;")  # Light gray for checks
             else:
-                action_label.setStyleSheet("font-size: 17px; color: #ccc;")
+                action_label.setStyleSheet("font-size: 22px; color: #ccc;")
 
             action_label.setWordWrap(True)
             right_layout.addWidget(action_label)
 
         right_layout.addStretch()
-        right_widget.setFixedWidth(320)
+        right_widget.setFixedWidth(380)
         panel_layout.addWidget(right_widget)
 
         return panel
@@ -4598,7 +4704,7 @@ class HandSummaryDialog(QDialog):
         panel_layout.setContentsMargins(30, 20, 30, 20)
 
         title = QLabel("Hand Results")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; color: #fff;")
+        title.setStyleSheet("font-size: 30px; font-weight: bold; color: #fff;")
         panel_layout.addWidget(title)
 
         # Grid of player results
@@ -4612,7 +4718,7 @@ class HandSummaryDialog(QDialog):
             player_layout.setSpacing(4)
 
             name_label = QLabel(name)
-            name_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #aaa;")
+            name_label.setStyleSheet("font-size: 22px; font-weight: bold; color: #aaa;")
             player_layout.addWidget(name_label)
 
             if change > 0:
@@ -4626,11 +4732,11 @@ class HandSummaryDialog(QDialog):
                 change_color = "#888"
 
             change_label = QLabel(change_text)
-            change_label.setStyleSheet(f"font-size: 28px; font-weight: bold; color: {change_color};")
+            change_label.setStyleSheet(f"font-size: 34px; font-weight: bold; color: {change_color};")
             player_layout.addWidget(change_label)
 
             stack_label = QLabel(f"${start} → ${end}")
-            stack_label.setStyleSheet("font-size: 16px; color: #666;")
+            stack_label.setStyleSheet("font-size: 20px; color: #666;")
             player_layout.addWidget(stack_label)
 
             results_layout.addWidget(player_widget)
@@ -4673,51 +4779,53 @@ class StreetBarChart(QWidget):
         # Check if we have god mode data (true_equity is not None)
         god_mode = any(s[1] is not None for s in self.stats if s[4])
 
-        # Calculate column positions - generous spacing to avoid overlap
+        # Calculate column positions — wider since we now use 18-19pt
+        # text everywhere (was 11-12pt). Without bumping these, the
+        # player names spill into the cards column at the new size.
         name_x = 10
-        cards_x = 120  # Hole cards column
-        hand_x = cards_x + 68  # Made hand description (wider gap)
-        equity_x = 370  # Start of equity bars (pushed right for hand column)
+        cards_x = 170  # Hole cards column
+        hand_x = cards_x + 100  # Made hand description (wider gap)
+        equity_x = 460  # Start of equity bars (pushed right for hand column)
 
         # Column headings
         painter.setPen(QColor(255, 255, 255))
-        font = QFont('Arial', 12, QFont.Weight.Bold)
+        font = QFont('Arial', 19, QFont.Weight.Bold)
         painter.setFont(font)
-        painter.drawText(name_x, 22, "Player")
-        painter.drawText(cards_x, 22, "Cards")
+        painter.drawText(name_x, 28, "Player")
+        painter.drawText(cards_x, 28, "Cards")
         painter.setPen(QColor(180, 180, 100))
-        painter.drawText(hand_x, 22, "Hand")
+        painter.drawText(hand_x, 28, "Hand")
 
         # Bar width based on available space
         if god_mode:
-            bar_max_width = min((w - equity_x - 280) // 2, 130)
+            bar_max_width = min((w - equity_x - 320) // 2, 160)
         else:
-            bar_max_width = min(w - equity_x - 230, 180)
-        bar_max_width = max(bar_max_width, 60)
+            bar_max_width = min(w - equity_x - 270, 220)
+        bar_max_width = max(bar_max_width, 80)
 
         if god_mode:
             real_x = equity_x
             painter.setPen(QColor(100, 200, 255))
-            painter.drawText(real_x, 22, "True Equity")
+            painter.drawText(real_x, 28, "True Equity")
         else:
             painter.setPen(QColor(100, 255, 100))
-            painter.drawText(equity_x, 22, "Equity")
+            painter.drawText(equity_x, 28, "Equity")
 
         # Implied odds header - positioned after equity status column
         # The actual x position is computed per-row, so just draw header at estimated position
         if god_mode:
-            odds_header_x = equity_x + bar_max_width * 2 + 90
+            odds_header_x = equity_x + bar_max_width * 2 + 110
         else:
-            odds_header_x = equity_x + bar_max_width + 85
+            odds_header_x = equity_x + bar_max_width + 105
         painter.setPen(QColor(200, 160, 100))
-        painter.drawText(odds_header_x, 22, "Pot/Implied")
+        painter.drawText(odds_header_x, 28, "Pot/Implied")
 
-        # Draw bars for each player - larger bars
-        bar_height = 28
-        start_y = 40
+        # Bars are taller (28→38) to balance the larger fonts.
+        bar_height = 38
+        start_y = 52
 
         for i, (name, true_equity, perceived_equity, pot_odds, is_active, is_hero) in enumerate(self.stats):
-            y = start_y + i * (bar_height + 6)
+            y = start_y + i * (bar_height + 8)
 
             # Player name - larger font
             if is_hero:
@@ -4727,24 +4835,24 @@ class StreetBarChart(QWidget):
             else:
                 painter.setPen(QColor(200, 200, 200))
 
-            font = QFont('Arial', 12, QFont.Weight.Bold)
+            font = QFont('Arial', 19, QFont.Weight.Bold)
             painter.setFont(font)
-            name_display = name[:12] if len(name) > 12 else name
-            painter.drawText(name_x, y + 20, name_display)
+            name_display = name[:14] if len(name) > 14 else name
+            painter.drawText(name_x, y + 26, name_display)
 
             # Draw hole cards with white background for readability
             hole_cards = self.player_hands.get(name, [])
             if hole_cards:
-                card_font = QFont('Arial', 11, QFont.Weight.Bold)
+                card_font = QFont('Arial', 17, QFont.Weight.Bold)
                 painter.setFont(card_font)
                 card_x = cards_x
                 for card in hole_cards[:2]:
                     card_text = self.format_card_text(card)
                     suit = card[1] if len(card) > 1 else ''
-                    # Draw white background pill for card
-                    painter.fillRect(card_x - 2, y + 2, 26, 22, QColor(250, 250, 245))
+                    # Larger card pill (was 26x22) to host the bigger font.
+                    painter.fillRect(card_x - 3, y + 2, 38, 32, QColor(250, 250, 245))
                     painter.setPen(QPen(QColor(180, 180, 180), 1))
-                    painter.drawRect(card_x - 2, y + 2, 26, 22)
+                    painter.drawRect(card_x - 3, y + 2, 38, 32)
                     # Color by suit
                     if suit == 'h':
                         painter.setPen(QColor(220, 40, 40))  # Red hearts
@@ -4754,25 +4862,25 @@ class StreetBarChart(QWidget):
                         painter.setPen(QColor(40, 160, 40))  # Green clubs
                     else:
                         painter.setPen(QColor(30, 30, 30))  # Black spades
-                    painter.drawText(card_x + 2, y + 18, card_text)
-                    card_x += 30
+                    painter.drawText(card_x + 2, y + 26, card_text)
+                    card_x += 44
 
             # Draw made hand description - larger font for readability
             made_hand = self.made_hands.get(name, '')
             if made_hand and is_active:
-                hand_font = QFont('Arial', 11, QFont.Weight.Bold)
+                hand_font = QFont('Arial', 17, QFont.Weight.Bold)
                 painter.setFont(hand_font)
                 painter.setPen(QColor(220, 220, 120))
                 # Truncate to fit column width (hand_x to equity_x)
-                max_chars = max(12, (equity_x - hand_x - 10) // 8)
+                max_chars = max(14, (equity_x - hand_x - 10) // 11)
                 made_display = made_hand[:max_chars] if len(made_hand) > max_chars else made_hand
-                painter.drawText(hand_x, y + 19, made_display)
+                painter.drawText(hand_x, y + 26, made_display)
 
             if not is_active:
                 painter.setPen(QColor(100, 100, 100))
-                font = QFont('Arial', 12)
+                font = QFont('Arial', 19)
                 painter.setFont(font)
-                painter.drawText(equity_x, y + 20, "(Folded)")
+                painter.drawText(equity_x, y + 26, "(Folded)")
                 continue
 
             if god_mode and true_equity is not None:
@@ -4798,12 +4906,12 @@ class StreetBarChart(QWidget):
                 painter.drawRect(real_x, y, bar_max_width, bar_height)
 
                 painter.setPen(QColor(255, 255, 255))
-                font = QFont('Arial', 12, QFont.Weight.Bold)
+                font = QFont('Arial', 19, QFont.Weight.Bold)
                 painter.setFont(font)
-                painter.drawText(real_x + 4, y + 18, f"{true_equity:.0%}")
+                painter.drawText(real_x + 4, y + 26, f"{true_equity:.0%}")
 
                 # Perceived equity bar
-                think_x = real_x + bar_max_width + 10
+                think_x = real_x + bar_max_width + 12
                 think_width = int(perceived_equity * bar_max_width)
 
                 if big_diff:
@@ -4820,25 +4928,25 @@ class StreetBarChart(QWidget):
                 painter.drawRect(think_x, y, bar_max_width, bar_height)
 
                 painter.setPen(QColor(255, 255, 255))
-                painter.drawText(think_x + 4, y + 18, f"{perceived_equity:.0%}")
+                painter.drawText(think_x + 4, y + 26, f"{perceived_equity:.0%}")
 
                 # Show equity status indicator after bars in god mode
-                ev_x = think_x + bar_max_width + 10
-                font = QFont('Arial', 12, QFont.Weight.Bold)
+                ev_x = think_x + bar_max_width + 14
+                font = QFont('Arial', 19, QFont.Weight.Bold)
                 painter.setFont(font)
                 if true_equity > 0.5:
                     painter.setPen(QColor(50, 200, 50))
-                    painter.drawText(ev_x, y + 20, "AHEAD")
+                    painter.drawText(ev_x, y + 26, "AHEAD")
                 elif true_equity > 0.3:
                     painter.setPen(QColor(200, 200, 50))
-                    painter.drawText(ev_x, y + 20, "LIVE")
+                    painter.drawText(ev_x, y + 26, "LIVE")
                 else:
                     painter.setPen(QColor(200, 50, 50))
-                    painter.drawText(ev_x, y + 20, "BEHIND")
+                    painter.drawText(ev_x, y + 26, "BEHIND")
 
                 # Implied odds column (god mode)
-                odds_x = ev_x + 70
-                font = QFont('Arial', 11)
+                odds_x = ev_x + 100
+                font = QFont('Arial', 17)
                 painter.setFont(font)
                 if pot_odds > 0:
                     implied = pot_odds * 1.5  # Implied odds estimate: pot odds + future value
@@ -4847,10 +4955,10 @@ class StreetBarChart(QWidget):
                         painter.setPen(QColor(50, 200, 50))
                     else:
                         painter.setPen(QColor(200, 100, 50))
-                    painter.drawText(odds_x, y + 20, f"{pot_odds:.0%}/{implied:.0%}")
+                    painter.drawText(odds_x, y + 26, f"{pot_odds:.0%}/{implied:.0%}")
                 else:
                     painter.setPen(QColor(120, 120, 120))
-                    painter.drawText(odds_x, y + 20, "—")
+                    painter.drawText(odds_x, y + 26, "—")
             else:
                 # Normal mode: Just show perceived equity
                 eq_width = int(perceived_equity * bar_max_width)
@@ -4862,27 +4970,27 @@ class StreetBarChart(QWidget):
                 painter.drawRect(equity_x, y, bar_max_width, bar_height)
 
                 painter.setPen(QColor(255, 255, 255))
-                font = QFont('Arial', 12, QFont.Weight.Bold)
+                font = QFont('Arial', 19, QFont.Weight.Bold)
                 painter.setFont(font)
-                painter.drawText(equity_x + 4, y + 18, f"{perceived_equity:.0%}")
+                painter.drawText(equity_x + 4, y + 26, f"{perceived_equity:.0%}")
 
                 # Show equity status
-                ev_x = equity_x + bar_max_width + 15
-                font = QFont('Arial', 12, QFont.Weight.Bold)
+                ev_x = equity_x + bar_max_width + 18
+                font = QFont('Arial', 19, QFont.Weight.Bold)
                 painter.setFont(font)
                 if perceived_equity > 0.5:
                     painter.setPen(QColor(50, 200, 50))
-                    painter.drawText(ev_x, y + 20, "AHEAD")
+                    painter.drawText(ev_x, y + 26, "AHEAD")
                 elif perceived_equity > 0.3:
                     painter.setPen(QColor(200, 200, 50))
-                    painter.drawText(ev_x, y + 20, "LIVE")
+                    painter.drawText(ev_x, y + 26, "LIVE")
                 else:
                     painter.setPen(QColor(200, 50, 50))
-                    painter.drawText(ev_x, y + 20, "BEHIND")
+                    painter.drawText(ev_x, y + 26, "BEHIND")
 
                 # Implied odds column (normal mode)
-                odds_x = ev_x + 70
-                font = QFont('Arial', 11)
+                odds_x = ev_x + 100
+                font = QFont('Arial', 17)
                 painter.setFont(font)
                 if pot_odds > 0:
                     implied = pot_odds * 1.5
@@ -4890,10 +4998,10 @@ class StreetBarChart(QWidget):
                         painter.setPen(QColor(50, 200, 50))
                     else:
                         painter.setPen(QColor(200, 100, 50))
-                    painter.drawText(odds_x, y + 20, f"{pot_odds:.0%}/{implied:.0%}")
+                    painter.drawText(odds_x, y + 26, f"{pot_odds:.0%}/{implied:.0%}")
                 else:
                     painter.setPen(QColor(120, 120, 120))
-                    painter.drawText(odds_x, y + 20, "—")
+                    painter.drawText(odds_x, y + 26, "—")
 
     def get_equity_color(self, equity):
         if equity < 0.3:
