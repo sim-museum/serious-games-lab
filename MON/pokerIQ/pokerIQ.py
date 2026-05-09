@@ -11271,25 +11271,90 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             elif mode == "join":
                 self._join_game()
 
+    @staticmethod
+    def _get_local_lan_ips():
+        """Return a sorted list of likely LAN IPv4 addresses for this
+        machine. Falls back to empty list if nothing usable is found.
+
+        Excludes loopback (127.x) and link-local (169.254.x). The
+        outbound-socket trick (`connect` to 8.8.8.8 on UDP without
+        actually sending) is the most reliable way to discover the
+        primary LAN-facing interface even when there's no default
+        route metadata in /proc; we still fold in any other addresses
+        from socket.gethostbyname_ex as backup.
+        """
+        import socket
+        ips = set()
+        # Primary: the address used to reach the public internet.
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                s.connect(('8.8.8.8', 80))
+                ips.add(s.getsockname()[0])
+            finally:
+                s.close()
+        except Exception:
+            pass
+        # Backup: every IPv4 in the system's hostname resolution.
+        try:
+            host = socket.gethostname()
+            for addr in socket.gethostbyname_ex(host)[2]:
+                ips.add(addr)
+        except Exception:
+            pass
+        # Filter out loopback and link-local.
+        clean = [ip for ip in ips
+                 if ip and not ip.startswith('127.')
+                 and not ip.startswith('169.254.')]
+        return sorted(clean)
+
+    def _format_host_address_block(self) -> str:
+        """Build the multi-line "what guests should type into Join
+        Game" block. Picks the LAN IPs, pairs each with the listening
+        port. Used by both the post-Host-Game popup and the Network
+        Status dialog so the two stay in sync.
+        """
+        port = ""
+        try:
+            port = str(self.network_server._server.serverPort())
+        except Exception:
+            pass
+        ips = self._get_local_lan_ips()
+        if not ips:
+            return ("Address: (no LAN IP detected — guests on the "
+                    "same machine can use 127.0.0.1)")
+        if len(ips) == 1:
+            return f"Address (give this to guests): {ips[0]}:{port}"
+        lines = ["Addresses (give one of these to guests):"]
+        for ip in ips:
+            lines.append(f"   {ip}:{port}")
+        return "\n".join(lines)
+
     def _show_network_status_dialog(self):
         """Show current network status with option to disconnect."""
         dialog = QDialog(self)
         dialog.setWindowTitle("Network Status")
-        dialog.setMinimumWidth(300)
+        dialog.setMinimumWidth(420)
 
         layout = QVBoxLayout(dialog)
 
         if self.network_mode == "host":
-            status = f"Hosting game: {self.network_server.server_name}"
-            status += f"\nAddress: {self.network_server.get_server_address()}"
-            status += f"\nConnected players: {self.network_server.get_connected_count()}"
-            status += f"\nSeated players: {self.network_server.get_seated_count()}"
+            status = (
+                f"Hosting game: {self.network_server.server_name}\n"
+                f"{self._format_host_address_block()}\n"
+                f"Connected players: "
+                f"{self.network_server.get_connected_count()}\n"
+                f"Seated players: "
+                f"{self.network_server.get_seated_count()}"
+            )
         else:
             status = f"Connected to: {self.network_client.server_name}"
             status += f"\nYour seat: {self.my_seat + 1 if self.my_seat is not None else 'None'}"
 
         label = QLabel(status)
         label.setStyleSheet("font-size: 14px;")
+        label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(label)
 
         # Disconnect button
@@ -11364,9 +11429,27 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
 
                 self._refresh_feature_status()
 
-                QMessageBox.information(self, "Server Started",
-                    f"Hosting game on port {self.network_server._server.serverPort()}\n"
-                    f"Waiting for players to connect...")
+                # Show the LAN address(es) prominently so the user
+                # can read them off to other players. The port alone
+                # was useless without an IP — guests had no way to
+                # know what to type into Join Game.
+                msg = QMessageBox(self)
+                msg.setIcon(QMessageBox.Icon.NoIcon)
+                msg.setWindowTitle("Server Started")
+                msg.setTextFormat(Qt.TextFormat.PlainText)
+                msg.setText(
+                    f"Hosting game on port "
+                    f"{self.network_server._server.serverPort()}.\n\n"
+                    f"{self._format_host_address_block()}\n\n"
+                    "Waiting for players to connect…"
+                )
+                # Make the address block selectable so the user can
+                # copy / paste it into chat, email, etc.
+                for child in msg.findChildren(QLabel):
+                    child.setTextInteractionFlags(
+                        Qt.TextInteractionFlag.TextSelectableByMouse)
+                msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+                msg.exec()
 
     def _join_game(self):
         """Join a network game."""
@@ -12340,6 +12423,16 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         self.tom_call_btn.setEnabled(can_call)
         self.tom_raise_btn.setEnabled(can_raise)
         self.tom_call_btn.setText(self.call_btn.text())
+
+        # Bet vs Raise: same rule as the host's enable_human_actions.
+        # current_bet == 0 means nobody has wagered on this street
+        # (post-flop only — pre-flop the BB is always on the table
+        # so current_bet > 0 from the deal), so the canonical word
+        # for a fresh wager is "Bet". Without this the client view
+        # still said "Raise" after the flop with no prior bets.
+        bet_label = "Bet" if int(self.current_bet) == 0 else "Raise"
+        self.raise_btn.setText(bet_label)
+        self.tom_raise_btn.setText(bet_label)
 
     def send_network_action(self, action: str, amount: float = 0):
         """Send an action to the server (client mode)."""
