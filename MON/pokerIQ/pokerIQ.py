@@ -11363,8 +11363,11 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
 
     def _format_host_address_block(self) -> str:
         """Build the multi-line "what guests should type into Join
-        Game" block. Picks the LAN IPs, pairs each with the listening
-        port. Used by both the post-Host-Game popup and the Network
+        Game" block. Lists the LAN IPs and the port on a separate
+        line — guests need both, but joining them with `:` made the
+        IP read as one combined string and clashed with the Host
+        Game dialog where IP and Port live in separate fields.
+        Used by both the post-Host-Game popup and the Network
         Status dialog so the two stay in sync.
         """
         port = ""
@@ -11375,12 +11378,15 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         ips = self._get_local_lan_ips()
         if not ips:
             return ("Address: (no LAN IP detected — guests on the "
-                    "same machine can use 127.0.0.1)")
+                    "same machine can use 127.0.0.1)\n"
+                    f"Port: {port}" if port else "")
         if len(ips) == 1:
-            return f"Address (give this to guests): {ips[0]}:{port}"
+            return (f"Address (give this to guests): {ips[0]}\n"
+                    f"Port: {port}")
         lines = ["Addresses (give one of these to guests):"]
         for ip in ips:
-            lines.append(f"   {ip}:{port}")
+            lines.append(f"   {ip}")
+        lines.append(f"Port: {port}")
         return "\n".join(lines)
 
     def _show_network_status_dialog(self):
