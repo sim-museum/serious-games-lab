@@ -24,6 +24,35 @@ def _validate_short_name(name: str) -> Optional[str]:
     return None
 
 
+def _get_local_lan_ips():
+    """Return a sorted list of likely LAN IPv4 addresses for this
+    machine. Excludes loopback and link-local. The UDP-connect-to-
+    8.8.8.8 trick reliably picks the primary LAN-facing interface
+    even when /proc/net is unhelpful; gethostbyname_ex acts as a
+    backup. Returns [] if nothing usable is found.
+    """
+    import socket
+    ips = set()
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(('8.8.8.8', 80))
+            ips.add(s.getsockname()[0])
+        finally:
+            s.close()
+    except Exception:
+        pass
+    try:
+        host = socket.gethostname()
+        for addr in socket.gethostbyname_ex(host)[2]:
+            ips.add(addr)
+    except Exception:
+        pass
+    return sorted(ip for ip in ips
+                  if ip and not ip.startswith('127.')
+                  and not ip.startswith('169.254.'))
+
+
 class HostGameDialog(QDialog):
     """Dialog for hosting a poker game."""
 
@@ -59,14 +88,35 @@ class HostGameDialog(QDialog):
         self.port_spin.setValue(DEFAULT_PORT)
         settings_layout.addWidget(self.port_spin, 2, 1)
 
-        settings_layout.addWidget(QLabel("Seats:"), 3, 0)
+        # Show the host's LAN IP address(es) right in the dialog so
+        # the user can read them off to guests BEFORE clicking Start
+        # Server (mirroring the ben_bridge host dialog). Selectable so
+        # the user can copy-paste into chat / email. Updates live when
+        # the port spin value changes.
+        settings_layout.addWidget(QLabel("Your IP:"), 3, 0)
+        self.host_ip_label = QLabel("")
+        self.host_ip_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.host_ip_label.setStyleSheet(
+            "QLabel { color: #2a7a2a; font-weight: bold; }")
+        self.host_ip_label.setWordWrap(True)
+        settings_layout.addWidget(self.host_ip_label, 3, 1)
+
+        settings_layout.addWidget(QLabel("Seats:"), 4, 0)
         self.seats_spin = QSpinBox()
         self.seats_spin.setRange(2, 10)
         self.seats_spin.setValue(6)
-        settings_layout.addWidget(self.seats_spin, 3, 1)
+        settings_layout.addWidget(self.seats_spin, 4, 1)
 
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
+
+        # Cache the LAN-IP list once and reuse on port changes — IP
+        # detection requires a UDP socket and shouldn't fire every
+        # time the user nudges the port spinbox.
+        self._lan_ips = _get_local_lan_ips()
+        self.port_spin.valueChanged.connect(self._refresh_host_ip_label)
+        self._refresh_host_ip_label()
 
         # Status
         self.status_label = QLabel("")
@@ -82,6 +132,26 @@ class HostGameDialog(QDialog):
         btn_layout.addWidget(self.start_btn)
         btn_layout.addWidget(self.cancel_btn)
         layout.addLayout(btn_layout)
+
+    def _refresh_host_ip_label(self):
+        """Re-render the Your-IP line using the cached LAN-IP list
+        and the current port spin value."""
+        port = self.port_spin.value()
+        if not self._lan_ips:
+            self.host_ip_label.setText(
+                "(no LAN IP detected — guests on this machine "
+                f"can use 127.0.0.1:{port})"
+            )
+            self.host_ip_label.setStyleSheet(
+                "QLabel { color: #aa6600; font-style: italic; }")
+            return
+        if len(self._lan_ips) == 1:
+            self.host_ip_label.setText(f"{self._lan_ips[0]}:{port}")
+        else:
+            self.host_ip_label.setText(
+                "  •  ".join(f"{ip}:{port}" for ip in self._lan_ips))
+        self.host_ip_label.setStyleSheet(
+            "QLabel { color: #2a7a2a; font-weight: bold; }")
 
     def _start_server(self):
         """Start the poker server."""
