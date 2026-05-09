@@ -6627,17 +6627,30 @@ class PokerWindow(QMainWindow):
             QCheckBox:disabled { color: #666; }
         """
 
+        # God Mode and Show Tells are spectator-only assists — they
+        # auto-enable in _enter_spectator_mode after the hero folds
+        # and auto-disable on exit. Don't let the user toggle them
+        # manually pre-fold; that would let them peek at opponents'
+        # cards while still in the hand.
+        self.god_mode = False
         self.god_mode_cb = QCheckBox("God Mode")
         self.god_mode_cb.setStyleSheet(cb_style)
-        self.god_mode_cb.setChecked(self.god_mode)
+        self.god_mode_cb.setChecked(False)
+        self.god_mode_cb.setEnabled(False)
+        self.god_mode_cb.setToolTip(
+            "Auto-enables in spectator mode after you fold")
         self.god_mode_cb.stateChanged.connect(self.toggle_god_mode)
         top_bar.addWidget(self.god_mode_cb)
 
         top_bar.addSpacing(20)
 
+        self.show_stats = False
         self.stats_cb = QCheckBox("Show Tells")
         self.stats_cb.setStyleSheet(cb_style)
-        self.stats_cb.setChecked(self.show_stats)
+        self.stats_cb.setChecked(False)
+        self.stats_cb.setEnabled(False)
+        self.stats_cb.setToolTip(
+            "Auto-enables in spectator mode after you fold")
         self.stats_cb.stateChanged.connect(self.toggle_stats)
         top_bar.addWidget(self.stats_cb)
 
@@ -8136,10 +8149,17 @@ class PokerWindow(QMainWindow):
         self._pre_spectator_god_mode = self.god_mode_cb.isChecked()
         self._pre_spectator_stats = self.stats_cb.isChecked()
 
-        # Turn on God Mode and Show Tells. Mark these as auto-toggled (so the
-        # mid-hand-assist tracking knows NOT to flag them in the summary).
+        # Turn on God Mode and Show Tells. Mark these as auto-toggled
+        # (so the mid-hand-assist tracking knows NOT to flag them in
+        # the summary). The boxes are disabled outside spectator mode
+        # — temporarily enable them so setChecked actually fires the
+        # state-change handlers (a disabled QCheckBox silently
+        # ignores programmatic toggles). _exit_spectator_mode flips
+        # them back off.
         self._spectator_auto_toggle = True
         try:
+            self.god_mode_cb.setEnabled(True)
+            self.stats_cb.setEnabled(True)
             if not self.god_mode_cb.isChecked():
                 self.god_mode_cb.setChecked(True)
             if not self.stats_cb.isChecked():
@@ -8289,15 +8309,16 @@ class PokerWindow(QMainWindow):
                 except RuntimeError:
                     pass
 
-        # Restore prior God/Tells state, suppressing broadcast + assist
-        # tracking (this is just the inverse of the spectator auto-toggle).
+        # God Mode and Show Tells are spectator-only — turn them off
+        # AND disable the checkboxes again so the user can't toggle
+        # them manually until the next fold-into-spectator-mode.
         if was_spectating:
             self._spectator_auto_toggle = True
             try:
-                if hasattr(self, '_pre_spectator_god_mode'):
-                    self.god_mode_cb.setChecked(self._pre_spectator_god_mode)
-                if hasattr(self, '_pre_spectator_stats'):
-                    self.stats_cb.setChecked(self._pre_spectator_stats)
+                self.god_mode_cb.setChecked(False)
+                self.stats_cb.setChecked(False)
+                self.god_mode_cb.setEnabled(False)
+                self.stats_cb.setEnabled(False)
             finally:
                 self._spectator_auto_toggle = False
             for attr in ('_pre_spectator_god_mode', '_pre_spectator_stats'):
@@ -10980,6 +11001,14 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
 
         file_menu.addSeparator()
 
+        act_buyin = QAction("&Buy More Chips…", self)
+        act_buyin.setStatusTip(
+            "Top up your stack between hands (single-player only)")
+        act_buyin.triggered.connect(self._menu_buy_more_chips)
+        file_menu.addAction(act_buyin)
+
+        file_menu.addSeparator()
+
         act_exit = QAction("E&xit", self)
         act_exit.setShortcut("Ctrl+Q")
         act_exit.setStatusTip("Quit PokerIQ")
@@ -11104,6 +11133,82 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                 else:
                     out[k] = str(v)
         return out
+
+    def _menu_buy_more_chips(self):
+        """File → Buy More Chips. Top up the human player's stack with
+        an arbitrary amount, between hands only (mid-hand top-ups
+        would corrupt the pot / side-pot bookkeeping).
+
+        In single-player and host modes this updates the local
+        seat 0 stack. Refuses on the network client side because the
+        host owns the canonical stack value.
+        """
+        if self.network_mode == "client":
+            QMessageBox.information(
+                self, "Buy More Chips",
+                "Stack adjustments aren't authoritative on the client. "
+                "Ask the host to top you up — once they do, the "
+                "broadcast will reflect the new amount on your screen.")
+            return
+        if getattr(self, '_hand_in_progress', False):
+            QMessageBox.information(
+                self, "Buy More Chips",
+                "Wait until the current hand ends — adding chips "
+                "mid-hand would mess up the pot / side-pot math.")
+            return
+        hero_seat = (self.my_seat
+                     if self.network_mode == "host" and self.my_seat is not None
+                     else 0)
+        if not (0 <= hero_seat < len(self.players)):
+            return
+        hero = self.players[hero_seat]
+        # Default to enough to bring the seat back up to a 100-BB
+        # buy-in so a busted hero gets a typical reload click.
+        _, bb_amount = BLIND_LEVELS[self.blind_level]
+        target = max(int(STARTING_STACK), 100 * int(bb_amount))
+        suggested = max(int(bb_amount), target - int(hero.stack))
+        from PyQt6.QtWidgets import QInputDialog
+        amount, ok = QInputDialog.getInt(
+            self, "Buy More Chips",
+            f"Current stack: ${int(hero.stack)}\n"
+            f"Big blind: ${int(bb_amount)}\n\n"
+            "Add how many chips?",
+            value=suggested, min=1, max=1_000_000, step=int(bb_amount),
+        )
+        if not ok or amount <= 0:
+            return
+        hero.stack = int(hero.stack) + int(amount)
+        # starting_stacks records the seat's pre-hand snapshot used by
+        # the per-hand summary dialog. Bump it too so the next hand's
+        # delta doesn't pretend the buy-in was a profit.
+        try:
+            if hasattr(self, 'starting_stacks'):
+                self.starting_stacks[hero.name] = int(hero.stack)
+        except Exception:
+            pass
+        try:
+            self.update_all_panels()
+        except Exception:
+            pass
+        try:
+            if self.network_mode == "host" and self.network_server:
+                # Push the new stack out to guests so their UI reflects
+                # the host's new chip count.
+                if hasattr(self.network_server, 'broadcast_stack_update'):
+                    self.network_server.broadcast_stack_update(
+                        hero_seat, int(hero.stack))
+        except Exception:
+            pass
+        try:
+            self.write_log(
+                f"  [BUY-IN] {hero.name} added ${int(amount)} "
+                f"→ stack ${int(hero.stack)}")
+        except Exception:
+            pass
+        QMessageBox.information(
+            self, "Buy More Chips",
+            f"Added ${int(amount)} to {hero.name}.\n"
+            f"New stack: ${int(hero.stack)}")
 
     def _menu_save_game(self):
         """File → Save Game. Refuses to save while a network session
@@ -12288,15 +12393,21 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         for p in self.players:
             p.bet_in_round = 0
 
-        # Update stacks
+        # Update stacks. Mark a seat active ONLY if it has chips —
+        # otherwise the host's stacks dict (which includes every
+        # canonical seat 0..5 even on a 4-seat table) re-flags the
+        # phantom 5/6 entries as active=True, defeating the
+        # "hide stack==0, not active" rule in update_all_panels and
+        # leaving zero-balance bot panels visible to guests.
         for seat, stack in stacks.items():
             self.players[seat].stack = stack
-            self.players[seat].active = True
+            self.players[seat].active = stack > 0
             self.players[seat].hand = None
 
         # Match host: show BT / SB / BB / UTG / CO position tags on each
         # PlayerPanel. We derive them from the dealer (button) seat the
         # host just sent.
+        sb_idx = bb_idx = -1
         try:
             n = len(self.players)
             sb_idx = (button + 1) % n
@@ -12326,6 +12437,35 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                     panel.set_position("")
         except Exception as ex:
             print(f"[client] position tag update failed: {ex}")
+
+        # Surface the blind posts on the client so guests see (a) the
+        # running ticker at the bottom and (b) the per-seat "Bet: $N"
+        # chip labels on the SB and BB panels from the very first
+        # frame of the hand. The host posts blinds locally before
+        # broadcasting hand_start, but doesn't fire individual ACTION
+        # broadcasts for the posts — without this the SB/BB chips
+        # look invisible on every guest's screen until someone
+        # actually raises.
+        try:
+            sb_amount = int(blinds[0]) if blinds else 0
+            bb_amount = int(blinds[1]) if (blinds and len(blinds) >= 2) else 0
+            if 0 <= sb_idx < len(self.players) and sb_amount > 0:
+                self.players[sb_idx].bet_in_round = sb_amount
+                self.action_log.append(
+                    f"{self.players[sb_idx].name} posts ${sb_amount}")
+            if 0 <= bb_idx < len(self.players) and bb_amount > 0:
+                self.players[bb_idx].bet_in_round = bb_amount
+                self.action_log.append(
+                    f"{self.players[bb_idx].name} posts ${bb_amount}")
+                self.current_bet = bb_amount
+                self.last_raise_size = bb_amount
+            try:
+                self.log_label.setText(
+                    self._format_action_log_html(self.action_log))
+            except AttributeError:
+                self.log_label.setText(" | ".join(self.action_log))
+        except Exception as ex:
+            print(f"[client] blind ticker update failed: {ex}")
 
         self.update_all_panels()
         self.table.set_board([])
