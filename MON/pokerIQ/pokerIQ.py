@@ -7928,24 +7928,21 @@ class PokerWindow(QMainWindow):
         player = self.players[hero_seat]
         to_call = max(0, self.current_bet - player.bet_in_round)
 
-        # Auto-run-out only kicks in when the hero genuinely has nothing
-        # left to decide. Two situations qualify:
-        #   1. Hero is already all-in (stack == 0) — can't act.
-        #   2. All OTHER active players are all-in AND hero faces no
-        #      outstanding bet (to_call == 0) — there's nothing to call
-        #      and any further hero bets would only reach a side pot
-        #      with no caller, so the round just closes via Next Card.
-        # The previous condition `len(active_with_chips) <= 1` mis-fired
-        # whenever the hero was the last player with chips but still
-        # had to decide whether to call an opponent's all-in shove.
-        others_active = [p for p in self.players
-                         if p.active and p is not player]
-        others_can_act = any(p.stack > 0 for p in others_active)
-        hero_all_in = (player.stack <= 0)
-        all_in_mode = hero_all_in or (to_call <= 0 and not others_can_act)
-        self._show_next_card_button(all_in_mode)
-        if all_in_mode:
+        # Don't replace fold/check/call/raise with Next Card unless
+        # the hero literally has no chips left. We used to also trip
+        # this shortcut when "others can't act AND to_call == 0", but
+        # that hijacked the action row from a player who still had a
+        # big stack and a real check/bet decision to make. Per the
+        # user spec: Next Card belongs ONLY to a multi-way all-in
+        # runout, which is handled in process_next_player via
+        # _needs_allin_runout_pause(). Keep this branch as a safety
+        # net for the impossible "stack-0 hero got asked to act"
+        # case so the UI degrades gracefully instead of presenting
+        # a $0 player with bet buttons.
+        if player.stack <= 0:
+            self._show_next_card_button(True)
             return
+        self._show_next_card_button(False)
 
         can_check = (to_call <= 0)
 
@@ -8098,11 +8095,21 @@ class PokerWindow(QMainWindow):
 
     def _on_next_card_clicked(self):
         """User clicked 'Next Card' during the all-in runout. Skip betting
-        for the remaining streets by closing the current betting round."""
+        for the remaining streets by closing the current betting round.
+
+        Network clients aren't authoritative — only the host runs the
+        engine, so a client that somehow ended up with the button
+        visible must NOT call end_betting_round locally (that crashed
+        the client when it tried to deal a new community card from a
+        deck that doesn't exist on its side). We just hide the button
+        and let the host's broadcast drive the next street.
+        """
         if not getattr(self, 'waiting_for_human', False):
             return
         self.waiting_for_human = False
         self._show_next_card_button(False)
+        if self.network_mode == "client":
+            return
         # Mark everyone with chips as having acted so end_betting_round fires.
         for p in self.players:
             if p.active:
@@ -12472,11 +12479,17 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         if not player:
             return
 
-        active_with_chips = [p for p in self.players if p.active and p.stack > 0]
-        all_in_mode = (len(active_with_chips) <= 1)
-        self._show_next_card_button(all_in_mode)
-        if all_in_mode:
+        # Don't replace fold/check/call/raise with Next Card unless the
+        # client's seat literally has no chips. Same rule as the host
+        # (enable_human_actions). The previous "len(active_with_chips)
+        # <= 1" shortcut hijacked the action row from the last player
+        # WITH chips and — worse — let them click Next Card on the
+        # client, which then tried to fire end_betting_round locally
+        # (a host-engine method) and crashed.
+        if player.stack <= 0:
+            self._show_next_card_button(True)
             return
+        self._show_next_card_button(False)
 
         can_check = to_call == 0
         can_call = to_call > 0 and player.stack > 0
