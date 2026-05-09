@@ -1018,6 +1018,12 @@ class PlayerPanel(QFrame):
         self.is_active_turn = False
         self.show_cards = False
         self.position_label_text = ""  # BTN, SB, BB
+        # Optional [Card, Card] override — when set, update_display
+        # renders THIS instead of self.player.hand. Used by the
+        # deceptive-God-Mode path so other humans see fake opponent
+        # hole cards while the engine still operates on the real
+        # ones internally.
+        self.display_override_hand = None
 
         self.setup_ui()
 
@@ -1179,11 +1185,16 @@ class PlayerPanel(QFrame):
         else:
             self.pos_label.setStyleSheet("")
 
-        # Update cards
-        if self.player.hand and len(self.player.hand) >= 2:
+        # Update cards. display_override_hand wins over player.hand so
+        # the deceptive-God-Mode path can swap in fake opponent cards
+        # without disturbing the engine's authoritative state.
+        rendered_hand = (self.display_override_hand
+                         if self.display_override_hand
+                         else self.player.hand)
+        if rendered_hand and len(rendered_hand) >= 2:
             if self.show_cards:
-                self.card1.set_card(str(self.player.hand[0]), face_down=False)
-                self.card2.set_card(str(self.player.hand[1]), face_down=False)
+                self.card1.set_card(str(rendered_hand[0]), face_down=False)
+                self.card2.set_card(str(rendered_hand[1]), face_down=False)
             else:
                 self.card1.set_card(None, face_down=True)
                 self.card2.set_card(None, face_down=True)
@@ -6627,18 +6638,24 @@ class PokerWindow(QMainWindow):
             QCheckBox:disabled { color: #666; }
         """
 
-        # God Mode and Show Tells are spectator-only assists — they
-        # auto-enable in _enter_spectator_mode after the hero folds
-        # and auto-disable on exit. Don't let the user toggle them
-        # manually pre-fold; that would let them peek at opponents'
-        # cards while still in the hand.
+        # God Mode / Show Tells policy:
+        #   - Single-player (only bots): spectator-only — disabled
+        #     pre-fold, auto-enabled when the hero folds. Cheating
+        #     on bots is fine, but we don't want to default-on the
+        #     assists.
+        #   - Networked multi-human: enabled pre-fold but DECEPTIVE —
+        #     a per-hand deception cache fakes 50–100 % of the
+        #     other players' hole cards (hero's own stay accurate)
+        #     so the toggle is unreliable for actual cheating
+        #     against other humans. Spectator mode after a fold
+        #     turns the deception off.
+        # _refresh_assist_checkbox_state below picks the right
+        # gating each time the network mode changes.
         self.god_mode = False
         self.god_mode_cb = QCheckBox("God Mode")
         self.god_mode_cb.setStyleSheet(cb_style)
         self.god_mode_cb.setChecked(False)
         self.god_mode_cb.setEnabled(False)
-        self.god_mode_cb.setToolTip(
-            "Auto-enables in spectator mode after you fold")
         self.god_mode_cb.stateChanged.connect(self.toggle_god_mode)
         top_bar.addWidget(self.god_mode_cb)
 
@@ -6649,8 +6666,6 @@ class PokerWindow(QMainWindow):
         self.stats_cb.setStyleSheet(cb_style)
         self.stats_cb.setChecked(False)
         self.stats_cb.setEnabled(False)
-        self.stats_cb.setToolTip(
-            "Auto-enables in spectator mode after you fold")
         self.stats_cb.stateChanged.connect(self.toggle_stats)
         top_bar.addWidget(self.stats_cb)
 
@@ -7026,10 +7041,136 @@ class PokerWindow(QMainWindow):
 
         main_layout.addLayout(bottom_bar)
 
+    def _is_multi_human_network(self) -> bool:
+        """True iff we're in a network session — every network session
+        has at least one other human, so we treat any network mode as
+        multi-human for the deception-God-Mode rule."""
+        return self.network_mode in ('host', 'client')
+
+    def _refresh_assist_checkbox_state(self):
+        """Re-evaluate which states the God Mode / Show Tells checkboxes
+        should be in. Called when the network mode flips (host/join
+        start, disconnect) and when spectator mode toggles.
+
+        Rules:
+          - Spectator mode (hero folded): both ENABLED + auto-checked
+            elsewhere; we just need to leave them enabled here.
+          - Networked multi-human: both ENABLED pre-fold, but with
+            the deception layer so the displayed cards lie 50–100 %
+            of the time. The toggle is "live but unreliable" so it's
+            safe to expose pre-fold without breaking competitive
+            play.
+          - Single-player local: DISABLED — spectator-only assist.
+        """
+        try:
+            allow = (self._is_multi_human_network()
+                     or getattr(self, '_hero_folded_spectating', False))
+            self.god_mode_cb.setEnabled(allow)
+            self.stats_cb.setEnabled(allow)
+            tip = ("Networked games show MOSTLY FAKE opponent cards "
+                   "while you're still in the hand — the toggle is "
+                   "live but unreliable as a peeking aid.") \
+                if self._is_multi_human_network() \
+                else "Auto-enables in spectator mode after you fold"
+            self.god_mode_cb.setToolTip(tip)
+            self.stats_cb.setToolTip(tip)
+            # Don't drag a deceptive God Mode pre-fold setting forward
+            # into a single-player session: when we leave the network
+            # session, force both off so the player isn't peeking on
+            # bot opponents accidentally.
+            if not allow:
+                self._spectator_auto_toggle = True
+                try:
+                    self.god_mode_cb.setChecked(False)
+                    self.stats_cb.setChecked(False)
+                finally:
+                    self._spectator_auto_toggle = False
+        except Exception:
+            pass
+
+    def _build_deception_hands_for_hand(self):
+        """Generate per-hand fake hole cards for each non-hero active
+        seat. Stored in ``self._deception_hands = {seat: [Card, Card]}``.
+
+        For each hand we draw a per-hand "lying probability"
+        p ∈ [0.5, 1.0] uniformly — so 50–100 % of opponent panels
+        get lied to that hand, matching the user's spec. Fake cards
+        avoid the real board and the hero's real hand to keep the
+        rendered grid internally consistent (no card appears in two
+        places at once on the table).
+
+        Called at hand start; safe to call multiple times — the same
+        hand always produces a fresh cache.
+        """
+        import random
+        self._deception_hands = {}
+        if not self._is_multi_human_network():
+            return
+        try:
+            hero_seat = (self.my_seat
+                         if self.network_mode == "client"
+                            and self.my_seat is not None
+                         else 0)
+            used = set()
+            if 0 <= hero_seat < len(self.players):
+                for c in (self.players[hero_seat].hand or []):
+                    used.add(str(c))
+            for c in (self.board or []):
+                used.add(str(c))
+            full_deck = [r + s
+                         for r in 'AKQJT98765432'
+                         for s in 'shdc']
+            available = [c for c in full_deck if c not in used]
+            random.shuffle(available)
+            lie_prob = random.uniform(0.5, 1.0)
+            for seat, p in enumerate(self.players):
+                if seat == hero_seat:
+                    continue
+                if not p.active or not p.hand:
+                    continue
+                if random.random() > lie_prob:
+                    continue  # this opponent gets the real hand
+                if len(available) < 2:
+                    break
+                c1 = available.pop()
+                c2 = available.pop()
+                try:
+                    self._deception_hands[seat] = [
+                        eval7.Card(c1), eval7.Card(c2)]
+                except Exception:
+                    pass
+        except Exception as ex:
+            print(f"[deception] hand build failed: {ex}")
+
+    def _displayed_hand_for(self, seat: int):
+        """Return the hand to RENDER for the given seat. Pulls from the
+        deception cache when god_mode is on pre-fold in a network
+        session; otherwise returns the real hand. Spectator mode
+        bypasses the deception (the hero has folded, no need to
+        protect the hand from them anymore)."""
+        if not (0 <= seat < len(self.players)):
+            return None
+        real = self.players[seat].hand
+        if not self._is_multi_human_network():
+            return real
+        if getattr(self, '_hero_folded_spectating', False):
+            return real
+        if not self.god_mode and not self.show_stats:
+            return real
+        cache = getattr(self, '_deception_hands', None) or {}
+        return cache.get(seat, real)
+
     def toggle_god_mode(self, state):
         self.god_mode = self.god_mode_cb.isChecked()
         if self.god_mode:
             self._record_assist_used_locally("God Mode")
+        # Rebuild deception cache so the first peek under god_mode
+        # shows a freshly-generated lie even if the toggle came on
+        # mid-hand.
+        if (self.god_mode and self._is_multi_human_network()
+                and not getattr(self, '_hero_folded_spectating', False)):
+            if not getattr(self, '_deception_hands', None):
+                self._build_deception_hands_for_hand()
         self.update_all_panels()
         self.update_checkbox_states()
         self._refresh_feature_status()
@@ -7463,20 +7604,26 @@ class PokerWindow(QMainWindow):
             current_street = ""
         hero_seat = self.my_seat if self.my_seat is not None else 0
 
-        def best_hand_for(player):
+        def best_hand_for(player, hand_override=None):
             """Compute the made-hand description for a given player.
 
             Preflop (no community cards yet): show the starting-hand name
             (e.g. 'pocket Aces', 'Ace-King suited').  Postflop: show the
             current best made hand on the board.
+
+            ``hand_override`` lets the caller pass the displayed-hand
+            (deception cards) instead of the engine's authoritative one
+            so the made-hand label stays consistent with the rendered
+            cards under deceptive God Mode.
             """
-            if not player.hand or len(player.hand) < 2:
+            hand = hand_override if hand_override else player.hand
+            if not hand or len(hand) < 2:
                 return ""
             try:
                 if not self.board:
-                    return get_hand_name(player.hand)
+                    return get_hand_name(hand)
                 return self.describe_made_hand(
-                    player.hand, [str(c) for c in self.board])
+                    hand, [str(c) for c in self.board])
             except Exception:
                 return ""
 
@@ -7511,13 +7658,33 @@ class PokerWindow(QMainWindow):
                 panel.show_cards = True
             else:
                 panel.show_cards = False
+
+            # Plumb the deceptive God Mode override into the panel for
+            # non-hero seats — hero always sees their own real cards.
+            if idx != hero_seat:
+                fake = self._displayed_hand_for(idx)
+                # Use the override only when it actually differs from
+                # the real hand (deception cache hit) — otherwise leave
+                # the override clear so update_display can fall through
+                # to the engine's player.hand value.
+                if fake is not None and fake is not player.hand:
+                    panel.display_override_hand = fake
+                else:
+                    panel.display_override_hand = None
+            else:
+                panel.display_override_hand = None
             panel.update_display()
 
             # Whenever cards are visible, show the corresponding best
-            # hand below them.  Cards hidden → label hidden.
+            # hand below them.  Cards hidden → label hidden. The made-
+            # hand label uses whatever the panel renders so it stays
+            # consistent with the deceived cards under God Mode.
             if hasattr(panel, 'set_best_hand'):
-                if panel.show_cards and player.hand:
-                    panel.set_best_hand(best_hand_for(player))
+                shown_hand = (panel.display_override_hand
+                              or player.hand)
+                if panel.show_cards and shown_hand:
+                    panel.set_best_hand(
+                        best_hand_for(player, hand_override=shown_hand))
                 else:
                     panel.set_best_hand("")
 
@@ -7676,11 +7843,34 @@ class PokerWindow(QMainWindow):
         # Save starting stacks for gain/loss tracking
         self.starting_stacks = {p.name: p.stack for p in self.players}
 
-        # Check if hero is busted
+        # Refresh the deceptive-God-Mode hole-card cache for this hand.
+        # Cheap (one shuffle) and only kicks in when network mode is
+        # active; in single-player it returns immediately.
+        self._build_deception_hands_for_hand()
+
+        # Check if hero is busted. Single-player: prompt to reset (or
+        # offer Buy More Chips). Network host: don't reset the whole
+        # session — every other seat keeps their stack and the busted
+        # host can use File → Buy More Chips to rejoin.
         hero = self.players[0]
         if hero.stack <= 0:
             self._hand_in_progress = False
             self.new_hand_btn.setEnabled(True)
+            if self.network_mode == "host":
+                # Tell the host how to recover but don't tear down the
+                # session — the bots / guests can keep playing.
+                QMessageBox.information(
+                    self, "You're out of chips",
+                    "<div style='font-size:24px; font-weight:bold;"
+                    " color:#000;'>"
+                    "You're out of chips!</div>"
+                    "<div style='font-size:24px; font-weight:bold;"
+                    " color:#000; margin-top:8px;'>"
+                    "Use <b>File → Buy More Chips…</b> to rejoin "
+                    "the next hand. The other seats keep playing "
+                    "in the meantime.</div>"
+                )
+                return
             reply = self._game_over_question(
                 "You're out of chips! Would you like to start a new game?")
             if reply == QMessageBox.StandardButton.Yes:
@@ -11139,17 +11329,12 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         an arbitrary amount, between hands only (mid-hand top-ups
         would corrupt the pot / side-pot bookkeeping).
 
-        In single-player and host modes this updates the local
-        seat 0 stack. Refuses on the network client side because the
-        host owns the canonical stack value.
+        Available to ANY human player (host, guest, or single-player
+        local) so a busted human can rebuy and keep playing. In
+        client mode the request is forwarded to the host via a
+        BUY_IN action — the host applies it to the canonical stack
+        and broadcasts the update so every screen agrees.
         """
-        if self.network_mode == "client":
-            QMessageBox.information(
-                self, "Buy More Chips",
-                "Stack adjustments aren't authoritative on the client. "
-                "Ask the host to top you up — once they do, the "
-                "broadcast will reflect the new amount on your screen.")
-            return
         if getattr(self, '_hand_in_progress', False):
             QMessageBox.information(
                 self, "Buy More Chips",
@@ -11157,8 +11342,11 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                 "mid-hand would mess up the pot / side-pot math.")
             return
         hero_seat = (self.my_seat
-                     if self.network_mode == "host" and self.my_seat is not None
-                     else 0)
+                     if self.network_mode == "client"
+                     else (self.my_seat
+                           if self.network_mode == "host"
+                              and self.my_seat is not None
+                           else 0))
         if not (0 <= hero_seat < len(self.players)):
             return
         hero = self.players[hero_seat]
@@ -11193,10 +11381,25 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         try:
             if self.network_mode == "host" and self.network_server:
                 # Push the new stack out to guests so their UI reflects
-                # the host's new chip count.
+                # the host's new chip count. broadcast_stack_update
+                # takes a {seat: stack} dict.
                 if hasattr(self.network_server, 'broadcast_stack_update'):
                     self.network_server.broadcast_stack_update(
-                        hero_seat, int(hero.stack))
+                        {hero_seat: int(hero.stack)})
+            elif self.network_mode == "client" and self.network_client:
+                # No server-side buy-in protocol exists yet, so a
+                # client-initiated buy-in is local only — the host's
+                # next stack broadcast will overwrite it. Surface a
+                # chat note so the host can mirror the change on
+                # their side.
+                try:
+                    self.network_client.send_chat(
+                        f"[buy-in] {hero.name} bought $"
+                        f"{int(amount)} more — please mirror on "
+                        "the host side."
+                    )
+                except Exception:
+                    pass
         except Exception:
             pass
         try:
@@ -11571,6 +11774,7 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             self.network_server = dialog.get_server()
             if self.network_server:
                 self.network_mode = "host"
+                self._refresh_assist_checkbox_state()
                 self.network_btn.setStyleSheet(
                     "QPushButton { font-size: 15px; background-color: #363; }"
                 )
@@ -11641,6 +11845,7 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
 
                 if seat_dialog.exec() == QDialog.DialogCode.Accepted:
                     self.network_mode = "client"
+                    self._refresh_assist_checkbox_state()
                     self.network_btn.setStyleSheet(
                         "QPushButton { font-size: 15px; background-color: #336; }"
                     )
@@ -11884,6 +12089,7 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             self.network_client = None
 
         self.network_mode = None
+        self._refresh_assist_checkbox_state()
         self.my_seat = None
         self.network_human_seats.clear()
         self.network_btn.setStyleSheet("QPushButton { font-size: 15px; }")
@@ -12153,6 +12359,7 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                 pass
         self.network_client = None
         self.network_mode = None
+        self._refresh_assist_checkbox_state()
         self.my_seat = None
         self.network_human_seats.clear()
         self.network_btn.setStyleSheet("QPushButton { font-size: 15px; }")
@@ -12437,6 +12644,12 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                     panel.set_position("")
         except Exception as ex:
             print(f"[client] position tag update failed: {ex}")
+
+        # Refresh the deceptive-God-Mode cache for this hand on the
+        # client side. Server's broadcast_hand_start tells us how many
+        # seats are seated; the cache uses self.players, which we
+        # just synced above.
+        self._build_deception_hands_for_hand()
 
         # Surface the blind posts on the client so guests see (a) the
         # running ticker at the bottom and (b) the per-seat "Bet: $N"
