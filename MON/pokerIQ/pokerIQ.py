@@ -7849,11 +7849,26 @@ class PokerWindow(QMainWindow):
                 if to_call > 0 or player.actions_this_round == 0:
                     pass  # Continue to let them act
                 else:
-                    # They've acted and don't need to call - end betting
+                    # They've acted and don't need to call. If there's
+                    # still more board to deal AND no one has chips
+                    # left to act on it (multi-way all-in runout),
+                    # pause behind the Next Card button so the user
+                    # can step through turn and river one card at a
+                    # time instead of seeing the engine auto-deal
+                    # everything in the same paint.
+                    if self._needs_allin_runout_pause():
+                        self._await_next_card()
+                        return
                     self.end_betting_round()
                     return
             else:
-                # No one has chips - end betting
+                # No one has chips. Same Next Card pause logic as
+                # above — only fall straight through to
+                # end_betting_round when we're already at the river
+                # (no more cards are coming, just go to showdown).
+                if self._needs_allin_runout_pause():
+                    self._await_next_card()
+                    return
                 self.end_betting_round()
                 return
 
@@ -8050,6 +8065,37 @@ class PokerWindow(QMainWindow):
             self.tom_raise_btn.setVisible(True)
             self.next_card_btn.setVisible(False)
 
+    def _needs_allin_runout_pause(self) -> bool:
+        """True iff the current state is a "multi-way all-in runout"
+        AND there's still board to deal.
+
+        Multi-way all-in runout = at least two players are still in
+        the hand (count_active >= 2) but none of them has chips left
+        (count_active_with_chips == 0). Without this pause the engine
+        would auto-fire end_betting_round → deal next card →
+        end_betting_round → … all in the same UI paint, so the user
+        never gets to see the turn before the river arrives.
+        """
+        try:
+            if self.count_active() < 2:
+                return False
+            if self.count_active_with_chips() > 0:
+                return False
+            # No more streets coming → fall through to showdown,
+            # don't bother with another Next Card click.
+            return self.street_idx < len(STREETS) - 1
+        except Exception:
+            return False
+
+    def _await_next_card(self):
+        """Render the Next Card button and wait for the user to click
+        it before advancing to the next street. Used during a multi-
+        way all-in runout (see _needs_allin_runout_pause)."""
+        # Reuse the existing waiting-for-human guard so the existing
+        # _on_next_card_clicked handler dispatches to end_betting_round.
+        self.waiting_for_human = True
+        self._show_next_card_button(True)
+
     def _on_next_card_clicked(self):
         """User clicked 'Next Card' during the all-in runout. Skip betting
         for the remaining streets by closing the current betting round."""
@@ -8062,6 +8108,13 @@ class PokerWindow(QMainWindow):
             if p.active:
                 p.actions_this_round = max(1, p.actions_this_round)
         self.end_betting_round()
+        # If we're still in a multi-way all-in runout AND there's
+        # another street coming, show the button again immediately
+        # — the user clicks once per board card. end_betting_round
+        # already advanced the street and dealt the new community
+        # card; we just need to re-arm the pause UI.
+        if self._needs_allin_runout_pause():
+            self._await_next_card()
 
     def _enter_spectator_mode(self):
         """After fold, enable God Mode + Show Tells and show ◀ ▶ street nav.
@@ -12004,10 +12057,31 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         # Close any open prior-hand summary dialogs from the network game.
         self._close_open_hand_dialogs()
         self.update_all_panels()
-        QMessageBox.information(
-            self, "Host disconnected",
-            "The host left the game. You can keep playing locally — bots "
-            "will fill all other seats. Click New Hand to start.")
+        # Match the Confirm big bet / Game Over treatment: no icon
+        # column, 24pt bold body text, 720px min-width so the
+        # explanation reads at arm's length.
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.NoIcon)
+        msg.setWindowTitle("Host disconnected")
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setText(
+            "<div style='font-size:24px; font-weight:bold; color:#000;'>"
+            "The host left the game.</div>"
+            "<div style='font-size:24px; font-weight:bold; color:#000;"
+            " margin-top:8px;'>"
+            "You can keep playing locally — bots will fill all other "
+            "seats. Click New Hand to start.</div>"
+        )
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.setStyleSheet(
+            "QMessageBox { background-color: #f0f0f0; }"
+            "QMessageBox QLabel { color: #000;"
+            " background-color: transparent; font-size: 24px;"
+            " min-width: 720px; padding: 14px 10px; }"
+            "QMessageBox QPushButton { font-size: 18px;"
+            " padding: 10px 28px; min-width: 120px; }"
+        )
+        msg.exec()
 
     def _on_hole_cards_received(self, cards: list):
         """Handle receiving our hole cards."""
