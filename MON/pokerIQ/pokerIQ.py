@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, QGraphicsTextItem,
     QGraphicsRectItem, QDialog, QDialogButtonBox, QCheckBox, QGroupBox,
     QTabWidget, QTextEdit, QScrollArea, QComboBox, QFormLayout,
-    QProgressBar, QSizePolicy, QGridLayout,
+    QProgressBar, QSizePolicy, QGridLayout, QFileDialog,
 )
 from PyQt6.QtCore import Qt, QTimer, QRectF, QPointF, QSettings, QThread, pyqtSignal
 from PyQt6.QtGui import (
@@ -7473,9 +7473,15 @@ class PokerWindow(QMainWindow):
             # hand), hide their panel completely so the seat looks vacant.
             # The hero's own panel is never hidden — they get the busted
             # game-over dialog instead.
+            #
+            # We deliberately do NOT exempt at_showdown — a previously-
+            # busted seat doesn't have cards in this showdown either, so
+            # rendering an empty panel for them at showdown only adds
+            # visual noise. (The previous "and not at_showdown" clause
+            # left dead-player panels visible during showdown / spectator
+            # mode after a bust hand.)
             if (player.stack <= 0 and not player.active
-                    and idx != hero_seat
-                    and not getattr(self, 'at_showdown', False)):
+                    and idx != hero_seat):
                 panel.setVisible(False)
                 if hasattr(panel, 'set_best_hand'):
                     panel.set_best_hand("")
@@ -7959,6 +7965,14 @@ class PokerWindow(QMainWindow):
             self.raise_btn.setEnabled(False)
             self.tom_raise_btn.setEnabled(False)
 
+        # Label the raise button "Bet" instead of "Raise" when no one
+        # has put chips in this street yet — the canonical postflop
+        # term for the first wager. Preflop always has the BB on the
+        # board so current_bet > 0 and the label stays "Raise".
+        bet_label = "Bet" if int(self.current_bet) == 0 else "Raise"
+        self.raise_btn.setText(bet_label)
+        self.tom_raise_btn.setText(bet_label)
+
     def disable_human_actions(self):
         """Disable action buttons."""
         self.waiting_for_human = False
@@ -7987,10 +8001,21 @@ class PokerWindow(QMainWindow):
                 "QPushButton:hover { background-color: #468; }"
             )
             self.next_card_btn.clicked.connect(self._on_next_card_clicked)
+            # Insert into the action row (the QHBoxLayout that holds
+            # fold/check/call/raise) BEFORE its trailing stretch so the
+            # 420 px Next Card button lands centred between the two
+            # stretches when the four standard buttons are hidden.
+            # Using fold_btn.parentWidget().layout() returned the OUTER
+            # vertical container, which dropped the button into its own
+            # row underneath — i.e. "on the side" relative to where
+            # the user reads action controls.
             try:
-                # Insert into the same horizontal layout as fold/call/raise.
-                action_layout = self.fold_btn.parentWidget().layout()
-                action_layout.addWidget(self.next_card_btn)
+                action_layout = (getattr(self, '_action_layout', None)
+                                 or self.fold_btn.parentWidget().layout())
+                # Insert at index = (count - 1) so it sits just before
+                # the trailing addStretch(). count() includes stretches.
+                insert_at = max(0, action_layout.count() - 1)
+                action_layout.insertWidget(insert_at, self.next_card_btn)
             except Exception:
                 pass
             self.next_card_btn.setVisible(False)
@@ -10873,11 +10898,28 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         """
         menubar = self.menuBar()
 
-        # File menu — currently just an Exit entry, leftmost so it
-        # follows the standard desktop convention. Ctrl+Q is wired up
-        # alongside the menu click so power users don't have to mouse
-        # over to quit.
+        # File menu — Save Game / Load Game / Exit, leftmost following
+        # the standard desktop convention.
         file_menu = menubar.addMenu("&File")
+
+        act_save = QAction("&Save Game…", self)
+        act_save.setShortcut("Ctrl+S")
+        act_save.setStatusTip(
+            "Save the full game state (stacks, hands, board, blinds, "
+            "history) to a JSON file you can load later")
+        act_save.triggered.connect(self._menu_save_game)
+        file_menu.addAction(act_save)
+
+        act_load = QAction("&Load Game…", self)
+        act_load.setShortcut("Ctrl+O")
+        act_load.setStatusTip(
+            "Load a previously-saved game and resume from where it "
+            "was saved")
+        act_load.triggered.connect(self._menu_load_game)
+        file_menu.addAction(act_load)
+
+        file_menu.addSeparator()
+
         act_exit = QAction("E&xit", self)
         act_exit.setShortcut("Ctrl+Q")
         act_exit.setStatusTip("Quit PokerIQ")
@@ -10934,6 +10976,240 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         act_about = QAction("About", self)
         act_about.triggered.connect(self.show_about)
         help_menu.addAction(act_about)
+
+    # ---- Save / Load ----------------------------------------------------
+
+    SAVE_VERSION = 1
+
+    def _serialize_player(self, p):
+        """Convert a Player object to a JSON-friendly dict.
+
+        Cards are stored as their string form (e.g. 'Ks'); load-time
+        recreates eval7.Card objects.
+        """
+        return {
+            'name': p.name,
+            'style': p.style,
+            'stack': int(p.stack),
+            'hand': [str(c) for c in (p.hand or [])],
+            'active': bool(p.active),
+            'bet_in_round': int(getattr(p, 'bet_in_round', 0)),
+            'actions_this_round': int(getattr(p, 'actions_this_round', 0)),
+            'total_invested': int(getattr(p, 'total_invested', 0)),
+        }
+
+    def _build_save_state(self) -> dict:
+        """Snapshot every attribute the table needs to resume play."""
+        return {
+            'pokerIQ_save_version': self.SAVE_VERSION,
+            'saved_at': datetime.now().isoformat(timespec='seconds'),
+            'players': [self._serialize_player(p) for p in self.players],
+            'board': [str(c) for c in (self.board or [])],
+            'pot': int(self.pot),
+            'dealer_idx': int(self.dealer_idx),
+            'current_bet': int(self.current_bet),
+            'street_idx': int(self.street_idx),
+            'current_player_idx': int(self.current_player_idx),
+            'last_raiser': int(getattr(self, 'last_raiser', -1)),
+            'last_raise_size': int(getattr(self, 'last_raise_size', 0)),
+            'raises_this_round': int(getattr(self, 'raises_this_round', 0)),
+            'hand_number': int(self.hand_number),
+            'blind_level': int(self.blind_level),
+            'at_showdown': bool(self.at_showdown),
+            'action_log': list(self.action_log),
+            'action_history': list(self.action_history),
+            'starting_stacks': dict(getattr(self, 'starting_stacks', {})),
+            'hand_history': self._jsonify_hand_history(self.hand_history),
+        }
+
+    def _jsonify_hand_history(self, h):
+        """hand_history may contain eval7.Card / int / nested dicts —
+        coerce values into JSON-safe primitives. Anything we can't
+        encode is dropped from the snapshot rather than failing the
+        whole save."""
+        import json as _json
+        out = {}
+        for k, v in (h or {}).items():
+            try:
+                _json.dumps(v)
+                out[k] = v
+            except (TypeError, ValueError):
+                # Card lists / dicts of cards.
+                if isinstance(v, list):
+                    out[k] = [str(x) for x in v]
+                elif isinstance(v, dict):
+                    out[k] = {sk: ([str(x) for x in sv]
+                                   if isinstance(sv, list) else str(sv))
+                              for sk, sv in v.items()}
+                else:
+                    out[k] = str(v)
+        return out
+
+    def _menu_save_game(self):
+        """File → Save Game. Refuses to save while a network session
+        is active (the relevant state isn't authoritative on guests)."""
+        if self.network_mode:
+            QMessageBox.information(
+                self, "Save Game",
+                "Save / Load isn't supported during a network session. "
+                "Disconnect first if you want to snapshot a hand.")
+            return
+        default_name = (
+            f"pokerIQ_hand{self.hand_number}_"
+            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        )
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Game", default_name,
+            "PokerIQ saves (*.json);;All files (*)"
+        )
+        if not path:
+            return
+        try:
+            import json as _json
+            payload = self._build_save_state()
+            with open(path, 'w') as f:
+                _json.dump(payload, f, indent=2)
+        except Exception as ex:
+            QMessageBox.warning(
+                self, "Save Game",
+                f"Couldn't write the save file:\n{ex}")
+            return
+        QMessageBox.information(
+            self, "Save Game",
+            f"Game state saved to:\n{path}")
+
+    def _menu_load_game(self):
+        """File → Load Game. Replaces in-memory state with the saved
+        snapshot, then refreshes every panel and the table view."""
+        if self.network_mode:
+            QMessageBox.information(
+                self, "Load Game",
+                "Save / Load isn't supported during a network session. "
+                "Disconnect first.")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load Game", "",
+            "PokerIQ saves (*.json);;All files (*)"
+        )
+        if not path:
+            return
+        try:
+            import json as _json
+            with open(path, 'r') as f:
+                payload = _json.load(f)
+        except Exception as ex:
+            QMessageBox.warning(
+                self, "Load Game",
+                f"Couldn't read the save file:\n{ex}")
+            return
+        try:
+            self._apply_save_state(payload)
+        except Exception as ex:
+            QMessageBox.warning(
+                self, "Load Game",
+                f"Save file looks corrupted ({ex}). The game state "
+                "may be partially loaded — start a new hand to "
+                "recover.")
+            return
+        QMessageBox.information(
+            self, "Load Game",
+            f"Loaded game from:\n{path}\n\n"
+            "Click 'New Hand' to start the next hand from this state.")
+
+    def _apply_save_state(self, payload: dict):
+        """Restore every attribute set by _build_save_state."""
+        ver = int(payload.get('pokerIQ_save_version') or 0)
+        if ver < 1:
+            raise ValueError("missing or unrecognised save version")
+
+        # Rebuild players.
+        saved_players = payload.get('players') or []
+        new_players = []
+        for sp in saved_players:
+            p = Player(sp.get('name', '?'), sp.get('style', 'tight'))
+            p.stack = int(sp.get('stack', 0) or 0)
+            try:
+                p.hand = [eval7.Card(c) for c in sp.get('hand', []) or []]
+            except Exception:
+                p.hand = []
+            p.active = bool(sp.get('active', True))
+            p.bet_in_round = int(sp.get('bet_in_round', 0) or 0)
+            p.actions_this_round = int(sp.get('actions_this_round', 0) or 0)
+            p.total_invested = int(sp.get('total_invested', 0) or 0)
+            new_players.append(p)
+        if not new_players:
+            raise ValueError("save has no players")
+        self.players = new_players
+
+        # Re-apply current bot preferences so saved seats stay in sync
+        # with the user's stored per-seat overrides.
+        try:
+            self._apply_bot_preferences()
+        except Exception:
+            pass
+
+        # Board cards.
+        try:
+            self.board = [eval7.Card(c)
+                          for c in payload.get('board') or []]
+        except Exception:
+            self.board = []
+
+        # Scalar state.
+        self.pot = int(payload.get('pot', 0) or 0)
+        self.dealer_idx = int(payload.get('dealer_idx', 0) or 0)
+        self.current_bet = int(payload.get('current_bet', 0) or 0)
+        self.street_idx = int(payload.get('street_idx', 0) or 0)
+        self.current_player_idx = int(
+            payload.get('current_player_idx', 0) or 0)
+        self.last_raiser = int(payload.get('last_raiser', -1))
+        self.last_raise_size = int(payload.get('last_raise_size', 0) or 0)
+        self.raises_this_round = int(
+            payload.get('raises_this_round', 0) or 0)
+        self.hand_number = int(payload.get('hand_number', 0) or 0)
+        self.blind_level = int(payload.get('blind_level', 0) or 0)
+        self.at_showdown = bool(payload.get('at_showdown', False))
+        self.action_log = list(payload.get('action_log') or [])
+        self.action_history = list(payload.get('action_history') or [])
+        self.starting_stacks = dict(payload.get('starting_stacks') or {})
+        self.hand_history = dict(payload.get('hand_history') or {})
+
+        # Make sure transient flags don't keep stale UI state visible.
+        self.waiting_for_human = False
+        self._hero_folded_spectating = False
+        try:
+            self._exit_spectator_mode()
+        except Exception:
+            pass
+
+        # Refresh everything that pulls from the model.
+        try:
+            self.table.set_board(self.board)
+        except Exception:
+            pass
+        try:
+            self.table.set_pot(self.pot)
+        except Exception:
+            pass
+        try:
+            STREETS_LOCAL = STREETS  # noqa: N806 — match casing in module
+            street_name = STREETS_LOCAL[self.street_idx] \
+                if 0 <= self.street_idx < len(STREETS_LOCAL) else "Preflop"
+            self.table.set_street(street_name)
+        except Exception:
+            pass
+        try:
+            self.update_all_panels()
+        except Exception:
+            pass
+        try:
+            self.update_stats_display()
+        except Exception:
+            pass
+        try:
+            self.disable_human_actions()
+        except Exception:
+            pass
 
     def _menu_host(self):
         if self.network_mode:
