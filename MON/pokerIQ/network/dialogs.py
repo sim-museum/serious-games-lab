@@ -111,11 +111,10 @@ class HostGameDialog(QDialog):
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
 
-        # Cache the LAN-IP list once and reuse on port changes — IP
-        # detection requires a UDP socket and shouldn't fire every
-        # time the user nudges the port spinbox.
+        # Cache the LAN-IP list once. The label doesn't include the
+        # port (port has its own spinbox above), so there's nothing
+        # to refresh on port changes.
         self._lan_ips = _get_local_lan_ips()
-        self.port_spin.valueChanged.connect(self._refresh_host_ip_label)
         self._refresh_host_ip_label()
 
         # Status
@@ -134,22 +133,22 @@ class HostGameDialog(QDialog):
         layout.addLayout(btn_layout)
 
     def _refresh_host_ip_label(self):
-        """Re-render the Your-IP line using the cached LAN-IP list
-        and the current port spin value."""
-        port = self.port_spin.value()
+        """Re-render the Your-IP line using the cached LAN-IP list.
+        The port lives in its own spinbox row above, so we show the
+        bare IP here — no `:port` suffix.
+        """
         if not self._lan_ips:
             self.host_ip_label.setText(
                 "(no LAN IP detected — guests on this machine "
-                f"can use 127.0.0.1:{port})"
+                "can use 127.0.0.1)"
             )
             self.host_ip_label.setStyleSheet(
                 "QLabel { color: #aa6600; font-style: italic; }")
             return
         if len(self._lan_ips) == 1:
-            self.host_ip_label.setText(f"{self._lan_ips[0]}:{port}")
+            self.host_ip_label.setText(self._lan_ips[0])
         else:
-            self.host_ip_label.setText(
-                "  •  ".join(f"{ip}:{port}" for ip in self._lan_ips))
+            self.host_ip_label.setText("  •  ".join(self._lan_ips))
         self.host_ip_label.setStyleSheet(
             "QLabel { color: #2a7a2a; font-weight: bold; }")
 
