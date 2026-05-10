@@ -14,7 +14,7 @@ from .dialog_style import apply_dialog_style
 from ben_backend.models import BoardState, Seat, Hand
 from ben_backend.pavlicek import (
     deal_to_hand_code, hand_code_to_deal,
-    deal_to_number, number_to_deal, format_deal_base62,
+    deal_to_number, number_to_deal, format_deal_base72,
     base72_to_int, int_to_base72
 )
 
@@ -229,10 +229,8 @@ class DealConverterDialog(QDialog):
         # Pavlicek number
         try:
             deal_num = deal_to_number(hands)
-            base62 = format_deal_base62(deal_num)
-            base72 = deal_to_hand_code(hands)
-            lines.append(f"\nPavlicek (base-62): {base62}")
-            lines.append(f"Hand code (base-72): {base72}")
+            base72 = format_deal_base72(deal_num)
+            lines.append(f"\nPavlicek (base-72): {base72}")
         except Exception:
             pass
 

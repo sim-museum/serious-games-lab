@@ -13,7 +13,7 @@ from pathlib import Path
 from ben_backend.models import (
     BoardState, Card, Seat, Suit, Vulnerability, Contract, Trick, Rank, Bid, Hand
 )
-from ben_backend.pavlicek import deal_to_number, format_deal_base62
+from ben_backend.pavlicek import deal_to_number, format_deal_base72
 
 
 _SUIT_CHARS = {Suit.SPADES: 'S', Suit.HEARTS: 'H',
@@ -171,7 +171,7 @@ def build_bdl_snapshot(board: BoardState,
         contract: explicit contract override (defaults to board.contract).
         result_summary: free-form text appended at the bottom (e.g. the
             tricks-made / score line for end-of-hand prompts).
-        deal_id: pavlicek/base-62 deal id, written into the Deal: line.
+        deal_id: pavlicek/base-72 deal id, written into the Deal: line.
     """
     contract = contract or board.contract
     hands_for_cards = original_hands if original_hands else board.hands
@@ -534,10 +534,10 @@ Scoring      :  Team (IMP)
         # Calculate Pavlicek deal number from original hands
         hands_for_pavlicek = original_hands if original_hands else board.hands
         pavlicek_num = deal_to_number(hands_for_pavlicek)
-        pavlicek_b62 = format_deal_base62(pavlicek_num)
+        pavlicek_b72 = format_deal_base72(pavlicek_num)
 
         date_str = datetime.now().strftime("%y%b%d")
-        deal_id = pavlicek_b62  # Use Pavlicek number (base-62) as deal ID
+        deal_id = pavlicek_b72  # Use Pavlicek number (base-72) as deal ID
 
         # Calculate result
         contract = board.contract
@@ -710,7 +710,7 @@ Scoring      :  Team (IMP)
         # Determine dealer and vulnerability from board number
         dealer, vuln = BoardState._board_dealer_vuln(board_run.board_number)
 
-        pavlicek_b62 = board_run.pavlicek_id
+        pavlicek_id = board_run.pavlicek_id
 
         # Calculate result
         contract = board_run.contract
@@ -736,7 +736,7 @@ Scoring      :  Team (IMP)
 
         # Build the log entry
         entry_lines = []
-        entry_lines.append(f"Deal         :   {pavlicek_b62}")
+        entry_lines.append(f"Deal         :   {pavlicek_id}")
         entry_lines.append(f"Deal-text    :   {deal_text}")
         entry_lines.append(f"Dealer       :   {self._seat_to_str(dealer)}")
         entry_lines.append(f"Vuln         :   {self._vuln_to_str(vuln)}  ")
@@ -775,7 +775,7 @@ Scoring      :  Team (IMP)
         entry_lines.append("")
 
         # Result
-        entry_lines.append(f"Result       :  {self._contract_to_str(contract)}   {self._seat_to_str(contract.declarer)}    {result_str}      {score}      {pavlicek_b62}")
+        entry_lines.append(f"Result       :  {self._contract_to_str(contract)}   {self._seat_to_str(contract.declarer)}    {result_str}      {score}      {pavlicek_id}")
 
         entry_lines.append("")
         entry_lines.append("************************************************************")

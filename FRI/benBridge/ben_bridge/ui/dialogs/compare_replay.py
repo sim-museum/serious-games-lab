@@ -102,29 +102,31 @@ class _ReplayPanel(QWidget):
         grid.addWidget(self.south, 2, 1)
 
         center = QFrame()
-        # 4 lines of card text + 1 trick title at TRICK_FS=22px need
-        # ~5 × 30 = 150px of vertical room before any padding; we add
-        # a small margin on top and bottom but no centering whitespace,
-        # so the 4th card never gets eaten by the bottom border.
+        # Pin "Trick N" to the top of the grey box (no centering
+        # whitespace above it) and stretch the empty area BELOW the
+        # cards instead — otherwise QVBoxLayout's default fill behaviour
+        # eats the room a 4-card trick needs and the bottom card gets
+        # clipped.
         center.setStyleSheet(
             "QFrame { background-color: #e8ece8; border: 1px solid #c0c0c0;"
             " border-radius: 4px; min-width: 180px; min-height: 200px; }"
         )
         c_layout = QVBoxLayout(center)
-        c_layout.setContentsMargins(8, 6, 8, 6)
+        c_layout.setContentsMargins(8, 2, 8, 6)
         c_layout.setSpacing(2)
-        c_layout.setAlignment(Qt.AlignmentFlag.AlignTop
-                              | Qt.AlignmentFlag.AlignHCenter)
         fs = self.TRICK_FS
         self.trick_label = QLabel(
             f'<span style="font-size:{fs}px"><b>Trick 1</b></span>'
         )
         self.trick_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        c_layout.addWidget(self.trick_label)
+        c_layout.addWidget(self.trick_label, 0, Qt.AlignmentFlag.AlignTop)
         self.trick_cards_label = QLabel("")
         self.trick_cards_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.trick_cards_label.setTextFormat(Qt.TextFormat.RichText)
-        c_layout.addWidget(self.trick_cards_label)
+        c_layout.addWidget(self.trick_cards_label, 0, Qt.AlignmentFlag.AlignTop)
+        # Bottom stretch absorbs leftover height so "Trick N" + the
+        # cards stay glued together at the top.
+        c_layout.addStretch(1)
         grid.addWidget(center, 1, 1)
 
         layout.addWidget(table_frame, stretch=1)
@@ -262,9 +264,17 @@ class _BiddingLogPanel(QWidget):
     HEADER_FS = 18
     CELL_FS = 18
 
-    def __init__(self, run: BenBoardRun, title: str, parent=None):
+    def __init__(self, run: BenBoardRun, title: str,
+                 dealer_idx: int | None = None, parent=None):
+        """If `dealer_idx` is supplied, use it instead of deriving from
+        `run.board_number` — useful when one side is loaded from a
+        source that doesn't carry a board number (Q-Plus QSS files
+        leave board_number=0, which would otherwise mis-place the
+        first bid at the wrong column).
+        """
         super().__init__(parent)
         from ..styles import get_suit_color
+        self._dealer_idx_override = dealer_idx
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
@@ -308,18 +318,21 @@ class _BiddingLogPanel(QWidget):
             grid.addWidget(h, 0, col)
 
         # Pad cells before the dealer's first bid with em dashes so each
-        # column lines up with its seat.
+        # column lines up with its seat.  Prefer the explicit override
+        # passed by the parent dialog (which already worked out the
+        # correct dealer from whichever run carries a real board
+        # number); only fall back to deriving from `run.board_number`
+        # when no override is supplied.
         from ben_backend.models import Seat as _Seat
-        dealer_idx = (run.contract.declarer.value
-                      if run.contract and run.contract.declarer else 0)
-        # We don't actually have dealer on BenBoardRun directly; derive
-        # from board number when available, fallback to 'N'.
-        try:
-            from ben_backend.models import BoardState
-            dealer, _ = BoardState._board_dealer_vuln(run.board_number)
-            dealer_idx = dealer.value
-        except Exception:
-            dealer_idx = 0
+        if self._dealer_idx_override is not None:
+            dealer_idx = self._dealer_idx_override
+        else:
+            try:
+                from ben_backend.models import BoardState
+                dealer, _ = BoardState._board_dealer_vuln(run.board_number)
+                dealer_idx = dealer.value
+            except Exception:
+                dealer_idx = 0
 
         suit_symbols = {0: '♠', 1: '♥', 2: '♦', 3: '♣'}
         suit_names = {0: 'spades', 1: 'hearts', 2: 'diamonds', 3: 'clubs'}
@@ -385,9 +398,16 @@ class BiddingLogDialog(QDialog):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(8)
 
+        # Both runs describe the same deal, so dealer must agree.  Use
+        # whichever run carries a real (non-zero) board number to derive
+        # it — Q-Plus QSS imports leave board_number=0 on the closed
+        # side, which would otherwise mis-place the first bid one
+        # column to the right.
+        dealer_idx = self._derive_shared_dealer_idx(left, right)
+
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(_BiddingLogPanel(left, left_label))
-        splitter.addWidget(_BiddingLogPanel(right, right_label))
+        splitter.addWidget(_BiddingLogPanel(left, left_label, dealer_idx=dealer_idx))
+        splitter.addWidget(_BiddingLogPanel(right, right_label, dealer_idx=dealer_idx))
         splitter.setSizes([1, 1])
         layout.addWidget(splitter, stretch=1)
 
@@ -397,6 +417,21 @@ class BiddingLogDialog(QDialog):
         close_btn.clicked.connect(self.accept)
         bottom.addWidget(close_btn)
         layout.addLayout(bottom)
+
+    @staticmethod
+    def _derive_shared_dealer_idx(left: BenBoardRun, right: BenBoardRun) -> int:
+        """Pick the seat index of the dealer using whichever run carries
+        a real board number.  Returns 0 (North) if neither does."""
+        from ben_backend.models import BoardState
+        for run in (left, right):
+            board_no = getattr(run, 'board_number', 0) or 0
+            if board_no > 0:
+                try:
+                    dealer, _ = BoardState._board_dealer_vuln(board_no)
+                    return dealer.value
+                except Exception:
+                    pass
+        return 0
 
 
 class CompareReplayDialog(QDialog):

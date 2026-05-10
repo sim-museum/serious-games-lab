@@ -12,7 +12,7 @@ from .models import (
     BoardState, Seat, Bid, Card, Contract, Trick, Hand,
     BenTable, BenBoardRun, BenTeamsMatch
 )
-from .pavlicek import deal_to_number, format_deal_base62
+from .pavlicek import deal_to_number, format_deal_base72
 
 
 class ClosedRoomWorker(QThread):
@@ -58,7 +58,7 @@ class ClosedRoomWorker(QThread):
         for seat, hand in board.hands.items():
             original_hands[seat] = Hand(cards=list(hand.cards))
 
-        pavlicek_id = format_deal_base62(deal_to_number(original_hands))
+        pavlicek_id = format_deal_base72(deal_to_number(original_hands))
 
         # Create result object
         result = BenBoardRun(
@@ -288,7 +288,7 @@ class TeamsMatchController:
         for seat, hand in board.hands.items():
             original_hands[seat] = Hand(cards=list(hand.cards))
 
-        pavlicek_id = format_deal_base62(deal_to_number(original_hands))
+        pavlicek_id = format_deal_base72(deal_to_number(original_hands))
 
         # Create board run for Open Room
         open_run = BenBoardRun(

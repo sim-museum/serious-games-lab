@@ -40,7 +40,7 @@ from ben_backend.models import (
     Seat, Suit, Vulnerability, Bid, Card, Contract, Hand, PlayerType, Player, Trick,
     BenTable, BenBoardRun, BenTeamsMatch
 )
-from ben_backend.pavlicek import number_to_deal, parse_deal_number, deal_to_number, format_deal_base62, int_to_base72
+from ben_backend.pavlicek import number_to_deal, parse_deal_number, deal_to_number, format_deal_base72, int_to_base72
 from ben_backend.config import get_config_manager, ConfigManager
 from ben_backend.scoring import ScoringTable, ScoringType, BoardResult, calculate_contract_score
 from ben_backend.match_controller import TeamsMatchController
@@ -1649,7 +1649,7 @@ For more information, see the README file."""
 
         text, ok = QInputDialog.getText(
             self, "Load Pavlicek Deal",
-            "Enter Pavlicek deal number (base-62 format, e.g., BcDeFgHiJkLmNoPq):"
+            "Enter Pavlicek deal number (base-72 format, e.g., 6agBeN!sWCn#IdjB):"
         )
         if not ok or not text.strip():
             return
@@ -3136,7 +3136,7 @@ For more information, see the README file."""
         try:
             hands_for_pavlicek = self.original_hands or board.hands
             if all(s in hands_for_pavlicek for s in Seat):
-                deal_id = format_deal_base62(deal_to_number(hands_for_pavlicek))
+                deal_id = format_deal_base72(deal_to_number(hands_for_pavlicek))
         except Exception:
             deal_id = ""
 
@@ -4471,7 +4471,7 @@ For more information, see the README file."""
             # don't let that drop the whole result from the score table.
             hands_for_pavlicek = self.original_hands or board.hands
             try:
-                pavlicek_id = format_deal_base62(deal_to_number(hands_for_pavlicek))
+                pavlicek_id = format_deal_base72(deal_to_number(hands_for_pavlicek))
             except Exception:
                 pavlicek_id = ""
 
@@ -4595,7 +4595,7 @@ For more information, see the README file."""
         try:
             hands_for_pavlicek = self.original_hands or board.hands
             if all(s in hands_for_pavlicek for s in Seat):
-                cache_pavlicek = format_deal_base62(deal_to_number(hands_for_pavlicek))
+                cache_pavlicek = format_deal_base72(deal_to_number(hands_for_pavlicek))
             else:
                 cache_pavlicek = ""
         except Exception:
@@ -4629,7 +4629,7 @@ For more information, see the README file."""
         try:
             hands_for_pavlicek = self.original_hands or board.hands
             if all(s in hands_for_pavlicek for s in Seat):
-                deal_id = format_deal_base62(deal_to_number(hands_for_pavlicek))
+                deal_id = format_deal_base72(deal_to_number(hands_for_pavlicek))
         except Exception:
             deal_id = ""
 
@@ -5342,7 +5342,7 @@ For more information, see the README file."""
             board = pending.get('board')
             try:
                 hands = self.original_hands or board.hands
-                pav = (format_deal_base62(deal_to_number(hands))
+                pav = (format_deal_base72(deal_to_number(hands))
                        if board and all(s in hands for s in Seat) else "")
             except Exception:
                 pav = ""

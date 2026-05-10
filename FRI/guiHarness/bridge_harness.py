@@ -75,8 +75,14 @@ CARD_COORDS_MAP = {
 PLAYER_NAMES = ["North", "East", "South", "West"]
 
 # ---------------------------------------------------------------------------
-# Base-72 / Pavlicek encoding  (standalone — no dependency on ben_bridge)
+# Pavlicek deal-number encoding  (standalone — no dependency on ben_bridge)
+#
+# Base-72 is the canonical alphabet across the project (BEN bridge BDL,
+# this harness, and any other deal-ID consumer).  Alphabet:
+#   0-9 A-Z a-z !@#$%^&*()
 # ---------------------------------------------------------------------------
+TOTAL_DEALS = comb(52, 13) * comb(39, 13) * comb(26, 13)
+
 BASE72_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@#$%^&*()"
 BASE72_VAL = {c: i for i, c in enumerate(BASE72_CHARS)}
 
@@ -154,6 +160,11 @@ def deal_to_number(hands):
 
 def number_to_deal(deal_number):
     """Return [north, east, south, west] as lists of card strings."""
+    if deal_number < 0 or deal_number >= TOTAL_DEALS:
+        raise ValueError(
+            f"Deal number {deal_number} is outside the Pavlicek range "
+            f"[0, {TOTAL_DEALS})."
+        )
     c26 = comb(26, 13)
     c39 = comb(39, 13)
     s_enc = deal_number % c26
