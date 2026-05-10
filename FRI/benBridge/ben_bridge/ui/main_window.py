@@ -3205,38 +3205,61 @@ For more information, see the README file."""
         if phase == 'bidding':
             try:
                 from ben_backend.config import get_config_manager
+                from ben_backend.bidding_systems import get_system
                 prefs = get_config_manager().config.preferences
                 engine = (prefs.bidding_engine or 'BEN').strip()
                 native = (prefs.native_bidding_system or 'SAYC').strip()
-                if engine.lower() == 'native' and native.lower() == 'precision':
-                    chosen, summary = (
-                        "Precision",
-                        "strong-club: 1♣ = 16+ any shape; 1♦ = 11-15 (often "
-                        "2-card minor with 4441 / 4-4-4-1); 1♥/1♠ = 11-15 "
-                        "with 5+; 1NT = 14-16 balanced; 2♣ = 11-15 with 6+ "
-                        "clubs; 2♦ = three-suiter 11-15 short diamonds; "
-                        "2♥/2♠ = weak two; 1♣-1♦ = 0-7 negative; positive "
-                        "responses 8+ HCP",
+                # Pick the spec that matches the engine config. BEN-NN (the
+                # TensorFlow bidder) is SAYC-flavoured and the rule-based
+                # path looks up the spec directly.
+                spec_name = native if engine.lower() == 'native' else 'SAYC'
+                spec = get_system(spec_name)
+                # The .RCE-loaded `description` ("Standard American Yellow
+                # Card (Q-plus)" or "Precision Club 90 modern (Q-plus)")
+                # gives Claude an exact handle on which Q-Plus variant the
+                # table is using.
+                pretty = spec.description or spec.name
+                # System-specific summary; pulled from the spec itself so
+                # Precision Club 70's 13-15 1NT and 22-23 2NT show up
+                # correctly when the user is configured for that variant.
+                if spec.strong_open_call == "1C":
+                    summary = (
+                        f"strong-club: 1♣ = {spec.strong_open_min_hcp}+ any shape; "
+                        f"1♦ = {spec.one_diamond_min_hcp}-{spec.one_diamond_max_hcp} "
+                        "(catch-all, often 2c-diamond holdings); 1♥/1♠ = "
+                        f"{spec.precision_two_clubs_min_hcp}-{spec.one_nt_max_hcp} "
+                        "with 5+ in the suit; 1NT = "
+                        f"{spec.one_nt_min_hcp}-{spec.one_nt_max_hcp} balanced; "
+                        f"2♣ = {spec.precision_two_clubs_min_hcp}-"
+                        f"{spec.precision_two_clubs_max_hcp} with 6+ clubs; "
+                        f"2♦ = Precision three-suiter "
+                        f"({spec.precision_two_diamonds_shape}); 2♥/2♠ = "
+                        "weak two; 1♣-1♦ = 0-7 negative; positive responses "
+                        f"8+ HCP; RKC = {spec.rkc_variant}"
                     )
                 else:
-                    # Both BEN-NN and the rule-based "SAYC" map to strict SAYC.
-                    chosen, summary = (
-                        "SAYC (Standard American Yellow Card)",
-                        "5-card majors; strong 1NT 15-17 balanced; 2♣ Stayman; "
-                        "Jacoby transfers; weak 2♦/2♥/2♠; 2♣ = 22+ HCP or "
-                        "any game-forcing strong hand; Blackwood 4NT for aces; "
-                        "negative doubles through 2♠; standard takeout doubles",
+                    summary = (
+                        f"5-card majors; strong 1NT {spec.one_nt_min_hcp}-"
+                        f"{spec.one_nt_max_hcp} balanced; "
+                        f"2NT {spec.two_nt_min_hcp}-{spec.two_nt_max_hcp} "
+                        "balanced; 2♣ Stayman; Jacoby transfers; weak 2♦/2♥/2♠ "
+                        f"({spec.weak_two_min_hcp}-{spec.weak_two_max_hcp}); "
+                        f"strong 2♣ = {spec.strong_open_min_hcp}+ HCP; "
+                        f"2/1 ≥ {spec.two_over_one_min_hcp}; "
+                        "Blackwood 4NT for aces; negative doubles through 2♠; "
+                        f"standard takeout doubles; RKC = {spec.rkc_variant}"
                     )
                 system_clause = (
-                    f" The table is playing strict **{chosen}**. Apply "
+                    f" The table is playing strict **{pretty}**. Apply "
                     f"only this system's bid meanings — {summary}. Do "
                     "NOT mix in conventions from any other system. If a "
                     "previous bid in the auction is naturally interpreted "
-                    f"differently in {chosen}, treat it as the {chosen} "
+                    f"differently in {pretty}, treat it as the {pretty} "
                     "meaning even if BEN's suggestion implies otherwise."
                 )
             except Exception:
-                # Config not available — fall back to a system-agnostic prompt.
+                # Config / spec lookup failed — fall back to a
+                # system-agnostic prompt rather than crashing the hint.
                 pass
         return (
             f"You are a bridge teacher advising {seat_names[seat]} on the next {action}."
