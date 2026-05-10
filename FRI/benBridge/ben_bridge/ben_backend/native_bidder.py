@@ -293,30 +293,55 @@ def is_legal_after(prev_level: int, prev_suit: Optional[Suit],
 # Opening rules
 # ---------------------------------------------------------------------------
 
-def open_bid(eval_: HandEval, system: str = "SAYC") -> Bid:
-    """Pick an opening bid (or Pass) given the hand."""
-    if system == "Precision":
-        return _open_precision(eval_)
-    return _open_sayc(eval_)
+def open_bid(eval_: HandEval, system=None) -> Bid:
+    """Pick an opening bid (or Pass) given the hand.
+
+    `system` is now a `BiddingSystem` from `bidding_systems`. Legacy
+    callers passing the string "Precision" / "SAYC" still work — the
+    string is looked up via `get_system`. Dispatch routes by
+    `strong_open_call`: "1C" → Precision-family open, otherwise SAYC.
+    """
+    from .bidding_systems import BiddingSystem, get_system
+    if system is None:
+        system = get_system("SAYC")
+    elif not isinstance(system, BiddingSystem):
+        system = get_system(system)
+    if system.strong_open_call == "1C":
+        return _open_precision(eval_, system)
+    return _open_sayc(eval_, system)
 
 
-def _open_sayc(e: HandEval) -> Bid:
+def _open_sayc(e: HandEval, system) -> Bid:
     hcp = e.hcp
+    nt_min, nt_max = system.one_nt_min_hcp, system.one_nt_max_hcp
+    two_nt_min, two_nt_max = system.two_nt_min_hcp, system.two_nt_max_hcp
+    strong_min = system.strong_open_min_hcp  # 22 in SAYC
 
-    # Strong artificial 2C
-    if hcp >= 22 or (e.controls >= 4 and e.quick_tricks >= 4 and hcp >= 19):
-        return bid(2, Suit.CLUBS, alert=True, why="Strong, artificial, GF unless 2C-2D-2NT")
+    # Strong artificial 2♣: either 22+ HCP regardless of shape, or an
+    # unbalanced hand with strong playing strength (9+ quick tricks /
+    # 4+ controls). The unbalanced gate is important — a 17-HCP 4-3-4-2
+    # hand has 4 controls and 4 quick tricks but is plainly a 1NT opener.
+    is_strong_unbal = (
+        hcp >= strong_min - 2
+        and e.controls >= 5
+        and e.quick_tricks >= 5
+        and not (e.is_balanced or e.is_semi_balanced)
+    )
+    if hcp >= strong_min or is_strong_unbal:
+        return bid(2, Suit.CLUBS, alert=True,
+                   why=f"Strong, artificial, GF unless 2C-2D-2NT ({strong_min}+ HCP)")
 
     # Notrump openings (balanced)
     if e.is_balanced or e.is_semi_balanced:
-        if 15 <= hcp <= 17:
-            return bid(1, Suit.NOTRUMP, why="15-17 balanced")
-        if 20 <= hcp <= 21:
-            return bid(2, Suit.NOTRUMP, why="20-21 balanced")
+        if nt_min <= hcp <= nt_max:
+            return bid(1, Suit.NOTRUMP, why=f"{nt_min}-{nt_max} balanced")
+        if two_nt_min <= hcp <= two_nt_max:
+            return bid(2, Suit.NOTRUMP, why=f"{two_nt_min}-{two_nt_max} balanced")
+        # Gambling 3NT: solid 7+ minor, ~25-27 HCP equivalent (system-dependent).
         if 25 <= hcp <= 27:
             return bid(3, Suit.NOTRUMP, why="25-27 balanced")
-        # 12-14 balanced opens 1 of a minor (better minor) — fall through
-        # 18-19 balanced opens 1 of a suit then jumps in NT — fall through
+        # Below 1NT-range balanced → open 1 of a minor; above 2NT-range and
+        # under 22 → open 1 of a suit then jump in NT. Fall through.
 
     # Sub-opening hands → Pass (or skip preempts handled below)
     if hcp < 12 and not _has_preempt(e):
@@ -350,28 +375,66 @@ def _open_sayc(e: HandEval) -> Bid:
     return bid(1, Suit.CLUBS, why="3-3 minors → 1C")
 
 
-def _open_precision(e: HandEval) -> Bid:
-    """Single Precision variant: 1C = 16+ any shape, others limited."""
+def _open_precision(e: HandEval, system) -> Bid:
+    """Precision openings, parameterised by the spec.
+
+    `strong_open_min_hcp` is the strong 1♣ threshold (Q-Plus says 16 for
+    Precision Club 90 modern / plus and Precision 70). `one_nt_min_hcp`
+    / `one_nt_max_hcp` cover the limited 1NT (typically 14-16, or 13-15
+    in Precision 70). `precision_two_clubs_*` covers the 2♣ long-club
+    opening range. The 2♦ three-suiter is governed by the
+    `precision_two_diamonds_shape` flag.
+    """
     hcp = e.hcp
-    if hcp >= 16:
-        return bid(1, Suit.CLUBS, alert=True, why="Precision: 16+ HCP, any shape")
-    if hcp < 11:
-        # weak preempts mirror SAYC
+    strong_min = system.strong_open_min_hcp
+    nt_min, nt_max = system.one_nt_min_hcp, system.one_nt_max_hcp
+    two_nt_min, two_nt_max = system.two_nt_min_hcp, system.two_nt_max_hcp
+    two_c_min = system.precision_two_clubs_min_hcp
+    two_c_max = system.precision_two_clubs_max_hcp
+    one_d_min = system.one_diamond_min_hcp
+    one_d_max = system.one_diamond_max_hcp
+
+    # Strong artificial 1C — any shape.
+    if hcp >= strong_min:
+        return bid(1, Suit.CLUBS, alert=True,
+                   why=f"Precision: {strong_min}+ HCP, any shape")
+
+    # Below the lower opening bound → Pass (preempts considered first).
+    if hcp < two_c_min:
         pre = _preempt_bid(e)
         if pre is not None:
             return pre
         return passb()
-    if 14 <= hcp <= 16 and (e.is_balanced or e.is_semi_balanced):
-        return bid(1, Suit.NOTRUMP, alert=True, why="Precision: 14-16 balanced")
-    # 11-15 unbalanced or 5-card major
+
+    # Limited 1NT (Q-Plus Precision: 14-16, or 13-15 for the classic 70).
+    if nt_min <= hcp <= nt_max and (e.is_balanced or e.is_semi_balanced):
+        return bid(1, Suit.NOTRUMP, alert=True,
+                   why=f"Precision: {nt_min}-{nt_max} balanced")
+
+    # 2NT — strong balanced not covered by 1NT (rare in Precision).
+    if two_nt_min <= hcp <= two_nt_max and (e.is_balanced or e.is_semi_balanced):
+        return bid(2, Suit.NOTRUMP,
+                   why=f"{two_nt_min}-{two_nt_max} balanced")
+
+    # 5-card majors at the 1 level (light to mid).
     if e.suit_lengths[Suit.SPADES] >= 5 and e.suit_lengths[Suit.SPADES] >= e.suit_lengths[Suit.HEARTS]:
-        return bid(1, Suit.SPADES, alert=True, why="Precision: 11-15, 5+ spades")
+        return bid(1, Suit.SPADES, alert=True,
+                   why=f"Precision: {two_c_min}-{nt_max} HCP, 5+ spades")
     if e.suit_lengths[Suit.HEARTS] >= 5:
-        return bid(1, Suit.HEARTS, alert=True, why="Precision: 11-15, 5+ hearts")
-    if e.suit_lengths[Suit.CLUBS] >= 6:
-        return bid(2, Suit.CLUBS, alert=True, why="Precision: 11-15, 6+ clubs")
-    if e.suit_lengths[Suit.DIAMONDS] >= 5 or hcp >= 11:
-        return bid(1, Suit.DIAMONDS, alert=True, why="Precision: 11-15, no 5cM, no 6c clubs")
+        return bid(1, Suit.HEARTS, alert=True,
+                   why=f"Precision: {two_c_min}-{nt_max} HCP, 5+ hearts")
+
+    # 2♣ long-club (Precision-specific): 6+ clubs in the limited range.
+    if e.suit_lengths[Suit.CLUBS] >= 6 and two_c_min <= hcp <= two_c_max:
+        return bid(2, Suit.CLUBS, alert=True,
+                   why=f"Precision: {two_c_min}-{two_c_max}, 6+ clubs")
+
+    # 1♦ — catch-all 11-15 / no 5cM / no 6c clubs / unbalanced or 2c+ diamond.
+    if one_d_min <= hcp <= one_d_max and (
+            e.suit_lengths[Suit.DIAMONDS] >= 2 or not (e.is_balanced or e.is_semi_balanced)):
+        return bid(1, Suit.DIAMONDS, alert=True,
+                   why=f"Precision: {one_d_min}-{one_d_max} HCP, "
+                       "no 5cM, no 6c clubs")
     return passb()
 
 
@@ -411,8 +474,15 @@ def _preempt_bid(e: HandEval) -> Optional[Bid]:
 # Top-level decide
 # ---------------------------------------------------------------------------
 
-def decide_bid(state: AuctionState, eval_: HandEval, system: str) -> Bid:
-    """Dispatch to the right decision function based on auction state."""
+def decide_bid(state: AuctionState, eval_: HandEval, system) -> Bid:
+    """Dispatch to the right decision function based on auction state.
+
+    `system` is a `BiddingSystem` from `bidding_systems`. String inputs
+    are accepted for backwards compatibility (resolved via `get_system`).
+    """
+    from .bidding_systems import BiddingSystem, get_system
+    if not isinstance(system, BiddingSystem):
+        system = get_system(system)
     # First call by anyone → opening
     if state.opener_seat is None:
         return open_bid(eval_, system=system)
@@ -456,7 +526,7 @@ def _respond_to_partner_opening(state, e, system):
 
     # Precision-specific paths take precedence: 1C is strong artificial,
     # 2C is natural clubs (11-15), 1D is the catch-all 11-15.
-    if system == "Precision":
+    if getattr(system, "strong_open_call", "2C") == "1C":
         if op.level == 1 and op.suit == Suit.CLUBS:
             return _respond_to_precision_1c(state, e)
         if op.level == 2 and op.suit == Suit.CLUBS:
@@ -1115,7 +1185,7 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
     op = state.opening_bid
 
     # Precision-specific opener rebids run before the SAYC paths.
-    if system == "Precision":
+    if getattr(system, "strong_open_call", "2C") == "1C":
         # 1C strong: structured rebids over partner's 1D negative or
         # positive response.
         if op.level == 1 and op.suit == Suit.CLUBS:
@@ -1586,15 +1656,25 @@ def _legalize_bid(chosen: Bid, state: AuctionState) -> Bid:
 class NativeBiddingEngine:
     """Plug-compatible with BridgeEngine for bidding only.
 
-    Construct it once, then call get_bid(board, seat) per turn.
+    Construct with either a system *name* (string — looked up via
+    `bidding_systems.get_system`) or a pre-built `BiddingSystem`. The
+    engine always stores a `BiddingSystem` internally so all the
+    decision-tree code can read parameters directly off the spec
+    (`self.system.one_nt_min_hcp`, `self.system.strong_open_call`,
+    `self.system.has("A-1NT-Stayman")`, etc.).
     """
 
-    def __init__(self, system: str = "SAYC"):
-        self.system = system if system in ("SAYC", "Precision") else "SAYC"
+    def __init__(self, system="SAYC"):
+        from .bidding_systems import BiddingSystem, get_system
+        self.system: BiddingSystem = (
+            system if isinstance(system, BiddingSystem) else get_system(system)
+        )
 
-    def set_system(self, system: str):
-        if system in ("SAYC", "Precision"):
-            self.system = system
+    def set_system(self, system):
+        from .bidding_systems import BiddingSystem, get_system
+        self.system = (
+            system if isinstance(system, BiddingSystem) else get_system(system)
+        )
 
     # The following stubs match BridgeEngine's lifecycle so the caller can
     # treat both engines uniformly.
@@ -1627,7 +1707,7 @@ class NativeBiddingEngine:
                 action=chosen,
                 candidates=[BidCandidate(bid=chosen, score=1.0, explanation=chosen.explanation)],
                 quality=0.6,  # Rule-based, not probabilistic
-                who=f"Native ({self.system})",
+                who=f"Native ({self.system.name})",
                 hcp_estimate=None,
                 shape_estimate=None,
             )
