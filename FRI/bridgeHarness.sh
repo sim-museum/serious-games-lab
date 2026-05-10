@@ -30,5 +30,13 @@ if ! "$VENV/bin/python" -c "import PyQt5, pyautogui" 2>/dev/null; then
     "$VENV/bin/pip" install --quiet PyQt5 pyautogui
 fi
 
+# Grant the running user X access via xhost.  The vendored python-xlib
+# inside the harness venv doesn't understand mutter/Xwayland's
+# FamilyServerInterpreted Xauth entries, so even with XAUTHORITY set
+# correctly `import pyautogui` fails with "no authorization protocol
+# specified".  Adding localuser to the xhost ACL bypasses cookie
+# matching for the local account only.  Idempotent; silent if no X.
+xhost +SI:localuser:"$(id -un)" >/dev/null 2>&1 || true
+
 cd "$HARNESS_DIR"
 exec "$VENV/bin/python" bridge_harness.py "$@"
