@@ -4779,16 +4779,15 @@ class TheoryOfMindPanel(QWidget):
                     spr_v = (hero_stack_val / pot
                              if pot and pot > 0 else None)
                     commit_v = None
-                # Outs (post-flop only)
+                # Outs (post-flop only) — calculate_outs() lives on
+                # THIS panel (not on the owner PokerWindow), so call
+                # it directly. The previous owner-window lookup was
+                # silently failing and pinning the pie at "--" even
+                # when the strip showed a real outs count.
                 outs_v = None
                 if hero_hand and board and 3 <= len(board) <= 4:
                     try:
-                        # Re-use PokerWindow.calculate_outs() via the
-                        # window reference if we can; otherwise fall back
-                        # to None.
-                        win = getattr(self, '_owner_window', None)
-                        if win is not None and hasattr(win, 'calculate_outs'):
-                            outs_v, _ = win.calculate_outs(hero_hand, board)
+                        outs_v, _ = self.calculate_outs(hero_hand, board)
                     except Exception:
                         outs_v = None
                 stack_bb_v = (hero_stack_val / bb_amount
