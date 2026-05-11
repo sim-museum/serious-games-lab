@@ -1106,11 +1106,45 @@ def _respond_to_minor_competitive(state, e: HandEval, system) -> Bid:
                    and hcp >= 6)
     if can_neg_dbl:
         return double(why=f"Negative double — both majors (Sputnik ≤{neg_max})")
-    # Bid an unbid major naturally
+    # Bid an unbid major. Forcing strength depends on the system AND
+    # the actual level we'd have to bid at (which the overcall may
+    # have already pushed past the 1 level).
+    #   * Default (SAYC): new-suit-at-2-level after overcall = forcing
+    #     for one round (5+ in the suit, 10+ HCP).
+    #   * `C-negative-free-bid` (Precision 90M): same call at the
+    #     2-level = NON-forcing (5+, 8-10 HCP). With game values the
+    #     bidder cuebids or jumps instead.
+    nfb = system.has("C-negative-free-bid")
     for m in (Suit.HEARTS, Suit.SPADES):
         if m != overcall_suit and e.suit_lengths[m] >= 5:
-            level = 1 if _BID_RANK[m] > _BID_RANK[overcall_suit] else 2
-            return bid(level, m, why="Forcing bid in unbid major")
+            # Lowest legal level for a new-suit call above the current
+            # contract. _BID_RANK orders C<D<H<S<NT, so a higher-ranked
+            # suit at the same level is enough; otherwise bump one level.
+            if (state.last_suit_bid is None
+                    or _BID_RANK[m] > _BID_RANK[state.last_suit_bid]):
+                level = state.last_level
+            else:
+                level = state.last_level + 1
+            if level <= 1:
+                return bid(level, m,
+                           why="1-level new-suit overcall response (forcing)")
+            # 2-level new suit — branch on NFB.
+            if nfb:
+                if 8 <= hcp <= 10:
+                    return bid(level, m, alert=True,
+                               why="Negative free bid (8-10, 5+ in suit, "
+                                   "NON-forcing)")
+                if hcp >= 13:
+                    # Cuebid for forcing-to-game (game values + no fit
+                    # to raise opener).
+                    return bid(overcall.level + 1, overcall_suit, alert=True,
+                               why="Cuebid: game-forcing values (NFB system)")
+                # 11-12 doesn't have a clean rebid; fall through to other paths.
+            else:
+                # Standard system — 2-level new suit is forcing.
+                return bid(level, m,
+                           why=f"Forcing {level}{m.to_char()} "
+                               "in unbid major")
     if hcp >= 10 and _has_stopper(e, overcall_suit):
         return bid(2, Suit.NOTRUMP, why="2NT, 10-12, stopper in opp's suit")
     return passb()
