@@ -2205,7 +2205,11 @@ class MetricBar(QWidget):
         self._tick = None          # threshold value, or None
         self._color = QColor("#0af")
         self._dim = False
-        self.setMinimumHeight(28)
+        # Shorter rows so the whole dashboard takes ~45% less vertical
+        # space, leaving room for the tabs (and the 13×13 range grid
+        # inside them) to take ~3/4 of the screen.
+        self.setMinimumHeight(20)
+        self.setMaximumHeight(22)
         self.setSizePolicy(QSizePolicy.Policy.Expanding,
                            QSizePolicy.Policy.Fixed)
 
@@ -2231,12 +2235,12 @@ class MetricBar(QWidget):
         w = self.width()
         h = self.height()
 
-        label_w = 200
-        value_w = 120
+        label_w = 180
+        value_w = 100
         bar_x = label_w
         bar_w = max(0, w - label_w - value_w - 8)
-        bar_y = (h - 16) // 2
-        bar_h = 16
+        bar_h = max(10, h - 6)
+        bar_y = (h - bar_h) // 2
 
         # Label (left)
         p.setPen(QColor("#cccccc" if not self._dim else "#666666"))
@@ -2300,20 +2304,100 @@ class MetricDashboard(QWidget):
         super().__init__(parent)
         v = QVBoxLayout(self)
         v.setContentsMargins(8, 4, 8, 4)
-        v.setSpacing(2)
+        v.setSpacing(1)
+        TIPS = {
+            'equity': (
+                "Equity vs ranges\n\n"
+                "Your hand's chance to win at showdown against each "
+                "opponent's estimated range (Monte Carlo).\n"
+                "The YELLOW TICK is the pot-odds threshold — fill "
+                "extending past the tick = profitable call on immediate "
+                "equity alone.\n"
+                "Color: green = beats pot odds, amber = borderline, "
+                "red = falls short."),
+            'pot_odds': (
+                "Pot odds (required equity)\n\n"
+                "The break-even equity for a call:  call / (pot + call).\n"
+                "If your hand equity ≥ this number you have a profitable "
+                "call on immediate equity, before considering implied "
+                "odds.\n"
+                "On an unraised preflop limp the tag '(BB)' marks the "
+                "metric as non-binding — you're paying the BB to enter, "
+                "not a real bet."),
+            'implied': (
+                "Implied break-even %\n\n"
+                "Equity you'd need to break even IF you collect future "
+                "bets when you hit (≈ 50% of avg opponent stack).\n"
+                "Much lower than pot odds → set-mining / drawing-hand "
+                "spots become profitable below the immediate-equity "
+                "threshold."),
+            'reverse_implied': (
+                "Reverse Implied Odds (risk)\n\n"
+                "How much extra you can expect to LOSE when you make a "
+                "hand that's still second-best — small flush vs nut "
+                "flush, low kicker on top pair, set into straight.\n"
+                "Expressed as a % of your remaining stack at risk.\n"
+                "  • Higher = the hand is dominated-prone.\n"
+                "  • Sklansky: 'matters most with hands that are good "
+                "now but vulnerable to being out-kicked or out-drawn'."),
+            'spr': (
+                "Stack-to-Pot Ratio (SPR) after call\n\n"
+                "(remaining stack) / (post-call pot).\n"
+                "  • SPR < 1   POT-COMMITTED — can't fold to later bets.\n"
+                "  • SPR 1–3  decision band — calling commits you next "
+                "street.\n"
+                "  • SPR ≥ 3   flexible — room to fold future pressure.\n"
+                "Smaller SPR favors all-in tactics with one pair / "
+                "draws; larger SPR favors set-mining and implied odds."),
+            'commit': (
+                "Pot Commitment %\n\n"
+                "Fraction of your CURRENT stack you're about to put in.\n"
+                "  • ≥ 33% Gordon: 'almost certainly can't fold next "
+                "street' — proceed only with a hand you'll play.\n"
+                "  • 15–33% meaningful commitment, plan ahead.\n"
+                "  • < 15% light — easy to fold to future pressure."),
+            'outs': (
+                "Outs\n\n"
+                "Number of cards left in the deck that turn your hand "
+                "into a likely winner (eval7-driven, same count as the "
+                "Hero tab grid).\n"
+                "Rule of 4/2: multiply by 4 (flop→river) or by 2 "
+                "(turn→river) for approximate % to hit.\n"
+                "Color: ≥9 outs = strong draw, 4–8 = workable, ≤3 = "
+                "long-shot."),
+            'nash': (
+                "Nash push range (short stack)\n\n"
+                "Only appears when hero stack ≤ 15 BB.\n"
+                "Shows the percentage of all 169 hand combos that "
+                "should shove at this stack depth (Chen/Ankenman SB-vs-"
+                "BB heads-up Nash).\n"
+                "The YELLOW TICK is your hand's strength percentile — "
+                "if your bar extends past the tick, SHOVE; otherwise "
+                "FOLD."),
+        }
         self.equity_bar = MetricBar("Equity vs ranges")
+        self.equity_bar.setToolTip(TIPS['equity'])
         v.addWidget(self.equity_bar)
         self.potodds_bar = MetricBar("Pot odds")
+        self.potodds_bar.setToolTip(TIPS['pot_odds'])
         v.addWidget(self.potodds_bar)
         self.implied_bar = MetricBar("Implied break-even")
+        self.implied_bar.setToolTip(TIPS['implied'])
         v.addWidget(self.implied_bar)
+        self.reverse_implied_bar = MetricBar("Reverse implied (risk)")
+        self.reverse_implied_bar.setToolTip(TIPS['reverse_implied'])
+        v.addWidget(self.reverse_implied_bar)
         self.spr_bar = MetricBar("SPR after call")
+        self.spr_bar.setToolTip(TIPS['spr'])
         v.addWidget(self.spr_bar)
         self.commit_bar = MetricBar("Pot commitment %")
+        self.commit_bar.setToolTip(TIPS['commit'])
         v.addWidget(self.commit_bar)
         self.outs_bar = MetricBar("Outs (≤ 20)")
+        self.outs_bar.setToolTip(TIPS['outs'])
         v.addWidget(self.outs_bar)
         self.nash_bar = MetricBar("Nash push range (≤15bb)")
+        self.nash_bar.setToolTip(TIPS['nash'])
         v.addWidget(self.nash_bar)
         self.nash_bar.setVisible(False)
         self.setStyleSheet(
@@ -2326,7 +2410,8 @@ class MetricDashboard(QWidget):
         implied_pct: float | None, spr: float | None,
         commit_pct: float | None, outs: int | None,
         stack_bb: float | None, hero_hand=None,
-        unraised_preflop: bool = False
+        unraised_preflop: bool = False,
+        reverse_implied_pct: float | None = None,
     ):
         # Equity bar — pot-odds tick + color verdict
         if equity_pct is None:
@@ -2362,6 +2447,24 @@ class MetricDashboard(QWidget):
             self.implied_bar.set_metric(
                 implied_pct, 50, f"{implied_pct:.1f}%",
                 color="#a8f")
+
+        # Reverse implied — heuristic "stack-at-risk" % when the hand
+        # is good-now-but-fragile (low kicker top pair / 2nd-nut
+        # flush / dominated kicker). Colored red for high risk, amber
+        # for moderate, dim/blue otherwise.
+        if reverse_implied_pct is None:
+            self.reverse_implied_bar.set_metric(
+                0, 30, "--", color="#a8f", dim=True)
+        else:
+            if reverse_implied_pct >= 20:
+                col = "#ff7777"
+            elif reverse_implied_pct >= 10:
+                col = "#ffd966"
+            else:
+                col = "#88ff88"
+            self.reverse_implied_bar.set_metric(
+                reverse_implied_pct, 30,
+                f"{reverse_implied_pct:.1f}%", color=col)
 
         # SPR after call (cap at 10 — anything above is "very deep").
         if spr is None:
@@ -2550,9 +2653,16 @@ class TheoryOfMindPanel(QWidget):
 
         # Bar-chart dashboard — glanceable visualisation of the same
         # numbers the text strip above shows, plus SPR, commitment%,
-        # outs, and the Nash push gauge when the hero is short-stacked.
+        # outs, reverse-implied risk, and the Nash push gauge when
+        # the hero is short-stacked. Capped at ~half the screen width
+        # so the tabs below can claim more vertical real estate.
+        dash_row = QHBoxLayout()
+        dash_row.setContentsMargins(0, 0, 0, 0)
         self.dashboard = MetricDashboard()
-        layout.addWidget(self.dashboard)
+        self.dashboard.setMaximumWidth(720)
+        dash_row.addWidget(self.dashboard, stretch=0)
+        dash_row.addStretch(1)
+        layout.addLayout(dash_row)
 
         # Row 2: Range mode selector and board texture
         mode_row = QHBoxLayout()
@@ -2601,7 +2711,13 @@ class TheoryOfMindPanel(QWidget):
 
         layout.addLayout(mode_row)
 
-        layout.addWidget(self.tabs, stretch=1)
+        # Tabs claim the lion's share of vertical space (~3/4 of the
+        # panel height) so the 13x13 PokerStove grid + per-player
+        # analysis are fully visible without scrolling.
+        self.tabs.setMinimumHeight(600)
+        self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding,
+                                QSizePolicy.Policy.Expanding)
+        layout.addWidget(self.tabs, stretch=5)
 
         self.bot_tabs = {}  # player_name -> TheoryOfMindTab
 
@@ -4329,6 +4445,36 @@ class TheoryOfMindPanel(QWidget):
                         outs_v = None
                 stack_bb_v = (hero_stack_val / bb_amount
                               if bb_amount else None)
+                # Reverse-implied risk — heuristic proxy:
+                # Hands that are "good now but vulnerable" sit in the
+                # mid-equity band (40-65%) AND have a domination risk
+                # (low-kicker ace, weak top pair on Broadway, non-nut
+                # flush draw). Approximate as
+                #   (1 - equity) * 35%  capped at 30%,
+                # bumped slightly on monotone / connected boards.
+                ri_pct = None
+                if hero_hand and board:
+                    eq_now = hero_equity
+                    if 0.35 <= eq_now <= 0.70:
+                        base = (1 - eq_now) * 35.0
+                        # Texture amplifier — wet boards punish 2nd-best more
+                        try:
+                            ranks = [str(c)[0] for c in board]
+                            suits = [str(c)[1] for c in board]
+                            paired = len(set(ranks)) < len(ranks)
+                            mono = len(set(suits)) == 1
+                            two_tone = (len(set(suits)) == 2
+                                        and max(suits.count(s)
+                                                for s in set(suits)) >= 2)
+                            base += (5.0 if mono else
+                                     3.0 if two_tone else
+                                     2.0 if paired else 0.0)
+                        except Exception:
+                            pass
+                        ri_pct = min(30.0, max(0.0, base))
+                    else:
+                        ri_pct = 0.0
+
                 self.dashboard.update_metrics(
                     equity_pct=hero_equity * 100.0,
                     pot_odds_pct=pot_odds * 100.0 if pot_odds else None,
@@ -4340,6 +4486,7 @@ class TheoryOfMindPanel(QWidget):
                     stack_bb=stack_bb_v,
                     hero_hand=hero_hand,
                     unraised_preflop=unraised_preflop,
+                    reverse_implied_pct=ri_pct,
                 )
             except Exception:
                 pass
