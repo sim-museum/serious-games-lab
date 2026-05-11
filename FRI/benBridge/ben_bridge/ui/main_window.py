@@ -4131,9 +4131,23 @@ For more information, see the README file."""
             return
 
         bidder = self.controller.current_seat
+
+        # Blunder check — run the native bidder for this seat with
+        # the recorded side's system, compare to the user's call,
+        # and pop a Hint/Cancel dialog when they diverge. Mirror of
+        # the cardplay blunder check; same per-turn warned-set so
+        # re-clicking the same bid after a warning commits it
+        # without re-prompting.
+        if not self._maybe_warn_bid_blunder(bidder, bid):
+            return
+
         self.controller.make_bid(bid)
         self.bidding_box.add_bid(bid)
         self.table_view.update_auction(self.controller.board.auction, self.controller.board.dealer)
+
+        # Successful commit — clear per-call warned-bids set so the
+        # next decision starts fresh.
+        self._blunder_warned_bids = set()
 
         # Broadcast to network if active
         if self.network_controller.is_active:
@@ -4250,6 +4264,137 @@ For more information, see the README file."""
 
     BLUNDER_TRICK_THRESHOLD = 1.0   # ≥1 trick loss = blunder
     BLUNDER_MC_SAMPLES = 15         # MC samples per legal card
+
+    def _maybe_warn_bid_blunder(self, seat: 'Seat', bid: 'Bid') -> bool:
+        """Bidding blunder check — runs the native bidder with the
+        seat's recorded side system and pops a Hint/Cancel dialog if
+        the user's call differs from the engine's recommendation.
+
+        Returns True if the call should be committed, False if the
+        user dismissed via Hint or Cancel. The per-call warned-set
+        means clicking the SAME bid a second time bypasses the
+        warning, so the user can override after seeing the
+        explanation.
+
+        Unlike the cardplay version we don't have a continuous
+        score axis — the native bidder returns a single
+        recommendation. We treat ANY mismatch as a candidate
+        blunder. The warning is gated by the same
+        blunder_check_enabled preference.
+        """
+        try:
+            from ben_backend.config import get_config_manager
+            prefs = get_config_manager().config.preferences
+            if not getattr(prefs, 'blunder_check_enabled', True):
+                return True
+        except Exception:
+            pass
+
+        if not getattr(self, '_blunder_warned_bids', None):
+            self._blunder_warned_bids = set()
+        key = (seat, bid.symbol())
+        if key in self._blunder_warned_bids:
+            return True
+
+        # Resolve the system spec for the bidder's side (NS or EW).
+        try:
+            from ben_backend.bidding_systems import get_system
+            from ben_backend.native_bidder import NativeBidder
+            from ben_backend.models import Seat as _Seat
+            ns_name, ew_name = self._current_pair_systems()
+            sys_name = (ns_name
+                        if seat in (_Seat.NORTH, _Seat.SOUTH)
+                        else ew_name)
+            spec = get_system(sys_name or 'SAYC')
+        except Exception:
+            return True
+
+        # Run the native bidder against the auction-in-progress.
+        try:
+            resp = NativeBidder(spec).get_bid(
+                self.controller.board, seat)
+            engine_bid = resp.action if resp else None
+        except Exception:
+            return True
+
+        if engine_bid is None:
+            return True
+        if self._bids_match(bid, engine_bid):
+            return True
+
+        # Stash and prompt.
+        self._blunder_warned_bids.add(key)
+        return self._show_bid_blunder_dialog(
+            seat, bid, engine_bid,
+            getattr(engine_bid, 'explanation', '') or
+            getattr(resp, 'who', '') or '',
+            sys_name,
+        )
+
+    @staticmethod
+    def _bids_match(a, b) -> bool:
+        """True iff two bids are semantically equivalent (ignoring
+        metadata like .explanation). Mirrors compare_replay.py."""
+        if a is None or b is None:
+            return False
+        if a.is_pass != b.is_pass:
+            return False
+        if a.is_double != b.is_double:
+            return False
+        if a.is_redouble != b.is_redouble:
+            return False
+        if a.is_pass or a.is_double or a.is_redouble:
+            return True
+        return (a.level == b.level and a.suit == b.suit)
+
+    def _show_bid_blunder_dialog(self, seat, user_bid, engine_bid,
+                                  explanation: str,
+                                  sys_name: str) -> bool:
+        """Two-button Hint/Cancel dialog for a bid that diverges from
+        the native bidder's recommendation. Always returns False so
+        the user's pick doesn't commit on this click."""
+        from PyQt6.QtWidgets import QMessageBox
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.NoIcon)
+        msg.setWindowTitle("Possible bidding blunder")
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        why = (f"<div style='font-size:15px; color:#555;"
+               f" margin-top:8px;'>"
+               f"Why ({sys_name or 'system'}): {explanation}"
+               f"</div>") if explanation else ""
+        msg.setText(
+            f"<div style='font-size:22px; font-weight:bold;"
+            f" color:#000;'>"
+            f"From {seat.to_char()} the native bidder would call "
+            f"<b>{engine_bid.symbol()}</b>, not "
+            f"<b>{user_bid.symbol()}</b>.</div>"
+            f"<div style='font-size:18px; color:#333; margin-top:10px;'>"
+            f"Get a hint (full Claude explanation) or cancel and "
+            f"re-bid? Re-clicking the same call after dismissing "
+            f"this dialog commits your original bid.</div>"
+            f"{why}"
+        )
+        msg.setStyleSheet(
+            "QMessageBox { background-color: #f0f0f0; }"
+            "QMessageBox QLabel { color: #000;"
+            " background-color: transparent; min-width: 720px;"
+            " padding: 14px 10px; }"
+            "QMessageBox QPushButton { font-size: 16px;"
+            " padding: 8px 22px; min-width: 110px; }"
+        )
+        hint_btn = msg.addButton(
+            "Hint", QMessageBox.ButtonRole.ActionRole)
+        cancel_btn = msg.addButton(
+            "Cancel (re-bid)", QMessageBox.ButtonRole.RejectRole)
+        msg.setDefaultButton(hint_btn)
+        msg.exec()
+        clicked = msg.clickedButton()
+        if clicked is hint_btn:
+            try:
+                self._on_hint()
+            except Exception:
+                pass
+        return False
 
     @staticmethod
     def _current_pair_systems() -> tuple:
