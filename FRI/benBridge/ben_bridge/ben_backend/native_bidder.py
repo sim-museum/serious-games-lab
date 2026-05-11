@@ -575,7 +575,7 @@ def _respond_to_partner_opening(state, e, system):
             return _respond_to_precision_2c(state, e)
         if op.level == 1 and op.suit == Suit.DIAMONDS:
             if rho_intervened:
-                return _respond_to_minor_competitive(state, e)
+                return _respond_to_minor_competitive(state, e, system)
             return _respond_to_precision_1d(state, e)
         # 1NT (14-16), 1H/1S (11-15 5+suit), 2D (weak), preempts —
         # responses mirror SAYC; 1NT range is just slightly lower.
@@ -606,12 +606,12 @@ def _respond_to_partner_opening(state, e, system):
     # 1-of-a-suit openings
     if op.level == 1 and op.suit in (Suit.CLUBS, Suit.DIAMONDS):
         if rho_intervened:
-            return _respond_to_minor_competitive(state, e)
+            return _respond_to_minor_competitive(state, e, system)
         return _respond_to_minor(state, e)
 
     if op.level == 1 and op.suit in (Suit.HEARTS, Suit.SPADES):
         if rho_intervened:
-            return _respond_to_major_competitive(state, e)
+            return _respond_to_major_competitive(state, e, system)
         return _respond_to_major(state, e)
 
     return passb()
@@ -752,6 +752,24 @@ def _respond_to_precision_2c(state, e: HandEval) -> Bid:
         return bid(3, Suit.NOTRUMP, why="Precision 2C: game in NT")
 
     return passb(why="Precision 2C: no clear action")
+
+
+def _negative_double_max_level(system) -> int:
+    """Q-Plus encodes the negative-double cap in the flag name itself:
+    `C-Sputnik.until-2S` (SAYC) → through level 2, `C-Sputnik.until-3S`
+    (Precision 90 modern) → through level 3. Anything else falls back
+    to the safe SAYC default of 2.
+    """
+    for k in system.raw_rules:
+        if k.startswith("C-Sputnik.until-"):
+            tail = k[len("C-Sputnik.until-"):]
+            if tail and tail[0].isdigit():
+                try:
+                    return int(tail[0])
+                except ValueError:
+                    pass
+    # System came from the fallback path (no raw_rules) — assume 2.
+    return 2
 
 
 def _nt_response_thresholds(system) -> dict:
@@ -979,9 +997,10 @@ def _respond_to_minor(state, e: HandEval) -> Bid:
     return bid(2, Suit.NOTRUMP, why="18+ HCP, exploring slam")
 
 
-def _respond_to_minor_competitive(state, e: HandEval) -> Bid:
+def _respond_to_minor_competitive(state, e: HandEval, system) -> Bid:
     """After 1m-(overcall): negative double with both unbid majors,
-    new-suit 1H/1S still natural and forcing for one round."""
+    new-suit 1H/1S still natural and forcing for one round. The
+    negative-double level cap follows the system spec (`C-Sputnik`)."""
     overcall = state.rho_bids[-1]
     hcp = e.hcp
     overcall_suit = overcall.suit
@@ -992,13 +1011,15 @@ def _respond_to_minor_competitive(state, e: HandEval) -> Bid:
         return passb()
     if overcall_suit is None:  # NT overcall — treat as natural
         return _respond_to_minor(state, e)
-    # Negative double with both unbid majors at 1- or 2-level
-    can_neg_dbl = (overcall.level <= 2
+    # Negative double with both unbid majors, valid through the
+    # system's Sputnik cap (SAYC: 2♠, Precision 90M: 3♠).
+    neg_max = _negative_double_max_level(system)
+    can_neg_dbl = (overcall.level <= neg_max
                    and e.suit_lengths[Suit.HEARTS] >= 4
                    and e.suit_lengths[Suit.SPADES] >= 4
                    and hcp >= 6)
     if can_neg_dbl:
-        return double(why="Negative double — both majors")
+        return double(why=f"Negative double — both majors (Sputnik ≤{neg_max})")
     # Bid an unbid major naturally
     for m in (Suit.HEARTS, Suit.SPADES):
         if m != overcall_suit and e.suit_lengths[m] >= 5:
@@ -1071,7 +1092,7 @@ def _respond_to_major(state, e: HandEval) -> Bid:
     return passb()
 
 
-def _respond_to_major_competitive(state, e: HandEval) -> Bid:
+def _respond_to_major_competitive(state, e: HandEval, system) -> Bid:
     overcall = state.rho_bids[-1]
     hcp = e.hcp
     op_suit = state.opening_bid.suit
@@ -1366,6 +1387,19 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
     # Partner's new-suit at the 1-level (one-over-one)
     if (p_last.level == 1 and p_last.suit is not None
             and p_last.suit != Suit.NOTRUMP and p_last.suit != op_suit):
+        # Support double — opener has 1-of-minor opening + RHO overcall
+        # over partner's 1H/1S; double shows EXACTLY 3-card support so
+        # responder can distinguish it from the natural 2M raise that
+        # promises 4+. Only fires for systems flagging C-support-double
+        # (Q-Plus: Precision 90M and Precision 90P).
+        if (system.has("C-support-double")
+                and op_suit in (Suit.CLUBS, Suit.DIAMONDS)
+                and p_last.suit in (Suit.HEARTS, Suit.SPADES)
+                and state.rho_bids
+                and e.suit_lengths[p_last.suit] == 3
+                and 12 <= e.hcp <= 17):
+            return double(why=f"Support double — exactly 3-card "
+                              f"{p_last.suit.to_char()}")
         # Support partner with 4+ in their major at the cheapest level
         if p_last.suit in (Suit.HEARTS, Suit.SPADES) and e.suit_lengths[p_last.suit] >= 4:
             if e.hcp <= 14:
