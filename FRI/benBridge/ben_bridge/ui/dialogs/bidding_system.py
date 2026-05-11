@@ -281,6 +281,24 @@ class BiddingSystemDialog(QDialog):
         conv_group.setLayout(conv_layout)
         system_layout.addWidget(conv_group)
 
+        # Q-Plus-style bid-meaning editor (.bid-eval-in). Opens the
+        # full per-bid editor (HP/LP/TP ranges, per-suit fields, the
+        # dependency DSL) for the currently selected system.
+        bid_meaning_row = QHBoxLayout()
+        self.edit_bid_meaning_btn = QPushButton("Edit bid meaning…")
+        self.edit_bid_meaning_btn.setToolTip(
+            "Open the per-bid editor for the currently selected "
+            "system (Q-Plus .bid-eval-in). Lets you set HP/LP/TP "
+            "ranges, per-suit length / control / stopper, and the "
+            "full dependency-expression DSL "
+            "(H <= 2 & S >= 3 -> HP >= 18 etc.)."
+        )
+        self.edit_bid_meaning_btn.clicked.connect(
+            self._on_edit_bid_meaning)
+        bid_meaning_row.addWidget(self.edit_bid_meaning_btn)
+        bid_meaning_row.addStretch()
+        system_layout.addLayout(bid_meaning_row)
+
         system_layout.addStretch()
         tabs.addTab(system_tab, "System")
 
@@ -468,6 +486,31 @@ class BiddingSystemDialog(QDialog):
         self.ew_system_combo.setEnabled(not checked)
         if checked:
             self.ew_system_combo.setCurrentIndex(self.ns_system_combo.currentIndex())
+
+    def _on_edit_bid_meaning(self):
+        """Open the per-bid editor for the current system. The
+        editor handles its own JSON save/load under
+        CONFIG/BIDRULE/<system>.json so this caller just spawns
+        it; no state to round-trip back."""
+        from .bid_meaning_editor import (
+            BidMeaningEditorDialog, BidMeaningForm)
+        # Prompt for which bid to edit (free-text — Q-Plus accepts
+        # any bid string, including auction-context ones like "1NT
+        # over 1S"; we accept any value the user enters).
+        from PyQt6.QtWidgets import QInputDialog
+        bid, ok = QInputDialog.getText(
+            self, "Bid to edit",
+            "Enter the bid (e.g. 1NT, 2C, X):",
+            text="",
+        )
+        if not ok or not bid.strip():
+            return
+        dlg = BidMeaningEditorDialog(
+            system_key=self.current_system,
+            bid=bid.strip(),
+            parent=self,
+        )
+        dlg.exec()
 
     def _on_load_file(self):
         """Load bidding system from file."""
