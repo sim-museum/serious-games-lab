@@ -2289,6 +2289,115 @@ class MetricBar(QWidget):
         p.end()
 
 
+class MetricPie(QWidget):
+    """Donut-style gauge for one metric.
+
+    Renders a circular arc filled to ``value / max`` of full sweep,
+    with the numeric value in the center and a small label underneath
+    the donut. An optional threshold tick (e.g. pot odds tick on the
+    equity gauge) overlays the donut so the comparison is glanceable.
+    """
+
+    def __init__(self, label: str, parent=None):
+        super().__init__(parent)
+        self._label = label
+        self._value = 0.0
+        self._max = 1.0
+        self._center_text = ""
+        self._tick = None
+        self._color = QColor("#0af")
+        self._dim = False
+        self.setMinimumSize(96, 110)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding,
+                           QSizePolicy.Policy.Fixed)
+
+    def set_metric(self, value: float, max_value: float,
+                   center_text: str = "", tick: float | None = None,
+                   color: str = "#0af", dim: bool = False):
+        self._value = max(0.0, float(value))
+        self._max = max(1e-9, float(max_value))
+        self._center_text = center_text or ""
+        self._tick = (None if tick is None
+                      else max(0.0, float(tick)))
+        self._color = QColor(color)
+        self._dim = bool(dim)
+        self.update()
+
+    def set_label(self, label: str):
+        self._label = label
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        label_h = 22                     # reserved at bottom for caption
+        diam = min(w - 6, h - label_h - 6)
+        cx = w // 2
+        cy = (h - label_h) // 2
+        radius = diam // 2
+
+        # Track ring
+        track_pen_w = max(8, radius // 4)
+        p.setPen(QPen(QColor("#262626"), track_pen_w))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawEllipse(cx - radius, cy - radius, 2 * radius, 2 * radius)
+
+        # Filled arc — start at 12 o'clock, sweep clockwise.
+        ratio = min(1.0, self._value / self._max) if self._max else 0.0
+        if ratio > 0:
+            fill_color = QColor(self._color)
+            if self._dim:
+                fill_color.setAlpha(120)
+            p.setPen(QPen(fill_color, track_pen_w,
+                          Qt.PenStyle.SolidLine,
+                          Qt.PenCapStyle.FlatCap))
+            # Qt's drawArc uses 1/16-degree units; 90*16 = top, negative
+            # sweep = clockwise.
+            start_angle = 90 * 16
+            sweep = int(-360 * 16 * ratio)
+            p.drawArc(cx - radius, cy - radius,
+                      2 * radius, 2 * radius,
+                      start_angle, sweep)
+
+        # Threshold tick — short radial mark at the threshold angle.
+        if self._tick is not None and self._max > 0:
+            tick_ratio = min(1.0, self._tick / self._max)
+            from math import cos, sin, pi
+            # 0 at top, sweep clockwise (matches the fill arc).
+            theta = pi / 2 - 2 * pi * tick_ratio
+            r_inner = radius - track_pen_w
+            r_outer = radius + track_pen_w // 2
+            x1 = cx + r_inner * cos(theta)
+            y1 = cy - r_inner * sin(theta)
+            x2 = cx + r_outer * cos(theta)
+            y2 = cy - r_outer * sin(theta)
+            p.setPen(QPen(QColor("#ffd966"), 3))
+            p.drawLine(int(x1), int(y1), int(x2), int(y2))
+
+        # Center value text.
+        center_font = p.font()
+        center_font.setPointSize(11)
+        center_font.setBold(True)
+        p.setFont(center_font)
+        p.setPen(QColor("#ffffff" if not self._dim else "#777777"))
+        p.drawText(QRectF(cx - radius, cy - radius,
+                          2 * radius, 2 * radius),
+                   Qt.AlignmentFlag.AlignCenter, self._center_text)
+
+        # Caption underneath.
+        cap_font = p.font()
+        cap_font.setPointSize(9)
+        cap_font.setBold(True)
+        p.setFont(cap_font)
+        p.setPen(QColor("#cccccc" if not self._dim else "#666666"))
+        p.drawText(QRectF(0, h - label_h, w, label_h),
+                   Qt.AlignmentFlag.AlignHCenter
+                   | Qt.AlignmentFlag.AlignTop,
+                   self._label)
+        p.end()
+
+
 class MetricDashboard(QWidget):
     """Stack of MetricBars for the glanceable decision strip.
 
@@ -2304,9 +2413,14 @@ class MetricDashboard(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        v = QVBoxLayout(self)
-        v.setContentsMargins(8, 4, 8, 4)
-        v.setSpacing(1)
+        # Pie/donut grid — better use of the narrow right-hand column
+        # than the long horizontal bars. Each pie gauges one metric;
+        # see the tooltips for what each one means.
+        from PyQt6.QtWidgets import QGridLayout as _QGridLayout
+        grid = _QGridLayout(self)
+        grid.setContentsMargins(8, 6, 8, 6)
+        grid.setHorizontalSpacing(6)
+        grid.setVerticalSpacing(6)
         TIPS = {
             'equity': (
                 "Equity vs ranges\n\n"
@@ -2377,35 +2491,38 @@ class MetricDashboard(QWidget):
                 "if your bar extends past the tick, SHOVE; otherwise "
                 "FOLD."),
         }
-        self.equity_bar = MetricBar("Equity vs ranges")
-        self.equity_bar.setToolTip(TIPS['equity'])
-        v.addWidget(self.equity_bar)
-        self.potodds_bar = MetricBar("Pot odds")
-        self.potodds_bar.setToolTip(TIPS['pot_odds'])
-        v.addWidget(self.potodds_bar)
-        self.implied_bar = MetricBar("Implied break-even")
-        self.implied_bar.setToolTip(TIPS['implied'])
-        v.addWidget(self.implied_bar)
-        self.reverse_implied_bar = MetricBar("Reverse implied (risk)")
-        self.reverse_implied_bar.setToolTip(TIPS['reverse_implied'])
-        v.addWidget(self.reverse_implied_bar)
-        self.spr_bar = MetricBar("SPR after call")
-        self.spr_bar.setToolTip(TIPS['spr'])
-        v.addWidget(self.spr_bar)
-        self.commit_bar = MetricBar("Pot commitment %")
-        self.commit_bar.setToolTip(TIPS['commit'])
-        v.addWidget(self.commit_bar)
-        self.outs_bar = MetricBar("Outs (≤ 20)")
-        self.outs_bar.setToolTip(TIPS['outs'])
-        v.addWidget(self.outs_bar)
-        self.nash_bar = MetricBar("Nash push range (≤15bb)")
-        self.nash_bar.setToolTip(TIPS['nash'])
-        v.addWidget(self.nash_bar)
-        self.nash_bar.setVisible(False)
-        # Bars cluster at the top of the right column with empty space
-        # below so they don't stretch oddly when the column is taller
-        # than the bar stack.
-        v.addStretch(1)
+        def _make_pie(label, tip):
+            pie = MetricPie(label)
+            pie.setToolTip(tip)
+            return pie
+
+        # Row 0: equity-vs-range comparison (the headline pair) and
+        # implied / reverse-implied (the future-bets risk pair).
+        # Row 1: stack / commitment / outs / Nash.
+        self.equity_pie = _make_pie("Equity", TIPS['equity'])
+        grid.addWidget(self.equity_pie, 0, 0)
+        self.potodds_pie = _make_pie("Pot odds", TIPS['pot_odds'])
+        grid.addWidget(self.potodds_pie, 0, 1)
+        self.implied_pie = _make_pie("Implied BE", TIPS['implied'])
+        grid.addWidget(self.implied_pie, 0, 2)
+        self.reverse_implied_pie = _make_pie(
+            "Reverse imp", TIPS['reverse_implied'])
+        grid.addWidget(self.reverse_implied_pie, 0, 3)
+        self.spr_pie = _make_pie("SPR", TIPS['spr'])
+        grid.addWidget(self.spr_pie, 1, 0)
+        self.commit_pie = _make_pie("Commit %", TIPS['commit'])
+        grid.addWidget(self.commit_pie, 1, 1)
+        self.outs_pie = _make_pie("Outs", TIPS['outs'])
+        grid.addWidget(self.outs_pie, 1, 2)
+        self.nash_pie = _make_pie("Nash", TIPS['nash'])
+        grid.addWidget(self.nash_pie, 1, 3)
+        self.nash_pie.setVisible(False)
+        # Bottom stretch so the pies cluster at the top of the right
+        # column rather than ballooning to fill all the height.
+        grid.setRowStretch(2, 1)
+        # Equal column widths.
+        for c in range(4):
+            grid.setColumnStretch(c, 1)
         self.setStyleSheet(
             "MetricDashboard { background: #181818;"
             " border: 1px solid #333; border-radius: 6px; }"
@@ -2419,9 +2536,9 @@ class MetricDashboard(QWidget):
         unraised_preflop: bool = False,
         reverse_implied_pct: float | None = None,
     ):
-        # Equity bar — pot-odds tick + color verdict
+        # Equity — pot-odds tick + color verdict
         if equity_pct is None:
-            self.equity_bar.set_metric(0, 100, "--", color="#0af", dim=True)
+            self.equity_pie.set_metric(0, 100, "--", color="#0af", dim=True)
         else:
             tick = (pot_odds_pct if pot_odds_pct and not unraised_preflop
                     else None)
@@ -2433,33 +2550,32 @@ class MetricDashboard(QWidget):
                 col = "#ffd966"
             else:
                 col = "#ff7777"
-            self.equity_bar.set_metric(
-                equity_pct, 100, f"{equity_pct:.1f}%",
+            self.equity_pie.set_metric(
+                equity_pct, 100, f"{equity_pct:.0f}%",
                 tick=tick, color=col)
 
-        # Pot odds bar
+        # Pot odds
         if pot_odds_pct is None:
-            self.potodds_bar.set_metric(0, 100, "--", color="#f80", dim=True)
+            self.potodds_pie.set_metric(0, 100, "--", color="#f80", dim=True)
         else:
-            tag = "" if not unraised_preflop else " (BB)"
-            self.potodds_bar.set_metric(
-                pot_odds_pct, 100, f"{pot_odds_pct:.1f}%{tag}",
+            tag = "" if not unraised_preflop else "BB"
+            ctr = (f"{pot_odds_pct:.0f}%\n{tag}"
+                   if tag else f"{pot_odds_pct:.0f}%")
+            self.potodds_pie.set_metric(
+                pot_odds_pct, 100, ctr,
                 color="#f80", dim=unraised_preflop)
 
         # Implied break-even — a very low number means deep implied odds.
         if implied_pct is None:
-            self.implied_bar.set_metric(0, 50, "--", color="#a8f", dim=True)
+            self.implied_pie.set_metric(0, 50, "--", color="#a8f", dim=True)
         else:
-            self.implied_bar.set_metric(
+            self.implied_pie.set_metric(
                 implied_pct, 50, f"{implied_pct:.1f}%",
                 color="#a8f")
 
-        # Reverse implied — heuristic "stack-at-risk" % when the hand
-        # is good-now-but-fragile (low kicker top pair / 2nd-nut
-        # flush / dominated kicker). Colored red for high risk, amber
-        # for moderate, dim/blue otherwise.
+        # Reverse implied — heuristic "stack-at-risk" %.
         if reverse_implied_pct is None:
-            self.reverse_implied_bar.set_metric(
+            self.reverse_implied_pie.set_metric(
                 0, 30, "--", color="#a8f", dim=True)
         else:
             if reverse_implied_pct >= 20:
@@ -2468,13 +2584,13 @@ class MetricDashboard(QWidget):
                 col = "#ffd966"
             else:
                 col = "#88ff88"
-            self.reverse_implied_bar.set_metric(
+            self.reverse_implied_pie.set_metric(
                 reverse_implied_pct, 30,
-                f"{reverse_implied_pct:.1f}%", color=col)
+                f"{reverse_implied_pct:.0f}%", color=col)
 
         # SPR after call (cap at 10 — anything above is "very deep").
         if spr is None:
-            self.spr_bar.set_metric(0, 10, "--", color="#0af", dim=True)
+            self.spr_pie.set_metric(0, 10, "--", color="#0af", dim=True)
         else:
             if spr < 1:
                 col = "#ff7777"
@@ -2482,12 +2598,12 @@ class MetricDashboard(QWidget):
                 col = "#ffd966"
             else:
                 col = "#88ff88"
-            self.spr_bar.set_metric(
-                min(spr, 10), 10, f"{spr:.2f}", color=col)
+            self.spr_pie.set_metric(
+                min(spr, 10), 10, f"{spr:.1f}", color=col)
 
         # Pot commitment % — > 33 % = effectively committed.
         if commit_pct is None:
-            self.commit_bar.set_metric(0, 100, "--", color="#0af", dim=True)
+            self.commit_pie.set_metric(0, 100, "--", color="#0af", dim=True)
         else:
             if commit_pct >= 33:
                 col = "#ff7777"
@@ -2495,39 +2611,36 @@ class MetricDashboard(QWidget):
                 col = "#ffd966"
             else:
                 col = "#88ff88"
-            self.commit_bar.set_metric(
-                commit_pct, 100, f"{commit_pct:.1f}%", color=col)
+            self.commit_pie.set_metric(
+                commit_pct, 100, f"{commit_pct:.0f}%", color=col)
 
-        # Outs (0..20+)
+        # Outs (0..20)
         if outs is None:
-            self.outs_bar.set_metric(0, 20, "--", color="#0f0", dim=True)
+            self.outs_pie.set_metric(0, 20, "--", color="#0f0", dim=True)
         else:
             col = ("#88ff88" if outs >= 9
                    else "#ffd966" if outs >= 4 else "#aaaaaa")
-            self.outs_bar.set_metric(
+            self.outs_pie.set_metric(
                 min(outs, 20), 20, f"{outs}", color=col)
 
         # Nash push gauge — show only when short-stacked.
         if stack_bb is not None and stack_bb <= 15:
-            self.nash_bar.setVisible(True)
+            self.nash_pie.setVisible(True)
             push_pct = nash_push_pct(stack_bb) * 100
-            # If we know hero's hand strength percentile, also show
-            # whether THIS hand is in the push range.
             verdict = ""
             tick = None
             if hero_hand and len(hero_hand) >= 2:
                 pct = hand_strength_percentile(hero_hand) * 100
-                # Top X% of hands → 100-X percentile threshold
                 in_range = pct >= (100 - push_pct)
-                verdict = (" SHOVE" if in_range else " FOLD")
+                verdict = ("\nSHOVE" if in_range else "\nFOLD")
                 tick = 100 - push_pct
             col = "#ff7777" if stack_bb <= 6 else "#ffd966"
-            self.nash_bar.set_metric(
+            self.nash_pie.set_metric(
                 push_pct, 100,
-                f"top {push_pct:.0f}% @ {stack_bb:.0f}bb{verdict}",
+                f"{push_pct:.0f}%{verdict}",
                 tick=tick, color=col)
         else:
-            self.nash_bar.setVisible(False)
+            self.nash_pie.setVisible(False)
 
 
 class TheoryOfMindPanel(QWidget):
@@ -2690,16 +2803,13 @@ class TheoryOfMindPanel(QWidget):
 
         mode_row.addStretch()
 
-        # Board texture display.  Bumped from 14pt → 20pt and given the
-        # full Acevedo classification (dry/dynamic/wet/paired) + c-bet
-        # sizing hint so it doubles as the board-dynamic indicator
-        # that used to live in the lower-right status bar.
+        # Board texture display — kept as the hidden source-of-truth
+        # widget; the user-visible copy lives on the main card bar
+        # (set up via tom_external_board_texture). update_analysis()
+        # writes both.
         self.board_texture_label = QLabel("Board: --")
-        self.board_texture_label.setFont(QFont('Arial', 20, QFont.Weight.Bold))
-        self.board_texture_label.setStyleSheet(
-            "color: #fc0; padding: 8px 14px; background: #222;"
-            " border: 1px solid #444; border-radius: 4px;")
         self.board_texture_label.setWordWrap(True)
+        self.board_texture_label.setVisible(False)
         mode_row.addWidget(self.board_texture_label, stretch=1)
 
         layout.addLayout(mode_row)
@@ -2771,11 +2881,26 @@ class TheoryOfMindPanel(QWidget):
         advisor_layout.addWidget(advisor_scroll)
         self.tabs.addTab(advisor_tab, "Advisor")
 
+        def _scroll_wrap(widget):
+            """Wrap a tab's content widget in a vertical-scrolling
+            QScrollArea so the full PokerStove grid + analysis text
+            are always reachable even when the dialog is short."""
+            sa = QScrollArea()
+            sa.setWidgetResizable(True)
+            sa.setStyleSheet(
+                "QScrollArea { border: none; background: #1a1a1a; }")
+            sa.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            sa.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            sa.setWidget(widget)
+            return sa
+
         # Hero tab — hole cards + outs visualisation. Sits right after
         # Advisor so it's the second-most-prominent tab in the bar.
         # update_analysis() routes hero cards + board into it.
         self.hero_tab = HeroOutsTab()
-        self.tabs.addTab(self.hero_tab, "Hero")
+        self.tabs.addTab(_scroll_wrap(self.hero_tab), "Hero")
 
         # Bot player tabs — skip the local hero and any remote humans.
         for i, player in enumerate(players):
@@ -2784,8 +2909,10 @@ class TheoryOfMindPanel(QWidget):
             if i in self._network_human_seats:
                 continue
             tab = TheoryOfMindTab(player.name, player.style)
-            # Tab shows player's full name (e.g. "Tight Tim")
-            idx = self.tabs.addTab(tab, player.name)
+            # Tab shows player's full name (e.g. "Tight Tim"). The
+            # tab content is wrapped in a QScrollArea so the 13×13
+            # grid + the LIKELY-HOLDING block can always be seen.
+            idx = self.tabs.addTab(_scroll_wrap(tab), player.name)
             self.bot_tabs[player.name] = tab
             self.tab_indices[player.name] = idx
 
@@ -3909,11 +4036,24 @@ class TheoryOfMindPanel(QWidget):
             details = " | ".join(d for d in (
                 texture_info.get('flush', ''),
                 texture_info.get('straight', '')) if d)
-            self.board_texture_label.setText(
-                f"Board: {main}" + (f"    [{details}]" if details else "")
+            board_text = (
+                f"Board: {main}"
+                + (f"    [{details}]" if details else "")
                 + (f"    →  c-bet: {cbet}" if cbet else ""))
+            self.board_texture_label.setText(board_text)
         else:
-            self.board_texture_label.setText("Board: Preflop")
+            board_text = "Board: Preflop"
+            self.board_texture_label.setText(board_text)
+        # Mirror to the external label on the card bar (next to
+        # "Your Hand (Button)") so the board dynamic is visible at
+        # eye level instead of buried in the mode row below.
+        owner = getattr(self, '_owner_window', None)
+        if owner is not None and hasattr(owner,
+                                          'tom_external_board_texture'):
+            try:
+                owner.tom_external_board_texture.setText(board_text)
+            except Exception:
+                pass
 
         # Refresh the Hero outs tab on every update.  Dead cards =
         # any villain hand we already know about (god-mode reveals,
@@ -8573,7 +8713,21 @@ class PokerWindow(QMainWindow):
             hero_section.addWidget(card)
 
         card_bar_layout.addLayout(hero_section)
-        card_bar_layout.addStretch()
+        card_bar_layout.addSpacing(40)
+
+        # External board-texture label — sits to the right of "Your
+        # Hand (Button)" so the board dynamic + c-bet sizing hint is
+        # always at eye level, not buried inside the ToM panel.
+        self.tom_external_board_texture = QLabel("Board: --")
+        self.tom_external_board_texture.setFont(
+            QFont('Arial', 18, QFont.Weight.Bold))
+        self.tom_external_board_texture.setStyleSheet(
+            "color: #fc0; background: transparent; border: none;"
+            " padding: 4px 10px;")
+        self.tom_external_board_texture.setWordWrap(True)
+        card_bar_layout.addWidget(self.tom_external_board_texture,
+                                  stretch=1)
+        card_bar_layout.addStretch(0)
 
         tom_container_layout.addWidget(self.tom_card_bar)
 
