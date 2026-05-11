@@ -607,7 +607,7 @@ def _respond_to_partner_opening(state, e, system):
     if op.level == 1 and op.suit in (Suit.CLUBS, Suit.DIAMONDS):
         if rho_intervened:
             return _respond_to_minor_competitive(state, e, system)
-        return _respond_to_minor(state, e)
+        return _respond_to_minor(state, e, system)
 
     if op.level == 1 and op.suit in (Suit.HEARTS, Suit.SPADES):
         if rho_intervened:
@@ -977,10 +977,33 @@ def _respond_to_preempt(state, e: HandEval) -> Bid:
     return passb()
 
 
-def _respond_to_minor(state, e: HandEval) -> Bid:
+def _respond_to_minor(state, e: HandEval, system) -> Bid:
     op = state.opening_bid
     minor = op.suit
     hcp = e.hcp
+
+    # Inverted minor raises (Q-Plus Precision 90M/90P/70):
+    #   1m-2m = strong (10+ HCP, 4+ trump support, forcing 1 round)
+    #   1m-3m = weak preemptive (0-9 HCP, 5+ trump support)
+    # Only fires when the system flags it AND there's been no RHO
+    # double (Q-Plus's "only-nodouble" constraint).
+    inverted = (any(k.startswith("A-1MI-inverted-raises") for k in system.raw_rules)
+                and not state.rho_bids)
+    fit = e.suit_lengths.get(minor, 0)
+    if inverted and fit >= 4:
+        # 4+ support with no major to show (skip if 4cM is present —
+        # those go 1H/1S instead, by Q-Plus's standard convention).
+        has_4cM = (e.suit_lengths.get(Suit.HEARTS, 0) >= 4
+                   or e.suit_lengths.get(Suit.SPADES, 0) >= 4)
+        if not has_4cM:
+            if hcp >= 10:
+                return bid(2, minor, alert=True,
+                           why=f"Inverted minor raise (2{minor.to_char()}): "
+                               "10+ HCP, 4+ support, forcing")
+            if hcp <= 9 and fit >= 5:
+                return bid(3, minor, alert=True,
+                           why=f"Inverted minor preempt (3{minor.to_char()}): "
+                               "0-9 HCP, 5+ support")
 
     # 6-9 with a 4-card major bid 1H/1S
     if 6 <= hcp <= 18:
@@ -1031,7 +1054,7 @@ def _respond_to_minor_competitive(state, e: HandEval, system) -> Bid:
             return Bid(is_redouble=True, explanation="Redouble: 10+ HCP")
         return passb()
     if overcall_suit is None:  # NT overcall — treat as natural
-        return _respond_to_minor(state, e)
+        return _respond_to_minor(state, e, system)
     # Negative double with both unbid majors, valid through the
     # system's Sputnik cap (SAYC: 2♠, Precision 90M: 3♠).
     neg_max = _negative_double_max_level(system)
