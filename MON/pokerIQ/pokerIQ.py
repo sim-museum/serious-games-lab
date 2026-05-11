@@ -14,8 +14,8 @@ from PyQt6.QtWidgets import (
     QPushButton, QLabel, QSlider, QSpinBox, QMessageBox, QFrame,
     QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, QGraphicsTextItem,
     QGraphicsRectItem, QDialog, QDialogButtonBox, QCheckBox, QGroupBox,
-    QTabWidget, QTextEdit, QScrollArea, QComboBox, QFormLayout,
-    QProgressBar, QSizePolicy, QGridLayout, QFileDialog,
+    QTabWidget, QTextEdit, QTextBrowser, QScrollArea, QComboBox,
+    QFormLayout, QProgressBar, QSizePolicy, QGridLayout, QFileDialog,
 )
 from PyQt6.QtCore import Qt, QTimer, QRectF, QPointF, QSettings, QThread, pyqtSignal
 from PyQt6.QtGui import (
@@ -1458,25 +1458,58 @@ class HeroOutsTab(QWidget):
             self._card2, alignment=Qt.AlignmentFlag.AlignTop)
         cards_row.addSpacing(20)
 
-        self._commit_label = QLabel()
-        self._commit_label.setWordWrap(True)
-        self._commit_label.setTextFormat(Qt.TextFormat.RichText)
-        self._commit_label.setStyleSheet(
-            "QLabel { background-color: #1a1a1a; color: #cccccc;"
-            " border: 1px solid #333; border-radius: 6px;"
-            " padding: 14px; font-size: 18px; }"
+        # Stack of QLabels in a QVBoxLayout. Each line carries an
+        # explicit minimum height so the QFrame's sizeHint adds up to
+        # a sensible total — without that, the parent HBoxLayout
+        # compresses everything below the title onto the same row.
+        commit_box = QFrame()
+        commit_box.setStyleSheet(
+            "QFrame { background-color: #1a1a1a;"
+            " border: 1px solid #333; border-radius: 6px; }"
         )
-        self._commit_label.setAlignment(
-            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        # MinimumExpanding vertical so the label reports a true
-        # height to the layout and the row stretches to fit the
-        # full SPR + commitment-ratio + equity block, not just one
-        # line.
-        self._commit_label.setSizePolicy(
+        commit_box.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.MinimumExpanding)
-        self._commit_label.setMinimumHeight(220)
-        cards_row.addWidget(self._commit_label, stretch=1)
+        commit_box.setMinimumHeight(260)
+        cv = QVBoxLayout(commit_box)
+        cv.setContentsMargins(16, 10, 16, 14)
+        cv.setSpacing(10)
+
+        def _make_line(font_pt, color, bold=False, min_h=34):
+            lbl = QLabel("")
+            lbl.setWordWrap(True)
+            lbl.setTextFormat(Qt.TextFormat.RichText)
+            weight = "bold" if bold else "normal"
+            lbl.setStyleSheet(
+                f"color: {color}; font-size: {font_pt}pt;"
+                f" font-weight: {weight};"
+                " background: transparent; border: none;")
+            lbl.setAlignment(
+                Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+            lbl.setMinimumHeight(min_h)
+            return lbl
+
+        self._commit_title = _make_line(22, "#ffffff", bold=True, min_h=40)
+        self._commit_title.setText("Pot Commitment")
+        cv.addWidget(self._commit_title)
+
+        self._commit_ratio = _make_line(18, "#dddddd", min_h=38)
+        cv.addWidget(self._commit_ratio)
+
+        self._commit_spr = _make_line(18, "#dddddd", min_h=38)
+        cv.addWidget(self._commit_spr)
+
+        self._commit_equity = _make_line(18, "#dddddd", min_h=38)
+        cv.addWidget(self._commit_equity)
+
+        self._commit_math = _make_line(14, "#aaaaaa", min_h=28)
+        cv.addWidget(self._commit_math)
+
+        cv.addStretch(1)
+        # Keep the same attribute name so existing helpers can still
+        # poke at it (we mostly use the per-section labels now).
+        self._commit_label = commit_box
+        cards_row.addWidget(commit_box, stretch=1)
         outer.addLayout(cards_row)
         # Seed the placeholder so the panel has visible content at
         # construction time (before any hand has been dealt).
@@ -1748,138 +1781,99 @@ class HeroOutsTab(QWidget):
         except (TypeError, ValueError):
             pot_v = tc_v = stk_v = None
 
-        title_html = (
-            "<div style='font-size:18pt; font-weight:bold;"
-            " color:#ffffff; margin-bottom:8px;'>Pot Commitment</div>"
-        )
-
-        # No live bet to face — but we can still surface the going-in
-        # SPR (stack / pot) so the user knows roughly how much room
-        # they have to fold a future bet.
+        # No live bet to face — show going-in SPR.
         if pot_v is None or stk_v is None or tc_v is None or tc_v <= 0:
             if pot_v is not None and stk_v is not None and pot_v > 0:
                 spr_now = stk_v / pot_v
                 if spr_now < 1.0:
-                    zone = ("<b style='color:#ff7777;'>POT-COMMITTED</b> "
-                            "— any bet that doesn't bust you would "
-                            "price you in to call.")
+                    zone_short = ("<b style='color:#ff7777;'>"
+                                  "POT-COMMITTED</b> "
+                                  "(SPR &lt; 1)")
                 elif spr_now < 3.0:
-                    zone = ("<span style='color:#ffd966;'>Borderline "
-                            "(SPR 1–3)</span> — facing a bet here "
-                            "tends to commit you on the next street.")
+                    zone_short = ("<span style='color:#ffd966;'>"
+                                  "Borderline</span> (SPR 1–3)")
                 else:
-                    zone = ("<span style='color:#88ff88;'>Not committed</span> "
-                            "(SPR ≥ 3) — plenty of room to fold a "
-                            "future bet without burning a meaningful "
-                            "share of your stack.")
-                self._commit_label.setText(
-                    title_html
-                    + "<div style='color:#cccccc; font-size:16pt;"
-                    " line-height:140%;'>"
-                    f"No live bet to face. Pot is <b>${pot_v:,}</b>, "
-                    f"you have <b>${stk_v:,}</b> behind.<br>"
-                    f"<b style='color:#ffffff;'>Stack-to-Pot Ratio "
-                    f"(SPR)</b>: <b>{spr_now:.2f}</b><br>"
-                    f"&nbsp;→ {zone}</div>"
-                )
+                    zone_short = ("<span style='color:#88ff88;'>"
+                                  "Not committed</span> (SPR ≥ 3)")
+                self._commit_ratio.setText(
+                    "<i style='color:#aaa;'>No bet to face — "
+                    "pot odds don't apply yet.</i>")
+                self._commit_spr.setText(
+                    f"<b>SPR</b> (stack ÷ pot): "
+                    f"<b>{spr_now:.2f}</b> &nbsp; → {zone_short}")
+                self._commit_equity.setText("")
+                self._commit_math.setText(
+                    f"Pot ${pot_v:,} &nbsp;·&nbsp; "
+                    f"behind ${stk_v:,}")
             else:
-                self._commit_label.setText(
-                    title_html
-                    + "<div style='color:#999; font-size:16pt;'>"
-                    "(no live bet to call — commitment math will "
-                    "appear here when there's a bet to face)</div>"
-                )
+                self._commit_ratio.setText(
+                    "<i style='color:#999;'>(no live bet to call — "
+                    "commitment math appears here when there's a bet "
+                    "to face)</i>")
+                self._commit_spr.setText("")
+                self._commit_equity.setText("")
+                self._commit_math.setText("")
             return
 
         stack_after = max(0, stk_v - tc_v)
         pot_after = pot_v + tc_v
         spr = (stack_after / pot_after) if pot_after > 0 else 0.0
         pot_odds_pct = (100.0 * tc_v / pot_after) if pot_after > 0 else 0.0
-        # Pot Commitment Ratio = fraction of your CURRENT stack you
-        # are about to put in. Distinct from SPR (which is stack-
-        # AFTER-call vs pot-AFTER-call). Crosses the "effectively
-        # committed" line around 33% by standard teaching tables.
         commit_ratio_pct = (100.0 * tc_v / stk_v) if stk_v > 0 else 100.0
 
-        # Commitment band thresholds borrowed from common
-        # SPR teaching tables: SPR < 1 is committed, 1-3 is the
-        # "decision" band, > 3 you've still got room to fold.
+        # One-line verdict tags — keep each tier tight so a single
+        # QLabel row never wraps to 3+ lines and crowds the next
+        # section.
         if spr < 1.0:
-            zone = "<b style='color:#ff7777;'>POT-COMMITTED zone</b> " \
-                   "(SPR &lt; 1) — any further bet from villain that " \
-                   "doesn't bust you would price you in to call."
+            zone_tag = ("<b style='color:#ff7777;'>"
+                        "POT-COMMITTED</b> (SPR &lt; 1)")
         elif spr < 3.0:
-            zone = "<span style='color:#ffd966;'>Borderline " \
-                   "(SPR 1–3)</span> — calling here means you'll " \
-                   "have to make another tough decision on the next " \
-                   "street with about a pot-sized commitment left."
+            zone_tag = ("<span style='color:#ffd966;'>"
+                        "Borderline</span> (SPR 1–3)")
         else:
-            zone = "<span style='color:#88ff88;'>Not committed</span> " \
-                   f"(SPR ≥ 3) — you can still fold to a future " \
-                   "bet without burning a meaningful share of " \
-                   "your stack."
+            zone_tag = ("<span style='color:#88ff88;'>"
+                        "Not committed</span> (SPR ≥ 3)")
 
-        # Pot Commitment Ratio tier — red above 33 %, amber 15-33 %,
-        # green below 15 %. Matches the "calling more than a third of
-        # your stack means you can't fold the river" rule of thumb.
         if commit_ratio_pct >= 33.0:
-            commit_verdict = ("<b style='color:#ff7777;'>"
-                              "EFFECTIVELY COMMITTED</b> — calling "
-                              "more than ⅓ of your stack means you "
-                              "almost certainly can't fold the next "
-                              "street.")
+            ratio_tag = ("<b style='color:#ff7777;'>"
+                         "EFFECTIVELY COMMITTED</b>")
         elif commit_ratio_pct >= 15.0:
-            commit_verdict = ("<span style='color:#ffd966;'>"
-                              "Meaningful commitment</span> — think "
-                              "about whether you're prepared to call "
-                              "another bet of similar size next.")
+            ratio_tag = ("<span style='color:#ffd966;'>"
+                         "Meaningful</span>")
         else:
-            commit_verdict = ("<span style='color:#88ff88;'>"
-                              "Light commitment</span> — easy to "
-                              "fold to future pressure if your read "
-                              "changes.")
+            ratio_tag = ("<span style='color:#88ff88;'>Light</span>")
 
-        # Equity check — only shown when the caller passed it in,
-        # otherwise the panel sticks to pure stack/pot math.
-        equity_block = ""
+        self._commit_ratio.setText(
+            f"<b>Pot Commitment Ratio</b>: "
+            f"<b>{commit_ratio_pct:.1f}%</b> of your stack &nbsp; → "
+            f"{ratio_tag}"
+        )
+        self._commit_spr.setText(
+            f"<b>SPR after call</b>: <b>{spr:.2f}</b> &nbsp; → {zone_tag}"
+        )
+
+        # Equity check — only shown when caller passes a number.
         if equity_pct is not None:
             try:
                 eq = float(equity_pct)
-                verdict = ("<span style='color:#ff7777;'>"
-                           "<b>UNPROFITABLE call</b></span> — "
-                           "fold unless you have a strong read.") \
+                verdict = ("<span style='color:#ff7777;'><b>"
+                           "Unprofitable call</b></span>") \
                     if eq < pot_odds_pct else \
-                    ("<span style='color:#88ff88;'>"
-                     "<b>Profitable call</b></span> — pot odds met.")
-                equity_block = (
-                    "<br><br>"
-                    f"Pot odds: <b>{pot_odds_pct:.1f}%</b> &nbsp; "
-                    f"Equity vs ranges: <b>{eq:.1f}%</b><br>"
-                    f"&nbsp;→ {verdict}"
+                    ("<span style='color:#88ff88;'><b>"
+                     "Profitable call</b></span>")
+                self._commit_equity.setText(
+                    f"Pot odds <b>{pot_odds_pct:.1f}%</b> &nbsp; vs "
+                    f"&nbsp; Equity <b>{eq:.1f}%</b> &nbsp; → {verdict}"
                 )
             except (TypeError, ValueError):
-                equity_block = ""
+                self._commit_equity.setText("")
+        else:
+            self._commit_equity.setText("")
 
-        # Body font bumped 13pt → 16pt per request — the line below
-        # the "Pot Commitment" title is the key takeaway and was
-        # reading as small-print next to the panel header.
-        html = (
-            title_html
-            + "<div style='color:#dddddd; font-size:16pt;"
-            " line-height:140%;'>"
-            f"You'd put in <b>${tc_v:,}</b> with <b>${stk_v:,}</b> "
-            f"left, leaving <b>${stack_after:,}</b> behind in a pot "
-            f"of <b>${pot_after:,}</b>.<br><br>"
-            f"<b style='color:#ffffff;'>Pot Commitment Ratio</b>: "
-            f"<b>{commit_ratio_pct:.1f}%</b> of your stack<br>"
-            f"&nbsp;→ {commit_verdict}<br><br>"
-            f"<b style='color:#ffffff;'>Stack-to-Pot Ratio (SPR)</b> "
-            f"after call: <b>{spr:.2f}</b><br>"
-            f"&nbsp;→ {zone}"
-            f"{equity_block}"
-            "</div>"
+        self._commit_math.setText(
+            f"Putting in ${tc_v:,} of ${stk_v:,} stack — "
+            f"${stack_after:,} behind into a ${pot_after:,} pot."
         )
-        self._commit_label.setText(html)
 
     def _class_index(self, hand_class: str) -> int:
         """Return rank index of a hand-type string (lower = stronger).
@@ -2358,128 +2352,143 @@ class TheoryOfMindPanel(QWidget):
         return texture, info
 
     def calculate_outs(self, hero_hand, board):
-        """Calculate hero's outs to improve."""
-        if not hero_hand or not board:
+        """Count outs using the SAME eval7-based logic as
+        HeroOutsTab so the strip's "Outs: N" and the Hero tab's grid
+        always agree.
+
+        Returns (count, description).  Description is a short label
+        derived from the rank gaps so the user still sees "Gutshot",
+        "OESD", "Flush draw" etc. as a heuristic — but the COUNT is
+        authoritative (eval7-driven, includes double-gutshots and
+        pair-to-two-pair improvement).
+        """
+        if not hero_hand or not board or len(board) < 3:
+            return 0, ""
+        try:
+            import eval7 as _e7
+        except Exception:
             return 0, ""
 
-        c1, c2 = str(hero_hand[0]), str(hero_hand[1])
-        r1, r2 = c1[0], c2[0]
-        s1, s2 = c1[1], c2[1]
-        ranks = 'AKQJT98765432'
+        hero_e7 = [_e7.Card(str(c)) for c in hero_hand[:2]]
+        board_e7 = [_e7.Card(str(c)) for c in board]
+        try:
+            cur_rank = _e7.evaluate(hero_e7 + board_e7)
+            cur_class = _e7.handtype(cur_rank)
+        except Exception:
+            return 0, ""
 
-        board_cards = [str(c) for c in board]
-        board_ranks = [c[0] for c in board_cards]
-        board_suits = [c[1] for c in board_cards]
+        # Same hand-class ordering as HeroOutsTab._HAND_CLASS_ORDER.
+        order = [
+            "Straight Flush", "Quads", "Four of a Kind",
+            "Full House", "Flush", "Straight",
+            "Trips", "Three of a Kind", "Two Pair", "Pair", "High Card",
+        ]
 
-        all_ranks = [r1, r2] + board_ranks
-        all_suits = [s1, s2] + board_suits
+        def _idx(name):
+            try:
+                return order.index(name)
+            except ValueError:
+                return len(order)
 
-        outs = 0
+        cur_idx = _idx(cur_class)
+        pair_idx = _idx('Pair')
+        high_card_idx = _idx('High Card')
+
+        used = {str(c) for c in hero_hand[:2]}
+        used.update(str(c) for c in board)
+
+        hero_ranks_held = {str(c)[0] for c in hero_hand[:2]}
+        board_rank_set = {str(c)[0] for c in board}
+        rank_order = 'AKQJT98765432'
+        board_high_idx = (
+            min(rank_order.index(r) for r in board_rank_set)
+            if board_rank_set else 0)
+
+        suits = ('s', 'h', 'd', 'c')
+        outs = []
+        for r in rank_order:
+            for s in suits:
+                key = r + s
+                if key in used:
+                    continue
+                # Shared-improvement filter — a board-rank card that
+                # Hero doesn't hold pairs the board for EVERY player,
+                # so it doesn't exclusively help Hero.
+                if (r in board_rank_set
+                        and r not in hero_ranks_held):
+                    continue
+                try:
+                    new_rank = _e7.evaluate(
+                        hero_e7 + board_e7 + [_e7.Card(key)])
+                    new_class = _e7.handtype(new_rank)
+                except Exception:
+                    continue
+                new_idx = _idx(new_class)
+                # (a) Strict class improvement landing at Pair or better
+                if new_idx < cur_idx and new_idx < pair_idx:
+                    outs.append(key)
+                    continue
+                # (b) High Card → top pair (overcard pair)
+                if (cur_idx == high_card_idx
+                        and new_idx == pair_idx
+                        and r in hero_ranks_held
+                        and rank_order.index(r) <= board_high_idx):
+                    outs.append(key)
+                    continue
+                # (c) Same class, strictly stronger (e.g. paired-board
+                # kicker upgrade)
+                if (r in hero_ranks_held
+                        and new_idx == cur_idx
+                        and new_rank > cur_rank
+                        and new_idx <= pair_idx):
+                    outs.append(key)
+
+        count = len(outs)
+
+        # Description heuristic — keep the user-facing label informative
+        # even though the count comes from eval7. Picks the strongest
+        # applicable draw tag.
         descriptions = []
-
-        # Count suits
+        ranks_only = 'AKQJT98765432'
+        all_suits = [str(c)[1] for c in hero_hand[:2]] + \
+                    [str(c)[1] for c in board]
+        all_ranks = [str(c)[0] for c in hero_hand[:2]] + \
+                    [str(c)[0] for c in board]
         suit_counts = {}
         for s in all_suits:
             suit_counts[s] = suit_counts.get(s, 0) + 1
-
-        # Count ranks
-        rank_counts = {}
-        for r in all_ranks:
-            rank_counts[r] = rank_counts.get(r, 0) + 1
-
-        # Flush draw (4 to a flush)
-        for suit in [s1, s2]:
-            if suit_counts.get(suit, 0) == 4:
-                outs += 9
-                descriptions.append("Flush draw")
-                break
-
-        # Straight draw detection
-        all_vals = sorted(set(ranks.index(r) for r in all_ranks))
+        if any(v == 4 for v in suit_counts.values()):
+            descriptions.append("Flush draw")
+        # Straight detection — count distinct 5-card windows
+        # (open-ended vs gutshot vs double-gutshot).
+        all_vals = sorted(set(ranks_only.index(r) for r in all_ranks))
+        oesd = False
+        gutshots = 0
+        seen_windows = set()
         for i in range(len(all_vals) - 3):
+            window = tuple(all_vals[i:i+4])
+            if window in seen_windows:
+                continue
+            seen_windows.add(window)
             spread = all_vals[i+3] - all_vals[i]
-            if spread == 3:  # Open-ended
-                outs += 8
-                descriptions.append("OESD")
-                break
-            elif spread == 4:  # Gutshot
-                outs += 4
-                descriptions.append("Gutshot")
-                break
-
-        # Detect a paired board (QQ22, 779, etc.). Pairing one of
-        # Hero's hole-card ranks on a paired board is a real out so
-        # long as the resulting hand outranks the bare board played
-        # by villain.
-        board_pair_ranks = {
-            r for r in board_ranks if board_ranks.count(r) >= 2
-        }
-
-        # Overcards: hole-card ranks above every board rank that aren't
-        # already paired with the board. Each is worth ~3 outs (three
-        # of that rank remain in the deck).
-        has_pair = any(r in board_ranks for r in [r1, r2])
-        if not has_pair:
-            board_high = min(ranks.index(br) for br in board_ranks)
-            overcard_count = sum(1 for r in [r1, r2] if ranks.index(r) < board_high)
-            if overcard_count > 0:
-                outs += overcard_count * 3
-                descriptions.append(f"{overcard_count} overcard(s)")
-
-        # Kicker pairing on a paired board (e.g. K3 on QQ22 — the K is
-        # already an overcard, but the 3 also pairs into "second pair
-        # beats anyone playing the board with a low kicker"). Counted
-        # independently of the overcard branch above.
-        if board_pair_ranks:
-            # Pick the lower of the two board pairs — pairing a hole
-            # card BETWEEN that pair and the higher one upgrades Hero
-            # to "best second pair available".
-            board_pair_indices = [ranks.index(p) for p in board_pair_ranks]
-            highest_pair_idx = min(board_pair_indices)  # lower index = higher rank
-            lowest_pair_idx = max(board_pair_indices)
-            kicker_ranks: list = []
-            for r in [r1, r2]:
-                if r in board_ranks:
-                    continue  # already paired with the board
-                idx = ranks.index(r)
-                # Pairing this rank gives Hero PP + (top board pair) +
-                # (low board pair as kicker), which beats anyone playing
-                # the board if r is between the two board pairs (or
-                # above both, which the overcard branch already counted
-                # — skip that case here to avoid double-counting).
-                if idx < highest_pair_idx:
-                    continue  # already counted as an overcard
-                if idx >= lowest_pair_idx:
-                    continue  # below both board pairs → no improvement
-                kicker_ranks.append(r)
-            # Hole-card ranks BELOW the lowest board pair — pairing
-            # those still upgrades to two pair if both Hole ranks are
-            # below the board's pairs and we pair the higher of the
-            # two (e.g. K3 on QQ22, pair the 3 → QQ + 33 + K beats QQ
-            # + 22 + any kicker).
-            below_pair_ranks = [
-                r for r in [r1, r2]
-                if r not in board_ranks and ranks.index(r) > lowest_pair_idx
-            ]
-            if below_pair_ranks:
-                # Take the *highest* of those (smallest index) — pairing
-                # it gives Hero the highest possible second pair, which
-                # beats anyone playing the board.
-                top_below = min(below_pair_ranks, key=lambda r: ranks.index(r))
-                if top_below not in kicker_ranks:
-                    kicker_ranks.append(top_below)
-            if kicker_ranks:
-                outs += len(kicker_ranks) * 3
-                descriptions.append(
-                    f"kicker pair ({'/'.join(kicker_ranks)})")
-
-        # Set draw (pocket pair, need to hit 1 of 2 remaining)
-        if r1 == r2 and rank_counts.get(r1, 0) == 2:
-            outs += 2
-            descriptions.append("Set draw")
+            if spread == 3:
+                oesd = True
+            elif spread == 4:
+                gutshots += 1
+        if oesd:
+            descriptions.append("OESD")
+        elif gutshots >= 2:
+            descriptions.append("Double gutshot")
+        elif gutshots == 1:
+            descriptions.append("Gutshot")
+        # Pair / two-pair / trips improvement context — only mention if
+        # eval7 found additional outs beyond pure draws.
+        cur_pair_or_better = (cur_idx <= pair_idx)
+        if cur_pair_or_better and count > 0 and not (oesd or gutshots):
+            descriptions.append("pair → 2-pair/trips")
 
         desc = " + ".join(descriptions) if descriptions else "No draws"
-        return outs, desc
+        return count, desc
 
     def calculate_scare_cards(self, hero_hand, board, opponents):
         """Calculate cards that would be scary (help villain ranges).
@@ -3125,7 +3134,7 @@ class TheoryOfMindPanel(QWidget):
                 results.append(f"  {player.name}: {hand_notation} NOT IN RANGE (weight={weight:.1%})")
         return results
 
-    def update_analysis(self, players, street, board, hero_hand, action_history, pot=None, current_bet=0, hero_bet=0, hero_position='MP'):
+    def update_analysis(self, players, street, board, hero_hand, action_history, pot=None, current_bet=0, hero_bet=0, hero_position='MP', bb_amount=2):
         """Update all bot tabs with current analysis."""
         all_ranges = {}
         self.hero_position = hero_position  # Store for use in advice
@@ -3440,10 +3449,29 @@ class TheoryOfMindPanel(QWidget):
 
         # Calculate pot odds
         to_call = max(0, current_bet - hero_bet)
+        # Detect the "unraised preflop limp" case: preflop, NO raise
+        # has happened, hero just owes the BB to enter. Pot odds give
+        # a misleading 30-40%-equity-required signal here because the
+        # forced BB inflates the marginal-price ratio. When someone
+        # has actually raised (current_bet > BB), pot odds are real.
+        unraised_preflop = (
+            street == "Preflop"
+            and current_bet > 0
+            and current_bet <= bb_amount
+        )
         if to_call > 0 and pot > 0:
             pot_odds = to_call / (pot + to_call)
             pot_odds_ratio = pot / to_call if to_call > 0 else 0
-            self.pot_odds_label.setText(f"Pot Odds: {pot_odds:.1%} ({pot_odds_ratio:.1f}:1)")
+            if unraised_preflop:
+                # Show the number for reference, but tag it as
+                # non-binding so the user doesn't read the high
+                # required-equity figure as a fold signal.
+                self.pot_odds_label.setText(
+                    f"Pot Odds: {pot_odds:.1%} "
+                    f"(unraised — not a fold signal)")
+            else:
+                self.pot_odds_label.setText(
+                    f"Pot Odds: {pot_odds:.1%} ({pot_odds_ratio:.1f}:1)")
         else:
             pot_odds = 0
             self.pot_odds_label.setText("Pot Odds: --")
@@ -3533,8 +3561,17 @@ class TheoryOfMindPanel(QWidget):
             except Exception:
                 pass
 
-            # Color equity label based on comparison with pot odds
-            if pot_odds > 0:
+            # Color equity label based on comparison with pot odds.
+            # Skip the red-vs-green verdict on an unraised preflop —
+            # the comparison would flag almost every limp as "-EV" even
+            # though the right call is "fold by hand tier" or "limp /
+            # raise for speculation", not "fold because equity < pot
+            # odds".
+            if unraised_preflop:
+                self.equity_label.setStyleSheet(
+                    "color: #0af; padding: 8px; background: #222;"
+                    " border: 2px solid #444;")
+            elif pot_odds > 0:
                 if hero_equity > pot_odds:
                     self.equity_label.setStyleSheet("color: #0f0; padding: 8px; background: #222; border: 2px solid #0a0;")  # Green = +EV
                 else:
@@ -3565,6 +3602,8 @@ class TheoryOfMindPanel(QWidget):
                 'hero_stack': players[0].stack if players else 200,
                 'avg_opp_stack': avg_opp_stack,
                 'hero_position': self.hero_position,  # Pass hero's position
+                'bb_amount': bb_amount,
+                'current_bet': current_bet,
             }
 
             header = self._build_pot_odds_header(advice_context)
@@ -3817,24 +3856,48 @@ class TheoryOfMindPanel(QWidget):
         num_opps = ctx.get('num_opponents', 0) or 0
         street = ctx.get('street', 'Preflop')
 
+        # Unraised preflop = pot is just blinds, hero owes only the BB
+        # to enter. The naive equity-vs-pot-odds verdict gives bad
+        # advice here (it flags almost every limpable hand as -EV
+        # because 4-way equity is < 40%). Suppress that verdict and
+        # tell the reader to use hand-tier instead. Once anyone has
+        # raised above the BB, this is a real fold/call decision and
+        # pot odds DO apply.
+        is_preflop = street == "Preflop"
+        bb_amount = ctx.get('bb_amount', 2) or 2
+        current_bet_ctx = ctx.get('current_bet', 0) or 0
+        unraised_preflop = (
+            is_preflop and to_call > 0
+            and current_bet_ctx <= bb_amount
+        )
+
         lines = ["═══ POT ODDS & EQUITY ═══"]
 
         if to_call > 0:
             ratio = (pot / to_call) if to_call > 0 else 0
-            lines.append(
-                f"Pot ${pot}  |  To call ${to_call}  |  "
-                f"Pot odds {ratio:.1f}:1 (need {pot_odds*100:.1f}% equity)"
-            )
+            if unraised_preflop:
+                lines.append(
+                    f"Pot ${pot}  |  To call ${to_call} (BB to enter)  |  "
+                    "no real raise — pot odds don't drive the decision"
+                )
+            else:
+                lines.append(
+                    f"Pot ${pot}  |  To call ${to_call}  |  "
+                    f"Pot odds {ratio:.1f}:1 (need {pot_odds*100:.1f}% equity)"
+                )
         elif pot > 0:
             lines.append(f"Pot ${pot}  |  No bet to call right now")
         else:
             lines.append("No pot yet")
 
         if no_peek is not None:
-            margin = (no_peek - pot_odds) * 100 if to_call > 0 else None
             opp_label = f"vs {num_opps} opp range" + ("s" if num_opps != 1 else "")
             line = f"Hand equity ({opp_label}, {street}): {no_peek*100:.1f}%"
-            if margin is not None:
+            if unraised_preflop:
+                line += ("   →   decide by HAND TIER + POSITION "
+                         "(no raise to fold to)")
+            elif to_call > 0:
+                margin = (no_peek - pot_odds) * 100
                 if margin >= 0:
                     line += f"   →   +{margin:.1f}% over pot odds (+EV call)"
                 else:
@@ -7480,6 +7543,10 @@ class PokerWindow(QMainWindow):
         hero_seat = self.my_seat if self.my_seat is not None else 0
         hero = self.players[hero_seat]
         current_street = STREETS[self.street_idx] if self.street_idx < len(STREETS) else "River"
+        try:
+            _sb, _bb = BLIND_LEVELS[self.blind_level]
+        except Exception:
+            _bb = 2
         self.tom_panel.update_analysis(
             self.players,
             current_street,
@@ -7489,7 +7556,8 @@ class PokerWindow(QMainWindow):
             self.pot,  # Pass actual pot value
             current_bet=self.current_bet,  # Pass current bet for pot odds
             hero_bet=hero.bet_in_round,  # Pass hero's current bet
-            hero_position=hero_position  # Pass hero's position
+            hero_position=hero_position,  # Pass hero's position
+            bb_amount=_bb,
         )
 
         # Multiplayer: when hosting, push personalized advice to each client
@@ -9266,6 +9334,71 @@ class PokerWindow(QMainWindow):
         self.current_player_idx = (self.dealer_idx + 1) % len(self.players)
         self.betting_round_init()
 
+    def _build_side_pots(self):
+        """Compute the main pot + every side pot from current investments.
+
+        Returns a list of dicts in order from main → highest side pot:
+            [{
+                'label':       'Main pot' | 'Side pot 1' | ...,
+                'amount':      int (chips in this pot),
+                'eligible':    [Player, ...]  (active and capped above
+                                this level),
+                'cap_level':   int (per-player investment cap that
+                                created this pot),
+            }, ...]
+
+        Folded players forfeit their share but their chips are still
+        eligible to be won (they sit in whichever pot level their
+        investment ladder reached).  Uncalled-overage at the top — a
+        side pot whose only eligible player is one person — is flagged
+        separately by callers via len(eligible) == 1.
+        """
+        active = [p for p in self.players if p.active]
+        # Investment levels (sorted unique, > 0)
+        levels = sorted(set(p.total_invested for p in self.players
+                            if p.total_invested > 0))
+        # First pass: build per-band slices.
+        raw = []
+        prev = 0
+        for level in levels:
+            band_amount = 0
+            for p in self.players:
+                band_amount += (min(p.total_invested, level)
+                                - min(p.total_invested, prev))
+            if band_amount > 0:
+                eligible = [p for p in active if p.total_invested >= level]
+                raw.append({
+                    'amount': band_amount,
+                    'eligible': eligible,
+                    'cap_level': level,
+                    'floor_level': prev,
+                })
+            prev = level
+
+        # Second pass: merge consecutive bands that share the SAME
+        # eligible set. A "side pot" should only appear when someone
+        # active can't claim a band that someone else active can — i.e.
+        # caused by an all-in player capping their eligibility. A band
+        # created purely by a folded player's investment level (e.g.
+        # someone paid the BB then folded) leaves the eligible set
+        # identical to the next band's, so it doesn't deserve to be
+        # split off as its own pot.
+        merged = []
+        for band in raw:
+            if (merged
+                    and {id(p) for p in merged[-1]['eligible']}
+                    == {id(p) for p in band['eligible']}):
+                merged[-1]['amount'] += band['amount']
+                merged[-1]['cap_level'] = band['cap_level']
+            else:
+                merged.append(dict(band))
+
+        # Label only after merging so numbering reflects the user-
+        # visible pots, not the internal bands.
+        for idx, pot in enumerate(merged):
+            pot['label'] = "Main pot" if idx == 0 else f"Side pot {idx}"
+        return merged
+
     def end_hand(self):
         """End the hand and determine winner."""
         self.disable_human_actions()
@@ -9290,28 +9423,57 @@ class PokerWindow(QMainWindow):
 
         active = [p for p in self.players if p.active]
 
+        # Build the side-pot ladder once. Used for both single-active
+        # and showdown branches so chip flows are always explicit.
+        side_pots = self._build_side_pots()
+        # Per-pot results we'll log + broadcast (label, amount, winners,
+        # is_uncalled-refund).
+        self.last_pot_breakdown = []
+
+        winners = []          # showdown winners (across all contested pots)
+        total_won = {}        # player -> chips received this hand
+
         if len(active) == 1:
+            # Everyone but one player folded. Folded players forfeit
+            # their chips; the lone active player collects every pot
+            # they were ever eligible for. Any pot at a cap level
+            # ABOVE the lone player's investment had only folded
+            # contributors — those chips also go to the lone player
+            # (no one is contesting them).
             winner = active[0]
-            net_profit = self.pot - winner.total_invested
-            winner.stack += self.pot
+            for pot in side_pots:
+                if not pot['amount']:
+                    continue
+                winner.stack += pot['amount']
+                total_won[winner] = total_won.get(winner, 0) + pot['amount']
+                self.last_pot_breakdown.append({
+                    'label': pot['label'],
+                    'amount': pot['amount'],
+                    'winners': [winner.name],
+                    'uncalled': False,
+                })
+            if winner not in winners:
+                winners.append(winner)
+            net_profit = total_won.get(winner, 0) - winner.total_invested
             self.table.set_pot(net_profit)
             self.log_action(f"{winner.name} wins ${net_profit}!")
             self.table.set_message(f"{winner.name} wins ${net_profit}!")
             self.write_log(f"Winner: {winner.name} - ${net_profit} (others folded)")
+            for pot in self.last_pot_breakdown:
+                self.write_log(
+                    f"  {pot['label']}: ${pot['amount']} -> {winner.name}"
+                )
         else:
             # Showdown
             self.at_showdown = True
             self.table.set_street("Showdown")
 
-            # Make sure board is complete
             while len(self.board) < 5:
                 self.board.extend(self.deck.deal(1))
             self.table.set_board(self.board)
 
-            # Evaluate hands
             board_cards = [eval7.Card(str(c)) for c in self.board]
 
-            # Calculate hand ranks for all active players
             player_ranks = {}
             results = []
             for p in active:
@@ -9322,56 +9484,123 @@ class PokerWindow(QMainWindow):
                 player_ranks[p] = rank
                 results.append(f"{p.name}: {hand_type}")
 
-            # Log results
             for r in results:
                 self.log_action(r)
 
-            # Calculate side pots
-            # Get all unique investment levels from all players (including folded)
-            all_investments = sorted(set(p.total_invested for p in self.players if p.total_invested > 0))
-
-            winners = []
-            total_won = {}
-            prev_level = 0
-
-            for level in all_investments:
-                # Players eligible for this pot level are those who invested at least this much AND are still active
-                eligible = [p for p in active if p.total_invested >= level]
-
+            for pot in side_pots:
+                amount = pot['amount']
+                eligible = pot['eligible']
+                if amount <= 0:
+                    continue
                 if not eligible:
+                    # No active player can claim this pot (everyone at
+                    # this cap level folded). Refund the band to the
+                    # contributors who put chips in at this level.
+                    # This is rare but possible if all higher-stack
+                    # players folded simultaneously.
+                    refunds = []
+                    prev = 0
+                    # Find the level immediately below this pot's cap
+                    for prior in side_pots:
+                        if prior is pot:
+                            break
+                        prev = prior['cap_level']
+                    for p in self.players:
+                        share = (min(p.total_invested, pot['cap_level'])
+                                 - min(p.total_invested, prev))
+                        if share > 0:
+                            p.stack += share
+                            total_won[p] = total_won.get(p, 0) + share
+                            refunds.append(p.name)
+                    self.last_pot_breakdown.append({
+                        'label': pot['label'],
+                        'amount': amount,
+                        'winners': refunds,
+                        'uncalled': True,
+                    })
+                    self.write_log(
+                        f"  {pot['label']}: ${amount} refunded to "
+                        f"{', '.join(refunds)} (no active claimant)"
+                    )
                     continue
 
-                # Calculate pot for this level
-                # Each player contributes (level - prev_level) or their total investment minus prev_level, whichever is less
-                pot_contribution = 0
-                for p in self.players:
-                    contrib = min(p.total_invested, level) - min(p.total_invested, prev_level)
-                    pot_contribution += contrib
+                if len(eligible) == 1:
+                    # Only one active player can claim this band.
+                    # Distinguish a true uncalled-bet refund (sole
+                    # eligible contributed every chip in the band)
+                    # from an uncontested win (folded players also
+                    # contributed, but no other active player matched).
+                    sole = eligible[0]
+                    sole_share = (
+                        min(sole.total_invested, pot['cap_level'])
+                        - min(sole.total_invested, pot['floor_level'])
+                    )
+                    refund = (sole_share == amount)
+                    sole.stack += amount
+                    total_won[sole] = total_won.get(sole, 0) + amount
+                    self.last_pot_breakdown.append({
+                        'label': pot['label'],
+                        'amount': amount,
+                        'winners': [sole.name],
+                        'uncalled': refund,
+                    })
+                    if refund:
+                        self.write_log(
+                            f"  {pot['label']}: ${amount} returned to "
+                            f"{sole.name} (uncalled)"
+                        )
+                    else:
+                        if sole not in winners:
+                            winners.append(sole)
+                        self.write_log(
+                            f"  {pot['label']}: ${amount} -> "
+                            f"{sole.name} (uncontested)"
+                        )
+                    continue
 
-                if pot_contribution > 0:
-                    # Find winner(s) among eligible players
-                    best_rank = max(player_ranks[p] for p in eligible)
-                    pot_winners = [p for p in eligible if player_ranks[p] == best_rank]
+                best_rank = max(player_ranks[p] for p in eligible)
+                pot_winners = [p for p in eligible
+                               if player_ranks[p] == best_rank]
+                win_share = amount // len(pot_winners)
+                # Spread any rounding remainder to the first winner
+                # so chip totals stay conserved.
+                remainder = amount - win_share * len(pot_winners)
+                for idx, w in enumerate(pot_winners):
+                    share = win_share + (remainder if idx == 0 else 0)
+                    w.stack += share
+                    total_won[w] = total_won.get(w, 0) + share
+                    if w not in winners:
+                        winners.append(w)
+                self.last_pot_breakdown.append({
+                    'label': pot['label'],
+                    'amount': amount,
+                    'winners': [w.name for w in pot_winners],
+                    'uncalled': False,
+                })
+                self.write_log(
+                    f"  {pot['label']}: ${amount} -> "
+                    f"{', '.join(w.name for w in pot_winners)}"
+                )
 
-                    win_share = pot_contribution // len(pot_winners)
-                    for w in pot_winners:
-                        w.stack += win_share
-                        total_won[w] = total_won.get(w, 0) + win_share
-                        # Only count as "winner" if there was actual competition
-                        # (not just returning uncalled bet to sole eligible player)
-                        if w not in winners and len(eligible) > 1:
-                            winners.append(w)
-
-                prev_level = level
-
-            # Display results
             if winners:
                 winner_msgs = []
                 for w in winners:
                     net_profit = total_won.get(w, 0) - w.total_invested
                     winner_msgs.append(f"{w.name} (${net_profit})")
                 winner_names = ", ".join(winner_msgs)
-                self.table.set_message(f"Winner: {winner_names}")
+                # Append a compact side-pot tag when there's more than
+                # one pot, so the user immediately sees this was a
+                # multi-pot finish.
+                contested = [p for p in self.last_pot_breakdown
+                             if not p['uncalled']]
+                if len(contested) > 1:
+                    pot_tag = " | " + ", ".join(
+                        f"{p['label']} ${p['amount']}->{'/'.join(p['winners'])}"
+                        for p in contested
+                    )
+                else:
+                    pot_tag = ""
+                self.table.set_message(f"Winner: {winner_names}{pot_tag}")
                 self.write_log(f"WINNER: {winner_names}!")
 
         # Log final stacks and gain/loss
@@ -10034,14 +10263,39 @@ class PokerWindow(QMainWindow):
 
             lines.append("")
 
+            # Side-pot breakdown — show every pot, its size, and the
+            # claimant. With multiple pots this is the only way the
+            # user can see why chips ended up where they did.
+            pot_breakdown = getattr(self, 'last_pot_breakdown', None) or []
+            if pot_breakdown:
+                lines.append("POT BREAKDOWN:")
+                for pot in pot_breakdown:
+                    tag = " (uncalled)" if pot['uncalled'] else ""
+                    lines.append(
+                        f"  {pot['label']}: ${pot['amount']} -> "
+                        f"{', '.join(pot['winners'])}{tag}"
+                    )
+                lines.append("")
+
             if winners:
+                # Per-winner net profit comes from the actual chip flow
+                # this hand: ending stack minus starting stack. This is
+                # correct whether the win came from one pot, a split
+                # pot, or multiple side pots.
+                starting = getattr(self, 'starting_stacks', {})
                 if len(winners) > 1:
-                    net_each = (self.pot // len(winners)) - winners[0].total_invested
-                    lines.append(f"SPLIT POT: {len(winners)} ways, ${net_each} each")
-                    lines.append(f"Winners: {', '.join(w.name for w in winners)}")
+                    lines.append(
+                        f"SPLIT/MULTI-POT: {len(winners)} winners"
+                    )
+                    for w in winners:
+                        net = w.stack - starting.get(w.name, w.stack)
+                        sign = "+" if net >= 0 else "-"
+                        lines.append(f"  {w.name}: {sign}${abs(net)}")
                 else:
-                    net_profit = self.pot - winners[0].total_invested
-                    lines.append(f"WINNER: {winners[0].name} wins ${net_profit}")
+                    w = winners[0]
+                    net = w.stack - starting.get(w.name, w.stack)
+                    sign = "+" if net >= 0 else "-"
+                    lines.append(f"WINNER: {w.name} ({sign}${abs(net)})")
 
                 lines.append("")
                 lines.append("Analysis:")
@@ -10067,8 +10321,12 @@ class PokerWindow(QMainWindow):
                         lines.append(f"  {h.name} folded {h_hand_name}")
         else:
             winner = winners[0]
-            net_profit = self.pot - winner.total_invested
-            lines.append(f"{winner.name} wins ${net_profit} uncontested")
+            starting = getattr(self, 'starting_stacks', {})
+            net_profit = winner.stack - starting.get(winner.name, winner.stack)
+            sign = "+" if net_profit >= 0 else "-"
+            lines.append(
+                f"{winner.name} wins {sign}${abs(net_profit)} uncontested"
+            )
 
         # Write interpretation to log file
         self.write_log("\n" + "=" * 40)
@@ -13589,14 +13847,21 @@ def hero_action_ev(player, game_state, bb_amount: float, action_code: str,
     Formulas:
         EV(fold)  = 0
         EV(check) = 0
-        EV(call $c)  = equity * (pot + c) - c
+        EV(call $c)  = equity * (pot + c + implied) - c
         EV(raise $r) = fold_equity * pot
                        + (1 - fold_equity) * [discounted_equity *
-                                              (pot + 2 * cost) - cost]
+                                              (pot + 2 * cost + implied_r)
+                                              - cost]
         with `fold_equity` shrunk for multi-way pots (each player
         independently folds), and `discounted_equity` ≈ 0.7 × equity
         because when villain *calls* a raise they have a stronger
         sub-range than the prior.
+
+        `implied` is a future-bets estimate based on remaining streets
+        and effective stack — without it the EV under-prices calls with
+        pocket pairs / suited connectors / flush draws and falsely
+        flagged obvious-call spots (e.g. TT preflop facing a 3x open)
+        as -EV.
     """
     pot = float(game_state.get('pot', 0))
     current_bet = float(game_state.get('current_bet', 0))
@@ -13605,12 +13870,34 @@ def hero_action_ev(player, game_state, bb_amount: float, action_code: str,
         equity = float(equity_override)
     else:
         equity, _, _ = player.calculate_current_stats(game_state, False)
+    # ---- Implied-pot estimate -----------------------------------------
+    # Future bets you can expect to win when your equity converts. Mirrors
+    # the "Implied" strip's assumption (50% of avg opponent stack), then
+    # scaled by a per-street factor: more bets to come ⇒ bigger implied.
+    # For raise EV we use a smaller factor — raising thins the field, so
+    # the implied multiplier shrinks (Sklansky Ch 13).
+    board = game_state.get('board', []) or []
+    board_n = len(board)
+    if board_n == 0:
+        impl_call, impl_raise = 0.30, 0.15   # Preflop
+    elif board_n == 3:
+        impl_call, impl_raise = 0.40, 0.20   # Flop
+    elif board_n == 4:
+        impl_call, impl_raise = 0.25, 0.12   # Turn
+    else:
+        impl_call, impl_raise = 0.0, 0.0     # River — no more streets
+    opp_stacks = [p.stack for p in game_state.get('players', [])
+                  if p is not player and p.active and p.stack > 0]
+    avg_opp_stack = (sum(opp_stacks) / len(opp_stacks)) if opp_stacks else 0.0
+    eff_stack = min(player.stack, avg_opp_stack) if avg_opp_stack > 0 else 0.0
+    implied_call_pot = eff_stack * impl_call
+    implied_raise_pot = eff_stack * impl_raise
     if action_code == 'f':
         return 0.0
     if action_code == 'c':
         if to_call <= 0:
             return 0.0  # check
-        return equity * (pot + to_call) - to_call
+        return equity * (pot + to_call + implied_call_pot) - to_call
     if action_code == 'r':
         # Number of opponents still able to act / call.  Multi-way pots
         # have LESS fold equity per player (each only folds ~25%
@@ -13631,7 +13918,7 @@ def hero_action_ev(player, game_state, bb_amount: float, action_code: str,
         cost = to_call + raise_above_call
         called_pot = pot + cost + raise_above_call  # villain matches above-call
         return all_fold * pot + (1 - all_fold) * (
-            discounted_eq * called_pot - cost)
+            discounted_eq * (called_pot + implied_raise_pot) - cost)
     return 0.0
 
 
@@ -13679,7 +13966,7 @@ class AKQGameDialog(QDialog):
         )
         intro.setTextFormat(Qt.TextFormat.RichText)
         intro.setWordWrap(True)
-        intro.setStyleSheet("color: #ddd; font-size: 14px;")
+        intro.setStyleSheet("color: #ddd; font-size: 18px; line-height: 140%;")
         layout.addWidget(intro)
 
         self.state_lbl = QLabel("Press 'Deal' to start.")
@@ -13713,7 +14000,7 @@ class AKQGameDialog(QDialog):
 
         self.log = QTextEdit()
         self.log.setReadOnly(True)
-        self.log.setFont(QFont('Courier', 11))
+        self.log.setFont(QFont('Courier', 15))
         layout.addWidget(self.log)
 
         close = QPushButton("Close")
@@ -13884,16 +14171,22 @@ class JamOrFoldTrainer(QDialog):
         row.addWidget(self.fold_btn)
         layout.addLayout(row)
 
-        self.feedback = QLabel("")
-        self.feedback.setWordWrap(True)
-        self.feedback.setFont(QFont('Arial', 14))
-        layout.addWidget(self.feedback)
-
         self.score_lbl = QLabel("Score: 0 / 0")
         self.score_lbl.setFont(QFont('Arial', 14, QFont.Weight.Bold))
         layout.addWidget(self.score_lbl)
 
-        layout.addStretch()
+        # Scrolling history of feedback lines — each round's verdict
+        # is appended (newest at the bottom) so the user can review
+        # the streak instead of watching it flash for 1.5s and vanish.
+        self.feedback = QTextEdit()
+        self.feedback.setReadOnly(True)
+        self.feedback.setFont(QFont('Arial', 14))
+        self.feedback.setStyleSheet(
+            "QTextEdit { background: #1a1a1a; color: #ddd;"
+            " border: 1px solid #333; border-radius: 6px;"
+            " padding: 8px; }")
+        layout.addWidget(self.feedback, stretch=1)
+
         close = QPushButton("Close")
         close.clicked.connect(self.accept)
         layout.addWidget(close)
@@ -13916,25 +14209,33 @@ class JamOrFoldTrainer(QDialog):
         names = [str(c) for c in hole]
         self.scenario_lbl.setText(
             f"Stack: {stack_bb} bb     Hand: {names[0]} {names[1]}")
-        self.feedback.setText("")
 
     def _answer(self, choice):
         c = self._current
         if c is None:
             return
         self._total += 1
+        names = [str(card) for card in c['hole']]
+        hand_str = f"{names[0]} {names[1]}"
+        prefix = (
+            f"<b>#{self._total}</b> "
+            f"[{c['stack']}bb {hand_str}, you {choice.upper()}]"
+        )
         if choice == c['truth']:
             self._correct += 1
-            msg = (f"<span style='color:#8f8'>Correct.</span>  Nash push "
-                   f"range at {c['stack']}bb is the top {c['push_band']:.0%} "
-                   f"of hands.  Your hand strength: {c['pct']:.2f}.")
-        else:
-            msg = (f"<span style='color:#f77'>Off.</span>  Nash says "
-                   f"{c['truth'].upper()} at {c['stack']}bb (top "
-                   f"{c['push_band']:.0%}).  Your hand strength: "
+            msg = (f"{prefix}  <span style='color:#8f8'>Correct.</span>  "
+                   f"Nash push range at {c['stack']}bb is the top "
+                   f"{c['push_band']:.0%} of hands.  Hand strength: "
                    f"{c['pct']:.2f}.")
-        self.feedback.setTextFormat(Qt.TextFormat.RichText)
-        self.feedback.setText(msg)
+        else:
+            msg = (f"{prefix}  <span style='color:#f77'>Off.</span>  "
+                   f"Nash says {c['truth'].upper()} at {c['stack']}bb "
+                   f"(top {c['push_band']:.0%}).  Hand strength: "
+                   f"{c['pct']:.2f}.")
+        self.feedback.append(msg)
+        # Auto-scroll to the newest line.
+        sb = self.feedback.verticalScrollBar()
+        sb.setValue(sb.maximum())
         self.score_lbl.setText(f"Score: {self._correct} / {self._total}")
         QTimer.singleShot(1500, self._next)
 
@@ -13963,40 +14264,53 @@ class IndifferenceVisualizer(QDialog):
             "bluff frequency that makes EV(call) = EV(fold).  Per Chen, "
             "this equals Pot / (Pot + Bet).")
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #ddd; font-size: 13px;")
+        desc.setStyleSheet("color: #ddd; font-size: 17px; line-height: 140%;")
         layout.addWidget(desc)
+
+        slider_label_css = "color: #ddd; font-size: 16px;"
+        slider_value_css = ("color: #ffd966; font-size: 16px;"
+                            " font-weight: bold;")
 
         # Bet size slider
         r1 = QHBoxLayout()
-        r1.addWidget(QLabel("Bet size $"))
+        bet_caption = QLabel("Bet size $")
+        bet_caption.setStyleSheet(slider_label_css)
+        r1.addWidget(bet_caption)
         self.bet_slider = QSlider(Qt.Orientation.Horizontal)
         self.bet_slider.setRange(10, 300)
         self.bet_slider.setValue(75)
         self.bet_slider.valueChanged.connect(self._refresh)
         r1.addWidget(self.bet_slider)
         self.bet_lbl = QLabel("$75")
-        self.bet_lbl.setFixedWidth(60)
+        self.bet_lbl.setStyleSheet(slider_value_css)
+        self.bet_lbl.setFixedWidth(80)
         r1.addWidget(self.bet_lbl)
         layout.addLayout(r1)
 
         r2 = QHBoxLayout()
-        r2.addWidget(QLabel("Villain bluff% "))
+        bluff_caption = QLabel("Villain bluff% ")
+        bluff_caption.setStyleSheet(slider_label_css)
+        r2.addWidget(bluff_caption)
         self.bluff_slider = QSlider(Qt.Orientation.Horizontal)
         self.bluff_slider.setRange(0, 100)
         self.bluff_slider.setValue(33)
         self.bluff_slider.valueChanged.connect(self._refresh)
         r2.addWidget(self.bluff_slider)
         self.bluff_lbl = QLabel("33%")
-        self.bluff_lbl.setFixedWidth(60)
+        self.bluff_lbl.setStyleSheet(slider_value_css)
+        self.bluff_lbl.setFixedWidth(80)
         r2.addWidget(self.bluff_lbl)
         layout.addLayout(r2)
 
         self.result = QLabel("")
         self.result.setTextFormat(Qt.TextFormat.RichText)
-        self.result.setFont(QFont('Courier', 14))
-        self.result.setStyleSheet("color: #ffd966; padding: 16px; "
-                                  "background: #1a1a1a; border-radius: 8px;")
+        self.result.setFont(QFont('Courier', 18))
+        self.result.setStyleSheet("color: #ffd966; padding: 20px; "
+                                  "background: #1a1a1a; border-radius: 8px;"
+                                  " line-height: 150%;")
         self.result.setWordWrap(True)
+        self.result.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(self.result, stretch=1)
 
         close = QPushButton("Close")
@@ -14020,14 +14334,16 @@ class IndifferenceVisualizer(QDialog):
                     if bluff > indiff else
                     "Hero LOSES by calling (villain under-bluffs)."))
         self.result.setText(
-            f"Pot $100, bet ${bet:.0f}\n\n"
-            f"EV(call) = bluff% * (pot + bet) - (1-bluff%) * bet\n"
-            f"        = {bluff:.2f} * {pot+bet:.0f} + {1-bluff:.2f} * "
-            f"({-bet:.0f})\n"
-            f"        = <b>${ev_call:+.2f}</b>\n\n"
-            f"EV(fold) = <b>$0.00</b>\n\n"
+            f"Pot $100, bet ${bet:.0f}<br><br>"
+            f"EV(call) = bluff% * (pot + bet) - (1-bluff%) * bet<br>"
+            f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
+            f"= {bluff:.2f} * {pot+bet:.0f} + {1-bluff:.2f} * "
+            f"({-bet:.0f})<br>"
+            f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
+            f"= <b>${ev_call:+.2f}</b><br><br>"
+            f"EV(fold) = <b>$0.00</b><br><br>"
             f"Nash indifference bluff% = pot / (pot + bet) = "
-            f"{indiff*100:.1f}%\n\n"
+            f"{indiff*100:.1f}%<br><br>"
             f"<b>{verdict}</b>"
         )
 
@@ -14087,13 +14403,16 @@ class MTTBubbleDrill(QDialog):
             "because of ICM.  Choose your action."
         )
         intro.setWordWrap(True)
-        intro.setStyleSheet("color: #ddd; font-size: 14px;")
+        intro.setStyleSheet("color: #ddd; font-size: 18px; line-height: 140%;")
         layout.addWidget(intro)
 
         self.scenario_lbl = QLabel("")
-        self.scenario_lbl.setFont(QFont('Courier', 14, QFont.Weight.Bold))
+        self.scenario_lbl.setFont(QFont('Courier', 16, QFont.Weight.Bold))
+        # WordWrap so the parenthetical "(Pot odds say call if eq > 30%
+        # in chips.)" doesn't get clipped off the right edge.
+        self.scenario_lbl.setWordWrap(True)
         self.scenario_lbl.setStyleSheet(
-            "color: #ffd966; padding: 12px; background: #1a1a1a; "
+            "color: #ffd966; padding: 14px; background: #1a1a1a; "
             "border-radius: 6px;")
         layout.addWidget(self.scenario_lbl)
 
@@ -14106,16 +14425,23 @@ class MTTBubbleDrill(QDialog):
         row.addWidget(self.fold_btn)
         layout.addLayout(row)
 
-        self.feedback = QLabel("")
-        self.feedback.setWordWrap(True)
-        self.feedback.setFont(QFont('Arial', 13))
-        self.feedback.setTextFormat(Qt.TextFormat.RichText)
+        # Scrolling history — each round's verdict appends to the
+        # canvas rather than flashing for 2.5s and getting overwritten
+        # by the next prompt.
+        self.feedback = QTextEdit()
+        self.feedback.setReadOnly(True)
+        self.feedback.setFont(QFont('Arial', 16))
+        self.feedback.setStyleSheet(
+            "QTextEdit { background: #1a1a1a; color: #ddd;"
+            " border: 1px solid #333; border-radius: 6px;"
+            " padding: 10px; }")
         layout.addWidget(self.feedback, stretch=1)
 
         close = QPushButton("Close")
         close.clicked.connect(self.accept)
         layout.addWidget(close)
 
+        self._round = 0
         self._next()
 
     def _next(self):
@@ -14125,30 +14451,35 @@ class MTTBubbleDrill(QDialog):
         self.scenario_lbl.setText(
             f"Hero equity if called: {eq*100:.0f}%   "
             f"(Pot odds say call if eq > 30% in chips.)")
-        self.feedback.setText("")
 
     def _answer(self, choice):
         eq = self._eq
+        self._round += 1
         chip_ev = eq * 1.0 - (1 - eq) * 1.0       # ±1 stack
         # Crude ICM: losing on the bubble costs the next pay jump
         # ($200), winning gains the difference toward 1st.
         icm_ev = eq * 0.5 - (1 - eq) * 1.0
         correct = 'call' if icm_ev > 0 else 'fold'
         if choice == correct:
-            verdict = (f"<span style='color:#8f8'>Correct (ICM-wise).</span>")
+            verdict = "<span style='color:#8f8'>Correct (ICM-wise).</span>"
         else:
-            verdict = (f"<span style='color:#f77'>Off — the chip-EV "
+            verdict = ("<span style='color:#f77'>Off — the chip-EV "
                        "answer differs from the $-EV one.</span>")
-        self.feedback.setText(
-            f"{verdict}<br><br>"
+        block = (
+            f"<b>Round {self._round}</b> "
+            f"[eq {eq*100:.0f}%, you {choice.upper()}] — {verdict}<br>"
             f"Chip-EV  (call) = {chip_ev:+.2f} stacks<br>"
             f"$-EV    (call) ≈ {icm_ev:+.2f} stack-equivalents "
-            f"(ICM bubble premium subtracted)<br><br>"
+            f"(ICM bubble premium subtracted)<br>"
             "On the bubble, losing chips costs the pay-jump from "
             "min-cash you almost have. The correct call threshold rises "
             "from chip-EV-neutral to noticeably above (~10-15 percentage "
-            "points of equity)."
+            "points of equity).<br>"
+            "————<br>"
         )
+        self.feedback.append(block)
+        sb = self.feedback.verticalScrollBar()
+        sb.setValue(sb.maximum())
         QTimer.singleShot(2500, self._next)
 
 
@@ -14172,17 +14503,26 @@ class VarianceDashboard(QDialog):
         title.setStyleSheet("color: #0af;")
         layout.addWidget(title)
 
-        self.body = QLabel("")
-        self.body.setFont(QFont('Courier', 14))
-        self.body.setStyleSheet("color: #ddd;")
-        self.body.setTextFormat(Qt.TextFormat.RichText)
-        self.body.setWordWrap(True)
+        # QTextBrowser instead of QLabel so the body scrolls when the
+        # rendered stats exceed the dialog height (and so the user can
+        # select/copy lines).
+        self.body = QTextBrowser()
+        self.body.setReadOnly(True)
+        self.body.setOpenExternalLinks(False)
+        self.body.setFont(QFont('Courier', 17))
+        self.body.setStyleSheet(
+            "QTextBrowser { color: #ddd; background: #1a1a1a;"
+            " border: 1px solid #333; border-radius: 6px;"
+            " padding: 14px; }")
         layout.addWidget(self.body, stretch=1)
 
         # Bankroll separation entry.
         row = QHBoxLayout()
-        row.addWidget(QLabel("Lifetime bankroll $:"))
+        bankroll_caption = QLabel("Lifetime bankroll $:")
+        bankroll_caption.setStyleSheet("color: #ddd; font-size: 16px;")
+        row.addWidget(bankroll_caption)
         self.bankroll_box = QSpinBox()
+        self.bankroll_box.setStyleSheet("font-size: 16px; padding: 4px;")
         self.bankroll_box.setRange(0, 1_000_000)
         self.bankroll_box.setValue(int(
             _lifetime_settings().value("bankroll", 2000, type=int)))
@@ -14190,6 +14530,7 @@ class VarianceDashboard(QDialog):
         row.addWidget(self.bankroll_box)
         row.addStretch()
         save_btn = QPushButton("Save")
+        save_btn.setStyleSheet("font-size: 16px; padding: 6px 16px;")
         save_btn.clicked.connect(self._save_bankroll)
         row.addWidget(save_btn)
         layout.addLayout(row)
@@ -14247,13 +14588,17 @@ class HandClassPnLTable(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
 
         title = QLabel("bb/100 by starting hand")
-        title.setFont(QFont('Arial', 18, QFont.Weight.Bold))
+        title.setFont(QFont('Arial', 22, QFont.Weight.Bold))
         title.setStyleSheet("color: #0af;")
         layout.addWidget(title)
 
         text = QTextEdit()
         text.setReadOnly(True)
-        text.setFont(QFont('Courier', 12))
+        text.setFont(QFont('Courier', 16))
+        text.setStyleSheet(
+            "QTextEdit { color: #ddd; background: #1a1a1a;"
+            " border: 1px solid #333; border-radius: 6px;"
+            " padding: 12px; }")
         rows = []
         rows.append(f"{'Hand':<6} {'Seen':>6} {'Won':>5} {'Lost':>5} "
                     f"{'NetCash':>10} {'bb/100':>10}")
@@ -14271,6 +14616,7 @@ class HandClassPnLTable(QDialog):
         text.setPlainText("\n".join(rows))
         layout.addWidget(text)
         close = QPushButton("Close")
+        close.setStyleSheet("font-size: 16px; padding: 8px;")
         close.clicked.connect(self.accept)
         layout.addWidget(close)
 
@@ -14303,41 +14649,54 @@ class MindsetCoach(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
 
         title = QLabel("The Seven Attitudes — session snapshot")
-        title.setFont(QFont('Arial', 18, QFont.Weight.Bold))
+        title.setFont(QFont('Arial', 22, QFont.Weight.Bold))
         title.setStyleSheet("color: #0af;")
         layout.addWidget(title)
 
         self.body = QLabel("")
-        self.body.setFont(QFont('Arial', 13))
-        self.body.setStyleSheet("color: #ddd;")
+        self.body.setFont(QFont('Arial', 17))
+        self.body.setStyleSheet("color: #ddd; line-height: 150%;")
         self.body.setTextFormat(Qt.TextFormat.RichText)
         self.body.setWordWrap(True)
         layout.addWidget(self.body)
 
         # Emotion 1-10 input
         row = QHBoxLayout()
-        row.addWidget(QLabel("Emotion (1=tilted, 10=calm):"))
+        emo_caption = QLabel("Emotion (1=tilted, 10=calm):")
+        emo_caption.setStyleSheet("color: #ddd; font-size: 17px;")
+        row.addWidget(emo_caption)
         self.emo = QSpinBox()
+        self.emo.setStyleSheet("font-size: 16px; padding: 4px;")
         self.emo.setRange(1, 10)
         self.emo.setValue(self.stats.emotion_at_start or 7)
         row.addWidget(self.emo)
         log_btn = QPushButton("Log now")
+        log_btn.setStyleSheet("font-size: 16px; padding: 6px 14px;")
         log_btn.clicked.connect(self._log_emotion)
         row.addWidget(log_btn)
         row.addStretch()
         layout.addLayout(row)
 
         # Journal entry
-        layout.addWidget(QLabel("Journal entry (this hand or session):"))
+        journal_caption = QLabel("Journal entry (this hand or session):")
+        journal_caption.setStyleSheet("color: #ddd; font-size: 17px;")
+        layout.addWidget(journal_caption)
         self.note = QTextEdit()
-        self.note.setMaximumHeight(120)
+        self.note.setFont(QFont('Arial', 16))
+        self.note.setStyleSheet(
+            "QTextEdit { color: #ddd; background: #1a1a1a;"
+            " border: 1px solid #333; border-radius: 6px;"
+            " padding: 8px; }")
+        self.note.setMaximumHeight(150)
         layout.addWidget(self.note)
         save_btn = QPushButton("Save entry")
+        save_btn.setStyleSheet("font-size: 16px; padding: 8px;")
         save_btn.clicked.connect(self._save_note)
         layout.addWidget(save_btn)
 
         layout.addStretch()
         close = QPushButton("Close")
+        close.setStyleSheet("font-size: 16px; padding: 8px;")
         close.clicked.connect(self.accept)
         layout.addWidget(close)
         self._refresh()
@@ -14394,14 +14753,14 @@ class CalibrationDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
 
         title = QLabel("Calibration — Brier score")
-        title.setFont(QFont('Arial', 18, QFont.Weight.Bold))
+        title.setFont(QFont('Arial', 22, QFont.Weight.Bold))
         title.setStyleSheet("color: #0af;")
         layout.addWidget(title)
 
         body = QLabel("")
         body.setTextFormat(Qt.TextFormat.RichText)
-        body.setFont(QFont('Courier', 12))
-        body.setStyleSheet("color: #ddd;")
+        body.setFont(QFont('Courier', 17))
+        body.setStyleSheet("color: #ddd; line-height: 150%; padding: 8px;")
         body.setWordWrap(True)
         layout.addWidget(body)
 
@@ -14428,6 +14787,7 @@ class CalibrationDialog(QDialog):
 
         layout.addStretch()
         close = QPushButton("Close")
+        close.setStyleSheet("font-size: 16px; padding: 8px;")
         close.clicked.connect(self.accept)
         layout.addWidget(close)
 
@@ -14444,7 +14804,7 @@ class RangeNarrowingDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
 
         title = QLabel("Bayes walkthrough — refine villain's range")
-        title.setFont(QFont('Arial', 18, QFont.Weight.Bold))
+        title.setFont(QFont('Arial', 22, QFont.Weight.Bold))
         title.setStyleSheet("color: #0af;")
         layout.addWidget(title)
 
@@ -14453,14 +14813,17 @@ class RangeNarrowingDialog(QDialog):
             "prior range narrows by removing hands inconsistent with the "
             "action (Bayes: P(hand|action) ∝ P(action|hand) · P(hand))."
         )
-        intro.setStyleSheet("color: #ccc; font-size: 13px;")
+        intro.setStyleSheet("color: #ccc; font-size: 17px; line-height: 140%;")
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
         text = QTextEdit()
         text.setReadOnly(True)
-        text.setFont(QFont('Courier', 12))
-        text.setStyleSheet("color: #ddd; background: #1a1a1a;")
+        text.setFont(QFont('Courier', 16))
+        text.setStyleSheet(
+            "QTextEdit { color: #ddd; background: #1a1a1a;"
+            " border: 1px solid #333; border-radius: 6px;"
+            " padding: 12px; }")
         lines = []
         # Start with a "full" range size of 100% and trim crudely.
         range_pct = 100.0
@@ -14487,6 +14850,7 @@ class RangeNarrowingDialog(QDialog):
         layout.addWidget(text, stretch=1)
 
         close = QPushButton("Close")
+        close.setStyleSheet("font-size: 16px; padding: 8px;")
         close.clicked.connect(self.accept)
         layout.addWidget(close)
 
@@ -14631,18 +14995,28 @@ class PokerLearningHub:
     # ----- helpers -----
     def _install_ev_badges(self):
         w = self.window
-        # Use small QLabel placed under each button.
+        # EV badges live on the Theory-of-Mind tab's action buttons,
+        # not the main game screen — ToM is the analysis surface, so
+        # the EV reading sits next to the equity / pot-odds / range
+        # information the player is consulting at decision time.
         from PyQt6.QtCore import Qt as _Qt
         self.ev_labels: dict = {}
-        for code, btn in (('f', w.fold_btn), ('c', w.check_btn),
-                          ('c', w.call_btn), ('r', w.raise_btn)):
+        buttons = [
+            getattr(w, 'tom_fold_btn', None),
+            getattr(w, 'tom_check_btn', None),
+            getattr(w, 'tom_call_btn', None),
+            getattr(w, 'tom_raise_btn', None),
+        ]
+        for btn in buttons:
+            if btn is None:
+                continue
             lbl = QLabel("")
-            lbl.setFont(QFont('Arial', 10, QFont.Weight.Bold))
+            lbl.setFont(QFont('Arial', 12, QFont.Weight.Bold))
             lbl.setAlignment(_Qt.AlignmentFlag.AlignCenter)
             lbl.setStyleSheet("color: #88ff88; background: transparent;")
             lbl.setParent(btn)
-            lbl.move(0, btn.height() - 14)
-            lbl.resize(btn.width(), 14)
+            lbl.move(0, btn.height() - 18)
+            lbl.resize(btn.width(), 18)
             self.ev_labels[id(btn)] = lbl
 
     def _refresh_ev_badges(self):
@@ -14662,11 +15036,16 @@ class PokerLearningHub:
             tom = getattr(w, 'tom_panel', None)
             if tom is not None and hasattr(tom, 'last_hero_equity_vs_ranges'):
                 eq_override = tom.last_hero_equity_vs_ranges
-            mapping = [('f', w.fold_btn, 'f', 0),
-                       ('c', w.check_btn, 'c', 0),
-                       ('c', w.call_btn, 'c', 0),
-                       ('r', w.raise_btn, 'r', max(bb*2, w.pot * 0.6))]
+            mapping = [
+                ('f', getattr(w, 'tom_fold_btn', None),  'f', 0),
+                ('c', getattr(w, 'tom_check_btn', None), 'c', 0),
+                ('c', getattr(w, 'tom_call_btn', None),  'c', 0),
+                ('r', getattr(w, 'tom_raise_btn', None), 'r',
+                 max(bb*2, w.pot * 0.6)),
+            ]
             for _, btn, code, amt in mapping:
+                if btn is None:
+                    continue
                 lbl = self.ev_labels.get(id(btn))
                 if lbl is None:
                     continue
@@ -14678,9 +15057,10 @@ class PokerLearningHub:
                 color = "#88ff88" if ev > 0 else ("#ff7777" if ev < -0.5
                                                    else "#cccccc")
                 lbl.setText(f"EV ${ev:+.1f}")
-                lbl.setStyleSheet(f"color: {color}; background: transparent;")
-                lbl.move(0, btn.height() - 14)
-                lbl.resize(btn.width(), 14)
+                lbl.setStyleSheet(
+                    f"color: {color}; background: transparent;")
+                lbl.move(0, btn.height() - 18)
+                lbl.resize(btn.width(), 18)
         except Exception:
             pass
 
@@ -14756,11 +15136,25 @@ class PokerLearningHub:
 
     def _show_tilt(self):
         score, msg = self.tilt.score()
-        QMessageBox.information(
-            self.window, "Tilt Anatomy (Hilger Ch 6)",
+        box = QMessageBox(self.window)
+        # No icon — the big "i" badge ate the entire left third of
+        # the dialog and made the text panel feel off-center.
+        box.setIcon(QMessageBox.Icon.NoIcon)
+        box.setWindowTitle("Tilt Anatomy (Hilger Ch 6)")
+        box.setText(
             f"Tilt score: {score}/100\n\n{msg}\n\n"
             f"Decision-time series last 12: "
             f"{[f'{d:.1f}s' for d in list(self.stats.decision_times)[-12:]]}")
+        # Default QMessageBox font is ~11pt — bump to 16pt to match
+        # the rest of the dialog set.
+        box.setStyleSheet(
+            "QMessageBox { font-size: 16pt; }"
+            "QMessageBox QLabel { font-size: 16pt; min-width: 520px;"
+            " line-height: 140%; }"
+            "QMessageBox QPushButton { font-size: 14pt;"
+            " padding: 6px 18px; min-width: 90px; }"
+        )
+        box.exec()
 
 
 # Auto-install hook — call from PokerWindow.__init__ once setup_ui finishes.
