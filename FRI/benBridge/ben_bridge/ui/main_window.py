@@ -4179,6 +4179,10 @@ For more information, see the README file."""
 
         self.table_view.play_card_to_trick(seat, card)
         self.controller.play_card(card)
+        # Successful commit — clear the per-turn warned-cards set so
+        # the next decision starts fresh (no carry-over warnings
+        # about a card the user already discarded).
+        self._blunder_warned_cards = set()
 
         # Broadcast to network if active
         if self.network_controller.is_active:
@@ -4236,16 +4240,151 @@ For more information, see the README file."""
                 except Exception as e:
                     print(f"[dummy reveal] broadcast failed: {e}", flush=True)
 
-    def _maybe_warn_card_blunder(self, seat: 'Seat', card: 'Card') -> bool:
-        """Cardplay blunder check — TEMPORARY STUB.
+    BLUNDER_TRICK_THRESHOLD = 1.0   # ≥1 trick loss = blunder
+    BLUNDER_MC_SAMPLES = 15         # MC samples per legal card
 
-        Wired up via _on_card_played as the intercept point; the full
-        DDS+Monte-Carlo comparison and the Hint/Cancel dialog land in
-        the next commit. Returning True here means "commit normally"
-        so this stub is a no-op and the existing play flow is
-        unaffected.
+    def _maybe_warn_card_blunder(self, seat: 'Seat', card: 'Card') -> bool:
+        """Cardplay blunder check. Runs DDS over Monte-Carlo samples
+        of the hidden hands, scores every legal card by average
+        trick count from this point, and pops a Hint/Cancel dialog
+        if the user's pick loses ≥ BLUNDER_TRICK_THRESHOLD tricks
+        against the best card.
+
+        Returns True if the play should be committed, False if the
+        user dismissed via Hint or Cancel. The per-turn warned-set
+        means clicking the SAME card a second time bypasses the
+        warning — the user can override after seeing the explanation.
         """
-        return True
+        try:
+            from ben_backend.config import get_config_manager
+            prefs = get_config_manager().config.preferences
+            if not getattr(prefs, 'blunder_check_enabled', True):
+                return True
+        except Exception:
+            pass
+
+        if not getattr(self, '_blunder_warned_cards', None):
+            self._blunder_warned_cards = set()
+        key = (seat, card.to_str())
+        if key in self._blunder_warned_cards:
+            return True  # already warned about this card this turn
+
+        try:
+            board = self.controller.board
+            trick_cards = []
+            if board.current_trick and board.current_trick.cards:
+                trick_cards = list(board.current_trick.cards)
+        except Exception:
+            return True
+
+        # Trivial spots — only one legal card means there's nothing
+        # to blunder on; skip the DDS run entirely.
+        try:
+            hand = board.hands.get(seat)
+            lead_suit = (trick_cards[0].suit if trick_cards else None)
+            if hand is None or not hand.cards:
+                return True
+            legal = [c for c in hand.cards
+                     if lead_suit is None or c.suit == lead_suit]
+            if not legal:
+                legal = list(hand.cards)
+            if len(legal) <= 1:
+                return True
+        except Exception:
+            return True
+
+        # Run the MC+DDS score. This can take 2–8 s depending on
+        # the position; surface a status message so the user knows
+        # why the click is pausing.
+        try:
+            self.status_label.setText(
+                "Checking for blunders (Monte-Carlo + DDS)…")
+            QApplication.processEvents()
+            resp = self.engine.get_mc_card_play(
+                board, seat, trick_cards,
+                num_samples=self.BLUNDER_MC_SAMPLES,
+            )
+        except Exception:
+            return True
+        finally:
+            try:
+                self.status_label.setText("")
+            except Exception:
+                pass
+
+        if not resp or not getattr(resp, 'candidates', None):
+            return True
+
+        # Find user's card and the best card in the candidate list.
+        best = None
+        user = None
+        for cand in resp.candidates:
+            c = getattr(cand, 'card', None)
+            if c is None:
+                continue
+            if best is None or cand.score > best.score:
+                best = cand
+            if user is None and c == card:
+                user = cand
+        if best is None or user is None:
+            return True
+
+        loss = best.score - user.score
+        if loss < self.BLUNDER_TRICK_THRESHOLD:
+            return True  # not substantially worse
+
+        # Mark warned BEFORE showing the dialog so a re-click after
+        # Cancel/Hint goes straight through.
+        self._blunder_warned_cards.add(key)
+        return self._show_card_blunder_dialog(seat, card, best.card, loss)
+
+    def _show_card_blunder_dialog(self, seat, user_card, best_card,
+                                   trick_loss) -> bool:
+        """Two-button dialog: Hint / Cancel. Always returns False so
+        the user's blunder doesn't commit on this click. Re-clicking
+        the same card after dismissal bypasses the check (see the
+        warned-set in _maybe_warn_card_blunder)."""
+        from PyQt6.QtWidgets import QMessageBox
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.NoIcon)
+        msg.setWindowTitle("Possible blunder")
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setText(
+            f"<div style='font-size:22px; font-weight:bold; color:#000;'>"
+            f"Playing {user_card.to_str()} from "
+            f"{seat.to_char()} looks like a blunder.</div>"
+            f"<div style='font-size:18px; color:#333; margin-top:10px;'>"
+            f"Monte-Carlo + double-dummy says it loses about "
+            f"<b>{trick_loss:.1f} trick"
+            f"{'s' if trick_loss >= 1.5 else ''}</b> on average "
+            f"compared with the best play.</div>"
+            f"<div style='font-size:18px; color:#333; margin-top:8px;'>"
+            f"Get a hint (BEN's recommendation + Claude's "
+            f"explanation), or cancel and pick again? "
+            f"Re-clicking the same card after dismissing this "
+            f"dialog will commit your original play.</div>"
+        )
+        msg.setStyleSheet(
+            "QMessageBox { background-color: #f0f0f0; }"
+            "QMessageBox QLabel { color: #000;"
+            " background-color: transparent; min-width: 720px;"
+            " padding: 14px 10px; }"
+            "QMessageBox QPushButton { font-size: 16px;"
+            " padding: 8px 22px; min-width: 110px; }"
+        )
+        hint_btn = msg.addButton(
+            "Hint", QMessageBox.ButtonRole.ActionRole)
+        cancel_btn = msg.addButton(
+            "Cancel (pick again)", QMessageBox.ButtonRole.RejectRole)
+        msg.setDefaultButton(hint_btn)
+        msg.exec()
+        clicked = msg.clickedButton()
+        if clicked is hint_btn:
+            try:
+                self._on_hint()
+            except Exception:
+                pass
+        return False  # neither Hint nor Cancel commits the play
 
     def _advance_game(self):
         """Advance the game state"""

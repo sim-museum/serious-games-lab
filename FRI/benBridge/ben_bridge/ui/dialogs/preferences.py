@@ -247,6 +247,22 @@ class PreferencesDialog(QDialog):
         self.auto_explain_check.setChecked(True)
         bid_layout.addWidget(self.auto_explain_check)
 
+        # Blunder check — pops a Hint / Cancel dialog if the user
+        # plays a card that the DDS+MC engine says loses ≥ 1 trick
+        # vs the best card. Bidding-side blunder check is queued
+        # for a later build.
+        self.blunder_check_check = QCheckBox(
+            "Blunder check during cardplay "
+            "(warn if a play loses ≥ 1 trick)"
+        )
+        self.blunder_check_check.setChecked(True)
+        self.blunder_check_check.setToolTip(
+            "Runs Monte-Carlo + double-dummy scoring on every "
+            "human card play. Adds 2–8 s to your move when it "
+            "fires. Off to play silently."
+        )
+        bid_layout.addWidget(self.blunder_check_check)
+
         bid_group.setLayout(bid_layout)
         layout.addWidget(bid_group)
 
@@ -256,25 +272,34 @@ class PreferencesDialog(QDialog):
         engine_row = QHBoxLayout()
         engine_row.addWidget(QLabel("Bots use:"))
         self.bidding_engine_combo = QComboBox()
-        self.bidding_engine_combo.addItem("BEN (neural net, default)", "BEN")
-        self.bidding_engine_combo.addItem("Native (Qplus-style rule engine)", "native")
+        self.bidding_engine_combo.addItem("Native (Q-Plus-style rule engine, default)", "native")
+        self.bidding_engine_combo.addItem("BEN (neural net)", "BEN")
         self.bidding_engine_combo.setToolTip(
-            "BEN is Anthropic-trained neural-net bidding (default).\n"
-            "Native uses a from-scratch rule-based bidder modeled on\n"
-            "Qplus 17. Card play always uses BEN regardless of this setting."
+            "Native is a from-scratch rule-based bidder modeled on Q-Plus 17,\n"
+            "covering SAYC, 2/1, Acol, French, and three Precision variants\n"
+            "with their full Q-Plus convention sets (default).\n"
+            "BEN is the Anthropic-trained neural-net bidder.\n"
+            "Card play always uses BEN regardless of this setting."
         )
         engine_row.addWidget(self.bidding_engine_combo)
         engine_row.addStretch()
         engine_layout.addLayout(engine_row)
 
         sys_row = QHBoxLayout()
-        sys_row.addWidget(QLabel("Native system:"))
+        sys_row.addWidget(QLabel("System:"))
         self.native_system_combo = QComboBox()
-        self.native_system_combo.addItem("SAYC / 2-over-1 (default)", "SAYC")
-        self.native_system_combo.addItem("Precision (strong club)", "Precision")
+        # Populated dynamically from bidding_systems / the BEN catalog
+        # whenever the engine selection changes, so the user sees the
+        # right list for whichever engine they picked.
+        self.native_system_combo.setMinimumWidth(280)
         sys_row.addWidget(self.native_system_combo)
         sys_row.addStretch()
         engine_layout.addLayout(sys_row)
+        # Repopulate the system combo whenever the engine selection
+        # changes. Each engine ships a different catalog.
+        self.bidding_engine_combo.currentIndexChanged.connect(
+            self._on_engine_changed)
+        self._populate_native_systems("native")
 
         engine_group.setLayout(engine_layout)
         layout.addWidget(engine_group)
@@ -372,12 +397,16 @@ class PreferencesDialog(QDialog):
 
         # Bidding settings
         self.show_alerts_check.setChecked(self.prefs.show_alert_marks)
+        self.blunder_check_check.setChecked(
+            getattr(self.prefs, 'blunder_check_enabled', True))
 
-        # Bidding engine
-        idx = self.bidding_engine_combo.findData(
-            getattr(self.prefs, 'bidding_engine', 'BEN'))
+        # Bidding engine — set engine first, then refresh the system
+        # combo for that engine, then select the saved system.
+        engine = getattr(self.prefs, 'bidding_engine', 'native') or 'native'
+        idx = self.bidding_engine_combo.findData(engine)
         if idx >= 0:
             self.bidding_engine_combo.setCurrentIndex(idx)
+        self._populate_native_systems(engine)
         idx = self.native_system_combo.findData(
             getattr(self.prefs, 'native_bidding_system', 'SAYC'))
         if idx >= 0:
@@ -389,6 +418,50 @@ class PreferencesDialog(QDialog):
             self.log_format_combo.setCurrentIndex(1)
         else:
             self.log_format_combo.setCurrentIndex(0)
+
+    def _on_engine_changed(self, _idx: int):
+        """Refresh the system combo when the user switches engines."""
+        engine = self.bidding_engine_combo.currentData() or "native"
+        # Preserve the previously-chosen system if it exists in the new
+        # engine's catalog, otherwise fall back to that engine's first
+        # entry (SAYC in both catalogs).
+        prev = self.native_system_combo.currentData()
+        self._populate_native_systems(engine)
+        if prev:
+            idx = self.native_system_combo.findData(prev)
+            if idx >= 0:
+                self.native_system_combo.setCurrentIndex(idx)
+
+    def _populate_native_systems(self, engine: str):
+        """Fill the system combo with the catalog for the active engine.
+
+        Native engine → the seven Q-Plus systems from
+        ``ben_backend.bidding_systems`` with their .RCE descriptions.
+        BEN engine → the legacy three-system list BEN was trained on.
+        """
+        self.native_system_combo.blockSignals(True)
+        self.native_system_combo.clear()
+        if (engine or "native") == "native":
+            try:
+                from ben_backend.bidding_systems import (
+                    list_systems, get_system)
+                for name in list_systems():
+                    sys_ = get_system(name)
+                    label = f"{name} — {sys_.description}" \
+                        if sys_.description else name
+                    self.native_system_combo.addItem(label, name)
+            except Exception:
+                # If the catalog fails to load, fall back to SAYC.
+                self.native_system_combo.addItem("SAYC", "SAYC")
+        else:
+            # BEN's training data is the legacy three-system catalog.
+            for code, label in [
+                ("SAYC", "SAYC (Standard American Yellow Card)"),
+                ("2/1",  "2/1 Game Force"),
+                ("GIB",  "GIB (BBO Default)"),
+            ]:
+                self.native_system_combo.addItem(label, code)
+        self.native_system_combo.blockSignals(False)
 
     def _save_settings(self):
         """Save dialog settings to configuration."""
@@ -411,7 +484,7 @@ class PreferencesDialog(QDialog):
         self.prefs.show_ben_bid_analysis = self.show_ben_analysis_check.isChecked()
 
         # Bidding engine
-        self.prefs.bidding_engine = self.bidding_engine_combo.currentData() or "BEN"
+        self.prefs.bidding_engine = self.bidding_engine_combo.currentData() or "native"
         self.prefs.native_bidding_system = self.native_system_combo.currentData() or "SAYC"
 
         # Apply suit color mode immediately
@@ -423,6 +496,7 @@ class PreferencesDialog(QDialog):
 
         # Bidding settings
         self.prefs.show_alert_marks = self.show_alerts_check.isChecked()
+        self.prefs.blunder_check_enabled = self.blunder_check_check.isChecked()
 
         # Logging settings
         self.prefs.log_enabled = self.log_enabled_check.isChecked()
