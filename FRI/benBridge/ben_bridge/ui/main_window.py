@@ -3269,29 +3269,21 @@ For more information, see the README file."""
             )
             return
 
-        # Pull BEN's own suggestion first — it's fast and gives Claude
-        # context. The score next to each candidate is BEN's neural-net
-        # (TensorFlow) softmax probability, 0.00–1.00 — i.e. "how
-        # confident this trained-on-SAYC-and-2/1 model is that this
-        # is the right action given the rest of the auction / position".
-        # It's ALWAYS pulled from BEN regardless of bidding_engine
-        # preference; switching to native only affects which engine the
-        # bots actually use, not which engine the hint asks for a
-        # second opinion.
+        # BEN's TensorFlow bidder was trained on SAYC + 2-over-1 only —
+        # it has no idea what Precision / Acol / French strong-club
+        # responses look like, so its bid suggestion (and softmax
+        # confidence score) is misleading at best when the table is
+        # on any non-SAYC system. We DROP BEN entirely from the
+        # bidding-phase hint and let Claude reason from the active
+        # bidding system clauses in the prompt instead.
+        #
+        # Card play has no such bias — winners, finesses, ducks etc.
+        # don't depend on the bidding system — so BEN's card-play
+        # suggestion still shows up there. Score is its NN softmax
+        # confidence (0–1).
         engine_text = ""
         try:
-            if phase == 'bidding':
-                resp = self.engine.get_bid(board, seat)
-                if resp and resp.action:
-                    engine_text = f"BEN suggests: {resp.action.symbol()}"
-                    if resp.candidates:
-                        cands = ", ".join(f"{c.bid.symbol()} ({c.score:.2f})"
-                                          for c in resp.candidates[:5])
-                        engine_text += (
-                            f"\nBEN candidates (score = TensorFlow NN "
-                            f"confidence 0–1): {cands}"
-                        )
-            else:
+            if phase == 'play':
                 # Skip BEN suggestion when we don't have the seat's hand
                 # (guest in network mode only has its own + visible hands).
                 hand = board.hands.get(seat)
@@ -3517,8 +3509,11 @@ For more information, see the README file."""
             "line that names exactly one action.\n\n"
             "Read seat letters straight off the N/E/S/W column headers in "
             "the Bids block and the leader/winner markers in the Tricks "
-            "block — do not infer seats from order alone. If the BEN "
-            "engine suggestion is shown, say whether you agree.\n\n"
+            "block — do not infer seats from order alone. If a BEN "
+            "card-play suggestion is shown, say whether you agree (BEN "
+            "card-play is system-agnostic). BEN bidding suggestions are "
+            "NEVER shown because BEN was trained only on SAYC / 2-over-1 "
+            "and can't reason about Precision / Acol / French calls.\n\n"
             f"BDL:\n{state_text}{engine_block}"
         )
 
