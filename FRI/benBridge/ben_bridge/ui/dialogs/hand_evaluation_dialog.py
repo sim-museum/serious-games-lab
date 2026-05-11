@@ -95,11 +95,15 @@ class HandEvaluationDialog(QDialog):
         points_layout = QGridLayout(points_frame)
         points_layout.setSpacing(6)
 
-        # Trump selector
+        # Trump selector — changing this recomputes TP for the new
+        # trump (declarer gets distribution points for short SIDE
+        # suits, so the trump matters even when LP is fixed).
         points_layout.addWidget(QLabel("trump"), 0, 0)
         self.trump_combo = QComboBox()
         self.trump_combo.addItems(['NT', 'S', 'H', 'D', 'C'])
         self.trump_combo.setMaximumWidth(60)
+        self.trump_combo.currentTextChanged.connect(
+            lambda *_: self._populate_values())
         points_layout.addWidget(self.trump_combo, 1, 0)
 
         # HP, LP, TP rows
@@ -307,79 +311,175 @@ class HandEvaluationDialog(QDialog):
         return row_layout
 
     def _populate_values(self):
-        """Populate fields with actual hand evaluation."""
+        """Populate fields with actual hand evaluation. Re-runs on
+        every trump-combo change so TP / distribution points stay
+        in sync."""
         if not self.hand:
             return
 
-        # Calculate HCP
+        # --- HP ------------------------------------------------------
         hcp = self.hand.hcp()
         self.point_edits['hp_exp'].setText(f"{hcp:.1f}")
-        self.point_edits['hp_min'].setText("")
-        self.point_edits['hp_max'].setText("")
+        self.point_edits['hp_min'].setText(f"{hcp:.0f}")
+        self.point_edits['hp_max'].setText(f"{hcp:.0f}")
 
-        # Count aces and kings.  In this codebase the Rank enum runs
-        # ACE=0, KING=1, …, TWO=12 (highest = lowest enum value), so
-        # the previous code (== 12 / == 11) was actually counting twos
-        # and threes.
-        aces = sum(1 for c in self.hand.cards if c.rank == Rank.ACE)
-        kings = sum(1 for c in self.hand.cards if c.rank == Rank.KING)
+        # --- Per-suit metrics (length, suit HCP, stoppers, etc.) ----
+        from ben_backend.models import Suit
+        suit_objs = {
+            'S': Suit.SPADES, 'H': Suit.HEARTS,
+            'D': Suit.DIAMONDS, 'C': Suit.CLUBS,
+        }
+        lengths = {}
+        suit_hcps = {}
+        mod_lengths = {}      # spec: mS / mH / mD / mC
+        stoppers = {}         # spec stopper categories: >0 / >=0 / <=0 / <0
 
-        self.aces_exp.setText(str(aces))
-        self.aces_result.setText(str(aces))
-        self.kings_exp.setText(str(kings))
-        self.kings_result.setText(str(kings))
-        self.controls_total.setText(str(aces * 2 + kings))
-
-        # Check for voids and singletons
         has_void = False
         has_singleton = False
 
-        from ben_backend.models import Suit
-        for suit in [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]:
-            suit_cards = self.hand.get_suit_cards(suit)
-            length = len(suit_cards) if suit_cards else 0
-
+        for suit_key, suit in suit_objs.items():
+            suit_cards = self.hand.get_suit_cards(suit) or []
+            length = len(suit_cards)
+            lengths[suit_key] = length
             if length == 0:
                 has_void = True
             elif length == 1:
                 has_singleton = True
 
-            # Get suit key
-            suit_key = suit.name[0]  # S, H, D, C
+            suit_hcp = sum(max(0, 4 - c.rank.value) for c in suit_cards)
+            suit_hcps[suit_key] = suit_hcp
+
+            # Modified length = length + strength bonus. Spec examples:
+            #   C = 6 → mC >= 6.0 (six-card with at least average)
+            #   S = 4 → mS >= 4.2 (good four-card suit)
+            # A reasonable approximation: add (suit_hcp / 10) to the
+            # raw length so AKQxxx (length 6, HCP 9) → 6.9; a flat
+            # 6-card with no honours stays at 6.0.
+            mod_lengths[suit_key] = length + suit_hcp / 10.0
+
+            has_ace = any(c.rank == Rank.ACE for c in suit_cards)
+            has_king = any(c.rank == Rank.KING for c in suit_cards)
+            has_queen = any(c.rank == Rank.QUEEN for c in suit_cards)
+
+            # Q-Plus stopper categories (.bid-eval-out):
+            #   > 0  : surely stopped
+            #   >= 0 : likely stopped
+            #   <= 0 : likely not stopped
+            #   < 0  : surely not stopped
+            if has_ace:
+                stoppers[suit_key] = '> 0'
+            elif has_king and length >= 2:
+                stoppers[suit_key] = '> 0'
+            elif has_queen and length >= 3:
+                stoppers[suit_key] = '>= 0'
+            elif has_king or (has_queen and length >= 2):
+                stoppers[suit_key] = '<= 0'
+            else:
+                stoppers[suit_key] = '< 0'
+
             widgets = self.suit_widgets.get(suit_key)
             if widgets:
-                widgets['len_exp'].setText(str(length))
-
-                # Calculate suit HCP.  ACE=0→4 pts, KING=1→3, QUEEN=2→2,
-                # JACK=3→1, everything else 0 — i.e. max(0, 4 - rank.value).
-                suit_hcp = sum(
-                    max(0, 4 - c.rank.value) for c in (suit_cards or []))
+                widgets['len_min'].setText(str(length))
+                widgets['len_exp'].setText(
+                    f"{mod_lengths[suit_key]:.1f}")
+                widgets['len_max'].setText(str(length))
                 widgets['hp_exp'].setText(f"{suit_hcp:.1f}")
-
-                # Check for honors (ACE=0, KING=1, QUEEN=2)
-                has_ace = any(c.rank == Rank.ACE for c in (suit_cards or []))
-                has_king = any(c.rank == Rank.KING for c in (suit_cards or []))
-                has_queen = any(c.rank == Rank.QUEEN for c in (suit_cards or []))
-
                 widgets['pct_a'].setText("100" if has_ace else "0")
                 widgets['pct_k'].setText("100" if has_king else "0")
                 widgets['pct_q'].setText("100" if has_queen else "0")
-
-                # Set control
                 if has_ace:
                     widgets['control'].setCurrentText('1st')
                 elif has_king:
                     widgets['control'].setCurrentText('2nd')
                 else:
                     widgets['control'].setCurrentText('--')
+                # Map the Q-Plus category back to the dropdown's
+                # legacy values so the existing items still cover the
+                # case-set. yes = surely stopped; half = likely;
+                # no = unlikely / never.
+                cat = stoppers[suit_key]
+                stopper_label = {
+                    '> 0':  'yes',
+                    '>= 0': 'half',
+                    '<= 0': 'half',
+                    '< 0':  'no',
+                }[cat]
+                widgets['stopper'].setCurrentText(stopper_label)
 
-                # Set stopper (simplified)
-                if has_ace or (has_king and length >= 2) or (has_queen and length >= 3):
-                    widgets['stopper'].setCurrentText('yes')
-                elif has_king or (has_queen and length >= 2):
-                    widgets['stopper'].setCurrentText('half')
-                else:
-                    widgets['stopper'].setCurrentText('no')
+        # --- LP / TP -------------------------------------------------
+        # Length points: one for every card over 4 in each suit (the
+        # most common "Goren / Modern" convention; matches what Q-Plus
+        # describes by LP).
+        lp = sum(max(0, l - 4) for l in lengths.values())
+        self.point_edits['lp_exp'].setText(f"{lp:.1f}")
+        self.point_edits['lp_min'].setText(f"{lp:.0f}")
+        self.point_edits['lp_max'].setText(f"{lp:.0f}")
 
+        # Trump-dependent TP: declarer (with a known trump fit) adds
+        # distribution points for shortness in SIDE suits — void=3,
+        # singleton=2, doubleton=1. For NT, TP = HP only (length
+        # points are already in the long-suit metrics; we keep LP in
+        # the displayed TP for usefulness against the no-trump
+        # column too).
+        trump_char = self.trump_combo.currentText()
+        if trump_char == 'NT':
+            tp = hcp + lp
+        else:
+            dist = 0
+            for k, l in lengths.items():
+                if k == trump_char:
+                    continue
+                if l == 0:
+                    dist += 3
+                elif l == 1:
+                    dist += 2
+                elif l == 2:
+                    dist += 1
+            tp = hcp + lp + dist
+        self.point_edits['tp_exp'].setText(f"{tp:.1f}")
+        self.point_edits['tp_min'].setText(f"{tp:.0f}")
+        self.point_edits['tp_max'].setText(f"{tp:.0f}")
+
+        # --- Aces & Kings ------------------------------------------
+        aces = sum(1 for c in self.hand.cards if c.rank == Rank.ACE)
+        kings = sum(1 for c in self.hand.cards if c.rank == Rank.KING)
+        self.aces_plus.setText(str(aces))
+        self.aces_minus.setText("0")
+        self.aces_result.setText(str(aces))
+        self.aces_exp.setText(f"{aces:.1f}")
+        self.kings_plus.setText(str(kings))
+        self.kings_minus.setText("0")
+        self.kings_result.setText(str(kings))
+        self.kings_exp.setText(f"{kings:.1f}")
+        self.controls_total.setText(str(aces * 2 + kings))
         self.any_void_cb.setChecked(has_void)
         self.any_single_cb.setChecked(has_singleton)
+
+        # --- Dependencies block -----------------------------------
+        # Generate the factual constraints the spec demonstrates with
+        # examples like "H <= 2 & S >= 3 -> HP >= 18". When the hand
+        # is known we render concrete equalities; when only a partial
+        # hand is known the same machinery applies once a bid-meaning
+        # database lands.
+        dep_lines = []
+        for k in ('S', 'H', 'D', 'C'):
+            dep_lines.append(
+                f"{k} = {lengths[k]} -> m{k} = {mod_lengths[k]:.1f}"
+                f"   HP~{k} = {hcp - suit_hcps[k]}")
+        # Longest-suit shorthand (S1 = longest length, mS1 = its
+        # modified length) — spec lists these in the legend.
+        sorted_keys = sorted(lengths,
+                             key=lambda k: (-lengths[k], k))
+        for i, k in enumerate(sorted_keys, start=1):
+            dep_lines.append(
+                f"S{i} = {k}: length {lengths[k]}, "
+                f"mS{i} = {mod_lengths[k]:.1f}")
+        # Stopper summary, one line per suit using the Q-Plus
+        # > 0 / >= 0 / <= 0 / < 0 notation.
+        for k in ('S', 'H', 'D', 'C'):
+            dep_lines.append(f"s{k} {stoppers[k]} (stopper)")
+        dep_lines.append(
+            f"HP = {hcp}, LP = {lp:.0f}, "
+            f"TP({trump_char}) = {tp:.1f}, "
+            f"aces[2]+kings[1] = {aces * 2 + kings}")
+        self.dependencies_edit.setPlainText("\n".join(dep_lines))
