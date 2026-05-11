@@ -36,7 +36,8 @@ class AuctionTricksDialog(QDialog):
         suit_name = suit_map.get(suit_key.upper(), 'spades')
         return get_suit_color(suit_name)
 
-    def __init__(self, parent=None, board=None, tricks=None):
+    def __init__(self, parent=None, board=None, tricks=None,
+                 viewer_seat=None, dummy_seat=None):
         super().__init__(parent)
         self.setWindowTitle("Record (current)")
         self.setMinimumWidth(650)
@@ -64,6 +65,14 @@ class AuctionTricksDialog(QDialog):
 
         self.board = board
         self.tricks = tricks or []
+        # Seats whose hole cards the viewer is allowed to see — used
+        # to filter the "Cards still out" panel down to cards the
+        # viewer can't already see (i.e. not in their hand or
+        # dummy's hand). Both default to None, which means "no
+        # filtering — show everything"; the main window passes its
+        # local seat + the revealed dummy when it instantiates us.
+        self.viewer_seat = viewer_seat
+        self.dummy_seat = dummy_seat
 
         self._setup_ui()
 
@@ -149,8 +158,14 @@ class AuctionTricksDialog(QDialog):
 
     def _build_remaining_frame(self):
         """Build the 'Cards still out' frame, one row per suit listing
-        ranks not yet played (in any completed trick or the current trick).
-        Returns None if the board can't supply the data.
+        ranks not yet played AND not visible in the viewer's own hand
+        or dummy's hand. Returns None if the board can't supply the
+        data.
+
+        Filtering out visible cards is the point: the viewer can see
+        their hole cards and (after the opening lead) dummy's, so
+        listing those again is busywork. What's actually useful is
+        which cards are still in OPPONENTS' hands.
         """
         try:
             remaining = self.board.remaining_cards_by_suit()
@@ -161,6 +176,28 @@ class AuctionTricksDialog(QDialog):
         if not remaining:
             return None
 
+        # Build the set of (suit, rank) cards the viewer can already
+        # see — their own hand plus dummy when revealed. Filter
+        # those out of every suit's rank list.
+        visible = set()
+        for s in (self.viewer_seat, self.dummy_seat):
+            if s is None:
+                continue
+            try:
+                hand = self.board.hands.get(s) if self.board else None
+            except Exception:
+                hand = None
+            if hand is None:
+                continue
+            for c in getattr(hand, 'cards', []) or []:
+                visible.add((c.suit, c.rank))
+        if visible:
+            remaining = {
+                suit: [r for r in ranks
+                       if (suit, r) not in visible]
+                for suit, ranks in remaining.items()
+            }
+
         from ben_backend.models import Suit
         frame = QFrame()
         frame.setStyleSheet(
@@ -169,8 +206,15 @@ class AuctionTricksDialog(QDialog):
         )
         v = QVBoxLayout(frame)
         fs = self.SYMBOL_FONT_SIZE
+        # Title reflects what's actually being listed: when we
+        # filter against the viewer + dummy hands, the panel only
+        # shows cards in opponents' hands.
+        title_text = (
+            "Cards in opponents' hands" if visible
+            else "Cards still out"
+        )
         title = QLabel(
-            f'<b style="font-size:{fs}px">Cards still out</b>'
+            f'<b style="font-size:{fs}px">{title_text}</b>'
         )
         v.addWidget(title)
 

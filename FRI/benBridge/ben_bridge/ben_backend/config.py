@@ -100,6 +100,13 @@ class PreferencesConfig:
     # whole table onto one spec.
     ns_bidding_system: str = ""
     ew_bidding_system: str = ""
+    # Blunder check: pop a confirmation dialog when the human's bid
+    # differs from what the native bidder (current Q-Plus engine,
+    # NOT the legacy BEN TensorFlow model) would have chosen for
+    # the same seat. Defaults on; disable in preferences for a
+    # silent table. Card-play blunder check is queued for a later
+    # build that wires through DDS.
+    blunder_check_enabled: bool = True
 
 
 @dataclass
@@ -330,6 +337,9 @@ class ConfigManager:
         if "preference.ew_bidding_system" in data:
             v = data["preference.ew_bidding_system"].strip()
             self.config.preferences.ew_bidding_system = v
+        if "preference.blunder_check_enabled" in data:
+            self.config.preferences.blunder_check_enabled = (
+                data["preference.blunder_check_enabled"] == "1")
 
     def save_preferences(self):
         """Save user preferences."""
@@ -350,6 +360,8 @@ class ConfigManager:
             "preference.native_bidding_system": self.config.preferences.native_bidding_system,
             "preference.ns_bidding_system": self.config.preferences.ns_bidding_system,
             "preference.ew_bidding_system": self.config.preferences.ew_bidding_system,
+            "preference.blunder_check_enabled": (
+                "1" if self.config.preferences.blunder_check_enabled else "0"),
         }
         self._write_config_file(filepath, data, description="BEN Bridge preferences")
 

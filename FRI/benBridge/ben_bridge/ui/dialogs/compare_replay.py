@@ -297,6 +297,33 @@ class _BiddingLogPanel(QWidget):
             meta_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(meta_lbl)
 
+        # Dealer / vulnerability / per-pair systems line — answers
+        # the "why didn't both rooms bid the same?" question by
+        # making the systems each side was actually playing visible
+        # at a glance. Pulled from board_number for dealer/vul (the
+        # canonical board → dealer/vul mapping) and from the run's
+        # own ns_bidding_system / ew_bidding_system fields, which
+        # are persisted per-deal so an old replay shows whatever
+        # systems were configured when the deal was played.
+        try:
+            from ben_backend.models import BoardState
+            dealer, vuln = BoardState._board_dealer_vuln(run.board_number)
+            dealer_char = dealer.to_char()
+            vul_map = {0: 'None', 1: 'NS', 2: 'EW', 3: 'Both'}
+            vul_str = vul_map.get(getattr(vuln, 'value', 0), 'None')
+        except Exception:
+            dealer_char, vul_str = '?', '?'
+        ns_sys = (getattr(run, 'ns_bidding_system', '') or '—')
+        ew_sys = (getattr(run, 'ew_bidding_system', '') or '—')
+        sys_lbl = QLabel(
+            f'<span style="font-size:13px; color:#444">'
+            f'Dealer: <b>{dealer_char}</b> • Vul: <b>{vul_str}</b>'
+            f' • NS: <b>{ns_sys}</b> • EW: <b>{ew_sys}</b>'
+            f'</span>'
+        )
+        sys_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(sys_lbl)
+
         # The grid: header row N/E/S/W + one row per round of bidding.
         grid_frame = QFrame()
         grid_frame.setStyleSheet(

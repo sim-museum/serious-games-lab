@@ -4159,6 +4159,15 @@ For more information, see the README file."""
                 self.status_label.setText("Must follow suit!")
                 return
 
+        # Blunder check — run a Monte-Carlo + DDS scoring of every
+        # legal card and warn the user if their pick loses ≥1 trick
+        # against the best play. Two-button dialog [Hint] / [Cancel];
+        # neither commits the play, so the user can either re-pick or
+        # click the same card a second time to override the warning
+        # (the warning is suppressed once-per-turn per card).
+        if not self._maybe_warn_card_blunder(seat, card):
+            return
+
         # Record for undo (only human cards can be undone, marked with is_human=True)
         self.card_history.append((seat, card, True))
         self.undo_btn.setEnabled(True)
@@ -4226,6 +4235,17 @@ For more information, see the README file."""
                     self._dummy_broadcasted_for_board = True
                 except Exception as e:
                     print(f"[dummy reveal] broadcast failed: {e}", flush=True)
+
+    def _maybe_warn_card_blunder(self, seat: 'Seat', card: 'Card') -> bool:
+        """Cardplay blunder check — TEMPORARY STUB.
+
+        Wired up via _on_card_played as the intercept point; the full
+        DDS+Monte-Carlo comparison and the Hint/Cancel dialog land in
+        the next commit. Returning True here means "commit normally"
+        so this stub is a no-op and the existing play flow is
+        unaffected.
+        """
+        return True
 
     def _advance_game(self):
         """Advance the game state"""
@@ -5762,10 +5782,26 @@ For more information, see the README file."""
             except Exception:
                 pass
 
+        # Pass the local viewer's seat plus the dummy (when revealed)
+        # so the dialog's "Cards in opponents' hands" panel can hide
+        # cards we can already see ourselves.
+        viewer_seat = None
+        try:
+            viewer_seat = self.table_view._local_seat
+        except Exception:
+            viewer_seat = None
+        dummy_seat = None
+        try:
+            if getattr(self.table_view, 'dummy_revealed', False):
+                dummy_seat = self.controller.dummy
+        except Exception:
+            dummy_seat = None
         self._record_dialog = AuctionTricksDialog(
             self,
             board=self.controller.board,
-            tricks=tricks
+            tricks=tricks,
+            viewer_seat=viewer_seat,
+            dummy_seat=dummy_seat,
         )
         self._record_dialog.show()
         self._record_dialog.raise_()
