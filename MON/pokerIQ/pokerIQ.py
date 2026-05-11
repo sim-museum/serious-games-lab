@@ -2464,13 +2464,13 @@ class MetricPie(QWidget):
             p.setPen(QPen(QColor("#ffd966"), 4))
             p.drawLine(int(x1), int(y1), int(x2), int(y2))
 
-        # Center value text — explicit Bold weight (some platform font
-        # mappings ignored QFont.setBold(True) on the painter's
-        # inherited font, leaving the % thin).
+        # Center value text — Normal weight (Weight.Black was too
+        # loud compared to the rest of the page; the donut fill +
+        # large size carry the visual emphasis already).
         center_font = QFont('Arial', max(14, int(radius / 2.4)),
-                            QFont.Weight.Black)
+                            QFont.Weight.Normal)
         p.setFont(center_font)
-        p.setPen(QColor("#ffffff" if not self._dim else "#777777"))
+        p.setPen(QColor("#dddddd" if not self._dim else "#777777"))
         p.drawText(QRectF(cx - radius, cy - radius,
                           2 * radius, 2 * radius),
                    Qt.AlignmentFlag.AlignCenter, self._center_text)
@@ -17821,6 +17821,14 @@ class TextModeGame:
 def run_gui_mode(args):
     """Run the graphical interface."""
     app = QApplication.instance() or QApplication(sys.argv)
+
+    # Tooltips: double the default font size and force word-wrapping
+    # so the Theory-of-Mind hover-help is comfortably readable.
+    app.setStyleSheet(
+        "QToolTip { font-size: 18pt; color: #ddd;"
+        " background-color: #1a1a1a; border: 1px solid #555;"
+        " padding: 8px; }"
+    )
 
     # Set dark theme
     app.setStyle('Fusion')
