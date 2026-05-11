@@ -1661,18 +1661,46 @@ class HeroOutsTab(QWidget):
 
         self._commit_title = _make_line(22, "#ffffff", bold=True, min_h=40)
         self._commit_title.setText("Pot Commitment")
+        self._commit_title.setToolTip(
+            "Compact decision panel for the call / fold question:\n"
+            "  Ratio  = how much of YOUR stack this call costs\n"
+            "  SPR    = post-call stack ÷ post-call pot\n"
+            "  Equity = your win probability vs pot odds\n"
+            "  Math   = raw chip arithmetic for the call.")
         cv.addWidget(self._commit_title)
 
         self._commit_ratio = _make_line(18, "#dddddd", min_h=38)
+        self._commit_ratio.setToolTip(
+            "Pot Commitment Ratio = call ÷ current_stack.\n"
+            "  ≥ 33% : EFFECTIVELY COMMITTED — Gordon: 'almost\n"
+            "          certainly can't fold the river'.\n"
+            "  15–33%: meaningful commitment, plan ahead.\n"
+            "  < 15% : light commitment, easy to fold later.")
         cv.addWidget(self._commit_ratio)
 
         self._commit_spr = _make_line(18, "#dddddd", min_h=38)
+        self._commit_spr.setToolTip(
+            "Stack-to-Pot Ratio after the call.\n"
+            "  < 1   POT-COMMITTED — can't fold to future bets.\n"
+            "  1–3   decision band — calling commits you next street.\n"
+            "  ≥ 3   flexible — room to fold future pressure.\n"
+            "Smaller SPR favors all-in tactics with one pair / draws;\n"
+            "larger SPR favors set-mining and implied-odds plays.")
         cv.addWidget(self._commit_spr)
 
         self._commit_equity = _make_line(18, "#dddddd", min_h=38)
+        self._commit_equity.setToolTip(
+            "Equity vs Pot Odds — the call's immediate-EV verdict:\n"
+            "  Equity ≥ Pot odds → Profitable call.\n"
+            "  Equity < Pot odds → Unprofitable on immediate equity\n"
+            "                       alone (check Implied odds first).")
         cv.addWidget(self._commit_equity)
 
         self._commit_math = _make_line(14, "#aaaaaa", min_h=28)
+        self._commit_math.setToolTip(
+            "Raw chip arithmetic for the call:\n"
+            "  Putting in $X of $S stack —\n"
+            "  $S − $X behind into a $P + $X pot.")
         cv.addWidget(self._commit_math)
 
         cv.addStretch(1)
@@ -1690,11 +1718,23 @@ class HeroOutsTab(QWidget):
         self._made_label = QLabel("(deal a hand)")
         self._made_label.setFont(QFont('Arial', 16, QFont.Weight.Bold))
         self._made_label.setStyleSheet("color: #ffd966;")
+        self._made_label.setToolTip(
+            "Your current best 5-card hand class, evaluated via eval7.\n"
+            "Updates each street as new cards appear.\n"
+            "Pair / Two pair / Trips / Straight / Flush / Full House /\n"
+            "Quads / Straight Flush — strongest reachable hand given\n"
+            "your hole cards + the board.")
         info_row.addWidget(self._made_label)
         info_row.addStretch()
         self._outs_count_label = QLabel("Outs: —")
         self._outs_count_label.setFont(QFont('Arial', 16, QFont.Weight.Bold))
         self._outs_count_label.setStyleSheet("color: #88ff88;")
+        self._outs_count_label.setToolTip(
+            "Number of cards remaining in the deck that improve your\n"
+            "hand to a likely winner (eval7-evaluated against every\n"
+            "unseen card). Matches the Outs gauge in the dashboard.\n\n"
+            "Rule of 4 (flop → river): chance to hit ≈ outs × 4 %.\n"
+            "Rule of 2 (turn → river): chance to hit ≈ outs × 2 %.")
         info_row.addWidget(self._outs_count_label)
         outer.addLayout(info_row)
 
@@ -1702,6 +1742,17 @@ class HeroOutsTab(QWidget):
         grid_label = QLabel("Cards in the deck (yellow = your outs)")
         grid_label.setFont(QFont('Arial', 14))
         grid_label.setStyleSheet("color: #aaa;")
+        grid_label.setToolTip(
+            "Every card in a 52-card deck, organised by rank (cols)\n"
+            "and suit (rows: ♠ ♥ ♦ ♣).\n\n"
+            "Cell colors:\n"
+            "  blue   = one of your hole cards\n"
+            "  grey   = a card on the board\n"
+            "  gold   = an OUT (would improve your hand to a likely\n"
+            "           winner — see Outs counter above)\n"
+            "  dim    = unseen card not currently an out\n\n"
+            "Used to see at a glance which suits / ranks you're\n"
+            "drawing to, and how many of each remain.")
         outer.addWidget(grid_label)
 
         grid_frame = QFrame()
@@ -2080,6 +2131,23 @@ class TheoryOfMindTab(QWidget):
         grid_label = QLabel(f"Estimated Range for {player_name}")
         grid_label.setFont(QFont('Arial', 18, QFont.Weight.Bold))
         grid_label.setStyleSheet("color: #fff;")
+        grid_label.setToolTip(
+            f"{player_name}'s estimated holding given the betting\n"
+            "actions so far this hand.\n\n"
+            "Grid axes:\n"
+            "  vertical / horizontal = card ranks A..2.\n"
+            "  Upper-right triangle = SUITED two-card combos.\n"
+            "  Diagonal             = POCKET PAIRS.\n"
+            "  Lower-left triangle  = OFFSUIT two-card combos.\n\n"
+            "Cell color:\n"
+            "  gold tint   = pair (e.g. TT).\n"
+            "  green tint  = suited (e.g. AKs).\n"
+            "  blue tint   = offsuit (e.g. AKo).\n"
+            "Color intensity = the probability weight the model\n"
+            "puts on that combo, given the bets seen so far.\n\n"
+            "Yellow border on a cell = that combo CONNECTS with the\n"
+            "current board (top pair, set, made straight, OESD,\n"
+            "flush draw); thicker yellow = stronger connection.")
         title_row.addWidget(grid_label, stretch=1)
         self.history_btn = QPushButton("Betting history")
         self.history_btn.setStyleSheet(
@@ -2097,6 +2165,12 @@ class TheoryOfMindTab(QWidget):
 
         self.range_grid = HandRangeGrid()
         self.range_grid.setFixedSize(420, 420)  # Fixed size to ensure all 13 rows visible
+        self.range_grid.setToolTip(
+            "PokerStove-style 13×13 range grid.\n"
+            "Upper-right = suited, diagonal = pairs,\n"
+            "lower-left = offsuit. Color intensity = probability\n"
+            "weight on that combo. Yellow ring = combo connects\n"
+            "with the current board.")
         left_layout.addWidget(self.range_grid)
 
         # PokerStove notation moved DOWN here (was on the right column
@@ -2105,6 +2179,13 @@ class TheoryOfMindTab(QWidget):
         notation_label = QLabel("PokerStove notation:")
         notation_label.setFont(QFont('Arial', 12, QFont.Weight.Bold))
         notation_label.setStyleSheet("color: #888;")
+        notation_label.setToolTip(
+            "Standard PokerStove text encoding of the same range\n"
+            "shown in the grid above. Example: 'AA-TT, AKs-A8s,\n"
+            "AKo-AJo' = all pocket pairs from AA down to TT, plus\n"
+            "AK suited through A8 suited, plus AK / AQ / AJ offsuit.\n"
+            "  ',' separates groups. '-' = inclusive run.\n"
+            "  's' = suited, 'o' = offsuit, no suffix = pair.")
         left_layout.addWidget(notation_label)
 
         self.notation_text = QLabel("")
@@ -2114,6 +2195,7 @@ class TheoryOfMindTab(QWidget):
             " border: 1px solid #444; border-radius: 4px;")
         self.notation_text.setWordWrap(True)
         self.notation_text.setMinimumHeight(40)
+        self.notation_text.setToolTip(notation_label.toolTip())
         left_layout.addWidget(self.notation_text)
         left_layout.addStretch()
 
@@ -2127,12 +2209,24 @@ class TheoryOfMindTab(QWidget):
         explain_label = QLabel("Analysis:")
         explain_label.setFont(QFont('Arial', 18, QFont.Weight.Bold))
         explain_label.setStyleSheet("color: #aaa;")
+        explain_label.setToolTip(
+            "Per-player narrative of the read so far this hand:\n"
+            "  • BETTING PATTERN  — categorised line of actions\n"
+            "    (e.g. c-bet + barreled turn, check-raised flop)\n"
+            "  • LIKELY HOLDING   — one-line gloss of which combos\n"
+            "    typically take that line\n"
+            "  • POSSIBLE OUTS    — flush / straight / trip draws\n"
+            "    that fit the board\n"
+            "  • Player / Range / Action context\n"
+            "  • Preflop range estimate + session calibration\n"
+            "    (e.g. VPIP 35% vs nominal 22%, range scale ×1.45)")
         right_layout.addWidget(explain_label)
 
         self.explanation_text = QTextEdit()
         self.explanation_text.setReadOnly(True)
         self.explanation_text.setFont(QFont('Arial', 16))
         self.explanation_text.setStyleSheet("background-color: #1a1a1a; color: #ddd; border: 2px solid #444; padding: 10px;")
+        self.explanation_text.setToolTip(explain_label.toolTip())
         right_layout.addWidget(self.explanation_text, stretch=1)
 
         layout.addLayout(right_layout, stretch=1)
@@ -2737,24 +2831,53 @@ class TheoryOfMindPanel(QWidget):
         self.pot_label = QLabel("Pot: $--")
         self.pot_label.setFont(QFont('Arial', 18, QFont.Weight.Bold))
         self.pot_label.setStyleSheet("color: #ff0; padding: 8px; background: #222; border: 2px solid #444;")
+        self.pot_label.setToolTip(
+            "Total chips currently in the pot — all blinds + all bets\n"
+            "from every street so far, including chips folded players\n"
+            "left behind.")
         top_info.addWidget(self.pot_label)
 
         # Hero equity display
         self.equity_label = QLabel("Equity: --")
         self.equity_label.setFont(QFont('Arial', 18, QFont.Weight.Bold))
         self.equity_label.setStyleSheet("color: #0af; padding: 8px; background: #222; border: 2px solid #444;")
+        self.equity_label.setToolTip(
+            "Hand equity computed against each active opponent's\n"
+            "estimated range via Monte Carlo (no-peek: never uses\n"
+            "actual hole cards).\n\n"
+            "Border color:\n"
+            "  green = beats pot odds (immediate +EV call)\n"
+            "  red   = falls below pot odds\n"
+            "  blue  = no meaningful pot-odds comparison\n"
+            "          (e.g. unraised preflop)")
         top_info.addWidget(self.equity_label)
 
         # Pot odds display
         self.pot_odds_label = QLabel("Pot Odds: --")
         self.pot_odds_label.setFont(QFont('Arial', 18, QFont.Weight.Bold))
         self.pot_odds_label.setStyleSheet("color: #f80; padding: 8px; background: #222; border: 2px solid #444;")
+        self.pot_odds_label.setToolTip(
+            "Pot odds (required equity for a break-even call):\n"
+            "    call / (pot + call)\n\n"
+            "If your hand equity ≥ this number, the call is +EV\n"
+            "ignoring implied / reverse-implied odds.\n\n"
+            "Preflop limp: tagged '(unraised — not a fold signal)'.\n"
+            "Paying the BB to enter is not the same as facing a real\n"
+            "raise — decide by hand tier × position.")
         top_info.addWidget(self.pot_odds_label)
 
         # Implied odds display
         self.implied_odds_label = QLabel("Implied: --")
         self.implied_odds_label.setFont(QFont('Arial', 18, QFont.Weight.Bold))
         self.implied_odds_label.setStyleSheet("color: #a8f; padding: 8px; background: #222; border: 2px solid #444;")
+        self.implied_odds_label.setToolTip(
+            "Implied break-even %: the equity you'd need IF you\n"
+            "collect future bets when you hit. Computed as\n"
+            "    call / (pot + call + 0.5 × avg-opp-stack).\n\n"
+            "Much lower than pot odds → drawing hands and set-mining\n"
+            "spots become profitable below the immediate-equity\n"
+            "threshold. Relevant deep-stacked, in position,\n"
+            "against opponents who pay off big hands.")
         top_info.addWidget(self.implied_odds_label)
 
         layout.addLayout(top_info)
@@ -2766,12 +2889,29 @@ class TheoryOfMindPanel(QWidget):
         self.outs_label = QLabel("Outs: --")
         self.outs_label.setFont(QFont('Arial', 16, QFont.Weight.Bold))
         self.outs_label.setStyleSheet("color: #0f0; padding: 6px; background: #222; border: 2px solid #444;")
+        self.outs_label.setToolTip(
+            "Cards remaining in the deck that improve your hand to\n"
+            "a likely winner. eval7-driven — uses the same algorithm\n"
+            "as the Hero-tab grid so the count always agrees.\n\n"
+            "Rule of 4 (flop → river): multiply outs × 4 for\n"
+            "approximate % chance to hit.\n"
+            "Rule of 2 (turn → river): multiply outs × 2.\n\n"
+            "Shared-improvement cards (rank already on the board\n"
+            "that you don't hold) are excluded — pairing the board\n"
+            "helps every player, not just hero.")
         outs_row.addWidget(self.outs_label)
 
         # Scare cards display
         self.scare_cards_label = QLabel("Scare Cards: --")
         self.scare_cards_label.setFont(QFont('Arial', 16, QFont.Weight.Bold))
         self.scare_cards_label.setStyleSheet("color: #f80; padding: 6px; background: #222; border: 2px solid #444;")
+        self.scare_cards_label.setToolTip(
+            "Turn / river cards that LIKELY help the opponents'\n"
+            "ranges more than yours — completes broadways, brings\n"
+            "the 3rd flush card, pairs the board, etc.\n\n"
+            "Treat these as red flags: if one comes, slow down\n"
+            "with marginal made hands and bluff-catchers, and be\n"
+            "ready to fold to renewed aggression.")
         outs_row.addWidget(self.scare_cards_label)
 
         outs_row.addStretch()
@@ -2784,6 +2924,15 @@ class TheoryOfMindPanel(QWidget):
         mode_label = QLabel("Range Estimate:")
         mode_label.setFont(QFont('Arial', 14))
         mode_label.setStyleSheet("color: #aaa;")
+        mode_label.setToolTip(
+            "Adjust the prior assumption used to estimate each\n"
+            "opponent's range before factoring in this hand's\n"
+            "betting actions. Three settings:\n"
+            "  Opps weak  — opponents seem to be playing wide;\n"
+            "               widen all ranges (more hands to beat).\n"
+            "  Neutral    — default; uses each bot's nominal style.\n"
+            "  Opps strong — opponents tight today; tighten the\n"
+            "               priors (fewer combos, stronger average).")
         mode_row.addWidget(mode_label)
 
         from PyQt6.QtWidgets import QButtonGroup, QRadioButton
@@ -2791,12 +2940,20 @@ class TheoryOfMindPanel(QWidget):
 
         self.loose_btn = QRadioButton("Opps weak")
         self.loose_btn.setStyleSheet("color: #8f8; font-size: 16px;")
+        self.loose_btn.setToolTip(
+            "Assume opponents are playing wider / weaker than nominal.\n"
+            "Widens every player's prior range; lowers your equity\n"
+            "estimate against the field (more hands beat yours).")
         self.loose_btn.clicked.connect(lambda: self.set_range_mode('loose'))
         mode_row.addWidget(self.loose_btn)
         self.range_mode_group.addButton(self.loose_btn)
 
         self.neutral_btn = QRadioButton("Neutral")
         self.neutral_btn.setStyleSheet("color: #fff; font-size: 16px;")
+        self.neutral_btn.setToolTip(
+            "Default. Uses each opponent's nominal style\n"
+            "(tight / aggressive / loose / optimal) to build their\n"
+            "prior range, then narrows it with this hand's actions.")
         self.neutral_btn.setChecked(True)
         self.neutral_btn.clicked.connect(lambda: self.set_range_mode('neutral'))
         mode_row.addWidget(self.neutral_btn)
@@ -2804,6 +2961,10 @@ class TheoryOfMindPanel(QWidget):
 
         self.tight_btn = QRadioButton("Opps strong")
         self.tight_btn.setStyleSheet("color: #f88; font-size: 16px;")
+        self.tight_btn.setToolTip(
+            "Assume opponents are playing tighter / stronger than\n"
+            "nominal. Narrows every prior range so the few combos\n"
+            "left are heavier — be more cautious with marginal hands.")
         self.tight_btn.clicked.connect(lambda: self.set_range_mode('tight'))
         mode_row.addWidget(self.tight_btn)
         self.range_mode_group.addButton(self.tight_btn)
@@ -2887,6 +3048,22 @@ class TheoryOfMindPanel(QWidget):
             " line-height: 150%;")
         self.advisor_advice.setWordWrap(True)
         self.advisor_advice.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.advisor_advice.setToolTip(
+            "Compact Gordon-style advice card (Phil Gordon's Little\n"
+            "Green Book).\n\n"
+            "Lines from top:\n"
+            "  POT ODDS & EQUITY header — your immediate price vs\n"
+            "    estimated equity vs ranges.\n"
+            "  Hand line — [combo] tier · position · stack BB · street.\n"
+            "  Gordon nickname + one-line action hint for the combo.\n"
+            "  Q1 Bet/Raise? — Gordon's first question (asked FIRST\n"
+            "    because aggressive poker is winning poker).\n"
+            "  Q2 Check/Fold? — Gordon's second question.\n"
+            "  ACTION — recommended primary action (color = verdict\n"
+            "    green = aggression, red = fold, amber = call/check).\n"
+            "  WHY — one-line justification.\n"
+            "  ⚠ WATCH — context warning ('4th raise ≈ aces',\n"
+            "    'paired board — first to bet wins', etc.)")
         advisor_scroll.setWidget(self.advisor_advice)
 
         advisor_layout.addWidget(advisor_scroll)
@@ -8749,6 +8926,25 @@ class PokerWindow(QMainWindow):
             " padding: 4px 10px;"
             " font-weight: 900;")
         self.tom_external_board_texture.setWordWrap(True)
+        self.tom_external_board_texture.setToolTip(
+            "Board texture classification (Acevedo) plus a Gordon-\n"
+            "style c-bet sizing hint.\n\n"
+            "Category:\n"
+            "  DRY        — disconnected, rainbow, no draws.\n"
+            "               C-bet small (1/3 pot), bluff freely.\n"
+            "  DYNAMIC    — connected or two-tone; many draws.\n"
+            "               C-bet bigger (2/3 pot), charge draws.\n"
+            "  WET        — coordinated and dangerous.\n"
+            "               Bet polarised — value heavy or fold.\n"
+            "  PAIRED     — board has a pair; ranges are capped.\n"
+            "               First to bet usually wins the pot.\n\n"
+            "Modifiers in brackets:\n"
+            "  [RAINBOW]  = three suits on board (no flush draw)\n"
+            "  [TWO-TONE] = two of one suit (flush draw possible)\n"
+            "  [MONOTONE] = all one suit (flush already possible)\n"
+            "  [CONNECTED] / [SEMI-CONNECTED] = straight draws.\n"
+            "→ c-bet sizing reflects how protected your value\n"
+            "  hands need to be against the draws on the board.")
         card_bar_layout.addWidget(self.tom_external_board_texture,
                                   stretch=1)
         card_bar_layout.addStretch(0)
