@@ -1385,6 +1385,190 @@ class HandRangeGrid(QWidget):
                 painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, hand)
 
 
+class PlayerHistoryGrid(QWidget):
+    """13x13 grid of how a player has actually played each of the 169
+    starting-hand combos this session.
+
+    Color encoding per cell:
+      • Cells with no observed sample: dim background (suited/pair/offsuit
+        tinted, same family as HandRangeGrid).
+      • Green intensity ∝ wins ÷ seen.
+      • Red intensity ∝ losses ÷ seen.
+      • Cells where the player folded most of the time get a thin gray
+        ring; cells they raised most of the time get a gold ring.
+
+    The cell text shows the hand key plus a tiny sample-count badge
+    (e.g. "AKs / 3w 1L") so the user can tell n-of-1 cells from real
+    samples at a glance.
+    """
+
+    RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(420, 420)
+        self._history = {}   # {hand_key: cell dict from _fresh_169_cell}
+
+    def set_history(self, history: dict):
+        self._history = dict(history or {})
+        self.update()
+
+    def _hand_at(self, row, col):
+        r1 = self.RANKS[row]
+        r2 = self.RANKS[col]
+        if row < col:
+            return f"{r1}{r2}s"
+        elif row > col:
+            return f"{r2}{r1}o"
+        return f"{r1}{r2}"
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        cw, ch = w // 13, h // 13
+        font_size = max(9, min(cw, ch) // 4)
+        font = QFont('Arial', font_size, QFont.Weight.Bold)
+        p.setFont(font)
+        for row in range(13):
+            for col in range(13):
+                x, y = col * cw, row * ch
+                hand = self._hand_at(row, col)
+                cell = self._history.get(hand, {})
+                seen = int(cell.get('seen', 0))
+                won = int(cell.get('won', 0))
+                lost = int(cell.get('lost', 0))
+                folded = int(cell.get('folded', 0))
+                raised = int(cell.get('raised', 0))
+                played = int(cell.get('played', 0))
+
+                # Family base tint (same scheme as HandRangeGrid).
+                if row == col:
+                    base = QColor(45, 38, 16)   # gold-dim for pairs
+                elif row < col:
+                    base = QColor(20, 36, 20)   # green-dim for suited
+                else:
+                    base = QColor(20, 26, 38)   # blue-dim for offsuit
+
+                # Win / loss tinting on top of the base.
+                if seen > 0:
+                    win_rate = won / seen
+                    loss_rate = lost / seen
+                    # Strong green for high win rate, strong red for
+                    # high loss rate.
+                    if win_rate >= loss_rate:
+                        # Blend toward (60, 180, 60) by win_rate.
+                        r = int(base.red() + (60 - base.red()) * win_rate)
+                        g = int(base.green()
+                                + (200 - base.green()) * win_rate)
+                        b = int(base.blue() + (60 - base.blue()) * win_rate)
+                    else:
+                        r = int(base.red() + (210 - base.red()) * loss_rate)
+                        g = int(base.green() + (50 - base.green()) * loss_rate)
+                        b = int(base.blue() + (50 - base.blue()) * loss_rate)
+                    cell_color = QColor(r, g, b)
+                else:
+                    cell_color = base
+
+                p.fillRect(x, y, cw - 1, ch - 1, cell_color)
+
+                # Action-rate ring: gold if mostly raised, gray if
+                # mostly folded.
+                ring_color = None
+                if played > 0 and raised / max(played, 1) >= 0.6:
+                    ring_color = QColor(255, 215, 70)
+                elif seen > 0 and folded / max(seen, 1) >= 0.6:
+                    ring_color = QColor(110, 110, 110)
+                if ring_color is not None:
+                    p.setPen(QPen(ring_color, 2))
+                    p.drawRect(x + 1, y + 1, cw - 3, ch - 3)
+                else:
+                    p.setPen(QPen(QColor(60, 60, 60), 1))
+                    p.drawRect(x, y, cw - 1, cw - 1)
+
+                # Cell text — hand key on top, count badge below.
+                text_color = (QColor(240, 240, 240)
+                              if seen > 0 else QColor(140, 140, 140))
+                p.setPen(text_color)
+                # Hand key
+                p.drawText(QRectF(x, y, cw - 1, (ch - 1) * 0.55),
+                           Qt.AlignmentFlag.AlignCenter, hand)
+                # Sample badge
+                if seen > 0:
+                    badge_font = QFont('Arial', max(7, font_size - 3))
+                    p.setFont(badge_font)
+                    p.setPen(QColor(220, 220, 180))
+                    if won + lost > 0:
+                        badge = f"{won}w {lost}L"
+                    else:
+                        badge = f"n={seen}"
+                    p.drawText(
+                        QRectF(x, y + (ch - 1) * 0.5,
+                               cw - 1, (ch - 1) * 0.5),
+                        Qt.AlignmentFlag.AlignCenter, badge)
+                    p.setFont(font)
+
+
+class PlayerHistoryDialog(QDialog):
+    """Dialog wrapping a PlayerHistoryGrid plus summary stats so the
+    user can drill into any seat's session-long play pattern."""
+
+    def __init__(self, player_name: str, history: dict, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"{player_name} — session history")
+        self.setMinimumSize(700, 760)
+        v = QVBoxLayout(self)
+        v.setContentsMargins(16, 16, 16, 16)
+        v.setSpacing(8)
+
+        title = QLabel(f"{player_name}")
+        title.setFont(QFont('Arial', 20, QFont.Weight.Bold))
+        title.setStyleSheet("color: #0af;")
+        v.addWidget(title)
+
+        # Aggregate counters across the 169 grid for the summary line.
+        total_seen = sum(c.get('seen', 0) for c in history.values())
+        total_played = sum(c.get('played', 0) for c in history.values())
+        total_raised = sum(c.get('raised', 0) for c in history.values())
+        total_won = sum(c.get('won', 0) for c in history.values())
+        total_lost = sum(c.get('lost', 0) for c in history.values())
+        total_net = sum(c.get('net_cash', 0) for c in history.values())
+        vpip = (100.0 * total_played / total_seen) if total_seen else 0
+        pfr = (100.0 * total_raised / total_seen) if total_seen else 0
+        wr = (100.0 * total_won / total_seen) if total_seen else 0
+        summary = QLabel(
+            f"Hands seen: <b>{total_seen}</b>  ·  "
+            f"VPIP: <b>{vpip:.0f}%</b>  ·  "
+            f"PFR: <b>{pfr:.0f}%</b>  ·  "
+            f"Win rate: <b>{wr:.0f}%</b>  ·  "
+            f"Net chips: <b>{total_net:+,}</b>  ·  "
+            f"Showdowns won/lost: <b>{total_won}</b> / <b>{total_lost}</b>"
+        )
+        summary.setTextFormat(Qt.TextFormat.RichText)
+        summary.setStyleSheet(
+            "color: #ddd; padding: 8px; background: #1a1a1a;"
+            " border: 1px solid #333; border-radius: 6px; font-size: 14pt;")
+        v.addWidget(summary)
+
+        legend = QLabel(
+            "<span style='color:#88ff88'>green</span> = won often   "
+            "<span style='color:#ff7777'>red</span> = lost often   "
+            "<span style='color:#ffd966'>gold ring</span> = mostly raised   "
+            "<span style='color:#888'>gray ring</span> = mostly folded")
+        legend.setTextFormat(Qt.TextFormat.RichText)
+        legend.setStyleSheet("color: #aaa; padding: 4px; font-size: 12pt;")
+        v.addWidget(legend)
+
+        grid = PlayerHistoryGrid()
+        grid.set_history(history)
+        v.addWidget(grid, stretch=1)
+
+        close_btn = QPushButton("Close")
+        close_btn.setStyleSheet("font-size: 14pt; padding: 8px;")
+        close_btn.clicked.connect(self.accept)
+        v.addWidget(close_btn)
+
+
 class HeroOutsTab(QWidget):
     """Hero's hole cards + outs visualisation, sibling to the per-bot
     range tabs in the Theory of Mind panel.
@@ -1902,10 +2086,27 @@ class TheoryOfMindTab(QWidget):
         # Left: Hand range grid (fixed size to ensure full display)
         left_layout = QVBoxLayout()
 
+        # Title row + per-player History button. The button opens a
+        # 169-grid heatmap of this seat's session-long play pattern so
+        # the user can see at a glance which combos this opponent
+        # actually plays / wins / folds.
+        title_row = QHBoxLayout()
         grid_label = QLabel(f"Estimated Range for {player_name}")
         grid_label.setFont(QFont('Arial', 18, QFont.Weight.Bold))
         grid_label.setStyleSheet("color: #fff;")
-        left_layout.addWidget(grid_label)
+        title_row.addWidget(grid_label, stretch=1)
+        self.history_btn = QPushButton("History")
+        self.history_btn.setStyleSheet(
+            "QPushButton { background: #2a3a4a; color: #ddd;"
+            " font-size: 13pt; font-weight: bold;"
+            " padding: 4px 14px; border: 1px solid #4a5a6a;"
+            " border-radius: 5px; }"
+            "QPushButton:hover { background: #3a4a5a; }")
+        self.history_btn.setToolTip(
+            f"Open {player_name}'s session play pattern")
+        self.history_btn.clicked.connect(self._show_history)
+        title_row.addWidget(self.history_btn)
+        left_layout.addLayout(title_row)
 
         self.range_grid = HandRangeGrid()
         self.range_grid.setFixedSize(420, 420)  # Fixed size to ensure all 13 rows visible
@@ -1955,6 +2156,27 @@ class TheoryOfMindTab(QWidget):
         self.range_grid.set_range(range_dict, board_hits=board_hits)
         self.notation_text.setText(notation)
         self.explanation_text.setText(explanation)
+
+    def _show_history(self):
+        """Pop the 169-grid heatmap of this player's session history."""
+        # Walk up to find the owning PokerWindow (set on
+        # TheoryOfMindPanel._owner_window when the panel was wired up).
+        win = None
+        parent = self.parent()
+        while parent is not None:
+            if hasattr(parent, '_player_169_history'):
+                win = parent
+                break
+            owner = getattr(parent, '_owner_window', None)
+            if owner is not None and hasattr(owner, '_player_169_history'):
+                win = owner
+                break
+            parent = parent.parent()
+        history = {}
+        if win is not None:
+            history = win._player_169_history.get(self.player_name, {})
+        dlg = PlayerHistoryDialog(self.player_name, history, parent=self)
+        dlg.exec()
 
 
 class MetricBar(QWidget):
@@ -2458,6 +2680,154 @@ class TheoryOfMindPanel(QWidget):
         elif self.range_mode == 'tight':
             return 0.85  # Narrower ranges = opponents stronger (less aggressive to keep visibility)
         return 1.0  # Neutral
+
+    def _infer_player_read(self, player_name: str,
+                            street_actions: dict,
+                            board: list, current_street: str) -> str:
+        """Build a short human-readable read of how this player has
+        bet THIS hand and what outs / made hands could justify that
+        line.
+
+        Output looks like:
+          BETTING PATTERN: c-bet flop, fired turn → top pair+ or strong draw
+          POSSIBLE OUTS: 9 (TS,TH,TD,TC + 5h-2h for FD)
+        Returns "" when no actions for this player yet.
+        """
+        if not street_actions:
+            return ""
+
+        # Walk per-street actions and tag what this player did each
+        # street. Strings look like "Aggro Angela: Raises to $6",
+        # "Aggro Angela: Calls $4", "Aggro Angela: Checks", "...: Folds".
+        per_street = {}   # street -> list of {'verb','amount'}
+        prefix = f"{player_name}: "
+        for street_name, entries in (street_actions or {}).items():
+            tagged = []
+            for entry in entries:
+                if not entry.startswith(prefix):
+                    continue
+                tail = entry[len(prefix):]
+                if tail.startswith("Raises") or tail.startswith("Bets"):
+                    tagged.append({'verb': 'r'})
+                elif tail.startswith("Calls"):
+                    tagged.append({'verb': 'c'})
+                elif tail.startswith("Checks"):
+                    tagged.append({'verb': 'k'})
+                elif tail.startswith("Folds"):
+                    tagged.append({'verb': 'f'})
+                else:
+                    tagged.append({'verb': '?'})
+            if tagged:
+                per_street[street_name] = tagged
+
+        if not per_street:
+            return ""
+
+        pre = per_street.get('Preflop', [])
+        flop = per_street.get('Flop', [])
+        turn = per_street.get('Turn', [])
+        river = per_street.get('River', [])
+
+        def last_verb(stream):
+            return stream[-1]['verb'] if stream else None
+
+        any_raise_pre = any(a['verb'] == 'r' for a in pre)
+        bet_flop = any(a['verb'] == 'r' for a in flop)
+        bet_turn = any(a['verb'] == 'r' for a in turn)
+        bet_river = any(a['verb'] == 'r' for a in river)
+        # Check-raise on a street = a check, then a raise after others bet.
+        def check_raise(stream):
+            saw_check = False
+            for a in stream:
+                if a['verb'] == 'k':
+                    saw_check = True
+                elif a['verb'] == 'r' and saw_check:
+                    return True
+            return False
+        cr_flop = check_raise(flop)
+        cr_turn = check_raise(turn)
+        passive_pre = pre and not any_raise_pre
+
+        # Pattern tag — Phil-Gordon-style 1-liner.
+        pattern = ""
+        verdict = ""
+        if bet_flop and bet_turn and bet_river:
+            pattern = "Three-street barrel"
+            verdict = "Top pair-plus or air with strong story"
+        elif any_raise_pre and bet_flop and bet_turn:
+            pattern = "Raised PF, c-bet flop, fired turn"
+            verdict = "Strong overpair / top pair-good kicker / set"
+        elif any_raise_pre and bet_flop and not bet_turn and turn:
+            pattern = "Raised PF, c-bet flop, slowed on turn"
+            verdict = "AK/AQ miss or weakening one-pair hand"
+        elif any_raise_pre and bet_flop and not turn:
+            pattern = "Raised PF, c-bet flop"
+            verdict = "Standard c-bet — could be anything strong"
+        elif cr_turn:
+            pattern = "Check-raised turn"
+            verdict = "Big hand: set, two-pair, or made straight"
+        elif cr_flop:
+            pattern = "Check-raised flop"
+            verdict = "Set, two-pair, or strong combo draw"
+        elif passive_pre and (flop or turn or river) and not any(
+                a['verb'] == 'r' for a in flop + turn + river):
+            pattern = "Limped pre, called postflop"
+            verdict = "Speculative hand that connected; weak pair / draw"
+        elif any_raise_pre and not flop and not turn:
+            pattern = "Raised preflop only"
+            verdict = "Premium pair / big-ace if tight; wide if aggro"
+        elif last_verb(flop or turn or river) == 'f':
+            pattern = "Folded after some action"
+            verdict = "Couldn't continue — missed flop or gave up"
+        elif last_verb(flop or turn or river) == 'k':
+            pattern = "Showing weakness with checks"
+            verdict = "Marginal pair / busted draw"
+        else:
+            return ""
+
+        lines = [f"BETTING PATTERN: {pattern}",
+                 f"LIKELY HOLDING:  {verdict}"]
+
+        # Possible outs annotation — only if we're on flop/turn and the
+        # board has at least 3 cards. Picks the standard categories of
+        # outs that fit a player with strong betting (flush draw if 2
+        # of a suit on board, straight draws around the highest board
+        # card, set if board paired).
+        if board and 3 <= len(board) <= 4 and current_street != "River":
+            outs_lines = self._guess_player_outs(board, pattern)
+            if outs_lines:
+                lines.append("POSSIBLE OUTS:  " + outs_lines)
+
+        return "\n".join(lines)
+
+    def _guess_player_outs(self, board, pattern):
+        """Suggest the kinds of outs an aggressively-betting opponent
+        might be drawing to, given the board texture. Coarse and
+        heuristic — meant as a thinking aid, not a precise estimate."""
+        board_strs = [str(c) for c in board]
+        suits = [c[1] for c in board_strs]
+        ranks = [c[0] for c in board_strs]
+        suit_count = {s: suits.count(s) for s in set(suits)}
+        rank_count = {r: ranks.count(r) for r in set(ranks)}
+        tags = []
+        # Flush draw — 2 of a suit on board, 4 with another of same suit.
+        for s, n in suit_count.items():
+            if n >= 2:
+                tags.append(f"flush draw on {s} (~9 outs if 4-flush)")
+                break
+        # Open-ended straight — three connected board ranks.
+        order = 'A23456789TJQK'  # wheel + broadway
+        idx = sorted({order.index(r) for r in ranks if r in order})
+        for i in range(len(idx) - 2):
+            if idx[i + 2] - idx[i] == 2:
+                tags.append("straight draws around connected board")
+                break
+        # Paired board → trips possible.
+        if any(v >= 2 for v in rank_count.values()):
+            tags.append("trips on paired board")
+        if not tags and pattern.lower().startswith("check-raised"):
+            tags.append("set or two-pair (massive hand)")
+        return "; ".join(tags) if tags else ""
 
     def _classify_betting_spike(self, player_name: str,
                                   action_history: list) -> str | None:
@@ -3387,7 +3757,7 @@ class TheoryOfMindPanel(QWidget):
                 results.append(f"  {player.name}: {hand_notation} NOT IN RANGE (weight={weight:.1%})")
         return results
 
-    def update_analysis(self, players, street, board, hero_hand, action_history, pot=None, current_bet=0, hero_bet=0, hero_position='MP', bb_amount=2):
+    def update_analysis(self, players, street, board, hero_hand, action_history, pot=None, current_bet=0, hero_bet=0, hero_position='MP', bb_amount=2, street_actions=None):
         """Update all bot tabs with current analysis."""
         all_ranges = {}
         self.hero_position = hero_position  # Store for use in advice
@@ -3556,6 +3926,50 @@ class TheoryOfMindPanel(QWidget):
                         new_weight = range_dict[hand] * range_mult
                         range_dict[hand] = max(0.25, min(1.0, new_weight))  # Min 25% for visibility
 
+            # Session-calibrated looseness: compare THIS player's actual
+            # session VPIP against the nominal VPIP for their declared
+            # style. A "tight" bot who's been seeing 60% of flops gets
+            # a widened prior; an "aggressive" bot who's folded most
+            # of their hands gets a tighter prior. The grid shifts
+            # gradually as more samples accumulate, so the first few
+            # hands don't whipsaw the display.
+            win = getattr(self, '_owner_window', None)
+            nominal_vpip = {
+                'tight': 0.15, 'optimal': 0.22,
+                'aggressive': 0.30, 'loose': 0.45,
+            }
+            if (win is not None
+                    and hasattr(win, '_player_169_history')
+                    and player.style != 'human'):
+                hist = win._player_169_history.get(player.name, {})
+                seen = sum(c.get('seen', 0) for c in hist.values())
+                played = sum(c.get('played', 0) for c in hist.values())
+                raised = sum(c.get('raised', 0) for c in hist.values())
+                # Skip until we have enough samples to be meaningful.
+                if seen >= 6:
+                    actual_vpip = played / seen
+                    nv = nominal_vpip.get(player.style, 0.22)
+                    # Damp the ratio so 1 outlier hand doesn't blow up
+                    # the display. Equivalent to a Bayesian prior with
+                    # ~10 nominal-style observations.
+                    smoothed = ((played + nv * 10)
+                                / (seen + 10))
+                    ratio = smoothed / nv
+                    # Apply only when the deviation is sizable.
+                    if abs(ratio - 1.0) >= 0.15:
+                        for hand in range_dict:
+                            w = range_dict[hand]
+                            if w > 0:
+                                range_dict[hand] = max(0.15,
+                                                       min(1.0, w * ratio))
+                        actual_pfr = raised / seen if seen else 0
+                        explanation += (
+                            f"\n\n[Session calibration: "
+                            f"VPIP {actual_vpip*100:.0f}% vs nominal "
+                            f"{nv*100:.0f}% · PFR {actual_pfr*100:.0f}% "
+                            f"· n={seen} → range scale ×{ratio:.2f}]"
+                        )
+
             # Aggression-aware tightening: count raises and bets THIS player
             # has made and squeeze the range toward the top-left (premium
             # hands). Tight bots squeeze HARDER per aggressive action than
@@ -3661,6 +4075,15 @@ class TheoryOfMindPanel(QWidget):
 
             # Always store final range for accuracy tracking (even folded players)
             self.final_range_estimates[player.name] = range_dict
+
+            # Prepend the betting-pattern READ block so the user sees
+            # at a glance what this opponent's actions suggest (c-bet,
+            # turn barrel, check-raise, etc.) plus a guess at what
+            # outs / made hands could justify that line.
+            read_block = self._infer_player_read(
+                player.name, street_actions or {}, board, street)
+            if read_block:
+                explanation = read_block + "\n\n" + explanation
 
             # Update tab (keep grid visible even for folded players)
             if player.name in self.bot_tabs:
@@ -8200,6 +8623,10 @@ class PokerWindow(QMainWindow):
             hero_bet=hero.bet_in_round,  # Pass hero's current bet
             hero_position=hero_position,  # Pass hero's position
             bb_amount=_bb,
+            # Per-street structured actions for the inferred-read engine
+            # on each opponent tab.
+            street_actions=dict(self.hand_history.get(
+                'street_actions', {}) or {}),
         )
 
         # Multiplayer: when hosting, push personalized advice to each client
