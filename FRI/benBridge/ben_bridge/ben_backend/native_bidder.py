@@ -1435,6 +1435,12 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
                 return bid(4, other_major, why=f"Smolen accept: 3+ {other_major.to_char()}")
             return bid(3, Suit.NOTRUMP, why="Smolen no fit")
 
+    # Weak 2♥/2♠ opener — partner's 2NT inquiry. Use Ogust matrix if
+    # the spec flags it, otherwise feature-showing.
+    if op.level == 2 and op.suit in (Suit.HEARTS, Suit.SPADES) \
+            and p_last.level == 2 and p_last.suit == Suit.NOTRUMP:
+        return _weak_two_2nt_rebid(state, e, op, system)
+
     # 1m / 1M opening — opener's rebid by partner's response
     if op.level == 1 and op.suit != Suit.NOTRUMP:
         return _opener_suit_rebid(state, e, op, p_last, system)
@@ -1451,6 +1457,63 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
         return bid(3, Suit.NOTRUMP, why="25+ balanced rebid")
 
     return passb()
+
+
+def _weak_two_2nt_rebid(state, e: HandEval, op: Bid, system) -> Bid:
+    """Weak-2 opener's rebid after partner's 2NT inquiry.
+
+    Q-Plus systems pick one of two conventions:
+
+      * Ogust (`A-2MA-2NT.Ogust-5-A`, Precision 90M): 4-step matrix
+        encoding (hand strength, suit strength).
+            3♣ = bad hand (6-8 HCP), bad suit (Q-high or worse)
+            3♦ = bad hand, good suit (AK or AQJ headed)
+            3♥ = good hand (9-11 HCP), bad suit
+            3♠ = good hand, good suit
+            3NT = AKQ solid in the bid suit
+        (Q-Plus's "5-A" variant uses 3 of the major as one of the
+        codes; we collapse to 3♣/3♦/3♥/3♠/3NT for legibility.)
+      * Feature-showing (SAYC `A-2MA-2NT.feature-showing`):
+        3-of-a-side-suit with an A or K outside, rebid the major
+        with a minimum and no feature.
+    """
+    hcp = e.hcp
+    suit = op.suit
+    # Suit-quality score: 4 if AKQ/AKJ-headed, 2 for AQ/KQ/KJ-headed,
+    # 0 otherwise. Real Ogust grades on the suit's playing strength.
+    suit_hcp = e.suit_hcp.get(suit, 0)
+    good_suit = suit_hcp >= 6  # AK = 7, AQ = 6, KQ = 5 → use >= 6 as gate.
+    solid_aks = suit_hcp >= 9  # AKQ = 9
+
+    if system.has("A-2MA-2NT.Ogust-5-A"):
+        if solid_aks:
+            return bid(3, Suit.NOTRUMP, alert=True,
+                       why=f"Ogust: AKQ solid in {suit.to_char()}")
+        if hcp <= 8 and not good_suit:
+            return bid(3, Suit.CLUBS, alert=True,
+                       why="Ogust: bad hand, bad suit (6-8 HCP)")
+        if hcp <= 8 and good_suit:
+            return bid(3, Suit.DIAMONDS, alert=True,
+                       why="Ogust: bad hand, good suit (6-8 HCP)")
+        if hcp >= 9 and not good_suit:
+            return bid(3, Suit.HEARTS, alert=True,
+                       why="Ogust: good hand, bad suit (9-11 HCP)")
+        return bid(3, Suit.SPADES, alert=True,
+                   why="Ogust: good hand, good suit (9-11 HCP)")
+
+    # Feature-showing (SAYC default).
+    if hcp >= 9:
+        # Look for an outside Ax / Kxx feature to advertise.
+        for side in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
+            if side == suit:
+                continue
+            sh = e.suit_hcp.get(side, 0)
+            sl = e.suit_lengths.get(side, 0)
+            if (sh >= 4 and sl >= 1) or (sh >= 3 and sl >= 2):  # Ax or Kxx
+                return bid(3, side, alert=True,
+                           why=f"Feature in {side.to_char()} (Ax/Kxx)")
+    # No feature OR minimum → rebid the major.
+    return bid(3, suit, why=f"No feature / minimum, rebid {suit.to_char()}")
 
 
 def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
