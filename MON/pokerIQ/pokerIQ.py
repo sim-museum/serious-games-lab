@@ -2205,11 +2205,10 @@ class MetricBar(QWidget):
         self._tick = None          # threshold value, or None
         self._color = QColor("#0af")
         self._dim = False
-        # Shorter rows so the whole dashboard takes ~45% less vertical
-        # space, leaving room for the tabs (and the 13×13 range grid
-        # inside them) to take ~3/4 of the screen.
-        self.setMinimumHeight(20)
-        self.setMaximumHeight(22)
+        # Bars sit in the right-hand dashboard column. Comfortable
+        # row height for label + value text without wasting space.
+        self.setMinimumHeight(26)
+        self.setMaximumHeight(30)
         self.setSizePolicy(QSizePolicy.Policy.Expanding,
                            QSizePolicy.Policy.Fixed)
 
@@ -2235,11 +2234,14 @@ class MetricBar(QWidget):
         w = self.width()
         h = self.height()
 
-        label_w = 180
+        # Label / bar / value-text columns. Narrower than before so
+        # the bar still has visible width inside the right-hand
+        # column (which is ~440-560 px wide).
+        label_w = 150
         value_w = 100
         bar_x = label_w
         bar_w = max(0, w - label_w - value_w - 8)
-        bar_h = max(10, h - 6)
+        bar_h = max(12, h - 8)
         bar_y = (h - bar_h) // 2
 
         # Label (left)
@@ -2400,6 +2402,10 @@ class MetricDashboard(QWidget):
         self.nash_bar.setToolTip(TIPS['nash'])
         v.addWidget(self.nash_bar)
         self.nash_bar.setVisible(False)
+        # Bars cluster at the top of the right column with empty space
+        # below so they don't stretch oddly when the column is taller
+        # than the bar stack.
+        v.addStretch(1)
         self.setStyleSheet(
             "MetricDashboard { background: #181818;"
             " border: 1px solid #333; border-radius: 6px; }"
@@ -2651,19 +2657,6 @@ class TheoryOfMindPanel(QWidget):
         outs_row.addStretch()
         layout.addLayout(outs_row)
 
-        # Bar-chart dashboard — glanceable visualisation of the same
-        # numbers the text strip above shows, plus SPR, commitment%,
-        # outs, reverse-implied risk, and the Nash push gauge when
-        # the hero is short-stacked. Capped at ~half the screen width
-        # so the tabs below can claim more vertical real estate.
-        dash_row = QHBoxLayout()
-        dash_row.setContentsMargins(0, 0, 0, 0)
-        self.dashboard = MetricDashboard()
-        self.dashboard.setMaximumWidth(720)
-        dash_row.addWidget(self.dashboard, stretch=0)
-        dash_row.addStretch(1)
-        layout.addLayout(dash_row)
-
         # Row 2: Range mode selector and board texture
         mode_row = QHBoxLayout()
 
@@ -2717,7 +2710,25 @@ class TheoryOfMindPanel(QWidget):
         self.tabs.setMinimumHeight(600)
         self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding,
                                 QSizePolicy.Policy.Expanding)
-        layout.addWidget(self.tabs, stretch=5)
+
+        # Side-by-side: tabs occupy the left (≈ 2/3 width), dashboard
+        # the right (≈ 1/3 width). Both extend vertically all the way
+        # down to the action buttons. The right column is sized to be
+        # comfortable for the bar labels + value text without wasting
+        # space.
+        main_split = QHBoxLayout()
+        main_split.setContentsMargins(0, 0, 0, 0)
+        main_split.setSpacing(10)
+        main_split.addWidget(self.tabs, stretch=3)
+
+        self.dashboard = MetricDashboard()
+        self.dashboard.setMinimumWidth(440)
+        self.dashboard.setMaximumWidth(560)
+        self.dashboard.setSizePolicy(QSizePolicy.Policy.Fixed,
+                                     QSizePolicy.Policy.Expanding)
+        main_split.addWidget(self.dashboard, stretch=0)
+
+        layout.addLayout(main_split, stretch=5)
 
         self.bot_tabs = {}  # player_name -> TheoryOfMindTab
 
