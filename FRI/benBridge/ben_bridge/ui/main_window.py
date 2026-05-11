@@ -1440,8 +1440,8 @@ class MainWindow(QMainWindow):
                 match_id=str(uuid.uuid4()),
                 num_boards=1,
                 current_board=board_num,
-                ns_bidding_system=self.config_manager.config.bidding_system_ns,
-                ew_bidding_system=self.config_manager.config.bidding_system_ew,
+                ns_bidding_system=self._current_pair_systems()[0],
+                ew_bidding_system=self._current_pair_systems()[1],
             )
             self.match_controller = TeamsMatchController(self.engine, self.teams_match)
 
@@ -1511,12 +1511,13 @@ For more information, see the README file."""
         start_num = settings.get('start_number', 1)
 
         # Create teams match
+        ns_sys_name, ew_sys_name = self._current_pair_systems()
         self.teams_match = BenTeamsMatch(
             match_id=str(uuid.uuid4()),
             num_boards=settings.get('num_boards', 16),
             current_board=start_num,
-            ns_bidding_system=self.config_manager.config.bidding_system_ns,
-            ew_bidding_system=self.config_manager.config.bidding_system_ew,
+            ns_bidding_system=ns_sys_name,
+            ew_bidding_system=ew_sys_name,
         )
 
         # Create match controller
@@ -4243,6 +4244,29 @@ For more information, see the README file."""
     BLUNDER_TRICK_THRESHOLD = 1.0   # ≥1 trick loss = blunder
     BLUNDER_MC_SAMPLES = 15         # MC samples per legal card
 
+    @staticmethod
+    def _current_pair_systems() -> tuple:
+        """Return ``(ns_system_name, ew_system_name)`` for the currently
+        configured bidder. Per-pair override wins; falls back to the
+        shared native_bidding_system, then to SAYC.
+
+        Used by the BenBoardRun / BenTeamsMatch construction sites so
+        a freshly-recorded deal is stamped with the real system the
+        bots played, not the legacy "BEN-NN" placeholder default.
+        """
+        try:
+            from ben_backend.config import get_config_manager
+            prefs = get_config_manager().config.preferences
+            default = (getattr(prefs, 'native_bidding_system', '')
+                       or 'SAYC') or 'SAYC'
+            ns = (getattr(prefs, 'ns_bidding_system', '')
+                  or default)
+            ew = (getattr(prefs, 'ew_bidding_system', '')
+                  or default)
+            return ns, ew
+        except Exception:
+            return 'SAYC', 'SAYC'
+
     def _maybe_warn_card_blunder(self, seat: 'Seat', card: 'Card') -> bool:
         """Cardplay blunder check. Runs DDS over Monte-Carlo samples
         of the hidden hands, scores every legal card by average
@@ -5062,7 +5086,15 @@ For more information, see the README file."""
             except Exception:
                 pavlicek_id = ""
 
-            # Create a BenBoardRun for replay from the score table
+            # Create a BenBoardRun for replay from the score table.
+            # Stamp it with the system names that were actually in
+            # use at the time — pulled from preferences (per-pair
+            # override, or native_bidding_system, or last-resort
+            # SAYC). Without this the run defaulted to "BEN-NN",
+            # mislabelling every deal as having been played by the
+            # legacy neural net even when the native rule-based
+            # bidder produced the auction.
+            ns_sys_name, ew_sys_name = self._current_pair_systems()
             from ben_backend.models import BenBoardRun, BenTable
             board_run = BenBoardRun(
                 table=BenTable.OPEN,
@@ -5076,6 +5108,8 @@ For more information, see the README file."""
                 ns_score=ns_score,
                 ew_score=ew_score,
                 played=True,
+                ns_bidding_system=ns_sys_name,
+                ew_bidding_system=ew_sys_name,
             )
 
             result = BoardResult(

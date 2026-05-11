@@ -653,8 +653,13 @@ class BenBoardRun:
     ns_score: int = 0
     ew_score: int = 0
     played: bool = False
-    ns_bidding_system: str = "BEN-NN"
-    ew_bidding_system: str = "BEN-NN"
+    # Blank means "unrecorded" — the bidding-log header renders that
+    # as "—" so the user immediately sees the metadata is missing
+    # instead of being told the deal was played by "BEN-NN" (the
+    # legacy neural net) when it was actually the native rule-based
+    # bidder running e.g. Precision90M.
+    ns_bidding_system: str = ""
+    ew_bidding_system: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize for network transport (host → guest closed-room sync)."""
@@ -705,8 +710,8 @@ class BenBoardRun:
             ns_score=data.get("ns_score", 0),
             ew_score=data.get("ew_score", 0),
             played=data.get("played", False),
-            ns_bidding_system=data.get("ns_bidding_system", "BEN-NN"),
-            ew_bidding_system=data.get("ew_bidding_system", "BEN-NN"),
+            ns_bidding_system=data.get("ns_bidding_system", ""),
+            ew_bidding_system=data.get("ew_bidding_system", ""),
         )
 
 
@@ -738,8 +743,11 @@ class BenTeamsMatch:
     ew_team_name: str = "E/W Team"
     current_board: int = 1
     num_boards: int = 16
-    ns_bidding_system: str = "BEN-NN"
-    ew_bidding_system: str = "BEN-NN"
+    # Blank means "unrecorded"; the construction sites in main_window
+    # and match_controller now feed the real per-pair system names
+    # from preferences rather than this legacy "BEN-NN" placeholder.
+    ns_bidding_system: str = ""
+    ew_bidding_system: str = ""
 
     def get_imp_swing(self, board_num: int) -> int:
         """Calculate IMP swing for a board (positive = human did better).
