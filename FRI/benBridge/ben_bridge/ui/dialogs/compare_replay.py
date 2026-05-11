@@ -587,16 +587,37 @@ class CompareReplayDialog(QDialog):
     def _on_show_bidding_logs(self):
         """Pop the auctions into their own top-level window."""
         existing = self._bidding_dialog
-        if existing is not None and existing.isVisible():
-            existing.raise_()
-            existing.activateWindow()
-            return
+        # The bidding-log dialog uses WA_DeleteOnClose (via
+        # make_detachable), so after the user closes it the Python
+        # wrapper outlives the underlying C++ widget. Calling
+        # isVisible() on a dead wrapper raises RuntimeError
+        # ("wrapped C/C++ object of type BiddingLogDialog has been
+        # deleted"), which is exactly the crash the user just hit
+        # on a second click. Treat that error as "stale, drop it
+        # and spawn a fresh dialog".
+        still_visible = False
+        if existing is not None:
+            try:
+                still_visible = existing.isVisible()
+            except RuntimeError:
+                self._bidding_dialog = None
+                existing = None
+        if still_visible and existing is not None:
+            try:
+                existing.raise_()
+                existing.activateWindow()
+                return
+            except RuntimeError:
+                self._bidding_dialog = None
         self._bidding_dialog = BiddingLogDialog(
             self.left_run, self.right_run,
             self._left_label, self._right_label, self,
         )
         self._bidding_dialog.show()
-        self._bidding_dialog.raise_()
+        try:
+            self._bidding_dialog.raise_()
+        except RuntimeError:
+            pass
 
     # ------------------------------------------------------------------
     # Navigation
