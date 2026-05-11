@@ -1387,6 +1387,35 @@ def _precision_1c_rebid(state, e: HandEval, p_last: Bid, system=None) -> Bid:
             return bid(6, Suit.NOTRUMP, why="Precision 1C-3NT: slam values")
         return passb()
 
+    # Kokish continuation: after 1C-1D-2H-2S relay, opener now clarifies.
+    # By the time we land here the auction history looks like:
+    #   my_bids   = [1C, 2H]   (mine, in order)
+    #   partner_bids = [1D, 2S]
+    # so the relay-confirmation rebid happens when p_last is 2S AND
+    # we already bid 2H AND Kokish is in force.
+    if (kokish and p_last.level == 2 and p_last.suit == Suit.SPADES
+            and any(b.level == 2 and b.suit == Suit.HEARTS
+                    for b in state.my_bids)
+            and any(b.level == 1 and b.suit == Suit.DIAMONDS
+                    for b in state.partner_bids)):
+        # 22-23 balanced arm → 2NT.
+        if e.is_balanced and 22 <= hcp <= 23:
+            return bid(2, Suit.NOTRUMP, alert=True,
+                       why="Kokish clarification: 22-23 balanced "
+                           "(2NT shows it wasn't real hearts)")
+        # Real-hearts arm (16-19 unbal). With 18+ HCP and an outside
+        # A/K feature, bid 3-of-side-suit showing the feature;
+        # otherwise 3♥ as a minimum (16-17).
+        if e.suit_lengths[Suit.HEARTS] >= 5 and 16 <= hcp <= 19:
+            if hcp >= 18:
+                for side in (Suit.SPADES, Suit.DIAMONDS, Suit.CLUBS):
+                    if e.suit_hcp.get(side, 0) >= 3 and e.suit_lengths.get(side, 0) >= 2:
+                        return bid(3, side, alert=True,
+                                   why=f"Kokish: real hearts (18-19) with "
+                                       f"{side.to_char()} feature")
+            return bid(3, Suit.HEARTS,
+                       why="Kokish: real hearts, minimum (16-17)")
+
     return passb(why="Precision 1C: no clear rebid")
 
 
@@ -1579,6 +1608,25 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
             if e.hcp <= 14:
                 return passb()
             if 15 <= e.hcp <= 17:
+                # Trial bid (`G-trial-bid.long-suit`): instead of a
+                # generic 3M game try, bid 3 of a side suit where we
+                # need help (4+ cards, ≤ 1 honor). Partner accepts
+                # with cover (A, K, or shortness); declines otherwise.
+                # The bid must stay below 3 of the trump suit.
+                if (system.has("G-trial-bid.long-suit")
+                        and op_suit in (Suit.HEARTS, Suit.SPADES)):
+                    for side in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS):
+                        if side == op_suit:
+                            continue
+                        if (e.suit_lengths.get(side, 0) >= 4
+                                and e.suit_hcp.get(side, 0) <= 2):
+                            # Need a help-suit BELOW our trump in rank,
+                            # so the trial bid stays under 3M.
+                            if _BID_RANK[side] < _BID_RANK[op_suit]:
+                                return bid(3, side, alert=True,
+                                           why=f"Trial bid: help in "
+                                               f"{side.to_char()} for "
+                                               f"3{op_suit.to_char()}")
                 return bid(3, op_suit, why="Game try (15-17)")
             return bid(4, op_suit, why="To-play game (18+)")
         if p_last.level == 3:  # limit raise
