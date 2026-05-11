@@ -1005,6 +1005,17 @@ def _respond_to_minor_competitive(state, e: HandEval, system) -> Bid:
     hcp = e.hcp
     overcall_suit = overcall.suit
     if overcall.is_double:
+        # Truscott 2NT (Jordan 2NT in the US): after 1m-(X), 2NT shows
+        # a limit raise with 4+ trump support, freeing 3m for weak
+        # preemptive raises. Q-Plus's `A-1MI-Truscott-2NT` enables this.
+        minor = state.opening_bid.suit
+        if (system.has("A-1MI-Truscott-2NT")
+                and minor in (Suit.CLUBS, Suit.DIAMONDS)
+                and e.suit_lengths.get(minor, 0) >= 4
+                and 10 <= hcp <= 12):
+            return bid(2, Suit.NOTRUMP, alert=True,
+                       why=f"Truscott 2NT: limit raise of "
+                           f"{minor.to_char()} (10-12, 4+ trumps)")
         # XX or new bid; default to redouble with 10+
         if hcp >= 10:
             return Bid(is_redouble=True, explanation="Redouble: 10+ HCP")
@@ -1601,6 +1612,67 @@ def _overcall_over_1nt(state, e: HandEval, system) -> Bid:
     return passb(why="No suitable overcall over 1NT")
 
 
+def _overcall_over_weak_two(state, e: HandEval, system) -> Bid:
+    """Overcalls over the opponents' weak-2 opening.
+
+    Q-Plus's `C-Lebensohl.after-weak-2` enables a slow/fast distinction:
+      * Direct 3-level new-suit overcall = invitational+ (10+ HCP,
+        good 6+ suit).
+      * Double (takeout) = 12+ HCP, shortness in opener's suit.
+      * 2NT = Lebensohl relay to 3♣ (weak with a long suit, will
+        correct to own suit at 3-level).
+      * 3NT direct = 17+ balanced with stopper in opener's suit.
+      * Leaping Michaels (4♣/4♦, `O-Leaping-Michaels`) = strong
+        two-suiter with the bid minor + the unbid major.
+    """
+    op = state.opening_bid
+    hcp = e.hcp
+    op_suit = op.suit
+
+    # 3NT direct — strong balanced with stopper.
+    if 17 <= hcp <= 19 and e.is_balanced and _has_stopper(e, op_suit):
+        return bid(3, Suit.NOTRUMP, why="3NT direct: 17-19 balanced + stopper")
+
+    # Leaping Michaels — 4-level minor cuebid showing minor + other major,
+    # 17+ HCP, 5-5 distribution.
+    if system.has("O-Leaping-Michaels"):
+        for minor in (Suit.CLUBS, Suit.DIAMONDS):
+            for major in (Suit.HEARTS, Suit.SPADES):
+                if major == op_suit:
+                    continue
+                if (e.suit_lengths[minor] >= 5
+                        and e.suit_lengths[major] >= 5
+                        and hcp >= 17):
+                    return bid(4, minor, alert=True,
+                               why=f"Leaping Michaels: 5-5 in "
+                                   f"{minor.to_char()}+{major.to_char()}, 17+")
+
+    # Takeout double — shortness in opener's suit and tolerance for others.
+    unbid = [s for s in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES)
+             if s != op_suit]
+    if hcp >= 12 and e.suit_lengths.get(op_suit, 0) <= 2:
+        if sum(1 for s in unbid if e.suit_lengths.get(s, 0) >= 3) >= 3:
+            return double(why="Takeout double of weak 2")
+
+    # Direct 3-level natural overcall — invitational+, good 6+ suit.
+    for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
+        if s == op_suit:
+            continue
+        if e.suit_lengths[s] >= 6 and 11 <= hcp <= 17 and e.suit_hcp[s] >= 6:
+            level = 2 if _BID_RANK[s] > _BID_RANK[op_suit] else 3
+            return bid(level, s, why=f"{level}{s.to_char()} natural overcall "
+                                     "(weak-2 context, invitational+)")
+
+    # 2NT Lebensohl relay (weak overcall with a long suit).
+    if (system.has("C-Lebensohl.after-weak-2")
+            and 8 <= hcp <= 10
+            and any(e.suit_lengths[s] >= 6 for s in unbid)):
+        return bid(2, Suit.NOTRUMP, alert=True,
+                   why="Lebensohl 2NT relay (weak — will sign off in long suit)")
+
+    return passb(why="No suitable overcall over weak 2")
+
+
 def _overcall(state, e: HandEval, system) -> Bid:
     op = state.opening_bid
     hcp = e.hcp
@@ -1608,6 +1680,14 @@ def _overcall(state, e: HandEval, system) -> Bid:
     # Overcalls over opponent's 1NT — handled separately.
     if op.level == 1 and op.suit == Suit.NOTRUMP:
         return _overcall_over_1nt(state, e, system)
+
+    # Overcalls over opponent's weak 2 — Lebensohl-style flow if the
+    # system enables `C-Lebensohl.after-weak-2`. Direct 3-level overcall
+    # = invitational+; double = takeout values; 2NT = relay (slow path,
+    # which we'll bid as "weak" continuation). Without Lebensohl, we
+    # use a straight takeout-double policy.
+    if op.level == 2 and op.suit in (Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES):
+        return _overcall_over_weak_two(state, e, system)
 
     if not (op.level == 1 and op.suit is not None and op.suit != Suit.NOTRUMP):
         return passb()
@@ -1670,12 +1750,39 @@ def _overcall(state, e: HandEval, system) -> Bid:
     return passb()
 
 
-def _advance_partner_overcall(state, e: HandEval, system: str) -> Bid:
+def _advance_partner_overcall(state, e: HandEval, system) -> Bid:
     p_last = state.partner_bids[-1]
     hcp = e.hcp
 
     # Takeout double advancer: bid the cheapest suit / NT
     if p_last.is_double:
+        # Responsive double: partner doubled, LHO RAISED opener's suit
+        # (i.e., supported), and I have ~6-10 HCP with both unbid suits.
+        # My double asks partner to pick one of those unbid suits.
+        if system.has("C-responsive-double") and state.lho_bids:
+            lho_last = state.lho_bids[-1]
+            opener_suit = state.opening_bid.suit
+            if (not lho_last.is_pass
+                    and not lho_last.is_double
+                    and lho_last.suit == opener_suit
+                    and 6 <= hcp <= 10):
+                # Identify the two unbid suits (anything other than opener's
+                # and partner's last call's strain — but partner doubled, so
+                # both unbid suits are still alive).
+                unbid_pair = [s for s in (Suit.SPADES, Suit.HEARTS,
+                                          Suit.DIAMONDS, Suit.CLUBS)
+                              if s != opener_suit]
+                # Need at least 3-3 in two of those four suits, the typical
+                # responsive-double shape.
+                long_pair = sorted(
+                    unbid_pair,
+                    key=lambda s: e.suit_lengths.get(s, 0),
+                    reverse=True,
+                )
+                if (e.suit_lengths.get(long_pair[0], 0) >= 3
+                        and e.suit_lengths.get(long_pair[1], 0) >= 3):
+                    return double(why="Responsive double — pick a suit")
+
         # 8-10 with 4-card major → bid it at minimum level
         for m in (Suit.SPADES, Suit.HEARTS):
             if e.suit_lengths[m] >= 4:
@@ -1703,6 +1810,23 @@ def _advance_partner_overcall(state, e: HandEval, system: str) -> Bid:
     if p_last.suit is not None and p_last.suit != Suit.NOTRUMP:
         suit = p_last.suit
         fit = e.suit_lengths.get(suit, 0)
+        opener_suit = state.opening_bid.suit
+        # Unassuming cue-bid: with 3+ support and limit-raise+ values
+        # (10+ HCP), cue opener's suit instead of jumping to limit raise.
+        # Lets partner separate constructive from preemptive raises.
+        if (system.has("C-unassuming-cue-bids")
+                and fit >= 3
+                and opener_suit is not None
+                and opener_suit != suit
+                and 10 <= hcp <= 12):
+            # Cuebid at the cheapest available level above the current contract.
+            cue_level = state.last_level
+            if (state.last_suit_bid
+                    and _BID_RANK[opener_suit] <= _BID_RANK[state.last_suit_bid]):
+                cue_level = state.last_level + 1
+            return bid(cue_level, opener_suit, alert=True,
+                       why=f"Unassuming cue-bid: limit raise+ "
+                           f"of {suit.to_char()} (10-12 HCP, 3+ support)")
         if fit >= 3:
             if 6 <= hcp <= 10:
                 return bid(p_last.level + 1, suit, why="Simple raise of overcall")
