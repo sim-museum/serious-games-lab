@@ -102,31 +102,40 @@ class _ReplayPanel(QWidget):
         grid.addWidget(self.south, 2, 1)
 
         center = QFrame()
-        # Pin "Trick N" to the top of the grey box (no centering
-        # whitespace above it) and stretch the empty area BELOW the
-        # cards instead — otherwise QVBoxLayout's default fill behaviour
-        # eats the room a 4-card trick needs and the bottom card gets
-        # clipped.
+        # min-height bumped from 200 → 260 so all four cards of a
+        # trick (4 lines @ ~30 px line-height + the "Trick N" header
+        # + frame margins) fit without clipping. The Qt grid row
+        # only grows to the tallest widget, so the trick frame
+        # itself has to declare enough space for 4 rows or the
+        # bottom card vanishes off the bottom edge.
         center.setStyleSheet(
             "QFrame { background-color: #e8ece8; border: 1px solid #c0c0c0;"
-            " border-radius: 4px; min-width: 180px; min-height: 200px; }"
+            " border-radius: 4px; min-width: 200px; min-height: 260px; }"
         )
         c_layout = QVBoxLayout(center)
-        c_layout.setContentsMargins(8, 2, 8, 6)
+        # 4 px top margin pulls "Trick N" hard against the top of
+        # the grey frame so the previous wasted strip above it is
+        # gone. AlignTop on the layout forces every widget to stack
+        # from the top down — without it the QVBoxLayout default
+        # vertically centres a short stack of widgets in a tall
+        # frame, which was what put "Trick N" mid-frame and pushed
+        # the 4th card off the bottom.
+        c_layout.setContentsMargins(8, 4, 8, 8)
         c_layout.setSpacing(2)
+        c_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         fs = self.TRICK_FS
         self.trick_label = QLabel(
             f'<span style="font-size:{fs}px"><b>Trick 1</b></span>'
         )
-        self.trick_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        c_layout.addWidget(self.trick_label, 0, Qt.AlignmentFlag.AlignTop)
+        self.trick_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        c_layout.addWidget(self.trick_label)
         self.trick_cards_label = QLabel("")
-        self.trick_cards_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.trick_cards_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.trick_cards_label.setTextFormat(Qt.TextFormat.RichText)
-        c_layout.addWidget(self.trick_cards_label, 0, Qt.AlignmentFlag.AlignTop)
-        # Bottom stretch absorbs leftover height so "Trick N" + the
-        # cards stay glued together at the top.
-        c_layout.addStretch(1)
+        # WordWrap on so a long card label can't push the rest off
+        # the bottom of the frame.
+        self.trick_cards_label.setWordWrap(True)
+        c_layout.addWidget(self.trick_cards_label)
         grid.addWidget(center, 1, 1)
 
         layout.addWidget(table_frame, stretch=1)
@@ -606,7 +615,17 @@ class CompareReplayDialog(QDialog):
         self._step = max(0, min(self._step, max_step))
         self.left_panel.set_position(self._step)
         self.right_panel.set_position(self._step)
-        self.position_lbl.setText(f"{self._step}/{max_step}")
+        # Position label: cards-played counter + a trick counter so
+        # the user can see at a glance which trick the comparison is
+        # parked on. Trick number = (step - 1) // 4 + 1 for steps
+        # ≥ 1; at step 0 we're about to play the opening lead, so
+        # show "Trick 1" pre-emptively (more useful than "Trick 0").
+        trick_no = max(1, ((max(self._step, 1) - 1) // 4) + 1)
+        max_tricks = max(1, (max_step + 3) // 4)
+        self.position_lbl.setText(
+            f"Card {self._step}/{max_step} • "
+            f"Trick {trick_no}/{max_tricks}"
+        )
         self.start_btn.setEnabled(self._step > 0)
         self.prev_btn.setEnabled(self._step > 0)
         self.prev_trick_btn.setEnabled(self._step > 0)
