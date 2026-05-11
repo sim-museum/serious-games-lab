@@ -1614,33 +1614,19 @@ class HeroOutsTab(QWidget):
         outer.setSpacing(12)
         outer.setContentsMargins(15, 15, 15, 15)
 
-        # ----- Top: hero hole cards (live widgets) -----
-        title = QLabel("Your hand")
-        title.setFont(QFont('Arial', 18, QFont.Weight.Bold))
-        title.setStyleSheet("color: #fff;")
-        outer.addWidget(title)
-
-        # Cards row: hero hole cards on the left, commitment-math
-        # block stretched to the right of the same row so the empty
-        # space next to the cards earns its keep. We use a single
-        # styled QLabel with rich-text HTML for the math block —
-        # nesting QLabels inside a QFrame caused the inner labels to
-        # render invisibly under some Qt themes (the QFrame's QSS
-        # bled into the children even with explicit overrides).
-        cards_row = QHBoxLayout()
-        cards_row.setSpacing(20)
+        # The hero's hole cards were duplicated here originally; they
+        # already live at the top of the screen ("Your Hand (Button):"
+        # on the card bar), so showing them again wastes vertical
+        # space and pushes the outs grid below the fold. We keep the
+        # _card1/_card2 attributes as hidden, no-op widgets so other
+        # code that calls .set_card() on them still works without
+        # exceptions.
         self._card1 = CardWidget()
         self._card2 = CardWidget()
-        # Pin the 80x112 cards to the TOP of the row so the row's
-        # height isn't capped at the card height — without AlignTop
-        # the commit label (which can be 4-6 lines tall after the
-        # SPR / commitment-ratio / equity block is filled in) got
-        # clipped to ~140 px and only its first line showed.
-        cards_row.addWidget(
-            self._card1, alignment=Qt.AlignmentFlag.AlignTop)
-        cards_row.addWidget(
-            self._card2, alignment=Qt.AlignmentFlag.AlignTop)
-        cards_row.addSpacing(20)
+        self._card1.setVisible(False)
+        self._card2.setVisible(False)
+        cards_row = QHBoxLayout()
+        cards_row.setSpacing(0)
 
         # Stack of QLabels in a QVBoxLayout. Each line carries an
         # explicit minimum height so the QFrame's sizeHint adds up to
@@ -2379,10 +2365,11 @@ class MetricPie(QWidget):
             p.setPen(QPen(QColor("#ffd966"), 4))
             p.drawLine(int(x1), int(y1), int(x2), int(y2))
 
-        # Center value text — scale font with the donut.
-        center_font = p.font()
-        center_font.setPointSize(max(14, int(radius / 2.4)))
-        center_font.setBold(True)
+        # Center value text — explicit Bold weight (some platform font
+        # mappings ignored QFont.setBold(True) on the painter's
+        # inherited font, leaving the % thin).
+        center_font = QFont('Arial', max(14, int(radius / 2.4)),
+                            QFont.Weight.Black)
         p.setFont(center_font)
         p.setPen(QColor("#ffffff" if not self._dim else "#777777"))
         p.drawText(QRectF(cx - radius, cy - radius,
@@ -2392,9 +2379,7 @@ class MetricPie(QWidget):
         # Caption underneath — bigger and word-wrapping so descriptive
         # labels ("Equity vs ranges", "Pot commitment %") render fully
         # over two lines.
-        cap_font = p.font()
-        cap_font.setPointSize(13)
-        cap_font.setBold(True)
+        cap_font = QFont('Arial', 13, QFont.Weight.Bold)
         p.setFont(cap_font)
         p.setPen(QColor("#dddddd" if not self._dim else "#666666"))
         p.drawText(QRectF(2, h - label_h, w - 4, label_h),
