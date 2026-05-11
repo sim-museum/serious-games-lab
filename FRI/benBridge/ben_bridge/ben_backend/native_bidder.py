@@ -331,10 +331,38 @@ def _open_sayc(e: HandEval, system) -> Bid:
         return bid(2, Suit.CLUBS, alert=True,
                    why=f"Strong, artificial, GF unless 2C-2D-2NT ({strong_min}+ HCP)")
 
-    # Notrump openings (balanced)
-    if e.is_balanced or e.is_semi_balanced:
+    # Notrump openings (balanced + extended-shape 1NT in Q-Plus systems).
+    # Q-Plus's `B-1NT-style.{weak,any}-5-{heart,spade}` and
+    # `B-1NT-style.weak-6-minor` flags widen 1NT to include 5-3-3-2 with a
+    # 5-card major and 5-3-3-2 / 6-3-2-2 with a 6-card minor — common in
+    # Precision90 and increasingly mainstream in 2/1. Honour those flags
+    # before falling through to suit openings.
+    five_card_nt_ok = (
+        (system.one_nt_allow_five_card_heart
+         and e.suit_lengths[Suit.HEARTS] == 5
+         and e.distribution == (5, 3, 3, 2))
+        or
+        (system.one_nt_allow_five_card_spade
+         and e.suit_lengths[Suit.SPADES] == 5
+         and e.distribution == (5, 3, 3, 2))
+    )
+    six_card_minor_nt_ok = (
+        system.one_nt_allow_six_card_minor
+        and (e.suit_lengths[Suit.CLUBS] == 6 or e.suit_lengths[Suit.DIAMONDS] == 6)
+        and e.distribution in ((6, 3, 2, 2), (6, 2, 2, 3))
+        and e.suit_lengths[Suit.HEARTS] < 4
+        and e.suit_lengths[Suit.SPADES] < 4
+    )
+    if (e.is_balanced or e.is_semi_balanced
+            or five_card_nt_ok or six_card_minor_nt_ok):
         if nt_min <= hcp <= nt_max:
-            return bid(1, Suit.NOTRUMP, why=f"{nt_min}-{nt_max} balanced")
+            tag = "balanced"
+            if five_card_nt_ok:
+                tag = "5-3-3-2 with 5-card major"
+            elif six_card_minor_nt_ok:
+                tag = "with 6-card minor"
+            return bid(1, Suit.NOTRUMP,
+                       why=f"{nt_min}-{nt_max} {tag}")
         if two_nt_min <= hcp <= two_nt_max:
             return bid(2, Suit.NOTRUMP, why=f"{two_nt_min}-{two_nt_max} balanced")
         # Gambling 3NT: solid 7+ minor, ~25-27 HCP equivalent (system-dependent).
@@ -407,6 +435,21 @@ def _open_precision(e: HandEval, system) -> Bid:
     one_d_min = system.one_diamond_min_hcp
     one_d_max = system.one_diamond_max_hcp
 
+    # Solid-minor 4NT (Q-Plus `B-4NT.solid-minor`, Precision70): a solid
+    # 8+ minor wants 4NT — Blackwood-asks for aces in a self-supporting
+    # suit. Comes before the strong-1♣ check because 1♣ is artificial
+    # and would lose the self-sufficient-minor message.
+    if system.has("B-4NT.solid-minor"):
+        for minor in (Suit.CLUBS, Suit.DIAMONDS):
+            if (e.suit_lengths[minor] >= 8
+                    and e.suit_hcp[minor] >= 9       # AKQ at minimum
+                    and 15 <= hcp <= 22
+                    and e.suit_lengths[Suit.SPADES] <= 3
+                    and e.suit_lengths[Suit.HEARTS] <= 3):
+                return bid(4, Suit.NOTRUMP, alert=True,
+                           why=f"Solid-minor 4NT: 8+ solid "
+                               f"{minor.to_char()}, {hcp} HCP")
+
     # Strong artificial 1C — any shape.
     if hcp >= strong_min:
         return bid(1, Suit.CLUBS, alert=True,
@@ -431,6 +474,8 @@ def _open_precision(e: HandEval, system) -> Bid:
     # Limited 1NT (Q-Plus Precision: 14-16, or 13-15 for the classic 70).
     # `B-1NT-style.weak-6-minor` extends the 1NT shape to 6-3-2-2 with a
     # 6-card minor (not solid) — common in Q-Plus Precision flavours.
+    # `B-1NT-style.{weak,any}-5-{heart,spade}` opens 5-3-3-2 with the
+    # named major (Precision90M/P; off in Precision70).
     weak_six_minor_ok = (
         system.one_nt_allow_six_card_minor
         and tuple(sorted(e.suit_lengths.values(), reverse=True)) == (6, 3, 2, 2)
@@ -438,12 +483,26 @@ def _open_precision(e: HandEval, system) -> Bid:
                 and e.suit_hcp[m] < 7  # not AKQ-solid → still consider 1NT
                 for m in (Suit.CLUBS, Suit.DIAMONDS))
     )
+    five_card_major_nt_ok = (
+        (system.one_nt_allow_five_card_heart
+         and e.suit_lengths[Suit.HEARTS] == 5
+         and e.distribution == (5, 3, 3, 2))
+        or
+        (system.one_nt_allow_five_card_spade
+         and e.suit_lengths[Suit.SPADES] == 5
+         and e.distribution == (5, 3, 3, 2))
+    )
     if nt_min <= hcp <= nt_max and (
-            e.is_balanced or e.is_semi_balanced or weak_six_minor_ok):
+            e.is_balanced or e.is_semi_balanced
+            or weak_six_minor_ok or five_card_major_nt_ok):
+        if five_card_major_nt_ok:
+            shape_tag = "with 5-card major (5-3-3-2)"
+        elif weak_six_minor_ok:
+            shape_tag = "(incl. weak 6-minor)"
+        else:
+            shape_tag = "balanced"
         return bid(1, Suit.NOTRUMP, alert=True,
-                   why=f"Precision: {nt_min}-{nt_max} "
-                       + ("balanced (incl. weak 6-minor)" if weak_six_minor_ok
-                          else "balanced"))
+                   why=f"Precision: {nt_min}-{nt_max} {shape_tag}")
 
     # 2NT — strong balanced not covered by 1NT (rare in Precision).
     if two_nt_min <= hcp <= two_nt_max and (e.is_balanced or e.is_semi_balanced):
@@ -816,22 +875,34 @@ def _respond_to_1nt(e: HandEval, system) -> Bid:
     hcp = e.hcp
     t = _nt_response_thresholds(system)
 
-    # 0-pass_max with no long major → just pass; Stayman with a weak
-    # 4-cM is a separate "garbage Stayman" convention we don't model.
-    if hcp <= t["pass_max"] and not e.five_card_majors:
-        return passb(why=f"0-{t['pass_max']} HCP, no 4cM/5cM → pass 1NT")
-
     has_4S = e.suit_lengths[Suit.SPADES] == 4
     has_4H = e.suit_lengths[Suit.HEARTS] == 4
     has_5S = e.suit_lengths[Suit.SPADES] >= 5
     has_5H = e.suit_lengths[Suit.HEARTS] >= 5
 
+    # Garbage Stayman (Q-Plus `A-1NT-Garbage-Stayman`): with a weak 4-4
+    # in the majors and a short minor, bid 2♣ planning to pass any
+    # response — improves on 1NT in 4-4-x-x shape. Precision70 enables
+    # this; 2/1 / SAYC do not.
+    if (hcp <= t["pass_max"] and has_4S and has_4H
+            and system.has("A-1NT-Garbage-Stayman")):
+        short = min(e.suit_lengths[Suit.CLUBS], e.suit_lengths[Suit.DIAMONDS])
+        if short <= 2:
+            return bid(2, Suit.CLUBS, alert=True,
+                       why="Garbage Stayman: weak 4-4 majors, plan to pass")
+
+    # 0-pass_max with no long major → just pass.
+    if hcp <= t["pass_max"] and not e.five_card_majors:
+        return passb(why=f"0-{t['pass_max']} HCP, no 4cM/5cM → pass 1NT")
+
     # Jacoby transfers (always — every Q-Plus system flips this on)
     if has_5H or has_5S:
         # Texas: 6+ in a major with game values goes straight to game.
-        if system.has("A-1NT-transfer-level-4.Texas") or system.has("A-1NT-transfer-level-4.Texas") is False:
-            # (Texas is in every bundled system; the redundant check
-            # documents intent.)
+        # Both Texas and SA-Texas use 4♦/4♥ as the transfer — the
+        # SA-Texas distinction only matters for opener's responses, not
+        # responder's bid here, so a single gate covers both.
+        if (system.has("A-1NT-transfer-level-4.Texas")
+                or system.has("A-1NT-transfer-level-4.SA-Texas")):
             if e.suit_lengths[Suit.HEARTS] >= 6 and hcp >= t["texas_min"]:
                 return bid(4, Suit.DIAMONDS, alert=True,
                            why=f"Texas: 6+ hearts, {t['texas_min']}+ HCP (GF)")
@@ -842,6 +913,14 @@ def _respond_to_1nt(e: HandEval, system) -> Bid:
         if has_5H:
             return bid(2, Suit.DIAMONDS, alert=True, why="Jacoby transfer to hearts")
         return bid(2, Suit.HEARTS, alert=True, why="Jacoby transfer to spades")
+
+    # 1NT-2♠ → minor-suit transfer to clubs (Q-Plus
+    # `A-1NT-Jacoby-minor.spades-for-clubs`), used in Precision90P.
+    if (hcp <= t["invite_lo"]
+            and e.suit_lengths[Suit.CLUBS] >= 6
+            and system.has("A-1NT-Jacoby-minor.spades-for-clubs")):
+        return bid(2, Suit.SPADES, alert=True,
+                   why="Minor-suit transfer to clubs (6+ ♣)")
 
     # Stayman: 4cM and at least invitational values.
     if hcp >= t["invite_lo"] and (has_4S or has_4H):
@@ -1222,6 +1301,15 @@ def _respond_to_major(state, e: HandEval, system) -> Bid:
             return bid(2, major, why="3-card simple raise")
         if 10 <= hcp <= 12:
             return bid(3, major, why="3-card limit raise")
+        # Truscott 3NT (Q-Plus `A-1MA-Truscott-3NT.always`): 1M-3NT shows
+        # a balanced 13-15 with exactly 3-card support, no shortness —
+        # opener can pass with a flat-15-ish hand or correct to 4M.
+        # Precision90M enables this; SAYC/2/1 do not.
+        if (13 <= hcp <= 15
+                and e.is_balanced
+                and system.has("A-1MA-Truscott-3NT.always")):
+            return bid(3, Suit.NOTRUMP, alert=True,
+                       why="Truscott 3NT: 13-15 balanced, 3-card support")
         # 13+ with 3-card support → 2/1 in a side suit, planning to support later
 
     # No fit → 1NT, 2/1, or 1S over 1H

@@ -169,5 +169,66 @@ class TestSystemCatalog(unittest.TestCase):
         self.assertFalse(p.has("A-artificial-2C.negative-2D"))
 
 
+class TestBidDescriptions(unittest.TestCase):
+    """describe_bid surfaces system-aware meanings for the info window."""
+
+    def setUp(self):
+        from ben_backend.bid_descriptions import describe_bid
+        from ben_backend.models import Bid, Seat, Suit
+        self.describe = describe_bid
+        self.Bid, self.Seat, self.Suit = Bid, Seat, Suit
+
+    def _describe(self, bid, auction, system_name="SAYC"):
+        s = get_system(system_name)
+        return self.describe(bid, auction, self.Seat.SOUTH, self.Seat.NORTH, s)
+
+    def test_stayman_sayc(self):
+        Bid, Suit = self.Bid, self.Suit
+        auction = [Bid(level=1, suit=Suit.NOTRUMP), Bid.make_pass()]
+        _, _, help_, art = self._describe(Bid(level=2, suit=Suit.CLUBS), auction)
+        self.assertIn("Stayman", help_)
+        self.assertTrue(art)
+
+    def test_jacoby_transfer_to_hearts(self):
+        Bid, Suit = self.Bid, self.Suit
+        auction = [Bid(level=1, suit=Suit.NOTRUMP), Bid.make_pass()]
+        _, _, help_, _ = self._describe(Bid(level=2, suit=Suit.DIAMONDS), auction)
+        self.assertIn("transfer to hearts", help_.lower())
+
+    def test_precision_strong_1c(self):
+        Bid, Suit = self.Bid, self.Suit
+        _, _, help_, art = self._describe(
+            Bid(level=1, suit=Suit.CLUBS), [], "Precision90M")
+        self.assertIn("strong artificial 1", help_.lower())
+        self.assertTrue(art)
+
+    def test_acol_one_heart_says_four_plus(self):
+        Bid, Suit = self.Bid, self.Suit
+        _, length, _, _ = self._describe(
+            Bid(level=1, suit=Suit.HEARTS), [], "StandardAcol")
+        self.assertIn("4+", length)
+
+    def test_sayc_one_heart_says_five_plus(self):
+        Bid, Suit = self.Bid, self.Suit
+        _, length, _, _ = self._describe(
+            Bid(level=1, suit=Suit.HEARTS), [], "SAYC")
+        self.assertIn("5+", length)
+
+    def test_strong_2c_sayc_opening(self):
+        Bid, Suit = self.Bid, self.Suit
+        _, _, help_, art = self._describe(
+            Bid(level=2, suit=Suit.CLUBS), [], "SAYC")
+        self.assertIn("strong", help_.lower())
+        self.assertTrue(art)
+
+    def test_2c_in_precision_is_long_clubs(self):
+        Bid, Suit = self.Bid, self.Suit
+        _, length, help_, _ = self._describe(
+            Bid(level=2, suit=Suit.CLUBS), [], "Precision90M")
+        # Precision's 2♣ is limited long-clubs, NOT the strong 2♣.
+        self.assertIn("♣", length)
+        self.assertNotIn("strong", help_.lower())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

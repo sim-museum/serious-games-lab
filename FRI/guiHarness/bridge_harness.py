@@ -30,6 +30,7 @@ from PyQt5.QtWidgets import (
     QGroupBox, QLabel, QLineEdit, QPushButton, QTextEdit, QFileDialog,
     QRadioButton, QButtonGroup, QSpinBox, QMessageBox, QTabWidget,
     QFormLayout, QComboBox, QStatusBar, QSplitter, QCheckBox,
+    QScrollArea,
 )
 
 import pyautogui
@@ -970,25 +971,96 @@ def interpolate_grid(top_left, bottom_right, rows=4, cols=13):
 
 
 class AutomationWorker(QThread):
-    """Run hand-entry mouse automation in a background thread."""
+    """Run hand-entry mouse automation in a background thread.
+
+    Cards are always entered. Dealer / vulnerability are entered too if
+    the caller passes positions for them — those calibration entries are
+    optional and skipped silently when missing.
+    """
     progress = pyqtSignal(str)
     finished = pyqtSignal(bool, str)
 
-    def __init__(self, hands, grid_coords, player_positions, ok_pos, clear_pos):
+    def __init__(self, hands, grid_coords, player_positions, ok_pos, clear_pos,
+                 dealer="", vuln="",
+                 dv_open_btn=None, dealer_positions=None,
+                 vuln_positions=None, dv_ok_btn=None):
         super().__init__()
         self.hands = hands
         self.grid_coords = grid_coords
         self.player_positions = player_positions
         self.ok_pos = ok_pos
         self.clear_pos = clear_pos
+        self.dealer = dealer or ""
+        self.vuln = vuln or ""
+        # "Dealer + vul." button on the Hand Input dialog, and the Ok
+        # button on the popup it spawns. Both must be calibrated for
+        # the dealer/vuln auto-entry to run.
+        self.dv_open_btn = dv_open_btn
+        self.dv_ok_btn = dv_ok_btn
+        # Token → (x, y) maps for the popup's radio buttons.
+        self.dealer_positions = dealer_positions or {}
+        self.vuln_positions = vuln_positions or {}
+
+    def _click(self, pos, settle=0.15):
+        pyautogui.moveTo(*pos, duration=0.2)
+        pyautogui.click()
+        if settle:
+            time.sleep(settle)
+
+    def _enter_dealer_vuln(self):
+        """Open the Dealer & Vulnerability popup, set values, click its Ok.
+
+        Returns (entered, missing) where:
+          entered : list of "key=val" strings actually written.
+          missing : list of "key=val" the caller wanted but couldn't
+                    set because the corresponding calibration is
+                    missing (so the status message can tell the user).
+        """
+        entered, missing = [], []
+        # Skip entirely if neither requested.
+        if not self.dealer and not self.vuln:
+            return entered, missing
+
+        # All-or-nothing precondition: open + ok buttons must both be
+        # captured. Without one of them the popup flow can't complete
+        # safely, so leave the values for the user.
+        if not self.dv_open_btn or not self.dv_ok_btn:
+            if self.dealer:
+                missing.append(f"dealer={self.dealer}")
+            if self.vuln:
+                missing.append(f"vuln={self.vuln}")
+            return entered, missing
+
+        self.progress.emit("Opening Dealer & Vulnerability dialog...")
+        self._click(self.dv_open_btn, settle=0.6)  # popup needs time to appear
+
+        if self.dealer:
+            pos = self.dealer_positions.get(self.dealer)
+            if pos:
+                self.progress.emit(f"Setting dealer = {self.dealer}...")
+                self._click(pos)
+                entered.append(f"dealer={self.dealer}")
+            else:
+                missing.append(f"dealer={self.dealer}")
+
+        if self.vuln:
+            pos = self.vuln_positions.get(self.vuln)
+            if pos:
+                self.progress.emit(f"Setting vulnerability = {self.vuln}...")
+                self._click(pos)
+                entered.append(f"vuln={self.vuln}")
+            else:
+                missing.append(f"vuln={self.vuln}")
+
+        self.progress.emit("Closing Dealer & Vulnerability dialog...")
+        self._click(self.dv_ok_btn, settle=0.4)
+        return entered, missing
 
     def run(self):
         try:
             self.progress.emit("Clicking Clear all...")
             time.sleep(2)
-            pyautogui.moveTo(*self.clear_pos, duration=0.2)
-            pyautogui.click()
-            time.sleep(0.5)
+            self._click(self.clear_pos, settle=0.5)
 
             for p_idx, hand in enumerate(self.hands):
                 name = PLAYER_NAMES[p_idx]
@@ -1008,10 +1080,22 @@ class AutomationWorker(QThread):
                     pyautogui.mouseUp()
                     time.sleep(0.08)
 
+            # Dealer / vulnerability sub-dialog. Runs BEFORE the main Ok
+            # because clicking Ok dismisses the Hand Input dialog along
+            # with the "Dealer + vul." button.
+            entered_meta, missing_meta = self._enter_dealer_vuln()
+
             self.progress.emit("Clicking OK...")
-            pyautogui.moveTo(*self.ok_pos, duration=0.2)
-            pyautogui.click()
-            self.finished.emit(True, "Hand entered successfully.")
+            self._click(self.ok_pos, settle=0)
+
+            msg = "Hand entered successfully."
+            if entered_meta:
+                msg = msg.rstrip(".") + " (" + ", ".join(entered_meta) + ")."
+            if missing_meta:
+                msg += (" Set " + ", ".join(missing_meta) +
+                        " manually in Q-Plus, or capture the missing "
+                        "calibration points in the harness.")
+            self.finished.emit(True, msg)
         except Exception as exc:
             self.finished.emit(False, str(exc))
 
@@ -1027,7 +1111,56 @@ DEFAULT_CALIBRATION = {
     "grid_br": None,
     "clear_btn": None,
     "ok_btn": None,
+    # Optional: dealer + vulnerability flow. Q-Plus's "Hand Input" dialog
+    # has a "Dealer + vul." button that opens a popup with N/E/S/W
+    # dealer radios, none/N-S/E-W/all vulnerability radios, and its own
+    # Ok button. When all 10 entries below are captured, AutomationWorker
+    # clicks "Dealer + vul.", picks the requested dealer + vuln on the
+    # popup, then clicks the popup's Ok — all before pressing the main
+    # Hand Input Ok. Without these captures the worker still enters the
+    # cards but leaves dealer/vuln for the user to set manually.
+    "dealer_vul_btn": None,   # "Dealer + vul." button on Hand Input
+    "dealer_n": None,         # popup: Dealer = North
+    "dealer_e": None,         # popup: Dealer = East
+    "dealer_s": None,         # popup: Dealer = South
+    "dealer_w": None,         # popup: Dealer = West
+    "vuln_none": None,        # popup: Vuln = none
+    "vuln_ns": None,          # popup: Vuln = N/S
+    "vuln_ew": None,          # popup: Vuln = E/W
+    "vuln_all": None,         # popup: Vuln = all
+    "dv_ok_btn": None,        # Ok button on the Dealer & Vulnerability popup
 }
+
+
+# Standard tokens we accept for dealer / vulnerability across CLI,
+# PBN files, and BDL files.
+DEALER_TOKENS = {"N", "E", "S", "W"}
+VULN_TOKENS   = {"None", "NS", "EW", "Both"}
+
+
+def normalize_dealer(s: str) -> str:
+    """Map any dealer spelling to a canonical 'N' / 'E' / 'S' / 'W'."""
+    if not s:
+        return ""
+    c = s.strip().upper()[:1]
+    return c if c in DEALER_TOKENS else ""
+
+
+def normalize_vuln(s: str) -> str:
+    """Map any vulnerability spelling to canonical 'None' / 'NS' / 'EW' / 'Both'."""
+    if not s:
+        return ""
+    v = s.strip().replace("-", "").replace(" ", "")
+    upper = v.upper()
+    if upper in ("NONE", "NIL", "-"):
+        return "None"
+    if upper in ("NS", "N/S"):
+        return "NS"
+    if upper in ("EW", "E/W"):
+        return "EW"
+    if upper in ("BOTH", "ALL", "B"):
+        return "Both"
+    return ""
 
 
 def load_calibration():
@@ -1044,7 +1177,12 @@ def save_calibration(data):
 
 
 def calibration_to_positions(cal):
-    """Derive grid_coords and player_positions from calibration data."""
+    """Derive grid_coords and player_positions from calibration data.
+
+    The first six fields (N/W checkboxes, grid corners, Clear/OK) are
+    required. Dealer / vulnerability positions are optional — when
+    captured, AutomationWorker reads them straight off `cal`.
+    """
     n = cal.get("north_chk")
     w = cal.get("west_chk")
     tl = cal.get("grid_tl")
@@ -1063,6 +1201,36 @@ def calibration_to_positions(cal):
     }
     grid_coords = interpolate_grid(tl, br)
     return grid_coords, player_positions, tuple(ok), tuple(clr)
+
+
+def dealer_vuln_positions(cal):
+    """Return (open_btn, dealer_positions, vuln_positions, popup_ok) for
+    the optional dealer + vulnerability entry flow.
+
+    `open_btn` and `popup_ok` are (x, y) tuples (or None). The two dicts
+    are keyed by canonical token ('N'/'NS'/etc.). AutomationWorker treats
+    the whole flow as "all-or-nothing": if any of these is missing the
+    dealer/vuln step is skipped and the user must set them by hand.
+    """
+    def _pt(key):
+        v = cal.get(key)
+        return tuple(v) if v else None
+
+    open_btn = _pt("dealer_vul_btn")
+    popup_ok = _pt("dv_ok_btn")
+    dealer = {
+        "N": _pt("dealer_n"),
+        "E": _pt("dealer_e"),
+        "S": _pt("dealer_s"),
+        "W": _pt("dealer_w"),
+    }
+    vuln = {
+        "None": _pt("vuln_none"),
+        "NS":   _pt("vuln_ns"),
+        "EW":   _pt("vuln_ew"),
+        "Both": _pt("vuln_all"),
+    }
+    return open_btn, dealer, vuln, popup_ok
 
 
 # ---------------------------------------------------------------------------
@@ -1103,13 +1271,23 @@ class BridgeHarness(QMainWindow):
     def __init__(self, launch_qplus: bool = True):
         super().__init__()
         self.setWindowTitle("Bridge Harness \u2014 Q-Plus Bridge")
-        self.setMinimumSize(780, 700)
+        # 16 calibration rows + the source / display panels make the
+        # Hand Entry tab tall — start the window comfortably tall so
+        # the capture buttons aren't squished together.
+        self.setMinimumSize(900, 900)
+        self.resize(1000, 1000)
 
         self.hands = None          # [N, E, S, W] card lists
         self.calibration = load_calibration()
         self._worker = None
         self._source_pbn_path = None  # for workflow
         self._qplus_proc = None       # Popen handle for the Q-Plus child
+        # Dealer / vulnerability for the loaded deal (normalised tokens).
+        # ben_bridge passes these on --dealer / --vuln so the closed-room
+        # entry in Q-Plus matches the open-room conditions. Empty string
+        # means "no value yet — user enters manually".
+        self.dealer = ""           # one of "" / "N" / "E" / "S" / "W"
+        self.vulnerability = ""    # one of "" / "None" / "NS" / "EW" / "Both"
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_entry_tab(), "Hand Entry")
@@ -1213,6 +1391,12 @@ class BridgeHarness(QMainWindow):
                     self._show_deal(self.hands, self.wf_hand_display, self.wf_base72)
                     self._show_deal(self.hands, self.hand_display, self.base72_display)
                     self._update_info()
+                    # Pull dealer/vuln out of the source so the harness
+                    # can write them into Q-Plus matching the original.
+                    self.set_dealer_vuln(
+                        boards[0].get("Dealer", ""),
+                        boards[0].get("Vulnerable", ""),
+                    )
         except Exception as exc:
             self.statusBar().showMessage(f"Could not parse source: {exc}")
 
@@ -1227,6 +1411,39 @@ class BridgeHarness(QMainWindow):
         # Switch to Comparison Workflow tab
         self.tabs.setCurrentIndex(1)
         self.statusBar().showMessage(f"Source loaded: {Path(pbn_path).name}")
+
+    def set_dealer_vuln(self, dealer: str, vuln: str):
+        """Set the dealer + vulnerability that the next "Enter Deal"
+        action should write into Q-Plus.
+
+        Tokens are normalised; bad inputs leave the previous value in
+        place. The status bar and the dealer/vuln display widget (if
+        the entry tab is built) both reflect the new state.
+        """
+        d = normalize_dealer(dealer) if dealer else ""
+        v = normalize_vuln(vuln) if vuln else ""
+        if d:
+            self.dealer = d
+        if v:
+            self.vulnerability = v
+        self._update_dealer_vuln_display()
+        parts = []
+        if self.dealer:
+            parts.append(f"dealer = {self.dealer}")
+        if self.vulnerability:
+            parts.append(f"vuln = {self.vulnerability}")
+        if parts:
+            self.statusBar().showMessage(
+                "From ben_bridge: " + ", ".join(parts))
+
+    def _update_dealer_vuln_display(self):
+        """Refresh the on-screen dealer/vulnerability summary, if built."""
+        lbl = getattr(self, "dv_display", None)
+        if lbl is None:
+            return
+        d = self.dealer or "(not set)"
+        v = self.vulnerability or "(not set)"
+        lbl.setText(f"Dealer: {d}    Vulnerability: {v}")
 
     def load_base72(self, code: str):
         """Pre-load a deal by base-72 code into the Hand Entry tab.
@@ -1280,6 +1497,16 @@ class BridgeHarness(QMainWindow):
         self.info_label.setFont(QFont("Monospace", 10))
         left.addWidget(self.info_label)
 
+        # Dealer / Vulnerability summary — populated from --dealer / --vuln
+        # passed by ben_bridge, or by manually parsing the source file.
+        # Shown so the user can verify what the harness will set in Q-Plus.
+        self.dv_display = QLabel("Dealer: (not set)    Vulnerability: (not set)")
+        self.dv_display.setFont(QFont("Monospace", 11))
+        self.dv_display.setStyleSheet(
+            "background-color: #f0f4ff; border: 1px solid #889;"
+            " padding: 4px; font-weight: bold;")
+        left.addWidget(self.dv_display)
+
         layout.addLayout(left, stretch=1)
 
         # Right: controls
@@ -1330,27 +1557,70 @@ class BridgeHarness(QMainWindow):
 
         right.addWidget(src_group)
 
-        # Calibration
-        cal_group = QGroupBox("Q-Plus Pickboard Calibration")
-        cal_layout = QFormLayout(cal_group)
+        # Calibration — 16 capture rows, broken into "core pickboard" and
+        # "dealer/vuln popup" sections so the user can tell which set is
+        # required vs optional. Wrapped in a scroll area so the right
+        # panel stays usable even when the window is shrunk.
+        cal_group = QGroupBox("Q-Plus Calibration")
+        cal_outer = QVBoxLayout(cal_group)
+
+        cal_scroll = QScrollArea()
+        cal_scroll.setWidgetResizable(True)
+        cal_scroll.setFrameStyle(0)
+        cal_scroll.setMinimumHeight(280)
+        cal_inner = QWidget()
+        cal_layout = QVBoxLayout(cal_inner)
+        cal_layout.setSpacing(6)
+        cal_layout.setContentsMargins(2, 2, 2, 2)
+
         self._cap_buttons = {}
-        for key, label in [
-            ("north_chk", "North checkbox"),
-            ("west_chk", "West checkbox"),
-            ("grid_tl", "Ace of Spades (top-left)"),
-            ("grid_br", "Two of Clubs (bottom-right)"),
-            ("clear_btn", "Clear all button"),
-            ("ok_btn", "OK button"),
-        ]:
-            btn = CaptureButton(label)
-            btn.captured.connect(lambda pos, k=key: self._on_capture(k, pos))
-            coord_label = QLabel(self._fmt_coord(self.calibration.get(key)))
-            self._cap_buttons[key] = (btn, coord_label)
-            row = QHBoxLayout()
-            row.addWidget(btn)
-            row.addWidget(coord_label)
-            cal_layout.addRow(row)
-        right.addWidget(cal_group)
+        sections = [
+            ("Pickboard dialog (required)", [
+                ("north_chk", "North checkbox"),
+                ("west_chk", "West checkbox"),
+                ("grid_tl", "Ace of Spades (top-left)"),
+                ("grid_br", "Two of Clubs (bottom-right)"),
+                ("clear_btn", "Clear all button"),
+                ("ok_btn", "OK button"),
+            ]),
+            ("Dealer + Vulnerability popup (optional)", [
+                ("dealer_vul_btn", "'Dealer + vul.' button"),
+                ("dealer_n", "Dealer popup: North"),
+                ("dealer_e", "Dealer popup: East"),
+                ("dealer_s", "Dealer popup: South"),
+                ("dealer_w", "Dealer popup: West"),
+                ("vuln_none", "Vuln popup: none"),
+                ("vuln_ns", "Vuln popup: N/S"),
+                ("vuln_ew", "Vuln popup: E/W"),
+                ("vuln_all", "Vuln popup: all"),
+                ("dv_ok_btn", "Dealer/Vuln popup OK"),
+            ]),
+        ]
+        for section_title, entries in sections:
+            section_lbl = QLabel(section_title)
+            section_lbl.setStyleSheet(
+                "font-weight: bold; color: #335; padding: 4px 0 2px 0;")
+            cal_layout.addWidget(section_lbl)
+            for key, label in entries:
+                btn = CaptureButton(label)
+                btn.setMinimumHeight(28)
+                btn.captured.connect(lambda pos, k=key: self._on_capture(k, pos))
+                coord_label = QLabel(self._fmt_coord(self.calibration.get(key)))
+                coord_label.setMinimumWidth(110)
+                coord_label.setStyleSheet("color: #557;")
+                self._cap_buttons[key] = (btn, coord_label)
+                row = QHBoxLayout()
+                row.setSpacing(8)
+                row.setContentsMargins(0, 0, 0, 0)
+                row.addWidget(btn, stretch=1)
+                row.addWidget(coord_label)
+                row_widget = QWidget()
+                row_widget.setLayout(row)
+                cal_layout.addWidget(row_widget)
+        cal_layout.addStretch()
+        cal_scroll.setWidget(cal_inner)
+        cal_outer.addWidget(cal_scroll)
+        right.addWidget(cal_group, stretch=1)
 
         # Enter button
         self.enter_btn = QPushButton("Enter Deal into Q-Plus")
@@ -1632,9 +1902,23 @@ class BridgeHarness(QMainWindow):
             QMessageBox.warning(self, "Error", "Calibration incomplete. Capture all 6 points first.")
             return
 
+        # Optional dealer / vulnerability — passed via --dealer/--vuln
+        # from ben_bridge so the closed-room deal in Q-Plus is set up
+        # under the same conditions as the open-room game.
+        dv_open, dealer_positions, vuln_positions, dv_ok = \
+            dealer_vuln_positions(self.calibration)
+
         self.enter_btn.setEnabled(False)
         self.wf_enter_btn.setEnabled(False)
-        self._worker = AutomationWorker(hands, grid_coords, player_pos, ok_pos, clear_pos)
+        self._worker = AutomationWorker(
+            hands, grid_coords, player_pos, ok_pos, clear_pos,
+            dealer=self.dealer,
+            vuln=self.vulnerability,
+            dv_open_btn=dv_open,
+            dealer_positions=dealer_positions,
+            vuln_positions=vuln_positions,
+            dv_ok_btn=dv_ok,
+        )
         self._worker.progress.connect(lambda msg: self.statusBar().showMessage(msg))
         self._worker.finished.connect(self._on_automation_done)
         self._worker.start()
@@ -1845,6 +2129,8 @@ def main():
     parser.add_argument("--source", default="", help="Pre-load PBN/BDL into Comparison Workflow")
     parser.add_argument("--game", default="", help="Source game name (wbridge5, bb12, etc.)")
     parser.add_argument("--base72", default="", help="Pre-load a deal by base-72 code")
+    parser.add_argument("--dealer", default="", help="Dealer seat (N / E / S / W)")
+    parser.add_argument("--vuln", default="", help="Vulnerability (None / NS / EW / Both)")
     parser.add_argument("--no-launch-qplus", action="store_true",
                         help="Don't auto-launch Q-Plus (caller has already launched it)")
     known, remaining = parser.parse_known_args()
@@ -1859,6 +2145,8 @@ def main():
         window.load_source(known.source, game_name=known.game)
     if known.base72:
         window.load_base72(known.base72)
+    if known.dealer or known.vuln:
+        window.set_dealer_vuln(known.dealer, known.vuln)
 
     sys.exit(app.exec_())
 

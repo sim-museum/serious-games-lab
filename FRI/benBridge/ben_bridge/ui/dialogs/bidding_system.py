@@ -1,5 +1,17 @@
 """
 Bidding System Selection Dialog - Choose and configure bidding systems.
+
+Two catalogs exist:
+
+  * BEN catalog (3 systems) — what BEN's neural net was trained on.
+    Used only when ``preferences.bidding_engine == "BEN"``.
+  * Native catalog (7 Q-Plus systems) — the default. Pulled live from
+    ``ben_backend.bidding_systems.list_systems()`` so any new system
+    added to the .RCE catalog appears here automatically.
+
+The dialog picks the catalog based on the current preference at open
+time; switching engines in Preferences and re-opening this dialog
+shows the new catalog.
 """
 
 from PyQt6.QtWidgets import (
@@ -17,8 +29,9 @@ from typing import Optional, Dict, List
 from .dialog_style import apply_dialog_style
 
 
-# Available bidding systems - only those that BEN is trained on
-BIDDING_SYSTEMS = {
+# Legacy catalog — only the three systems BEN was trained on. Used
+# when preferences.bidding_engine == "BEN".
+BEN_BIDDING_SYSTEMS = {
     "SAYC": {
         "name": "SAYC (Standard American Yellow Card)",
         "description": "Standard American with 5-card majors, strong NT (15-17), and standard conventions.",
@@ -35,6 +48,134 @@ BIDDING_SYSTEMS = {
         "conventions": ["Stayman", "Jacoby Transfers", "Blackwood", "Negative Doubles", "Weak Two Bids"],
     },
 }
+
+
+def _native_catalog() -> Dict[str, dict]:
+    """Build the dialog's view of the seven Q-Plus systems.
+
+    Each entry mirrors the BEN-catalog shape (`name` / `description` /
+    `conventions`) so the rest of the dialog code can treat them
+    uniformly. Conventions are derived from the system's `conventions`
+    set, mapping the Q-Plus flag taxonomy onto user-friendly labels.
+    """
+    try:
+        from ben_backend.bidding_systems import get_system, list_systems
+    except Exception:
+        return {}
+
+    out: Dict[str, dict] = {}
+    for name in list_systems():
+        try:
+            s = get_system(name)
+        except Exception:
+            continue
+        conv_labels = _convention_labels_for(s)
+        out[name] = {
+            "name": f"{name} — {s.description or name}",
+            "description": _native_system_summary(s),
+            "conventions": conv_labels,
+        }
+    return out
+
+
+def _native_system_summary(s) -> str:
+    """One-paragraph human summary of a BiddingSystem spec.
+
+    Pulled from the dataclass fields rather than the .RCE description
+    so the user sees the actual numeric ranges the bidder uses.
+    """
+    lines = []
+    lines.append(s.description or s.name)
+    lines.append("")
+    lines.append(f"• 1NT: {s.one_nt_min_hcp}-{s.one_nt_max_hcp} HCP")
+    lines.append(f"• 2NT: {s.two_nt_min_hcp}-{s.two_nt_max_hcp} HCP")
+    lines.append(f"• Strong opening: {s.strong_open_call} ({s.strong_open_min_hcp}+ HCP)")
+    lines.append(f"• Majors: {s.one_major_card_min}+ card opening")
+    lines.append(f"• 2-over-1: {s.two_over_one_min_hcp}+ HCP")
+    lines.append(f"• RKC: {s.rkc_variant}")
+    lines.append(f"• Conventions enabled: {len(s.conventions)}")
+    return "\n".join(lines)
+
+
+# Map Q-Plus flag names to user-facing convention labels. Falls back to
+# the bare flag name for anything we haven't given a friendly tag.
+_FLAG_TO_LABEL = {
+    "A-1NT-Stayman": "Stayman",
+    "A-1NT-Jacoby-transfer.always": "Jacoby Transfers",
+    "A-1NT-Jacoby-transfer": "Jacoby Transfers",
+    "A-1NT-transfer-level-4.Texas": "Texas Transfers",
+    "A-1MA-splinter": "Splinter Bids",
+    "A-1MA-Truscott-2NT": "Jacoby 2NT",
+    "A-1MA-2NT-limit-raise": "2NT as Limit Raise",
+    "A-Bergen-raises": "Bergen Raises",
+    "A-artificial-2C.negative-2D": "2C waiting / negative 2D",
+    "A-inverted-minors": "Inverted Minors",
+    "A-artificial-1C.switch-1NT-1H": "Precision 1NT/1H switch",
+    "C-Sputnik.until-2S": "Negative Doubles",
+    "C-Sputnik": "Negative Doubles",
+    "C-support-doubles": "Support Doubles",
+    "C-responsive-doubles": "Responsive Doubles",
+    "G-new-minor-forcing": "New Minor Forcing",
+    "G-fourth-suit-forcing": "Fourth Suit Forcing",
+    "G-Drury": "Drury",
+    "O-Michaels": "Michaels Cue Bid",
+    "O-Unusual-Notrump": "Unusual 2NT",
+    "O-1NT.Landy": "Landy (over 1NT)",
+    "O-1NT.DONT": "DONT (over 1NT)",
+    "O-1NT.Cappelletti": "Cappelletti (over 1NT)",
+    "O-Weak-Jump-Overcall.all-suits": "Weak Jump Overcalls",
+    "O-Weak-Jump-Overcall": "Weak Jump Overcalls",
+    "O-strong-1C.dbl-is-majors": "Defence to Strong 1C (X=majors)",
+    "S-Blackwood.keycard.RKCB1430": "RKCB 1430",
+    "S-Blackwood.keycard.RKCB0314": "RKCB 0314",
+    "S-Gerber.classic": "Gerber",
+    "B-2NT.strong-balanced.range-20-21": "Strong 2NT (20-21)",
+    "B-2MA.weak": "Weak Two Majors",
+    "B-2D.weak": "Weak 2D",
+    "B-3NT-gambling": "Gambling 3NT",
+    "B-strong-artificial.bid-2C": "Strong 2C",
+    "B-strong-artificial.bid-1C.min-hcp-16": "Precision Strong 1C",
+    "B-2D.Precision.majors-4-3": "Precision 2D (3-suiter)",
+    "R-1-1-1NT.hcp-range-3": "1NT rebid (12-14)",
+    "R-weak-2-2NT.Ogust": "Ogust",
+    "A-weak-2-Ogust": "Ogust",
+}
+
+
+def _convention_labels_for(system) -> List[str]:
+    """Friendly labels for the conventions enabled in `system`.
+
+    De-duplicates (so "Jacoby Transfers" doesn't appear twice when both
+    the always-variant and the bare flag are present) and sorts the
+    result for stable display.
+    """
+    seen = set()
+    out: List[str] = []
+    for flag in system.conventions:
+        label = _FLAG_TO_LABEL.get(flag)
+        if label is None:
+            # Skip Q-Plus internal flags that we don't surface to users
+            # (B- opening structure, parameter-only flags, etc.).
+            continue
+        if label in seen:
+            continue
+        seen.add(label)
+        out.append(label)
+    return sorted(out)
+
+
+def _resolve_catalog() -> Dict[str, dict]:
+    """Return the catalog matching the user's preferences.bidding_engine."""
+    try:
+        from ben_backend.config import get_config_manager
+        engine = (get_config_manager().config.preferences.bidding_engine
+                  or "native")
+    except Exception:
+        engine = "native"
+    if engine == "BEN":
+        return BEN_BIDDING_SYSTEMS
+    cat = _native_catalog()
+    return cat if cat else BEN_BIDDING_SYSTEMS
 
 # Common conventions that can be toggled
 CONVENTIONS = [
@@ -71,7 +212,21 @@ class BiddingSystemDialog(QDialog):
         self.current_system = current_system
         self.selected_conventions: Dict[str, bool] = {}
 
-        self.setWindowTitle("Bidding Systems")
+        # Pick the catalog matching the active engine. The native
+        # catalog is the default (7 Q-Plus systems); BEN catalog is
+        # used only when preferences.bidding_engine == "BEN".
+        self.bidding_systems = _resolve_catalog()
+        # Remember the engine label so the title and the user can tell
+        # at a glance which catalog they're looking at.
+        try:
+            from ben_backend.config import get_config_manager
+            self._engine_label = (
+                "BEN" if get_config_manager().config.preferences.bidding_engine
+                == "BEN" else "Native (Q-Plus)")
+        except Exception:
+            self._engine_label = "Native (Q-Plus)"
+
+        self.setWindowTitle(f"Bidding Systems — {self._engine_label}")
         self.setMinimumWidth(700)
         self.setMinimumHeight(550)
         apply_dialog_style(self)
@@ -95,7 +250,7 @@ class BiddingSystemDialog(QDialog):
 
         selector_layout.addWidget(QLabel("System:"))
         self.system_combo = QComboBox()
-        for key, info in BIDDING_SYSTEMS.items():
+        for key, info in self.bidding_systems.items():
             self.system_combo.addItem(info["name"], key)
         self.system_combo.currentIndexChanged.connect(self._on_system_changed)
         selector_layout.addWidget(self.system_combo, stretch=1)
@@ -172,7 +327,7 @@ class BiddingSystemDialog(QDialog):
         ns_layout = QHBoxLayout()
         ns_layout.addWidget(QLabel("System:"))
         self.ns_system_combo = QComboBox()
-        for key, info in BIDDING_SYSTEMS.items():
+        for key, info in self.bidding_systems.items():
             self.ns_system_combo.addItem(info["name"], key)
         self.ns_system_combo.currentIndexChanged.connect(self._on_ns_system_changed)
         ns_layout.addWidget(self.ns_system_combo, stretch=1)
@@ -183,7 +338,7 @@ class BiddingSystemDialog(QDialog):
         ew_layout = QHBoxLayout()
         ew_layout.addWidget(QLabel("System:"))
         self.ew_system_combo = QComboBox()
-        for key, info in BIDDING_SYSTEMS.items():
+        for key, info in self.bidding_systems.items():
             self.ew_system_combo.addItem(info["name"], key)
         ew_layout.addWidget(self.ew_system_combo, stretch=1)
         ew_group.setLayout(ew_layout)
@@ -231,7 +386,7 @@ class BiddingSystemDialog(QDialog):
 
     def _load_system(self, system_key: str):
         """Load a bidding system configuration."""
-        # Normalize system key (handle engine aliases)
+        # Normalise legacy aliases first (BEN catalog only).
         key_map = {
             "21GF": "2/1",
             "2/1GF": "2/1",
@@ -239,10 +394,24 @@ class BiddingSystemDialog(QDialog):
         }
         system_key = key_map.get(system_key.upper(), system_key)
 
-        if system_key not in BIDDING_SYSTEMS:
-            system_key = "SAYC"
+        # For the native catalog, also accept any alias the systems
+        # module recognises (Precision → Precision90M, Wbridge5 →
+        # TwoOverOne, etc.) so saved prefs from earlier sessions keep
+        # working after the rename.
+        if system_key not in self.bidding_systems:
+            try:
+                from ben_backend.bidding_systems import get_system
+                canonical = get_system(system_key).name
+                if canonical in self.bidding_systems:
+                    system_key = canonical
+            except Exception:
+                pass
 
-        system = BIDDING_SYSTEMS[system_key]
+        if system_key not in self.bidding_systems:
+            system_key = "SAYC" if "SAYC" in self.bidding_systems \
+                else next(iter(self.bidding_systems))
+
+        system = self.bidding_systems[system_key]
 
         # Update combo box
         for i in range(self.system_combo.count()):
@@ -284,8 +453,8 @@ class BiddingSystemDialog(QDialog):
         self.system_combo.setCurrentIndex(index)
         self.system_combo.blockSignals(False)
         # Update description and conventions
-        if system_key in BIDDING_SYSTEMS:
-            system = BIDDING_SYSTEMS[system_key]
+        if system_key in self.bidding_systems:
+            system = self.bidding_systems[system_key]
             self.desc_text.setText(system["description"])
             self.conventions_list.clear()
             for conv in system["conventions"]:
@@ -336,8 +505,8 @@ class BiddingSystemDialog(QDialog):
                 self.system_combo.blockSignals(False)
                 break
         from .dialog_style import styled_info
-        ns_system = BIDDING_SYSTEMS[self.ns_system_combo.currentData()]['name']
-        ew_system = BIDDING_SYSTEMS[self.ew_system_combo.currentData()]['name']
+        ns_system = self.bidding_systems[self.ns_system_combo.currentData()]['name']
+        ew_system = self.bidding_systems[self.ew_system_combo.currentData()]['name']
         if ns_system == ew_system:
             styled_info(self, "Applied", f"Bidding system set to: {ns_system}")
         else:

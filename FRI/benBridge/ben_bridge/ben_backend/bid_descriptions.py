@@ -208,6 +208,12 @@ def _describe_opening(bid: Bid, system: BiddingSystem):
         sym = suit.symbol()
         return ("8-13", f"{sym} 8+", f"Preempt 4{sym}, 8+ card suit", False)
 
+    # 4NT solid-minor opening (Precision70 `B-4NT.solid-minor`).
+    if level == 4 and suit == Suit.NOTRUMP \
+            and system.has("B-4NT.solid-minor"):
+        return ("15-19", "Solid 8+ minor",
+                "Solid-minor 4NT: ace-asking with self-sufficient minor", True)
+
     return _describe_generic(bid)
 
 
@@ -253,6 +259,9 @@ def _describe_response_to_partner_opening(bid, opening, system, state):
 def _describe_response_to_1nt(bid, system):
     level, suit = bid.level, bid.suit
     if level == 2 and suit == Suit.CLUBS:
+        if system.has("A-1NT-Garbage-Stayman") and system.has("A-1NT-Stayman"):
+            return ("0+", "4-4 majors / 4cM",
+                    "Stayman (incl. garbage with 4-4 majors)", True)
         if system.has("A-1NT-Stayman"):
             return ("8+", "4+ major", "Stayman, asks for 4-card major", True)
         return ("0-7", "♣ 5+", "Natural 2♣ over 1NT", False)
@@ -267,8 +276,9 @@ def _describe_response_to_1nt(bid, system):
             return ("0+", "♠ 5+", "Jacoby transfer to spades", True)
         return ("0-7", "♥ 5+", "Drop-dead 2♥", False)
     if level == 2 and suit == Suit.SPADES:
-        if system.has("A-1NT-minor-transfer") \
-                or system.has("A-1NT-transfer-2S-clubs"):
+        if (system.has("A-1NT-Jacoby-minor.spades-for-clubs")
+                or system.has("A-1NT-minor-transfer")
+                or system.has("A-1NT-transfer-2S-clubs")):
             return ("0+", "♣ 6+", "Minor-suit transfer to clubs", True)
         return ("0-7", "♠ 5+", "Drop-dead 2♠", False)
     if level == 2 and suit == Suit.NOTRUMP:
@@ -403,9 +413,17 @@ def _describe_response_to_1_suit(bid, opening, system):
         return ("10-12", f"{suit.symbol()} 4+", "Limit raise", False)
 
     if level == 3 and op_is_major and suit != op_suit \
+            and suit != Suit.NOTRUMP \
             and system.has("A-1MA-splinter"):
         return ("12-15", f"{op_suit.symbol()} 4+, void/sing in suit",
                 "Splinter: GF raise with shortness", True)
+
+    # Truscott 3NT (Q-Plus `A-1MA-Truscott-3NT.always`): 1M-3NT shows
+    # balanced 13-15 with 3-card support.
+    if level == 3 and suit == Suit.NOTRUMP and op_is_major \
+            and system.has("A-1MA-Truscott-3NT.always"):
+        return ("13-15", "Balanced, 3-card support",
+                "Truscott 3NT: 13-15 balanced with 3-card support", True)
 
     if level == 4 and suit == op_suit and op_is_major:
         return ("5-10", f"{suit.symbol()} 5+",
