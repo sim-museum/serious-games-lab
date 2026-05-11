@@ -597,7 +597,7 @@ def _respond_to_partner_opening(state, e, system):
 
     # Weak two openings
     if op.level == 2 and op.suit in (Suit.HEARTS, Suit.SPADES, Suit.DIAMONDS):
-        return _respond_to_weak_two(state, e)
+        return _respond_to_weak_two(state, e, system)
 
     # 3+ level preempts → mostly pass; raise to game with shape & values
     if op.level >= 3 and op.suit is not None and op.suit != Suit.NOTRUMP:
@@ -859,6 +859,40 @@ def _respond_to_1nt_competitive(state, e, system):
     weak; fast shows (direct 3X) = invitational+; cuebid of overcaller's
     suit = Stayman."""
     overcall = state.rho_bids[-1]
+
+    # 1NT-(X): escape from a penalty double. Q-Plus's `C-1NT-doubled.…`
+    # flag governs whether and how we run.
+    #   * `all-escape` (SAYC): with 0-7 HCP and a 5+ suit, just bid it
+    #     naturally — we'll find the best partial.
+    #   * `Stayman-and-Jacoby` (Precision 90M): use 2♣ Stayman / 2♦/2♥
+    #     Jacoby transfers as in the non-doubled auction, but with
+    #     looser HCP requirements.
+    # Pass with a balanced 8+ — XX would be ideal but we model it as
+    # passing for redouble-by-partner semantics in a future pass.
+    if overcall.is_double:
+        hcp = e.hcp
+        if (system.has("C-1NT-doubled.all-escape")
+                or system.has("C-1NT-doubled.Stayman-and-Jacoby")):
+            # Escape to long suit (5+) with weak hand.
+            if hcp <= 7:
+                # Pick the longest non-club suit first (2♣ might be Stayman
+                # in some agreements; bid 2♦/2♥/2♠ natural if 5+).
+                for suit in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS):
+                    if e.suit_lengths[suit] >= 5:
+                        return bid(2, suit, alert=True,
+                                   why=f"1NT-X escape: 5+ "
+                                       f"{suit.to_char()}, weak hand")
+                # Clubs as last resort
+                if e.suit_lengths[Suit.CLUBS] >= 5:
+                    return bid(2, Suit.CLUBS, alert=True,
+                               why="1NT-X escape: 5+ clubs, weak hand")
+                # No 5-card suit, 0-4 HCP → just pass and hope.
+                if hcp <= 4:
+                    return passb(why="1NT-X: weak, no escape — pass")
+        # Doubles without an escape flag, or strong-enough responder
+        # → fall back to non-competitive logic (XX implicit via pass).
+        return _respond_to_1nt(e, system)
+
     if overcall.suit is None or overcall.suit == Suit.NOTRUMP:
         # Doubles / NT overcalls — fall back to non-competitive logic.
         return _respond_to_1nt(e, system)
@@ -947,7 +981,7 @@ def _respond_to_strong_2c(e: HandEval) -> Bid:
     return bid(2, Suit.DIAMONDS, alert=True, why="Waiting (2D after 2C)")
 
 
-def _respond_to_weak_two(state, e: HandEval) -> Bid:
+def _respond_to_weak_two(state, e: HandEval, system) -> Bid:
     op = state.opening_bid
     suit = op.suit
     hcp = e.hcp
@@ -958,9 +992,17 @@ def _respond_to_weak_two(state, e: HandEval) -> Bid:
     # Solid game values + fit
     if fit >= 2 and hcp >= 16:
         return bid(4, suit, why="Game in major preempt")
-    # 2NT inquiry (Ogust / feature) — convention-light, just use 2NT to ask.
+    # 2NT inquiry — meaning depends on the spec:
+    #   * SAYC `A-2MA-2NT.feature-showing` → opener bids 3 of an
+    #     outside Ax/Kxx feature, or rebids the suit with no feature.
+    #   * Q-Plus Precision 90M `A-2MA-2NT.Ogust-5-A` → opener shows
+    #     hand+suit quality in 3♣/3♦/3♥/3♠ (Ogust matrix).
+    # Either way responder bids 2NT and lets opener reveal; the alert
+    # tells Claude (and the opponents) which inquiry is in use.
     if hcp >= 14 and not e.is_balanced:
-        return bid(2, Suit.NOTRUMP, alert=True, why="2NT inquiry (Ogust style)")
+        inquiry = "Ogust" if system.has("A-2MA-2NT.Ogust-5-A") else "feature ask"
+        return bid(2, Suit.NOTRUMP, alert=True,
+                   why=f"2NT inquiry ({inquiry})")
     if hcp >= 15 and e.is_balanced:
         return bid(3, Suit.NOTRUMP, why="3NT to play")
     return passb()
