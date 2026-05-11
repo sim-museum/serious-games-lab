@@ -345,7 +345,16 @@ def _open_sayc(e: HandEval, system) -> Bid:
 
     # Sub-opening hands → Pass (or skip preempts handled below)
     if hcp < 12 and not _has_preempt(e):
+        # Gambling 3NT can come from a sub-opening hand (~10 HCP solid minor).
+        gamb = _gambling_3nt_open(e, system)
+        if gamb is not None:
+            return gamb
         return passb(why="Insufficient values")
+
+    # Gambling 3NT (when the system enables it)
+    gamb = _gambling_3nt_open(e, system)
+    if gamb is not None:
+        return gamb
 
     # Preempts
     pre = _preempt_bid(e)
@@ -401,10 +410,19 @@ def _open_precision(e: HandEval, system) -> Bid:
 
     # Below the lower opening bound → Pass (preempts considered first).
     if hcp < two_c_min:
+        gamb = _gambling_3nt_open(e, system)
+        if gamb is not None:
+            return gamb
         pre = _preempt_bid(e)
         if pre is not None:
             return pre
         return passb()
+
+    # Gambling 3NT also applies inside the opening range — Precision 70
+    # uses it for solid-minor hands light on HCP.
+    gamb = _gambling_3nt_open(e, system)
+    if gamb is not None:
+        return gamb
 
     # Limited 1NT (Q-Plus Precision: 14-16, or 13-15 for the classic 70).
     if nt_min <= hcp <= nt_max and (e.is_balanced or e.is_semi_balanced):
@@ -436,6 +454,30 @@ def _open_precision(e: HandEval, system) -> Bid:
                    why=f"Precision: {one_d_min}-{one_d_max} HCP, "
                        "no 5cM, no 6c clubs")
     return passb()
+
+
+def _gambling_3nt_open(e: HandEval, system) -> Optional[Bid]:
+    """Gambling 3NT: a solid 7+ minor with little outside (≤ ~10 HCP).
+
+    Q-Plus enables this under `A-3NT-transfer` (SAYC's odd naming for
+    Gambling) and `B-3NT.gambling` / `B-3NT.minor-preempt` (Precision
+    flavours). Returns the 3NT bid if the hand qualifies, else None.
+    """
+    if not (system.has("A-3NT-transfer")
+            or system.has("B-3NT.gambling")
+            or system.has("B-3NT.minor-preempt")):
+        return None
+    if e.hcp > 11:
+        return None
+    # Solid 7+ minor: AKQ headed (sufficient by SAYC), 7+ cards.
+    for minor in (Suit.CLUBS, Suit.DIAMONDS):
+        if e.suit_lengths[minor] >= 7:
+            # Require the suit to actually be solid — top three honors.
+            suit_hcp = e.suit_hcp[minor]
+            if suit_hcp >= 4 + 3 + 2:  # AKQ (or better)
+                return bid(3, Suit.NOTRUMP, alert=True,
+                           why=f"Gambling 3NT: solid 7+ {minor.to_char()}")
+    return None
 
 
 def _has_preempt(e: HandEval) -> bool:
@@ -543,10 +585,10 @@ def _respond_to_partner_opening(state, e, system):
     if op.level == 1 and op.suit == Suit.NOTRUMP:
         if rho_intervened:
             return _respond_to_1nt_competitive(state, e, system)
-        return _respond_to_1nt(e)
+        return _respond_to_1nt(e, system)
 
     if op.level == 2 and op.suit == Suit.NOTRUMP:
-        return _respond_to_2nt(e)
+        return _respond_to_2nt(e, system)
 
     # Strong 2C in SAYC (Precision was handled above so we won't reach here
     # for Precision 2C).
@@ -712,47 +754,76 @@ def _respond_to_precision_2c(state, e: HandEval) -> Bid:
     return passb(why="Precision 2C: no clear action")
 
 
-def _respond_to_1nt(e: HandEval) -> Bid:
+def _nt_response_thresholds(system) -> dict:
+    """Return responder's HCP thresholds vs the opener's 1NT range.
+
+    Standard SAYC has 1NT = 15-17 with classic thresholds:
+        pass ≤ 7, invite 8-9, game 10-14, quant 15-16, slam 17+.
+
+    For a 14-16 NT (Precision Club 90) or 13-15 NT (Precision Club 70)
+    each threshold drifts up by the offset `17 − nt_max`, so responder
+    always needs the same total points to reach game / slam.
+    """
+    nt_max = system.one_nt_max_hcp
+    offset = max(0, 17 - nt_max)
+    return {
+        "pass_max":  7 + offset,
+        "invite_lo": 8 + offset,
+        "invite_hi": 9 + offset,
+        "game_lo":  10 + offset,
+        "quant_lo": 15 + offset,
+        "quant_hi": 16 + offset,
+        "slam_lo":  17 + offset,
+        "texas_min": 10 + offset,  # 6+ major direct-to-game
+    }
+
+
+def _respond_to_1nt(e: HandEval, system) -> Bid:
     hcp = e.hcp
+    t = _nt_response_thresholds(system)
 
-    # 0-7 with a long minor → drop on a partial / sign off
-    if hcp <= 7 and not e.five_card_majors:
-        # 5+ minor with weak hand → garbage Stayman (skipped) or pass
-        return passb(why="0-7 HCP, no 4cM/5cM → pass 1NT")
+    # 0-pass_max with no long major → just pass; Stayman with a weak
+    # 4-cM is a separate "garbage Stayman" convention we don't model.
+    if hcp <= t["pass_max"] and not e.five_card_majors:
+        return passb(why=f"0-{t['pass_max']} HCP, no 4cM/5cM → pass 1NT")
 
-    # Stayman with a 4-card major (and balanced or semi-balanced)
     has_4S = e.suit_lengths[Suit.SPADES] == 4
     has_4H = e.suit_lengths[Suit.HEARTS] == 4
     has_5S = e.suit_lengths[Suit.SPADES] >= 5
     has_5H = e.suit_lengths[Suit.HEARTS] >= 5
 
-    # Jacoby transfers for 5+ cards in a major
+    # Jacoby transfers (always — every Q-Plus system flips this on)
     if has_5H or has_5S:
-        # Texas (Jacoby Texas) for 6+ majors with game values
-        if e.suit_lengths[Suit.HEARTS] >= 6 and hcp >= 10:
-            return bid(4, Suit.DIAMONDS, alert=True, why="Texas: 6+ hearts, GF")
-        if e.suit_lengths[Suit.SPADES] >= 6 and hcp >= 10:
-            return bid(4, Suit.HEARTS, alert=True, why="Texas: 6+ spades, GF")
+        # Texas: 6+ in a major with game values goes straight to game.
+        if system.has("A-1NT-transfer-level-4.Texas") or system.has("A-1NT-transfer-level-4.Texas") is False:
+            # (Texas is in every bundled system; the redundant check
+            # documents intent.)
+            if e.suit_lengths[Suit.HEARTS] >= 6 and hcp >= t["texas_min"]:
+                return bid(4, Suit.DIAMONDS, alert=True,
+                           why=f"Texas: 6+ hearts, {t['texas_min']}+ HCP (GF)")
+            if e.suit_lengths[Suit.SPADES] >= 6 and hcp >= t["texas_min"]:
+                return bid(4, Suit.HEARTS, alert=True,
+                           why=f"Texas: 6+ spades, {t['texas_min']}+ HCP (GF)")
         # Standard Jacoby transfer
         if has_5H:
             return bid(2, Suit.DIAMONDS, alert=True, why="Jacoby transfer to hearts")
         return bid(2, Suit.HEARTS, alert=True, why="Jacoby transfer to spades")
 
-    # Stayman
-    if hcp >= 8 and (has_4S or has_4H):
+    # Stayman: 4cM and at least invitational values.
+    if hcp >= t["invite_lo"] and (has_4S or has_4H):
         return bid(2, Suit.CLUBS, alert=True, why="Stayman, asks for 4cM")
 
-    # No major → NT raises
-    if hcp >= 10 and hcp <= 14:
-        # Quantitative invitational
-        if hcp <= 9:
-            return passb()
-        return bid(2, Suit.NOTRUMP, why="Invitational 8-9 → 9 HCP boundary")
-    if hcp >= 15 and hcp <= 16:
+    # No major path → NT raises.
+    if t["invite_lo"] <= hcp <= t["invite_hi"]:
+        return bid(2, Suit.NOTRUMP,
+                   why=f"Invitational {t['invite_lo']}-{t['invite_hi']} HCP")
+    if t["game_lo"] <= hcp < t["quant_lo"]:
+        return bid(3, Suit.NOTRUMP, why="To-play game in NT")
+    if t["quant_lo"] <= hcp <= t["quant_hi"]:
         return bid(4, Suit.NOTRUMP, alert=True, why="Quantitative slam invite")
-    if hcp >= 17:
+    if hcp >= t["slam_lo"]:
         return bid(6, Suit.NOTRUMP, why="Slam values, no major fit")
-    return bid(3, Suit.NOTRUMP, why="To-play game in NT")
+    return passb(why="Below invitational values, no 4cM")
 
 
 def _respond_to_1nt_competitive(state, e, system):
@@ -762,7 +833,7 @@ def _respond_to_1nt_competitive(state, e, system):
     overcall = state.rho_bids[-1]
     if overcall.suit is None or overcall.suit == Suit.NOTRUMP:
         # Doubles / NT overcalls — fall back to non-competitive logic.
-        return _respond_to_1nt(e)
+        return _respond_to_1nt(e, system)
 
     hcp = e.hcp
     overcall_suit = overcall.suit
@@ -813,8 +884,14 @@ def _has_stopper(e: HandEval, suit: Suit) -> bool:
     return False
 
 
-def _respond_to_2nt(e: HandEval) -> Bid:
+def _respond_to_2nt(e: HandEval, system) -> Bid:
+    """Responses to opener's 2NT. The 2NT range varies by system:
+    SAYC / Precision 90 = 20-21, Precision 70 = 22-23. Slam invitational
+    threshold scales with the upper end (need ~10 to reach 33 vs partner
+    at 21, but only ~9 if partner can have 23).
+    """
     hcp = e.hcp
+    nt_max = system.two_nt_max_hcp  # 21 (most) or 23 (Precision 70)
     # 5-card major → transfer (2NT-3D=hearts, 2NT-3H=spades)
     if e.suit_lengths[Suit.HEARTS] >= 5:
         return bid(3, Suit.DIAMONDS, alert=True, why="Jacoby transfer to hearts (over 2NT)")
@@ -823,9 +900,11 @@ def _respond_to_2nt(e: HandEval) -> Bid:
     # Stayman
     if e.suit_lengths[Suit.SPADES] == 4 or e.suit_lengths[Suit.HEARTS] == 4:
         return bid(3, Suit.CLUBS, alert=True, why="Stayman over 2NT")
+    # Bare 0-4 → just sign off in 3NT.
     if hcp <= 4:
         return bid(3, Suit.NOTRUMP, why="Sign off in 3NT (modest values)")
-    if hcp >= 11:
+    # Quantitative threshold: hcp such that hcp + nt_max ≥ 33.
+    if hcp >= max(8, 33 - nt_max):
         return bid(4, Suit.NOTRUMP, alert=True, why="Quantitative slam invite")
     return bid(3, Suit.NOTRUMP, why="To-play 3NT")
 
@@ -1452,9 +1531,49 @@ def _generic_responder_rebid(state, e, opener_rebid):
 # Competitive bidding (overcalls / advancers)
 # ---------------------------------------------------------------------------
 
-def _overcall(state, e: HandEval, system: str) -> Bid:
+def _overcall_over_1nt(state, e: HandEval, system) -> Bid:
+    """Overcalls over the opponents' 1NT opening.
+
+    Q-Plus enables Landy in every bundled system (`O-1NT.Landy`):
+      * 2♣ = both majors (4+/4+, ~10-15 HCP)
+      * 2♦ = single-suiter (some flavours; treat 2♦ natural when long
+        diamonds)
+      * 2H/2S = natural 6+ in the major
+      * Double in 2nd seat = penalty (15+ HCP)
+
+    Penalty doubles vs takeout depend on `O-1NT-x-pos2.is-penalty` etc.
+    For now we treat the direct double as penalty (matches Q-Plus's
+    SAYC default).
+    """
+    hcp = e.hcp
+
+    # Penalty double: 15+ HCP, balanced.
+    if hcp >= 15 and (e.is_balanced or e.is_semi_balanced):
+        return double(why="Penalty double of 1NT (15+ HCP balanced)")
+
+    # Landy 2♣ — both majors, at least 4-4, competitive values.
+    if (system.has("O-1NT.Landy")
+            and e.suit_lengths[Suit.HEARTS] >= 4
+            and e.suit_lengths[Suit.SPADES] >= 4
+            and 9 <= hcp <= 15):
+        return bid(2, Suit.CLUBS, alert=True,
+                   why="Landy: both majors (4+/4+, 9-15 HCP)")
+
+    # Natural 2-level overcall with a 6-card suit and modest values.
+    for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS):
+        if e.suit_lengths[s] >= 6 and 9 <= hcp <= 15:
+            return bid(2, s, why=f"Natural 2{s.to_char()} overcall (6+ cards)")
+
+    return passb(why="No suitable overcall over 1NT")
+
+
+def _overcall(state, e: HandEval, system) -> Bid:
     op = state.opening_bid
     hcp = e.hcp
+
+    # Overcalls over opponent's 1NT — handled separately.
+    if op.level == 1 and op.suit == Suit.NOTRUMP:
+        return _overcall_over_1nt(state, e, system)
 
     if not (op.level == 1 and op.suit is not None and op.suit != Suit.NOTRUMP):
         return passb()
