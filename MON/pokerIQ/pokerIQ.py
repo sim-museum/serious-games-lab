@@ -2123,14 +2123,13 @@ class TheoryOfMindTab(QWidget):
         # Left: Hand range grid (fixed size to ensure full display)
         left_layout = QVBoxLayout()
 
-        # Title row + per-player History button. The button opens a
-        # 169-grid heatmap of this seat's session-long play pattern so
-        # the user can see at a glance which combos this opponent
-        # actually plays / wins / folds.
-        title_row = QHBoxLayout()
+        # Left-column title (just the "Estimated Range for X" label —
+        # the Betting-history button now sits on the right column,
+        # where the redundant "Analysis:" heading used to be).
         grid_label = QLabel(f"Estimated Range for {player_name}")
         grid_label.setFont(QFont('Arial', 18, QFont.Weight.Bold))
         grid_label.setStyleSheet("color: #fff;")
+        grid_label.setFixedHeight(36)
         grid_label.setToolTip(
             f"{player_name}'s estimated holding given the betting\n"
             "actions so far this hand.\n\n"
@@ -2148,20 +2147,7 @@ class TheoryOfMindTab(QWidget):
             "Yellow border on a cell = that combo CONNECTS with the\n"
             "current board (top pair, set, made straight, OESD,\n"
             "flush draw); thicker yellow = stronger connection.")
-        title_row.addWidget(grid_label, stretch=1)
-        self.history_btn = QPushButton("Betting history")
-        self.history_btn.setStyleSheet(
-            "QPushButton { background: #2a3a4a; color: #ddd;"
-            " font-size: 13pt; font-weight: bold;"
-            " padding: 4px 14px; border: 1px solid #4a5a6a;"
-            " border-radius: 5px; }"
-            "QPushButton:hover { background: #3a4a5a; }")
-        self.history_btn.setToolTip(
-            f"Open {player_name}'s session play pattern "
-            "(169 hole-card combos × win / loss / fold)")
-        self.history_btn.clicked.connect(self._show_history)
-        title_row.addWidget(self.history_btn)
-        left_layout.addLayout(title_row)
+        left_layout.addWidget(grid_label)
 
         self.range_grid = HandRangeGrid()
         self.range_grid.setFixedSize(420, 420)  # Fixed size to ensure all 13 rows visible
@@ -2201,15 +2187,37 @@ class TheoryOfMindTab(QWidget):
 
         layout.addLayout(left_layout)
 
-        # Right: Analysis text (full column, no longer competing with
-        # the notation block).
+        # Right: Betting-history button + Analysis text.  The button
+        # sits in the slot that used to hold the redundant "Analysis:"
+        # heading, and is sized to match the left-column title-bar
+        # height so the analysis text-edit top is horizontally flush
+        # with the top of the PokerStove grid on the left.
         right_layout = QVBoxLayout()
-        right_layout.setSpacing(15)
+        right_layout.setSpacing(0)
 
-        explain_label = QLabel("Analysis:")
-        explain_label.setFont(QFont('Arial', 18, QFont.Weight.Bold))
-        explain_label.setStyleSheet("color: #aaa;")
-        explain_label.setToolTip(
+        self.history_btn = QPushButton(f"Betting history — {player_name}")
+        self.history_btn.setFixedHeight(36)
+        self.history_btn.setStyleSheet(
+            "QPushButton { background: #2a3a4a; color: #ddd;"
+            " font-size: 14pt; font-weight: bold;"
+            " padding: 0 14px; border: 1px solid #4a5a6a;"
+            " border-radius: 5px; }"
+            "QPushButton:hover { background: #3a4a5a; }")
+        self.history_btn.setToolTip(
+            f"Open {player_name}'s session play pattern "
+            "(169 hole-card combos × win / loss / fold)")
+        self.history_btn.clicked.connect(self._show_history)
+        right_layout.addWidget(self.history_btn)
+        # Tiny vertical gap so the textbox top aligns visually with
+        # the grid top on the left (both columns now sit under a
+        # 36-px title-row + a few px breathing room).
+        right_layout.addSpacing(8)
+
+        self.explanation_text = QTextEdit()
+        self.explanation_text.setReadOnly(True)
+        self.explanation_text.setFont(QFont('Arial', 16))
+        self.explanation_text.setStyleSheet("background-color: #1a1a1a; color: #ddd; border: 2px solid #444; padding: 10px;")
+        self.explanation_text.setToolTip(
             "Per-player narrative of the read so far this hand:\n"
             "  • BETTING PATTERN  — categorised line of actions\n"
             "    (e.g. c-bet + barreled turn, check-raised flop)\n"
@@ -2220,13 +2228,6 @@ class TheoryOfMindTab(QWidget):
             "  • Player / Range / Action context\n"
             "  • Preflop range estimate + session calibration\n"
             "    (e.g. VPIP 35% vs nominal 22%, range scale ×1.45)")
-        right_layout.addWidget(explain_label)
-
-        self.explanation_text = QTextEdit()
-        self.explanation_text.setReadOnly(True)
-        self.explanation_text.setFont(QFont('Arial', 16))
-        self.explanation_text.setStyleSheet("background-color: #1a1a1a; color: #ddd; border: 2px solid #444; padding: 10px;")
-        self.explanation_text.setToolTip(explain_label.toolTip())
         right_layout.addWidget(self.explanation_text, stretch=1)
 
         layout.addLayout(right_layout, stretch=1)
