@@ -612,7 +612,7 @@ def _respond_to_partner_opening(state, e, system):
     if op.level == 1 and op.suit in (Suit.HEARTS, Suit.SPADES):
         if rho_intervened:
             return _respond_to_major_competitive(state, e, system)
-        return _respond_to_major(state, e)
+        return _respond_to_major(state, e, system)
 
     return passb()
 
@@ -838,6 +838,16 @@ def _respond_to_1nt(e: HandEval, system) -> Bid:
     if t["game_lo"] <= hcp < t["quant_lo"]:
         return bid(3, Suit.NOTRUMP, why="To-play game in NT")
     if t["quant_lo"] <= hcp <= t["quant_hi"]:
+        # Gerber 4♣ ace-ask when the system has it AND we're at the
+        # top of the quantitative range (last HCP point before direct
+        # slam). Gives responder a cheap ace-count before committing
+        # to 6NT; opener answers 4♦/4♥/4♠/4NT for 0-4/1/2/3 aces.
+        if (hcp >= t["quant_hi"]
+                and (system.has("S-Gerber.classic")
+                     or system.has("S-Gerber.roman")
+                     or system.has("S-Gerber.keycard"))):
+            return bid(4, Suit.CLUBS, alert=True,
+                       why="Gerber: ace-asking 4♣ (slam-zone, no major)")
         return bid(4, Suit.NOTRUMP, alert=True, why="Quantitative slam invite")
     if hcp >= t["slam_lo"]:
         return bid(6, Suit.NOTRUMP, why="Slam values, no major fit")
@@ -1041,11 +1051,16 @@ def _respond_to_minor_competitive(state, e: HandEval, system) -> Bid:
     return passb()
 
 
-def _respond_to_major(state, e: HandEval) -> Bid:
+def _respond_to_major(state, e: HandEval, system) -> Bid:
     op = state.opening_bid
     major = op.suit
     hcp = e.hcp
     fit = e.suit_lengths.get(major, 0)
+
+    # Q-Plus Precision 90M uses Bergen raises: 3♣ = constructive (10-11),
+    # 3♦ = limit (12-13). 3M is freed up for weak preemptive raises in
+    # that case. Detect via the parametrised flag (`A-1MA-Bergen-3C.…`).
+    bergen = any(k.startswith("A-1MA-Bergen-3C") for k in system.raw_rules)
 
     # 4+ support → raise structures
     if fit >= 4:
@@ -1063,9 +1078,22 @@ def _respond_to_major(state, e: HandEval) -> Bid:
         if hcp >= 13:
             return bid(2, Suit.NOTRUMP, alert=True,
                        why="Jacoby 2NT: 4+ support, GF")
-        # Limit raise (3M): 10-12 with 4-card support
-        if 10 <= hcp <= 12:
-            return bid(3, major, why="Limit raise (10-12)")
+        # Bergen raises (only when the system enables them)
+        if bergen:
+            if 10 <= hcp <= 11:
+                return bid(3, Suit.CLUBS, alert=True,
+                           why="Bergen 3♣: constructive raise (10-11, 4+ trumps)")
+            if 12 <= hcp <= 13:
+                return bid(3, Suit.DIAMONDS, alert=True,
+                           why="Bergen 3♦: limit raise (12-13, 4+ trumps)")
+            # 3M is now weak preemptive (0-9 with 4+ trumps)
+            if hcp <= 9:
+                return bid(3, major, alert=True,
+                           why="Bergen 3M: weak preemptive raise (4+ trumps)")
+        else:
+            # Limit raise (3M): 10-12 with 4-card support
+            if 10 <= hcp <= 12:
+                return bid(3, major, why="Limit raise (10-12)")
         # Weak preemptive raise (4M with weak hand, lots of trumps)
         if hcp <= 9 and fit >= 5:
             return bid(4, major, why="Weak preemptive jump to game")
@@ -1113,10 +1141,10 @@ def _respond_to_major_competitive(state, e: HandEval, system) -> Bid:
         if hcp >= 10:
             return Bid(is_redouble=True, explanation="Redouble (10+)")
         # Standard responses are still on
-        return _respond_to_major(state, e)
+        return _respond_to_major(state, e, system)
 
     if overcall.suit is None or overcall.suit == Suit.NOTRUMP:
-        return _respond_to_major(state, e)
+        return _respond_to_major(state, e, system)
 
     # Negative double showing the other major
     if hcp >= 6 and e.suit_lengths[other_major] >= 4 and overcall.level <= 2:
