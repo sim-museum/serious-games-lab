@@ -413,6 +413,110 @@ class _BiddingLogPanel(QWidget):
         layout.addStretch(1)
 
 
+def _replay_auction_through_native_bidder(run: BenBoardRun):
+    """Walk every call in a run's auction through the native bidder
+    using the system that was recorded for that side. Returns a list
+    of dicts, one per call:
+
+        {
+          'round': int (1-based),
+          'seat':  Seat,
+          'side':  'NS' | 'EW',
+          'system_name': str (e.g. 'Precision90M'),
+          'actual': Bid,
+          'native': Bid,
+          'explanation': str,
+          'matches': bool,
+        }
+
+    Used by the Compare dialog's "Engine compare" report to surface
+    each divergence between what was actually played and what our
+    current rule-based bidder would say given the same system.
+    """
+    out = []
+    try:
+        from ben_backend.models import BoardState, Seat
+        from ben_backend.native_bidder import NativeBidder
+        from ben_backend.bidding_systems import get_system
+    except Exception:
+        return out
+    try:
+        dealer, vuln = BoardState._board_dealer_vuln(
+            run.board_number or 1)
+    except Exception:
+        return out
+
+    # Resolve NS / EW system names — fall back to "SAYC" so the
+    # bidder always has something to anchor on.
+    ns_name = (getattr(run, 'ns_bidding_system', '') or 'SAYC') or 'SAYC'
+    ew_name = (getattr(run, 'ew_bidding_system', '') or 'SAYC') or 'SAYC'
+    try:
+        ns_sys = get_system(ns_name)
+        ew_sys = get_system(ew_name)
+    except Exception:
+        return out
+
+    ns_bidder = NativeBidder(ns_sys)
+    ew_bidder = NativeBidder(ew_sys)
+
+    for i, actual in enumerate(run.auction):
+        seat = Seat((dealer.value + i) % 4)
+        side = 'NS' if seat in (Seat.NORTH, Seat.SOUTH) else 'EW'
+        sys_name = ns_name if side == 'NS' else ew_name
+        bidder = ns_bidder if side == 'NS' else ew_bidder
+
+        synthetic = BoardState(
+            board_number=run.board_number,
+            dealer=dealer,
+            vulnerability=vuln,
+            hands=dict(run.original_hands),
+            auction=list(run.auction[:i]),  # auction BEFORE this call
+            contract=None,
+            tricks=[],
+        )
+        try:
+            resp = bidder.get_bid(synthetic, seat)
+            native = resp.action
+            explanation = (
+                getattr(native, 'explanation', '') or
+                getattr(resp, 'who', '') or ''
+            )
+        except Exception as ex:
+            native = None
+            explanation = f"engine error: {ex!r}"
+
+        out.append({
+            'round': i // 4 + 1,
+            'seat': seat,
+            'side': side,
+            'system_name': sys_name,
+            'actual': actual,
+            'native': native,
+            'explanation': explanation,
+            'matches': (
+                native is not None and _bids_equivalent(actual, native)
+            ),
+        })
+    return out
+
+
+def _bids_equivalent(a, b) -> bool:
+    """Compare two Bid objects ignoring metadata like 'explanation'.
+    Two Bids are equivalent when their kind (pass / double / redouble
+    / regular) matches AND the level / strain agree."""
+    if a is None or b is None:
+        return False
+    if a.is_pass != b.is_pass:
+        return False
+    if a.is_double != b.is_double:
+        return False
+    if a.is_redouble != b.is_redouble:
+        return False
+    if a.is_pass or a.is_double or a.is_redouble:
+        return True
+    return (a.level == b.level and a.suit == b.suit)
+
+
 class BiddingLogDialog(QDialog):
     """Independent top-level window with the two auctions side-by-side.
 
@@ -501,6 +605,24 @@ class CompareReplayDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
 
+        # Version-skew banner — only shown when the two runs
+        # disagree on which bidding system was in use, OR when a
+        # run's recorded system doesn't match the current prefs.
+        # That's the rule-out for "the two engines bid differently
+        # because they were running different systems all along".
+        skew = self._version_skew_warnings(left, right)
+        if skew:
+            warn = QLabel(
+                '<div style="background:#fff3cd; border:1px solid '
+                '#c49a00; padding:8px 12px; color:#5a3500;'
+                ' font-size:13px;"><b>System metadata check:</b><br>'
+                + "<br>".join(skew)
+                + '</div>'
+            )
+            warn.setTextFormat(Qt.TextFormat.RichText)
+            warn.setWordWrap(True)
+            layout.addWidget(warn)
+
         # Two panels in a horizontal splitter so the user can resize.
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self.left_panel = _ReplayPanel(left, left_label)
@@ -570,6 +692,18 @@ class CompareReplayDialog(QDialog):
         )
         self.transcript_btn.clicked.connect(self._on_annotated_transcript)
         bottom.addWidget(self.transcript_btn)
+
+        self.engine_compare_btn = QPushButton("Engine compare")
+        self.engine_compare_btn.setToolTip(
+            "Walk every call in BOTH auctions through the native bidder "
+            "using each side's recorded system, and report each "
+            "divergence between what was actually played and what our "
+            "current rule-based engine would have bid. Use this to "
+            "rule out 'the rooms bid differently because each engine's "
+            "spec is reading the system slightly differently'."
+        )
+        self.engine_compare_btn.clicked.connect(self._on_engine_compare)
+        bottom.addWidget(self.engine_compare_btn)
 
         bottom.addStretch()
         close_btn = QPushButton("Close")
@@ -797,6 +931,181 @@ class CompareReplayDialog(QDialog):
             "constructive and focused — the human is studying, not "
             "being scolded."
         )
+
+    @staticmethod
+    def _version_skew_warnings(left: BenBoardRun, right: BenBoardRun):
+        """Return a list of warning strings when the two runs disagree
+        on bidding-system metadata, or when either run was recorded
+        under a system that differs from the user's current
+        preferences.
+
+        Designed to rule out "the rooms bid differently because the
+        bots were actually running different specs" — the user can
+        glance at the banner and know whether the divergence is a
+        bidder issue (banner clean) or a configuration issue (banner
+        loud).
+        """
+        msgs = []
+        l_ns = (getattr(left, 'ns_bidding_system', '') or '').strip()
+        r_ns = (getattr(right, 'ns_bidding_system', '') or '').strip()
+        l_ew = (getattr(left, 'ew_bidding_system', '') or '').strip()
+        r_ew = (getattr(right, 'ew_bidding_system', '') or '').strip()
+
+        if l_ns and r_ns and l_ns != r_ns:
+            msgs.append(
+                f"NS system tag DIFFERS — open=<b>{l_ns}</b>, "
+                f"closed=<b>{r_ns}</b>. The two rooms were recorded "
+                "under different NS specs; bid divergence is "
+                "expected.")
+        if l_ew and r_ew and l_ew != r_ew:
+            msgs.append(
+                f"EW system tag DIFFERS — open=<b>{l_ew}</b>, "
+                f"closed=<b>{r_ew}</b>. The two rooms were recorded "
+                "under different EW specs; bid divergence is "
+                "expected.")
+        if not l_ns and not r_ns:
+            msgs.append(
+                "NS system tag is blank on BOTH runs — the bot "
+                "version that actually played the deals isn't "
+                "recoverable from the BDL metadata.")
+        elif not l_ns:
+            msgs.append(
+                f"NS system tag is blank on the open-room run "
+                f"(closed=<b>{r_ns}</b>).")
+        elif not r_ns:
+            msgs.append(
+                f"NS system tag is blank on the closed-room run "
+                f"(open=<b>{l_ns}</b>).")
+
+        # Compare against the live native_bidding_system preferences
+        # so a stale recording is flagged.
+        try:
+            from ben_backend.config import get_config_manager
+            prefs = get_config_manager().config.preferences
+            cur_default = (getattr(prefs, 'native_bidding_system', '')
+                           or '').strip()
+            cur_ns = (getattr(prefs, 'ns_bidding_system', '')
+                      or '').strip() or cur_default
+            cur_ew = (getattr(prefs, 'ew_bidding_system', '')
+                      or '').strip() or cur_default
+        except Exception:
+            cur_ns = cur_ew = ''
+
+        if cur_ns and l_ns and cur_ns != l_ns:
+            msgs.append(
+                f"Open-room NS was recorded as <b>{l_ns}</b> but the "
+                f"current preference is <b>{cur_ns}</b> — replaying "
+                "this deal now would use a different system.")
+        if cur_ns and r_ns and cur_ns != r_ns:
+            msgs.append(
+                f"Closed-room NS was recorded as <b>{r_ns}</b> but "
+                f"the current preference is <b>{cur_ns}</b>.")
+        if cur_ew and l_ew and cur_ew != l_ew:
+            msgs.append(
+                f"Open-room EW was recorded as <b>{l_ew}</b> but the "
+                f"current preference is <b>{cur_ew}</b>.")
+        if cur_ew and r_ew and cur_ew != r_ew:
+            msgs.append(
+                f"Closed-room EW was recorded as <b>{r_ew}</b> but "
+                f"the current preference is <b>{cur_ew}</b>.")
+        return msgs
+
+    def _on_engine_compare(self):
+        """Walk every call in both auctions through the native bidder
+        and pop a side-by-side report showing where 'what was played'
+        and 'what our engine would say' diverge."""
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton
+        from PyQt6.QtGui import QFont
+
+        left_trace = _replay_auction_through_native_bidder(self.left_run)
+        right_trace = _replay_auction_through_native_bidder(self.right_run)
+
+        html = ['<div style="font-family: monospace; font-size: 13pt;">']
+        html.append(
+            f"<h2>Engine decision-tree compare — Board "
+            f"{self.left_run.board_number}</h2>"
+        )
+        skew = self._version_skew_warnings(self.left_run, self.right_run)
+        if skew:
+            html.append(
+                '<div style="background:#fff3cd; border:1px solid '
+                '#c49a00; padding:8px 12px; color:#5a3500;'
+                ' margin-bottom:12px;"><b>System metadata check:'
+                '</b><br>' + "<br>".join(skew) + '</div>'
+            )
+        html.append(
+            "<p>Each row is one call in the auction. <b>Actual</b> "
+            "is the bid that landed in the room; <b>Native</b> is "
+            "what our rule-based bidder would pick given the same "
+            "auction-so-far, hand, and the system tag recorded for "
+            "that side. Rows highlighted red are divergences worth "
+            "investigating — that's where the rule-based "
+            "interpretation of the recorded system differs from "
+            "whatever engine actually drove the deal.</p>"
+        )
+
+        def render(side_label, trace):
+            if not trace:
+                return f"<h3>{side_label}</h3><p>(no auction data)</p>"
+            rows = [f"<h3>{side_label}</h3>"]
+            rows.append(
+                '<table cellpadding="6" cellspacing="0" border="1" '
+                'style="border-collapse: collapse; width: 100%;">'
+            )
+            rows.append(
+                "<tr style='background:#e0e0e0;'>"
+                "<th>#</th><th>Seat</th><th>Side</th>"
+                "<th>System</th><th>Actual</th><th>Native</th>"
+                "<th>Why (Native)</th></tr>"
+            )
+            for i, row in enumerate(trace):
+                colour = "#ffe0e0" if not row['matches'] else "#ffffff"
+                actual_str = row['actual'].symbol() if row['actual'] else "—"
+                native_str = (row['native'].symbol()
+                              if row['native'] else "—")
+                marker = "✗" if not row['matches'] else "✓"
+                rows.append(
+                    f"<tr style='background:{colour};'>"
+                    f"<td>{i + 1}</td>"
+                    f"<td>{row['seat'].to_char()}</td>"
+                    f"<td>{row['side']}</td>"
+                    f"<td>{row['system_name']}</td>"
+                    f"<td><b>{actual_str}</b></td>"
+                    f"<td><b>{native_str}</b> {marker}</td>"
+                    f"<td>{row['explanation'] or ''}</td>"
+                    f"</tr>"
+                )
+            rows.append("</table>")
+            # Quick summary line.
+            misses = sum(1 for r in trace if not r['matches'])
+            rows.append(
+                f"<p style='color:#444;'><b>{misses}</b> of "
+                f"<b>{len(trace)}</b> calls diverged from the "
+                f"native bidder.</p>"
+            )
+            return "".join(rows)
+
+        html.append(render(f"Open room ({self._left_label})", left_trace))
+        html.append(render(f"Closed room ({self._right_label})", right_trace))
+        html.append("</div>")
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(
+            f"Engine decision-tree compare — Board {self.left_run.board_number}"
+        )
+        dlg.resize(1100, 800)
+        from .dialog_style import make_detachable
+        make_detachable(dlg)
+        v = QVBoxLayout(dlg)
+        view = QTextEdit()
+        view.setReadOnly(True)
+        view.setHtml("".join(html))
+        view.setFont(QFont("Arial", 11))
+        v.addWidget(view, stretch=1)
+        close = QPushButton("Close")
+        close.clicked.connect(dlg.close)
+        v.addWidget(close)
+        dlg.show()
 
     def _on_annotated_transcript(self):
         """Generate the side-by-side annotated transcript via Claude."""
