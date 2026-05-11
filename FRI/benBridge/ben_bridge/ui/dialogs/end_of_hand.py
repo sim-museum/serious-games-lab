@@ -13,17 +13,24 @@ from .dialog_style import apply_dialog_style
 
 
 class EndOfHandDialog(QDialog):
-    """Modal dialog shown when a hand is complete.
+    """Modal dialog shown when a hand is complete — Q-Plus style.
 
-    Shows the result, score, and optionally IMP swing for teams matches.
-    Provides a button to view the other table's result.
+    Centre panel mirrors the Q-Plus 'playing finished' banner ("East
+    was set one trick in 2♠" etc.); the button row at the bottom is
+    the same 5-button line Q-Plus offers (Next deal / Review / Score
+    / Repeat / Help). Each button emits a signal so MainWindow can
+    wire it to the matching existing handler.
     """
 
-    view_other_table = pyqtSignal()  # Emitted when user wants to see other table
+    view_other_table = pyqtSignal()   # teams: view other table
+    review_requested = pyqtSignal()   # open auction + played tricks
+    score_requested = pyqtSignal()    # open the score table
+    repeat_requested = pyqtSignal()   # re-deal the same board
+    help_requested = pyqtSignal()     # open help
 
     def __init__(self, contract_str: str, declarer: str, result_str: str,
                  score: int, imp_swing: int = None, is_teams_match: bool = False,
-                 parent=None):
+                 banner_text: str = "", parent=None):
         """Initialize the end of hand dialog.
 
         Args:
@@ -33,6 +40,9 @@ class EndOfHandDialog(QDialog):
             score: Score for declarer's side
             imp_swing: IMP swing (positive = N/S), None if not teams
             is_teams_match: Whether this is a teams match (shows IMP info)
+            banner_text: Optional Q-Plus-style sentence ("East was
+                set one trick in 2♠"). Falls back to a sentence
+                generated from the result/contract if not provided.
             parent: Parent widget
         """
         super().__init__(parent)
@@ -43,9 +53,10 @@ class EndOfHandDialog(QDialog):
         self.score = score
         self.imp_swing = imp_swing
         self.is_teams_match = is_teams_match
+        self.banner_text = banner_text
 
-        self.setWindowTitle("Playing Finished")
-        self.setMinimumWidth(350)
+        self.setWindowTitle("Playing finished")
+        self.setMinimumWidth(560)
         self.setModal(True)
         apply_dialog_style(self)
 
@@ -55,10 +66,14 @@ class EndOfHandDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
 
-        # Header
-        header = QLabel("Playing finished:")
+        # Header — Q-Plus banner. "playing finished: East was set
+        # one trick in 2♠" is the canonical Q-Plus phrasing; we
+        # generate that from the contract + result when no caller
+        # passed an explicit banner_text in.
+        header = QLabel(self._compose_banner_text())
         header.setFont(QFont("Arial", 16, QFont.Weight.Bold))
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header.setWordWrap(True)
         layout.addWidget(header)
 
         # Contract and result frame
@@ -134,32 +149,110 @@ class EndOfHandDialog(QDialog):
 
         layout.addWidget(result_frame)
 
-        # Buttons
+        # Q-Plus button row — Next deal / Review / Score / Repeat / Help.
+        # Each button emits a signal so MainWindow can route to the
+        # existing handler (_on_next_deal, _on_review, _on_show_scores,
+        # _on_repeat_deal, _on_show_help). All buttons close the
+        # modal so the user can interact with the spawned views.
         button_layout = QHBoxLayout()
         button_layout.setSpacing(10)
 
         if self.is_teams_match:
-            # View other table button
             other_table_btn = QPushButton("View other table")
             other_table_btn.setFont(QFont("Arial", 11))
             other_table_btn.clicked.connect(self._on_view_other_table)
             button_layout.addWidget(other_table_btn)
+            button_layout.addStretch()
 
-        button_layout.addStretch()
+        def _make(label: str, signal_emit, default: bool = False):
+            btn = QPushButton(label)
+            btn.setFont(QFont("Arial", 11, QFont.Weight.Bold if default
+                              else QFont.Weight.Normal))
+            btn.setMinimumWidth(110)
+            if default:
+                btn.setDefault(True)
+            btn.clicked.connect(signal_emit)
+            return btn
 
-        # OK/Next Deal button
-        ok_btn = QPushButton("Next Deal")
-        ok_btn.setFont(QFont("Arial", 11, QFont.Weight.Bold))
-        ok_btn.setDefault(True)
-        ok_btn.clicked.connect(self.accept)
-        button_layout.addWidget(ok_btn)
+        button_layout.addWidget(_make(
+            "Next deal", self._on_next_deal, default=True))
+        button_layout.addWidget(_make("Review", self._on_review))
+        button_layout.addWidget(_make("Score", self._on_score))
+        button_layout.addWidget(_make("Repeat", self._on_repeat))
+        button_layout.addWidget(_make("Help", self._on_help))
 
         layout.addLayout(button_layout)
 
+    # ------------------------------------------------------------------
+    # Q-Plus banner text — "<seat> made <contract>" / "<seat> was set
+    # <N> tricks in <contract>". Uses the seat name not the seat char
+    # for natural-language readability.
+    # ------------------------------------------------------------------
+
+    _SEAT_NAMES = {
+        'N': 'North', 'E': 'East', 'S': 'South', 'W': 'West',
+    }
+
+    def _compose_banner_text(self) -> str:
+        if self.banner_text:
+            return self.banner_text
+        seat_name = self._SEAT_NAMES.get(self.declarer, self.declarer)
+        # Parse the result_str the caller already built. "Made" /
+        # "+1" / "+2" → made. "-1" / "-2" → went down.
+        rs = (self.result_str or "").strip()
+        contract_pretty = self.contract_str or "?"
+        if rs.startswith("-"):
+            try:
+                down = int(rs)  # e.g. "-2"
+                n = -down  # positive
+            except ValueError:
+                n = 1
+            trick_word = "trick" if n == 1 else "tricks"
+            phrase = (f"was set {self._spell(n)} {trick_word} "
+                      f"in {contract_pretty}")
+        elif rs.startswith("+"):
+            phrase = f"made {rs} overtricks in {contract_pretty}"
+        else:
+            phrase = f"made {contract_pretty}"
+        return f"playing finished: {seat_name} {phrase}"
+
+    @staticmethod
+    def _spell(n: int) -> str:
+        spelled = {1: 'one', 2: 'two', 3: 'three', 4: 'four',
+                   5: 'five', 6: 'six', 7: 'seven'}
+        return spelled.get(n, str(n))
+
+    # ------------------------------------------------------------------
+    # Button-handler shims — each closes the dialog and emits its
+    # signal so MainWindow can dispatch.
+    # ------------------------------------------------------------------
+
     def _on_view_other_table(self):
-        """Handle click on 'View other table' button."""
         self.view_other_table.emit()
         self.accept()
+
+    def _on_next_deal(self):
+        # No signal: Next deal is the dialog-accept path, just like
+        # the old OK button. MainWindow's accept handler triggers
+        # _on_next_deal.
+        self.accept()
+
+    def _on_review(self):
+        self.review_requested.emit()
+        self.accept()
+
+    def _on_score(self):
+        self.score_requested.emit()
+        self.accept()
+
+    def _on_repeat(self):
+        self.repeat_requested.emit()
+        self.accept()
+
+    def _on_help(self):
+        self.help_requested.emit()
+        # Don't close — help is a side-show, the user may want to
+        # keep the result banner up while reading.
 
 
 class PassedOutDialog(QDialog):

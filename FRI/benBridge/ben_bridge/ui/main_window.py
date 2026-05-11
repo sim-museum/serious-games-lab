@@ -4964,6 +4964,52 @@ For more information, see the README file."""
         # Single-player.
         return bool(self.controller._human_controls_seat(winner))
 
+    def _wire_end_of_hand_dialog(self, dialog):
+        """Connect the Q-Plus button signals on an EndOfHandDialog to
+        the matching existing MainWindow handler. Centralised here so
+        the teams-match path and the single-player path share the
+        same wiring.
+
+        Buttons:
+          • Next deal  → _on_next_deal (via dialog.accept())
+          • Review     → _on_review (auction + played tricks)
+          • Score      → _on_show_scores (score table dialog)
+          • Repeat     → _on_repeat_deal (re-deal the same board)
+          • Help       → _on_show_help if present, else the menubar
+                         Help action's trigger.
+        """
+        try:
+            dialog.review_requested.connect(self._on_review)
+        except Exception:
+            pass
+        try:
+            dialog.score_requested.connect(self._on_show_scores)
+        except Exception:
+            pass
+        try:
+            dialog.repeat_requested.connect(self._on_repeat_deal)
+        except Exception:
+            pass
+
+        # Help: prefer a dedicated handler if one exists; otherwise
+        # fall through to a do-nothing pass so the click is silently
+        # absorbed.
+        help_handler = getattr(self, '_on_show_help', None)
+        if callable(help_handler):
+            try:
+                dialog.help_requested.connect(help_handler)
+            except Exception:
+                pass
+
+        # Next deal — the dialog's accept signal already maps to that
+        # via deal_hand-style logic elsewhere. Wire explicitly so the
+        # closed-room teams path also triggers _on_next_deal after the
+        # user clicks Next deal.
+        try:
+            dialog.accepted.connect(self._on_next_deal)
+        except Exception:
+            pass
+
     def _show_result(self):
         """Show deal result"""
         board = self.controller.board
@@ -5049,7 +5095,8 @@ For more information, see the README file."""
             if self.match_controller.is_board_complete(board.board_number):
                 imp_swing = self.teams_match.get_imp_swing(board.board_number)
 
-            # Show end of hand dialog
+            # Show end-of-hand dialog (teams). Wire every Q-Plus
+            # button to its existing handler.
             dialog = EndOfHandDialog(
                 contract_str=contract.to_str(),
                 declarer=contract.declarer.to_char(),
@@ -5060,7 +5107,25 @@ For more information, see the README file."""
                 parent=self
             )
             dialog.view_other_table.connect(self._on_view_teams_score)
+            self._wire_end_of_hand_dialog(dialog)
             dialog.exec()
+        else:
+            # Single-player end-of-hand dialog — same Q-Plus 5-button
+            # layout, just without the "View other table" entry. Was
+            # previously suppressed in single-player mode; bringing it
+            # in matches the Q-Plus reference screen the user wants.
+            ns_score_sp = score if contract.declarer.is_ns() else -score
+            sp_dialog = EndOfHandDialog(
+                contract_str=contract.to_str(),
+                declarer=contract.declarer.to_char(),
+                result_str=result_str,
+                score=ns_score_sp,
+                imp_swing=None,
+                is_teams_match=False,
+                parent=self
+            )
+            self._wire_end_of_hand_dialog(sp_dialog)
+            sp_dialog.exec()
 
         # Log the completed hand. The logger needs all four original hands
         # to compute the Pavlicek deal id; a guest only ever has its own
