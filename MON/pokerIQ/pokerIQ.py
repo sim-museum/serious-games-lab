@@ -1957,6 +1957,248 @@ class TheoryOfMindTab(QWidget):
         self.explanation_text.setText(explanation)
 
 
+class MetricBar(QWidget):
+    """Compact horizontal bar for one decision metric.
+
+    Renders: [LABEL] [============████░░░░░░] VALUE
+                                    ^tick
+
+    The bar fill represents the metric's value (0..max). A 1-pixel
+    yellow tick overlays the threshold (e.g. pot odds tick on the
+    equity bar), making the equity-vs-pot-odds comparison glanceable.
+
+    Color of the fill reflects the verdict:
+      green  → metric beats threshold (or otherwise good)
+      red    → falls short
+      amber  → borderline
+      blue   → neutral (no threshold to compare against)
+    """
+
+    def __init__(self, label: str, parent=None):
+        super().__init__(parent)
+        self._label = label
+        self._value = 0.0          # raw metric value
+        self._max = 1.0            # bar's full-scale value
+        self._fill_text = ""        # right-side text (e.g. "23%")
+        self._tick = None          # threshold value, or None
+        self._color = QColor("#0af")
+        self._dim = False
+        self.setMinimumHeight(28)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding,
+                           QSizePolicy.Policy.Fixed)
+
+    def set_metric(self, value: float, max_value: float,
+                   text: str = "", tick: float | None = None,
+                   color: str = "#0af", dim: bool = False):
+        self._value = max(0.0, float(value))
+        self._max = max(1e-9, float(max_value))
+        self._fill_text = text or ""
+        self._tick = (None if tick is None
+                      else max(0.0, float(tick)))
+        self._color = QColor(color)
+        self._dim = bool(dim)
+        self.update()
+
+    def set_label(self, label: str):
+        self._label = label
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w = self.width()
+        h = self.height()
+
+        label_w = 200
+        value_w = 120
+        bar_x = label_w
+        bar_w = max(0, w - label_w - value_w - 8)
+        bar_y = (h - 16) // 2
+        bar_h = 16
+
+        # Label (left)
+        p.setPen(QColor("#cccccc" if not self._dim else "#666666"))
+        font = p.font()
+        font.setPointSize(11)
+        font.setBold(True)
+        p.setFont(font)
+        p.drawText(8, 0, label_w - 8, h,
+                   Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                   self._label)
+
+        # Track
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor("#262626"))
+        p.drawRoundedRect(bar_x, bar_y, bar_w, bar_h, 4, 4)
+
+        # Fill
+        ratio = min(1.0, self._value / self._max) if self._max else 0.0
+        fill_w = int(bar_w * ratio)
+        fill_color = QColor(self._color)
+        if self._dim:
+            fill_color.setAlpha(110)
+        p.setBrush(fill_color)
+        if fill_w > 0:
+            p.drawRoundedRect(bar_x, bar_y, fill_w, bar_h, 4, 4)
+
+        # Threshold tick (e.g. pot odds tick on equity bar)
+        if self._tick is not None and self._max > 0:
+            tick_ratio = min(1.0, self._tick / self._max)
+            tick_x = bar_x + int(bar_w * tick_ratio)
+            p.setPen(QPen(QColor("#ffd966"), 2))
+            p.drawLine(tick_x, bar_y - 2,
+                       tick_x, bar_y + bar_h + 2)
+
+        # Right-side value text
+        p.setPen(QColor("#ffffff" if not self._dim else "#777777"))
+        font2 = p.font()
+        font2.setPointSize(11)
+        font2.setBold(True)
+        p.setFont(font2)
+        p.drawText(bar_x + bar_w + 6, 0, value_w - 6, h,
+                   Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                   self._fill_text)
+        p.end()
+
+
+class MetricDashboard(QWidget):
+    """Stack of MetricBars for the glanceable decision strip.
+
+    Includes:
+      • Equity (with pot-odds threshold tick)
+      • Pot odds  (call price as % of pot-after-call)
+      • Implied break-even %  (price ÷ (pot + price + 0.5·stack))
+      • SPR after call (0..10 capped)
+      • Pot Commitment % (price ÷ current stack)
+      • Outs (0..20)
+      • Nash push gauge — only shown if hero stack ≤ 15 BB
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        v = QVBoxLayout(self)
+        v.setContentsMargins(8, 4, 8, 4)
+        v.setSpacing(2)
+        self.equity_bar = MetricBar("Equity vs ranges")
+        v.addWidget(self.equity_bar)
+        self.potodds_bar = MetricBar("Pot odds")
+        v.addWidget(self.potodds_bar)
+        self.implied_bar = MetricBar("Implied break-even")
+        v.addWidget(self.implied_bar)
+        self.spr_bar = MetricBar("SPR after call")
+        v.addWidget(self.spr_bar)
+        self.commit_bar = MetricBar("Pot commitment %")
+        v.addWidget(self.commit_bar)
+        self.outs_bar = MetricBar("Outs (≤ 20)")
+        v.addWidget(self.outs_bar)
+        self.nash_bar = MetricBar("Nash push range (≤15bb)")
+        v.addWidget(self.nash_bar)
+        self.nash_bar.setVisible(False)
+        self.setStyleSheet(
+            "MetricDashboard { background: #181818;"
+            " border: 1px solid #333; border-radius: 6px; }"
+        )
+
+    def update_metrics(
+        self, *, equity_pct: float | None, pot_odds_pct: float | None,
+        implied_pct: float | None, spr: float | None,
+        commit_pct: float | None, outs: int | None,
+        stack_bb: float | None, hero_hand=None,
+        unraised_preflop: bool = False
+    ):
+        # Equity bar — pot-odds tick + color verdict
+        if equity_pct is None:
+            self.equity_bar.set_metric(0, 100, "--", color="#0af", dim=True)
+        else:
+            tick = (pot_odds_pct if pot_odds_pct and not unraised_preflop
+                    else None)
+            if unraised_preflop or pot_odds_pct is None:
+                col = "#0af"
+            elif equity_pct >= pot_odds_pct:
+                col = "#88ff88"
+            elif equity_pct >= pot_odds_pct * 0.75:
+                col = "#ffd966"
+            else:
+                col = "#ff7777"
+            self.equity_bar.set_metric(
+                equity_pct, 100, f"{equity_pct:.1f}%",
+                tick=tick, color=col)
+
+        # Pot odds bar
+        if pot_odds_pct is None:
+            self.potodds_bar.set_metric(0, 100, "--", color="#f80", dim=True)
+        else:
+            tag = "" if not unraised_preflop else " (BB)"
+            self.potodds_bar.set_metric(
+                pot_odds_pct, 100, f"{pot_odds_pct:.1f}%{tag}",
+                color="#f80", dim=unraised_preflop)
+
+        # Implied break-even — a very low number means deep implied odds.
+        if implied_pct is None:
+            self.implied_bar.set_metric(0, 50, "--", color="#a8f", dim=True)
+        else:
+            self.implied_bar.set_metric(
+                implied_pct, 50, f"{implied_pct:.1f}%",
+                color="#a8f")
+
+        # SPR after call (cap at 10 — anything above is "very deep").
+        if spr is None:
+            self.spr_bar.set_metric(0, 10, "--", color="#0af", dim=True)
+        else:
+            if spr < 1:
+                col = "#ff7777"
+            elif spr < 3:
+                col = "#ffd966"
+            else:
+                col = "#88ff88"
+            self.spr_bar.set_metric(
+                min(spr, 10), 10, f"{spr:.2f}", color=col)
+
+        # Pot commitment % — > 33 % = effectively committed.
+        if commit_pct is None:
+            self.commit_bar.set_metric(0, 100, "--", color="#0af", dim=True)
+        else:
+            if commit_pct >= 33:
+                col = "#ff7777"
+            elif commit_pct >= 15:
+                col = "#ffd966"
+            else:
+                col = "#88ff88"
+            self.commit_bar.set_metric(
+                commit_pct, 100, f"{commit_pct:.1f}%", color=col)
+
+        # Outs (0..20+)
+        if outs is None:
+            self.outs_bar.set_metric(0, 20, "--", color="#0f0", dim=True)
+        else:
+            col = ("#88ff88" if outs >= 9
+                   else "#ffd966" if outs >= 4 else "#aaaaaa")
+            self.outs_bar.set_metric(
+                min(outs, 20), 20, f"{outs}", color=col)
+
+        # Nash push gauge — show only when short-stacked.
+        if stack_bb is not None and stack_bb <= 15:
+            self.nash_bar.setVisible(True)
+            push_pct = nash_push_pct(stack_bb) * 100
+            # If we know hero's hand strength percentile, also show
+            # whether THIS hand is in the push range.
+            verdict = ""
+            tick = None
+            if hero_hand and len(hero_hand) >= 2:
+                pct = hand_strength_percentile(hero_hand) * 100
+                # Top X% of hands → 100-X percentile threshold
+                in_range = pct >= (100 - push_pct)
+                verdict = (" SHOVE" if in_range else " FOLD")
+                tick = 100 - push_pct
+            col = "#ff7777" if stack_bb <= 6 else "#ffd966"
+            self.nash_bar.set_metric(
+                push_pct, 100,
+                f"top {push_pct:.0f}% @ {stack_bb:.0f}bb{verdict}",
+                tick=tick, color=col)
+        else:
+            self.nash_bar.setVisible(False)
+
+
 class TheoryOfMindPanel(QWidget):
     """Panel with tabs for each bot's theory of mind analysis."""
 
@@ -2084,6 +2326,12 @@ class TheoryOfMindPanel(QWidget):
         outs_row.addStretch()
         layout.addLayout(outs_row)
 
+        # Bar-chart dashboard — glanceable visualisation of the same
+        # numbers the text strip above shows, plus SPR, commitment%,
+        # outs, and the Nash push gauge when the hero is short-stacked.
+        self.dashboard = MetricDashboard()
+        layout.addWidget(self.dashboard)
+
         # Row 2: Range mode selector and board texture
         mode_row = QHBoxLayout()
 
@@ -2160,8 +2408,13 @@ class TheoryOfMindPanel(QWidget):
         advisor_scroll.setStyleSheet("QScrollArea { border: none; background: #1a2a1a; }")
 
         self.advisor_advice = QLabel("Deal a hand to see strategic advice")
-        self.advisor_advice.setFont(QFont('Courier', 16))
-        self.advisor_advice.setStyleSheet("color: #8f8; padding: 15px; background: #1a2a1a;")
+        self.advisor_advice.setFont(QFont('Arial', 14))
+        # Render rich-text so the Gordon advice card can carry per-line
+        # colors (action verb green/red/amber, watch warnings yellow).
+        self.advisor_advice.setTextFormat(Qt.TextFormat.RichText)
+        self.advisor_advice.setStyleSheet(
+            "color: #ddd; padding: 14px; background: #121a12;"
+            " border: 1px solid #2a4a2a; border-radius: 6px;")
         self.advisor_advice.setWordWrap(True)
         self.advisor_advice.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         advisor_scroll.setWidget(self.advisor_advice)
@@ -3607,8 +3860,66 @@ class TheoryOfMindPanel(QWidget):
             }
 
             header = self._build_pot_odds_header(advice_context)
-            main_advice = self.get_strategy_advice_v2(advice_context)
-            self.advisor_advice.setText(header + "\n\n" + main_advice)
+            # Gordon-style compact advice card — the headline action
+            # recommendation in ~6 lines. Old verbose advice kept
+            # internally but no longer shown by default.
+            hand_key_g = (PokerWindow._hand_class(hero_hand)
+                          if hero_hand else "??")
+            gordon_block = self._build_gordon_advice(
+                advice_context, hand_key_g, bb_amount)
+            # Wrap pre-formatted text header (it uses \n + box-drawing
+            # chars) inside <pre> so the rich-text renderer doesn't
+            # collapse the spacing.
+            from html import escape as _esc
+            header_html = ("<pre style='color:#cccccc; margin:0;"
+                           " font-family:monospace; font-size:11pt;'>"
+                           f"{_esc(header)}</pre>")
+            self.advisor_advice.setText(
+                header_html + "<br>" + gordon_block)
+
+            # Update bar-chart dashboard with the just-computed metrics.
+            try:
+                hero_stack_val = (players[0].stack
+                                  if players else 200)
+                # SPR + commitment %
+                if to_call > 0 and hero_stack_val > 0:
+                    pot_after = pot + to_call
+                    stack_after = max(0, hero_stack_val - to_call)
+                    spr_v = (stack_after / pot_after
+                             if pot_after > 0 else 0.0)
+                    commit_v = 100.0 * to_call / hero_stack_val
+                else:
+                    spr_v = (hero_stack_val / pot
+                             if pot and pot > 0 else None)
+                    commit_v = None
+                # Outs (post-flop only)
+                outs_v = None
+                if hero_hand and board and 3 <= len(board) <= 4:
+                    try:
+                        # Re-use PokerWindow.calculate_outs() via the
+                        # window reference if we can; otherwise fall back
+                        # to None.
+                        win = getattr(self, '_owner_window', None)
+                        if win is not None and hasattr(win, 'calculate_outs'):
+                            outs_v, _ = win.calculate_outs(hero_hand, board)
+                    except Exception:
+                        outs_v = None
+                stack_bb_v = (hero_stack_val / bb_amount
+                              if bb_amount else None)
+                self.dashboard.update_metrics(
+                    equity_pct=hero_equity * 100.0,
+                    pot_odds_pct=pot_odds * 100.0 if pot_odds else None,
+                    implied_pct=(implied_odds * 100.0
+                                 if implied_odds else None),
+                    spr=spr_v,
+                    commit_pct=commit_v,
+                    outs=outs_v,
+                    stack_bb=stack_bb_v,
+                    hero_hand=hero_hand,
+                    unraised_preflop=unraised_preflop,
+                )
+            except Exception:
+                pass
         else:
             self.equity_label.setText("Hero Equity vs Ranges: --")
             self.equity_label.setStyleSheet("color: #0af; padding: 8px; background: #222; border: 2px solid #444;")
@@ -3906,6 +4217,235 @@ class TheoryOfMindPanel(QWidget):
             lines.append("(No-peek: computed vs estimated ranges, never actual cards.)")
 
         return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Gordon-style compact advice (Phil Gordon's Little Green Book).
+    # Every action runs through his two-question script:
+    #   1. Should I bet/raise?   (asked FIRST — aggressive poker wins)
+    #   2. Should I check/fold?  (asked SECOND)
+    #   3. Otherwise → call / check
+    # The output is at most ~6 lines so it can sit in a small panel
+    # alongside the bar dashboard.
+    # ------------------------------------------------------------------
+
+    _GORDON_TIER = {
+        # Tier 1 = premium (always playable); 5 = trash. Used to drive
+        # the BET/RAISE decision branch.  Indexed by 169-grid hand key
+        # ("AA", "AKs", "72o", …).  Anything not in the dict falls
+        # through to tier 6 (fold from anywhere).
+        # Tier 1 — premium
+        **{k: 1 for k in (
+            "AA", "KK", "QQ", "JJ", "AKs", "AKo", "AQs")},
+        # Tier 2 — strong
+        **{k: 2 for k in (
+            "TT", "99", "AQo", "AJs", "KQs", "AJo", "KQo")},
+        # Tier 3 — playable in position / against weak fields
+        **{k: 3 for k in (
+            "88", "77", "66", "ATs", "KJs", "QJs", "JTs",
+            "KTs", "QTs", "T9s", "98s", "87s", "76s",
+            "ATo", "KJo", "QJo", "JTo")},
+        # Tier 4 — speculative; multi-way only or late-position steals
+        **{k: 4 for k in (
+            "55", "44", "33", "22", "A9s", "A8s", "A7s",
+            "A6s", "A5s", "A4s", "A3s", "A2s",
+            "K9s", "Q9s", "J9s", "T8s", "97s", "86s", "75s",
+            "65s", "54s",
+            "KTo", "QTo", "T9o", "98o")},
+    }
+
+    @classmethod
+    def _gordon_tier(cls, hand_key: str) -> int:
+        return cls._GORDON_TIER.get(hand_key, 6)
+
+    def _build_gordon_advice(self, ctx, hand_key: str,
+                              bb_amount: float) -> str:
+        """Return a compact (~6 line) Gordon-style action card.
+
+        Lines:
+          Q1 / Q2 — the two-question script outcome
+          ACTION   — the recommended primary action, color-tagged
+          SIZING   — Gordon's position-based open-raise sizes
+          WATCH    — one-line context warning ("4th raise=aces",
+                     "board paired = first to bet wins", etc.)
+        """
+        hand_str = hand_key
+        position = (ctx.get('hero_position') or 'MP').upper()
+        street = ctx.get('street', 'Preflop')
+        to_call = ctx.get('to_call', 0) or 0
+        pot = ctx.get('pot', 0) or 0
+        equity = ctx.get('equity', 0) or 0       # fraction 0..1
+        pot_odds = ctx.get('pot_odds', 0) or 0   # fraction
+        current_bet = ctx.get('current_bet', 0) or 0
+        num_opps = ctx.get('num_opponents', 0) or 0
+        tier = self._gordon_tier(hand_key)
+        hero_stack = ctx.get('hero_stack', 200) or 200
+        stack_bb = (hero_stack / bb_amount) if bb_amount else 50
+        unraised = (street == "Preflop" and current_bet > 0
+                    and current_bet <= bb_amount)
+
+        # ------- Decision (Gordon's two-question script) -------
+        bet_raise = False
+        check_fold = False
+        action_line = ""
+        why_line = ""
+
+        if street == 'Preflop':
+            n_raises = max(0, int((current_bet / max(bb_amount, 1)) - 1))
+            first_in = (to_call <= bb_amount and current_bet <= bb_amount)
+            facing_raise = (current_bet > bb_amount)
+            # Short-stack push/fold takes over below 15 BB
+            if stack_bb <= 15:
+                pct = hand_strength_percentile(ctx.get('hero_hand') or [])
+                push_band = nash_push_pct(stack_bb)
+                if pct >= (1 - push_band):
+                    bet_raise = True
+                    action_line = (f"PUSH ALL-IN  (Nash @ {stack_bb:.0f}bb: "
+                                   f"top {push_band*100:.0f}%)")
+                    why_line = "Folding equity + ICM beats blinding out."
+                else:
+                    check_fold = True
+                    action_line = "FOLD  (outside Nash push range)"
+                    why_line = "Conserve chips for a better spot."
+            elif facing_raise and n_raises >= 3:
+                # Gordon: the 4th raise (3rd re-raise) means aces.
+                if tier == 1 and hand_key == "AA":
+                    bet_raise = True
+                    action_line = "SHOVE — call any all-in (AA)"
+                    why_line = "Only AA beats AA; get it all in."
+                else:
+                    check_fold = True
+                    action_line = "FOLD  (4th raise ≈ AA)"
+                    why_line = ("Gordon's rule: the 4th raise means aces. "
+                                "Save chips for a clean spot.")
+            elif facing_raise:
+                # Re-raised before us
+                if tier <= 2:
+                    bet_raise = True
+                    action_line = f"3-BET  (tier {tier} hand vs raise)"
+                    why_line = ("Re-raise to isolate / take the lead. "
+                                "Gordon: 3x the previous bet.")
+                elif tier == 3 and position in ('CO', 'BTN'):
+                    action_line = "CALL in position"
+                    why_line = "Set/draw equity + positional advantage."
+                else:
+                    check_fold = True
+                    action_line = f"FOLD  (tier {tier} vs raise)"
+                    why_line = "Out of position / dominated; wait."
+            elif first_in:
+                # Open-raising decision
+                if tier <= 3 or (tier == 4 and position in ('CO', 'BTN')):
+                    bet_raise = True
+                    action_line = self._gordon_open_size(
+                        position, bb_amount, pot)
+                    why_line = ("First in → always raise (Gordon's 5 "
+                                "reasons: thin field, take lead, define "
+                                "ranges, conceal strength, win blinds).")
+                elif tier == 4:
+                    check_fold = True
+                    action_line = "FOLD  (tier 4 EP/MP — open only LP)"
+                    why_line = "Avoid weak hands out of position."
+                elif tier == 5:
+                    check_fold = True
+                    action_line = "FOLD"
+                    why_line = "Patience = profit. No reason to play."
+                else:
+                    check_fold = True
+                    action_line = "FOLD  (trash from this seat)"
+                    why_line = "Wait for a real spot."
+            else:
+                # Already in (BB option, limped pot)
+                if tier <= 3:
+                    bet_raise = True
+                    action_line = "RAISE limpers"
+                    why_line = ("Gordon: punish weak limps with a "
+                                "pot-sized squeeze in position.")
+                else:
+                    action_line = "CHECK"
+                    why_line = "Take the free flop with this trash."
+        else:
+            # ---- Postflop: equity vs pot odds drives the call gate ----
+            equity_pct = equity * 100
+            pot_odds_pct = pot_odds * 100
+            if to_call <= 0:
+                # We can bet or check
+                if equity_pct >= 60 or (num_opps == 1 and equity_pct >= 50):
+                    bet_raise = True
+                    action_line = "BET 2/3 pot (value)"
+                    why_line = ("Gordon: big hand → big pot. Charge "
+                                "draws, extract value.")
+                elif equity_pct >= 35 and num_opps == 1:
+                    bet_raise = True
+                    action_line = "C-BET ½ pot"
+                    why_line = ("Gordon: continuation bet wins ~65% "
+                                "of the time HU when villain misses.")
+                else:
+                    action_line = "CHECK"
+                    why_line = "Pot control with a weak/marginal hand."
+            else:
+                if equity_pct >= 75 and pot >= bb_amount * 8:
+                    bet_raise = True
+                    action_line = "RAISE — get it in"
+                    why_line = "Top of the range; build the pot."
+                elif equity_pct >= pot_odds_pct:
+                    if equity_pct >= 60:
+                        bet_raise = True
+                        action_line = "RAISE for value / protection"
+                        why_line = ("Gordon: big hand → big pot. "
+                                    "Don't slow-play on draws.")
+                    else:
+                        action_line = "CALL"
+                        why_line = (f"Equity {equity_pct:.0f}% beats "
+                                    f"pot odds {pot_odds_pct:.0f}%.")
+                else:
+                    check_fold = True
+                    action_line = "FOLD"
+                    why_line = (f"Equity {equity_pct:.0f}% < pot odds "
+                                f"{pot_odds_pct:.0f}%; no implied path.")
+
+        # ------- Watch-line (one-line warning) -------
+        watch = ""
+        if street == 'Preflop' and current_bet > 3 * bb_amount and tier >= 3:
+            watch = "WATCH: big preflop pot ≈ they're not folding."
+        elif street == 'Flop' and (board := ctx.get('board')):
+            ranks = [str(c)[0] for c in board[:3]]
+            if len(set(ranks)) < len(ranks):
+                watch = "WATCH: paired board — first to bet usually wins."
+            elif len({str(c)[1] for c in board[:3]}) == 1:
+                watch = "WATCH: monotone flop — flush draws everywhere."
+        elif (stack_bb <= 20 and stack_bb > 15
+              and street == 'Preflop'):
+            watch = "WATCH: ~20 BB — push/fold soon."
+
+        # ------- Assemble (rich-text colored lines) -------
+        q1_tag = ("<span style='color:#88ff88'>YES</span>"
+                  if bet_raise else "<span style='color:#888'>no</span>")
+        q2_tag = ("<span style='color:#ff7777'>YES</span>"
+                  if check_fold else "<span style='color:#888'>no</span>")
+        action_color = ("#88ff88" if bet_raise
+                        else "#ff7777" if check_fold else "#ffd966")
+        lines = [
+            f"<b>Hand</b> [{hand_str}]  tier {tier}  ·  pos {position}  ·  "
+            f"{stack_bb:.0f}bb  ·  {street}",
+            f"<b>Q1 Bet / Raise?</b>  → {q1_tag}      "
+            f"<b>Q2 Check / Fold?</b>  → {q2_tag}",
+            f"<b style='color:{action_color}'>ACTION:</b>  {action_line}",
+            f"<b>WHY:</b>  {why_line}",
+        ]
+        if watch:
+            lines.append(f"<b style='color:#ffd966'>⚠ {watch}</b>")
+        if unraised:
+            lines.append(
+                "<span style='color:#888'><i>Unraised pot — "
+                "decision is hand-tier × position, not pot odds.</i></span>")
+        return "<br>".join(lines)
+
+    def _gordon_open_size(self, position: str, bb: float,
+                          pot: float) -> str:
+        """Gordon's position-based open-raise sizes."""
+        mults = {'UTG': 2.5, 'EP': 2.5, 'MP': 3.0,
+                 'CO': 3.5, 'BTN': 3.5, 'SB': 3.0, 'BB': 3.0}
+        m = mults.get(position, 3.0)
+        return f"RAISE to {m:g}× BB  (${int(m * max(bb, 1))})"
 
     def get_strategy_advice_v2(self, ctx):
         """Comprehensive strategy advice based on exact game situation."""
@@ -6189,6 +6729,20 @@ class PokerWindow(QMainWindow):
                                    #                hands_won, hands_lost,
                                    #                cash_gained, cash_lost, net_cash}}
                                    # tracked from the local hero's POV
+        # Per-player × 169-hand history. Used by the Gordon-style 169
+        # heatmap on each player's Theory-of-Mind tab and by the
+        # range-narrowing logic that adjusts each opponent's estimated
+        # range using what they've actually done this session.
+        # Shape: {player_name: {hand_key: {seen, played (vpip),
+        # raised (pfr), called, folded, won, lost, net_cash}}}
+        # hand_key uses the canonical 169-grid notation: "AA", "AKs",
+        # "72o", etc. (see _hand_class).
+        self._player_169_history = {}
+        # Per-player VPIP/PFR cache for the CURRENT hand, so we only
+        # bump VPIP/PFR once per player per hand even if they take
+        # multiple actions on a street.
+        self._hand_vpip_seen = set()    # names that voluntarily put $ in this hand
+        self._hand_pfr_seen = set()     # names that raised preflop this hand
         self._game_status_logged = False
         self._original_player_count = None  # filled in on first deal_hand
         self._original_blinds = None
@@ -6220,6 +6774,67 @@ class PokerWindow(QMainWindow):
         }
 
     @staticmethod
+    def _fresh_169_cell() -> dict:
+        """One entry in the per-player 169-grid history."""
+        return {
+            'seen': 0,      # times dealt this combo
+            'played': 0,    # voluntarily put $ in (VPIP)
+            'raised': 0,    # raised preflop with this combo (PFR)
+            'called': 0,    # called (not raised) preflop
+            'folded': 0,    # folded preflop
+            'won': 0,       # hand resulted in a win
+            'lost': 0,      # showed down and lost, OR folded after putting $ in
+            'net_cash': 0,  # cumulative chip delta over all instances
+        }
+
+    def _bump_169_seen(self, player_name: str, hand_key: str):
+        bucket = self._player_169_history.setdefault(player_name, {})
+        bucket.setdefault(hand_key, self._fresh_169_cell())['seen'] += 1
+
+    def _bump_169_action(self, player_name: str, hand_key: str,
+                        action: str, street: str):
+        """Bump VPIP / PFR / called / folded counters once per hand per
+        player. action ∈ {'f','c','r'}, street ∈ STREETS. Only preflop
+        actions feed the heatmap counters; later-street actions feed
+        the range-narrowing logic separately."""
+        if not hand_key or hand_key == "??":
+            return
+        bucket = self._player_169_history.setdefault(player_name, {})
+        cell = bucket.setdefault(hand_key, self._fresh_169_cell())
+        if street == 'Preflop':
+            if action == 'r' and player_name not in self._hand_pfr_seen:
+                cell['raised'] += 1
+                self._hand_pfr_seen.add(player_name)
+                if player_name not in self._hand_vpip_seen:
+                    cell['played'] += 1
+                    self._hand_vpip_seen.add(player_name)
+            elif action == 'c' and player_name not in self._hand_vpip_seen:
+                # Only count a CALL as VPIP if the player actually faced
+                # a bet to call. Posting the BB and then checking is not
+                # VPIP. Caller filters this via to_call > 0.
+                cell['called'] += 1
+                cell['played'] += 1
+                self._hand_vpip_seen.add(player_name)
+            elif action == 'f':
+                # Only count fold if they hadn't already voluntarily
+                # entered the pot. A fold to a re-raise after limping
+                # already shows up as 'played'.
+                if player_name not in self._hand_vpip_seen:
+                    cell['folded'] += 1
+
+    def _bump_169_outcome(self, player_name: str, hand_key: str,
+                         net_cash: int, won: bool):
+        if not hand_key or hand_key == "??":
+            return
+        bucket = self._player_169_history.setdefault(player_name, {})
+        cell = bucket.setdefault(hand_key, self._fresh_169_cell())
+        cell['net_cash'] += int(net_cash)
+        if won:
+            cell['won'] += 1
+        elif net_cash < 0:
+            cell['lost'] += 1
+
+    @staticmethod
     def _hand_class(hand) -> str:
         """Return canonical 169-class hole-card label like 'AA', 'AKs', 'AKo'."""
         if not hand or len(hand) < 2:
@@ -6236,11 +6851,18 @@ class PokerWindow(QMainWindow):
     def _record_hand_start_stats(self):
         """Bump per-player hands_played and per-hole-class hands_seen for
         the local hero. Called from deal_hand."""
+        # Reset per-hand VPIP/PFR caches.
+        self._hand_vpip_seen = set()
+        self._hand_pfr_seen = set()
         for p in self.players:
             if p.active:
                 self._table_stats.setdefault(
                     p.name, self._fresh_table_stats()
                 )['hands_played'] += 1
+                # Every player (not just hero) gets a 169-grid 'seen'
+                # bump — used by the per-player heatmap.
+                if p.hand:
+                    self._bump_169_seen(p.name, self._hand_class(p.hand))
         hero_seat = self.my_seat if self.my_seat is not None else 0
         if 0 <= hero_seat < len(self.players):
             hero = self.players[hero_seat]
@@ -6256,6 +6878,11 @@ class PokerWindow(QMainWindow):
                 self._current_hero_hand_class = cls
                 self._current_hero_starting_stack = int(hero.stack)
         self._all_in_seen_this_hand = set()
+        # Snapshot every player's starting stack so we can compute
+        # per-player net_cash deltas for the 169 history at hand end.
+        self._169_starting_stacks = {
+            p.name: int(p.stack) for p in self.players
+        }
 
     def _record_all_in(self, player_name: str):
         """Bump all_ins count for player_name (called from action handlers
@@ -6300,6 +6927,20 @@ class PokerWindow(QMainWindow):
                 s['net_cash'] = s['cash_gained'] - s['cash_lost']
         self._current_hero_hand_class = None
         self._current_hero_starting_stack = None
+
+        # Per-player 169-grid outcome bump. Done for EVERY player who
+        # had a hand this round, so each opponent's heatmap can show
+        # which combos they've won / lost with this session.
+        starting = getattr(self, '_169_starting_stacks', {}) or {}
+        winner_set = set(winners_names or [])
+        for p in self.players:
+            if not p.hand:
+                continue
+            key = self._hand_class(p.hand)
+            start = starting.get(p.name, p.stack)
+            delta = int(p.stack) - int(start)
+            self._bump_169_outcome(p.name, key, delta,
+                                   won=(p.name in winner_set))
 
     def _log_game_status(self):
         """Write the bracelets-style GAME STATUS block at the start of the
@@ -7194,6 +7835,7 @@ class PokerWindow(QMainWindow):
 
         # Theory of Mind Panel (expanded)
         self.tom_panel = TheoryOfMindPanel()
+        self.tom_panel._owner_window = self  # used by the bar dashboard
         self.tom_panel.setup_tabs(self.players, getattr(self, "network_human_seats", set()))
         self.tom_panel.set_update_callback(self.update_theory_of_mind)  # Wire up range mode callback
         tom_container_layout.addWidget(self.tom_panel, stretch=1)
@@ -9092,6 +9734,15 @@ class PokerWindow(QMainWindow):
         """Process a player's action."""
         to_call = self.current_bet - player.bet_in_round
         street = STREETS[self.street_idx]
+
+        # Feed the per-player × 169-hand heatmap. Only preflop actions
+        # advance the VPIP/PFR/called/folded counters; if to_call==0
+        # and the player checks, that's the BB option — not VPIP.
+        if street == 'Preflop' and player.hand:
+            hand_key = self._hand_class(player.hand)
+            is_check = (action == 'c' and to_call <= 0)
+            if not is_check:
+                self._bump_169_action(player.name, hand_key, action, street)
 
         # Track ALL player actions for hand summary
         action_str = ""
