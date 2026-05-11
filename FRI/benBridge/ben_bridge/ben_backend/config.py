@@ -306,8 +306,25 @@ class ConfigManager:
             self.config.preferences.suit_layout = SuitLayout(int(data["preference.suit_layout"]))
         if "preference.swap_ns_declarer" in data:
             self.config.preferences.swap_ns_declarer = data["preference.swap_ns_declarer"] == "1"
+        # show_alert_marks was being written into self.prefs by the
+        # Preferences dialog but never saved OR loaded — that left the
+        # checkbox effectively non-persistent. Wire both directions
+        # here and in save_preferences below.
+        if "preference.show_alert_marks" in data:
+            self.config.preferences.show_alert_marks = (
+                data["preference.show_alert_marks"] == "1")
         if "preference.log_enabled" in data:
             self.config.preferences.log_enabled = data["preference.log_enabled"] == "1"
+        # log_as_pbn / language were being saved but never read on the
+        # next launch, so the user's choice was silently reverted to
+        # the default. Add the missing load arms.
+        if "preference.log_as_pbn" in data:
+            self.config.preferences.log_as_pbn = (
+                data["preference.log_as_pbn"] == "1")
+        if "preference.language" in data:
+            v = data["preference.language"].strip()
+            if v:
+                self.config.preferences.language = v
         if "preference.moved_cards" in data:
             self.config.preferences.moved_cards_speed = float(data["preference.moved_cards"])
         if "preference.use_dd_play" in data:
@@ -348,6 +365,11 @@ class ConfigManager:
             "preference.single_click": "1" if self.config.preferences.single_click else "0",
             "preference.suit_layout": str(self.config.preferences.suit_layout.value),
             "preference.swap_ns_declarer": "1" if self.config.preferences.swap_ns_declarer else "0",
+            # show_alert_marks now persists in both directions; without
+            # this write the alert-marks checkbox lost its setting on
+            # every launch.
+            "preference.show_alert_marks": (
+                "1" if self.config.preferences.show_alert_marks else "0"),
             "preference.log_enabled": "1" if self.config.preferences.log_enabled else "0",
             "preference.log_as_pbn": "1" if self.config.preferences.log_as_pbn else "0",
             "preference.moved_cards": str(self.config.preferences.moved_cards_speed),
