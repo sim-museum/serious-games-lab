@@ -2081,7 +2081,7 @@ class TheoryOfMindTab(QWidget):
         grid_label.setFont(QFont('Arial', 18, QFont.Weight.Bold))
         grid_label.setStyleSheet("color: #fff;")
         title_row.addWidget(grid_label, stretch=1)
-        self.history_btn = QPushButton("History")
+        self.history_btn = QPushButton("Betting history")
         self.history_btn.setStyleSheet(
             "QPushButton { background: #2a3a4a; color: #ddd;"
             " font-size: 13pt; font-weight: bold;"
@@ -2089,7 +2089,8 @@ class TheoryOfMindTab(QWidget):
             " border-radius: 5px; }"
             "QPushButton:hover { background: #3a4a5a; }")
         self.history_btn.setToolTip(
-            f"Open {player_name}'s session play pattern")
+            f"Open {player_name}'s session play pattern "
+            "(169 hole-card combos × win / loss / fold)")
         self.history_btn.clicked.connect(self._show_history)
         title_row.addWidget(self.history_btn)
         left_layout.addLayout(title_row)
@@ -2097,28 +2098,32 @@ class TheoryOfMindTab(QWidget):
         self.range_grid = HandRangeGrid()
         self.range_grid.setFixedSize(420, 420)  # Fixed size to ensure all 13 rows visible
         left_layout.addWidget(self.range_grid)
+
+        # PokerStove notation moved DOWN here (was on the right column
+        # in larger type). Sits directly below the grid in a smaller
+        # font so it no longer crowds the analysis text.
+        notation_label = QLabel("PokerStove notation:")
+        notation_label.setFont(QFont('Arial', 12, QFont.Weight.Bold))
+        notation_label.setStyleSheet("color: #888;")
+        left_layout.addWidget(notation_label)
+
+        self.notation_text = QLabel("")
+        self.notation_text.setFont(QFont('Courier', 12))
+        self.notation_text.setStyleSheet(
+            "background-color: #222; color: #0f0; padding: 6px;"
+            " border: 1px solid #444; border-radius: 4px;")
+        self.notation_text.setWordWrap(True)
+        self.notation_text.setMinimumHeight(40)
+        left_layout.addWidget(self.notation_text)
         left_layout.addStretch()
 
         layout.addLayout(left_layout)
 
-        # Right: Text explanation
+        # Right: Analysis text (full column, no longer competing with
+        # the notation block).
         right_layout = QVBoxLayout()
         right_layout.setSpacing(15)
 
-        # PokerStove notation entry
-        notation_label = QLabel("PokerStove Notation:")
-        notation_label.setFont(QFont('Arial', 18, QFont.Weight.Bold))
-        notation_label.setStyleSheet("color: #aaa;")
-        right_layout.addWidget(notation_label)
-
-        self.notation_text = QLabel("")
-        self.notation_text.setFont(QFont('Courier', 20))
-        self.notation_text.setStyleSheet("background-color: #222; color: #0f0; padding: 15px; border: 2px solid #444;")
-        self.notation_text.setWordWrap(True)
-        self.notation_text.setMinimumHeight(80)
-        right_layout.addWidget(self.notation_text)
-
-        # Explanation
         explain_label = QLabel("Analysis:")
         explain_label.setFont(QFont('Arial', 18, QFont.Weight.Bold))
         explain_label.setStyleSheet("color: #aaa;")
@@ -2890,15 +2895,21 @@ class TheoryOfMindPanel(QWidget):
         def _scroll_wrap(widget):
             """Wrap a tab's content widget in a vertical-scrolling
             QScrollArea so the full PokerStove grid + analysis text
-            are always reachable even when the dialog is short."""
+            are always reachable even when the dialog is short.
+            Vertical scrollbar is forced always-on so the user can
+            see at a glance that there's more content below."""
             sa = QScrollArea()
             sa.setWidgetResizable(True)
             sa.setStyleSheet(
-                "QScrollArea { border: none; background: #1a1a1a; }")
+                "QScrollArea { border: none; background: #1a1a1a; }"
+                "QScrollBar:vertical { width: 14px; background: #222; }"
+                "QScrollBar::handle:vertical { background: #555;"
+                " min-height: 24px; border-radius: 4px; }"
+            )
             sa.setHorizontalScrollBarPolicy(
                 Qt.ScrollBarPolicy.ScrollBarAsNeeded)
             sa.setVerticalScrollBarPolicy(
-                Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
             sa.setWidget(widget)
             return sa
 
@@ -8727,11 +8738,16 @@ class PokerWindow(QMainWindow):
         # Hand (Button)" so the board dynamic + c-bet sizing hint is
         # always at eye level, not buried inside the ToM panel.
         self.tom_external_board_texture = QLabel("Board: --")
+        # Bold weight enforced via both QFont AND stylesheet so the
+        # label actually renders bold regardless of platform font
+        # mappings (the painter-inherited Weight.Bold was being
+        # silently downgraded on some Linux Qt builds).
         self.tom_external_board_texture.setFont(
-            QFont('Arial', 18, QFont.Weight.Bold))
+            QFont('Arial', 18, QFont.Weight.Black))
         self.tom_external_board_texture.setStyleSheet(
             "color: #fc0; background: transparent; border: none;"
-            " padding: 4px 10px;")
+            " padding: 4px 10px;"
+            " font-weight: 900;")
         self.tom_external_board_texture.setWordWrap(True)
         card_bar_layout.addWidget(self.tom_external_board_texture,
                                   stretch=1)
