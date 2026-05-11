@@ -198,6 +198,27 @@ def build_bdl_snapshot(board: BoardState,
     out.append(f"Deal-text    :   Board #{board.board_number}")
     out.append(f"Dealer       :   {_SEAT_NAMES[board.dealer]}")
     out.append(f"Vuln         :   {_VUL_NAMES.get(board.vulnerability, 'None')}  ")
+    # PBN comment line — copy/paste-ready for bcalc's Distribution
+    # field. Only emitted when we have full information (viewer_seat
+    # is None) so a hint dialog can't accidentally leak hands the
+    # human seat shouldn't see. We still emit when ONLY some hands
+    # are known (e.g. mid-hand snapshot with hidden seats) by using
+    # the 'xxx...' placeholder for unknown hands, which bcalc rejects
+    # gracefully and which makes it obvious to the reader that the
+    # cell wasn't filled in.
+    if viewer_seat is None and hands_for_cards:
+        pbn_parts: List[str] = []
+        for seat in (Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST):
+            h = hands_for_cards.get(seat)
+            try:
+                pbn_parts.append(h.to_pbn() if h else "-")
+            except Exception:
+                pbn_parts.append("-")
+        if any(p and p != "-" for p in pbn_parts):
+            out.append(
+                "# PBN (paste into bcalc Distribution): "
+                + "N:" + " ".join(pbn_parts)
+            )
     out.extend(_format_cards_block_for(masked))
     out.append("")
 
