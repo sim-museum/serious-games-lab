@@ -644,6 +644,11 @@ class MainWindow(QMainWindow):
         export_action.triggered.connect(self._on_export_html)
         file_menu.addAction(export_action)
 
+        print_action = QAction("&Print Current Hand...", self)
+        print_action.setShortcut(QKeySequence("Ctrl+P"))
+        print_action.triggered.connect(self._on_print_current_hand)
+        file_menu.addAction(print_action)
+
         file_menu.addSeparator()
 
         exit_action = QAction("E&xit", self)
@@ -1415,6 +1420,81 @@ class MainWindow(QMainWindow):
         )
         if filename:
             self.status_label.setText(f"Exported: {os.path.basename(filename)}")
+
+    def _on_print_current_hand(self):
+        """File → Print Current Hand. Q-Plus spec at BRIDGE.HLQ
+        .printing (lines 1930-1940): pick a card layout on the left
+        and which extras to include on the right, then send to the
+        printer. Only the current deal is printable."""
+        board = self.controller.board
+        if board is None:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, "Print",
+                "No deal is open to print. Start or open a deal first."
+            )
+            return
+        # Pull together the result banner / contract / result so the
+        # printout matches what the end-of-hand dialog shows.
+        contract = getattr(board, 'contract', None)
+        result_str = ""
+        banner_text = ""
+        try:
+            if contract is not None and getattr(
+                    board, 'tricks', None):
+                tricks = board.declarer_tricks
+                target = contract.target_tricks()
+                if tricks >= target:
+                    overtricks = tricks - target
+                    result_str = "Made" if overtricks == 0 else f"+{overtricks}"
+                else:
+                    result_str = f"-{target - tricks}"
+                # Q-Plus-style banner sentence — same logic as
+                # EndOfHandDialog._compose_banner_text.
+                seat_full = {'N': 'North', 'E': 'East',
+                             'S': 'South', 'W': 'West'}
+                seat_char = contract.declarer.to_char()
+                seat_name = seat_full.get(seat_char, seat_char)
+                if result_str.startswith('-'):
+                    n = -int(result_str)
+                    tw = 'trick' if n == 1 else 'tricks'
+                    spelled = {1: 'one', 2: 'two', 3: 'three',
+                               4: 'four', 5: 'five', 6: 'six',
+                               7: 'seven'}.get(n, str(n))
+                    banner_text = (
+                        f"playing finished: {seat_name} was set "
+                        f"{spelled} {tw} in {contract.to_str()}"
+                    )
+                elif result_str.startswith('+'):
+                    banner_text = (
+                        f"playing finished: {seat_name} made "
+                        f"{contract.to_str()} {result_str} overtricks"
+                    )
+                else:
+                    banner_text = (
+                        f"playing finished: {seat_name} made "
+                        f"{contract.to_str()}"
+                    )
+        except Exception:
+            pass
+        try:
+            remark = (self._remark_for_current_board()
+                      if hasattr(self, '_remark_for_current_board')
+                      else "")
+        except Exception:
+            remark = ""
+
+        from .dialogs.print_dialog import PrintCurrentHandDialog
+        dlg = PrintCurrentHandDialog(
+            board=board,
+            original_hands=self.original_hands,
+            contract=contract,
+            result_str=result_str,
+            banner_text=banner_text,
+            remark=remark,
+            parent=self,
+        )
+        dlg.exec()
 
     def _on_pair_tournament(self):
         """Start a pairs tournament"""
