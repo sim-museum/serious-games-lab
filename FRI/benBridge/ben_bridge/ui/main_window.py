@@ -651,6 +651,16 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
 
+        restore_action = QAction("&Restore Score Table...", self)
+        restore_action.setToolTip(
+            "Load a saved rubber scorecard (or other score table) "
+            "to continue a match where you left off."
+        )
+        restore_action.triggered.connect(self._on_restore_score_table)
+        file_menu.addAction(restore_action)
+
+        file_menu.addSeparator()
+
         exit_action = QAction("E&xit", self)
         exit_action.setShortcut(QKeySequence.StandardKey.Quit)
         exit_action.triggered.connect(self.close)
@@ -773,6 +783,14 @@ class MainWindow(QMainWindow):
         teams_score_action = QAction("&Teams Match Score...", self)
         teams_score_action.triggered.connect(self._on_view_teams_score)
         view_menu.addAction(teams_score_action)
+
+        rubber_action = QAction("&Rubber Scorecard...", self)
+        rubber_action.setToolTip(
+            "View the running rubber bridge scorecard "
+            "(per Q-Plus .score-rubber)."
+        )
+        rubber_action.triggered.connect(self._on_view_rubber)
+        view_menu.addAction(rubber_action)
 
         dd_action = QAction("&Double Dummy Analysis", self)
         dd_action.triggered.connect(self._on_dd_analysis)
@@ -2546,6 +2564,63 @@ For more information, see the README file."""
         for b in auction:
             self._add_bid_to_info(bidder, b, "", "")
             bidder = bidder.next()
+
+    def _on_view_rubber(self):
+        """View → Rubber Scorecard. Opens the non-modal Q-Plus
+        .score-rubber scorecard dialog backed by self.rubber_score
+        (lazily created on first access)."""
+        if not hasattr(self, 'rubber_score') or self.rubber_score is None:
+            from ben_backend.scoring import RubberScore
+            self.rubber_score = RubberScore()
+        # Cache the dialog so re-opening keeps the same view rather
+        # than spawning a stack of widgets behind the table.
+        existing = getattr(self, '_rubber_dialog', None)
+        try:
+            still_visible = (existing is not None
+                             and existing.isVisible())
+        except RuntimeError:
+            still_visible = False
+            existing = None
+        if not still_visible:
+            from .dialogs.minibridge_dialog import RubberScoringDialog
+            existing = RubberScoringDialog(
+                self.rubber_score, parent=self)
+            existing.setModal(False)
+            self._rubber_dialog = existing
+        else:
+            existing.set_rubber(self.rubber_score)
+        existing.show()
+        existing.raise_()
+        existing.activateWindow()
+
+    def _on_restore_score_table(self):
+        """File → Restore Score Table. Currently routes to the rubber
+        loader (rubber is the only score-table format that needs a
+        cross-session resume — IMP/MP tables resume via Match
+        Control)."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from pathlib import Path
+        default_dir = (Path(__file__).parent.parent
+                       / "DATA" / "RUBBERS")
+        if not default_dir.exists():
+            default_dir = Path.home()
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Restore score table",
+            str(default_dir),
+            "Rubber scorecard (*.json);;All files (*)",
+        )
+        if not filename:
+            return
+        try:
+            from ben_backend.scoring import RubberScore
+            self.rubber_score = RubberScore.load(filename)
+        except Exception as ex:
+            QMessageBox.warning(
+                self, "Restore failed",
+                f"Could not load score table:\n{ex}")
+            return
+        # Pop the rubber dialog so the user can see the loaded state.
+        self._on_view_rubber()
 
     def _on_show_scores(self):
         """Show score table.
@@ -5305,6 +5380,30 @@ For more information, see the README file."""
 
         self.analysis_label.setText(text)
         self.status_label.setText(f"Deal complete: {contract.to_str()} {result_str}")
+
+        # Rubber scoring auto-feed: when a rubber is active, push this
+        # hand's result onto the scorecard so the Rubber Scorecard
+        # dialog reflects it. Q-Plus .score-rubber routes trick score
+        # below the line and bonuses above; RubberScore.add_hand_result
+        # encapsulates the split.
+        try:
+            rubber = getattr(self, 'rubber_score', None)
+            if rubber is not None and not rubber.rubber_complete:
+                rubber.add_hand_result(
+                    contract=contract,
+                    tricks_made=tricks,
+                    declarer_is_ns=contract.declarer.is_ns(),
+                )
+                # Refresh the dialog if it's currently open.
+                rd = getattr(self, '_rubber_dialog', None)
+                if rd is not None:
+                    try:
+                        if rd.isVisible():
+                            rd.refresh()
+                    except RuntimeError:
+                        self._rubber_dialog = None
+        except Exception as ex:
+            print(f"[rubber] auto-add failed: {ex!r}", flush=True)
 
         # If this is a teams match, show the end-of-hand dialog
         if self.teams_match is not None and self.match_controller is not None:

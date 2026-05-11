@@ -124,104 +124,247 @@ class MiniBridgeDialog(QDialog):
 
 
 class RubberScoringDialog(QDialog):
-    """Dialog for configuring Rubber Bridge scoring."""
+    """Q-Plus .score-rubber scorecard view + edit dialog.
 
-    def __init__(self, parent=None):
+    Shows the rubber as the classic 2-column above-line / below-line
+    table with games_won and vulnerability indicators. Buttons map
+    1-to-1 to the Q-Plus spec (BRIDGE.HLQ 2561-2573):
+
+      • Edit / Delete last  — pop the most recent entry.
+      • Clear               — reset the rubber.
+      • Save                — write to JSON so File → Restore
+                              Score Table can load it later.
+      • Load                — read a previously saved rubber back.
+      • Close               — dismiss.
+
+    The dialog is non-modal; callers (MainWindow._on_view_scores or
+    _show_result in rubber mode) keep a reference and call
+    .refresh() after each hand is scored into the underlying
+    RubberScore.
+    """
+
+    def __init__(self, rubber: 'RubberScore' = None, parent=None):
         super().__init__(parent)
-
-        self.setWindowTitle("Rubber Bridge Scoring")
-        self.setMinimumWidth(450)
+        from ben_backend.scoring import RubberScore
+        self.rubber: 'RubberScore' = rubber or RubberScore()
+        self.setWindowTitle("Rubber bridge scorecard")
+        self.setMinimumWidth(640)
+        self.setMinimumHeight(440)
         apply_dialog_style(self)
         self._setup_ui()
+        self.refresh()
+
+    def set_rubber(self, rubber: 'RubberScore'):
+        self.rubber = rubber
+        self.refresh()
 
     def _setup_ui(self):
+        from PyQt6.QtWidgets import (QTableWidget, QTableWidgetItem,
+                                      QHeaderView)
         layout = QVBoxLayout(self)
+        layout.setSpacing(10)
 
-        # Explanation
-        info_group = QGroupBox("Rubber Bridge Scoring")
-        info_layout = QVBoxLayout()
+        # Header — games won + vulnerability indicators.
+        self.header_label = QLabel("")
+        self.header_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
+        layout.addWidget(self.header_label)
 
-        info_text = QLabel(
-            "Rubber Bridge is the traditional social form of Bridge.\n\n"
-            "Scoring rules:\n"
-            "• A game requires 100+ points below the line\n"
-            "• Only contract tricks count below the line\n"
-            "• Overtricks and bonuses count above the line\n"
-            "• First side to win two games wins the rubber\n"
-            "• Rubber bonus: 700 (2-0) or 500 (2-1)\n\n"
-            "Vulnerability:\n"
-            "• Start: Both sides not vulnerable\n"
-            "• After winning a game: That side is vulnerable\n"
-            "• Vulnerable penalties and bonuses are increased"
+        # Scorecard table: 4 columns (NS above, NS below, EW below,
+        # EW above) so above-the-line points sit AT the outside and
+        # below-the-line points sit in the middle two columns —
+        # mirrors how the classic paper scorecard is laid out.
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(
+            ["NS above", "NS below", "EW below", "EW above"])
+        self.table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows)
+        layout.addWidget(self.table, stretch=1)
+
+        # Totals + a notes line under the table.
+        self.totals_label = QLabel("")
+        self.totals_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        layout.addWidget(self.totals_label)
+
+        # Button row.
+        btn_row = QHBoxLayout()
+
+        del_btn = QPushButton("Delete last entry")
+        del_btn.setToolTip(
+            "Pop the most recent rubber row. Mirrors the Q-Plus "
+            "Edit button — use to back out a wrong score."
         )
-        info_text.setWordWrap(True)
-        info_layout.addWidget(info_text)
+        del_btn.clicked.connect(self._on_delete_last)
+        btn_row.addWidget(del_btn)
 
-        info_group.setLayout(info_layout)
-        layout.addWidget(info_group)
+        clear_btn = QPushButton("Clear")
+        clear_btn.setToolTip("Wipe the rubber and start fresh.")
+        clear_btn.clicked.connect(self._on_clear)
+        btn_row.addWidget(clear_btn)
 
-        # Current rubber state (would be updated during play)
-        state_group = QGroupBox("Current Rubber")
-        state_layout = QVBoxLayout()
-
-        self.state_label = QLabel(
-            "N/S: 0 games, 0 points below\n"
-            "E/W: 0 games, 0 points below\n\n"
-            "Neither side vulnerable"
+        save_btn = QPushButton("Save…")
+        save_btn.setToolTip(
+            "Save the current rubber to JSON so it can be resumed "
+            "later via File → Restore Score Table."
         )
-        self.state_label.setFont(QFont("Arial", 12))
-        state_layout.addWidget(self.state_label)
+        save_btn.clicked.connect(self._on_save)
+        btn_row.addWidget(save_btn)
 
-        state_group.setLayout(state_layout)
-        layout.addWidget(state_group)
+        load_btn = QPushButton("Load…")
+        load_btn.setToolTip("Replace the displayed rubber with one "
+                            "saved earlier.")
+        load_btn.clicked.connect(self._on_load)
+        btn_row.addWidget(load_btn)
 
-        # Options
-        options_group = QGroupBox("Options")
-        options_layout = QVBoxLayout()
+        btn_row.addStretch()
 
-        self.show_scorecard = QCheckBox("Show rubber scorecard during play")
-        self.show_scorecard.setChecked(True)
-        options_layout.addWidget(self.show_scorecard)
+        close_btn = QPushButton("Close")
+        close_btn.setDefault(True)
+        close_btn.clicked.connect(self.accept)
+        btn_row.addWidget(close_btn)
 
-        self.auto_vulnerability = QCheckBox("Automatic vulnerability tracking")
-        self.auto_vulnerability.setChecked(True)
-        options_layout.addWidget(self.auto_vulnerability)
+        layout.addLayout(btn_row)
 
-        options_group.setLayout(options_layout)
-        layout.addWidget(options_group)
+    # ------------------------------------------------------------------
+    # Render
+    # ------------------------------------------------------------------
 
-        layout.addStretch()
+    def refresh(self):
+        from PyQt6.QtWidgets import QTableWidgetItem
+        from PyQt6.QtGui import QColor
+        r = self.rubber
 
-        # Buttons
-        button_layout = QHBoxLayout()
+        ns_vul = "VUL" if r.vulnerable('NS') else "—"
+        ew_vul = "VUL" if r.vulnerable('EW') else "—"
+        header = (f"Games — NS: <b>{r.games_won_ns}</b> ({ns_vul}) "
+                  f"&nbsp;|&nbsp; EW: <b>{r.games_won_ew}</b> "
+                  f"({ew_vul})")
+        if r.rubber_complete:
+            winner = "NS" if r.games_won_ns >= 2 else "EW"
+            header += f"<br><span style='color:#0a0;'>"\
+                      f"Rubber complete — winner: {winner}</span>"
+        self.header_label.setText(header)
 
-        new_rubber_btn = QPushButton("New Rubber")
-        new_rubber_btn.clicked.connect(self._on_new_rubber)
-        button_layout.addWidget(new_rubber_btn)
+        self.table.setRowCount(len(r.entries))
+        divider_set = set(r.game_dividers)
+        for i, e in enumerate(r.entries):
+            txt = f"{e.points}  {e.label}".strip()
+            item = QTableWidgetItem(txt)
+            item.setForeground(QColor(20, 20, 20))
+            # Place into the correct column.
+            if e.side == 'NS' and e.line == 'above':
+                col = 0
+            elif e.side == 'NS' and e.line == 'below':
+                col = 1
+            elif e.side == 'EW' and e.line == 'below':
+                col = 2
+            else:
+                col = 3
+            # Subtle background for a game-completing row.
+            if i in divider_set:
+                item.setBackground(QColor(220, 240, 220))
+            self.table.setItem(i, col, item)
+            # Blank cells for the other 3 columns so highlighting is
+            # consistent.
+            for other in range(4):
+                if other == col:
+                    continue
+                cell = QTableWidgetItem("")
+                if i in divider_set:
+                    cell.setBackground(QColor(220, 240, 220))
+                self.table.setItem(i, other, cell)
 
-        button_layout.addStretch()
+        self.totals_label.setText(
+            f"Totals — NS: {r.total('NS')} "
+            f"(above {r.above_total('NS')}, "
+            f"below {r.below_total('NS')})  |  "
+            f"EW: {r.total('EW')} "
+            f"(above {r.above_total('EW')}, "
+            f"below {r.below_total('EW')})"
+        )
 
-        ok_btn = QPushButton("OK")
-        ok_btn.clicked.connect(self.accept)
-        button_layout.addWidget(ok_btn)
+    # ------------------------------------------------------------------
+    # Buttons
+    # ------------------------------------------------------------------
 
-        layout.addLayout(button_layout)
+    def _on_delete_last(self):
+        if not self.rubber.entries:
+            return
+        from PyQt6.QtWidgets import QMessageBox
+        last = self.rubber.entries[-1]
+        reply = QMessageBox.question(
+            self,
+            "Delete last entry",
+            f"Remove the last rubber row?\n\n"
+            f"{last.side} {last.line}: {last.points} — {last.label}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.rubber.delete_last_entry()
+            self.refresh()
 
-    def _on_new_rubber(self):
-        """Start a new rubber."""
+    def _on_clear(self):
         from PyQt6.QtWidgets import QMessageBox
         reply = QMessageBox.question(
             self,
-            "New Rubber",
-            "Start a new rubber? Current scores will be reset.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            "Clear rubber",
+            "Wipe every row from this rubber and start fresh?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            self.state_label.setText(
-                "N/S: 0 games, 0 points below\n"
-                "E/W: 0 games, 0 points below\n\n"
-                "Neither side vulnerable"
-            )
+            self.rubber.clear()
+            self.refresh()
+
+    def _on_save(self):
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from pathlib import Path
+        default_dir = (Path(__file__).parent.parent.parent
+                       / "DATA" / "RUBBERS")
+        try:
+            default_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            default_dir = Path.home()
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Save rubber",
+            str(default_dir / "rubber.json"),
+            "Rubber scorecard (*.json);;All files (*)",
+        )
+        if not filename:
+            return
+        try:
+            self.rubber.save(filename)
+        except Exception as ex:
+            QMessageBox.warning(self, "Save failed", str(ex))
+            return
+        QMessageBox.information(
+            self, "Saved",
+            f"Rubber saved to:\n{filename}\n\n"
+            "Use File → Restore Score Table to load it later.")
+
+    def _on_load(self):
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from pathlib import Path
+        from ben_backend.scoring import RubberScore
+        default_dir = (Path(__file__).parent.parent.parent
+                       / "DATA" / "RUBBERS")
+        if not default_dir.exists():
+            default_dir = Path.home()
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Load rubber",
+            str(default_dir),
+            "Rubber scorecard (*.json);;All files (*)",
+        )
+        if not filename:
+            return
+        try:
+            loaded = RubberScore.load(filename)
+        except Exception as ex:
+            QMessageBox.warning(self, "Load failed", str(ex))
+            return
+        self.set_rubber(loaded)
 
 
 class MultiplayDialog(QDialog):
