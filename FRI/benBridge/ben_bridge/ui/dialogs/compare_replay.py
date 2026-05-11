@@ -524,6 +524,17 @@ class CompareReplayDialog(QDialog):
         )
         self.bidding_btn.clicked.connect(self._on_show_bidding_logs)
         bottom.addWidget(self.bidding_btn)
+
+        self.transcript_btn = QPushButton("Annotated transcript (Claude)")
+        self.transcript_btn.setToolTip(
+            "Send both BDLs (open + closed room) to Claude Opus 4.7 with "
+            "extended thinking and get a side-by-side annotated transcript: "
+            "bidding differences, card-play differences, what the human "
+            "did well, and where they could improve."
+        )
+        self.transcript_btn.clicked.connect(self._on_annotated_transcript)
+        bottom.addWidget(self.transcript_btn)
+
         bottom.addStretch()
         close_btn = QPushButton("Close")
         close_btn.setDefault(True)
@@ -613,6 +624,187 @@ class CompareReplayDialog(QDialog):
         else:
             self._step = min(self._max_step(), self._step + (4 - within))
         self._refresh()
+
+    # ------------------------------------------------------------------
+    # Annotated transcript — Claude Opus 4.7 thinking comparison of both
+    # rooms. Builds a BDL from each BenBoardRun, frames them as an
+    # open-vs-closed comparison prompt, and routes through the host
+    # MainWindow's _run_claude_with_dialog helper so we share the same
+    # progress dialog / error handling as the Hint button.
+    # ------------------------------------------------------------------
+
+    def _run_to_bdl(self, run: BenBoardRun) -> str:
+        """Build BDL text for a finished BenBoardRun by synthesising a
+        BoardState and handing it to the existing build_bdl_snapshot
+        formatter. viewer_seat=None so every hand is visible (this is a
+        post-mortem with full information — both rooms are over)."""
+        try:
+            from ben_backend.models import BoardState
+            from ..game_logger import build_bdl_snapshot
+        except Exception:
+            return ""
+        try:
+            dealer, vuln = BoardState._board_dealer_vuln(run.board_number)
+        except Exception:
+            dealer = run.original_hands and list(run.original_hands)[0]
+            vuln = None
+        state = BoardState(
+            board_number=run.board_number,
+            dealer=dealer,
+            vulnerability=vuln,
+            hands=dict(run.original_hands),
+            auction=list(run.auction),
+            contract=run.contract,
+            tricks=list(run.tricks),
+            declarer_tricks=run.declarer_tricks,
+        )
+        result_summary = ""
+        if run.contract:
+            target = run.contract.target_tricks()
+            diff = run.declarer_tricks - target
+            verdict = ("made exactly" if diff == 0
+                       else f"made +{diff}" if diff > 0
+                       else f"down {abs(diff)}")
+            result_summary = (
+                f"Result: declarer {verdict} "
+                f"({run.declarer_tricks} tricks); "
+                f"NS {run.ns_score:+d}, EW {run.ew_score:+d}."
+            )
+        else:
+            result_summary = "Result: passed out (no play)."
+        return build_bdl_snapshot(
+            state,
+            original_hands=run.original_hands,
+            viewer_seat=None,  # full information for hindsight analysis
+            phase='finished' if run.played else None,
+            contract=run.contract,
+            result_summary=result_summary,
+            deal_id=run.pavlicek_id or "",
+            include_footer=False,
+        )
+
+    def _build_transcript_prompt(self) -> str:
+        """Assemble the side-by-side comparison prompt."""
+        left_bdl = self._run_to_bdl(self.left_run) or "(no left BDL available)"
+        right_bdl = self._run_to_bdl(self.right_run) or "(no right BDL available)"
+        return (
+            "You are reviewing the SAME bridge deal played at two different "
+            "tables in a teams match. Compare the two rooms side by side and "
+            "produce an annotated transcript that a human bridge player can "
+            "study to improve their game.\n\n"
+            "Use FULL hindsight (every hand is visible to you, both rooms "
+            "are complete). Open room = the table where a human played at "
+            "one or more seats. Closed room = the bot reference table "
+            "(Q-Plus, BEN, etc.) for the same deal — it's the "
+            "yardstick.\n\n"
+            f"=== OPEN ROOM ({self._left_label}) ===\n"
+            f"{left_bdl}\n\n"
+            f"=== CLOSED ROOM ({self._right_label}) ===\n"
+            f"{right_bdl}\n\n"
+            "TASKS:\n"
+            "1. Annotated bidding comparison. Walk through the auction "
+            "round by round. For each call that DIFFERS between the two "
+            "rooms, explain who was right and why (cite HCP, distribution, "
+            "vulnerability, system: SAYC / 2-over-1 / Precision).\n\n"
+            "2. Annotated card-play comparison. Walk through the play "
+            "trick by trick. Note the opening lead, declarer's plan, key "
+            "defensive plays, and signalling. When the two rooms diverge, "
+            "explain the principle (suit-prefence, second-hand low, "
+            "endplay, squeeze, count signals, etc.) that should have "
+            "driven the choice.\n\n"
+            "3. IMP swing. Compute the IMP difference if any and state "
+            "which room came out ahead.\n\n"
+            "4. WHAT THE HUMAN DID WELL — be specific. Name the seat, the "
+            "round / trick, the action, and exactly why it was good "
+            "(matched expert line, made the right inference, didn't fall "
+            "for a trap, etc.). At least 2 items if there is anything to "
+            "praise; if there's truly nothing, say so honestly.\n\n"
+            "5. WHERE THE HUMAN COULD IMPROVE — concrete, actionable. "
+            "Each item should name the spot (auction round or trick "
+            "number), the actual choice, the better alternative, and a "
+            "short principle so it transfers to similar future deals. "
+            "Don't pad with generic advice; cite the specific cards.\n\n"
+            "Format the output as Markdown with clear section headers. "
+            "Use code blocks for short BDL fragments when quoting "
+            "auction lines or trick cards verbatim. Keep the tone "
+            "constructive and focused — the human is studying, not "
+            "being scolded."
+        )
+
+    def _on_annotated_transcript(self):
+        """Generate the side-by-side annotated transcript via Claude."""
+        prompt = self._build_transcript_prompt()
+        host = self._find_main_window()
+        title = (f"Annotated transcript — Board {self.left_run.board_number}"
+                 if self.left_run.board_number == self.right_run.board_number
+                 else (f"Annotated transcript — "
+                       f"{self.left_run.board_number} vs "
+                       f"{self.right_run.board_number}"))
+        if host is not None and hasattr(host, '_run_claude_with_dialog'):
+            host._run_claude_with_dialog(
+                prompt=prompt,
+                title=title,
+                wait_label="Claude Opus 4.7 is comparing the two rooms…",
+                timeout_seconds=420,
+            )
+            return
+        # Fallback path — no MainWindow reachable (unlikely): run claude
+        # inline and pop a plain scrollable dialog. Keeps the feature
+        # available if the dialog ever gets shown from a different host.
+        self._run_claude_inline_fallback(prompt, title)
+
+    def _find_main_window(self):
+        """Walk up the parent chain looking for the MainWindow (or any
+        object with the _run_claude_with_dialog helper)."""
+        node = self.parent()
+        while node is not None:
+            if hasattr(node, '_run_claude_with_dialog'):
+                return node
+            try:
+                node = node.parent()
+            except Exception:
+                return None
+        return None
+
+    def _run_claude_inline_fallback(self, prompt: str, title: str):
+        """Last-resort claude invocation when no MainWindow is reachable.
+        Keeps the dialog usable as a standalone widget."""
+        import shutil
+        import subprocess
+        if not shutil.which('claude'):
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self, title,
+                "Claude CLI is not installed on this machine — install "
+                "it to enable annotated transcripts.")
+            return
+        try:
+            r = subprocess.run(
+                ['claude', '-p', '--model', 'claude-opus-4-7',
+                 '--thinking', 'enabled', '--max-turns', '1', prompt],
+                capture_output=True, text=True, timeout=420,
+            )
+            text = (r.stdout or '').strip()
+        except Exception as ex:
+            text = f"(claude call failed: {ex})"
+        self._show_text_dialog(title, text)
+
+    def _show_text_dialog(self, title: str, text: str):
+        """Plain scrollable dialog for the fallback path."""
+        from PyQt6.QtWidgets import QTextEdit, QVBoxLayout, QPushButton
+        dlg = QDialog(self)
+        dlg.setWindowTitle(title)
+        dlg.resize(900, 700)
+        layout = QVBoxLayout(dlg)
+        view = QTextEdit()
+        view.setReadOnly(True)
+        view.setPlainText(text or "(no response)")
+        view.setFont(QFont("Courier", 11))
+        layout.addWidget(view)
+        close = QPushButton("Close")
+        close.clicked.connect(dlg.accept)
+        layout.addWidget(close)
+        dlg.exec()
 
     def keyPressEvent(self, event):
         key = event.key()

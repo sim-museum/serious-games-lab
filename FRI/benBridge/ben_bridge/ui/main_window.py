@@ -4,6 +4,7 @@ Classic Bridge interface with declarer play support.
 """
 
 import os
+import re
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QMenuBar, QMenu, QStatusBar, QToolBar, QLabel, QProgressBar,
@@ -3187,7 +3188,27 @@ For more information, see the README file."""
                 "  • A short trick-by-trick sketch (Trick T+1, T+2, …) "
                 "for the next 3-5 tricks of the plan.\n"
                 "  • Then the usual '>> Recommendation: <card>' line as "
-                "the very last annotation."
+                "the very last annotation.\n\n"
+                "DIAGRAMS — visual learners profit from a picture. "
+                "Include 1–3 PlantUML diagrams in your reply, EACH "
+                "wrapped in a ```plantuml ... ``` fenced block (the "
+                "renderer will replace each block with the rendered "
+                "PNG inline). Pick the diagram types that actually "
+                "clarify THIS hand, e.g.:\n"
+                "  – A mindmap (@startmindmap … @endmindmap) of the "
+                "plan: root = 'Plan', children = each suit, "
+                "grandchildren = top tricks / length tricks / losers.\n"
+                "  – A simple block diagram (@startuml component … "
+                "@enduml) of entries between hands, with arrows "
+                "labelled by the card or sequence used.\n"
+                "  – An activity diagram (@startuml :step; :step; "
+                "@enduml) walking through the trick-by-trick sketch "
+                "with decision diamonds where the next play depends "
+                "on a card you don't yet know (e.g. \"if heart "
+                "honour drops singleton → claim\").\n"
+                "Keep each diagram small (≤ 12 nodes) so it renders "
+                "fast and reads at a glance. Don't include diagrams "
+                "for trivial spots."
             )
 
 
@@ -3427,6 +3448,123 @@ For more information, see the README file."""
                 error=True,
             )
 
+    # ------------------------------------------------------------------
+    # PlantUML rendering — for the card-play hint plan diagrams. Tries
+    # a locally installed `plantuml` binary first (fast, offline), then
+    # falls back to the public plantuml.com PNG endpoint (no key, no
+    # account, works any time you have internet). Each block is cached
+    # by source text so re-opening the same hint doesn't re-render.
+    # ------------------------------------------------------------------
+
+    _PLANTUML_FENCE_RE = re.compile(
+        r'```\s*(?:plantuml|uml)\s*\n(.*?)\n```',
+        re.DOTALL | re.IGNORECASE,
+    )
+
+    @staticmethod
+    def _plantuml_encode(text: str) -> str:
+        """PlantUML's URL encoding: zlib-deflate the source, then map
+        bytes through PlantUML's custom 6-bit alphabet
+        (0-9, A-Z, a-z, '-', '_'). See PlantUML's text encoding spec.
+        """
+        import zlib
+        deflated = zlib.compress(text.encode('utf-8'))
+        raw = deflated[2:-4]  # strip zlib header + Adler-32 footer
+
+        def enc6(b: int) -> str:
+            if b < 10:
+                return chr(48 + b)        # '0'-'9'
+            b -= 10
+            if b < 26:
+                return chr(65 + b)        # 'A'-'Z'
+            b -= 26
+            if b < 26:
+                return chr(97 + b)        # 'a'-'z'
+            b -= 26
+            if b == 0:
+                return '-'
+            if b == 1:
+                return '_'
+            return '?'
+
+        out = []
+        for i in range(0, len(raw), 3):
+            b1 = raw[i]
+            b2 = raw[i + 1] if i + 1 < len(raw) else 0
+            b3 = raw[i + 2] if i + 2 < len(raw) else 0
+            out.append(enc6(b1 >> 2))
+            out.append(enc6(((b1 & 0x3) << 4) | (b2 >> 4)))
+            out.append(enc6(((b2 & 0xF) << 2) | (b3 >> 6)))
+            out.append(enc6(b3 & 0x3F))
+        return ''.join(out)
+
+    def _render_plantuml(self, uml_text: str):
+        """Return PNG bytes for the given PlantUML source, or None if
+        every render path failed. Tries local `plantuml` binary first
+        then falls back to plantuml.com's PNG endpoint."""
+        if not hasattr(self, '_plantuml_cache'):
+            self._plantuml_cache = {}
+        cached = self._plantuml_cache.get(uml_text)
+        if cached is not None:
+            return cached or None
+        import shutil
+        import subprocess
+        png = None
+        if shutil.which('plantuml'):
+            try:
+                r = subprocess.run(
+                    ['plantuml', '-tpng', '-pipe'],
+                    input=uml_text.encode('utf-8'),
+                    capture_output=True, timeout=30,
+                )
+                if r.returncode == 0 and r.stdout:
+                    png = r.stdout
+            except Exception:
+                png = None
+        if png is None:
+            try:
+                import urllib.request
+                encoded = self._plantuml_encode(uml_text)
+                url = (
+                    'https://www.plantuml.com/plantuml/png/' + encoded
+                )
+                with urllib.request.urlopen(url, timeout=30) as resp:
+                    png = resp.read()
+            except Exception:
+                png = None
+        self._plantuml_cache[uml_text] = png or b''
+        return png
+
+    def _replace_plantuml_with_images(self, text: str):
+        """Pre-process Claude's reply: replace each ```plantuml block
+        with a placeholder, render the blocks to PNG, return the
+        modified text plus a list of (placeholder, png_bytes) pairs.
+        Failed renders fall back to fenced code in the modified text so
+        the user at least sees the source they can paste into a
+        PlantUML editor by hand."""
+        import base64
+
+        chunks = []
+        images = []
+        last = 0
+        for i, m in enumerate(self._PLANTUML_FENCE_RE.finditer(text)):
+            chunks.append(text[last:m.start()])
+            uml = m.group(1)
+            png = self._render_plantuml(uml)
+            if png:
+                placeholder = f"\n<<<PLANTUML_IMG_{i}>>>\n"
+                images.append((placeholder, png))
+                chunks.append(placeholder)
+            else:
+                # Keep the source visible if we can't render.
+                chunks.append(
+                    "\n[PlantUML diagram — render failed; raw source below]\n"
+                    f"```plantuml\n{uml}\n```\n"
+                )
+            last = m.end()
+        chunks.append(text[last:])
+        return ''.join(chunks), images
+
     def _show_annotated_bdl_dialog(self, title: str, bdl_text: str,
                                     claude_text: str, error: bool = False):
         """Render the BDL printout with Claude's annotations interspersed.
@@ -3444,6 +3582,15 @@ For more information, see the README file."""
         from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QPushButton,
                                       QTextEdit)
         from PyQt6.QtGui import QFont, QTextCharFormat, QColor, QTextCursor
+
+        # Extract any ```plantuml fenced blocks BEFORE the >> /
+        # BDL split logic — we want the placeholders to flow through
+        # as ordinary lines so they pick up the right surrounding
+        # layout (after the BDL, between annotation lines, etc.).
+        plantuml_images = []
+        if claude_text:
+            claude_text, plantuml_images = self._replace_plantuml_with_images(
+                claude_text)
 
         # Pick the body text: if Claude returned a properly-annotated
         # BDL with `>>` markers in it, use that verbatim; otherwise
@@ -3499,8 +3646,30 @@ For more information, see the README file."""
             )
             buf.clear()
 
+        # Build a lookup of placeholder → base64 image so we can swap
+        # them out inline as soon as we hit one in the body stream.
+        import base64
+        placeholder_to_img = {}
+        for placeholder, png_bytes in plantuml_images:
+            try:
+                b64 = base64.b64encode(png_bytes).decode('ascii')
+                placeholder_to_img[placeholder.strip()] = (
+                    f'<div style="margin: 12px 0; text-align: center;">'
+                    f'<img src="data:image/png;base64,{b64}" '
+                    f'style="max-width: 100%; border: 1px solid #aaa;'
+                    f' border-radius: 4px; background: #fff;"/>'
+                    f'</div>'
+                )
+            except Exception:
+                pass
+
         bdl_buf: list[str] = []
         for line in body_text.splitlines():
+            stripped_line = line.strip()
+            if stripped_line in placeholder_to_img:
+                flush_bdl(bdl_buf)
+                html_parts.append(placeholder_to_img[stripped_line])
+                continue
             if line.lstrip().startswith('>>'):
                 flush_bdl(bdl_buf)
                 # Strip the leading >> and any single space, then render the
