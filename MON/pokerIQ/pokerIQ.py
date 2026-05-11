@@ -2307,9 +2307,13 @@ class MetricPie(QWidget):
         self._tick = None
         self._color = QColor("#0af")
         self._dim = False
-        self.setMinimumSize(96, 110)
+        # Larger pies that grow with the right column. Two-line label
+        # space at the bottom so we can carry descriptive captions
+        # ("Equity vs ranges", "Reverse implied risk", …) instead of
+        # truncated abbreviations.
+        self.setMinimumSize(150, 200)
         self.setSizePolicy(QSizePolicy.Policy.Expanding,
-                           QSizePolicy.Policy.Fixed)
+                           QSizePolicy.Policy.Expanding)
 
     def set_metric(self, value: float, max_value: float,
                    center_text: str = "", tick: float | None = None,
@@ -2331,14 +2335,17 @@ class MetricPie(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
-        label_h = 22                     # reserved at bottom for caption
-        diam = min(w - 6, h - label_h - 6)
+        # Reserve two-line caption space at the bottom so labels can
+        # wrap to a second line for clearer descriptions.
+        label_h = 46
+        diam = min(w - 12, h - label_h - 12)
         cx = w // 2
         cy = (h - label_h) // 2
-        radius = diam // 2
+        radius = max(20, diam // 2)
 
-        # Track ring
-        track_pen_w = max(8, radius // 4)
+        # Track ring — scale stroke width with radius for a balanced
+        # donut at any size.
+        track_pen_w = max(10, radius // 5)
         p.setPen(QPen(QColor("#262626"), track_pen_w))
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawEllipse(cx - radius, cy - radius, 2 * radius, 2 * radius)
@@ -2352,8 +2359,6 @@ class MetricPie(QWidget):
             p.setPen(QPen(fill_color, track_pen_w,
                           Qt.PenStyle.SolidLine,
                           Qt.PenCapStyle.FlatCap))
-            # Qt's drawArc uses 1/16-degree units; 90*16 = top, negative
-            # sweep = clockwise.
             start_angle = 90 * 16
             sweep = int(-360 * 16 * ratio)
             p.drawArc(cx - radius, cy - radius,
@@ -2364,7 +2369,6 @@ class MetricPie(QWidget):
         if self._tick is not None and self._max > 0:
             tick_ratio = min(1.0, self._tick / self._max)
             from math import cos, sin, pi
-            # 0 at top, sweep clockwise (matches the fill arc).
             theta = pi / 2 - 2 * pi * tick_ratio
             r_inner = radius - track_pen_w
             r_outer = radius + track_pen_w // 2
@@ -2372,12 +2376,12 @@ class MetricPie(QWidget):
             y1 = cy - r_inner * sin(theta)
             x2 = cx + r_outer * cos(theta)
             y2 = cy - r_outer * sin(theta)
-            p.setPen(QPen(QColor("#ffd966"), 3))
+            p.setPen(QPen(QColor("#ffd966"), 4))
             p.drawLine(int(x1), int(y1), int(x2), int(y2))
 
-        # Center value text.
+        # Center value text — scale font with the donut.
         center_font = p.font()
-        center_font.setPointSize(11)
+        center_font.setPointSize(max(14, int(radius / 2.4)))
         center_font.setBold(True)
         p.setFont(center_font)
         p.setPen(QColor("#ffffff" if not self._dim else "#777777"))
@@ -2385,15 +2389,18 @@ class MetricPie(QWidget):
                           2 * radius, 2 * radius),
                    Qt.AlignmentFlag.AlignCenter, self._center_text)
 
-        # Caption underneath.
+        # Caption underneath — bigger and word-wrapping so descriptive
+        # labels ("Equity vs ranges", "Pot commitment %") render fully
+        # over two lines.
         cap_font = p.font()
-        cap_font.setPointSize(9)
+        cap_font.setPointSize(13)
         cap_font.setBold(True)
         p.setFont(cap_font)
-        p.setPen(QColor("#cccccc" if not self._dim else "#666666"))
-        p.drawText(QRectF(0, h - label_h, w, label_h),
-                   Qt.AlignmentFlag.AlignHCenter
-                   | Qt.AlignmentFlag.AlignTop,
+        p.setPen(QColor("#dddddd" if not self._dim else "#666666"))
+        p.drawText(QRectF(2, h - label_h, w - 4, label_h),
+                   int(Qt.AlignmentFlag.AlignHCenter
+                       | Qt.AlignmentFlag.AlignTop
+                       | Qt.TextFlag.TextWordWrap),
                    self._label)
         p.end()
 
@@ -2499,27 +2506,37 @@ class MetricDashboard(QWidget):
         # Row 0: equity-vs-range comparison (the headline pair) and
         # implied / reverse-implied (the future-bets risk pair).
         # Row 1: stack / commitment / outs / Nash.
-        self.equity_pie = _make_pie("Equity", TIPS['equity'])
+        # Labels carry two lines so the descriptions are unambiguous.
+        self.equity_pie = _make_pie(
+            "Equity\nvs ranges", TIPS['equity'])
         grid.addWidget(self.equity_pie, 0, 0)
-        self.potodds_pie = _make_pie("Pot odds", TIPS['pot_odds'])
+        self.potodds_pie = _make_pie(
+            "Pot odds\nrequired", TIPS['pot_odds'])
         grid.addWidget(self.potodds_pie, 0, 1)
-        self.implied_pie = _make_pie("Implied BE", TIPS['implied'])
+        self.implied_pie = _make_pie(
+            "Implied\nbreak-even", TIPS['implied'])
         grid.addWidget(self.implied_pie, 0, 2)
         self.reverse_implied_pie = _make_pie(
-            "Reverse imp", TIPS['reverse_implied'])
+            "Reverse implied\n(domination risk)",
+            TIPS['reverse_implied'])
         grid.addWidget(self.reverse_implied_pie, 0, 3)
-        self.spr_pie = _make_pie("SPR", TIPS['spr'])
+        self.spr_pie = _make_pie(
+            "SPR after call\n(stack-to-pot)", TIPS['spr'])
         grid.addWidget(self.spr_pie, 1, 0)
-        self.commit_pie = _make_pie("Commit %", TIPS['commit'])
+        self.commit_pie = _make_pie(
+            "Pot\ncommitment %", TIPS['commit'])
         grid.addWidget(self.commit_pie, 1, 1)
-        self.outs_pie = _make_pie("Outs", TIPS['outs'])
+        self.outs_pie = _make_pie(
+            "Outs to hit\n(rule of 4 / 2)", TIPS['outs'])
         grid.addWidget(self.outs_pie, 1, 2)
-        self.nash_pie = _make_pie("Nash", TIPS['nash'])
+        self.nash_pie = _make_pie(
+            "Nash push range\n(short stack)", TIPS['nash'])
         grid.addWidget(self.nash_pie, 1, 3)
         self.nash_pie.setVisible(False)
-        # Bottom stretch so the pies cluster at the top of the right
-        # column rather than ballooning to fill all the height.
-        grid.setRowStretch(2, 1)
+        # Both rows grab equal vertical space so the pies expand to
+        # fill the column's full height.
+        grid.setRowStretch(0, 1)
+        grid.setRowStretch(1, 1)
         # Equal column widths.
         for c in range(4):
             grid.setColumnStretch(c, 1)
@@ -2832,11 +2849,12 @@ class TheoryOfMindPanel(QWidget):
         main_split.addWidget(self.tabs, stretch=3)
 
         self.dashboard = MetricDashboard()
-        self.dashboard.setMinimumWidth(440)
-        self.dashboard.setMaximumWidth(560)
-        self.dashboard.setSizePolicy(QSizePolicy.Policy.Fixed,
+        self.dashboard.setMinimumWidth(640)
+        # Allow the dashboard to fill the entire right side — the pies
+        # now expand to use whatever room they're given.
+        self.dashboard.setSizePolicy(QSizePolicy.Policy.Expanding,
                                      QSizePolicy.Policy.Expanding)
-        main_split.addWidget(self.dashboard, stretch=0)
+        main_split.addWidget(self.dashboard, stretch=2)
 
         layout.addLayout(main_split, stretch=5)
 
@@ -2867,13 +2885,16 @@ class TheoryOfMindPanel(QWidget):
         advisor_scroll.setStyleSheet("QScrollArea { border: none; background: #1a2a1a; }")
 
         self.advisor_advice = QLabel("Deal a hand to see strategic advice")
-        self.advisor_advice.setFont(QFont('Arial', 14))
+        # Doubled base font so the Gordon advice card is readable
+        # from a normal seating distance.
+        self.advisor_advice.setFont(QFont('Arial', 22))
         # Render rich-text so the Gordon advice card can carry per-line
         # colors (action verb green/red/amber, watch warnings yellow).
         self.advisor_advice.setTextFormat(Qt.TextFormat.RichText)
         self.advisor_advice.setStyleSheet(
-            "color: #ddd; padding: 14px; background: #121a12;"
-            " border: 1px solid #2a4a2a; border-radius: 6px;")
+            "color: #ddd; padding: 16px; background: #121a12;"
+            " border: 1px solid #2a4a2a; border-radius: 6px;"
+            " line-height: 150%;")
         self.advisor_advice.setWordWrap(True)
         self.advisor_advice.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         advisor_scroll.setWidget(self.advisor_advice)
@@ -4561,8 +4582,10 @@ class TheoryOfMindPanel(QWidget):
             # chars) inside <pre> so the rich-text renderer doesn't
             # collapse the spacing.
             from html import escape as _esc
+            # ≥ 2× the prior 11 pt so the pot-odds + equity header
+            # reads at the same scale as the rest of the advice card.
             header_html = ("<pre style='color:#cccccc; margin:0;"
-                           " font-family:monospace; font-size:11pt;'>"
+                           " font-family:monospace; font-size:20pt;'>"
                            f"{_esc(header)}</pre>")
             self.advisor_advice.setText(
                 header_html + "<br>" + gordon_block)
