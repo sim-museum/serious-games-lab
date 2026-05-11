@@ -4680,6 +4680,167 @@ class TheoryOfMindPanel(QWidget):
     def _gordon_tier(cls, hand_key: str) -> int:
         return cls._GORDON_TIER.get(hand_key, 6)
 
+    # Famous-hand nicknames Gordon uses throughout the Little Green
+    # Book. Anything not listed here falls through to a generic
+    # algorithmic label ("suited connector", "wheel ace", ...).
+    _GORDON_NICKNAMES = {
+        "AA":  "American Airlines / Pocket Rockets",
+        "KK":  "Cowboys / King Kong",
+        "QQ":  "Ladies / Hilton Sisters",
+        "JJ":  "Fishhooks / Jacks",
+        "TT":  "Dimes / TNT",
+        "99":  "German Virgin",      # 9-9, "nein-nein"
+        "88":  "Snowmen",
+        "77":  "Hockey Sticks / Sunset Strip",
+        "66":  "Route 66",
+        "55":  "Speed Limit / Presto",
+        "44":  "Sailboats / Magnum",
+        "33":  "Crabs",
+        "22":  "Ducks / Deuces",
+        "AKs": "Big Slick (suited) — Anna Kournikova",
+        "AKo": "Big Slick (offsuit) — Anna Kournikova",
+        "AQs": "Big Chick / Little Slick (suited)",
+        "AQo": "Big Chick / Little Slick (offsuit)",
+        "AJs": "AJ (suited) — Ajax",
+        "AJo": "Ajax (offsuit)",
+        "KQs": "Royal Couple (suited)",
+        "KQo": "Royal Couple (offsuit)",
+        "KJs": "Kojak (suited)",
+        "KJo": "Kojak (offsuit)",
+        "QJs": "Queen-Jack (suited)",
+        "JTs": "Tequila Jacks / Justin Timberlake (suited)",
+        "T9s": "T-Niner (suited)",
+        "98s": "Oldsmobile (suited)",
+        "76s": "Trombones (suited)",
+        "65s": "Mike Sexton",
+        "54s": "Colt 45 / Jesse James (suited)",
+        "72o": "The Hammer — worst hand in poker",
+        "K9o": "Canine",
+        "Q3o": "Gay Waiter / San Francisco Busboy",
+        "T2o": "Doyle Brunson",
+        "J5o": "Jackson Five / Motown",
+    }
+
+    @classmethod
+    def _gordon_combo_description(cls, hand_key: str) -> str:
+        """Return a one-line, Gordon-flavored description of a 169-grid
+        hand key. Algorithmically generated for any input.
+
+        Format is roughly:
+          "<NICKNAME> — <ACTION HINT>; <CAVEAT>"
+        E.g. "AKs — Big Slick suited; premium, open from any seat. Best
+        unpaired hand."
+        """
+        if not hand_key or hand_key == "??":
+            return ""
+        # Parse the key.
+        order = 'AKQJT98765432'
+        r1 = hand_key[0]
+        if len(hand_key) == 2:                  # pair like "AA"
+            r2 = r1
+            suited = False
+            is_pair = True
+        else:                                    # "AKs" / "72o"
+            r2 = hand_key[1]
+            suited = hand_key[-1].lower() == 's'
+            is_pair = False
+        i1 = order.index(r1)
+        i2 = order.index(r2)
+        gap = abs(i1 - i2)
+        high = min(i1, i2)  # lower index = higher rank in AKQJT…
+
+        nickname = cls._GORDON_NICKNAMES.get(hand_key, "")
+
+        # ----- Action hint by structure -----
+        if is_pair:
+            if high <= 1:           # AA, KK
+                hint = ("premium — raise / 3-bet always. "
+                        "Don't go broke pre vs the 4th raise (AA only).")
+            elif high <= 3:         # QQ, JJ
+                hint = ("premium pair — open / 3-bet always; "
+                        "fold to a tight player's 4-bet shove.")
+            elif high <= 5:         # TT, 99
+                hint = ("strong pair — open / 3-bet; set-mine if 4-bet. "
+                        "Need 8:1 implied (12% set flop).")
+            elif high <= 8:         # 88-66
+                hint = ("medium pair — raise if folded to, otherwise "
+                        "set-mine. Lose unimproved multi-way.")
+            else:                   # 55-22
+                hint = ("small pair — call cheap for set value. "
+                        "Need 15:1 implied; fold to raises.")
+        elif r1 == 'A' or r2 == 'A':
+            other = r2 if r1 == 'A' else r1
+            other_i = order.index(other)
+            if other == 'K':
+                hint = ("Big Slick — best unpaired. Raise / 3-bet any "
+                        "seat. Ace-high until it connects.")
+            elif other in 'QJ':
+                hint = (("strong broadway (suited) — open / "
+                         "call 3-bets in position." if suited else
+                         "broadway offsuit — open, fold to 3-bets "
+                         "from tight players. Watch for AK domination."))
+            elif other == 'T':
+                hint = (("suited Broadway — open / call in position."
+                         if suited else
+                         "marginal ace — open late position only. "
+                         "Dominated by AJ/AQ/AK."))
+            elif suited and other_i >= 9:        # A5s-A2s
+                hint = ("wheel ace suited — nut-flush + A-5 straight "
+                        "potential. Great 3-bet bluff hand.")
+            elif suited:                          # A9s-A6s
+                hint = ("suited ace — flush-only equity; call in "
+                        "position with implied odds.")
+            else:                                 # offsuit ace
+                if other_i <= 6:
+                    hint = ("trouble ace offsuit — open button only, "
+                            "fold to aggression.")
+                else:
+                    hint = ("ace-rag offsuit — Gordon: 'loses more "
+                            "money than any other hand type'. Fold.")
+        elif r1 == 'K' or r2 == 'K':
+            other = r2 if r1 == 'K' else r1
+            other_i = order.index(other)
+            if other == 'Q':
+                hint = (("Royal draw (suited)." if suited else
+                         "KQ offsuit — trap hand; often dominated "
+                         "by AK/AQ. Looks better than it plays."))
+            elif other in 'JT':
+                hint = (("suited broadway — raise in position; "
+                         "strong multi-way." if suited else
+                         "broadway offsuit — raise in position only."))
+            elif suited and other_i <= 9:
+                hint = ("suited king — button / BB only. Flush "
+                        "potential, vulnerable kicker.")
+            else:
+                hint = ("king-rag — not profitable long-term. Fold.")
+        elif r1 in 'QJ' and r2 in 'QJT9':
+            hint = (("Broadway connector (suited) — open in position; "
+                     "flops well into straights / flushes." if suited else
+                     "broadway offsuit — open in position. Often "
+                     "makes second-best top pair."))
+        elif suited and gap == 1 and high >= 4:   # T9s..54s
+            hint = ("suited connector — best multi-way speculator. "
+                    "Need 15-20x implied odds; deep stacks only.")
+        elif suited and gap == 2 and high >= 4:   # T8s..64s
+            hint = ("suited one-gapper — speculative; late position "
+                    "with depth, otherwise fold.")
+        elif suited and gap == 3:
+            hint = ("suited two-gapper — button / BB only. Marginal.")
+        elif suited:
+            hint = ("weak suited — defend BB cheaply, rarely open. "
+                    "Flush potential is the only redemption.")
+        elif gap == 1 and high <= 4:              # KQo-T9o etc handled above; covers low connectors offsuit
+            hint = ("connected offsuit — speculative; rarely open. "
+                    "Better hands offsuit lose more than they win.")
+        else:
+            hint = ("trash — fold. Patience = profit. Gordon: 'The "
+                    "money you save is worth as much as the money "
+                    "you win.'")
+
+        if nickname:
+            return f"{nickname} — {hint}"
+        return f"{hand_key} — {hint}"
+
     def _build_gordon_advice(self, ctx, hand_key: str,
                               bb_amount: float) -> str:
         """Return a compact (~6 line) Gordon-style action card.
@@ -4846,9 +5007,11 @@ class TheoryOfMindPanel(QWidget):
                   if check_fold else "<span style='color:#888'>no</span>")
         action_color = ("#88ff88" if bet_raise
                         else "#ff7777" if check_fold else "#ffd966")
+        combo_desc = self._gordon_combo_description(hand_key)
         lines = [
             f"<b>Hand</b> [{hand_str}]  tier {tier}  ·  pos {position}  ·  "
             f"{stack_bb:.0f}bb  ·  {street}",
+            f"<span style='color:#9cd6ff'>{combo_desc}</span>",
             f"<b>Q1 Bet / Raise?</b>  → {q1_tag}      "
             f"<b>Q2 Check / Fold?</b>  → {q2_tag}",
             f"<b style='color:{action_color}'>ACTION:</b>  {action_line}",
