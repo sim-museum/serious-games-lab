@@ -1447,8 +1447,15 @@ class HeroOutsTab(QWidget):
         cards_row.setSpacing(20)
         self._card1 = CardWidget()
         self._card2 = CardWidget()
-        cards_row.addWidget(self._card1)
-        cards_row.addWidget(self._card2)
+        # Pin the 80x112 cards to the TOP of the row so the row's
+        # height isn't capped at the card height — without AlignTop
+        # the commit label (which can be 4-6 lines tall after the
+        # SPR / commitment-ratio / equity block is filled in) got
+        # clipped to ~140 px and only its first line showed.
+        cards_row.addWidget(
+            self._card1, alignment=Qt.AlignmentFlag.AlignTop)
+        cards_row.addWidget(
+            self._card2, alignment=Qt.AlignmentFlag.AlignTop)
         cards_row.addSpacing(20)
 
         self._commit_label = QLabel()
@@ -1461,8 +1468,14 @@ class HeroOutsTab(QWidget):
         )
         self._commit_label.setAlignment(
             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        # MinimumExpanding vertical so the label reports a true
+        # height to the layout and the row stretches to fit the
+        # full SPR + commitment-ratio + equity block, not just one
+        # line.
         self._commit_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.MinimumExpanding)
+        self._commit_label.setMinimumHeight(220)
         cards_row.addWidget(self._commit_label, stretch=1)
         outer.addLayout(cards_row)
         # Seed the placeholder so the panel has visible content at
@@ -1761,7 +1774,7 @@ class HeroOutsTab(QWidget):
                             "share of your stack.")
                 self._commit_label.setText(
                     title_html
-                    + "<div style='color:#cccccc; font-size:13pt;"
+                    + "<div style='color:#cccccc; font-size:16pt;"
                     " line-height:140%;'>"
                     f"No live bet to face. Pot is <b>${pot_v:,}</b>, "
                     f"you have <b>${stk_v:,}</b> behind.<br>"
@@ -1772,7 +1785,7 @@ class HeroOutsTab(QWidget):
             else:
                 self._commit_label.setText(
                     title_html
-                    + "<div style='color:#999; font-size:13pt;'>"
+                    + "<div style='color:#999; font-size:16pt;'>"
                     "(no live bet to call — commitment math will "
                     "appear here when there's a bet to face)</div>"
                 )
@@ -1782,6 +1795,11 @@ class HeroOutsTab(QWidget):
         pot_after = pot_v + tc_v
         spr = (stack_after / pot_after) if pot_after > 0 else 0.0
         pot_odds_pct = (100.0 * tc_v / pot_after) if pot_after > 0 else 0.0
+        # Pot Commitment Ratio = fraction of your CURRENT stack you
+        # are about to put in. Distinct from SPR (which is stack-
+        # AFTER-call vs pot-AFTER-call). Crosses the "effectively
+        # committed" line around 33% by standard teaching tables.
+        commit_ratio_pct = (100.0 * tc_v / stk_v) if stk_v > 0 else 100.0
 
         # Commitment band thresholds borrowed from common
         # SPR teaching tables: SPR < 1 is committed, 1-3 is the
@@ -1800,6 +1818,26 @@ class HeroOutsTab(QWidget):
                    f"(SPR ≥ 3) — you can still fold to a future " \
                    "bet without burning a meaningful share of " \
                    "your stack."
+
+        # Pot Commitment Ratio tier — red above 33 %, amber 15-33 %,
+        # green below 15 %. Matches the "calling more than a third of
+        # your stack means you can't fold the river" rule of thumb.
+        if commit_ratio_pct >= 33.0:
+            commit_verdict = ("<b style='color:#ff7777;'>"
+                              "EFFECTIVELY COMMITTED</b> — calling "
+                              "more than ⅓ of your stack means you "
+                              "almost certainly can't fold the next "
+                              "street.")
+        elif commit_ratio_pct >= 15.0:
+            commit_verdict = ("<span style='color:#ffd966;'>"
+                              "Meaningful commitment</span> — think "
+                              "about whether you're prepared to call "
+                              "another bet of similar size next.")
+        else:
+            commit_verdict = ("<span style='color:#88ff88;'>"
+                              "Light commitment</span> — easy to "
+                              "fold to future pressure if your read "
+                              "changes.")
 
         # Equity check — only shown when the caller passed it in,
         # otherwise the panel sticks to pure stack/pot math.
@@ -1822,13 +1860,19 @@ class HeroOutsTab(QWidget):
             except (TypeError, ValueError):
                 equity_block = ""
 
+        # Body font bumped 13pt → 16pt per request — the line below
+        # the "Pot Commitment" title is the key takeaway and was
+        # reading as small-print next to the panel header.
         html = (
             title_html
-            + "<div style='color:#dddddd; font-size:13pt;"
+            + "<div style='color:#dddddd; font-size:16pt;"
             " line-height:140%;'>"
             f"You'd put in <b>${tc_v:,}</b> with <b>${stk_v:,}</b> "
             f"left, leaving <b>${stack_after:,}</b> behind in a pot "
             f"of <b>${pot_after:,}</b>.<br><br>"
+            f"<b style='color:#ffffff;'>Pot Commitment Ratio</b>: "
+            f"<b>{commit_ratio_pct:.1f}%</b> of your stack<br>"
+            f"&nbsp;→ {commit_verdict}<br><br>"
             f"<b style='color:#ffffff;'>Stack-to-Pot Ratio (SPR)</b> "
             f"after call: <b>{spr:.2f}</b><br>"
             f"&nbsp;→ {zone}"
@@ -2079,11 +2123,17 @@ class TheoryOfMindPanel(QWidget):
 
         mode_row.addStretch()
 
-        # Board texture display
+        # Board texture display.  Bumped from 14pt → 20pt and given the
+        # full Acevedo classification (dry/dynamic/wet/paired) + c-bet
+        # sizing hint so it doubles as the board-dynamic indicator
+        # that used to live in the lower-right status bar.
         self.board_texture_label = QLabel("Board: --")
-        self.board_texture_label.setFont(QFont('Arial', 14, QFont.Weight.Bold))
-        self.board_texture_label.setStyleSheet("color: #fc0; padding: 5px; background: #222; border: 1px solid #444;")
-        mode_row.addWidget(self.board_texture_label)
+        self.board_texture_label.setFont(QFont('Arial', 20, QFont.Weight.Bold))
+        self.board_texture_label.setStyleSheet(
+            "color: #fc0; padding: 8px 14px; background: #222;"
+            " border: 1px solid #444; border-radius: 4px;")
+        self.board_texture_label.setWordWrap(True)
+        mode_row.addWidget(self.board_texture_label, stretch=1)
 
         layout.addLayout(mode_row)
 
@@ -2091,11 +2141,19 @@ class TheoryOfMindPanel(QWidget):
 
         self.bot_tabs = {}  # player_name -> TheoryOfMindTab
 
-    def setup_tabs(self, players):
-        """Create tabs for all bot players plus Advisor strategy tab."""
+    def setup_tabs(self, players, network_human_seats=None):
+        """Create tabs for all *bot* players plus Advisor strategy tab.
+
+        Network humans (seats listed in ``network_human_seats``) are
+        skipped just like the local hero — we don't try to model another
+        human's hole-card range with a bot template.  Caller passes the
+        host's ``network_human_seats`` set (or omits it for single-player
+        mode); the local hero is always seat 0 and is also skipped.
+        """
         self.tabs.clear()
         self.bot_tabs = {}
         self.tab_indices = {}  # Map player name to tab index
+        self._network_human_seats = set(network_human_seats or ())
 
         # Advisor Strategy tab (first tab)
         advisor_tab = QWidget()
@@ -2123,14 +2181,17 @@ class TheoryOfMindPanel(QWidget):
         self.hero_tab = HeroOutsTab()
         self.tabs.addTab(self.hero_tab, "Hero")
 
-        # Bot player tabs
+        # Bot player tabs — skip the local hero and any remote humans.
         for i, player in enumerate(players):
-            if player.style != 'human':
-                tab = TheoryOfMindTab(player.name, player.style)
-                # Tab shows player's full name (e.g. "Tight Tim")
-                idx = self.tabs.addTab(tab, player.name)
-                self.bot_tabs[player.name] = tab
-                self.tab_indices[player.name] = idx
+            if player.style == 'human':
+                continue
+            if i in self._network_human_seats:
+                continue
+            tab = TheoryOfMindTab(player.name, player.style)
+            # Tab shows player's full name (e.g. "Tight Tim")
+            idx = self.tabs.addTab(tab, player.name)
+            self.bot_tabs[player.name] = tab
+            self.tab_indices[player.name] = idx
 
     def set_range_mode(self, mode):
         """Set the range estimation mode (loose/neutral/tight)."""
@@ -2150,6 +2211,77 @@ class TheoryOfMindPanel(QWidget):
         elif self.range_mode == 'tight':
             return 0.85  # Narrower ranges = opponents stronger (less aggressive to keep visibility)
         return 1.0  # Neutral
+
+    def _classify_betting_spike(self, player_name: str,
+                                  action_history: list) -> str | None:
+        """Detect non-trivial betting patterns from this player.
+
+        Returns one of:
+          - 'delayed_turn_raise'  — passive on preflop+flop, raises turn
+          - 'delayed_river_raise' — passive earlier, raises river
+          - 'three_street_barrel' — bets/raises on flop, turn AND river
+          - 'check_raise_flop'    — checks then raises on the same street
+          - None                  — no notable spike pattern
+        Used by update_analysis() to further collapse the player's
+        estimated range toward strong made hands.
+        """
+        if not action_history:
+            return None
+        # Walk the history in order, tracking street + per-street actions
+        # for this player.
+        current_street = 'Preflop'
+        per_street: dict = {'Preflop': [], 'Flop': [], 'Turn': [], 'River': []}
+        for line in action_history:
+            if '--- Flop' in line:
+                current_street = 'Flop';   continue
+            if '--- Turn' in line:
+                current_street = 'Turn';   continue
+            if '--- River' in line:
+                current_street = 'River';  continue
+            if player_name not in line:
+                continue
+            low = line.lower()
+            if 'raise' in low:
+                per_street[current_street].append('raise')
+            elif 'bet' in low:
+                per_street[current_street].append('bet')
+            elif 'call' in low:
+                per_street[current_street].append('call')
+            elif 'check' in low:
+                per_street[current_street].append('check')
+            elif 'fold' in low:
+                per_street[current_street].append('fold')
+
+        # Three-street barrel = bet/raise on flop AND turn AND river.
+        def aggressive(actions):
+            return any(a in ('bet', 'raise') for a in actions)
+        if (aggressive(per_street['Flop'])
+                and aggressive(per_street['Turn'])
+                and aggressive(per_street['River'])):
+            return 'three_street_barrel'
+
+        # Check-raise on the same street — sequence "check" then "raise"
+        # in the same street's action list.
+        for street in ('Flop', 'Turn', 'River'):
+            seq = per_street[street]
+            for i in range(len(seq) - 1):
+                if seq[i] == 'check' and seq[i + 1] == 'raise':
+                    return 'check_raise_flop'
+
+        # Delayed turn raise — passive on preflop and flop, then raises
+        # on the turn (no earlier bet/raise from this player).
+        pre_flop_passive = not aggressive(
+            per_street['Preflop']) and not aggressive(per_street['Flop'])
+        if pre_flop_passive and aggressive(per_street['Turn']):
+            return 'delayed_turn_raise'
+
+        # Delayed river raise — passive earlier, raises river.
+        if (not aggressive(per_street['Preflop'])
+                and not aggressive(per_street['Flop'])
+                and not aggressive(per_street['Turn'])
+                and aggressive(per_street['River'])):
+            return 'delayed_river_raise'
+        return None
 
     def analyze_board_texture(self, board):
         """Analyze board texture - wet vs dry."""
@@ -3002,10 +3134,25 @@ class TheoryOfMindPanel(QWidget):
         active_players = {p.name for p in players if p.active}
         active_opponents = [p for p in players if p.active and p.style != 'human']
 
-        # Update board texture display
+        # Update board texture display.  Uses the Acevedo classifier
+        # for the headline category (dry/dynamic/wet/paired) and adds a
+        # c-bet sizing hint and the older flush/straight detail so the
+        # one line tells the user everything they need.
         texture, texture_info = self.analyze_board_texture(board)
         if board and len(board) >= 3:
-            self.board_texture_label.setText(f"Board: {texture} | {texture_info.get('flush', '')} | {texture_info.get('straight', '')}")
+            try:
+                cls = classify_board(board)
+                main = cls.get('label', texture).upper()
+                cbet = cls.get('cbet', '')
+            except Exception:
+                main = texture
+                cbet = ''
+            details = " | ".join(d for d in (
+                texture_info.get('flush', ''),
+                texture_info.get('straight', '')) if d)
+            self.board_texture_label.setText(
+                f"Board: {main}" + (f"    [{details}]" if details else "")
+                + (f"    →  c-bet: {cbet}" if cbet else ""))
         else:
             self.board_texture_label.setText("Board: Preflop")
 
@@ -3185,6 +3332,49 @@ class TheoryOfMindPanel(QWidget):
                     f"toward premium combos (squeeze={squeeze:.2f})]"
                 )
 
+            # ---- Betting-SPIKE detection (per-street pattern) ----
+            # A previously-passive player who suddenly fires big on the
+            # turn or river is signalling a much narrower range than the
+            # bare raise-count squeeze above implies.  Collapse their
+            # range further toward made hands that connect with the
+            # board (sets, two pair, straights, flushes, top pair top
+            # kicker) — and against villains who BARRELLED preflop +
+            # flop, weight toward overpairs and top pair.
+            try:
+                spike_class = self._classify_betting_spike(
+                    player.name, action_history)
+            except Exception:
+                spike_class = None
+            if spike_class:
+                # Map spike type → narrowing factor + the "value
+                # archetype" to bias toward.
+                spike_factor = {
+                    'delayed_turn_raise': 0.35,
+                    'delayed_river_raise': 0.25,
+                    'three_street_barrel': 0.45,
+                    'check_raise_flop':    0.40,
+                }.get(spike_class, 0.6)
+                # Hands that beat one pair: pocket pairs, two-card
+                # connectors that hit the board, etc.  This is a coarse
+                # template — we keep anything currently > 0 with the
+                # squeeze, but boost board-hitting combos so the grid
+                # visibly shifts toward "made hand or strong draw".
+                hits = board_hits or {}
+                for hand in list(range_dict.keys()):
+                    w = range_dict[hand]
+                    if w <= 0:
+                        continue
+                    connection = float(hits.get(hand, 0.0))
+                    # Squeeze, then add back proportional to how much
+                    # this hand hits the texture on the table.
+                    new_w = w * spike_factor + connection * 0.6
+                    range_dict[hand] = max(0.0, min(1.0, new_w))
+                explanation += (
+                    f"\n\n[Spike: {spike_class.replace('_', ' ')} → range "
+                    f"shifted toward board-connected made hands "
+                    f"(factor {spike_factor:.2f})]"
+                )
+
             # Until ANY voluntary action has occurred this hand, blank the
             # grid for every bot — there's no betting evidence yet to
             # narrow the prior.
@@ -3320,6 +3510,11 @@ class TheoryOfMindPanel(QWidget):
                     hero_equity = self.calculate_equity_vs_ranges(hero_hand, all_ranges, board)
                     equity_mode = "vs Ranges"
             self.equity_label.setText(f"Equity ({equity_mode}): {hero_equity:.1%}")
+            # Cache so the EV badges on the action buttons can read the
+            # SAME range-based number instead of running their own noisy
+            # random-opponent Monte Carlo (which over-estimated equity
+            # and gave +EV verdicts that contradicted this panel).
+            self.last_hero_equity_vs_ranges = float(hero_equity)
 
             # Feed the equity figure into the Hero tab's commitment
             # panel so its "pot odds vs equity" verdict matches what
@@ -6936,7 +7131,7 @@ class PokerWindow(QMainWindow):
 
         # Theory of Mind Panel (expanded)
         self.tom_panel = TheoryOfMindPanel()
-        self.tom_panel.setup_tabs(self.players)
+        self.tom_panel.setup_tabs(self.players, getattr(self, "network_human_seats", set()))
         self.tom_panel.set_update_callback(self.update_theory_of_mind)  # Wire up range mode callback
         tom_container_layout.addWidget(self.tom_panel, stretch=1)
 
@@ -7010,20 +7205,22 @@ class PokerWindow(QMainWindow):
         # Bottom bar with blinds on left and log in center
         bottom_bar = QHBoxLayout()
 
-        # Blinds display (bottom left, white text)
+        # Blinds display (bottom left, white text).  Bumped from 14pt
+        # → 19pt and widened to 230 so the "(↑ in N)" suffix doesn't
+        # get clipped at most window sizes.
         self.blinds_label = QLabel("Blinds: $1/$2")
         self.blinds_label.setStyleSheet("""
             QLabel {
                 color: #ffffff;
-                font-size: 14px;
+                font-size: 19px;
                 font-weight: bold;
-                padding: 5px 10px;
+                padding: 6px 12px;
                 background-color: #222;
                 border: 1px solid #444;
                 border-radius: 4px;
             }
         """)
-        self.blinds_label.setFixedWidth(180)
+        self.blinds_label.setFixedWidth(230)
         bottom_bar.addWidget(self.blinds_label)
 
         # Log area (center)
@@ -7040,6 +7237,14 @@ class PokerWindow(QMainWindow):
         bottom_bar.addWidget(self.log_label, stretch=1)
 
         main_layout.addLayout(bottom_bar)
+
+        # Wire in the Learning Hub (book-driven training + dashboards).
+        # Adds Train/Review menus, EV button badges, mindset coach,
+        # variance dashboard, AKQ lab, jam-or-fold trainer, etc.
+        try:
+            _install_learning_hub(self)
+        except Exception as e:
+            print(f"[learning hub] not installed: {e!r}", flush=True)
 
     def _is_multi_human_network(self) -> bool:
         """True iff we're in a network session — every network session
@@ -8535,7 +8740,15 @@ class PokerWindow(QMainWindow):
 
     def _spectator_record_snapshot(self, street: str, street_idx: int,
                                     board, action_log):
-        """Record a per-street snapshot for spectator navigation."""
+        """Record a per-street snapshot for spectator navigation.
+
+        When the spectator is parked on the previously-latest snapshot
+        (i.e. they've Next-Street'd all the way back to live but haven't
+        explicitly chosen to follow live), advance their view_idx with
+        the new snapshot.  Users who have pressed Previous Street stay
+        parked.  The contract is: pressing Previous is the only way to
+        STOP automatic advancement.
+        """
         if not hasattr(self, '_spectator_street_snapshots'):
             self._spectator_street_snapshots = []
         snap = {
@@ -8544,12 +8757,33 @@ class PokerWindow(QMainWindow):
             'board': [str(c) for c in board],
             'action_log': list(action_log),
         }
+        # Remember whether the spectator was on the latest snapshot
+        # BEFORE we mutate the list. `view < 0` is the explicit "live"
+        # mode; `view == len-1` is the implicit "happened to be on the
+        # last one" mode — both should follow new streets.
+        prev_len = len(self._spectator_street_snapshots)
+        prev_view = int(getattr(self, '_spectator_view_idx', -1))
+        was_on_latest = (prev_view < 0
+                         or (prev_len > 0 and prev_view == prev_len - 1))
         for i, existing in enumerate(self._spectator_street_snapshots):
             if existing.get('street_idx') == snap['street_idx']:
                 self._spectator_street_snapshots[i] = snap
+                # Same-street update — if parked here, refresh the view.
+                if (prev_view >= 0
+                        and prev_view == i
+                        and getattr(self, '_hero_folded_spectating', False)):
+                    self._spectator_show_snapshot(i)
                 self._update_spectator_nav_buttons()
                 return
         self._spectator_street_snapshots.append(snap)
+        # If the user was tracking live, keep tracking live by sliding
+        # the view to the just-appended snapshot.  If they had used
+        # Previous Street to park on an older snapshot, leave them be.
+        if (was_on_latest
+                and getattr(self, '_hero_folded_spectating', False)):
+            self._spectator_view_idx = len(
+                self._spectator_street_snapshots) - 1
+            self._spectator_show_snapshot(self._spectator_view_idx)
         self._update_spectator_nav_buttons()
 
     def _spectator_show_snapshot(self, idx: int):
@@ -8599,15 +8833,28 @@ class PokerWindow(QMainWindow):
             self._update_spectator_nav_buttons()
 
     def _spectator_next(self):
-        """View next street snapshot."""
+        """View next street snapshot.
+
+        Stepping forward to the most recent snapshot drops the view back
+        into "live" mode (view_idx = -1) so subsequent streets continue
+        to auto-follow the action.  Previous Street is the only way to
+        leave live mode and freeze the view.
+        """
         n = self._spectator_snapshot_count()
         if n == 0:
             return
         view = getattr(self, '_spectator_view_idx', -1)
         cur = (n - 1) if view < 0 else view
         if cur < n - 1:
-            self._spectator_view_idx = cur + 1
-            self._spectator_show_snapshot(self._spectator_view_idx)
+            new_idx = cur + 1
+            # If we've returned to the latest snapshot, switch to live
+            # mode so any future street advances the view automatically.
+            if new_idx >= n - 1:
+                self._spectator_view_idx = -1
+                self._spectator_show_snapshot(n - 1)
+            else:
+                self._spectator_view_idx = new_idx
+                self._spectator_show_snapshot(new_idx)
             self._update_spectator_nav_buttons()
 
     def human_action(self, action, amount):
@@ -11913,7 +12160,7 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                         self.players[seat_index].name = fallback[0]
             if hasattr(self, 'tom_panel'):
                 try:
-                    self.tom_panel.setup_tabs(self.players)
+                    self.tom_panel.setup_tabs(self.players, getattr(self, "network_human_seats", set()))
                 except Exception:
                     pass
             self.update_all_panels()
@@ -12075,7 +12322,7 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
 
         # Refresh Theory of Mind tabs to include all non-hero players
         if hasattr(self, 'tom_panel'):
-            self.tom_panel.setup_tabs(self.players)
+            self.tom_panel.setup_tabs(self.players, getattr(self, "network_human_seats", set()))
 
         self.update_all_panels()
 
@@ -12886,6 +13133,1646 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
             self.network_client.send_action(action, amount)
             self.waiting_for_human = False
             self.disable_human_actions()
+
+
+# ----------------------------------------------------------------------------
+#                            PokerIQ Learning Hub
+#
+# A single consolidated module that layers a learning / coaching environment on
+# top of the existing play view.  Built on the suggestions extracted from five
+# poker books (Sklansky, Hilger, Chen/Ankenman, Acevedo, Harroch).
+#
+# Public entry point: PokerLearningHub(window).attach()
+# Adds a `Train` menu, a `Review` menu, EV badges, a Bayes panel, calibration,
+# decision journal, mindset coach, variance/ROR dashboard, Sklansky-distance
+# scoring, tilt detection, AKQ lab, jam-or-fold trainer, indifference
+# visualiser, MTT bubble drill, hand-class P&L and the rest of the 22 features.
+# ----------------------------------------------------------------------------
+
+import math
+import time
+import statistics
+import json
+from collections import deque
+
+# --- Persistence -------------------------------------------------------------
+
+def _lifetime_settings():
+    """QSettings group dedicated to the learning-hub's persistent state."""
+    return QSettings("PokerIQ", "PokerIQ-Learning")
+
+
+# --- Session statistics ------------------------------------------------------
+
+class SessionStats:
+    """Per-session running stats: bb/100, σ, decision-times, click-speed.
+
+    Drives the variance / ROR dashboard, the edge-CI meter, the Kelly stake
+    recommendation and the tilt-anatomy lab.  Persists across launches via
+    QSettings so the user sees cumulative numbers.
+    """
+
+    def __init__(self):
+        self.hand_results: list[float] = []   # per-hand $ net for the hero
+        self.bb_amount: float = 2.0
+        # Decision-time series (seconds), used by tilt detection.
+        self.decision_times: deque = deque(maxlen=200)
+        # Time the human's action buttons were most recently enabled.
+        self._action_started_at: float | None = None
+        # Lifetime hands across all launches (for edge CI sample size).
+        self.lifetime_hands: int = 0
+        # Lifetime cumulative profit in $.
+        self.lifetime_profit: float = 0.0
+        # Lifetime sum of squared per-hand results, used for σ.
+        self.lifetime_sumsq: float = 0.0
+        # Self-rated emotion 1..10 at session start (Hilger emotion check-in).
+        self.emotion_at_start: int | None = None
+        self.emotion_log: list[tuple[int, int]] = []  # (hand_idx, rating)
+        self._load_lifetime()
+
+    # -- persistence --
+    def _load_lifetime(self):
+        s = _lifetime_settings()
+        self.lifetime_hands = int(s.value("hands", 0, type=int))
+        self.lifetime_profit = float(s.value("profit", 0.0, type=float))
+        self.lifetime_sumsq = float(s.value("sumsq", 0.0, type=float))
+
+    def _save_lifetime(self):
+        s = _lifetime_settings()
+        s.setValue("hands", self.lifetime_hands)
+        s.setValue("profit", self.lifetime_profit)
+        s.setValue("sumsq", self.lifetime_sumsq)
+        s.sync()
+
+    # -- per-hand recording --
+    def record_hand_result(self, profit_dollars: float):
+        """Called at hand end with hero's net P&L for the hand."""
+        self.hand_results.append(profit_dollars)
+        self.lifetime_hands += 1
+        self.lifetime_profit += profit_dollars
+        self.lifetime_sumsq += profit_dollars * profit_dollars
+        self._save_lifetime()
+
+    def record_decision_time(self, seconds: float):
+        self.decision_times.append(seconds)
+
+    def action_started(self):
+        self._action_started_at = time.monotonic()
+
+    def action_finished(self):
+        if self._action_started_at is not None:
+            self.record_decision_time(
+                time.monotonic() - self._action_started_at)
+            self._action_started_at = None
+
+    # -- derived metrics --
+    @property
+    def session_hands(self) -> int:
+        return len(self.hand_results)
+
+    @property
+    def session_bb_per_100(self) -> float:
+        if not self.hand_results or self.bb_amount <= 0:
+            return 0.0
+        bb_sum = sum(self.hand_results) / self.bb_amount
+        return bb_sum / max(1, self.session_hands) * 100.0
+
+    @property
+    def session_std(self) -> float:
+        if len(self.hand_results) < 2:
+            return 0.0
+        return statistics.stdev(self.hand_results)
+
+    @property
+    def lifetime_bb_per_100(self) -> float:
+        if self.lifetime_hands == 0 or self.bb_amount <= 0:
+            return 0.0
+        return (self.lifetime_profit / self.bb_amount
+                / max(1, self.lifetime_hands) * 100.0)
+
+    @property
+    def lifetime_std(self) -> float:
+        n = self.lifetime_hands
+        if n < 2:
+            return 0.0
+        mean = self.lifetime_profit / n
+        var = max(0.0, self.lifetime_sumsq / n - mean * mean)
+        return math.sqrt(var)
+
+    def edge_confidence_interval(self) -> tuple[float, float]:
+        """95% CI on bb/100 edge (per Chen Ch 23)."""
+        n = self.lifetime_hands
+        if n < 30:
+            return (0.0, 0.0)
+        sigma_per_hand = self.lifetime_std / max(1.0, self.bb_amount)
+        se = sigma_per_hand / math.sqrt(n)  # per-hand SE in bb
+        edge = self.lifetime_bb_per_100 / 100.0  # bb per hand
+        return ((edge - 1.96 * se) * 100.0, (edge + 1.96 * se) * 100.0)
+
+    def risk_of_ruin(self, bankroll_dollars: float) -> float:
+        """Chen Ch 22: ROR ≈ exp(-2 * win * B / σ²).
+
+        Returns probability in [0,1].  When stats are too thin to compute
+        we return 1.0 (no edge proven yet → assume worst case).
+        """
+        if self.lifetime_hands < 100:
+            return 1.0
+        mean = self.lifetime_profit / self.lifetime_hands
+        if mean <= 0:
+            return 1.0
+        var = self.lifetime_std ** 2
+        if var <= 0:
+            return 1.0
+        return math.exp(-2.0 * mean * bankroll_dollars / var)
+
+    def kelly_fraction(self) -> float:
+        """f* = µ / σ²  (Chen Ch 24, continuous Kelly)."""
+        if self.lifetime_hands < 100 or self.lifetime_std <= 0:
+            return 0.0
+        mean = self.lifetime_profit / self.lifetime_hands
+        return max(0.0, mean / (self.lifetime_std ** 2))
+
+
+# --- Decision journal --------------------------------------------------------
+
+class DecisionJournal:
+    """One JSON-lines file of every meaningful Hero decision.
+
+    Each entry: timestamp, hand-#, street, action, predicted equity (Brier
+    scoring input), rationale (free text), result (set at hand end).
+    """
+
+    def __init__(self, path: str | None = None):
+        if path is None:
+            path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "decision_journal.jsonl")
+        self.path = path
+        self.pending: list[dict] = []   # per-session entries needing result
+
+    def record(self, **fields):
+        entry = {"ts": datetime.now().isoformat(), **fields}
+        try:
+            with open(self.path, "a") as f:
+                f.write(json.dumps(entry, default=str) + "\n")
+        except OSError:
+            pass
+        self.pending.append(entry)
+        return entry
+
+    def attach_result(self, hand_number: int, result_dollars: float):
+        # Update any pending entries for this hand with the final result.
+        for e in self.pending:
+            if e.get("hand_number") == hand_number and "result" not in e:
+                e["result"] = result_dollars
+
+    def session_predictions(self) -> list[tuple[float, float]]:
+        """Return (predicted_equity, actual_outcome 0/1) for Brier scoring."""
+        out: list[tuple[float, float]] = []
+        for e in self.pending:
+            p = e.get("predicted_equity")
+            r = e.get("result")
+            if p is None or r is None:
+                continue
+            out.append((float(p), 1.0 if r > 0 else 0.0))
+        return out
+
+
+# --- Opponent model ----------------------------------------------------------
+
+class OpponentModel:
+    """Tracks per-villain VPIP, PFR, fold-to-3bet, aggression freq, etc.
+
+    Drives the Levels-of-Thinking badge, the MES tag, and the Bayes panel's
+    prior.  Persisted across sessions per-bot-name in QSettings.
+    """
+
+    def __init__(self):
+        self.stats: dict[str, dict] = {}
+        self._load()
+
+    def _load(self):
+        raw = _lifetime_settings().value("opponent_stats", "")
+        if isinstance(raw, str) and raw:
+            try:
+                self.stats = json.loads(raw)
+            except (ValueError, TypeError):
+                self.stats = {}
+
+    def _save(self):
+        try:
+            _lifetime_settings().setValue(
+                "opponent_stats", json.dumps(self.stats))
+        except (ValueError, TypeError):
+            pass
+
+    def _slot(self, name: str) -> dict:
+        if name not in self.stats:
+            self.stats[name] = {
+                "hands": 0, "vpip": 0, "pfr": 0,
+                "fold_to_3bet": 0, "faced_3bet": 0,
+                "raises": 0, "calls": 0, "checks": 0, "folds": 0,
+                "river_calls": 0, "river_faced_bet": 0,
+            }
+        return self.stats[name]
+
+    def record_action(self, name: str, action: str, street: str,
+                      faced_3bet: bool = False, faced_river_bet: bool = False):
+        s = self._slot(name)
+        a = action.lower()
+        if a.startswith("rais") or a.startswith("bet"):
+            s["raises"] += 1
+            if street == "Preflop":
+                s["pfr"] += 1
+                s["vpip"] += 1
+        elif a.startswith("call"):
+            s["calls"] += 1
+            if street == "Preflop":
+                s["vpip"] += 1
+            if street == "River" and faced_river_bet:
+                s["river_calls"] += 1
+        elif a.startswith("check"):
+            s["checks"] += 1
+        elif a.startswith("fold"):
+            s["folds"] += 1
+            if faced_3bet:
+                s["fold_to_3bet"] += 1
+        if faced_3bet:
+            s["faced_3bet"] += 1
+        if street == "River" and faced_river_bet:
+            s["river_faced_bet"] += 1
+        self._save()
+
+    def record_hand(self, name: str):
+        self._slot(name)["hands"] += 1
+        self._save()
+
+    def level_of(self, name: str) -> int:
+        """Hilger Ch 8 levels-of-thinking 0..3 — coarse heuristic.
+
+        L0: never raises / never bluffs (calling station / nit)
+        L1: balanced opens, doesn't 3-bet light
+        L2: 3-bets, c-bets — thinks about Hero's range
+        L3: 4-bet light, exploitative line changes — meta-game
+        """
+        s = self.stats.get(name)
+        if not s or s["hands"] < 10:
+            return 1
+        agg = (s["raises"] /
+               max(1, s["raises"] + s["calls"] + s["checks"] + s["folds"]))
+        if agg < 0.05:
+            return 0
+        if agg < 0.20:
+            return 1
+        if agg < 0.35:
+            return 2
+        return 3
+
+    def biggest_leak(self, name: str) -> str | None:
+        """MES tag — pick the most exploitable habit, if any.
+
+        Returns a one-line string or None if data is too thin.
+        """
+        s = self.stats.get(name)
+        if not s or s["hands"] < 5:
+            return None
+        total = s["raises"] + s["calls"] + s["checks"] + s["folds"]
+        if total == 0:
+            return None
+        fold_pct = s["folds"] / total
+        if s["faced_3bet"] >= 3:
+            f3b = s["fold_to_3bet"] / max(1, s["faced_3bet"])
+            if f3b > 0.75:
+                return f"folds to 3-bet {f3b:.0%} — widen 3-bet bluffs"
+        if fold_pct > 0.6:
+            return f"folds {fold_pct:.0%} — c-bet a lot, value-bet thinner"
+        if s["river_faced_bet"] >= 3:
+            rc = s["river_calls"] / max(1, s["river_faced_bet"])
+            if rc > 0.65:
+                return f"calls river {rc:.0%} — never bluff, value-bet wider"
+            if rc < 0.20:
+                return f"folds river {rc:.0%} — increase river bluffs"
+        if s["raises"] / max(1, total) > 0.3:
+            return "raises heavily — slow-play monsters, induce bluffs"
+        return None
+
+
+# --- Board texture (Acevedo Ch 11) ------------------------------------------
+
+def classify_board(board_cards) -> dict:
+    """Return dict with keys: dry/dynamic/paired/wet/dynamic flags + cbet hint."""
+    if not board_cards or len(board_cards) < 3:
+        return {"label": "preflop", "cbet": ""}
+    cards = [str(c) for c in board_cards[:3]]
+    ranks = [c[0] for c in cards]
+    suits = [c[1] for c in cards]
+    rank_order = 'AKQJT98765432'
+
+    # Paired?
+    paired = len(set(ranks)) < 3
+
+    # Flush draws?
+    suit_counts = {s: suits.count(s) for s in set(suits)}
+    flushy = max(suit_counts.values()) >= 2  # two-tone (FD)
+    monotone = max(suit_counts.values()) == 3
+
+    # Connected?
+    rank_idxs = sorted(rank_order.index(r) for r in ranks)
+    spread = rank_idxs[-1] - rank_idxs[0]
+    connected = spread <= 4 and len(set(ranks)) == 3
+
+    if paired:
+        label = "paired"
+    elif monotone:
+        label = "wet (monotone)"
+    elif flushy and connected:
+        label = "wet & dynamic"
+    elif flushy or connected:
+        label = "dynamic"
+    else:
+        label = "dry"
+
+    # C-bet sizing recommendation (Acevedo Ch 12)
+    if label == "dry":
+        cbet = "small (33% pot) — range bet, you have range advantage"
+    elif label == "paired":
+        cbet = "small (33% pot) — paired boards favour the pre-flop raiser"
+    elif "dynamic" in label or "wet" in label:
+        cbet = "big (66-75% pot) — polarised; charge draws"
+    else:
+        cbet = "mixed (~50% pot)"
+    return {"label": label, "cbet": cbet,
+            "paired": paired, "flushy": flushy, "connected": connected}
+
+
+# --- Sklansky-distance score (Theory of Poker Ch 3) -------------------------
+
+def sklansky_distance(actual_action: str, actual_amount: float,
+                      perfect_action: str, perfect_amount: float,
+                      pot: float) -> float:
+    """0 = matches the perfect-info choice, 10 = opposite choice."""
+    if not actual_action or not perfect_action:
+        return 0.0
+    aa = actual_action[0].lower()
+    pa = perfect_action[0].lower()
+    if aa == pa:
+        if aa == 'r':
+            denom = max(1.0, pot or perfect_amount or 1.0)
+            return min(10.0, abs(actual_amount - perfect_amount) / denom * 5.0)
+        return 0.0
+    # Different categories.
+    pairs = {('f', 'c'): 6.0, ('c', 'f'): 6.0,
+             ('f', 'r'): 9.0, ('r', 'f'): 9.0,
+             ('c', 'r'): 4.0, ('r', 'c'): 4.0}
+    return pairs.get((aa, pa), 8.0)
+
+
+# --- Push/Fold Nash chart (Chen Ch 12, Acevedo Ch 6) ------------------------
+
+# Minimal SB push range expressed as inclusive top-percent of hands, by
+# effective stack in big blinds. Values come from standard charts (e.g.
+# SnapShove).  Mid-stage push/fold; the trainer references these.
+_NASH_PUSH_PCT = {
+    5: 0.45, 6: 0.40, 7: 0.35, 8: 0.30, 9: 0.27, 10: 0.25,
+    12: 0.22, 15: 0.18, 18: 0.15, 20: 0.13, 25: 0.10,
+}
+
+
+def nash_push_pct(stack_bb: int) -> float:
+    keys = sorted(_NASH_PUSH_PCT.keys())
+    if stack_bb <= keys[0]:
+        return _NASH_PUSH_PCT[keys[0]]
+    if stack_bb >= keys[-1]:
+        return _NASH_PUSH_PCT[keys[-1]]
+    for k in keys:
+        if k >= stack_bb:
+            return _NASH_PUSH_PCT[k]
+    return 0.10
+
+
+def hand_strength_percentile(hole_cards) -> float:
+    """Rough preflop strength percentile [0,1].  1.0 = AA, 0 = 72o."""
+    if not hole_cards or len(hole_cards) < 2:
+        return 0.0
+    c1, c2 = str(hole_cards[0]), str(hole_cards[1])
+    rank_vals = {'A': 12, 'K': 11, 'Q': 10, 'J': 9, 'T': 8,
+                 '9': 7, '8': 6, '7': 5, '6': 4, '5': 3,
+                 '4': 2, '3': 1, '2': 0}
+    r1, r2 = rank_vals.get(c1[0], 0), rank_vals.get(c2[0], 0)
+    suited = c1[1] == c2[1]
+    pair = r1 == r2
+    # Sklansky/Chubukov-ish ordering, normalised.
+    if pair:
+        score = 0.55 + (r1 / 12) * 0.45
+    else:
+        hi, lo = max(r1, r2), min(r1, r2)
+        gap = (hi - lo - 1) if hi > lo else 0
+        score = (hi / 12) * 0.55 + (lo / 12) * 0.25
+        score -= gap * 0.03
+        if suited:
+            score += 0.08
+    return max(0.0, min(1.0, score))
+
+
+# --- EV calculator (Tier 1 #1) ----------------------------------------------
+
+def hero_action_ev(player, game_state, bb_amount: float, action_code: str,
+                   raise_amount: float = 0.0,
+                   equity_override: float | None = None) -> float:
+    """EV-of-action estimator in $ for the on-screen action buttons.
+
+    Pass ``equity_override`` to use a specific equity number (the cached
+    range-based equity from the Theory-of-Mind panel is the canonical
+    source — random-opponent MC was noisy and gave verdicts that didn't
+    match the rest of the screen).
+
+    Formulas:
+        EV(fold)  = 0
+        EV(check) = 0
+        EV(call $c)  = equity * (pot + c) - c
+        EV(raise $r) = fold_equity * pot
+                       + (1 - fold_equity) * [discounted_equity *
+                                              (pot + 2 * cost) - cost]
+        with `fold_equity` shrunk for multi-way pots (each player
+        independently folds), and `discounted_equity` ≈ 0.7 × equity
+        because when villain *calls* a raise they have a stronger
+        sub-range than the prior.
+    """
+    pot = float(game_state.get('pot', 0))
+    current_bet = float(game_state.get('current_bet', 0))
+    to_call = max(0.0, current_bet - player.bet_in_round)
+    if equity_override is not None:
+        equity = float(equity_override)
+    else:
+        equity, _, _ = player.calculate_current_stats(game_state, False)
+    if action_code == 'f':
+        return 0.0
+    if action_code == 'c':
+        if to_call <= 0:
+            return 0.0  # check
+        return equity * (pot + to_call) - to_call
+    if action_code == 'r':
+        # Number of opponents still able to act / call.  Multi-way pots
+        # have LESS fold equity per player (each only folds ~25%
+        # baseline) but the chance ALL fold drops as 0.75^N.  We want a
+        # single "anyone calls" probability.
+        players_left = max(1, sum(
+            1 for p in game_state.get('players', [])
+            if p is not player and p.active and p.stack > 0))
+        # Per-player fold chance vs a 3-bet — book numbers (Acevedo): MDF
+        # for a 3x raise is ~67%, so per-player fold is ~33%.  Tighten
+        # this when the pot is already 3-bet (current_bet > 2 × bb): the
+        # caller's range is much narrower, fold chance plunges.
+        per_player_fold = 0.25 if current_bet > 2 * bb_amount else 0.40
+        all_fold = per_player_fold ** players_left
+        # When called, equity drops vs a calling range.
+        discounted_eq = equity * 0.70
+        raise_above_call = max(raise_amount, to_call + bb_amount * 2)
+        cost = to_call + raise_above_call
+        called_pot = pot + cost + raise_above_call  # villain matches above-call
+        return all_fold * pot + (1 - all_fold) * (
+            discounted_eq * called_pot - cost)
+    return 0.0
+
+
+# ---------------------------------------------------------------------------
+#                  Training dialogs (Tier 3) — self-contained
+# ---------------------------------------------------------------------------
+
+class AKQGameDialog(QDialog):
+    """Chen Ch 13 — the AKQ toy game.
+
+    Three-card deck (A, K, Q).  Each player gets one card.  Pot starts at 2,
+    the player can bet 1.  Solver result: the bettor should value-bet A
+    always and bluff Q with frequency 1/3 → A bluff; K (bluff-catcher)
+    calls with frequency 1/2.
+
+    Dialog walks the user through the math, then plays 20 hands so the user
+    can verify they end up with EV ≈ 0 vs optimal play.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("AKQ Game — Chen Ch 13")
+        self.setMinimumSize(900, 700)
+        self._score_bettor = 0.0
+        self._score_caller = 0.0
+        self._hands_played = 0
+        self._role = 'bettor'  # alternates
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(10)
+
+        title = QLabel("AKQ Game (Chen Ch 13)")
+        title.setFont(QFont('Arial', 20, QFont.Weight.Bold))
+        title.setStyleSheet("color: #0af;")
+        layout.addWidget(title)
+
+        intro = QLabel(
+            "Three-card deck: A, K, Q.  You and the bot each draw one.  "
+            "Pot starts at 2.  Bettor may bet 1 or check; if checked, "
+            "showdown — high card wins.  If bet, caller may call (showdown) "
+            "or fold (bettor wins pot).\n\n"
+            "<b>GTO solution (Chen):</b> Bettor value-bets A always, "
+            "checks K always, bluffs Q with probability 1/3.  Caller calls "
+            "with K with probability 1/2 (always folds Q, always calls A)."
+        )
+        intro.setTextFormat(Qt.TextFormat.RichText)
+        intro.setWordWrap(True)
+        intro.setStyleSheet("color: #ddd; font-size: 14px;")
+        layout.addWidget(intro)
+
+        self.state_lbl = QLabel("Press 'Deal' to start.")
+        self.state_lbl.setFont(QFont('Courier', 16, QFont.Weight.Bold))
+        self.state_lbl.setStyleSheet("color: #ffd966; padding: 10px; "
+                                     "background: #1a1a1a; border-radius: 5px;")
+        layout.addWidget(self.state_lbl)
+
+        btn_row = QHBoxLayout()
+        self.deal_btn = QPushButton("Deal")
+        self.deal_btn.clicked.connect(self._deal)
+        btn_row.addWidget(self.deal_btn)
+        self.act_a = QPushButton("Bet / Bluff")
+        self.act_a.clicked.connect(lambda: self._human_act('bet'))
+        self.act_a.setEnabled(False)
+        btn_row.addWidget(self.act_a)
+        self.act_b = QPushButton("Check / Fold")
+        self.act_b.clicked.connect(lambda: self._human_act('check'))
+        self.act_b.setEnabled(False)
+        btn_row.addWidget(self.act_b)
+        self.act_c = QPushButton("Call")
+        self.act_c.clicked.connect(lambda: self._human_act('call'))
+        self.act_c.setEnabled(False)
+        btn_row.addWidget(self.act_c)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        self.score_lbl = QLabel("Hands: 0  |  Your net: $0.00")
+        self.score_lbl.setFont(QFont('Arial', 14, QFont.Weight.Bold))
+        layout.addWidget(self.score_lbl)
+
+        self.log = QTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setFont(QFont('Courier', 11))
+        layout.addWidget(self.log)
+
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        layout.addWidget(close)
+
+        self._hero_card = None
+        self._bot_card = None
+
+    def _deal(self):
+        deck = ['A', 'K', 'Q']
+        random.shuffle(deck)
+        self._hero_card = deck[0]
+        self._bot_card = deck[1]
+        self._role = 'bettor' if (self._hands_played % 2 == 0) else 'caller'
+        if self._role == 'bettor':
+            self.state_lbl.setText(
+                f"You're the BETTOR.  Your card: {self._hero_card}.  "
+                f"Bet (+1 to win pot+1) or Check (showdown)?")
+            self.act_a.setText("Bet 1")
+            self.act_b.setText("Check")
+            self.act_a.setEnabled(True)
+            self.act_b.setEnabled(True)
+            self.act_c.setEnabled(False)
+        else:
+            bot_action = self._bot_optimal_bettor_action()
+            self.state_lbl.setText(
+                f"You're the CALLER.  Your card: {self._hero_card}.  "
+                f"Bot's action: {bot_action.upper()}."
+            )
+            if bot_action == 'bet':
+                self.act_a.setText("Call (showdown for 2)")
+                self.act_b.setText("Fold")
+                self.act_a.setEnabled(True)
+                self.act_b.setEnabled(True)
+                self.act_c.setEnabled(False)
+            else:
+                # Bot checked — auto-showdown
+                self._resolve_caller_showdown(bot_action)
+                return
+        self.deal_btn.setEnabled(False)
+
+    def _bot_optimal_bettor_action(self) -> str:
+        if self._bot_card == 'A':
+            return 'bet'
+        if self._bot_card == 'Q':
+            return 'bet' if random.random() < 1/3 else 'check'
+        return 'check'  # K
+
+    def _bot_optimal_caller_action(self) -> str:
+        if self._bot_card == 'A':
+            return 'call'
+        if self._bot_card == 'K':
+            return 'call' if random.random() < 0.5 else 'fold'
+        return 'fold'
+
+    def _human_act(self, what):
+        if self._role == 'bettor':
+            if what == 'bet':
+                # Bot responds as caller
+                bot = self._bot_optimal_caller_action()
+                self._resolve_bettor_bet(bot)
+            else:  # check
+                self._resolve_bettor_check()
+        else:  # caller
+            if what == 'bet':  # i.e. call
+                self._resolve_caller_call()
+            else:
+                # fold
+                self._resolve_caller_fold()
+        self._hands_played += 1
+        self.score_lbl.setText(
+            f"Hands: {self._hands_played}  |  Your net: ${self._score_bettor + self._score_caller:+.2f}")
+        self.act_a.setEnabled(False)
+        self.act_b.setEnabled(False)
+        self.act_c.setEnabled(False)
+        self.deal_btn.setEnabled(True)
+
+    def _resolve_bettor_bet(self, bot_action):
+        if bot_action == 'fold':
+            self._score_bettor += 1.0  # win pot
+            self.log.append(f"You bet {self._hero_card}, bot ({self._bot_card}) folds. You win 1.")
+        else:  # call
+            if 'AKQ'.index(self._hero_card) < 'AKQ'.index(self._bot_card):
+                self._score_bettor += 2.0  # win pot+bet
+                self.log.append(f"You bet {self._hero_card}, bot calls with {self._bot_card}. You win 2.")
+            else:
+                self._score_bettor -= 1.0  # lose bet
+                self.log.append(f"You bet {self._hero_card}, bot calls with {self._bot_card}. You lose 1.")
+
+    def _resolve_bettor_check(self):
+        # Showdown
+        if 'AKQ'.index(self._hero_card) < 'AKQ'.index(self._bot_card):
+            self._score_bettor += 1.0  # win 1 of pot
+            self.log.append(f"Check showdown: you {self._hero_card} vs bot {self._bot_card}. You win 1.")
+        else:
+            self._score_bettor -= 1.0
+            self.log.append(f"Check showdown: you {self._hero_card} vs bot {self._bot_card}. You lose 1.")
+
+    def _resolve_caller_call(self):
+        if 'AKQ'.index(self._hero_card) < 'AKQ'.index(self._bot_card):
+            self._score_caller += 2.0
+            self.log.append(f"You call with {self._hero_card}, bot had {self._bot_card}. You win 2.")
+        else:
+            self._score_caller -= 1.0
+            self.log.append(f"You call with {self._hero_card}, bot had {self._bot_card}. You lose 1.")
+
+    def _resolve_caller_fold(self):
+        self._score_caller -= 1.0  # lose the 1 of pot you'd have won at SD
+        self.log.append(f"You fold to bot's bet with {self._hero_card}. You lose 1 (forfeit).")
+
+    def _resolve_caller_showdown(self, bot_action):
+        # Bot checked, free showdown
+        if 'AKQ'.index(self._hero_card) < 'AKQ'.index(self._bot_card):
+            self._score_caller += 1.0
+            self.log.append(f"Bot checked. Showdown: you {self._hero_card} beats {self._bot_card}. You win 1.")
+        else:
+            self._score_caller -= 1.0
+            self.log.append(f"Bot checked. Showdown: you {self._hero_card} loses to {self._bot_card}. You lose 1.")
+        self._hands_played += 1
+        self.score_lbl.setText(
+            f"Hands: {self._hands_played}  |  Your net: ${self._score_bettor + self._score_caller:+.2f}")
+        self.deal_btn.setEnabled(True)
+
+
+class JamOrFoldTrainer(QDialog):
+    """Tier 3 #13 — push/fold quiz.  Random stack + hand; user picks PUSH or
+    FOLD; we compare to a Nash chart."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Heads-Up Jam-or-Fold Trainer")
+        self.setMinimumSize(700, 500)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(10)
+
+        title = QLabel("Push-or-Fold (Nash Equilibrium)")
+        title.setFont(QFont('Arial', 20, QFont.Weight.Bold))
+        title.setStyleSheet("color: #0af;")
+        layout.addWidget(title)
+
+        sub = QLabel(
+            "You are in the small blind, heads-up, with this effective "
+            "stack.  Push or fold?")
+        sub.setStyleSheet("color: #ccc; font-size: 14px;")
+        layout.addWidget(sub)
+
+        self.scenario_lbl = QLabel("")
+        self.scenario_lbl.setFont(QFont('Courier', 18, QFont.Weight.Bold))
+        self.scenario_lbl.setStyleSheet(
+            "color: #ffd966; padding: 12px; background: #1a1a1a; "
+            "border-radius: 6px;")
+        layout.addWidget(self.scenario_lbl)
+
+        row = QHBoxLayout()
+        self.push_btn = QPushButton("PUSH ALL-IN")
+        self.push_btn.setStyleSheet(
+            "QPushButton { background: #633; color: white; font-size: 18px; "
+            "font-weight: bold; padding: 12px 24px; }")
+        self.push_btn.clicked.connect(lambda: self._answer('push'))
+        row.addWidget(self.push_btn)
+        self.fold_btn = QPushButton("FOLD")
+        self.fold_btn.setStyleSheet(
+            "QPushButton { background: #555; color: white; font-size: 18px; "
+            "font-weight: bold; padding: 12px 24px; }")
+        self.fold_btn.clicked.connect(lambda: self._answer('fold'))
+        row.addWidget(self.fold_btn)
+        layout.addLayout(row)
+
+        self.feedback = QLabel("")
+        self.feedback.setWordWrap(True)
+        self.feedback.setFont(QFont('Arial', 14))
+        layout.addWidget(self.feedback)
+
+        self.score_lbl = QLabel("Score: 0 / 0")
+        self.score_lbl.setFont(QFont('Arial', 14, QFont.Weight.Bold))
+        layout.addWidget(self.score_lbl)
+
+        layout.addStretch()
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        layout.addWidget(close)
+
+        self._correct = 0
+        self._total = 0
+        self._current = None
+        self._next()
+
+    def _next(self):
+        stack_bb = random.choice([5, 7, 10, 12, 15, 20])
+        deck = eval7.Deck()
+        deck.shuffle()
+        hole = [deck.deal(1)[0] for _ in range(2)]
+        pct = hand_strength_percentile(hole)
+        push_band = nash_push_pct(stack_bb)
+        truth = 'push' if pct >= (1 - push_band) else 'fold'
+        self._current = {'stack': stack_bb, 'hole': hole,
+                         'pct': pct, 'push_band': push_band, 'truth': truth}
+        names = [str(c) for c in hole]
+        self.scenario_lbl.setText(
+            f"Stack: {stack_bb} bb     Hand: {names[0]} {names[1]}")
+        self.feedback.setText("")
+
+    def _answer(self, choice):
+        c = self._current
+        if c is None:
+            return
+        self._total += 1
+        if choice == c['truth']:
+            self._correct += 1
+            msg = (f"<span style='color:#8f8'>Correct.</span>  Nash push "
+                   f"range at {c['stack']}bb is the top {c['push_band']:.0%} "
+                   f"of hands.  Your hand strength: {c['pct']:.2f}.")
+        else:
+            msg = (f"<span style='color:#f77'>Off.</span>  Nash says "
+                   f"{c['truth'].upper()} at {c['stack']}bb (top "
+                   f"{c['push_band']:.0%}).  Your hand strength: "
+                   f"{c['pct']:.2f}.")
+        self.feedback.setTextFormat(Qt.TextFormat.RichText)
+        self.feedback.setText(msg)
+        self.score_lbl.setText(f"Score: {self._correct} / {self._total}")
+        QTimer.singleShot(1500, self._next)
+
+
+class IndifferenceVisualizer(QDialog):
+    """Tier 3 #14 — Chen Ch 17.  Slider for villain's bluff frequency;
+    live show villain's EV of calling vs folding a bluff-catcher.  The
+    indifference point is bluff% = Pot / (Pot + Bet)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Indifference / Bluff-Frequency Visualiser")
+        self.setMinimumSize(820, 600)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(10)
+
+        title = QLabel("Bluff-Catcher's EV vs Bluff Frequency")
+        title.setFont(QFont('Arial', 18, QFont.Weight.Bold))
+        title.setStyleSheet("color: #0af;")
+        layout.addWidget(title)
+
+        desc = QLabel(
+            "Pot = $100.  Villain bets $X (slider).  Hero has a "
+            "bluff-catcher.  Adjust villain's bluff% (slider) — find the "
+            "bluff frequency that makes EV(call) = EV(fold).  Per Chen, "
+            "this equals Pot / (Pot + Bet).")
+        desc.setWordWrap(True)
+        desc.setStyleSheet("color: #ddd; font-size: 13px;")
+        layout.addWidget(desc)
+
+        # Bet size slider
+        r1 = QHBoxLayout()
+        r1.addWidget(QLabel("Bet size $"))
+        self.bet_slider = QSlider(Qt.Orientation.Horizontal)
+        self.bet_slider.setRange(10, 300)
+        self.bet_slider.setValue(75)
+        self.bet_slider.valueChanged.connect(self._refresh)
+        r1.addWidget(self.bet_slider)
+        self.bet_lbl = QLabel("$75")
+        self.bet_lbl.setFixedWidth(60)
+        r1.addWidget(self.bet_lbl)
+        layout.addLayout(r1)
+
+        r2 = QHBoxLayout()
+        r2.addWidget(QLabel("Villain bluff% "))
+        self.bluff_slider = QSlider(Qt.Orientation.Horizontal)
+        self.bluff_slider.setRange(0, 100)
+        self.bluff_slider.setValue(33)
+        self.bluff_slider.valueChanged.connect(self._refresh)
+        r2.addWidget(self.bluff_slider)
+        self.bluff_lbl = QLabel("33%")
+        self.bluff_lbl.setFixedWidth(60)
+        r2.addWidget(self.bluff_lbl)
+        layout.addLayout(r2)
+
+        self.result = QLabel("")
+        self.result.setTextFormat(Qt.TextFormat.RichText)
+        self.result.setFont(QFont('Courier', 14))
+        self.result.setStyleSheet("color: #ffd966; padding: 16px; "
+                                  "background: #1a1a1a; border-radius: 8px;")
+        self.result.setWordWrap(True)
+        layout.addWidget(self.result, stretch=1)
+
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        layout.addWidget(close)
+
+        self._refresh()
+
+    def _refresh(self):
+        pot = 100.0
+        bet = float(self.bet_slider.value())
+        bluff = self.bluff_slider.value() / 100.0
+        self.bet_lbl.setText(f"${int(bet)}")
+        self.bluff_lbl.setText(f"{int(bluff*100)}%")
+        ev_call = bluff * (pot + bet) + (1 - bluff) * (-bet)
+        ev_fold = 0.0
+        indiff = pot / (pot + bet)
+        verdict = ("Hero is indifferent — pure Nash."
+                   if abs(bluff - indiff) < 0.02 else
+                   ("Hero PROFITS by calling (villain over-bluffs)."
+                    if bluff > indiff else
+                    "Hero LOSES by calling (villain under-bluffs)."))
+        self.result.setText(
+            f"Pot $100, bet ${bet:.0f}\n\n"
+            f"EV(call) = bluff% * (pot + bet) - (1-bluff%) * bet\n"
+            f"        = {bluff:.2f} * {pot+bet:.0f} + {1-bluff:.2f} * "
+            f"({-bet:.0f})\n"
+            f"        = <b>${ev_call:+.2f}</b>\n\n"
+            f"EV(fold) = <b>$0.00</b>\n\n"
+            f"Nash indifference bluff% = pot / (pot + bet) = "
+            f"{indiff*100:.1f}%\n\n"
+            f"<b>{verdict}</b>"
+        )
+
+
+class TiltDetector:
+    """Tier 3 #16 — Hilger Ch 6 tilt anatomy.
+
+    Watches per-decision time + folding patterns over a rolling window; flags
+    deviations >2σ from baseline as candidate tilt.  Returns a 0..100 score.
+    """
+
+    def __init__(self, stats: 'SessionStats'):
+        self.stats = stats
+
+    def score(self) -> tuple[int, str]:
+        dt = list(self.stats.decision_times)
+        if len(dt) < 12:
+            return 0, "Need 12+ decisions for a baseline."
+        recent = dt[-6:]
+        baseline = dt[:-6]
+        bavg = statistics.mean(baseline)
+        bstd = statistics.pstdev(baseline) or 1e-3
+        ravg = statistics.mean(recent)
+        z = (ravg - bavg) / bstd
+        # Faster than baseline = warning sign (snap calls/folds).
+        if z < -1.5:
+            return min(100, int(40 + abs(z) * 20)), (
+                f"Decision time dropped {(1-ravg/bavg)*100:.0f}% in the "
+                f"last 6 hands (z={z:.2f}σ).  Possible auto-pilot / "
+                "steam tilt.")
+        if z > 1.5:
+            return min(100, int(30 + z * 15)), (
+                f"Decision time JUMPED {(ravg/bavg-1)*100:.0f}% "
+                f"(z={z:.2f}σ) — possible despair / overthink tilt.")
+        return 0, "Baseline.  No tilt signal in last 6 hands."
+
+
+class MTTBubbleDrill(QDialog):
+    """Tier 3 #17 — short MTT scenario with ICM-aware payouts."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("MTT Bubble Drill (ICM)")
+        self.setMinimumSize(800, 600)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        title = QLabel("Bubble — ChipEV vs Real-$EV")
+        title.setFont(QFont('Arial', 20, QFont.Weight.Bold))
+        title.setStyleSheet("color: #0af;")
+        layout.addWidget(title)
+
+        intro = QLabel(
+            "Scenario: 4 players left, 3 cash, prize pool $1000 "
+            "(payouts $500/$300/$200).  You're 3rd in chips, a big stack "
+            "shoves on you.  Your call is +ChipEV but possibly -$EV "
+            "because of ICM.  Choose your action."
+        )
+        intro.setWordWrap(True)
+        intro.setStyleSheet("color: #ddd; font-size: 14px;")
+        layout.addWidget(intro)
+
+        self.scenario_lbl = QLabel("")
+        self.scenario_lbl.setFont(QFont('Courier', 14, QFont.Weight.Bold))
+        self.scenario_lbl.setStyleSheet(
+            "color: #ffd966; padding: 12px; background: #1a1a1a; "
+            "border-radius: 6px;")
+        layout.addWidget(self.scenario_lbl)
+
+        row = QHBoxLayout()
+        self.call_btn = QPushButton("CALL")
+        self.call_btn.clicked.connect(lambda: self._answer('call'))
+        row.addWidget(self.call_btn)
+        self.fold_btn = QPushButton("FOLD")
+        self.fold_btn.clicked.connect(lambda: self._answer('fold'))
+        row.addWidget(self.fold_btn)
+        layout.addLayout(row)
+
+        self.feedback = QLabel("")
+        self.feedback.setWordWrap(True)
+        self.feedback.setFont(QFont('Arial', 13))
+        self.feedback.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(self.feedback, stretch=1)
+
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        layout.addWidget(close)
+
+        self._next()
+
+    def _next(self):
+        # Hero equity vs shover ranges from 35% (loose shove) → 55% (tight).
+        eq = random.uniform(0.30, 0.55)
+        self._eq = eq
+        self.scenario_lbl.setText(
+            f"Hero equity if called: {eq*100:.0f}%   "
+            f"(Pot odds say call if eq > 30% in chips.)")
+        self.feedback.setText("")
+
+    def _answer(self, choice):
+        eq = self._eq
+        chip_ev = eq * 1.0 - (1 - eq) * 1.0       # ±1 stack
+        # Crude ICM: losing on the bubble costs the next pay jump
+        # ($200), winning gains the difference toward 1st.
+        icm_ev = eq * 0.5 - (1 - eq) * 1.0
+        correct = 'call' if icm_ev > 0 else 'fold'
+        if choice == correct:
+            verdict = (f"<span style='color:#8f8'>Correct (ICM-wise).</span>")
+        else:
+            verdict = (f"<span style='color:#f77'>Off — the chip-EV "
+                       "answer differs from the $-EV one.</span>")
+        self.feedback.setText(
+            f"{verdict}<br><br>"
+            f"Chip-EV  (call) = {chip_ev:+.2f} stacks<br>"
+            f"$-EV    (call) ≈ {icm_ev:+.2f} stack-equivalents "
+            f"(ICM bubble premium subtracted)<br><br>"
+            "On the bubble, losing chips costs the pay-jump from "
+            "min-cash you almost have. The correct call threshold rises "
+            "from chip-EV-neutral to noticeably above (~10-15 percentage "
+            "points of equity)."
+        )
+        QTimer.singleShot(2500, self._next)
+
+
+# ---------------------------------------------------------------------------
+#                     Dashboards (Tier 2 + Tier 4)
+# ---------------------------------------------------------------------------
+
+class VarianceDashboard(QDialog):
+    """Tier 2 #7, #8, #9, #10, #11 — single composite stats window."""
+
+    def __init__(self, stats: SessionStats, parent=None):
+        super().__init__(parent)
+        self.stats = stats
+        self.setWindowTitle("Variance · Edge · Bankroll")
+        self.setMinimumSize(900, 720)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        title = QLabel("Statistics & Bankroll")
+        title.setFont(QFont('Arial', 22, QFont.Weight.Bold))
+        title.setStyleSheet("color: #0af;")
+        layout.addWidget(title)
+
+        self.body = QLabel("")
+        self.body.setFont(QFont('Courier', 14))
+        self.body.setStyleSheet("color: #ddd;")
+        self.body.setTextFormat(Qt.TextFormat.RichText)
+        self.body.setWordWrap(True)
+        layout.addWidget(self.body, stretch=1)
+
+        # Bankroll separation entry.
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Lifetime bankroll $:"))
+        self.bankroll_box = QSpinBox()
+        self.bankroll_box.setRange(0, 1_000_000)
+        self.bankroll_box.setValue(int(
+            _lifetime_settings().value("bankroll", 2000, type=int)))
+        self.bankroll_box.valueChanged.connect(self._refresh)
+        row.addWidget(self.bankroll_box)
+        row.addStretch()
+        save_btn = QPushButton("Save")
+        save_btn.clicked.connect(self._save_bankroll)
+        row.addWidget(save_btn)
+        layout.addLayout(row)
+
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        layout.addWidget(close)
+        self._refresh()
+
+    def _save_bankroll(self):
+        _lifetime_settings().setValue("bankroll", int(self.bankroll_box.value()))
+        _lifetime_settings().sync()
+        self._refresh()
+
+    def _refresh(self):
+        s = self.stats
+        b = float(self.bankroll_box.value())
+        edge_lo, edge_hi = s.edge_confidence_interval()
+        ror = s.risk_of_ruin(b)
+        kelly = s.kelly_fraction()
+        rec_buyin = max(20.0, kelly * b * 0.5)  # half-Kelly
+        body = (
+            "<b>Session</b><br>"
+            f"  Hands:           {s.session_hands}<br>"
+            f"  bb/100:          {s.session_bb_per_100:+.1f}<br>"
+            f"  σ (per hand $):  {s.session_std:.2f}<br>"
+            "<br>"
+            "<b>Lifetime</b> (persists across launches)<br>"
+            f"  Hands:           {s.lifetime_hands}<br>"
+            f"  Net profit:      ${s.lifetime_profit:+,.0f}<br>"
+            f"  bb/100:          {s.lifetime_bb_per_100:+.1f}<br>"
+            f"  σ:               {s.lifetime_std:.2f}<br>"
+            f"  Edge 95% CI:     [{edge_lo:+.1f}, {edge_hi:+.1f}] bb/100<br>"
+            f"  Risk of Ruin:    <b>{ror*100:.1f}%</b> "
+            f"(Chen Ch 22: exp(-2μB/σ²))<br>"
+            f"  Kelly fraction:  {kelly:.3f}  →  half-Kelly buy-in "
+            f"≈ <b>${rec_buyin:,.0f}</b><br>"
+            "<br>"
+            "<b>Bankroll separation (Hilger Ch 7)</b><br>"
+            f"  Bankroll:        ${b:,.0f}<br>"
+            f"  Floor at NL$1/$2 (20 buy-ins of $400): ${400*20:,.0f}<br>"
+            f"  Withdrawals: profit only — keep the cushion.<br>"
+        )
+        self.body.setText(body)
+
+
+class HandClassPnLTable(QDialog):
+    """Tier 2 #10 — bb/100 per starting-hand class."""
+
+    def __init__(self, hole_class_stats: dict, bb_amount: float, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Hand-class P&L")
+        self.setMinimumSize(700, 600)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        title = QLabel("bb/100 by starting hand")
+        title.setFont(QFont('Arial', 18, QFont.Weight.Bold))
+        title.setStyleSheet("color: #0af;")
+        layout.addWidget(title)
+
+        text = QTextEdit()
+        text.setReadOnly(True)
+        text.setFont(QFont('Courier', 12))
+        rows = []
+        rows.append(f"{'Hand':<6} {'Seen':>6} {'Won':>5} {'Lost':>5} "
+                    f"{'NetCash':>10} {'bb/100':>10}")
+        rows.append("-" * 50)
+        ranked = sorted(hole_class_stats.items(),
+                        key=lambda kv: -kv[1].get('net_cash', 0))
+        for cls, s in ranked[:50]:
+            n = s.get('hands_played', 0)
+            net = s.get('net_cash', 0)
+            bb100 = (net / bb_amount / max(1, n)) * 100 if n else 0
+            rows.append(
+                f"{cls:<6} {s.get('hands_seen', 0):>6} "
+                f"{s.get('hands_won', 0):>5} {s.get('hands_lost', 0):>5} "
+                f"{net:>+10} {bb100:>+10.1f}")
+        text.setPlainText("\n".join(rows))
+        layout.addWidget(text)
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        layout.addWidget(close)
+
+
+class MindsetCoach(QDialog):
+    """Tier 4 #19, #22 — decision journal + emotion check-in.
+
+    Lists the seven attitudes, current per-session score (from journal +
+    emotion log) for each, and recent journal entries.  No external Claude
+    needed — purely local scoring."""
+
+    SEVEN = [
+        "Realities of poker (accept variance)",
+        "Play for the long term",
+        "Process over outcomes",
+        "Desensitize to money",
+        "Leave ego at the door",
+        "Remove emotion from decisions",
+        "Continuous cycle of analysis",
+    ]
+
+    def __init__(self, journal: DecisionJournal, stats: SessionStats,
+                 parent=None):
+        super().__init__(parent)
+        self.journal = journal
+        self.stats = stats
+        self.setWindowTitle("Mindset Coach (Hilger)")
+        self.setMinimumSize(800, 680)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        title = QLabel("The Seven Attitudes — session snapshot")
+        title.setFont(QFont('Arial', 18, QFont.Weight.Bold))
+        title.setStyleSheet("color: #0af;")
+        layout.addWidget(title)
+
+        self.body = QLabel("")
+        self.body.setFont(QFont('Arial', 13))
+        self.body.setStyleSheet("color: #ddd;")
+        self.body.setTextFormat(Qt.TextFormat.RichText)
+        self.body.setWordWrap(True)
+        layout.addWidget(self.body)
+
+        # Emotion 1-10 input
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Emotion (1=tilted, 10=calm):"))
+        self.emo = QSpinBox()
+        self.emo.setRange(1, 10)
+        self.emo.setValue(self.stats.emotion_at_start or 7)
+        row.addWidget(self.emo)
+        log_btn = QPushButton("Log now")
+        log_btn.clicked.connect(self._log_emotion)
+        row.addWidget(log_btn)
+        row.addStretch()
+        layout.addLayout(row)
+
+        # Journal entry
+        layout.addWidget(QLabel("Journal entry (this hand or session):"))
+        self.note = QTextEdit()
+        self.note.setMaximumHeight(120)
+        layout.addWidget(self.note)
+        save_btn = QPushButton("Save entry")
+        save_btn.clicked.connect(self._save_note)
+        layout.addWidget(save_btn)
+
+        layout.addStretch()
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        layout.addWidget(close)
+        self._refresh()
+
+    def _log_emotion(self):
+        self.stats.emotion_log.append(
+            (self.stats.session_hands, int(self.emo.value())))
+        if self.stats.emotion_at_start is None:
+            self.stats.emotion_at_start = int(self.emo.value())
+        self._refresh()
+
+    def _save_note(self):
+        txt = self.note.toPlainText().strip()
+        if not txt:
+            return
+        self.journal.record(rationale=txt, hand_number=None)
+        self.note.clear()
+        self._refresh()
+
+    def _refresh(self):
+        n_entries = len(self.journal.pending)
+        n_emo = len(self.stats.emotion_log)
+        avg_emo = (
+            sum(e for _, e in self.stats.emotion_log) / max(1, n_emo)
+            if n_emo else 0)
+        rows = ["<table cellpadding='6'>"]
+        rows.append("<tr><th>Attitude</th><th>Status</th></tr>")
+        statuses = [
+            f"{self.stats.session_hands} hands seen — variance "
+            "is real",
+            f"Lifetime n = {self.stats.lifetime_hands}",
+            f"{n_entries} journal note(s) this session",
+            f"Buy-in fixed at start of hand",
+            f"Emotion: {self.stats.emotion_at_start or '—'} → "
+            f"avg {avg_emo:.1f}",
+            f"Decision-time σ: "
+            f"{statistics.pstdev(list(self.stats.decision_times)) if len(self.stats.decision_times) > 1 else 0:.2f}s",
+            f"Decision-journal entries: {n_entries}",
+        ]
+        for label, status in zip(self.SEVEN, statuses):
+            rows.append(f"<tr><td><b>{label}</b></td><td>{status}</td></tr>")
+        rows.append("</table>")
+        self.body.setText("".join(rows))
+
+
+class CalibrationDialog(QDialog):
+    """Tier 4 #20 — Brier-score predicted-equity inputs."""
+
+    def __init__(self, journal: DecisionJournal, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Calibration")
+        self.setMinimumSize(600, 500)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        title = QLabel("Calibration — Brier score")
+        title.setFont(QFont('Arial', 18, QFont.Weight.Bold))
+        title.setStyleSheet("color: #0af;")
+        layout.addWidget(title)
+
+        body = QLabel("")
+        body.setTextFormat(Qt.TextFormat.RichText)
+        body.setFont(QFont('Courier', 12))
+        body.setStyleSheet("color: #ddd;")
+        body.setWordWrap(True)
+        layout.addWidget(body)
+
+        preds = journal.session_predictions()
+        if not preds:
+            body.setText(
+                "<i>No predictions logged this session.  Each Hero "
+                "action prompts you for predicted equity in the EV "
+                "badge.  Predictions are scored by Brier score "
+                "(mean squared error), where 0 is perfect and 0.25 is "
+                "chance.</i>")
+        else:
+            brier = sum((p - a) ** 2 for p, a in preds) / len(preds)
+            calibration = 1 - 4 * brier  # 1=perfect, 0=chance
+            body.setText(
+                f"<b>Predictions:</b> {len(preds)}<br>"
+                f"<b>Brier score:</b> {brier:.4f}<br>"
+                f"<b>Calibration:</b> {calibration*100:.1f}%  "
+                "(higher is better; 0% = chance)<br><br>"
+                "<i>Closer to 0 = predictions match outcomes.  "
+                "Same scoring rule used in weather forecasting and "
+                "superforecaster research.</i>"
+            )
+
+        layout.addStretch()
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        layout.addWidget(close)
+
+
+class RangeNarrowingDialog(QDialog):
+    """Tier 3 #15 — replay each villain action, show 13×13 prior/posterior."""
+
+    def __init__(self, action_history: list, parent=None):
+        super().__init__(parent)
+        self.action_history = action_history or []
+        self.setWindowTitle("Range Narrowing (Bayes)")
+        self.setMinimumSize(900, 600)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        title = QLabel("Bayes walkthrough — refine villain's range")
+        title.setFont(QFont('Arial', 18, QFont.Weight.Bold))
+        title.setStyleSheet("color: #0af;")
+        layout.addWidget(title)
+
+        intro = QLabel(
+            "Below is each meaningful action this hand.  After each, the "
+            "prior range narrows by removing hands inconsistent with the "
+            "action (Bayes: P(hand|action) ∝ P(action|hand) · P(hand))."
+        )
+        intro.setStyleSheet("color: #ccc; font-size: 13px;")
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        text = QTextEdit()
+        text.setReadOnly(True)
+        text.setFont(QFont('Courier', 12))
+        text.setStyleSheet("color: #ddd; background: #1a1a1a;")
+        lines = []
+        # Start with a "full" range size of 100% and trim crudely.
+        range_pct = 100.0
+        for act in self.action_history[:30]:
+            a = str(act).lower()
+            if 'fold' in a:
+                continue
+            if 'raise' in a or 'bet' in a:
+                range_pct *= 0.25  # raise / bet trims hard
+                lines.append(
+                    f"  {act}  →  range ↓ to ~{range_pct:.1f}% of starting "
+                    "hands (raise narrows)")
+            elif 'call' in a:
+                range_pct *= 0.55
+                lines.append(
+                    f"  {act}  →  range ↓ to ~{range_pct:.1f}% (call narrows)")
+            elif 'check' in a:
+                range_pct *= 0.95
+                lines.append(f"  {act}  →  range ↓ to ~{range_pct:.1f}% "
+                             "(check barely narrows)")
+        if not lines:
+            lines.append("(no actions in this hand to narrow)")
+        text.setPlainText("\n".join(lines))
+        layout.addWidget(text, stretch=1)
+
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        layout.addWidget(close)
+
+
+# ---------------------------------------------------------------------------
+#                          Tooltips (Tier 4 #18)
+# ---------------------------------------------------------------------------
+
+FINANCE_TOOLTIPS = {
+    'SPR': "Stack-to-Pot Ratio — like capital-to-position-size in trading. "
+           "Below 1 you're effectively all-in on the trade.",
+    'MDF': "Minimum Defense Frequency — statistical Type-II error rate "
+           "that makes the opponent's bluff unprofitable.",
+    'Kelly': "Same formula hedge funds use to size bets given edge / "
+             "variance: f* = μ/σ². Half-Kelly is the practical ceiling.",
+    'Pot Odds': "Price you're laying / total pot. Compare to your equity "
+                "to decide call or fold — decision theory under uncertainty.",
+    'Equity': "Long-run win probability, same as expected return in finance. "
+              "Computed via Monte Carlo sampling.",
+    'Brier': "Mean-squared error of probabilistic forecasts. Used by "
+             "weather forecasters and superforecasters.",
+}
+
+
+# ---------------------------------------------------------------------------
+#                        Learning Hub controller
+# ---------------------------------------------------------------------------
+
+class PokerLearningHub:
+    """Wires every learning-hub feature into an existing PokerWindow.
+
+    Public: attach() — call once during PokerWindow.setup_ui() to add menus,
+    instruments, dashboards and the training tab.
+    """
+
+    def __init__(self, window: 'PokerWindow'):
+        self.window = window
+        # Shared infra
+        self.stats = SessionStats()
+        _, bb = BLIND_LEVELS[getattr(window, 'blind_level', 0)]
+        self.stats.bb_amount = float(bb)
+        self.journal = DecisionJournal()
+        self.opponents = OpponentModel()
+        self.tilt = TiltDetector(self.stats)
+        self._hero_start_stack: float | None = None
+
+    def attach(self):
+        w = self.window
+        # ---- Menubar Train + Review menus ----
+        mb = w.menuBar()
+        train_menu = mb.addMenu("&Train")
+        train_menu.addAction("AKQ Toy Game (Chen Ch 13)",
+                             lambda: AKQGameDialog(w).exec())
+        train_menu.addAction("Jam-or-Fold (Nash) Trainer",
+                             lambda: JamOrFoldTrainer(w).exec())
+        train_menu.addAction("Indifference / Bluff-Frequency Visualiser",
+                             lambda: IndifferenceVisualizer(w).exec())
+        train_menu.addAction("MTT Bubble Drill (ICM)",
+                             lambda: MTTBubbleDrill(w).exec())
+
+        review_menu = mb.addMenu("&Review")
+        review_menu.addAction("Variance / Edge / Bankroll dashboard",
+                              lambda: VarianceDashboard(self.stats, w).exec())
+        review_menu.addAction("Hand-class P&L",
+                              lambda: HandClassPnLTable(
+                                  getattr(w, '_hole_card_stats', {}) or {},
+                                  self.stats.bb_amount, w).exec())
+        review_menu.addAction("Mindset Coach (Hilger)",
+                              lambda: MindsetCoach(self.journal,
+                                                   self.stats, w).exec())
+        review_menu.addAction("Calibration (Brier score)",
+                              lambda: CalibrationDialog(self.journal,
+                                                         w).exec())
+        review_menu.addAction("Range narrowing walk-through",
+                              lambda: RangeNarrowingDialog(
+                                  list(getattr(w, 'action_history', [])),
+                                  w).exec())
+        review_menu.addAction("Tilt Anatomy", self._show_tilt)
+
+        # ---- Hook into PokerWindow lifecycle ----
+        # EV badges + decision-time tracking on enable_human_actions
+        orig_enable = w.enable_human_actions
+        def patched_enable():
+            orig_enable()
+            self.stats.action_started()
+            self._refresh_ev_badges()
+        w.enable_human_actions = patched_enable
+
+        orig_disable = w.disable_human_actions
+        def patched_disable():
+            orig_disable()
+            self.stats.action_finished()
+            self._clear_ev_badges()
+        w.disable_human_actions = patched_disable
+
+        # Hook into hand-end to bank P&L and feed journal.
+        orig_end_hand = w.end_hand
+        def patched_end_hand():
+            start = getattr(w, 'starting_stacks', {}).get(w.players[0].name)
+            result = orig_end_hand()
+            try:
+                end_stack = w.players[0].stack
+                if start is not None:
+                    profit = end_stack - start
+                    self.stats.record_hand_result(profit)
+                    self.journal.attach_result(w.hand_number, profit)
+            except Exception:
+                pass
+            self._after_hand_review()
+            return result
+        w.end_hand = patched_end_hand
+
+        # Hook into process_action so we record decisions + opponent stats.
+        orig_process = w.process_action
+        def patched_process(player, player_idx, action, amount):
+            try:
+                street = STREETS[w.street_idx] if w.street_idx < len(STREETS) else "?"
+                faced_3bet = getattr(w, 'raises_this_round', 0) >= 2
+                faced_river_bet = (street == "River" and w.current_bet > 0)
+                self.opponents.record_action(
+                    player.name, action, street,
+                    faced_3bet=faced_3bet,
+                    faced_river_bet=faced_river_bet)
+            except Exception:
+                pass
+            return orig_process(player, player_idx, action, amount)
+        w.process_action = patched_process
+
+        # Add EV badges + finance tooltips to existing buttons.
+        self._install_ev_badges()
+        self._install_finance_tooltips()
+        # Install board-texture badge (Tier 1 #3).
+        self._install_board_texture_badge()
+        # Decorate PlayerPanel with L0-L3 + MES tag after every panel refresh.
+        orig_update = w.update_all_panels
+        def patched_update():
+            orig_update()
+            self._refresh_opponent_badges()
+            self._refresh_board_texture_badge()
+        w.update_all_panels = patched_update
+
+    # ----- helpers -----
+    def _install_ev_badges(self):
+        w = self.window
+        # Use small QLabel placed under each button.
+        from PyQt6.QtCore import Qt as _Qt
+        self.ev_labels: dict = {}
+        for code, btn in (('f', w.fold_btn), ('c', w.check_btn),
+                          ('c', w.call_btn), ('r', w.raise_btn)):
+            lbl = QLabel("")
+            lbl.setFont(QFont('Arial', 10, QFont.Weight.Bold))
+            lbl.setAlignment(_Qt.AlignmentFlag.AlignCenter)
+            lbl.setStyleSheet("color: #88ff88; background: transparent;")
+            lbl.setParent(btn)
+            lbl.move(0, btn.height() - 14)
+            lbl.resize(btn.width(), 14)
+            self.ev_labels[id(btn)] = lbl
+
+    def _refresh_ev_badges(self):
+        w = self.window
+        try:
+            _, bb = BLIND_LEVELS[w.blind_level]
+            hero = w.players[0]
+            gs = {'board': [str(c) for c in w.board], 'pot': w.pot,
+                  'current_bet': w.current_bet, 'players': w.players,
+                  'bb_amount': bb}
+            # Prefer the ToM panel's range-based equity (same number
+            # shown in "Equity (vs Ranges): X%" above the tabs) so the
+            # button badges and the rest of the screen agree.  Falls
+            # back to per-Player random-opp MC if the ToM panel hasn't
+            # computed one yet.
+            eq_override = None
+            tom = getattr(w, 'tom_panel', None)
+            if tom is not None and hasattr(tom, 'last_hero_equity_vs_ranges'):
+                eq_override = tom.last_hero_equity_vs_ranges
+            mapping = [('f', w.fold_btn, 'f', 0),
+                       ('c', w.check_btn, 'c', 0),
+                       ('c', w.call_btn, 'c', 0),
+                       ('r', w.raise_btn, 'r', max(bb*2, w.pot * 0.6))]
+            for _, btn, code, amt in mapping:
+                lbl = self.ev_labels.get(id(btn))
+                if lbl is None:
+                    continue
+                if not btn.isEnabled():
+                    lbl.setText("")
+                    continue
+                ev = hero_action_ev(hero, gs, bb, code, amt,
+                                    equity_override=eq_override)
+                color = "#88ff88" if ev > 0 else ("#ff7777" if ev < -0.5
+                                                   else "#cccccc")
+                lbl.setText(f"EV ${ev:+.1f}")
+                lbl.setStyleSheet(f"color: {color}; background: transparent;")
+                lbl.move(0, btn.height() - 14)
+                lbl.resize(btn.width(), 14)
+        except Exception:
+            pass
+
+    def _clear_ev_badges(self):
+        for lbl in self.ev_labels.values():
+            try:
+                lbl.setText("")
+            except RuntimeError:
+                pass
+
+    def _install_finance_tooltips(self):
+        # Attach to any widget whose name contains a tooltip-key word.
+        w = self.window
+        for attr_name in dir(w):
+            try:
+                obj = getattr(w, attr_name)
+            except Exception:
+                continue
+            if not hasattr(obj, 'toolTip') or not hasattr(obj, 'setToolTip'):
+                continue
+            n = attr_name.lower()
+            for key, tip in FINANCE_TOOLTIPS.items():
+                if key.lower().replace(' ', '_') in n.replace(' ', '_'):
+                    try:
+                        obj.setToolTip(tip)
+                    except Exception:
+                        pass
+                    break
+
+    def _install_board_texture_badge(self):
+        # No-op: the Theory-of-Mind panel's `board_texture_label` is now
+        # the single source for board-dynamic / c-bet info.  Keeping the
+        # method as a stub so the rest of the hub wiring doesn't need to
+        # special-case its absence.
+        self.texture_lbl = None
+
+    def _refresh_board_texture_badge(self):
+        # See _install_board_texture_badge — owned by ToM panel now.
+        return
+
+    def _refresh_opponent_badges(self):
+        w = self.window
+        for idx, panel in getattr(w, 'player_panels', []):
+            p = w.players[idx]
+            if p.style == 'human':
+                continue
+            try:
+                level = self.opponents.level_of(p.name)
+                leak = self.opponents.biggest_leak(p.name) or ""
+                # Stash on the panel as a tooltip + secondary line.
+                badge = f"L{level}"
+                if leak:
+                    badge += f"  •  MES: {leak}"
+                # Use the existing best_hand_label slot (empty for villains
+                # in non-god-mode) to surface the badge without adding new
+                # widgets.
+                if hasattr(panel, 'set_best_hand') and not panel.show_cards:
+                    panel.set_best_hand(badge)
+                panel.setToolTip(
+                    f"{p.name}\nThinking level: L{level}\n"
+                    f"MES tag: {leak or '(insufficient data)'}")
+            except Exception:
+                pass
+
+    def _after_hand_review(self):
+        """Run after end_hand: tilt detection + Sklansky-distance summary."""
+        score, msg = self.tilt.score()
+        if score >= 50:
+            try:
+                self.window.update_status(f"⚠ TILT: {msg}")
+            except Exception:
+                pass
+
+    def _show_tilt(self):
+        score, msg = self.tilt.score()
+        QMessageBox.information(
+            self.window, "Tilt Anatomy (Hilger Ch 6)",
+            f"Tilt score: {score}/100\n\n{msg}\n\n"
+            f"Decision-time series last 12: "
+            f"{[f'{d:.1f}s' for d in list(self.stats.decision_times)[-12:]]}")
+
+
+# Auto-install hook — call from PokerWindow.__init__ once setup_ui finishes.
+def _install_learning_hub(window):
+    """Idempotent installer.  Safe to call multiple times."""
+    if hasattr(window, "_learning_hub"):
+        return
+    try:
+        window._learning_hub = PokerLearningHub(window)
+        window._learning_hub.attach()
+    except Exception as e:
+        print(f"[learning hub] failed to attach: {e!r}", flush=True)
 
 
 # --- Text Mode Utilities ---
