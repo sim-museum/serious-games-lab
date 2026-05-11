@@ -1879,19 +1879,59 @@ def _overcall(state, e: HandEval, system) -> Bid:
     if op.level == 2 and op.suit in (Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES):
         return _overcall_over_weak_two(state, e, system)
 
+    # Defensive doubles of strong 2♣ / 2♦ openings (`O-strong-2C…` /
+    # `O-strong-2D…`, Precision 90M / 90P): handled here BEFORE the
+    # 1-level-only early-return so a level-2 strong opening still
+    # reaches the X. 5-5 majors with 8-15 HCP only — otherwise pass.
+    if (op.level == 2 and op.suit == Suit.CLUBS
+            and system.has("O-strong-2C.dbl-is-majors")
+            and e.suit_lengths[Suit.HEARTS] >= 5
+            and e.suit_lengths[Suit.SPADES] >= 5
+            and 8 <= hcp <= 15):
+        return double(why="Defensive X of strong 2♣ — both majors (5-5+)")
+    if (op.level == 2 and op.suit == Suit.DIAMONDS
+            and system.has("O-strong-2D.dbl-is-majors")
+            and e.suit_lengths[Suit.HEARTS] >= 5
+            and e.suit_lengths[Suit.SPADES] >= 5
+            and 8 <= hcp <= 15):
+        return double(why="Defensive X of strong 2♦ — both majors (5-5+)")
+
     if not (op.level == 1 and op.suit is not None and op.suit != Suit.NOTRUMP):
         return passb()
+
+    # Sandwich 1NT (`O-Sandwich.nt-artificial`): 4th-seat overcall after
+    # opener (one minor) + partner-passed + opener's-partner-responded
+    # (a major). Our 1NT shows the two unbid suits (unusual NT shape)
+    # rather than a natural 15-18 stopper — natural NT is suicidal when
+    # both opponents have shown values.
+    #
+    # parse_auction's convention puts the opener in `lho_bids` and the
+    # responder in `rho_bids` (since the auction goes opener → my
+    # partner → responder → me clockwise). So the responder's bid is
+    # what we check for the trigger major.
+    if (system.has("O-Sandwich.nt-artificial")
+            and op.suit in (Suit.CLUBS, Suit.DIAMONDS)
+            and state.rho_bids
+            and not state.rho_bids[-1].is_pass
+            and state.rho_bids[-1].suit in (Suit.HEARTS, Suit.SPADES)):
+        # Unbid suits are the unbid minor and the unbid major.
+        unbid_minor = (Suit.DIAMONDS if op.suit == Suit.CLUBS
+                       else Suit.CLUBS)
+        unbid_major = (Suit.SPADES if state.rho_bids[-1].suit == Suit.HEARTS
+                       else Suit.HEARTS)
+        if (e.suit_lengths[unbid_minor] >= 5
+                and e.suit_lengths[unbid_major] >= 5
+                and 8 <= hcp <= 14):
+            return bid(1, Suit.NOTRUMP, alert=True,
+                       why=f"Sandwich 1NT: 5-5 in {unbid_major.to_char()}"
+                           f"+{unbid_minor.to_char()}")
 
     # ---- Conventional shape-bids run BEFORE natural overcalls so they're
     # not pre-empted by the suit-overcall path. ----
 
-    # Strong-1♣ double (Q-Plus Precision 90M flag
-    # `O-strong-1C.dbl-is-majors`): when our system expects opp's 1♣ to
-    # be a strong artificial opening, a direct double shows both majors
-    # (5-5+, 8-15 HCP). This is the convention we'd use defending against
-    # another pair playing Precision. We can't tell from the wire that
-    # opp's 1♣ is artificial vs natural, so we only fire when our system
-    # actively flags the convention — that's the consistent agreement.
+    # Strong-1♣ defensive double (`O-strong-1C.dbl-is-majors`):
+    # 5-5+ majors, 8-15 HCP. The strong-2♣/2♦ siblings are handled
+    # above the 1-level early-return so they reach this branch.
     if (op.suit == Suit.CLUBS and op.level == 1
             and system.has("O-strong-1C.dbl-is-majors")
             and e.suit_lengths[Suit.HEARTS] >= 5
