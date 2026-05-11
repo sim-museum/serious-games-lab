@@ -1270,7 +1270,7 @@ def _respond_to_major_competitive(state, e: HandEval, system) -> Bid:
 # Opener's rebid
 # ---------------------------------------------------------------------------
 
-def _precision_1c_rebid(state, e: HandEval, p_last: Bid) -> Bid:
+def _precision_1c_rebid(state, e: HandEval, p_last: Bid, system=None) -> Bid:
     """Opener's rebid after 1C-X (Precision strong club).
 
     1D negative (0-7):
@@ -1278,7 +1278,12 @@ def _precision_1c_rebid(state, e: HandEval, p_last: Bid) -> Bid:
         1NT   = 16-19 balanced
         2C    = natural 6+ clubs, 16-21
         2D    = natural 5+ diamonds, 16-21
-        2NT   = 22-24 balanced
+        2H    = Q-Plus's Kokish (`B-strong-artificial.with-Kokish`):
+                ambiguous between 22-23 balanced and 5+ hearts 16-19;
+                responder relays 2♠ to ask, opener clarifies (2NT =
+                balanced, 3-suit = hearts with feature, 3♥ = min hearts)
+        2NT   = 22-24 balanced (only when Kokish is NOT in use; with
+                Kokish the 22-23 hand goes through the 2♥ relay first)
         3-of-suit jump shift = stronger
         3NT   = 25+ balanced
 
@@ -1286,9 +1291,23 @@ def _precision_1c_rebid(state, e: HandEval, p_last: Bid) -> Bid:
     raise partner's suit with support, otherwise show shape.
     """
     hcp = e.hcp
+    kokish = bool(system) and system.has("B-strong-artificial.with-Kokish")
 
     # Negative response: 1D = 0-7
     if p_last.level == 1 and p_last.suit == Suit.DIAMONDS:
+        # Kokish 2♥: ambiguous bid (real hearts 16-19 OR balanced 22-23).
+        # Catches BOTH hand types; responder will relay with 2♠ and we
+        # disambiguate in the second rebid round.
+        if kokish:
+            real_hearts = (e.suit_lengths[Suit.HEARTS] >= 5
+                           and 16 <= hcp <= 19
+                           and not e.is_balanced)
+            strong_bal = (e.is_balanced and 22 <= hcp <= 23)
+            if real_hearts or strong_bal:
+                return bid(2, Suit.HEARTS, alert=True,
+                           why="Kokish 2♥: 5+ hearts (16-19) OR "
+                               "22-23 balanced; partner relays 2♠")
+
         # Natural 5-card suit takes priority for unbalanced hands
         if not e.is_balanced:
             if e.suit_lengths[Suit.SPADES] >= 5:
@@ -1427,7 +1446,7 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
         # 1C strong: structured rebids over partner's 1D negative or
         # positive response.
         if op.level == 1 and op.suit == Suit.CLUBS:
-            return _precision_1c_rebid(state, e, p_last)
+            return _precision_1c_rebid(state, e, p_last, system)
         # 2C natural: respond to partner's 2D shape inquiry.
         if op.level == 2 and op.suit == Suit.CLUBS:
             return _precision_2c_rebid(state, e, p_last)
@@ -1674,7 +1693,7 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
 # Responder's rebid
 # ---------------------------------------------------------------------------
 
-def _responder_rebid(state, e: HandEval, system: str) -> Bid:
+def _responder_rebid(state, e: HandEval, system) -> Bid:
     if not state.partner_bids or len(state.partner_bids) < 2:
         # Opener has only made one bid — we should still be in our first
         # response, but the auction state suggests we made more than one bid.
@@ -1689,6 +1708,19 @@ def _responder_rebid(state, e: HandEval, system: str) -> Bid:
         if my_first.level == 2 and my_first.suit == Suit.CLUBS:
             # Stayman: opener rebid 2D/2H/2S
             return _stayman_responder_rebid(state, e, p_last)
+
+    # Kokish 2♠ relay: after Precision 1♣-1♦-2♥ with Kokish in force,
+    # responder MUST bid 2♠ regardless of own hand. Opener's next bid
+    # clarifies whether 2♥ was real hearts or 22-23 balanced.
+    if (system.has("B-strong-artificial.with-Kokish")
+            and op.level == 1 and op.suit == Suit.CLUBS
+            and len(state.my_bids) >= 1
+            and state.my_bids[0].level == 1
+            and state.my_bids[0].suit == Suit.DIAMONDS
+            and p_last.level == 2 and p_last.suit == Suit.HEARTS):
+        return bid(2, Suit.SPADES, alert=True,
+                   why="Kokish forced relay (asks opener: real hearts "
+                       "or 22-23 balanced?)")
 
     # If partner showed extras, drive to game; if min, settle
     return _generic_responder_rebid(state, e, p_last)
