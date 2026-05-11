@@ -250,6 +250,10 @@ class CardWidget(QWidget):
         self.face_up = face_up
         self.selectable = False
         self.highlighted = False
+        # Q-Plus-style "won a trick" badge — drawn as a red outline
+        # in paintEvent. Set after play completes so the user can see
+        # at a glance which 13 cards picked up the 13 tricks.
+        self.is_trick_winner = False
         self.setFixedSize(CARD_WIDTH, CARD_HEIGHT)
         self.setCursor(Qt.CursorShape.ArrowCursor)
         # Ensure widget receives mouse events
@@ -268,6 +272,14 @@ class CardWidget(QWidget):
 
     def set_highlighted(self, highlighted: bool):
         self.highlighted = highlighted
+        self.update()
+
+    def set_trick_winner(self, is_winner: bool):
+        """Mark / unmark this card as a trick winner. The red outline
+        is drawn in paintEvent so it sits on top of the card image."""
+        if self.is_trick_winner == is_winner:
+            return
+        self.is_trick_winner = is_winner
         self.update()
 
     def mousePressEvent(self, event):
@@ -327,6 +339,15 @@ class CardWidget(QWidget):
                 painter.setBrush(QBrush(QColor(255, 255, 200, 60)))
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.drawRoundedRect(1, 1, w-2, h-2, 6, 6)
+
+            # Q-Plus-style trick-winner outline. Drawn LAST so it
+            # sits on top of selectable/hover overlays — at end of
+            # hand the user wants to see which cards took tricks at
+            # a glance, regardless of any other state.
+            if self.is_trick_winner:
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.setPen(QPen(QColor(220, 30, 30), 3))
+                painter.drawRoundedRect(1, 1, w - 2, h - 2, 6, 6)
 
 
 class FannedHandWidget(QWidget):
@@ -420,6 +441,33 @@ class FannedHandWidget(QWidget):
         self.hand = hand
         self.face_up = face_up
         self._rebuild_cards()
+
+    def set_trick_winners(self, winning_cards):
+        """Mark the cards in ``winning_cards`` (any iterable of Card
+        instances) with a Q-Plus-style red trick-winner outline.
+        Cards not in the set get the flag cleared, so calling this
+        with an empty set is a clean reset.
+        """
+        # Build a tiny (suit, rank) lookup so equality works regardless
+        # of whether the caller passed Card instances from a different
+        # Hand snapshot.
+        keys = set()
+        for c in (winning_cards or []):
+            try:
+                keys.add((c.suit, c.rank))
+            except AttributeError:
+                pass
+        for cw in self.card_widgets:
+            try:
+                k = (cw.card.suit, cw.card.rank) if cw.card else None
+            except AttributeError:
+                k = None
+            cw.set_trick_winner(k is not None and k in keys)
+
+    def clear_trick_winners(self):
+        """Strip every trick-winner highlight from this hand."""
+        for cw in self.card_widgets:
+            cw.set_trick_winner(False)
 
     def set_four_column_layout(self, enabled: bool):
         """Switch between horizontal-fan and 4-column dummy display."""
@@ -1412,6 +1460,73 @@ class TableView(QWidget):
 
     def update_tricks(self, dec_tricks: int, def_tricks: int):
         self.tricks_label.setText(f"{dec_tricks} : {def_tricks}")
+
+    def show_end_of_hand_view(self, original_hands, tricks):
+        """Q-Plus-style end-of-hand display: re-populate every hand
+        with its original 13 cards face-up and outline the cards that
+        won a trick in red. ``tricks`` is the list of completed Trick
+        objects from BoardState. Idempotent — calling again with a
+        different trick list just re-paints.
+
+        Each Trick's ``winner`` seat is consulted; the winning card
+        for the trick is the card the winning seat played in it,
+        which is at index ``(winner.value - trick.leader.value) % 4``
+        in ``trick.cards``.
+        """
+        if not original_hands:
+            return
+        # 1) Re-spread every seat's original 13-card hand face up so
+        #    the user can see all of them at once. Both opponents'
+        #    panels are unhidden — by design, end-of-hand shows the
+        #    whole table.
+        for physical_seat, widget in self.hand_widgets.items():
+            try:
+                widget.setVisible(True)
+            except Exception:
+                pass
+            logical = self._logical_seat(physical_seat)
+            hand = original_hands.get(logical)
+            if hand is None:
+                continue
+            widget.set_hand(hand, face_up=True)
+            widget.set_selectable(False)
+
+        # 2) Compute the winning card per trick and apply the flag.
+        winners_by_seat = {seat: [] for seat in self.hand_widgets}
+        for tr in tricks or []:
+            if (tr.winner is None or tr.leader is None
+                    or not tr.cards):
+                continue
+            try:
+                idx = (tr.winner.value - tr.leader.value) % 4
+                if 0 <= idx < len(tr.cards):
+                    winning_card = tr.cards[idx]
+                    physical = self._display_seat(tr.winner)
+                    if physical in winners_by_seat:
+                        winners_by_seat[physical].append(winning_card)
+            except Exception:
+                continue
+
+        for physical_seat, winning_cards in winners_by_seat.items():
+            widget = self.hand_widgets.get(physical_seat)
+            if widget is not None:
+                widget.set_trick_winners(winning_cards)
+
+        # 3) Clear the centre trick area so the table reads as a
+        #    static post-mortem rather than the last live trick.
+        try:
+            self.trick_area.clear_trick()
+        except Exception:
+            pass
+
+    def clear_end_of_hand_view(self):
+        """Strip the post-play winner outlines. Called when a new
+        hand is dealt so the next hand starts fresh."""
+        for widget in self.hand_widgets.values():
+            try:
+                widget.clear_trick_winners()
+            except Exception:
+                pass
 
     def set_contract(self, contract_str: str, declarer: str):
         self.contract_label.setText(f"{declarer} {contract_str}")

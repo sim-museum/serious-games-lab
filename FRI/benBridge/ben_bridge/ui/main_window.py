@@ -1076,6 +1076,13 @@ class MainWindow(QMainWindow):
 
     def _on_next_deal(self):
         """Handle Next deal button - return to opening screen or advance teams match."""
+        # Strip the Q-Plus end-of-hand winner outlines from the
+        # previous deal so the next hand starts visually clean.
+        try:
+            self.table_view.clear_end_of_hand_view()
+        except Exception:
+            pass
+
         # Check if we're still in bidding phase (hand not completed)
         still_in_bidding = (self.controller.current_phase == 'bidding' or
                            (self.controller.board and not self.controller.board.contract))
@@ -5023,6 +5030,20 @@ For more information, see the README file."""
             board.declarer_tricks,
             board.defense_tricks
         )
+
+        # Q-Plus-style post-play table: re-spread every original
+        # 13-card hand face-up and outline the cards that won a
+        # trick. The modal EndOfHandDialog still pops on top, but it
+        # sits over a table that looks like the Q-Plus reference
+        # screen rather than a play-area with empty hand widgets.
+        try:
+            if self.original_hands:
+                self.table_view.show_end_of_hand_view(
+                    self.original_hands,
+                    list(board.tricks) if board.tricks else [],
+                )
+        except Exception as ex:
+            print(f"end-of-hand view failed: {ex!r}", flush=True)
 
         if board.is_passed_out():
             self.status_label.setText("Passed out")
