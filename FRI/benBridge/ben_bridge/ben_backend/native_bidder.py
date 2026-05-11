@@ -1851,21 +1851,62 @@ def _overcall(state, e: HandEval, system) -> Bid:
     # ---- Conventional shape-bids run BEFORE natural overcalls so they're
     # not pre-empted by the suit-overcall path. ----
 
-    # Michaels cuebid: 5-5 in two suits, 8-16 HCP.
+    # Strong-1♣ double (Q-Plus Precision 90M flag
+    # `O-strong-1C.dbl-is-majors`): when our system expects opp's 1♣ to
+    # be a strong artificial opening, a direct double shows both majors
+    # (5-5+, 8-15 HCP). This is the convention we'd use defending against
+    # another pair playing Precision. We can't tell from the wire that
+    # opp's 1♣ is artificial vs natural, so we only fire when our system
+    # actively flags the convention — that's the consistent agreement.
+    if (op.suit == Suit.CLUBS and op.level == 1
+            and system.has("O-strong-1C.dbl-is-majors")
+            and e.suit_lengths[Suit.HEARTS] >= 5
+            and e.suit_lengths[Suit.SPADES] >= 5
+            and 8 <= hcp <= 15):
+        return double(why="Defensive X of strong 1♣ — both majors (5-5+)")
+
+    # Two-suiter cuebid — Michaels (SAYC) or Ghestem (Precision 90M).
+    # Both use the same call (2 of opener's suit) for the same hand
+    # type (5-5 in the highest unbid pair); Ghestem additionally
+    # repurposes 3♣ for the high+low unbid pair, which the next block
+    # handles. The label changes so Claude / the opponents know which
+    # agreement is in force.
+    twos_label = "Ghestem" if system.has("O-Ghestem.standard") else "Michaels"
     if op.suit in (Suit.CLUBS, Suit.DIAMONDS):
-        # Over a minor → both majors
+        # Over a minor → both majors (highest unbid pair).
         if (e.suit_lengths[Suit.HEARTS] >= 5
                 and e.suit_lengths[Suit.SPADES] >= 5
                 and 8 <= hcp <= 16):
-            return bid(2, op.suit, alert=True, why="Michaels: 5-5 majors")
+            return bid(2, op.suit, alert=True,
+                       why=f"{twos_label}: 5-5 majors")
     if op.suit in (Suit.HEARTS, Suit.SPADES):
-        # Over a major → other major + an unspecified minor (5-5)
+        # Over a major → other major + an unspecified minor (5-5).
         other_major = Suit.SPADES if op.suit == Suit.HEARTS else Suit.HEARTS
         if e.suit_lengths[other_major] >= 5 and 8 <= hcp <= 16:
             for m in (Suit.CLUBS, Suit.DIAMONDS):
                 if e.suit_lengths[m] >= 5:
                     return bid(2, op.suit, alert=True,
-                               why="Michaels: other major + minor (5-5)")
+                               why=f"{twos_label}: other major + minor (5-5)")
+
+    # Ghestem 3♣ — high + low unbid suits (Precision 90M only, and
+    # only available when the cuebid suit isn't already clubs).
+    if (system.has("O-Ghestem.standard")
+            and not system.has("O-Ghestem.not-3C")
+            and op.suit != Suit.CLUBS):
+        # High+low pair excluding clubs: spades + diamonds when op is
+        # hearts; spades + clubs is over diamonds (so 3♣ = ♠+♣); etc.
+        # Strict reading of Ghestem assigns 3♣ to the high + low of the
+        # three suits other than opener's.
+        unbid = [s for s in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES)
+                 if s != op.suit]
+        unbid_by_rank = sorted(unbid, key=lambda s: _BID_RANK[s])
+        low_suit, high_suit = unbid_by_rank[0], unbid_by_rank[-1]
+        if (e.suit_lengths[low_suit] >= 5
+                and e.suit_lengths[high_suit] >= 5
+                and 8 <= hcp <= 16):
+            return bid(3, Suit.CLUBS, alert=True,
+                       why=f"Ghestem 3♣: 5-5 in "
+                           f"{high_suit.to_char()}+{low_suit.to_char()}")
 
     # Unusual 2NT: 5-5 in the two lowest-ranked unbid suits, 8-16 HCP.
     unbid = [s for s in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES)
