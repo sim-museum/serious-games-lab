@@ -345,6 +345,32 @@ def _apply_rebid_1nt(sys_: BiddingSystem, rules: Dict[str, RCERule]) -> None:
             return
 
 
+def _apply_major_open_card_min(sys_: BiddingSystem, rules: Dict[str, RCERule]) -> None:
+    """Q-Plus's major-suit opening style flag controls how many cards a
+    1♥ / 1♠ opening promises:
+      `B-1MA-5-cards.all-seats`       → 5 in every seat (SAYC, 2/1, MSF)
+      `B-1MA-5-cards.first-2-seats`   → 5 in 1st/2nd seat, 4 OK in 3rd/4th
+      `B-1MA-5-cards.unpassed-only`   → same as above (Q-Plus variant)
+      `B-1MA-5-cards.guaranted`       → 5 always, strictly enforced
+      (missing entirely)              → 4-card majors (Acol family)
+    We collapse to a single integer: the strictest minimum the system
+    actively requires. The bidder uses this to decide whether to open
+    1♥/1♠ on a 4-card holding.
+    """
+    if "B-1MA-5-cards.all-seats" in rules \
+            or "B-1MA-5-cards.guaranted" in rules:
+        sys_.one_major_card_min = 5
+        return
+    if "B-1MA-5-cards.first-2-seats" in rules \
+            or "B-1MA-5-cards.unpassed-only" in rules:
+        # Effectively 5 except in pass-out seats; the bidder treats this
+        # as 5 since seat-aware opener logic isn't yet differentiated.
+        sys_.one_major_card_min = 5
+        return
+    # No 5-card-majors flag — system uses 4-card majors (Acol-style).
+    sys_.one_major_card_min = 4
+
+
 def _apply_one_nt_style(sys_: BiddingSystem, rules: Dict[str, RCERule]) -> None:
     sys_.one_nt_allow_five_card_heart = (
         "B-1NT-style.weak-5-heart" in rules
@@ -375,6 +401,7 @@ def _build_from_rce(name: str, rce_path: Path) -> BiddingSystem:
     _apply_two_over_one(sys_, rules)
     _apply_rebid_1nt(sys_, rules)
     _apply_one_nt_style(sys_, rules)
+    _apply_major_open_card_min(sys_, rules)
     return sys_
 
 
@@ -442,6 +469,52 @@ def _fallback_precision70() -> BiddingSystem:
     return s
 
 
+def _fallback_two_over_one() -> BiddingSystem:
+    """SAYC variant where new-suit-at-2-level is game-forcing.
+
+    Q-Plus's `A-2-1-A` encodes the threshold as `A-2-over-1-min.hcp-11`
+    (effectively GF-strength). Other openings and conventions match
+    SAYC closely. Used by wBridge5's "Wbridge5" preset and bb12's "2/1".
+    """
+    s = _fallback_sayc()
+    s.name = "TwoOverOne"
+    s.description = "2/1 game forcing (built-in fallback)"
+    s.two_over_one_min_hcp = 11  # Q-Plus encoding for GF
+    return s
+
+
+def _fallback_acol() -> BiddingSystem:
+    """4-card-majors Acol with weak 1NT.
+
+    Q-Plus's `B-ACL-S.RCE`. 1NT is 12-14 balanced. 1♥/1♠ may be opened
+    on 4 cards in any seat. Strong 2♣ is the only forcing 2-bid;
+    2♦/2♥/2♠ are typically used as Benjaminized weak / Acol weak twos.
+    Used by bb12's "ACOL" preset.
+    """
+    s = _fallback_sayc()
+    s.name = "StandardAcol"
+    s.description = "standard Acol (built-in fallback)"
+    s.one_nt_min_hcp = 12
+    s.one_nt_max_hcp = 14
+    s.one_major_card_min = 4
+    s.two_over_one_min_hcp = 9
+    return s
+
+
+def _fallback_standard_french() -> BiddingSystem:
+    """Modern French / SEF.
+
+    Q-Plus's `F-FRA-M.RCE`. Mostly SAYC-shaped: 5-card majors, strong
+    1NT 15-17, weak 2-bids, 2/1 = 10+ HCP. Differences are mostly in
+    response handling (some French-specific cuebid agreements not in
+    SAYC). Used by wBridge5's "SEF" and bb12's "La Majeure 5eme".
+    """
+    s = _fallback_sayc()
+    s.name = "StandardFrench"
+    s.description = "modern Standard French (built-in fallback)"
+    return s
+
+
 # Short canonical convention list for the fallback systems. The real
 # load picks up everything in the .RCE file; these are the headline set
 # we know native_bidder already implements or will soon.
@@ -468,14 +541,19 @@ _FALLBACK_PRECISION_CONVENTIONS = (_FALLBACK_SAYC_CONVENTIONS | {
 
 
 _CATALOG: List[Tuple[str, str, "callable"]] = [
-    ("SAYC",         "A-SAYC-I.RCE", _fallback_sayc),
-    ("Precision90M", "P-P90M-A.RCE", _fallback_precision90m),
-    ("Precision90P", "P-P90P-A.RCE", _fallback_precision90p),
-    ("Precision70",  "P-PRC-I.RCE",  _fallback_precision70),
+    ("SAYC",            "A-SAYC-I.RCE", _fallback_sayc),
+    ("TwoOverOne",      "A-2-1-A.RCE",  _fallback_two_over_one),
+    ("StandardAcol",    "B-ACL-S.RCE",  _fallback_acol),
+    ("StandardFrench",  "F-FRA-M.RCE",  _fallback_standard_french),
+    ("Precision90M",    "P-P90M-A.RCE", _fallback_precision90m),
+    ("Precision90P",    "P-P90P-A.RCE", _fallback_precision90p),
+    ("Precision70",     "P-PRC-I.RCE",  _fallback_precision70),
 ]
 
 
-# Aliases so the config can keep using "Precision" or "SAYC" generically.
+# Aliases so the config can keep using "Precision" or "SAYC" generically,
+# and so user-facing names from other bridge programs map to the closest
+# Q-Plus equivalent for cross-checking.
 _ALIASES = {
     "Precision": "Precision90M",
     "Precision Club": "Precision90M",
@@ -483,6 +561,17 @@ _ALIASES = {
     "Precision Club 90 plus": "Precision90P",
     "Precision Club 70": "Precision70",
     "Standard American": "SAYC",
+    # bb12 / wBridge5 cross-references — all map to Q-Plus systems so
+    # the user can verify our bidding against the same Q-Plus rule set
+    # those programs would use as their closest analogue.
+    "Std. Amer.": "SAYC",
+    "2/1": "TwoOverOne",
+    "Wbridge5": "TwoOverOne",        # wBridge5's named-default → 2/1 GF
+    "SEF": "StandardFrench",
+    "ACOL": "StandardAcol",
+    "Acol": "StandardAcol",
+    "La Majeure 5eme": "StandardFrench",
+    "La Majeure Cinquieme": "StandardFrench",
 }
 
 

@@ -128,6 +128,39 @@ class TestSystemCatalog(unittest.TestCase):
         self.assertTrue(sayc.has("C-Sputnik.until-2S"))
         self.assertTrue(sayc.has("O-Michaels"))
 
+    def test_two_over_one_system(self):
+        s = get_system("TwoOverOne")
+        self.assertEqual(s.name, "TwoOverOne")
+        self.assertEqual(s.one_nt_min_hcp, 15)
+        self.assertEqual(s.one_nt_max_hcp, 17)
+        self.assertEqual(s.strong_open_call, "2C")
+        self.assertEqual(s.one_major_card_min, 5)
+        # Q-Plus encodes 2/1 GF as min HCP 11 (effectively GF strength).
+        self.assertGreaterEqual(s.two_over_one_min_hcp, 11)
+
+    def test_acol_system(self):
+        s = get_system("StandardAcol")
+        self.assertEqual(s.name, "StandardAcol")
+        self.assertEqual(s.one_nt_min_hcp, 12)   # Weak 1NT
+        self.assertEqual(s.one_nt_max_hcp, 14)
+        self.assertEqual(s.one_major_card_min, 4)  # 4-card majors
+
+    def test_french_system(self):
+        s = get_system("StandardFrench")
+        self.assertEqual(s.name, "StandardFrench")
+        self.assertEqual(s.one_nt_min_hcp, 15)
+        self.assertEqual(s.one_nt_max_hcp, 17)
+        self.assertEqual(s.one_major_card_min, 5)
+
+    def test_cross_program_aliases(self):
+        # bb12 / wBridge5 names map to closest Q-Plus systems.
+        self.assertEqual(get_system("Std. Amer.").name, "SAYC")
+        self.assertEqual(get_system("2/1").name, "TwoOverOne")
+        self.assertEqual(get_system("Wbridge5").name, "TwoOverOne")
+        self.assertEqual(get_system("SEF").name, "StandardFrench")
+        self.assertEqual(get_system("ACOL").name, "StandardAcol")
+        self.assertEqual(get_system("La Majeure 5eme").name, "StandardFrench")
+
     def test_precision_specific_conventions(self):
         p = get_system("Precision90M")
         self.assertTrue(p.has("A-artificial-1C.switch-1NT-1H"))

@@ -365,13 +365,17 @@ def _open_sayc(e: HandEval, system) -> Bid:
     if hcp < 12:
         return passb()
 
-    # 5-card major
-    if e.suit_lengths[Suit.SPADES] >= 5 and e.suit_lengths[Suit.SPADES] >= e.suit_lengths[Suit.HEARTS]:
-        return bid(1, Suit.SPADES, why="5+ spades")
-    if e.suit_lengths[Suit.HEARTS] >= 5:
-        return bid(1, Suit.HEARTS, why="5+ hearts")
+    # Major-suit opening, length requirement from the spec.
+    # SAYC / 2/1 / French / Precision = 5+ majors. Acol = 4+ majors.
+    maj_min = getattr(system, 'one_major_card_min', 5)
+    if (e.suit_lengths[Suit.SPADES] >= maj_min
+            and e.suit_lengths[Suit.SPADES] >= e.suit_lengths[Suit.HEARTS]):
+        return bid(1, Suit.SPADES, why=f"{maj_min}+ spades")
+    if e.suit_lengths[Suit.HEARTS] >= maj_min:
+        return bid(1, Suit.HEARTS, why=f"{maj_min}+ hearts")
 
-    # No 5cM → open longer minor; with 3-3 minors open 1C (better with 4-4 → 1D)
+    # No qualifying major → open longer minor; with 3-3 minors open 1C
+    # (with 4-4 prefer 1D — Acol & SAYC convention).
     cl = e.suit_lengths[Suit.CLUBS]
     di = e.suit_lengths[Suit.DIAMONDS]
     if di > cl:
