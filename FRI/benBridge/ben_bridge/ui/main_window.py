@@ -854,7 +854,12 @@ class MainWindow(QMainWindow):
         extras_menu = menubar.addMenu("&Extras")
         extras_menu.setStyleSheet(self._menu_style)
 
-        self.minibridge_action = QAction("&MiniBridge Mode...", self)
+        # Q-Plus mounts MiniBridge AND One-Player on the same dialog
+        # (.one-player spec: "Here the program can be set to
+        # MiniBridge mode and the one-player mode"). The menu label
+        # now follows the spec title.
+        self.minibridge_action = QAction(
+            "&One Player and MiniBridge Mode...", self)
         self.minibridge_action.setCheckable(True)
         self.minibridge_action.triggered.connect(self._on_minibridge)
         extras_menu.addAction(self.minibridge_action)
@@ -6673,21 +6678,29 @@ For more information, see the README file."""
         dialog.exec()
 
     def _on_minibridge(self):
-        """Toggle or configure MiniBridge mode."""
+        """Toggle or configure One Player / MiniBridge mode. The
+        dialog persists the choice to PreferencesConfig; we just
+        update the status bar + the menu's checked indicator (set
+        when EITHER alternative mode is active)."""
         from .dialogs import MiniBridgeDialog
-
-        # Get current state
-        current_enabled = getattr(self, '_minibridge_enabled', False)
-
-        dialog = MiniBridgeDialog(self, enabled=current_enabled)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self._minibridge_enabled = dialog.is_minibridge_enabled()
-            self.minibridge_action.setChecked(self._minibridge_enabled)
-
-            if self._minibridge_enabled:
-                self.status_label.setText("MiniBridge mode enabled")
-            else:
-                self.status_label.setText("Standard Bridge mode")
+        from ben_backend.config import get_config_manager
+        prefs = get_config_manager().config.preferences
+        dialog = MiniBridgeDialog(self, prefs=prefs)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        mode = dialog.play_mode
+        # Reflect the chosen mode in the status bar and the menu
+        # check. The actual auction / cardplay flow change is wired
+        # separately on the next deal (queued for a follow-up).
+        self.minibridge_action.setChecked(mode != 'off')
+        if mode == 'minibridge':
+            self.status_label.setText("MiniBridge mode active")
+        elif mode == 'one_player':
+            seat = prefs.one_player_seat
+            self.status_label.setText(
+                f"One-Player mode active (seat {seat})")
+        else:
+            self.status_label.setText("Standard Bridge mode")
 
     def _on_multiplay(self):
         """Show computer multiplay dialog."""

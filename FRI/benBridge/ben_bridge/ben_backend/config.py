@@ -107,6 +107,20 @@ class PreferencesConfig:
     # silent table. Card-play blunder check is queued for a later
     # build that wires through DDS.
     blunder_check_enabled: bool = True
+    # One Player + MiniBridge — Q-Plus .one-player. "off" plays
+    # standard auction bridge; "minibridge" replaces the auction
+    # with two simplified rounds (points then contract);
+    # "one_player" gives the engine only the named seat's hand
+    # so the user can prove the program isn't cheating. Sub-
+    # options below only matter when the matching mode is active.
+    play_mode: str = "off"  # 'off' / 'minibridge' / 'one_player'
+    # One-Player options.
+    one_player_seat: str = "S"  # 'N' / 'E' / 'S' / 'W'
+    one_player_use_for_sim: bool = True
+    # MiniBridge options.
+    mini_show_all_hcp: bool = True
+    mini_auto_declarer: bool = True
+    mini_suggest_contract: bool = True
 
 
 @dataclass
@@ -357,6 +371,26 @@ class ConfigManager:
         if "preference.blunder_check_enabled" in data:
             self.config.preferences.blunder_check_enabled = (
                 data["preference.blunder_check_enabled"] == "1")
+        if "preference.play_mode" in data:
+            v = data["preference.play_mode"].strip()
+            if v in ("off", "minibridge", "one_player"):
+                self.config.preferences.play_mode = v
+        if "preference.one_player_seat" in data:
+            v = data["preference.one_player_seat"].strip().upper()
+            if v in ("N", "E", "S", "W"):
+                self.config.preferences.one_player_seat = v
+        if "preference.one_player_use_for_sim" in data:
+            self.config.preferences.one_player_use_for_sim = (
+                data["preference.one_player_use_for_sim"] == "1")
+        if "preference.mini_show_all_hcp" in data:
+            self.config.preferences.mini_show_all_hcp = (
+                data["preference.mini_show_all_hcp"] == "1")
+        if "preference.mini_auto_declarer" in data:
+            self.config.preferences.mini_auto_declarer = (
+                data["preference.mini_auto_declarer"] == "1")
+        if "preference.mini_suggest_contract" in data:
+            self.config.preferences.mini_suggest_contract = (
+                data["preference.mini_suggest_contract"] == "1")
 
     def save_preferences(self):
         """Save user preferences."""
@@ -384,6 +418,18 @@ class ConfigManager:
             "preference.ew_bidding_system": self.config.preferences.ew_bidding_system,
             "preference.blunder_check_enabled": (
                 "1" if self.config.preferences.blunder_check_enabled else "0"),
+            "preference.play_mode": self.config.preferences.play_mode,
+            "preference.one_player_seat":
+                self.config.preferences.one_player_seat,
+            "preference.one_player_use_for_sim": (
+                "1" if self.config.preferences.one_player_use_for_sim
+                else "0"),
+            "preference.mini_show_all_hcp": (
+                "1" if self.config.preferences.mini_show_all_hcp else "0"),
+            "preference.mini_auto_declarer": (
+                "1" if self.config.preferences.mini_auto_declarer else "0"),
+            "preference.mini_suggest_contract": (
+                "1" if self.config.preferences.mini_suggest_contract else "0"),
         }
         self._write_config_file(filepath, data, description="BEN Bridge preferences")
 

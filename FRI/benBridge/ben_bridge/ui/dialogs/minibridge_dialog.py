@@ -14,112 +14,214 @@ from .dialog_style import apply_dialog_style
 
 
 class MiniBridgeDialog(QDialog):
-    """Dialog for configuring MiniBridge mode."""
+    """Q-Plus "One Player and MiniBridge Mode" (.one-player).
 
-    def __init__(self, parent=None, enabled: bool = False):
+    The spec mounts BOTH alternative play modes on the same dialog:
+      • MiniBridge — auction collapses to two simplified rounds
+        (points announcement, then contract pick).
+      • One-Player — the engine is given ONLY the seat the user
+        plays; every other seat's cards are entered manually for
+        each deal. Used to formally prove the engine isn't peeking.
+
+    Standard Bridge is the third (default) radio option. Sub-option
+    groups are enabled only when their owning mode is selected.
+    All choices persist to PreferencesConfig.
+
+    The dialog only RECORDS the mode + options — runtime flow
+    changes (e.g. point-then-contract bidding box, manual hand
+    entry) are wired separately by MainWindow on the next deal.
+    """
+
+    def __init__(self, parent=None, enabled: bool = False,
+                 prefs=None):
         super().__init__(parent)
-        self.minibridge_enabled = enabled
+        self._prefs = prefs
+        # Resolve initial mode from prefs first, then the legacy
+        # ``enabled`` kwarg for callers that still pass it.
+        if prefs is not None:
+            self._mode = getattr(prefs, 'play_mode', 'off') or 'off'
+        else:
+            self._mode = 'minibridge' if enabled else 'off'
 
-        self.setWindowTitle("MiniBridge Mode")
-        self.setMinimumWidth(450)
+        self.setWindowTitle("One Player and MiniBridge Mode")
+        self.setMinimumWidth(540)
         apply_dialog_style(self)
         self._setup_ui()
+        self._sync_enabled_state()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
 
-        # Explanation
-        info_group = QGroupBox("What is MiniBridge?")
+        # Explanation — both modes summarised side by side.
+        info_group = QGroupBox("What these modes do")
         info_layout = QVBoxLayout()
-
         info_text = QLabel(
-            "MiniBridge is a simplified version of Bridge designed for beginners.\n\n"
-            "Key differences from standard Bridge:\n"
-            "• No bidding auction - declarer is determined by HCP\n"
-            "• The player with the most HCP becomes declarer\n"
-            "• Declarer chooses the trump suit after seeing dummy\n"
-            "• All four hands are scored at matchpoints\n\n"
-            "This allows players to focus on card play without learning\n"
-            "complex bidding systems."
+            "<b>Standard Bridge</b> — full auction, default.<br><br>"
+            "<b>MiniBridge</b> — no auction. Round 1: each side "
+            "announces total HCP. Round 2: declarer (the side with "
+            "more HCP) picks the contract. Lets beginners focus on "
+            "card play without learning bidding.<br><br>"
+            "<b>One Player</b> — the engine knows ONLY the named "
+            "player's hand. Other hands are entered manually each "
+            "deal. Used to formally prove the program isn't cheating: "
+            "if the engine never sees the cards, it can't peek."
         )
         info_text.setWordWrap(True)
+        info_text.setTextFormat(Qt.TextFormat.RichText)
         info_layout.addWidget(info_text)
-
         info_group.setLayout(info_layout)
         layout.addWidget(info_group)
 
-        # Enable/disable
-        mode_group = QGroupBox("Mode Selection")
+        # Mode radio group.
+        mode_group = QGroupBox("Mode")
         mode_layout = QVBoxLayout()
-
         self.mode_button_group = QButtonGroup(self)
-
-        self.normal_radio = QRadioButton("Standard Bridge (with bidding)")
-        self.mode_button_group.addButton(self.normal_radio, 0)
-        mode_layout.addWidget(self.normal_radio)
-
-        self.mini_radio = QRadioButton("MiniBridge (no bidding)")
-        self.mode_button_group.addButton(self.mini_radio, 1)
-        mode_layout.addWidget(self.mini_radio)
-
-        if self.minibridge_enabled:
-            self.mini_radio.setChecked(True)
-        else:
-            self.normal_radio.setChecked(True)
-
+        self.standard_radio = QRadioButton(
+            "Standard Bridge (with bidding)")
+        self.mini_radio = QRadioButton(
+            "MiniBridge (points → contract, no auction)")
+        self.one_player_radio = QRadioButton(
+            "One Player Mode (engine sees only one seat)")
+        for i, rb in enumerate((self.standard_radio,
+                                self.mini_radio,
+                                self.one_player_radio)):
+            self.mode_button_group.addButton(rb, i)
+            rb.toggled.connect(self._sync_enabled_state)
+            mode_layout.addWidget(rb)
+        {'off': self.standard_radio,
+         'minibridge': self.mini_radio,
+         'one_player': self.one_player_radio}.get(
+            self._mode, self.standard_radio).setChecked(True)
         mode_group.setLayout(mode_layout)
         layout.addWidget(mode_group)
 
-        # Options when MiniBridge is enabled
-        options_group = QGroupBox("MiniBridge Options")
-        options_layout = QVBoxLayout()
+        # One-Player options.
+        self.one_player_group = QGroupBox("One-Player options")
+        op_layout = QVBoxLayout()
+        seat_row = QHBoxLayout()
+        seat_row.addWidget(QLabel("Played seat:"))
+        from PyQt6.QtWidgets import QComboBox
+        self.seat_combo = QComboBox()
+        for ch in ('N', 'E', 'S', 'W'):
+            self.seat_combo.addItem(ch, ch)
+        if self._prefs is not None:
+            idx = self.seat_combo.findData(
+                getattr(self._prefs, 'one_player_seat', 'S'))
+            if idx >= 0:
+                self.seat_combo.setCurrentIndex(idx)
+        seat_row.addWidget(self.seat_combo)
+        seat_row.addStretch()
+        op_layout.addLayout(seat_row)
 
+        self.use_for_sim_check = QCheckBox(
+            "Use player for simulation "
+            "(treats this seat as 'human' role so bid simulation "
+            "runs during the auction)"
+        )
+        self.use_for_sim_check.setChecked(
+            bool(getattr(self._prefs, 'one_player_use_for_sim', True))
+            if self._prefs is not None else True
+        )
+        op_layout.addWidget(self.use_for_sim_check)
+        self.one_player_group.setLayout(op_layout)
+        layout.addWidget(self.one_player_group)
+
+        # MiniBridge options.
+        self.mini_group = QGroupBox("MiniBridge options")
+        mini_layout = QVBoxLayout()
         self.show_all_hcp = QCheckBox("Show HCP for all hands")
-        self.show_all_hcp.setChecked(True)
-        options_layout.addWidget(self.show_all_hcp)
-
-        self.auto_declarer = QCheckBox("Automatically select declarer by HCP")
-        self.auto_declarer.setChecked(True)
-        options_layout.addWidget(self.auto_declarer)
-
-        self.suggest_contract = QCheckBox("Suggest contract based on HCP")
-        self.suggest_contract.setChecked(True)
-        options_layout.addWidget(self.suggest_contract)
-
-        options_group.setLayout(options_layout)
-        layout.addWidget(options_group)
+        self.auto_declarer = QCheckBox(
+            "Automatically pick declarer by HCP")
+        self.suggest_contract = QCheckBox(
+            "Suggest contract based on HCP")
+        for check, attr, default in (
+            (self.show_all_hcp,        'mini_show_all_hcp',     True),
+            (self.auto_declarer,       'mini_auto_declarer',    True),
+            (self.suggest_contract,    'mini_suggest_contract', True),
+        ):
+            check.setChecked(
+                bool(getattr(self._prefs, attr, default))
+                if self._prefs is not None else default
+            )
+            mini_layout.addWidget(check)
+        self.mini_group.setLayout(mini_layout)
+        layout.addWidget(self.mini_group)
 
         layout.addStretch()
 
-        # Buttons
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-
+        # Buttons.
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
         ok_btn = QPushButton("OK")
+        ok_btn.setDefault(True)
         ok_btn.clicked.connect(self._on_ok)
-        button_layout.addWidget(ok_btn)
-
+        btn_row.addWidget(ok_btn)
         cancel_btn = QPushButton("Cancel")
         cancel_btn.clicked.connect(self.reject)
-        button_layout.addWidget(cancel_btn)
+        btn_row.addWidget(cancel_btn)
+        layout.addLayout(btn_row)
 
-        layout.addLayout(button_layout)
+    def _sync_enabled_state(self, *args):
+        """Grey out the sub-option group that doesn't apply to the
+        currently selected mode."""
+        try:
+            self.mini_group.setEnabled(self.mini_radio.isChecked())
+            self.one_player_group.setEnabled(
+                self.one_player_radio.isChecked())
+        except AttributeError:
+            # Called from setChecked before both groups exist.
+            pass
 
     def _on_ok(self):
-        """Handle OK button."""
-        self.minibridge_enabled = self.mini_radio.isChecked()
+        if self.one_player_radio.isChecked():
+            self._mode = 'one_player'
+        elif self.mini_radio.isChecked():
+            self._mode = 'minibridge'
+        else:
+            self._mode = 'off'
+        # Persist immediately so the user's next launch matches.
+        if self._prefs is not None:
+            self._prefs.play_mode = self._mode
+            self._prefs.one_player_seat = (
+                self.seat_combo.currentData() or 'S')
+            self._prefs.one_player_use_for_sim = (
+                self.use_for_sim_check.isChecked())
+            self._prefs.mini_show_all_hcp = (
+                self.show_all_hcp.isChecked())
+            self._prefs.mini_auto_declarer = (
+                self.auto_declarer.isChecked())
+            self._prefs.mini_suggest_contract = (
+                self.suggest_contract.isChecked())
+            try:
+                from ben_backend.config import get_config_manager
+                get_config_manager().save_preferences()
+            except Exception:
+                pass
         self.accept()
 
+    # ------------------------------------------------------------------
+    # Backwards-compat accessors so old callers continue to work.
+    # ------------------------------------------------------------------
+
     def is_minibridge_enabled(self) -> bool:
-        """Return whether MiniBridge mode is enabled."""
-        return self.minibridge_enabled
+        return self._mode == 'minibridge'
+
+    def is_one_player_enabled(self) -> bool:
+        return self._mode == 'one_player'
+
+    @property
+    def play_mode(self) -> str:
+        return self._mode
 
     def get_options(self) -> dict:
-        """Get MiniBridge options."""
         return {
-            'show_all_hcp': self.show_all_hcp.isChecked(),
-            'auto_declarer': self.auto_declarer.isChecked(),
-            'suggest_contract': self.suggest_contract.isChecked()
+            'play_mode': self._mode,
+            'one_player_seat': self.seat_combo.currentData() or 'S',
+            'one_player_use_for_sim':
+                self.use_for_sim_check.isChecked(),
+            'mini_show_all_hcp': self.show_all_hcp.isChecked(),
+            'mini_auto_declarer': self.auto_declarer.isChecked(),
+            'mini_suggest_contract': self.suggest_contract.isChecked(),
         }
 
 
