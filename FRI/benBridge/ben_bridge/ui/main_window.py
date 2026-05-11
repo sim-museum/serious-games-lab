@@ -1155,6 +1155,16 @@ class MainWindow(QMainWindow):
         bid_info_layout.setContentsMargins(5, 5, 5, 5)
         bid_info_layout.setSpacing(2)
 
+        # System banner — shows which bidding system the labels describe.
+        self.bid_info_system_label = QLabel()
+        self.bid_info_system_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.bid_info_system_label.setStyleSheet(
+            "background-color: #d8e8f8; border: 1px solid #889; padding: 3px;"
+        )
+        self.bid_info_system_label.setWordWrap(True)
+        bid_info_layout.addWidget(self.bid_info_system_label)
+        self._refresh_bid_info_system_label()
+
         # Header row: Bid | Points | Help
         header_frame = QFrame()
         header_frame.setStyleSheet("background-color: #e0e0e0; border: 1px solid #999;")
@@ -1188,10 +1198,10 @@ class MainWindow(QMainWindow):
         bid_info_layout.addWidget(scroll)
 
         # Available bids section with meanings
-        avail_label = QLabel("Available bids for South:")
-        avail_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-        avail_label.setStyleSheet("margin-top: 5px;")
-        bid_info_layout.addWidget(avail_label)
+        self.avail_label = QLabel("Available bids:")
+        self.avail_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        self.avail_label.setStyleSheet("margin-top: 5px;")
+        bid_info_layout.addWidget(self.avail_label)
 
         # Scrollable area for available bids with meanings
         avail_scroll = QScrollArea()
@@ -1924,8 +1934,20 @@ For more information, see the README file."""
             self.controller.players = dialog.get_players()
 
     def _on_configure_systems(self):
-        """Show bidding systems dialog"""
-        current_system = getattr(self, '_current_bidding_system', 'SAYC')
+        """Show bidding systems dialog.
+
+        Seeds the dialog with the user's current preferred system,
+        which lives on ``preferences.native_bidding_system`` (and is
+        also what the rule-based bidder reads on every bid). Falls
+        back to whatever was last picked in this session, or SAYC.
+        """
+        try:
+            prefs = get_config_manager().config.preferences
+            current_system = getattr(
+                self, '_current_bidding_system',
+                prefs.native_bidding_system or 'SAYC')
+        except Exception:
+            current_system = getattr(self, '_current_bidding_system', 'SAYC')
         dialog = BiddingSystemDialog(self, current_system)
         if dialog.exec():
             new_system = dialog.get_system()
@@ -1933,6 +1955,31 @@ For more information, see the README file."""
             self._ns_bidding_system = dialog.get_ns_system()
             self._ew_bidding_system = dialog.get_ew_system()
             self._active_conventions = dialog.get_conventions()
+
+            # Persist to preferences so the rule-based bidder picks
+            # up the new choice on its next call, and so the bid-info
+            # window's system banner is refreshed. Per-pair overrides
+            # are stored alongside so a teaching session can run e.g.
+            # Precision90M at NS and SAYC at EW — when both pairs
+            # share a system we clear the overrides to keep the
+            # stored config tidy.
+            try:
+                cm = get_config_manager()
+                cm.config.preferences.native_bidding_system = new_system
+                ns_sys = self._ns_bidding_system or new_system
+                ew_sys = self._ew_bidding_system or new_system
+                if ns_sys == ew_sys:
+                    cm.config.preferences.ns_bidding_system = ""
+                    cm.config.preferences.ew_bidding_system = ""
+                else:
+                    cm.config.preferences.ns_bidding_system = ns_sys
+                    cm.config.preferences.ew_bidding_system = ew_sys
+                cm.save_preferences()
+            except Exception:
+                pass
+            # Drop the cached BiddingSystem so the bid-info window
+            # repaints with the new system on its next refresh.
+            self._refresh_active_system()
 
             # Apply the bidding system to the engine
             self.status_label.setText(f"Setting bidding system: {new_system}...")
@@ -1967,6 +2014,9 @@ For more information, see the README file."""
             self.table_view.refresh_colors()
         # Update analysis panel visibility based on preference
         self.analysis_label.setVisible(self.config_manager.config.preferences.show_ben_bid_analysis)
+        # Bidding-system selection may have changed — re-tag the
+        # information-about-bids window with the new system's labels.
+        self._refresh_active_system()
 
     def _on_show_all_hands(self):
         """Toggle showing all hands"""
@@ -1980,9 +2030,120 @@ For more information, see the README file."""
         else:
             self.bid_info_dock.hide()
 
+    def _active_bidding_system(self, side: str = None):
+        """Resolve the configured `BiddingSystem` spec.
+
+        When ``side`` is 'NS' or 'EW', return the per-pair override
+        (or the shared default if no override is set). Cached
+        independently per side; `_refresh_active_system` clears
+        every cache so a user-driven switch lands the next time the
+        bid-info window is redrawn.
+        """
+        if not hasattr(self, '_cached_bidding_systems'):
+            self._cached_bidding_systems = {}
+        key = side or 'default'
+        cached = self._cached_bidding_systems.get(key)
+        if cached is not None:
+            return cached
+        try:
+            from ben_backend.bid_descriptions import system_for_prefs
+            prefs = get_config_manager().config.preferences
+            spec = system_for_prefs(prefs, side=side)
+        except Exception:
+            from ben_backend.bidding_systems import get_system
+            spec = get_system('SAYC')
+        self._cached_bidding_systems[key] = spec
+        return spec
+
+    def _refresh_active_system(self):
+        """Drop the cached system specs; next access reloads from prefs."""
+        self._cached_bidding_systems = {}
+        # If the bid info window is up, refresh the header + table.
+        if getattr(self, 'bid_info_dock', None) is not None:
+            self._refresh_bid_info_system_label()
+            try:
+                self._refresh_bid_history_descriptions()
+            except Exception:
+                pass
+            self._update_available_bids()
+
+    @staticmethod
+    def _format_system_summary(spec) -> str:
+        """One-paragraph description of a BiddingSystem spec for the
+        Claude hint prompt — pulls numeric ranges straight from the
+        dataclass fields so Precision-70's 13-15 1NT comes through
+        when the user is on that variant, not the SAYC 15-17.
+        """
+        if spec.strong_open_call == "1C":
+            return (
+                f"strong-club: 1♣ = {spec.strong_open_min_hcp}+ any shape; "
+                f"1♦ = {spec.one_diamond_min_hcp}-"
+                f"{spec.one_diamond_max_hcp} (catch-all); 1♥/1♠ = "
+                f"{spec.precision_two_clubs_min_hcp}-"
+                f"{spec.one_nt_max_hcp} with 5+ in the suit; "
+                f"1NT = {spec.one_nt_min_hcp}-"
+                f"{spec.one_nt_max_hcp} balanced; "
+                f"2♣ = {spec.precision_two_clubs_min_hcp}-"
+                f"{spec.precision_two_clubs_max_hcp} with 6+ clubs; "
+                f"2♦ = Precision three-suiter "
+                f"({spec.precision_two_diamonds_shape}); "
+                f"2♥/2♠ = weak two; 1♣-1♦ = 0-7 negative; positive "
+                f"responses 8+ HCP; RKC = {spec.rkc_variant}"
+            )
+        return (
+            f"5-card majors; strong 1NT {spec.one_nt_min_hcp}-"
+            f"{spec.one_nt_max_hcp} balanced; "
+            f"2NT {spec.two_nt_min_hcp}-{spec.two_nt_max_hcp} balanced; "
+            f"2♣ Stayman; Jacoby transfers; weak 2♦/2♥/2♠ "
+            f"({spec.weak_two_min_hcp}-{spec.weak_two_max_hcp}); "
+            f"strong 2♣ = {spec.strong_open_min_hcp}+ HCP; "
+            f"2/1 ≥ {spec.two_over_one_min_hcp}; "
+            f"Blackwood 4NT for aces; negative doubles through 2♠; "
+            f"standard takeout doubles; RKC = {spec.rkc_variant}"
+        )
+
+    def _refresh_bid_info_system_label(self):
+        """Update the bid-info window's system header to match prefs.
+
+        Shows ONE line when both pairs share the system, two lines
+        ("NS: …" / "EW: …") otherwise — matches the dialog's "N/S vs
+        E/W" tab so users can verify both sides at a glance.
+        """
+        lbl = getattr(self, 'bid_info_system_label', None)
+        if lbl is None:
+            return
+        ns = self._active_bidding_system('NS')
+        ew = self._active_bidding_system('EW')
+        if ns.name == ew.name:
+            desc = ns.description or ns.name
+            lbl.setText(f"System: {ns.name} — {desc}")
+        else:
+            ns_desc = ns.description or ns.name
+            ew_desc = ew.description or ew.name
+            lbl.setText(
+                f"NS: {ns.name} — {ns_desc}\n"
+                f"EW: {ew.name} — {ew_desc}"
+            )
+
     def _get_bid_interpretation(self, bid: Bid, auction: List[Bid], bidder: Seat) -> tuple:
         """Get point range and meaning for a bid based on context.
-        Returns (points_str, suit_length_str, help_text, is_artificial)"""
+        Returns (points_str, suit_length_str, help_text, is_artificial).
+
+        Delegates to `ben_backend.bid_descriptions.describe_bid`, which
+        reads the active `BiddingSystem` spec so labels reflect the
+        user's chosen system (SAYC / Precision / Acol / 2-over-1 / …).
+        """
+        try:
+            from ben_backend.bid_descriptions import describe_bid
+            sys_ = self._active_bidding_system()
+            dealer = (self.controller.board.dealer
+                      if self.controller.board is not None
+                      else Seat.NORTH)
+            return describe_bid(bid, list(auction), bidder, dealer, sys_)
+        except Exception:
+            # Fall through to the legacy SAYC-hardcoded labels if the
+            # spec-driven describer chokes for any reason.
+            pass
 
         if bid.is_pass:
             # Pass after partner opened might be different from initial pass
@@ -2132,7 +2293,14 @@ For more information, see the README file."""
         self.bid_history_layout.insertWidget(self.bid_history_layout.count() - 1, row_frame)
 
     def _update_available_bids(self):
-        """Update the list of available bids with meanings for South"""
+        """Update the list of available bids with meanings for the next bidder.
+
+        The label and the interpretation queries both use the actual
+        next-to-bid seat (computed from `board.get_current_bidder()`),
+        so the meanings reflect what each bid would mean *for the seat
+        that is about to bid* — that matters because partner-side
+        conventional responses differ from overcalls of the same call.
+        """
         # Clear existing
         while self.available_bids_layout.count():
             item = self.available_bids_layout.takeAt(0)
@@ -2153,6 +2321,12 @@ For more information, see the README file."""
 
         # Get current auction state
         auction = self.controller.board.auction
+        try:
+            next_seat = self.controller.board.get_current_bidder()
+        except Exception:
+            next_seat = Seat.SOUTH
+        if getattr(self, 'avail_label', None) is not None:
+            self.avail_label.setText(f"Available bids for {next_seat.name.title()}:")
         min_level = 0
         min_suit_idx = -1
         suit_order = [Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES, Suit.NOTRUMP]
@@ -2186,17 +2360,17 @@ For more information, see the README file."""
         available_bids = []
 
         # Pass is always available
-        pts, suit_len, help_txt, _ = self._get_bid_interpretation(Bid.make_pass(), auction, Seat.SOUTH)
+        pts, suit_len, help_txt, _ = self._get_bid_interpretation(Bid.make_pass(), auction, next_seat)
         available_bids.append(("Pass", pts, help_txt))
 
         # Double if available
         if can_double:
-            pts, suit_len, help_txt, _ = self._get_bid_interpretation(Bid.make_double(), auction, Seat.SOUTH)
+            pts, suit_len, help_txt, _ = self._get_bid_interpretation(Bid.make_double(), auction, next_seat)
             available_bids.append(("X", pts, help_txt))
 
         # Redouble if available
         if can_redouble:
-            pts, suit_len, help_txt, _ = self._get_bid_interpretation(Bid.make_redouble(), auction, Seat.SOUTH)
+            pts, suit_len, help_txt, _ = self._get_bid_interpretation(Bid.make_redouble(), auction, next_seat)
             available_bids.append(("XX", pts, help_txt))
 
         # Suit bids - show the next few levels
@@ -2206,7 +2380,7 @@ For more information, see the README file."""
                 suit_idx = suit_order.index(suit)
                 if level > min_level or (level == min_level and suit_idx > min_suit_idx):
                     bid = Bid(level=level, suit=suit)
-                    pts, suit_len, help_txt, is_art = self._get_bid_interpretation(bid, auction, Seat.SOUTH)
+                    pts, suit_len, help_txt, is_art = self._get_bid_interpretation(bid, auction, next_seat)
                     bid_str = bid.symbol()
                     display_pts = f"{pts}  {suit_len}" if suit_len else pts
                     if is_art:
@@ -2263,6 +2437,27 @@ For more information, see the README file."""
             item = self.available_bids_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+
+    def _refresh_bid_history_descriptions(self):
+        """Rebuild the bid-history rows using the active bidding system.
+
+        Used when the user switches bidding system mid-auction: the
+        existing rows were rendered with the old labels and need to be
+        retagged with what each bid means under the new system.
+        """
+        if self.controller.board is None:
+            return
+        # Wipe the history layout but keep the trailing stretch.
+        while self.bid_history_layout.count() > 1:
+            item = self.bid_history_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        auction = list(self.controller.board.auction)
+        dealer = self.controller.board.dealer
+        bidder = dealer
+        for b in auction:
+            self._add_bid_to_info(bidder, b, "", "")
+            bidder = bidder.next()
 
     def _on_show_scores(self):
         """Show score table.
@@ -3074,7 +3269,15 @@ For more information, see the README file."""
             )
             return
 
-        # Pull BEN's own suggestion first — it's fast and gives Claude context.
+        # Pull BEN's own suggestion first — it's fast and gives Claude
+        # context. The score next to each candidate is BEN's neural-net
+        # (TensorFlow) softmax probability, 0.00–1.00 — i.e. "how
+        # confident this trained-on-SAYC-and-2/1 model is that this
+        # is the right action given the rest of the auction / position".
+        # It's ALWAYS pulled from BEN regardless of bidding_engine
+        # preference; switching to native only affects which engine the
+        # bots actually use, not which engine the hint asks for a
+        # second opinion.
         engine_text = ""
         try:
             if phase == 'bidding':
@@ -3084,7 +3287,10 @@ For more information, see the README file."""
                     if resp.candidates:
                         cands = ", ".join(f"{c.bid.symbol()} ({c.score:.2f})"
                                           for c in resp.candidates[:5])
-                        engine_text += f"\nBEN candidates: {cands}"
+                        engine_text += (
+                            f"\nBEN candidates (score = TensorFlow NN "
+                            f"confidence 0–1): {cands}"
+                        )
             else:
                 # Skip BEN suggestion when we don't have the seat's hand
                 # (guest in network mode only has its own + visible hands).
@@ -3097,22 +3303,54 @@ For more information, see the README file."""
                         if resp.candidates:
                             cands = ", ".join(f"{c.card.to_str()} ({c.score:.2f})"
                                               for c in resp.candidates[:5])
-                            engine_text += f"\nBEN candidates: {cands}"
+                            engine_text += (
+                                f"\nBEN candidates (score = TensorFlow NN "
+                                f"confidence 0–1): {cands}"
+                            )
         except Exception as e:
             engine_text = f"(BEN engine error: {e!r})"
+
+        # Surface the active bidding systems at the top of the hint
+        # dialog so the user knows which spec Claude is being told to
+        # interpret each side's bids by. Two lines when NS / EW differ,
+        # one when they share a system.
+        system_preamble = ""
+        try:
+            ns_spec = self._active_bidding_system('NS')
+            ew_spec = self._active_bidding_system('EW')
+            if ns_spec.name == ew_spec.name:
+                desc = ns_spec.description or ns_spec.name
+                system_preamble = (
+                    f"Bidding system: {ns_spec.name} — {desc}"
+                )
+            else:
+                ns_d = ns_spec.description or ns_spec.name
+                ew_d = ew_spec.description or ew_spec.name
+                system_preamble = (
+                    f"Bidding systems — NS: {ns_spec.name} ({ns_d}); "
+                    f"EW: {ew_spec.name} ({ew_d})"
+                )
+        except Exception:
+            pass
 
         state_text = self._build_hint_state_text(board, seat, phase)
         prompt = self._build_hint_prompt(phase, seat, state_text, engine_text)
 
         # Route the result through the BDL-with-annotations renderer so
         # Claude's reasoning lands inline next to the section it's
-        # commenting on instead of in a free-floating text block.
+        # commenting on instead of in a free-floating text block. The
+        # preamble shows the bidding system(s) in use AND BEN's
+        # second-opinion line, so the user sees both before reading
+        # Claude's analysis.
+        preamble_parts = [p for p in (system_preamble, engine_text) if p]
+        preamble_text = ("\n\n".join(preamble_parts) + "\n\n"
+                         if preamble_parts else "")
         self._run_claude_with_dialog(
             prompt=prompt,
             title=f"Claude hint — {'bidding' if phase == 'bidding' else 'card play'}",
             wait_label=f"Claude is thinking about your {'bid' if phase == 'bidding' else 'card'}...",
             timeout_seconds=300,
-            preamble=engine_text + "\n\n" if engine_text else "",
+            preamble=preamble_text,
             bdl_text=state_text,
         )
 
@@ -3225,59 +3463,34 @@ For more information, see the README file."""
         system_clause = ""
         if phase == 'bidding':
             try:
-                from ben_backend.config import get_config_manager
-                from ben_backend.bidding_systems import get_system
-                prefs = get_config_manager().config.preferences
-                engine = (prefs.bidding_engine or 'BEN').strip()
-                native = (prefs.native_bidding_system or 'SAYC').strip()
-                # Pick the spec that matches the engine config. BEN-NN (the
-                # TensorFlow bidder) is SAYC-flavoured and the rule-based
-                # path looks up the spec directly.
-                spec_name = native if engine.lower() == 'native' else 'SAYC'
-                spec = get_system(spec_name)
-                # The .RCE-loaded `description` ("Standard American Yellow
-                # Card (Q-plus)" or "Precision Club 90 modern (Q-plus)")
-                # gives Claude an exact handle on which Q-Plus variant the
-                # table is using.
-                pretty = spec.description or spec.name
-                # System-specific summary; pulled from the spec itself so
-                # Precision Club 70's 13-15 1NT and 22-23 2NT show up
-                # correctly when the user is configured for that variant.
-                if spec.strong_open_call == "1C":
-                    summary = (
-                        f"strong-club: 1♣ = {spec.strong_open_min_hcp}+ any shape; "
-                        f"1♦ = {spec.one_diamond_min_hcp}-{spec.one_diamond_max_hcp} "
-                        "(catch-all, often 2c-diamond holdings); 1♥/1♠ = "
-                        f"{spec.precision_two_clubs_min_hcp}-{spec.one_nt_max_hcp} "
-                        "with 5+ in the suit; 1NT = "
-                        f"{spec.one_nt_min_hcp}-{spec.one_nt_max_hcp} balanced; "
-                        f"2♣ = {spec.precision_two_clubs_min_hcp}-"
-                        f"{spec.precision_two_clubs_max_hcp} with 6+ clubs; "
-                        f"2♦ = Precision three-suiter "
-                        f"({spec.precision_two_diamonds_shape}); 2♥/2♠ = "
-                        "weak two; 1♣-1♦ = 0-7 negative; positive responses "
-                        f"8+ HCP; RKC = {spec.rkc_variant}"
+                ns_spec = self._active_bidding_system('NS')
+                ew_spec = self._active_bidding_system('EW')
+                ns_text = self._format_system_summary(ns_spec)
+                ew_text = self._format_system_summary(ew_spec)
+                ns_pretty = ns_spec.description or ns_spec.name
+                ew_pretty = ew_spec.description or ew_spec.name
+                if ns_spec.name == ew_spec.name:
+                    system_clause = (
+                        f" The table is playing strict **{ns_pretty}** at "
+                        f"BOTH pairs. Apply only this system's bid "
+                        f"meanings — {ns_text}. Do NOT mix in conventions "
+                        "from any other system."
                     )
                 else:
-                    summary = (
-                        f"5-card majors; strong 1NT {spec.one_nt_min_hcp}-"
-                        f"{spec.one_nt_max_hcp} balanced; "
-                        f"2NT {spec.two_nt_min_hcp}-{spec.two_nt_max_hcp} "
-                        "balanced; 2♣ Stayman; Jacoby transfers; weak 2♦/2♥/2♠ "
-                        f"({spec.weak_two_min_hcp}-{spec.weak_two_max_hcp}); "
-                        f"strong 2♣ = {spec.strong_open_min_hcp}+ HCP; "
-                        f"2/1 ≥ {spec.two_over_one_min_hcp}; "
-                        "Blackwood 4NT for aces; negative doubles through 2♠; "
-                        f"standard takeout doubles; RKC = {spec.rkc_variant}"
+                    # Different systems per pair — instruct Claude to
+                    # interpret each side's calls using the matching
+                    # spec, never blending the two.
+                    system_clause = (
+                        f"\n\nSYSTEMS IN USE (different per pair — "
+                        "interpret each side's bids ONLY through the "
+                        "matching system):\n"
+                        f"  • NS plays **{ns_pretty}** — {ns_text}\n"
+                        f"  • EW plays **{ew_pretty}** — {ew_text}\n"
+                        "When commenting on an NS call, apply ONLY NS's "
+                        "system. When commenting on an EW call, apply "
+                        "ONLY EW's system. Never describe a bid using "
+                        "the other pair's conventions."
                     )
-                system_clause = (
-                    f" The table is playing strict **{pretty}**. Apply "
-                    f"only this system's bid meanings — {summary}. Do "
-                    "NOT mix in conventions from any other system. If a "
-                    "previous bid in the auction is naturally interpreted "
-                    f"differently in {pretty}, treat it as the {pretty} "
-                    "meaning even if BEN's suggestion implies otherwise."
-                )
             except Exception:
                 # Config / spec lookup failed — fall back to a
                 # system-agnostic prompt rather than crashing the hint.
@@ -3740,7 +3953,14 @@ For more information, see the README file."""
         self._annotated_bdl_dialogs = survivors
 
     def _show_plain_dialog(self, title: str, body: str, error: bool = False):
-        """Show a scrollable result dialog with OK button (shared helper)."""
+        """Show a scrollable result dialog with OK button (shared helper).
+
+        Non-modal so the user can interact with the main window — open
+        the Compare dialog, the score sheet, replay a board — while the
+        Claude analysis is still visible. We hold a reference on
+        `self._plain_dialogs` so the widget isn't garbage-collected as
+        soon as we return.
+        """
         from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton,
                                       QScrollArea)
         from PyQt6.QtGui import QFont
@@ -3769,9 +3989,30 @@ For more information, see the README file."""
         ok_btn.setFixedSize(120, 40)
         ok_btn.setStyleSheet("QPushButton { background-color: #d0d0d0; color: #000; "
                              "border: 1px solid #999; border-radius: 3px; font-size: 16px; }")
-        ok_btn.clicked.connect(dialog.accept)
+        ok_btn.clicked.connect(dialog.close)
         layout.addWidget(ok_btn)
-        dialog.exec()
+
+        # Promote to a free-floating top-level window so the user can
+        # drag it to a second monitor and keep working in main_window.
+        from .dialogs.dialog_style import make_detachable
+        make_detachable(dialog)
+        dialog.show()
+        dialog.raise_()
+
+        # Keep references to surviving dialogs; sweep dead wrappers
+        # (WA_DeleteOnClose set by make_detachable destroys the C++
+        # widget on close, after which isVisible() raises RuntimeError).
+        if not hasattr(self, '_plain_dialogs'):
+            self._plain_dialogs = []
+        survivors = []
+        for d in self._plain_dialogs:
+            try:
+                if d.isVisible():
+                    survivors.append(d)
+            except RuntimeError:
+                pass
+        survivors.append(dialog)
+        self._plain_dialogs = survivors
 
     def _on_undo(self):
         """Undo last card play (only works during current trick before it completes)"""
@@ -4733,9 +4974,17 @@ For more information, see the README file."""
 
     def _launch_qplus_harness(self, board):
         """Spawn the guiHarness (bridgeHarness.sh) preloaded with this deal's
-        base-72 code, so the host can manually play the closed room in Q-Plus
-        without leaving ben_bridge. No-op if the harness script can't be
-        located or if the deal has no full hand data.
+        base-72 code, dealer, and vulnerability, so the host can manually
+        play the closed room in Q-Plus without leaving ben_bridge. No-op
+        if the harness script can't be located or if the deal has no full
+        hand data.
+
+        Dealer and vulnerability are passed via `--dealer` / `--vuln` so
+        the harness can show them on the entry tab — and, once Q-Plus's
+        dealer / vulnerability radio buttons are calibrated, click them
+        for the user as part of the entry sequence. Matching the BDL's
+        dealer/vuln in Q-Plus is required for the closed-room contract
+        to be scored against the same conditions as the open room.
         """
         import os
         import subprocess
@@ -4753,8 +5002,19 @@ For more information, see the README file."""
             ))
             if not os.path.isfile(script):
                 return
+            # Map ben_bridge enums to the harness's expected CLI tokens.
+            dealer_char = board.dealer.to_char()  # 'N' / 'E' / 'S' / 'W'
+            vuln_map = {
+                'None': 'None',
+                'N-S':  'NS',
+                'E-W':  'EW',
+                'Both': 'Both',
+            }
+            vuln_token = vuln_map.get(board.vulnerability.value, 'None')
             subprocess.Popen(
-                [script, "--base72", code],
+                [script, "--base72", code,
+                 "--dealer", dealer_char,
+                 "--vuln", vuln_token],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,

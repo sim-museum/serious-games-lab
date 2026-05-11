@@ -82,13 +82,24 @@ class PreferencesConfig:
     use_monte_carlo_play: bool = True  # Monte Carlo simulation (default - strongest)
     legacy_colors: bool = False  # Use legacy 2-color mode (red and black only)
     show_ben_bid_analysis: bool = False  # Show BEN bid analysis panel (disabled by default)
-    # Which engine bots consult for bidding. "BEN" → the original neural-net
-    # engine; "native" → the rule-based bidder in ben_backend.native_bidder
-    # (Qplus-style). Card play always stays with BEN regardless of this flag.
-    bidding_engine: str = "BEN"
-    # System used by the native bidder. "SAYC" is a SAYC/2-over-1 hybrid;
-    # "Precision" is a single-variant strong-club system.
+    # Which engine bots consult for bidding. "native" → the rule-based
+    # bidder in ben_backend.native_bidder (Q-Plus-style — the default,
+    # since it covers seven systems with full spec-driven conventions);
+    # "BEN" → the older neural-net engine, kept for users who prefer it.
+    # Card play always stays with BEN regardless of this flag.
+    bidding_engine: str = "native"
+    # System used by the native bidder. Any name in
+    # ben_backend.bidding_systems.list_systems() (SAYC / TwoOverOne /
+    # StandardAcol / StandardFrench / Precision90M / Precision90P /
+    # Precision70) or an alias like "Precision", "2/1", "Wbridge5", etc.
     native_bidding_system: str = "SAYC"
+    # Per-pair systems — when set, override native_bidding_system on
+    # the matching side. None / empty means "use native_bidding_system
+    # for both pairs". Lets a teaching session run a different system
+    # at NS vs EW (e.g. Precision90M vs SAYC) without forcing the
+    # whole table onto one spec.
+    ns_bidding_system: str = ""
+    ew_bidding_system: str = ""
 
 
 @dataclass
@@ -306,8 +317,19 @@ class ConfigManager:
                 self.config.preferences.bidding_engine = v
         if "preference.native_bidding_system" in data:
             v = data["preference.native_bidding_system"].strip()
-            if v in ("SAYC", "Precision"):
+            # Accept any non-empty value — the bidding-systems catalog
+            # now lists 7+ Q-Plus specs and will keep growing, so a
+            # hard whitelist would silently drop the user's setting
+            # for every newly-added system. Unknown names fall back
+            # to SAYC at lookup time in get_system().
+            if v:
                 self.config.preferences.native_bidding_system = v
+        if "preference.ns_bidding_system" in data:
+            v = data["preference.ns_bidding_system"].strip()
+            self.config.preferences.ns_bidding_system = v
+        if "preference.ew_bidding_system" in data:
+            v = data["preference.ew_bidding_system"].strip()
+            self.config.preferences.ew_bidding_system = v
 
     def save_preferences(self):
         """Save user preferences."""
@@ -326,6 +348,8 @@ class ConfigManager:
             "preference.show_ben_bid_analysis": "1" if self.config.preferences.show_ben_bid_analysis else "0",
             "preference.bidding_engine": self.config.preferences.bidding_engine,
             "preference.native_bidding_system": self.config.preferences.native_bidding_system,
+            "preference.ns_bidding_system": self.config.preferences.ns_bidding_system,
+            "preference.ew_bidding_system": self.config.preferences.ew_bidding_system,
         }
         self._write_config_file(filepath, data, description="BEN Bridge preferences")
 
