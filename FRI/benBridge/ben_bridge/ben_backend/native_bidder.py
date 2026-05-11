@@ -425,9 +425,21 @@ def _open_precision(e: HandEval, system) -> Bid:
         return gamb
 
     # Limited 1NT (Q-Plus Precision: 14-16, or 13-15 for the classic 70).
-    if nt_min <= hcp <= nt_max and (e.is_balanced or e.is_semi_balanced):
+    # `B-1NT-style.weak-6-minor` extends the 1NT shape to 6-3-2-2 with a
+    # 6-card minor (not solid) — common in Q-Plus Precision flavours.
+    weak_six_minor_ok = (
+        system.one_nt_allow_six_card_minor
+        and tuple(sorted(e.suit_lengths.values(), reverse=True)) == (6, 3, 2, 2)
+        and any(e.suit_lengths[m] == 6
+                and e.suit_hcp[m] < 7  # not AKQ-solid → still consider 1NT
+                for m in (Suit.CLUBS, Suit.DIAMONDS))
+    )
+    if nt_min <= hcp <= nt_max and (
+            e.is_balanced or e.is_semi_balanced or weak_six_minor_ok):
         return bid(1, Suit.NOTRUMP, alert=True,
-                   why=f"Precision: {nt_min}-{nt_max} balanced")
+                   why=f"Precision: {nt_min}-{nt_max} "
+                       + ("balanced (incl. weak 6-minor)" if weak_six_minor_ok
+                          else "balanced"))
 
     # 2NT — strong balanced not covered by 1NT (rare in Precision).
     if two_nt_min <= hcp <= two_nt_max and (e.is_balanced or e.is_semi_balanced):
