@@ -2428,7 +2428,7 @@ class MetricPie(QWidget):
         w, h = self.width(), self.height()
         # Reserve two-line caption space at the bottom so labels can
         # wrap to a second line for clearer descriptions.
-        label_h = 46
+        label_h = 56
         diam = min(w - 12, h - label_h - 12)
         cx = w // 2
         cy = (h - label_h) // 2
@@ -2484,7 +2484,7 @@ class MetricPie(QWidget):
         # Caption underneath — bigger and word-wrapping so descriptive
         # labels ("Equity vs ranges", "Pot commitment %") render fully
         # over two lines.
-        cap_font = QFont('Arial', 13, QFont.Weight.Bold)
+        cap_font = QFont('Arial', 16, QFont.Weight.Bold)
         p.setFont(cap_font)
         p.setPen(QColor("#dddddd" if not self._dim else "#666666"))
         p.drawText(QRectF(2, h - label_h, w - 4, label_h),
@@ -2593,10 +2593,12 @@ class MetricDashboard(QWidget):
             pie.setToolTip(tip)
             return pie
 
-        # Row 0: equity-vs-range comparison (the headline pair) and
-        # implied / reverse-implied (the future-bets risk pair).
-        # Row 1: stack / commitment / outs / Nash.
-        # Labels carry two lines so the descriptions are unambiguous.
+        # Two rows of three pies. SPR was removed — that number is
+        # also rendered in the Pot Commitment panel on the left, so a
+        # second copy was redundant. Nash is hidden by default
+        # (≤ 15 BB only) so it doesn't deserve a permanent slot.
+        #   Row 0: Equity / Pot odds / Implied break-even
+        #   Row 1: Reverse implied / Pot commitment % / Outs to hit
         self.equity_pie = _make_pie(
             "Equity\nvs ranges", TIPS['equity'])
         grid.addWidget(self.equity_pie, 0, 0)
@@ -2609,26 +2611,24 @@ class MetricDashboard(QWidget):
         self.reverse_implied_pie = _make_pie(
             "Reverse implied\n(domination risk)",
             TIPS['reverse_implied'])
-        grid.addWidget(self.reverse_implied_pie, 0, 3)
-        self.spr_pie = _make_pie(
-            "SPR after call\n(stack-to-pot)", TIPS['spr'])
-        grid.addWidget(self.spr_pie, 1, 0)
+        grid.addWidget(self.reverse_implied_pie, 1, 0)
         self.commit_pie = _make_pie(
             "Pot\ncommitment %", TIPS['commit'])
         grid.addWidget(self.commit_pie, 1, 1)
         self.outs_pie = _make_pie(
             "Outs to hit\n(rule of 4 / 2)", TIPS['outs'])
         grid.addWidget(self.outs_pie, 1, 2)
-        self.nash_pie = _make_pie(
-            "Nash push range\n(short stack)", TIPS['nash'])
-        grid.addWidget(self.nash_pie, 1, 3)
+        # Hidden placeholders so any code still poking at
+        # self.spr_pie / self.nash_pie doesn't trip on AttributeError.
+        self.spr_pie = _make_pie("", "")
+        self.spr_pie.setVisible(False)
+        self.nash_pie = _make_pie("", "")
         self.nash_pie.setVisible(False)
         # Both rows grab equal vertical space so the pies expand to
         # fill the column's full height.
         grid.setRowStretch(0, 1)
         grid.setRowStretch(1, 1)
-        # Equal column widths.
-        for c in range(4):
+        for c in range(3):
             grid.setColumnStretch(c, 1)
         self.setStyleSheet(
             "MetricDashboard { background: #181818;"
@@ -9000,11 +9000,48 @@ class PokerWindow(QMainWindow):
             "color: #666; border: 1px solid #333; }"
         )
 
+        # EV button tooltips share a common header that explains what
+        # the "EV $X.X" badge underneath each button means.
+        _EV_FOLD_TIP = (
+            "FOLD — surrender the hand and any chips already in.\n\n"
+            "EV badge: always $+0.00.  Folding is the baseline\n"
+            "every other action is compared against.")
+        _EV_CHECK_TIP = (
+            "CHECK — pass the action without betting (only legal\n"
+            "when there's no bet to call).\n\n"
+            "EV badge: equity-vs-implied-pot. Even a check has\n"
+            "implied EV from seeing the next card for free against\n"
+            "your share of the eventual pot.")
+        _EV_CALL_TIP = (
+            "CALL — match the current bet.\n\n"
+            "EV badge formula:\n"
+            "    equity × (pot + call + implied_call_pot) − call\n"
+            "where implied_call_pot is a per-street estimate of\n"
+            "future bets you'd win when your draw / made hand pays\n"
+            "off (30 % preflop, 40 % flop, 25 % turn, 0 % river of\n"
+            "effective stack).\n\n"
+            "Positive (green) = profitable call on combined\n"
+            "immediate + implied odds. Negative (red) = -EV.")
+        _EV_RAISE_TIP = (
+            "RAISE — bet enough to put villain to a decision.\n\n"
+            "EV badge formula:\n"
+            "    fold_eq × pot\n"
+            "  + (1 − fold_eq) × [discounted_eq × (called_pot\n"
+            "                                       + implied_raise)\n"
+            "                       − cost]\n"
+            "  • fold_eq shrinks with the number of opponents.\n"
+            "  • discounted_eq ≈ 0.7 × equity (a calling range\n"
+            "                   is stronger than the prior).\n"
+            "  • implied_raise smaller than implied_call because\n"
+            "    raising thins the field.\n\n"
+            "Positive = profitable raise; negative = burns chips.")
+
         self.tom_fold_btn = QPushButton("Fold")
         self.tom_fold_btn.setFixedSize(140, 60)
         self.tom_fold_btn.setStyleSheet(
             tom_btn_base + "QPushButton:enabled { background-color: #633; }"
             "QPushButton:hover:enabled { background-color: #844; }")
+        self.tom_fold_btn.setToolTip(_EV_FOLD_TIP)
         self.tom_fold_btn.clicked.connect(lambda: self.human_action('f', 0))
         self.tom_fold_btn.setEnabled(False)
         tom_action_layout.addWidget(self.tom_fold_btn)
@@ -9016,6 +9053,7 @@ class PokerWindow(QMainWindow):
         self.tom_check_btn.setStyleSheet(
             tom_btn_base + "QPushButton:enabled { background-color: #363; }"
             "QPushButton:hover:enabled { background-color: #484; }")
+        self.tom_check_btn.setToolTip(_EV_CHECK_TIP)
         self.tom_check_btn.clicked.connect(lambda: self.human_action('c', 0))
         self.tom_check_btn.setEnabled(False)
         tom_action_layout.addWidget(self.tom_check_btn)
@@ -9027,6 +9065,7 @@ class PokerWindow(QMainWindow):
         self.tom_call_btn.setStyleSheet(
             tom_btn_base + "QPushButton:enabled { background-color: #363; }"
             "QPushButton:hover:enabled { background-color: #484; }")
+        self.tom_call_btn.setToolTip(_EV_CALL_TIP)
         self.tom_call_btn.clicked.connect(lambda: self.human_action('c', 0))
         self.tom_call_btn.setEnabled(False)
         tom_action_layout.addWidget(self.tom_call_btn)
@@ -9038,6 +9077,7 @@ class PokerWindow(QMainWindow):
         self.tom_raise_btn.setStyleSheet(
             tom_btn_base + "QPushButton:enabled { background-color: #336; }"
             "QPushButton:hover:enabled { background-color: #448; }")
+        self.tom_raise_btn.setToolTip(_EV_RAISE_TIP)
         self.tom_raise_btn.clicked.connect(self.show_raise_dialog)
         self.tom_raise_btn.setEnabled(False)
         tom_action_layout.addWidget(self.tom_raise_btn)
@@ -16818,6 +16858,14 @@ class PokerLearningHub:
             lbl.setParent(btn)
             lbl.move(0, btn.height() - 18)
             lbl.resize(btn.width(), 18)
+            # Inherit the button's tooltip so hovering the EV badge
+            # itself shows the same formula explanation.
+            try:
+                tip = btn.toolTip()
+                if tip:
+                    lbl.setToolTip(tip)
+            except Exception:
+                pass
             self.ev_labels[id(btn)] = lbl
 
     def _refresh_ev_badges(self):
@@ -17853,9 +17901,9 @@ def run_gui_mode(args):
     # Tooltips: double the default font size and force word-wrapping
     # so the Theory-of-Mind hover-help is comfortably readable.
     app.setStyleSheet(
-        "QToolTip { font-size: 18pt; color: #ddd;"
-        " background-color: #1a1a1a; border: 1px solid #555;"
-        " padding: 8px; }"
+        "QToolTip { font-size: 18pt; font-weight: normal;"
+        " color: #ddd; background-color: #1a1a1a;"
+        " border: 1px solid #555; padding: 8px; }"
     )
 
     # Set dark theme
