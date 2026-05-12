@@ -222,6 +222,30 @@ class GameController:
         self.current_seat = self.current_seat.next()
         return True
 
+    def set_contract_direct(self, contract: Contract):
+        """Skip the auction entirely and start card play on the given
+        contract. Used by the MiniBridge runtime — Q-Plus
+        .bidbox-m-s ends with a chosen contract that the program
+        then plays out without an actual auction.
+
+        Mirrors what _setup_play does at the end of a real auction,
+        but consumes the contract directly instead of deriving it
+        from board.auction. We DO write the contract into
+        board.auction as a single regular bid so the rest of the
+        codebase (logging, replay, score-sheet) keeps working
+        without a special "no auction" case.
+        """
+        self.board.contract = contract
+        self.board.auction = [Bid(level=contract.level,
+                                  suit=contract.suit,
+                                  doubled=contract.doubled,
+                                  redoubled=contract.redoubled)]
+        self.declarer = contract.declarer
+        self.dummy = contract.declarer.partner()
+        self.opening_leader = contract.declarer.next()
+        self.current_seat = self.opening_leader
+        self.current_phase = 'play'
+
     def _setup_play(self):
         """Setup for card play after bidding"""
         auction = self.board.auction
@@ -1404,6 +1428,27 @@ class MainWindow(QMainWindow):
 
         self.status_label.setText(f"Board {board.board_number}: {board.dealer.to_char()} deals")
 
+        # One-Player runtime — give the user the manual hand-entry
+        # dialog so the seat they're playing carries the hand they
+        # actually typed in, not the random deal. The "engine knows
+        # ONLY this seat" half of the .one-player promise still
+        # requires deeper engine work; a banner in the status bar
+        # makes that limitation visible to the user.
+        try:
+            self._maybe_run_one_player_entry(board)
+        except Exception as ex:
+            print(f"[one-player] runtime failed: {ex!r}", flush=True)
+
+        # MiniBridge runtime — when the user has selected play_mode
+        # 'minibridge' in the One Player / MiniBridge dialog, skip
+        # the auction and run the two Q-Plus rounds
+        # (.bidbox-m-p / .bidbox-m-s) instead. Card play resumes
+        # against the chosen contract.
+        try:
+            self._maybe_run_minibridge_rounds(board)
+        except Exception as ex:
+            print(f"[minibridge] runtime failed: {ex!r}", flush=True)
+
         # Closed room (AI vs AI) is started after the human finishes the
         # hand — running it in parallel with human play made both sides
         # contend for the BEN engine and the game appeared to hang.
@@ -1443,6 +1488,205 @@ class MainWindow(QMainWindow):
         )
         if filename:
             self.status_label.setText(f"Exported: {os.path.basename(filename)}")
+
+    def _maybe_run_one_player_entry(self, board):
+        """If the user is in One-Player Mode, pop the manual hand-
+        entry dialog and swap the random hand for the named seat
+        with whatever the user typed in. No-op when
+        play_mode != 'one_player'.
+
+        Caveat: the bots still see all four hands in this build —
+        the formal "engine never peeks" guarantee from .one-player
+        requires deeper engine work to suppress bot access to the
+        other three seats. We surface that gap in the status bar
+        so the user knows what state we're in.
+        """
+        try:
+            from ben_backend.config import get_config_manager
+            prefs = get_config_manager().config.preferences
+        except Exception:
+            return
+        if getattr(prefs, 'play_mode', 'off') != 'one_player':
+            return
+        seat_char = getattr(prefs, 'one_player_seat', 'S')
+        try:
+            target = Seat.from_char(seat_char)
+        except Exception:
+            target = Seat.SOUTH
+
+        from .dialogs.one_player_hand_entry import OnePlayerHandEntryDialog
+        dlg = OnePlayerHandEntryDialog(
+            seat_char=target.to_char(), parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        new_hand = dlg.get_hand()
+        if new_hand is None or not new_hand.cards:
+            return
+
+        # Replace the random hand at the target seat with what the
+        # user entered. Re-randomise the other three seats from the
+        # remaining 39 cards so the deal stays a legal 52-card set
+        # and the user's choice is honoured.
+        try:
+            from ben_backend.models import Card, Hand, Rank, Suit
+            import random
+            used = {(c.suit, c.rank) for c in new_hand.cards}
+            # Build the remaining 39 cards in arbitrary order.
+            full = []
+            for s in (Suit.SPADES, Suit.HEARTS,
+                      Suit.DIAMONDS, Suit.CLUBS):
+                for r in Rank:
+                    if (s, r) not in used:
+                        full.append(Card(s, r))
+            random.shuffle(full)
+            board.hands[target] = new_hand
+            others = [s for s in Seat if s != target]
+            for i, s in enumerate(others):
+                start = i * 13
+                board.hands[s] = Hand(
+                    cards=list(full[start:start + 13]))
+            # The original_hands snapshot is used later by replay
+            # and logging — refresh it so it reflects the swap.
+            self.original_hands = {
+                s: Hand(cards=list(board.hands[s].cards))
+                for s in Seat
+            }
+            self.table_view.set_board(board)
+        except Exception as ex:
+            print(f"[one-player] hand swap failed: {ex!r}", flush=True)
+            return
+
+        # Visible status banner so the user knows the engine still
+        # sees the other seats (formal non-peeking proof queued).
+        self.status_label.setText(
+            f"One-Player Mode active — {target.to_char()}'s hand "
+            "swapped in. (Bots still see all four hands; formal "
+            "non-peeking proof queued for a deeper build.)"
+        )
+
+    def _maybe_run_minibridge_rounds(self, board):
+        """If the user is in MiniBridge mode, run the two simplified
+        rounds (announce points → pick contract) and start card play
+        on the chosen contract. No-op when play_mode != 'minibridge'.
+
+        Per Q-Plus spec the side with the higher combined HP is the
+        declaring side; within that side, the seat with the higher
+        individual HP is declarer. We compute everything from the
+        actual hands — the user just announces THEIR side's HP and
+        picks the contract.
+        """
+        try:
+            from ben_backend.config import get_config_manager
+            prefs = get_config_manager().config.preferences
+        except Exception:
+            return
+        if getattr(prefs, 'play_mode', 'off') != 'minibridge':
+            return
+
+        # Hide the bidding box — we replace it with the two dialogs.
+        try:
+            self.bidding_box.setVisible(False)
+        except Exception:
+            pass
+
+        from .dialogs.minibridge_rounds import (
+            MiniBridgePointsDialog, MiniBridgeContractDialog)
+
+        user_seat = self._user_seat
+        partner_seat = user_seat.partner()
+        try:
+            user_hp = board.hands[user_seat].hcp()
+            partner_hp = board.hands[partner_seat].hcp()
+        except Exception:
+            user_hp = partner_hp = None
+
+        # Round 1 — user announces their side's combined HP. We
+        # offer the actual combined HP as the hint; the user can
+        # override (in a teaching setting they might want to enter
+        # a different number to see how the program responds).
+        hint = (user_hp + partner_hp) if user_hp is not None else None
+        round1 = MiniBridgePointsDialog(
+            seat_char=user_seat.to_char(),
+            hint_hp=hint, parent=self)
+        if round1.exec() != QDialog.DialogCode.Accepted:
+            return
+        announced_side_hp = round1.get_points() or 0
+
+        # Round 2 — pick the contract. Hint: a heuristic based on
+        # combined HP and whether the user's side has a fit. For
+        # MVP we just suggest 3NT for ≥ 25 HP, 1NT for 12–18, Pass
+        # otherwise — Q-Plus actually computes the recommended
+        # contract from declarer's hand shape; we'll improve later.
+        suggested_level = None
+        suggested_suit = None
+        if announced_side_hp >= 33:
+            suggested_level, suggested_suit = 6, 'NT'
+        elif announced_side_hp >= 25:
+            suggested_level, suggested_suit = 3, 'NT'
+        elif announced_side_hp >= 22:
+            suggested_level, suggested_suit = 2, 'NT'
+        elif announced_side_hp >= 18:
+            suggested_level, suggested_suit = 1, 'NT'
+        else:
+            suggested_level, suggested_suit = 1, 'C'
+        round2 = MiniBridgeContractDialog(
+            hint_level=suggested_level,
+            hint_suit=suggested_suit, parent=self)
+        if round2.exec() != QDialog.DialogCode.Accepted:
+            return
+        contract_data = round2.get_contract()
+        if contract_data is None:
+            return
+        level, suit_char, doubled, redoubled = contract_data
+
+        # Resolve declarer: side with more total HP; within that
+        # side, the seat with more individual HP.
+        try:
+            hps = {s: board.hands[s].hcp() for s in Seat}
+        except Exception:
+            return
+        ns = hps[Seat.NORTH] + hps[Seat.SOUTH]
+        ew = hps[Seat.EAST] + hps[Seat.WEST]
+        if ns >= ew:
+            declarer = (Seat.NORTH if hps[Seat.NORTH] >= hps[Seat.SOUTH]
+                        else Seat.SOUTH)
+        else:
+            declarer = (Seat.EAST if hps[Seat.EAST] >= hps[Seat.WEST]
+                        else Seat.WEST)
+
+        from ben_backend.models import Suit, Contract
+        suit_map = {'S': Suit.SPADES, 'H': Suit.HEARTS,
+                    'D': Suit.DIAMONDS, 'C': Suit.CLUBS,
+                    'NT': Suit.NOTRUMP}
+        contract = Contract(
+            level=level,
+            suit=suit_map.get(suit_char, Suit.NOTRUMP),
+            doubled=bool(doubled),
+            redoubled=bool(redoubled),
+            declarer=declarer,
+        )
+        self.controller.set_contract_direct(contract)
+        # Refresh UI to reflect the fresh play phase.
+        try:
+            self.table_view.update_auction(
+                self.controller.board.auction,
+                self.controller.board.dealer)
+        except Exception:
+            pass
+        try:
+            self.table_view.set_contract(
+                contract.to_str(), declarer.to_char())
+        except Exception:
+            pass
+        self.status_label.setText(
+            f"MiniBridge: {contract.to_str()} by "
+            f"{declarer.to_char()} — opening lead")
+        # Kick the play loop (handle bot opening lead if declarer's
+        # LHO is a bot).
+        try:
+            self._advance_game()
+        except Exception:
+            pass
 
     def _on_print_current_hand(self):
         """File → Print Current Hand. Q-Plus spec at BRIDGE.HLQ
