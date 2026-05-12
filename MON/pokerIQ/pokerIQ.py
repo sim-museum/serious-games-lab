@@ -2515,9 +2515,9 @@ class MetricDashboard(QWidget):
         # see the tooltips for what each one means.
         from PyQt6.QtWidgets import QGridLayout as _QGridLayout
         grid = _QGridLayout(self)
-        grid.setContentsMargins(8, 6, 8, 6)
-        grid.setHorizontalSpacing(6)
-        grid.setVerticalSpacing(6)
+        grid.setContentsMargins(6, 4, 6, 4)
+        grid.setHorizontalSpacing(4)
+        grid.setVerticalSpacing(4)
         TIPS = {
             'equity': (
                 "Equity vs ranges\n\n"
@@ -2587,47 +2587,127 @@ class MetricDashboard(QWidget):
                 "The YELLOW TICK is your hand's strength percentile — "
                 "if your bar extends past the tick, SHOVE; otherwise "
                 "FOLD."),
+            'mdf': (
+                "Minimum Defense Frequency (MDF, Sklansky Ch 12)\n\n"
+                "    MDF = pot ÷ (pot + bet)\n\n"
+                "Facing a bet: the fraction of your range you MUST "
+                "continue with (call + raise) so villain cannot "
+                "profitably bluff any two cards.\n"
+                "If your actual defense rate < MDF, exploitable bluffs "
+                "become +EV for villain."),
+            'bluff_catch': (
+                "Bluff-Catch Threshold (Sklansky Ch 19 / Chen Ch 13)\n\n"
+                "    bluff% = bet ÷ (pot + bet)\n\n"
+                "The villain's bluff frequency that makes calling "
+                "break-even with a bluff-catcher.\n"
+                "If you think villain bluffs MORE often than this, the "
+                "call is profitable; less, fold.\n"
+                "Equal to 1 − MDF (same game-theoretic indifference)."),
+            'range_adv': (
+                "Range Advantage (Acevedo)\n\n"
+                "Estimate of how well your preflop range fits the "
+                "current board vs. villain's defending range.\n"
+                "  +X% green  : YOU benefit from this texture (drives "
+                "high c-bet frequency).\n"
+                "  −X% red    : villain has the better range fit; "
+                "slow down with marginal made hands.\n"
+                "Heuristic from preflop initiative + board high-card "
+                "fit."),
+            'tilt': (
+                "Tilt Score (Hilger Ch 6)\n\n"
+                "0–100 indicator based on decision-time variance + "
+                "pattern deviation across your recent actions.\n"
+                "  < 25  Calm — baseline.\n"
+                "  25–40 Watch — minor deviation.\n"
+                "  > 40  TILT — step away, breathe, re-engage Mindset "
+                "attitudes 1–6."),
+            'hero_vpip': (
+                "Hero session: VPIP / PFR / AGF\n\n"
+                "  VPIP (fill)   = % of hands you voluntarily put $ in.\n"
+                "  PFR (tick)    = % of hands you raised preflop.\n"
+                "  AGF (label)   = Aggression Factor "
+                "  = (bets+raises) ÷ calls postflop.\n\n"
+                "Healthy ranges (Hilger Ch 8):\n"
+                "  Tight-aggressive: VPIP 18–24, PFR 14–20, AGF 2–4.\n"
+                "Use this to spot drift — too tight, too spewy, too "
+                "passive."),
+            'ror': (
+                "Risk of Ruin (Chen Ch 22)\n\n"
+                "    ROR ≈ exp(−2 · μ · B ÷ σ²)\n"
+                "where μ = win rate, B = bankroll, σ = std-dev.\n\n"
+                "Lifetime probability of going broke at the current "
+                "edge / bankroll.\n"
+                "  < 1%  : safe (Half-Kelly territory).\n"
+                "  1–5%  : moderate — consider moving down.\n"
+                "  > 5%  : DANGER — your bankroll is too thin for the "
+                "stake."),
+            'realized': (
+                "Realized vs Raw Equity\n\n"
+                "How much of your THEORETICAL equity you actually win, "
+                "averaged across the hands you've played this session.\n"
+                "  100% = realising full equity.\n"
+                "  < 100%  spewing post-flop with marginals (out of "
+                "          position, bad reads).\n"
+                "  > 100%  squeezing extra value (in position, sharp "
+                "          reads).\n"
+                "Sklansky / Acevedo: position + read quality drive "
+                "realization."),
         }
         def _make_pie(label, tip):
             pie = MetricPie(label)
             pie.setToolTip(tip)
             return pie
 
-        # Two rows of three pies. SPR was removed — that number is
-        # also rendered in the Pot Commitment panel on the left, so a
-        # second copy was redundant. Nash is hidden by default
-        # (≤ 15 BB only) so it doesn't deserve a permanent slot.
-        #   Row 0: Equity / Pot odds / Implied break-even
-        #   Row 1: Reverse implied / Pot commitment % / Outs to hit
-        self.equity_pie = _make_pie(
-            "Equity\nvs ranges", TIPS['equity'])
-        grid.addWidget(self.equity_pie, 0, 0)
-        self.potodds_pie = _make_pie(
-            "Pot odds\nrequired", TIPS['pot_odds'])
-        grid.addWidget(self.potodds_pie, 0, 1)
-        self.implied_pie = _make_pie(
-            "Implied\nbreak-even", TIPS['implied'])
-        grid.addWidget(self.implied_pie, 0, 2)
+        # 3×3 grid covering nine decision-relevant metrics, grouped:
+        #   Row 0 (BET-DEFENSE math, GTO):
+        #     MDF / Bluff-catch threshold / Range advantage
+        #   Row 1 (HAND-SPECIFIC risk):
+        #     Reverse implied / Nash push range / Realized equity
+        #   Row 2 (META-GAME and bankroll):
+        #     Hero VPIP/PFR/AGF / Tilt / Risk of Ruin
+        self.mdf_pie = _make_pie(
+            "MDF — min\ndefense freq", TIPS['mdf'])
+        grid.addWidget(self.mdf_pie, 0, 0)
+        self.bluff_catch_pie = _make_pie(
+            "Bluff-catch\nthreshold", TIPS['bluff_catch'])
+        grid.addWidget(self.bluff_catch_pie, 0, 1)
+        self.range_adv_pie = _make_pie(
+            "Range\nadvantage", TIPS['range_adv'])
+        grid.addWidget(self.range_adv_pie, 0, 2)
+
         self.reverse_implied_pie = _make_pie(
-            "Reverse implied\n(domination risk)",
-            TIPS['reverse_implied'])
+            "Reverse implied\n(domination)", TIPS['reverse_implied'])
         grid.addWidget(self.reverse_implied_pie, 1, 0)
-        self.commit_pie = _make_pie(
-            "Pot\ncommitment %", TIPS['commit'])
-        grid.addWidget(self.commit_pie, 1, 1)
-        self.outs_pie = _make_pie(
-            "Outs to hit\n(rule of 4 / 2)", TIPS['outs'])
-        grid.addWidget(self.outs_pie, 1, 2)
-        # Hidden placeholders so any code still poking at
-        # self.spr_pie / self.nash_pie doesn't trip on AttributeError.
-        self.spr_pie = _make_pie("", "")
-        self.spr_pie.setVisible(False)
-        self.nash_pie = _make_pie("", "")
-        self.nash_pie.setVisible(False)
-        # Both rows grab equal vertical space so the pies expand to
-        # fill the column's full height.
-        grid.setRowStretch(0, 1)
-        grid.setRowStretch(1, 1)
+        self.nash_pie = _make_pie(
+            "Nash push\n(≤ 15 BB)", TIPS['nash'])
+        grid.addWidget(self.nash_pie, 1, 1)
+        self.realized_pie = _make_pie(
+            "Realized vs\nraw equity", TIPS['realized'])
+        grid.addWidget(self.realized_pie, 1, 2)
+
+        self.hero_vpip_pie = _make_pie(
+            "Hero session\nVPIP / PFR / AGF", TIPS['hero_vpip'])
+        grid.addWidget(self.hero_vpip_pie, 2, 0)
+        self.tilt_pie = _make_pie(
+            "Tilt score\n(Hilger)", TIPS['tilt'])
+        grid.addWidget(self.tilt_pie, 2, 1)
+        self.ror_pie = _make_pie(
+            "Risk of Ruin\n(Chen)", TIPS['ror'])
+        grid.addWidget(self.ror_pie, 2, 2)
+
+        # Hidden placeholders so any code still poking at the removed
+        # pies (equity / pot odds / implied / commit / outs / spr)
+        # doesn't trip on AttributeError. Equity / Pot odds / etc are
+        # already shown in the strip above the panel.
+        for name in ('equity_pie', 'potodds_pie', 'implied_pie',
+                     'spr_pie', 'commit_pie', 'outs_pie'):
+            placeholder = _make_pie("", "")
+            placeholder.setVisible(False)
+            setattr(self, name, placeholder)
+
+        # All three rows + cols expand evenly.
+        for r in range(3):
+            grid.setRowStretch(r, 1)
         for c in range(3):
             grid.setColumnStretch(c, 1)
         self.setStyleSheet(
@@ -2642,6 +2722,16 @@ class MetricDashboard(QWidget):
         stack_bb: float | None, hero_hand=None,
         unraised_preflop: bool = False,
         reverse_implied_pct: float | None = None,
+        # ----- New (Phase-9) decision-dashboard metrics -----
+        mdf_pct: float | None = None,
+        bluff_catch_pct: float | None = None,
+        range_adv_pct: float | None = None,
+        tilt_score: int | None = None,
+        hero_vpip_pct: float | None = None,
+        hero_pfr_pct: float | None = None,
+        hero_agf: float | None = None,
+        ror_pct: float | None = None,
+        realized_ratio_pct: float | None = None,
     ):
         # Equity — pot-odds tick + color verdict
         if equity_pct is None:
@@ -2730,9 +2820,9 @@ class MetricDashboard(QWidget):
             self.outs_pie.set_metric(
                 min(outs, 20), 20, f"{outs}", color=col)
 
-        # Nash push gauge — show only when short-stacked.
+        # Nash push gauge — active when stack ≤ 15 BB; dim/--
+        # otherwise so the slot stays visible in the 3×3 grid.
         if stack_bb is not None and stack_bb <= 15:
-            self.nash_pie.setVisible(True)
             push_pct = nash_push_pct(stack_bb) * 100
             verdict = ""
             tick = None
@@ -2747,7 +2837,107 @@ class MetricDashboard(QWidget):
                 f"{push_pct:.0f}%{verdict}",
                 tick=tick, color=col)
         else:
-            self.nash_pie.setVisible(False)
+            self.nash_pie.set_metric(
+                0, 100, "n/a",
+                color="#0af", dim=True)
+
+        # ---------- Phase-9 dashboard metrics ----------
+        # MDF — min defense frequency. Active only when facing a bet.
+        if mdf_pct is None:
+            self.mdf_pie.set_metric(0, 100, "--",
+                                     color="#a8f", dim=True)
+        else:
+            col = ("#88ff88" if mdf_pct < 50
+                   else "#ffd966" if mdf_pct < 70 else "#ff7777")
+            self.mdf_pie.set_metric(
+                mdf_pct, 100, f"{mdf_pct:.0f}%", color=col)
+
+        # Bluff-catch threshold — the bluff% needed for breakeven call.
+        if bluff_catch_pct is None:
+            self.bluff_catch_pie.set_metric(0, 100, "--",
+                                             color="#a8f", dim=True)
+        else:
+            self.bluff_catch_pie.set_metric(
+                bluff_catch_pct, 100,
+                f"{bluff_catch_pct:.0f}%",
+                color="#a8f")
+
+        # Range advantage — symmetric ±X% scale; render absolute on
+        # a 0..30 axis with color denoting sign (green = hero, red =
+        # villain).
+        if range_adv_pct is None:
+            self.range_adv_pie.set_metric(0, 30, "--",
+                                           color="#a8f", dim=True)
+        else:
+            mag = min(30.0, abs(range_adv_pct))
+            sign = "+" if range_adv_pct >= 0 else "−"
+            col = ("#88ff88" if range_adv_pct >= 3
+                   else "#ff7777" if range_adv_pct <= -3
+                   else "#aaaaaa")
+            self.range_adv_pie.set_metric(
+                mag, 30, f"{sign}{mag:.0f}%", color=col)
+
+        # Tilt score — Hilger's 0-100 mental state indicator.
+        if tilt_score is None:
+            self.tilt_pie.set_metric(0, 100, "--",
+                                      color="#a8f", dim=True)
+        else:
+            col = ("#88ff88" if tilt_score < 25
+                   else "#ffd966" if tilt_score < 40
+                   else "#ff7777")
+            self.tilt_pie.set_metric(
+                tilt_score, 100, f"{tilt_score}",
+                color=col)
+
+        # Hero VPIP / PFR / AGF — fill = VPIP, tick = PFR, label tag
+        # shows AGF (a non-percentage scalar).
+        if hero_vpip_pct is None:
+            self.hero_vpip_pie.set_metric(0, 100, "--",
+                                           color="#a8f", dim=True)
+        else:
+            tick = (hero_pfr_pct
+                    if hero_pfr_pct is not None else None)
+            agf_tag = (f"\nAGF {hero_agf:.1f}"
+                       if hero_agf is not None else "")
+            # Color by deviation from "TAG sweet spot" (Hilger Ch 8):
+            #   18-30% VPIP is the working band.
+            if 16 <= hero_vpip_pct <= 30:
+                col = "#88ff88"
+            elif 12 <= hero_vpip_pct <= 40:
+                col = "#ffd966"
+            else:
+                col = "#ff7777"
+            self.hero_vpip_pie.set_metric(
+                hero_vpip_pct, 100,
+                f"{hero_vpip_pct:.0f}%{agf_tag}",
+                tick=tick, color=col)
+
+        # Risk of Ruin (Chen Ch 22). Tight scale (0..10%) since
+        # anything over a few percent is already a problem.
+        if ror_pct is None:
+            self.ror_pie.set_metric(0, 10, "--",
+                                     color="#a8f", dim=True)
+        else:
+            col = ("#88ff88" if ror_pct < 1
+                   else "#ffd966" if ror_pct < 5 else "#ff7777")
+            self.ror_pie.set_metric(
+                min(ror_pct, 10), 10,
+                f"{ror_pct:.1f}%", color=col)
+
+        # Realized equity — % of theoretical equity actually won.
+        # 100% = realising full equity; > 100 squeezing extra; <
+        # 100 spewing.
+        if realized_ratio_pct is None:
+            self.realized_pie.set_metric(0, 130, "--",
+                                          color="#a8f", dim=True)
+        else:
+            mag = min(130.0, max(0.0, realized_ratio_pct))
+            col = ("#88ff88" if realized_ratio_pct >= 95
+                   else "#ffd966" if realized_ratio_pct >= 75
+                   else "#ff7777")
+            self.realized_pie.set_metric(
+                mag, 130, f"{realized_ratio_pct:.0f}%",
+                color=col)
 
 
 class TheoryOfMindPanel(QWidget):
@@ -4850,6 +5040,125 @@ class TheoryOfMindPanel(QWidget):
                     else:
                         ri_pct = 0.0
 
+                # ---------- Phase-9 dashboard metrics ----------
+                # MDF + bluff-catch: only when actually facing a bet.
+                mdf_pct = None
+                bluff_catch_pct = None
+                if to_call > 0 and pot is not None:
+                    # When hero faces a bet, "bet" = to_call and
+                    # "pot" = pot BEFORE the call.
+                    bet_size = float(to_call)
+                    pot_pre = max(0.0, float(pot) - bet_size)
+                    denom = pot_pre + 2 * bet_size
+                    if denom > 0:
+                        # MDF = pot / (pot + bet), where pot here is the
+                        # pot OFFERED to the caller.
+                        mdf_pct = 100.0 * (pot_pre + bet_size) / denom
+                        bluff_catch_pct = 100.0 - mdf_pct
+
+                # Range advantage — heuristic. Hero gets a bump on
+                # high-card boards when they were the preflop
+                # aggressor (raises strong combos that fit Broadway
+                # textures); penalty on low boards.
+                range_adv_pct = None
+                if board and len(board) >= 3:
+                    try:
+                        broadway = sum(
+                            1 for c in board[:3]
+                            if str(c)[0] in 'AKQJT')
+                        # Track preflop aggressor — was hero the last
+                        # one to raise preflop?
+                        pre_actions = (
+                            (street_actions or {}).get('Preflop', []))
+                        hero_name = next((p.name for p in players
+                                          if p.style == 'human'), '')
+                        last_raiser = None
+                        for entry in pre_actions:
+                            if (entry.startswith(f"{hero_name}: Raises")
+                                    or entry.startswith(
+                                        f"{hero_name}: Bets")):
+                                last_raiser = hero_name
+                            elif ': Raises' in entry or ': Bets' in entry:
+                                last_raiser = entry.split(':', 1)[0]
+                        hero_initiative = (last_raiser == hero_name)
+                        base = (4.0 * broadway) - 5.0
+                        range_adv_pct = (base if hero_initiative
+                                         else -base * 0.6)
+                    except Exception:
+                        range_adv_pct = None
+
+                # Tilt + ROR + session VPIP/PFR/AGF + realized
+                # equity all come from the owner PokerWindow's
+                # learning-hub state.
+                win = getattr(self, '_owner_window', None)
+                tilt_score = None
+                hero_vpip_pct = None
+                hero_pfr_pct = None
+                hero_agf = None
+                ror_pct = None
+                realized_ratio_pct = None
+                if win is not None:
+                    hub = getattr(win, '_learning_hub', None)
+                    # Tilt score
+                    if hub is not None and hasattr(hub, 'tilt'):
+                        try:
+                            ts, _ = hub.tilt.score()
+                            tilt_score = int(ts)
+                        except Exception:
+                            tilt_score = None
+                    # Risk of Ruin — pull bankroll from QSettings via
+                    # the dashboard helpers if available.
+                    if hub is not None and hasattr(hub, 'stats'):
+                        try:
+                            from PyQt6.QtCore import QSettings
+                            bankroll = float(QSettings(
+                                'sgl', 'pokerIQ_lifetime').value(
+                                'bankroll', 2000, type=int))
+                            ror_pct = (hub.stats.risk_of_ruin(bankroll)
+                                       * 100.0)
+                        except Exception:
+                            ror_pct = None
+                    # Hero session VPIP / PFR / AGF — from the
+                    # 169-history dict + an AGF counter.
+                    try:
+                        hero_name = next(
+                            (p.name for p in players
+                             if p.style == 'human'), '')
+                        hist = (win._player_169_history
+                                .get(hero_name, {}))
+                        seen = sum(c.get('seen', 0)
+                                   for c in hist.values())
+                        played = sum(c.get('played', 0)
+                                     for c in hist.values())
+                        raised = sum(c.get('raised', 0)
+                                     for c in hist.values())
+                        if seen >= 3:
+                            hero_vpip_pct = 100.0 * played / seen
+                            hero_pfr_pct = 100.0 * raised / seen
+                        # AGF tracked on the PokerWindow via two
+                        # session counters (see _record_hero_action).
+                        agg = getattr(win, '_hero_aggressive_acts', 0)
+                        pas = getattr(win, '_hero_passive_acts', 0)
+                        if pas > 0:
+                            hero_agf = agg / pas
+                        elif agg > 0:
+                            hero_agf = float(agg)
+                    except Exception:
+                        pass
+                    # Realized vs raw equity — running ratio kept on
+                    # PokerWindow.
+                    try:
+                        sum_realized = getattr(
+                            win, '_hero_realized_sum', 0.0)
+                        sum_raw = getattr(
+                            win, '_hero_raw_equity_sum', 0.0)
+                        n = getattr(win, '_hero_equity_n', 0)
+                        if n >= 3 and sum_raw > 0:
+                            realized_ratio_pct = (
+                                100.0 * sum_realized / sum_raw)
+                    except Exception:
+                        pass
+
                 self.dashboard.update_metrics(
                     equity_pct=hero_equity * 100.0,
                     pot_odds_pct=pot_odds * 100.0 if pot_odds else None,
@@ -4862,6 +5171,15 @@ class TheoryOfMindPanel(QWidget):
                     hero_hand=hero_hand,
                     unraised_preflop=unraised_preflop,
                     reverse_implied_pct=ri_pct,
+                    mdf_pct=mdf_pct,
+                    bluff_catch_pct=bluff_catch_pct,
+                    range_adv_pct=range_adv_pct,
+                    tilt_score=tilt_score,
+                    hero_vpip_pct=hero_vpip_pct,
+                    hero_pfr_pct=hero_pfr_pct,
+                    hero_agf=hero_agf,
+                    ror_pct=ror_pct,
+                    realized_ratio_pct=realized_ratio_pct,
                 )
             except Exception:
                 pass
@@ -7867,6 +8185,20 @@ class PokerWindow(QMainWindow):
         # multiple actions on a street.
         self._hand_vpip_seen = set()    # names that voluntarily put $ in this hand
         self._hand_pfr_seen = set()     # names that raised preflop this hand
+        # Hero AGF (aggression factor) counters across the session —
+        # used by the dashboard's Hero-session pie. AGF = aggressive
+        # acts / passive acts on streets after preflop.
+        self._hero_aggressive_acts = 0   # bets + raises postflop
+        self._hero_passive_acts = 0      # calls postflop
+        # Hero realized-vs-raw equity tracker. At the START of each
+        # hand we sample hero's equity-vs-ranges; at hand end we add
+        # the actual chip outcome (+1 for win, 0 for loss, fractional
+        # for split / partial pot) to _hero_realized_sum and the
+        # equity sample to _hero_raw_equity_sum.
+        self._hero_realized_sum = 0.0
+        self._hero_raw_equity_sum = 0.0
+        self._hero_equity_n = 0
+        self._hero_entry_equity = None   # set per hand; consumed at end
         self._game_status_logged = False
         self._original_player_count = None  # filled in on first deal_hand
         self._original_blinds = None
@@ -8007,6 +8339,22 @@ class PokerWindow(QMainWindow):
         self._169_starting_stacks = {
             p.name: int(p.stack) for p in self.players
         }
+        # Sample hero's equity vs random opponents at hand start for
+        # the realized-vs-raw equity tracker. Cheap MC (1 opp, few
+        # iterations) — we just want a session-level signal.
+        try:
+            hero_seat = self.my_seat if self.my_seat is not None else 0
+            hero = (self.players[hero_seat]
+                    if 0 <= hero_seat < len(self.players) else None)
+            if hero is not None and hero.hand:
+                self._hero_entry_equity = float(
+                    calc_equity_hidden(
+                        hero.hand, [], iterations=120,
+                        num_opponents=1))
+            else:
+                self._hero_entry_equity = None
+        except Exception:
+            self._hero_entry_equity = None
 
     def _record_all_in(self, player_name: str):
         """Bump all_ins count for player_name (called from action handlers
@@ -8021,6 +8369,26 @@ class PokerWindow(QMainWindow):
     def _finalize_hand_stats(self, winners_names, showdown_active_names):
         """Bump hands_won / showdowns at end of hand; update hero hole-class
         cash delta + win/loss; called from end_hand / _on_hand_ended."""
+        # Realized vs raw equity bookkeeping for the hero. Only sample
+        # if we recorded an entry equity AND hero actually voluntarily
+        # entered the pot (otherwise the sample is dominated by hands
+        # we folded without contesting).
+        try:
+            entry_eq = getattr(self, '_hero_entry_equity', None)
+            hero_seat = self.my_seat if self.my_seat is not None else 0
+            hero = (self.players[hero_seat]
+                    if 0 <= hero_seat < len(self.players) else None)
+            if (entry_eq is not None and hero is not None
+                    and hero.name in self._hand_vpip_seen):
+                # Did hero win? 1.0 = full win, 0.0 = lost.
+                realized = (1.0 if hero.name in (winners_names or [])
+                            else 0.0)
+                self._hero_realized_sum += realized
+                self._hero_raw_equity_sum += entry_eq
+                self._hero_equity_n += 1
+        except Exception:
+            pass
+        self._hero_entry_equity = None
         for n in winners_names or []:
             self._table_stats.setdefault(
                 n, self._fresh_table_stats()
@@ -10949,6 +11317,16 @@ class PokerWindow(QMainWindow):
             is_check = (action == 'c' and to_call <= 0)
             if not is_check:
                 self._bump_169_action(player.name, hand_key, action, street)
+
+        # Hero AGF (aggression factor) counters — postflop only. Bets
+        # / raises are "aggressive", calls are "passive". Checks +
+        # folds are excluded (they don't contribute to AGF in the
+        # standard PokerTracker formula).
+        if player.style == 'human' and street != 'Preflop':
+            if action == 'r':
+                self._hero_aggressive_acts += 1
+            elif action == 'c' and to_call > 0:
+                self._hero_passive_acts += 1
 
         # Track ALL player actions for hand summary
         action_str = ""
