@@ -1902,15 +1902,20 @@ class HeroOutsTab(QWidget):
                     new_idx = self._class_index(new_class)
                     cur_idx = self._class_index(cur_class)
                     new_card_rank = key[0]
-                    # "Shared improvement" filter — a card whose rank is
-                    # already on the board pairs the board for every
-                    # player, so the category bump is not exclusive to
-                    # Hero. Example: K3 on Q-Q-2-2 — eval7 says Q or 2
-                    # takes Hero from Two Pair → Full House, but every
-                    # opponent's category goes up the same amount and
-                    # anyone holding a Q makes quads. Skip those.
+                    # "Shared improvement" filter — only skip when the
+                    # improvement is a PAIR-FAMILY class change driven
+                    # by pairing the board (Pair / Two Pair / Trips /
+                    # Full House / Quads). For flush / straight /
+                    # straight-flush outs the card's rank doesn't
+                    # matter — they're hero-exclusive even when the
+                    # rank happens to also be on the board.
+                    PAIR_FAMILY = {
+                        'Pair', 'Two Pair', 'Trips', 'Three of a Kind',
+                        'Full House', 'Quads', 'Four of a Kind',
+                    }
                     if (new_card_rank in board_rank_set
-                            and new_card_rank not in hero_ranks_held):
+                            and new_card_rank not in hero_ranks_held
+                            and new_class in PAIR_FAMILY):
                         continue
                     # Three paths to count this card as an out:
                     # (a) Hand category strictly improves AND lands at
@@ -3490,21 +3495,29 @@ class TheoryOfMindPanel(QWidget):
         suits = ('s', 'h', 'd', 'c')
         outs = []
         for r in rank_order:
+            _PAIR_FAMILY = {
+                'Pair', 'Two Pair', 'Trips', 'Three of a Kind',
+                'Full House', 'Quads', 'Four of a Kind',
+            }
             for s in suits:
                 key = r + s
                 if key in used:
-                    continue
-                # Shared-improvement filter — a board-rank card that
-                # Hero doesn't hold pairs the board for EVERY player,
-                # so it doesn't exclusively help Hero.
-                if (r in board_rank_set
-                        and r not in hero_ranks_held):
                     continue
                 try:
                     new_rank = _e7.evaluate(
                         hero_e7 + board_e7 + [_e7.Card(key)])
                     new_class = _e7.handtype(new_rank)
                 except Exception:
+                    continue
+                # Shared-improvement filter — only skip when the
+                # improvement is a PAIR-FAMILY class change driven
+                # by pairing the board (Pair / Two Pair / Trips /
+                # Full House / Quads). For flush / straight outs the
+                # card's rank doesn't matter — they're hero-exclusive
+                # even when the rank happens to also be on the board.
+                if (r in board_rank_set
+                        and r not in hero_ranks_held
+                        and new_class in _PAIR_FAMILY):
                     continue
                 new_idx = _idx(new_class)
                 # (a) Strict class improvement landing at Pair or better
