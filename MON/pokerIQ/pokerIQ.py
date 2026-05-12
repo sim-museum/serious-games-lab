@@ -5424,18 +5424,34 @@ class TheoryOfMindPanel(QWidget):
                     why_line = ("Gordon's rule: the 4th raise means aces. "
                                 "Save chips for a clean spot.")
             elif facing_raise:
-                # Re-raised before us
+                # Re-raised before us. Special-case small/medium pocket
+                # pairs — even tier 4/5 pairs are profitable calls when
+                # implied odds (eff_stack ÷ price) ≥ 15:1, because
+                # flopping a set is a 1-in-8.5 monster.
+                is_pocket_pair = (len(hand_key) == 2)
+                implied_ratio = (
+                    hero_stack / max(1, to_call)
+                    if to_call > 0 else 1e9)
                 if tier <= 2:
                     bet_raise = True
                     action_line = f"3-BET  (tier {tier} hand vs raise)"
                     why_line = ("Re-raise to isolate / take the lead. "
                                 "Gordon: 3x the previous bet.")
+                elif is_pocket_pair and implied_ratio >= 15:
+                    action_line = (f"CALL — set mine ({implied_ratio:.0f}:1)")
+                    why_line = ("Small pair + deep stacks: 12% to flop a "
+                                "set, big implied odds. Gordon: 'call "
+                                "cheap for set value, fold the flop "
+                                "without a set'.")
                 elif tier == 3 and position in ('CO', 'BTN'):
                     action_line = "CALL in position"
                     why_line = "Set/draw equity + positional advantage."
                 else:
                     check_fold = True
-                    action_line = f"FOLD  (tier {tier} vs raise)"
+                    why_pair = (" (implied "
+                                f"{implied_ratio:.0f}:1 < 15:1)"
+                                if is_pocket_pair else "")
+                    action_line = f"FOLD  (tier {tier} vs raise){why_pair}"
                     why_line = "Out of position / dominated; wait."
             elif first_in:
                 # Open-raising decision
