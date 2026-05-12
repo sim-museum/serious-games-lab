@@ -5426,16 +5426,18 @@ For more information, see the README file."""
                 callback=self._on_closed_room_complete
             )
 
-            # Wait for closed room to complete (with timeout)
-            import time
-            timeout = 60  # 60 seconds max
-            start_time = time.time()
-            while not self.match_controller.is_board_complete(board.board_number):
-                QApplication.processEvents()
-                time.sleep(0.1)
-                if time.time() - start_time > timeout:
-                    print("Closed room timeout", flush=True)
-                    break
+            # Wait for closed room to complete via a proper Qt event
+            # loop. The previous version polled QApplication.process
+            # Events + time.sleep(0.1) which raced the worker's
+            # finished signal: if the signal landed BETWEEN an
+            # is_board_complete() check and the next processEvents
+            # tick, the loop stayed stuck until the 100 ms sleep
+            # expired (visible as a stutter). The new path blocks on
+            # the worker's finished signal directly so completion
+            # unblocks instantly and the UI keeps pumping events.
+            if not self.match_controller.wait_for_closed_room(
+                    board.board_number, timeout_ms=60000):
+                print("Closed room timeout", flush=True)
 
             # Calculate score for the dialog
             ns_score = score if contract.declarer.is_ns() else -score
@@ -6051,17 +6053,15 @@ For more information, see the README file."""
         self.status_label.setText("Waiting for closed room (all AI)...")
         QApplication.processEvents()
 
-        # Wait for completion (max 120s, keep UI responsive)
-        start_time = time.time()
-        while not temp_controller.is_board_complete(board_num):
-            QApplication.processEvents()
-            time.sleep(0.1)
-            if time.time() - start_time > 120:
-                self.status_label.setText("Closed room timed out")
-                if waiting_dialog is not None:
-                    waiting_dialog.close()
-                self._pending_closed_room = None
-                return
+        # Event-loop wait (no more tight processEvents+sleep loop).
+        # Same race-free path as _show_result's teams-match wait.
+        if not temp_controller.wait_for_closed_room(
+                board_num, timeout_ms=120000):
+            self.status_label.setText("Closed room timed out")
+            if waiting_dialog is not None:
+                waiting_dialog.close()
+            self._pending_closed_room = None
+            return
 
         if waiting_dialog is not None:
             waiting_dialog.close()
