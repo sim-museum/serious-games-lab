@@ -5884,6 +5884,15 @@ class TheoryOfMindPanel(QWidget):
               and street == 'Preflop'):
             watch = "WATCH: ~20 BB — push/fold soon."
 
+        # ------- Gordon's setup-questions block -------
+        # From Phil Gordon's Little Green Book: "Every single time
+        # it's my turn to act, I try to run a simple script through
+        # my head." The four setup questions go ABOVE the bet/raise
+        # vs check/fold pair. Each is answered with the data we
+        # already know from the panel / session.
+        setup_answers = self._gordon_setup_answers(
+            ctx, hand_key, position, street)
+
         # ------- Assemble (rich-text colored lines) -------
         q1_tag = ("<span style='color:#88ff88'>YES</span>"
                   if bet_raise else "<span style='color:#888'>no</span>")
@@ -5892,12 +5901,23 @@ class TheoryOfMindPanel(QWidget):
         action_color = ("#88ff88" if bet_raise
                         else "#ff7777" if check_fold else "#ffd966")
         combo_desc = self._gordon_combo_description(hand_key)
+        Q = "<span style='color:#9cd6ff'>"   # question heading color
+        E = "</span>"
         lines = [
             f"<b>Hand</b> [{hand_str}]  tier {tier}  ·  pos {position}  ·  "
             f"{stack_bb:.0f}bb  ·  {street}",
             f"<span style='color:#9cd6ff'>{combo_desc}</span>",
-            f"<b>Q1 Bet / Raise?</b>  → {q1_tag}      "
-            f"<b>Q2 Check / Fold?</b>  → {q2_tag}",
+            "<b>Gordon's script</b> — run through every turn:",
+            f"{Q}Q. How are my opponents playing?{E}  "
+            f"{setup_answers['style']}",
+            f"{Q}Q. What hands are they likely to hold?{E}  "
+            f"{setup_answers['ranges']}",
+            f"{Q}Q. What do they think I have?{E}  "
+            f"{setup_answers['image']}",
+            f"{Q}Q. Am I in good position?{E}  "
+            f"{setup_answers['position']}",
+            f"<b>Q. Should I bet / raise?</b>  → {q1_tag}    "
+            f"<b>Q. Should I check / fold?</b>  → {q2_tag}",
             f"<b style='color:{action_color}'>ACTION:</b>  {action_line}",
             f"<b>WHY:</b>  {why_line}",
         ]
@@ -5908,6 +5928,123 @@ class TheoryOfMindPanel(QWidget):
                 "<span style='color:#888'><i>Unraised pot — "
                 "decision is hand-tier × position, not pot odds.</i></span>")
         return "<br>".join(lines)
+
+    def _gordon_setup_answers(self, ctx, hand_key, position, street) -> dict:
+        """Compute one-line answers to Phil Gordon's four setup
+        questions, customised to the hand / table state.
+
+        Returns a dict with keys: 'style', 'ranges', 'image',
+        'position'. Each value is a short rich-text snippet ready to
+        embed in the Advisor card.
+        """
+        # 1. Opponent style — aggregate VPIP / PFR / AGF from this
+        # session's per-player history; classify the field as TIGHT /
+        # NORMAL / LOOSE based on the average.
+        win = getattr(self, '_owner_window', None)
+        style_ans = "n/a yet (need a few hands of sample)"
+        try:
+            if win is not None:
+                opp_v, opp_p, opp_n = 0, 0, 0
+                hero_name = next(
+                    (p.name for p in ctx.get('players', [])
+                     or ctx.get('opponents', [])
+                     if getattr(p, 'style', None) == 'human'), '')
+                for nm, hist in (
+                        win._player_169_history.items()):
+                    if nm == hero_name:
+                        continue
+                    seen = sum(c.get('seen', 0) for c in hist.values())
+                    played = sum(c.get('played', 0)
+                                 for c in hist.values())
+                    raised = sum(c.get('raised', 0)
+                                 for c in hist.values())
+                    if seen >= 3:
+                        opp_v += played
+                        opp_p += raised
+                        opp_n += seen
+                if opp_n >= 6:
+                    vpip = 100.0 * opp_v / opp_n
+                    pfr = 100.0 * opp_p / opp_n
+                    if vpip < 20:
+                        tag = "TIGHT"
+                    elif vpip < 35:
+                        tag = "NORMAL"
+                    else:
+                        tag = "LOOSE"
+                    style_ans = (f"<b>{tag}</b>  ·  field VPIP "
+                                 f"{vpip:.0f}%, PFR {pfr:.0f}%  ·  "
+                                 f"n={opp_n}")
+        except Exception:
+            pass
+
+        # 2. Hands they're likely to hold — pointer to the per-bot
+        # range grids that already live in the tabs.
+        ranges_ans = ("see per-bot tabs — each opponent's estimated "
+                      "range narrows as the betting progresses")
+
+        # 3. What they think YOU have — hero's session VPIP / PFR
+        # IS your image. Tight images get respect for big bets;
+        # loose images get called down.
+        image_ans = "no sample yet"
+        try:
+            if win is not None:
+                hero_name = next(
+                    (p.name for p in ctx.get('players', [])
+                     or ctx.get('opponents', [])
+                     if getattr(p, 'style', None) == 'human'), '')
+                hist = win._player_169_history.get(hero_name, {})
+                seen = sum(c.get('seen', 0) for c in hist.values())
+                played = sum(c.get('played', 0) for c in hist.values())
+                raised = sum(c.get('raised', 0) for c in hist.values())
+                if seen >= 3:
+                    vpip = 100.0 * played / seen
+                    pfr = 100.0 * raised / seen
+                    if vpip < 20:
+                        tag = "TIGHT image"
+                        tail = ("they fold to your bets, fold-equity "
+                                "is high")
+                    elif vpip < 35:
+                        tag = "balanced image"
+                        tail = ("standard respect — neither overly "
+                                "called nor folded to")
+                    else:
+                        tag = "LOOSE image"
+                        tail = ("they call you down — value-bet "
+                                "thin, bluff less")
+                    image_ans = (f"<b>{tag}</b>  ·  your VPIP "
+                                 f"{vpip:.0f}% / PFR {pfr:.0f}%  ·  "
+                                 f"{tail}")
+        except Exception:
+            pass
+
+        # 4. Position — Gordon: late position is "kind of money",
+        # blinds have negative expectation.
+        pos_lookup = {
+            'UTG': ("<b style='color:#ff7777'>EARLY</b> — "
+                    "act first; play tight."),
+            'EP':  ("<b style='color:#ff7777'>EARLY</b> — "
+                    "act first; play tight."),
+            'MP':  ("<b style='color:#ffd966'>MIDDLE</b> — "
+                    "neutral."),
+            'CO':  ("<b style='color:#88ff88'>LATE</b> — "
+                    "Gordon: 'cutoff is kind of money'."),
+            'BTN': ("<b style='color:#88ff88'>LATE</b> — "
+                    "best seat; widest open range."),
+            'SB':  ("<b style='color:#ff7777'>BLIND</b> — "
+                    "out of position post-flop; -EV seat."),
+            'BB':  ("<b style='color:#ff7777'>BLIND</b> — "
+                    "out of position post-flop; -EV seat."),
+        }
+        position_ans = pos_lookup.get(
+            position.upper(),
+            "n/a")
+
+        return {
+            'style': style_ans,
+            'ranges': ranges_ans,
+            'image': image_ans,
+            'position': position_ans,
+        }
 
     def _gordon_open_size(self, position: str, bb: float,
                           pot: float) -> str:
