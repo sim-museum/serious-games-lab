@@ -25,7 +25,8 @@ class ReviewDialog(QDialog):
     }
 
     def __init__(self, parent=None, board=None, auction=None, tricks=None,
-                 contract=None, engine=None):
+                 contract=None, engine=None, original_hands=None,
+                 table_view=None):
         super().__init__(parent)
         self.setWindowTitle("Review")
         self.setMinimumWidth(820)
@@ -39,6 +40,13 @@ class ReviewDialog(QDialog):
         self.engine = engine
         self.current_position = 0
         self.max_position = len(self.auction) + len(self.tricks) * 4
+        # The main-window TableView and the pre-play 13-card snapshot
+        # let us animate the table as the user steps through positions:
+        # each navigation tick reshapes the four hands to "remaining
+        # cards" and places the in-progress trick in the centre. Either
+        # being None falls back to text-only review (the old behaviour).
+        self.original_hands = original_hands
+        self.table_view = table_view
 
         self._setup_ui()
         self._update_display()
@@ -411,6 +419,22 @@ class ReviewDialog(QDialog):
         )
         dlg.exec()
 
+    def closeEvent(self, event):
+        """Restore the table to its post-hand view when the dialog closes.
+
+        While the dialog is open we mutate the live table_view to mirror
+        the review position; on close we put it back into end-of-hand
+        view (all 13 cards face up, winner outlines) so the user sees
+        the same picture they had before opening the review.
+        """
+        if self.table_view is not None and self.original_hands:
+            try:
+                self.table_view.show_end_of_hand_view(
+                    self.original_hands, self.tricks)
+            except Exception:
+                pass
+        super().closeEvent(event)
+
     def _on_actions(self):
         """Q-Plus `.actionlist` — preparing user actions in advance.
         Not implemented in ben_bridge; the live blunder check covers
@@ -441,3 +465,26 @@ class ReviewDialog(QDialog):
         self.auction_display.setText(self._format_auction())
         self.play_display.setText(self._format_play())
         self._update_action_label()
+        self._sync_table_view()
+
+    def _sync_table_view(self):
+        """Push the current review position to the main-window table.
+
+        While the position is still in the auction phase the table is
+        left alone (no card has been played yet). Once we cross into
+        the play phase, each step removes cards from the hands and
+        drops them into the centre trick area on the main window.
+        Falls back silently when no table_view / original_hands were
+        provided.
+        """
+        if self.table_view is None or not self.original_hands:
+            return
+        auction_len = len(self.auction)
+        cards_played = max(0, self.current_position - auction_len)
+        try:
+            self.table_view.show_review_position(
+                self.original_hands, self.tricks, cards_played)
+        except Exception:
+            # The animation is purely cosmetic; never let it break the
+            # text-only review flow.
+            pass

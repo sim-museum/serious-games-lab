@@ -7466,8 +7466,17 @@ For more information, see the README file."""
             self.review_btn.setEnabled(phase == 'finished')
 
     def _on_review(self):
-        """Review the completed hand."""
+        """Review the completed hand.
+
+        Non-modal so the user can interact with the main window while
+        reviewing — drag the dialog to a second monitor, open the
+        bidding-system / score sheet / hint, etc. As the user navigates
+        positions the dialog drives the table view (cards leave hands
+        and slide into the centre trick area), so the animation plays
+        out on the main screen as well as in the text review.
+        """
         from .dialogs import ReviewDialog
+        from .dialogs.dialog_style import make_detachable
 
         if not self.controller.board:
             self.status_label.setText("No deal to review")
@@ -7490,8 +7499,26 @@ For more information, see the README file."""
             tricks=tricks,
             contract=contract_str,
             engine=getattr(self, 'engine', None),
+            original_hands=getattr(self, 'original_hands', None),
+            table_view=self.table_view,
         )
-        dialog.exec()
+        make_detachable(dialog)
+        dialog.show()
+        dialog.raise_()
+        # Keep a reference so the dialog isn't GC'd; sweep dead
+        # wrappers from prior reviews (make_detachable sets
+        # WA_DeleteOnClose, after which isVisible raises RuntimeError).
+        if not hasattr(self, '_review_dialogs'):
+            self._review_dialogs = []
+        survivors = []
+        for d in self._review_dialogs:
+            try:
+                if d.isVisible():
+                    survivors.append(d)
+            except RuntimeError:
+                pass
+        survivors.append(dialog)
+        self._review_dialogs = survivors
 
     def _on_previous_deal(self):
         """Go to the previous deal."""

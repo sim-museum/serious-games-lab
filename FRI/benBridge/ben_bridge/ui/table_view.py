@@ -1536,5 +1536,104 @@ class TableView(QWidget):
             except Exception:
                 pass
 
+    def show_review_position(self, original_hands, tricks, cards_played: int):
+        """Animate the table to the n-th card of the review.
+
+        ``original_hands`` is the {Seat: Hand} snapshot from the start
+        of play (MainWindow caches this as ``self.original_hands`` in
+        ``_on_new_deal``). ``tricks`` is the list of completed Trick
+        objects from the BoardState. ``cards_played`` is the linear
+        index 0..52 into the play stream — 0 = start of play, 4 = end
+        of trick 1, etc.
+
+        Each invocation re-renders:
+          * Every hand widget with its remaining cards at this point.
+          * The centre trick area with whichever 0-3 cards are sitting
+            on the table for the in-progress trick.
+          * Winning-card outlines for tricks that have completed at or
+            before this point (carry-over from end-of-hand view).
+        """
+        if not original_hands or not tricks:
+            return
+        cards_played = max(0, int(cards_played))
+
+        # 1) Build "remaining cards" per logical seat by walking the
+        #    trick history and removing each played card from the
+        #    original 13-card lists. Stop after `cards_played` cards.
+        remaining = {seat: list(h.cards) for seat, h in original_hands.items()}
+        played_so_far = 0
+        current_trick = None              # in-progress trick, if any
+        completed_tricks = []
+        winner_cards = {seat: [] for seat in original_hands}
+        for tr in tricks:
+            if played_so_far >= cards_played:
+                break
+            cards_list = list(getattr(tr, 'cards', []) or [])
+            leader = getattr(tr, 'leader', None)
+            if leader is None or not cards_list:
+                continue
+            leader_idx = int(leader.value) if hasattr(leader, 'value') else 0
+            in_this_trick = []
+            for j, c in enumerate(cards_list):
+                if played_so_far + j >= cards_played:
+                    break
+                seat_val = (leader_idx + j) % 4
+                seat = Seat(seat_val)
+                hand_cards = remaining.get(seat, [])
+                try:
+                    hand_cards.remove(c)
+                except ValueError:
+                    pass
+                in_this_trick.append((seat, c))
+            consumed = len(in_this_trick)
+            if consumed == len(cards_list):
+                # Whole trick consumed — count the winner.
+                winner = getattr(tr, 'winner', None)
+                if (winner is not None and hasattr(winner, 'value')
+                        and len(cards_list) == 4):
+                    win_idx = (int(winner.value) - leader_idx) % 4
+                    if 0 <= win_idx < len(cards_list):
+                        winner_cards.setdefault(winner, []).append(
+                            cards_list[win_idx])
+                completed_tricks.append(tr)
+                current_trick = None
+            else:
+                current_trick = in_this_trick
+            played_so_far += consumed
+
+        # 2) Render the hands. We need the widget at each *physical*
+        #    seat to show the logical seat's remaining cards. All four
+        #    panels are unhidden because review shows the whole table.
+        from ben_backend.models import Hand
+        for physical_seat, widget in self.hand_widgets.items():
+            try:
+                widget.setVisible(True)
+            except Exception:
+                pass
+            logical = self._logical_seat(physical_seat)
+            cards = remaining.get(logical, [])
+            widget.set_hand(Hand(cards=cards), face_up=True)
+            widget.set_selectable(False)
+            wins = winner_cards.get(logical, [])
+            try:
+                if wins:
+                    widget.set_trick_winners(wins)
+                else:
+                    widget.clear_trick_winners()
+            except Exception:
+                pass
+
+        # 3) Centre trick area: show whatever's been played in the
+        #    in-progress trick (0-3 cards). If we landed exactly on a
+        #    trick boundary, clear it so the table reads cleanly.
+        try:
+            self.trick_area.clear_trick()
+            if current_trick:
+                for seat, card in current_trick:
+                    self.trick_area.play_card(self._display_seat(seat), card,
+                                              is_winner=False)
+        except Exception:
+            pass
+
     def set_contract(self, contract_str: str, declarer: str):
         self.contract_label.setText(f"{declarer} {contract_str}")

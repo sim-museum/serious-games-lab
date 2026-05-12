@@ -5,20 +5,23 @@ Two modals that wrap up the post-mortem analysis flow:
 
   DealAnalysisDialog — auction/card-play checkboxes + N/E/S/W seat
       radios + Start/Stop buttons. Picks WHAT to analyse and FOR
-      WHOM. On Start the analyser walks each chosen action and
-      compares the human's move with the engine's recommendation,
+      WHOM. On Start the analyser asks Claude Opus 4.7 to walk the
+      chosen actions and grade each one (good / questionable / bad),
       then opens an EvaluationOfActionsDialog with the results.
 
   EvaluationOfActionsDialog — flat list of every analysed action.
-      Each row carries an evaluation marker (green dot = matches
-      engine recommendation, red dot = differs) plus the action
-      text. Selecting a row could be wired to jump the underlying
-      review dialog to that action; for the MVP the list is
-      informational.
+      Each row carries an evaluation marker (green dot = good
+      / yellow = questionable / red = clear error) plus the brief
+      reason Claude returned. Selecting a row could be wired to
+      jump the underlying review dialog to that action; for the
+      MVP the list is informational.
 
-Neither dialog touches the engine directly when the caller passes
-``engine=None`` (e.g. unit-test path): the list still renders with
-neutral grey markers.
+The previous implementation drove evaluation from BEN's
+``get_card_play`` and ``get_bid`` calls, but BEN refuses to give a
+prediction for out-of-sequence positions (it's a stateful neural
+net), so every action came back with "(engine declined)". Claude
+handles arbitrary positions with the same hit rate as a strong human
+analyst, in one batched call per analysis run.
 """
 
 from __future__ import annotations
@@ -122,13 +125,12 @@ class DealAnalysisDialog(QDialog):
     def _on_start(self):
         from ben_backend.models import Seat
         seat_char = self._selected_seat()
-        seat = Seat.from_char(seat_char)
-        evaluations: List[tuple] = []  # (label, status, detail)
-        # Auction actions for the chosen seat — every bid in the
-        # auction made by them. Status currently always 'neutral'
-        # because a real bid evaluator wants the rule-based bidder
-        # walked over the partial auction, which adds latency; the
-        # MVP shows the list and leaves room to wire that in later.
+        evaluations: List[tuple] = []  # (label, status, detail, key)
+
+        # Pass 1: collect the actions we want Claude to evaluate.
+        # `key` is the prompt-side identifier ("#NN") used to match
+        # Claude's per-line replies back to rows in the result table.
+        actions_for_claude = []   # (key, kind, payload)
         if self.auction_cb.isChecked() and self.auction and self.board:
             dealer = self.board.dealer
             seat_chars = ['N', 'E', 'S', 'W']
@@ -136,13 +138,11 @@ class DealAnalysisDialog(QDialog):
                 bidder = seat_chars[(dealer.value + i) % 4]
                 if bidder != seat_char:
                     continue
-                evaluations.append((
-                    f"#{(i + 1):02d}  bid  {self._fmt_bid(bid)}",
-                    'neutral',
-                    "(bidding evaluation not wired)"))
-        # Card-play actions: every card the chosen seat played, with
-        # a green/red marker for engine agreement when an engine is
-        # available.
+                key = f"#{(i + 1):02d}"
+                label = f"{key}  bid  {self._fmt_bid(bid)}"
+                evaluations.append((label, 'pending', '…', key))
+                actions_for_claude.append(
+                    (key, 'bid', (i, self._fmt_bid(bid))))
         if self.cards_cb.isChecked() and self.tricks:
             for ti, t in enumerate(self.tricks, start=1):
                 leader = t.leader if hasattr(t, 'leader') else None
@@ -153,40 +153,208 @@ class DealAnalysisDialog(QDialog):
                     player_char = ['N', 'E', 'S', 'W'][player_idx]
                     if player_char != seat_char:
                         continue
-                    status, detail = self._evaluate_card_play(
-                        t, ci, seat)
-                    evaluations.append((
-                        f"#{ti:02d}  {self._fmt_card(card)}",
-                        status, detail))
-        # Open the result window.
+                    key = f"#{ti:02d}.{ci + 1}"
+                    label = f"{key}  {self._fmt_card(card)}"
+                    evaluations.append((label, 'pending', '…', key))
+                    actions_for_claude.append(
+                        (key, 'card', (ti, ci, card)))
+
+        if not actions_for_claude:
+            EvaluationOfActionsDialog(self, evaluations).exec()
+            return
+
+        # Pass 2: build one Claude prompt covering every action and
+        # parse the per-line response back into the table.
+        prompt = self._build_claude_prompt(seat_char, actions_for_claude)
+        claude_text, claude_err = self._run_claude(prompt)
+
+        if claude_err:
+            # Surface the failure on every pending row so the user
+            # can see what went wrong instead of bare "(engine
+            # declined)" markers.
+            evaluations = [
+                (lbl, 'neutral', f"(Claude error: {claude_err})", key)
+                for (lbl, _st, _dt, key) in evaluations
+            ]
+        else:
+            verdicts = self._parse_claude_verdicts(claude_text)
+            evaluations = [
+                (lbl, *verdicts.get(key, ('neutral', '(no verdict)')), key)
+                for (lbl, _st, _dt, key) in evaluations
+            ]
+
         result = EvaluationOfActionsDialog(self, evaluations)
         result.exec()
 
-    def _evaluate_card_play(self, trick, card_idx, seat) -> tuple:
-        """Return (status, detail) for a single card-play action.
+    # ---- Claude prompt + parsing --------------------------------------
 
-        status is 'good' / 'bad' / 'neutral'. Without the engine
-        every card is neutral. With the engine we ask BEN for what
-        it would play in the same position and mark agreement.
+    def _build_claude_prompt(self, seat_char: str, actions) -> str:
+        """Build a single prompt that asks Claude to grade every action.
+
+        The shape is deliberately rigid — one line per action — so the
+        regex parser in `_parse_claude_verdicts` lines up reliably.
         """
-        if self.engine is None or self.board is None:
-            return ('neutral',
-                    "(no engine — evaluation skipped)")
-        try:
-            played = trick.cards[card_idx]
-            partial = trick.cards[:card_idx]
-            resp = self.engine.get_card_play(
-                self.board, seat, partial)
-            if resp is None or resp.action is None:
-                return ('neutral', "(engine declined)")
-            if (resp.action.suit == played.suit
-                    and resp.action.rank == played.rank):
-                return ('good',
-                        f"agrees with engine pick {resp.action.to_str()}")
-            return ('bad',
-                    f"engine prefers {resp.action.to_str()}")
-        except Exception as ex:
-            return ('neutral', f"engine error: {ex!r}")
+        from ben_backend.models import Seat
+
+        lines = [
+            "You are an expert bridge analyst. Grade each action below",
+            "from the perspective of the named seat.",
+            "",
+            "Use exactly this format, one line per action, no preamble:",
+            "  <KEY> | good | <≤80-char reason>",
+            "  <KEY> | questionable | <≤80-char reason>",
+            "  <KEY> | bad | <≤80-char reason>",
+            "where <KEY> is the identifier in the action list",
+            "(e.g. #03 or #02.4). Be concise. Do not add headers,",
+            "summaries, or markdown.",
+            "",
+            "Deal:",
+        ]
+        if self.board is not None:
+            for s in (Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST):
+                hand = self.board.hands.get(s)
+                if hand is not None:
+                    lines.append(f"  {s.to_char()}: {self._fmt_hand(hand)}")
+            v = getattr(self.board, 'vulnerability', None)
+            d = getattr(self.board, 'dealer', None)
+            if v is not None and d is not None:
+                lines.append(f"  Dealer: {d.to_char()}    Vul: {v.value}")
+        if self.auction:
+            lines.append("")
+            lines.append("Auction (in dealer order):")
+            lines.append("  " + "  ".join(self._fmt_bid(b) for b in self.auction))
+        if self.tricks:
+            lines.append("")
+            lines.append("Play (each trick is `leader: c1 c2 c3 c4`):")
+            for ti, t in enumerate(self.tricks, start=1):
+                leader = t.leader.to_char() if t.leader is not None else '?'
+                cs = " ".join(self._fmt_card(c) for c in (t.cards or []))
+                w = (f"  (won by {t.winner.to_char()})"
+                     if getattr(t, 'winner', None) is not None else "")
+                lines.append(f"  #{ti:02d} {leader}: {cs}{w}")
+        lines.append("")
+        lines.append(f"Seat to grade: {seat_char}")
+        lines.append("")
+        lines.append("Actions:")
+        for key, kind, payload in actions:
+            if kind == 'bid':
+                _, bid_str = payload
+                lines.append(f"  {key}  bid  {bid_str}")
+            else:
+                ti, ci, card = payload
+                lines.append(f"  {key}  card  {self._fmt_card(card)} "
+                             f"(trick {ti}, position {ci + 1})")
+        lines.append("")
+        lines.append("Begin output:")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _fmt_hand(hand) -> str:
+        """Compact suit-grouped representation of a hand."""
+        from ben_backend.models import Suit
+        by_suit = {Suit.SPADES: [], Suit.HEARTS: [],
+                   Suit.DIAMONDS: [], Suit.CLUBS: []}
+        for c in hand.cards:
+            by_suit[c.suit].append(c.rank)
+        parts = []
+        for s, sym in [(Suit.SPADES, '♠'), (Suit.HEARTS, '♥'),
+                       (Suit.DIAMONDS, '♦'), (Suit.CLUBS, '♣')]:
+            ranks = sorted(by_suit[s], key=lambda r: -r.value
+                           if hasattr(r, 'value') else 0)
+            chars = ''.join(r.to_char() if hasattr(r, 'to_char')
+                            else str(r) for r in ranks) or '—'
+            parts.append(f"{sym}{chars}")
+        return ' '.join(parts)
+
+    def _run_claude(self, prompt: str):
+        """Invoke Claude Opus 4.7 with a progress dialog.
+
+        Returns (text, error). Either may be None. Mirrors the shape
+        of MainWindow._run_claude_with_dialog but returns the raw
+        text so the caller can parse line-by-line verdicts instead
+        of dumping it into a result dialog.
+        """
+        import shutil
+        import subprocess
+        import threading
+        from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel,
+                                     QProgressBar, QApplication)
+        from PyQt6.QtGui import QFont
+
+        if not shutil.which('claude'):
+            return None, "Claude CLI not installed on this machine"
+
+        progress = QDialog(self)
+        progress.setWindowTitle("Deal Analysis")
+        progress.setFixedSize(420, 110)
+        p_layout = QVBoxLayout(progress)
+        p_label = QLabel("Claude Opus 4.7 is grading your actions…")
+        p_label.setFont(QFont("Arial", 12))
+        p_layout.addWidget(p_label)
+        p_bar = QProgressBar()
+        p_bar.setRange(0, 0)
+        p_layout.addWidget(p_bar)
+        progress.show()
+        QApplication.processEvents()
+
+        result = {'text': None, 'error': None}
+
+        def _run():
+            try:
+                r = subprocess.run(
+                    ['claude', '-p',
+                     '--model', 'claude-opus-4-7',
+                     '--max-turns', '1', prompt],
+                    capture_output=True, text=True, timeout=240,
+                )
+                if r.returncode == 0 and (r.stdout or '').strip():
+                    result['text'] = r.stdout.strip()
+                else:
+                    result['error'] = (
+                        (r.stderr or '').strip()[:160]
+                        or f"claude exit {r.returncode}")
+            except subprocess.TimeoutExpired:
+                result['error'] = "claude timed out (240s)"
+            except Exception as ex:
+                result['error'] = f"{ex!r}"
+
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+        while thread.is_alive():
+            QApplication.processEvents()
+            thread.join(timeout=0.1)
+        progress.close()
+        return result['text'], result['error']
+
+    @staticmethod
+    def _parse_claude_verdicts(text: str) -> dict:
+        """Parse Claude's per-action grading into {key: (status, reason)}.
+
+        Lines look like ``#03 | good | reason`` or ``#02.4 | bad | …``.
+        Anything that doesn't match is skipped — the result dict is
+        keyed by the action identifier so the caller can render a
+        neutral marker for any key Claude omitted.
+        """
+        import re
+        out = {}
+        if not text:
+            return out
+        line_re = re.compile(
+            r"^\s*(#\d+(?:\.\d+)?)\s*\|\s*"
+            r"(good|questionable|bad)\s*\|\s*(.+?)\s*$",
+            re.IGNORECASE)
+        status_map = {
+            'good': 'good',
+            'questionable': 'neutral',
+            'bad': 'bad',
+        }
+        for ln in text.splitlines():
+            m = line_re.match(ln)
+            if not m:
+                continue
+            key, verdict, reason = m.group(1), m.group(2).lower(), m.group(3)
+            out[key] = (status_map.get(verdict, 'neutral'), reason)
+        return out
 
     @staticmethod
     def _fmt_bid(bid) -> str:
@@ -246,14 +414,19 @@ class EvaluationOfActionsDialog(QDialog):
             0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(
             1, QHeaderView.ResizeMode.Stretch)
-        for row, (label, status, detail) in enumerate(self.evaluations):
+        for row, entry in enumerate(self.evaluations):
+            # Accept both legacy 3-tuples (label, status, detail) and
+            # the new 4-tuples (label, status, detail, key). The key
+            # is only needed by future row-click navigation.
+            label, status, detail = entry[0], entry[1], entry[2]
             self.table.setItem(row, 0, QTableWidgetItem(label))
-            # Marker glyph: ● in green / red / grey.
+            # Marker glyph: ● in green / yellow / red / grey.
             marker = "●"
             colors = {
                 'good': QColor(0, 160, 50),
                 'bad': QColor(192, 0, 0),
-                'neutral': QColor(140, 140, 140),
+                'neutral': QColor(180, 140, 0),   # questionable = amber
+                'pending': QColor(140, 140, 140),
             }
             item = QTableWidgetItem(f"{marker}  {detail}")
             item.setForeground(colors.get(status, QColor(128, 128, 128)))
