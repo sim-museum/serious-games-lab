@@ -754,9 +754,10 @@ class DirectionArrow(QWidget):
         }
         painter.drawPolygon(QPolygon(pts.get(self.direction, [])))
 
-        painter.setPen(QColor('#ffffff'))
-        # Scale the label font with the arrow widget so the letter is
-        # always readable, regardless of the size the parent picked.
+        # N/S/E/W letter painted in the page-background color so it
+        # blends into the navy background (the user wanted the pink
+        # triangle to read as a pure arrow shape, not a letter-badge).
+        painter.setPen(QColor(COLORS['background']))
         font_pt = max(10, int(min(w, h) * 0.35))
         painter.setFont(QFont("Arial", font_pt, QFont.Weight.Bold))
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.direction)
@@ -1047,7 +1048,11 @@ class TableView(QWidget):
         self.west_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
         self.west_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         west_vbox.addStretch()
-        west_vbox.addWidget(self.west_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        # Anchor the W: Declarer / W: Dummy label against the LEFT
+        # edge of the screen (was AlignCenter, which floated it next
+        # to the trick area in the middle).
+        west_vbox.addWidget(self.west_label,
+                            alignment=Qt.AlignmentFlag.AlignLeft)
         west_vbox.addWidget(self.hand_widgets[Seat.WEST])
         self.hand_widgets[Seat.WEST].setVisible(False)  # Hidden by default
         west_vbox.addStretch()
@@ -1081,7 +1086,10 @@ class TableView(QWidget):
         self.east_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
         self.east_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         east_vbox.addStretch()
-        east_vbox.addWidget(self.east_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        # Anchor the E: Declarer / E: Dummy label against the RIGHT
+        # edge of the screen.
+        east_vbox.addWidget(self.east_label,
+                            alignment=Qt.AlignmentFlag.AlignRight)
         east_vbox.addWidget(self.hand_widgets[Seat.EAST])
         self.hand_widgets[Seat.EAST].setVisible(False)  # Hidden by default
         east_vbox.addStretch()
