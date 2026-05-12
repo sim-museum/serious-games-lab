@@ -4295,6 +4295,14 @@ For more information, see the README file."""
         preamble_parts = [p for p in (system_preamble, engine_text) if p]
         preamble_text = ("\n\n".join(preamble_parts) + "\n\n"
                          if preamble_parts else "")
+        # Cache key derived from the prompt (deterministic in the game
+        # state) so dismissing and re-clicking Hint before play
+        # advances re-shows the same dialog without re-calling Claude.
+        import hashlib as _hashlib
+        hint_cache_key = (
+            "hint:"
+            + _hashlib.sha1(prompt.encode('utf-8')).hexdigest()
+        )
         self._run_claude_with_dialog(
             prompt=prompt,
             title=f"Claude hint — {'bidding' if phase == 'bidding' else 'card play'}",
@@ -4302,6 +4310,7 @@ For more information, see the README file."""
             timeout_seconds=300,
             preamble=preamble_text,
             bdl_text=state_text,
+            cache_key=hint_cache_key,
         )
 
     def _build_hint_state_text(self, board, seat, phase) -> str:
@@ -4477,7 +4486,8 @@ For more information, see the README file."""
 
     def _run_claude_with_dialog(self, prompt: str, title: str, wait_label: str,
                                  timeout_seconds: int = 300, preamble: str = "",
-                                 bdl_text: str = ""):
+                                 bdl_text: str = "",
+                                 cache_key: str | None = None):
         """Run claude -p with a progress dialog, then show the result.
 
         Shared between the end-of-hand analysis and the Hint button. Shows an
@@ -4489,7 +4499,34 @@ For more information, see the README file."""
         inserted) is shown verbatim with annotations highlighted. If
         Claude failed to follow the format, the renderer falls back to
         appending its free-form text after the BDL.
+
+        When `cache_key` is provided, the most-recent result for that
+        key is cached on the MainWindow. A repeat call with the same
+        key short-circuits the Claude invocation entirely and re-shows
+        the cached dialog — used by the Hint button so dismissing then
+        re-clicking before play has advanced doesn't burn another
+        Claude turn.
         """
+        # Cache short-circuit — check BEFORE we open the progress
+        # dialog or spawn the subprocess.
+        if cache_key is not None:
+            cached = getattr(self, '_claude_cache', {}).get(cache_key)
+            if cached is not None:
+                if bdl_text:
+                    preface = preamble.rstrip()
+                    framed = bdl_text
+                    if preface:
+                        framed = preface + "\n\n" + bdl_text
+                    self._show_annotated_bdl_dialog(
+                        title=title,
+                        bdl_text=framed,
+                        claude_text=cached,
+                        error=False,
+                    )
+                else:
+                    self._show_plain_dialog(
+                        title, f"{preamble}{cached}", error=False)
+                return
         import shutil
         import subprocess
         import threading
@@ -4580,6 +4617,13 @@ For more information, see the README file."""
 
         text = result_holder['text']
         error = result_holder['error']
+
+        # Cache the fresh result so a repeat hint click with the same
+        # cache_key skips Claude entirely.
+        if cache_key is not None and text:
+            if not hasattr(self, '_claude_cache'):
+                self._claude_cache = {}
+            self._claude_cache[cache_key] = text
 
         if bdl_text:
             # BDL-annotated rendering. Even on failure we still show the
