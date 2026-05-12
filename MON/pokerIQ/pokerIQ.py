@@ -9119,6 +9119,20 @@ class PokerWindow(QMainWindow):
         self.prefs_btn.clicked.connect(self.show_preferences)
         top_bar.addWidget(self.prefs_btn)
 
+        # Hand Summary button — re-opens the last hand-summary dialog
+        # after it's been dismissed. Disabled until the first hand
+        # ends and a summary has been cached.
+        self.hand_summary_btn = QPushButton("Hand Summary")
+        self.hand_summary_btn.setFixedSize(140, 40)
+        self.hand_summary_btn.setStyleSheet(
+            "QPushButton { font-size: 15px; }")
+        self.hand_summary_btn.setToolTip(
+            "Re-open the most recent Hand Summary dialog. Disabled "
+            "until the first hand has completed.")
+        self.hand_summary_btn.setEnabled(False)
+        self.hand_summary_btn.clicked.connect(self._show_last_hand_summary)
+        top_bar.addWidget(self.hand_summary_btn)
+
         # Network button
         self.network_btn = QPushButton("Network")
         self.network_btn.setFixedSize(90, 40)
@@ -12665,6 +12679,15 @@ class PokerWindow(QMainWindow):
         block expands to its full word-wrapped height — fixing the per-
         block clipping that happened when blocks lived outside the scroll
         area."""
+        # Cache the args so the top-bar "Hand Summary" button can
+        # re-open this dialog after it's been dismissed.
+        self._last_hand_summary_args = (
+            interpretation_text, hand_number, dict(assists_used or {}))
+        try:
+            if hasattr(self, 'hand_summary_btn'):
+                self.hand_summary_btn.setEnabled(True)
+        except Exception:
+            pass
         dialog = QDialog(self)
         dialog.setWindowTitle("Hand Summary")
         dialog.setMinimumSize(600, 500)
@@ -13670,6 +13693,20 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
         layout.addLayout(btn_layout)
 
         dialog.show()
+
+    def _show_last_hand_summary(self):
+        """Re-open the most recent Hand Summary dialog (handler for
+        the top-bar 'Hand Summary' button)."""
+        args = getattr(self, '_last_hand_summary_args', None)
+        if not args:
+            QMessageBox.information(
+                self, "Hand Summary",
+                "No hand summary available yet — play at least one "
+                "hand to generate one.")
+            return
+        text, hand_number, assists_used = args
+        self._show_hand_interpretation_text(
+            text, hand_number, dict(assists_used or {}))
 
     def show_preferences(self):
         """Show preferences dialog with tabbed interface."""
