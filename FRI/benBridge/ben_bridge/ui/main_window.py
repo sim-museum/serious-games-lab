@@ -7429,21 +7429,23 @@ For more information, see the README file."""
             self.status_label.setText("No deal to review")
             return
 
-        # Collect trick information
-        tricks = []
-        if hasattr(self.controller, 'played_tricks') and self.controller.played_tricks:
-            tricks = self.controller.played_tricks
+        # Collect trick information — the controller stores them on
+        # board.tricks, not played_tricks. The old code read a
+        # non-existent attribute, so review only ever stepped through
+        # the auction.
+        tricks = list(self.controller.board.tricks or [])
 
         contract_str = None
         if self.controller.board.contract:
-            contract_str = str(self.controller.board.contract)
+            contract_str = self.controller.board.contract.to_str()
 
         dialog = ReviewDialog(
             self,
             board=self.controller.board,
             auction=self.controller.board.auction,
             tricks=tricks,
-            contract=contract_str
+            contract=contract_str,
+            engine=getattr(self, 'engine', None),
         )
         dialog.exec()
 
