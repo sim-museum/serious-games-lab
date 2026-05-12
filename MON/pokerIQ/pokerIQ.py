@@ -1614,6 +1614,26 @@ class HeroOutsTab(QWidget):
         outer.setSpacing(12)
         outer.setContentsMargins(15, 15, 15, 15)
 
+        # Top row: "Betting history — Hero" button anchored to the
+        # right so it mirrors the per-opponent tabs. Opens the same
+        # 169-grid heatmap, but for the hero's own session play.
+        top_row = QHBoxLayout()
+        top_row.addStretch(1)
+        self.history_btn = QPushButton("Betting history — Hero (You)")
+        self.history_btn.setFixedHeight(36)
+        self.history_btn.setStyleSheet(
+            "QPushButton { background: #2a3a4a; color: #ddd;"
+            " font-size: 14pt; font-weight: bold;"
+            " padding: 0 14px; border: 1px solid #4a5a6a;"
+            " border-radius: 5px; }"
+            "QPushButton:hover { background: #3a4a5a; }")
+        self.history_btn.setToolTip(
+            "Open YOUR session play pattern (169 hole-card combos "
+            "× win / loss / fold)")
+        self.history_btn.clicked.connect(self._show_history)
+        top_row.addWidget(self.history_btn)
+        outer.addLayout(top_row)
+
         # The hero's hole cards were duplicated here originally; they
         # already live at the top of the screen ("Your Hand (Button):"
         # on the card bar), so showing them again wastes vertical
@@ -2112,6 +2132,44 @@ class HeroOutsTab(QWidget):
             return self._HAND_CLASS_ORDER.index(hand_class)
         except ValueError:
             return len(self._HAND_CLASS_ORDER)
+
+    def _show_history(self):
+        """Pop the 169-grid heatmap of the HERO's session history.
+
+        Mirrors TheoryOfMindTab._show_history but resolves the hero's
+        name from the owner PokerWindow (seat 0 in single-player,
+        self.my_seat in network mode) rather than a static
+        player_name field.
+        """
+        # Walk up the parent chain to find the PokerWindow.
+        win = None
+        parent = self.parent()
+        while parent is not None:
+            if hasattr(parent, '_player_169_history'):
+                win = parent
+                break
+            owner = getattr(parent, '_owner_window', None)
+            if owner is not None and hasattr(owner, '_player_169_history'):
+                win = owner
+                break
+            parent = parent.parent()
+
+        history = {}
+        hero_label = "Hero"
+        if win is not None:
+            try:
+                seat = (win.my_seat
+                        if getattr(win, 'my_seat', None) is not None
+                        else 0)
+                if 0 <= seat < len(win.players):
+                    hero_label = win.players[seat].name
+                    history = win._player_169_history.get(
+                        hero_label, {})
+            except Exception:
+                pass
+
+        dlg = PlayerHistoryDialog(hero_label, history, parent=self)
+        dlg.exec()
 
 
 class TheoryOfMindTab(QWidget):
