@@ -10356,6 +10356,56 @@ class PokerWindow(QMainWindow):
                 else:
                     panel.set_best_hand("")
 
+    def _compute_stats_for_panel(self):
+        """Build the (name, true_eq, perc_eq, pot_odds, active, hero)
+        tuple list for the stats panel, using the CURRENT live game
+        state. Extracted from update_stats_display so the spectator
+        snapshot recorder can capture the same data at each street
+        boundary.
+        Returns None if no stats are computable (no hands dealt yet).
+        """
+        if not self.players or not any(p.hand for p in self.players):
+            return None
+        game_state = {
+            'board': [str(c) for c in self.board],
+            'pot': self.pot,
+            'players': self.players,
+            'current_bet': self.current_bet
+        }
+        true_equities = {}
+        if self.god_mode:
+            active_hands = [(p, p.hand) for p in self.players if p.active and p.hand]
+            if active_hands:
+                cache_key = (
+                    tuple(str(c) for c in self.board),
+                    tuple((p.name, tuple(str(c) for c in p.hand))
+                          for p, _ in active_hands)
+                )
+                if cache_key != self.equity_cache_key:
+                    self.equity_cache = calc_multiway_equity(
+                        active_hands,
+                        [str(c) for c in self.board],
+                        iterations=1000
+                    )
+                    self.equity_cache_key = cache_key
+                true_equities = self.equity_cache
+        stats = []
+        for p in self.players:
+            if p.hand:
+                perceived_equity, pot_odds, to_call = (
+                    p.calculate_current_stats(game_state, False))
+                if self.god_mode:
+                    true_equity = true_equities.get(p, 0.0)
+                    stats.append((p.name, true_equity, perceived_equity,
+                                  pot_odds, p.active, p.style == 'human'))
+                else:
+                    stats.append((p.name, None, perceived_equity,
+                                  pot_odds, p.active, p.style == 'human'))
+            else:
+                stats.append((p.name, None, 0, 0, p.active,
+                              p.style == 'human'))
+        return stats
+
     def update_stats_display(self):
         """Update the graphical stats panel."""
         self.stats_panel.setVisible(self.show_stats)
@@ -10364,56 +10414,10 @@ class PokerWindow(QMainWindow):
             self.stats_panel.clear_stats()
             return
 
-        if not self.players or not any(p.hand for p in self.players):
+        stats = self._compute_stats_for_panel()
+        if stats is None:
             self.stats_panel.clear_stats()
             return
-
-        game_state = {
-            'board': [str(c) for c in self.board],
-            'pot': self.pot,
-            'players': self.players,
-            'current_bet': self.current_bet
-        }
-
-        # In god mode, calculate multiway equities that sum to 100%
-        # Use caching to prevent flickering from Monte Carlo variance
-        true_equities = {}
-        if self.god_mode:
-            active_hands = [(p, p.hand) for p in self.players if p.active and p.hand]
-            if active_hands:
-                # Create cache key from board + active hands
-                cache_key = (
-                    tuple(str(c) for c in self.board),
-                    tuple((p.name, tuple(str(c) for c in p.hand)) for p, _ in active_hands)
-                )
-
-                if cache_key != self.equity_cache_key:
-                    # Recalculate only when state changes
-                    self.equity_cache = calc_multiway_equity(
-                        active_hands,
-                        [str(c) for c in self.board],
-                        iterations=1000  # More iterations for stability
-                    )
-                    self.equity_cache_key = cache_key
-
-                true_equities = self.equity_cache
-
-        stats = []
-        for p in self.players:
-            if p.hand:
-                # Perceived equity: what player thinks (vs random cards)
-                perceived_equity, pot_odds, to_call = p.calculate_current_stats(game_state, False)
-
-                if self.god_mode:
-                    # True equity from multiway calculation (sums to 100%)
-                    true_equity = true_equities.get(p, 0.0)
-                    stats.append((p.name, true_equity, perceived_equity, pot_odds, p.active, p.style == 'human'))
-                else:
-                    # Without god mode, only show perceived equity
-                    stats.append((p.name, None, perceived_equity, pot_odds, p.active, p.style == 'human'))
-            else:
-                stats.append((p.name, None, 0, 0, p.active, p.style == 'human'))
-
         self.stats_panel.set_stats(stats)
 
     def deal_hand(self):
@@ -11219,6 +11223,11 @@ class PokerWindow(QMainWindow):
             'street_idx': int(street_idx),
             'board': [str(c) for c in board],
             'action_log': list(action_log),
+            # Per-player equity bars (Real / Thinking / Pot Odds) at
+            # the moment of the snapshot. Restored on Previous Street
+            # so a folded spectator sees the equities AS THEY WERE on
+            # each street, not the live current ones.
+            'stats': self._compute_stats_for_panel(),
         }
         # Remember whether the spectator was on the latest snapshot
         # BEFORE we mutate the list. `view < 0` is the explicit "live"
@@ -11280,6 +11289,16 @@ class PokerWindow(QMainWindow):
                 self.log_label.setText(self._format_action_log_html(log))
             except AttributeError:
                 self.log_label.setText(" | ".join(log))
+        except Exception:
+            pass
+        # Restore the per-player equity bars (Real / Thinking / Pot
+        # Odds) to the values captured at this snapshot. Lets a
+        # folded spectator look back at how the equities evolved
+        # street-by-street.
+        try:
+            snap_stats = snap.get('stats')
+            if snap_stats and self.show_stats:
+                self.stats_panel.set_stats(snap_stats)
         except Exception:
             pass
 
