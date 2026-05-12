@@ -742,8 +742,8 @@ class DirectionArrow(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor('#d0d0d0'), 2))
-        painter.setBrush(QBrush(QColor('#d0d0d0')))
+        painter.setPen(QPen(QColor('#ffc0cb'), 2))
+        painter.setBrush(QBrush(QColor('#ffc0cb')))
 
         w, h = self.width(), self.height()
         pts = {
