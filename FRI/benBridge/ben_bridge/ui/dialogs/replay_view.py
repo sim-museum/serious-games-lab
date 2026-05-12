@@ -55,21 +55,29 @@ class MiniHandWidget(QWidget):
             self.suit_labels[suit] = lbl
             layout.addWidget(lbl)
 
-    def set_hand(self, hand: Hand, played_cards: List[Card] = None):
+    def set_hand(self, hand: Hand, played_cards: List[Card] = None,
+                 winning_cards: List[Card] = None):
         """Set the hand to display.
 
         Args:
             hand: The hand to display
-            played_cards: Cards already played (shown dimmed or removed)
+            played_cards: Cards already played (shown dimmed)
+            winning_cards: Cards that WON their trick (highlighted in
+                gold). Subset of played_cards; the gold style takes
+                precedence over the played-but-not-winner style.
         """
         if played_cards is None:
             played_cards = []
+        if winning_cards is None:
+            winning_cards = []
 
         from ..styles import get_suit_color
         suit_symbols = {Suit.SPADES: '\u2660', Suit.HEARTS: '\u2665',
                        Suit.DIAMONDS: '\u2666', Suit.CLUBS: '\u2663'}
         suit_names = {Suit.SPADES: 'spades', Suit.HEARTS: 'hearts',
                      Suit.DIAMONDS: 'diamonds', Suit.CLUBS: 'clubs'}
+
+        winners_set = {(c.suit, c.rank) for c in winning_cards}
 
         fs = self.FONT_SIZE
         for suit in [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]:
@@ -85,8 +93,20 @@ class MiniHandWidget(QWidget):
                 parts = []
                 for card in suit_cards:
                     rank = card.rank.to_char()
-                    if card in played_cards:
-                        parts.append(f"<span style='background-color:#404040;color:#fff;padding:0 2px;border-radius:2px'>{rank}</span>")
+                    if (card.suit, card.rank) in winners_set:
+                        # Trick-winning card \u2014 gold background, dark
+                        # text. Keep the suit-coloured pip elsewhere
+                        # so the highlight reads at a glance.
+                        parts.append(
+                            "<span style='background-color:#ffd24a;"
+                            "color:#202020;padding:0 3px;"
+                            "border-radius:2px;font-weight:bold'>"
+                            f"{rank}</span>")
+                    elif card in played_cards:
+                        parts.append(
+                            "<span style='background-color:#404040;"
+                            "color:#fff;padding:0 2px;"
+                            f"border-radius:2px'>{rank}</span>")
                     else:
                         parts.append(rank)
                 card_str = " ".join(parts)
@@ -304,6 +324,7 @@ class ReplayViewDialog(QDialog):
 
         # Calculate which cards have been played
         played_cards = {seat: [] for seat in Seat}
+        winning_cards = {seat: [] for seat in Seat}
 
         # Count through tricks and cards
         for t_idx in range(self.current_trick_idx):
@@ -313,6 +334,11 @@ class ReplayViewDialog(QDialog):
                 for c_idx, card in enumerate(trick.cards):
                     seat = Seat((leader.value + c_idx) % 4)
                     played_cards[seat].append(card)
+                if trick.winner is not None:
+                    win_idx = (trick.winner.value - leader.value) % 4
+                    if 0 <= win_idx < len(trick.cards):
+                        winning_cards[trick.winner].append(
+                            trick.cards[win_idx])
 
         # Add cards from current trick up to current_card_idx
         if self.current_trick_idx < len(tricks):
@@ -330,7 +356,8 @@ class ReplayViewDialog(QDialog):
                             (Seat.WEST, self.west_hand)]:
             hand = self.board_run.original_hands.get(seat)
             if hand:
-                widget.set_hand(hand, played_cards[seat])
+                widget.set_hand(
+                    hand, played_cards[seat], winning_cards[seat])
 
         # Update trick display
         if tricks and self.current_trick_idx < len(tricks):

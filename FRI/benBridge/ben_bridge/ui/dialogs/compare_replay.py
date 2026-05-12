@@ -170,6 +170,11 @@ class _ReplayPanel(QWidget):
     def _render_play(self, card_step: int):
         tricks = self.run.tricks
         played_cards = {s: [] for s in Seat}
+        # Winning cards by seat — populated for every trick that's
+        # already complete at this step. Used by MiniHandWidget to
+        # paint the trick-winning card in gold rather than the
+        # standard "dimmed played" treatment.
+        winning_cards = {s: [] for s in Seat}
 
         cards_left = card_step
         current_trick_idx = 0
@@ -180,6 +185,11 @@ class _ReplayPanel(QWidget):
                 # All four cards of this trick already played
                 for ci, card in enumerate(t.cards):
                     played_cards[Seat((t.leader.value + ci) % 4)].append(card)
+                # The trick is finished, so we know which card won.
+                if t.winner is not None:
+                    win_idx = (t.winner.value - t.leader.value) % 4
+                    if 0 <= win_idx < len(t.cards):
+                        winning_cards[t.winner].append(t.cards[win_idx])
                 cards_left -= n
                 if cards_left == 0:
                     current_trick_idx = ti
@@ -195,7 +205,7 @@ class _ReplayPanel(QWidget):
                 cards_left = 0
                 break
 
-        self._update_hands(played_cards)
+        self._update_hands(played_cards, winning_cards)
 
         fs = self.TRICK_FS
         # Trick area
@@ -250,12 +260,14 @@ class _ReplayPanel(QWidget):
             f'<span style="font-size:16px">Defense: {def_won}</span>'
         )
 
-    def _update_hands(self, played):
+    def _update_hands(self, played, winning=None):
+        winning = winning or {}
         for seat, w in [(Seat.NORTH, self.north), (Seat.EAST, self.east),
                         (Seat.SOUTH, self.south), (Seat.WEST, self.west)]:
             hand = self.run.original_hands.get(seat)
             if hand:
-                w.set_hand(hand, played[seat])
+                w.set_hand(
+                    hand, played[seat], winning.get(seat, []))
 
     def _fmt_card(self, card: Card) -> str:
         from ..styles import get_suit_color
