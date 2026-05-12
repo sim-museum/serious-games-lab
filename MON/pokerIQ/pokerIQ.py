@@ -1672,8 +1672,8 @@ class HeroOutsTab(QWidget):
         self._commit_ratio = _make_line(18, "#dddddd", min_h=38)
         self._commit_ratio.setToolTip(
             "Pot Commitment Ratio = call ÷ current_stack.\n"
-            "  ≥ 33% : EFFECTIVELY COMMITTED — Gordon: 'almost\n"
-            "          certainly can't fold the river'.\n"
+            "  ≥ 33% : EFFECTIVELY COMMITTED — almost certainly\n"
+            "          can't fold the river.\n"
             "  15–33%: meaningful commitment, plan ahead.\n"
             "  < 15% : light commitment, easy to fold later.")
         cv.addWidget(self._commit_ratio)
@@ -2553,8 +2553,9 @@ class MetricDashboard(QWidget):
             'commit': (
                 "Pot Commitment %\n\n"
                 "Fraction of your CURRENT stack you're about to put in.\n"
-                "  • ≥ 33% Gordon: 'almost certainly can't fold next "
-                "street' — proceed only with a hand you'll play.\n"
+                "  • ≥ 33% effectively committed — almost certainly\n"
+                "          can't fold next street; proceed only with\n"
+                "          a hand you'll play.\n"
                 "  • 15–33% meaningful commitment, plan ahead.\n"
                 "  • < 15% light — easy to fold to future pressure."),
             'outs': (
@@ -2611,12 +2612,26 @@ class MetricDashboard(QWidget):
                 "attitudes 1–6."),
             'hero_vpip': (
                 "Hero session: VPIP / PFR / AGF\n\n"
-                "  VPIP (fill)   = % of hands you voluntarily put $ in.\n"
-                "  PFR (tick)    = % of hands you raised preflop.\n"
-                "  AGF (label)   = Aggression Factor "
-                "  = (bets+raises) ÷ calls postflop.\n\n"
-                "Healthy ranges (Hilger Ch 8):\n"
-                "  Tight-aggressive: VPIP 18–24, PFR 14–20, AGF 2–4.\n"
+                "Three values, one tile.\n"
+                "  • VPIP (the BIG % in the centre, and the strip's\n"
+                "    fill length)\n"
+                "       = % of hands you voluntarily put $ in.\n"
+                "  • PFR (the YELLOW TICK on the horizontal strip)\n"
+                "       = % of hands you raised preflop. PFR is\n"
+                "         always ≤ VPIP, so the tick sits at or\n"
+                "         below the bar's end.\n"
+                "  • AGF (the small label under the centre %)\n"
+                "       = Aggression Factor on postflop streets\n"
+                "       = (bets + raises) ÷ calls.\n\n"
+                "Strip-fill colour bands (deviation from TAG):\n"
+                "  RED   = VPIP outside 12–40 % (too tight or way\n"
+                "          too loose — likely calling-station or\n"
+                "          nit).\n"
+                "  AMBER = VPIP 12–16 or 30–40 % (workable but off\n"
+                "          centre).\n"
+                "  GREEN = VPIP 16–30 % (Tight-Aggressive sweet\n"
+                "          spot, Hilger Ch 8).\n\n"
+                "Healthy ranges: VPIP 18–24, PFR 14–20, AGF 2–4.\n"
                 "Use this to spot drift — too tight, too spewy, too "
                 "passive."),
             'ror': (
@@ -5306,8 +5321,7 @@ class TheoryOfMindPanel(QWidget):
 
             else:
                 lines.append(f"[{hand_str}] FOLD")
-                lines.append("Action: Not playable. Patience = profit.")
-                lines.append("'The money you save is worth as much as the money you win.'")
+                lines.append("Action: Not playable.")
 
         # === POSTFLOP ADVICE ===
         else:
@@ -5628,8 +5642,8 @@ class TheoryOfMindPanel(QWidget):
                     hint = ("trouble ace offsuit — open button only, "
                             "fold to aggression.")
                 else:
-                    hint = ("ace-rag offsuit — Gordon: 'loses more "
-                            "money than any other hand type'. Fold.")
+                    hint = ("ace-rag offsuit — dominated by every "
+                            "better ace; fold.")
         elif r1 == 'K' or r2 == 'K':
             other = r2 if r1 == 'K' else r1
             other_i = order.index(other)
@@ -5666,9 +5680,7 @@ class TheoryOfMindPanel(QWidget):
             hint = ("connected offsuit — speculative; rarely open. "
                     "Better hands offsuit lose more than they win.")
         else:
-            hint = ("trash — fold. Patience = profit. Gordon: 'The "
-                    "money you save is worth as much as the money "
-                    "you win.'")
+            hint = "trash — fold."
 
         if nickname:
             return f"{nickname} — {hint}"
@@ -5751,9 +5763,8 @@ class TheoryOfMindPanel(QWidget):
                 elif is_pocket_pair and implied_ratio >= 15:
                     action_line = (f"CALL — set mine ({implied_ratio:.0f}:1)")
                     why_line = ("Small pair + deep stacks: 12% to flop a "
-                                "set, big implied odds. Gordon: 'call "
-                                "cheap for set value, fold the flop "
-                                "without a set'.")
+                                "set, big implied odds. Call cheap for set "
+                                "value; fold the flop without a set.")
                 elif tier == 3 and position in ('CO', 'BTN'):
                     action_line = "CALL in position"
                     why_line = "Set/draw equity + positional advantage."
@@ -5802,7 +5813,7 @@ class TheoryOfMindPanel(QWidget):
                     else:
                         check_fold = True
                         action_line = "FOLD"
-                        why_line = "Patience = profit. No reason to play."
+                        why_line = "No reason to play."
                 else:                     # tier 6 — true trash
                     if position == 'BTN':
                         bet_raise = True
@@ -6032,7 +6043,7 @@ class TheoryOfMindPanel(QWidget):
             'MP':  ("<b style='color:#ffd966'>MIDDLE</b> — "
                     "neutral."),
             'CO':  ("<b style='color:#88ff88'>LATE</b> — "
-                    "Gordon: 'cutoff is kind of money'."),
+                    "second-best seat; wide opens are profitable."),
             'BTN': ("<b style='color:#88ff88'>LATE</b> — "
                     "best seat; widest open range."),
             'SB':  ("<b style='color:#ff7777'>BLIND</b> — "
@@ -14548,9 +14559,17 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                 self, "Save Game",
                 f"Couldn't write the save file:\n{ex}")
             return
-        QMessageBox.information(
-            self, "Save Game",
-            f"Game state saved to:\n{path}")
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("Save Game")
+        box.setText(f"Game state saved to:\n{path}")
+        box.setStyleSheet(
+            "QMessageBox { font-size: 15pt; }"
+            "QMessageBox QLabel { font-size: 15pt; min-width: 560px; }"
+            "QMessageBox QPushButton { font-size: 14pt;"
+            " padding: 6px 18px; min-width: 90px; }"
+        )
+        box.exec()
 
     def _menu_load_game(self):
         """File → Load Game. Replaces in-memory state with the saved
