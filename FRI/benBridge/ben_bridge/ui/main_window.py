@@ -773,6 +773,16 @@ class MainWindow(QMainWindow):
         convert_action.triggered.connect(self._on_convert_deal)
         deal_menu.addAction(convert_action)
 
+        deal_menu.addSeparator()
+
+        dealer_vul_action = QAction("&Dealer and Vulnerability...", self)
+        dealer_vul_action.triggered.connect(self._on_set_dealer_vul)
+        deal_menu.addAction(dealer_vul_action)
+
+        board_num_action = QAction("Set &Board Number...", self)
+        board_num_action.triggered.connect(self._on_set_board_number)
+        deal_menu.addAction(board_num_action)
+
         # Own Deals menu
         own_deals_menu = menubar.addMenu("&Own Deals")
         own_deals_menu.setStyleSheet(self._menu_style)
@@ -2345,6 +2355,90 @@ For more information, see the README file."""
         """Show deal filter dialog"""
         dialog = DealFilterDialog(self)
         dialog.exec()
+
+    def _on_set_dealer_vul(self):
+        """Q-Plus .set-dealer — pick a new dealer and vulnerability
+        for the current deal. Resets the auction (changing dealer
+        mid-auction would misattribute every bid)."""
+        if self.controller.board is None:
+            QMessageBox.information(
+                self, "Dealer & Vulnerability",
+                "Deal a hand first.")
+            return
+        from .dialogs.dealer_vul import DealerVulnerabilityDialog
+        board = self.controller.board
+        dlg = DealerVulnerabilityDialog(
+            initial_dealer=board.dealer,
+            initial_vul=board.vulnerability,
+            parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        new_dealer, new_vul = dlg.get_choice()
+        board.dealer = new_dealer
+        board.vulnerability = new_vul
+        board.auction = []
+        board.contract = None
+        board.tricks = []
+        board.current_trick = None
+        board.declarer_tricks = 0
+        board.defense_tricks = 0
+        self.controller.current_phase = 'bidding'
+        self.controller.current_seat = new_dealer
+        self.controller.declarer = None
+        self.controller.dummy = None
+        self.controller.opening_leader = None
+        self.bidding_box.clear()
+        self.bidding_box.set_auction([], new_dealer)
+        self.bidding_box.setVisible(True)
+        self.table_view.set_board(board)
+        self.status_label.setText(
+            f"Dealer {new_dealer.to_char()}, vul {new_vul.value} — "
+            "auction reset.")
+        self._advance_game()
+
+    def _on_set_board_number(self):
+        """Q-Plus .seednum-d/-f — change the board number on the
+        current deal. The default 16-board rotation table also
+        re-derives dealer + vulnerability from the new number
+        (matching Q-Plus's behaviour); the user can opt out via
+        the toggle in the dialog if they just want to relabel."""
+        if self.controller.board is None:
+            QMessageBox.information(
+                self, "Set Board Number",
+                "Deal a hand first.")
+            return
+        from .dialogs.dealer_vul import BoardNumberDialog
+        board = self.controller.board
+        dlg = BoardNumberDialog(
+            initial=board.board_number, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        new_num = dlg.get_board_number()
+        board.board_number = new_num
+        if dlg.apply_rotation():
+            new_dealer, new_vul = BoardState._board_dealer_vuln(new_num)
+            board.dealer = new_dealer
+            board.vulnerability = new_vul
+            board.auction = []
+            board.contract = None
+            board.tricks = []
+            board.current_trick = None
+            board.declarer_tricks = 0
+            board.defense_tricks = 0
+            self.controller.current_phase = 'bidding'
+            self.controller.current_seat = new_dealer
+            self.controller.declarer = None
+            self.controller.dummy = None
+            self.bidding_box.clear()
+            self.bidding_box.set_auction([], new_dealer)
+            self.bidding_box.setVisible(True)
+            self._advance_game()
+        self.table_view.set_board(board)
+        self.status_label.setText(
+            f"Board {new_num} — "
+            f"dealer {board.dealer.to_char()}, "
+            f"vul {board.vulnerability.value}.")
+        self._update_window_title()
 
     def _on_load_pavlicek(self):
         """Load a deal by Pavlicek number"""
