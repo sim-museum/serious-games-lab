@@ -1481,22 +1481,202 @@ class MainWindow(QMainWindow):
             self._on_open_file_path(filename)
 
     def _on_save_file(self):
-        """Save deals to file"""
+        """Save the current deal to PBN. Uses PBNExporter, which already
+        round-trips deal+auction+play through Pavlicek format."""
+        if self.controller.board is None:
+            QMessageBox.information(
+                self, "Save", "There's no deal to save yet — "
+                "deal a hand or enter one first.")
+            return
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save Deals", "",
-            "PBN Files (*.pbn);;BDL Files (*.bdl);;All Files (*)"
+            self, "Save Deal", "",
+            "PBN Files (*.pbn);;All Files (*)"
         )
-        if filename:
-            self.status_label.setText(f"Saved: {os.path.basename(filename)}")
+        if not filename:
+            return
+        if not filename.lower().endswith('.pbn'):
+            filename = filename + '.pbn'
+        try:
+            from ben_backend.pbn_exporter import PBNExporter
+            from pathlib import Path
+            PBNExporter().export_deal(
+                self.controller.board, Path(filename))
+            self.status_label.setText(
+                f"Saved: {os.path.basename(filename)}")
+        except Exception as ex:
+            QMessageBox.warning(
+                self, "Save failed",
+                f"Could not write PBN file:\n{ex!r}")
 
     def _on_export_html(self):
-        """Export deal as HTML"""
+        """Render the current deal as a standalone HTML page —
+        compass layout for hands, table for auction, list for play,
+        plus contract/result line. The page is self-contained: open
+        it in any browser to inspect or print."""
+        if self.controller.board is None:
+            QMessageBox.information(
+                self, "Export HTML",
+                "There's no deal to export yet.")
+            return
         filename, _ = QFileDialog.getSaveFileName(
             self, "Export HTML", "",
             "HTML Files (*.html);;All Files (*)"
         )
-        if filename:
-            self.status_label.setText(f"Exported: {os.path.basename(filename)}")
+        if not filename:
+            return
+        if not filename.lower().endswith(('.html', '.htm')):
+            filename = filename + '.html'
+        try:
+            html = self._render_board_html(self.controller.board)
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(html)
+            self.status_label.setText(
+                f"Exported: {os.path.basename(filename)}")
+        except Exception as ex:
+            QMessageBox.warning(
+                self, "Export failed",
+                f"Could not write HTML file:\n{ex!r}")
+
+    def _render_board_html(self, board) -> str:
+        """Build a self-contained HTML page for ``board``. Static
+        CSS only; no external dependencies. Suit symbols use the
+        Unicode glyphs ♠ ♥ ♦ ♣ for portability."""
+        from html import escape
+
+        suit_glyph = {0: '♠', 1: '♥', 2: '♦', 3: '♣'}
+        rank_glyph = {0: 'A', 1: 'K', 2: 'Q', 3: 'J', 4: 'T',
+                      5: '9', 6: '8', 7: '7', 8: '6', 9: '5',
+                      10: '4', 11: '3', 12: '2'}
+
+        def hand_block(seat):
+            hand = board.hands.get(seat)
+            if hand is None:
+                return '<em>(hidden)</em>'
+            by_suit = {0: [], 1: [], 2: [], 3: []}
+            for c in hand.cards:
+                by_suit[c.suit.value].append(c.rank.value)
+            rows = []
+            for s_val in (0, 1, 2, 3):
+                ranks = sorted(by_suit[s_val])
+                rstr = ''.join(rank_glyph[r] for r in ranks) or '—'
+                color = '#c00' if s_val in (1, 2) else '#000'
+                rows.append(
+                    f'<div><span style="color:{color}">'
+                    f'{suit_glyph[s_val]}</span> {escape(rstr)}</div>')
+            return '\n'.join(rows)
+
+        # Compass layout: North on top, W and E on the sides, S on bottom.
+        from ben_backend.models import Seat as _Seat
+        n_block = hand_block(_Seat.NORTH)
+        e_block = hand_block(_Seat.EAST)
+        s_block = hand_block(_Seat.SOUTH)
+        w_block = hand_block(_Seat.WEST)
+
+        # Auction rows of four, dealer-aligned.
+        auction_rows_html = ''
+        if board.auction:
+            cells_per_row = ['', '', '', '']
+            order = [_Seat.NORTH, _Seat.EAST,
+                     _Seat.SOUTH, _Seat.WEST]
+            dealer_idx = order.index(board.dealer)
+            cells = ['—'] * dealer_idx + [
+                b.symbol() for b in board.auction]
+            rows = []
+            for i in range(0, len(cells), 4):
+                row_cells = cells[i:i + 4]
+                while len(row_cells) < 4:
+                    row_cells.append('')
+                rows.append(
+                    '<tr>' + ''.join(
+                        f'<td>{escape(c)}</td>'
+                        for c in row_cells) + '</tr>')
+            auction_rows_html = (
+                '<table class="auction">'
+                '<thead><tr><th>N</th><th>E</th><th>S</th><th>W</th>'
+                '</tr></thead><tbody>'
+                + ''.join(rows) + '</tbody></table>')
+
+        # Play tricks.
+        play_html = ''
+        if board.tricks:
+            play_rows = []
+            for i, trick in enumerate(board.tricks, start=1):
+                cards_in_order = []
+                for j, c in enumerate(trick.cards):
+                    seat = _Seat((trick.leader + j) % 4)
+                    glyph = (
+                        f'{suit_glyph[c.suit.value]}'
+                        f'{rank_glyph[c.rank.value]}')
+                    cards_in_order.append(
+                        f'<span title="{seat.to_char()}">'
+                        f'{escape(glyph)}</span>')
+                play_rows.append(
+                    f'<tr><td>{i}</td>'
+                    f'<td>{trick.leader.to_char()}</td>'
+                    f'<td>{" ".join(cards_in_order)}</td>'
+                    f'<td>{trick.winner.to_char() if trick.winner else ""}</td>'
+                    f'</tr>')
+            play_html = (
+                '<h2>Play</h2><table class="play">'
+                '<thead><tr><th>#</th><th>Lead</th>'
+                '<th>Cards (N E S W order from leader)</th>'
+                '<th>Won</th></tr></thead><tbody>'
+                + ''.join(play_rows) + '</tbody></table>')
+
+        contract_line = '—'
+        if board.contract:
+            contract_line = (
+                f'{escape(board.contract.to_str())} by '
+                f'{board.contract.declarer.to_char()}')
+            if len(board.tricks) == 13:
+                contract_line += (
+                    f' — {board.declarer_tricks} tricks '
+                    f'({board.declarer_tricks - 6 - board.contract.level:+d})')
+
+        vul_map = {'None': 'None', 'NS': 'N-S', 'EW': 'E-W',
+                   'Both': 'Both'}
+        vul = vul_map.get(board.vulnerability.value,
+                          str(board.vulnerability.value))
+
+        return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Board {board.board_number}</title>
+<style>
+  body {{ font: 14px sans-serif; max-width: 720px; margin: 1em auto;
+          color: #111; }}
+  .deal {{ display: grid;
+           grid-template-columns: 1fr 1fr 1fr;
+           gap: 4px; text-align: center;
+           border: 1px solid #888; padding: 12px;
+           background: #fafafa; }}
+  .deal > div {{ font-family: monospace; line-height: 1.45;
+                 white-space: pre; min-width: 8em; }}
+  .deal .north {{ grid-column: 2; }}
+  .deal .west  {{ grid-column: 1; text-align: right; }}
+  .deal .east  {{ grid-column: 3; text-align: left; }}
+  .deal .south {{ grid-column: 2; }}
+  table {{ border-collapse: collapse; margin-top: 12px; }}
+  th, td {{ border: 1px solid #ccc; padding: 3px 8px;
+            text-align: center; }}
+  .auction td {{ font-family: monospace; }}
+  .play td:nth-child(3) {{ font-family: monospace; }}
+  h1, h2 {{ margin-bottom: 4px; }}
+</style></head>
+<body>
+<h1>Board {board.board_number}</h1>
+<p><strong>Dealer:</strong> {board.dealer.to_char()} &nbsp;
+   <strong>Vul:</strong> {escape(vul)} &nbsp;
+   <strong>Contract:</strong> {contract_line}</p>
+<div class="deal">
+  <div class="north">N<br>{n_block}</div>
+  <div class="west">W<br>{w_block}</div>
+  <div class="east">E<br>{e_block}</div>
+  <div class="south">S<br>{s_block}</div>
+</div>
+{('<h2>Auction</h2>' + auction_rows_html) if auction_rows_html else ''}
+{play_html}
+</body></html>
+"""
 
     def _maybe_run_one_player_entry(self, board):
         """If the user is in One-Player Mode, pop the manual hand-
@@ -2261,6 +2441,9 @@ For more information, see the README file."""
         if dialog.exec():
             board = dialog.get_board()
             if board:
+                if not hasattr(self, '_entered_deals'):
+                    self._entered_deals = []
+                self._entered_deals.append(board)
                 self._load_entered_board(board)
 
     def _load_entered_board(self, board: BoardState):
@@ -2306,10 +2489,36 @@ For more information, see the README file."""
         self._advance_game()
 
     def _on_save_entered_deals(self):
-        """Save entered deals to file"""
-        # For now, show a message - full implementation would track entered deals
-        QMessageBox.information(self, "Save Deals",
-                              "Save entered deals functionality - coming soon.")
+        """Save the running list of manually-entered deals to a PBN
+        file. Deals enter the list each time the user accepts the
+        Deal Entry dialog; this dump preserves them all in one file
+        (Q-Plus `.save-deal-a` semantics)."""
+        deals = list(getattr(self, '_entered_deals', []))
+        if not deals:
+            QMessageBox.information(
+                self, "Save Deals",
+                "No manually-entered deals yet. Use "
+                "Own Deals → Enter Deal first.")
+            return
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Save Entered Deals", "DATA/",
+            "PBN Files (*.pbn);;All Files (*)"
+        )
+        if not filename:
+            return
+        if not filename.lower().endswith('.pbn'):
+            filename = filename + '.pbn'
+        try:
+            from ben_backend.pbn_exporter import PBNExporter
+            from pathlib import Path
+            PBNExporter().export_session(deals, Path(filename))
+            self.status_label.setText(
+                f"Saved {len(deals)} deal(s) to "
+                f"{os.path.basename(filename)}")
+        except Exception as ex:
+            QMessageBox.warning(
+                self, "Save failed",
+                f"Could not write PBN file:\n{ex!r}")
 
     def _on_use_own_deals(self):
         """Load a file of own deals"""
