@@ -177,6 +177,19 @@ def build_bdl_snapshot(board: BoardState,
     hands_for_cards = original_hands if original_hands else board.hands
 
     masked: Dict[Seat, Optional[Hand]] = {}
+    # When the viewer is on the declaring side and dummy is visible,
+    # they see BOTH declarer and dummy at the table — so the BDL
+    # snapshot must reveal both, even when the viewer IS dummy.
+    # Otherwise Claude (or any other reader) speculates about cards
+    # it should be able to see. The earlier version only revealed
+    # declarer.partner(), so when viewer was the dummy declarer's
+    # hand stayed hidden and Claude invented evidence about it.
+    viewer_on_declaring_side = (
+        viewer_seat is not None
+        and contract is not None
+        and contract.declarer is not None
+        and viewer_seat in (contract.declarer, contract.declarer.partner())
+    )
     for seat in (Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST):
         h = hands_for_cards.get(seat) if hands_for_cards else None
         if viewer_seat is None:
@@ -187,6 +200,12 @@ def build_bdl_snapshot(board: BoardState,
                     and contract is not None
                     and dummy_visible_to_viewer
                     and seat == contract.declarer.partner()):
+                show = True
+            if (not show
+                    and contract is not None
+                    and dummy_visible_to_viewer
+                    and viewer_on_declaring_side
+                    and seat == contract.declarer):
                 show = True
             masked[seat] = h if show else None
 
