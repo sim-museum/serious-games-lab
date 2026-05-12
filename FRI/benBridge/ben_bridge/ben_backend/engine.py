@@ -231,6 +231,29 @@ class BridgeEngine:
 
         return success
 
+    @staticmethod
+    def _all_hands_visible(board: BoardState) -> bool:
+        """Returns True iff every seat has either remaining cards or
+        cards already played in this deal. A seat with 0 remaining
+        AND 0 played has never been seen by the engine — that's the
+        One-Player Mode case where the engine must refuse any
+        request that would otherwise peek at four hands."""
+        played_by_seat = {s: 0 for s in Seat}
+        for trick in board.tricks:
+            for i, _c in enumerate(trick.cards):
+                seat = Seat((trick.leader + i) % 4)
+                played_by_seat[seat] += 1
+        if board.current_trick is not None:
+            for i, _c in enumerate(board.current_trick.cards):
+                seat = Seat((board.current_trick.leader + i) % 4)
+                played_by_seat[seat] += 1
+        for seat in Seat:
+            hand = board.hands.get(seat)
+            remaining = len(hand.cards) if hand else 0
+            if remaining + played_by_seat[seat] == 0:
+                return False
+        return True
+
     def get_available_systems(self) -> List[str]:
         """Get list of available bidding systems."""
         return list(self.SYSTEM_CONFIGS.keys())
@@ -474,6 +497,14 @@ class BridgeEngine:
         with open('/tmp/dd_debug.log', 'a') as f:
             f.write(f"analyze_double_dummy called, initialized={self._initialized}\n")
 
+        # Refuse to peek when the engine doesn't have all four hands
+        # (One-Player Mode pre-play, or any incomplete deal). The caller
+        # gets an empty result and the UI shows "DD not available".
+        if not self._all_hands_visible(board):
+            with open('/tmp/dd_debug.log', 'a') as f:
+                f.write("Skipping DD: not all hands visible to engine\n")
+            return {}
+
         if not self._initialized:
             with open('/tmp/dd_debug.log', 'a') as f:
                 f.write(f"Engine not initialized, trying to initialize...\n")
@@ -554,6 +585,10 @@ class BridgeEngine:
 
     def get_dd_tricks(self, board: BoardState, suit: Suit, seat: Seat) -> Optional[int]:
         """Get double-dummy trick count for a specific declarer and strain."""
+        # DD solve needs all four hands; refuse when any seat is
+        # unknown (One-Player Mode pre-dummy-entry, etc).
+        if not self._all_hands_visible(board):
+            return None
         if not self._initialized:
             if not self.initialize():
                 return None
@@ -666,22 +701,37 @@ class BridgeEngine:
                     # Determine which seats need random cards
                     unknown_seats = [s for s in Seat if s not in known_cards]
 
-                    # Count how many cards each unknown seat should have
+                    # Count how many cards each unknown seat should have.
+                    # In standard mode we read the seat's current Hand;
+                    # in One-Player Mode unknown seats start with an
+                    # empty Hand, so we derive the count from cards
+                    # they've already played (each seat plays one card
+                    # per trick — leftover = 13 - played).
                     cards_per_seat = {}
                     total_remaining = 52 - len(played_cards)
+                    played_per_seat = {s: 0 for s in Seat}
+                    for trick in board.tricks:
+                        for i, _c in enumerate(trick.cards):
+                            ps = Seat((trick.leader + i) % 4)
+                            played_per_seat[ps] += 1
+                    if current_trick_cards:
+                        # Reconstruct the in-progress trick's leader so
+                        # we can attribute partial-trick plays correctly.
+                        cur_leader = Seat(
+                            (seat - len(current_trick_cards)) % 4)
+                        for i, _c in enumerate(current_trick_cards):
+                            ps = Seat((cur_leader + i) % 4)
+                            played_per_seat[ps] += 1
                     for s in Seat:
                         if s in known_cards:
                             cards_per_seat[s] = len(known_cards[s])
                         else:
-                            # Estimate from total remaining
                             orig_hand = board.hands.get(s)
-                            if orig_hand:
+                            if orig_hand and orig_hand.cards:
                                 cards_per_seat[s] = len(orig_hand.cards)
                             else:
-                                cards_per_seat[s] = (total_remaining - sum(
-                                    len(known_cards.get(ss, [])) for ss in Seat
-                                    if ss in known_cards
-                                )) // max(1, len(unknown_seats))
+                                cards_per_seat[s] = max(
+                                    0, 13 - played_per_seat[s])
 
                     # Generate random samples
                     trump_suit = board.contract.suit if board.contract else Suit.NOTRUMP
@@ -827,6 +877,12 @@ class BridgeEngine:
         Returns:
             EngineResponse with the optimal card
         """
+        # Full double-dummy solve peeks at every hand. Refuse when
+        # any hand is unknown (One-Player Mode); callers should fall
+        # back to ``get_mc_card_play``, which works from only the
+        # named seat + dummy + sampling.
+        if not self._all_hands_visible(board):
+            return EngineResponse(action=None, who="NoDD")
         if not self._initialized:
             if not self.initialize():
                 return EngineResponse(action=None, who="Error")

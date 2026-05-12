@@ -498,6 +498,15 @@ class MainWindow(QMainWindow):
         # picking a different seat in the lobby change it.
         self._user_seat: Seat = Seat.SOUTH
 
+        # One-Player Mode bookkeeping. ``_one_player_known_seats`` is
+        # the set of seats whose hand the engine is allowed to see —
+        # initially just the user's; dummy is added once revealed.
+        # ``_one_player_active`` is the latched flag for the current
+        # deal so the runtime keeps using the manual card-entry path
+        # even after the user toggles play_mode in preferences mid-deal.
+        self._one_player_active: bool = False
+        self._one_player_known_seats: set = set()
+
         # Network game controller for LAN play
         self.network_controller = NetworkGameController(self)
         self._setup_network_signals()
@@ -1495,18 +1504,25 @@ class MainWindow(QMainWindow):
         with whatever the user typed in. No-op when
         play_mode != 'one_player'.
 
-        Caveat: the bots still see all four hands in this build —
-        the formal "engine never peeks" guarantee from .one-player
-        requires deeper engine work to suppress bot access to the
-        other three seats. We surface that gap in the status bar
-        so the user knows what state we're in.
+        Spec: in One-Player mode the program "knows only the hand of
+        the specified player. The cards of this hand (and later of
+        dummy) must be entered manually for each deal." We honour
+        that literally — the three non-named seats get EMPTY hands
+        and become PlayerType.HUMAN, so every bid and every card from
+        them is entered manually by the user (typically while reading
+        them off a real-world table). The engine is never asked to
+        bid or play for a seat whose hand it doesn't have.
         """
         try:
             from ben_backend.config import get_config_manager
             prefs = get_config_manager().config.preferences
         except Exception:
+            self._one_player_active = False
+            self._one_player_known_seats = set()
             return
         if getattr(prefs, 'play_mode', 'off') != 'one_player':
+            self._one_player_active = False
+            self._one_player_known_seats = set()
             return
         seat_char = getattr(prefs, 'one_player_seat', 'S')
         try:
@@ -1518,51 +1534,183 @@ class MainWindow(QMainWindow):
         dlg = OnePlayerHandEntryDialog(
             seat_char=target.to_char(), parent=self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
+            self._one_player_active = False
+            self._one_player_known_seats = set()
             return
         new_hand = dlg.get_hand()
         if new_hand is None or not new_hand.cards:
+            self._one_player_active = False
+            self._one_player_known_seats = set()
             return
 
-        # Replace the random hand at the target seat with what the
-        # user entered. Re-randomise the other three seats from the
-        # remaining 39 cards so the deal stays a legal 52-card set
-        # and the user's choice is honoured.
+        # Install the user's hand at the named seat; clear the other
+        # three so the engine has literally nothing to peek at. Flip
+        # every seat to HUMAN so the bot decision path is never
+        # entered — every bid and card is human-entered.
         try:
-            from ben_backend.models import Card, Hand, Rank, Suit
-            import random
-            used = {(c.suit, c.rank) for c in new_hand.cards}
-            # Build the remaining 39 cards in arbitrary order.
-            full = []
-            for s in (Suit.SPADES, Suit.HEARTS,
-                      Suit.DIAMONDS, Suit.CLUBS):
-                for r in Rank:
-                    if (s, r) not in used:
-                        full.append(Card(s, r))
-            random.shuffle(full)
+            from ben_backend.models import Hand
             board.hands[target] = new_hand
-            others = [s for s in Seat if s != target]
-            for i, s in enumerate(others):
-                start = i * 13
-                board.hands[s] = Hand(
-                    cards=list(full[start:start + 13]))
-            # The original_hands snapshot is used later by replay
-            # and logging — refresh it so it reflects the swap.
+            for s in Seat:
+                if s != target:
+                    board.hands[s] = Hand(cards=[])
+            for s in Seat:
+                self.controller.players[s].player_type = PlayerType.HUMAN
+            self._user_seat = target
+            self.controller.human_controls_declarer = True
+            self._one_player_active = True
+            self._one_player_known_seats = {target}
+            # The original_hands snapshot is used by replay and the
+            # post-mortem comparison. Empty placeholders prevent
+            # spurious peeks via that channel.
             self.original_hands = {
                 s: Hand(cards=list(board.hands[s].cards))
                 for s in Seat
             }
             self.table_view.set_board(board)
+            # The visibility loop in _on_new_deal ran with the old
+            # COMPUTER/HUMAN split. Fix it now: only the user's seat
+            # shows its cards; the three unknown seats stay hidden
+            # until cards from them are entered (or dummy is revealed).
+            for s in Seat:
+                self.table_view.set_hand_visible(s, s == target)
         except Exception as ex:
             print(f"[one-player] hand swap failed: {ex!r}", flush=True)
+            self._one_player_active = False
+            self._one_player_known_seats = set()
             return
 
-        # Visible status banner so the user knows the engine still
-        # sees the other seats (formal non-peeking proof queued).
         self.status_label.setText(
-            f"One-Player Mode active — {target.to_char()}'s hand "
-            "swapped in. (Bots still see all four hands; formal "
-            "non-peeking proof queued for a deeper build.)"
+            f"One-Player Mode active — engine sees only "
+            f"{target.to_char()}'s hand (+ dummy after the lead). "
+            "You enter bids and cards for the other seats manually."
         )
+
+    def _one_player_seat_known(self, seat) -> bool:
+        """Returns True iff the engine is allowed to see ``seat``'s
+        hand in the current deal. Only meaningful when
+        ``_one_player_active`` is set; outside one-player mode every
+        seat is known."""
+        if not getattr(self, '_one_player_active', False):
+            return True
+        return seat in getattr(self, '_one_player_known_seats', set())
+
+    def _one_player_played_pairs(self) -> set:
+        """Return the set of (suit_char, rank_char) tuples already
+        played in the current deal — used to disable those cells in
+        the per-card entry grid so the user can't re-pick them."""
+        board = self.controller.board
+        out = set()
+        if board is None:
+            return out
+        suit_char = {0: 'S', 1: 'H', 2: 'D', 3: 'C'}
+        for trick in board.tricks:
+            for c in trick.cards:
+                try:
+                    out.add((suit_char[c.suit.value], c.rank.to_char()))
+                except Exception:
+                    pass
+        ct = board.current_trick
+        if ct is not None:
+            for c in ct.cards:
+                try:
+                    out.add((suit_char[c.suit.value], c.rank.to_char()))
+                except Exception:
+                    pass
+        return out
+
+    def _one_player_maybe_enter_dummy(self) -> bool:
+        """If we're in one-player mode and dummy's hand hasn't been
+        entered yet, pop the hand-entry dialog for dummy. Returns
+        True when dummy is now known (either it was already or the
+        user just entered it), False on cancel."""
+        if not getattr(self, '_one_player_active', False):
+            return True
+        dummy_seat = self.controller.dummy
+        if dummy_seat is None:
+            return True
+        if dummy_seat in self._one_player_known_seats:
+            return True
+        from .dialogs.one_player_hand_entry import OnePlayerHandEntryDialog
+        dlg = OnePlayerHandEntryDialog(
+            seat_char=dummy_seat.to_char(), parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return False
+        hand = dlg.get_hand()
+        if hand is None or not hand.cards:
+            return False
+        # Subtract any cards dummy has already played (rare — dummy
+        # plays after the opening lead, but if the user delayed the
+        # entry we still want the remaining-cards state to be right).
+        played_by_dummy = set()
+        suit_char = {0: 'S', 1: 'H', 2: 'D', 3: 'C'}
+        board = self.controller.board
+        for trick in board.tricks:
+            for i, c in enumerate(trick.cards):
+                from ben_backend.models import Seat as _Seat
+                seat = _Seat((trick.leader + i) % 4)
+                if seat == dummy_seat:
+                    played_by_dummy.add((c.suit, c.rank))
+        ct = board.current_trick
+        if ct is not None:
+            from ben_backend.models import Seat as _Seat
+            for i, c in enumerate(ct.cards):
+                seat = _Seat((ct.leader + i) % 4)
+                if seat == dummy_seat:
+                    played_by_dummy.add((c.suit, c.rank))
+        remaining = [c for c in hand.cards
+                     if (c.suit, c.rank) not in played_by_dummy]
+        from ben_backend.models import Hand
+        board.hands[dummy_seat] = Hand(cards=remaining)
+        self._one_player_known_seats.add(dummy_seat)
+        # Snapshot the full hand for replay / comparison.
+        try:
+            self.original_hands[dummy_seat] = Hand(cards=list(hand.cards))
+        except Exception:
+            pass
+        try:
+            self.table_view.set_board(board)
+        except Exception:
+            pass
+        return True
+
+    def _one_player_run_card_entry(self, seat) -> bool:
+        """Pop the per-card entry dialog for ``seat`` and commit
+        whichever card the user picked into the trick. Returns True
+        when a card was registered, False when the user cancelled
+        (in which case the table sits and waits for another action).
+        """
+        from .dialogs.one_player_card_entry import OnePlayerCardEntryDialog
+        lead_suit = None
+        ct = self.controller.board.current_trick
+        if ct is not None and ct.cards:
+            lead_suit = ct.cards[0].suit.to_char()
+        dlg = OnePlayerCardEntryDialog(
+            seat_char=seat.to_char(),
+            played=self._one_player_played_pairs(),
+            lead_suit=lead_suit,
+            parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return False
+        card = dlg.get_card()
+        if card is None:
+            return False
+        # Make sure the seat's hand contains the card so the
+        # controller's standard remove-card path works unchanged.
+        from ben_backend.models import Hand
+        hand = self.controller.board.hands.get(seat)
+        if hand is None:
+            hand = Hand(cards=[])
+            self.controller.board.hands[seat] = hand
+        if not any(c.suit == card.suit and c.rank == card.rank
+                   for c in hand.cards):
+            hand.cards.append(card)
+        try:
+            self._on_card_played(seat, card)
+        except Exception as ex:
+            print(f"[one-player] card entry commit failed: {ex!r}",
+                  flush=True)
+            return False
+        return True
 
     def _maybe_run_minibridge_rounds(self, board):
         """If the user is in MiniBridge mode, run the two simplified
@@ -1778,6 +1926,18 @@ class MainWindow(QMainWindow):
         Creates a single-board teams match, then runs the same deal
         with 4 bots in the closed room while user plays the open room.
         """
+        # Closed room requires four hands the engine can see — by
+        # definition impossible in One-Player Mode where the engine
+        # only has the user's seat (+ dummy after the lead). Stop
+        # here and tell the user why.
+        if getattr(self, '_one_player_active', False):
+            QMessageBox.information(
+                self, "Closed room unavailable",
+                "Closed-room play needs all four hands, but One-Player "
+                "Mode hides three of them from the engine. Switch "
+                "play mode off in Preferences to enable closed room.")
+            return
+
         if not self.controller.board:
             # Start a new deal first
             self._on_new_deal()
@@ -4649,6 +4809,15 @@ For more information, see the README file."""
         if not getattr(self.table_view, 'dummy_revealed', True):
             self.table_view.reveal_dummy()
 
+        # One-Player Mode: dummy's hand isn't in the engine yet
+        # unless the user controls declarer's side. Now that dummy is
+        # exposed, prompt the user to type in dummy's 13 cards.
+        try:
+            self._one_player_maybe_enter_dummy()
+        except Exception as ex:
+            print(f"[one-player] dummy entry failed: {ex!r}",
+                  flush=True)
+
         # Network broadcast — always after opening lead, gated by a
         # per-board flag so we don't spam the wire on every later card.
         if (self.network_controller.is_active
@@ -5130,6 +5299,24 @@ For more information, see the README file."""
                     self.status_label.setText(f"Waiting for AI ({current_seat.to_char()})...")
                     return
                 # Server runs the AI - fall through to engine handling
+
+        # One-Player Mode: if the seat to play is one whose hand the
+        # engine doesn't have, pop the per-card entry dialog instead
+        # of waiting on a click that would never come (the hand is
+        # empty in the model). Per .one-player the program never
+        # invents a card for these seats — autoplay still applies to
+        # the user's own + dummy's cards, but unknown opponents must
+        # be entered every time.
+        if (getattr(self, '_one_player_active', False)
+                and not self._one_player_seat_known(current_seat)):
+            self.status_label.setText(
+                f"One-Player: enter the card {current_seat.to_char()} "
+                "played at the table.")
+            QTimer.singleShot(
+                0,
+                lambda s=current_seat:
+                    self._one_player_run_card_entry(s))
+            return
 
         # Standard single-player mode
         # If autoplay is on, use engine for all seats including human
