@@ -5,7 +5,7 @@ Scoring Table Dialog - Display and manage match/session scores.
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QLabel, QHeaderView, QFileDialog, QMessageBox,
-    QGroupBox, QGridLayout
+    QGroupBox, QGridLayout, QComboBox
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
@@ -19,9 +19,16 @@ from .dialog_style import apply_dialog_style
 class ScoringTableDialog(QDialog):
     """Dialog for viewing and managing scoring table."""
 
+    # View modes (Q-Plus .score-match-{t,p,t3,tc}).
+    VIEW_IMP = "Teams IMP (open vs closed)"
+    VIEW_MP = "Pairs MP"
+    VIEW_CROSS_IMP = "Cross-IMP"
+    VIEW_3WAY = "3-way Teams"
+
     def __init__(self, scoring_table: Optional[ScoringTable] = None, parent=None):
         super().__init__(parent)
         self.scoring_table = scoring_table or ScoringTable()
+        self._view_mode = self.VIEW_IMP
 
         self.setWindowTitle("Scoring Table")
         self.setMinimumWidth(950)
@@ -66,6 +73,19 @@ class ScoringTableDialog(QDialog):
             "Same running total, viewed from E/W (the negative of the N/S figure)."
         )
         summary_layout.addWidget(self.ew_total_label, 0, 3)
+
+        # View-mode combo (Q-Plus .score-match-{t,p,t3,tc}). Switches
+        # the right-hand pair of columns between IMPs, matchpoints,
+        # cross-IMPs, and 3-way teams without dropping the underlying
+        # rows.
+        summary_layout.addWidget(QLabel("View:"), 1, 0)
+        self.view_combo = QComboBox()
+        self.view_combo.addItems([
+            self.VIEW_IMP, self.VIEW_MP,
+            self.VIEW_CROSS_IMP, self.VIEW_3WAY,
+        ])
+        self.view_combo.currentTextChanged.connect(self._on_view_changed)
+        summary_layout.addWidget(self.view_combo, 1, 1, 1, 3)
 
         summary_group.setLayout(summary_layout)
         layout.addWidget(summary_group)
@@ -130,31 +150,73 @@ class ScoringTableDialog(QDialog):
 
         layout.addLayout(button_layout)
 
+    def _on_view_changed(self, mode: str):
+        self._view_mode = mode
+        self._setup_table_columns()
+        self._populate_table()
+
     def _setup_table_columns(self):
         """Setup table columns — Q-Plus style with open room (left) and closed room (right).
 
         Column meanings — kept here in one place so the UI labels and the
         tooltips stay in sync. "Open" = the human's table, "Closed" = the
         same deal replayed by the engine or ingested from a database.
+        The third-column-from-right label flexes by view mode: IMPs,
+        matchpoints, cross-IMPs or 3-way IMPs.
         """
         # The "Board" column intentionally carries dealer + vulnerability
         # alongside the bare number, so the user doesn't have to mentally
         # apply the duplicate-bridge 16-board cycle to know who dealt
         # and who was vulnerable. Format: "816  Dlr W  Vul E-W".
+        if self._view_mode == self.VIEW_MP:
+            metric_open = "Open MP"
+            metric_closed = "Closed MP"
+            metric_tip_open = (
+                "Matchpoints earned at the open table — half-credit "
+                "for ties.")
+            metric_tip_closed = (
+                "Matchpoints earned at the closed table.")
+        elif self._view_mode == self.VIEW_CROSS_IMP:
+            metric_open = "Open xIMP"
+            metric_closed = "Closed xIMP"
+            metric_tip_open = (
+                "Cross-IMPs: this NS score against the average NS "
+                "score from every other row on the same board.")
+            metric_tip_closed = (
+                "Closed-room cross-IMPs (mirror of the open xIMP "
+                "from N/S's perspective).")
+        elif self._view_mode == self.VIEW_3WAY:
+            metric_open = "Open IMP-3w"
+            metric_closed = "Closed IMP-3w"
+            metric_tip_open = (
+                "3-way Teams: pair the open NS score against each "
+                "other table on the same board, IMP-convert the "
+                "differences, and average them.")
+            metric_tip_closed = (
+                "Mirror of the 3-way open figure from N/S's view.")
+        else:
+            metric_open = "Open IMP"
+            metric_closed = "Closed IMP"
+            metric_tip_open = (
+                "IMPs scored at the open table, signed from N/S's "
+                "perspective.")
+            metric_tip_closed = (
+                "IMPs scored at the closed table, signed from N/S's "
+                "perspective.")
         columns = [
-            "Open: Contract", "Open N/S", "Open IMP",
+            "Open: Contract", "Open N/S", metric_open,
             "Board / Dlr / Vul",
-            "Closed: Contract", "Closed N/S", "Closed IMP",
+            "Closed: Contract", "Closed N/S", metric_closed,
         ]
         tooltips = [
             "Contract bid at the open (human) table, with overtricks/undertricks.",
             "N/S score from the open table (positive = N/S earned points).",
-            "IMPs scored at the open table, signed from N/S's perspective.",
+            metric_tip_open,
             "Board number, with dealer and vulnerability spelled out so you "
             "don't have to apply the 16-board cycle by hand.",
             "Contract bid at the closed (AI / database) table.",
             "N/S score from the closed table.",
-            "IMPs scored at the closed table, signed from N/S's perspective.",
+            metric_tip_closed,
         ]
 
         self.table.setColumnCount(len(columns))
@@ -208,11 +270,11 @@ class ScoringTableDialog(QDialog):
                 ns_item = self._colored_item(open_r.ns_score)
                 self.table.setItem(row, 1, ns_item)
 
-                imp_val = open_r.imps
-                if imp_val is not None:
-                    ns_imps_total += imp_val
-                imp_item = self._colored_item(imp_val, fmt="+d") if imp_val is not None else QTableWidgetItem("")
-                self.table.setItem(row, 2, imp_item)
+                metric_val = self._row_metric(open_r)
+                if isinstance(metric_val, int):
+                    ns_imps_total += metric_val
+                self.table.setItem(
+                    row, 2, self._metric_item(metric_val))
             else:
                 # Closed-room-only row (e.g. ingested Q-Plus result with
                 # no matching ben_bridge open-room hand). Leave the open
@@ -270,9 +332,9 @@ class ScoringTableDialog(QDialog):
                 self.table.setItem(row, 4, QTableWidgetItem(f"{contract_str2} {diff2}"))
                 ns_item2 = self._colored_item(closed_r.ns_score)
                 self.table.setItem(row, 5, ns_item2)
-                closed_imp = closed_r.imps
-                imp_item2 = self._colored_item(closed_imp, fmt="+d") if closed_imp is not None else QTableWidgetItem("")
-                self.table.setItem(row, 6, imp_item2)
+                closed_metric = self._row_metric(closed_r)
+                self.table.setItem(
+                    row, 6, self._metric_item(closed_metric))
             else:
                 for c in (4, 5, 6):
                     self.table.setItem(row, c, QTableWidgetItem(""))
@@ -287,6 +349,33 @@ class ScoringTableDialog(QDialog):
         # a row with the right runs attached.
         if hasattr(self, 'compare_btn'):
             self._refresh_action_buttons()
+
+    def _row_metric(self, r):
+        """Return the metric value to display for ``r`` under the
+        current view mode. May be None (no metric available) or a
+        numeric int/float."""
+        if self._view_mode == self.VIEW_MP:
+            return r.matchpoints
+        if self._view_mode == self.VIEW_CROSS_IMP:
+            return self.scoring_table.cross_imps_for(r)
+        if self._view_mode == self.VIEW_3WAY:
+            # 3-way = average of the pairwise IMP-converted diffs
+            # against every other table on the same board.
+            from ben_backend.scoring import diff_to_imps
+            same = [x for x in self.scoring_table.results
+                    if x.board_number == r.board_number and x is not r]
+            if not same:
+                return None
+            imps = [diff_to_imps(r.ns_score - x.ns_score) for x in same]
+            return round(sum(imps) / len(imps), 1)
+        return r.imps
+
+    def _metric_item(self, value):
+        if value is None or value == "":
+            return QTableWidgetItem("")
+        if isinstance(value, int):
+            return self._colored_item(value, fmt="+d")
+        return self._colored_item(value, fmt="+.1f")
 
     def _format_contract(self, result):
         if not result or not result.contract:
@@ -306,7 +395,13 @@ class ScoringTableDialog(QDialog):
     def _colored_item(self, value, fmt="d"):
         if value is None:
             return QTableWidgetItem("")
-        text = f"{value:{fmt}}" if fmt == "+d" else str(value)
+        if fmt in ("+d", "+.1f", "+.2f"):
+            try:
+                text = f"{value:{fmt}}"
+            except (ValueError, TypeError):
+                text = str(value)
+        else:
+            text = str(value)
         item = QTableWidgetItem(text)
         if value > 0:
             item.setForeground(QColor(0, 128, 0))

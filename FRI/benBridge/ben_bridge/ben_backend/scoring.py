@@ -239,6 +239,38 @@ class ScoringTable:
             o.imps = diff_to_imps(diff)
             c.imps = -o.imps
 
+    def cross_imps_for(self, result: 'BoardResult') -> Optional[float]:
+        """Compute cross-IMPs for one row: IMP-convert (this NS score
+        − average NS score of every OTHER row on the same board),
+        sign from N/S. Returns None when only one row exists for
+        the board (cross-IMP needs at least two)."""
+        same_board = [r for r in self.results
+                      if r.board_number == result.board_number]
+        if len(same_board) < 2:
+            return None
+        others = [r for r in same_board if r is not result]
+        avg = sum(r.ns_score for r in others) / len(others)
+        diff = result.ns_score - avg
+        # diff_to_imps is integer-rounded; cross-IMP keeps a float
+        # so a 1-IMP-per-table average can still surface as 0.x.
+        sign = 1 if diff >= 0 else -1
+        abs_diff = abs(diff)
+        for threshold, imps in IMP_TABLE:
+            if abs_diff < threshold:
+                # Linear interpolation inside the bucket so cross-IMP
+                # remains a useful tie-breaker.
+                prev_threshold = (
+                    IMP_TABLE[IMP_TABLE.index((threshold, imps)) - 1][0]
+                    if (threshold, imps) != IMP_TABLE[0] else 0)
+                prev_imps = (
+                    IMP_TABLE[IMP_TABLE.index((threshold, imps)) - 1][1]
+                    if (threshold, imps) != IMP_TABLE[0] else 0)
+                span = max(1, threshold - prev_threshold)
+                frac = (abs_diff - prev_threshold) / span
+                interp = prev_imps + frac * (imps - prev_imps)
+                return sign * round(interp, 2)
+        return sign * 24.0
+
     def get_ns_total(self) -> int:
         """Get total N/S score."""
         return sum(r.ns_score for r in self.results)
