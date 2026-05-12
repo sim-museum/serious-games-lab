@@ -130,6 +130,20 @@ class ScoringTableDialog(QDialog):
         load_btn.clicked.connect(self._on_load)
         button_layout.addWidget(load_btn)
 
+        retrieve_btn = QPushButton("Retrieve...")
+        retrieve_btn.setToolTip(
+            "Pick from previously saved scoring tables under "
+            "DATA/LOCAL-MATCHES.")
+        retrieve_btn.clicked.connect(self._on_retrieve)
+        button_layout.addWidget(retrieve_btn)
+
+        names_btn = QPushButton("Edit Names...")
+        names_btn.setToolTip(
+            "Set player names for the four seats and team labels — "
+            "appears in saved tables and HTML export.")
+        names_btn.clicked.connect(self._on_edit_names)
+        button_layout.addWidget(names_btn)
+
         export_html_btn = QPushButton("Export HTML...")
         export_html_btn.clicked.connect(self._on_export_html)
         button_layout.addWidget(export_html_btn)
@@ -442,6 +456,94 @@ class ScoringTableDialog(QDialog):
                 self._populate_table()
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"Could not load: {e}")
+
+    def _on_retrieve(self):
+        """Pick from previously saved scoring tables. Q-Plus
+        .scoretab-retrieve / .scoretab-select — replaces the
+        file-by-file dialog with a list of every .qss in
+        DATA/LOCAL-MATCHES, showing date + player names + result
+        count so the user can pick the right session quickly."""
+        from pathlib import Path
+        from PyQt6.QtWidgets import QInputDialog
+        base = Path(__file__).resolve().parent.parent.parent / 'DATA' / 'LOCAL-MATCHES'
+        files = sorted(base.glob('*.qss')) if base.exists() else []
+        if not files:
+            QMessageBox.information(
+                self, "Retrieve Scoring Table",
+                "No saved tables under DATA/LOCAL-MATCHES yet. "
+                "Use Save... to create one.")
+            return
+        labels = []
+        index = []
+        for f in files:
+            try:
+                t = ScoringTable.load(str(f))
+                ns = t.player_names.get('NS', '') if t.player_names else ''
+                ew = t.player_names.get('EW', '') if t.player_names else ''
+                tag = ''
+                if ns or ew:
+                    tag = f" — {ns or '?'} vs {ew or '?'}"
+                date = t.date or ''
+                labels.append(
+                    f"{f.name}{tag}  ({len(t.results)} rows"
+                    + (f", {date}" if date else "") + ")")
+                index.append(f)
+            except Exception:
+                labels.append(f"{f.name}  (unreadable)")
+                index.append(f)
+        choice, ok = QInputDialog.getItem(
+            self, "Retrieve Scoring Table",
+            "Pick a saved table:", labels, 0, False)
+        if not ok or not choice:
+            return
+        chosen = index[labels.index(choice)]
+        try:
+            self.scoring_table = ScoringTable.load(str(chosen))
+            self._setup_table_columns()
+            self._populate_table()
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Retrieve failed",
+                f"Could not load {chosen.name}: {e}")
+
+    def _on_edit_names(self):
+        """Pop a small dialog letting the user edit the four seat
+        names and the NS / EW team labels (Q-Plus
+        .score-edit-names). The names live on the ScoringTable so
+        they round-trip through save / load and are visible in
+        HTML export."""
+        from PyQt6.QtWidgets import (
+            QDialog as _QDialog, QFormLayout, QLineEdit, QDialogButtonBox)
+        dlg = _QDialog(self)
+        dlg.setWindowTitle("Player Names")
+        form = QFormLayout(dlg)
+        edits = {}
+        labels = [
+            ('N', 'North'), ('E', 'East'), ('S', 'South'), ('W', 'West'),
+            ('NS', 'N/S team'), ('EW', 'E/W team'),
+        ]
+        current = (self.scoring_table.player_names or {})
+        for key, label in labels:
+            e = QLineEdit()
+            e.setText(current.get(key, ''))
+            edits[key] = e
+            form.addRow(label + ":", e)
+        bb = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        form.addRow(bb)
+        if dlg.exec() != _QDialog.DialogCode.Accepted:
+            return
+        if not self.scoring_table.player_names:
+            self.scoring_table.player_names = {
+                'N': '', 'E': '', 'S': '', 'W': '',
+                'NS': '', 'EW': '',
+            }
+        for key in edits:
+            self.scoring_table.player_names[key] = edits[key].text().strip()
+        self._populate_table()
 
     def _on_export_html(self):
         """Export scoring table to HTML."""

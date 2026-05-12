@@ -168,6 +168,13 @@ class ScoringTable:
         self.results: List[BoardResult] = []
         self.session_name: str = ""
         self.date: str = ""
+        # Q-Plus .score-edit-names — labels for the four players /
+        # teams on the scoring table. Used for export, display, and
+        # for distinguishing several saved tables.
+        self.player_names: dict = {
+            'N': '', 'E': '', 'S': '', 'W': '',
+            'NS': '', 'EW': '',
+        }
 
     def add_result(self, result: BoardResult):
         """Add a board result."""
@@ -313,8 +320,12 @@ class ScoringTable:
             ".version = 17.1",
             f".date = {self.date}",
             f"scoring.method = {self.scoring_type.value}",
-            "",
         ]
+        for key in ('N', 'E', 'S', 'W', 'NS', 'EW'):
+            name = (self.player_names or {}).get(key, '')
+            if name:
+                lines.append(f"player.{key} = {name}")
+        lines.append("")
 
         for i, r in enumerate(self.results, 1):
             lines.append(f"board.{i}.number = {r.board_number}")
@@ -422,6 +433,10 @@ class ScoringTable:
                                 break
                     elif key == ".date":
                         table.date = value
+                    elif key.startswith("player."):
+                        slot = key.split('.', 1)[1].strip().upper()
+                        if slot in table.player_names:
+                            table.player_names[slot] = value
                     elif key.startswith("board."):
                         parts = key.split('.')
                         if len(parts) == 3:
