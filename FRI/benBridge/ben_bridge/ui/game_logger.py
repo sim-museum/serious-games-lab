@@ -265,9 +265,18 @@ def build_bdl_snapshot(board: BoardState,
         out.extend(_format_tricks_block(list(board.tricks), contract))
         out.append("")
 
-    # In-progress trick (cards already played but trick not complete)
+    # In-progress trick (cards already played but trick not complete).
+    # Suppressed once the hand is over or all 13 tricks have already
+    # been recorded — the controller doesn't always clear
+    # board.current_trick when the 13th trick lands, and emitting a
+    # stale "(incomplete)" line after the hand confuses Claude and
+    # the user equally.
     ct = getattr(board, 'current_trick', None)
-    if ct is not None and ct.cards and ct.leader is not None:
+    hand_finished = (phase == 'finished'
+                     or len(board.tricks) >= 13)
+    if (ct is not None and ct.cards and ct.leader is not None
+            and not hand_finished
+            and len(ct.cards) < 4):
         partial = []
         for j, card in enumerate(ct.cards):
             player_seat = Seat((ct.leader.value + j) % 4)

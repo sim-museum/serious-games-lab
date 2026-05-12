@@ -2342,14 +2342,97 @@ For more information, see the README file."""
                                    "is not yet available.")
 
     def _on_repeat_deal(self):
-        """Repeat current deal"""
-        if self.controller.board:
-            board_num = self.controller.board.board_number
-            board = self.controller.new_deal(board_num)
-            self.table_view.set_board(board)
-            self.bidding_box.clear()
-            self.bidding_box.set_auction([], board.dealer)
-            self._advance_game()
+        """Replay the just-finished deal — Q-Plus `.repeat-f`. Pops
+        the Repeat Deal modal to let the user choose whether to
+        restart from the auction or skip to play with the same
+        contract, who drives the repeat, and how the result lands in
+        the scoring table."""
+        if not self.controller.board:
+            return
+        from .dialogs.repeat_deal import RepeatDealDialog
+        rows = (list(self.scoring_table.results)
+                if getattr(self, 'scoring_table', None) is not None
+                else [])
+        dlg = RepeatDealDialog(
+            parent=self,
+            have_first_row=len(rows) >= 1,
+            have_second_row=len(rows) >= 2,
+        )
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        choice = dlg.get_choice()
+
+        board = self.controller.board
+        original = (self.original_hands if self.original_hands
+                    else {s: Hand(cards=list(board.hands[s].cards))
+                          for s in Seat
+                          if s in board.hands})
+        # Drop any scoring-table row the user asked us to replace
+        # BEFORE we reset state — once the controller wipes the
+        # current board the lookup keys change. Equivalent to
+        # Q-Plus's "replaces 1./2. played deal".
+        if choice.entry_mode == 'replace1' and rows:
+            try:
+                self.scoring_table.results.remove(rows[0])
+            except Exception:
+                pass
+        elif choice.entry_mode == 'replace2' and len(rows) >= 2:
+            try:
+                self.scoring_table.results.remove(rows[1])
+            except Exception:
+                pass
+
+        # Re-install the same hands.
+        for s in Seat:
+            if s in original:
+                board.hands[s] = Hand(cards=list(original[s].cards))
+        board.tricks = []
+        board.current_trick = None
+        board.declarer_tricks = 0
+        board.defense_tricks = 0
+        self.original_hands = {
+            s: Hand(cards=list(board.hands[s].cards))
+            for s in Seat if s in board.hands
+        }
+
+        if choice.start_with_play and board.contract is not None:
+            # Skip auction — keep the contract from the previous run.
+            preserved = board.contract
+            from ben_backend.models import Bid as _Bid
+            board.auction = [_Bid(
+                level=preserved.level, suit=preserved.suit,
+                doubled=preserved.doubled,
+                redoubled=preserved.redoubled,
+            )]
+            self.controller.set_contract_direct(preserved)
+        else:
+            # Restart from the auction.
+            board.auction = []
+            board.contract = None
+            self.controller.current_phase = 'bidding'
+            self.controller.current_seat = board.dealer
+            self.controller.declarer = None
+            self.controller.dummy = None
+
+        # Computer-automatic = autoplay on; stepwise still needs the
+        # user to click each card but bots fill in their seats.
+        if not choice.by_user:
+            try:
+                self.autoplay_btn.setChecked(choice.computer_stepwise is False)
+            except Exception:
+                pass
+
+        self.table_view.set_board(board)
+        self.bidding_box.clear()
+        self.bidding_box.set_auction(
+            list(board.auction), board.dealer)
+        self.bidding_box.setVisible(
+            self.controller.current_phase == 'bidding')
+        self.status_label.setText(
+            f"Repeat of board {board.board_number} — "
+            + ("play phase" if choice.start_with_play
+               else "auction restart"))
+        self._advance_game()
 
     def _on_deal_filter(self):
         """Show deal filter dialog"""
@@ -5502,8 +5585,12 @@ For more information, see the README file."""
                     return
                 # Server runs the AI - fall through to engine handling
 
-        # Standard single-player mode
-        if self.controller.is_human_turn():
+        # Standard single-player mode — when autoplay is on, run the
+        # engine for every seat including the human's so the whole
+        # auction unfolds without clicking. Mirrors what _advance_play
+        # does for card play.
+        autoplay_active = self.autoplay_btn.isChecked()
+        if self.controller.is_human_turn() and not autoplay_active:
             self.bidding_box.set_enabled(True)
             self.status_label.setText(
                 f"Your bid ({current_seat.to_char()})"
