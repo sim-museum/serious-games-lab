@@ -3034,7 +3034,18 @@ class TheoryOfMindPanel(QWidget):
         # Scrollable area for advice
         advisor_scroll = QScrollArea()
         advisor_scroll.setWidgetResizable(True)
-        advisor_scroll.setStyleSheet("QScrollArea { border: none; background: #1a2a1a; }")
+        advisor_scroll.setStyleSheet(
+            "QScrollArea { border: none; background: #1a2a1a; }"
+            "QScrollBar:vertical { width: 14px; background: #222; }"
+            "QScrollBar::handle:vertical { background: #555;"
+            " min-height: 24px; border-radius: 4px; }"
+        )
+        # Always show the vertical scrollbar so the user can tell at
+        # a glance there's more content reachable below.
+        advisor_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        advisor_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         self.advisor_advice = QLabel("Deal a hand to see strategic advice")
         # Doubled base font so the Gordon advice card is readable
@@ -4752,15 +4763,19 @@ class TheoryOfMindPanel(QWidget):
                           if hero_hand else "??")
             gordon_block = self._build_gordon_advice(
                 advice_context, hand_key_g, bb_amount)
-            # Wrap pre-formatted text header (it uses \n + box-drawing
-            # chars) inside <pre> so the rich-text renderer doesn't
-            # collapse the spacing.
+            # Render the pot-odds / equity header with explicit <br>
+            # line breaks instead of inside a <pre> block. <pre> ran
+            # off the right edge of the advisor panel; using
+            # justified <div> + <br>s lets Qt's rich-text engine
+            # wrap any long line naturally.
             from html import escape as _esc
-            # ≥ 2× the prior 11 pt so the pot-odds + equity header
-            # reads at the same scale as the rest of the advice card.
-            header_html = ("<pre style='color:#cccccc; margin:0;"
-                           " font-family:monospace; font-size:20pt;'>"
-                           f"{_esc(header)}</pre>")
+            header_lines = [_esc(line) for line in header.split("\n")]
+            header_html = (
+                "<div style='color:#cccccc;"
+                " font-family:monospace; font-size:18pt;"
+                " text-align:justify;'>"
+                + "<br>".join(header_lines)
+                + "</div>")
             self.advisor_advice.setText(
                 header_html + "<br>" + gordon_block)
 
