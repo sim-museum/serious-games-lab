@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 
+import os
 from pathlib import Path
 from typing import Optional, Dict, List
 
@@ -513,26 +514,130 @@ class BiddingSystemDialog(QDialog):
         dlg.exec()
 
     def _on_load_file(self):
-        """Load bidding system from file."""
+        """Load a bidding system from a JSON file. The file format
+        matches what ``_on_save_file`` writes — ``{name, description,
+        conventions}`` — and is also compatible with Q-Plus's BSC
+        text files at the line level (name=…, description=…,
+        conventions=A,B,C). The loaded system is added to
+        ``self.bidding_systems`` keyed by its name; the dialog
+        reloads to display it."""
         from PyQt6.QtWidgets import QFileDialog
+        import json
         filename, _ = QFileDialog.getOpenFileName(
             self, "Load Bidding System", "CONFIG/BIDRULE/",
             "Bidding System Files (*.bsc *.json);;All Files (*)"
         )
-        if filename:
-            QMessageBox.information(self, "Load",
-                                   f"Loading from {filename} - not yet implemented")
+        if not filename:
+            return
+        try:
+            data = self._parse_system_file(filename)
+        except Exception as ex:
+            QMessageBox.warning(
+                self, "Load failed",
+                f"Could not read {filename}:\n{ex!r}")
+            return
+        name = (data.get('name') or
+                os.path.splitext(os.path.basename(filename))[0])
+        self.bidding_systems[name] = {
+            'name': name,
+            'description': data.get('description', ''),
+            'conventions': list(data.get('conventions', [])),
+        }
+        # Re-populate the system combo to include the new entry.
+        present = [self.system_combo.itemData(i)
+                   for i in range(self.system_combo.count())]
+        if name not in present:
+            self.system_combo.addItem(name, name)
+            self.ns_system_combo.addItem(name, name)
+            self.ew_system_combo.addItem(name, name)
+        self._load_system(name)
+        QMessageBox.information(
+            self, "Load",
+            f"Loaded bidding system '{name}' from "
+            f"{os.path.basename(filename)}.")
 
     def _on_save_file(self):
-        """Save bidding system to file."""
+        """Save the currently displayed system to a JSON file under
+        CONFIG/BIDRULE/. The file is symmetric with ``_on_load_file``:
+        ``{name, description, conventions}``."""
         from PyQt6.QtWidgets import QFileDialog
+        import json
+        if not self.current_system:
+            QMessageBox.information(
+                self, "Save", "No system currently selected.")
+            return
+        system = self.bidding_systems.get(self.current_system, {})
+        # Refresh from the live UI in case the user edited inline.
+        description = self.desc_text.toPlainText()
+        conventions = []
+        for i in range(self.conventions_list.count()):
+            conventions.append(self.conventions_list.item(i).text())
+        suggested = self.current_system.replace('/', '-')
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save Bidding System", "CONFIG/BIDRULE/",
-            "Bidding System Files (*.bsc);;All Files (*)"
+            self, "Save Bidding System",
+            f"CONFIG/BIDRULE/{suggested}.json",
+            "Bidding System Files (*.json *.bsc);;All Files (*)"
         )
-        if filename:
-            QMessageBox.information(self, "Save",
-                                   f"Saving to {filename} - not yet implemented")
+        if not filename:
+            return
+        if not filename.lower().endswith(('.json', '.bsc')):
+            filename = filename + '.json'
+        payload = {
+            'name': self.current_system,
+            'description': description or system.get('description', ''),
+            'conventions': conventions,
+        }
+        try:
+            os.makedirs(os.path.dirname(filename) or '.', exist_ok=True)
+            with open(filename, 'w', encoding='utf-8') as f:
+                if filename.lower().endswith('.bsc'):
+                    # Q-Plus BSC: line-based key=value.
+                    f.write(f"name={payload['name']}\n")
+                    f.write(f"description={payload['description']}\n")
+                    f.write("conventions="
+                            + ",".join(payload['conventions'])
+                            + "\n")
+                else:
+                    json.dump(payload, f, indent=2, ensure_ascii=False)
+        except Exception as ex:
+            QMessageBox.warning(
+                self, "Save failed",
+                f"Could not write {filename}:\n{ex!r}")
+            return
+        QMessageBox.information(
+            self, "Save",
+            f"Saved '{self.current_system}' to "
+            f"{os.path.basename(filename)}.")
+
+    @staticmethod
+    def _parse_system_file(filename: str) -> dict:
+        """Read a saved bidding-system file in either JSON or Q-Plus
+        BSC line-key=value form. Returns a dict with name /
+        description / conventions keys (missing fields become empty
+        strings or empty list)."""
+        import json
+        with open(filename, 'r', encoding='utf-8') as f:
+            text = f.read()
+        try:
+            return json.loads(text)
+        except Exception:
+            pass
+        out = {'name': '', 'description': '', 'conventions': []}
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or '=' not in line:
+                continue
+            k, _, v = line.partition('=')
+            k = k.strip().lower()
+            v = v.strip()
+            if k == 'name':
+                out['name'] = v
+            elif k == 'description':
+                out['description'] = v
+            elif k == 'conventions':
+                out['conventions'] = [
+                    c.strip() for c in v.split(',') if c.strip()]
+        return out
 
     def _on_apply(self):
         """Apply the current settings without closing."""
