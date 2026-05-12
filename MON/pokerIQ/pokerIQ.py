@@ -2423,71 +2423,59 @@ class MetricPie(QWidget):
         self.update()
 
     def paintEvent(self, event):
+        # Card-style rendering: a horizontal value-bar strip at the
+        # top, big numeric value in the middle, full multi-line
+        # caption below. The previous donut+caption layout had the
+        # circle eating ~70% of the tile height and squeezing the
+        # labels so they overlapped between rows.
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
-        # Reserve two-line caption space at the bottom so labels can
-        # wrap to a second line for clearer descriptions.
-        label_h = 56
-        diam = min(w - 12, h - label_h - 12)
-        cx = w // 2
-        cy = (h - label_h) // 2
-        radius = max(20, diam // 2)
+        pad = 6
 
-        # Track ring — scale stroke width with radius for a balanced
-        # donut at any size.
-        track_pen_w = max(10, radius // 5)
-        p.setPen(QPen(QColor("#262626"), track_pen_w))
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawEllipse(cx - radius, cy - radius, 2 * radius, 2 * radius)
-
-        # Filled arc — start at 12 o'clock, sweep clockwise.
+        # ---- 1. Thin progress strip across the top (replaces the
+        # donut fill). Same color-coded fill ratio + threshold tick.
+        bar_x, bar_y = pad, pad
+        bar_w = w - 2 * pad
+        bar_h = 8
+        # Track
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor("#262626"))
+        p.drawRoundedRect(bar_x, bar_y, bar_w, bar_h, 3, 3)
+        # Fill
         ratio = min(1.0, self._value / self._max) if self._max else 0.0
         if ratio > 0:
             fill_color = QColor(self._color)
             if self._dim:
                 fill_color.setAlpha(120)
-            p.setPen(QPen(fill_color, track_pen_w,
-                          Qt.PenStyle.SolidLine,
-                          Qt.PenCapStyle.FlatCap))
-            start_angle = 90 * 16
-            sweep = int(-360 * 16 * ratio)
-            p.drawArc(cx - radius, cy - radius,
-                      2 * radius, 2 * radius,
-                      start_angle, sweep)
-
-        # Threshold tick — short radial mark at the threshold angle.
+            p.setBrush(fill_color)
+            p.drawRoundedRect(bar_x, bar_y,
+                              int(bar_w * ratio), bar_h, 3, 3)
+        # Threshold tick on the strip
         if self._tick is not None and self._max > 0:
             tick_ratio = min(1.0, self._tick / self._max)
-            from math import cos, sin, pi
-            theta = pi / 2 - 2 * pi * tick_ratio
-            r_inner = radius - track_pen_w
-            r_outer = radius + track_pen_w // 2
-            x1 = cx + r_inner * cos(theta)
-            y1 = cy - r_inner * sin(theta)
-            x2 = cx + r_outer * cos(theta)
-            y2 = cy - r_outer * sin(theta)
-            p.setPen(QPen(QColor("#ffd966"), 4))
-            p.drawLine(int(x1), int(y1), int(x2), int(y2))
+            tick_x = bar_x + int(bar_w * tick_ratio)
+            p.setPen(QPen(QColor("#ffd966"), 2))
+            p.drawLine(tick_x, bar_y - 2, tick_x, bar_y + bar_h + 2)
 
-        # Center value text — Normal weight (Weight.Black was too
-        # loud compared to the rest of the page; the donut fill +
-        # large size carry the visual emphasis already).
-        center_font = QFont('Arial', max(14, int(radius / 2.4)),
-                            QFont.Weight.Normal)
-        p.setFont(center_font)
+        # ---- 2. Big numeric value, centered in the middle area.
+        value_top = bar_y + bar_h + 4
+        # Caption gets the bottom 40% of remaining vertical space.
+        caption_h = max(50, int((h - value_top) * 0.45))
+        value_h = h - value_top - caption_h
+        value_font_pt = max(18, int(value_h / 3.2))
+        value_font = QFont('Arial', value_font_pt, QFont.Weight.Normal)
+        p.setFont(value_font)
         p.setPen(QColor("#dddddd" if not self._dim else "#777777"))
-        p.drawText(QRectF(cx - radius, cy - radius,
-                          2 * radius, 2 * radius),
+        p.drawText(QRectF(pad, value_top, w - 2 * pad, value_h),
                    Qt.AlignmentFlag.AlignCenter, self._center_text)
 
-        # Caption underneath — bigger and word-wrapping so descriptive
-        # labels ("Equity vs ranges", "Pot commitment %") render fully
-        # over two lines.
-        cap_font = QFont('Arial', 16, QFont.Weight.Bold)
+        # ---- 3. Multi-line caption beneath the value, with room to
+        # wrap up to three lines if needed.
+        cap_font = QFont('Arial', 13, QFont.Weight.Bold)
         p.setFont(cap_font)
         p.setPen(QColor("#dddddd" if not self._dim else "#666666"))
-        p.drawText(QRectF(2, h - label_h, w - 4, label_h),
+        p.drawText(QRectF(pad, h - caption_h, w - 2 * pad, caption_h),
                    int(Qt.AlignmentFlag.AlignHCenter
                        | Qt.AlignmentFlag.AlignTop
                        | Qt.TextFlag.TextWordWrap),
@@ -5772,8 +5760,12 @@ class TheoryOfMindPanel(QWidget):
                     action_line = f"FOLD  (tier {tier} vs raise){why_pair}"
                     why_line = "Out of position / dominated; wait."
             elif first_in:
-                # Open-raising decision
-                if tier <= 3 or (tier == 4 and position in ('CO', 'BTN')):
+                # Open-raising decision. BTN / CO get a much wider
+                # opening range because there are only the blinds
+                # left to fight — Gordon's "cutoff is kind of money"
+                # and "I make a living by stealing the blinds".
+                is_steal_seat = position in ('CO', 'BTN')
+                if tier <= 3:
                     bet_raise = True
                     action_line = self._gordon_open_size(
                         position, bb_amount, pot)
@@ -5781,17 +5773,53 @@ class TheoryOfMindPanel(QWidget):
                                 "reasons: thin field, take lead, define "
                                 "ranges, conceal strength, win blinds).")
                 elif tier == 4:
-                    check_fold = True
-                    action_line = "FOLD  (tier 4 EP/MP — open only LP)"
-                    why_line = "Avoid weak hands out of position."
+                    if is_steal_seat:
+                        bet_raise = True
+                        action_line = self._gordon_open_size(
+                            position, bb_amount, pot)
+                        why_line = ("Tier 4 from LP — open for steal "
+                                    "value; positional advantage "
+                                    "post-flop.")
+                    else:
+                        check_fold = True
+                        action_line = "FOLD  (tier 4 — open only LP)"
+                        why_line = "Avoid weak hands out of position."
                 elif tier == 5:
-                    check_fold = True
-                    action_line = "FOLD"
-                    why_line = "Patience = profit. No reason to play."
-                else:
-                    check_fold = True
-                    action_line = "FOLD  (trash from this seat)"
-                    why_line = "Wait for a real spot."
+                    if is_steal_seat:
+                        bet_raise = True
+                        action_line = (
+                            self._gordon_open_size(
+                                position, bb_amount, pot)
+                            + " — steal")
+                        why_line = ("Gordon: BTN / CO are 'kind of "
+                                    "money' steal seats — open this "
+                                    "even with a marginal hand.")
+                    else:
+                        check_fold = True
+                        action_line = "FOLD"
+                        why_line = "Patience = profit. No reason to play."
+                else:                     # tier 6 — true trash
+                    if position == 'BTN':
+                        bet_raise = True
+                        action_line = (
+                            self._gordon_open_size(
+                                position, bb_amount, pot)
+                            + " — BTN steal")
+                        why_line = ("BTN, folded around — even trash "
+                                    "is +EV against just two blinds. "
+                                    "Steal cheap, fold to any "
+                                    "resistance.")
+                    elif position == 'CO':
+                        # CO trash steal is borderline — call (limp)
+                        # instead of raising, so we don't get 3-bet
+                        # off our weak hand.
+                        action_line = "CALL — light CO limp"
+                        why_line = ("Trash from CO: limp for cheap "
+                                    "speculation, no commitment.")
+                    else:
+                        check_fold = True
+                        action_line = "FOLD  (trash from this seat)"
+                        why_line = "Wait for a real spot."
             else:
                 # Already in (BB option, limped pot)
                 if tier <= 3:
