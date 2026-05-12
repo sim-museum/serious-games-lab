@@ -3291,11 +3291,16 @@ class TheoryOfMindPanel(QWidget):
         self.hero_tab = HeroOutsTab()
         self.tabs.addTab(_scroll_wrap(self.hero_tab), "Hero")
 
-        # Bot player tabs — skip the local hero and any remote humans.
+        # Bot player tabs — skip the local hero, any remote humans,
+        # and any seat that's been BUSTED (stack == 0 with no
+        # buy-back). Once a bot has zero chips they won't be dealt
+        # in again this session, so their tab is just dead space.
         for i, player in enumerate(players):
             if player.style == 'human':
                 continue
             if i in self._network_human_seats:
+                continue
+            if getattr(player, 'stack', 0) <= 0:
                 continue
             tab = TheoryOfMindTab(player.name, player.style)
             # Tab shows player's full name (e.g. "Tight Tim"). The
@@ -9700,6 +9705,128 @@ class PokerWindow(QMainWindow):
         except Exception as e:
             print(f"[learning hub] not installed: {e!r}", flush=True)
 
+        self._install_keyboard_shortcuts()
+
+    def _install_keyboard_shortcuts(self):
+        """Bind common-action keys to the same handlers the on-screen
+        buttons use. All shortcuts are global on the main window, so
+        the user can act from anywhere without aiming the mouse.
+
+        Action shortcuts (mirror the betting buttons; each one
+        silently no-ops if the corresponding action isn't currently
+        legal — so e.g. F does nothing if Fold isn't enabled, which
+        keeps stray keypresses from doing unexpected things):
+          F          Fold
+          C          Call
+          K          Check
+          R / B      Raise / Bet
+          Space      Primary action (Check if legal, else Call)
+        Game flow:
+          N          New Hand
+          T          Toggle Theory of Mind
+          G          Toggle God Mode
+          S          Toggle Show Tells
+          H          Show last Hand Summary
+        """
+        from PyQt6.QtGui import QShortcut, QKeySequence
+
+        def _bind(seq: str, fn):
+            sc = QShortcut(QKeySequence(seq), self)
+            sc.activated.connect(fn)
+            return sc
+
+        def _fold():
+            try:
+                if self.fold_btn.isEnabled():
+                    self.human_action('f', 0)
+                    return
+            except Exception:
+                pass
+            try:
+                if getattr(self, 'tom_fold_btn', None) and \
+                        self.tom_fold_btn.isEnabled():
+                    self.human_action('f', 0)
+            except Exception:
+                pass
+
+        def _check():
+            for btn_name in ('check_btn', 'tom_check_btn'):
+                btn = getattr(self, btn_name, None)
+                if btn is not None and btn.isEnabled():
+                    self.human_action('c', 0)
+                    return
+
+        def _call():
+            for btn_name in ('call_btn', 'tom_call_btn'):
+                btn = getattr(self, btn_name, None)
+                if btn is not None and btn.isEnabled():
+                    self.human_action('c', 0)
+                    return
+
+        def _raise():
+            for btn_name in ('raise_btn', 'tom_raise_btn'):
+                btn = getattr(self, btn_name, None)
+                if btn is not None and btn.isEnabled():
+                    self.show_raise_dialog()
+                    return
+
+        def _primary():
+            # Space = "whichever is the obvious primary" — Check if
+            # legal, else Call.
+            for btn_name in ('check_btn', 'tom_check_btn'):
+                btn = getattr(self, btn_name, None)
+                if btn is not None and btn.isEnabled():
+                    self.human_action('c', 0)
+                    return
+            _call()
+
+        def _new_hand():
+            try:
+                if self.new_hand_btn.isEnabled():
+                    self.deal_hand()
+            except Exception:
+                pass
+
+        def _toggle_tom():
+            try:
+                self.tom_toggle.setChecked(not self.tom_toggle.isChecked())
+            except Exception:
+                pass
+
+        def _toggle_god():
+            try:
+                if self.god_mode_cb.isEnabled():
+                    self.god_mode_cb.setChecked(
+                        not self.god_mode_cb.isChecked())
+            except Exception:
+                pass
+
+        def _toggle_tells():
+            try:
+                if self.stats_cb.isEnabled():
+                    self.stats_cb.setChecked(
+                        not self.stats_cb.isChecked())
+            except Exception:
+                pass
+
+        def _hand_summary():
+            try:
+                self._show_last_hand_summary()
+            except Exception:
+                pass
+
+        _bind("F", _fold)
+        _bind("C", _call)
+        _bind("K", _check)
+        _bind("R", _raise)
+        _bind("B", _raise)
+        _bind("Space", _primary)
+        _bind("N", _new_hand)
+        _bind("T", _toggle_tom)
+        _bind("G", _toggle_god)
+        _bind("S", _toggle_tells)
+        _bind("H", _hand_summary)
+
     def _is_multi_human_network(self) -> bool:
         """True iff we're in a network session — every network session
         has at least one other human, so we treat any network mode as
@@ -12068,6 +12195,24 @@ class PokerWindow(QMainWindow):
             self._log_table_stats()
         except Exception as ex:
             print(f"[log] per-hand stat update failed: {ex}")
+
+        # If any non-human player busted this hand (stack hit 0),
+        # rebuild the Theory-of-Mind tabs to drop them. setup_tabs
+        # filters out stack<=0 players, so this is just a re-poke.
+        try:
+            tom = getattr(self, 'tom_panel', None)
+            if tom is not None:
+                live_bot_names = {
+                    p.name for p in self.players
+                    if p.style != 'human' and p.stack > 0
+                }
+                shown_bot_names = set(getattr(tom, 'bot_tabs', {}).keys())
+                if shown_bot_names - live_bot_names:
+                    tom.setup_tabs(
+                        self.players,
+                        getattr(self, "network_human_seats", set()))
+        except Exception as ex:
+            print(f"[tom] could not refresh busted tabs: {ex}")
 
         # Log range accuracy analysis (get ranges from ToM panel)
         if hasattr(self, 'tom_panel') and self.tom_panel.final_range_estimates:
