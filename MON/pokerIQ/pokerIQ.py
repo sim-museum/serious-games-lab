@@ -14618,14 +14618,17 @@ predicted ranges matched actual holdings - use this to improve your reads!</p>
                 f"Couldn't write the save file:\n{ex}")
             return
         box = QMessageBox(self)
-        box.setIcon(QMessageBox.Icon.Information)
+        # Drop the big info icon — it reserved a wide blank column
+        # on the left of the dialog, mirroring the Tilt-Anatomy fix.
+        box.setIcon(QMessageBox.Icon.NoIcon)
         box.setWindowTitle("Save Game")
         box.setText(f"Game state saved to:\n{path}")
         box.setStyleSheet(
-            "QMessageBox { font-size: 15pt; }"
-            "QMessageBox QLabel { font-size: 15pt; min-width: 560px; }"
-            "QMessageBox QPushButton { font-size: 14pt;"
-            " padding: 6px 18px; min-width: 90px; }"
+            "QMessageBox { font-size: 19pt; }"
+            "QMessageBox QLabel { font-size: 19pt; min-width: 640px;"
+            " padding: 4px; }"
+            "QMessageBox QPushButton { font-size: 16pt;"
+            " padding: 8px 24px; min-width: 110px; }"
         )
         box.exec()
 
