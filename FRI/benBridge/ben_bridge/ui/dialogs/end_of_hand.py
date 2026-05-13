@@ -23,6 +23,7 @@ class EndOfHandDialog(QDialog):
     """
 
     view_other_table = pyqtSignal()   # teams: view other table
+    next_deal_requested = pyqtSignal()  # Next Deal button
     review_requested = pyqtSignal()   # open auction + played tricks
     score_requested = pyqtSignal()    # open the score table
     repeat_requested = pyqtSignal()   # re-deal the same board
@@ -232,9 +233,12 @@ class EndOfHandDialog(QDialog):
         self.accept()
 
     def _on_next_deal(self):
-        # No signal: Next deal is the dialog-accept path, just like
-        # the old OK button. MainWindow's accept handler triggers
-        # _on_next_deal.
+        # Emit the dedicated Next-Deal signal so MainWindow's
+        # accept-handler isn't shared with Review / Score / Repeat
+        # (each of which also calls self.accept()). Without this,
+        # clicking Review fired Next-Deal on the same accept signal
+        # and the next hand auto-dealt under the review dialog.
+        self.next_deal_requested.emit()
         self.accept()
 
     def _on_review(self):

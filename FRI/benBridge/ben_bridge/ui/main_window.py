@@ -6178,12 +6178,14 @@ For more information, see the README file."""
             except Exception:
                 pass
 
-        # Next deal — the dialog's accept signal already maps to that
-        # via deal_hand-style logic elsewhere. Wire explicitly so the
-        # closed-room teams path also triggers _on_next_deal after the
-        # user clicks Next deal.
+        # Next deal — use the DEDICATED next_deal_requested signal,
+        # not the broad accepted signal. Review / Score / Repeat all
+        # call self.accept() to close the dialog, so listening on
+        # accepted accidentally triggered Next Deal whenever the user
+        # clicked any of those buttons — auto-dealing a fresh hand
+        # in the background.
         try:
-            dialog.accepted.connect(self._on_next_deal)
+            dialog.next_deal_requested.connect(self._on_next_deal)
         except Exception:
             pass
 
