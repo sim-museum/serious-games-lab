@@ -742,8 +742,12 @@ class DirectionArrow(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor('#ffc0cb'), 2))
-        painter.setBrush(QBrush(QColor('#ffc0cb')))
+        # Grey arrows — the previous pink was visually loud. Letters
+        # are painted in a darker grey for contrast against the body.
+        TRI_COLOR = QColor('#9a9a9a')
+        LETTER_COLOR = QColor('#202020')
+        painter.setPen(QPen(TRI_COLOR, 2))
+        painter.setBrush(QBrush(TRI_COLOR))
 
         w, h = self.width(), self.height()
         pts = {
@@ -754,13 +758,27 @@ class DirectionArrow(QWidget):
         }
         painter.drawPolygon(QPolygon(pts.get(self.direction, [])))
 
-        # N/S/E/W letter painted in the page-background color so it
-        # blends into the navy background (the user wanted the pink
-        # triangle to read as a pure arrow shape, not a letter-badge).
-        painter.setPen(QColor(COLORS['background']))
-        font_pt = max(10, int(min(w, h) * 0.35))
+        # N/E/S/W letter pinned to the *flat* side of the triangle
+        # (i.e. the side facing the centre of the table), so the
+        # compass reads outward → letter → apex.
+        painter.setPen(LETTER_COLOR)
+        font_pt = max(10, int(min(w, h) * 0.32))
         painter.setFont(QFont("Arial", font_pt, QFont.Weight.Bold))
-        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.direction)
+        align_map = {
+            # N triangle points up, flat side at the bottom.
+            'N': (Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter),
+            # S triangle points down, flat side at the top.
+            'S': (Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter),
+            # E triangle points right, flat side on the left.
+            'E': (Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+            # W triangle points left, flat side on the right.
+            'W': (Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter),
+        }
+        painter.drawText(
+            self.rect(),
+            align_map.get(self.direction, Qt.AlignmentFlag.AlignCenter),
+            self.direction,
+        )
 
 
 class BiddingTableWidget(QFrame):

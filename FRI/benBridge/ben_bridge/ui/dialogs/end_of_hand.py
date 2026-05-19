@@ -28,6 +28,12 @@ class EndOfHandDialog(QDialog):
     score_requested = pyqtSignal()    # open the score table
     repeat_requested = pyqtSignal()   # re-deal the same board
     help_requested = pyqtSignal()     # open help
+    # Single-player extras — generated closed room comparison and
+    # post-hand Claude commentary. Both buttons stay enabled until
+    # used; Claude can be re-clicked after Generate Closed Room so
+    # the second invocation gets to compare both rooms.
+    generate_closed_room_requested = pyqtSignal()
+    claude_analysis_requested = pyqtSignal()
 
     def __init__(self, contract_str: str, declarer: str, result_str: str,
                  score: int, imp_swing: int = None, is_teams_match: bool = False,
@@ -58,7 +64,10 @@ class EndOfHandDialog(QDialog):
 
         self.setWindowTitle("Playing finished")
         self.setMinimumWidth(560)
-        self.setModal(True)
+        # Non-modal — the user can leave this open while the harness
+        # spawns / Q-Plus runs / they consult the score sheet. The
+        # main window holds a reference so it isn't GC'd.
+        self.setModal(False)
         apply_dialog_style(self)
 
         self._setup_ui()
@@ -150,38 +159,61 @@ class EndOfHandDialog(QDialog):
 
         layout.addWidget(result_frame)
 
-        # Q-Plus button row — Next deal / Review / Score / Repeat / Help.
-        # Each button emits a signal so MainWindow can route to the
-        # existing handler (_on_next_deal, _on_review, _on_show_scores,
-        # _on_repeat_deal, _on_show_help). All buttons close the
-        # modal so the user can interact with the spawned views.
-        button_layout = QHBoxLayout()
-        button_layout.setSpacing(10)
-
-        if self.is_teams_match:
-            other_table_btn = QPushButton("View other table")
-            other_table_btn.setFont(QFont("Arial", 11))
-            other_table_btn.clicked.connect(self._on_view_other_table)
-            button_layout.addWidget(other_table_btn)
-            button_layout.addStretch()
-
-        def _make(label: str, signal_emit, default: bool = False):
+        # Primary choices row — what the user wants to do next.
+        # In single-player mode this is the three-way fork: Generate
+        # closed room (launches harness + Q-Plus), Claude analysis
+        # (post-hand commentary, includes both rooms if a closed room
+        # was generated), or Next deal (move on). Teams mode keeps
+        # "View other table" instead of "Generate closed room".
+        def _make(label: str, signal_emit, default: bool = False,
+                  min_width: int = 140):
             btn = QPushButton(label)
             btn.setFont(QFont("Arial", 11, QFont.Weight.Bold if default
                               else QFont.Weight.Normal))
-            btn.setMinimumWidth(110)
+            btn.setMinimumWidth(min_width)
             if default:
                 btn.setDefault(True)
             btn.clicked.connect(signal_emit)
             return btn
 
-        button_layout.addWidget(_make(
+        primary_row = QHBoxLayout()
+        primary_row.setSpacing(10)
+        primary_row.addStretch()
+        if self.is_teams_match:
+            primary_row.addWidget(_make(
+                "View other table", self._on_view_other_table))
+        else:
+            # Generate closed room — kept enabled even after click so
+            # the user can re-launch the harness if Q-Plus crashed.
+            self.gen_closed_btn = _make(
+                "Generate closed room",
+                self._on_generate_closed_room)
+            primary_row.addWidget(self.gen_closed_btn)
+        # Claude analysis — stays enabled so a second click after the
+        # closed room is ingested upgrades the prompt to compare both
+        # rooms.
+        self.claude_btn = _make(
+            "Claude analysis", self._on_claude_analysis)
+        primary_row.addWidget(self.claude_btn)
+        primary_row.addWidget(_make(
             "Next deal", self._on_next_deal, default=True))
-        button_layout.addWidget(_make("Review", self._on_review))
-        button_layout.addWidget(_make("Score", self._on_score))
-        button_layout.addWidget(_make("Repeat", self._on_repeat))
-        button_layout.addWidget(_make("Help", self._on_help))
+        primary_row.addStretch()
+        layout.addLayout(primary_row)
 
+        # Secondary row — the existing Q-Plus 5-button line, demoted
+        # so it doesn't compete with the primary fork.
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(10)
+        button_layout.addStretch()
+        button_layout.addWidget(_make(
+            "Review", self._on_review, min_width=100))
+        button_layout.addWidget(_make(
+            "Score", self._on_score, min_width=100))
+        button_layout.addWidget(_make(
+            "Repeat", self._on_repeat, min_width=100))
+        button_layout.addWidget(_make(
+            "Help", self._on_help, min_width=100))
+        button_layout.addStretch()
         layout.addLayout(button_layout)
 
     # ------------------------------------------------------------------
@@ -257,6 +289,21 @@ class EndOfHandDialog(QDialog):
         self.help_requested.emit()
         # Don't close — help is a side-show, the user may want to
         # keep the result banner up while reading.
+
+    def _on_generate_closed_room(self):
+        """Launch the GUI harness + Q-Plus, don't close the dialog so
+        the user can come back for Claude analysis or Next deal once
+        the closed-room game is over and ingested.
+        """
+        self.generate_closed_room_requested.emit()
+
+    def _on_claude_analysis(self):
+        """Kick off Claude. Dialog stays open so the user can also
+        click Next deal afterwards. The handler upstream decides
+        whether the closed room is already attached and picks the
+        comparison vs single-room prompt accordingly.
+        """
+        self.claude_analysis_requested.emit()
 
 
 class PassedOutDialog(QDialog):

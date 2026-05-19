@@ -6147,13 +6147,13 @@ For more information, see the README file."""
         the teams-match path and the single-player path share the
         same wiring.
 
-        Buttons:
-          • Next deal  → _on_next_deal (via dialog.accept())
-          • Review     → _on_review (auction + played tricks)
-          • Score      → _on_show_scores (score table dialog)
-          • Repeat     → _on_repeat_deal (re-deal the same board)
-          • Help       → _on_show_help if present, else the menubar
-                         Help action's trigger.
+        Single-player buttons:
+          • Generate closed room → spawn harness + Q-Plus
+          • Claude analysis      → run Claude (open-room, or both if
+                                   a closed-room run has been
+                                   ingested before clicking)
+          • Next deal            → advance to next deal
+          • Review / Score / Repeat / Help — secondary row
         """
         try:
             dialog.review_requested.connect(self._on_review)
@@ -6178,6 +6178,28 @@ For more information, see the README file."""
             except Exception:
                 pass
 
+        # Generate closed room (single-player only — the teams-match
+        # path uses View other table instead, which is already wired
+        # by the caller). Hands off to _launch_qplus_harness so the
+        # user can play the same deal in Q-Plus; the existing
+        # Extras → Ingest Q-Plus closed room flow picks up the BDL
+        # afterwards.
+        try:
+            dialog.generate_closed_room_requested.connect(
+                self._on_dialog_generate_closed_room)
+        except Exception:
+            pass
+
+        # Claude analysis — runs the pending hand critique. If the
+        # closed room has been ingested between hand end and click,
+        # _maybe_run_pending_claude switches to the comparison
+        # prompt automatically.
+        try:
+            dialog.claude_analysis_requested.connect(
+                self._on_dialog_claude_analysis)
+        except Exception:
+            pass
+
         # Next deal — use the DEDICATED next_deal_requested signal,
         # not the broad accepted signal. Review / Score / Repeat all
         # call self.accept() to close the dialog, so listening on
@@ -6188,6 +6210,58 @@ For more information, see the README file."""
             dialog.next_deal_requested.connect(self._on_next_deal)
         except Exception:
             pass
+
+    def _show_end_of_hand_dialog(self, dialog):
+        """Show the end-of-hand dialog non-modally and keep a ref.
+
+        Non-modal so the user can interact with the main window (open
+        the score sheet, drag the Q-Plus harness around, etc.) while
+        the end-of-hand banner is visible. We hold a reference on
+        self so the dialog isn't garbage-collected.
+        """
+        from .dialogs.dialog_style import make_detachable
+        try:
+            make_detachable(dialog)
+        except Exception:
+            pass
+        dialog.show()
+        dialog.raise_()
+        if not hasattr(self, '_end_of_hand_dialogs'):
+            self._end_of_hand_dialogs = []
+        survivors = []
+        for d in self._end_of_hand_dialogs:
+            try:
+                if d.isVisible():
+                    survivors.append(d)
+            except RuntimeError:
+                pass
+        survivors.append(dialog)
+        self._end_of_hand_dialogs = survivors
+
+    def _on_dialog_generate_closed_room(self):
+        """End-of-hand dialog button → spawn harness + Q-Plus.
+
+        The previous behaviour fired this automatically from
+        _show_result, which surprised users who hadn't asked for a
+        closed-room comparison. Routing it through the dialog button
+        makes it explicit.
+        """
+        if self.controller.board is None:
+            return
+        self._launch_qplus_harness(self.controller.board)
+        self.status_label.setText(
+            "Launched Q-Plus harness — play the deal, then use "
+            "Extras → Ingest Q-Plus closed room to bring the result back."
+        )
+
+    def _on_dialog_claude_analysis(self):
+        """End-of-hand dialog button → run Claude on the last hand.
+
+        Reuses the existing pending-claude pipeline. If the closed
+        room has been ingested before this click, the prompt builder
+        automatically switches to the comparison flavour.
+        """
+        self._maybe_run_pending_claude()
 
     def _show_result(self):
         """Show deal result"""
@@ -6327,12 +6401,12 @@ For more information, see the README file."""
             )
             dialog.view_other_table.connect(self._on_view_teams_score)
             self._wire_end_of_hand_dialog(dialog)
-            dialog.exec()
+            self._show_end_of_hand_dialog(dialog)
         else:
-            # Single-player end-of-hand dialog — same Q-Plus 5-button
-            # layout, just without the "View other table" entry. Was
-            # previously suppressed in single-player mode; bringing it
-            # in matches the Q-Plus reference screen the user wants.
+            # Single-player end-of-hand dialog — same Q-Plus banner +
+            # the three-way fork (Generate closed room / Claude
+            # analysis / Next deal) plus the legacy Review / Score /
+            # Repeat / Help row.
             ns_score_sp = score if contract.declarer.is_ns() else -score
             sp_dialog = EndOfHandDialog(
                 contract_str=contract.to_str(),
@@ -6344,7 +6418,7 @@ For more information, see the README file."""
                 parent=self
             )
             self._wire_end_of_hand_dialog(sp_dialog)
-            sp_dialog.exec()
+            self._show_end_of_hand_dialog(sp_dialog)
 
         # Log the completed hand. The logger needs all four original hands
         # to compute the Pavlicek deal id; a guest only ever has its own
@@ -6417,23 +6491,16 @@ For more information, see the README file."""
             self.table_view.set_hand_visible(seat, True)
 
         # Post-hand sequence (normal play only, not teams match):
-        # 1. Launch the GUI harness so the host can manually replay the
-        #    deal in Q-Plus — that's the only closed room ben_bridge runs;
-        #    AI vs AI replay is no longer fired automatically (it doubled
-        #    engine load on the network and isn't a real comparison).
-        # 2. Show scoring table.
-        #
-        # Claude analysis is intentionally NOT triggered here — it runs
-        # later, either right after a Q-Plus ingest (so it can compare
-        # both rooms) or, if no ingest happens, at "Next Deal" time so
-        # the user gets at least an open-room critique. _claude_pending
-        # tracks the last completed board so we don't re-run Claude.
+        # The end-of-hand dialog now drives both the harness launch
+        # (Generate closed room button) and the Claude critique
+        # (Claude analysis button), so we no longer fire either
+        # automatically. We only snapshot the deal so the dialog's
+        # Claude button has the context it needs, and pop the score
+        # sheet for the running total.
         is_guest = (self.network_controller.is_active
                     and not self.network_controller.is_server)
         if self.teams_match is None and self.match_controller is None:
             if not is_guest:
-                self._launch_qplus_harness(board)
-                # Snapshot enough context to fire Claude on demand later.
                 self._claude_pending = {
                     'board': board,
                     'contract': contract,
@@ -7813,6 +7880,9 @@ For more information, see the README file."""
             self.status_label.setText(
                 f"Closed room ingested for board {run.board_number}."
             )
+            # Open the side-by-side compare for this board immediately
+            # so the user lands on the screen showing both rooms.
+            self._open_compare_for_board(run.board_number)
 
         # Push to guests so they get the Compare button too.
         if (self.network_controller.is_active
@@ -7822,10 +7892,59 @@ For more information, see the README file."""
             except Exception as e:
                 print(f"[ingest qplus] broadcast failed: {e}", flush=True)
 
-        # Now that the closed-room run is attached, kick Claude with the
-        # comparison form of the prompt. If the hand was passed out or
-        # otherwise didn't queue a pending analysis, this is a no-op.
-        self._maybe_run_pending_claude()
+    def _open_compare_for_board(self, board_number: int):
+        """Open the side-by-side Compare dialog for the given board.
+
+        Used after a fresh closed-room ingest so the user sees the
+        comparison screen directly instead of having to navigate to
+        the score sheet and click Compare. Non-modal; multiple
+        compare windows can be left open across boards.
+        """
+        try:
+            from .dialogs.compare_replay import CompareReplayDialog
+        except Exception:
+            return
+        # The score sheet keeps two BoardResults per board_number when a
+        # closed-room run is attached — one with table==OPEN and one
+        # with table==CLOSED. We want both runs so the compare dialog
+        # has two sides to draw.
+        from ben_backend.models import BenTable
+        open_run = None
+        closed_run = None
+        for r in (self.scoring_table.results if self.scoring_table else []):
+            if r.board_number != board_number:
+                continue
+            run = getattr(r, 'board_run', None)
+            if run is None:
+                continue
+            if getattr(run, 'table', None) == BenTable.CLOSED:
+                closed_run = run
+            else:
+                open_run = run
+        if open_run is None or closed_run is None:
+            return
+        try:
+            dlg = CompareReplayDialog(open_run, closed_run, parent=self)
+            from .dialogs.dialog_style import make_detachable
+            try:
+                make_detachable(dlg)
+            except Exception:
+                pass
+            dlg.show()
+            dlg.raise_()
+            if not hasattr(self, '_compare_dialogs'):
+                self._compare_dialogs = []
+            survivors = []
+            for d in self._compare_dialogs:
+                try:
+                    if d.isVisible():
+                        survivors.append(d)
+                except RuntimeError:
+                    pass
+            survivors.append(dlg)
+            self._compare_dialogs = survivors
+        except Exception as e:
+            print(f"[compare auto-open] failed: {e}", flush=True)
 
     def _pick_bdl_deal_for_ingest(self, deals):
         """Choose which BDL deal corresponds to the open-room hand.
