@@ -690,10 +690,14 @@ class TrickAreaWidget(QFrame):
             'E': (m + gw + arrow_gap,
                   center_y - chevron_size // 2),
         }
+        # Keep references keyed by direction so set_vulnerability can
+        # repaint the matching pair (NS or EW) pink.
+        self.arrows: Dict[str, DirectionArrow] = {}
         for d, pos in arrow_positions.items():
             arrow = DirectionArrow(d, self)
             arrow.setFixedSize(chevron_size, chevron_size)
             arrow.move(pos[0], pos[1])
+            self.arrows[d] = arrow
 
         # Bidding table overlay — centred on the green box.
         self.bidding_widget = BiddingTableWidget(self)
@@ -737,6 +741,20 @@ class TrickAreaWidget(QFrame):
             cw.set_highlighted(False)
         self.update()  # Force repaint
 
+    def set_vulnerability(self, vuln: 'Vulnerability'):
+        """Paint each compass arrow pink for the vulnerable pair(s).
+
+        NS vulnerable → N + S triangles pink.
+        EW vulnerable → E + W triangles pink.
+        Both vulnerable → all four pink.
+        None → all four grey.
+        """
+        ns_vul = vuln in (Vulnerability.NS, Vulnerability.BOTH)
+        ew_vul = vuln in (Vulnerability.EW, Vulnerability.BOTH)
+        vul_by_dir = {'N': ns_vul, 'S': ns_vul, 'E': ew_vul, 'W': ew_vul}
+        for d, arrow in self.arrows.items():
+            arrow.set_vulnerable(vul_by_dir.get(d, False))
+
 
 class DirectionArrow(QWidget):
     def __init__(self, direction: str, parent=None):
@@ -745,13 +763,25 @@ class DirectionArrow(QWidget):
         # Default size — callers (TrickAreaWidget) override via setFixedSize
         # if they want bigger chevrons.
         self.setFixedSize(40, 40)
+        # Vulnerability flag — when True the triangle paints pink
+        # instead of grey, matching the Q-Plus reference where the
+        # compass marker for a vulnerable seat is highlighted.
+        self._vulnerable = False
+
+    def set_vulnerable(self, vulnerable: bool):
+        if self._vulnerable != bool(vulnerable):
+            self._vulnerable = bool(vulnerable)
+            self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        # Grey arrows — the previous pink was visually loud. Letters
-        # are painted in a darker grey for contrast against the body.
-        TRI_COLOR = QColor('#9a9a9a')
+        # Grey when not vulnerable; pink when this seat is vulnerable.
+        # Letters stay dark for contrast against either body colour.
+        if self._vulnerable:
+            TRI_COLOR = QColor('#ff9aa8')   # soft pink (Q-Plus reference)
+        else:
+            TRI_COLOR = QColor('#9a9a9a')
         LETTER_COLOR = QColor('#202020')
         painter.setPen(QPen(TRI_COLOR, 2))
         painter.setBrush(QBrush(TRI_COLOR))
@@ -1035,9 +1065,29 @@ class TableView(QWidget):
         self.vuln_label.setFont(QFont("Arial", 11))
         il.addWidget(self.vuln_label)
 
-        north_row.addWidget(self.north_label, alignment=Qt.AlignmentFlag.AlignTop)
+        # Q-Plus visual: the N label sits centered directly above the
+        # green table, not in the screen's top-left corner. Use an
+        # invisible placeholder on the left matching the info panel's
+        # width so the label centres over the trick area below.
+        from PyQt6.QtWidgets import QSizePolicy
+        # Pin the info_panel width so we can mirror it on the left.
+        self.info_panel.setMinimumWidth(140)
+        self.info_panel.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                      QSizePolicy.Policy.Preferred)
+        north_spacer_left = QWidget()
+        north_spacer_left.setFixedWidth(140)
+        north_row.addWidget(north_spacer_left, alignment=Qt.AlignmentFlag.AlignTop)
         north_row.addStretch()
-        north_row.addWidget(self.hand_widgets[Seat.NORTH])
+        # Stack N label above the N hand fan so the label appears
+        # next to the top edge of the green table (where Q-Plus puts
+        # the "N: Q-plus" tab).
+        north_combo = QVBoxLayout()
+        north_combo.setContentsMargins(0, 0, 0, 0)
+        north_combo.setSpacing(2)
+        north_combo.addWidget(self.north_label,
+                              alignment=Qt.AlignmentFlag.AlignHCenter)
+        north_combo.addWidget(self.hand_widgets[Seat.NORTH])
+        north_row.addLayout(north_combo)
         north_row.addStretch()
         north_row.addWidget(self.info_panel, alignment=Qt.AlignmentFlag.AlignTop)
         layout.addLayout(north_row)
@@ -1064,11 +1114,12 @@ class TableView(QWidget):
         self.west_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
         self.west_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         west_vbox.addStretch()
-        # Anchor the W: Declarer / W: Dummy label against the LEFT
-        # edge of the screen (was AlignCenter, which floated it next
-        # to the trick area in the middle).
+        # Q-Plus visual: W label sits next to the LEFT edge of the
+        # green table, not the screen's left edge. Anchor it to the
+        # RIGHT of the west column so it floats next to the trick
+        # area while the hand-widget fan still spreads leftward.
         west_vbox.addWidget(self.west_label,
-                            alignment=Qt.AlignmentFlag.AlignLeft)
+                            alignment=Qt.AlignmentFlag.AlignRight)
         west_vbox.addWidget(self.hand_widgets[Seat.WEST])
         self.hand_widgets[Seat.WEST].setVisible(False)  # Hidden by default
         west_vbox.addStretch()
@@ -1102,10 +1153,12 @@ class TableView(QWidget):
         self.east_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
         self.east_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         east_vbox.addStretch()
-        # Anchor the E: Declarer / E: Dummy label against the RIGHT
-        # edge of the screen.
+        # Q-Plus visual: E label sits next to the RIGHT edge of the
+        # green table. Anchor to the LEFT of the east column so it
+        # floats next to the trick area while the hand fan spreads
+        # rightward.
         east_vbox.addWidget(self.east_label,
-                            alignment=Qt.AlignmentFlag.AlignRight)
+                            alignment=Qt.AlignmentFlag.AlignLeft)
         east_vbox.addWidget(self.hand_widgets[Seat.EAST])
         self.hand_widgets[Seat.EAST].setVisible(False)  # Hidden by default
         east_vbox.addStretch()
@@ -1134,9 +1187,27 @@ class TableView(QWidget):
 
         self.hand_widgets[Seat.SOUTH].set_player_info(is_human=True)
 
-        south_row.addWidget(self.south_label, alignment=Qt.AlignmentFlag.AlignBottom)
+        # Q-Plus visual: S label sits centered directly above the
+        # south hand fan (and so under the trick area). The original
+        # AlignLeft placement parked it in the bottom-left corner,
+        # far from the table. Mirror the north row's structure for
+        # symmetry — spacer on the left, then stretch + label +
+        # stretch + hand widget + stretch.
+        south_spacer_left = QWidget()
+        south_spacer_left.setFixedWidth(140)
+        south_row.addWidget(south_spacer_left,
+                            alignment=Qt.AlignmentFlag.AlignBottom)
         south_row.addStretch()
-        south_row.addWidget(self.hand_widgets[Seat.SOUTH])
+        # Stack south_label above the south hand so it visually
+        # parallels Q-Plus's "South" tab sitting just under the
+        # green table edge.
+        south_combo = QVBoxLayout()
+        south_combo.setContentsMargins(0, 0, 0, 0)
+        south_combo.setSpacing(2)
+        south_combo.addWidget(self.south_label,
+                              alignment=Qt.AlignmentFlag.AlignHCenter)
+        south_combo.addWidget(self.hand_widgets[Seat.SOUTH])
+        south_row.addLayout(south_combo)
         south_row.addStretch()
         # The earlier 140-px spacer here only existed to make the south
         # row visually balance the info-panel block on the north row.
@@ -1258,6 +1329,14 @@ class TableView(QWidget):
         self.dealer_label.setText(f"Dealer: {board.dealer.to_char()}")
         vuln_map = {Vulnerability.NONE: 'None', Vulnerability.NS: 'N-S', Vulnerability.EW: 'E-W', Vulnerability.BOTH: 'Both'}
         self.vuln_label.setText(f"Vul.: {vuln_map[board.vulnerability]}")
+        # Repaint the compass arrows: pink for whichever pair is
+        # vulnerable on this board, grey otherwise.
+        try:
+            self.trick_area.set_vulnerability(board.vulnerability)
+        except Exception:
+            # The trick area is always set up before set_board, but
+            # guard against a partial init during very early calls.
+            pass
 
         # Repaint the per-position labels based on _local_seat. Keeps
         # "<seat char>: HUMAN" on the local user's seat regardless of which
