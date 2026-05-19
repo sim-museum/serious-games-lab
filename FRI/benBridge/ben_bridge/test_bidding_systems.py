@@ -329,6 +329,34 @@ class TestRKCBlackwood(unittest.TestCase):
         # or 6 if queen present. Either way it must NOT be 7.
         self.assertLessEqual(contract.level, 6)
 
+    def test_takeout_double_of_3c_preempt(self):
+        """Board 388 — 17 HCP balanced over RHO's 3♣ preempt must
+        not pass. Standard practice is takeout double. Advancer
+        with 7+ spades is allowed to take it to 4♠ or further."""
+        Seat = self.Seat
+        hands = {
+            Seat.NORTH: self._hand('ST HAKQT9 DAJT5 CK54'),       # 17 HCP, 1=5=4=3
+            Seat.SOUTH: self._hand('SAQJ9742 H7 DKQ963'),         # 12 HCP, 7=1=5=0
+            Seat.WEST:  self._hand('HJ62 D82 CAQT87632'),         # 7 HCP, 0=3=2=7
+            Seat.EAST:  self._hand('SK8653 H8543 D74 CJ9'),       # 4 HCP, 5=4=2=2
+        }
+        auction = self._drive(hands, 'Precision90M', Seat.WEST)
+        # N's bid (the second action in this auction) must be the
+        # takeout double, not pass.
+        self.assertFalse(auction[1].is_pass,
+                         f"N passed 3♣ with 17 HCP — should double. auction={auction}")
+        self.assertTrue(auction[1].is_double,
+                        f"N's call was {auction[1].to_ben_str()}, expected X.")
+        # The final contract should be NS-side at game (4♠, 5♦, 4♥)
+        # or better — definitely not the passed-out 3♣.
+        contract = self._final_contract(auction)
+        self.assertGreaterEqual(contract.level, 4)
+        self.assertNotEqual(
+            (contract.level, contract.suit),
+            (3, self.Suit.CLUBS),
+            "Auction must improve on letting 3♣ play undoubled.",
+        )
+
     def test_quantitative_4nt_not_rkc(self):
         """1NT - 4NT with no suit fit is a quantitative invite, not
         RKC — opener should not respond with keycards."""

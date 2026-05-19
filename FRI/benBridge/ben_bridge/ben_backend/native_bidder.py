@@ -2431,6 +2431,111 @@ def _overcall_over_weak_two(state, e: HandEval, system) -> Bid:
     return passb(why="No suitable overcall over weak 2")
 
 
+def _overcall_over_preempt(state, e: HandEval, system) -> Bid:
+    """Compete over RHO's 3-level (or 4-level minor) preempt.
+
+    Range is wider than over a 1-level opening — we're forcing
+    partner to the 4-level on the takeout, so we need extras:
+
+      • Double (takeout) — 15+ HCP, 0-2 cards in opener's suit,
+        3+ cards in every unbid suit. The pre-existing 12-HCP
+        threshold over 1-level openers is too light here: partner
+        is forced to the 4-level and could be holding a 5-count
+        with no fit. 15+ is the standard SAYC / Q-Plus minimum
+        for a 3-level takeout double.
+      • Suit overcall — 6+ card suit with 14+ HCP. Lower-suited
+        overcalls jump to the next bid above the preempt.
+      • 3NT — 16-19 balanced with stoppers in opener's suit.
+      • Otherwise pass and hope partner protects.
+
+    Doesn't try to model NS / EW vulnerability adjustments yet —
+    a pass at unfavourable is still the right call most of the
+    time and the bidder is conservative enough to default that
+    way without an explicit vul-aware tweak.
+    """
+    op = state.opening_bid
+    hcp = e.hcp
+    opener_suit = op.suit
+    unbid = [s for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS)
+             if s != opener_suit]
+
+    # 3NT — balanced 16-19 with stoppers in opener's suit (one stopper
+    # for a 7-card preempt is the standard ask, two is safer).
+    if (16 <= hcp <= 19 and e.is_balanced
+            and _has_stopper(e, opener_suit)):
+        return bid(3, Suit.NOTRUMP, why="3NT overcall: 16-19 balanced, stopper")
+
+    # Natural overcall in a long suit at the level forced by the preempt.
+    # Prefer the major to the minor, the longer suit to the shorter,
+    # and require at least a decent suit (HCP ≥ 7 within the suit, or
+    # a 7-card holding).
+    best_suit = None
+    best_score = -1
+    for s in unbid:
+        length = e.suit_lengths[s]
+        suit_hcp = e.suit_hcp[s]
+        if length < 6:
+            continue
+        if hcp < 14:
+            continue
+        if suit_hcp < 7 and length < 7:
+            continue
+        # Score: length first, then suit hcp, then "majors preferred".
+        is_major = 1 if s in (Suit.HEARTS, Suit.SPADES) else 0
+        score = length * 100 + suit_hcp * 10 + is_major
+        if score > best_score:
+            best_score = score
+            best_suit = s
+    if best_suit is not None:
+        # Suit overcall must be high enough to be legal above the preempt.
+        # 3♣ → 3♦+ legal; 3♠ → 4♣+ legal; 4♣ → 4♦+ legal.
+        if _BID_RANK[best_suit] > _BID_RANK[opener_suit]:
+            level = op.level
+        else:
+            level = op.level + 1
+        return bid(level, best_suit,
+                   why=f"{level}{best_suit.to_char()} overcall over "
+                       f"{op.level}{opener_suit.to_char()} preempt")
+
+    # Takeout double — three flavours, looser as HCP go up:
+    #   • Strict (15+): ≤2 in opener's suit, ≥3 in every unbid suit.
+    #   • Strong (17+): ≤3 in opener's suit, 4+ cards in some major,
+    #     ≥2 in every other unbid suit. Covers a 17-HCP 1-5-4-3 with
+    #     a small club stopper where natural overcall and 3NT both
+    #     misfire — passing such a hand misses too many cold games.
+    #   • Big (20+): ≤3 in opener's suit, no other shape requirement.
+    #     With 20+ HCP we double and trust partner; sitting for a
+    #     3-level preempt with that much would be a worse error.
+    # Over a 4-level preempt we add 3 HCP to every threshold since
+    # partner is now committed to the 4-level on the takeout.
+    bonus = 3 if op.level == 4 else 0
+    short_in_op = e.suit_lengths[opener_suit]
+
+    def _has_4_in_a_major():
+        return any(e.suit_lengths[m] >= 4
+                   and m != opener_suit
+                   for m in (Suit.HEARTS, Suit.SPADES))
+
+    if (hcp >= 15 + bonus
+            and short_in_op <= 2
+            and all(e.suit_lengths[s] >= 3 for s in unbid)):
+        return double(why=f"Takeout double of {op.level}{opener_suit.to_char()} preempt")
+    if (hcp >= 17 + bonus
+            and short_in_op <= 3
+            and _has_4_in_a_major()):
+        # 17+ HCP with a 4+ major and short in opener's suit. We don't
+        # demand support in every unbid suit — with a 1-5-4-3 shape
+        # partner will almost always pick the longer major when we
+        # double clubs lacking spade length.
+        return double(why=f"Strong takeout X of {op.level}{opener_suit.to_char()} "
+                          f"({hcp} HCP, can't pass)")
+    if hcp >= 20 + bonus and short_in_op <= 3:
+        return double(why=f"Big-hand takeout X of {op.level}{opener_suit.to_char()} "
+                          f"({hcp} HCP)")
+
+    return passb(why=f"No safe action over {op.level}{opener_suit.to_char()} preempt")
+
+
 def _overcall(state, e: HandEval, system) -> Bid:
     op = state.opening_bid
     hcp = e.hcp
@@ -2446,6 +2551,15 @@ def _overcall(state, e: HandEval, system) -> Bid:
     # use a straight takeout-double policy.
     if op.level == 2 and op.suit in (Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES):
         return _overcall_over_weak_two(state, e, system)
+
+    # 3-level and 4-level preempts (suit). The action is takeout
+    # double with opening values + shortness, 3NT with stoppers,
+    # or a strong suit overcall. Handled BEFORE the "level == 1
+    # only" early-return so a 3♣ / 3♦ / 3♥ / 3♠ / 4♣ / 4♦ preempt
+    # actually reaches an evaluator.
+    if op.level in (3, 4) and op.suit in (Suit.CLUBS, Suit.DIAMONDS,
+                                          Suit.HEARTS, Suit.SPADES):
+        return _overcall_over_preempt(state, e, system)
 
     # Defensive doubles of strong 2♣ / 2♦ openings (`O-strong-2C…` /
     # `O-strong-2D…`, Precision 90M / 90P): handled here BEFORE the
@@ -2593,6 +2707,28 @@ def _advance_partner_overcall(state, e: HandEval, system) -> Bid:
     p_last = state.partner_bids[-1]
     hcp = e.hcp
 
+    # The cheapest legal level for a suit overcall, given the auction
+    # so far. Walks the bid history (not just last_non_pass) because a
+    # double has level=0 — using state.last_level when partner doubled
+    # produced sub-level-1 bids over a 3-level preempt.
+    def _min_legal_level(suit: Suit) -> int:
+        highest_level, highest_suit = 0, None
+        for _seat, b in state.bids:
+            if b.is_pass or b.is_double or b.is_redouble:
+                continue
+            if b.suit is None:
+                continue
+            if (b.level > highest_level
+                    or (b.level == highest_level
+                        and highest_suit is not None
+                        and _BID_RANK[b.suit] > _BID_RANK[highest_suit])):
+                highest_level, highest_suit = b.level, b.suit
+        if highest_suit is None:
+            return 1
+        if _BID_RANK[suit] > _BID_RANK[highest_suit]:
+            return highest_level
+        return highest_level + 1
+
     # Takeout double advancer: bid the cheapest suit / NT
     if p_last.is_double:
         # Responsive double: partner doubled, LHO RAISED opener's suit
@@ -2605,14 +2741,9 @@ def _advance_partner_overcall(state, e: HandEval, system) -> Bid:
                     and not lho_last.is_double
                     and lho_last.suit == opener_suit
                     and 6 <= hcp <= 10):
-                # Identify the two unbid suits (anything other than opener's
-                # and partner's last call's strain — but partner doubled, so
-                # both unbid suits are still alive).
                 unbid_pair = [s for s in (Suit.SPADES, Suit.HEARTS,
                                           Suit.DIAMONDS, Suit.CLUBS)
                               if s != opener_suit]
-                # Need at least 3-3 in two of those four suits, the typical
-                # responsive-double shape.
                 long_pair = sorted(
                     unbid_pair,
                     key=lambda s: e.suit_lengths.get(s, 0),
@@ -2622,26 +2753,36 @@ def _advance_partner_overcall(state, e: HandEval, system) -> Bid:
                         and e.suit_lengths.get(long_pair[1], 0) >= 3):
                     return double(why="Responsive double — pick a suit")
 
-        # 8-10 with 4-card major → bid it at minimum level
+        opener_lvl = state.opening_bid.level if state.opening_bid else 1
+
+        # 4-card major → bid it at the cheapest legal level. Over a
+        # 3-level preempt this is a 4-of-a-major bid (jump to game)
+        # not 1-of-a-major.
         for m in (Suit.SPADES, Suit.HEARTS):
             if e.suit_lengths[m] >= 4:
-                # Determine the cheapest available level
-                lvl = max(1, state.last_level)
-                if (state.last_suit_bid
-                        and _BID_RANK[m] <= _BID_RANK[state.last_suit_bid]):
-                    lvl += 1
-                return bid(lvl, m, why="Advance takeout double: 4-card major")
-        # 8-10 balanced with stopper → 1NT
+                lvl = _min_legal_level(m)
+                # Over a 3-level preempt with 5+ in the suit and any
+                # values, jump to 4 of the major directly — that's
+                # the standard takeout-doubler-advancer agreement.
+                if opener_lvl >= 3 and e.suit_lengths[m] >= 5 and hcp >= 6:
+                    lvl = max(lvl, 4)
+                return bid(lvl, m, why=f"Advance takeout double: 4-card major")
+        # Balanced with stopper → NT. Lift the level above the preempt.
         if hcp >= 8 and _has_stopper(e, state.opening_bid.suit) and e.is_balanced:
-            return bid(1, Suit.NOTRUMP, why="Advance takeout dbl: 1NT (stopper)")
-        # Cuebid with 11+ to show game interest
-        if hcp >= 11:
-            return bid(2, state.opening_bid.suit, alert=True,
+            # 3NT over a 3-level preempt; 1NT only over a 1-level overcall.
+            nt_level = 3 if opener_lvl >= 3 else (2 if opener_lvl == 2 else 1)
+            return bid(nt_level, Suit.NOTRUMP,
+                       why=f"Advance takeout dbl: {nt_level}NT (stopper)")
+        # Cuebid with 11+ to show game interest (only meaningful at
+        # 1- or 2-level openings; over a preempt a cuebid is too high
+        # and we just pick a long suit).
+        if hcp >= 11 and opener_lvl <= 2:
+            return bid(opener_lvl + 1, state.opening_bid.suit, alert=True,
                        why="Cuebid: game interest after takeout double")
-        # Last resort: longest minor
+        # Longest minor as a last resort.
         for m in (Suit.DIAMONDS, Suit.CLUBS):
             if e.suit_lengths[m] >= 4:
-                lvl = state.last_level + 1
+                lvl = _min_legal_level(m)
                 return bid(lvl, m, why="Advance takeout double: minor")
         return passb()
 
