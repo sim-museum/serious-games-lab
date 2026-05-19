@@ -2755,6 +2755,37 @@ def _advance_partner_overcall(state, e: HandEval, system) -> Bid:
 
         opener_lvl = state.opening_bid.level if state.opening_bid else 1
 
+        # --- Slam exploration after partner's takeout double. ---
+        # Partner promised opening values + shortness in opener's
+        # suit + tolerance for the unbid suits. If we have a long
+        # major and very strong playing strength, push toward slam
+        # rather than settling at game.
+
+        # Direct slam leap — 12+ HCP, 7+ in a major, LTC ≤ 4 (i.e.
+        # almost no losers). Board 388's S hand (♠AQJ9742 ♥7
+        # ♦KQ963 ♣–, 12 HCP, LTC 3) hits this branch and bids 6♠
+        # immediately. Misses an occasional grand but beats
+        # stopping at game when the trick count is overwhelming.
+        if hcp >= 11:
+            for m in (Suit.SPADES, Suit.HEARTS):
+                if e.suit_lengths[m] >= 7 and e.losers <= 4:
+                    return bid(6, m,
+                               why=f"Slam after takeout X: "
+                                   f"7+{m.to_char()}, LTC≤4")
+
+        # Cuebid slam-try — 12+ HCP, 6+ major, 0-1 in opener's suit
+        # (partner's double promised shortness too, so we know we
+        # likely have a working fit). Cuebid opener's suit to show
+        # extras and let partner pick the strain.
+        if (hcp >= 12 and opener_lvl >= 3
+                and e.suit_lengths.get(state.opening_bid.suit, 0) <= 1):
+            for m in (Suit.SPADES, Suit.HEARTS):
+                if e.suit_lengths[m] >= 6:
+                    cue_lvl = state.opening_bid.level + 1
+                    return bid(cue_lvl, state.opening_bid.suit, alert=True,
+                               why=f"Cuebid slam try: 6+{m.to_char()}, "
+                                   f"{hcp} HCP after takeout X")
+
         # 4-card major → bid it at the cheapest legal level. Over a
         # 3-level preempt this is a 4-of-a-major bid (jump to game)
         # not 1-of-a-major.
@@ -2785,6 +2816,44 @@ def _advance_partner_overcall(state, e: HandEval, system) -> Bid:
                 lvl = _min_legal_level(m)
                 return bid(lvl, m, why="Advance takeout double: minor")
         return passb()
+
+    # Doubler responding to advancer's CUEBID of opener's suit.
+    # When I previously doubled and partner now bids opener's suit
+    # at a higher level, that's a slam-try cuebid asking me to
+    # describe my hand. Pick my best major at the cheapest legal
+    # level (or 4NT with very strong balanced values + a fit).
+    i_doubled = any(b.is_double for b in state.my_bids)
+    opener_suit_now = state.opening_bid.suit if state.opening_bid else None
+    if (i_doubled
+            and opener_suit_now is not None
+            and p_last.suit == opener_suit_now
+            and p_last.level > state.opening_bid.level
+            and not p_last.is_pass and not p_last.is_double):
+        # Bid the longer major at the cheapest level.
+        best_major = None
+        best_len = 0
+        for m in (Suit.SPADES, Suit.HEARTS):
+            if e.suit_lengths.get(m, 0) > best_len:
+                best_len = e.suit_lengths[m]
+                best_major = m
+        if best_major is not None and best_len >= 4:
+            lvl = _min_legal_level(best_major)
+            return bid(lvl, best_major, alert=True,
+                       why=f"Reply to cuebid: showing {best_len} "
+                           f"{best_major.to_char()} ({hcp} HCP)")
+        # No major to show — bid cheapest minor.
+        for m in (Suit.DIAMONDS, Suit.CLUBS):
+            if m == opener_suit_now:
+                continue
+            if e.suit_lengths.get(m, 0) >= 4:
+                lvl = _min_legal_level(m)
+                return bid(lvl, m, alert=True,
+                           why=f"Reply to cuebid: {m.to_char()} suit, "
+                               f"no major")
+        # Fallback: NT at the cheapest legal level for the auction.
+        nt_lvl = _min_legal_level(Suit.NOTRUMP)
+        return bid(nt_lvl, Suit.NOTRUMP, alert=True,
+                   why="Reply to cuebid: NT, no clear strain")
 
     # Suit overcall — raise with support, otherwise pass / new suit
     if p_last.suit is not None and p_last.suit != Suit.NOTRUMP:

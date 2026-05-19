@@ -331,8 +331,8 @@ class TestRKCBlackwood(unittest.TestCase):
 
     def test_takeout_double_of_3c_preempt(self):
         """Board 388 — 17 HCP balanced over RHO's 3♣ preempt must
-        not pass. Standard practice is takeout double. Advancer
-        with 7+ spades is allowed to take it to 4♠ or further."""
+        not pass; standard practice is takeout double. Advancer
+        with 7-card spades + LTC 3 should leap to slam directly."""
         Seat = self.Seat
         hands = {
             Seat.NORTH: self._hand('ST HAKQT9 DAJT5 CK54'),       # 17 HCP, 1=5=4=3
@@ -341,21 +341,38 @@ class TestRKCBlackwood(unittest.TestCase):
             Seat.EAST:  self._hand('SK8653 H8543 D74 CJ9'),       # 4 HCP, 5=4=2=2
         }
         auction = self._drive(hands, 'Precision90M', Seat.WEST)
-        # N's bid (the second action in this auction) must be the
-        # takeout double, not pass.
-        self.assertFalse(auction[1].is_pass,
-                         f"N passed 3♣ with 17 HCP — should double. auction={auction}")
+        # N's bid (the second action) must be the takeout double.
         self.assertTrue(auction[1].is_double,
                         f"N's call was {auction[1].to_ben_str()}, expected X.")
-        # The final contract should be NS-side at game (4♠, 5♦, 4♥)
-        # or better — definitely not the passed-out 3♣.
+        # Final contract should be slam in spades — S has 7 spades
+        # AQJ-headed and LTC 3 opposite a 17-HCP takeout double.
         contract = self._final_contract(auction)
-        self.assertGreaterEqual(contract.level, 4)
-        self.assertNotEqual(
-            (contract.level, contract.suit),
-            (3, self.Suit.CLUBS),
-            "Auction must improve on letting 3♣ play undoubled.",
-        )
+        self.assertEqual(contract.level, 6)
+        self.assertEqual(contract.suit, self.Suit.SPADES)
+
+    def test_doubler_replies_to_cuebid(self):
+        """When advancer cuebids opener's suit after a takeout
+        double, the doubler must reply by showing their best major
+        (not by passing or re-doubling)."""
+        Seat = self.Seat
+        from ben_backend.models import Bid
+        n_hand = self._hand('ST HAKQT9 DAJT5 CK54')   # 17 HCP, 5♥
+        # Hand-crafted: W=3C, N=X, E=P, S=4C (cuebid), W=P, N to bid.
+        auction = [
+            Bid(level=3, suit=self.Suit.CLUBS),
+            Bid(is_double=True),
+            Bid(is_pass=True),
+            Bid(level=4, suit=self.Suit.CLUBS),
+            Bid(is_pass=True),
+        ]
+        state = self.parse_auction(Seat.NORTH, Seat.WEST, auction)
+        b = self.decide_bid(state, self.evaluate_hand(n_hand),
+                            self.get_system('Precision90M'))
+        self.assertFalse(b.is_pass,
+                         f"N must respond to the cuebid, not pass: {b}")
+        # N has 5 hearts, 1 spade — 4♥ is the right reply.
+        self.assertEqual((b.level, b.suit), (4, self.Suit.HEARTS),
+                         f"N should bid 4♥, got {b.to_ben_str()}")
 
     def test_quantitative_4nt_not_rkc(self):
         """1NT - 4NT with no suit fit is a quantitative invite, not
