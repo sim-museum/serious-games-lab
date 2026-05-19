@@ -599,17 +599,16 @@ class FannedHandWidget(QWidget):
 class TrickAreaWidget(QFrame):
     """Green table center with played cards at fixed compass positions"""
 
-    # Trick area — fits between N and S hands. Even at 440 tall the
-    # parent layout was squeezing this widget on 1080-px windows
-    # (north row + south row + bottom bar + middle stretches > window
-    # height), and a Qt fixed-size widget that's allocated less than
-    # its requested size lets its absolute-positioned children draw
-    # outside the painted QFrame — which is what cut off the bottom
-    # of the south played card. Tightening cards to 130×182 and the
-    # area to 380 keeps the south card 4 px clear of the bottom and
-    # makes the whole row fit comfortably without clipping.
-    AREA_WIDTH = 460
-    AREA_HEIGHT = 400
+    # Trick area — green box plus an outer band where the compass
+    # arrows sit. The widget covers the OUTER rect (green + arrow
+    # band); the green rounded rectangle is painted as an inset rect
+    # inside paintEvent, leaving the band as transparent so the
+    # arrows visually sit outside the green box.
+    OUTER_MARGIN = 48        # space around the green box for arrows
+    GREEN_WIDTH  = 460
+    GREEN_HEIGHT = 400
+    AREA_WIDTH   = GREEN_WIDTH  + 2 * OUTER_MARGIN
+    AREA_HEIGHT  = GREEN_HEIGHT + 2 * OUTER_MARGIN
 
     TRICK_CARD_WIDTH = 130
     TRICK_CARD_HEIGHT = 182
@@ -617,13 +616,11 @@ class TrickAreaWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(self.AREA_WIDTH, self.AREA_HEIGHT)
-        self.setStyleSheet(f"""
-            QFrame {{
-                background-color: {COLORS['table_green']};
-                border: 4px solid #1a5c30;
-                border-radius: 12px;
-            }}
-        """)
+        # Transparent background — the green box is rendered in
+        # paintEvent inside an inset rect so the outer band where
+        # the compass arrows live shows the page colour behind it.
+        self.setStyleSheet("QFrame { background: transparent; border: none; }")
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.played_cards: Dict[Seat, Card] = {}
         self.winner: Optional[Seat] = None
         self.card_widgets: Dict[Seat, CardWidget] = {}
@@ -634,34 +631,41 @@ class TrickAreaWidget(QFrame):
 
         self._setup_ui()
 
+    def paintEvent(self, event):
+        """Paint the green box as an inset rounded rectangle.
+
+        The widget's overall size includes a transparent outer band
+        for the compass arrows; the green table itself only covers
+        the inset rect.
+        """
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        m = self.OUTER_MARGIN
+        inset = QRect(m, m, self.GREEN_WIDTH, self.GREEN_HEIGHT)
+        painter.setPen(QPen(QColor("#1a5c30"), 4))
+        painter.setBrush(QBrush(QColor(COLORS['table_green'])))
+        painter.drawRoundedRect(inset, 12, 12)
+
     def _setup_ui(self):
-        # Use absolute positioning for fixed card placements
-        w, h = self.AREA_WIDTH, self.AREA_HEIGHT
+        # Absolute positioning. Coordinates are relative to the
+        # widget origin (which is the outer-band top-left); the
+        # green box sits at (OUTER_MARGIN, OUTER_MARGIN).
+        m = self.OUTER_MARGIN
+        gw, gh = self.GREEN_WIDTH, self.GREEN_HEIGHT
         tcw, tch = self.TRICK_CARD_WIDTH, self.TRICK_CARD_HEIGHT
 
-        # Card positions — arranged around center with extra margin so
-        # the cards never overlap the compass chevrons (the previous
-        # layout left 35-px chevrons at the edges with cards starting
-        # essentially at chevron-bottom, so the N/S cards crowded the
-        # arrows).
-        center_x, center_y = w // 2, h // 2
+        # Geometric centre of the green box (in widget coordinates).
+        center_x, center_y = m + gw // 2, m + gh // 2
         chevron_size = 40
-        chevron_margin = 6   # gap between the chevron and the table border
-        # Gap between a played card and the chevron above/below it. Must
-        # be > 0 so the card never visually merges with the arrow.
-        chevron_to_card_gap = 18
+        # Gap between the played card and the green-box border.
+        card_inset = 22
 
         positions = {
-            Seat.NORTH: (center_x - tcw // 2,
-                         chevron_margin + chevron_size + chevron_to_card_gap),
-            Seat.SOUTH: (center_x - tcw // 2,
-                         h - chevron_margin - chevron_size
-                         - chevron_to_card_gap - tch),
-            Seat.WEST:  (chevron_margin + chevron_size + chevron_to_card_gap,
-                         center_y - tch // 2),
-            Seat.EAST:  (w - chevron_margin - chevron_size
-                         - chevron_to_card_gap - tcw,
-                         center_y - tch // 2),
+            Seat.NORTH: (center_x - tcw // 2, m + card_inset),
+            Seat.SOUTH: (center_x - tcw // 2, m + gh - card_inset - tch),
+            Seat.WEST:  (m + card_inset, center_y - tch // 2),
+            Seat.EAST:  (m + gw - card_inset - tcw, center_y - tch // 2),
         }
 
         # Create card widgets with fixed positions
@@ -672,26 +676,29 @@ class TrickAreaWidget(QFrame):
             cw_widget.move(positions[seat][0], positions[seat][1])
             self.card_widgets[seat] = cw_widget
 
-        # Direction arrows at the edges, sized 40 so the labels inside
-        # render legibly at the bigger area dimensions.
+        # Direction arrows live in the OUTER band, just outside the
+        # green box. The triangle's flat side hugs the green border;
+        # the apex points outward.
+        arrow_gap = 4   # space between green border and arrow's flat side
         arrow_positions = {
-            'N': (center_x - chevron_size // 2, chevron_margin),
-            'S': (center_x - chevron_size // 2, h - chevron_margin - chevron_size),
-            'W': (chevron_margin, center_y - chevron_size // 2),
-            'E': (w - chevron_margin - chevron_size, center_y - chevron_size // 2),
+            'N': (center_x - chevron_size // 2,
+                  m - arrow_gap - chevron_size),
+            'S': (center_x - chevron_size // 2,
+                  m + gh + arrow_gap),
+            'W': (m - arrow_gap - chevron_size,
+                  center_y - chevron_size // 2),
+            'E': (m + gw + arrow_gap,
+                  center_y - chevron_size // 2),
         }
         for d, pos in arrow_positions.items():
             arrow = DirectionArrow(d, self)
             arrow.setFixedSize(chevron_size, chevron_size)
             arrow.move(pos[0], pos[1])
 
-        # Bidding table overlay in center
+        # Bidding table overlay — centred on the green box.
         self.bidding_widget = BiddingTableWidget(self)
-        # Bumped from 260×200 to 320×260 so the Q-Plus-style 70×40
-        # cells (4 columns + small padding) plus header + status row
-        # fit cleanly without the right-edge cells getting clipped.
         bw, bh = 320, 260
-        self.bidding_widget.move((w - bw) // 2, (h - bh) // 2)
+        self.bidding_widget.move(center_x - bw // 2, center_y - bh // 2)
         self.bidding_widget.setFixedSize(bw, bh)
 
     def set_show_bidding(self, show: bool):
@@ -758,25 +765,16 @@ class DirectionArrow(QWidget):
         }
         painter.drawPolygon(QPolygon(pts.get(self.direction, [])))
 
-        # N/E/S/W letter pinned to the *flat* side of the triangle
-        # (i.e. the side facing the centre of the table), so the
-        # compass reads outward → letter → apex.
+        # N/E/S/W letter centred in the triangle. The triangle now
+        # sits in the band OUTSIDE the green box, so the letter just
+        # centres in its own widget rather than aligning to the flat
+        # side (which was the convention when the arrow was inside).
         painter.setPen(LETTER_COLOR)
-        font_pt = max(10, int(min(w, h) * 0.32))
+        font_pt = max(10, int(min(w, h) * 0.36))
         painter.setFont(QFont("Arial", font_pt, QFont.Weight.Bold))
-        align_map = {
-            # N triangle points up, flat side at the bottom.
-            'N': (Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter),
-            # S triangle points down, flat side at the top.
-            'S': (Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter),
-            # E triangle points right, flat side on the left.
-            'E': (Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
-            # W triangle points left, flat side on the right.
-            'W': (Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter),
-        }
         painter.drawText(
             self.rect(),
-            align_map.get(self.direction, Qt.AlignmentFlag.AlignCenter),
+            Qt.AlignmentFlag.AlignCenter,
             self.direction,
         )
 

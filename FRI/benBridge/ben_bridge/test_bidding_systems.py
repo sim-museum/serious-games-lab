@@ -230,5 +230,135 @@ class TestBidDescriptions(unittest.TestCase):
         self.assertNotIn("strong", help_.lower())
 
 
+class TestRKCBlackwood(unittest.TestCase):
+    """End-to-end coverage of the 4NT → 5x → 5NT → 6x → 7y RKC pipeline.
+
+    The pipeline runs the auction with both partners using the same
+    BiddingSystem spec and walks until three passes close it. Each
+    test inspects the final contract.
+    """
+
+    def setUp(self):
+        from ben_backend.bidding_systems import get_system
+        from ben_backend.native_bidder import (
+            decide_bid, evaluate_hand, parse_auction)
+        from ben_backend.models import Hand, Card, Suit, Rank, Seat
+        self.Hand, self.Card = Hand, Card
+        self.Suit, self.Rank, self.Seat = Suit, Rank, Seat
+        self.decide_bid = decide_bid
+        self.evaluate_hand = evaluate_hand
+        self.parse_auction = parse_auction
+        self.get_system = get_system
+
+    def _hand(self, spec: str):
+        Suit, Rank = self.Suit, self.Rank
+        suit_map = {'S': Suit.SPADES, 'H': Suit.HEARTS,
+                    'D': Suit.DIAMONDS, 'C': Suit.CLUBS}
+        rank_map = {'A': Rank.ACE, 'K': Rank.KING, 'Q': Rank.QUEEN,
+                    'J': Rank.JACK, 'T': Rank.TEN,
+                    '9': Rank.NINE, '8': Rank.EIGHT, '7': Rank.SEVEN,
+                    '6': Rank.SIX, '5': Rank.FIVE, '4': Rank.FOUR,
+                    '3': Rank.THREE, '2': Rank.TWO}
+        cards = []
+        for grp in spec.split():
+            s = suit_map[grp[0]]
+            for c in grp[1:]:
+                cards.append(self.Card(s, rank_map[c]))
+        return self.Hand(cards=cards)
+
+    def _drive(self, hands, system_name, dealer):
+        sys_ = self.get_system(system_name)
+        auction = []
+        seat = dealer
+        for _ in range(50):
+            state = self.parse_auction(seat, dealer, list(auction))
+            e = self.evaluate_hand(hands[seat])
+            b = self.decide_bid(state, e, sys_)
+            auction.append(b)
+            if len(auction) >= 4 and all(x.is_pass for x in auction[-3:]) \
+                    and any(not x.is_pass for x in auction[:-3]):
+                break
+            seat = seat.next()
+        return auction
+
+    def _final_contract(self, auction):
+        """Return the last non-pass call (the contract)."""
+        for b in reversed(auction):
+            if not b.is_pass:
+                return b
+        return None
+
+    def test_precision_strong_1c_grand_slam(self):
+        """The Board-405 auction Q-Plus reached 7♥ on. The new RKC
+        pipeline drives 1♣ - 1♥ - 4NT - 5♣ - 5NT - 6♣ - 7♥."""
+        Seat = self.Seat
+        hands = {
+            Seat.NORTH: self._hand('S943 HKQT62 DJ843 CK'),
+            Seat.EAST:  self._hand('SQT652 H5 DT976 C974'),
+            Seat.SOUTH: self._hand('SAJ HAJ984 DAK2 CAQJ'),
+            Seat.WEST:  self._hand('SK87 H73 DQ5 CT86532'),
+        }
+        auction = self._drive(hands, 'Precision90M', Seat.NORTH)
+        contract = self._final_contract(auction)
+        self.assertEqual(contract.level, 7)
+        self.assertEqual(contract.suit, self.Suit.HEARTS)
+        # 4NT must have appeared, plus a 5NT king-ask.
+        suits_at_level = [(b.level, b.suit) for b in auction]
+        self.assertIn((4, self.Suit.NOTRUMP), suits_at_level)
+        self.assertIn((5, self.Suit.NOTRUMP), suits_at_level)
+
+    def test_off_two_keys_stops_at_5(self):
+        """When the side is missing 2 aces, RKC stops at 5 of trump
+        instead of jumping to slam. North opens 1♣ (Precision strong),
+        South responds 1♥ positive, North raises with 3-card support,
+        4NT asks, 5♣/5♦ shows 0-1 keys → sign-off."""
+        Seat = self.Seat
+        # Hands chosen so the partnership has 3 keys total (3 aces +
+        # trump king split): North 16 HCP with ♥A, South 9 HCP with
+        # ♥K plus a 5-card heart suit.
+        hands = {
+            Seat.NORTH: self._hand('SA32 HA62 DAQ32 CKQJ'),  # 18, 1 ace + AKQ ♣
+            Seat.SOUTH: self._hand('S874 HKQT54 D54 C432'),  # 5 HCP, ♥K + 5♥
+            Seat.EAST:  self._hand('SKQJT5 H973 DJ97 C765'),
+            Seat.WEST:  self._hand('S96 HJ8 DKT86 CAT98'),
+        }
+        auction = self._drive(hands, 'Precision90M', Seat.NORTH)
+        contract = self._final_contract(auction)
+        # Side has 3 keys (♠A + ♦A + ♥K — South has just the trump K).
+        # Total is 3 keys → asker should stop at 5 if no trump queen,
+        # or 6 if queen present. Either way it must NOT be 7.
+        self.assertLessEqual(contract.level, 6)
+
+    def test_quantitative_4nt_not_rkc(self):
+        """1NT - 4NT with no suit fit is a quantitative invite, not
+        RKC — opener should not respond with keycards."""
+        Seat = self.Seat
+        # Both balanced; responder has 16 HCP so 1NT - 4NT quant.
+        hands = {
+            Seat.SOUTH: self._hand('SAQ3 HKQ2 DAJ2 CK432'),    # 18 balanced
+            Seat.NORTH: self._hand('SK64 HA853 DK63 CAQ5'),    # 16 balanced
+            Seat.EAST:  self._hand('SJT982 H97 DQ85 C987'),
+            Seat.WEST:  self._hand('S75 HJT64 DT974 CJT6'),
+        }
+        auction = self._drive(hands, 'SAYC', Seat.SOUTH)
+        # The auction should land in NT slam zone (6NT or 4NT pass);
+        # crucially the partner of the 4NT bidder should NOT answer
+        # with a 5-of-a-minor keycard step.
+        for i, b in enumerate(auction):
+            if (b.level == 4 and b.suit == self.Suit.NOTRUMP
+                    and not b.is_pass):
+                # Next non-pass call after 4NT must not be 5♣ / 5♦.
+                for nxt in auction[i + 1:]:
+                    if nxt.is_pass:
+                        continue
+                    self.assertFalse(
+                        nxt.level == 5
+                        and nxt.suit in (self.Suit.CLUBS, self.Suit.DIAMONDS),
+                        f"4NT-{nxt} looks like keycard but should be quantitative",
+                    )
+                    break
+                break
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

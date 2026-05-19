@@ -1862,6 +1862,14 @@ class BridgeHarness(QMainWindow):
                     board = boards[0]
                 deal_str = board.get("Deal", "")
                 self.hands = parse_pbn_deal_string(deal_str)
+                # Pull dealer + vulnerability out of the loaded board
+                # so the harness can write them into Q-Plus matching
+                # the source file. parse_bdl_file / parse_pbn_file
+                # both stuff these on the board dict.
+                self.set_dealer_vuln(
+                    board.get("Dealer", ""),
+                    board.get("Vulnerable", ""),
+                )
             elif src == 3:  # Base-72
                 code = self.input_field.text().strip()
                 if not code:
@@ -1977,6 +1985,10 @@ class BridgeHarness(QMainWindow):
             self._show_deal(self.hands, self.wf_hand_display, self.wf_base72)
             self._show_deal(self.hands, self.hand_display, self.base72_display)
             self._update_info()
+            self.set_dealer_vuln(
+                board.get("Dealer", ""),
+                board.get("Vulnerable", ""),
+            )
         except ValueError:
             pass
 

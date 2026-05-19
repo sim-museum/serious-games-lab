@@ -53,6 +53,14 @@ class BDLDeal:
     # Claude commentary (if present in BDL file)
     commentary: str = ""
 
+    # Bidding-system names pulled from the `.Bidding cnv : N/S: …` /
+    # `… E/W: …` header lines, when present. Q-Plus writes the .RCE
+    # filename token ("P-P90M-A"), ben_bridge writes the system name
+    # ("Precision90M" / "BEN-NN" / etc.). Either is acceptable —
+    # downstream code reads the field as opaque text for display.
+    ns_bidding_system: str = ""
+    ew_bidding_system: str = ""
+
     def to_board_state(self) -> BoardState:
         """Convert to BoardState for replay"""
         board = BoardState(
@@ -162,6 +170,12 @@ class BDLReader:
                             self._parse_bidding_line(after_colon, self.current_deal)
                         i += 1
                         continue
+                    # Bidding-system continuation (`.Bidding cnv :` opens
+                    # the section; the next line carries E/W).
+                    if self.current_section == 'bidding cnv':
+                        self._absorb_cnv_line(after_colon, self.current_deal)
+                        i += 1
+                        continue
                     # Commentary continuation
                     if (self.current_deal.commentary
                             and not stripped.startswith('.Bidding')
@@ -224,6 +238,37 @@ class BDLReader:
             self._parse_play_line(stripped, deal)
         elif section in ['result', 'score']:
             self._parse_result_line(stripped, deal)
+        elif section == 'bidding cnv':
+            # Continuation of `.Bidding cnv :` — the E/W row.
+            # When a non-continuation line arrives the section is
+            # cleared by the auto-detect path.
+            self._absorb_cnv_line(stripped, deal)
+
+    def _absorb_cnv_line(self, value: str, deal: 'BDLDeal') -> None:
+        """Pull the system name out of a `.Bidding cnv` row.
+
+        Accepts only `N/S: <name>` / `E/W: <name>`. The BDL header
+        runs several `.X cnv` sections back-to-back with empty
+        before-colon continuation rows, so a "bare value" guess
+        would happily eat the Lead and Signal continuation rows
+        too. Once both fields are filled we close the section so
+        downstream rows aren't misrouted here.
+        """
+        text = (value or "").strip()
+        if not text:
+            return
+        upper = text.upper()
+        if upper.startswith(("N/S:", "NS:")):
+            deal.ns_bidding_system = text.split(":", 1)[1].strip()
+        elif upper.startswith(("E/W:", "EW:")):
+            deal.ew_bidding_system = text.split(":", 1)[1].strip()
+        else:
+            # Non-cnv row arrived (Lead cnv, etc.) — close the
+            # section so the parser routes it normally.
+            self.current_section = None
+            return
+        if deal.ns_bidding_system and deal.ew_bidding_system:
+            self.current_section = None
 
     def _auto_detect_and_parse(self, stripped: str, original: str):
         """Auto-detect line type and parse accordingly"""
@@ -305,6 +350,15 @@ class BDLReader:
                     pass
             elif key in ['commentary', 'comment', 'analysis']:
                 deal.commentary = value
+            elif key in ['.bidding cnv', 'bidding cnv', '.bidding']:
+                # `.Bidding cnv :  N/S: <system>` or
+                # `.            :  E/W: <system>`. Q-Plus / ben_bridge
+                # write both as continuation rows under the same key.
+                # The first line carries N/S; the second carries E/W.
+                self._absorb_cnv_line(value, deal)
+                # Hold the section open so the next continuation line
+                # (with an empty before-colon) also lands here.
+                self.current_section = 'bidding cnv'
             elif key in ['bids', 'bidding', 'auction']:
                 # Q-Plus header row: "Bids   :   N    E    S    W". Open
                 # the bidding section so continuation rows reach the bid
@@ -804,6 +858,11 @@ def bdl_deal_to_board_run(deal: BDLDeal, table=None) -> Optional['BenBoardRun']:
         ns_score=deal.ns_score,
         ew_score=deal.ew_score,
         played=True,
+        # System tags from the BDL header so the Compare dialog can
+        # show "open=X / closed=Y" without flagging the closed-room
+        # run as missing metadata.
+        ns_bidding_system=deal.ns_bidding_system,
+        ew_bidding_system=deal.ew_bidding_system,
     )
 
 

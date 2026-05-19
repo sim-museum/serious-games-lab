@@ -921,6 +921,20 @@ class MainWindow(QMainWindow):
 
         extras_menu.addSeparator()
 
+        # Send the current deal (the one on the table right now) into
+        # the GUI harness — same launch path as the end-of-hand
+        # "Generate closed room" button, but accessible mid-game so
+        # the user can spin up the harness whenever they want.
+        self.send_to_harness_action = QAction(
+            "Send Current Deal to GUI &Harness", self)
+        self.send_to_harness_action.setToolTip(
+            "Launch the GUI harness preloaded with the current deal's "
+            "hands, dealer, and vulnerability so it can be played in "
+            "Q-Plus for closed-room comparison.")
+        self.send_to_harness_action.triggered.connect(
+            self._on_send_current_to_harness)
+        extras_menu.addAction(self.send_to_harness_action)
+
         # Q-Plus closed-room ingest. Greyed out when Q-Plus isn't
         # installed; guests can't ingest (the host pushes the run to them
         # via CLOSED_ROOM_INGESTED) so the action stays disabled for them
@@ -6254,6 +6268,27 @@ For more information, see the README file."""
             "Extras → Ingest Q-Plus closed room to bring the result back."
         )
 
+    def _on_send_current_to_harness(self):
+        """Extras menu handler — spawn the harness preloaded with the
+        deal currently on the table.
+
+        Same launch path as the end-of-hand "Generate closed room"
+        button, but exposed in the Extras menu so the user can fire
+        it mid-game. _launch_qplus_harness will refuse the launch if
+        any seat doesn't yet have all 13 cards — that's the right
+        behaviour: until the deal is complete, the harness can't
+        feed Q-Plus a valid hand.
+        """
+        if self.controller.board is None:
+            QMessageBox.information(
+                self, "No deal",
+                "Start a deal first — there's nothing to send.")
+            return
+        self._launch_qplus_harness(self.controller.board)
+        self.status_label.setText(
+            "Launched GUI harness with the current deal."
+        )
+
     def _on_dialog_claude_analysis(self):
         """End-of-hand dialog button → run Claude on the last hand.
 
@@ -8046,7 +8081,12 @@ For more information, see the README file."""
                     break
 
         # If matched, snap the closed-run's board_number onto the open one
-        # so they group together in the score sheet.
+        # so they group together in the score sheet. The BDL parser's
+        # system tags (`.Bidding cnv : N/S: …` / `… E/W: …`) are passed
+        # through verbatim — we never invent them, so when the BDL
+        # genuinely doesn't carry tags the Compare dialog's "system
+        # tag is blank" warning fires (which is the right signal that
+        # the two rooms might have used different systems).
         if match_idx is not None:
             target_board = results[match_idx].board_number
         else:

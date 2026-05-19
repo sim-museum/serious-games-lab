@@ -51,6 +51,12 @@ class HandEval:
     quick_tricks: float
     five_card_majors: List[Suit]
     six_card_suits: List[Suit]
+    # Per-suit honour presence — needed by the RKC follow-up so the
+    # bidder can count specific keys (aces + trump king) and respond
+    # to the trump-queen ask.
+    has_ace: dict            # Suit -> bool
+    has_king: dict           # Suit -> bool
+    has_queen: dict          # Suit -> bool
 
 
 def evaluate_hand(hand: Hand) -> HandEval:
@@ -86,6 +92,10 @@ def evaluate_hand(hand: Hand) -> HandEval:
     five_card_majors = [s for s in (Suit.SPADES, Suit.HEARTS) if suit_lengths[s] >= 5]
     six_card_suits = [s for s, n in suit_lengths.items() if n >= 6]
 
+    has_ace = {s: any(c.rank == Rank.ACE for c in cs) for s, cs in by_suit.items()}
+    has_king = {s: any(c.rank == Rank.KING for c in cs) for s, cs in by_suit.items()}
+    has_queen = {s: any(c.rank == Rank.QUEEN for c in cs) for s, cs in by_suit.items()}
+
     return HandEval(
         hcp=hcp,
         suit_lengths=suit_lengths,
@@ -103,6 +113,9 @@ def evaluate_hand(hand: Hand) -> HandEval:
         quick_tricks=quick_tricks,
         five_card_majors=five_card_majors,
         six_card_suits=six_card_suits,
+        has_ace=has_ace,
+        has_king=has_king,
+        has_queen=has_queen,
     )
 
 
@@ -588,6 +601,370 @@ def _preempt_bid(e: HandEval) -> Optional[Bid]:
 
 
 # ---------------------------------------------------------------------------
+# RKC Blackwood — keycard ask + response + king-ask follow-up
+# ---------------------------------------------------------------------------
+
+def _agreed_trump(state: 'AuctionState') -> Optional[Suit]:
+    """Best guess at the trump suit implied by the auction so far.
+
+    Used by the RKC machinery to decide whether a 4NT bid is keycard
+    or natural / quantitative, and to count the trump king + queen
+    against the player's hand.
+
+    Heuristic: the last NATURAL suit either partner bid before the
+    first 4NT. Every bid at or after 4NT is keycard machinery, not
+    natural — without the cut-off the responder's `5♣ = 0/3 keys`
+    answer would be misread as a club suit and the grand would be
+    played in the wrong strain.
+
+    This simple rule lines up with the trump suit in every common
+    sequence we model:
+      • `1H – 3H – 4NT`            → 3H → hearts
+      • `1S – 2S – 4S – 4NT`       → 4S → spades
+      • `1C – 1H – 4NT` (Precision) → 1H → hearts (1♣ is artificial)
+      • `1NT – 2C – 2H – 3H – 4NT` → 3H → hearts
+      • `1NT – 4NT`                → no suit bid → None (correctly
+        classified as quantitative, NOT keycard)
+    """
+    trump = None
+    for _seat, b in state.bids:
+        if b.level == 4 and b.suit == Suit.NOTRUMP and not b.is_pass:
+            break
+        if (not b.is_pass and not b.is_double and not b.is_redouble
+                and b.suit not in (None, Suit.NOTRUMP)):
+            trump = b.suit
+    return trump
+
+
+def _is_rkc_context(state: 'AuctionState', for_bid: 'Bid') -> bool:
+    """Should `for_bid` (must be 4NT) be read as RKC Blackwood?
+
+    True when a trump suit can be inferred AND the auction has gone
+    past the "natural NT" zone. False for opening NT, jump 2NT
+    rebids, and quantitative slam invites — those are handled by
+    other branches.
+    """
+    if not (for_bid.level == 4 and for_bid.suit == Suit.NOTRUMP):
+        return False
+    trump = _agreed_trump(state)
+    if trump is None:
+        # No trump fit → 4NT is quantitative.
+        return False
+    # If the auction has only had NT bids on our side (e.g. 1NT-4NT),
+    # treat 4NT as quantitative — RKC needs a suit fit.
+    side_bids = state.my_bids + state.partner_bids
+    has_suit_bid = any(
+        b.suit not in (None, Suit.NOTRUMP)
+        and not b.is_pass and not b.is_double and not b.is_redouble
+        for b in side_bids
+    )
+    return has_suit_bid
+
+
+def _keycard_count(e: HandEval, trump: Optional[Suit]) -> int:
+    """Number of "keys" held: 4 aces + the trump king (if any)."""
+    n = sum(1 for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS)
+            if e.has_ace.get(s, False))
+    if trump is not None and e.has_king.get(trump, False):
+        n += 1
+    return n
+
+
+def _has_trump_queen(e: HandEval, trump: Optional[Suit]) -> bool:
+    """True if we hold the trump queen, or 5+ trumps (length substitute)."""
+    if trump is None:
+        return False
+    if e.has_queen.get(trump, False):
+        return True
+    # Length substitute — 5+ trumps with a top honour is usually
+    # treated as queen for response purposes.
+    return e.suit_lengths.get(trump, 0) >= 5
+
+
+def _rkc_response_levels(variant: str) -> dict:
+    """Map (keys, has_queen) → response level for RKC variant."""
+    if variant == "0314":
+        return {
+            (1, False): (5, Suit.CLUBS),   (4, False): (5, Suit.CLUBS),
+            (1, True):  (5, Suit.CLUBS),   (4, True):  (5, Suit.CLUBS),
+            (0, False): (5, Suit.DIAMONDS),(3, False): (5, Suit.DIAMONDS),
+            (0, True):  (5, Suit.DIAMONDS),(3, True):  (5, Suit.DIAMONDS),
+        }
+    # 1430 (default)
+    return {
+        (0, False): (5, Suit.CLUBS),   (3, False): (5, Suit.CLUBS),
+        (0, True):  (5, Suit.CLUBS),   (3, True):  (5, Suit.CLUBS),
+        (1, False): (5, Suit.DIAMONDS),(4, False): (5, Suit.DIAMONDS),
+        (1, True):  (5, Suit.DIAMONDS),(4, True):  (5, Suit.DIAMONDS),
+    }
+
+
+def _respond_to_rkc(state: 'AuctionState', e: HandEval, system) -> Bid:
+    """Partner just bid 4NT (RKC) — answer with keycard count.
+
+    1430 (default Q-Plus / SAYC):
+      5♣ = 0 or 3, 5♦ = 1 or 4, 5♥ = 2 or 5 no Q, 5♠ = 2 or 5 with Q.
+    0314 is identical with 5♣/5♦ swapped — Q-Plus encodes the variant
+    on each system via the RKCB flag.
+    """
+    trump = _agreed_trump(state)
+    keys = _keycard_count(e, trump)
+    has_q = _has_trump_queen(e, trump)
+    variant = getattr(system, "rkc_variant", "1430") or "1430"
+    levels = _rkc_response_levels(variant)
+
+    # 2 / 5 keys → 5♥ (no Q) or 5♠ (with Q), regardless of variant.
+    if keys in (2, 5):
+        if has_q:
+            return bid(5, Suit.SPADES, alert=True,
+                       why=f"RKC {variant}: {keys} keys + trump queen")
+        return bid(5, Suit.HEARTS, alert=True,
+                   why=f"RKC {variant}: {keys} keys, no trump queen")
+
+    # 0/3 and 1/4 — map via the variant table.
+    if (keys, has_q) in levels:
+        lvl, suit = levels[(keys, has_q)]
+        return bid(lvl, suit, alert=True,
+                   why=f"RKC {variant}: {keys} keycards")
+
+    # Shouldn't fall through, but if the table missed a corner just
+    # bid the cheapest step.
+    return bid(5, Suit.CLUBS, alert=True,
+               why=f"RKC {variant}: {keys} keys (fallback)")
+
+
+def _parse_rkc_response(response: 'Bid', variant: str) -> Tuple[Optional[int], Optional[bool]]:
+    """Decode a partner's RKC answer into (keys, has_queen)."""
+    if response.suit == Suit.CLUBS and response.level == 5:
+        # 5C in 1430 = 0 or 3; in 0314 = 1 or 4. Caller picks 0 vs 3
+        # by hand strength.
+        return (0, None) if variant == "1430" else (1, None)
+    if response.suit == Suit.DIAMONDS and response.level == 5:
+        return (1, None) if variant == "1430" else (0, None)
+    if response.suit == Suit.HEARTS and response.level == 5:
+        return (2, False)
+    if response.suit == Suit.SPADES and response.level == 5:
+        return (2, True)
+    return (None, None)
+
+
+def _resolve_rkc_keys(e: HandEval, state: 'AuctionState', resp: 'Bid',
+                      variant: str) -> Tuple[int, Optional[bool]]:
+    """Disambiguate 0/3 and 1/4 by hand strength.
+
+    The asker sees partner's response and needs to decide whether the
+    "0 or 3" / "1 or 4" pair points at the low or high number — based
+    on how strong they perceive partner to be from the auction so far.
+    Heuristic: did partner open OR limit-jump? Then take the high
+    number. If partner passed initially or only made minimum positive
+    responses, take the low number.
+    """
+    keys_lo, has_q = _parse_rkc_response(resp, variant)
+    if keys_lo is None:
+        return (0, has_q)
+    if keys_lo == 2:
+        return (2, has_q)
+
+    partner = state.seat.partner()
+    # Walk the raw bid stream up to the first 4NT so we only consider
+    # natural bids by partner — every bid at or after 4NT is keycard
+    # machinery (e.g. partner's `5♣` answer is NOT a 5-level natural
+    # club bid).
+    partner_first_was_pass = False
+    partner_pre_bids = []
+    seen_partner = False
+    for s, b in state.bids:
+        if b.level == 4 and b.suit == Suit.NOTRUMP and not b.is_pass:
+            break
+        if s != partner:
+            continue
+        if not seen_partner:
+            seen_partner = True
+            partner_first_was_pass = bool(b.is_pass)
+        if not b.is_pass:
+            partner_pre_bids.append(b)
+    partner_opened = (state.opener_seat == partner)
+
+    # If partner clearly showed opening values (opened, or made a
+    # jump shift / 2NT response promising 11+), take the high number.
+    high_signal = partner_opened
+    for b in partner_pre_bids:
+        # Jump responses (≥ 2NT or 3-level natural) imply ≥11 HCP.
+        if (b.suit == Suit.NOTRUMP and b.level >= 2) or b.level >= 3:
+            high_signal = True
+            break
+    if high_signal:
+        return (keys_lo + 3, has_q)
+    # Partner passed first or only made the minimum positive — keep low.
+    return (keys_lo, has_q)
+
+
+def _asker_after_rkc(state: 'AuctionState', e: HandEval, system) -> Bid:
+    """I bid 4NT, partner responded with keycards — pick my next bid.
+
+    Decision table:
+      • Missing 2+ keys (≤ asker's keys + partner's keys < 3)
+        → sign off in 5 of trump
+      • All keys present, plus trump queen → 5NT king-ask
+      • All keys, no queen confirmed → 6 of trump (or step to
+        confirm grand with queen later)
+      • Just enough keys for slam → 6 of trump
+    """
+    variant = getattr(system, "rkc_variant", "1430") or "1430"
+    trump = _agreed_trump(state)
+    if trump is None:
+        return passb(why="No trump fit detected — RKC fallback pass")
+    partner_resp = state.partner_bids[-1] if state.partner_bids else None
+    if partner_resp is None:
+        return passb(why="RKC asker — no response yet?")
+
+    pk, pq = _resolve_rkc_keys(e, state, partner_resp, variant)
+    my_keys = _keycard_count(e, trump)
+    total = my_keys + pk
+    have_q = _has_trump_queen(e, trump) or (pq is True)
+
+    # Off two or more keys (or off 1 + missing queen): stop at 5.
+    if total <= 2:
+        return bid(5, trump, why=f"Off ≥2 keys ({total}/5) — sign off in 5{trump.to_char()}")
+    if total == 3 and not have_q:
+        return bid(5, trump, why="Off 2 keys + queen missing — sign off in 5")
+
+    # 4+ keys + queen → king-ask via 5NT.
+    if total >= 4 and have_q:
+        return bid(5, Suit.NOTRUMP, alert=True,
+                   why=f"RKC {variant}: {total}/5 keys + Q — asking for kings")
+
+    # 4 keys, no queen confirmed → small slam.
+    if total == 4:
+        return bid(6, trump,
+                   why=f"4/5 keys, queen unclear — small slam in {trump.to_char()}")
+
+    # All 5 keys but queen still unclear — small slam is safe.
+    return bid(6, trump,
+               why=f"All 5 keys — small slam in {trump.to_char()}")
+
+
+def _respond_to_king_ask(state: 'AuctionState', e: HandEval, system) -> Bid:
+    """Partner bid 5NT (king-ask after RKC) — answer with kings.
+
+    Standard Q-Plus / SAYC answers: count non-trump kings, signal
+    via step bids.
+      • 6 of trump  = 0 non-trump kings
+      • 6♣ / 6♦ / 6♥ (the cheaper of the two side suits) = 1 king
+      • 6 below trump = 2 kings (rare)
+      • 7 of trump = all (3) kings
+    Q-Plus's actual 5NT answers are slightly system-specific; this
+    cheap-step style is the most common.
+    """
+    trump = _agreed_trump(state)
+    if trump is None:
+        return passb(why="No trump — can't answer king-ask")
+    side_kings = [s for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS)
+                  if s != trump and e.has_king.get(s, False)]
+    n_kings = len(side_kings)
+    if n_kings == 0:
+        return bid(6, trump, why="King-ask: 0 side kings")
+    if n_kings == 3:
+        return bid(7, trump, why="King-ask: all 3 side kings → grand")
+    # 1 / 2 — show the cheapest king. Any 6-level new-suit bid is
+    # legal above 5NT regardless of suit rank vs trump, so there's
+    # no "below trump" exit; we just walk C/D/H/S and pick the
+    # first king we hold (excluding trump, which was already
+    # counted as a keycard).
+    rank_order = [Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES]
+    for s in rank_order:
+        if s in side_kings:
+            return bid(6, s, alert=True,
+                       why=f"King-ask: showing {s.to_char()} king "
+                           f"({n_kings} total)")
+    return bid(6, trump, why="King-ask: no side kings to show")
+
+
+def _asker_after_king_response(state: 'AuctionState', e: HandEval, system) -> Bid:
+    """I bid 5NT (king-ask), partner answered — pick small vs grand.
+
+    With all keys + trump queen on side and partner showing at least
+    one king, the source-of-tricks usually exists for 7. With 0
+    kings shown (partner returned to 6 of trump), settle for 6.
+    """
+    trump = _agreed_trump(state)
+    if trump is None:
+        return passb(why="No trump after king-ask")
+    resp = state.partner_bids[-1] if state.partner_bids else None
+    if resp is None:
+        return passb()
+    # Partner returned to 6 of trump = 0 side kings → small slam.
+    if resp.level == 6 and resp.suit == trump:
+        return passb(why="0 side kings — small slam stands")
+    # Partner showed a king (6 of new suit) or grand (7 of trump).
+    if resp.level == 7:
+        return passb(why="Partner already at grand")
+    # Showed a king → grand if we have a source of tricks (long suit
+    # + ace + trump queen).
+    has_source = (
+        e.suit_lengths.get(trump, 0) >= 5
+        or any(e.suit_lengths.get(s, 0) >= 5
+               and e.has_ace.get(s, False)
+               for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS))
+    )
+    if has_source and _keycard_count(e, trump) >= 2:
+        return bid(7, trump, why=f"Side king shown + source of tricks → 7{trump.to_char()}")
+    return bid(6, trump, why=f"Side king shown but no clear source → 6{trump.to_char()}")
+
+
+def _try_rkc_pipeline(state: 'AuctionState', e: HandEval, system) -> Optional[Bid]:
+    """Hook for decide_bid: handle every step of the RKC follow-up.
+
+    Returns a Bid if the auction state matches one of:
+      • partner bid 4NT in an RKC context (I'm responding)
+      • I bid 4NT and partner answered (I'm reading)
+      • partner bid 5NT king-ask (I'm responding)
+      • I bid 5NT and partner answered (I'm reading)
+    Otherwise returns None and decide_bid falls through.
+    """
+    # Most recent partner bid + most recent my bid.
+    last_partner = state.partner_bids[-1] if state.partner_bids else None
+    last_mine = state.my_bids[-1] if state.my_bids else None
+
+    # Pre-flight: an intervening opponent double / overcall reshapes
+    # RKC into DEPO / DOPI; for now we just punt to natural bidding
+    # so we don't mis-fire. RKC handles only the no-interference case.
+    if state.opp_overcalled and state.rho_bids:
+        last_opp = state.rho_bids[-1]
+        if not last_opp.is_pass:
+            return None
+
+    # Case 1: partner just bid 4NT → I respond with keycards.
+    if last_partner is not None and _is_rkc_context(state, last_partner):
+        # Make sure I haven't already responded.
+        if not last_mine or last_mine.level < 4 \
+                or (last_mine.level == 4 and last_mine.suit != Suit.NOTRUMP):
+            return _respond_to_rkc(state, e, system)
+
+    # Case 2: I bid 4NT, partner gave the keycard answer → my move.
+    if last_mine is not None and _is_rkc_context(state, last_mine):
+        if last_partner is not None and last_partner.level == 5 \
+                and last_partner.suit in (Suit.CLUBS, Suit.DIAMONDS,
+                                          Suit.HEARTS, Suit.SPADES):
+            return _asker_after_rkc(state, e, system)
+
+    # Case 3: partner bid 5NT after an RKC sequence → I show kings.
+    if (last_partner is not None and last_partner.level == 5
+            and last_partner.suit == Suit.NOTRUMP):
+        if _agreed_trump(state) is not None and last_mine is not None \
+                and last_mine.level == 5:
+            return _respond_to_king_ask(state, e, system)
+
+    # Case 4: I bid 5NT king-ask → partner answered, I read it.
+    if (last_mine is not None and last_mine.level == 5
+            and last_mine.suit == Suit.NOTRUMP):
+        if last_partner is not None and last_partner.level in (6, 7):
+            return _asker_after_king_response(state, e, system)
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Top-level decide
 # ---------------------------------------------------------------------------
 
@@ -609,6 +986,13 @@ def decide_bid(state: AuctionState, eval_: HandEval, system) -> Bid:
         return passb()
     if state.consecutive_passes >= 3 and state.last_non_pass[0] != state.seat:
         return passb()
+
+    # RKC follow-up — check before the normal opener/responder/overcall
+    # dispatch so 4NT → 5x → 5NT → 6x → 7y all stay inside the slam
+    # machinery instead of falling back into natural rebid logic.
+    rkc = _try_rkc_pipeline(state, eval_, system)
+    if rkc is not None:
+        return rkc
 
     partner = state.seat.partner()
     is_my_partnership_opener = (state.opener_seat in (state.seat, partner))
