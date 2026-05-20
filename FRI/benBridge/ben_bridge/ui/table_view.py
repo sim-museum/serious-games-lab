@@ -795,18 +795,26 @@ class DirectionArrow(QWidget):
         }
         painter.drawPolygon(QPolygon(pts.get(self.direction, [])))
 
-        # N/E/S/W letter centred in the triangle. The triangle now
-        # sits in the band OUTSIDE the green box, so the letter just
-        # centres in its own widget rather than aligning to the flat
-        # side (which was the convention when the arrow was inside).
+        # N/E/S/W letter centred on the triangle's CENTROID, not on
+        # the widget rect. Each triangle has its apex at one edge of
+        # the rect and its base at the opposite edge — so the
+        # triangle's visual mass is offset from the rect's geometric
+        # centre, and AlignCenter drew the letter against the flat
+        # side instead of in the middle of the triangle. The centroid
+        # of a triangle is the average of its three vertices.
         painter.setPen(LETTER_COLOR)
         font_pt = max(10, int(min(w, h) * 0.36))
         painter.setFont(QFont("Arial", font_pt, QFont.Weight.Bold))
-        painter.drawText(
-            self.rect(),
-            Qt.AlignmentFlag.AlignCenter,
-            self.direction,
-        )
+        verts = pts.get(self.direction, [])
+        if verts:
+            cx = sum(p.x() for p in verts) // 3
+            cy = sum(p.y() for p in verts) // 3
+            # drawText at a point uses the BASELINE — shift up by ~0.3 of
+            # the font size so the glyph looks centred on (cx, cy).
+            fm = painter.fontMetrics()
+            tw = fm.horizontalAdvance(self.direction)
+            th = fm.ascent()
+            painter.drawText(cx - tw // 2, cy + th // 2 - 1, self.direction)
 
 
 class BiddingTableWidget(QFrame):
@@ -1114,13 +1122,20 @@ class TableView(QWidget):
         self.west_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
         self.west_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         west_vbox.addStretch()
-        # Q-Plus visual: W label sits next to the LEFT edge of the
-        # green table, not the screen's left edge. Anchor it to the
-        # RIGHT of the west column so it floats next to the trick
-        # area while the hand-widget fan still spreads leftward.
-        west_vbox.addWidget(self.west_label,
-                            alignment=Qt.AlignmentFlag.AlignRight)
-        west_vbox.addWidget(self.hand_widgets[Seat.WEST])
+        # Q-Plus visual: W label floats next to the LEFT edge of the
+        # green table. Put it in a horizontal sub-row beside the hand
+        # widget rather than stacked above it — when W is dummy and
+        # the hand widget gets allocated big vertical space (4-column
+        # mode), the previous stacked layout squeezed the label to
+        # zero height and "W: Dummy" disappeared.
+        west_hbox = QHBoxLayout()
+        west_hbox.setContentsMargins(0, 0, 0, 0)
+        west_hbox.setSpacing(6)
+        west_hbox.addStretch()
+        west_hbox.addWidget(self.hand_widgets[Seat.WEST])
+        west_hbox.addWidget(self.west_label,
+                            alignment=Qt.AlignmentFlag.AlignVCenter)
+        west_vbox.addLayout(west_hbox)
         self.hand_widgets[Seat.WEST].setVisible(False)  # Hidden by default
         west_vbox.addStretch()
         middle_layout.addWidget(self.west_column, stretch=1)
@@ -1153,13 +1168,17 @@ class TableView(QWidget):
         self.east_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
         self.east_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         east_vbox.addStretch()
-        # Q-Plus visual: E label sits next to the RIGHT edge of the
-        # green table. Anchor to the LEFT of the east column so it
-        # floats next to the trick area while the hand fan spreads
-        # rightward.
-        east_vbox.addWidget(self.east_label,
-                            alignment=Qt.AlignmentFlag.AlignLeft)
-        east_vbox.addWidget(self.hand_widgets[Seat.EAST])
+        # Mirror of the W layout — label inside a horizontal sub-row,
+        # placed to the LEFT of the hand widget so it sits next to
+        # the green box even when E is dummy with a big 4-column fan.
+        east_hbox = QHBoxLayout()
+        east_hbox.setContentsMargins(0, 0, 0, 0)
+        east_hbox.setSpacing(6)
+        east_hbox.addWidget(self.east_label,
+                            alignment=Qt.AlignmentFlag.AlignVCenter)
+        east_hbox.addWidget(self.hand_widgets[Seat.EAST])
+        east_hbox.addStretch()
+        east_vbox.addLayout(east_hbox)
         self.hand_widgets[Seat.EAST].setVisible(False)  # Hidden by default
         east_vbox.addStretch()
         middle_layout.addWidget(self.east_column, stretch=1)
@@ -1174,10 +1193,11 @@ class TableView(QWidget):
         # middle_layout claim that space restores the full trick area
         # and the south hand sits as low as the layout permits.
 
-        # South row: label + hand on one line
-        south_row = QHBoxLayout()
-        south_row.setSpacing(0)
-        south_row.setContentsMargins(0, 0, 0, 0)
+        # South area — two stacked rows:
+        #   1. Label row: "S: HUMAN" centered on screen.
+        #   2. Hand row: the 13-card fan, centered horizontally and
+        #      pushed lower in the available vertical space via a
+        #      stretch above it.
 
         self.south_label = QLabel("S: HUMAN")
         self.south_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
@@ -1187,35 +1207,30 @@ class TableView(QWidget):
 
         self.hand_widgets[Seat.SOUTH].set_player_info(is_human=True)
 
-        # Q-Plus visual: S label sits centered directly above the
-        # south hand fan (and so under the trick area). The original
-        # AlignLeft placement parked it in the bottom-left corner,
-        # far from the table. Mirror the north row's structure for
-        # symmetry — spacer on the left, then stretch + label +
-        # stretch + hand widget + stretch.
-        south_spacer_left = QWidget()
-        south_spacer_left.setFixedWidth(140)
-        south_row.addWidget(south_spacer_left,
-                            alignment=Qt.AlignmentFlag.AlignBottom)
+        # Label row — symmetrically padded so the label is centered
+        # on screen, not biased toward one side by the N/info_panel
+        # block on the opposite row.
+        south_label_row = QHBoxLayout()
+        south_label_row.setContentsMargins(0, 0, 0, 0)
+        south_label_row.addStretch()
+        south_label_row.addWidget(self.south_label,
+                                  alignment=Qt.AlignmentFlag.AlignHCenter)
+        south_label_row.addStretch()
+        layout.addLayout(south_label_row)
+
+        # Push the south hand fan lower in the empty space between
+        # the green table and the bottom bar — the previous layout
+        # parked it directly under the label with a large unused
+        # gap above the contract / tricks panels.
+        layout.addStretch(1)
+
+        # Hand row — the 13-card fan, centered.
+        south_row = QHBoxLayout()
+        south_row.setSpacing(0)
+        south_row.setContentsMargins(0, 0, 0, 0)
         south_row.addStretch()
-        # Stack south_label above the south hand so it visually
-        # parallels Q-Plus's "South" tab sitting just under the
-        # green table edge.
-        south_combo = QVBoxLayout()
-        south_combo.setContentsMargins(0, 0, 0, 0)
-        south_combo.setSpacing(2)
-        south_combo.addWidget(self.south_label,
-                              alignment=Qt.AlignmentFlag.AlignHCenter)
-        south_combo.addWidget(self.hand_widgets[Seat.SOUTH])
-        south_row.addLayout(south_combo)
+        south_row.addWidget(self.hand_widgets[Seat.SOUTH])
         south_row.addStretch()
-        # The earlier 140-px spacer here only existed to make the south
-        # row visually balance the info-panel block on the north row.
-        # On 1920-wide windows that left the 13-card fan no room to
-        # breathe and the rightmost card got clipped. Dropping the
-        # spacer reclaims the width; the trick area is centered
-        # independently in the middle layout, so the asymmetry isn't
-        # noticeable.
         layout.addLayout(south_row)
 
         # Bottom bar with contract and tricks

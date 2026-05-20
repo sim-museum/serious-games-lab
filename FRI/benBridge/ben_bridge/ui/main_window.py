@@ -8190,6 +8190,15 @@ For more information, see the README file."""
         # the two rooms might have used different systems).
         if match_idx is not None:
             target_board = results[match_idx].board_number
+            # Mutate the run itself too — the compare dialog reads
+            # `run.board_number` to compute dealer / vulnerability,
+            # and Q-Plus's auto-generated board number gives the
+            # wrong rotation entries. Without this, the closed-room
+            # header showed a stale dealer (e.g. W instead of S).
+            try:
+                run.board_number = target_board
+            except Exception:
+                pass
         else:
             target_board = run.board_number
 

@@ -327,11 +327,20 @@ class _BiddingLogPanel(QWidget):
         # are persisted per-deal so an old replay shows whatever
         # systems were configured when the deal was played.
         try:
-            from ben_backend.models import BoardState
+            from ben_backend.models import BoardState, Vulnerability
             dealer, vuln = BoardState._board_dealer_vuln(run.board_number)
             dealer_char = dealer.to_char()
-            vul_map = {0: 'None', 1: 'NS', 2: 'EW', 3: 'Both'}
-            vul_str = vul_map.get(getattr(vuln, 'value', 0), 'None')
+            # `Vulnerability` is a string-valued Enum ("None" / "N-S"
+            # / "E-W" / "Both"), so the previous int-keyed map always
+            # missed and the header always reported "None" regardless
+            # of the board's true vulnerability. Look up by enum
+            # identity instead and shorten the display tokens.
+            vul_str = {
+                Vulnerability.NONE: 'None',
+                Vulnerability.NS:   'NS',
+                Vulnerability.EW:   'EW',
+                Vulnerability.BOTH: 'Both',
+            }.get(vuln, 'None')
         except Exception:
             dealer_char, vul_str = '?', '?'
         ns_sys = (getattr(run, 'ns_bidding_system', '') or '—')
