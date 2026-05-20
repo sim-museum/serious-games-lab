@@ -501,6 +501,27 @@ def _fallback_acol() -> BiddingSystem:
     return s
 
 
+def _fallback_sayc_wbridge5() -> BiddingSystem:
+    """SAYC tuned to match wbridge5's bidding choices.
+
+    wbridge5 plays a SAYC variant with its own preferences for
+    contested auctions and slam exploration. The published rules
+    closest to wbridge5's defaults are SAYC + 2-over-1 light /
+    Bergen / Jacoby 2NT / Truscott 2NT / Smolen / unassuming cue
+    bids — but wbridge5's actual choices diverge from ours in
+    enough places that we treat it as its own catalog entry.
+
+    Initial implementation is a SAYC clone; the diff harness
+    (tools/wbridge5_diff.py) reports per-class divergences which
+    drive incremental tuning of this system's conventions and
+    parameters.
+    """
+    s = _fallback_sayc()
+    s.name = "SAYC-wbridge5"
+    s.description = "SAYC tuned to wbridge5 (Q-Plus catalog clone, diff-driven tuning)"
+    return s
+
+
 def _fallback_standard_french() -> BiddingSystem:
     """Modern French / SEF.
 
@@ -542,6 +563,7 @@ _FALLBACK_PRECISION_CONVENTIONS = (_FALLBACK_SAYC_CONVENTIONS | {
 
 _CATALOG: List[Tuple[str, str, "callable"]] = [
     ("SAYC",            "A-SAYC-I.RCE", _fallback_sayc),
+    ("SAYC-wbridge5",   "",             _fallback_sayc_wbridge5),
     ("TwoOverOne",      "A-2-1-A.RCE",  _fallback_two_over_one),
     ("StandardAcol",    "B-ACL-S.RCE",  _fallback_acol),
     ("StandardFrench",  "F-FRA-M.RCE",  _fallback_standard_french),
@@ -566,7 +588,9 @@ _ALIASES = {
     # those programs would use as their closest analogue.
     "Std. Amer.": "SAYC",
     "2/1": "TwoOverOne",
-    "Wbridge5": "TwoOverOne",        # wBridge5's named-default → 2/1 GF
+    "Wbridge5": "SAYC-wbridge5",     # was TwoOverOne — now its own system
+    "wbridge5": "SAYC-wbridge5",
+    "wBridge5": "SAYC-wbridge5",
     "SEF": "StandardFrench",
     "ACOL": "StandardAcol",
     "Acol": "StandardAcol",

@@ -153,10 +153,12 @@ class TestSystemCatalog(unittest.TestCase):
         self.assertEqual(s.one_major_card_min, 5)
 
     def test_cross_program_aliases(self):
-        # bb12 / wBridge5 names map to closest Q-Plus systems.
+        # bb12 / wBridge5 names map to closest engine-specific systems.
+        # "Wbridge5" used to alias TwoOverOne; now it has its own
+        # diff-tuned SAYC-wbridge5 entry so the test reflects that.
         self.assertEqual(get_system("Std. Amer.").name, "SAYC")
         self.assertEqual(get_system("2/1").name, "TwoOverOne")
-        self.assertEqual(get_system("Wbridge5").name, "TwoOverOne")
+        self.assertEqual(get_system("Wbridge5").name, "SAYC-wbridge5")
         self.assertEqual(get_system("SEF").name, "StandardFrench")
         self.assertEqual(get_system("ACOL").name, "StandardAcol")
         self.assertEqual(get_system("La Majeure 5eme").name, "StandardFrench")
@@ -403,6 +405,110 @@ class TestRKCBlackwood(unittest.TestCase):
                     )
                     break
                 break
+
+
+class TestTMProtocol(unittest.TestCase):
+    """Isolated tests for the Bridge Table Manager protocol bits —
+    no real wbridge5 needed. Drives the codec end-to-end through a
+    pair of socketpair() sockets so we exercise framing as well as
+    formatting.
+    """
+
+    def setUp(self):
+        from ben_backend.wbridge5_driver import (
+            _format_hand_for_tm, _format_bid_for_tm, _parse_bid_from_tm,
+            TMConnection,
+        )
+        from ben_backend.models import (
+            Hand, Card, Suit, Rank, Bid,
+        )
+        self.f_hand = _format_hand_for_tm
+        self.f_bid = _format_bid_for_tm
+        self.p_bid = _parse_bid_from_tm
+        self.TMConnection = TMConnection
+        self.Hand, self.Card = Hand, Card
+        self.Suit, self.Rank, self.Bid = Suit, Rank, Bid
+
+    def test_hand_format(self):
+        Suit, Rank = self.Suit, self.Rank
+        cards = [
+            self.Card(Suit.SPADES, Rank.ACE),
+            self.Card(Suit.SPADES, Rank.QUEEN),
+            self.Card(Suit.HEARTS, Rank.KING),
+            self.Card(Suit.HEARTS, Rank.TWO),
+            self.Card(Suit.DIAMONDS, Rank.QUEEN),
+            self.Card(Suit.DIAMONDS, Rank.JACK),
+            self.Card(Suit.CLUBS, Rank.TEN),
+            self.Card(Suit.CLUBS, Rank.NINE),
+            self.Card(Suit.CLUBS, Rank.EIGHT),
+            self.Card(Suit.CLUBS, Rank.SEVEN),
+            self.Card(Suit.CLUBS, Rank.SIX),
+            self.Card(Suit.CLUBS, Rank.FIVE),
+            self.Card(Suit.CLUBS, Rank.FOUR),
+        ]
+        h = self.Hand(cards=cards)
+        out = self.f_hand(h)
+        self.assertEqual(out,
+            "S A Q. H K 2. D Q J. C T 9 8 7 6 5 4.")
+
+    def test_bid_roundtrip_all_calls(self):
+        Bid, Suit = self.Bid, self.Suit
+        cases = [
+            (Bid.make_pass(), "Pass"),
+            (Bid.make_double(), "X"),
+            (Bid.make_redouble(), "XX"),
+            (Bid(level=1, suit=Suit.HEARTS), "1H"),
+            (Bid(level=3, suit=Suit.NOTRUMP), "3NT"),
+            (Bid(level=7, suit=Suit.CLUBS), "7C"),
+        ]
+        for orig, expected in cases:
+            self.assertEqual(self.f_bid(orig), expected)
+            back = self.p_bid(expected)
+            self.assertEqual(self.f_bid(back), expected)
+
+    def test_tm_connection_framing(self):
+        """Round-trip a few CRLF-framed lines through a socketpair —
+        verifies the connection wrapper correctly reassembles
+        multi-recv lines and handles partial chunks."""
+        import socket
+        a, b = socket.socketpair()
+        ca = self.TMConnection(a)
+        cb = self.TMConnection(b)
+        try:
+            ca.send_line('Connecting "ben_bridge" as North using protocol version 18')
+            line = cb.recv_line()
+            self.assertEqual(
+                line, 'Connecting "ben_bridge" as North using protocol version 18')
+
+            # Two lines arriving in one recv().
+            ca.send_line("Start of board")
+            ca.send_line("Board number 1. Dealer North. Neither vulnerable.")
+            self.assertEqual(cb.recv_line(), "Start of board")
+            self.assertEqual(cb.recv_line(),
+                             "Board number 1. Dealer North. Neither vulnerable.")
+        finally:
+            ca.close()
+            cb.close()
+
+
+class TestSAYCWbridge5Catalog(unittest.TestCase):
+    """The new SAYC-wbridge5 system is registered + reachable."""
+
+    def test_listed(self):
+        names = list_systems()
+        self.assertIn("SAYC-wbridge5", names)
+
+    def test_alias_resolution(self):
+        # The bare program names all resolve to SAYC-wbridge5 now.
+        for alias in ("Wbridge5", "wbridge5", "wBridge5"):
+            self.assertEqual(get_system(alias).name, "SAYC-wbridge5")
+
+    def test_starts_as_sayc_clone(self):
+        s = get_system("SAYC-wbridge5")
+        self.assertEqual(s.one_nt_min_hcp, 15)
+        self.assertEqual(s.one_nt_max_hcp, 17)
+        self.assertEqual(s.strong_open_call, "2C")
+        self.assertEqual(s.two_over_one_min_hcp, 10)
 
 
 if __name__ == "__main__":
