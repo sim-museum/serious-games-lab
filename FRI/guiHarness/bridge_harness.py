@@ -75,6 +75,119 @@ CARD_COORDS_MAP = {
 
 PLAYER_NAMES = ["North", "East", "South", "West"]
 
+
+# ---------------------------------------------------------------------------
+# Q-Plus "Own Deals" BDE file format
+#
+# Multi-deal text files Q-Plus reads from DATA/OWN-DEALS/. Each deal is:
+#
+#     Deal         :   <label>
+#     Dealer       :   <North|East|South|West>
+#     Vuln         :   <---|N/S|E/W|All>
+#     Cards        :                  <N spades>
+#                  :                  <N hearts>
+#                  :                  <N diamonds>
+#                  :                  <N clubs>
+#                  :   <W spades>                    <E spades>
+#                  :   <W hearts>                    <E hearts>
+#                  :   <W diamonds>                  <E diamonds>
+#                  :   <W clubs>                     <E clubs>
+#                  :                  <S spades>
+#                  :                  <S hearts>
+#                  :                  <S diamonds>
+#                  :                  <S clubs>
+#
+#     *********************************************************
+#
+# Same general header style as a played-out BDL file but with the
+# auction / play / result blocks omitted — Q-Plus generates those
+# when it auto-plays the deal. Writing one of these is faster and
+# vastly more reliable than the 52-card pyautogui chain that drove
+# the pickboard dialog.
+# ---------------------------------------------------------------------------
+
+BDE_VULN_MAP = {
+    "None": "---",  "NONE": "---",  "-": "---",  "":  "---",
+    "NS":   "N/S",  "N-S": "N/S",   "N/S": "N/S",
+    "EW":   "E/W",  "E-W": "E/W",   "E/W": "E/W",
+    "Both": "All",  "BOTH": "All",  "All": "All",  "ALL": "All",
+}
+
+BDE_DEALER_MAP = {
+    "N": "North", "E": "East", "S": "South", "W": "West",
+}
+
+BDE_SEPARATOR = "*********************************************************"
+
+
+def _fmt_bde_suit(cards_with_rank: list) -> str:
+    """Render a single suit-line for the BDE file.
+
+    `cards_with_rank` is a list of rank tokens ("A", "K", "Q", …,
+    "10", "2"). Sorted A→2 with single-space separators. An empty
+    suit renders as "-". Q-Plus's shipped .BDE files use "T" for the
+    ten (not "10"), so we convert here for byte-identical output.
+    """
+    if not cards_with_rank:
+        return "-"
+    return " ".join("T" if r == "10" else r for r in cards_with_rank)
+
+
+def hands_to_bde_text(hands, dealer: str = "N", vuln: str = "None",
+                      label: str = "Sent from ben_bridge",
+                      description: str = "single deal from ben_bridge") -> str:
+    """Build a single-deal BDE file body.
+
+    `hands` is [N_cards, E_cards, S_cards, W_cards] where each card
+    list is the same in-list-of-strings shape the harness uses
+    elsewhere (e.g. "SA", "HT", "C2", …). Returns the full file
+    content as a string.
+    """
+    suit_chars = ["S", "H", "D", "C"]
+    rank_order = {"A": 0, "K": 1, "Q": 2, "J": 3, "10": 4, "9": 5,
+                  "8": 6, "7": 7, "6": 8, "5": 9, "4": 10,
+                  "3": 11, "2": 12}
+
+    def _suits_for_hand(hand):
+        groups = {s: [] for s in suit_chars}
+        for card in hand:
+            groups[card[0]].append(card[1:])
+        for s in suit_chars:
+            groups[s].sort(key=lambda r: rank_order.get(r, 99))
+        return [groups[s] for s in suit_chars]   # [spades, hearts, ds, cs]
+
+    n_suits = _suits_for_hand(hands[0])
+    e_suits = _suits_for_hand(hands[1])
+    s_suits = _suits_for_hand(hands[2])
+    w_suits = _suits_for_hand(hands[3])
+
+    dealer_full = BDE_DEALER_MAP.get(dealer.strip().upper()[:1], "North")
+    vuln_full = BDE_VULN_MAP.get(vuln.strip(), "---")
+
+    lines = []
+    lines.append("DOCTYPE: BDL 7.1")
+    lines.append(f'.description.eng = "{description}"')
+    lines.append("")
+    lines.append(f"Deal         :   {label}")
+    lines.append(f"Dealer       :   {dealer_full}")
+    lines.append(f"Vuln         :   {vuln_full}")
+
+    # N row: 4 indented suit lines
+    lines.append(f"Cards        :                  {_fmt_bde_suit(n_suits[0])}")
+    for s in range(1, 4):
+        lines.append(f"             :                  {_fmt_bde_suit(n_suits[s])}")
+    # W ↔ E rows: 4 lines, two suits side by side
+    for s in range(4):
+        wcol = _fmt_bde_suit(w_suits[s])
+        ecol = _fmt_bde_suit(e_suits[s])
+        lines.append(f"             :   {wcol:<30}{ecol}")
+    # S row: 4 indented
+    for s in range(4):
+        lines.append(f"             :                  {_fmt_bde_suit(s_suits[s])}")
+    lines.append("")
+    lines.append(BDE_SEPARATOR)
+    return "\n".join(lines) + "\n"
+
 # ---------------------------------------------------------------------------
 # Pavlicek deal-number encoding  (standalone — no dependency on ben_bridge)
 #
@@ -1312,6 +1425,59 @@ class BridgeHarness(QMainWindow):
                 return candidate
         return None
 
+    def _qplus_own_deals_dir(self):
+        """Path to Q-Plus's DATA/OWN-DEALS/ directory, or None."""
+        qd = self._qplus_install_dir()
+        if qd is None:
+            return None
+        cand = qd / "DATA" / "OWN-DEALS"
+        return cand if cand.is_dir() else None
+
+    def _write_bde_deal(self):
+        """Write the loaded deal as a .BDE file in Q-Plus's OWN-DEALS folder.
+
+        Replaces the per-card pyautogui pickboard automation. After
+        the file is written the user opens Q-Plus → Own Deals →
+        Open → pick the file, and Q-Plus's own engine auto-plays
+        the deal. Returns the file path on success, None on failure.
+        """
+        if self.hands is None:
+            QMessageBox.warning(self, "Error", "No deal loaded.")
+            return None
+        own_dir = self._qplus_own_deals_dir()
+        if own_dir is None:
+            QMessageBox.warning(self, "Q-Plus not found",
+                                "Could not locate Q-Plus's DATA/OWN-DEALS "
+                                "directory under FRI/WP. Install Q-Plus or "
+                                "fall back to the Pickboard automation.")
+            return None
+        # Stable filename so re-running this rewrites the same file
+        # — useful when Q-Plus's "recent files" remembers it.
+        fname = "BEN_BRIDGE_RELAY.BDE"
+        path = own_dir / fname
+        # Honour the dealer / vulnerability the user has set (or that
+        # ben_bridge passed via --dealer / --vuln). Default to N / None
+        # when unset.
+        dealer = (self.dealer or "N").strip().upper()[:1]
+        vuln = (self.vulnerability or "None")
+        try:
+            label = f"BB-{datetime.now().strftime('%H%M%S')}"
+        except Exception:
+            label = "BB"
+        text = hands_to_bde_text(self.hands, dealer=dealer, vuln=vuln,
+                                 label=label,
+                                 description="Relayed from ben_bridge")
+        try:
+            path.write_text(text, encoding="latin-1")
+        except Exception as ex:
+            QMessageBox.warning(self, "Write failed", str(ex))
+            return None
+        self.statusBar().showMessage(
+            f"Wrote {fname} to OWN-DEALS/ — load it in Q-Plus via "
+            f"Own Deals → Open."
+        )
+        return str(path)
+
     def _launch_qplus_if_installed(self):
         """Spawn Q-Plus in the background under wine. No-op if it isn't
         installed (the harness still works for other workflows in that
@@ -1622,9 +1788,31 @@ class BridgeHarness(QMainWindow):
         cal_outer.addWidget(cal_scroll)
         right.addWidget(cal_group, stretch=1)
 
-        # Enter button
-        self.enter_btn = QPushButton("Enter Deal into Q-Plus")
-        self.enter_btn.setStyleSheet("font-weight: bold; padding: 8px;")
+        # Two entry paths:
+        #   1. Write deal to Q-Plus's OWN-DEALS folder as a .BDE
+        #      file. Fast, reliable, no per-card mouse-click chain.
+        #      Q-Plus picks it up via Own Deals → Open. This is the
+        #      preferred path.
+        #   2. Drive the pickboard dialog with pyautogui. The legacy
+        #      path — kept as a fallback for setups where the .BDE
+        #      file workflow doesn't fit.
+        self.write_bde_btn = QPushButton("Write Deal to OWN-DEALS/ (.BDE)")
+        self.write_bde_btn.setStyleSheet(
+            "font-weight: bold; padding: 8px; background-color: #cfe4ff;")
+        self.write_bde_btn.setToolTip(
+            "Write the loaded deal as a Q-Plus .BDE file in the OWN-DEALS\n"
+            "directory. Then in Q-Plus: Own Deals → Open → pick the file.\n"
+            "Q-Plus will then auto-play the deal — no per-card clicking.")
+        self.write_bde_btn.clicked.connect(self._write_bde_deal)
+        right.addWidget(self.write_bde_btn)
+
+        self.enter_btn = QPushButton(
+            "Enter Deal via Pickboard (slow, fallback)")
+        self.enter_btn.setStyleSheet("padding: 8px;")
+        self.enter_btn.setToolTip(
+            "Legacy path: opens Q-Plus's Hand Input dialog and clicks\n"
+            "all 52 cards via pyautogui. Use only when the .BDE file\n"
+            "workflow above is not available.")
         self.enter_btn.clicked.connect(self._enter_deal)
         right.addWidget(self.enter_btn)
 

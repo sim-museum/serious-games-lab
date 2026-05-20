@@ -6269,25 +6269,126 @@ For more information, see the README file."""
         )
 
     def _on_send_current_to_harness(self):
-        """Extras menu handler — spawn the harness preloaded with the
-        deal currently on the table.
+        """Extras menu handler — write the current deal to Q-Plus's
+        OWN-DEALS folder as a .BDE file, then spawn the harness.
 
-        Same launch path as the end-of-hand "Generate closed room"
-        button, but exposed in the Extras menu so the user can fire
-        it mid-game. _launch_qplus_harness will refuse the launch if
-        any seat doesn't yet have all 13 cards — that's the right
-        behaviour: until the deal is complete, the harness can't
-        feed Q-Plus a valid hand.
+        The .BDE file is Q-Plus's native Own-Deals format. Writing
+        it directly is fast and reliable — no per-card pyautogui
+        click chain. After this returns, the user opens Q-Plus's
+        `Own Deals → Open` menu, picks the file, and Q-Plus
+        auto-plays the deal. The GUI harness is still spawned so
+        the user has its UI for follow-up actions, but the heavy
+        lifting (transferring the deal to Q-Plus) is done via the
+        file system.
         """
         if self.controller.board is None:
             QMessageBox.information(
                 self, "No deal",
                 "Start a deal first — there's nothing to send.")
             return
+        bde_path = self._write_current_deal_as_bde(self.controller.board)
         self._launch_qplus_harness(self.controller.board)
-        self.status_label.setText(
-            "Launched GUI harness with the current deal."
-        )
+        if bde_path is not None:
+            self.status_label.setText(
+                f"Wrote {os.path.basename(bde_path)} to OWN-DEALS/. "
+                f"In Q-Plus: Own Deals → Open → pick that file."
+            )
+        else:
+            self.status_label.setText(
+                "Launched GUI harness with the current deal."
+            )
+
+    def _write_current_deal_as_bde(self, board) -> Optional[str]:
+        """Write the current deal as a Q-Plus .BDE file.
+
+        Returns the file path on success, None on failure (no Q-Plus
+        install, hands not yet dealt, etc.). The format is the same
+        text-table layout Q-Plus's shipped EXAMPLE.BDE uses, with
+        WEST in the left column / EAST in the right column and `T`
+        for the ten — round-tripped through the BDL reader to
+        confirm seat assignment.
+        """
+        import os
+        # Locate Q-Plus's DATA/OWN-DEALS folder under FRI/WP/.
+        # The harness's _qplus_own_deals_dir does the same lookup;
+        # we mirror it here so ben_bridge can write directly.
+        here = os.path.dirname(os.path.abspath(__file__))
+        fri_root = os.path.normpath(os.path.join(here, "..", "..", ".."))
+        candidates = [
+            os.path.join(fri_root, "WP", "drive_c", "games",
+                         "qbridge17", "DATA", "OWN-DEALS"),
+            os.path.join(fri_root, "WP", "drive_c", "games",
+                         "qbridge15", "DATA", "OWN-DEALS"),
+        ]
+        own_dir = next((d for d in candidates if os.path.isdir(d)), None)
+        if own_dir is None:
+            return None
+        hands_src = self.original_hands or board.hands
+        if not all(s in hands_src and len(hands_src[s].cards) == 13 for s in Seat):
+            return None
+
+        # Render each seat's cards into the [spades, hearts, diamonds, clubs]
+        # rank-token shape the BDE writer wants.
+        rank_chars = {0: 'A', 1: 'K', 2: 'Q', 3: 'J', 4: 'T',
+                      5: '9', 6: '8', 7: '7', 8: '6',
+                      9: '5', 10: '4', 11: '3', 12: '2'}
+        suit_chars = {Suit.SPADES: 'S', Suit.HEARTS: 'H',
+                      Suit.DIAMONDS: 'D', Suit.CLUBS: 'C'}
+        VULN_TO_BDE = {'None': '---', 'N-S': 'N/S',
+                       'E-W': 'E/W', 'Both': 'All'}
+        DEALER_TO_BDE = {'N': 'North', 'E': 'East',
+                         'S': 'South', 'W': 'West'}
+
+        def _suit_line(cards_for_suit):
+            ranks = sorted((c.rank.value for c in cards_for_suit))
+            return ' '.join(rank_chars[r] for r in ranks) or '-'
+
+        def _seat_suits(seat):
+            cards = hands_src[seat].cards
+            return {
+                Suit.SPADES:   [c for c in cards if c.suit == Suit.SPADES],
+                Suit.HEARTS:   [c for c in cards if c.suit == Suit.HEARTS],
+                Suit.DIAMONDS: [c for c in cards if c.suit == Suit.DIAMONDS],
+                Suit.CLUBS:    [c for c in cards if c.suit == Suit.CLUBS],
+            }
+
+        n = _seat_suits(Seat.NORTH)
+        e = _seat_suits(Seat.EAST)
+        s = _seat_suits(Seat.SOUTH)
+        w = _seat_suits(Seat.WEST)
+        suit_order = [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]
+
+        label = f"BB-board-{board.board_number}"
+        dealer = DEALER_TO_BDE.get(board.dealer.to_char(), 'North')
+        vuln = VULN_TO_BDE.get(board.vulnerability.value, '---')
+
+        out = []
+        out.append("DOCTYPE: BDL 7.1")
+        out.append('.description.eng = "Relayed from ben_bridge"')
+        out.append("")
+        out.append(f"Deal         :   {label}")
+        out.append(f"Dealer       :   {dealer}")
+        out.append(f"Vuln         :   {vuln}")
+        out.append(f"Cards        :                  {_suit_line(n[suit_order[0]])}")
+        for su in suit_order[1:]:
+            out.append(f"             :                  {_suit_line(n[su])}")
+        for su in suit_order:
+            wcol = _suit_line(w[su])
+            ecol = _suit_line(e[su])
+            out.append(f"             :   {wcol:<30}{ecol}")
+        for su in suit_order:
+            out.append(f"             :                  {_suit_line(s[su])}")
+        out.append("")
+        out.append("*********************************************************")
+
+        path = os.path.join(own_dir, "BEN_BRIDGE_RELAY.BDE")
+        try:
+            with open(path, "w", encoding="latin-1") as f:
+                f.write("\n".join(out) + "\n")
+        except Exception as ex:
+            print(f"[bde write] failed: {ex!r}", flush=True)
+            return None
+        return path
 
     def _on_dialog_claude_analysis(self):
         """End-of-hand dialog button → run Claude on the last hand.
