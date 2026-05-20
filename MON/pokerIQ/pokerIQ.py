@@ -6914,11 +6914,20 @@ class StatsPanel(QWidget):
         # Background
         painter.fillRect(0, 0, w, h, QColor(30, 30, 30))
 
-        # Check if we're in god mode (true_equity is not None for first active player)
-        god_mode = any(s[1] is not None for s in self.player_stats if s[4])  # s[4] = is_active
+        # Tuple format (variable length for backward compatibility):
+        #   (name, true_eq, perc_eq, pot_odds, is_active, is_hero,
+        #    [tells_text])
+        # god_mode  → true_eq filled in.
+        # tells_mode → tells_text non-empty AND perc_eq usually None.
+        god_mode = any(s[1] is not None for s in self.player_stats if s[4])
+        tells_mode = (not god_mode
+                      and any(len(s) > 6 and bool(s[6])
+                              for s in self.player_stats))
 
         if god_mode:
             bar_max_width = (w - 450) // 3  # Smaller bars to fit 3 columns
+        elif tells_mode:
+            bar_max_width = max(80, (w - 380) // 2)
         else:
             bar_max_width = (w - 340) // 2
 
@@ -6939,18 +6948,33 @@ class StatsPanel(QWidget):
             painter.drawText(think_x, 28, "Thinking")
             painter.setPen(QColor(200, 150, 50))  # Yellow for PO heading
             painter.drawText(po_x, 28, "Pot Odds")
+        elif tells_mode:
+            tells_x = 190
+            po_x = tells_x + bar_max_width + 60
+            painter.setPen(QColor(255, 200, 100))
+            painter.drawText(tells_x, 28, "Tells")
+            painter.setPen(QColor(200, 150, 50))
+            painter.drawText(po_x, 28, "Pot Odds")
         else:
             painter.setPen(QColor(100, 255, 100))
             painter.drawText(190, 28, "Equity")
             painter.setPen(QColor(200, 150, 50))
             painter.drawText(210 + bar_max_width + 40, 28, "Pot Odds")
 
-        # Draw stats for each player
-        # Tuple format: (name, true_equity, perceived_equity, pot_odds, is_active, is_hero)
+        # Draw stats for each player.
         bar_height = 26
         start_y = 42
 
-        for i, (name, true_equity, perceived_equity, pot_odds, is_active, is_hero) in enumerate(self.player_stats):
+        for i, row in enumerate(self.player_stats):
+            # Older callers still pass 6-tuples — fall through with
+            # an empty tells string.
+            if len(row) >= 7:
+                (name, true_equity, perceived_equity, pot_odds,
+                 is_active, is_hero, tells_text) = row[:7]
+            else:
+                (name, true_equity, perceived_equity, pot_odds,
+                 is_active, is_hero) = row[:6]
+                tells_text = ""
             y = start_y + i * (bar_height + 5)
 
             # Player name
@@ -7023,8 +7047,26 @@ class StatsPanel(QWidget):
 
                 # Pot odds bar
                 po_x = think_x + bar_max_width + 15
+            elif tells_mode:
+                # SHOW TELLS MODE: render the behavioral-tell string
+                # in place of the equity bar. No card-derived data
+                # touches this row.
+                tells_x = 190
+                font = QFont('Arial', 14, QFont.Weight.Bold)
+                painter.setFont(font)
+                painter.setPen(QColor(255, 215, 100))
+                txt = tells_text or "—"
+                # Truncate to fit the column width so the pot-odds
+                # column doesn't get overlapped.
+                max_chars = max(20, bar_max_width // 8)
+                if len(txt) > max_chars:
+                    txt = txt[:max_chars - 1] + "…"
+                painter.drawText(tells_x, y + 19, txt)
+                po_x = tells_x + bar_max_width + 60
             else:
                 # NORMAL MODE: Just show perceived equity
+                if perceived_equity is None:
+                    perceived_equity = 0.0
                 eq_width = int(perceived_equity * bar_max_width)
                 eq_color = self.get_equity_color(perceived_equity)
 
@@ -7054,8 +7096,14 @@ class StatsPanel(QWidget):
             painter.setFont(font)
             painter.drawText(po_x + 5, y + 19, f"{pot_odds:.0%}")
 
-            # EV indicator (based on TRUE equity in god mode, perceived otherwise)
+            # EV indicator (based on TRUE equity in god mode,
+            # perceived otherwise). Suppressed in tells-mode because
+            # we deliberately don't have an equity number.
+            if tells_mode:
+                continue
             ev_equity = true_equity if (god_mode and true_equity is not None) else perceived_equity
+            if ev_equity is None:
+                continue
             ev_x = po_x + bar_max_width + 15
             font = QFont('Arial', 15, QFont.Weight.Bold)
             painter.setFont(font)
@@ -8427,6 +8475,22 @@ class PokerWindow(QMainWindow):
         # Hero AGF (aggression factor) counters across the session —
         # used by the dashboard's Hero-session pie. AGF = aggressive
         # acts / passive acts on streets after preflop.
+        # Behavioral-tells trackers, populated from process_action.
+        # _tell_action_start: monotonic clock at the moment a seat
+        #   became active (set by set_active_player).
+        # _tell_decision_times: name → deque[float] of recent decision
+        #   times in seconds.
+        # _tell_bet_sizes_bb: name → deque[float] of recent bet/raise
+        #   sizes expressed in big blinds.
+        # _tell_last_action: name → short verb tag for the previous
+        #   completed action ('fold','check','call','bet','raise').
+        from collections import deque as _deque
+        self._tell_action_start = None
+        self._tell_decision_times = {}
+        self._tell_bet_sizes_bb = {}
+        self._tell_last_action = {}
+        self._tell_deque_factory = lambda: _deque(maxlen=20)
+
         self._hero_aggressive_acts = 0   # bets + raises postflop
         self._hero_passive_acts = 0      # calls postflop
         # Hero realized-vs-raw equity tracker. At the START of each
@@ -9776,6 +9840,14 @@ class PokerWindow(QMainWindow):
 
         self._install_keyboard_shortcuts()
 
+        # Initial assist-checkbox state. Without this God Mode +
+        # Show Tells started disabled at the first frame — the user
+        # had to toggle ToM on then off to make them responsive.
+        try:
+            self._refresh_assist_checkbox_state()
+        except Exception:
+            pass
+
     def _install_keyboard_shortcuts(self):
         """Bind common-action keys to the same handlers the on-screen
         buttons use. All shortcuts are global on the main window, so
@@ -9904,116 +9976,148 @@ class PokerWindow(QMainWindow):
 
     def _refresh_assist_checkbox_state(self):
         """Re-evaluate which states the God Mode / Show Tells checkboxes
-        should be in. Called when the network mode flips (host/join
-        start, disconnect) and when spectator mode toggles.
+        should be in. Single source of truth for assist availability —
+        called when the network mode flips, the spectator toggle
+        flips, and Theory of Mind is toggled.
 
         Rules:
-          - Spectator mode (hero folded): both ENABLED + auto-checked
-            elsewhere; we just need to leave them enabled here.
-          - Networked multi-human: both ENABLED pre-fold, but with
-            the deception layer so the displayed cards lie 50–100 %
-            of the time. The toggle is "live but unreliable" so it's
-            safe to expose pre-fold without breaking competitive
-            play.
-          - Single-player local: DISABLED — spectator-only assist.
+          • God Mode  — reveals every opponent's hole cards, ACCURATELY.
+                        Available ONLY when there are no human
+                        opponents at the table (single-player or
+                        spectator-after-fold). Disabled while ToM is
+                        active (mutex).
+          • Show Tells — behavioral tells (decision time, bet sizing,
+                        recent action pattern). Never leaks card info,
+                        so it's always available when ToM is off,
+                        with or without humans at the table. Post-fold
+                        the panel additionally surfaces accurate
+                        equity numbers since the hero can't act anymore.
         """
         try:
-            allow = (self._is_multi_human_network()
-                     or getattr(self, '_hero_folded_spectating', False))
-            self.god_mode_cb.setEnabled(allow)
-            self.stats_cb.setEnabled(allow)
-            tip = ("Networked games show MOSTLY FAKE opponent cards "
-                   "while you're still in the hand — the toggle is "
-                   "live but unreliable as a peeking aid.") \
-                if self._is_multi_human_network() \
-                else "Auto-enables in spectator mode after you fold"
-            self.god_mode_cb.setToolTip(tip)
-            self.stats_cb.setToolTip(tip)
-            # Don't drag a deceptive God Mode pre-fold setting forward
-            # into a single-player session: when we leave the network
-            # session, force both off so the player isn't peeking on
-            # bot opponents accidentally.
-            if not allow:
+            tom_on = (self.tom_cb.isChecked()
+                      if hasattr(self, 'tom_cb') else False)
+            spectating = bool(getattr(self, '_hero_folded_spectating',
+                                       False))
+            has_humans = self._is_multi_human_network()
+
+            # God Mode: single-player only (or spectator), AND not
+            # while ToM is on.
+            god_allowed = (not has_humans or spectating) and not tom_on
+            # Show Tells: anytime ToM is off — behavioral only, never
+            # exposes card-derived information pre-fold.
+            tells_allowed = not tom_on
+
+            self.god_mode_cb.setEnabled(god_allowed)
+            self.stats_cb.setEnabled(tells_allowed)
+
+            # Force-uncheck anything that's no longer allowed so a
+            # stale "on" state stops applying.
+            if not god_allowed and self.god_mode_cb.isChecked():
                 self._spectator_auto_toggle = True
                 try:
                     self.god_mode_cb.setChecked(False)
+                finally:
+                    self._spectator_auto_toggle = False
+            if not tells_allowed and self.stats_cb.isChecked():
+                self._spectator_auto_toggle = True
+                try:
                     self.stats_cb.setChecked(False)
                 finally:
                     self._spectator_auto_toggle = False
+
+            # Tooltips.
+            if tom_on:
+                tip = "Disabled while Theory of Mind is active."
+                self.god_mode_cb.setToolTip(tip)
+                self.stats_cb.setToolTip(tip)
+            else:
+                if has_humans and not spectating:
+                    self.god_mode_cb.setToolTip(
+                        "Disabled while other humans are at the "
+                        "table — fair-play protection.")
+                else:
+                    self.god_mode_cb.setToolTip(
+                        "Reveals every opponent's hole cards "
+                        "(accurately). Available only when no human "
+                        "opponents are at the table.")
+                self.stats_cb.setToolTip(
+                    "Surfaces behavioral tells (decision time, bet "
+                    "sizing, recent action pattern) — things an "
+                    "excellent player would already pick up on. "
+                    "Never exposes hole-card information.")
         except Exception:
             pass
 
-    def _build_deception_hands_for_hand(self):
-        """Generate per-hand fake hole cards for each non-hero active
-        seat. Stored in ``self._deception_hands = {seat: [Card, Card]}``.
+    def _tells_for(self, name: str) -> str:
+        """Compose a short human-readable tell for one player from the
+        behavioral trackers populated in process_action. None of the
+        inputs touch hole-card data — only timing + bet sizing +
+        last verb — so the string is "things an excellent player
+        would already notice".
 
-        For each hand we draw a per-hand "lying probability"
-        p ∈ [0.5, 1.0] uniformly — so 50–100 % of opponent panels
-        get lied to that hand, matching the user's spec. Fake cards
-        avoid the real board and the hero's real hand to keep the
-        rendered grid internally consistent (no card appears in two
-        places at once on the table).
-
-        Called at hand start; safe to call multiple times — the same
-        hand always produces a fresh cache.
+        Returns "—" when there's no sample yet.
         """
-        import random
+        parts: list[str] = []
+
+        # Decision time vs THIS player's baseline. The most recent
+        # decision relative to their own median; if it's >1.5× the
+        # median (or > 6 s with a thin sample) it's a TANK, < 1.2 s
+        # or under half the median it's a SNAP.
+        dts = self._tell_decision_times.get(name)
+        if dts:
+            last = dts[-1]
+            if len(dts) >= 3:
+                sorted_dts = sorted(dts)
+                median = sorted_dts[len(sorted_dts) // 2]
+            else:
+                median = last
+            if last >= max(6.0, 1.5 * median):
+                parts.append(f"TANK {last:.1f}s")
+            elif last <= min(1.2, 0.5 * max(median, 0.5)):
+                parts.append(f"snap {last:.1f}s")
+            else:
+                parts.append(f"{last:.1f}s")
+
+        # Last action tag (verb).
+        verb = self._tell_last_action.get(name)
+        if verb:
+            parts.append(verb)
+
+        # Bet-size context: classify the LAST raise / bet by BB count.
+        bets = self._tell_bet_sizes_bb.get(name)
+        if bets and verb in ('raise', 'bet'):
+            last_bb = bets[-1]
+            if last_bb >= 6:
+                parts.append(f"big {last_bb:.0f}BB")
+            elif last_bb >= 3.5:
+                parts.append(f"std {last_bb:.0f}BB")
+            elif last_bb < 2.2 and last_bb > 0:
+                parts.append(f"min {last_bb:.1f}BB")
+            else:
+                parts.append(f"{last_bb:.1f}BB")
+        # Session aggression — mean bet size in BB if we have enough
+        # samples, gives the user a "this seat opens big" / "this
+        # seat min-bets" read.
+        if bets and len(bets) >= 3:
+            avg = sum(bets) / len(bets)
+            parts.append(f"avg {avg:.1f}BB")
+
+        return " · ".join(parts) if parts else "—"
+
+    def _build_deception_hands_for_hand(self):
+        """No-op stub. The deception layer was retired — God Mode is
+        now single-player-only AND accurate (no human opponents to
+        protect from), and Show Tells doesn't expose card data at
+        all (behavioral tells only). Kept as a stub so older callers
+        don't need to be tracked down."""
         self._deception_hands = {}
-        if not self._is_multi_human_network():
-            return
-        try:
-            hero_seat = (self.my_seat
-                         if self.network_mode == "client"
-                            and self.my_seat is not None
-                         else 0)
-            used = set()
-            if 0 <= hero_seat < len(self.players):
-                for c in (self.players[hero_seat].hand or []):
-                    used.add(str(c))
-            for c in (self.board or []):
-                used.add(str(c))
-            full_deck = [r + s
-                         for r in 'AKQJT98765432'
-                         for s in 'shdc']
-            available = [c for c in full_deck if c not in used]
-            random.shuffle(available)
-            lie_prob = random.uniform(0.5, 1.0)
-            for seat, p in enumerate(self.players):
-                if seat == hero_seat:
-                    continue
-                if not p.active or not p.hand:
-                    continue
-                if random.random() > lie_prob:
-                    continue  # this opponent gets the real hand
-                if len(available) < 2:
-                    break
-                c1 = available.pop()
-                c2 = available.pop()
-                try:
-                    self._deception_hands[seat] = [
-                        eval7.Card(c1), eval7.Card(c2)]
-                except Exception:
-                    pass
-        except Exception as ex:
-            print(f"[deception] hand build failed: {ex}")
 
     def _displayed_hand_for(self, seat: int):
-        """Return the hand to RENDER for the given seat. Pulls from the
-        deception cache when god_mode is on pre-fold in a network
-        session; otherwise returns the real hand. Spectator mode
-        bypasses the deception (the hero has folded, no need to
-        protect the hand from them anymore)."""
+        """Return the hand to RENDER for the given seat. Always the
+        real hand now that the deception layer is gone."""
         if not (0 <= seat < len(self.players)):
             return None
-        real = self.players[seat].hand
-        if not self._is_multi_human_network():
-            return real
-        if getattr(self, '_hero_folded_spectating', False):
-            return real
-        if not self.god_mode and not self.show_stats:
-            return real
-        cache = getattr(self, '_deception_hands', None) or {}
-        return cache.get(seat, real)
+        return self.players[seat].hand
 
     def toggle_god_mode(self, state):
         self.god_mode = self.god_mode_cb.isChecked()
@@ -10099,24 +10203,25 @@ class PokerWindow(QMainWindow):
             self.tom_hero_label.setText("Your Hand:")
 
     def update_checkbox_states(self):
-        """Update checkbox enabled states - Theory of Mind only when others are off."""
+        """Update checkbox enabled states. Theory of Mind is exclusive
+        with God Mode / Show Tells; the per-assist availability rules
+        live in _refresh_assist_checkbox_state (single-player-only
+        for God Mode, always-on for Show Tells when ToM is off)."""
         god_mode_on = self.god_mode_cb.isChecked()
         stats_on = self.stats_cb.isChecked()
         tom_on = self.tom_cb.isChecked()
 
-        # Theory of Mind only available when God Mode and Show Tells are OFF
+        # Theory of Mind only available when neither assist is active.
         can_use_tom = not god_mode_on and not stats_on
         self.tom_cb.setEnabled(can_use_tom)
-
-        # If Theory of Mind is on but shouldn't be, turn it off
         if tom_on and not can_use_tom:
             self.tom_cb.setChecked(False)
             self.game_container.setVisible(True)
             self.tom_container.setVisible(False)
 
-        # God Mode and Stats only available when Theory of Mind is OFF
-        self.god_mode_cb.setEnabled(not tom_on)
-        self.stats_cb.setEnabled(not tom_on)
+        # Delegate God Mode / Show Tells gating to the single source of
+        # truth so we don't double-flip them.
+        self._refresh_assist_checkbox_state()
 
     def update_theory_of_mind(self):
         """Update the Theory of Mind panel with current game state."""
@@ -10553,15 +10658,35 @@ class PokerWindow(QMainWindow):
                     panel.set_best_hand("")
 
     def _compute_stats_for_panel(self):
-        """Build the (name, true_eq, perc_eq, pot_odds, active, hero)
-        tuple list for the stats panel, using the CURRENT live game
-        state. Extracted from update_stats_display so the spectator
-        snapshot recorder can capture the same data at each street
-        boundary.
+        """Build the per-row payload list for the stats panel. Each
+        row is a tuple:
+            (name, true_eq, perc_eq, pot_odds, active, hero, tells)
+
+        Where:
+          • true_eq    — REAL multiway equity, populated only in God
+                         Mode (single-player) or in spectator mode
+                         after a fold; None otherwise.
+          • perc_eq    — perceived-equity-vs-random; populated only
+                         in spectator mode (it leaks the player's
+                         hole-card strength and so isn't shown
+                         pre-fold via Show Tells).
+          • tells      — behavioral tell string from _tells_for —
+                         visible in Show-Tells mode regardless of
+                         whether any cards are exposed.
+
         Returns None if no stats are computable (no hands dealt yet).
         """
         if not self.players or not any(p.hand for p in self.players):
             return None
+        spectating = bool(getattr(self, '_hero_folded_spectating', False))
+        # "Card-derived data is OK" gate:
+        #   • God Mode (single-player only) is allowed full disclosure.
+        #   • Spectator (post-fold) is allowed full disclosure.
+        # Without one of those, Show Tells alone must NOT compute or
+        # display perceived equity — that leaks the player's hand
+        # strength.
+        cards_allowed = self.god_mode or spectating
+
         game_state = {
             'board': [str(c) for c in self.board],
             'pot': self.pot,
@@ -10569,7 +10694,7 @@ class PokerWindow(QMainWindow):
             'current_bet': self.current_bet
         }
         true_equities = {}
-        if self.god_mode:
+        if cards_allowed:
             active_hands = [(p, p.hand) for p in self.players if p.active and p.hand]
             if active_hands:
                 cache_key = (
@@ -10587,19 +10712,26 @@ class PokerWindow(QMainWindow):
                 true_equities = self.equity_cache
         stats = []
         for p in self.players:
-            if p.hand:
+            tells = (self._tells_for(p.name)
+                     if self.show_stats else "")
+            if p.hand and cards_allowed:
                 perceived_equity, pot_odds, to_call = (
                     p.calculate_current_stats(game_state, False))
-                if self.god_mode:
-                    true_equity = true_equities.get(p, 0.0)
-                    stats.append((p.name, true_equity, perceived_equity,
-                                  pot_odds, p.active, p.style == 'human'))
-                else:
-                    stats.append((p.name, None, perceived_equity,
-                                  pot_odds, p.active, p.style == 'human'))
+                true_equity = true_equities.get(p, 0.0)
+                stats.append((p.name, true_equity, perceived_equity,
+                              pot_odds, p.active,
+                              p.style == 'human', tells))
+            elif p.hand:
+                # Show-Tells-only path (no cards_allowed): omit
+                # perceived_equity / true_equity entirely so we don't
+                # leak card-strength data. Pot odds are public.
+                _, pot_odds, _ = p.calculate_current_stats(
+                    game_state, False)
+                stats.append((p.name, None, None, pot_odds, p.active,
+                              p.style == 'human', tells))
             else:
-                stats.append((p.name, None, 0, 0, p.active,
-                              p.style == 'human'))
+                stats.append((p.name, None, None, 0, p.active,
+                              p.style == 'human', tells))
         return stats
 
     def update_stats_display(self):
@@ -10982,6 +11114,11 @@ class PokerWindow(QMainWindow):
         """Highlight the active player."""
         for i, panel in self.player_panels:
             panel.set_active_turn(i == idx)
+        # Start the decision-time clock for the seat now on the spot.
+        # process_action will read it out the moment they act and
+        # store the elapsed time under their name.
+        import time as _time
+        self._tell_action_start = _time.monotonic()
 
     def enable_human_actions(self):
         """Enable action buttons for human player.
@@ -11702,6 +11839,33 @@ class PokerWindow(QMainWindow):
         """Process a player's action."""
         to_call = self.current_bet - player.bet_in_round
         street = STREETS[self.street_idx]
+
+        # Behavioral-tells capture — record the seat's decision time
+        # and (for bet/raise) the size in BB. Used by the Show Tells
+        # panel; no card information is read or exposed.
+        import time as _time
+        if self._tell_action_start is not None:
+            dt = _time.monotonic() - self._tell_action_start
+            self._tell_decision_times.setdefault(
+                player.name, self._tell_deque_factory()).append(dt)
+            self._tell_action_start = None
+        try:
+            _, bb_amt = BLIND_LEVELS[self.blind_level]
+        except Exception:
+            bb_amt = 2
+        if action == 'r' and bb_amt > 0:
+            self._tell_bet_sizes_bb.setdefault(
+                player.name, self._tell_deque_factory()
+            ).append(amount / bb_amt)
+        if action == 'f':
+            verb = 'fold'
+        elif action == 'r':
+            verb = 'raise' if to_call > 0 else 'bet'
+        elif to_call > 0:
+            verb = 'call'
+        else:
+            verb = 'check'
+        self._tell_last_action[player.name] = verb
 
         # Feed the per-player × 169-hand heatmap. Only preflop actions
         # advance the VPIP/PFR/called/folded counters; if to_call==0
