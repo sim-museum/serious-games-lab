@@ -65,23 +65,38 @@ from ben_backend.wbridge5_driver import (             # noqa: E402
 
 
 def _generate_deals(n: int, seed: int) -> List[BoardState]:
-    """Pick N random board numbers and build BoardStates for them.
+    """Generate N uniformly-random deals.
 
-    Board numbers are drawn uniformly from a wide range so dealer
-    / vulnerability cycle through all 16 combinations.
+    Previously sampled board numbers from 1..30000 and ran them
+    through Pavlicek number_to_deal — but Pavlicek numbers in that
+    low range cluster heavily into freak distributions (e.g. board
+    20953 = North-with-all-13-spades), and wbridge5 raises a Delphi
+    range-check error on numbers above ~32K. Instead we shuffle a
+    deck per deal and assign board numbers 1..N for wbridge5.
+    Dealer / vulnerability cycle through the standard 16-board
+    rotation so the harness exercises all conditions.
     """
+    from ben_backend.models import Card, Hand, Rank, Suit
     rng = random.Random(seed)
+    deck = [Card(s, r)
+            for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS)
+            for r in (Rank.ACE, Rank.KING, Rank.QUEEN, Rank.JACK,
+                      Rank.TEN, Rank.NINE, Rank.EIGHT, Rank.SEVEN,
+                      Rank.SIX, Rank.FIVE, Rank.FOUR, Rank.THREE, Rank.TWO)]
     out = []
-    used = set()
-    while len(out) < n:
-        num = rng.randint(1, 30_000)
-        if num in used:
-            continue
-        used.add(num)
-        hands = number_to_deal(num)
-        dealer, vuln = BoardState._board_dealer_vuln(num)
+    for i in range(n):
+        shuffled = deck[:]
+        rng.shuffle(shuffled)
+        hands = {
+            Seat.NORTH: Hand(cards=shuffled[0:13]),
+            Seat.EAST:  Hand(cards=shuffled[13:26]),
+            Seat.SOUTH: Hand(cards=shuffled[26:39]),
+            Seat.WEST:  Hand(cards=shuffled[39:52]),
+        }
+        board_num = i + 1
+        dealer, vuln = BoardState._board_dealer_vuln(board_num)
         out.append(BoardState(
-            board_number=num,
+            board_number=board_num,
             dealer=dealer,
             vulnerability=vuln,
             hands=hands,

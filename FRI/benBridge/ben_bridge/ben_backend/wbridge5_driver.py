@@ -82,10 +82,16 @@ _SEAT_TM = {Seat.NORTH: "North", Seat.EAST: "East",
 _TM_SEAT = {v: k for k, v in _SEAT_TM.items()}
 
 _VUL_TM = {
-    Vulnerability.NONE: "Neither",
-    Vulnerability.NS:   "N/S",
-    Vulnerability.EW:   "E/W",
-    Vulnerability.BOTH: "Both",
+    # wbridge5's parser uses lowercase tokens for vulnerability —
+    # the binary's string table shows "n/s vulnerable",
+    # "e/w vulnerable", "neither vulnerable", "both vulnerable".
+    # Capitalised tokens make wbridge5 fall back to its own
+    # board-number-rotation and throw a Delphi range check error
+    # when the resulting state disagrees with our other fields.
+    Vulnerability.NONE: "neither",
+    Vulnerability.NS:   "n/s",
+    Vulnerability.EW:   "e/w",
+    Vulnerability.BOTH: "both",
 }
 
 _RANK_TM = {Rank.ACE: "A", Rank.KING: "K", Rank.QUEEN: "Q",
