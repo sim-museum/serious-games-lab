@@ -77,21 +77,28 @@ _EOL = b"\r\n"
 
 
 # Map ben_bridge enum identities to TM-protocol string tokens.
-_SEAT_TM = {Seat.NORTH: "North", Seat.EAST: "East",
-            Seat.SOUTH: "South", Seat.WEST: "West"}
+# Per the Blue Chip Bridge Table Manager Protocol reference
+# grammar (richardschneider/table-master-parser), seat names go
+# in LOWERCASE — "north" / "south" / "east" / "west" — while
+# vulnerability tokens are capitalised — "Neither vulnerable" /
+# "N/S vulnerable" / "E/W vulnerable" / "Both vulnerable".
+# wbridge5's parser is case-sensitive on the seat side; sending
+# "North" causes its bid-decoder to fail with "Erreur dans le
+# décodage de l'enchère".
+_SEAT_TM = {Seat.NORTH: "north", Seat.EAST: "east",
+            Seat.SOUTH: "south", Seat.WEST: "west"}
 _TM_SEAT = {v: k for k, v in _SEAT_TM.items()}
+# Case-insensitive reverse lookup keys so messages like
+# `North bids 1H` parse even when an engine doesn't follow the
+# all-lowercase convention.
+_TM_SEAT.update({k.capitalize(): v for k, v in _TM_SEAT.copy().items()})
+_TM_SEAT.update({k.upper(): v for k, v in list(_TM_SEAT.items())})
 
 _VUL_TM = {
-    # wbridge5's parser uses lowercase tokens for vulnerability —
-    # the binary's string table shows "n/s vulnerable",
-    # "e/w vulnerable", "neither vulnerable", "both vulnerable".
-    # Capitalised tokens make wbridge5 fall back to its own
-    # board-number-rotation and throw a Delphi range check error
-    # when the resulting state disagrees with our other fields.
-    Vulnerability.NONE: "neither",
-    Vulnerability.NS:   "n/s",
-    Vulnerability.EW:   "e/w",
-    Vulnerability.BOTH: "both",
+    Vulnerability.NONE: "Neither",
+    Vulnerability.NS:   "N/S",
+    Vulnerability.EW:   "E/W",
+    Vulnerability.BOTH: "Both",
 }
 
 _RANK_TM = {Rank.ACE: "A", Rank.KING: "K", Rank.QUEEN: "Q",
