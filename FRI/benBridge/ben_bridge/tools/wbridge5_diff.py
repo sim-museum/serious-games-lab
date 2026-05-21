@@ -78,7 +78,14 @@ def _generate_deals(n: int, seed: int) -> List[BoardState]:
         if num in used:
             continue
         used.add(num)
-        out.append(BoardState.from_board_number(num, number_to_deal(num)))
+        hands = number_to_deal(num)
+        dealer, vuln = BoardState._board_dealer_vuln(num)
+        out.append(BoardState(
+            board_number=num,
+            dealer=dealer,
+            vulnerability=vuln,
+            hands=hands,
+        ))
     return out
 
 
@@ -87,14 +94,28 @@ def _drive_ben_bridge(board: BoardState, system_name: str) -> List[Bid]:
 
     Returns the bid list in chronological order — same shape as
     what the TM auction loop produces, so we can diff per-position.
+    Coerces illegal bids (lower-than-current-contract, double-of-
+    nothing, etc.) to a Pass so a misfiring `decide_bid` doesn't
+    spam infinite loops into the diff report. The bidder bug
+    those reveal is a separate fix.
     """
     sys_ = get_system(system_name)
     auction = []
     seat = board.dealer
+    illegal_streak = 0
     for _ in range(80):    # safety bound
         state = parse_auction(seat, board.dealer, list(auction))
         e = evaluate_hand(board.hands[seat])
         b = decide_bid(state, e, sys_)
+        if not _is_legal(b, auction):
+            b = Bid.make_pass()
+            illegal_streak += 1
+            # If the bidder keeps refusing to pass we're in a real
+            # divergence loop — bail out to keep the harness usable.
+            if illegal_streak >= 4:
+                break
+        else:
+            illegal_streak = 0
         auction.append(b)
         if len(auction) >= 4 and all(x.is_pass for x in auction[-3:]) \
                 and any(not x.is_pass for x in auction[:-3]):
@@ -103,6 +124,41 @@ def _drive_ben_bridge(board: BoardState, system_name: str) -> List[Bid]:
             break
         seat = seat.next()
     return auction
+
+
+_SUIT_RANK = {Suit.CLUBS: 0, Suit.DIAMONDS: 1,
+              Suit.HEARTS: 2, Suit.SPADES: 3, Suit.NOTRUMP: 4}
+
+
+def _is_legal(b: Bid, auction: List[Bid]) -> bool:
+    """True iff `b` is a legal next call given the auction so far."""
+    if b.is_pass:
+        return True
+    if b.is_double:
+        # Double is legal iff the most recent non-pass is an
+        # opponent's natural suit/NT (not a double already).
+        last_non_pass = next((x for x in reversed(auction)
+                              if not x.is_pass), None)
+        if last_non_pass is None:
+            return False
+        return not last_non_pass.is_double and not last_non_pass.is_redouble
+    if b.is_redouble:
+        last_non_pass = next((x for x in reversed(auction)
+                              if not x.is_pass), None)
+        return last_non_pass is not None and last_non_pass.is_double
+    if b.suit is None:
+        return False
+    # Suit bid must outrank the current contract.
+    last_suit_bid = next((x for x in reversed(auction)
+                          if not x.is_pass and not x.is_double
+                          and not x.is_redouble), None)
+    if last_suit_bid is None:
+        return True
+    if b.level > last_suit_bid.level:
+        return True
+    if b.level == last_suit_bid.level:
+        return _SUIT_RANK[b.suit] > _SUIT_RANK[last_suit_bid.suit]
+    return False
 
 
 def _bid_repr(b: Bid) -> str:
@@ -165,7 +221,28 @@ def main(argv=None) -> int:
                    help="Also spawn wbridge5.exe under Wine. Without "
                         "this flag the script just runs the TM server "
                         "and you start wbridge5 by hand.")
+    p.add_argument("--connect-timeout", type=float, default=180.0,
+                   help="Seconds to wait for wbridge5 to connect to "
+                        "the TM server (default 180).")
+    p.add_argument("--dry-run", action="store_true",
+                   help="Skip the wbridge5 half — just run ben_bridge's "
+                        "bidder on the N deals and dump the auctions. "
+                        "Useful for smoke-testing the system spec "
+                        "without needing wbridge5 to TM-connect.")
     args = p.parse_args(argv)
+
+    # Dry-run path: just dump the ben_bridge auctions to stdout and
+    # exit cleanly. No TM server, no wbridge5 launch.
+    if args.dry_run:
+        deals = _generate_deals(args.n, args.seed)
+        print(f"[dry-run] {args.n} deals, system={args.system}")
+        for d in deals:
+            auc = _drive_ben_bridge(d, args.system)
+            print(f"  board {d.board_number:5d}  "
+                  f"dealer={d.dealer.to_char()}  "
+                  f"vul={d.vulnerability.value:5s}  "
+                  + " ".join(_bid_repr(b) for b in auc))
+        return 0
 
     deals = _generate_deals(args.n, args.seed)
 
@@ -190,15 +267,24 @@ def main(argv=None) -> int:
         print(f"        should already be {server.host}:{server.port}.)")
 
     # Accept the engine's connection(s).
-    if args.single_socket:
-        conn = server.accept_one_client(timeout=180.0)
-        # Treat the single socket as four-seat capable; key by NORTH.
-        seat_conns = {Seat.NORTH: conn}
-        # The connect-handshake — read the engine's "Connecting…" line
-        # before we hand it any deals.
-        server._read_connect(conn)
-    else:
-        seat_conns = server.accept_four_seats(timeout=180.0)
+    try:
+        if args.single_socket:
+            conn = server.accept_one_client(timeout=args.connect_timeout)
+            # Treat the single socket as four-seat capable; key by NORTH.
+            seat_conns = {Seat.NORTH: conn}
+            # The connect-handshake — read the engine's "Connecting…"
+            # line before we hand it any deals.
+            server._read_connect(conn)
+        else:
+            seat_conns = server.accept_four_seats(timeout=args.connect_timeout)
+    except (TimeoutError, OSError) as ex:
+        print(f"[diff] wbridge5 did not connect within "
+              f"{args.connect_timeout}s ({ex.__class__.__name__}). "
+              "Open wbridge5 → File → Bridge Table Manager → Connect "
+              "(host/port pre-filled) and re-run.")
+        if drv is not None:
+            drv.stop()
+        return 3
     print(f"[diff] connected: {[s.to_char() for s in seat_conns]}")
 
     results = []
