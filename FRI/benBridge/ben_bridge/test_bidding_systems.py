@@ -510,6 +510,72 @@ class TestSAYCWbridge5Catalog(unittest.TestCase):
         self.assertEqual(s.strong_open_call, "2C")
         self.assertEqual(s.two_over_one_min_hcp, 10)
 
+    def test_wbridge5_specifics_per_convention_card(self):
+        """The SAYC convention card encoded in the screenshot."""
+        s = get_system("SAYC-wbridge5")
+        # 1NT may contain a 5-card major or 6-card minor.
+        self.assertTrue(s.one_nt_allow_five_card_heart)
+        self.assertTrue(s.one_nt_allow_five_card_spade)
+        self.assertTrue(s.one_nt_allow_six_card_minor)
+        # Classic Blackwood, not RKC.
+        self.assertEqual(s.rkc_variant, "classic")
+        self.assertTrue(s.has("S-Blackwood.classic"))
+        self.assertFalse(s.has("S-Blackwood.keycard.RKCB1430"))
+        # Gambling 3NT ON.
+        self.assertTrue(s.has("B-3NT-gambling"))
+        # Jacoby 2NT OFF (the wbridge5 card has "2NT Jacoby" unchecked).
+        self.assertFalse(s.has("A-1MA-Jacoby-2NT"))
+        # Landy OFF (wbridge5's defence uses Cappelletti-style).
+        self.assertFalse(s.has("O-1NT.Landy"))
+        # Stayman, Jacoby Transfers, Texas Transfers ON.
+        self.assertTrue(s.has("A-1NT-Stayman"))
+        self.assertTrue(s.has("A-1NT-Jacoby-transfer.always"))
+        self.assertTrue(s.has("A-1NT-transfer-level-4.Texas"))
+        # Splinters, Truscott 2NT (after 1m-X), Michaels, Unusual 2NT ON.
+        self.assertTrue(s.has("A-1MA-splinter"))
+        self.assertTrue(s.has("A-1MA-Truscott-2NT"))
+        self.assertTrue(s.has("O-Michaels"))
+        self.assertTrue(s.has("O-Unusual-Notrump"))
+
+    def test_jacoby_2nt_gated_off_drives_to_4m(self):
+        """With 13 HCP + 4-card support, no Jacoby 2NT, the bidder
+        should leap to 4M rather than bidding a non-Jacoby 2NT."""
+        from ben_backend.native_bidder import (
+            decide_bid, evaluate_hand, parse_auction)
+        from ben_backend.models import Hand, Card, Suit, Rank, Seat, Bid
+        rank_map = {'A': Rank.ACE, 'K': Rank.KING, 'Q': Rank.QUEEN,
+                    'J': Rank.JACK, 'T': Rank.TEN,
+                    '9': Rank.NINE, '8': Rank.EIGHT, '7': Rank.SEVEN,
+                    '6': Rank.SIX, '5': Rank.FIVE, '4': Rank.FOUR,
+                    '3': Rank.THREE, '2': Rank.TWO}
+        suit_map = {'S': Suit.SPADES, 'H': Suit.HEARTS,
+                    'D': Suit.DIAMONDS, 'C': Suit.CLUBS}
+        def H(spec):
+            cards = []
+            for grp in spec.split():
+                s = suit_map[grp[0]]
+                for c in grp[1:]:
+                    cards.append(Card(s, rank_map[c]))
+            return Hand(cards=cards)
+        # N hand: ♠AQ73 ♥KQ87 ♦AT2 ♣32 → 4-card heart support, 14 HCP.
+        n_hand = H('SAQ73 HKQ87 DAT2 C32')
+        # Dealer S opens 1H, W passes, N to bid.
+        auction = [
+            Bid(level=1, suit=Suit.HEARTS),
+            Bid.make_pass(),
+        ]
+        state = parse_auction(Seat.NORTH, Seat.SOUTH, auction)
+        sys_ = get_system("SAYC-wbridge5")
+        b = decide_bid(state, evaluate_hand(n_hand), sys_)
+        # Jacoby 2NT is OFF → expect 4H (game raise), not 2NT.
+        self.assertEqual((b.level, b.suit), (4, Suit.HEARTS),
+                         f"Expected 4H game raise, got {b}")
+        # Sanity: regular SAYC should bid 2NT (Jacoby 2NT ON).
+        sys_sayc = get_system("SAYC")
+        b2 = decide_bid(state, evaluate_hand(n_hand), sys_sayc)
+        self.assertEqual((b2.level, b2.suit), (2, Suit.NOTRUMP),
+                         f"SAYC should bid Jacoby 2NT, got {b2}")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -661,11 +661,19 @@ def _is_rkc_context(state: 'AuctionState', for_bid: 'Bid') -> bool:
     return has_suit_bid
 
 
-def _keycard_count(e: HandEval, trump: Optional[Suit]) -> int:
-    """Number of "keys" held: 4 aces + the trump king (if any)."""
+def _keycard_count(e: HandEval, trump: Optional[Suit],
+                   system=None) -> int:
+    """Number of "keys" held.
+
+    For RKC variants (1430 / 0314): 4 aces + the trump king (5 keys).
+    For classic Blackwood (`S-Blackwood.classic` flag set, e.g. in
+    wbridge5's SAYC default): 4 aces only — the trump king isn't a
+    key, since classic Blackwood asks for aces.
+    """
     n = sum(1 for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS)
             if e.has_ace.get(s, False))
-    if trump is not None and e.has_king.get(trump, False):
+    classic = bool(system) and system.has("S-Blackwood.classic")
+    if not classic and trump is not None and e.has_king.get(trump, False):
         n += 1
     return n
 
@@ -682,7 +690,22 @@ def _has_trump_queen(e: HandEval, trump: Optional[Suit]) -> bool:
 
 
 def _rkc_response_levels(variant: str) -> dict:
-    """Map (keys, has_queen) → response level for RKC variant."""
+    """Map (keys, has_queen) → response level for the Blackwood variant.
+
+    For classic ace-counting Blackwood (wbridge5's SAYC default,
+    Bridge Baron's default, many home games): no trump queen, no
+    trump king ambiguity — the responder just shows ace count.
+      5♣ = 0 or 4 aces, 5♦ = 1, 5♥ = 2, 5♠ = 3.
+    """
+    if variant == "classic":
+        # Queen flag is irrelevant; same step pair for either.
+        return {
+            (0, False): (5, Suit.CLUBS),    (4, False): (5, Suit.CLUBS),
+            (0, True):  (5, Suit.CLUBS),    (4, True):  (5, Suit.CLUBS),
+            (1, False): (5, Suit.DIAMONDS), (1, True):  (5, Suit.DIAMONDS),
+            (2, False): (5, Suit.HEARTS),   (2, True):  (5, Suit.HEARTS),
+            (3, False): (5, Suit.SPADES),   (3, True):  (5, Suit.SPADES),
+        }
     if variant == "0314":
         return {
             (1, False): (5, Suit.CLUBS),   (4, False): (5, Suit.CLUBS),
@@ -700,20 +723,31 @@ def _rkc_response_levels(variant: str) -> dict:
 
 
 def _respond_to_rkc(state: 'AuctionState', e: HandEval, system) -> Bid:
-    """Partner just bid 4NT (RKC) — answer with keycard count.
+    """Partner just bid 4NT — answer with the key/ace count.
 
-    1430 (default Q-Plus / SAYC):
-      5♣ = 0 or 3, 5♦ = 1 or 4, 5♥ = 2 or 5 no Q, 5♠ = 2 or 5 with Q.
-    0314 is identical with 5♣/5♦ swapped — Q-Plus encodes the variant
-    on each system via the RKCB flag.
+    Per-variant response steps:
+      • classic Blackwood (ace-only): 5♣=0/4, 5♦=1, 5♥=2, 5♠=3.
+      • 1430 RKC: 5♣=0/3, 5♦=1/4, 5♥=2 no Q, 5♠=2 with Q.
+      • 0314 RKC: same as 1430 with 5♣/5♦ swapped.
     """
     trump = _agreed_trump(state)
-    keys = _keycard_count(e, trump)
+    keys = _keycard_count(e, trump, system)
     has_q = _has_trump_queen(e, trump)
     variant = getattr(system, "rkc_variant", "1430") or "1430"
     levels = _rkc_response_levels(variant)
 
-    # 2 / 5 keys → 5♥ (no Q) or 5♠ (with Q), regardless of variant.
+    # Classic Blackwood: never split on trump queen, never show the
+    # 2/5-key special pair — the variant table covers all 0-3
+    # answers directly.
+    if variant == "classic":
+        if (keys, has_q) in levels:
+            lvl, suit = levels[(keys, has_q)]
+            return bid(lvl, suit, alert=True,
+                       why=f"Blackwood: {keys} aces")
+        return bid(5, Suit.CLUBS, alert=True,
+                   why=f"Blackwood: {keys} aces (fallback)")
+
+    # 2 / 5 keys → 5♥ (no Q) or 5♠ (with Q) for RKC variants.
     if keys in (2, 5):
         if has_q:
             return bid(5, Suit.SPADES, alert=True,
@@ -721,20 +755,31 @@ def _respond_to_rkc(state: 'AuctionState', e: HandEval, system) -> Bid:
         return bid(5, Suit.HEARTS, alert=True,
                    why=f"RKC {variant}: {keys} keys, no trump queen")
 
-    # 0/3 and 1/4 — map via the variant table.
     if (keys, has_q) in levels:
         lvl, suit = levels[(keys, has_q)]
         return bid(lvl, suit, alert=True,
                    why=f"RKC {variant}: {keys} keycards")
 
-    # Shouldn't fall through, but if the table missed a corner just
-    # bid the cheapest step.
     return bid(5, Suit.CLUBS, alert=True,
                why=f"RKC {variant}: {keys} keys (fallback)")
 
 
 def _parse_rkc_response(response: 'Bid', variant: str) -> Tuple[Optional[int], Optional[bool]]:
-    """Decode a partner's RKC answer into (keys, has_queen)."""
+    """Decode a partner's RKC / Blackwood answer into (keys, has_queen).
+
+    For classic Blackwood the queen flag is always None (irrelevant)
+    and the count is unambiguous from the step alone (0/4, 1, 2, 3).
+    """
+    if variant == "classic":
+        if response.suit == Suit.CLUBS and response.level == 5:
+            return (0, None)        # ambiguous 0 vs 4 — disambiguate later
+        if response.suit == Suit.DIAMONDS and response.level == 5:
+            return (1, None)
+        if response.suit == Suit.HEARTS and response.level == 5:
+            return (2, None)
+        if response.suit == Suit.SPADES and response.level == 5:
+            return (3, None)
+        return (None, None)
     if response.suit == Suit.CLUBS and response.level == 5:
         # 5C in 1430 = 0 or 3; in 0314 = 1 or 4. Caller picks 0 vs 3
         # by hand strength.
@@ -819,7 +864,7 @@ def _asker_after_rkc(state: 'AuctionState', e: HandEval, system) -> Bid:
         return passb(why="RKC asker — no response yet?")
 
     pk, pq = _resolve_rkc_keys(e, state, partner_resp, variant)
-    my_keys = _keycard_count(e, trump)
+    my_keys = _keycard_count(e, trump, system)
     total = my_keys + pk
     have_q = _has_trump_queen(e, trump) or (pq is True)
 
@@ -907,7 +952,7 @@ def _asker_after_king_response(state: 'AuctionState', e: HandEval, system) -> Bi
                and e.has_ace.get(s, False)
                for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS))
     )
-    if has_source and _keycard_count(e, trump) >= 2:
+    if has_source and _keycard_count(e, trump, system) >= 2:
         return bid(7, trump, why=f"Side king shown + source of tricks → 7{trump.to_char()}")
     return bid(6, trump, why=f"Side king shown but no clear source → 6{trump.to_char()}")
 
@@ -1652,10 +1697,21 @@ def _respond_to_major(state, e: HandEval, system) -> Bid:
                 return bid(level, short, alert=True,
                            why=f"Splinter raise: 4+ {major.to_char()}, "
                                f"shortness {short.to_char()}")
-        # Jacoby 2NT: 4+ support, GF (13+ HCP)
-        if hcp >= 13:
+        # Jacoby 2NT: 4+ support, GF (13+ HCP). Only fire when the
+        # system has the convention enabled — wbridge5's SAYC has
+        # "2NT Jacoby" unchecked, so for SAYC-wbridge5 a 13+ balanced
+        # hand with 4+ trumps either splinters (handled above) or
+        # leaps to game.
+        if hcp >= 13 and system.has("A-1MA-Jacoby-2NT"):
             return bid(2, Suit.NOTRUMP, alert=True,
                        why="Jacoby 2NT: 4+ support, GF")
+        # Without Jacoby 2NT, a 4+-trump hand with 13-15 HCP and no
+        # shortness can't show its strength below game — settle for
+        # 4M and let opener evaluate for slam if extras are there.
+        if hcp >= 13:
+            return bid(4, major,
+                       why=f"4+{major.to_char()} game raise "
+                           f"(no Jacoby 2NT)")
         # Bergen raises (only when the system enables them)
         if bergen:
             if 10 <= hcp <= 11:

@@ -402,7 +402,24 @@ def _build_from_rce(name: str, rce_path: Path) -> BiddingSystem:
     _apply_rebid_1nt(sys_, rules)
     _apply_one_nt_style(sys_, rules)
     _apply_major_open_card_min(sys_, rules)
+    _synthesize_convention_aliases(sys_)
     return sys_
+
+
+def _synthesize_convention_aliases(sys_: BiddingSystem) -> None:
+    """Add native-side convention flags when a Q-Plus equivalent is on.
+
+    Our native_bidder uses internal flag names (e.g.
+    `A-1MA-Jacoby-2NT`) that aren't present in Q-Plus's .RCE files,
+    which use longer descriptive names like
+    `A-1MA-2NT.support-4-strong`. After loading the .RCE we
+    synthesize the internal aliases so the bidder gates correctly
+    without needing to track both naming conventions everywhere.
+    """
+    # Jacoby 2NT — Q-Plus "natural 2NT response shows 4+ support GF".
+    if "A-1MA-2NT.support-4-strong" in sys_.conventions \
+            or "A-1MA-2NT-J2NT" in sys_.conventions:
+        sys_.conventions.add("A-1MA-Jacoby-2NT")
 
 
 # ---------------------------------------------------------------------------
@@ -504,22 +521,36 @@ def _fallback_acol() -> BiddingSystem:
 def _fallback_sayc_wbridge5() -> BiddingSystem:
     """SAYC tuned to match wbridge5's bidding choices.
 
-    wbridge5 plays a SAYC variant with its own preferences for
-    contested auctions and slam exploration. The published rules
-    closest to wbridge5's defaults are SAYC + 2-over-1 light /
-    Bergen / Jacoby 2NT / Truscott 2NT / Smolen / unassuming cue
-    bids — but wbridge5's actual choices diverge from ours in
-    enough places that we treat it as its own catalog entry.
+    Encoded from wbridge5's in-game SAYC convention card (North-South
+    defaults). Notable differences from plain SAYC:
+      • Jacoby 2NT OFF (1M-2NT is natural 13-15 invite).
+      • Classic Blackwood (ace-only), NOT RKC.
+      • 1NT may contain a 5-card major or a 6-card minor.
+      • Gambling 3NT ON.
+      • Landy / Multi-Landy OFF (wbridge5 uses Cappelletti-ish defence
+        which we don't yet model, so we leave the no-Landy default).
 
-    Initial implementation is a SAYC clone; the diff harness
-    (tools/wbridge5_diff.py) reports per-class divergences which
-    drive incremental tuning of this system's conventions and
-    parameters.
+    Drives `tools/wbridge5_diff.py` for iterative tuning.
     """
-    s = _fallback_sayc()
-    s.name = "SAYC-wbridge5"
-    s.description = "SAYC tuned to wbridge5 (Q-Plus catalog clone, diff-driven tuning)"
-    return s
+    return BiddingSystem(
+        name="SAYC-wbridge5",
+        description="SAYC as wbridge5 plays it (diff-tuned)",
+        one_nt_min_hcp=15, one_nt_max_hcp=17,
+        # wbridge5's "1NT with maj.5" and "1NT with min.6" checkboxes
+        # are both on by default in the SAYC card.
+        one_nt_allow_five_card_heart=True,
+        one_nt_allow_five_card_spade=True,
+        one_nt_allow_six_card_minor=True,
+        two_nt_min_hcp=20, two_nt_max_hcp=21,
+        strong_open_call="2C", strong_open_min_hcp=22,
+        weak_two_diamonds=True, weak_two_majors=True,
+        weak_two_min_hcp=6, weak_two_max_hcp=11,
+        two_over_one_min_hcp=10,
+        rebid_one_nt_range=(12, 14),
+        jump_rebid_two_nt_range=(18, 19),
+        rkc_variant="classic",         # ace-counting, not RKC
+        conventions=set(_FALLBACK_SAYC_WBRIDGE5_CONVENTIONS),
+    )
 
 
 def _fallback_standard_french() -> BiddingSystem:
@@ -542,7 +573,7 @@ def _fallback_standard_french() -> BiddingSystem:
 _FALLBACK_SAYC_CONVENTIONS = {
     "A-1NT-Stayman", "A-1NT-Jacoby-transfer.always",
     "A-1NT-transfer-level-4.Texas",
-    "A-1MA-splinter", "A-1MA-Truscott-2NT",
+    "A-1MA-splinter", "A-1MA-Truscott-2NT", "A-1MA-Jacoby-2NT",
     "A-artificial-2C.negative-2D",
     "C-Sputnik.until-2S",
     "G-new-minor-forcing", "G-fourth-suit-forcing",
@@ -551,6 +582,33 @@ _FALLBACK_SAYC_CONVENTIONS = {
     "S-Blackwood.keycard.RKCB1430", "S-Gerber.classic",
     "B-2NT.strong-balanced.range-20-21",
     "B-2MA.weak", "B-2D.weak",
+}
+
+
+# SAYC as wbridge5 plays it — derived from the in-game SAYC
+# convention card (Bidding options → Sayc, North-South column).
+# Key differences from our default SAYC:
+#   • Jacoby 2NT OFF — wbridge5's "2NT Jacoby" checkbox is unchecked
+#     by default. 1M-2NT is a natural 13-15 invite instead.
+#   • RKC Blackwood OFF — wbridge5 plays classic ace-counting
+#     Blackwood, not Roman Key Card.
+#   • Landy OFF — wbridge5's defence to 1NT uses Cappelletti-style
+#     overcalls (or natural), not Landy. We don't yet model
+#     Cappelletti, so we just drop Landy.
+#   • 1NT-with-5cM ON, 1NT-with-6cm ON (numeric fields below).
+#   • Gambling 3NT ON — classic 7+ solid minor + nothing else.
+#   • Best Minor ON (already the default in our code).
+# Conventions left on (same as plain SAYC): Stayman, Jacoby
+# transfers, Texas transfers, splinters, Truscott 2NT after 1m-(X),
+# negative doubles, Michaels (1C/2C show 5H+5S), Unusual 2NT,
+# weak two-bids in ♦/♥/♠, strong 2♣, weak jump overcalls, Gerber.
+_FALLBACK_SAYC_WBRIDGE5_CONVENTIONS = (_FALLBACK_SAYC_CONVENTIONS | {
+    "S-Blackwood.classic",       # ace-counting (not RKC)
+    "B-3NT-gambling",            # ON per the convention card
+}) - {
+    "S-Blackwood.keycard.RKCB1430",
+    "A-1MA-Jacoby-2NT",
+    "O-1NT.Landy",
 }
 
 _FALLBACK_PRECISION_CONVENTIONS = (_FALLBACK_SAYC_CONVENTIONS | {
