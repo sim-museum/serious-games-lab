@@ -163,6 +163,11 @@ def _is_legal(b: Bid, auction: List[Bid]) -> bool:
         return last_non_pass is not None and last_non_pass.is_double
     if b.suit is None:
         return False
+    # 7-level is the absolute legal max — clamp so the
+    # competitive-overcall bug can't ride monotonic bids past
+    # grand slam.
+    if b.level < 1 or b.level > 7:
+        return False
     # Suit bid must outrank the current contract.
     last_suit_bid = next((x for x in reversed(auction)
                           if not x.is_pass and not x.is_double
