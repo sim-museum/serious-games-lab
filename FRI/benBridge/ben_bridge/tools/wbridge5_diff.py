@@ -260,11 +260,15 @@ def main(argv=None) -> int:
             return 2
         drv.start()
         print("[diff] wbridge5 launched under Wine. In its window:")
-        print("       File → Bridge Table Manager → Connect → OK")
+        print("       Actions → Connection ... → pick a Place → "
+              "click 'connection'")
+        print(f"       Host/port pre-filled to {server.host}:{server.port}")
+        print("       Tick 'Auto' to let wbridge5 cycle through the "
+              "other seats automatically.")
     else:
         print("[diff] Now start wbridge5 manually and connect it.")
-        print("       (File → Bridge Table Manager → Connect; host/port")
-        print(f"        should already be {server.host}:{server.port}.)")
+        print("       (Actions → Connection ... ; host/port should "
+              f"already be {server.host}:{server.port}.)")
 
     # Accept the engine's connection(s).
     try:
@@ -280,8 +284,8 @@ def main(argv=None) -> int:
     except (TimeoutError, OSError) as ex:
         print(f"[diff] wbridge5 did not connect within "
               f"{args.connect_timeout}s ({ex.__class__.__name__}). "
-              "Open wbridge5 → File → Bridge Table Manager → Connect "
-              "(host/port pre-filled) and re-run.")
+              "Open wbridge5 → Actions → Connection ... → click "
+              "'connection' (host/port pre-filled).")
         if drv is not None:
             drv.stop()
         return 3
