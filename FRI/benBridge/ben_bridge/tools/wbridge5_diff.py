@@ -311,8 +311,30 @@ def main(argv=None) -> int:
         return 3
     print(f"[diff] connected: {[s.to_char() for s in seat_conns]}")
 
+    # Ben_bridge bidder used as a fallback whenever wbridge5
+    # punts a seat to "human" (which it does in Auto mode for at
+    # least South). The auction we capture is HYBRID: some bids
+    # come from wbridge5, some from ben_bridge — but every bid is
+    # made in the same auction context, so per-bid diffing
+    # remains meaningful as long as we attribute correctly.
+    from ben_backend.bidding_systems import get_system as _gs
+    _system_cached = _gs(args.system)
+
+    def _fallback_bid(seat, auction_so_far):
+        from ben_backend.native_bidder import (
+            decide_bid as _decide, evaluate_hand as _eval,
+            parse_auction as _parse,
+        )
+        # Build a state pointing at this seat as the next bidder.
+        # The board's dealer is the auction's natural start.
+        st = _parse(seat, board_for_callback.dealer,
+                    list(auction_so_far))
+        return _decide(st, _eval(board_for_callback.hands[seat]),
+                       _system_cached)
+
     results = []
     for i, board in enumerate(deals, 1):
+        board_for_callback = board     # closure-captured by _fallback_bid
         deal = TMDeal(
             board_number=board.board_number,
             dealer=board.dealer,
@@ -320,7 +342,8 @@ def main(argv=None) -> int:
             hands=board.hands,
         )
         try:
-            theirs = server.play_auction(seat_conns, deal)
+            theirs = server.play_auction(seat_conns, deal,
+                                         bid_callback=_fallback_bid)
         except Exception as ex:
             print(f"[diff] board {board.board_number}: wbridge5 failed: {ex!r}")
             theirs = []

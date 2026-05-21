@@ -136,6 +136,18 @@ def _format_bid_for_tm(bid: Bid) -> str:
     return f"{bid.level}{_SUIT_TM[bid.suit]}"
 
 
+def _tm_bid_verb(bid: 'Bid') -> str:
+    """Render a Bid as the verb-form that goes after `<seat> ` —
+    e.g. "passes" / "doubles" / "redoubles" / "bids 1H"."""
+    if bid.is_pass:
+        return "passes"
+    if bid.is_double:
+        return "doubles"
+    if bid.is_redouble:
+        return "redoubles"
+    return f"bids {_format_bid_for_tm(bid)}"
+
+
 def _parse_bid_from_tm(token: str) -> Bid:
     """Reverse of _format_bid_for_tm. Tolerant of case + whitespace."""
     t = token.strip().upper()
@@ -337,19 +349,25 @@ class TMServer:
             c.send_line(line)
 
     def play_auction(self, conns: Dict[Seat, TMConnection],
-                     deal: TMDeal) -> List[Bid]:
+                     deal: TMDeal,
+                     bid_callback=None) -> List[Bid]:
         """Run one TM auction. Reactive state machine: we read
         whatever the engine sends, classify it, and respond.
 
         Server-initiated messages (``Teams:``, ``Start of board``,
         ``Board number ...``) are sent proactively; per-seat
         acknowledgements (``<seat> ready for teams`` etc.) are
-        absorbed as no-ops. The engine drives the auction phase
-        with explicit bid lines that we record and broadcast.
+        absorbed as no-ops.
 
-        Works for both single-socket (engine = ANYPL, one
-        connection handles all four seats) and per-seat-socket
-        configurations.
+        wbridge5's ANYPL "Auto" mode plays SOME seats but treats
+        the remaining ones as "human" — when wbridge5 sends
+        ``<seat> ready for <other>'s bid`` it's asking US to
+        provide that seat's bid. ``bid_callback`` is called as
+        ``bid_callback(seat, auction_so_far)`` and must return the
+        Bid to play. Used by the diff harness to let ben_bridge's
+        own bidder fill in the seats wbridge5 isn't covering.
+        Without a callback we just sit and wait (the auction will
+        time out if wbridge5 doesn't cover every seat).
         """
         import re
         single_socket = len(conns) == 1
@@ -448,12 +466,55 @@ class TMServer:
                         cards_sent[seat] = True
                 continue
 
-            # ---- ready for <other>'s bid — engine is waiting on
-            #   another seat to bid. In single-socket mode the same
-            #   engine is providing every seat's bid, so we just
-            #   ignore the ack and wait for the actual bid line.
-            if re.search(r'\bready\s+for\s+\w+', line, re.I) \
-                    and "bid" in line.lower():
+            # ---- ready for <other>'s bid ----
+            # The engine identifies which seat it expects to bid
+            # next. If that seat is one the engine itself plays
+            # (Auto mode), it will follow up with the bid line;
+            # if it's a "human" seat from the engine's POV, we
+            # supply the bid via the callback (using ben_bridge's
+            # bidder by default).
+            m = re.match(r'\s*(\w+)\s+ready\s+for\s+(\w+)\'?s?\s+bid',
+                         line, re.I)
+            if m:
+                # The second \w+ is the SEAT being waited on
+                # (whose bid is expected next). e.g.
+                # "ANYPL ready for SOUTH's bid" means South must
+                # bid next.
+                waited_word = m.group(2).upper()
+                waited_seat = _TM_SEAT.get(waited_word.capitalize())
+                if waited_seat is None:
+                    if self._log_fn:
+                        self._log_fn("?", f"bad seat in ready-for: {line!r}")
+                    continue
+                if bid_callback is None:
+                    # Caller didn't wire us a fallback bidder — wait
+                    # for the engine to send the bid itself.
+                    continue
+                # Determine whose turn it is from the auction so far.
+                # If the dealer + #bids rolls around to the waited
+                # seat, our callback drives that seat.
+                next_seat = deal.dealer
+                for _ in range(len(auction)):
+                    next_seat = next_seat.next()
+                if next_seat == waited_seat:
+                    b = bid_callback(waited_seat, auction)
+                    bid_obj = b if isinstance(b, Bid) else None
+                    if bid_obj is None:
+                        if self._log_fn:
+                            self._log_fn("?", f"callback returned None for "
+                                              f"{waited_seat.to_char()}")
+                        continue
+                    # Send the bid to wbridge5 in canonical TM form.
+                    any_conn.send_line(
+                        f"{_SEAT_TM[waited_seat]} "
+                        f"{_tm_bid_verb(bid_obj)}")
+                    auction.append(bid_obj)
+                    if bid_obj.is_pass:
+                        consecutive_passes += 1
+                    else:
+                        consecutive_passes = 0
+                    if len(auction) >= 4 and consecutive_passes >= 3:
+                        break
                 continue
 
             # ---- a bid! ----
