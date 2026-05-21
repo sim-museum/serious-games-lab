@@ -497,31 +497,27 @@ class TMServer:
                     # Caller didn't wire us a fallback bidder — wait
                     # for the engine to send the bid itself.
                     continue
-                # Determine whose turn it is from the auction so far.
-                # If the dealer + #bids rolls around to the waited
-                # seat, our callback drives that seat.
-                next_seat = deal.dealer
-                for _ in range(len(auction)):
-                    next_seat = next_seat.next()
-                if next_seat == waited_seat:
-                    b = bid_callback(waited_seat, auction)
-                    bid_obj = b if isinstance(b, Bid) else None
-                    if bid_obj is None:
-                        if self._log_fn:
-                            self._log_fn("?", f"callback returned None for "
-                                              f"{waited_seat.to_char()}")
-                        continue
-                    # Send the bid to wbridge5 in canonical TM form.
-                    any_conn.send_line(
-                        f"{_SEAT_TM[waited_seat]} "
-                        f"{_tm_bid_verb(bid_obj)}")
-                    auction.append(bid_obj)
-                    if bid_obj.is_pass:
-                        consecutive_passes += 1
-                    else:
-                        consecutive_passes = 0
-                    if len(auction) >= 4 and consecutive_passes >= 3:
-                        break
+                # wbridge5 sometimes computes a different dealer
+                # than what we told it, so a strict "is this the
+                # right seat?" guard would deadlock — just answer
+                # whichever seat the engine asks for.
+                b = bid_callback(waited_seat, auction)
+                bid_obj = b if isinstance(b, Bid) else None
+                if bid_obj is None:
+                    if self._log_fn:
+                        self._log_fn("?", f"callback returned None for "
+                                          f"{waited_seat.to_char()}")
+                    continue
+                any_conn.send_line(
+                    f"{_SEAT_TM[waited_seat]} "
+                    f"{_tm_bid_verb(bid_obj)}")
+                auction.append(bid_obj)
+                if bid_obj.is_pass:
+                    consecutive_passes += 1
+                else:
+                    consecutive_passes = 0
+                if len(auction) >= 4 and consecutive_passes >= 3:
+                    break
                 continue
 
             # ---- a bid! ----
