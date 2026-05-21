@@ -229,6 +229,10 @@ def main(argv=None) -> int:
                         "bidder on the N deals and dump the auctions. "
                         "Useful for smoke-testing the system spec "
                         "without needing wbridge5 to TM-connect.")
+    p.add_argument("--debug", action="store_true",
+                   help="Log every TM-protocol line sent to / received "
+                        "from wbridge5 — useful for diagnosing dialect "
+                        "mismatches.")
     args = p.parse_args(argv)
 
     # Dry-run path: just dump the ben_bridge auctions to stdout and
@@ -247,8 +251,9 @@ def main(argv=None) -> int:
     deals = _generate_deals(args.n, args.seed)
 
     print(f"[diff] N={args.n}, seed={args.seed}, system={args.system}")
-    server = TMServer(port=args.port,
-                      log_fn=lambda d, ln: print(f"  TM{d} {ln}"))
+    log_fn = (lambda d, ln: print(f"  TM{d} {ln}", flush=True)) \
+             if args.debug else None
+    server = TMServer(port=args.port, log_fn=log_fn)
     print(f"[diff] TM server listening on {server.host}:{server.port}")
 
     drv = None

@@ -262,9 +262,16 @@ class TMServer:
         """Accept four sequential connections, one per seat.
 
         Some engines (notably JACK) prefer a separate socket per
-        seat. wbridge5 can run either way; this helper supports
-        the per-seat variant. Returns a dict keyed by Seat after
-        each client has identified itself via the connect line.
+        seat. wbridge5 in non-Auto mode can run this way too.
+        Returns a dict keyed by Seat after each client has
+        identified itself via the connect line.
+
+        Special case: if the first connection identifies as ANYPL
+        (wbridge5's "Auto" mode where one engine instance plays
+        all four seats), we fall through to single-socket mode —
+        the returned dict has one entry keyed by ``Seat.NORTH``
+        as a convention, and `play_auction` recognises the shape
+        via ``len(conns) == 1``.
         """
         out: Dict[Seat, TMConnection] = {}
         deadline = time.time() + timeout
@@ -274,17 +281,29 @@ class TMServer:
             conn_sock, _peer = self._listener.accept()
             conn = TMConnection(conn_sock, log_fn=self._log_fn)
             seat, name = self._read_connect(conn)
+            if seat is None:
+                # ANYPL — single-socket engine. The caller's auction
+                # loop just needs a single connection regardless of
+                # which seat key we file it under.
+                out = {Seat.NORTH: conn}
+                self._seated[Seat.NORTH] = name
+                return out
             out[seat] = conn
             self._seated[seat] = name
         return out
 
-    def _read_connect(self, conn: TMConnection) -> Tuple[Seat, str]:
-        """Parse the client's opening
+    def _read_connect(self, conn: TMConnection) -> Tuple[Optional[Seat], str]:
+        """Parse the client's opening line and seat it.
+
+        Expected format:
             `Connecting "<name>" as <seat> using protocol version <n>`
-        and reply with `<seat> ("<name>") seated`.
+        where `<seat>` is North / East / South / West, OR `ANYPL`
+        (wbridge5 in Auto mode advertises "any player" meaning the
+        engine handles all four seats over this one socket).
+
+        Returns ``(seat, name)``. For ANYPL the seat is ``None``.
         """
         line = conn.recv_line()
-        # Robust to extra whitespace and quote-style variations.
         import re
         m = re.match(
             r'\s*Connecting\s+"([^"]+)"\s+as\s+(\w+)\s+using\s+protocol\s+version\s+(\d+)',
@@ -293,6 +312,11 @@ class TMServer:
         if not m:
             raise ValueError(f"unexpected TM connect line: {line!r}")
         name, seat_word, _ver = m.group(1), m.group(2), m.group(3)
+        if seat_word.upper() == "ANYPL":
+            # All-seats-on-one-socket mode. The server-side play
+            # loop treats `seat == None` as "single-socket engine".
+            conn.send_line(f'{seat_word} ("{name}") seated')
+            return None, name
         seat = _TM_SEAT.get(seat_word.capitalize())
         if seat is None:
             raise ValueError(f"bad seat in TM connect: {seat_word}")
@@ -308,109 +332,164 @@ class TMServer:
 
     def play_auction(self, conns: Dict[Seat, TMConnection],
                      deal: TMDeal) -> List[Bid]:
-        """Run one TM auction with the given client(s).
+        """Run one TM auction. Reactive state machine: we read
+        whatever the engine sends, classify it, and respond.
 
-        Supports both single-socket-for-all-seats (`len(conns)==1`,
-        keyed by any Seat) and per-seat-socket configurations.
+        Server-initiated messages (``Teams:``, ``Start of board``,
+        ``Board number ...``) are sent proactively; per-seat
+        acknowledgements (``<seat> ready for teams`` etc.) are
+        absorbed as no-ops. The engine drives the auction phase
+        with explicit bid lines that we record and broadcast.
 
-        Returns the auction as a list of Bid objects.
+        Works for both single-socket (engine = ANYPL, one
+        connection handles all four seats) and per-seat-socket
+        configurations.
         """
+        import re
         single_socket = len(conns) == 1
         any_conn = next(iter(conns.values()))
 
-        # 1) Teams + start-of-board boilerplate.
-        for c in conns.values():
-            c.send_line(f'Teams: N/S : "{self._name}". E/W : "{self._name}".')
-        # Each seat acknowledges teams.
-        for seat, conn in conns.items():
-            line = conn.recv_line()
-            if "ready for" not in line.lower():
-                raise ValueError(f"expected ready-for-start, got {line!r}")
-
-        for c in conns.values():
-            c.send_line("Start of board")
+        # Send Teams + Start of board + Board number proactively;
+        # the engine then sends per-seat acks which we just absorb.
+        teams_line = (f'Teams: N/S : "{self._name}". '
+                      f'E/W : "{self._name}".')
         vul_word = _VUL_TM.get(deal.vulnerability, "Neither")
         board_line = (f"Board number {deal.board_number}. "
                       f"Dealer {_SEAT_TM[deal.dealer]}. "
                       f"{vul_word} vulnerable.")
         for c in conns.values():
+            c.send_line(teams_line)
+            c.send_line("Start of board")
             c.send_line(board_line)
+        # State flags so we send each card line exactly once even
+        # though every seat asks for it.
+        cards_sent: Dict[Seat, bool] = {s: False for s in (
+            Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST)}
 
-        # Each seat reads its own cards.
-        for seat, conn in conns.items():
-            # The client asks; we send only when asked. Loop until
-            # we see the matching ready-for-cards.
-            line = conn.recv_line()
-            if "ready for cards" not in line.lower() and "ready for deal" not in line.lower():
-                raise ValueError(f"expected ready-for-cards, got {line!r}")
-            # In the single-socket case the engine asks per-seat; we
-            # deal out every seat's hand on the same socket.
-            if single_socket:
-                for s in (Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST):
-                    conn.send_line(
-                        f"{_SEAT_TM[s]}'s cards : {_format_hand_for_tm(deal.hands[s])}"
-                    )
-            else:
-                conn.send_line(
-                    f"{_SEAT_TM[seat]}'s cards : {_format_hand_for_tm(deal.hands[seat])}"
-                )
-
-        # 2) Auction loop. Bidder = dealer + len(bids) clockwise.
-        bidder = deal.dealer
         auction: List[Bid] = []
         consecutive_passes = 0
-        while True:
-            bidder_word = _SEAT_TM[bidder]
-            conn_for_bidder = conns.get(bidder, any_conn)
-            # Other seats announce "ready for bidder's bid".
+
+        # Convenience: pick the socket for a given seat. In
+        # single-socket mode every seat shares the same socket.
+        def _conn_for(seat: 'Seat'):
+            return conns.get(seat, any_conn)
+
+        # Broadcast a bid to every seat that DIDN'T just bid.
+        # In single-socket mode there's nothing to broadcast.
+        def _broadcast_bid(bidder: 'Seat', bid: 'Bid'):
+            if single_socket:
+                return
+            line = f"{_SEAT_TM[bidder]} bids {_format_bid_for_tm(bid)}"
             for s, c in conns.items():
                 if s == bidder:
                     continue
-                # We're playing TM server — clients send us
-                # ready-for-bid lines; we read them.
-                line = c.recv_line()
-                # We just discard the announcement; client is in sync.
-            # Bidder's seat sends its bid.
-            line = conn_for_bidder.recv_line()
-            # Format: "<seat> bids <bid>" or "<seat> doubles" /
-            # "<seat> redoubles".
-            import re
+                c.send_line(line)
+
+        # The state machine just reads from whichever connection
+        # talks next. In single-socket mode that's always the
+        # same socket; in per-seat mode we poll round-robin (Qt-
+        # event-loop style would be nicer but socket-level select
+        # is enough for the diff harness's throughput needs).
+        def _next_line() -> str:
+            if single_socket:
+                return any_conn.recv_line()
+            # Per-seat: poll select for whichever socket has data.
+            import select
+            socks = [c._sock for c in conns.values()]
+            r, _, _ = select.select(socks, [], [], 60.0)
+            if not r:
+                raise TimeoutError("no engine activity within 60s")
+            # Wrap the ready socket back to its TMConnection.
+            for c in conns.values():
+                if c._sock is r[0]:
+                    return c.recv_line()
+            raise RuntimeError("internal: ready socket not in conns")
+
+        # Loop until the auction terminates. Each iteration reads
+        # one line from the engine and responds appropriately.
+        max_iters = 200
+        for _ in range(max_iters):
+            line = _next_line()
+
+            # ---- ready-for-teams / ready-to-start — already
+            # answered proactively above; absorb the per-seat ack.
+            if re.search(r'\bready\s+for\s+teams\b', line, re.I):
+                continue
+            if re.search(r'\bready\s+to\s+start\b', line, re.I):
+                continue
+
+            # ---- ready for cards / deal — accept either phrasing.
+            m = re.match(r'\s*(\w+)\s+ready\s+for\s+(?:cards|deal)', line, re.I)
+            if m:
+                seat_word = m.group(1).capitalize()
+                # Send every seat's cards (in single-socket mode
+                # the engine needs them all so it can play any seat).
+                if single_socket:
+                    for s in (Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST):
+                        if not cards_sent[s]:
+                            any_conn.send_line(
+                                f"{_SEAT_TM[s]}'s cards : "
+                                f"{_format_hand_for_tm(deal.hands[s])}"
+                            )
+                            cards_sent[s] = True
+                else:
+                    seat = _TM_SEAT.get(seat_word)
+                    if seat is not None and not cards_sent[seat]:
+                        _conn_for(seat).send_line(
+                            f"{_SEAT_TM[seat]}'s cards : "
+                            f"{_format_hand_for_tm(deal.hands[seat])}"
+                        )
+                        cards_sent[seat] = True
+                continue
+
+            # ---- ready for <other>'s bid — engine is waiting on
+            #   another seat to bid. In single-socket mode the same
+            #   engine is providing every seat's bid, so we just
+            #   ignore the ack and wait for the actual bid line.
+            if re.search(r'\bready\s+for\s+\w+', line, re.I) \
+                    and "bid" in line.lower():
+                continue
+
+            # ---- a bid! ----
             m = re.match(
                 r'\s*(\w+)\s+(bids|doubles|redoubles|passes)\b\s*(\S*)',
-                line, re.I,
-            )
-            if not m:
-                raise ValueError(f"bad bid line: {line!r}")
-            verb, payload = m.group(2).lower(), m.group(3)
-            if verb == "passes":
-                bid = Bid.make_pass()
-            elif verb == "doubles":
-                bid = Bid.make_double()
-            elif verb == "redoubles":
-                bid = Bid.make_redouble()
-            else:
-                bid = _parse_bid_from_tm(payload)
-            auction.append(bid)
-            # Broadcast back to every seat (so each engine knows
-            # the auction state in lockstep).
-            broadcast_line = f"{bidder_word} bids {_format_bid_for_tm(bid)}"
-            for s, c in conns.items():
-                if s == bidder:
-                    continue
-                c.send_line(broadcast_line)
+                line, re.I)
+            if m:
+                bidder_word, verb, payload = (m.group(1).capitalize(),
+                                              m.group(2).lower(),
+                                              m.group(3))
+                bidder = _TM_SEAT.get(bidder_word)
+                if bidder is None:
+                    raise ValueError(f"bad bid seat: {line!r}")
+                if verb == "passes":
+                    bid_obj = Bid.make_pass()
+                elif verb == "doubles":
+                    bid_obj = Bid.make_double()
+                elif verb == "redoubles":
+                    bid_obj = Bid.make_redouble()
+                else:
+                    bid_obj = _parse_bid_from_tm(payload)
+                auction.append(bid_obj)
+                _broadcast_bid(bidder, bid_obj)
+                if bid_obj.is_pass:
+                    consecutive_passes += 1
+                else:
+                    consecutive_passes = 0
+                if len(auction) >= 4 and consecutive_passes >= 3:
+                    break
+                if len(auction) == 4 and consecutive_passes == 4:
+                    break
+                continue
 
-            # Termination check.
-            if bid.is_pass:
-                consecutive_passes += 1
-            else:
-                consecutive_passes = 0
-            if len(auction) >= 4 and consecutive_passes >= 3:
-                break
-            if len(auction) >= 4 and consecutive_passes == 4 \
-                    and not any(not b.is_pass for b in auction):
-                # Four-pass start-of-auction = passed out.
-                break
-            bidder = bidder.next()
+            # Unrecognised line — log and keep going. Useful for
+            # discovering wbridge5-specific dialect we haven't
+            # accounted for yet.
+            if self._log_fn:
+                self._log_fn("?", f"unhandled line: {line!r}")
+        else:
+            raise RuntimeError(
+                f"auction exceeded {max_iters} iterations without "
+                f"terminating; auction so far = {auction}")
 
         deal.auction = auction
         return auction
@@ -492,11 +571,50 @@ class Wbridge5Driver:
         with open(ini, "w", encoding="latin-1") as f:
             f.writelines(lines)
 
+    def _resolve_lutris_wine(self) -> Optional[str]:
+        """Resolve the path to the Lutris-pinned wine runner for
+        wbridge5, as listed in ``config/wine_runners.csv``.
+
+        Default system wine fails to render wbridge5's suit glyphs
+        (boxes appear instead of ♠♥♦♣); the project pins
+        ``lutris-fshack-5.7-x86_64`` for this game in the CSV. Returns
+        the path to the runner's ``bin/wine`` binary, or None if
+        the CSV / runner isn't available (caller falls back to
+        ``self.wine_bin``).
+        """
+        here = os.path.dirname(os.path.abspath(__file__))
+        repo_root = os.path.normpath(os.path.join(here, "..", "..", "..", ".."))
+        csv = os.path.join(repo_root, "config", "wine_runners.csv")
+        if not os.path.isfile(csv):
+            return None
+        runner_name = None
+        with open(csv) as f:
+            for line in f:
+                parts = line.strip().split(",")
+                if len(parts) >= 2 and parts[0].endswith("wBridge5.sh"):
+                    runner_name = parts[1]
+                    break
+        if not runner_name:
+            return None
+        runners_base = os.path.expanduser(
+            "~/.local/share/lutris/runners/wine")
+        cand_dir = os.path.join(runners_base, runner_name)
+        if not os.path.isdir(cand_dir):
+            # Try the wine-lutris-* prefix the launcher uses.
+            cand_dir = os.path.join(runners_base, f"wine-{runner_name}")
+        wine_bin = os.path.join(cand_dir, "bin", "wine")
+        return wine_bin if os.path.isfile(wine_bin) else None
+
     def start(self, env: Optional[Dict[str, str]] = None) -> None:
         """Launch wbridge5 under Wine. Returns immediately; the
         caller is responsible for calling
         `server.accept_four_seats()` once the user (or future
         automation) has put wbridge5 into TM-client mode.
+
+        Uses the Lutris-pinned wine runner from
+        ``config/wine_runners.csv`` if available — system wine
+        renders wbridge5's suit glyphs as empty boxes. Falls back
+        to the default ``wine`` binary if the runner is missing.
         """
         self._patch_ini()
         env_full = os.environ.copy()
@@ -509,9 +627,19 @@ class Wbridge5Driver:
             wineprefix = os.path.join(fri_root, "WP")
         env_full["WINEPREFIX"] = wineprefix
         env_full.setdefault("WINEARCH", "win32")
+        # Pick the Lutris runner if it's available. Prepend its bin
+        # to PATH so child processes (wineserver, ntlm_auth, …) all
+        # come from the same runner.
+        wine_bin = self._resolve_lutris_wine() or self.wine_bin
+        runner_bin = os.path.dirname(wine_bin)
+        if runner_bin and os.path.isdir(runner_bin):
+            env_full["PATH"] = runner_bin + os.pathsep + env_full.get("PATH", "")
+            env_full["WINE"] = wine_bin
+            env_full["WINELOADER"] = wine_bin
+            env_full["WINESERVER"] = os.path.join(runner_bin, "wineserver")
         exe = os.path.join(self.install_dir, "Wbridge5.exe")
         self._proc = subprocess.Popen(
-            [self.wine_bin, exe],
+            [wine_bin, exe],
             cwd=self.install_dir,
             env=env_full,
             stdout=subprocess.DEVNULL,
