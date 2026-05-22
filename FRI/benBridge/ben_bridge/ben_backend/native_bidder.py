@@ -2759,7 +2759,89 @@ def _overcall(state, e: HandEval, system) -> Bid:
     return passb()
 
 
+def _overcaller_rebid(state, e: HandEval, system) -> Bid:
+    """Overcaller's rebid after partner has acted.
+
+    I made the original overcall; partner has now bid (advance,
+    raise, new suit, X/XX). Pass on minimum; only re-bid with
+    real extras.
+
+    Conservative heuristics for now — the diff harness will refine
+    these. Rules:
+      • Partner raised my suit at the 2 or 3 level → pass unless
+        I have 15+ HCP and a 6+ card suit (then jump one more
+        level).
+      • Partner bid a new suit at the 1- or 2-level → pass with
+        minimum, raise partner's suit with 3+ support and extras,
+        rebid my own suit with 6+ of it.
+      • Partner doubled or redoubled → pass.
+      • Partner cuebid opener's suit → show my best feature; we
+        currently just bid 3 of my own suit.
+    """
+    my_first = state.my_bids[0]
+    my_suit = my_first.suit
+    my_length = e.suit_lengths.get(my_suit, 0)
+    p_last = state.partner_bids[-1] if state.partner_bids else None
+    hcp = e.hcp
+
+    # Without a real partner action, defensible default is pass.
+    if p_last is None or p_last.is_pass:
+        return passb(why="Overcaller rebid — no partner action, pass")
+
+    # Partner doubled / redoubled — leave it.
+    if p_last.is_double or p_last.is_redouble:
+        return passb(why="Overcaller rebid — partner's X/XX, pass")
+
+    # Partner raised my suit.
+    if p_last.suit == my_suit:
+        # 15+ HCP and 6+ of the suit → push for game; else pass.
+        if hcp >= 15 and my_length >= 6 \
+                and p_last.level < 5:
+            return bid(p_last.level + 1, my_suit,
+                       why=f"Overcaller rebid — extras + long suit, "
+                           f"jump to {p_last.level + 1}{my_suit.to_char()}")
+        return passb(why="Overcaller rebid — partner raised, minimum, pass")
+
+    # Partner bid a new suit / NT.
+    if p_last.suit is not None and p_last.suit != Suit.NOTRUMP:
+        # Support partner's suit with 3+ cards + extras.
+        if (e.suit_lengths.get(p_last.suit, 0) >= 3
+                and hcp >= 13
+                and p_last.level < 4):
+            return bid(p_last.level + 1, p_last.suit,
+                       why=f"Overcaller rebid — raising partner's "
+                           f"{p_last.suit.to_char()} with support")
+        # Rebid my own suit with 6+ length.
+        if my_length >= 6 and hcp >= 11:
+            new_level = max(my_first.level + 1, p_last.level + 1)
+            if new_level <= 4:
+                return bid(new_level, my_suit,
+                           why=f"Overcaller rebid — 6+ {my_suit.to_char()}")
+
+    # Default — overcaller's job is done; let partner / opponents drive.
+    return passb(why="Overcaller rebid — no clear extras, pass")
+
+
 def _advance_partner_overcall(state, e: HandEval, system) -> Bid:
+    # If *I* was the original overcaller (my first non-pass bid was
+    # a suit overcall) and partner has since raised my suit, this
+    # auction round isn't "advance partner's overcall" — it's
+    # "overcaller's rebid". Without this guard the bidder treats
+    # partner's raise like a fresh overcall and re-raises with the
+    # same hand, producing the `2C 3C 4C 5C 6C 7C` infinite ascent
+    # we saw on Board 3 of the Q-Plus diff.
+    if state.my_bids:
+        first_my_bid = state.my_bids[0]
+        is_overcall = (
+            not first_my_bid.is_pass
+            and not first_my_bid.is_double
+            and not first_my_bid.is_redouble
+            and first_my_bid.suit is not None
+            and first_my_bid.suit != Suit.NOTRUMP
+        )
+        if is_overcall:
+            return _overcaller_rebid(state, e, system)
+
     p_last = state.partner_bids[-1]
     hcp = e.hcp
 

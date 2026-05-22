@@ -352,6 +352,42 @@ class TestRKCBlackwood(unittest.TestCase):
         self.assertEqual(contract.level, 6)
         self.assertEqual(contract.suit, self.Suit.SPADES)
 
+    def test_overcaller_doesnt_loop_after_partner_raise(self):
+        """Q-Plus diff harness board 3 — after E overcalls 2C
+        and W raises to 3C, E must pass (not re-raise the same
+        suit). Previously this generated an infinite ascent
+        `2C 3C 4C 5C 6C 7C` because the overcaller was being
+        routed through _advance_partner_overcall and re-raising
+        on every loop.
+        """
+        Seat = self.Seat
+        # Hands from board 3 of the Precision90M diff (seed=42).
+        # S has 13 HCP and opens 1D; N responds 1S; E overcalls
+        # 2C with a 5-card suit; W raises to 3C; E must pass.
+        hands = {
+            Seat.NORTH: self._hand('SA8743 H965 DAQ7 CJT'),
+            Seat.EAST:  self._hand('SKJ92 HT8 DT8 CA6543'),
+            Seat.SOUTH: self._hand('SQT HKQ43 DK6532 CK9'),
+            Seat.WEST:  self._hand('S65 HAJ72 DJ94 CQ872'),
+        }
+        # Drive the auction with both pairs on Precision90M and
+        # confirm it terminates at level ≤ 4 (no infinite ascent).
+        auction = self._drive(hands, 'Precision90M', Seat.SOUTH)
+        # Top-most level in the auction shouldn't exceed game.
+        max_level = max((b.level for b in auction
+                         if not b.is_pass and not b.is_double
+                         and not b.is_redouble), default=0)
+        self.assertLessEqual(max_level, 4,
+                             f"Auction climbed to level {max_level}: "
+                             f"{[b.to_ben_str() for b in auction]}")
+        # And it shouldn't be all clubs — that's the bug signature.
+        from ben_backend.models import Suit
+        club_bids = sum(1 for b in auction if b.suit == Suit.CLUBS
+                        and not b.is_pass)
+        self.assertLessEqual(club_bids, 3,
+                             f"Auction has {club_bids} club bids — "
+                             f"looks like the infinite-ascent bug")
+
     def test_doubler_replies_to_cuebid(self):
         """When advancer cuebids opener's suit after a takeout
         double, the doubler must reply by showing their best major
