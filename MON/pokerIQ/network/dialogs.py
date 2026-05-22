@@ -90,7 +90,7 @@ class HostGameDialog(QDialog):
 
         # Show the host's LAN IP address(es) right in the dialog so
         # the user can read them off to guests BEFORE clicking Start
-        # Server (mirroring the ben_bridge host dialog). Selectable so
+        # Server (mirroring the bridgeIQ host dialog). Selectable so
         # the user can copy-paste into chat / email. Updates live when
         # the port spin value changes.
         settings_layout.addWidget(QLabel("Your IP:"), 3, 0)

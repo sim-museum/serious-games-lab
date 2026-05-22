@@ -17,9 +17,9 @@ Test Date:    February 2026
 
 === FRI: Contract Bridge ===
 
-1. tensorflow bridge (benBridge/run.sh)
-   Game:        Ben Bridge (TensorFlow bridge AI)
-   Technology:  Native Linux (Python/PyQt, venv, TensorFlow, libdds.so)
+1. rule-based bridge (bridgeIQ/run.sh)
+   Game:        BridgeIQ (rule-based bidder + DDS/MC card play)
+   Technology:  Native Linux (Python/PyQt6, venv, libdds.so)
    Wine:        Not used
    Status:      PLATINUM — runs perfectly out of the box
    Notes:       Installs via pip into a Python venv. No binary dependencies

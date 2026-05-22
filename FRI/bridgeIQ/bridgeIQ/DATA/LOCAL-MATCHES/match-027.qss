@@ -1,0 +1,34 @@
+# BridgeIQ score sheet
+.version = 17.1
+.date = 2026-05-11
+scoring.method = Teams
+
+board.1.number = 599
+board.1.pavlicek = 3x0zhXrlEuU!uKja
+board.1.contract = 1S
+board.1.declarer = S
+board.1.tricks = 9
+board.1.ns_score = 140
+board.1.ew_score = -140
+board.1.ns_system = BEN-NN
+board.1.ew_system = BEN-NN
+
+board.2.number = 562
+board.2.pavlicek = 29y!we(LNQfM!zf2
+board.2.contract = 7NT
+board.2.declarer = S
+board.2.tricks = 6
+board.2.ns_score = -700
+board.2.ew_score = 700
+board.2.ns_system = BEN-NN
+board.2.ew_system = BEN-NN
+
+board.3.number = 904
+board.3.pavlicek = 29y!we(LNQfM!zf2
+board.3.contract = 3C
+board.3.declarer = E
+board.3.tricks = 8
+board.3.ns_score = 50
+board.3.ew_score = -50
+board.3.ns_system = BEN-NN
+board.3.ew_system = BEN-NN

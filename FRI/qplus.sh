@@ -32,7 +32,7 @@ elif [ -d "$WINEPREFIX/drive_c/games/qbridge15" ]; then
 fi
 
 if [ -n "$QBRIDGE_DIR" ]; then
-    # The blank GUI harness was launched here historically. ben_bridge
+    # The blank GUI harness was launched here historically. bridgeIQ
     # now spawns its own harness (`bridgeHarness.sh --base72 <code>`)
     # after each hand with the deal pre-loaded, so launching another
     # one from here just produced an empty duplicate window. Use

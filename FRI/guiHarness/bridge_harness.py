@@ -134,8 +134,8 @@ def _fmt_bde_suit(cards_with_rank: list) -> str:
 
 
 def hands_to_bde_text(hands, dealer: str = "N", vuln: str = "None",
-                      label: str = "Sent from ben_bridge",
-                      description: str = "single deal from ben_bridge") -> str:
+                      label: str = "Sent from bridgeIQ",
+                      description: str = "single deal from bridgeIQ") -> str:
     """Build a single-deal BDE file body.
 
     `hands` is [N_cards, E_cards, S_cards, W_cards] where each card
@@ -189,9 +189,9 @@ def hands_to_bde_text(hands, dealer: str = "N", vuln: str = "None",
     return "\n".join(lines) + "\n"
 
 # ---------------------------------------------------------------------------
-# Pavlicek deal-number encoding  (standalone — no dependency on ben_bridge)
+# Pavlicek deal-number encoding  (standalone — no dependency on bridgeIQ)
 #
-# Base-72 is the canonical alphabet across the project (BEN bridge BDL,
+# Base-72 is the canonical alphabet across the project (bridgeIQ BDL,
 # this harness, and any other deal-ID consumer).  Alphabet:
 #   0-9 A-Z a-z !@#$%^&*()
 # ---------------------------------------------------------------------------
@@ -1396,7 +1396,7 @@ class BridgeHarness(QMainWindow):
         self._source_pbn_path = None  # for workflow
         self._qplus_proc = None       # Popen handle for the Q-Plus child
         # Dealer / vulnerability for the loaded deal (normalised tokens).
-        # ben_bridge passes these on --dealer / --vuln so the closed-room
+        # bridgeIQ passes these on --dealer / --vuln so the closed-room
         # entry in Q-Plus matches the open-room conditions. Empty string
         # means "no value yet — user enters manually".
         self.dealer = ""           # one of "" / "N" / "E" / "S" / "W"
@@ -1453,10 +1453,10 @@ class BridgeHarness(QMainWindow):
             return None
         # Stable filename so re-running this rewrites the same file
         # — useful when Q-Plus's "recent files" remembers it.
-        fname = "BEN_BRIDGE_RELAY.BDE"
+        fname = "BRIDGEIQ_RELAY.BDE"
         path = own_dir / fname
         # Honour the dealer / vulnerability the user has set (or that
-        # ben_bridge passed via --dealer / --vuln). Default to N / None
+        # bridgeIQ passed via --dealer / --vuln). Default to N / None
         # when unset.
         dealer = (self.dealer or "N").strip().upper()[:1]
         vuln = (self.vulnerability or "None")
@@ -1466,7 +1466,7 @@ class BridgeHarness(QMainWindow):
             label = "BB"
         text = hands_to_bde_text(self.hands, dealer=dealer, vuln=vuln,
                                  label=label,
-                                 description="Relayed from ben_bridge")
+                                 description="Relayed from bridgeIQ")
         try:
             path.write_text(text, encoding="latin-1")
         except Exception as ex:
@@ -1600,7 +1600,7 @@ class BridgeHarness(QMainWindow):
             parts.append(f"vuln = {self.vulnerability}")
         if parts:
             self.statusBar().showMessage(
-                "From ben_bridge: " + ", ".join(parts))
+                "From bridgeIQ: " + ", ".join(parts))
 
     def _update_dealer_vuln_display(self):
         """Refresh the on-screen dealer/vulnerability summary, if built."""
@@ -1614,7 +1614,7 @@ class BridgeHarness(QMainWindow):
     def load_base72(self, code: str):
         """Pre-load a deal by base-72 code into the Hand Entry tab.
 
-        Used by ben_bridge after each hand so the host can immediately
+        Used by bridgeIQ after each hand so the host can immediately
         replay the deal in Q-Plus for closed-room comparison.
         """
         code = (code or "").strip()
@@ -1664,7 +1664,7 @@ class BridgeHarness(QMainWindow):
         left.addWidget(self.info_label)
 
         # Dealer / Vulnerability summary — populated from --dealer / --vuln
-        # passed by ben_bridge, or by manually parsing the source file.
+        # passed by bridgeIQ, or by manually parsing the source file.
         # Shown so the user can verify what the harness will set in Q-Plus.
         self.dv_display = QLabel("Dealer: (not set)    Vulnerability: (not set)")
         self.dv_display.setFont(QFont("Monospace", 11))
@@ -1897,7 +1897,7 @@ class BridgeHarness(QMainWindow):
         name_row.addWidget(QLabel("Source game:"))
         self.wf_game_name = QComboBox()
         self.wf_game_name.setEditable(True)
-        self.wf_game_name.addItems(["wbridge5", "benbridge", "bb12", "tenace"])
+        self.wf_game_name.addItems(["wbridge5", "bridgeIQ", "bb12", "tenace"])
         name_row.addWidget(self.wf_game_name, stretch=1)
         s4_layout.addLayout(name_row)
 
@@ -2099,7 +2099,7 @@ class BridgeHarness(QMainWindow):
             return
 
         # Optional dealer / vulnerability — passed via --dealer/--vuln
-        # from ben_bridge so the closed-room deal in Q-Plus is set up
+        # from bridgeIQ so the closed-room deal in Q-Plus is set up
         # under the same conditions as the open-room game.
         dv_open, dealer_positions, vuln_positions, dv_ok = \
             dealer_vuln_positions(self.calibration)
@@ -2154,7 +2154,7 @@ class BridgeHarness(QMainWindow):
 
             # Auto-detect source game name from path
             p = Path(path)
-            for name in ["wbridge5", "wBridge5", "benbridge", "bridgebaron", "bb12"]:
+            for name in ["wbridge5", "wBridge5", "bridgeIQ", "bridgebaron", "bb12"]:
                 if name.lower() in str(p).lower():
                     idx = self.wf_game_name.findText(name.lower())
                     if idx >= 0:

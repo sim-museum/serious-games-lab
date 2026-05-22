@@ -78,7 +78,7 @@ is_source_game() {
     local script="$1"
     case "$script" in
         # PyQt source apps
-        benBridge/run.sh|mathQuiz/run.sh|dual_nback/run.sh) return 0 ;;
+        bridgeIQ/run.sh|mathQuiz/run.sh|dual_nback/run.sh) return 0 ;;
         openingRepertoire/run_opening_repertoire.sh) return 0 ;;
         pokerIQ/run.sh) return 0 ;;
         # Downloadable / pip-installable / apt-installable
@@ -187,7 +187,7 @@ script_display_name() {
         rFactor/rFactor.sh)    echo "advanced"; return ;;
         # FRI - Duplicate Bridge
         bcalc.sh)              echo "double dummy calculator"; return ;;
-        benBridge/run.sh)      echo "tensorflow bridge"; return ;;
+        bridgeIQ/run.sh)      echo "rule-based bridge"; return ;;
         mathQuiz/run.sh)       echo "mental math training"; return ;;
         dual_nback/run.sh)     echo "memory training"; return ;;
         wBridge5.sh)           echo "strong, simple GUI"; return ;;

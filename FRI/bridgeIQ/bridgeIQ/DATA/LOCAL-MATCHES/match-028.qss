@@ -1,0 +1,14 @@
+# BridgeIQ score sheet
+.version = 17.1
+.date = 2026-05-12
+scoring.method = Teams
+
+board.1.number = 738
+board.1.pavlicek = 3UH0i45OFQfs&Q$K
+board.1.contract = 2NT
+board.1.declarer = S
+board.1.tricks = 11
+board.1.ns_score = 210
+board.1.ew_score = -210
+board.1.ns_system = BEN-NN
+board.1.ew_system = BEN-NN

@@ -38,10 +38,10 @@ _game_output_patterns() {
             echo ".|*.ppl"
             echo ".|*.bdl"
             ;;
-        benBridge/run.sh)
-            echo "./benBridge/ben/DATA/LOG|*.bdl"
-            echo "./benBridge/ben/DATA/LOG|*.pbn"
-            echo "./benBridge/ben/DATA/LOG|*.ppl"
+        bridgeIQ/run.sh)
+            echo "./bridgeIQ/bridgeIQ/DATA/LOG|*.bdl"
+            echo "./bridgeIQ/bridgeIQ/DATA/LOG|*.pbn"
+            echo "./bridgeIQ/bridgeIQ/DATA/LOG|*.ppl"
             echo ".|*.pbn"
             echo ".|*.bdl"
             ;;
