@@ -209,7 +209,7 @@ MESSAGEBOX_STYLESHEET = """
 
 def styled_info(parent, title: str, message: str):
     """Show an information message box with proper styling."""
-    from PyQt6.QtWidgets import QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+    from PyQt6.QtWidgets import QMessageBox, QDialog, QLayout, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
     from PyQt6.QtCore import Qt
 
     # Create a custom dialog instead of QMessageBox for reliable styling
@@ -238,10 +238,17 @@ def styled_info(parent, title: str, message: str):
     """)
 
     layout = QVBoxLayout(dialog)
+    layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
 
     # Message
     msg_label = QLabel(message)
     msg_label.setWordWrap(True)
+    # Without an explicit width, QLabel's heightForWidth never gets
+    # called before the dialog computes its size, so wrapped text
+    # gets clipped top + bottom. Pin the wrap width to match the
+    # dialog's minimum so the label can resolve its own height.
+    msg_label.setMinimumWidth(380)
+    msg_label.setMaximumWidth(560)
     layout.addWidget(msg_label)
 
     # OK button
@@ -257,7 +264,7 @@ def styled_info(parent, title: str, message: str):
 
 def styled_warning(parent, title: str, message: str):
     """Show a warning message box with proper styling."""
-    from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+    from PyQt6.QtWidgets import QDialog, QLayout, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
     from PyQt6.QtCore import Qt
 
     dialog = QDialog(parent)
@@ -285,9 +292,16 @@ def styled_warning(parent, title: str, message: str):
     """)
 
     layout = QVBoxLayout(dialog)
+    layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
 
     msg_label = QLabel(message)
     msg_label.setWordWrap(True)
+    # Without an explicit width, QLabel's heightForWidth never gets
+    # called before the dialog computes its size, so wrapped text
+    # gets clipped top + bottom. Pin the wrap width to match the
+    # dialog's minimum so the label can resolve its own height.
+    msg_label.setMinimumWidth(380)
+    msg_label.setMaximumWidth(560)
     layout.addWidget(msg_label)
 
     btn_layout = QHBoxLayout()
@@ -302,7 +316,7 @@ def styled_warning(parent, title: str, message: str):
 
 def styled_error(parent, title: str, message: str):
     """Show an error message box with proper styling."""
-    from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+    from PyQt6.QtWidgets import QDialog, QLayout, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
     from PyQt6.QtCore import Qt
 
     dialog = QDialog(parent)
@@ -330,9 +344,16 @@ def styled_error(parent, title: str, message: str):
     """)
 
     layout = QVBoxLayout(dialog)
+    layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
 
     msg_label = QLabel(message)
     msg_label.setWordWrap(True)
+    # Without an explicit width, QLabel's heightForWidth never gets
+    # called before the dialog computes its size, so wrapped text
+    # gets clipped top + bottom. Pin the wrap width to match the
+    # dialog's minimum so the label can resolve its own height.
+    msg_label.setMinimumWidth(380)
+    msg_label.setMaximumWidth(560)
     layout.addWidget(msg_label)
 
     btn_layout = QHBoxLayout()
