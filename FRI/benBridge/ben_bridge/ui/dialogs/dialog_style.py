@@ -209,7 +209,7 @@ MESSAGEBOX_STYLESHEET = """
 
 def styled_info(parent, title: str, message: str):
     """Show an information message box with proper styling."""
-    from PyQt6.QtWidgets import QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+    from PyQt6.QtWidgets import QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLayout
     from PyQt6.QtCore import Qt
 
     # Create a custom dialog instead of QMessageBox for reliable styling
@@ -238,6 +238,7 @@ def styled_info(parent, title: str, message: str):
     """)
 
     layout = QVBoxLayout(dialog)
+    layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
 
     # Message
     msg_label = QLabel(message)
@@ -257,7 +258,7 @@ def styled_info(parent, title: str, message: str):
 
 def styled_warning(parent, title: str, message: str):
     """Show a warning message box with proper styling."""
-    from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+    from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLayout
     from PyQt6.QtCore import Qt
 
     dialog = QDialog(parent)
@@ -285,6 +286,7 @@ def styled_warning(parent, title: str, message: str):
     """)
 
     layout = QVBoxLayout(dialog)
+    layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
 
     msg_label = QLabel(message)
     msg_label.setWordWrap(True)
@@ -302,7 +304,7 @@ def styled_warning(parent, title: str, message: str):
 
 def styled_error(parent, title: str, message: str):
     """Show an error message box with proper styling."""
-    from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+    from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLayout
     from PyQt6.QtCore import Qt
 
     dialog = QDialog(parent)
@@ -330,6 +332,7 @@ def styled_error(parent, title: str, message: str):
     """)
 
     layout = QVBoxLayout(dialog)
+    layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
 
     msg_label = QLabel(message)
     msg_label.setWordWrap(True)

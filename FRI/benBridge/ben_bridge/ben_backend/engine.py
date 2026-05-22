@@ -178,7 +178,7 @@ class BridgeEngine:
         if self.verbose:
             print(f"Bidding system set to: {system_name}")
 
-        return success
+        return True
 
     @staticmethod
     def _all_hands_visible(board: BoardState) -> bool:
