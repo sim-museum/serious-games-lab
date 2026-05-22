@@ -215,9 +215,16 @@ def wait_for_new_bdls(
     last_heartbeat = time.time()
     while True:
         current = snapshot_log_files(log_dir)
-        # Detect both new names and in-place modifications.
+        # Detect both new names and in-place modifications. Skip
+        # 0-byte files — Q-Plus creates an empty `log-NNN.bdl`
+        # the moment you open Own-Deals as a placeholder, then
+        # only writes contents on "Save match and exit". If we
+        # latched onto the empty placeholder, the parser
+        # downstream finds zero auctions.
         changed_names = set()
         for name, (mtime, size) in current.items():
+            if size == 0:
+                continue
             if legacy:
                 if name not in previous:
                     changed_names.add(name)

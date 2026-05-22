@@ -3119,6 +3119,43 @@ def _overcaller_rebid(state, e: HandEval, system) -> Bid:
                            f"jump to {p_last.level + 1}{my_suit.to_char()}")
         return passb(why="Overcaller rebid — partner raised, minimum, pass")
 
+    # Partner cuebid opener's suit — Unassuming Cue-bid (UCB),
+    # showing a limit raise+ of my overcall (10-12 HCP, 3+ support
+    # in my suit). Standard responses:
+    #   * Minimum overcall (≤ 12 HCP): sign off in 3 of my suit.
+    #   * Sound overcall (13-15 HCP): jump to game in my suit.
+    #   * 16+ HCP: control bid the lowest unbid suit (slam try).
+    opener_suit = (state.opening_bid.suit
+                   if state.opening_bid is not None
+                   and state.opening_bid.suit is not None
+                   and state.opening_bid.suit != Suit.NOTRUMP
+                   else None)
+    if (opener_suit is not None
+            and p_last.suit == opener_suit
+            and my_suit in (Suit.HEARTS, Suit.SPADES,
+                            Suit.DIAMONDS, Suit.CLUBS)):
+        if hcp >= 16 and my_suit in (Suit.HEARTS, Suit.SPADES):
+            # Pick lowest unbid suit below my own for the control
+            # bid; otherwise just jump to game.
+            for ctrl in (Suit.CLUBS, Suit.DIAMONDS,
+                         Suit.HEARTS, Suit.SPADES):
+                if ctrl == opener_suit or ctrl == my_suit:
+                    continue
+                if _BID_RANK[ctrl] < _BID_RANK[my_suit]:
+                    return bid(p_last.level + 1, ctrl, alert=True,
+                               why="Control bid after UCB (16+ HCP)")
+            return bid(4, my_suit,
+                       why="Accept UCB to game (16+, no cheap control)")
+        if hcp >= 13 and my_suit in (Suit.HEARTS, Suit.SPADES):
+            return bid(4, my_suit,
+                       why="Accept UCB to 4M (13-15 HCP, sound overcall)")
+        # Minimum: decline by re-bidding suit at 3-level.
+        new_level = max(3, p_last.level + 1)
+        if new_level <= 4:
+            return bid(new_level, my_suit,
+                       why=f"Decline UCB: {new_level}{my_suit.to_char()} "
+                           "(minimum overcall)")
+
     # Partner bid a new suit / NT.
     if p_last.suit is not None and p_last.suit != Suit.NOTRUMP:
         # Support partner's suit with 3+ cards + extras.

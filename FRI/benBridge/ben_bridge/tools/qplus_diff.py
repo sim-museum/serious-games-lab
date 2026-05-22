@@ -363,10 +363,11 @@ def main(argv=None) -> int:
         for board, bdl_path, theirs, oauc, diffs in results:
             if not diffs:
                 continue
+            bdl_tag = bdl_path.name if bdl_path is not None else "(no BDL)"
             f.write(f"--- board {board.board_number}  "
                     f"dealer={board.dealer.to_char()}  "
                     f"vul={board.vulnerability.value}  "
-                    f"({bdl_path.name})\n")
+                    f"({bdl_tag})\n")
             f.write(f"  Q-Plus    : "
                     f"{' '.join(_bid_repr(b) for b in theirs)}\n")
             f.write(f"  ben_bridge: "
