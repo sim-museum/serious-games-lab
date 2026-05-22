@@ -121,7 +121,8 @@ def _drive_ben_bridge(board: BoardState, system_name: str) -> List[Bid]:
     seat = board.dealer
     illegal_streak = 0
     for _ in range(80):
-        state = parse_auction(seat, board.dealer, list(auction))
+        state = parse_auction(seat, board.dealer, list(auction),
+                              vulnerability=board.vulnerability)
         e = evaluate_hand(board.hands[seat])
         b = decide_bid(state, e, sys_)
         if not _is_legal(b, auction):
@@ -160,6 +161,38 @@ def _read_deal_labels(bdl_path: Path) -> List[str]:
     except OSError:
         pass
     return labels
+
+
+def _read_qplus_system_from_bdl(bdl_path: Path) -> str:
+    """Sniff Q-Plus's bidding-system tag from a BDL header.
+
+    Q-Plus writes lines like:
+        .Bidding cnv :  N/S: P-P90M-A (Precision Club 90 modern (Q-plus))
+    We map the leading token (P-P90M-A, A-SAYC-I, etc.) to a
+    name in ben_bridge's catalog so the diff compares like-with-
+    like. Returns the matched system name, or "" when unknown.
+    """
+    import re
+    tag_map = {
+        "P-P90M-A":  "Precision90M",
+        "P-P90P-A":  "Precision90P",
+        "P-PRC-I":   "Precision70",
+        "A-SAYC-I":  "SAYC",
+        "A-2-1-A":   "TwoOverOne",
+        "B-ACL-S":   "StandardAcol",
+        "F-FRA-M":   "StandardFrench",
+    }
+    try:
+        with open(bdl_path, "r", encoding="latin-1", errors="replace") as f:
+            for line in f:
+                m = re.match(
+                    r"\.Bidding cnv\s*:\s*N/S:\s*([A-Z0-9-]+)", line)
+                if m:
+                    token = m.group(1)
+                    return tag_map.get(token, "")
+    except OSError:
+        pass
+    return ""
 
 
 def _bid_repr(b: Bid) -> str:
@@ -257,6 +290,15 @@ def main(argv=None) -> int:
         print(f"[diff] {ex}", file=sys.stderr)
         return 3
     print(f"[diff] {len(new_bdls)} new BDL file(s) found")
+
+    # Sniff the system Q-Plus actually played, so we diff
+    # like-with-like. Falls back to whatever --system asked for.
+    detected = _read_qplus_system_from_bdl(new_bdls[0]) if new_bdls else ""
+    if detected and detected != args.system:
+        print(f"[diff] Q-Plus played {detected}; switching ben_bridge to "
+              f"match (was {args.system}).")
+        args.system = detected
+        ours = [_drive_ben_bridge(b, args.system) for b in deals]
 
     # Flatten every deal block across all new BDLs and index by
     # the BB-diff-NNN label we wrote into the BDE. Q-Plus
