@@ -1,0 +1,11 @@
+# Diff harness reports — timestamp-suffixed runs from
+# tools/qplus_diff.py, tools/qplus_card_diff.py, tools/wbridge5_diff.py.
+# These are run artifacts, not source.
+qplus_diff_*.txt
+qplus_card_diff_*.txt
+wbridge5_diff_*.txt
+
+# Python bytecode (also covered by /home/h/sgl/.gitignore but be
+# explicit so a fresh clone of just this subdirectory works).
+__pycache__/
+*.pyc
