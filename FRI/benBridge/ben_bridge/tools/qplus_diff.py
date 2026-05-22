@@ -141,6 +141,27 @@ def _drive_ben_bridge(board: BoardState, system_name: str) -> List[Bid]:
     return auction
 
 
+def _read_deal_labels(bdl_path: Path) -> List[str]:
+    """Pull the `Deal :` labels out of a BDL file in order.
+
+    bdl_reader's `BDLDeal` discards the label; we need it to map
+    Q-Plus's auctions back to ben_bridge's board numbering.
+    Returns labels in file order — same order as the `BDLDeal`s
+    returned by `load_bdl_file`.
+    """
+    labels: List[str] = []
+    try:
+        with open(bdl_path, "r", encoding="latin-1", errors="replace") as f:
+            for line in f:
+                line = line.rstrip("\r\n")
+                if line.startswith("Deal "):
+                    _, _, value = line.partition(":")
+                    labels.append(value.strip())
+    except OSError:
+        pass
+    return labels
+
+
 def _bid_repr(b: Bid) -> str:
     if b.is_pass:
         return "P"
@@ -235,23 +256,46 @@ def main(argv=None) -> int:
     except TimeoutError as ex:
         print(f"[diff] {ex}", file=sys.stderr)
         return 3
-    print(f"[diff] {len(new_bdls)} new BDLs found")
+    print(f"[diff] {len(new_bdls)} new BDL file(s) found")
 
-    results = []
-    for i, (board, oauc, bdl_path) in enumerate(zip(deals, ours, new_bdls),
-                                                start=1):
+    # Flatten every deal block across all new BDLs and index by
+    # the BB-diff-NNN label we wrote into the BDE. Q-Plus
+    # sometimes writes one BDL per deal (interactive single-deal
+    # play) and sometimes one BDL containing every deal of the
+    # session ("Save match and exit"); label-keyed lookup handles
+    # both layouts.
+    qplus_by_label = {}
+    bdl_path_by_label = {}
+    for bdl_path in new_bdls:
         try:
             qdeals = load_bdl_file(str(bdl_path))
-            qdeal = qdeals[0] if qdeals else None
-            theirs = list(qdeal.auction) if qdeal else []
         except Exception as ex:
             print(f"[diff] couldn't parse {bdl_path}: {ex!r}")
-            theirs = []
+            continue
+        # `BDLDeal` doesn't carry the Deal label by default — we
+        # peek at the raw file to map label → BDLDeal index.
+        labels = _read_deal_labels(bdl_path)
+        for idx, deal in enumerate(qdeals):
+            if idx < len(labels):
+                label = labels[idx]
+                # Keep the FIRST auction per label (Q-Plus
+                # sometimes writes duplicates for closed-room).
+                if label not in qplus_by_label:
+                    qplus_by_label[label] = list(deal.auction)
+                    bdl_path_by_label[label] = bdl_path
+
+    results = []
+    for i, (board, oauc) in enumerate(zip(deals, ours), start=1):
+        label = f"BB-diff-{i:03d}"
+        theirs = qplus_by_label.get(label, [])
+        bdl_path = bdl_path_by_label.get(label)
         diffs = _diff_auctions(theirs, oauc)
         results.append((board, bdl_path, theirs, oauc, diffs))
-        marker = "✓" if not diffs else f"× {len(diffs)} diff"
+        marker = "✓" if not diffs else (
+            f"× {len(diffs)} diff" if theirs else "no Q-Plus auction")
+        bdl_tag = bdl_path.name if bdl_path else "missing"
         print(f"[diff] board {board.board_number:3d} ({i}/{args.n})  "
-              f"{bdl_path.name}  {marker}")
+              f"{bdl_tag}  {marker}")
 
     rpt = Path(args.report)
     with open(rpt, "w") as f:

@@ -164,21 +164,42 @@ def wait_for_new_bdls(
         timeout: float = 300.0,
         poll_interval: float = 1.0,
 ) -> List[Path]:
-    """Block until `expected` new BDL files appear in `log_dir`.
+    """Block until at least one new BDL appears, returning the
+    list of new paths sorted by mtime (oldest first).
 
-    Returns the new files sorted by mtime (oldest first), so the
-    order matches Q-Plus's play order. Raises TimeoutError if
-    fewer than `expected` files arrive before `timeout`.
+    Q-Plus writes either one BDL per deal OR one BDL containing
+    every deal of the session (latter when "Save match and exit"
+    is used). Callers downstream parse the returned files and
+    flatten the deal blocks; we just need to detect "Q-Plus has
+    finished writing something new".
+
+    `expected` is kept as a hint for the timeout message; the
+    function returns as soon as ANY new file is present and the
+    file size has stopped growing (a 2-poll quiet window).
     """
     deadline = time.time() + timeout
+    last_sizes: dict = {}
+    last_change_t: dict = {}
     while True:
         current = snapshot_log_files(log_dir)
-        new = sorted(current - previous,
-                     key=lambda n: (log_dir / n).stat().st_mtime)
-        if len(new) >= expected:
-            return [log_dir / n for n in new[:expected]]
+        new_names = current - previous
+        if new_names:
+            stable = True
+            for name in new_names:
+                size = (log_dir / name).stat().st_size
+                if last_sizes.get(name) != size:
+                    last_sizes[name] = size
+                    last_change_t[name] = time.time()
+                    stable = False
+            # Consider the file written when no size change for
+            # at least 3 seconds — covers Q-Plus's buffered writes.
+            now = time.time()
+            if stable and all(now - last_change_t[name] >= 3.0
+                              for name in new_names):
+                return sorted((log_dir / n for n in new_names),
+                              key=lambda p: p.stat().st_mtime)
         if time.time() > deadline:
             raise TimeoutError(
-                f"Q-Plus produced only {len(new)} of {expected} expected "
-                f"BDL files within {timeout}s")
+                f"Q-Plus didn't produce any new BDL file within {timeout}s "
+                f"(expected up to {expected} deals)")
         time.sleep(poll_interval)
