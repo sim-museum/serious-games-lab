@@ -1597,10 +1597,50 @@ def _respond_to_preempt(state, e: HandEval) -> Bid:
     op = state.opening_bid
     suit = op.suit
     fit = e.suit_lengths.get(suit, 0)
-    if fit >= 1 and e.hcp >= 16 and suit in (Suit.HEARTS, Suit.SPADES):
+    hcp = e.hcp
+
+    # 16+ HCP + 1-card+ heart/spade preempt → game raise.
+    if fit >= 1 and hcp >= 16 and suit in (Suit.HEARTS, Suit.SPADES):
         return bid(4, suit, why="Game raise of preempt")
-    if e.hcp >= 16 and e.is_balanced:
-        return bid(3, Suit.NOTRUMP, why="3NT after preempt")
+
+    # 16+ HCP balanced with a stopper in every UNBID suit → 3NT.
+    # Partner's preempt suit doesn't need a stopper (they have 7+
+    # of it). This was the previous code's catch-all; restrict it
+    # to "balanced AND stoppers everywhere else."
+    if hcp >= 16 and (e.is_balanced or e.is_semi_balanced):
+        unbid = [s for s in (Suit.CLUBS, Suit.DIAMONDS,
+                             Suit.HEARTS, Suit.SPADES)
+                 if s != suit]
+        if all(_has_stopper(e, s) for s in unbid):
+            return bid(3, Suit.NOTRUMP, why="3NT after preempt: "
+                                            "16+ balanced, stoppers")
+
+    # 17+ HCP, own 6+ major → bid the major (forcing, partner can
+    # support with 3+ or correct back to opener's suit).
+    if hcp >= 17:
+        for m in (Suit.SPADES, Suit.HEARTS):
+            if m == suit:
+                continue
+            if e.suit_lengths[m] >= 6:
+                # Cheapest legal level above the preempt.
+                level = (op.level
+                         if _BID_RANK[m] > _BID_RANK[suit]
+                         else op.level + 1)
+                return bid(level, m,
+                           why=f"{level}{m.to_char()}: 17+ HCP, "
+                               f"6+ {m.to_char()}")
+
+    # 18+ HCP + minor preempt + partner can probably make 5m: just
+    # raise to game. Without a 6-card major or a balanced hand to
+    # bid 3NT, this is the only constructive call. 5m needs enough
+    # offence in the combined hands — 18 HCP from the responder
+    # opposite a 7-card preempt with one outside trick is normally
+    # enough.
+    if (hcp >= 18 and suit in (Suit.CLUBS, Suit.DIAMONDS)
+            and fit >= 1):
+        return bid(5, suit, why=f"5{suit.to_char()}: 18+ HCP, raise "
+                                 "preempt to minor game")
+
     return passb()
 
 
