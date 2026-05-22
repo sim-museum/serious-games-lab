@@ -61,9 +61,24 @@ class MatchControlDialog(QDialog):
         file_row.addWidget(self.file_path)
 
         browse_btn = QPushButton("Browse...")
+        browse_btn.setToolTip(
+            "Open the Q-Plus-style tournament-file picker "
+            "(folder browser, file-mask filter, deal-count preview).")
         browse_btn.clicked.connect(self._on_browse)
         file_row.addWidget(browse_btn)
         source_layout.addLayout(file_row)
+
+        # Filled in by the tournament-file picker so the match
+        # controller can start at deal N rather than always 1.
+        self._first_deal: int = 1
+        self._deal_count: int = 0
+        self._read_mode: str = 'auto'
+
+        # Optional second-row summary of what the picker selected —
+        # only visible once a tournament file has been chosen.
+        self.file_summary = QLabel("")
+        self.file_summary.setStyleSheet("color: #444; padding-left: 22px;")
+        source_layout.addWidget(self.file_summary)
 
         layout.addWidget(source_group)
 
@@ -143,13 +158,40 @@ class MatchControlDialog(QDialog):
         layout.addLayout(button_layout)
 
     def _on_browse(self):
-        filename, _ = QFileDialog.getOpenFileName(
-            self, "Select Deal File", "",
-            "PBN Files (*.pbn);;BEN Files (*.ben);;All Files (*)"
-        )
-        if filename:
-            self.file_path.setText(filename)
-            self.file_radio.setChecked(True)
+        """Open the Q-Plus-style tournament-file picker (.bdlfile-f)."""
+        from .tournament_file_dialog import TournamentFileDialog
+        dlg = TournamentFileDialog(parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        result = dlg.get_result() or {}
+        path = result.get('path', '')
+        if not path:
+            return
+        self.file_path.setText(path)
+        self._first_deal = int(result.get('first_deal', 1))
+        self._deal_count = int(result.get('deal_count', 0))
+        self._read_mode = result.get('read_mode', 'auto')
+        # Bump the start-number spinbox to match the picker's pick —
+        # makes "start at deal 7 of this 24-deal file" a single
+        # round-trip through the dialog.
+        try:
+            self.start_number.setValue(self._first_deal)
+        except Exception:
+            pass
+        # Summary line under the path so the user can see at a
+        # glance what they picked.
+        if self._deal_count:
+            self.file_summary.setText(
+                f"{self._deal_count} deal"
+                f"{'s' if self._deal_count != 1 else ''}, "
+                f"starting at #{self._first_deal} "
+                f"(read mode: {self._read_mode})"
+            )
+        else:
+            self.file_summary.setText(
+                f"(deal count unknown, read mode: {self._read_mode})"
+            )
+        self.file_radio.setChecked(True)
 
     def get_settings(self) -> dict:
         """Return the configured settings"""
@@ -157,6 +199,9 @@ class MatchControlDialog(QDialog):
             'source': 'random' if self.random_radio.isChecked() else 'file',
             'start_number': self.start_number.value(),
             'file_path': self.file_path.text(),
+            'first_deal': getattr(self, '_first_deal', 1),
+            'deal_count': getattr(self, '_deal_count', 0),
+            'read_mode': getattr(self, '_read_mode', 'auto'),
             'scoring': ['rubber', 'imp', 'mp'][self.scoring_buttons.checkedId()],
             'comparison': ['closed_room', 'file', 'none'][self.comparison_buttons.checkedId()],
             'auto_advance': self.auto_advance.isChecked(),

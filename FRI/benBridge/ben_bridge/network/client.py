@@ -7,7 +7,7 @@ from PyQt6.QtNetwork import QTcpSocket, QAbstractSocket
 
 from .protocol import (
     NetworkMessage, MessageType,
-    make_connect_request, make_disconnect,
+    make_connect_request, make_disconnect, make_seat_request,
     make_heartbeat, make_heartbeat_ack,
     DEFAULT_PORT, CONNECTION_TIMEOUT_MS, HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS,
 )
@@ -32,9 +32,16 @@ class BridgeClient(QObject):
     connection_failed = pyqtSignal(str)  # reason
     message_received = pyqtSignal(object)  # NetworkMessage
     connecting = pyqtSignal()  # Emitted when connection attempt starts
+    seat_map_changed = pyqtSignal(dict)  # {seat_char: name_or_None}
+    game_starting = pyqtSignal()  # Host has closed the lobby
+    seat_request_rejected = pyqtSignal(str)  # Soft "seat_taken" rejection
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, app_version: str = ""):
         super().__init__(parent)
+
+        # Build identifier sent in CONNECT_REQUEST so the host can reject
+        # mismatched clients with code "version_mismatch".
+        self.app_version: str = (app_version or "").strip()
 
         self._socket: Optional[QTcpSocket] = None
         self._buffer = b""
@@ -46,6 +53,10 @@ class BridgeClient(QObject):
         self._my_seat: Optional[Seat] = None
         self._partner_seat: Optional[Seat] = None
         self._server_name = ""
+        # Latest SEAT_LIST broadcast from the server. Updated continuously
+        # while the lobby is open so dialogs can re-query host_seat after a
+        # late connect.
+        self._host_seat_char: str = ""
 
         # Connection state
         self._connection_pending = False
@@ -85,6 +96,11 @@ class BridgeClient(QObject):
     def server_name(self) -> str:
         """Get server player name."""
         return self._server_name
+
+    @property
+    def host_seat_char(self) -> str:
+        """Seat char of the host as reported by the latest SEAT_LIST."""
+        return self._host_seat_char
 
     @property
     def client_name(self) -> str:
@@ -146,6 +162,22 @@ class BridgeClient(QObject):
 
         self._cleanup()
 
+    def request_seat(self, seat_char: str) -> bool:
+        """Send a SEAT_REQUEST while the dialog is in lobby phase.
+
+        Bypasses the is_connected guard because the socket is open but the
+        seat handshake hasn't completed yet (waiting on CONNECT_ACCEPT
+        after this request succeeds).
+        """
+        if self._socket is None or self._socket.state() != QTcpSocket.SocketState.ConnectedState:
+            return False
+        try:
+            data = make_seat_request(seat_char).to_bytes()
+            return self._socket.write(data) != -1
+        except Exception as ex:
+            logger.error(f"Failed to send SEAT_REQUEST: {ex}")
+            return False
+
     def send_message(self, message: NetworkMessage) -> bool:
         """
         Send a message to the server.
@@ -175,11 +207,13 @@ class BridgeClient(QObject):
         )
         self._connection_timer.stop()
 
-        # Send connection request with requested seat
+        # Send connection request with requested seat + our app version so
+        # the host can reject us if the build doesn't match.
         request = make_connect_request(
             self._client_name,
             requested_seat=self._requested_seat,
             role=self._role,
+            app_version=self.app_version,
         )
         data = request.to_bytes()
         self._socket.write(data)
@@ -197,6 +231,9 @@ class BridgeClient(QObject):
         """Handle socket error."""
         if self._socket:
             error_str = self._socket.errorString()
+            print(f"[client sock_err] t={self._get_timestamp()} "
+                  f"qt_err={error} str={error_str!r}",
+                  flush=True)
             logger.error(f"Socket error: {error_str}")
 
             if self._connection_pending:
@@ -249,6 +286,12 @@ class BridgeClient(QObject):
             self.send_message(make_heartbeat_ack())
         elif message.type == MessageType.HEARTBEAT_ACK:
             self._last_heartbeat_received = self._get_timestamp()
+        elif message.type == MessageType.SEAT_LIST:
+            seats = message.payload.get("seats") or {}
+            self._host_seat_char = (message.payload.get("host_seat") or "").upper()
+            self.seat_map_changed.emit(seats)
+        elif message.type == MessageType.GAME_START:
+            self.game_starting.emit()
         else:
             # Forward other messages to the application
             self.message_received.emit(message)
@@ -278,11 +321,29 @@ class BridgeClient(QObject):
         )
 
     def _handle_connect_reject(self, message: NetworkMessage):
-        """Handle connection rejection from server."""
-        self._connection_timer.stop()
+        """Handle connection rejection from server.
+
+        A `seat_taken` code is a soft rejection: the socket stays open
+        because the server's still happy to host us — the user just
+        picked a busy seat. Emit a separate signal so the dialog can
+        keep its lobby view and offer another seat.
+        """
         payload = message.payload
+        code = (payload.get("code") or "").strip()
         reason = payload.get("reason", "Connection rejected")
         free_seats = payload.get("free_seats") or []
+
+        if code == "seat_taken":
+            if free_seats:
+                pretty = ", ".join(free_seats)
+                reason = f"{reason}. Free seats: {pretty}."
+            logger.info(f"Soft seat rejection: {reason}")
+            self.seat_request_rejected.emit(reason)
+            return
+
+        # Hard rejection (version mismatch, table full, …) — server has
+        # closed or is closing the socket; do the local cleanup too.
+        self._connection_timer.stop()
         if free_seats:
             pretty = ", ".join(free_seats)
             reason = f"{reason}. Free seats: {pretty}."
@@ -316,6 +377,7 @@ class BridgeClient(QObject):
     def _send_heartbeat(self):
         """Send heartbeat to server."""
         if self.is_connected:
+            print(f"[client hb] send t={self._get_timestamp()}", flush=True)
             self.send_message(make_heartbeat())
 
     def _check_heartbeat_timeout(self):
@@ -324,6 +386,8 @@ class BridgeClient(QObject):
             return
 
         elapsed = self._get_timestamp() - self._last_heartbeat_received
+        print(f"[client hb] check elapsed={elapsed}ms timeout={HEARTBEAT_TIMEOUT_MS}",
+              flush=True)
         if elapsed > HEARTBEAT_TIMEOUT_MS:
             logger.warning("Server heartbeat timeout")
             self._cleanup()

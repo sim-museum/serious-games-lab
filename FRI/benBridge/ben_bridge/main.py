@@ -44,8 +44,10 @@ def main():
     # Install global exception handler
     sys.excepthook = exception_hook
 
-    # Create application
-    app = QApplication(sys.argv)
+    # Create application — reuse an existing instance if one was already
+    # created earlier (e.g. by a screen-resolution probe), otherwise
+    # constructing a second QApplication causes a hard crash.
+    app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("BEN Bridge")
     app.setOrganizationName("Bridge")
     app.setApplicationVersion("1.0.0")

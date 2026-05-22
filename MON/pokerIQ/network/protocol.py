@@ -65,6 +65,17 @@ class MessageType(Enum):
     # Claude hand analysis - host computes per-player critiques, ships bundle
     HAND_ANALYSIS = auto()
 
+    # Spectator support: server pushes every active player's hole cards to a
+    # client that just folded so its God-mode display is meaningful.
+    ALL_HOLE_CARDS = auto()
+
+    # Spectator nav: server snapshots board cards as each street is dealt so
+    # folded clients can scroll back/forward through past streets.
+    BOARD_SNAPSHOT = auto()
+
+    # Host's narrative hand interpretation (the green-Claude-blocks dialog).
+    HAND_INTERPRETATION = auto()
+
     # Chat
     CHAT_MESSAGE = auto()
 
@@ -107,11 +118,17 @@ class NetworkMessage:
 
 # Helper functions for creating common messages
 
-def make_connect_request(player_name: str) -> NetworkMessage:
-    """Create a connection request message."""
+def make_connect_request(player_name: str, app_version: str = '') -> NetworkMessage:
+    """Create a connection request message.
+
+    Args:
+        player_name: Display name the joining player chose.
+        app_version: Build identifier (typically a short git commit hash) so
+            the server can reject mismatched clients.
+    """
     return NetworkMessage(
         type=MessageType.CONNECT_REQUEST,
-        payload={'player_name': player_name}
+        payload={'player_name': player_name, 'app_version': app_version}
     )
 
 
@@ -299,6 +316,19 @@ def make_hand_end(
     )
 
 
+def make_stack_update(stacks: Dict[int, float]) -> NetworkMessage:
+    """Authoritative per-seat stack values from the host.
+
+    Sent after every player action and after pot distribution at hand end so
+    guests don't have to reconstruct stacks from action amounts (which is
+    fragile — calls with amount=0, raises clamped by min-raise / stack, etc.).
+    """
+    return NetworkMessage(
+        type=MessageType.STACK_UPDATE,
+        payload={'stacks': {int(k): v for k, v in stacks.items()}}
+    )
+
+
 def make_heartbeat() -> NetworkMessage:
     """Create heartbeat message."""
     return NetworkMessage(type=MessageType.HEARTBEAT, payload={})
@@ -307,6 +337,51 @@ def make_heartbeat() -> NetworkMessage:
 def make_heartbeat_ack() -> NetworkMessage:
     """Create heartbeat acknowledgment."""
     return NetworkMessage(type=MessageType.HEARTBEAT_ACK, payload={})
+
+
+def make_all_hole_cards(cards_by_seat: Dict[int, list]) -> NetworkMessage:
+    """Reveal every active seat's hole cards to a single (folded) client.
+
+    Args:
+        cards_by_seat: {seat_index: [card_str, card_str]}
+    """
+    return NetworkMessage(
+        type=MessageType.ALL_HOLE_CARDS,
+        payload={'cards_by_seat': {int(k): list(v) for k, v in cards_by_seat.items()}}
+    )
+
+
+def make_board_snapshot(street: str, street_idx: int, board: list,
+                        action_log: list) -> NetworkMessage:
+    """Snapshot of a street the host just dealt — lets folded clients
+    navigate back and forth between past streets.
+    """
+    return NetworkMessage(
+        type=MessageType.BOARD_SNAPSHOT,
+        payload={
+            'street': street,
+            'street_idx': street_idx,
+            'board': list(board),
+            'action_log': list(action_log),
+        }
+    )
+
+
+def make_hand_interpretation(text: str, hand_number: int = 0,
+                              assists_used: Optional[Dict[str, list]] = None
+                              ) -> NetworkMessage:
+    """Host's narrative interpretation text (Hand #N Analysis) plus the
+    bright-coloured assists-used flags so all clients can render the same
+    dialog the host sees.
+    """
+    return NetworkMessage(
+        type=MessageType.HAND_INTERPRETATION,
+        payload={
+            'text': text,
+            'hand_number': hand_number,
+            'assists_used': assists_used or {},
+        }
+    )
 
 
 def make_chat_message(sender: str, text: str) -> NetworkMessage:

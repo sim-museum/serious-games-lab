@@ -36,7 +36,8 @@ class AuctionTricksDialog(QDialog):
         suit_name = suit_map.get(suit_key.upper(), 'spades')
         return get_suit_color(suit_name)
 
-    def __init__(self, parent=None, board=None, tricks=None):
+    def __init__(self, parent=None, board=None, tricks=None,
+                 viewer_seat=None, dummy_seat=None):
         super().__init__(parent)
         self.setWindowTitle("Record (current)")
         self.setMinimumWidth(650)
@@ -44,15 +45,34 @@ class AuctionTricksDialog(QDialog):
         self.resize(700, 650)
         apply_dialog_style(self)
 
-        # Allow user to move the dialog (not locked to center)
+        # Detach from the parent window: Qt.Dialog is a "tool" window
+        # that some window managers (Mutter / KWin) keep glued to the
+        # parent's screen, so it can't be dragged onto a second monitor.
+        # Promote to a real top-level Qt.Window with min/max/close
+        # buttons; the caller is expected to use show() instead of
+        # exec() so the user can interact with the main window in
+        # parallel. Qt.WA_DeleteOnClose makes sure each open/close
+        # cycle still cleans up properly.
         self.setWindowFlags(
-            Qt.WindowType.Dialog |
+            Qt.WindowType.Window |
             Qt.WindowType.WindowTitleHint |
+            Qt.WindowType.WindowSystemMenuHint |
+            Qt.WindowType.WindowMinMaxButtonsHint |
             Qt.WindowType.WindowCloseButtonHint
         )
+        self.setModal(False)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
 
         self.board = board
         self.tricks = tricks or []
+        # Seats whose hole cards the viewer is allowed to see — used
+        # to filter the "Cards still out" panel down to cards the
+        # viewer can't already see (i.e. not in their hand or
+        # dummy's hand). Both default to None, which means "no
+        # filtering — show everything"; the main window passes its
+        # local seat + the revealed dummy when it instantiates us.
+        self.viewer_seat = viewer_seat
+        self.dummy_seat = dummy_seat
 
         self._setup_ui()
 
@@ -127,7 +147,96 @@ class AuctionTricksDialog(QDialog):
 
             layout.addWidget(tricks_frame)
 
+        # Outstanding cards by suit — useful for spotting "I hold all
+        # the remaining diamonds" situations at a glance.
+        if self.board is not None:
+            remaining_frame = self._build_remaining_frame()
+            if remaining_frame is not None:
+                layout.addWidget(remaining_frame)
+
         layout.addStretch()
+
+    def _build_remaining_frame(self):
+        """Build the 'Cards still out' frame, one row per suit listing
+        ranks not yet played AND not visible in the viewer's own hand
+        or dummy's hand. Returns None if the board can't supply the
+        data.
+
+        Filtering out visible cards is the point: the viewer can see
+        their hole cards and (after the opening lead) dummy's, so
+        listing those again is busywork. What's actually useful is
+        which cards are still in OPPONENTS' hands.
+        """
+        try:
+            remaining = self.board.remaining_cards_by_suit()
+        except AttributeError:
+            return None
+        except Exception:
+            return None
+        if not remaining:
+            return None
+
+        # Build the set of (suit, rank) cards the viewer can already
+        # see — their own hand plus dummy when revealed. Filter
+        # those out of every suit's rank list.
+        visible = set()
+        for s in (self.viewer_seat, self.dummy_seat):
+            if s is None:
+                continue
+            try:
+                hand = self.board.hands.get(s) if self.board else None
+            except Exception:
+                hand = None
+            if hand is None:
+                continue
+            for c in getattr(hand, 'cards', []) or []:
+                visible.add((c.suit, c.rank))
+        if visible:
+            remaining = {
+                suit: [r for r in ranks
+                       if (suit, r) not in visible]
+                for suit, ranks in remaining.items()
+            }
+
+        from ben_backend.models import Suit
+        frame = QFrame()
+        frame.setStyleSheet(
+            "QFrame { background-color: #f0e8e8; border: 1px solid #a0a0a0;"
+            " border-radius: 4px; }"
+        )
+        v = QVBoxLayout(frame)
+        fs = self.SYMBOL_FONT_SIZE
+        # Title reflects what's actually being listed: when we
+        # filter against the viewer + dummy hands, the panel only
+        # shows cards in opponents' hands.
+        title_text = (
+            "Cards in opponents' hands" if visible
+            else "Cards still out"
+        )
+        title = QLabel(
+            f'<b style="font-size:{fs}px">{title_text}</b>'
+        )
+        v.addWidget(title)
+
+        suit_order = [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]
+        suit_names_full = {
+            Suit.SPADES: 'SPADES', Suit.HEARTS: 'HEARTS',
+            Suit.DIAMONDS: 'DIAMONDS', Suit.CLUBS: 'CLUBS',
+        }
+        for suit in suit_order:
+            ranks = remaining.get(suit, [])
+            symbol = self.SUIT_SYMBOLS.get(suit_names_full[suit], '?')
+            color = self._get_suit_color(suit_names_full[suit])
+            # Rank.to_char() already produces 'A','K','Q','J','T','9'…'2'
+            # in declaration order, so the joined string reads high → low.
+            rank_chars = ' '.join(r.to_char() for r in ranks) if ranks else '—'
+            row = QLabel(
+                f'<span style="color:{color};font-size:{fs}px">{symbol}</span>'
+                f'<span style="font-size:{fs}px">  {rank_chars}'
+                f'   <span style="color:#666">({len(ranks)})</span></span>'
+            )
+            v.addWidget(row)
+        return frame
 
     def _populate_auction(self):
         """Fill in the auction bids."""
@@ -259,11 +368,26 @@ class AuctionTricksDialog(QDialog):
         return f'<span style="font-size:{fs}px">{str(card)}</span>'
 
     def _rank_to_char(self, rank):
-        """Convert rank to display character."""
-        if hasattr(rank, 'value'):
-            rank_val = rank.value
-        else:
-            rank_val = rank
+        """Convert rank to display character.
 
-        rank_chars = {12: 'A', 11: 'K', 10: 'Q', 9: 'J', 8: 'T'}
-        return rank_chars.get(rank_val, str(rank_val + 2))
+        The model's Rank IntEnum is ace-high-low (ACE=0, KING=1, …,
+        TWO=12) so its value is NOT the printed rank. Earlier this
+        method assumed the opposite mapping (12=A) which made every
+        card render with the wrong rank: an Ace came out as "2", a
+        Five came out as "J", and the Cards-still-out list ended up
+        inconsistent with the played-tricks display. Just delegate
+        to Rank.to_char() which already uses the canonical
+        'AKQJT98765432' table.
+        """
+        if hasattr(rank, 'to_char'):
+            try:
+                return rank.to_char()
+            except Exception:
+                pass
+        # Fall-through for plain ints / strings — try the model's
+        # Rank class so the same canonical table is used.
+        try:
+            from ben_backend.models import Rank
+            return Rank(int(rank)).to_char()
+        except Exception:
+            return str(rank)

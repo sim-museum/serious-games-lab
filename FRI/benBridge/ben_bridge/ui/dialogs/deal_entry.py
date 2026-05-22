@@ -83,7 +83,7 @@ class DealEntryDialog(QDialog):
         self.format_buttons.addButton(self.code_radio, 1)
         format_layout.addWidget(self.code_radio)
 
-        code_hint = QLabel("  Example: 1a2B3c4D5e6F7g8H (base62) or large decimal number")
+        code_hint = QLabel("  Example: 6agBeN!sWCn#IdjB (base-72) or large decimal number")
         code_hint.setStyleSheet("color: #606060; font-size: 11px;")
         format_layout.addWidget(code_hint)
 
@@ -106,7 +106,7 @@ class DealEntryDialog(QDialog):
         self.deal_input.setPlaceholderText(
             "Enter deal in selected format...\n\n"
             "PBN: N:AKQ2.KJ3.T92.A85 J74.A95.Q84.KQ73 T986.QT2.AK5.J42 53.8764.J763.T96\n\n"
-            "Code: Pavlicek number or base62 code\n\n"
+            "Code: Pavlicek number or base-72 code\n\n"
             "Hands are separated by spaces, suits by dots (SHDC order)"
         )
         self.deal_input.setMinimumHeight(120)

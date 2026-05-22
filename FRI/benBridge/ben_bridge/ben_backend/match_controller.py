@@ -3,16 +3,17 @@ Match Controller - Controls teams matches with Open and Closed rooms.
 """
 
 import copy
+import threading
 from typing import Optional, Dict, List
 from dataclasses import dataclass
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import QThread, pyqtSignal, QEventLoop, QTimer
 
 from .models import (
     BoardState, Seat, Bid, Card, Contract, Trick, Hand,
     BenTable, BenBoardRun, BenTeamsMatch
 )
-from .pavlicek import deal_to_number, format_deal_base62
+from .pavlicek import deal_to_number, format_deal_base72
 
 
 class ClosedRoomWorker(QThread):
@@ -58,7 +59,7 @@ class ClosedRoomWorker(QThread):
         for seat, hand in board.hands.items():
             original_hands[seat] = Hand(cards=list(hand.cards))
 
-        pavlicek_id = format_deal_base62(deal_to_number(original_hands))
+        pavlicek_id = format_deal_base72(deal_to_number(original_hands))
 
         # Create result object
         result = BenBoardRun(
@@ -76,9 +77,24 @@ class ClosedRoomWorker(QThread):
         consecutive_passes = 0
         first_bid_made = False
 
+        # Resolve the bidder once: BEN by default, native engine if the
+        # preference is set. Closed-room replays the same kind of auction
+        # the user is bidding live, so we honour the toggle here too.
+        bidder = self.engine
+        try:
+            from .config import get_config_manager
+            prefs = get_config_manager().config.preferences
+            if getattr(prefs, 'bidding_engine', 'BEN') == 'native':
+                from .native_bidder import NativeBiddingEngine
+                bidder = NativeBiddingEngine(
+                    system=getattr(prefs, 'native_bidding_system', 'SAYC')
+                )
+        except Exception:
+            bidder = self.engine
+
         while not self._stop_requested:
             # Get bid from engine
-            response = self.engine.get_bid(board, current_bidder)
+            response = bidder.get_bid(board, current_bidder)
             bid = response.action
 
             board.auction.append(bid)
@@ -255,8 +271,21 @@ class TeamsMatchController:
     def __init__(self, engine, match: BenTeamsMatch):
         self.engine = engine
         self.match = match
-        self.closed_room_worker: Optional[ClosedRoomWorker] = None
+        # Keep a strong reference to every in-flight worker so Python
+        # can't garbage-collect a QThread mid-run (the worker → finished
+        # lambda chain only references the controller; without this dict
+        # the worker's Python wrapper was eligible for GC the moment
+        # self.closed_room_worker was reassigned by an overlapping call,
+        # which crashed Qt). Indexed by board_num so we can detect
+        # double-starts.
+        self._workers: Dict[int, 'ClosedRoomWorker'] = {}
         self._closed_room_callbacks: Dict[int, callable] = {}
+        # Mutations to match.board_runs happen on the GUI thread (open
+        # room) and on a closed-room worker thread (_on_closed_room_
+        # complete is invoked via Qt's queued signal so it lands on the
+        # GUI thread, but we hold the lock anyway to make reads from any
+        # thread safe).
+        self._runs_lock = threading.RLock()
 
     def start_board(self, board_num: int, board: BoardState) -> BenBoardRun:
         """Start a new board at the Open Room.
@@ -273,7 +302,7 @@ class TeamsMatchController:
         for seat, hand in board.hands.items():
             original_hands[seat] = Hand(cards=list(hand.cards))
 
-        pavlicek_id = format_deal_base62(deal_to_number(original_hands))
+        pavlicek_id = format_deal_base72(deal_to_number(original_hands))
 
         # Create board run for Open Room
         open_run = BenBoardRun(
@@ -330,22 +359,62 @@ class TeamsMatchController:
 
         open_run.played = True
 
+    @property
+    def closed_room_worker(self):
+        """Backwards-compat accessor used by callers (and stop_closed_
+        room) that expect a single worker handle. Returns the most
+        recently started worker — multiple workers can be in flight
+        because start_closed_room_async now refuses to overwrite an
+        active board but a different board's worker may still run."""
+        with self._runs_lock:
+            for w in reversed(list(self._workers.values())):
+                if w.isRunning():
+                    return w
+            return None
+
     def start_closed_room_async(self, board_num: int, callback: callable = None):
         """Start Closed Room play in background.
 
         Args:
             board_num: Board number
             callback: Optional callback(BenBoardRun) when complete
+
+        Idempotent for the same board_num: if a worker is already
+        running for this board (e.g. _show_result fired twice), the
+        new callback is appended and the existing worker's finished
+        signal will call both. Different board numbers run in
+        parallel.
         """
-        if board_num not in self.match.board_runs:
-            return
+        with self._runs_lock:
+            if board_num not in self.match.board_runs:
+                return
+            open_run = self.match.board_runs[board_num].get(BenTable.OPEN)
+            if not open_run:
+                return
 
-        open_run = self.match.board_runs[board_num].get(BenTable.OPEN)
-        if not open_run:
-            return
+            # Don't start a second worker for the same board.
+            existing = self._workers.get(board_num)
+            if existing is not None and existing.isRunning():
+                if callback is not None:
+                    chain = self._closed_room_callbacks.get(board_num)
+                    if chain is None:
+                        self._closed_room_callbacks[board_num] = callback
+                    else:
+                        # Compose so both fire.
+                        def _both(result, a=chain, b=callback):
+                            try:
+                                a(result)
+                            except Exception:
+                                pass
+                            try:
+                                b(result)
+                            except Exception:
+                                pass
+                        self._closed_room_callbacks[board_num] = _both
+                return
 
-        # Create board from original hands
-        from .models import BoardState, Vulnerability
+        # Create board from original hands.
+        from .models import BoardState
         board = BoardState(
             board_number=board_num,
             hands=copy.deepcopy(open_run.original_hands)
@@ -354,60 +423,146 @@ class TeamsMatchController:
         board.dealer = dealer
         board.vulnerability = vuln
 
-        # Store callback
+        # Register callback BEFORE starting so a fast finish doesn't
+        # race the assignment.
         if callback:
             self._closed_room_callbacks[board_num] = callback
 
-        # Create and start worker
-        self.closed_room_worker = ClosedRoomWorker(
+        worker = ClosedRoomWorker(
             self.engine, board,
             self.match.ns_bidding_system,
-            self.match.ew_bidding_system
+            self.match.ew_bidding_system,
         )
-        self.closed_room_worker.finished.connect(
-            lambda result: self._on_closed_room_complete(board_num, result)
+        with self._runs_lock:
+            self._workers[board_num] = worker
+        worker.finished.connect(
+            lambda result, bn=board_num: self._on_closed_room_complete(
+                bn, result)
         )
-        self.closed_room_worker.start()
+        # An error during play should still clean the worker out of
+        # the registry so the next start_closed_room_async for this
+        # board isn't blocked thinking the old one is still running.
+        worker.error.connect(
+            lambda _msg, bn=board_num: self._on_closed_room_error(bn))
+        worker.start()
 
     def _on_closed_room_complete(self, board_num: int, result: BenBoardRun):
-        """Handle completion of Closed Room play."""
-        if board_num not in self.match.board_runs:
-            self.match.board_runs[board_num] = {}
-
-        self.match.board_runs[board_num][BenTable.CLOSED] = result
-
-        # Call callback if registered
-        callback = self._closed_room_callbacks.pop(board_num, None)
+        """Handle completion of Closed Room play. Runs on the GUI
+        thread because Qt's queued signal delivery hops from the
+        worker thread back to the controller's thread; the lock is
+        belt-and-braces in case a caller wires up a direct
+        (non-queued) connection."""
+        with self._runs_lock:
+            if board_num not in self.match.board_runs:
+                self.match.board_runs[board_num] = {}
+            self.match.board_runs[board_num][BenTable.CLOSED] = result
+            callback = self._closed_room_callbacks.pop(board_num, None)
+            # Drop the worker handle once it's done so the dict
+            # doesn't accumulate dead QThreads.
+            self._workers.pop(board_num, None)
         if callback:
-            callback(result)
+            try:
+                callback(result)
+            except Exception:
+                pass
+
+    def _on_closed_room_error(self, board_num: int):
+        """Worker emitted an error — clear bookkeeping so the next
+        start_closed_room_async for this board can proceed."""
+        with self._runs_lock:
+            self._workers.pop(board_num, None)
+            self._closed_room_callbacks.pop(board_num, None)
+
+    def wait_for_closed_room(self, board_num: int,
+                              timeout_ms: int = 60000) -> bool:
+        """Block until the closed room for ``board_num`` is complete,
+        keeping the Qt event loop pumping so signals can deliver and
+        the UI stays responsive. Returns True on completion, False
+        on timeout. Replaces the old tight polling loops in
+        main_window._show_result / _show_local_closed_room.
+
+        Uses a private QEventLoop so we don't have to spin on
+        QApplication.processEvents + time.sleep, which races the
+        worker's finished signal (the signal can land between an
+        is_board_complete() check and the next processEvents pump,
+        leaving the loop stuck until the next 100 ms tick).
+        """
+        if self.is_board_complete(board_num):
+            return True
+        loop = QEventLoop()
+        timer = QTimer()
+        timer.setSingleShot(True)
+
+        def _stop_loop(_result=None):
+            if loop.isRunning():
+                loop.quit()
+
+        # Connect to the worker if there is one. Falls back to the
+        # callback chain so the same wait works whether the caller
+        # supplied a callback or not.
+        with self._runs_lock:
+            worker = self._workers.get(board_num)
+            prev_cb = self._closed_room_callbacks.get(board_num)
+        if worker is not None and worker.isRunning():
+            worker.finished.connect(_stop_loop)
+            # If the worker errors out, also unblock so the caller
+            # sees an incomplete board rather than a 60 s hang.
+            worker.error.connect(_stop_loop)
+        else:
+            # No worker — chain the existing callback so we still
+            # exit the loop when whatever runs the closed room calls
+            # _on_closed_room_complete.
+            def _new_cb(result, prev=prev_cb):
+                if prev is not None:
+                    try:
+                        prev(result)
+                    except Exception:
+                        pass
+                _stop_loop()
+            with self._runs_lock:
+                self._closed_room_callbacks[board_num] = _new_cb
+        timer.timeout.connect(_stop_loop)
+        timer.start(max(1, int(timeout_ms)))
+        loop.exec()
+        timer.stop()
+        return self.is_board_complete(board_num)
 
     def get_closed_room_result(self, board_num: int) -> Optional[BenBoardRun]:
         """Get the Closed Room result for a board if available."""
-        if board_num not in self.match.board_runs:
-            return None
-        return self.match.board_runs[board_num].get(BenTable.CLOSED)
+        with self._runs_lock:
+            if board_num not in self.match.board_runs:
+                return None
+            return self.match.board_runs[board_num].get(BenTable.CLOSED)
 
     def get_open_room_result(self, board_num: int) -> Optional[BenBoardRun]:
         """Get the Open Room result for a board if available."""
-        if board_num not in self.match.board_runs:
-            return None
-        return self.match.board_runs[board_num].get(BenTable.OPEN)
+        with self._runs_lock:
+            if board_num not in self.match.board_runs:
+                return None
+            return self.match.board_runs[board_num].get(BenTable.OPEN)
 
     def stop_closed_room(self):
-        """Stop any running closed room worker."""
-        if self.closed_room_worker and self.closed_room_worker.isRunning():
-            self.closed_room_worker.stop()
-            self.closed_room_worker.wait(2000)
+        """Stop every running closed-room worker (used when the match
+        is torn down). Iterates a snapshot of the worker dict so
+        finished-signal cleanup mutating the dict mid-loop is safe."""
+        with self._runs_lock:
+            snapshot = list(self._workers.values())
+        for w in snapshot:
+            try:
+                if w.isRunning():
+                    w.stop()
+                    w.wait(2000)
+            except RuntimeError:
+                pass
 
     def is_board_complete(self, board_num: int) -> bool:
         """Check if both rooms have completed for a board."""
-        if board_num not in self.match.board_runs:
-            return False
-
-        runs = self.match.board_runs[board_num]
-        open_run = runs.get(BenTable.OPEN)
-        closed_run = runs.get(BenTable.CLOSED)
-
+        with self._runs_lock:
+            if board_num not in self.match.board_runs:
+                return False
+            runs = self.match.board_runs[board_num]
+            open_run = runs.get(BenTable.OPEN)
+            closed_run = runs.get(BenTable.CLOSED)
         return (open_run is not None and open_run.played and
                 closed_run is not None and closed_run.played)
 

@@ -58,24 +58,39 @@ class EngineResponse:
 
 class BridgeEngine:
     """
-    Bridge engine wrapper around BEN.
-    Supports direct Python API mode.
-    Thread-safe via internal lock.
+    Bridge engine — NN-free. Bidding goes through
+    `native_bidder.NativeBiddingEngine` (rule-based, system-driven);
+    opening leads through `native_lead.select_opening_lead`;
+    follow-on cards through `get_mc_card_play` (Monte Carlo + DDS).
+    The only external dependency is the DDS solver, loaded once
+    in `initialize()`.
     """
 
-    # Map UI system names to BEN config files
+    # The system names the native bidder understands. Kept as a
+    # bare list so callers asking "what systems do you support?"
+    # get a stable answer; the BEN config-file mapping is gone.
     SYSTEM_CONFIGS = {
-        'SAYC': 'BEN-Sayc.conf',
-        '2/1': 'BEN-21GF.conf',
-        '21GF': 'BEN-21GF.conf',
-        '2/1GF': 'BEN-21GF.conf',
-        'GIB': 'GIB-BBO.conf',
-        'DEFAULT': 'default.conf',
+        'SAYC': 'SAYC',
+        '2/1': '2/1',
+        '21GF': '21GF',
+        '2/1GF': '2/1GF',
+        'Precision90M': 'Precision90M',
+        'Precision90P': 'Precision90P',
+        'Precision70': 'Precision70',
+        'StandardAcol': 'StandardAcol',
+        'StandardFrench': 'StandardFrench',
+        'DEFAULT': 'SAYC',
     }
 
     def __init__(self, config_path: Optional[str] = None, verbose: bool = False):
         import threading
-        self._lock = threading.Lock()  # Thread-safety lock
+        # Re-entrant lock so the MC path can call get_card_play() as a
+        # fallback without deadlocking on itself. The original Lock() was
+        # non-reentrant; whenever get_mc_card_play hit one of its
+        # "sampling failed → return self.get_card_play(...)" branches,
+        # the inner call tried to retake the lock and the worker thread
+        # parked on it forever (see freeze_reports/freeze-*-?.txt).
+        self._lock = threading.RLock()
         self.verbose = verbose
         self.models = None
         self.sampler = None
@@ -108,122 +123,85 @@ class BridgeEngine:
         return None
 
     def initialize(self) -> bool:
-        """Initialize the BEN engine with models"""
+        """Initialize the engine. Only the DDS solver is required —
+        bidding goes through `native_bidder.NativeBiddingEngine`, the
+        opening lead through `native_lead`, and the rest of card
+        play through `get_mc_card_play` (MC + DDS, no NN). No
+        TensorFlow / Keras / NN models are loaded.
+        """
         if self._initialized:
             return True
 
         try:
             ben_path = self._find_ben_path()
             if not ben_path:
-                print("Could not find BEN installation")
+                print("Could not find BEN installation (needed for DDS)")
                 return False
 
-            # Add BEN src to path
+            # Add BEN src to path so the bundled ddsolver wrapper imports.
             src_path = os.path.join(ben_path, 'src')
             if src_path not in sys.path:
                 sys.path.insert(0, src_path)
 
-            # Change to BEN src directory for model loading
             original_cwd = os.getcwd()
             os.chdir(src_path)
-
             try:
-                import conf
-                from nn.models_tf2 import Models
-                from sample import Sample
                 from ddsolver import ddsolver
-
-                # Load configuration
-                if self.config_path and os.path.exists(self.config_path):
-                    self.config = conf.load(self.config_path)
-                else:
-                    default_conf = os.path.join(src_path, 'config', 'default.conf')
-                    self.config = conf.load(default_conf)
-
-                # Load models
-                self.models = Models.from_conf(self.config, ben_path)
-
-                # Disable Windows-only features on Linux
-                if sys.platform != 'win32':
-                    self.models.pimc_use_declaring = False
-                    self.models.pimc_use_defending = False
-                    self.models.use_bba = False
-                    self.models.consult_bba = False
-                    self.models.use_bba_rollout = False
-                    self.models.use_bba_to_count_aces = False
-                    self.models.use_suitc = False
-
-                # Initialize sampler
-                self.sampler = Sample.from_conf(self.config, self.verbose)
-
-                # Initialize DDS solver
                 self.dds = ddsolver.DDSolver()
-
+                self.models = None
+                self.sampler = None
+                self.config = None
                 self._initialized = True
-
                 if self.verbose:
-                    print(f"BEN Engine initialized successfully")
+                    print("Engine initialized (DDS only, NN-free).")
                     print(f"DDS Solver version: {self.dds.version()}")
-
             finally:
                 os.chdir(original_cwd)
-
             return True
 
         except Exception as e:
-            print(f"Failed to initialize BEN engine: {e}")
+            print(f"Failed to initialize engine: {e}")
             import traceback
             traceback.print_exc()
             return False
 
     def set_bidding_system(self, system_name: str) -> bool:
+        """Set the bidding system name.
+
+        Previously this method reloaded BEN's per-system NN config
+        (`config/SAYC.conf`, `config/2over1.conf`, etc.). With the
+        native rule-based bidder there is no per-system config —
+        `NativeBiddingEngine` reads the system from preferences at
+        each `get_bid` call. We just record the name.
         """
-        Set the bidding system by reinitializing with appropriate config.
-
-        Args:
-            system_name: System name ('SAYC', '2/1', 'GIB', etc.)
-
-        Returns:
-            True if successful, False otherwise
-        """
-        system_upper = system_name.upper().replace(' ', '')
-
-        # Map common names
-        if system_upper in ('21', '2OVER1', 'TWOOVERONE'):
-            system_upper = '2/1'
-
-        config_name = self.SYSTEM_CONFIGS.get(system_upper)
-        if not config_name:
-            if self.verbose:
-                print(f"Unknown system '{system_name}', using default")
-            config_name = 'default.conf'
-
-        ben_path = self._find_ben_path()
-        if not ben_path:
-            return False
-
-        new_config_path = os.path.join(ben_path, 'src', 'config', config_name)
-
-        # Check if config file exists
-        if not os.path.exists(new_config_path):
-            if self.verbose:
-                print(f"Config file not found: {new_config_path}, using default")
-            new_config_path = os.path.join(ben_path, 'src', 'config', 'default.conf')
-
-        # If same config, no need to reinitialize
-        if self._initialized and self.config_path == new_config_path:
-            return True
-
-        # Reinitialize with new config
-        self.shutdown()
-        self.config_path = new_config_path
         self.current_system = system_name
-
-        success = self.initialize()
-        if success and self.verbose:
-            print(f"Bidding system set to: {system_name} ({config_name})")
+        if self.verbose:
+            print(f"Bidding system set to: {system_name}")
 
         return success
+
+    @staticmethod
+    def _all_hands_visible(board: BoardState) -> bool:
+        """Returns True iff every seat has either remaining cards or
+        cards already played in this deal. A seat with 0 remaining
+        AND 0 played has never been seen by the engine — that's the
+        One-Player Mode case where the engine must refuse any
+        request that would otherwise peek at four hands."""
+        played_by_seat = {s: 0 for s in Seat}
+        for trick in board.tricks:
+            for i, _c in enumerate(trick.cards):
+                seat = Seat((trick.leader + i) % 4)
+                played_by_seat[seat] += 1
+        if board.current_trick is not None:
+            for i, _c in enumerate(board.current_trick.cards):
+                seat = Seat((board.current_trick.leader + i) % 4)
+                played_by_seat[seat] += 1
+        for seat in Seat:
+            hand = board.hands.get(seat)
+            remaining = len(hand.cards) if hand else 0
+            if remaining + played_by_seat[seat] == 0:
+                return False
+        return True
 
     def get_available_systems(self) -> List[str]:
         """Get list of available bidding systems."""
@@ -234,227 +212,99 @@ class BridgeEngine:
         return self.current_system
 
     def get_bid(self, board: BoardState, seat: Seat) -> EngineResponse:
+        """Return the native rule-based bidder's pick.
+
+        The deployed UI already routes bidding directly to
+        `NativeBiddingEngine` (see `BidWorker` in `main_window.py`)
+        when `prefs.bidding_engine == "native"`, which is the
+        default. This method is the engine-level fallback used by
+        `match_controller` and other callers — make it route to
+        the same native engine so we have a single source of truth
+        for "what does ben_bridge bid?".
         """
-        Get a bid recommendation from BEN for the given position.
+        try:
+            from . import native_bidder
+            from .config import get_config_manager
 
-        Args:
-            board: Current board state
-            seat: Seat to get bid for
-
-        Returns:
-            EngineResponse with recommended bid and analysis
-        """
-        if not self._initialized:
-            if not self.initialize():
-                return EngineResponse(action=Bid.make_pass(), who="Error")
-
-        with self._lock:  # Thread-safety lock
+            # Pick the configured Precision90M / SAYC / etc. system
+            # from preferences. Falls back to SAYC if nothing is set.
+            sys_name = "SAYC"
             try:
-                ben_path = self._find_ben_path()
-                src_path = os.path.join(ben_path, 'src')
-                original_cwd = os.getcwd()
-                os.chdir(src_path)
-
-                try:
-                    import botbidder
-                    from bidding.binary import DealData
-
-                    # Get hand for this seat
-                    hand = board.hands.get(seat)
-                    if not hand:
-                        return EngineResponse(action=Bid.make_pass(), who="NoHand")
-
-                    hand_str = hand.to_pbn()
-
-                    # Setup vulnerability
-                    vuln = [
-                        board.vulnerability.is_vulnerable(Seat.NORTH),
-                        board.vulnerability.is_vulnerable(Seat.EAST)
-                    ]
-
-                    # Create bot bidder
-                    bot = botbidder.BotBid(
-                        vuln=vuln,
-                        hand_str=hand_str,
-                        models=self.models,
-                        sampler=self.sampler,
-                        seat=seat.value,
-                        dealer=board.dealer.value,
-                        ddsolver=self.dds,
-                        bba_is_controlling=False,
-                        verbose=self.verbose
-                    )
-
-                    # Build auction for BEN
-                    auction = self._build_ben_auction(board)
-
-                    # Get bid
-                    bid_resp = bot.bid(auction)
-
-                    # Convert response
-                    bid = Bid.from_str(bid_resp.bid)
-
-                    candidates = []
-                    for cand in bid_resp.candidates:
-                        candidates.append(BidCandidate(
-                            bid=Bid.from_str(cand.bid),
-                            score=cand.insta_score or 0.0,
-                            expected_score=cand.expected_score,
-                            alert=cand.alert or False,
-                            explanation=cand.explanation or ""
-                        ))
-
-                    return EngineResponse(
-                        action=bid,
-                        candidates=candidates,
-                        quality=bid_resp.quality or 0.0,
-                        who=bid_resp.who or "BEN",
-                        samples=bid_resp.samples,
-                        hcp_estimate=list(bid_resp.hcp) if hasattr(bid_resp.hcp, '__iter__') else None,
-                        shape_estimate=list(bid_resp.shape) if hasattr(bid_resp.shape, '__iter__') else None
-                    )
-
-                finally:
-                    os.chdir(original_cwd)
-
-            except Exception as e:
-                if self.verbose:
-                    print(f"Error getting bid: {e}")
-                    import traceback
-                    traceback.print_exc()
-                return EngineResponse(action=Bid.make_pass(), who="Error")
+                prefs = get_config_manager().config.preferences
+                sys_name = getattr(prefs, "native_bidding_system",
+                                   "SAYC") or "SAYC"
+            except Exception:
+                pass
+            ne = native_bidder.NativeBiddingEngine(system=sys_name)
+            return ne.get_bid(board, seat)
+        except Exception as e:
+            if self.verbose:
+                print(f"Error getting bid: {e}")
+                import traceback
+                traceback.print_exc()
+            return EngineResponse(action=Bid.make_pass(), who="Error")
 
     def get_opening_lead(self, board: BoardState) -> EngineResponse:
-        """Get opening lead recommendation from BEN"""
-        if not self._initialized:
-            if not self.initialize():
-                return EngineResponse(action=None, who="Error")
+        """Rule-based opening lead — Q-Plus-style, no NN.
 
-        with self._lock:  # Thread-safety lock
-            try:
-                ben_path = self._find_ben_path()
-                src_path = os.path.join(ben_path, 'src')
-                original_cwd = os.getcwd()
-                os.chdir(src_path)
-
-                try:
-                    import botopeninglead
-
-                    if not board.contract:
-                        return EngineResponse(action=None, who="NoContract")
-
-                    # Leader is left of declarer
-                    leader = board.contract.declarer.next()
-                    hand = board.hands.get(leader)
-                    if not hand:
-                        return EngineResponse(action=None, who="NoHand")
-
-                    hand_str = hand.to_pbn()
-
-                    vuln = [
-                        board.vulnerability.is_vulnerable(Seat.NORTH),
-                        board.vulnerability.is_vulnerable(Seat.EAST)
-                    ]
-
-                    bot = botopeninglead.BotLead(
-                        vuln=vuln,
-                        hand_str=hand_str,
-                        models=self.models,
-                        sampler=self.sampler,
-                        seat=leader.value,
-                        dealer=board.dealer.value,
-                        ddsolver=self.dds,
-                        verbose=self.verbose
-                    )
-
-                    auction = self._build_ben_auction(board)
-                    card_resp = bot.find_opening_lead(auction, {})
-
-                    card = Card.from_code52(card_resp.card.code())
-
-                    candidates = []
-                    for cand in card_resp.candidates:
-                        candidates.append(CardCandidate(
-                            card=Card.from_code52(cand.card.code()),
-                            score=cand.insta_score or 0.0,
-                            expected_tricks=cand.expected_tricks_sd,
-                            expected_score=cand.expected_score_sd
-                        ))
-
-                    return EngineResponse(
-                        action=card,
-                        candidates=candidates,
-                        quality=card_resp.quality or 0.0,
-                        who=card_resp.who or "BEN",
-                        samples=card_resp.samples
-                    )
-
-                finally:
-                    os.chdir(original_cwd)
-
-            except Exception as e:
-                if self.verbose:
-                    print(f"Error getting opening lead: {e}")
-                    import traceback
-                    traceback.print_exc()
-                return EngineResponse(action=None, who="Error")
+        Suit selection from `_score_suit_for_lead` (length, sequence,
+        partner's suit, avoid opp-bid suits, etc.); spot card from
+        `_pick_card_from_suit` (top of sequence, 4th best, MUD).
+        See `ben_backend.native_lead` for the full rule book.
+        """
+        try:
+            from . import native_lead
+            if not board.contract:
+                return EngineResponse(action=None, who="NoContract")
+            leader = board.contract.declarer.next()
+            hand = board.hands.get(leader)
+            if not hand:
+                return EngineResponse(action=None, who="NoHand")
+            decision = native_lead.select_opening_lead(
+                hand=hand,
+                contract=board.contract,
+                auction=board.auction,
+                dealer=board.dealer,
+                leader=leader,
+                vulnerability=board.vulnerability,
+            )
+            return EngineResponse(
+                action=decision.card,
+                who="native-lead",
+                candidates=[CardCandidate(card=decision.card, score=1.0)],
+            )
+        except Exception as e:
+            if self.verbose:
+                print(f"Error getting opening lead: {e}")
+                import traceback
+                traceback.print_exc()
+            return EngineResponse(action=None, who="Error")
 
     def get_card_play(self, board: BoardState, seat: Seat,
                       current_trick_cards: List[Card] = None,
                       played_tricks: List[Trick] = None) -> EngineResponse:
-        """Get card play recommendation from BEN"""
-        if not self._initialized:
-            if not self.initialize():
-                return EngineResponse(action=None, who="Error")
+        """Last-resort card picker — first legal card.
 
-        with self._lock:  # Thread-safety lock
-            try:
-                ben_path = self._find_ben_path()
-                src_path = os.path.join(ben_path, 'src')
-                original_cwd = os.getcwd()
-                os.chdir(src_path)
-
-                try:
-                    import botcardplayer
-
-                    hand = board.hands.get(seat)
-                    if not hand:
-                        return EngineResponse(action=None, who="NoHand")
-
-                    # For simplicity, return first legal card
-                    # Full implementation would use botcardplayer.CardPlayer
-                    lead_suit = None
-                    if current_trick_cards:
-                        lead_suit = current_trick_cards[0].suit
-
-                    legal_cards = []
-                    if lead_suit is not None:
-                        suit_cards = hand.get_suit_cards(lead_suit)
-                        if suit_cards:
-                            legal_cards = suit_cards
-                        else:
-                            legal_cards = hand.cards[:]
-                    else:
-                        legal_cards = hand.cards[:]
-
-                    if not legal_cards:
-                        return EngineResponse(action=None, who="NoCards")
-
-                    # Return first legal card (simplified)
-                    return EngineResponse(
-                        action=legal_cards[0],
-                        candidates=[CardCandidate(card=c, score=1.0/len(legal_cards))
-                                   for c in legal_cards],
-                        who="BEN"
-                    )
-
-                finally:
-                    os.chdir(original_cwd)
-
-            except Exception as e:
-                if self.verbose:
-                    print(f"Error getting card play: {e}")
-                return EngineResponse(action=None, who="Error")
+        The real card-play engine is `get_mc_card_play` (the UI's
+        `use_monte_carlo_play=True` default). This method exists
+        only as the bottom-of-stack fallback that `get_mc_card_play`
+        falls through to when its DDS solve fails — recursing back
+        into MC here would loop. Keep it as a pure rule-based
+        "play any legal card so the deal advances" stub.
+        """
+        hand = board.hands.get(seat)
+        if not hand or not hand.cards:
+            return EngineResponse(action=None, who="NoCards")
+        lead_suit = (current_trick_cards[0].suit
+                     if current_trick_cards else None)
+        if lead_suit is not None:
+            suit_cards = [c for c in hand.cards if c.suit == lead_suit]
+            legal_cards = suit_cards if suit_cards else hand.cards[:]
+        else:
+            legal_cards = hand.cards[:]
+        if not legal_cards:
+            return EngineResponse(action=None, who="NoCards")
+        return EngineResponse(action=legal_cards[0], who="Fallback")
 
     def analyze_double_dummy(self, board: BoardState) -> Dict[str, Dict[str, int]]:
         """
@@ -467,6 +317,14 @@ class BridgeEngine:
         # Write debug to file for GUI debugging
         with open('/tmp/dd_debug.log', 'a') as f:
             f.write(f"analyze_double_dummy called, initialized={self._initialized}\n")
+
+        # Refuse to peek when the engine doesn't have all four hands
+        # (One-Player Mode pre-play, or any incomplete deal). The caller
+        # gets an empty result and the UI shows "DD not available".
+        if not self._all_hands_visible(board):
+            with open('/tmp/dd_debug.log', 'a') as f:
+                f.write("Skipping DD: not all hands visible to engine\n")
+            return {}
 
         if not self._initialized:
             with open('/tmp/dd_debug.log', 'a') as f:
@@ -548,6 +406,10 @@ class BridgeEngine:
 
     def get_dd_tricks(self, board: BoardState, suit: Suit, seat: Seat) -> Optional[int]:
         """Get double-dummy trick count for a specific declarer and strain."""
+        # DD solve needs all four hands; refuse when any seat is
+        # unknown (One-Player Mode pre-dummy-entry, etc).
+        if not self._all_hands_visible(board):
+            return None
         if not self._initialized:
             if not self.initialize():
                 return None
@@ -660,22 +522,37 @@ class BridgeEngine:
                     # Determine which seats need random cards
                     unknown_seats = [s for s in Seat if s not in known_cards]
 
-                    # Count how many cards each unknown seat should have
+                    # Count how many cards each unknown seat should have.
+                    # In standard mode we read the seat's current Hand;
+                    # in One-Player Mode unknown seats start with an
+                    # empty Hand, so we derive the count from cards
+                    # they've already played (each seat plays one card
+                    # per trick — leftover = 13 - played).
                     cards_per_seat = {}
                     total_remaining = 52 - len(played_cards)
+                    played_per_seat = {s: 0 for s in Seat}
+                    for trick in board.tricks:
+                        for i, _c in enumerate(trick.cards):
+                            ps = Seat((trick.leader + i) % 4)
+                            played_per_seat[ps] += 1
+                    if current_trick_cards:
+                        # Reconstruct the in-progress trick's leader so
+                        # we can attribute partial-trick plays correctly.
+                        cur_leader = Seat(
+                            (seat - len(current_trick_cards)) % 4)
+                        for i, _c in enumerate(current_trick_cards):
+                            ps = Seat((cur_leader + i) % 4)
+                            played_per_seat[ps] += 1
                     for s in Seat:
                         if s in known_cards:
                             cards_per_seat[s] = len(known_cards[s])
                         else:
-                            # Estimate from total remaining
                             orig_hand = board.hands.get(s)
-                            if orig_hand:
+                            if orig_hand and orig_hand.cards:
                                 cards_per_seat[s] = len(orig_hand.cards)
                             else:
-                                cards_per_seat[s] = (total_remaining - sum(
-                                    len(known_cards.get(ss, [])) for ss in Seat
-                                    if ss in known_cards
-                                )) // max(1, len(unknown_seats))
+                                cards_per_seat[s] = max(
+                                    0, 13 - played_per_seat[s])
 
                     # Generate random samples
                     trump_suit = board.contract.suit if board.contract else Suit.NOTRUMP
@@ -821,6 +698,12 @@ class BridgeEngine:
         Returns:
             EngineResponse with the optimal card
         """
+        # Full double-dummy solve peeks at every hand. Refuse when
+        # any hand is unknown (One-Player Mode); callers should fall
+        # back to ``get_mc_card_play``, which works from only the
+        # named seat + dummy + sampling.
+        if not self._all_hands_visible(board):
+            return EngineResponse(action=None, who="NoDD")
         if not self._initialized:
             if not self.initialize():
                 return EngineResponse(action=None, who="Error")
@@ -932,20 +815,6 @@ class BridgeEngine:
         # Fallback outside the lock to avoid deadlock
         return self.get_card_play(board, seat, current_trick_cards)
 
-    def _build_ben_auction(self, board: BoardState) -> List[str]:
-        """Build auction list in BEN format"""
-        auction = []
-
-        # Add PAD_START for positions before dealer
-        for i in range(board.dealer.value):
-            auction.append('PAD_START')
-
-        # Add bids
-        for bid in board.auction:
-            auction.append(bid.to_ben_str())
-
-        return auction
-
     def calculate_score(self, contract: Contract, tricks: int,
                        vulnerable: bool) -> int:
         """Calculate score for a contract result"""
@@ -995,12 +864,8 @@ class BridgeEngine:
         return self._initialized
 
     def cleanup(self):
-        """Release TensorFlow resources to prevent segfaults on exit."""
-        try:
-            import tensorflow as tf
-            tf.keras.backend.clear_session()
-        except Exception:
-            pass
+        """Release engine resources. Nothing TensorFlow-related to
+        clear (we never load NN models)."""
         self.models = None
         self.sampler = None
         self.dds = None

@@ -14,12 +14,40 @@ from .protocol import (
     NetworkMessage, MessageType, NetworkRole,
     make_deal_start, make_bid_made, make_card_played,
     make_trick_complete, make_trick_clear, make_board_complete,
+    make_closed_room_ingested,
 )
-from ben_backend.models import Seat, Bid, Card, BoardState, Hand, PlayerType
+from ben_backend.models import Seat, Bid, Card, BoardState, Hand, PlayerType, BenBoardRun
 
 import logging
+import os
+import subprocess
 
 logger = logging.getLogger(__name__)
+
+
+def get_app_version() -> str:
+    """Build identifier for the current ben_bridge revision so the host
+    and joining guests can verify they're on the same code. Uses git
+    rev-parse first; falls back to the modification time of this file."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    try:
+        result = subprocess.run(
+            ['git', '-C', here, 'rev-parse', '--short=12', 'HEAD'],
+            capture_output=True, text=True, timeout=2,
+        )
+        if result.returncode == 0:
+            v = result.stdout.strip()
+            if v:
+                return v
+    except Exception:
+        pass
+    try:
+        return f"mtime:{int(os.path.getmtime(os.path.abspath(__file__)))}"
+    except Exception:
+        return "unknown"
+
+
+APP_VERSION = get_app_version()
 
 
 class NetworkGameController(QObject):
@@ -40,6 +68,11 @@ class NetworkGameController(QObject):
     client_joined = pyqtSignal(str, str)  # client_name, client_role
     server_started = pyqtSignal(int)  # port
 
+    # Lobby signals (used by host lobby + guest seat-picker dialogs)
+    seat_map_changed = pyqtSignal(dict)  # {seat_char: name_or_None}
+    game_starting = pyqtSignal()  # Host has closed the lobby
+    seat_request_rejected = pyqtSignal(str)  # Soft seat-taken rejection
+
     # Game signals
     deal_received = pyqtSignal(object)  # BoardState
     dummy_revealed = pyqtSignal(object, object)  # dummy_seat (Seat), dummy_hand (Hand)
@@ -48,6 +81,7 @@ class NetworkGameController(QObject):
     trick_completed = pyqtSignal(str, int, int)  # winner_seat, declarer_tricks, defense_tricks
     trick_clear_received = pyqtSignal()  # Remote player clicked "next card"
     board_completed = pyqtSignal(dict)  # result data
+    closed_room_ingested = pyqtSignal(object)  # BenBoardRun (closed-room run pushed by host)
 
     # Error signal
     error_occurred = pyqtSignal(str)
@@ -113,19 +147,16 @@ class NetworkGameController(QObject):
     def my_seats(self) -> List[Seat]:
         """Get list of seats I control.
 
-        In partner mode: just my seat (partner is controlled by remote player)
-        In opponent mode: my seat and my partner's seat (full partnership)
+        Always just my own seat. The legacy "opponent mode" had the host
+        play a whole partnership when only one guest was at the table —
+        that produced the host-bids-for-North bug when a guest sat West.
+        Empty seats are now AI on every connected client; if N also has
+        a guest, that guest's controller will list N as my_seats[0] on
+        their side, and the host's remote_seats will include N.
         """
         if self._my_seat is None:
             return []
-        if self._client_role == "partner":
-            # Partner mode: each player controls one seat
-            return [self._my_seat]
-        else:
-            # Opponent mode: each player controls their partnership
-            if self._partner_seat is not None:
-                return [self._my_seat, self._partner_seat]
-            return [self._my_seat]
+        return [self._my_seat]
 
     @property
     def remote_seats(self) -> List[Seat]:
@@ -176,9 +207,11 @@ class NetworkGameController(QObject):
         if self._server is not None or self._client is not None:
             self.disconnect()
 
-        self._server = BridgeServer(self)
+        self._server = BridgeServer(self, app_version=APP_VERSION)
         self._server.client_connected.connect(self._on_client_connected)
         self._server.client_disconnected.connect(self._on_client_disconnected)
+        self._server.seat_swap.connect(self._on_seat_swap)
+        self._server.seat_map_changed.connect(self.seat_map_changed)
         self._server.message_received.connect(self._on_message_received)
         self._server.error_occurred.connect(self._on_error)
         self._server.server_started.connect(self._on_server_started)
@@ -199,20 +232,20 @@ class NetworkGameController(QObject):
         self.server_started.emit(port)
 
     def _on_client_connected(self, client_name: str, client_role: str):
-        """Handle client connection."""
+        """Handle client connection.
+
+        Accumulates remote_seats from every connected guest — the server
+        accepts up to 3 guests, each picking any free seat, so this signal
+        fires once per guest and remote_seats must reflect all of them.
+        Without this, the host would re-run the AI for earlier guests'
+        seats and double-control them.
+        """
         logger.info(f"Client connected: {client_name} as {client_role}")
         self._client_role = client_role
 
-        # Set remote seats based on client role
-        # Partner mode: client controls one seat (server's partner), AI controls opponents
-        # Opponent mode: client controls their partnership (2 seats)
-        if client_role == "partner":
-            client_seat = self._server._client_seat
-            self._remote_seats = [client_seat]
-        else:
-            client_seat = self._server._client_seat
-            client_partner = self._server._client_partner_seat
-            self._remote_seats = [client_seat, client_partner]
+        # Pull every connected guest's seat directly from the server so we
+        # don't lose earlier guests when later ones join.
+        self._remote_seats = list(self._server.client_seats)
 
         self.client_joined.emit(client_name, client_role)
         self.connection_established.emit(
@@ -223,9 +256,19 @@ class NetworkGameController(QObject):
         )
 
     def _on_client_disconnected(self):
-        """Handle client disconnection."""
+        """Handle client disconnection. Refresh remote_seats from the server's
+        live roster so the host stops treating the departed guest's seat as
+        remote (and resumes AI for it). connection_lost is emitted to keep
+        the legacy single-guest UI flow alive."""
         logger.info("Client disconnected")
+        if self._server is not None:
+            self._remote_seats = list(self._server.client_seats)
         self.connection_lost.emit("Client disconnected")
+
+    def _on_seat_swap(self, seat_char: str, old_label: str, new_label: str):
+        """Log a bot↔human seat swap so post-game review can see who was
+        controlling each seat at any point in the game."""
+        logger.info(f"[seat swap] {seat_char}: {old_label} → {new_label}")
 
     # Client mode
 
@@ -250,11 +293,14 @@ class NetworkGameController(QObject):
         if self._server is not None or self._client is not None:
             self.disconnect()
 
-        self._client = BridgeClient(self)
+        self._client = BridgeClient(self, app_version=APP_VERSION)
         self._client.connected.connect(self._on_connected_to_server)
         self._client.disconnected.connect(self._on_disconnected_from_server)
         self._client.connection_failed.connect(self._on_connection_failed)
         self._client.message_received.connect(self._on_message_received)
+        self._client.seat_map_changed.connect(self.seat_map_changed)
+        self._client.game_starting.connect(self.game_starting)
+        self._client.seat_request_rejected.connect(self.seat_request_rejected)
 
         self._my_name = name
         self._client_role = role
@@ -271,15 +317,16 @@ class NetworkGameController(QObject):
         self._client_role = role
         logger.info(f"_on_connected_to_server: set _my_seat={self._my_seat}, _partner_seat={self._partner_seat}, _client_role={self._client_role}")
 
-        # Set remote seats (what the server controls)
-        # Partner mode: server controls their seat (our partner_seat), AI controls opponents
-        # Opponent mode: server controls their partnership (opposite of ours)
-        if role == "partner":
-            self._remote_seats = [self._partner_seat]
-        else:
-            all_seats = set(Seat)
-            our_seats = {self._my_seat, self._my_seat.partner()}
-            self._remote_seats = list(all_seats - our_seats)
+        # Each player controls only their own seat. Remote seats start
+        # with just the host's seat; SEAT_LIST broadcasts later teach us
+        # about additional guests at other seats. Empty seats are local
+        # AI on the guest side too.
+        host_char = (self._client.host_seat_char or "").upper() if self._client else ""
+        try:
+            host_seat = Seat.from_char(host_char) if host_char else None
+        except Exception:
+            host_seat = None
+        self._remote_seats = [host_seat] if host_seat is not None else [self._partner_seat]
         logger.info(f"_on_connected_to_server: remote_seats={self._remote_seats}")
 
         logger.info(f"Connected to '{server_name}' as {my_seat}, partner {partner_seat}, role {role}")
@@ -296,6 +343,46 @@ class NetworkGameController(QObject):
         logger.warning(f"Connection failed: {reason}")
         self.error_occurred.emit(reason)
         self._cleanup()
+
+    # Lobby helpers
+
+    def current_seat_map(self) -> dict:
+        """Return the current seat occupancy if hosting, else an empty dict.
+
+        Used by the host's lobby dialog to render the initial state before
+        any guest has joined.
+        """
+        if self._server is not None:
+            return self._server.seat_map()
+        return {}
+
+    def host_seat_char(self) -> str:
+        """Return the host's seat char.
+
+        On the host this is just self._my_seat. On guests we read whatever
+        the server most recently broadcast via SEAT_LIST.
+        """
+        if self._role == NetworkRole.SERVER and self._my_seat is not None:
+            return self._my_seat.to_char()
+        if self._client is not None:
+            return self._client.host_seat_char
+        return ""
+
+    def start_game(self):
+        """Host fires this to close the lobby and begin the deal flow.
+
+        Broadcasts GAME_START to every guest so their seat-picker dialogs
+        can dismiss themselves and switch to game UI.
+        """
+        if self._role == NetworkRole.SERVER and self._server is not None:
+            self._server.broadcast_game_start()
+
+    def request_seat(self, seat_char: str) -> bool:
+        """Guest-side: claim a seat from the live SEAT_LIST. Used by the
+        post-connect lobby seat picker."""
+        if self._client is not None:
+            return self._client.request_seat(seat_char)
+        return False
 
     # Common methods
 
@@ -341,6 +428,8 @@ class NetworkGameController(QObject):
             self._handle_trick_clear(message)
         elif message.type == MessageType.BOARD_COMPLETE:
             self._handle_board_complete(message)
+        elif message.type == MessageType.CLOSED_ROOM_INGESTED:
+            self._handle_closed_room_ingested(message)
 
     def _handle_deal_start(self, message: NetworkMessage):
         """Handle deal start message or dummy reveal."""
@@ -388,6 +477,17 @@ class NetworkGameController(QObject):
         logger.debug("Received trick clear from remote player")
         self.trick_clear_received.emit()
 
+    def _handle_closed_room_ingested(self, message: NetworkMessage):
+        """Host has manually replayed a deal in Q-Plus. Hand the deserialized
+        BenBoardRun off to the UI so guests can attach it to their score
+        sheet alongside the open-room run."""
+        try:
+            run_data = message.payload.get("board_run") or {}
+            run = BenBoardRun.from_dict(run_data)
+            self.closed_room_ingested.emit(run)
+        except Exception as ex:
+            logger.warning(f"Failed to deserialize closed-room run: {ex}")
+
     # Broadcasting methods (for server/client to send state)
 
     def _send_message(self, message: NetworkMessage) -> bool:
@@ -400,9 +500,12 @@ class NetworkGameController(QObject):
 
     def broadcast_deal(self, board: BoardState):
         """
-        Broadcast a new deal to the remote player.
+        Broadcast a new deal to every connected guest.
 
-        Only the server should call this.
+        The hands dict contains every seat's full hand; the server's
+        _personalize hook strips it down to just the recipient's own seat
+        before each socket write, so a guest at East never receives the
+        N/S/W cards.
         """
         if self._role != NetworkRole.SERVER:
             logger.warning("Only server can broadcast deals")
@@ -410,18 +513,27 @@ class NetworkGameController(QObject):
 
         self._current_board = board
 
-        # Hide opponent hands from the client
-        hidden_seats = self.my_seats  # Hide server's hands from client
+        hands_dict = {
+            seat.to_char(): board.hands[seat].to_dict(hidden=False)
+            for seat in board.hands
+        }
+        # DIAGNOSTIC: log which guests are connected and how many cards
+        # are about to be packed into the broadcast (pre-personalization).
+        try:
+            seats = list(self._server.client_seats) if self._server else []
+            print(f"[host broadcast_deal] connected guest seats: "
+                  f"{[s.to_char() for s in seats]}", flush=True)
+            for k, v in hands_dict.items():
+                n = len(v.get('cards') or [])
+                print(f"  pre-mask hand[{k}]: {n} cards", flush=True)
+        except Exception as ex:
+            print(f"[host broadcast_deal] diagnostic failed: {ex}", flush=True)
 
-        # Create deal message
         message = make_deal_start(
             board_number=board.board_number,
             dealer=board.dealer.to_char(),
             vulnerability=board.vulnerability.value,
-            hands={
-                seat.to_char(): board.hands[seat].to_dict(hidden=seat in hidden_seats)
-                for seat in board.hands
-            },
+            hands=hands_dict,
             sequence=self._server.get_next_sequence()
         )
         self._send_message(message)
@@ -479,6 +591,18 @@ class NetworkGameController(QObject):
     def broadcast_trick_clear(self):
         """Broadcast trick clear to the remote player (sync 'next card')."""
         message = make_trick_clear()
+        self._send_message(message)
+
+    def broadcast_closed_room_ingested(self, run: BenBoardRun):
+        """Host → guests: a Q-Plus closed room has been ingested. Guests
+        attach the run to their score sheet so they can compare too."""
+        if self._role != NetworkRole.SERVER:
+            logger.warning("Only server can broadcast closed_room_ingested")
+            return
+        message = make_closed_room_ingested(
+            run.to_dict(),
+            sequence=self._server.get_next_sequence(),
+        )
         self._send_message(message)
 
     def get_player_type_for_seat(self, seat: Seat) -> PlayerType:

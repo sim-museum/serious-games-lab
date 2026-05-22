@@ -24,6 +24,35 @@ def _validate_short_name(name: str) -> Optional[str]:
     return None
 
 
+def _get_local_lan_ips():
+    """Return a sorted list of likely LAN IPv4 addresses for this
+    machine. Excludes loopback and link-local. The UDP-connect-to-
+    8.8.8.8 trick reliably picks the primary LAN-facing interface
+    even when /proc/net is unhelpful; gethostbyname_ex acts as a
+    backup. Returns [] if nothing usable is found.
+    """
+    import socket
+    ips = set()
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(('8.8.8.8', 80))
+            ips.add(s.getsockname()[0])
+        finally:
+            s.close()
+    except Exception:
+        pass
+    try:
+        host = socket.gethostname()
+        for addr in socket.gethostbyname_ex(host)[2]:
+            ips.add(addr)
+    except Exception:
+        pass
+    return sorted(ip for ip in ips
+                  if ip and not ip.startswith('127.')
+                  and not ip.startswith('169.254.'))
+
+
 class HostGameDialog(QDialog):
     """Dialog for hosting a poker game."""
 
@@ -59,14 +88,34 @@ class HostGameDialog(QDialog):
         self.port_spin.setValue(DEFAULT_PORT)
         settings_layout.addWidget(self.port_spin, 2, 1)
 
-        settings_layout.addWidget(QLabel("Seats:"), 3, 0)
+        # Show the host's LAN IP address(es) right in the dialog so
+        # the user can read them off to guests BEFORE clicking Start
+        # Server (mirroring the ben_bridge host dialog). Selectable so
+        # the user can copy-paste into chat / email. Updates live when
+        # the port spin value changes.
+        settings_layout.addWidget(QLabel("Your IP:"), 3, 0)
+        self.host_ip_label = QLabel("")
+        self.host_ip_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.host_ip_label.setStyleSheet(
+            "QLabel { color: #2a7a2a; font-weight: bold; }")
+        self.host_ip_label.setWordWrap(True)
+        settings_layout.addWidget(self.host_ip_label, 3, 1)
+
+        settings_layout.addWidget(QLabel("Seats:"), 4, 0)
         self.seats_spin = QSpinBox()
         self.seats_spin.setRange(2, 10)
         self.seats_spin.setValue(6)
-        settings_layout.addWidget(self.seats_spin, 3, 1)
+        settings_layout.addWidget(self.seats_spin, 4, 1)
 
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
+
+        # Cache the LAN-IP list once. The label doesn't include the
+        # port (port has its own spinbox above), so there's nothing
+        # to refresh on port changes.
+        self._lan_ips = _get_local_lan_ips()
+        self._refresh_host_ip_label()
 
         # Status
         self.status_label = QLabel("")
@@ -83,6 +132,26 @@ class HostGameDialog(QDialog):
         btn_layout.addWidget(self.cancel_btn)
         layout.addLayout(btn_layout)
 
+    def _refresh_host_ip_label(self):
+        """Re-render the Your-IP line using the cached LAN-IP list.
+        The port lives in its own spinbox row above, so we show the
+        bare IP here — no `:port` suffix.
+        """
+        if not self._lan_ips:
+            self.host_ip_label.setText(
+                "(no LAN IP detected — guests on this machine "
+                "can use 127.0.0.1)"
+            )
+            self.host_ip_label.setStyleSheet(
+                "QLabel { color: #aa6600; font-style: italic; }")
+            return
+        if len(self._lan_ips) == 1:
+            self.host_ip_label.setText(self._lan_ips[0])
+        else:
+            self.host_ip_label.setText("  •  ".join(self._lan_ips))
+        self.host_ip_label.setStyleSheet(
+            "QLabel { color: #2a7a2a; font-weight: bold; }")
+
     def _start_server(self):
         """Start the poker server."""
         host_name = self.host_name_edit.text()
@@ -98,8 +167,13 @@ class HostGameDialog(QDialog):
         num_seats = self.seats_spin.value()
 
         self.host_name = host_name
+        try:
+            from pokerIQ import APP_VERSION
+        except Exception:
+            APP_VERSION = ""
         self.server = PokerServer(server_name=table_name, num_seats=num_seats,
-                                   host_seat=0, host_name=host_name)
+                                   host_seat=0, host_name=host_name,
+                                   app_version=APP_VERSION)
 
         if self.server.start(port):
             self.status_label.setText(f"Server running on port {port}")
@@ -186,7 +260,11 @@ class JoinGameDialog(QDialog):
         host = self.host_edit.text() or "localhost"
         port = self.port_spin.value()
 
-        self.client = PokerClient(player_name=name)
+        try:
+            from pokerIQ import APP_VERSION
+        except Exception:
+            APP_VERSION = ""
+        self.client = PokerClient(player_name=name, app_version=APP_VERSION)
         self.client.connected.connect(self._on_connected)
         self.client.connection_failed.connect(self._on_connection_failed)
 
@@ -207,7 +285,13 @@ class JoinGameDialog(QDialog):
         self.status_label.setText(f"Failed: {reason}")
         self.status_label.setStyleSheet("color: red;")
         self.connect_btn.setEnabled(True)
-        self.client = None
+        # Defer destruction — this signal may fire from inside the
+        # client's readyRead handler; destroying the client (and its
+        # QTcpSocket) synchronously while Qt is still processing
+        # socket data causes a segfault.
+        if self.client:
+            self.client.deleteLater()
+            self.client = None
 
     def _cancel(self):
         """Cancel and clean up."""

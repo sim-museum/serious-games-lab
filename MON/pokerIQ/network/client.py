@@ -47,6 +47,7 @@ class PokerClient(QObject):
     action_requested = pyqtSignal(list, float, float, float, float)
     action_broadcast = pyqtSignal(int, str, str, float, float)
     hand_started = pyqtSignal(int, int, tuple, dict)
+    stack_update_received = pyqtSignal(dict)  # {seat_index: stack}
     hand_ended = pyqtSignal(list, float, dict, dict)  # winners, pot, shown_hands, hand_summary
     player_joined = pyqtSignal(str)
     player_left = pyqtSignal(str)
@@ -54,12 +55,17 @@ class PokerClient(QObject):
     feature_toggle_received = pyqtSignal(str, dict)  # player_name, features dict
     tom_advice_received = pyqtSignal(str, str, int)  # advice, notation, for_seat
     hand_analysis_received = pyqtSignal(list, int)   # analyses list, hand_number
+    all_hole_cards_received = pyqtSignal(dict)       # {seat_index: [card,card]}
+    board_snapshot_received = pyqtSignal(str, int, list, list)  # street, street_idx, board, action_log
+    hand_interpretation_received = pyqtSignal(str, int, dict)  # text, hand_number, assists_used
     chat_received = pyqtSignal(str, str)
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, player_name: str = "Player", parent=None):
+    def __init__(self, player_name: str = "Player", app_version: str = "",
+                 parent=None):
         super().__init__(parent)
         self.player_name = player_name
+        self.app_version = (app_version or '').strip()
         self.client_id: Optional[str] = None
         self.server_name: Optional[str] = None
         self.my_seat: Optional[int] = None
@@ -144,8 +150,9 @@ class PokerClient(QObject):
         self._connecting = False
         self._connect_timer.stop()
 
-        # Send connect request
-        msg = make_connect_request(self.player_name)
+        # Send connect request (include our app version so the host can
+        # reject mismatched clients).
+        msg = make_connect_request(self.player_name, app_version=self.app_version)
         self._send(msg)
 
     def _on_disconnected(self):
@@ -199,7 +206,6 @@ class PokerClient(QObject):
 
         elif msg.type == MessageType.CONNECT_REJECT:
             reason = msg.payload.get('reason', 'Connection rejected')
-            self._socket.disconnectFromHost()
             self.connection_failed.emit(reason)
 
         elif msg.type == MessageType.SEAT_LIST:
@@ -294,6 +300,24 @@ class PokerClient(QObject):
             hand_number = msg.payload.get('hand_number', 0)
             self.hand_analysis_received.emit(analyses, hand_number)
 
+        elif msg.type == MessageType.ALL_HOLE_CARDS:
+            cards_by_seat = msg.payload.get('cards_by_seat', {}) or {}
+            cards_by_seat = {int(k): list(v) for k, v in cards_by_seat.items()}
+            self.all_hole_cards_received.emit(cards_by_seat)
+
+        elif msg.type == MessageType.BOARD_SNAPSHOT:
+            street = msg.payload.get('street', '')
+            street_idx = msg.payload.get('street_idx', 0)
+            board = msg.payload.get('board', []) or []
+            action_log = msg.payload.get('action_log', []) or []
+            self.board_snapshot_received.emit(street, street_idx, board, action_log)
+
+        elif msg.type == MessageType.HAND_INTERPRETATION:
+            text = msg.payload.get('text', '') or ''
+            hand_number = msg.payload.get('hand_number', 0)
+            assists_used = msg.payload.get('assists_used', {}) or {}
+            self.hand_interpretation_received.emit(text, hand_number, assists_used)
+
         elif msg.type == MessageType.GAME_START:
             pass  # Handle as needed
 
@@ -301,4 +325,6 @@ class PokerClient(QObject):
             pass  # Handle as needed
 
         elif msg.type == MessageType.STACK_UPDATE:
-            pass  # Handle as needed
+            stacks = {int(k): v for k, v in msg.payload.get('stacks', {}).items()}
+            if stacks:
+                self.stack_update_received.emit(stacks)

@@ -223,30 +223,43 @@ def parse_deal_number(formatted: str) -> int:
     Accepts formats like:
     - "A1B2-C3D4-E5F6-7890-ABCD-EF12" (hex)
     - "A1B2C3D4E5F67890ABCDEF12" (hex)
-    - Base-62 encoded strings
+    - Base-72 encoded strings  (current canonical format)
+    - Base-62 encoded strings  (legacy — older BDL logs)
     """
     # Remove separators
     cleaned = formatted.replace("-", "").replace(" ", "")
 
-    # Try base-62 first if it looks like it could be base-62
-    # (contains lowercase letters mixed with uppercase, which hex wouldn't have)
-    has_lower = any(c.islower() for c in cleaned)
-    has_upper = any(c.isupper() for c in cleaned)
+    # If the string contains any of the base-72-only specials, it must
+    # be base-72 (those characters don't appear in hex or base-62).
+    if any(ch in "!@#$%^&*()" for ch in cleaned):
+        return base72_to_int(cleaned)
 
-    if has_lower and has_upper:
-        # Likely base-62
-        try:
-            return base62_to_int(cleaned)
-        except ValueError:
-            pass
+    # Try base-72 first.  If the result is a valid Pavlicek deal number,
+    # that's almost certainly what the input encoded; otherwise fall
+    # back to legacy base-62, then hex.
+    try:
+        n72 = base72_to_int(cleaned)
+        if 0 <= n72 < TOTAL_DEALS:
+            return n72
+    except ValueError:
+        pass
 
-    # Try hex
+    # Legacy base-62 (older BDLs, deal IDs we wrote before the migration).
+    try:
+        n62 = base62_to_int(cleaned)
+        if 0 <= n62 < TOTAL_DEALS:
+            return n62
+    except ValueError:
+        pass
+
+    # Hex fallback.
     try:
         return int(cleaned.lower(), 16)
     except ValueError:
         pass
 
-    # Try base-62 as fallback
+    # Last resort: base-62 even if out of range, so the caller surfaces a
+    # meaningful "out of range" error.
     return base62_to_int(cleaned)
 
 
@@ -287,8 +300,22 @@ def base62_to_int(s: str) -> int:
 
 
 def format_deal_base62(deal_number: int) -> str:
-    """Format deal number as base-62 string for compact storage."""
+    """Legacy: format deal number as base-62 string.
+
+    Prefer ``format_deal_base72`` / ``int_to_base72`` for new code —
+    the project standardised on base-72 deal IDs.
+    """
     return int_to_base62(deal_number)
+
+
+def format_deal_base72(deal_number: int) -> str:
+    """Format deal number as base-72 string (current canonical form).
+
+    The base-72 alphabet is denser than base-62 and is what BDL "Deal"
+    lines, the bridge harness, and every other deal-ID consumer in the
+    project read and write.
+    """
+    return int_to_base72(deal_number)
 
 
 # Base-72 encoding/decoding (10 more characters than base-62)

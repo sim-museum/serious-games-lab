@@ -8,7 +8,8 @@ from PyQt6.QtNetwork import QTcpServer, QTcpSocket, QHostAddress
 from .protocol import (
     NetworkMessage, MessageType,
     make_connect_accept, make_connect_reject, make_disconnect,
-    make_heartbeat, make_heartbeat_ack,
+    make_heartbeat, make_heartbeat_ack, make_seat_list, make_game_start,
+    make_seat_request,
     DEFAULT_PORT, HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS,
 )
 from ben_backend.models import Seat
@@ -32,13 +33,20 @@ class BridgeServer(QObject):
     # Signals
     client_connected = pyqtSignal(str, str)  # client_name, role (legacy)
     client_disconnected = pyqtSignal()
+    seat_swap = pyqtSignal(str, str, str)    # seat_char, old_label, new_label
+    seat_map_changed = pyqtSignal(dict)      # {seat_char: name_or_None}
     message_received = pyqtSignal(object)  # NetworkMessage
     error_occurred = pyqtSignal(str)  # error message
     server_started = pyqtSignal(int)  # port number
     server_stopped = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, app_version: str = ""):
         super().__init__(parent)
+
+        # Build identifier (typically a short git commit hash). When set,
+        # the server rejects clients whose CONNECT_REQUEST carries a
+        # different (or empty) app_version with code "version_mismatch".
+        self.app_version: str = (app_version or "").strip()
 
         self._server: Optional[QTcpServer] = None
         self._buffer = b""
@@ -50,6 +58,10 @@ class BridgeServer(QObject):
         self._socket_buffers: dict = {}  # id(socket) -> bytes
         # Sockets that haven't completed handshake yet
         self._pending_sockets: list = []
+        # Lobby-observer sockets: have sent a CONNECT_REQUEST with no seat
+        # and are waiting on the seat board to send SEAT_REQUEST. Maps
+        # id(sock) -> player name so SEAT_LIST can label them as "Joining".
+        self._lobby_pending: dict = {}
 
         # Server configuration
         self._server_name = "Host"
@@ -103,6 +115,32 @@ class BridgeServer(QObject):
         occupied = set(self.occupied_seats())
         return [s for s in Seat if s not in occupied]
 
+    def seat_map(self) -> dict:
+        """Return the current seat occupancy as {seat_char: name_or_None}.
+
+        Used to broadcast lobby state to every connected client and to the
+        host's own lobby UI. Free seats map to None; occupied seats map to
+        the player name (host name for the host's own seat).
+        """
+        out = {s.to_char(): None for s in Seat}
+        if self._server_seat is not None:
+            out[self._server_seat.to_char()] = self._server_name
+        for seat, name in self._client_names.items():
+            out[seat.to_char()] = name
+        return out
+
+    def broadcast_seat_list(self):
+        """Send the current seat map to every connected guest."""
+        if not self._clients:
+            return
+        host_char = self._server_seat.to_char() if self._server_seat else ""
+        msg = make_seat_list(self.seat_map(), host_seat=host_char)
+        self.send_message(msg)
+
+    def broadcast_game_start(self):
+        """Tell every guest the host is starting the game (lobby is closing)."""
+        self.send_message(make_game_start())
+
     @property
     def server_seat(self) -> Optional[Seat]:
         """Get the server player's seat."""
@@ -112,6 +150,11 @@ class BridgeServer(QObject):
     def client_seat(self) -> Optional[Seat]:
         """Get the client player's primary seat."""
         return self._client_seat
+
+    @property
+    def client_seats(self) -> list:
+        """All seats currently held by connected guests (host not included)."""
+        return list(self._clients.keys())
 
     @property
     def client_partner_seat(self) -> Optional[Seat]:
@@ -229,19 +272,66 @@ class BridgeServer(QObject):
             self._sequence += 1
             message.sequence = self._sequence
 
-        data = message.to_bytes()
-        targets = [self._clients[target_seat]] if (target_seat is not None and target_seat in self._clients) \
-                  else list(self._clients.values())
+        if target_seat is not None and target_seat in self._clients:
+            target_pairs = [(target_seat, self._clients[target_seat])]
+        else:
+            target_pairs = list(self._clients.items())
         ok = False
-        for sock in targets:
+        for seat, sock in target_pairs:
             try:
                 if sock.state() != QTcpSocket.SocketState.ConnectedState:
                     continue
-                if sock.write(data) != -1:
+                # _personalize is currently a passthrough — it gives us a
+                # seam to rewrite per-recipient fields later (e.g. mask
+                # opponents' card data) without touching every send site.
+                out = self._personalize(message, seat)
+                if sock.write(out.to_bytes()) != -1:
                     ok = True
             except Exception as ex:
                 logger.error(f"Failed to send to {sock}: {ex}")
         return ok
+
+    def _personalize(self, message: NetworkMessage,
+                     recipient_seat: Seat) -> NetworkMessage:
+        """Per-recipient message rewriting. Used to hide opponent hands so
+        a guest at East cannot see North/South/West cards in the deal
+        broadcast.
+
+        DEAL_START is the only message that carries private state today.
+        Each recipient's own seat (and dummy after the opening lead, which
+        is handled by a separate broadcast_dummy_reveal) is unmasked; every
+        other seat in the payload is replaced with a hidden stub.
+        """
+        if message.type != MessageType.DEAL_START:
+            return message
+        # The dummy reveal message is also DEAL_START with reveal_dummy set.
+        # Don't touch those — the dummy hand should be visible to everyone.
+        if message.payload.get("reveal_dummy"):
+            return message
+        hands = message.payload.get("hands") or {}
+        # Seat is an IntEnum where NORTH == 0, so `if recipient_seat` is False
+        # for North and the recipient's own hand gets masked along with the
+        # opponents'. Use an explicit None check.
+        my_char = recipient_seat.to_char() if recipient_seat is not None else ""
+        masked = {}
+        for seat_char, hand_data in hands.items():
+            if seat_char == my_char:
+                masked[seat_char] = hand_data
+            else:
+                # Strip card contents but preserve count so the UI can lay
+                # out face-down cards.
+                count = 13
+                if isinstance(hand_data, dict) and "cards" in hand_data:
+                    try:
+                        count = len(hand_data["cards"])
+                    except Exception:
+                        count = 13
+                masked[seat_char] = {"hidden": True, "count": count}
+        new_payload = dict(message.payload)
+        new_payload["hands"] = masked
+        return NetworkMessage(
+            type=message.type, payload=new_payload, sequence=message.sequence
+        )
 
     def get_next_sequence(self) -> int:
         """Get the next sequence number."""
@@ -299,6 +389,8 @@ class BridgeServer(QObject):
 
         if message.type == MessageType.CONNECT_REQUEST:
             self._handle_connect_request(message, sock)
+        elif message.type == MessageType.SEAT_REQUEST:
+            self._handle_seat_request(message, sock)
         elif message.type == MessageType.DISCONNECT:
             self._handle_disconnect(message, sock)
         elif message.type == MessageType.HEARTBEAT:
@@ -310,8 +402,23 @@ class BridgeServer(QObject):
         elif message.type == MessageType.HEARTBEAT_ACK:
             self._last_heartbeat_received = self._get_timestamp()
         else:
+            # Relay this guest's game message to every other guest, then let
+            # the host's app handle it locally. Without this relay a 2nd or
+            # 3rd guest would never see the 1st guest's bids or card plays.
+            self._relay_to_others(message, sock)
             # Forward other messages to the application
             self.message_received.emit(message)
+
+    def _relay_to_others(self, message: NetworkMessage, source_sock: QTcpSocket):
+        """Forward a game message from one guest to every other connected guest."""
+        for seat, s in list(self._clients.items()):
+            if s is source_sock:
+                continue
+            try:
+                if s.state() == QTcpSocket.SocketState.ConnectedState:
+                    s.write(message.to_bytes())
+            except Exception as ex:
+                logger.error(f"Failed to relay to {seat}: {ex}")
 
     def _seat_of_socket(self, sock: QTcpSocket) -> Optional[Seat]:
         for seat, s in self._clients.items():
@@ -325,73 +432,141 @@ class BridgeServer(QObject):
         player_name = payload.get("player_name", "Guest")
         requested = (payload.get("requested_seat") or "").upper()
         legacy_role = payload.get("role", "partner")
+        client_version = (payload.get("app_version") or "").strip()
 
-        # Determine target seat
-        target_seat: Optional[Seat] = None
-        if requested in ("N", "E", "S", "W"):
-            try:
-                target_seat = Seat.from_char(requested)
-            except Exception:
-                target_seat = None
-        else:
-            # Legacy role-based assignment kept for older clients
-            if legacy_role == "partner":
-                target_seat = self._server_seat.partner()
-            else:
-                target_seat = self._server_seat.next()
-
-        occupied = set(self.occupied_seats())
-        if target_seat in occupied:
-            # Reject with free-seat list so the client can re-prompt
-            free_chars = [s.to_char() for s in self.free_seats()]
+        # Reject mismatched builds early so guests don't desync over wire-
+        # format changes. Empty host version disables the check.
+        if self.app_version and client_version != self.app_version:
+            shown_client = client_version or "unknown"
             try:
                 sock.write(make_connect_reject(
-                    f"Seat {target_seat.to_char()} is already taken",
-                    free_seats=free_chars,
+                    f"Version mismatch: host is on '{self.app_version}', "
+                    f"you are on '{shown_client}'. Update both sides to "
+                    "the same ben_bridge revision and reconnect.",
+                    code="version_mismatch",
                 ).to_bytes())
                 sock.flush()
                 sock.disconnectFromHost()
             except Exception:
                 pass
-            logger.info(f"Rejected '{player_name}' -> seat {target_seat.to_char()} already taken")
+            logger.info(
+                f"Rejected '{player_name}' — version mismatch "
+                f"(host {self.app_version!r} vs client {client_version!r})")
             return
 
-        # Accept and register
+        # Empty `requested_seat` is the post-connect-lobby flow: the guest
+        # connects first, the server pushes them the live SEAT_LIST, and
+        # the guest then picks an available seat (SEAT_REQUEST). Hold them
+        # in the lobby-pending pool until that arrives.
+        if requested not in ("N", "E", "S", "W"):
+            self._lobby_pending[id(sock)] = player_name
+            try:
+                host_char = self._server_seat.to_char() if self._server_seat else ""
+                sock.write(make_seat_list(self.seat_map(), host_seat=host_char).to_bytes())
+            except Exception as ex:
+                logger.error(f"Failed to send lobby SEAT_LIST: {ex}")
+            logger.info(f"'{player_name}' joined lobby, waiting for SEAT_REQUEST")
+            return
+
+        # Explicit seat path: validate and seat the guest immediately.
+        try:
+            target_seat = Seat.from_char(requested)
+        except Exception:
+            target_seat = None
+
+        self._seat_client(sock, player_name, target_seat)
+
+    def _seat_client(self, sock: QTcpSocket, player_name: str,
+                     target_seat: Optional[Seat]) -> bool:
+        """Move `sock` from pending/lobby state into _clients[target_seat].
+
+        Sends CONNECT_ACCEPT on success, or CONNECT_REJECT (with code
+        "seat_taken" so the client knows to stay connected and let the
+        user pick a different seat). Used by both the legacy explicit-
+        seat path and the new SEAT_REQUEST flow.
+        """
+        occupied = set(self.occupied_seats())
+        if target_seat is None or target_seat in occupied:
+            free_chars = [s.to_char() for s in self.free_seats()]
+            seat_label = target_seat.to_char() if target_seat else "?"
+            try:
+                sock.write(make_connect_reject(
+                    f"Seat {seat_label} is already taken",
+                    free_seats=free_chars,
+                    code="seat_taken",
+                ).to_bytes())
+                sock.flush()
+            except Exception:
+                pass
+            logger.info(f"Rejected '{player_name}' -> seat {seat_label} already taken")
+            return False
+
         if sock in self._pending_sockets:
             self._pending_sockets.remove(sock)
+        self._lobby_pending.pop(id(sock), None)
         self._clients[target_seat] = sock
         self._client_names[target_seat] = player_name
 
-        # Update legacy single-client fields so older readers keep working
+        # Update legacy single-client fields
         self._client_name = player_name
         self._client_seat = target_seat
         self._client_partner_seat = target_seat.partner()
-        # Derive a role label for display: partner if same team as host, else opponent
         if target_seat == self._server_seat.partner():
             self._client_role = "partner"
         else:
             self._client_role = "opponent"
 
-        accept_msg = make_connect_accept(
-            server_name=self._server_name,
-            server_seat=self._server_seat.to_char(),
-            client_seat=target_seat.to_char(),
-            client_partner_seat=target_seat.partner().to_char(),
-            role=self._client_role,
-        )
         try:
-            sock.write(accept_msg.to_bytes())
+            sock.write(make_connect_accept(
+                server_name=self._server_name,
+                server_seat=self._server_seat.to_char(),
+                client_seat=target_seat.to_char(),
+                client_partner_seat=target_seat.partner().to_char(),
+                role=self._client_role,
+            ).to_bytes())
         except Exception as ex:
             logger.error(f"Failed to send accept to new client: {ex}")
+            return False
 
-        # Start heartbeat (shared across all clients)
         self._last_heartbeat_received = self._get_timestamp()
         if not self._heartbeat_timer.isActive():
             self._heartbeat_timer.start(HEARTBEAT_INTERVAL_MS)
             self._heartbeat_check_timer.start(HEARTBEAT_INTERVAL_MS)
 
         logger.info(f"Client '{player_name}' seated at {target_seat.to_char()} ({self._client_role})")
+        try:
+            self.seat_swap.emit(target_seat.to_char(), "AI", player_name)
+        except Exception:
+            pass
         self.client_connected.emit(player_name, self._client_role)
+        self.broadcast_seat_list()
+        self.seat_map_changed.emit(self.seat_map())
+        return True
+
+    def _handle_seat_request(self, message: NetworkMessage, sock: QTcpSocket):
+        """Lobby-pending guest is claiming a seat from the live SEAT_LIST."""
+        player_name = self._lobby_pending.get(id(sock))
+        if player_name is None:
+            # Unknown socket — treat as protocol violation, ignore.
+            logger.warning("SEAT_REQUEST from unknown socket, ignoring")
+            return
+        requested = (message.payload.get("requested_seat") or "").upper()
+        if requested not in ("N", "E", "S", "W"):
+            try:
+                free_chars = [s.to_char() for s in self.free_seats()]
+                sock.write(make_connect_reject(
+                    "Invalid seat", free_seats=free_chars,
+                ).to_bytes())
+            except Exception:
+                pass
+            return
+        try:
+            target_seat = Seat.from_char(requested)
+        except Exception:
+            target_seat = None
+        # If rejected the socket stays in lobby_pending so the user can
+        # click another seat. Don't disconnect on a soft seat-taken error.
+        self._seat_client(sock, player_name, target_seat)
 
     def _handle_disconnect(self, message: NetworkMessage, sock: QTcpSocket):
         """Handle client disconnect message."""
@@ -411,6 +586,8 @@ class BridgeServer(QObject):
             error_str = sock.errorString()
         except Exception:
             error_str = "unknown"
+        print(f"[server sock_err] t={self._get_timestamp()} err={error_str!r}",
+              flush=True)
         logger.error(f"Socket error: {error_str}")
         self.error_occurred.emit(f"Connection error: {error_str}")
 
@@ -424,10 +601,17 @@ class BridgeServer(QObject):
         for s in targets:
             seat = self._seat_of_socket(s)
             if seat is not None:
+                old_name = self._client_names.get(seat, "Guest")
                 self._clients.pop(seat, None)
                 self._client_names.pop(seat, None)
+                # Emit the swap so the controller can log the AI takeover.
+                try:
+                    self.seat_swap.emit(seat.to_char(), old_name, "AI")
+                except Exception:
+                    pass
             if s in self._pending_sockets:
                 self._pending_sockets.remove(s)
+            self._lobby_pending.pop(id(s), None)
             self._socket_buffers.pop(id(s), None)
             try:
                 s.deleteLater()
@@ -442,10 +626,18 @@ class BridgeServer(QObject):
             self._client_partner_seat = None
 
         self.client_disconnected.emit()
+        # Refresh lobby state for any guests still connected, so a guest's
+        # seat-picker reflects the seat that just freed up.
+        try:
+            self.broadcast_seat_list()
+            self.seat_map_changed.emit(self.seat_map())
+        except Exception:
+            pass
 
     def _send_heartbeat(self):
         """Send heartbeat to every connected client."""
         if self.is_client_connected:
+            print(f"[server hb] send t={self._get_timestamp()}", flush=True)
             self.send_message(make_heartbeat())
 
     def _check_heartbeat_timeout(self):
@@ -454,6 +646,8 @@ class BridgeServer(QObject):
             return
 
         elapsed = self._get_timestamp() - self._last_heartbeat_received
+        print(f"[server hb] check elapsed={elapsed}ms timeout={HEARTBEAT_TIMEOUT_MS}",
+              flush=True)
         if elapsed > HEARTBEAT_TIMEOUT_MS:
             logger.warning("Client heartbeat timeout")
             self.error_occurred.emit("Connection lost: heartbeat timeout")

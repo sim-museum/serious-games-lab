@@ -232,7 +232,10 @@ class Bid:
     @classmethod
     def from_str(cls, s: str) -> 'Bid':
         s = s.upper().strip()
-        if s in ('PASS', 'P', '--'):
+        # Q-Plus appends '~' to alerted bids; strip it before parsing.
+        s = s.rstrip('~').strip()
+        if s in ('PASS', 'P', '--', '-'):
+            # Q-Plus uses bare '-' as a pass placeholder in BDL bidding rows.
             return cls.make_pass()
         if s in ('X', 'DBL', 'DOUBLE', 'DB'):
             return cls.make_double()
@@ -506,6 +509,26 @@ class BoardState:
                 total += self.hands[seat].hcp()
         return total
 
+    def remaining_cards_by_suit(self) -> Dict[Suit, List[Rank]]:
+        """Cards still outstanding (not yet played in any trick).
+
+        Walks completed tricks plus any in-progress trick. For each suit
+        returns ranks in display order (ACE first). Useful for "what's
+        still out" annotations in the play UI and for AI/Claude prompts
+        that would otherwise have to recount from the trick history.
+        """
+        played: set = set()
+        for trick in self.tricks:
+            for card in trick.cards:
+                played.add((card.suit, card.rank))
+        if self.current_trick:
+            for card in self.current_trick.cards:
+                played.add((card.suit, card.rank))
+        result: Dict[Suit, List[Rank]] = {}
+        for suit in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
+            result[suit] = [r for r in Rank if (suit, r) not in played]
+        return result
+
     def to_dict(self, hidden_seats: List[Seat] = None) -> Dict[str, Any]:
         """Serialize board state to dict for network transmission.
 
@@ -630,8 +653,66 @@ class BenBoardRun:
     ns_score: int = 0
     ew_score: int = 0
     played: bool = False
-    ns_bidding_system: str = "BEN-NN"
-    ew_bidding_system: str = "BEN-NN"
+    # Blank means "unrecorded" — the bidding-log header renders that
+    # as "—" so the user immediately sees the metadata is missing
+    # instead of being told the deal was played by "BEN-NN" (the
+    # legacy neural net) when it was actually the native rule-based
+    # bidder running e.g. Precision90M.
+    ns_bidding_system: str = ""
+    ew_bidding_system: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize for network transport (host → guest closed-room sync)."""
+        return {
+            "table": self.table.value,
+            "board_number": self.board_number,
+            "pavlicek_id": self.pavlicek_id,
+            "hands": {s.to_char(): h.to_dict() for s, h in self.original_hands.items()},
+            "auction": [b.to_dict() for b in self.auction],
+            "tricks": [
+                {
+                    "leader": t.leader.to_char(),
+                    "cards": [c.to_dict() for c in t.cards],
+                    "winner": t.winner.to_char() if t.winner else None,
+                }
+                for t in self.tricks
+            ],
+            "contract": self.contract.to_dict() if self.contract else None,
+            "declarer_tricks": self.declarer_tricks,
+            "ns_score": self.ns_score,
+            "ew_score": self.ew_score,
+            "played": self.played,
+            "ns_bidding_system": self.ns_bidding_system,
+            "ew_bidding_system": self.ew_bidding_system,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'BenBoardRun':
+        hands = {Seat.from_char(sc): Hand.from_dict(hd)
+                 for sc, hd in (data.get("hands") or {}).items()}
+        tricks = []
+        for t in data.get("tricks") or []:
+            tricks.append(Trick(
+                leader=Seat.from_char(t["leader"]),
+                cards=[Card.from_dict(c) for c in t.get("cards") or []],
+                winner=Seat.from_char(t["winner"]) if t.get("winner") else None,
+            ))
+        contract = Contract.from_dict(data["contract"]) if data.get("contract") else None
+        return cls(
+            table=BenTable(data.get("table", "open")),
+            board_number=data.get("board_number", 0),
+            pavlicek_id=data.get("pavlicek_id", ""),
+            original_hands=hands,
+            auction=[Bid.from_dict(b) for b in data.get("auction") or []],
+            tricks=tricks,
+            contract=contract,
+            declarer_tricks=data.get("declarer_tricks", 0),
+            ns_score=data.get("ns_score", 0),
+            ew_score=data.get("ew_score", 0),
+            played=data.get("played", False),
+            ns_bidding_system=data.get("ns_bidding_system", ""),
+            ew_bidding_system=data.get("ew_bidding_system", ""),
+        )
 
 
 # IMP conversion table for teams scoring
@@ -662,8 +743,11 @@ class BenTeamsMatch:
     ew_team_name: str = "E/W Team"
     current_board: int = 1
     num_boards: int = 16
-    ns_bidding_system: str = "BEN-NN"
-    ew_bidding_system: str = "BEN-NN"
+    # Blank means "unrecorded"; the construction sites in main_window
+    # and match_controller now feed the real per-pair system names
+    # from preferences rather than this legacy "BEN-NN" placeholder.
+    ns_bidding_system: str = ""
+    ew_bidding_system: str = ""
 
     def get_imp_swing(self, board_num: int) -> int:
         """Calculate IMP swing for a board (positive = human did better).

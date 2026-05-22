@@ -1,2 +1,8 @@
 PyQt6>=6.4.0
 eval7>=0.1.9
+# PyPokerEngine drives the "Engine Emma" seat. Without this installed
+# the external-engine adapter falls back to ImprovedEquityBot, which
+# is fine but loses the Monte-Carlo win-rate path the strong adapter
+# uses. Pinning here so run.sh's `pip install -r requirements.txt`
+# pulls it in for new venvs.
+PyPokerEngine>=1.0.1

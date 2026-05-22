@@ -24,19 +24,29 @@ class ReviewDialog(QDialog):
         'SPADES': '#000000', 'HEARTS': '#cc0000', 'DIAMONDS': '#cc0000', 'CLUBS': '#000000'
     }
 
-    def __init__(self, parent=None, board=None, auction=None, tricks=None, contract=None):
+    def __init__(self, parent=None, board=None, auction=None, tricks=None,
+                 contract=None, engine=None, original_hands=None,
+                 table_view=None):
         super().__init__(parent)
         self.setWindowTitle("Review")
-        self.setMinimumWidth(700)
-        self.setMinimumHeight(500)
+        self.setMinimumWidth(820)
+        self.setMinimumHeight(560)
         apply_dialog_style(self)
 
         self.board = board
         self.auction = auction or []
         self.tricks = tricks or []
         self.contract = contract
+        self.engine = engine
         self.current_position = 0
         self.max_position = len(self.auction) + len(self.tricks) * 4
+        # The main-window TableView and the pre-play 13-card snapshot
+        # let us animate the table as the user steps through positions:
+        # each navigation tick reshapes the four hands to "remaining
+        # cards" and places the in-progress trick in the centre. Either
+        # being None falls back to text-only review (the old behaviour).
+        self.original_hands = original_hands
+        self.table_view = table_view
 
         self._setup_ui()
         self._update_display()
@@ -56,27 +66,46 @@ class ReviewDialog(QDialog):
         """)
         nav_layout = QHBoxLayout(nav_frame)
 
+        # Q-Plus-style button row: |<  <<-trick  <-card  -card->  ->-trick  >|
+        # Tooltips spell out what each button does (the Q-Plus
+        # original relied on iconography most users found cryptic).
         self.first_btn = QPushButton("|<")
+        self.first_btn.setToolTip("Jump to start of deal")
         self.first_btn.setMaximumWidth(40)
         self.first_btn.clicked.connect(self._go_first)
         nav_layout.addWidget(self.first_btn)
 
+        self.prev_trick_btn = QPushButton("<<")
+        self.prev_trick_btn.setToolTip("Back one trick")
+        self.prev_trick_btn.setMaximumWidth(40)
+        self.prev_trick_btn.clicked.connect(self._go_prev_trick)
+        nav_layout.addWidget(self.prev_trick_btn)
+
         self.prev_btn = QPushButton("<")
+        self.prev_btn.setToolTip("Back one card / bid")
         self.prev_btn.setMaximumWidth(40)
         self.prev_btn.clicked.connect(self._go_prev)
         nav_layout.addWidget(self.prev_btn)
 
         self.position_label = QLabel("Position: 0 / 0")
         self.position_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.position_label.setMinimumWidth(150)
+        self.position_label.setMinimumWidth(180)
         nav_layout.addWidget(self.position_label)
 
         self.next_btn = QPushButton(">")
+        self.next_btn.setToolTip("Forward one card / bid")
         self.next_btn.setMaximumWidth(40)
         self.next_btn.clicked.connect(self._go_next)
         nav_layout.addWidget(self.next_btn)
 
+        self.next_trick_btn = QPushButton(">>")
+        self.next_trick_btn.setToolTip("Forward one trick")
+        self.next_trick_btn.setMaximumWidth(40)
+        self.next_trick_btn.clicked.connect(self._go_next_trick)
+        nav_layout.addWidget(self.next_trick_btn)
+
         self.last_btn = QPushButton(">|")
+        self.last_btn.setToolTip("Jump to end of deal")
         self.last_btn.setMaximumWidth(40)
         self.last_btn.clicked.connect(self._go_last)
         nav_layout.addWidget(self.last_btn)
@@ -170,27 +199,6 @@ class ReviewDialog(QDialog):
 
         layout.addLayout(button_layout)
 
-    def _update_display(self):
-        """Update the display for current position."""
-        self.position_label.setText(f"Position: {self.current_position} / {self.max_position}")
-
-        # Update navigation buttons
-        self.first_btn.setEnabled(self.current_position > 0)
-        self.prev_btn.setEnabled(self.current_position > 0)
-        self.next_btn.setEnabled(self.current_position < self.max_position)
-        self.last_btn.setEnabled(self.current_position < self.max_position)
-
-        # Update auction display
-        auction_html = self._format_auction()
-        self.auction_display.setText(auction_html)
-
-        # Update play display
-        play_html = self._format_play()
-        self.play_display.setText(play_html)
-
-        # Update current action
-        self._update_action_label()
-
     def _format_auction(self):
         """Format the auction for display."""
         if not self.auction:
@@ -252,41 +260,66 @@ class ReviewDialog(QDialog):
         return str(bid)
 
     def _format_play(self):
-        """Format the play for display."""
+        """Format the play for display.
+
+        Consumes Trick objects (``cards: List[Card]``, ``leader:
+        Seat``, ``winner: Seat``). Cards are laid out under the seat
+        that played them — derived from ``leader + position`` so the
+        N/E/S/W columns line up regardless of who led each trick.
+        Already-revealed cards render normally; future cards show
+        '?'. The winner gets a gold background, matching the
+        replay viewer.
+        """
         if not self.tricks:
             return "<i>No play</i>"
-
-        html = "<table style='border-collapse: collapse;'>"
-        html += "<tr><th>#</th><th>N</th><th>E</th><th>S</th><th>W</th></tr>"
 
         cards_in_auction = len(self.auction)
         cards_shown = max(0, self.current_position - cards_in_auction)
 
+        html = ("<table style='border-collapse: collapse;'>"
+                "<tr><th>#</th><th>N</th><th>E</th><th>S</th>"
+                "<th>W</th></tr>")
+
+        seats = ['N', 'E', 'S', 'W']
         card_count = 0
         for trick_num, trick in enumerate(self.tricks):
-            html += f"<tr><td style='padding: 2px 4px;'><b>{trick_num + 1}</b></td>"
-
-            cards = trick.get('cards', {})
-            for seat in ['N', 'E', 'S', 'W']:
-                card = cards.get(seat, '')
+            html += (f"<tr><td style='padding: 2px 4px;'>"
+                     f"<b>{trick_num + 1}</b></td>")
+            cards_list = list(getattr(trick, 'cards', []) or [])
+            leader = getattr(trick, 'leader', None)
+            winner = getattr(trick, 'winner', None)
+            leader_idx = 0
+            if leader is not None and hasattr(leader, 'value'):
+                leader_idx = int(leader.value)
+            winner_char = (seats[int(winner.value)]
+                           if winner is not None
+                           and hasattr(winner, 'value') else '')
+            cards_by_seat = {}
+            for j, c in enumerate(cards_list):
+                seat_idx = (leader_idx + j) % 4
+                cards_by_seat[seats[seat_idx]] = (c, j)
+            trick_complete_at = card_count + len(cards_list) - 1
+            for seat in seats:
+                entry = cards_by_seat.get(seat)
                 style = "padding: 2px 8px; text-align: center;"
-
-                if card_count < cards_shown:
-                    card_str = self._format_card(card) if card else "-"
-                    # Highlight winner
-                    winner = trick.get('winner', '')
-                    if seat == winner:
-                        style += " font-weight: bold; background-color: #e8e8ff;"
+                if entry is not None:
+                    card, j_in_trick = entry
+                    card_index_global = card_count + j_in_trick
+                    if card_index_global < cards_shown:
+                        card_str = self._format_card(card) if card else "-"
+                        if (seat == winner_char
+                                and trick_complete_at < cards_shown):
+                            style += (" font-weight: bold;"
+                                      " background-color: #ffd24a;"
+                                      " color: #202020;")
+                    else:
+                        card_str = "?"
+                        style += " color: #808080;"
                 else:
-                    card_str = "?"
-                    style += " color: #808080;"
-
+                    card_str = ""
                 html += f"<td style='{style}'>{card_str}</td>"
-                if card:
-                    card_count += 1
-
+            card_count += len(cards_list)
             html += "</tr>"
-
         html += "</table>"
         return html
 
@@ -343,20 +376,115 @@ class ReviewDialog(QDialog):
         self.current_position = self.max_position
         self._update_display()
 
+    def _trick_boundary(self, n_back: int) -> int:
+        """Return the position at the boundary of the ``n_back``-th
+        trick before the current position (negative = forward)."""
+        auction_len = len(self.auction)
+        # Position is # bids + # cards (1-based linear counter).
+        if self.current_position <= auction_len:
+            # Inside auction.
+            if n_back > 0:
+                return 0
+            # Forward from auction: jump to "end of trick 1".
+            return min(self.max_position, auction_len + 4)
+        cards_in = self.current_position - auction_len
+        current_trick = (cards_in - 1) // 4  # 0-based
+        target_trick = current_trick - n_back
+        if target_trick < 0:
+            return auction_len  # boundary between auction and play
+        target_end = auction_len + (target_trick + 1) * 4
+        if target_end > self.max_position:
+            target_end = self.max_position
+        return max(0, target_end)
+
+    def _go_prev_trick(self):
+        self.current_position = self._trick_boundary(1)
+        self._update_display()
+
+    def _go_next_trick(self):
+        self.current_position = self._trick_boundary(-1)
+        self._update_display()
+
     def _on_analysis(self):
-        """Start post-mortem analysis."""
-        from PyQt6.QtWidgets import QMessageBox
-        QMessageBox.information(
-            self, "Analysis",
-            "Post-mortem analysis would evaluate all human player actions.\n"
-            "This feature is not yet fully implemented."
+        """Open the Deal Analysis modal — Q-Plus `.analys-ctl`.
+        Picks the action set to evaluate (auction / card play, per
+        seat) and on Start opens the Evaluation of Actions list."""
+        from .deal_analysis import DealAnalysisDialog
+        dlg = DealAnalysisDialog(
+            self,
+            board=self.board,
+            auction=self.auction,
+            tricks=self.tricks,
+            engine=self.engine,
         )
+        dlg.exec()
+
+    def closeEvent(self, event):
+        """Restore the table to its post-hand view when the dialog closes.
+
+        While the dialog is open we mutate the live table_view to mirror
+        the review position; on close we put it back into end-of-hand
+        view (all 13 cards face up, winner outlines) so the user sees
+        the same picture they had before opening the review.
+        """
+        if self.table_view is not None and self.original_hands:
+            try:
+                self.table_view.show_end_of_hand_view(
+                    self.original_hands, self.tricks)
+            except Exception:
+                pass
+        super().closeEvent(event)
 
     def _on_actions(self):
-        """Show/edit prepared actions."""
+        """Q-Plus `.actionlist` — preparing user actions in advance.
+        Not implemented in ben_bridge; the live blunder check covers
+        the equivalent ground in real time."""
         from PyQt6.QtWidgets import QMessageBox
         QMessageBox.information(
             self, "Actions",
-            "Prepared actions allow you to specify correct bids/plays.\n"
-            "This feature is not yet fully implemented."
-        )
+            "Action preparation isn't implemented in ben_bridge — "
+            "the live blunder check during play covers the same "
+            "ground (Configuration → Preferences → "
+            "Blunder check).")
+
+    def _update_display(self):
+        """Override of the inherited stub so we can also light up the
+        new prev/next-trick buttons based on context."""
+        # Position label + auction + play.
+        self.position_label.setText(
+            f"Position: {self.current_position} / {self.max_position}")
+        self.first_btn.setEnabled(self.current_position > 0)
+        self.prev_btn.setEnabled(self.current_position > 0)
+        self.next_btn.setEnabled(self.current_position < self.max_position)
+        self.last_btn.setEnabled(self.current_position < self.max_position)
+        self.prev_trick_btn.setEnabled(
+            self.current_position > len(self.auction))
+        self.next_trick_btn.setEnabled(
+            self.current_position < self.max_position
+            and len(self.tricks) > 0)
+        self.auction_display.setText(self._format_auction())
+        self.play_display.setText(self._format_play())
+        self._update_action_label()
+        self._sync_table_view()
+
+    def _sync_table_view(self):
+        """Push the current review position to the main-window table.
+
+        While the position is still in the auction phase the table is
+        left alone (no card has been played yet). Once we cross into
+        the play phase, each step removes cards from the hands and
+        drops them into the centre trick area on the main window.
+        Falls back silently when no table_view / original_hands were
+        provided.
+        """
+        if self.table_view is None or not self.original_hands:
+            return
+        auction_len = len(self.auction)
+        cards_played = max(0, self.current_position - auction_len)
+        try:
+            self.table_view.show_review_position(
+                self.original_hands, self.tricks, cards_played)
+        except Exception:
+            # The animation is purely cosmetic; never let it break the
+            # text-only review flow.
+            pass

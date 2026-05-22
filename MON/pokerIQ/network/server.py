@@ -13,7 +13,8 @@ from .protocol import (
     MAX_NAME_LEN,
     make_connect_accept, make_connect_reject, make_seat_list,
     make_seat_confirm, make_heartbeat, make_tom_advice,
-    make_hand_analysis,
+    make_hand_analysis, make_all_hole_cards, make_board_snapshot,
+    make_hand_interpretation,
 )
 
 
@@ -50,18 +51,24 @@ class PokerServer(QObject):
     error_occurred = pyqtSignal(str)
 
     def __init__(self, server_name: str = "Poker Table", num_seats: int = 6,
-                 host_seat: int = 0, host_name: str = "Hero (Server)", parent=None):
+                 host_seat: int = 0, host_name: str = "Hero (Server)",
+                 app_version: str = "", parent=None):
         super().__init__(parent)
         self.server_name = server_name
         self.num_seats = num_seats
         self.host_seat = host_seat
         self.host_name = host_name
+        self.app_version = (app_version or '').strip()
 
         self._server = QTcpServer(self)
         self._clients: Dict[str, ClientConnection] = {}
         self._seats: Dict[int, Optional[str]] = {i: None for i in range(num_seats)}  # seat -> client_id
         # Reserve the host's seat with a special marker
         self._seats[host_seat] = "__HOST__"
+
+        # Per-seat bot persona name (the name guests should see for any seat
+        # other than themselves and the host). Host populates via set_personas.
+        self._personas: Dict[int, str] = {}
 
         self._server.newConnection.connect(self._on_new_connection)
 
@@ -169,6 +176,20 @@ class PokerServer(QObject):
 
         if msg.type == MessageType.CONNECT_REQUEST:
             player_name = (msg.payload.get('player_name') or '').strip()
+            client_version = (msg.payload.get('app_version') or '').strip()
+
+            # Reject if the host advertised a non-empty version and the
+            # client either didn't send one or sent a different one. Empty
+            # host version means version checks are disabled.
+            if self.app_version and client_version != self.app_version:
+                shown_client = client_version or 'unknown'
+                self._reject_and_close(
+                    client_id,
+                    f"Version mismatch: host is on '{self.app_version}', "
+                    f"you are on '{shown_client}'. Update both to the same "
+                    "pokerIQ revision and reconnect.",
+                    "version_mismatch")
+                return
 
             # Name validation: non-empty, short, unique.
             if not player_name:
@@ -316,13 +337,14 @@ class PokerServer(QObject):
             self.error_occurred.emit(f"Socket error for {client.player_name}: {error}")
 
     def _send_to_client(self, client_id: str, msg: NetworkMessage):
-        """Send a message to a specific client."""
+        """Send a message to a specific client (applies persona masking)."""
         if client_id not in self._clients:
             return
 
         client = self._clients[client_id]
         if client.socket.state() == QTcpSocket.SocketState.ConnectedState:
-            client.socket.write(msg.to_bytes())
+            out = self._personalize(msg, client_id)
+            client.socket.write(out.to_bytes())
 
     def _broadcast(self, msg: NetworkMessage, exclude: Optional[str] = None):
         """Send a message to all connected clients."""
@@ -380,11 +402,24 @@ class PokerServer(QObject):
         self._send_to_client(client_id, msg)
 
     def broadcast_action(self, seat_index: int, player_name: str,
-                         action: str, amount: float, pot: float):
-        """Broadcast a player's action to all clients."""
+                         action: str, amount: float, pot: float,
+                         stacks: Optional[Dict[int, float]] = None):
+        """Broadcast a player's action to all clients.
+
+        If ``stacks`` is provided, also broadcast an authoritative STACK_UPDATE
+        right after, so guests get the host's exact post-action stack values
+        rather than reconstructing them from the action amount.
+        """
         from .protocol import make_action_broadcast
         msg = make_action_broadcast(seat_index, player_name, action, amount, pot)
         self._broadcast(msg)
+        if stacks is not None:
+            self.broadcast_stack_update(stacks)
+
+    def broadcast_stack_update(self, stacks: Dict[int, float]):
+        """Broadcast authoritative per-seat stacks to all clients."""
+        from .protocol import make_stack_update
+        self._broadcast(make_stack_update(stacks))
 
     def broadcast_active_player(self, seat_index: int):
         """Broadcast whose turn it is to all clients."""
@@ -410,6 +445,45 @@ class PokerServer(QObject):
         shown_str = {seat: [str(c) for c in cards] for seat, cards in shown_hands.items()}
         msg = make_hand_end(winners, pot, shown_str, hand_summary)
         self._broadcast(msg)
+
+    def set_personas(self, personas: Dict[int, str]):
+        """Register the bot persona name for each seat. Used to mask other
+        guests' real names from each guest (each guest only sees their own
+        real name and the host's; other seats show as their persona).
+        """
+        self._personas = dict(personas)
+
+    def _seat_for_client(self, client_id: str) -> Optional[int]:
+        for seat, cid in self._seats.items():
+            if cid == client_id:
+                return seat
+        return None
+
+    def _name_for_seat(self, seat_index: int) -> Optional[str]:
+        """Real player name for a seat (host real name, client real name,
+        or the registered bot persona for empty/bot-controlled seats)."""
+        cid = self._seats.get(seat_index)
+        if cid == "__HOST__":
+            return self.host_name
+        if cid and cid in self._clients:
+            client = self._clients[cid]
+            if client.player_name:
+                return client.player_name
+        # Bot-controlled / empty seat — fall back to the persona name so the
+        # display still shows something meaningful.
+        return self._personas.get(seat_index)
+
+    def _full_seats(self) -> Dict[int, Optional[str]]:
+        """Seats dict with the real name (or persona) for every seat."""
+        return {seat: self._name_for_seat(seat) for seat in self._seats.keys()}
+
+    def _personalize(self, msg: NetworkMessage,
+                     recipient_client_id: str) -> NetworkMessage:
+        """Hook for future per-recipient rewriting. Currently a passthrough:
+        SEAT_LIST keeps None for empty seats so the seat-selection dialog
+        can still mark them as available; the client fills in the bot
+        persona for empty seats from its local `original_player_info`."""
+        return msg
 
     def get_client_for_seat(self, seat_index: int) -> Optional[str]:
         """Get the client ID for a seat (None for host seat or empty seats)."""
@@ -439,6 +513,31 @@ class PokerServer(QObject):
         msg = make_tom_advice(advice, notation=notation, for_seat=for_seat)
         self._send_to_client(client_id, msg)
         return True
+
+    def send_all_hole_cards(self, client_id: str, cards_by_seat: Dict[int, list]) -> bool:
+        """Reveal every active seat's hole cards to one (folded) client so
+        their God-mode display is meaningful.
+        """
+        if client_id not in self._clients:
+            return False
+        msg = make_all_hole_cards(cards_by_seat)
+        self._send_to_client(client_id, msg)
+        return True
+
+    def broadcast_board_snapshot(self, street: str, street_idx: int,
+                                  board: list, action_log: list):
+        """Snapshot the board after a new street is dealt. Folded clients use
+        this to navigate back/forward through past streets."""
+        msg = make_board_snapshot(street, street_idx,
+                                   [str(c) for c in board], list(action_log))
+        self._broadcast(msg)
+
+    def broadcast_hand_interpretation(self, text: str, hand_number: int = 0,
+                                       assists_used: Optional[Dict[str, list]] = None):
+        """Broadcast the host's narrative interpretation to all clients."""
+        msg = make_hand_interpretation(text, hand_number=hand_number,
+                                        assists_used=assists_used)
+        self._broadcast(msg)
 
     def broadcast_hand_analysis(self, analyses: list, hand_number: int = 0):
         """Broadcast a bundle of Claude hand critiques (one per human player)

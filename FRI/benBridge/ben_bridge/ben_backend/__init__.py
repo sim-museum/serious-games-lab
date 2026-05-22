@@ -11,6 +11,7 @@ from .models import (
 from .scoring import ScoringTable, ScoringType, BoardResult
 from .pavlicek import (
     deal_to_number, number_to_deal,
+    format_deal_base72, int_to_base72, base72_to_int,
     format_deal_base62, int_to_base62, base62_to_int,
     pbn_to_deal_number, deal_number_to_pbn
 )
@@ -49,6 +50,7 @@ __all__ = [
 
     # Deal encoding (Pavlicek)
     'deal_to_number', 'number_to_deal',
+    'format_deal_base72', 'int_to_base72', 'base72_to_int',
     'format_deal_base62', 'int_to_base62', 'base62_to_int',
     'pbn_to_deal_number', 'deal_number_to_pbn',
 

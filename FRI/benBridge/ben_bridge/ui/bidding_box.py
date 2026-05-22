@@ -273,9 +273,14 @@ class BiddingBox(QWidget):
         self.bidder_label.setFont(QFont("Arial", 16, QFont.Weight.Bold))
         main_layout.addWidget(self.bidder_label)
 
-        # Auction display
+        # Auction display intentionally NOT shown here — the centre
+        # green-felt overlay (BiddingTableWidget) already renders the
+        # auction in dealer-first columns, and having a second copy in
+        # the right panel was confusing. We still construct the
+        # widget so set_auction() / clear() / refresh_colors() can
+        # call into it without conditional guards; it's just hidden.
         self.auction_display = AuctionDisplay()
-        main_layout.addWidget(self.auction_display)
+        self.auction_display.setVisible(False)
 
         # Bid buttons frame
         buttons_frame = QFrame()

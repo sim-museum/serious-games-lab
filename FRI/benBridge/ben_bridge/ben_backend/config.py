@@ -82,6 +82,45 @@ class PreferencesConfig:
     use_monte_carlo_play: bool = True  # Monte Carlo simulation (default - strongest)
     legacy_colors: bool = False  # Use legacy 2-color mode (red and black only)
     show_ben_bid_analysis: bool = False  # Show BEN bid analysis panel (disabled by default)
+    # Which engine bots consult for bidding. "native" → the rule-based
+    # bidder in ben_backend.native_bidder (Q-Plus-style — the default,
+    # since it covers seven systems with full spec-driven conventions);
+    # "BEN" → the older neural-net engine, kept for users who prefer it.
+    # Card play always stays with BEN regardless of this flag.
+    bidding_engine: str = "native"
+    # System used by the native bidder. Any name in
+    # ben_backend.bidding_systems.list_systems() (SAYC / TwoOverOne /
+    # StandardAcol / StandardFrench / Precision90M / Precision90P /
+    # Precision70) or an alias like "Precision", "2/1", "Wbridge5", etc.
+    native_bidding_system: str = "SAYC"
+    # Per-pair systems — when set, override native_bidding_system on
+    # the matching side. None / empty means "use native_bidding_system
+    # for both pairs". Lets a teaching session run a different system
+    # at NS vs EW (e.g. Precision90M vs SAYC) without forcing the
+    # whole table onto one spec.
+    ns_bidding_system: str = ""
+    ew_bidding_system: str = ""
+    # Blunder check: pop a confirmation dialog when the human's bid
+    # differs from what the native bidder (current Q-Plus engine,
+    # NOT the legacy BEN TensorFlow model) would have chosen for
+    # the same seat. Defaults on; disable in preferences for a
+    # silent table. Card-play blunder check is queued for a later
+    # build that wires through DDS.
+    blunder_check_enabled: bool = True
+    # One Player + MiniBridge — Q-Plus .one-player. "off" plays
+    # standard auction bridge; "minibridge" replaces the auction
+    # with two simplified rounds (points then contract);
+    # "one_player" gives the engine only the named seat's hand
+    # so the user can prove the program isn't cheating. Sub-
+    # options below only matter when the matching mode is active.
+    play_mode: str = "off"  # 'off' / 'minibridge' / 'one_player'
+    # One-Player options.
+    one_player_seat: str = "S"  # 'N' / 'E' / 'S' / 'W'
+    one_player_use_for_sim: bool = True
+    # MiniBridge options.
+    mini_show_all_hcp: bool = True
+    mini_auto_declarer: bool = True
+    mini_suggest_contract: bool = True
 
 
 @dataclass
@@ -281,8 +320,25 @@ class ConfigManager:
             self.config.preferences.suit_layout = SuitLayout(int(data["preference.suit_layout"]))
         if "preference.swap_ns_declarer" in data:
             self.config.preferences.swap_ns_declarer = data["preference.swap_ns_declarer"] == "1"
+        # show_alert_marks was being written into self.prefs by the
+        # Preferences dialog but never saved OR loaded — that left the
+        # checkbox effectively non-persistent. Wire both directions
+        # here and in save_preferences below.
+        if "preference.show_alert_marks" in data:
+            self.config.preferences.show_alert_marks = (
+                data["preference.show_alert_marks"] == "1")
         if "preference.log_enabled" in data:
             self.config.preferences.log_enabled = data["preference.log_enabled"] == "1"
+        # log_as_pbn / language were being saved but never read on the
+        # next launch, so the user's choice was silently reverted to
+        # the default. Add the missing load arms.
+        if "preference.log_as_pbn" in data:
+            self.config.preferences.log_as_pbn = (
+                data["preference.log_as_pbn"] == "1")
+        if "preference.language" in data:
+            v = data["preference.language"].strip()
+            if v:
+                self.config.preferences.language = v
         if "preference.moved_cards" in data:
             self.config.preferences.moved_cards_speed = float(data["preference.moved_cards"])
         if "preference.use_dd_play" in data:
@@ -293,6 +349,48 @@ class ConfigManager:
             self.config.preferences.legacy_colors = data["preference.legacy_colors"] == "1"
         if "preference.show_ben_bid_analysis" in data:
             self.config.preferences.show_ben_bid_analysis = data["preference.show_ben_bid_analysis"] == "1"
+        if "preference.bidding_engine" in data:
+            v = data["preference.bidding_engine"].strip()
+            if v in ("BEN", "native"):
+                self.config.preferences.bidding_engine = v
+        if "preference.native_bidding_system" in data:
+            v = data["preference.native_bidding_system"].strip()
+            # Accept any non-empty value — the bidding-systems catalog
+            # now lists 7+ Q-Plus specs and will keep growing, so a
+            # hard whitelist would silently drop the user's setting
+            # for every newly-added system. Unknown names fall back
+            # to SAYC at lookup time in get_system().
+            if v:
+                self.config.preferences.native_bidding_system = v
+        if "preference.ns_bidding_system" in data:
+            v = data["preference.ns_bidding_system"].strip()
+            self.config.preferences.ns_bidding_system = v
+        if "preference.ew_bidding_system" in data:
+            v = data["preference.ew_bidding_system"].strip()
+            self.config.preferences.ew_bidding_system = v
+        if "preference.blunder_check_enabled" in data:
+            self.config.preferences.blunder_check_enabled = (
+                data["preference.blunder_check_enabled"] == "1")
+        if "preference.play_mode" in data:
+            v = data["preference.play_mode"].strip()
+            if v in ("off", "minibridge", "one_player"):
+                self.config.preferences.play_mode = v
+        if "preference.one_player_seat" in data:
+            v = data["preference.one_player_seat"].strip().upper()
+            if v in ("N", "E", "S", "W"):
+                self.config.preferences.one_player_seat = v
+        if "preference.one_player_use_for_sim" in data:
+            self.config.preferences.one_player_use_for_sim = (
+                data["preference.one_player_use_for_sim"] == "1")
+        if "preference.mini_show_all_hcp" in data:
+            self.config.preferences.mini_show_all_hcp = (
+                data["preference.mini_show_all_hcp"] == "1")
+        if "preference.mini_auto_declarer" in data:
+            self.config.preferences.mini_auto_declarer = (
+                data["preference.mini_auto_declarer"] == "1")
+        if "preference.mini_suggest_contract" in data:
+            self.config.preferences.mini_suggest_contract = (
+                data["preference.mini_suggest_contract"] == "1")
 
     def save_preferences(self):
         """Save user preferences."""
@@ -301,6 +399,11 @@ class ConfigManager:
             "preference.single_click": "1" if self.config.preferences.single_click else "0",
             "preference.suit_layout": str(self.config.preferences.suit_layout.value),
             "preference.swap_ns_declarer": "1" if self.config.preferences.swap_ns_declarer else "0",
+            # show_alert_marks now persists in both directions; without
+            # this write the alert-marks checkbox lost its setting on
+            # every launch.
+            "preference.show_alert_marks": (
+                "1" if self.config.preferences.show_alert_marks else "0"),
             "preference.log_enabled": "1" if self.config.preferences.log_enabled else "0",
             "preference.log_as_pbn": "1" if self.config.preferences.log_as_pbn else "0",
             "preference.moved_cards": str(self.config.preferences.moved_cards_speed),
@@ -309,6 +412,24 @@ class ConfigManager:
             "preference.use_mc_play": "1" if self.config.preferences.use_monte_carlo_play else "0",
             "preference.legacy_colors": "1" if self.config.preferences.legacy_colors else "0",
             "preference.show_ben_bid_analysis": "1" if self.config.preferences.show_ben_bid_analysis else "0",
+            "preference.bidding_engine": self.config.preferences.bidding_engine,
+            "preference.native_bidding_system": self.config.preferences.native_bidding_system,
+            "preference.ns_bidding_system": self.config.preferences.ns_bidding_system,
+            "preference.ew_bidding_system": self.config.preferences.ew_bidding_system,
+            "preference.blunder_check_enabled": (
+                "1" if self.config.preferences.blunder_check_enabled else "0"),
+            "preference.play_mode": self.config.preferences.play_mode,
+            "preference.one_player_seat":
+                self.config.preferences.one_player_seat,
+            "preference.one_player_use_for_sim": (
+                "1" if self.config.preferences.one_player_use_for_sim
+                else "0"),
+            "preference.mini_show_all_hcp": (
+                "1" if self.config.preferences.mini_show_all_hcp else "0"),
+            "preference.mini_auto_declarer": (
+                "1" if self.config.preferences.mini_auto_declarer else "0"),
+            "preference.mini_suggest_contract": (
+                "1" if self.config.preferences.mini_suggest_contract else "0"),
         }
         self._write_config_file(filepath, data, description="BEN Bridge preferences")
 

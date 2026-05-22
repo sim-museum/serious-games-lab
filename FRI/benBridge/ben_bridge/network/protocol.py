@@ -23,6 +23,11 @@ class MessageType(Enum):
     HEARTBEAT = "heartbeat"
     HEARTBEAT_ACK = "heartbeat_ack"
 
+    # Lobby
+    SEAT_LIST = "seat_list"
+    SEAT_REQUEST = "seat_request"
+    GAME_START = "game_start"
+
     # Game state
     DEAL_START = "deal_start"
 
@@ -34,6 +39,11 @@ class MessageType(Enum):
     TRICK_COMPLETE = "trick_complete"
     TRICK_CLEAR = "trick_clear"  # Signal to clear trick area (sync "next card")
     BOARD_COMPLETE = "board_complete"
+
+    # Closed-room ingest: host has manually replayed a deal in Q-Plus and
+    # is pushing the resulting BenBoardRun to all connected guests so they
+    # can see the comparison row in their own score sheet.
+    CLOSED_ROOM_INGESTED = "closed_room_ingested"
 
     # Sync/recovery
     STATE_REQUEST = "state_request"
@@ -88,7 +98,8 @@ class NetworkMessage:
 # Connection protocol messages
 
 def make_connect_request(player_name: str, requested_seat: str = "",
-                          role: str = "partner") -> NetworkMessage:
+                          role: str = "partner",
+                          app_version: str = "") -> NetworkMessage:
     """Create a connection request message.
 
     Args:
@@ -96,6 +107,9 @@ def make_connect_request(player_name: str, requested_seat: str = "",
         requested_seat: Seat character the guest wants to play (N/E/S/W).
             Empty string falls back to legacy role-based assignment.
         role: Legacy. Only used if requested_seat is empty.
+        app_version: Build identifier (typically a short git commit hash)
+            so the host can reject mismatched clients with code
+            "version_mismatch" in the rejection payload.
     """
     return NetworkMessage(
         type=MessageType.CONNECT_REQUEST,
@@ -103,6 +117,7 @@ def make_connect_request(player_name: str, requested_seat: str = "",
             "player_name": player_name,
             "requested_seat": requested_seat,
             "role": role,
+            "app_version": app_version,
         }
     )
 
@@ -135,21 +150,64 @@ def make_connect_accept(
     )
 
 
-def make_connect_reject(reason: str, free_seats: Optional[list] = None) -> NetworkMessage:
+def make_connect_reject(reason: str, free_seats: Optional[list] = None,
+                         code: str = "") -> NetworkMessage:
     """Create a connection rejection message.
 
     Args:
         reason: Human-readable reason string.
         free_seats: Optional list of seat chars (N/E/S/W) still available,
             so the client can re-prompt with just the free seats.
+        code: Optional machine-readable tag, e.g. "version_mismatch",
+            "seat_taken", "table_full". Empty string for unspecified.
     """
     payload = {"reason": reason}
     if free_seats is not None:
         payload["free_seats"] = list(free_seats)
+    if code:
+        payload["code"] = code
     return NetworkMessage(
         type=MessageType.CONNECT_REJECT,
         payload=payload,
     )
+
+
+def make_seat_list(seats: Dict[str, Optional[str]],
+                    host_seat: str = "") -> NetworkMessage:
+    """Broadcast the live seat occupancy to all connected clients.
+
+    Args:
+        seats: Dict mapping seat char (N/E/S/W) to player name or None if free.
+        host_seat: Seat char of the host (so clients can flag who is host).
+    """
+    return NetworkMessage(
+        type=MessageType.SEAT_LIST,
+        payload={
+            "seats": dict(seats),
+            "host_seat": host_seat,
+        },
+    )
+
+
+def make_seat_request(seat: str) -> NetworkMessage:
+    """Guest claims a specific seat after seeing the live SEAT_LIST.
+
+    Used by the post-connect seat picker: the guest first connects with
+    an empty seat (lobby observer), receives the seat board, and then
+    sends SEAT_REQUEST when they click an available seat.
+    """
+    return NetworkMessage(
+        type=MessageType.SEAT_REQUEST,
+        payload={"requested_seat": (seat or "").upper()},
+    )
+
+
+def make_game_start() -> NetworkMessage:
+    """Tell all clients the lobby is closing and the deal is about to begin.
+
+    Sent by the host once the lobby fills or the host clicks Start Game.
+    """
+    return NetworkMessage(type=MessageType.GAME_START)
 
 
 def make_disconnect(reason: str = "") -> NetworkMessage:
@@ -293,6 +351,18 @@ def make_board_complete(
     )
 
 
+def make_closed_room_ingested(board_run: Dict[str, Any], sequence: int = 0) -> NetworkMessage:
+    """Host → guest: a Q-Plus closed room has been ingested.
+
+    Payload is `BenBoardRun.to_dict()` for the closed-room run.
+    """
+    return NetworkMessage(
+        type=MessageType.CLOSED_ROOM_INGESTED,
+        payload={"board_run": board_run},
+        sequence=sequence,
+    )
+
+
 def make_state_request() -> NetworkMessage:
     """Create a state sync request."""
     return NetworkMessage(type=MessageType.STATE_REQUEST)
@@ -321,5 +391,9 @@ def make_chat_message(sender: str, message: str) -> NetworkMessage:
 # Protocol constants
 DEFAULT_PORT = 7777
 HEARTBEAT_INTERVAL_MS = 5000  # 5 seconds
-HEARTBEAT_TIMEOUT_MS = 15000  # 15 seconds
+# 60s rather than 15s: BEN's first opening-lead inference can hold the
+# GIL long enough on a fresh deal that a 15s window misclassifies a busy
+# host as a dead one. 60s still flags genuinely dropped connections in a
+# reasonable time.
+HEARTBEAT_TIMEOUT_MS = 60000
 CONNECTION_TIMEOUT_MS = 10000  # 10 seconds
