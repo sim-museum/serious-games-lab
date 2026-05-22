@@ -2169,13 +2169,28 @@ def _precision_2c_rebid(state, e: HandEval, p_last: Bid) -> Bid:
 
 
 def _opener_rebid(state, e: HandEval, system: str) -> Bid:
+    op = state.opening_bid
+
     if not state.partner_bids:
-        # Partner passed — auction is dying. With a strong rebiddable hand,
-        # might balance, but partner is silent ⇒ pass.
+        # Partner has only passed so far. When opps overcalled AND
+        # advanced into a fit, opener with extras + shortness in
+        # their suit should reopen with a takeout double — partner
+        # may be sitting on a trap pass or a hand too good to act
+        # earlier. Otherwise, the auction dies here.
+        if state.rho_bids:
+            opp_suit = None
+            for b in reversed(state.rho_bids + state.lho_bids):
+                if b.suit is not None and b.suit != Suit.NOTRUMP:
+                    opp_suit = b.suit
+                    break
+            if (opp_suit is not None
+                    and e.suit_lengths.get(opp_suit, 0) <= 2
+                    and e.hcp >= 13):
+                return double(why=f"Reopening X: 13+ HCP, short in "
+                                  f"opps' {opp_suit.to_char()}")
         return passb()
 
     p_last = state.partner_bids[-1]
-    op = state.opening_bid
 
     # Precision-specific opener rebids run before the SAYC paths.
     if getattr(system, "strong_open_call", "2C") == "1C":
@@ -2631,6 +2646,14 @@ def _stayman_responder_rebid(state, e, opener_rebid: Bid) -> Bid:
         major = opener_rebid.suit
         fit = e.suit_lengths.get(major, 0)
         if fit >= 4:
+            # 17+ HCP with a 4-4 major fit and a 14-16 partner → 31+
+            # combined, slam is on. Skip the 4M signoff and ask via
+            # Blackwood directly; the responder-rebid pipeline takes
+            # over from there.
+            if hcp >= 17:
+                return bid(4, Suit.NOTRUMP, alert=True,
+                           why=f"Blackwood: slam try, 4-4 {major.to_char()} "
+                               "fit found via Stayman, 17+ HCP")
             if hcp >= 10:
                 return bid(4, major, why="Game in major fit")
             if 8 <= hcp <= 9:

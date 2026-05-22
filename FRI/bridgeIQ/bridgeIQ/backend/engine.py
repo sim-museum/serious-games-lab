@@ -467,53 +467,90 @@ class BridgeEngine:
                     for c in current_trick_cards:
                         current_trick_52.append(c.code52())
 
-                sample_hands_pbn = []
-                for _ in range(num_samples):
-                    # Shuffle unknown cards
-                    pool = list(unknown_cards)
-                    random.shuffle(pool)
-
-                    # Distribute to unknown seats respecting shown_out
-                    sample = dict(known_cards)  # copy known hands
-                    valid = True
-                    idx = 0
-                    for s in unknown_seats:
-                        need = cards_per_seat.get(s, 0)
-                        assigned = []
-                        for c52 in pool[idx:]:
-                            if len(assigned) >= need:
-                                break
-                            # Check shown_out constraint
-                            c_suit = Suit(c52 // 13)
-                            if c_suit in shown_out[s]:
-                                continue
-                            assigned.append(c52)
-                        if len(assigned) < need:
-                            valid = False
-                            break
-                        sample[s] = set(assigned)
-                        # Remove assigned from pool
-                        for a in assigned:
-                            pool.remove(a)
-                        idx = 0  # reset for next seat
-
-                    if not valid:
+                # Pre-flight: if every unknown seat is shown-out of a
+                # suit but unknown_cards still contains that suit, the
+                # constraint set is unsatisfiable (the cards have to
+                # land *somewhere*). Drop shown_out for that suit so
+                # sampling can proceed — the alternative is silently
+                # falling back to first-legal-card.
+                effective_shown_out = {s: set(shown_out[s])
+                                       for s in Seat}
+                for su in Suit:
+                    if su == Suit.NOTRUMP:
                         continue
+                    has_in_pool = any(c // 13 == su.value
+                                      for c in unknown_cards)
+                    if not has_in_pool:
+                        continue
+                    eligible = [s for s in unknown_seats
+                                if su not in effective_shown_out[s]]
+                    if not eligible:
+                        for s in unknown_seats:
+                            effective_shown_out[s].discard(su)
 
-                    # Build PBN string
-                    hand_strs = []
-                    for s in [Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST]:
-                        suits = [[], [], [], []]
-                        for c52 in sorted(sample.get(s, [])):
-                            si = c52 // 13
-                            ri = c52 % 13
-                            suits[si].append('AKQJT98765432'[ri])
-                        hand_strs.append('.'.join(''.join(s) if s else '-' for s in suits))
-                    pbn = 'N:' + ' '.join(hand_strs)
-                    sample_hands_pbn.append(pbn)
+                sample_hands_pbn = []
+                # Two passes: first respecting shown_out, then if
+                # nothing landed, retry ignoring shown_out so the
+                # endgame keeps getting MC analysis instead of falling
+                # back to first-legal-card.
+                for relax in (False, True):
+                    if sample_hands_pbn:
+                        break
+                    active_shown_out = (
+                        {s: set() for s in Seat} if relax
+                        else effective_shown_out)
+                    for _ in range(num_samples):
+                        # Per-card distribution: for each unknown card,
+                        # pick a random unknown seat that (a) hasn't
+                        # filled its capacity and (b) isn't shown-out of
+                        # that suit. Avoids the greedy-first-fit failure
+                        # where seat A took cards seat B needed.
+                        pool = list(unknown_cards)
+                        random.shuffle(pool)
+
+                        sample = dict(known_cards)
+                        remaining = {s: cards_per_seat.get(s, 0)
+                                     for s in unknown_seats}
+                        valid = True
+                        for c52 in pool:
+                            c_suit = Suit(c52 // 13)
+                            eligible = [s for s in unknown_seats
+                                        if remaining[s] > 0
+                                        and c_suit not in active_shown_out[s]]
+                            if not eligible:
+                                valid = False
+                                break
+                            chosen = random.choice(eligible)
+                            sample.setdefault(chosen, set()).add(c52)
+                            remaining[chosen] -= 1
+
+                        if not valid or any(remaining[s] > 0
+                                             for s in unknown_seats):
+                            continue
+
+                        # Build PBN string for this valid sample.
+                        hand_strs = []
+                        for s in [Seat.NORTH, Seat.EAST,
+                                  Seat.SOUTH, Seat.WEST]:
+                            suits = [[], [], [], []]
+                            for c52 in sorted(sample.get(s, [])):
+                                si = c52 // 13
+                                ri = c52 % 13
+                                suits[si].append('AKQJT98765432'[ri])
+                            hand_strs.append('.'.join(
+                                ''.join(s) if s else '-' for s in suits))
+                        pbn = 'N:' + ' '.join(hand_strs)
+                        sample_hands_pbn.append(pbn)
 
                 if not sample_hands_pbn:
-                    _log_fb("no-valid-samples")
+                    _log_fb(
+                        f"no-valid-samples seat={seat.name} "
+                        f"trump={trump_suit.name} leader={trick_leader.name} "
+                        f"unknown_seats={[s.name for s in unknown_seats]} "
+                        f"cards_per_seat={ {s.name: cards_per_seat[s] for s in Seat} } "
+                        f"shown_out={ {s.name: [x.name for x in shown_out[s]] for s in Seat if shown_out[s]} } "
+                        f"unknown_cards_n={len(unknown_cards)} "
+                        f"cur_trick={current_trick_52}")
                     return self.get_card_play(board, seat, current_trick_cards)
 
                 # Use DDS to solve all samples
