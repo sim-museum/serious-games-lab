@@ -283,13 +283,19 @@ def main(argv=None) -> int:
     print(f"[diff] Polling {log_dir} for new BDL files "
           f"(timeout {args.timeout:.0f}s)…")
     pre = snapshot_log_files(log_dir)
+    print(f"[diff] snapshot: {len(pre)} existing .bdl file(s) "
+          f"in log dir at start.")
     try:
-        new_bdls = wait_for_new_bdls(log_dir, pre, args.n,
-                                     timeout=args.timeout)
+        new_bdls = wait_for_new_bdls(
+            log_dir, pre, args.n,
+            timeout=args.timeout,
+            progress=lambda msg: print(f"[diff] {msg}"),
+        )
     except TimeoutError as ex:
         print(f"[diff] {ex}", file=sys.stderr)
         return 3
-    print(f"[diff] {len(new_bdls)} new BDL file(s) found")
+    print(f"[diff] {len(new_bdls)} BDL file(s) detected: "
+          f"{', '.join(p.name for p in new_bdls)}")
 
     # Sniff the system Q-Plus actually played, so we diff
     # like-with-like. Falls back to whatever --system asked for.

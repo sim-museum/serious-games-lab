@@ -149,44 +149,86 @@ def write_multi_deal_bde(
 # ---------------------------------------------------------------------------
 
 
-def snapshot_log_files(log_dir: Path) -> set:
-    """Set of currently-present .bdl files in `log_dir`."""
+def snapshot_log_files(log_dir: Path) -> dict:
+    """Map `{filename: (mtime, size)}` of .bdl/.BDL files in `log_dir`.
+
+    Returning the stat tuple (not just the name) lets the poller
+    detect files Q-Plus *modifies in place* — overwriting an
+    existing log-NNN.bdl with this session's deals — not just
+    files with brand-new names.
+    """
     if not log_dir.is_dir():
-        return set()
-    return {p.name for p in log_dir.glob("*.bdl")}
+        return {}
+    out = {}
+    # Match both lowercase `.bdl` (the usual Q-Plus naming) and
+    # uppercase `.BDL` in case a future Q-Plus release flips the
+    # extension casing.
+    for pattern in ("*.bdl", "*.BDL"):
+        for p in log_dir.glob(pattern):
+            try:
+                st = p.stat()
+                out[p.name] = (st.st_mtime, st.st_size)
+            except OSError:
+                continue
+    return out
 
 
 def wait_for_new_bdls(
         log_dir: Path,
-        previous: set,
+        previous,
         expected: int,
         *,
         timeout: float = 300.0,
         poll_interval: float = 1.0,
+        heartbeat_seconds: float = 30.0,
+        progress: callable = None,
 ) -> List[Path]:
-    """Block until at least one new BDL appears, returning the
-    list of new paths sorted by mtime (oldest first).
+    """Block until Q-Plus has produced a BDL (new or modified),
+    returning the list of paths sorted by mtime (oldest first).
 
     Q-Plus writes either one BDL per deal OR one BDL containing
     every deal of the session (latter when "Save match and exit"
-    is used). Callers downstream parse the returned files and
-    flatten the deal blocks; we just need to detect "Q-Plus has
-    finished writing something new".
+    is used). It MAY also overwrite an existing log-NNN.bdl —
+    e.g. when the user re-saves a match that already had a
+    previous log file. So "detection" must catch both:
 
-    `expected` is kept as a hint for the timeout message; the
-    function returns as soon as ANY new file is present and the
-    file size has stopped growing (a 2-poll quiet window).
+      * Fresh filename that wasn't in `previous`, OR
+      * Existing filename whose (mtime, size) differs from what
+        was in `previous`.
+
+    `previous` is either a `set` of bare filenames (legacy
+    callers) or a `dict {name: (mtime, size)}` from
+    `snapshot_log_files`. The richer dict form enables
+    overwrite detection.
+
+    The function returns as soon as the detected file's size
+    has been stable for ~3 s (the buffered-write quiet window).
+
+    `progress` is an optional callable invoked once per heartbeat
+    interval with a status string — used by the CLI to print
+    something so the user knows the loop is still alive.
     """
+    legacy = isinstance(previous, set)
     deadline = time.time() + timeout
     last_sizes: dict = {}
     last_change_t: dict = {}
+    last_heartbeat = time.time()
     while True:
         current = snapshot_log_files(log_dir)
-        new_names = current - previous
-        if new_names:
+        # Detect both new names and in-place modifications.
+        changed_names = set()
+        for name, (mtime, size) in current.items():
+            if legacy:
+                if name not in previous:
+                    changed_names.add(name)
+            else:
+                prev_stat = previous.get(name)
+                if prev_stat is None or prev_stat != (mtime, size):
+                    changed_names.add(name)
+        if changed_names:
             stable = True
-            for name in new_names:
-                size = (log_dir / name).stat().st_size
+            for name in changed_names:
+                size = current[name][1]
                 if last_sizes.get(name) != size:
                     last_sizes[name] = size
                     last_change_t[name] = time.time()
@@ -195,11 +237,25 @@ def wait_for_new_bdls(
             # at least 3 seconds — covers Q-Plus's buffered writes.
             now = time.time()
             if stable and all(now - last_change_t[name] >= 3.0
-                              for name in new_names):
-                return sorted((log_dir / n for n in new_names),
+                              for name in changed_names):
+                return sorted((log_dir / n for n in changed_names),
                               key=lambda p: p.stat().st_mtime)
+        now = time.time()
+        if progress is not None and (now - last_heartbeat) >= heartbeat_seconds:
+            elapsed = int(now - (deadline - timeout))
+            remaining = max(0, int(deadline - now))
+            progress(f"still waiting — {elapsed}s elapsed, "
+                     f"{remaining}s left ({len(current)} bdl files in "
+                     f"log dir, {len(changed_names)} changed since "
+                     f"snapshot). "
+                     f"In Q-Plus, finish the deals and pick "
+                     f"\"Save match and exit\" to flush a BDL.")
+            last_heartbeat = now
         if time.time() > deadline:
             raise TimeoutError(
-                f"Q-Plus didn't produce any new BDL file within {timeout}s "
-                f"(expected up to {expected} deals)")
+                f"Q-Plus produced no new or modified BDL within "
+                f"{timeout:.0f}s (expected up to {expected} deals). "
+                f"Tip: in Q-Plus, finish your deals and use "
+                f"\"Save match and exit\" — Q-Plus only flushes the "
+                f"BDL on save, not after each individual deal.")
         time.sleep(poll_interval)
