@@ -306,8 +306,8 @@ def main(argv=None) -> int:
                       f"hand differs between Q-Plus and ben_bridge "
                       f"— card-play diff will be meaningless.")
 
-    print("[card-diff] Initializing BEN engine (this loads NN models, "
-          "DDS, etc.; ~10 seconds)…", flush=True)
+    print("[card-diff] Initializing engine (DDS only — no NN, "
+          "no TensorFlow)…", flush=True)
     engine = BridgeEngine(verbose=False)
     if not engine.initialize():
         print("[card-diff] BEN engine failed to initialize; aborting.",
