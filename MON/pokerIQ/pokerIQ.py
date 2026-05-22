@@ -8484,11 +8484,16 @@ class PokerWindow(QMainWindow):
         #   sizes expressed in big blinds.
         # _tell_last_action: name → short verb tag for the previous
         #   completed action ('fold','check','call','bet','raise').
+        # _tell_shown_hands: name → list[str] of past hand-keys shown
+        #   at showdown (e.g. ['AKs', 'TT', '72o']). Builds up as
+        #   the session progresses; used to anchor the Tells display
+        #   in HARD evidence as the game goes on.
         from collections import deque as _deque
         self._tell_action_start = None
         self._tell_decision_times = {}
         self._tell_bet_sizes_bb = {}
         self._tell_last_action = {}
+        self._tell_shown_hands = {}
         self._tell_deque_factory = lambda: _deque(maxlen=20)
 
         self._hero_aggressive_acts = 0   # bets + raises postflop
@@ -8701,6 +8706,17 @@ class PokerWindow(QMainWindow):
             ts['showdowns_seen'] += 1
             if n in (winners_names or []):
                 ts['showdowns_won'] += 1
+            # Tells: capture every shown-down hand for this seat so
+            # the Show Tells panel can cite hard evidence ("showed
+            # AKs, JTs, 22 over 3 showdowns") in addition to behavioral
+            # readings.
+            seat = next((p for p in self.players if p.name == n), None)
+            if seat is not None and seat.hand:
+                key = self._hand_class(seat.hand)
+                bucket = self._tell_shown_hands.setdefault(n, [])
+                bucket.append(key)
+                if len(bucket) > 12:
+                    del bucket[:len(bucket) - 12]
         # Hero hole-card cash delta
         cls = getattr(self, '_current_hero_hand_class', None)
         start_stack = getattr(self, '_current_hero_starting_stack', None)
@@ -10049,60 +10065,120 @@ class PokerWindow(QMainWindow):
             pass
 
     def _tells_for(self, name: str) -> str:
-        """Compose a short human-readable tell for one player from the
-        behavioral trackers populated in process_action. None of the
-        inputs touch hole-card data — only timing + bet sizing +
-        last verb — so the string is "things an excellent player
-        would already notice".
+        """Compose a short human-readable tell for one player.
 
-        Returns "—" when there's no sample yet.
+        Inputs (none touch hole-card data pre-fold):
+          • _tell_decision_times[name] — last N decision times.
+          • _tell_bet_sizes_bb[name]    — last N raise sizes in BB.
+          • _tell_last_action[name]     — last verb.
+          • _tell_shown_hands[name]     — past hands SHOWN at
+            showdown this session (anchors the read in hard
+            evidence as the game goes on).
+          • _player_169_history[name]   — session VPIP / PFR.
+
+        Each numeric component is annotated with a ±error bar derived
+        from the sample's spread (population std-dev when ≥ 3
+        samples, otherwise a large pessimistic placeholder). At the
+        START OF A HAND / GAME — before any data — every component is
+        wrapped in '(?)' to signal high uncertainty.
+
+        Returns "—" when there's truly nothing to say.
         """
         parts: list[str] = []
+        from math import sqrt
 
-        # Decision time vs THIS player's baseline. The most recent
-        # decision relative to their own median; if it's >1.5× the
-        # median (or > 6 s with a thin sample) it's a TANK, < 1.2 s
-        # or under half the median it's a SNAP.
+        def _stddev(values):
+            n = len(values)
+            if n < 2:
+                return None
+            mean = sum(values) / n
+            return sqrt(sum((v - mean) ** 2 for v in values) / n)
+
+        # --- 1. Decision time vs this player's session baseline ---
         dts = self._tell_decision_times.get(name)
         if dts:
             last = dts[-1]
-            if len(dts) >= 3:
-                sorted_dts = sorted(dts)
+            sample = list(dts)
+            sd = _stddev(sample)
+            if len(sample) >= 3:
+                sorted_dts = sorted(sample)
                 median = sorted_dts[len(sorted_dts) // 2]
+                err_tag = f"±{sd:.1f}s" if sd is not None else "(?)"
             else:
                 median = last
+                err_tag = "(?)"   # too few samples — flag uncertainty
             if last >= max(6.0, 1.5 * median):
-                parts.append(f"TANK {last:.1f}s")
+                parts.append(f"TANK {last:.1f}s {err_tag}")
             elif last <= min(1.2, 0.5 * max(median, 0.5)):
-                parts.append(f"snap {last:.1f}s")
+                parts.append(f"snap {last:.1f}s {err_tag}")
             else:
-                parts.append(f"{last:.1f}s")
+                parts.append(f"{last:.1f}s {err_tag}")
 
-        # Last action tag (verb).
+        # --- 2. Last verb ---
         verb = self._tell_last_action.get(name)
         if verb:
             parts.append(verb)
 
-        # Bet-size context: classify the LAST raise / bet by BB count.
+        # --- 3. Bet sizing ---
         bets = self._tell_bet_sizes_bb.get(name)
         if bets and verb in ('raise', 'bet'):
             last_bb = bets[-1]
+            n_bets = len(bets)
+            sd_b = _stddev(list(bets))
+            err_b = (f"±{sd_b:.1f}BB" if (sd_b is not None and n_bets >= 3)
+                     else "(?)")
             if last_bb >= 6:
-                parts.append(f"big {last_bb:.0f}BB")
+                parts.append(f"big {last_bb:.0f}BB {err_b}")
             elif last_bb >= 3.5:
-                parts.append(f"std {last_bb:.0f}BB")
-            elif last_bb < 2.2 and last_bb > 0:
-                parts.append(f"min {last_bb:.1f}BB")
+                parts.append(f"std {last_bb:.0f}BB {err_b}")
+            elif 0 < last_bb < 2.2:
+                parts.append(f"min {last_bb:.1f}BB {err_b}")
             else:
-                parts.append(f"{last_bb:.1f}BB")
-        # Session aggression — mean bet size in BB if we have enough
-        # samples, gives the user a "this seat opens big" / "this
-        # seat min-bets" read.
+                parts.append(f"{last_bb:.1f}BB {err_b}")
+        # Session aggression — mean bet size with ± error.
         if bets and len(bets) >= 3:
             avg = sum(bets) / len(bets)
-            parts.append(f"avg {avg:.1f}BB")
+            sd_avg = _stddev(list(bets))
+            err_a = f"±{sd_avg:.1f}" if sd_avg is not None else "(?)"
+            parts.append(f"avg {avg:.1f}BB {err_a} (n={len(bets)})")
 
-        return " · ".join(parts) if parts else "—"
+        # --- 4. Session VPIP / PFR from the 169 history ---
+        hist = getattr(self, '_player_169_history', {}).get(name, {})
+        seen = sum(c.get('seen', 0) for c in hist.values())
+        played = sum(c.get('played', 0) for c in hist.values())
+        raised = sum(c.get('raised', 0) for c in hist.values())
+        if seen >= 2:
+            vpip = played / seen
+            pfr = raised / seen
+            # Binomial std-error: sqrt(p(1-p)/n)
+            err_vpip = sqrt(vpip * (1 - vpip) / seen)
+            err_pfr = sqrt(pfr * (1 - pfr) / seen)
+            unc = "(?)" if seen < 5 else ""
+            parts.append(
+                f"VPIP {vpip*100:.0f}±{err_vpip*100:.0f}% / "
+                f"PFR {pfr*100:.0f}±{err_pfr*100:.0f}% "
+                f"(n={seen}) {unc}".rstrip())
+        elif seen == 0:
+            parts.append("VPIP n=0 (?)")
+
+        # --- 5. Past shown-down hands (hard evidence) ---
+        shown = self._tell_shown_hands.get(name) or []
+        if shown:
+            # Compact: show the last 4 unique hands, then "+k more"
+            # if there are extras.
+            recent = list(reversed(shown))
+            seen_keys = []
+            for k in recent:
+                if k not in seen_keys:
+                    seen_keys.append(k)
+                if len(seen_keys) >= 4:
+                    break
+            extra = max(0, len(shown) - len(seen_keys))
+            tail = "" if extra == 0 else f" +{extra}"
+            parts.append(
+                f"shown: {', '.join(seen_keys)}{tail}")
+
+        return " · ".join(parts) if parts else "— no data yet (?)"
 
     def _build_deception_hands_for_hand(self):
         """No-op stub. The deception layer was retired — God Mode is
