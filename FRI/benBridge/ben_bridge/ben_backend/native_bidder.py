@@ -1718,6 +1718,27 @@ def _respond_to_minor_competitive(state, e: HandEval, system) -> Bid:
             if level <= 1:
                 return bid(level, m,
                            why="1-level new-suit overcall response (forcing)")
+            # Independent shortcut: 6+ card major + game values →
+            # just bid 4M directly. Don't waste a round on a
+            # cuebid when partner can't possibly have a better
+            # contract than 4-of-my-major in a 7-card+ fit. This
+            # catches hands like 14-HCP / 7-hearts where the NFB
+            # cuebid path would otherwise sign off too low.
+            if e.suit_lengths[m] >= 6 and hcp >= 13:
+                return bid(4, m,
+                           why=f"4{m.to_char()}: 6+ {m.to_char()}, "
+                               f"game values, no need to cuebid")
+            # 5-card major + game values + a legal natural call
+            # below the cuebid level: bid the suit (forcing). E.g.
+            # 1D-(3D)-? holding ♠AKQxx and 14 HCP, bid 3S not 4D.
+            # The cuebid (4D over a 3-level preempt) wastes a level
+            # when we have a natural game-going call available.
+            if (e.suit_lengths[m] >= 5
+                    and hcp >= 13
+                    and level <= overcall.level):
+                return bid(level, m,
+                           why=f"Forcing {level}{m.to_char()}: 5+ "
+                               f"with game values (preferred over cuebid)")
             # 2-level new suit — branch on NFB.
             if nfb:
                 if 8 <= hcp <= 10:
@@ -3061,17 +3082,42 @@ def _overcall(state, e: HandEval, system) -> Bid:
     # 6-10 HCP, and only in DIRECT seat (opener is my RHO). In
     # 4th-seat balancing the cheapest overcall is already at the
     # 2-level, so "jumping" to the 3-level here is reckless.
+    #
+    # In Precision-family systems (`strong_open_call == "1C"`) the
+    # 1D opening is a catch-all that doesn't promise diamonds, so
+    # a natural diamond preempt over 1D is allowed — we don't
+    # filter out opener's suit when it's the artificial 1D.
     rho_seat = state.seat.next().next().next()
     opener_is_rho = state.opener_seat == rho_seat
+    opener_1d_is_catchall = (
+        getattr(system, "strong_open_call", "2C") == "1C"
+        and op.level == 1 and op.suit == Suit.DIAMONDS
+    )
     if opener_is_rho:
         for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
-            if s == op.suit:
+            if s == op.suit and not opener_1d_is_catchall:
                 continue
-            if (e.suit_lengths[s] >= 6
-                    and e.suit_hcp[s] >= 4
-                    and 6 <= hcp <= 10):
-                level = 2 if _BID_RANK[s] > _BID_RANK[op.suit] else 3
-                return bid(level, s, why="Weak jump overcall")
+            length = e.suit_lengths[s]
+            suit_hcp = e.suit_hcp[s]
+            # Quality threshold scales with length: 6 cards need
+            # the standard suit-HCP ≥ 4 (an honor + queen-ish);
+            # 7+ card suits can preempt on QJ-headed (suit-HCP 3);
+            # 8+ card suits don't need any honor.
+            min_suit_hcp = 4 if length == 6 else (3 if length == 7 else 0)
+            if (length >= 6
+                    and suit_hcp >= min_suit_hcp
+                    and 4 <= hcp <= 10):
+                # Jump level: 2 if natural rank > op.suit (so 2-of-suit
+                # is a jump over a 1-level opening), 3 if same/lower
+                # rank (need to bump to the 3-level for it to be a
+                # jump). In the Precision-1D-catchall case where
+                # opener also bid diamonds, 3D is always the call.
+                if s == op.suit:
+                    level = op.level + 2
+                else:
+                    level = 2 if _BID_RANK[s] > _BID_RANK[op.suit] else 3
+                if level <= 4:
+                    return bid(level, s, why="Weak jump overcall")
 
     return passb()
 
