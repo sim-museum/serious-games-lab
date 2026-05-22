@@ -392,7 +392,7 @@ class BridgeEngine:
                         sampler=self.sampler,
                         seat=leader.value,
                         dealer=board.dealer.value,
-                        ddsolver=self.dds,
+                        dds=self.dds,
                         verbose=self.verbose
                     )
 
