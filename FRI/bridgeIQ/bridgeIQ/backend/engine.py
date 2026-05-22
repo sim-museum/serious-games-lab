@@ -329,6 +329,14 @@ class BridgeEngine:
         """
         import random
 
+        # Diagnostic hook — when MC_DEBUG_LOG is set, each fallback
+        # branch appends "<reason>\n" so we can see why MC bailed.
+        _debug_log = os.environ.get("MC_DEBUG_LOG")
+        def _log_fb(reason):
+            if _debug_log:
+                with open(_debug_log, "a") as f:
+                    f.write(f"{reason}\n")
+
         if not self._initialized:
             if not self.initialize():
                 return EngineResponse(action=None, who="Error")
@@ -439,16 +447,19 @@ class BridgeEngine:
                 # DDS solve() expects strain_i 1-based: 1=S,2=H,3=D,4=C,5=NT
                 # Suit enum: S=0,H=1,D=2,C=3,NT=4 → strain_i = value + 1
 
-                # Determine current leader for DDS
+                # Determine current leader for DDS. If the trick has
+                # cards already, the leader is len(cards) seats earlier
+                # than the seat about to play. If no cards are in the
+                # trick, the player about to play IS the leader — using
+                # `seat` directly is more reliable than asking
+                # `board.tricks[-1].winner`, which can disagree with the
+                # caller's view when our Trick.winner computation
+                # differs from theirs (and then DDS returns cards for
+                # the wrong seat, all filtered out as "no legal results").
                 if current_trick_cards:
                     trick_leader = Seat((seat - len(current_trick_cards)) % 4)
                 else:
-                    if board.tricks:
-                        trick_leader = board.tricks[-1].winner
-                    elif board.contract:
-                        trick_leader = board.contract.declarer.next()
-                    else:
-                        trick_leader = seat
+                    trick_leader = seat
 
                 # Current trick for DDS format
                 current_trick_52 = []
@@ -502,7 +513,7 @@ class BridgeEngine:
                     sample_hands_pbn.append(pbn)
 
                 if not sample_hands_pbn:
-                    # Fallback if sampling failed
+                    _log_fb("no-valid-samples")
                     return self.get_card_play(board, seat, current_trick_cards)
 
                 # Use DDS to solve all samples
@@ -518,9 +529,11 @@ class BridgeEngine:
                 except Exception as e:
                     if self.verbose:
                         print(f"MC DDS solve error: {e}")
+                    _log_fb(f"dds-exception:{type(e).__name__}:{e}")
                     return self.get_card_play(board, seat, current_trick_cards)
 
                 if not dd_results:
+                    _log_fb("dds-empty-result")
                     return self.get_card_play(board, seat, current_trick_cards)
 
                 # Find best card by average tricks
@@ -533,7 +546,13 @@ class BridgeEngine:
                 legal_results = {c: t for c, t in avg_tricks.items() if c in legal_codes}
 
                 if not legal_results:
-                    # DDS returned cards we don't recognize as legal
+                    _log_fb(
+                        f"no-legal-results seat={seat.name} "
+                        f"dds_keys={sorted(avg_tricks)} "
+                        f"legal={sorted(legal_codes)} "
+                        f"trump={trump_suit.name} leader={trick_leader.name} "
+                        f"cur_trick={current_trick_52} "
+                        f"sample_pbn[0]={sample_hands_pbn[0] if sample_hands_pbn else None}")
                     return self.get_card_play(board, seat, current_trick_cards)
 
                 best_card52 = max(legal_results, key=legal_results.get)
@@ -559,6 +578,7 @@ class BridgeEngine:
                     print(f"Error in MC card play: {e}")
                     import traceback
                     traceback.print_exc()
+                _log_fb(f"outer-exception:{type(e).__name__}:{e}")
                 return self.get_card_play(board, seat, current_trick_cards)
 
     def get_dd_card_play(self, board: BoardState, seat: Seat,

@@ -322,6 +322,15 @@ def _apply_rkc(sys_: BiddingSystem, rules: Dict[str, RCERule]) -> None:
             if tail.endswith("0314"):
                 sys_.rkc_variant = "0314"
                 return
+    # Fallback: detect classic ace-asking Blackwood from the 4NT
+    # bid-entry name. Q-Plus's Precision Club 90 modern declares
+    # "Blackwood / RKCB (ace-ask)" without an explicit keycard flag,
+    # which means count aces only (5♣=0/4, 5♦=1, 5♥=2, 5♠=3).
+    for r in rules.values():
+        nm = (getattr(r, "name", "") or "").lower()
+        if "blackwood" in nm and "ace-ask" in nm:
+            sys_.rkc_variant = "classic"
+            return
 
 
 def _apply_two_over_one(sys_: BiddingSystem, rules: Dict[str, RCERule]) -> None:

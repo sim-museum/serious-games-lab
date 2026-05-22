@@ -774,18 +774,19 @@ def _rkc_response_levels(variant: str) -> dict:
             (3, False): (5, Suit.SPADES),   (3, True):  (5, Suit.SPADES),
         }
     if variant == "0314":
+        # 5♣ = 0 or 3 keycards, 5♦ = 1 or 4 keycards.
         return {
-            (1, False): (5, Suit.CLUBS),   (4, False): (5, Suit.CLUBS),
-            (1, True):  (5, Suit.CLUBS),   (4, True):  (5, Suit.CLUBS),
-            (0, False): (5, Suit.DIAMONDS),(3, False): (5, Suit.DIAMONDS),
-            (0, True):  (5, Suit.DIAMONDS),(3, True):  (5, Suit.DIAMONDS),
+            (0, False): (5, Suit.CLUBS),   (3, False): (5, Suit.CLUBS),
+            (0, True):  (5, Suit.CLUBS),   (3, True):  (5, Suit.CLUBS),
+            (1, False): (5, Suit.DIAMONDS),(4, False): (5, Suit.DIAMONDS),
+            (1, True):  (5, Suit.DIAMONDS),(4, True):  (5, Suit.DIAMONDS),
         }
-    # 1430 (default)
+    # 1430 (default): 5♣ = 1 or 4 keycards, 5♦ = 0 or 3 keycards.
     return {
-        (0, False): (5, Suit.CLUBS),   (3, False): (5, Suit.CLUBS),
-        (0, True):  (5, Suit.CLUBS),   (3, True):  (5, Suit.CLUBS),
-        (1, False): (5, Suit.DIAMONDS),(4, False): (5, Suit.DIAMONDS),
-        (1, True):  (5, Suit.DIAMONDS),(4, True):  (5, Suit.DIAMONDS),
+        (1, False): (5, Suit.CLUBS),   (4, False): (5, Suit.CLUBS),
+        (1, True):  (5, Suit.CLUBS),   (4, True):  (5, Suit.CLUBS),
+        (0, False): (5, Suit.DIAMONDS),(3, False): (5, Suit.DIAMONDS),
+        (0, True):  (5, Suit.DIAMONDS),(3, True):  (5, Suit.DIAMONDS),
     }
 
 
@@ -848,11 +849,11 @@ def _parse_rkc_response(response: 'Bid', variant: str) -> Tuple[Optional[int], O
             return (3, None)
         return (None, None)
     if response.suit == Suit.CLUBS and response.level == 5:
-        # 5C in 1430 = 0 or 3; in 0314 = 1 or 4. Caller picks 0 vs 3
-        # by hand strength.
-        return (0, None) if variant == "1430" else (1, None)
-    if response.suit == Suit.DIAMONDS and response.level == 5:
+        # 5C in 1430 = 1 or 4; in 0314 = 0 or 3. Caller picks the right
+        # branch by hand strength.
         return (1, None) if variant == "1430" else (0, None)
+    if response.suit == Suit.DIAMONDS and response.level == 5:
+        return (0, None) if variant == "1430" else (1, None)
     if response.suit == Suit.HEARTS and response.level == 5:
         return (2, False)
     if response.suit == Suit.SPADES and response.level == 5:
@@ -1844,9 +1845,24 @@ def _respond_to_major(state, e: HandEval, system) -> Bid:
         if hcp >= 13 and system.has("A-1MA-Jacoby-2NT"):
             return bid(2, Suit.NOTRUMP, alert=True,
                        why="Jacoby 2NT: 4+ support, GF")
-        # Without Jacoby 2NT, a 4+-trump hand with 13-15 HCP and no
-        # shortness can't show its strength below game — settle for
-        # 4M and let opener evaluate for slam if extras are there.
+        # 17+ HCP with 4+ support is slam-interest territory. Jumping
+        # to 4M would kill the auction — preserve room by bidding 2/1
+        # in the longest 5+ side suit first, then bring up the major
+        # support later (or take control via Blackwood).
+        if hcp >= 17:
+            for s in (Suit.CLUBS, Suit.DIAMONDS):
+                if e.suit_lengths[s] >= 5 and s != major:
+                    return bid(2, s, alert=True,
+                               why=f"2-over-1 GF in 5+{s.to_char()} "
+                                   f"(slam try, 4+{major.to_char()})")
+            if (major == Suit.SPADES
+                    and e.suit_lengths[Suit.HEARTS] >= 5):
+                return bid(2, Suit.HEARTS, alert=True,
+                           why="2-over-1 GF in 5+H "
+                               "(slam try, 4+S)")
+        # Without Jacoby 2NT and no 5+ side suit for a 2/1, a
+        # 4+-trump hand with 13+ HCP and no shortness settles for
+        # 4M and lets opener evaluate for slam from extras.
         if hcp >= 13:
             return bid(4, major,
                        why=f"4+{major.to_char()} game raise "
@@ -2735,6 +2751,59 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
         if opener_rebid.level == 2 and hcp >= 10 and e.suit_lengths.get(major, 0) >= 4:
             return bid(4, major, why="Game raise after partner's support")
         return passb()
+
+    # 2/1 GF auction: opener rebid their major at the 2-level (min, 5+ in major).
+    # With 4+ trump support and slam-interest values, launch RKC; otherwise
+    # close in the 4-of-major game.
+    if (opener_rebid.level == 2
+            and opener_rebid.suit == op.suit
+            and op.suit in (Suit.HEARTS, Suit.SPADES)
+            and len(state.my_bids) >= 1
+            and state.my_bids[0].level == 2
+            and state.my_bids[0].suit != op.suit
+            and e.suit_lengths.get(op.suit, 0) >= 4):
+        if hcp >= 17:
+            return bid(4, Suit.NOTRUMP, alert=True,
+                       why=f"Blackwood: slam try, 4+{op.suit.to_char()} "
+                           f"support, opener showed 5+")
+        if hcp >= 13:
+            return bid(4, op.suit,
+                       why=f"4{op.suit.to_char()}: game in known fit")
+        return passb()
+
+    # 2/1 GF auction: opener rebid a NEW suit at the 2-level. The
+    # auction is still game-forcing — never pass below game. Pick the
+    # most descriptive rebid by shape.
+    if (opener_rebid.level == 2
+            and opener_rebid.suit is not None
+            and opener_rebid.suit != Suit.NOTRUMP
+            and opener_rebid.suit != op.suit
+            and len(state.my_bids) >= 1
+            and state.my_bids[0].level == 2
+            and state.my_bids[0].suit is not None
+            and state.my_bids[0].suit != Suit.NOTRUMP
+            and state.my_bids[0].suit != op.suit):
+        my_suit = state.my_bids[0].suit
+        new_suit = opener_rebid.suit
+        # 4+ in opener's new suit + game values → raise to game
+        if e.suit_lengths.get(new_suit, 0) >= 4 and hcp >= 13:
+            return bid(4, new_suit,
+                       why=f"4{new_suit.to_char()}: 4-card fit in opener's "
+                           "new suit")
+        # 12+ balanced → 3NT (most common 2/1 GF stop)
+        if e.is_balanced and hcp >= 12:
+            return bid(3, Suit.NOTRUMP,
+                       why="3NT in 2/1 GF: balanced, no major fit")
+        # Long own suit → rebid it
+        if e.suit_lengths.get(my_suit, 0) >= 6:
+            return bid(3, my_suit,
+                       why=f"3{my_suit.to_char()}: rebid 6+ own suit")
+        # Preference to opener's first suit
+        if e.suit_lengths.get(op.suit, 0) >= 2:
+            return bid(3, op.suit,
+                       why=f"3{op.suit.to_char()}: preference to opener")
+        return bid(3, Suit.NOTRUMP,
+                   why="3NT in 2/1 GF (last-resort game)")
 
     # Opener showed a NEW suit at the 1-level (typically 1m-1M-1S,
     # showing 4 spades and opener's range without a fit yet).
