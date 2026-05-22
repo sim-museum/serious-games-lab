@@ -285,6 +285,16 @@ def main(argv=None) -> int:
         if idx < len(labels) and labels[idx] not in qplus_by_label:
             qplus_by_label[labels[idx]] = deal
 
+    # Auto-grow --n if the BDL has more labels than the user passed
+    # (the harness defaults to N=5; running against a 10-deal BDL
+    # would silently truncate). The seed is still the user's
+    # responsibility — there's no way to recover that from the BDL.
+    if len(qplus_by_label) > args.n:
+        print(f"[card-diff] BDL has {len(qplus_by_label)} deal "
+              f"labels, --n was {args.n}; growing to "
+              f"{len(qplus_by_label)}.")
+        args.n = len(qplus_by_label)
+
     our_boards = _generate_deals(args.n, args.seed)
 
     print(f"[card-diff] Loaded {len(qdeals)} Q-Plus deal blocks "
@@ -292,7 +302,13 @@ def main(argv=None) -> int:
     print(f"[card-diff] Generated {len(our_boards)} matching deals "
           f"(seed={args.seed}).")
 
-    # Sanity check: hands match between Q-Plus and ben_bridge.
+    # Sanity check: hands MUST match between Q-Plus and ben_bridge.
+    # Mismatch usually means the user passed the wrong --seed (the
+    # most common footgun — the bidder harness writes deals from
+    # seed X, the user re-runs the card-diff with the default 42).
+    # Abort cleanly so we don't waste 5 minutes computing a
+    # meaningless 1% match rate.
+    mismatches = []
     for i, b in enumerate(our_boards, 1):
         label = f"BB-diff-{i:03d}"
         qd = qplus_by_label.get(label)
@@ -302,9 +318,14 @@ def main(argv=None) -> int:
             q_hand = set(c.code52() for c in qd.hands.get(seat, Hand()).cards)
             b_hand = set(c.code52() for c in b.hands.get(seat, Hand()).cards)
             if q_hand and q_hand != b_hand:
-                print(f"[card-diff] WARNING: board {i} {seat.to_char()} "
-                      f"hand differs between Q-Plus and ben_bridge "
-                      f"— card-play diff will be meaningless.")
+                mismatches.append((i, seat.to_char()))
+    if mismatches:
+        print("[card-diff] FATAL: hand mismatches at "
+              f"{mismatches[:5]}{'...' if len(mismatches) > 5 else ''} "
+              f"— --seed={args.seed} doesn't match the seed used to "
+              f"write the BDE. The diff would be meaningless. Aborting.",
+              file=sys.stderr)
+        return 4
 
     print("[card-diff] Initializing engine (DDS only — no NN, "
           "no TensorFlow)…", flush=True)
