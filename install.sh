@@ -69,14 +69,19 @@ else
 fi
 
 # --- Swap space ---
-# Tight swap risks systemd-oomd killing this script during the
-# TensorFlow venv install in PHASE 2 (benBridge).
+# Tight swap risks systemd-oomd killing long apt/pip steps in PHASE 2.
 SWAP_MB=$(free -m | awk '/^Swap:/ {print $2+0}')
 RECOMMENDED_SWAP_GB=8
 SWAP_GB=$(( SWAP_MB / 1024 ))
 if [[ $SWAP_MB -lt $((RECOMMENDED_SWAP_GB * 1024)) ]]; then
     echo "  [WARN] Swap: ${SWAP_GB} GB available (${RECOMMENDED_SWAP_GB} GB recommended)"
-    echo "         Resize /swap.img: sudo swapoff /swap.img && sudo rm /swap.img && sudo fallocate -l ${RECOMMENDED_SWAP_GB}G /swap.img && sudo chmod 600 /swap.img && sudo mkswap /swap.img && sudo swapon /swap.img"
+    if [[ -f /swap.img ]]; then
+        echo "         Resize /swap.img: sudo swapoff /swap.img && sudo rm /swap.img && sudo fallocate -l ${RECOMMENDED_SWAP_GB}G /swap.img && sudo chmod 600 /swap.img && sudo mkswap /swap.img && sudo swapon /swap.img"
+    else
+        # No /swap.img — current swap is a too-small partition (or none). Add a swapfile alongside it.
+        echo "         Add /swap.img: sudo fallocate -l ${RECOMMENDED_SWAP_GB}G /swap.img && sudo chmod 600 /swap.img && sudo mkswap /swap.img && sudo swapon /swap.img"
+        echo "         Persist:       echo '/swap.img none swap sw 0 0' | sudo tee -a /etc/fstab"
+    fi
     AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
 else
     echo "  [OK]   Swap: ${SWAP_GB} GB available (${RECOMMENDED_SWAP_GB} GB recommended)"
@@ -150,9 +155,20 @@ if command -v vulkaninfo &>/dev/null; then
         AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
     fi
 else
-    echo "  [WARN] Vulkan: vulkaninfo not found — DXVK-installed games will fail at launch"
-    echo "         Install: sudo apt install vulkan-tools mesa-vulkan-drivers mesa-vulkan-drivers:i386"
-    AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
+    echo "  [INFO] Vulkan: vulkaninfo not found — installing vulkan-tools + mesa drivers"
+    # mesa-vulkan-drivers:i386 needs the i386 foreign arch enabled.
+    if ! dpkg --print-foreign-architectures 2>/dev/null | grep -q '^i386$'; then
+        echo "         Enabling i386 architecture..."
+        dpkg --add-architecture i386
+        apt-get update
+    fi
+    if apt-get install -y vulkan-tools mesa-vulkan-drivers mesa-vulkan-drivers:i386; then
+        echo "  [OK]   Vulkan: installed vulkan-tools + mesa-vulkan-drivers (amd64 + i386)"
+    else
+        echo "  [WARN] Vulkan: auto-install failed — DXVK-installed games will fail at launch"
+        echo "         Retry: sudo dpkg --add-architecture i386 && sudo apt update && sudo apt install vulkan-tools mesa-vulkan-drivers mesa-vulkan-drivers:i386"
+        AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
+    fi
 fi
 
 # --- System wine wow64 mode ---
