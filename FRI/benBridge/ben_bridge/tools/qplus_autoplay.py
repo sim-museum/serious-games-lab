@@ -78,39 +78,43 @@ def _click_at(x: int, y: int, *, delay_ms: int = 100):
 # ---------------------------------------------------------------------------
 
 
-BUTTONS = ("next_deal", "start_bidding", "autoplay")
-PRETTY = {
-    "next_deal":     "Next deal",
-    "start_bidding": "Start bidding",
-    "autoplay":      "Autoplay",
-}
+# In Q-Plus the same screen region cycles through three labels —
+# "Next deal", "Start bidding", "Autoplay" — at different points
+# in the deal. Only one position needs to be recorded; we click
+# the same (x, y) three times per cycle.
+BUTTON_NAME = "step_button"
 
 
-def calibrate(save_path: Path) -> Dict[str, Tuple[int, int]]:
-    """Prompt the user to hover over each Q-Plus button and press
-    Enter; record each position. Returns a {name: (x, y)} dict
-    and persists it to `save_path` as JSON for re-use.
+def calibrate(save_path: Path) -> Tuple[int, int]:
+    """Prompt the user to hover over the single Q-Plus action
+    button (the one that cycles through Next deal → Start bidding
+    → Autoplay) and press Enter; persist the (x, y) to JSON.
     """
-    positions: Dict[str, Tuple[int, int]] = {}
     print("[autoplay] Calibration — hover the MOUSE POINTER over "
-          "each button, then press Enter in this terminal.")
+          "the action button (the one that shows Next deal / "
+          "Start bidding / Autoplay at different stages), then "
+          "press Enter in this terminal.")
     print("[autoplay] (don't click in Q-Plus during this step — "
           "we read the pointer position, no click needed.)")
-    for name in BUTTONS:
-        input(f"  Position the pointer over the '{PRETTY[name]}' "
-              "button, then press Enter… ")
-        x, y, _ = _get_mouse()
-        positions[name] = (x, y)
-        print(f"    → {PRETTY[name]} at ({x}, {y})")
+    input("  Position the pointer, then press Enter… ")
+    x, y, _ = _get_mouse()
+    print(f"    → action button at ({x}, {y})")
     save_path.write_text(json.dumps(
-        {k: list(v) for k, v in positions.items()}, indent=2))
-    print(f"[autoplay] Saved positions to {save_path}.")
-    return positions
+        {BUTTON_NAME: [x, y]}, indent=2))
+    print(f"[autoplay] Saved position to {save_path}.")
+    return (x, y)
 
 
-def load_positions(path: Path) -> Dict[str, Tuple[int, int]]:
+def load_position(path: Path) -> Tuple[int, int]:
     raw = json.loads(path.read_text())
-    return {k: tuple(v) for k, v in raw.items()}
+    if BUTTON_NAME in raw:
+        return tuple(raw[BUTTON_NAME])
+    # Backwards-compat with the old 3-position format — use the
+    # first recorded button.
+    for k in ("next_deal", "start_bidding", "autoplay"):
+        if k in raw:
+            return tuple(raw[k])
+    raise KeyError(BUTTON_NAME)
 
 
 # ---------------------------------------------------------------------------
@@ -131,36 +135,38 @@ def _wait_with_heartbeat(seconds: float, label: str,
                   flush=True)
 
 
-def autoplay(positions: Dict[str, Tuple[int, int]], *,
+def autoplay(position: Tuple[int, int], *,
              deals: int,
              after_next_deal: float,
              after_start_bidding: float,
              per_deal_seconds: float,
              window_id: int = 0,
              dry_run: bool = False):
-    """Click Next deal → wait → Start bidding → wait for bidding →
-    Autoplay → wait for tricks, `deals` times.
+    """Click the single action button three times per deal, with
+    waits sized for what Q-Plus shows at each stage.
 
-    Q-Plus's buttons appear in sequence:
-      * "Next deal" is shown when the previous deal finished.
-      * "Start bidding" appears a beat after Next deal is clicked
-        (the new hand has to be dealt out first).
-      * "Autoplay" only appears once the BIDDING phase has
-        finished — that's the longest wait (the bidder + 4
-        seats running through the auction).
+    The same screen region cycles through three labels — first
+    "Next deal", then "Start bidding" (a beat later, once the
+    hand is dealt out), then "Autoplay" (after the auction has
+    finished). We click → wait → click → wait → click → wait
+    for the tricks to play out, then repeat.
 
-    Per-step delays are configurable; the defaults assume a
-    moderately fast machine and need bumping on slow hardware.
+    Per-step delays are CLI-configurable; the defaults are sized
+    for Precision90M auctions on moderate hardware. If a deal's
+    cardplay sometimes outlasts the wait, bump
+    `--per-deal-seconds` (the previous default of 30 wasn't
+    safe — 60 catches most variations).
     """
-    delays = (
-        ("next_deal",     after_next_deal,     "bidding ready"),
-        ("start_bidding", after_start_bidding, "auction in progress"),
+    x, y = position
+    steps = (
+        (after_next_deal,     "bidding ready",       "Next deal"),
+        (after_start_bidding, "auction in progress", "Start bidding"),
+        (per_deal_seconds,    "playing tricks",      "Autoplay"),
     )
     for i in range(1, deals + 1):
         print(f"[autoplay] deal {i}/{deals}…", flush=True)
-        for name, wait_after, label in delays:
-            x, y = positions[name]
-            print(f"  click {PRETTY[name]} at ({x}, {y}), "
+        for wait_after, label, stage_name in steps:
+            print(f"  click '{stage_name}' at ({x}, {y}), "
                   f"then wait {wait_after:.0f}s for {label}",
                   flush=True)
             if not dry_run:
@@ -171,19 +177,6 @@ def autoplay(positions: Dict[str, Tuple[int, int]], *,
                         pass
                 _click_at(x, y)
             _wait_with_heartbeat(wait_after, label)
-        # Final click: Autoplay.
-        x, y = positions["autoplay"]
-        print(f"  click {PRETTY['autoplay']} at ({x}, {y}), "
-              f"then wait {per_deal_seconds:.0f}s for tricks",
-              flush=True)
-        if not dry_run:
-            if window_id:
-                try:
-                    _xdo("windowactivate", "--sync", str(window_id))
-                except subprocess.CalledProcessError:
-                    pass
-            _click_at(x, y)
-        _wait_with_heartbeat(per_deal_seconds, "playing tricks")
         print(f"[autoplay] deal {i} done.")
 
 
@@ -215,10 +208,11 @@ def main(argv=None) -> int:
                         "(default 20; this is the full auction time "
                         "— bump on slow machines or if your system "
                         "produces long auctions)")
-    p.add_argument("--per-deal-seconds", type=float, default=30.0,
+    p.add_argument("--per-deal-seconds", type=float, default=60.0,
                    help="seconds to wait after Autoplay click before "
-                        "starting the next deal (default 30; tricks "
-                        "phase length)")
+                        "starting the next deal (default 60 — Q-Plus's "
+                        "card-play time varies a lot; 30s was unsafe "
+                        "on harder hands)")
     p.add_argument("--window-id", type=int, default=0,
                    help="X11 window ID for Q-Plus (use `xdotool "
                         "search --name Q-Plus` to find it); when "
@@ -231,22 +225,16 @@ def main(argv=None) -> int:
 
     cache = Path(args.positions)
     if args.recalibrate or not cache.is_file():
-        positions = calibrate(cache)
+        position = calibrate(cache)
     else:
         try:
-            positions = load_positions(cache)
-            missing = [b for b in BUTTONS if b not in positions]
-            if missing:
-                print(f"[autoplay] cached positions missing "
-                      f"{missing}; recalibrating.")
-                positions = calibrate(cache)
+            position = load_position(cache)
         except Exception as ex:
             print(f"[autoplay] couldn't parse {cache}: {ex!r}; "
                   "recalibrating.")
-            positions = calibrate(cache)
+            position = calibrate(cache)
 
-    print(f"[autoplay] positions: "
-          f"{', '.join(f'{PRETTY[k]}=({x},{y})' for k, (x, y) in positions.items())}")
+    print(f"[autoplay] action button at {position}")
     if args.window_id == 0:
         # Try to find Q-Plus's window automatically.
         try:
@@ -263,7 +251,7 @@ def main(argv=None) -> int:
           "Ctrl-C to abort.")
     time.sleep(3)
     try:
-        autoplay(positions,
+        autoplay(position,
                  deals=args.deals,
                  after_next_deal=args.after_next_deal,
                  after_start_bidding=args.after_start_bidding,

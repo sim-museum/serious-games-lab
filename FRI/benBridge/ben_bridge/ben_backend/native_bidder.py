@@ -477,10 +477,19 @@ def _open_precision(e: HandEval, system, state=None) -> Bid:
                            why=f"Solid-minor 4NT: 8+ solid "
                                f"{minor.to_char()}, {hcp} HCP")
 
-    # Strong artificial 1C — any shape.
+    # Strong artificial 1C — but defer to the limited 1NT opening
+    # for balanced hands inside the NT range. Q-Plus's Precision90M
+    # opens 1NT with 16 balanced (the upper end of the 14-16 NT
+    # range) rather than 1C, since 1NT is more descriptive when
+    # the hand is balanced and inside the limited-NT band.
     if hcp >= strong_min:
-        return bid(1, Suit.CLUBS, alert=True,
-                   why=f"Precision: {strong_min}+ HCP, any shape")
+        if (e.is_balanced
+                and nt_min <= hcp <= nt_max):
+            # Fall through to the 1NT opening branch below.
+            pass
+        else:
+            return bid(1, Suit.CLUBS, alert=True,
+                       why=f"Precision: {strong_min}+ HCP, any shape")
 
     # Below the lower opening bound → Pass (preempts considered first).
     if hcp < two_c_min:
@@ -638,7 +647,10 @@ def _preempt_bid(e: HandEval, state=None, system=None) -> Optional[Bid]:
         # spot-card sequence). Modeling that as suit-HCP ≥ 4 nvul /
         # ≥ 5 vul.
         min_suit = 5 if am_vul else 4
-        if min_total <= e.hcp <= 10 and suit_hcp >= min_suit:
+        # Max HCP for a weak two is 9 — 10 HCP + 6-card suit is the
+        # boundary case that Q-Plus opens at the 1-level (more
+        # constructive auction). Capping at 9 here matches.
+        if min_total <= e.hcp <= 9 and suit_hcp >= min_suit:
             return bid(2, longest,
                        why=f"Weak two: 6 {longest.to_char()}, "
                            f"suit-HCP {suit_hcp}, "
@@ -2409,8 +2421,12 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
             return bid(2, Suit.NOTRUMP, why="15-17 NT rebid")
         if e.is_balanced and e.hcp >= 18:
             return bid(3, Suit.NOTRUMP, why="18-19 NT rebid")
-        # Show second suit if 5-4 or longer (lower-ranked, no reverse)
-        if e.second_suit and _BID_RANK[e.second_suit] < _BID_RANK[op_suit]:
+        # Show second suit if 5-4 or longer (lower-ranked, no reverse).
+        # `e.second_suit is not None` — `if e.second_suit:` is wrong:
+        # `Suit.SPADES` has enum value 0 which is falsy, so any 4-card
+        # spade second suit silently skipped this branch.
+        if (e.second_suit is not None
+                and _BID_RANK[e.second_suit] < _BID_RANK[op_suit]):
             return bid(2, e.second_suit, why="Second suit (lower)")
         # Rebid 6-card original suit
         if e.suit_lengths[op_suit] >= 6:
@@ -2458,9 +2474,23 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
         # Rebid 6-card opener suit
         if e.suit_lengths[op_suit] >= 6:
             return bid(2, op_suit, why="Rebid 6-card suit")
-        # Bid second suit
-        if e.second_suit:
+        # Bid second suit. Test `is not None` rather than truthy —
+        # Suit.SPADES.value == 0 (falsy), so `if e.second_suit:`
+        # silently skipped this branch for any 4-card spade side suit.
+        if e.second_suit is not None:
             target = e.second_suit
+            # If we can show the second suit at the 1-LEVEL (target
+            # is between partner's response and opener's suit in
+            # rank), do that — it's the natural call for hands like
+            # 1m-1H-1S showing 4 spades, opening hand. Previously
+            # only 2-level rebids of the side suit were considered.
+            if (p_last.level == 1
+                    and _BID_RANK[target] > _BID_RANK[p_last.suit]
+                    and _BID_RANK[target] > _BID_RANK[op_suit]
+                    and _BID_RANK[target] < _BID_RANK[Suit.NOTRUMP]):
+                return bid(1, target,
+                           why=f"1{target.to_char()}: 4+ side suit "
+                               f"shown at 1-level")
             # Reverse check: a higher-ranked second suit at the 2-level
             # promises 17+ HCP; otherwise show a lower-ranked second suit.
             if _BID_RANK[target] > _BID_RANK[op_suit] and e.hcp >= 17:
@@ -2510,8 +2540,10 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
         # Rebid 6-card original suit
         if e.suit_lengths[op_suit] >= 6:
             return bid(2, op_suit, why="6-card opener suit rebid")
-        # Show second suit
-        if e.second_suit and _BID_RANK[e.second_suit] < _BID_RANK[op_suit]:
+        # Show second suit. `is not None` — see note above re:
+        # Suit.SPADES being falsy.
+        if (e.second_suit is not None
+                and _BID_RANK[e.second_suit] < _BID_RANK[op_suit]):
             return bid(2, e.second_suit, why="Second suit")
         # Balanced rebid 2NT (forcing in 2/1 context)
         if e.is_balanced:
@@ -2704,6 +2736,51 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
             return bid(4, major, why="Game raise after partner's support")
         return passb()
 
+    # Opener showed a NEW suit at the 1-level (typically 1m-1M-1S,
+    # showing 4 spades and opener's range without a fit yet).
+    # Responder's options:
+    #   * Raise opener's new suit (3+ support) at the appropriate
+    #     level by strength.
+    #   * Rebid own 5+ suit at the 2-level (6-9) or 3-level (10-12).
+    #   * 1NT (6-9 balanced), 2NT (11-12 inv), 3NT (13+ balanced).
+    if (opener_rebid.level == 1
+            and opener_rebid.suit is not None
+            and opener_rebid.suit != Suit.NOTRUMP
+            and opener_rebid.suit != op.suit
+            and state.my_bids
+            and state.my_bids[0].level == 1
+            and state.my_bids[0].suit is not None
+            and state.my_bids[0].suit != Suit.NOTRUMP):
+        new_major = opener_rebid.suit
+        my_first_suit = state.my_bids[0].suit
+        # Raise opener's new suit with 4+ support.
+        if e.suit_lengths.get(new_major, 0) >= 4:
+            if hcp >= 13:
+                return bid(4, new_major,
+                           why=f"4{new_major.to_char()}: 13+ HCP, "
+                               f"4-card {new_major.to_char()} fit")
+            if hcp >= 10:
+                return bid(3, new_major,
+                           why=f"3{new_major.to_char()}: 10-12 inv, "
+                               f"4-card {new_major.to_char()} fit")
+            if hcp >= 6:
+                return bid(2, new_major,
+                           why=f"2{new_major.to_char()}: 6-9, simple "
+                               f"raise of partner's new suit")
+        # Rebid own 5+ suit at the 2-level on minimum.
+        if e.suit_lengths.get(my_first_suit, 0) >= 5 and hcp <= 9:
+            return bid(2, my_first_suit,
+                       why=f"2{my_first_suit.to_char()}: 6-9, rebid "
+                           "own 5-card suit")
+        # 2NT (11-12) or 3NT (13+) with values, no fit.
+        if hcp >= 13:
+            return bid(3, Suit.NOTRUMP, why="3NT: game values, no fit")
+        if hcp >= 11:
+            return bid(2, Suit.NOTRUMP, why="2NT: 11-12 inv, no fit")
+        if hcp >= 6:
+            return bid(1, Suit.NOTRUMP, why="1NT: 6-9, no fit")
+        return passb()
+
     return passb()
 
 
@@ -2743,6 +2820,18 @@ def _overcall_over_1nt(state, e: HandEval, system) -> Bid:
     for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS):
         if e.suit_lengths[s] >= 6 and 9 <= hcp <= 15:
             return bid(2, s, why=f"Natural 2{s.to_char()} overcall (6+ cards)")
+
+    # Preemptive 3-level overcall with a 7+ card suit. Strong club
+    # holding like AKxxxxx is plenty against a 1NT — the offence
+    # is concentrated and opener's NT shape suggests we're not
+    # walking into shortness.
+    for s in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES):
+        if (e.suit_lengths[s] >= 7
+                and e.suit_hcp[s] >= 4
+                and 6 <= hcp <= 14):
+            return bid(3, s,
+                       why=f"Preemptive 3{s.to_char()} overcall "
+                           f"(7+ cards) over 1NT")
 
     return passb(why="No suitable overcall over 1NT")
 
