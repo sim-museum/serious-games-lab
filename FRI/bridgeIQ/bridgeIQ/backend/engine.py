@@ -592,7 +592,34 @@ class BridgeEngine:
                         f"sample_pbn[0]={sample_hands_pbn[0] if sample_hands_pbn else None}")
                     return self.get_card_play(board, seat, current_trick_cards)
 
-                best_card52 = max(legal_results, key=legal_results.get)
+                # DDS-tie-break (the "signal" choice): within the
+                # set of cards whose expected-tricks tie with the best,
+                # match Q-Plus's standard convention. Categorising our
+                # mismatches against Precision90M showed Q-Plus plays
+                # the LOWEST equivalent ~82% of the time across all
+                # roles (declarer, dummy, discarding, following) — so
+                # default to lowest rank and let suit-choice fall out
+                # of DDS as before.
+                #
+                # Rank encoding: c52 % 13 with 0=Ace ... 12=Two. So
+                # "highest pip" (max of c52 % 13) is the LOWEST rank.
+                best_score = max(legal_results.values())
+                # Small tolerance only — broader windows admit cards
+                # whose true expectation is genuinely worse than the
+                # best, and picking the lowest of those costs tricks.
+                tied = [c for c, s in legal_results.items()
+                        if best_score - s < 0.01]
+                # Q-Plus tie-break: pick the LOWEST equivalent card.
+                # Categorising the 10-deal harness mismatches showed
+                # Q-Plus plays low ~82% of the time across declarer,
+                # dummy, defender-following-partner / -declarer, and
+                # discard situations. The remaining "Q-Plus plays
+                # high" cases (declarer cashing winners high from the
+                # short hand, defender attitude signals) all share
+                # the same diagnostic: they need position-specific
+                # context that the MC score alone doesn't capture.
+                # Lowest-equivalent is the best single rule.
+                best_card52 = max(tied, key=lambda c: c % 13)
                 best_card = Card.from_code52(best_card52)
 
                 candidates = []
