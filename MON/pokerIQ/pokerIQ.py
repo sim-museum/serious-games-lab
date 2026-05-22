@@ -9281,12 +9281,16 @@ class PokerWindow(QMainWindow):
         """
         thread = self._ensure_hand_reflections_thread()
         if thread is None:
-            cached = self._get_cached_hand_reflections() or {}
+            cached = self._get_cached_hand_reflections()
+            if cached is None:
+                status = "Claude unavailable — no hindsight reflections."
+                reflections = {}
+            else:
+                status = cached.get('status', '')
+                reflections = cached.get('street_reflections', {})
             try:
-                dialog.set_street_reflections(
-                    cached.get('street_reflections', {}),
-                    status_text=cached.get('status') or
-                    "Claude unavailable — no hindsight reflections.")
+                dialog.set_street_reflections(reflections,
+                                              status_text=status)
             except RuntimeError:
                 pass
             return
