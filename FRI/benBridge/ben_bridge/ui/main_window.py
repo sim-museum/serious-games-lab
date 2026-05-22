@@ -5397,7 +5397,12 @@ For more information, see the README file."""
             " background-color: transparent; min-width: 720px;"
             " padding: 14px 10px; }"
             "QMessageBox QPushButton { font-size: 16px;"
-            " padding: 8px 22px; min-width: 110px; }"
+            " padding: 8px 22px; min-width: 110px;"
+            " background-color: #e0e0e0; color: #000;"
+            " border: 1px solid #a0a0a0; border-radius: 3px; }"
+            "QMessageBox QPushButton:hover { background-color: #d0d0d0; }"
+            "QMessageBox QPushButton:pressed { background-color: #c0c0c0; }"
+            "QMessageBox QPushButton:default { border: 2px solid #3070b0; }"
         )
         hint_btn = msg.addButton(
             "Hint", QMessageBox.ButtonRole.ActionRole)
@@ -5563,7 +5568,12 @@ For more information, see the README file."""
             " background-color: transparent; min-width: 720px;"
             " padding: 14px 10px; }"
             "QMessageBox QPushButton { font-size: 16px;"
-            " padding: 8px 22px; min-width: 110px; }"
+            " padding: 8px 22px; min-width: 110px;"
+            " background-color: #e0e0e0; color: #000;"
+            " border: 1px solid #a0a0a0; border-radius: 3px; }"
+            "QMessageBox QPushButton:hover { background-color: #d0d0d0; }"
+            "QMessageBox QPushButton:pressed { background-color: #c0c0c0; }"
+            "QMessageBox QPushButton:default { border: 2px solid #3070b0; }"
         )
         hint_btn = msg.addButton(
             "Hint", QMessageBox.ButtonRole.ActionRole)
@@ -6418,6 +6428,16 @@ For more information, see the README file."""
         # trick. The modal EndOfHandDialog still pops on top, but it
         # sits over a table that looks like the Q-Plus reference
         # screen rather than a play-area with empty hand widgets.
+        #
+        # Unconditional clear first: if `original_hands` is missing
+        # (e.g. loaded-deal paths that never populated it) we still
+        # need to wipe the last trick from the centre, otherwise the
+        # green felt keeps showing the final 4 cards beneath the
+        # end-of-hand dialog.
+        try:
+            self.table_view.clear_trick()
+        except Exception:
+            pass
         try:
             if self.original_hands:
                 self.table_view.show_end_of_hand_view(
@@ -7440,9 +7460,10 @@ For more information, see the README file."""
             except Exception:
                 pass
 
-        # Pass the local viewer's seat plus the dummy (when revealed)
-        # so the dialog's "Cards in opponents' hands" panel can hide
-        # cards we can already see ourselves.
+        # Pass every seat whose hand is currently visible on the
+        # table — local viewer's hand, dummy when revealed, and (when
+        # viewer is dummy) declarer's hand which the app exposes too.
+        # Reading hand_widgets.isVisible() catches all three uniformly.
         viewer_seat = None
         try:
             viewer_seat = self.table_view._local_seat
@@ -7454,12 +7475,23 @@ For more information, see the README file."""
                 dummy_seat = self.controller.dummy
         except Exception:
             dummy_seat = None
+        visible_seats = set()
+        try:
+            for physical_seat, widget in self.table_view.hand_widgets.items():
+                if widget.isVisible():
+                    visible_seats.add(
+                        self.table_view._logical_seat(physical_seat)
+                    )
+        except Exception:
+            visible_seats = {s for s in (viewer_seat, dummy_seat)
+                             if s is not None}
         self._record_dialog = AuctionTricksDialog(
             self,
             board=self.controller.board,
             tricks=tricks,
             viewer_seat=viewer_seat,
             dummy_seat=dummy_seat,
+            visible_seats=visible_seats,
         )
         self._record_dialog.show()
         self._record_dialog.raise_()

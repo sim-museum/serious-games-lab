@@ -238,11 +238,17 @@ def styled_info(parent, title: str, message: str):
     """)
 
     layout = QVBoxLayout(dialog)
-    layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+    layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
 
     # Message
     msg_label = QLabel(message)
     msg_label.setWordWrap(True)
+    # Without an explicit width, QLabel's heightForWidth never gets
+    # called before the dialog computes its size, so wrapped text
+    # gets clipped top + bottom. Pin the wrap width to match the
+    # dialog's minimum so the label can resolve its own height.
+    msg_label.setMinimumWidth(380)
+    msg_label.setMaximumWidth(560)
     layout.addWidget(msg_label)
 
     # OK button
@@ -286,10 +292,16 @@ def styled_warning(parent, title: str, message: str):
     """)
 
     layout = QVBoxLayout(dialog)
-    layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+    layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
 
     msg_label = QLabel(message)
     msg_label.setWordWrap(True)
+    # Without an explicit width, QLabel's heightForWidth never gets
+    # called before the dialog computes its size, so wrapped text
+    # gets clipped top + bottom. Pin the wrap width to match the
+    # dialog's minimum so the label can resolve its own height.
+    msg_label.setMinimumWidth(380)
+    msg_label.setMaximumWidth(560)
     layout.addWidget(msg_label)
 
     btn_layout = QHBoxLayout()
@@ -332,10 +344,16 @@ def styled_error(parent, title: str, message: str):
     """)
 
     layout = QVBoxLayout(dialog)
-    layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+    layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
 
     msg_label = QLabel(message)
     msg_label.setWordWrap(True)
+    # Without an explicit width, QLabel's heightForWidth never gets
+    # called before the dialog computes its size, so wrapped text
+    # gets clipped top + bottom. Pin the wrap width to match the
+    # dialog's minimum so the label can resolve its own height.
+    msg_label.setMinimumWidth(380)
+    msg_label.setMaximumWidth(560)
     layout.addWidget(msg_label)
 
     btn_layout = QHBoxLayout()
