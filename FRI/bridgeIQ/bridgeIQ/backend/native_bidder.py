@@ -549,6 +549,24 @@ def _open_precision(e: HandEval, system, state=None) -> Bid:
         return bid(2, Suit.NOTRUMP,
                    why=f"{two_nt_min}-{two_nt_max} balanced")
 
+    # NAMYATS / Texas: with `B-4MI-SA-Texas` (Q-Plus Precision90M),
+    # an 8+ card major opens via a transfer minor:
+    #   4♣ = 8+ hearts (transfer to 4♥)
+    #   4♦ = 8+ spades (transfer to 4♠)
+    # Range 6-12 HCP with a solid suit (AK or KQJ). Wider than a
+    # plain 4-of-major preempt because the transfer lets partner
+    # evaluate slam. Has to fire BEFORE the 1M branch so 11-HCP
+    # 8-card hands don't get routed to 1S/1H.
+    if system.has("B-4MI-SA-Texas") and 6 <= hcp <= 12:
+        for major in (Suit.SPADES, Suit.HEARTS):
+            if (e.suit_lengths[major] >= 8
+                    and e.suit_hcp.get(major, 0) >= 5):
+                transfer = (Suit.CLUBS if major == Suit.HEARTS
+                            else Suit.DIAMONDS)
+                return bid(4, transfer, alert=True,
+                           why=f"NAMYATS 4{transfer.to_char()}: "
+                               f"8+ {major.to_char()}, {hcp} HCP")
+
     # 5-card majors at the 1 level — light openings gated by Rule
     # of 20 (or 12+ HCP). Same logic as the 1D catchall below; the
     # earlier "below the lower opening bound" branch lets 10-11
@@ -696,7 +714,10 @@ def _preempt_bid(e: HandEval, state=None, system=None) -> Optional[Bid]:
         if 5 <= e.hcp <= 9 and suit_hcp >= 4:
             return bid(3, longest,
                        why=f"Preempt: 7 {longest.to_char()}, suit-HCP {suit_hcp}")
-    # 4-level preempt — 8+ card suit.
+    # 4-level preempt — 8+ card suit. Plain 4-of-major when
+    # the system DOESN'T have NAMYATS / Texas (otherwise the
+    # NAMYATS check above the 1M opening handles 8+ major
+    # hands).
     if n >= 8 and 4 <= e.hcp <= 8 and suit_hcp >= 3:
         return bid(4, longest,
                    why=f"Preempt: 8+ {longest.to_char()}")
