@@ -2858,22 +2858,49 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
 
     # 2/1 GF auction: opener rebid their major at the 2-level (min, 5+ in major).
     # With 4+ trump support and slam-interest values, launch RKC; otherwise
-    # close in the 4-of-major game.
+    # close in the 4-of-major game. Without trump support the auction is
+    # still GF — describe with a side suit, NT, or rebid own suit.
     if (opener_rebid.level == 2
             and opener_rebid.suit == op.suit
             and op.suit in (Suit.HEARTS, Suit.SPADES)
             and len(state.my_bids) >= 1
             and state.my_bids[0].level == 2
-            and state.my_bids[0].suit != op.suit
-            and e.suit_lengths.get(op.suit, 0) >= 4):
-        if hcp >= 17:
-            return bid(4, Suit.NOTRUMP, alert=True,
-                       why=f"Blackwood: slam try, 4+{op.suit.to_char()} "
-                           f"support, opener showed 5+")
-        if hcp >= 13:
-            return bid(4, op.suit,
-                       why=f"4{op.suit.to_char()}: game in known fit")
-        return passb()
+            and state.my_bids[0].suit != op.suit):
+        my_first_suit = state.my_bids[0].suit
+        fit = e.suit_lengths.get(op.suit, 0)
+        if fit >= 4:
+            if hcp >= 17:
+                return bid(4, Suit.NOTRUMP, alert=True,
+                           why=f"Blackwood: slam try, 4+{op.suit.to_char()} "
+                               f"support, opener showed 5+")
+            if hcp >= 13:
+                return bid(4, op.suit,
+                           why=f"4{op.suit.to_char()}: game in known fit")
+            return passb()
+        # 2/1 GF without major support — continue the auction.
+        #   * 4+ in the OTHER major (not opener's, not first 2/1 suit) →
+        #     bid it at the 2 or 3 level (legality permitting).
+        #   * 6+ in my first suit → rebid it.
+        #   * 12+ balanced with stopper(s) → 2NT / 3NT.
+        #   * fallback: 3 of my first suit.
+        other_major = (Suit.SPADES if op.suit == Suit.HEARTS
+                       else Suit.HEARTS)
+        if (other_major != my_first_suit
+                and e.suit_lengths.get(other_major, 0) >= 4
+                and _BID_RANK[other_major] > _BID_RANK[op.suit]):
+            return bid(2, other_major,
+                       why=f"2{other_major.to_char()}: 4-card side suit (GF)")
+        if e.suit_lengths.get(my_first_suit, 0) >= 6:
+            return bid(3, my_first_suit,
+                       why=f"3{my_first_suit.to_char()}: rebid 6+ own suit")
+        if e.is_balanced and hcp >= 12:
+            return bid(2, Suit.NOTRUMP,
+                       why="2NT (balanced, 2/1 GF context)")
+        if e.suit_lengths.get(my_first_suit, 0) >= 5:
+            return bid(3, my_first_suit,
+                       why=f"3{my_first_suit.to_char()}: rebid 5+ own suit")
+        return bid(3, Suit.NOTRUMP,
+                   why="3NT (last-resort 2/1 GF game)")
 
     # 2/1 GF auction: opener rebid a NEW suit at the 2-level. The
     # auction is still game-forcing — never pass below game. Pick the
