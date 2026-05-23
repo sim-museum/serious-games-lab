@@ -1320,8 +1320,13 @@ def _respond_to_precision_1d(state, e: HandEval) -> Bid:
                            "(5+ diamonds, unbalanced)")
         return bid(2, Suit.NOTRUMP, why="Precision 1D: 11-12 invitational")
     if 13 <= hcp <= 15:
-        if e.suit_lengths[Suit.DIAMONDS] >= 4:
-            return bid(3, Suit.DIAMONDS, why="Precision 1D: 13-15 with diamond fit")
+        # Balanced 13-15 with no shortage → 3NT (cheap game, 9 tricks
+        # vs 11 for 5♦). Only raise diamonds when shape demands it.
+        if (e.suit_lengths[Suit.DIAMONDS] >= 4
+                and not e.is_balanced
+                and not e.is_semi_balanced):
+            return bid(3, Suit.DIAMONDS,
+                       why="Precision 1D: 13-15 unbalanced + diamond fit")
         return bid(3, Suit.NOTRUMP, why="Precision 1D: 13-15 balanced game")
 
     # 16+ slam-zone with no major fit
