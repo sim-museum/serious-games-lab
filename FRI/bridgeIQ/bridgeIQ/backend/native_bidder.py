@@ -1802,6 +1802,19 @@ def _respond_to_1nt(e: HandEval, system) -> Bid:
 
     # No major path → NT raises.
     if t["invite_lo"] <= hcp <= t["invite_hi"]:
+        # Bottom-of-range invite with totally flat shape (no 5-card
+        # suit) is too thin for a 14-16 NT opening — partner could
+        # easily be minimum and we have no source of tricks. Q-Plus
+        # passes seed=200 board 8 S (9 HCP, 2-3-4-4) here.
+        has_5_card_suit = any(
+            e.suit_lengths[s] >= 5
+            for s in (Suit.CLUBS, Suit.DIAMONDS,
+                      Suit.HEARTS, Suit.SPADES))
+        if (hcp == t["invite_lo"]
+                and system.one_nt_max_hcp <= 16
+                and not has_5_card_suit):
+            return passb(why=f"Pass {hcp} HCP flat vs "
+                             f"{system.one_nt_max_hcp}-NT (no source)")
         return bid(2, Suit.NOTRUMP,
                    why=f"Invitational {t['invite_lo']}-{t['invite_hi']} HCP")
     if t["game_lo"] <= hcp < t["quant_lo"]:
@@ -2930,21 +2943,22 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
                 and 12 <= e.hcp <= 17):
             return double(why=f"Support double — exactly 3-card "
                               f"{p_last.suit.to_char()}")
-        # Precision-style 3-card raise of partner's major. In
-        # Precision Club 90 the 1D opening is a catch-all 11-15
-        # without 5cM, so opener with exactly 3-card support and
-        # minimum prefers to raise immediately rather than rebid
-        # 1NT or a 4-card minor. SAYC and 2/1 keep the strict 4+
-        # rule.
+        # Precision-style 3-card raise of partner's major. Only fires
+        # when the hand is UNBALANCED — with a balanced 3-3-4-3 / 4-3-3-3
+        # opener, Q-Plus prefers the 1NT rebid (seed=400 board 7) to
+        # show notrumpiness. The 3-card raise is reserved for awkward
+        # unbalanced minimums where neither NT nor the second-suit
+        # rebid is comfortable.
         if (getattr(system, "strong_open_call", "2C") == "1C"
                 and op_suit in (Suit.CLUBS, Suit.DIAMONDS)
                 and p_last.suit in (Suit.HEARTS, Suit.SPADES)
                 and e.suit_lengths[p_last.suit] == 3
                 and 12 <= e.hcp <= 14
+                and not e.is_balanced
                 and not state.rho_bids):
             return bid(2, p_last.suit,
                        why=f"Precision 3-card raise of partner's "
-                           f"{p_last.suit.to_char()} (minimum)")
+                           f"{p_last.suit.to_char()} (min, unbalanced)")
         # Support partner with 4+ in their major at the cheapest level
         if p_last.suit in (Suit.HEARTS, Suit.SPADES) and e.suit_lengths[p_last.suit] >= 4:
             if e.hcp <= 14:
@@ -3308,15 +3322,24 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
             and state.my_bids[-1].level == 1
             and state.my_bids[-1].suit in (Suit.HEARTS, Suit.SPADES)
         )
-        if nmf_available and hcp >= 11 and (
+        # NMF fires only when partner might still hold a useful major
+        # fit we haven't found: (a) I have a 5+ major and want to find
+        # 3-card support, or (b) 4-4 majors but the hand is only
+        # invitational (11-12) — at game-force values with 4-4 majors
+        # opener has already denied 4+ in either (else they'd have
+        # raised), so just bid 3NT directly. Q-Plus's style on
+        # seed=400 board 7: 1D-1H-1NT-3NT with 14 HCP 4-4 majors.
+        if nmf_available and (
                 e.suit_lengths.get(state.my_bids[-1].suit, 0) >= 5
+                and hcp >= 11
                 or (e.suit_lengths[Suit.SPADES] >= 4
-                    and e.suit_lengths[Suit.HEARTS] >= 4)):
+                    and e.suit_lengths[Suit.HEARTS] >= 4
+                    and 11 <= hcp <= 12)):
             nmf_minor = (Suit.CLUBS if op.suit == Suit.DIAMONDS
                          else Suit.DIAMONDS)
             return bid(2, nmf_minor, alert=True,
                        why=f"New Minor Forcing 2{nmf_minor.to_char()}: "
-                           "11+ HCP, asks about majors")
+                           "asks about major fit")
         if 8 <= hcp <= 10 and e.suit_lengths.get(op.suit, 0) >= 5:
             return bid(2, op.suit, why="6-9 rebid in opener's suit (NMF substitute)")
         if 8 <= hcp <= 10:
@@ -3574,6 +3597,26 @@ def _overcall_over_weak_two(state, e: HandEval, system) -> Bid:
     op = state.opening_bid
     hcp = e.hcp
     op_suit = op.suit
+
+    # Precision 2♦ three-suiter exception: opener has 0-1 diamonds,
+    # so a natural diamond overcall isn't actually competing with
+    # opener's suit — we're sitting on the only long diamond suit
+    # at the table. seed=400 board 1 W (AKQJ954 in diamonds, 11
+    # HCP, 1-3-7-2 shape) is the canonical case. With 6+ diamonds
+    # and 10+ HCP, bid 3♦.
+    is_precision_2d = (
+        op.level == 2 and op.suit == Suit.DIAMONDS
+        and any(k.startswith("B-2D.Precision")
+                for k in system.raw_rules)
+    )
+    if (is_precision_2d
+            and e.suit_lengths[Suit.DIAMONDS] >= 6
+            and hcp >= 10
+            and e.suit_hcp[Suit.DIAMONDS] >= 6):
+        return bid(3, Suit.DIAMONDS,
+                   why=f"Natural 3♦ vs Precision 2♦ three-suiter: "
+                       f"{hcp} HCP, "
+                       f"{e.suit_lengths[Suit.DIAMONDS]}♦")
 
     # 3NT direct — strong balanced with stopper.
     if 17 <= hcp <= 19 and e.is_balanced and _has_stopper(e, op_suit):
@@ -4293,10 +4336,18 @@ def _advance_partner_overcall(state, e: HandEval, system) -> Bid:
         if fit >= 3:
             if 6 <= hcp <= 10:
                 return bid(p_last.level + 1, suit, why="Simple raise of overcall")
-            if 11 <= hcp <= 12:
+            # Limit raise only applies to 1- and 2-level overcalls. After
+            # partner's 3-level overcall (eg, lead-direct 3♦ over a
+            # Precision 2♦ three-suiter) a +2 jump lands past game —
+            # offer 3NT with a balanced 10+ advancing hand instead.
+            if 11 <= hcp <= 12 and p_last.level <= 2:
                 return bid(p_last.level + 2, suit, why="Limit raise of overcall")
             if hcp >= 13 and suit in (Suit.HEARTS, Suit.SPADES):
                 return bid(4, suit, why="Game raise of major overcall")
+            if hcp >= 10 and e.is_balanced and p_last.level >= 3:
+                return bid(3, Suit.NOTRUMP,
+                           why=f"3NT advance after partner's "
+                               f"{p_last.level}{suit.to_char()} overcall")
 
     return passb()
 
