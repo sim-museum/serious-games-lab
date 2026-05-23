@@ -2650,6 +2650,32 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
             return bid(4, Suit.NOTRUMP, alert=True, why="RKC after splinter")
         return bid(4, op_suit, why="Sign off after splinter")
 
+    # Partner bid a NEW major at the 3-level in a competitive auction
+    # (e.g. 1m-(3m)-3M, regardless of whether the preempt came from
+    # LHO or RHO). Standard agreement: partner's 3M is a forcing free
+    # bid showing 5+ in the major and game values opposite the preempt.
+    # Opener with 2+ support raises to game; balanced 12+ with stoppers
+    # tries 3NT.
+    opp_3level_preempt = any(
+        b.level >= 3 and b.suit is not None and b.suit != Suit.NOTRUMP
+        and b.suit != p_last.suit
+        for b in (state.rho_bids + state.lho_bids))
+    if (p_last.level == 3
+            and p_last.suit is not None
+            and p_last.suit in (Suit.HEARTS, Suit.SPADES)
+            and p_last.suit != op_suit
+            and opp_3level_preempt):
+        new_major = p_last.suit
+        if e.suit_lengths.get(new_major, 0) >= 2:
+            return bid(4, new_major,
+                       why=f"4{new_major.to_char()}: support partner's "
+                           "forcing 3-level overcall")
+        if e.is_balanced and e.hcp >= 12:
+            return bid(3, Suit.NOTRUMP,
+                       why="3NT after partner's 3-level forcing")
+        return bid(4, new_major,
+                   why=f"4{new_major.to_char()}: token raise of forcing 3M")
+
     # Partner's 2-level new-suit bid (typically a 2/1 GF response,
     # or a 1m-then-2M/1M-then-2m sequence). Opener MUST describe.
     # Each candidate rebid is gated on legality (must outrank
