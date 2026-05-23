@@ -2909,6 +2909,33 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
         return bid(3, Suit.NOTRUMP,
                    why="3NT in 2/1 GF (last-resort game)")
 
+    # 1M-1NT-2X (non-GF): opener rebid a new suit at the 2-level
+    # after responder's 1NT (6-9, no major fit). With 4+ support
+    # for the new suit, raise it — game-invitational with 8-10 HCP,
+    # game with 11+, sign off at 2-of-new with weak hands.
+    if (opener_rebid.level == 2
+            and opener_rebid.suit is not None
+            and opener_rebid.suit != Suit.NOTRUMP
+            and opener_rebid.suit != op.suit
+            and len(state.my_bids) >= 1
+            and state.my_bids[0].level == 1
+            and state.my_bids[0].suit == Suit.NOTRUMP):
+        new_suit = opener_rebid.suit
+        if e.suit_lengths.get(new_suit, 0) >= 4:
+            if hcp >= 11:
+                return bid(4, new_suit,
+                           why=f"4{new_suit.to_char()}: 4+ fit + game values")
+            if hcp >= 8:
+                return bid(3, new_suit,
+                           why=f"3{new_suit.to_char()}: invitational raise")
+            return bid(2, new_suit,
+                       why=f"2{new_suit.to_char()}: 4-card preference, weak")
+        # No 4-card fit — show preference for opener's first suit if 2+
+        if e.suit_lengths.get(op.suit, 0) >= 2 and hcp <= 7:
+            return bid(2, op.suit,
+                       why=f"2{op.suit.to_char()}: preference, weak")
+        # Fall through to other handling
+
     # Opener showed a NEW suit at the 1-level (typically 1m-1M-1S,
     # showing 4 spades and opener's range without a fit yet).
     # Responder's options:
