@@ -581,6 +581,24 @@ def _open_precision(e: HandEval, system, state=None) -> Bid:
         return bid(1, Suit.HEARTS, alert=True,
                    why=f"Precision: {two_c_min}-{nt_max} HCP, 5+ hearts")
 
+    # 2♦ three-suiter (Precision90M `B-2D.Precision.majors-4-3`):
+    # 11-15 HCP, 4+/3+ in the majors, 0-1 diamond. Standard shapes
+    # are 4-4-1-4, 4-3-1-5, 4-4-0-5, 4-3-0-6, 3-4-1-5, etc.
+    # Seed=400 board 1 S (AQ75 AQ3 2 T9872, 12 HCP, 4-3-1-5) and
+    # board 8 W (AKT4 AJ92 8 J763, 13 HCP, 4-4-1-4) both fit.
+    if (any(k.startswith("B-2D.Precision") for k in system.raw_rules)
+            and two_c_min <= hcp <= two_c_max
+            and e.suit_lengths[Suit.DIAMONDS] <= 1
+            and e.suit_lengths[Suit.HEARTS] + e.suit_lengths[Suit.SPADES] >= 7
+            and e.suit_lengths[Suit.HEARTS] >= 3
+            and e.suit_lengths[Suit.SPADES] >= 3):
+        return bid(2, Suit.DIAMONDS, alert=True,
+                   why=f"Precision 2♦ three-suiter: {hcp} HCP, "
+                       f"majors "
+                       f"{e.suit_lengths[Suit.SPADES]}-"
+                       f"{e.suit_lengths[Suit.HEARTS]}, "
+                       f"short diamond")
+
     # 2♣ long-club (Precision-specific): 6+ clubs in the limited range.
     if e.suit_lengths[Suit.CLUBS] >= 6 and two_c_min <= hcp <= two_c_max:
         return bid(2, Suit.CLUBS, alert=True,
