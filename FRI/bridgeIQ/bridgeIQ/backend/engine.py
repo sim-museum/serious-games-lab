@@ -697,7 +697,18 @@ class BridgeEngine:
                 # the same diagnostic: they need position-specific
                 # context that the MC score alone doesn't capture.
                 # Lowest-equivalent is the best single rule.
-                best_card52 = max(tied, key=lambda c: c % 13)
+                # Position-specific override (Q-Plus card-play
+                # conventions from MANUAL/ENG/BRIDGE.HLQ). Falls back
+                # to lowest-equivalent when no convention fits.
+                override = _position_override_card(
+                    tied, board, seat, current_trick_cards,
+                    lead_suit, board.contract.declarer if board.contract else None)
+                if override is not None:
+                    best_card52 = override
+                    if _debug_log:
+                        _log_fb(f"override-present-count")
+                else:
+                    best_card52 = max(tied, key=lambda c: c % 13)
                 best_card = Card.from_code52(best_card52)
 
                 candidates = []
@@ -858,6 +869,101 @@ class BridgeEngine:
     def shutdown(self):
         """Shutdown the engine (alias for cleanup)."""
         self.cleanup()
+
+
+def _position_override_card(tied_cards, board, seat,
+                            current_trick_cards, lead_suit,
+                            declarer):
+    """Apply Q-Plus card-play conventions to break a DDS tie.
+
+    Q-Plus documents two card-play conventions in MANUAL/ENG/BRIDGE.HLQ:
+
+      1. **Present count** (signal-conv): on the SECOND round of a
+         suit, a defender plays
+            - a high small card if their original count was ODD
+            - the lowest card if their original count was EVEN
+         (provided the suit length is still unclear at that point).
+
+      2. **Attitude on partner's honor lead** (lead-conv): when
+         partner leads an A or K to trick 1, third hand encourages
+         with the highest small they can afford, discourages with
+         the lowest. Not yet implemented — present count covers
+         the bulk of within-suit defender mismatches.
+
+    Returns one card from `tied_cards` if a convention applies,
+    else None (caller uses the default lowest-equivalent rule).
+
+    `tied_cards` is a list of c52 codes.
+    """
+    from .models import Seat
+
+    if declarer is None or lead_suit is None or not tied_cards:
+        return None
+
+    dummy = declarer.partner()
+    is_defender = seat != declarer and seat != dummy
+    if not is_defender:
+        return None
+
+    # Only signal count when an OPPONENT (declarer or dummy) led
+    # the current trick. Signals to partner work best when partner
+    # is reading them; if partner led, they already have count
+    # info from us not playing that suit first.
+    if current_trick_cards:
+        trick_leader = Seat(
+            (seat - len(current_trick_cards)) % 4)
+    else:
+        return None  # I'm leading — present count doesn't apply
+    if trick_leader != declarer and trick_leader != dummy:
+        return None
+
+    # Skip trump suits — count is for side-suit defense, not
+    # trump-pull rounds.
+    trump = board.contract.suit if board.contract else None
+    if trump is not None and lead_suit == trump:
+        return None
+
+    # Filter to cards actually in the lead suit (when following).
+    tied_in_suit = [c for c in tied_cards if c // 13 == lead_suit.value]
+    if not tied_in_suit:
+        return None
+
+    # Count how many cards I've already played in this suit.
+    played_in_suit = 0
+    for trick in board.tricks:
+        for i, c in enumerate(trick.cards):
+            ps = Seat((trick.leader + i) % 4)
+            if ps == seat and c.suit == lead_suit:
+                played_in_suit += 1
+
+    # Present count only fires on the SECOND round (i.e., I've
+    # played exactly one card in this suit before).
+    if played_in_suit != 1:
+        return None
+
+    # Original count: cards remaining in hand + already played.
+    hand = board.hands.get(seat)
+    remaining_in_suit = (
+        sum(1 for c in hand.cards if c.suit == lead_suit)
+        if hand else 0)
+    original_count = played_in_suit + remaining_in_suit
+
+    # Rank encoding: c % 13 → 0=A, 1=K, 2=Q, 3=J, 4=T … 12=2. So
+    # "highest pip" = LOWEST rank, "lowest pip" = HIGHEST rank.
+    # A "small" card is rank ≥ 4 (T or below).
+    if original_count in (2, 4, 6):
+        # Even — play the LOWEST card from the tied set.
+        return max(tied_in_suit, key=lambda c: c % 13)
+    if original_count in (3, 5):
+        # Odd — play a HIGH SMALL (avoid honors). Pick the highest-
+        # ranked small card; if every tied card is an honor, fall
+        # back to the default lowest-equivalent rule.
+        small_tied = [c for c in tied_in_suit if c % 13 >= 4]
+        if small_tied:
+            return min(small_tied, key=lambda c: c % 13)
+        return None
+
+    return None
 
 
 def _derive_hcp_constraints(board, system) -> dict:

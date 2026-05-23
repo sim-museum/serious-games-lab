@@ -90,6 +90,37 @@ directly. For teaching purposes, where the user wants to see
 *defensible* card play and learn *why* a card was chosen, the
 current engine is adequate.
 
+**Phase 3c (manual mining + override library, 2026-05-23):**
+Mined `MANUAL/ENG/BRIDGE.HLQ` for Q-Plus's card-play rules.
+Two conventions documented:
+
+  1. `.lead-conv` — opening leads. Already implemented in
+     `backend/native_lead.py` (4th best, top of sequence, ace
+     from AK, etc.). No work needed.
+
+  2. `.signal-conv` — present count: in the SECOND round of a
+     suit, defender plays a high small card for odd original
+     count, lowest for even. Q-Plus's example: holding A-8-2,
+     after winning trick 1 with the ace, lead the 8 (high
+     small, odd); holding A-8-5-2, play the 2 (lowest, even).
+
+Implemented as `_position_override_card` (engine.py): when a
+defender follows an opp-led non-trump suit on their second
+round of that suit, override the lowest-equivalent tie-break
+with the present-count card. Fires ~18 times per 520-card
+match (3.5% of plays). Match-rate impact: neutral inside the
+MC noise band. Teaching impact: each override gets logged
+"override-present-count" so the explainer UI can show *why*
+the engine played that specific card.
+
+No behavioral probes were needed — the manual specified the
+convention directly. To reach 75% would require additional
+conventions that the manual doesn't fully spell out (entry
+management, hold-up rules, deception, finesse choice). Those
+need genuine reverse-engineering work (behavioral probes
+against specific test deals); not justified for a teaching
+tool that already plays defensibly at 68-69%.
+
 ### Phase 4 — Integration + robustness
 End-to-end: deal generation → bid → play → score, with the sanity
 wrapper on for ~100 deals across all 5 systems. Record sanity-wrapper
