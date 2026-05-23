@@ -486,17 +486,52 @@ class BridgeEngine:
                         for s in unknown_seats:
                             effective_shown_out[s].discard(su)
 
+                # Auction-informed HCP constraints. Each seat's first
+                # non-pass action (opening / overcall / preempt / weak-2)
+                # pins their HCP to a known range. When we reject samples
+                # that put 18 HCP in a hand that passed throughout the
+                # bidding, the DDS expectations across samples sharpen —
+                # which lifts the within-suit and cross-suit picks closer
+                # to Q-Plus's choices on the real distribution. Computed
+                # here once; consulted per-sample below.
+                from .bidding_systems import get_system as _get_system
+                try:
+                    sys_obj = _get_system(self.current_system)
+                except Exception:
+                    sys_obj = None
+                hcp_ranges = _derive_hcp_constraints(board, sys_obj)
+                shape_ranges = _derive_shape_constraints(board, sys_obj)
+                # HCP for unknown cards by c52: A=4, K=3, Q=2, J=1, else 0.
+                _hcp_of_c52 = [0] * 52
+                for i in range(52):
+                    rank = i % 13
+                    _hcp_of_c52[i] = (4, 3, 2, 1)[rank] if rank < 4 else 0
+                # Already-known cards contribute fixed HCP per seat —
+                # the sampler only adjusts the unknown remainder. So
+                # for the per-sample check we precompute the
+                # "starting HCP" each unknown seat already holds (zero
+                # for fully-unknown seats; nonzero only when we partly
+                # know a seat's hand — not currently exercised).
+                known_hcp_by_seat = {}
+                for s in Seat:
+                    kc = known_cards.get(s, set())
+                    known_hcp_by_seat[s] = sum(_hcp_of_c52[c] for c in kc)
+
                 sample_hands_pbn = []
-                # Two passes: first respecting shown_out, then if
-                # nothing landed, retry ignoring shown_out so the
-                # endgame keeps getting MC analysis instead of falling
-                # back to first-legal-card.
-                for relax in (False, True):
+                # Three-stage relaxation:
+                #   1. HCP constraints + shown_out
+                #   2. shown_out only (drop HCP constraints)
+                #   3. nothing (drop shown_out too — endgame escape)
+                for relax_level in (0, 1, 2):
                     if sample_hands_pbn:
                         break
                     active_shown_out = (
-                        {s: set() for s in Seat} if relax
+                        {s: set() for s in Seat} if relax_level >= 2
                         else effective_shown_out)
+                    active_hcp_ranges = (
+                        hcp_ranges if relax_level == 0 else None)
+                    active_shape_ranges = (
+                        shape_ranges if relax_level == 0 else None)
                     for _ in range(num_samples):
                         # Per-card distribution: for each unknown card,
                         # pick a random unknown seat that (a) hasn't
@@ -525,6 +560,51 @@ class BridgeEngine:
                         if not valid or any(remaining[s] > 0
                                              for s in unknown_seats):
                             continue
+
+                        # Check auction-derived HCP constraints, if any.
+                        # The relax_level loop above falls back to no
+                        # HCP filter when constraints are over-tight.
+                        if active_hcp_ranges is not None:
+                            ok = True
+                            for s in unknown_seats:
+                                lo, hi = active_hcp_ranges.get(
+                                    s, (0, 37))
+                                hcp = known_hcp_by_seat[s] + sum(
+                                    _hcp_of_c52[c]
+                                    for c in sample.get(s, []))
+                                if hcp < lo or hcp > hi:
+                                    ok = False
+                                    break
+                            if not ok:
+                                if _debug_log:
+                                    _log_fb(f"sample-rejected-hcp")
+                                continue
+
+                        # Auction-derived shape constraints. Same idea
+                        # as the HCP filter — drops samples where the
+                        # 1♥ opener has 2 hearts, the 1NT opener has
+                        # a 7-card suit, etc.
+                        if active_shape_ranges is not None:
+                            ok = True
+                            for s in unknown_seats:
+                                seat_shape = active_shape_ranges.get(s)
+                                if not seat_shape:
+                                    continue
+                                seat_cards = sample.get(s, set())
+                                # Known cards contribute too.
+                                seat_cards = seat_cards | known_cards.get(s, set())
+                                for suit_val, (mn, mx) in seat_shape.items():
+                                    n = sum(1 for c in seat_cards
+                                            if c // 13 == suit_val)
+                                    if n < mn or n > mx:
+                                        ok = False
+                                        break
+                                if not ok:
+                                    break
+                            if not ok:
+                                if _debug_log:
+                                    _log_fb(f"sample-rejected-shape")
+                                continue
 
                         # Build PBN string for this valid sample.
                         hand_strs = []
@@ -778,3 +858,200 @@ class BridgeEngine:
     def shutdown(self):
         """Shutdown the engine (alias for cleanup)."""
         self.cleanup()
+
+
+def _derive_hcp_constraints(board, system) -> dict:
+    """Return {Seat: (hcp_min, hcp_max)} pinned by each seat's first
+    non-pass action in the auction.
+
+    The point: the MC sampler used to drop random HCP into the unknown
+    hands, so a sample sometimes put 18 HCP in a hand that passed
+    throughout. DDS would then overcommit to a line that depends on
+    that 18-count being on the wrong side. Rejecting these samples
+    sharpens the DDS expectations across the surviving samples and
+    pulls the chosen card closer to the right one on the real
+    distribution.
+
+    The ranges are deliberately loose — the goal is to filter the
+    clearly-implausible 5% / 95% tails of each seat's distribution,
+    not to model the bidder's full rule set. Bids we don't have a
+    confident range for (X, XX, NT-overcalls, splinters, …) leave
+    the seat unconstrained.
+    """
+    from .models import Seat, Suit
+
+    ranges = {s: (0, 37) for s in Seat}
+    if not getattr(board, "auction", None):
+        return ranges
+
+    nt_min = getattr(system, "one_nt_min_hcp", 15) if system else 15
+    nt_max = getattr(system, "one_nt_max_hcp", 17) if system else 17
+    strong_call = getattr(system, "strong_open_call", "2C") \
+        if system else "2C"
+    raw_rules = getattr(system, "raw_rules", set()) if system else set()
+    precision_2d_three_suiter = any(
+        k.startswith("B-2D.Precision") for k in raw_rules)
+
+    # Find each seat's first non-pass action.
+    first_action = {s: None for s in Seat}
+    first_action_idx = {s: None for s in Seat}
+    cur = board.dealer
+    for i, b in enumerate(board.auction):
+        if first_action[cur] is None and not b.is_pass:
+            first_action[cur] = b
+            first_action_idx[cur] = i
+        cur = Seat((cur + 1) % 4)
+
+    # Helper to classify the first-action bid into an HCP range. The
+    # ranges below are roughly the central 90% of each call's
+    # distribution — wide enough that close-call hands don't get
+    # rejected, tight enough to filter the wrong-side-of-the-table
+    # 18-point samples that confuse DDS.
+    def _range_for(b):
+        if b is None:
+            # Passed throughout — the seat never had a hand worth
+            # opening / overcalling / responding. Cap below the
+            # weakest 5-card-suit opening (10 HCP under Rule of 20).
+            # Most pass-throughout hands are 0-7; the 7-10 range is
+            # plausible only with very flat shape and no biddable
+            # suit, so 9 is a defensible upper bound.
+            return (0, 9)
+        if b.is_double or b.is_redouble:
+            # Could be takeout (12+) or penalty (variable). Stay wide.
+            return (0, 37)
+        if b.suit is None:
+            return (0, 37)
+        if b.level == 1:
+            if b.suit == Suit.NOTRUMP:
+                return (nt_min, nt_max)
+            if strong_call == "1C" and b.suit == Suit.CLUBS:
+                # Precision strong 1C
+                return (16, 37)
+            # 1m / 1M opening: Precision capped at 15 (limited
+            # opening); SAYC/2-over-1/Acol/French go up to ~21.
+            if strong_call == "1C":
+                return (10, 15)  # Precision-limited
+            return (10, 21)
+        if b.level == 2:
+            if b.suit == Suit.CLUBS:
+                if strong_call == "2C":
+                    return (22, 37)  # SAYC strong 2♣
+                return (11, 15)      # Precision 2♣ long-club
+            if b.suit == Suit.DIAMONDS:
+                if precision_2d_three_suiter:
+                    return (11, 15)  # Precision 2♦ three-suiter
+                return (5, 11)       # Weak 2♦
+            if b.suit == Suit.NOTRUMP:
+                return (20, 22)
+            # 2♥ / 2♠ weak twos
+            return (5, 11)
+        if b.level == 3:
+            if b.suit == Suit.NOTRUMP:
+                # Gambling 3NT or strong balanced
+                return (0, 21)
+            # 3-level preempt
+            return (4, 10)
+        if b.level == 4:
+            if b.suit == Suit.NOTRUMP:
+                return (0, 37)  # Blackwood/quant
+            return (4, 10)
+        return (0, 37)
+
+    for s in Seat:
+        ranges[s] = _range_for(first_action[s])
+
+    return ranges
+
+
+def _derive_shape_constraints(board, system) -> dict:
+    """Return {Seat: {suit_value: (min_len, max_len)}} from each
+    seat's first non-pass action.
+
+    Like the HCP constraints but stronger: a 1♥ opening promises
+    5+ hearts in 2/1 / SAYC / Precision90M, so the sampler can
+    safely reject any deal that gives the heart opener a 2-card
+    heart suit. This dramatically tightens the MC distribution for
+    cross-suit decisions — about 45% of bridgeIQ's card-play
+    mismatches are "different suit" picks driven by samples that
+    put the long suit in the wrong hand.
+
+    Returned only the constraints we're confident about. Calls
+    with ambiguous shape (passes, doubles, balanced 2NT, …) leave
+    the seat unconstrained.
+    """
+    from .models import Seat, Suit
+
+    shapes: dict = {s: {} for s in Seat}
+    if not getattr(board, "auction", None):
+        return shapes
+
+    strong_call = getattr(system, "strong_open_call", "2C") \
+        if system else "2C"
+    raw_rules = getattr(system, "raw_rules", set()) if system else set()
+    precision_2d_three_suiter = any(
+        k.startswith("B-2D.Precision") for k in raw_rules)
+    # SAYC opens 1m with 3+ in the minor (better-minor); Precision90M
+    # opens 1m with 2+ (catch-all). 2/1 typically 3+.
+    five_card_majors = True  # All five of bridgeIQ's systems use 5cM.
+    open_1m_min_clubs = 3 if strong_call == "2C" else 2
+
+    first_action = {s: None for s in Seat}
+    cur = board.dealer
+    for b in board.auction:
+        if first_action[cur] is None and not b.is_pass:
+            first_action[cur] = b
+        cur = Seat((cur + 1) % 4)
+
+    def _shape_for(b):
+        """Return {suit_value: (min, max)} from a single opening / overcall bid."""
+        if b is None or b.is_pass or b.is_double or b.is_redouble:
+            return {}
+        if b.suit is None:
+            return {}
+        # 1NT: balanced (4-3-3-3, 4-4-3-2, 5-3-3-2 — max one 5-card minor).
+        # Constrain each suit to at most 5 cards.
+        if b.level == 1 and b.suit == Suit.NOTRUMP:
+            return {su.value: (2, 5) for su in (Suit.SPADES, Suit.HEARTS,
+                                                Suit.DIAMONDS, Suit.CLUBS)}
+        # 1 of major: 5+ in that major (all our systems play 5cM)
+        if b.level == 1 and b.suit in (Suit.HEARTS, Suit.SPADES):
+            if five_card_majors:
+                return {b.suit.value: (5, 13)}
+        # 1m (1C / 1D): minor opening
+        if b.level == 1 and b.suit in (Suit.CLUBS, Suit.DIAMONDS):
+            # Precision strong 1C is artificial — no length promised.
+            if strong_call == "1C" and b.suit == Suit.CLUBS:
+                return {}
+            # Natural 1m: at least open_1m_min in the suit; no 5cM.
+            return {b.suit.value: (open_1m_min_clubs, 13),
+                    Suit.HEARTS.value: (0, 4),
+                    Suit.SPADES.value: (0, 4)}
+        if b.level == 2:
+            if b.suit == Suit.CLUBS:
+                if strong_call == "2C":
+                    return {}  # Strong 2♣ is artificial
+                return {b.suit.value: (6, 13)}  # Precision 2♣ long-club
+            if b.suit == Suit.DIAMONDS:
+                if precision_2d_three_suiter:
+                    # 0-1 ♦, 4+ ♠ and 3+ ♥ (or vice versa); be conservative.
+                    return {Suit.DIAMONDS.value: (0, 1),
+                            Suit.HEARTS.value: (3, 6),
+                            Suit.SPADES.value: (3, 6)}
+                return {b.suit.value: (5, 6)}  # Weak 2♦: 6+ usually
+            if b.suit == Suit.NOTRUMP:
+                # 2NT 20-21 balanced
+                return {su.value: (2, 5) for su in (Suit.SPADES, Suit.HEARTS,
+                                                    Suit.DIAMONDS, Suit.CLUBS)}
+            # 2♥ / 2♠ weak
+            return {b.suit.value: (5, 6)}
+        if b.level == 3 and b.suit != Suit.NOTRUMP:
+            return {b.suit.value: (6, 7)}
+        if b.level == 4 and b.suit in (Suit.HEARTS, Suit.SPADES,
+                                       Suit.CLUBS, Suit.DIAMONDS):
+            return {b.suit.value: (6, 8)}
+        return {}
+
+    for s in Seat:
+        shapes[s] = _shape_for(first_action[s])
+
+    return shapes

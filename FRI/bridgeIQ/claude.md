@@ -48,11 +48,47 @@ Zero sampler fallbacks across 520 cards — the "no-valid-samples"
 issue is fully fixed (per-card random distribution + auto-relax
 of shown_out, both from the previous session).
 
-Real path to 75% would be: auction-informed sampling (constrain
-shapes/HCP from the bidding history before MC), or a position-
-specific override rule library. Both substantial. Deferred —
-68-69% with steady variance and no fallbacks is acceptable for a
-teaching tool. Users seeking strength can play wbridge5 or Q-Plus.
+**Phase 3b (deeper attack, 2026-05-23):** auction-informed
+sampling implemented and tested.
+
+  * `_derive_hcp_constraints` pins each seat's HCP range from
+    their first non-pass bid: 1NT opener → system NT range,
+    Precision 1m/1M → 10-15, SAYC 1m/1M → 10-21, weak twos →
+    5-11, passers → 0-9, etc.
+  * `_derive_shape_constraints` pins suit lengths the same way:
+    1♥/1♠ → 5+ in that major, 1NT → balanced (each suit 2-5),
+    Precision 2♦ → 0-1 diamonds + 3+/3+ majors, weak twos →
+    5-6 in the suit, …
+  * MC sampler rejects samples that violate either constraint;
+    relaxes back to shown_out-only and then to unconstrained
+    if no valid sample is found.
+
+Empirical result: 10-run mean **68.6% with constraints vs 68.4%
+without** — inside the ±1% noise band. 24% of samples are
+rejected by the HCP filter on a typical 520-card run, so the
+constraints fire as designed, but DDS's per-card best-pick is
+robust to the removed extreme samples — the surviving 76%
+already cover the same plausible-truth distribution.
+
+Diagnosis: the 31% mismatch isn't sampling noise, it's that
+Q-Plus's card engine appears to be **rule-based** (same family
+as its bidding), not DDS+MC. So Q-Plus's choices reflect
+specific bridge principles (signals, entry preservation,
+deception, stylistic preferences) that DDS expectations don't
+capture, and tightening the MC's sample distribution toward
+"the truth" doesn't pull the picks toward Q-Plus's heuristic
+choices.
+
+The constraints are kept in the codebase regardless — they are
+correct bridge logic and a useful foundation for future work
+(per-card biased sampling, position-specific override library
+built on top). But the realistic ceiling without that further
+work is 68-69%. Phase target reset: 70%, not 75%.
+
+Users seeking stronger play should play wbridge5 or Q-Plus
+directly. For teaching purposes, where the user wants to see
+*defensible* card play and learn *why* a card was chosen, the
+current engine is adequate.
 
 ### Phase 4 — Integration + robustness
 End-to-end: deal generation → bid → play → score, with the sanity
