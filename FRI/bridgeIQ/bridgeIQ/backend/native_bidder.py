@@ -2955,9 +2955,12 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
                    why="3NT (last-resort 2/1 GF game)")
 
     # 2/1 GF auction: opener rebid a NEW suit at the 2-level. The
-    # auction is still game-forcing — never pass below game. Pick the
-    # most descriptive rebid by shape.
-    if (opener_rebid.level == 2
+    # auction is still game-forcing — never pass below game. Only
+    # applies after a 1-of-a-suit opening; after 1NT the "2/1" is
+    # actually a Stayman / Jacoby transfer and the auction is NOT
+    # forcing once opener accepts.
+    if (op.suit != Suit.NOTRUMP
+            and opener_rebid.level == 2
             and opener_rebid.suit is not None
             and opener_rebid.suit != Suit.NOTRUMP
             and opener_rebid.suit != op.suit
