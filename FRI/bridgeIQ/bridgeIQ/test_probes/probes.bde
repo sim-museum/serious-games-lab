@@ -1,0 +1,146 @@
+DOCTYPE: BDL 7.1
+.description.eng = "BridgeIQ card-play probes — isolate one principle per deal"
+
+Deal         :   PROBE-01-holdup
+Dealer       :   South
+Vuln         :   ---
+Cards        :                  3 2
+             :                  K Q J
+             :                  A K J
+             :                  K Q J T 9
+             :   Q J T 8 6                     9 7 5
+             :   9 8 4 2                       T 7 3
+             :   6 5 3                         T 9 8 4
+             :   7                             A 8 2
+             :                  A K 4
+             :                  A 6 5
+             :                  Q 7 2
+             :                  6 5 4 3
+
+*********************************************************
+
+Deal         :   PROBE-02-avoidance
+Dealer       :   South
+Vuln         :   ---
+Cards        :                  K J 3
+             :                  Q 6 4 2
+             :                  A K 7
+             :                  Q 9 8
+             :   Q 9 4                         T 8 6 2
+             :   K J T 5                       9 8 3
+             :   Q 9 8 4 3                     T 5
+             :   T                             J 5 4 2
+             :                  A 7 5
+             :                  A 7
+             :                  J 6 2
+             :                  A K 7 6 3
+
+*********************************************************
+
+Deal         :   PROBE-03-third-hand-high
+Dealer       :   South
+Vuln         :   ---
+Cards        :                  6 5 4
+             :                  A K Q
+             :                  K Q J
+             :                  K J T 9
+             :   J T 9 8 3                     Q 7 2
+             :   9 8 4 2                       T 6 5
+             :   8 7 5                         9 4 2
+             :   2                             8 7 6 4
+             :                  A K
+             :                  J 7 3
+             :                  A T 6 3
+             :                  A Q 5 3
+
+*********************************************************
+
+Deal         :   PROBE-04-cover-honor
+Dealer       :   South
+Vuln         :   ---
+Cards        :                  T 4
+             :                  A K 6 5 4
+             :                  A K Q J
+             :                  6 5
+             :   K J 8 7 6                     Q 9 5
+             :   9 8                           T 7 3
+             :   T 5 4 2                       9 8 7
+             :   T 2                           Q 9 8 7
+             :                  A 3 2
+             :                  Q J 2
+             :                  6 3
+             :                  A K J 4 3
+
+*********************************************************
+
+Deal         :   PROBE-05-suit-preference
+Dealer       :   South
+Vuln         :   ---
+Cards        :                  3 2
+             :                  K Q J T 9 8
+             :                  A K Q
+             :                  A K 4
+             :   J T 9 8 7 6                   Q 5 4
+             :   6 5                           7 4 3
+             :   9 8                           J T 7 6
+             :   Q J T 9                       8 7 6
+             :                  A K
+             :                  A 2
+             :                  5 4 3 2
+             :                  5 3 2
+
+*********************************************************
+
+Deal         :   PROBE-06-attitude-lead
+Dealer       :   South
+Vuln         :   ---
+Cards        :                  Q 8 5 3
+             :                  T 5 4
+             :                  Q J T 9
+             :                  T 4
+             :   A K J T 7                     6 4 2
+             :   7 3 2                         A K 8
+             :   8 7 6                         3 2
+             :   6 3                           Q J 9 8 7
+             :                  9
+             :                  Q J 9 6
+             :                  A K 5 4
+             :                  A K 5 2
+
+*********************************************************
+
+Deal         :   PROBE-07-endplay-throw-in
+Dealer       :   South
+Vuln         :   ---
+Cards        :                  K J 5
+             :                  Q 6 3
+             :                  A K Q J 4
+             :                  4 3
+             :   T 9 8                         Q 4 3 2
+             :   T 9 8 7 5                     K J 4 2
+             :   T 9 8                         7 6 5
+             :   7 6                           Q 8
+             :                  A 7 6
+             :                  A
+             :                  3 2
+             :                  A K J T 9 5 2
+
+*********************************************************
+
+Deal         :   PROBE-08-discard-choice
+Dealer       :   South
+Vuln         :   ---
+Cards        :                  Q 4 2
+             :                  A K Q J T 9
+             :                  K 6
+             :                  K 6
+             :   8 7 5                         T 9 6
+             :   5 4 3 2                       8 7 6
+             :   Q J T 5                       9 8 7 4 3 2
+             :   J T 9                         A
+             :                  A K J 3
+             :                  --
+             :                  A
+             :                  Q 8 7 5 4 3 2
+
+*********************************************************
