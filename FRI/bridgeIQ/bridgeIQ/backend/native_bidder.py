@@ -2985,10 +2985,16 @@ def _overcall_over_1nt(state, e: HandEval, system) -> Bid:
         return double(why=f"Penalty double of 1NT ({hcp} HCP, no short suit)")
 
     # Landy 2♣ — both majors, at least 4-4, competitive values.
+    # Landy 2♣ — both majors. Q-Plus uses 9-12 HCP at 4-4 (with
+    # 13+ HCP a defender prefers to sit 1NT for penalty rather
+    # than push to the 2-level). 5-4 hands keep the 9-14 range.
+    landy_4_4 = (e.suit_lengths[Suit.HEARTS] == 4
+                 and e.suit_lengths[Suit.SPADES] == 4)
+    landy_hcp_max = 12 if landy_4_4 else 14
     if (system.has("O-1NT.Landy")
             and e.suit_lengths[Suit.HEARTS] >= 4
             and e.suit_lengths[Suit.SPADES] >= 4
-            and 9 <= hcp <= 15):
+            and 9 <= hcp <= landy_hcp_max):
         return bid(2, Suit.CLUBS, alert=True,
                    why="Landy: both majors (4+/4+, 9-15 HCP)")
 
