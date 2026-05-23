@@ -262,6 +262,13 @@ def main(argv=None) -> int:
                    help="RNG seed (must match what produced the BDE)")
     p.add_argument("--board", type=int, default=None,
                    help="restrict to a single board (1-based)")
+    p.add_argument("--occurrence", choices=("first", "last"),
+                   default="first",
+                   help="if the BDL has multiple sessions with the same "
+                        "BB-diff-* labels (Q-Plus appends to the same "
+                        "log-NNN.bdl on a second run), pick the FIRST or "
+                        "LAST occurrence. Default 'first' matches the "
+                        "original seed; use 'last' for a re-run.")
     p.add_argument("--leads-only", action="store_true",
                    help="just compare opening leads — skips the heavier "
                         "per-card MC replay")
@@ -281,9 +288,12 @@ def main(argv=None) -> int:
     qdeals = load_bdl_file(str(bdl_path))
     labels = _read_deal_labels(bdl_path)
     qplus_by_label = {}
+    take_last = (args.occurrence == "last")
     for idx, deal in enumerate(qdeals):
-        if idx < len(labels) and labels[idx] not in qplus_by_label:
-            qplus_by_label[labels[idx]] = deal
+        if idx < len(labels):
+            label = labels[idx]
+            if take_last or label not in qplus_by_label:
+                qplus_by_label[label] = deal
 
     # Auto-grow --n if the BDL has more labels than the user passed
     # (the harness defaults to N=5; running against a 10-deal BDL

@@ -491,7 +491,9 @@ def _open_precision(e: HandEval, system, state=None) -> Bid:
             return bid(1, Suit.CLUBS, alert=True,
                        why=f"Precision: {strong_min}+ HCP, any shape")
 
-    # Below the lower opening bound → Pass (preempts considered first).
+    # Below the lower opening bound → Pass (preempts first).
+    # Light 10-HCP hands fall through so the Rule-of-20 gate in
+    # the 1D catchall (below) can promote them when shape warrants.
     if hcp < two_c_min:
         gamb = _gambling_3nt_open(e, system)
         if gamb is not None:
@@ -499,7 +501,9 @@ def _open_precision(e: HandEval, system, state=None) -> Bid:
         pre = _preempt_bid(e, state, system)
         if pre is not None:
             return pre
-        return passb()
+        if hcp < 10:
+            return passb()
+        # 10 HCP — let the 1D catchall apply Rule of 20.
 
     # Gambling 3NT also applies inside the opening range — Precision 70
     # uses it for solid-minor hands light on HCP.
@@ -545,11 +549,17 @@ def _open_precision(e: HandEval, system, state=None) -> Bid:
         return bid(2, Suit.NOTRUMP,
                    why=f"{two_nt_min}-{two_nt_max} balanced")
 
-    # 5-card majors at the 1 level (light to mid).
-    if e.suit_lengths[Suit.SPADES] >= 5 and e.suit_lengths[Suit.SPADES] >= e.suit_lengths[Suit.HEARTS]:
+    # 5-card majors at the 1 level — light openings gated by Rule
+    # of 20 (or 12+ HCP). Same logic as the 1D catchall below; the
+    # earlier "below the lower opening bound" branch lets 10-11
+    # HCP fall through here for Rule-of-20 evaluation.
+    lens_top2 = sorted(e.suit_lengths.values(), reverse=True)
+    rule_of_20 = hcp + lens_top2[0] + lens_top2[1]
+    open_one_major_ok = (hcp >= 12) or (hcp >= 10 and rule_of_20 >= 20)
+    if open_one_major_ok and e.suit_lengths[Suit.SPADES] >= 5 and e.suit_lengths[Suit.SPADES] >= e.suit_lengths[Suit.HEARTS]:
         return bid(1, Suit.SPADES, alert=True,
-                   why=f"Precision: {two_c_min}-{nt_max} HCP, 5+ spades")
-    if e.suit_lengths[Suit.HEARTS] >= 5:
+                   why=f"Precision 1S: {hcp} HCP, Rule of 20 = {rule_of_20}")
+    if open_one_major_ok and e.suit_lengths[Suit.HEARTS] >= 5:
         return bid(1, Suit.HEARTS, alert=True,
                    why=f"Precision: {two_c_min}-{nt_max} HCP, 5+ hearts")
 
@@ -558,12 +568,23 @@ def _open_precision(e: HandEval, system, state=None) -> Bid:
         return bid(2, Suit.CLUBS, alert=True,
                    why=f"Precision: {two_c_min}-{two_c_max}, 6+ clubs")
 
-    # 1♦ — catch-all 11-15 / no 5cM / no 6c clubs / unbalanced or 2c+ diamond.
-    if one_d_min <= hcp <= one_d_max and (
+    # 1♦ — catch-all (Q-Plus Precision90M, ≤ 15 HCP, no 5cM, no 6c
+    # clubs, unbalanced or with 2c+ diamond). Q-Plus opens by HCP +
+    # shape: 12+ always opens, 10-11 opens only if Rule of 20 holds
+    # (hcp + lengths of the two longest suits ≥ 20). A balanced
+    # 11-count (e.g. 4-4-3-2) ends up at 19 and is passed; a 10
+    # with a 6-card suit usually reaches 20 and is opened. Without
+    # this gate bridgeIQ either opened balanced 11-counts Q-Plus
+    # passes (seed=100 board 6) or passed shapely 10-counts Q-Plus
+    # opens (seed=100 board 7).
+    if hcp <= one_d_max and (
             e.suit_lengths[Suit.DIAMONDS] >= 2 or not (e.is_balanced or e.is_semi_balanced)):
-        return bid(1, Suit.DIAMONDS, alert=True,
-                   why=f"Precision: {one_d_min}-{one_d_max} HCP, "
-                       "no 5cM, no 6c clubs")
+        lens = sorted(e.suit_lengths.values(), reverse=True)
+        rule_of_20 = hcp + lens[0] + lens[1]
+        if hcp >= 12 or (hcp >= 10 and rule_of_20 >= 20):
+            return bid(1, Suit.DIAMONDS, alert=True,
+                       why=f"Precision 1D: {hcp} HCP, Rule of 20 = "
+                           f"{rule_of_20}")
     return passb()
 
 
@@ -1465,11 +1486,11 @@ def _respond_to_1nt_competitive(state, e, system):
         hcp = e.hcp
         if (system.has("C-1NT-doubled.all-escape")
                 or system.has("C-1NT-doubled.Stayman-and-Jacoby")):
-            # Escape to long suit (5+) with weak hand.
+            # Escape to a long MAJOR (5+ S or H) with a weak hand —
+            # diamonds-only weak hands sit the double (Q-Plus's
+            # Precision90M default behaviour matches this).
             if hcp <= 7:
-                # Pick the longest non-club suit first (2♣ might be Stayman
-                # in some agreements; bid 2♦/2♥/2♠ natural if 5+).
-                for suit in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS):
+                for suit in (Suit.SPADES, Suit.HEARTS):
                     if e.suit_lengths[suit] >= 5:
                         return bid(2, suit, alert=True,
                                    why=f"1NT-X escape: 5+ "
@@ -1740,15 +1761,28 @@ def _respond_to_minor_competitive(state, e: HandEval, system) -> Bid:
         return passb()
     if overcall_suit is None:  # NT overcall — treat as natural
         return _respond_to_minor(state, e, system)
-    # Negative double with both unbid majors, valid through the
-    # system's Sputnik cap (SAYC: 2♠, Precision 90M: 3♠).
+    # Negative double, valid through the system's Sputnik cap
+    # (SAYC: 2♠, Precision 90M: 3♠). What the double promises
+    # depends on the overcall suit:
+    #
+    #   * Overcall in a MAJOR (1H / 1S) → 4+ in the *other* major.
+    #     (After 1m-1H the doubler shows 4+ spades; after 1m-1S
+    #     they show 4+ hearts and not enough to bid 2♥.)
+    #   * Overcall in the OTHER minor (1m-2m / 2m-3m) → 4+ in each
+    #     unbid major. (Two suits to imply, only one bid available.)
     neg_max = _negative_double_max_level(system)
-    can_neg_dbl = (overcall.level <= neg_max
-                   and e.suit_lengths[Suit.HEARTS] >= 4
-                   and e.suit_lengths[Suit.SPADES] >= 4
-                   and hcp >= 6)
+    can_neg_dbl = False
+    if overcall.level <= neg_max and hcp >= 6:
+        if overcall_suit == Suit.HEARTS:
+            can_neg_dbl = (e.suit_lengths[Suit.SPADES] >= 4)
+        elif overcall_suit == Suit.SPADES:
+            can_neg_dbl = (e.suit_lengths[Suit.HEARTS] >= 4)
+        elif overcall_suit in (Suit.CLUBS, Suit.DIAMONDS):
+            can_neg_dbl = (e.suit_lengths[Suit.HEARTS] >= 4
+                           and e.suit_lengths[Suit.SPADES] >= 4)
     if can_neg_dbl:
-        return double(why=f"Negative double — both majors (Sputnik ≤{neg_max})")
+        return double(
+            why=f"Negative double (Sputnik ≤{neg_max})")
     # Bid an unbid major. Forcing strength depends on the system AND
     # the actual level we'd have to bid at (which the overcall may
     # have already pushed past the 1 level).
@@ -2896,9 +2930,12 @@ def _overcall_over_1nt(state, e: HandEval, system) -> Bid:
     """
     hcp = e.hcp
 
-    # Penalty double: 15+ HCP, balanced.
-    if hcp >= 15 and (e.is_balanced or e.is_semi_balanced):
-        return double(why="Penalty double of 1NT (15+ HCP balanced)")
+    # Penalty double: 15+ HCP, no singleton/void (covers balanced
+    # 4-3-3-3 / 4-4-3-2 / 5-3-3-2 and the semi-balanced 5-4-2-2 /
+    # 6-3-2-2). `is_semi_balanced` is narrowly defined as 5-3-3-2;
+    # widen here so a strong 5-4-2-2 still penalty-doubles 1NT.
+    if hcp >= 15 and e.voids == 0 and e.singletons == 0:
+        return double(why=f"Penalty double of 1NT ({hcp} HCP, no short suit)")
 
     # Landy 2♣ — both majors, at least 4-4, competitive values.
     if (system.has("O-1NT.Landy")
