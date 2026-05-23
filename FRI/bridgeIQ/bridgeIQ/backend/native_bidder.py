@@ -3369,14 +3369,20 @@ def _overcall(state, e: HandEval, system) -> Bid:
     # not pre-empted by the suit-overcall path. ----
 
     # Strong-1♣ defensive double (`O-strong-1C.dbl-is-majors`):
-    # 5-5+ majors, 8-15 HCP. The strong-2♣/2♦ siblings are handled
-    # above the 1-level early-return so they reach this branch.
+    # both majors at the table. 5-5 with 8+ HCP, or 4-4 with 11+
+    # HCP (opening values) — Q-Plus on seed=200 board 2 X's with
+    # 4-4 majors + 11 HCP (QJ53 K863 Q92 K5). Only fire on our
+    # FIRST action — we'd otherwise re-X every round.
     if (op.suit == Suit.CLUBS and op.level == 1
             and system.has("O-strong-1C.dbl-is-majors")
-            and e.suit_lengths[Suit.HEARTS] >= 5
-            and e.suit_lengths[Suit.SPADES] >= 5
+            and not state.my_bids
             and 8 <= hcp <= 15):
-        return double(why="Defensive X of strong 1♣ — both majors (5-5+)")
+        hl = e.suit_lengths[Suit.HEARTS]
+        sl = e.suit_lengths[Suit.SPADES]
+        five_five = (hl >= 5 and sl >= 5)
+        four_four_plus_values = (hl >= 4 and sl >= 4 and hcp >= 11)
+        if five_five or four_four_plus_values:
+            return double(why="Defensive X of strong 1♣ — both majors")
 
     # Two-suiter cuebid — Michaels (SAYC) or Ghestem (Precision 90M).
     # Both use the same call (2 of opener's suit) for the same hand
