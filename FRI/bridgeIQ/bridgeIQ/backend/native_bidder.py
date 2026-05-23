@@ -677,10 +677,25 @@ def _preempt_bid(e: HandEval, state=None, system=None) -> Optional[Bid]:
                            f"suit-HCP {suit_hcp}, "
                            f"{'vul' if am_vul else 'nvul'}")
         return None
+    # 2nd-seat preempts (one passer before us) are tightened: LHO
+    # hasn't acted yet but is more likely to have values than partner.
+    # Q-Plus passes hands a 1st/3rd-seat preempter would open
+    # (seed=200 board 1: E with 6 HCP + AQ-7th in diamonds passes
+    # in 2nd seat). Cap HCP at 5 (vs 9) and require suit-HCP ≥ 5.
+    is_second_seat = (state is not None
+                      and getattr(state, "consecutive_passes", 0) == 1
+                      and getattr(state, "opener_seat", None) is None)
     # 3-level preempt — 7-card suit, decent quality.
-    if n == 7 and 5 <= e.hcp <= 9 and suit_hcp >= 4:
-        return bid(3, longest,
-                   why=f"Preempt: 7 {longest.to_char()}, suit-HCP {suit_hcp}")
+    if n == 7:
+        if is_second_seat:
+            if e.hcp <= 5 and suit_hcp >= 5:
+                return bid(3, longest,
+                           why=f"2nd-seat preempt: 7 {longest.to_char()}, "
+                               f"≤5 HCP, suit-HCP {suit_hcp}")
+            return None
+        if 5 <= e.hcp <= 9 and suit_hcp >= 4:
+            return bid(3, longest,
+                       why=f"Preempt: 7 {longest.to_char()}, suit-HCP {suit_hcp}")
     # 4-level preempt — 8+ card suit.
     if n >= 8 and 4 <= e.hcp <= 8 and suit_hcp >= 3:
         return bid(4, longest,
