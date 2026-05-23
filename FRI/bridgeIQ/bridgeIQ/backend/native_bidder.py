@@ -1430,6 +1430,18 @@ def _decide_bid_impl(state: AuctionState, eval_: HandEval, system) -> Bid:
 
     # Opener is an opponent → competitive bidding
     if not is_my_partnership_opener:
+        # If I've already overcalled, this is my own rebid.
+        # Without this guard, the dispatcher routes me back through
+        # _overcall (when partner hasn't acted yet) and I cheerfully
+        # repeat the same suit at the same level — which is illegal
+        # and gets pass-substituted by the sanity wrapper.
+        if state.my_bids:
+            first_mine = state.my_bids[0]
+            if (not first_mine.is_pass
+                    and not first_mine.is_double
+                    and not first_mine.is_redouble
+                    and first_mine.suit is not None):
+                return _overcaller_rebid(state, eval_, system)
         # If partner has acted, this is the advancer's job
         if state.partner_bids:
             return _advance_partner_overcall(state, eval_, system)
@@ -1874,10 +1886,14 @@ def _respond_to_1nt_competitive(state, e, system):
         if e.suit_lengths[m] >= 5 and hcp >= 10 and m != overcall_suit:
             return bid(3, m, why="Long major, game values")
 
-    # Weak with long suit → 2NT relay (signed off in 3 of own suit)
-    if hcp <= 8 and any(e.suit_lengths[s] >= 5 for s in
-                       (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES)
-                       if s != overcall_suit):
+    # Weak with long suit → 2NT relay (signed off in 3 of own suit).
+    # Only legal against a 2-level overcall — over (3X) the relay
+    # would be below the overcall and is just skipped.
+    if (overcall.level == 2
+            and hcp <= 8
+            and any(e.suit_lengths[s] >= 5 for s in
+                    (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES)
+                    if s != overcall_suit)):
         return bid(2, Suit.NOTRUMP, alert=True, why="Lebensohl relay (slow → weak)")
 
     # No fit, modest values → Pass
@@ -4118,10 +4134,14 @@ def _advance_partner_overcall(state, e: HandEval, system) -> Bid:
         # Responsive double: partner doubled, LHO RAISED opener's suit
         # (i.e., supported), and I have ~6-10 HCP with both unbid suits.
         # My double asks partner to pick one of those unbid suits.
+        # Only applies to suit auctions — over 1NT-X-(P), responder's
+        # double would be a double-of-double which is illegal.
         if system.has("C-responsive-double") and state.lho_bids:
             lho_last = state.lho_bids[-1]
             opener_suit = state.opening_bid.suit
-            if (not lho_last.is_pass
+            if (opener_suit is not None
+                    and opener_suit != Suit.NOTRUMP
+                    and not lho_last.is_pass
                     and not lho_last.is_double
                     and lho_last.suit == opener_suit
                     and 6 <= hcp <= 10):

@@ -1,12 +1,50 @@
-# BridgeIQ (BEN Engine)
+# BridgeIQ
 
-A PyQt6 bridge application for Ubuntu 24.04 with classic desktop Bridge interface,
-powered by the BEN (Bridge Engine) neural network.
+A PyQt6 bridge application for Ubuntu 24.04 with classic desktop Bridge
+interface. As of 2026-05, BEN/TensorFlow has been removed; bidding is
+rule-based (modeled on Q-Plus's Precision90M and four other systems) and
+card play is DDS + Monte-Carlo sampling against libdds.so.0.
 
-> **IMPORTANT:** Always run from the venv! The BEN engine will not initialize otherwise.
-> ```bash
-> source venv/bin/activate && python -m bridgeIQ.main
-> ```
+## Plan to finish bidding + play (2026-05-23)
+
+Goal: a competent, correct teaching bridge program across 5 systems.
+Not parity with Q-Plus; correctness + coverage + no pathological bids.
+Once this plan is complete, only teaching tools remain (modeled on
+pokerIQ — hand reviewer, "why did you bid that?" explainer using the
+`why=` strings already on every Bid, drill modes).
+
+### Phase 1 — Multi-system smoke test
+Run 10-deal diff sessions against Q-Plus for the four non-Precision
+systems: SAYC, 2/1, Standard Acol, Standard French. Target is *no
+illegal bids, no sanity-wrapper firings, no obviously broken auctions*
+— NOT match-rate parity. Fix the top 2 issues per system. Stretch:
+one second seed for any system showing brittleness.
+
+### Phase 2 — Precision90M polish (optional)
+Two known gaps from seed=400: overcall handling (lead-direct overcalls
+like 3♦ after partner's 2♦ three-suiter) and Stayman+splinter cascades
+(earlier seeds). Target: 20/50 perfect (currently 17/50). Stop there
+— diminishing returns.
+
+### Phase 3 — Card-play push
+Three concrete gains identified earlier: defender signaling (count +
+attitude), declarer entry-aware play, and suit-of-card decisions.
+Target: 68-69% → 75%. Verify no "no-valid-samples" sampler failures
+remain. Stop if it plateaus.
+
+### Phase 4 — Integration + robustness
+End-to-end: deal generation → bid → play → score, with the sanity
+wrapper on for ~100 deals across all 5 systems. Record sanity-wrapper
+firings as bugs and fix or accept. Confirm save/restore of in-progress
+games.
+
+### Phase 5 — Define "done"
+Exit criteria: zero illegal bids over a 100-deal cross-system stress
+run, zero sanity-wrapper-rescued pathological auctions, card play ≥
+70% match rate vs Q-Plus. Tag a `bidding-and-play-complete` release;
+move to teaching tools.
+
+---
 
 ## Project Overview
 
