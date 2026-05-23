@@ -12,16 +12,22 @@ dataclass that captures the numeric knobs in structured fields plus
 the raw flag set so the rule-based bidder can ask
 `system.has("A-1NT-Stayman")` for any convention we model.
 
-The Q-Plus files describe four bundled systems:
+The Q-Plus files describe several bundled systems; we ship support
+for the ones we can validate end-to-end against Q-Plus's gameplay:
 
   * **`SAYC`** — *Standard American Yellow Card (Q-plus)*
     (`A-SAYC-I.RCE`), 15-17 1NT, 5-card majors, 2/1 ≥ 10 HCP.
+  * **`TwoOverOne`** — *2-over-1 Game Forcing* (`A-2-1-A.RCE`).
+  * **`StandardAcol`** — *Standard Acol* (`B-ACL-S.RCE`).
+  * **`StandardFrench`** — *Standard French / SEF*
+    (`F-FRA-M.RCE`).
   * **`Precision90M`** — *Precision Club 90 modern* (`P-P90M-A.RCE`),
     14-16 1NT, light-opening 1-suit, Kokish, Bergen-3C, Ghestem.
-  * **`Precision90P`** — *Precision Club 90 plus* (`P-P90P-A.RCE`),
-    14-16 1NT, normal openings, splinter double-jumps.
-  * **`Precision70`** — *Precision Club 70* (`P-PRC-I.RCE`), 13-15
-    1NT, classic Precision with strict 3-minor preempts.
+
+The other Precision flavours (`Precision90P`, `Precision70`) and
+the wbridge5-tuned SAYC variant were dropped — without a live
+opponent that bids those systems we have no way to validate
+them, and the maintenance burden outweighs the value.
 
 Adding more is a matter of dropping their `.RCE` paths into the
 catalog and (optionally) overriding any post-parse adjustments.
@@ -482,24 +488,6 @@ def _fallback_precision90m() -> BiddingSystem:
     )
 
 
-def _fallback_precision90p() -> BiddingSystem:
-    s = _fallback_precision90m()
-    s.name = "Precision90P"
-    s.description = "Precision Club 90 plus (built-in fallback)"
-    return s
-
-
-def _fallback_precision70() -> BiddingSystem:
-    s = _fallback_precision90m()
-    s.name = "Precision70"
-    s.description = "Precision Club 70 (built-in fallback)"
-    s.one_nt_min_hcp = 13
-    s.one_nt_max_hcp = 15
-    s.two_nt_min_hcp = 22
-    s.two_nt_max_hcp = 23
-    return s
-
-
 def _fallback_two_over_one() -> BiddingSystem:
     """SAYC variant where new-suit-at-2-level is game-forcing.
 
@@ -530,41 +518,6 @@ def _fallback_acol() -> BiddingSystem:
     s.one_major_card_min = 4
     s.two_over_one_min_hcp = 9
     return s
-
-
-def _fallback_sayc_wbridge5() -> BiddingSystem:
-    """SAYC tuned to match wbridge5's bidding choices.
-
-    Encoded from wbridge5's in-game SAYC convention card (North-South
-    defaults). Notable differences from plain SAYC:
-      • Jacoby 2NT OFF (1M-2NT is natural 13-15 invite).
-      • Classic Blackwood (ace-only), NOT RKC.
-      • 1NT may contain a 5-card major or a 6-card minor.
-      • Gambling 3NT ON.
-      • Landy / Multi-Landy OFF (wbridge5 uses Cappelletti-ish defence
-        which we don't yet model, so we leave the no-Landy default).
-
-    Drives `tools/wbridge5_diff.py` for iterative tuning.
-    """
-    return BiddingSystem(
-        name="SAYC-wbridge5",
-        description="SAYC as wbridge5 plays it (diff-tuned)",
-        one_nt_min_hcp=15, one_nt_max_hcp=17,
-        # wbridge5's "1NT with maj.5" and "1NT with min.6" checkboxes
-        # are both on by default in the SAYC card.
-        one_nt_allow_five_card_heart=True,
-        one_nt_allow_five_card_spade=True,
-        one_nt_allow_six_card_minor=True,
-        two_nt_min_hcp=20, two_nt_max_hcp=21,
-        strong_open_call="2C", strong_open_min_hcp=22,
-        weak_two_diamonds=True, weak_two_majors=True,
-        weak_two_min_hcp=6, weak_two_max_hcp=11,
-        two_over_one_min_hcp=10,
-        rebid_one_nt_range=(12, 14),
-        jump_rebid_two_nt_range=(18, 19),
-        rkc_variant="classic",         # ace-counting, not RKC
-        conventions=set(_FALLBACK_SAYC_WBRIDGE5_CONVENTIONS),
-    )
 
 
 def _fallback_standard_french() -> BiddingSystem:
@@ -599,32 +552,6 @@ _FALLBACK_SAYC_CONVENTIONS = {
 }
 
 
-# SAYC as wbridge5 plays it — derived from the in-game SAYC
-# convention card (Bidding options → Sayc, North-South column).
-# Key differences from our default SAYC:
-#   • Jacoby 2NT OFF — wbridge5's "2NT Jacoby" checkbox is unchecked
-#     by default. 1M-2NT is a natural 13-15 invite instead.
-#   • RKC Blackwood OFF — wbridge5 plays classic ace-counting
-#     Blackwood, not Roman Key Card.
-#   • Landy OFF — wbridge5's defence to 1NT uses Cappelletti-style
-#     overcalls (or natural), not Landy. We don't yet model
-#     Cappelletti, so we just drop Landy.
-#   • 1NT-with-5cM ON, 1NT-with-6cm ON (numeric fields below).
-#   • Gambling 3NT ON — classic 7+ solid minor + nothing else.
-#   • Best Minor ON (already the default in our code).
-# Conventions left on (same as plain SAYC): Stayman, Jacoby
-# transfers, Texas transfers, splinters, Truscott 2NT after 1m-(X),
-# negative doubles, Michaels (1C/2C show 5H+5S), Unusual 2NT,
-# weak two-bids in ♦/♥/♠, strong 2♣, weak jump overcalls, Gerber.
-_FALLBACK_SAYC_WBRIDGE5_CONVENTIONS = (_FALLBACK_SAYC_CONVENTIONS | {
-    "S-Blackwood.classic",       # ace-counting (not RKC)
-    "B-3NT-gambling",            # ON per the convention card
-}) - {
-    "S-Blackwood.keycard.RKCB1430",
-    "A-1MA-Jacoby-2NT",
-    "O-1NT.Landy",
-}
-
 _FALLBACK_PRECISION_CONVENTIONS = (_FALLBACK_SAYC_CONVENTIONS | {
     "B-strong-artificial.bid-1C.min-hcp-16",
     "A-artificial-1C.switch-1NT-1H",
@@ -635,34 +562,21 @@ _FALLBACK_PRECISION_CONVENTIONS = (_FALLBACK_SAYC_CONVENTIONS | {
 
 _CATALOG: List[Tuple[str, str, "callable"]] = [
     ("SAYC",            "A-SAYC-I.RCE", _fallback_sayc),
-    ("SAYC-wbridge5",   "",             _fallback_sayc_wbridge5),
     ("TwoOverOne",      "A-2-1-A.RCE",  _fallback_two_over_one),
     ("StandardAcol",    "B-ACL-S.RCE",  _fallback_acol),
     ("StandardFrench",  "F-FRA-M.RCE",  _fallback_standard_french),
     ("Precision90M",    "P-P90M-A.RCE", _fallback_precision90m),
-    ("Precision90P",    "P-P90P-A.RCE", _fallback_precision90p),
-    ("Precision70",     "P-PRC-I.RCE",  _fallback_precision70),
 ]
 
 
-# Aliases so the config can keep using "Precision" or "SAYC" generically,
-# and so user-facing names from other bridge programs map to the closest
-# Q-Plus equivalent for cross-checking.
+# Aliases so the config can keep using "Precision" or "SAYC" generically.
 _ALIASES = {
     "Precision": "Precision90M",
     "Precision Club": "Precision90M",
     "Precision Club 90 modern": "Precision90M",
-    "Precision Club 90 plus": "Precision90P",
-    "Precision Club 70": "Precision70",
     "Standard American": "SAYC",
-    # bb12 / wBridge5 cross-references — all map to Q-Plus systems so
-    # the user can verify our bidding against the same Q-Plus rule set
-    # those programs would use as their closest analogue.
     "Std. Amer.": "SAYC",
     "2/1": "TwoOverOne",
-    "Wbridge5": "SAYC-wbridge5",     # was TwoOverOne — now its own system
-    "wbridge5": "SAYC-wbridge5",
-    "wBridge5": "SAYC-wbridge5",
     "SEF": "StandardFrench",
     "ACOL": "StandardAcol",
     "Acol": "StandardAcol",

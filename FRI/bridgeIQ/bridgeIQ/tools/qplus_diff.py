@@ -175,8 +175,6 @@ def _read_qplus_system_from_bdl(bdl_path: Path) -> str:
     import re
     tag_map = {
         "P-P90M-A":  "Precision90M",
-        "P-P90P-A":  "Precision90P",
-        "P-PRC-I":   "Precision70",
         "A-SAYC-I":  "SAYC",
         "A-2-1-A":   "TwoOverOne",
         "B-ACL-S":   "StandardAcol",
@@ -242,8 +240,10 @@ def main(argv=None) -> int:
                    help="number of deals to diff (default 10)")
     p.add_argument("--seed", type=int, default=42,
                    help="RNG seed for shuffling")
-    p.add_argument("--system", default="SAYC-wbridge5",
-                   help="bridgeIQ system to test against Q-Plus auctions")
+    p.add_argument("--system", default="Precision90M",
+                   help="bridgeIQ system to test against Q-Plus auctions. "
+                        "Auto-overridden when the BDL header names a "
+                        "different one.")
     p.add_argument("--report",
                    default=f"qplus_diff_{datetime.datetime.now():%Y%m%d_%H%M%S}.txt",
                    help="output diff report path")

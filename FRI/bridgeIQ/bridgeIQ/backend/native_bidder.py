@@ -1138,7 +1138,240 @@ def _try_rkc_pipeline(state: 'AuctionState', e: HandEval, system) -> Optional[Bi
 # Top-level decide
 # ---------------------------------------------------------------------------
 
+def _is_legal_bid(b: Bid, state: AuctionState) -> bool:
+    """Return True if `b` is a legal call at this point in the auction.
+
+    Mirrors the legality check the diff harness uses — bids must
+    strictly outrank the last suit bid, doubles need a non-pass /
+    non-doubled bid behind them, redoubles need a double behind them.
+    """
+    if b is None or b.is_pass:
+        return True
+    if b.is_double:
+        last = next((x for _s, x in reversed(state.bids)
+                     if not x.is_pass), None)
+        return (last is not None
+                and not last.is_double and not last.is_redouble)
+    if b.is_redouble:
+        last = next((x for _s, x in reversed(state.bids)
+                     if not x.is_pass), None)
+        return last is not None and last.is_double
+    if b.suit is None:
+        return False
+    if b.level < 1 or b.level > 7:
+        return False
+    last_suit = next((x for _s, x in reversed(state.bids)
+                      if not x.is_pass and not x.is_double
+                      and not x.is_redouble), None)
+    if last_suit is None:
+        return True
+    if b.level > last_suit.level:
+        return True
+    if b.level == last_suit.level:
+        return _BID_RANK[b.suit] > _BID_RANK[last_suit.suit]
+    return False
+
+
+def _partner_was_forcing(state: AuctionState) -> bool:
+    """Detect a force partner just placed on us. Conservative — only
+    returns True for unambiguous forcing sequences so the sanity
+    wrapper doesn't fire on debatable cases.
+
+      * Partner's 2/1 GF response: I opened 1-of-major, partner bid
+        2-of-new-suit. Auction is game-forcing.
+      * Partner's reverse: partner showed extras by bidding a
+        higher-ranked suit at the 2-level after their 1-level open.
+      * Partner's splinter: alerted jump to 3+ in a new suit after
+        my opening.
+      * Partner's jump-shift: jump in new suit at responder's turn.
+    """
+    if not state.partner_bids:
+        return False
+    pl = state.partner_bids[-1]
+    if pl.is_pass or pl.is_double or pl.is_redouble:
+        return False
+    op = state.opening_bid
+    if op is None:
+        return False
+
+    # Partner's 2/1 GF response (their first call is 2-of-new over
+    # my 1-of-major opening).
+    if (len(state.partner_bids) == 1
+            and pl.level == 2
+            and pl.suit is not None
+            and pl.suit != Suit.NOTRUMP
+            and state.opener_seat == state.seat
+            and op.level == 1
+            and op.suit in (Suit.HEARTS, Suit.SPADES)
+            and pl.suit != op.suit):
+        return True
+
+    # Partner's reverse (their second call, higher-ranked suit at
+    # level 2, after a level-1 response by me).
+    if (len(state.partner_bids) >= 2
+            and pl.level == 2
+            and pl.suit is not None
+            and pl.suit != Suit.NOTRUMP
+            and state.partner_bids[0].suit is not None
+            and state.partner_bids[0].suit != Suit.NOTRUMP
+            and pl.level > state.partner_bids[0].level
+            and _BID_RANK[pl.suit] > _BID_RANK[state.partner_bids[0].suit]):
+        return True
+
+    # Splinter: alerted jump in a new suit (level ≥ 3, not partner's
+    # earlier suit).
+    if (pl.alert and pl.level >= 3
+            and pl.suit is not None
+            and pl.suit != Suit.NOTRUMP
+            and pl.suit not in [b.suit for b in state.partner_bids[:-1]
+                                if b.suit is not None]):
+        return True
+
+    return False
+
+
+def _safe_forced_bid(state: AuctionState, eval_: HandEval,
+                     system) -> Optional[Bid]:
+    """Pick a conservative continuation when we shouldn't pass.
+
+    Preference order: raise partner's suit if I have 3+ support;
+    rebid my own 5+ suit; 2NT/3NT if balanced; cuebid opener's
+    suit if competitive; last-resort cheapest legal level of my
+    own suit or 3NT.
+    """
+    pl = state.partner_bids[-1]
+    last_level = state.last_level or 1
+    last_suit = state.last_suit_bid
+
+    def _cheapest_legal_level(target: Suit) -> int:
+        if last_suit is None:
+            return 1
+        if _BID_RANK[target] > _BID_RANK[last_suit]:
+            return last_level
+        return last_level + 1
+
+    # Raise partner's last suit with 3+ support.
+    if (pl.suit is not None and pl.suit != Suit.NOTRUMP
+            and eval_.suit_lengths.get(pl.suit, 0) >= 3):
+        lvl = _cheapest_legal_level(pl.suit)
+        if lvl <= 4:
+            cand = bid(lvl, pl.suit, why="Sanity: raise partner's suit")
+            if _is_legal_bid(cand, state):
+                return cand
+
+    # Rebid own 5+ card suit.
+    for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
+        if eval_.suit_lengths[s] >= 5:
+            lvl = _cheapest_legal_level(s)
+            if lvl <= 4:
+                cand = bid(lvl, s, why=f"Sanity: rebid {s.to_char()}")
+                if _is_legal_bid(cand, state):
+                    return cand
+
+    # Balanced → NT at the cheapest legal level (NT outranks all suits).
+    if eval_.is_balanced or eval_.is_semi_balanced:
+        target_level = max(2, last_level)
+        if (last_suit == Suit.NOTRUMP) and target_level == last_level:
+            target_level += 1
+        if target_level <= 3:
+            cand = bid(target_level, Suit.NOTRUMP,
+                       why="Sanity: balanced NT")
+            if _is_legal_bid(cand, state):
+                return cand
+
+    # Last resort: 3NT.
+    cand = bid(3, Suit.NOTRUMP, why="Sanity: last-resort 3NT")
+    if _is_legal_bid(cand, state):
+        return cand
+
+    return None
+
+
+def _legalize(b: Bid, state: AuctionState) -> Optional[Bid]:
+    """If `b` is an illegal suit bid, return the cheapest legal bid
+    in the same suit — but ONLY if the upgrade is by at most one
+    level. Wider gaps usually mean the underlying bidder produced a
+    stale call (rebidding a preempt long after the auction moved on);
+    upgrading those would just commit us to a meaningless slam-level
+    contract. Caller passes instead.
+    """
+    if b is None or b.is_pass or b.suit is None or b.suit == Suit.NOTRUMP:
+        return None
+    if b.is_double or b.is_redouble:
+        return None
+    last_suit = next((x for _s, x in reversed(state.bids)
+                      if not x.is_pass and not x.is_double
+                      and not x.is_redouble), None)
+    if last_suit is None:
+        return b if _is_legal_bid(b, state) else None
+    if (b.level == last_suit.level
+            and _BID_RANK[b.suit] > _BID_RANK[last_suit.suit]):
+        return b
+    new_level = last_suit.level + (
+        0 if _BID_RANK[b.suit] > _BID_RANK[last_suit.suit] else 1)
+    if new_level > 7:
+        return None
+    if new_level - b.level > 1:
+        return None     # Don't sky-rocket stale preempts.
+    upgraded = bid(new_level, b.suit,
+                   why=f"{b.explanation} [legalized from "
+                       f"{b.level}{b.suit.to_char()}]")
+    return upgraded if _is_legal_bid(upgraded, state) else None
+
+
+def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
+                 system) -> Bid:
+    """Catch pathological output from `_decide_bid_impl` and substitute.
+
+    Two pathologies are handled:
+
+      1. **Illegal bid** — typically a stale 2-level call that
+         doesn't outrank partner's intervening jump. We upgrade to
+         the cheapest legal level in the same suit.
+
+      2. **Pass when a force is in effect** — partner just made a
+         GF call (2/1, reverse, splinter, jump shift) and the
+         rule-based bidder fell through to pass. We pick a
+         conservative continuation in `_safe_forced_bid`.
+
+    Returns the (possibly substituted) bid. Never raises; on any
+    internal error returns `raw` unchanged so the wrapper can't
+    make the engine crashier than it already is.
+    """
+    try:
+        # 1. Illegality
+        if not _is_legal_bid(raw, state):
+            legalized = _legalize(raw, state)
+            if legalized is not None:
+                raw = legalized
+            else:
+                # Can't recover — fall back to pass and let the
+                # next check decide whether that's also wrong.
+                raw = passb(why=f"Sanity: illegal {raw} → pass")
+
+        # 2. Pass-when-forced
+        if raw.is_pass and _partner_was_forcing(state):
+            sub = _safe_forced_bid(state, eval_, system)
+            if sub is not None:
+                return sub
+
+        return raw
+    except Exception:
+        # Defensive — never raise from the wrapper.
+        return raw
+
+
 def decide_bid(state: AuctionState, eval_: HandEval, system) -> Bid:
+    """Public entry point — calls the rule-based bidder, then runs a
+    sanity wrapper that catches obvious pathological output before it
+    leaves the engine. See `_sanity_wrap` for the specific patterns
+    we override.
+    """
+    raw = _decide_bid_impl(state, eval_, system)
+    return _sanity_wrap(raw, state, eval_, system)
+
+
+def _decide_bid_impl(state: AuctionState, eval_: HandEval, system) -> Bid:
     """Dispatch to the right decision function based on auction state.
 
     `system` is a `BiddingSystem` from `bidding_systems`. String inputs

@@ -80,10 +80,13 @@ class TestSystemCatalog(unittest.TestCase):
 
     def test_listed_systems(self):
         names = list_systems()
-        self.assertIn("SAYC", names)
-        self.assertIn("Precision90M", names)
-        self.assertIn("Precision90P", names)
-        self.assertIn("Precision70", names)
+        for expected in ("SAYC", "TwoOverOne", "StandardAcol",
+                         "StandardFrench", "Precision90M"):
+            self.assertIn(expected, names)
+        # Systems we explicitly do NOT ship — no live opponent to
+        # validate them against, so they were dropped.
+        for dropped in ("SAYC-wbridge5", "Precision90P", "Precision70"):
+            self.assertNotIn(dropped, names)
 
     def test_sayc_basic_fields(self):
         s = get_system("SAYC")
@@ -105,13 +108,6 @@ class TestSystemCatalog(unittest.TestCase):
         self.assertFalse(s.weak_two_diamonds)
         # 2♦ is the Precision three-suiter, not a weak two.
         self.assertTrue(any(k.startswith("B-2D.Precision") for k in s.raw_rules))
-
-    def test_precision70_classic(self):
-        s = get_system("Precision70")
-        self.assertEqual(s.one_nt_min_hcp, 13)
-        self.assertEqual(s.one_nt_max_hcp, 15)
-        self.assertEqual(s.two_nt_min_hcp, 22)
-        self.assertEqual(s.two_nt_max_hcp, 23)
 
     def test_alias_resolution(self):
         s = get_system("Precision")
@@ -153,12 +149,8 @@ class TestSystemCatalog(unittest.TestCase):
         self.assertEqual(s.one_major_card_min, 5)
 
     def test_cross_program_aliases(self):
-        # bb12 / wBridge5 names map to closest engine-specific systems.
-        # "Wbridge5" used to alias TwoOverOne; now it has its own
-        # diff-tuned SAYC-wbridge5 entry so the test reflects that.
         self.assertEqual(get_system("Std. Amer.").name, "SAYC")
         self.assertEqual(get_system("2/1").name, "TwoOverOne")
-        self.assertEqual(get_system("Wbridge5").name, "SAYC-wbridge5")
         self.assertEqual(get_system("SEF").name, "StandardFrench")
         self.assertEqual(get_system("ACOL").name, "StandardAcol")
         self.assertEqual(get_system("La Majeure 5eme").name, "StandardFrench")
@@ -458,176 +450,6 @@ class TestRKCBlackwood(unittest.TestCase):
                     )
                     break
                 break
-
-
-class TestTMProtocol(unittest.TestCase):
-    """Isolated tests for the Bridge Table Manager protocol bits —
-    no real wbridge5 needed. Drives the codec end-to-end through a
-    pair of socketpair() sockets so we exercise framing as well as
-    formatting.
-    """
-
-    def setUp(self):
-        from backend.wbridge5_driver import (
-            _format_hand_for_tm, _format_bid_for_tm, _parse_bid_from_tm,
-            TMConnection,
-        )
-        from backend.models import (
-            Hand, Card, Suit, Rank, Bid,
-        )
-        self.f_hand = _format_hand_for_tm
-        self.f_bid = _format_bid_for_tm
-        self.p_bid = _parse_bid_from_tm
-        self.TMConnection = TMConnection
-        self.Hand, self.Card = Hand, Card
-        self.Suit, self.Rank, self.Bid = Suit, Rank, Bid
-
-    def test_hand_format(self):
-        Suit, Rank = self.Suit, self.Rank
-        cards = [
-            self.Card(Suit.SPADES, Rank.ACE),
-            self.Card(Suit.SPADES, Rank.QUEEN),
-            self.Card(Suit.HEARTS, Rank.KING),
-            self.Card(Suit.HEARTS, Rank.TWO),
-            self.Card(Suit.DIAMONDS, Rank.QUEEN),
-            self.Card(Suit.DIAMONDS, Rank.JACK),
-            self.Card(Suit.CLUBS, Rank.TEN),
-            self.Card(Suit.CLUBS, Rank.NINE),
-            self.Card(Suit.CLUBS, Rank.EIGHT),
-            self.Card(Suit.CLUBS, Rank.SEVEN),
-            self.Card(Suit.CLUBS, Rank.SIX),
-            self.Card(Suit.CLUBS, Rank.FIVE),
-            self.Card(Suit.CLUBS, Rank.FOUR),
-        ]
-        h = self.Hand(cards=cards)
-        out = self.f_hand(h)
-        self.assertEqual(out,
-            "S A Q. H K 2. D Q J. C T 9 8 7 6 5 4.")
-
-    def test_bid_roundtrip_all_calls(self):
-        Bid, Suit = self.Bid, self.Suit
-        cases = [
-            (Bid.make_pass(), "Pass"),
-            (Bid.make_double(), "X"),
-            (Bid.make_redouble(), "XX"),
-            (Bid(level=1, suit=Suit.HEARTS), "1H"),
-            (Bid(level=3, suit=Suit.NOTRUMP), "3NT"),
-            (Bid(level=7, suit=Suit.CLUBS), "7C"),
-        ]
-        for orig, expected in cases:
-            self.assertEqual(self.f_bid(orig), expected)
-            back = self.p_bid(expected)
-            self.assertEqual(self.f_bid(back), expected)
-
-    def test_tm_connection_framing(self):
-        """Round-trip a few CRLF-framed lines through a socketpair —
-        verifies the connection wrapper correctly reassembles
-        multi-recv lines and handles partial chunks."""
-        import socket
-        a, b = socket.socketpair()
-        ca = self.TMConnection(a)
-        cb = self.TMConnection(b)
-        try:
-            ca.send_line('Connecting "bridgeIQ" as North using protocol version 18')
-            line = cb.recv_line()
-            self.assertEqual(
-                line, 'Connecting "bridgeIQ" as North using protocol version 18')
-
-            # Two lines arriving in one recv().
-            ca.send_line("Start of board")
-            ca.send_line("Board number 1. Dealer North. Neither vulnerable.")
-            self.assertEqual(cb.recv_line(), "Start of board")
-            self.assertEqual(cb.recv_line(),
-                             "Board number 1. Dealer North. Neither vulnerable.")
-        finally:
-            ca.close()
-            cb.close()
-
-
-class TestSAYCWbridge5Catalog(unittest.TestCase):
-    """The new SAYC-wbridge5 system is registered + reachable."""
-
-    def test_listed(self):
-        names = list_systems()
-        self.assertIn("SAYC-wbridge5", names)
-
-    def test_alias_resolution(self):
-        # The bare program names all resolve to SAYC-wbridge5 now.
-        for alias in ("Wbridge5", "wbridge5", "wBridge5"):
-            self.assertEqual(get_system(alias).name, "SAYC-wbridge5")
-
-    def test_starts_as_sayc_clone(self):
-        s = get_system("SAYC-wbridge5")
-        self.assertEqual(s.one_nt_min_hcp, 15)
-        self.assertEqual(s.one_nt_max_hcp, 17)
-        self.assertEqual(s.strong_open_call, "2C")
-        self.assertEqual(s.two_over_one_min_hcp, 10)
-
-    def test_wbridge5_specifics_per_convention_card(self):
-        """The SAYC convention card encoded in the screenshot."""
-        s = get_system("SAYC-wbridge5")
-        # 1NT may contain a 5-card major or 6-card minor.
-        self.assertTrue(s.one_nt_allow_five_card_heart)
-        self.assertTrue(s.one_nt_allow_five_card_spade)
-        self.assertTrue(s.one_nt_allow_six_card_minor)
-        # Classic Blackwood, not RKC.
-        self.assertEqual(s.rkc_variant, "classic")
-        self.assertTrue(s.has("S-Blackwood.classic"))
-        self.assertFalse(s.has("S-Blackwood.keycard.RKCB1430"))
-        # Gambling 3NT ON.
-        self.assertTrue(s.has("B-3NT-gambling"))
-        # Jacoby 2NT OFF (the wbridge5 card has "2NT Jacoby" unchecked).
-        self.assertFalse(s.has("A-1MA-Jacoby-2NT"))
-        # Landy OFF (wbridge5's defence uses Cappelletti-style).
-        self.assertFalse(s.has("O-1NT.Landy"))
-        # Stayman, Jacoby Transfers, Texas Transfers ON.
-        self.assertTrue(s.has("A-1NT-Stayman"))
-        self.assertTrue(s.has("A-1NT-Jacoby-transfer.always"))
-        self.assertTrue(s.has("A-1NT-transfer-level-4.Texas"))
-        # Splinters, Truscott 2NT (after 1m-X), Michaels, Unusual 2NT ON.
-        self.assertTrue(s.has("A-1MA-splinter"))
-        self.assertTrue(s.has("A-1MA-Truscott-2NT"))
-        self.assertTrue(s.has("O-Michaels"))
-        self.assertTrue(s.has("O-Unusual-Notrump"))
-
-    def test_jacoby_2nt_gated_off_drives_to_4m(self):
-        """With 13 HCP + 4-card support, no Jacoby 2NT, the bidder
-        should leap to 4M rather than bidding a non-Jacoby 2NT."""
-        from backend.native_bidder import (
-            decide_bid, evaluate_hand, parse_auction)
-        from backend.models import Hand, Card, Suit, Rank, Seat, Bid
-        rank_map = {'A': Rank.ACE, 'K': Rank.KING, 'Q': Rank.QUEEN,
-                    'J': Rank.JACK, 'T': Rank.TEN,
-                    '9': Rank.NINE, '8': Rank.EIGHT, '7': Rank.SEVEN,
-                    '6': Rank.SIX, '5': Rank.FIVE, '4': Rank.FOUR,
-                    '3': Rank.THREE, '2': Rank.TWO}
-        suit_map = {'S': Suit.SPADES, 'H': Suit.HEARTS,
-                    'D': Suit.DIAMONDS, 'C': Suit.CLUBS}
-        def H(spec):
-            cards = []
-            for grp in spec.split():
-                s = suit_map[grp[0]]
-                for c in grp[1:]:
-                    cards.append(Card(s, rank_map[c]))
-            return Hand(cards=cards)
-        # N hand: ♠AQ73 ♥KQ87 ♦AT2 ♣32 → 4-card heart support, 14 HCP.
-        n_hand = H('SAQ73 HKQ87 DAT2 C32')
-        # Dealer S opens 1H, W passes, N to bid.
-        auction = [
-            Bid(level=1, suit=Suit.HEARTS),
-            Bid.make_pass(),
-        ]
-        state = parse_auction(Seat.NORTH, Seat.SOUTH, auction)
-        sys_ = get_system("SAYC-wbridge5")
-        b = decide_bid(state, evaluate_hand(n_hand), sys_)
-        # Jacoby 2NT is OFF → expect 4H (game raise), not 2NT.
-        self.assertEqual((b.level, b.suit), (4, Suit.HEARTS),
-                         f"Expected 4H game raise, got {b}")
-        # Sanity: regular SAYC should bid 2NT (Jacoby 2NT ON).
-        sys_sayc = get_system("SAYC")
-        b2 = decide_bid(state, evaluate_hand(n_hand), sys_sayc)
-        self.assertEqual((b2.level, b2.suit), (2, Suit.NOTRUMP),
-                         f"SAYC should bid Jacoby 2NT, got {b2}")
 
 
 if __name__ == "__main__":

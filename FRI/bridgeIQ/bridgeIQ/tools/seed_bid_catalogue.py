@@ -358,22 +358,11 @@ def build_catalogues():
     french.update(_preempts())
     french.update(_doubles_and_responses())
 
-    # Precision 90 modern / plus / 70 — strong artificial 1C base,
-    # 13-15 NT (modern) or 14-16 (plus) or 12-14 (70).
-    p90m = _precision_openings(one_nt_lo=13, one_nt_hi=15)
+    # Precision 90 modern — strong artificial 1C base, 14-16 NT.
+    p90m = _precision_openings(one_nt_lo=14, one_nt_hi=16)
     p90m.update(_nt_conventions())
     p90m.update(_preempts())
     p90m.update(_doubles_and_responses())
-
-    p90p = _precision_openings(one_nt_lo=14, one_nt_hi=16)
-    p90p.update(_nt_conventions())
-    p90p.update(_preempts())
-    p90p.update(_doubles_and_responses())
-
-    p70 = _precision_openings(one_nt_lo=12, one_nt_hi=14)
-    p70.update(_nt_conventions())
-    p70.update(_preempts())
-    p70.update(_doubles_and_responses())
 
     return {
         "SAYC": sayc,
@@ -381,8 +370,6 @@ def build_catalogues():
         "StandardAcol": acol,
         "StandardFrench": french,
         "Precision90M": p90m,
-        "Precision90P": p90p,
-        "Precision70": p70,
     }
 
 

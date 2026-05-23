@@ -75,8 +75,6 @@ class BridgeEngine:
         '21GF': '21GF',
         '2/1GF': '2/1GF',
         'Precision90M': 'Precision90M',
-        'Precision90P': 'Precision90P',
-        'Precision70': 'Precision70',
         'StandardAcol': 'StandardAcol',
         'StandardFrench': 'StandardFrench',
         'DEFAULT': 'SAYC',
