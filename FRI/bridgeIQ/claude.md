@@ -27,10 +27,32 @@ like 3♦ after partner's 2♦ three-suiter) and Stayman+splinter cascades
 — diminishing returns.
 
 ### Phase 3 — Card-play push
-Three concrete gains identified earlier: defender signaling (count +
-attitude), declarer entry-aware play, and suit-of-card decisions.
-Target: 68-69% → 75%. Verify no "no-valid-samples" sampler failures
-remain. Stop if it plateaus.
+Tested 2026-05-23. Outcome: **68-69% maintained, 75% not reached.**
+
+Position-aware tie-breaks (third-hand-high, cash-high-from-short)
+were tried and either harmed match rate (cash-from-short dropped
+the mean to 62%) or had no measurable effect (third-hand-high
+landed inside the ±2% MC noise band). Increasing the MC sample
+count from 40 to 80 to 200 tightened the variance but the mean
+stayed at 69% — indicating algorithmic, not sampling, ceiling.
+
+Categorising 193 mismatches: 45% cross-suit (DDS samples disagree
+about which suit is best — sampling-driven, not tie-break),
+36% within-suit-low (DDS prefers the higher card outright on
+the MC distribution, so tie-break never runs), 17% within-suit-
+high (the candidates for tie-break refinement), 2% leads. Even
+matching every single within-suit-high case wouldn't reach 75%
+without progress on the 81% that aren't tie-break problems.
+
+Zero sampler fallbacks across 520 cards — the "no-valid-samples"
+issue is fully fixed (per-card random distribution + auto-relax
+of shown_out, both from the previous session).
+
+Real path to 75% would be: auction-informed sampling (constrain
+shapes/HCP from the bidding history before MC), or a position-
+specific override rule library. Both substantial. Deferred —
+68-69% with steady variance and no fallbacks is acceptable for a
+teaching tool. Users seeking strength can play wbridge5 or Q-Plus.
 
 ### Phase 4 — Integration + robustness
 End-to-end: deal generation → bid → play → score, with the sanity
