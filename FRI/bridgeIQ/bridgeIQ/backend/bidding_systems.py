@@ -461,11 +461,12 @@ def _fallback_precision90m() -> BiddingSystem:
     return BiddingSystem(
         name="Precision90M",
         description="Precision Club 90 modern (built-in fallback)",
-        # Per Q-Plus's Precision90M.json the limited NT is 13-15
-        # (not 14-16). With 16 balanced this triggers 1♣ strong
-        # rather than 1NT — matching Q-Plus's choice on seed=200
-        # board 3 (W: AKQT2 K92 QT8 Q4, 16 HCP → 1♣).
-        one_nt_min_hcp=13, one_nt_max_hcp=15,
+        # Per Q-Plus's P-P90M-A.RCE rule file the limited NT is
+        # 14-16 (B-1NT.{nv,v}-{1..4}.{min,max}-hcp = p14..p16). The
+        # bundled Precision90M.json describes the bid name as
+        # "balanced 13-15" but that is a stale comment; the live
+        # ruleset Q-Plus uses is 14-16.
+        one_nt_min_hcp=14, one_nt_max_hcp=16,
         two_nt_min_hcp=20, two_nt_max_hcp=21,
         strong_open_call="1C", strong_open_min_hcp=16,
         weak_two_diamonds=False, weak_two_majors=True,
