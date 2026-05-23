@@ -2624,23 +2624,46 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
             return bid(4, Suit.NOTRUMP, alert=True, why="RKC after splinter")
         return bid(4, op_suit, why="Sign off after splinter")
 
-    # Partner 2-over-1 GF
+    # Partner's 2-level new-suit bid (typically a 2/1 GF response,
+    # or a 1m-then-2M/1M-then-2m sequence). Opener MUST describe.
+    # Each candidate rebid is gated on legality (must outrank
+    # partner's 2-level bid, since p_last is at level 2).
     if p_last.level == 2 and p_last.suit is not None and p_last.suit != Suit.NOTRUMP:
-        # Rebid 6-card original suit
+        # Helper: is a 2-level bid in `suit` legal here?
+        def _legal_two(s: Suit) -> bool:
+            return _BID_RANK[s] > _BID_RANK[p_last.suit]
+        # 6-card original suit, rebid at the 2 level if legal,
+        # else at the 3 level (showing extras / good 6-bagger).
         if e.suit_lengths[op_suit] >= 6:
-            return bid(2, op_suit, why="6-card opener suit rebid")
-        # Show second suit. `is not None` — see note above re:
-        # Suit.SPADES being falsy.
+            if _legal_two(op_suit):
+                return bid(2, op_suit, why="6-card opener suit rebid")
+            return bid(3, op_suit, why="6-card opener suit rebid (3-level forced)")
+        # Second suit at the 2-level — legal only when it ranks
+        # both BELOW op_suit and ABOVE partner's last bid.
         if (e.second_suit is not None
-                and _BID_RANK[e.second_suit] < _BID_RANK[op_suit]):
-            return bid(2, e.second_suit, why="Second suit")
-        # Balanced rebid 2NT (forcing in 2/1 context)
+                and _BID_RANK[e.second_suit] < _BID_RANK[op_suit]
+                and _legal_two(e.second_suit)):
+            return bid(2, e.second_suit, why="Second suit (2-level)")
+        # 5+ in original suit, 2-level rebid if legal (forcing-1
+        # in 2/1 GF context). Otherwise jump-rebid at 3-level.
+        if e.suit_lengths[op_suit] >= 5:
+            if _legal_two(op_suit):
+                return bid(2, op_suit,
+                           why=f"Rebid 5+{op_suit.to_char()} (2/1 GF)")
+            return bid(3, op_suit,
+                       why=f"Rebid 5+{op_suit.to_char()} at 3-level")
+        # Balanced rebid 2NT (forcing in 2/1 context). 2NT
+        # outranks every suit so always legal here.
         if e.is_balanced:
             return bid(2, Suit.NOTRUMP, why="2NT (balanced rebid in 2/1)")
-        # Reverse / jump shift on stronger hands
-        if (e.second_suit and _BID_RANK[e.second_suit] > _BID_RANK[op_suit]
+        # Higher-ranked second suit at the 3-level (jump-shift /
+        # reverse), needs extras.
+        if (e.second_suit is not None
+                and _BID_RANK[e.second_suit] > _BID_RANK[op_suit]
                 and e.hcp >= 17):
-            return bid(2, e.second_suit, why="Reverse (17+ HCP, 2/1 context)")
+            return bid(3, e.second_suit,
+                       why="Reverse / 3-level second suit (17+ HCP)")
+        # Last resort: rebid op_suit at the 3-level.
         return bid(3, op_suit, why="Rebid (constructive)")
 
     return passb()
