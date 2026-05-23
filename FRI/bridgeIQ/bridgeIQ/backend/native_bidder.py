@@ -1453,6 +1453,11 @@ def _respond_to_partner_opening(state, e, system):
             return _respond_to_precision_1c(state, e)
         if op.level == 2 and op.suit == Suit.CLUBS:
             return _respond_to_precision_2c(state, e)
+        if (op.level == 2 and op.suit == Suit.DIAMONDS
+                and not rho_intervened
+                and any(k.startswith("B-2D.Precision")
+                        for k in system.raw_rules)):
+            return _respond_to_precision_2d(state, e, system)
         if op.level == 1 and op.suit == Suit.DIAMONDS:
             if rho_intervened:
                 return _respond_to_minor_competitive(state, e, system)
@@ -1646,6 +1651,44 @@ def _respond_to_precision_2c(state, e: HandEval) -> Bid:
         return bid(3, Suit.NOTRUMP, why="Precision 2C: game in NT")
 
     return passb(why="Precision 2C: no clear action")
+
+
+def _respond_to_precision_2d(state, e: HandEval, system) -> Bid:
+    """Response to a Precision 2♦ three-suiter (11-15 HCP, 4-3 in the
+    majors at minimum, 0-1 diamond).
+
+        Pass         = useless hand with diamond stack (rare; partner is
+                       short, so pass usually defends poorly — falls
+                       through only when no major is biddable).
+        2H / 2S      = 0-7, 3+ in better major, sign-off.
+        2NT (alert)  = 13+ relay asking opener's shortness and strength.
+        3H / 3S      = 8-12 invitational with 3+ in the major.
+        4H / 4S      = direct game with major fit and slam-light values.
+    """
+    hcp = e.hcp
+    sp = e.suit_lengths[Suit.SPADES]
+    hr = e.suit_lengths[Suit.HEARTS]
+
+    if hcp >= 13:
+        return bid(2, Suit.NOTRUMP, alert=True,
+                   why=f"Precision 2D-2NT relay: {hcp} HCP, asking shape")
+
+    if 8 <= hcp <= 12:
+        if sp >= 3 and sp >= hr:
+            return bid(3, Suit.SPADES, alert=True,
+                       why=f"Precision 2D-3S: {hcp} HCP inv, {sp}cS fit")
+        if hr >= 3:
+            return bid(3, Suit.HEARTS, alert=True,
+                       why=f"Precision 2D-3H: {hcp} HCP inv, {hr}cH fit")
+
+    if sp >= 3 and sp >= hr:
+        return bid(2, Suit.SPADES,
+                   why=f"Precision 2D-2S: weak escape, {sp}cS fit")
+    if hr >= 3:
+        return bid(2, Suit.HEARTS,
+                   why=f"Precision 2D-2H: weak escape, {hr}cH fit")
+
+    return passb(why="Precision 2D: weak with diamond stack, pass")
 
 
 def _negative_double_max_level(system) -> int:
@@ -2503,6 +2546,57 @@ def _precision_2c_rebid(state, e: HandEval, p_last: Bid) -> Bid:
     return passb()
 
 
+def _precision_2d_rebid(state, e: HandEval, p_last: Bid, system) -> Bid:
+    """Opener's rebid after opening 2♦ Precision three-suiter and hearing
+    partner's response.
+
+    Partner's actions and our handling:
+        2H / 2S            → sign-off; pass.
+        2NT relay          → show shortness + strength. Bid 4 of side suit
+                             with max (13-15), 3 of side suit with min.
+                             "Side suit" here is the long club (4+ or 5+);
+                             if no clubs, 3D = min generic, 3NT = max
+                             balanced-ish.
+        3H / 3S invite     → accept with max + 3+ in the major.
+        4H / 4S            → pass; partner has placed the contract.
+    """
+    hcp = e.hcp
+    cl = e.suit_lengths[Suit.CLUBS]
+    sp = e.suit_lengths[Suit.SPADES]
+    hr = e.suit_lengths[Suit.HEARTS]
+    is_max = hcp >= 13
+
+    if p_last.level == 2 and p_last.suit == Suit.NOTRUMP:
+        if is_max and cl >= 4:
+            return bid(4, Suit.CLUBS, alert=True,
+                       why=f"2D-2NT-4C: max {hcp} HCP, {cl} clubs side")
+        if not is_max and cl >= 4:
+            return bid(3, Suit.CLUBS, alert=True,
+                       why=f"2D-2NT-3C: min {hcp} HCP, {cl} clubs side")
+        if is_max:
+            return bid(3, Suit.NOTRUMP, alert=True,
+                       why=f"2D-2NT-3NT: max {hcp} HCP, no long side")
+        return bid(3, Suit.DIAMONDS, alert=True,
+                   why=f"2D-2NT-3D: min {hcp} HCP, no long side")
+
+    if p_last.level == 3 and p_last.suit in (Suit.HEARTS, Suit.SPADES):
+        major = p_last.suit
+        if is_max and e.suit_lengths[major] >= 3:
+            return bid(4, major,
+                       why=f"Accept invite: max + {e.suit_lengths[major]} "
+                           f"{major.to_char()}")
+        return passb(why=f"Decline invite: min, {e.suit_lengths[major]} "
+                         f"{major.to_char()}")
+
+    if p_last.level == 2 and p_last.suit in (Suit.HEARTS, Suit.SPADES):
+        return passb(why="Partner signed off in major fit")
+
+    if p_last.level == 4 and p_last.suit in (Suit.HEARTS, Suit.SPADES):
+        return passb(why="Partner placed the contract at game")
+
+    return passb()
+
+
 def _opener_rebid(state, e: HandEval, system: str) -> Bid:
     op = state.opening_bid
 
@@ -2536,6 +2630,11 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
         # 2C natural: respond to partner's 2D shape inquiry.
         if op.level == 2 and op.suit == Suit.CLUBS:
             return _precision_2c_rebid(state, e, p_last)
+        # 2D Precision three-suiter: rebid over partner's response.
+        if (op.level == 2 and op.suit == Suit.DIAMONDS
+                and any(k.startswith("B-2D.Precision")
+                        for k in system.raw_rules)):
+            return _precision_2d_rebid(state, e, p_last, system)
 
     # Stayman (1NT-2C)
     if op.level == 1 and op.suit == Suit.NOTRUMP and p_last.level == 2 and p_last.suit == Suit.CLUBS:
@@ -3005,8 +3104,73 @@ def _responder_rebid(state, e: HandEval, system) -> Bid:
                    why="Kokish forced relay (asks opener: real hearts "
                        "or 22-23 balanced?)")
 
+    # Precision 2♦ three-suiter relay: I bid 2NT asking, partner has
+    # clarified shortness/strength — place the contract.
+    if (op.level == 2 and op.suit == Suit.DIAMONDS
+            and any(k.startswith("B-2D.Precision") for k in system.raw_rules)
+            and len(state.my_bids) >= 1
+            and state.my_bids[0].level == 2
+            and state.my_bids[0].suit == Suit.NOTRUMP):
+        return _precision_2d_relay_followup(state, e, p_last)
+
     # If partner showed extras, drive to game; if min, settle
     return _generic_responder_rebid(state, e, p_last, system)
+
+
+def _precision_2d_relay_followup(state, e: HandEval, p_last: Bid) -> Bid:
+    """After 2♦-(P)-2NT-(P)-X, pick the final contract.
+
+    Opener's X conveys:
+        3C / 4C   → 4 clubs side suit (3C min, 4C max).
+        3D        → minimum, no long side suit.
+        3NT       → max balanced-ish.
+        3H / 3S   → minimum with 5+ in that major.
+    """
+    sp = e.suit_lengths[Suit.SPADES]
+    hr = e.suit_lengths[Suit.HEARTS]
+    hcp = e.hcp
+
+    if p_last.level == 4 and p_last.suit == Suit.CLUBS:
+        if sp >= 4:
+            return bid(4, Suit.SPADES,
+                       why=f"After max-club show: {sp} spades")
+        if hr >= 4:
+            return bid(4, Suit.HEARTS,
+                       why=f"After max-club show: {hr} hearts")
+        if sp >= 3 and sp >= hr:
+            return bid(4, Suit.SPADES,
+                       why=f"After max-club show: {sp} spades (4-3 fit)")
+        if hr >= 3:
+            return bid(4, Suit.HEARTS,
+                       why=f"After max-club show: {hr} hearts (4-3 fit)")
+        return passb(why="No major fit; pass opener's 4C")
+
+    if p_last.level == 3 and p_last.suit == Suit.NOTRUMP:
+        return passb(why="Accept opener's 3NT (max balanced)")
+
+    if p_last.level == 3 and p_last.suit in (Suit.HEARTS, Suit.SPADES):
+        major = p_last.suit
+        if e.suit_lengths[major] >= 3 and hcp >= 14:
+            return bid(4, major,
+                       why=f"Game in {major.to_char()}: {hcp} HCP + fit")
+        return passb(why=f"Pass opener's 3{major.to_char()} (min)")
+
+    if p_last.level == 3 and p_last.suit in (Suit.CLUBS, Suit.DIAMONDS):
+        if sp >= 4 and hcp >= 14:
+            return bid(4, Suit.SPADES,
+                       why=f"Game in spades: {hcp} HCP + {sp} spades")
+        if hr >= 4 and hcp >= 14:
+            return bid(4, Suit.HEARTS,
+                       why=f"Game in hearts: {hcp} HCP + {hr} hearts")
+        if sp >= 3:
+            return bid(3, Suit.SPADES,
+                       why=f"Suggest spade game: {sp} spades")
+        if hr >= 3:
+            return bid(3, Suit.HEARTS,
+                       why=f"Suggest heart game: {hr} hearts")
+        return passb(why="No major fit, no game")
+
+    return passb(why="No clear action after 2D relay")
 
 
 def _stayman_responder_rebid(state, e, opener_rebid: Bid) -> Bid:
