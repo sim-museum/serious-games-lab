@@ -905,17 +905,18 @@ def _position_override_card(tied_cards, board, seat,
     if not is_defender:
         return None
 
-    # Only signal count when an OPPONENT (declarer or dummy) led
-    # the current trick. Signals to partner work best when partner
-    # is reading them; if partner led, they already have count
-    # info from us not playing that suit first.
+    # Defender signals count when following a NON-TRUMP suit, on
+    # either an opponent's lead OR partner's opening lead. PROBE-03
+    # against Q-Plus (2026-05-23) confirmed: with Q72 of the suit
+    # partner led, Q-Plus's E played the 7 (high small) signalling
+    # odd 3-card count, NOT the Q (third-hand-high) and NOT the 2
+    # (lowest = even). So count is a primary signal under partner's
+    # lead too, not just after winning the first round.
     if current_trick_cards:
         trick_leader = Seat(
             (seat - len(current_trick_cards)) % 4)
     else:
         return None  # I'm leading — present count doesn't apply
-    if trick_leader != declarer and trick_leader != dummy:
-        return None
 
     # Skip trump suits — count is for side-suit defense, not
     # trump-pull rounds.
@@ -936,9 +937,16 @@ def _position_override_card(tied_cards, board, seat,
             if ps == seat and c.suit == lead_suit:
                 played_in_suit += 1
 
-    # Present count only fires on the SECOND round (i.e., I've
-    # played exactly one card in this suit before).
-    if played_in_suit != 1:
+    # Fire on EITHER the first round (signal under partner's lead)
+    # OR the second round (signal after winning round 1 ourselves).
+    # Beyond round 2 the suit length is generally known and the
+    # signal is redundant.
+    if played_in_suit > 1:
+        return None
+    # Round 1 signal is only useful when partner led (signal TO
+    # partner). On round 1 led by an opp, partner gets count from
+    # *not playing the suit first*; we follow with default rules.
+    if played_in_suit == 0 and trick_leader.partner() != seat:
         return None
 
     # Original count: cards remaining in hand + already played.

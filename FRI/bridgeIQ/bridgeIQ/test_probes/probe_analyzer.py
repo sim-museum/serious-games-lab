@@ -132,24 +132,34 @@ def main(argv=None):
         print(f"  Test: {description}")
 
         # Find the card played by seat_name at trick trick_idx.
+        # bdl_reader stores tricks as dicts: {"cards": [...], "leader": Seat}.
         if trick_idx >= len(deal.tricks):
             print(f"  → only {len(deal.tricks)} tricks recorded; "
                   f"test position not reached.\n")
             continue
         trick = deal.tricks[trick_idx]
+        trick_cards = trick.get("cards", []) if isinstance(trick, dict) else trick.cards
+        trick_leader = trick.get("leader") if isinstance(trick, dict) else trick.leader
+        if trick_leader is None:
+            # Fall back to opening-lead seat for trick 0.
+            trick_leader = deal.contract.declarer.next() if deal.contract else Seat.NORTH
+        leader_idx = (trick_leader.value if hasattr(trick_leader, "value")
+                      else int(trick_leader))
         seat_target = _seat_idx(seat_name)
-        position = (seat_target - trick.leader) % 4
-        if position >= len(trick.cards):
+        position = (seat_target - leader_idx) % 4
+        if position >= len(trick_cards):
             print(f"  → seat {seat_name} didn't play yet in trick "
                   f"{trick_idx + 1}.\n")
             continue
-        played = trick.cards[position]
+        played = trick_cards[position]
         # Show the full trick for context.
-        all_cards = [_card_str(c) for c in trick.cards]
-        leader_name = "NESW"[trick.leader]
+        played_str = lambda c: c if isinstance(c, str) else _card_str(c)
+        all_cards = [played_str(c) for c in trick_cards]
+        leader_name = "NESW"[leader_idx]
         print(f"  Trick {trick_idx + 1} (led by {leader_name}): "
               f"{' '.join(all_cards)}")
-        print(f"  → {seat_name} played {_card_str(played)}\n")
+        print(f"  → {seat_name} played {played_str(played)} "
+              f"(position {position + 1} of 4)\n")
 
     print("# End of probe analysis.")
     print("# Compare each Q-Plus pick against the README's "
