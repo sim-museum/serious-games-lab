@@ -1309,6 +1309,15 @@ def _respond_to_precision_1d(state, e: HandEval) -> Bid:
             return bid(2, Suit.DIAMONDS, why="Precision 1D: 6-10 raise (4+ diamonds)")
         return bid(1, Suit.NOTRUMP, why="Precision 1D: 6-10 balanced")
     if 11 <= hcp <= 12:
+        # Unbalanced 11-12 with 5+ diamonds (singleton or void) —
+        # raise diamonds rather than misrepresent as balanced 2NT.
+        # Seed=300 board 8 E (Q98 T KQJ752 A82, 12 HCP, 3-1-6-3)
+        # belongs in a diamond raise, not 2NT.
+        if (e.suit_lengths[Suit.DIAMONDS] >= 5
+                and (e.singletons > 0 or e.voids > 0)):
+            return bid(2, Suit.DIAMONDS,
+                       why="Precision 1D: 11-12 constructive raise "
+                           "(5+ diamonds, unbalanced)")
         return bid(2, Suit.NOTRUMP, why="Precision 1D: 11-12 invitational")
     if 13 <= hcp <= 15:
         if e.suit_lengths[Suit.DIAMONDS] >= 4:
