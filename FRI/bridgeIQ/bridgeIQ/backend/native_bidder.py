@@ -3482,8 +3482,13 @@ def _overcall(state, e: HandEval, system) -> Bid:
                 ok = ((length >= 6 and suit_hcp >= 5 and hcp >= 11)
                       or (length >= 5 and suit_hcp >= 8 and hcp >= 11))
             else:
+                # NV 2-level overcall: standard 6+ card with Q-x-x
+                # quality at 10+ HCP. Also accept a 6+ card suit
+                # with 12+ HCP and any honor (Q+) — Q-Plus overcalls
+                # 2♣ with QXXXXX clubs and 13 HCP (seed=200 board 9).
                 ok = ((length >= 6 and suit_hcp >= 4 and hcp >= 10)
-                      or (length >= 5 and suit_hcp >= 6 and hcp >= 10))
+                      or (length >= 5 and suit_hcp >= 6 and hcp >= 10)
+                      or (length >= 6 and suit_hcp >= 2 and hcp >= 12))
             if ok and hcp <= 16:
                 return bid(level, s,
                            why=f"2{s.to_char()} natural overcall "
