@@ -2140,6 +2140,32 @@ def _respond_to_minor_competitive(state, e: HandEval, system) -> Bid:
         return passb()
     if overcall_suit is None:  # NT overcall — treat as natural
         return _respond_to_minor(state, e, system)
+
+    # Raise partner's minor with 4+ support and modest values.
+    # Seed=42 board 6: 1D-(1S)-? with W holding ♦KQJ6 + 8 HCP →
+    # bid 2D. Without this, bridgeIQ falls through to "no usable
+    # response → pass" and the auction dies. With 10-12 HCP we
+    # jump to 3m as a competitive raise; 6-9 HCP is the simple
+    # raise. Use the negative-double if both unbid majors fit;
+    # otherwise the support raise is the right call.
+    minor = state.opening_bid.suit
+    if (minor in (Suit.CLUBS, Suit.DIAMONDS)
+            and e.suit_lengths.get(minor, 0) >= 4):
+        # Try lowest legal level above the overcall.
+        target_level = max(2, overcall.level + 1
+                           if _BID_RANK[minor] <= _BID_RANK[overcall_suit]
+                           else overcall.level)
+        if 6 <= hcp <= 9 and target_level <= 3:
+            return bid(target_level, minor,
+                       why=f"Competitive raise of partner's "
+                           f"{minor.to_char()} ({hcp} HCP, "
+                           f"4+ support)")
+        if 10 <= hcp <= 12 and target_level + 1 <= 4:
+            return bid(target_level + 1, minor,
+                       why=f"Limit-raise jump in partner's "
+                           f"{minor.to_char()} ({hcp} HCP, "
+                           f"4+ support)")
+
     # Negative double, valid through the system's Sputnik cap
     # (SAYC: 2♠, Precision 90M: 3♠). What the double promises
     # depends on the overcall suit:
@@ -3669,8 +3695,21 @@ def _overcall_over_1nt(state, e: HandEval, system) -> Bid:
     Penalty doubles vs takeout depend on `O-1NT-x-pos2.is-penalty` etc.
     For now we treat the direct double as penalty (matches Q-Plus's
     SAYC default).
+
+    Balancing seat (after 1NT-P-P): HCP requirements drop by 3
+    (standard "borrow from partner" rule). Detected when both
+    partner and the seat between us and 1NT-opener have passed —
+    i.e., state.partner_bids has no non-pass calls AND
+    state.rho_bids has only pass(es) since the 1NT.
     """
     hcp = e.hcp
+
+    # Detect balancing seat: I'm the 4th hand after 1NT-P-P. My
+    # partner is silent and RHO (opener's partner) passed too.
+    partner_acted = any(not b.is_pass for b in state.partner_bids)
+    rho_acted = any(not b.is_pass for b in state.rho_bids)
+    is_balancing = (not partner_acted and not rho_acted)
+    hcp_adjustment = 3 if is_balancing else 0
 
     # Penalty double: 15+ HCP, no singleton/void (covers balanced
     # 4-3-3-3 / 4-4-3-2 / 5-3-3-2 and the semi-balanced 5-4-2-2 /
@@ -3683,15 +3722,19 @@ def _overcall_over_1nt(state, e: HandEval, system) -> Bid:
     # Landy 2♣ — both majors. Q-Plus uses 9-12 HCP at 4-4 (with
     # 13+ HCP a defender prefers to sit 1NT for penalty rather
     # than push to the 2-level). 5-4 hands keep the 9-14 range.
+    # In balancing seat, drop the HCP floor by 3 (Q-Plus board 9
+    # seed=42: N has 7 HCP + 5-4 majors, balances with 2♣).
     landy_4_4 = (e.suit_lengths[Suit.HEARTS] == 4
                  and e.suit_lengths[Suit.SPADES] == 4)
     landy_hcp_max = 12 if landy_4_4 else 14
+    landy_hcp_min = max(0, 9 - hcp_adjustment)
     if (system.has("O-1NT.Landy")
             and e.suit_lengths[Suit.HEARTS] >= 4
             and e.suit_lengths[Suit.SPADES] >= 4
-            and 9 <= hcp <= landy_hcp_max):
+            and landy_hcp_min <= hcp <= landy_hcp_max):
         return bid(2, Suit.CLUBS, alert=True,
-                   why="Landy: both majors (4+/4+, 9-15 HCP)")
+                   why=f"Landy: both majors (4+/4+, {hcp} HCP, "
+                       f"{'balancing' if is_balancing else 'direct'})")
 
     # Natural 2-level overcall with a 6-card suit and modest values.
     for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS):
@@ -4188,6 +4231,24 @@ def _overcaller_rebid(state, e: HandEval, system) -> Bid:
     if p_last is None or p_last.is_pass:
         return passb(why="Overcaller rebid — no partner action, pass")
 
+    # Landy 2♣ overcaller answering partner's 2♦ pass-or-correct.
+    # I bid 2♣ Landy showing 4+/4+ majors; partner responded 2♦
+    # asking me to pick the major. Bid the longer one (default to
+    # hearts when 4-4).
+    op = state.opening_bid
+    if (my_first.level == 2 and my_first.suit == Suit.CLUBS
+            and my_first.alert
+            and op is not None and op.level == 1
+            and op.suit == Suit.NOTRUMP
+            and p_last.level == 2 and p_last.suit == Suit.DIAMONDS):
+        sp = e.suit_lengths[Suit.SPADES]
+        hr = e.suit_lengths[Suit.HEARTS]
+        if hr >= sp:
+            return bid(2, Suit.HEARTS,
+                       why=f"Landy pass-or-correct → {hr}♥")
+        return bid(2, Suit.SPADES,
+                   why=f"Landy pass-or-correct → {sp}♠")
+
     # Partner doubled / redoubled — leave it.
     if p_last.is_double or p_last.is_redouble:
         return passb(why="Overcaller rebid — partner's X/XX, pass")
@@ -4198,7 +4259,7 @@ def _overcaller_rebid(state, e: HandEval, system) -> Bid:
         if hcp >= 15 and my_length >= 6 \
                 and p_last.level < 5:
             return bid(p_last.level + 1, my_suit,
-                       why=f"Overcaller rebid — extras + long suit, "
+                       why=f"Overcaller rebid — extras + long suit,"
                            f"jump to {p_last.level + 1}{my_suit.to_char()}")
         return passb(why="Overcaller rebid — partner raised, minimum, pass")
 
@@ -4281,6 +4342,31 @@ def _advance_partner_overcall(state, e: HandEval, system) -> Bid:
 
     p_last = state.partner_bids[-1]
     hcp = e.hcp
+
+    # Advancer over partner's Landy 2♣ overcall of opener's 1NT.
+    # Landy promises 4+/4+ in the majors. Advancer:
+    #   3-3 majors → 2♦ pass-or-correct (let partner pick the major).
+    #   4+ in one major → bid that major (or higher with values).
+    #   With ~10+ HCP and a major fit, jump-raise / cuebid for game.
+    op = state.opening_bid
+    if (op is not None and op.level == 1 and op.suit == Suit.NOTRUMP
+            and p_last.level == 2 and p_last.suit == Suit.CLUBS
+            and p_last.alert
+            and len(state.partner_bids) == 1):
+        sp = e.suit_lengths[Suit.SPADES]
+        hr = e.suit_lengths[Suit.HEARTS]
+        if sp >= 4 and sp >= hr:
+            level = 4 if hcp >= 10 and sp >= 4 else 2
+            return bid(level, Suit.SPADES,
+                       why=f"Advance Landy: {sp}♠, {hcp} HCP")
+        if hr >= 4:
+            level = 4 if hcp >= 10 and hr >= 4 else 2
+            return bid(level, Suit.HEARTS,
+                       why=f"Advance Landy: {hr}♥, {hcp} HCP")
+        # 3-3 or worse — pass-or-correct via 2♦.
+        return bid(2, Suit.DIAMONDS, alert=True,
+                   why=f"Landy pass-or-correct: {sp}-{hr} majors, "
+                       f"{hcp} HCP")
 
     # The cheapest legal level for a suit overcall, given the auction
     # so far. Walks the bid history (not just last_non_pass) because a
