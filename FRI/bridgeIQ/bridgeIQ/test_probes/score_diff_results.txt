@@ -1,0 +1,60 @@
+# Score-based diff — log-033.bdl
+
+## SAYC (A-SAYC-I)
+
+  Deals: 19
+  bridgeIQ ≥ Q-Plus (actual): 11/19  (wins 11, ties 0, losses 8)
+  NS total (Q-Plus actual):    -850
+  NS total (Q-Plus DD):        +730
+  NS total (bridgeIQ DD):     +1530
+  IMP delta vs actual:         +37  (+1.95 / board)
+  IMP delta vs DD:             +13  (+0.68 / board)
+
+## TwoOverOne (A-2-1-A)
+
+  Deals: 20
+  bridgeIQ ≥ Q-Plus (actual): 8/20  (wins 8, ties 0, losses 12)
+  NS total (Q-Plus actual):   +3100
+  NS total (Q-Plus DD):       -1600
+  NS total (bridgeIQ DD):     -2160
+  IMP delta vs actual:         -61  (-3.05 / board)
+  IMP delta vs DD:             -17  (-0.85 / board)
+
+## StandardAcol (B-ACL-S)
+
+  Deals: 19
+  bridgeIQ ≥ Q-Plus (actual): 9/19  (wins 9, ties 0, losses 10)
+  NS total (Q-Plus actual):    -400
+  NS total (Q-Plus DD):        -630
+  NS total (bridgeIQ DD):       +10
+  IMP delta vs actual:          -8  (-0.42 / board)
+  IMP delta vs DD:             +19  (+1.00 / board)
+
+## StandardFrench (F-FRA-M)
+
+  Deals: 20
+  bridgeIQ ≥ Q-Plus (actual): 9/20  (wins 9, ties 0, losses 11)
+  NS total (Q-Plus actual):   +2350
+  NS total (Q-Plus DD):       -1030
+  NS total (bridgeIQ DD):       -10
+  IMP delta vs actual:         -26  (-1.30 / board)
+  IMP delta vs DD:              +2  (+0.10 / board)
+
+## Precision90M (P-P90M-A)
+
+  Deals: 16
+  bridgeIQ ≥ Q-Plus (actual): 9/16  (wins 9, ties 0, losses 7)
+  NS total (Q-Plus actual):   -1900
+  NS total (Q-Plus DD):       -1160
+  NS total (bridgeIQ DD):      +390
+  IMP delta vs actual:         +22  (+1.38 / board)
+  IMP delta vs DD:             +40  (+2.50 / board)
+
+## Aggregate
+  Total deals: 94
+  bridgeIQ ≥ Q-Plus (actual): 46/94  (48%)
+  NS total (Q-Plus actual):   +2300
+  NS total (Q-Plus DD):       -3690
+  NS total (bridgeIQ DD):      -240
+  IMP delta vs actual:         -36  (-0.38 / board)
+  IMP delta vs DD:             +57  (+0.61 / board)
