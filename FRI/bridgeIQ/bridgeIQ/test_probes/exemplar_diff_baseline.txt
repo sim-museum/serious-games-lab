@@ -1,0 +1,319 @@
+# Exemplar diff — most recent session per system from log-033.bdl
+
+## SAYC (A-SAYC-I)
+  Deals:              19
+  Auction matches:    2/19  (10%)
+  Contract matches:   4/19  (21%)
+  Card-play matches:  81/208  (38%)  (across contract-matching deals)
+
+  BB-diff-001     × 6 diff  (contract:matches)
+    Q-Plus    : 0P 1D 0P 1S 0P 2S 0P 2N 0P 3S 0P 4S 0P 0P 0P
+    bridgeIQ  : 0P 1D 0P 1S 0P 2S 0P 4S 0P 0P 0P
+  BB-diff-002     × 7 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 2H 0P 4H 0P 0P 0P
+    bridgeIQ  : 0P 0P 0P 1S 0P 1N 0P 2C 0P 0P 0P
+  BB-diff-003     × 7 diff  (contract:DIFFERS)
+    Q-Plus    : 1S 2H 0X 0P 2S 0P 4S 0P 0P 0P
+    bridgeIQ  : 1S 2H 0P 0P 0P
+  BB-diff-004     × 7 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1D 1H 1S 2D 0P 2H 3C 3H 4C 0P 0P 0P
+    bridgeIQ  : 0P 1D 1H 1S 2D 0P 3H 0P 0P 0P
+  BB-diff-005     × 4 diff  (contract:matches)
+    Q-Plus    : 1D 2C 2H 3C 3H 0P 4H 0P 0P 0P
+    bridgeIQ  : 1D 0P 1H 0P 2H 0P 4H 0P 0P 0P
+  BB-diff-006     × 7 diff  (contract:DIFFERS)
+    Q-Plus    : 1H 3C 0P 3S 0P 4C 0P 4S 0P 0P 0P
+    bridgeIQ  : 1H 3C 0P 0P 0P
+  BB-diff-007     × 4 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1C 0P 1S 0P 3D 0P 3S 0P 4S 0P 0P 0P
+    bridgeIQ  : 0P 1C 0P 1S 0P 2S 0P 3S 0P 0P 0P
+  BB-diff-008     × 7 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1D 2C 0P 0P 0X 0P 2S 3C 3S 0P 0P 0P
+    bridgeIQ  : 0P 1D 2C 0P 3C 0X 0P 0P 0P
+  BB-diff-009     × 8 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 3C 0P 0P 0P
+    bridgeIQ  : 0P 0P 0P 1H 0P 1N 0P 2D 0P 0P 0P
+  BB-diff-010     × 10 diff  (contract:DIFFERS)
+    Q-Plus    : 1H 0P 0P 0X 0P 2D 0P 0P 0X 3D 0P 3S 0P 4D 0P 0P 0P
+    bridgeIQ  : 1H 3D 0P 3N 0X 0P 0P 4D 0X 0P 0P 5D 0X 0P 0P 0P
+  BB-diff-011     × 9 diff  (contract:DIFFERS)
+    Q-Plus    : 1S 0P 1N 0P 2H 0P 3H 0P 3S 0P 4H 0P 0P 0P
+    bridgeIQ  : 1S 0P 1N 2N 3H 0P 0P 0P
+  BB-diff-012     =  (contract:matches)
+    Q-Plus    : 0P 1N 0P 2C 0P 2S 0P 3N 0P 0P 0P
+    bridgeIQ  : 0P 1N 0P 2C 0P 2S 0P 3N 0P 0P 0P
+  BB-diff-013     × 7 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1N 0P 2D 0P 2H 0P 3N 0P 0P 0P
+    bridgeIQ  : 0P 1S 0P 1N 0P 0P 0P
+  BB-diff-014     =  (contract:matches)
+    Q-Plus    : 1H 0P 1N 0P 0P 0P
+    bridgeIQ  : 1H 0P 1N 0P 0P 0P
+  BB-diff-015     × 4 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 1C 0X 2C 2S 0P 0P 0P
+    bridgeIQ  : 0P 0P 1C 0X 0P 0P 0P
+  BB-diff-016     × 11 diff  (contract:DIFFERS)
+    Q-Plus    : 1C 2S 0P 3C 0P 3H 4C 4S 0P 0P 5C 0X 0P 0P 0P
+    bridgeIQ  : 1C 2S 0P 0P 0P
+  BB-diff-017     × 11 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1D 0P 2C 0P 2S 0P 3C 0P 3D 0P 3N 0P 0P 0P
+    bridgeIQ  : 0P 1D 0P 1N 2D 0P 3D 0P 0P 0P
+  BB-diff-018     × 3 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 0P 1H 1S 2H 0P 0P 0P
+    bridgeIQ  : 0P 0P 0P 1N 0P 2N 0P 0P 0P
+  BB-diff-019     × 6 diff  (contract:DIFFERS)
+    Q-Plus    : 1S 0P 2C 0P 2D 0P 2H 0P 3C 0P 3N 0P 0P 0P
+    bridgeIQ  : 1S 0P 2C 0P 2D 0P 4D 0P 0P 0P
+## TwoOverOne (A-2-1-A)
+  Deals:              20
+  Auction matches:    0/20  (0%)
+  Contract matches:   2/20  (10%)
+  Card-play matches:  39/104  (37%)  (across contract-matching deals)
+
+  BB-diff-001     × 7 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 1D 0P 2D 0P 2H 0P 2N 0P 3N 0P 0P 0P
+    bridgeIQ  : 0P 0P 1D 0P 2D 0P 0P 0P
+  BB-diff-002     × 9 diff  (contract:DIFFERS)
+    Q-Plus    : 2C 0P 2D 0P 2N 0P 3C 0P 3H 0P 3N 0P 0P 0P
+    bridgeIQ  : 1D 0P 1S 0P 2H 0P 3H 0P 0P 0P
+  BB-diff-003     × 9 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 1C 0P 1D 0P 1H 0P 2D 0P 0P 0P
+    bridgeIQ  : 2D 0P 2N 0P 0P 0P
+  BB-diff-004     × 5 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 1C 1D 2C 3D 0P 4D 0P 0P 0P
+    bridgeIQ  : 0P 0P 1C 1D 2C 0P 0P 0P
+  BB-diff-005     × 7 diff  (contract:DIFFERS)
+    Q-Plus    : 1C 0X 0P 1H 2D 2H 0P 0P 0X 0P 3D 0P 0P 0X 0P 0P 0P
+    bridgeIQ  : 1C 0X 0P 1H 0X 4H 0P 0P 0X 5H 0P 0P 0X 0P 0P 0P
+  BB-diff-006     × 5 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 1S 2C 3C 0P 4S 0P 0P 0P
+    bridgeIQ  : 0P 0P 1S 0X 0P 0P 0P 2C 0P 0P 0P
+  BB-diff-007     × 19 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 0P 2C 0P 2D 0P 3C 0P 3S 0P 3N 0P 4C 0P 4D 0P 4S 0P 4N 0P 5D 0P 6C 0P 0P 0P
+    bridgeIQ  : 0P 0P 0P 2C 0P 2S 0P 3N 0P 0P 0P
+  BB-diff-008     × 5 diff  (contract:DIFFERS)
+    Q-Plus    : 2H 0P 4H 4S 0P 0P 0X 0P 0P 0P
+    bridgeIQ  : 0P 0P 1N 0P 2D 0P 2H 0P 0P 0P
+  BB-diff-009     × 12 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1S 2D 0X 3D 4S 0P 0P 5D 0P 0P 0X 0P 0P 0P
+    bridgeIQ  : 0P 0P 1D 0P 1H 1S 0X 0P 0P 0P
+  BB-diff-010     × 9 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1H 0X 0P 2H 2S 3C 0P 0P 0P
+    bridgeIQ  : 1D 2D 0P 0P 0P
+  BB-diff-011     × 11 diff  (contract:DIFFERS)
+    Q-Plus    : 1C 0P 1D 0P 1S 0P 3N 0P 4N 0P 6N 0P 0P 0P
+    bridgeIQ  : 1N 0P 3N 0P 0P 0P
+  BB-diff-012     × 7 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 1C 0P 1H 0P 2C 0P 3C 0P 3N 0P 0P 0P
+    bridgeIQ  : 0P 0P 1C 0P 1H 0P 0P 0P
+  BB-diff-013     × 7 diff  (contract:DIFFERS)
+    Q-Plus    : 1D 2C 2D 4C 0P 0P 0P
+    bridgeIQ  : 1C 0P 0P 0P
+  BB-diff-014     × 10 diff  (contract:DIFFERS)
+    Q-Plus    : 1H 0P 2D 0P 2H 0P 2S 0P 3H 0P 4H 0P 0P 0P
+    bridgeIQ  : 0P 0P 1N 0P 4D 0P 0P 0P
+  BB-diff-015     × 6 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1N 0P 2C 0P 2S 0P 3D 0P 3S 0P 6N 0P 0P 0P
+    bridgeIQ  : 0P 1N 0P 2C 0P 2S 0P 3N 0P 0P 0P
+  BB-diff-016     × 6 diff  (contract:matches)
+    Q-Plus    : 2N 0P 3C 0P 3S 0P 3N 0P 0P 0P
+    bridgeIQ  : 1S 0P 1N 0P 3N 0P 0P 0P
+  BB-diff-017     × 8 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 2N 0P 3C 0P 3D 0P 3N 0P 0P 0P
+    bridgeIQ  : 0P 0P 1C 1H 0X 0P 0P 0P
+  BB-diff-018     × 8 diff  (contract:DIFFERS)
+    Q-Plus    : 1D 0P 0P 1H 2C 0P 3C 0X 0P 3S 0P 0P 0P
+    bridgeIQ  : 1D 0P 0P 1H 0X 0P 0P 0P
+  BB-diff-019     × 4 diff  (contract:DIFFERS)
+    Q-Plus    : 1D 2C 0P 3C 3D 4C 0P 0P 0P
+    bridgeIQ  : 1D 2C 2S 3D 4D 5C 0P 0P 0P
+  BB-diff-020     × 1 diff  (contract:matches)
+    Q-Plus    : 1C 0P 1D 0P 1N 0P 3N 0P 0P 0P
+    bridgeIQ  : 1C 0P 1S 0P 1N 0P 3N 0P 0P 0P
+## StandardAcol (B-ACL-S)
+  Deals:              19
+  Auction matches:    1/19  (5%)
+  Contract matches:   4/19  (21%)
+  Card-play matches:  82/208  (39%)  (across contract-matching deals)
+
+  BB-diff-001     × 2 diff  (contract:matches)
+    Q-Plus    : 0P 1C 1S 0P 2S 0P 0P 0P
+    bridgeIQ  : 0P 1H 1S 0X 2S 0P 0P 0P
+  BB-diff-002     × 16 diff  (contract:DIFFERS)
+    Q-Plus    : 1D 3C 0P 0P 0P
+    bridgeIQ  : 0P 1C 0X 0P 1S 0X 3S 0P 0P 0X 4S 0P 0P 0X 0P 0P 0P
+  BB-diff-003     × 8 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 1H 2C 4H 5C 0P 0P 5H 0P 0P 0P
+    bridgeIQ  : 0P 0P 1N 0P 2D 0P 2H 0P 0P 0P
+  BB-diff-004     × 7 diff  (contract:DIFFERS)
+    Q-Plus    : 1D 0P 1H 0P 3H 0P 4H 0P 0P 0P
+    bridgeIQ  : 1H 0P 1S 2N 3D 0P 0P 0P
+  BB-diff-005     × 7 diff  (contract:DIFFERS)
+    Q-Plus    : 1N 0P 2H 0P 0P 0X 0P 2S 0P 0P 0P
+    bridgeIQ  : 1N 0P 2D 0P 2H 0P 0P 0P
+  BB-diff-006     × 5 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1S 2C 0X 3C 3S 0P 0P 0P
+    bridgeIQ  : 0P 0P 1N 0P 0P 2S 0P 0P 0P
+  BB-diff-007     × 7 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 0P 1N 0P 0P 0P
+    bridgeIQ  : 0P 0P 0P 1N 0P 0P 2C 0P 2S 2N 0P 0P 0P
+  BB-diff-008     × 13 diff  (contract:DIFFERS)
+    Q-Plus    : 1S 0P 2D 0P 2H 0P 4S 0P 0P 0P
+    bridgeIQ  : 0P 0P 0P 1N 2C 0P 2D 0P 2H 2N 0P 0P 3H 0P 0P 0P
+  BB-diff-009     × 7 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 1D 0P 1H 0P 1N 0P 2C 0P 3N 0P 4H 0P 0P 0P
+    bridgeIQ  : 0P 0P 1D 0P 1H 0P 1N 0P 0P 0P
+  BB-diff-010     × 11 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 0P 1S 0P 1N 0P 3D 0P 3H 0P 4C 0P 4H 0P 0P 0P
+    bridgeIQ  : 0P 0P 0P 1S 0P 0P 0P
+  BB-diff-011     × 4 diff  (contract:DIFFERS)
+    Q-Plus    : 2N 0P 3C 0P 3H 0P 4H 0P 0P 0P
+    bridgeIQ  : 2N 0P 3C 0P 3N 0P 0P 0P
+  BB-diff-012     =  (contract:matches)
+    Q-Plus    : 0P 1N 0P 0P 0P
+    bridgeIQ  : 0P 1N 0P 0P 0P
+  BB-diff-013     × 7 diff  (contract:matches)
+    Q-Plus    : 0P 0P 2N 0P 3N 0P 0P 0P
+    bridgeIQ  : 0P 0P 2C 0P 2D 0P 2N 0P 3N 0P 0P 0P
+  BB-diff-014     × 6 diff  (contract:DIFFERS)
+    Q-Plus    : 1D 2C 0P 0P 2H 0P 0P 0P
+    bridgeIQ  : 1H 0P 0P 0P
+  BB-diff-015     × 4 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 1N 0P 0P 2H 0P 0P 0P
+    bridgeIQ  : 0P 0P 1N 0P 0P 0P
+  BB-diff-016     × 4 diff  (contract:matches)
+    Q-Plus    : 1N 0P 2S 0P 0P 0P
+    bridgeIQ  : 1N 0P 2H 0P 2S 0P 0P 0P
+  BB-diff-017     × 10 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1C 0P 1H 0P 1S 0P 2D 0P 2N 0P 3N 0P 0P 0P
+    bridgeIQ  : 0P 1S 0P 2H 0P 3S 0P 0P 0P
+  BB-diff-018     × 3 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1S 0P 1N 0P 0P 0P
+    bridgeIQ  : 0P 1S 0P 1N 0P 2N 0P 0P 0P
+  BB-diff-019     × 11 diff  (contract:DIFFERS)
+    Q-Plus    : 1D 0X 0P 1S 1N 0P 2H 0P 0P 2S 0P 0P 0P
+    bridgeIQ  : 1D 1N 0P 0P 0P
+## StandardFrench (F-FRA-M)
+  Deals:              20
+  Auction matches:    2/20  (10%)
+  Contract matches:   4/20  (20%)
+  Card-play matches:  84/208  (40%)  (across contract-matching deals)
+
+  BB-diff-001     × 4 diff  (contract:DIFFERS)
+    Q-Plus    : 2D 0P 2H 0P 2S 0P 3S 0P 4S 0P 0P 0P
+    bridgeIQ  : 2C 0P 2D 0P 2S 0P 3D 0P 3S 0P 0P 0P
+  BB-diff-002     =  (contract:matches)
+    Q-Plus    : 0P 0P 1N 0P 0P 0P
+    bridgeIQ  : 0P 0P 1N 0P 0P 0P
+  BB-diff-003     × 7 diff  (contract:matches)
+    Q-Plus    : 0P 0P 1D 0P 1H 0P 1S 0P 3N 0P 0P 0P
+    bridgeIQ  : 1H 0P 1S 0P 1N 0P 3N 0P 0P 0P
+  BB-diff-004     × 11 diff  (contract:DIFFERS)
+    Q-Plus    : 1C 0P 1H 1S 0P 0P 2C 0P 2S 0P 2N 0P 3C 0P 3N 0P 0P 0P
+    bridgeIQ  : 1C 0P 1H 1S 1N 0P 2N 0P 0P 0P
+  BB-diff-005     × 11 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1N 0P 3S 0P 4C 0P 4D 0P 4S 0P 5D 0P 6S 0P 0P 0P
+    bridgeIQ  : 0P 1N 0P 2H 0P 2S 0P 0P 0P
+  BB-diff-006     × 10 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1C 1H 2D 2H 0X 3C 0P 3H 4D 4H 0P 0P 0P
+    bridgeIQ  : 0P 0P 1H 0P 2H 0P 0P 0P
+  BB-diff-007     × 11 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1C 1S 0X 0P 2C 0P 3N 0X 0P 0P 0P
+    bridgeIQ  : 0P 0P 0P 0P
+  BB-diff-008     × 6 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 2C 3D 3S 0P 4S 0P 0P 0P
+    bridgeIQ  : 0P 1H 3D 0P 0P 0P
+  BB-diff-009     × 14 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 0P 2C 0P 2D 0P 2H 0P 3C 0P 3D 0P 3H 0P 3N 0P 4N 0P 0P 0P
+    bridgeIQ  : 0P 0P 0P 1H 0P 1N 0P 2D 0P 0P 0P
+  BB-diff-010     × 6 diff  (contract:DIFFERS)
+    Q-Plus    : 1D 0P 0P 1S 0P 2D 0P 3S 0P 4S 0P 0P 0P
+    bridgeIQ  : 1D 0P 0P 1S 0P 3S 0P 0P 0P
+  BB-diff-011     × 1 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1S 0P 2N 0P 3S 0P 0P 0P
+    bridgeIQ  : 0P 1S 0P 2N 0P 4S 0P 0P 0P
+  BB-diff-012     × 14 diff  (contract:DIFFERS)
+    Q-Plus    : 1S 0P 2S 0P 3H 0P 3S 0P 4N 0P 5C 0P 5D 0P 5S 0P 6S 0P 0P 0P
+    bridgeIQ  : 1S 0P 2S 0P 4S 0P 0P 0P
+  BB-diff-013     × 4 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 1C 0P 1H 0P 1S 0P 2S 0P 3D 0P 4S 0P 0P 0P
+    bridgeIQ  : 0P 0P 1C 0P 1H 0P 1S 0P 2S 0P 3C 0P 0P 0P
+  BB-diff-014     × 9 diff  (contract:matches)
+    Q-Plus    : 0P 1C 0P 1H 0P 1S 0P 2D 0P 2H 0P 3C 0P 3N 0P 0P 0P
+    bridgeIQ  : 0P 1C 0P 1H 0P 1N 0P 3N 0P 0P 0P
+  BB-diff-015     × 5 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 0P 1H 0P 2C 0P 4H 0P 0P 0P
+    bridgeIQ  : 0P 0P 0P 1H 0P 2N 0P 3C 0P 4C 0P 0P 0P
+  BB-diff-016     × 6 diff  (contract:DIFFERS)
+    Q-Plus    : 1S 2D 2S 0X 0P 3D 3S 0P 0P 0P
+    bridgeIQ  : 1S 2D 2S 0P 0P 0P
+  BB-diff-017     × 10 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1C 0P 1H 0P 3S 0P 4D 0P 4N 0P 5D 0P 6H 0P 0P 0P
+    bridgeIQ  : 0P 1C 0P 1H 0P 3H 0P 0P 0P
+  BB-diff-018     × 3 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 3S 0P 4S 0P 0P 0P
+    bridgeIQ  : 0P 3S 0P 0P 0P
+  BB-diff-019     × 10 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 1D 1S 0X 0P 1N 0X 0P 2C 0P 0P 2D 0P 0P 0P
+    bridgeIQ  : 0P 0P 1D 0P 1H 0P 1N 0P 0P 0P
+  BB-diff-020     =  (contract:matches)
+    Q-Plus    : 0P 1N 0P 0P 0P
+    bridgeIQ  : 0P 1N 0P 0P 0P
+## Precision90M (P-P90M-A)
+  Deals:              16
+  Auction matches:    0/16  (0%)
+  Contract matches:   1/16  (6%)
+  Card-play matches:  25/52  (48%)  (across contract-matching deals)
+
+  BB-diff-001     × 4 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1H 0P 2D 0P 2H 0P 3H 0P 4H 0P 0P 0P
+    bridgeIQ  : 0P 1H 0P 2D 0P 2H 0P 3D 0P 0P 0P
+  BB-diff-002     × 15 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1C 2D 0P 2N 3C 0P 3H 0P 4C 0P 0P 0X 0P 0P 0P
+    bridgeIQ  : 2D 3C 3D 0P 0P 0P
+  BB-diff-003     × 10 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1C 1S 0X 4S 4N 0P 5C 5S 0P 0P 6C 0P 0P 0P
+    bridgeIQ  : 0P 1C 0X 1D 1S 2D 3C 3D 4S 0P 5C 0P 0P 0P
+  BB-diff-004     × 9 diff  (contract:DIFFERS)
+    Q-Plus    : 1D 0X 1H 0X 2C 3H 0P 0P 0P
+    bridgeIQ  : 0P 1N 0P 0P 0P
+  BB-diff-005     × 4 diff  (contract:DIFFERS)
+    Q-Plus    : 1C 0P 1D 0P 2S 0P 3S 0P 4S 0P 0P 0P
+    bridgeIQ  : 1C 0P 1H 0P 2S 0P 3S 0P 0P 0P
+  BB-diff-006     × 13 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1H 2N 3D 0P 3H 0P 4H 0P 0P 0X 0P 0P 4S 0P 0P 0P
+    bridgeIQ  : 0P 1H 0P 2H 0P 0P 0P
+  BB-diff-007     × 7 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1C 0P 1D 2S 2N 0P 3C 0P 3S 0P 3N 0P 0P 0P
+    bridgeIQ  : 0P 1C 0P 1D 0P 2H 0P 2S 0P 2N 0P 0P 0P
+  BB-diff-008     × 6 diff  (contract:DIFFERS)
+    Q-Plus    : 1C 0P 1N 0P 2C 0P 3C 0P 3N 0P 0P 0P
+    bridgeIQ  : 1C 0P 1H 0P 2C 0P 0P 0P
+  BB-diff-009     × 11 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 1S 0X 0P 2H 0P 3H 0P 4H 0P 0P 4S 0P 0P 0P
+    bridgeIQ  : 0P 0P 1S 2C 0P 0P 0P
+  BB-diff-010     × 6 diff  (contract:matches)
+    Q-Plus    : 1H 0P 0P 1N 2H 0P 0P 0P
+    bridgeIQ  : 1H 0P 1N 0P 2C 0P 2H 0P 0P 0P
+  BB-diff-011     × 4 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 1C 0P 1D 0P 1H 0P 2H 0P 2N 0P 3H 0P 0P 0P
+    bridgeIQ  : 0P 0P 1C 0P 1D 0P 2H 0P 2S 0P 3S 0P 4S 0P 0P 0P
+  BB-diff-012     × 6 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1N 0P 2H 0P 2S 3C 4C 0P 4S 0P 0P 0P
+    bridgeIQ  : 0P 1N 0P 2H 0P 2S 0P 0P 0P
+  BB-diff-013     × 6 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 1D 1H 0X 3D 0X 4H 0P 0P 0P
+    bridgeIQ  : 0P 0P 1N 0P 2D 0P 2H 0P 0P 0P
+  BB-diff-014     × 11 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 4D 0X 4S 0P 0P 0P
+    bridgeIQ  : 0P 1S 0X 1N 0P 2S 0X 0P 0P 3S 0X 0P 0P 0P
+  BB-diff-015     × 3 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 0P 1N 0P 2D 0P 2H 0P 4H 0P 0P 0P
+    bridgeIQ  : 0P 0P 0P 1N 0P 2D 0P 2H 0P 0P 0P
+  BB-diff-016     × 6 diff  (contract:DIFFERS)
+    Q-Plus    : 0P 0P 1S 0P 0P 0P
+    bridgeIQ  : 0P 0P 0P 1N 0P 2N 0P 0P 0P
+## Aggregate
+  Total deals:        94
+  Auction matches:    5/94  (5%)
+  Contract matches:   15/94  (15%)
+  Card-play matches:  311/780  (39%)
