@@ -712,6 +712,17 @@ def _preempt_bid(e: HandEval, state=None, system=None) -> Optional[Bid]:
                 and system is not None \
                 and not getattr(system, 'weak_two_majors', True):
             return None
+        # Textbook discipline: weak twos DENY a 4-card side major.
+        # With a 6-card major + 4-card OTHER major, you might miss
+        # the 4-4 major fit that a 1-of-major opening would find.
+        # E.g. ♠AKJ742 ♥Q943 ♦8 ♣65 (10 HCP, 6-4-1-2) opens 1♠
+        # not 2♠ weak — partner with 4-card hearts → 4-4 fit found.
+        other_major = (Suit.HEARTS if longest == Suit.SPADES
+                       else Suit.SPADES if longest == Suit.HEARTS
+                       else None)
+        if other_major is not None \
+                and e.suit_lengths.get(other_major, 0) >= 4:
+            return None
         min_total = 6 if am_vul else 5
         # Non-vul Q-Plus accepts AT9xxx-class suits (one top honor +
         # spot-card sequence). Modeling that as suit-HCP ≥ 4 nvul /
@@ -2157,31 +2168,6 @@ def _respond_to_minor_competitive(state, e: HandEval, system) -> Bid:
     if overcall_suit is None:  # NT overcall — treat as natural
         return _respond_to_minor(state, e, system)
 
-    # Raise partner's minor with 4+ support and modest values.
-    # Seed=42 board 6: 1D-(1S)-? with W holding ♦KQJ6 + 8 HCP →
-    # bid 2D. Without this, bridgeIQ falls through to "no usable
-    # response → pass" and the auction dies. With 10-12 HCP we
-    # jump to 3m as a competitive raise; 6-9 HCP is the simple
-    # raise. Use the negative-double if both unbid majors fit;
-    # otherwise the support raise is the right call.
-    minor = state.opening_bid.suit
-    if (minor in (Suit.CLUBS, Suit.DIAMONDS)
-            and e.suit_lengths.get(minor, 0) >= 4):
-        # Try lowest legal level above the overcall.
-        target_level = max(2, overcall.level + 1
-                           if _BID_RANK[minor] <= _BID_RANK[overcall_suit]
-                           else overcall.level)
-        if 6 <= hcp <= 9 and target_level <= 3:
-            return bid(target_level, minor,
-                       why=f"Competitive raise of partner's "
-                           f"{minor.to_char()} ({hcp} HCP, "
-                           f"4+ support)")
-        if 10 <= hcp <= 12 and target_level + 1 <= 4:
-            return bid(target_level + 1, minor,
-                       why=f"Limit-raise jump in partner's "
-                           f"{minor.to_char()} ({hcp} HCP, "
-                           f"4+ support)")
-
     # Negative double, valid through the system's Sputnik cap
     # (SAYC: 2♠, Precision 90M: 3♠). What the double promises
     # depends on the overcall suit:
@@ -2204,6 +2190,31 @@ def _respond_to_minor_competitive(state, e: HandEval, system) -> Bid:
     if can_neg_dbl:
         return double(
             why=f"Negative double (Sputnik ≤{neg_max})")
+
+    # Raise partner's minor with 4+ support and modest values.
+    # Comes AFTER the negative-double check: with the unbid major
+    # the negative double is more descriptive; only fall to the
+    # minor raise when the negative double doesn't apply
+    # (e.g. responder has the wrong major or already bid it).
+    # Seed=42 board 6: 1D-(1S)-? with W holding ♦KQJ6 + 8 HCP →
+    # bid 2D (no 4-card heart to make negative double).
+    minor_op = state.opening_bid.suit
+    if (minor_op in (Suit.CLUBS, Suit.DIAMONDS)
+            and e.suit_lengths.get(minor_op, 0) >= 4):
+        target_level = max(2, overcall.level + 1
+                           if _BID_RANK[minor_op] <= _BID_RANK[overcall_suit]
+                           else overcall.level)
+        if 6 <= hcp <= 9 and target_level <= 3:
+            return bid(target_level, minor_op,
+                       why=f"Competitive raise of partner's "
+                           f"{minor_op.to_char()} ({hcp} HCP, "
+                           f"4+ support)")
+        if 10 <= hcp <= 12 and target_level + 1 <= 4:
+            return bid(target_level + 1, minor_op,
+                       why=f"Limit-raise jump in partner's "
+                           f"{minor_op.to_char()} ({hcp} HCP, "
+                           f"4+ support)")
+
     # Bid an unbid major. Forcing strength depends on the system AND
     # the actual level we'd have to bid at (which the overcall may
     # have already pushed past the 1 level).
@@ -3061,9 +3072,25 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
         return bid(5, op_suit,
                    why=f"Truscott 2NT extras: 5{op_suit.to_char()}")
 
-    # Partner's 1NT response (6-9 / 6-12 if 1M opening)
+    # Partner's 1NT response (6-9 / 6-12 if 1M opening).
+    # In 2/1 GF systems (with `A-1MA-forcing-1NT`), 1NT after a
+    # 1-of-major opening is FORCING — opener CANNOT pass below
+    # 2 of their suit. Show the natural 5+ major rebid as the
+    # minimum response.
     if p_last.level == 1 and p_last.suit == Suit.NOTRUMP:
+        is_forcing_1nt = (
+            system.has("A-1MA-forcing-1NT")
+            and op_suit in (Suit.HEARTS, Suit.SPADES))
         if e.is_balanced and 12 <= e.hcp <= 14:
+            if is_forcing_1nt:
+                # Cannot pass: rebid 2 of the 5+ major if we
+                # opened a major (we did — gated above), or show
+                # a 4-card minor / second-suit. Bare 5-3-3-2 with
+                # 5-card major just rebids the major.
+                return bid(2, op_suit,
+                           why=f"2{op_suit.to_char()} forced rebid "
+                               f"after partner's forcing 1NT "
+                               f"(12-14 with 5+{op_suit.to_char()})")
             return passb()
         if e.is_balanced and 15 <= e.hcp <= 17:
             return bid(2, Suit.NOTRUMP, why="15-17 NT rebid")
@@ -3079,6 +3106,12 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
         # Rebid 6-card original suit
         if e.suit_lengths[op_suit] >= 6:
             return bid(2, op_suit, why="Rebid 6-card suit")
+        # Forcing 1NT + nothing else to bid → rebid the 5-card
+        # major (cannot pass).
+        if is_forcing_1nt and e.suit_lengths.get(op_suit, 0) >= 5:
+            return bid(2, op_suit,
+                       why=f"2{op_suit.to_char()} forced (forcing "
+                           f"1NT, no other rebid)")
         return passb()
 
     # Partner's new-suit at the 1-level (one-over-one)
