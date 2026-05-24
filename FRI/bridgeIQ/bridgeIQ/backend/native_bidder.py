@@ -416,9 +416,22 @@ def _open_sayc(e: HandEval, system, state=None) -> Bid:
     if pre is not None:
         return pre
 
-    # Suit openings (12-21 HCP, unbalanced or with 5cM)
-    if hcp < 12:
+    # Suit openings (12-21 HCP, or Rule of 20 with 10-11 HCP).
+    # The Rule of 20 (modern SAYC / 2-over-1 / French / Acol
+    # standard): with 10-11 HCP plus a shape where the two
+    # longest suits sum to make HCP + longest + 2nd-longest ≥ 20,
+    # open at the 1-level. Catches shapely hands that the strict
+    # 12-HCP cap would miss (board 2 seed=10000 SAYC: S has 10
+    # HCP + 6-4-2-1 shape with KQ6 hearts → 10 + 6 + 4 = 20,
+    # opens 1H; Q-Plus opens 2H weak but bridgeIQ should at
+    # least open something).
+    if hcp < 10:
         return passb()
+    if hcp < 12:
+        lens = sorted(e.suit_lengths.values(), reverse=True)
+        rule_of_20 = hcp + lens[0] + lens[1]
+        if rule_of_20 < 20:
+            return passb()
 
     # Major-suit opening, length requirement from the spec.
     # SAYC / 2/1 / French / Precision = 5+ majors. Acol = 4+ majors.
@@ -704,13 +717,16 @@ def _preempt_bid(e: HandEval, state=None, system=None) -> Optional[Bid]:
         # spot-card sequence). Modeling that as suit-HCP ≥ 4 nvul /
         # ≥ 5 vul.
         min_suit = 5 if am_vul else 4
-        # Max HCP for a weak two is 9 — 10 HCP + 6-card suit is the
-        # boundary case that Q-Plus opens at the 1-level (more
-        # constructive auction). Capping at 9 here matches.
-        if min_total <= e.hcp <= 9 and suit_hcp >= min_suit:
+        # Weak-2 standard range is 5-10 HCP (not 5-9). The previous
+        # cap at 9 was incorrect — Q-Plus's SAYC opens 2H with 10
+        # HCP + 6cH on board 2 seed=10000 (KQ-headed 6-card suit).
+        # Textbook SAYC range is 5-10; mainstream 2/1 is 6-10. The
+        # 10-HCP cases are exactly the ones that produce strong
+        # constructive auctions; 11+ would be too much for a weak 2.
+        if min_total <= e.hcp <= 10 and suit_hcp >= min_suit:
             return bid(2, longest,
                        why=f"Weak two: 6 {longest.to_char()}, "
-                           f"suit-HCP {suit_hcp}, "
+                           f"{e.hcp} HCP, suit-HCP {suit_hcp}, "
                            f"{'vul' if am_vul else 'nvul'}")
         return None
     # 2nd-seat preempts (one passer before us) are tightened: LHO
