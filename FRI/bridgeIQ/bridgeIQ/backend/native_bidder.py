@@ -2232,6 +2232,24 @@ def _respond_to_major(state, e: HandEval, system) -> Bid:
     # that case. Detect via the parametrised flag (`A-1MA-Bergen-3C.…`).
     bergen = any(k.startswith("A-1MA-Bergen-3C") for k in system.raw_rules)
 
+    # Acol-style "up the line": when the system opens 4-card majors, a
+    # 1♥ opening doesn't promise 5+ hearts, so responder with 4-4
+    # majors and 6+ HCP shows the spade suit at the 1-level before
+    # supporting hearts — opener may have 4 hearts and a 4-card
+    # spade side suit that gives a 4-4 spade fit. Without this branch
+    # responder jumps to 3♥ on 4-card support and the spade fit is
+    # never found. (1♠ opener: this doesn't apply — no higher-ranking
+    # major to introduce.)
+    maj_min = getattr(system, 'one_major_card_min', 5)
+    if (maj_min <= 4
+            and major == Suit.HEARTS
+            and e.suit_lengths[Suit.SPADES] >= 4
+            and 6 <= hcp <= 17):
+        return bid(1, Suit.SPADES,
+                   why=f"Acol up-the-line: 1♠ over 1♥ with 4+♠ "
+                       f"({hcp} HCP, finds 4-4 spade fit if "
+                       f"opener has it)")
+
     # 4+ support → raise structures
     if fit >= 4:
         # Splinter 3+1 or 4+0 with 13-15 game values
@@ -2878,9 +2896,25 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
                 return bid(3, op_suit, why="Game try (15-17)")
             return bid(4, op_suit, why="To-play game (18+)")
         if p_last.level == 3:  # limit raise
-            if e.hcp <= 13:
-                return passb()
-            return bid(4, op_suit, why="Accept limit raise")
+            # Accept with 14+ HCP, or with 13 HCP + a distributional
+            # extra (6+ trumps or a singleton/void). The pure-HCP
+            # threshold misses minimum openers with extra playing
+            # strength — seed=42 board 4 is the canonical case:
+            # opener has 13 HCP and a 6-card heart suit, partner
+            # limit-raises to 3♥, opener should bid 4♥ (Q-Plus does,
+            # bridgeIQ previously passed).
+            has_extra_trump = e.suit_lengths.get(op_suit, 0) >= 6
+            has_shortness = any(e.suit_lengths.get(s, 0) <= 1
+                                for s in (Suit.CLUBS, Suit.DIAMONDS,
+                                          Suit.HEARTS, Suit.SPADES)
+                                if s != op_suit)
+            if e.hcp >= 14:
+                return bid(4, op_suit, why="Accept limit raise (14+ HCP)")
+            if e.hcp >= 13 and (has_extra_trump or has_shortness):
+                return bid(4, op_suit,
+                           why=f"Accept limit raise (13 HCP + "
+                               f"distributional extra)")
+            return passb()
         if p_last.level == 4:  # weak preemptive
             return passb()
 
@@ -2959,6 +2993,30 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
             return bid(2, p_last.suit,
                        why=f"Precision 3-card raise of partner's "
                            f"{p_last.suit.to_char()} (min, unbalanced)")
+        # SAYC / 2/1 / French style (5-card-major systems): opener
+        # with 1m opening plus 3-card major support (and a
+        # singleton or 5-card side suit — i.e. unbalanced) prefers
+        # raising partner's major over showing the side suit. The
+        # 3-card raise is sound because partner's 1M response
+        # promises 5+ cards in 5cM systems → 8-card fit minimum.
+        # Skipped for fully balanced 4-3-3-3 hands (the 1NT rebid
+        # below picks those up) and for 4-card-major systems
+        # (Acol) where partner's 1M response may have only 4 cards
+        # and 3-card support is a marginal 7-card fit. Q-Plus does
+        # the raise on seed=42 board 1 in SAYC but the side-suit
+        # rebid in Acol.
+        if (getattr(system, "strong_open_call", "2C") == "2C"
+                and getattr(system, "one_major_card_min", 5) >= 5
+                and op_suit in (Suit.CLUBS, Suit.DIAMONDS)
+                and p_last.suit in (Suit.HEARTS, Suit.SPADES)
+                and e.suit_lengths[p_last.suit] == 3
+                and 11 <= e.hcp <= 14
+                and not e.is_balanced
+                and not state.rho_bids):
+            return bid(2, p_last.suit,
+                       why=f"3-card raise of partner's "
+                           f"{p_last.suit.to_char()} "
+                           f"(unbalanced minimum, 5cM system)")
         # Support partner with 4+ in their major at the cheapest level
         if p_last.suit in (Suit.HEARTS, Suit.SPADES) and e.suit_lengths[p_last.suit] >= 4:
             if e.hcp <= 14:

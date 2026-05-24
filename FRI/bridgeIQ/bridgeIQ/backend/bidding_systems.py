@@ -417,8 +417,21 @@ def _build_from_rce(name: str, rce_path: Path) -> BiddingSystem:
     _apply_rebid_1nt(sys_, rules)
     _apply_one_nt_style(sys_, rules)
     _apply_major_open_card_min(sys_, rules)
+    _apply_weak_two_majors(sys_, rules)
     _synthesize_convention_aliases(sys_)
     return sys_
+
+
+def _apply_weak_two_majors(sys_: BiddingSystem,
+                           rules: Dict[str, RCERule]) -> None:
+    """Q-Plus's 2♥ / 2♠ opening style:
+      `B-2MA.weak`            → weak two (5-10 HCP, 6-card suit)
+      `B-2MA.strong`          → strong / Acol two (game-forcing-ish)
+      `B-2MA.intermediate`    → 11-15 HCP, 6-card suit (older Acol)
+    Acol family uses `B-2MA.strong`; bridgeIQ's bidder must not open
+    a weak 2 with these systems or the auction goes off the rails.
+    """
+    sys_.weak_two_majors = "B-2MA.weak" in rules
 
 
 def _synthesize_convention_aliases(sys_: BiddingSystem) -> None:
