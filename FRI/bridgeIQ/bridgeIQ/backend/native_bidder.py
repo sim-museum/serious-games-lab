@@ -2394,6 +2394,28 @@ def _respond_to_major(state, e: HandEval, system) -> Bid:
                        why=f"2/1 forcing 1NT response (10-12, "
                            f"3-card {major.to_char()} support — "
                            f"continue with 3M next turn)")
+        # Acol-style "show your suit first" with 3-card major support:
+        # with a 4-card minor and 10-12 HCP, bid 2-of-minor natural
+        # (forcing 1 round) rather than jump 3M. After opener's
+        # rebid, responder can preference back to the major or
+        # invite NT, finding the right contract via a longer
+        # auction. Seed=42 board 4 in Acol: S has ♠J52 ♥Q74 ♦A72
+        # ♣A942 (11 HCP, 3-3-3-4) → bids 2♣ natural; opener N
+        # rebids 2♥ (5+ hearts); responder pushes to 4♥ via 3♥
+        # preference. (Q-Plus's auction:
+        # 1H-2C-2H-3H-4H.)
+        # Gated on 4-card-major systems only, since 5cM systems
+        # have other priorities (2/1 GF, NMF) that lead to
+        # different orderings.
+        if (10 <= hcp <= 12
+                and getattr(system, "one_major_card_min", 5) <= 4
+                and not system.has("A-1MA-forcing-1NT")):
+            for side in (Suit.CLUBS, Suit.DIAMONDS):
+                if e.suit_lengths[side] >= 4 and side != major:
+                    return bid(2, side, alert=True,
+                               why=f"Acol natural 2{side.to_char()}: "
+                                   f"4+ {side.to_char()}, "
+                                   f"{hcp} HCP, forcing 1 round")
         if 10 <= hcp <= 12:
             return bid(3, major, why="3-card limit raise")
         # Truscott 3NT (Q-Plus `A-1MA-Truscott-3NT.always`): 1M-3NT shows
@@ -2964,20 +2986,35 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
             return bid(4, op_suit, why="To-play game (18+)")
         if p_last.level == 3:  # limit raise
             # Accept with 14+ HCP, or with 13 HCP + a distributional
-            # extra (6+ trumps or a singleton/void). The pure-HCP
-            # threshold misses minimum openers with extra playing
-            # strength — seed=42 board 4 is the canonical case:
-            # opener has 13 HCP and a 6-card heart suit, partner
-            # limit-raises to 3♥, opener should bid 4♥ (Q-Plus does,
-            # bridgeIQ previously passed).
+            # extra (6+ trumps, a singleton/void, or a 5+ card side
+            # suit). The pure-HCP threshold misses minimum openers
+            # with extra playing strength — seed=42 board 4 is one
+            # canonical case (13 HCP + 6-card heart suit); board 3
+            # Acol is another (13 HCP + 5-card diamond side suit
+            # opener already showed).
             has_extra_trump = e.suit_lengths.get(op_suit, 0) >= 6
             has_shortness = any(e.suit_lengths.get(s, 0) <= 1
                                 for s in (Suit.CLUBS, Suit.DIAMONDS,
                                           Suit.HEARTS, Suit.SPADES)
                                 if s != op_suit)
+            has_long_side = any(e.suit_lengths.get(s, 0) >= 5
+                                for s in (Suit.CLUBS, Suit.DIAMONDS,
+                                          Suit.HEARTS, Suit.SPADES)
+                                if s != op_suit)
             if e.hcp >= 14:
                 return bid(4, op_suit, why="Accept limit raise (14+ HCP)")
-            if e.hcp >= 13 and (has_extra_trump or has_shortness):
+            if e.hcp >= 13 and (has_extra_trump or has_shortness
+                                 or has_long_side):
+                # With a 5-card side suit but only 3-4 trumps
+                # (responder's preference probably means a 4-3
+                # fit), prefer 3NT over 4M if balanced enough.
+                trumps = e.suit_lengths.get(op_suit, 0)
+                if (has_long_side and not has_extra_trump
+                        and trumps <= 4):
+                    return bid(3, Suit.NOTRUMP,
+                               why=f"Accept invite via 3NT (13 + "
+                                   f"5-card side suit, 4-3 "
+                                   f"{op_suit.to_char()} fit)")
                 return bid(4, op_suit,
                            why=f"Accept limit raise (13 HCP + "
                                f"distributional extra)")
@@ -3473,6 +3510,29 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
                            why=f"2/1 forcing-1NT follow-up: "
                                f"3{op.suit.to_char()} invitational")
 
+    # Acol natural-2/1 follow-up: 1M-2m(natural F1)-2M-?, I bid the
+    # minor with 4+ cards and 10-12 HCP, partner rebid their major
+    # showing 5+ cards. With 3-card support I now give preference
+    # to the major. 10+ HCP and 8+-card heart fit (3 + 5 from
+    # partner's rebid) → 3M invitational (partner accepts to game
+    # with extras).
+    if (system is not None
+            and getattr(system, "one_major_card_min", 5) <= 4
+            and not system.has("A-1MA-forcing-1NT")
+            and op.suit in (Suit.HEARTS, Suit.SPADES)
+            and state.my_bids
+            and state.my_bids[0].level == 2
+            and state.my_bids[0].suit in (Suit.CLUBS, Suit.DIAMONDS)
+            and opener_rebid.level == 2
+            and opener_rebid.suit == op.suit):
+        fit = e.suit_lengths.get(op.suit, 0)
+        if fit >= 3:
+            return bid(3, op.suit,
+                       why=f"Acol preference: 3{op.suit.to_char()} "
+                           f"after natural 2-of-minor + opener's "
+                           f"major rebid ({hcp} HCP, "
+                           f"{fit}-card fit)")
+
     # If my first bid was 2-of-the-OTHER-minor over partner's 1m-1M-1NT,
     # I was in NMF. Opener has now described — bid the followup.
     if (system is not None
@@ -3600,6 +3660,38 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
                        why=f"3{my_first_suit.to_char()}: rebid 5+ own suit")
         return bid(3, Suit.NOTRUMP,
                    why="3NT (last-resort 2/1 GF game)")
+
+    # 1M-1M-2-of-new-suit (1-level response, opener rebid new suit
+    # at 2-level showing 5+ in opener's first suit + 4+ in the
+    # second). Responder's preference back to opener's first suit
+    # with 3+ support shows game-invitational values. Seed=42
+    # board 3 Acol: 1H-1S-2D-? with N holding ♠A8743 ♥965 ♦AQ7
+    # ♣JT (11 HCP) → 3H preference.
+    if (op.suit in (Suit.HEARTS, Suit.SPADES)
+            and opener_rebid.level == 2
+            and opener_rebid.suit is not None
+            and opener_rebid.suit != Suit.NOTRUMP
+            and opener_rebid.suit != op.suit
+            and state.my_bids
+            and state.my_bids[0].level == 1
+            and state.my_bids[0].suit is not None
+            and state.my_bids[0].suit != Suit.NOTRUMP):
+        fit_major = e.suit_lengths.get(op.suit, 0)
+        fit_minor = e.suit_lengths.get(opener_rebid.suit, 0)
+        if fit_major >= 3 and 10 <= hcp <= 12:
+            return bid(3, op.suit,
+                       why=f"Preference to opener's "
+                           f"{op.suit.to_char()} ({fit_major}-card "
+                           f"support, {hcp} HCP invitational)")
+        if fit_major >= 3 and hcp >= 13:
+            return bid(4, op.suit,
+                       why=f"Game in opener's "
+                           f"{op.suit.to_char()} ({fit_major}-card "
+                           f"support, {hcp} HCP)")
+        if fit_minor >= 4 and hcp >= 12:
+            return bid(3, opener_rebid.suit,
+                       why=f"Raise opener's second suit "
+                           f"({fit_minor}-card fit, {hcp} HCP)")
 
     # 2/1 GF auction: opener rebid a NEW suit at the 2-level. The
     # auction is still game-forcing — never pass below game. Only
