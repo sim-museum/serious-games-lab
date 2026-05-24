@@ -2359,6 +2359,26 @@ def _respond_to_major(state, e: HandEval, system) -> Bid:
                 and system.has("A-1MA-2NT.support-3-10-13")):
             return bid(2, Suit.NOTRUMP, alert=True,
                        why="Precision: 2NT = 3-card limit raise (10-13)")
+        # Standard French (and other systems without Jacoby 2NT or
+        # Precision's 3-card-2NT convention): with 11-12 HCP
+        # balanced and 3-card major support, bid 2NT as a natural
+        # invitational raise. Opener accepts to 4M with extras.
+        # Seed=42 board 4 in French: S has 11 HCP + ♥Q74 + balanced
+        # 3-3-3-4 → Q-Plus bids 2NT then 4H; bridgeIQ used to jump
+        # 3H limit raise.
+        if (11 <= hcp <= 12
+                and e.is_balanced
+                and not system.has("A-1MA-Jacoby-2NT")
+                and not system.has("A-1MA-2NT.support-3-10-13")
+                and not system.has("A-1MA-2NT.range-11-12")
+                # Acol's `A-1MA-2NT.range-11-12` is already its
+                # natural-2NT flag; if the system has neither
+                # explicit flag, default to natural-NT invite
+                # (matches Q-Plus's French behaviour).
+                ):
+            return bid(2, Suit.NOTRUMP,
+                       why=f"Natural 2NT invite: 11-12 balanced + "
+                           f"3-card {major.to_char()} support")
         # 2/1 GF systems: with 3-card support and limit-raise values,
         # bid 1NT (forcing) instead of jumping to 3M. The forcing-1NT
         # response promises 6-12 HCP without 4-card support; opener
