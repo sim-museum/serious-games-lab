@@ -698,11 +698,19 @@ class BridgeEngine:
                 # context that the MC score alone doesn't capture.
                 # Lowest-equivalent is the best single rule.
                 # Position-specific override (Q-Plus card-play
-                # conventions from MANUAL/ENG/BRIDGE.HLQ). Falls back
-                # to lowest-equivalent when no convention fits.
+                # conventions from MANUAL/ENG/BRIDGE.HLQ). For
+                # *signaling* contexts (attitude on partner's honor
+                # lead, count on declarer's lead), the convention
+                # dictates the card regardless of DDS scoring — we
+                # pass ALL legal cards in the lead suit (not just
+                # the DDS-tied set) so signal cards aren't filtered
+                # out by tiny DDS noise.
+                legal_in_suit = [c.code52() for c in legal_cards
+                                 if c.suit == lead_suit]
                 override = _position_override_card(
                     tied, board, seat, current_trick_cards,
-                    lead_suit, board.contract.declarer if board.contract else None)
+                    lead_suit, board.contract.declarer if board.contract else None,
+                    legal_in_suit=legal_in_suit)
                 if override is not None:
                     best_card52 = override
                     if _debug_log:
@@ -873,7 +881,7 @@ class BridgeEngine:
 
 def _position_override_card(tied_cards, board, seat,
                             current_trick_cards, lead_suit,
-                            declarer):
+                            declarer, legal_in_suit=None):
     """Apply Q-Plus card-play conventions to break a DDS tie.
 
     Q-Plus documents two card-play conventions in MANUAL/ENG/BRIDGE.HLQ:
@@ -956,8 +964,35 @@ def _position_override_card(tied_cards, board, seat,
         if hand else 0)
     original_count = played_in_suit + remaining_in_suit
 
-    # Rank encoding: c % 13 → 0=A, 1=K, 2=Q, 3=J, 4=T … 12=2. So
-    # "highest pip" = LOWEST rank, "lowest pip" = HIGHEST rank.
+    # ATTITUDE on partner's HONOR lead (round 1): textbook says
+    # signal attitude (HIGH = encouraging with values, LOW =
+    # discouraging without). Count comes on the SECOND round.
+    # Detect: round 1 (played_in_suit == 0), partner led, and
+    # the lead card is an honor (A or K mainly; Q sometimes).
+    # "Have values" = have an honor in the suit (J or higher).
+    led_card = current_trick_cards[0]
+    led_is_honor = (led_card.rank.value <= 1)  # A=0, K=1 → honor
+    if played_in_suit == 0 and trick_leader.partner() == seat \
+            and led_is_honor:
+        suit_hcp_held = sum(
+            (4 - c.rank.value) if c.rank.value <= 3 else 0
+            for c in hand.cards if c.suit == lead_suit)
+        # Attitude is a signal convention — the choice between
+        # small cards doesn't change DDS trick count (you're
+        # losing this trick anyway). Use ALL legal small cards
+        # in the suit, not just the DDS-tied set.
+        pool = (legal_in_suit if legal_in_suit else tied_in_suit)
+        small_pool = [c for c in pool if c % 13 >= 4]
+        if small_pool:
+            if suit_hcp_held >= 1:
+                # Encourage — play highest small (lowest pip).
+                return min(small_pool, key=lambda c: c % 13)
+            # Discourage — play lowest (highest pip).
+            return max(small_pool, key=lambda c: c % 13)
+        return None
+
+    # COUNT (present count): rank encoding c % 13 → 0=A, 1=K, …
+    # 12=2. "Highest pip" = LOWEST rank, "lowest pip" = HIGHEST.
     # A "small" card is rank ≥ 4 (T or below).
     if original_count in (2, 4, 6):
         # Even — play the LOWEST card from the tied set.

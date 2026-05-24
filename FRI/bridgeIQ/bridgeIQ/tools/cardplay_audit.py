@@ -161,7 +161,10 @@ class CardTest:
         if self.is_opening_lead:
             resp = engine.get_opening_lead(board)
         else:
-            resp = engine.get_card_play(
+            # Use the MC engine (the real card-play engine).
+            # get_card_play is a "first-legal" fallback that
+            # bypasses the override library — wrong for an audit.
+            resp = engine.get_mc_card_play(
                 board, self.next_to_play,
                 list(board.current_trick.cards) if board.current_trick
                 else [])
@@ -232,6 +235,119 @@ def make_tests() -> List[CardTest]:
         is_opening_lead=True,
         accept=["HK"],
     ))
+
+    # =====================================================================
+    # DEFENDER TECHNIQUE
+    # =====================================================================
+
+    # --- Third hand high: KQx behind dummy's small ---
+    # 3NT by S. W leads ♠3 (4th best from K8632 — wait, partner has KQx
+    # plus more). Let's use: W ♠83 leads 8 (low from doubleton), N
+    # dummy plays small, E has ♠KQT — should play Q (low of touching
+    # honors as 3rd hand).
+    # Actually simpler: W ♠Q73 leads 3 (4th), dummy ♠65 plays 5,
+    # E ♠AJ8 plays J (3rd hand high — lower of equivalent honors when
+    # no equivalent above the J in dummy/declarer).
+    # Even simpler: W leads ♠4 (low), dummy ♠2 (low), E ♠KQT (3rd hand
+    # plays Q — the lower of touching honors).
+    tests.append(CardTest(
+        "3rd-hand-high-kq", "Third hand high — play Q from KQT "
+                            "(lower of touching honors)",
+        hands_dict={
+            Seat.NORTH: hand("765", "AK5", "K72", "QJ43"),   # dummy
+            Seat.EAST:  hand("KQT", "8743", "J85", "T62"),   # 3rd hand
+            Seat.SOUTH: hand("AJ32", "QJ2", "A943", "AK"),   # declarer
+            Seat.WEST:  hand("984", "T96", "QT6", "9875"),   # leader
+        },
+        dealer=Seat.SOUTH,
+        contract=Contract(level=3, suit=Suit.NOTRUMP,
+                          declarer=Seat.SOUTH),
+        played_tricks=[],
+        current_trick_leader=Seat.WEST,
+        current_trick_cards=["S4", "S5"],  # W=S4, N=S5
+        next_to_play=Seat.EAST,
+        accept=["SQ"],  # lower of touching KQ
+    ))
+
+    # --- Cover an honor with an honor ---
+    # 4♥ by S. Dummy has ♠T4. S has ♠A32. W: ♠KJ876. E: ♠Q95.
+    # Dummy leads ♠T → E should cover with Q (promotes W's J).
+    tests.append(CardTest(
+        "cover-an-honor", "Cover an honor with an honor "
+                          "(Q over dummy's T promotes partner's J)",
+        hands_dict={
+            Seat.NORTH: hand("T4", "AK654", "AKQJ", "65"),
+            Seat.EAST:  hand("Q95", "T73", "987", "QJ87"),
+            Seat.SOUTH: hand("A32", "QJ2", "63", "AKT43"),
+            Seat.WEST:  hand("KJ876", "98", "T542", "92"),
+        },
+        dealer=Seat.SOUTH,
+        contract=Contract(level=4, suit=Suit.HEARTS,
+                          declarer=Seat.SOUTH),
+        played_tricks=[],
+        current_trick_leader=Seat.NORTH,
+        current_trick_cards=["ST"],  # dummy leads T
+        next_to_play=Seat.EAST,
+        accept=["SQ"],
+    ))
+
+    # (Second-hand-low test removed — too DDS-dependent. With KJxx
+    # over dummy's AQT, the correct play (low vs K rise) depends on
+    # the specific layout and inferences; DDS evaluates this
+    # accurately and may prefer K-rise in some positions.)
+
+    # =====================================================================
+    # DEFENDER SIGNALS (attitude, count, suit preference)
+    # =====================================================================
+
+    # --- Attitude on partner's A lead: encourage with values ---
+    # 4♠ by S. W leads ♥A. Dummy plays small (we set H6 played).
+    # E has ♥Q98 (has Q = value, wants partner to continue).
+    # Attitude: play HIGH small (9 from Q98 = encouraging spot card).
+    tests.append(CardTest(
+        "attitude-encourage-on-A-lead",
+        "Attitude on partner's ♥A: encourage with Q98 → play 9",
+        hands_dict={
+            Seat.NORTH: hand("KQJ8", "T76", "AK4", "KQ5"),
+            Seat.EAST:  hand("652", "Q98", "J92", "T974"),
+            Seat.SOUTH: hand("AT943", "543", "T7", "AJ8"),
+            Seat.WEST:  hand("7", "AKJ2", "Q8653", "632"),
+        },
+        dealer=Seat.SOUTH,
+        contract=Contract(level=4, suit=Suit.SPADES,
+                          declarer=Seat.SOUTH),
+        played_tricks=[],
+        current_trick_leader=Seat.WEST,
+        current_trick_cards=["HA", "H6"],  # W HA, N H6
+        next_to_play=Seat.EAST,
+        accept=["H9"],  # 9 = high small = encouraging
+    ))
+
+    # --- Attitude on partner's A lead: discourage with no values ---
+    # 4♠ by S. W leads ♥A. E has ♥876 (no values, no Q/J/T).
+    # Standard attitude: play LOW = discouraging.
+    tests.append(CardTest(
+        "attitude-discourage-on-A-lead",
+        "Attitude on partner's ♥A: discourage with 876 (play low)",
+        hands_dict={
+            Seat.NORTH: hand("KQJ8", "JT4", "AK4", "K54"),
+            Seat.EAST:  hand("652", "876", "J982", "Q97"),
+            Seat.SOUTH: hand("AT943", "Q5", "T7", "AJT8"),
+            Seat.WEST:  hand("7", "AK932", "Q653", "632"),
+        },
+        dealer=Seat.SOUTH,
+        contract=Contract(level=4, suit=Suit.SPADES,
+                          declarer=Seat.SOUTH),
+        played_tricks=[],
+        current_trick_leader=Seat.WEST,
+        current_trick_cards=["HA", "H4"],  # W HA, N H4 (low)
+        next_to_play=Seat.EAST,
+        accept=["H6"],  # lowest (discouraging) of 876
+    ))
+
+    # (Count-on-declarer's-lead test removed — was set up wrong.
+    # The PROBE-03 / system probes cover count-signal verification
+    # separately.)
 
     return tests
 
