@@ -2079,8 +2079,14 @@ def _respond_to_minor(state, e: HandEval, system) -> Bid:
                            why=f"Inverted minor preempt (3{minor.to_char()}): "
                                "0-9 HCP, 5+ support")
 
-    # 6-9 with a 4-card major bid 1H/1S
-    if 6 <= hcp <= 18:
+    # Show a 4-card major at the 1-level over partner's 1m
+    # opening. No upper HCP cap — even a 19-count responds 1H/1S
+    # first to find a major fit before driving slam. The old cap
+    # at 18 meant 19+ hands jumped to 2NT directly, missing the
+    # major fit entirely (seed=42 board 8 in SAYC / French: E
+    # had 2-4-3-4 with 19 HCP and bid 2NT instead of 1H,
+    # leaving the auction stranded).
+    if hcp >= 6:
         if e.suit_lengths[Suit.HEARTS] >= 4 and e.suit_lengths[Suit.HEARTS] >= e.suit_lengths[Suit.SPADES]:
             return bid(1, Suit.HEARTS, why="4+ hearts, response to minor")
         if e.suit_lengths[Suit.SPADES] >= 4:
@@ -2327,6 +2333,21 @@ def _respond_to_major(state, e: HandEval, system) -> Bid:
                 and system.has("A-1MA-2NT.support-3-10-13")):
             return bid(2, Suit.NOTRUMP, alert=True,
                        why="Precision: 2NT = 3-card limit raise (10-13)")
+        # 2/1 GF systems: with 3-card support and limit-raise values,
+        # bid 1NT (forcing) instead of jumping to 3M. The forcing-1NT
+        # response promises 6-12 HCP without 4-card support; opener
+        # MUST rebid (showing 5+ in the major / second suit / 2NT
+        # for a min balanced); responder follows up with a limit
+        # raise via 3M on the next turn. Without this the 2/1 path
+        # collapses to the SAYC limit raise and we lose the 2/1
+        # GF discipline. (Q-Plus's `A-1MA-forcing-1NT` flag is the
+        # signature of 2/1 GF.)
+        if (10 <= hcp <= 12
+                and system.has("A-1MA-forcing-1NT")):
+            return bid(1, Suit.NOTRUMP, alert=True,
+                       why=f"2/1 forcing 1NT response (10-12, "
+                           f"3-card {major.to_char()} support — "
+                           f"continue with 3M next turn)")
         if 10 <= hcp <= 12:
             return bid(3, major, why="3-card limit raise")
         # Truscott 3NT (Q-Plus `A-1MA-Truscott-3NT.always`): 1M-3NT shows
@@ -3177,7 +3198,7 @@ def _responder_rebid(state, e: HandEval, system) -> Bid:
         my_first = state.my_bids[0]
         if my_first.level == 2 and my_first.suit == Suit.CLUBS:
             # Stayman: opener rebid 2D/2H/2S
-            return _stayman_responder_rebid(state, e, p_last)
+            return _stayman_responder_rebid(state, e, p_last, system)
 
     # Kokish 2♠ relay: after Precision 1♣-1♦-2♥ with Kokish in force,
     # responder MUST bid 2♠ regardless of own hand. Opener's next bid
@@ -3261,7 +3282,8 @@ def _precision_2d_relay_followup(state, e: HandEval, p_last: Bid) -> Bid:
     return passb(why="No clear action after 2D relay")
 
 
-def _stayman_responder_rebid(state, e, opener_rebid: Bid) -> Bid:
+def _stayman_responder_rebid(state, e, opener_rebid: Bid,
+                             system=None) -> Bid:
     hcp = e.hcp
     # Opener bid 2D — no major, fall back to NT
     if opener_rebid.suit == Suit.DIAMONDS:
@@ -3282,14 +3304,27 @@ def _stayman_responder_rebid(state, e, opener_rebid: Bid) -> Bid:
         major = opener_rebid.suit
         fit = e.suit_lengths.get(major, 0)
         if fit >= 4:
-            # 17+ HCP with a 4-4 major fit and a 14-16 partner → 31+
-            # combined, slam is on. Skip the 4M signoff and ask via
-            # Blackwood directly; the responder-rebid pipeline takes
-            # over from there.
-            if hcp >= 17:
+            # Slam launch threshold depends on opener's NT range.
+            # 15-17 NT → 17+ responder is the classic Blackwood
+            # threshold (combined 32+ → slam). For weak NT (Acol
+            # 12-14), combined needs the same 32+ → responder
+            # needs 18+. Without this gate, Acol board 8 has a
+            # 4-4 fit Stayman launch slam on combined 25 HCP and
+            # goes down (seed=42 board 8 in Acol).
+            #
+            # Use the actual NT range from the system when
+            # available; default to 15 if not (matches SAYC).
+            nt_min = (getattr(system, "one_nt_min_hcp", 15)
+                      if system is not None else 15)
+            # Threshold: need combined ≥ 32 to launch slam.
+            slam_threshold = max(0, 32 - nt_min)  # 17 for 15-NT, 18 for 14-NT
+            if hcp >= slam_threshold:
                 return bid(4, Suit.NOTRUMP, alert=True,
-                           why=f"Blackwood: slam try, 4-4 {major.to_char()} "
-                               "fit found via Stayman, 17+ HCP")
+                           why=f"Blackwood: slam try, 4-4 "
+                               f"{major.to_char()} fit found via "
+                               f"Stayman, {hcp} HCP (threshold "
+                               f"{slam_threshold} for {nt_min}+ "
+                               f"NT)")
             if hcp >= 10:
                 return bid(4, major, why="Game in major fit")
             if 8 <= hcp <= 9:
@@ -3349,6 +3384,33 @@ def _nmf_responder_rebid(state, e, opener_rebid, my_major, system):
 def _generic_responder_rebid(state, e, opener_rebid, system=None):
     hcp = e.hcp
     op = state.opening_bid
+
+    # 2/1 forcing-1NT follow-up: if my first response was a forcing
+    # 1NT over partner's 1-of-major and partner rebid 2-of-the-same-
+    # major (showing 5+ trumps), I implicitly had 3-card support
+    # (that's why I chose 1NT instead of a direct raise). With my
+    # 10-12 HCP and the now-confirmed 8+-card fit, drive to game.
+    # Without this, responder passes opener's 2M rebid (seed=42
+    # board 4 in 2/1: 1H-1NT-2H-P, should be 1H-1NT-2H-4H).
+    if (system is not None
+            and system.has("A-1MA-forcing-1NT")
+            and op.suit in (Suit.HEARTS, Suit.SPADES)
+            and state.my_bids
+            and state.my_bids[0].level == 1
+            and state.my_bids[0].suit == Suit.NOTRUMP
+            and opener_rebid.level == 2
+            and opener_rebid.suit == op.suit):
+        fit = e.suit_lengths.get(op.suit, 0)
+        if fit >= 3:
+            if hcp >= 10:
+                return bid(4, op.suit,
+                           why=f"2/1 forcing-1NT follow-up: "
+                               f"4{op.suit.to_char()} game with "
+                               f"{hcp} HCP + {fit}-card fit")
+            if hcp >= 8:
+                return bid(3, op.suit,
+                           why=f"2/1 forcing-1NT follow-up: "
+                               f"3{op.suit.to_char()} invitational")
 
     # If my first bid was 2-of-the-OTHER-minor over partner's 1m-1M-1NT,
     # I was in NMF. Opener has now described — bid the followup.
@@ -3416,8 +3478,20 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
     if (opener_rebid.suit is not None and state.suit_bid_by_me
             and opener_rebid.suit == state.suit_bid_by_me[-1]):
         major = opener_rebid.suit
-        if opener_rebid.level == 2 and hcp >= 10 and e.suit_lengths.get(major, 0) >= 4:
-            return bid(4, major, why="Game raise after partner's support")
+        if opener_rebid.level == 2 and e.suit_lengths.get(major, 0) >= 4:
+            # 17+ HCP with 4+ trump support and opener has shown
+            # an opening (~12-15 from a simple raise) → combined
+            # ~29+ HCP, slam zone. Launch RKC. Seed=42 board 8 in
+            # SAYC/French: E has 19 HCP, partner W raises to 2♥,
+            # E should ask for keycards (or cuebid) rather than
+            # signing off in 4♥.
+            if hcp >= 17:
+                return bid(4, Suit.NOTRUMP, alert=True,
+                           why=f"RKC: 17+ HCP + 4+ trumps after "
+                               f"partner's raise (slam zone)")
+            if hcp >= 10:
+                return bid(4, major,
+                           why="Game raise after partner's support")
         return passb()
 
     # 2/1 GF auction: opener rebid their major at the 2-level (min, 5+ in major).
