@@ -3094,6 +3094,21 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
         # Rebid 6-card opener suit
         if e.suit_lengths[op_suit] >= 6:
             return bid(2, op_suit, why="Rebid 6-card suit")
+        # 5+ card side suit different from opener's: opener opened
+        # a 4-card major (Acol/4cM systems) or the longest side
+        # suit isn't the bid suit. Show it at the 2-level if legal
+        # (lower-rank than opener's suit) and the HCP fits.
+        # Seed=42 board 3 Acol: S opens 1H with 2-4-5-2, partner
+        # bids 1S, S should rebid 2D (5-card side suit) not 1NT.
+        for side in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES):
+            if side == op_suit or side == p_last.suit:
+                continue
+            if (e.suit_lengths[side] >= 5
+                    and _BID_RANK[side] < _BID_RANK[op_suit]
+                    and 12 <= e.hcp <= 17):
+                return bid(2, side,
+                           why=f"5+ card side suit at 2-level "
+                               f"({e.suit_lengths[side]} {side.to_char()})")
         # Bid second suit. Test `is not None` rather than truthy —
         # Suit.SPADES.value == 0 (falsy), so `if e.second_suit:`
         # silently skipped this branch for any 4-card spade side suit.
