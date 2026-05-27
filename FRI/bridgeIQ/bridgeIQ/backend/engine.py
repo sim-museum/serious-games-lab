@@ -54,6 +54,11 @@ class EngineResponse:
     samples: List[str] = None
     hcp_estimate: Optional[List[float]] = None
     shape_estimate: Optional[List[float]] = None
+    # Natural-language constraints inferred from the auction —
+    # what each seat's bidding has shown. Shown in teaching mode
+    # so a learner can see the reasoning the engine used.
+    # One string per seat that has any inference.
+    auction_inferences: Optional[List[str]] = None
 
 
 class BridgeEngine:
@@ -294,6 +299,154 @@ class BridgeEngine:
                     print(f"Error in DD analysis: {e}")
                 return {}
 
+    def can_claim_remaining(self, board: BoardState
+                             ) -> Optional["ClaimInfo"]:
+        """Detect whether the side currently on lead can claim every
+        remaining trick (i.e. would win the rest against best defense).
+
+        Returns a `ClaimInfo` namedtuple or None.
+
+        Uses DDS to find the max tricks the side-to-lead can take from
+        the current position; if that equals the number of remaining
+        tricks, a claim is sound.
+        """
+        from collections import namedtuple
+        ClaimInfo = namedtuple(
+            "ClaimInfo",
+            ["claimer_side", "tricks_to_claim",
+             "declarer_side_tricks", "defense_side_tricks"])
+        if not self._all_hands_visible(board):
+            return None
+        contract = getattr(board, "contract", None)
+        if contract is None:
+            return None
+        played = (board.declarer_tricks + board.defense_tricks)
+        if played >= 13:
+            return None  # Hand over
+        remaining = 13 - played
+        if remaining < 2:
+            return None  # Last trick — not worth a claim dialog
+        # Find who's on lead. If there's an in-progress trick, that
+        # seat is the leader; otherwise the previous trick's winner
+        # leads (= current_seat after _handle_trick_complete).
+        cur_trick = getattr(board, "current_trick", None)
+        cards_in_cur = (cur_trick.cards
+                        if cur_trick is not None else [])
+        if cur_trick is not None and len(cards_in_cur) > 0:
+            leader_seat = cur_trick.leader
+        else:
+            # No in-progress trick — the winner of the last
+            # completed trick is on lead.
+            last = board.tricks[-1] if board.tricks else None
+            if last is None or last.winner is None:
+                return None
+            leader_seat = last.winner
+        # The side-to-act (counting offence in current trick).
+        # Just use the leader; DDS will compute max tricks for them.
+        with self._lock:
+            try:
+                from . import dds as _dds_mod
+                # Build the remaining-cards PBN: each hand minus
+                # already-played cards (across all tricks + in-progress).
+                remaining_cards = {s: list(board.hands[s].cards)
+                                    for s in Seat}
+                played_cards: List[Card] = []
+                for tk in (board.tricks or []):
+                    played_cards.extend(tk.cards)
+                if cur_trick is not None:
+                    played_cards.extend(cur_trick.cards)
+                # Walk each played card and remove from the seat
+                # that played it. tricks know their leader; in-progress
+                # tricks use cur_trick.leader.
+                def _drop(seat, card):
+                    bucket = remaining_cards[seat]
+                    for i, x in enumerate(bucket):
+                        if (x.suit == card.suit
+                                and x.rank == card.rank):
+                            bucket.pop(i)
+                            return
+                for tk in (board.tricks or []):
+                    s = tk.leader
+                    for c in tk.cards:
+                        _drop(s, c)
+                        s = Seat((s + 1) % 4)
+                if cur_trick is not None:
+                    s = cur_trick.leader
+                    for c in cur_trick.cards:
+                        _drop(s, c)
+                        s = Seat((s + 1) % 4)
+                # PBN builder.
+                rank_char = "AKQJT98765432"
+                def _hand_pbn(cards):
+                    by_suit = {Suit.SPADES: [], Suit.HEARTS: [],
+                               Suit.DIAMONDS: [], Suit.CLUBS: []}
+                    for c in cards:
+                        by_suit[c.suit].append(c.rank.value)
+                    parts = []
+                    for su in (Suit.SPADES, Suit.HEARTS,
+                               Suit.DIAMONDS, Suit.CLUBS):
+                        ranks = sorted(by_suit[su])
+                        parts.append("".join(rank_char[r] for r in ranks)
+                                     or "-")
+                    return ".".join(parts)
+                pbn = "N:" + " ".join(
+                    _hand_pbn(remaining_cards[s])
+                    for s in (Seat.NORTH, Seat.EAST,
+                              Seat.SOUTH, Seat.WEST))
+                # Strain index: BEN 1=S 2=H 3=D 4=C 5=NT.
+                strain_map = {Suit.SPADES: 1, Suit.HEARTS: 2,
+                              Suit.DIAMONDS: 3, Suit.CLUBS: 4,
+                              Suit.NOTRUMP: 5}
+                strain_i = strain_map[contract.suit]
+                cur_trick_c52: List[int] = []
+                for c in cards_in_cur:
+                    cur_trick_c52.append(c.suit.value * 13 + c.rank.value)
+                # DDSolver's leader is 0=N..3=W; with my Seat enum
+                # values matching, just pass leader_seat.value.
+                # Reuse the engine's solver (creating a fresh one
+                # has crashed the DDS library on some systems).
+                solver = self.dds
+                if solver is None:
+                    solver = _dds_mod.DDSolver(dds_mode=1)
+                results = solver.solve(
+                    strain_i, leader_seat.value,
+                    cur_trick_c52, [pbn], solutions=3)
+                # results = {c52: [tricks_per_sample]}. Take the
+                # max tricks across cards. DDS sometimes returns a
+                # negative magic value ( -2 / -1 ) on
+                # mid-play queries — reject those defensively so we
+                # never offer a bogus claim.
+                if not results:
+                    return None
+                sane = [t for v in results.values() for t in v
+                        if 0 <= t <= 13]
+                if not sane:
+                    return None
+                max_tricks = max(sane)
+            except Exception:
+                return None
+        if max_tricks < remaining:
+            return None
+        # leader's side: NS or EW
+        leader_is_ns = leader_seat.is_ns()
+        # Determine declarer-side trick count after a claim.
+        declarer = contract.declarer
+        declarer_is_ns = declarer.is_ns()
+        leader_is_declarer_side = (leader_is_ns == declarer_is_ns)
+        if leader_is_declarer_side:
+            declarer_takes = remaining
+            defense_takes = 0
+        else:
+            declarer_takes = 0
+            defense_takes = remaining
+        return ClaimInfo(
+            claimer_side=("NS" if leader_is_ns else "EW"),
+            tricks_to_claim=remaining,
+            declarer_side_tricks=(board.declarer_tricks
+                                   + declarer_takes),
+            defense_side_tricks=(board.defense_tricks
+                                  + defense_takes))
+
     def get_dd_tricks(self, board: BoardState, suit: Suit, seat: Seat) -> Optional[int]:
         """Get double-dummy trick count for a specific declarer and strain."""
         # DD solve needs all four hands; refuse when any seat is
@@ -499,8 +652,29 @@ class BridgeEngine:
                     sys_obj = _get_system(self.current_system)
                 except Exception:
                     sys_obj = None
-                hcp_ranges = _derive_hcp_constraints(board, sys_obj)
-                shape_ranges = _derive_shape_constraints(board, sys_obj)
+                # Richer auction inference (full-auction walk that
+                # also tightens opener's rebid, responder's response,
+                # overcall, etc.). Falls back to the legacy single-
+                # bid functions if the new module is unavailable.
+                try:
+                    from . import auction_inference
+                    _ai_constraints = auction_inference.infer_constraints(
+                        board, sys_obj)
+                    # Mid-play: also tighten from played cards
+                    # (show-outs, played-HCP floor). Sharpens the
+                    # sampler past trick 1.
+                    _ai_constraints = (
+                        auction_inference.tighten_from_play(
+                            board, _ai_constraints))
+                    hcp_ranges = (
+                        auction_inference
+                        .hcp_ranges_from_constraints(_ai_constraints))
+                    shape_ranges = (
+                        auction_inference
+                        .shape_ranges_from_constraints(_ai_constraints))
+                except Exception:
+                    hcp_ranges = _derive_hcp_constraints(board, sys_obj)
+                    shape_ranges = _derive_shape_constraints(board, sys_obj)
                 # HCP for unknown cards by c52: A=4, K=3, Q=2, J=1, else 0.
                 _hcp_of_c52 = [0] * 52
                 for i in range(52):
@@ -728,10 +902,22 @@ class BridgeEngine:
                         expected_tricks=avg
                     ))
 
+                # Teaching-mode payload: surface the auction
+                # inferences the sampler used to constrain hands.
+                # Computed cheaply from the auction (no DDS calls).
+                inferences = None
+                try:
+                    from . import auction_inference
+                    inferences = auction_inference.explain(board, sys_obj)
+                    if not inferences:
+                        inferences = None
+                except Exception:
+                    pass
                 return EngineResponse(
                     action=best_card,
                     candidates=candidates,
-                    who="MC"
+                    who="MC",
+                    auction_inferences=inferences,
                 )
 
             except Exception as e:

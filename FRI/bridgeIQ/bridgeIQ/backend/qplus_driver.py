@@ -51,6 +51,44 @@ def qplus_log_dir() -> Optional[Path]:
     return (d / "DATA" / "LOG") if d else None
 
 
+def qplus_local_matches_dir() -> Optional[Path]:
+    """The directory that holds Q-Plus's saved-match savescore files
+    (savescore.qss + per-match snapshots). The savescore is the only
+    place per-deal `.Bidding cnv` markers survive after save+exit —
+    the standalone .BDE in OWN-DEALS is stripped of those markers."""
+    d = qplus_install_dir()
+    return (d / "DATA" / "LOCAL-MATCHES") if d else None
+
+
+def qplus_match_boards_own_deals() -> Optional[int]:
+    """Read Q-Plus's current 'Deal → Match control → # boards' value
+    for the Own-deals match source from CONFIG/B-MATCH.CFB.
+
+    The file looks like:
+        general.deal_own = 16.".\\data\\own-deals\\b1_71352.BDE"
+    where the leading integer is the # boards. Q-Plus flushes this on
+    exit, so if Q-Plus is currently running the value reflects the
+    LAST exit, not the live setting. Returns None if the file is
+    missing or unparseable.
+    """
+    import re
+    d = qplus_install_dir()
+    if d is None:
+        return None
+    f = d / "CONFIG" / "B-MATCH.CFB"
+    if not f.is_file():
+        return None
+    try:
+        txt = f.read_text(encoding="latin-1", errors="replace")
+    except Exception:
+        return None
+    m = re.search(r"^general\.deal_own\s*=\s*(\d+)\.",
+                  txt, flags=re.MULTILINE)
+    if not m:
+        return None
+    return int(m.group(1))
+
+
 # ---------------------------------------------------------------------------
 # Multi-deal BDE writer
 # ---------------------------------------------------------------------------
@@ -122,19 +160,25 @@ def write_multi_deal_bde(
         out_path: Path,
         *,
         description: str = "bridgeIQ diff batch",
+        label_prefix: str = "BB-diff",
 ) -> Path:
     """Write `boards` as a multi-deal BDE file Q-Plus can load.
 
     File format matches Q-Plus's shipped EXAMPLE.BDE — one DOCTYPE
     line up top, one description, then deal blocks separated by
     a row of asterisks. Returns the absolute path written.
+
+    `label_prefix` is the per-deal label (e.g. "BB-diff" yields
+    labels "BB-diff-001", "BB-diff-002", …). Q-Plus shows this
+    label in its title bar / status area; pick a prefix that
+    identifies which corpus the deal came from.
     """
     parts: List[str] = []
     parts.append("DOCTYPE: BDL 7.1")
     parts.append(f'.description.eng = "{description}"')
     parts.append("")
     for i, b in enumerate(boards, start=1):
-        label = f"BB-diff-{i:03d}"
+        label = f"{label_prefix}-{i:03d}"
         parts.append(_format_one_deal(b, label))
         parts.append(BDE_SEPARATOR)
         parts.append("")

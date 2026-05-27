@@ -6,10 +6,11 @@ Classic Bridge interface with declarer play support.
 import os
 import re
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
-    QMenuBar, QMenu, QStatusBar, QToolBar, QLabel, QProgressBar,
-    QMessageBox, QFileDialog, QApplication, QDockWidget, QPushButton,
-    QFrame, QSizePolicy, QInputDialog, QDialog
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
+    QSplitter, QMenuBar, QMenu, QStatusBar, QToolBar, QLabel,
+    QProgressBar, QMessageBox, QFileDialog, QApplication,
+    QDockWidget, QPushButton, QFrame, QSizePolicy, QInputDialog,
+    QDialog
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread, pyqtSlot
 from PyQt6.QtGui import QAction, QKeySequence, QFont, QIcon
@@ -22,6 +23,7 @@ from .dialogs.match_control import MatchControlDialog
 from .dialogs.deal_filter import DealFilterDialog
 from .dialogs.score_table import ScoreTableDialog
 from .dialogs.simulation import SimulationDialog
+from .dialogs.qplus_simulation import QPlusSimulationDialog
 from .dialogs.preferences import PreferencesDialog
 from .dialogs.deal_entry import DealEntryDialog
 from .dialogs.scoring_table import ScoringTableDialog
@@ -384,6 +386,221 @@ class GameController:
         return None
 
 
+class BiddingFlowchartDialog(QDialog):
+    """View menu → Bidding flowchart… (Ctrl+Shift+I).
+
+    Renders a decision-tree flowchart customised to the current
+    hand + auction position, with the path your hand actually
+    took highlighted in green. Tree content from
+    backend.bidding_flowchart; PNG produced by piping plantuml
+    text through the system `plantuml` binary.
+    """
+
+    def __init__(self, parent, board, seat, system):
+        super().__init__(parent)
+        self.setWindowTitle("Bidding flowchart")
+        self.resize(960, 720)
+        layout = QVBoxLayout(self)
+        # Header
+        header = QLabel(
+            f"<b>Seat:</b> {seat.name} &nbsp;&nbsp;&nbsp; "
+            f"<b>System:</b> "
+            f"{getattr(system, 'name', '—') if system else '—'}")
+        header.setStyleSheet("padding: 4px;")
+        layout.addWidget(header)
+        # Render the flowchart.
+        from backend import bidding_flowchart
+        import subprocess
+        try:
+            puml, commentary = bidding_flowchart.flowchart_for(
+                board, seat, system)
+        except Exception as ex:
+            puml, commentary = "", f"Couldn't build flowchart: {ex!r}"
+        png_bytes = b""
+        if puml:
+            try:
+                out = subprocess.run(
+                    ["plantuml", "-pipe", "-tpng"],
+                    input=puml.encode("utf-8"),
+                    capture_output=True, timeout=15)
+                png_bytes = out.stdout if out.returncode == 0 else b""
+            except Exception as ex:
+                commentary = (commentary + "\n\n(plantuml render "
+                              f"failed: {ex!r})")
+        # Image area — scrollable QLabel.
+        from PyQt6.QtWidgets import QScrollArea
+        from PyQt6.QtGui import QPixmap
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        image_label = QLabel()
+        if png_bytes:
+            pix = QPixmap()
+            pix.loadFromData(png_bytes)
+            image_label.setPixmap(pix)
+        else:
+            image_label.setText(
+                "(no flowchart available for this auction position)")
+            image_label.setStyleSheet("padding: 24px; color: #888;")
+        scroll.setWidget(image_label)
+        layout.addWidget(scroll, stretch=1)
+        # Commentary text below.
+        if commentary:
+            from PyQt6.QtWidgets import QPlainTextEdit
+            com = QPlainTextEdit(commentary)
+            com.setReadOnly(True)
+            com.setMaximumHeight(120)
+            layout.addWidget(com)
+        # Close button.
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        bot = QHBoxLayout()
+        bot.addStretch()
+        bot.addWidget(close_btn)
+        layout.addLayout(bot)
+
+
+class AuctionInterpretationDialog(QDialog):
+    """View menu → Interpret current auction.
+
+    Walks through the auction on the current board bid-by-bid,
+    showing for each call:
+      • Bidder (N/E/S/W)
+      • The bid itself (1NT, 2♣, X, …)
+      • Natural-language meaning — the inference rules that fired
+        for this specific bid, joined with semicolons.
+
+    Powered by backend.auction_inference.explain_each_bid, which
+    replays the auction and captures per-bid reason deltas.
+    """
+
+    def __init__(self, parent, board, system):
+        super().__init__(parent)
+        self.setWindowTitle("Auction interpretation")
+        self.resize(960, 560)
+        # Force a light background and dark text so the dialog
+        # doesn't inherit the parent's dark-blue table-felt colour
+        # — black text on dark blue was unreadable.
+        self.setStyleSheet("""
+            QDialog { background-color: #fafafa; color: #111; }
+            QLabel { color: #111; }
+            QTableWidget {
+                background-color: #ffffff;
+                alternate-background-color: #f0f4f8;
+                color: #111;
+                font-size: 14px;
+                gridline-color: #c0c0c0;
+            }
+            QHeaderView::section {
+                background-color: #d0d8e0;
+                color: #111;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 4px;
+                border: 1px solid #a0a0a0;
+            }
+            QPushButton {
+                background-color: #e0e0e0;
+                color: #111;
+                padding: 6px 14px;
+                font-size: 14px;
+            }
+        """)
+        layout = QVBoxLayout(self)
+        # Header: dealer, vulnerability, system pair.
+        from backend.models import Seat as _Seat, Suit as _Suit
+        dealer_name = {
+            _Seat.NORTH: "North", _Seat.EAST: "East",
+            _Seat.SOUTH: "South", _Seat.WEST: "West",
+        }.get(board.dealer, str(board.dealer))
+        vul_name = str(board.vulnerability).replace(
+            "Vulnerability.", "")
+        system_name = getattr(system, "name", "—") if system else "—"
+        header = QLabel(
+            f"<b>Dealer:</b> {dealer_name} &nbsp;&nbsp; "
+            f"<b>Vul:</b> {vul_name} &nbsp;&nbsp; "
+            f"<b>System:</b> {system_name}")
+        header.setStyleSheet(
+            "padding: 6px; font-size: 15px;")
+        layout.addWidget(header)
+        # Table of per-bid explanations.
+        from PyQt6.QtWidgets import (
+            QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView)
+        self.table = QTableWidget()
+        self.table.setAlternatingRowColors(True)
+        self.table.setColumnCount(3)
+        self.table.setHorizontalHeaderLabels(
+            ["Bidder", "Bid", "Meaning"])
+        # Larger row height for readability.
+        self.table.verticalHeader().setDefaultSectionSize(28)
+        self.table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows)
+        h = self.table.horizontalHeader()
+        h.setSectionResizeMode(
+            0, QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(
+            1, QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.table, stretch=1)
+        # Populate.
+        try:
+            from backend import auction_inference
+            rows = auction_inference.explain_each_bid(board, system)
+        except Exception:
+            rows = []
+        self.table.setRowCount(len(rows))
+        for r, step in enumerate(rows):
+            seat_c = step["bidder"].name[0]
+            self.table.setItem(r, 0, QTableWidgetItem(seat_c))
+            self.table.setItem(r, 1, QTableWidgetItem(
+                self._bid_str(step["bid"])))
+            meaning = "; ".join(step["reasons"])
+            if not meaning:
+                # Generic fallback so the row isn't blank.
+                if step["bid"].is_pass:
+                    meaning = "Pass"
+                elif step["bid"].is_double:
+                    meaning = "Double"
+                elif step["bid"].is_redouble:
+                    meaning = "Redouble"
+                else:
+                    meaning = "(no specific rule fired — bid stands "
+                    "on its natural meaning)"
+            item = QTableWidgetItem(meaning)
+            item.setToolTip(meaning)
+            self.table.setItem(r, 2, item)
+        self.table.resizeRowsToContents()
+        # Close button.
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        bot = QHBoxLayout()
+        bot.addStretch()
+        bot.addWidget(close_btn)
+        layout.addLayout(bot)
+
+    @staticmethod
+    def _bid_str(b):
+        """One-token rendering of a Bid for the table."""
+        from backend.models import Suit
+        if b.is_pass:
+            return "Pass"
+        if b.is_double:
+            return "Dbl"
+        if b.is_redouble:
+            return "Rdbl"
+        # NB: `if b.suit` short-circuits on Suit.SPADES (value 0)
+        # because IntEnum-0 is falsy. Use explicit None check.
+        if b.suit is None:
+            suit_c = "?"
+        elif b.suit == Suit.NOTRUMP:
+            suit_c = "NT"
+        else:
+            suit_c = b.suit.to_char()
+        return f"{b.level}{suit_c}"
+
+
 class ToolbarButton(QPushButton):
     """Styled toolbar button"""
 
@@ -583,6 +800,17 @@ class MainWindow(QMainWindow):
 
         right_layout.addStretch()
         content_layout.addWidget(self.right_panel)
+
+        # Teaching-mode inference boxes live INSIDE the TableView, in
+        # the W/E columns directly under the W:BEN / E:BEN labels.
+        # We only show E and W (the hidden hands) — N and S are visible
+        # to the player (own hand + declarer's dummy), so an inference
+        # box there would just duplicate what's already on screen.
+        from backend.models import Seat as _Seat
+        self.inference_boxes = {
+            _Seat.WEST: self.table_view.west_inference_box,
+            _Seat.EAST: self.table_view.east_inference_box,
+        }
 
         main_layout.addWidget(content_widget, stretch=1)
 
@@ -817,6 +1045,50 @@ class MainWindow(QMainWindow):
         self.bid_info_action.triggered.connect(self._on_toggle_bid_info)
         view_menu.addAction(self.bid_info_action)
 
+        # Teaching-mode toggle (off by default, like wbridge5's
+        # "Info" button): per-seat inference boxes during cardplay
+        # showing HCP + suit-length ranges that tighten as cards
+        # are played. Tooltips on each box reveal the reasoning.
+        self.teaching_panel_action = QAction(
+            "Show &auction inferences (teaching)", self)
+        self.teaching_panel_action.setCheckable(True)
+        self.teaching_panel_action.setChecked(False)
+        self.teaching_panel_action.triggered.connect(
+            self._on_toggle_teaching_panel)
+        view_menu.addAction(self.teaching_panel_action)
+
+        # Auto-claim toggle (off by default — claims are usually
+        # cosmetic and a learner may want to play out the tricks
+        # to see why). When on, after each completed trick DDS is
+        # asked whether the winning side will take every remaining
+        # trick; if so, a "make the rest" dialog offers to skip
+        # the cardplay to the end of the hand.
+        self.auto_claim_action = QAction(
+            "Auto-&claim when DDS proves the rest", self)
+        self.auto_claim_action.setCheckable(True)
+        self.auto_claim_action.setChecked(False)
+        view_menu.addAction(self.auto_claim_action)
+
+        # Auction interpretation dialog: walks through the current
+        # auction bid-by-bid with a natural-language explanation
+        # of each call (Bridge Baron 12-style teaching aid).
+        self.auction_interp_action = QAction(
+            "&Interpret current auction…", self)
+        self.auction_interp_action.setShortcut("Ctrl+I")
+        self.auction_interp_action.triggered.connect(
+            self._on_show_auction_interpretation)
+        view_menu.addAction(self.auction_interp_action)
+
+        # Bidding flowchart dialog: plantuml-rendered decision tree
+        # for the current auction position, with the actual path
+        # taken by my hand highlighted.
+        self.flowchart_action = QAction(
+            "Show bidding &flowchart…", self)
+        self.flowchart_action.setShortcut("Ctrl+Shift+I")
+        self.flowchart_action.triggered.connect(
+            self._on_show_bidding_flowchart)
+        view_menu.addAction(self.flowchart_action)
+
         view_menu.addSeparator()
 
         scores_action = QAction("&Score Table...", self)
@@ -842,6 +1114,14 @@ class MainWindow(QMainWindow):
         simulation_action = QAction("Bid &Simulation...", self)
         simulation_action.triggered.connect(self._on_simulation)
         view_menu.addAction(simulation_action)
+
+        qplus_sim_action = QAction("Q-Plus Simulation &Pop-up...", self)
+        qplus_sim_action.setToolTip(
+            "Open the Q-Plus-style slam simulation pop-up "
+            "(auto-opens on the user's turn when slam is in scope)."
+        )
+        qplus_sim_action.triggered.connect(self._on_qplus_simulation)
+        view_menu.addAction(qplus_sim_action)
 
         auction_tricks_action = QAction("&Auction and Played Tricks...", self)
         auction_tricks_action.triggered.connect(self._on_view_auction_tricks)
@@ -1432,6 +1712,10 @@ class MainWindow(QMainWindow):
         self.card_history = []
         self.undo_btn.setEnabled(False)
 
+        # Reset per-deal flags — the Q-Plus slam-sim pop-up fires at
+        # most once per board, so a fresh deal must re-arm it.
+        self._slam_popup_shown_for_board = None
+
         self.table_view.set_board(board)
         self.bidding_box.clear()
         self.bidding_box.set_auction([], board.dealer)
@@ -1439,6 +1723,9 @@ class MainWindow(QMainWindow):
         self.right_panel.setVisible(True)  # Ensure right panel is visible
         self.next_deal_btn.setVisible(True)  # Ensure next deal button is visible
         self.analysis_label.setText("")
+        # Hide teaching inferences — fresh deal has no auction yet
+        if hasattr(self, "inference_boxes"):
+            self._update_inferences_panel(None)
         self._clear_bid_info()  # Clear bid info window
         self._update_available_bids()
         self._update_window_title()
@@ -3573,6 +3860,68 @@ For more information, see the README file."""
         )
         dialog.exec()
 
+    def _on_qplus_simulation(self):
+        """Show the Q-Plus style simulation pop-up.
+
+        Manual entry point; the same dialog also auto-opens on the
+        user's turn when a slam opportunity is detected (see
+        _maybe_popup_slam_simulation).
+        """
+        if not self.controller.board:
+            QMessageBox.warning(self, "No Board",
+                                "Please start a new deal first.")
+            return
+        if self.controller.current_phase != 'bidding':
+            QMessageBox.warning(
+                self, "Not Bidding",
+                "Simulation is only available during bidding.")
+            return
+        seat = self.controller.current_seat or self.controller.board.dealer
+        dialog = QPlusSimulationDialog(
+            self.engine, self.controller.board, seat, self)
+        dialog.exec()
+
+    def _maybe_popup_slam_simulation(self):
+        """Auto-open the Q-Plus sim pop-up when slam is in scope.
+
+        Called from _advance_bidding when it's the human's turn.
+        Guarded by:
+          * _slam_popup_shown_for_board — pop at most once per deal
+            so the user isn't re-interrupted every round of bidding
+          * a feature flag _slam_popup_enabled (default on) so the
+            user can dismiss permanently
+        """
+        if not getattr(self, '_slam_popup_enabled', True):
+            return
+        board = self.controller.board
+        if board is None:
+            return
+        # Track per-board so we only auto-pop once even if slam
+        # remains in scope across multiple of the user's bidding
+        # rounds.
+        shown_id = getattr(self, '_slam_popup_shown_for_board', None)
+        if shown_id == id(board):
+            return
+        try:
+            from backend.slam_opportunity import has_slam_opportunity
+        except Exception:
+            return
+        seat = self.controller.current_seat
+        if seat is None:
+            return
+        try:
+            if not has_slam_opportunity(board, seat):
+                return
+        except Exception:
+            return
+        self._slam_popup_shown_for_board = id(board)
+        try:
+            dialog = QPlusSimulationDialog(
+                self.engine, board, seat, self)
+            dialog.exec()
+        except Exception as e:
+            print(f"[qplus sim popup] failed: {e}", flush=True)
+
     def _on_show_imp_table(self):
         """Show IMP conversion table — detached so it can sit on a
         second monitor for reference while play continues."""
@@ -5663,6 +6012,11 @@ For more information, see the README file."""
             self.status_label.setText(
                 f"Your bid ({current_seat.to_char()})"
             )
+            # Slam-opportunity check — fires the Q-Plus style
+            # simulation pop-up exactly once per deal when the
+            # auction looks slammish on the user's turn. Deferred
+            # via QTimer so the bidding box paints first.
+            QTimer.singleShot(0, self._maybe_popup_slam_simulation)
         else:
             self.bidding_box.set_enabled(False)
             self.status_label.setText(
@@ -5703,6 +6057,13 @@ For more information, see the README file."""
             # Hide right panel (bidding box + analysis) and next deal button during card play
             self.right_panel.setVisible(False)
             self.next_deal_btn.setVisible(False)
+            # Teaching panel: populate with auction inferences now
+            # that cardplay is starting. Only if the user has the
+            # View → Show auction inferences toggle on (off by
+            # default, just like wbridge5's "Info" button).
+            if (hasattr(self, "teaching_panel_action")
+                    and self.teaching_panel_action.isChecked()):
+                self._refresh_inferences_from_board()
             # Hide bid info window during card play
             self.bid_info_dock.hide()
             # Dummy reveal is broadcast strictly after the opening lead
@@ -6131,6 +6492,16 @@ For more information, see the README file."""
                     )
                 return
 
+        # Auto-claim detection (wbridge5-style "make the rest").
+        # If DDS proves the side just won can take every remaining
+        # trick, ask the user to confirm and skip the rest of play.
+        # Only fires when the toggle is on (default off — see
+        # View → Auto-claim).
+        if (hasattr(self, "auto_claim_action")
+                and self.auto_claim_action.isChecked()
+                and self._maybe_offer_claim(winner)):
+            return  # claim path handled inline
+
         # Single-player.
         if human_side_won or self.autoplay_btn.isChecked():
             self.next_card_btn.setEnabled(False)
@@ -6141,6 +6512,48 @@ For more information, see the README file."""
             self.status_label.setText(
                 f"Trick won by {winner.to_char()}. Press Next card (or Space)."
             )
+
+    def _maybe_offer_claim(self, winner: Seat) -> bool:
+        """Ask DDS whether the side that just won the trick can take
+        every remaining trick; if so, pop a confirmation dialog and
+        (on accept) fast-forward the rest of the deal.
+
+        Returns True iff a claim was offered AND accepted (caller
+        should skip its own next-card scheduling)."""
+        try:
+            claim = self.engine.can_claim_remaining(
+                self.controller.board)
+        except Exception:
+            return False
+        if claim is None:
+            return False
+        # The leader of the next trick is `winner`. claim.claimer_side
+        # is whoever's on lead, so it always matches winner's side.
+        ns = "North-South" if claim.claimer_side == "NS" else "East-West"
+        reply = QMessageBox.question(
+            self, "Claim",
+            f"{ns} make the rest ({claim.tricks_to_claim} tricks).\n\n"
+            "Skip the remaining cardplay?",
+            QMessageBox.StandardButton.Ok
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Ok)
+        if reply != QMessageBox.StandardButton.Ok:
+            return False
+        # Apply the claim: bump trick counts and end the hand.
+        board = self.controller.board
+        board.declarer_tricks = claim.declarer_side_tricks
+        board.defense_tricks = claim.defense_side_tricks
+        # Mark the hand finished — the controller may want extra
+        # bookkeeping; use the same path the user takes for the
+        # final trick.
+        self.controller.current_phase = 'finished'
+        self.table_view.update_tricks(
+            board.declarer_tricks, board.defense_tricks)
+        self.status_label.setText(
+            f"Claim accepted — {ns} took the rest.")
+        # Show the result dialog after a moment.
+        QTimer.singleShot(400, self._show_result)
+        return True
 
     def _winner_is_local_partnership(self, winner: Seat) -> bool:
         """Return True if the just-won trick was taken by a seat the
@@ -7279,6 +7692,161 @@ For more information, see the README file."""
         QTimer.singleShot(300, self._advance_game)
 
     @pyqtSlot(object)
+    def _update_inferences_panel(self, constraints_dict):
+        """Push per-seat constraints into the E/W SeatInferenceBox
+        widgets that live in the TableView. `constraints_dict` is
+        {Seat: SeatConstraints} from
+        backend.auction_inference.infer_constraints, or None to
+        clear everything.
+
+        Only E/W get boxes: N is dummy (visible to all once revealed)
+        and S is the player's hand (always visible). Both boxes are
+        suppressed when their seat is in fact visible (e.g. E is dummy).
+        """
+        from backend.models import Seat as _Seat
+        wants_visible = (hasattr(self, "teaching_panel_action")
+                         and self.teaching_panel_action.isChecked())
+        is_play = (self.controller is not None
+                   and getattr(self.controller, "current_phase", None)
+                   == "play")
+        if not constraints_dict or not (is_play and wants_visible):
+            for box in self.inference_boxes.values():
+                box.update_from(None)
+                box.setVisible(False)
+            return
+        board = self.controller.board if self.controller else None
+        # Which seats have publicly-known hands? Dummy is known to
+        # everybody once revealed.
+        known_seats = set()
+        if (board is not None
+                and getattr(board, "contract", None) is not None
+                and getattr(self.table_view, "dummy_revealed", False)):
+            declarer = board.contract.declarer
+            known_seats.add(declarer.partner())
+        # Collect cards played by each seat — used to suppress
+        # already-played honors in the per-seat display. List
+        # (not set) because Card isn't hashable.
+        played_by_seat = {s: [] for s in _Seat}
+        if board is not None:
+            for trick in (getattr(board, "tricks", None) or []):
+                if not trick.cards:
+                    continue
+                s = trick.leader
+                for c in trick.cards:
+                    played_by_seat[s].append(c)
+                    s = _Seat((s + 1) % 4)
+            cur = getattr(board, "current_trick", None)
+            if cur is not None and cur.cards:
+                s = cur.leader
+                for c in cur.cards:
+                    played_by_seat[s].append(c)
+                    s = _Seat((s + 1) % 4)
+        for seat, box in self.inference_boxes.items():
+            # If this seat's hand is publicly visible (it's the dummy
+            # after reveal), there's nothing to teach — hide the box.
+            if seat in known_seats:
+                box.setVisible(False)
+                continue
+            box.update_from(constraints_dict.get(seat), None,
+                            played_cards=played_by_seat[seat])
+            box.setVisible(True)
+
+    def _on_show_bidding_flowchart(self):
+        """View → Show bidding flowchart. Pops a modal with a
+        plantuml-rendered decision tree for the current auction
+        position, with the path our hand took highlighted."""
+        board = self.controller.board if self.controller else None
+        if board is None:
+            QMessageBox.information(
+                self, "No board",
+                "No board loaded — deal first.")
+            return
+        # Use the local seat (the human's seat) for the flowchart.
+        from backend.models import Seat as _Seat
+        seat = (self.table_view._local_seat
+                if hasattr(self.table_view, "_local_seat")
+                else _Seat.SOUTH)
+        if board.hands.get(seat) is None or not board.hands[seat].cards:
+            QMessageBox.information(
+                self, "No hand",
+                f"Seat {seat.name} doesn't have a hand yet.")
+            return
+        system = None
+        try:
+            from backend.bidding_systems import get_system
+            system = get_system(self.engine.current_system)
+        except Exception:
+            pass
+        dlg = BiddingFlowchartDialog(self, board, seat, system)
+        dlg.exec()
+
+    def _on_show_auction_interpretation(self):
+        """View → Interpret current auction. Pops a modal listing
+        each bid in the current auction with a natural-language
+        explanation of what it shows. Powered by the same
+        auction_inference machinery the teaching panel uses."""
+        board = self.controller.board if self.controller else None
+        if board is None or not getattr(board, "auction", None):
+            QMessageBox.information(
+                self, "No auction",
+                "There's no auction yet on the current board.")
+            return
+        system = None
+        try:
+            from backend.bidding_systems import get_system
+            system = get_system(self.engine.current_system)
+        except Exception:
+            pass
+        dlg = AuctionInterpretationDialog(self, board, system)
+        dlg.exec()
+
+    def _on_toggle_teaching_panel(self, checked: bool):
+        """View → Show auction inferences toggle handler.
+
+        The E/W inference boxes live in the TableView columns; we
+        drive their visibility through _update_inferences_panel which
+        checks the menu action's state and the phase.
+        """
+        if not checked:
+            for box in self.inference_boxes.values():
+                box.setVisible(False)
+            return
+        if (self.controller is not None
+                and getattr(self.controller, "current_phase", None)
+                == "play"):
+            self._refresh_inferences_from_board()
+        else:
+            for box in self.inference_boxes.values():
+                box.setVisible(False)
+
+    def _refresh_inferences_from_board(self):
+        """Compute auction inferences from the current board, then
+        tighten them with any play info, and push them to the 4
+        per-seat boxes. Cheap (no DDS) so we can call this on
+        every card played to keep the boxes sharpening live."""
+        try:
+            from backend import auction_inference
+            board = self.controller.board if self.controller else None
+            if board is None or not getattr(board, "auction", None):
+                self._update_inferences_panel(None)
+                return
+            system = None
+            try:
+                from backend.bidding_systems import get_system
+                system = get_system(self.engine.current_system)
+            except Exception:
+                pass
+            constraints = auction_inference.infer_constraints(
+                board, system)
+            # Tighten with played-cards info (show-outs, played-HCP
+            # floor, played-length floor) so the boxes sharpen
+            # during cardplay just like wbridge5's do.
+            constraints = auction_inference.tighten_from_play(
+                board, constraints)
+            self._update_inferences_panel(constraints)
+        except Exception:
+            self._update_inferences_panel(None)
+
     def _on_engine_card(self, response):
         """Handle card from engine"""
         # Get the seat that was requested (stored in engine_worker)
@@ -7286,6 +7854,13 @@ For more information, see the README file."""
 
         if self.controller.current_phase != 'play':
             return
+
+        # Keep the per-seat teaching boxes in sync. Cheap to
+        # recompute from board — no DDS calls — and handles edge
+        # cases like replay / new-deal mid-trick.
+        if (hasattr(self, "teaching_panel_action")
+                and self.teaching_panel_action.isChecked()):
+            self._refresh_inferences_from_board()
 
         # Verify the response is for the current seat. Seat is an IntEnum
         # (NORTH==0); use an explicit None check so a NORTH-requested card

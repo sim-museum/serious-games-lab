@@ -72,10 +72,12 @@ class CardWidget(QWidget):
     @classmethod
     def _get_images_dir(cls) -> str:
         if cls._images_dir is None:
-            # Find the card images relative to this file
+            # The deck images live alongside the UI module — moved
+            # here from the deleted FRI/benBridge/ben/src/tmcgui/
+            # tree during the rename to bridgeIQ.
             here = os.path.dirname(os.path.abspath(__file__))
-            candidate = os.path.join(here, '..', '..', 'ben', 'src', 'tmcgui',
-                                     'images', 'deck', 'width 100')
+            candidate = os.path.join(here, 'assets', 'deck',
+                                     'width 100')
             cls._images_dir = os.path.normpath(candidate)
         return cls._images_dir
 
@@ -997,6 +999,137 @@ class InfoPanel(QFrame):
         """)
 
 
+class SeatInferenceBox(QFrame):
+    """Wbridge5-style per-seat inference box.
+
+    Shows the seat name, HCP range, and per-suit length range
+    (e.g. ♠ 0..2, ♥ 0..7 …). Tooltips on hover display the
+    natural-language reasoning that produced each constraint.
+
+    Wired from MainWindow with a backend.auction_inference
+    SeatConstraints object (or None to clear).
+    """
+
+    _SUIT_GLYPH = {0: "♠", 1: "♥", 2: "♦", 3: "♣"}
+    _SUIT_COLOR = {0: "#101010", 1: "#c01010",
+                   2: "#c01010", 3: "#101010"}
+
+    def __init__(self, seat, label_text: str, parent=None):
+        super().__init__(parent)
+        self.seat = seat
+        self.setStyleSheet("""
+            QFrame {
+                background-color: #f4f4ee;
+                border: 1px solid #8a8a82;
+                border-radius: 3px;
+            }
+            QLabel { color: #111; }
+        """)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(6, 4, 6, 4)
+        layout.setSpacing(1)
+        # Header
+        self.name_label = QLabel(label_text)
+        self.name_label.setFont(QFont("Sans Serif", 10,
+                                      QFont.Weight.Bold))
+        layout.addWidget(self.name_label)
+        # HCP line
+        self.hcp_label = QLabel("Points: —")
+        self.hcp_label.setFont(QFont("Sans Serif", 9))
+        layout.addWidget(self.hcp_label)
+        # 4 suit lines
+        self.suit_labels = {}
+        for suit_val in (0, 1, 2, 3):
+            lbl = QLabel(f"{self._SUIT_GLYPH[suit_val]} —")
+            lbl.setFont(QFont("Sans Serif", 9))
+            lbl.setStyleSheet(
+                f"QLabel {{ color: {self._SUIT_COLOR[suit_val]}; }}")
+            self.suit_labels[suit_val] = lbl
+            layout.addWidget(lbl)
+        self.setMinimumWidth(110)
+        self.setMaximumWidth(140)
+
+    _RANK_CHAR = "AKQJT98765432"  # rank.value → char (A=0)
+
+    def update_from(self, constraints, known_hand=None,
+                    played_cards=None):
+        """Populate from a SeatConstraints (auction-inferred ranges)
+        and optionally a known hand (for own / dummy displays).
+
+        If `known_hand` is provided, the box shows exact HCP and
+        suit lengths, plus the honors (A/K/Q/J) STILL in the hand
+        (wbridge5-style: '♠ 4..4 AKJ').
+
+        `played_cards`, when provided, is the set of cards already
+        played by this seat — used to omit honors that have been
+        played already.
+
+        constraints == None clears everything to "—".
+        """
+        # Card isn't hashable as a dataclass; key by (suit_val, rank_val).
+        played = {(c.suit.value, c.rank.value)
+                  for c in (played_cards or [])}
+        if known_hand is not None:
+            # Exact data — own hand or dummy.
+            hcp = 0
+            length = {0: 0, 1: 0, 2: 0, 3: 0}
+            honors = {0: [], 1: [], 2: [], 3: []}
+            for c in known_hand.cards:
+                if (c.suit.value, c.rank.value) in played:
+                    continue  # already gone
+                length[c.suit.value] += 1
+                if c.rank.value <= 3:
+                    hcp += (4, 3, 2, 1)[c.rank.value]
+                    honors[c.suit.value].append(c.rank.value)
+            self.hcp_label.setText(f"Points: {hcp}")
+            for suit_val in (0, 1, 2, 3):
+                glyph = self._SUIT_GLYPH[suit_val]
+                # Sort honors high to low (rank.value 0 = ace).
+                honor_chars = "".join(
+                    self._RANK_CHAR[r]
+                    for r in sorted(honors[suit_val]))
+                if honor_chars:
+                    self.suit_labels[suit_val].setText(
+                        f"{glyph} {length[suit_val]}  {honor_chars}")
+                else:
+                    self.suit_labels[suit_val].setText(
+                        f"{glyph} {length[suit_val]}")
+            self.setToolTip("Known exact hand (honors after length)")
+            return
+        if constraints is None:
+            self.hcp_label.setText("Points: —")
+            for suit_val in (0, 1, 2, 3):
+                self.suit_labels[suit_val].setText(
+                    f"{self._SUIT_GLYPH[suit_val]} —")
+            self.setToolTip("")
+            return
+        # Auction-inferred ranges.
+        lo, hi = constraints.hcp_min, constraints.hcp_max
+        if (lo, hi) == (0, 37):
+            self.hcp_label.setText("Points: —")
+        elif lo == hi:
+            self.hcp_label.setText(f"Points: {lo}")
+        else:
+            self.hcp_label.setText(f"Points: {lo}..{hi}")
+        for suit_val in (0, 1, 2, 3):
+            lo_s, hi_s = constraints.suit_len.get(suit_val, (0, 13))
+            if (lo_s, hi_s) == (0, 13):
+                txt = f"{self._SUIT_GLYPH[suit_val]} —"
+            elif lo_s == hi_s:
+                txt = f"{self._SUIT_GLYPH[suit_val]} {lo_s}"
+            else:
+                txt = f"{self._SUIT_GLYPH[suit_val]} {lo_s}..{hi_s}"
+            self.suit_labels[suit_val].setText(txt)
+        # Tooltip lists the reasoning chain — one bullet per
+        # inference rule that fired for this seat.
+        if constraints.reasons:
+            tooltip = "Why:\n" + "\n".join(
+                f"• {r}" for r in constraints.reasons)
+            self.setToolTip(tooltip)
+        else:
+            self.setToolTip("")
+
+
 class TableView(QWidget):
     """Main table view for 1920x1080"""
 
@@ -1137,6 +1270,17 @@ class TableView(QWidget):
                             alignment=Qt.AlignmentFlag.AlignVCenter)
         west_vbox.addLayout(west_hbox)
         self.hand_widgets[Seat.WEST].setVisible(False)  # Hidden by default
+        # Per-seat inference box, placed UNDER the W label area —
+        # shown during cardplay when W is opponent (hand hidden).
+        # Mirrors wbridge5's per-seat info box positioning.
+        self.west_inference_box = SeatInferenceBox(Seat.WEST, "West")
+        self.west_inference_box.setVisible(False)
+        west_inf_row = QHBoxLayout()
+        west_inf_row.setContentsMargins(0, 0, 0, 0)
+        west_inf_row.addStretch()
+        west_inf_row.addWidget(self.west_inference_box)
+        west_inf_row.addStretch()
+        west_vbox.addLayout(west_inf_row)
         west_vbox.addStretch()
         middle_layout.addWidget(self.west_column, stretch=1)
 
@@ -1147,14 +1291,18 @@ class TableView(QWidget):
         trick_container_widget = QWidget()
         trick_container = QVBoxLayout(trick_container_widget)
         trick_container.setContentsMargins(0, 0, 0, 0)
-        trick_container.addStretch()
+        # Asymmetric stretches so the felt floats UP within
+        # middle_layout — leaves a clear gap below the felt before
+        # the S label/cards, keeping the bottom of the green table
+        # from being visually crowded by the S fan.
+        trick_container.addStretch(1)
         trick_h_wrapper = QHBoxLayout()
         trick_h_wrapper.addStretch()
         self.trick_area = TrickAreaWidget()
         trick_h_wrapper.addWidget(self.trick_area)
         trick_h_wrapper.addStretch()
         trick_container.addLayout(trick_h_wrapper)
-        trick_container.addStretch()
+        trick_container.addStretch(3)
         middle_layout.addWidget(trick_container_widget, stretch=0)
 
         # East column
@@ -1180,6 +1328,15 @@ class TableView(QWidget):
         east_hbox.addStretch()
         east_vbox.addLayout(east_hbox)
         self.hand_widgets[Seat.EAST].setVisible(False)  # Hidden by default
+        # Per-seat inference box, mirror of the W placement.
+        self.east_inference_box = SeatInferenceBox(Seat.EAST, "East")
+        self.east_inference_box.setVisible(False)
+        east_inf_row = QHBoxLayout()
+        east_inf_row.setContentsMargins(0, 0, 0, 0)
+        east_inf_row.addStretch()
+        east_inf_row.addWidget(self.east_inference_box)
+        east_inf_row.addStretch()
+        east_vbox.addLayout(east_inf_row)
         east_vbox.addStretch()
         middle_layout.addWidget(self.east_column, stretch=1)
 
