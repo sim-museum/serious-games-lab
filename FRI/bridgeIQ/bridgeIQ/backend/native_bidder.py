@@ -2304,6 +2304,25 @@ def _respond_to_1nt(e: HandEval, system) -> Bid:
     if hcp >= t["invite_lo"] and (has_4S or has_4H):
         return bid(2, Suit.CLUBS, alert=True, why="Stayman, asks for 4cM")
 
+    # Invitational with 6+ minor and NO 4-card major: prefer 3m
+    # (signoff or invite — partnership agreement; here treated as
+    # signoff style) over 2NT. 2NT promises balanced; an unbalanced
+    # 6-3-2-2 or 6-3-3-1 hand misrepresents shape and misses the
+    # better partscore in the long minor.
+    # Base #2 seed 80719 (teaching deck idx=114): N had 8 HCP +
+    # 6♦ + no 4cM; biq bid 2NT, opps pushed to 3C-E (-110), Q-Plus
+    # bid 3D direct for +150 = -11 IMP per cell × multiple cells.
+    if (t["invite_lo"] <= hcp <= t["invite_hi"]
+            and not (has_4S or has_4H)
+            and not has_5S and not has_5H):
+        for m in (Suit.DIAMONDS, Suit.CLUBS):
+            if e.suit_lengths.get(m, 0) >= 6:
+                return bid(3, m,
+                           why=f"3{m.to_char()}: 6+ {m.to_char()} "
+                               f"with invitational values ({hcp} HCP) "
+                               f"after partner's 1NT — better than 2NT "
+                               f"(unbalanced shape)")
+
     # No major path → NT raises.
     if t["invite_lo"] <= hcp <= t["invite_hi"]:
         # Bottom-of-range invite with totally flat shape (no 5-card
