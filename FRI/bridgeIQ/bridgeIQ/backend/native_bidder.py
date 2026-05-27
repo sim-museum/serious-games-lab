@@ -3411,6 +3411,66 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
         if already_doubled:
             return passb(why="Partner couldn't act after my X — "
                              "don't escalate")
+
+        # Precision 1C strong opener facing takeout double + partner-
+        # pass — make a descriptive rebid showing the strong hand.
+        # Without this, biq passes 1CX and gets clobbered (Precision
+        # 1C with 17 HCP balanced playing 1CX-S vul = -200; deal 100
+        # base #4 seed 80719 was the canonical case).
+        #
+        # Standard Precision 1C-X-P-P rebids (mirroring 1C-1D-rebid):
+        #   1NT  = 16-19 balanced (cheapest descriptive call)
+        #   2NT  = 20-21 balanced
+        #   3NT  = 22+ balanced
+        #   1H/1S = natural 5+ in major, 16+ HCP unbalanced
+        #   2D/2C = natural 5+ in minor (over 1C: 2C = 6+ clubs)
+        is_precision_1c = (
+            getattr(system, "strong_open_call", "2C") == "1C"
+            and op is not None and op.level == 1
+            and op.suit == Suit.CLUBS)
+        opps_doubled = any(
+            b.is_double for b in (list(state.lho_bids)
+                                  + list(state.rho_bids)))
+        # Only on the FIRST rebid — re-firing after opps' subsequent
+        # bid would try to bid 1NT again (illegal at higher level)
+        # and get sanity-pass-substituted.
+        if (is_precision_1c and opps_doubled
+                and len(state.my_bids) == 1):
+            hcp = e.hcp
+            if e.is_balanced:
+                if 16 <= hcp <= 19:
+                    return bid(1, Suit.NOTRUMP,
+                               why=f"Precision 1C-(X)-P: 16-19 "
+                                   f"balanced ({hcp} HCP)")
+                if 20 <= hcp <= 21:
+                    return bid(2, Suit.NOTRUMP,
+                               why=f"Precision 1C-(X)-P: 20-21 "
+                                   f"balanced ({hcp} HCP)")
+                if hcp >= 22:
+                    return bid(3, Suit.NOTRUMP,
+                               why=f"Precision 1C-(X)-P: 22+ "
+                                   f"balanced ({hcp} HCP)")
+            # Unbalanced: bid the longest non-club suit (1C was
+            # artificial). 5+ major at 1-level, 5+ minor at 2-level,
+            # 6+ clubs at 2C.
+            for major in (Suit.SPADES, Suit.HEARTS):
+                if e.suit_lengths.get(major, 0) >= 5:
+                    return bid(1, major,
+                               why=f"Precision 1C-(X)-P: 5+ "
+                                   f"{major.to_char()} ({hcp} HCP)")
+            if e.suit_lengths.get(Suit.DIAMONDS, 0) >= 5:
+                return bid(2, Suit.DIAMONDS,
+                           why=f"Precision 1C-(X)-P: 5+ ♦ "
+                               f"({hcp} HCP)")
+            if e.suit_lengths.get(Suit.CLUBS, 0) >= 6:
+                return bid(2, Suit.CLUBS,
+                           why=f"Precision 1C-(X)-P: 6+ ♣ "
+                               f"({hcp} HCP)")
+            # Fallback: 1NT (treat as semi-balanced) to keep the
+            # auction alive — better than passing into 1CX.
+            return bid(1, Suit.NOTRUMP,
+                       why=f"Precision 1C-(X)-P: descriptive "
+                           f"rebid ({hcp} HCP)")
         # Look at BOTH rho and lho for the overcall — depending on
         # the auction position, the overcall can come from either
         # opponent. (Bridge: RHO is the player who bids just BEFORE
