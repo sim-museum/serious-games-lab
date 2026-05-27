@@ -1844,6 +1844,9 @@ def _respond_to_partner_opening(state, e, system):
     # 2C is natural clubs (11-15), 1D is the catch-all 11-15.
     if getattr(system, "strong_open_call", "2C") == "1C":
         if op.level == 1 and op.suit == Suit.CLUBS:
+            if rho_intervened:
+                return _respond_to_precision_1c_competitive(
+                    state, e, system)
             return _respond_to_precision_1c(state, e)
         if op.level == 2 and op.suit == Suit.CLUBS:
             return _respond_to_precision_2c(state, e)
@@ -1899,6 +1902,90 @@ def _respond_to_partner_opening(state, e, system):
 # ---------------------------------------------------------------------------
 # Precision: response to 1C (strong, 16+ HCP, artificial)
 # ---------------------------------------------------------------------------
+
+def _respond_to_precision_1c_competitive(state, e: HandEval, system) -> Bid:
+    """Precision 1C-(RHO acts)-? — responder after intervention.
+
+    The strong 1C is artificial (16+ HCP), so:
+      * we never "raise" 1C (it's not natural clubs)
+      * Pass = 0-7 (responder is broke; opener can still act with 16+)
+      * negative X = 8+ HCP, no clear suit/NT bid
+      * NT bids show stopper in opps' suit:
+          2NT = 8-11 balanced with stopper
+          3NT = 12+ balanced with stopper
+      * new-suit positives at the lowest legal level (5+ in suit, 8+ HCP,
+        game-forcing because partner already has 16+).
+    Illegal bids fall through to pass; the harness's legality filter
+    will convert any out-of-range NT to pass as a safe fallback.
+    """
+    hcp = e.hcp
+    if hcp <= 7:
+        return passb(why="Precision 1C-(intervention): 0-7 HCP, pass")
+
+    overcall = state.rho_bids[-1]
+    # Doubles / NT overcalls: route to the un-contested logic. After a
+    # takeout-X or NT call, the opps haven't bid a suit, so the response
+    # framework from the un-contested 1C still applies (with a redouble
+    # available — but biq's main paths handle that via the doubled-state
+    # dispatcher, not here).
+    if overcall.is_double or overcall.suit is None:
+        return _respond_to_precision_1c(state, e)
+
+    overcall_suit = overcall.suit
+    overcall_level = overcall.level
+
+    # Balanced + stopper in opps' suit → NT response. Opener's rebid
+    # logic is now intervention-aware, so 2NT (8-11) and 3NT (12+) both
+    # land in their textbook meanings without triggering phantom slams.
+    if e.is_balanced and _has_stopper(e, overcall_suit):
+        if hcp >= 12:
+            return bid(3, Suit.NOTRUMP, alert=True,
+                       why=f"Precision 1C-({overcall_level}"
+                           f"{overcall_suit.to_char()}): 12+ HCP "
+                           f"balanced with {overcall_suit.to_char()} "
+                           f"stopper, positive to game")
+        return bid(2, Suit.NOTRUMP, alert=True,
+                   why=f"Precision 1C-({overcall_level}"
+                       f"{overcall_suit.to_char()}): 8-11 HCP "
+                       f"balanced with {overcall_suit.to_char()} "
+                       f"stopper, positive (invite)")
+
+    # 5+ in an unbid suit at the cheapest legal level — positive,
+    # game-forcing (opener has 16+, combined values are ≥ game).
+    for new_suit in (Suit.HEARTS, Suit.SPADES,
+                     Suit.DIAMONDS, Suit.CLUBS):
+        if new_suit == overcall_suit:
+            continue
+        if e.suit_lengths.get(new_suit, 0) < 5:
+            continue
+        # Cheapest legal level above the current contract.
+        if (state.last_suit_bid is None
+                or _BID_RANK[new_suit] > _BID_RANK[state.last_suit_bid]):
+            level = state.last_level
+        else:
+            level = state.last_level + 1
+        if 1 <= level <= 4:
+            return bid(level, new_suit, alert=True,
+                       why=f"Precision 1C-({overcall_level}"
+                           f"{overcall_suit.to_char()}): 8+ HCP, "
+                           f"5+ {new_suit.to_char()}, positive "
+                           f"(game-forcing)")
+
+    # Negative double — 8+ HCP, no clean suit/NT bid. Respects the
+    # system's Sputnik cap.
+    neg_max = _negative_double_max_level(system)
+    if overcall_level <= neg_max:
+        return double(
+            why=f"Precision 1C-({overcall_level}"
+                f"{overcall_suit.to_char()}): negative X, 8+ HCP, "
+                f"no clear positive bid (Sputnik ≤{neg_max})")
+
+    # No clean call available — pass and let opener bid again.
+    return passb(
+        why=f"Precision 1C-({overcall_level}"
+            f"{overcall_suit.to_char()}): 8+ HCP but no legal "
+            f"positive call below Sputnik cap")
+
 
 def _respond_to_precision_1c(state, e: HandEval) -> Bid:
     """Standard simple Precision response to 1C:
@@ -3093,27 +3180,59 @@ def _precision_1c_rebid(state, e: HandEval, p_last: Bid, system=None) -> Bid:
                    why=f"Precision 1C-2{minor.to_char()}: "
                        f"no major, no 4-card fit (NT description)")
 
-    # Positive 2NT (14-16 balanced) — ONLY the DIRECT 1C-2NT
-    # response, not a 2NT later in the auction. Combined ~22 + 14
-    # = 36 floor → slam values; with our 18+ a small slam in NT is
-    # essentially sure. Bid 6NT with extras, otherwise 3NT.
+    # Was partner's response made AFTER an opp's intervention? If so,
+    # the meaning of 2NT / 3NT shifts: in competitive auctions partner
+    # bids 2NT = 8-11 balanced + stopper, 3NT = 12+ balanced + stopper.
+    # Without this check, opener reads competitive 2NT as the
+    # uncontested 14-16 HCP meaning and rockets into phantom slams.
+    intervention_before_response = False
+    if state.partner_bids and state.opener_seat is not None:
+        partner_seat = state.seat.partner()
+        partner_first_idx = next(
+            (i for i, (s, b) in enumerate(state.bids)
+             if s == partner_seat and not b.is_pass), None)
+        if partner_first_idx is not None:
+            intervention_before_response = any(
+                not b.is_pass and s != state.opener_seat and s != partner_seat
+                for s, b in state.bids[:partner_first_idx])
+
+    # Positive 2NT — DIRECT 1C-2NT only.
     if (p_last.level == 2 and p_last.suit == Suit.NOTRUMP
             and len(state.partner_bids) == 1):
+        if intervention_before_response:
+            # Competitive 2NT = 8-11 balanced with stopper. Combined
+            # 16-22 + 8-11 = 24-33. Raise to 3NT with extras; pass
+            # 2NT only with a flat minimum (rare since opener has 16+).
+            if hcp >= 17:
+                return bid(3, Suit.NOTRUMP,
+                           why="Precision 1C-(intervention)-2NT: "
+                               "raise competitive 8-11 to 3NT game "
+                               "(opener has extras)")
+            return passb(
+                why="Precision 1C-(intervention)-2NT: respect "
+                    "partner's 8-11 with min opener")
         if hcp >= 18:
             return bid(6, Suit.NOTRUMP,
                        why="Precision 1C-2NT: 22+14 = slam in NT")
         return bid(3, Suit.NOTRUMP,
                    why="Precision 1C-2NT: 22+14 = 3NT game")
 
-    # Positive 3NT (17+ balanced) — DIRECT 1C-3NT only. Mainstream
-    # Precision treats 1C-3NT as "17+ balanced, no slam interest";
-    # opener accepts the signoff unless they hold rare 22+ extras.
-    # The previous unconditional 6NT push fired when partner's 3NT
-    # was actually a SIGNOFF after our 2NT rebid (1C-1H-2NT-3NT),
-    # producing freelance 6NT contracts on hands like deal #1 (18
-    # opener + 10 responder = 28, light-years from slam).
+    # Positive 3NT — DIRECT 1C-3NT only. Mainstream Precision treats
+    # this as "17+ balanced, no slam interest"; opener accepts the
+    # signoff unless they hold rare 22+ extras. After intervention,
+    # partner's 3NT shows 12+ balanced with stopper — likely already
+    # at the right contract; opener passes.
+    # Earlier bug: unconditional 6NT push fired when partner's 3NT was
+    # actually a SIGNOFF after our 2NT rebid (1C-1H-2NT-3NT), producing
+    # freelance 6NT contracts on hands like deal #1 (18 opener + 10
+    # responder = 28, light-years from slam).
     if (p_last.level == 3 and p_last.suit == Suit.NOTRUMP
             and len(state.partner_bids) == 1):
+        if intervention_before_response:
+            return passb(
+                why="Precision 1C-(intervention)-3NT: partner's "
+                    "competitive 12+ balanced — game reached, no "
+                    "slam push without extras")
         if hcp >= 22:
             return bid(6, Suit.NOTRUMP,
                        why="Precision 1C-3NT: 22+17 = slam values")
