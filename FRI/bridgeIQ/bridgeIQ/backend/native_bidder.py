@@ -4675,6 +4675,22 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
             if hcp >= 10:
                 return bid(4, major,
                            why="Game raise after partner's support")
+        # 6+ trump support + shape (void or singleton): the long-trump
+        # / freak distribution lets responder push to game with fewer
+        # HCP than the standard 10+. Deal 93 seed 39477: S held
+        # ♠KJT742 ♥4 ♦void ♣KQT942 (9 HCP, 6-1-0-6) after 1D-1S-2S;
+        # biq passed (going to wrapper-3S), Q-Plus reached 4S. The
+        # shape is worth ~5 dist points on top of HCP → playing
+        # strength of a 14-point hand; combined 24+ with opener →
+        # easy 4M with 8+-card fit.
+        if (opener_rebid.level == 2
+                and major in (Suit.HEARTS, Suit.SPADES)
+                and e.suit_lengths.get(major, 0) >= 6
+                and (e.voids >= 1 or e.singletons >= 1)
+                and hcp >= 8):
+            return bid(4, major,
+                       why=f"4{major.to_char()}: 6+ trumps + shape "
+                           f"({hcp} HCP, void/singleton compensates)")
         if opener_rebid.level == 3 and major in (Suit.HEARTS, Suit.SPADES):
             # Opener JUMP-RAISED my major — textbook shows 16-19
             # HCP and 4-card trump support. Combined: HCP + 16+.
@@ -5724,6 +5740,39 @@ def _overcaller_rebid(state, e: HandEval, system) -> Bid:
 
     # Partner raised my suit.
     if p_last.suit == my_suit:
+        # Partner's 3-level raise = limit raise (10-12 HCP, 3+ support).
+        # Accept to game (4M) when our hand has playing strength beyond
+        # raw HCP. The bare HCP-only test (hcp >= 15 + length >= 6)
+        # missed deal 38 (seed 39477): N overcalled 1♥ with 10 HCP +
+        # 0-5-5-3 (void ♠ + 5-5 in ♥/♦), partner limit-raised to 3♥,
+        # biq passed → 3H-N for -50; Q-Plus accepted to 4♥-W for
+        # +700 NS, costing -13 IMP. Distributional points compensate
+        # for low HCP when we have 5-5 shape + a void.
+        if (my_suit in (Suit.HEARTS, Suit.SPADES)
+                and p_last.level == 3
+                and p_last.level < 5):
+            has_void = e.voids >= 1
+            has_shortness = e.singletons >= 1 or has_void
+            has_extra_trump = my_length >= 6
+            has_long_side = any(
+                e.suit_lengths.get(s, 0) >= 5
+                for s in (Suit.CLUBS, Suit.DIAMONDS,
+                          Suit.HEARTS, Suit.SPADES)
+                if s != my_suit)
+            if hcp >= 14:
+                return bid(4, my_suit,
+                           why=f"Accept limit raise to 4{my_suit.to_char()} "
+                               f"(14+ HCP)")
+            if hcp >= 13 and (has_extra_trump or has_long_side
+                              or has_shortness):
+                return bid(4, my_suit,
+                           why=f"Accept limit raise to 4{my_suit.to_char()} "
+                               f"(13+ HCP + distributional extras)")
+            if (hcp >= 10 and my_length >= 5 and has_long_side
+                    and has_void):
+                return bid(4, my_suit,
+                           why=f"Accept limit raise to 4{my_suit.to_char()} "
+                               f"(5-5 with void = playing strength)")
         # 15+ HCP and 6+ of the suit → push for game; else pass.
         if hcp >= 15 and my_length >= 6 \
                 and p_last.level < 5:
