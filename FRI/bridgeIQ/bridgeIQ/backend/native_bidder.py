@@ -5598,8 +5598,33 @@ def _overcall(state, e: HandEval, system) -> Bid:
         # level ≥ 3 is reserved for jump/preempt-style overcalls below.
 
     # Takeout double — shortness in opener's suit + tolerance for unbid suits.
+    # Standard (12-16 HCP): require 3+ in EACH unbid suit so partner is safe
+    #   bidding any of them.
+    # Strong (17+ HCP): relax the all-3+ rule to allow ONE unbid suit with 2
+    #   cards. Hands like 5-4-2-2 short in opener's suit with 17+ HCP have no
+    #   other call available — too strong for a direct 2-level overcall
+    #   (capped at 16 above), wrong shape for a balanced 1NT/19+ overcall, no
+    #   stopper in their suit. The strong hand survives partner advancing
+    #   into our 2-card suit because we'll rebid our own 5-card suit / NT
+    #   showing the extras. Deal 66 seed 39477 was the canonical miss:
+    #   S held S♠Tx H♠AKQ96 D♠AQJ6 C♠Jx (17 HCP, 5-4-2-2) and biq passed
+    #   because all four paths failed — Q-Plus made the takeout-X and
+    #   collected +1100 from a doomed 3HX-E later in the auction.
     if hcp >= 12 and e.suit_lengths[op.suit] <= 2:
-        if all(e.suit_lengths[s] >= 3 for s in unbid):
+        unbid_lengths = [e.suit_lengths[s] for s in unbid]
+        # Strong takeout (17+ HCP): relax the 3-card unbid rule to
+        # allow ONE 2-card unbid suit. Only on our FIRST action —
+        # the strong X is descriptive enough that re-firing it on
+        # opps' later bids would over-commit. The existing 12-16
+        # takeout below CAN re-fire (catches penalty doubles of
+        # opps' raise on the second round).
+        if hcp >= 17 and not state.my_bids:
+            n_2card = sum(1 for l in unbid_lengths if l == 2)
+            if n_2card <= 1 and min(unbid_lengths) >= 2:
+                return double(
+                    why=f"Strong takeout X ({hcp} HCP, "
+                        f"plan strong rebid showing extras)")
+        if all(l >= 3 for l in unbid_lengths):
             return double(why="Takeout double")
 
     # Weak jump overcall: 6-card suit with a respectable holding,
