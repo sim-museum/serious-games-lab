@@ -3948,6 +3948,26 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
             if e.hcp <= 14:
                 return passb()
             if 15 <= e.hcp <= 17:
+                # Minor-suit opener with balanced shape: prefer 2NT
+                # (descriptive 15-17 balanced) over 3-of-minor (which
+                # commits to a minor-suit partial that often goes
+                # down). 3D / 3C asking for game in a minor needs
+                # 27+ combined HCP; partner's 2-of-minor simple raise
+                # caps at 9 HCP → combined 24-26, not enough for 5m
+                # and not enough for 3NT without help. 2NT lets the
+                # auction settle at the right level.
+                # Deal 86 seed 80719 (curated base #4): S opened 1D,
+                # W overcalled 1S, N raised competitively to 2D, biq
+                # bid 3D ("game try") → 3D-S down 1 vul (NS-100).
+                # Q-Plus passed → opps played 2H-W down 1 vul (NS+100).
+                # Switching to 2NT gives a more textbook contract.
+                if (op_suit in (Suit.CLUBS, Suit.DIAMONDS)
+                        and e.is_balanced):
+                    return bid(2, Suit.NOTRUMP,
+                               why=f"2NT: 15-17 balanced after "
+                                   f"partner's simple raise of "
+                                   f"{op_suit.to_char()} "
+                                   f"(better than 3{op_suit.to_char()})")
                 # Trial bid (`G-trial-bid.long-suit`): instead of a
                 # generic 3M game try, bid 3 of a side suit where we
                 # need help (4+ cards, ≤ 1 honor). Partner accepts
