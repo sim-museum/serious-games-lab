@@ -3428,49 +3428,87 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
             getattr(system, "strong_open_call", "2C") == "1C"
             and op is not None and op.level == 1
             and op.suit == Suit.CLUBS)
-        opps_doubled = any(
-            b.is_double for b in (list(state.lho_bids)
-                                  + list(state.rho_bids)))
+        opps_acted = any(
+            not b.is_pass for b in (list(state.lho_bids)
+                                    + list(state.rho_bids)))
+        # Opps' last-bid suit (for stopper check + cheapest-NT calc).
+        opps_suit = None
+        for b in reversed(list(state.lho_bids)
+                          + list(state.rho_bids)):
+            if (b.suit is not None and b.suit != Suit.NOTRUMP
+                    and not b.is_pass):
+                opps_suit = b.suit
+                break
         # Only on the FIRST rebid — re-firing after opps' subsequent
         # bid would try to bid 1NT again (illegal at higher level)
         # and get sanity-pass-substituted.
-        if (is_precision_1c and opps_doubled
+        if (is_precision_1c and opps_acted
                 and len(state.my_bids) == 1):
             hcp = e.hcp
+            # Cheapest legal NT level given the auction so far.
+            last_lvl = state.last_level or 1
+            last_suit = state.last_suit_bid
+            if (last_suit is None
+                    or _BID_RANK[Suit.NOTRUMP] > _BID_RANK[last_suit]):
+                nt_lvl = last_lvl
+            else:
+                nt_lvl = last_lvl + 1
+            # Balanced rebid via NT.
             if e.is_balanced:
-                if 16 <= hcp <= 19:
-                    return bid(1, Suit.NOTRUMP,
-                               why=f"Precision 1C-(X)-P: 16-19 "
-                                   f"balanced ({hcp} HCP)")
-                if 20 <= hcp <= 21:
-                    return bid(2, Suit.NOTRUMP,
-                               why=f"Precision 1C-(X)-P: 20-21 "
-                                   f"balanced ({hcp} HCP)")
-                if hcp >= 22:
-                    return bid(3, Suit.NOTRUMP,
-                               why=f"Precision 1C-(X)-P: 22+ "
-                                   f"balanced ({hcp} HCP)")
-            # Unbalanced: bid the longest non-club suit (1C was
-            # artificial). 5+ major at 1-level, 5+ minor at 2-level,
-            # 6+ clubs at 2C.
+                # Stopper check: when opps showed a suit, need to
+                # cover it for NT contracts. No suit shown (X only) →
+                # no specific stopper required (general balanced
+                # description).
+                has_stopper = (opps_suit is None
+                               or _has_stopper(e, opps_suit))
+                if has_stopper:
+                    if 16 <= hcp <= 19 and nt_lvl <= 2:
+                        return bid(nt_lvl, Suit.NOTRUMP,
+                                   why=f"Precision 1C-(opps)-P: "
+                                       f"16-19 balanced, "
+                                       f"{opps_suit.to_char() if opps_suit else 'no'} "
+                                       f"stopper")
+                    if 20 <= hcp <= 21 and nt_lvl <= 3:
+                        return bid(max(nt_lvl, 2), Suit.NOTRUMP,
+                                   why=f"Precision 1C-(opps)-P: "
+                                       f"20-21 balanced")
+                    if hcp >= 22 and nt_lvl <= 3:
+                        return bid(3, Suit.NOTRUMP,
+                                   why=f"Precision 1C-(opps)-P: "
+                                       f"22+ balanced")
+            # 5+ major: bid at cheapest legal level.
             for major in (Suit.SPADES, Suit.HEARTS):
                 if e.suit_lengths.get(major, 0) >= 5:
-                    return bid(1, major,
-                               why=f"Precision 1C-(X)-P: 5+ "
-                                   f"{major.to_char()} ({hcp} HCP)")
+                    if (last_suit is None
+                            or _BID_RANK[major] > _BID_RANK[last_suit]):
+                        lvl = last_lvl
+                    else:
+                        lvl = last_lvl + 1
+                    if 1 <= lvl <= 4:
+                        return bid(lvl, major,
+                                   why=f"Precision 1C-(opps)-P: 5+ "
+                                       f"{major.to_char()} ({hcp} HCP)")
+            # 5+ diamonds.
             if e.suit_lengths.get(Suit.DIAMONDS, 0) >= 5:
-                return bid(2, Suit.DIAMONDS,
-                           why=f"Precision 1C-(X)-P: 5+ ♦ "
-                               f"({hcp} HCP)")
-            if e.suit_lengths.get(Suit.CLUBS, 0) >= 6:
-                return bid(2, Suit.CLUBS,
-                           why=f"Precision 1C-(X)-P: 6+ ♣ "
-                               f"({hcp} HCP)")
-            # Fallback: 1NT (treat as semi-balanced) to keep the
-            # auction alive — better than passing into 1CX.
-            return bid(1, Suit.NOTRUMP,
-                       why=f"Precision 1C-(X)-P: descriptive "
-                           f"rebid ({hcp} HCP)")
+                if (last_suit is None
+                        or _BID_RANK[Suit.DIAMONDS] > _BID_RANK[last_suit]):
+                    lvl = last_lvl
+                else:
+                    lvl = last_lvl + 1
+                if 2 <= lvl <= 4:
+                    return bid(lvl, Suit.DIAMONDS,
+                               why=f"Precision 1C-(opps)-P: 5+ ♦ "
+                                   f"({hcp} HCP)")
+            # Takeout double when opps showed a suit and we're short:
+            # 16+ HCP + ≤ 2 cards in opps' suit + tolerance for unbid
+            # suits. Lets partner pick.
+            if (opps_suit is not None
+                    and e.suit_lengths.get(opps_suit, 0) <= 2
+                    and hcp >= 16):
+                return double(
+                    why=f"Precision 1C-(opps)-P: takeout X — short "
+                        f"in opps' {opps_suit.to_char()}, "
+                        f"strong ({hcp} HCP)")
         # Look at BOTH rho and lho for the overcall — depending on
         # the auction position, the overcall can come from either
         # opponent. (Bridge: RHO is the player who bids just BEFORE
