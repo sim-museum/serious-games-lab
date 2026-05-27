@@ -5914,18 +5914,41 @@ def _advance_partner_overcall(state, e: HandEval, system) -> Bid:
             and len(state.partner_bids) == 1):
         sp = e.suit_lengths[Suit.SPADES]
         hr = e.suit_lengths[Suit.HEARTS]
+        # Textbook Landy advances:
+        #   • 4+ in one major, equal or longer than the other: bid that
+        #     major (jump to game with 10+ HCP).
+        #   • 3+ in one major, STRICTLY longer than the other: bid that
+        #     major at the 2-level (no jump — partner can still be
+        #     minimum). This is the "preference" advance.
+        #   • 4-4 majors: bid hearts up the line.
+        #   • 3-3 or 2-2: 2♦ pass-or-correct, asking Landy bidder to
+        #     pick their own longer.
+        # Base #4 seed 80719: E with 2♠ + 3♥ + 5 HCP after partner's
+        # Landy 2♣; biq was bidding 2♦ (no major ≥ 4), losing the heart
+        # fit. Q-Plus correctly bids 2♥ on 3♥-2♠ → 2♥-E going down for
+        # NS+100. biq's 2♦ → opener corrects to 2♠ → 2♠-W making for
+        # NS-110. Net swing across 25 cells of base #4 → ~-125 IMP.
         if sp >= 4 and sp >= hr:
-            level = 4 if hcp >= 10 and sp >= 4 else 2
+            level = 4 if hcp >= 10 else 2
             return bid(level, Suit.SPADES,
-                       why=f"Advance Landy: {sp}♠, {hcp} HCP")
+                       why=f"Advance Landy: {sp}♠ ≥ {hr}♥, {hcp} HCP")
         if hr >= 4:
-            level = 4 if hcp >= 10 and hr >= 4 else 2
+            level = 4 if hcp >= 10 else 2
             return bid(level, Suit.HEARTS,
                        why=f"Advance Landy: {hr}♥, {hcp} HCP")
-        # 3-3 or worse — pass-or-correct via 2♦.
+        # 3+ in one major STRICTLY longer than other: prefer it.
+        if sp >= 3 and sp > hr:
+            return bid(2, Suit.SPADES,
+                       why=f"Landy preference: {sp}♠ > {hr}♥ "
+                           f"({hcp} HCP)")
+        if hr >= 3 and hr > sp:
+            return bid(2, Suit.HEARTS,
+                       why=f"Landy preference: {hr}♥ > {sp}♠ "
+                           f"({hcp} HCP)")
+        # Equal majors (3-3 or 2-2): pass-or-correct.
         return bid(2, Suit.DIAMONDS, alert=True,
-                   why=f"Landy pass-or-correct: {sp}-{hr} majors, "
-                       f"{hcp} HCP")
+                   why=f"Landy 2♦ pass-or-correct: {sp}-{hr} "
+                       f"majors equal, {hcp} HCP")
 
     # The cheapest legal level for a suit overcall, given the auction
     # so far. Walks the bid history (not just last_non_pass) because a
