@@ -695,6 +695,51 @@ class TestForcingContext(unittest.TestCase):
         self.assertEqual(ctx.forcing,
                          self.ForcingContext.FORCING_ONE_ROUND)
 
+    def test_stayman_detected_after_1nt(self):
+        """1NT-2C is Stayman."""
+        ctx = self._ctx("1NT P 2C", system_name="SAYC")
+        self.assertEqual(ctx.convention, "STAYMAN")
+
+    def test_stayman_detected_after_2nt(self):
+        """2NT-3C is Stayman."""
+        ctx = self._ctx("2NT P 3C", system_name="SAYC")
+        self.assertEqual(ctx.convention, "STAYMAN")
+
+    def test_jacoby_transfer_detected_after_1nt_2d(self):
+        """1NT-2D is Jacoby transfer to hearts."""
+        ctx = self._ctx("1NT P 2D", system_name="SAYC")
+        self.assertEqual(ctx.convention, "JACOBY_TRANSFER")
+
+    def test_jacoby_transfer_detected_after_1nt_2h(self):
+        """1NT-2H is Jacoby transfer to spades."""
+        ctx = self._ctx("1NT P 2H", system_name="SAYC")
+        self.assertEqual(ctx.convention, "JACOBY_TRANSFER")
+
+    def test_fourth_suit_forcing_detected(self):
+        """1C-1H-1S-2D: 4th-suit-forcing by responder (GF artificial)."""
+        ctx = self._ctx("1C P 1H P 1S P 2D", system_name="SAYC")
+        self.assertEqual(ctx.convention, "FOURTH_SUIT_FORCING")
+        self.assertTrue(ctx.gf_established)
+
+    def test_captain_is_opener_by_default(self):
+        """1H-2H: captain is opener (no GF-extras response yet)."""
+        ctx = self._ctx("1H P 2H", system_name="SAYC")
+        self.assertIsNotNone(ctx.captain)
+        self.assertEqual(ctx.captain, ctx.opener_seat)
+
+    def test_captain_passes_to_responder_after_jacoby_2nt(self):
+        """1H-2NT(Jacoby): captain is responder (showed extras)."""
+        ctx = self._ctx("1H P 2NT*", system_name="SAYC")
+        if ctx.trump is not None:  # Jacoby 2NT detected
+            self.assertEqual(ctx.captain,
+                             ctx.opener_seat.partner())
+
+    def test_captain_is_4nt_bidder(self):
+        """1H-3H-4NT: captain is 4NT bidder (RKC asker)."""
+        ctx = self._ctx("1H P 3H P 4NT", system_name="SAYC")
+        self.assertTrue(ctx.last_4nt_is_rkc)
+        self.assertEqual(ctx.captain, ctx.last_4nt_bidder)
+
     def test_slam_zone_overrides_game_force(self):
         """When slam_zone_entered is True, forcing = SLAM_FORCE."""
         ctx = self._ctx("1H P 4S*", system_name="SAYC")

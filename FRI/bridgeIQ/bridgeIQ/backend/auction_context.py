@@ -115,9 +115,21 @@ class AuctionContext:
 
     # Convention-being-executed slot. Currently populated for:
     #   • "GERBER" — 4C ace-ask after partner's OPENING 1NT/2NT/3NT.
-    # Future: STAYMAN, JACOBY_TRANSFER, NMF, 4SF, SMOLEN, LEBENSOHL...
+    #   • "STAYMAN" — 2C asking for major after partner's 1NT/2NT.
+    #   • "JACOBY_TRANSFER" — 2D/2H/2S/3D over partner's 1NT (or 3-of-suit
+    #     over 2NT).
+    #   • "FOURTH_SUIT_FORCING" — responder's bid of the 4th unbid suit
+    #     at 2+ level after three suits already bid by partnership.
+    #   • "RKC" — once 4NT-as-RKC has been bid.
+    # Future: SMOLEN, LEBENSOHL, NMF, DRURY, BERGEN, ...
     convention: Optional[str] = None
     convention_step: int = 0
+
+    # Captain — the seat in charge of slam-go decisions. Initially the
+    # opener; transitions to whoever shows extras / RKC asker / cuebid
+    # initiator. Used by downstream sites that need to know "who
+    # decides 4NT vs cuebid vs sign-off here".
+    captain: Optional[Seat] = None
 
     # Gerber-specific: the 4C bid if classified as Gerber, and the
     # bidder + responder for the step-response routing.
@@ -428,6 +440,83 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
     if cuebids_after_trump:
         ctx.controls_shown = dict(cuebids_after_trump)
 
+    # --- Stayman / Jacoby transfer detection (after 1NT/2NT opening) ---
+    # These are common conventions that are 90%+ standard across systems
+    # — once detected, they unlock structured opener-response logic and
+    # captain transitions in downstream sites.
+    if (ctx.opening_bid is not None
+            and ctx.opening_bid.suit == _NT
+            and ctx.opening_bid.level in (1, 2)
+            and ctx.opener_seat in my_side):
+        # Walk for partner's first non-pass call after the opening NT.
+        partner_first_response = None
+        partner_first_idx = None
+        for idx, (s, b) in enumerate(state.bids):
+            if s != partner_of_opener:
+                continue
+            if b.is_pass or b.is_double or b.is_redouble:
+                continue
+            partner_first_response = b
+            partner_first_idx = idx
+            break
+        if partner_first_response is not None:
+            # Stayman: 2C over 1NT, 3C over 2NT.
+            if (partner_first_response.suit == Suit.CLUBS
+                    and partner_first_response.level
+                        == ctx.opening_bid.level + 1):
+                ctx.convention = "STAYMAN"
+            # Jacoby transfer to hearts: 2D over 1NT, 3D over 2NT.
+            elif (partner_first_response.suit == Suit.DIAMONDS
+                    and partner_first_response.level
+                        == ctx.opening_bid.level + 1):
+                ctx.convention = "JACOBY_TRANSFER"
+            # Jacoby transfer to spades: 2H over 1NT, 3H over 2NT.
+            elif (partner_first_response.suit == Suit.HEARTS
+                    and partner_first_response.level
+                        == ctx.opening_bid.level + 1):
+                ctx.convention = "JACOBY_TRANSFER"
+            # Texas transfer to hearts (over 1NT): 4D = transfer to 4H.
+            # Texas transfer to spades: 4H = transfer to 4S.
+            elif (ctx.opening_bid.level == 1
+                    and partner_first_response.level == 4
+                    and partner_first_response.suit
+                        in (Suit.DIAMONDS, Suit.HEARTS)
+                    and partner_first_response.alert):
+                ctx.convention = "JACOBY_TRANSFER"
+
+    # --- Fourth-Suit Forcing: 3 different suits bid by partnership,
+    # then the 4th suit at the 2-level+ by responder (artificial GF).
+    # Detected only when:
+    #   • Partnership has bid 3 distinct suits in the auction
+    #   • Responder's bid is the 4th (unbid) suit at 2+ level
+    #   • Auction is below 4NT
+    if ctx.convention is None and first_4nt_idx is None:
+        partnership_suits_bid = set()
+        last_partner_bid_idx = None
+        last_partner_bid = None
+        for idx, (s, b) in enumerate(state.bids):
+            if s not in my_side:
+                continue
+            if b.is_pass or b.is_double or b.is_redouble:
+                continue
+            if b.suit in (None, _NT):
+                continue
+            partnership_suits_bid.add(b.suit)
+            if s == partner_of_opener:
+                last_partner_bid_idx = idx
+                last_partner_bid = b
+        if (last_partner_bid is not None
+                and len(partnership_suits_bid) == 4
+                and last_partner_bid.suit in partnership_suits_bid
+                and last_partner_bid.level >= 2
+                # Last bid must have been the 4th-suit add-on
+                and len({_b.suit for _s, _b in state.bids[:last_partner_bid_idx]
+                         if _s in my_side
+                         and _b.suit not in (None, _NT)
+                         and not _b.is_pass}) == 3):
+            ctx.convention = "FOURTH_SUIT_FORCING"
+            ctx.gf_established = True
+
     # --- Gerber detection: 4C as direct ace-ask after partner's
     # opening 1NT / 2NT / 3NT, no opp intervention. Looks STRICTLY at:
     #   • The PARTNERSHIP's first non-pass bid is 1NT/2NT/3NT.
@@ -505,6 +594,30 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
                         and _CUEBID_SUIT_RANK.get(r.suit, -1)
                             > _CUEBID_SUIT_RANK.get(ctx.opening_bid.suit, 99)):
                     ctx.forcing = ForcingContext.FORCING_ONE_ROUND
+
+    # --- Captain detection ----------------------------------------
+    # Captain = the seat in charge of slam-go decisions. Transitions:
+    #   • Default: opener.
+    #   • After a GF response (responder's 2/1, splinter, Jacoby 2NT):
+    #     responder becomes captain (showed extras; opener describes).
+    #   • After 4NT (RKC): the 4NT bidder is captain (they read the
+    #     response and decide).
+    #   • After cuebid initiation: the cuebid initiator is captain
+    #     until partner responds; then it's mutual until 4NT.
+    if ctx.opener_seat is not None:
+        ctx.captain = ctx.opener_seat
+        # Responder takes over after a GF-establishing first bid that
+        # showed extras (NOT a simple 2/1 — that goes to opener describing).
+        # Practically: splinter, Jacoby 2NT, jump-shift → responder
+        # becomes captain. Otherwise opener stays captain.
+        if ctx.trump is not None and ctx.trump.setter == partner_of_opener:
+            if ctx.trump.mechanism in (
+                    TrumpMechanism.SPLINTER,
+                    TrumpMechanism.JACOBY_2NT):
+                ctx.captain = partner_of_opener
+        # RKC asker (4NT bidder) takes over once they've bid 4NT.
+        if ctx.last_4nt_bidder is not None and ctx.last_4nt_is_rkc:
+            ctx.captain = ctx.last_4nt_bidder
 
     # --- 4NT classification (LAST — ctx.trump may have been set by
     # post-loop Jacoby 2NT / splinter detection above). Apply ALL
