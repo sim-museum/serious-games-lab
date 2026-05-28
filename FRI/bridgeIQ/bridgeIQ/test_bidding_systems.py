@@ -452,5 +452,151 @@ class TestRKCBlackwood(unittest.TestCase):
                 break
 
 
+class TestAuctionContext(unittest.TestCase):
+    """Cover the AuctionContext semantic primitives.
+
+    These tests are FOUNDATION coverage for Option 1 — they validate
+    that the single-pass context derivation correctly identifies
+    trump-set, mechanism, GF, slam-zone, and the legacy fallback for
+    auctions that don't have a formal trump agreement.
+    """
+
+    def setUp(self):
+        from backend.native_bidder import parse_auction
+        from backend.auction_context import (
+            derive_context, TrumpMechanism)
+        from backend.models import Bid, Seat, Suit, Vulnerability
+        self.parse_auction = parse_auction
+        self.derive_context = derive_context
+        self.TrumpMechanism = TrumpMechanism
+        self.Bid = Bid
+        self.Seat = Seat
+        self.Suit = Suit
+        self.Vulnerability = Vulnerability
+
+    def _bid(self, raw: str):
+        """Tiny bid-spec parser: '1H', '2NT', 'P', 'X', '3S*' (alerted)."""
+        if raw in ("P", "PASS"):
+            return self.Bid.make_pass()
+        if raw == "X":
+            return self.Bid(level=0, suit=None,
+                            is_pass=False, is_double=True,
+                            is_redouble=False, alert=False, explanation="")
+        alerted = raw.endswith("*")
+        if alerted:
+            raw = raw[:-1]
+        lvl = int(raw[0])
+        suit_map = {"C": self.Suit.CLUBS, "D": self.Suit.DIAMONDS,
+                    "H": self.Suit.HEARTS, "S": self.Suit.SPADES,
+                    "NT": self.Suit.NOTRUMP, "N": self.Suit.NOTRUMP}
+        suit_key = raw[1:]
+        return self.Bid(level=lvl, suit=suit_map[suit_key],
+                        is_pass=False, is_double=False,
+                        is_redouble=False, alert=alerted, explanation="")
+
+    def _ctx(self, raw_bids, dealer=None, seat=None):
+        """Build an AuctionState then derive its context.
+
+        Default seat = the OPENER's side (so my_side scoping picks up
+        the trump-setting partnership). The default puts us in the
+        opener's partner's seat after the most recent bid.
+        """
+        Seat = self.Seat
+        if dealer is None:
+            dealer = Seat.NORTH
+        bids = [self._bid(s) for s in raw_bids.split()]
+        if seat is None:
+            # Find the first non-pass bidder (opener), then ask from
+            # their partner's POV so my_side includes both opener +
+            # the partnership member who raises.
+            opener_idx = 0
+            for i, b in enumerate(bids):
+                if not b.is_pass:
+                    opener_idx = i
+                    break
+            opener_seat = Seat((dealer + opener_idx) % 4)
+            seat = opener_seat.partner()
+        state = self.parse_auction(seat, dealer, bids)
+        return self.derive_context(state)
+
+    def test_direct_raise_sets_trump(self):
+        """1H-2H: hearts is trump via DIRECT_RAISE."""
+        ctx = self._ctx("1H P 2H")
+        self.assertIsNotNone(ctx.trump)
+        self.assertEqual(ctx.trump.suit, self.Suit.HEARTS)
+        self.assertEqual(ctx.trump.level, 2)
+        self.assertEqual(ctx.trump.mechanism,
+                         self.TrumpMechanism.DIRECT_RAISE)
+        self.assertTrue(ctx.gf_established)
+
+    def test_jump_raise_to_three_sets_trump_with_jump_mechanism(self):
+        """1H-3H: jump-raise to limit."""
+        ctx = self._ctx("1H P 3H")
+        self.assertIsNotNone(ctx.trump)
+        self.assertEqual(ctx.trump.suit, self.Suit.HEARTS)
+        self.assertEqual(ctx.trump.mechanism,
+                         self.TrumpMechanism.JUMP_RAISE)
+
+    def test_jump_raise_to_four_enters_slam_zone(self):
+        """1S-4S: preempt/slam-zone (level 4 jump-raise)."""
+        ctx = self._ctx("1S P 4S")
+        self.assertIsNotNone(ctx.trump)
+        self.assertEqual(ctx.trump.suit, self.Suit.SPADES)
+        self.assertTrue(ctx.slam_zone_entered)
+
+    def test_opener_rebid_agrees_responders_major(self):
+        """1C-1H-2H: opener's REBID raises responder's major →
+        REBID_AGREEMENT mechanism."""
+        ctx = self._ctx("1C P 1H P 2H")
+        self.assertIsNotNone(ctx.trump)
+        self.assertEqual(ctx.trump.suit, self.Suit.HEARTS)
+        self.assertEqual(ctx.trump.mechanism,
+                         self.TrumpMechanism.REBID_AGREEMENT)
+
+    def test_jacoby_2nt_sets_trump_to_opener_major(self):
+        """1H-2NT(alerted) = Jacoby 2NT: hearts is implicit trump."""
+        ctx = self._ctx("1H P 2NT*")
+        self.assertIsNotNone(ctx.trump)
+        self.assertEqual(ctx.trump.suit, self.Suit.HEARTS)
+        self.assertEqual(ctx.trump.mechanism,
+                         self.TrumpMechanism.JACOBY_2NT)
+        self.assertTrue(ctx.slam_zone_entered)
+
+    def test_unraised_single_mention_no_trump_with_fallback(self):
+        """1H-1S-1NT: no trump-set raise; fallback_last_suit = SPADES."""
+        ctx = self._ctx("1H P 1S P 1NT")
+        self.assertIsNone(ctx.trump)
+        self.assertEqual(ctx.fallback_last_suit, self.Suit.SPADES)
+        # Opener bid NT in rebid → tracked for quantitative-4NT gate.
+        self.assertTrue(ctx.opener_rebid_nt)
+
+    def test_1nt_opening_then_4nt_quantitative_no_trump(self):
+        """1NT-4NT: no suit fit → 4NT classified quantitative."""
+        ctx = self._ctx("1NT P 4NT")
+        self.assertIsNone(ctx.trump)
+        self.assertTrue(ctx.last_4nt_is_quantitative)
+        self.assertFalse(ctx.last_4nt_is_rkc)
+        self.assertTrue(ctx.slam_zone_entered)
+
+    def test_trump_set_then_4nt_is_rkc(self):
+        """1H-3H-4NT: 4NT classified RKC because trump is set."""
+        ctx = self._ctx("1H P 3H P 4NT")
+        self.assertIsNotNone(ctx.trump)
+        self.assertTrue(ctx.last_4nt_is_rkc)
+        self.assertFalse(ctx.last_4nt_is_quantitative)
+
+    def test_strong_artificial_1c_marked(self):
+        """Alerted 1C opening is recognised as strong artificial."""
+        ctx = self._ctx("1C* P 1H")
+        self.assertTrue(ctx.opening_was_strong_artificial)
+
+    def test_passout_auction_returns_empty_context(self):
+        """All passes → no opener, no trump, nothing set."""
+        ctx = self._ctx("P P P P")
+        self.assertIsNone(ctx.opener_seat)
+        self.assertIsNone(ctx.trump)
+        self.assertFalse(ctx.gf_established)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

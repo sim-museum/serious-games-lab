@@ -26,6 +26,10 @@ from typing import List, Optional, Tuple
 from .models import (
     Bid, BoardState, Card, Hand, Seat, Suit, Vulnerability, Rank,
 )
+from .auction_context import (  # Option 1: semantic-state model
+    AuctionContext, TrumpAgreement, TrumpMechanism,
+    derive_context,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -785,95 +789,18 @@ def _preempt_bid(e: HandEval, state=None, system=None) -> Optional[Bid]:
 def _agreed_trump(state: 'AuctionState') -> Optional[Suit]:
     """Best guess at the trump suit implied by the auction so far.
 
-    Used by the RKC machinery to decide whether a 4NT bid is keycard
-    or natural / quantitative, and to count the trump king + queen
-    against the player's hand.
-
-    Heuristic: the last NATURAL suit either partner bid before the
-    first 4NT. Every bid at or after 4NT is keycard machinery, not
-    natural — without the cut-off the responder's `5♣ = 0/3 keys`
-    answer would be misread as a club suit and the grand would be
-    played in the wrong strain.
-
-    This simple rule lines up with the trump suit in every common
-    sequence we model:
-      • `1H – 3H – 4NT`            → 3H → hearts
-      • `1S – 2S – 4S – 4NT`       → 4S → spades
-      • `1C – 1H – 4NT` (Precision) → 1H → hearts (1♣ is artificial)
-      • `1NT – 2C – 2H – 3H – 4NT` → 3H → hearts
-      • `1NT – 4NT`                → no suit bid → None (correctly
-        classified as quantitative, NOT keycard)
+    Now reads from the semantic-state AuctionContext (Option 1).
+    Returns the trump suit if a formal trump-set was detected
+    (raise / jump-raise / splinter / Jacoby 2NT / rebid agreement);
+    otherwise returns the legacy fallback (last natural suit bid by
+    the partnership before the first 4NT) so single-mention auctions
+    like 1H-3S-4NT continue to read as RKC for the last mentioned
+    suit.
     """
-    # First pass: collect suits each partnership member has bid
-    # (skipping 4NT and beyond). The TRUE trump is the suit bid by
-    # BOTH partners, or a suit that was raised (second mention at a
-    # higher level by the same partnership). Cuebids — a new suit
-    # by one partner AFTER trump was already set by the OTHER — must
-    # NOT promote the cuebid suit to trump.
-    suits_by = {}                # seat → list of (level, suit) tuples
-    fallback_last_suit = None    # legacy heuristic backstop
-    seen_4nt = False
-    for s, b in state.bids:
-        if b.level == 4 and b.suit == Suit.NOTRUMP and not b.is_pass:
-            seen_4nt = True
-            break
-        if b.is_pass or b.is_double or b.is_redouble:
-            continue
-        if b.suit in (None, Suit.NOTRUMP):
-            continue
-        suits_by.setdefault(s, []).append((b.level, b.suit))
-        fallback_last_suit = b.suit
-    if not suits_by:
-        return None
-    # Build raise / mutual-mention map. A suit qualifies as "trump
-    # candidate" when: same partnership has bid it 2+ times (a raise),
-    # OR both partners on a side have bid it.
-    bids_in_order = []
-    for s, b in state.bids:
-        if b.level == 4 and b.suit == Suit.NOTRUMP and not b.is_pass:
-            break
-        if b.is_pass or b.is_double or b.is_redouble:
-            continue
-        if b.suit in (None, Suit.NOTRUMP):
-            continue
-        bids_in_order.append((s, b.level, b.suit))
-    # Two partnership pairs: NS = {NORTH, SOUTH}; EW = {EAST, WEST}.
-    ns = {Seat.NORTH, Seat.SOUTH}
-    ew = {Seat.EAST, Seat.WEST}
-    # Track per-side suits bid (with levels) and find the most-recent
-    # qualifying "true trump" candidate.
-    side_bids = {True: [], False: []}   # True = NS, False = EW
-    true_trump = None
-    for s, lvl, suit in bids_in_order:
-        is_ns = s in ns
-        prior = side_bids[is_ns]
-        # Was this suit bid before on this side?
-        prior_seats = {ps for ps, pl, ps_suit in prior if ps_suit == suit}
-        prior_levels = [pl for ps, pl, ps_suit in prior if ps_suit == suit]
-        # Raise: same side bid this suit before at a lower level.
-        is_raise = bool(prior_levels) and lvl > min(prior_levels)
-        # Mutual: BOTH partners on this side have bid this suit.
-        is_mutual = bool(prior_seats) and s not in prior_seats
-        if true_trump is None and (is_raise or is_mutual):
-            # Once trump is set, later side-suit mentions are cuebids
-            # (not retroactive trump changes). Only EXPLICITLY higher
-            # raises of the CURRENT trump can move trump (e.g. 3H→4H
-            # is still hearts, but a wholly different suit becoming
-            # the agreed trump after one is already set is too risky
-            # to detect — let it be cuebid).
-            true_trump = suit
-        elif true_trump is not None and suit == true_trump and is_raise:
-            # Allow re-raising the established trump (3H→4H etc.).
-            # No change to true_trump, just keep it.
-            pass
-        prior.append((s, lvl, suit))
-    if true_trump is not None:
-        return true_trump
-    # Fallback: legacy heuristic — last natural suit before 4NT.
-    # Covers single-mention cases (1H-4NT direct quantitative shouldn't
-    # reach this — _is_rkc_context filters those — but jump-shift
-    # auctions like 1NT-4NT after Stayman path can land here).
-    return fallback_last_suit
+    ctx = derive_context(state)
+    if ctx.trump is not None:
+        return ctx.trump.suit
+    return ctx.fallback_last_suit
 
 
 def _is_rkc_context(state: 'AuctionState', for_bid: 'Bid') -> bool:
@@ -893,43 +820,18 @@ def _is_rkc_context(state: 'AuctionState', for_bid: 'Bid') -> bool:
     """
     if not (for_bid.level == 4 and for_bid.suit == Suit.NOTRUMP):
         return False
-    trump = _agreed_trump(state)
-    if trump is None:
-        # No trump fit → 4NT is quantitative.
+    ctx = derive_context(state)
+    # No trump candidate (formal or fallback) → quantitative.
+    if ctx.trump is None and ctx.fallback_last_suit is None:
         return False
-    # Quantitative-after-NT-rebid gate: if opener (the partnership's
-    # first non-pass bidder) has subsequently bid NT in their rebid
-    # AND no actual trump-fit raise was made, treat 4NT as
-    # quantitative.
-    trump_set = _trump_set_level(state)
-    if trump_set is None:
-        # Opener has rebid NT? Check the opener's seat's bids.
-        # Exception: if the OPENING BID was a strong artificial 1C
-        # (Precision-family), 1C says nothing about strain — opener's
-        # 4NT after partner's positive 1M can be RKC despite the
-        # NT-rebid pattern not applying (opening was artificial).
-        opening_was_artificial_1c = (
-            state.opening_bid is not None
-            and state.opening_bid.level == 1
-            and state.opening_bid.suit == Suit.CLUBS
-            and state.opening_bid.alert)
-        if not opening_was_artificial_1c:
-            opener_seat = state.opener_seat
-            opener_bids_after_first = []
-            first_seen = False
-            for s, b in state.bids:
-                if s != opener_seat:
-                    continue
-                if not first_seen:
-                    first_seen = True
-                    continue
-                if b.is_pass or b.is_double or b.is_redouble:
-                    continue
-                opener_bids_after_first.append(b)
-            opener_rebid_nt = any(
-                b.suit == Suit.NOTRUMP for b in opener_bids_after_first)
-            if opener_rebid_nt:
-                return False
+    # Quantitative-after-NT-rebid gate: opener bid NT in their rebid
+    # AND no actual trump-fit raise was made → 4NT is quantitative.
+    # Exception: if opening was a strong artificial 1C (Precision),
+    # the NT rebid doesn't disqualify trump-set inference from
+    # partner's positive major response.
+    if ctx.trump is None and ctx.opener_rebid_nt \
+            and not ctx.opening_was_strong_artificial:
+        return False
     # If the auction has only had NT bids on our side (e.g. 1NT-4NT),
     # treat 4NT as quantitative — RKC needs a suit fit.
     side_bids = state.my_bids + state.partner_bids
@@ -1676,45 +1578,20 @@ def _second_round_controls(e: 'HandEval') -> set:
 def _trump_set_level(state: 'AuctionState') -> Optional[Tuple[int, Suit]]:
     """Find the first agreement on a major-suit trump.
 
-    Returns (level, suit) for the trump-set bid. None if no agreement.
+    Now reads from the semantic-state AuctionContext (Option 1).
+    Returns (level, suit) for the trump-set bid or None.
 
-    Trump-set patterns:
-      • Direct raise (other partner bids my suit):
-        1H - 3H, 1S - 2S, 1C - 1H - 2H, 1H - 2D - 3H, ...
-      • Splinter (alerted jump-shift in NEW suit by responder after
-        partner's 1-of-major opening): 1H - 3S (= 4+H + shortage in
-        spades, hearts agreed), 1S - 4D / 4C / 4H, etc.
-      • Jump set:           1H - 3H (limit), 1S - 4S
-      • Own-suit jump:      1S - 1NT - 3S not counted (just rebid)
-
-    The first such qualifying bid wins. Single mentions at the 1-level
-    don't count — Italian cuebidding only kicks in once both sides have
-    confirmed the trump suit.
+    Detection scope (in AuctionContext.derive_context):
+      • Direct raise: 1H-2H, 1S-2S, 1C-1H-2H, 1H-2D-3H
+      • Jump raise:   1H-3H (limit), 1S-4S
+      • Splinter:     1H-4C/4D/3S etc. (alerted jump by responder)
+      • Jacoby 2NT:   1M-2NT (alerted)
+      • Rebid agreement: opener raises responder's major (1C-1H-2H)
     """
-    seats_bid_suit = {}        # suit → set of seats that bid it
-    for s, b in state.bids:
-        if b.is_pass or b.is_double or b.is_redouble:
-            continue
-        if b.suit in (None, Suit.NOTRUMP):
-            continue
-        if s != state.seat and s != state.seat.partner():
-            continue
-        if b.suit in (Suit.HEARTS, Suit.SPADES):
-            prior_seats = seats_bid_suit.get(b.suit, set())
-            if prior_seats and s not in prior_seats:
-                # Partner is raising my major suit — trump set.
-                return (b.level, b.suit)
-        seats_bid_suit.setdefault(b.suit, set()).add(s)
-    # NOTE: splinter detection (alerted jump in a new suit by responder
-    # implicitly setting opener's major as trump) was tried and caused
-    # a Deal 65 regression on slam corpus 59517 — opener with only 2
-    # controls correctly signed off in 4M after splinter, but the
-    # resulting contract (4M signoff) scored worse than the previous
-    # accidental landing at 4NT. Splinter-trump-set detection deferred
-    # to a follow-up that can also fix opener's slam-evaluation after
-    # splinter (control + trump-honors weighting instead of strict
-    # losers ≤ 5 + controls ≥ 4 gate).
-    return None
+    t = derive_context(state).trump
+    if t is None:
+        return None
+    return (t.level, t.suit)
 
 
 def _cuebids_made_so_far(state: 'AuctionState',
