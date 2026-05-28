@@ -1987,13 +1987,18 @@ def _partner_was_forcing(state: AuctionState) -> bool:
     returns True for unambiguous forcing sequences so the sanity
     wrapper doesn't fire on debatable cases.
 
-      * Partner's 2/1 GF response: I opened 1-of-major, partner bid
-        2-of-new-suit. Auction is game-forcing.
-      * Partner's reverse: partner showed extras by bidding a
-        higher-ranked suit at the 2-level after their 1-level open.
-      * Partner's splinter: alerted jump to 3+ in a new suit after
-        my opening.
-      * Partner's jump-shift: jump in new suit at responder's turn.
+    Phase D: GF detection now reads from `ctx.gf_established` (the
+    canonical truth from AuctionContext). Local logic preserves the
+    "reached game" / "partner signed off" gates, since those are
+    auction-position-specific rather than GF-state-specific.
+
+      * Partner's 2/1 GF response → handled by ctx.gf_established.
+      * Strong artificial 1C / 2C + positive → handled by ctx.
+      * Jump shift → handled by ctx.
+      * Partner's reverse → FORCING_ONE_ROUND in ctx; we still
+        return True here so the safety net fires.
+      * Splinter, opener jump-shift, inverted minor — kept local
+        until those triggers move into derive_context.
     """
     if not state.partner_bids:
         return False
@@ -2004,51 +2009,24 @@ def _partner_was_forcing(state: AuctionState) -> bool:
     if op is None:
         return False
 
-    # Partner's 2/1 GF response (their first call is 2-of-new over
-    # my 1-of-major opening). The game-force is STICKY — once
-    # established, no pass below game is legal at any later turn
-    # until the partnership has actually bid game (or doubled the
-    # opponents). The mixed-corpus diff caught the original
-    # not-sticky version dropping deals like #10 (1H-P-2C-P-2H-P-
-    # 3H-PASS for -14 IMP) where opener treated their 3rd call as
-    # a normal non-forcing rebid.
-    if (len(state.partner_bids) >= 1
-            and state.partner_bids[0].level == 2
-            and state.partner_bids[0].suit is not None
-            and state.partner_bids[0].suit != Suit.NOTRUMP
-            and state.opener_seat == state.seat
-            and op.level == 1
-            and op.suit in (Suit.HEARTS, Suit.SPADES)
-            and state.partner_bids[0].suit != op.suit):
-        # If we haven't reached game yet (and no one has doubled
-        # the opps to penalize them out of the auction), the GF is
-        # still on.
-        if not _partnership_has_reached_game(state):
-            # But if partner JUST signed off in a known game contract,
-            # we're done forcing (let opener pass partner's 4M / 3NT).
-            if not _is_partner_signoff_in_game(state):
-                return True
-
-    # MY 2/1 GF response: I'M the one who bid 2-of-new over partner's
-    # 1-of-major. The GF I created binds me too — but ONLY when the
-    # auction was uncontested. With opponent interference (overcall
-    # or double), the GF often relaxes per textbook (esp. Acol;
-    # mainstream 2/1 keeps it on but bridgeIQ's competitive paths
-    # are still rough). Restricting to uncontested auctions avoids
-    # the cardplay-regression-and-IMP-loss the broad version caused.
+    # --- Phase D: read GF from context -------------------------
+    # Once GF is established, no pass below game is legal until the
+    # partnership has actually bid game (or partner signed off).
+    # The interference gate from the legacy "my 2/1 GF" branch is
+    # preserved by only firing when the auction was uncontested.
     no_interference = not state.rho_bids and not state.lho_bids
-    if (no_interference
-            and len(state.my_bids) >= 1
-            and state.my_bids[0].level == 2
-            and state.my_bids[0].suit is not None
-            and state.my_bids[0].suit != Suit.NOTRUMP
-            and state.opener_seat == state.seat.partner()
-            and op.level == 1
-            and op.suit in (Suit.HEARTS, Suit.SPADES)
-            and state.my_bids[0].suit != op.suit):
+    ctx = derive_context(state)
+    if ctx.gf_established and no_interference:
         if not _partnership_has_reached_game(state):
             if not _is_partner_signoff_in_game(state):
                 return True
+    # Even with interference, partner's GF-establishing bid still
+    # binds opener (the original opening side). Restrict to opener.
+    if (ctx.gf_established
+            and state.opener_seat == state.seat
+            and not _partnership_has_reached_game(state)
+            and not _is_partner_signoff_in_game(state)):
+        return True
 
     # Partner's reverse (their second call, higher-ranked suit at
     # level 2, after a level-1 response by me).

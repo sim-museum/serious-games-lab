@@ -649,20 +649,23 @@ class TestForcingContext(unittest.TestCase):
         system = self.get_system(system_name) if system_name else None
         return self.derive_context(state, system)
 
-    def test_two_over_one_response_in_2_1_system_is_gf(self):
-        """In TwoOverOne, 1H-2D response is game-forcing."""
-        ctx = self._ctx("1H P 2D", system_name="TwoOverOne")
-        self.assertTrue(ctx.gf_established)
-        self.assertEqual(ctx.forcing, self.ForcingContext.GAME_FORCE)
+    def test_two_over_one_response_is_gf(self):
+        """1H-2D (2/1 GF response) → game force in both 2/1 and SAYC.
+        Modern SAYC treats 1M-2X as GF; matches legacy
+        _partner_was_forcing detection (no system gate)."""
+        for sys_name in ("TwoOverOne", "SAYC"):
+            ctx = self._ctx("1H P 2D", system_name=sys_name)
+            self.assertTrue(ctx.gf_established,
+                            f"1H-2D should be GF in {sys_name}")
+            self.assertEqual(ctx.forcing,
+                             self.ForcingContext.GAME_FORCE)
 
-    def test_two_over_one_response_in_sayc_is_not_immediate_gf(self):
-        """In SAYC, 1H-2D is not pure-GF (system's 2/1 min is 10)."""
-        ctx = self._ctx("1H P 2D", system_name="SAYC")
-        self.assertFalse(ctx.gf_established)
-
-    def test_jump_shift_alerted_establishes_gf(self):
-        """1C-2H (jump shift, alerted as strong) → GF."""
-        ctx = self._ctx("1C P 2H*", system_name="SAYC")
+    def test_jump_shift_alerted_at_three_level_establishes_gf(self):
+        """1C-3H (alerted strong jump shift at level 3) → GF.
+        Level-2 alerted jumps are NOT detected as GF here to avoid
+        over-triggering on system-specific level-2 conventions; the
+        2/1-GF branch covers 1M-2X cases."""
+        ctx = self._ctx("1C P 3H*", system_name="SAYC")
         self.assertTrue(ctx.gf_established)
 
     def test_strong_artificial_1c_positive_response_is_gf(self):

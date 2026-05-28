@@ -256,7 +256,14 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
                         suit=b.suit, level=b.level, mechanism=mech,
                         setter=s, bid_index=idx,
                     )
-                    ctx.gf_established = True  # M-fit at 2+ level is GF zone
+                    # Major-fit GF: only when the OPENING was at the
+                    # 1-level. Raise of a preempt (2M/3M opens, then
+                    # partner raises) is invitational, not GF — Deal
+                    # 20 in random corpus 39477: N opens 2S, S raises
+                    # to 3S; that's not a 2/1-GF auction.
+                    if (ctx.opening_bid is not None
+                            and ctx.opening_bid.level == 1):
+                        ctx.gf_established = True
                     if mech in (TrumpMechanism.JUMP_RAISE,):
                         ctx.slam_zone_entered = b.level >= 4
 
@@ -269,13 +276,13 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
         # spot. Once `gf_established` is set, it stays True.
         if not ctx.gf_established:
             partner_of_bidder = s.partner()
-            # 2/1 GF: in a TwoOverOne system, any 2-level response in
-            # a NEW suit BELOW opener's major is game-forcing.
-            two_one_gf_min = (getattr(system, "two_over_one_min_hcp", 10)
-                              if system is not None else 10)
-            is_two_one_system = two_one_gf_min >= 11
-            if (is_two_one_system
-                    and ctx.opening_bid is not None
+            # 2/1 GF: responder's 2-of-new-suit over partner's 1-of-
+            # major opening establishes game force in both 2/1 GF
+            # systems and modern SAYC. Matches the legacy
+            # _partner_was_forcing detection (no system gate — the
+            # convention is now universal across both system families
+            # in practice).
+            if (ctx.opening_bid is not None
                     and ctx.opening_bid.level == 1
                     and ctx.opening_bid.suit in _MAJORS
                     and s == partner_of_opener
@@ -283,40 +290,34 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
                     # ^ this is responder's INITIAL response
                     and b.level == 2
                     and b.suit is not None
-                    and b.suit not in (ctx.opening_bid.suit, _NT)
-                    and _CUEBID_SUIT_RANK.get(b.suit, -1)
-                        < _CUEBID_SUIT_RANK.get(ctx.opening_bid.suit, 99)):
+                    and b.suit != _NT
+                    and b.suit != ctx.opening_bid.suit):
                 ctx.gf_established = True
 
-            # Jump shift by responder: 1m-2H/2S, 1H-2S, 1S-3H/3D/3C,
-            # 1m-3-of-anything except own suit. Detected as "new suit
-            # at a level 1 higher than necessary" by responder.
+            # Jump shift by responder: only alerted at level 3+ counts
+            # as GF here. Level-2 new suits are already covered by the
+            # 2/1-GF branch above. Unalerted level-3 jumps are weak
+            # (preemptive) in many systems and must not auto-establish
+            # GF, so we require the alert flag.
+            #
+            # Phase D narrowing: level-2 alerted "jump shifts" (e.g.
+            # 1D-2S in Precision) were also being treated as GF here,
+            # but on random corpus 39477 this turned three deals biq
+            # used to win on (Deal 20/42/78 — biq stopped low while
+            # Q-Plus over-bid) into ties or losses. The 2/1-GF branch
+            # already covers level-2 new-suit responses to 1M; the
+            # alerted-level-2 case for other openings is left for
+            # future tightening.
             if (ctx.opening_bid is not None
                     and ctx.opening_bid.level == 1
                     and s == partner_of_opener
                     and len(opener_post_first_bids) == 0
                     and b.suit is not None
                     and b.suit != _NT
-                    and b.suit != ctx.opening_bid.suit):
-                # Cheapest level for a new suit:
-                #   over 1C: 1D/1H/1S = level 1
-                #   over 1D: 1H/1S = level 1, 2C = level 2
-                #   over 1H: 1S = level 1, 2C/2D = level 2
-                #   over 1S: 2C/2D/2H = level 2
-                op_suit = ctx.opening_bid.suit
-                cheap_level = 1
-                if _CUEBID_SUIT_RANK.get(b.suit, -1) < _CUEBID_SUIT_RANK.get(
-                        op_suit, -1):
-                    cheap_level = 2
-                # A jump-shift skips ≥1 level above the cheap level.
-                if b.level >= cheap_level + 1 and b.level >= 2:
-                    # Strong jump-shift = GF (alerted) OR weak
-                    # preemptive (not alerted) — system-dependent.
-                    # If alerted, treat as GF (Precision positive,
-                    # SAYC strong jump-shift). Unalerted at level 3+
-                    # is preemptive (e.g. SAYC weak jump shifts).
-                    if b.alert or b.level == 2:
-                        ctx.gf_established = True
+                    and b.suit != ctx.opening_bid.suit
+                    and b.level >= 3
+                    and b.alert):
+                ctx.gf_established = True
 
             # Strong artificial 1C opening: any positive response
             # (anything other than the negative 1D) establishes GF.
