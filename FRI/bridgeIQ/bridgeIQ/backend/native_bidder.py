@@ -4449,6 +4449,28 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
     op_suit = op.suit
     hcp = e.hcp
 
+    # 1M-2X-2Y-3M slam launch: after my reverse (showing 17+ HCP +
+    # 4+ second suit), responder raised MY ORIGINAL major to 3M
+    # setting trump. Combined 28+ HCP + 8+ major fit → slam zone.
+    # Initiate Italian cuebid sequence, or launch 4NT RKC if no
+    # side-suit 1st-round controls. Deal 65 in slam corpus 59517:
+    # this gap kept biq at 4H instead of exploring 7H.
+    if (p_last.suit == op_suit
+            and op_suit in (Suit.HEARTS, Suit.SPADES)
+            and p_last.level == 3
+            and len(state.my_bids) >= 2
+            and state.my_bids[-1].level == 2
+            and state.my_bids[-1].suit is not None
+            and state.my_bids[-1].suit != Suit.NOTRUMP
+            and state.my_bids[-1].suit != op_suit
+            and hcp >= 16):
+        cuebid = _maybe_initiate_cuebid(state, e, trump=op_suit)
+        if cuebid is not None:
+            return cuebid
+        return bid(4, Suit.NOTRUMP, alert=True,
+                   why=f"RKC after reverse + 3{op_suit.to_char()} "
+                       f"trump set ({hcp} HCP, slam zone)")
+
     # ----- Negative double response -----
     # After 1m/1M-(overcall)-X, partner's double is a NEGATIVE
     # DOUBLE: shows the unbid major(s) + ~6+ HCP. Opener's
@@ -5143,6 +5165,24 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
                 and _BID_RANK[e.second_suit] < _BID_RANK[op_suit]
                 and _legal_two(e.second_suit)):
             return bid(2, e.second_suit, why="Second suit (2-level)")
+        # Reverse with extras: 17+ HCP + 4+ higher-rank second suit.
+        # Must outrank partner's 2-level bid. Shows extras AND the
+        # additional suit; preferred over the simple 5+ rebid because
+        # it preserves slam exploration room. Deal 65 in slam corpus
+        # 59517: N held 17 HCP + 5H + 4S after 1H-2D; old code went
+        # straight to 2H "Rebid 5+H" simple rebid, hiding the 4-card
+        # spade suit. Q-Plus's N bids 2S reverse, then S's slam path
+        # opens up.
+        if (e.second_suit is not None
+                and _BID_RANK[e.second_suit] > _BID_RANK[op_suit]
+                and _BID_RANK[e.second_suit] < _BID_RANK[Suit.NOTRUMP]
+                and _legal_two(e.second_suit)
+                and e.suit_lengths[e.second_suit] >= 4
+                and e.hcp >= 17):
+            return bid(2, e.second_suit,
+                       why=f"Reverse 2{e.second_suit.to_char()} "
+                           f"(17+ HCP, 4+{e.second_suit.to_char()} "
+                           f"after 2/1 GF response)")
         # 5+ in original suit, 2-level rebid if legal (forcing-1
         # in 2/1 GF context). Otherwise jump-rebid at 3-level.
         if e.suit_lengths[op_suit] >= 5:
@@ -5171,6 +5211,33 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
     # game; with 12 I pass. Deal #26 (seed 7371): S opened 1S,
     # N forcing-1NT, S 2H, N 3H preference; biq passed 3H even
     # with 13 HCP — Q-Plus pushed to 4H game for -12 IMP.
+    # 1M-2X-2Y-3M: after my reverse (2Y), responder raised MY FIRST
+    # SUIT to the 3-level, setting it as trump. I've shown 17+ HCP
+    # via reverse + extras; combined 27+ HCP + 8+ major fit puts us
+    # in slam zone. Cuebid the cheapest first-round control (Italian
+    # style), or launch 4NT RKC if no controls to show. Deal 65 in
+    # slam corpus 59517: this gap kept biq at 4H instead of
+    # exploring the 7H grand Q-Plus reached.
+    if (len(state.my_bids) >= 2
+            and state.my_bids[-1].level == 2
+            and state.my_bids[-1].suit is not None
+            and state.my_bids[-1].suit != Suit.NOTRUMP
+            and state.my_bids[-1].suit != op_suit
+            and p_last.level == 3
+            and p_last.suit == op_suit
+            and op_suit in (Suit.HEARTS, Suit.SPADES)
+            and hcp >= 16):
+        cuebid = _maybe_initiate_cuebid(state, e, trump=op_suit)
+        if cuebid is not None:
+            return cuebid
+        # No 1st-round controls to cuebid: launch 4NT RKC (we showed
+        # extras via reverse, partner showed trump support — grand is
+        # possible if we have all keys).
+        return bid(4, Suit.NOTRUMP, alert=True,
+                   why=f"RKC after my reverse + partner's "
+                       f"3{op_suit.to_char()} trump set "
+                       f"({hcp} HCP, slam zone)")
+
     if (len(state.my_bids) >= 2
             and state.my_bids[-1].level == 2
             and state.my_bids[-1].suit is not None
@@ -5953,6 +6020,22 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
         if e.is_balanced and hcp >= 12:
             return bid(3, Suit.NOTRUMP,
                        why="3NT in 2/1 GF: balanced, no major fit")
+        # Reverse + 4+ support for opener's FIRST suit (which must
+        # be a major for trump-set to mean slam): set trump by
+        # bidding 3-of-opener's-major. Opener has shown 17+ HCP via
+        # reverse; with 4+ trump support I'm in slam zone.
+        # Deal 65 in slam corpus 59517: S held 4H + 6D + 1S + 13 HCP
+        # after 1H-2D-2S; old code rebid 3D (6-card source-of-tricks)
+        # which made trump ambiguous. Q-Plus's S bids 3H setting
+        # hearts; opener then cuebids 3S, then RKC, then king-ask,
+        # then 7H grand.
+        if (op.suit in (Suit.HEARTS, Suit.SPADES)
+                and e.suit_lengths.get(op.suit, 0) >= 4
+                and hcp >= 11):
+            return bid(3, op.suit,
+                       why=f"3{op.suit.to_char()}: 4-card support for "
+                           f"opener's major after reverse "
+                           f"(sets trump, slam zone)")
         # Long own suit → rebid it
         if e.suit_lengths.get(my_suit, 0) >= 6:
             return bid(3, my_suit,
