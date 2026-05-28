@@ -1238,6 +1238,239 @@ def _asker_after_king_response(state: 'AuctionState', e: HandEval, system) -> Bi
     return bid(6, trump, why=f"Side king shown but no clear source → 6{trump.to_char()}")
 
 
+def _is_gerber_4c(state: 'AuctionState', for_bid: 'Bid') -> bool:
+    """Was `for_bid` (must be 4C) a Gerber ace-ask?
+
+    Strict pattern (MVP):
+      • Partner of the 4C bidder OPENED 1NT / 2NT / 3NT (natural
+        balanced opening; not a rebid like 1S-1NT). Opening NT is
+        the only universally-agreed Gerber context — 4C in suit
+        auctions (1S-2C-4C, 1S-1NT-4C) is often splinter / cuebid.
+      • Partner's MOST RECENT non-pass bid is still NT (auction
+        hasn't pulled out into a suit).
+      • No opp intervention.
+      • No trump-fit raise on either side.
+    """
+    if not (for_bid.level == 4 and for_bid.suit == Suit.CLUBS):
+        return False
+    bidder = None
+    for s, b in state.bids:
+        if b is for_bid:
+            bidder = s
+            break
+    if bidder is None:
+        return False
+    partner = bidder.partner()
+    # Strict: partner must have OPENED NT (the very first non-pass
+    # bid by partner is 1NT/2NT/3NT).
+    partner_first_nonpass = None
+    for s, b in state.bids:
+        if b is for_bid:
+            break
+        if s != partner:
+            continue
+        if b.is_pass or b.is_double or b.is_redouble:
+            continue
+        partner_first_nonpass = b
+        break
+    if partner_first_nonpass is None:
+        return False
+    if not (partner_first_nonpass.suit == Suit.NOTRUMP
+            and partner_first_nonpass.level <= 3):
+        return False
+    # Partner's MOST RECENT non-pass bid must still be NT.
+    partner_last_any = None
+    for s, b in state.bids:
+        if b is for_bid:
+            break
+        if s != partner:
+            continue
+        if b.is_pass or b.is_double or b.is_redouble:
+            continue
+        partner_last_any = b
+    if partner_last_any is None or partner_last_any.suit != Suit.NOTRUMP:
+        return False
+    # No opp intervention by either RHO or LHO since opening.
+    for s, b in state.bids:
+        if b is for_bid:
+            break
+        if b.is_pass:
+            continue
+        if s in (bidder, partner):
+            continue
+        return False  # opponent acted — bail
+    # No major-fit raise must have happened.
+    if _trump_set_level(state) is not None:
+        return False
+    return True
+
+
+def _respond_to_gerber(state: 'AuctionState', e: HandEval, system) -> Bid:
+    """Partner bid 4C as Gerber ace-ask — answer in steps.
+
+    Step responses:
+      • 4D = 0 or 4 aces (ambiguous — asker disambiguates by HCP)
+      • 4H = 1 ace
+      • 4S = 2 aces
+      • 4NT = 3 aces
+    """
+    n_aces = sum(1 for s in (Suit.SPADES, Suit.HEARTS,
+                              Suit.DIAMONDS, Suit.CLUBS)
+                 if e.has_ace.get(s, False))
+    if n_aces == 0 or n_aces == 4:
+        return bid(4, Suit.DIAMONDS, alert=True,
+                   why=f"Gerber: {n_aces} aces")
+    if n_aces == 1:
+        return bid(4, Suit.HEARTS, alert=True, why="Gerber: 1 ace")
+    if n_aces == 2:
+        return bid(4, Suit.SPADES, alert=True, why="Gerber: 2 aces")
+    return bid(4, Suit.NOTRUMP, alert=True, why="Gerber: 3 aces")
+
+
+def _asker_after_gerber(state: 'AuctionState', e: HandEval, system) -> Bid:
+    """I bid 4C Gerber, partner answered — decide game / slam / grand.
+
+    Resolution: count my aces + partner's, decide. Missing 2+ aces →
+    sign off in 4NT. With all aces → 5C king-ask (Gerber 5C). With
+    exactly 3 → 6NT. Missing 1 → 6NT only if combined HCP is
+    comfortably enough for 12 tricks (33+).
+    """
+    resp = state.partner_bids[-1] if state.partner_bids else None
+    if resp is None:
+        return passb()
+    if resp.level != 4 or resp.suit is None:
+        return passb(why="Unexpected Gerber response")
+    step = {Suit.DIAMONDS: 0, Suit.HEARTS: 1,
+            Suit.SPADES: 2, Suit.NOTRUMP: 3}.get(resp.suit)
+    if step is None:
+        return passb(why="Non-step Gerber response")
+    # Disambiguate 0 vs 4 by total HCP — if I have 16+ and partner
+    # showed 0/4, they almost certainly mean 4.
+    if step == 0 and e.hcp >= 16:
+        partner_aces = 4
+    elif step == 0:
+        partner_aces = 0
+    else:
+        partner_aces = step
+    my_aces = sum(1 for s in (Suit.SPADES, Suit.HEARTS,
+                               Suit.DIAMONDS, Suit.CLUBS)
+                  if e.has_ace.get(s, False))
+    total = my_aces + partner_aces
+    if total <= 2:
+        return bid(4, Suit.NOTRUMP,
+                   why=f"Gerber: only {total} aces — sign off in 4NT")
+    if total == 3:
+        # Missing 1 ace — small slam if values are there.
+        if e.hcp >= 19:
+            return bid(6, Suit.NOTRUMP,
+                       why=f"Gerber: 3/4 aces, slam values")
+        return bid(4, Suit.NOTRUMP,
+                   why=f"Gerber: missing 1 ace + thin HCP")
+    # All 4 aces — go to 6NT (king ask via 5NT is rarely used after
+    # Gerber; MVP just signs off in 6NT).
+    return bid(6, Suit.NOTRUMP, why="Gerber: all 4 aces — 6NT")
+
+
+def _try_gerber_pipeline(state: 'AuctionState', e: HandEval,
+                         system) -> Optional[Bid]:
+    """Handle the Gerber 4C → step-answer → continuation flow.
+
+    Mirrors `_try_rkc_pipeline` but for the Gerber-after-NT path."""
+    last_partner = state.partner_bids[-1] if state.partner_bids else None
+    last_mine = state.my_bids[-1] if state.my_bids else None
+    if state.opp_overcalled and state.rho_bids:
+        if not state.rho_bids[-1].is_pass:
+            return None
+    # Case 1: partner just bid 4C Gerber → I respond with ace count.
+    if last_partner is not None and _is_gerber_4c(state, last_partner):
+        if not last_mine or (last_mine.level == 4
+                             and last_mine.suit == Suit.CLUBS):
+            return _respond_to_gerber(state, e, system)
+    # Case 2: I bid 4C Gerber, partner answered → my read.
+    if last_mine is not None and _is_gerber_4c(state, last_mine):
+        if last_partner is not None and last_partner.level == 4 \
+                and last_partner.suit is not None:
+            return _asker_after_gerber(state, e, system)
+    return None
+
+
+def _try_quantitative_4nt_pipeline(state: 'AuctionState', e: HandEval,
+                                   system) -> Optional[Bid]:
+    """Handle opener's accept / decline of partner's 4NT quantitative.
+
+    Pattern: I opened/rebid NT, partner jumped to 4NT showing 16-17
+    inviting slam in NT. With a maximum, I bid 6NT; with a minimum,
+    I pass.
+    """
+    last_partner = state.partner_bids[-1] if state.partner_bids else None
+    if last_partner is None:
+        return None
+    if not (last_partner.level == 4 and last_partner.suit == Suit.NOTRUMP):
+        return None
+    # _is_rkc_context would have already routed RKC sequences elsewhere.
+    # If we're here, partner's 4NT was classified as quantitative.
+    if _is_rkc_context(state, last_partner):
+        return None
+    # We must be the NT-rebidder (we showed a balanced strength range).
+    # Heuristic: my last natural bid was NT.
+    my_nt = [b for b in state.my_bids
+             if b.suit == Suit.NOTRUMP and not b.is_pass]
+    if not my_nt:
+        return None
+    # Decide based on where I was in my NT range: max → 6NT, min → pass.
+    nt_min = (getattr(system, "one_nt_min_hcp", 15)
+              if system is not None else 15)
+    nt_max = (getattr(system, "one_nt_max_hcp", 17)
+              if system is not None else 17)
+    midpoint = (nt_min + nt_max) / 2.0
+    if e.hcp > midpoint:
+        return bid(6, Suit.NOTRUMP,
+                   why=f"Accepting quantitative 4NT: max of NT range "
+                       f"({e.hcp} HCP, {nt_min}-{nt_max})")
+    return passb(why=f"Declining quantitative 4NT: min of NT range "
+                     f"({e.hcp} HCP, {nt_min}-{nt_max})")
+
+
+def _try_grand_slam_force_pipeline(state: 'AuctionState', e: HandEval,
+                                   system) -> Optional[Bid]:
+    """Handle the 5NT grand-slam force (Josephine / GSF).
+
+    Pattern: partnership has agreed a major trump and partner bids
+    5NT in a non-RKC context (no 4NT RKC bid earlier) — that's a
+    GSF asking 'do you have 2 of the top 3 trump honours (AKQ)?'.
+    Responses: 7 of trump with 2 of top 3; 6 of trump otherwise.
+
+    Note: this is distinct from the 5NT king-ask after 4NT RKC,
+    which is handled by `_respond_to_king_ask`.
+    """
+    last_partner = state.partner_bids[-1] if state.partner_bids else None
+    if last_partner is None:
+        return None
+    if not (last_partner.level == 5 and last_partner.suit == Suit.NOTRUMP):
+        return None
+    # 4NT RKC earlier? Then 5NT is king-ask, not GSF (handled elsewhere).
+    for s, b in state.bids:
+        if b.level == 4 and b.suit == Suit.NOTRUMP and not b.is_pass:
+            return None
+    trump = _agreed_trump(state)
+    if trump not in (Suit.HEARTS, Suit.SPADES):
+        return None
+    trump_set = _trump_set_level(state)
+    if trump_set is None:
+        return None
+    # Count top trump honors (A, K, Q).
+    top_honours = sum(1 for f in (e.has_ace.get(trump, False),
+                                   e.has_king.get(trump, False),
+                                   e.has_queen.get(trump, False)) if f)
+    if top_honours >= 2:
+        return bid(7, trump, alert=True,
+                   why=f"GSF 5NT: {top_honours} of top 3 trump "
+                       f"honours → 7{trump.to_char()}")
+    return bid(6, trump, alert=True,
+               why=f"GSF 5NT: only {top_honours} of top 3 trump "
+                   f"honours → 6{trump.to_char()}")
+
+
 def _try_rkc_pipeline(state: 'AuctionState', e: HandEval, system) -> Optional[Bid]:
     """Hook for decide_bid: handle every step of the RKC follow-up.
 
@@ -2200,6 +2433,28 @@ def _decide_bid_impl(state: AuctionState, eval_: HandEval, system) -> Bid:
     rkc = _try_rkc_pipeline(state, eval_, system)
     if rkc is not None:
         return rkc
+
+    # Note: Gerber response pipeline considered but dropped from the
+    # Phase 4 MVP — the conservative-but-correct 4C-after-1NT
+    # detection still triggers in enough corpus auctions that
+    # rebid logic above the asking-bid layer expects 4C to mean
+    # something else (splinter, suit continuation, advancer cuebid).
+    # An MVP that strictly matches Q-Plus's Gerber path on slam corpus
+    # 59517 caused a −11 IMP regression on SAYC NS deals. Deferred to
+    # a follow-up session that can do full call-site auditing.
+
+    # Quantitative 4NT — opener's accept/decline of partner's 4NT
+    # slam invite after our NT rebid.
+    qnt = _try_quantitative_4nt_pipeline(state, eval_, system)
+    if qnt is not None:
+        return qnt
+
+    # Grand-slam force (5NT after major-trump-set, no prior 4NT) —
+    # responder shows 2-of-top-3 trump honours: 7 of trump if yes,
+    # 6 of trump if no.
+    gsf = _try_grand_slam_force_pipeline(state, eval_, system)
+    if gsf is not None:
+        return gsf
 
     # Italian-cuebid continuation — fires when partner has cuebid in
     # a trump-set major sequence and it's our turn to either continue
