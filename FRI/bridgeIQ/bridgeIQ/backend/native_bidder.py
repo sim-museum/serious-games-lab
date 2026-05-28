@@ -2915,6 +2915,23 @@ def _respond_to_1nt(e: HandEval, system) -> Bid:
                                    f"(0-7 HCP)")
         return passb(why=f"0-{t['pass_max']} HCP, no 4cM/5cM → pass 1NT")
 
+    # 5-4 in the majors + game-going values → Stayman BEFORE Jacoby
+    # transfer. The 5-card major is hidden by a transfer (showing
+    # only the 5-card suit); Stayman finds the 4-4 fit if opener
+    # has it, then Smolen (3-of-LOWER-major over 2D) shows the
+    # 5-4 distribution. Deal 33 in slam corpus 59517: S held 5S +
+    # 4H + 1D + 3C + 13 HCP; old transfer-first logic stopped at
+    # 2S after opener accepted, missing the 5-3 spade slam Q-Plus
+    # reached via Stayman → Smolen → cuebid → RKC → 6S.
+    has_5_4_majors = (
+        (has_5H and e.suit_lengths[Suit.SPADES] == 4)
+        or (has_5S and e.suit_lengths[Suit.HEARTS] == 4)
+    )
+    if has_5_4_majors and hcp >= 10:
+        return bid(2, Suit.CLUBS, alert=True,
+                   why=f"Stayman with 5-4 majors ({hcp} HCP) — Smolen "
+                       f"3M over 2D if no fit")
+
     # Jacoby transfers (always — every Q-Plus system flips this on)
     if has_5H or has_5S:
         # Texas: 6+ in a major with game values goes straight to game.
@@ -4361,7 +4378,28 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
             other_major = Suit.SPADES if shown_major == Suit.HEARTS else Suit.HEARTS
             # Partner has 5+ in OTHER major. Pick the fit.
             if e.suit_lengths[other_major] >= 3:
-                return bid(4, other_major, why=f"Smolen accept: 3+ {other_major.to_char()}")
+                # Slam zone: max NT (17) + Smolen's GF promise → bid
+                # 3-of-other-major (preference) when slam-going. This
+                # sets trump for partner to drive slam via cuebid/RKC.
+                # Deal 33 in slam corpus 59517: N had 17 HCP + 3
+                # spades after Smolen 3H; jump to 4S kills slam
+                # exploration. The 3-spade preference keeps the
+                # auction at the 3-level so partner with 13+ HCP can
+                # set up cuebid sequences.
+                nt_max = (getattr(system, "one_nt_max_hcp", 17)
+                          if system is not None else 17)
+                if e.hcp >= nt_max - 1:
+                    # Must outrank 3H (partner's Smolen bid).
+                    # 3S is legal (HEARTS rank=2 < SPADES rank=3).
+                    if other_major == Suit.SPADES:
+                        return bid(3, Suit.SPADES, alert=True,
+                                   why=f"3S preference (Smolen, max NT "
+                                       f"{e.hcp} HCP, 3+ S fit) — slam "
+                                       f"exploration room")
+                    # other_major == HEARTS: partner showed 5H+4S via
+                    # 3S. Bid 4H (game) since 3H would be a retreat.
+                return bid(4, other_major,
+                           why=f"Smolen accept: 3+ {other_major.to_char()}")
             return bid(3, Suit.NOTRUMP, why="Smolen no fit")
 
     # Weak 2♥/2♠ opener — partner's 2NT inquiry. Use Ogust matrix if
@@ -5382,7 +5420,20 @@ def _stayman_responder_rebid(state, e, opener_rebid: Bid,
     if opener_rebid.suit in (Suit.HEARTS, Suit.SPADES):
         major = opener_rebid.suit
         fit = e.suit_lengths.get(major, 0)
-        if fit >= 4:
+        # Smolen continuation: if my SECOND bid was a Smolen 3-of-major
+        # (4-of-lower + 5-of-higher) AND opener's response is at the
+        # 3-level showing preference to my 5-card suit, we're in
+        # slam zone with combined 27+ HCP + 8-card fit. Lower the
+        # slam-threshold to 12 HCP (instead of fresh-Stayman's 17).
+        is_smolen_continuation = (
+            len(state.my_bids) >= 2
+            and state.my_bids[1].level == 3
+            and state.my_bids[1].suit in (Suit.HEARTS, Suit.SPADES)
+            and opener_rebid.level == 3)
+        if fit >= 4 or is_smolen_continuation:
+            if is_smolen_continuation and fit < 4:
+                # Smolen showed 5 cards — re-derive fit from my hand.
+                fit = e.suit_lengths.get(major, 0)
             # Slam launch threshold depends on opener's NT range.
             # 15-17 NT → 17+ responder is the classic Blackwood
             # threshold (combined 32+ → slam). For weak NT (Acol
@@ -5397,6 +5448,10 @@ def _stayman_responder_rebid(state, e, opener_rebid: Bid,
                       if system is not None else 15)
             # Threshold: need combined ≥ 32 to launch slam.
             slam_threshold = max(0, 32 - nt_min)  # 17 for 15-NT, 18 for 14-NT
+            # Smolen lowers threshold: opener showed extras via 3-level
+            # preference (max NT range) and we have 5-4 majors.
+            if is_smolen_continuation:
+                slam_threshold = max(0, 32 - nt_min - 5)  # 12 for 15-NT
             if hcp >= slam_threshold:
                 cuebid = _maybe_initiate_cuebid(state, e, trump=major)
                 if cuebid is not None:

@@ -213,10 +213,17 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
         # 4NT tracking and opener-NT-rebid tracking run REGARDLESS of
         # the 4NT cut-off (legacy behavior treats opener's own 4NT as
         # an NT-rebid for quantitative-gate purposes).
+        # Track opener's bids AFTER first (used for opener_rebid_nt
+        # quantitative-gate). Exclude bids AT/AFTER the first 4NT —
+        # opener's own 4NT is the RKC bid being classified, not a
+        # prior quantitative-NT-rebid. (Deal 33 fix: Smolen 3H +
+        # opener's 4NT was being misclassified quantitative because
+        # the 4NT itself counted as an NT-rebid.)
         if (s == ctx.opener_seat
                 and not b.is_pass
                 and not b.is_double
-                and not b.is_redouble):
+                and not b.is_redouble
+                and (first_4nt_idx is None or idx < first_4nt_idx)):
             if not opener_first_seen:
                 opener_first_seen = True
             else:
