@@ -5075,6 +5075,31 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
         other_major = (Suit.SPADES if my_major == Suit.HEARTS
                        else Suit.HEARTS)
         rebid_suit = opener_rebid.suit
+        # PRIORITY: 3+ cards in opener's rebid major (= 8+ card fit)
+        # with game values. After partner's REVERSE / strong rebid
+        # showing the major, an 8-card fit + 11+ HCP combined with
+        # partner's strong showing (typically 16+) is a game-going
+        # auction; raise to game directly. Without this, biq's
+        # 12-HCP semi-balanced hand falls through to 2NT invitational,
+        # missing the spade game.
+        # Base #1 deck idx 180 seed 36866: S held S♠AK2 H♠JT752 D♠KJ9
+        # C♠96 (12 HCP, 3-5-3-2) after Precision 1C-1H-2S. biq bid
+        # 2NT → N passed → 2NT-S (NS-100 vul). Q-Plus raised to 4S
+        # game (NS+620). 5 cells × −11 IMP.
+        if (rebid_suit in (Suit.HEARTS, Suit.SPADES)
+                and rebid_suit != my_major
+                and e.suit_lengths.get(rebid_suit, 0) >= 3):
+            if hcp >= 12:
+                return bid(4, rebid_suit,
+                           why=f"4{rebid_suit.to_char()}: 3+ support "
+                               f"for partner's REAL major, {hcp} HCP "
+                               f"(strong-1C / reverse → game)")
+            if hcp >= 8:
+                return bid(3, rebid_suit,
+                           why=f"3{rebid_suit.to_char()}: 3+ support "
+                               f"for partner's REAL major, {hcp} HCP "
+                               f"(invitational raise)")
+
         # 4+ other major — bid it as a new suit (F1).
         # The level depends on whether the other major outranks
         # opener's rebid suit.
