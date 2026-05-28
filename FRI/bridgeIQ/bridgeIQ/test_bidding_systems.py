@@ -598,6 +598,66 @@ class TestAuctionContext(unittest.TestCase):
         self.assertFalse(ctx.gf_established)
 
 
+class TestPlayingTricks(unittest.TestCase):
+    """Phase F: playing-tricks hand-eval primitive coverage.
+
+    Playing tricks = a hand's expected offensive trick contribution,
+    ignoring partner. Combines top honors + length tricks. Useful
+    for slam-evaluation where HCP+controls misses the real picture.
+    """
+
+    def setUp(self):
+        from backend.native_bidder import evaluate_hand
+        from backend.models import Hand, Card, Suit, Rank
+        self.evaluate_hand = evaluate_hand
+        self.Hand, self.Card = Hand, Card
+        self.Suit, self.Rank = Suit, Rank
+
+    def _hand(self, spec: str):
+        Suit, Rank = self.Suit, self.Rank
+        suit_map = {'S': Suit.SPADES, 'H': Suit.HEARTS,
+                    'D': Suit.DIAMONDS, 'C': Suit.CLUBS}
+        rank_map = {'A': Rank.ACE, 'K': Rank.KING, 'Q': Rank.QUEEN,
+                    'J': Rank.JACK, 'T': Rank.TEN,
+                    '9': Rank.NINE, '8': Rank.EIGHT, '7': Rank.SEVEN,
+                    '6': Rank.SIX, '5': Rank.FIVE, '4': Rank.FOUR,
+                    '3': Rank.THREE, '2': Rank.TWO}
+        cards = []
+        for grp in spec.split():
+            s = suit_map[grp[0]]
+            for c in grp[1:]:
+                cards.append(self.Card(s, rank_map[c]))
+        return self.Hand(cards=cards)
+
+    def test_balanced_aces_only_hand(self):
+        """4-3-3-3 with A in each suit: 4 top-tricks (A x4), no length."""
+        h = self._hand('SAQJ HAQJ DAQJ CAQJ')
+        # Wait 4 suits at 3-3-3-3, can't have 4-3-3-3 with this. Let
+        # me use a hand with A x4 + simple cards. SA432 HA32 DA32 CA32
+        h = self._hand('SA432 HA32 DA32 CA32')
+        e = self.evaluate_hand(h)
+        # 4 aces = 4 top tricks; no length past 3 (spades is 4 cards
+        # = 1 length trick). Expect ~5.
+        self.assertGreaterEqual(e.playing_tricks, 4.5)
+        self.assertLessEqual(e.playing_tricks, 5.5)
+
+    def test_long_suit_with_top_honours(self):
+        """6-card AKQ suit alone: 3 top tricks + 3 length = 6 PT."""
+        h = self._hand('SAKQ987 HJ DJT9 CJ87')
+        e = self.evaluate_hand(h)
+        self.assertEqual(e.suit_lengths[self.Suit.SPADES], 6)
+        # Spades: A+K+Q = 3 top + 3 length tricks (6-3) = 6
+        self.assertEqual(e.playing_tricks, 6.0)
+
+    def test_weak_no_honours_hand(self):
+        """Balanced hand with no honours: ~0 PT (just length tricks)."""
+        h = self._hand('S732 H932 DJ872 C543')
+        e = self.evaluate_hand(h)
+        # No top honors; DJ872 has no A/K/Q so the J doesn't help.
+        # 4-card suits contribute 1 length trick if no shorter rule.
+        self.assertLess(e.playing_tricks, 2.0)
+
+
 class TestForcingContext(unittest.TestCase):
     """Phase C: ForcingContext + GF-trigger detection."""
 

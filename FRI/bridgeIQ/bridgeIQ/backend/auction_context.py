@@ -413,7 +413,11 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
     # contract than the legacy 4NT accidental landing. Re-enable once
     # opener's splinter slam-eval is reworked (playing-tricks model
     # rather than strict controls gate).
-    if False and ctx.trump is None and ctx.opening_bid is not None:
+    # Phase F: re-enabled now that the splinter slam-eval at
+    # _generic_responder_rebid:~4970 uses the playing-tricks + active-
+    # HCP gate instead of the strict controls≥4 gate that wrongly
+    # signed off in 4M on Deal 65.
+    if ctx.trump is None and ctx.opening_bid is not None:
         opener_major = (ctx.opening_bid.suit
                         if ctx.opening_bid.level == 1
                         and ctx.opening_bid.suit in _MAJORS else None)

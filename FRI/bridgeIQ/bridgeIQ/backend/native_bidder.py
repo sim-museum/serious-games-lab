@@ -53,6 +53,7 @@ class HandEval:
     losers: int              # Losing-Trick Count
     controls: int            # A=2, K=1
     quick_tricks: float
+    playing_tricks: float    # Phase F: textbook playing-tricks count
     five_card_majors: List[Suit]
     six_card_suits: List[Suit]
     # Per-suit honour presence — needed by the RKC follow-up so the
@@ -92,6 +93,7 @@ def evaluate_hand(hand: Hand) -> HandEval:
     losers = _losing_trick_count(by_suit)
     controls = _controls(by_suit)
     quick_tricks = _quick_tricks(by_suit)
+    playing_tricks = _playing_tricks(by_suit)
 
     five_card_majors = [s for s in (Suit.SPADES, Suit.HEARTS) if suit_lengths[s] >= 5]
     six_card_suits = [s for s, n in suit_lengths.items() if n >= 6]
@@ -115,6 +117,7 @@ def evaluate_hand(hand: Hand) -> HandEval:
         losers=losers,
         controls=controls,
         quick_tricks=quick_tricks,
+        playing_tricks=playing_tricks,
         five_card_majors=five_card_majors,
         six_card_suits=six_card_suits,
         has_ace=has_ace,
@@ -176,6 +179,44 @@ def _quick_tricks(by_suit) -> float:
             total += 1.0
         elif Rank.KING in ranks and n >= 2:
             total += 0.5
+    return total
+
+
+def _playing_tricks(by_suit) -> float:
+    """Phase F playing-tricks estimate — how many tricks the hand
+    expects to take on offense, ignoring partner's holding.
+
+    Formula (well-known textbook approximation, e.g. Goren / Klinger):
+      • For each suit, count top-honor tricks: A=1, K with 2+=1,
+        Q with 3+=1 (if A or K also held).
+      • Plus length tricks beyond the third card: each card past 3
+        in a suit adds +1 trick (assuming a 5-card suit will run).
+
+    Used for slam-evaluation in Phase F where HCP+losers+controls
+    misses key data: a 6-card suit headed by AK is worth ~5 playing
+    tricks even with only 7 HCP, and a balanced 16-HCP hand may have
+    only 4-5 playing tricks. Q-Plus's slam decisions implicitly use
+    playing-tricks; biq matching that requires the same primitive.
+    """
+    total = 0.0
+    for cards in by_suit.values():
+        n = len(cards)
+        if n == 0:
+            continue
+        ranks = {c.rank for c in cards}
+        has_a = Rank.ACE in ranks
+        has_k = Rank.KING in ranks
+        has_q = Rank.QUEEN in ranks
+        # Top-honor tricks
+        if has_a:
+            total += 1.0
+        if has_k and n >= 2:
+            total += 1.0
+        if has_q and n >= 3 and (has_a or has_k):
+            total += 1.0
+        # Length tricks: each card beyond the 3rd.
+        if n > 3:
+            total += n - 3
     return total
 
 
@@ -3443,16 +3484,34 @@ def _respond_to_major(state, e: HandEval, system) -> Bid:
 
     # 4+ support → raise structures
     if fit >= 4:
-        # Splinter 3+1 or 4+0 with 13-15 game values
-        for short in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
-            if short == major:
-                continue
-            if e.suit_lengths[short] <= 1 and 13 <= hcp <= 15:
-                # Splinter bid: jump in shortness suit
-                level = 3 if _BID_RANK[short] > _BID_RANK[major] else 4
-                return bid(level, short, alert=True,
-                           why=f"Splinter raise: 4+ {major.to_char()}, "
-                               f"shortness {short.to_char()}")
+        # Source-of-tricks check (Phase F): when responder has a 5+
+        # side suit with 5+ HCP in it, that's a slam-going asset
+        # better described via 2/1 GF than via splinter (which shows
+        # shortness but hides the long suit). Deal 65 in slam corpus
+        # 59517: S held 4H + 1S + 6D AQ + 2C, 13 HCP. Old splinter-
+        # first logic bid 3S, dropping the slam-going diamond suit.
+        # Q-Plus's S bids 2D (2/1 GF); the subsequent auction reaches
+        # 7H via reverse + cuebid + RKC + king-ask + grand.
+        has_source_of_tricks = any(
+            e.suit_lengths[ss] >= 5 and e.suit_hcp[ss] >= 5
+            and ss != major
+            for ss in (Suit.CLUBS, Suit.DIAMONDS,
+                       Suit.HEARTS, Suit.SPADES)
+        )
+        # Splinter 3+1 or 4+0 with 13-15 game values (but defer to
+        # 2/1 GF when source-of-tricks is present).
+        if not has_source_of_tricks:
+            for short in (Suit.SPADES, Suit.HEARTS,
+                           Suit.DIAMONDS, Suit.CLUBS):
+                if short == major:
+                    continue
+                if e.suit_lengths[short] <= 1 and 13 <= hcp <= 15:
+                    # Splinter bid: jump in shortness suit
+                    level = 3 if _BID_RANK[short] > _BID_RANK[major] else 4
+                    return bid(level, short, alert=True,
+                               why=f"Splinter raise: 4+ "
+                                   f"{major.to_char()}, shortness "
+                                   f"{short.to_char()}")
         # Jacoby 2NT: 4+ support, GF (13+ HCP). Only fire when the
         # system has the convention enabled — wbridge5's SAYC has
         # "2NT Jacoby" unchecked, so for SAYC-wbridge5 a 13+ balanced
@@ -3461,21 +3520,36 @@ def _respond_to_major(state, e: HandEval, system) -> Bid:
         if hcp >= 13 and system.has("A-1MA-Jacoby-2NT"):
             return bid(2, Suit.NOTRUMP, alert=True,
                        why="Jacoby 2NT: 4+ support, GF")
-        # 17+ HCP with 4+ support is slam-interest territory. Jumping
-        # to 4M would kill the auction — preserve room by bidding 2/1
-        # in the longest 5+ side suit first, then bring up the major
-        # support later (or take control via Blackwood).
-        if hcp >= 17:
+        # 2/1 GF with 4-card trump support + 5+-card side suit (with
+        # source-of-tricks values): preserve room for slam exploration
+        # by introducing the side suit at the 2-level instead of
+        # jumping to 4M. Threshold lowered from 17 to 13 HCP (Phase F):
+        # a 13-HCP responder with a strong 6-card minor opposite
+        # opener's 1M is in the slam zone (combined 25+ HCP + 9-card
+        # major fit + extra source = slam tries). Deal 65 in slam
+        # corpus 59517: S held 4H + 6D AQ + 1S + 13 HCP; old code
+        # jumped to 4H, dropping the slam exploration. Q-Plus reached
+        # 7H grand via 2D-2S-3H-3S-4NT-5C-5D-5S-5NT-6D-7H.
+        if (hcp >= 13
+                and any(e.suit_lengths[s] >= 5
+                        and e.suit_hcp[s] >= 5
+                        and s != major
+                        for s in (Suit.CLUBS, Suit.DIAMONDS,
+                                   Suit.HEARTS, Suit.SPADES))):
             for s in (Suit.CLUBS, Suit.DIAMONDS):
-                if e.suit_lengths[s] >= 5 and s != major:
+                if (e.suit_lengths[s] >= 5
+                        and e.suit_hcp[s] >= 5
+                        and s != major):
                     return bid(2, s, alert=True,
                                why=f"2-over-1 GF in 5+{s.to_char()} "
-                                   f"(slam try, 4+{major.to_char()})")
+                                   f"(slam try, 4+{major.to_char()} "
+                                   f"+ source-of-tricks)")
             if (major == Suit.SPADES
-                    and e.suit_lengths[Suit.HEARTS] >= 5):
+                    and e.suit_lengths[Suit.HEARTS] >= 5
+                    and e.suit_hcp[Suit.HEARTS] >= 5):
                 return bid(2, Suit.HEARTS, alert=True,
                            why="2-over-1 GF in 5+H "
-                               "(slam try, 4+S)")
+                               "(slam try, 4+S + source-of-tricks)")
         # Without Jacoby 2NT and no 5+ side suit for a 2/1, a
         # 4+-trump hand with 13+ HCP and no shortness settles for
         # 4M and lets opener evaluate for slam from extras.
@@ -4961,13 +5035,33 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
     if (p_last.alert and p_last.level >= 3
             and p_last.suit is not None and p_last.suit != op_suit
             and op_suit in (Suit.HEARTS, Suit.SPADES)):
-        # Splinter response (existing logic, narrowed to majors).
-        if e.losers <= 5 and e.controls >= 4:
+        # Phase F: splinter slam-eval based on playing-tricks + ACTIVE
+        # values (top honours in suits OTHER than partner's splinter
+        # suit — values in the shortness suit are wasted opposite
+        # partner's 0-1 holding). Previous gate (`controls >= 4 +
+        # losers <= 5`) wrongly rejected hands like Deal 65 opener N
+        # (17 HCP, 0 aces but 2 useful kings outside spades shortness,
+        # 5-card heart fit, ~6 playing tricks) — the K-controls-only
+        # combo failed the `controls >= 4` test but had real slam play.
+        splinter_suit = p_last.suit
+        useful_hcp = sum(e.suit_hcp[s] for s in
+                         (Suit.SPADES, Suit.HEARTS,
+                          Suit.DIAMONDS, Suit.CLUBS)
+                         if s != splinter_suit)
+        slam_qualified = (
+            # Strong: 6+ playing tricks + 14+ useful HCP
+            (e.playing_tricks >= 6.0 and useful_hcp >= 14)
+            # Or: 4+ controls (legacy gate preserved)
+            or (e.losers <= 5 and e.controls >= 4)
+        )
+        if slam_qualified:
             cuebid = _maybe_initiate_cuebid(state, e, trump=op_suit)
             if cuebid is not None:
                 return cuebid
             return bid(4, Suit.NOTRUMP, alert=True,
-                       why="RKC after splinter")
+                       why=f"RKC after splinter ({useful_hcp} useful "
+                           f"HCP outside {splinter_suit.to_char()}, "
+                           f"{e.playing_tricks:.1f} PT)")
         return bid(4, op_suit, why="Sign off after splinter")
     if (p_last.alert and p_last.level >= 3
             and p_last.suit is not None and p_last.suit != op_suit
