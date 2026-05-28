@@ -1431,6 +1431,96 @@ def _try_quantitative_4nt_pipeline(state: 'AuctionState', e: HandEval,
                      f"({e.hcp} HCP, {nt_min}-{nt_max})")
 
 
+def _is_trump_quality_4d_ask(state: 'AuctionState',
+                             for_bid: 'Bid') -> bool:
+    """Was `for_bid` (must be 4D) a trump-quality asking bid?
+
+    Pattern (Bergen-style): trump-set in a major at the 3-level,
+    cuebid exchange is in progress (at least one 4-level cuebid),
+    and asker bids 4D in a NEW position — neither trump nor a
+    previously-cuebid suit. Asker wants to know about trump quality
+    before grand.
+
+    Responses to 4D-quality-ask:
+      • 4 of trump = poor trumps (top honor missing or weak length)
+      • 4NT = solid trumps (2 of top 3 honors, 5+ length)
+    """
+    if not (for_bid.level == 4 and for_bid.suit == Suit.DIAMONDS):
+        return False
+    trump = _agreed_trump(state)
+    if trump not in (Suit.HEARTS, Suit.SPADES):
+        return False
+    if _trump_set_level(state) is None:
+        return False
+    # Need at least one cuebid in the auction before 4D ask.
+    # If 4D is itself the first cuebid (and would be cheapest), the
+    # cuebid pipeline owns it — don't classify as asking bid.
+    bidder = None
+    for s, b in state.bids:
+        if b is for_bid:
+            bidder = s
+            break
+    if bidder is None:
+        return False
+    my_cuebids, partner_cuebids = _cuebids_made_so_far(state, trump)
+    if not partner_cuebids and not my_cuebids:
+        return False
+    # Diamonds must not be trump or previously cuebid by either side.
+    if trump == Suit.DIAMONDS:
+        return False
+    if Suit.DIAMONDS in my_cuebids or Suit.DIAMONDS in partner_cuebids:
+        return False
+    return True
+
+
+def _respond_to_trump_quality_ask(state: 'AuctionState', e: HandEval,
+                                  system) -> Bid:
+    """Partner bid 4D as trump-quality ask — answer in steps.
+
+    4 of trump = poor (≤ 1 top honor in trump)
+    4NT       = solid (≥ 2 of top 3 honors OR 6+ length with 1)
+    """
+    trump = _agreed_trump(state)
+    if trump is None:
+        return passb()
+    top_honours = sum(1 for f in (e.has_ace.get(trump, False),
+                                   e.has_king.get(trump, False),
+                                   e.has_queen.get(trump, False)) if f)
+    trump_length = e.suit_lengths.get(trump, 0)
+    solid = top_honours >= 2 or (top_honours >= 1 and trump_length >= 6)
+    if solid:
+        return bid(4, Suit.NOTRUMP, alert=True,
+                   why=f"Trump-quality: solid ({top_honours} top "
+                       f"honours, {trump_length} cards)")
+    return bid(4, trump, alert=True,
+               why=f"Trump-quality: poor ({top_honours} top honours, "
+                   f"{trump_length} cards)")
+
+
+def _try_asking_bid_pipeline(state: 'AuctionState', e: HandEval,
+                             system) -> Optional[Bid]:
+    """Handle Bergen-style 4D trump-quality ask + responses.
+
+    Phase 5 of the slam-architecture plan. Currently MVP: only the
+    4D-trump-quality flavour, gated to fire after trump-set + at
+    least one cuebid has been exchanged. Doesn't conflict with the
+    cuebid pipeline since `_try_cuebid_pipeline` requires partner's
+    last bid to be a cuebid — if partner bid 4D as a quality-ask,
+    it's not a cheapest-side-suit cuebid (we check trump-set + cuebid
+    in 4D's classification path).
+    """
+    last_partner = state.partner_bids[-1] if state.partner_bids else None
+    last_mine = state.my_bids[-1] if state.my_bids else None
+    if state.opp_overcalled and state.rho_bids:
+        if not state.rho_bids[-1].is_pass:
+            return None
+    if last_partner is not None and _is_trump_quality_4d_ask(state,
+                                                              last_partner):
+        if last_mine is None or last_mine.level < 4:
+            return _respond_to_trump_quality_ask(state, e, system)
+    return None
+
+
 def _try_grand_slam_force_pipeline(state: 'AuctionState', e: HandEval,
                                    system) -> Optional[Bid]:
     """Handle the 5NT grand-slam force (Josephine / GSF).
@@ -2455,6 +2545,14 @@ def _decide_bid_impl(state: AuctionState, eval_: HandEval, system) -> Bid:
     gsf = _try_grand_slam_force_pipeline(state, eval_, system)
     if gsf is not None:
         return gsf
+
+    # Bergen-style asking bid (Phase 5) — 4D trump-quality ask. Must
+    # be checked before the cuebid pipeline because 4D could equally
+    # be a side-suit cuebid; the asking-bid classifier is stricter
+    # (requires prior cuebid exchange).
+    ab = _try_asking_bid_pipeline(state, eval_, system)
+    if ab is not None:
+        return ab
 
     # Italian-cuebid continuation — fires when partner has cuebid in
     # a trump-set major sequence and it's our turn to either continue
