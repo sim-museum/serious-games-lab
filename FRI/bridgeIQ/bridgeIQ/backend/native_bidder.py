@@ -883,6 +883,13 @@ def _is_rkc_context(state: 'AuctionState', for_bid: 'Bid') -> bool:
     past the "natural NT" zone. False for opening NT, jump 2NT
     rebids, and quantitative slam invites — those are handled by
     other branches.
+
+    Additional gate: 1m-1M-1NT-4NT is quantitative (deal 39 in slam
+    corpus 59517 — opener denied major support with their 1NT rebid,
+    so responder's 4NT can't be asking keycards for the major).
+    Detection: opener's REBID was 1NT/2NT/3NT (showing balanced
+    minimum/medium with no major fit) AND no major-raise has
+    happened.
     """
     if not (for_bid.level == 4 and for_bid.suit == Suit.NOTRUMP):
         return False
@@ -890,6 +897,39 @@ def _is_rkc_context(state: 'AuctionState', for_bid: 'Bid') -> bool:
     if trump is None:
         # No trump fit → 4NT is quantitative.
         return False
+    # Quantitative-after-NT-rebid gate: if opener (the partnership's
+    # first non-pass bidder) has subsequently bid NT in their rebid
+    # AND no actual trump-fit raise was made, treat 4NT as
+    # quantitative.
+    trump_set = _trump_set_level(state)
+    if trump_set is None:
+        # Opener has rebid NT? Check the opener's seat's bids.
+        # Exception: if the OPENING BID was a strong artificial 1C
+        # (Precision-family), 1C says nothing about strain — opener's
+        # 4NT after partner's positive 1M can be RKC despite the
+        # NT-rebid pattern not applying (opening was artificial).
+        opening_was_artificial_1c = (
+            state.opening_bid is not None
+            and state.opening_bid.level == 1
+            and state.opening_bid.suit == Suit.CLUBS
+            and state.opening_bid.alert)
+        if not opening_was_artificial_1c:
+            opener_seat = state.opener_seat
+            opener_bids_after_first = []
+            first_seen = False
+            for s, b in state.bids:
+                if s != opener_seat:
+                    continue
+                if not first_seen:
+                    first_seen = True
+                    continue
+                if b.is_pass or b.is_double or b.is_redouble:
+                    continue
+                opener_bids_after_first.append(b)
+            opener_rebid_nt = any(
+                b.suit == Suit.NOTRUMP for b in opener_bids_after_first)
+            if opener_rebid_nt:
+                return False
     # If the auction has only had NT bids on our side (e.g. 1NT-4NT),
     # treat 4NT as quantitative — RKC needs a suit fit.
     side_bids = state.my_bids + state.partner_bids
@@ -1311,34 +1351,34 @@ def _second_round_controls(e: 'HandEval') -> set:
 
 
 def _trump_set_level(state: 'AuctionState') -> Optional[Tuple[int, Suit]]:
-    """Find the first agreement on a major-suit trump (3M or 4M).
+    """Find the first agreement on a major-suit trump.
 
-    Returns (level, suit) for the first raise to 3-or-4 of a major
-    bid earlier by the partnership. None if no such agreement.
+    Returns (level, suit) for the trump-set bid. None if no agreement.
 
-    Detected patterns:
-      • Direct raise:  1H - 3H,   1S - 2S - 3S,   1H - 2D - 3H, ...
-      • Jump set:      1H - 3H (limit), 1S - 4S
-      • 2/1 + raise:   1H - 2C - 3H (raise of trump-set after 2/1)
+    Trump-set patterns:
+      • Direct raise (other partner bids my suit):
+        1H - 3H, 1S - 2S, 1C - 1H - 2H, 1H - 2D - 3H, ...
+      • Jump set:           1H - 3H (limit), 1S - 4S
+      • Own-suit jump:      1S - 1NT - 3S not counted (just rebid)
+
+    The first such qualifying bid wins. Single mentions at the 1-level
+    don't count — Italian cuebidding only kicks in once both sides have
+    confirmed the trump suit.
     """
-    partnership_suits_bid = set()
+    seats_bid_suit = {}        # suit → set of seats that bid it
     for s, b in state.bids:
         if b.is_pass or b.is_double or b.is_redouble:
             continue
         if b.suit in (None, Suit.NOTRUMP):
             continue
-        # Track suits the bidder's PARTNERSHIP bid (not opponents).
-        if s == state.seat or s == state.seat.partner():
-            if b.level <= 2:
-                partnership_suits_bid.add(b.suit)
-            elif b.level in (3, 4) and b.suit in partnership_suits_bid \
-                    and b.suit in (Suit.HEARTS, Suit.SPADES):
-                # Raise of a previously-bid major to 3M or 4M.
+        if s != state.seat and s != state.seat.partner():
+            continue
+        if b.suit in (Suit.HEARTS, Suit.SPADES):
+            prior_seats = seats_bid_suit.get(b.suit, set())
+            if prior_seats and s not in prior_seats:
+                # Partner is raising my major suit — trump set.
                 return (b.level, b.suit)
-            # 3M/4M as a *first* mention is also a major-suit set if
-            # partner previously implied support (Jacoby 2NT etc.) —
-            # MVP keeps it strict: must have been bid at 1-2 level.
-            partnership_suits_bid.add(b.suit)
+        seats_bid_suit.setdefault(b.suit, set()).add(s)
     return None
 
 
@@ -1510,8 +1550,21 @@ def _maybe_initiate_cuebid(state: 'AuctionState', e: 'HandEval',
     instead; returns None if there's nothing to show (no first-round
     side controls) — caller then proceeds with its 4NT launch.
 
-    `trump` must be a major (we only cuebid majors in this MVP)."""
+    `trump` must be a major (we only cuebid majors in this MVP).
+
+    Guard: only initiate cuebidding when trump has been established
+    at the 3-level (raise or jump-raise) — at the 1-level a "cuebid"
+    in the trump's overlapping suit (e.g. 2C after Precision 1C-1H)
+    would collide with system bids that have natural / artificial
+    meanings. Italian cuebidding only makes sense AFTER trump-set.
+    """
     if trump not in (Suit.HEARTS, Suit.SPADES):
+        return None
+    trump_info = _trump_set_level(state)
+    if trump_info is None:
+        return None
+    trump_level, trump_set_suit = trump_info
+    if trump_set_suit != trump:
         return None
     fr = _first_round_controls(e)
     # Drop trump (we have the trump suit's "control" by virtue of
@@ -3522,6 +3575,10 @@ def _precision_1c_rebid(state, e: HandEval, p_last: Bid, system=None) -> Bid:
         major = p_last.suit
         if e.suit_lengths[major] >= 3:
             if e.hcp >= 20 or e.controls >= 5:
+                # Note: trump not raised yet (just opener's 1C +
+                # responder's 1M positive). Cuebid pipeline guards
+                # require trump-raised, so this site keeps the
+                # direct 4NT launch.
                 return bid(4, Suit.NOTRUMP, alert=True,
                            why="Precision 1C-1M: RKC after fit, slam interest")
             return bid(3, major, why="Precision 1C-1M: simple raise (GF)")
@@ -4716,6 +4773,9 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
             and op_suit in (Suit.HEARTS, Suit.SPADES)):
         # Splinter response (existing logic, narrowed to majors).
         if e.losers <= 5 and e.controls >= 4:
+            cuebid = _maybe_initiate_cuebid(state, e, trump=op_suit)
+            if cuebid is not None:
+                return cuebid
             return bid(4, Suit.NOTRUMP, alert=True,
                        why="RKC after splinter")
         return bid(4, op_suit, why="Sign off after splinter")
@@ -4987,6 +5047,9 @@ def _stayman_responder_rebid(state, e, opener_rebid: Bid,
             # Threshold: need combined ≥ 32 to launch slam.
             slam_threshold = max(0, 32 - nt_min)  # 17 for 15-NT, 18 for 14-NT
             if hcp >= slam_threshold:
+                cuebid = _maybe_initiate_cuebid(state, e, trump=major)
+                if cuebid is not None:
+                    return cuebid
                 return bid(4, Suit.NOTRUMP, alert=True,
                            why=f"Blackwood: slam try, 4-4 "
                                f"{major.to_char()} fit found via "
@@ -5281,6 +5344,9 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
         fit = e.suit_lengths.get(op.suit, 0)
         if fit >= 4:
             if hcp >= 17:
+                cuebid = _maybe_initiate_cuebid(state, e, trump=op.suit)
+                if cuebid is not None:
+                    return cuebid
                 return bid(4, Suit.NOTRUMP, alert=True,
                            why=f"Blackwood: slam try, 4+{op.suit.to_char()} "
                                f"support, opener showed 5+")
