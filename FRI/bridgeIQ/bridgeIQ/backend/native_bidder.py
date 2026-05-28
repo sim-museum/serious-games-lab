@@ -4872,6 +4872,21 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
             # N jumped to 3H showing 16-19 + 4H. S had 8 HCP + 4
             # hearts; biq passed for 3H-S (-12 IMP) instead of
             # bidding 4H game.
+            # Slam check: with 15+ HCP + 5+ trumps, combined is
+            # 31-36 HCP + 9+ card trump fit → small slam zone.
+            # Launch RKC; partner's keycard response tells us
+            # whether grand is on. Deal 85 seed 28391: S held
+            # 17 HCP + 6♥ after N's 3H jump-raise; biq signed
+            # off in 4H, Q-Plus drove to 7H grand slam for
+            # -17 IMP.
+            if (hcp >= 15
+                    and e.suit_lengths.get(major, 0) >= 5):
+                return bid(4, Suit.NOTRUMP, alert=True,
+                           why=f"RKC after opener's jump-raise: "
+                               f"{hcp} HCP + "
+                               f"{e.suit_lengths.get(major, 0)}-card "
+                               f"{major.to_char()}, slam zone "
+                               f"(combined ≥ 31)")
             if hcp >= 6:
                 return bid(4, major,
                            why=f"4{major.to_char()}: game after "
