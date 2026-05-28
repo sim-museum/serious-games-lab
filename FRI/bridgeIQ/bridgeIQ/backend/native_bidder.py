@@ -804,14 +804,76 @@ def _agreed_trump(state: 'AuctionState') -> Optional[Suit]:
       • `1NT – 4NT`                → no suit bid → None (correctly
         classified as quantitative, NOT keycard)
     """
-    trump = None
-    for _seat, b in state.bids:
+    # First pass: collect suits each partnership member has bid
+    # (skipping 4NT and beyond). The TRUE trump is the suit bid by
+    # BOTH partners, or a suit that was raised (second mention at a
+    # higher level by the same partnership). Cuebids — a new suit
+    # by one partner AFTER trump was already set by the OTHER — must
+    # NOT promote the cuebid suit to trump.
+    suits_by = {}                # seat → list of (level, suit) tuples
+    fallback_last_suit = None    # legacy heuristic backstop
+    seen_4nt = False
+    for s, b in state.bids:
+        if b.level == 4 and b.suit == Suit.NOTRUMP and not b.is_pass:
+            seen_4nt = True
+            break
+        if b.is_pass or b.is_double or b.is_redouble:
+            continue
+        if b.suit in (None, Suit.NOTRUMP):
+            continue
+        suits_by.setdefault(s, []).append((b.level, b.suit))
+        fallback_last_suit = b.suit
+    if not suits_by:
+        return None
+    # Build raise / mutual-mention map. A suit qualifies as "trump
+    # candidate" when: same partnership has bid it 2+ times (a raise),
+    # OR both partners on a side have bid it.
+    bids_in_order = []
+    for s, b in state.bids:
         if b.level == 4 and b.suit == Suit.NOTRUMP and not b.is_pass:
             break
-        if (not b.is_pass and not b.is_double and not b.is_redouble
-                and b.suit not in (None, Suit.NOTRUMP)):
-            trump = b.suit
-    return trump
+        if b.is_pass or b.is_double or b.is_redouble:
+            continue
+        if b.suit in (None, Suit.NOTRUMP):
+            continue
+        bids_in_order.append((s, b.level, b.suit))
+    # Two partnership pairs: NS = {NORTH, SOUTH}; EW = {EAST, WEST}.
+    ns = {Seat.NORTH, Seat.SOUTH}
+    ew = {Seat.EAST, Seat.WEST}
+    # Track per-side suits bid (with levels) and find the most-recent
+    # qualifying "true trump" candidate.
+    side_bids = {True: [], False: []}   # True = NS, False = EW
+    true_trump = None
+    for s, lvl, suit in bids_in_order:
+        is_ns = s in ns
+        prior = side_bids[is_ns]
+        # Was this suit bid before on this side?
+        prior_seats = {ps for ps, pl, ps_suit in prior if ps_suit == suit}
+        prior_levels = [pl for ps, pl, ps_suit in prior if ps_suit == suit]
+        # Raise: same side bid this suit before at a lower level.
+        is_raise = bool(prior_levels) and lvl > min(prior_levels)
+        # Mutual: BOTH partners on this side have bid this suit.
+        is_mutual = bool(prior_seats) and s not in prior_seats
+        if true_trump is None and (is_raise or is_mutual):
+            # Once trump is set, later side-suit mentions are cuebids
+            # (not retroactive trump changes). Only EXPLICITLY higher
+            # raises of the CURRENT trump can move trump (e.g. 3H→4H
+            # is still hearts, but a wholly different suit becoming
+            # the agreed trump after one is already set is too risky
+            # to detect — let it be cuebid).
+            true_trump = suit
+        elif true_trump is not None and suit == true_trump and is_raise:
+            # Allow re-raising the established trump (3H→4H etc.).
+            # No change to true_trump, just keep it.
+            pass
+        prior.append((s, lvl, suit))
+    if true_trump is not None:
+        return true_trump
+    # Fallback: legacy heuristic — last natural suit before 4NT.
+    # Covers single-mention cases (1H-4NT direct quantitative shouldn't
+    # reach this — _is_rkc_context filters those — but jump-shift
+    # auctions like 1NT-4NT after Stayman path can land here).
+    return fallback_last_suit
 
 
 def _is_rkc_context(state: 'AuctionState', for_bid: 'Bid') -> bool:
@@ -1186,6 +1248,295 @@ def _try_rkc_pipeline(state: 'AuctionState', e: HandEval, system) -> Optional[Bi
             return _asker_after_king_response(state, e, system)
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Italian-style cuebidding (Phase 3 of the slam-architecture plan)
+# ---------------------------------------------------------------------------
+#
+# Once a trump suit is agreed at the 3M / 4M level, an "Italian" slam
+# auction exchanges first-round controls (ace or void) up the line,
+# then second-round controls (king or singleton), then RKC for keys.
+# The benefit over jumping straight to 4NT is that each side sees
+# WHICH side suits the other controls, so grand-slam decisions get
+# the right answer instead of a coin flip.
+#
+# Scope of this MVP:
+#   • Trump is a MAJOR (H or S). Minor-suit cuebidding is rarer in
+#     2/1 / SAYC and lower leverage on the slam-corpus dig.
+#   • Trump was set at 3M or 4M by a partner-or-mine raise.
+#   • Auction is below 4NT.
+#   • Hand has slam-going values (defer to existing 4NT-launch
+#     callers — they only call us when they would have launched
+#     RKC; our job is to cuebid first if there's something to show).
+#   • Continuation: after a cuebid is on the table, both partners
+#     keep cuebidding upward until one runs out of cheaper controls,
+#     at which point that partner launches 4NT RKC.
+# ---------------------------------------------------------------------------
+
+
+_CUEBID_SUIT_RANK = {Suit.CLUBS: 0, Suit.DIAMONDS: 1,
+                     Suit.HEARTS: 2, Suit.SPADES: 3,
+                     Suit.NOTRUMP: 4}
+
+
+def _first_round_controls(e: 'HandEval') -> set:
+    """Suits where we hold a first-round control (ace or void).
+
+    First-round control means we win the first trick in the suit
+    (opponents can't cash an ace against us). The cuebid sequence
+    shows these up the line."""
+    out = set()
+    for s in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES):
+        if e.has_ace.get(s, False):
+            out.add(s)
+        elif e.suit_lengths.get(s, 0) == 0:
+            out.add(s)
+    return out
+
+
+def _second_round_controls(e: 'HandEval') -> set:
+    """Suits where we hold a second-round control (king or singleton).
+
+    Second-round means we don't lose two tricks in the suit. A void
+    is also a second-round control, but we'd show it as first-round
+    first; this helper returns ONLY second-round-but-not-first."""
+    out = set()
+    for s in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES):
+        if e.has_king.get(s, False) and not e.has_ace.get(s, False):
+            out.add(s)
+        elif e.suit_lengths.get(s, 0) == 1:
+            out.add(s)
+    return out
+
+
+def _trump_set_level(state: 'AuctionState') -> Optional[Tuple[int, Suit]]:
+    """Find the first agreement on a major-suit trump (3M or 4M).
+
+    Returns (level, suit) for the first raise to 3-or-4 of a major
+    bid earlier by the partnership. None if no such agreement.
+
+    Detected patterns:
+      • Direct raise:  1H - 3H,   1S - 2S - 3S,   1H - 2D - 3H, ...
+      • Jump set:      1H - 3H (limit), 1S - 4S
+      • 2/1 + raise:   1H - 2C - 3H (raise of trump-set after 2/1)
+    """
+    partnership_suits_bid = set()
+    for s, b in state.bids:
+        if b.is_pass or b.is_double or b.is_redouble:
+            continue
+        if b.suit in (None, Suit.NOTRUMP):
+            continue
+        # Track suits the bidder's PARTNERSHIP bid (not opponents).
+        if s == state.seat or s == state.seat.partner():
+            if b.level <= 2:
+                partnership_suits_bid.add(b.suit)
+            elif b.level in (3, 4) and b.suit in partnership_suits_bid \
+                    and b.suit in (Suit.HEARTS, Suit.SPADES):
+                # Raise of a previously-bid major to 3M or 4M.
+                return (b.level, b.suit)
+            # 3M/4M as a *first* mention is also a major-suit set if
+            # partner previously implied support (Jacoby 2NT etc.) —
+            # MVP keeps it strict: must have been bid at 1-2 level.
+            partnership_suits_bid.add(b.suit)
+    return None
+
+
+def _cuebids_made_so_far(state: 'AuctionState',
+                         trump: Suit) -> Tuple[List[Suit], List[Suit]]:
+    """Walk the auction post-trump-set and classify each suit-bid as
+    a cuebid. Returns (my_cuebids, partner_cuebids) ordered.
+
+    Heuristic: after the major-suit trump-set bid, any new-suit bid
+    at the 4-level that is NOT 4-of-trump and NOT 4NT is a cuebid.
+    (Suit bids below 4-of-trump after trump is set count too — e.g.
+    3H sets trump, opener cuebids 3S.)"""
+    trump_set_seen = False
+    my_cuebids: List[Suit] = []
+    partner_cuebids: List[Suit] = []
+    partner = state.seat.partner()
+    for s, b in state.bids:
+        if b.is_pass or b.is_double or b.is_redouble:
+            continue
+        if b.suit is None:
+            continue
+        # Mark trump set when we hit the agreed-trump bid.
+        if not trump_set_seen:
+            if b.suit == trump and b.level in (3, 4):
+                trump_set_seen = True
+            continue
+        # After trump set, classify suit bids as cuebids.
+        if b.suit == Suit.NOTRUMP:
+            break  # 4NT / 5NT etc. ends cuebid phase
+        if b.suit == trump:
+            continue  # trump rebids aren't cuebids
+        # New suit at any level beyond trump-set = cuebid
+        if s == state.seat:
+            my_cuebids.append(b.suit)
+        elif s == partner:
+            partner_cuebids.append(b.suit)
+    return my_cuebids, partner_cuebids
+
+
+def _cheapest_cuebid(trump: Suit, last_level: int, last_suit: Optional[Suit],
+                     candidate_suits: set,
+                     excluded: set) -> Optional[Tuple[int, Suit]]:
+    """Find the cheapest legal cuebid in `candidate_suits` (minus
+    `excluded`) that strictly outranks (last_level, last_suit).
+
+    Cuebids are always in side suits, never in trump or NT. The
+    Italian convention picks the LOWEST one — so we walk suit-rank
+    order from clubs to spades and pick the first qualifier."""
+    pool = {s for s in candidate_suits
+            if s != trump
+            and s != Suit.NOTRUMP
+            and s not in excluded}
+    if not pool:
+        return None
+    last_rank = _CUEBID_SUIT_RANK.get(last_suit, -1) if last_suit else -1
+    # Try each suit in clubs→spades order at level >= last_level.
+    for level in (last_level, last_level + 1):
+        if level < 1 or level > 7:
+            continue
+        for s in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES):
+            if s not in pool:
+                continue
+            if level == last_level:
+                # Same level: must outrank last_suit.
+                if _CUEBID_SUIT_RANK[s] <= last_rank:
+                    continue
+            # Cap: cuebids stay at the 4-level (5-level cuebids past
+            # 4-of-trump are dangerous; MVP refuses them).
+            if level > 4:
+                continue
+            return (level, s)
+    return None
+
+
+def _try_cuebid_pipeline(state: 'AuctionState', e: 'HandEval',
+                         system) -> Optional[Bid]:
+    """Continue a cuebid sequence after one has been started.
+
+    Returns a Bid when:
+      • Trump is set in a major at 3M / 4M.
+      • At least one cuebid has been made (by partner) since trump
+        set, AND the most recent partnership action wasn't 4NT.
+      • My turn: I either show my next cheapest first-round control
+        ABOVE partner's cuebid, or — if I have no more new 1st-round
+        controls — launch 4NT RKC (slam interest confirmed by my
+        having initiated cuebidding) or sign off at 4M (no extras).
+
+    Returns None when the auction isn't in cuebid-continuation mode
+    (let the normal opener/responder/overcaller paths handle).
+    """
+    trump_info = _trump_set_level(state)
+    if trump_info is None:
+        return None
+    trump_level, trump = trump_info
+    if trump not in (Suit.HEARTS, Suit.SPADES):
+        return None
+    # If 4NT or higher already in auction, RKC pipeline owns it.
+    for s, b in state.bids:
+        if b.level >= 4 and b.suit == Suit.NOTRUMP and not b.is_pass:
+            return None
+        if b.level >= 5 and not b.is_pass:
+            return None
+    my_cuebids, partner_cuebids = _cuebids_made_so_far(state, trump)
+    if not partner_cuebids:
+        return None  # Partner hasn't cuebid — initiation is handled
+                     # at the existing 4NT-launch call sites.
+    # Has partner's most recent bid been a cuebid?
+    last_partner = state.partner_bids[-1] if state.partner_bids else None
+    if last_partner is None or last_partner.suit in (None, Suit.NOTRUMP,
+                                                     trump):
+        return None
+    # Walk the last non-pass natural bid (the one I have to outrank).
+    last_natural = None
+    for s, b in reversed(state.bids):
+        if b.is_pass or b.is_double or b.is_redouble:
+            continue
+        last_natural = b
+        break
+    if last_natural is None:
+        return None
+    # Excluded: suits already cuebid by either side (don't repeat).
+    excluded = set(my_cuebids) | set(partner_cuebids)
+    fr = _first_round_controls(e)
+    new_fr = fr - excluded
+    cuebid = _cheapest_cuebid(trump, last_natural.level,
+                              last_natural.suit, new_fr, excluded)
+    if cuebid is not None:
+        lvl, suit = cuebid
+        return bid(lvl, suit, alert=True,
+                   why=f"Cuebid: first-round control in "
+                       f"{suit.to_char()} (Italian style, trump "
+                       f"{trump.to_char()})")
+    # No new first-round controls to show. Decide between:
+    #   (a) launching 4NT RKC (we have slam interest — partner
+    #       cuebid, so we're in a slam-going auction)
+    #   (b) signing off at 4-of-trump (we've shown what we have)
+    # Heuristic: if my partnership has shown ≥2 cuebids combined,
+    # we're at the "ready for RKC" stage. Otherwise sign off.
+    total_cuebids = len(my_cuebids) + len(partner_cuebids)
+    if total_cuebids >= 2 and e.hcp >= 11:
+        # Launch RKC if 4NT is legal at this level.
+        if last_natural.level <= 4:
+            # 4NT must outrank the last bid; check level + suit-rank.
+            if (last_natural.level < 4
+                    or (last_natural.level == 4
+                        and _CUEBID_SUIT_RANK.get(last_natural.suit, -1)
+                            < _CUEBID_SUIT_RANK[Suit.NOTRUMP])):
+                return bid(4, Suit.NOTRUMP, alert=True,
+                           why=f"RKC after cuebid exchange "
+                               f"(trump {trump.to_char()})")
+    # Sign off at 4-of-trump if legal and we haven't already passed it.
+    if last_natural.level < 4 or (last_natural.level == 4
+                                  and _CUEBID_SUIT_RANK.get(
+                                      last_natural.suit, -1)
+                                  < _CUEBID_SUIT_RANK[trump]):
+        return bid(4, trump,
+                   why=f"4{trump.to_char()}: no more first-round "
+                       f"controls to show after partner's cuebid")
+    return None
+
+
+def _maybe_initiate_cuebid(state: 'AuctionState', e: 'HandEval',
+                           trump: Suit) -> Optional[Bid]:
+    """At a 4NT-launch site, decide whether to start cuebidding first.
+
+    Caller convention: called by `_opener_rebid` / `_generic_responder_rebid`
+    just before they would jump to 4NT for RKC. Returns a cuebid Bid
+    if we should cuebid the cheapest first-round side-suit control
+    instead; returns None if there's nothing to show (no first-round
+    side controls) — caller then proceeds with its 4NT launch.
+
+    `trump` must be a major (we only cuebid majors in this MVP)."""
+    if trump not in (Suit.HEARTS, Suit.SPADES):
+        return None
+    fr = _first_round_controls(e)
+    # Drop trump (we have the trump suit's "control" by virtue of
+    # holding 5+ trumps usually — that's RKC's job, not the cuebid
+    # phase).
+    fr.discard(trump)
+    if not fr:
+        return None
+    # Find the last natural bid we need to outrank.
+    last_natural = None
+    for _s, b in reversed(state.bids):
+        if b.is_pass or b.is_double or b.is_redouble:
+            continue
+        last_natural = b
+        break
+    if last_natural is None:
+        return None
+    cuebid = _cheapest_cuebid(trump, last_natural.level,
+                              last_natural.suit, fr, excluded=set())
+    if cuebid is None:
+        return None
+    lvl, suit = cuebid
+    return bid(lvl, suit, alert=True,
+               why=f"Cuebid: 1st-round control in {suit.to_char()} "
+                   f"(Italian, trump {trump.to_char()})")
 
 
 # ---------------------------------------------------------------------------
@@ -1796,6 +2147,13 @@ def _decide_bid_impl(state: AuctionState, eval_: HandEval, system) -> Bid:
     rkc = _try_rkc_pipeline(state, eval_, system)
     if rkc is not None:
         return rkc
+
+    # Italian-cuebid continuation — fires when partner has cuebid in
+    # a trump-set major sequence and it's our turn to either continue
+    # cuebidding or escalate to 4NT RKC.
+    cb = _try_cuebid_pipeline(state, eval_, system)
+    if cb is not None:
+        return cb
 
     partner = state.seat.partner()
     is_my_partnership_opener = (state.opener_seat in (state.seat, partner))
@@ -4842,6 +5200,12 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
             # E should ask for keycards (or cuebid) rather than
             # signing off in 4♥.
             if hcp >= 17:
+                # Italian cuebid first — show 1st-round side-suit
+                # control before launching RKC. Partner sees which
+                # suit we control and can cuebid back.
+                cuebid = _maybe_initiate_cuebid(state, e, trump=major)
+                if cuebid is not None:
+                    return cuebid
                 return bid(4, Suit.NOTRUMP, alert=True,
                            why=f"RKC: 17+ HCP + 4+ trumps after "
                                f"partner's raise (slam zone)")
@@ -4881,6 +5245,16 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
             # -17 IMP.
             if (hcp >= 15
                     and e.suit_lengths.get(major, 0) >= 5):
+                # Italian cuebid first — partner's jump-raise puts
+                # us in the slam zone; cuebid the cheapest 1st-round
+                # control before asking keycards. This is the path
+                # that recovers Deal 65 (StandardFrench) and Deal 86
+                # (StandardFrench) in slam corpus 59517 — Q-Plus
+                # gets to grand via cuebid exchange; biq used to
+                # jump straight to 4NT and stop at small slam.
+                cuebid = _maybe_initiate_cuebid(state, e, trump=major)
+                if cuebid is not None:
+                    return cuebid
                 return bid(4, Suit.NOTRUMP, alert=True,
                            why=f"RKC after opener's jump-raise: "
                                f"{hcp} HCP + "
