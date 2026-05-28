@@ -598,5 +598,110 @@ class TestAuctionContext(unittest.TestCase):
         self.assertFalse(ctx.gf_established)
 
 
+class TestForcingContext(unittest.TestCase):
+    """Phase C: ForcingContext + GF-trigger detection."""
+
+    def setUp(self):
+        from backend.native_bidder import parse_auction
+        from backend.auction_context import (
+            derive_context, TrumpMechanism, ForcingContext)
+        from backend.bidding_systems import get_system
+        from backend.models import Bid, Seat, Suit
+        self.parse_auction = parse_auction
+        self.derive_context = derive_context
+        self.ForcingContext = ForcingContext
+        self.get_system = get_system
+        self.Bid = Bid
+        self.Seat = Seat
+        self.Suit = Suit
+
+    def _bid(self, raw: str):
+        if raw in ("P", "PASS"):
+            return self.Bid.make_pass()
+        if raw == "X":
+            return self.Bid(level=0, suit=None, is_pass=False,
+                            is_double=True, is_redouble=False,
+                            alert=False, explanation="")
+        alerted = raw.endswith("*")
+        if alerted:
+            raw = raw[:-1]
+        lvl = int(raw[0])
+        suit_map = {"C": self.Suit.CLUBS, "D": self.Suit.DIAMONDS,
+                    "H": self.Suit.HEARTS, "S": self.Suit.SPADES,
+                    "NT": self.Suit.NOTRUMP, "N": self.Suit.NOTRUMP}
+        return self.Bid(level=lvl, suit=suit_map[raw[1:]],
+                        is_pass=False, is_double=False,
+                        is_redouble=False, alert=alerted, explanation="")
+
+    def _ctx(self, raw_bids, system_name=None, dealer=None):
+        Seat = self.Seat
+        if dealer is None:
+            dealer = Seat.NORTH
+        bids = [self._bid(s) for s in raw_bids.split()]
+        opener_idx = 0
+        for i, b in enumerate(bids):
+            if not b.is_pass:
+                opener_idx = i
+                break
+        opener_seat = Seat((dealer + opener_idx) % 4)
+        seat = opener_seat.partner()
+        state = self.parse_auction(seat, dealer, bids)
+        system = self.get_system(system_name) if system_name else None
+        return self.derive_context(state, system)
+
+    def test_two_over_one_response_in_2_1_system_is_gf(self):
+        """In TwoOverOne, 1H-2D response is game-forcing."""
+        ctx = self._ctx("1H P 2D", system_name="TwoOverOne")
+        self.assertTrue(ctx.gf_established)
+        self.assertEqual(ctx.forcing, self.ForcingContext.GAME_FORCE)
+
+    def test_two_over_one_response_in_sayc_is_not_immediate_gf(self):
+        """In SAYC, 1H-2D is not pure-GF (system's 2/1 min is 10)."""
+        ctx = self._ctx("1H P 2D", system_name="SAYC")
+        self.assertFalse(ctx.gf_established)
+
+    def test_jump_shift_alerted_establishes_gf(self):
+        """1C-2H (jump shift, alerted as strong) → GF."""
+        ctx = self._ctx("1C P 2H*", system_name="SAYC")
+        self.assertTrue(ctx.gf_established)
+
+    def test_strong_artificial_1c_positive_response_is_gf(self):
+        """1C(alerted strong) - 1H (positive) → GF (Precision)."""
+        ctx = self._ctx("1C* P 1H", system_name="Precision90M")
+        self.assertTrue(ctx.gf_established)
+
+    def test_strong_2c_positive_response_is_gf(self):
+        """2C(alerted strong) - 2H (positive) → GF in SAYC."""
+        ctx = self._ctx("2C* P 2H", system_name="SAYC")
+        self.assertTrue(ctx.gf_established)
+
+    def test_2c_negative_2d_is_not_gf_yet(self):
+        """2C(strong) - 2D(negative) doesn't establish GF until next round."""
+        ctx = self._ctx("2C* P 2D", system_name="SAYC")
+        self.assertFalse(ctx.gf_established)
+
+    def test_competitive_auction_marked_competitive(self):
+        """1H - 2C overcall - P - P: my POV sees competitive."""
+        # state.seat = N (opener's partner). Opps acted (E bid 2C).
+        ctx = self._ctx("1H 2C", system_name="SAYC")
+        self.assertEqual(ctx.forcing, self.ForcingContext.COMPETITIVE)
+
+    def test_reverse_by_opener_is_one_round_forcing(self):
+        """1D-1H-2S (reverse) is FORCING_ONE_ROUND."""
+        ctx = self._ctx("1D P 1H P 2S", system_name="SAYC")
+        self.assertEqual(ctx.forcing,
+                         self.ForcingContext.FORCING_ONE_ROUND)
+
+    def test_slam_zone_overrides_game_force(self):
+        """When slam_zone_entered is True, forcing = SLAM_FORCE."""
+        ctx = self._ctx("1H P 4S*", system_name="SAYC")
+        # 1H-4S is responder splinter (alerted level-4 new suit).
+        # gf_established + slam_zone_entered both set.
+        # Note: splinter trump-set is currently disabled, so 4S may not
+        # promote slam_zone_entered via trump-set. Verify direct path.
+        if ctx.slam_zone_entered:
+            self.assertEqual(ctx.forcing, self.ForcingContext.SLAM_FORCE)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

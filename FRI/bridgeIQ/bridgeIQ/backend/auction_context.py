@@ -139,6 +139,9 @@ class AuctionContext:
 _NT = Suit.NOTRUMP
 _MAJORS = (Suit.HEARTS, Suit.SPADES)
 _SUITS_LO_TO_HI = (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES)
+_CUEBID_SUIT_RANK = {Suit.CLUBS: 0, Suit.DIAMONDS: 1,
+                     Suit.HEARTS: 2, Suit.SPADES: 3,
+                     Suit.NOTRUMP: 4}
 
 
 def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
@@ -261,6 +264,101 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
         # classification and trump-mechanism lookup).
         seats_bid_suit.setdefault(b.suit, set()).add(s)
 
+        # --- Game-force trigger detection -----------------------
+        # Various conventional bids that establish game force on the
+        # spot. Once `gf_established` is set, it stays True.
+        if not ctx.gf_established:
+            partner_of_bidder = s.partner()
+            # 2/1 GF: in a TwoOverOne system, any 2-level response in
+            # a NEW suit BELOW opener's major is game-forcing.
+            two_one_gf_min = (getattr(system, "two_over_one_min_hcp", 10)
+                              if system is not None else 10)
+            is_two_one_system = two_one_gf_min >= 11
+            if (is_two_one_system
+                    and ctx.opening_bid is not None
+                    and ctx.opening_bid.level == 1
+                    and ctx.opening_bid.suit in _MAJORS
+                    and s == partner_of_opener
+                    and len(opener_post_first_bids) == 0
+                    # ^ this is responder's INITIAL response
+                    and b.level == 2
+                    and b.suit is not None
+                    and b.suit not in (ctx.opening_bid.suit, _NT)
+                    and _CUEBID_SUIT_RANK.get(b.suit, -1)
+                        < _CUEBID_SUIT_RANK.get(ctx.opening_bid.suit, 99)):
+                ctx.gf_established = True
+
+            # Jump shift by responder: 1m-2H/2S, 1H-2S, 1S-3H/3D/3C,
+            # 1m-3-of-anything except own suit. Detected as "new suit
+            # at a level 1 higher than necessary" by responder.
+            if (ctx.opening_bid is not None
+                    and ctx.opening_bid.level == 1
+                    and s == partner_of_opener
+                    and len(opener_post_first_bids) == 0
+                    and b.suit is not None
+                    and b.suit != _NT
+                    and b.suit != ctx.opening_bid.suit):
+                # Cheapest level for a new suit:
+                #   over 1C: 1D/1H/1S = level 1
+                #   over 1D: 1H/1S = level 1, 2C = level 2
+                #   over 1H: 1S = level 1, 2C/2D = level 2
+                #   over 1S: 2C/2D/2H = level 2
+                op_suit = ctx.opening_bid.suit
+                cheap_level = 1
+                if _CUEBID_SUIT_RANK.get(b.suit, -1) < _CUEBID_SUIT_RANK.get(
+                        op_suit, -1):
+                    cheap_level = 2
+                # A jump-shift skips ≥1 level above the cheap level.
+                if b.level >= cheap_level + 1 and b.level >= 2:
+                    # Strong jump-shift = GF (alerted) OR weak
+                    # preemptive (not alerted) — system-dependent.
+                    # If alerted, treat as GF (Precision positive,
+                    # SAYC strong jump-shift). Unalerted at level 3+
+                    # is preemptive (e.g. SAYC weak jump shifts).
+                    if b.alert or b.level == 2:
+                        ctx.gf_established = True
+
+            # Strong artificial 1C opening: any positive response
+            # (anything other than the negative 1D) establishes GF.
+            if (ctx.opening_was_strong_artificial
+                    and s == partner_of_opener
+                    and len(opener_post_first_bids) == 0
+                    and not (b.level == 1 and b.suit == Suit.DIAMONDS)):
+                ctx.gf_established = True
+
+            # Strong 2C opening (SAYC/Acol/French) with positive
+            # response — same as above. The 2C opener is artificial
+            # 22+ HCP; partner's positive response forces game.
+            if (ctx.opening_bid is not None
+                    and ctx.opening_bid.level == 2
+                    and ctx.opening_bid.suit == Suit.CLUBS
+                    and ctx.opening_bid.alert
+                    and s == partner_of_opener
+                    and len(opener_post_first_bids) == 0
+                    # Negative 2D response keeps the auction non-GF
+                    # until next round; positive response is GF.
+                    and not (b.level == 2 and b.suit == Suit.DIAMONDS)):
+                ctx.gf_established = True
+
+            # Reverse by opener: 1-of-suit, then a NEW SUIT at the
+            # 2-level that's HIGHER-rank than opener's first suit.
+            # One-round forcing, shows extras (15+).
+            if (s == ctx.opener_seat
+                    and len(opener_post_first_bids) == 1
+                    and opener_post_first_bids[0] is b
+                    and b.level == 2
+                    and b.suit is not None
+                    and b.suit != _NT
+                    and ctx.opening_bid is not None
+                    and ctx.opening_bid.suit is not None
+                    and ctx.opening_bid.suit != _NT
+                    and _CUEBID_SUIT_RANK.get(b.suit, -1)
+                        > _CUEBID_SUIT_RANK.get(ctx.opening_bid.suit, 99)):
+                # NOTE: a reverse is one-round-forcing, not GF. We mark
+                # it via the forcing field at the end (FORCING_ONE_ROUND).
+                # Don't set gf_established here.
+                pass
+
         # --- Cuebid tracking (after trump is set) ---------------
         if ctx.trump is not None and b.suit not in (ctx.trump.suit, _NT):
             # Any side-suit bid after trump-set by the partnership is
@@ -373,6 +471,39 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
         ctx.last_4c_bidder = s
         ctx.convention = "GERBER"
         break
+
+    # --- ForcingContext derivation ---------------------------------
+    # Combines the gf_established, slam_zone_entered, and one-round
+    # forcing detections into a single field that downstream sites
+    # can gate on. Order matters: more-committed forcings override
+    # less-committed.
+    if ctx.slam_zone_entered:
+        ctx.forcing = ForcingContext.SLAM_FORCE
+    elif ctx.gf_established:
+        ctx.forcing = ForcingContext.GAME_FORCE
+    else:
+        # Check if opener's last bid was a reverse (one-round forcing)
+        # — detected during the main loop but not promoted to GF.
+        # Also check overcaller-side competitive context.
+        opps_acted = False
+        for s, b in state.bids:
+            if s not in my_side and not b.is_pass:
+                opps_acted = True
+                break
+        if opps_acted:
+            ctx.forcing = ForcingContext.COMPETITIVE
+        else:
+            # Reverse detection: opener's 2nd bid was a HIGHER-rank
+            # new suit at 2-level.
+            if (len(opener_post_first_bids) >= 1
+                    and ctx.opening_bid is not None
+                    and ctx.opening_bid.suit not in (None, _NT)):
+                r = opener_post_first_bids[0]
+                if (r.level == 2 and r.suit not in (None, _NT,
+                                                     ctx.opening_bid.suit)
+                        and _CUEBID_SUIT_RANK.get(r.suit, -1)
+                            > _CUEBID_SUIT_RANK.get(ctx.opening_bid.suit, 99)):
+                    ctx.forcing = ForcingContext.FORCING_ONE_ROUND
 
     # --- 4NT classification (LAST — ctx.trump may have been set by
     # post-loop Jacoby 2NT / splinter detection above). Apply ALL
