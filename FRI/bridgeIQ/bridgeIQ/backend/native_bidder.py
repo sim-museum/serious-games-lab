@@ -2471,9 +2471,17 @@ def _respond_to_2nt(e: HandEval, system) -> Bid:
     # Stayman
     if e.suit_lengths[Suit.SPADES] == 4 or e.suit_lengths[Suit.HEARTS] == 4:
         return bid(3, Suit.CLUBS, alert=True, why="Stayman over 2NT")
-    # Bare 0-4 → just sign off in 3NT.
+    # Bare 0-4 → PASS partner's 2NT. After 2NT (20-21 HCP), responder
+    # needs 5+ HCP to accept the invite to game (combined 25+ for
+    # 3NT). With 0-4 the partnership is at 20-25, mostly insufficient;
+    # the partscore is safer.
+    # Base #2 (deck idx 1) seed 36866: N held S♠T97 H♠J8 D♠J7432
+    # C♠983 (2 HCP) after S's 2NT. biq pushed to 3NT-S, contract went
+    # down vul (NS-100). Q-Plus correctly passed → 2NT-S making
+    # (NS+120). 5 IMP per cell × 25 cells = ~-125 IMP swing.
     if hcp <= 4:
-        return bid(3, Suit.NOTRUMP, why="Sign off in 3NT (modest values)")
+        return passb(why=f"Pass 2NT: {hcp} HCP — combined < 25 for "
+                         f"3NT, partscore safer")
     # Quantitative threshold: hcp such that hcp + nt_max ≥ 33.
     if hcp >= max(8, 33 - nt_max):
         return bid(4, Suit.NOTRUMP, alert=True, why="Quantitative slam invite")
