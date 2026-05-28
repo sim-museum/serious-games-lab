@@ -821,19 +821,13 @@ def _is_rkc_context(state: 'AuctionState', for_bid: 'Bid') -> bool:
     if not (for_bid.level == 4 and for_bid.suit == Suit.NOTRUMP):
         return False
     ctx = derive_context(state)
-    # No trump candidate (formal or fallback) → quantitative.
-    if ctx.trump is None and ctx.fallback_last_suit is None:
+    # The context already applies all the trump-set / NT-rebid /
+    # strong-artificial-1C gates during 4NT classification, so we
+    # just read the result. Phase B simplification (Option 1).
+    if not ctx.last_4nt_is_rkc:
         return False
-    # Quantitative-after-NT-rebid gate: opener bid NT in their rebid
-    # AND no actual trump-fit raise was made → 4NT is quantitative.
-    # Exception: if opening was a strong artificial 1C (Precision),
-    # the NT rebid doesn't disqualify trump-set inference from
-    # partner's positive major response.
-    if ctx.trump is None and ctx.opener_rebid_nt \
-            and not ctx.opening_was_strong_artificial:
-        return False
-    # If the auction has only had NT bids on our side (e.g. 1NT-4NT),
-    # treat 4NT as quantitative — RKC needs a suit fit.
+    # Additional gate: at least one suit bid by my partnership
+    # (auctions like 1NT-4NT with no suit have no fit; RKC needs one).
     side_bids = state.my_bids + state.partner_bids
     has_suit_bid = any(
         b.suit not in (None, Suit.NOTRUMP)
@@ -1155,55 +1149,13 @@ def _is_gerber_4c(state: 'AuctionState', for_bid: 'Bid') -> bool:
     """
     if not (for_bid.level == 4 and for_bid.suit == Suit.CLUBS):
         return False
-    bidder = None
-    for s, b in state.bids:
-        if b is for_bid:
-            bidder = s
-            break
-    if bidder is None:
+    # Phase B: read from AuctionContext. The context's Gerber detection
+    # applies all the gates (partner opened NT, no suit pull-out, no opp
+    # intervention, no trump-set raise) in a single pass.
+    ctx = derive_context(state)
+    if not ctx.last_4c_is_gerber:
         return False
-    partner = bidder.partner()
-    # Strict: partner must have OPENED NT (the very first non-pass
-    # bid by partner is 1NT/2NT/3NT).
-    partner_first_nonpass = None
-    for s, b in state.bids:
-        if b is for_bid:
-            break
-        if s != partner:
-            continue
-        if b.is_pass or b.is_double or b.is_redouble:
-            continue
-        partner_first_nonpass = b
-        break
-    if partner_first_nonpass is None:
-        return False
-    if not (partner_first_nonpass.suit == Suit.NOTRUMP
-            and partner_first_nonpass.level <= 3):
-        return False
-    # Partner's MOST RECENT non-pass bid must still be NT.
-    partner_last_any = None
-    for s, b in state.bids:
-        if b is for_bid:
-            break
-        if s != partner:
-            continue
-        if b.is_pass or b.is_double or b.is_redouble:
-            continue
-        partner_last_any = b
-    if partner_last_any is None or partner_last_any.suit != Suit.NOTRUMP:
-        return False
-    # No opp intervention by either RHO or LHO since opening.
-    for s, b in state.bids:
-        if b is for_bid:
-            break
-        if b.is_pass:
-            continue
-        if s in (bidder, partner):
-            continue
-        return False  # opponent acted — bail
-    # No major-fit raise must have happened.
-    if _trump_set_level(state) is not None:
-        return False
+    # for_bid must match the recorded Gerber 4C.
     return True
 
 
@@ -1283,16 +1235,48 @@ def _try_gerber_pipeline(state: 'AuctionState', e: HandEval,
     if state.opp_overcalled and state.rho_bids:
         if not state.rho_bids[-1].is_pass:
             return None
-    # Case 1: partner just bid 4C Gerber → I respond with ace count.
-    if last_partner is not None and _is_gerber_4c(state, last_partner):
-        if not last_mine or (last_mine.level == 4
-                             and last_mine.suit == Suit.CLUBS):
+    ctx = derive_context(state)
+    # Case 1: partner bid 4C Gerber → I respond with ace count.
+    # Fire when partner's most recent action is the Gerber 4C AND I
+    # haven't already given a Gerber-response step (4D/4H/4S/4NT
+    # bid by me AFTER the 4C).
+    if (ctx.last_4c_is_gerber
+            and ctx.last_4c_bidder == state.seat.partner()
+            and last_partner is not None
+            and last_partner.level == 4
+            and last_partner.suit == Suit.CLUBS):
+        # Have I already responded? My response would be a level-4
+        # bid that comes AFTER the 4C in state.bids.
+        already_responded = False
+        for s, b in state.bids:
+            if b is last_partner:
+                continue  # the Gerber 4C itself — skip
+            if s != state.seat:
+                continue
+            if b.is_pass or b.is_double or b.is_redouble:
+                continue
+            if b.level == 4 and b.suit in (Suit.DIAMONDS, Suit.HEARTS,
+                                            Suit.SPADES, Suit.NOTRUMP):
+                # Could be my response (post-4C) or a pre-Gerber bid.
+                # Check position: was this bid AFTER the Gerber 4C?
+                pre_gerber = True
+                for ps, pb in state.bids:
+                    if pb is last_partner:
+                        pre_gerber = False
+                        continue
+                    if pb is b:
+                        already_responded = not pre_gerber
+                        break
+        if not already_responded:
             return _respond_to_gerber(state, e, system)
     # Case 2: I bid 4C Gerber, partner answered → my read.
-    if last_mine is not None and _is_gerber_4c(state, last_mine):
-        if last_partner is not None and last_partner.level == 4 \
-                and last_partner.suit is not None:
-            return _asker_after_gerber(state, e, system)
+    if (ctx.last_4c_is_gerber
+            and ctx.last_4c_bidder == state.seat
+            and last_partner is not None
+            and last_partner.level == 4
+            and last_partner.suit is not None
+            and last_partner.suit != Suit.CLUBS):
+        return _asker_after_gerber(state, e, system)
     return None
 
 
@@ -1309,9 +1293,14 @@ def _try_quantitative_4nt_pipeline(state: 'AuctionState', e: HandEval,
         return None
     if not (last_partner.level == 4 and last_partner.suit == Suit.NOTRUMP):
         return None
-    # _is_rkc_context would have already routed RKC sequences elsewhere.
-    # If we're here, partner's 4NT was classified as quantitative.
-    if _is_rkc_context(state, last_partner):
+    ctx = derive_context(state)
+    # Partner's 4NT must have been classified as quantitative by the
+    # context. The context derives this via _is_rkc_context's gates
+    # (trump-set + NT-rebid + strong-artificial-1C exception), so we
+    # just read the result here. last_4nt_bidder must be partner.
+    if ctx.last_4nt_bidder != state.seat.partner():
+        return None
+    if not ctx.last_4nt_is_quantitative:
         return None
     # We must be the NT-rebidder (we showed a balanced strength range).
     # Heuristic: my last natural bid was NT.
@@ -1596,37 +1585,16 @@ def _trump_set_level(state: 'AuctionState') -> Optional[Tuple[int, Suit]]:
 
 def _cuebids_made_so_far(state: 'AuctionState',
                          trump: Suit) -> Tuple[List[Suit], List[Suit]]:
-    """Walk the auction post-trump-set and classify each suit-bid as
-    a cuebid. Returns (my_cuebids, partner_cuebids) ordered.
+    """Cuebids each side has shown so far.
 
-    Heuristic: after the major-suit trump-set bid, any new-suit bid
-    at the 4-level that is NOT 4-of-trump and NOT 4NT is a cuebid.
-    (Suit bids below 4-of-trump after trump is set count too — e.g.
-    3H sets trump, opener cuebids 3S.)"""
-    trump_set_seen = False
-    my_cuebids: List[Suit] = []
-    partner_cuebids: List[Suit] = []
+    Reads from AuctionContext.controls_shown (Option 1 Phase B).
+    The context single-pass walker classifies cuebids consistently
+    across every call site; the legacy ad-hoc re-walk that used to
+    live here is gone."""
+    ctx = derive_context(state)
     partner = state.seat.partner()
-    for s, b in state.bids:
-        if b.is_pass or b.is_double or b.is_redouble:
-            continue
-        if b.suit is None:
-            continue
-        # Mark trump set when we hit the agreed-trump bid.
-        if not trump_set_seen:
-            if b.suit == trump and b.level in (3, 4):
-                trump_set_seen = True
-            continue
-        # After trump set, classify suit bids as cuebids.
-        if b.suit == Suit.NOTRUMP:
-            break  # 4NT / 5NT etc. ends cuebid phase
-        if b.suit == trump:
-            continue  # trump rebids aren't cuebids
-        # New suit at any level beyond trump-set = cuebid
-        if s == state.seat:
-            my_cuebids.append(b.suit)
-        elif s == partner:
-            partner_cuebids.append(b.suit)
+    my_cuebids = list(ctx.controls_shown.get(state.seat, []))
+    partner_cuebids = list(ctx.controls_shown.get(partner, []))
     return my_cuebids, partner_cuebids
 
 
@@ -1681,19 +1649,22 @@ def _try_cuebid_pipeline(state: 'AuctionState', e: 'HandEval',
     Returns None when the auction isn't in cuebid-continuation mode
     (let the normal opener/responder/overcaller paths handle).
     """
-    trump_info = _trump_set_level(state)
-    if trump_info is None:
+    ctx = derive_context(state)
+    if ctx.trump is None:
         return None
-    trump_level, trump = trump_info
-    if trump not in (Suit.HEARTS, Suit.SPADES):
+    if ctx.trump.suit not in (Suit.HEARTS, Suit.SPADES):
         return None
+    trump = ctx.trump.suit
     # If 4NT or higher already in auction, RKC pipeline owns it.
+    if ctx.last_4nt_bidder is not None:
+        return None
     for s, b in state.bids:
-        if b.level >= 4 and b.suit == Suit.NOTRUMP and not b.is_pass:
-            return None
         if b.level >= 5 and not b.is_pass:
             return None
-    my_cuebids, partner_cuebids = _cuebids_made_so_far(state, trump)
+    # Read cuebid history from context (Phase B migration).
+    partner = state.seat.partner()
+    my_cuebids = list(ctx.controls_shown.get(state.seat, []))
+    partner_cuebids = list(ctx.controls_shown.get(partner, []))
     if not partner_cuebids:
         return None  # Partner hasn't cuebid — initiation is handled
                      # at the existing 4NT-launch call sites.
@@ -1772,11 +1743,13 @@ def _maybe_initiate_cuebid(state: 'AuctionState', e: 'HandEval',
     """
     if trump not in (Suit.HEARTS, Suit.SPADES):
         return None
-    trump_info = _trump_set_level(state)
-    if trump_info is None:
+    ctx = derive_context(state)
+    if ctx.trump is None or ctx.trump.suit != trump:
         return None
-    trump_level, trump_set_suit = trump_info
-    if trump_set_suit != trump:
+    # JACOBY_2NT auctions have their own structured opener-response
+    # framework (Phase 4 plan element). Don't start cuebidding from
+    # the Italian path — the Jacoby 2NT path will be handled separately.
+    if ctx.trump.mechanism == TrumpMechanism.JACOBY_2NT:
         return None
     fr = _first_round_controls(e)
     # Drop trump (we have the trump suit's "control" by virtue of
@@ -2413,14 +2386,11 @@ def _decide_bid_impl(state: AuctionState, eval_: HandEval, system) -> Bid:
     if rkc is not None:
         return rkc
 
-    # Note: Gerber response pipeline considered but dropped from the
-    # Phase 4 MVP — the conservative-but-correct 4C-after-1NT
-    # detection still triggers in enough corpus auctions that
-    # rebid logic above the asking-bid layer expects 4C to mean
-    # something else (splinter, suit continuation, advancer cuebid).
-    # An MVP that strictly matches Q-Plus's Gerber path on slam corpus
-    # 59517 caused a −11 IMP regression on SAYC NS deals. Deferred to
-    # a follow-up session that can do full call-site auditing.
+    # Gerber 4C ace-ask after partner's opening 1NT/2NT/3NT — Phase B
+    # re-enables this with context-backed strict detection.
+    grb = _try_gerber_pipeline(state, eval_, system)
+    if grb is not None:
+        return grb
 
     # Quantitative 4NT — opener's accept/decline of partner's 4NT
     # slam invite after our NT rebid.

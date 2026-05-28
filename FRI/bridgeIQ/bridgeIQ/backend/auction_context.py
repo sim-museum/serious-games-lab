@@ -113,9 +113,16 @@ class AuctionContext:
     # Forcing context for the next bid (per the seat about to bid)
     forcing: ForcingContext = ForcingContext.NONE
 
-    # Convention-being-executed slot — populated in Phase B
+    # Convention-being-executed slot. Currently populated for:
+    #   • "GERBER" — 4C ace-ask after partner's OPENING 1NT/2NT/3NT.
+    # Future: STAYMAN, JACOBY_TRANSFER, NMF, 4SF, SMOLEN, LEBENSOHL...
     convention: Optional[str] = None
     convention_step: int = 0
+
+    # Gerber-specific: the 4C bid if classified as Gerber, and the
+    # bidder + responder for the step-response routing.
+    last_4c_is_gerber: bool = False
+    last_4c_bidder: Optional[Seat] = None
 
     # Legacy fallback: the last NATURAL suit bid by the partnership
     # before the first 4NT (if any). Used by _agreed_trump when no
@@ -200,15 +207,11 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
             else:
                 opener_post_first_bids.append(b)
         if first_4nt_idx is not None and idx >= first_4nt_idx:
-            # Past the 4NT cut-off — only 4NT classification; skip
-            # trump / cuebid / fallback detection beyond this point.
-            if b.level == 4 and b.suit == _NT and not b.is_pass:
-                ctx.last_4nt_bidder = s
-                if ctx.trump is not None:
-                    ctx.last_4nt_is_rkc = True
-                else:
-                    ctx.last_4nt_is_quantitative = True
-                ctx.slam_zone_entered = True
+            # Past the 4NT cut-off — skip trump / cuebid / fallback
+            # detection beyond this point. The 4NT itself (RKC vs
+            # quantitative) is classified AFTER this loop completes,
+            # so post-loop trump-set inference (Jacoby 2NT, splinter)
+            # can affect the classification.
             continue
         if b.is_pass or b.is_double or b.is_redouble:
             continue
@@ -325,6 +328,72 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
     # --- Controls shown ----------------------------------------------
     if cuebids_after_trump:
         ctx.controls_shown = dict(cuebids_after_trump)
+
+    # --- Gerber detection: 4C as direct ace-ask after partner's
+    # opening 1NT / 2NT / 3NT, no opp intervention. Looks STRICTLY at:
+    #   • The PARTNERSHIP's first non-pass bid is 1NT/2NT/3NT.
+    #   • Partner's second-or-later non-pass bid is 4C JUMP (skips
+    #     levels above the opening NT — 1NT-2C would not be Gerber).
+    #   • No opp intervention before the 4C.
+    # In SAYC, 4C after Stayman/Jacoby is splinter/quantitative, so
+    # we require the 4C to come IMMEDIATELY after the opening NT.
+    for idx, (s, b) in enumerate(state.bids):
+        if b.is_pass or b.is_double or b.is_redouble:
+            continue
+        if not (b.level == 4 and b.suit == Suit.CLUBS):
+            continue
+        # The bidder must be partner of the opener
+        if s != partner_of_opener:
+            continue
+        # Opening must be 1NT/2NT/3NT
+        if not (ctx.opening_bid is not None
+                and ctx.opening_bid.suit == _NT
+                and ctx.opening_bid.level <= 3):
+            break
+        # No opp intervention between opening and the 4C
+        opp_acted = False
+        for _idx, (_s, _b) in enumerate(state.bids[:idx]):
+            if _s in opener_side:
+                continue
+            if not (_b.is_pass or _b.is_double or _b.is_redouble):
+                opp_acted = True
+                break
+        if opp_acted:
+            break
+        # Partner's intermediate bids — only the OPENING NT should
+        # appear; nothing else by partner before the 4C.
+        partner_pre_bids = [(_s, _b) for _s, _b in state.bids[:idx]
+                            if _s == s
+                            and not _b.is_pass
+                            and not _b.is_double
+                            and not _b.is_redouble]
+        if partner_pre_bids:
+            break  # responder already acted with a non-pass — not Gerber
+        ctx.last_4c_is_gerber = True
+        ctx.last_4c_bidder = s
+        ctx.convention = "GERBER"
+        break
+
+    # --- 4NT classification (LAST — ctx.trump may have been set by
+    # post-loop Jacoby 2NT / splinter detection above). Apply ALL
+    # the gates from the legacy _is_rkc_context here so callers can
+    # read ctx.last_4nt_is_rkc / .is_quantitative directly.
+    if first_4nt_idx is not None:
+        s_4nt, _b_4nt = state.bids[first_4nt_idx]
+        ctx.last_4nt_bidder = s_4nt
+        ctx.slam_zone_entered = True
+
+        # Gate 1: no trump candidate at all → quantitative.
+        if ctx.trump is None and ctx.fallback_last_suit is None:
+            ctx.last_4nt_is_quantitative = True
+        # Gate 2: no FORMAL trump-set, opener rebid NT, and opening
+        # wasn't strong artificial → quantitative (Deal 39 pattern).
+        elif (ctx.trump is None
+                and ctx.opener_rebid_nt
+                and not ctx.opening_was_strong_artificial):
+            ctx.last_4nt_is_quantitative = True
+        else:
+            ctx.last_4nt_is_rkc = True
 
     return ctx
 
