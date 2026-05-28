@@ -2929,6 +2929,34 @@ def _respond_to_major(state, e: HandEval, system) -> Bid:
             return bid(2, Suit.NOTRUMP,
                        why=f"Natural 2NT invite: 11-12 balanced + "
                            f"3-card {major.to_char()} support")
+        # 2/1 GF with 5+ side suit takes PRIORITY over 1NT-forcing
+        # when responder has 12+ HCP and a real side suit. The 1NT-
+        # forcing branch is for SEMI-BALANCED 6-11/12 HCP with no
+        # 5+ side suit; with 12+ HCP and a 5-card side, 2-over-1
+        # GF is the textbook call (we can return to opener's major
+        # via preference later — partnership stays in game-force).
+        # Base #1 deck idx 180 seed 36866: S held S♠AK2 H♠JT752
+        # D♠KJ9 C♠96 (12 HCP, 3-5-3-2) after N's 1S. biq bid 1NT
+        # forcing → N rebid 2D → S passed → 2D-N (NS-100). Q-Plus
+        # bid 2H GF → N 3D → S 3S preference → N 4S → game (NS+620).
+        # Net -11 IMP per cell, 5 cells = -55 IMP just on this
+        # bug-cluster.
+        if (hcp >= 12
+                and system.has("A-1MA-forcing-1NT")):
+            for side in (Suit.CLUBS, Suit.DIAMONDS):
+                if e.suit_lengths[side] >= 5 and side != major:
+                    return bid(2, side, alert=True,
+                               why=f"2/1 GF in 5+{side.to_char()} "
+                                   f"({hcp} HCP, 3-card "
+                                   f"{major.to_char()} support — "
+                                   f"set trumps later)")
+            if (major == Suit.SPADES
+                    and e.suit_lengths[Suit.HEARTS] >= 5):
+                return bid(2, Suit.HEARTS, alert=True,
+                           why=f"2/1 GF in 5+♥ ({hcp} HCP, "
+                               f"3-card ♠ support — set trumps "
+                               f"later)")
+
         # 2/1 GF systems: with 3-card support and limit-raise values,
         # bid 1NT (forcing) instead of jumping to 3M. The forcing-1NT
         # response promises 6-12 HCP without 4-card support; opener
