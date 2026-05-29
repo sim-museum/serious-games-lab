@@ -2,22 +2,42 @@
 NativeBiddingEngine — a from-scratch rule-based bidder modelled on Qplus 17.
 
 Plug-compatible with BridgeEngine.get_bid: takes (BoardState, Seat) and
-returns an EngineResponse whose `action` is the chosen Bid. Card play
-is NOT handled here; the caller keeps using BEN for card decisions.
+returns an EngineResponse whose `action` is the chosen Bid.
 
-Two systems are wired:
-  * "SAYC"      — SAYC/2-over-1 hybrid (the default)
-  * "Precision" — strong-club Precision; just one variant, picked to match
-                  what most casual players expect.
+Card play is NOT handled here. Per BridgeEngine, biq is NN-free: the
+engine is rule-based for bidding, native_lead for opening leads, and
+Monte-Carlo + DDS (get_mc_card_play) for follow-on cards. BEN has
+been REMOVED; do not assume any neural-net dependency.
 
-Conventions implemented across both systems:
-  Stayman, Jacoby transfers (major + Texas), Blackwood / 1430 RKC,
-  Splinters, Negative Doubles, Smolen, Lebensohl (over 1NT-(2X)),
-  Michaels cuebid, Unusual 2NT, jump preempts, weak twos.
+Systems wired (see backend/bidding_systems.py for the full catalog):
+  * SAYC
+  * TwoOverOne (2/1 GF)
+  * StandardAcol
+  * StandardFrench
+  * Precision90M
 
-The dispatch is a flat decision tree keyed on auction state — there is no
-attempt at tree search or probabilistic sampling. The goal is "a defensible
-bid for every common situation"; pathological auctions fall back to Pass.
+Conventions implemented across the systems:
+  Stayman + Smolen, Jacoby transfers (major + Texas), Blackwood /
+  1430 RKC, splinters, negative doubles, Lebensohl (over 1NT-(2X)),
+  Michaels cuebid, Unusual 2NT, jump preempts, weak twos, Italian
+  cuebidding, Gerber (4C ace-ask after opening NT), Grand-slam
+  force (5NT after major-trump-agreed), Bergen-style 4D trump-
+  quality ask, count-to-grand path over 2NT openings.
+
+Architecture:
+  An AuctionContext (backend/auction_context.py) is computed once
+  per decide_bid via a single pass over the bid stream. It exposes
+  typed primitives — trump (with mechanism), gf_established,
+  slam_zone_entered, controls_shown, last_4nt_is_{rkc,quantitative},
+  forcing (ForcingContext), captain, convention (e.g. STAYMAN,
+  JACOBY_TRANSFER, GERBER, FOURTH_SUIT_FORCING) — so downstream
+  decision sites read from the context instead of re-deriving
+  auction state. See plan_option1_semantic_state.md.
+
+The dispatch is a flat decision tree keyed on auction state plus the
+context primitives. There is no tree search; the goal is "a defensible
+bid for every common situation, anchored in textbook convention."
+Pathological auctions fall back to Pass via the sanity wrapper.
 """
 
 from dataclasses import dataclass
@@ -5622,6 +5642,33 @@ def _nmf_responder_rebid(state, e, opener_rebid, my_major, system):
 def _generic_responder_rebid(state, e, opener_rebid, system=None):
     hcp = e.hcp
     op = state.opening_bid
+
+    # 1M-2X-2M-2NT-3M preference: I bid 2/1 then 2NT (typically a
+    # GF probe asking opener for more info); opener rebid the major
+    # a SECOND time, confirming 6+ trumps (or strong 5+ in a 2/1 GF
+    # context). With 2+ card support give preference to 4M — even a
+    # 2-card support yields a 7+ card fit and 4M is often safer than
+    # 3NT when opener has shown a 6+ suit. Without this branch the
+    # auction died (responder passes 3M, sanity wrapper substitutes
+    # "balanced NT" → 3NT signoff). Matrix 56428: 7 deals lost -77
+    # IMP through this path.
+    if (op is not None
+            and op.level == 1
+            and op.suit in (Suit.HEARTS, Suit.SPADES)
+            and len(state.my_bids) >= 2
+            and state.my_bids[0].level == 2
+            and state.my_bids[0].suit not in (None, Suit.NOTRUMP,
+                                               op.suit)
+            and state.my_bids[-1].level == 2
+            and state.my_bids[-1].suit == Suit.NOTRUMP
+            and opener_rebid.level == 3
+            and opener_rebid.suit == op.suit):
+        fit = e.suit_lengths.get(op.suit, 0)
+        if fit >= 2:
+            return bid(4, op.suit,
+                       why=f"4{op.suit.to_char()}: preference to "
+                           f"opener's 3-times-bid major (2+ support, "
+                           f"GF context after 2/1 + 2NT relay)")
 
     # 2NT post-transfer slam exploration: after 2NT-3D-3H or
     # 2NT-3H-3S (Jacoby transfer + accept), responder has shown 5+
