@@ -6072,25 +6072,25 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
                        why=f"3{new_suit.to_char()}: 3-card support "
                            f"for opener's new major (GF context)")
         # 12+ balanced → 3NT (most common 2/1 GF stop)
+        # Reverse + 3+ support for opener's FIRST major: set trump by
+        # bidding 3-of-opener's-major (preference). Opener has shown
+        # 17+ HCP via reverse; combined slam-zone. Must run BEFORE
+        # the balanced-3NT check below, otherwise 5-3-3-2 responders
+        # with 3-card support sign off in 3NT instead of slam-going.
+        # Deal 65 (slam 59517): 4-card support drove biq to 7H grand.
+        # Deal 18 (slam 67238): N held 5-3-3-2 + 3H + 13 HCP after
+        # 1H-2D-2S — old 4+ threshold + balanced-3NT-first ordering
+        # routed N to 3NT (−13 IMP vs Q-Plus's 6H).
+        if (op.suit in (Suit.HEARTS, Suit.SPADES)
+                and e.suit_lengths.get(op.suit, 0) >= 3
+                and hcp >= 11):
+            return bid(3, op.suit,
+                       why=f"3{op.suit.to_char()}: 3+ support for "
+                           f"opener's major after reverse "
+                           f"(sets trump, slam zone)")
         if e.is_balanced and hcp >= 12:
             return bid(3, Suit.NOTRUMP,
                        why="3NT in 2/1 GF: balanced, no major fit")
-        # Reverse + 4+ support for opener's FIRST suit (which must
-        # be a major for trump-set to mean slam): set trump by
-        # bidding 3-of-opener's-major. Opener has shown 17+ HCP via
-        # reverse; with 4+ trump support I'm in slam zone.
-        # Deal 65 in slam corpus 59517: S held 4H + 6D + 1S + 13 HCP
-        # after 1H-2D-2S; old code rebid 3D (6-card source-of-tricks)
-        # which made trump ambiguous. Q-Plus's S bids 3H setting
-        # hearts; opener then cuebids 3S, then RKC, then king-ask,
-        # then 7H grand.
-        if (op.suit in (Suit.HEARTS, Suit.SPADES)
-                and e.suit_lengths.get(op.suit, 0) >= 4
-                and hcp >= 11):
-            return bid(3, op.suit,
-                       why=f"3{op.suit.to_char()}: 4-card support for "
-                           f"opener's major after reverse "
-                           f"(sets trump, slam zone)")
         # Long own suit → rebid it
         if e.suit_lengths.get(my_suit, 0) >= 6:
             return bid(3, my_suit,
