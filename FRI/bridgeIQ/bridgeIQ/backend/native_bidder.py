@@ -3142,6 +3142,34 @@ def _respond_to_2nt(e: HandEval, system) -> Bid:
     """
     hcp = e.hcp
     nt_max = system.two_nt_max_hcp  # 21 (most) or 23 (Precision 70)
+    nt_min = getattr(system, "two_nt_min_hcp", nt_max - 1)
+    # ----- Count-to-grand / count-to-slam (balanced responder) -----
+    # When combined HCP guarantees the slam zone, leap directly to
+    # 6NT / 7NT rather than going through Stayman/transfer. Even a
+    # 4-4 major fit doesn't beat NT with 37+ HCP — finding the fit
+    # risks tempo or wrong-strain landing. Conservative: use opener's
+    # MIN HCP for the floor calculation; the slam grade if combined
+    # is in range based on partner's worst-case range.
+    if e.is_balanced or e.is_semi_balanced:
+        combined_min = hcp + nt_min
+        # Grand zone: 37+ combined HCP → 7NT direct.
+        # Deal 44 (slam 95512): S 17 HCP balanced over N's 20 = 37
+        # combined; Q-Plus leaped 7NT; biq stuck Stayman (-19 IMP).
+        if combined_min >= 37:
+            return bid(7, Suit.NOTRUMP,
+                       why=f"7NT count: {hcp}+{nt_min}+ ≥ 37 combined "
+                           f"(grand zone, balanced)")
+        # Small slam zone: 33+ combined HCP. Skip Stayman when no
+        # 4-card major is possible (already balanced + no 4cM = pure
+        # 3-3-3-4-with-no-4cM is rare; usually 4cM exists). Be
+        # conservative and only leap to 6NT when no 4-card major
+        # AND combined ≥ 34 (a few HCP margin for the slam tricks).
+        if (combined_min >= 34
+                and e.suit_lengths.get(Suit.HEARTS, 0) < 4
+                and e.suit_lengths.get(Suit.SPADES, 0) < 4):
+            return bid(6, Suit.NOTRUMP,
+                       why=f"6NT count: {hcp}+{nt_min}+ ≥ 34 combined, "
+                           f"no 4-card major (small slam zone)")
     # 5-card major → transfer (2NT-3D=hearts, 2NT-3H=spades)
     if e.suit_lengths[Suit.HEARTS] >= 5:
         return bid(3, Suit.DIAMONDS, alert=True, why="Jacoby transfer to hearts (over 2NT)")
@@ -4364,6 +4392,28 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
     # of the 9-card fit and game values, lets partner pass 4M with
     # minimum or explore slam with extras.
     if op.level == 2 and op.suit == Suit.NOTRUMP and p_last.level == 3:
+        # Stayman after 2NT (3C): show 4-card major or deny.
+        # Without this branch, opener falls through to passb() and
+        # the auction dies at 3C. Deal 55 (slam 95512): S opened 2NT
+        # with 20 HCP 4-3-3-3; N bid 3C Stayman; biq passed 3C
+        # (-16 IMP vs Q-Plus's 6NT).
+        if p_last.suit == Suit.CLUBS:
+            has_4S = e.suit_lengths.get(Suit.SPADES, 0) >= 4
+            has_4H = e.suit_lengths.get(Suit.HEARTS, 0) >= 4
+            if has_4S and has_4H:
+                # Show both majors via 3S (responder picks); some
+                # partnerships use 3H. Q-Plus's standard is to bid
+                # 3S with both 4s; we follow that.
+                return bid(3, Suit.SPADES, alert=True,
+                           why="2NT-Stayman: 4 spades (and 4 hearts)")
+            if has_4S:
+                return bid(3, Suit.SPADES, alert=True,
+                           why="2NT-Stayman: 4 spades")
+            if has_4H:
+                return bid(3, Suit.HEARTS, alert=True,
+                           why="2NT-Stayman: 4 hearts")
+            return bid(3, Suit.DIAMONDS, alert=True,
+                       why="2NT-Stayman: no 4-card major")
         # Super-accept (jump to 4 of the major) requires:
         #   * 4+ trump support AND
         #   * top of the 2NT range (max 2NT HCP)
