@@ -36,6 +36,7 @@ from .dialogs.deal_converter import DealConverterDialog
 from .dialogs.start_server_dialog import StartServerDialog
 from .dialogs.connect_server_dialog import ConnectServerDialog
 from .dialogs.network_lobby_dialog import NetworkLobbyDialog
+from .dialogs.programming_help import ProgrammingHelpDialog
 
 from backend import BridgeEngine, BoardState
 from network import NetworkGameController
@@ -1264,7 +1265,19 @@ class MainWindow(QMainWindow):
 
         help_action = QAction("&Help Contents", self)
         help_action.setShortcut(QKeySequence.StandardKey.HelpContents)
+        help_action.triggered.connect(self._on_help)
         help_menu.addAction(help_action)
+
+        # Long-form analogy that lets a reader who knows programming
+        # but not bridge translate one to the other — the names of
+        # bidding systems, conventions and defensive carding
+        # methods are gobbledygook on first contact, but the
+        # programming-language analogy is a Rosetta Stone.
+        rosetta_action = QAction(
+            "&Bridge for Programmers (Rosetta Stone)…", self)
+        rosetta_action.triggered.connect(
+            self._on_programming_rosetta)
+        help_menu.addAction(rosetta_action)
 
     def _setup_bottom_toolbar(self):
         """Setup the bottom toolbar with two modes:
@@ -2494,6 +2507,17 @@ Toolbar Buttons:
 
 For more information, see the README file."""
         QMessageBox.information(self, "Help", help_text)
+
+    def _on_programming_rosetta(self):
+        """Open the bridge-as-programming-language Rosetta Stone.
+
+        Three sections — bidding systems → languages, conventions →
+        libraries / type-system features, defensive carding → IPC.
+        Aimed at users who find the bridge terminology unfamiliar
+        but who already think in programming terms.
+        """
+        dialog = ProgrammingHelpDialog(self)
+        dialog.exec()
 
     def _on_match_control(self):
         """Show match control dialog"""
