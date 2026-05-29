@@ -4415,13 +4415,30 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
     # Strong 2C openings (SAYC only — Precision 2C was routed above):
     # rebid in the longest natural suit at the 2-level.
     if op.level == 2 and op.suit == Suit.CLUBS:
+        # 4+ support for partner's POSITIVE major response (5+ of
+        # that major, 8+ HCP): raise to 3M. Sets trump for slam
+        # exploration. Deal 5 (slam 67238): N held 4H + 5C + 23 HCP
+        # after partner's positive 2H; old code fell through to 3NT
+        # (-13 IMP vs Q-Plus's 6H reached via 3H raise + cuebid + RKC).
+        if (p_last.level == 2
+                and p_last.suit in (Suit.HEARTS, Suit.SPADES)
+                and e.suit_lengths.get(p_last.suit, 0) >= 4):
+            return bid(3, p_last.suit,
+                       why=f"3{p_last.suit.to_char()}: 4+ support for "
+                           f"partner's positive 2{p_last.suit.to_char()} "
+                           f"response (slam zone after 2C)")
         if e.suit_lengths[Suit.SPADES] >= 5:
             return bid(2, Suit.SPADES, why="Natural rebid 2S (5+ spades)")
         if e.suit_lengths[Suit.HEARTS] >= 5:
             return bid(2, Suit.HEARTS, why="Natural rebid 2H (5+ hearts)")
         if e.is_balanced and 22 <= e.hcp <= 24:
             return bid(2, Suit.NOTRUMP, why="22-24 balanced rebid")
-        return bid(3, Suit.NOTRUMP, why="25+ balanced rebid")
+        if e.is_balanced and e.hcp >= 25:
+            return bid(3, Suit.NOTRUMP, why="25+ balanced rebid")
+        # Catch-all for awkward 2C hands without 5+ major or balanced
+        # shape — rebid 3NT to keep the GF alive (better than passing).
+        return bid(3, Suit.NOTRUMP,
+                   why="2C catch-all 3NT (no 5+ major, not balanced)")
 
     return passb()
 
