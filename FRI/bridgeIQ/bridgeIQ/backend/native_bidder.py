@@ -1742,7 +1742,17 @@ def _try_cuebid_pipeline(state: 'AuctionState', e: 'HandEval',
     # Heuristic: if my partnership has shown ≥2 cuebids combined,
     # we're at the "ready for RKC" stage. Otherwise sign off.
     total_cuebids = len(my_cuebids) + len(partner_cuebids)
-    if total_cuebids >= 2 and e.hcp >= 11:
+    # Strong-2C opener: lower HCP threshold from 11 to 6. Combined
+    # with 22+ opener, 6 HCP responder is in slam zone. Deal 5
+    # (slam 67238): S held 8 HCP + SA + 5H; previous 11-HCP gate
+    # made S retreat to 4H after cuebid exchange.
+    op_bid = state.opening_bid
+    after_strong_2c = (op_bid is not None
+                       and op_bid.level == 2
+                       and op_bid.suit == Suit.CLUBS
+                       and op_bid.alert)
+    hcp_threshold_4nt = 6 if after_strong_2c else 11
+    if total_cuebids >= 2 and e.hcp >= hcp_threshold_4nt:
         # Launch RKC if 4NT is legal at this level.
         if last_natural.level <= 4:
             # 4NT must outrank the last bid; check level + suit-rank.
@@ -5729,7 +5739,21 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
             # 17 HCP + 6♥ after N's 3H jump-raise; biq signed
             # off in 4H, Q-Plus drove to 7H grand slam for
             # -17 IMP.
-            if (hcp >= 15
+            # Strong-2C exception: when opener bid 2C strong (22+ HCP)
+            # then jump-raised my major, combined is ALWAYS in slam
+            # zone (22 + 6+ ≥ 28; with 5+ trumps the fit covers the
+            # 3rd loser). Lower the slam-launch HCP threshold from
+            # 15 to 6 when opener's opening was strong-2C alerted.
+            # Deal 5 (slam 67238): S held 8 HCP + 5H + SA after
+            # 2C-2H-3H sequence; old 15-HCP gate signed off in 4H
+            # (-13 IMP vs Q-Plus's 6H reached via S's 3S cuebid +
+            # opener's 4NT RKC).
+            after_strong_2c = (op is not None
+                               and op.level == 2
+                               and op.suit == Suit.CLUBS
+                               and op.alert)
+            slam_threshold = 6 if after_strong_2c else 15
+            if (hcp >= slam_threshold
                     and e.suit_lengths.get(major, 0) >= 5):
                 # Italian cuebid first — partner's jump-raise puts
                 # us in the slam zone; cuebid the cheapest 1st-round
