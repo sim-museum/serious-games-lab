@@ -5531,10 +5531,24 @@ def _stayman_responder_rebid(state, e, opener_rebid: Bid,
             #
             # Use the actual NT range from the system when
             # available; default to 15 if not (matches SAYC).
-            nt_min = (getattr(system, "one_nt_min_hcp", 15)
-                      if system is not None else 15)
+            # For 2NT openings, use the 2NT-range floor (20 in SAYC,
+            # 22 in Precision 70) so responder's slam threshold drops
+            # appropriately. Deal 54 (slam 95512): N held 15 HCP +
+            # 6H + balanced after S's 2NT-3D-3H sequence; old code
+            # used the 1NT floor (15) → threshold 17 → 15-HCP responder
+            # signed off in 4H. With 2NT floor (20) → threshold 12 →
+            # 15 HCP qualifies, slam path opens.
+            is_2nt_opening = (state.opening_bid is not None
+                              and state.opening_bid.level == 2
+                              and state.opening_bid.suit == Suit.NOTRUMP)
+            if is_2nt_opening:
+                nt_min = (getattr(system, "two_nt_min_hcp", 20)
+                          if system is not None else 20)
+            else:
+                nt_min = (getattr(system, "one_nt_min_hcp", 15)
+                          if system is not None else 15)
             # Threshold: need combined ≥ 32 to launch slam.
-            slam_threshold = max(0, 32 - nt_min)  # 17 for 15-NT, 18 for 14-NT
+            slam_threshold = max(0, 32 - nt_min)  # 17 for 15-NT, 12 for 20-NT
             # Smolen lowers threshold: opener showed extras via 3-level
             # preference (max NT range) and we have 5-4 majors.
             if is_smolen_continuation:
@@ -5608,6 +5622,51 @@ def _nmf_responder_rebid(state, e, opener_rebid, my_major, system):
 def _generic_responder_rebid(state, e, opener_rebid, system=None):
     hcp = e.hcp
     op = state.opening_bid
+
+    # 2NT post-transfer slam exploration: after 2NT-3D-3H or
+    # 2NT-3H-3S (Jacoby transfer + accept), responder has shown 5+
+    # in the major. With combined HCP in the slam zone (≥33),
+    # drive past 3M with quantitative 4NT or RKC. Deal 54 (slam
+    # 95512): N held 15 HCP + 6H + 4S after S's 2NT-3D-3H; old
+    # code passed 3H (-15 IMP vs Q-Plus's 7NT via 4C Gerber path).
+    if (op is not None
+            and op.level == 2 and op.suit == Suit.NOTRUMP
+            and state.my_bids
+            and state.my_bids[0].level == 3
+            and state.my_bids[0].suit in (Suit.DIAMONDS, Suit.HEARTS)
+            and opener_rebid.level == 3
+            and opener_rebid.suit in (Suit.HEARTS, Suit.SPADES)):
+        # Identify the transferred-to major (the one opener
+        # accepted).
+        transfer_major = opener_rebid.suit
+        nt_min = (getattr(system, "two_nt_min_hcp", 20)
+                  if system is not None else 20)
+        combined_min = hcp + nt_min
+        # 37+ → leap 7-of-trump.
+        if combined_min >= 37:
+            return bid(7, transfer_major,
+                       why=f"7{transfer_major.to_char()} count after "
+                           f"2NT-transfer: {hcp}+{nt_min}+ ≥ 37 combined")
+        # 33+ → small slam zone, drive via RKC if I have 6+ trumps,
+        # or 4NT quant with 5-card trump (let opener decide).
+        if combined_min >= 33:
+            if e.suit_lengths.get(transfer_major, 0) >= 6:
+                cuebid = _maybe_initiate_cuebid(state, e,
+                                                 trump=transfer_major)
+                if cuebid is not None:
+                    return cuebid
+                return bid(4, Suit.NOTRUMP, alert=True,
+                           why=f"RKC: 2NT-transfer + 6+{transfer_major.to_char()} "
+                               f"+ {hcp} HCP ({combined_min}+ combined)")
+            return bid(4, Suit.NOTRUMP, alert=True,
+                       why=f"Quant 4NT: 2NT-transfer + 5+"
+                           f"{transfer_major.to_char()} + {hcp} HCP "
+                           f"({combined_min}+ combined)")
+        # 30-32 → game in trump.
+        if combined_min >= 26:
+            return bid(4, transfer_major,
+                       why=f"4{transfer_major.to_char()}: game after "
+                           f"2NT-transfer accept ({hcp} HCP)")
 
     # 2/1 forcing-1NT follow-up: if my first response was a forcing
     # 1NT over partner's 1-of-major and partner rebid 2-of-the-same-
