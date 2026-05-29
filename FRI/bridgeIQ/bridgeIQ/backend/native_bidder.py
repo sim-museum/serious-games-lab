@@ -5832,14 +5832,18 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
             return bid(6, Suit.NOTRUMP,
                        why=f"Slam values opposite 12-14 NT "
                            f"({hcp}+12 ≥ 32)")
-        if hcp >= 18:
-            return bid(6, Suit.NOTRUMP,
-                       why=f"Slam values opposite 12-14 NT "
-                           f"({hcp}+12 ≥ 30)")
+        # 16-19 HCP → 4NT quantitative. 18-19 was firing 6NT direct
+        # but combined is only 30-32 — NOT small-slam zone. 33+
+        # combined is the bridge requirement for a small slam; with
+        # 18 + opener's 12-14, the conservative call is 4NT inviting
+        # opener to bid 6NT with max range. Slam 15915 Deal 65: S
+        # held 18 HCP after partner's 1C-1S-1NT rebid; old 18-HCP
+        # gate fired 6NT direct, going down 1 vs Q-Plus's 3NT making
+        # (-11 IMP).
         if hcp >= 16:
             return bid(4, Suit.NOTRUMP, alert=True,
                        why=f"Quantitative slam invite "
-                           f"({hcp} opposite 12-14)")
+                           f"({hcp} opposite 12-14, combined 28-33)")
         if hcp >= 11:
             return bid(3, Suit.NOTRUMP, why="Game values (3NT)")
         return passb()
