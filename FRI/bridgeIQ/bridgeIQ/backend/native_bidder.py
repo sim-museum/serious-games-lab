@@ -1170,7 +1170,17 @@ def _asker_after_king_response(state: 'AuctionState', e: HandEval, system) -> Bi
                and e.has_ace.get(s, False)
                for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS))
     )
-    if has_source and _keycard_count(e, trump, system) >= 2:
+    # Grand-slam discipline: need ≥12 HCP in MY hand for grand, even
+    # with all keys + source + king. Strong-2C jump-raise auctions
+    # can drive responder with 6-8 HCP through to king-ask if every
+    # gate is met, but the play needs more than just keys + length
+    # to take 13 tricks. Deal 5 (slam 67238): S held 8 HCP + 5H + SA;
+    # has_source + keys = True but 7H went down 1 (-17 IMP vs 6H).
+    # The 12 HCP gate keeps the grand drive but only when responder
+    # has the extras for an actual 13th-trick suit.
+    if (has_source
+            and _keycard_count(e, trump, system) >= 2
+            and e.hcp >= 12):
         return bid(7, trump, why=f"Side king shown + source of tricks → 7{trump.to_char()}")
     return bid(6, trump, why=f"Side king shown but no clear source → 6{trump.to_char()}")
 
