@@ -255,6 +255,50 @@ def _partner_safe(partner_card: Card, board: BoardState, seat: Seat,
     return True
 
 
+def _unblock_card(my_in_suit: List[Card], winning_card: Card,
+                   board: BoardState, seat: Seat,
+                   declarer: Seat) -> Optional[Card]:
+    """Phase 3 rule — declarer-side unblock to preserve partner's
+    length, tightly gated.
+
+    Returns a card to UNBLOCK (a higher card to drop), or None.
+
+    A first-cut version fired whenever own-side was shorter than
+    partner; that over-fired in NT (−0.50 tricks/deal) because
+    "drop the K under partner's Q" is wrong when entries to the
+    long hand exist elsewhere. Tightened to the classic unblock
+    case only:
+
+    - I have ≤ 2 cards in this suit (singleton or doubleton —
+      i.e., I will likely be void within 1-2 rounds and can't
+      provide later entries via this suit).
+    - Partner has ≥ 3 cards (genuine length to preserve).
+    - Partner's winning card is an actual honor (T or higher) —
+      a winning spot card isn't worth dropping high under.
+    - I have a card HIGHER than partner's winning card.
+
+    Drops the LOWEST of my higher cards (preserve absolute boss).
+    """
+    if not _is_declarer_side(seat, declarer):
+        return None
+    if len(my_in_suit) > 2:
+        return None
+    partner = _partner(seat)
+    suit = winning_card.suit
+    partner_count = sum(1 for c in board.hands[partner].cards
+                        if c.suit == suit)
+    if partner_count < 3:
+        return None
+    # Honor check: Rank.value 0..4 = A,K,Q,J,T
+    if winning_card.rank.value > 4:
+        return None
+    higher = [c for c in my_in_suit
+              if c.rank.value < winning_card.rank.value]
+    if not higher:
+        return None
+    return _lowest_in_suit(higher)
+
+
 def planned_follow(board: BoardState, seat: Seat,
                     current_trick_cards: List[Card]) -> Optional[Card]:
     """Return the strategic-plan card for a FOLLOW-SUIT decision,
@@ -302,6 +346,14 @@ def planned_follow(board: BoardState, seat: Seat,
     partner_seat = Seat((seat.value + 2) % 4)
     is_defender = not _is_declarer_side(seat, declarer)
 
+    # (Phase 3 attempt — declarer-side unblock — was tested on
+    # 62 deals and regressed vs Phase 2 v2 even with tight gates.
+    # Without entry counting we can't tell when dropping a high
+    # card under partner's honor preserves length vs throws away
+    # the trick. Reverting until Phase 5+ when an entry tracker
+    # exists; the `_unblock_card` helper is kept dead-code for the
+    # entry-aware version to grow from.)
+
     # Rule 1 — Don't overtake partner's SAFE winner. Safety-gated:
     # only fires when partner's card can't be beaten by any
     # remaining opponent card (no ruff threat in suit contracts,
@@ -339,16 +391,145 @@ def planned_follow(board: BoardState, seat: Seat,
     return None
 
 
+def _cards_by_suit(hand) -> dict:
+    out = {Suit.SPADES: [], Suit.HEARTS: [],
+           Suit.DIAMONDS: [], Suit.CLUBS: []}
+    for c in hand.cards:
+        out[c.suit].append(c)
+    return out
+
+
+def _three_card_sequence_top(cards: List[Card]) -> Optional[Card]:
+    """If `cards` contains 3 consecutive ranks (e.g. KQJ, QJT, JT9),
+    return the highest card of that sequence. Otherwise None."""
+    if len(cards) < 3:
+        return None
+    sorted_cards = sorted(cards, key=lambda c: c.rank.value)
+    # Walk down looking for any 3-run of consecutive values
+    for i in range(len(sorted_cards) - 2):
+        a, b, c = sorted_cards[i], sorted_cards[i+1], sorted_cards[i+2]
+        if (a.rank.value + 1 == b.rank.value
+                and b.rank.value + 1 == c.rank.value):
+            return a
+    return None
+
+
+def _partner_bid_suit(board: BoardState, seat: Seat) -> Optional[Suit]:
+    """Find partner's first real suit bid in the auction. Returns
+    Suit or None. Doubles, redoubles, NT bids, and passes are
+    skipped."""
+    auction = getattr(board, "auction", None) or []
+    if not auction:
+        return None
+    dealer = board.dealer
+    partner = _partner(seat)
+    for i, bid in enumerate(auction):
+        bidder = Seat((dealer.value + i) % 4)
+        if bidder != partner:
+            continue
+        if bid.is_pass or bid.is_double or bid.is_redouble:
+            continue
+        if bid.suit is None or bid.suit == Suit.NOTRUMP:
+            continue
+        return bid.suit
+    return None
+
+
+def planned_opening_lead(board: BoardState, seat: Seat
+                          ) -> Optional[Card]:
+    """Phase 3 — defender's opening-lead rules (textbook).
+
+    Fires only when:
+    - There's a contract.
+    - Seat is LHO of declarer (the standard opening leader).
+    - No card has been played yet (board.tricks is empty AND no
+      current trick cards — caller's responsibility).
+
+    Lead-selection priority:
+    1. Partner's bid suit — 4th-best if 4+, top of 3-card sequence,
+       else top of doubleton, else low from honor in 3-card.
+    2. Top of a 3-card sequence (KQJ, QJT, JT9) in any non-trump
+       suit.
+    3. 4th-best from the longest non-trump suit, if 4+ cards.
+
+    Returns None if no rule fires cleanly (then MC+DDS picks).
+    Avoids leading trumps and avoids singletons/short suits when no
+    clear textbook lead applies — those need more context (ruff
+    play, suit-preference signal expectations) than Phase 3 has.
+    """
+    if board.contract is None:
+        return None
+    declarer = board.contract.declarer
+    if _is_declarer_side(seat, declarer):
+        return None
+    if seat != Seat((declarer.value + 1) % 4):
+        return None  # not LHO; not the opening leader
+    if getattr(board, "tricks", None):
+        return None  # not T1
+    hand = board.hands[seat]
+    trump = (board.contract.suit
+             if board.contract.suit != Suit.NOTRUMP else None)
+    by_suit = _cards_by_suit(hand)
+
+    # Rule 1: Partner's bid suit
+    partner_suit = _partner_bid_suit(board, seat)
+    if partner_suit is not None and by_suit.get(partner_suit):
+        cards = by_suit[partner_suit]
+        if trump is None or partner_suit != trump:
+            # Top of 3-card sequence in partner's suit
+            seq = _three_card_sequence_top(cards)
+            if seq is not None:
+                return seq
+            if len(cards) >= 4:
+                # 4th-best
+                sorted_hi_lo = sorted(cards, key=lambda c: c.rank.value)
+                return sorted_hi_lo[3]
+            if len(cards) == 2:
+                # Top of doubleton
+                return min(cards, key=lambda c: c.rank.value)
+            if len(cards) == 3:
+                # Low from honor (Hxx) — lowest of three
+                return max(cards, key=lambda c: c.rank.value)
+            # Singleton — lead it (mild signal; partner expects honor here)
+            if len(cards) == 1:
+                return cards[0]
+
+    # Rule 2: Top of a 3-card sequence in any non-trump suit
+    for suit, cards in by_suit.items():
+        if suit == trump:
+            continue
+        seq = _three_card_sequence_top(cards)
+        if seq is not None:
+            return seq
+
+    # Rule 3: 4th best from longest non-trump
+    non_trump_lengths = {
+        s: len(cs) for s, cs in by_suit.items()
+        if s != trump}
+    if non_trump_lengths:
+        longest = max(non_trump_lengths, key=non_trump_lengths.get)
+        if non_trump_lengths[longest] >= 4:
+            cards = sorted(by_suit[longest], key=lambda c: c.rank.value)
+            return cards[3]
+
+    return None
+
+
 def planned_card(board: BoardState, seat: Seat,
                   current_trick_cards: Optional[List[Card]] = None
                   ) -> Optional[Card]:
     """Top-level entry point for the strategic planner. Returns a
     card to play, or None to fall through to MC+DDS.
 
-    Dispatches LEAD vs FOLLOW. Phase 1 handles LEAD (trump-drawing
-    rule); Phase 2 handles FOLLOW (don't-overtake-partner, second/
-    third-hand defender, fourth-hand cheap-win-or-low).
+    Dispatches LEAD vs FOLLOW. Phase 1 handles declarer's trump-
+    drawing LEAD; Phase 3 handles defender's opening-lead T1; Phase
+    2 handles FOLLOW (don't-overtake-partner, second/third-hand
+    defender, fourth-hand cheap-win-or-low).
     """
     if current_trick_cards:
         return planned_follow(board, seat, current_trick_cards)
+    # Phase 3: defender opening lead (only fires on T1 from LHO).
+    op_lead = planned_opening_lead(board, seat)
+    if op_lead is not None:
+        return op_lead
     return planned_lead(board, seat, current_trick_cards)
