@@ -71,6 +71,47 @@ protocol is framed (each side has a recv buffer to assemble frames).
 - The port is asked at runtime (no compile-time default visible
   in binary strings); both ends must agree.
 
+## Practical workflow for capturing on this machine
+
+A helper script `tools/qplus_dual_instance.sh` (local-only,
+gitignored) sets up two Q-Plus instances + the byte-logging proxy.
+Run in three terminals:
+
+```bash
+# Terminal 1
+tools/qplus_dual_instance.sh setup   # one-time: clone Wine prefix to WP_client/
+tools/qplus_dual_instance.sh proxy   # byte sniffer on :5556 → :5555
+
+# Terminal 2: Q-Plus instance A (server)
+tools/qplus_dual_instance.sh server
+#   in UI: Configuration → Players → one seat to Extern
+#          Network → Start bridge server on this PC → port 5555 → Start
+
+# Terminal 3: Q-Plus instance B (client)
+tools/qplus_dual_instance.sh client
+#   in UI: Network → Connect to local bridge server
+#          Address 127.0.0.1, Port 5556 (the PROXY, not the server)
+#          Connect → Join game
+```
+
+Play one complete deal. Every byte gets timestamped + hex+ASCII
+dumped into `tools/runs/qnet_session.log`.
+
+If the in-line proxy's latency upsets Q-Plus's handshake timing,
+fall back to passive packet capture:
+```bash
+tools/qplus_dual_instance.sh capture-with-tcpdump
+```
+Then have Q-Plus B connect DIRECTLY to port 5555 (not the proxy).
+Resulting `tools/runs/qnet.pcap` is readable by Wireshark.
+
+Wine prefix layout:
+- Server: `$FRI_ROOT/WP/` (existing, original)
+- Client: `$FRI_ROOT/WP_client/` (clone, made by `setup`)
+
+Each Q-Plus instance has its own prefix because they share config
+files in the install dir.
+
 ## RE plan (the work to do)
 
 1. **Capture a session.** Run two Q-Plus instances under Wine,
