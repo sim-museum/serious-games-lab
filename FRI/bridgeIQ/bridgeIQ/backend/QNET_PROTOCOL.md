@@ -217,6 +217,44 @@ python3 tools/biq_qnet_client.py --port 5556 --seat E --system SAYC
 - Q-Plus's recorded card not in hand on replay → falls back to
   lowest legal card (same logic).
 
+## Clean-measurement workflow (Q-Plus bots vs biq, no human)
+
+After the Plan 3 milestone, the right way to gather statistics is
+to take the user out of the loop entirely: Q-Plus's Computer
+plays N/S/W, biq plays its claimed seat (E), and a small clicker
+script keeps hitting "Next deal" on the server window.
+
+Three terminals + one click-loop:
+
+```bash
+# Terminal 1 — Q-Plus server (configure N/S/W=Computer, E=Extern)
+tools/qplus_dual_instance.sh server
+# Then in Q-Plus: Configuration → Players → S=Computer, E=Extern,
+# N=Computer, W=Computer → OK
+# Then: Network → Start bridge server → port 5555 → Start
+
+# Terminal 2 — proxy for protocol logging (optional)
+tools/qplus_dual_instance.sh proxy
+
+# Terminal 3 — biq client
+python3 tools/biq_qnet_client.py --port 5556 --seat E --system SAYC
+
+# Terminal 4 — auto-Next-Deal loop (after playing deal 1 manually)
+python3 tools/qplus_network_autoplay.py --deals 50
+# (calibrates Next-deal button position once, then loops)
+```
+
+`tools/qplus_network_autoplay.py` is the stripped-down companion
+to `qplus_autoplay.py` — only one button to click in network
+mode because the Computer seats and biq autonomously play through
+each deal once started.
+
+Open question still pending: does Q-Plus's networked mode actually
+accept S=Computer at the server while biq holds E=Extern? Reports
+from interactive testing on 2026-05-30 suggest YES — biq has played
+multiple deals against three Q-Plus bots — but document confirmation
+needed if/when found in Q-Plus help docs.
+
 ## First live biq vs Q-Plus deal (2026-05-30)
 
 Plan 3 end-to-end smoke test successful. Setup:
