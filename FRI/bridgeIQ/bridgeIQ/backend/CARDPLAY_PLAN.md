@@ -26,12 +26,20 @@ refined to skip when partner has other entries.
 played reduce the entry count); add explicit "blocked length"
 detection that triggers the unblock without ambiguity.
 
-### 2. Suit-combination tables (Phase 24 — partial)
+### 2. Suit-combination tables (Phase 24 — REGRESSED)
 **Goal**: a lookup of common honor patterns → optimal play.
 
-**Initial patterns**:
-- **AQ vs no K**: finesse the Q by leading small toward
-  partner's AQ (Phase 24 IMPLEMENTED).
+**Status**: First attempt (Phase 24, AQ-no-K finesse blind-lead)
+regressed −0.081 tricks/deal on the benchmark. The rule fires
+without knowing where the K sits — a critical missing input.
+Suit-combination rules need:
+- Inference of K location from auction (if RHO bid, K likely
+  there) or from played cards.
+- Or: only apply combos where both options (cash vs finesse)
+  have similar probability.
+
+**Initial patterns** (deferred until inference framework ready):
+- **AQ vs no K**: finesse the Q (needs K-location signal).
 - **AKJ vs Qxx**: finesse the J after cashing A.
 - **AKQJ vs xxxx**: cash all 4 from one side, watch for blocks.
 - **KQJ vs Axx**: duck the first round to opp's A; then run.

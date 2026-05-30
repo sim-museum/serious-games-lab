@@ -1218,6 +1218,11 @@ def planned_card(board: BoardState, seat: Seat,
     p9 = planned_lead_develop_length(board, seat)
     if p9 is not None:
         return p9
+    # (Phase 24 attempt — lead small toward AQ finesse, no K —
+    # regressed tricks -0.081 / NT -0.271. Without knowing where
+    # the K is, blind finesse-position rules misfire. Reverted.
+    # Suit-combination tables need per-seat K-location inference
+    # — see CARDPLAY_PLAN.md for the architectural plan.)
     # (Phase 12 attempt — lead toward partner's K/Q/J — regressed
     # tricks/deal -0.127 and NT -0.300. MC was picking better
     # already; planner rule fires when it shouldn't. Reverted.)
