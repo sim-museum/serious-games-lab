@@ -293,6 +293,15 @@ class BridgeEngine:
             legal_cards = hand.cards[:]
         if not legal_cards:
             return EngineResponse(action=None, who="NoCards")
+        # Strategic-plan override (Phase 1) for leads, mirrors the
+        # MC path's hook so the plan is respected even when MC fails.
+        if board.contract is not None and not current_trick_cards:
+            from .cardplay_plan import planned_card
+            planned = planned_card(board, seat, current_trick_cards)
+            if planned is not None and any(
+                    c.suit == planned.suit and c.rank == planned.rank
+                    for c in legal_cards):
+                return EngineResponse(action=planned, who="Fallback-Planner")
         is_discard = (lead_suit is not None
                       and not any(c.suit == lead_suit for c in legal_cards))
         if is_discard and board.contract is not None:
@@ -548,6 +557,24 @@ class BridgeEngine:
                         action=legal_cards[0] if legal_cards else None,
                         who="MC-Forced"
                     )
+
+                # Strategic-plan override (Phase 1): textbook bridge
+                # knowledge that DDS can't see at the per-card level.
+                # Currently implements one rule — declarer's trump-
+                # drawing lead — but the hook is in place for future
+                # phases (follow-suit unblock prevention, suit-
+                # establishment plans, etc.).
+                from .cardplay_plan import planned_card
+                planned = planned_card(board, seat, current_trick_cards)
+                if planned is not None:
+                    # Ensure it's actually legal — the planner reads
+                    # the same hand, so this should always hold, but
+                    # belt-and-braces.
+                    if any(c.suit == planned.suit
+                           and c.rank == planned.rank
+                           for c in legal_cards):
+                        return EngineResponse(action=planned,
+                                              who="MC-Planner")
 
                 # Collect known information
                 # - Our hand
