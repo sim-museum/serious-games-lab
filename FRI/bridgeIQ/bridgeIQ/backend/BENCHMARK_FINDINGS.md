@@ -65,6 +65,24 @@ variant rotated through each seat across many deals).
   validation via replay mode (single-seat asymmetric) rather than
   the symmetric cardplay mode.
 
+## Phase 25 validation via replay mode
+
+Re-tested Phase 25 (K-location-gated AQ finesse) via the new
+asymmetric replay benchmark on 3 corpora (386 declarer-side
+trials, 386 defender-side trials):
+
+| Side | Baseline delta | P25 enabled delta | Δ |
+|---|---|---|---|
+| declarer-side | −0.148/seat | −0.168/seat | −0.021 |
+| defender-side | −1.469/seat | −1.404/seat | +0.065 (worse defense) |
+
+Phase 25 stays OFF — the K-loc-gated finesse rule doesn't help
+even when biq-vs-biq symmetry is removed. The auction-derived
+K-location inference is too coarse (RHO bid the suit ≠ RHO holds
+the K), and the rule fires too rarely to overcome the variance.
+Future suit-combination work needs richer K-location signals
+(played cards, lead/follow patterns) before it can pay off.
+
 ## Suggested next benchmarking work
 
 1. **Rotation experiment**: same 4 variants but rotated through
