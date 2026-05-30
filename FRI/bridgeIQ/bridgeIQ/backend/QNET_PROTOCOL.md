@@ -97,6 +97,13 @@ tools/qplus_dual_instance.sh client
 Play one complete deal. Every byte gets timestamped + hex+ASCII
 dumped into `tools/runs/qnet_session.log`.
 
+The `proxy` subcommand is idempotent — if port 5556 is already
+held by a previous proxy instance, it kills the holder (SIGTERM,
+then SIGKILL after 1s if needed) and archives the existing log
+to `tools/runs/qnet_session_<timestamp>.log` before opening a
+fresh log. Lets you re-run `tools/qplus_dual_instance.sh proxy`
+without manual port cleanup or log loss.
+
 If the in-line proxy's latency upsets Q-Plus's handshake timing,
 fall back to passive packet capture:
 ```bash
