@@ -493,7 +493,14 @@ from dataclasses import dataclass
 
 @dataclass
 class SuitAnalysis:
-    """Phase 7 — per-suit analysis used by the declarer plan."""
+    """Phase 7 + 23 — per-suit analysis used by the declarer plan.
+
+    Phase 23 adds entry counting: top winners held specifically in
+    each hand (declarer vs dummy). An entry to a hand is a card
+    held in that hand that wins when led — i.e., a top winner sat
+    on that side. Used by the unblock rule and suit-establishment
+    timing.
+    """
     suit: Suit
     declarer_count: int
     dummy_count: int
@@ -502,6 +509,8 @@ class SuitAnalysis:
     top_winners: int    # consecutive top ranks held (A, AK, AKQ, ...)
     length_winners: int # expected extras above top after balanced split
     expected_winners: int  # top + length
+    entries_declarer: int = 0  # top-winner cards in declarer's hand
+    entries_dummy: int = 0     # top-winner cards in dummy's hand
 
 
 @dataclass
@@ -555,10 +564,21 @@ def build_declarer_plan(board: BoardState,
             length = max(0, own - top - max_opp_holding)
         else:
             length = 0
+        # Phase 23: count entry-cards in each hand (top winners
+        # actually held there). A top-winner card in a specific
+        # hand serves as an entry to that hand.
+        top_rank_set = set()
+        for r in _RANK_HI_TO_LO[:top]:
+            top_rank_set.add(r)
+        entries_d = sum(1 for c in board.hands[declarer].cards
+                        if c.suit == suit and c.rank in top_rank_set)
+        entries_dum = sum(1 for c in board.hands[dummy].cards
+                          if c.suit == suit and c.rank in top_rank_set)
         per_suit[suit] = SuitAnalysis(
             suit=suit, declarer_count=d_count, dummy_count=dum_count,
             own_count=own, opp_count=opp, top_winners=top,
-            length_winners=length, expected_winners=top + length)
+            length_winners=length, expected_winners=top + length,
+            entries_declarer=entries_d, entries_dummy=entries_dum)
     total = sum(s.expected_winners for s in per_suit.values())
     return DeclarerPlan(
         contract=contract, target_tricks=target,
@@ -570,7 +590,8 @@ def _plan_aware_unblock(board: BoardState, seat: Seat,
                           declarer: Seat,
                           winning_card: Card,
                           my_in_suit: List[Card]) -> Optional[Card]:
-    """Phase 8 — plan-aware declarer-side unblock.
+    """Phase 8 + 23 — plan-aware declarer-side unblock with entry
+    counting.
 
     Returns a card to drop (unblock), or None. Fires when:
     - I'm declarer-side and partner (visible) just played a card
@@ -580,6 +601,10 @@ def _plan_aware_unblock(board: BoardState, seat: Seat,
       block partner's length on subsequent rounds.
     - The plan says this suit has length_winners > 0 (so the length
       is worth preserving).
+    - Phase 23 refinement: partner has NO OTHER entries (top
+      winners in their hand from other suits). If they do, we can
+      reach the long hand via the other entry without unblocking
+      here.
 
     Drops the LOWEST of my higher cards (preserve absolute boss).
     """
@@ -591,15 +616,29 @@ def _plan_aware_unblock(board: BoardState, seat: Seat,
     suit = winning_card.suit
     sa = plan.per_suit.get(suit)
     if sa is None or sa.length_winners == 0:
-        return None  # no length value to preserve
+        return None
     partner = _partner(seat)
     partner_count = sum(1 for c in board.hands[partner].cards
                         if c.suit == suit)
     if len(my_in_suit) >= partner_count:
-        return None  # I'm long; no block risk
+        return None
     higher = [c for c in my_in_suit
               if c.rank.value < winning_card.rank.value]
     if not higher:
+        return None
+    # Phase 23: only unblock if partner has no other entries.
+    partner_other_entries = 0
+    for other_suit in (Suit.SPADES, Suit.HEARTS,
+                       Suit.DIAMONDS, Suit.CLUBS):
+        if other_suit == suit:
+            continue
+        other_sa = plan.per_suit.get(other_suit)
+        if other_sa is None:
+            continue
+        partner_other_entries += (
+            other_sa.entries_declarer if partner == declarer
+            else other_sa.entries_dummy)
+    if partner_other_entries > 0:
         return None
     return _lowest_in_suit(higher)
 
@@ -667,6 +706,57 @@ def planned_lead_cash_short_side(board: BoardState, seat: Seat
             # Lead the LOWEST of my top winners — saves the boss
             best = max(my_top, key=lambda c: c.rank.value)
     return best
+
+
+def planned_lead_finesse(board: BoardState, seat: Seat
+                          ) -> Optional[Card]:
+    """Phase 24 — lead small toward a finesse position.
+
+    Fires when declarer-side has the classic AQ-no-K position in
+    partner's hand: own-side combined holds A and Q but not K,
+    and I (current leader) hold small cards in that suit.
+
+    Lead my LOWEST. If LHO has the K and rises, dummy/declarer
+    plays A — Q remains a winner. If LHO ducks, partner plays Q
+    and the finesse succeeds.
+
+    Conservative — only fires for the specific AQ vs K finesse
+    pattern. Phase 12 (universal "lead toward strength") was
+    tested and regressed across the board.
+    """
+    if board.contract is None:
+        return None
+    declarer = board.contract.declarer
+    if not _is_declarer_side(seat, declarer):
+        return None
+    contract_suit = board.contract.suit
+    if contract_suit != Suit.NOTRUMP:
+        opp_trumps = _opponent_trump_count(
+            board, declarer, contract_suit, [])
+        if opp_trumps > 0:
+            return None
+    partner = _partner(seat)
+    for suit in (Suit.SPADES, Suit.HEARTS,
+                 Suit.DIAMONDS, Suit.CLUBS):
+        if suit == contract_suit:
+            continue
+        my_cards = [c for c in board.hands[seat].cards
+                    if c.suit == suit]
+        partner_cards = [c for c in board.hands[partner].cards
+                         if c.suit == suit]
+        if not my_cards or not partner_cards:
+            continue
+        my_ranks = {c.rank for c in my_cards}
+        partner_ranks = {c.rank for c in partner_cards}
+        combined = my_ranks | partner_ranks
+        # AQ on partner's side, K missing entirely, I have neither
+        if (Rank.ACE in partner_ranks
+                and Rank.QUEEN in partner_ranks
+                and Rank.KING not in combined
+                and Rank.ACE not in my_ranks
+                and Rank.QUEEN not in my_ranks):
+            return _lowest_in_suit(my_cards)
+    return None
 
 
 def planned_lead_develop_length(board: BoardState, seat: Seat
