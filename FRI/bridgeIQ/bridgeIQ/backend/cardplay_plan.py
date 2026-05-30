@@ -139,14 +139,216 @@ def planned_lead(board: BoardState, seat: Seat,
     return None
 
 
+def _card_beats(candidate: Card, current_winner: Card,
+                 lead_suit: Suit, trump: Optional[Suit]) -> bool:
+    """Returns True if `candidate` would win over `current_winner`
+    given the lead suit and trump suit (None for NT)."""
+    cand_is_trump = trump is not None and candidate.suit == trump
+    win_is_trump = trump is not None and current_winner.suit == trump
+    if cand_is_trump and not win_is_trump:
+        return True
+    if win_is_trump and not cand_is_trump:
+        return False
+    if cand_is_trump and win_is_trump:
+        return candidate.rank.value < current_winner.rank.value
+    # Neither trump: only lead-suit cards can win
+    if candidate.suit != lead_suit:
+        return False
+    if current_winner.suit != lead_suit:
+        return True  # shouldn't happen in normal play, but be safe
+    return candidate.rank.value < current_winner.rank.value
+
+
+def _winning_index(trick_cards: List[Card],
+                    trump: Optional[Suit]) -> int:
+    """Index (0..n-1) of the card currently winning a partial or
+    full trick."""
+    if not trick_cards:
+        return 0
+    lead = trick_cards[0].suit
+    best_idx = 0
+    best = trick_cards[0]
+    for i in range(1, len(trick_cards)):
+        if _card_beats(trick_cards[i], best, lead, trump):
+            best_idx = i
+            best = trick_cards[i]
+    return best_idx
+
+
+def _lowest_in_suit(cards: List[Card]) -> Card:
+    """Lowest rank from a list of single-suit cards (ACE=0 highest,
+    TWO=12 lowest in Rank.value)."""
+    return max(cards, key=lambda c: c.rank.value)
+
+
+def _highest_in_suit(cards: List[Card]) -> Card:
+    return min(cards, key=lambda c: c.rank.value)
+
+
+def _max_opp_rank_in_suit(suit: Suit, board: BoardState, seat: Seat,
+                           current_trick_cards: List[Card],
+                           declarer: Seat) -> Optional[Rank]:
+    """Highest rank of `suit` that could still be in opponents'
+    hands from `seat`'s point of view. Visible = own hand + visible
+    partner's hand (dummy if declarer-side; dummy if defender, since
+    dummy is open) + played cards."""
+    visible = set()
+    visible |= {c.rank for c in board.hands[seat].cards if c.suit == suit}
+    dummy = Seat((declarer + 2) % 4)
+    if _is_declarer_side(seat, declarer):
+        partner = _partner(seat)
+        visible |= {c.rank for c in board.hands[partner].cards
+                    if c.suit == suit}
+    else:
+        # Defender: dummy is open to all
+        visible |= {c.rank for c in board.hands[dummy].cards
+                    if c.suit == suit}
+    for trick in getattr(board, "tricks", []) or []:
+        for c in (getattr(trick, "cards", []) or []):
+            if c.suit == suit:
+                visible.add(c.rank)
+    for c in current_trick_cards or []:
+        if c.suit == suit:
+            visible.add(c.rank)
+    for r in _RANK_HI_TO_LO:
+        if r not in visible:
+            return r
+    return None
+
+
+def _partner_safe(partner_card: Card, board: BoardState, seat: Seat,
+                   declarer: Seat, current_trick_cards: List[Card],
+                   trump: Optional[Suit]) -> bool:
+    """True if partner's already-played card cannot be beaten by any
+    opponent card still possibly in play. Trump-aware: a non-trump
+    partner-card is unsafe if opponents could trump."""
+    # If partner's card is in the lead suit but opponents could
+    # trump (suit contract, opponents short in lead suit), partner
+    # is not safe. For Phase 2 we approximate: if trump != lead suit
+    # and there's any chance opps are out of lead, we can't be sure.
+    # Be conservative — if any unaccounted opponent trump and they
+    # might be out of lead, consider partner unsafe.
+    lead_suit = current_trick_cards[0].suit if current_trick_cards else partner_card.suit
+    # Highest opp rank in the lead suit (the suit partner-card needs
+    # to defend against).
+    opp_max_lead = _max_opp_rank_in_suit(
+        lead_suit, board, seat, current_trick_cards, declarer)
+    if opp_max_lead is not None:
+        if partner_card.suit == lead_suit:
+            if partner_card.rank.value > opp_max_lead.value:
+                return False  # opp could overtake in lead suit
+        else:
+            # Partner played off-suit (ruff in suit contract).
+            # If it's a ruff, we have to ask: could opp over-ruff?
+            if partner_card.suit == trump:
+                opp_max_tr = _max_opp_rank_in_suit(
+                    trump, board, seat, current_trick_cards, declarer)
+                if opp_max_tr is not None and opp_max_tr.value < partner_card.rank.value:
+                    return False
+    # Suit-contract ruff risk: opponents trump our non-trump winner.
+    if (trump is not None and partner_card.suit != trump):
+        opp_max_trump = _max_opp_rank_in_suit(
+            trump, board, seat, current_trick_cards, declarer)
+        if opp_max_trump is not None:
+            # Opponents could have a trump; partner not safe.
+            return False
+    return True
+
+
+def planned_follow(board: BoardState, seat: Seat,
+                    current_trick_cards: List[Card]) -> Optional[Card]:
+    """Return the strategic-plan card for a FOLLOW-SUIT decision,
+    or None to fall through to MC+DDS.
+
+    Phase 2 rules (defender-mostly, all safety-gated):
+
+    1. Don't overtake partner's safe winner. Universal — but only
+       when partner's played card can't be beaten by any remaining
+       opponent card (accounts for ruff threat in suit contracts).
+
+    2. Second-hand-low (defender). When defender is 2nd-to-play,
+       play lowest of suit.
+
+    3. Third-hand-high (defender). When defender is 3rd-to-play and
+       partner is NOT safe, play highest of suit to push declarer.
+
+    4. Fourth-hand cheap-win-or-low (defender). Last-to-play: lowest
+       card that beats the current winner, else lowest of suit.
+
+    Declarer-side 2nd/3rd/4th-hand play is left to MC+DDS — those
+    decisions depend on the declarer's strategic plan (entries, suit
+    establishment, finesse position), which Phases 3+ will encode.
+    Only the safety-gated Rule 1 applies universally.
+    """
+    if not current_trick_cards:
+        return None  # this is a lead
+    if board.contract is None:
+        return None
+    lead_suit = current_trick_cards[0].suit
+    my_in_suit = [c for c in board.hands[seat].cards
+                  if c.suit == lead_suit]
+    if not my_in_suit:
+        return None  # discarding — handled by cardplay_planner
+    if len(my_in_suit) == 1:
+        return my_in_suit[0]  # forced
+    declarer = board.contract.declarer
+    trump = (board.contract.suit
+             if board.contract.suit != Suit.NOTRUMP else None)
+    position = len(current_trick_cards) + 1  # 1..4
+    leader = Seat((seat.value - (position - 1)) % 4)
+    win_idx = _winning_index(current_trick_cards, trump)
+    winning_seat = Seat((leader.value + win_idx) % 4)
+    winning_card = current_trick_cards[win_idx]
+    partner_seat = Seat((seat.value + 2) % 4)
+    is_defender = not _is_declarer_side(seat, declarer)
+
+    # Rule 1 — Don't overtake partner's SAFE winner. Safety-gated:
+    # only fires when partner's card can't be beaten by any
+    # remaining opponent card (no ruff threat in suit contracts,
+    # no higher card outstanding in the lead suit).
+    if winning_seat == partner_seat:
+        if _partner_safe(winning_card, board, seat, declarer,
+                          current_trick_cards, trump):
+            return _lowest_in_suit(my_in_suit)
+        # Partner not safe — fall through to position-specific logic.
+
+    # Defender-only rules below. Declarer-side 2nd/3rd/4th-hand play
+    # is plan-driven and left to MC+DDS until Phase 3+.
+    if not is_defender:
+        return None
+
+    # Rule 2 — Second hand low (defender).
+    if position == 2:
+        return _lowest_in_suit(my_in_suit)
+
+    # Rule 3 — Third hand high (defender) when partner not safe.
+    if position == 3:
+        if _card_beats(_highest_in_suit(my_in_suit), winning_card,
+                        lead_suit, trump):
+            return _highest_in_suit(my_in_suit)
+        return _lowest_in_suit(my_in_suit)
+
+    # Rule 4 — Fourth hand cheap-win-or-low (defender).
+    if position == 4:
+        beat = [c for c in my_in_suit
+                if _card_beats(c, winning_card, lead_suit, trump)]
+        if beat:
+            return _lowest_in_suit(beat)
+        return _lowest_in_suit(my_in_suit)
+
+    return None
+
+
 def planned_card(board: BoardState, seat: Seat,
                   current_trick_cards: Optional[List[Card]] = None
                   ) -> Optional[Card]:
     """Top-level entry point for the strategic planner. Returns a
     card to play, or None to fall through to MC+DDS.
 
-    Currently dispatches LEAD vs FOLLOW. Phase 1 implements LEAD
-    only; follow-suit support is left to MC+DDS for now."""
+    Dispatches LEAD vs FOLLOW. Phase 1 handles LEAD (trump-drawing
+    rule); Phase 2 handles FOLLOW (don't-overtake-partner, second/
+    third-hand defender, fourth-hand cheap-win-or-low).
+    """
     if current_trick_cards:
-        return None  # follow-suit → future phase
+        return planned_follow(board, seat, current_trick_cards)
     return planned_lead(board, seat, current_trick_cards)

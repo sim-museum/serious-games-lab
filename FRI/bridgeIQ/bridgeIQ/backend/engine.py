@@ -293,9 +293,10 @@ class BridgeEngine:
             legal_cards = hand.cards[:]
         if not legal_cards:
             return EngineResponse(action=None, who="NoCards")
-        # Strategic-plan override (Phase 1) for leads, mirrors the
-        # MC path's hook so the plan is respected even when MC fails.
-        if board.contract is not None and not current_trick_cards:
+        # Strategic-plan override (Phases 1+2) — mirrors the MC path's
+        # planner hook so the plan is respected even when MC fails.
+        # Handles both LEAD (Phase 1) and FOLLOW (Phase 2) decisions.
+        if board.contract is not None:
             from .cardplay_plan import planned_card
             planned = planned_card(board, seat, current_trick_cards)
             if planned is not None and any(
