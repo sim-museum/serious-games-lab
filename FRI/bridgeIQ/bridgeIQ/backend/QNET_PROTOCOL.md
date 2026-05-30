@@ -112,6 +112,102 @@ Wine prefix layout:
 Each Q-Plus instance has its own prefix because they share config
 files in the install dir.
 
+## Decoded protocol (from one captured deal, 2026-05-30)
+
+**Format**: plain text, `\n`-terminated lines. No length headers,
+no binary framing. Each line:
+```
+"<command>" [arg1] [arg2] [arg3] ...
+```
+where `<command>` is quoted and each arg is in square brackets.
+Arg contents are free text (may include spaces).
+
+### Handshake (one-time at connect)
+
+| Cmd | Dir | Args | Notes |
+|---|---|---|---|
+| `request_player_info` | C→S | `[seat]` | client probes each of 4 seats (north/east/south/west, lowercase) |
+| `set_player_info` | S→C | `[Display] [Internal] [Type] [Status]` | one per seat. Type ∈ {Human, Computer, Extern}; Status ∈ {local, not_connected, connected} |
+| `join_game` | C→S | `[Display] [Internal]` | client claims a seat; Internal is the client's chosen name |
+| `player_accepted` | S→C | — | server ack of the join |
+| `request_config` | C→S | — | client asks for game settings |
+| `set_config` | S→C | `[k=v;k=v;...]` | semicolon-delimited k=v: conventions, lead/signal codes, etc. |
+
+### Per-deal vocabulary
+
+| Cmd | Dir | Args | Notes |
+|---|---|---|---|
+| `new_deal_pbn` | S→C | `[tag1] [scoring] [tag2] [<dealer> <vul> <starter>:<hand> <hand> <hand> <hand>]` | PBN deal; **dealer is in arg[3]**, NOT arg[0]; hands listed S/H/D/C order within each, in seat order from `<starter>` |
+| `start_bidding` | S→C | `[-]` | auction begins |
+| `bid` | both | `[Seat] [bid]` | bid format: `1nt`, `2c ` (trailing space for suit bids), ` p ` for pass, ` x ` for double, `xx ` for redouble |
+| `begin_play` | both | — | each seat acks ready to play (we observed 3 from server, 1 from client) |
+| `card` | both | `[Seat] [card]` | card = lowercase suit + uppercase rank, e.g. `sA`, `hQ`, `d4` |
+| `report_score` | S→C | `[scoreline]` | scoreline contains DI/DD/... fields |
+| `server_stopped` | S→C | — | clean disconnect |
+
+### Direction rules
+
+- **Server is authoritative.** Every bid/card is broadcast by the
+  server to all clients including the one that sent it.
+- **Client only SENDS bids/cards for its claimed seat.** The
+  client must echo the server's `begin_play` once.
+- **Client must wait for `start_bidding` before sending bids**, and
+  for `begin_play` before sending cards.
+
+### Vulnerability tokens
+
+`None`, `NS`, `EW`, `All` (or `Both`). `None` is the default.
+
+### Bid format quirks
+
+- Pass = `[ p ]` with spaces. Acceptable to send `[p]` too based on
+  parser leniency; safer to match server's whitespace.
+- Suit bids: lowercase suit letter (`s`/`h`/`d`/`c`/`nt`) preceded
+  by level digit. Trailing space for non-NT bids (e.g. `[2c ]`).
+
+## biq client implementation
+
+`tools/biq_qnet_client.py` (local-only per the tools/-gitignore
+policy) implements the full protocol:
+
+```bash
+# Connect biq to an existing Q-Plus server as East:
+python3 tools/biq_qnet_client.py \\
+    --host 127.0.0.1 --port 5555 \\
+    --seat E --system SAYC
+
+# Connect via the proxy to capture biq-vs-Q-Plus traffic in parallel:
+python3 tools/biq_qnet_client.py --port 5556 --seat E --system SAYC
+```
+
+### What the client does
+
+1. TCP connects to host:port.
+2. Sends the 4-step handshake (request_player_info ×4, join_game,
+   request_config). Waits for each ack.
+3. On `new_deal_pbn`: parses dealer + vul + 4 hands, builds a
+   `BoardState`, prints biq's hand for the claimed seat.
+4. On `start_bidding`: if biq is the dealer, calls
+   `backend.native_bidder.decide_bid()` and sends the result.
+5. On `bid`: appends to auction; if next bidder is biq, sends
+   biq's bid. Detects auction end and derives the contract.
+6. On `begin_play`: sends one `begin_play` ack. If biq is the
+   opening leader (LHO of declarer), sends the first card.
+7. On `card`: removes the card from the played seat's hand,
+   accumulates the trick. On 4 cards, computes the winner. If
+   biq is next to play, calls `BridgeEngine.get_mc_card_play()`
+   and sends the result.
+8. On `report_score`: logs the result.
+9. On `server_stopped`: exits cleanly.
+
+### Fallbacks
+
+- Bidder exception → biq sends pass.
+- Cardplay exception or MC failure → biq plays the lowest legal
+  card in the led suit (or any legal card if void).
+- Q-Plus's recorded card not in hand on replay → falls back to
+  lowest legal card (same logic).
+
 ## RE plan (the work to do)
 
 1. **Capture a session.** Run two Q-Plus instances under Wine,
