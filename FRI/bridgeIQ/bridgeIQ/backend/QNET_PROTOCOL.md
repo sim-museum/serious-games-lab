@@ -263,6 +263,29 @@ to `qplus_autoplay.py` — only one button to click in network
 mode because the Computer seats and biq autonomously play through
 each deal once started.
 
+**Q-Plus network-mode constraint**: the server insists on at
+least one Local Human seat — you can't configure NSW=Computer +
+E=Extern from a cold start. Workaround discovered 2026-05-30:
+
+1. Configure E=Extern, leave S=Human (Q-Plus default).
+2. Start the bridge server, biq connects.
+3. Click First deal; for South's first bid, use the **Hint**
+   button (effectively lets Q-Plus's bot suggest, accept it).
+4. Mid-deal, change Configuration → Players → S=Computer.
+5. From that point onward, the lower-left button cycles
+   Next deal → Start bidding → Start play → Next card across the
+   rest of the session. Q-Plus's bots play S/N/W; biq plays E;
+   no further user input needed.
+
+The third local-only helper script handles step 5:
+```bash
+python3 tools/qplus_button_loop.py --deals 50
+# calibrate lower-left button once; loops clicks @ 4s interval
+```
+Each deal needs ~17 clicks (1 Next deal + 1 Start bidding + 1
+Start play + 13 Next card + slack); default 20 clicks/deal.
+Greyed-button clicks are no-ops; active ones advance state.
+
 After the session, aggregate IMP totals from the proxy log:
 
 ```bash
