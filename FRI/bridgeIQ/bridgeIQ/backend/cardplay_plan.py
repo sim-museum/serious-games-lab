@@ -400,6 +400,12 @@ def planned_follow(board: BoardState, seat: Seat,
             return _lowest_in_suit(my_in_suit)
         # Partner not safe — fall through to position-specific logic.
 
+    # (Phase 18 attempt — declarer hold-up at T1 in NT — regressed
+    # tricks/deal -0.138. In biq-vs-biq cardplay mode the defender
+    # always has communications to exploit the held-up Ace; hold-up
+    # only pays off vs human opponents who can't reach partner.
+    # Reverted.)
+
     # Defender-only rules below. Two iterations of universal 3rd-
     # hand rules regressed (universal cheap-winner −0.942, sequence-
     # aware defender-only −0.836). The "play highest" rule from
@@ -725,6 +731,94 @@ def planned_lead_develop_length(board: BoardState, seat: Seat
     return _lowest_in_suit(my_cards)
 
 
+def planned_lead_toward_partner_trump(board: BoardState, seat: Seat
+                                        ) -> Optional[Card]:
+    """Phase 21 — declarer-side lead a small trump TOWARD partner's
+    boss trump. Complements Phase 1 (which leads high from own
+    hand). When partner holds the highest outstanding trump and
+    opponents still hold trumps, lead my lowest trump so partner's
+    boss wins the next trick (which also lets us continue drawing
+    trumps on the next lead).
+
+    Fires when:
+    - Declarer-side on lead, suit contract.
+    - Opponents still hold trumps.
+    - Partner (visible) holds a trump higher than any opp trump.
+    - I have at least one trump to lead.
+    - I do NOT hold the boss trump (else Phase 1 fires instead).
+    """
+    if board.contract is None:
+        return None
+    if board.contract.suit == Suit.NOTRUMP:
+        return None
+    declarer = board.contract.declarer
+    if not _is_declarer_side(seat, declarer):
+        return None
+    trump = board.contract.suit
+    opp_trumps = _opponent_trump_count(board, declarer, trump, [])
+    if opp_trumps <= 0:
+        return None
+    opp_top = _highest_outstanding_opp_trump(
+        board, seat, declarer, trump, [])
+    if opp_top is None:
+        return None
+    my_trumps = [c for c in board.hands[seat].cards if c.suit == trump]
+    if not my_trumps:
+        return None
+    my_top = min(my_trumps, key=lambda c: c.rank.value)
+    if my_top.rank.value < opp_top.value:
+        return None  # I have the boss — Phase 1 handles
+    partner = _partner(seat)
+    partner_trumps = [c for c in board.hands[partner].cards
+                      if c.suit == trump]
+    if not partner_trumps:
+        return None
+    partner_top = min(partner_trumps, key=lambda c: c.rank.value)
+    if partner_top.rank.value >= opp_top.value:
+        return None  # partner doesn't have boss either
+    # Partner has the boss; lead my lowest trump
+    return max(my_trumps, key=lambda c: c.rank.value)
+
+
+def planned_lead_trump_disrupt(board: BoardState, seat: Seat
+                                 ) -> Optional[Card]:
+    """Phase 20 — defender leads trump to disrupt declarer's
+    crossruff plan.
+
+    Fires when:
+    - I'm a defender on lead (post-T1).
+    - Suit contract.
+    - Dummy holds a 5+ side suit (likely crossruff source).
+    - I have 3+ trumps (can afford to lead one).
+
+    Leads my LOWEST trump. Standard defensive technique: drawing
+    declarer's/dummy's trumps cuts off ruffing tricks.
+    """
+    if board.contract is None:
+        return None
+    if board.contract.suit == Suit.NOTRUMP:
+        return None
+    declarer = board.contract.declarer
+    if _is_declarer_side(seat, declarer):
+        return None
+    if not getattr(board, "tricks", None):
+        return None
+    trump = board.contract.suit
+    dummy = Seat((declarer.value + 2) % 4)
+    dummy_max_side = max(
+        (sum(1 for c in board.hands[dummy].cards if c.suit == s)
+         for s in (Suit.SPADES, Suit.HEARTS,
+                   Suit.DIAMONDS, Suit.CLUBS)
+         if s != trump), default=0)
+    if dummy_max_side < 5:
+        return None
+    my_trumps = [c for c in board.hands[seat].cards
+                 if c.suit == trump]
+    if len(my_trumps) < 3:
+        return None
+    return _lowest_in_suit(my_trumps)
+
+
 def planned_lead_partner_bid_suit(board: BoardState, seat: Seat
                                     ) -> Optional[Card]:
     """Phase 14 — defender leads partner's bid suit (overcall or
@@ -796,6 +890,8 @@ def planned_lead_defender_continuation(board: BoardState, seat: Seat
              if board.contract.suit != Suit.NOTRUMP else None)
     hand = board.hands[seat]
     by_suit = _cards_by_suit(hand)
+    # 4th-best from longest non-trump (5+ cards — Phase 17 tightens
+    # 4+ rule.
     non_trump_lengths = {
         s: len(cs) for s, cs in by_suit.items()
         if s != trump}
@@ -873,10 +969,11 @@ def planned_lead_return_partner_suit(board: BoardState, seat: Seat
       already happened).
     - Partner led the opening trick.
     - I still hold cards in partner's suit.
+    Lead my LOWEST card in partner's suit. Continues partner's
+    attack on the established suit.
 
-    Lead my LOWEST card in partner's suit (standard "return low"
-    when not winning; high-card return signals different things).
-    Continues partner's attack on the established suit.
+    (Phase 19 — skip when dummy holds a higher card — was tested
+    and washed within noise; reverted to keep the rule simple.)
     """
     if board.contract is None:
         return None
@@ -974,7 +1071,9 @@ def planned_opening_lead(board: BoardState, seat: Seat
     # declarer "I have AK" via the lead gives them info they
     # exploit. Reverted.)
 
-    # Rule 3: 4th best from longest non-trump
+    # Rule 3: 4th best from longest non-trump (4+ cards). Phase 16
+    # (HCP tiebreak) and Phase 17 (5+ minimum) both regressed; 4+
+    # threshold with first-match wins is the right rule.
     non_trump_lengths = {
         s: len(cs) for s, cs in by_suit.items()
         if s != trump}
@@ -1008,9 +1107,8 @@ def planned_card(board: BoardState, seat: Seat,
     p11 = planned_lead_return_partner_suit(board, seat)
     if p11 is not None:
         return p11
-    # (Phase 14 attempt — lead partner's bid suit — was a wash
-    # within noise: -0.021 tricks, +0.008 IMP. Reverted to keep
-    # state clean.)
+    # (Phase 20 attempt — defender leads trump vs crossruff —
+    # marginal tricks +0.009 but IMP -0.131. Reverted.)
     # Phase 13: defender 4th-best from longest non-trump after T1.
     p13 = planned_lead_defender_continuation(board, seat)
     if p13 is not None:
@@ -1019,6 +1117,9 @@ def planned_card(board: BoardState, seat: Seat,
     p1 = planned_lead(board, seat, current_trick_cards)
     if p1 is not None:
         return p1
+    # (Phase 21 attempt — lead small trump toward partner's boss —
+    # regressed tricks by 0.112. MC was already picking better;
+    # reverted.)
     # Phase 5: cash from short side (declarer-side, NT or after trumps).
     p5 = planned_lead_cash_short_side(board, seat)
     if p5 is not None:
