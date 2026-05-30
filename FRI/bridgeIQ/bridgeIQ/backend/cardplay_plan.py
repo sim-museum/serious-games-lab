@@ -719,6 +719,99 @@ def planned_lead_develop_length(board: BoardState, seat: Seat
     return _lowest_in_suit(my_cards)
 
 
+def planned_lead_defender_continuation(board: BoardState, seat: Seat
+                                        ) -> Optional[Card]:
+    """Phase 13 — defender's mid-deal lead (after T1, not returning
+    partner's suit).
+
+    Fires when:
+    - I'm a defender on lead.
+    - Phase 11 (return partner's suit) didn't fire (partner wasn't
+      T1 leader, or I have no cards in partner's suit left).
+    - I have a non-trump suit with 4+ cards.
+
+    Lead 4th best from my longest non-trump suit. Continues
+    development from MY long suit when partner's suit is dead.
+    """
+    if board.contract is None:
+        return None
+    declarer = board.contract.declarer
+    if _is_declarer_side(seat, declarer):
+        return None
+    if not getattr(board, "tricks", None):
+        return None  # T1 already handled by planned_opening_lead
+    trump = (board.contract.suit
+             if board.contract.suit != Suit.NOTRUMP else None)
+    hand = board.hands[seat]
+    by_suit = _cards_by_suit(hand)
+    non_trump_lengths = {
+        s: len(cs) for s, cs in by_suit.items()
+        if s != trump}
+    if not non_trump_lengths:
+        return None
+    longest = max(non_trump_lengths, key=non_trump_lengths.get)
+    if non_trump_lengths[longest] < 4:
+        return None
+    cards = sorted(by_suit[longest], key=lambda c: c.rank.value)
+    return cards[3]
+
+
+def planned_lead_toward_strength(board: BoardState, seat: Seat
+                                  ) -> Optional[Card]:
+    """Phase 12 — declarer-side: lead a low card from the hand
+    WITHOUT the honor, toward partner's K/Q/J.
+
+    Fires when:
+    - Declarer-side on lead.
+    - In a suit contract, trumps must be drawn first.
+    - Partner has a K (and I don't have A), Q (and I don't have A
+      or K), or J (and I don't have A, K, Q) in a non-trump suit.
+    - I have cards in that suit to lead.
+
+    Lead my LOWEST card in that suit — partner's honor wins if
+    opp's higher card is offside (the classic "lead toward an
+    honor" finesse position).
+
+    Skipped if Phase 5 (cash short side) or Phase 9 (develop
+    length) would have fired first.
+    """
+    if board.contract is None:
+        return None
+    declarer = board.contract.declarer
+    if not _is_declarer_side(seat, declarer):
+        return None
+    contract_suit = board.contract.suit
+    if contract_suit != Suit.NOTRUMP:
+        opp_trumps = _opponent_trump_count(
+            board, declarer, contract_suit, [])
+        if opp_trumps > 0:
+            return None
+    partner = _partner(seat)
+    # Define honor priority and "blockers" — what I shouldn't have
+    # to make leading toward partner's honor useful.
+    honor_blockers = {
+        Rank.KING: {Rank.ACE},
+        Rank.QUEEN: {Rank.ACE, Rank.KING},
+        Rank.JACK: {Rank.ACE, Rank.KING, Rank.QUEEN},
+    }
+    for suit in (Suit.SPADES, Suit.HEARTS,
+                 Suit.DIAMONDS, Suit.CLUBS):
+        if suit == contract_suit:
+            continue
+        my_cards = [c for c in board.hands[seat].cards
+                    if c.suit == suit]
+        partner_cards = [c for c in board.hands[partner].cards
+                         if c.suit == suit]
+        if not my_cards or not partner_cards:
+            continue
+        my_ranks = {c.rank for c in my_cards}
+        partner_ranks = {c.rank for c in partner_cards}
+        for honor, blockers in honor_blockers.items():
+            if honor in partner_ranks and not (my_ranks & blockers):
+                return _lowest_in_suit(my_cards)
+    return None
+
+
 def planned_lead_return_partner_suit(board: BoardState, seat: Seat
                                        ) -> Optional[Card]:
     """Phase 11 — defender returns partner's opening lead suit.
@@ -863,6 +956,10 @@ def planned_card(board: BoardState, seat: Seat,
     p11 = planned_lead_return_partner_suit(board, seat)
     if p11 is not None:
         return p11
+    # Phase 13: defender 4th-best from longest non-trump after T1.
+    p13 = planned_lead_defender_continuation(board, seat)
+    if p13 is not None:
+        return p13
     # Phase 1: declarer trump-drawing lead (suit contract, opp has trumps).
     p1 = planned_lead(board, seat, current_trick_cards)
     if p1 is not None:
@@ -875,4 +972,7 @@ def planned_card(board: BoardState, seat: Seat,
     p9 = planned_lead_develop_length(board, seat)
     if p9 is not None:
         return p9
+    # (Phase 12 attempt — lead toward partner's K/Q/J — regressed
+    # tricks/deal -0.127 and NT -0.300. MC was picking better
+    # already; planner rule fires when it shouldn't. Reverted.)
     return None
