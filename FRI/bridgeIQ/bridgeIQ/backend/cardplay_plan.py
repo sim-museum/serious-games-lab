@@ -257,29 +257,35 @@ def _partner_safe(partner_card: Card, board: BoardState, seat: Seat,
 
 def _cover_honor_with_next(my_in_suit: List[Card],
                             lead_card: Card) -> Optional[Card]:
-    """Phase 4 — cover-an-honor with the next-higher honor.
+    """Phase 4 + 15 — cover-an-honor.
 
-    When LHO leads a J/Q/K and I hold the next-higher honor
-    (Q over J, K over Q, A over K), return that cover card.
-    Returns None otherwise.
+    When LHO leads a J/Q/K and I hold a higher honor, cover.
+    Plays the LOWEST acceptable cover (preserve higher honors):
 
-    Skips ACE (nothing covers A) and skips spot cards. Always
-    plays the exact next-higher honor, not higher (preserves the
-    A for later if I have K and A and lead is Q — play K, save A).
+    - Lead J: cover with Q first, then K. Not A.
+    - Lead Q: cover with K first, then A.
+    - Lead K: cover with A.
+
+    Original Phase 4 only used the immediate next-higher honor
+    (Q for J, K for Q, A for K). Phase 15 extends to allow K
+    covering J when Q is missing, and A covering Q when K is
+    missing — covers the common "I hold a singleton high honor"
+    case without over-firing the Ace.
     """
     if lead_card.suit not in (Suit.SPADES, Suit.HEARTS,
                                 Suit.DIAMONDS, Suit.CLUBS):
         return None
-    cover_target = {
-        Rank.JACK: Rank.QUEEN,
-        Rank.QUEEN: Rank.KING,
-        Rank.KING: Rank.ACE,
+    cover_options = {
+        Rank.JACK: [Rank.QUEEN, Rank.KING],
+        Rank.QUEEN: [Rank.KING, Rank.ACE],
+        Rank.KING: [Rank.ACE],
     }.get(lead_card.rank)
-    if cover_target is None:
+    if not cover_options:
         return None
-    for c in my_in_suit:
-        if c.rank == cover_target:
-            return c
+    for target in cover_options:  # prefer earlier (lower) options
+        for c in my_in_suit:
+            if c.rank == target:
+                return c
     return None
 
 
@@ -719,6 +725,52 @@ def planned_lead_develop_length(board: BoardState, seat: Seat
     return _lowest_in_suit(my_cards)
 
 
+def planned_lead_partner_bid_suit(board: BoardState, seat: Seat
+                                    ) -> Optional[Card]:
+    """Phase 14 — defender leads partner's bid suit (overcall or
+    other suit-naming bid) when on lead post-T1.
+
+    Fires when:
+    - I'm a defender on lead, post-T1.
+    - Partner bid a suit during the auction.
+    - That suit isn't trumps (don't lead trump).
+    - I hold cards in that suit.
+
+    Lead-style by length: 4th-best if 4+, low from honor if 3-card,
+    top of doubleton, singleton. Same convention as opening lead
+    in partner's suit (Phase 3 Rule 1).
+
+    Runs before Phase 13 (lead 4th-best from MY longest) — partner's
+    bid suit is the higher-priority signal.
+    """
+    if board.contract is None:
+        return None
+    declarer = board.contract.declarer
+    if _is_declarer_side(seat, declarer):
+        return None
+    if not getattr(board, "tricks", None):
+        return None  # T1 already handled
+    partner_suit = _partner_bid_suit(board, seat)
+    if partner_suit is None:
+        return None
+    trump = (board.contract.suit
+             if board.contract.suit != Suit.NOTRUMP else None)
+    if trump is not None and partner_suit == trump:
+        return None
+    my_cards = [c for c in board.hands[seat].cards
+                if c.suit == partner_suit]
+    if not my_cards:
+        return None
+    if len(my_cards) >= 4:
+        sorted_cards = sorted(my_cards, key=lambda c: c.rank.value)
+        return sorted_cards[3]
+    if len(my_cards) == 3:
+        return _lowest_in_suit(my_cards)
+    if len(my_cards) == 2:
+        return _highest_in_suit(my_cards)
+    return my_cards[0]
+
+
 def planned_lead_defender_continuation(board: BoardState, seat: Seat
                                         ) -> Optional[Card]:
     """Phase 13 — defender's mid-deal lead (after T1, not returning
@@ -956,6 +1008,9 @@ def planned_card(board: BoardState, seat: Seat,
     p11 = planned_lead_return_partner_suit(board, seat)
     if p11 is not None:
         return p11
+    # (Phase 14 attempt — lead partner's bid suit — was a wash
+    # within noise: -0.021 tricks, +0.008 IMP. Reverted to keep
+    # state clean.)
     # Phase 13: defender 4th-best from longest non-trump after T1.
     p13 = planned_lead_defender_continuation(board, seat)
     if p13 is not None:
