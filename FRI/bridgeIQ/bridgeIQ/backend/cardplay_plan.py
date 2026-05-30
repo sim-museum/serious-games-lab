@@ -657,6 +657,68 @@ def planned_lead_cash_short_side(board: BoardState, seat: Seat
     return best
 
 
+def planned_lead_develop_length(board: BoardState, seat: Seat
+                                  ) -> Optional[Card]:
+    """Phase 9 — declarer-side length development.
+
+    Fires when:
+    - Declarer-side on lead, no current trick.
+    - Plan deficit > 0 (we need more tricks beyond our cashed
+      winners).
+    - In a suit contract, trumps must already be drawn (opp's count
+      = 0) — otherwise let Phase 1 handle drawing.
+    - There's a non-trump suit with length_winners > 0 (length
+      worth establishing).
+    - I'm on the LONG side of that suit (otherwise let partner lead
+      from there).
+
+    Lead my LOWEST card in that suit — duck to opponents, who win
+    the trick but exhaust their high cards. Next time the suit is
+    led, our length wins.
+
+    Textbook "duck once" rule for AKxxx-vs-Qx, AKQxx-vs-Jx, etc.
+    Does not override Phase 1 (trump-drawing) or Phase 5 (cash
+    from short side); those run earlier in planned_card.
+    """
+    if board.contract is None:
+        return None
+    declarer = board.contract.declarer
+    if not _is_declarer_side(seat, declarer):
+        return None
+    contract_suit = board.contract.suit
+    # If suit contract, only develop length after trumps drawn.
+    if contract_suit != Suit.NOTRUMP:
+        opp_trumps = _opponent_trump_count(
+            board, declarer, contract_suit, [])
+        if opp_trumps > 0:
+            return None
+    plan = build_declarer_plan(board, declarer)
+    if plan is None or plan.deficit <= 0:
+        return None
+    best_suit = None
+    best_length = 0
+    for suit, sa in plan.per_suit.items():
+        if suit == contract_suit:
+            continue
+        if sa.length_winners > best_length:
+            best_length = sa.length_winners
+            best_suit = suit
+    if best_suit is None:
+        return None
+    sa = plan.per_suit[best_suit]
+    is_long_side = ((seat == declarer
+                     and sa.declarer_count > sa.dummy_count)
+                    or (seat == _partner(declarer)
+                        and sa.dummy_count > sa.declarer_count))
+    if not is_long_side:
+        return None
+    my_cards = [c for c in board.hands[seat].cards
+                if c.suit == best_suit]
+    if not my_cards:
+        return None
+    return _lowest_in_suit(my_cards)
+
+
 def planned_opening_lead(board: BoardState, seat: Seat
                           ) -> Optional[Card]:
     """Phase 3 — defender's opening-lead rules (textbook).
@@ -762,4 +824,8 @@ def planned_card(board: BoardState, seat: Seat,
     p5 = planned_lead_cash_short_side(board, seat)
     if p5 is not None:
         return p5
+    # Phase 9: develop length by ducking from long side.
+    p9 = planned_lead_develop_length(board, seat)
+    if p9 is not None:
+        return p9
     return None
