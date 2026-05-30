@@ -249,6 +249,29 @@ to `qplus_autoplay.py` — only one button to click in network
 mode because the Computer seats and biq autonomously play through
 each deal once started.
 
+After the session, aggregate IMP totals from the proxy log:
+
+```bash
+python3 tools/qnet_score_aggregate.py --our-seat E
+# default --log = tools/runs/qnet_session.log
+```
+
+Output:
+- Total IMPs for biq + opp + net
+- Per-deal table: deal id, dealer/vul, NS raw score, biq IMP, opp IMP
+- Win/tie/loss counts
+
+The aggregator parses `report_score` lines from the proxy hex
+dump. The relevant payload fields per deal are:
+- `DI "<label>"` — deal ID
+- `RE <ns_actual> <ew_par>` — actual NS score + EW par reference
+- `IM <ns_imp> <ew_imp>` — IMPs (one of the two is 0; the other
+  is the absolute swing for whichever side benefited from
+  comparing actual to par)
+
+`our-seat ∈ {N,E,S,W}` tells the aggregator which side biq
+plays (so it knows whether biq's IMP is the NS or EW column).
+
 Open question still pending: does Q-Plus's networked mode actually
 accept S=Computer at the server while biq holds E=Extern? Reports
 from interactive testing on 2026-05-30 suggest YES — biq has played
