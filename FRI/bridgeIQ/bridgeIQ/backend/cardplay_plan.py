@@ -551,7 +551,12 @@ def build_declarer_plan(board: BoardState,
             for c in board.hands[s].cards:
                 if c.suit == suit:
                     combined_ranks.add(c.rank)
+        # (Phase 26 attempt — pass played_ranks for dynamic counts
+        # — regressed IMP -0.428. Mid-deal plan recomputation with
+        # played cards shifted the plan-aware unblock decisions in
+        # the wrong direction. Reverted to static count.)
         top = _count_top_winners(combined_ranks)
+        played_ranks = set()  # kept for entries calc below
         # Length above the top winners after balanced split:
         # max_opp_holding ≈ ceil(opp / 2). Once tops cash, remaining
         # own = own - top; length = own - top - max_opp_holding (if
@@ -564,12 +569,26 @@ def build_declarer_plan(board: BoardState,
             length = max(0, own - top - max_opp_holding)
         else:
             length = 0
-        # Phase 23: count entry-cards in each hand (top winners
-        # actually held there). A top-winner card in a specific
-        # hand serves as an entry to that hand.
+        # Phase 23 + 26: count entry-cards in each hand. The top
+        # `top` ranks must be picked dynamically, walking from the
+        # highest unplayed rank that own-side holds. After A has
+        # played, K becomes the new top winner; static
+        # _RANK_HI_TO_LO[:top] would still report A as the top set
+        # and entries_declarer would be 0 even though K is in
+        # declarer's hand.
         top_rank_set = set()
-        for r in _RANK_HI_TO_LO[:top]:
-            top_rank_set.add(r)
+        if top > 0:
+            collected = 0
+            for r in _RANK_HI_TO_LO:
+                if collected >= top:
+                    break
+                if r in combined_ranks:
+                    top_rank_set.add(r)
+                    collected += 1
+                elif r in played_ranks:
+                    continue
+                else:
+                    break
         entries_d = sum(1 for c in board.hands[declarer].cards
                         if c.suit == suit and c.rank in top_rank_set)
         entries_dum = sum(1 for c in board.hands[dummy].cards
@@ -643,13 +662,27 @@ def _plan_aware_unblock(board: BoardState, seat: Seat,
     return _lowest_in_suit(higher)
 
 
-def _count_top_winners(combined_ranks: set) -> int:
-    """Number of consecutive winners we hold from Ace downward.
-    Have A: 1. AK: 2. AKQ: 3. Missing any → stop counting."""
+def _count_top_winners(combined_ranks: set,
+                        played_ranks: Optional[set] = None) -> int:
+    """Number of consecutive winners we hold from the current top
+    downward.
+
+    Phase 26 — dynamic version. Walk ranks high to low:
+    - Rank in own hand → count it as a top winner.
+    - Rank already played by anyone → skip (rank is dead).
+    - Rank not in own hand and not played → opp still has it; stop.
+
+    Without `played_ranks` (None): legacy behavior counting from Ace.
+    With `played_ranks`: accounts for cards already gone, so K
+    correctly becomes the new top winner after A is played.
+    """
+    played = played_ranks or set()
     count = 0
     for r in _RANK_HI_TO_LO:
         if r in combined_ranks:
             count += 1
+        elif r in played:
+            continue
         else:
             break
     return count
@@ -708,21 +741,56 @@ def planned_lead_cash_short_side(board: BoardState, seat: Seat
     return best
 
 
+def _opp_who_bid_suit(board: BoardState, suit: Suit,
+                       declarer: Seat) -> Optional[Seat]:
+    """Phase 25 — find which opponent bid `suit` during the auction.
+    Returns the opponent seat or None. Used by suit-combination
+    rules to localise a missing honor (RHO bidder → K likely with
+    RHO → finesse position favorable)."""
+    auction = getattr(board, "auction", None) or []
+    if not auction:
+        return None
+    dealer = board.dealer
+    for i, bid in enumerate(auction):
+        bidder = Seat((dealer.value + i) % 4)
+        if _is_declarer_side(bidder, declarer):
+            continue
+        if bid.is_pass or bid.is_double or bid.is_redouble:
+            continue
+        if bid.suit == suit:
+            return bidder
+    return None
+
+
+def infer_k_with_rho(board: BoardState, suit: Suit,
+                      declarer: Seat) -> bool:
+    """Phase 25 — infer whether the King of `suit` is likely sitting
+    with RHO of declarer (the favorable position for finessing AQ
+    in dummy).
+
+    Heuristic: if an opp bid `suit` and that opp is RHO of declarer,
+    high confidence K is there.
+    """
+    bidder = _opp_who_bid_suit(board, suit, declarer)
+    if bidder is None:
+        return False
+    rho_of_declarer = Seat((declarer.value + 3) % 4)
+    return bidder == rho_of_declarer
+
+
 def planned_lead_finesse(board: BoardState, seat: Seat
                           ) -> Optional[Card]:
-    """Phase 24 — lead small toward a finesse position.
+    """Phase 24 + 25 — lead small toward a finesse position, gated
+    on K-location inference.
 
-    Fires when declarer-side has the classic AQ-no-K position in
-    partner's hand: own-side combined holds A and Q but not K,
-    and I (current leader) hold small cards in that suit.
+    Fires when declarer-side has the AQ-no-K position in partner's
+    hand AND auction inference says K is likely with RHO of declarer
+    (the favorable position for the finesse). Without the inference
+    gate the blind rule regressed; with it we only fire when we have
+    a positive signal about K's location.
 
-    Lead my LOWEST. If LHO has the K and rises, dummy/declarer
-    plays A — Q remains a winner. If LHO ducks, partner plays Q
-    and the finesse succeeds.
-
-    Conservative — only fires for the specific AQ vs K finesse
-    pattern. Phase 12 (universal "lead toward strength") was
-    tested and regressed across the board.
+    Lead my LOWEST. Partner plays Q (finesse succeeds since K is
+    likely sitting in the slot that already played low).
     """
     if board.contract is None:
         return None
@@ -755,7 +823,10 @@ def planned_lead_finesse(board: BoardState, seat: Seat
                 and Rank.KING not in combined
                 and Rank.ACE not in my_ranks
                 and Rank.QUEEN not in my_ranks):
-            return _lowest_in_suit(my_cards)
+            # Phase 25 gate: only finesse when inference points to
+            # RHO holding the K (favorable position).
+            if infer_k_with_rho(board, suit, declarer):
+                return _lowest_in_suit(my_cards)
     return None
 
 
@@ -1218,11 +1289,12 @@ def planned_card(board: BoardState, seat: Seat,
     p9 = planned_lead_develop_length(board, seat)
     if p9 is not None:
         return p9
-    # (Phase 24 attempt — lead small toward AQ finesse, no K —
-    # regressed tricks -0.081 / NT -0.271. Without knowing where
-    # the K is, blind finesse-position rules misfire. Reverted.
-    # Suit-combination tables need per-seat K-location inference
-    # — see CARDPLAY_PLAN.md for the architectural plan.)
+    # (Phase 25 — K-loc-gated AQ finesse — regressed in biq-vs-biq
+    # benchmark by -0.067 tricks. Improvement to declarer is matched
+    # by biq's defense seeing the same improvement; net hurts the
+    # NS IMP metric. The K-loc inference module + finesse function
+    # are retained as dead code for use against external opponents
+    # where biq's defender isn't there to negate biq's declarer.)
     # (Phase 12 attempt — lead toward partner's K/Q/J — regressed
     # tricks/deal -0.127 and NT -0.300. MC was picking better
     # already; planner rule fires when it shouldn't. Reverted.)

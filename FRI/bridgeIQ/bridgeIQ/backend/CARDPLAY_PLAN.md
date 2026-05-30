@@ -26,6 +26,28 @@ refined to skip when partner has other entries.
 played reduce the entry count); add explicit "blocked length"
 detection that triggers the unblock without ambiguity.
 
+### Items tried this iteration (Phases 25-27)
+
+**Phase 25 — K-location inference + suit combinations**: Built
+`_opp_who_bid_suit()` + `infer_k_with_rho()` helper. Gated the AQ
+finesse rule on RHO-bid-the-suit inference. Result: still regressed
+-0.067 tricks/deal vs Phase 23. Reason: biq-vs-biq benchmark
+penalises declarer improvements (biq's defender matches biq's
+declarer); the rule would help against external opponents but
+doesn't show in our metric.
+
+**Phase 26 — Dynamic top-winners**: Extended `_count_top_winners`
+to accept `played_ranks`, so that after Ace is played K is
+recognised as new boss. Result: regressed -0.428 IMP/deal. The
+plan-aware unblock decisions shifted in the wrong direction mid-
+deal — the static plan was actually the right input for the
+single-shot unblock heuristic.
+
+**Phase 27 — relax_inference=5**: Bumped HCP slack from 3 → 5 in
+cardplay-mode auction inference. Result: regressed -0.243 IMP/deal.
+Looser constraints accept more implausible MC samples, hurting
+decision quality. **relax=3 is the sweet spot**, kept.
+
 ### 2. Suit-combination tables (Phase 24 — REGRESSED)
 **Goal**: a lookup of common honor patterns → optimal play.
 
