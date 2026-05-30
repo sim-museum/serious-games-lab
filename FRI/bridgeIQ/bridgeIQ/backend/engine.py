@@ -101,6 +101,14 @@ class BridgeEngine:
         self.config = None
         self._initialized = False
         self.current_system = 'DEFAULT'
+        # Cardplay-mode HCP slack. When > 0, widens auction-derived HCP
+        # ranges by this many points on each side and drops shape
+        # constraints entirely. Use when interpreting an external
+        # bidder's auction (e.g., Q-Plus) whose conventions are looser
+        # than biq's textbook inference — without this, every MC sample
+        # gets rejected and the engine falls back to the simple
+        # `get_card_play` picker, defeating the planner-in-MC path.
+        self.cardplay_relax_inference = 0
 
         self.config_path = config_path
 
@@ -144,8 +152,7 @@ class BridgeEngine:
         self.current_system = system_name
         if self.verbose:
             print(f"Bidding system set to: {system_name}")
-
-        return success
+        return True
 
     @staticmethod
     def _all_hands_visible(board: BoardState) -> bool:
@@ -250,14 +257,29 @@ class BridgeEngine:
     def get_card_play(self, board: BoardState, seat: Seat,
                       current_trick_cards: List[Card] = None,
                       played_tricks: List[Trick] = None) -> EngineResponse:
-        """Last-resort card picker — first legal card.
+        """Last-resort card picker — lowest legal card, planner-aware
+        on discards.
 
         The real card-play engine is `get_mc_card_play` (the UI's
         `use_monte_carlo_play=True` default). This method exists
-        only as the bottom-of-stack fallback that `get_mc_card_play`
-        falls through to when its DDS solve fails — recursing back
-        into MC here would loop. Keep it as a pure rule-based
-        "play any legal card so the deal advances" stub.
+        as the bottom-of-stack fallback that `get_mc_card_play`
+        falls through to when its DDS solve fails (typically from
+        all-MC-samples-rejected, which happens when biq's auction
+        inference is too tight to match Q-Plus's looser bidding).
+
+        Discards (off-suit plays) consult the strategic planner to
+        filter out cards that would surrender trick potential (boss
+        cards, top-of-holding honors). This catches the "discard an
+        Ace" failure mode of the MC path when MC can't solve. Pick
+        the LOWEST safe-discard rank so we keep working assets.
+
+        For follow-suit plays the fallback stays at first-legal-card —
+        a principled "play low" rule was tested and regressed on
+        suit contracts (declarer ends up cashing/drawing trumps in
+        the wrong order). The MC+DDS engine is the right place for
+        follow-suit strategy; this fallback only needs to be sane on
+        the easy case (discards) without breaking the hard case
+        (follow-suit ordering).
         """
         hand = board.hands.get(seat)
         if not hand or not hand.cards:
@@ -271,6 +293,17 @@ class BridgeEngine:
             legal_cards = hand.cards[:]
         if not legal_cards:
             return EngineResponse(action=None, who="NoCards")
+        is_discard = (lead_suit is not None
+                      and not any(c.suit == lead_suit for c in legal_cards))
+        if is_discard and board.contract is not None:
+            from .cardplay_planner import filter_safe_discards
+            safe = filter_safe_discards(
+                legal_cards, board, seat,
+                current_trick_cards or [],
+                board.contract.declarer)
+            # Pick lowest safe-discard rank (Rank.TWO has highest .value).
+            pick = max(safe, key=lambda c: (c.rank.value, c.suit.value))
+            return EngineResponse(action=pick, who="Fallback")
         return EngineResponse(action=legal_cards[0], who="Fallback")
 
     def analyze_double_dummy(self, board: BoardState) -> Dict[str, Dict[str, int]]:
@@ -675,6 +708,21 @@ class BridgeEngine:
                 except Exception:
                     hcp_ranges = _derive_hcp_constraints(board, sys_obj)
                     shape_ranges = _derive_shape_constraints(board, sys_obj)
+                # Cardplay-mode relaxation: widen HCP windows and drop
+                # shape constraints when interpreting an external
+                # bidder's auction (set via cardplay_relax_inference).
+                if self.cardplay_relax_inference:
+                    slack = self.cardplay_relax_inference
+                    if _debug_log:
+                        _log_fb(f"pre-relax-hcp "
+                                f"ranges={ {s.name: hcp_ranges[s] for s in hcp_ranges} }")
+                    hcp_ranges = {
+                        s: (max(0, lo - slack), min(37, hi + slack))
+                        for s, (lo, hi) in hcp_ranges.items()}
+                    shape_ranges = {}
+                    if _debug_log:
+                        _log_fb(f"post-relax-hcp slack={slack} "
+                                f"ranges={ {s.name: hcp_ranges[s] for s in hcp_ranges} }")
                 # HCP for unknown cards by c52: A=4, K=3, Q=2, J=1, else 0.
                 _hcp_of_c52 = [0] * 52
                 for i in range(52):
@@ -833,6 +881,36 @@ class BridgeEngine:
                 # Filter to legal cards only
                 legal_codes = set(c.code52() for c in legal_cards)
                 legal_results = {c: t for c, t in avg_tricks.items() if c in legal_codes}
+
+                # Strategic-planner override for off-suit discards.
+                # DDS-on-MC-samples rates the Ace as ~equal to small
+                # cards when it can't see a future trick the Ace would
+                # win — per-sample noise then pushes the engine to
+                # pitch winners (saw biq discard ♥A, ♦K, ♦Q, ♦A in a
+                # single 3NT deal; Q-Plus made 12 tricks, biq made 2).
+                # The planner's boss-card + length-suit rules trump
+                # per-sample noise. Applies only to declarer-side
+                # seats in this pass.
+                if (current_trick_cards and board.contract is not None
+                        and not any(c.suit == current_trick_cards[0].suit
+                                    for c in legal_cards)):
+                    from .cardplay_planner import filter_safe_discards
+                    legal_card_objs = [Card.from_code52(c)
+                                        for c in legal_codes]
+                    safe = filter_safe_discards(
+                        legal_card_objs, board, seat,
+                        current_trick_cards,
+                        board.contract.declarer)
+                    if os.environ.get("PLANNER_TRACE"):
+                        print(f"[planner] seat={seat.name} "
+                              f"legal={[str(c) for c in legal_card_objs]} "
+                              f"safe={[str(c) for c in safe]}",
+                              file=sys.stderr)
+                    safe_codes = set(c.code52() for c in safe)
+                    filtered = {c: t for c, t in legal_results.items()
+                                if c in safe_codes}
+                    if filtered:
+                        legal_results = filtered
 
                 if not legal_results:
                     _log_fb(
