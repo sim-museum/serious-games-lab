@@ -208,6 +208,44 @@ python3 tools/biq_qnet_client.py --port 5556 --seat E --system SAYC
 - Q-Plus's recorded card not in hand on replay → falls back to
   lowest legal card (same logic).
 
+## First live biq vs Q-Plus deal (2026-05-30)
+
+Plan 3 end-to-end smoke test successful. Setup:
+- Server (`WP/`): N=Computer, E=Extern, S=Human (user), W=Computer
+- biq client (`tools/biq_qnet_client.py`): joined East as `biq2`
+  via the proxy on :5556
+
+biq's protocol handling:
+- Handshake (request_player_info ×4 / join_game / request_config /
+  set_config) succeeded.
+- A bug in the first run had biq's auction tracker out of sync
+  because Q-Plus does NOT echo the client's own bid back —
+  fixed by manually appending the sent bid + advancing the
+  bidder pointer in `_send_my_bid` and `_send_my_card`.
+- Stale-Extern issue if biq disconnects mid-session — workaround
+  is to restart Q-Plus's bridge-server (Stop → Start).
+
+Deal #42 (dealer N, vul E/W):
+- Full 14-bid auction tracked: 1H-P-1S-P-1NT-P-2C-P-2S-P-3S-P-4S-P-P-P
+- Contract: 4S by South.
+- biq played all 13 East cards via the MC+DDS engine.
+- Result: NS set 1 (NS made 9, needed 10). NS −50.
+- Q-Plus's DD analysis: NS makes 10 (par +620 for NS).
+- The deal "beat" Q-Plus's declarer-side DD prediction by 11 IMP
+  to E/W.
+
+CAVEAT — not yet a clean biq vs Q-Plus measurement:
+- The user was playing South in this deal, so the contract was
+  defeated by `biq + W-bot + user`, not by `biq + 3 Q-Plus bots`.
+- For an honest measurement, Q-Plus must be configured to run
+  ALL three non-biq seats as Computer (S=Computer, not Human),
+  and the deal must be started without human input at the table.
+- Open question: does Q-Plus's networked-play mode allow
+  S=Computer at server while a client (biq) holds E=Extern? The
+  standard 2-PLAYERS-B documentation describes two-humans-vs-each-
+  other; the all-Computer-except-Extern configuration hasn't
+  been verified end-to-end yet. Try it next.
+
 ## RE plan (the work to do)
 
 1. **Capture a session.** Run two Q-Plus instances under Wine,
