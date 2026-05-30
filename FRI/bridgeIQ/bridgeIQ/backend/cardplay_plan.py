@@ -374,13 +374,15 @@ def planned_follow(board: BoardState, seat: Seat,
     partner_seat = Seat((seat.value + 2) % 4)
     is_defender = not _is_declarer_side(seat, declarer)
 
-    # (Phase 3 attempt — declarer-side unblock — was tested on
-    # 62 deals and regressed vs Phase 2 v2 even with tight gates.
-    # Without entry counting we can't tell when dropping a high
-    # card under partner's honor preserves length vs throws away
-    # the trick. Reverting until Phase 5+ when an entry tracker
-    # exists; the `_unblock_card` helper is kept dead-code for the
-    # entry-aware version to grow from.)
+    # Phase 8 — Plan-aware declarer-side unblock. Runs BEFORE
+    # Rule 1 (don't overtake) so it can override when dropping a
+    # high card preserves partner's length tricks (per the plan's
+    # length_winners count for the suit).
+    if winning_seat == partner_seat:
+        unblock = _plan_aware_unblock(board, seat, declarer,
+                                       winning_card, my_in_suit)
+        if unblock is not None:
+            return unblock
 
     # Rule 1 — Don't overtake partner's SAFE winner. Safety-gated:
     # only fires when partner's card can't be beaten by any
@@ -392,12 +394,10 @@ def planned_follow(board: BoardState, seat: Seat,
             return _lowest_in_suit(my_in_suit)
         # Partner not safe — fall through to position-specific logic.
 
-    # Defender-only rules below. Declarer-side 3rd/4th-hand play
-    # is plan-driven and left to MC+DDS until Phase 5+.
-    # (A universal-cover attempt regressed tricks/deal by 0.106 on
-    # 518 deals — the rule helped defense but hurt declarer-side
-    # 2nd-hand play where covering wastes honors that MC would
-    # have ducked. Restricting to defender-only.)
+    # Defender-only rules below. Two iterations of universal 3rd-
+    # hand rules regressed (universal cheap-winner −0.942, sequence-
+    # aware defender-only −0.836). The "play highest" rule from
+    # Phase 2 v2 is robust; reverted.
     if not is_defender:
         return None
 
@@ -474,6 +474,122 @@ def _partner_bid_suit(board: BoardState, seat: Seat) -> Optional[Suit]:
             continue
         return bid.suit
     return None
+
+
+from dataclasses import dataclass
+
+
+@dataclass
+class SuitAnalysis:
+    """Phase 7 — per-suit analysis used by the declarer plan."""
+    suit: Suit
+    declarer_count: int
+    dummy_count: int
+    own_count: int   # declarer + dummy combined
+    opp_count: int   # 13 - own
+    top_winners: int    # consecutive top ranks held (A, AK, AKQ, ...)
+    length_winners: int # expected extras above top after balanced split
+    expected_winners: int  # top + length
+
+
+@dataclass
+class DeclarerPlan:
+    """Phase 7 — textbook 'plan your play' state computed at trick 1
+    (or any later point) for the declarer-side perspective."""
+    contract: object
+    target_tricks: int
+    per_suit: dict  # Dict[Suit, SuitAnalysis]
+    total_winners: int
+    deficit: int  # target - total (>0 = need more from establishment)
+
+
+def build_declarer_plan(board: BoardState,
+                          declarer: Seat) -> Optional[DeclarerPlan]:
+    """Compute the declarer's plan from declarer+dummy's current
+    holdings. Done from declarer-side's perspective (both visible).
+
+    Length-winner estimate is conservative: assumes opps split
+    balanced (max opp holding ≈ ceil(opp_count / 2)).
+    """
+    if board.contract is None:
+        return None
+    contract = board.contract
+    target = contract.level + 6
+    dummy = _partner(declarer)
+    per_suit = {}
+    for suit in (Suit.SPADES, Suit.HEARTS,
+                 Suit.DIAMONDS, Suit.CLUBS):
+        d_count = sum(1 for c in board.hands[declarer].cards
+                      if c.suit == suit)
+        dum_count = sum(1 for c in board.hands[dummy].cards
+                        if c.suit == suit)
+        own = d_count + dum_count
+        opp = 13 - own  # ignores cards already played; OK for plan
+        combined_ranks = set()
+        for s in (declarer, dummy):
+            for c in board.hands[s].cards:
+                if c.suit == suit:
+                    combined_ranks.add(c.rank)
+        top = _count_top_winners(combined_ranks)
+        # Length above the top winners after balanced split:
+        # max_opp_holding ≈ ceil(opp / 2). Once tops cash, remaining
+        # own = own - top; length = own - top - max_opp_holding (if
+        # opp_holding can be exhausted within our top plays).
+        max_opp_holding = (opp + 1) // 2
+        # We need enough top tricks to keep up with opp's longest
+        # holding. If top >= max_opp_holding, length potential =
+        # own - top - max_opp_holding. Else 0.
+        if top >= max_opp_holding:
+            length = max(0, own - top - max_opp_holding)
+        else:
+            length = 0
+        per_suit[suit] = SuitAnalysis(
+            suit=suit, declarer_count=d_count, dummy_count=dum_count,
+            own_count=own, opp_count=opp, top_winners=top,
+            length_winners=length, expected_winners=top + length)
+    total = sum(s.expected_winners for s in per_suit.values())
+    return DeclarerPlan(
+        contract=contract, target_tricks=target,
+        per_suit=per_suit, total_winners=total,
+        deficit=target - total)
+
+
+def _plan_aware_unblock(board: BoardState, seat: Seat,
+                          declarer: Seat,
+                          winning_card: Card,
+                          my_in_suit: List[Card]) -> Optional[Card]:
+    """Phase 8 — plan-aware declarer-side unblock.
+
+    Returns a card to drop (unblock), or None. Fires when:
+    - I'm declarer-side and partner (visible) just played a card
+      that is currently winning the trick.
+    - Partner has MORE cards in this suit than I do.
+    - I have a card HIGHER than partner's, that would otherwise
+      block partner's length on subsequent rounds.
+    - The plan says this suit has length_winners > 0 (so the length
+      is worth preserving).
+
+    Drops the LOWEST of my higher cards (preserve absolute boss).
+    """
+    if not _is_declarer_side(seat, declarer):
+        return None
+    plan = build_declarer_plan(board, declarer)
+    if plan is None:
+        return None
+    suit = winning_card.suit
+    sa = plan.per_suit.get(suit)
+    if sa is None or sa.length_winners == 0:
+        return None  # no length value to preserve
+    partner = _partner(seat)
+    partner_count = sum(1 for c in board.hands[partner].cards
+                        if c.suit == suit)
+    if len(my_in_suit) >= partner_count:
+        return None  # I'm long; no block risk
+    higher = [c for c in my_in_suit
+              if c.rank.value < winning_card.rank.value]
+    if not higher:
+        return None
+    return _lowest_in_suit(higher)
 
 
 def _count_top_winners(combined_ranks: set) -> int:
