@@ -112,6 +112,15 @@ Wine prefix layout:
 Each Q-Plus instance has its own prefix because they share config
 files in the install dir.
 
+**Important**: Q-Plus needs a specific Wine runner — default Ubuntu
+wine (9.x) lacks the glyphs for the bridge suit characters, so
+cards render with empty boxes. The helper picks
+`$HOME/.local/share/lutris/runners/wine/lutris-6.21-6-x86_64/bin/wine`
+by default (wine-TkG Staging 6.21 from Lutris), matching what
+`bridgeIQ/config/wine_runners.csv` configures for the corpus
+tools. Override via the `WINE_BIN` env var if your runner lives
+elsewhere.
+
 ## Decoded protocol (from one captured deal, 2026-05-30)
 
 **Format**: plain text, `\n`-terminated lines. No length headers,
