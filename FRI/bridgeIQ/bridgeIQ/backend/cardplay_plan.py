@@ -255,6 +255,34 @@ def _partner_safe(partner_card: Card, board: BoardState, seat: Seat,
     return True
 
 
+def _cover_honor_with_next(my_in_suit: List[Card],
+                            lead_card: Card) -> Optional[Card]:
+    """Phase 4 — cover-an-honor with the next-higher honor.
+
+    When LHO leads a J/Q/K and I hold the next-higher honor
+    (Q over J, K over Q, A over K), return that cover card.
+    Returns None otherwise.
+
+    Skips ACE (nothing covers A) and skips spot cards. Always
+    plays the exact next-higher honor, not higher (preserves the
+    A for later if I have K and A and lead is Q — play K, save A).
+    """
+    if lead_card.suit not in (Suit.SPADES, Suit.HEARTS,
+                                Suit.DIAMONDS, Suit.CLUBS):
+        return None
+    cover_target = {
+        Rank.JACK: Rank.QUEEN,
+        Rank.QUEEN: Rank.KING,
+        Rank.KING: Rank.ACE,
+    }.get(lead_card.rank)
+    if cover_target is None:
+        return None
+    for c in my_in_suit:
+        if c.rank == cover_target:
+            return c
+    return None
+
+
 def _unblock_card(my_in_suit: List[Card], winning_card: Card,
                    board: BoardState, seat: Seat,
                    declarer: Seat) -> Optional[Card]:
@@ -364,10 +392,23 @@ def planned_follow(board: BoardState, seat: Seat,
             return _lowest_in_suit(my_in_suit)
         # Partner not safe — fall through to position-specific logic.
 
-    # Defender-only rules below. Declarer-side 2nd/3rd/4th-hand play
-    # is plan-driven and left to MC+DDS until Phase 3+.
+    # Defender-only rules below. Declarer-side 3rd/4th-hand play
+    # is plan-driven and left to MC+DDS until Phase 5+.
+    # (A universal-cover attempt regressed tricks/deal by 0.106 on
+    # 518 deals — the rule helped defense but hurt declarer-side
+    # 2nd-hand play where covering wastes honors that MC would
+    # have ducked. Restricting to defender-only.)
     if not is_defender:
         return None
+
+    # Phase 4 — Cover an honor at defender 2nd hand. When LHO/RHO
+    # leads a J/Q/K and I hold the next-higher honor, cover.
+    # Promotes lower cards in partner's hand.
+    if position == 2:
+        lead_card = current_trick_cards[0]
+        cover = _cover_honor_with_next(my_in_suit, lead_card)
+        if cover is not None:
+            return cover
 
     # Rule 2 — Second hand low (defender).
     if position == 2:
@@ -433,6 +474,71 @@ def _partner_bid_suit(board: BoardState, seat: Seat) -> Optional[Suit]:
             continue
         return bid.suit
     return None
+
+
+def _count_top_winners(combined_ranks: set) -> int:
+    """Number of consecutive winners we hold from Ace downward.
+    Have A: 1. AK: 2. AKQ: 3. Missing any → stop counting."""
+    count = 0
+    for r in _RANK_HI_TO_LO:
+        if r in combined_ranks:
+            count += 1
+        else:
+            break
+    return count
+
+
+def planned_lead_cash_short_side(board: BoardState, seat: Seat
+                                   ) -> Optional[Card]:
+    """Phase 5 — cash high from the short side.
+
+    For declarer or dummy on lead in NT, or in a suit contract after
+    trumps are drawn, find a suit where:
+    - My hand is SHORTER than partner's (would block otherwise).
+    - Combined holding has at least one consecutive top winner.
+    - I have a top winner in my hand.
+
+    Lead my LOWEST top winner from that suit. Preserves partner's
+    length and the absolute boss for the last round.
+
+    Handles the AK-doubleton-opposite-Qxxxxx class of patterns. Does
+    not fire for trump-drawing leads (Phase 1's job) or when own-side
+    is equal-length in every non-trump suit.
+    """
+    if board.contract is None:
+        return None
+    declarer = board.contract.declarer
+    if not _is_declarer_side(seat, declarer):
+        return None
+    contract_suit = board.contract.suit  # NOTRUMP if NT
+    partner = _partner(seat)
+    best = None
+    best_asymmetry = 0
+    for suit in (Suit.SPADES, Suit.HEARTS,
+                 Suit.DIAMONDS, Suit.CLUBS):
+        if suit == contract_suit:
+            continue  # trump — Phase 1 handles
+        my_cards = [c for c in board.hands[seat].cards
+                    if c.suit == suit]
+        partner_cards = [c for c in board.hands[partner].cards
+                         if c.suit == suit]
+        if not my_cards or len(my_cards) >= len(partner_cards):
+            continue  # not short or void
+        combined_ranks = {c.rank for c in my_cards + partner_cards}
+        top_count = _count_top_winners(combined_ranks)
+        if top_count == 0:
+            continue
+        # My top winners = my cards with rank-value < top_count
+        # (Rank.ACE.value=0, etc.)
+        my_top = [c for c in my_cards if c.rank.value < top_count]
+        if not my_top:
+            continue
+        asymmetry = len(partner_cards) - len(my_cards)
+        if asymmetry > best_asymmetry:
+            best_asymmetry = asymmetry
+            # Lead the LOWEST of my top winners — saves the boss
+            best = max(my_top, key=lambda c: c.rank.value)
+    return best
 
 
 def planned_opening_lead(board: BoardState, seat: Seat
@@ -532,4 +638,12 @@ def planned_card(board: BoardState, seat: Seat,
     op_lead = planned_opening_lead(board, seat)
     if op_lead is not None:
         return op_lead
-    return planned_lead(board, seat, current_trick_cards)
+    # Phase 1: declarer trump-drawing lead (suit contract, opp has trumps).
+    p1 = planned_lead(board, seat, current_trick_cards)
+    if p1 is not None:
+        return p1
+    # Phase 5: cash from short side (declarer-side, NT or after trumps).
+    p5 = planned_lead_cash_short_side(board, seat)
+    if p5 is not None:
+        return p5
+    return None
