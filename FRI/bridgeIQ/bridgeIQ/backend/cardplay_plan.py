@@ -719,6 +719,44 @@ def planned_lead_develop_length(board: BoardState, seat: Seat
     return _lowest_in_suit(my_cards)
 
 
+def planned_lead_return_partner_suit(board: BoardState, seat: Seat
+                                       ) -> Optional[Card]:
+    """Phase 11 — defender returns partner's opening lead suit.
+
+    Fires when:
+    - I'm a defender on lead (not T1 — partner's opening lead
+      already happened).
+    - Partner led the opening trick.
+    - I still hold cards in partner's suit.
+
+    Lead my LOWEST card in partner's suit (standard "return low"
+    when not winning; high-card return signals different things).
+    Continues partner's attack on the established suit.
+    """
+    if board.contract is None:
+        return None
+    declarer = board.contract.declarer
+    if _is_declarer_side(seat, declarer):
+        return None
+    tricks = getattr(board, "tricks", None)
+    if not tricks:
+        return None
+    t1 = tricks[0]
+    t1_cards = getattr(t1, "cards", None) or []
+    if not t1_cards:
+        return None
+    t1_leader = getattr(t1, "leader", None)
+    partner = _partner(seat)
+    if t1_leader != partner:
+        return None
+    t1_lead_suit = t1_cards[0].suit
+    my_cards = [c for c in board.hands[seat].cards
+                if c.suit == t1_lead_suit]
+    if not my_cards:
+        return None
+    return _lowest_in_suit(my_cards)
+
+
 def planned_opening_lead(board: BoardState, seat: Seat
                           ) -> Optional[Card]:
     """Phase 3 — defender's opening-lead rules (textbook).
@@ -786,6 +824,11 @@ def planned_opening_lead(board: BoardState, seat: Seat
         if seq is not None:
             return seq
 
+    # (Phase 10 attempt — lead A from AK against suit contract —
+    # regressed tricks/deal by 0.060 on 518 deals. Telling
+    # declarer "I have AK" via the lead gives them info they
+    # exploit. Reverted.)
+
     # Rule 3: 4th best from longest non-trump
     non_trump_lengths = {
         s: len(cs) for s, cs in by_suit.items()
@@ -816,6 +859,10 @@ def planned_card(board: BoardState, seat: Seat,
     op_lead = planned_opening_lead(board, seat)
     if op_lead is not None:
         return op_lead
+    # Phase 11: defender returns partner's opening-lead suit.
+    p11 = planned_lead_return_partner_suit(board, seat)
+    if p11 is not None:
+        return p11
     # Phase 1: declarer trump-drawing lead (suit contract, opp has trumps).
     p1 = planned_lead(board, seat, current_trick_cards)
     if p1 is not None:
