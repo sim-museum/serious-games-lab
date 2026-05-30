@@ -22,6 +22,54 @@ Phase 5 (later): endplay / squeeze recognition.
 from typing import List, Optional
 from .models import Card, Hand, Suit, Rank, Seat, BoardState
 
+# Plan 2 — per-bot planner configs for multi-bot self-play.
+# Each config gates which phases fire. Pass via set_planner_config()
+# before each call into the planner from the engine; the planner
+# reads the global. Defaults match the current committed-best state
+# (Phase 15 + 23 + the rules each kept).
+
+
+from dataclasses import dataclass
+
+
+@dataclass
+class PlannerConfig:
+    """Plan 2 — config for one biq bot variant.
+
+    Each flag gates whether a specific phase's rule fires. Default
+    = current committed-best state. Variants for self-play set
+    different combinations.
+    """
+    phase_1_trump_lead: bool = True
+    phase_2_defender_follow: bool = True
+    phase_3_opening_lead: bool = True
+    phase_4d_defender_cover: bool = True
+    phase_5_cash_short: bool = True
+    phase_7_8_plan_unblock: bool = True
+    phase_9_length_dev: bool = True
+    phase_11_return_partner: bool = True
+    phase_13_4th_best: bool = True
+    phase_15_extended_cover: bool = True
+    phase_23_entries: bool = True
+    # Optional/experimental phases — off by default:
+    phase_25_k_loc_finesse: bool = False
+
+
+_active_config = PlannerConfig()
+
+
+def set_planner_config(config: PlannerConfig) -> None:
+    """Plan 2 — set the active planner config before each engine call.
+    The planner reads from the module-global; tests/benchmarks can
+    swap configs per seat to A/B different variants head-to-head.
+    """
+    global _active_config
+    _active_config = config
+
+
+def get_planner_config() -> PlannerConfig:
+    return _active_config
+
 _RANK_HI_TO_LO = [Rank.ACE, Rank.KING, Rank.QUEEN, Rank.JACK,
                   Rank.TEN, Rank.NINE, Rank.EIGHT, Rank.SEVEN,
                   Rank.SIX, Rank.FIVE, Rank.FOUR, Rank.THREE,
@@ -1258,37 +1306,37 @@ def planned_card(board: BoardState, seat: Seat,
     2 handles FOLLOW (don't-overtake-partner, second/third-hand
     defender, fourth-hand cheap-win-or-low).
     """
+    cfg = get_planner_config()
     if current_trick_cards:
         return planned_follow(board, seat, current_trick_cards)
-    # Phase 3: defender opening lead (only fires on T1 from LHO).
-    op_lead = planned_opening_lead(board, seat)
-    if op_lead is not None:
-        return op_lead
-    # Phase 11: defender returns partner's opening-lead suit.
-    p11 = planned_lead_return_partner_suit(board, seat)
-    if p11 is not None:
-        return p11
-    # (Phase 20 attempt — defender leads trump vs crossruff —
-    # marginal tricks +0.009 but IMP -0.131. Reverted.)
-    # Phase 13: defender 4th-best from longest non-trump after T1.
-    p13 = planned_lead_defender_continuation(board, seat)
-    if p13 is not None:
-        return p13
-    # Phase 1: declarer trump-drawing lead (suit contract, opp has trumps).
-    p1 = planned_lead(board, seat, current_trick_cards)
-    if p1 is not None:
-        return p1
-    # (Phase 21 attempt — lead small trump toward partner's boss —
-    # regressed tricks by 0.112. MC was already picking better;
-    # reverted.)
-    # Phase 5: cash from short side (declarer-side, NT or after trumps).
-    p5 = planned_lead_cash_short_side(board, seat)
-    if p5 is not None:
-        return p5
-    # Phase 9: develop length by ducking from long side.
-    p9 = planned_lead_develop_length(board, seat)
-    if p9 is not None:
-        return p9
+    if cfg.phase_3_opening_lead:
+        op_lead = planned_opening_lead(board, seat)
+        if op_lead is not None:
+            return op_lead
+    if cfg.phase_11_return_partner:
+        p11 = planned_lead_return_partner_suit(board, seat)
+        if p11 is not None:
+            return p11
+    if cfg.phase_13_4th_best:
+        p13 = planned_lead_defender_continuation(board, seat)
+        if p13 is not None:
+            return p13
+    if cfg.phase_1_trump_lead:
+        p1 = planned_lead(board, seat, current_trick_cards)
+        if p1 is not None:
+            return p1
+    if cfg.phase_5_cash_short:
+        p5 = planned_lead_cash_short_side(board, seat)
+        if p5 is not None:
+            return p5
+    if cfg.phase_9_length_dev:
+        p9 = planned_lead_develop_length(board, seat)
+        if p9 is not None:
+            return p9
+    if cfg.phase_25_k_loc_finesse:
+        p25 = planned_lead_finesse(board, seat)
+        if p25 is not None:
+            return p25
     # (Phase 25 — K-loc-gated AQ finesse — regressed in biq-vs-biq
     # benchmark by -0.067 tricks. Improvement to declarer is matched
     # by biq's defense seeing the same improvement; net hurts the
