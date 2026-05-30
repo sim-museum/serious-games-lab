@@ -104,6 +104,13 @@ to `tools/runs/qnet_session_<timestamp>.log` before opening a
 fresh log. Lets you re-run `tools/qplus_dual_instance.sh proxy`
 without manual port cleanup or log loss.
 
+`tools/biq_qnet_client.py` is also idempotent: at startup it
+greps for any other `biq_qnet_client.py` Python processes and
+kills them (SIGTERM, then SIGKILL after 0.7s). Prevents a
+stuck previous biq run from holding the seat at Q-Plus (which
+would cause `player_refused` or duplicate-client confusion on
+the next run).
+
 If the in-line proxy's latency upsets Q-Plus's handshake timing,
 fall back to passive packet capture:
 ```bash
