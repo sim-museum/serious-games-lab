@@ -2063,6 +2063,29 @@ def _law_competitive_bid(state, e) -> Optional[Tuple[int, Suit]]:
     return (next_level, our_trump)
 
 
+def _our_side_opened_strong_2c(state: AuctionState, system) -> bool:
+    """True if MY partnership opened a strong (game-forcing) 2♣. SAYC and
+    Acol use 2♣ as the GF artificial bid, so the auction cannot stop
+    below game — even in a contested auction where partner doubled or
+    overcalled instead of giving a positive response (which is where
+    ctx.gf_established can miss it). Precision's 2♣ is a limited
+    long-club bid, NOT game-forcing, so exclude it."""
+    op = state.opening_bid
+    if op is None or op.is_pass:
+        return False
+    if not (op.level == 2 and op.suit == Suit.CLUBS):
+        return False
+    os = state.opener_seat
+    if os is None or state.seat is None:
+        return False
+    if os != state.seat and os != state.seat.partner():
+        return False  # the 2♣ opener is an opponent, not my side
+    name = getattr(system, "name", "") or ""
+    if "Precision" in name or "P90" in name:
+        return False
+    return True
+
+
 def _partner_was_forcing(state: AuctionState) -> bool:
     """Detect a force partner just placed on us. Conservative — only
     returns True for unambiguous forcing sequences so the sanity
@@ -2385,6 +2408,67 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
             sub = _safe_forced_bid(state, eval_, system)
             if sub is not None:
                 return sub
+
+        # 2b. Game-forcing 2C opening — our side opened a strong 2♣, so
+        # the auction is game-forcing and must not die below game. This
+        # catches CONTESTED 2♣ auctions where partner doubled/overcalled
+        # rather than giving a positive response (e.g. 2C-(2D)-X-2H-(P)-
+        # 3H, which the context can leave passable). _safe_forced_bid
+        # raises the agreed/long suit to game.
+        if (raw.is_pass
+                and _our_side_opened_strong_2c(state, system)
+                and not _partnership_has_reached_game(state)):
+            sub = _safe_forced_bid(state, eval_, system)
+            if sub is not None:
+                return sub
+
+        # 2c. Competitive: don't sell out below game when WE hold a known
+        # long suit. biq's normal paths are too passive in CONTESTED
+        # auctions (the live vs-Q-Plus test exposed this). A suit biq has
+        # already bid and holds 6+ of is the safest thing to compete with,
+        # so rebid it — but only at the 2- or 3-level (never push to game;
+        # that's a values decision the normal path owns).
+        if raw.is_pass and state.opp_overcalled and state.my_bids:
+            for mb in state.my_bids:
+                s = mb.suit
+                if (s is None or s == Suit.NOTRUMP
+                        or eval_.suit_lengths.get(s, 0) < 6):
+                    continue
+                ls = state.last_suit_bid
+                if ls is None:
+                    lvl = 1
+                elif _BID_RANK[s] > _BID_RANK[ls]:
+                    lvl = state.last_level
+                else:
+                    lvl = state.last_level + 1
+                if 2 <= lvl <= 3:
+                    cand = bid(lvl, s,
+                               why=f"Compete: rebid own 6+ {s.to_char()} "
+                                   f"(don't sell out below game)")
+                    if _is_legal_bid(cand, state):
+                        return cand
+
+        # 2d. Opener must not pass partner's FORCING new-suit response.
+        # A non-jump new suit by responder (1D-1S, 1H-2C, …) is forcing —
+        # opener has to rebid. biq's opener-rebid path can fall through to
+        # pass on awkward shapes (e.g. 1D-1S with a 2-4-5-2 15-count, no
+        # spade support and no comfortable rebid). Narrow: opener's FIRST
+        # rebid, partner responded exactly once in a new suit, uncontested,
+        # below game. _safe_forced_bid finds the rebid (raise / own suit /
+        # NT).
+        if (raw.is_pass
+                and state.opener_seat == state.seat
+                and len(state.my_bids) == 1
+                and len(state.partner_bids) == 1
+                and not state.opp_overcalled
+                and not _partnership_has_reached_game(state)):
+            pl = state.partner_bids[0]
+            op = state.opening_bid
+            if (pl.suit is not None and pl.suit != Suit.NOTRUMP
+                    and op is not None and pl.suit != op.suit):
+                sub = _safe_forced_bid(state, eval_, system)
+                if sub is not None:
+                    return sub
 
         # 3. Law-of-Total-Tricks competitive: if biq's normal path
         # decided to pass but LAW says our partnership's combined
@@ -6982,6 +7066,25 @@ def _overcall(state, e: HandEval, system) -> Bid:
                     level = 2 if _BID_RANK[s] > _BID_RANK[op.suit] else 3
                 if level <= 4:
                     return bid(level, s, why="Weak jump overcall")
+
+    # Strong hand (17+) with a good 6+ card suit that found no other
+    # call — too strong for the 16-capped natural overcall, too
+    # unbalanced (e.g. a singleton) for the strong takeout X. OVERCALL
+    # the long suit and plan to bid again to show the extra strength.
+    # Passing a 17+ HCP hand is the worst competitive error — Q-Plus's
+    # aggressive bots punish it (e.g. ♠KQ76 ♥A ♦AKQJT7 ♣94 over 1♣ must
+    # bid 2♦, not pass).
+    if hcp >= 17:
+        for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
+            if s == op.suit:
+                continue
+            if e.suit_lengths[s] >= 6 and e.suit_hcp[s] >= 5:
+                level = _cheapest_legal_level(s)
+                if level <= 3:
+                    return bid(level, s,
+                               why=f"Strong {level}{s.to_char()} overcall "
+                                   f"({hcp} HCP, good 6+ suit; rebid shows "
+                                   f"extras)")
 
     return passb()
 
