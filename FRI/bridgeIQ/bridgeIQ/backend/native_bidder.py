@@ -463,6 +463,17 @@ def _open_sayc(e: HandEval, system, state=None) -> Bid:
         # Below 1NT-range balanced → open 1 of a minor; above 2NT-range and
         # under 22 → open 1 of a suit then jump in NT. Fall through.
 
+    # Fourth-seat opening (Pearson / "Rule of 15"): after three passes a
+    # sub-minimum hand opens ONLY if HCP + spade length ≥ 15 — the spades
+    # let us contest the part-score; without them, pass it out for a fresh
+    # deal. (6886-04: 4th-hand South passed AT87.K2.T32.A953 = 11 HCP + 4
+    # spades = 15, missing a 9-card fit / 21 combined HCP. Below 15 → still
+    # pass.) When it qualifies, fall through to the normal 1-level opening.
+    is_fourth_seat = (state is not None and len(state.bids) == 3
+                      and all(b.is_pass for _, b in state.bids))
+    pearson_ok = (is_fourth_seat and hcp >= 10
+                  and hcp + e.suit_lengths[Suit.SPADES] >= 15)
+
     # Sub-opening hands → Pass (or skip preempts handled below).
     # Rule of 20 (HCP + two-longest-suits ≥ 20) opens shapely
     # 10-11 HCP hands at the 1-level — fall through to the suit-
@@ -472,7 +483,7 @@ def _open_sayc(e: HandEval, system, state=None) -> Bid:
     if hcp < 12 and not _has_preempt(e):
         lens_top2 = sorted(e.suit_lengths.values(), reverse=True)[:2]
         rule_of_20 = hcp + lens_top2[0] + lens_top2[1]
-        if rule_of_20 < 20:
+        if rule_of_20 < 20 and not pearson_ok:
             # Gambling 3NT can come from a sub-opening hand (~10
             # HCP solid minor).
             gamb = _gambling_3nt_open(e, system)
@@ -504,7 +515,7 @@ def _open_sayc(e: HandEval, system, state=None) -> Bid:
     if hcp < 12:
         lens = sorted(e.suit_lengths.values(), reverse=True)
         rule_of_20 = hcp + lens[0] + lens[1]
-        if rule_of_20 < 20:
+        if rule_of_20 < 20 and not pearson_ok:
             return passb()
 
     # Major-suit opening, length requirement from the spec.
@@ -2469,6 +2480,46 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
                 sub = _safe_forced_bid(state, eval_, system)
                 if sub is not None:
                     return sub
+
+        # 2e. Pull partner's penalty-doubled suit to my own 6+ suit. When
+        # RHO penalty-doubles partner's natural suit bid and I'm short in
+        # that suit but hold a 6+ suit of my own, sitting a likely-misfit
+        # doubled contract is a disaster — run to my suit instead. (6886-44
+        # −1700: partner overcalled 3♣, West doubled, advancer sat holding
+        # ♦AKT965 instead of pulling to 3♦.) Cheapest legal level, capped
+        # at 4 (a pull is a rescue, not a game try).
+        if raw.is_pass:
+            nonpass = [(s, b) for s, b in state.bids if not b.is_pass]
+            if len(nonpass) >= 2:
+                (dbl_seat, dbl), (pb_seat, pb) = nonpass[-1], nonpass[-2]
+                partner = state.seat.partner()
+                if (dbl.is_double
+                        and dbl_seat not in (state.seat, partner)
+                        and pb_seat == partner
+                        and pb.suit is not None and pb.suit != Suit.NOTRUMP
+                        and not pb.is_double and not pb.is_redouble
+                        and eval_.suit_lengths.get(pb.suit, 0) < 3):
+                    best = None
+                    for s in (Suit.SPADES, Suit.HEARTS,
+                              Suit.DIAMONDS, Suit.CLUBS):
+                        if s == pb.suit:
+                            continue
+                        if eval_.suit_lengths.get(s, 0) >= 6 and (
+                                best is None
+                                or eval_.suit_lengths[s]
+                                > eval_.suit_lengths[best]):
+                            best = s
+                    if best is not None:
+                        for lvl in (pb.level, pb.level + 1):
+                            if lvl > 4:
+                                break
+                            cand = bid(lvl, best,
+                                       why=f"Pull partner's doubled "
+                                           f"{pb.suit.to_char()} to my 6+ "
+                                           f"{best.to_char()} "
+                                           f"({eval_.suit_lengths[best]} cards)")
+                            if _is_legal_bid(cand, state):
+                                return cand
 
         # 3. Law-of-Total-Tricks competitive: if biq's normal path
         # decided to pass but LAW says our partnership's combined
@@ -4743,6 +4794,15 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
     is_neg_x = (opp_overcall_suit is not None
                 and op.level == 1
                 and op_suit != Suit.NOTRUMP)
+    # Only the INITIAL response to the negative double. `partner_bids`
+    # drops passes, so `p_last` stays the double even after partner passes
+    # twice; without this guard the block re-fires every opener turn and
+    # escalates the SAME suit each round (5H→6H→7H over the opponents'
+    # doubles — the −1400 sacrifice in 6886-26). Once opener has already
+    # rebid since the double (more than just the opening in `my_bids`),
+    # fall through to normal, game-capped competitive logic instead.
+    if is_neg_x and len(state.my_bids) > 1:
+        is_neg_x = False
     if is_neg_x:
         rho_suit = opp_overcall_suit  # rename for the rest of the block
         # The "promised" major from a negative double is the unbid
