@@ -6771,12 +6771,37 @@ def _overcall_over_weak_two(state, e: HandEval, system) -> Bid:
             return bid(level, s, why=f"{level}{s.to_char()} natural overcall "
                                      "(weak-2 context, invitational+)")
 
-    # 2NT Lebensohl relay (weak overcall with a long suit).
-    if (system.has("C-Lebensohl.after-weak-2")
-            and 8 <= hcp <= 10
-            and any(e.suit_lengths[s] >= 6 for s in unbid)):
-        return bid(2, Suit.NOTRUMP, alert=True,
-                   why="Lebensohl 2NT relay (weak — will sign off in long suit)")
+    # Weak / competitive long-suit overcall. biq used to PASS these and
+    # concede the auction — e.g. ♥KJT8643 / 6 HCP over 2♠ (seed 6515 d33):
+    # a 7-card suit must compete (the LAW makes the 3-level safe opposite
+    # partner's expected 2-3 trumps), and a good 6-card suit with ~8-10 HCP
+    # should too. This is the dominant competitive-passivity leak: biq is
+    # near-parity declaring + near-DD defending, but sits silent when the
+    # opponents have the cards, so they play in peace.
+    best = None
+    for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
+        if s == op_suit:
+            continue
+        ln = e.suit_lengths[s]
+        if ((ln >= 7 and hcp >= 5)
+                or (ln == 6 and 8 <= hcp <= 10 and e.suit_hcp[s] >= 4)):
+            if best is None or ln > e.suit_lengths[best]:
+                best = s
+    if best is not None:
+        ln = e.suit_lengths[best]
+        # A sub-invitational 6-card suit → Lebensohl 2NT relay (textbook
+        # weak treatment) when the system has it, so a DIRECT 3-level stays
+        # invitational+. A 7+ card suit just bids naturally — its length
+        # makes a direct 3-level safe and unambiguous.
+        if ln == 6 and system.has("C-Lebensohl.after-weak-2") and hcp < 11:
+            return bid(2, Suit.NOTRUMP, alert=True,
+                       why="Lebensohl 2NT relay (weak 6-card suit)")
+        level = 2 if _BID_RANK[best] > _BID_RANK[op_suit] else 3
+        cand = bid(level, best,
+                   why=f"{level}{best.to_char()} competitive overcall "
+                       f"({ln}-card suit, {hcp} HCP) over weak 2")
+        if _is_legal_bid(cand, state):
+            return cand
 
     return passb(why="No suitable overcall over weak 2")
 
@@ -6826,7 +6851,12 @@ def _overcall_over_preempt(state, e: HandEval, system) -> Bid:
         suit_hcp = e.suit_hcp[s]
         if length < 6:
             continue
-        if hcp < 14:
+        # A 7+ card suit can compete on fewer values IF the overcall lands
+        # at the 3-level (it outranks the preempt); a 4-level overcall still
+        # needs the full 14+ (forcing partner that high is dangerous).
+        will_be_3lvl = _BID_RANK[s] > _BID_RANK[opener_suit]
+        min_hcp = 10 if (length >= 7 and will_be_3lvl) else 14
+        if hcp < min_hcp:
             continue
         if suit_hcp < 7 and length < 7:
             continue
