@@ -7713,12 +7713,19 @@ def _legalize_bid(chosen: Bid, state: AuctionState) -> Bid:
         return chosen
 
     if chosen.is_double:
-        if not state.rho_bids:
-            return passb()
-        last_rho = state.rho_bids[-1]
-        if last_rho.is_pass or last_rho.is_double or last_rho.is_redouble:
-            return passb()
-        if last_rho.suit is None:
+        # Legal iff the most recent non-pass call is an OPPONENT's contract
+        # bid. Walk the full auction (not `rho_bids[-1]`, which drops passes
+        # and so goes stale — e.g. RHO bid then passed, or LHO made the last
+        # bid in a reopening seat; the old check also wrongly rejected NT
+        # contracts via `suit is None`, suppressing penalty doubles of 3NT).
+        last_call = None
+        for s, b in reversed(state.bids):
+            if not b.is_pass:
+                last_call = (s, b)
+                break
+        if (last_call is None
+                or last_call[1].is_double or last_call[1].is_redouble
+                or last_call[0] in (state.seat, state.seat.partner())):
             return passb()
         return chosen
 
