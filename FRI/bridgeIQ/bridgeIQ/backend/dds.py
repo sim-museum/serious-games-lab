@@ -26,6 +26,8 @@ Encoding conventions:
 
 import atexit
 import ctypes
+import os
+import sys
 from ctypes import c_int, c_char, Structure, POINTER
 from ctypes.util import find_library
 from typing import Dict, List
@@ -94,12 +96,57 @@ _dds.FreeMemory.restype = None
 # Auto-detect threads once on import. 0 = let libdds choose.
 _dds.SetMaxThreads(0)
 
-# libdds spawns persistent worker threads holding per-thread
-# transposition tables. They outlive Python finalization and, after
-# ctypes unloads the lib, dereference freed state — segfault at exit.
-# `FreeMemory` releases the pool cleanly. Registered with `atexit`
-# so it runs before ctypes / dlclose.
-atexit.register(_dds.FreeMemory)
+# libdds spawns persistent worker threads that dereference freed state
+# during interpreter finalization (after atexit handlers run, as the C
+# runtime tears down) → SIGSEGV at PROCESS EXIT — *after* all real work and
+# output are done. The crash is cosmetic but corrupts the exit code (139)
+# and prints a scary "Segmentation fault" (and breaks anything that checks
+# the exit code). FreeMemory/SetMaxThreads/RTLD_NODELETE/OMP_NUM_THREADS do
+# NOT prevent it; the worker threads crash regardless.
+#
+# Fix: short-circuit the crash-prone finalization. At exit, free the DDS
+# pool, flush, and os._exit() with the program's INTENDED code — so normal
+# runs exit 0 and failures still report non-zero. We capture that code from
+# sys.exit() calls and uncaught exceptions.
+_exit_code = [0]
+
+_real_exit = sys.exit
+
+
+def _exit_capture(code=None):
+    _exit_code[0] = 0 if code is None else (
+        int(code) if isinstance(code, (int, bool)) else 1)
+    _real_exit(code)
+
+
+sys.exit = _exit_capture
+
+_real_excepthook = sys.excepthook
+
+
+def _excepthook_capture(exc_type, exc, tb):
+    if exc_type is not SystemExit:
+        _exit_code[0] = 1
+    _real_excepthook(exc_type, exc, tb)
+
+
+sys.excepthook = _excepthook_capture
+
+
+def _dds_clean_exit():
+    try:
+        _dds.FreeMemory()
+    except Exception:
+        pass
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:
+        pass
+    os._exit(_exit_code[0])
+
+
+atexit.register(_dds_clean_exit)
 
 
 # ---------- Module-level helpers (drop-ins for the old `dds` module) ----------
