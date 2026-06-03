@@ -2521,41 +2521,52 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
                             if _is_legal_bid(cand, state):
                                 return cand
 
-        # 2f. Pull partner's DOUBLED Unusual 2NT to one of its two shown
-        # suits. An Unusual 2NT overcall = 5-5 in the two lowest-ranked
-        # unbid suits; sitting 2NT-doubled with shortness in opener's suit
-        # is a disaster (4399-58 −800: South's 5-5 red Unusual 2NT over 1♣
-        # doubled, North sat instead of pulling to 3♦). Pick the shown suit
-        # I'm longer in. (Check 2e skips NT, so this is its 2NT sibling.)
-        if raw.is_pass and state.opening_bid is not None:
-            nonpass = [(s, b) for s, b in state.bids if not b.is_pass]
+        # 2f. Advance partner's Unusual 2NT overcall off NT — never SIT a
+        # two-suited 2NT, doubled or not. An Unusual 2NT = 5-5 in the two
+        # lowest-ranked unbid suits; passing plays a misfit NT, and 2NT
+        # DOUBLED with shortness in opener's suit is a disaster (4399-58
+        # −800: South's 5-5 red Unusual 2NT over 1♣ doubled, North sat
+        # instead of 3♦). Bid the longer shown suit at the 3-level. Fires
+        # only when biq would otherwise pass and hasn't advanced yet, and
+        # only while the 2NT is live (last call = the 2NT, or an opponent's
+        # double of it — if an opponent has bid OVER it, leave it to the
+        # competitive/LAW logic). (Check 2e is the suit-bid sibling.)
+        if (raw.is_pass and not state.my_bids
+                and state.opening_bid is not None
+                and state.opening_bid.level == 1
+                and state.opening_bid.suit is not None
+                and state.opening_bid.suit != Suit.NOTRUMP
+                and state.partner_bids
+                and state.partner_bids[0].level == 2
+                and state.partner_bids[0].suit == Suit.NOTRUMP):
             partner = state.seat.partner()
-            op_suit = state.opening_bid.suit
             opener_is_opp = state.opener_seat not in (state.seat, partner)
-            if (len(nonpass) >= 2 and opener_is_opp
-                    and op_suit is not None and op_suit != Suit.NOTRUMP
-                    and state.partner_bids
-                    and state.partner_bids[0].level == 2
-                    and state.partner_bids[0].suit == Suit.NOTRUMP):
-                (dbl_seat, dbl), (pb_seat, pb) = nonpass[-1], nonpass[-2]
-                if (dbl.is_double
-                        and dbl_seat not in (state.seat, partner)
-                        and pb_seat == partner
-                        and pb.level == 2 and pb.suit == Suit.NOTRUMP):
-                    shown = sorted(
-                        (s for s in (Suit.CLUBS, Suit.DIAMONDS,
-                                     Suit.HEARTS, Suit.SPADES) if s != op_suit),
-                        key=lambda s: _BID_RANK[s])[:2]
-                    best = max(shown,
-                               key=lambda s: eval_.suit_lengths.get(s, 0))
-                    for lvl in (3, 4):
-                        cand = bid(lvl, best,
-                                   why=f"Pull partner's doubled Unusual 2NT "
-                                       f"to {best.to_char()} "
-                                       f"({eval_.suit_lengths.get(best, 0)} "
-                                       f"cards)")
-                        if _is_legal_bid(cand, state):
-                            return cand
+            nonpass = [(s, b) for s, b in state.bids if not b.is_pass]
+            live = False
+            if nonpass and opener_is_opp:
+                ls, lb = nonpass[-1]
+                if ls == partner and lb.level == 2 and lb.suit == Suit.NOTRUMP:
+                    live = True                      # undoubled
+                elif (lb.is_double and ls not in (state.seat, partner)
+                        and len(nonpass) >= 2):
+                    ps, pbd = nonpass[-2]
+                    if (ps == partner and pbd.level == 2
+                            and pbd.suit == Suit.NOTRUMP):
+                        live = True                  # doubled
+            if live:
+                op_suit = state.opening_bid.suit
+                shown = sorted(
+                    (s for s in (Suit.CLUBS, Suit.DIAMONDS,
+                                 Suit.HEARTS, Suit.SPADES) if s != op_suit),
+                    key=lambda s: _BID_RANK[s])[:2]
+                best = max(shown, key=lambda s: eval_.suit_lengths.get(s, 0))
+                for lvl in (3, 4):
+                    cand = bid(lvl, best,
+                               why=f"Advance partner's Unusual 2NT to "
+                                   f"{best.to_char()} "
+                                   f"({eval_.suit_lengths.get(best, 0)} cards)")
+                    if _is_legal_bid(cand, state):
+                        return cand
 
         # 3. Law-of-Total-Tricks competitive: if biq's normal path
         # decided to pass but LAW says our partnership's combined
