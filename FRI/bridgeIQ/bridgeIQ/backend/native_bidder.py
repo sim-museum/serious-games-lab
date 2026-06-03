@@ -6536,7 +6536,20 @@ def _overcall_over_1nt(state, e: HandEval, system) -> Bid:
     # 4-3-3-3 / 4-4-3-2 / 5-3-3-2 and the semi-balanced 5-4-2-2 /
     # 6-3-2-2). `is_semi_balanced` is narrowly defined as 5-3-3-2;
     # widen here so a strong 5-4-2-2 still penalty-doubles 1NT.
-    if hcp >= 15 and e.voids == 0 and e.singletons == 0:
+    #
+    # BUT NOT with a 6+ card major or diamond — overcall the suit
+    # instead (handled just below). Penalty-doubling 1NT on a long
+    # one-suiter is a classic error: the double is meant for balanced
+    # 15+ where defence beats 1NT, whereas a 6-card suit wants to
+    # COMPETE — and if opener's side redoubles, a long-suit doubler
+    # has no good escape (this cost −1560 on a 6-spade/15-HCP hand:
+    # X → opp xx → passed out in 1NTxx). A 6+ CLUB one-suiter has no
+    # natural 2-level call (2♣ = Landy), so it may still double.
+    has_overcallable_6 = (e.suit_lengths[Suit.SPADES] >= 6
+                          or e.suit_lengths[Suit.HEARTS] >= 6
+                          or e.suit_lengths[Suit.DIAMONDS] >= 6)
+    if (hcp >= 15 and e.voids == 0 and e.singletons == 0
+            and not has_overcallable_6):
         return double(why=f"Penalty double of 1NT ({hcp} HCP, no short suit)")
 
     # Landy 2♣ — both majors, at least 4-4, competitive values.
@@ -6557,9 +6570,12 @@ def _overcall_over_1nt(state, e: HandEval, system) -> Bid:
                    why=f"Landy: both majors (4+/4+, {hcp} HCP, "
                        f"{'balancing' if is_balancing else 'direct'})")
 
-    # Natural 2-level overcall with a 6-card suit and modest values.
+    # Natural 2-level overcall with a 6-card suit. Range widened to 17
+    # (was 15) so strong single-suiters overcall rather than fall into
+    # the penalty double — a 6-card suit one-suiter belongs in its suit,
+    # not defending 1NT(xx).
     for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS):
-        if e.suit_lengths[s] >= 6 and 9 <= hcp <= 15:
+        if e.suit_lengths[s] >= 6 and 9 <= hcp <= 17:
             return bid(2, s, why=f"Natural 2{s.to_char()} overcall (6+ cards)")
 
     # Preemptive 3-level overcall with a 7+ card suit. Strong club
