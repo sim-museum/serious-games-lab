@@ -592,6 +592,15 @@ class BridgeEngine:
                     dummy_hand = board.hands.get(dummy_seat)
                     if dummy_hand and dummy_hand.cards:
                         known_cards[dummy_seat] = set(c.code52() for c in dummy_hand.cards)
+                    # When we are PLAYING the dummy (the declarer controls
+                    # the dummy's cards), the declarer's own hand is also
+                    # known to the decision-maker — add it so it isn't
+                    # sampled as a hidden opponent.
+                    if seat == dummy_seat:
+                        decl_hand = board.hands.get(board.contract.declarer)
+                        if decl_hand and decl_hand.cards:
+                            known_cards[board.contract.declarer] = set(
+                                c.code52() for c in decl_hand.cards)
 
                 # Cards played so far
                 played_cards = set()
@@ -1227,7 +1236,35 @@ def _position_override_card(tied_cards, board, seat,
     # Filter to cards actually in the lead suit (when following).
     tied_in_suit = [c for c in tied_cards if c // 13 == lead_suit.value]
     if not tied_in_suit:
-        return None
+        # DISCARD signal: I can't follow suit. The first discard in a suit
+        # shows ATTITUDE — pitch a HIGH small card in a suit I want partner
+        # to lead (I hold values there), else the LOWEST card (discourage).
+        # Among the DDS-tied discards this is free — no trick changes — and
+        # it's the one textbook defensive signal biq was missing (attitude
+        # on partner's lead + count when following were already in place).
+        hand_d = board.hands.get(seat)
+        if hand_d is None:
+            return None
+        from .models import Suit as _Suit
+        by_suit = {}
+        for c in tied_cards:
+            by_suit.setdefault(c // 13, []).append(c)
+        best_suit, best_hcp = None, 0
+        for su in by_suit:
+            sv = _Suit(su)
+            if trump is not None and sv == trump:
+                continue            # don't "signal" by pitching trumps
+            shcp = sum((4 - c.rank.value) if c.rank.value <= 3 else 0
+                       for c in hand_d.cards if c.suit == sv)
+            if shcp > best_hcp:
+                best_hcp, best_suit = shcp, su
+        if best_suit is not None and best_hcp >= 2:
+            # Encourage that suit: pitch its highest SMALL card (lowest pip).
+            small = [c for c in by_suit[best_suit] if c % 13 >= 4]
+            if small:
+                return min(small, key=lambda c: c % 13)
+        # No suit worth encouraging → discourage: throw the lowest card.
+        return max(tied_cards, key=lambda c: c % 13)
 
     # Count how many cards I've already played in this suit.
     played_in_suit = 0
