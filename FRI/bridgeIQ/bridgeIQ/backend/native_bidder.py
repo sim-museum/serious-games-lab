@@ -3961,6 +3961,21 @@ def _respond_to_major(state, e: HandEval, system) -> Bid:
     if major == Suit.HEARTS and e.suit_lengths[Suit.SPADES] >= 4 and 6 <= hcp <= 18:
         return bid(1, Suit.SPADES, why="1S response (4+ spades)")
 
+    # A 12-HCP hand with a 6-card side suit is a sound 2/1, not a
+    # semi-forcing 1NT: the 1NT-forcing route lets responder PASS
+    # opener's minimum rebid and miss game. Seed 2444-13: S
+    # T3.AKJ8.KJ9765.8 (12 HCP, 6 diamonds) over 1S bid 1NT, then
+    # passed opener's 2C — a cold diamond game, −14 IMP.
+    if hcp >= 12:
+        for s in (Suit.CLUBS, Suit.DIAMONDS):
+            if e.suit_lengths[s] >= 6 and s != major:
+                return bid(2, s, alert=True,
+                           why=f"2/1 in 6+{s.to_char()} ({hcp} HCP, "
+                               f"long suit — not a semi-forcing 1NT)")
+        if major == Suit.SPADES and e.suit_lengths[Suit.HEARTS] >= 6:
+            return bid(2, Suit.HEARTS, alert=True,
+                       why=f"2/1 in 6+♥ ({hcp} HCP, long suit)")
+
     if hcp >= 13:
         # 2/1 game forcing
         for s in (Suit.CLUBS, Suit.DIAMONDS):
@@ -4105,14 +4120,25 @@ def _precision_1c_rebid(state, e: HandEval, p_last: Bid, system=None) -> Bid:
     if p_last.level == 1 and p_last.suit in (Suit.HEARTS, Suit.SPADES):
         major = p_last.suit
         if e.suit_lengths[major] >= 3:
-            if e.hcp >= 20 or e.controls >= 5:
+            # Only a genuine powerhouse blasts RKC opposite a MINIMUM
+            # positive (the 1M response promises just 8+ HCP, unlimited).
+            # Opener's controls alone don't make slam — a control-rich
+            # 19-count opposite a bare 8-9 is ~28 combined, game not slam.
+            # Set trumps with a GF raise instead and let the cuebid
+            # pipeline (which needs trump raised) develop slam if partner
+            # has extras. Seed 2444-61: N K.AK3.AQT74.K632 (19 HCP, 7
+            # controls) blasted 4NT opposite a 9-HCP positive and drove
+            # to 6H missing the trump queen — down, −13 IMP.
+            if e.hcp >= 22:
                 # Note: trump not raised yet (just opener's 1C +
                 # responder's 1M positive). Cuebid pipeline guards
                 # require trump-raised, so this site keeps the
-                # direct 4NT launch.
+                # direct 4NT launch for the powerhouse case.
                 return bid(4, Suit.NOTRUMP, alert=True,
-                           why="Precision 1C-1M: RKC after fit, slam interest")
-            return bid(3, major, why="Precision 1C-1M: simple raise (GF)")
+                           why="Precision 1C-1M: RKC after fit (powerhouse)")
+            return bid(3, major,
+                       why="Precision 1C-1M: GF raise "
+                           "(slam interest shown via later cuebids)")
         # No fit → bid own 5-card suit
         for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
             if s == major:
@@ -5591,6 +5617,48 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
         if second in (Suit.CLUBS, Suit.DIAMONDS) and hcp >= 14 and e.is_balanced:
             return bid(3, Suit.NOTRUMP,
                        why="3NT: 14+ balanced, minor preference invite")
+
+    # Partner rebid their OWN new suit at the 3-level (a 2/1 GF
+    # responder showing 6+ in it) and none of the slam-launch branches
+    # above matched. The auction is game-forcing, so opener MUST NOT
+    # pass — without a bid here the call falls through to passb() and
+    # the sanity wrapper bounces a blind rebid (seed 2444-13:
+    # 1S-2D-2S-3D went PASS→"Sanity: rebid S", flailing into 4S via
+    # 3S/4D/4S bouncing). Describe the hand and place a sound game:
+    #   * a self-sufficient 6-card major → bid game in it (4M);
+    #   * 3+ support for partner's suit → game in it (4M / 5m);
+    #   * balanced → 3NT;
+    #   * else give game-level preference to partner's suit.
+    if (p_last.level == 3
+            and p_last.suit is not None
+            and p_last.suit != Suit.NOTRUMP
+            and p_last.suit != op_suit
+            and _partner_was_forcing(state)):
+        ps = p_last.suit
+        if (op_suit in (Suit.HEARTS, Suit.SPADES)
+                and e.suit_lengths[op_suit] >= 6):
+            return bid(4, op_suit,
+                       why=f"4{op_suit.to_char()}: rebid self-sufficient "
+                           f"6-card major (game, GF auction)")
+        if e.suit_lengths.get(ps, 0) >= 3:
+            if ps in (Suit.HEARTS, Suit.SPADES):
+                return bid(4, ps,
+                           why=f"4{ps.to_char()}: raise partner's major "
+                               f"to game (GF)")
+            if e.is_balanced:
+                return bid(3, Suit.NOTRUMP,
+                           why="3NT: balanced with support for partner's "
+                               "minor (GF)")
+            return bid(5, ps,
+                       why=f"5{ps.to_char()}: raise partner's minor to "
+                           f"game (GF, no NT stopper)")
+        if e.is_balanced:
+            return bid(3, Suit.NOTRUMP,
+                       why="3NT: balanced, partner's GF 3-level rebid")
+        # No support, unbalanced: prefer partner's suit to game rather
+        # than pass below game in a force.
+        return bid(4 if ps in (Suit.HEARTS, Suit.SPADES) else 5, ps,
+                   why=f"Game preference to partner's {ps.to_char()} (GF)")
 
     return passb()
 
