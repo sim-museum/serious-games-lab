@@ -100,6 +100,8 @@ is_source_game() {
         flightgear/*.sh) return 0 ;;
         # apt-installable chess/go/board tools
         scid.sh|nibbler.sh|banksiaGui.sh) return 0 ;;
+        # self-contained HTML app (opens in the browser)
+        kramnikChess.sh) return 0 ;;
         q5go.sh|sabaki.sh|goreviewpartner.sh) return 0 ;;
         # Buildable from source
         generalPokerEvaluator.sh) return 0 ;;
@@ -189,6 +191,7 @@ script_display_name() {
         scid.sh)               echo "traditional engine"; return ;;
         banksiaGui.sh)         echo "neural net, stats displays"; return ;;
         chessmaster/chessmaster.sh) echo "training"; return ;;
+        kramnikChess.sh)       echo "Kramnik variant, no castling"; return ;;
         openingRepertoire/run_opening_repertoire.sh) echo "opening helper"; return ;;
         # THU - Sim Racing
         gpl.sh)                echo "grand prix"; return ;;
