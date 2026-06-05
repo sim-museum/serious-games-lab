@@ -12,7 +12,7 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 if [[ $# -lt 1 ]]; then
     echo "Usage: $0 <game_name>"
     echo ""
-    echo "Source games: benbridge, mathquiz, dual_nback, chess, go, katrain, poker, freefalcon"
+    echo "Source games: bridgeIQ, mathquiz, dual_nback, chess, go, katrain, poker, freefalcon"
     echo "Binary games: Use the Lutris name from the CSV"
     exit 1
 fi

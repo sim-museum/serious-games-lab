@@ -32,14 +32,11 @@ elif [ -d "$WINEPREFIX/drive_c/games/qbridge15" ]; then
 fi
 
 if [ -n "$QBRIDGE_DIR" ]; then
-    # Launch GUI harness if venv is available
-    if [ -x "$HARNESS_VENV/bin/python" ]; then
-        (
-            cd "$HARNESS_DIR"
-            source venv/bin/activate
-            python bridge_harness.py 2>/dev/null &
-        )
-    fi
+    # The blank GUI harness was launched here historically. bridgeIQ
+    # now spawns its own harness (`bridgeHarness.sh --base72 <code>`)
+    # after each hand with the deal pre-loaded, so launching another
+    # one from here just produced an empty duplicate window. Use
+    # `bridgeHarness.sh` directly if you want a standalone harness.
 
     # Snapshot existing BDL log files before launching
     _qp_snapshot_time=$(date +%s)

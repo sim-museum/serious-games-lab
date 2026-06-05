@@ -1,40 +1,183 @@
-# bridgeIQ
+# BridgeIQ
 
-A PyQt6 bridge application with a classic desktop interface, powered by a
-**tuned custom rule-based engine** for bidding, opening leads, and play —
-no neural network or TensorFlow dependency.
+A PyQt6 bridge application for Ubuntu 24.04 with classic desktop Bridge
+interface. As of 2026-05, BEN/TensorFlow has been removed; bidding is
+rule-based (modeled on Q-Plus's Precision90M and four other systems) and
+card play is DDS + Monte-Carlo sampling against libdds.so.0.
 
-History: the project began as a front-end for the BEN neural-network engine;
-that integration has been dropped in favor of the native rule-based engine.
-Internal module names (`ben_bridge/`, `ben_backend/`, `ben/DATA/LOG`)
-survive from that era.
+## Plan to finish bidding + play (2026-05-23)
 
-> **IMPORTANT:** Always run from the venv!
-> ```bash
-> source venv/bin/activate && python -m ben_bridge.main
-> ```
+Goal: a competent, correct teaching bridge program across 5 systems.
+Not parity with Q-Plus; correctness + coverage + no pathological bids.
+Once this plan is complete, only teaching tools remain (modeled on
+pokerIQ — hand reviewer, "why did you bid that?" explainer using the
+`why=` strings already on every Bid, drill modes).
+
+### Phase 1 — Multi-system smoke test
+Run 10-deal diff sessions against Q-Plus for the four non-Precision
+systems: SAYC, 2/1, Standard Acol, Standard French. Target is *no
+illegal bids, no sanity-wrapper firings, no obviously broken auctions*
+— NOT match-rate parity. Fix the top 2 issues per system. Stretch:
+one second seed for any system showing brittleness.
+
+### Phase 2 — Precision90M polish (optional)
+Two known gaps from seed=400: overcall handling (lead-direct overcalls
+like 3♦ after partner's 2♦ three-suiter) and Stayman+splinter cascades
+(earlier seeds). Target: 20/50 perfect (currently 17/50). Stop there
+— diminishing returns.
+
+### Phase 3 — Card-play push
+Tested 2026-05-23. Outcome: **68-69% maintained, 75% not reached.**
+
+Position-aware tie-breaks (third-hand-high, cash-high-from-short)
+were tried and either harmed match rate (cash-from-short dropped
+the mean to 62%) or had no measurable effect (third-hand-high
+landed inside the ±2% MC noise band). Increasing the MC sample
+count from 40 to 80 to 200 tightened the variance but the mean
+stayed at 69% — indicating algorithmic, not sampling, ceiling.
+
+Categorising 193 mismatches: 45% cross-suit (DDS samples disagree
+about which suit is best — sampling-driven, not tie-break),
+36% within-suit-low (DDS prefers the higher card outright on
+the MC distribution, so tie-break never runs), 17% within-suit-
+high (the candidates for tie-break refinement), 2% leads. Even
+matching every single within-suit-high case wouldn't reach 75%
+without progress on the 81% that aren't tie-break problems.
+
+Zero sampler fallbacks across 520 cards — the "no-valid-samples"
+issue is fully fixed (per-card random distribution + auto-relax
+of shown_out, both from the previous session).
+
+**Phase 3b (deeper attack, 2026-05-23):** auction-informed
+sampling implemented and tested.
+
+  * `_derive_hcp_constraints` pins each seat's HCP range from
+    their first non-pass bid: 1NT opener → system NT range,
+    Precision 1m/1M → 10-15, SAYC 1m/1M → 10-21, weak twos →
+    5-11, passers → 0-9, etc.
+  * `_derive_shape_constraints` pins suit lengths the same way:
+    1♥/1♠ → 5+ in that major, 1NT → balanced (each suit 2-5),
+    Precision 2♦ → 0-1 diamonds + 3+/3+ majors, weak twos →
+    5-6 in the suit, …
+  * MC sampler rejects samples that violate either constraint;
+    relaxes back to shown_out-only and then to unconstrained
+    if no valid sample is found.
+
+Empirical result: 10-run mean **68.6% with constraints vs 68.4%
+without** — inside the ±1% noise band. 24% of samples are
+rejected by the HCP filter on a typical 520-card run, so the
+constraints fire as designed, but DDS's per-card best-pick is
+robust to the removed extreme samples — the surviving 76%
+already cover the same plausible-truth distribution.
+
+Diagnosis: the 31% mismatch isn't sampling noise, it's that
+Q-Plus's card engine appears to be **rule-based** (same family
+as its bidding), not DDS+MC. So Q-Plus's choices reflect
+specific bridge principles (signals, entry preservation,
+deception, stylistic preferences) that DDS expectations don't
+capture, and tightening the MC's sample distribution toward
+"the truth" doesn't pull the picks toward Q-Plus's heuristic
+choices.
+
+The constraints are kept in the codebase regardless — they are
+correct bridge logic and a useful foundation for future work
+(per-card biased sampling, position-specific override library
+built on top). But the realistic ceiling without that further
+work is 68-69%. Phase target reset: 70%, not 75%.
+
+Users seeking stronger play should play wbridge5 or Q-Plus
+directly. For teaching purposes, where the user wants to see
+*defensible* card play and learn *why* a card was chosen, the
+current engine is adequate.
+
+**Phase 3c (manual mining + override library, 2026-05-23):**
+Mined `MANUAL/ENG/BRIDGE.HLQ` for Q-Plus's card-play rules.
+Two conventions documented:
+
+  1. `.lead-conv` — opening leads. Already implemented in
+     `backend/native_lead.py` (4th best, top of sequence, ace
+     from AK, etc.). No work needed.
+
+  2. `.signal-conv` — present count: in the SECOND round of a
+     suit, defender plays a high small card for odd original
+     count, lowest for even. Q-Plus's example: holding A-8-2,
+     after winning trick 1 with the ace, lead the 8 (high
+     small, odd); holding A-8-5-2, play the 2 (lowest, even).
+
+Implemented as `_position_override_card` (engine.py): when a
+defender follows an opp-led non-trump suit on their second
+round of that suit, override the lowest-equivalent tie-break
+with the present-count card. Fires ~18 times per 520-card
+match (3.5% of plays). Match-rate impact: neutral inside the
+MC noise band. Teaching impact: each override gets logged
+"override-present-count" so the explainer UI can show *why*
+the engine played that specific card.
+
+No behavioral probes were needed — the manual specified the
+convention directly. To reach 75% would require additional
+conventions that the manual doesn't fully spell out (entry
+management, hold-up rules, deception, finesse choice). Those
+need genuine reverse-engineering work (behavioral probes
+against specific test deals); not justified for a teaching
+tool that already plays defensibly at 68-69%.
+
+### Phase 4 — Integration + robustness
+Ran 2026-05-23. 50 deals × 5 systems = 250 board-runs end-to-end.
+
+End-to-end pipeline (deal → bid → play → score) is rock-solid:
+
+| Metric | Result |
+|---|---|
+| Pipeline exceptions | 0 ✓ |
+| Illegal bids escaping wrapper | 0 ✓ |
+| Card engine returning None | 0 ✓ |
+| Score-function exceptions | 0 ✓ |
+| Auctions hitting the 80-bid cap | 0 ✓ |
+| Pass-out auctions on 22+ HCP | 0 ✓ |
+| Sanity-wrapper firings | 14 / 250 (5.6%) |
+| Down-5-or-more contracts | 4 (all from one board — marginal 3♣ jump-overcall with QJ stack offside) |
+
+The 4 down-5 cases all come from one specific deal where N
+makes a vulnerable 3♣ jump-overcall on 8 HCP / 6 clubs into
+E's QJ52 trump stack — a legitimate "wild" bidding decision
+that occasionally bites. Not a bug; the wrapper isn't catching
+it because it isn't illegal.
+
+Save/restore round-trip works mid-game: `BoardState.to_dict()`
+→ JSON → `BoardState.from_dict()` preserves the auction, played
+tricks, and remaining hands; continuing the play after a
+restore reaches the same final trick count as a parallel run
+that never serialized.
+
+Smoke harness: `/tmp/phase4_smoke.py`. Save/restore test:
+`/tmp/phase4_save_restore.py`.
+
+### Phase 5 — Define "done"
+Exit criteria: zero illegal bids over a 100-deal cross-system stress
+run, zero sanity-wrapper-rescued pathological auctions, card play ≥
+70% match rate vs Q-Plus. Tag a `bidding-and-play-complete` release;
+move to teaching tools.
+
+---
 
 ## Project Overview
 
-This application provides a desktop bridge playing and analysis environment:
-a custom rule-based engine (bidding, lead, play, analysis) behind a classic
-desktop bridge UI implemented in PyQt6 as a separate layer.
+This application provides a desktop bridge playing and analysis environment,
+treating BEN as a pure engine (bidding, play, analysis) while implementing
+a classic desktop bridge UI in PyQt6 as a separate layer.
 
 ## Architecture
 
 ```
-ben_bridge/           (~4,200 lines of code)
+bridgeIQ/           (~4,200 lines of code)
 ├── main.py             # Application entry point
 ├── run.sh              # Startup script
 ├── test_basic.py       # Test suite
 ├── README.md           # Documentation
-├── ben_backend/        # Engine layer
+├── backend/        # BEN Engine wrapper
 │   ├── engine.py       # BridgeEngine class (bidding, play, analysis)
-│   ├── native_bidder.py# NativeBiddingEngine — rule-based, system-driven bidding
-│   ├── native_lead.py  # Rule book for opening leads
-│   ├── bidding_rules.py / bidding_systems.py  # System definitions
 │   └── models.py       # Data models (Card, Hand, Bid, Board, etc.)
-├── ui/      # PyQt6 UI
+├── ui/      # PyQt6 UI (BridgeIQ style)
 │   ├── main_window.py  # Main window with menus and game control
 │   ├── table_view.py   # 4-hand table display with trick area
 │   ├── bidding_box.py  # Bidding interface with keyboard support
@@ -49,15 +192,15 @@ ben_bridge/           (~4,200 lines of code)
 
 ## Key Features
 
-### Engine
-- **Rule-based bidding**: `native_bidder.NativeBiddingEngine`, system-driven
-  (bidding systems under `CONFIG/BIDRULE/`: SAYC, Two-over-One, Precision,
-  Acol, Standard French, ...)
-- **Opening leads**: `native_lead` rule book
-- **Analysis**: DDS solver for double-dummy analysis
+### BEN Backend Integration
+- **Direct Python API**: Imports BEN modules directly (no HTTP/WebSocket overhead)
+- **Model Loading**: TensorFlow models loaded on startup
+- **Bidding**: BEN's `BotBid` class for neural network bid decisions
+- **Play**: BEN's `BotLead` and `CardPlayer` for card play
+- **Analysis**: BEN's DDS solver for double-dummy analysis
 - **Score Calculation**: Contract scoring for IMP/MP/Rubber
 
-### Desktop UI
+### BridgeIQ Style UI
 - **Table View**: Four-hand display around central trick area
 - **Vulnerability Indicator**: Visual N-S/E-W vulnerability display
 - **Bidding Box**: Color-coded buttons with suit symbols (♠♥♦♣)
@@ -66,11 +209,11 @@ ben_bridge/           (~4,200 lines of code)
 - **Card Widgets**: Clickable cards with hover effects
 
 ### Game Modes
-- **4-Player**: Human plays South, the engine plays N/E/W
+- **4-Player**: Human plays South, BEN plays N/E/W
 - **1-Player**: Single hand visible (realistic play)
 - **All-Computer**: Auto-play for analysis
 
-### Menus
+### Menus (BridgeIQ Style)
 - **File**: New deal, open/save files, export HTML
 - **Deal**: Match control, repeat deal, deal filters
 - **Configuration**: Players, bidding systems, preferences
@@ -86,23 +229,26 @@ ben_bridge/           (~4,200 lines of code)
 
 ## Requirements
 
-- Ubuntu 24.04+ (or compatible Linux)
+- Ubuntu 24.04 (or compatible Linux)
 - Python 3.12+
-- PyQt6, colorama (no TensorFlow)
+- PyQt6
+- TensorFlow 2.18+ (CPU)
+- BEN engine (included in `../ben/`)
 
 ## Running the Application
 
 **Important:** The app must be run from within the virtual environment.
 
 ```bash
-cd /home/g/sgl/FRI/bridgeIQ
+cd /home/g/sgl/FRI/bridgeIQ/bridgeIQ
 ./run.sh
 ```
 
 Or manually:
 ```bash
 source /home/g/sgl/FRI/bridgeIQ/venv/bin/activate
-cd ben_bridge && python3 main.py
+export PYTHONPATH="bridgeIQ:ben/src:$PYTHONPATH"
+python bridgeIQ/main.py
 ```
 
 The `run.sh` script automatically activates the venv if it exists.
@@ -116,8 +262,17 @@ The `run.sh` script automatically activates the venv if it exists.
 
 ## Technical Notes
 
+- BEN's Windows-only features (PIMC/BBA/SuitC) are disabled on Linux
+- TensorFlow runs in CPU mode (GPU optional)
 - Engine operations run in worker threads to keep UI responsive
 - Signals/slots pattern for GUI-backend communication
-- Deal logs (.bdl/.pbn/.ppl) are written to `ben/DATA/LOG/`
 
-## Created: January 2025 · Renamed benBridge → bridgeIQ: June 2026
+## Files Modified in BEN
+
+- `pyproject.toml`: Relaxed version constraints for Linux compatibility
+  - `tensorflow-intel` → `tensorflow`
+  - `numpy==1.26.4` → `numpy>=1.26.4`
+  - `keras==3.6.0` → `keras>=3.6.0`
+  - `requires-python = "==3.12"` → `requires-python = ">=3.12"`
+
+## Created: January 2025

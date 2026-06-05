@@ -58,6 +58,11 @@ downloads/sglBinaries_*/
 *.tif
 *.tiff
 *.odg
+# Card-deck PNGs are bundled with bridgeIQ for offline play
+!FRI/bridgeIQ/bridgeIQ/ui/assets/deck/**/*.png
+
+# bridgeIQ dev scaffolding — corpus tools, audits, diff utilities. Not
+# part of the shipped game; kept on the dev machine only.
 
 # Binary files - executables and libraries
 *.exe
@@ -157,7 +162,6 @@ Thumbs.db
 ps-eval
 
 # Git-cloned dependencies (cloned during install)
-FRI/bridgeIQ/ben/
 FRI/gui/lizgoban/
 
 # Doxygen generated docs (regenerate with: doxygen Doxyfile)

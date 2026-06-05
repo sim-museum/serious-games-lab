@@ -6,28 +6,17 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 HARNESS_DIR="$PWD/guiHarness"
 VENV="$HARNESS_DIR/venv"
 
-# pyautogui imports python-Xlib, which needs an X11 auth cookie with an
-# explicit display number. On Wayland, Mutter writes its Xwayland cookie to
-# /run/user/$UID/.mutter-Xwaylandauth.* with an empty display-number field --
-# C Xlib treats that as wildcard but python-Xlib does not, so we rebuild a
-# normalized cookie file with an explicit ":0" entry.
-RUNDIR="/run/user/$(id -u)"
-if [ -z "$XAUTHORITY" ] || [ ! -r "$XAUTHORITY" ]; then
-    for xauth in "$RUNDIR"/.mutter-Xwaylandauth.* "$RUNDIR"/xauth_* "$HOME/.Xauthority"; do
-        if [ -r "$xauth" ]; then
-            export XAUTHORITY="$xauth"
-            break
-        fi
-    done
-fi
-if command -v xauth >/dev/null 2>&1 && [ -r "$XAUTHORITY" ]; then
-    NORMALIZED="$RUNDIR/bridgeHarness-xauth"
-    COOKIE=$(xauth -f "$XAUTHORITY" list 2>/dev/null | awk '/MIT-MAGIC-COOKIE-1/ {print $3; exit}')
-    if [ -n "$COOKIE" ]; then
-        rm -f "$NORMALIZED"
-        xauth -f "$NORMALIZED" add "${DISPLAY:-:0}" MIT-MAGIC-COOKIE-1 "$COOKIE" 2>/dev/null \
-            && export XAUTHORITY="$NORMALIZED"
-    fi
+# Use the same Lutris wine runner the regular launcher uses for
+# qplus.sh. Without this the harness picked up /usr/bin/wine, which
+# rendered Q-Plus's Hand Input dialog with empty boxes where the card
+# glyphs should be (font / dxvk mismatch).  config/wine_runners.csv
+# pins qplus.sh to lutris-6.21-6-x86_64; sourcing wine_runner.sh
+# prepends the runner's bin/ to PATH and sets WINE/WINESERVER/etc.
+export REPO_ROOT="$(cd "$PWD/.." && pwd)"
+export SGL_GAME_SCRIPT="qplus.sh"
+if [ -f "$REPO_ROOT/launcher/lib/wine_runner.sh" ]; then
+    # shellcheck source=/dev/null
+    . "$REPO_ROOT/launcher/lib/wine_runner.sh"
 fi
 
 # Create venv and install packages if missing
@@ -40,6 +29,14 @@ if ! "$VENV/bin/python" -c "import PyQt5, pyautogui" 2>/dev/null; then
     echo "Installing dependencies..."
     "$VENV/bin/pip" install --quiet PyQt5 pyautogui
 fi
+
+# Grant the running user X access via xhost.  The vendored python-xlib
+# inside the harness venv doesn't understand mutter/Xwayland's
+# FamilyServerInterpreted Xauth entries, so even with XAUTHORITY set
+# correctly `import pyautogui` fails with "no authorization protocol
+# specified".  Adding localuser to the xhost ACL bypasses cookie
+# matching for the local account only.  Idempotent; silent if no X.
+xhost +SI:localuser:"$(id -un)" >/dev/null 2>&1 || true
 
 cd "$HARNESS_DIR"
 exec "$VENV/bin/python" bridge_harness.py "$@"

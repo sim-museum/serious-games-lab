@@ -1,0 +1,5 @@
+#!/bin/bash
+# Launcher for the biq-vs-Q-Plus control panel. Kept as a wrapper so the
+# .desktop file (and any alias) points at one stable path; the GUI itself
+# resolves its project root from __file__, so the working dir is irrelevant.
+exec python3 /home/h/sgl/FRI/bridgeIQ/bridgeIQ/tools/qplus_control_panel.py "$@"

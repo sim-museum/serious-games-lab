@@ -30,6 +30,7 @@ from PyQt5.QtWidgets import (
     QGroupBox, QLabel, QLineEdit, QPushButton, QTextEdit, QFileDialog,
     QRadioButton, QButtonGroup, QSpinBox, QMessageBox, QTabWidget,
     QFormLayout, QComboBox, QStatusBar, QSplitter, QCheckBox,
+    QScrollArea,
 )
 
 import pyautogui
@@ -74,9 +75,128 @@ CARD_COORDS_MAP = {
 
 PLAYER_NAMES = ["North", "East", "South", "West"]
 
+
 # ---------------------------------------------------------------------------
-# Base-72 / Pavlicek encoding  (standalone — no dependency on ben_bridge)
+# Q-Plus "Own Deals" BDE file format
+#
+# Multi-deal text files Q-Plus reads from DATA/OWN-DEALS/. Each deal is:
+#
+#     Deal         :   <label>
+#     Dealer       :   <North|East|South|West>
+#     Vuln         :   <---|N/S|E/W|All>
+#     Cards        :                  <N spades>
+#                  :                  <N hearts>
+#                  :                  <N diamonds>
+#                  :                  <N clubs>
+#                  :   <W spades>                    <E spades>
+#                  :   <W hearts>                    <E hearts>
+#                  :   <W diamonds>                  <E diamonds>
+#                  :   <W clubs>                     <E clubs>
+#                  :                  <S spades>
+#                  :                  <S hearts>
+#                  :                  <S diamonds>
+#                  :                  <S clubs>
+#
+#     *********************************************************
+#
+# Same general header style as a played-out BDL file but with the
+# auction / play / result blocks omitted — Q-Plus generates those
+# when it auto-plays the deal. Writing one of these is faster and
+# vastly more reliable than the 52-card pyautogui chain that drove
+# the pickboard dialog.
 # ---------------------------------------------------------------------------
+
+BDE_VULN_MAP = {
+    "None": "---",  "NONE": "---",  "-": "---",  "":  "---",
+    "NS":   "N/S",  "N-S": "N/S",   "N/S": "N/S",
+    "EW":   "E/W",  "E-W": "E/W",   "E/W": "E/W",
+    "Both": "All",  "BOTH": "All",  "All": "All",  "ALL": "All",
+}
+
+BDE_DEALER_MAP = {
+    "N": "North", "E": "East", "S": "South", "W": "West",
+}
+
+BDE_SEPARATOR = "*********************************************************"
+
+
+def _fmt_bde_suit(cards_with_rank: list) -> str:
+    """Render a single suit-line for the BDE file.
+
+    `cards_with_rank` is a list of rank tokens ("A", "K", "Q", …,
+    "10", "2"). Sorted A→2 with single-space separators. An empty
+    suit renders as "-". Q-Plus's shipped .BDE files use "T" for the
+    ten (not "10"), so we convert here for byte-identical output.
+    """
+    if not cards_with_rank:
+        return "-"
+    return " ".join("T" if r == "10" else r for r in cards_with_rank)
+
+
+def hands_to_bde_text(hands, dealer: str = "N", vuln: str = "None",
+                      label: str = "Sent from bridgeIQ",
+                      description: str = "single deal from bridgeIQ") -> str:
+    """Build a single-deal BDE file body.
+
+    `hands` is [N_cards, E_cards, S_cards, W_cards] where each card
+    list is the same in-list-of-strings shape the harness uses
+    elsewhere (e.g. "SA", "HT", "C2", …). Returns the full file
+    content as a string.
+    """
+    suit_chars = ["S", "H", "D", "C"]
+    rank_order = {"A": 0, "K": 1, "Q": 2, "J": 3, "10": 4, "9": 5,
+                  "8": 6, "7": 7, "6": 8, "5": 9, "4": 10,
+                  "3": 11, "2": 12}
+
+    def _suits_for_hand(hand):
+        groups = {s: [] for s in suit_chars}
+        for card in hand:
+            groups[card[0]].append(card[1:])
+        for s in suit_chars:
+            groups[s].sort(key=lambda r: rank_order.get(r, 99))
+        return [groups[s] for s in suit_chars]   # [spades, hearts, ds, cs]
+
+    n_suits = _suits_for_hand(hands[0])
+    e_suits = _suits_for_hand(hands[1])
+    s_suits = _suits_for_hand(hands[2])
+    w_suits = _suits_for_hand(hands[3])
+
+    dealer_full = BDE_DEALER_MAP.get(dealer.strip().upper()[:1], "North")
+    vuln_full = BDE_VULN_MAP.get(vuln.strip(), "---")
+
+    lines = []
+    lines.append("DOCTYPE: BDL 7.1")
+    lines.append(f'.description.eng = "{description}"')
+    lines.append("")
+    lines.append(f"Deal         :   {label}")
+    lines.append(f"Dealer       :   {dealer_full}")
+    lines.append(f"Vuln         :   {vuln_full}")
+
+    # N row: 4 indented suit lines
+    lines.append(f"Cards        :                  {_fmt_bde_suit(n_suits[0])}")
+    for s in range(1, 4):
+        lines.append(f"             :                  {_fmt_bde_suit(n_suits[s])}")
+    # W ↔ E rows: 4 lines, two suits side by side
+    for s in range(4):
+        wcol = _fmt_bde_suit(w_suits[s])
+        ecol = _fmt_bde_suit(e_suits[s])
+        lines.append(f"             :   {wcol:<30}{ecol}")
+    # S row: 4 indented
+    for s in range(4):
+        lines.append(f"             :                  {_fmt_bde_suit(s_suits[s])}")
+    lines.append("")
+    lines.append(BDE_SEPARATOR)
+    return "\n".join(lines) + "\n"
+
+# ---------------------------------------------------------------------------
+# Pavlicek deal-number encoding  (standalone — no dependency on bridgeIQ)
+#
+# Base-72 is the canonical alphabet across the project (bridgeIQ BDL,
+# this harness, and any other deal-ID consumer).  Alphabet:
+#   0-9 A-Z a-z !@#$%^&*()
+# ---------------------------------------------------------------------------
+TOTAL_DEALS = comb(52, 13) * comb(39, 13) * comb(26, 13)
+
 BASE72_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@#$%^&*()"
 BASE72_VAL = {c: i for i, c in enumerate(BASE72_CHARS)}
 
@@ -154,6 +274,11 @@ def deal_to_number(hands):
 
 def number_to_deal(deal_number):
     """Return [north, east, south, west] as lists of card strings."""
+    if deal_number < 0 or deal_number >= TOTAL_DEALS:
+        raise ValueError(
+            f"Deal number {deal_number} is outside the Pavlicek range "
+            f"[0, {TOTAL_DEALS})."
+        )
     c26 = comb(26, 13)
     c39 = comb(39, 13)
     s_enc = deal_number % c26
@@ -878,24 +1003,6 @@ def board_to_bdl(hands, board_info, source_label="WB"):
     return "\n".join(out)
 
 
-def pbn_file_to_base72(path: str, board_idx: int = 0) -> str:
-    """Read a .pbn file and return the base-72 Pavlicek code for its deal.
-
-    Used by the post-game flow in wBridge5.sh and bb12.sh to hand the played
-    deal straight to the harness via `--base72 CODE`, so the user doesn't
-    have to re-enter it.  Returns "" if the file has no parsable deal.
-    """
-    boards = parse_pbn_file(path)
-    if not boards:
-        return ""
-    board = boards[min(max(board_idx, 0), len(boards) - 1)]
-    deal_str = board.get("Deal", "")
-    if not deal_str:
-        return ""
-    hands = parse_pbn_deal_string(deal_str)
-    return deal_to_base72(hands)
-
-
 def pbn_file_to_bdl(path: str, source_label: str = "WB") -> str:
     """Convert an entire PBN file to BDL format."""
     boards = parse_pbn_file(path)
@@ -977,25 +1084,96 @@ def interpolate_grid(top_left, bottom_right, rows=4, cols=13):
 
 
 class AutomationWorker(QThread):
-    """Run hand-entry mouse automation in a background thread."""
-    progress = pyqtSignal(str)
-    done = pyqtSignal(bool, str)  # not 'finished' — that name shadows QThread.finished
+    """Run hand-entry mouse automation in a background thread.
 
-    def __init__(self, hands, grid_coords, player_positions, ok_pos, clear_pos):
+    Cards are always entered. Dealer / vulnerability are entered too if
+    the caller passes positions for them — those calibration entries are
+    optional and skipped silently when missing.
+    """
+    progress = pyqtSignal(str)
+    finished = pyqtSignal(bool, str)
+
+    def __init__(self, hands, grid_coords, player_positions, ok_pos, clear_pos,
+                 dealer="", vuln="",
+                 dv_open_btn=None, dealer_positions=None,
+                 vuln_positions=None, dv_ok_btn=None):
         super().__init__()
         self.hands = hands
         self.grid_coords = grid_coords
         self.player_positions = player_positions
         self.ok_pos = ok_pos
         self.clear_pos = clear_pos
+        self.dealer = dealer or ""
+        self.vuln = vuln or ""
+        # "Dealer + vul." button on the Hand Input dialog, and the Ok
+        # button on the popup it spawns. Both must be calibrated for
+        # the dealer/vuln auto-entry to run.
+        self.dv_open_btn = dv_open_btn
+        self.dv_ok_btn = dv_ok_btn
+        # Token → (x, y) maps for the popup's radio buttons.
+        self.dealer_positions = dealer_positions or {}
+        self.vuln_positions = vuln_positions or {}
+
+    def _click(self, pos, settle=0.15):
+        pyautogui.moveTo(*pos, duration=0.2)
+        pyautogui.click()
+        if settle:
+            time.sleep(settle)
+
+    def _enter_dealer_vuln(self):
+        """Open the Dealer & Vulnerability popup, set values, click its Ok.
+
+        Returns (entered, missing) where:
+          entered : list of "key=val" strings actually written.
+          missing : list of "key=val" the caller wanted but couldn't
+                    set because the corresponding calibration is
+                    missing (so the status message can tell the user).
+        """
+        entered, missing = [], []
+        # Skip entirely if neither requested.
+        if not self.dealer and not self.vuln:
+            return entered, missing
+
+        # All-or-nothing precondition: open + ok buttons must both be
+        # captured. Without one of them the popup flow can't complete
+        # safely, so leave the values for the user.
+        if not self.dv_open_btn or not self.dv_ok_btn:
+            if self.dealer:
+                missing.append(f"dealer={self.dealer}")
+            if self.vuln:
+                missing.append(f"vuln={self.vuln}")
+            return entered, missing
+
+        self.progress.emit("Opening Dealer & Vulnerability dialog...")
+        self._click(self.dv_open_btn, settle=0.6)  # popup needs time to appear
+
+        if self.dealer:
+            pos = self.dealer_positions.get(self.dealer)
+            if pos:
+                self.progress.emit(f"Setting dealer = {self.dealer}...")
+                self._click(pos)
+                entered.append(f"dealer={self.dealer}")
+            else:
+                missing.append(f"dealer={self.dealer}")
+
+        if self.vuln:
+            pos = self.vuln_positions.get(self.vuln)
+            if pos:
+                self.progress.emit(f"Setting vulnerability = {self.vuln}...")
+                self._click(pos)
+                entered.append(f"vuln={self.vuln}")
+            else:
+                missing.append(f"vuln={self.vuln}")
+
+        self.progress.emit("Closing Dealer & Vulnerability dialog...")
+        self._click(self.dv_ok_btn, settle=0.4)
+        return entered, missing
 
     def run(self):
         try:
             self.progress.emit("Clicking Clear all...")
             time.sleep(2)
-            pyautogui.moveTo(*self.clear_pos, duration=0.2)
-            pyautogui.click()
-            time.sleep(0.5)
+            self._click(self.clear_pos, settle=0.5)
 
             for p_idx, hand in enumerate(self.hands):
                 name = PLAYER_NAMES[p_idx]
@@ -1015,12 +1193,24 @@ class AutomationWorker(QThread):
                     pyautogui.mouseUp()
                     time.sleep(0.08)
 
+            # Dealer / vulnerability sub-dialog. Runs BEFORE the main Ok
+            # because clicking Ok dismisses the Hand Input dialog along
+            # with the "Dealer + vul." button.
+            entered_meta, missing_meta = self._enter_dealer_vuln()
+
             self.progress.emit("Clicking OK...")
-            pyautogui.moveTo(*self.ok_pos, duration=0.2)
-            pyautogui.click()
-            self.done.emit(True, "Hand entered successfully.")
+            self._click(self.ok_pos, settle=0)
+
+            msg = "Hand entered successfully."
+            if entered_meta:
+                msg = msg.rstrip(".") + " (" + ", ".join(entered_meta) + ")."
+            if missing_meta:
+                msg += (" Set " + ", ".join(missing_meta) +
+                        " manually in Q-Plus, or capture the missing "
+                        "calibration points in the harness.")
+            self.finished.emit(True, msg)
         except Exception as exc:
-            self.done.emit(False, str(exc))
+            self.finished.emit(False, str(exc))
 
 
 # ---------------------------------------------------------------------------
@@ -1034,7 +1224,56 @@ DEFAULT_CALIBRATION = {
     "grid_br": None,
     "clear_btn": None,
     "ok_btn": None,
+    # Optional: dealer + vulnerability flow. Q-Plus's "Hand Input" dialog
+    # has a "Dealer + vul." button that opens a popup with N/E/S/W
+    # dealer radios, none/N-S/E-W/all vulnerability radios, and its own
+    # Ok button. When all 10 entries below are captured, AutomationWorker
+    # clicks "Dealer + vul.", picks the requested dealer + vuln on the
+    # popup, then clicks the popup's Ok — all before pressing the main
+    # Hand Input Ok. Without these captures the worker still enters the
+    # cards but leaves dealer/vuln for the user to set manually.
+    "dealer_vul_btn": None,   # "Dealer + vul." button on Hand Input
+    "dealer_n": None,         # popup: Dealer = North
+    "dealer_e": None,         # popup: Dealer = East
+    "dealer_s": None,         # popup: Dealer = South
+    "dealer_w": None,         # popup: Dealer = West
+    "vuln_none": None,        # popup: Vuln = none
+    "vuln_ns": None,          # popup: Vuln = N/S
+    "vuln_ew": None,          # popup: Vuln = E/W
+    "vuln_all": None,         # popup: Vuln = all
+    "dv_ok_btn": None,        # Ok button on the Dealer & Vulnerability popup
 }
+
+
+# Standard tokens we accept for dealer / vulnerability across CLI,
+# PBN files, and BDL files.
+DEALER_TOKENS = {"N", "E", "S", "W"}
+VULN_TOKENS   = {"None", "NS", "EW", "Both"}
+
+
+def normalize_dealer(s: str) -> str:
+    """Map any dealer spelling to a canonical 'N' / 'E' / 'S' / 'W'."""
+    if not s:
+        return ""
+    c = s.strip().upper()[:1]
+    return c if c in DEALER_TOKENS else ""
+
+
+def normalize_vuln(s: str) -> str:
+    """Map any vulnerability spelling to canonical 'None' / 'NS' / 'EW' / 'Both'."""
+    if not s:
+        return ""
+    v = s.strip().replace("-", "").replace(" ", "")
+    upper = v.upper()
+    if upper in ("NONE", "NIL", "-"):
+        return "None"
+    if upper in ("NS", "N/S"):
+        return "NS"
+    if upper in ("EW", "E/W"):
+        return "EW"
+    if upper in ("BOTH", "ALL", "B"):
+        return "Both"
+    return ""
 
 
 def load_calibration():
@@ -1051,7 +1290,12 @@ def save_calibration(data):
 
 
 def calibration_to_positions(cal):
-    """Derive grid_coords and player_positions from calibration data."""
+    """Derive grid_coords and player_positions from calibration data.
+
+    The first six fields (N/W checkboxes, grid corners, Clear/OK) are
+    required. Dealer / vulnerability positions are optional — when
+    captured, AutomationWorker reads them straight off `cal`.
+    """
     n = cal.get("north_chk")
     w = cal.get("west_chk")
     tl = cal.get("grid_tl")
@@ -1070,6 +1314,36 @@ def calibration_to_positions(cal):
     }
     grid_coords = interpolate_grid(tl, br)
     return grid_coords, player_positions, tuple(ok), tuple(clr)
+
+
+def dealer_vuln_positions(cal):
+    """Return (open_btn, dealer_positions, vuln_positions, popup_ok) for
+    the optional dealer + vulnerability entry flow.
+
+    `open_btn` and `popup_ok` are (x, y) tuples (or None). The two dicts
+    are keyed by canonical token ('N'/'NS'/etc.). AutomationWorker treats
+    the whole flow as "all-or-nothing": if any of these is missing the
+    dealer/vuln step is skipped and the user must set them by hand.
+    """
+    def _pt(key):
+        v = cal.get(key)
+        return tuple(v) if v else None
+
+    open_btn = _pt("dealer_vul_btn")
+    popup_ok = _pt("dv_ok_btn")
+    dealer = {
+        "N": _pt("dealer_n"),
+        "E": _pt("dealer_e"),
+        "S": _pt("dealer_s"),
+        "W": _pt("dealer_w"),
+    }
+    vuln = {
+        "None": _pt("vuln_none"),
+        "NS":   _pt("vuln_ns"),
+        "EW":   _pt("vuln_ew"),
+        "Both": _pt("vuln_all"),
+    }
+    return open_btn, dealer, vuln, popup_ok
 
 
 # ---------------------------------------------------------------------------
@@ -1107,15 +1381,26 @@ class CaptureButton(QPushButton):
 
 
 class BridgeHarness(QMainWindow):
-    def __init__(self):
+    def __init__(self, launch_qplus: bool = True):
         super().__init__()
         self.setWindowTitle("Bridge Harness \u2014 Q-Plus Bridge")
-        self.setMinimumSize(780, 700)
+        # 16 calibration rows + the source / display panels make the
+        # Hand Entry tab tall — start the window comfortably tall so
+        # the capture buttons aren't squished together.
+        self.setMinimumSize(900, 900)
+        self.resize(1000, 1000)
 
         self.hands = None          # [N, E, S, W] card lists
         self.calibration = load_calibration()
         self._worker = None
         self._source_pbn_path = None  # for workflow
+        self._qplus_proc = None       # Popen handle for the Q-Plus child
+        # Dealer / vulnerability for the loaded deal (normalised tokens).
+        # bridgeIQ passes these on --dealer / --vuln so the closed-room
+        # entry in Q-Plus matches the open-room conditions. Empty string
+        # means "no value yet — user enters manually".
+        self.dealer = ""           # one of "" / "N" / "E" / "S" / "W"
+        self.vulnerability = ""    # one of "" / "None" / "NS" / "EW" / "Both"
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_entry_tab(), "Hand Entry")
@@ -1124,10 +1409,114 @@ class BridgeHarness(QMainWindow):
 
         self.statusBar().showMessage("Ready")
 
-    def closeEvent(self, event):
-        if self._worker is not None and self._worker.isRunning():
-            self._worker.wait(5000)
-        super().closeEvent(event)
+        # The harness drives Q-Plus through its window \u2014 auto-launch
+        # Q-Plus on startup so users always see them together. Callers
+        # that have already launched Q-Plus (the wrapping run.sh script)
+        # can pass launch_qplus=False to suppress the second instance.
+        if launch_qplus:
+            self._launch_qplus_if_installed()
+
+    def _qplus_install_dir(self):
+        """Path of the installed Q-Plus directory, or None if not installed."""
+        for subdir in ("WP/drive_c/games/qbridge17",
+                       "WP/drive_c/games/qbridge15"):
+            candidate = FRI_DIR / subdir
+            if candidate.is_dir():
+                return candidate
+        return None
+
+    def _qplus_own_deals_dir(self):
+        """Path to Q-Plus's DATA/OWN-DEALS/ directory, or None."""
+        qd = self._qplus_install_dir()
+        if qd is None:
+            return None
+        cand = qd / "DATA" / "OWN-DEALS"
+        return cand if cand.is_dir() else None
+
+    def _write_bde_deal(self):
+        """Write the loaded deal as a .BDE file in Q-Plus's OWN-DEALS folder.
+
+        Replaces the per-card pyautogui pickboard automation. After
+        the file is written the user opens Q-Plus → Own Deals →
+        Open → pick the file, and Q-Plus's own engine auto-plays
+        the deal. Returns the file path on success, None on failure.
+        """
+        if self.hands is None:
+            QMessageBox.warning(self, "Error", "No deal loaded.")
+            return None
+        own_dir = self._qplus_own_deals_dir()
+        if own_dir is None:
+            QMessageBox.warning(self, "Q-Plus not found",
+                                "Could not locate Q-Plus's DATA/OWN-DEALS "
+                                "directory under FRI/WP. Install Q-Plus or "
+                                "fall back to the Pickboard automation.")
+            return None
+        # Stable filename so re-running this rewrites the same file
+        # — useful when Q-Plus's "recent files" remembers it.
+        fname = "BRIDGEIQ_RELAY.BDE"
+        path = own_dir / fname
+        # Honour the dealer / vulnerability the user has set (or that
+        # bridgeIQ passed via --dealer / --vuln). Default to N / None
+        # when unset.
+        dealer = (self.dealer or "N").strip().upper()[:1]
+        vuln = (self.vulnerability or "None")
+        try:
+            label = f"BB-{datetime.now().strftime('%H%M%S')}"
+        except Exception:
+            label = "BB"
+        text = hands_to_bde_text(self.hands, dealer=dealer, vuln=vuln,
+                                 label=label,
+                                 description="Relayed from bridgeIQ")
+        try:
+            path.write_text(text, encoding="latin-1")
+        except Exception as ex:
+            QMessageBox.warning(self, "Write failed", str(ex))
+            return None
+        self.statusBar().showMessage(
+            f"Wrote {fname} to OWN-DEALS/ — load it in Q-Plus via "
+            f"Own Deals → Open."
+        )
+        return str(path)
+
+    def _launch_qplus_if_installed(self):
+        """Spawn Q-Plus in the background under wine. No-op if it isn't
+        installed (the harness still works for other workflows in that
+        case), or if `wine` is missing."""
+        import shutil
+        import subprocess
+        qplus_dir = self._qplus_install_dir()
+        if qplus_dir is None:
+            self.statusBar().showMessage(
+                "Ready (Q-Plus not installed under FRI/WP \u2014 comparison "
+                "workflow disabled).")
+            return
+        # bridgeHarness.sh sources launcher/lib/wine_runner.sh which
+        # exports WINE / WINESERVER / WINELOADER pointing at the
+        # Lutris runner pinned for qplus.sh in
+        # config/wine_runners.csv (lutris-6.21-6-x86_64). Prefer that
+        # absolute path over PATH lookup so we use the same wine
+        # version the regular launcher uses \u2014 /usr/bin/wine renders
+        # Q-Plus's Hand Input dialog with empty card-glyph boxes.
+        wine_bin = os.environ.get('WINE') or shutil.which('wine')
+        if not wine_bin:
+            self.statusBar().showMessage(
+                "Ready (wine not installed \u2014 Q-Plus cannot launch).")
+            return
+        env = os.environ.copy()
+        env['WINEPREFIX'] = str(FRI_DIR / "WP")
+        env['WINEARCH'] = 'win32'
+        try:
+            self._qplus_proc = subprocess.Popen(
+                [wine_bin, 'QBRIDGE.EXE'],
+                cwd=str(qplus_dir),
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.statusBar().showMessage(f"Q-Plus launched (PID {self._qplus_proc.pid}).")
+        except Exception as ex:
+            self.statusBar().showMessage(f"Q-Plus launch failed: {ex!r}")
+            self._qplus_proc = None
 
     def load_source(self, path: str, game_name: str = ""):
         """Pre-load a PBN or BDL file into the Comparison Workflow tab.
@@ -1168,6 +1557,12 @@ class BridgeHarness(QMainWindow):
                     self._show_deal(self.hands, self.wf_hand_display, self.wf_base72)
                     self._show_deal(self.hands, self.hand_display, self.base72_display)
                     self._update_info()
+                    # Pull dealer/vuln out of the source so the harness
+                    # can write them into Q-Plus matching the original.
+                    self.set_dealer_vuln(
+                        boards[0].get("Dealer", ""),
+                        boards[0].get("Vulnerable", ""),
+                    )
         except Exception as exc:
             self.statusBar().showMessage(f"Could not parse source: {exc}")
 
@@ -1183,36 +1578,61 @@ class BridgeHarness(QMainWindow):
         self.tabs.setCurrentIndex(1)
         self.statusBar().showMessage(f"Source loaded: {Path(pbn_path).name}")
 
-    def load_base72(self, code: str, game_name: str = ""):
-        """Pre-load a deal from a base-72 Pavlicek code.
+    def set_dealer_vuln(self, dealer: str, vuln: str):
+        """Set the dealer + vulnerability that the next "Enter Deal"
+        action should write into Q-Plus.
 
-        Called via --base72 CLI argument by the wBridge5 / bb12 post-game
-        flow: the launcher converts PBN -> BDL, extracts the deal's
-        base-72 code, and starts the harness with it so the user doesn't
-        have to re-enter the hand for the Q-Plus comparison step.
+        Tokens are normalised; bad inputs leave the previous value in
+        place. The status bar and the dealer/vuln display widget (if
+        the entry tab is built) both reflect the new state.
         """
-        code = code.strip()
+        d = normalize_dealer(dealer) if dealer else ""
+        v = normalize_vuln(vuln) if vuln else ""
+        if d:
+            self.dealer = d
+        if v:
+            self.vulnerability = v
+        self._update_dealer_vuln_display()
+        parts = []
+        if self.dealer:
+            parts.append(f"dealer = {self.dealer}")
+        if self.vulnerability:
+            parts.append(f"vuln = {self.vulnerability}")
+        if parts:
+            self.statusBar().showMessage(
+                "From bridgeIQ: " + ", ".join(parts))
+
+    def _update_dealer_vuln_display(self):
+        """Refresh the on-screen dealer/vulnerability summary, if built."""
+        lbl = getattr(self, "dv_display", None)
+        if lbl is None:
+            return
+        d = self.dealer or "(not set)"
+        v = self.vulnerability or "(not set)"
+        lbl.setText(f"Dealer: {d}    Vulnerability: {v}")
+
+    def load_base72(self, code: str):
+        """Pre-load a deal by base-72 code into the Hand Entry tab.
+
+        Used by bridgeIQ after each hand so the host can immediately
+        replay the deal in Q-Plus for closed-room comparison.
+        """
+        code = (code or "").strip()
         if not code:
             return
         try:
             self.hands = base72_to_deal(code)
         except Exception as exc:
-            self.statusBar().showMessage(f"Invalid base-72 code: {exc}")
+            self.statusBar().showMessage(f"Bad base-72 code: {exc}")
             return
-
+        self.rb_base72.setChecked(True)
+        self.input_field.setText(code)
         self._show_deal(self.hands, self.hand_display, self.base72_display)
-        self._show_deal(self.hands, self.wf_hand_display, self.wf_base72)
         self._update_info()
-
-        if game_name:
-            idx = self.wf_game_name.findText(game_name.lower())
-            if idx >= 0:
-                self.wf_game_name.setCurrentIndex(idx)
-            else:
-                self.wf_game_name.setEditText(game_name.lower())
-
-        self.tabs.setCurrentIndex(1)
-        self.statusBar().showMessage(f"Loaded base-72 code: {code}")
+        # Hand Entry tab is index 0; bring it forward so the harness opens
+        # ready for the user to click Enter Deal into Q-Plus.
+        self.tabs.setCurrentIndex(0)
+        self.statusBar().showMessage(f"Deal loaded from base-72: {code}")
 
     # ---- Hand Entry tab ---------------------------------------------------
 
@@ -1242,6 +1662,16 @@ class BridgeHarness(QMainWindow):
         self.info_label = QLabel("")
         self.info_label.setFont(QFont("Monospace", 10))
         left.addWidget(self.info_label)
+
+        # Dealer / Vulnerability summary — populated from --dealer / --vuln
+        # passed by bridgeIQ, or by manually parsing the source file.
+        # Shown so the user can verify what the harness will set in Q-Plus.
+        self.dv_display = QLabel("Dealer: (not set)    Vulnerability: (not set)")
+        self.dv_display.setFont(QFont("Monospace", 11))
+        self.dv_display.setStyleSheet(
+            "background-color: #f0f4ff; border: 1px solid #889;"
+            " padding: 4px; font-weight: bold;")
+        left.addWidget(self.dv_display)
 
         layout.addLayout(left, stretch=1)
 
@@ -1293,31 +1723,96 @@ class BridgeHarness(QMainWindow):
 
         right.addWidget(src_group)
 
-        # Calibration
-        cal_group = QGroupBox("Q-Plus Pickboard Calibration")
-        cal_layout = QFormLayout(cal_group)
-        self._cap_buttons = {}
-        for key, label in [
-            ("north_chk", "North checkbox"),
-            ("west_chk", "West checkbox"),
-            ("grid_tl", "Ace of Spades (top-left)"),
-            ("grid_br", "Two of Clubs (bottom-right)"),
-            ("clear_btn", "Clear all button"),
-            ("ok_btn", "OK button"),
-        ]:
-            btn = CaptureButton(label)
-            btn.captured.connect(lambda pos, k=key: self._on_capture(k, pos))
-            coord_label = QLabel(self._fmt_coord(self.calibration.get(key)))
-            self._cap_buttons[key] = (btn, coord_label)
-            row = QHBoxLayout()
-            row.addWidget(btn)
-            row.addWidget(coord_label)
-            cal_layout.addRow(row)
-        right.addWidget(cal_group)
+        # Calibration — 16 capture rows, broken into "core pickboard" and
+        # "dealer/vuln popup" sections so the user can tell which set is
+        # required vs optional. Wrapped in a scroll area so the right
+        # panel stays usable even when the window is shrunk.
+        cal_group = QGroupBox("Q-Plus Calibration")
+        cal_outer = QVBoxLayout(cal_group)
 
-        # Enter button
-        self.enter_btn = QPushButton("Enter Deal into Q-Plus")
-        self.enter_btn.setStyleSheet("font-weight: bold; padding: 8px;")
+        cal_scroll = QScrollArea()
+        cal_scroll.setWidgetResizable(True)
+        cal_scroll.setFrameStyle(0)
+        cal_scroll.setMinimumHeight(280)
+        cal_inner = QWidget()
+        cal_layout = QVBoxLayout(cal_inner)
+        cal_layout.setSpacing(6)
+        cal_layout.setContentsMargins(2, 2, 2, 2)
+
+        self._cap_buttons = {}
+        sections = [
+            ("Pickboard dialog (required)", [
+                ("north_chk", "North checkbox"),
+                ("west_chk", "West checkbox"),
+                ("grid_tl", "Ace of Spades (top-left)"),
+                ("grid_br", "Two of Clubs (bottom-right)"),
+                ("clear_btn", "Clear all button"),
+                ("ok_btn", "OK button"),
+            ]),
+            ("Dealer + Vulnerability popup (optional)", [
+                ("dealer_vul_btn", "'Dealer + vul.' button"),
+                ("dealer_n", "Dealer popup: North"),
+                ("dealer_e", "Dealer popup: East"),
+                ("dealer_s", "Dealer popup: South"),
+                ("dealer_w", "Dealer popup: West"),
+                ("vuln_none", "Vuln popup: none"),
+                ("vuln_ns", "Vuln popup: N/S"),
+                ("vuln_ew", "Vuln popup: E/W"),
+                ("vuln_all", "Vuln popup: all"),
+                ("dv_ok_btn", "Dealer/Vuln popup OK"),
+            ]),
+        ]
+        for section_title, entries in sections:
+            section_lbl = QLabel(section_title)
+            section_lbl.setStyleSheet(
+                "font-weight: bold; color: #335; padding: 4px 0 2px 0;")
+            cal_layout.addWidget(section_lbl)
+            for key, label in entries:
+                btn = CaptureButton(label)
+                btn.setMinimumHeight(28)
+                btn.captured.connect(lambda pos, k=key: self._on_capture(k, pos))
+                coord_label = QLabel(self._fmt_coord(self.calibration.get(key)))
+                coord_label.setMinimumWidth(110)
+                coord_label.setStyleSheet("color: #557;")
+                self._cap_buttons[key] = (btn, coord_label)
+                row = QHBoxLayout()
+                row.setSpacing(8)
+                row.setContentsMargins(0, 0, 0, 0)
+                row.addWidget(btn, stretch=1)
+                row.addWidget(coord_label)
+                row_widget = QWidget()
+                row_widget.setLayout(row)
+                cal_layout.addWidget(row_widget)
+        cal_layout.addStretch()
+        cal_scroll.setWidget(cal_inner)
+        cal_outer.addWidget(cal_scroll)
+        right.addWidget(cal_group, stretch=1)
+
+        # Two entry paths:
+        #   1. Write deal to Q-Plus's OWN-DEALS folder as a .BDE
+        #      file. Fast, reliable, no per-card mouse-click chain.
+        #      Q-Plus picks it up via Own Deals → Open. This is the
+        #      preferred path.
+        #   2. Drive the pickboard dialog with pyautogui. The legacy
+        #      path — kept as a fallback for setups where the .BDE
+        #      file workflow doesn't fit.
+        self.write_bde_btn = QPushButton("Write Deal to OWN-DEALS/ (.BDE)")
+        self.write_bde_btn.setStyleSheet(
+            "font-weight: bold; padding: 8px; background-color: #cfe4ff;")
+        self.write_bde_btn.setToolTip(
+            "Write the loaded deal as a Q-Plus .BDE file in the OWN-DEALS\n"
+            "directory. Then in Q-Plus: Own Deals → Open → pick the file.\n"
+            "Q-Plus will then auto-play the deal — no per-card clicking.")
+        self.write_bde_btn.clicked.connect(self._write_bde_deal)
+        right.addWidget(self.write_bde_btn)
+
+        self.enter_btn = QPushButton(
+            "Enter Deal via Pickboard (slow, fallback)")
+        self.enter_btn.setStyleSheet("padding: 8px;")
+        self.enter_btn.setToolTip(
+            "Legacy path: opens Q-Plus's Hand Input dialog and clicks\n"
+            "all 52 cards via pyautogui. Use only when the .BDE file\n"
+            "workflow above is not available.")
         self.enter_btn.clicked.connect(self._enter_deal)
         right.addWidget(self.enter_btn)
 
@@ -1402,7 +1897,7 @@ class BridgeHarness(QMainWindow):
         name_row.addWidget(QLabel("Source game:"))
         self.wf_game_name = QComboBox()
         self.wf_game_name.setEditable(True)
-        self.wf_game_name.addItems(["wbridge5", "benbridge", "bb12", "tenace"])
+        self.wf_game_name.addItems(["wbridge5", "bridgeIQ", "bb12", "tenace"])
         name_row.addWidget(self.wf_game_name, stretch=1)
         s4_layout.addLayout(name_row)
 
@@ -1555,6 +2050,14 @@ class BridgeHarness(QMainWindow):
                     board = boards[0]
                 deal_str = board.get("Deal", "")
                 self.hands = parse_pbn_deal_string(deal_str)
+                # Pull dealer + vulnerability out of the loaded board
+                # so the harness can write them into Q-Plus matching
+                # the source file. parse_bdl_file / parse_pbn_file
+                # both stuff these on the board dict.
+                self.set_dealer_vuln(
+                    board.get("Dealer", ""),
+                    board.get("Vulnerable", ""),
+                )
             elif src == 3:  # Base-72
                 code = self.input_field.text().strip()
                 if not code:
@@ -1595,22 +2098,31 @@ class BridgeHarness(QMainWindow):
             QMessageBox.warning(self, "Error", "Calibration incomplete. Capture all 6 points first.")
             return
 
+        # Optional dealer / vulnerability — passed via --dealer/--vuln
+        # from bridgeIQ so the closed-room deal in Q-Plus is set up
+        # under the same conditions as the open-room game.
+        dv_open, dealer_positions, vuln_positions, dv_ok = \
+            dealer_vuln_positions(self.calibration)
+
         self.enter_btn.setEnabled(False)
         self.wf_enter_btn.setEnabled(False)
-        self._worker = AutomationWorker(hands, grid_coords, player_pos, ok_pos, clear_pos)
+        self._worker = AutomationWorker(
+            hands, grid_coords, player_pos, ok_pos, clear_pos,
+            dealer=self.dealer,
+            vuln=self.vulnerability,
+            dv_open_btn=dv_open,
+            dealer_positions=dealer_positions,
+            vuln_positions=vuln_positions,
+            dv_ok_btn=dv_ok,
+        )
         self._worker.progress.connect(lambda msg: self.statusBar().showMessage(msg))
-        self._worker.done.connect(self._on_automation_done)
+        self._worker.finished.connect(self._on_automation_done)
         self._worker.start()
 
     def _on_automation_done(self, success, msg):
         self.enter_btn.setEnabled(True)
         self.wf_enter_btn.setEnabled(True)
-        # Wait for QThread to fully unwind before dropping our reference,
-        # otherwise the C++ destructor fires while isRunning() is still true
-        # and Qt aborts with "QThread: Destroyed while thread is still running".
-        if self._worker is not None:
-            self._worker.wait(2000)
-            self._worker = None
+        self._worker = None
         if success:
             self.statusBar().showMessage(msg)
         else:
@@ -1642,7 +2154,7 @@ class BridgeHarness(QMainWindow):
 
             # Auto-detect source game name from path
             p = Path(path)
-            for name in ["wbridge5", "wBridge5", "benbridge", "bridgebaron", "bb12"]:
+            for name in ["wbridge5", "wBridge5", "bridgeIQ", "bridgebaron", "bb12"]:
                 if name.lower() in str(p).lower():
                     idx = self.wf_game_name.findText(name.lower())
                     if idx >= 0:
@@ -1661,6 +2173,10 @@ class BridgeHarness(QMainWindow):
             self._show_deal(self.hands, self.wf_hand_display, self.wf_base72)
             self._show_deal(self.hands, self.hand_display, self.base72_display)
             self._update_info()
+            self.set_dealer_vuln(
+                board.get("Dealer", ""),
+                board.get("Vulnerable", ""),
+            )
         except ValueError:
             pass
 
@@ -1808,23 +2324,29 @@ class BridgeHarness(QMainWindow):
 def main():
     import argparse
 
-    # Parse --source / --base72 / --game before QApplication consumes Qt args
+    # Parse --source and --game before QApplication consumes Qt args
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--source", default="", help="Pre-load PBN/BDL into Comparison Workflow")
-    parser.add_argument("--base72", default="", help="Pre-load deal from base-72 Pavlicek code")
     parser.add_argument("--game", default="", help="Source game name (wbridge5, bb12, etc.)")
+    parser.add_argument("--base72", default="", help="Pre-load a deal by base-72 code")
+    parser.add_argument("--dealer", default="", help="Dealer seat (N / E / S / W)")
+    parser.add_argument("--vuln", default="", help="Vulnerability (None / NS / EW / Both)")
+    parser.add_argument("--no-launch-qplus", action="store_true",
+                        help="Don't auto-launch Q-Plus (caller has already launched it)")
     known, remaining = parser.parse_known_args()
 
     app = QApplication(remaining)
     app.setStyle("Fusion")
 
-    window = BridgeHarness()
+    window = BridgeHarness(launch_qplus=not known.no_launch_qplus)
     window.show()
 
-    if known.base72:
-        window.load_base72(known.base72, game_name=known.game)
-    elif known.source:
+    if known.source:
         window.load_source(known.source, game_name=known.game)
+    if known.base72:
+        window.load_base72(known.base72)
+    if known.dealer or known.vuln:
+        window.set_dealer_vuln(known.dealer, known.vuln)
 
     sys.exit(app.exec_())
 

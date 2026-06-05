@@ -7,7 +7,7 @@ the FRI/afterGameReport directory, calculate your score as described
 below, and then enter your score using the launcher.
 
 Note: these OKRs can be completed with any of the bridge programs
-available on FRI (bcalc, Q-plus Bridge, benBridge, Bridge Baron 12,
+available on FRI (bcalc, Q-plus Bridge, bridgeIQ, Bridge Baron 12,
 wBridge5, tenace).  FRI also includes dual_nback (memory training)
 and mathQuiz (mental math training) as supplementary exercises.
 
@@ -59,7 +59,7 @@ Watch an instructional bridge video (see FRI/DOC/instructionalBridgeVideos.txt)
 Practice hand evaluation: evaluate 10 hands using the methods
 described in FRI/DOC/evaluatingBridgeHands.md
 
-Play a session using benBridge and review the AI's explanations
+Play a session using bridgeIQ and review the AI's explanations
 ---------------------------------------------------------------
 OKR #2, 1
 

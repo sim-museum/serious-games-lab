@@ -1,11 +1,9 @@
-To Run the Application
-
-  cd /home/g/sgl/FRI/bridgeIQ
-  ./run.sh
-
-  Or manually:
-  source /home/g/sgl/FRI/bridgeIQ/venv/bin/activate
-  cd ben_bridge && python3 main.py
-
-bridgeIQ uses a tuned custom rule-based engine (bidding, leads, play).
-See claude.md for details.
+ To Run the Application                                                                                        
+                                                                                                                
+  cd /home/g/sgl/MON/bridge/bridgeIQ                                                                        
+  ./run.sh                                                                                                      
+                                                                                                                
+  Or manually:                                                                                                  
+  source /home/g/sgl/MON/bridge/.venv/bin/activate                                                              
+  export PYTHONPATH="bridgeIQ:ben/src:$PYTHONPATH"                                                          
+  python bridgeIQ/main.py       

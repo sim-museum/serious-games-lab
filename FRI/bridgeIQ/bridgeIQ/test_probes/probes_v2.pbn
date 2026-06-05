@@ -1,0 +1,200 @@
+% PBN 2.1
+[Event "BridgeIQ Card-Play Probes v2"]
+[Site "?"]
+[Date "2026.05.23"]
+[Generator "BridgeIQ probes v2 — Q-Plus-safe layouts"]
+[Scoring "IMP"]
+
+% Design constraints (lessons from v1):
+%
+%   * No suit longer than 5 cards. Q-Plus appears to hang or crash
+%     when declarer or dummy runs a 6+ card solid suit through the
+%     defenders' discards — that's the pattern that hung qbridge.exe
+%     on probe-05 and triggered the C++ exception 0x0eefface on the
+%     PBN run.
+%   * No voids.
+%   * Game-level contracts only (3NT, 4♥, 4♠, 5m).
+%   * Forced via [Auction] so the bidder is skipped and we test
+%     card play in isolation.
+%
+% Each probe targets ONE specific defensive / declarer convention
+% with the test position in the first 4-5 tricks (before any long
+% run forces deep search).
+
+% ======================================================================
+[Board "1"]
+[Title "PROBE-09 Smith echo — attitude on declarer's first side suit"]
+[Dealer "S"]
+[Vulnerable "None"]
+[Deal "N:842.AK6.KJ7.A876 965.842.T63.JT52 AKQT3.97.AQ4.KQ3 J7.QJT53.9852.94"]
+[Declarer "S"]
+[Contract "4S"]
+[Auction "S"]
+1S Pass 3S Pass
+4S Pass Pass Pass
+
+% Smith convention: after partner's opening lead, the first card a
+% defender plays in declarer's first non-trump side suit signals
+% attitude TOWARD the opening lead.
+%   high-then-low (echo) = "I liked your lead, continue when in"
+%   low-then-high       = "I didn't, switch"
+%
+% Expected sequence:
+%   T1: W leads HQ (top of QT53). Dummy's HA wins.
+%   T2: declarer leads trump. Defenders follow.
+%   T3: declarer leads more trump or attacks clubs / diamonds.
+%   When declarer attacks a side suit (probably clubs), E follows
+%   with C2 or CT.
+%     - CT = high small → echo high → "continue hearts when in"
+%     - C2 = lowest      → discourage hearts
+%
+% What we learn from Q-Plus's pick: whether it plays Smith echo
+% (which Q-Plus's signal-conv menu offers as an option) or just
+% follows lowest-equivalent.
+
+% ======================================================================
+[Board "2"]
+[Title "PROBE-10 Trump promotion / uppercut"]
+[Dealer "S"]
+[Vulnerable "None"]
+[Deal "N:Q543.AK.QJT9.J63 J2.Q86.AK87.Q987 AKT76.743.652.AK 98.JT952.43.T542"]
+[Declarer "S"]
+[Contract "4S"]
+[Auction "S"]
+1S Pass 2S Pass
+4S Pass Pass Pass
+
+% Trump promotion / uppercut: defender forces declarer or dummy to
+% ruff with a small trump, partner overruffs to promote a trump
+% trick partner wouldn't otherwise have.
+%
+% Trump suit AKT76 in S, Q543 in N. Defenders hold J2 (W) and 98
+% (E). On paper declarer loses no trump trick.
+%
+% Expected sequence:
+%   T1: W leads DA, dummy follows.
+%   T2: W leads DK, dummy follows.
+%   T3: W leads D8. Dummy MUST ruff. Dummy has Q543.
+%        If dummy ruffs with Q → E plays 9 (useless). No promotion.
+%        If dummy ruffs with 3 → E plays 9 → declarer must overruff
+%        with T or higher. Now W's J becomes a winner. ← uppercut.
+%   T4: declarer is in. Plays trump. E plays 9, S plays T (or A),
+%        W plays J → W's J wins (promoted by the uppercut at T3).
+%
+% What we learn: does Q-Plus's E play the 9 (uppercut) at T3, or
+% just the 8 (low)? If E plays 9, that's a textbook uppercut.
+
+% ======================================================================
+[Board "3"]
+[Title "PROBE-11 Defender holdup — Bath Coup"]
+[Dealer "S"]
+[Vulnerable "None"]
+[Deal "N:T87.J96.QJ72.A54 6.KQ4.9654.T9862 A954.T532.AT.KJ7 KQJ32.A87.K83.Q3"]
+[Declarer "S"]
+[Contract "3NT"]
+[Auction "S"]
+1NT Pass 3NT Pass
+Pass Pass
+
+% Bath Coup variant — defender's hold-up to break communications.
+%
+% S declares 3NT with 16 HCP (AKxxx clubs + S the A) and N has 11
+% HCP. Combined 27 — enough for 9 tricks if defenders don't run
+% spades first. W leads SK from KQJ32.
+%
+% Expected sequence:
+%   T1: W leads SK. Dummy plays ST. S has A954.
+%        If S grabs (plays A): now S's 954 left, W's QJ32 ready.
+%        W wins next 3 spade tricks → 3NT goes -2.
+%        If S holds up (plays low): W has KQJ32 still — but on
+%        return after winning DK or HA, W must lead an honor again
+%        into S's A. The "Bath Coup" classically applies when
+%        declarer has Axx vs opp's KQJxx — duck once, win the
+%        return.
+%   Q-Plus's choice tells us: does the declarer-side engine
+%   recognise Bath Coup with 4-card spade stopper?
+
+% ======================================================================
+[Board "4"]
+[Title "PROBE-12 Suit preference on a discard (short suit)"]
+[Dealer "S"]
+[Vulnerable "None"]
+[Deal "N:AQ74.AK3.K85.762 JT983.J9.J63.QT9 K2.Q765.AT72.AK4 65.T842.Q94.J853"]
+[Declarer "S"]
+[Contract "3NT"]
+[Auction "S"]
+1NT Pass 3NT Pass
+Pass Pass
+
+% Suit-preference signal on a discard, using a 5-card run (not a
+% 6+ card slam-run). S declares 3NT. Dummy has AQ74 of spades —
+% declarer will run 4 spade tricks (after the K drops or finesse
+% holds). On the 4th spade, one defender is short and discards.
+%
+% Expected sequence:
+%   T1: W leads SJ (top of JT983).
+%   T2: dummy SA, S follows.
+%   T3: dummy SQ, finesse picking up the J or K. Whoever wins
+%        spades, declarer runs 3-4 of them.
+%   T4-5: W has JT983 of spades but only 5 cards — discards on
+%        round 4 if forced. W's first discard is the test.
+%
+% A high discard from suit X signals "want suit X", a low one says
+% "don't want." With JT983 in spades, W's discards come from H J9
+% / D J63 / C QT9. Picking a HIGH diamond suggests "want diamonds"
+% (high = high-ranking suit). Picking a LOW heart suggests "want
+% nothing" — give count signal instead. Q-Plus's choice tells us
+% which signal system applies on short-suit discards.
+
+% ======================================================================
+[Board "5"]
+[Title "PROBE-13 Avoidance retry — finesse RHO not LHO"]
+[Dealer "S"]
+[Vulnerable "None"]
+[Deal "N:K43.A752.K85.A93 QJT.9863.J742.J6 A75.KQ4.A93.QT54 9862.JT.QT6.K872"]
+[Declarer "S"]
+[Contract "3NT"]
+[Auction "S"]
+1NT Pass 3NT Pass
+Pass Pass
+
+% Re-tests PROBE-02 (avoidance) with cleaner hands. S declares 3NT.
+% S holds KQ4 of hearts — needs to develop a 9th trick. Two
+% finesse choices for the club Q (or J, depending on layout):
+%   * Lead toward dummy → finesse W. If W has KJ or QJ, succeeds.
+%   * Lead from dummy → finesse E. If E has KJ or QJ, succeeds.
+% Each is a 50/50 in isolation — but the dangerous opp differs by
+% layout. E has the long diamond suit and would punish declarer's
+% AH if E gets in. W is safer (has only diamond support, no entries
+% if E discards).
+%
+% Q-Plus's choice of which finesse direction reveals the avoidance
+% rule from a cleaner position than PROBE-02.
+
+% ======================================================================
+[Board "6"]
+[Title "PROBE-14 Cover-honor retry — at trick 2-3"]
+[Dealer "S"]
+[Vulnerable "None"]
+[Deal "N:T64.A4.AJ72.QT63 Q97.K875.K83.AJ8 AKJ.QJ62.95.K754 8532.T93.QT64.92"]
+[Declarer "S"]
+[Contract "3NT"]
+[Auction "S"]
+1NT Pass 3NT Pass
+Pass Pass
+
+% Re-tests PROBE-04 (cover an honor) at a much earlier trick. S
+% declares 3NT. Dummy has ♠T64. Declarer leads ♠T from dummy at
+% trick 2 (after winning the opening lead), planning to drop
+% E's honor by force.
+%
+% Expected: E has Q97 of spades. When dummy leads ♠T:
+%   - Cover with Q → declarer wins ♠K or ♠A, defenders take ♠9
+%     (now promoted) eventually.
+%   - Duck (play 7) → declarer's T wins, declarer can next lead
+%     small toward AKJ to repeat.
+%
+% Standard rule: cover an honor IF promotion in partner's hand is
+% likely. With W holding ♠8532 (no honors), cover is wrong —
+% nothing to promote. Q-Plus's choice reveals whether it covers
+% mechanically or evaluates the position.

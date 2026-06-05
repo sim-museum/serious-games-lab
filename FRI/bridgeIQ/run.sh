@@ -1,11 +1,11 @@
 #!/bin/bash
-# Launch bridgeIQ — bridge with a tuned custom rule-based engine
+# Launch the BridgeIQ AI
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Pidfile dir for background Claude critiques (see ben_bridge/ui/game_logger.py).
+# Pidfile dir for background Claude critiques (see bridgeIQ/ui/game_logger.py).
 # Polled at script exit so the launcher doesn't move the BDL mid-insert.
-CRITIQUE_PID_DIR="/tmp/ben_bridge_critiques_$$"
+CRITIQUE_PID_DIR="/tmp/bridgeIQ_critiques_$$"
 export CRITIQUE_PID_DIR
 mkdir -p "$CRITIQUE_PID_DIR"
 
@@ -16,9 +16,16 @@ fi
 
 source venv/bin/activate
 
+# --- Self-heal: confirm the system DDS library is reachable ---
+# bridgeIQ/backend/dds.py loads libdds.so.0 via ctypes find_library.
+# The system libdds0 apt package provides the SONAME directly.
+if ! ldconfig -p 2>/dev/null | grep -q 'libdds\.so'; then
+    echo "WARNING: libdds not found. Install with: sudo apt install libdds0"
+fi
+
 # --- Launch ---
 
-cd ben_bridge
+cd bridgeIQ
 [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
 python3 main.py "$@" 2>/dev/null
 exit_code=$?
@@ -55,7 +62,7 @@ if [[ -d "$CRITIQUE_PID_DIR" ]]; then
 fi
 
 # --- Chain to Q-Plus Bridge for comparison ---
-# Find the newest BDL from this session (ben writes .bdl; .pbn/.ppl are derived later)
+# Find the newest BDL from this session (.bdl is the canonical log; .pbn/.ppl are derived later)
 _newest_bdl=""
 _newest_bdl_mod=0
 while IFS= read -r -d '' f; do
@@ -64,7 +71,7 @@ while IFS= read -r -d '' f; do
         _newest_bdl="$f"
         _newest_bdl_mod="$fmod"
     fi
-done < <(find "$SCRIPT_DIR/ben/DATA/LOG" -maxdepth 1 -name "*.bdl" -type f -print0 2>/dev/null)
+done < <(find "$SCRIPT_DIR/bridgeIQ/DATA/LOG" -maxdepth 1 -name "*.bdl" -type f -print0 2>/dev/null)
 
 if [[ -n "$_newest_bdl" ]]; then
     echo "Found BDL: $_newest_bdl"
@@ -91,7 +98,7 @@ if [[ -n "$_newest_bdl" ]]; then
         # come up at the same time.
         echo ""
         echo "Launching Q-Plus Bridge and GUI Harness..."
-        echo "Use the Comparison Workflow tab (source is pre-loaded from bridgeIQ)."
+        echo "Use the Comparison Workflow tab (source is pre-loaded from BridgeIQ)."
         echo "  1. In Q-Plus: Own Deals → Enter, then click 'Enter into Q-Plus' in harness"
         echo "  2. Play the hand in Q-Plus — do NOT exit Q-Plus yet"
         echo "  3. In harness: click 'Auto-detect latest' to find Q-Plus log"
@@ -120,10 +127,10 @@ if [[ -n "$_newest_bdl" ]]; then
             fi
             python3 bridge_harness.py \
                 --source "$(realpath "$_newest_bdl")" \
-                --game benbridge 2>/dev/null
+                --game bridgeIQ 2>/dev/null
         )
         cd "$SCRIPT_DIR"
     fi
 else
-    echo "(No BDL found in $SCRIPT_DIR/ben/DATA/LOG/ — skipping Q-Plus comparison)"
+    echo "(No BDL found in $SCRIPT_DIR/bridgeIQ/DATA/LOG/ — skipping Q-Plus comparison)"
 fi

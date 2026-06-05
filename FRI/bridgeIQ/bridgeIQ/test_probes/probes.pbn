@@ -1,0 +1,115 @@
+% PBN 2.1
+[Event "BridgeIQ Card-Play Probes"]
+[Site "?"]
+[Date "2026.05.23"]
+[Generator "BridgeIQ probes v2"]
+[Scoring "IMP"]
+
+% Each probe forces the intended contract via the [Auction] tag so
+% Q-Plus skips the bidding phase entirely. This lets us test
+% card-play heuristics in isolation — no risk of the auction
+% overshooting into a slam, no risk of the long-suit-run hanging
+% Q-Plus's autoplay engine.
+
+% ======================================================================
+[Board "1"]
+[Title "PROBE-01 Hold-up by declarer in 5-card opp suit"]
+[Dealer "S"]
+[Vulnerable "None"]
+[Deal "N:32.KQJ.AKJ.KQJT9 975.T73.T984.A82 AK4.A65.Q72.6543 QJT86.9842.653.7"]
+[Declarer "S"]
+[Contract "3NT"]
+[Auction "S"]
+1NT Pass 3NT Pass
+Pass Pass
+
+% ======================================================================
+[Board "2"]
+[Title "PROBE-02 Avoidance — finesse safe opp"]
+[Dealer "S"]
+[Vulnerable "None"]
+[Deal "N:KJ3.Q642.AK7.Q98 T862.983.T5.J542 A75.A7.J62.AK763 Q94.KJT5.Q9843.T"]
+[Declarer "S"]
+[Contract "3NT"]
+[Auction "S"]
+1NT Pass 3NT Pass
+Pass Pass
+
+% ======================================================================
+[Board "3"]
+[Title "PROBE-03 Third-hand-high vs count signal"]
+[Dealer "S"]
+[Vulnerable "None"]
+[Deal "N:654.AKQ.KQJ.KJT9 Q72.T65.942.8764 AK.J73.AT63.AQ53 JT983.9842.875.2"]
+[Declarer "S"]
+[Contract "3NT"]
+[Auction "S"]
+1NT Pass 3NT Pass
+Pass Pass
+
+% ======================================================================
+[Board "4"]
+[Title "PROBE-04 Cover an honor with an honor"]
+[Dealer "S"]
+[Vulnerable "None"]
+[Deal "N:T4.AK654.AKQJ.65 Q95.T73.987.Q987 A32.QJ2.63.AKJ43 KJ876.98.T542.T2"]
+[Declarer "S"]
+[Contract "4H"]
+[Auction "S"]
+1NT Pass 2D Pass
+2H Pass 4H Pass
+Pass Pass
+
+% ======================================================================
+[Board "5"]
+[Title "PROBE-05 Suit-preference signal on a discard"]
+[Dealer "S"]
+[Vulnerable "None"]
+[Deal "N:32.KQJT98.AKQ.K4 Q54.743.JT76.876 AK6.A2.5432.A532 JT987.65.98.QJT9"]
+[Declarer "N"]
+[Contract "6H"]
+[Auction "S"]
+1NT Pass 2D Pass
+2H Pass 4NT Pass
+5C Pass 6H Pass
+Pass Pass
+
+% ======================================================================
+[Board "6"]
+[Title "PROBE-06 Attitude on partner's opening lead"]
+[Dealer "S"]
+[Vulnerable "None"]
+[Deal "N:Q853.T54.QJT9.T4 642.AK8.32.QJ987 9.QJ96.AK54.AK52 AKJT7.732.876.63"]
+[Declarer "W"]
+[Contract "4S"]
+[Auction "S"]
+1NT 2S Double Pass
+2NT Pass 3D Pass
+3S Pass 4S Pass
+Pass Pass
+
+% ======================================================================
+[Board "7"]
+[Title "PROBE-07 End-play / throw-in"]
+[Dealer "S"]
+[Vulnerable "None"]
+[Deal "N:KJ5.Q63.AKQJ4.43 Q432.KJ42.765.Q8 A76.A.32.AKJT952 T98.T9875.T98.76"]
+[Declarer "S"]
+[Contract "5C"]
+[Auction "S"]
+1C Pass 1D Pass
+2NT Pass 3C Pass
+5C Pass Pass Pass
+
+% ======================================================================
+[Board "8"]
+[Title "PROBE-08 Discard suit choice"]
+[Dealer "S"]
+[Vulnerable "None"]
+[Deal "N:Q42.AKQJT9.K6.K6 T96.876.987432.A AKJ3.-.A5.Q875432 875.5432.QJT.JT9"]
+[Declarer "S"]
+[Contract "5C"]
+[Auction "S"]
+1C Pass 1H Pass
+3C Pass 5C Pass
+Pass Pass
