@@ -38,10 +38,10 @@ _game_output_patterns() {
             echo ".|*.ppl"
             echo ".|*.bdl"
             ;;
-        benBridge/run.sh)
-            echo "./benBridge/ben/DATA/LOG|*.bdl"
-            echo "./benBridge/ben/DATA/LOG|*.pbn"
-            echo "./benBridge/ben/DATA/LOG|*.ppl"
+        bridgeIQ/run.sh)
+            echo "./bridgeIQ/ben/DATA/LOG|*.bdl"
+            echo "./bridgeIQ/ben/DATA/LOG|*.pbn"
+            echo "./bridgeIQ/ben/DATA/LOG|*.ppl"
             echo ".|*.pbn"
             echo ".|*.bdl"
             ;;
@@ -150,7 +150,7 @@ _game_save_label() {
         scid.sh|nibbler.sh|banksiaGui.sh|chessmaster/chessmaster.sh) echo "PGN game file" ;;
         wBridge5.sh|qplus.sh|bcalc.sh|tenace.sh)                    echo "PBN/BDL deal file" ;;
         bb12/bb12.sh)                                                echo "PPL deal file" ;;
-        benBridge/run.sh)                                            echo "PBN deal file" ;;
+        bridgeIQ/run.sh)                                            echo "PBN deal file" ;;
         run_katrain.sh|q5go.sh|sabaki.sh|igowin.sh|goreviewpartner.sh) echo "SGF game file" ;;
         pokerth.sh|pokerIQ/run.sh|generalPokerEvaluator.sh|pokerStove.sh) echo "session log" ;;
         *) ;;
@@ -167,7 +167,7 @@ _game_save_hint() {
         scid.sh)                     echo "In Scid: File > Save before exit" ;;
         wBridge5.sh)                 echo "In WBridge5: Save current deal as PBN before exit" ;;
         bb12/bb12.sh)                echo "In Bridge Baron 12: File > Save current deal (writes a .ppl file)" ;;
-        benBridge/run.sh)            echo "BEN writes PBN files to ben/DATA/LOG automatically when you finish a hand" ;;
+        bridgeIQ/run.sh)            echo "bridgeIQ writes PBN files to ben/DATA/LOG automatically when you finish a hand" ;;
         qplus.sh)                    echo "In Q-Plus Bridge: complete a deal so Q-Plus writes a BDL log to DATA/LOG/" ;;
         run_katrain.sh)              echo "In KaTrain: Save as SGF before exit" ;;
         q5go.sh)                     echo "In q5go: File > Save SGF before exit" ;;

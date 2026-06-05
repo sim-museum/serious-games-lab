@@ -1,5 +1,5 @@
 #!/bin/bash
-# Launch the Ben Bridge AI
+# Launch bridgeIQ — bridge with a tuned custom rule-based engine
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
@@ -25,7 +25,7 @@ exit_code=$?
 
 if [[ $exit_code -ne 0 ]]; then
     echo ""
-    echo "benBridge exited with error code $exit_code"
+    echo "bridgeIQ exited with error code $exit_code"
     echo "Re-run with verbose output:"
     echo "  cd $(pwd) && source ../venv/bin/activate && python3 main.py 2>&1 | head -50"
 fi
@@ -86,12 +86,12 @@ if [[ -n "$_newest_bdl" ]]; then
     else
         # Q-Plus is installed AND the harness is available — launch them
         # together automatically (no y/N prompt).  The harness is what
-        # converts the Q-Plus output back into a BEN-readable BDL after
+        # converts the Q-Plus output back into a bridgeIQ-readable BDL after
         # the user finishes the closed-room replay, so the two need to
         # come up at the same time.
         echo ""
         echo "Launching Q-Plus Bridge and GUI Harness..."
-        echo "Use the Comparison Workflow tab (source is pre-loaded from BEN Bridge)."
+        echo "Use the Comparison Workflow tab (source is pre-loaded from bridgeIQ)."
         echo "  1. In Q-Plus: Own Deals → Enter, then click 'Enter into Q-Plus' in harness"
         echo "  2. Play the hand in Q-Plus — do NOT exit Q-Plus yet"
         echo "  3. In harness: click 'Auto-detect latest' to find Q-Plus log"

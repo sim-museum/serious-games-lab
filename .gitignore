@@ -157,7 +157,7 @@ Thumbs.db
 ps-eval
 
 # Git-cloned dependencies (cloned during install)
-MON/benBridge/ben/
+FRI/bridgeIQ/ben/
 FRI/gui/lizgoban/
 
 # Doxygen generated docs (regenerate with: doxygen Doxyfile)

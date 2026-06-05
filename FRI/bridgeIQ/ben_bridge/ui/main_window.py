@@ -5924,7 +5924,7 @@ For more information, see the README file."""
             log_dir = Path(self.game_logger.log_dir).parent / "freeze_reports"
         except Exception:
             log_dir = Path(os.path.expanduser(
-                "~/.benBridge/freeze_reports"))
+                "~/.bridgeIQ/freeze_reports"))
         log_dir.mkdir(parents=True, exist_ok=True)
         path = log_dir / f"freeze-{ts}-{seat.to_char()}.txt"
 
@@ -6691,7 +6691,7 @@ For more information, see the README file."""
                 return
             code = int_to_base72(deal_to_number(hands))
             # bridgeHarness.sh sits at FRI/bridgeHarness.sh — three levels
-            # above this file (ui/main_window.py → ben_bridge → benBridge → FRI).
+            # above this file (ui/main_window.py → ben_bridge → bridgeIQ → FRI).
             script = os.path.normpath(os.path.join(
                 os.path.dirname(__file__), "..", "..", "..", "bridgeHarness.sh"
             ))

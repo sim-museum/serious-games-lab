@@ -35,7 +35,7 @@ apply_rowan_fixes() {
 
 case "$GAME_NAME" in
     bridge)
-        cd "$REPO_ROOT/FRI/benBridge" && source venv/bin/activate && python3 main.py "$@"
+        cd "$REPO_ROOT/FRI/bridgeIQ" && source venv/bin/activate && python3 main.py "$@"
         ;;
     claudemath)
         cd "$REPO_ROOT/FRI/mathQuiz" && source venv/bin/activate && python3 main.py "$@"

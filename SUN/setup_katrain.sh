@@ -19,7 +19,7 @@ echo "Setting up KaTrain in virtual environment..."
 # KaTrain 1.17.1 requires Python >=3.9,<3.14. Ubuntu 26.04 ships only 3.14
 # (no other interpreters in the archive), so probe for a compatible one and,
 # if none exists, provision Python 3.12 via uv (the same approach used for
-# benBridge in scripts/install_dependencies.sh — uv installs a self-contained
+# bridgeIQ in scripts/install_dependencies.sh — uv installs a self-contained
 # CPython into ~/.local/share/uv/python with no system modifications).
 pick_python() {
     local p
