@@ -639,6 +639,15 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
         ctx.last_4nt_bidder = s_4nt
         ctx.slam_zone_entered = True
 
+        # The natural call immediately before the 4NT (skip passes/X).
+        prev_natural_nt = False
+        for _k in range(first_4nt_idx - 1, -1, -1):
+            _ps, _pb = state.bids[_k]
+            if _pb.is_pass or _pb.is_double or _pb.is_redouble:
+                continue
+            prev_natural_nt = (_pb.suit == _NT)
+            break
+
         # Gate 1: no trump candidate at all → quantitative.
         if ctx.trump is None and ctx.fallback_last_suit is None:
             ctx.last_4nt_is_quantitative = True
@@ -647,6 +656,13 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
         elif (ctx.trump is None
                 and ctx.opener_rebid_nt
                 and not ctx.opening_was_strong_artificial):
+            ctx.last_4nt_is_quantitative = True
+        # Gate 3: no trump agreed and the call right before the 4NT was a
+        # NT bid — the auction is in notrump (no fit), so 4NT is a
+        # quantitative slam invite, not keycards. Covers the strong-
+        # artificial 1C balanced auctions (1C-1NT/2NT-4NT, 1C-1M-2NT-4NT)
+        # that Gate 2 excludes.
+        elif ctx.trump is None and prev_natural_nt:
             ctx.last_4nt_is_quantitative = True
         else:
             ctx.last_4nt_is_rkc = True

@@ -1128,10 +1128,20 @@ def _asker_after_rkc(state: 'AuctionState', e: HandEval, system) -> Bid:
         return bid(5, Suit.NOTRUMP, alert=True,
                    why=f"RKC {variant}: {total}/5 keys + Q — asking for kings")
 
-    # 4 keys, no queen confirmed → small slam.
+    # 4 keys, no queen confirmed → small slam ONLY with a 9+ trump fit
+    # (the queen is then a non-issue) or extra values; otherwise sign off in
+    # 5 — a 4-key slam off the trump queen on a thin 8-card fit usually has a
+    # trump loser (seed 2444-61: 4 keys, no Q, 8-card fit, 28 combined → 6H
+    # down). The asker holding 5+ trumps implies a 9+ fit with partner.
     if total == 4:
-        return bid(6, trump,
-                   why=f"4/5 keys, queen unclear — small slam in {trump.to_char()}")
+        if e.suit_lengths.get(trump, 0) >= 5 or e.hcp >= 20:
+            return bid(6, trump,
+                       why=f"4/5 keys, no Q but 9+ fit / extras — "
+                           f"small slam in {trump.to_char()}")
+        return bid(5, trump,
+                   why=f"4/5 keys but queen missing + only "
+                       f"{e.suit_lengths.get(trump, 0)} trumps — "
+                       f"sign off in 5{trump.to_char()}")
 
     # All 5 keys but queen still unclear — small slam is safe.
     return bid(6, trump,
@@ -1390,6 +1400,18 @@ def _try_quantitative_4nt_pipeline(state: 'AuctionState', e: HandEval,
              if b.suit == Suit.NOTRUMP and not b.is_pass]
     if not my_nt:
         return None
+    # If I'm the RESPONDER to a strong artificial 1C, my NT bid was a
+    # POSITIVE (≈8-13), not a 1NT opening — so the 1NT-opening midpoint
+    # below is wrong (I'd always decline). Accept the invite with the top
+    # of my positive range (12+), decline with the bottom.
+    if (ctx.opening_was_strong_artificial
+            and ctx.opener_seat == state.seat.partner()):
+        if e.hcp >= 12:
+            return bid(6, Suit.NOTRUMP, alert=True,
+                       why=f"Accepting quantitative 4NT: top of positive "
+                           f"range ({e.hcp} HCP)")
+        return passb(why=f"Declining quantitative 4NT: minimum positive "
+                         f"({e.hcp} HCP)")
     # Decide based on where I was in my NT range: max → 6NT, min → pass.
     nt_min = (getattr(system, "one_nt_min_hcp", 15)
               if system is not None else 15)
@@ -4153,7 +4175,10 @@ def _precision_1c_rebid(state, e: HandEval, p_last: Bid, system=None) -> Bid:
 
     # Positive 1NT response (8-13 balanced)
     if p_last.level == 1 and p_last.suit == Suit.NOTRUMP:
-        if hcp >= 22 and e.is_balanced:
+        # 18+ balanced opposite an 8+ positive — invite slam (quantitative
+        # 4NT); responder accepts 6NT with the top of its range. (Was 22+,
+        # which essentially never fired.)
+        if hcp >= 18 and e.is_balanced:
             return bid(4, Suit.NOTRUMP, alert=True,
                        why="Precision 1C-1NT: quantitative slam invite")
         if e.suit_lengths[Suit.SPADES] >= 5:
@@ -4238,11 +4263,19 @@ def _precision_1c_rebid(state, e: HandEval, p_last: Bid, system=None) -> Bid:
             return passb(
                 why="Precision 1C-(intervention)-2NT: respect "
                     "partner's 8-11 with min opener")
-        if hcp >= 18:
+        # Opposite a 2NT positive (8-13 balanced), a strong-1C opener is in
+        # slam range: 20+ drives to 6NT; 17-19 INVITES via quantitative 4NT
+        # (responder accepts 6NT with 12-13, passes with 8-11). Was 18→blast
+        # / else 3NT — no invite, so 17-counts signed off in game and most
+        # balanced slams were missed.
+        if hcp >= 20:
             return bid(6, Suit.NOTRUMP,
-                       why="Precision 1C-2NT: 22+14 = slam in NT")
+                       why="Precision 1C-2NT: 20+ opposite positive — slam")
+        if hcp >= 17:
+            return bid(4, Suit.NOTRUMP, alert=True,
+                       why="Precision 1C-2NT: quantitative slam invite")
         return bid(3, Suit.NOTRUMP,
-                   why="Precision 1C-2NT: 22+14 = 3NT game")
+                   why="Precision 1C-2NT: 16 only — 3NT game")
 
     # Positive 3NT — DIRECT 1C-3NT only. Mainstream Precision treats
     # this as "17+ balanced, no slam interest"; opener accepts the
