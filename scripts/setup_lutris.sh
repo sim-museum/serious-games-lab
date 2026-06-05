@@ -7,6 +7,15 @@
 
 set -euo pipefail
 
+# Runners install under $HOME — running as root would put them in /root
+if [[ $EUID -eq 0 ]]; then
+    echo "Error: do not run this script with sudo."
+    echo "Runners install to ~/.local/share/lutris/runners/wine — as root"
+    echo "they would land in /root and Lutris/the launcher won't find them."
+    echo "Re-run as your normal user: ./setup_lutris.sh"
+    exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 CSV_FILE="$REPO_ROOT/config/wine_runners.csv"
@@ -74,8 +83,23 @@ download_and_extract() {
     fi
 
     echo "  Extracting to $RUNNERS_DIR/"
+    local before after
+    before="$(ls -1 "$RUNNERS_DIR")"
     tar -xJf "$tmpfile" -C "$RUNNERS_DIR/"
     rm -f "$tmpfile"
+
+    if [[ ! -d "$RUNNERS_DIR/$runner" ]]; then
+        # Some archives extract under a different name (e.g. Kron4ek's
+        # wine-9.22-staging-amd64) — if exactly one new directory appeared,
+        # rename it to the expected runner name.
+        after="$(ls -1 "$RUNNERS_DIR")"
+        local -a newdirs=()
+        mapfile -t newdirs < <(comm -13 <(sort <<<"$before") <(sort <<<"$after"))
+        if [[ ${#newdirs[@]} -eq 1 && -d "$RUNNERS_DIR/${newdirs[0]}" ]]; then
+            echo "  Renaming ${newdirs[0]} → $runner"
+            mv "$RUNNERS_DIR/${newdirs[0]}" "$RUNNERS_DIR/$runner"
+        fi
+    fi
 
     if [[ -d "$RUNNERS_DIR/$runner" ]]; then
         echo "  [OK] $runner installed"
@@ -119,6 +143,13 @@ get_download_urls() {
         local ver="${tag#lutris-}"
         echo "https://github.com/lutris/wine/releases/download/${tag}/${asset}"
         echo "https://github.com/lutris/wine/releases/download/lutris-wine-${ver}/${asset}"
+
+        # lutris/wine stopped publishing GitHub releases after 7.2; newer
+        # versions (e.g. 9.22-staging) are available from Kron4ek/Wine-Builds.
+        # Their archive extracts as wine-X.Y[-staging]-amd64 — the caller
+        # renames it to the expected runner directory name.
+        local kver="${ver%-staging}"
+        echo "https://github.com/Kron4ek/Wine-Builds/releases/download/${kver}/wine-${ver}-amd64.tar.xz"
     fi
 }
 

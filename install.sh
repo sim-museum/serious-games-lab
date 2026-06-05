@@ -432,26 +432,39 @@ else
                 continue
             fi
 
-            # Build download URL
+            # Build download URLs (primary + fallback — tag naming varies
+            # between lutris-X.Y and lutris-wine-X.Y across releases)
             asset="wine-${runner}.tar.xz"
             base_runner="$runner"
             base_runner="${base_runner%-x86_64}"
             base_runner="${base_runner%-i686}"
+            urls=()
 
             if [[ "$runner" == *GE-Proton* ]]; then
                 tag="${base_runner#lutris-}"
-                url="https://github.com/GloriousEggroll/wine-ge-custom/releases/download/${tag}/${asset}"
+                urls+=("https://github.com/GloriousEggroll/wine-ge-custom/releases/download/${tag}/${asset}")
             elif [[ "$runner" == *fshack* ]]; then
                 tag="${base_runner//-fshack/}"
-                url="https://github.com/lutris/wine/releases/download/${tag}/${asset}"
+                ver="${tag#lutris-}"
+                urls+=("https://github.com/lutris/wine/releases/download/${tag}/${asset}")
+                urls+=("https://github.com/lutris/wine/releases/download/lutris-wine-${ver}/${asset}")
             else
                 tag="$base_runner"
-                url="https://github.com/lutris/wine/releases/download/${tag}/${asset}"
+                ver="${tag#lutris-}"
+                urls+=("https://github.com/lutris/wine/releases/download/${tag}/${asset}")
+                urls+=("https://github.com/lutris/wine/releases/download/lutris-wine-${ver}/${asset}")
             fi
 
             echo "  [DOWNLOAD] $runner ..."
             tmpfile="$(sudo -u "$REAL_USER" mktemp /tmp/runner-XXXXXX.tar.xz)"
-            if sudo -u "$REAL_USER" curl -fSL --progress-bar -o "$tmpfile" "$url"; then
+            downloaded=false
+            for url in "${urls[@]}"; do
+                if sudo -u "$REAL_USER" curl -fSL --progress-bar -o "$tmpfile" "$url"; then
+                    downloaded=true
+                    break
+                fi
+            done
+            if $downloaded; then
                 sudo -u "$REAL_USER" tar -xJf "$tmpfile" -C "$RUNNERS_DIR/"
                 rm -f "$tmpfile"
                 if [[ -d "$RUNNERS_DIR/$runner" ]]; then

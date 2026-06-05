@@ -68,6 +68,23 @@ if [ -d "$DL/sglBinaries_1" ]; then
         base="$(basename "$f")"
         [ -e "$REPO_ROOT/$base" ] && rm -f "$f" 2>/dev/null || true
     done
+    # Relocate FreeFalcon/FalconAF content from the archive's old flat layout
+    # (scripts and data at SAT/ day level) into the per-game directories the
+    # launcher config expects (SAT/freeFalcon/, SAT/FalconAF/)
+    for item in FF6d FF6_Balkans3_www.g4g.it FF6_FreeFalcon5_Cockpit_Pack_www.g4g.it FF6_ITOv4c_www.g4g.it mods; do
+        if [ -e "$REPO_ROOT/SAT/INSTALL/$item" ] && [ ! -e "$REPO_ROOT/SAT/freeFalcon/INSTALL/$item" ]; then
+            mkdir -p "$REPO_ROOT/SAT/freeFalcon/INSTALL"
+            mv "$REPO_ROOT/SAT/INSTALL/$item" "$REPO_ROOT/SAT/freeFalcon/INSTALL/"
+        fi
+    done
+    if [ -d "$REPO_ROOT/SAT/INSTALL/FalconAF" ] && [ ! -d "$REPO_ROOT/SAT/FalconAF/INSTALL/FalconAF" ]; then
+        mkdir -p "$REPO_ROOT/SAT/FalconAF/INSTALL"
+        mv "$REPO_ROOT/SAT/INSTALL/FalconAF" "$REPO_ROOT/SAT/FalconAF/INSTALL/"
+    fi
+    # Old flat day-level scripts from the archive are superseded by the
+    # per-game copies; drop them if the per-game script is present
+    [ -f "$REPO_ROOT/SAT/freeFalcon/freeFalcon.sh" ] && rm -f "$REPO_ROOT/SAT/freeFalcon.sh"
+    [ -f "$REPO_ROOT/SAT/FalconAF/FalconAF.sh" ] && rm -f "$REPO_ROOT/SAT/FalconAF.sh"
     touch "$DL/.extracted_sglBinaries_1.tar.gz"
 fi
 
@@ -131,7 +148,7 @@ touch "$DL/.extracted_sglBinaries_6.tar.gz"
 
 # --- sglBinaries_7 ---
 move_file "sglBinaries_7" "falcon4Cd.iso"                                                     "SAT/BMS435/INSTALL"
-move_file "sglBinaries_7" "FalconAF.iso"                                                      "SAT/INSTALL"
+move_file "sglBinaries_7" "FalconAF.iso"                                                      "SAT/FalconAF/INSTALL"
 move_file "sglBinaries_7" "Add-On Vietnam 4.35.U1.2.zip"                                     "SAT/BMS435/INSTALL"
 move_file "sglBinaries_7" "Israel Theater 1.05.4v Patch.zip"                                 "SAT/BMS435/INSTALL"
 move_file "sglBinaries_7" "bms-4.35.3-radar-xml-patch.exe"                                   "SAT/BMS435/INSTALL"
