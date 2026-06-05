@@ -44,6 +44,16 @@ leaks, levels-of-thinking), god mode, session + lifetime stats (localStorage),
 and 8 trainers (AKQ, Jam-or-Fold, Indifference, MTT/ICM, Variance·Edge·Bankroll,
 Calibration, Mindset, Range-narrowing).
 
+**Training mode (Theory of Mind screen)** — a top-bar Training toggle swaps the
+table for the full ToM analysis screen (`tomlogic.js` + `tom.js`): no-peek
+equity-vs-estimated-ranges, the Phil Gordon "Little Green Book" advisor (hand
+tiers, combo nicknames, two-question script + four setup questions), per-opponent
+13×13 range grids with board-connection highlighting + betting-history reads, the
+Hero pot-commitment / SPR panel with a 4×13 outs board, Outs / Scare-cards, a
+range-mode radio (opps weak / neutral / strong), EV-tagged action buttons, and
+the 3×3 decision dashboard (MDF, bluff-catch, range advantage, reverse-implied,
+Nash push, realized equity, VPIP/PFR/AGF, tilt, risk-of-ruin).
+
 **Intentionally dropped** (cannot run in a sandboxed single file):
 - **LAN multiplayer** — browsers can't open raw TCP sockets.
 - **Claude hand-analysis** — relied on shelling out to the `claude` CLI.

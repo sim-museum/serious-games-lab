@@ -11,7 +11,7 @@ const SRC = path.join(__dirname, 'src');
 const OUT = path.join(__dirname, '..', 'pokerIQ.html');
 
 const css = fs.readFileSync(path.join(SRC, 'styles.css'), 'utf8');
-const order = ['engine.js', 'game.js', 'bots.js', 'analytics.js', 'ui.js', 'trainers.js', 'main.js'];
+const order = ['engine.js', 'game.js', 'bots.js', 'analytics.js', 'tomlogic.js', 'tom.js', 'ui.js', 'trainers.js', 'main.js'];
 const js = order.map(f => `// ===== ${f} =====\n` + fs.readFileSync(path.join(SRC, f), 'utf8')).join('\n\n');
 
 const html = `<!DOCTYPE html>

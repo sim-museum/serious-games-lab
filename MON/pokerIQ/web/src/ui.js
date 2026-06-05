@@ -39,6 +39,9 @@
       this.lastStreet = 'Preflop';
       this.history = null;        // structured per-hand history (building)
       this.lastHistory = null;    // last completed hand's history (for summary)
+      this.training = !!opts.training;   // ToM training screen on/off
+      this.tomTab = 'advisor';    // active ToM tab
+      this.rangeMode = 'neutral'; // 'loose'(opps weak) | 'neutral' | 'tight'(opps strong)
 
       this.game = new PG.Game({
         rng: opts.rng || Math.random,
@@ -193,6 +196,136 @@
       this.onHandEnd(result);
     }
 
+    // derive a player's action-tag set this hand from the history
+    actionTagsFor(seat) {
+      const tags = new Set();
+      if (!this.history) return tags;
+      let preflopRaises = 0;
+      this.history.streets.forEach((st, sIdx) => {
+        for (const a of st.actions) {
+          if (a.seat !== seat) continue;
+          if (sIdx === 0) {
+            if (a.action === 'raise') { preflopRaises++; }
+          } else {
+            if (a.action === 'raise') tags.add(a.opening ? 'bet_postflop' : 'raised_postflop');
+            else if (a.action === 'call') tags.add('called_postflop');
+          }
+        }
+      });
+      if (preflopRaises >= 4) tags.add('five_bet_plus');
+      else if (preflopRaises === 3) tags.add('four_bet');
+      else if (preflopRaises === 2) tags.add('three_bet');
+      else if (preflopRaises === 1) tags.add('raised');
+      return tags;
+    }
+
+    // Gordon's four setup-question answers, from the opponent model
+    gordonSetup() {
+      const T = root.PokerToMLogic;
+      // field aggregate VPIP/PFR
+      let v = 0, p = 0, n = 0;
+      for (const pl of this.game.players) {
+        if (pl.isHuman) continue;
+        const s = this.oppModel.stats[pl.name];
+        if (!s || s.hands < 3) continue;
+        const seen = s.hands; v += (s.vpip || 0); p += (s.pfr || 0); n += seen;
+      }
+      let style = 'n/a yet (need a few hands of sample)';
+      if (n >= 6) { const vp = 100 * v / n, pf = 100 * p / n; const tag = vp < 20 ? 'TIGHT' : vp < 35 ? 'NORMAL' : 'LOOSE'; style = `<b>${tag}</b> · field VPIP ${vp.toFixed(0)}%, PFR ${pf.toFixed(0)}% · n=${n}`; }
+      // hero image
+      let image = 'no sample yet';
+      const hs = this.oppModel.stats['Hero (You)'];
+      if (hs && hs.hands >= 3) { const vp = 100 * (hs.vpip || 0) / hs.hands, pf = 100 * (hs.pfr || 0) / hs.hands; const tag = vp < 20 ? 'TIGHT image' : vp < 35 ? 'balanced image' : 'LOOSE image'; const tail = vp < 20 ? 'they fold to your bets, fold-equity is high' : vp < 35 ? 'standard respect' : 'they call you down — value-bet thin, bluff less'; image = `<b>${tag}</b> · your VPIP ${vp.toFixed(0)}% / PFR ${pf.toFixed(0)}% · ${tail}`; }
+      const posMap = { UTG: '<b style="color:#ff7777">EARLY</b> — act first; play tight.', MP: '<b style="color:#ffd966">MIDDLE</b> — neutral.', CO: '<b style="color:#88ff88">LATE</b> — second-best seat; wide opens profitable.', BTN: '<b style="color:#88ff88">LATE</b> — best seat; widest open range.', SB: '<b style="color:#ff7777">BLIND</b> — out of position post-flop; -EV seat.', BB: '<b style="color:#ff7777">BLIND</b> — out of position post-flop; -EV seat.' };
+      return { style, ranges: 'see per-bot tabs — each opponent\'s estimated range narrows as the betting progresses', image, position: posMap[this.game.positionOf(0)] || 'n/a' };
+    }
+
+    // Full Theory-of-Mind snapshot for the training screen.
+    tomData() {
+      const T = root.PokerToMLogic, g = this.game, hero = g.players[0];
+      const street = this.streetName();
+      const toCall = Math.max(0, g.currentBet - hero.betInRound);
+      const potOdds = (g.pot + toCall) > 0 ? toCall / (g.pot + toCall) : 0;
+      const oppsActive = g.activePlayers().filter(pp => pp !== hero);
+      const mode = this.rangeMode;
+
+      // per-opponent estimated ranges
+      const opponents = g.players.filter(pp => !pp.isHuman).map(pp => {
+        const tags = this.actionTagsFor(pp.seat);
+        const er = T.estimateRange(pp.style, mode, tags, g.board);
+        return { name: pp.name, active: pp.active, range: er.range, notation: er.notation, explanation: er.explanation, boardHits: er.boardHits };
+      });
+
+      // no-peek equity vs active opponents' ranges
+      let equity = null;
+      if (hero.hand.length && hero.active) {
+        const ranges = oppsActive.map(pp => {
+          const tags = this.actionTagsFor(pp.seat);
+          return T.estimateRange(pp.style, mode, tags, g.board).range;
+        });
+        equity = ranges.length ? T.equityVsRanges(hero.hand, g.board, ranges, { iterations: this.opts.equityIters || 350, rng: g.rng }) : null;
+        if (equity == null) equity = this.heroEquity;   // fall back to vs-random
+      }
+      const equityPct = equity != null ? equity * 100 : null;
+
+      // outs + scare + commitment
+      const outs = T.computeOuts(hero.hand, g.board);
+      const scare = T.scareCards(hero.hand, g.board);
+      const commit = { pot: g.pot, toCall, stack: hero.stack };
+
+      // implied label
+      const avgOpp = oppsActive.length ? oppsActive.reduce((a, pp) => a + pp.stack, 0) / oppsActive.length : 0;
+      const eff = Math.min(hero.stack, avgOpp);
+      const impliedPct = (toCall > 0) ? 100 * toCall / (g.pot + toCall + 0.5 * eff) : null;
+      const unraised = street === 'Preflop' && toCall > 0 && g.currentBet <= g.bb();
+      const potOddsLabel = toCall > 0
+        ? `${(potOdds * 100).toFixed(1)}%${unraised ? ' (unraised — not a fold signal)' : ''}`
+        : 'no bet';
+      const impliedLabel = impliedPct != null ? `${impliedPct.toFixed(1)}% ($${hero.stack - toCall} behind)` : '--';
+
+      // advisor (Gordon)
+      const lastAggr = this.lastAggressorSeat();
+      const ctx = {
+        pot: g.pot, toCall, potOdds, currentBet: g.currentBet, numOpponents: oppsActive.length || 1,
+        bb: g.bb(), heroStack: hero.stack, heroPosition: g.positionOf(0), street,
+        heroHand: hero.hand, equity: equity || 0, board: g.board,
+        noPeekEquity: equity, hasInitiative: lastAggr === 0,
+      };
+      const key = T.handToKey(hero.hand);
+      const advice = (hero.hand.length && key) ? T.gordonAdvice(ctx, key, this.gordonSetup()) : null;
+      const potOddsHeader = T.potOddsHeader(ctx);
+
+      // metrics
+      const m = T.metrics(ctx);
+      m.tilt = (() => { const t = this.tilt.update(this.stats.decisionTimes); return t.tilted ? 45 : Math.min(20, this.stats.decisionTimes.length); })();
+      m.ror = this.stats.lifetimeHands >= 100 ? this.stats.riskOfRuin(2000) * 100 : 100;
+      m.vpip = (hs => hs && hs.hands ? 100 * (hs.vpip || 0) / hs.hands : null)(this.oppModel.stats['Hero (You)']);
+      m.realized = this.stats.sessionHands >= 3 ? 100 : null;
+
+      // EV per action (for the action bar)
+      const evCtx = { pot: g.pot, currentBet: g.currentBet, betInRound: hero.betInRound, board: g.board.length, bb: g.bb(), playerStack: hero.stack, oppStacks: oppsActive.map(pp => pp.stack) };
+      const eqForEv = equity != null ? equity : 0;
+      const evCall = PA.heroActionEV(evCtx, 'c', eqForEv, 0);
+      const evRaise = PA.heroActionEV(evCtx, 'r', eqForEv, Math.floor(g.pot * 0.66));
+
+      const posLongMap = { BT: 'Button', SB: 'Small Blind', BB: 'Big Blind', UTG: 'UTG', CO: 'Cutoff', MP: 'Middle' };
+      return {
+        board: g.board.slice(), heroHand: hero.hand.slice(), street,
+        pot: g.pot, equityPct, potOddsLabel, impliedLabel,
+        posLong: posLongMap[g.positionOf(0)] || g.positionOf(0),
+        outs, scare, commit, rangeMode: this.rangeMode, tab: this.tomTab,
+        opponents, advice, potOddsHeader, metrics: m,
+        evCheck: toCall === 0 ? 0 : evCall, evCall, evRaise,
+      };
+    }
+
+    lastAggressorSeat() {
+      if (!this.history) return -1;
+      let seat = -1;
+      for (const st of this.history.streets) for (const a of st.actions) if (a.action === 'raise') seat = a.seat;
+      return seat;
+    }
+
     // full game-state snapshot for the view
     snapshot() {
       const g = this.game;
@@ -222,6 +355,8 @@
         events: this.events.slice(),
         handResult: this.handResult,
         revealVillains, heroFolded,
+        training: this.training,
+        tom: this.training ? this.tomData() : null,
         godMode: this.godMode, showTells: this.showTells,
         session: {
           hands: this.stats.sessionHands, bb100: this.stats.sessionBbPer100,
@@ -261,6 +396,7 @@
             <span id="piq-session" class="muted"></span>
           </div>
           <div class="piq-menu">
+            <label class="train-toggle" id="piq-train"><span class="tt-knob"></span><span class="tt-lab">Training</span></label>
             <button data-act="tells" class="ghost">Tells</button>
             <button data-act="god" class="ghost">God</button>
             <button data-act="trainers" class="ghost">Trainers ▾</button>
@@ -268,17 +404,20 @@
             <button data-act="help" class="ghost">?</button>
           </div>
         </div>
-        <div class="piq-felt">
-          <div class="piq-board" id="piq-board"></div>
-          <div class="piq-pot" id="piq-pot"></div>
-          <div class="piq-seats" id="piq-seats"></div>
-          <div class="piq-result" id="piq-result" style="display:none"></div>
+        <div class="table-view" id="piq-tableview">
+          <div class="piq-felt">
+            <div class="piq-board" id="piq-board"></div>
+            <div class="piq-pot" id="piq-pot"></div>
+            <div class="piq-seats" id="piq-seats"></div>
+            <div class="piq-result" id="piq-result" style="display:none"></div>
+          </div>
+          <div class="piq-bottom">
+            <div class="piq-feed" id="piq-feed"></div>
+            <div class="piq-advisor" id="piq-advisor"></div>
+          </div>
         </div>
-        <div class="piq-bottom">
-          <div class="piq-feed" id="piq-feed"></div>
-          <div class="piq-advisor" id="piq-advisor"></div>
-          <div class="piq-actions" id="piq-actions"></div>
-        </div>
+        <div class="tom-view" id="piq-tomview" style="display:none"></div>
+        <div class="piq-footer"><div class="piq-actions" id="piq-actions"></div></div>
         <div class="piq-modal" id="piq-modal" style="display:none"></div>`;
       this.el = {
         hand: this.root.querySelector('#piq-hand'),
@@ -292,6 +431,9 @@
         advisor: this.root.querySelector('#piq-advisor'),
         actions: this.root.querySelector('#piq-actions'),
         modal: this.root.querySelector('#piq-modal'),
+        tableView: this.root.querySelector('#piq-tableview'),
+        tomView: this.root.querySelector('#piq-tomview'),
+        train: this.root.querySelector('#piq-train'),
       };
       this.root.querySelector('.piq-menu').addEventListener('click', e => {
         const act = e.target.getAttribute('data-act'); if (!act) return;
@@ -299,38 +441,60 @@
         else if (act === 'tells') { this.ctrl.showTells = !this.ctrl.showTells; this.ctrl.render(); }
         else if (this.onMenu) this.onMenu(act);
       });
+      this.el.train.addEventListener('click', () => { this.ctrl.training = !this.ctrl.training; this.ctrl.render(); });
+      // delegated clicks inside the ToM view (tabs + range-mode radio)
+      this.el.tomView.addEventListener('click', e => {
+        const tab = e.target.closest('[data-tab]'); if (tab) { this.ctrl.tomTab = tab.getAttribute('data-tab'); this.ctrl.render(); return; }
+        const rm = e.target.closest('[data-mode]'); if (rm) { this.ctrl.rangeMode = rm.getAttribute('data-mode'); this.ctrl.render(); return; }
+      });
     }
 
     render(s) {
       this.el.hand.textContent = `Hand #${s.handNumber} · ${s.street}`;
       this.el.blinds.textContent = `Blinds $${s.sb}/$${s.bb}`;
       this.el.session.textContent = `Session ${s.session.hands}h · ${s.session.bb100 >= 0 ? '+' : ''}${s.session.bb100.toFixed(1)} bb/100`;
+      this.el.train.classList.toggle('on', s.training);
 
-      // board
-      this.el.board.innerHTML = s.board.map(c => cardHTML(c, false)).join('') ||
-        '<span class="muted">— preflop —</span>';
-      this.el.pot.innerHTML = `<span class="chip"></span> Pot $${s.pot}`;
+      if (s.training) {
+        this.el.tableView.style.display = 'none';
+        this.el.tomView.style.display = 'block';
+        this.el.tomView.innerHTML = root.PokerToM.render(s.tom);
+      } else {
+        this.el.tomView.style.display = 'none';
+        this.el.tableView.style.display = 'flex';
+        // board
+        this.el.board.innerHTML = s.board.map(c => cardHTML(c, false)).join('') ||
+          '<span class="muted">— preflop —</span>';
+        this.el.pot.innerHTML = `<span class="chip"></span> Pot $${s.pot}`;
+        this.el.seats.innerHTML = s.players.map(p => this.seatHTML(p, s)).join('');
+        this.el.feed.innerHTML = s.events.map(e => `<div>${escapeHTML(e)}</div>`).join('');
+        this.el.advisor.innerHTML = s.advisor ? this.advisorHTML(s.advisor) : '';
+      }
 
-      // seats
-      this.el.seats.innerHTML = s.players.map(p => this.seatHTML(p, s)).join('');
-
-      // feed
-      this.el.feed.innerHTML = s.events.map(e => `<div>${escapeHTML(e)}</div>`).join('');
-
-      // advisor
-      this.el.advisor.innerHTML = s.advisor ? this.advisorHTML(s.advisor) : '';
-
-      // actions
+      // shared action footer (with EV labels in training mode)
       this.el.actions.innerHTML = '';
-      if (s.awaitingHero && s.legal) this.buildActions(s.legal);
-      else if (!s.handResult) this.el.actions.innerHTML = '<span class="muted">…bots acting</span>';
+      if (s.handResult) this.buildEndActions(s);
+      else if (s.awaitingHero && s.legal) this.buildActions(s.legal, s.training ? s.tom : null);
+      else this.el.actions.innerHTML = '<span class="muted">…bots acting</span>';
 
-      // result overlay
-      if (s.handResult) this.showResult(s.handResult, s); else this.el.result.style.display = 'none';
+      // result overlay only in table mode
+      if (s.handResult && !s.training) this.showResult(s.handResult, s);
+      else this.el.result.style.display = 'none';
 
-      // toggle button states
       this.root.querySelector('[data-act="god"]').classList.toggle('on', s.godMode);
       this.root.querySelector('[data-act="tells"]').classList.toggle('on', s.showTells);
+    }
+
+    buildEndActions(s) {
+      const wrap = this.el.actions;
+      const heroNet = (s.handResult.net.find(n => n.seat === 0) || { net: 0 }).net;
+      const lbl = document.createElement('span'); lbl.className = 'end-net ' + (heroNet >= 0 ? 'pos' : 'neg');
+      lbl.textContent = `Hand #${s.handNumber}: you ${heroNet >= 0 ? 'win' : 'lose'} $${Math.abs(heroNet)}`;
+      const sum = document.createElement('button'); sum.className = 'btn summary'; sum.textContent = 'Hand summary';
+      sum.onclick = () => this.showHandSummary(this.ctrl.lastHistory);
+      const next = document.createElement('button'); next.className = 'btn next'; next.textContent = 'Next hand →';
+      next.onclick = () => this.ctrl.newHand();
+      wrap.append(lbl, sum, next);
     }
 
     seatHTML(p, s) {
@@ -371,12 +535,14 @@
         <div class="adv-verdict">▸ ${a.verdict}</div>`;
     }
 
-    buildActions(legal) {
+    buildActions(legal, tom) {
       const wrap = this.el.actions;
+      // EV sub-label (training mode shows EV under each action, as in the panel)
+      const ev = v => tom ? `<small class="ev ${v > 0.5 ? 'pos' : v < -0.5 ? 'neg' : 'neu'}">EV ${v >= 0 ? '+' : ''}$${v.toFixed(1)}</small>` : '';
       const mk = (label, cls, fn) => { const b = document.createElement('button'); b.className = cls; b.innerHTML = label; b.onclick = fn; wrap.appendChild(b); return b; };
-      mk('Fold', 'btn fold', () => this.ctrl.act('f', 0));
-      if (legal.canCheck) mk('Check', 'btn check', () => this.ctrl.act('c', 0));
-      else mk(`Call $${legal.toCall}`, 'btn call', () => this.ctrl.act('c', 0));
+      mk(`Fold${ev(0)}`, 'btn fold', () => this.ctrl.act('f', 0));
+      if (legal.canCheck) mk(`Check${ev(tom ? tom.evCheck : 0)}`, 'btn check', () => this.ctrl.act('c', 0));
+      else mk(`Call $${legal.toCall}${ev(tom ? tom.evCall : 0)}`, 'btn call', () => this.ctrl.act('c', 0));
       if (legal.canRaise) {
         const slider = document.createElement('input');
         slider.type = 'range'; slider.min = legal.minRaiseTo; slider.max = legal.maxRaiseTo;
@@ -384,7 +550,7 @@
         const out = document.createElement('span'); out.className = 'raise-amt';
         const sync = () => { out.textContent = '$' + slider.value; };
         slider.oninput = sync; sync();
-        const raiseBtn = mk('Raise to', 'btn raise', () => this.ctrl.act('r', parseInt(slider.value, 10)));
+        const raiseBtn = mk(`Raise${ev(tom ? tom.evRaise : 0)}`, 'btn raise', () => this.ctrl.act('r', parseInt(slider.value, 10)));
         // pot-fraction quick buttons
         const quick = document.createElement('div'); quick.className = 'quick';
         [['½', 0.5], ['¾', 0.75], ['Pot', 1.0], ['All-in', null]].forEach(([lbl, frac]) => {

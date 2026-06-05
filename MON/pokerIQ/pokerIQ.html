@@ -137,6 +137,88 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 
 @media(max-width:820px){.piq-bottom{grid-template-columns:1fr;}.piq-feed{grid-row:auto;height:120px;}.seat{width:170px;}}
 
+/* ============ Training toggle + Theory of Mind screen ============ */
+.train-toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;background:#1a2330;border:1px solid var(--line);border-radius:20px;padding:6px 14px 6px 8px;user-select:none;}
+.train-toggle .tt-knob{width:34px;height:18px;border-radius:10px;background:#3a4654;position:relative;transition:background .15s;}
+.train-toggle .tt-knob::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#cfd6df;transition:left .15s;}
+.train-toggle.on{border-color:var(--gold);} .train-toggle.on .tt-knob{background:var(--gold);} .train-toggle.on .tt-knob::after{left:18px;background:#1a1408;}
+.train-toggle .tt-lab{font-size:17px;font-weight:600;}
+
+.table-view{display:flex;flex-direction:column;flex:1;}
+.piq-footer{padding:0 24px 18px;} .piq-footer .piq-actions{justify-content:center;}
+.btn small.ev{display:block;font-size:13px;font-weight:600;margin-top:2px;opacity:.9;}
+.btn small.ev.pos{color:#0a3d18;} .btn small.ev.neg{color:#5a1410;} .btn.fold small.ev{color:#cdd6df;}
+.end-net{font-size:20px;font-weight:700;margin-right:14px;}
+
+/* ToM view */
+.tom-view{flex:1;display:flex;flex-direction:column;padding:14px 22px;gap:12px;overflow:auto;}
+.tom-strip{display:flex;align-items:center;gap:10px;background:#161d27;border:1px solid var(--line);border-radius:10px;padding:12px 16px;flex-wrap:wrap;}
+.tom-strip .ts-lab{color:var(--muted);font-size:18px;font-weight:600;}
+.tom-strip .ts-board{display:inline-flex;gap:5px;}
+.tom-strip .ts-board .card{width:40px;height:56px;} .tom-strip .ts-board .card b{font-size:18px;} .tom-strip .ts-board .card i{font-size:15px;}
+.tom-strip .ts-boardlabel{margin-left:auto;color:var(--gold);font-size:22px;font-weight:700;}
+.tom-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+.tom-metrics .tm{padding:12px 16px;border-radius:10px;font-size:21px;font-weight:700;border:1px solid var(--line);background:#11171f;}
+.tom-metrics .tm.yellow{color:#ffd84d;} .tom-metrics .tm.blue{color:#58a6ff;} .tom-metrics .tm.orange{color:#f0883e;} .tom-metrics .tm.purple{color:#a87fff;}
+.tom-outs{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.tom-outs .to-box{background:#11171f;border:1px solid var(--line);border-radius:8px;padding:9px 14px;font-weight:700;color:#7fe0a0;font-size:17px;}
+.tom-outs .to-box:nth-child(2){color:#f0883e;}
+.tom-outs .to-mode{margin-left:auto;display:flex;align-items:center;gap:12px;color:var(--muted);font-size:16px;}
+.rm{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--muted);}
+.rm .dot{width:13px;height:13px;border-radius:50%;border:2px solid #4a5663;display:inline-block;}
+.rm.weak.on{color:var(--pos);} .rm.weak.on .dot{background:var(--pos);border-color:var(--pos);}
+.rm.neu.on{color:var(--ink);} .rm.neu.on .dot{background:#cfd6df;border-color:#cfd6df;}
+.rm.strong.on{color:var(--neg);} .rm.strong.on .dot{background:var(--neg);border-color:var(--neg);}
+
+.tom-main{display:grid;grid-template-columns:1.25fr 1fr;gap:14px;flex:1;min-height:0;}
+.tom-left{background:#11171f;border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;min-height:0;}
+.tom-tabbar{display:flex;flex-wrap:wrap;gap:2px;border-bottom:1px solid var(--line);padding:6px 6px 0;}
+.tom-tab{background:#1a2330;color:var(--muted);border:0;border-radius:7px 7px 0 0;padding:9px 16px;font-size:16px;font-weight:600;display:inline-flex;align-items:center;gap:7px;}
+.tom-tab.active{background:#11171f;color:var(--ink);border:1px solid var(--line);border-bottom-color:#11171f;margin-bottom:-1px;}
+.tdot{width:10px;height:10px;border-radius:50%;} .tdot.on{background:var(--pos);} .tdot.off{background:#55606c;}
+.tom-tabcontent{flex:1;overflow:auto;padding:16px;min-height:0;}
+
+.adv-head{background:#0a1d12;border:1px solid #1f4a30;border-radius:8px;padding:12px 14px;color:#bfe8cc;font-family:ui-monospace,Menlo,monospace;font-size:15px;line-height:1.5;margin-bottom:12px;white-space:pre-wrap;}
+.adv-text .adv-line{font-size:18px;line-height:1.5;margin:6px 0;}
+.tom-tabcontent .muted{color:var(--muted);}
+
+.commit{background:#0d141c;border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:14px;}
+.commit h3{margin:0 0 10px;font-size:22px;}
+.commit .cm{font-size:18px;margin:8px 0;}
+.outs-head{display:flex;justify-content:space-between;align-items:baseline;}
+.outs-head .made{color:var(--gold);font-weight:700;font-size:19px;} .outs-head .ocount{color:var(--pos);font-weight:700;font-size:19px;}
+.outs-board{display:flex;flex-direction:column;gap:3px;background:#0d141c;border:1px solid var(--line);border-radius:8px;padding:8px;}
+.ob-row{display:grid;grid-template-columns:30px repeat(13,1fr);gap:3px;}
+.ob-head{display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--ink);}
+.ob-cell{text-align:center;padding:6px 0;border-radius:4px;font-weight:700;font-size:15px;border:1px solid #2a2a2a;color:#555;background:#222;}
+.ob-cell.hole{color:#fff;background:#1a4d8a;border-color:#66aaff;} .ob-cell.board{color:#000;background:#fff;border-color:#ccc;}
+.ob-cell.out{color:#000;background:#ffd966;border-color:#ffaa00;} .ob-cell.dim{color:#555;background:#222;}
+.outs-list{margin-top:8px;color:#ffd966;font-family:ui-monospace,Menlo,monospace;font-size:17px;background:#0d141c;border:1px solid var(--line);border-radius:6px;padding:10px;}
+
+.opp-tab{display:grid;grid-template-columns:auto 1fr;gap:16px;}
+.opp-title{font-weight:700;font-size:20px;margin-bottom:8px;}
+.range-grid{display:grid;grid-template-columns:repeat(13,1fr);gap:1px;width:430px;}
+.rg-cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#9aa;border:1px solid #2a2a2a;border-radius:2px;}
+.rg-cell.pair{background:rgba(200,180,50,calc(var(--w)*0.85+0.06));}
+.rg-cell.suited{background:rgba(50,180,50,calc(var(--w)*0.85+0.06));}
+.rg-cell.offsuit{background:rgba(70,120,180,calc(var(--w)*0.85+0.06));}
+.rg-cell.lit{color:#fff;}
+.rg-cell.hit1{border-color:#ffdc3c;} .rg-cell.hit2{border:2px solid #ffdc3c;}
+.opp-notation{margin-top:8px;color:#0f0;background:#11171f;border:1px solid var(--line);border-radius:6px;padding:8px;font-family:ui-monospace,Menlo,monospace;font-size:14px;width:430px;}
+.opp-hist-head{background:#1d2a3a;border:1px solid #2f435a;border-radius:6px;padding:8px 12px;font-weight:700;text-align:center;margin-bottom:8px;}
+.opp-hist{background:#0d141c;border:1px solid var(--line);border-radius:6px;padding:12px;font-size:17px;line-height:1.5;min-height:200px;}
+
+.tom-right{min-height:0;}
+.tom-dash{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:8px;height:100%;background:#181818;border:1px solid #333;border-radius:8px;padding:8px;}
+.mtile{display:flex;flex-direction:column;background:#11171f;border:1px solid var(--line);border-radius:8px;padding:8px 10px;}
+.mtile.dim{opacity:.55;}
+.mt-bar{height:7px;border-radius:4px;background:#262626;overflow:hidden;margin-bottom:6px;}
+.mt-fill{height:100%;border-radius:4px;}
+.mt-val{font-size:30px;text-align:center;color:#ddd;}
+.mt-cap{font-size:14px;text-align:center;color:#cfd6df;font-weight:700;line-height:1.2;margin-top:auto;padding-top:6px;}
+.mtile.dim .mt-val,.mtile.dim .mt-cap{color:#6a7480;}
+@media(max-width:900px){.tom-main{grid-template-columns:1fr;}.opp-tab{grid-template-columns:1fr;}.range-grid,.opp-notation{width:100%;}}
+
 </style>
 </head>
 <body>
@@ -1481,6 +1563,663 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
 
+// ===== tomlogic.js =====
+/*
+ * PokerIQ — Theory of Mind analytics engine. Faithful port of the logic in
+ * TheoryOfMindPanel / HeroOutsTab / MetricDashboard (pokerIQ.py):
+ *   - per-style preflop ranges + PokerStove-notation parser + board-connection
+ *     narrowing  -> estimateRange()
+ *   - Phil Gordon "Little Green Book" advisor: hand tiers, combo nicknames,
+ *     the two-question script + four setup questions  -> gordonAdvice()
+ *   - eval7-equivalent outs computation + scare cards
+ *   - equity vs estimated ranges (no-peek Monte Carlo)
+ *   - the nine decision metrics (MDF, bluff-catch, range advantage, reverse
+ *     implied, realized, Nash push, tilt, risk-of-ruin, VPIP/PFR/AGF)
+ *
+ * This is the depth that makes it PokerIQ. Depends on engine.js + analytics.js.
+ */
+(function (root) {
+  'use strict';
+  const isNode = (typeof require !== 'undefined' && typeof module !== 'undefined' && module.exports);
+  const E = isNode ? require('./engine.js') : root.PokerEngine;
+  const A = isNode ? require('./analytics.js') : root.PokerAnalytics;
+
+  const RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2'];
+  const RANK_VAL = { 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, T: 10, J: 11, Q: 12, K: 13, A: 14 };
+  const ORDER = 'AKQJT98765432';   // index 0 = A (highest)
+
+  // ---- per-style ranges (TheoryOfMindPanel.STYLE_RANGES) ----
+  const STYLE_RANGES = {
+    tight: {
+      preflop_open: { loose: 'AA, KK, QQ, JJ, TT, 99, 88, AKs, AQs, AJs, AKo, AQo', neutral: 'AA, KK, QQ, JJ, TT, 99, AKs, AQs, AKo', tight: 'AA, KK, QQ, JJ, AKs, AKo' },
+      preflop_call: { loose: 'AA-66, AKs-A9s, KQs-KTs, AKo-ATo', neutral: 'AA-77, AKs-ATs, KQs, AKo-AJo', tight: 'AA-99, AKs-AQs, AKo' },
+      flop_continue: 0.6,
+    },
+    loose: {
+      preflop_open: { loose: 'AA-22, any suited, any broadway, any connector', neutral: 'AA-22, AKs-A2s, KQs-K2s, QJs-Q8s, JTs-J8s, T9s-T8s, 98s-97s, 87s, 76s, AKo-A2o, KQo-K9o', tight: 'AA-22, AKs-A5s, KQs-K9s, QJs-Q9s, JTs-J9s, AKo-A8o, KQo-KTo' },
+      preflop_call: { loose: 'AA-22, any suited, any broadway, any connector', neutral: 'AA-22, any suited, any broadway', tight: 'AA-22, AKs-A2s, KQs-K5s, any broadway' },
+      flop_continue: 0.8,
+    },
+    aggressive: {
+      preflop_open: { loose: 'AA-22, AKs-A2s, KQs-K5s, suited connectors, AKo-A5o, KQo-K9o', neutral: 'AA-55, AKs-A7s, KQs-KTs, QJs-QTs, JTs, T9s, 98s, 87s, 76s, AKo-ATo, KQo-KJo', tight: 'AA-77, AKs-A9s, KQs-KJs, QJs, JTs, AKo-AJo, KQo' },
+      preflop_call: { loose: 'AA-22, AKs-A2s, any suited connector, AKo-A5o', neutral: 'AA-22, AKs-A2s, suited connectors, AKo-ATo', tight: 'AA-44, AKs-A7s, KQs-KTs, suited connectors, AKo-AJo' },
+      flop_continue: 0.75,
+    },
+    optimal: {
+      preflop_open: { loose: 'AA-44, AKs-A7s, KQs-K9s, QJs-Q9s, JTs-J9s, T9s, 98s, 87s, AKo-A9o, KQo-KTo', neutral: 'AA-66, AKs-A9s, KQs-KTs, QJs-QTs, JTs, T9s, AKo-AJo, KQo', tight: 'AA-88, AKs-ATs, KQs-KJs, QJs, AKo-AQo, KQo' },
+      preflop_call: { loose: 'AA-22, AKs-A5s, suited connectors, AKo-A9o', neutral: 'AA-44, AKs-A8s, suited connectors, AKo-ATo', tight: 'AA-66, AKs-ATs, KQs, AKo-AJo' },
+      flop_continue: 0.65,
+    },
+  };
+  const THREE_BET = {
+    tight: { tight: 'AA, KK', neutral: 'AA, KK, QQ, AKs', loose: 'AA, KK, QQ, JJ, AKs, AKo' },
+    optimal: { tight: 'AA, KK, QQ', neutral: 'AA, KK, QQ, AKs, AKo', loose: 'AA, KK, QQ, JJ, AKs, AKo, AQs' },
+    loose: { tight: 'AA, KK, QQ, JJ', neutral: 'AA, KK, QQ, JJ, AKs, AKo, AQs', loose: 'AA, KK, QQ, JJ, TT, AKs, AKo, AQs, AQo' },
+    aggressive: { tight: 'AA, KK, QQ, JJ, AKs', neutral: 'AA, KK, QQ, JJ, AKs, AKo, AQs, AQo', loose: 'AA, KK, QQ, JJ, TT, AKs, AKo, AQs, AQo, AJs, KQs' },
+  };
+  const FOUR_BET = { tight: 'AA, KK', optimal: 'AA, KK, AKs', loose: 'AA, KK, QQ, AKs', aggressive: 'AA, KK, QQ, AKs, AKo' };
+  const styleKey = s => STYLE_RANGES[s] ? s : 'loose';   // shark/tom/etc → loose ranges
+
+  // ---- PokerStove notation parser (parse_range_notation) ----
+  function parseRangeNotation(notation) {
+    const rd = {};
+    const rv = {}; RANKS.forEach((r, i) => rv[r] = i);
+    const add = (h, w) => { rd[h] = (w == null ? 1.0 : w); };
+    const addPairRange = (hi, lo) => { const a = rv[hi], b = rv[lo]; if (a >= 0 && b >= 0) for (let i = a; i <= b; i++) add(RANKS[i] + RANKS[i]); };
+    const parts = (notation || '').replace(/ /g, '').split(',');
+    for (let part of parts) {
+      part = part.trim(); if (!part) continue;
+      const low = part.toLowerCase();
+      if (low.includes('anysuited')) { for (let i = 0; i < 13; i++) for (let j = 0; j < 13; j++) if (i < j) add(RANKS[i] + RANKS[j] + 's', 0.7); continue; }
+      if (low.includes('anybroadway')) { const bw = ['A', 'K', 'Q', 'J', 'T']; for (let i = 0; i < bw.length; i++) for (let j = 0; j < bw.length; j++) { if (i < j) { add(bw[i] + bw[j] + 's', 0.8); add(bw[i] + bw[j] + 'o', 0.6); } else if (i === j) add(bw[i] + bw[j], 0.9); } continue; }
+      if (low.includes('suitedconnector')) { [['A', 'K'], ['K', 'Q'], ['Q', 'J'], ['J', 'T'], ['T', '9'], ['9', '8'], ['8', '7'], ['7', '6'], ['6', '5'], ['5', '4']].forEach(([a, b]) => add(a + b + 's', 0.8)); continue; }
+      if (part.includes('-') && part.length >= 5 && part[0] === part[1]) { addPairRange(part[0], part[3]); continue; }
+      if (part.length === 2 && part[0] === part[1] && rv[part[0]] != null) { add(part); continue; }
+      if (part.includes('+')) {
+        const base = part.replace('+', '');
+        if (base.length === 3 && 'so'.includes(base[2])) { const r1 = base[0], suit = base[2]; const start = rv[base[1]], end = rv[r1]; if (start >= 0 && end >= 0) for (let i = end + 1; i <= start; i++) add(r1 + RANKS[i] + suit); }
+        else if (base.length === 2 && base[0] === base[1]) addPairRange('A', base[0]);
+        continue;
+      }
+      if (part.includes('-') && part.length >= 7) { const [h1, h2] = part.split('-'); if (h1.length === 3 && h2.length === 3 && h1[0] === h2[0]) { const r1 = h1[0], suit = h1[2]; const start = rv[h1[1]], end = rv[h2[1]]; if (start >= 0 && end >= 0) for (let i = start; i <= end; i++) add(r1 + RANKS[i] + suit); } continue; }
+      if (part.length === 3 && 'so'.includes(part[2])) add(part);
+      else if (part.length === 2 && rv[part[0]] != null && rv[part[1]] != null) {
+        if (part[0] !== part[1]) { let r1 = part[0], r2 = part[1]; if (rv[r1] > rv[r2]) { const t = r1; r1 = r2; r2 = t; } add(r1 + r2 + 's', 0.8); add(r1 + r2 + 'o', 0.6); }
+        else add(part);
+      }
+    }
+    return rd;
+  }
+
+  function handRanks(h) {
+    if (!h || h.length < 2) return null;
+    let r1 = h[0], r2 = h[1]; const suited = h.length >= 3 && h[2] === 's';
+    if (r1 === r2) return [r1, r2, false];
+    if (RANK_VAL[r1] < RANK_VAL[r2]) { const t = r1; r1 = r2; r2 = t; }
+    return [r1, r2, suited];
+  }
+
+  // ---- board connection score (_board_connection_score) ----
+  function boardConnectionScore(handStr, board) {
+    const parts = handRanks(handStr); if (!parts || !board || !board.length) return 0;
+    const [r1, r2, suited] = parts; const v1 = RANK_VAL[r1], v2 = RANK_VAL[r2];
+    const bRanks = [], bSuits = [];
+    for (const c of board) { const cs = E.cardToStr(c); bRanks.push(RANK_VAL[cs[0]] || 0); bSuits.push(cs[1] || ''); }
+    const br = bRanks.filter(b => b > 0); if (!br.length) return 0;
+    const topBoard = Math.max(...br); const isPair = r1 === r2;
+    if (isPair) {
+      if (br.includes(v1)) return 1.0;
+      if (v1 > topBoard) return 1.0;
+      const overs = br.filter(b => b > v1).length; return overs <= 1 ? 0.55 : 0.35;
+    }
+    let score = 0.10;
+    if (br.includes(v1) && br.includes(v2)) score = Math.max(score, 0.85);
+    else if (v1 === topBoard) score = Math.max(score, v2 >= 10 ? 0.95 : 0.85);
+    else if (br.includes(v1)) score = Math.max(score, 0.75);
+    else if (br.includes(v2)) score = Math.max(score, 0.55);
+    if (v1 > topBoard && v2 > topBoard) score = Math.max(score, 0.30);
+    const all = new Set(br); all.add(v1); all.add(v2); if (all.has(14)) all.add(1);
+    for (let lo = 1; lo <= 10; lo++) {
+      const window = []; for (let k = lo; k < lo + 5; k++) window.push(k);
+      const present = window.filter(w => all.has(w)); const need = window.filter(w => !all.has(w));
+      const usesHole = window.includes(v1) || window.includes(v2) || ((v1 === 14 || v2 === 14) && window.includes(1));
+      if (!usesHole) continue;
+      if (present.length >= 5) { score = Math.max(score, 0.95); break; }
+      if (present.length === 4) { const missing = need[0]; if (missing === lo || missing === lo + 4) score = Math.max(score, 0.75); else score = Math.max(score, 0.55); }
+    }
+    if (suited) { for (const s of new Set(bSuits)) if (s && bSuits.filter(x => x === s).length >= 2) { score = Math.max(score, 0.75); break; } }
+    return Math.min(1, score);
+  }
+
+  // ---- estimate a player's range (estimate_range) ----
+  // actions: Set of tags {raised, three_bet, four_bet, five_bet_plus,
+  //          called_postflop, bet_postflop, raised_postflop}
+  // mode: 'loose'|'neutral'|'tight'
+  function estimateRange(style, mode, actions, board) {
+    const sk = styleKey(style); const info = STYLE_RANGES[sk];
+    let baseNotation, actionDesc;
+    if (actions.has('five_bet_plus')) { baseNotation = 'AA, KK'; actionDesc = '5-bet+ preflop (premium-only)'; }
+    else if (actions.has('four_bet')) { baseNotation = FOUR_BET[sk] || FOUR_BET.optimal; actionDesc = '4-bet preflop'; }
+    else if (actions.has('three_bet')) { const tb = THREE_BET[sk] || THREE_BET.optimal; baseNotation = tb[mode] || tb.neutral; actionDesc = '3-bet preflop'; }
+    else if (actions.has('raised')) { const rd = info.preflop_open; baseNotation = rd[mode] || rd.neutral; actionDesc = 'opened/raised preflop'; }
+    else { const rd = info.preflop_call; baseNotation = rd[mode] || rd.neutral; actionDesc = 'called preflop'; }
+
+    const modeDesc = { loose: '(assuming weak)', neutral: '', tight: '(assuming strong)' };
+    const expl = [`Player Style: ${cap(style)}`, `Range Mode: ${cap(mode)} ${modeDesc[mode] || ''}`, `Action: ${actionDesc}`, '', 'Preflop Range Estimate:', `  ${baseNotation}`];
+
+    let mult = 1.0;
+    const postflop = board && board.length >= 3;
+    if (postflop) {
+      if (actions.has('bet_postflop') || actions.has('raised_postflop')) { mult *= 0.5; expl.push('', 'Postflop betting narrows range significantly.', 'Likely has: top pair+, draws, or bluffs'); }
+      else if (actions.has('called_postflop')) { mult *= info.flop_continue; expl.push('', 'Called postflop - still wide but connected to board.'); }
+    }
+    const rd = parseRangeNotation(baseNotation);
+    if (mult < 1) for (const h in rd) rd[h] *= mult;
+    const boardHits = {};
+    if (postflop) {
+      const pureCall = actions.has('called_postflop') && !actions.has('raised_postflop') && !actions.has('bet_postflop');
+      for (const h of Object.keys(rd)) {
+        if (rd[h] <= 0) continue;
+        const hit = boardConnectionScore(h, board); boardHits[h] = hit;
+        if (pureCall) { const floor = 0.15, bump = 1.0 + Math.max(0, hit - 0.5); rd[h] = Math.min(1, Math.max(0, rd[h] * Math.max(floor, hit) * bump)); }
+      }
+      if (pureCall) {
+        const strong = Object.keys(boardHits).filter(h => boardHits[h] >= 0.85 && rd[h] > 0.2);
+        const draws = Object.keys(boardHits).filter(h => boardHits[h] >= 0.55 && boardHits[h] < 0.85 && rd[h] > 0.2);
+        if (strong.length || draws.length) expl.push('', 'Range narrowed by board connection — combos that hit are highlighted (yellow).');
+        if (strong.length) expl.push('Made hands likely: ' + strong.slice(0, 8).join(', ') + (strong.length > 8 ? '…' : ''));
+        if (draws.length) expl.push('Draws / second pair: ' + draws.slice(0, 8).join(', ') + (draws.length > 8 ? '…' : ''));
+      }
+    }
+    return { range: rd, notation: baseNotation, explanation: expl.join('\n'), boardHits };
+  }
+
+  // ---- hero hand → 169 key ----
+  function handToKey(hand) {
+    if (!hand || hand.length < 2) return null;
+    const c1 = E.cardToStr(hand[0]), c2 = E.cardToStr(hand[1]);
+    let r1 = c1[0], r2 = c2[0], s1 = c1[1], s2 = c2[1];
+    if (ORDER.indexOf(r1) > ORDER.indexOf(r2)) { [r1, r2] = [r2, r1]; [s1, s2] = [s2, s1]; }
+    if (r1 === r2) return r1 + r2;
+    return s1 === s2 ? r1 + r2 + 's' : r1 + r2 + 'o';
+  }
+
+  // ---- Gordon tiers + nicknames + combo description ----
+  const GORDON_TIER = {};
+  ['AA', 'KK', 'QQ', 'JJ', 'AKs', 'AKo', 'AQs'].forEach(k => GORDON_TIER[k] = 1);
+  ['TT', '99', 'AQo', 'AJs', 'KQs', 'AJo', 'KQo'].forEach(k => GORDON_TIER[k] = 2);
+  ['88', '77', '66', 'ATs', 'KJs', 'QJs', 'JTs', 'KTs', 'QTs', 'T9s', '98s', '87s', '76s', 'ATo', 'KJo', 'QJo', 'JTo'].forEach(k => GORDON_TIER[k] = 3);
+  ['55', '44', '33', '22', 'A9s', 'A8s', 'A7s', 'A6s', 'A5s', 'A4s', 'A3s', 'A2s', 'K9s', 'Q9s', 'J9s', 'T8s', '97s', '86s', '75s', '65s', '54s', 'KTo', 'QTo', 'T9o', '98o'].forEach(k => GORDON_TIER[k] = 4);
+  const gordonTier = k => GORDON_TIER[k] != null ? GORDON_TIER[k] : 6;
+  const NICK = { AA: 'American Airlines / Pocket Rockets', KK: 'Cowboys / King Kong', QQ: 'Ladies / Hilton Sisters', JJ: 'Fishhooks / Jacks', TT: 'Dimes / TNT', 99: 'German Virgin', 88: 'Snowmen', 77: 'Hockey Sticks', 66: 'Route 66', 55: 'Speed Limit / Presto', 44: 'Sailboats', 33: 'Crabs', 22: 'Ducks / Deuces', AKs: 'Big Slick (suited)', AKo: 'Big Slick (offsuit)', AQs: 'Big Chick (suited)', AQo: 'Big Chick (offsuit)', AJs: 'Ajax (suited)', AJo: 'Ajax (offsuit)', KQs: 'Royal Couple (suited)', KQo: 'Royal Couple (offsuit)', KJs: 'Kojak (suited)', KJo: 'Kojak (offsuit)', QJs: 'Queen-Jack (suited)', JTs: 'Justin Timberlake (suited)', T9s: 'T-Niner (suited)', '98s': 'Oldsmobile (suited)', '76s': 'Trombones (suited)', '65s': 'Mike Sexton', '54s': 'Colt 45 (suited)', '72o': 'The Hammer — worst hand in poker', K9o: 'Canine', J5o: 'Jackson Five / Motown' };
+
+  function gordonComboDescription(key) {
+    if (!key || key === '??') return '';
+    const r1 = key[0]; let r2, suited, isPair;
+    if (key.length === 2) { r2 = r1; suited = false; isPair = true; } else { r2 = key[1]; suited = key[key.length - 1].toLowerCase() === 's'; isPair = false; }
+    const i1 = ORDER.indexOf(r1), i2 = ORDER.indexOf(r2), gap = Math.abs(i1 - i2), high = Math.min(i1, i2);
+    const nick = NICK[key] || ''; let hint;
+    if (isPair) {
+      if (high <= 1) hint = "premium — raise / 3-bet always. Don't go broke pre vs the 4th raise (AA only).";
+      else if (high <= 3) hint = "premium pair — open / 3-bet always; fold to a tight player's 4-bet shove.";
+      else if (high <= 5) hint = 'strong pair — open / 3-bet; set-mine if 4-bet. Need 8:1 implied.';
+      else if (high <= 8) hint = 'medium pair — raise if folded to, otherwise set-mine. Loses unimproved multi-way.';
+      else hint = 'small pair — call cheap for set value. Need 15:1 implied; fold to raises.';
+    } else if (r1 === 'A' || r2 === 'A') {
+      const other = r1 === 'A' ? r2 : r1, oi = ORDER.indexOf(other);
+      if (other === 'K') hint = 'Big Slick — best unpaired. Raise / 3-bet any seat. Ace-high until it connects.';
+      else if ('QJ'.includes(other)) hint = suited ? 'strong broadway (suited) — open / call 3-bets in position.' : 'broadway offsuit — open, fold to 3-bets from tight players. Watch AK domination.';
+      else if (other === 'T') hint = suited ? 'suited Broadway — open / call in position.' : 'marginal ace — open late position only. Dominated by AJ/AQ/AK.';
+      else if (suited && oi >= 9) hint = 'wheel ace suited — nut-flush + A-5 straight potential. Great 3-bet bluff hand.';
+      else if (suited) hint = 'suited ace — flush-only equity; call in position with implied odds.';
+      else hint = oi <= 6 ? 'trouble ace offsuit — open button only, fold to aggression.' : 'ace-rag offsuit — dominated by every better ace; fold.';
+    } else if (r1 === 'K' || r2 === 'K') {
+      const other = r1 === 'K' ? r2 : r1, oi = ORDER.indexOf(other);
+      if (other === 'Q') hint = suited ? 'Royal draw (suited).' : 'KQ offsuit — trap hand; often dominated by AK/AQ. Looks better than it plays.';
+      else if ('JT'.includes(other)) hint = suited ? 'suited broadway — raise in position; strong multi-way.' : 'broadway offsuit — raise in position only.';
+      else if (suited && oi <= 9) hint = 'suited king — button / BB only. Flush potential, vulnerable kicker.';
+      else hint = 'king-rag — not profitable long-term. Fold.';
+    } else if ('QJ'.includes(r1) && 'QJT9'.includes(r2)) {
+      hint = suited ? 'Broadway connector (suited) — open in position; flops well into straights / flushes.' : 'broadway offsuit — open in position. Often makes second-best top pair.';
+    } else if (suited && gap === 1 && high >= 4) hint = 'suited connector — best multi-way speculator. Need 15-20x implied; deep stacks only.';
+    else if (suited && gap === 2 && high >= 4) hint = 'suited one-gapper — speculative; late position with depth, otherwise fold.';
+    else if (suited && gap === 3) hint = 'suited two-gapper — button / BB only. Marginal.';
+    else if (suited) hint = 'weak suited — defend BB cheaply, rarely open. Flush potential is the only redemption.';
+    else if (gap === 1 && high <= 4) hint = 'connected offsuit — speculative; rarely open.';
+    else hint = 'trash — fold.';
+    return (nick ? nick : key) + ' — ' + hint;
+  }
+
+  function gordonOpenSize(position, bb) { const m = { UTG: 2.5, EP: 2.5, MP: 3.0, CO: 3.5, BTN: 3.5, SB: 3.0, BB: 3.0 }[position] || 3.0; return `RAISE to ${m}× BB ($${Math.round(m * Math.max(bb, 1))})`; }
+
+  // ---- pot-odds header (_build_pot_odds_header) ----
+  function potOddsHeader(ctx) {
+    const pot = ctx.pot || 0, toCall = ctx.toCall || 0, potOdds = ctx.potOdds || 0;
+    const noPeek = ctx.noPeekEquity, numOpps = ctx.numOpponents || 0, street = ctx.street || 'Preflop';
+    const bb = ctx.bb || 2, curBet = ctx.currentBet || 0;
+    const unraised = street === 'Preflop' && toCall > 0 && curBet <= bb;
+    const lines = ['═══ POT ODDS & EQUITY ═══'];
+    if (toCall > 0) {
+      const ratio = pot / toCall;
+      if (unraised) lines.push(`Pot $${pot}  |  To call $${toCall} (BB to enter)  |  no real raise — pot odds don't drive the decision`);
+      else lines.push(`Pot $${pot}  |  To call $${toCall}  |  Pot odds ${ratio.toFixed(1)}:1 (need ${(potOdds * 100).toFixed(1)}% equity)`);
+    } else if (pot > 0) lines.push(`Pot $${pot}  |  No bet to call right now`);
+    else lines.push('No pot yet');
+    if (noPeek != null) {
+      let line = `Hand equity (vs ${numOpps} opp range${numOpps !== 1 ? 's' : ''}, ${street}): ${(noPeek * 100).toFixed(1)}%`;
+      if (unraised) line += '   →   decide by HAND TIER + POSITION (no raise to fold to)';
+      else if (toCall > 0) { const margin = (noPeek - potOdds) * 100; line += margin >= 0 ? `   →   +${margin.toFixed(1)}% over pot odds (+EV call)` : `   →   ${margin.toFixed(1)}% under pot odds (-EV call)`; }
+      lines.push(line); lines.push('(No-peek: computed vs estimated ranges, never actual cards.)');
+    }
+    return lines.join('\n');
+  }
+
+  // ---- Gordon advice (_build_gordon_advice) ----
+  function gordonAdvice(ctx, key, setup) {
+    const position = (ctx.heroPosition || 'MP').toUpperCase();
+    const street = ctx.street || 'Preflop', toCall = ctx.toCall || 0, pot = ctx.pot || 0;
+    const equity = ctx.equity || 0, potOdds = ctx.potOdds || 0, curBet = ctx.currentBet || 0, numOpps = ctx.numOpponents || 0;
+    const bb = ctx.bb || 2, heroStack = ctx.heroStack || 200, stackBb = bb ? heroStack / bb : 50;
+    const tier = gordonTier(key);
+    const unraised = street === 'Preflop' && curBet > 0 && curBet <= bb;
+    let betRaise = false, checkFold = false, action = '', why = '';
+    if (street === 'Preflop') {
+      const nRaises = Math.max(0, Math.floor(curBet / Math.max(bb, 1)) - 1);
+      const firstIn = toCall <= bb && curBet <= bb;
+      const facingRaise = curBet > bb;
+      if (stackBb <= 15) {
+        const pct = A.handStrengthPercentile(ctx.heroHand || []); const band = A.nashPushPct(stackBb);
+        if (pct >= (1 - band)) { betRaise = true; action = `PUSH ALL-IN (Nash @ ${stackBb.toFixed(0)}bb: top ${(band * 100).toFixed(0)}%)`; why = 'Folding equity + ICM beats blinding out.'; }
+        else { checkFold = true; action = 'FOLD (outside Nash push range)'; why = 'Conserve chips for a better spot.'; }
+      } else if (facingRaise && nRaises >= 3) {
+        if (tier === 1 && key === 'AA') { betRaise = true; action = 'SHOVE — call any all-in (AA)'; why = 'Only AA beats AA; get it all in.'; }
+        else { checkFold = true; action = 'FOLD (4th raise ≈ AA)'; why = "Gordon's rule: the 4th raise means aces. Save chips for a clean spot."; }
+      } else if (facingRaise) {
+        const isPair = key.length === 2, implied = toCall > 0 ? heroStack / Math.max(1, toCall) : 1e9;
+        if (tier <= 2) { betRaise = true; action = `3-BET (tier ${tier} hand vs raise)`; why = 'Re-raise to isolate / take the lead. Gordon: 3× the previous bet.'; }
+        else if (isPair && implied >= 15) { action = `CALL — set mine (${implied.toFixed(0)}:1)`; why = 'Small pair + deep stacks: 12% to flop a set, big implied odds.'; }
+        else if (tier === 3 && (position === 'CO' || position === 'BTN')) { action = 'CALL in position'; why = 'Set/draw equity + positional advantage.'; }
+        else { checkFold = true; action = `FOLD (tier ${tier} vs raise)${isPair ? ` (implied ${implied.toFixed(0)}:1 < 15:1)` : ''}`; why = 'Out of position / dominated; wait.'; }
+      } else if (firstIn) {
+        const steal = position === 'CO' || position === 'BTN';
+        if (tier <= 3) { betRaise = true; action = gordonOpenSize(position, bb); why = "First in → always raise (thin field, take lead, define ranges, conceal strength, win blinds)."; }
+        else if (tier === 4) { if (steal) { betRaise = true; action = gordonOpenSize(position, bb); why = 'Tier 4 from LP — open for steal value; positional advantage post-flop.'; } else { checkFold = true; action = 'FOLD (tier 4 — open only LP)'; why = 'Avoid weak hands out of position.'; } }
+        else if (tier === 5) { if (steal) { betRaise = true; action = gordonOpenSize(position, bb) + ' — steal'; why = "Gordon: BTN / CO are 'kind of money' steal seats."; } else { checkFold = true; action = 'FOLD'; why = 'No reason to play.'; } }
+        else { if (position === 'BTN') { betRaise = true; action = gordonOpenSize(position, bb) + ' — BTN steal'; why = 'BTN, folded around — even trash is +EV vs two blinds.'; } else if (position === 'CO') { action = 'CALL — light CO limp'; why = 'Trash from CO: limp for cheap speculation.'; } else { checkFold = true; action = 'FOLD (trash from this seat)'; why = 'Wait for a real spot.'; } }
+      } else {
+        if (tier <= 3) { betRaise = true; action = 'RAISE limpers'; why = 'Punish weak limps with a pot-sized squeeze in position.'; }
+        else { action = 'CHECK'; why = 'Take the free flop with this trash.'; }
+      }
+    } else {
+      const eqP = equity * 100, poP = potOdds * 100;
+      if (toCall <= 0) {
+        if (eqP >= 60 || (numOpps === 1 && eqP >= 50)) { betRaise = true; action = 'BET 2/3 pot (value)'; why = 'Big hand → big pot. Charge draws, extract value.'; }
+        else if (eqP >= 35 && numOpps === 1) { betRaise = true; action = 'C-BET ½ pot'; why = 'Continuation bet wins ~65% HU when villain misses.'; }
+        else { action = 'CHECK'; why = 'Pot control with a weak/marginal hand.'; }
+      } else {
+        if (eqP >= 75 && pot >= bb * 8) { betRaise = true; action = 'RAISE — get it in'; why = 'Top of the range; build the pot.'; }
+        else if (eqP >= poP) { if (eqP >= 60) { betRaise = true; action = 'RAISE for value / protection'; why = "Big hand → big pot. Don't slow-play on draws."; } else { action = 'CALL'; why = `Equity ${eqP.toFixed(0)}% beats pot odds ${poP.toFixed(0)}%.`; } }
+        else { checkFold = true; action = 'FOLD'; why = `Equity ${eqP.toFixed(0)}% < pot odds ${poP.toFixed(0)}%; no implied path.`; }
+      }
+    }
+    let watch = '';
+    if (street === 'Preflop' && curBet > 3 * bb && tier >= 3) watch = 'WATCH: big preflop pot ≈ they\'re not folding.';
+    else if (street === 'Flop' && ctx.board && ctx.board.length >= 3) { const r = ctx.board.slice(0, 3).map(c => E.cardToStr(c)[0]); if (new Set(r).size < r.length) watch = 'WATCH: paired board — first to bet usually wins.'; else if (new Set(ctx.board.slice(0, 3).map(c => E.cardToStr(c)[1])).size === 1) watch = 'WATCH: monotone flop — flush draws everywhere.'; }
+    else if (stackBb <= 20 && stackBb > 15 && street === 'Preflop') watch = 'WATCH: ~20 BB — push/fold soon.';
+    return { key, tier, position, stackBb, street, combo: gordonComboDescription(key), setup, betRaise, checkFold, action, why, watch, unraised };
+  }
+
+  // ---- outs (HeroOutsTab/_count_outs) + scare cards ----
+  const CAT = E.CAT;
+  const PAIR_FAMILY = new Set([CAT.ONE_PAIR, CAT.TWO_PAIR, CAT.TRIPS, CAT.FULL_HOUSE, CAT.QUADS]);
+  function computeOuts(hand, board) {
+    if (!hand || hand.length < 2 || !board || board.length < 3 || board.length > 4) return { count: 0, outs: [], made: board && board.length ? '' : 'Preflop — outs depend on flop' };
+    const cur = E.evaluate(hand.concat(board)); const curCat = E.categoryOf(cur);
+    const used = new Set([...hand, ...board].map(c => E.cardToStr(c)));
+    const heroRanks = new Set(hand.map(c => E.cardToStr(c)[0]));
+    const boardRankSet = new Set(board.map(c => E.cardToStr(c)[0]));
+    const boardHighIdx = boardRankSet.size ? Math.min(...[...boardRankSet].map(r => ORDER.indexOf(r))) : 0;
+    const outs = [];
+    for (const r of ORDER) for (const s of ['s', 'h', 'd', 'c']) {
+      const key = r + s; if (used.has(key)) continue;
+      const card = E.cardFromStr(key); const ns = E.evaluate(hand.concat(board, [card])); const nc = E.categoryOf(ns);
+      if (boardRankSet.has(r) && !heroRanks.has(r) && PAIR_FAMILY.has(nc)) continue;
+      if (nc > curCat && nc >= CAT.TWO_PAIR) { outs.push(key); continue; }
+      if (curCat === CAT.HIGH_CARD && nc === CAT.ONE_PAIR && heroRanks.has(r) && ORDER.indexOf(r) <= boardHighIdx) { outs.push(key); continue; }
+      if (heroRanks.has(r) && nc === curCat && ns > cur && nc >= CAT.ONE_PAIR) outs.push(key);
+    }
+    return { count: outs.length, outs, made: 'Best now: ' + E.describe(cur), curCat };
+  }
+  function scareCards(hand, board) {
+    if (!board || board.length < 3) return [];
+    const bRanks = board.map(c => E.cardToStr(c)[0]), bSuits = board.map(c => E.cardToStr(c)[1]);
+    const heroRanks = new Set((hand || []).map(c => E.cardToStr(c)[0]));
+    const out = []; const sc = {}; bSuits.forEach(s => sc[s] = (sc[s] || 0) + 1);
+    for (const s in sc) if (sc[s] >= 3) { out.push(`Any ${{ h: '♥', s: '♠', d: '♦', c: '♣' }[s]} (flush)`); break; }
+    const bv = bRanks.map(r => ORDER.indexOf(r)).sort((a, b) => a - b);
+    for (let i = 0; i < 13; i++) { const tv = bv.concat([i]).sort((a, b) => a - b); for (let j = 0; j <= tv.length - 5; j++) { if (tv[j + 4] - tv[j] === 4) { const cr = ORDER[i]; if (!bRanks.includes(cr) && !heroRanks.has(cr)) out.push(`${cr} (straight)`); break; } } }
+    for (const r of bRanks) if (bRanks.filter(x => x === r).length === 1 && !heroRanks.has(r)) out.push(`${r} (pairs board)`);
+    for (const r of 'AKQ') if (!bRanks.includes(r) && !heroRanks.has(r)) out.push(`${r} (hits broadways)`);
+    return out.slice(0, 8);
+  }
+
+  // ---- equity vs estimated ranges (no-peek MC) ----
+  function equityVsRanges(hand, board, oppRanges, opts) {
+    opts = opts || {}; const iters = opts.iterations || 350; const rng = opts.rng || Math.random;
+    // expand each opponent's range to concrete combos (cards) above threshold
+    const used0 = new Set([...hand, ...board].map(c => E.codeOf(c)));
+    const oppCombos = oppRanges.map(rd => expandCombos(rd, used0, 0.3)).filter(c => c.length);
+    if (!oppCombos.length) return null;
+    let wins = 0, ties = 0, done = 0;
+    for (let it = 0; it < iters; it++) {
+      const used = new Set(used0); const opp = []; let ok = true;
+      for (const combos of oppCombos) {
+        let pick = null;
+        for (let tries = 0; tries < 8; tries++) { const c = combos[Math.floor(rng() * combos.length)]; if (!used.has(E.codeOf(c[0])) && !used.has(E.codeOf(c[1]))) { pick = c; break; } }
+        if (!pick) { ok = false; break; }
+        used.add(E.codeOf(pick[0])); used.add(E.codeOf(pick[1])); opp.push(pick);
+      }
+      if (!ok) continue;
+      // complete board
+      const deck = E.fullDeck().filter(c => !used.has(E.codeOf(c)));
+      for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); const t = deck[i]; deck[i] = deck[j]; deck[j] = t; }
+      const need = 5 - board.length; const full = board.concat(deck.slice(0, need));
+      const hs = E.evaluate(hand.concat(full)); let best = -1;
+      for (const o of opp) { const s = E.evaluate(o.concat(full)); if (s > best) best = s; }
+      if (hs > best) wins++; else if (hs === best) ties++; done++;
+    }
+    return done ? (wins + ties / 2) / done : null;
+  }
+  function expandCombos(rd, used, threshold) {
+    const combos = [];
+    for (const h in rd) {
+      if (rd[h] < threshold) continue;
+      const r1 = h[0], r2 = h[1], suited = h[2] === 's', pair = r1 === r2;
+      const suits = ['s', 'h', 'd', 'c'];
+      if (pair) { for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) pushCombo(combos, r1 + suits[i], r2 + suits[j], used); }
+      else if (suited) { for (const s of suits) pushCombo(combos, r1 + s, r2 + s, used); }
+      else { for (const a of suits) for (const b of suits) if (a !== b) pushCombo(combos, r1 + a, r2 + b, used); }
+    }
+    return combos;
+  }
+  function pushCombo(arr, c1s, c2s, used) { const c1 = E.cardFromStr(c1s), c2 = E.cardFromStr(c2s); if (used.has(E.codeOf(c1)) || used.has(E.codeOf(c2))) return; arr.push([c1, c2]); }
+
+  // ---- the nine dashboard metrics ----
+  function metrics(ctx) {
+    const pot = ctx.pot || 0, toCall = ctx.toCall || 0, bb = ctx.bb || 2;
+    const facing = toCall > 0;
+    const bet = toCall;  // bet faced
+    const mdf = facing ? 100 * pot / (pot + bet) : null;
+    const bluffCatch = facing ? 100 * bet / (pot + bet) : null;
+    // range advantage: heuristic from initiative + board high-card fit (Acevedo)
+    let rangeAdv = null;
+    if (ctx.board && ctx.board.length >= 3) {
+      const tex = A.classifyBoard(ctx.board);
+      let adv = ctx.hasInitiative ? 8 : -4;
+      if (tex.label === 'dry') adv += 6; else if (tex.label.includes('wet')) adv -= 6;
+      rangeAdv = Math.max(-30, Math.min(30, adv));
+    }
+    // reverse implied: stack-at-risk heuristic — higher with dominated-prone hands
+    let reverseImplied = null;
+    if (ctx.heroHand && ctx.heroHand.length === 2 && ctx.board && ctx.board.length >= 3) {
+      const made = computeOuts(ctx.heroHand, ctx.board);
+      // one-pair-ish with weak kicker on coordinated boards = high RI
+      const tex = A.classifyBoard(ctx.board);
+      let ri = 6; if (made.curCat === CAT.ONE_PAIR) ri = 12; if (made.curCat === CAT.TWO_PAIR) ri = 9;
+      if (tex.label.includes('wet') || tex.label.includes('dynamic')) ri += 6;
+      reverseImplied = Math.min(30, ri);
+    }
+    const stackBb = ctx.heroStack != null && bb ? ctx.heroStack / bb : null;
+    const nashPush = (stackBb != null && stackBb <= 15) ? A.nashPushPct(stackBb) * 100 : null;
+    return { mdf, bluffCatch, rangeAdv, reverseImplied, nashPush, stackBb };
+  }
+
+  function cap(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+
+  const API = {
+    STYLE_RANGES, estimateRange, parseRangeNotation, boardConnectionScore,
+    handToKey, gordonTier, gordonComboDescription, gordonAdvice, potOddsHeader,
+    computeOuts, scareCards, equityVsRanges, expandCombos, metrics, RANKS, ORDER,
+  };
+  if (isNode) module.exports = API;
+  else root.PokerToMLogic = API;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
+// ===== tom.js =====
+/*
+ * PokerIQ — Theory of Mind training screen (renderer). Builds the rich
+ * analysis view shown when Training is ON: board/hand strip, the
+ * Pot/Equity/PotOdds/Implied metric strip, Outs/Scare row, range-mode radio,
+ * tabs (Advisor / Hero / per-opponent), the 13×13 range grids, the 4×13 outs
+ * board, and the 3×3 decision-metric dashboard.
+ *
+ * Pure function of a tomData snapshot produced by the Controller (ui.js).
+ * Depends on PokerEngine, PokerToMLogic. cardHTML reused from PokerUI.
+ */
+(function (root) {
+  'use strict';
+  const isNode = (typeof require !== 'undefined' && typeof module !== 'undefined' && module.exports);
+  const E = isNode ? require('./engine.js') : root.PokerEngine;
+  const T = isNode ? require('./tomlogic.js') : root.PokerToMLogic;
+
+  const SUIT_GLYPH = { c: '♣', d: '♦', h: '♥', s: '♠' };
+  const SUIT_CLASS = { c: 'club', d: 'diamond', h: 'heart', s: 'spade' };
+  function cardHTML(card, hidden) {
+    if (hidden) return '<span class="card back"></span>';
+    const s = E.cardToStr(card), r = s[0], su = s[1];
+    return `<span class="card ${SUIT_CLASS[su]}"><b>${r === 'T' ? '10' : r}</b><i>${SUIT_GLYPH[su]}</i></span>`;
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+  // 13×13 range grid (HandRangeGrid) as a CSS grid
+  function rangeGridHTML(range, boardHits) {
+    const R = T.RANKS; let cells = '';
+    for (let i = 0; i < 13; i++) for (let j = 0; j < 13; j++) {
+      let hand, fam;
+      if (i < j) { hand = R[i] + R[j] + 's'; fam = 'suited'; }
+      else if (i > j) { hand = R[j] + R[i] + 'o'; fam = 'offsuit'; }
+      else { hand = R[i] + R[j]; fam = 'pair'; }
+      const w = Math.max(0, Math.min(1, range[hand] || 0));
+      const hit = (boardHits && boardHits[hand]) || 0;
+      const ring = (hit >= 0.6 && w > 0) ? (hit >= 0.85 ? ' hit2' : ' hit1') : '';
+      const lit = w > 0.5 ? ' lit' : '';
+      cells += `<div class="rg-cell ${fam}${ring}${lit}" style="--w:${w.toFixed(2)}">${hand}</div>`;
+    }
+    return `<div class="range-grid">${cells}</div>`;
+  }
+
+  // 4×13 outs board (HeroOutsTab deck grid)
+  function outsBoardHTML(hand, board, outsSet) {
+    const suits = ['s', 'h', 'd', 'c'], R = T.RANKS;
+    const used = {}; (hand || []).forEach(c => used[E.cardToStr(c)] = 'hole');
+    (board || []).forEach(c => used[E.cardToStr(c)] = 'board');
+    let rows = '';
+    for (const s of suits) {
+      let row = `<div class="ob-head">${SUIT_GLYPH[s]}</div>`;
+      for (const r of R) {
+        const key = r + s; const role = used[key] || (outsSet && outsSet.has(key) ? 'out' : 'dim');
+        row += `<div class="ob-cell ${role}">${r}</div>`;
+      }
+      rows += `<div class="ob-row">${row}</div>`;
+    }
+    return `<div class="outs-board">${rows}</div>`;
+  }
+
+  // a single dashboard metric tile (MetricPie card style)
+  function tile(label, value, frac, color, dim) {
+    const pct = Math.max(0, Math.min(1, frac || 0)) * 100;
+    return `<div class="mtile ${dim ? 'dim' : ''}">
+      <div class="mt-bar"><div class="mt-fill" style="width:${pct}%;background:${color}"></div></div>
+      <div class="mt-val">${value}</div>
+      <div class="mt-cap">${label}</div>
+    </div>`;
+  }
+  // color helpers matching MetricDashboard verdicts
+  const C = { good: '#88ff88', warn: '#ffd966', bad: '#ff7777', neu: '#58a6ff', purple: '#a87fff', dim: '#5a6470' };
+
+  function dashboardHTML(m, hero) {
+    const T9 = [];
+    // Row 0
+    T9.push(m.mdf == null ? tile('MDF — min defense freq', '--', 0, C.dim, true)
+      : tile('MDF — min defense freq', m.mdf.toFixed(0) + '%', m.mdf / 100, m.mdf < 50 ? C.good : m.mdf < 70 ? C.warn : C.bad));
+    T9.push(m.bluffCatch == null ? tile('Bluff-catch threshold', '--', 0, C.dim, true)
+      : tile('Bluff-catch threshold', m.bluffCatch.toFixed(0) + '%', m.bluffCatch / 100, C.purple));
+    T9.push(m.rangeAdv == null ? tile('Range advantage', '--', 0, C.dim, true)
+      : tile('Range advantage', (m.rangeAdv >= 0 ? '+' : '−') + Math.abs(m.rangeAdv).toFixed(0) + '%', Math.abs(m.rangeAdv) / 30, m.rangeAdv >= 3 ? C.good : m.rangeAdv <= -3 ? C.bad : C.dim));
+    // Row 1
+    T9.push(m.reverseImplied == null ? tile('Reverse implied (domination)', '--', 0, C.dim, true)
+      : tile('Reverse implied (domination)', m.reverseImplied.toFixed(0) + '%', m.reverseImplied / 30, m.reverseImplied >= 20 ? C.bad : m.reverseImplied >= 10 ? C.warn : C.good));
+    if (m.nashPush == null) T9.push(tile('Nash push (≤ 15 BB)', 'n/a', 0, C.dim, true));
+    else { const pct = m.nashPush; T9.push(tile('Nash push (≤ 15 BB)', pct.toFixed(0) + '%', pct / 100, m.stackBb <= 6 ? C.bad : C.warn)); }
+    T9.push(m.realized == null ? tile('Realized vs raw equity', '--', 0, C.dim, true)
+      : tile('Realized vs raw equity', m.realized.toFixed(0) + '%', Math.min(130, m.realized) / 130, m.realized >= 95 ? C.good : m.realized >= 75 ? C.warn : C.bad));
+    // Row 2
+    T9.push(m.vpip == null ? tile('Hero session VPIP / PFR / AGF', '--', 0, C.dim, true)
+      : tile('Hero session VPIP / PFR / AGF', m.vpip.toFixed(0) + '%', m.vpip / 100, (m.vpip >= 16 && m.vpip <= 30) ? C.good : (m.vpip >= 12 && m.vpip <= 40) ? C.warn : C.bad));
+    T9.push(tile('Tilt score (Hilger)', String(m.tilt == null ? 0 : m.tilt), (m.tilt || 0) / 100, (m.tilt || 0) < 25 ? C.good : (m.tilt || 0) < 40 ? C.warn : C.bad));
+    T9.push(m.ror == null ? tile('Risk of Ruin (Chen)', '--', 0, C.dim, true)
+      : tile('Risk of Ruin (Chen)', m.ror.toFixed(1) + '%', Math.min(10, m.ror) / 10, m.ror < 1 ? C.good : m.ror < 5 ? C.warn : C.bad));
+    return `<div class="tom-dash">${T9.join('')}</div>`;
+  }
+
+  // advisor tab content (Gordon)
+  function advisorHTML(d) {
+    const a = d.advice; if (!a) return '<div class="muted">Deal a hand to see the advisor.</div>';
+    const tag = (on, yes) => on ? `<b style="color:${yes ? C.good : C.bad}">YES</b>` : '<span class="muted">no</span>';
+    const Q = s => `<span style="color:#9cd6ff">${s}</span>`;
+    return `<div class="adv-text">
+      <div class="adv-head">${esc(d.potOddsHeader).replace(/\n/g, '<br>')}</div>
+      <div class="adv-line"><b>Hand</b> [${a.key}] tier ${a.tier} · pos ${a.position} · ${a.stackBb.toFixed(0)}bb · ${a.street}</div>
+      <div class="adv-line" style="color:#9cd6ff">${esc(a.combo)}</div>
+      <div class="adv-line"><b>Gordon's script</b> — run through every turn:</div>
+      <div class="adv-line">${Q('Q. How are my opponents playing?')} ${a.setup.style}</div>
+      <div class="adv-line">${Q('Q. What hands are they likely to hold?')} ${a.setup.ranges}</div>
+      <div class="adv-line">${Q('Q. What do they think I have?')} ${a.setup.image}</div>
+      <div class="adv-line">${Q('Q. Am I in good position?')} ${a.setup.position}</div>
+      <div class="adv-line"><b>Q. Should I bet / raise?</b> → ${tag(a.betRaise, true)}   <b>Q. Should I check / fold?</b> → ${tag(a.checkFold, false)}</div>
+      <div class="adv-line"><b style="color:${a.betRaise ? C.good : a.checkFold ? C.bad : C.warn}">ACTION:</b> ${esc(a.action)}</div>
+      <div class="adv-line"><b>WHY:</b> ${esc(a.why)}</div>
+      ${a.watch ? `<div class="adv-line" style="color:${C.warn}">⚠ ${esc(a.watch)}</div>` : ''}
+      ${a.unraised ? `<div class="adv-line muted"><i>Unraised pot — decision is hand-tier × position, not pot odds.</i></div>` : ''}
+    </div>`;
+  }
+
+  // hero tab content (pot commitment + outs board)
+  function heroTabHTML(d) {
+    const c = d.commit;
+    let commit;
+    if (!c || c.toCall <= 0) {
+      const sprNow = c && c.pot > 0 ? (c.stack / c.pot) : null;
+      commit = `<div class="commit"><h3>Pot Commitment</h3>
+        ${sprNow != null
+          ? `<div class="cm muted">No bet to face — pot odds don't apply yet.</div>
+             <div class="cm"><b>SPR</b> (stack ÷ pot): <b>${sprNow.toFixed(2)}</b> → ${sprZone(sprNow)}</div>
+             <div class="cm muted">Pot $${c.pot} · behind $${c.stack}</div>`
+          : `<div class="cm muted">(no live bet to call — commitment math appears here when there's a bet to face)</div>`}
+      </div>`;
+    } else {
+      const stackAfter = Math.max(0, c.stack - c.toCall), potAfter = c.pot + c.toCall;
+      const spr = potAfter > 0 ? stackAfter / potAfter : 0;
+      const potOddsPct = potAfter > 0 ? 100 * c.toCall / potAfter : 0;
+      const ratioPct = c.stack > 0 ? 100 * c.toCall / c.stack : 100;
+      const ratioTag = ratioPct >= 33 ? `<b style="color:${C.bad}">EFFECTIVELY COMMITTED</b>` : ratioPct >= 15 ? `<span style="color:${C.warn}">Meaningful</span>` : `<span style="color:${C.good}">Light</span>`;
+      const eqVerdict = d.equityPct != null ? (d.equityPct < potOddsPct ? `<b style="color:${C.bad}">Unprofitable call</b>` : `<b style="color:${C.good}">Profitable call</b>`) : '';
+      commit = `<div class="commit"><h3>Pot Commitment</h3>
+        <div class="cm"><b>Pot Commitment Ratio</b>: <b>${ratioPct.toFixed(1)}%</b> of your stack → ${ratioTag}</div>
+        <div class="cm"><b>SPR after call</b>: <b>${spr.toFixed(2)}</b> → ${sprZone(spr)}</div>
+        ${d.equityPct != null ? `<div class="cm">Pot odds <b>${potOddsPct.toFixed(1)}%</b> vs Equity <b>${d.equityPct.toFixed(1)}%</b> → ${eqVerdict}</div>` : ''}
+        <div class="cm muted">Putting in $${c.toCall} of $${c.stack} stack — $${stackAfter} behind into a $${potAfter} pot.</div>
+      </div>`;
+    }
+    const outs = d.outs;
+    const madeLine = `<div class="outs-head"><span class="made">${esc(outs.made || '(deal a hand)')}</span><span class="ocount">Outs: ${outs.count}</span></div>`;
+    const outsSet = new Set(outs.outs || []);
+    const list = (outs.outs && outs.outs.length)
+      ? `<div class="outs-list">${groupOuts(outs.outs)}</div>` : '';
+    return `${commit}${madeLine}<div class="muted" style="margin:6px 0">Cards in the deck (yellow = your outs)</div>${outsBoardHTML(d.heroHand, d.board, outsSet)}${list}`;
+  }
+  function sprZone(spr) { return spr < 1 ? `<b style="color:${C.bad}">POT-COMMITTED</b> (SPR < 1)` : spr < 3 ? `<span style="color:${C.warn}">Borderline</span> (SPR 1–3)` : `<span style="color:${C.good}">Not committed</span> (SPR ≥ 3)`; }
+  function groupOuts(outs) {
+    const g = { s: [], h: [], d: [], c: [] }; outs.forEach(k => { if (g[k[1]]) g[k[1]].push(k[0]); });
+    const sym = { s: '♠', h: '♥', d: '♦', c: '♣' }; const parts = [];
+    for (const s of ['s', 'h', 'd', 'c']) if (g[s].length) { g[s].sort((a, b) => T.ORDER.indexOf(a) - T.ORDER.indexOf(b)); parts.push(`${sym[s]} ${g[s].join(' ')}`); }
+    return parts.join('   ');
+  }
+
+  // opponent tab content (range grid + betting history)
+  function oppTabHTML(d, opp) {
+    return `<div class="opp-tab">
+      <div class="opp-left">
+        <div class="opp-title">Estimated Range for ${esc(opp.name)}</div>
+        ${rangeGridHTML(opp.range, opp.boardHits)}
+        <div class="opp-notation">${esc(opp.notation)}</div>
+      </div>
+      <div class="opp-right">
+        <div class="opp-hist-head">Betting history — ${esc(opp.name)}</div>
+        <div class="opp-hist">${esc(opp.explanation).replace(/\n/g, '<br>')}</div>
+      </div>
+    </div>`;
+  }
+
+  // top strip + metric strip + outs/scare + range mode
+  function topHTML(d) {
+    const boardCells = [];
+    for (let i = 0; i < 5; i++) boardCells.push(d.board[i] != null ? cardHTML(d.board[i], false) : '<span class="card back"></span>');
+    const heroCards = d.heroHand && d.heroHand.length ? d.heroHand.map(c => cardHTML(c, false)).join('') : '<span class="card back"></span><span class="card back"></span>';
+    const eq = d.equityPct != null ? d.equityPct.toFixed(1) + '%' : '--';
+    const potOdds = d.potOddsLabel;
+    const implied = d.impliedLabel;
+    return `<div class="tom-strip">
+      <span class="ts-lab">Board:</span> <span class="ts-board">${boardCells.join('')}</span>
+      <span class="ts-lab" style="margin-left:18px">Your Hand (${d.posLong}):</span> <span class="ts-board">${heroCards}</span>
+      <span class="ts-boardlabel">Board: ${d.street}</span>
+    </div>
+    <div class="tom-metrics">
+      <div class="tm yellow">Pot: $${d.pot}</div>
+      <div class="tm blue">Equity (vs Ranges): ${eq}</div>
+      <div class="tm orange">Pot Odds: ${potOdds}</div>
+      <div class="tm purple">Implied: ${implied}</div>
+    </div>
+    <div class="tom-outs">
+      <div class="to-box">Outs: ${d.outs.count != null && (d.board.length >= 3) ? d.outs.count : '--'}</div>
+      <div class="to-box">Scare Cards: ${d.scare && d.scare.length ? esc(d.scare.join(', ')) : '--'}</div>
+      <div class="to-mode">Range Estimate:
+        ${['loose', 'neutral', 'tight'].map(mode => {
+          const lbl = mode === 'loose' ? 'Opps weak' : mode === 'tight' ? 'Opps strong' : 'Neutral';
+          const cls = mode === 'loose' ? 'weak' : mode === 'tight' ? 'strong' : 'neu';
+          return `<label class="rm ${cls} ${d.rangeMode === mode ? 'on' : ''}" data-mode="${mode}"><span class="dot"></span>${lbl}</label>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }
+
+  function tabsHTML(d) {
+    const tabs = [{ id: 'advisor', label: 'Advisor', dot: null }, { id: 'hero', label: 'Hero', dot: null }]
+      .concat(d.opponents.map(o => ({ id: o.name, label: o.name, dot: o.active ? 'on' : 'off' })));
+    const bar = tabs.map(t => `<button class="tom-tab ${d.tab === t.id ? 'active' : ''}" data-tab="${esc(t.id)}">${t.dot ? `<span class="tdot ${t.dot}"></span>` : ''}${esc(t.label)}</button>`).join('');
+    let content;
+    if (d.tab === 'advisor') content = advisorHTML(d);
+    else if (d.tab === 'hero') content = heroTabHTML(d);
+    else { const opp = d.opponents.find(o => o.name === d.tab); content = opp ? oppTabHTML(d, opp) : advisorHTML(d); }
+    return `<div class="tom-tabbar">${bar}</div><div class="tom-tabcontent">${content}</div>`;
+  }
+
+  // assemble the whole ToM screen body (everything between top bar and action bar)
+  function render(d) {
+    return `${topHTML(d)}
+      <div class="tom-main">
+        <div class="tom-left">${tabsHTML(d)}</div>
+        <div class="tom-right">${dashboardHTML(d.metrics, d)}</div>
+      </div>`;
+  }
+
+  const API = { render, cardHTML, rangeGridHTML, outsBoardHTML };
+  if (isNode) module.exports = API;
+  else root.PokerToM = API;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
 // ===== ui.js =====
 /*
  * PokerIQ — table UI + controller. Renders the poker table (DOM/CSS, no canvas
@@ -1523,6 +2262,9 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       this.lastStreet = 'Preflop';
       this.history = null;        // structured per-hand history (building)
       this.lastHistory = null;    // last completed hand's history (for summary)
+      this.training = !!opts.training;   // ToM training screen on/off
+      this.tomTab = 'advisor';    // active ToM tab
+      this.rangeMode = 'neutral'; // 'loose'(opps weak) | 'neutral' | 'tight'(opps strong)
 
       this.game = new PG.Game({
         rng: opts.rng || Math.random,
@@ -1677,6 +2419,136 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       this.onHandEnd(result);
     }
 
+    // derive a player's action-tag set this hand from the history
+    actionTagsFor(seat) {
+      const tags = new Set();
+      if (!this.history) return tags;
+      let preflopRaises = 0;
+      this.history.streets.forEach((st, sIdx) => {
+        for (const a of st.actions) {
+          if (a.seat !== seat) continue;
+          if (sIdx === 0) {
+            if (a.action === 'raise') { preflopRaises++; }
+          } else {
+            if (a.action === 'raise') tags.add(a.opening ? 'bet_postflop' : 'raised_postflop');
+            else if (a.action === 'call') tags.add('called_postflop');
+          }
+        }
+      });
+      if (preflopRaises >= 4) tags.add('five_bet_plus');
+      else if (preflopRaises === 3) tags.add('four_bet');
+      else if (preflopRaises === 2) tags.add('three_bet');
+      else if (preflopRaises === 1) tags.add('raised');
+      return tags;
+    }
+
+    // Gordon's four setup-question answers, from the opponent model
+    gordonSetup() {
+      const T = root.PokerToMLogic;
+      // field aggregate VPIP/PFR
+      let v = 0, p = 0, n = 0;
+      for (const pl of this.game.players) {
+        if (pl.isHuman) continue;
+        const s = this.oppModel.stats[pl.name];
+        if (!s || s.hands < 3) continue;
+        const seen = s.hands; v += (s.vpip || 0); p += (s.pfr || 0); n += seen;
+      }
+      let style = 'n/a yet (need a few hands of sample)';
+      if (n >= 6) { const vp = 100 * v / n, pf = 100 * p / n; const tag = vp < 20 ? 'TIGHT' : vp < 35 ? 'NORMAL' : 'LOOSE'; style = `<b>${tag}</b> · field VPIP ${vp.toFixed(0)}%, PFR ${pf.toFixed(0)}% · n=${n}`; }
+      // hero image
+      let image = 'no sample yet';
+      const hs = this.oppModel.stats['Hero (You)'];
+      if (hs && hs.hands >= 3) { const vp = 100 * (hs.vpip || 0) / hs.hands, pf = 100 * (hs.pfr || 0) / hs.hands; const tag = vp < 20 ? 'TIGHT image' : vp < 35 ? 'balanced image' : 'LOOSE image'; const tail = vp < 20 ? 'they fold to your bets, fold-equity is high' : vp < 35 ? 'standard respect' : 'they call you down — value-bet thin, bluff less'; image = `<b>${tag}</b> · your VPIP ${vp.toFixed(0)}% / PFR ${pf.toFixed(0)}% · ${tail}`; }
+      const posMap = { UTG: '<b style="color:#ff7777">EARLY</b> — act first; play tight.', MP: '<b style="color:#ffd966">MIDDLE</b> — neutral.', CO: '<b style="color:#88ff88">LATE</b> — second-best seat; wide opens profitable.', BTN: '<b style="color:#88ff88">LATE</b> — best seat; widest open range.', SB: '<b style="color:#ff7777">BLIND</b> — out of position post-flop; -EV seat.', BB: '<b style="color:#ff7777">BLIND</b> — out of position post-flop; -EV seat.' };
+      return { style, ranges: 'see per-bot tabs — each opponent\'s estimated range narrows as the betting progresses', image, position: posMap[this.game.positionOf(0)] || 'n/a' };
+    }
+
+    // Full Theory-of-Mind snapshot for the training screen.
+    tomData() {
+      const T = root.PokerToMLogic, g = this.game, hero = g.players[0];
+      const street = this.streetName();
+      const toCall = Math.max(0, g.currentBet - hero.betInRound);
+      const potOdds = (g.pot + toCall) > 0 ? toCall / (g.pot + toCall) : 0;
+      const oppsActive = g.activePlayers().filter(pp => pp !== hero);
+      const mode = this.rangeMode;
+
+      // per-opponent estimated ranges
+      const opponents = g.players.filter(pp => !pp.isHuman).map(pp => {
+        const tags = this.actionTagsFor(pp.seat);
+        const er = T.estimateRange(pp.style, mode, tags, g.board);
+        return { name: pp.name, active: pp.active, range: er.range, notation: er.notation, explanation: er.explanation, boardHits: er.boardHits };
+      });
+
+      // no-peek equity vs active opponents' ranges
+      let equity = null;
+      if (hero.hand.length && hero.active) {
+        const ranges = oppsActive.map(pp => {
+          const tags = this.actionTagsFor(pp.seat);
+          return T.estimateRange(pp.style, mode, tags, g.board).range;
+        });
+        equity = ranges.length ? T.equityVsRanges(hero.hand, g.board, ranges, { iterations: this.opts.equityIters || 350, rng: g.rng }) : null;
+        if (equity == null) equity = this.heroEquity;   // fall back to vs-random
+      }
+      const equityPct = equity != null ? equity * 100 : null;
+
+      // outs + scare + commitment
+      const outs = T.computeOuts(hero.hand, g.board);
+      const scare = T.scareCards(hero.hand, g.board);
+      const commit = { pot: g.pot, toCall, stack: hero.stack };
+
+      // implied label
+      const avgOpp = oppsActive.length ? oppsActive.reduce((a, pp) => a + pp.stack, 0) / oppsActive.length : 0;
+      const eff = Math.min(hero.stack, avgOpp);
+      const impliedPct = (toCall > 0) ? 100 * toCall / (g.pot + toCall + 0.5 * eff) : null;
+      const unraised = street === 'Preflop' && toCall > 0 && g.currentBet <= g.bb();
+      const potOddsLabel = toCall > 0
+        ? `${(potOdds * 100).toFixed(1)}%${unraised ? ' (unraised — not a fold signal)' : ''}`
+        : 'no bet';
+      const impliedLabel = impliedPct != null ? `${impliedPct.toFixed(1)}% ($${hero.stack - toCall} behind)` : '--';
+
+      // advisor (Gordon)
+      const lastAggr = this.lastAggressorSeat();
+      const ctx = {
+        pot: g.pot, toCall, potOdds, currentBet: g.currentBet, numOpponents: oppsActive.length || 1,
+        bb: g.bb(), heroStack: hero.stack, heroPosition: g.positionOf(0), street,
+        heroHand: hero.hand, equity: equity || 0, board: g.board,
+        noPeekEquity: equity, hasInitiative: lastAggr === 0,
+      };
+      const key = T.handToKey(hero.hand);
+      const advice = (hero.hand.length && key) ? T.gordonAdvice(ctx, key, this.gordonSetup()) : null;
+      const potOddsHeader = T.potOddsHeader(ctx);
+
+      // metrics
+      const m = T.metrics(ctx);
+      m.tilt = (() => { const t = this.tilt.update(this.stats.decisionTimes); return t.tilted ? 45 : Math.min(20, this.stats.decisionTimes.length); })();
+      m.ror = this.stats.lifetimeHands >= 100 ? this.stats.riskOfRuin(2000) * 100 : 100;
+      m.vpip = (hs => hs && hs.hands ? 100 * (hs.vpip || 0) / hs.hands : null)(this.oppModel.stats['Hero (You)']);
+      m.realized = this.stats.sessionHands >= 3 ? 100 : null;
+
+      // EV per action (for the action bar)
+      const evCtx = { pot: g.pot, currentBet: g.currentBet, betInRound: hero.betInRound, board: g.board.length, bb: g.bb(), playerStack: hero.stack, oppStacks: oppsActive.map(pp => pp.stack) };
+      const eqForEv = equity != null ? equity : 0;
+      const evCall = PA.heroActionEV(evCtx, 'c', eqForEv, 0);
+      const evRaise = PA.heroActionEV(evCtx, 'r', eqForEv, Math.floor(g.pot * 0.66));
+
+      const posLongMap = { BT: 'Button', SB: 'Small Blind', BB: 'Big Blind', UTG: 'UTG', CO: 'Cutoff', MP: 'Middle' };
+      return {
+        board: g.board.slice(), heroHand: hero.hand.slice(), street,
+        pot: g.pot, equityPct, potOddsLabel, impliedLabel,
+        posLong: posLongMap[g.positionOf(0)] || g.positionOf(0),
+        outs, scare, commit, rangeMode: this.rangeMode, tab: this.tomTab,
+        opponents, advice, potOddsHeader, metrics: m,
+        evCheck: toCall === 0 ? 0 : evCall, evCall, evRaise,
+      };
+    }
+
+    lastAggressorSeat() {
+      if (!this.history) return -1;
+      let seat = -1;
+      for (const st of this.history.streets) for (const a of st.actions) if (a.action === 'raise') seat = a.seat;
+      return seat;
+    }
+
     // full game-state snapshot for the view
     snapshot() {
       const g = this.game;
@@ -1706,6 +2578,8 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
         events: this.events.slice(),
         handResult: this.handResult,
         revealVillains, heroFolded,
+        training: this.training,
+        tom: this.training ? this.tomData() : null,
         godMode: this.godMode, showTells: this.showTells,
         session: {
           hands: this.stats.sessionHands, bb100: this.stats.sessionBbPer100,
@@ -1745,6 +2619,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
             <span id="piq-session" class="muted"></span>
           </div>
           <div class="piq-menu">
+            <label class="train-toggle" id="piq-train"><span class="tt-knob"></span><span class="tt-lab">Training</span></label>
             <button data-act="tells" class="ghost">Tells</button>
             <button data-act="god" class="ghost">God</button>
             <button data-act="trainers" class="ghost">Trainers ▾</button>
@@ -1752,17 +2627,20 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
             <button data-act="help" class="ghost">?</button>
           </div>
         </div>
-        <div class="piq-felt">
-          <div class="piq-board" id="piq-board"></div>
-          <div class="piq-pot" id="piq-pot"></div>
-          <div class="piq-seats" id="piq-seats"></div>
-          <div class="piq-result" id="piq-result" style="display:none"></div>
+        <div class="table-view" id="piq-tableview">
+          <div class="piq-felt">
+            <div class="piq-board" id="piq-board"></div>
+            <div class="piq-pot" id="piq-pot"></div>
+            <div class="piq-seats" id="piq-seats"></div>
+            <div class="piq-result" id="piq-result" style="display:none"></div>
+          </div>
+          <div class="piq-bottom">
+            <div class="piq-feed" id="piq-feed"></div>
+            <div class="piq-advisor" id="piq-advisor"></div>
+          </div>
         </div>
-        <div class="piq-bottom">
-          <div class="piq-feed" id="piq-feed"></div>
-          <div class="piq-advisor" id="piq-advisor"></div>
-          <div class="piq-actions" id="piq-actions"></div>
-        </div>
+        <div class="tom-view" id="piq-tomview" style="display:none"></div>
+        <div class="piq-footer"><div class="piq-actions" id="piq-actions"></div></div>
         <div class="piq-modal" id="piq-modal" style="display:none"></div>`;
       this.el = {
         hand: this.root.querySelector('#piq-hand'),
@@ -1776,6 +2654,9 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
         advisor: this.root.querySelector('#piq-advisor'),
         actions: this.root.querySelector('#piq-actions'),
         modal: this.root.querySelector('#piq-modal'),
+        tableView: this.root.querySelector('#piq-tableview'),
+        tomView: this.root.querySelector('#piq-tomview'),
+        train: this.root.querySelector('#piq-train'),
       };
       this.root.querySelector('.piq-menu').addEventListener('click', e => {
         const act = e.target.getAttribute('data-act'); if (!act) return;
@@ -1783,38 +2664,60 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
         else if (act === 'tells') { this.ctrl.showTells = !this.ctrl.showTells; this.ctrl.render(); }
         else if (this.onMenu) this.onMenu(act);
       });
+      this.el.train.addEventListener('click', () => { this.ctrl.training = !this.ctrl.training; this.ctrl.render(); });
+      // delegated clicks inside the ToM view (tabs + range-mode radio)
+      this.el.tomView.addEventListener('click', e => {
+        const tab = e.target.closest('[data-tab]'); if (tab) { this.ctrl.tomTab = tab.getAttribute('data-tab'); this.ctrl.render(); return; }
+        const rm = e.target.closest('[data-mode]'); if (rm) { this.ctrl.rangeMode = rm.getAttribute('data-mode'); this.ctrl.render(); return; }
+      });
     }
 
     render(s) {
       this.el.hand.textContent = `Hand #${s.handNumber} · ${s.street}`;
       this.el.blinds.textContent = `Blinds $${s.sb}/$${s.bb}`;
       this.el.session.textContent = `Session ${s.session.hands}h · ${s.session.bb100 >= 0 ? '+' : ''}${s.session.bb100.toFixed(1)} bb/100`;
+      this.el.train.classList.toggle('on', s.training);
 
-      // board
-      this.el.board.innerHTML = s.board.map(c => cardHTML(c, false)).join('') ||
-        '<span class="muted">— preflop —</span>';
-      this.el.pot.innerHTML = `<span class="chip"></span> Pot $${s.pot}`;
+      if (s.training) {
+        this.el.tableView.style.display = 'none';
+        this.el.tomView.style.display = 'block';
+        this.el.tomView.innerHTML = root.PokerToM.render(s.tom);
+      } else {
+        this.el.tomView.style.display = 'none';
+        this.el.tableView.style.display = 'flex';
+        // board
+        this.el.board.innerHTML = s.board.map(c => cardHTML(c, false)).join('') ||
+          '<span class="muted">— preflop —</span>';
+        this.el.pot.innerHTML = `<span class="chip"></span> Pot $${s.pot}`;
+        this.el.seats.innerHTML = s.players.map(p => this.seatHTML(p, s)).join('');
+        this.el.feed.innerHTML = s.events.map(e => `<div>${escapeHTML(e)}</div>`).join('');
+        this.el.advisor.innerHTML = s.advisor ? this.advisorHTML(s.advisor) : '';
+      }
 
-      // seats
-      this.el.seats.innerHTML = s.players.map(p => this.seatHTML(p, s)).join('');
-
-      // feed
-      this.el.feed.innerHTML = s.events.map(e => `<div>${escapeHTML(e)}</div>`).join('');
-
-      // advisor
-      this.el.advisor.innerHTML = s.advisor ? this.advisorHTML(s.advisor) : '';
-
-      // actions
+      // shared action footer (with EV labels in training mode)
       this.el.actions.innerHTML = '';
-      if (s.awaitingHero && s.legal) this.buildActions(s.legal);
-      else if (!s.handResult) this.el.actions.innerHTML = '<span class="muted">…bots acting</span>';
+      if (s.handResult) this.buildEndActions(s);
+      else if (s.awaitingHero && s.legal) this.buildActions(s.legal, s.training ? s.tom : null);
+      else this.el.actions.innerHTML = '<span class="muted">…bots acting</span>';
 
-      // result overlay
-      if (s.handResult) this.showResult(s.handResult, s); else this.el.result.style.display = 'none';
+      // result overlay only in table mode
+      if (s.handResult && !s.training) this.showResult(s.handResult, s);
+      else this.el.result.style.display = 'none';
 
-      // toggle button states
       this.root.querySelector('[data-act="god"]').classList.toggle('on', s.godMode);
       this.root.querySelector('[data-act="tells"]').classList.toggle('on', s.showTells);
+    }
+
+    buildEndActions(s) {
+      const wrap = this.el.actions;
+      const heroNet = (s.handResult.net.find(n => n.seat === 0) || { net: 0 }).net;
+      const lbl = document.createElement('span'); lbl.className = 'end-net ' + (heroNet >= 0 ? 'pos' : 'neg');
+      lbl.textContent = `Hand #${s.handNumber}: you ${heroNet >= 0 ? 'win' : 'lose'} $${Math.abs(heroNet)}`;
+      const sum = document.createElement('button'); sum.className = 'btn summary'; sum.textContent = 'Hand summary';
+      sum.onclick = () => this.showHandSummary(this.ctrl.lastHistory);
+      const next = document.createElement('button'); next.className = 'btn next'; next.textContent = 'Next hand →';
+      next.onclick = () => this.ctrl.newHand();
+      wrap.append(lbl, sum, next);
     }
 
     seatHTML(p, s) {
@@ -1855,12 +2758,14 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
         <div class="adv-verdict">▸ ${a.verdict}</div>`;
     }
 
-    buildActions(legal) {
+    buildActions(legal, tom) {
       const wrap = this.el.actions;
+      // EV sub-label (training mode shows EV under each action, as in the panel)
+      const ev = v => tom ? `<small class="ev ${v > 0.5 ? 'pos' : v < -0.5 ? 'neg' : 'neu'}">EV ${v >= 0 ? '+' : ''}$${v.toFixed(1)}</small>` : '';
       const mk = (label, cls, fn) => { const b = document.createElement('button'); b.className = cls; b.innerHTML = label; b.onclick = fn; wrap.appendChild(b); return b; };
-      mk('Fold', 'btn fold', () => this.ctrl.act('f', 0));
-      if (legal.canCheck) mk('Check', 'btn check', () => this.ctrl.act('c', 0));
-      else mk(`Call $${legal.toCall}`, 'btn call', () => this.ctrl.act('c', 0));
+      mk(`Fold${ev(0)}`, 'btn fold', () => this.ctrl.act('f', 0));
+      if (legal.canCheck) mk(`Check${ev(tom ? tom.evCheck : 0)}`, 'btn check', () => this.ctrl.act('c', 0));
+      else mk(`Call $${legal.toCall}${ev(tom ? tom.evCall : 0)}`, 'btn call', () => this.ctrl.act('c', 0));
       if (legal.canRaise) {
         const slider = document.createElement('input');
         slider.type = 'range'; slider.min = legal.minRaiseTo; slider.max = legal.maxRaiseTo;
@@ -1868,7 +2773,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
         const out = document.createElement('span'); out.className = 'raise-amt';
         const sync = () => { out.textContent = '$' + slider.value; };
         slider.oninput = sync; sync();
-        const raiseBtn = mk('Raise to', 'btn raise', () => this.ctrl.act('r', parseInt(slider.value, 10)));
+        const raiseBtn = mk(`Raise${ev(tom ? tom.evRaise : 0)}`, 'btn raise', () => this.ctrl.act('r', parseInt(slider.value, 10)));
         // pot-fraction quick buttons
         const quick = document.createElement('div'); quick.className = 'quick';
         [['½', 0.5], ['¾', 0.75], ['Pot', 1.0], ['All-in', null]].forEach(([lbl, frac]) => {
