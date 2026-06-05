@@ -9,6 +9,25 @@ INSTALL_DIR="$SCRIPT_DIR/INSTALL"
 WINEPREFIX_DIR="$SCRIPT_DIR/WP"
 GAME_DATA="$WINEPREFIX_DIR/drive_c/FreeFalcon6"
 
+# --- Wine runner pin: lutris-GE-Proton8-26-x86_64 (wine 8.0 staging, GE) ---
+# History: system wine 10 (wow64) can't boot this 32-bit prefix at all;
+# lutris-9.22-staging detected the joystick but the setup screen locked up.
+# Wine-GE 8 boots the prefix and the game enumerates the stick via DirectInput8
+# (verified: dinput "found device ... Logitech Extreme 3D" + CreateDevice).
+RUNNER_NAME="lutris-GE-Proton8-26-x86_64"
+RUNNER_DIR="$HOME/.local/share/lutris/runners/wine/$RUNNER_NAME"
+if [[ ! -x "$RUNNER_DIR/bin/wine" ]]; then
+    echo "ERROR: Lutris wine runner '$RUNNER_NAME' not installed at $RUNNER_DIR" >&2
+    echo "       Install it: sudo $(cd "$SCRIPT_DIR/../.." && pwd)/install.sh" >&2
+    exit 1
+fi
+export PATH="$RUNNER_DIR/bin:$PATH"
+export WINE="$RUNNER_DIR/bin/wine"
+export WINELOADER="$RUNNER_DIR/bin/wine"
+export WINESERVER="$RUNNER_DIR/bin/wineserver"
+export LD_LIBRARY_PATH="$RUNNER_DIR/lib64:$RUNNER_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export WINEDLLPATH="$RUNNER_DIR/lib64/wine/x86_64-unix:$RUNNER_DIR/lib/wine/i386-unix${WINEDLLPATH:+:$WINEDLLPATH}"
+
 export WINEPREFIX="$WINEPREFIX_DIR"
 export WINEARCH=win32
 # Set Windows XP mode silently (no GUI)
