@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>World Champion Vladimir Kramnik's Chess Variant</title>
+<style>
+  :root{
+    --light:#ecd9b8; --dark:#a9762f; --bg:#1c1a17; --panel:#262320;
+    --accent:#d6a04a; --text:#efe7d8; --muted:#a89c87;
+    --move:rgba(60,160,90,.55); --selfcap:rgba(220,120,40,.9);
+    --enemycap:rgba(200,50,50,.85); --sel:rgba(255,225,90,.6); --last:rgba(255,225,90,.28);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);
+    color:var(--text);display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:18px}
+  h1{font-size:1.25rem;margin:.2rem 0;text-align:center;letter-spacing:.2px;max-width:640px}
+  .sub{color:var(--muted);font-size:.82rem;text-align:center;margin-bottom:14px;max-width:600px;line-height:1.45}
+  .sub b{color:var(--accent)}
+  .layout{display:flex;gap:22px;flex-wrap:wrap;justify-content:center;align-items:flex-start}
+  .boardwrap{position:relative}
+  #board{display:grid;grid-template-columns:repeat(8,64px);grid-template-rows:repeat(8,64px);
+    border:6px solid #3a2f22;border-radius:6px;box-shadow:0 10px 40px rgba(0,0,0,.55)}
+  .sq{position:relative;display:flex;align-items:center;justify-content:center;
+    font-size:46px;line-height:1;cursor:pointer;user-select:none}
+  .sq.l{background:var(--light)} .sq.d{background:var(--dark)}
+  .sq .coord{position:absolute;font-size:10px;color:rgba(0,0,0,.4);font-weight:700}
+  .sq .coord.f{right:3px;bottom:1px} .sq .coord.r{left:3px;top:1px}
+  .piece{filter:drop-shadow(0 1px 1px rgba(0,0,0,.35));position:relative;z-index:2}
+  .piece.w{color:#fff;text-shadow:0 0 2px #000,0 0 2px #000}
+  .piece.b{color:#1b1b1b;text-shadow:0 0 1px rgba(255,255,255,.25)}
+  .sq.sel{box-shadow:inset 0 0 0 4px var(--sel)}
+  .sq.last{background-image:linear-gradient(var(--last),var(--last))}
+  .dot{position:absolute;width:22px;height:22px;border-radius:50%;background:var(--move);z-index:1}
+  .ring{position:absolute;inset:4px;border-radius:50%;border:5px solid var(--enemycap);z-index:1}
+  .ring.self{border-color:var(--selfcap)}
+  .panel{background:var(--panel);padding:16px;border-radius:10px;width:266px;
+    box-shadow:0 6px 20px rgba(0,0,0,.4)}
+  .panel h2{font-size:.95rem;margin:0 0 10px;color:var(--accent)}
+  .status{font-size:.95rem;min-height:2.6em;margin-bottom:12px;font-weight:600;line-height:1.3}
+  .status small{display:block;font-weight:400;color:var(--muted);font-size:.78rem;margin-top:3px}
+  label{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 3px}
+  select,button{width:100%;padding:8px;border-radius:6px;border:1px solid #4a4035;
+    background:#332e28;color:var(--text);font-size:.85rem;cursor:pointer}
+  button.primary{background:var(--accent);color:#241c0c;border:none;font-weight:700;margin-top:14px}
+  button.primary:hover{filter:brightness(1.08)}
+  .row{display:flex;gap:8px;margin-top:8px}
+  .radio{display:flex;gap:14px;font-size:.82rem}
+  .radio label{display:flex;align-items:center;gap:5px;margin:0;color:var(--text);cursor:pointer}
+  .radio input{width:auto;cursor:pointer}
+  .nav button{font-size:1.05rem;padding:6px 0}
+  .moves{margin-top:14px;font-size:.8rem;color:var(--muted);max-height:180px;overflow:auto;
+    line-height:1.7;font-variant-numeric:tabular-nums;border-top:1px solid #3a342c;padding-top:8px}
+  .moves .num{color:var(--muted)}
+  .moves .mv{color:var(--text);cursor:pointer;padding:0 2px;border-radius:3px}
+  .moves .mv:hover{background:#3a342c}
+  .moves .mv.self{color:var(--selfcap)}
+  .moves .mv.cur{background:var(--accent);color:#241c0c}
+  .offer{display:none;background:#3a342c;border:1px solid var(--accent);border-radius:8px;
+    padding:10px;margin-bottom:12px;font-size:.85rem;line-height:1.4}
+  .offer b{color:var(--accent)}
+  .legend{font-size:.72rem;color:var(--muted);margin-top:12px;line-height:1.5}
+  .swatch{display:inline-block;width:11px;height:11px;border-radius:50%;vertical-align:middle;margin-right:4px}
+  #promo{position:absolute;inset:0;background:rgba(0,0,0,.6);display:none;
+    align-items:center;justify-content:center;z-index:10;border-radius:6px}
+  #promo .box{background:var(--panel);padding:14px;border-radius:10px;text-align:center}
+  #promo .box div{font-size:.85rem;margin-bottom:8px;color:var(--accent)}
+  #promo .opts{display:flex;gap:6px}
+  #promo .opts span{font-size:42px;cursor:pointer;padding:4px 8px;border-radius:6px;background:#332e28}
+  #promo .opts span:hover{background:var(--accent);color:#241c0c}
+  @media(max-width:560px){#board{grid-template-columns:repeat(8,40px);grid-template-rows:repeat(8,40px)}
+    .sq{font-size:30px}}
+</style>
+</head>
+<body>
+<h1>World Champion Vladimir Kramnik's Chess Variant: capture anything&nbsp;/ no castle</h1>
+<div class="sub"><b>Castling is illegal</b>, and you may <b>capture your own pieces</b> (anything but
+your king). All other rules — checks, en passant, promotion, checkmate — are normal. Your opponent
+always plays at <b>full strength</b> and opens with sound, mostly <b>closed</b> theory (the English,
+the Closed Sicilian) — never the same way twice in a row. But once he is up by <b>more than two
+pawns</b> he starts hunting for <b>combinations that capture his own pieces</b> — and the bigger
+his lead, the more material he flamboyantly hands back, so the game stays a game.</div>
+
+<div class="layout">
+  <div class="boardwrap">
+    <div id="board"></div>
+    <div id="promo"><div class="box"><div>Promote to:</div><div class="opts" id="promoOpts"></div></div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Game</h2>
+    <div class="status" id="status"></div>
+
+    <div class="offer" id="drawOffer">
+      <b>He offers a draw.</b>
+      <div class="row">
+        <button id="offerAccept">Accept ½–½</button>
+        <button id="offerDecline">Decline</button>
+      </div>
+    </div>
+
+    <label>Opponent</label>
+    <select id="mode">
+      <option value="ai">Vs Computer</option>
+      <option value="human">Two Players (hotseat)</option>
+    </select>
+
+    <label>Play as</label>
+    <select id="side">
+      <option value="w">White</option>
+      <option value="b">Black</option>
+    </select>
+
+    <div style="font-size:.7rem;color:var(--muted);margin-top:10px">He always plays at full strength. When he
+      gets more than two pawns ahead, he starts giving material back in self-capture combinations —
+      the bigger his lead, the more freely.</div>
+
+    <button class="primary" id="newGame">New Game</button>
+    <div class="row">
+      <button id="undo">Undo</button>
+      <button id="flip">Flip</button>
+      <button id="offerBtn" title="Offer a draw (on your turn)">Offer draw</button>
+    </div>
+    <div class="row">
+      <button id="save">Save PGN</button>
+      <button id="load">Load PGN</button>
+      <input type="file" id="loadfile" accept=".pgn,.txt" style="display:none">
+    </div>
+    <div class="row nav">
+      <button id="navStart" title="Start">⏮</button>
+      <button id="navBack" title="Back">◀</button>
+      <button id="navFwd" title="Forward">▶</button>
+      <button id="navEnd" title="Live / End">⏭</button>
+    </div>
+
+    <div class="legend">
+      <span class="swatch" style="background:var(--move)"></span>legal move &nbsp;
+      <span class="swatch" style="background:var(--enemycap)"></span>capture enemy<br>
+      <span class="swatch" style="background:var(--selfcap)"></span>capture your own piece (legal here!)
+    </div>
+
+    <div class="moves" id="moves"></div>
+  </div>
+</div>
+
+<!-- Engine source. Kept as text (not executed here) so it can be (a) eval'd into
+     this page for move generation/SAN, AND (b) shipped verbatim into a Web Worker
+     that runs the search off the main thread. NOTE: no "use strict" — indirect
+     eval must publish these function declarations as globals. -->
+<script type="text/plain" id="engine-src">
+/* ===========================================================================
+   Engine: standard chess, MINUS castling, PLUS self-capture (capture-anything).
+   Board: flat array of 64. index = row*8 + col. row 0 = rank 8 (top), col 0 = file a.
+   Piece: {t:'p|n|b|r|q|k', c:'w|b'} or null.
+   =========================================================================== */
+const GLYPH = {
+  w:{k:'♔',q:'♕',r:'♖',b:'♗',n:'♘',p:'♙'},
+  b:{k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'}
+};
+const VAL = {p:100,n:320,b:330,r:500,q:900,k:0};
+const KN = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+const KG = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+const DIAG = [[-1,-1],[-1,1],[1,-1],[1,1]];
+const ORTH = [[-1,0],[1,0],[0,-1],[0,1]];
+const inb = (r,c)=> r>=0&&r<8&&c>=0&&c<8;
+const idx = (r,c)=> r*8+c;
+const opp = c => c==='w'?'b':'w';
+
+function initBoard(){
+  const b = new Array(64).fill(null);
+  const back = ['r','n','b','q','k','b','n','r'];
+  for(let c=0;c<8;c++){
+    b[idx(0,c)] = {t:back[c],c:'b'};
+    b[idx(1,c)] = {t:'p',c:'b'};
+    b[idx(6,c)] = {t:'p',c:'w'};
+    b[idx(7,c)] = {t:back[c],c:'w'};
+  }
+  return b;
+}
+
+// Is square sq attacked by color `by`? (normal attack rules — self-capture irrelevant to checks)
+function attacked(b, sq, by){
+  const r = sq>>3, c = sq&7;
+  const pr = by==='w' ? r+1 : r-1; // a `by` pawn sits one rank toward its own side
+  for(const dc of [-1,1]){
+    if(inb(pr,c+dc)){ const p=b[idx(pr,c+dc)]; if(p&&p.c===by&&p.t==='p') return true; }
+  }
+  for(const [dr,dc] of KN){ if(inb(r+dr,c+dc)){ const p=b[idx(r+dr,c+dc)]; if(p&&p.c===by&&p.t==='n') return true; } }
+  for(const [dr,dc] of KG){ if(inb(r+dr,c+dc)){ const p=b[idx(r+dr,c+dc)]; if(p&&p.c===by&&p.t==='k') return true; } }
+  for(const [dr,dc] of DIAG){ let rr=r+dr,cc=c+dc;
+    while(inb(rr,cc)){ const p=b[idx(rr,cc)]; if(p){ if(p.c===by&&(p.t==='b'||p.t==='q')) return true; break; } rr+=dr;cc+=dc; } }
+  for(const [dr,dc] of ORTH){ let rr=r+dr,cc=c+dc;
+    while(inb(rr,cc)){ const p=b[idx(rr,cc)]; if(p){ if(p.c===by&&(p.t==='r'||p.t==='q')) return true; break; } rr+=dr;cc+=dc; } }
+  return false;
+}
+
+function kingSq(b, color){ for(let i=0;i<64;i++){ const p=b[i]; if(p&&p.t==='k'&&p.c===color) return i; } return -1; }
+function inCheck(b, color){ const k=kingSq(b,color); return k>=0 && attacked(b,k,opp(color)); }
+
+// Position key for repetition detection: pieces + side to move + ep square, where the
+// ep square is included only if a pawn of the side to move actually stands to take it.
+function posKey(b,turn,ep){
+  let s=turn;
+  if(ep!=null){
+    const r=ep>>3, c=ep&7, pr = turn==='w'? r+1 : r-1;
+    for(const dc of [-1,1]){
+      if(inb(pr,c+dc)){ const p=b[idx(pr,c+dc)]; if(p&&p.c===turn&&p.t==='p'){ s+=ep; break; } }
+    }
+  }
+  for(let i=0;i<64;i++){ const p=b[i]; s += p ? p.c+p.t : '-'; }
+  return s;
+}
+
+// Dead positions where no mate can be constructed (self-capture changes nothing here:
+// removing your own piece never adds mating power): K vs K, K+minor vs K, and
+// K+B vs K+B with both bishops on the same square color.
+function insufficientMaterial(b){
+  const minors={w:[],b:[]};
+  for(let i=0;i<64;i++){
+    const p=b[i]; if(!p||p.t==='k') continue;
+    if(p.t==='n') minors[p.c].push(-1);
+    else if(p.t==='b') minors[p.c].push(((i>>3)+(i&7))&1);
+    else return false;                              // a pawn, rook or queen can still mate
+  }
+  const n = minors.w.length + minors.b.length;
+  if(n===0 || n===1) return true;
+  return minors.w.length===1 && minors.b.length===1 &&
+         minors.w[0]>=0 && minors.b[0]>=0 && minors.w[0]===minors.b[0];
+}
+
+// Move: {from,to,promo?,ep?:capturedSq, kind:'move|enemy|self|ep'}
+function pseudoMoves(b, color, ep){
+  const moves = [];
+  const add = (from,to,extra)=> moves.push(Object.assign({from,to,kind:'move'},extra));
+  const tryTarget = (from,to,allowQuiet)=>{
+    const t = b[to];
+    if(!t){ if(allowQuiet) add(from,to,{kind:'move'}); return 'empty'; }
+    if(t.c!==color){ add(from,to,{kind:'enemy'}); return 'stop'; }       // capture enemy
+    if(t.t!=='k'){ add(from,to,{kind:'self'}); return 'stop'; }          // self-capture (not king)
+    return 'stop';                                                       // own king blocks
+  };
+  for(let from=0;from<64;from++){
+    const p=b[from]; if(!p||p.c!==color) continue;
+    const r=from>>3, c=from&7;
+    switch(p.t){
+      case 'p':{
+        const dir = color==='w'?-1:1;
+        const startR = color==='w'?6:1, promoR = color==='w'?0:7;
+        if(inb(r+dir,c) && !b[idx(r+dir,c)]){
+          pushPawn(moves,from,idx(r+dir,c),r+dir===promoR,'move',color);
+          if(r===startR && !b[idx(r+2*dir,c)]) add(from,idx(r+2*dir,c),{kind:'move',dbl:idx(r+dir,c)});
+        }
+        for(const dc of [-1,1]){
+          if(!inb(r+dir,c+dc)) continue;
+          const to=idx(r+dir,c+dc), t=b[to];
+          if(t){
+            if(t.c!==color) pushPawn(moves,from,to,r+dir===promoR,'enemy',color);
+            else if(t.t!=='k') pushPawn(moves,from,to,r+dir===promoR,'self',color);
+          } else if(ep!=null && to===ep){
+            add(from,to,{kind:'ep',ep:idx(r,c+dc)});
+          }
+        }
+        break;
+      }
+      case 'n': for(const [dr,dc] of KN) if(inb(r+dr,c+dc)) tryTarget(from,idx(r+dr,c+dc),true); break;
+      case 'k': for(const [dr,dc] of KG) if(inb(r+dr,c+dc)) tryTarget(from,idx(r+dr,c+dc),true); break; // NO castling
+      case 'b': for(const [dr,dc] of DIAG) ray(from,r,c,dr,dc,tryTarget); break;
+      case 'r': for(const [dr,dc] of ORTH) ray(from,r,c,dr,dc,tryTarget); break;
+      case 'q': for(const [dr,dc] of DIAG.concat(ORTH)) ray(from,r,c,dr,dc,tryTarget); break;
+    }
+  }
+  return moves;
+}
+function ray(from,r,c,dr,dc,tryTarget){
+  let rr=r+dr,cc=c+dc;
+  while(inb(rr,cc)){ if(tryTarget(from,idx(rr,cc),true)==='stop') break; rr+=dr;cc+=dc; }
+}
+function pushPawn(moves,from,to,promo,kind,color){
+  if(promo){ for(const t of ['q','r','b','n']) moves.push({from,to,kind,promo:t}); }
+  else moves.push({from,to,kind});
+}
+
+function applyMove(b, m){
+  const nb = b.slice();
+  const p = nb[m.from];
+  nb[m.to] = m.promo ? {t:m.promo,c:p.c} : p;
+  nb[m.from] = null;
+  if(m.kind==='ep') nb[m.ep] = null;
+  return nb;
+}
+function epAfter(m){ return m.dbl!=null ? m.dbl : null; }
+
+function legalMoves(b, color, ep){
+  const out=[];
+  for(const m of pseudoMoves(b,color,ep)){
+    const nb = applyMove(b,m);
+    if(!inCheck(nb,color)) out.push(m);
+  }
+  return out;
+}
+
+// Standard SAN for a move (with disambiguation, capture x, promotion =Q, +/#).
+// A self-capture is written like an ordinary capture (e.g. "Bxe2") so the PGN stays standard;
+// it round-trips because for any target square only one of {enemy-capture, self-capture} is legal.
+function sanOf(b,m,ep){
+  const f='abcdefgh', sq=i=>f[i&7]+(8-(i>>3));
+  const p=b[m.from], cap=(m.kind!=='move');
+  let s;
+  if(p.t==='p'){
+    s = cap ? f[m.from&7]+'x'+sq(m.to) : sq(m.to);
+    if(m.promo) s += '='+m.promo.toUpperCase();
+  } else {
+    let amb=false, sameFile=false, sameRank=false;
+    for(const o of legalMoves(b,p.c,ep)){
+      if(o.to!==m.to || o.from===m.from) continue;
+      const q=b[o.from]; if(!q||q.t!==p.t) continue;          // another same-type piece hits the same square
+      amb=true;
+      if((o.from&7)===(m.from&7)) sameFile=true;
+      if((o.from>>3)===(m.from>>3)) sameRank=true;
+    }
+    let dis='';
+    if(amb){ dis = !sameFile ? f[m.from&7] : (!sameRank ? String(8-(m.from>>3)) : f[m.from&7]+String(8-(m.from>>3))); }
+    s = p.t.toUpperCase() + dis + (cap?'x':'') + sq(m.to);
+  }
+  const nb=applyMove(b,m), enemy=opp(p.c);
+  if(inCheck(nb,enemy)) s += legalMoves(nb,enemy,epAfter(m)).length===0 ? '#' : '+';
+  return s;
+}
+
+/* ---------------- AI: PST eval + quiescence + iterative deepening ----------------
+   (1) quiescence search resolves captures (no hung pieces / horizon blunders),
+   (2) piece-square tables + a tapered king table (king safety matters — NO castling),
+   (3) MVV-LVA move ordering inside iterative deepening + check extensions.
+   Tables are white's POV with index 0 = a8 (top-left); black mirrors via i^56. */
+const PST = {
+  p:[ 0,  0,  0,  0,  0,  0,  0,  0,
+     50, 50, 50, 50, 50, 50, 50, 50,
+     10, 10, 20, 30, 30, 20, 10, 10,
+      5,  5, 10, 25, 25, 10,  5,  5,
+      0,  0,  0, 20, 20,  0,  0,  0,
+      5, -5,-10,  0,  0,-10, -5,  5,
+      5, 10, 10,-20,-20, 10, 10,  5,
+      0,  0,  0,  0,  0,  0,  0,  0],
+  n:[-50,-40,-30,-30,-30,-30,-40,-50,
+     -40,-20,  0,  0,  0,  0,-20,-40,
+     -30,  0, 10, 15, 15, 10,  0,-30,
+     -30,  5, 15, 20, 20, 15,  5,-30,
+     -30,  0, 15, 20, 20, 15,  0,-30,
+     -30,  5, 10, 15, 15, 10,  5,-30,
+     -40,-20,  0,  5,  5,  0,-20,-40,
+     -50,-40,-30,-30,-30,-30,-40,-50],
+  b:[-20,-10,-10,-10,-10,-10,-10,-20,
+     -10,  0,  0,  0,  0,  0,  0,-10,
+     -10,  0,  5, 10, 10,  5,  0,-10,
+     -10,  5,  5, 10, 10,  5,  5,-10,
+     -10,  0, 10, 10, 10, 10,  0,-10,
+     -10, 10, 10, 10, 10, 10, 10,-10,
+     -10,  5,  0,  0,  0,  0,  5,-10,
+     -20,-10,-10,-10,-10,-10,-10,-20],
+  r:[  0,  0,  0,  0,  0,  0,  0,  0,
+       5, 10, 10, 10, 10, 10, 10,  5,
+      -5,  0,  0,  0,  0,  0,  0, -5,
+      -5,  0,  0,  0,  0,  0,  0, -5,
+      -5,  0,  0,  0,  0,  0,  0, -5,
+      -5,  0,  0,  0,  0,  0,  0, -5,
+      -5,  0,  0,  0,  0,  0,  0, -5,
+       0,  0,  0,  5,  5,  0,  0,  0],
+  q:[-20,-10,-10, -5, -5,-10,-10,-20,
+     -10,  0,  0,  0,  0,  0,  0,-10,
+     -10,  0,  5,  5,  5,  5,  0,-10,
+      -5,  0,  5,  5,  5,  5,  0, -5,
+       0,  0,  5,  5,  5,  5,  0, -5,
+     -10,  5,  5,  5,  5,  5,  0,-10,
+     -10,  0,  5,  0,  0,  0,  0,-10,
+     -20,-10,-10, -5, -5,-10,-10,-20],
+  k:[-30,-40,-40,-50,-50,-40,-40,-30,
+     -30,-40,-40,-50,-50,-40,-40,-30,
+     -30,-40,-40,-50,-50,-40,-40,-30,
+     -30,-40,-40,-50,-50,-40,-40,-30,
+     -20,-30,-30,-40,-40,-30,-30,-20,
+     -10,-20,-20,-20,-20,-20,-20,-10,
+      20, 20,  0,  0,  0,  0, 20, 20,
+      20, 30, 10,  0,  0, 10, 30, 20]
+};
+const KING_EG = [-50,-40,-30,-20,-20,-30,-40,-50,
+                 -30,-20,-10,  0,  0,-10,-20,-30,
+                 -30,-10, 20, 30, 30, 20,-10,-30,
+                 -30,-10, 30, 40, 40, 30,-10,-30,
+                 -30,-10, 30, 40, 40, 30,-10,-30,
+                 -30,-10, 20, 30, 30, 20,-10,-30,
+                 -30,-30,  0,  0,  0,  0,-30,-30,
+                 -50,-30,-30,-30,-30,-30,-30,-50];
+
+function evaluate(b){     // white-centric centipawns: material + PST, tapered king
+  let s=0, phase=0;
+  for(let i=0;i<64;i++){
+    const p=b[i]; if(!p||p.t==='k') continue;
+    const sign = p.c==='w'?1:-1, ti = p.c==='w'? i : (i^56);
+    s += sign*(VAL[p.t] + PST[p.t][ti]);
+    if(p.t==='n'||p.t==='b') phase+=1; else if(p.t==='r') phase+=2; else if(p.t==='q') phase+=4;
+  }
+  const mgW = Math.min(1, phase/24);
+  for(let i=0;i<64;i++){
+    const p=b[i]; if(!p||p.t!=='k') continue;
+    const sign = p.c==='w'?1:-1, ti = p.c==='w'? i : (i^56);
+    s += sign*(PST.k[ti]*mgW + KING_EG[ti]*(1-mgW));
+  }
+  return s;
+}
+
+let NODES=0, DEADLINE=0, STOP=false;
+const MATE=1000000;
+const now = ()=> (typeof performance!=='undefined' ? performance.now() : Date.now());
+
+/* SELF-CAPTURE COMBINATION DRIVE --------------------------------------------
+   The search is fully HONEST — real lines, real king safety, full strength — with one
+   thumb on the scale: when the engine is ahead by MORE THAN TWO PAWNS of material,
+   every line in which it plays a self-capture earns a bonus. The flag travels down the
+   whole search tree, so a combination prepared two or three moves out is rewarded just
+   as much as an immediate one.
+
+   The bonus SCALES WITH THE LEAD: base + slope·lead, capped. This is a deliberate
+   rubber-band handicap — the further ahead he gets, the more freely he hands material
+   back in flashy self-captures (at a 2-pawn lead he'll already toss a pawn for a hint
+   of play; at a big lead he tosses them eagerly), so a club player keeps an enjoyable
+   game against an engine that calculates at full strength. Pieces are still only given
+   up for genuine compensation (the cap stays below a minor piece's value), and the
+   bonus is always smaller than the lead itself, so he can never gift his way back to
+   a lost position.
+
+   In sparse endgames (board phase below minPhase) the drive switches OFF entirely:
+   with only a few pieces left, giving one up can turn a dead-won game into a draw the
+   eval cannot see (e.g. leaving a lone bishop that can never mate).
+   Forced mates always trump style; a self-capture mate is preferred. */
+const SELFCAP = { lead: 200, base: 60, slope: 0.5, cap: 250, minPhase: 10 };
+let BIAS = null;            // {color,bonus} while a biased search runs, else null
+
+function scoreMove(b,m){                      // move ordering only (search values are exact)
+  if(m.kind==='enemy'||m.kind==='ep'){
+    const victim = b[m.kind==='ep'? m.ep : m.to];
+    return 100000 + (victim?VAL[victim.t]:100)*10 - VAL[b[m.from].t];
+  }
+  if(m.promo) return 90000 + VAL[m.promo];
+  if(m.kind==='self')                         // order the driven side's self-captures early for better cutoffs
+    return (BIAS && b[m.from].c===BIAS.color) ? 80000 - VAL[b[m.to].t] : -50000 - VAL[b[m.to].t];
+  return PST[b[m.from].t][b[m.from].c==='w'? m.to : (m.to^56)];
+}
+function orderMoves(b,moves,pv){
+  for(const m of moves){
+    m._s = scoreMove(b,m);
+    if(pv && m.from===pv.from && m.to===pv.to && m.promo===pv.promo) m._s = 1e9;
+  }
+  moves.sort((a,c)=>c._s-a._s);
+}
+
+function quiesce(b,color,ep,alpha,beta,selfDone){
+  NODES++;
+  let stand = (color==='w'?1:-1)*evaluate(b);
+  if(BIAS && selfDone) stand += (color===BIAS.color?1:-1)*BIAS.bonus;
+  if(stand>=beta) return beta;
+  if(stand>alpha) alpha=stand;
+  const caps = legalMoves(b,color,ep).filter(m=> m.kind==='enemy'||m.kind==='ep'||m.promo);
+  orderMoves(b,caps,null);
+  for(const m of caps){
+    const sd = selfDone || !!(BIAS && color===BIAS.color && m.kind==='self');
+    const v = -quiesce(applyMove(b,m),opp(color),epAfter(m),-beta,-alpha,sd);
+    if(v>=beta) return beta;
+    if(v>alpha) alpha=v;
+  }
+  return alpha;
+}
+
+function negamax(b,color,ep,depth,alpha,beta,ply,selfDone){
+  if((NODES++ & 2047)===0 && now()>DEADLINE) STOP=true;
+  if(STOP) return alpha;
+  const checked = inCheck(b,color);
+  if(checked) depth++;                       // check extension → finds mates incl. self-capture mates
+  const moves = legalMoves(b,color,ep);
+  if(moves.length===0) return checked ? -(MATE-ply) : 0;
+  if(depth<=0) return quiesce(b,color,ep,alpha,beta,selfDone);
+  orderMoves(b,moves,null);
+  let best=-Infinity;
+  for(const m of moves){                     // the only thumb on the scale: the winning side's
+    const sd = selfDone || !!(BIAS && color===BIAS.color && m.kind==='self');  // self-capture flag
+    const v = -negamax(applyMove(b,m),opp(color),epAfter(m),depth-1,-beta,-alpha,ply+1,sd);
+    if(v>best) best=v;
+    if(best>alpha) alpha=best;
+    if(alpha>=beta) break;
+  }
+  return best;
+}
+
+// Iterative deepening, time-bounded. cfg = {t: ms, d: max depth}. Always full strength.
+function bestMove(b,color,ep,cfg){
+  const root = legalMoves(b,color,ep);
+  if(!root.length) return null;
+  if(root.length===1) return root[0];
+  // Self-capture drive: on only when ahead by more than two pawns of MATERIAL and the
+  // board is not a sparse endgame (phase gate — a sac there can turn a win into a draw).
+  let mat=0, phase=0;
+  for(let i=0;i<64;i++){
+    const p=b[i]; if(!p||p.t==='k') continue;
+    mat += (p.c===color?1:-1)*VAL[p.t];
+    if(p.t==='n'||p.t==='b') phase+=1; else if(p.t==='r') phase+=2; else if(p.t==='q') phase+=4;
+  }
+  BIAS = (mat > SELFCAP.lead && phase >= SELFCAP.minPhase)
+       ? {color, bonus: Math.min(SELFCAP.cap, SELFCAP.base + mat*SELFCAP.slope)} : null;
+  NODES=0; STOP=false; DEADLINE = now()+cfg.t;
+  let scored=null, pv=null;
+  for(let depth=1; depth<=cfg.d; depth++){
+    orderMoves(b,root,pv);
+    const res=[];
+    for(const m of root){
+      const sd = !!(BIAS && m.kind==='self');
+      const v = -negamax(applyMove(b,m),opp(color),epAfter(m),depth-1,-Infinity,Infinity,1,sd);
+      if(STOP) break;
+      res.push({m,v});
+    }
+    if(STOP) break;                 // out of time mid-depth → keep previous depth's result
+    scored=res;
+    let bv=-Infinity; for(const s of res) if(s.v>bv){ bv=s.v; pv=s.m; }
+    if(bv>=MATE-1000) break;        // forced mate found
+    if(now()>DEADLINE) break;
+  }
+  BIAS=null;
+  if(!scored) return pv || root[0];
+  let best=-Infinity, bestM=root[0];
+  for(const s of scored) if(s.v>best){ best=s.v; bestM=s.m; }
+  if(best>=MATE-1000){              // never decline a mate; a self-capture mate is the house style
+    for(const s of scored) if(s.m.kind==='self' && s.v>=MATE-1000){ s.m._v=s.v; return s.m; }
+    bestM._v=best; return bestM;
+  }
+  // cfg.banned = keys of positions already seen twice in the game. While clearly better,
+  // never play into one — that would be an instant threefold draw, throwing the win.
+  // While NOT better, repeating is a legitimate way to hold (perpetual check etc.).
+  if(cfg.banned && cfg.banned.length && best>50){
+    const banned = new Set(cfg.banned);
+    const repeats = m => banned.has(posKey(applyMove(b,m),opp(color),epAfter(m)));
+    if(repeats(bestM)){
+      let alt=null, altV=-Infinity;
+      for(const s of scored) if(s.v>altV && !repeats(s.m)){ altV=s.v; alt=s.m; }
+      if(alt){ alt._v=altV; return alt; }
+    }
+  }
+  bestM._v=best;                    // root score rides along so the UI can judge a draw offer
+  return bestM;
+}
+
+// Publish the API. `const`/arrow declarations do NOT leak to global scope through indirect
+// eval (only function declarations do), so the page and the Worker reach these via globals.
+Object.assign(globalThis, {
+  GLYPH, VAL, idx, opp, inb, initBoard, attacked, kingSq, inCheck, pseudoMoves,
+  applyMove, epAfter, legalMoves, sanOf, PST, KING_EG, SELFCAP, MATE, evaluate,
+  scoreMove, orderMoves, quiesce, negamax, bestMove, posKey, insufficientMaterial
+});
+</script>
+
+<script>
+"use strict";
+/* ===========================================================================
+   UI / game state.  Search runs in a Web Worker so the board never freezes.
+   =========================================================================== */
+const ENGINE_SRC = document.getElementById('engine-src').textContent;
+(0,eval)(ENGINE_SRC);                       // indirect eval → engine functions become global
+
+let worker=null, workerOK=false, jobId=0, pending=null;
+(function initWorker(){
+  try{
+    const src = ENGINE_SRC +
+      "\nonmessage=function(e){var d=e.data; var m=bestMove(d.board,d.color,d.ep,d.cfg); postMessage({id:d.id, move:m});};";
+    const url = URL.createObjectURL(new Blob([src],{type:'application/javascript'}));
+    worker = new Worker(url);
+    worker.onmessage = (e)=>{
+      if(!pending || !e.data || e.data.id!==pending.id) return;
+      clearTimeout(pending.wd); const cb=pending.cb; pending=null; cb(e.data.move);
+    };
+    worker.onerror = ()=>{ workerOK=false; };
+    workerOK=true;
+  }catch(err){ workerOK=false; worker=null; }
+})();
+
+function computeMove(board,color,ep,cfg,cb){
+  if(workerOK && worker){
+    const id=++jobId;
+    const wd=setTimeout(()=>{
+      if(pending && pending.id===id){ pending=null; workerOK=false;
+        try{worker.terminate();}catch(_){}  worker=null; cb(bestMove(board,color,ep,cfg)); }
+    }, cfg.t+3000);
+    pending={id,cb,wd};
+    try{ worker.postMessage({id,board,color,ep,cfg}); return; }
+    catch(err){ clearTimeout(wd); pending=null; workerOK=false; worker=null; }
+  }
+  setTimeout(()=>cb(bestMove(board,color,ep,cfg)), 10);
+}
+
+const $ = id => document.getElementById(id);
+const boardEl=$('board');
+let state, orient='w', aiToken=0, reviewPly=null;   // reviewPly=null → live; else show position after N plies
+let selected=null, legalForSel=[], pendingPromo=null;
+let transientNote='';                               // one-shot status line (e.g. "He declines your draw offer")
+
+const CFG = {t:1200, d:12};               // he ALWAYS plays at full strength — no strength dial
+
+/* ---- opening book: standard theory, favoring closed systems ----
+   Keys are the game so far in SAN (checks stripped, space-joined); values are candidate
+   replies (repeats = weighting — the English and the Sicilian lead the repertoire).
+   White: mainly the English (1.c4, g3 systems) and 1.e4 heading for the Closed
+   Sicilian / Closed Vienna, with 1.Nf3 and 1.d4 mixed in for variety. Black: the
+   Sicilian / French / Caro vs 1.e4, Nimzo/QGD vs 1.d4, Symmetrical English vs 1.c4.
+   Out of book → full-strength search. (No castling in this variant, and none of these
+   lines castles within book depth; the fianchetto keeps the king snug anyway.)
+   VARIETY RULE: at every branch point with more than one distinct option, the choice
+   made last game (remembered in localStorage) is excluded — he never opens the same
+   way twice in a row, and never answers the same opening the same way twice in a row. */
+const BOOK = {
+  // --- White: the English ---
+  '': ['c4','c4','e4','Nf3','d4'],
+  'c4 e5': ['Nc3'],
+  'c4 e5 Nc3 Nf6': ['g3'],
+  'c4 e5 Nc3 Nf6 g3 d5': ['cxd5'],
+  'c4 e5 Nc3 Nf6 g3 d5 cxd5 Nxd5': ['Bg2'],
+  'c4 e5 Nc3 Nf6 g3 Bb4': ['Bg2'],
+  'c4 e5 Nc3 Nf6 g3 g6': ['Bg2'],
+  'c4 e5 Nc3 Nf6 g3 c6': ['Bg2'],
+  'c4 e5 Nc3 Bb4': ['g3'],
+  'c4 e5 Nc3 Nc6': ['g3'],
+  'c4 e5 Nc3 Nc6 g3 g6': ['Bg2'],
+  'c4 e5 Nc3 Nc6 g3 Nf6': ['Bg2'],
+  'c4 e5 Nc3 Nc6 g3 f5': ['Bg2'],
+  'c4 c5': ['Nc3'],
+  'c4 c5 Nc3 Nc6': ['g3'],
+  'c4 c5 Nc3 Nc6 g3 g6': ['Bg2'],
+  'c4 c5 Nc3 Nf6': ['g3'],
+  'c4 c5 Nc3 Nf6 g3 d5': ['cxd5'],
+  'c4 c5 Nc3 Nf6 g3 d5 cxd5 Nxd5': ['Bg2'],
+  'c4 c5 Nc3 Nf6 g3 g6': ['Bg2'],
+  'c4 Nf6': ['Nc3'],
+  'c4 Nf6 Nc3 e5': ['g3'],
+  'c4 Nf6 Nc3 g6': ['g3'],
+  'c4 Nf6 Nc3 e6': ['g3'],
+  'c4 Nf6 Nc3 c5': ['g3'],
+  'c4 Nf6 Nc3 d5': ['cxd5'],
+  'c4 Nf6 Nc3 d5 cxd5 Nxd5': ['g3'],
+  'c4 e6': ['Nc3'],
+  'c4 e6 Nc3 d5': ['cxd5'],
+  'c4 e6 Nc3 d5 cxd5 exd5': ['d4'],
+  'c4 e6 Nc3 Nf6': ['g3'],
+  'c4 g6': ['Nc3'],
+  'c4 g6 Nc3 Bg7': ['g3'],
+  'c4 c6': ['Nc3'],
+  'c4 c6 Nc3 d5': ['cxd5'],
+  'c4 c6 Nc3 d5 cxd5 cxd5': ['d4'],
+  'c4 d5': ['cxd5'],
+  'c4 d5 cxd5 Qxd5': ['Nc3'],
+  'c4 d5 cxd5 Nf6': ['Nc3'],
+  // --- White: 1.e4 heading for the Closed Sicilian / Closed Vienna ---
+  'e4 c5': ['Nc3'],
+  'e4 c5 Nc3 Nc6': ['g3'],
+  'e4 c5 Nc3 Nc6 g3 g6': ['Bg2'],
+  'e4 c5 Nc3 Nc6 g3 g6 Bg2 Bg7': ['d3'],
+  'e4 c5 Nc3 Nc6 g3 g6 Bg2 Bg7 d3 d6': ['f4'],
+  'e4 c5 Nc3 Nc6 g3 g6 Bg2 Bg7 d3 d6 f4 e6': ['Nf3'],
+  'e4 c5 Nc3 Nc6 g3 e6': ['Bg2'],
+  'e4 c5 Nc3 d6': ['g3'],
+  'e4 c5 Nc3 e6': ['g3'],
+  'e4 c5 Nc3 g6': ['g3'],
+  'e4 c5 Nc3 a6': ['g3'],
+  'e4 e5': ['Nc3'],
+  'e4 e5 Nc3 Nf6': ['g3'],
+  'e4 e5 Nc3 Nf6 g3 d5': ['exd5'],
+  'e4 e5 Nc3 Nf6 g3 d5 exd5 Nxd5': ['Bg2'],
+  'e4 e5 Nc3 Nc6': ['g3'],
+  'e4 e5 Nc3 Nc6 g3 Bc5': ['Bg2'],
+  'e4 e5 Nc3 Nc6 g3 g6': ['Bg2'],
+  'e4 e5 Nc3 Bc5': ['g3'],
+  'e4 e6': ['d3'],
+  'e4 c6': ['d3'],
+  'e4 d5': ['exd5'],
+  'e4 d6': ['d4'],
+  'e4 g6': ['d4'],
+  'e4 Nf6': ['e5'],
+  // --- White: 1.d4 (QG / Catalan-flavored, no early castling needed) ---
+  'd4 Nf6': ['c4'],
+  'd4 Nf6 c4 e6': ['Nc3','Nf3'],
+  'd4 Nf6 c4 e6 Nc3 Bb4': ['Qc2'],
+  'd4 Nf6 c4 e6 Nf3 d5': ['Nc3'],
+  'd4 Nf6 c4 g6': ['Nc3'],
+  'd4 Nf6 c4 g6 Nc3 Bg7': ['g3'],
+  'd4 Nf6 c4 c5': ['d5'],
+  'd4 d5': ['c4'],
+  'd4 d5 c4 e6': ['Nc3'],
+  'd4 d5 c4 e6 Nc3 Nf6': ['Bg5'],
+  'd4 d5 c4 c6': ['Nf3'],
+  'd4 d5 c4 dxc4': ['Nf3'],
+  'd4 e6': ['c4'],
+  'd4 g6': ['c4'],
+  'd4 d6': ['c4'],
+  'd4 f5': ['g3'],
+  // --- White: 1.Nf3 (Réti, usually steering back into English/g3 channels) ---
+  'Nf3 Nf6': ['c4','g3'],
+  'Nf3 Nf6 c4 c5': ['Nc3'],
+  'Nf3 Nf6 c4 e6': ['g3'],
+  'Nf3 Nf6 c4 g6': ['Nc3'],
+  'Nf3 Nf6 g3 g6': ['Bg2'],
+  'Nf3 Nf6 g3 d5': ['Bg2'],
+  'Nf3 d5': ['g3'],
+  'Nf3 d5 g3 Nf6': ['Bg2'],
+  'Nf3 d5 g3 c6': ['Bg2'],
+  'Nf3 c5': ['c4'],
+  'Nf3 c5 c4 Nc6': ['Nc3'],
+  'Nf3 g6': ['g3'],
+  // --- Black vs 1.e4: mainly the Sicilian, with French/Caro/1...e5 for variety ---
+  'e4': ['c5','c5','e5','e6','c6'],
+  'e4 c5 Nc3': ['Nc6'],
+  'e4 c5 Nc3 Nc6 g3': ['g6'],
+  'e4 c5 Nc3 Nc6 g3 g6 Bg2': ['Bg7'],
+  'e4 c5 Nc3 Nc6 g3 g6 Bg2 Bg7 d3': ['d6'],
+  'e4 c5 Nc3 Nc6 g3 g6 Bg2 Bg7 d3 d6 f4': ['e6'],
+  'e4 c5 Nc3 Nc6 f4': ['g6'],
+  'e4 c5 Nf3': ['Nc6'],
+  'e4 c5 Nf3 Nc6 d4': ['cxd4'],
+  'e4 c5 Nf3 Nc6 d4 cxd4 Nxd4': ['Nf6'],
+  'e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 Nf6 Nc3': ['d6'],
+  'e4 c5 Nf3 Nc6 Bb5': ['g6'],
+  'e4 c5 Nf3 Nc6 Bc4': ['e6'],
+  'e4 c5 Nf3 Nc6 c3': ['Nf6'],
+  'e4 c5 c3': ['Nf6'],
+  'e4 c5 d4': ['cxd4'],
+  // --- Black vs 1.e4: open game / French / Caro lines ---
+  'e4 e5 Nf3': ['Nc6'],
+  'e4 e5 Nf3 Nc6 Bb5': ['a6'],
+  'e4 e5 Nf3 Nc6 Bb5 a6 Ba4': ['Nf6'],
+  'e4 e5 Nf3 Nc6 Bc4': ['Nf6'],
+  'e4 e5 Nf3 Nc6 d4': ['exd4'],
+  'e4 e5 Nf3 Nc6 d4 exd4 Nxd4': ['Nf6'],
+  'e4 e5 Nc3': ['Nf6'],
+  'e4 e5 Nc3 Nf6 g3': ['d5'],
+  'e4 e5 Nc3 Nf6 g3 d5 exd5': ['Nxd5'],
+  'e4 e6 d4': ['d5'],
+  'e4 e6 d4 d5 Nc3': ['Bb4'],
+  'e4 e6 d4 d5 Nd2': ['c5'],
+  'e4 e6 d4 d5 e5': ['c5'],
+  'e4 e6 d4 d5 exd5': ['exd5'],
+  'e4 e6 d3': ['d5'],
+  'e4 e6 Nf3': ['d5'],
+  'e4 c6 d4': ['d5'],
+  'e4 c6 d4 d5 Nc3': ['dxe4'],
+  'e4 c6 d4 d5 Nc3 dxe4 Nxe4': ['Bf5'],
+  'e4 c6 d4 d5 e5': ['Bf5'],
+  'e4 c6 d4 d5 exd5': ['cxd5'],
+  'e4 c6 Nc3': ['d5'],
+  'e4 c6 Nf3': ['d5'],
+  'e4 c6 d3': ['d5'],
+  // --- Black vs 1.d4: Nimzo / QGD ---
+  'd4': ['Nf6','Nf6','d5'],
+  'd4 Nf6 c4': ['e6'],
+  'd4 Nf6 c4 e6 Nc3': ['Bb4'],
+  'd4 Nf6 c4 e6 Nf3': ['d5'],
+  'd4 Nf6 c4 e6 g3': ['d5'],
+  'd4 Nf6 Nf3': ['e6'],
+  'd4 Nf6 Nf3 e6 c4': ['d5'],
+  'd4 Nf6 Nf3 e6 g3': ['d5'],
+  'd4 Nf6 Nf3 e6 Bg5': ['d5'],
+  'd4 Nf6 Bg5': ['e6'],
+  'd4 Nf6 Nc3': ['d5'],
+  'd4 d5 c4': ['e6'],
+  'd4 d5 c4 e6 Nc3': ['Nf6'],
+  'd4 d5 c4 e6 Nf3': ['Nf6'],
+  'd4 d5 Nf3': ['Nf6'],
+  'd4 d5 Bf4': ['Nf6'],
+  // --- Black vs 1.c4: Symmetrical English / reversed lines ---
+  'c4': ['c5','e5','Nf6'],
+  'c4 c5 Nc3': ['Nc6'],
+  'c4 c5 Nc3 Nc6 g3': ['g6'],
+  'c4 c5 Nc3 Nc6 g3 g6 Bg2': ['Bg7'],
+  'c4 c5 Nf3': ['Nc6'],
+  'c4 c5 g3': ['Nc6'],
+  'c4 e5 Nc3': ['Nf6'],
+  'c4 e5 Nc3 Nf6 g3': ['d5'],
+  'c4 e5 Nc3 Nf6 g3 d5 cxd5': ['Nxd5'],
+  'c4 e5 Nc3 Nf6 g3 d5 cxd5 Nxd5 Bg2': ['Nb6'],
+  'c4 Nf6 Nc3': ['e5','g6'],
+  'c4 Nf6 Nc3 g6 g3': ['Bg7'],
+  'c4 Nf6 Nc3 g6 g3 Bg7': ['Bg2'],
+  'c4 Nf6 Nc3 e5 g3': ['d5'],
+  'c4 Nf6 Nc3 e5 g3 d5': ['cxd5'],
+  'c4 Nf6 Nc3 e5 g3 d5 cxd5': ['Nxd5'],
+  'c4 Nf6 Nc3 e5 g3 d5 cxd5 Nxd5': ['Bg2'],
+  // --- Black vs the rest ---
+  'Nf3': ['Nf6'],
+  'Nf3 Nf6 c4': ['c5'],
+  'Nf3 Nf6 g3': ['g6'],
+  'Nf3 Nf6 d4': ['e6'],
+  'g3': ['d5'],
+  'f4': ['d5'],
+  'b3': ['e5'],
+  'Nc3': ['d5']
+};
+// remembers the choice made at each branch point so the next game varies
+let bookMem = {};
+try{ bookMem = JSON.parse(localStorage.getItem('kramnikBookMem')||'{}') || {}; }catch(_){ bookMem={}; }
+function bookMove(){
+  if(state.history.length >= 16) return null;
+  const key = state.history.map(h=>h.san.replace(/[+#]/g,'')).join(' ');
+  const opts = BOOK[key];
+  if(!opts) return null;
+  let pool = opts;
+  if(new Set(opts).size>1 && bookMem[key]!=null){   // don't repeat last game's choice here
+    const rest = opts.filter(o=>o!==bookMem[key]);
+    if(rest.length) pool = rest;
+  }
+  const want = pool[Math.floor(Math.random()*pool.length)];
+  for(const m of legalMoves(state.board,state.turn,state.ep))
+    if(sanOf(state.board,m,state.ep).replace(/[+#]/g,'')===want){
+      bookMem[key]=want;
+      try{ localStorage.setItem('kramnikBookMem', JSON.stringify(bookMem)); }catch(_){}
+      return m;
+    }
+  return null;
+}
+
+function newState(){
+  return { board:initBoard(), turn:'w', ep:null, history:[], over:null,
+           keys:[], half:0, offers:{count:0,lastPly:-99}, pOffer:{pending:false,lastPly:-99},
+           mode:$('mode').value, human:$('side').value };
+}
+
+/* ---- draw bookkeeping: repetition keys + halfmove (fifty-move) clock ----
+   Rebuilt from history each time — games are short, and it keeps undo/PGN-load
+   trivially correct with no incremental bookkeeping to get wrong. */
+function rebuildClocks(){
+  state.keys = [posKey(initBoard(),'w',null)];
+  let half=0;
+  for(let i=0;i<state.history.length;i++){
+    const h=state.history[i];
+    half = (h.board[h.m.from].t==='p' || h.m.kind!=='move') ? 0 : half+1;
+    const after = (i+1<state.history.length) ? state.history[i+1] : state;
+    state.keys.push(posKey(after.board, after.turn, after.ep));
+  }
+  state.half = half;
+}
+function occurrences(key){ let n=0; for(const k of state.keys) if(k===key) n++; return n; }
+
+function startGame(){
+  aiToken++; reviewPly=null;
+  state = newState();
+  orient = state.human;
+  selected=null; legalForSel=[];
+  showDrawOffer(false);
+  checkEnd();
+  render();
+  maybeAI();
+}
+
+/* ---- board reconstruction for review ---- */
+function boardAtPly(j){ return (j>=state.history.length) ? state.board : state.history[j].board; }
+
+function render(){
+  boardEl.innerHTML='';
+  const live = reviewPly==null;
+  const viewPly = live ? state.history.length : reviewPly;
+  const board = live ? state.board : boardAtPly(viewPly);
+  const last = viewPly>0 ? state.history[viewPly-1].m : null;
+  for(let dr=0;dr<8;dr++){
+    for(let dc=0;dc<8;dc++){
+      const r = orient==='w'? dr : 7-dr;
+      const c = orient==='w'? dc : 7-dc;
+      const i = idx(r,c);
+      const sq=document.createElement('div');
+      sq.className='sq '+(((r+c)%2===0)?'l':'d');
+      sq.dataset.i=i;
+      if(last && (i===last.from||i===last.to)) sq.classList.add('last');
+      if(live && selected===i) sq.classList.add('sel');
+      const p=board[i];
+      if(p){ const sp=document.createElement('span'); sp.className='piece '+p.c; sp.textContent=GLYPH[p.c][p.t]; sq.appendChild(sp); }
+      if(dc===0){ const cr=document.createElement('span'); cr.className='coord r'; cr.textContent=8-r; sq.appendChild(cr); }
+      if(dr===7){ const cf=document.createElement('span'); cf.className='coord f'; cf.textContent='abcdefgh'[c]; sq.appendChild(cf); }
+      if(live){
+        const lm = legalForSel.filter(m=>m.to===i);
+        if(lm.length){
+          if(lm[0].kind==='self'){ const ring=document.createElement('div'); ring.className='ring self'; sq.appendChild(ring); }
+          else if(lm[0].kind==='enemy'||lm[0].kind==='ep'){ const ring=document.createElement('div'); ring.className='ring'; sq.appendChild(ring); }
+          else { const d=document.createElement('div'); d.className='dot'; sq.appendChild(d); }
+        }
+      }
+      sq.addEventListener('click',()=>onClick(i));
+      boardEl.appendChild(sq);
+    }
+  }
+  updateStatus();
+  renderMoves();
+}
+
+function onClick(i){
+  if(reviewPly!=null) return;                       // reviewing → board is read-only
+  if(state.over || pendingPromo) return;
+  if(state.mode==='ai' && state.turn!==state.human) return;
+  const p=state.board[i];
+  if(selected!=null){
+    const targets = legalForSel.filter(m=>m.to===i);
+    if(targets.length){
+      if(targets.length>1 && targets[0].promo){ askPromo(targets); return; }
+      doMove(targets[0]); return;
+    }
+  }
+  if(p && p.c===state.turn){
+    selected=i;
+    legalForSel = legalMoves(state.board,state.turn,state.ep).filter(m=>m.from===i);
+    render();
+  } else { selected=null; legalForSel=[]; render(); }
+}
+
+function askPromo(targets){
+  pendingPromo=targets;
+  const box=$('promoOpts'); box.innerHTML='';
+  for(const t of ['q','r','b','n']){
+    const s=document.createElement('span'); s.className='piece '+state.turn;
+    s.textContent=GLYPH[state.turn][t];
+    s.onclick=()=>{ const m=targets.find(x=>x.promo===t); pendingPromo=null; $('promo').style.display='none'; doMove(m); };
+    box.appendChild(s);
+  }
+  $('promo').style.display='flex';
+}
+
+function doMove(m){
+  showDrawOffer(false);                       // any move on the board lapses a pending AI offer
+  transientNote='';
+  const san = sanOf(state.board,m,state.ep);
+  state.history.push({m, board:state.board, ep:state.ep, turn:state.turn, san, self:m.kind==='self'});
+  state.board = applyMove(state.board,m);
+  state.ep = epAfter(m);
+  state.turn = opp(state.turn);
+  selected=null; legalForSel=[];
+  checkEnd();
+  render();
+  maybeAI();
+}
+
+function checkEnd(){
+  rebuildClocks();
+  const moves = legalMoves(state.board,state.turn,state.ep);
+  if(moves.length===0){
+    state.over = inCheck(state.board,state.turn)
+      ? {type:'mate',winner:opp(state.turn)}
+      : {type:'stalemate'};
+    return;
+  }
+  if(occurrences(state.keys[state.keys.length-1])>=3){ state.over={type:'draw',reason:'threefold repetition'}; return; }
+  if(state.half>=100){ state.over={type:'draw',reason:'fifty-move rule'}; return; }
+  if(insufficientMaterial(state.board)){ state.over={type:'draw',reason:'insufficient material'}; return; }
+  state.over=null;
+}
+
+/* ---- AI draw offers ----
+   Rather than silently shuffling into a threefold (e.g. bailing out with perpetual
+   check), he offers the draw like a real opponent: he plays his move AND offers.
+   Accept with the button; moving on is an implicit decline — the offer lapses, and
+   if play does repeat three times the game ends as a draw by rule anyway. */
+function aiOffersDraw(m){
+  if(state.offers.count>=2 || state.history.length - state.offers.lastPly < 20) return false;
+  const v = m._v;
+  if(v==null || v>60) return false;                  // he still thinks he's better — plays on
+  const nk = posKey(applyMove(state.board,m), opp(state.turn), epAfter(m));
+  const repAfter = occurrences(nk)+1;
+  if(repAfter>=3) return false;                      // that's already a draw by rule, no offer needed
+  if(repAfter===2) return true;                      // steering for repetition / perpetual → offer instead
+  if(state.half>=60 && Math.abs(v)<=30) return true; // 30+ moves with no progress and dead level
+  return false;
+}
+function showDrawOffer(on){ $('drawOffer').style.display = on ? 'block' : 'none'; }
+
+function maybeAI(){
+  if(reviewPly!=null || state.over || state.mode!=='ai' || state.turn===state.human) return;
+  updateStatus(true);
+  const myToken=++aiToken, turnAtStart=state.turn;
+  const bm = bookMove();                    // standard opening theory first (English / Closed Sicilian)
+  if(bm){
+    const declines = state.pOffer.pending;  // still in book = far too early to agree a draw
+    state.pOffer.pending = false;
+    setTimeout(()=>{
+      if(myToken!==aiToken || state.over || state.turn!==turnAtStart) return;
+      doMove(bm);
+      if(declines){ transientNote='He declines your draw offer — far too early.'; updateStatus(); }
+    }, 300+Math.random()*400);
+    return;
+  }
+  // keys already seen twice: the engine must not stumble into a threefold while winning
+  const seen={}, banned=[];
+  for(const k of state.keys) seen[k]=(seen[k]||0)+1;
+  for(const k in seen) if(seen[k]>=2) banned.push(k);
+  const cfg = Object.assign({banned}, CFG);
+  computeMove(state.board,state.turn,state.ep,cfg,(m)=>{
+    if(myToken!==aiToken || state.over || state.turn!==turnAtStart) return;
+    if(m){
+      // answer a pending draw offer from the player: accept when he can't claim an edge
+      // (and the game is out of its infancy), otherwise decline and play on.
+      if(state.pOffer.pending){
+        state.pOffer.pending = false;
+        if(m._v!=null && m._v<=30 && state.history.length>=20){
+          state.over={type:'draw',reason:'by agreement'};
+          render(); return;
+        }
+        doMove(m);
+        if(!state.over){ transientNote='He declines your draw offer — play on.'; updateStatus(); }
+        return;
+      }
+      const offer = aiOffersDraw(m);
+      doMove(m);
+      if(offer && !state.over){
+        state.offers = {count:state.offers.count+1, lastPly:state.history.length};
+        showDrawOffer(true);
+      }
+    } else { checkEnd(); render(); }
+  });
+}
+
+function updateStatus(thinking){
+  const el=$('status');
+  if(reviewPly!=null){
+    el.innerHTML = `<span style="color:var(--accent)">Reviewing</span> — after ${reviewPly} of ${state.history.length} plies` +
+      `<small>◀ ▶ to step, click a move, ⏭ returns to the game</small>`;
+    return;
+  }
+  if(state.over){
+    el.innerHTML = state.over.type==='mate'
+      ? `Checkmate — <b>${state.over.winner==='w'?'White':'Black'} wins!</b>`
+      : state.over.type==='stalemate'
+        ? `Stalemate — <b>draw.</b>`
+        : `Draw — <b>${state.over.reason}.</b>`;
+    return;
+  }
+  const side = state.turn==='w'?'White':'Black';
+  const chk = inCheck(state.board,state.turn) ? ' <span style="color:#e06666">(in check)</span>' : '';
+  let who='';
+  if(state.mode==='ai'){ who = state.turn===state.human?' — your move':(thinking?' — thinking…':' — his move'); }
+  el.innerHTML = `<span style="color:var(--accent)">${side} to move</span>${chk}${who}` +
+    (transientNote ? `<small style="color:var(--accent)">${transientNote}</small>` : '') +
+    `<small>No castling · capturing your own pieces is allowed</small>`;
+}
+
+function renderMoves(){
+  const el=$('moves'); el.innerHTML='';
+  const N=state.history.length;
+  const curPly = reviewPly==null ? N : reviewPly;
+  let html='';
+  state.history.forEach((h,i)=>{
+    if(i%2===0) html += `<span class="num">${i/2+1}.</span> `;
+    const cls = 'mv'+(h.self?' self':'')+((i+1)===curPly?' cur':'');
+    html += `<span class="${cls}" data-ply="${i+1}">${h.san}${h.self?'<small>(self)</small>':''}</span> `;
+  });
+  el.innerHTML = html || '<span style="opacity:.6">No moves yet.</span>';
+  el.querySelectorAll('.mv').forEach(s=> s.onclick=()=> goToPly(+s.dataset.ply));
+  const cur=el.querySelector('.cur'); if(cur) cur.scrollIntoView({block:'nearest'});
+}
+
+/* ---- review navigation ---- */
+function goToPly(j){
+  reviewPly = (j>=state.history.length) ? null : Math.max(0,j);
+  selected=null; legalForSel=[]; render();
+  if(reviewPly==null) maybeAI();
+}
+function nav(delta){
+  const N=state.history.length;
+  let p = (reviewPly==null ? N : reviewPly) + delta;
+  goToPly(p<0?0:p);
+}
+
+/* ---- PGN save / load ---- */
+function resultStr(){
+  if(!state.over) return '*';
+  if(state.over.type==='mate') return state.over.winner==='w'?'1-0':'0-1';
+  return '1/2-1/2';
+}
+function downloadPGN(){
+  const d=new Date();
+  const today = d.getFullYear()+'.'+String(d.getMonth()+1).padStart(2,'0')+'.'+String(d.getDate()).padStart(2,'0');
+  const res=resultStr(), ai='Kramnik (capture-anything/no-castle AI)';
+  const white = state.mode==='ai' ? (state.human==='w'?'Player':ai) : 'White';
+  const black = state.mode==='ai' ? (state.human==='b'?'Player':ai) : 'Black';
+  let mt='';
+  state.history.forEach((h,i)=>{ if(i%2===0) mt+=(i/2+1)+'. '; mt+=h.san+' '; });
+  mt = (mt+res).trim();
+  // wrap movetext at ~80 cols
+  const words=mt.split(' '); let line='', body='';
+  for(const w of words){ if((line+' '+w).trim().length>80){ body+=line.trim()+'\n'; line=w; } else line+=' '+w; }
+  body+=line.trim();
+  const pgn = [
+    '[Event "Kramnik Chess Variant"]','[Site "local"]',`[Date "${today}"]`,
+    `[White "${white}"]`,`[Black "${black}"]`,`[Result "${res}"]`,
+    '[Variant "Capture-anything / No-castling"]'
+  ].join('\n')+'\n\n'+body+'\n';
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([pgn],{type:'application/x-chess-pgn'}));
+  a.download='kramnik_chess_'+today.replace(/\./g,'')+'.pgn'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+}
+
+const normSan = s => s.replace(/[+#!?]/g,'').replace(/\(self\)/gi,'').replace(/e\.p\.?/i,'');
+function pgnTokens(text){
+  text = text.replace(/\[[^\]]*\]/g,' ')          // headers
+             .replace(/\{[^}]*\}/g,' ')           // {comments}
+             .replace(/;[^\n]*/g,' ')             // ;comments
+             .replace(/\$\d+/g,' ');              // NAGs
+  let prev; do{ prev=text; text=text.replace(/\([^()]*\)/g,' '); }while(text!==prev); // variations
+  const out=[];
+  for(let tk of text.split(/\s+/)){
+    if(!tk) continue;
+    tk = tk.replace(/^\d+\.(\.\.)?/,'');           // strip "12." / "12..."
+    if(!tk || /^(1-0|0-1|1\/2-1\/2|\*)$/.test(tk) || /^\d+$/.test(tk)) continue;
+    out.push(tk);
+  }
+  return out;
+}
+function loadTokens(tokens){
+  let b=initBoard(), turn='w', ep=null; const hist=[];
+  for(const raw of tokens){
+    const want=normSan(raw);
+    let found=null;
+    for(const L of legalMoves(b,turn,ep)){ if(normSan(sanOf(b,L,ep))===want){ found=L; break; } }
+    if(!found) return {ok:false, made:hist.length, bad:raw, hist, board:b, ep, turn};
+    hist.push({m:found, board:b, ep, turn, san:sanOf(b,found,ep), self:found.kind==='self'});
+    b=applyMove(b,found); ep=epAfter(found); turn=opp(turn);
+  }
+  return {ok:true, hist, board:b, ep, turn};
+}
+function applyLoaded(r){
+  aiToken++; reviewPly = r.hist.length ? 0 : null;
+  state = { board:r.board, turn:r.turn, ep:r.ep, history:r.hist, over:null,
+            keys:[], half:0, offers:{count:0,lastPly:-99}, pOffer:{pending:false,lastPly:-99},
+            mode:$('mode').value, human:$('side').value };
+  showDrawOffer(false);
+  checkEnd();
+  orient = state.human; selected=null; legalForSel=[];
+  render();
+}
+
+/* ---- controls ---- */
+$('newGame').onclick=startGame;
+$('flip').onclick=()=>{ orient=opp(orient); render(); };
+$('undo').onclick=()=>{
+  if(!state.history.length) return;
+  aiToken++; reviewPly=null;
+  do{
+    const popped = state.history.pop();
+    state.board=popped.board; state.ep=popped.ep; state.turn=popped.turn;
+  } while(state.mode==='ai' && state.turn!==state.human && state.history.length);
+  state.over=null; selected=null; legalForSel=[];
+  state.pOffer.pending=false;
+  showDrawOffer(false);
+  checkEnd();
+  render();
+};
+$('save').onclick=downloadPGN;
+function loadPGN(text){                       // also callable directly (e.g. load from pasted text)
+  const r=loadTokens(pgnTokens(String(text)));
+  applyLoaded(r);
+  if(!r.ok) alert('Loaded '+r.hist.length+' move(s); could not interpret "'+r.bad+'". The rest was skipped.');
+  return r.ok;
+}
+window.loadPGN = loadPGN;
+$('load').onclick=()=>$('loadfile').click();
+$('loadfile').onchange=(e)=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>loadPGN(rd.result);
+  rd.readAsText(f); e.target.value='';
+};
+$('navStart').onclick=()=>goToPly(0);
+$('navBack').onclick=()=>nav(-1);
+$('navFwd').onclick=()=>nav(1);
+$('navEnd').onclick=()=>goToPly(state.history.length);
+$('offerAccept').onclick=()=>{
+  if(state.over || $('drawOffer').style.display==='none') return;
+  aiToken++;
+  state.over={type:'draw',reason:'by agreement'};
+  showDrawOffer(false);
+  render();
+};
+$('offerDecline').onclick=()=>showDrawOffer(false);
+$('offerBtn').onclick=()=>{
+  if(state.over || reviewPly!=null || pendingPromo) return;
+  if(state.mode==='human'){ showDrawOffer(true); return; }   // hotseat: put it to the other player
+  if(state.turn!==state.human) return;                       // offer on your own turn
+  if(state.pOffer.pending) return;
+  if(state.history.length - state.pOffer.lastPly < 12){
+    transientNote='Too soon to offer again.'; updateStatus(); return;
+  }
+  state.pOffer={pending:true, lastPly:state.history.length};
+  transientNote='Draw offered — make your move; he will answer with his.';
+  updateStatus();
+};
+
+startGame();
+</script>
+</body>
+</html>
