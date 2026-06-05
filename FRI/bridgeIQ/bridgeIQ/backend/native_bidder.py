@@ -1404,8 +1404,15 @@ def _try_quantitative_4nt_pipeline(state: 'AuctionState', e: HandEval,
     # POSITIVE (≈8-13), not a 1NT opening — so the 1NT-opening midpoint
     # below is wrong (I'd always decline). Accept the invite with the top
     # of my positive range (12+), decline with the bottom.
-    if (ctx.opening_was_strong_artificial
-            and ctx.opener_seat == state.seat.partner()):
+    # NB: detect strong-1C from the SYSTEM, not ctx.opening_was_strong_
+    # artificial — that flag reads the 1C bid's `alert`, which is LOST when
+    # the live auction is reconstructed from the Q-NET wire (so it's False
+    # live even for Precision). The system knows 1C is strong regardless.
+    op = state.opening_bid
+    strong_1c = (op is not None and op.level == 1 and op.suit == Suit.CLUBS
+                 and system is not None
+                 and getattr(system, "strong_open_call", None) == "1C")
+    if (strong_1c and ctx.opener_seat == state.seat.partner()):
         if e.hcp >= 12:
             return bid(6, Suit.NOTRUMP, alert=True,
                        why=f"Accepting quantitative 4NT: top of positive "
