@@ -38,9 +38,11 @@ BIQ_N_LOG = BIQ_ROOT / "tools/runs/biq_N.log"
 BIQ_S_LOG = BIQ_ROOT / "tools/runs/biq_S.log"
 BIQ_E_LOG = BIQ_ROOT / "tools/runs/biq_E.log"   # double-pair Room 2 (biq E/W)
 BIQ_W_LOG = BIQ_ROOT / "tools/runs/biq_W.log"
-# Saved Room-1 / Room-2 logs for the double-pair board-a-match compare.
+# Saved Room-1 / Room-2 logs for the double-pair board-a-match compare,
+# plus the optional all-Q-Plus baseline .qss for the closed-room decomposition.
 DP_ROOM1_LOG = BIQ_ROOT / "tools/runs/dp_room1_NS.log"
 DP_ROOM2_LOG = BIQ_ROOT / "tools/runs/dp_room2_EW.log"
+DP_BASELINE_QSS = BIQ_ROOT / "tools/runs/dp_baseline_allqp.qss"
 SERVER_PORT, PROXY_PORT = 5555, 5556
 SYSTEMS = ["SAYC", "TwoOverOne", "StandardAcol", "StandardFrench",
            "Precision90M"]
@@ -56,7 +58,7 @@ AB_REF_FILE = BIQ_ROOT / "tools/runs/ab/ab_reference.json"  # Run-A deal id
 # Bump this on any user-visible behaviour change. It's shown in the title
 # bar AND logged on startup, so you can tell at a glance whether a freshly
 # launched panel actually has the latest fix (no more "did it reload?").
-PANEL_BUILD = "2026-06-05a · double-pair validation (board-a-match) + sequential systems"
+PANEL_BUILD = "2026-06-05b · double-pair + closed-room split + 4-computer autoclicker"
 # Fixed seed for 'reproducible random' systems — both A and B pass the same
 # value so they draw identical per-deal systems on identical boards.
 REPRO_SYS_SEED = 20260604
@@ -114,6 +116,13 @@ DOUBLE-PAIR VALIDATION (section 2b)  — the unbiased teams test
   ‘Compare rooms → IMP’ scores board-a-match: IMP(Room1_NS − Room2_NS) per
   board; positive net = biq AHEAD. Acceptance bar: biq ahead in all 4 cases
   {both SAYC, both Precision} × {random, slam-eligible}. Needs biq+biq mode.
+  Optional baseline (R3) for the closed-room split: ‘Run 4-comp autoclicker’
+  drives an all-Q-Plus run on the SAME deck with NO network log (it clicks the
+  cycle button whenever the screen settles — set Q-Plus to all-Computer, load
+  the deck, calibrate the watch region first). Export its .qss, ‘Export .qss →
+  baseline’, and Compare then ALSO prints the N/S-side vs E/W-side edges so you
+  can see which pair carries biq’s advantage (the baseline cancels from the
+  total, so it only splits it — never shifts the verdict).
 
 OPTIONS
   biq+biq (N+S Extern)   Run biq as BOTH North and South (partnership test).
@@ -727,6 +736,29 @@ class LiveMatchWidget(QWidget):
             "Positive net = biq AHEAD. Run after both rooms are saved.")
         dptop.addWidget(self.b_dp_cmp)
         dpv.addLayout(dptop)
+        # Baseline row — the all-Q-Plus run (R3) for the closed-room split.
+        dpbot = QHBoxLayout()
+        dpbot.addWidget(QLabel("Baseline (all-Q-Plus, R3):"))
+        self.b_dp_4cc = QPushButton("Run 4-comp autoclicker")
+        self.b_dp_4cc.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.b_dp_4cc.setToolTip(
+            "Drive a 4-computer Q-Plus run with NO network log: clicks the "
+            "cycle button whenever the screen settles (idle-detection). Set "
+            "Q-Plus to all-Computer + load the SAME deck first; calibrate the "
+            "watch region once (Calibrate ▸ region). This is the optional R3 "
+            "baseline that splits the result into N/S-edge vs E/W-edge.")
+        dpbot.addWidget(self.b_dp_4cc)
+        self.b_dp_savebase = QPushButton("Export .qss → baseline")
+        self.b_dp_savebase.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.b_dp_savebase.setToolTip(
+            "After the 4-computer run, Export the .qss, then click this to "
+            "stash it as the baseline. ‘Compare rooms’ then also prints the "
+            "N/S-side and E/W-side decomposition.")
+        dpbot.addWidget(self.b_dp_savebase)
+        dpbot.addStretch(1)
+        dpv.addLayout(dpbot)
+        self.b_dp_4cc.clicked.connect(self._dp_run_4computer)
+        self.b_dp_savebase.clicked.connect(self._dp_save_baseline)
         self.lbl_dp = QLabel(
             "Validate biq ahead in all 4 cases: {both SAYC, both Precision} × "
             "{random, slam-eligible}.  Set systems (1), pick a side, run the "
@@ -1273,8 +1305,38 @@ class LiveMatchWidget(QWidget):
         self._append(f"[dp] saved Room {ps['room']} ({ps['s1']}/{ps['s2']}): "
                      f"{src.name} → {dst.name}")
 
+    def _dp_run_4computer(self):
+        """Launch the all-computer autoclicker for the R3 baseline run."""
+        proc = QProcess(self)
+        proc.setProgram(sys.executable)
+        proc.setWorkingDirectory(str(BIQ_ROOT))
+        proc.setArguments(["tools/qplus_4computer_clicker.py",
+                           "--deals", str(self.deals.value())])
+        proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        proc.readyReadStandardOutput.connect(
+            lambda p=proc: self._append(
+                bytes(p.readAllStandardOutput()).decode("utf-8", "replace").rstrip()))
+        proc.start()
+        self._biq_4cc = proc
+        self._append("[dp] 4-computer autoclicker started (idle-driven). "
+                     "Ensure Q-Plus is all-Computer with the deck loaded and "
+                     "the watch region calibrated. Export the .qss when done.")
+
+    def _dp_save_baseline(self):
+        """Stash the newest exported .qss as the all-Q-Plus baseline."""
+        qss = self._newest_qss()
+        if not qss:
+            QMessageBox.warning(self, "No .qss",
+                "Export the .qss from the 4-computer run first "
+                "(‘Export .qss’), then save it as the baseline.")
+            return
+        DP_BASELINE_QSS.write_bytes(Path(qss).read_bytes())
+        self._append(f"[dp] saved baseline (all-Q-Plus): "
+                     f"{Path(qss).name} → {DP_BASELINE_QSS.name}")
+
     def _dp_compare(self):
-        """Run the board-a-match compare on the two saved room logs."""
+        """Board-a-match compare on the two saved room logs; if an all-Q-Plus
+        baseline is saved, also print the N/S vs E/W closed-room split."""
         if not DP_ROOM1_LOG.exists() or not DP_ROOM2_LOG.exists():
             QMessageBox.information(self, "Need both rooms",
                 "Save BOTH rooms first: run the deck with biq N/S (Room 1) "
@@ -1282,12 +1344,14 @@ class LiveMatchWidget(QWidget):
                 "‘Save run → Room N’ after each.")
             return
         label = f"{self.ns_sys.currentText()} vs {self.ew_sys.currentText()}"
+        cmd = [sys.executable, "tools/double_pair_compare.py",
+               "--room1", str(DP_ROOM1_LOG), "--room2", str(DP_ROOM2_LOG),
+               "--biq-prefix", "", "--label", label]
+        if DP_BASELINE_QSS.exists():
+            cmd += ["--baseline", str(DP_BASELINE_QSS)]
         try:
-            out = subprocess.run(
-                [sys.executable, "tools/double_pair_compare.py",
-                 "--room1", str(DP_ROOM1_LOG), "--room2", str(DP_ROOM2_LOG),
-                 "--biq-prefix", "", "--label", label],
-                cwd=str(BIQ_ROOT), capture_output=True, text=True, timeout=60)
+            out = subprocess.run(cmd, cwd=str(BIQ_ROOT),
+                                 capture_output=True, text=True, timeout=60)
             text = out.stdout + (("\n" + out.stderr) if out.stderr else "")
         except Exception as e:                       # noqa: BLE001
             text = f"compare failed: {e}"

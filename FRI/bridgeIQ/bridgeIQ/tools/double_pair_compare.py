@@ -40,8 +40,8 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parent))
 
-from backend.scoring import diff_to_imps          # noqa: E402
-from tools.deck_teams_compare import parse_biq     # noqa: E402
+from backend.scoring import diff_to_imps                      # noqa: E402
+from tools.deck_teams_compare import parse_biq, parse_qplus   # noqa: E402
 
 
 def _match(room1, room2):
@@ -68,6 +68,14 @@ def main():
                     help="biq N/S log (Room 1: biq N/S vs Q-Plus E/W)")
     ap.add_argument("--room2", required=True,
                     help="biq E/W log (Room 2: Q-Plus N/S vs biq E/W)")
+    ap.add_argument("--baseline", default=None,
+                    help="optional all-Q-Plus reference log on the SAME deck. "
+                         "When given, ALSO print the closed-room decomposition: "
+                         "the overall (= double-pair) split into the N/S-side "
+                         "and E/W-side edges, so you can see WHICH side carries "
+                         "biq's advantage. The baseline cancels from the total "
+                         "(R1_NS − baseline_NS) + (baseline_NS − R2_NS) = "
+                         "R1_NS − R2_NS, so it only splits, never shifts it.")
     ap.add_argument("--biq-prefix", default="SLAM",
                     help="keep only deals whose label starts with this "
                          "(default SLAM — drops the seed transition deal); "
@@ -112,6 +120,77 @@ def main():
     for lbl, c1, ns1, c2, ns2, imp in sorted(rows, key=lambda r: r[5])[:args.worst]:
         print(f"  {lbl:9} biqNS {c1:6}({ns1:+5})   qpNS {c2:6}({ns2:+5})   "
               f"IMP={imp:+3}")
+
+    if args.baseline:
+        _print_decomposition(args, pref, room1, room2)
+    return 0
+
+
+def _print_decomposition(args, pref, room1, room2):
+    """Closed-room both-directions split, using an all-Q-Plus baseline run.
+
+      N/S edge = imp(biq_NS[R1] − qplus_NS[baseline])   biq's N/S-pair skill
+      E/W edge = imp(biq_EW[R2] − qplus_EW[baseline])   biq's E/W-pair skill
+              with biq_EW = −R2_NS and qplus_EW = −baseline_NS, this is
+                       = imp(baseline_NS − R2_NS)
+
+    Raw edges sum exactly to the overall (the baseline cancels); the IMP'd
+    edges sum only ~approximately (the IMP scale is concave per board).
+
+    The baseline is an ALL-Q-Plus run → a Q-Plus .qss/.bdl score file (no biq
+    client, so no biq log). It's parsed with parse_qplus and aligned to the two
+    biq rooms by hand-key when the file carries hands (.bdl), else by deck
+    order (.qss has no hands — both sides play the fixed deck in sequence).
+    """
+    base, bmode = parse_qplus(args.baseline)
+    if any(b["ns"] is None for b in base):
+        print("\n  [decomposition] baseline .bdl has no parsed scores — export "
+              "an all-computer .qss (carries ns_score per board) and pass that.")
+        return
+    # Pair up the two biq rooms by label, in deck order.
+    by1 = {d["label"]: d for d in room1 if d.get("label")}
+    by2 = {d["label"]: d for d in room2 if d.get("label")}
+    labels = sorted(set(by1) & set(by2))
+    rooms = [(by1[l], by2[l]) for l in labels]
+    # Attach the baseline: by hand-key (.bdl) else by order (.qss).
+    if bmode == "hands":
+        bkey = {b["key"]: b for b in base if b.get("key")}
+        triples = [(r1, r2, bkey[r1["key"]]) for r1, r2 in rooms
+                   if r1.get("key") in bkey]
+    else:
+        if len(base) != len(rooms):
+            print(f"\n  [decomposition] ⚠ baseline has {len(base)} boards, "
+                  f"rooms have {len(rooms)} — aligning the first "
+                  f"{min(len(base), len(rooms))} by order (drop the seed "
+                  f"transition deal so counts match for a clean align).")
+        triples = [(r1, r2, b) for (r1, r2), b in zip(rooms, base)]
+    if not triples:
+        print("\n  [decomposition] baseline didn't match the two rooms — "
+              "same deck? (.qss matches by order; .bdl by hands)")
+        return
+    ns_tot = ew_tot = overall_tot = 0
+    rows = []
+    for r1, r2, b in triples:
+        ns_edge = diff_to_imps(r1["ns"] - b["ns"])        # biq N/S vs QP N/S
+        ew_edge = diff_to_imps(b["ns"] - r2["ns"])        # biq E/W vs QP E/W
+        overall = diff_to_imps(r1["ns"] - r2["ns"])       # = double-pair
+        ns_tot += ns_edge; ew_tot += ew_edge; overall_tot += overall
+        rows.append((r1.get("label", "?"), ns_edge, ew_edge, overall))
+    n = len(rows)
+    print(f"\n## Closed-room decomposition  ({n} boards, baseline "
+          f"[{args.baseline}])")
+    print(f"  N/S-side edge (biq N/S − Q-Plus N/S): {ns_tot:+5d}  "
+          f"({ns_tot / n:+.2f}/board)")
+    print(f"  E/W-side edge (biq E/W − Q-Plus E/W): {ew_tot:+5d}  "
+          f"({ew_tot / n:+.2f}/board)")
+    print(f"  Overall (= double-pair, baseline cancels): {overall_tot:+5d}  "
+          f"({overall_tot / n:+.2f}/board)")
+    print(f"  [note: IMP'd edges sum ≈ overall — exact on raw scores, "
+          f"approximate after the concave IMP scale]")
+    worse = sorted(rows, key=lambda r: r[1] + r[2])[:args.worst]
+    print(f"## Worst boards by side (which side is leaking)")
+    for lbl, ns, ew, ov in worse:
+        print(f"  {lbl:9} N/S={ns:+3}  E/W={ew:+3}  overall={ov:+3}")
     return 0
 
 
