@@ -91,11 +91,39 @@
       view.showModal(card);
     }
 
+    function saveLog() {
+      const text = ctrl.buildLogText();
+      const name = ctrl.logFilename();
+      try {
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = name;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (e) { /* fall through to preview */ }
+      // also show a copyable preview (works even where download is blocked)
+      const card = document.createElement('div'); card.className = 'modal-card';
+      card.innerHTML = `<h2>Session log</h2>
+        <div class="sub">Saved as <code>${name}</code> — exact PyQt PokerIQ format. Paste into an AI for play analysis &amp; commentary.</div>
+        <textarea class="log-preview" readonly></textarea>
+        <div class="modal-actions"></div>`;
+      card.querySelector('.log-preview').value = text;
+      const copy = document.createElement('button'); copy.className = 'btn check'; copy.textContent = 'Copy to clipboard';
+      copy.onclick = () => { const ta = card.querySelector('.log-preview'); ta.select(); try { navigator.clipboard.writeText(text); } catch (e) { document.execCommand('copy'); } copy.textContent = 'Copied ✓'; };
+      const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Close';
+      close.onclick = () => view.closeModal();
+      card.querySelector('.modal-actions').append(copy, close);
+      view.showModal(card);
+    }
+
     view.onMenu = (act) => {
       if (act === 'trainers') {
         view.popupMenu('trainers', Object.keys(PT.REGISTRY).map(k => [PT.REGISTRY[k].label, () => openTrainer(k)]));
       } else if (act === 'stats') {
         openStats();
+      } else if (act === 'savelog') {
+        saveLog();
       } else if (act === 'help') {
         openHelp();
       }
@@ -103,7 +131,7 @@
 
     // expose dropped-feature notices via keyboard shortcut help / future menu
     ctrl.openDroppedNotice = droppedNotice;
-    root.PIQ = { ctrl, view, openTrainer, openStats, droppedNotice };
+    root.PIQ = { ctrl, view, openTrainer, openStats, droppedNotice, saveLog };
 
     ctrl.newHand();
     return root.PIQ;

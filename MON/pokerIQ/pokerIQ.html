@@ -219,6 +219,9 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 .mtile.dim .mt-val,.mtile.dim .mt-cap{color:#6a7480;}
 @media(max-width:900px){.tom-main{grid-template-columns:1fr;}.opp-tab{grid-template-columns:1fr;}.range-grid,.opp-notation{width:100%;}}
 
+/* session log preview */
+.log-preview{width:100%;height:52vh;margin-top:6px;background:#0b0f15;color:#cdd6df;border:1px solid var(--line);border-radius:8px;padding:12px;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre;overflow:auto;}
+
 </style>
 </head>
 <body>
@@ -2220,6 +2223,137 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
 
+// ===== logfile.js =====
+/*
+ * PokerIQ — session log writer. Reproduces the PyQt pokerIQ log file format
+ * EXACTLY (byte-for-byte where it matters) so a saved web-app log can be fed to
+ * an AI for the same post-game analysis/commentary the desktop app supports.
+ *
+ * The PyQt app writes the file via a stream of write_log(msg) calls (log_action
+ * funnels through the same path). We model that precisely: LogBook records each
+ * msg in order; text() === msgs.join("\n") + "\n", which is exactly what
+ * f.write(msg + "\n") per call produces.
+ *
+ * Reference: pokerIQ.py init_logfile / _log_game_status / deal_hand /
+ * post_blind / process_action / deal_community / showdown / _log_session_summary.
+ */
+(function (root) {
+  'use strict';
+  const HANDTYPE = ['High Card', 'Pair', 'Two Pair', 'Trips', 'Straight', 'Flush', 'Full House', 'Quads', 'Straight Flush'];
+
+  // python-style padding helpers
+  const padR = (s, n) => { s = String(s); return s.length >= n ? s : s + ' '.repeat(n - s.length); };  // {:<n}
+  const padL = (s, n) => { s = String(s); return s.length >= n ? s : ' '.repeat(n - s.length) + s; };  // {:>n}
+  const pct1 = f => (f * 100).toFixed(1) + '%';   // python {:.1%}
+
+  class LogBook {
+    constructor() { this.msgs = []; this.gameStatusLogged = false; }
+    w(msg) { this.msgs.push(msg); }
+    text() { return this.msgs.join('\n') + '\n'; }
+
+    // ---- session header (init_logfile) ----
+    sessionHeader(startedStr) {
+      const bar = '='.repeat(60);
+      this.w(bar);
+      this.w('POKER LEARNING GAME - SESSION LOG');
+      this.w(`Started: ${startedStr}`);
+      this.w(bar);
+      this.w('');                       // init_logfile's trailing blank line
+    }
+
+    // ---- GAME STATUS (first hand only) ----
+    gameStatus(g) {
+      this.w('\n=== GAME STATUS ===');
+      this.w(`  Game Name: ${g.mode}`);
+      this.w("  Game Type: Texas Hold 'em");
+      this.w('  Limit Type: No Limit');
+      this.w(`  Starting Chips: $${g.startingChips}`);
+      this.w(`  Hands Dealt: ${g.handsDealt}`);
+      this.w(`  Next Blind Increase: ${g.nextBlind}`);
+      this.w(`  # Players (Original/Current): ${g.origPlayers}/${g.curPlayers}`);
+      this.w(`  Blinds (Original/Current): $${g.origSb}/$${g.origBb} → $${g.curSb}/$${g.curBb}`);
+      this.w('  Ante: None');
+      this.w('  Limits: N/A');
+      this.w('===================\n');
+    }
+
+    // ---- per-hand ----
+    newHand(n, timeStr) {
+      const bar = '='.repeat(60);
+      this.w('=== NEW HAND ===');     // log_action
+      this.w('\n' + bar);             // write_log(f"\n{'='*60}")
+      this.w(`HAND #${n} - ${timeStr}`);
+      this.w(bar);
+    }
+    blindIncrease(sb, bb) { this.w(`*** BLINDS INCREASE: $${sb}/$${bb} ***`); }
+    dealerAndHole(dealerName, hole) {
+      this.w(`Dealer: ${dealerName}`);
+      this.w('Hole Cards Dealt:');
+      for (const h of hole) this.w(`  ${h.name}: ${h.cards}`);
+    }
+    post(name, amt) { this.w(`${name} posts $${amt}`); }
+    fold(name) { this.w(`${name}: Folds`); }
+    check(name) { this.w(`${name}: Checks`); }
+    call(name, amt) { this.w(`${name}: Calls $${amt}`); }
+    raise(name, total) { this.w(`${name}: Raises to $${total}`); }
+
+    // street: "--- Street ---" then [STATS] block then "Board: ..."
+    street(streetName, statsRows, boardStr) {
+      this.w(`--- ${streetName} ---`);
+      this.w('  [STATS]');
+      for (const r of statsRows) {
+        this.w(`    ${padR(r.name, 15)} Cards: ${r.cards}  Equity: ${pct1(r.equity)}  PotOdds: ${pct1(r.potOdds)}`);
+      }
+      this.w(`Board: ${boardStr}`);
+    }
+
+    showdownResults(rows) { for (const r of rows) this.w(`${r.name}: ${HANDTYPE[r.cat]}`); }
+    winnerUncontested(name, net) { this.w(`${name} wins $${net}!`); this.w(`Winner: ${name} - $${net} (others folded)`); }
+    winnerShowdown(winners) { this.w(`WINNER: ${winners.map(w => `${w.name} ($${w.net})`).join(', ')}!`); }
+    finalStacks(rows) { this.w('Final Stacks:'); for (const r of rows) this.w(`  ${r.name}: $${r.stack}`); }
+    gainLoss(rows) {
+      this.w('Hand Results (Gain/Loss):');
+      for (const r of rows) {
+        if (r.change > 0) this.w(`  ${r.name}: +$${r.change}`);
+        else if (r.change < 0) this.w(`  ${r.name}: -$${Math.abs(r.change)}`);
+        else this.w(`  ${r.name}: $0 (broke even)`);
+      }
+    }
+
+    // ---- session summary (_log_session_summary) ----
+    sessionSummary(s) {
+      this.w('\n' + '#'.repeat(60));
+      this.w('SESSION SUMMARY');
+      this.w('#'.repeat(60));
+      // TABLE STATS
+      this.w('\n=== TABLE STATS ===');
+      this.w('  ' + padR('Name', 16) + ' ' + padL('Status', 10) + ' ' + padL('Hands Played', 14) + ' ' + padL('Hands Won', 11) + ' ' + padL('Showdowns W/Total', 20) + ' ' + padL('All Ins', 9));
+      for (const p of s.tableStats) {
+        this.w('  ' + padR(p.name.slice(0, 16), 16) + ' ' + padL('$' + p.stack, 10) + ' ' + padL(p.handsPlayed, 14) + ' ' + padL(p.handsWon, 11) + ' ' + padL(`${p.showdownsWon}/${p.showdownsSeen}`, 20) + ' ' + padL(p.allIns, 9));
+      }
+      this.w('===================\n');
+      // HOLE CARD STATS (hero)
+      if (s.holeStats && s.holeStats.length) {
+        this.w('\n=== HOLE CARD STATS (Hero) ===');
+        this.w('  ' + padR('Hand', 5) + ' ' + padL('Seen', 5) + ' ' + padL('Played', 7) + ' ' + padL('Won', 5) + ' ' + padL('Lost', 5) + ' ' + padL('Cash Gained', 13) + ' ' + padL('Cash Lost', 11) + ' ' + padL('Net', 9));
+        for (const h of s.holeStats) {
+          this.w('  ' + padR(h.cls, 5) + ' ' + padL(h.seen, 5) + ' ' + padL(h.played, 7) + ' ' + padL(h.won, 5) + ' ' + padL(h.lost, 5) + ' ' + padL('$' + h.cashGained, 13) + ' ' + padL('$' + h.cashLost, 11) + ' ' + padL('$' + (h.net >= 0 ? '+' : '') + h.net, 9));
+        }
+        this.w('============================\n');
+      }
+      // CHIP COUNT
+      this.w('--- CHIP COUNT ---');
+      for (const p of s.tableStats) this.w(`  ${p.name}: $${p.stack}`);
+      this.w(`Ended: ${s.endedStr}`);
+    }
+  }
+
+  const API = { LogBook, HANDTYPE };
+  if (typeof module !== 'undefined' && module.exports) module.exports = API;
+  else root.PokerLog = API;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
 // ===== ui.js =====
 /*
  * PokerIQ — table UI + controller. Renders the poker table (DOM/CSS, no canvas
@@ -2240,6 +2374,10 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
   const PG = isNode ? require('./game.js') : root.PokerGame;
   const PB = isNode ? require('./bots.js') : root.PokerBots;
   const PA = isNode ? require('./analytics.js') : root.PokerAnalytics;
+  // resolved lazily so this loads under Node tests (require) and in the browser (globals)
+  const getLog = () => isNode ? require('./logfile.js') : root.PokerLog;
+  const getToMLogic = () => isNode ? require('./tomlogic.js') : root.PokerToMLogic;
+  const getToM = () => isNode ? require('./tom.js') : root.PokerToM;
 
   // ---------------- Controller ----------------
   class Controller {
@@ -2265,6 +2403,18 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       this.training = !!opts.training;   // ToM training screen on/off
       this.tomTab = 'advisor';    // active ToM tab
       this.rangeMode = 'neutral'; // 'loose'(opps weak) | 'neutral' | 'tight'(opps strong)
+      // exact-format session log (PyQt-compatible) for AI post-game analysis
+      this.logbook = new (getLog()).LogBook();
+      this.logStarted = false;
+      this.tableStats = {};       // per-player cumulative counters
+      this.holeStats = {};        // hero per-starting-hand class
+      this.prevBlindLevel = 0;    // game.blindLevel starts at 0
+      this.origPlayerCount = null;
+      this.origBlinds = null;
+      this.now = opts.now || (() => new Date());
+      // Analytics (equity/advisor/[STATS]) must NOT consume the game's deck RNG
+      // — otherwise computing them would perturb the actual deal/bot decisions.
+      this.auxRng = opts.auxRng || Math.random;
 
       this.game = new PG.Game({
         rng: opts.rng || Math.random,
@@ -2299,19 +2449,138 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
           startStacks: payload.startStacks,
           streets: [{ name: 'Preflop', board: [], actions: [] }],
         };
+        this.logHandStart(payload);
       } else if (type === 'log') {
         this.pushEvent(payload);
       } else if (type === 'street') {
         this.lastStreet = payload.street; this.heroEquity = null; this.refreshHeroEquity();
         if (this.history) this.history.streets.push({ name: payload.street, board: payload.board.slice(), actions: [] });
+        this.logStreet(payload);
       } else if (type === 'action') {
         this.recordHistoryAction(payload);
         this.trackOppAction(payload);
+        this.logAction(payload);
       } else if (type === 'handEnd') {
         if (this.history) { this.history.result = payload; this.lastHistory = this.history; }
+        this.logHandEnd(payload);
         this.onHandComplete(payload);
       }
     }
+
+    // ---- exact-format log writers (mirror pokerIQ.py) ----
+    fmtCards(cards) { return cards.map(c => E.cardToStr(c)).join(' '); }   // format_cards
+    pad2(n) { return String(n).padStart(2, '0'); }
+    timeStr() { const d = this.now(); return `${this.pad2(d.getHours())}:${this.pad2(d.getMinutes())}:${this.pad2(d.getSeconds())}`; }
+    dateStr() { const d = this.now(); return `${d.getFullYear()}-${this.pad2(d.getMonth() + 1)}-${this.pad2(d.getDate())} ${this.timeStr()}`; }
+
+    logHandStart(payload) {
+      const g = this.game, lb = this.logbook;
+      if (!this.logStarted) { lb.sessionHeader(this.dateStr()); this.logStarted = true; }
+      lb.newHand(payload.handNumber, this.timeStr());
+      // blind increase line (when the level just advanced)
+      if (g.blindLevel > this.prevBlindLevel) lb.blindIncrease(g.sb(), g.bb());
+      this.prevBlindLevel = g.blindLevel;
+      // GAME STATUS, first hand only
+      if (!lb.gameStatusLogged) {
+        const alive = g.players.filter(p => p.stack > 0).length;
+        if (this.origPlayerCount == null) { this.origPlayerCount = alive; this.origBlinds = [g.sb(), g.bb()]; }
+        const inc = PG.HANDS_PER_BLIND_LEVEL - (g.handNumber % PG.HANDS_PER_BLIND_LEVEL);
+        const nextIn = inc === PG.HANDS_PER_BLIND_LEVEL ? 0 : inc;
+        const nextMarker = g.blindLevel < PG.BLIND_LEVELS.length - 1 ? `Hand #${g.handNumber + nextIn}` : 'Max blinds reached';
+        lb.gameStatus({
+          mode: 'PokerIQ Local', startingChips: PG.STARTING_STACK, handsDealt: g.handNumber,
+          nextBlind: nextMarker, origPlayers: this.origPlayerCount, curPlayers: alive,
+          origSb: this.origBlinds[0], origBb: this.origBlinds[1], curSb: g.sb(), curBb: g.bb(),
+        });
+        lb.gameStatusLogged = true;
+      }
+      // Dealer + all active hole cards (the log is a private god-view record)
+      const dealerName = g.players[g.dealerIdx].name;
+      const hole = g.activePlayers().map(p => ({ name: p.name, cards: this.fmtCards(p.hand) }));
+      lb.dealerAndHole(dealerName, hole);
+    }
+
+    logAction(payload) {
+      const lb = this.logbook, name = this.game.players[payload.seat].name;
+      switch (payload.action) {
+        case 'post': lb.post(name, payload.amount); break;
+        case 'fold': lb.fold(name); break;
+        case 'check': lb.check(name); break;
+        case 'call': lb.call(name, payload.amount); break;
+        case 'raise': lb.raise(name, payload.total); break;
+      }
+    }
+
+    logStreet(payload) {
+      const g = this.game;
+      // [STATS] — true (god-view) equity of every active player vs the field,
+      // computed over actual hands at the freshly-dealt board.
+      const active = g.activePlayers();
+      let eq = [];
+      if (active.length >= 2) eq = E.equityMultiway(active.map(p => p.hand), payload.board, { iterations: 300, rng: this.auxRng });
+      const rows = active.map((p, i) => {
+        const toCall = Math.max(0, g.currentBet - p.betInRound);
+        const potOdds = (g.pot + toCall) > 0 ? toCall / (g.pot + toCall) : 0;
+        return { name: p.name, cards: this.fmtCards(p.hand), equity: eq[i] != null ? eq[i] : 0, potOdds };
+      });
+      this.logbook.street(payload.street, rows, this.fmtCards(payload.board));
+    }
+
+    logHandEnd(result) {
+      const g = this.game, lb = this.logbook;
+      const winners = result.net.filter(n => result.payouts[n.seat] > 0);
+      if (result.showdown.length > 1) {
+        const ordered = result.showdown.slice().sort((a, b) => b.score - a.score);
+        lb.showdownResults(ordered.map(s => ({ name: s.name, cat: E.categoryOf(s.score) })));
+        lb.winnerShowdown(winners.map(w => ({ name: w.name, net: w.net })));
+      } else if (winners.length) {
+        lb.winnerUncontested(winners[0].name, winners[0].net);
+      }
+      lb.finalStacks(g.players.map(p => ({ name: p.name, stack: p.stack })));
+      lb.gainLoss(result.net.map(n => ({ name: n.name, change: n.net })));
+      this.updateLogStats(result);
+    }
+
+    // cumulative table + hero hole-card stats for the session summary
+    updateLogStats(result) {
+      const g = this.game;
+      const showdownSeats = new Set(result.showdown.map(s => s.seat));
+      for (const p of g.players) {
+        const t = this.tableStats[p.name] || (this.tableStats[p.name] = { name: p.name, handsPlayed: 0, handsWon: 0, showdownsSeen: 0, showdownsWon: 0, allIns: 0, stack: p.stack });
+        t.handsPlayed += 1;
+        t.stack = p.stack;
+        if (p.allIn) t.allIns += 1;
+        const won = result.payouts[p.seat] > 0;
+        if (won) t.handsWon += 1;
+        if (showdownSeats.has(p.seat)) { t.showdownsSeen += 1; if (won) t.showdownsWon += 1; }
+      }
+      // hero hole-card class
+      const hero = g.players[0];
+      if (hero.hand.length) {
+        const cls = getToMLogic().handToKey(hero.hand) || '??';
+        const h = this.holeStats[cls] || (this.holeStats[cls] = { cls, seen: 0, played: 0, won: 0, lost: 0, cashGained: 0, cashLost: 0, net: 0 });
+        h.seen += 1;
+        const net = (result.net.find(n => n.seat === 0) || { net: 0 }).net;
+        if (hero.totalInvested > 0) h.played += 1;
+        if (net > 0) { h.won += 1; h.cashGained += net; }
+        else if (net < 0) { h.lost += 1; h.cashLost += Math.abs(net); }
+        h.net += net;
+      }
+    }
+
+    // assemble the full log text (live buffer + session summary) for download
+    buildLogText() {
+      const lb = new (getLog()).LogBook();
+      lb.msgs = this.logbook.msgs.slice();   // copy the live buffer
+      const holeStats = Object.values(this.holeStats).sort((a, b) => b.net - a.net || a.cls.localeCompare(b.cls));
+      lb.sessionSummary({
+        tableStats: this.game.players.map(p => this.tableStats[p.name] || { name: p.name, stack: p.stack, handsPlayed: 0, handsWon: 0, showdownsSeen: 0, showdownsWon: 0, allIns: 0 }),
+        holeStats, endedStr: this.dateStr(),
+      });
+      return lb.text();
+    }
+
+    logFilename() { const d = this.now(); return `poker_log_${d.getFullYear()}${this.pad2(d.getMonth() + 1)}${this.pad2(d.getDate())}_${this.timeStr().replace(/:/g, '')}.txt`; }
 
     recordHistoryAction(payload) {
       if (!this.history) return;
@@ -2340,7 +2609,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       if (!hero.active || !hero.hand.length) { this.heroEquity = null; return; }
       const opps = this.game.activePlayers().filter(p => p !== hero).length || 1;
       this.heroEquity = E.equityVsRandom(hero.hand, this.game.board,
-        { iterations: this.opts.equityIters || 600, opponents: opps, rng: this.game.rng });
+        { iterations: this.opts.equityIters || 600, opponents: opps, rng: this.auxRng });
     }
 
     // advisor readout for the hero panel
@@ -2444,7 +2713,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 
     // Gordon's four setup-question answers, from the opponent model
     gordonSetup() {
-      const T = root.PokerToMLogic;
+      const T = getToMLogic();
       // field aggregate VPIP/PFR
       let v = 0, p = 0, n = 0;
       for (const pl of this.game.players) {
@@ -2465,7 +2734,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 
     // Full Theory-of-Mind snapshot for the training screen.
     tomData() {
-      const T = root.PokerToMLogic, g = this.game, hero = g.players[0];
+      const T = getToMLogic(), g = this.game, hero = g.players[0];
       const street = this.streetName();
       const toCall = Math.max(0, g.currentBet - hero.betInRound);
       const potOdds = (g.pot + toCall) > 0 ? toCall / (g.pot + toCall) : 0;
@@ -2486,7 +2755,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
           const tags = this.actionTagsFor(pp.seat);
           return T.estimateRange(pp.style, mode, tags, g.board).range;
         });
-        equity = ranges.length ? T.equityVsRanges(hero.hand, g.board, ranges, { iterations: this.opts.equityIters || 350, rng: g.rng }) : null;
+        equity = ranges.length ? T.equityVsRanges(hero.hand, g.board, ranges, { iterations: this.opts.equityIters || 350, rng: this.auxRng }) : null;
         if (equity == null) equity = this.heroEquity;   // fall back to vs-random
       }
       const equityPct = equity != null ? equity * 100 : null;
@@ -2624,6 +2893,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
             <button data-act="god" class="ghost">God</button>
             <button data-act="trainers" class="ghost">Trainers ▾</button>
             <button data-act="stats" class="ghost">Stats</button>
+            <button data-act="savelog" class="ghost" title="Download the full session log (PyQt-format) for AI analysis">⤓ Log</button>
             <button data-act="help" class="ghost">?</button>
           </div>
         </div>
@@ -2681,7 +2951,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       if (s.training) {
         this.el.tableView.style.display = 'none';
         this.el.tomView.style.display = 'block';
-        this.el.tomView.innerHTML = root.PokerToM.render(s.tom);
+        this.el.tomView.innerHTML = getToM().render(s.tom);
       } else {
         this.el.tomView.style.display = 'none';
         this.el.tableView.style.display = 'flex';
@@ -3283,11 +3553,39 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       view.showModal(card);
     }
 
+    function saveLog() {
+      const text = ctrl.buildLogText();
+      const name = ctrl.logFilename();
+      try {
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = name;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (e) { /* fall through to preview */ }
+      // also show a copyable preview (works even where download is blocked)
+      const card = document.createElement('div'); card.className = 'modal-card';
+      card.innerHTML = `<h2>Session log</h2>
+        <div class="sub">Saved as <code>${name}</code> — exact PyQt PokerIQ format. Paste into an AI for play analysis &amp; commentary.</div>
+        <textarea class="log-preview" readonly></textarea>
+        <div class="modal-actions"></div>`;
+      card.querySelector('.log-preview').value = text;
+      const copy = document.createElement('button'); copy.className = 'btn check'; copy.textContent = 'Copy to clipboard';
+      copy.onclick = () => { const ta = card.querySelector('.log-preview'); ta.select(); try { navigator.clipboard.writeText(text); } catch (e) { document.execCommand('copy'); } copy.textContent = 'Copied ✓'; };
+      const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Close';
+      close.onclick = () => view.closeModal();
+      card.querySelector('.modal-actions').append(copy, close);
+      view.showModal(card);
+    }
+
     view.onMenu = (act) => {
       if (act === 'trainers') {
         view.popupMenu('trainers', Object.keys(PT.REGISTRY).map(k => [PT.REGISTRY[k].label, () => openTrainer(k)]));
       } else if (act === 'stats') {
         openStats();
+      } else if (act === 'savelog') {
+        saveLog();
       } else if (act === 'help') {
         openHelp();
       }
@@ -3295,7 +3593,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 
     // expose dropped-feature notices via keyboard shortcut help / future menu
     ctrl.openDroppedNotice = droppedNotice;
-    root.PIQ = { ctrl, view, openTrainer, openStats, droppedNotice };
+    root.PIQ = { ctrl, view, openTrainer, openStats, droppedNotice, saveLog };
 
     ctrl.newHand();
     return root.PIQ;

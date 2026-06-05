@@ -17,6 +17,10 @@
   const PG = isNode ? require('./game.js') : root.PokerGame;
   const PB = isNode ? require('./bots.js') : root.PokerBots;
   const PA = isNode ? require('./analytics.js') : root.PokerAnalytics;
+  // resolved lazily so this loads under Node tests (require) and in the browser (globals)
+  const getLog = () => isNode ? require('./logfile.js') : root.PokerLog;
+  const getToMLogic = () => isNode ? require('./tomlogic.js') : root.PokerToMLogic;
+  const getToM = () => isNode ? require('./tom.js') : root.PokerToM;
 
   // ---------------- Controller ----------------
   class Controller {
@@ -42,6 +46,18 @@
       this.training = !!opts.training;   // ToM training screen on/off
       this.tomTab = 'advisor';    // active ToM tab
       this.rangeMode = 'neutral'; // 'loose'(opps weak) | 'neutral' | 'tight'(opps strong)
+      // exact-format session log (PyQt-compatible) for AI post-game analysis
+      this.logbook = new (getLog()).LogBook();
+      this.logStarted = false;
+      this.tableStats = {};       // per-player cumulative counters
+      this.holeStats = {};        // hero per-starting-hand class
+      this.prevBlindLevel = 0;    // game.blindLevel starts at 0
+      this.origPlayerCount = null;
+      this.origBlinds = null;
+      this.now = opts.now || (() => new Date());
+      // Analytics (equity/advisor/[STATS]) must NOT consume the game's deck RNG
+      // — otherwise computing them would perturb the actual deal/bot decisions.
+      this.auxRng = opts.auxRng || Math.random;
 
       this.game = new PG.Game({
         rng: opts.rng || Math.random,
@@ -76,19 +92,138 @@
           startStacks: payload.startStacks,
           streets: [{ name: 'Preflop', board: [], actions: [] }],
         };
+        this.logHandStart(payload);
       } else if (type === 'log') {
         this.pushEvent(payload);
       } else if (type === 'street') {
         this.lastStreet = payload.street; this.heroEquity = null; this.refreshHeroEquity();
         if (this.history) this.history.streets.push({ name: payload.street, board: payload.board.slice(), actions: [] });
+        this.logStreet(payload);
       } else if (type === 'action') {
         this.recordHistoryAction(payload);
         this.trackOppAction(payload);
+        this.logAction(payload);
       } else if (type === 'handEnd') {
         if (this.history) { this.history.result = payload; this.lastHistory = this.history; }
+        this.logHandEnd(payload);
         this.onHandComplete(payload);
       }
     }
+
+    // ---- exact-format log writers (mirror pokerIQ.py) ----
+    fmtCards(cards) { return cards.map(c => E.cardToStr(c)).join(' '); }   // format_cards
+    pad2(n) { return String(n).padStart(2, '0'); }
+    timeStr() { const d = this.now(); return `${this.pad2(d.getHours())}:${this.pad2(d.getMinutes())}:${this.pad2(d.getSeconds())}`; }
+    dateStr() { const d = this.now(); return `${d.getFullYear()}-${this.pad2(d.getMonth() + 1)}-${this.pad2(d.getDate())} ${this.timeStr()}`; }
+
+    logHandStart(payload) {
+      const g = this.game, lb = this.logbook;
+      if (!this.logStarted) { lb.sessionHeader(this.dateStr()); this.logStarted = true; }
+      lb.newHand(payload.handNumber, this.timeStr());
+      // blind increase line (when the level just advanced)
+      if (g.blindLevel > this.prevBlindLevel) lb.blindIncrease(g.sb(), g.bb());
+      this.prevBlindLevel = g.blindLevel;
+      // GAME STATUS, first hand only
+      if (!lb.gameStatusLogged) {
+        const alive = g.players.filter(p => p.stack > 0).length;
+        if (this.origPlayerCount == null) { this.origPlayerCount = alive; this.origBlinds = [g.sb(), g.bb()]; }
+        const inc = PG.HANDS_PER_BLIND_LEVEL - (g.handNumber % PG.HANDS_PER_BLIND_LEVEL);
+        const nextIn = inc === PG.HANDS_PER_BLIND_LEVEL ? 0 : inc;
+        const nextMarker = g.blindLevel < PG.BLIND_LEVELS.length - 1 ? `Hand #${g.handNumber + nextIn}` : 'Max blinds reached';
+        lb.gameStatus({
+          mode: 'PokerIQ Local', startingChips: PG.STARTING_STACK, handsDealt: g.handNumber,
+          nextBlind: nextMarker, origPlayers: this.origPlayerCount, curPlayers: alive,
+          origSb: this.origBlinds[0], origBb: this.origBlinds[1], curSb: g.sb(), curBb: g.bb(),
+        });
+        lb.gameStatusLogged = true;
+      }
+      // Dealer + all active hole cards (the log is a private god-view record)
+      const dealerName = g.players[g.dealerIdx].name;
+      const hole = g.activePlayers().map(p => ({ name: p.name, cards: this.fmtCards(p.hand) }));
+      lb.dealerAndHole(dealerName, hole);
+    }
+
+    logAction(payload) {
+      const lb = this.logbook, name = this.game.players[payload.seat].name;
+      switch (payload.action) {
+        case 'post': lb.post(name, payload.amount); break;
+        case 'fold': lb.fold(name); break;
+        case 'check': lb.check(name); break;
+        case 'call': lb.call(name, payload.amount); break;
+        case 'raise': lb.raise(name, payload.total); break;
+      }
+    }
+
+    logStreet(payload) {
+      const g = this.game;
+      // [STATS] — true (god-view) equity of every active player vs the field,
+      // computed over actual hands at the freshly-dealt board.
+      const active = g.activePlayers();
+      let eq = [];
+      if (active.length >= 2) eq = E.equityMultiway(active.map(p => p.hand), payload.board, { iterations: 300, rng: this.auxRng });
+      const rows = active.map((p, i) => {
+        const toCall = Math.max(0, g.currentBet - p.betInRound);
+        const potOdds = (g.pot + toCall) > 0 ? toCall / (g.pot + toCall) : 0;
+        return { name: p.name, cards: this.fmtCards(p.hand), equity: eq[i] != null ? eq[i] : 0, potOdds };
+      });
+      this.logbook.street(payload.street, rows, this.fmtCards(payload.board));
+    }
+
+    logHandEnd(result) {
+      const g = this.game, lb = this.logbook;
+      const winners = result.net.filter(n => result.payouts[n.seat] > 0);
+      if (result.showdown.length > 1) {
+        const ordered = result.showdown.slice().sort((a, b) => b.score - a.score);
+        lb.showdownResults(ordered.map(s => ({ name: s.name, cat: E.categoryOf(s.score) })));
+        lb.winnerShowdown(winners.map(w => ({ name: w.name, net: w.net })));
+      } else if (winners.length) {
+        lb.winnerUncontested(winners[0].name, winners[0].net);
+      }
+      lb.finalStacks(g.players.map(p => ({ name: p.name, stack: p.stack })));
+      lb.gainLoss(result.net.map(n => ({ name: n.name, change: n.net })));
+      this.updateLogStats(result);
+    }
+
+    // cumulative table + hero hole-card stats for the session summary
+    updateLogStats(result) {
+      const g = this.game;
+      const showdownSeats = new Set(result.showdown.map(s => s.seat));
+      for (const p of g.players) {
+        const t = this.tableStats[p.name] || (this.tableStats[p.name] = { name: p.name, handsPlayed: 0, handsWon: 0, showdownsSeen: 0, showdownsWon: 0, allIns: 0, stack: p.stack });
+        t.handsPlayed += 1;
+        t.stack = p.stack;
+        if (p.allIn) t.allIns += 1;
+        const won = result.payouts[p.seat] > 0;
+        if (won) t.handsWon += 1;
+        if (showdownSeats.has(p.seat)) { t.showdownsSeen += 1; if (won) t.showdownsWon += 1; }
+      }
+      // hero hole-card class
+      const hero = g.players[0];
+      if (hero.hand.length) {
+        const cls = getToMLogic().handToKey(hero.hand) || '??';
+        const h = this.holeStats[cls] || (this.holeStats[cls] = { cls, seen: 0, played: 0, won: 0, lost: 0, cashGained: 0, cashLost: 0, net: 0 });
+        h.seen += 1;
+        const net = (result.net.find(n => n.seat === 0) || { net: 0 }).net;
+        if (hero.totalInvested > 0) h.played += 1;
+        if (net > 0) { h.won += 1; h.cashGained += net; }
+        else if (net < 0) { h.lost += 1; h.cashLost += Math.abs(net); }
+        h.net += net;
+      }
+    }
+
+    // assemble the full log text (live buffer + session summary) for download
+    buildLogText() {
+      const lb = new (getLog()).LogBook();
+      lb.msgs = this.logbook.msgs.slice();   // copy the live buffer
+      const holeStats = Object.values(this.holeStats).sort((a, b) => b.net - a.net || a.cls.localeCompare(b.cls));
+      lb.sessionSummary({
+        tableStats: this.game.players.map(p => this.tableStats[p.name] || { name: p.name, stack: p.stack, handsPlayed: 0, handsWon: 0, showdownsSeen: 0, showdownsWon: 0, allIns: 0 }),
+        holeStats, endedStr: this.dateStr(),
+      });
+      return lb.text();
+    }
+
+    logFilename() { const d = this.now(); return `poker_log_${d.getFullYear()}${this.pad2(d.getMonth() + 1)}${this.pad2(d.getDate())}_${this.timeStr().replace(/:/g, '')}.txt`; }
 
     recordHistoryAction(payload) {
       if (!this.history) return;
@@ -117,7 +252,7 @@
       if (!hero.active || !hero.hand.length) { this.heroEquity = null; return; }
       const opps = this.game.activePlayers().filter(p => p !== hero).length || 1;
       this.heroEquity = E.equityVsRandom(hero.hand, this.game.board,
-        { iterations: this.opts.equityIters || 600, opponents: opps, rng: this.game.rng });
+        { iterations: this.opts.equityIters || 600, opponents: opps, rng: this.auxRng });
     }
 
     // advisor readout for the hero panel
@@ -221,7 +356,7 @@
 
     // Gordon's four setup-question answers, from the opponent model
     gordonSetup() {
-      const T = root.PokerToMLogic;
+      const T = getToMLogic();
       // field aggregate VPIP/PFR
       let v = 0, p = 0, n = 0;
       for (const pl of this.game.players) {
@@ -242,7 +377,7 @@
 
     // Full Theory-of-Mind snapshot for the training screen.
     tomData() {
-      const T = root.PokerToMLogic, g = this.game, hero = g.players[0];
+      const T = getToMLogic(), g = this.game, hero = g.players[0];
       const street = this.streetName();
       const toCall = Math.max(0, g.currentBet - hero.betInRound);
       const potOdds = (g.pot + toCall) > 0 ? toCall / (g.pot + toCall) : 0;
@@ -263,7 +398,7 @@
           const tags = this.actionTagsFor(pp.seat);
           return T.estimateRange(pp.style, mode, tags, g.board).range;
         });
-        equity = ranges.length ? T.equityVsRanges(hero.hand, g.board, ranges, { iterations: this.opts.equityIters || 350, rng: g.rng }) : null;
+        equity = ranges.length ? T.equityVsRanges(hero.hand, g.board, ranges, { iterations: this.opts.equityIters || 350, rng: this.auxRng }) : null;
         if (equity == null) equity = this.heroEquity;   // fall back to vs-random
       }
       const equityPct = equity != null ? equity * 100 : null;
@@ -401,6 +536,7 @@
             <button data-act="god" class="ghost">God</button>
             <button data-act="trainers" class="ghost">Trainers ▾</button>
             <button data-act="stats" class="ghost">Stats</button>
+            <button data-act="savelog" class="ghost" title="Download the full session log (PyQt-format) for AI analysis">⤓ Log</button>
             <button data-act="help" class="ghost">?</button>
           </div>
         </div>
@@ -458,7 +594,7 @@
       if (s.training) {
         this.el.tableView.style.display = 'none';
         this.el.tomView.style.display = 'block';
-        this.el.tomView.innerHTML = root.PokerToM.render(s.tom);
+        this.el.tomView.innerHTML = getToM().render(s.tom);
       } else {
         this.el.tomView.style.display = 'none';
         this.el.tableView.style.display = 'flex';

@@ -44,6 +44,15 @@ leaks, levels-of-thinking), god mode, session + lifetime stats (localStorage),
 and 8 trainers (AKQ, Jam-or-Fold, Indifference, MTT/ICM, Variance·Edge·Bankroll,
 Calibration, Mindset, Range-narrowing).
 
+**Session log (⤓ Log)** — downloads `poker_log_YYYYMMDD_HHMMSS.txt` in the
+*exact* PyQt PokerIQ format (`logfile.js`): session header, per-hand GAME STATUS
+/ Dealer / Hole Cards / posts / actions / `--- Street ---` + `[STATS]` (true
+god-view equity per active player) / `Board:` / showdown hand-types / WINNER /
+Final Stacks / Gain-Loss, plus a SESSION SUMMARY (TABLE STATS, HOLE CARD STATS,
+CHIP COUNT). Drop it into an AI for the same post-game analysis the desktop app
+supports. Equity for the log/advisor uses a separate RNG so it never perturbs
+the deal.
+
 **Training mode (Theory of Mind screen)** — a top-bar Training toggle swaps the
 table for the full ToM analysis screen (`tomlogic.js` + `tom.js`): no-peek
 equity-vs-estimated-ranges, the Phil Gordon "Little Green Book" advisor (hand
