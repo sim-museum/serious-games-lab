@@ -98,6 +98,7 @@ is_source_game() {
         flightgear/*.sh) return 0 ;;
         # apt-installable chess/go/board tools
         scid.sh|nibbler.sh|banksiaGui.sh) return 0 ;;
+        # self-contained HTML app (opens in the browser)
         q5go.sh|sabaki.sh|goreviewpartner.sh) return 0 ;;
         # Buildable from source
         generalPokerEvaluator.sh) return 0 ;;
