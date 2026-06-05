@@ -36,11 +36,12 @@ Games that require external binaries will show as unavailable until you install 
 
 | Project | Language | Description |
 |---------|----------|-------------|
-| Bridge AI | Python | Neural network bridge bidding and play |
+| pokerIQ | Python | Poker play with AI hand annotation and solver analysis (`MON/pokerIQ`) |
+| bridgeIQ | Python/PyQt | Bridge bidding, play, and analysis powered by the BEN neural-network engine (`FRI/benBridge`) |
+| Kramnik Chess | HTML/JS | Kramnik's no-castling / capture-anything variant — self-contained browser app with a full-strength engine, self-play mode, and an opening book built from grandmaster games where neither side castled (`WED/kramnik_chess.html`) |
 | Math Quiz | Python | AI-assisted math tutoring |
 | Dual N-Back | Python/PyQt | Working memory training |
 | Chess Opening Repertoire | Python | Opening study tool |
-| Poker Evaluator | Python | Hand analysis and equity calculation |
 
 ## Day-of-Week Curriculum
 
