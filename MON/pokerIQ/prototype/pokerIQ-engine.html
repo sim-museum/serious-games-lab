@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PokerIQ — Engine Prototype</title>
+<style>
+  :root { --bg:#0f1419; --panel:#1a2230; --ink:#e6edf3; --muted:#8b97a7;
+          --accent:#3fb950; --accent2:#58a6ff; --bad:#f85149; --line:#2d3748; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+         background:var(--bg); color:var(--ink); padding:24px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  h1 small { color:var(--muted); font-weight:400; font-size:13px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; max-width:980px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+           padding:16px; }
+  .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.5px;
+              color:var(--muted); margin:0 0 12px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
+  input, select { width:100%; padding:8px 10px; background:#0d1117; color:var(--ink);
+          border:1px solid var(--line); border-radius:6px; font:inherit; }
+  input.bad { border-color:var(--bad); }
+  button { margin-top:14px; padding:9px 16px; background:var(--accent2); color:#06121f;
+           border:0; border-radius:6px; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--accent2); border:1px solid var(--line); }
+  .row { display:flex; gap:10px; } .row > * { flex:1; }
+  .cards { font-size:22px; letter-spacing:2px; margin:8px 0; min-height:30px; }
+  .s0,.s1 { color:#9ca3af; } .s2,.s3 { color:#f85149; } /* clubs/spades dark, hearts/diamonds red */
+  .bars { margin-top:8px; }
+  .bar { display:flex; align-items:center; gap:10px; margin:6px 0; }
+  .bar .name { width:64px; font-size:12px; color:var(--muted); }
+  .bar .track { flex:1; height:18px; background:#0d1117; border-radius:9px; overflow:hidden; }
+  .bar .fill { height:100%; background:linear-gradient(90deg,var(--accent2),var(--accent)); }
+  .bar .pct { width:58px; text-align:right; font-variant-numeric:tabular-nums; }
+  .desc { font-size:16px; color:var(--accent); margin-top:6px; min-height:22px; }
+  .meta { color:var(--muted); font-size:12px; margin-top:6px; }
+  pre { background:#0d1117; border:1px solid var(--line); border-radius:6px; padding:12px;
+        overflow:auto; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; max-height:260px; }
+  .ok { color:var(--accent); } .fail { color:var(--bad); }
+  .full { grid-column:1/3; }
+  .hint { color:var(--muted); font-size:11px; margin-top:2px; }
+</style>
+</head>
+<body>
+<h1>PokerIQ Engine Prototype <small>— pure-JS hand evaluator + Monte-Carlo equity, zero dependencies, runs entirely in this file</small></h1>
+<div class="grid">
+
+  <div class="panel">
+    <h2>Equity calculator</h2>
+    <label>Hero hole cards <span class="hint">e.g. As Ah</span></label>
+    <input id="hero" value="As Ah">
+    <label>Board <span class="hint">0, 3, 4 or 5 cards — blank = preflop</span></label>
+    <input id="board" value="">
+    <div class="row">
+      <div><label>Opponents (random)</label><input id="opps" type="number" min="1" max="8" value="1"></div>
+      <div><label>Iterations</label><input id="iters" type="number" min="100" step="500" value="20000"></div>
+    </div>
+    <button id="calc">Calculate equity</button>
+    <div class="cards" id="heroCards"></div>
+    <div class="bars" id="eqBars"></div>
+    <div class="meta" id="eqMeta"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Best-hand reader</h2>
+    <label>Any 5–7 cards <span class="hint">e.g. As Ks Qs Js Ts 2c 3d</span></label>
+    <input id="readCards" value="Ac Ad Ah Kc Kd Qc Qd">
+    <button id="read">Read hand</button>
+    <div class="cards" id="readShow"></div>
+    <div class="desc" id="readDesc"></div>
+    <div class="meta" id="readMeta"></div>
+    <label style="margin-top:18px">Multiway showdown <span class="hint">hands separated by " / "</span></label>
+    <input id="mw" value="As Ah / Ks Kh / 7c 7d">
+    <input id="mwBoard" value="Kd 7h 2s" style="margin-top:6px" placeholder="board (optional)">
+    <button id="mwBtn">Run multiway equity</button>
+    <div class="bars" id="mwBars"></div>
+  </div>
+
+  <div class="panel full">
+    <h2>In-browser self-tests &amp; benchmark</h2>
+    <div class="row" style="max-width:420px">
+      <button id="runTests" class="ghost">Run self-tests</button>
+      <button id="bench" class="ghost">Benchmark</button>
+    </div>
+    <pre id="testOut">Click “Run self-tests” to verify the engine in your browser.</pre>
+  </div>
+</div>
+
+<script>
+/*
+ * PokerIQ — JS hand-evaluator + Monte-Carlo equity engine (prototype).
+ *
+ * Self-contained, zero-dependency. Designed to replace the eval7 C-extension
+ * (calc_equity_* in pokerIQ.py) and the pure-Python poker_iq/evaluator.py.
+ *
+ * Card model mirrors poker_iq/models.py:
+ *   rank: 2..14 (14 = Ace), suit: 0..3 = c,d,h,s
+ *   string form: "Ah", "Ks", "2c"   |   code 0..51 = (rank-2)*4 + suit
+ *
+ * evaluate7() returns ONE comparable integer: higher = better hand.
+ * Encoding: category(4b) << 20 | t1<<16 | t2<<12 | t3<<8 | t4<<4 | t5
+ * The absolute number is meaningless across engines; only the ordering matters,
+ * and that ordering matches eval7 / poker_iq exactly (proven by validate.js).
+ */
+
+(function (root) {
+  'use strict';
+
+  const RANKS = '23456789TJQKA';      // index 0 -> rank 2
+  const SUITS = 'cdhs';                // index 0 -> clubs
+
+  // ---- category constants (match poker_iq HandRank ordering) ----
+  const CAT = {
+    HIGH_CARD: 0, ONE_PAIR: 1, TWO_PAIR: 2, TRIPS: 3, STRAIGHT: 4,
+    FLUSH: 5, FULL_HOUSE: 6, QUADS: 7, STRAIGHT_FLUSH: 8,
+  };
+  const CAT_NAMES = [
+    'High Card', 'One Pair', 'Two Pair', 'Three of a Kind', 'Straight',
+    'Flush', 'Full House', 'Four of a Kind', 'Straight Flush',
+  ];
+
+  function rankToChar(r) { return RANKS[r - 2]; }
+  function charToRank(c) {
+    const i = RANKS.indexOf(c.toUpperCase());
+    if (i < 0) throw new Error('bad rank: ' + c);
+    return i + 2;
+  }
+  function charToSuit(c) {
+    const i = SUITS.indexOf(c.toLowerCase());
+    if (i < 0) throw new Error('bad suit: ' + c);
+    return i;
+  }
+
+  // A card is encoded as the small integer (rank << 2) | suit for speed.
+  // rank 2..14, suit 0..3.  (This is NOT the 0..51 deck code; see codeOf.)
+  function cardFromStr(s) {
+    s = s.trim();
+    return (charToRank(s[0]) << 2) | charToSuit(s[1]);
+  }
+  function cardToStr(card) {
+    return rankToChar(card >> 2) + SUITS[card & 3];
+  }
+  function rankOf(card) { return card >> 2; }
+  function suitOf(card) { return card & 3; }
+  // 0..51 deck code, matching poker_iq Card.to_code(): (rank-2)*4 + suit
+  function codeOf(card) { return (rankOf(card) - 2) * 4 + suitOf(card); }
+  function cardFromCode(code) { return (((code >> 2) + 2) << 2) | (code & 3); }
+
+  function fullDeck() {
+    const d = new Array(52);
+    for (let c = 0; c < 52; c++) d[c] = cardFromCode(c);
+    return d;
+  }
+
+  // Highest 5-in-a-row in a rank bitmask (bits 2..14). Returns high rank or 0.
+  // Handles the wheel (A-2-3-4-5) by mirroring the ace to bit 1.
+  function straightHigh(mask) {
+    let m = mask;
+    if (m & (1 << 14)) m |= (1 << 1);     // ace plays low
+    // window of 5 consecutive bits, from ace-high down to 5-high (wheel)
+    for (let hi = 14; hi >= 5; hi--) {
+      const need = 0b11111 << (hi - 4);    // bits hi..hi-4
+      if ((m & need) === need) return hi;
+    }
+    return 0;
+  }
+
+  /**
+   * Evaluate the best 5-card poker hand from 5, 6, or 7 cards.
+   * @param {number[]} cards  array of card ints (rank<<2|suit)
+   * @returns {number} comparable score (higher = better)
+   */
+  function evaluate(cards) {
+    const rankCount = new Int8Array(15);          // index = rank 2..14
+    const suitMask = [0, 0, 0, 0];                // per-suit rank bitmask
+    const suitCnt = [0, 0, 0, 0];
+    let rankMask = 0;
+
+    for (let i = 0; i < cards.length; i++) {
+      const c = cards[i];
+      const r = c >> 2, s = c & 3;
+      rankCount[r]++;
+      suitMask[s] |= (1 << r);
+      suitCnt[s]++;
+      rankMask |= (1 << r);
+    }
+
+    // --- flush / straight-flush ---
+    let flushSuit = -1;
+    for (let s = 0; s < 4; s++) if (suitCnt[s] >= 5) { flushSuit = s; break; }
+    if (flushSuit >= 0) {
+      const sfHigh = straightHigh(suitMask[flushSuit]);
+      if (sfHigh) return enc(CAT.STRAIGHT_FLUSH, sfHigh);
+    }
+
+    // --- count-based categories: build ranks-by-count descending ---
+    // quads / trips / pairs lists, each sorted high->low by virtue of scan.
+    let quad = 0, tripsHi = 0, tripsLo = 0, pairHi = 0, pairMid = 0;
+    for (let r = 14; r >= 2; r--) {
+      const n = rankCount[r];
+      if (n === 4) quad = r;
+      else if (n === 3) { if (!tripsHi) tripsHi = r; else if (!tripsLo) tripsLo = r; }
+      else if (n === 2) { if (!pairHi) pairHi = r; else if (!pairMid) pairMid = r; }
+    }
+
+    if (quad) {
+      const k = topRanks(rankCount, 1, [quad]);
+      return enc(CAT.QUADS, quad, k[0]);
+    }
+
+    // full house: best trips + best pair (a 2nd trips counts as the pair)
+    if (tripsHi) {
+      let pair = pairHi;
+      if (tripsLo && tripsLo > pair) pair = tripsLo;     // 2nd trips as pair
+      if (pair) return enc(CAT.FULL_HOUSE, tripsHi, pair);
+    }
+
+    if (flushSuit >= 0) {
+      const fr = topBits(suitMask[flushSuit], 5);
+      return enc(CAT.FLUSH, fr[0], fr[1], fr[2], fr[3], fr[4]);
+    }
+
+    const sHigh = straightHigh(rankMask);
+    if (sHigh) return enc(CAT.STRAIGHT, sHigh);
+
+    if (tripsHi) {
+      const k = topRanks(rankCount, 2, [tripsHi]);
+      return enc(CAT.TRIPS, tripsHi, k[0], k[1]);
+    }
+
+    if (pairHi && pairMid) {
+      const k = topRanks(rankCount, 1, [pairHi, pairMid]);
+      return enc(CAT.TWO_PAIR, pairHi, pairMid, k[0]);
+    }
+
+    if (pairHi) {
+      const k = topRanks(rankCount, 3, [pairHi]);
+      return enc(CAT.ONE_PAIR, pairHi, k[0], k[1], k[2]);
+    }
+
+    const k = topRanks(rankCount, 5, []);
+    return enc(CAT.HIGH_CARD, k[0], k[1], k[2], k[3], k[4]);
+  }
+
+  // pack category + up to 5 tiebreak ranks into one int
+  function enc(cat, t1 = 0, t2 = 0, t3 = 0, t4 = 0, t5 = 0) {
+    return (cat << 20) | (t1 << 16) | (t2 << 12) | (t3 << 8) | (t4 << 4) | t5;
+  }
+
+  // top `n` ranks present (by count, high->low), excluding `exclude` ranks
+  function topRanks(rankCount, n, exclude) {
+    const out = [];
+    for (let r = 14; r >= 2 && out.length < n; r--) {
+      if (exclude.indexOf(r) >= 0) continue;
+      let c = rankCount[r];
+      while (c-- > 0 && out.length < n) out.push(r);
+    }
+    return out;
+  }
+  // top `n` set bits of a rank bitmask, high->low
+  function topBits(mask, n) {
+    const out = [];
+    for (let r = 14; r >= 2 && out.length < n; r--) if (mask & (1 << r)) out.push(r);
+    return out;
+  }
+
+  function categoryOf(score) { return score >> 20; }
+  function describe(score) {
+    const cat = categoryOf(score);
+    const t1 = (score >> 16) & 0xf, t2 = (score >> 12) & 0xf;
+    const rc = rankToChar;
+    switch (cat) {
+      case CAT.STRAIGHT_FLUSH: return t1 === 14 ? 'Royal Flush' : `Straight Flush, ${rc(t1)}-high`;
+      case CAT.QUADS: return `Four of a Kind, ${rc(t1)}s`;
+      case CAT.FULL_HOUSE: return `Full House, ${rc(t1)}s full of ${rc(t2)}s`;
+      case CAT.FLUSH: return `Flush, ${rc(t1)}-high`;
+      case CAT.STRAIGHT: return `Straight, ${rc(t1)}-high`;
+      case CAT.TRIPS: return `Three of a Kind, ${rc(t1)}s`;
+      case CAT.TWO_PAIR: return `Two Pair, ${rc(t1)}s and ${rc(t2)}s`;
+      case CAT.ONE_PAIR: return `Pair of ${rc(t1)}s`;
+      default: return `High Card, ${rc(t1)}`;
+    }
+  }
+
+  // ---------- Monte-Carlo equity ----------
+  // Fisher-Yates partial shuffle on the live deck (in place, first k slots).
+  function dealShuffle(deck, n, k, rng) {
+    for (let i = 0; i < k; i++) {
+      const j = i + Math.floor(rng() * (n - i));
+      const t = deck[i]; deck[i] = deck[j]; deck[j] = t;
+    }
+  }
+
+  /**
+   * Equity of hero vs N random opponents (mirrors calc_equity_hidden).
+   * @param {number[]} hero    2 hero cards
+   * @param {number[]} board   0..5 board cards
+   * @param {object} opts {iterations=2000, opponents=1, rng=Math.random}
+   * @returns {number} win probability incl. tie split, 0..1
+   */
+  function equityVsRandom(hero, board, opts = {}) {
+    const iterations = opts.iterations || 2000;
+    const opponents = opts.opponents || 1;
+    const rng = opts.rng || Math.random;
+
+    const used = new Set([...hero, ...board].map(codeOf));
+    const liveBase = fullDeck().filter(c => !used.has(codeOf(c)));
+    const need = 5 - board.length;
+    const draw = opponents * 2 + need;
+
+    let wins = 0, ties = 0, done = 0;
+    const hand = new Array(7);
+    for (let it = 0; it < iterations; it++) {
+      const n = liveBase.length;
+      if (n < draw) break;
+      dealShuffle(liveBase, n, draw, rng);
+
+      // complete board
+      let bi = 0;
+      const full = board.slice();
+      for (let i = 0; i < need; i++) full.push(liveBase[bi++]);
+
+      // hero score
+      hand.length = 0;
+      for (const c of hero) hand.push(c);
+      for (const c of full) hand.push(c);
+      const heroScore = evaluate(hand);
+
+      let bestOpp = -1;
+      for (let o = 0; o < opponents; o++) {
+        hand.length = 0;
+        hand.push(liveBase[bi++], liveBase[bi++]);
+        for (const c of full) hand.push(c);
+        const s = evaluate(hand);
+        if (s > bestOpp) bestOpp = s;
+      }
+      if (heroScore > bestOpp) wins++;
+      else if (heroScore === bestOpp) ties++;
+      done++;
+    }
+    return done ? (wins + ties / 2) / done : 0;
+  }
+
+  /**
+   * Multiway equity — each known hand's share of the pot (mirrors
+   * calc_multiway_equity). Returns array of equities aligned to `hands`.
+   * @param {number[][]} hands  array of 2-card hands
+   * @param {number[]} board    0..5 board cards
+   */
+  function equityMultiway(hands, board, opts = {}) {
+    const iterations = opts.iterations || 2000;
+    const rng = opts.rng || Math.random;
+    const used = new Set();
+    for (const h of hands) for (const c of h) used.add(codeOf(c));
+    for (const c of board) used.add(codeOf(c));
+    const liveBase = fullDeck().filter(c => !used.has(codeOf(c)));
+    const need = 5 - board.length;
+
+    const eq = new Array(hands.length).fill(0);
+    const hand = new Array(7);
+    let done = 0;
+    for (let it = 0; it < iterations; it++) {
+      const n = liveBase.length;
+      if (n < need) break;
+      dealShuffle(liveBase, n, need, rng);
+      const full = board.slice();
+      for (let i = 0; i < need; i++) full.push(liveBase[i]);
+
+      let best = -1; const scores = new Array(hands.length);
+      for (let p = 0; p < hands.length; p++) {
+        hand.length = 0;
+        hand.push(hands[p][0], hands[p][1]);
+        for (const c of full) hand.push(c);
+        const s = evaluate(hand);
+        scores[p] = s;
+        if (s > best) best = s;
+      }
+      let winners = 0;
+      for (let p = 0; p < hands.length; p++) if (scores[p] === best) winners++;
+      for (let p = 0; p < hands.length; p++) if (scores[p] === best) eq[p] += 1 / winners;
+      done++;
+    }
+    if (done) for (let p = 0; p < eq.length; p++) eq[p] /= done;
+    return eq;
+  }
+
+  const API = {
+    CAT, CAT_NAMES,
+    cardFromStr, cardToStr, cardFromCode, codeOf, rankOf, suitOf, fullDeck,
+    evaluate, categoryOf, describe, straightHigh,
+    equityVsRandom, equityMultiway,
+    // helpers for tests
+    handFromStr: s => s.trim().split(/\s+/).map(cardFromStr),
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = API;
+  else root.PokerEngine = API;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+// ---------------- UI glue ----------------
+const E = window.PokerEngine;
+const $ = id => document.getElementById(id);
+const SUIT_IDX = { c:0, d:1, h:2, s:3 };
+
+function renderCards(el, str) {
+  el.innerHTML = '';
+  (str.trim() ? str.trim().split(/\s+/) : []).forEach(t => {
+    const span = document.createElement('span');
+    span.textContent = t + ' ';
+    const s = SUIT_IDX[t[1] ? t[1].toLowerCase() : ''];
+    if (s !== undefined) span.className = 's' + s;
+    el.appendChild(span);
+  });
+}
+function parseHand(str) {
+  try { return E.handFromStr(str); } catch (e) { return null; }
+}
+
+$('calc').onclick = () => {
+  const hero = parseHand($('hero').value);
+  $('hero').classList.toggle('bad', !hero || hero.length !== 2);
+  const boardStr = $('board').value.trim();
+  const board = boardStr ? parseHand(boardStr) : [];
+  $('board').classList.toggle('bad', boardStr && !board);
+  if (!hero || hero.length !== 2 || (boardStr && !board)) return;
+  renderCards($('heroCards'), $('hero').value);
+  const opps = Math.max(1, Math.min(8, +$('opps').value || 1));
+  const iters = Math.max(100, +$('iters').value || 20000);
+  const t0 = performance.now();
+  const eq = E.equityVsRandom(hero, board, { iterations: iters, opponents: opps });
+  const ms = (performance.now() - t0).toFixed(0);
+  $('eqBars').innerHTML = '';
+  bar($('eqBars'), 'Hero', eq);
+  bar($('eqBars'), 'Field', 1 - eq, true);
+  $('eqMeta').textContent = `${iters.toLocaleString()} iterations · ${ms} ms · ${opps} opponent(s)`;
+};
+
+function bar(parent, name, frac, muted) {
+  const wrap = document.createElement('div'); wrap.className = 'bar';
+  wrap.innerHTML = `<div class="name">${name}</div>
+    <div class="track"><div class="fill" style="width:${(frac*100).toFixed(1)}%${muted?';filter:grayscale(.6)':''}"></div></div>
+    <div class="pct">${(frac*100).toFixed(2)}%</div>`;
+  parent.appendChild(wrap);
+}
+
+$('read').onclick = () => {
+  const cards = parseHand($('readCards').value);
+  const okLen = cards && cards.length >= 5 && cards.length <= 7;
+  $('readCards').classList.toggle('bad', !okLen);
+  if (!okLen) { $('readDesc').textContent = 'Need 5–7 valid cards.'; return; }
+  renderCards($('readShow'), $('readCards').value);
+  const score = E.evaluate(cards);
+  $('readDesc').textContent = E.describe(score);
+  $('readMeta').textContent = `category ${E.categoryOf(score)} (${E.CAT_NAMES[E.categoryOf(score)]}) · score ${score}`;
+};
+
+$('mwBtn').onclick = () => {
+  const hands = $('mw').value.split('/').map(s => s.trim()).filter(Boolean).map(parseHand);
+  if (hands.some(h => !h || h.length !== 2)) { $('mw').classList.add('bad'); return; }
+  $('mw').classList.remove('bad');
+  const bStr = $('mwBoard').value.trim();
+  const board = bStr ? parseHand(bStr) : [];
+  const eq = E.equityMultiway(hands, board, { iterations: 20000 });
+  $('mwBars').innerHTML = '';
+  hands.forEach((h, i) => bar($('mwBars'), h.map(E.cardToStr).join(''), eq[i]));
+};
+
+// ---------------- self-tests (Part A from validate.js) ----------------
+$('runTests').onclick = () => {
+  const out = [];
+  let pass = 0, fail = 0;
+  const ev = s => E.evaluate(E.handFromStr(s));
+  const ok = (cond, msg) => { if (cond) { pass++; } else { fail++; out.push('FAIL: ' + msg); } };
+  const ladder = [
+    ['As Ks Qs Js Ts','Royal/SF'], ['9s 8s 7s 6s 5s','Straight flush'],
+    ['Ac Ad Ah As Kd','Quads'], ['Ac Ad Ah Kd Kc','Full house'],
+    ['As Qs 9s 6s 3s','Flush'], ['Ah Kd Qc Js Td','Straight'],
+    ['Ac Ad Ah Kc Qd','Trips'], ['Ac Ad Kc Kd Qh','Two pair'],
+    ['Ac Ad Kc Qd Jh','One pair'], ['Ac Kd Qc Js 9h','High card'],
+  ];
+  for (let i = 0; i < ladder.length - 1; i++)
+    ok(ev(ladder[i][0]) > ev(ladder[i+1][0]), `${ladder[i][1]} > ${ladder[i+1][1]}`);
+  ok(E.describe(ev('As Ks Qs Js Ts')) === 'Royal Flush', 'royal described');
+  ok(E.categoryOf(ev('Ah 2c 3d 4s 5h')) === E.CAT.STRAIGHT, 'wheel is straight');
+  ok(ev('6h 2c 3d 4s 5h') > ev('Ah 2c 3d 4s 5h'), '6-high > wheel');
+  ok(E.categoryOf(ev('Ah 2h 3h 4h 5h')) === E.CAT.STRAIGHT_FLUSH, 'steel wheel SF');
+  ok(ev('Ac Ad Kc Qd Jh') > ev('Ac Ad Kc Qd Th'), 'pair kicker');
+  ok(ev('Ac Ad Kc Kd Ah') === ev('As Ah Ks Kh Ad'), 'suits ignored in tie');
+  ok(E.describe(ev('Ac Ad Ah Kc Kd Kh 2c')).startsWith('Full House, As'), 'two trips -> boat');
+  ok(E.describe(ev('As Ks Qs Js 9s 2s 3c')) === 'Flush, A-high', '6-card flush top5');
+  ok(E.categoryOf(ev('Ac Ad Ah As Kd Qc 2c')) === E.CAT.QUADS, '7-card quads');
+
+  // statistical sanity: AA should be ~85% heads-up vs random
+  const aa = E.equityVsRandom(E.handFromStr('As Ah'), [], { iterations: 30000 });
+  ok(aa > 0.83 && aa < 0.87, `AA preflop ~85% (got ${(aa*100).toFixed(1)}%)`);
+  const trash = E.equityVsRandom(E.handFromStr('7d 2c'), [], { iterations: 30000 });
+  ok(trash > 0.30 && trash < 0.40, `72o preflop ~35% (got ${(trash*100).toFixed(1)}%)`);
+
+  out.unshift(`${fail === 0 ? '✓ ALL PASS' : '✗ FAILURES'} — ${pass} passed, ${fail} failed\n`);
+  const pre = $('testOut');
+  pre.textContent = out.join('\n');
+  pre.className = fail ? 'fail' : 'ok';
+};
+
+$('bench').onclick = () => {
+  const sample = E.handFromStr('As Ks Qh 7d 2c 9s 4h');
+  const N = 1000000;
+  let acc = 0;
+  const t0 = performance.now();
+  for (let i = 0; i < N; i++) acc ^= E.evaluate(sample);
+  const t1 = performance.now();
+  const eps = Math.round(N / ((t1 - t0) / 1000));
+  const te0 = performance.now();
+  E.equityVsRandom(E.handFromStr('As Ah'), [], { iterations: 10000, opponents: 1 });
+  const te1 = performance.now();
+  $('testOut').className = '';
+  $('testOut').textContent =
+    `evaluate(): ${(eps/1e6).toFixed(1)}M hands/sec  (acc=${acc&1})\n` +
+    `equityVsRandom 10k iters, 1 opp: ${(te1-te0).toFixed(0)} ms\n` +
+    `(your browser/CPU; Node baseline was ~4M hands/sec, ~11 ms)`;
+};
+
+// initial render
+renderCards($('heroCards'), $('hero').value);
+$('read').onclick();
+</script>
+</body>
+</html>

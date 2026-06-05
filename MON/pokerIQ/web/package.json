@@ -1,0 +1,14 @@
+{
+  "name": "pokeriq-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Single self-contained HTML port of the PokerIQ PyQt6 trainer",
+  "scripts": {
+    "build": "node build.js",
+    "test": "node test/test_game.js && node test/test_ui.js && node build.js && node test/test_built.js && node test/test_features.js",
+    "test:engine": "node ../prototype/validate.js && node test/test_game.js"
+  },
+  "devDependencies": {
+    "jsdom": "^22.0.0"
+  }
+}
