@@ -1,0 +1,7 @@
+# Local-only nested repo for the Q-Plus/biq tooling — code only, never
+# pushed (this repo has no remote). Run artifacts stay out of history.
+runs/
+__pycache__/
+*.pyc
+*.pyo
+*.log

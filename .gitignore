@@ -63,7 +63,6 @@ downloads/sglBinaries_*/
 
 # bridgeIQ dev scaffolding — corpus tools, audits, diff utilities. Not
 # part of the shipped game; kept on the dev machine only.
-FRI/bridgeIQ/bridgeIQ/tools/
 
 # Binary files - executables and libraries
 *.exe
