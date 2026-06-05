@@ -621,15 +621,19 @@ class LiveMatchWidget(QWidget):
         # ===== 1 ▏ Bidding systems =====
         sys_box = QGroupBox("1 ▏ Bidding systems")
         sh = QHBoxLayout(sys_box)
-        _SYS_OPTS = ["random"] + _SYS_NAMES
+        _SYS_OPTS = ["sequential", "random"] + _SYS_NAMES
         self.ns_sys = QComboBox(); self.ns_sys.addItems(_SYS_OPTS)
         self.ew_sys = QComboBox(); self.ew_sys.addItems(_SYS_OPTS)
         self.ns_sys.setCurrentText("SAYC")
         self.ew_sys.setCurrentText("SAYC")
-        _systip = ("random = a fresh random system for this side each deal, "
-                   "or pick one fixed system for the whole run. N/S and E/W "
-                   "independent. Frozen while an A/B run is selected so both "
-                   "runs use identical systems.")
+        _systip = ("sequential = step the 5 systems by deal number "
+                   "(1 2 3 4 5 1 2 3 4 5 …) — repeatable with NO seed, so the "
+                   "SAME boards get the SAME systems every run (the clean A/B "
+                   "basis). When BOTH sides are sequential the pair sweeps as "
+                   "an odometer: N/S holds while E/W runs 1-5, then N/S steps "
+                   "(all 25 pairings).  random = a fresh random system each "
+                   "deal.  Or pick one fixed system for the whole run. N/S and "
+                   "E/W independent. Frozen during an A/B so both runs match.")
         self.ns_sys.setToolTip(_systip)
         self.ew_sys.setToolTip(_systip)
         sh.addWidget(QLabel("N/S")); sh.addWidget(self.ns_sys)
@@ -638,10 +642,10 @@ class LiveMatchWidget(QWidget):
         sh.addStretch(1)
         self.repro_random = QCheckBox("🔒 reproducible random")
         self.repro_random.setToolTip(
-            "When a side is 'random': seed the per-deal system choice so Run "
-            "A and Run B draw the SAME systems on the same boards (a clean "
-            "A/B across varied systems). Off = free random (fine for "
-            "exploration, NOT for an A/B).")
+            "Only affects the 'random' mode: seed the per-deal choice so Run "
+            "A and Run B draw the SAME random systems on the same boards. "
+            "'sequential' is already repeatable with no seed, so leave this "
+            "unticked when using it.")
         sh.addWidget(self.repro_random)
         root.addWidget(sys_box)
 
@@ -1158,8 +1162,8 @@ class LiveMatchWidget(QWidget):
 
     def _biq_args(self, seat, port, log_path):
         # biq always follows Q-Plus's N/S system: in 'auto' it matches
-        # whatever Q-Plus is configured for; in 'pick'/'random' the clicker
-        # sets Q-Plus's N/S and biq follows it. So --auto-system always.
+        # whatever Q-Plus is configured for; in sequential/random/fixed the
+        # clicker sets Q-Plus's N/S and biq follows it. So --auto-system always.
         return ["tools/biq_qnet_client.py", "--host", "127.0.0.1",
                 "--port", str(port), "--seat", seat,
                 "--num-samples", str(self.samples.value()),
