@@ -58,7 +58,7 @@ AB_REF_FILE = BIQ_ROOT / "tools/runs/ab/ab_reference.json"  # Run-A deal id
 # Bump this on any user-visible behaviour change. It's shown in the title
 # bar AND logged on startup, so you can tell at a glance whether a freshly
 # launched panel actually has the latest fix (no more "did it reload?").
-PANEL_BUILD = "2026-06-06a · crash-watchdog auto-restarts a dead biq client"
+PANEL_BUILD = "2026-06-06b · Match End dialog dismiss in .qss export + crash-watchdog"
 # Fixed seed for 'reproducible random' systems — both A and B pass the same
 # value so they draw identical per-deal systems on identical boards.
 REPRO_SYS_SEED = 20260604
@@ -399,6 +399,9 @@ class CalibrationManagerDialog(QDialog):
             ("players_ok", "OK — Players dialog"),
             ("view_menu", "View — top-level menu"),
             ("view_scoring_table", "View Scoring Table — View item"),
+            ("match_end", "‘View the scoring table’ — Match End dialog (pops "
+                          "up after the last board; dismisses it AND opens the "
+                          "scoring table, so the export skips the View menu)"),
             ("save_and_send", "Save and send — scoring table"),
             ("save_ok", "OK — after Save and send"),
         ]),
@@ -2386,23 +2389,39 @@ class LiveMatchWidget(QWidget):
         write a fresh .qss. biq's client log under-counts report_score (the
         score message doesn't always reach the client), so the .qss is the
         authoritative source. Skips (with a note) if not calibrated."""
-        keys = ["view_menu", "view_scoring_table", "save_and_send", "save_ok"]
-        vm, vst, ss, ok = (_load_server_btn(k) for k in keys)
-        if not all((vm, vst, ss, ok)):
-            miss = [k for k, p in zip(keys, (vm, vst, ss, ok)) if not p]
+        ss, ok = _load_server_btn("save_and_send"), _load_server_btn("save_ok")
+        me = _load_server_btn("match_end")
+        if not (ss and ok):
+            miss = [k for k, p in (("save_and_send", ss), ("save_ok", ok))
+                    if not p]
             self._append("[panel] score-sheet export skipped — not "
                          "calibrated: " + ", ".join(miss)
                          + " (Calibrate / edit captures…).")
             return False
-        self._append("[panel] exporting score sheet "
-                     "(View ▸ Scoring Table ▸ Save and send ▸ OK)…")
-        # View → Scoring Table as ONE atomic chained action (the menu closes
-        # the instant the mouse pauses), then wait for the table window and
-        # the save/confirm dialog before their clicks. Log each step so a
-        # missed click is diagnosable from panel.log afterwards.
-        _menu_pick(vm, vst)
-        self._append(f"[panel]   View {vm} → Scoring Table {vst} (atomic)")
-        time.sleep(2.0)          # scoring-table window opens
+        # Preferred path: after the last board Q-Plus pops the modal "Match
+        # End" dialog, which BLOCKS the View menu (so the old View ▸ Scoring
+        # Table clicks miss). Its ‘View the scoring table’ button dismisses
+        # the dialog AND opens the scoring table in one click — so when
+        # match_end is calibrated we click it and SKIP the View-menu nav.
+        if me is not None:
+            self._append("[panel] dismissing Match End dialog via ‘View the "
+                         "scoring table’ → scoring table opens…")
+            _click_xy(*me)
+            self._append(f"[panel]   Match End ▸ View scoring table {me}")
+            time.sleep(2.0)
+        else:
+            vm, vst = (_load_server_btn(k) for k in
+                       ("view_menu", "view_scoring_table"))
+            if not (vm and vst):
+                self._append("[panel] score-sheet export skipped — calibrate "
+                             "‘match_end’ (preferred) OR view_menu + "
+                             "view_scoring_table.")
+                return False
+            self._append("[panel] exporting score sheet (View ▸ Scoring "
+                         "Table ▸ Save and send ▸ OK)…")
+            _menu_pick(vm, vst)
+            self._append(f"[panel]   View {vm} → Scoring Table {vst} (atomic)")
+            time.sleep(2.0)
         _click_xy(*ss)
         self._append(f"[panel]   Save and send {ss}")
         time.sleep(1.5)          # save / confirm dialog
