@@ -53,8 +53,8 @@ function toHeroTurn(C) {
     C.specPrev(); C.specNext();
     ok(true, 'street nav prev/next ran');
     // close view exits spectating
-    C.closeSpectator();
-    ok(C.spectating === false, 'Close View exits spectator mode');
+    C.exitSpectator(false);
+    ok(C.spectating === false, 'exitSpectator exits spectator mode');
   } else { ok(true, 'hand ended on fold (uncontested) — spectator skipped, acceptable'); }
 }
 
@@ -106,6 +106,55 @@ function toHeroTurn(C) {
   ctrl.setupPlayers(Array.from({ length: 6 }, (_, i) => ({ name: 'P' + (i + 1), style: 'human' })));
   ok(ctrl.hotseat === true && ctrl.humanSeats.size === 6, '6-human hotseat configured');
   ok(ctrl.game.players.length === 6 && ctrl.game.players.every(p => p.style === 'human'), 'all six seats are human');
+}
+
+// ---- 6. hotseat: EVERY folder gets a review even with humans remaining (rev 1) ----
+{
+  const { C } = makeInstance(11);
+  C.setupPlayers([{ name: 'A', style: 'human' }, { name: 'B', style: 'human' },
+    { name: 'Tight Tim', style: 'tight' }, { name: 'Loose Bruce', style: 'loose' },
+    { name: 'Aggro Angela', style: 'aggressive' }, { name: 'Sharkey Steve', style: 'shark' }]);
+  C.timer = () => {}; C.botDelayMs = 600;
+  let guard = 0, folded = false;
+  while (!folded && guard++ < 60) {
+    if (C.passGate) { C.arm(); continue; }
+    if (C.humanToAct()) { C.act('f', 0); folded = true; break; }
+    C.pump();
+  }
+  ok(folded, 'a human folded in hotseat');
+  ok(C.spectating === true, 'folder gets a God-view review even with another human still in (rev 1)');
+  const sp = C.spectatorData();
+  ok(sp.passMode === true, 'hotseat review offers "Pass device →" (another human to act)');
+  C.exitSpectator(true);
+  ok(C.spectating === false, 'Pass device exits the review');
+}
+
+// ---- 7. God peek blocked in hotseat pre-fold (rev 2) ----
+{
+  const { C } = makeInstance(11);
+  C.setupPlayers([{ name: 'A', style: 'human' }, { name: 'B', style: 'human' },
+    { name: 'Tight Tim', style: 'tight' }, { name: 'Loose Bruce', style: 'loose' },
+    { name: 'Aggro Angela', style: 'aggressive' }, { name: 'Sharkey Steve', style: 'shark' }]);
+  ok(C.canUseGod() === false, 'God peek unavailable with other humans at the table');
+  C.toggleGod();
+  ok(C.godMode === false, 'God toggle is blocked in hotseat (pre-fold)');
+  const { C: C2 } = makeInstance(11);
+  ok(C2.canUseGod() === true, 'God peek available in single-player');
+}
+
+// ---- 8. showdown reveals ALL hands (incl. folded) for review ----
+{
+  const { C } = makeInstance(7);
+  let guard = 0;
+  while (guard++ < 200) {
+    if (C.humanToAct()) C.act('c', 0);
+    else if (!C.game.handInProgress) break;
+    else C.pump();
+  }
+  if (C.handResult) {
+    const s = C.snapshot();
+    ok(s.players.every(p => !p.hand.length || p.reveal), 'all hands (incl. folded) revealed at showdown');
+  } else ok(true, 'hand still running — skipped showdown-reveal check');
 }
 
 console.log(`\n${fail === 0 ? '✓ ALL PASS' : '✗ FAILURES'} — ${pass} passed, ${fail} failed`);

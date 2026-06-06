@@ -253,3 +253,4 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 .sb-ev{font-weight:700;}
 .hs-flags{background:#2a1410;border:1px solid #6a2a1a;border-radius:8px;padding:12px 14px;color:#f0a070;font-size:17px;margin-bottom:14px;}
 .pg-presets{display:flex;gap:10px;margin:0 0 14px;}
+.ghost:disabled{opacity:.4;cursor:default;}

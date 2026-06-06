@@ -73,16 +73,21 @@ seat, so each player gets their own no-peek advisor too. (This is the
 zero-infrastructure form of multiplayer — everyone shares the one laptop running
 PokerIQ; remote play would need a WebSocket/WebRTC server.)
 
-**Fold → spectator (God view)** — when you fold and only bots remain to act, you
-drop into a God-view spectator panel: all hole cards revealed plus a per-player
-equity table (Real god-equity / Thinking vs-ranges / Pot Odds, with +EV/-EV from
-Real-vs-PotOdds) and ◄ Previous / Next Street ► / Close View over per-street
-snapshots. Folding to watch is legitimate and **not** flagged.
+**Fold → spectator (God view)** — **every** fold drops that player into a God-view
+review: all hole cards revealed plus a per-player equity table (Real god-equity /
+Thinking vs-ranges / Pot Odds, with +EV/-EV from Real-vs-PotOdds) and ◄ Previous /
+Next Street ► over per-street snapshots. Single-player / bots-only: you watch the
+run-out **live to showdown** (Close View). Hotseat with another human still to act:
+you review the current state, then **Pass device →** hands off to the next player.
+At showdown every hand (including folded) is revealed for a shared review. Folding
+to watch is legitimate and **not** flagged.
 
-**Assist flags** — using God Mode / Show Tells / Training *while still in the
-hand* (i.e. before folding) records an assist attributed to that player and
-surfaces it in the Hand Summary, which everyone sees. Peeking is allowed; it's
-just disclosed.
+**God peek & assist flags** — manual God Mode (peeking pre-fold) is **only
+available in single-player** (no other humans at the table); in hotseat the God
+button is disabled — you only get the God view *after* you fold. When it is
+available, using God / Tells / Training *while still in the hand* records an assist
+attributed to that player and surfaces it in the Hand Summary, which everyone sees.
+Peeking is allowed; it's just disclosed.
 
 **Intentionally dropped** (cannot run in a sandboxed single file):
 - **Remote/LAN multiplayer** — browsers can't open raw TCP sockets (a WebSocket

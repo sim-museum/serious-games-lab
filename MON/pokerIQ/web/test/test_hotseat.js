@@ -42,6 +42,11 @@ while (handsDone < 3 && guard++ < 2000) {
     if (handsDone < 3) ctrl.newHand();
     continue;
   }
+  if (s.spectating) {
+    // a human folded → they get the God-view review; pass the device to continue
+    ctrl.exitSpectator(s.spectator.passMode);
+    continue;
+  }
   if (s.passGate) {
     everGated = true;
     // INVARIANT: while gated, NO hole cards are revealed

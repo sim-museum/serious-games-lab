@@ -260,6 +260,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 .sb-ev{font-weight:700;}
 .hs-flags{background:#2a1410;border:1px solid #6a2a1a;border-radius:8px;padding:12px 14px;color:#f0a070;font-size:17px;margin-bottom:14px;}
 .pg-presets{display:flex;gap:10px;margin:0 0 14px;}
+.ghost:disabled{opacity:.4;cursor:default;}
 
 </style>
 </head>
@@ -2488,7 +2489,8 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     // else seat 0. All hero-perspective analysis keys off this.
     heroSeat() { return this.humanToAct() ? this.game.toAct : 0; }
     // hotseat privacy gate: a human must arm before their cards are shown.
-    get passGate() { return this.hotseat && this.humanToAct() && !this.armed; }
+    // Suppressed while a just-folded player is mid-review (they pass first).
+    get passGate() { return this.hotseat && this.humanToAct() && !this.armed && !this.spectating; }
     arm() { this.armed = true; this.stats.actionStarted(); this.render(); }
 
     // ---- assists: God/Tells/Training used while still in the hand get flagged ----
@@ -2499,7 +2501,16 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
         (this.handAssists[p.name] || (this.handAssists[p.name] = new Set())).add(name);
       }
     }
-    toggleGod() { this.godMode = !this.godMode; if (this.godMode) this.flagAssist('God Mode'); this.render(); }
+    // Manual God peek pre-fold is only allowed when there are no other human
+    // players (you can't peek at other humans' cards mid-hand). After you fold,
+    // the spectator God-view is always available regardless.
+    canUseGod() { return this.humanSeats.size <= 1; }
+    toggleGod() {
+      if (!this.godMode && !this.canUseGod()) return;   // blocked: humans at the table
+      this.godMode = !this.godMode;
+      if (this.godMode) this.flagAssist('God Mode');
+      this.render();
+    }
     toggleTells() { this.showTells = !this.showTells; if (this.showTells) this.flagAssist('Show Tells'); this.render(); }
     toggleTraining() { this.training = !this.training; if (this.training) this.flagAssist('Theory of Mind'); this.render(); }
     assistFlags() {
@@ -2507,14 +2518,14 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     }
 
     // ---- fold → God-view spectator mode ----
+    // EVERY human fold gets a God-view review. Single-player / bots-only: watch
+    // the run-out live to showdown. Hotseat with another human still to act:
+    // review the current state, then "Pass device →" to continue.
     maybeEnterSpectator(foldedSeat) {
       if (this.spectating) return;
       if (!this.humanSeats.has(foldedSeat)) return;          // a bot folded
       if (!this.game.handInProgress) return;
-      const active = this.game.activePlayers();
-      if (active.length < 2) return;                          // hand's over anyway
-      if (active.some(p => this.humanSeats.has(p.seat))) return; // another human still acts
-      // no human left to act → the device-holder watches the bots play it out
+      if (this.game.activePlayers().length < 2) return;       // hand's over anyway
       this.spectating = true; this.specIdx = -1; this.specSnaps = [];
       this.captureSpecSnapshot();
     }
@@ -2522,7 +2533,9 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       if (!this.spectating) return;
       this.specSnaps.push({ street: this.streetName(), board: this.game.board.slice(), table: this.specTable() });
     }
-    closeSpectator() { this.spectating = false; this.specIdx = -1; this.render(); }
+    // leave the review. `pass` (hotseat) resumes the hand → next player's gate;
+    // otherwise (single-player live watch) the in-flight run-out just continues.
+    exitSpectator(pass) { this.spectating = false; this.specIdx = -1; if (pass) this.pump(); else this.render(); }
     specPrev() { const n = this.specSnaps.length; if (!n) return; this.specIdx = this.specIdx < 0 ? n - 2 : this.specIdx - 1; if (this.specIdx < 0) this.specIdx = 0; this.render(); }
     specNext() { const n = this.specSnaps.length; if (!n) return; if (this.specIdx < 0) return; this.specIdx += 1; if (this.specIdx >= n - 1) this.specIdx = -1; this.render(); }
 
@@ -2531,9 +2544,12 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       const live = this.specIdx < 0 || this.specIdx >= this.specSnaps.length;
       const snap = live ? { street: this.streetName(), board: this.game.board.slice(), table: this.specTable() }
         : this.specSnaps[this.specIdx];
+      // in hotseat, if another human still has to act, the folder reviews then
+      // hands off ("Pass device →"); otherwise it's a live watch ("Close View").
+      const humanLeft = this.game.activePlayers().some(p => this.humanSeats.has(p.seat));
       return {
         street: snap.street, board: snap.board, table: snap.table,
-        pot: this.game.pot, live,
+        pot: this.game.pot, live, passMode: this.hotseat && humanLeft,
         canPrev: this.specSnaps.length > 1 && (live || this.specIdx > 0),
         canNext: !live,
         idx: live ? this.specSnaps.length - 1 : this.specIdx,
@@ -2819,6 +2835,25 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     // used by the headless tests) or step it on a timer so play is watchable.
     pump() {
       const g = this.game;
+      // A folded human is reviewing (God view). If another human still has to
+      // act, freeze the hand until they tap "Pass device →" (so the device can
+      // hand off privately). If only bots remain, let the run-out play live so
+      // the folder watches through to showdown.
+      if (this.spectating && g.handInProgress) {
+        const humanLeft = g.activePlayers().some(p => this.humanSeats.has(p.seat));
+        if (humanLeft) { this.render(); return; }
+        if (g.awaitingBot >= 0) {
+          if (this.botDelayMs <= 0) {
+            let gd = 0;
+            while (g.handInProgress && g.awaitingBot >= 0) { if (++gd > 500) break; g.stepBot(); }
+            this.render(); return;
+          }
+          this.render();
+          this.timer(() => { g.stepBot(); this.pump(); }, this.botDelayMs);
+          return;
+        }
+        this.render(); return;
+      }
       if (this.humanToAct()) {
         // hotseat: wait on the privacy gate until the player arms; otherwise
         // it's this human's turn to act.
@@ -2985,7 +3020,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 
     // which seats' hole cards are face-up right now
     seatReveal(seat, active) {
-      if (this.handResult && active) return true;          // showdown: all in reveal
+      if (this.handResult) return true;                    // showdown: reveal ALL (incl. folded) for review
       if (this.godMode || this.spectating) return true;
       if (this.hotseat) return this.armed && seat === this.game.toAct && this.humanSeats.has(seat);
       // single-player: hero (seat 0) always; villains after hero folds
@@ -3023,6 +3058,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
         spectating: this.spectating,
         spectator: this.spectating ? this.spectatorData() : null,
         assists: this.assistFlags(),
+        canUseGod: this.canUseGod(),
         awaitingHero: armedHuman,
         legal: armedHuman ? g.legalActions(g.toAct) : null,
         advisor: armedHuman ? this.advisor() : null,
@@ -3187,7 +3223,12 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       if (s.handResult && !s.training) this.showResult(s.handResult, s);
       else this.el.result.style.display = 'none';
 
-      this.root.querySelector('[data-act="god"]').classList.toggle('on', s.godMode);
+      const godBtn = this.root.querySelector('[data-act="god"]');
+      godBtn.classList.toggle('on', s.godMode);
+      // God peek is disabled while other humans are at the table (hotseat) —
+      // you only get the God view after you fold.
+      godBtn.disabled = !s.canUseGod;
+      godBtn.title = s.canUseGod ? '' : 'God peek is off in multiplayer — you get the God view after you fold';
       this.root.querySelector('[data-act="tells"]').classList.toggle('on', s.showTells);
     }
 
@@ -3215,7 +3256,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
           <span class="sp-nav">
             <button class="ghost" id="sp-prev" ${sp.canPrev ? '' : 'disabled'}>◄ Previous Street</button>
             <button class="ghost" id="sp-next" ${sp.canNext ? '' : 'disabled'}>Next Street ►</button>
-            <button class="btn fold" id="sp-close">Close View</button>
+            <button class="btn ${sp.passMode ? 'check' : 'fold'}" id="sp-close">${sp.passMode ? 'Pass device →' : 'Close View'}</button>
           </span>
         </div>
         <table class="sp-table">
@@ -3224,7 +3265,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
         </table>`;
       const prev = this.root.querySelector('#sp-prev'); if (prev) prev.onclick = () => this.ctrl.specPrev();
       const next = this.root.querySelector('#sp-next'); if (next) next.onclick = () => this.ctrl.specNext();
-      const close = this.root.querySelector('#sp-close'); if (close) close.onclick = () => this.ctrl.closeSpectator();
+      const close = this.root.querySelector('#sp-close'); if (close) close.onclick = () => this.ctrl.exitSpectator(sp.passMode);
     }
 
     buildEndActions(s) {
