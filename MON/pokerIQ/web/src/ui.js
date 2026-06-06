@@ -67,6 +67,8 @@
       this.spectating = false;       // viewer folded, watching the rest
       this.specSnaps = [];           // per-street spectator snapshots
       this.specIdx = -1;             // -1 = live; else index into specSnaps
+      this.specPaused = true;        // bots-only run-out starts PAUSED (readable)
+      this.spectatedThisHand = false;// drove the spectator this hand → auto-open summary
       this.handAssists = {};         // {playerName: Set(assist)} used while still in hand
 
       this.game = new PG.Game({
@@ -126,15 +128,31 @@
       if (!this.game.handInProgress) return;
       if (this.game.activePlayers().length < 2) return;       // hand's over anyway
       this.spectating = true; this.specIdx = -1; this.specSnaps = [];
+      this.specPaused = true;          // bots play instantly — start paused so it's readable
+      this.spectatedThisHand = true;   // → auto-open the hand summary at showdown
       this.captureSpecSnapshot();
+    }
+    // play/pause the bots-only run-out
+    toggleSpecPause() { this.specPaused = !this.specPaused; this.pump(); }
+    // advance the live hand exactly one street (then stay paused), for readable stepping
+    specStepStreet() {
+      const g = this.game, startStreet = g.streetIdx;
+      let guard = 0;
+      while (g.handInProgress && g.streetIdx === startStreet && g.awaitingBot >= 0 && !this.humanToAct()) {
+        if (++guard > 500) break;
+        g.stepBot();
+      }
+      this.specIdx = -1;   // jump back to live
+      this.render();
+      if (!g.handInProgress) this.pump();   // reached showdown
     }
     captureSpecSnapshot() {
       if (!this.spectating) return;
       this.specSnaps.push({ street: this.streetName(), board: this.game.board.slice(), table: this.specTable() });
     }
-    // leave the review. `pass` (hotseat) resumes the hand → next player's gate;
-    // otherwise (single-player live watch) the in-flight run-out just continues.
-    exitSpectator(pass) { this.spectating = false; this.specIdx = -1; if (pass) this.pump(); else this.render(); }
+    // leave the review and let the hand finish (bots run out to showdown, or in
+    // hotseat the next player's gate appears) → you land on the hand summary.
+    exitSpectator() { this.spectating = false; this.specIdx = -1; this.specPaused = false; this.pump(); }
     specPrev() { const n = this.specSnaps.length; if (!n) return; this.specIdx = this.specIdx < 0 ? n - 2 : this.specIdx - 1; if (this.specIdx < 0) this.specIdx = 0; this.render(); }
     specNext() { const n = this.specSnaps.length; if (!n) return; if (this.specIdx < 0) return; this.specIdx += 1; if (this.specIdx >= n - 1) this.specIdx = -1; this.render(); }
 
@@ -149,6 +167,7 @@
       return {
         street: snap.street, board: snap.board, table: snap.table,
         pot: this.game.pot, live, passMode: this.hotseat && humanLeft,
+        paused: this.specPaused, botsOnly: !humanLeft && this.game.handInProgress,
         canPrev: this.specSnaps.length > 1 && (live || this.specIdx > 0),
         canNext: !live,
         idx: live ? this.specSnaps.length - 1 : this.specIdx,
@@ -219,7 +238,7 @@
           holeCards: this.game.players.filter(p => p.hand.length).map(p => ({ seat: p.seat, name: p.name, cards: p.hand.slice() })),
           streets: [{ name: 'Preflop', board: [], actions: [] }],
         };
-        this.spectating = false; this.specSnaps = []; this.specIdx = -1; this.handAssists = {};
+        this.spectating = false; this.specSnaps = []; this.specIdx = -1; this.spectatedThisHand = false; this.handAssists = {};
         this.logHandStart(payload);
       } else if (type === 'log') {
         this.pushEvent(payload);
@@ -539,7 +558,8 @@
       // the folder watches through to showdown.
       if (this.spectating && g.handInProgress) {
         const humanLeft = g.activePlayers().some(p => this.humanSeats.has(p.seat));
-        if (humanLeft) { this.render(); return; }
+        if (humanLeft) { this.render(); return; }     // hotseat: wait for "Pass device →"
+        if (this.specPaused) { this.render(); return; } // bots-only: paused for readability
         if (g.awaitingBot >= 0) {
           if (this.botDelayMs <= 0) {
             let gd = 0;
@@ -547,7 +567,7 @@
             this.render(); return;
           }
           this.render();
-          this.timer(() => { g.stepBot(); this.pump(); }, this.botDelayMs);
+          this.timer(() => { if (this.spectating && !this.specPaused) { g.stepBot(); this.pump(); } }, this.botDelayMs);
           return;
         }
         this.render(); return;
@@ -952,8 +972,10 @@
           <span class="sp-board">${board}</span>
           <span class="sp-pot">Pot $${sp.pot}</span>
           <span class="sp-nav">
-            <button class="ghost" id="sp-prev" ${sp.canPrev ? '' : 'disabled'}>◄ Previous Street</button>
-            <button class="ghost" id="sp-next" ${sp.canNext ? '' : 'disabled'}>Next Street ►</button>
+            ${sp.botsOnly ? `<button class="btn ${sp.paused ? 'check' : 'fold'}" id="sp-play">${sp.paused ? '▶ Play' : '⏸ Pause'}</button>
+            <button class="ghost" id="sp-step" ${sp.paused ? '' : 'disabled'}>Step street ▶</button>` : ''}
+            <button class="ghost" id="sp-prev" ${sp.canPrev ? '' : 'disabled'}>◄ Prev</button>
+            <button class="ghost" id="sp-next" ${sp.canNext ? '' : 'disabled'}>Next ►</button>
             <button class="btn ${sp.passMode ? 'check' : 'fold'}" id="sp-close">${sp.passMode ? 'Pass device →' : 'Close View'}</button>
           </span>
         </div>
@@ -961,6 +983,8 @@
           <tr><th>Player</th><th>Real</th><th>Thinking</th><th>Pot Odds</th><th></th></tr>
           ${rows}
         </table>`;
+      const play = this.root.querySelector('#sp-play'); if (play) play.onclick = () => this.ctrl.toggleSpecPause();
+      const step = this.root.querySelector('#sp-step'); if (step) step.onclick = () => this.ctrl.specStepStreet();
       const prev = this.root.querySelector('#sp-prev'); if (prev) prev.onclick = () => this.ctrl.specPrev();
       const next = this.root.querySelector('#sp-next'); if (next) next.onclick = () => this.ctrl.specNext();
       const close = this.root.querySelector('#sp-close'); if (close) close.onclick = () => this.ctrl.exitSpectator(sp.passMode);

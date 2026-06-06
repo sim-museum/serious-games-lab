@@ -40,6 +40,7 @@ if (ctrl.game.awaitingAction && ctrl.game.toAct === 0) {
 }
 
 // 3) play a hand to completion, then the summary modal builds with streets + table
+ctrl.specPaused = false;   // if block 2 left a paused spectator, let it run out
 guard = 0;
 while (guard++ < 300) {
   if (ctrl.game.awaitingAction && ctrl.game.toAct === 0) {

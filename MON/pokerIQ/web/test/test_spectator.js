@@ -160,5 +160,31 @@ function toHeroTurn(C) {
   } else ok(true, 'hand still running — skipped showdown-reveal check');
 }
 
+// ---- 9. bots-only spectator starts PAUSED; step/play; auto-summary at showdown ----
+{
+  const { C } = makeInstance(11);
+  ok(toHeroTurn(C), 'reached hero turn (pause test)');
+  let summaryOpened = false;
+  C.onHandEnd = () => { if (C.spectatedThisHand) summaryOpened = true; };
+  C.timer = () => {};            // freeze the timer-driven run-out
+  C.act('f', 0);                 // fold → spectator
+  if (C.game.handInProgress) {
+    ok(C.spectating && C.specPaused === true, 'bots-only spectator starts PAUSED');
+    const sp = C.spectatorData();
+    ok(sp.botsOnly === true && sp.paused === true, 'spectatorData reports botsOnly + paused');
+    ok(C.spectatedThisHand === true, 'spectatedThisHand flag set');
+    // step one street advances the board (or ends the hand)
+    const before = C.game.streetIdx;
+    C.specStepStreet();
+    ok(C.game.streetIdx > before || !C.game.handInProgress, 'Step advances one street (or ends hand)');
+    // play through to showdown
+    C.specPaused = false;
+    let guard = 0;
+    while (C.game.handInProgress && guard++ < 50) C.specStepStreet();
+    ok(!C.game.handInProgress, 'hand played out to showdown');
+    ok(summaryOpened === true, 'hand summary auto-opens after a spectated hand');
+  } else { ok(true, 'hand ended on fold — pause test skipped'); }
+}
+
 console.log(`\n${fail === 0 ? '✓ ALL PASS' : '✗ FAILURES'} — ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

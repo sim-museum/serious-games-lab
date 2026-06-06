@@ -29,7 +29,7 @@ button{font:inherit;cursor:pointer;}
 .piq-felt{position:relative;flex:1;margin:22px;border-radius:160px;
   background:radial-gradient(120% 120% at 50% 35%,var(--felt),var(--felt2));
   border:18px solid #20160c;box-shadow:inset 0 0 60px rgba(0,0,0,.55),0 12px 40px rgba(0,0,0,.5);
-  min-height:520px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;}
+  min-height:640px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;}
 .piq-board{display:flex;gap:11px;min-height:92px;align-items:center;font-size:24px;}
 .piq-pot{margin-top:16px;color:var(--gold);font-weight:600;font-size:24px;font-variant-numeric:tabular-nums;}
 .piq-pot .chip{display:inline-block;width:17px;height:17px;border-radius:50%;background:var(--chip);
@@ -53,14 +53,16 @@ button{font:inherit;cursor:pointer;}
 .seat.folded{opacity:.42;} .seat.turn{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),0 0 22px rgba(217,178,91,.45);}
 .seat.hero{border-color:var(--accent);}
 .seat .leak{margin-top:6px;color:#f0b34a;font-size:15px;line-height:1.3;}
-.seat .range{margin-top:3px;color:var(--muted);font-size:14px;line-height:1.35;}
-/* 6-max seat positions around the oval */
-.seat:nth-child(1){left:50%;bottom:12px;transform:translateX(-50%);}      /* hero bottom */
-.seat:nth-child(2){left:16px;bottom:130px;}
-.seat:nth-child(3){left:16px;top:84px;}
-.seat:nth-child(4){left:50%;top:12px;transform:translateX(-50%);}
-.seat:nth-child(5){right:16px;top:84px;}
-.seat:nth-child(6){right:16px;bottom:130px;}
+.seat .range{margin-top:3px;color:var(--muted);font-size:14px;line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-height:36px;}
+/* 6-max seat positions around the oval — side seats hug the corners so the two
+   stacked seats on each side can't overlap even with cards + tells shown. */
+.seat:nth-child(1){left:50%;bottom:10px;transform:translateX(-50%);}      /* hero bottom */
+.seat:nth-child(2){left:14px;bottom:14px;}      /* left-lower  */
+.seat:nth-child(3){left:14px;top:14px;}         /* left-upper  */
+.seat:nth-child(4){left:50%;top:10px;transform:translateX(-50%);}         /* top center */
+.seat:nth-child(5){right:14px;top:14px;}        /* right-upper */
+.seat:nth-child(6){right:14px;bottom:14px;}     /* right-lower */
 
 /* cards */
 .card{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;

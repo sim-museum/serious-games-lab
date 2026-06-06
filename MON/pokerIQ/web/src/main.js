@@ -16,6 +16,10 @@
     });
     const view = new PokerUI.View(mount, ctrl);
 
+    // after a hand you spectated (folded → God view), the review closes and you
+    // land on the Hand Summary automatically.
+    ctrl.onHandEnd = () => { if (ctrl.spectatedThisHand) view.showHandSummary(ctrl.lastHistory); };
+
     // trainer modal launcher
     function openTrainer(key) {
       const entry = PT.REGISTRY[key]; if (!entry) return;

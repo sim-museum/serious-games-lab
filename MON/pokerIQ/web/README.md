@@ -87,9 +87,11 @@ PokerIQ; remote play would need a WebSocket/WebRTC server.)
 **Fold → spectator (God view)** — **every** fold drops that player into a God-view
 review: all hole cards revealed plus a per-player equity table (Real god-equity /
 Thinking vs-ranges / Pot Odds, with +EV/-EV from Real-vs-PotOdds) and ◄ Previous /
-Next Street ► over per-street snapshots. Single-player / bots-only: you watch the
-run-out **live to showdown** (Close View). Hotseat with another human still to act:
-you review the current state, then **Pass device →** hands off to the next player.
+Next Street ► over per-street snapshots. Single-player / bots-only: the run-out
+starts **paused** (bots act instantly) — ▶ Play streams it at a readable pace,
+**Step street ▶** advances one street at a time, and at showdown the spectator
+closes and the **Hand Summary opens automatically**. Hotseat with another human
+still to act: you review, then **Pass device →** hands off to the next player.
 At showdown every hand (including folded) is revealed for a shared review. Folding
 to watch is legitimate and **not** flagged.
 
