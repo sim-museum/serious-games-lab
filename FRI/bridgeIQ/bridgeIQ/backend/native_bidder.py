@@ -2369,7 +2369,7 @@ def _legalize(b: Bid, state: AuctionState) -> Optional[Bid]:
     upgrading those would just commit us to a meaningless slam-level
     contract. Caller passes instead.
     """
-    if b is None or b.is_pass or b.suit is None or b.suit == Suit.NOTRUMP:
+    if b is None or b.is_pass or b.suit is None:
         return None
     if b.is_double or b.is_redouble:
         return None
@@ -2378,6 +2378,26 @@ def _legalize(b: Bid, state: AuctionState) -> Optional[Bid]:
                       and not x.is_redouble), None)
     if last_suit is None:
         return b if _is_legal_bid(b, state) else None
+
+    # Illegal NT bid → cheapest legal NT, same one-level discipline. The
+    # bidder can produce a balancing/reopening 1NT when the auction is
+    # already at the 2-level (1S-(p)-2S to a 15-count) — that's a 2NT, not a
+    # pass. Don't bump a sub-game NT all the way to game (1NT→3NT would
+    # overbid); pass those. (2428-25: S 15 bal over 1S-2S wanted 1NT → 2NT.)
+    if b.suit == Suit.NOTRUMP:
+        # ONLY a balancing 1NT → 2NT. Bumping higher NT bids (3NT→4NT…)
+        # skyrockets stale NT calls into the slam zone — that quadrupled
+        # the slam-deck down-slams. A 1NT is only ever illegal in a low
+        # competitive auction, so confine the bump there.
+        if b.level != 1:
+            return None
+        new_level = (last_suit.level if last_suit.suit != Suit.NOTRUMP
+                     else last_suit.level + 1)
+        if new_level != 2:
+            return None
+        upgraded = bid(2, Suit.NOTRUMP,
+                       why=f"{b.explanation} [legalized 1NT→2NT]")
+        return upgraded if _is_legal_bid(upgraded, state) else None
     if (b.level == last_suit.level
             and _BID_RANK[b.suit] > _BID_RANK[last_suit.suit]):
         return b
