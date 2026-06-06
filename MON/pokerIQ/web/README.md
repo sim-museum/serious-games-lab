@@ -50,8 +50,10 @@ each human's "held" line, and per-street board + your equity + opponents'
 best-hand descriptions. *Stats*: per-street panels — Player · Cards · Hand (best
 hand made on that street) · True Equity (god multiway) · vs-Range equity ·
 AHEAD/BEHIND · that street's actions — plus a Hand Results strip (net + start→end
-per player). *Hand Log*: the raw street-by-street action lines. Equities are
-computed lazily when the summary opens (so play stays fast) on a separate RNG.
+per player). *Hand Log*: the raw street-by-street action lines. The Stats view also carries a
+per-street **local hindsight** line computed from the equities ("you were a 4%
+dog and called $11 — pot odds (21%) didn't justify it"). Equities are computed
+lazily when the summary opens (so play stays fast) on a separate RNG.
 
 **Session log (⤓ Log)** — downloads `poker_log_YYYYMMDD_HHMMSS.txt` in the
 *exact* PyQt PokerIQ format (`logfile.js`): session header, per-hand GAME STATUS
@@ -94,9 +96,10 @@ to watch is legitimate and **not** flagged.
 **God peek & assist flags** — manual God Mode (peeking pre-fold) is **only
 available in single-player** (no other humans at the table); in hotseat the God
 button is disabled — you only get the God view *after* you fold. When it is
-available, using God / Tells / Training *while still in the hand* records an assist
+available, using God Mode / Show Tells *while still in the hand* records an assist
 attributed to that player and surfaces it in the Hand Summary, which everyone sees.
-Peeking is allowed; it's just disclosed.
+(Theory of Mind / Training is **not** an assist — it shows your own advisor and
+models ranges, never peeking at actual cards.) Peeking is allowed; it's disclosed.
 
 **Intentionally dropped** (cannot run in a sandboxed single file):
 - **Remote/LAN multiplayer** — browsers can't open raw TCP sockets (a WebSocket

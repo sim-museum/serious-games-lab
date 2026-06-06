@@ -282,3 +282,11 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 .hs-res-name{color:var(--muted);font-size:15px;}
 .hs-res-net{font-size:26px;font-weight:800;}
 @media(max-width:760px){.hs-panel-grid{grid-template-columns:1fr;}}
+
+/* hand-summary equity bars (block fill so it actually renders) + hindsight band */
+.hs-bar{display:inline-block;width:96px;height:16px;background:#1a2330;border-radius:4px;overflow:hidden;vertical-align:middle;}
+.hs-bar-fill{display:block;height:100%;border-radius:4px;}
+.hs-bar-fill.real{background:#58a6ff;} .hs-bar-fill.bad{background:#f85149;} .hs-bar-fill.think{background:#e0a33e;}
+.hs-hindsight{margin-top:10px;background:#1a1408;border-left:4px solid var(--gold);border-radius:6px;
+  padding:10px 14px;color:#e6cf9a;font-size:16px;line-height:1.4;}
+.hs-hindsight b{color:var(--gold);}

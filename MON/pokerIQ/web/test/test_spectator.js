@@ -68,6 +68,9 @@ function toHeroTurn(C) {
   ok(flags.some(f => f.name === C.game.players[0].name && f.assists.includes('God Mode')), 'God Mode while in hand is flagged');
   C.toggleTells();
   ok(C.assistFlags().some(f => f.assists.includes('Show Tells')), 'Show Tells while in hand is flagged');
+  // Theory of Mind / Training does NOT flag (no card peeking)
+  C.toggleTraining();
+  ok(!C.assistFlags().some(f => f.assists.includes('Theory of Mind')), 'Theory of Mind is NOT flagged');
 }
 
 // ---- 3. God used AFTER folding → NOT flagged ----

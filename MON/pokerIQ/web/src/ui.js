@@ -109,7 +109,9 @@
       this.render();
     }
     toggleTells() { this.showTells = !this.showTells; if (this.showTells) this.flagAssist('Show Tells'); this.render(); }
-    toggleTraining() { this.training = !this.training; if (this.training) this.flagAssist('Theory of Mind'); this.render(); }
+    // Theory of Mind / Training is NOT an assist — it shows your own advisor and
+    // models opponents' ranges; it never peeks at anyone's actual cards.
+    toggleTraining() { this.training = !this.training; this.render(); }
     assistFlags() {
       return Object.keys(this.handAssists).map(n => ({ name: n, assists: [...this.handAssists[n]] }));
     }
@@ -353,6 +355,33 @@
 
     logFilename() { const d = this.now(); return `poker_log_${d.getFullYear()}${this.pad2(d.getMonth() + 1)}${this.pad2(d.getDate())}_${this.timeStr().replace(/:/g, '')}.txt`; }
 
+    // one-line local hindsight from the hero's action + true equity at that street
+    hindsightLine(action, eq, ) {
+      if (!action) return null;
+      const e = Math.round(eq * 100);
+      if (action.action === 'fold') {
+        return eq < 0.20 ? `good fold — only ${e}% equity` :
+          eq < 0.40 ? `disciplined fold at ${e}% — below the price` :
+          `folded a live hand (${e}% equity) — was that too tight?`;
+      }
+      if (action.action === 'call') {
+        const po = action.pot > 0 ? action.amount / action.pot : 0;
+        const poPct = Math.round(po * 100);
+        if (eq < po - 0.03) return `you were a ${e}% dog and called $${action.amount} — pot odds (${poPct}%) didn't justify it`;
+        if (eq > po + 0.10) return `you called $${action.amount} as a ${e}% favorite — the price (${poPct}%) was right`;
+        return `marginal call — ${e}% equity vs ${poPct}% pot odds`;
+      }
+      if (action.action === 'raise') {
+        return eq >= 0.6 ? `you ${action.opening ? 'bet' : 'raised to'} $${action.total} as a ${e}% favorite — building the pot` :
+          eq >= 0.4 ? `you ${action.opening ? 'bet' : 'raised to'} $${action.total} as a ${e}% coin-flip — fold equity matters` :
+          `you ${action.opening ? 'bet' : 'raised to'} $${action.total} as a ${e}% underdog — a bluff / semi-bluff`;
+      }
+      if (action.action === 'check') {
+        return eq >= 0.6 ? `you checked a strong ${e}% hand — consider betting for value` : `you checked with ${e}% — pot control`;
+      }
+      return null;
+    }
+
     // ---- rich hand-summary data (computed lazily when the summary opens) ----
     // Per-street: every player's cards + best-hand description + true (god)
     // equity + vs-range equity + ahead/behind, plus that street's actions.
@@ -368,6 +397,8 @@
       const actVerb = a => a.action === 'raise' ? (a.opening ? `Bets $${a.total}` : `Raises to $${a.total}`)
         : a.action === 'call' ? `Calls $${a.amount}` : a.action === 'check' ? 'Checks' : a.action === 'fold' ? 'Folds' : a.action;
 
+      const heroSeat = this.humanSeats.size ? Math.min(...this.humanSeats) : 0;
+      const heroCards = (hole.find(x => x.seat === heroSeat) || {}).cards;
       const panels = h.streets.map((st, S) => {
         const board = st.board || [];
         const contesting = hole.filter(x => inAfter(x.seat, S));
@@ -390,7 +421,21 @@
         });
         const potAfter = st.actions.length ? st.actions[st.actions.length - 1].pot : 0;
         const actions = st.actions.filter(a => a.action !== 'post').map(a => ({ name: a.name, verb: actVerb(a) }));
-        return { name: st.name, board, pot: potAfter, rows, actions };
+        // local hindsight: hero's action vs true equity when this street was live
+        let hindsight = null;
+        const myActs = st.actions.filter(a => a.seat === heroSeat && a.action !== 'post');
+        const last = myActs[myActs.length - 1];
+        if (last && heroCards) {
+          const aad = hole.filter(x => foldStreet[x.seat] === undefined || foldStreet[x.seat] >= S);
+          let eq = 1;
+          if (aad.length >= 2) {
+            const arr = E.equityMultiway(aad.map(x => x.cards), board, { iterations: 500, rng: this.auxRng });
+            const idx = aad.findIndex(x => x.seat === heroSeat);
+            eq = idx >= 0 && arr[idx] != null ? arr[idx] : 0;
+          }
+          hindsight = this.hindsightLine(last, eq);
+        }
+        return { name: st.name, board, pot: potAfter, rows, actions, hindsight };
       });
 
       const res = h.result || { net: [], showdown: [], payouts: {} };
@@ -1087,7 +1132,7 @@
 
     // rich per-street stats panels (Player | Cards | Hand | True Equity | vs Range | A/B + actions)
     summaryStatsHTML(d, flags) {
-      const bar = (f, cls) => `<span class="sb-track" style="width:90px"><span class="sb-fill ${cls}" style="width:${Math.max(0, Math.min(1, f || 0)) * 100}%"></span></span>`;
+      const bar = (f, cls) => `<span class="hs-bar"><span class="hs-bar-fill ${cls}" style="width:${Math.max(0, Math.min(1, f || 0)) * 100}%"></span></span>`;
       const panelHTML = p => {
         const board = p.board.length ? p.board.map(c => cardHTML(c, false)).join('') : '<span class="muted">preflop</span>';
         const rows = p.rows.map(r => {
@@ -1100,12 +1145,13 @@
             <td class="${r.ahead ? 'pos' : 'neg'}">${r.ahead ? 'AHEAD' : 'BEHIND'}</td></tr>`;
         }).join('');
         const acts = p.actions.length ? p.actions.map(a => `<div><b>${escapeHTML(a.name)}</b>: ${escapeHTML(a.verb)}</div>`).join('') : '<div class="muted">—</div>';
+        const hindsight = p.hindsight ? `<div class="hs-hindsight"><b>Hindsight — ${p.name}:</b> ${escapeHTML(p.hindsight)}</div>` : '';
         return `<div class="hs-panel">
           <div class="hs-panel-top"><span class="hs-st-name">${p.name}</span> <span class="hs-pb">${board}</span> <span class="sp-pot">Pot $${p.pot}</span></div>
           <div class="hs-panel-grid">
             <table class="hs-eqtable"><tr><th>Player</th><th>Cards</th><th>Hand</th><th>True Equity</th><th>vs Range</th><th></th></tr>${rows}</table>
             <div class="hs-actcol"><div class="hs-actcol-h">Actions</div>${acts}</div>
-          </div></div>`;
+          </div>${hindsight}</div>`;
       };
       const panels = d.panels.filter(p => p.name === 'Preflop' || p.board.length).map(panelHTML).join('');
       // hand results
