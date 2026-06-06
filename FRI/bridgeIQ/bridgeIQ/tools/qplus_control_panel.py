@@ -58,7 +58,7 @@ AB_REF_FILE = BIQ_ROOT / "tools/runs/ab/ab_reference.json"  # Run-A deal id
 # Bump this on any user-visible behaviour change. It's shown in the title
 # bar AND logged on startup, so you can tell at a glance whether a freshly
 # launched panel actually has the latest fix (no more "did it reload?").
-PANEL_BUILD = "2026-06-05c · Run-B auto-infers the A reference from the last run"
+PANEL_BUILD = "2026-06-06a · crash-watchdog auto-restarts a dead biq client"
 # Fixed seed for 'reproducible random' systems — both A and B pass the same
 # value so they draw identical per-deal systems on identical boards.
 REPRO_SYS_SEED = 20260604
@@ -1288,6 +1288,43 @@ class LiveMatchWidget(QWidget):
             lambda p=p, tag=tag: self._on_output(p, tag))
         return p
 
+    def _arm_biq_watchdog(self, proc, args, slot):
+        """Auto-restart a biq client that DIES mid-run, so a single crash
+        (e.g. a libdds segfault the in-process fork-wrapper can't catch
+        everywhere) doesn't wedge the whole match. `slot` ∈ {'biq','biq2'}."""
+        proc._wd = {"args": list(args), "slot": slot, "n": 0,
+                    "t0": time.time()}
+        proc.finished.connect(
+            lambda code, status, p=proc: self._on_biq_finished(p, code, status))
+
+    def _on_biq_finished(self, proc, code, status):
+        wd = getattr(proc, "_wd", None)
+        if wd is None or not getattr(self, "_biq_should_run", False):
+            return                                  # intentional stop
+        crashed = (status == QProcess.ExitStatus.CrashExit) or code != 0
+        if not crashed:
+            return
+        alive = time.time() - wd["t0"]
+        if wd["n"] >= 6 or alive < 2.0:
+            self._append(f"[watchdog] {wd['slot']} died (code {code}, alive "
+                         f"{alive:.0f}s) and won't auto-restart — Stop all "
+                         f"and re-run.")
+            return
+        wd["n"] += 1
+        self._append(f"[watchdog] {wd['slot']} crashed (code {code}); "
+                     f"restarting (attempt {wd['n']}) to keep the match alive.")
+        QTimer.singleShot(1500, lambda: self._relaunch_biq(wd))
+
+    def _relaunch_biq(self, wd):
+        if not getattr(self, "_biq_should_run", False):
+            return
+        new = self._mk_proc(wd["slot"])
+        new.setArguments(wd["args"])
+        self._arm_biq_watchdog(new, wd["args"], wd["slot"])
+        new._wd["n"] = wd["n"]               # carry the relaunch count forward
+        setattr(self, wd["slot"], new)
+        new.start()
+
     def _biq_args(self, seat, port, log_path):
         # biq always follows Q-Plus's N/S system: in 'auto' it matches
         # whatever Q-Plus is configured for; in sequential/random/fixed the
@@ -1969,26 +2006,30 @@ class LiveMatchWidget(QWidget):
 
     def _start_biq(self):
         runs = BIQ_ROOT / "tools/runs"
+        self._biq_should_run = True       # arm the crash-watchdog
         if self.pair.isChecked():
             # biq+biq partnership: BOTH clients connect DIRECT to :5555
             # (no proxy) so each sees the server Stop/Start and the reset
             # relaunch rejoins cleanly. The autoclicker watches the first
             # seat's log. Side (N/S Room 1 vs E/W Room 2) per _pair_seats().
             ps = self._pair_seats()
+            a1 = self._biq_args(ps["s1"], SERVER_PORT, ps["log1"]) + ["--pair"]
+            a2 = self._biq_args(ps["s2"], SERVER_PORT, ps["log2"]) + ["--pair"]
             self.biq = self._mk_proc("biq")
-            self.biq.setArguments(
-                self._biq_args(ps["s1"], SERVER_PORT, ps["log1"]) + ["--pair"])
+            self.biq.setArguments(a1)
+            self._arm_biq_watchdog(self.biq, a1, "biq")
             self.biq.start()
             self.biq2 = self._mk_proc("biq")
-            self.biq2.setArguments(
-                self._biq_args(ps["s2"], SERVER_PORT, ps["log2"]) + ["--pair"])
+            self.biq2.setArguments(a2)
+            self._arm_biq_watchdog(self.biq2, a2, "biq2")
             self.biq2.start()
             who = f"biq+biq Room {ps['room']} ({ps['s1']}/{ps['s2']}, direct on :5555)"
             extra = f" — server needs {ps['extern']}"
         else:
+            a1 = self._biq_args(self.seat.currentText(), SERVER_PORT, BIQ_LOG)
             self.biq = self._mk_proc("biq")
-            self.biq.setArguments(
-                self._biq_args(self.seat.currentText(), SERVER_PORT, BIQ_LOG))
+            self.biq.setArguments(a1)
+            self._arm_biq_watchdog(self.biq, a1, "biq")
             self.biq.start()
             who = f"biq as {self.seat.currentText()}"
             extra = ""
@@ -2198,6 +2239,8 @@ class LiveMatchWidget(QWidget):
     def stop_all(self, silent=False, halt_steps=True):
         # a manual/forced stop must NOT trigger the auto export-on-exit
         self._await_session_end = False
+        # tell the crash-watchdog this is intentional — don't auto-restart
+        self._biq_should_run = False
         # A user/forced stop halts the stepper too: pending async polls check
         # _step_running and bail. (We don't reset the pointer, so you can
         # resume from where you were.) halt_steps=False is for the internal
