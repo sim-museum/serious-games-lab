@@ -63,6 +63,11 @@
       this.hotseat = false;
       this.humanSeats = new Set([0]);
       this.armed = true;
+      // fold→spectator (God view) + assist flagging
+      this.spectating = false;       // viewer folded, watching the rest
+      this.specSnaps = [];           // per-street spectator snapshots
+      this.specIdx = -1;             // -1 = live; else index into specSnaps
+      this.handAssists = {};         // {playerName: Set(assist)} used while still in hand
 
       this.game = new PG.Game({
         rng: opts.rng || Math.random,
@@ -83,6 +88,79 @@
     // hotseat privacy gate: a human must arm before their cards are shown.
     get passGate() { return this.hotseat && this.humanToAct() && !this.armed; }
     arm() { this.armed = true; this.stats.actionStarted(); this.render(); }
+
+    // ---- assists: God/Tells/Training used while still in the hand get flagged ----
+    flagAssist(name) {
+      const p = this.game.players[this.heroSeat()];
+      // only flag when the viewer is still IN the hand (folding first is legit)
+      if (this.game.handInProgress && p && p.active && !this.spectating) {
+        (this.handAssists[p.name] || (this.handAssists[p.name] = new Set())).add(name);
+      }
+    }
+    toggleGod() { this.godMode = !this.godMode; if (this.godMode) this.flagAssist('God Mode'); this.render(); }
+    toggleTells() { this.showTells = !this.showTells; if (this.showTells) this.flagAssist('Show Tells'); this.render(); }
+    toggleTraining() { this.training = !this.training; if (this.training) this.flagAssist('Theory of Mind'); this.render(); }
+    assistFlags() {
+      return Object.keys(this.handAssists).map(n => ({ name: n, assists: [...this.handAssists[n]] }));
+    }
+
+    // ---- fold → God-view spectator mode ----
+    maybeEnterSpectator(foldedSeat) {
+      if (this.spectating) return;
+      if (!this.humanSeats.has(foldedSeat)) return;          // a bot folded
+      if (!this.game.handInProgress) return;
+      const active = this.game.activePlayers();
+      if (active.length < 2) return;                          // hand's over anyway
+      if (active.some(p => this.humanSeats.has(p.seat))) return; // another human still acts
+      // no human left to act → the device-holder watches the bots play it out
+      this.spectating = true; this.specIdx = -1; this.specSnaps = [];
+      this.captureSpecSnapshot();
+    }
+    captureSpecSnapshot() {
+      if (!this.spectating) return;
+      this.specSnaps.push({ street: this.streetName(), board: this.game.board.slice(), table: this.specTable() });
+    }
+    closeSpectator() { this.spectating = false; this.specIdx = -1; this.render(); }
+    specPrev() { const n = this.specSnaps.length; if (!n) return; this.specIdx = this.specIdx < 0 ? n - 2 : this.specIdx - 1; if (this.specIdx < 0) this.specIdx = 0; this.render(); }
+    specNext() { const n = this.specSnaps.length; if (!n) return; if (this.specIdx < 0) return; this.specIdx += 1; if (this.specIdx >= n - 1) this.specIdx = -1; this.render(); }
+
+    // spectator panel payload — live state, or a navigated past-street snapshot
+    spectatorData() {
+      const live = this.specIdx < 0 || this.specIdx >= this.specSnaps.length;
+      const snap = live ? { street: this.streetName(), board: this.game.board.slice(), table: this.specTable() }
+        : this.specSnaps[this.specIdx];
+      return {
+        street: snap.street, board: snap.board, table: snap.table,
+        pot: this.game.pot, live,
+        canPrev: this.specSnaps.length > 1 && (live || this.specIdx > 0),
+        canNext: !live,
+        idx: live ? this.specSnaps.length - 1 : this.specIdx,
+        count: this.specSnaps.length,
+      };
+    }
+
+    // per-player equity table for the spectator panel:
+    //  Real    = true (god) multiway equity over actual hands
+    //  Thinking= each active player's equity vs the OTHERS' estimated ranges
+    //  PotOdds = price each player faces right now
+    specTable() {
+      const T = getToMLogic(), g = this.game, board = g.board;
+      const active = g.activePlayers();
+      let real = [];
+      if (active.length >= 2) real = E.equityMultiway(active.map(p => p.hand), board, { iterations: 400, rng: this.auxRng });
+      const realBy = {}; active.forEach((p, i) => realBy[p.seat] = real[i] != null ? real[i] : 0);
+      return g.players.map(p => {
+        if (!p.active) return { name: p.name, seat: p.seat, folded: true };
+        const others = active.filter(q => q !== p);
+        const ranges = others.map(q => T.estimateRange(q.style, this.rangeMode, this.actionTagsFor(q.seat), board).range);
+        const thinking = ranges.length ? T.equityVsRanges(p.hand, board, ranges, { iterations: 250, rng: this.auxRng }) : null;
+        const toCall = Math.max(0, g.currentBet - p.betInRound);
+        const potOdds = (g.pot + toCall) > 0 && toCall > 0 ? toCall / (g.pot + toCall) : 0;
+        const realEq = realBy[p.seat];
+        const evPos = toCall > 0 ? (realEq >= potOdds) : (realEq >= 0.5);
+        return { name: p.name, seat: p.seat, folded: false, real: realEq, thinking: thinking != null ? thinking : realEq, potOdds, facing: toCall > 0, evPos };
+      });
+    }
 
     newHand() {
       this.handResult = null;
@@ -122,6 +200,7 @@
           startStacks: payload.startStacks,
           streets: [{ name: 'Preflop', board: [], actions: [] }],
         };
+        this.spectating = false; this.specSnaps = []; this.specIdx = -1; this.handAssists = {};
         this.logHandStart(payload);
       } else if (type === 'log') {
         this.pushEvent(payload);
@@ -129,12 +208,14 @@
         this.lastStreet = payload.street; this.heroEquity = null; this.refreshHeroEquity();
         if (this.history) this.history.streets.push({ name: payload.street, board: payload.board.slice(), actions: [] });
         this.logStreet(payload);
+        if (this.spectating) this.captureSpecSnapshot();
       } else if (type === 'action') {
         this.recordHistoryAction(payload);
         this.trackOppAction(payload);
         this.logAction(payload);
       } else if (type === 'handEnd') {
-        if (this.history) { this.history.result = payload; this.lastHistory = this.history; }
+        if (this.history) { this.history.result = payload; this.history.assists = this.assistFlags(); this.lastHistory = this.history; }
+        this.spectating = false;
         this.logHandEnd(payload);
         this.onHandComplete(payload);
       }
@@ -323,6 +404,7 @@
       const seat = this.game.toAct;
       this.stats.actionFinished();
       this.game.applyAction(seat, action, amount);
+      if (action === 'f') this.maybeEnterSpectator(seat);   // fold → watch (God view)
       if (this.hotseat) this.armed = false;   // re-gate for the next player
       this.heroEquity = null;
       if (this.game.handInProgress) this.refreshHeroEquity();
@@ -502,7 +584,7 @@
     // which seats' hole cards are face-up right now
     seatReveal(seat, active) {
       if (this.handResult && active) return true;          // showdown: all in reveal
-      if (this.godMode) return true;
+      if (this.godMode || this.spectating) return true;
       if (this.hotseat) return this.armed && seat === this.game.toAct && this.humanSeats.has(seat);
       // single-player: hero (seat 0) always; villains after hero folds
       const heroFolded = !this.game.players[0].active && this.game.handInProgress;
@@ -536,6 +618,9 @@
         handNumber: g.handNumber, sb: g.sb(), bb: g.bb(),
         hotseat: this.hotseat, passGate: this.passGate,
         activeName: g.players[g.toAct] ? g.players[g.toAct].name : '',
+        spectating: this.spectating,
+        spectator: this.spectating ? this.spectatorData() : null,
+        assists: this.assistFlags(),
         awaitingHero: armedHuman,
         legal: armedHuman ? g.legalActions(g.toAct) : null,
         advisor: armedHuman ? this.advisor() : null,
@@ -606,6 +691,7 @@
           </div>
         </div>
         <div class="tom-view" id="piq-tomview" style="display:none"></div>
+        <div class="piq-spectator" id="piq-spectator" style="display:none"></div>
         <div class="piq-gate" id="piq-gate" style="display:none"></div>
         <div class="piq-footer"><div class="piq-actions" id="piq-actions"></div></div>
         <div class="piq-modal" id="piq-modal" style="display:none"></div>`;
@@ -624,15 +710,16 @@
         tableView: this.root.querySelector('#piq-tableview'),
         tomView: this.root.querySelector('#piq-tomview'),
         gate: this.root.querySelector('#piq-gate'),
+        spectator: this.root.querySelector('#piq-spectator'),
         train: this.root.querySelector('#piq-train'),
       };
       this.root.querySelector('.piq-menu').addEventListener('click', e => {
         const act = e.target.getAttribute('data-act'); if (!act) return;
-        if (act === 'god') { this.ctrl.godMode = !this.ctrl.godMode; this.ctrl.render(); }
-        else if (act === 'tells') { this.ctrl.showTells = !this.ctrl.showTells; this.ctrl.render(); }
+        if (act === 'god') { this.ctrl.toggleGod(); }
+        else if (act === 'tells') { this.ctrl.toggleTells(); }
         else if (this.onMenu) this.onMenu(act);
       });
-      this.el.train.addEventListener('click', () => { this.ctrl.training = !this.ctrl.training; this.ctrl.render(); });
+      this.el.train.addEventListener('click', () => { this.ctrl.toggleTraining(); });
       // delegated clicks inside the ToM view (tabs + range-mode radio)
       this.el.tomView.addEventListener('click', e => {
         const tab = e.target.closest('[data-tab]'); if (tab) { this.ctrl.tomTab = tab.getAttribute('data-tab'); this.ctrl.render(); return; }
@@ -662,6 +749,14 @@
         this.el.gate.style.display = 'none';
       }
 
+      // spectator (you folded) panel — overlays the bottom with the equity table
+      if (s.spectating && s.spectator) {
+        this.el.spectator.style.display = 'block';
+        this.renderSpectator(s);
+      } else {
+        this.el.spectator.style.display = 'none';
+      }
+
       if (s.training) {
         this.el.tableView.style.display = 'none';
         this.el.tomView.style.display = s.passGate ? 'none' : 'block';
@@ -681,6 +776,7 @@
       // shared action footer (with EV labels in training mode)
       this.el.actions.innerHTML = '';
       if (s.handResult) this.buildEndActions(s);
+      else if (s.spectating) this.el.actions.innerHTML = '<span class="muted">👁 You folded — watching with God view. Use the panel to review streets.</span>';
       else if (s.passGate) this.el.actions.innerHTML = `<span class="muted">🂠 waiting for ${escapeHTML(s.activeName)} to take the device…</span>`;
       else if (s.awaitingHero && s.legal) this.buildActions(s.legal, s.training ? s.tom : null);
       else this.el.actions.innerHTML = '<span class="muted">…bots acting</span>';
@@ -691,6 +787,42 @@
 
       this.root.querySelector('[data-act="god"]').classList.toggle('on', s.godMode);
       this.root.querySelector('[data-act="tells"]').classList.toggle('on', s.showTells);
+    }
+
+    // spectator equity panel (you folded → God view), mirrors the desktop layout
+    renderSpectator(s) {
+      const sp = s.spectator;
+      const bar = (frac, cls) => `<div class="sb-track"><div class="sb-fill ${cls}" style="width:${Math.max(0, Math.min(1, frac || 0)) * 100}%"></div></div>`;
+      const rows = sp.table.map(p => {
+        if (p.folded) return `<tr class="folded"><td>${escapeHTML(p.name)}</td><td colspan="4" class="muted">(Folded)</td></tr>`;
+        const ev = p.facing ? (p.evPos ? '<span class="pos">+EV</span>' : '<span class="neg">-EV</span>') : '';
+        return `<tr>
+          <td class="${p.seat === 0 ? 'me' : ''}">${escapeHTML(p.name)}</td>
+          <td>${bar(p.real, 'real')}<span class="sb-pct">${(p.real * 100).toFixed(0)}%</span></td>
+          <td>${bar(p.thinking, 'think')}<span class="sb-pct">${(p.thinking * 100).toFixed(0)}%</span></td>
+          <td>${bar(p.potOdds, 'odds')}<span class="sb-pct">${(p.potOdds * 100).toFixed(0)}%</span></td>
+          <td class="sb-ev">${ev}</td>
+        </tr>`;
+      }).join('');
+      const board = sp.board.length ? sp.board.map(c => cardHTML(c, false)).join('') : '<span class="muted">preflop</span>';
+      this.el.spectator.innerHTML = `
+        <div class="sp-head">
+          <span class="sp-title">👁 Spectating — ${escapeHTML(sp.street)}${sp.live ? '' : ' (review)'}</span>
+          <span class="sp-board">${board}</span>
+          <span class="sp-pot">Pot $${sp.pot}</span>
+          <span class="sp-nav">
+            <button class="ghost" id="sp-prev" ${sp.canPrev ? '' : 'disabled'}>◄ Previous Street</button>
+            <button class="ghost" id="sp-next" ${sp.canNext ? '' : 'disabled'}>Next Street ►</button>
+            <button class="btn fold" id="sp-close">Close View</button>
+          </span>
+        </div>
+        <table class="sp-table">
+          <tr><th>Player</th><th>Real</th><th>Thinking</th><th>Pot Odds</th><th></th></tr>
+          ${rows}
+        </table>`;
+      const prev = this.root.querySelector('#sp-prev'); if (prev) prev.onclick = () => this.ctrl.specPrev();
+      const next = this.root.querySelector('#sp-next'); if (next) next.onclick = () => this.ctrl.specNext();
+      const close = this.root.querySelector('#sp-close'); if (close) close.onclick = () => this.ctrl.closeSpectator();
     }
 
     buildEndActions(s) {
@@ -820,6 +952,13 @@
       const board = h.result ? h.result.board : [];
       let html = `<h2>Hand #${h.handNumber} summary</h2>
         <div class="sub">Final board: ${board && board.length ? board.map(c => cardHTML(c, false)).join('') : '—'} · pot $${res.pot || 0}</div>`;
+
+      // assist flags — God/Tells/Training used while still in the hand (visible to all)
+      if (h.assists && h.assists.length) {
+        html += `<div class="hs-flags">⚑ Assists used while still in the hand: ` +
+          h.assists.map(a => `<b>${escapeHTML(a.name)}</b> — ${a.assists.map(escapeHTML).join(', ')}`).join(' · ') +
+          `</div>`;
+      }
 
       // streets
       html += '<div class="hs-streets">';

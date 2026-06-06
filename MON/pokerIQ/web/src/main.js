@@ -126,10 +126,17 @@
       const cur = ctrl.game.players;
       const card = document.createElement('div'); card.className = 'modal-card';
       card.innerHTML = `<h2>Players — hotseat &amp; bots</h2>
-        <div class="sub">Set each seat to a Human (pass-and-play on this device) or a bot. Two or more humans enables the privacy gate between turns.</div>
+        <div class="sub">Set each seat to a Human (pass-and-play on this device) or a bot. Two or more humans enables the privacy gate between turns — up to 6 people sharing one laptop, passing it on each turn.</div>
+        <div class="pg-presets"><button class="ghost" id="pg-6">⚡ 6 humans (pass-the-laptop)</button><button class="ghost" id="pg-solo">1 human + 5 bots</button></div>
         <div class="players-grid" id="pg"></div>
         <div class="modal-actions"></div>`;
       const grid = card.querySelector('#pg');
+      const applyPreset = (specs) => { view.closeModal(); ctrl.setupPlayers(specs); };
+      card.querySelector('#pg-6').onclick = () => applyPreset(Array.from({ length: 6 }, (_, i) => ({ name: 'Player ' + (i + 1), style: 'human' })));
+      card.querySelector('#pg-solo').onclick = () => applyPreset([
+        { name: 'Hero (You)', style: 'human' }, { name: 'Tight Tim', style: 'tight' },
+        { name: 'Loose Bruce', style: 'loose' }, { name: 'Aggro Angela', style: 'aggressive' },
+        { name: 'Sharkey Steve', style: 'shark' }, { name: 'Fluid Fiona', style: 'tom' }]);
       for (let i = 0; i < 6; i++) {
         const p = cur[i];
         const isHuman = !p || p.style === 'human';

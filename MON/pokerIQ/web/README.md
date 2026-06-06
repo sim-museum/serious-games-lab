@@ -63,12 +63,26 @@ range-mode radio (opps weak / neutral / strong), EV-tagged action buttons, and
 the 3×3 decision dashboard (MDF, bluff-catch, range advantage, reverse-implied,
 Nash push, realized equity, VPIP/PFR/AGF, tilt, risk-of-ruin).
 
-**Hotseat multiplayer (Players menu)** — pass-and-play on one device. Set each
-of the 6 seats to a Human (with a name) or a bot; two or more humans turns on a
-privacy gate ("pass the device to X — show my cards") that hides every hole card
-between turns and reveals only the acting player's. The engine already stops at
-each human seat; the controller generalises the act/advisor/equity path from
-"seat 0" to the acting seat, so each player gets their own no-peek advisor too.
+**Hotseat multiplayer (Players menu)** — pass-and-play on one device for up to 6
+people (the "⚡ 6 humans" preset seats everyone at once). Set each seat to a Human
+(with a name) or a bot; two or more humans turns on a privacy gate ("pass the
+device to X — show my cards") that hides every hole card between turns and reveals
+only the acting player's. The engine already stops at each human seat; the
+controller generalises the act/advisor/equity path from "seat 0" to the acting
+seat, so each player gets their own no-peek advisor too. (This is the
+zero-infrastructure form of multiplayer — everyone shares the one laptop running
+PokerIQ; remote play would need a WebSocket/WebRTC server.)
+
+**Fold → spectator (God view)** — when you fold and only bots remain to act, you
+drop into a God-view spectator panel: all hole cards revealed plus a per-player
+equity table (Real god-equity / Thinking vs-ranges / Pot Odds, with +EV/-EV from
+Real-vs-PotOdds) and ◄ Previous / Next Street ► / Close View over per-street
+snapshots. Folding to watch is legitimate and **not** flagged.
+
+**Assist flags** — using God Mode / Show Tells / Training *while still in the
+hand* (i.e. before folding) records an assist attributed to that player and
+surfaces it in the Hand Summary, which everyone sees. Peeking is allowed; it's
+just disclosed.
 
 **Intentionally dropped** (cannot run in a sandboxed single file):
 - **Remote/LAN multiplayer** — browsers can't open raw TCP sockets (a WebSocket

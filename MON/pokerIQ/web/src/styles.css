@@ -230,3 +230,26 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 .pg-seat{color:var(--muted);font-weight:700;}
 .pg-style,.pg-name{padding:10px 12px;background:#0d141c;color:var(--ink);border:1px solid var(--line);border-radius:8px;font:inherit;font-size:17px;}
 .pg-name:disabled{opacity:.5;}
+
+/* ============ fold→spectator (God view) panel + assist flags ============ */
+.piq-spectator{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#0b0f15;border-top:2px solid var(--line);
+  padding:14px 24px 18px;box-shadow:0 -8px 30px rgba(0,0,0,.5);max-height:46vh;overflow:auto;}
+.sp-head{display:flex;align-items:center;gap:18px;margin-bottom:10px;flex-wrap:wrap;}
+.sp-title{font-size:20px;font-weight:700;color:var(--gold);}
+.sp-board{display:inline-flex;gap:5px;}
+.sp-board .card{width:36px;height:50px;} .sp-board .card b{font-size:16px;} .sp-board .card i{font-size:13px;}
+.sp-pot{color:var(--gold);font-weight:700;font-size:18px;}
+.sp-nav{margin-left:auto;display:flex;gap:8px;align-items:center;}
+.sp-nav .ghost:disabled{opacity:.4;cursor:default;}
+.sp-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;}
+.sp-table th{text-align:left;color:var(--muted);font-size:14px;text-transform:uppercase;letter-spacing:.4px;padding:4px 10px;}
+.sp-table td{padding:6px 10px;font-size:18px;vertical-align:middle;}
+.sp-table td.me{color:var(--accent);font-weight:700;}
+.sp-table tr.folded td{color:var(--muted);}
+.sp-table td:first-child{font-weight:600;min-width:140px;}
+.sb-track{display:inline-block;width:60%;min-width:120px;height:18px;background:#1a2330;border-radius:4px;overflow:hidden;vertical-align:middle;}
+.sb-fill{height:100%;} .sb-fill.real{background:#58a6ff;} .sb-fill.think{background:#e0a33e;} .sb-fill.odds{background:#caa23a;}
+.sb-pct{margin-left:8px;font-weight:700;}
+.sb-ev{font-weight:700;}
+.hs-flags{background:#2a1410;border:1px solid #6a2a1a;border-radius:8px;padding:12px 14px;color:#f0a070;font-size:17px;margin-bottom:14px;}
+.pg-presets{display:flex;gap:10px;margin:0 0 14px;}
