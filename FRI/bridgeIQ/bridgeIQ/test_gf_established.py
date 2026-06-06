@@ -96,11 +96,11 @@ CASES = [
     ("competitive raise (1S-(2H)-3S)",  "N", "1S 2H 3S",         False, False,
      "a competitive raise over interference is NOT game-forcing"),
 
-    # ---- GAPS: the underbidding target (current False, desired True) ----
-    ("3rd-suit-3-level (1D-1S-2D-3C)",  "N", "1D P 1S P 2D P 3C", False, True,
-     "GAP A1: responder's 3rd natural suit at the 3-level = GF (deal 3928-79)"),
-    ("3rd-suit-3-level (1H-1S-2H-3C)",  "N", "1H P 1S P 2H P 3C", False, True,
-     "GAP A1: same pattern over a major opening"),
+    # ---- A1: responder's 3rd natural suit at the 3-level = GF (added) ----
+    ("3rd-suit-3-level (1D-1S-2D-3C)",  "N", "1D P 1S P 2D P 3C", True, True,
+     "A1: responder's 3rd natural suit at the 3-level = GF (deal 3928-79)"),
+    ("3rd-suit-3-level (1H-1S-2H-3C)",  "N", "1H P 1S P 2H P 3C", True, True,
+     "A1: same pattern over a major opening"),
 ]
 
 

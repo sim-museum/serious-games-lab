@@ -529,6 +529,45 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
             ctx.convention = "FOURTH_SUIT_FORCING"
             ctx.gf_established = True
 
+    # --- A1: responder's 3rd natural suit at the 3-level = game force.
+    # 1-of-a-SUIT opening, a 1-level natural response, opener's natural rebid,
+    # then responder introduces a NEW (3rd) natural suit at level 3 — a
+    # non-jump forced up by opener's 2-level rebid. A 3-level new suit by
+    # responder shows game-forcing values (you don't go there to invite). The
+    # underbidding leak: biq parked in a partscore here because no other
+    # trigger covers it (it's a 2/1 over a MINOR / the 3rd suit, not the 4th).
+    # Gating on a 1-of-SUIT opening + 1-level response structurally excludes
+    # NT-opening transfer/Stayman auctions — the class that broke the reverted
+    # structural net. Uncontested only. (Deal 3928-79: 1D-1S-2D-3C.)
+    if (not ctx.gf_established
+            and ctx.opening_bid is not None
+            and ctx.opening_bid.level == 1
+            and ctx.opening_bid.suit not in (None, _NT)
+            and not any(s not in my_side and not b.is_pass
+                        for s, b in state.bids)):
+        resp = [(i, b) for i, (s, b) in enumerate(state.bids)
+                if s == partner_of_opener and not b.is_pass
+                and not b.is_double and not b.is_redouble]
+        if (len(resp) == 2
+                and not resp[0][1].alert and not resp[1][1].alert
+                and resp[0][1].level == 1
+                and resp[0][1].suit not in (None, _NT)
+                and resp[1][1].level == 3
+                and resp[1][1].suit not in (None, _NT)
+                and resp[1][1].suit not in (ctx.opening_bid.suit,
+                                            resp[0][1].suit)):
+            idx3, b3 = resp[1]
+            prior = [b for s, b in state.bids[:idx3]
+                     if not b.is_pass and not b.is_double
+                     and not b.is_redouble and b.suit is not None]
+            if prior:
+                pc = prior[-1]
+                r3 = _CUEBID_SUIT_RANK.get(b3.suit, -1)
+                rpc = _CUEBID_SUIT_RANK.get(pc.suit, 99)
+                min_lvl = pc.level + (0 if r3 > rpc else 1)
+                if b3.level == min_lvl:          # non-jump → forcing to game
+                    ctx.gf_established = True
+
     # --- Gerber detection: 4C as direct ace-ask after partner's
     # opening 1NT / 2NT / 3NT, no opp intervention. Looks STRICTLY at:
     #   • The PARTNERSHIP's first non-pass bid is 1NT/2NT/3NT.
