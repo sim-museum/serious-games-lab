@@ -85,8 +85,8 @@ CASES = [
      "K7.J432.A5.AJ532", "TwoOverOne", "P", {"X"},
      "U1: 12 HCP, 4-5 in the other suits = takeout double of 3S (ddNS=10)"),
     ("2428-54 N raise 4H over 3S", "N", "NS", "p 1c 1h 1s p 2s 3h 3s", "N",
-     "6.76543.K853.984", "TwoOverOne", "P", {"4H"},
-     "U3: 5-card heart support + a fit must bid 4H over 3S, not sell out"),
+     "6.76543.K853.984", "TwoOverOne", "4H", {"4H"},
+     "U3 FIXED: 5-card support + fit → LAW raise 4H over 3S (Case C)"),
 ]
 
 

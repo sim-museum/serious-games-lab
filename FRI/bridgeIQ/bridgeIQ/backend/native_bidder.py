@@ -2016,6 +2016,31 @@ def _law_competitive_bid(state, e) -> Optional[Tuple[int, Suit]]:
             # My length is my actual count; partner promised 5+
             # for a major opening (5-card-major systems) or 4+ (Acol).
             partner_min_trumps = 4  # conservative
+    # Case C: an OPPONENT opened; partner OVERCALLED a major and I have
+    # support. The overcalled suit is our trump (an overcall promises 5+),
+    # so 4+ support is a 9+-card fit — LAW lets us compete rather than sell
+    # out. (2428-54: partner overcalled 1H then rebid 3H, I hold 5 hearts,
+    # opps reach 3S; LAW → 4H, a cold game.) Held to a STRICTER bar than the
+    # opened-major cases (opp_level + 7, and 4+ of my own trumps) because an
+    # overcall's strength is wider than an opening — the looser +6 bar
+    # over-competed into failing slam-deck contracts.
+    # Case C is a distributional LAW raise (fit + shape, modest values). A
+    # strong advancer uses constructive bidding instead — and gating on
+    # hcp keeps Case C out of slam auctions, where the looser competing
+    # otherwise pushed biq past makeable slams on the slam deck.
+    case_c = False
+    if (our_trump is None
+            and e.hcp <= 11
+            and state.opener_seat is not None
+            and state.opener_seat not in (state.seat, state.seat.partner())):
+        for pb in state.partner_bids:
+            if pb.is_pass or pb.suit not in (Suit.HEARTS, Suit.SPADES):
+                continue
+            if e.suit_lengths.get(pb.suit, 0) >= 4:
+                our_trump = pb.suit
+                partner_min_trumps = 5  # overcall promises 5+
+                case_c = True
+            break
     if our_trump is None:
         return None
     my_trumps = e.suit_lengths.get(our_trump, 0)
@@ -2050,9 +2075,10 @@ def _law_competitive_bid(state, e) -> Optional[Tuple[int, Suit]]:
     #    i.e., 9 trumps justifies competing to 3-level. Conservative
     #    layer: also require my own trump count ≥ 3 (avoid bidding
     #    on a doubleton when partner's promised trumps are nominal).
-    if combined < opp_level + 6:
+    margin = 7 if case_c else 6        # Case C (overcall) held stricter
+    if combined < opp_level + margin:
         return None
-    if my_trumps < 3:
+    if my_trumps < (4 if case_c else 3):
         return None
     # Don't push past game level.
     next_level = opp_level + 1
