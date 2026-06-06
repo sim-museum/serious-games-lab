@@ -786,10 +786,28 @@ class BiqClient:
         self.log(f"dummy IPC timeout ({p.name}) — falling back to own engine")
         return None
 
+    def _legal_fallback_card(self, seat: Seat) -> Optional[Card]:
+        """A safe legal card with NO DDS — used when the MC child crashes or
+        hangs. Lowest card of the led suit (else lowest card)."""
+        lead = self.current_trick[0].suit if self.current_trick else None
+        legal = [c for c in self.board.hands[seat].cards
+                 if lead is None or c.suit == lead]
+        if not legal:
+            legal = list(self.board.hands[seat].cards)
+        if not legal:
+            return None
+        return max(legal, key=lambda c: c.rank.value)
+
     def _choose_card(self, seat: Seat) -> Optional[Card]:
-        """Compute the card to play for `seat` via the MC+DDS engine. When
-        the caller is the declarer choosing the dummy seat, the engine sees
-        both declaring hands so the line of play is coherent."""
+        """Card for `seat` via the MC+DDS engine, ISOLATED IN A FORKED CHILD.
+
+        libdds can SEGFAULT under load — uncatchable in-process, it would kill
+        the client and wedge the whole match (seen live on a 64-board run at
+        120 samples). So we fork: the child runs the DDS-heavy MC, writes the
+        card to a pipe, and os._exit(0)s (skipping the libdds thread teardown
+        that itself segfaults). A crash/hang in the child costs ONE card — the
+        parent falls back to a legal card — never the client. The parent never
+        runs DDS itself, so it can't be killed by it."""
         board = BoardState(
             board_number=self.board.board_number,
             dealer=self.board.dealer,
@@ -799,22 +817,79 @@ class BiqClient:
             contract=self.contract,
             tricks=list(self.completed_tricks),
         )
+        cur = list(self.current_trick)
         try:
-            resp = self.engine.get_mc_card_play(
-                board, seat, current_trick_cards=list(self.current_trick),
-                num_samples=self.num_samples)
-            if resp.action is not None:
-                return resp.action
-        except Exception as e:
-            self.log(f"cardplay error: {e}; falling back to lowest legal")
-        lead = self.current_trick[0].suit if self.current_trick else None
-        legal = [c for c in self.board.hands[seat].cards
-                 if lead is None or c.suit == lead]
-        if not legal:
-            legal = self.board.hands[seat].cards
-        if not legal:
-            return None
-        return max(legal, key=lambda c: c.rank.value)
+            r, w = os.pipe()
+            pid = os.fork()
+        except OSError:
+            # fork unavailable — best-effort in-process (old behaviour)
+            try:
+                resp = self.engine.get_mc_card_play(
+                    board, seat, current_trick_cards=cur,
+                    num_samples=self.num_samples)
+                if resp.action is not None:
+                    return resp.action
+            except Exception:
+                pass
+            return self._legal_fallback_card(seat)
+
+        if pid == 0:                       # ---- child ----
+            try:
+                os.close(r)
+            except OSError:
+                pass
+            try:
+                resp = self.engine.get_mc_card_play(
+                    board, seat, current_trick_cards=cur,
+                    num_samples=self.num_samples)
+                if resp.action is not None:
+                    os.write(w, format_card(resp.action).encode("latin-1"))
+            except Exception:
+                pass
+            finally:
+                try:
+                    os.close(w)
+                except OSError:
+                    pass
+                os._exit(0)              # skip libdds teardown segfault
+
+        # ---- parent ----
+        import select
+        os.close(w)
+        data = b""
+        deadline = time.time() + getattr(self, "card_timeout", 30.0)
+        try:
+            while time.time() < deadline:
+                rl, _, _ = select.select([r], [], [], deadline - time.time())
+                if not rl:
+                    break
+                chunk = os.read(r, 16)
+                if not chunk:
+                    break
+                data += chunk
+        except OSError:
+            pass
+        finally:
+            try:
+                os.close(r)
+            except OSError:
+                pass
+        # reap; kill if the child is still alive (hung / mid-crash)
+        try:
+            done, _ = os.waitpid(pid, os.WNOHANG)
+            if done == 0:
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
+        except (ChildProcessError, ProcessLookupError):
+            pass
+        if data.strip():
+            try:
+                return parse_card_token(data.decode("latin-1"))
+            except Exception:
+                pass
+        self.log(f"MC child produced no card for {seat.name} "
+                 f"(libdds crash/hang) — playing a legal fallback")
+        return self._legal_fallback_card(seat)
 
     def _play_card(self, seat: Seat, card: Card) -> None:
         """Submit `card` for `seat` on this connection + advance state.
