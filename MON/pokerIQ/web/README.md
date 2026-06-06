@@ -44,6 +44,15 @@ leaks, levels-of-thinking), god mode, session + lifetime stats (localStorage),
 and 8 trainers (AKQ, Jam-or-Fold, Indifference, MTT/ICM, Variance·Edge·Bankroll,
 Calibration, Mindset, Range-narrowing).
 
+**Hand Summary** — three views. *Analysis* (default): "Hand #N Analysis" with
+every player's hole cards + a category (offsuit junk / suited ace / big slick …),
+each human's "held" line, and per-street board + your equity + opponents'
+best-hand descriptions. *Stats*: per-street panels — Player · Cards · Hand (best
+hand made on that street) · True Equity (god multiway) · vs-Range equity ·
+AHEAD/BEHIND · that street's actions — plus a Hand Results strip (net + start→end
+per player). *Hand Log*: the raw street-by-street action lines. Equities are
+computed lazily when the summary opens (so play stays fast) on a separate RNG.
+
 **Session log (⤓ Log)** — downloads `poker_log_YYYYMMDD_HHMMSS.txt` in the
 *exact* PyQt PokerIQ format (`logfile.js`): session header, per-hand GAME STATUS
 / Dealer / Hole Cards / posts / actions / `--- Street ---` + `[STATS]` (true

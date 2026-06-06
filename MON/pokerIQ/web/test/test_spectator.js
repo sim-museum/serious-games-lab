@@ -95,7 +95,7 @@ function toHeroTurn(C) {
   }
   ok(C.lastHistory && C.lastHistory.assists && C.lastHistory.assists.length > 0, 'assists recorded into hand history');
   // render the summary node and check the flag text
-  const node = V.handSummaryNode(C.lastHistory);
+  const node = V.handSummaryNode(C.lastHistory, C.buildSummaryData(C.lastHistory), 'basic');
   ok(/Assists used while still in the hand/.test(node.textContent), 'summary shows the assist flag');
   ok(/God Mode/.test(node.textContent), 'summary names God Mode');
 }

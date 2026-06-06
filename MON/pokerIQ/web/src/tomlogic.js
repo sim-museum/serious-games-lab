@@ -410,10 +410,74 @@
 
   function cap(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
+  // ---- hand descriptions (ports of categorize_preflop_hand / describe_made_hand
+  //      / get_hand_name) for the Hand Summary ----
+  const RANK_NAME = { A: 'Ace', K: 'King', Q: 'Queen', J: 'Jack', T: 'Ten', 9: 'Nine', 8: 'Eight', 7: 'Seven', 6: 'Six', 5: 'Five', 4: 'Four', 3: 'Three', 2: 'Two' };
+  function categorizePreflop(hand) {
+    if (!hand || hand.length < 2) return 'unknown';
+    const c1 = E.cardToStr(hand[0]), c2 = E.cardToStr(hand[1]);
+    const r1 = c1[0], r2 = c2[0], s1 = c1[1], s2 = c2[1];
+    const v1 = ORDER.indexOf(r1), v2 = ORDER.indexOf(r2);
+    const pair = r1 === r2, suited = s1 === s2;
+    if (pair) { if ('AK'.includes(r1)) return 'premium pair'; if ('QJT'.includes(r1)) return 'high pair'; if ('987'.includes(r1)) return 'medium pair'; return 'small pair'; }
+    const high = Math.min(v1, v2), gap = Math.abs(v1 - v2);
+    if (high <= 1 && gap <= 1) return suited ? 'big slick' : 'big slick offsuit';
+    if (high <= 3 && gap <= 2) return suited ? 'suited broadway' : 'broadway';
+    if (suited && gap === 1) return 'suited connector';
+    if (suited && gap <= 2) return 'suited one-gapper';
+    if (r1 === 'A' || r2 === 'A') return suited ? 'suited ace' : 'ace-rag';
+    if (suited) return 'suited cards';
+    return 'offsuit junk';
+  }
+  function handName(hand) {
+    if (!hand || hand.length < 2) return 'unknown';
+    let c1 = E.cardToStr(hand[0]), c2 = E.cardToStr(hand[1]);
+    let r1 = c1[0], r2 = c2[0], s1 = c1[1], s2 = c2[1];
+    if (ORDER.indexOf(r1) > ORDER.indexOf(r2)) { [r1, r2] = [r2, r1]; [s1, s2] = [s2, s1]; }
+    if (r1 === r2) return `pocket ${RANK_NAME[r1]}s`;
+    return `${RANK_NAME[r1]}-${RANK_NAME[r2]}${s1 === s2 ? ' suited' : ''}`;
+  }
+  function describeMadeHand(hand, board) {
+    if (!hand || !board || hand.length < 2 || (hand.length + board.length) < 5) return board && board.length ? 'no hand' : categorizePreflop(hand);
+    const cat = E.categoryOf(E.evaluate(hand.concat(board)));
+    const holeRanks = hand.map(c => E.cardToStr(c)[0]);
+    const boardRanks = board.map(c => E.cardToStr(c)[0]);
+    const allRanks = holeRanks.concat(boardRanks);
+    const cnt = {}; allRanks.forEach(r => cnt[r] = (cnt[r] || 0) + 1);
+    const bcnt = {}; boardRanks.forEach(r => bcnt[r] = (bcnt[r] || 0) + 1);
+    const pos = r => ORDER.indexOf(r);
+    const firstWith = n => Object.keys(cnt).find(r => cnt[r] >= n);
+    if (cat === CAT.STRAIGHT_FLUSH) return 'straight flush';
+    if (cat === CAT.QUADS) { const q = firstWith(4); return q ? `quads (${q}s)` : 'four of a kind'; }
+    if (cat === CAT.FULL_HOUSE) { const t = firstWith(3); const p = Object.keys(cnt).find(r => cnt[r] >= 2 && r !== t); return t && p ? `full house (${t}s full of ${p}s)` : 'full house'; }
+    if (cat === CAT.FLUSH) return 'flush';
+    if (cat === CAT.STRAIGHT) return 'straight';
+    if (cat === CAT.TRIPS) { const t = firstWith(3); if (t && holeRanks[0] === holeRanks[1] && holeRanks[0] === t) return `set of ${t}s`; if (t && bcnt[t] >= 2) return `trips (${t}s)`; return 'three of a kind'; }
+    if (cat === CAT.TWO_PAIR) { const pairs = Object.keys(cnt).filter(r => cnt[r] >= 2); return holeRanks.some(r => pairs.includes(r)) ? 'two pair' : 'two pair (board)'; }
+    if (cat === CAT.ONE_PAIR) {
+      const pr = firstWith(2); if (!pr) return 'pair';
+      if (holeRanks[0] === holeRanks[1] && holeRanks[0] === pr) return boardRanks.every(br => pos(pr) < pos(br)) ? `overpair (${pr}${pr})` : `pocket pair (${pr}${pr})`;
+      if (holeRanks.includes(pr) && boardRanks.includes(pr)) { const sb = [...new Set(boardRanks)].sort((a, b) => pos(a) - pos(b)); if (pr === sb[0]) return `top pair (${pr}s)`; if (sb.length > 1 && pr === sb[1]) return `second pair (${pr}s)`; return `bottom pair (${pr}s)`; }
+      return 'pair on board';
+    }
+    // high card — surface draws pre-river
+    if (board.length < 5) {
+      const holeSuits = hand.map(c => E.cardToStr(c)[1]);
+      const allSuits = holeSuits.concat(board.map(c => E.cardToStr(c)[1]));
+      const scnt = {}; allSuits.forEach(s => scnt[s] = (scnt[s] || 0) + 1);
+      if (holeSuits.some(s => scnt[s] === 4)) return 'flush draw';
+      const vals = [...new Set(allRanks.map(pos))].sort((a, b) => a - b);
+      for (let i = 0; i <= vals.length - 4; i++) if (vals[i + 3] - vals[i] <= 4) return 'straight draw';
+    }
+    const hi = holeRanks.slice().sort((a, b) => pos(a) - pos(b))[0];
+    return `${hi}-high`;
+  }
+
   const API = {
     STYLE_RANGES, estimateRange, parseRangeNotation, boardConnectionScore,
     handToKey, gordonTier, gordonComboDescription, gordonAdvice, potOddsHeader,
     computeOuts, scareCards, equityVsRanges, expandCombos, metrics, RANKS, ORDER,
+    categorizePreflop, handName, describeMadeHand,
   };
   if (isNode) module.exports = API;
   else root.PokerToMLogic = API;

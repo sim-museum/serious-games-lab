@@ -59,15 +59,23 @@ if (sumBtn) {
   sumBtn.click();
   const modal = d.querySelector('.piq-modal');
   ok(modal.style.display === 'flex', 'summary modal opened');
-  ok(/Hand #\d+ summary/.test(modal.textContent), 'summary shows hand number');
-  ok(modal.querySelector('.hs-street') != null, 'summary lists at least one street with actions');
-  ok(modal.querySelector('.hs-table') != null, 'summary has results table');
-  // results table has a row per player with a Net column
-  const rows = modal.querySelectorAll('.hs-table tr');
-  ok(rows.length === 7, `results table: header + 6 players (${rows.length})`);
-  // net column values present
-  const netCells = modal.querySelectorAll('.hs-table tr td:last-child');
-  ok([...netCells].some(c => /\$/.test(c.textContent)), 'net column shows $ amounts');
+  // default = basic analysis text with hole cards
+  ok(/Hand #\d+ Analysis/.test(modal.textContent), 'basic summary shows "Hand #N Analysis"');
+  ok(/HOLE CARDS:/.test(modal.textContent), 'basic summary lists HOLE CARDS');
+  ok(modal.querySelector('.hs-basic') != null, 'basic analysis text block present');
+  // switch to Stats view
+  const statsBtn = [...modal.querySelectorAll('.hs-actions button')].find(b => b.textContent === 'Stats');
+  ok(statsBtn != null, 'Stats button present');
+  statsBtn.click();
+  const modal2 = d.querySelector('.piq-modal');
+  ok(modal2.querySelector('.hs-panel') != null, 'stats view has per-street panels');
+  ok(modal2.querySelector('.hs-eqtable') != null, 'stats view has equity table');
+  ok(/Hand Results/.test(modal2.textContent), 'stats view shows Hand Results');
+  ok(/AHEAD|BEHIND|\(Folded\)/.test(modal2.textContent), 'equity column shows AHEAD/BEHIND/(Folded)');
+  // Hand Log view
+  const logBtn = [...modal2.querySelectorAll('.hs-actions button')].find(b => b.textContent === 'Hand Log');
+  logBtn.click();
+  ok(/--- (Flop|Turn|River|Preflop) ---/.test(d.querySelector('.piq-modal').textContent), 'hand log view shows street markers');
 }
 
 // 4) font scale sanity: base body font is 20px now (was 14)

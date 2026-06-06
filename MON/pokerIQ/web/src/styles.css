@@ -254,3 +254,31 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 .hs-flags{background:#2a1410;border:1px solid #6a2a1a;border-radius:8px;padding:12px 14px;color:#f0a070;font-size:17px;margin-bottom:14px;}
 .pg-presets{display:flex;gap:10px;margin:0 0 14px;}
 .ghost:disabled{opacity:.4;cursor:default;}
+
+/* ============ hand summary: basic + stats + log views ============ */
+.hs-modal{max-width:1080px;}
+.hs-body{max-height:64vh;overflow:auto;}
+.hs-basic{background:#0b0f15;border:1px solid var(--line);border-radius:8px;padding:16px;
+  font:16px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;color:#dbe4ee;}
+.hs-actions{gap:8px;}
+.hs-panels{display:flex;flex-direction:column;gap:14px;}
+.hs-panel{background:#0d141c;border:1px solid var(--line);border-radius:10px;padding:12px 14px;}
+.hs-panel-top{display:flex;align-items:center;gap:14px;margin-bottom:10px;}
+.hs-panel-top .hs-st-name{font-size:21px;font-weight:700;color:var(--accent);min-width:84px;}
+.hs-pb .card{width:34px;height:48px;} .hs-pb .card b{font-size:15px;} .hs-pb .card i{font-size:13px;}
+.hs-panel-grid{display:grid;grid-template-columns:1fr 240px;gap:14px;align-items:start;}
+.hs-eqtable{width:100%;border-collapse:collapse;}
+.hs-eqtable th{text-align:left;color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:.4px;padding:3px 8px;}
+.hs-eqtable td{padding:5px 8px;font-size:16px;vertical-align:middle;}
+.hs-eqtable td:first-child{font-weight:600;}
+.hs-eqtable .card{width:30px;height:42px;} .hs-eqtable .card b{font-size:13px;} .hs-eqtable .card i{font-size:11px;}
+.hs-eqtable tr.folded td{color:var(--muted);}
+.sb-fill.bad{background:#f85149;}
+.hs-actcol{background:#0b0f15;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:15px;line-height:1.6;}
+.hs-actcol-h{color:var(--muted);font-weight:700;text-transform:uppercase;font-size:13px;letter-spacing:.4px;margin-bottom:4px;}
+.hs-results{margin-top:16px;background:#0d141c;border:1px solid var(--line);border-radius:10px;padding:14px 16px;}
+.hs-results h3{margin:0 0 12px;font-size:22px;}
+.hs-res-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:14px;}
+.hs-res-name{color:var(--muted);font-size:15px;}
+.hs-res-net{font-size:26px;font-weight:800;}
+@media(max-width:760px){.hs-panel-grid{grid-template-columns:1fr;}}

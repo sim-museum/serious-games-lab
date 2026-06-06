@@ -213,6 +213,8 @@
         this.history = {
           handNumber: payload.handNumber,
           startStacks: payload.startStacks,
+          // all hole cards (god view) for the hand summary
+          holeCards: this.game.players.filter(p => p.hand.length).map(p => ({ seat: p.seat, name: p.name, cards: p.hand.slice() })),
           streets: [{ name: 'Preflop', board: [], actions: [] }],
         };
         this.spectating = false; this.specSnaps = []; this.specIdx = -1; this.handAssists = {};
@@ -350,6 +352,60 @@
     }
 
     logFilename() { const d = this.now(); return `poker_log_${d.getFullYear()}${this.pad2(d.getMonth() + 1)}${this.pad2(d.getDate())}_${this.timeStr().replace(/:/g, '')}.txt`; }
+
+    // ---- rich hand-summary data (computed lazily when the summary opens) ----
+    // Per-street: every player's cards + best-hand description + true (god)
+    // equity + vs-range equity + ahead/behind, plus that street's actions.
+    buildSummaryData(h) {
+      if (!h) return null;
+      const T = getToMLogic();
+      const hole = h.holeCards || [];
+      const styleOf = seat => (this.game.players[seat] ? this.game.players[seat].style : 'loose');
+      // which street each seat folded on (else they reached showdown)
+      const foldStreet = {};
+      h.streets.forEach((st, i) => st.actions.forEach(a => { if (a.action === 'fold' && foldStreet[a.seat] === undefined) foldStreet[a.seat] = i; }));
+      const inAfter = (seat, S) => foldStreet[seat] === undefined || foldStreet[seat] > S;
+      const actVerb = a => a.action === 'raise' ? (a.opening ? `Bets $${a.total}` : `Raises to $${a.total}`)
+        : a.action === 'call' ? `Calls $${a.amount}` : a.action === 'check' ? 'Checks' : a.action === 'fold' ? 'Folds' : a.action;
+
+      const panels = h.streets.map((st, S) => {
+        const board = st.board || [];
+        const contesting = hole.filter(x => inAfter(x.seat, S));
+        const real = {};
+        if (contesting.length >= 2) {
+          const eq = E.equityMultiway(contesting.map(x => x.cards), board, { iterations: 600, rng: this.auxRng });
+          contesting.forEach((x, i) => real[x.seat] = eq[i] != null ? eq[i] : 0);
+        } else if (contesting.length === 1) real[contesting[0].seat] = 1;
+        const maxReal = Math.max(0, ...Object.values(real));
+        const rows = hole.map(x => {
+          const folded = !inAfter(x.seat, S);
+          const made = board.length >= 3 ? T.describeMadeHand(x.cards, board) : T.categorizePreflop(x.cards);
+          if (folded) return { seat: x.seat, name: x.name, cards: x.cards, made, folded: true };
+          const r = real[x.seat] != null ? real[x.seat] : 0;
+          const others = contesting.filter(y => y.seat !== x.seat);
+          const ranges = others.map(y => T.estimateRange(styleOf(y.seat), 'neutral', this.actionTagsFor(y.seat), board).range);
+          let think = ranges.length ? T.equityVsRanges(x.cards, board, ranges, { iterations: 300, rng: this.auxRng }) : r;
+          if (think == null) think = r;
+          return { seat: x.seat, name: x.name, cards: x.cards, made, folded: false, real: r, thinking: think, ahead: r >= maxReal - 1e-9 };
+        });
+        const potAfter = st.actions.length ? st.actions[st.actions.length - 1].pot : 0;
+        const actions = st.actions.filter(a => a.action !== 'post').map(a => ({ name: a.name, verb: actVerb(a) }));
+        return { name: st.name, board, pot: potAfter, rows, actions };
+      });
+
+      const res = h.result || { net: [], showdown: [], payouts: {} };
+      const startBy = {}; (h.startStacks || []).forEach(x => startBy[x.seat] = x.stack);
+      const results = (res.net || []).map(n => ({ name: n.name, seat: n.seat, net: n.net, start: startBy[n.seat] != null ? startBy[n.seat] : n.stack, end: n.stack }));
+      const humanSet = this.humanSeats;
+      return {
+        handNumber: h.handNumber,
+        holeCards: hole.map(x => ({ name: x.name, cards: x.cards, category: T.categorizePreflop(x.cards) })),
+        heldLines: hole.filter(x => humanSet.has(x.seat)).map(x => ({ name: x.name, held: T.handName(x.cards), cards: x.cards })),
+        panels, results,
+        finalBoard: res.board || (panels.length ? panels[panels.length - 1].board : []),
+        humanSeats: [...humanSet],
+      };
+    }
 
     recordHistoryAction(payload) {
       if (!this.history) return;
@@ -977,66 +1033,106 @@
 
     showHandSummary(history) {
       if (!history) return;
-      this.showModal(this.handSummaryNode(history));
+      this._summary = { history, data: this.ctrl.buildSummaryData(history), view: 'basic' };
+      this.renderSummary();
+    }
+    switchSummary(view) { if (this._summary) { this._summary.view = view; this.renderSummary(); } }
+    renderSummary() {
+      const { history, data, view } = this._summary;
+      this.showModal(this.handSummaryNode(history, data, view));
     }
 
-    // Build the hand-summary modal: per-street betting + board, and a
-    // start→end stack table with each player's win/loss.
-    handSummaryNode(h) {
-      const res = h.result || { net: [], showdown: [], payouts: {} };
-      const startBySeat = {}; (h.startStacks || []).forEach(x => startBySeat[x.seat] = x.stack);
-      const netBySeat = {}; (res.net || []).forEach(x => netBySeat[x.seat] = x);
-      const handBySeat = {}; (res.showdown || []).forEach(sd => handBySeat[sd.seat] = sd);
-
-      const card = document.createElement('div'); card.className = 'modal-card';
-      const board = h.result ? h.result.board : [];
-      let html = `<h2>Hand #${h.handNumber} summary</h2>
-        <div class="sub">Final board: ${board && board.length ? board.map(c => cardHTML(c, false)).join('') : '—'} · pot $${res.pot || 0}</div>`;
-
-      // assist flags — God/Tells/Training used while still in the hand (visible to all)
-      if (h.assists && h.assists.length) {
-        html += `<div class="hs-flags">⚑ Assists used while still in the hand: ` +
-          h.assists.map(a => `<b>${escapeHTML(a.name)}</b> — ${a.assists.map(escapeHTML).join(', ')}`).join(' · ') +
-          `</div>`;
-      }
-
-      // streets
-      html += '<div class="hs-streets">';
-      for (const st of h.streets) {
-        if (!st.actions.length) continue;
-        const boardStr = st.board && st.board.length ? st.board.map(c => cardHTML(c, false)).join('') : '<span class="muted">(no cards)</span>';
-        const acts = st.actions.map(a => {
-          const verb = a.action === 'post' ? `posts $${a.amount}`
-            : a.action === 'raise' ? (a.opening ? `bets $${a.total}` : `raises to $${a.total}`)
-            : a.action === 'call' ? `calls $${a.amount}`
-            : a.action === 'check' ? 'checks'
-            : a.action === 'fold' ? 'folds' : a.action;
-          return `<span class="hs-act"><b>${escapeHTML(a.name)}</b> ${verb}</span>`;
-        }).join('');
-        const potAfter = st.actions.length ? st.actions[st.actions.length - 1].pot : 0;
-        html += `<div class="hs-street"><div class="hs-st-head"><span class="hs-st-name">${st.name}</span> ${boardStr} <span class="muted">pot $${potAfter}</span></div><div class="hs-acts">${acts}</div></div>`;
-      }
-      html += '</div>';
-
-      // results table
-      html += `<table class="drill hs-table"><tr><th>Player</th><th>Hand</th><th>Start</th><th>End</th><th>Net</th></tr>`;
-      for (const p of this.ctrl.game.players) {
-        const start = startBySeat[p.seat] != null ? startBySeat[p.seat] : p.stack;
-        const n = netBySeat[p.seat];
-        const end = n ? n.stack : p.stack;
-        const net = n ? n.net : 0;
-        const sd = handBySeat[p.seat];
-        const handCell = sd ? `${sd.hand.map(c => cardHTML(c, false)).join('')} <span class="muted">${sd.desc}</span>`
-          : (p.seat === 0 && p.hand.length ? p.hand.map(c => cardHTML(c, false)).join('') : '<span class="muted">mucked</span>');
-        const cls = net > 0 ? 'pos' : (net < 0 ? 'neg' : '');
-        html += `<tr><td style="text-align:left">${escapeHTML(p.name)}</td><td style="text-align:left">${handCell}</td><td>$${start}</td><td>$${end}</td><td class="${cls}">${net >= 0 ? '+' : ''}$${net}</td></tr>`;
-      }
-      html += '</table><div class="modal-actions"></div>';
-      card.innerHTML = html;
-      const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Close';
-      close.onclick = () => this.closeModal();
-      card.querySelector('.modal-actions').appendChild(close);
+    handSummaryNode(h, data, view) {
+      const card = document.createElement('div'); card.className = 'modal-card hs-modal';
+      const flags = (h.assists && h.assists.length)
+        ? `<div class="hs-flags">⚑ Assists used while still in the hand: ` +
+          h.assists.map(a => `<b>${escapeHTML(a.name)}</b> — ${a.assists.map(escapeHTML).join(', ')}`).join(' · ') + `</div>` : '';
+      let body;
+      if (view === 'stats') body = this.summaryStatsHTML(data, flags);
+      else if (view === 'log') body = this.summaryLogHTML(h);
+      else body = this.summaryBasicHTML(data, flags);
+      card.innerHTML = `<h2>Hand Summary</h2><div class="hs-body">${body}</div><div class="modal-actions hs-actions"></div>`;
+      const mk = (label, cls, fn) => { const b = document.createElement('button'); b.className = cls; b.textContent = label; b.onclick = fn; return b; };
+      const act = card.querySelector('.hs-actions');
+      if (view !== 'basic') act.appendChild(mk('Analysis', 'ghost', () => this.switchSummary('basic')));
+      if (view !== 'stats') act.appendChild(mk('Stats', 'btn check', () => this.switchSummary('stats')));
+      if (view !== 'log') act.appendChild(mk('Hand Log', 'btn raise', () => this.switchSummary('log')));
+      act.appendChild(mk('Close', 'ghost', () => this.closeModal()));
       return card;
+    }
+
+    // basic analysis text (matches the desktop "Hand #N Analysis" view)
+    summaryBasicHTML(d, flags) {
+      const cs = cards => cards.map(c => E.cardToStr(c)).join(' ');
+      const heroSeat = (d.humanSeats && d.humanSeats.length) ? Math.min(...d.humanSeats) : 0;
+      const L = [];
+      L.push(`Hand #${d.handNumber} Analysis`);
+      L.push('-'.repeat(40));
+      L.push('HOLE CARDS:');
+      d.holeCards.forEach(x => L.push(`  ${x.name}: ${cs(x.cards)} (${x.category})`));
+      L.push('');
+      d.heldLines.forEach(x => L.push(`${x.name} held: ${x.held} (${cs(x.cards)})`));
+      // per-street boards + hero equity + opponents' made hands
+      d.panels.forEach((p, i) => {
+        if (p.name === 'Preflop') return;
+        const newCards = p.name === 'Flop' ? p.board.slice(0, 3) : p.board.slice(-1);
+        L.push('');
+        L.push(`${p.name}: ${cs(newCards)}`);
+        const heroRow = p.rows.find(r => r.seat === heroSeat);
+        if (heroRow && !heroRow.folded) L.push(`  ${heroRow.name} equity: ${Math.round(heroRow.real * 100)}%`);
+        p.rows.filter(r => !r.folded && !d.humanSeats.includes(r.seat)).forEach(r => L.push(`  ${r.name}: ${r.made}`));
+      });
+      return `${flags}<pre class="hs-basic">${escapeHTML(L.join('\n'))}</pre>`;
+    }
+
+    // rich per-street stats panels (Player | Cards | Hand | True Equity | vs Range | A/B + actions)
+    summaryStatsHTML(d, flags) {
+      const bar = (f, cls) => `<span class="sb-track" style="width:90px"><span class="sb-fill ${cls}" style="width:${Math.max(0, Math.min(1, f || 0)) * 100}%"></span></span>`;
+      const panelHTML = p => {
+        const board = p.board.length ? p.board.map(c => cardHTML(c, false)).join('') : '<span class="muted">preflop</span>';
+        const rows = p.rows.map(r => {
+          const cards = r.cards.map(c => cardHTML(c, false)).join('');
+          if (r.folded) return `<tr class="folded"><td>${escapeHTML(r.name)}</td><td>${cards}</td><td>${escapeHTML(r.made)}</td><td colspan="3" class="muted">(Folded)</td></tr>`;
+          return `<tr>
+            <td>${escapeHTML(r.name)}</td><td>${cards}</td><td>${escapeHTML(r.made)}</td>
+            <td>${bar(r.real, r.ahead ? 'real' : 'bad')}<span class="sb-pct">${Math.round(r.real * 100)}%</span></td>
+            <td>${bar(r.thinking, 'think')}<span class="sb-pct">${Math.round(r.thinking * 100)}%</span></td>
+            <td class="${r.ahead ? 'pos' : 'neg'}">${r.ahead ? 'AHEAD' : 'BEHIND'}</td></tr>`;
+        }).join('');
+        const acts = p.actions.length ? p.actions.map(a => `<div><b>${escapeHTML(a.name)}</b>: ${escapeHTML(a.verb)}</div>`).join('') : '<div class="muted">—</div>';
+        return `<div class="hs-panel">
+          <div class="hs-panel-top"><span class="hs-st-name">${p.name}</span> <span class="hs-pb">${board}</span> <span class="sp-pot">Pot $${p.pot}</span></div>
+          <div class="hs-panel-grid">
+            <table class="hs-eqtable"><tr><th>Player</th><th>Cards</th><th>Hand</th><th>True Equity</th><th>vs Range</th><th></th></tr>${rows}</table>
+            <div class="hs-actcol"><div class="hs-actcol-h">Actions</div>${acts}</div>
+          </div></div>`;
+      };
+      const panels = d.panels.filter(p => p.name === 'Preflop' || p.board.length).map(panelHTML).join('');
+      // hand results
+      const results = `<div class="hs-results"><h3>Hand Results</h3><div class="hs-res-grid">` +
+        d.results.map(r => `<div class="hs-res"><div class="hs-res-name">${escapeHTML(r.name)}</div><div class="hs-res-net ${r.net > 0 ? 'pos' : r.net < 0 ? 'neg' : 'muted'}">${r.net >= 0 ? '+' : '-'}$${Math.abs(r.net)}</div><div class="muted">$${r.start} → $${r.end}</div></div>`).join('') +
+        `</div></div>`;
+      return `${flags}<div class="hs-panels">${panels}</div>${results}`;
+    }
+
+    // raw per-hand action log
+    summaryLogHTML(h) {
+      const L = [`Hand #${h.handNumber}`];
+      const verb = a => a.action === 'post' ? `posts $${a.amount}`
+        : a.action === 'raise' ? (a.opening ? `bets $${a.total}` : `raises to $${a.total}`)
+        : a.action === 'call' ? `calls $${a.amount}` : a.action === 'check' ? 'checks' : a.action === 'fold' ? 'folds' : a.action;
+      (h.streets || []).forEach(st => {
+        if (!st.actions.length && st.name === 'Preflop') return;
+        const board = st.board && st.board.length ? ' [' + st.board.map(c => E.cardToStr(c)).join(' ') + ']' : '';
+        L.push('');
+        L.push(`--- ${st.name} ---${board}`);
+        st.actions.forEach(a => L.push(`  ${a.name}: ${verb(a)}`));
+      });
+      if (h.result) {
+        L.push('');
+        (h.result.net || []).forEach(n => L.push(`  ${n.name}: ${n.net >= 0 ? '+' : '-'}$${Math.abs(n.net)} (→ $${n.stack})`));
+      }
+      return `<pre class="hs-basic">${escapeHTML(L.join('\n'))}</pre>`;
     }
   }
 
