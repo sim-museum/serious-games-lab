@@ -275,14 +275,15 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
                         suit=b.suit, level=b.level, mechanism=mech,
                         setter=s, bid_index=idx,
                     )
-                    # Major-fit GF: only when the OPENING was at the
-                    # 1-level. Raise of a preempt (2M/3M opens, then
-                    # partner raises) is invitational, not GF — Deal
-                    # 20 in random corpus 39477: N opens 2S, S raises
-                    # to 3S; that's not a 2/1-GF auction.
-                    if (ctx.opening_bid is not None
-                            and ctx.opening_bid.level == 1):
-                        ctx.gf_established = True
+                    # NB: a natural major RAISE does NOT establish game force.
+                    # A single raise is 6-9, a jump (limit) raise 10-12, a
+                    # competitive raise even less — all invitational at most.
+                    # (This block used to set gf_established for any 1-level-
+                    # opening raise, which forced biq to game over a simple
+                    # raise — e.g. 1S-2S rebid as 3NT on a 12-HCP minimum;
+                    # test_gf_established.py guards the three raise cases.)
+                    # The genuinely game-forcing raises set gf in their own
+                    # blocks: Jacoby 2NT (JACOBY_2NT) and splinter, below.
                     if mech in (TrumpMechanism.JUMP_RAISE,):
                         ctx.slam_zone_entered = b.level >= 4
 

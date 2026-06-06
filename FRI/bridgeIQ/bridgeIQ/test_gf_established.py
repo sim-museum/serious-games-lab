@@ -88,13 +88,13 @@ CASES = [
     ("1NT opening only",                "N", "1N",               False, False,
      "no force yet"),
 
-    # ---- BUGS: raises wrongly set GF (current True, desired False) ----
-    ("simple raise (1S-2S)",            "N", "1S P 2S",          True,  False,
-     "BUG: a single major raise is 6-9, NOT game-forcing (line ~283 too broad)"),
-    ("jump/limit raise (1S-3S)",        "N", "1S P 3S",          True,  False,
-     "BUG: a limit raise is invitational, NOT game-forcing"),
-    ("competitive raise (1S-(2H)-3S)",  "N", "1S 2H 3S",         True,  False,
-     "BUG: a competitive raise over interference is NOT game-forcing"),
+    # ---- raises do NOT establish GF (fixed 2026-06-05; was the line-283 bug) ----
+    ("simple raise (1S-2S)",            "N", "1S P 2S",          False, False,
+     "a single major raise is 6-9, NOT game-forcing"),
+    ("jump/limit raise (1S-3S)",        "N", "1S P 3S",          False, False,
+     "a limit raise is invitational, NOT game-forcing"),
+    ("competitive raise (1S-(2H)-3S)",  "N", "1S 2H 3S",         False, False,
+     "a competitive raise over interference is NOT game-forcing"),
 
     # ---- GAPS: the underbidding target (current False, desired True) ----
     ("3rd-suit-3-level (1D-1S-2D-3C)",  "N", "1D P 1S P 2D P 3C", False, True,
