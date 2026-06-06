@@ -58,7 +58,7 @@ AB_REF_FILE = BIQ_ROOT / "tools/runs/ab/ab_reference.json"  # Run-A deal id
 # Bump this on any user-visible behaviour change. It's shown in the title
 # bar AND logged on startup, so you can tell at a glance whether a freshly
 # launched panel actually has the latest fix (no more "did it reload?").
-PANEL_BUILD = "2026-06-06b · Match End dialog dismiss in .qss export + crash-watchdog"
+PANEL_BUILD = "2026-06-06c · MC samples 50 + Match End dismiss + crash-watchdog"
 # Fixed seed for 'reproducible random' systems — both A and B pass the same
 # value so they draw identical per-deal systems on identical boards.
 REPRO_SYS_SEED = 20260604
