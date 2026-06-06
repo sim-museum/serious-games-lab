@@ -910,7 +910,9 @@ class LiveMatchWidget(QWidget):
         self.deals.setValue(64)
         self.seat = QComboBox(); self.seat.addItems(["S", "N", "E", "W"])
         self.samples = QSpinBox(); self.samples.setRange(5, 300)
-        self.samples.setValue(120)   # 120 ≈ deterministic finesses (40 misplays ~27%)
+        self.samples.setValue(50)    # 50 balances finesse accuracy vs the
+        #                              libdds crash rate (120 caused ~45
+        #                              crashes/64-board run → weak fallbacks)
         self.idle = QSpinBox(); self.idle.setRange(3, 60); self.idle.setValue(10)
         self.reset_every = QSpinBox(); self.reset_every.setRange(0, 64)
         self.reset_every.setValue(0)

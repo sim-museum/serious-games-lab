@@ -262,7 +262,7 @@ _PAIR_IPC = Path(__file__).resolve().parent / "runs" / "pair_ipc"
 class BiqClient:
     def __init__(self, host: str, port: int, my_seat: Seat,
                   system: str = 'SAYC', name: str = 'biq',
-                  num_samples: int = 120, verbose: bool = True,
+                  num_samples: int = 50, verbose: bool = True,
                   log_path: Optional[str] = None,
                   system_file: Optional[str] = None,
                   auto_system: bool = False,
@@ -963,9 +963,10 @@ def main(argv=None) -> int:
                    help="biq bidding system (default SAYC)")
     p.add_argument("--name", default="biq",
                    help="display name to send in join_game")
-    p.add_argument("--num-samples", type=int, default=120,
-                   help="MC samples per cardplay decision (120 ≈ deterministic "
-                        "on close finesses; 40 misplayed them ~27%% of the time)")
+    p.add_argument("--num-samples", type=int, default=50,
+                   help="MC samples per cardplay decision (50 balances finesse "
+                        "accuracy vs the libdds crash rate; 120 crashed DDS "
+                        "~45x/64-board run → weak fallback cards)")
     p.add_argument("--quiet", action="store_true")
     p.add_argument("--log", default=None,
                    help="append all session output (handshake, deals, "
