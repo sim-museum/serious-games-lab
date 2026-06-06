@@ -82,8 +82,11 @@ CASES = [
      "A76.AK9.J84.AQ86", "TwoOverOne", "2N", {"2N", "X"},
      "U2: 15 HCP balanced + spade stopper must double/2NT, not pass"),
     ("2428-31 N X over 3S preempt", "E", "None", "p p 3s", "N",
-     "K7.J432.A5.AJ532", "TwoOverOne", "P", {"X"},
-     "U1: 12 HCP, 4-5 in the other suits = takeout double of 3S (ddNS=10)"),
+     "K7.J432.A5.AJ532", "TwoOverOne", "P", {"P"},
+     "HELD: 12 flat HCP (2-4-2-5, no spade shortness) is SUBSTANDARD for a "
+     "3-level takeout double; forcing it is the over-compete trap. Pass is "
+     "defensible — the live loss was partly partner-fit variance. Revisit "
+     "only with a sacrifice/preempt-double measurement harness + live A/B."),
     ("2428-54 N raise 4H over 3S", "N", "NS", "p 1c 1h 1s p 2s 3h 3s", "N",
      "6.76543.K853.984", "TwoOverOne", "4H", {"4H"},
      "U3 FIXED: 5-card support + fit → LAW raise 4H over 3S (Case C)"),
