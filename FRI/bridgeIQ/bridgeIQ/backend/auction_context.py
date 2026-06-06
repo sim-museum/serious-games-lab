@@ -548,8 +548,13 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
         resp = [(i, b) for i, (s, b) in enumerate(state.bids)
                 if s == partner_of_opener and not b.is_pass
                 and not b.is_double and not b.is_redouble]
+        # NB: the 3-level bid's alert flag is NOT checked — a non-jump new
+        # suit at the 3-level is natural by construction, and biq's own
+        # responder-GF-net marks its forcing 3C with alert=True, which A1 must
+        # still recognise. Transfers/Stayman are excluded by the 1-of-SUIT
+        # opening gate above, not by this flag.
         if (len(resp) == 2
-                and not resp[0][1].alert and not resp[1][1].alert
+                and not resp[0][1].alert
                 and resp[0][1].level == 1
                 and resp[0][1].suit not in (None, _NT)
                 and resp[1][1].level == 3

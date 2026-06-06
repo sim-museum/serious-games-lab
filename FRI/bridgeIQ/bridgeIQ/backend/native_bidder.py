@@ -2307,6 +2307,57 @@ def _partner_was_forcing(state: AuctionState) -> bool:
     return False
 
 
+def _drive_to_game(state: AuctionState, e: HandEval) -> Optional[Bid]:
+    """Place a GAME contract when game force is ESTABLISHED and we're below
+    game — instead of inching up one level (the _safe_forced_bid trap that
+    parked biq in partscores, e.g. 3928-79 dying in 4D below the 5D/5C game).
+
+    ONLY call this when ctx.gf_established is True: that flag is reliable
+    (test_gf_established.py guards transfers/Stayman/raises), so driving to
+    game here cannot reintroduce the overbid class that sank the reverted
+    structural net. Prefer: a 6+ major at game; jump-raise partner's major;
+    3NT if reachable; 5m for a 6+ minor; else a 5+ suit of mine at game level.
+    Returns a legal game bid or None."""
+    last_suit = state.last_suit_bid
+    last_level = state.last_level or 1
+
+    def legal_at(level, suit):
+        c = bid(level, suit, why="Drive to game (game force established)")
+        return c if _is_legal_bid(c, state) else None
+
+    for s in (Suit.SPADES, Suit.HEARTS):          # 6+ major → 4 of it
+        if e.suit_lengths.get(s, 0) >= 6:
+            c = legal_at(4, s)
+            if c is not None:
+                return c
+    pl = state.partner_bids[-1] if state.partner_bids else None
+    if (pl is not None and pl.suit in (Suit.HEARTS, Suit.SPADES)
+            and e.suit_lengths.get(pl.suit, 0) >= 3):   # jump-raise major
+        c = legal_at(4, pl.suit)
+        if c is not None:
+            return c
+    if (e.is_balanced or e.is_semi_balanced) and last_level <= 3:
+        c = legal_at(3, Suit.NOTRUMP)
+        if c is not None:
+            return c
+    for s in (Suit.DIAMONDS, Suit.CLUBS):         # 6+ minor → 3NT else 5m
+        if e.suit_lengths.get(s, 0) >= 6:
+            c = legal_at(3, Suit.NOTRUMP) or legal_at(5, s)
+            if c is not None:
+                return c
+    c = legal_at(3, Suit.NOTRUMP)                 # 3NT if still reachable
+    if c is not None:
+        return c
+    # Past 3NT — a 5+ suit of mine at game (4 major / 5 minor), so a forced
+    # auction never dies in a partscore just because 3NT is gone.
+    for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
+        if e.suit_lengths.get(s, 0) >= 5:
+            c = legal_at(4 if s in (Suit.SPADES, Suit.HEARTS) else 5, s)
+            if c is not None:
+                return c
+    return None
+
+
 def _safe_forced_bid(state: AuctionState, eval_: HandEval,
                      system) -> Optional[Bid]:
     """Pick a conservative continuation when we shouldn't pass.
@@ -2445,6 +2496,21 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
 
         # 2. Pass-when-forced
         if raw.is_pass and _partner_was_forcing(state):
+            # When game force is ESTABLISHED (not just one-round forcing) and
+            # we're below game, DRIVE to a game contract rather than inch up —
+            # _safe_forced_bid caps at the 4-level and left forced auctions
+            # parked in partscores (3928-79 died in 4D below the 5C/5D game).
+            # Gated on the reliable ctx.gf_established (T1-guarded: transfers/
+            # Stayman/raises are all False), so this can't reintroduce the
+            # overbid class. One-round forces (reverses) fall through to the
+            # conservative _safe_forced_bid below.
+            ctx = derive_context(state)
+            if (ctx.gf_established
+                    and not _partnership_has_reached_game(state)
+                    and not _is_partner_signoff_in_game(state)):
+                g = _drive_to_game(state, eval_)
+                if g is not None:
+                    return g
             sub = _safe_forced_bid(state, eval_, system)
             if sub is not None:
                 return sub

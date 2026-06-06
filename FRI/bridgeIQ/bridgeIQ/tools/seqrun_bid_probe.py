@@ -111,7 +111,7 @@ def auc_str(auc, dealer):
     for b in auc:
         t = ("P" if b.is_pass else "X" if b.is_double else "XX"
              if b.is_redouble else
-             f"{b.level}{b.suit.to_char() if b.suit else 'N'}")
+             f"{b.level}{b.suit.to_char() if b.suit is not None else '?'}")
         out.append(f"{seat.name[0]}:{t}")
         seat = seat.next()
     return " ".join(out)
