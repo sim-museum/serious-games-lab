@@ -214,3 +214,19 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 
 /* session log preview */
 .log-preview{width:100%;height:52vh;margin-top:6px;background:#0b0f15;color:#cdd6df;border:1px solid var(--line);border-radius:8px;padding:12px;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre;overflow:auto;}
+
+/* ============ hotseat: privacy gate + players setup ============ */
+.piq-gate{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(120% 100% at 50% 30%,#16202b,#070b0f 80%);}
+.gate-card{text-align:center;padding:40px 48px;}
+.gate-icon{font-size:90px;line-height:1;margin-bottom:10px;filter:drop-shadow(0 6px 16px rgba(0,0,0,.6));}
+.gate-pass{color:var(--muted);font-size:22px;letter-spacing:.5px;}
+.gate-name{color:var(--gold);font-size:48px;font-weight:800;margin:6px 0 4px;}
+.gate-sub{color:var(--muted);font-size:17px;margin-bottom:26px;}
+.gate-go{font-size:24px;padding:18px 34px;}
+
+.players-grid{display:flex;flex-direction:column;gap:10px;margin-top:6px;}
+.pg-row{display:grid;grid-template-columns:80px 1fr 1fr;gap:12px;align-items:center;}
+.pg-seat{color:var(--muted);font-weight:700;}
+.pg-style,.pg-name{padding:10px 12px;background:#0d141c;color:var(--ink);border:1px solid var(--line);border-radius:8px;font:inherit;font-size:17px;}
+.pg-name:disabled{opacity:.5;}

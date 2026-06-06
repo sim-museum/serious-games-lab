@@ -100,9 +100,15 @@
       this.manualBots = !!opts.manualBots;   // when true, caller paces bot turns
       this.awaitingBot = -1;                 // seat a bot is about to act from
 
-      const lineup = makeRandomLineup(this.rng).slice(0, opts.numBots || 5);
-      this.players = [new Player('Hero (You)', 'human', 0)]
-        .concat(lineup.map((x, i) => new Player(x[0], x[1], i + 1)));
+      if (opts.seats && opts.seats.length >= 2) {
+        // explicit lineup: [{name, style}] — style 'human' or a bot style id.
+        // Used by hotseat (multiple human seats) and custom tables.
+        this.players = opts.seats.map((s, i) => new Player(s.name, s.style, i));
+      } else {
+        const lineup = makeRandomLineup(this.rng).slice(0, opts.numBots || 5);
+        this.players = [new Player('Hero (You)', 'human', 0)]
+          .concat(lineup.map((x, i) => new Player(x[0], x[1], i + 1)));
+      }
 
       this.deck = [];
       this.board = [];

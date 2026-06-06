@@ -63,8 +63,17 @@ range-mode radio (opps weak / neutral / strong), EV-tagged action buttons, and
 the 3×3 decision dashboard (MDF, bluff-catch, range advantage, reverse-implied,
 Nash push, realized equity, VPIP/PFR/AGF, tilt, risk-of-ruin).
 
+**Hotseat multiplayer (Players menu)** — pass-and-play on one device. Set each
+of the 6 seats to a Human (with a name) or a bot; two or more humans turns on a
+privacy gate ("pass the device to X — show my cards") that hides every hole card
+between turns and reveals only the acting player's. The engine already stops at
+each human seat; the controller generalises the act/advisor/equity path from
+"seat 0" to the acting seat, so each player gets their own no-peek advisor too.
+
 **Intentionally dropped** (cannot run in a sandboxed single file):
-- **LAN multiplayer** — browsers can't open raw TCP sockets.
+- **Remote/LAN multiplayer** — browsers can't open raw TCP sockets (a WebSocket
+  or WebRTC build with a small server could do remote play; hotseat covers
+  same-device play with zero infrastructure).
 - **Claude hand-analysis** — relied on shelling out to the `claude` CLI.
 - **TexasSolver** — 86 MB bundled C++ binary, never invoked by the app anyway.
 

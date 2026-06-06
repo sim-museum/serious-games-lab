@@ -58,6 +58,11 @@
       // Analytics (equity/advisor/[STATS]) must NOT consume the game's deck RNG
       // — otherwise computing them would perturb the actual deal/bot decisions.
       this.auxRng = opts.auxRng || Math.random;
+      // hotseat (pass-and-play): >1 human seat on one device. `armed` gates the
+      // reveal so the next player must tap "show my cards" before they see them.
+      this.hotseat = false;
+      this.humanSeats = new Set([0]);
+      this.armed = true;
 
       this.game = new PG.Game({
         rng: opts.rng || Math.random,
@@ -70,10 +75,20 @@
 
     streetName() { return PG.STREETS[this.game.streetIdx] || 'Showdown'; }
 
+    // is a human seat currently to act?
+    humanToAct() { return this.game.awaitingAction && this.humanSeats.has(this.game.toAct); }
+    // the seat to render as "the viewer/hero" — the acting human in hotseat,
+    // else seat 0. All hero-perspective analysis keys off this.
+    heroSeat() { return this.humanToAct() ? this.game.toAct : 0; }
+    // hotseat privacy gate: a human must arm before their cards are shown.
+    get passGate() { return this.hotseat && this.humanToAct() && !this.armed; }
+    arm() { this.armed = true; this.stats.actionStarted(); this.render(); }
+
     newHand() {
       this.handResult = null;
       this.events = [];
       this.heroEquity = null;
+      if (this.hotseat) this.armed = false;   // first player must arm
       // bust-out → offer reset
       if (this.game.players.filter(p => p.stack > 0).length < 2) this.game.resetStacks();
       this.stats.bbAmount = this.game.bb();
@@ -83,6 +98,21 @@
       this.refreshHeroEquity();
       this.render();
       this.pump();
+    }
+
+    // (re)configure the table: specs = [{name, style}] (style 'human' or bot id).
+    // Enables hotseat when more than one seat is human.
+    setupPlayers(specs) {
+      this.humanSeats = new Set(specs.map((s, i) => s.style === 'human' ? i : -1).filter(i => i >= 0));
+      this.hotseat = this.humanSeats.size > 1;
+      this.game = new PG.Game({
+        rng: this.opts.rng || Math.random, godMode: this.godMode, manualBots: true,
+        seats: specs, botDecide: (g, p) => PB.decide(g, p),
+        onEvent: (t, payload) => this.onGameEvent(t, payload),
+      });
+      this.prevBlindLevel = 0;
+      this.armed = !this.hotseat;
+      this.newHand();
     }
 
     onGameEvent(type, payload) {
@@ -248,7 +278,7 @@
 
     // hero's live equity vs the active field (used for readouts/EV)
     refreshHeroEquity() {
-      const hero = this.game.players[0];
+      const hero = this.game.players[this.heroSeat()];
       if (!hero.active || !hero.hand.length) { this.heroEquity = null; return; }
       const opps = this.game.activePlayers().filter(p => p !== hero).length || 1;
       this.heroEquity = E.equityVsRandom(hero.hand, this.game.board,
@@ -257,7 +287,7 @@
 
     // advisor readout for the hero panel
     advisor() {
-      const hero = this.game.players[0];
+      const hero = this.game.players[this.heroSeat()];
       if (!hero.active || !hero.hand.length) return null;
       const g = this.game;
       const toCall = Math.max(0, g.currentBet - hero.betInRound);
@@ -274,7 +304,7 @@
       return {
         equity: eq, potOdds, toCall,
         evFold: 0, evCall, evRaise,
-        board, posLabel: g.positionOf(0),
+        board, posLabel: g.positionOf(this.heroSeat()),
         verdict: this.verdict(eq, potOdds, evCall, evRaise, toCall),
       };
     }
@@ -287,12 +317,13 @@
       return 'Fold — no profitable continue';
     }
 
-    // hero acts
+    // the acting human seat plays
     act(action, amount) {
-      if (!this.game.awaitingAction || this.game.toAct !== 0) return;
+      if (!this.humanToAct()) return;
+      const seat = this.game.toAct;
       this.stats.actionFinished();
-      // record hero into opponent-agnostic feed already handled by engine log
-      this.game.applyAction(0, action, amount);
+      this.game.applyAction(seat, action, amount);
+      if (this.hotseat) this.armed = false;   // re-gate for the next player
       this.heroEquity = null;
       if (this.game.handInProgress) this.refreshHeroEquity();
       this.render();
@@ -304,15 +335,21 @@
     // used by the headless tests) or step it on a timer so play is watchable.
     pump() {
       const g = this.game;
-      if (g.awaitingAction && g.toAct === 0) { this.stats.actionStarted(); this.render(); return; }
+      if (this.humanToAct()) {
+        // hotseat: wait on the privacy gate until the player arms; otherwise
+        // it's this human's turn to act.
+        if (!this.passGate) this.stats.actionStarted();
+        this.render();
+        return;
+      }
       if (g.handInProgress && g.awaitingBot >= 0) {
         if (this.botDelayMs <= 0) {
           let guard = 0;
-          while (g.handInProgress && g.awaitingBot >= 0 && !(g.awaitingAction && g.toAct === 0)) {
+          while (g.handInProgress && g.awaitingBot >= 0 && !this.humanToAct()) {
             if (++guard > 500) break;
             g.stepBot();
           }
-          if (g.awaitingAction && g.toAct === 0) this.stats.actionStarted();
+          if (this.humanToAct() && !this.passGate) this.stats.actionStarted();
           this.render();
           return;
         }
@@ -367,17 +404,18 @@
       }
       let style = 'n/a yet (need a few hands of sample)';
       if (n >= 6) { const vp = 100 * v / n, pf = 100 * p / n; const tag = vp < 20 ? 'TIGHT' : vp < 35 ? 'NORMAL' : 'LOOSE'; style = `<b>${tag}</b> · field VPIP ${vp.toFixed(0)}%, PFR ${pf.toFixed(0)}% · n=${n}`; }
-      // hero image
+      // acting player's image (their own session VPIP/PFR)
       let image = 'no sample yet';
-      const hs = this.oppModel.stats['Hero (You)'];
-      if (hs && hs.hands >= 3) { const vp = 100 * (hs.vpip || 0) / hs.hands, pf = 100 * (hs.pfr || 0) / hs.hands; const tag = vp < 20 ? 'TIGHT image' : vp < 35 ? 'balanced image' : 'LOOSE image'; const tail = vp < 20 ? 'they fold to your bets, fold-equity is high' : vp < 35 ? 'standard respect' : 'they call you down — value-bet thin, bluff less'; image = `<b>${tag}</b> · your VPIP ${vp.toFixed(0)}% / PFR ${pf.toFixed(0)}% · ${tail}`; }
+      const heroName = this.game.players[this.heroSeat()].name;
+      const hi = this.oppModel.stats[heroName];
+      if (hi && hi.hands >= 3) { const vp = 100 * (hi.vpip || 0) / hi.hands, pf = 100 * (hi.pfr || 0) / hi.hands; const tag = vp < 20 ? 'TIGHT image' : vp < 35 ? 'balanced image' : 'LOOSE image'; const tail = vp < 20 ? 'they fold to your bets, fold-equity is high' : vp < 35 ? 'standard respect' : 'they call you down — value-bet thin, bluff less'; image = `<b>${tag}</b> · your VPIP ${vp.toFixed(0)}% / PFR ${pf.toFixed(0)}% · ${tail}`; }
       const posMap = { UTG: '<b style="color:#ff7777">EARLY</b> — act first; play tight.', MP: '<b style="color:#ffd966">MIDDLE</b> — neutral.', CO: '<b style="color:#88ff88">LATE</b> — second-best seat; wide opens profitable.', BTN: '<b style="color:#88ff88">LATE</b> — best seat; widest open range.', SB: '<b style="color:#ff7777">BLIND</b> — out of position post-flop; -EV seat.', BB: '<b style="color:#ff7777">BLIND</b> — out of position post-flop; -EV seat.' };
-      return { style, ranges: 'see per-bot tabs — each opponent\'s estimated range narrows as the betting progresses', image, position: posMap[this.game.positionOf(0)] || 'n/a' };
+      return { style, ranges: 'see per-bot tabs — each opponent\'s estimated range narrows as the betting progresses', image, position: posMap[this.game.positionOf(this.heroSeat())] || 'n/a' };
     }
 
     // Full Theory-of-Mind snapshot for the training screen.
     tomData() {
-      const T = getToMLogic(), g = this.game, hero = g.players[0];
+      const T = getToMLogic(), g = this.game, hs = this.heroSeat(), hero = g.players[hs];
       const street = this.streetName();
       const toCall = Math.max(0, g.currentBet - hero.betInRound);
       const potOdds = (g.pot + toCall) > 0 ? toCall / (g.pot + toCall) : 0;
@@ -385,7 +423,7 @@
       const mode = this.rangeMode;
 
       // per-opponent estimated ranges
-      const opponents = g.players.filter(pp => !pp.isHuman).map(pp => {
+      const opponents = g.players.filter(pp => pp.seat !== hs).map(pp => {
         const tags = this.actionTagsFor(pp.seat);
         const er = T.estimateRange(pp.style, mode, tags, g.board);
         return { name: pp.name, active: pp.active, range: er.range, notation: er.notation, explanation: er.explanation, boardHits: er.boardHits };
@@ -422,7 +460,7 @@
       const lastAggr = this.lastAggressorSeat();
       const ctx = {
         pot: g.pot, toCall, potOdds, currentBet: g.currentBet, numOpponents: oppsActive.length || 1,
-        bb: g.bb(), heroStack: hero.stack, heroPosition: g.positionOf(0), street,
+        bb: g.bb(), heroStack: hero.stack, heroPosition: g.positionOf(hs), street,
         heroHand: hero.hand, equity: equity || 0, board: g.board,
         noPeekEquity: equity, hasInitiative: lastAggr === 0,
       };
@@ -447,7 +485,7 @@
       return {
         board: g.board.slice(), heroHand: hero.hand.slice(), street,
         pot: g.pot, equityPct, potOddsLabel, impliedLabel,
-        posLong: posLongMap[g.positionOf(0)] || g.positionOf(0),
+        posLong: posLongMap[g.positionOf(hs)] || g.positionOf(hs),
         outs, scare, commit, rangeMode: this.rangeMode, tab: this.tomTab,
         opponents, advice, potOddsHeader, metrics: m,
         evCheck: toCall === 0 ? 0 : evCall, evCall, evRaise,
@@ -461,19 +499,31 @@
       return seat;
     }
 
+    // which seats' hole cards are face-up right now
+    seatReveal(seat, active) {
+      if (this.handResult && active) return true;          // showdown: all in reveal
+      if (this.godMode) return true;
+      if (this.hotseat) return this.armed && seat === this.game.toAct && this.humanSeats.has(seat);
+      // single-player: hero (seat 0) always; villains after hero folds
+      const heroFolded = !this.game.players[0].active && this.game.handInProgress;
+      return this.humanSeats.has(seat) || heroFolded;
+    }
+
     // full game-state snapshot for the view
     snapshot() {
-      const g = this.game;
-      // Once the hero folds (or in god mode), reveal villain cards + tells for
-      // the rest of the hand so you can study how it plays out.
-      const heroFolded = !g.players[0].active && g.handInProgress;
+      const g = this.game, hs = this.heroSeat();
+      // Once the (single-player) hero folds (or god mode), reveal villains + tells.
+      const heroFolded = !this.hotseat && !g.players[0].active && g.handInProgress;
       const revealVillains = this.godMode || heroFolded;
       const showTellsEff = this.showTells || heroFolded;
+      const armedHuman = this.humanToAct() && (!this.hotseat || this.armed);
       return {
         players: g.players.map(p => ({
           seat: p.seat, name: p.name, style: p.style, stack: p.stack,
           bet: p.betInRound, active: p.active, allIn: p.allIn,
           isHuman: p.isHuman, hand: p.hand.slice(), lastAction: p.lastAction,
+          reveal: this.seatReveal(p.seat, p.active),
+          isActiveSeat: this.hotseat ? (g.toAct === p.seat && this.humanSeats.has(p.seat)) : p.isHuman,
           pos: g.positionOf(p.seat),
           isDealer: p.seat === g.dealerIdx, isTurn: g.toAct === p.seat,
           leak: (showTellsEff && !p.isHuman) ? this.oppModel.biggestLeak(p.name) : null,
@@ -484,9 +534,11 @@
         board: g.board.slice(),
         pot: g.pot, street: this.streetName(),
         handNumber: g.handNumber, sb: g.sb(), bb: g.bb(),
-        awaitingHero: g.awaitingAction && g.toAct === 0,
-        legal: (g.awaitingAction && g.toAct === 0) ? g.legalActions(0) : null,
-        advisor: (g.awaitingAction && g.toAct === 0) ? this.advisor() : null,
+        hotseat: this.hotseat, passGate: this.passGate,
+        activeName: g.players[g.toAct] ? g.players[g.toAct].name : '',
+        awaitingHero: armedHuman,
+        legal: armedHuman ? g.legalActions(g.toAct) : null,
+        advisor: armedHuman ? this.advisor() : null,
         events: this.events.slice(),
         handResult: this.handResult,
         revealVillains, heroFolded,
@@ -532,6 +584,7 @@
           </div>
           <div class="piq-menu">
             <label class="train-toggle" id="piq-train"><span class="tt-knob"></span><span class="tt-lab">Training</span></label>
+            <button data-act="players" class="ghost">Players</button>
             <button data-act="tells" class="ghost">Tells</button>
             <button data-act="god" class="ghost">God</button>
             <button data-act="trainers" class="ghost">Trainers ▾</button>
@@ -553,6 +606,7 @@
           </div>
         </div>
         <div class="tom-view" id="piq-tomview" style="display:none"></div>
+        <div class="piq-gate" id="piq-gate" style="display:none"></div>
         <div class="piq-footer"><div class="piq-actions" id="piq-actions"></div></div>
         <div class="piq-modal" id="piq-modal" style="display:none"></div>`;
       this.el = {
@@ -569,6 +623,7 @@
         modal: this.root.querySelector('#piq-modal'),
         tableView: this.root.querySelector('#piq-tableview'),
         tomView: this.root.querySelector('#piq-tomview'),
+        gate: this.root.querySelector('#piq-gate'),
         train: this.root.querySelector('#piq-train'),
       };
       this.root.querySelector('.piq-menu').addEventListener('click', e => {
@@ -591,10 +646,26 @@
       this.el.session.textContent = `Session ${s.session.hands}h · ${s.session.bb100 >= 0 ? '+' : ''}${s.session.bb100.toFixed(1)} bb/100`;
       this.el.train.classList.toggle('on', s.training);
 
+      // hotseat privacy gate covers everything until the next player arms
+      if (s.passGate) {
+        this.el.gate.style.display = 'flex';
+        this.el.gate.innerHTML = `<div class="gate-card">
+          <div class="gate-icon">🂠</div>
+          <div class="gate-pass">Pass the device to</div>
+          <div class="gate-name">${escapeHTML(s.activeName)}</div>
+          <div class="gate-sub">Everyone else: look away.</div>
+          <button class="btn check gate-go" id="piq-arm">I'm ${escapeHTML(s.activeName)} — show my cards</button>
+        </div>`;
+        const arm = this.root.querySelector('#piq-arm');
+        if (arm) arm.onclick = () => this.ctrl.arm();
+      } else {
+        this.el.gate.style.display = 'none';
+      }
+
       if (s.training) {
         this.el.tableView.style.display = 'none';
-        this.el.tomView.style.display = 'block';
-        this.el.tomView.innerHTML = getToM().render(s.tom);
+        this.el.tomView.style.display = s.passGate ? 'none' : 'block';
+        if (!s.passGate) this.el.tomView.innerHTML = getToM().render(s.tom);
       } else {
         this.el.tomView.style.display = 'none';
         this.el.tableView.style.display = 'flex';
@@ -610,6 +681,7 @@
       // shared action footer (with EV labels in training mode)
       this.el.actions.innerHTML = '';
       if (s.handResult) this.buildEndActions(s);
+      else if (s.passGate) this.el.actions.innerHTML = `<span class="muted">🂠 waiting for ${escapeHTML(s.activeName)} to take the device…</span>`;
       else if (s.awaitingHero && s.legal) this.buildActions(s.legal, s.training ? s.tom : null);
       else this.el.actions.innerHTML = '<span class="muted">…bots acting</span>';
 
@@ -623,9 +695,16 @@
 
     buildEndActions(s) {
       const wrap = this.el.actions;
-      const heroNet = (s.handResult.net.find(n => n.seat === 0) || { net: 0 }).net;
-      const lbl = document.createElement('span'); lbl.className = 'end-net ' + (heroNet >= 0 ? 'pos' : 'neg');
-      lbl.textContent = `Hand #${s.handNumber}: you ${heroNet >= 0 ? 'win' : 'lose'} $${Math.abs(heroNet)}`;
+      const lbl = document.createElement('span');
+      if (s.hotseat) {
+        const winners = s.handResult.net.filter(n => s.handResult.payouts[n.seat] > 0);
+        lbl.className = 'end-net pos';
+        lbl.textContent = `Hand #${s.handNumber}: ${winners.map(w => `${w.name} +$${w.net}`).join(', ') || 'split'}`;
+      } else {
+        const heroNet = (s.handResult.net.find(n => n.seat === 0) || { net: 0 }).net;
+        lbl.className = 'end-net ' + (heroNet >= 0 ? 'pos' : 'neg');
+        lbl.textContent = `Hand #${s.handNumber}: you ${heroNet >= 0 ? 'win' : 'lose'} $${Math.abs(heroNet)}`;
+      }
       const sum = document.createElement('button'); sum.className = 'btn summary'; sum.textContent = 'Hand summary';
       sum.onclick = () => this.showHandSummary(this.ctrl.lastHistory);
       const next = document.createElement('button'); next.className = 'btn next'; next.textContent = 'Next hand →';
@@ -634,7 +713,7 @@
     }
 
     seatHTML(p, s) {
-      const reveal = p.isHuman || s.revealVillains || (s.handResult && p.active);
+      const reveal = p.reveal;
       const cards = p.hand.length
         ? p.hand.map(c => cardHTML(c, !reveal)).join('')
         : '<span class="card empty"></span><span class="card empty"></span>';
@@ -644,7 +723,7 @@
       const tells = p.leak ? `<div class="leak">⚑ ${escapeHTML(p.leak)}</div>` : '';
       const range = p.range ? `<div class="range">range: ${escapeHTML(p.range)}</div>` : '';
       const lvl = (p.level != null) ? `<span class="lvl" title="levels of thinking">L${p.level}</span>` : '';
-      return `<div class="seat ${p.active ? '' : 'folded'} ${p.isTurn ? 'turn' : ''} ${p.isHuman ? 'hero' : ''}">
+      return `<div class="seat ${p.active ? '' : 'folded'} ${p.isTurn ? 'turn' : ''} ${p.isActiveSeat ? 'hero' : ''}">
         <div class="seat-head"><span class="seat-name">${escapeHTML(p.name)}</span> ${tags.join(' ')} ${lvl}</div>
         <div class="seat-cards">${cards}</div>
         <div class="seat-foot"><span class="stack">$${p.stack}</span>${p.bet > 0 ? `<span class="bet">bet $${p.bet}</span>` : ''}${p.allIn ? '<span class="allin">ALL-IN</span>' : ''}</div>

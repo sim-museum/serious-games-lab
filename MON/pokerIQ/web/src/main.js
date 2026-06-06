@@ -117,7 +117,54 @@
       view.showModal(card);
     }
 
+    // Players / hotseat setup — assign each seat Human (with a name) or a bot.
+    function openPlayers() {
+      const styles = [['human', 'Human'], ['tight', 'Tight Tim (bot)'], ['loose', 'Loose Bruce (bot)'],
+        ['aggressive', 'Aggro Angela (bot)'], ['shark', 'Sharkey Steve (bot)'], ['tom', 'Fluid Fiona (bot)'],
+        ['optimal', 'Optimal (bot)'], ['exploit', 'Exploit (bot)'], ['icm', 'ICM (bot)'], ['station', 'Station (bot)'],
+        ['piq_basic_equity', 'Equity Eddie (bot)'], ['piq_improved_equity', 'Savvy Sarah (bot)']];
+      const cur = ctrl.game.players;
+      const card = document.createElement('div'); card.className = 'modal-card';
+      card.innerHTML = `<h2>Players — hotseat &amp; bots</h2>
+        <div class="sub">Set each seat to a Human (pass-and-play on this device) or a bot. Two or more humans enables the privacy gate between turns.</div>
+        <div class="players-grid" id="pg"></div>
+        <div class="modal-actions"></div>`;
+      const grid = card.querySelector('#pg');
+      for (let i = 0; i < 6; i++) {
+        const p = cur[i];
+        const isHuman = !p || p.style === 'human';
+        const row = document.createElement('div'); row.className = 'pg-row';
+        row.innerHTML = `<span class="pg-seat">Seat ${i + 1}</span>
+          <select class="pg-style" data-i="${i}">${styles.map(([v, l]) => `<option value="${v}" ${p && p.style === v ? 'selected' : (!p && i > 0 && v === defaultBotFor(i) ? 'selected' : (!p && i === 0 && v === 'human' ? 'selected' : ''))}>${l}</option>`).join('')}</select>
+          <input class="pg-name" data-i="${i}" value="${p ? p.name.replace(/"/g, '') : (i === 0 ? 'Hero (You)' : 'Player ' + (i + 1))}" placeholder="name">`;
+        grid.appendChild(row);
+      }
+      const sync = () => grid.querySelectorAll('.pg-row').forEach(r => {
+        const sel = r.querySelector('.pg-style'), nm = r.querySelector('.pg-name');
+        nm.disabled = sel.value !== 'human';
+        if (sel.value !== 'human') nm.value = botName(sel.value);
+      });
+      grid.addEventListener('change', sync); sync();
+      const start = document.createElement('button'); start.className = 'btn check'; start.textContent = 'Start table';
+      start.onclick = () => {
+        const specs = [...grid.querySelectorAll('.pg-row')].map((r, i) => {
+          const style = r.querySelector('.pg-style').value;
+          const name = style === 'human' ? (r.querySelector('.pg-name').value.trim() || ('Player ' + (i + 1))) : botName(style);
+          return { name, style };
+        });
+        view.closeModal();
+        ctrl.setupPlayers(specs);
+      };
+      const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Cancel';
+      close.onclick = () => view.closeModal();
+      card.querySelector('.modal-actions').append(start, close);
+      view.showModal(card);
+    }
+    function botName(style) { return (root.PokerGame.CUTE_NAMES[style]) || 'Bot'; }
+    function defaultBotFor() { return 'tight'; }
+
     view.onMenu = (act) => {
+      if (act === 'players') { openPlayers(); return; }
       if (act === 'trainers') {
         view.popupMenu('trainers', Object.keys(PT.REGISTRY).map(k => [PT.REGISTRY[k].label, () => openTrainer(k)]));
       } else if (act === 'stats') {
