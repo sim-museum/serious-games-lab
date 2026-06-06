@@ -58,7 +58,7 @@ AB_REF_FILE = BIQ_ROOT / "tools/runs/ab/ab_reference.json"  # Run-A deal id
 # Bump this on any user-visible behaviour change. It's shown in the title
 # bar AND logged on startup, so you can tell at a glance whether a freshly
 # launched panel actually has the latest fix (no more "did it reload?").
-PANEL_BUILD = "2026-06-05b · double-pair + closed-room split + 4-computer autoclicker"
+PANEL_BUILD = "2026-06-05c · Run-B auto-infers the A reference from the last run"
 # Fixed seed for 'reproducible random' systems — both A and B pass the same
 # value so they draw identical per-deal systems on identical boards.
 REPRO_SYS_SEED = 20260604
@@ -685,9 +685,10 @@ class LiveMatchWidget(QWidget):
         self.ab_combo.setToolTip(
             "Run A loads the baseline bidder and auto-locks this run's "
             "deal-set as the reference. Run B loads the candidate bidder and "
-            "checks deal 1 against that reference, warning immediately on a "
-            "mismatch. Off = a normal single run. While A or B is selected "
-            "the system dropdowns are frozen so both runs match.")
+            "checks deal 1 against that reference — and if you didn't label "
+            "the previous run 'Run A', it infers the reference from the last "
+            "run's log automatically. Off = a normal single run. While A or B "
+            "is selected the system dropdowns are frozen so both runs match.")
         abtop.addWidget(self.ab_combo, 1)
         self.lbl_bidder = QLabel("bidder: —")
         self.lbl_bidder.setStyleSheet("font-weight:bold;")
@@ -1058,6 +1059,27 @@ class LiveMatchWidget(QWidget):
         except OSError:
             pass
 
+    def _infer_ab_ref_from_last_run(self):
+        """Recover the (seed, start_board) of the most recent run from its biq
+        log, so Run B can lock onto the previous run even when it wasn't
+        explicitly labelled 'Run A'. Checks the live biq logs, then the newest
+        saved run log; returns the first that carries a new_deal, else None."""
+        cands = [BIQ_N_LOG, BIQ_E_LOG, BIQ_LOG]
+        try:
+            cands += sorted((BIQ_ROOT / "tools/runs/ab").glob("run_*.log"),
+                            key=lambda p: p.stat().st_mtime, reverse=True)
+        except OSError:
+            pass
+        for p in cands:
+            try:
+                txt = Path(p).read_text(errors="replace")
+            except OSError:
+                continue
+            m = re.search(r'new_deal_pbn"?\s*\[[NESW]\s+(\d+)\s+(\d+)\]', txt)
+            if m:
+                return (str(m.group(2)), int(m.group(1)))
+        return None
+
     def _refresh_ab_ref_label(self):
         if not hasattr(self, "lbl_abref"):
             return
@@ -1067,7 +1089,8 @@ class LiveMatchWidget(QWidget):
                 f"{self._ab_ref[1]}")
             self.lbl_abref.setStyleSheet("color:#06c;")
         else:
-            self.lbl_abref.setText("Run-A ref: (not set — do Run A first)")
+            self.lbl_abref.setText("Run-A ref: none yet "
+                                   "(set on the first run, or inferred for B)")
             self.lbl_abref.setStyleSheet("color:#888;")
 
     def _clear_ab_ref(self):
@@ -1185,15 +1208,33 @@ class LiveMatchWidget(QWidget):
             self._ab_mode = "B"
             self._update_bidder_indicator(self._set_ab_bidder("candidate"))
             self._set_systems_locked(True)
+            # Smart: if no reference is set, recover it from the saved file,
+            # else infer it from the last run's log — so you can run B without
+            # having explicitly labelled the previous run 'Run A'.
+            if self._ab_ref is None:
+                ref = self._load_ab_ref() or self._infer_ab_ref_from_last_run()
+                if ref:
+                    self._ab_ref = ref
+                    self._save_ab_ref(ref[0], ref[1])
+                    self._refresh_ab_ref_label()
+                    self._append(
+                        f"[ab] Run B — inferred the reference from the last "
+                        f"run: seed {ref[0]}, start board {ref[1]}. Set Q-Plus "
+                        f"Match Control major={ref[0]}, minor={ref[1]} to "
+                        f"replay the same deals.")
             if self._ab_ref is None:
                 QMessageBox.information(
-                    self, "No Run-A reference yet",
-                    "Do Run A first — it auto-locks its deal-set. Run B is "
-                    "then checked against it on deal 1.")
+                    self, "No previous run to compare against",
+                    "Run B replays the previous run's deals and diffs them — "
+                    "but I couldn't find a previous run to lock onto (no saved "
+                    "reference, and no readable last-run log).\n\n"
+                    "Just play a deck once first: any completed run is captured "
+                    "automatically as the reference — you don't have to label "
+                    "it 'Run A'.")
             else:
-                self._append(f"[ab] Run B — candidate bidder; guard armed "
-                             f"against Run-A ref (seed {self._ab_ref[0]}, "
-                             f"board {self._ab_ref[1]}).")
+                self._append(
+                    f"[ab] Run B — candidate bidder; guard armed against "
+                    f"seed {self._ab_ref[0]} / start board {self._ab_ref[1]}.")
         else:
             self._ab_mode = None
             self._set_systems_locked(False)
