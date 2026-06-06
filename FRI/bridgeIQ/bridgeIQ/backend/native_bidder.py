@@ -6903,6 +6903,31 @@ def _overcall_over_preempt(state, e: HandEval, system) -> Bid:
                    why=f"{level}{best_suit.to_char()} overcall over "
                        f"{op.level}{opener_suit.to_char()} preempt")
 
+    # Distributional overcall — a 6+ suit that lands CHEAPLY at the 3-level
+    # (outranks the preempt) with real shape (short in opener's suit OR a 5+
+    # second suit) competes on length + playing tricks even with a weak suit
+    # and modest HCP. A 6-5 or void-in-their-suit hand has the tricks; passing
+    # it sells out a likely game. Only at the 3-level (cheap) and 8-13 HCP
+    # (above that the strict overcall / double already fired). (2428-19:
+    # Q97642 + void clubs + AJT83, 9 HCP, over 3C → 3S.)
+    if best_suit is None and 8 <= hcp <= 13:
+        short_op = e.suit_lengths[opener_suit] <= 1
+        dist = None
+        for s in unbid:
+            if (e.suit_lengths[s] >= 6
+                    and _BID_RANK[s] > _BID_RANK[opener_suit]):
+                second = any(e.suit_lengths[o] >= 5 for o in unbid if o != s)
+                if short_op or second:
+                    if dist is None or e.suit_lengths[s] > e.suit_lengths[dist]:
+                        dist = s
+        if dist is not None:
+            cand = bid(op.level, dist,
+                       why=f"{op.level}{dist.to_char()} distributional overcall "
+                           f"({e.suit_lengths[dist]}-card + shape) over "
+                           f"{op.level}{opener_suit.to_char()} preempt")
+            if _is_legal_bid(cand, state):
+                return cand
+
     # Takeout double — three flavours, looser as HCP go up:
     #   • Strict (15+): ≤2 in opener's suit, ≥3 in every unbid suit.
     #   • Strong (17+): ≤3 in opener's suit, 4+ cards in some major,

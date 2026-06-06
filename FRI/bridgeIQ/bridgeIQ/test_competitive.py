@@ -76,8 +76,8 @@ def call_for(dealer, vul, prefix, seat, hand, system):
 # (label, dealer, vul, prefix, seat, hand, system, current, {desired}, note)
 CASES = [
     ("2428-19 S overcall 3C preempt", "E", "NS", "3c", "S",
-     "Q97642.A3.AJT83.", "TwoOverOne", "P", {"3S", "X"},
-     "U1: 6-card spade suit must compete over a 3C preempt (ddNS=11 game)"),
+     "Q97642.A3.AJT83.", "TwoOverOne", "3S", {"3S", "X"},
+     "U1 FIXED: 6-5 + void-in-their-suit → distributional 3S overcall"),
     ("2428-25 S act over 1S-2S w/ 15", "W", "None", "1s p 2s", "S",
      "A76.AK9.J84.AQ86", "TwoOverOne", "P", {"2N", "X"},
      "U2: 15 HCP balanced + spade stopper must double/2NT, not pass"),
