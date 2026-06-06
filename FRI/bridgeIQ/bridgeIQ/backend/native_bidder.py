@@ -2614,6 +2614,30 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
                 if _is_legal_bid(law_bid, state):
                     return law_bid
 
+        # 2h. Double discipline — suppress catastrophic competitive doubles.
+        # biq's doubles were 5-for-5 LOSING live (seq-run buckets): it
+        # re-routes a doubler back through the overcall logic and doubles a
+        # SECOND time, often after the opponents have already redoubled
+        # (3928-86: X-(XX)-2S-X-(XX) → 2S redoubled made, -2440). Two rules,
+        # both near-always right: (a) never double after an opponent has
+        # redoubled in this auction; (b) never make a second takeout-style
+        # double when partner hasn't made a positive (non-pass) call. Convert
+        # to pass — sitting beats doubling into shown strength.
+        if raw.is_double:
+            opp_redoubled = any(
+                b.is_redouble and s not in (state.seat, state.seat.partner())
+                for s, b in state.bids)
+            my_prior_double = any(b.is_double for b in state.my_bids)
+            partner_acted = any(
+                not b.is_pass and not b.is_double and not b.is_redouble
+                for b in state.partner_bids)
+            # Only suppress when partner is SILENT — a partner who has shown
+            # values may legitimately want the (penalty) double to stand.
+            if (opp_redoubled or my_prior_double) and not partner_acted:
+                return passb(why="Double discipline: don't double into a "
+                                 "redouble / don't repeat a takeout double "
+                                 "without partner support")
+
         return raw
     except Exception:
         # Defensive — never raise from the wrapper.
@@ -6407,6 +6431,24 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
             return bid(3, my_major,
                        why=f"3{my_major.to_char()}: 11-12 + 5+ "
                            f"own suit (invitational jump rebid)")
+        # 13+ HCP = game-forcing opposite opener's opening — NEVER pass.
+        # Show a 5+ second suit (new-suit force), else a forcing raise of
+        # opener's minor with support, else 3NT for game. (Deal 3928-79:
+        # N 16 HCP, 4=3=1=5, passed 1D-1S-2D for +150 with a cold game.)
+        if hcp >= 13:
+            for cand in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES):
+                if (cand != op.suit and cand != my_major
+                        and e.suit_lengths.get(cand, 0) >= 5):
+                    return bid(3, cand, alert=True,
+                               why=f"3{cand.to_char()}: 13+ HCP game-force, "
+                                   f"5+ second suit after 2{op.suit.to_char()}")
+            if e.suit_lengths.get(op.suit, 0) >= 3:
+                return bid(3, op.suit, alert=True,
+                           why=f"3{op.suit.to_char()}: 13+ HCP game-forcing "
+                               f"raise of opener's minor")
+            return bid(3, Suit.NOTRUMP,
+                       why=f"3NT: 13+ HCP game values "
+                           f"(forcing past 2{op.suit.to_char()})")
         # Otherwise pass — 6-9 HCP with no game prospects.
         return passb(why=f"Pass 2{op.suit.to_char()}: 6-9 HCP, "
                          f"no game prospects")
