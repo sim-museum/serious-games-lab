@@ -1,0 +1,3 @@
+# generated cross-check fixtures (regenerate with `node validate.js`)
+pairs.json
+equity_js.json

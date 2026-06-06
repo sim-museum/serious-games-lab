@@ -36,6 +36,13 @@ PROXY_LOG = BIQ_ROOT / "tools/runs/qnet_session.log"
 BIQ_LOG = BIQ_ROOT / "tools/runs/biq_session.log"
 BIQ_N_LOG = BIQ_ROOT / "tools/runs/biq_N.log"
 BIQ_S_LOG = BIQ_ROOT / "tools/runs/biq_S.log"
+BIQ_E_LOG = BIQ_ROOT / "tools/runs/biq_E.log"   # double-pair Room 2 (biq E/W)
+BIQ_W_LOG = BIQ_ROOT / "tools/runs/biq_W.log"
+# Saved Room-1 / Room-2 logs for the double-pair board-a-match compare,
+# plus the optional all-Q-Plus baseline .qss for the closed-room decomposition.
+DP_ROOM1_LOG = BIQ_ROOT / "tools/runs/dp_room1_NS.log"
+DP_ROOM2_LOG = BIQ_ROOT / "tools/runs/dp_room2_EW.log"
+DP_BASELINE_QSS = BIQ_ROOT / "tools/runs/dp_baseline_allqp.qss"
 SERVER_PORT, PROXY_PORT = 5555, 5556
 SYSTEMS = ["SAYC", "TwoOverOne", "StandardAcol", "StandardFrench",
            "Precision90M"]
@@ -51,7 +58,7 @@ AB_REF_FILE = BIQ_ROOT / "tools/runs/ab/ab_reference.json"  # Run-A deal id
 # Bump this on any user-visible behaviour change. It's shown in the title
 # bar AND logged on startup, so you can tell at a glance whether a freshly
 # launched panel actually has the latest fix (no more "did it reload?").
-PANEL_BUILD = "2026-06-04h · two-panel landscape + live deal-name list"
+PANEL_BUILD = "2026-06-05c · Run-B auto-infers the A reference from the last run"
 # Fixed seed for 'reproducible random' systems — both A and B pass the same
 # value so they draw identical per-deal systems on identical boards.
 REPRO_SYS_SEED = 20260604
@@ -99,6 +106,23 @@ UTILITIES (third row)
   Aggregate (.qss)       Re-score from the newest .qss (no new export).
   Calibrate / edit captures...   Show + edit every click position the harness
         uses; Capture re-sets one via a 5s countdown (live mouse readout).
+
+DOUBLE-PAIR VALIDATION (section 2b)  — the unbiased teams test
+  Play the SAME deck twice with biq on opposite sides, so card luck cancels:
+    Room 1 (biq side = N/S)  biq N/S vs Q-Plus E/W  → run, ‘Save run → Room 1’
+    Room 2 (biq side = E/W)  Q-Plus N/S vs biq E/W  → run, ‘Save run → Room 2’
+  Set Q-Plus’s Extern seats to match the room (Config ▸ Players); for Room 2
+  that’s INVERTED (N/S=Computer, E/W=Extern — the auto East-reset is skipped).
+  ‘Compare rooms → IMP’ scores board-a-match: IMP(Room1_NS − Room2_NS) per
+  board; positive net = biq AHEAD. Acceptance bar: biq ahead in all 4 cases
+  {both SAYC, both Precision} × {random, slam-eligible}. Needs biq+biq mode.
+  Optional baseline (R3) for the closed-room split: ‘Run 4-comp autoclicker’
+  drives an all-Q-Plus run on the SAME deck with NO network log (it clicks the
+  cycle button whenever the screen settles — set Q-Plus to all-Computer, load
+  the deck, calibrate the watch region first). Export its .qss, ‘Export .qss →
+  baseline’, and Compare then ALSO prints the N/S-side vs E/W-side edges so you
+  can see which pair carries biq’s advantage (the baseline cancels from the
+  total, so it only splits it — never shifts the verdict).
 
 OPTIONS
   biq+biq (N+S Extern)   Run biq as BOTH North and South (partnership test).
@@ -621,15 +645,19 @@ class LiveMatchWidget(QWidget):
         # ===== 1 ▏ Bidding systems =====
         sys_box = QGroupBox("1 ▏ Bidding systems")
         sh = QHBoxLayout(sys_box)
-        _SYS_OPTS = ["random"] + _SYS_NAMES
+        _SYS_OPTS = ["sequential", "random"] + _SYS_NAMES
         self.ns_sys = QComboBox(); self.ns_sys.addItems(_SYS_OPTS)
         self.ew_sys = QComboBox(); self.ew_sys.addItems(_SYS_OPTS)
         self.ns_sys.setCurrentText("SAYC")
         self.ew_sys.setCurrentText("SAYC")
-        _systip = ("random = a fresh random system for this side each deal, "
-                   "or pick one fixed system for the whole run. N/S and E/W "
-                   "independent. Frozen while an A/B run is selected so both "
-                   "runs use identical systems.")
+        _systip = ("sequential = step the 5 systems by deal number "
+                   "(1 2 3 4 5 1 2 3 4 5 …) — repeatable with NO seed, so the "
+                   "SAME boards get the SAME systems every run (the clean A/B "
+                   "basis). When BOTH sides are sequential the pair sweeps as "
+                   "an odometer: N/S holds while E/W runs 1-5, then N/S steps "
+                   "(all 25 pairings).  random = a fresh random system each "
+                   "deal.  Or pick one fixed system for the whole run. N/S and "
+                   "E/W independent. Frozen during an A/B so both runs match.")
         self.ns_sys.setToolTip(_systip)
         self.ew_sys.setToolTip(_systip)
         sh.addWidget(QLabel("N/S")); sh.addWidget(self.ns_sys)
@@ -638,10 +666,10 @@ class LiveMatchWidget(QWidget):
         sh.addStretch(1)
         self.repro_random = QCheckBox("🔒 reproducible random")
         self.repro_random.setToolTip(
-            "When a side is 'random': seed the per-deal system choice so Run "
-            "A and Run B draw the SAME systems on the same boards (a clean "
-            "A/B across varied systems). Off = free random (fine for "
-            "exploration, NOT for an A/B).")
+            "Only affects the 'random' mode: seed the per-deal choice so Run "
+            "A and Run B draw the SAME random systems on the same boards. "
+            "'sequential' is already repeatable with no seed, so leave this "
+            "unticked when using it.")
         sh.addWidget(self.repro_random)
         root.addWidget(sys_box)
 
@@ -657,9 +685,10 @@ class LiveMatchWidget(QWidget):
         self.ab_combo.setToolTip(
             "Run A loads the baseline bidder and auto-locks this run's "
             "deal-set as the reference. Run B loads the candidate bidder and "
-            "checks deal 1 against that reference, warning immediately on a "
-            "mismatch. Off = a normal single run. While A or B is selected "
-            "the system dropdowns are frozen so both runs match.")
+            "checks deal 1 against that reference — and if you didn't label "
+            "the previous run 'Run A', it infers the reference from the last "
+            "run's log automatically. Off = a normal single run. While A or B "
+            "is selected the system dropdowns are frozen so both runs match.")
         abtop.addWidget(self.ab_combo, 1)
         self.lbl_bidder = QLabel("bidder: —")
         self.lbl_bidder.setStyleSheet("font-weight:bold;")
@@ -679,6 +708,69 @@ class LiveMatchWidget(QWidget):
         abrow.addStretch(1)
         abv.addLayout(abrow)
         root.addWidget(ab_box)
+
+        # ===== 2b ▏ Double-pair validation (board-a-match) =====
+        dp_box = QGroupBox("2b ▏ Double-pair validation  (biq vs Q-Plus, "
+                           "cards swapped → board-a-match)")
+        dpv = QVBoxLayout(dp_box)
+        dptop = QHBoxLayout()
+        dptop.addWidget(QLabel("biq side:"))
+        self.dp_side = QComboBox()
+        self.dp_side.addItems(["N/S  (Room 1)", "E/W  (Room 2)"])
+        self.dp_side.setToolTip(
+            "Which side biq sits for THIS run. Play the SAME deck twice:\n"
+            "  Room 1 — biq N/S vs Q-Plus E/W   (Q-Plus: N/S=Extern, E/W=Computer)\n"
+            "  Room 2 — biq E/W vs Q-Plus N/S   (Q-Plus: E/W=Extern, N/S=Computer)\n"
+            "biq holds both pairs over the two rooms, so card luck cancels — "
+            "the unbiased teams test. Requires biq+biq (pair) mode.")
+        dptop.addWidget(self.dp_side, 1)
+        self.b_dp_save = QPushButton("Save run → Room 1")
+        self.b_dp_save.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.b_dp_save.setToolTip(
+            "Copy this run's biq log to the Room-1/Room-2 slot for the "
+            "board-a-match compare. Do it after each room's run finishes.")
+        dptop.addWidget(self.b_dp_save)
+        self.b_dp_cmp = QPushButton("Compare rooms → IMP")
+        self.b_dp_cmp.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.b_dp_cmp.setToolTip(
+            "Board-a-match: IMP = imp(Room1_NS − Room2_NS) per board. "
+            "Positive net = biq AHEAD. Run after both rooms are saved.")
+        dptop.addWidget(self.b_dp_cmp)
+        dpv.addLayout(dptop)
+        # Baseline row — the all-Q-Plus run (R3) for the closed-room split.
+        dpbot = QHBoxLayout()
+        dpbot.addWidget(QLabel("Baseline (all-Q-Plus, R3):"))
+        self.b_dp_4cc = QPushButton("Run 4-comp autoclicker")
+        self.b_dp_4cc.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.b_dp_4cc.setToolTip(
+            "Drive a 4-computer Q-Plus run with NO network log: clicks the "
+            "cycle button whenever the screen settles (idle-detection). Set "
+            "Q-Plus to all-Computer + load the SAME deck first; calibrate the "
+            "watch region once (Calibrate ▸ region). This is the optional R3 "
+            "baseline that splits the result into N/S-edge vs E/W-edge.")
+        dpbot.addWidget(self.b_dp_4cc)
+        self.b_dp_savebase = QPushButton("Export .qss → baseline")
+        self.b_dp_savebase.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.b_dp_savebase.setToolTip(
+            "After the 4-computer run, Export the .qss, then click this to "
+            "stash it as the baseline. ‘Compare rooms’ then also prints the "
+            "N/S-side and E/W-side decomposition.")
+        dpbot.addWidget(self.b_dp_savebase)
+        dpbot.addStretch(1)
+        dpv.addLayout(dpbot)
+        self.b_dp_4cc.clicked.connect(self._dp_run_4computer)
+        self.b_dp_savebase.clicked.connect(self._dp_save_baseline)
+        self.lbl_dp = QLabel(
+            "Validate biq ahead in all 4 cases: {both SAYC, both Precision} × "
+            "{random, slam-eligible}.  Set systems (1), pick a side, run the "
+            "deck; repeat with the other side on the SAME deck; Compare.")
+        self.lbl_dp.setWordWrap(True)
+        self.lbl_dp.setStyleSheet("color:#555;")
+        dpv.addWidget(self.lbl_dp)
+        self.dp_side.currentIndexChanged.connect(self._on_dp_side_changed)
+        self.b_dp_save.clicked.connect(self._dp_save_room)
+        self.b_dp_cmp.clicked.connect(self._dp_compare)
+        root.addWidget(dp_box)
 
         # ===== 3 ▏ Startup procedure (Step / Autopilot) =====
         steps_box = QGroupBox("3 ▏ Startup procedure — Step (one move) or "
@@ -814,8 +906,8 @@ class LiveMatchWidget(QWidget):
         self.deals = QSpinBox(); self.deals.setRange(1, 1000)
         self.deals.setValue(64)
         self.seat = QComboBox(); self.seat.addItems(["S", "N", "E", "W"])
-        self.samples = QSpinBox(); self.samples.setRange(5, 200)
-        self.samples.setValue(40)
+        self.samples = QSpinBox(); self.samples.setRange(5, 300)
+        self.samples.setValue(120)   # 120 ≈ deterministic finesses (40 misplays ~27%)
         self.idle = QSpinBox(); self.idle.setRange(3, 60); self.idle.setValue(10)
         self.reset_every = QSpinBox(); self.reset_every.setRange(0, 64)
         self.reset_every.setValue(0)
@@ -967,6 +1059,27 @@ class LiveMatchWidget(QWidget):
         except OSError:
             pass
 
+    def _infer_ab_ref_from_last_run(self):
+        """Recover the (seed, start_board) of the most recent run from its biq
+        log, so Run B can lock onto the previous run even when it wasn't
+        explicitly labelled 'Run A'. Checks the live biq logs, then the newest
+        saved run log; returns the first that carries a new_deal, else None."""
+        cands = [BIQ_N_LOG, BIQ_E_LOG, BIQ_LOG]
+        try:
+            cands += sorted((BIQ_ROOT / "tools/runs/ab").glob("run_*.log"),
+                            key=lambda p: p.stat().st_mtime, reverse=True)
+        except OSError:
+            pass
+        for p in cands:
+            try:
+                txt = Path(p).read_text(errors="replace")
+            except OSError:
+                continue
+            m = re.search(r'new_deal_pbn"?\s*\[[NESW]\s+(\d+)\s+(\d+)\]', txt)
+            if m:
+                return (str(m.group(2)), int(m.group(1)))
+        return None
+
     def _refresh_ab_ref_label(self):
         if not hasattr(self, "lbl_abref"):
             return
@@ -976,7 +1089,8 @@ class LiveMatchWidget(QWidget):
                 f"{self._ab_ref[1]}")
             self.lbl_abref.setStyleSheet("color:#06c;")
         else:
-            self.lbl_abref.setText("Run-A ref: (not set — do Run A first)")
+            self.lbl_abref.setText("Run-A ref: none yet "
+                                   "(set on the first run, or inferred for B)")
             self.lbl_abref.setStyleSheet("color:#888;")
 
     def _clear_ab_ref(self):
@@ -1094,15 +1208,33 @@ class LiveMatchWidget(QWidget):
             self._ab_mode = "B"
             self._update_bidder_indicator(self._set_ab_bidder("candidate"))
             self._set_systems_locked(True)
+            # Smart: if no reference is set, recover it from the saved file,
+            # else infer it from the last run's log — so you can run B without
+            # having explicitly labelled the previous run 'Run A'.
+            if self._ab_ref is None:
+                ref = self._load_ab_ref() or self._infer_ab_ref_from_last_run()
+                if ref:
+                    self._ab_ref = ref
+                    self._save_ab_ref(ref[0], ref[1])
+                    self._refresh_ab_ref_label()
+                    self._append(
+                        f"[ab] Run B — inferred the reference from the last "
+                        f"run: seed {ref[0]}, start board {ref[1]}. Set Q-Plus "
+                        f"Match Control major={ref[0]}, minor={ref[1]} to "
+                        f"replay the same deals.")
             if self._ab_ref is None:
                 QMessageBox.information(
-                    self, "No Run-A reference yet",
-                    "Do Run A first — it auto-locks its deal-set. Run B is "
-                    "then checked against it on deal 1.")
+                    self, "No previous run to compare against",
+                    "Run B replays the previous run's deals and diffs them — "
+                    "but I couldn't find a previous run to lock onto (no saved "
+                    "reference, and no readable last-run log).\n\n"
+                    "Just play a deck once first: any completed run is captured "
+                    "automatically as the reference — you don't have to label "
+                    "it 'Run A'.")
             else:
-                self._append(f"[ab] Run B — candidate bidder; guard armed "
-                             f"against Run-A ref (seed {self._ab_ref[0]}, "
-                             f"board {self._ab_ref[1]}).")
+                self._append(
+                    f"[ab] Run B — candidate bidder; guard armed against "
+                    f"seed {self._ab_ref[0]} / start board {self._ab_ref[1]}.")
         else:
             self._ab_mode = None
             self._set_systems_locked(False)
@@ -1158,12 +1290,116 @@ class LiveMatchWidget(QWidget):
 
     def _biq_args(self, seat, port, log_path):
         # biq always follows Q-Plus's N/S system: in 'auto' it matches
-        # whatever Q-Plus is configured for; in 'pick'/'random' the clicker
-        # sets Q-Plus's N/S and biq follows it. So --auto-system always.
+        # whatever Q-Plus is configured for; in sequential/random/fixed the
+        # clicker sets Q-Plus's N/S and biq follows it. So --auto-system always.
         return ["tools/biq_qnet_client.py", "--host", "127.0.0.1",
                 "--port", str(port), "--seat", seat,
                 "--num-samples", str(self.samples.value()),
                 "--log", str(log_path), "--auto-system"]
+
+    def _pair_seats(self):
+        """Which side biq sits on for a biq+biq run — the double-pair 'room'.
+        Room 1 = biq N/S (default); Room 2 = biq E/W. Returns a dict the run
+        plumbing reads instead of hardcoding N/S, so the SAME deck can be
+        played from both sides for a board-a-match validation."""
+        ew = (getattr(self, "dp_side", None) is not None
+              and self.dp_side.currentText().startswith("E/W"))
+        if ew:
+            return {"s1": "E", "log1": BIQ_E_LOG, "s2": "W", "log2": BIQ_W_LOG,
+                    "watch": BIQ_E_LOG, "our_seat": "W", "room": 2,
+                    "extern": "E & W = Extern, N/S = Computer"}
+        return {"s1": "N", "log1": BIQ_N_LOG, "s2": "S", "log2": BIQ_S_LOG,
+                "watch": BIQ_N_LOG, "our_seat": "S", "room": 1,
+                "extern": "N & S = Extern, E/W = Computer"}
+
+    def _watch_log(self):
+        """The biq log the autoclicker tails — side-aware for biq+biq."""
+        return self._pair_seats()["watch"] if self.pair.isChecked() else BIQ_LOG
+
+    def _our_seat(self):
+        """biq's representative seat for score aggregation — side-aware."""
+        return (self._pair_seats()["our_seat"] if self.pair.isChecked()
+                else self.seat.currentText())
+
+    # ---------- double-pair (board-a-match) validation ----------
+    def _on_dp_side_changed(self, _idx):
+        ps = self._pair_seats()
+        self.b_dp_save.setText(f"Save run → Room {ps['room']}")
+        if not self.pair.isChecked():
+            self._append("[dp] Double-pair needs biq+biq (pair) mode — tick "
+                         "‘biq+biq (N+S Extern)’ in Run configuration.")
+        self._append(f"[dp] Room {ps['room']}: biq {ps['s1']}/{ps['s2']}. "
+                     f"Set Q-Plus Config ▸ Players to {ps['extern']}, then run "
+                     f"the SAME deck as the other room.")
+
+    def _dp_save_room(self):
+        """Copy the current side's biq log into the Room-1/Room-2 slot."""
+        ps = self._pair_seats()
+        src = self._watch_log()
+        dst = DP_ROOM1_LOG if ps["room"] == 1 else DP_ROOM2_LOG
+        if not src.exists() or src.stat().st_size == 0:
+            QMessageBox.warning(self, "No run log",
+                f"{src.name} is empty — run Room {ps['room']} (biq "
+                f"{ps['s1']}/{ps['s2']}) first, then save.")
+            return
+        dst.write_bytes(src.read_bytes())
+        self._append(f"[dp] saved Room {ps['room']} ({ps['s1']}/{ps['s2']}): "
+                     f"{src.name} → {dst.name}")
+
+    def _dp_run_4computer(self):
+        """Launch the all-computer autoclicker for the R3 baseline run."""
+        proc = QProcess(self)
+        proc.setProgram(sys.executable)
+        proc.setWorkingDirectory(str(BIQ_ROOT))
+        proc.setArguments(["tools/qplus_4computer_clicker.py",
+                           "--deals", str(self.deals.value())])
+        proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        proc.readyReadStandardOutput.connect(
+            lambda p=proc: self._append(
+                bytes(p.readAllStandardOutput()).decode("utf-8", "replace").rstrip()))
+        proc.start()
+        self._biq_4cc = proc
+        self._append("[dp] 4-computer autoclicker started (idle-driven). "
+                     "Ensure Q-Plus is all-Computer with the deck loaded and "
+                     "the watch region calibrated. Export the .qss when done.")
+
+    def _dp_save_baseline(self):
+        """Stash the newest exported .qss as the all-Q-Plus baseline."""
+        qss = self._newest_qss()
+        if not qss:
+            QMessageBox.warning(self, "No .qss",
+                "Export the .qss from the 4-computer run first "
+                "(‘Export .qss’), then save it as the baseline.")
+            return
+        DP_BASELINE_QSS.write_bytes(Path(qss).read_bytes())
+        self._append(f"[dp] saved baseline (all-Q-Plus): "
+                     f"{Path(qss).name} → {DP_BASELINE_QSS.name}")
+
+    def _dp_compare(self):
+        """Board-a-match compare on the two saved room logs; if an all-Q-Plus
+        baseline is saved, also print the N/S vs E/W closed-room split."""
+        if not DP_ROOM1_LOG.exists() or not DP_ROOM2_LOG.exists():
+            QMessageBox.information(self, "Need both rooms",
+                "Save BOTH rooms first: run the deck with biq N/S (Room 1) "
+                "and again with biq E/W (Room 2) on the SAME deck, clicking "
+                "‘Save run → Room N’ after each.")
+            return
+        label = f"{self.ns_sys.currentText()} vs {self.ew_sys.currentText()}"
+        cmd = [sys.executable, "tools/double_pair_compare.py",
+               "--room1", str(DP_ROOM1_LOG), "--room2", str(DP_ROOM2_LOG),
+               "--biq-prefix", "", "--label", label]
+        if DP_BASELINE_QSS.exists():
+            cmd += ["--baseline", str(DP_BASELINE_QSS)]
+        try:
+            out = subprocess.run(cmd, cwd=str(BIQ_ROOT),
+                                 capture_output=True, text=True, timeout=60)
+            text = out.stdout + (("\n" + out.stderr) if out.stderr else "")
+        except Exception as e:                       # noqa: BLE001
+            text = f"compare failed: {e}"
+        self._append("[dp] board-a-match compare:\n" + text)
+        verdict = next((ln for ln in text.splitlines()
+                        if "Net teams IMP" in ln), text[:200])
+        QMessageBox.information(self, "Double-pair result", verdict.strip())
 
     # ---------- Q-Plus lifecycle (replaces the terminal commands) ----------
     def launch_qplus(self, on_ready=None):
@@ -1580,7 +1816,7 @@ class LiveMatchWidget(QWidget):
         self.deals_total = self.deals.value()
         self.bar.setRange(0, self.deals_total)
         self.bar.setValue(0)
-        for lg in (BIQ_N_LOG, BIQ_S_LOG, BIQ_LOG):
+        for lg in (BIQ_N_LOG, BIQ_S_LOG, BIQ_E_LOG, BIQ_W_LOG, BIQ_LOG):
             try:
                 lg.write_text("")
             except OSError:
@@ -1628,15 +1864,25 @@ class LiveMatchWidget(QWidget):
         self.hint.setText("Setting bidding systems for deal 1…")
 
     def _step_east(self):
+        ps = self._pair_seats() if self.pair.isChecked() else None
+        if ps and ps["room"] == 2:
+            # Double-pair Room 2: biq sits E/W, so the Extern/Computer config
+            # is INVERTED (N/S=Computer, E/W=Extern). The calibrated
+            # East=Computer click is wrong here — set the four seats by hand.
+            self._step_done(True,
+                "Room 2 (biq E/W): SET BY HAND in Config ▸ Players — "
+                "N=Computer, S=Computer, E=Extern, W=Extern — then Step to "
+                "‘Deal board 1’. (The auto East-reset is N/S-room only.)")
+            return
         self.set_east_computer()
         note = "East = Computer click sequence sent"
         if self.pair.isChecked():
-            # biq+biq needs N & S = Extern AND E & W = Computer. We only
+            # biq+biq Room 1 needs N & S = Extern AND E & W = Computer. We only
             # auto-click East; if South isn't Extern, Q-Plus pops a SOUTH
             # bidding box and later stalls on the South dummy. With Step
             # now single-shot, PAUSE here and verify all four seats by hand
             # before dealing.
-            note += (" — biq+biq: now VERIFY in Config ▸ Players that "
+            note += (" — biq+biq Room 1: now VERIFY in Config ▸ Players that "
                      "N=Extern, S=Extern, E=Computer, W=Computer BEFORE you "
                      "Step to ‘Deal board 1’. A South bidding box / dummy "
                      "stall means South isn't Extern.")
@@ -1705,7 +1951,7 @@ class LiveMatchWidget(QWidget):
         # the reset relaunches; the autoclicker watches that client log and
         # the aggregator scores from it. Direct = biq survives the Network
         # Stop/Start reset without the proxy-upstream zombie.
-        for lg in (BIQ_N_LOG, BIQ_S_LOG, BIQ_LOG):
+        for lg in (BIQ_N_LOG, BIQ_S_LOG, BIQ_E_LOG, BIQ_W_LOG, BIQ_LOG):
             try:
                 lg.write_text("")
             except OSError:
@@ -1726,18 +1972,19 @@ class LiveMatchWidget(QWidget):
         if self.pair.isChecked():
             # biq+biq partnership: BOTH clients connect DIRECT to :5555
             # (no proxy) so each sees the server Stop/Start and the reset
-            # relaunch rejoins cleanly. The autoclicker watches biq_N.log.
-            # Server must have N & S = Extern, E/W = Computer.
+            # relaunch rejoins cleanly. The autoclicker watches the first
+            # seat's log. Side (N/S Room 1 vs E/W Room 2) per _pair_seats().
+            ps = self._pair_seats()
             self.biq = self._mk_proc("biq")
             self.biq.setArguments(
-                self._biq_args("N", SERVER_PORT, BIQ_N_LOG) + ["--pair"])
+                self._biq_args(ps["s1"], SERVER_PORT, ps["log1"]) + ["--pair"])
             self.biq.start()
             self.biq2 = self._mk_proc("biq")
             self.biq2.setArguments(
-                self._biq_args("S", SERVER_PORT, BIQ_S_LOG) + ["--pair"])
+                self._biq_args(ps["s2"], SERVER_PORT, ps["log2"]) + ["--pair"])
             self.biq2.start()
-            who = "biq+biq (both direct on :5555)"
-            extra = " — server needs N & S = Extern, E/W = Computer"
+            who = f"biq+biq Room {ps['room']} ({ps['s1']}/{ps['s2']}, direct on :5555)"
+            extra = f" — server needs {ps['extern']}"
         else:
             self.biq = self._mk_proc("biq")
             self.biq.setArguments(
@@ -1873,7 +2120,7 @@ class LiveMatchWidget(QWidget):
             QMessageBox.warning(self, "biq not running",
                                 "Start server+biq first.")
             return
-        watch_log = BIQ_N_LOG if self.pair.isChecked() else BIQ_LOG
+        watch_log = self._watch_log()
         # -u = unbuffered: deliver the autoclicker's progress + completion
         # lines (and EOF on exit) to us immediately. Without it, the final
         # "deals complete" can sit block-buffered in the pipe when the
@@ -2072,7 +2319,7 @@ class LiveMatchWidget(QWidget):
         # Score from biq's client log report_score (real teams IMP, no DD,
         # complete across the whole run — biq appends through the resets).
         # The .qss caps at 64 boards/session; the client log doesn't.
-        watch_log = BIQ_N_LOG if self.pair.isChecked() else BIQ_LOG
+        watch_log = self._watch_log()
         if not watch_log.exists():
             self.result.setPlainText(
                 f"No biq log at {watch_log} yet.\nStart a run "
@@ -2081,7 +2328,7 @@ class LiveMatchWidget(QWidget):
         proc = QProcess(self)
         proc.setProgram(sys.executable)
         proc.setWorkingDirectory(str(BIQ_ROOT))
-        seat = "S" if self.pair.isChecked() else self.seat.currentText()
+        seat = self._our_seat()
         proc.setArguments(["tools/qnet_score_aggregate.py", "--log",
                            str(watch_log), "--our-seat", seat])
         proc.start()
@@ -2143,7 +2390,7 @@ class LiveMatchWidget(QWidget):
                 "View ▸ Scoring Table ▸ Save and send) in Q-Plus first, or "
                 "calibrate the export clicks.")
             return
-        seat = "S" if self.pair.isChecked() else self.seat.currentText()
+        seat = self._our_seat()
         proc = QProcess(self)
         proc.setProgram(sys.executable)
         proc.setWorkingDirectory(str(BIQ_ROOT))
@@ -2163,7 +2410,7 @@ class LiveMatchWidget(QWidget):
         try:
             arch = BIQ_ROOT / "tools/runs/ab"
             arch.mkdir(parents=True, exist_ok=True)
-            src = BIQ_N_LOG if self.pair.isChecked() else BIQ_LOG
+            src = self._watch_log()
             dst = arch / f"run_{time.strftime('%y%m%d_%H%M%S')}.log"
             dst.write_text(src.read_text(errors="replace"))
         except OSError as e:
@@ -2211,7 +2458,7 @@ class LiveMatchWidget(QWidget):
         try:
             arch = BIQ_ROOT / "tools/runs/loop_results"
             arch.mkdir(parents=True, exist_ok=True)
-            src = BIQ_N_LOG if self.pair.isChecked() else BIQ_LOG
+            src = self._watch_log()
             (arch / f"biq_session_{self._session_idx}.log").write_text(
                 src.read_text(errors="replace"))
             if qss is not None:
@@ -2238,7 +2485,7 @@ class LiveMatchWidget(QWidget):
         id by the aggregator), the authoritative combined result."""
         if not self._session_qss:
             return
-        seat = "S" if self.pair.isChecked() else self.seat.currentText()
+        seat = self._our_seat()
         proc = QProcess(self)
         proc.setProgram(sys.executable)
         proc.setWorkingDirectory(str(BIQ_ROOT))

@@ -483,19 +483,43 @@ def _parse_client_line(line: str):
 
 def _pick_sys(mode, seed, idx):
     """Resolve one side's system for deal index `idx`.
-      mode 'auto'   → None (leave Q-Plus's default untouched)
-      mode 'random' → a system; SEEDED by (seed, idx) when seed is not None
-                      so two runs with the same --system-seed draw the SAME
-                      sequence (reproducible random for an A/B); else free.
-      else          → the fixed system name in `mode`.
+      mode 'auto'       → None (leave Q-Plus's default untouched)
+      mode 'sequential' → step the 5 systems by deal index: 1 2 3 4 5 1 2 3
+                          4 5 … (repeatable by construction — no seed needed,
+                          which makes it the clean basis for an A/B).
+      mode 'random'     → a system; SEEDED by (seed, idx) when seed is not
+                          None so two runs with the same --system-seed draw
+                          the SAME sequence; else free.
+      else              → the fixed system name in `mode`.
     """
     if mode == "auto":
         return None
+    if mode == "sequential":
+        return _SYS_NAMES[idx % len(_SYS_NAMES)]
     if mode == "random":
         if seed is not None:
             return random.Random(f"{seed}-{idx}").choice(_SYS_NAMES)
         return random.choice(_SYS_NAMES)
     return mode
+
+
+def _resolve_systems(ns_mode, ew_mode, seed, idx):
+    """Resolve BOTH sides' systems for deal index `idx`, as an (ns, ew) pair.
+
+    When BOTH sides are 'sequential' the pair sweeps as an odometer: N/S is
+    the slow digit, E/W the fast one. N/S holds on system 1 while E/W runs
+    1 2 3 4 5, then N/S advances to 2 and E/W runs 1 2 3 4 5 again, etc. —
+    so every one of the 25 N/S×E/W pairings is visited, in the same order,
+    on every run (a fully repeatable cross-system A/B).
+
+    Otherwise each side is resolved independently via _pick_sys: a lone
+    'sequential' side just cycles 1 2 3 4 5 by deal index while the other
+    side follows its own mode (auto / fixed / random).
+    """
+    n = len(_SYS_NAMES)
+    if ns_mode == "sequential" and ew_mode == "sequential":
+        return _SYS_NAMES[(idx // n) % n], _SYS_NAMES[idx % n]
+    return _pick_sys(ns_mode, seed, idx), _pick_sys(ew_mode, seed, idx)
 
 
 def watch_loop(pos: Tuple[int, int], *,
@@ -593,8 +617,11 @@ def watch_loop(pos: Tuple[int, int], *,
     # a side is random (otherwise set once).
     drive_systems = bool(system_positions) and (ns_mode != "auto"
                                                  or ew_mode != "auto")
-    any_random = ns_mode == "random" or ew_mode == "random"
-    set_once = not any_random
+    # 'random' and 'sequential' both vary the system per deal → re-set every
+    # deal; 'auto'/fixed are constant → set once.
+    _PER_DEAL = ("random", "sequential")
+    any_per_deal = ns_mode in _PER_DEAL or ew_mode in _PER_DEAL
+    set_once = not any_per_deal
     sys_set = False
 
     def react(cmd, args):
@@ -640,8 +667,8 @@ def watch_loop(pos: Tuple[int, int], *,
                 # random side → re-set each deal. A side that's "auto"
                 # passes None so do_set_systems leaves it untouched.
                 if drive_systems and not (set_once and sys_set):
-                    nsv = _pick_sys(ns_mode, system_seed, deals_done)
-                    ewv = _pick_sys(ew_mode, system_seed, deals_done)
+                    nsv, ewv = _resolve_systems(ns_mode, ew_mode,
+                                                system_seed, deals_done)
                     do_set_systems(system_positions, nsv, ewv,
                                    window_id=window_id, dry_run=dry_run)
                     if set_once:
@@ -753,15 +780,19 @@ def main(argv=None) -> int:
                    help="bidding-system dialog calibration JSON (default: "
                         "the corpus GUI's ~/.qplus_mixed_corpus.json)")
     p.add_argument("--ns-system", default="auto",
-                   choices=["auto", "random"] + _SYS_NAMES,
+                   choices=["auto", "sequential", "random"] + _SYS_NAMES,
                    help="[--watch] N/S bidding system: 'auto' (leave Q-Plus's "
-                        "default untouched), 'random' (re-roll each deal), or "
-                        "a specific system. Set via Q-Plus's Bidding-system "
-                        "dialog. Run biq with --auto-system to follow N/S.")
+                        "default untouched), 'sequential' (step 1 2 3 4 5 by "
+                        "deal index — repeatable, the clean A/B basis), "
+                        "'random' (re-roll each deal), or a specific system. "
+                        "Set via Q-Plus's Bidding-system dialog. Run biq with "
+                        "--auto-system to follow N/S.")
     p.add_argument("--ew-system", default="auto",
-                   choices=["auto", "random"] + _SYS_NAMES,
-                   help="[--watch] E/W bidding system: auto / random / a "
-                        "specific system (independent of N/S).")
+                   choices=["auto", "sequential", "random"] + _SYS_NAMES,
+                   help="[--watch] E/W bidding system: auto / sequential / "
+                        "random / a specific system (independent of N/S). When "
+                        "BOTH sides are 'sequential' the pair sweeps as an "
+                        "odometer (N/S slow, E/W fast — all 25 pairings).")
     p.add_argument("--system-seed", type=int, default=None,
                    help="Seed the 'random' system choice by deal index so two "
                         "runs with the SAME seed draw the SAME per-deal NS/EW "
@@ -830,8 +861,7 @@ def main(argv=None) -> int:
             print("[button-loop] --set-systems-once: both sides are 'auto' — "
                   "nothing to set.", flush=True)
             return 0
-        nsv = _pick_sys(ns_mode, args.system_seed, 0)
-        ewv = _pick_sys(ew_mode, args.system_seed, 0)
+        nsv, ewv = _resolve_systems(ns_mode, ew_mode, args.system_seed, 0)
         do_set_systems(syspos, nsv, ewv, window_id=pos[2],
                        dry_run=args.dry_run)
         print(f"[button-loop] one-shot systems set: N/S={nsv} E/W={ewv}",

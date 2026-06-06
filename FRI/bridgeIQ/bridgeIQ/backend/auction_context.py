@@ -275,14 +275,15 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
                         suit=b.suit, level=b.level, mechanism=mech,
                         setter=s, bid_index=idx,
                     )
-                    # Major-fit GF: only when the OPENING was at the
-                    # 1-level. Raise of a preempt (2M/3M opens, then
-                    # partner raises) is invitational, not GF — Deal
-                    # 20 in random corpus 39477: N opens 2S, S raises
-                    # to 3S; that's not a 2/1-GF auction.
-                    if (ctx.opening_bid is not None
-                            and ctx.opening_bid.level == 1):
-                        ctx.gf_established = True
+                    # NB: a natural major RAISE does NOT establish game force.
+                    # A single raise is 6-9, a jump (limit) raise 10-12, a
+                    # competitive raise even less — all invitational at most.
+                    # (This block used to set gf_established for any 1-level-
+                    # opening raise, which forced biq to game over a simple
+                    # raise — e.g. 1S-2S rebid as 3NT on a 12-HCP minimum;
+                    # test_gf_established.py guards the three raise cases.)
+                    # The genuinely game-forcing raises set gf in their own
+                    # blocks: Jacoby 2NT (JACOBY_2NT) and splinter, below.
                     if mech in (TrumpMechanism.JUMP_RAISE,):
                         ctx.slam_zone_entered = b.level >= 4
 
@@ -528,6 +529,50 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
             ctx.convention = "FOURTH_SUIT_FORCING"
             ctx.gf_established = True
 
+    # --- A1: responder's 3rd natural suit at the 3-level = game force.
+    # 1-of-a-SUIT opening, a 1-level natural response, opener's natural rebid,
+    # then responder introduces a NEW (3rd) natural suit at level 3 — a
+    # non-jump forced up by opener's 2-level rebid. A 3-level new suit by
+    # responder shows game-forcing values (you don't go there to invite). The
+    # underbidding leak: biq parked in a partscore here because no other
+    # trigger covers it (it's a 2/1 over a MINOR / the 3rd suit, not the 4th).
+    # Gating on a 1-of-SUIT opening + 1-level response structurally excludes
+    # NT-opening transfer/Stayman auctions — the class that broke the reverted
+    # structural net. Uncontested only. (Deal 3928-79: 1D-1S-2D-3C.)
+    if (not ctx.gf_established
+            and ctx.opening_bid is not None
+            and ctx.opening_bid.level == 1
+            and ctx.opening_bid.suit not in (None, _NT)
+            and not any(s not in my_side and not b.is_pass
+                        for s, b in state.bids)):
+        resp = [(i, b) for i, (s, b) in enumerate(state.bids)
+                if s == partner_of_opener and not b.is_pass
+                and not b.is_double and not b.is_redouble]
+        # NB: the 3-level bid's alert flag is NOT checked — a non-jump new
+        # suit at the 3-level is natural by construction, and biq's own
+        # responder-GF-net marks its forcing 3C with alert=True, which A1 must
+        # still recognise. Transfers/Stayman are excluded by the 1-of-SUIT
+        # opening gate above, not by this flag.
+        if (len(resp) == 2
+                and not resp[0][1].alert
+                and resp[0][1].level == 1
+                and resp[0][1].suit not in (None, _NT)
+                and resp[1][1].level == 3
+                and resp[1][1].suit not in (None, _NT)
+                and resp[1][1].suit not in (ctx.opening_bid.suit,
+                                            resp[0][1].suit)):
+            idx3, b3 = resp[1]
+            prior = [b for s, b in state.bids[:idx3]
+                     if not b.is_pass and not b.is_double
+                     and not b.is_redouble and b.suit is not None]
+            if prior:
+                pc = prior[-1]
+                r3 = _CUEBID_SUIT_RANK.get(b3.suit, -1)
+                rpc = _CUEBID_SUIT_RANK.get(pc.suit, 99)
+                min_lvl = pc.level + (0 if r3 > rpc else 1)
+                if b3.level == min_lvl:          # non-jump → forcing to game
+                    ctx.gf_established = True
+
     # --- Gerber detection: 4C as direct ace-ask after partner's
     # opening 1NT / 2NT / 3NT, no opp intervention. Looks STRICTLY at:
     #   • The PARTNERSHIP's first non-pass bid is 1NT/2NT/3NT.
@@ -639,6 +684,15 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
         ctx.last_4nt_bidder = s_4nt
         ctx.slam_zone_entered = True
 
+        # The natural call immediately before the 4NT (skip passes/X).
+        prev_natural_nt = False
+        for _k in range(first_4nt_idx - 1, -1, -1):
+            _ps, _pb = state.bids[_k]
+            if _pb.is_pass or _pb.is_double or _pb.is_redouble:
+                continue
+            prev_natural_nt = (_pb.suit == _NT)
+            break
+
         # Gate 1: no trump candidate at all → quantitative.
         if ctx.trump is None and ctx.fallback_last_suit is None:
             ctx.last_4nt_is_quantitative = True
@@ -647,6 +701,13 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
         elif (ctx.trump is None
                 and ctx.opener_rebid_nt
                 and not ctx.opening_was_strong_artificial):
+            ctx.last_4nt_is_quantitative = True
+        # Gate 3: no trump agreed and the call right before the 4NT was a
+        # NT bid — the auction is in notrump (no fit), so 4NT is a
+        # quantitative slam invite, not keycards. Covers the strong-
+        # artificial 1C balanced auctions (1C-1NT/2NT-4NT, 1C-1M-2NT-4NT)
+        # that Gate 2 excludes.
+        elif ctx.trump is None and prev_natural_nt:
             ctx.last_4nt_is_quantitative = True
         else:
             ctx.last_4nt_is_rkc = True

@@ -520,14 +520,15 @@ class TestAuctionContext(unittest.TestCase):
         return self.derive_context(state)
 
     def test_direct_raise_sets_trump(self):
-        """1H-2H: hearts is trump via DIRECT_RAISE."""
+        """1H-2H: hearts is trump via DIRECT_RAISE — but a simple raise is
+        6-9 HCP, NOT game-forcing (see test_gf_established.py)."""
         ctx = self._ctx("1H P 2H")
         self.assertIsNotNone(ctx.trump)
         self.assertEqual(ctx.trump.suit, self.Suit.HEARTS)
         self.assertEqual(ctx.trump.level, 2)
         self.assertEqual(ctx.trump.mechanism,
                          self.TrumpMechanism.DIRECT_RAISE)
-        self.assertTrue(ctx.gf_established)
+        self.assertFalse(ctx.gf_established)
 
     def test_jump_raise_to_three_sets_trump_with_jump_mechanism(self):
         """1H-3H: jump-raise to limit."""

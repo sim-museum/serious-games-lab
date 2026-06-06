@@ -13,7 +13,12 @@
 # the commit with  FIX_COMMIT=<sha> tools/ab_bidder.sh ...  if you rebase.
 set -euo pipefail
 
-FIX_COMMIT="${FIX_COMMIT:-91f4fdd}"
+# BASE_REF = the PRE-fix bidder (baseline, Run A); CAND_REF = the latest
+# bidder with all fixes including the slam-bidding work (candidate, Run B).
+# The slam fixes land after the original 3-fix commit, so candidate = a ref
+# (default the branch tip), not 91f4fdd. Override either with env vars.
+BASE_REF="${BASE_REF:-91f4fdd~1}"
+CAND_REF="${CAND_REF:-24.04}"
 
 SCRIPT_DIR="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
 BRIDGE="$(dirname "$SCRIPT_DIR")"          # .../bridgeIQ/bridgeIQ (has backend/)
@@ -23,22 +28,22 @@ cd "$BRIDGE"
 REL="$(git ls-files --full-name backend/native_bidder.py)"
 [ -n "$REL" ] || { echo "native_bidder.py not tracked by the outer repo" >&2; exit 1; }
 
-BASE_BLOB="$(git rev-parse "${FIX_COMMIT}~1:${REL}")"
-CAND_BLOB="$(git rev-parse "${FIX_COMMIT}:${REL}")"
+BASE_BLOB="$(git rev-parse "${BASE_REF}:${REL}")"
+CAND_BLOB="$(git rev-parse "${CAND_REF}:${REL}")"
 
 current() {
   local h; h="$(git hash-object "$FILE")"
-  if   [ "$h" = "$CAND_BLOB" ]; then echo "candidate (with the 3 fixes)"
+  if   [ "$h" = "$CAND_BLOB" ]; then echo "candidate (with all fixes incl. slam)"
   elif [ "$h" = "$BASE_BLOB" ]; then echo "baseline (pre-fix)"
   else echo "MODIFIED/other (matches neither baseline nor candidate)"; fi
 }
 
 case "${1:-status}" in
   baseline)
-    git checkout "${FIX_COMMIT}~1" -- backend/native_bidder.py
+    git checkout "${BASE_REF}" -- backend/native_bidder.py
     echo "✓ loaded BASELINE (pre-fix) bidder  →  use for Run A" ;;
   candidate)
-    git checkout "${FIX_COMMIT}" -- backend/native_bidder.py
+    git checkout "${CAND_REF}" -- backend/native_bidder.py
     echo "✓ loaded CANDIDATE (3 fixes) bidder →  use for Run B" ;;
   status|"") ;;
   *) echo "usage: ab_bidder.sh {baseline|candidate|status}" >&2; exit 2 ;;
