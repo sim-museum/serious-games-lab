@@ -17,7 +17,7 @@ set -euo pipefail
 # bidder with all fixes including the slam-bidding work (candidate, Run B).
 # The slam fixes land after the original 3-fix commit, so candidate = a ref
 # (default the branch tip), not 91f4fdd. Override either with env vars.
-BASE_REF="${BASE_REF:-91f4fdd~1}"
+BASE_REF="${BASE_REF:-f50a1ce}"
 CAND_REF="${CAND_REF:-24.04}"
 
 SCRIPT_DIR="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
