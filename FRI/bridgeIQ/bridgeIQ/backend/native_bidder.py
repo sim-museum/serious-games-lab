@@ -2505,6 +2505,42 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
                     if _is_legal_bid(cand, state):
                         return cand
 
+        # 2c-bis. Never INTRODUCE a new suit at the 3-level+ on a doubleton-or-
+        # shorter in a competitive auction — the wrong-strain disaster
+        # (RANDOM-010: 3H on a singleton heart, down 5, when 4S was cold).
+        # Redirect to my longest real suit (5+) at the cheapest legal level,
+        # without escalating the level (so it also curbs the over-bid tail).
+        if (not raw.is_pass and not raw.is_double and not raw.is_redouble
+                and raw.suit is not None and raw.suit != Suit.NOTRUMP
+                and raw.level >= 3
+                and state.opp_overcalled
+                and eval_.suit_lengths.get(raw.suit, 0) <= 2
+                and raw.suit not in [mb.suit for mb in state.my_bids]):
+            best, best_score = None, 4.5   # only 5+ card suits qualify
+            for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
+                if s == raw.suit:
+                    continue
+                length = eval_.suit_lengths.get(s, 0)
+                bid_before = any(mb.suit == s for mb in state.my_bids)
+                score = length + (0.5 if bid_before else 0.0)
+                if score > best_score:
+                    best, best_score = s, score
+            if best is not None:
+                ls = state.last_suit_bid
+                if ls is None:
+                    lvl = 1
+                elif _BID_RANK[best] > _BID_RANK[ls]:
+                    lvl = state.last_level
+                else:
+                    lvl = state.last_level + 1
+                cand = bid(lvl, best,
+                           why=f"Sanity: {raw.level}{raw.suit.to_char()} on "
+                               f"{eval_.suit_lengths.get(raw.suit, 0)} cards in "
+                               f"competition → {lvl}{best.to_char()} (longest "
+                               f"real suit, no escalation)")
+                if _is_legal_bid(cand, state):
+                    return cand
+
         # 2d. Opener must not pass partner's FORCING new-suit response.
         # A non-jump new suit by responder (1D-1S, 1H-2C, …) is forcing —
         # opener has to rebid. biq's opener-rebid path can fall through to

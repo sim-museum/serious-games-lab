@@ -103,7 +103,7 @@ CASES = [
      "raise toward slam, not a penalty double of 2D."),
     ("RANDOM-010 don't rebid a singleton suit", "E", "All",
      "1s p 2c p 2s x 2nt p", "E", "AK962.2.42.QJ852", "SAYC",
-     "3H", {"3C", "3S", "4C"},
+     "3S", {"3C", "3S", "4C"},  # FIXED: was 3H (singleton)
      "Fix#2: 5-5 spades/clubs with a SINGLETON heart — show the club fit (or "
      "spades), never introduce 3H on a singleton (the 3H-5 wrong-strain disaster)."),
     ("RANDOM-020 show 6-card suit not 2NT on a freak", "W", "All",
