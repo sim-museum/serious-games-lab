@@ -282,9 +282,21 @@ class BiqClient:
         self._logfh = None
         if log_path:
             self._logfh = open(log_path, "a")
+            # Fingerprint the bidder this run is ACTUALLY using — content hash
+            # + a U1/U2/U3 marker (Case C). Three baselines were silently run
+            # on a reverted bidder before this existed; run_preflight checks it.
+            import hashlib
+            try:
+                _nb = (Path(__file__).resolve().parent.parent
+                       / "backend" / "native_bidder.py").read_bytes()
+                _fp = (f"{hashlib.sha1(_nb).hexdigest()[:10]} "
+                       f"caseC={_nb.decode('latin-1').count('Case C')}")
+            except OSError:
+                _fp = "unknown"
             self._logfh.write(
                 f"\n=== biq_qnet session {time.strftime('%Y-%m-%d %H:%M:%S')} "
-                f"seat={my_seat.name} system={system} port={port} ===\n")
+                f"seat={my_seat.name} system={system} port={port} "
+                f"bidder={_fp} ===\n")
             self._logfh.flush()
         self.sock: Optional[socket.socket] = None
         self.buf = b''
@@ -507,10 +519,11 @@ class BiqClient:
         # args[3]: PBN deal '<dealer> <vul> <starter>:<hand> <hand> <hand> <hand>'
         self.deal_label = args[2] if len(args) > 2 else ""
         if self.pair_mode:
-            # New deal: clear last deal's consumed dummy-IPC files. Both
-            # clients are between deals here (no cardplay in flight), so
-            # this is race-free; cardplay writes come seconds later.
-            for f in _PAIR_IPC.glob("*.card"):
+            # New deal: clear last deal's consumed dummy-IPC + system-agreement
+            # files. Both clients are between deals here (no cardplay in
+            # flight), so this is race-free; cardplay writes come seconds later.
+            for f in list(_PAIR_IPC.glob("*.card")) + \
+                    list(_PAIR_IPC.glob("*.sys.*")):
                 try:
                     f.unlink()
                 except OSError:
@@ -547,12 +560,71 @@ class BiqClient:
             ranks = sorted(by_suit[s], key=lambda r: r.value)
             chars = ''.join(_RANK_TO_CHAR[r] for r in ranks) or '-'
             self.log(f"  my {_SUIT_TO_CHAR[s].upper()}: {chars}")
+        # Publish our system early (pair mode) so the partner client has the
+        # full deal-setup window to see it before bidding's agreement check.
+        self._publish_system()
 
     def _on_start_bidding(self, args: List[str]) -> None:
         self.log("=== auction begins ===")
+        # Before any bid: in pair mode (biq plays BOTH seats of a side via two
+        # client processes), confirm this client and its partner client are on
+        # the SAME bidding system. A divergence here — e.g. one client synced
+        # the new deal's system and the other lagged on random/sequential
+        # cycling — would have the two biq seats bid as different partnerships
+        # and corrupt the auction. Loud WARNING on mismatch; no-op otherwise.
+        self._verify_partner_system()
         if self.bidder_seat == self.my_seat:
             time.sleep(0.4)
             self._send_my_bid()
+
+    def _publish_system(self) -> None:
+        """Pair mode: publish this client's current system for the deal so the
+        partner client can verify agreement. Called EARLY (at new deal) to give
+        the partner the whole deal-setup window of lead time, and again right
+        before bidding in case set_config changed the system in between."""
+        if not self.pair_mode or not self.deal_label:
+            return
+        try:
+            (_PAIR_IPC / f"{self.deal_label}.sys.{self.my_seat.to_char()}"
+             ).write_text(self.system)
+        except OSError as e:
+            self.log(f"system IPC write failed: {e}")
+
+    def _verify_partner_system(self, timeout: float = 8.0) -> None:
+        """Pair mode only: confirm the partner client is on the SAME bidding
+        system before the auction starts. Re-publishes ours first (the system
+        may have just changed via set_config), then polls for the partner's —
+        which it already published at new-deal, so this normally returns at
+        once and only waits if the partner is genuinely slow/gone."""
+        if not self.pair_mode or not self.deal_label:
+            return
+        self._publish_system()
+        mine_c = self.my_seat.to_char()
+        partner = self.my_seat.partner()
+        p = _PAIR_IPC / f"{self.deal_label}.sys.{partner.to_char()}"
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                theirs = p.read_text().strip()
+            except OSError:
+                theirs = ""
+            if theirs:
+                if theirs == self.system:
+                    self.log(f"system check OK — {mine_c} and "
+                             f"{partner.to_char()} both on {self.system}")
+                else:
+                    self.log(
+                        f"*** SYSTEM MISMATCH on {self.deal_label}: "
+                        f"{mine_c}={self.system} but "
+                        f"{partner.to_char()}={theirs}. The two biq seats are "
+                        f"on DIFFERENT systems — this auction is UNRELIABLE. "
+                        f"Use a FIXED system (not random/sequential) for a "
+                        f"clean measurement.")
+                return
+            time.sleep(0.1)
+        self.log(f"system check — partner {partner.to_char()} did not publish "
+                 f"a system within {timeout:.0f}s (partner not a biq client, "
+                 f"or crashed); skipping agreement check")
 
     def _on_bid(self, args: List[str]) -> None:
         if len(args) < 2:
