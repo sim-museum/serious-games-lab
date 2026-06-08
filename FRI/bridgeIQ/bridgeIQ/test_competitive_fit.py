@@ -108,7 +108,7 @@ CASES = [
      "spades), never introduce 3H on a singleton (the 3H-5 wrong-strain disaster)."),
     ("RANDOM-020 show 6-card suit not 2NT on a freak", "W", "All",
      "p 1c p 1h p 1s p", "S", "8.AQ962.KQT874.6", "SAYC",
-     "2N", {"2D", "3D"},
+     "2D", {"2D", "3D"},  # FIXED: was 2N (freak)
      "Fix#4: 1-5-6-1 shape (singleton in partner's spades + own club) — rebid "
      "the 6-card diamond suit, not 2NT."),
     ("RANDOM-004 slam try over a limit raise", "W", "All",

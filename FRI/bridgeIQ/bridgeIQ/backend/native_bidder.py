@@ -2541,6 +2541,38 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
                 if _is_legal_bid(cand, state):
                     return cand
 
+        # 2c-ter. Don't rebid NT with a 6-card UNSHOWN suit AND a singleton in
+        # a suit PARTNER bid — that's a freak, not a balanced NT hand (the
+        # 1-5-6-1 2NT that buried a 6-card diamond suit, RANDOM-020: missed
+        # 3NT/5D). Show the suit at the cheapest legal level instead.
+        if (not raw.is_pass and raw.suit == Suit.NOTRUMP
+                and not state.opp_overcalled and state.partner_bids):
+            partner_suits = {pb.suit for pb in state.partner_bids
+                             if pb.suit is not None and pb.suit != Suit.NOTRUMP}
+            short_in_partner = any(eval_.suit_lengths.get(s, 0) <= 1
+                                   for s in partner_suits)
+            long_suit = None
+            if short_in_partner:
+                for s in (Suit.DIAMONDS, Suit.CLUBS, Suit.HEARTS, Suit.SPADES):
+                    if (eval_.suit_lengths.get(s, 0) >= 6
+                            and not any(mb.suit == s for mb in state.my_bids)):
+                        long_suit = s
+                        break
+            if long_suit is not None:
+                ls = state.last_suit_bid
+                if ls is None:
+                    lvl = 1
+                elif _BID_RANK[long_suit] > _BID_RANK[ls]:
+                    lvl = state.last_level
+                else:
+                    lvl = state.last_level + 1
+                cand = bid(lvl, long_suit,
+                           why=f"Sanity: NT on a singleton in partner's suit + "
+                               f"6-card {long_suit.to_char()} → "
+                               f"{lvl}{long_suit.to_char()} (show the suit)")
+                if _is_legal_bid(cand, state):
+                    return cand
+
         # 2d. Opener must not pass partner's FORCING new-suit response.
         # A non-jump new suit by responder (1D-1S, 1H-2C, …) is forcing —
         # opener has to rebid. biq's opener-rebid path can fall through to
