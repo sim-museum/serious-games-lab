@@ -2573,6 +2573,28 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
                 if _is_legal_bid(cand, state):
                     return cand
 
+        # 2c-quater. Opener: accept partner's competitive LIMIT RAISE (3M) of
+        # my major with a 5-card suit + opening values — selling out below a
+        # cold game was RANDOM-025 (passed 3S with 11 HCP + 5 spades + a
+        # 10-card fit; 4S/5S cold). Gated to CONTESTED auctions (biq's
+        # documented over-passivity); the uncontested raise-accept is the
+        # normal path's job.
+        if (raw.is_pass and state.opp_overcalled
+                and state.opener_seat == state.seat
+                and state.opening_bid is not None
+                and state.opening_bid.suit in (Suit.HEARTS, Suit.SPADES)
+                and not _partnership_has_reached_game(state)):
+            om = state.opening_bid.suit
+            if (eval_.suit_lengths.get(om, 0) >= 5 and eval_.hcp >= 11
+                    and any(pb.suit == om and pb.level == 3 and not pb.is_pass
+                            for pb in state.partner_bids)):
+                cand = bid(4, om,
+                           why=f"Accept partner's competitive limit raise: "
+                               f"5-card {om.to_char()} + {eval_.hcp} HCP "
+                               f"(10-card fit) → 4{om.to_char()}")
+                if _is_legal_bid(cand, state):
+                    return cand
+
         # 2d. Opener must not pass partner's FORCING new-suit response.
         # A non-jump new suit by responder (1D-1S, 1H-2C, …) is forcing —
         # opener has to rebid. biq's opener-rebid path can fall through to

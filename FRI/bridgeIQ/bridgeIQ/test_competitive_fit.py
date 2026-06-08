@@ -88,7 +88,7 @@ CASES = [
      "implies (9-card heart fit); raise hearts, do not rebid own clubs (3C)."),
     ("RANDOM-025 raise game w/ 10-card fit (LAW)", "N", "EW",
      "p 1s 2c 3s p", "E", "KQ542.K7.QJ73.65", "SAYC",
-     "P", {"4S"},
+     "4S", {"4S"},  # FIXED: was P
      "Fix#1/LAW: 11 HCP + 5 spades + a 10-card fit over partner's 3s raise → "
      "bid 4S; passing concedes a cold game."),
     ("RANDOM-043 advance partner's Michaels", "S", "None",
