@@ -144,6 +144,9 @@ def main(argv=None):
     ap.add_argument("--expect-system", default=None,
                     help="assert N/S plays this biq system name (e.g. Precision90M)")
     ap.add_argument("--min-deals", type=int, default=12)
+    ap.add_argument("--expect-bidder", default=None,
+                    help="require this exact bidder fingerprint (a55796a83f="
+                         "baseline); FAILs a wrong-engine run")
     a = ap.parse_args(argv)
 
     qss = Path(a.qss) if a.qss else _newest_qss()
@@ -230,23 +233,36 @@ def main(argv=None):
         # Bidder fingerprint (caseC marker): caseC>=4 means U1/U2/U3 are
         # present. Three baselines were silently run on a reverted bidder
         # (caseC=0) before this check existed.
-        casec = set()
+        casec, hashes = set(), set()
         for p in logs:
             for line in p.read_text(errors="replace").splitlines():
                 m = re.search(r'caseC=(\d+)', line)
                 if m:
                     casec.add(int(m.group(1)))
+                mh = re.search(r'bidder=([0-9a-f]{6,})', line)
+                if mh:
+                    hashes.add(mh.group(1))
         if not casec:
             c.add("WARN", "Bidder fingerprint",
                   "no bidder= stamp in biq logs (pre-fingerprint run; can't "
                   "verify the engine version)")
         elif min(casec) >= 4:
             c.add("PASS", "Bidder fingerprint (U1/U2/U3 present)",
-                  f"caseC={sorted(casec)}")
+                  f"caseC={sorted(casec)} hash={sorted(hashes)}")
         else:
             c.add("FAIL", "Bidder fingerprint  (REVERTED ENGINE)",
                   f"caseC={sorted(casec)} (<4) — this run used a bidder MISSING "
                   f"U1/U2/U3; the result is on the wrong engine, discard it.")
+        # Exact-engine check: a run must use the engine it was MEANT to (the
+        # baseline-vs-candidate race that put the 2-fix candidate into a
+        # 'baseline' run). caseC>=4 alone can't tell them apart.
+        if a.expect_bidder:
+            if hashes == {a.expect_bidder}:
+                c.add("PASS", f"Engine == {a.expect_bidder}")
+            else:
+                c.add("FAIL", f"Engine == {a.expect_bidder}",
+                      f"run used {sorted(hashes)} — WRONG engine (e.g. a "
+                      f"candidate run mislabelled as baseline). Discard.")
     else:
         c.add("WARN", "biq client logs",
               f"none found in {_RUNS} — system-fixed/pair-agreement checks "

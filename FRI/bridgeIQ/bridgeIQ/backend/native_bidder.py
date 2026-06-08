@@ -2505,96 +2505,6 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
                     if _is_legal_bid(cand, state):
                         return cand
 
-        # 2c-bis. Never INTRODUCE a new suit at the 3-level+ on a doubleton-or-
-        # shorter in a competitive auction — the wrong-strain disaster
-        # (RANDOM-010: 3H on a singleton heart, down 5, when 4S was cold).
-        # Redirect to my longest real suit (5+) at the cheapest legal level,
-        # without escalating the level (so it also curbs the over-bid tail).
-        if (not raw.is_pass and not raw.is_double and not raw.is_redouble
-                and raw.suit is not None and raw.suit != Suit.NOTRUMP
-                and raw.level >= 3
-                and state.opp_overcalled
-                and eval_.suit_lengths.get(raw.suit, 0) <= 2
-                and raw.suit not in [mb.suit for mb in state.my_bids]):
-            best, best_score = None, 4.5   # only 5+ card suits qualify
-            for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
-                if s == raw.suit:
-                    continue
-                length = eval_.suit_lengths.get(s, 0)
-                bid_before = any(mb.suit == s for mb in state.my_bids)
-                score = length + (0.5 if bid_before else 0.0)
-                if score > best_score:
-                    best, best_score = s, score
-            if best is not None:
-                ls = state.last_suit_bid
-                if ls is None:
-                    lvl = 1
-                elif _BID_RANK[best] > _BID_RANK[ls]:
-                    lvl = state.last_level
-                else:
-                    lvl = state.last_level + 1
-                cand = bid(lvl, best,
-                           why=f"Sanity: {raw.level}{raw.suit.to_char()} on "
-                               f"{eval_.suit_lengths.get(raw.suit, 0)} cards in "
-                               f"competition → {lvl}{best.to_char()} (longest "
-                               f"real suit, no escalation)")
-                if _is_legal_bid(cand, state):
-                    return cand
-
-        # 2c-ter. Don't rebid NT with a 6-card UNSHOWN suit AND a singleton in
-        # a suit PARTNER bid — that's a freak, not a balanced NT hand (the
-        # 1-5-6-1 2NT that buried a 6-card diamond suit, RANDOM-020: missed
-        # 3NT/5D). Show the suit at the cheapest legal level instead.
-        if (not raw.is_pass and raw.suit == Suit.NOTRUMP
-                and not state.opp_overcalled and state.partner_bids):
-            partner_suits = {pb.suit for pb in state.partner_bids
-                             if pb.suit is not None and pb.suit != Suit.NOTRUMP}
-            short_in_partner = any(eval_.suit_lengths.get(s, 0) <= 1
-                                   for s in partner_suits)
-            long_suit = None
-            if short_in_partner:
-                for s in (Suit.DIAMONDS, Suit.CLUBS, Suit.HEARTS, Suit.SPADES):
-                    if (eval_.suit_lengths.get(s, 0) >= 6
-                            and not any(mb.suit == s for mb in state.my_bids)):
-                        long_suit = s
-                        break
-            if long_suit is not None:
-                ls = state.last_suit_bid
-                if ls is None:
-                    lvl = 1
-                elif _BID_RANK[long_suit] > _BID_RANK[ls]:
-                    lvl = state.last_level
-                else:
-                    lvl = state.last_level + 1
-                cand = bid(lvl, long_suit,
-                           why=f"Sanity: NT on a singleton in partner's suit + "
-                               f"6-card {long_suit.to_char()} → "
-                               f"{lvl}{long_suit.to_char()} (show the suit)")
-                if _is_legal_bid(cand, state):
-                    return cand
-
-        # 2c-quater. Opener: accept partner's competitive LIMIT RAISE (3M) of
-        # my major with a 5-card suit + opening values — selling out below a
-        # cold game was RANDOM-025 (passed 3S with 11 HCP + 5 spades + a
-        # 10-card fit; 4S/5S cold). Gated to CONTESTED auctions (biq's
-        # documented over-passivity); the uncontested raise-accept is the
-        # normal path's job.
-        if (raw.is_pass and state.opp_overcalled
-                and state.opener_seat == state.seat
-                and state.opening_bid is not None
-                and state.opening_bid.suit in (Suit.HEARTS, Suit.SPADES)
-                and not _partnership_has_reached_game(state)):
-            om = state.opening_bid.suit
-            if (eval_.suit_lengths.get(om, 0) >= 5 and eval_.hcp >= 11
-                    and any(pb.suit == om and pb.level == 3 and not pb.is_pass
-                            for pb in state.partner_bids)):
-                cand = bid(4, om,
-                           why=f"Accept partner's competitive limit raise: "
-                               f"5-card {om.to_char()} + {eval_.hcp} HCP "
-                               f"(10-card fit) → 4{om.to_char()}")
-                if _is_legal_bid(cand, state):
-                    return cand
-
         # 2d. Opener must not pass partner's FORCING new-suit response.
         # A non-jump new suit by responder (1D-1S, 1H-2C, …) is forcing —
         # opener has to rebid. biq's opener-rebid path can fall through to
@@ -5043,41 +4953,6 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
                 return bid(from_lvl, unbid_major,
                            why=f"{from_lvl}{unbid_major.to_char()}: "
                                f"4-card fit after partner's negative X")
-            # 3-card support IS a fit (partner promised 4+ → 7-8 card fit):
-            # raise the major rather than rebidding a side suit. Failing to
-            # do so was RANDOM-019 (3C instead of 3H on a 9-card fit, -7 IMP).
-            # Minimum → simple raise; extras (15+, or a good 13-14 with
-            # shortness in the overcall suit) → jump invite; 18+ → game.
-            if my_major == 3:
-                highest_lvl, highest_suit = 0, None
-                for _seat, b in state.bids:
-                    if b.is_pass or b.is_double or b.is_redouble:
-                        continue
-                    if b.suit is None:
-                        continue
-                    if (b.level > highest_lvl
-                            or (b.level == highest_lvl
-                                and highest_suit is not None
-                                and _BID_RANK[b.suit] > _BID_RANK[highest_suit])):
-                        highest_lvl, highest_suit = b.level, b.suit
-                if highest_suit is None:
-                    from_lvl = 1
-                elif _BID_RANK[unbid_major] > _BID_RANK[highest_suit]:
-                    from_lvl = highest_lvl
-                else:
-                    from_lvl = highest_lvl + 1
-                short_in_opp = (rho_suit is not None
-                                and e.suit_lengths.get(rho_suit, 3) <= 1)
-                extras = hcp >= 15 or (hcp >= 13 and short_in_opp)
-                if hcp >= 18:
-                    lvl = max(4, from_lvl)
-                elif extras and from_lvl + 1 <= 4:
-                    lvl = from_lvl + 1
-                else:
-                    lvl = from_lvl
-                return bid(lvl, unbid_major,
-                           why=f"{lvl}{unbid_major.to_char()}: 3-card support "
-                               f"raise after partner's negative X")
         # 3-card promised major + good hand (15+) → cuebid or jump
         # in own suit; without extras prefer NT or rebid own suit.
         # Stopper in overcall suit + balanced → 1NT-or-cheapest NT.
