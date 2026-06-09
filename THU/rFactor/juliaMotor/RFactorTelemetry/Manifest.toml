@@ -1,0 +1,10 @@
+# This file is machine-generated - editing it directly is not advised
+
+julia_version = "1.12.6"
+manifest_format = "2.0"
+project_hash = "d0a619b13e936224eda63242edccb043041ed885"
+
+[[deps.RFactorTelemetry]]
+path = "."
+uuid = "3b7e9c52-8a14-4f6d-b2c8-91d4e7a05f3a"
+version = "0.1.0"

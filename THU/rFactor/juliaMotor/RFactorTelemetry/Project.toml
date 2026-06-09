@@ -1,0 +1,12 @@
+name = "RFactorTelemetry"
+uuid = "3b7e9c52-8a14-4f6d-b2c8-91d4e7a05f3a"
+authors = ["Curator"]
+version = "0.1.0"
+
+[deps]
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

@@ -1,0 +1,9 @@
+[deps]
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+RFactorData = "8f6d2a41-3c9e-4b7a-9d15-2e8c5f0a1b6e"
+RFactorTelemetry = "3b7e9c52-8a14-4f6d-b2c8-91d4e7a05f3a"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[sources]
+RFactorData = {path = "../../RFactorData"}
+RFactorTelemetry = {path = "../../RFactorTelemetry"}

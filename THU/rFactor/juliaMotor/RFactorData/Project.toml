@@ -1,0 +1,13 @@
+name = "RFactorData"
+uuid = "8f6d2a41-3c9e-4b7a-9d15-2e8c5f0a1b6e"
+authors = ["Curator"]
+version = "0.1.0"
+
+[deps]
+Zlib_jll = "83775a58-1f1d-513f-b197-d71354ab007a"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
