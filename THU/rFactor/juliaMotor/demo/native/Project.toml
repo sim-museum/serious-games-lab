@@ -1,0 +1,6 @@
+[deps]
+GLFW = "f7f18e0c-5ee9-5ccd-a5bf-e8befd85ed98"
+JuliaMotor = "5d2c8e17-4b6f-49a3-8e91-c7f2a0b35d48"
+ModernGL = "66fc600b-dfda-50eb-8b99-91cfa97b1301"
+RFactorData = "8f6d2a41-3c9e-4b7a-9d15-2e8c5f0a1b6e"
+RFactorTelemetry = "3b7e9c52-8a14-4f6d-b2c8-91d4e7a05f3a"

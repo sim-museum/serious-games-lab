@@ -155,6 +155,68 @@ Extract and decode a mesh directly from a MAS archive.
 read_gmt_from_mas(m::MASFile, name::AbstractString) = parse_gmt(extract(m, name))
 
 """
+    parse_gmt_uv(bytes) -> (positions, normals, uvs, triangles, texture)
+
+Decode a sequential-soup GMT *with* its diffuse texture coordinates and the
+diffuse texture filename — the data the renderer needs for texturing.
+
+UVs live in a separate per-vertex attribute array immediately after the vertex
+block (`vptr + nverts*32`); its stride is material-dependent (16 B plain, ~56 B
+with bump/spec maps), and the **diffuse `(u,v)` is the first two floats** of each
+attribute record.  The stride is recovered exactly as
+`(index_offset − attr_start) / nverts`.  `texture` is the first `*.dds`
+filename in the material section after the indices (the L0 diffuse slot);
+`""` if none.  UVs are `(0,0)` if the attribute array is too thin to hold them.
+"""
+function parse_gmt_uv(b::Vector{UInt8})
+    N = length(b)
+    vptr = gmt_header(b).vptr
+    # strict-sequential index run → (offset, length)
+    io = 0; ilen = 0; o = vptr
+    while o + 2 <= N
+        if u16(b, o) == 0
+            len = 0
+            while o + 2len + 2 <= N && Int(u16(b, o + 2len)) == len; len += 1; end
+            len -= len % 3
+            if len >= 3 && vptr + len*32 <= o && len > ilen; ilen = len; io = o; end
+            o += 2*max(len, 1)
+        else
+            o += 2
+        end
+    end
+    nv = ilen
+    nv == 0 && return (NTuple{3,Float32}[], NTuple{3,Float32}[], NTuple{2,Float32}[], NTuple{3,Int}[], "")
+    pos = Vector{NTuple{3,Float32}}(undef, nv); nrm = Vector{NTuple{3,Float32}}(undef, nv)
+    for k in 0:nv-1
+        p = vptr + 32k
+        pos[k+1] = (f32(b, p+4), f32(b, p+8), f32(b, p+12))
+        nrm[k+1] = (f32(b, p+16), f32(b, p+20), f32(b, p+24))
+    end
+    attr = vptr + 32nv
+    stride = nv > 0 ? (io - attr) ÷ nv : 0
+    uvs = Vector{NTuple{2,Float32}}(undef, nv)
+    for k in 0:nv-1
+        uvs[k+1] = stride >= 8 ? (f32(b, attr + stride*k), f32(b, attr + stride*k + 4)) : (0.0f0, 0.0f0)
+    end
+    tris = [(3t, 3t+1, 3t+2) for t in 0:(ilen÷3)-1]
+    # diffuse texture: first *.dds string in the material section after indices
+    tex = ""
+    s = io + 2*ilen
+    run = IOBuffer()
+    while s < N
+        c = b[s+1]
+        if 0x20 <= c <= 0x7e
+            write(run, Char(c))
+        else
+            str = String(take!(run))
+            if endswith(lowercase(str), ".dds"); tex = str; break; end
+        end
+        s += 1
+    end
+    (pos, nrm, uvs, tris, tex)
+end
+
+"""
     parse_gmt_indexed(bytes) -> GMTMesh
 
 Decode a **multi-group / indexed** GMT — the richer layout used by car body /

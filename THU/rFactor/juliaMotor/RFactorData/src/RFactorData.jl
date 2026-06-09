@@ -33,7 +33,7 @@ export ISIEntry, ISISection, ISIFile, parse_isi,
        GENFile, GENStatement, parse_gen, read_gen, find_gen_files, gen_statements,
        AIWWaypoint, AIWFile, read_aiw, find_aiw_files, mainpath, read_gdb,
        MASEntry, MASFile, read_mas, extract, entrynames, find_mas_files,
-       GMTMesh, parse_gmt, parse_gmt_indexed, gmt_bbox, gmt_name, gmt_header, read_gmt_from_mas,
+       GMTMesh, parse_gmt, parse_gmt_indexed, parse_gmt_uv, gmt_bbox, gmt_name, gmt_header, read_gmt_from_mas,
        default_gamedata
 
 include("isiformat.jl")
