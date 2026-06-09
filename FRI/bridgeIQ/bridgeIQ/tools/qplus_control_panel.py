@@ -307,6 +307,8 @@ class CalibrateDialog(QDialog):
                ("‘Players’ item in the Configuration menu", "players_item"),
                ("Set East = Computer (control in the Players dialog)",
                 "east_computer"),
+               ("Set South = Computer (Players dialog — Room 2 / E-W reset)",
+                "south_computer"),
                ("‘OK’ on the Players dialog", "players_ok")]
 
     def __init__(self, parent=None):
@@ -396,6 +398,7 @@ class CalibrationManagerDialog(QDialog):
             ("cfg_menu", "Configuration — top-level menu"),
             ("players_item", "Players — Configuration item"),
             ("east_computer", "East = Computer — Players dialog"),
+            ("south_computer", "South = Computer — Players dialog (Room 2 reset)"),
             ("players_ok", "OK — Players dialog"),
             ("view_menu", "View — top-level menu"),
             ("view_scoring_table", "View Scoring Table — View item"),
@@ -1012,9 +1015,16 @@ class LiveMatchWidget(QWidget):
         kind.addItems(["slam-eligible", "definite-slam", "grand-slam",
                        "random"])
         cnt = QSpinBox(); cnt.setRange(1, 128); cnt.setValue(64)
+        seed = QSpinBox(); seed.setRange(1, 9999); seed.setValue(1)
         row.addWidget(QLabel("Kind:")); row.addWidget(kind, 1)
         row.addWidget(QLabel("Count:")); row.addWidget(cnt)
+        row.addWidget(QLabel("Seed:")); row.addWidget(seed)
         v.addLayout(row)
+        note = QLabel(
+            "The seed is baked into the filename (e.g. RNDS1.BDE) — pick the "
+            "SAME file for Run A and Run B so both draw identical deals.")
+        note.setWordWrap(True); note.setStyleSheet("color:#666;")
+        v.addWidget(note)
         row2 = QHBoxLayout()
         gen = QPushButton("Generate")
         gen.setStyleSheet("font-weight:bold;")
@@ -1024,19 +1034,77 @@ class LiveMatchWidget(QWidget):
 
         def do_gen():
             self._deck = self._mk_proc("deck")
+            code = {"slam-eligible": "SLE", "definite-slam": "SLD",
+                    "grand-slam": "SLG", "random": "RND"}[kind.currentText()]
+            fname = f"{code}S{seed.value()}.BDE"
             self._deck.setArguments(
                 ["-u", "tools/gen_test_deck.py", "--kind", kind.currentText(),
-                 "--count", str(cnt.value()), "--seed", "1"])
+                 "--count", str(cnt.value()), "--seed", str(seed.value())])
             self._deck.finished.connect(
-                lambda *_a: self._append("[deck] done — load the .BDE in "
-                                         "Q-Plus via File ▸ Open Own deals"))
+                lambda *_a: self._append(
+                    f"[deck] done — load {fname} in Q-Plus via File ▸ Open "
+                    f"Own deals (pick the SAME file for Run A and Run B)"))
             self._deck.start()
             self._append(f"[deck] generating {cnt.value()} "
-                         f"{kind.currentText()} deals (DD-filtered, may take a "
-                         "few seconds)…")
+                         f"{kind.currentText()} deals -> {fname} (DD-filtered, "
+                         "may take a few seconds)…")
         gen.clicked.connect(do_gen)
         close.clicked.connect(dlg.hide)
         dlg.show()
+
+    def _ab_refs(self):
+        """(BASE_REF, CAND_REF) from ab_bidder.sh's defaults."""
+        base, cand = "f50a1ce", "p3cand"
+        try:
+            txt = (BIQ_ROOT / "tools/ab_bidder.sh").read_text()
+            mb = re.search(r'BASE_REF="\$\{BASE_REF:-([^}]+)\}"', txt)
+            mc = re.search(r'CAND_REF="\$\{CAND_REF:-([^}]+)\}"', txt)
+            if mb:
+                base = mb.group(1)
+            if mc:
+                cand = mc.group(1)
+        except OSError:
+            pass
+        return base, cand
+
+    def _ref_bidder_hash(self, ref):
+        """The biq-client fingerprint (sha1[:10] of native_bidder.py) for a git
+        ref — so we can require a run to have used that exact engine."""
+        import hashlib
+        try:
+            rel = subprocess.run(
+                ["git", "ls-files", "--full-name", "backend/native_bidder.py"],
+                cwd=str(BIQ_ROOT), capture_output=True, text=True,
+                timeout=5).stdout.strip()
+            out = subprocess.run(["git", "show", f"{ref}:{rel}"],
+                                 cwd=str(BIQ_ROOT), capture_output=True,
+                                 timeout=5)
+            if out.returncode == 0 and out.stdout:
+                return hashlib.sha1(out.stdout).hexdigest()[:10]
+        except (OSError, subprocess.SubprocessError):
+            pass
+        return None
+
+    def validate_last_run(self):
+        """Run tools/run_preflight.py on the newest .qss + biq logs and print
+        PASS/FAIL/VERDICT into the panel log. Catches the rotation / no-closed-
+        room / random-systems oops AND — keyed to the A/B mode — the EXACT
+        engine: Run A must have used the baseline bidder, Run B the candidate."""
+        args = ["-u", "tools/run_preflight.py"]
+        base, cand = self._ab_refs()
+        expect, label = None, ""
+        if self._ab_mode == "A":
+            expect, label = self._ref_bidder_hash(base), " (baseline)"
+        elif self._ab_mode == "B":
+            expect, label = self._ref_bidder_hash(cand), " (candidate)"
+        if expect:
+            args += ["--expect-bidder", expect]
+        self._append("[preflight] validating newest run against the locked "
+                     "rig (deck · Closed Room · fixed system · pair guard"
+                     + (f" · engine=={expect}{label}" if expect else "") + ")…")
+        self._preflight = self._mk_proc("preflight")
+        self._preflight.setArguments(args)
+        self._preflight.start()
 
     def _append(self, text):
         text = text.rstrip()
@@ -1373,6 +1441,14 @@ class LiveMatchWidget(QWidget):
         self._append(f"[dp] Room {ps['room']}: biq {ps['s1']}/{ps['s2']}. "
                      f"Set Q-Plus Config ▸ Players to {ps['extern']}, then run "
                      f"the SAME deck as the other room.")
+        if ps["room"] == 2:
+            # The temp human seat that lets Q-Plus start the server flips from
+            # East (Room 1) to South (Room 2). Spell it out — this was a
+            # repeated manual fixup.
+            self._append("[dp] Room 2 BEFORE ‘Start bridge server’: set "
+                         "E=Computer and S=Human (one local human is required "
+                         "to start; N/W=Computer). biq joins E & W → Extern. "
+                         "Step 6 then resets S=Computer automatically.")
 
     def _dp_save_room(self):
         """Copy the current side's biq log into the Room-1/Room-2 slot."""
@@ -1449,10 +1525,31 @@ class LiveMatchWidget(QWidget):
         Local-bridge-server dialog until :5555 listens. Calls on_ready()
         once the server is up (immediately if it already was)."""
         if _server_listening():
-            self._append("[panel] :5555 already listening — server up")
-            if on_ready:
-                on_ready()
-            return
+            if _qplus_running():
+                self._append("[panel] :5555 already listening — Q-Plus "
+                             "server up")
+                if on_ready:
+                    on_ready()
+                return
+            # :5555 is held but NO QBRIDGE process exists — a stale biq
+            # listener (server/client/proxy) left over from a prior run.
+            # This used to make us falsely report "server up" and SKIP the
+            # launch, so the Q-Plus window never appeared. Clear our own
+            # known leftovers, then fall through and launch for real.
+            self._append("[panel] :5555 held but no Q-Plus running — "
+                         "clearing stale biq listener (qnet server/client/"
+                         "proxy) before launch…")
+            subprocess.run(["pkill", "-9", "-f", "biq_qnet|qnet_proxy"],
+                           capture_output=True)
+            time.sleep(1.0)
+            if _server_listening():
+                QMessageBox.warning(
+                    self, "Port 5555 busy",
+                    "Port 5555 is held by something other than Q-Plus and I "
+                    "couldn't clear it automatically. Free it (e.g. via ⏻ "
+                    "Exit Q-Plus / kill wine, or kill the process on 5555) "
+                    "and try Launch again.")
+                return
         env = dict(os.environ, WINE_BIN_SERVER="/usr/bin/wine")
         if _qplus_running():
             # already loading (e.g. stuck behind the splash) — don't spawn a
@@ -1908,13 +2005,20 @@ class LiveMatchWidget(QWidget):
     def _step_east(self):
         ps = self._pair_seats() if self.pair.isChecked() else None
         if ps and ps["room"] == 2:
-            # Double-pair Room 2: biq sits E/W, so the Extern/Computer config
-            # is INVERTED (N/S=Computer, E/W=Extern). The calibrated
-            # East=Computer click is wrong here — set the four seats by hand.
-            self._step_done(True,
-                "Room 2 (biq E/W): SET BY HAND in Config ▸ Players — "
-                "N=Computer, S=Computer, E=Extern, W=Extern — then Step to "
-                "‘Deal board 1’. (The auto East-reset is N/S-room only.)")
+            # Double-pair Room 2: biq sits E/W (N/S=Computer, E/W=Extern). The
+            # temp human seat was SOUTH (one local human is needed to start the
+            # server), so the reset mirrors Room 1 but on South, not East.
+            if self.set_south_computer():
+                self._step_done(True,
+                    "Room 2 (biq E/W): South = Computer click sent. Verify all "
+                    "four seats in Config ▸ Players (N=Computer, S=Computer, "
+                    "E=Extern, W=Extern), then Step to ‘Deal board 1’.")
+            else:
+                self._step_done(True,
+                    "Room 2 (biq E/W): SET BY HAND in Config ▸ Players — "
+                    "S=Computer (N=Computer, E=Extern, W=Extern) — then Step "
+                    "to ‘Deal board 1’. (Calibrate ‘South = Computer’ to "
+                    "automate this, like Room 1’s East reset.)")
             return
         self.set_east_computer()
         note = "East = Computer click sequence sent"
@@ -2125,6 +2229,22 @@ class LiveMatchWidget(QWidget):
         for p in pts:
             _click_xy(*p)
             time.sleep(0.6)
+
+    def set_south_computer(self) -> bool:
+        """Room 2 (biq E/W) mirror of set_east_computer: resets the temporary
+        human South seat back to Computer after biq connects. Returns True if
+        the click sequence was sent, False if not calibrated (caller falls
+        back to a by-hand prompt)."""
+        keys = ["cfg_menu", "players_item", "south_computer", "players_ok"]
+        pts = [_load_server_btn(k) for k in keys]
+        if not all(pts):
+            return False
+        self._append("[panel] resetting South = Computer "
+                     "(Configuration ▸ Players ▸ OK)…")
+        for p in pts:
+            _click_xy(*p)
+            time.sleep(0.6)
+        return True
 
     def _reset_calibration_missing(self, trans_path):
         """Return a list of calibration targets still missing for an
@@ -2584,8 +2704,15 @@ class ControlPanel(QMainWindow):
         cfg_menu = mb.addMenu("⚙ Config")
         cfg_menu.addAction("Run settings & options…").triggered.connect(
             self.live.show_config_dialog)
-        cfg_menu.addAction("Generate test deck (BDE)…").triggered.connect(
+        # Top-level (not buried under Config): generate a fixed BDE deck so
+        # both Run A and Run B draw byte-identical, seat-stable deals — the
+        # only rotation-proof way to A/B a bidder change against Q-Plus.
+        mb.addAction("🃏 Generate deck…").triggered.connect(
             self.live.show_deck_dialog)
+        # Top-level: validate the newest run matched the locked rig before
+        # trusting its IMPs (closed room on, fixed system, deck-sourced).
+        mb.addAction("✓ Validate run").triggered.connect(
+            self.live.validate_last_run)
         cal_menu = mb.addMenu("🎯 Calibrate")
         cal_menu.addAction("Calibration manager…").triggered.connect(
             self.live.open_calibrate)
