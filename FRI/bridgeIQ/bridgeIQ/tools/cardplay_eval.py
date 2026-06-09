@@ -134,10 +134,48 @@ def _c2s(c52):
     return f"{'SHDC'[c52 // 13]}{_RANKS[c52 % 13]}"
 
 
+_HONOR_RV = {0, 1, 2, 3}        # A K Q J as rank.value
+
+
+def _defense_fixclass(kind, pos, card, trick_cards, my_suit_ranks, dd_best_rv,
+                      opening):
+    """Label a DD-suboptimal defensive play by single-dummy FIXABILITY.
+    FIXABLE (a real defender would find it): winner/honor pitch, 3rd-hand-low
+    (had a higher card, ducked), failure-to-cover an honor. NOT FIXABLE (the
+    double-dummy advantage of seeing all hands): 2nd-hand-low (single-dummy-
+    correct), small-card parity, omniscient underleads, the DD opening-lead
+    problem. Later defensive leads get a 'review' tag (eyeball for cash/return
+    failures) rather than being dismissed as quirk."""
+    rv = card.rank.value
+    if kind == "discard":
+        # pitched a top honor on a discard -> usually a thrown winner/guard
+        return "winner-pitch" if rv in (0, 1, 2) else "parity-quirk"
+    if kind == "lead":
+        # opening lead: the classic un-findable DD lead. later leads: maybe a
+        # missed cash / suit-return -> review separately.
+        return "lead-open-quirk" if opening else "lead-later-review"
+    # follow:
+    led = trick_cards[0] if trick_cards else None
+    # cover-an-honor: an honor was led, biq holds a higher card, played low
+    if (led is not None and led.rank.value in _HONOR_RV
+            and any(r < led.rank.value for r in my_suit_ranks)
+            and rv > led.rank.value):
+        return "cover"
+    if pos == 2:                       # 3rd hand
+        # 3rd-hand-high: biq held a card higher than what it played and DD
+        # wanted higher -> a real defender plays high here.
+        if any(r < rv for r in my_suit_ranks) and dd_best_rv < rv:
+            return "3rd-hand-low"
+        return "3rd-review"
+    if pos == 1:                       # 2nd hand: low is single-dummy-correct
+        return "2nd-hand-quirk"
+    return "4th-review"
+
+
 def _audit_defense(engine, dds, hands, contract, vul, samples):
     """DD declarer + biq defense; at each biq DEFENSIVE play flag when biq's
     card is double-dummy-SUBOPTIMAL (concedes defensive tricks). Returns a list
-    of {tn, kind, led, biq, best, cost} — the exact mis-plays + their type."""
+    of {tn, kind, led, biq, best, cost, pos, fix} — mis-plays + fixability."""
     trump = None if contract.suit == Suit.NOTRUMP else contract.suit
     board = BoardState(board_number=1, dealer=contract.declarer,
                        vulnerability=vul,
@@ -174,6 +212,16 @@ def _audit_defense(engine, dds, hands, contract, vul, samples):
                                              for c in board.hands[cur].cards)
                     kind = ("lead" if not trick.cards
                             else "follow" if has else "discard")
+                    pos = len(trick.cards)
+                    my_suit_ranks = [c.rank.value for c in board.hands[cur].cards
+                                     if c.suit == card.suit]
+                    best_same = [cc % 13 for cc in res
+                                 if res[cc][0] == best
+                                 and cc // 13 == card.suit.value]
+                    dd_best_rv = min(best_same) if best_same else 99
+                    fix = _defense_fixclass(kind, pos, card, list(trick.cards),
+                                            my_suit_ranks, dd_best_rv,
+                                            opening=(not board.tricks))
                     ctx = ""
                     if kind == "follow":
                         def _h(seat):
@@ -189,7 +237,8 @@ def _audit_defense(engine, dds, hands, contract, vul, samples):
                     errs.append({"tn": tn + 1, "kind": kind, "biq": _c2s(bc),
                                  "best": "/".join(_c2s(c) for c, t in res.items()
                                                   if t[0] == best),
-                                 "cost": best - bd, "ctx": ctx})
+                                 "cost": best - bd, "ctx": ctx,
+                                 "pos": pos, "fix": fix})
             board.hands[cur].remove_card(card)
             trick.add_card(card, trump)
             cur = cur.next()
@@ -327,25 +376,44 @@ def main():
     if a.audit_defense:
         from collections import Counter
         s = sample_counts[0]
-        by_kind, cost_kind, follows, total = Counter(), Counter(), [], 0
+        by_kind, cost_kind, total = Counter(), Counter(), 0
+        fix_cost, fixable_rows, review_rows = Counter(), [], []
+        _FIXABLE = {"winner-pitch", "3rd-hand-low", "cover"}
         for hands, c, vul, dd in boards:
             for e in _audit_defense(engine, dds, hands, c, vul, s):
                 by_kind[e["kind"]] += 1
                 cost_kind[e["kind"]] += e["cost"]
                 total += e["cost"]
-                if e["kind"] == "follow":
-                    follows.append((c, e))
+                fix_cost[e["fix"]] += e["cost"]
+                if e["fix"] in _FIXABLE:
+                    fixable_rows.append((c, e))
+                elif e["fix"] == "lead-later-review":
+                    review_rows.append((c, e))
         print(f"defense mis-play audit — {len(boards)} contracts "
               f"(seed {a.seed}, {s} samples)")
         print(f"  DD-suboptimal defensive plays: {sum(by_kind.values())}, "
               f"costing {total} trick-instances")
         for k in ("lead", "follow", "discard"):
             print(f"    {k:8}: {by_kind[k]:3} mis-plays, {cost_kind[k]} cost")
-        print("  FOLLOW mis-plays (fixable) — biq vs DD-best, visible position:")
-        for c, e in follows:
+        fixable = sum(fix_cost[k] for k in _FIXABLE)
+        pct = (100.0 * fixable / total) if total else 0.0
+        print(f"  FIXABILITY split (single-dummy-findable vs DD-omniscient):")
+        for k in ("winner-pitch", "3rd-hand-low", "cover"):
+            print(f"    FIXABLE  {k:13}: {fix_cost[k]} cost")
+        for k in ("2nd-hand-quirk", "parity-quirk", "lead-open-quirk",
+                  "lead-later-review", "3rd-review", "4th-review"):
+            tag = "review" if k.endswith("review") else "quirk "
+            print(f"    {tag}   {k:18}: {fix_cost[k]} cost")
+        review = fix_cost["lead-later-review"]
+        print(f"  => FIXABLE defense leak: {fixable}/{total} = {pct:.0f}% "
+              f"(+{review} later-lead 'review' to eyeball; rest is "
+              f"double-dummy omniscience, not technique)")
+        print("  FIXABLE + later-lead mis-plays — biq vs DD-best, position:")
+        for c, e in sorted(fixable_rows + review_rows,
+                           key=lambda x: -x[1]["cost"])[:18]:
             cs = f"{c.level}{_STRAIN[c.suit]}{c.declarer.name[0]}"
-            print(f"    {cs:6} t{e['tn']:<2} biq {e['biq']}->DD {e['best']:<9} "
-                  f"| {e['ctx']}")
+            print(f"    {cs:5} t{e['tn']:<2} [{e['fix']}] biq {e['biq']}->DD "
+                  f"{e['best']:<9} | {e['ctx']}")
         return 0
 
     if a.audit_declarer:
