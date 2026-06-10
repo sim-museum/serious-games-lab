@@ -210,12 +210,34 @@ def _develop_finesse(board: BoardState, seat: Seat, legal: List[Card],
     return best_card
 
 
+def _outstanding_trumps(board: BoardState, trump: Optional[Suit],
+                        declarer: Seat) -> int:
+    """How many trumps the DEFENDERS still hold (no peek: 13 - our visible
+    trumps - trumps already played)."""
+    if trump is None:
+        return 0
+    dummy = declarer.partner()
+    ours = sum(1 for s in (declarer, dummy) if s in board.hands
+               for c in board.hands[s].cards if c.suit == trump)
+    played = sum(1 for t in board.tricks for c in t.cards if c.suit == trump)
+    return max(0, 13 - ours - played)
+
+
 def _lead(board: BoardState, seat: Seat, legal: List[Card],
           trump: Optional[Suit], declarer: Seat) -> Card:
     """On lead, not the opening lead."""
     decl_side = seat.is_ns() == declarer.is_ns()
     if decl_side:
-        # 1) draw trumps if opponents hold any (textbook, non-peek)
+        # 1) DRAW TRUMPS until the defenders have none — even at the cost of
+        #    conceding a trump trick. Leading our highest trump forces theirs
+        #    out and stops them ruffing our side-suit winners. (The old rule
+        #    only drew while our trump was boss, so it abandoned the job once a
+        #    defender held the master trump, then got ruffed.)
+        if trump is not None and _outstanding_trumps(board, trump, declarer) > 0:
+            my_trumps = sorted((c for c in legal if c.suit == trump),
+                               key=lambda c: c.rank.value)
+            if my_trumps:
+                return my_trumps[0]                # highest trump from this hand
         planned = cardplay_plan.planned_lead(board, seat, [])
         if planned is not None and any(c.suit == planned.suit
                                        and c.rank == planned.rank
