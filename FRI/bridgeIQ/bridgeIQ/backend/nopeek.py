@@ -117,43 +117,97 @@ def _beats(card: Card, win_card: Card, lead: Suit, trump: Optional[Suit]) -> boo
 # ----------------------------------------------------------------- policies
 
 def _opening_lead(board: BoardState, seat: Seat) -> Card:
-    """Defender's opening lead, rule-based (no peek). Honour partner's suit if
-    bid; else top of a 3+ honour sequence; else 4th-best of the longest suit;
-    avoid leading an unsupported ace into a suit contract."""
-    suit_contract = (board.contract is not None
-                     and board.contract.suit != Suit.NOTRUMP)
-    trump = board.contract.suit if suit_contract else None
-    by = _by_suit(board.hands[seat].cards)            # high-first per suit
-    # candidate suits longest first, trump last
-    suits = sorted(by, key=lambda s: (-len(by[s]), s.value))
-    suits = [s for s in suits if s != trump] + ([trump] if trump in by else [])
+    """Defender's opening lead via biq's rule-based lead engine (native_lead).
+    It uses ONLY the leader's own hand + public auction/contract — no peek."""
+    from . import native_lead
+    try:
+        d = native_lead.select_opening_lead(
+            hand=board.hands[seat], contract=board.contract,
+            auction=board.auction, dealer=board.dealer, leader=seat,
+            vulnerability=board.vulnerability)
+        if d is not None and d.card is not None:
+            return d.card
+    except Exception:
+        pass
+    return _by_suit(board.hands[seat].cards)[
+        max(_by_suit(board.hands[seat].cards),
+            key=lambda s: len(_by_suit(board.hands[seat].cards)[s]))][-1]
+
+
+def _safe_defender_lead(board: BoardState, seat: Seat, legal: List[Card],
+                        trump: Optional[Suit]) -> Card:
+    """Subsequent defensive lead: don't underlead honours into a suit contract.
+    Prefer top of a touching-honour sequence, the top of an AK, a singleton
+    (ruff), or a low card from an honour-LESS suit; underlead only as a last
+    resort. No peek (own hand + public)."""
+    by = _by_suit([c for c in legal if c.suit != trump]) or _by_suit(legal)
 
     def seq_top(cards):
-        # top of a 3-card touching honour sequence (KQJ, QJT...)
-        vals = [c.rank.value for c in cards]
+        v = [c.rank.value for c in cards]
         for i in range(len(cards) - 2):
-            if vals[i] + 1 == vals[i + 1] and vals[i + 1] + 1 == vals[i + 2] \
-                    and cards[i].rank.value <= 3:      # top is an honour
+            if v[i] + 1 == v[i + 1] and v[i + 1] + 1 == v[i + 2] \
+                    and cards[i].rank.value <= 3:
                 return cards[i]
+        # AK doubleton+ : cash the K (lead it) vs a suit contract
+        if trump is not None and len(cards) >= 2 \
+                and cards[0].rank == Rank.ACE and cards[1].rank == Rank.KING:
+            return cards[1]
         return None
 
-    for s in suits:
-        cards = by[s]
-        top = seq_top(cards)
+    # 1) top of a sequence / AK in any suit
+    for s in sorted(by, key=lambda s: -len(by[s])):
+        top = seq_top(by[s])
         if top is not None:
             return top
-    # 4th best of longest (or low from a short safe suit)
-    longest = suits[0]
-    cards = by[longest]
-    if len(cards) >= 4:
-        return cards[3]
-    # short suit: avoid underleading an ace vs a suit contract — lead low
-    # from the longest suit that doesn't bare an ace
-    for s in suits:
-        cs = by[s]
-        if cs and not (suit_contract and cs[0].rank == Rank.ACE):
-            return cs[-1]
-    return by[longest][-1]
+    # 2) a singleton in a side suit (ruff try) vs a suit contract
+    if trump is not None:
+        for s in by:
+            if len(by[s]) == 1:
+                return by[s][0]
+    # 3) low from an honour-less suit (no A/K/Q to protect)
+    honourless = [s for s in by if all(c.rank.value > 2 for c in by[s])]
+    if honourless:
+        s = max(honourless, key=lambda s: len(by[s]))
+        return by[s][-1]
+    # 4) last resort: low from the longest
+    s = max(by, key=lambda s: len(by[s]))
+    return by[s][-1]
+
+
+def _played_values(board: BoardState, suit: Suit) -> set:
+    return {c.rank.value for t in board.tricks for c in t.cards
+            if c.suit == suit}
+
+
+def _develop_finesse(board: BoardState, seat: Seat, legal: List[Card],
+                     trump: Optional[Suit], declarer: Seat) -> Optional[Card]:
+    """Declarer on lead: if the OTHER declarer hand holds a split tenace over a
+    missing honour (AQ / KJ / QT ...), lead a low card from THIS hand toward it.
+    The finesse itself falls out of 3rd-hand-high when the other hand follows.
+    Uses only the two declarer hands (both visible to declarer). No peek."""
+    dummy = declarer.partner()
+    other = declarer if seat == dummy else dummy
+    if other not in board.hands:
+        return None
+    best_card, best_len = None, -1
+    for suit in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
+        if suit == trump:
+            continue
+        mine = [c for c in legal if c.suit == suit]
+        if not mine:
+            continue
+        ov = {c.rank.value for c in board.hands[other].cards if c.suit == suit}
+        mv = {c.rank.value for c in board.hands[seat].cards if c.suit == suit}
+        played = _played_values(board, suit)
+        # split tenace: other has v and v+2, the v+1 honour is missing (could
+        # be with opponents). v+1 must be an honour rank (<=4 => A..T).
+        finesse = any(v in ov and (v + 2) in ov and (v + 1) <= 4
+                      and (v + 1) not in ov and (v + 1) not in mv
+                      and (v + 1) not in played
+                      for v in range(0, 11))
+        if finesse and len(mine) > best_len:
+            best_card, best_len = mine[-1], len(mine)   # lead our lowest toward it
+    return best_card
 
 
 def _lead(board: BoardState, seat: Seat, legal: List[Card],
@@ -175,20 +229,18 @@ def _lead(board: BoardState, seat: Seat, legal: List[Card],
             by = _by_suit(bosses)
             longest = max(by, key=lambda s: (len(by[s]), -s.value))
             return by[longest][0]                      # the boss (top) to cash
-        # 3) otherwise lead low from our longest non-trump side suit to
-        #    develop it (passive; finesse logic is a later phase)
+        # 3) develop a finesse toward the other hand's tenace
+        fin = _develop_finesse(board, seat, legal, trump, declarer)
+        if fin is not None:
+            return fin
+        # 4) otherwise lead low from our longest non-trump side suit
         by = _by_suit([c for c in legal if c.suit != trump]) or _by_suit(legal)
         if by:
             longest = max(by, key=lambda s: (len(by[s]), -s.value))
             return by[longest][-1]                     # low card
         return legal[-1]
-    # defender on lead (not opening): passive — low from longest non-trump
-    by = _by_suit([c for c in legal if c.suit != trump]) or _by_suit(legal)
-    longest = max(by, key=lambda s: (len(by[s]), -s.value))
-    cards = by[longest]
-    # don't underlead an ace into a suit contract; lead the ace or another suit
-    return cards[-1] if not cards[0].rank == Rank.ACE or trump is None \
-        else (cards[0] if len(cards) == 1 else cards[-1])
+    # defender on lead (not opening): sound technique, no underleading honours
+    return _safe_defender_lead(board, seat, legal, trump)
 
 
 def _follow(board: BoardState, seat: Seat, legal: List[Card],
