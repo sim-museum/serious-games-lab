@@ -1,0 +1,28 @@
+Mig Alley and Battle of Britain do not currently have active user communities.
+
+Mig Alley:
+source code: https://github.com/gondur/mig_src
+binary download with sha256sum code:
+http://thomasclark.us/falcon/migalley/MigAlley.tar.gz
+e5015ae8891f911a3bf01c8761f955631eb3b7a2715445d8d2ae75b765aecd10  MigAlley.tar.gz
+
+Battle of Britain:
+source code: https://github.com/gondur/BOB_Src
+
+support forum for a commercial version of Battle of Britain, "BoB II, Wings of Victory"
+https://a2asimulations.com/forum/viewforum.php?f=42&sid=12c1a00b045703aa53e4a5fc70b0799f
+
+WWII air combat tactics youtube videos
+https://www.youtube.com/playlist?list=PLnyigzFtHeNr9zTkpxyD0ksFD3CwLa2UE
+https://www.youtube.com/watch?v=lYS3TJ5BWs8
+
+misc Battle of Britain flight sim links
+https://theairtacticalassaultgroup.com/forum/showthread.php?t=30894
+https://theairtacticalassaultgroup.com/forum/showthread.php?t=5058&p=52711
+https://www.eurogamer.net/articles/r_bob
+
+BoB multiplayer
+https://forum.il2sturmovik.com/topic/65672-battle-of-britain-1940-italianwing/page/5/?tab=comments#comment-1033176
+
+General Combat Flight Sim strategy
+http://falcon.blu3wolf.com/Docs/Fighter%20Combat-Tactics%20and%20Maneuvering.pdf
