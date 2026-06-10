@@ -203,6 +203,56 @@ def parse_pbn_deal(pbn: str) -> Tuple[Seat, Vulnerability, dict]:
     return dealer, vul, hands
 
 
+_STRAIN_SUIT = {"S": Suit.SPADES, "H": Suit.HEARTS, "D": Suit.DIAMONDS,
+                "C": Suit.CLUBS, "NT": Suit.NOTRUMP, "N": Suit.NOTRUMP}
+
+
+def deal_signature(hands: dict) -> tuple:
+    """Canonical hashable signature of a 4-hand deal — matches a deal to its
+    PBN board independent of seat order / string formatting."""
+    return tuple(
+        tuple(sorted(c.suit.value * 13 + c.rank.value for c in hands[s].cards))
+        for s in (Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST))
+
+
+def parse_forced_pbn(path: str) -> dict:
+    """Read a forced-contract PBN (e.g. gen_forced_pbn output) and return
+    {deal_signature: Contract}. Lets the client recover the contract when
+    Q-Plus starts cardplay-only with NO bidding (it never sends a contract)."""
+    out, deal, decl, contract = {}, None, None, None
+
+    def _flush():
+        if not (deal and decl and contract):
+            return
+        try:
+            starter, hs = deal.split(":", 1)
+            seat = _SEAT_FROM_NAME[starter.strip()[-1]]
+            hands = {}
+            for h in hs.split():
+                hands[seat] = parse_pbn_hand(h)
+                seat = Seat((seat.value + 1) % 4)
+            strain = contract[1:].rstrip("Xx")
+            c = Contract(level=int(contract[0]), suit=_STRAIN_SUIT[strain],
+                         declarer=_SEAT_FROM_NAME[decl.strip()[0]],
+                         doubled=contract.rstrip().endswith("X"))
+            out[deal_signature(hands)] = c
+        except Exception:
+            pass
+
+    for line in Path(path).read_text(errors="replace").splitlines():
+        s = line.strip()
+        if s.startswith("[Board"):
+            _flush(); deal = decl = contract = None
+        elif s.startswith("[Deal"):
+            m = re.search(r'"([^"]*)"', s); deal = m.group(1) if m else None
+        elif s.startswith("[Declarer"):
+            m = re.search(r'"([^"]*)"', s); decl = m.group(1) if m else None
+        elif s.startswith("[Contract"):
+            m = re.search(r'"([^"]*)"', s); contract = m.group(1) if m else None
+    _flush()
+    return out
+
+
 def parse_bid_token(bid_str: str) -> Bid:
     s = bid_str.strip().lower()
     if s in ('p', 'pass', '-', ''):
@@ -268,7 +318,8 @@ class BiqClient:
                   auto_system: bool = False,
                   random_system: bool = False,
                   pair_mode: bool = False,
-                  nopeek: bool = False):
+                  nopeek: bool = False,
+                  pbn: Optional[str] = None):
         self.host = host
         self.port = port
         self.my_seat = my_seat
@@ -280,6 +331,10 @@ class BiqClient:
         self.pair_mode = pair_mode
         self.nopeek = nopeek
         self.num_samples = num_samples
+        # Forced-contract PBN: when Q-Plus runs cardplay-only (no bidding), it
+        # never sends a contract, so recover it from the same PBN biq generated.
+        self._forced = parse_forced_pbn(pbn) if pbn else {}
+        self._cur_deal_sig = None
         self.verbose = verbose
         self._logfh = None
         if log_path:
@@ -542,6 +597,7 @@ class BiqClient:
             vulnerability=vul,
             hands=hands,
         )
+        self._cur_deal_sig = deal_signature(hands)
         self.auction = []
         self.bidder_seat = self.dealer
         self.contract = None
@@ -759,6 +815,18 @@ class BiqClient:
         return seat == self.my_seat
 
     def _on_begin_play(self, args: List[str]) -> None:
+        # Cardplay-only game (forced-contract PBN): there was no bidding, so
+        # self.contract is still None and Q-Plus never sends a contract. Recover
+        # it from the forced PBN by matching this deal's signature.
+        if self.contract is None and self._cur_deal_sig in self._forced:
+            c = self._forced[self._cur_deal_sig]
+            self.contract = c
+            self.declarer = c.declarer
+            self.board.contract = c
+            self.trick_leader = Seat((c.declarer.value + 1) % 4)
+            self.log(f"FORCED CONTRACT (no bidding): {c.level}"
+                     f"{c.suit.to_char()} by {c.declarer.name} "
+                     f"(opening lead from {self.trick_leader.name})")
         # Multiple begin_play messages observed (server broadcasts per
         # seat). Send our ack once.
         if not self._begin_play_seen:
@@ -1084,6 +1152,11 @@ def main(argv=None) -> int:
                         "(backend.nopeek) instead of MC+DDS — never looks at "
                         "hidden cards. Bidding is unchanged. Use this to measure "
                         "the no-peek engine head-to-head vs Q-Plus cardplay.")
+    p.add_argument("--pbn", default=None,
+                   help="path to the forced-contract PBN loaded into Q-Plus "
+                        "(e.g. gen_forced_pbn output). Required for cardplay-"
+                        "only games: Q-Plus skips bidding and never sends a "
+                        "contract, so biq recovers it from this file.")
     args = p.parse_args(argv)
     # Seat-aware: only clears a stuck same-seat client, so a biq+biq
     # partnership (N and S clients) can coexist.
@@ -1097,7 +1170,7 @@ def main(argv=None) -> int:
         verbose=not args.quiet, log_path=args.log,
         system_file=args.system_file, auto_system=args.auto_system,
         random_system=args.random_system, pair_mode=args.pair,
-        nopeek=args.nopeek)
+        nopeek=args.nopeek, pbn=args.pbn)
     client.run()
     return 0
 
