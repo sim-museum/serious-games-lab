@@ -267,7 +267,8 @@ class BiqClient:
                   system_file: Optional[str] = None,
                   auto_system: bool = False,
                   random_system: bool = False,
-                  pair_mode: bool = False):
+                  pair_mode: bool = False,
+                  nopeek: bool = False):
         self.host = host
         self.port = port
         self.my_seat = my_seat
@@ -277,6 +278,7 @@ class BiqClient:
         self.auto_system = auto_system
         self.random_system = random_system
         self.pair_mode = pair_mode
+        self.nopeek = nopeek
         self.num_samples = num_samples
         self.verbose = verbose
         self._logfh = None
@@ -890,6 +892,18 @@ class BiqClient:
             tricks=list(self.completed_tricks),
         )
         cur = list(self.current_trick)
+        # NO-PEEK engine: pure technique, never samples/solves hidden hands.
+        # In a live Q-NET game biq only holds its own + dummy cards anyway, so
+        # this is the natural fit — and it needs no DDS, hence no fork/segfault.
+        if self.nopeek:
+            from backend import nopeek as _nopeek
+            try:
+                card = _nopeek.decide(board, seat, current_trick_cards=cur)
+                if card is not None:
+                    return card
+            except Exception as e:
+                self.log(f"nopeek error for {seat.name}: {e}")
+            return self._legal_fallback_card(seat)
         try:
             r, w = os.pipe()
             pid = os.fork()
@@ -1065,6 +1079,11 @@ def main(argv=None) -> int:
                         "own seat (incl. when dummy). Required when running "
                         "biq on both N and S — otherwise both fight over "
                         "both seats.")
+    p.add_argument("--nopeek", action="store_true",
+                   help="play CARDS with the no-peek technique engine "
+                        "(backend.nopeek) instead of MC+DDS — never looks at "
+                        "hidden cards. Bidding is unchanged. Use this to measure "
+                        "the no-peek engine head-to-head vs Q-Plus cardplay.")
     args = p.parse_args(argv)
     # Seat-aware: only clears a stuck same-seat client, so a biq+biq
     # partnership (N and S clients) can coexist.
@@ -1077,7 +1096,8 @@ def main(argv=None) -> int:
         num_samples=args.num_samples,
         verbose=not args.quiet, log_path=args.log,
         system_file=args.system_file, auto_system=args.auto_system,
-        random_system=args.random_system, pair_mode=args.pair)
+        random_system=args.random_system, pair_mode=args.pair,
+        nopeek=args.nopeek)
     client.run()
     return 0
 
