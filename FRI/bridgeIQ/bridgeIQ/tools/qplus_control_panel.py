@@ -1402,10 +1402,20 @@ class LiveMatchWidget(QWidget):
         # biq always follows Q-Plus's N/S system: in 'auto' it matches
         # whatever Q-Plus is configured for; in sequential/random/fixed the
         # clicker sets Q-Plus's N/S and biq follows it. So --auto-system always.
-        return ["tools/biq_qnet_client.py", "--host", "127.0.0.1",
+        args = ["tools/biq_qnet_client.py", "--host", "127.0.0.1",
                 "--port", str(port), "--seat", seat,
                 "--num-samples", str(self.samples.value()),
                 "--log", str(log_path), "--auto-system"]
+        # No-peek cardplay + forced-contract PBN (set env vars before launching
+        # the panel to run a no-peek-vs-Q-Plus cardplay-only head-to-head):
+        #   BIQ_NOPEEK=1   -> play cards with the no-peek engine
+        #   BIQ_FORCED_PBN=<path> -> recover contracts when Q-Plus skips bidding
+        if os.environ.get("BIQ_NOPEEK"):
+            args.append("--nopeek")
+        forced = os.environ.get("BIQ_FORCED_PBN")
+        if forced:
+            args += ["--pbn", forced]
+        return args
 
     def _pair_seats(self):
         """Which side biq sits on for a biq+biq run — the double-pair 'room'.
