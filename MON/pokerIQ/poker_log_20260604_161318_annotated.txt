@@ -1,0 +1,44 @@
+SESSION ANALYSIS — PokerIQ Local, $1/$2 NL 6-max
+================================================
+
+SESSION SUMMARY
+---------------
+A very short three-hand sample. You folded the first two hands and won a large pot in the third, finishing +$82 (from $200 to $282). You were never at showdown, so almost all the information here is pre-flop discipline plus one well-played post-flop confrontation in Hand #3. The data set is too small to draw bankroll conclusions, but it does show a clean, position-aware folding pattern and one aggressive line that ran well — though for reasons worth examining honestly.
+
+KEY HANDS
+---------
+
+HAND #1 — Button, Q8o, folded to limps
+What happened: You were on the button (dealer) with Q8o. Two players limped/checked ahead and you folded.
+Assessment: The fold is defensible, but the button over a limped pot is exactly where you can apply pressure. Q8o is a weak holding, but in position against two passive limpers (Loose Bruce and a checked big blind), a small "isolation/limp-raise" to ~$8–10 is a standard exploitative play — you take the pot down often and realize equity in position when called. Folding here is the low-variance choice and not a mistake, but recognize you are leaving "dead money" on the table.
+Concept: Small Stakes Hold'em (Miller/Sklansky/Malmuth) — punishing limpers from late position; and Sklansky's idea of betting when fold equity plus pot equity exceeds your cost.
+
+HAND #2 — UTG-ish, 97o, folded
+What happened: 97o, folded pre-flop.
+Assessment: Correct and easy. 97o out of position with no pot-sweetening incentive is a clear muck. No notes needed — this is the discipline you want as a default.
+Concept: Harrington on Hold'em — early-position hand selection; tight is right when you'll be out of position post-flop.
+
+HAND #3 — K8o, 3-bet pre, flopped top pair, won $82
+What happened: Aggro Angela raised to $6, you 3-bet to $12 with K8o, she called. Flop Jd Ks 6c gave you top pair (K). She min-raised, you re-raised, she 3-bet, you jammed to $130, she folded. You won $82.
+Assessment — the result was great, but separate the result from the decision:
+- Pre-flop: 3-betting K8o is the loose part of this hand. K8o is dominated by every Kx that calls (KT, KJ, KQ, AK) and flips at best against her actual range. Against a known aggressive, wide opener (her range here is genuinely junky), a light 3-bet has merit as an exploit — but K8o specifically is a hand that plays poorly when called because of its kicker problems. A hand like a suited connector or a Kx-suited would 3-bet better.
+- Post-flop: Once you flop top pair on Jd Ks 6c with 95% equity against her 3h Th (basically air with a backdoor flush draw), the aggression is correct and you maximized value. Re-raising her flop min-raise and getting stacks in is exactly right — you have a huge edge and want money in while she's "spewing."
+- The tell: Her min-raise on the flop ($13) is a classic weak/probe sizing. Against a strong made hand you can comfortably escalate; she revealed a capped, weak range and you punished it.
+Concept: Sklansky's Fundamental Theorem of Poker — you profited every time she put money in drawing nearly dead. Also Janda (Applications of NLHE) on capitalizing when villain's range is uncapped-weak. But note Professional No-Limit Hold'em's warning: don't let a winning result validate a thin pre-flop 3-betting standard.
+
+ON THE BOT FIELD (context, not your decisions)
+The "RANGE ACCURACY" readout shows the opponents are playing almost entirely out of any sensible range (J2o, T7o, 76o opening). Practically, this means your edge here is to value-bet relentlessly and bluff rarely — against players who call/raise with junk, thin value beats fancy bluffs. This is the core lesson of Playing the Player (Miller): adapt to the population, don't play a GTO baseline against people who can't fold.
+
+IMPROVEMENT SUGGESTIONS
+-----------------------
+1. Exploit limpers from the button. In spots like Hand #1, default to a raise with playable-ish hands rather than a check/fold. Position + dead money is your highest-EV recurring edge against passive fields.
+
+2. Tighten your light 3-betting hand selection. If you're going to 3-bet pre-flop against loose openers (a good instinct vs Aggro Angela), choose hands that flop better when called — suited Kx, suited connectors, suited aces — rather than offsuit, kicker-dominated hands like K8o. The result won't always bail you out.
+
+3. Value-bet wider, bluff less against this field. With opponents calling with bottom pair and high cards (Hands #1 and #2 went to showdown with very weak holdings), get more thin value and avoid elaborate bluffs that have no fold equity.
+
+4. Read sizing tells. Angela's flop min-raise in Hand #3 signaled weakness — bank that pattern. Small, probing raises from aggressive players are usually merge/weak; escalate with your strong hands and don't give them a cheap card.
+
+5. Gather a bigger sample before drawing conclusions. Three hands and zero showdowns isn't enough to assess leaks or bankroll trajectory. Aim for a few hundred hands so the math (win rate, showdown winnings, 3-bet success) becomes meaningful — Mathematics of Poker reminds us short-run results are dominated by variance.
+
+Net: disciplined folds, one well-extracted big pot, and one pre-flop standard (K8o 3-bet) to firm up. Keep the aggression — just point it at slightly better hands.

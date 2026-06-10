@@ -1,0 +1,397 @@
+============================================================
+POKER LEARNING GAME - SESSION LOG
+Started: 2026-06-04 16:13:18
+============================================================
+
+=== NEW HAND ===
+
+============================================================
+HAND #1 - 16:13:25
+============================================================
+
+=== GAME STATUS ===
+  Game Name: PokerIQ Local
+  Game Type: Texas Hold 'em
+  Limit Type: No Limit
+  Starting Chips: $200
+  Hands Dealt: 1
+  Next Blind Increase: Hand #10
+  # Players (Original/Current): 6/6
+  Blinds (Original/Current): $1/$2 → $1/$2
+  Ante: None
+  Limits: N/A
+===================
+
+Dealer: Hero (You)
+Hole Cards Dealt:
+  Hero (You): 8c Qd
+  Loose Bruce: 5c Jc
+  Fluid Fiona: 7h Ts
+  Sharkey Steve: 2s Jh
+  Tight Tim: 6s Qc
+  Aggro Angela: 6d 7c
+Loose Bruce posts $1
+Fluid Fiona posts $2
+Sharkey Steve: Folds
+Tight Tim: Folds
+Aggro Angela: Folds
+Hero (You): Folds
+Loose Bruce: Calls $1
+Fluid Fiona: Checks
+--- Flop ---
+  [STATS]
+    Loose Bruce     Cards: 5c Jc  Equity: 64.0%  PotOdds: 0.0%
+    Fluid Fiona     Cards: 7h Ts  Equity: 32.5%  PotOdds: 0.0%
+Board: Ah 4s 5h
+Loose Bruce: Checks
+Fluid Fiona: Checks
+--- Turn ---
+  [STATS]
+    Loose Bruce     Cards: 5c Jc  Equity: 59.8%  PotOdds: 0.0%
+    Fluid Fiona     Cards: 7h Ts  Equity: 27.4%  PotOdds: 0.0%
+Board: Ah 4s 5h 4d
+Loose Bruce: Checks
+Fluid Fiona: Checks
+--- River ---
+  [STATS]
+    Loose Bruce     Cards: 5c Jc  Equity: 53.9%  PotOdds: 0.0%
+    Fluid Fiona     Cards: 7h Ts  Equity: 7.5%  PotOdds: 0.0%
+Board: Ah 4s 5h 4d 2h
+Loose Bruce: Checks
+Fluid Fiona: Checks
+Loose Bruce: Two Pair
+Fluid Fiona: Pair
+  Main pot: $4 -> Loose Bruce
+WINNER: Loose Bruce ($2)!
+Final Stacks:
+  Hero (You): $200
+  Loose Bruce: $202
+  Fluid Fiona: $198
+  Sharkey Steve: $200
+  Tight Tim: $200
+  Aggro Angela: $200
+Hand Results (Gain/Loss):
+  Hero (You): $0 (broke even)
+  Loose Bruce: +$2
+  Fluid Fiona: -$2
+  Sharkey Steve: $0 (broke even)
+  Tight Tim: $0 (broke even)
+  Aggro Angela: $0 (broke even)
+--- CHIP COUNT ---
+  Hero (You): $200
+  Loose Bruce: $202
+  Fluid Fiona: $198
+  Sharkey Steve: $200
+  Tight Tim: $200
+  Aggro Angela: $200
+
+=== TABLE STATS ===
+  Name                 Status   Hands Played   Hands Won    Showdowns W/Total   All Ins
+  Hero (You)             $200              1           0                  0/0         0
+  Loose Bruce            $202              1           1                  1/1         0
+  Fluid Fiona            $198              1           0                  0/1         0
+  Sharkey Steve          $200              1           0                  0/0         0
+  Tight Tim              $200              1           0                  0/0         0
+  Aggro Angela           $200              1           0                  0/0         0
+===================
+
+
+[RANGE ACCURACY CHECK]
+  Loose Bruce: J5s IN RANGE (weight=70.0%)
+  Fluid Fiona: T7o NOT IN RANGE (weight=0.0%)
+  Sharkey Steve: J2o NOT IN RANGE (weight=0.0%)
+  Tight Tim: Q6o NOT IN RANGE (weight=0.0%)
+  Aggro Angela: 76o NOT IN RANGE (weight=0.0%)
+  Session accuracy: 1/5 (20.0%)
+
+========================================
+HAND INTERPRETATION:
+  Hand #1 Analysis
+  ----------------------------------------
+  HOLE CARDS:
+    Hero (You): 8c Qd (offsuit junk)
+    Loose Bruce: 5c Jc (suited cards)
+    Fluid Fiona: 7h Ts (offsuit junk)
+    Sharkey Steve: 2s Jh (offsuit junk)
+    Tight Tim: 6s Qc (offsuit junk)
+    Aggro Angela: 6d 7c (offsuit junk)
+  
+  Hero (You) held: Queen-Eight (8c Qd)
+  
+Flop: Ah 4s 5h
+    Loose Bruce: second pair (5s)
+    Fluid Fiona: T-high
+  
+Turn: 4d
+    paired the board
+  
+River: 2h
+    possible flush completion in h
+  
+  ==============================
+  SHOWDOWN RESULTS:
+    Loose Bruce: Two Pair
+    Fluid Fiona: Pair
+  
+  POT BREAKDOWN:
+    Main pot: $4 -> Loose Bruce
+  
+  WINNER: Loose Bruce (+$2)
+  
+  Analysis:
+    Loose Bruce: won with two pair
+    Fluid Fiona: outkicked - had pair on board
+    Hero (You) folded Queen-Eight
+========================================
+=== NEW HAND ===
+
+============================================================
+HAND #2 - 16:15:03
+============================================================
+Dealer: Loose Bruce
+Hole Cards Dealt:
+  Hero (You): 7c 9h
+  Loose Bruce: 4c 2h
+  Fluid Fiona: 4h Td
+  Sharkey Steve: Jd 7h
+  Tight Tim: 5s Ks
+  Aggro Angela: 3d 8d
+Fluid Fiona posts $1
+Sharkey Steve posts $2
+Tight Tim: Folds
+Aggro Angela: Folds
+Hero (You): Folds
+Loose Bruce: Folds
+Fluid Fiona: Calls $1
+Sharkey Steve: Checks
+--- Flop ---
+  [STATS]
+    Fluid Fiona     Cards: 4h Td  Equity: 62.6%  PotOdds: 0.0%
+    Sharkey Steve   Cards: Jd 7h  Equity: 44.6%  PotOdds: 0.0%
+Board: Ah Qc Th
+Fluid Fiona: Raises to $2
+Sharkey Steve: Calls $2
+--- Turn ---
+  [STATS]
+    Fluid Fiona     Cards: 4h Td  Equity: 68.0%  PotOdds: 0.0%
+    Sharkey Steve   Cards: Jd 7h  Equity: 35.2%  PotOdds: 0.0%
+Board: Ah Qc Th 2s
+Fluid Fiona: Checks
+Sharkey Steve: Checks
+--- River ---
+  [STATS]
+    Fluid Fiona     Cards: 4h Td  Equity: 63.2%  PotOdds: 0.0%
+    Sharkey Steve   Cards: Jd 7h  Equity: 22.0%  PotOdds: 0.0%
+Board: Ah Qc Th 2s 9s
+Fluid Fiona: Checks
+Sharkey Steve: Checks
+Fluid Fiona: Pair
+Sharkey Steve: High Card
+  Main pot: $8 -> Fluid Fiona
+WINNER: Fluid Fiona ($4)!
+Final Stacks:
+  Hero (You): $200
+  Loose Bruce: $202
+  Fluid Fiona: $202
+  Sharkey Steve: $196
+  Tight Tim: $200
+  Aggro Angela: $200
+Hand Results (Gain/Loss):
+  Hero (You): $0 (broke even)
+  Loose Bruce: $0 (broke even)
+  Fluid Fiona: +$4
+  Sharkey Steve: -$4
+  Tight Tim: $0 (broke even)
+  Aggro Angela: $0 (broke even)
+--- CHIP COUNT ---
+  Hero (You): $200
+  Loose Bruce: $202
+  Fluid Fiona: $202
+  Sharkey Steve: $196
+  Tight Tim: $200
+  Aggro Angela: $200
+
+=== TABLE STATS ===
+  Name                 Status   Hands Played   Hands Won    Showdowns W/Total   All Ins
+  Hero (You)             $200              2           0                  0/0         0
+  Loose Bruce            $202              2           1                  1/1         0
+  Fluid Fiona            $202              2           1                  1/2         0
+  Sharkey Steve          $196              2           0                  0/1         0
+  Tight Tim              $200              2           0                  0/0         0
+  Aggro Angela           $200              2           0                  0/0         0
+===================
+
+
+[RANGE ACCURACY CHECK]
+  Loose Bruce: 42o NOT IN RANGE (weight=0.0%)
+  Fluid Fiona: T4o NOT IN RANGE (weight=0.0%)
+  Sharkey Steve: J7o NOT IN RANGE (weight=0.0%)
+  Tight Tim: K5s NOT IN RANGE (weight=0.0%)
+  Aggro Angela: 83s NOT IN RANGE (weight=0.0%)
+  Session accuracy: 1/10 (10.0%)
+
+========================================
+HAND INTERPRETATION:
+  Hand #2 Analysis
+  ----------------------------------------
+  HOLE CARDS:
+    Hero (You): 7c 9h (offsuit junk)
+    Loose Bruce: 4c 2h (offsuit junk)
+    Fluid Fiona: 4h Td (offsuit junk)
+    Sharkey Steve: Jd 7h (offsuit junk)
+    Tight Tim: 5s Ks (suited cards)
+    Aggro Angela: 3d 8d (suited cards)
+  
+  Hero (You) held: Nine-Seven (7c 9h)
+  
+Flop: Ah Qc Th
+    Fluid Fiona: bottom pair (Ts)
+    Sharkey Steve: straight draw
+  
+Turn: 2s
+  
+River: 9s
+  
+  ==============================
+  SHOWDOWN RESULTS:
+    Fluid Fiona: Pair
+    Sharkey Steve: High Card
+  
+  POT BREAKDOWN:
+    Main pot: $8 -> Fluid Fiona
+  
+  WINNER: Fluid Fiona (+$4)
+  
+  Analysis:
+    Fluid Fiona: won with bottom pair (Ts)
+    Sharkey Steve: lost with J-high vs bottom pair (Ts)
+    Hero (You) folded Nine-Seven
+========================================
+=== NEW HAND ===
+
+============================================================
+HAND #3 - 16:15:24
+============================================================
+Dealer: Fluid Fiona
+Hole Cards Dealt:
+  Hero (You): Kh 8c
+  Loose Bruce: 7c Qd
+  Fluid Fiona: 2c 6d
+  Sharkey Steve: 7h 6s
+  Tight Tim: Js 4c
+  Aggro Angela: 3h Th
+Sharkey Steve posts $1
+Tight Tim posts $2
+Aggro Angela: Raises to $6
+Hero (You): Raises to $12
+Loose Bruce: Folds
+Fluid Fiona: Folds
+Sharkey Steve: Folds
+Tight Tim: Folds
+Aggro Angela: Calls $6
+--- Flop ---
+  [STATS]
+    Hero (You)      Cards: Kh 8c  Equity: 95.2%  PotOdds: 0.0%
+    Aggro Angela    Cards: 3h Th  Equity: 32.4%  PotOdds: 0.0%
+Board: Jd Ks 6c
+Aggro Angela: Raises to $13
+Hero (You): Raises to $33
+Aggro Angela: Raises to $67
+Hero (You): Raises to $130
+Aggro Angela: Folds
+Hero (You) wins $82!
+Winner: Hero (You) - $82 (others folded)
+  Main pot: $224 -> Hero (You)
+Final Stacks:
+  Hero (You): $282
+  Loose Bruce: $202
+  Fluid Fiona: $202
+  Sharkey Steve: $195
+  Tight Tim: $198
+  Aggro Angela: $121
+Hand Results (Gain/Loss):
+  Hero (You): +$82
+  Loose Bruce: $0 (broke even)
+  Fluid Fiona: $0 (broke even)
+  Sharkey Steve: -$1
+  Tight Tim: -$2
+  Aggro Angela: -$79
+--- CHIP COUNT ---
+  Hero (You): $282
+  Loose Bruce: $202
+  Fluid Fiona: $202
+  Sharkey Steve: $195
+  Tight Tim: $198
+  Aggro Angela: $121
+
+=== TABLE STATS ===
+  Name                 Status   Hands Played   Hands Won    Showdowns W/Total   All Ins
+  Hero (You)             $282              3           1                  0/0         0
+  Loose Bruce            $202              3           1                  1/1         0
+  Fluid Fiona            $202              3           1                  1/2         0
+  Sharkey Steve          $195              3           0                  0/1         0
+  Tight Tim              $198              3           0                  0/0         0
+  Aggro Angela           $121              3           0                  0/0         0
+===================
+
+
+[RANGE ACCURACY CHECK]
+  Loose Bruce: Q7o NOT IN RANGE (weight=0.0%)
+  Fluid Fiona: 62o NOT IN RANGE (weight=0.0%)
+  Sharkey Steve: 76o NOT IN RANGE (weight=0.0%)
+  Tight Tim: J4o NOT IN RANGE (weight=0.0%)
+  Aggro Angela: T3s NOT IN RANGE (weight=0.0%)
+  Session accuracy: 1/15 (6.7%)
+
+========================================
+HAND INTERPRETATION:
+  Hand #3 Analysis
+  ----------------------------------------
+  HOLE CARDS:
+    Hero (You): Kh 8c (offsuit junk)
+    Loose Bruce: 7c Qd (offsuit junk)
+    Fluid Fiona: 2c 6d (offsuit junk)
+    Sharkey Steve: 7h 6s (offsuit junk)
+    Tight Tim: Js 4c (offsuit junk)
+    Aggro Angela: 3h Th (suited cards)
+  
+  Hero (You) held: King-Eight (Kh 8c)
+  
+Flop: Jd Ks 6c
+    Hero (You) equity: 95%
+  
+  ==============================
+  SHOWDOWN RESULTS:
+  Hero (You) wins +$82 uncontested
+========================================
+
+############################################################
+SESSION SUMMARY
+############################################################
+
+=== TABLE STATS ===
+  Name                 Status   Hands Played   Hands Won    Showdowns W/Total   All Ins
+  Hero (You)             $282              3           1                  0/0         0
+  Loose Bruce            $202              3           1                  1/1         0
+  Fluid Fiona            $202              3           1                  1/2         0
+  Sharkey Steve          $195              3           0                  0/1         0
+  Tight Tim              $198              3           0                  0/0         0
+  Aggro Angela           $121              3           0                  0/0         0
+===================
+
+
+=== HOLE CARD STATS (Hero) ===
+  Hand   Seen  Played   Won  Lost   Cash Gained   Cash Lost       Net
+  K8o       1       1     1     0           $82          $0      $+82
+  97o       1       1     0     0            $0          $0       $+0
+  Q8o       1       1     0     0            $0          $0       $+0
+============================
+
+--- CHIP COUNT ---
+  Hero (You): $282
+  Loose Bruce: $202
+  Fluid Fiona: $202
+  Sharkey Steve: $195
+  Tight Tim: $198
+  Aggro Angela: $121
+Ended: 2026-06-04 16:19:09

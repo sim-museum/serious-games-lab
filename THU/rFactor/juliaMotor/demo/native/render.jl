@@ -184,6 +184,29 @@ function extract_car_parts(gd)
     parts
 end
 
+"""The cockpit steering wheel (`volante`) as a textured TrackPart, CENTRED at its
+own origin (rig frame) so the caller can position it on the column and spin it
+about X with the steering input."""
+function extract_steering_wheel(gd)
+    mas = read_mas(joinpath(gd,"Vehicles","F158","Vanwall","Vanwall VW58.mas"))
+    i=findfirst(e->lowercase(e.name)=="volante.gmt", mas.entries); i===nothing && return nothing
+    bb=extract(mas, mas.entries[i]); g=parse_gmt_indexed(bb); P=g.positions; N=g.normals
+    nv=Int(reinterpret(UInt32,view(bb,0x17d:0x180))[1]); vptr=Int(reinterpret(UInt32,view(bb,0x191:0x194))[1])
+    attr=vptr+32nv; T=g.triangles; isempty(T) && return nothing   # tight decode (fewer slivers)
+    st=detect_uv_stride(bb,attr,nv,T)
+    uv(k)= (k<nv && attr+st*k+8<=length(bb)) ? (f32at(bb,attr+st*k), f32at(bb,attr+st*k+4)) : (0f0,0f0)
+    ok(p)=all(isfinite,p)&&all(c->abs(c)<50,p); v=Float32[]
+    for t in T
+        a=P[t[1]+1]; b2=P[t[2]+1]; c=P[t[3]+1]; (ok(a)&&ok(b2)&&ok(c)) || continue
+        max(hypot((a.-b2)...),hypot((b2.-c)...),hypot((c.-a)...))>0.28 && continue   # wheel is small
+        for vi in t
+            p=P[vi+1]; n=vi+1<=length(N) ? N[vi+1] : (0f0,1f0,0f0); all(isfinite,n)||(n=(0f0,1f0,0f0))
+            u=uv(vi); append!(v, Float32[-p[3],p[2],p[1], -n[3],n[2],n[1], 1f0,1f0,1f0, u[1],-u[2]])
+        end
+    end
+    TrackPart(v, "VANWALL_STEERING_WHEEL.DDS", (0.35f0,0.26f0,0.18f0))
+end
+
 """Procedural wire-spoke wheel (untextured), axis along Z, 11-float verts."""
 function wheel_mesh(r, hw; seg=28)
     out=Float32[]; tyre=(0.06f0,0.06f0,0.07f0); rim=(0.20f0,0.21f0,0.24f0)
@@ -214,6 +237,9 @@ function roty(a)
 end
 function rotz(a)
     c,s = cos(a),sin(a); M=ident(); M[1,1]=c; M[1,2]=-s; M[2,1]=s; M[2,2]=c; Float32.(M)
+end
+function rotx(a)
+    c,s = cos(a),sin(a); M=ident(); M[2,2]=c; M[2,3]=-s; M[3,2]=s; M[3,3]=c; Float32.(M)
 end
 function perspective(fovy,aspect,near,far)
     f=1/tan(fovy/2); M=zeros(Float32,4,4)
@@ -252,12 +278,14 @@ float shadow(vec3 N){
   return s/9.0;
 }
 void main(){
-  vec3 N=normalize(vN); if(!gl_FrontFacing) N=-N;
+  vec4 t = uHasTex==1 ? texture(uTex,vUV) : vec4(vC,1.0);
+  if(uHasTex==1 && t.a < 0.5) discard;          // alpha-tested cutouts (fences, crowd, signage)
+  vec3 N = dot(vN,vN) > 1e-6 ? normalize(vN) : vec3(0.0,1.0,0.0);  // guard zero/degenerate normals
+  if(!gl_FrontFacing) N=-N;
   float diff=max(dot(N,normalize(uLightDir)),0.0)*shadow(N);
   vec3 sky=vec3(0.81,0.89,0.97), grd=vec3(0.33,0.38,0.25);
   vec3 amb=mix(grd,sky,0.5+0.5*N.y)*0.6;
-  vec3 base = uHasTex==1 ? texture(uTex,vUV).rgb : vC;
-  vec3 lit = pow(base*(amb+diff*0.95)*uBright, vec3(0.85));
+  vec3 lit = pow(t.rgb*(amb+diff*0.95)*uBright, vec3(0.85));
   float fog = clamp((length(vWorld-uCamPos)-uFogNear)/(uFogFar-uFogNear), 0.0, 1.0);
   o=vec4(mix(lit, uFogCol, fog*fog), 1.0);
 }"""
@@ -277,11 +305,22 @@ const SKY_FS = """
 #version 330 core
 in vec2 ndc; out vec4 o;
 uniform mat4 uInvVP; uniform vec3 uCamPos; uniform vec3 uHorizon; uniform vec3 uZenith; uniform vec3 uLightDir;
+float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float noise(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y); }
+float fbm(vec2 p){ float v=0.0,a=0.55; for(int i=0;i<5;i++){ v+=a*noise(p); p=p*2.03+vec2(1.7,9.2); a*=0.5; } return v; }
 void main(){
   vec4 wp=uInvVP*vec4(ndc,1.0,1.0); vec3 dir=normalize(wp.xyz/wp.w - uCamPos);
   float t=clamp(dir.y,0.0,1.0);
   vec3 col=mix(uHorizon, uZenith, sqrt(t));
-  float sun=pow(max(dot(dir,normalize(uLightDir)),0.0), 200.0);   // soft sun disc
+  float sun=pow(max(dot(dir,normalize(uLightDir)),0.0), 200.0);
+  if(dir.y > 0.01){                                  // procedural cloud layer
+    vec2 cp = (uCamPos.xz + dir.xz/dir.y*1400.0)*0.0011;
+    float c = fbm(cp);
+    float cov = smoothstep(0.52,0.82,c) * smoothstep(0.015,0.22,dir.y);
+    col = mix(col, mix(vec3(0.75,0.78,0.84), vec3(1.0), c), cov*0.9);
+    sun *= (1.0 - cov*0.85);
+  }
   o=vec4(col + vec3(1.0,0.95,0.8)*sun, 1.0);
 }"""
 compileok(s)=(r=Ref{GLint}(); glGetShaderiv(s,GL_COMPILE_STATUS,r); r[]!=0)
@@ -395,9 +434,32 @@ function hnumber!(v,x,y,W,H,T,n,c)
     s=string(max(0,Int(round(n))))
     for (i,ch) in enumerate(s); hdigit!(v,x+(i-1)*(W+2T),y,W,H,T,Int(ch)-48,c); end
 end
-"""Compose the instrument readout: big 7-seg speed, gear, and throttle/brake/rpm
-bars.  Returns the HUD vertex list for `hud_draw`."""
-function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk)
+function hline!(v,x1,y1,x2,y2,t,c)
+    dx=x2-x1; dy=y2-y1; len=hypot(dx,dy); len<1e-3 && return
+    px=-dy/len*(t/2); py=dx/len*(t/2)
+    for (qx,qy) in ((x1+px,y1+py),(x2+px,y2+py),(x2-px,y2-py),(x1+px,y1+py),(x2-px,y2-py),(x1-px,y1-py))
+        append!(v,Float32[qx,qy,c[1],c[2],c[3]])
+    end
+end
+function hcircle!(v,cx,cy,r,t,c;seg=22)
+    px,py=cx+r,cy
+    for i in 1:seg; a=2π*i/seg; qx,qy=cx+r*cos(a),cy+r*sin(a); hline!(v,px,py,qx,qy,t,c); px,py=qx,qy; end
+end
+"""One per-wheel traction circle: ring sized by that tyre's grip (radius), with
+a force dot coloured by utilisation (green→amber→red).  `tc` = (long, lat, radius)."""
+function htraction!(v,cx,cy,baseR,tc)
+    long,lat,rad = Float64(tc[1]),Float64(tc[2]),max(Float64(tc[3]),1e-3)
+    R=baseR*clamp(rad/1.1,0.35,1.7); util=hypot(long,lat)/rad
+    col = util<0.6 ? (0.40,0.80,0.40) : util<0.85 ? (0.92,0.80,0.32) : (0.95,0.35,0.30)
+    hcircle!(v,cx,cy,R,2.0,(0.48,0.53,0.60))
+    dx=-lat/rad*R; dy=-long/rad*R                 # g-g: +lat→left, +long→up
+    hquad!(v,cx+dx-3,cy+dy-3,6,6,col)
+end
+
+"""Compose the instrument readout: big 7-seg speed, gear, throttle/brake/rpm
+bars, and the four per-wheel traction circles.  `tc`=(FL,FR,RL,RR) (long,lat,radius)
+or nothing.  Returns the HUD vertex list for `hud_draw`."""
+function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,tc=nothing)
     v=Float32[]
     white=(0.90,0.95,1.0); amber=(1.0,0.82,0.35); green=(0.42,0.82,0.42); red=(0.95,0.35,0.30); dim=(0.16,0.18,0.22)
     hnumber!(v, 40, H-104, 40, 76, 11, kmh, white)             # speed (big)
@@ -408,6 +470,11 @@ function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk)
     end
     bar(320, thr, green); bar(350, brk, red)
     rf = rpm/max(revlim,1f0); bar(380, rf, rf>0.9 ? red : amber)
+    if tc !== nothing                                          # traction circles (2×2)
+        bx=470; by=H-92; sp=58; R=26
+        htraction!(v,bx,by,R,tc[1]); htraction!(v,bx+sp,by,R,tc[2])
+        htraction!(v,bx,by+sp,R,tc[3]); htraction!(v,bx+sp,by+sp,R,tc[4])
+    end
     v
 end
 function hud_draw(prog,vao,vbo,v,W,H)
@@ -422,25 +489,72 @@ function hud_draw(prog,vao,vbo,v,W,H)
 end
 
 # ---- DDS → GL texture (S3TC/DXT uploaded compressed) ----
-const DXT1 = GLenum(0x83F1); const DXT3 = GLenum(0x83F2); const DXT5 = GLenum(0x83F3)
 u32le(b,o)=reinterpret(UInt32,view(b,o+1:o+4))[1]
+c565(c)=(UInt8(((c>>11)&0x1f)*255÷31), UInt8(((c>>5)&0x3f)*255÷63), UInt8((c&0x1f)*255÷31))
+"""Software-decode a DXT1/DXT3/DXT5 (BC1/2/3) DDS to a flat RGBA byte array —
+gives correct colour AND alpha (so alpha-cutout crowd/fence/signage textures
+work), where the compressed S3TC upload path was dropping DXT3/5 alpha."""
+function decode_dds(b)
+    (length(b)>=128 && String(copy(b[1:4]))=="DDS ") && return _decode(b)
+    (0,0,UInt8[])
+end
+function _decode(b)
+    H=Int(u32le(b,12)); W=Int(u32le(b,16)); fourcc=String(copy(b[85:88]))
+    fourcc in ("DXT1","DXT3","DXT5") || return (0,0,UInt8[])
+    out=zeros(UInt8, W*H*4); o=128; N=length(b)
+    @inbounds for by in 0:4:H-1, bx in 0:4:W-1
+        o+16 > N && break
+        a = ntuple(_->0xff, 16)
+        if fourcc=="DXT3"
+            a = ntuple(k->UInt8(((b[o+1+((k-1)÷2)] >> (4*((k-1)%2))) & 0xf)*17), 16); o+=8
+        elseif fourcc=="DXT5"
+            a0=Int(b[o+1]); a1=Int(b[o+2]); abits=UInt64(0)
+            for k in 0:5; abits |= UInt64(b[o+3+k])<<(8k); end
+            at = a0>a1 ? ntuple(i-> i<=2 ? UInt8(i==1 ? a0 : a1) : round(UInt8,((8-i)*a0+(i-1)*a1)/7), 8) :
+                         ntuple(i-> i<=2 ? UInt8(i==1 ? a0 : a1) : i<=6 ? round(UInt8,((6-i)*a0+(i-1)*a1)/5) : (i==7 ? 0x00 : 0xff), 8)
+            a = ntuple(k->at[Int((abits>>(3*(k-1)))&0x7)+1], 16); o+=8
+        end
+        c0=UInt16(b[o+1])|(UInt16(b[o+2])<<8); c1=UInt16(b[o+3])|(UInt16(b[o+4])<<8)
+        r0,g0,b0=c565(c0); r1,g1,b1=c565(c1)
+        opaque = c0>c1 || fourcc!="DXT1"
+        col(i)= i==0 ? (r0,g0,b0) : i==1 ? (r1,g1,b1) :
+                opaque ? (i==2 ? (UInt8((2*Int(r0)+r1)÷3),UInt8((2*Int(g0)+g1)÷3),UInt8((2*Int(b0)+b1)÷3)) :
+                                 (UInt8((Int(r0)+2*r1)÷3),UInt8((Int(g0)+2*g1)÷3),UInt8((Int(b0)+2*b1)÷3))) :
+                        (i==2 ? (UInt8((Int(r0)+r1)÷2),UInt8((Int(g0)+g1)÷2),UInt8((Int(b0)+b1)÷2)) : (0x00,0x00,0x00))
+        bits=UInt32(b[o+5])|(UInt32(b[o+6])<<8)|(UInt32(b[o+7])<<16)|(UInt32(b[o+8])<<24); o+=8
+        for k in 0:15
+            px=bx+(k%4); py=by+(k÷4); (px<W && py<H) || continue
+            ci=Int((bits>>(2k))&0x3); r,g,bl=col(ci)
+            al = (!opaque && ci==3) ? 0x00 : a[k+1]
+            i=(py*W+px)*4; out[i+1]=r; out[i+2]=g; out[i+3]=bl; out[i+4]=al
+        end
+    end
+    (W,H,out)
+end
+const DXT1GL = GLenum(0x83F1)   # GL_COMPRESSED_RGBA_S3TC_DXT1 (1-bit alpha, GPU-native)
 function load_dds(b)
     (length(b)>=128 && String(copy(b[1:4]))=="DDS ") || return GLuint(0)
-    height=Int(u32le(b,12)); width=Int(u32le(b,16)); mip=max(1,Int(u32le(b,28)))
     fourcc=String(copy(b[85:88]))
-    fmt = fourcc=="DXT1" ? DXT1 : fourcc=="DXT3" ? DXT3 : fourcc=="DXT5" ? DXT5 : return GLuint(0)
-    bb = fourcc=="DXT1" ? 8 : 16
     tex=Ref{GLuint}(); glGenTextures(1,tex); glBindTexture(GL_TEXTURE_2D,tex[])
-    off=128; w=width; h=height
-    for lvl in 0:mip-1
-        w=max(w,1); h=max(h,1)
-        sz=max(1,(w+3)÷4)*max(1,(h+3)÷4)*bb
-        off+sz>length(b) && break
-        glCompressedTexImage2D(GL_TEXTURE_2D, lvl, fmt, w, h, 0, sz, b[off+1:off+sz])
-        off+=sz; w÷=2; h÷=2
+    if fourcc=="DXT1"            # fast path: upload compressed blocks directly
+        H=Int(u32le(b,12)); W=Int(u32le(b,16)); mip=max(1,Int(u32le(b,28)))
+        off=128; w=W; h=H
+        for lvl in 0:mip-1
+            w=max(w,1); h=max(h,1); sz=max(1,(w+3)÷4)*max(1,(h+3)÷4)*8
+            off+sz>length(b) && break
+            glCompressedTexImage2D(GL_TEXTURE_2D,lvl,DXT1GL,w,h,0,sz,b[off+1:off+sz])
+            off+=sz; w÷=2; h÷=2
+        end
+    else                        # DXT3/5: software-decode to RGBA for reliable 8-bit alpha
+        W,H,rgba = decode_dds(b)
+        (W==0 || isempty(rgba)) && (glDeleteTextures(1,tex); return GLuint(0))
+        glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,W,H,0,GL_RGBA,GL_UNSIGNED_BYTE,rgba)
+        glGenerateMipmap(GL_TEXTURE_2D)
     end
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_REPEAT); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_REPEAT)
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR)
+    aniso=Ref{Float32}(0f0); glGetFloatv(GLenum(0x84FF), aniso)
+    aniso[]>1 && glTexParameterf(GL_TEXTURE_2D, GLenum(0x84FE), min(aniso[],16f0))
     tex[]
 end
 

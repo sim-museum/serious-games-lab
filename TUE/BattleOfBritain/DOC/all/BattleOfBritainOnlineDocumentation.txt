@@ -1,0 +1,3001 @@
+The Map
+                                                                              The Map
+
+
+                                                        Table of Contents
+The Map...............................................................................................................................................................1
+      Right Click...............................................................................................................................................1
+
+Main Toolbar.......................................................................................................................................................1
+
+Map Tools Toolbar.............................................................................................................................................1
+
+Scale Toolbar.......................................................................................................................................................1
+
+Teletype Toolbar.................................................................................................................................................1
+
+Time Toolbar.......................................................................................................................................................1
+
+Directives Toggle................................................................................................................................................1
+
+Zoom Toggle........................................................................................................................................................1
+
+Aircraft Allocation.............................................................................................................................................1
+
+Control Dialogue.................................................................................................................................................1
+       Accel........................................................................................................................................................1
+           Fly......................................................................................................................................................2
+
+Dossier..................................................................................................................................................................1
+        Buttons.....................................................................................................................................................1
+
+Filing.....................................................................................................................................................................1
+
+Frag.....................................................................................................................................................................1
+
+Messages...............................................................................................................................................................1
+
+RAF Analogue Clock.........................................................................................................................................1
+
+Routes...................................................................................................................................................................1
+        Buttons.....................................................................................................................................................1
+
+Select Target........................................................................................................................................................1
+
+Take Over Offered..............................................................................................................................................1
+
+Target/Asset List.................................................................................................................................................1
+
+Thumbnail...........................................................................................................................................................1
+
+Waypoint..............................................................................................................................................................1
+
+Weather................................................................................................................................................................1
+
+Zoom Level..........................................................................................................................................................1
+
+
+
+                                                                                                                                                                               i
+                                                                                The Map
+
+
+                                                         Table of Contents
+RAF Command Briefing....................................................................................................................................1
+     July 10th 1940..........................................................................................................................................1
+
+RAF Organisation...............................................................................................................................................1
+
+Luftwaffe Organisation......................................................................................................................................1
+
+RAF Organisation...............................................................................................................................................1
+
+Luftwaffe Organisation......................................................................................................................................1
+
+Intelligence...........................................................................................................................................................1
+
+RDF and ROC.....................................................................................................................................................1
+
+Resources.............................................................................................................................................................1
+
+Missions Generation...........................................................................................................................................1
+
+Mission Structure................................................................................................................................................1
+
+Routes Overview.................................................................................................................................................1
+
+ Airfield Details...................................................................................................................................................1
+
+Directives.............................................................................................................................................................1
+
+Hostiles List.........................................................................................................................................................1
+
+Intercept Offered................................................................................................................................................1
+
+Squadron Diary...................................................................................................................................................1
+
+Mission Folder.....................................................................................................................................................1
+
+Proposed Patrols.................................................................................................................................................1
+
+RAF Resources....................................................................................................................................................1
+
+..............................................................................................................................................................................1
+
+Review..................................................................................................................................................................1
+       Strength....................................................................................................................................................1
+              Aircraft..............................................................................................................................................1
+
+Squadron List......................................................................................................................................................1
+
+Task......................................................................................................................................................................1
+         Summary..................................................................................................................................................1
+         Hurricanes /Spitfires................................................................................................................................1
+
+
+
+ii
+                                                                              The Map
+
+
+                                                        Table of Contents
+Tote Board...........................................................................................................................................................1
+
+Unit Dialogue.......................................................................................................................................................1
+
+Command Briefing..............................................................................................................................................1
+     July 10th 1940..........................................................................................................................................1
+
+Luftwaffe Organisation......................................................................................................................................1
+
+RAF Organisation...............................................................................................................................................1
+
+Intelligence...........................................................................................................................................................1
+
+RAF Defensive System........................................................................................................................................1
+
+Resources.............................................................................................................................................................1
+
+Missions Generation...........................................................................................................................................1
+
+Mission Structure................................................................................................................................................1
+
+Routes Overview.................................................................................................................................................1
+
+Gruppe Diary......................................................................................................................................................1
+
+Directives.............................................................................................................................................................1
+        Resource Allocation Table.......................................................................................................................2
+
+Directives Results................................................................................................................................................1
+
+Geschwader Details.............................................................................................................................................1
+
+Geschwader List..................................................................................................................................................1
+
+Mission Folder.....................................................................................................................................................1
+       Buttons.....................................................................................................................................................1
+
+Luftwaffe Resources...........................................................................................................................................1
+
+Review..................................................................................................................................................................1
+       Strength....................................................................................................................................................1
+              Aircraft..............................................................................................................................................1
+
+Task......................................................................................................................................................................1
+
+
+
+
+                                                                                                                                                                         iii
+     The Map
+
+
+
+
+iv
+The Map
+The campaign map is capable of displaying the entire area of the Battle of Britain campaign, from northern
+England to northern France, based on original Ordnance Survey data from the period. The large scale map can
+be displayed at 4 major levels of magnification, from 400 miles square down to a 50 mile square area. At a
+finer level of detail the map becomes a continuously scaleable down to a scale of 2 miles square. The zoom
+level is easily adjustable, and the map may be scrolled, either using the scroll bars at the right and bottom
+sides of the map, or by clicking and dragging with the left mouse button while the pointer is over the map
+portion of the screen.
+
+As well as the campaign map, the campaign screen has a set of icons in the top right and five toolbars:
+
+                 TimeToolbar
+
+                 Main Toolbar
+
+                 Map Toolbar
+
+                 Scale Toolbar
+
+                 Teletype Toolbar
+
+The fixed set of icons in the top right of the screen offer the following functions:
+
+      • Quit
+        Return to the Main Menu.
+      • Toolbar Control
+        This gives access to the toolbar dialogue box. This box allows the player to select which of the five
+        toolbars will be displayed on the screen at any one time.
+      • Size
+
+Toggle between full screen and maximized displays.
+
+Right Click
+Right click on the mouse anywhere apart from the campaign map on the campaign screen and a menu system
+that duplicates the functionality of the toolbars will open.
+
+
+
+
+The Map                                                                                                         1
+2   The Map
+
+
+
+
+2   The Map
+Main Toolbar
+The main toolbar consists of 9 square notebook icons (8 in the case of the Luftwaffe) at the bottom right of the
+screen:
+
+                Aircraft Allocation
+
+                Luftwaffe Resources or RAF Resources
+
+                Geschwader Lists or Squadron Lists
+
+                Weather
+
+                Review
+
+                Pilot Info
+
+                Target/Asset List
+
+                Luftwaffe Mission Folder or RAF Mission Folder
+
+                Hostiles List
+
+The Luftwaffe Toolbar does not have a Hostiles List.
+
+
+
+
+Main Toolbar                                                                                                  1
+2   Main Toolbar
+
+
+
+
+2   Main Toolbar
+Map Tools Toolbar
+The map toolbar consists of the seven telephone icons just below the map view:
+
+Thumbnail Map
+
+Zoom Level
+
+Zoom Toggle
+
+Directives Toggle
+
+Map Filters
+
+Filing
+
+Replay
+
+It is possible to change the map zoom by one of three methods:
+
+(1) by using the Scale Toolbar (see below).
+
+(2) by clicking with the right button while the mouse pointer is over the map and choosing either the 'zoom in'
+or 'zoom out' option
+
+(3) rotating the wheel on a Microsoft Wheel Mouse (or similar) while the mouse pointer is over the map. If
+the mouse wheel zoom doesn t work initially, then try clicking on the map first.
+
+
+
+
+Map Tools Toolbar                                                                                             1
+2   Map Tools Toolbar
+
+
+
+
+2   Map Tools Toolbar
+Scale Toolbar
+The units shown on the scale are either imperial or metric depending on the selection under the units option in
+the Sim Config menu. If imperial units are selected then the scale is displayed in nautical miles. Kilometres
+are used if metric units are selected.
+
+The scale is fully dockable so that you can move it around the map. The scale can be forced to display
+horizontally or vertically. If the scale is currently vertical, then click and hold on the top portion of the scale
+above the origin and drag it to the desired location.
+
+One method of altering the map scale is to click and hold with your left mouse button over the map toolbar.
+Select a location at the bottom of the scale and move the mouse upwards to decrease the map resolution.
+Select a location at the top of the scale and move the mouse downwards to increase the map resolution.
+
+
+
+
+Scale Toolbar                                                                                                         1
+2   Scale Toolbar
+
+
+
+
+2   Scale Toolbar
+Teletype Toolbar
+The teletype toolbar is just below the map, on the left hand side of the screen. It displays a summary of the last
+three messages received by central command. The originating location is on the left side of the message,
+followed by a message title on the right.
+
+Click on a message to open the Message dialogue and see the full body of the message.
+
+
+
+
+Teletype Toolbar                                                                                                1
+2   Teletype Toolbar
+
+
+
+
+2   Teletype Toolbar
+Time Toolbar
+The time toolbar is located at the bottom left hand side of the screen.
+
+The Teletype section of Time Toolbar shows the current date, time and acceleration rate of the game. Click in
+the teletype area to display the clock.
+
+The control icons below the teletype section determine the flow of the campaign:
+
+Game Speed Icon:
+
+opens the Time Control dialogue box.
+
+Pause Icon:
+
+pauses the game.
+
+Play Icon:
+
+plays the game in real time, where one game second takes one real second (this is the default setting).
+
+Accel Icon:
+
+the game will run at the accelerated rate determined by the settings in the Time Control dialogue. The
+accelerated time can range from x0, when the game is paused, through x1, which indicates that the game is
+running in real-time, to x600. When the accelerated time shows x600, the game is progressing 600 times faster
+than real time. So for every second of real time the game will attempt to progress by 10 campaign minutes.
+
+
+
+
+Time Toolbar                                                                                                1
+2   Time Toolbar
+
+
+
+
+2   Time Toolbar
+Directives Toggle
+The Directives Toggle Icon is used to toggle the appearance of the Directives dialogue box. If the telephone
+icon is on the hook the Directive dialogue box will not appear. It indicates that you are not in contact with the
+staff who produce the missions based on your Directives. In this case you are on your own and you will have
+to build all missions manually.
+
+During the campaign, each day is split into three time periods Your role as Commander can be built around
+building missions for your air crews at the start of each time period. The directives dialogue box allows you
+to build your missions automatically.
+
+
+
+
+Directives Toggle                                                                                               1
+2   Directives Toggle
+
+
+
+
+2   Directives Toggle
+Zoom Toggle
+Clicking on the Zoom Toggle icon toggles between the two user definable zooms that are set in the Zoom
+Level dialogue.
+
+
+
+
+Zoom Toggle                                                                                              1
+2   Zoom Toggle
+
+
+
+
+2   Zoom Toggle
+Aircraft Allocation
+
+The aircraft allocation dialogue box shows where the nation's current aircraft production is destined, and what
+is required. There is a line of information for each type of aircraft under production:
+
+
+      • Aircraft: shows the type of aircraft produced.
+      • Squadron/Gruppe: shows the destination of current production.
+      • Airfield: shows the home of the above squadron.
+      • Rdy(Ttl): shows the number of combat-ready aircraft that the above squadron has at present.
+        Followed, in brackets, by the total aircraft, including those under repair.
+      • Req.: shows the total number of combat ready aircraft required.
+      • ETA: shows the estimated time of arrival of the next production aircraft.
+      • Rate/wk: the current production capacity in aircraft produced per week.
+
+
+Aircraft allocation can be a completely automatic process. The game AI will choose the next squadron or
+gruppe to receive aircraft, based on an assessment of the overall status. The automatic system allocates
+aircraft in blocks of up to four.
+However, manual intervention is possible. The squadron/geschwader box allows you to change the unit that
+will receive the next allocation, and it is also possible to change the number of aircraft required. Note that for
+the Luftwaffe, Ju87 aircraft are never replenished.
+
+
+
+
+Aircraft Allocation                                                                                              1
+2   Aircraft Allocation
+
+
+
+
+2   Aircraft Allocation
+Control Dialogue
+The control dialogue box is displayed when the game speed icon on the time control toolbar is clicked. It
+affords the player a high degree of control over the way in which the gameplay progresses. The acceleration
+page allows the player to define how the game speed varies throughout the game; the fly page determines
+when the player will be offered the chance to get into an aircraft during the campaign.
+
+Accel
+
+When the Accel tab is set, the top half of this dialogue box is used to define the accelerated rates of gameplay
+under the following conditions:
+
+      • Non-raid
+      • Reconn(aissance)
+      • Raid
+      • Dialogue
+
+So, if the dialogue rate is set to 50, then the game will play 50 times faster than real time when a dialogue box
+is displayed and the Accel Icon on the Time Toolbar has been pressed. The other three options refer to the
+current state of Luftwaffe activity - a raid is determined to be in place once it has been detected and confirmed
+by Radar or the Observer Corps. The current activity is shown in red.
+
+The bottom half of the dialogue box details the conditions that can be set for the game to revert to normal time
+from accelerated time. For instance if the "Small Engagement" option is ticked then the game will revert to
+normal whenever a "small" engagement occurs. A small engagement is defined as one that consists of two or
+less Staffeln or Squadrons.
+
+      • Raid Forming
+
+         when a Luftwaffe raid first gets in detection range of the RAF
+
+      • Scramble
+
+         when any planes on your side take off
+
+      • Reach Coast
+
+        when any Luftwaffe aircraft cross the English coast.
+
+      • Small Engagement
+
+         when a raid of two or less Staffeln are engaged by RAF fighters
+
+      • Large Engagement
+
+         when more than two Staffeln are engaged by RAF fighters
+
+      • Losses
+
+         when either side suffers an aircraft loss.
+
+      • Ground Attack
+
+         when a Luftwaffe ground attack mission reaches it s target area
+
+Control Dialogue                                                                                               1
+2                                                                                                 Control Dialogue
+
+        • Landing
+
+    when any aircraft on your side comes in to land
+
+This set of options makes it possible for you to automatically fast-forward to parts of the game that interest
+you.
+
+Fly
+
+The FLY tab allows you to define the conditions under which you will be offered the chance to jump into a
+cockpit and take control of a plane during the campaign.
+
+The top of the dialogue box allows you to define your favourite units by grouping or according to aircraft
+type:
+
+          Luftwaffe
+
+          It is possible to either select a specific Gruppe or a specific Geschwader or a collection of
+          Geschwader. It is also possible to define which Luftflotte is your "favourite". To select a specific
+          Geschwader make sure that the Geschwader Type is not set to Any.
+
+          RAF
+
+          It is possible to either select a specific squadron or a collection of squadrons. To select a collection of
+          squadrons make sure that the Squadron option is set to Any. The collection of squadrons will then be
+          determined by the Group and Aircraft settings.
+
+The available game conditions are the same as those detailed above for accelerated time. If you tick the "All"
+option next to a condition, then when any plane on your side meets the condition, you will be offered the
+chance to pilot that plane. If you tick the "Fav." option then you will be offered a flight only if one of your
+favourite planes is involved in the relevant action.
+
+
+
+
+2                                                                                                 Control Dialogue
+Dossier
+All of the major facilities in the south-east of Britain have an associated dossier which contains relevant
+information about its current known status. You can access the dossier of any facility displayed on the main
+campaign map (see the small filled coloured circles) by clicking on it, or by clicking on the 'details' icon at the
+bottom of the asset/target list which is accessed from the main toolbar. An airfield dossier can also contain
+squadron details when playing on the RAF side - see further information in the RAF dialogues section.
+
+The dossier consists of two tabs: General and Damage.
+
+Under the General tab you will receive specific information as follows:
+
+      • Name
+         The name of the facility.
+      • Type
+         The type of facility - for example the type of radio direction finding facility.
+      • AAA
+         A description of whether or not there has been AAA activity near this facility.
+      • Balloon
+         A description of whether or not there has been barrage balloon activity above this facility.
+      • Status/Damage
+
+ The current damage status and a description of specific problems.
+
+When taking the role of the Luftwaffe Commander, you will also be given any relevant reconnaissance
+information.
+
+Click on the Damage tab to display further damage status information. A list box allows the player to display
+all of the elements that make up the particular location or asset. The fraction displayed to the right of the name
+in the list box indicates the number of items making up the asset in the elements and the number damaged. For
+instance 1/4 means that there are four items in the element and one item has been damaged.
+
+Buttons
+
+The buttons at the bottom of the dossier box are as follows:
+
+      • Centre:
+        Move the map so that the target is centred on the screen.
+      • Zoom:
+        Centre the map and simultaneously zoom in one level.
+      • Photo:
+        Display a 3D image of the target. (Only for RAF command.)
+      • Patrol:
+        Set up a patrol to the identified target. (Only for RAF command)
+      • Reconn:
+        Set up a reconnaissance mission to the identified target. (Only for Luftwaffe command.)
+      • Authorize:
+
+Authorize a strike against the selected target. (Only for Luftwaffe command.) The resulting mission type will
+be the same as the last mission whose task list has been viewed or edited in the mission folder. The mission
+can be edited from within the mission folder at any stage before take-off time, and will be initially scheduled
+for thirty minutes after the time of authorisation.
+
+
+
+Dossier                                                                                                           1
+2   Dossier
+
+
+
+
+2   Dossier
+Filing
+Click on the filing icon to display the filing dialogue box, which is used to save and load campaigns. You can
+save or load a campaign at any stage of the game.
+
+The name of your saved game, based by default on the name you have chosen for your Commander, is
+highlighted in white and also displayed in the upper dark blue edit box. Click on the edit box to edit the name
+of your saved game. Click on the save button and confirm your entry before saving the game.
+
+The load tab should be highlighted in order to display all of the games saved on your hard drive. Select the
+name of the desired game and click on the load button to load it.
+
+Note that when playing under Luftwaffe command only Luftwaffe games are listed, and only RAF games are
+listed when playing under RAF command.
+
+
+
+
+Filing                                                                                                         1
+2   Filing
+
+
+
+
+2   Filing
+Frag
+The frag button is on the lower left corner of the mission folder box, and should be used when you wish to fly
+in one of the displayed missions. The button will only be active when you are allowed to fly in the selected
+group you cannot fly in groups that are preparing to takeoff or have landed.
+
+ Select a mission task line in the mission folder and click the FRAG button to view the FRAG screen. You can
+also access this screen by clicking the FLY button on any TAKE-OVER warning message that appears.
+
+The top of the FRAG screen lists the staffel / squadron units taking part in the mission. Below this list is a
+bank of pilot slots corresponding to the current selected unit. The arrangement of the pilot slots shows the
+flight formation that will be used in the air. Your player name should appear automatically in the lead pilot
+slot. You can change your position within the squadron / staffel by clicking another pilot slot. You can view
+other units by clicking different unit lines (if there are any) and choose to fly in them by clicking any pilot
+slot.
+
+If you lose track of your current pilot selection then hit the Return to Player tickbox. The unit containing
+your pilot will be selected and displayed.
+The term frag is shorthand for the fragment of the orders in the current mission that concern the squadron or
+staffeln in which you are to fly.
+
+
+
+
+Frag                                                                                                              1
+2   Frag
+
+
+
+
+2   Frag
+Messages
+This dialogue is displayed by clicking on the Teletype toolbar. A list of recent messages is displayed. For the
+highlighted item in the list, further details are provided at the bottom of the dialogue. When the message refers
+to a location, the Details button is enabled. The list of messages can be controlled by using the set of filters at
+the top of the dialogue.
+
+
+
+
+Messages                                                                                                         1
+2   Messages
+
+
+
+
+2   Messages
+RAF Analogue Clock
+The RAF clock shows the current time on a standard 12-hour display. A set of coloured triangular shapes are
+arranged around the edge of the clock. During the Battle of Britain (and throughout the entire war) the
+Luftwaffe time was in advance of the RAF s by one hour. To avoid confusion we are using RAF time
+throughout.
+
+The first five minutes after the hour is coded red, the second five minutes is yellow and the third is blue. The
+code then repeats so that from 15 to 20 minutes the code is red again.
+
+Whenever a Luftwaffe direction plot is displayed on the map, its arrow colour will represent the time that the
+information was provided. In this way it is possible to instantly recognise the age of the plots on the map.
+
+
+
+
+RAF Analogue Clock                                                                                                 1
+2   RAF Analogue Clock
+
+
+
+
+2   RAF Analogue Clock
+Routes
+The route button is on the lower part of the mission folder. Click on the route button to display the route
+dialogue box, which details all aspects of the route covered by the group selected in the mission folder.
+
+There are five tabs at the top of the route box when playing under Luftwaffe command, and only three tabs in
+the case of RAF command:
+
+      • Take off
+         Details the take off waypoint for the group selected in the mission folder.
+      • Main route
+        Shows all of the major waypoints shared by the group from take off.
+      • Strike
+        Shows the target location waypoint (only available under Luftwaffe command).
+      • Air Cover
+        Shows the waypoints for the start and end of any relevant air cover (only available under Luftwaffe
+        command).
+      • Landing
+
+Details the landing waypoints for the group.
+
+Note that all of the squadrons or staffel in the mission share the main route waypoints, but do not necessarily
+share the takeoff and landing waypoints. The standard set of waypoints is described in the RAF and Luftwaffe
+Routes Overview.
+
+The major column headings identify the type of waypoint, and three major parameters:
+
+      • Alt
+        The altitude of the waypoint (in either imperial or metric units, according to the setting of the Views
+        sheet in the Sim Config menu). The Landing Waypoint altitude defines the altitude at which computer
+        controlled pilots enter their landing pattern.
+      • ETA
+           The estimated time of arrival at the waypoint.
+      • Rel to ToT
+
+ The time relative to the estimated time over the target.
+
+Buttons
+At the bottom of the route dialogue box there are four or five buttons (depending on whether the campaign is
+under RAF or Luftwaffe control, respectively) that allow the user to alter the displayed routes:
+
+      • Insert
+         Inserts a waypoint into the current route after the currently selected waypoint.
+      • Delete
+         Deletes the currently selected waypoint from the current route.
+      • Centre
+         Repositions the map so that the highlighted waypoint is at the centre of the map screen.
+      • Apply Alt
+
+ Applies the altitude of the currently selected waypoint to all of the displayed waypoints.
+
+New Dogleg
+
+Routes                                                                                                         1
+2                                                                                                    Routes
+
+Alters the dogleg in a Luftwaffe mission that determines the final attack direction on the target.
+
+
+
+
+2                                                                                                    Routes
+Select Target
+This dialogue is displayed when an item in the Target column in the RAF or Luftwaffe Task dialogue is
+selected. Click on another item on the map to change the target for the selected unit of aircraft.
+
+
+
+
+Select Target                                                                                           1
+2   Select Target
+
+
+
+
+2   Select Target
+Take Over Offered
+As time progresses in the campaign there will normally be occasions when the player will be offered to take
+over control of particular aircraft. The events that trigger the offer of a takeover are user-definable and listed
+in the Fly section of the control dialogue box. (The control dialogue is accessed from the bottom left icon on
+the Time Toolbar.)
+
+The take over dialogue box offers four options:
+
+      • Pause
+         Lets the user pause the game and consider what to do next.
+      • Normal
+         Allows the event to pass while the player continues as Commander.
+      • Fly
+           Takes the user into the flight group selection screen (known as the FRAG screen) prior to taking
+        control of an aircraft..
+      • Cancel
+
+ Cancels the take over box. There is a seconds countdown on this box, and when it reaches zero the take over
+offer is rescinded.
+
+
+
+
+Take Over Offered                                                                                                    1
+2   Take Over Offered
+
+
+
+
+2   Take Over Offered
+Target/Asset List
+The target/asset list is displayed by clicking on the target/asset list icon on the main toolbar. These lists detail
+all of the major British assets in the south of England. To the right of the asset name there is the type of asset
+and the (damage) status of the asset . From the Luftwaffe point of view the British assets are targets, so when
+playing from the Luftwaffe perspective the list is known as the target list.
+
+The facilities are broken down into six categories:
+
+Airfields
+
+This list includes all the airfields in the combat area not just those associated with Fighter Command.
+
+Docks
+
+Both civilian and navy docks are listed.
+
+RDF
+
+Both the long range Chain Home and short range Chain Low stations are listed.
+
+Convoys
+
+This list shows the convoys that are currently moving in the combat area.
+
+London
+
+This list shows all industrial targets in the London Area.
+
+Factories
+
+This list shows all the factories that have a direct or indirect impact on aircraft production.
+
+At the bottom of the list there is a 'details' button. Clicking on the details button opens the dossier dialogue for
+the highlighted item in the list. The dossier contains all of the information about the facility, and further
+details are found in the dossier help text.
+
+
+
+
+Target/Asset List                                                                                                      1
+2   Target/Asset List
+
+
+
+
+2   Target/Asset List
+Thumbnail
+Click on the thumbnail map icon at the left hand of the map toolbar to bring up the thumbnail. The red
+rectangle indicates the area covered by the main campaign map.
+
+To change the area covered by the main map, either:
+
+      • left click inside the red rectangle and drag it to the required area, or
+      • left click and the map will centre at the point clicked.
+
+
+
+
+Thumbnail                                                                                                1
+2   Thumbnail
+
+
+
+
+2   Thumbnail
+Waypoint
+The waypoint dialogue is displayed when a waypoint is highlighted in the routes dialogue box, or on the main
+campaign map. Waypoints are displayed as unfilled circles on the main map.
+
+The altitude of any waypoint can be edited, and it is also possible to alter the arrival time at the Initial Point
+waypoint. To find out more about the Initial Point waypoint see the routes dialogue description. The
+parameters listed on the waypoint dialogue box are:
+
+      • Alt
+        The altitude of the waypoint, which can be altered using the pull down box.
+      • ETA
+        The estimated time of arrival at the waypoint. Only the ETA for the Initial Point waypoint can be
+        edited using up and down arrows.
+      • Rel to ToT
+        The expected time of arrival at the waypoint relative to the time over the target. A negative value
+        means a time before the target is reached.
+      • Fuel
+        This is the estimated fuel remaining when the waypoint is reached, defined in terms of minutes of
+        flying time still possible.
+      • Escort Fuel
+        Where relevant, this shows the amount of available fuel left in escorting planes by the time this
+        waypoint is reached, expressed in available minutes of flying time.
+      • Bearing
+        The compass bearing from the previous waypoint.
+      • Range
+
+The distance from the previous waypoint.
+
+There are six buttons at the bottom of the waypoint box:
+
+      • Prev
+          Takes you back to the previous waypoint in the current route.
+      • Next
+        Takes you to the next waypoint in the current route.
+      • Route
+          Displays the route dialogue box which contains the current waypoint.
+      • Insert Creates a new waypoint midway between the current and the next waypoint. Groups of
+        aircraft on a mission can diverge after the 'initial point'. Hence, if the current waypoint is the 'initial
+        point' then a new waypoint is inserted for each group of aircraft.
+
+      • Delete
+
+ Deletes the currently selected waypoint. This facility is only available for inserted waypoints.
+
+Centre
+
+ Centres the selected waypoint on the main campaign map.
+
+
+
+
+Waypoint                                                                                                              1
+2   Waypoint
+
+
+
+
+2   Waypoint
+Weather
+The weather information box is accessed by clicking on the weather icon on the main toolbar. It shows the
+days' weather forecast for the south-east England.
+
+Conditions
+
+The conditions are summarised, with an eye kept on visibility. Your aircraft are not fitted with sophisticated
+radar equipment and so target acquisition is by eye. In bad conditions, it will be difficult to identify targets.
+
+Temperature and Pressure
+
+For fighter aircraft, this information has no direct bearing. However the data does give an indication of
+weather to be expected.
+
+Cloud Base
+
+The altitude of the cloud base is displayed next to the cloud coverage. The cloud coverage is presented as a
+fraction. 8/8 represents total coverage and 0/8 represents a clear sky.
+
+Wind Speed and Direction
+
+Wind speed and direction are quoted at two different altitudes.
+
+Gusts
+
+If the weather is changeable, it is likely that you will suffer from gusts. This will make flying more stressful as
+you have to constantly adjust the controls.
+
+
+
+
+Weather                                                                                                             1
+2   Weather
+
+
+
+
+2   Weather
+Zoom Level
+The zoom level icon is to the right of the map toolbar. Click on the zoom level icon to display two
+user-definable levels of zoom:
+
+      • Default Zoom Level
+      • Second Zoom Level
+
+The default zoom level is the one used when the map is first displayed. This should be set to give an overview
+of the area. A value of 2.00 will result in the map displaying the south east corner of England. The second
+zoom level should be set higher so that it shows a detailed view. When planning strike missions a higher
+zoom is recommended (say, 32 or more) than when setting up patrols (say 8 or more).
+
+Clicking on the Zoom Toggle icon (to the right of the zoom level icon on the map toolbar) toggles between
+these two zoom levels.
+
+
+
+
+Zoom Level                                                                                                   1
+2   Zoom Level
+
+
+
+
+2   Zoom Level
+RAF Command Briefing
+July 10th 1940
+    1. You lead RAF Fighter Command charged with the duty of defending the air space over the United
+       Kingdom. Specifically you must defend your country from the invasion force building up on the
+       continent of Europe. You must ensure that Fighter Command remains an effective force throughout
+       the summer until mid September when bad weather eliminates the risk of invasion.
+    2. You have 53 fighter squadrons at your disposal: 34 have Hurricanes and the rest are equipped with
+       Spitfires. All told, there are over 600 aircraft in your command. You are limited to scheduling
+       missions for a maximum of 32 squadrons at any one time.
+    3. In pursuit of your campaign objectives, you will respond to threats as they appear on the map display.
+       This map shows the result of collating intelligence about enemy movements from various sources
+       including RDF and the ROC.
+    4. It is possible to define both patrol and intercept missions. Patrols can be vectored to threats when they
+       are in the air. You can either design a mission from scratch personally or just set the overall
+       parameters and let your staff complete the details.
+    5. You are cleared to fly missions in Spitfire and Hurricane fighters.
+
+
+
+
+RAF Command Briefing                                                                                           1
+2   RAF Command Briefing
+
+
+
+
+2   RAF Command Briefing
+RAF Organisation
+Fighter Command consists of four Groups: 10, 11, 12 and 13. Each Group is assigned a geographical area
+rather than a specific set of squadrons. Squadrons move from Group to Group to fulfil the objectives of
+Fighter Command.
+
+Although a squadron can have more pilots and aircraft assigned to it, a complete squadron in the air consists
+of twelve aircraft. The squadron is split up into two flights of six and each fight consists of two sections of
+three.
+
+Squadrons, flights and sections all fly in various forms of Vic. For instance a section will usually fly with the
+leader in front and in the middle with two wingmen on either side and slightly behind.
+
+
+
+
+RAF Organisation                                                                                                    1
+2   RAF Organisation
+
+
+
+
+2   RAF Organisation
+Luftwaffe Organisation
+The Luftwaffe organisation bears no resemblance to that used by the RAF. It is confusing then to use RAF
+terms like wing and squadron when discussing Luftwaffe aircraft units.
+
+Two of the Luftwaffe s three Luftflotten are involved in the Battle:
+
+      • Luftflotte 2: HQ in Brussels
+      • Luftflotte 3: HQ in Paris
+
+Each Luftflotte consists of a number of Geschwader. A Geschwader is a unit of about one hundred aircraft all
+of the same type. Each Geschwader consists of up to 3 Gruppen and each Gruppe is made up of up to three
+Staffeln.
+
+Staffeln of aircraft are further divided depending on the type:
+
+      • A complete fighter Staffel will have three Schwarme of four aircraft. Each Schwarme consists of two
+        Rotte or leader-wingman pairs. A Schwarme is equivalent to the finger four used by many airforces
+        since the Second World War. Luftwaffe pilots are generally credited with inventing this very
+        successful formation.
+      • Bombers will fly in Kette of threes or fives in a Vic formation.
+
+The plural of Gruppe is Gruppen and the plural of Staffel is Staffeln.
+
+
+
+
+Luftwaffe Organisation                                                                                     1
+2   Luftwaffe Organisation
+
+
+
+
+2   Luftwaffe Organisation
+RAF Organisation
+Fighter Command consists of four Groups: 10, 11, 12 and 13. Each Group is assigned a geographical area
+rather than a specific set of squadrons. Squadrons move from Group to Group to fulfil the objectives of
+Fighter Command.
+
+Although a squadron can have more pilots and aircraft assigned to it, a complete squadron in the air consists
+of twelve aircraft. The squadron is split up into two flights of six and each flight consists of two sections of
+three.
+
+Squadrons, flights and sections all fly in various forms of Vic. For instance a section will usually fly with the
+leader in front (and in the middle), with two wingmen on either side and slightly behind.
+
+
+
+
+RAF Organisation                                                                                                    1
+2   RAF Organisation
+
+
+
+
+2   RAF Organisation
+Luftwaffe Organisation
+The Luftwaffe organisation bears no resemblance to that used by the RAF. It is confusing then to use RAF
+terms like wing and squadron when discussing Luftwaffe aircraft units.
+
+Two of the Luftwaffe s three Luftflotten are involved in the Battle:
+
+      • Luftflotte 2: HQ in Brussels
+      • Luftflotte 3: HQ in Paris
+
+Each Luftflotte consists of a number of Geschwader. A Geschwader is a unit of about one hundred aircraft all
+of the same type. Each Geschwader consists of up to 3 Gruppen and each Gruppe is made up of three Staffeln.
+Staffeln of aircraft are further divided depending on the type:
+
+      • A complete fighter Staffel will have three Schwarme of four aircraft, making twelve aircraft in total.
+        Each Schwarme consists of two Rotte or leader-wingman pairs. A Schwarme is equivalent to the
+        finger four used by many airforces since the Second World War. Luftwaffe pilots are generally
+        credited with inventing this very successful formation.
+
+      • Bombers will fly in Kette of threes or fives in a V formation. A bomber staffel can consist of 9, 10, or
+        12 aircraft depending how many serviceable aircraft the gruppe can muster (27, 30, 36 respectively).
+        A very strong bomber staffel may be able to field 40 bombers which will fly in a box of 4 staffel of 2
+        kette 5's.
+
+The plural of Gruppe is Gruppen and the plural of Staffel is Staffeln.
+
+
+
+
+Luftwaffe Organisation                                                                                           1
+2   Luftwaffe Organisation
+
+
+
+
+2   Luftwaffe Organisation
+Intelligence
+It is expected that during the course of the summer the Luftwaffe will be able to allocate up to 2000 aircraft to
+prepare for the invasion of England. They have codenamed the operation: Sea Lion. Initially you can expect to
+be confronted by Junkers 87D Stuka dive-bombers and the formidable twin-engine Me110 fighter. Later in the
+campaign you will encounter heavier bombers like the Dornier 17, Heinkel 111 and Junkers 88. The single
+engine Me109 will act as escort to the bomber formations.
+
+It is vital that you don t damage the integrity of Fighter Command by over committing your forces.
+Obviously it makes sense to respond to threat against Fighter Command assets. On the other hand, defence of
+other assets should be limited to the minimum that is deemed to be politically acceptable.
+
+
+
+
+Intelligence                                                                                                   1
+2   Intelligence
+
+
+
+
+2   Intelligence
+RDF and ROC
+Most of the intelligence about enemy movements is gathered by either Radio Direction Finding (RDF)
+methods or the Royal Observer Corps (ROC).
+
+RDF methods are now universally referred to as radar. Fighter Commands had two coastal systems in
+operation during the Battle of Britain. The Chain Home system was capable of detecting aircraft at a distance
+of up to about 150 kilometres (90 miles). At about 15, 000 feet the detection range was about 100 kilometres(
+60 miles).However CH was not very good at detecting aircraft at low altitude. The Chain Home Low system
+was developed to overcome this limitation. This type of radar had a range of about 30 kilometres ( 20 miles)
+at low altitude.
+
+Neither system could be used to track aircraft once they had passed by the system and flown inland. The job
+of detecting aircraft over England fell to the Royal Observer Corps. Groups of two or three people were
+stationed all over the south east of England and they reported all aircraft movements to a central station. This
+system worked remarkably well - however heavy cloud did have a large effect on its effectiveness.
+
+All the information generated passed through a filtering stage so that the information presented on the map
+was consistent and as error free as possible.
+
+
+
+
+RDF and ROC                                                                                                        1
+2   RDF and ROC
+
+
+
+
+2   RDF and ROC
+Resources
+You have 53 fighter squadrons at your disposal: 34 Hurricane and the rest are Spitfires. All told, there are over
+600 aircraft in your command.
+
+The country is split into 4 main command groups, and the groups are further separated into sectors. You are
+able to assign the squadrons to the various fighter command airfields in each sector.
+
+11 Group covers the south east of England and so it is in the front line. 12 Group is to the north and 10 Group
+is to the west. Both these groups are actively involved in the Battle. 13 Group is stationed in the north of
+England. Squadrons in 13 Group do not take part in the Battle; they use the time in the north to recuperate.
+
+10, 11 and 12 group are further divided into Sectors. Each Sector station has its own control room from where
+ground controllers vector RAF fighters to their intercepts.
+
+Squadrons are categories using a three-letter system: "A", "B" and "C". "A" squadrons have a full complement
+of aircraft with fully qualified and rested pilots. Category "C" squadrons are depleted to such an extent that
+they should be withdrawn from the front line.
+
+Provided that the aircraft factories are not adversely affected by bomb damage, production figures are
+expected to improve during the summer. However new squadrons will not be formed because there is a
+shortage of fully qualified pilots. Excess aircraft are kept in storage until existing squadrons require them.
+
+
+
+
+Resources                                                                                                        1
+2   Resources
+
+
+
+
+2   Resources
+Missions Generation
+Missions can be generated in a number of ways:
+
+      • By initiating Directives, the Mission Folder will be filled automatically. Directives are broad ranging
+        commands that can be given from your directive dialogue box, which appears at the start of each of
+        the three daily time periods.
+      • Clicking on a Luftwaffe raid token on the map takes you to the hostile list with the raid line
+        highlighted.
+      • By selecting Authorize on the Hostile List dialogue.
+      • By clicking on the PATROL button on an asset dossier box.
+      • By agreeing to a request to scramble a mission against a Luftwaffe raid.
+
+When a mission is generated it will use the same approximate make-up of aircraft and the same mission
+profile as was used on the last mission with a similar duty.
+
+Once the mission has been generated, it can be fine-tuned to a high level of detail. Use the:
+
+      • Task dialogue to change the aircraft types, numbers, duties and targets.
+      • Route dialogue to make changes to the route for the mission.
+
+Asset patrols (convoys and factories) will be automatically vectored to a threat if a raid is headed for their
+patrol asset. Coastal patrols and radar hole patrols will be automatically vectored if a hostile comes close to
+the coast in their area.
+
+However, the player can also revector patrols in 2 ways:
+
+      • On the hostiles list, patrol will divert the nearest patrol to an immediate intercept.
+
+On the RAF mission folder, select a patrol that is in the air and hit revector, then select the raid you want it to
+attack.
+
+
+
+
+Missions Generation                                                                                               1
+2   Missions Generation
+
+
+
+
+2   Missions Generation
+Mission Structure
+Individual missions can consist of:
+
+      • One aircraft. This will always be the Squadron Leader.
+      • A 'section' of three aircraft.
+      • A 'flight' of six aircraft.
+      • From one to six squadrons.
+
+You are limited to scheduling missions for a maximum of 30 squadrons at any one time.
+
+Each squadron can be allocated a different target during planning. When in the air, the leader of the mission
+will determine the tactics and split the force accordingly.
+
+
+
+
+Mission Structure                                                                                               1
+2   Mission Structure
+
+
+
+
+2   Mission Structure
+Routes Overview
+A route is a set of waypoints. Initially, each route consists of the same standard set of waypoints:
+
+      • Take Off
+
+Generally, the position of the airfield from which the aircraft take off.
+
+      • Fighter Rendezvous
+
+The location at which fighters from different airfields join up.
+
+      • Dogleg
+
+An extra waypoint that allows fine control of the direction that the mission approaches the initial point.
+
+      • Initial Point
+        This is the entry point to the target area. The units split at this point to perform their individual duties.
+      • Estimated Point
+
+This is the estimated location of the hostile at the time the intercept takes place.
+
+      • Target Egress
+
+The point of exit from the combat area air space.
+
+      • Fighter Dispersal
+
+The point at which fighters from different airfields split up.
+
+      • Landing
+
+The position of the landing airfield.
+
+Aircraft in the same mission fly always together from the Fighter Rendezvous to the Initial Point. Each target
+has its own set of waypoints in the Target Zone. Units follow the waypoints associated with their own target.
+
+It is possible to insert and delete additional waypoints. However it is not possible to delete any of the standard
+set. Additional waypoints can be added to both the main route and target zone.
+
+
+
+
+Routes Overview                                                                                                     1
+2   Routes Overview
+
+
+
+
+2   Routes Overview
+Airfield Details
+The airfield details dossier for a fighter command airfield has one tab for 'General' information, one tab for
+'Damage' details and an extra tab for each squadron based at the airfield.
+
+On the general tab there are eight information items:
+
+      • Sector Ops The name of the airfield that houses the sector operations room that gives orders to this
+        station. Damage to the sector ops affects the efficiency of this station and all other stations in the
+        sector.
+      • Repair Facilities An overall rating of damage to facilities used for the repair of aircraft. This includes
+        buildings such as Hangars, workshops and garages. Severe damage results in fewer aircraft that can
+        be repaired per day. Only Sector airfields fix major aircraft damage. Aircraft in resting squadrons can
+        also be damaged, and repairing aircraft destroyed.
+      • Refueling An overall rating of damage to facilities used for the re-fuelling of aircraft. This includes
+        buildings such as storage rooms and fuel dumps. Severe damage results in a slow turnaround when
+        re-fuelling.
+      • Field An overall rating of damage to the landing area used by aircraft taking off and landing. Damage
+        appears in the form of bomb craters and unexploded bombs. Severe damage results in aircraft not
+        being able to take off.
+      • Staff Buildings Damage to staff buildings results in a drop in morale and, occasionally, some pilot
+        loss.
+
+The bottom of the page shows the maximum number of squadrons the station can support and how many
+squadrons for each aircraft type are currently based on the station.
+
+Below the general information items there is a centre button, which allows the user to centre the airfield on the
+main campaign map.
+
+Under the damage tab there are details of all of the component parts of the airfield, sorted using the drop down
+menu under the labels:
+
+      • Hangars/Workshops
+      • Staff Buildings
+      • Fuel/Ammo Stores
+      • Landing Field
+
+The overall damage to each section is calculated as a weighted ratio, depending on the size of each element,
+displayed next to the label.
+
+The squadron details tab shows important information about the fighting ability of the squadron, and also
+provides direct control of readiness level and squadron location:
+
+      • Required This is shorthand for required readiness level - and is in the form of a pull-down menu
+        which allows you to change the current readiness level to 2 mins, 5 mins or 30 mins, or to release the
+        squadron for the forthcoming session. The orders cannot be carried out instantaneously. For instance,
+        a request to move from 30 minutes to 5 minutes readiness will take 25 minutes to carry out.
+        Squadrons that have been released cannot be made available in the current session. If a squadron is
+        released at the beginning of a morning session, it cannot be used until the afternoon at the earliest. If
+        you want a released squadron to be available in the afternoon, you need to change the readiness level
+        to at least 'T 30 minutes' during the midday session. Maintaining high levels of readiness increases
+        fatigue and has a bad effect on morale. However during busy periods it is necessary to be able to call
+        up fighters immediately. Considerable skill is required to balance these opposing requirements.
+      • Current Status Shows the current readiness level status.
+
+Airfield Details                                                                                                 1
+2                                                                                              Airfield Details
+      • Leader Name of the squadron leader.
+      • Leader Morale Current status of the morale of the leader.
+      • Aircraft Type Type of aircraft in the squadron.
+      • Aircraft Available The number of aircraft available to fly in the next session, followed by the total
+        aircraft at the airfield in brackets.
+      • No. pilots Total number of pilots at the airfield.
+      • Morale Morale of the aircrew
+      • Status The damage status of the squadron , rated A, B or C.
+      • Airfield The current airfield.
+      • Move To This allows the player to move a squadron to a selected airfield of any of the 4 major air
+        groups. Requests for squadrons to be moved can be made at anytime. However the actual movement
+        will not take place until the end of the day.
+
+At the bottom of the squadron screen is the details button, which allows access to the squadron diary.
+
+
+
+
+2                                                                                              Airfield Details
+Directives
+The directives dialogue allows you to build up missions automatically. The dialogue is split into four sections:
+
+At the top is the 'housekeeping' section, where general directive issues are detailed:
+
+      • Rest If
+             Allows you to decide which squadrons are to be rested based upon their category (category A
+        means full complement, whereas category C means significantly depleted) or the number of available
+        aircraft. Changes to the rest criteria will change the squadron numbers in the Allocation of Squadrons
+        Section just below.
+      • Frontline Airfields
+
+The frontline airfields can be set to one of the following: Coastal, South London or North London. This
+determines the location of the southernmost airfields occupied by Fighter Command. It is safer to locate your
+forces to the north but then they are unable to respond quickly enough to a threat from the Luftwaffe.
+
+      • Automatic Scrambling
+
+When the Automatic Scrambling option is ticked, intercepts against raids that meet the criteria defined in the
+'Sanctioned Response' section below are scrambled automatically. When the option is not ticked, the 'Intercept
+Offered' dialogue is displayed as the campaign unfolds.
+
+The 'squadron allocation' directive section is just below the housekeeping section, and it is split into two
+Group squadron sections. This allows you to detail the absolute number of squadrons available for each of
+three different type of patrol duties and general intercept duty. Generally, each patrol goes to a different target
+or area.
+
+                 Under the 11 Group squadron section there are the following options:
+
+      • Holes in Radar
+          These patrols will cover any inactive radar sites in order to give some level of warning and response
+      • Over Convoys
+          One patrol will cover a particular convoy, with later timed patrols if there are more patrols than
+        convoys.
+      • Coastal
+        This is a patrol of coastal Radar sites so that there can be a quicker response in case of coastal raids. If
+        these do not eventuate then there is a chance these resources might be wasted.
+      • Intercepts
+
+ Squadrons on 'intercept' duty are waiting at their airfield for a scramble call if an incoming raid has been
+spotted.
+
+                 Under the 10 and 12 Group squadron section there are the following options:
+
+      • Patrol 11 group airfields
+        This sets the number of timed patrols for Group 11 airfields, particularly those that are vulnerable to
+        attack if their own aircraft have been scrambled.
+      • Patrol aircraft factories
+        Sets the number of aircraft factory patrols. In practice these are heavy on fuel and if you want to set a
+        strategy of heavy factory protection then you will have to site your aircraft accordingly.
+      • Patrol support industries
+        Sets the number of support industry patrols. There are the same general observations to make as for
+        aircraft factories, above.
+
+Directives                                                                                                        1
+2                                                                                                      Directives
+
+      • Intercepts
+
+The balance of squadrons available for intercept duty.
+
+If you have over-allocated squadrons to patrol duty, the squadrons not used will be used for intercepts. So, if
+there are no holes in the radar at any particular time, and you have allocated six squadrons to 'Hole in Radar'
+duty, the squadrons will be used, if required, for intercepts. However if there are seven holes in the radar, one
+radar area will not be patrolled.
+
+You are limited to scheduling missions for a maximum of 32 squadrons at any one time. There is also a limit
+of 30 patrol missions. If less than a full squadron is allocated to each patrol then one squadron can patrol 2
+assets.
+
+The 'sanctioned responses' section details those types of Luftwaffe raid that the RAF will respond to
+automatically. If none of the categories are ticked then the player must launch every intercept manually.
+
+There are six types of raid that can provoke a sanctioned response:
+
+      • Fighter Sweep
+
+This type of Luftwaffe raid usually consists of Me109 aircraft that go on strafing runs against coastal targets.
+They may sometimes be armed with one bomb. These raids don t do much damage but they sap morale at the
+coastal airfields. They may also be acting as advanced sweeps for main bomber raids. Overcommitting
+resource to these may let the main raid come in unopposed.
+
+      • Reconn
+        Reconnaissance missions are undertaken by a small group of medium bombers that are sometimes
+        escorted by up to a staffel of fighters. Often, a reconnaissance mission is undertaken by a single
+        bomber in the early hours of daylight.
+      • Unescorted Bombers
+        It is rare to find a Luftwaffe bombing mission without an escort. It is most likely to happen with a low
+        flying Ju88 attack.
+      • Escorted Bombers
+        Most Luftwaffe bombing missions will be escorted.
+      • Heavily Escorted Bombers
+        A heavily escorted bomber raid consists of at least fifty bombers and one hundred fighters.
+      • Intercept before Target
+
+If you decide to intercept raids before they reach the target then you may be able to break up the raid before it
+causes any damage. However, it also means that you will have less time to organise a large response and it is
+also more likely that the raid will be escorted. (The limited fuel range of Me109s often results in an escort that
+breaks off before the target is reached.)
+
+The lower part of the directives box determines the response details of squadrons to convoy support and the
+size of squadron support in general.
+
+      • Convoy Support
+        This allows a level of air patrol support to convoys that ranges from nothing to a matched response.
+        Protecting the convoys results in Fighter Command engaging the Luftwaffe in neutral air space.
+        Luftwaffe fighters can loiter for longer and RAF pilots that are shot down don t have much chance of
+        survival. However it is not possible to ignore the convoys. You will come under heavy political
+        pressure to keep the Channel English. The percentage response relates to the probability of interceptor
+        support for a convoy that signals it is distress.
+      • Patrol Size
+
+
+2                                                                                                      Directives
+Directives                                                   3
+
+The larger the patrol size, the longer the response time.
+
+                         Squadron Or Less I to 12 aircraft
+
+                         2 Squadrons
+
+                         2 squadrons of 12 aircraft each.
+
+                         Big Wing
+
+3 to 5 squadrons flying in formation.
+
+
+
+
+Directives                                                   3
+4   Directives
+
+
+
+
+4   Directives
+Hostiles List
+The hostiles list dialogue lists all the raids that have been detected for the day. As soon as a raid is detected it
+is added to the list, so it is in chronological order. Each line shows all current information that has been
+gathered about the raid. Of more interest are the fields at the end of each line that tells us the number of RAF
+aircraft currently flying out to intercept the raid, the number in combat, the number returning to base and a
+running tally of losses for each side.
+
+The information for each raid is continually updated as it progresses.
+
+This list is very useful as it lets us see an overview of all the raids and make sure that they have adequate
+responses. The information can be filtered, using the tick boxes at the top, to help you decide when and how
+you should deal with a threat. Raids that are inbound or in the target area pose more of a threat to your assets
+than those that have dropped their bombs and are going home.
+
+Selecting a raid by clicking the line enables the buttons at the bottom of the dialogue, allowing you to
+authorize a new response or view the current response to that raid.
+
+The contents of the list can be controlled using the set of filters at the top of the dialogue:
+
+      • Forming
+
+        The raid has yet to leave France. It is building up in size. Different gruppen, escorts etc. are climbing
+        to altitude and getting into formation. The reported size of the raid will increase as it forms up.
+
+      • Incoming
+
+        The raid has formed, but has yet to pass the coast and commence its final attack.
+
+      • At Target
+
+        The raid is in the Target area. The raid has passed its Intercept Waypoint. It is either on its bombing
+        run, bombing the target or clearing the target.
+
+      • Outgoing
+
+        The raid has dropped or dumped its bombs (it is no longer a threat to any targets) and is en route back
+        to France
+
+      • No response
+
+        The raid currently has no RAF response set against it. No patrols have been diverted to it and no
+        fighters have scrambled to intercept it.
+
+      • Responses
+
+        The raid has RAF responses set against it that are not currently engaged.
+
+      • Engaged
+
+        The raid is currently engaged by RAF fighters.
+
+
+
+
+Hostiles List                                                                                                          1
+2                                                                                                   Hostiles List
+
+Each hostile Luftwaffe raid that has been detected is detailed under the following columns:
+
+      • Raid
+
+        The raid ID listed as: H for Luftwaffe Hostile raid, followed by a three digit number starting with the
+        hour that the raid was first detected. H701, for instance, is the first raid after 7 o'clock.
+
+      • Size
+
+        The total number of aircraft estimated to be in the raid at that moment. This figure will be updated as
+        the raid progresses and more information becomes available
+
+      • Type
+
+        The major type of aircraft (e.g. bomber type) in the raid. This field will be blank if the type has not
+        been identified.
+
+      • Escort
+
+        If escort fighters are identified in the raid then the aircraft type (ME 109, ME 110) is recorded here.
+        The field is blank if the information is not available at that moment.
+
+      • Alt
+
+        Current estimated altitude of the main body of the raid.
+
+      • Status
+
+        Current activity of the raid (Forming, Incoming, At Target, Outgoing, Landing, Landed).
+
+      • Target
+
+        The identity of the raid s target. This is unknown until the raid begins its bombing run against the
+        target.
+
+      • Out
+
+        The number of RAF aircraft en route to intercept the raid.
+
+      • Cmbt.
+
+        The number of aircraft in combat with the raid.
+
+      • In
+
+        The number of RAF aircraft returning to base after disengaging with the enemy.
+
+      • Tally
+      • The positive number shows the number of kills claimed by the RAF and the negative figure gives the
+        RAF losses.
+
+
+
+The buttons at the bottom of the Hostiles List box act upon the highlighted raid:
+
+
+2                                                                                                   Hostiles List
+Hostiles List                                                                                                  3
+      • Authorize
+
+Authorizes an intercept mission against the nearest available Luftwaffe gruppen. Selecting Authorize will
+open the Mission Folder, highlighting the new intercept mission. The player can review the route and task
+folder before take off.
+
+      • Intell
+        Displays the dossier for the target if known
+      • Mission Folder
+
+Displays the RAF Mission Folder for the patrol mission that is tasked with intercepting the highlighted raid. If
+there is no intercepting mission then this button is not highlighted.
+
+        Assign Patrol
+
+Diverts the nearest RAF patrol to intercept the highlighted raid.
+
+
+
+
+Hostiles List                                                                                                  3
+4   Hostiles List
+
+
+
+
+4   Hostiles List
+Intercept Offered
+In the Directives dialogue it is possible to define the types of raid that you want your staff to respond to. The
+'Intercept Offered' dialogue is displayed when a raid that fits your requirements has been detected, so long as
+you do not have the 'automatic scramble' option ticked. The raid number is shown and you will be asked
+whether it is OK to scramble against the raid.
+
+There are four possible responses to the Intercept Offer:
+
+      • Task
+        Authorizes a response to be scrambled against the raid and opens the task dialogue box so that you
+        can immediately tune the level of response. This allows you to 'task' the mission and thereby detail the
+        precise nature of response by displaying the Task Dialogue box.
+      • OK
+        Authorizes a response to be scramble against the raid, in the same manner as clicking on the tick on
+        the upper right of the box.
+      • Fly
+        Authorizes a response to be scrambled against the raid, and when the mission aircraft are ready to
+        take-off you will be offered the opportunity of flying in one of the aircraft..
+      • Cancel
+
+ The cancel button means that no interception will be launched against the raid at that time.
+
+
+
+When you tick the 'Don t Show Again' box, your staff will authorize the missions without asking for
+permission. This is called Automatic Scrambling. The next time that the Directives dialogue is displayed, you
+will see that the Automatic Scrambling option is ticked. If you remove the tick from this box, you will find
+that the Intercept Offered dialogue will appear at the appropriate time.
+
+
+
+
+Intercept Offered                                                                                                   1
+2   Intercept Offered
+
+
+
+
+2   Intercept Offered
+Squadron Diary
+The squadron diary dialogue is displayed after clicking on the details button in the Squadron description of the
+Airfield Details dialogue. The diary can provide a very detailed listing of what has happened to an individual
+squadron. You can choose to view the diary information in list or detail form. The group pull-down menu at
+the top of the screen displays the Group of the squadron listed in the airfield details box, and also allows the
+user to choose any Group using the pull down menu. The squadron pull-down menu displays the squadron
+listed in the airfield details box, and also allows the user to choose any squadron in the selected Group by
+using the pull down menu.
+
+If 'View Single' is selected then the diary details for the squadron selected at the top of the mission are
+displayed:
+
+This page shows the details for individual missions flown by the squadron
+
+      • Date
+        The date of the mission
+      • Time
+        The time of the engagement or patrol.
+      • Task
+        Either intercept or patrol.
+      • Hurricanes
+        The number of Hurricanes flown in the mission.
+      • Spitfires
+        The number of Spitfires flown in the mission
+      • Totals
+        The total number of fighters flown in the mission
+      • Enemy Losses
+        The total number of enemy aircraft (of each type) seen by the squadron and the number claimed as
+        having been destroyed by the squadron
+      • Squadron Losses
+        The total number of aircraft damaged, the number destroyed, and the number of air crew lost.
+      • Other Squadrons
+
+Any other squadrons that took part in this mission are listed. Clicking a squadron will show its diary with the
+corresponding mission entry displayed.
+
+The Prev and Next buttons detail the next and previous missions in the squadron diary, respectively.
+
+If 'All' is selected then all of the missions that the squadron has flown under your command are listed. Each
+line shows a summary of the mission. Clicking on a mission line will show the details of that mission in
+  View single mode.
+
+      • Date
+        The date of the mission.
+      • I.D.
+        This shows the mission number.
+      • Size
+        The number of aircraft from the squadron that took part in the mission.
+      • T/O
+        Takeoff time.
+      • Mission
+        Mission type - Patrol or Intercept
+      • Target
+
+Squadron Diary                                                                                                    1
+2                                                                              Squadron Diary
+
+        This will show the Hostile I.D number or the name of the patrol area
+      • Tally
+
+Kills and losses during mission.
+
+
+
+
+2                                                                              Squadron Diary
+Mission Folder
+The mission folder dialogue lists all the missions that have been planned for the day. It shows all missions that
+have been authorized up to that point It holds missions that have been flown and completed, so it is possible in
+the afternoon to look at the missions that happened during the morning. All missions are cleared from the
+folder at the end of the day. The contents of the list can be controlled using the set of filters at the top of the
+dialogue. When the 'planned' box is ticked, for instance, then only missions which have been planned but not
+flown will be displayed. If a mission is highlighted, then the planned mission route is also highlighted in the
+campaign map.
+
+Each Patrol or Intercept mission is allocated one row in the list with the following entries:
+
+      • Order
+           This is the number allocated to the mission order. F stands for friendly and a mission is always
+        allocated a three-digit number. The first digit represents the hour when the mission was initiated. So
+        mission order F201 is the second friendly mission launched after 2 o clock.
+      • Squadron
+        This is the number of the lead squadron. The number in brackets indicates the number of aircraft
+        allocated to the mission.
+      • Status
+           This is the current status of the patrol or intercept showing the readiness or action of the RAF
+        aircraft for example, enemy sighted or engaging.
+      • Tally
+        For intercept missions this show the kills and losses. The number of kills comes first.
+      • Objective
+
+For patrol missions the objective is the name of the patrol area. For intercept missions the objective is the
+number allocated to the enemy raid being intercepted.
+
+The last four fields are only used for intercept missions:
+
+      • Size
+        The total number of aircraft estimated to be in the raid currently. This figure is updated as the raid
+        progresses.
+      • Status
+        This is the known flight status of the raid being intercepted.
+      • Target
+        This is the target of the raid being intercepted, based on the best available intelligence.
+      • Status
+
+This is the damage status of the target under attack.
+
+At the bottom of the mission folder there are six buttons that relate to the highlighted mission. The layout of
+buttons alters depending on whether or not the highlighted RAF mission has taken off:
+
+      • Frag
+        The 'frag' option allows you to fly in the cockpit of an aircraft in the higlighted mission. It opens a
+        screen which allows you to select your aircraft. The frag option is not available for a mission that has
+        not yet taken off.
+      • Revector/Task
+        For a mission still on the ground there is the option to 'task' the mission. This displays the task
+        dialogue, which allows you to alter many aspects of the mission, including the squadrons to be
+        employed, and the attack methods of the aircraft. See the Task Section for more details. For a mission
+        already in flight there is the option to 'revector' the flight.
+
+Mission Folder                                                                                                    1
+2                                                                                             Mission Folder
+      • Intell
+        If the target for the raid is known then this opens the dossier for that target.
+      • Delete/RTB
+        Delete removes a planned mission that has not yet taken off, whereas RTB is a 'return to base'
+        command to a highlighted mission that is already in flight.
+      • Squadron
+
+The squadron button opens the aircraft details dialogue showing the tab page corresponding to the lead
+squadron of the highlighted mission.
+
+
+
+
+2                                                                                             Mission Folder
+Proposed Patrols
+The proposed patrols dialogue box is opened after confirming a set of directives in the Directives dialogue at
+the start of each time session. The dialogue box displays all of the patrols that have been planned as a result of
+the directives you have given. The Size column defines the number of aircraft that will be requested for each
+mission.
+
+To accept the proposed missions click on the tick at the top right hand of the box. The missions can then be
+viewed in the Mission Folder. Sometimes the aircraft allocated will not exactly match the requested numbers.
+This is caused by last minute changes to aircraft availability.
+
+Click on the cross at the top right corner of the box to reject the proposed patrols and return to the Directives
+dialogue.
+
+
+
+
+Proposed Patrols                                                                                                    1
+2   Proposed Patrols
+
+
+
+
+2   Proposed Patrols
+RAF Resources
+Click on the resources icon on the main toolbar to view the RAF resources box. The RAF resources are
+displayed under four tabs, one for each of the four Groups.
+
+For 13 Group, which is non-combatant in the north of England, separate lists of Hurricane and Spitfire
+squadrons are shown. Click on a squadron to display the squadron s details.
+
+For the other Groups the squadrons are displayed by sector and airfield:
+
+      • Sector
+        The sectors are displayed to the left of the resources box. Each Group is divided into a number of
+        sectors, designated by a different letter of the alphabet. Each sector has its own control room at a
+        particular airfield. The control airfield is the one that is listed first in the airfield column to the right.
+        Clicking on the Sector Station launches the Tote Board. This board displays the status of all the
+        squadrons assigned to that Sector.
+      • Airfield
+
+Each airfield that is part of a given sector is preceded by two numbers in brackets. These numbers represent
+the number of squadrons at the airfield and the maximum number of squadrons that the airfield can
+accommodate. Clicking on an airfield will launch the Airfield Detail dialogue.
+
+
+
+
+RAF Resources                                                                                                            1
+2   RAF Resources
+
+
+
+
+2   RAF Resources
+1
+2
+
+
+
+
+2
+Review
+The review summary box is displayed on clicking the Review icon on the main toolbar. The review summary
+shows all of the major information about the campaign and the known state of RAF and Luftwaffe resources.
+The information is collated under five main categories of data, which are available through the five tabs at the
+top of the box:
+
+Strength
+
+The strength tab summarises the current overall strength of Fighter Command. The available squadrons are
+listed according to type, and categorised according to their mission readiness.
+
+Aircraft
+
+The aircraft tab gives a much more detailed summary of the overall aircraft status, including the current
+production schedules. The information presented for both Spitfires and Hurricanes is listed as:
+
+      • B/F Combat Ready
+        The number of combat ready aircraft at the start of the campaign.
+      • Damaged
+             The number of aircraft that are currently damaged.
+      • Repaired
+             The number of aircraft that have been repaired during the campaign.
+      • Destroyed
+        The number of aircraft that can no longer be used in the campaign.
+      • New
+             The number of aircraft that have been manufactured
+      • C/F Combat Ready
+        The current number of active aircraft.
+      • Factories Max Production
+        The maximum production rate of all aircraft factories in England per week. This assumes no damage
+        to aircraft production sites, and maximum worker morale.
+      • Factories Actual Production
+          The actual production rate per week of factories.
+      • Aircraft in system
+           The number of aircraft that are currently being repaired.
+      • Max. Repair Rate
+           The maximum repair rate of aircraft per week, assuming no damage to repair facilities and the
+        highest morale.
+      • Actual Repair Rate
+
+   The current repair rate of aircraft per week.
+
+Assets
+
+The assets tab summarises the state of important British campaign assets. Each asset is categorised according
+to its damage status - either Unknown (in the case that there is limited intelligence available), OK, Damaged
+and Destroyed. Each category of damage is listed according to the number of individual units that fit that
+damage category, followed in brackets by the percentage of the total asset it represents. For instance 24 (80%)
+under the 'OK' category for 'All Airfields' means that there are 24 airfields that have not suffered damage and
+that this represents 80% of the total number of airfields.
+
+The assets are categorised according to:
+
+
+Review                                                                                                         1
+2                                                                                                         Review
+      • RDF
+          Radio Direction Finding facility - split into CH and CL types.
+      • Key Industry
+         An industry that is vital to the overall war effort, such as armaments or aircraft production.
+      • Support Industry
+        An industry that supports the war effort, such as Oil Farms and Refineries.
+      • Docks
+          Docks and Naval bases.
+      • Airfields
+
+Sub-categorised into Group 10, 11 and 12 airfields.
+
+Claims
+
+The claims tab summarises the current claims made by Fighter Command. The box contains information, for
+both Spitfires and Hurricanes, on the number of sorties flown, the number of claims of destruction of enemy
+aircraft according to type and the total number of RAF losses.
+
+Enemy
+
+The enemy tab provides an estimate of the Luftwaffe strength according to the best intelligence available to
+Fighter Command. The listing is similar to the aircraft tab for the RAF, except that there is no intelligence
+available about aircraft repair rates.
+
+
+
+
+2                                                                                                         Review
+Squadron List
+The squadron list is displayed when the squadron list icon is clicked on the main toolbar. It can be used to list
+every squadron available to Fighter Command according to various criteria that are set by the filters at the top
+of the box. The filters allow lists to be displayed according to which Group (or combination of Groups) the
+squadrons belong to, which aircraft type make up the squadrons, the operational status of the squadrons, the
+squadron strength category, minimum number of aircraft per squadron or the minimum number of pilots per
+squadron.
+
+When a squadron entry is highlighted, the appropriate squadron tab of the relevant airfield dialogue is
+displayed.
+
+
+
+
+Squadron List                                                                                                   1
+2   Squadron List
+
+
+
+
+2   Squadron List
+Task
+The task dialogue is displayed when the task button is clicked, either for a mission highlighted in the mission
+folder, or when an intercept dialogue is offered to scramble against an enemy raid. The dialogue is used to
+change the number and types of aircraft used in the mission, as well as the attack characteristics of the aircraft.
+The task dialogue has three tabs at the top of the box: Summary, Hurricane and Spitfire. The Hurricane and
+Spitfire dialogues have the same function.
+
+Summary
+
+The summary tab shows the current allocation of Hurricanes and Spitfires to the mission. It is possible to
+change the mission size by using the spin buttons next to the number of Hurricane and Spitfire squadrons.
+This allocates the extra squadrons for the mission automatically. If you wish to mix aircraft types in the same
+mission, it is not possible to define aircraft usage below the squadron level. This means that the smallest
+mixed mission is one Spitfire squadron and one Hurricane squadron. Smaller missions are possible if you
+restrict the setup to one aircraft type.
+
+The Vic formation is used by the RAF throughout the battle and so it cannot be changed on this dialogue.
+
+Hurricanes /Spitfires
+The individual fighter task lists allow the user to alter the attack characteristics of the fighters involved
+mission, and the squadrons or targets involved:
+
+       • Fighters
+            Displays the number of squadrons selected for the mission.
+       • Preferred Target
+          The preferred type of enemy aircraft to attack can be selected as either bomber or fighter, or the
+         choice can be left as 'free', in which case the decision is made by the campaign intelligence system.
+       • Attack Method
+          The type of attack method used can be chosen from:
+              ♦ Individual
+
+                ♦ Dive and Zoom
+                ♦ Head On
+                ♦ Line Abreast
+                ♦ Line Astern
+                ♦ Vic
+
+       • Formation The formation type used by the RAF during the Battle of Britain was the Vic, and so this
+         cannot be altered.
+
+In the lower section of the fighter task list there is a list of the squadrons that are currently assigned to the
+mission:
+
+       • Unit
+
+If you wish to change a squadron assigned to the mission, then click on the squadron name under the Unit
+column. A Unit list will then be displayed which shows a list of every available squadron. Highlight the
+desired squadron and click on the tick box of the Unit list to change the squadron.
+
+                 If you wish to assign an extra squadron to the mission then click on the 'Next Available' unit,
+                 which allows you to select a squadron by using the same Unit list mentioned above. You will
+
+Task                                                                                                                1
+2                                                                                                           Task
+                notice that the squadron numbers increase automatically in the other sections of the Task
+                Lists.
+
+      • Target
+        If you wish to change the target for the mission, then click on the relevant target name under the target
+        column.
+      • Status
+
+The status column shows the level of preparedness for the current mission.
+
+
+
+
+2                                                                                                           Task
+Tote Board
+The Tote Board is displayed when any sector name is clicked on the RAF resources dialogue box. It displays
+the status of every squadron that is attached to that sector. (The name 'Tote' is short for totaliser - a running
+total of what is happening to the Squadron.)
+
+Each vertical display on the Tote board represents the status of one squadron. The squadron number is shown
+at the top and the total number of pilots (P) and aircraft (A) in the squadron are shown at the bottom.
+
+Of the lights available on each vertical display, two sets should normally be illuminated. The set in the
+coloured area just below the middle of the board indicates the age of the information. You will have to refer to
+the RAF Analogue Clock to work out the age of the information from the colour of the lights.
+
+The other set of lights indicates the current status of the squadron:
+
+      • Released
+             The squadron is released from active duty.
+      • Available
+        The squadron is able to take off within thirty minutes.
+      • Ordered to Readiness
+        The squadron has been ordered to 5 minute alert. This can take 25 minutes to get from Available
+        status
+      • At Readiness
+        The squadron is able to take off within five minutes. This means that the squadron will be near to their
+        aircraft.
+      • Ordered to Standby
+        The squadron has been ordered to 2 minute alert. This can take 30 minutes to get from Available
+        status
+      • At Standby
+        The squadron is able to take off within two minutes. Pilots will be in their cockpits with the engine
+        running. Pilots and aircraft cannot be kept at Standby for very long. Engines overheat and pilots get
+        tired.
+      • Ordered on Patrol
+        The squadron has been given take-off orders, but it may take time to take off.
+      • Left ground
+             The squadron has taken off at the start of a mission.
+      • In Position
+        Patrolling squadron are 'in position' at the patrol area.
+      • Detailed to Raid
+        The squadron have been given the exact location of a raid and are chasing it down.
+      • Enemy Sighted
+        The squadron have sighted enemy aircraft and may be fighting it.
+      • Ordered to Land
+
+   The squadron have received orders to land.
+
+Landed and Refuelling
+
+The squadron have landed and the aircraft are being refueled. In this case the squadron will not be available
+for a minimum 15 minutes depending on how many squadrons require servicing at the same time and the size
+of the airfield.
+
+
+
+
+Tote Board                                                                                                          1
+2   Tote Board
+
+
+
+
+2   Tote Board
+Unit Dialogue
+The unit dialogue is opened by clicking on a squadron in the Unit column displayed on the Task dialogue.
+This allows you to change the allocated squadron to another one. Select a squadron by highlighting it and
+click on the tick at the top right corner to accept the selection. Click on the cross to move back to the Task
+dialogue without changing squadrons.
+
+
+
+
+Unit Dialogue                                                                                                    1
+2   Unit Dialogue
+
+
+
+
+2   Unit Dialogue
+Command Briefing
+July 10th 1940
+• You are in command of Luftflotte 2 and 3 in northern Europe. In preparation for the forthcoming invasion
+  of England, code named SeaLion, you will engage RAF Fighter Command and achieve air supremacy over
+  the skies of south east England.
+• Initially you have 3 Geschwader, totalling about 300 aircraft under your command. Over the next few
+  weeks this will rise to 24 Geschwader. All told, you will have over 2000 aircraft under your command. You
+  are limited to scheduling missions for a maximum of 90 staffeln at any one time.
+• In pursuit of your campaign objectives, you will plan missions on the map display.
+• The full range of Mission Types can be designed. You can either design a mission from scratch personally
+  or just set the overall parameters and let your staff complete the details.
+• You are cleared to fly missions in Messerschmitt 109, Messerschmitt 110 and Junkers 87D Stuka
+  aircraft. In addition you can act as gunner in any of the three medium bombers: Junkers 87, Dornier 17 and
+  Heinkel 111.
+
+
+
+
+Command Briefing                                                                                          1
+2   Command Briefing
+
+
+
+
+2   Command Briefing
+Luftwaffe Organisation
+The Luftwaffe organisation bears no resemblance to that used by the RAF. It is confusing then to use RAF
+terms like wing and squadron when discussing Luftwaffe aircraft units.
+
+Two of the Luftwaffe s three Luftflotten are involved in the Battle:
+
+      • Luftflotte 2: HQ in Brussels
+      • Luftflotte 3: HQ in Paris
+
+Each Luftflotte consists of a number of Geschwader. A Geschwader is a unit of about one hundred aircraft all
+of the same type. Each Geschwader consists of up to 3 Gruppen and each Gruppe is made up of three Staffeln.
+Staffeln of aircraft are further divided depending on the type:
+
+      • A complete fighter Staffel will have three Schwarme of four aircraft, making twelve aircraft in total.
+        Each Schwarme consists of two Rotte or leader-wingman pairs. A Schwarme is equivalent to the
+        finger four used by many airforces since the Second World War. Luftwaffe pilots are generally
+        credited with inventing this very successful formation.
+
+      • Bombers will fly in Kette of threes or fives in a V formation. A bomber staffel can consist of 9, 10, or
+        12 aircraft depending how many serviceable aircraft the gruppe can muster (27, 30, 36 respectively).
+        A very strong bomber staffel may be able to field 40 bombers which will fly in a box of 4 staffel of 2
+        kette 5's.
+
+The plural of Gruppe is Gruppen and the plural of Staffel is Staffeln.
+
+
+
+
+Luftwaffe Organisation                                                                                           1
+2   Luftwaffe Organisation
+
+
+
+
+2   Luftwaffe Organisation
+RAF Organisation
+Fighter Command consists of four Groups: 10, 11, 12 and 13. Each Group is assigned a geographical area
+rather than a specific set of squadrons. Squadrons move from Group to Group to fulfil the objectives of
+Fighter Command.
+
+Although a squadron can have more pilots and aircraft assigned to it, a complete squadron in the air consists
+of twelve aircraft. The squadron is split up into two flights of six and each flight consists of two sections of
+three.
+
+Squadrons, flights and sections all fly in various forms of Vic. For instance a section will usually fly with the
+leader in front (and in the middle), with two wingmen on either side and slightly behind.
+
+
+
+
+RAF Organisation                                                                                                    1
+2   RAF Organisation
+
+
+
+
+2   RAF Organisation
+Intelligence
+It is estimated that the RAF are left with about 50 fighter squadrons after their losses in France. They also
+have some limited production capacity. At this stage there is no firm intelligence on the major production
+locations.
+
+Most of the RAF s fighter squadrons are assigned Hurricanes. Some squadrons do have the more modern
+Spitfires. Both fighters are inferior to the Me109, however the Spitfire does seem to have the advantage over
+the Me110.
+
+You should develop a strategy so that the RAF can be attacked in the air and on the ground.
+
+
+
+
+Intelligence                                                                                                    1
+2   Intelligence
+
+
+
+
+2   Intelligence
+RAF Defensive System
+The RAF have built radio masts on the English coast. Their purpose is unclear, however there is a strong
+likelihood that they form some sort of aircraft detection system. The RAF are able to intercept raids
+successfully. However there has yet to be a significant test of their capabilities. It seems likely that the RAF
+fighters are under some kind of Ground Control System that relies on the information provided by the radio
+masts. Experience shows that this is a difficult and inflexible method of operation and so there is some merit
+in leaving the radio masts intact. This will mean that the RAF will continue to attempt to use their system
+even when they are overwhelmed by superior forces.
+
+
+
+
+RAF Defensive System                                                                                               1
+2   RAF Defensive System
+
+
+
+
+2   RAF Defensive System
+Resources
+Within a few weeks after early July you will have a force of 24 Geschwader under your command:
+
+8 Me109 Geschwader
+
+3 Me110 Geschwader
+
+3 Ju87 Geschwader
+
+2 Ju88 Geschwader
+
+3 Do17 Geschwader
+
+5 He111 Geschwader
+
+Note that you will not be allocated any further Ju87 Stuka bombers, because the shortcomings of the Ju87
+quickly become apparent and production facilities are concentrated elsewhere.
+
+
+
+
+Resources                                                                                                  1
+2   Resources
+
+
+
+
+2   Resources
+Missions Generation
+Missions can be generated in a number of ways:
+
+      • By initiating Directives at the start of each time period, the Mission Folder will be filled
+        automatically.
+      • Clicking on the 'authorize' button on either the Target List (accessible from the Target List icon on the
+        main toolbar) or the Target Dossier (accessible by clicking on any target on the main campaign map)
+        will produce the framework for a mission.
+
+When a mission is generated it will use the same approximate make-up of aircraft and mission profile as was
+used on the last mission with a similar duty.
+
+Once the mission has been generated, it can be fine-tuned to a high level of detail. Use the:
+
+        Task dialogue to change the aircraft types, numbers, duties and targets.
+
+        Route dialogue to make changes to the route for the mission.
+
+
+
+
+Missions Generation                                                                                            1
+2   Missions Generation
+
+
+
+
+2   Missions Generation
+Mission Structure
+Missions can consist of:
+
+      • One aircraft, which will always involve the Staffel Leader.
+      • A Staffel of twelve fighters or up to 12 bombers
+      • 2 staffel numbering up to 24 aircraft.
+      • A number of Gruppen. Each Gruppe consists of three Staffeln.
+      • Up to ten Geschwader, where each Geschwader can consist of about one hundred aircraft. A
+        Geschwader is made up of three Gruppen.
+
+You are limited to scheduling missions for a maximum of 90 Staffeln at any one time. This means that it is
+possible to plan missions of over 1000 aircraft.
+
+Each Staffel/Gruppe/Geschwader can be allocated a different target during planning. No further changes to
+the mission are possible once any of the aircraft are in the air. Note that a mission cannot be altered once any
+element of it has left the ground.
+
+
+
+
+Mission Structure                                                                                                  1
+2   Mission Structure
+
+
+
+
+2   Mission Structure
+Routes Overview
+A route is a set of waypoints. Initially, each route consists of the same standard set of waypoints:
+
+      • Take Off
+        Generally, the position of the airfield from which the aircraft take off.
+      • Bomber Rendezvous
+
+The location at which bombers from different airfields form up.
+
+      • Fighter Rendezvous
+
+The location at which fighters from different airfields form up.
+
+      • Dogleg
+        An extra waypoint that allows fine control of the direction that the mission approaches the initial
+        point. The dogleg can deceive the defenders into thinking your target is on a course away from your
+        intended target.
+      • Initial Point
+
+This is the entry point to the target area. The units split at this point to perform their individual duties. In the
+target area, bombers will be looking closely for the target and making minor adjustments to their course. The
+bomb bays will be open.
+
+      • Target Egress
+        The point where aircraft fly towards in order to clear the target after dropping their bombs.
+      • Fighter Dispersal
+
+The point at which fighters from different airfields split up.
+
+      • Bomber Dispersal
+
+The point at which bombers from different airfields split up.
+
+      • Landing
+
+The position of the landing airfield.
+
+Aircraft in the same mission fly together from the Rendezvous to the Initial Point. Each target has its own set
+of waypoints in the Target Zone. Units follow the waypoints associated with their own target.
+
+It is possible to insert and delete additional waypoints. However it is not possible to delete any of the standard
+set. Additional waypoints can be added to both the main route and Target Zone.
+
+
+
+
+Routes Overview                                                                                                        1
+2   Routes Overview
+
+
+
+
+2   Routes Overview
+Gruppe Diary
+The Gruppe diary dialogue is displayed by clicking on the Details button on the Geschwader dialogue box.
+
+You can choose to view the diary information in list or detail form. In list form each mission is summarised
+with a line of information. The detail option provides more information about the highlighted mission in the
+list.
+
+The Geschwader Type pull-down menu at the top of the diary allows the user to choose any type of
+Geschwader - Jagd, Stuka, Zerostorer, Kampf, or all of them. The gruppe menu displays the gruppe listed in
+the Geschwader dialogue box, and also allows the user to choose any gruppe for the chosen type of
+Geschwader by using the pull down menu.
+
+Selecting 'View Single' shows a detailed record of the raid, highlighting this gruppe s role.
+
+The 'All' list shows a summary of all the raids this gruppe have been involved in.
+
+      • Date
+        The date of the mission.
+      • Time
+        The time of the engagement.
+      • Task
+        The generic type of mission task for the gruppe, .e.g escort, bomb.
+      • Aircraft
+        The aircraft type of the gruppe.
+      • Target
+        The intended target for the raid.
+      • Result
+        Result of the mission - e.g. turned away, destroyed the target, etc.
+      • Main Force
+        Total number of bomber aircraft in the raid.
+      • Attached Escort
+        Total number of attached fighter aircraft in the raid.
+      • Detached Escort
+        Total number of detached fighter aircraft in the raid.
+      • Enemy Losses
+        Details the number of RAF aircraft encountered and the numbers of claimed losses.
+      • Gruppe Losses
+        Details the number of damaged and destroyed aircraft and the number of air crew that have been lost.
+      • Other Gruppen in the Raid
+
+Lists all of the gruppen involved in the current raid by gruppe and task.
+
+
+
+The Prev and Next buttons detail the next and previous missions in the Gruppe diary, respectively.
+
+If All is selected then all of the raids performed by the Gruppe under your control are listed:
+
+      • Date
+           Date of raid.
+      • Raid
+           The identifier of raid.
+      • Size
+
+Gruppe Diary                                                                                                   1
+2                                                                                            Gruppe Diary
+        The number of aircraft from the Gruppen that participated.
+      • ToT
+        Expected time over the proposed target.
+      • Mission
+        Type of mission.
+      • Target
+        The name of target.
+      • Tally
+
+The number of kills claimed (the +ve number), and the number of losses suffered (the -ve number).
+
+
+
+
+2                                                                                            Gruppe Diary
+Directives
+The Directives Dialogue displays the controls for the automatic mission builder. The dialogue consists of four
+columns of options above a Resource Allocation Table that defines the usage of the available aircraft.
+
+Bomber Allocation
+
+There are three planning periods per day: Morning, Mid-day and Afternoon.
+
+You can use the spin buttons to specify how the available daily resource can be apportioned throughout the
+day. For instance, it is possible to allocate the whole aircraft resource to just one session by increasing the
+percentage for that period to one hundred. However there is a maximum Staffel usage in any one period which
+is set at 96 - 32 gruppen. In the latter parts of the battle you will find that the spin buttons will be limited to
+percentages below one hundred. This will be because higher percentages would exceed the 96 Staffel limit.
+
+The Luftwaffe system is based firmly on the number three: three Staffel in a Gruppe and three Gruppe in a
+Geschwader. For this reason, when resources are scarce, say only 1 Geschwader is available, then 30% is
+interpreted as a request for one third of the resources.
+
+JU87 Allocation
+
+In the Convoy campaign, the JU87 dive bomber is the main bombing aircraft, and so you will want your JU87
+aircraft allocated in the same percentages as everything else (maintain %). If you want your Stuka force to be
+counted when reserving forces for each period then use the Maintain option. The None option means
+that Stukas are not used at all by the directives. Morning , Midday and Afternoon options reserve all
+available Stuka squadrons for that period but are not counted as part of the % for the other periods.
+
+In those periods when the JU87s are disabled, a higher number of level bombers and fighters will be allowed
+up to the 96 staffel limit, allowing larger level bombing raids to be formed.
+
+Mission Timing
+
+Missions within a session can either be consecutive or co-incidental.
+
+When co-incidental is selected, all the missions for the period will be planned to come over their target areas
+at the same time. When consecutive is selected, missions are planned so that they come over the target area at
+different times. The missions target times will, more or less, be evenly spaced through the session.
+
+Reconn
+
+Reconnaissance missions are given to a few specially equipped Geschwader and can be controlled using the
+following categories:
+
+      • Missions
+           The number of reconnaissance missions for the session is set using the mission spin button.
+      • Aircraft
+           A reconnaissance mission can consist of either one, two or three aircraft. You control the number
+        using the Aircraft spin button.
+      • Escort
+        When the escort tick box is ticked, a Staffel of Me109s or Me110s will be allocated to escort the
+        reconnaissance aircraft. When both Me109s and Me 110s are available, one type of aircraft will be
+        chosen randomly at the beginning of the day. The Staffel of escort aircraft will come from the total
+        fighter pool and so you will see a reduction in the fighters presented in the Resource Allocation Table.
+      • A.M. Only
+
+Directives                                                                                                       1
+2                                                                                                     Directives
+
+When the A.M. Only tick box is ticked, all the day s available reconnaissance Geschwader can be sent out in
+the morning. When the box is not ticked, the resources are spread evenly over the day. During the Battle of
+Britain, the Luftwaffe tended to send out reconn aircraft early in the morning to provide information for
+planning the day s mission.
+
+
+
+Attached Escort
+
+This column deals with the configuration of any escort 'attached', or tied, to a bombing raid. You can tick as
+many of the options in this column as you like. A tick indicates a preferred position of the escort relative to
+the bombing party. If more Gruppe are allocated to attached escort duty than there are ticks then the extra
+Gruppe will be allocated randomly.
+
+Detached Escort
+
+A detached escort is one which is only loosely escorting a bombing raid. You can tick as many of the options
+in this column as you like. A tick indicates a preferred position:
+
+        • Ceiling
+          These escorts fly at the fighters' cruise ceiling
+        • High
+          Escorts fly 2,000 ft higher altitude than the bombers
+        • Forward High
+          Escorts fly 10 miles in front and above
+        • Forward
+          Escorts fly 10 miles in front
+        • Forward Low
+          Escorts fly 10 miles in front at a lower altitude
+        • Late
+
+    Escorts fly behind and catch up near the target area
+
+The gruppe will be distributed evenly between the ticked options. If more than 16 gruppe were to be allocated
+to one position then additional positions will be used
+
+Resource Allocation Table
+This table, which covers the bottom half of the directives box, is used to allocate the Gruppen that are
+available for the session.
+
+The rows indicate the different types of target against which that missions can be directed - from airfields to
+factories. The commander has a wide range of control over the number of gruppe that can be directed against
+these targets. The bottom row indicates the number of each type of aircraft that are being rested for the current
+session. The user can rest all available aircraft using the Rest All button on the lower right of the screen. Any
+aircraft assigned after this will decrease from the resting totals displayed at the bottom of the screen.
+
+There are twelve columns of information on the resource allocation table. The numbers in the aircraft columns
+indicate how the available Gruppe will be used against different categories of target. All of the aircraft type
+columns include a spin button to alter the number of available aircraft of that type for the target represented in
+any given row.
+
+GROUND ATTACK GRUPPEN
+
+
+2                                                                                                     Directives
+Directives                                                                                                       3
+      • Ju87
+
+Alters the number of gruppen of Junkers 87 dive bombers available for particular missions. The available
+number will be affected by the settings in the Ju87 box at the top left of the directives box.
+ • Ju88
+Alters the numbers of gruppen of Junkers 88 dive bombers.
+ • He111
+Alters the numbers of gruppen of Heinkel 111 bombers.
+ • Do17
+Alters the numbers of gruppen of Dornier 17 bombers.
+
+      • Secondarys
+        This determines the number of secondary targets that will be attacked by the allocated group on the
+        same row. These targets are chosen automatically. When the bombers reach the IP they can split and
+        attack different targets.
+      • Size per Target
+        This determines the number of aircraft in each individual mission, and can be altered from 1 Staffel
+        (9-12 aircraft) all the way up to 3 Geschwader (300 aircraft approximately). If there are not enough
+        available aircraft to fulfil the required mission size, then no mission will take place. For instance, if
+        there is a 1 in the Ju87/convoys cell and the size of convoy missions is set to "1 Gruppe" or less, then
+        one mission will be planned. If the size of the Convoy missions is set at "2 Gruppen" or more then no
+        missions will be planned. Note that individual staffel within the same gruppe cannot be allocated to
+        different missions, so if the mission size is set to 1 staffel there will only be one planned mission if
+        there is only one gruppe available. The remaining staffeln are rested.
+      • Missions
+
+This displays the total number of missions that have been directed against each type of target. The number of
+missions is calculated automatically from the number of bomber aircraft assigned and the mission size. If your
+directives would result in no missions being directed but aircraft assigned, then the mission number will turn
+red.
+
+ESCORT GRUPPEN
+
+      • Me109
+
+Alters the numbers of gruppen of Messerschmitt 109 fighters.
+ • Me110
+Alters the numbers of gruppen of Messerschmitt 110 fighters.
+ • Strafe
+This tick box determines how the allocated fighters will behave over the target. If the box is ticked then they
+will perform a strafing run over the target. Losing altitude makes the fighters more vulnerable, but if they
+successfully cause the RAF to abandon their guns, it is a useful procedure.
+ • %tied
+The percentage of fighter escorts that are closely attached to the bombers allocated in the same row.
+ • %free
+The percentage of fighter escorts that are loosely attached to the bombers allocated in the same row. You will
+note that it is possible to select the %tied and %free values to add up to less then 100%. This is because there
+is a third type of escort called "Returning". This is the escort that sets off much later than the main force so
+that it is available to escort the returning bombers. When "%tied" and "%free" do not add up to 100%, then
+the rest is allocated to "returning" duty. The return escort will pick up the bombers on their return leg, offering
+some level of protection.
+
+
+
+
+Directives                                                                                                       3
+4   Directives
+
+
+
+
+4   Directives
+Directives Results
+This dialogue is opened on clicking on the tick in the right hand corner of the Directives Dialogue.
+
+The dialogue displays a table of the proposed missions. The Size and Escort columns define the number of
+aircraft that will be requested for each mission.
+
+Click on the tick for the missions to be made. The missions can then be viewed in the Mission Folder.
+Sometimes the aircraft allocated will not exactly match requested numbers. This is caused by last minute
+changes to aircraft availability.
+
+Click on the cross to return to the Directives Dialogue.
+
+
+
+
+Directives Results                                                                                         1
+2   Directives Results
+
+
+
+
+2   Directives Results
+Geschwader Details
+The Geschwader List box is displayed on clicking the Geschwader or Gruppe entries on the Luftwaffe
+Resources or Geschwader List dialogues.
+
+The dialogue consists of one tab per Gruppe that make up the Geschwader. The entries for each gruppe are:
+
+      • Leader
+        Name of the gruppe leader.
+      • Leader Morale
+        Current level of the morale of the leader .
+      • Aircraft Type
+        Type of aircraft in the gruppe.
+      • Aircraft Available
+        The number of aircraft that are combat ready for the next session, followed by the total aircraft
+        available including those under repair.
+      • No. pilots
+        Total number of pilots at the airfield.
+      • Morale
+        Morale level of the aircrew.
+      • Status
+        The combat level of the gruppe, using the RAF system. (This system was not used by the Luftwaffe,
+        but it is convenient shorthand.)
+      • Airfield
+
+The airfield where the gruppe are situated.
+
+
+
+Clicking on the Airfield button opens the dossier for this Geschwader's airfield. Clicking on the Details button
+will open the Gruppe Diary.
+
+
+
+
+Geschwader Details                                                                                             1
+2   Geschwader Details
+
+
+
+
+2   Geschwader Details
+Geschwader List
+The Geschwader List dialogue is accessed by the Geschwader List icon on the main toolbar and displays the
+Geschwader Gruppen currently available. The list is controlled by the filters at the top of the box. The filters
+allow lists to be displayed according to which Luftlotte and Geschwader the gruppen belong to (or a variety of
+combinations of Luftlotte and Geschwader), the operational status of the gruppen, the gruppe strength
+category, the minimum number of aircraft per gruppe, or the minimum number of pilots per gruppe. Note that
+when the gruppe category is set to a value of B, say, all gruppen of category B or above will be displayed.
+
+When you click on an entry in the list, the appropriate Geschwader dialogue will be displayed.
+
+
+
+
+Geschwader List                                                                                               1
+2   Geschwader List
+
+
+
+
+2   Geschwader List
+Mission Folder
+The mission folder dialogue lists all the raids that have been planned during the current session. A raid is only
+removed from the list at the end of the day. The contents of the list can be controlled using the set of filters at
+the top of the dialogue. Strike, escort, sweep and reconn refer to mission types. Planned, active and landed
+refer to whether or not the mission is yet to takeoff, is in transit or completed. Take the tick off landed, for
+instance, in order to remove all missions that have been completed from the list.
+
+Each duty type within a raid is allocated one row in the list. This means that the strike and escort information
+is presented separately:
+
+      • Raid
+
+This is the number allocated to the raid, for example R201. R stands for raid and a raid is always allocated a
+three-digit number. The first digit represents the hour when the raid was initiated. So R601 is the first raid
+launched after 6 o clock.
+
+        For each duty, the following information is presented:
+
+      • Size
+        This is the number of aircraft allocated to the duty.
+      • Type
+        This is the type of duty. Strike duties include Dive Bombing and Level Bombing. Escorts can be
+        Attached, Detached or Returning. An attached escort must stay close to the bombers and a detached
+        escort can roam freely. A returning escort times take-off so that it can arrive over the return route in
+        time to escort the strike aircraft as they return home.
+      • T/O
+        This is the take-off time.
+      • ToT
+          This is the estimated time over the target.
+      • Status
+        This is the operational status of the aircraft.
+      • Target
+        This is the target for the raid.
+      • RAF
+        This is the number of RAF that are known to be intercepting.
+      • Tally
+
+The positive number represents the number of unconfirmed kills and the negative number represents the
+number of losses.
+
+Buttons
+At the bottom of the mission folder there are six buttons that relate to the highlighted mission. The layout of
+buttons alters depending on whether or not the highlighted RAF mission has taken off:
+
+      • Frag
+        The 'frag' option allows you to fly in the cockpit of an aircraft in the higlighted duty mission. It opens
+        a screen which allows you to select your aircraft. The frag option is not available for a mission that
+        has not yet taken off, or for missions that have landed.
+      • Intell
+        Displays the intelligence dossier for the target of the highlighted mission.
+      • Route
+
+Mission Folder                                                                                                     1
+2                                                                                                 Mission Folder
+        Displays the route dialogue box for the highlighted mission.
+      • Task
+        For a mission still on the ground there is the option to 'task' your mission. This displays the task
+        dialogue, which allows you to alter many aspects of the mission, including the gruppen to be
+        employed, and the attack methods of the aircraft. See the Task Section for more details.
+      • Delete
+
+Delete removes a planned mission that has not yet taken off.
+
+Gruppe
+
+The gruppe button highlights the gruppe tab of the lead gruppe of the highlighted mission. The gruppe tab is
+part of the Geschwader dialogue box.
+
+
+
+
+2                                                                                                 Mission Folder
+Luftwaffe Resources
+The Luftwaffe Resources dialogue is brought up by clicking on the resources icon on the main toolbar. There
+are four tabs, one for each type of Geschwader. The total number of aircraft in each gruppe in the Geschwader
+is displayed.
+
+      • Jagd
+        The Jagdgeschwader are the Me109 fighters.
+      • Stuka
+        The Stukageschwader are the Stuka dive bomber units.
+      • Zero
+        Zerstorergeschwader are the Me110 twin engine fighter bombers.
+      • Kampf
+
+The Kampfgeschwader are the medium bombers. He111, Ju88 and Do17 types are available.
+
+Clicking on a Geschwader will open the Details dialogue. Clicking on a particular Gruppe will ensure that the
+corresponding tab on the Details dialogue is opened.
+
+
+
+
+Luftwaffe Resources                                                                                         1
+2   Luftwaffe Resources
+
+
+
+
+2   Luftwaffe Resources
+Review
+The review summary box is displayed on clicking the Review icon on the main toolbar. The review summary
+shows all of the major information about the campaign and the known state of RAF and Luftwaffe resources.
+The information is collated under five main categories of data, which are available through the five tags at the
+top of the box:
+
+Strength
+
+The strength tag summarises the current overall strength of the Luftwaffe. The available aircraft are listed
+according to type, and categorised according to their mission readiness, both as gruppen and individual
+aircraft.
+
+Aircraft
+
+The aircraft tag gives a much more detailed summary of the overall aircraft status, including the current
+production schedules. The information presented for all Luftwaffe aircraft types is listed as:
+
+      • B/F Combat Ready
+        The number of combat ready aircraft at the start of the campaign.
+      • Damaged
+             The number of aircraft that are currently damaged.
+      • Repaired
+             The number of aircraft that have been repaired during the campaign.
+      • Destroyed
+        The number of aircraft that can no longer be used in the campaign.
+      • New
+             The number of aircraft that have been manufactured.
+      • C/F Combat Ready
+        The current number of active aircraft.
+      • Factories Max Production
+        The maximum production rate of all aircraft factories in Germany per week. This assumes no damage
+        to aircraft production sites, and maximum worker morale.
+      • Factories Actual Production
+          The actual production rate per week of factories
+      • Aircraft in system
+           The number of aircraft that are currently being repaired
+      • Max. Repair Rate
+           The maximum repair rate of aircraft per week, assuming no damage to repair facilities and the
+        highest morale.
+      • Actual Repair Rate
+
+   The current repair rate of aircraft per week.
+
+Targets
+
+The assets tag summarises the state of important British targets. Each target is categorised according to its
+damage status - either Unknown (in the case that there is limited intelligence available), OK, Damaged and
+Destroyed. Each category of damage is listed according to the number of individual units that fit that damage
+category, followed in brackets by the percentage of the total asset it represents. For instance 24 (80%) under
+the 'OK' category for 'All Airfields' means that there are 24 airfields that have not suffered damage and that
+this represents 80% of the total number of airfields.
+
+The targets are categorised according to:
+
+Review                                                                                                           1
+2                                                                                                           Review
+      • RDF
+          Radio Direction Finding facility - split into CH and CL types.
+      • Key Industry
+         An industry that is vital to the overall British war effort, such as armaments or aircraft production.
+      • Support Industry
+        An industry which supports the war effort, Oil Farms and Refineries for example.
+      • Docks
+          An industrial and commercial target. Docks are not repaired within the time frame of the battle
+      • Airfields
+
+Sub-categorised into Group 10, 11 and 12 airfields.
+
+Claims
+
+The claims tag summarises the current claims made by Luftwaffe Command. The box contains information,
+for both bombers and fighters, on the number of sorties flown, the number of claims of destruction of enemy
+aircraft according to type and the total number of Luftwaffe losses.
+
+Enemy
+
+The enemy tag provides an estimate of Fighter Command strength according to the best intelligence available
+to the Luftwaffe. The listing is similar to the aircraft tag for the Luftwaffe, except that there is no intelligence
+available about aircraft repair rates.
+
+
+
+
+2                                                                                                           Review
+Task
+The task dialogue is displayed when the task button is clicked for a mission highlighted in the mission folder.
+It consists of five tabs: Summary, Bombers, Tied, Free and Return. The last three tabs are concerned with the
+escorts and have similar functionality.
+
+The dialogue is used to change the number and type of aircraft allocated to the mission. In addition it is
+possible to change attack methods, escort positions and formations. It is also possible to instruct the escort to
+strafe the target.
+
+       • Summary
+
+        This dialogue shows the current allocation of aircraft to the raids. It is possible to use the spin buttons
+        to alter the bomber and fighter types and numbers for the raid. If changes are made, then the gruppen
+        involved will be assigned automatically.
+
+       • Bombers
+
+        If you want to be specific about which Gruppe are allocated to the Strike Duty then it is necessary to
+        go to the Bomber tag.
+
+        At the bottom of the dialogue there is a list with the headings UNIT, TARGET, STATUS. Click on
+        the existing Unit or 'Next Available' under the Unit heading to open the Unit dialogue.
+
+        Click on the item in the Target column to change the current target for that particular unit of aircraft.
+
+       • Escort
+
+        The three escort tabs have similar functionality. ESCORT refers to close escort fighters, FREE refers
+        to detached escort fighters, and RETURN is reserved for returning escort fighters. The Gruppe
+        allocated to escort the raid can be changed in the same way as on the Bomber tab.
+
+        The escort position options are the same as those on the Directives dialogue.
+
+        If the strafe tick box is ticked then the fighters will attempt a strafing run over the target.
+
+        The individual fighter task lists allow the user to alter the attack characteristics of the fighters
+        involved mission, and the squadrons or targets involved:
+
+       • Fighters Allocated
+          Displays the number of aircraft selected for the mission.
+       • Strafe
+             With this box ticked, the fighters are likely to straffe their target.
+       • Formation
+
+The escort formation can be chosen from: Echelon Left, Echelon Right, Line Abreast, Line Astern, Diamond,
+Box.
+
+       • Escort Position
+
+   The preferred position relative to the bombers can be selected from: Behind, Above, Port, Starboard, In
+Front, Below.
+
+       • Unit Type
+
+Task                                                                                                                1
+2                                                                                                               Task
+    The unit type can be selected from: Gruppen, Staffeln, Geschwader.
+
+
+
+In the lower section of the fighter task list there is a list of the squadrons that are currently assigned to the
+mission. They are ordered under Unit, Target and Status columns.
+
+If you wish to change a squadron assigned to the mission, then click on the squadron name under the Unit
+column. A Unit list will then be displayed which shows a list of every available squadron. Highlight the
+desired squadron and click on the tick box of the Unit list to change the squadron.
+
+If you wish to assign an extra squadron to the mission then click on the 'Next Available' unit, which allows
+you to select a squadron by using the same Unit list mentioned above. You will notice that the squadron
+numbers increase automatically in the other sections of the Task Lists..
+
+If you wish to change the target for the mission, then click on the relevant target name under the target
+column.
+
+The status column shows the level of preparedness for the current mission.
+
+
+
+
+2                                                                                                               Task
+

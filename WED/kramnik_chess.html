@@ -122,6 +122,7 @@ can follow along.<br><a href="https://github.com/sim-museum/serious-games-lab">g
       <button id="undo">Undo</button>
       <button id="flip">Flip</button>
       <button id="offerBtn" title="Offer a draw (on your turn)">Offer draw</button>
+      <button id="resignBtn" title="Resign the game">Resign</button>
     </div>
     <div class="row">
       <button id="save">Save PGN</button>
@@ -5792,9 +5793,11 @@ function updateStatus(thinking){
   if(state.over){
     el.innerHTML = state.over.type==='mate'
       ? `Checkmate — <b>${state.over.winner==='w'?'White':'Black'} wins!</b>`
-      : state.over.type==='stalemate'
-        ? `Stalemate — <b>draw.</b>`
-        : `Draw — <b>${state.over.reason}.</b>`;
+      : state.over.type==='resign'
+        ? `${state.over.winner==='w'?'Black':'White'} resigns — <b>${state.over.winner==='w'?'White':'Black'} wins!</b>`
+        : state.over.type==='stalemate'
+          ? `Stalemate — <b>draw.</b>`
+          : `Draw — <b>${state.over.reason}.</b>`;
     return;
   }
   const side = state.turn==='w'?'White':'Black';
@@ -5837,7 +5840,7 @@ function nav(delta){
 /* ---- PGN save / load ---- */
 function resultStr(){
   if(!state.over) return '*';
-  if(state.over.type==='mate') return state.over.winner==='w'?'1-0':'0-1';
+  if(state.over.type==='mate'||state.over.type==='resign') return state.over.winner==='w'?'1-0':'0-1';
   return '1/2-1/2';
 }
 function downloadPGN(){
@@ -5966,6 +5969,18 @@ $('offerAccept').onclick=()=>{
   render();
 };
 $('offerDecline').onclick=()=>showDrawOffer(false);
+$('resignBtn').onclick=()=>{
+  if(state.over || reviewPly!=null || pendingPromo) return;
+  if(state.mode==='self'){ transientNote='You are only watching — they decide.'; updateStatus(); return; }
+  // vs AI the human resigns regardless of whose turn it is; hotseat: side to move resigns
+  const loser = state.mode==='ai' ? state.human : state.turn;
+  if(!confirm((loser==='w'?'White':'Black')+' resigns — are you sure?')) return;
+  aiToken++;                                  // cancel any AI think in flight
+  state.over={type:'resign', winner:opp(loser)};
+  state.pOffer.pending=false;
+  showDrawOffer(false);
+  render();
+};
 $('offerBtn').onclick=()=>{
   if(state.over || reviewPly!=null || pendingPromo) return;
   if(state.mode==='self'){ transientNote='You are only watching — they decide.'; updateStatus(); return; }
