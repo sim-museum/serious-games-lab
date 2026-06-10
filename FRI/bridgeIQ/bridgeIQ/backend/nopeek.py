@@ -210,6 +210,42 @@ def _develop_finesse(board: BoardState, seat: Seat, legal: List[Card],
     return best_card
 
 
+def _establish_suit(board: BoardState, seat: Seat, legal: List[Card],
+                    trump: Optional[Suit], declarer: Seat) -> Optional[Card]:
+    """Attack our longest combined side suit to set up length tricks — what a
+    good declarer does after drawing trumps, before cashing scattered winners.
+    Pick the longest non-trump suit (5+ combined) where we hold the control to
+    establish it (>=2 of the top four ranks between the two hands). Lead a boss
+    to cash/run it, the top of a touching-honour sequence to force the missing
+    honour out, else a low card to concede a round and set up the length. Uses
+    only the two declarer hands (visible to declarer). No peek."""
+    dummy = declarer.partner()
+    other = declarer if seat == dummy else dummy
+    best, blen = None, 4
+    for su in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
+        if su == trump:
+            continue
+        mine = [c for c in board.hands[seat].cards if c.suit == su]
+        pard = ([c for c in board.hands[other].cards if c.suit == su]
+                if other in board.hands else [])
+        comb = len(mine) + len(pard)
+        tops = {c.rank.value for c in mine + pard if c.rank.value <= 3}
+        if comb >= 5 and len(tops) >= 2 and comb > blen:
+            best, blen = su, comb
+    if best is None:
+        return None
+    here = sorted((c for c in legal if c.suit == best), key=lambda c: c.rank.value)
+    if not here:
+        return None                                    # suit is in partner's hand
+    top = here[0]
+    if is_boss_card(top, board, seat, [], declarer):
+        return top                                     # cash/run a winner
+    if (len(here) >= 2 and top.rank.value <= 3
+            and here[1].rank.value == top.rank.value + 1):
+        return top                                     # top of a sequence: force
+    return here[-1]                                    # low: concede to set up length
+
+
 def _outstanding_trumps(board: BoardState, trump: Optional[Suit],
                         declarer: Seat) -> int:
     """How many trumps the DEFENDERS still hold (no peek: 13 - our visible
@@ -243,7 +279,12 @@ def _lead(board: BoardState, seat: Seat, legal: List[Card],
                                        and c.rank == planned.rank
                                        for c in legal):
             return planned
-        # 2) cash a guaranteed winner (boss card) — lowest such, to keep
+        # 2) ESTABLISH the long suit (the trick source) before cashing scattered
+        #    short-suit winners — a good declarer attacks length early.
+        est = _establish_suit(board, seat, legal, trump, declarer)
+        if est is not None:
+            return est
+        # 3) cash a guaranteed winner (boss card) — lowest such, to keep
         #    communication; prefer the longest suit so we set up length
         bosses = [c for c in legal
                   if is_boss_card(c, board, seat, [], declarer)]
