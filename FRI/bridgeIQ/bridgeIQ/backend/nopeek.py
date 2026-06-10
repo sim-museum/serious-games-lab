@@ -370,8 +370,21 @@ def _follow(board: BoardState, seat: Seat, legal: List[Card],
     if trump is None and _should_holdup(board, seat, trick, declarer, legal):
         return low
     cheapest = beating[-1]                              # lowest card that still wins
-    if pos == 1:                                       # 2nd hand low (cover TODO)
-        return low
+    if pos == 1:                                       # 2nd hand
+        # COVER AN HONOUR with an honour to promote our side's spot cards —
+        # but not the top of a sequence the leader is visibly holding (don't
+        # cover the Q from a QJ; wait for the last of touching honours).
+        led_card = trick[0]
+        if led_card.rank.value in (1, 2, 3):           # K/Q/J led
+            honours = [c for c in beating if c.rank.value <= 3]
+            leader = Seat((seat.value - pos) % 4)
+            lh = board.hands.get(leader)
+            seq = bool(lh and any(c.suit == led and
+                                  c.rank.value == led_card.rank.value + 1
+                                  for c in lh.cards))
+            if honours and not seq:
+                return honours[-1]                     # cheapest sufficient honour
+        return low                                     # 2nd hand low otherwise
     if pos == 2:                                       # 3rd hand high (cheaply)
         return cheapest
     return cheapest                                    # 4th hand: win as cheaply
