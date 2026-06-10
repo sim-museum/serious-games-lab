@@ -159,7 +159,18 @@ def _safe_defender_lead(board: BoardState, seat: Seat, legal: List[Card],
         top = seq_top(by[s])
         if top is not None:
             return top
-    # 2) a singleton in a side suit (ruff try) vs a suit contract
+    # 2) RETURN PARTNER'S SUIT — continue the suit partner attacked. Lead the
+    #    higher from a remaining doubleton, else a low card (original count).
+    partner = seat.partner()
+    partner_suit = None
+    for t in board.tricks:
+        if getattr(t, "cards", None) and t.leader == partner:
+            partner_suit = t.cards[0].suit
+            break
+    if partner_suit is not None and partner_suit != trump and partner_suit in by:
+        cards = by[partner_suit]                       # high → low
+        return cards[0] if len(cards) == 2 else cards[-1]
+    # 3) a singleton in a side suit (ruff try) vs a suit contract
     if trump is not None:
         for s in by:
             if len(by[s]) == 1:
