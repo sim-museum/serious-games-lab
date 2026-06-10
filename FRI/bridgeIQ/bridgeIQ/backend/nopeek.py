@@ -306,6 +306,38 @@ def _lead(board: BoardState, seat: Seat, legal: List[Card],
     return _safe_defender_lead(board, seat, legal, trump)
 
 
+def _should_holdup(board: BoardState, seat: Seat, trick: List[Card],
+                   declarer: Seat, legal: List[Card]) -> bool:
+    """Declarer-side hold-up in NT: with a SINGLE stopper in the suit the
+    defenders are attacking, duck the early rounds to exhaust the shorter
+    defender's cards and cut their communications. Win only once we've ducked
+    enough (round > our small-card count). No peek — own + dummy + played."""
+    if seat.is_ns() != declarer.is_ns():
+        return False
+    pos = len(trick)
+    leader = Seat((seat.value - pos) % 4)
+    if leader.is_ns() == seat.is_ns():
+        return False                                   # our side led — no hold-up
+    led = trick[0].suit
+    my = [c for c in legal if c.suit == led]
+    if len(my) < 2:
+        return False                                   # need the stopper + a small
+    dummy = declarer.partner()
+    other = declarer if seat == dummy else dummy
+    comb = [c for c in board.hands[seat].cards if c.suit == led]
+    if other in board.hands:
+        comb += [c for c in board.hands[other].cards if c.suit == led]
+    comb.sort(key=lambda c: c.rank.value)
+    if not is_boss_card(comb[0], board, seat, trick, declarer):
+        return False                                   # we don't hold the master
+    if len(comb) >= 2 and is_boss_card(comb[1], board, seat, trick, declarer):
+        return False                                   # two stoppers — no need
+    small = len(comb) - 1                              # cards besides the stopper
+    rounds_already = sum(1 for t in board.tricks
+                         if t.cards and t.cards[0].suit == led)
+    return small >= 1 and rounds_already < small
+
+
 def _follow(board: BoardState, seat: Seat, legal: List[Card],
             trick: List[Card], trump: Optional[Suit], declarer: Seat) -> Card:
     """Follow suit. legal = our cards in the led suit, high → low."""
@@ -323,6 +355,9 @@ def _follow(board: BoardState, seat: Seat, legal: List[Card],
     beating = [c for c in legal if _beats(c, win_card, led, trump)]
     if not beating:
         return low                                     # can't win: low (signal TODO)
+    # HOLD-UP (NT): duck a single stopper to cut defenders' communications.
+    if trump is None and _should_holdup(board, seat, trick, declarer, legal):
+        return low
     cheapest = beating[-1]                              # lowest card that still wins
     if pos == 1:                                       # 2nd hand low (cover TODO)
         return low
