@@ -2499,15 +2499,19 @@ class LiveMatchWidget(QWidget):
                 self._refresh_step_list()
                 self._update_step_buttons()
         for p in (self.clicker, self._oneshot, self.biq, self.biq2,
-                  self.proxy):
+                  self.proxy, getattr(self, "_clk", None),
+                  getattr(self, "_pbn_proc", None)):
             if p and p.state() != QProcess.ProcessState.NotRunning:
                 p.terminate()
                 if not p.waitForFinished(1500):
                     p.kill()
         # also kill any DETACHED biq the autoclicker relaunched during a
-        # reset (bracketed pattern → never matches this process).
+        # reset, and the cardplay clicker (which moves the mouse) — bracketed
+        # patterns so they never match this process.
         subprocess.run(["pkill", "-f", "biq[_]qnet_client"])
+        subprocess.run(["pkill", "-f", "qplus[_]cardplay_clicker"])
         self.clicker = self._oneshot = self.biq = self.biq2 = self.proxy = None
+        self._clk = self._pbn_proc = None
         self._match_started = False
         self.b_start.setEnabled(True)
         self.b_run.setEnabled(False)

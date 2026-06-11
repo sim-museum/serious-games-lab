@@ -89,6 +89,9 @@ def main(argv=None) -> int:
                    help="seconds between Next-card clicks during play")
     p.add_argument("--play-settle", type=float, default=1.5,
                    help="wait after a new deal before clicking Play only")
+    p.add_argument("--max-steps", type=int, default=25,
+                   help="runaway guard: stop if one deal needs more than this "
+                        "many step clicks with no new deal (a stuck client)")
     p.add_argument("--recalibrate", action="store_true")
     p.add_argument("--dry-run", action="store_true")
     a = p.parse_args(argv)
@@ -117,8 +120,11 @@ def main(argv=None) -> int:
     deals_done = 0
     playing = False
     last_step = 0.0
+    steps_this_deal = 0
 
     def begin_deal(n):
+        nonlocal steps_this_deal
+        steps_this_deal = 0
         # Per deal: Play only (MIDDLE) brings up the auction + the lower-left
         # "Start play" button; click that (lower-left "step" position) to
         # actually start the cardplay. We then start Next-card stepping right
@@ -154,6 +160,16 @@ def main(argv=None) -> int:
         if playing and now - last_step >= a.card_delay:
             _click(*step, win, a.dry_run)
             last_step = now
+            steps_this_deal += 1
+            # RUNAWAY GUARD: a deal is ~13 tricks + Next-deal. If we have
+            # clicked far more than that with no new deal, something is stuck
+            # (e.g. a stalled client) — STOP clicking so we don't grab the
+            # mouse forever. The user can fix it and re-run.
+            if steps_this_deal > a.max_steps:
+                print(f"[cardplay-clicker] STOPPING — {steps_this_deal} clicks "
+                      f"on one deal with no progress (stuck?). Re-run after "
+                      f"fixing.", flush=True)
+                return 1
         time.sleep(0.25)
 
     print(f"[cardplay-clicker] done — {a.deals} deals", flush=True)
