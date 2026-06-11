@@ -118,11 +118,23 @@ def main(argv=None) -> int:
     deals_done = 0
     playing = False
     last_step = 0.0
+
+    def begin_deal(n):
+        # Per deal: Play only (MIDDLE) brings up the auction + the lower-left
+        # "Start play" button; click that (lower-left "step" position) to
+        # actually start the cardplay. Only after that does biq get begin_play.
+        nonlocal last_step
+        print(f"[cardplay-clicker] deal {n}/{a.deals} — Play only + Start play",
+              flush=True)
+        time.sleep(a.play_settle)
+        _click(*play_only, win, a.dry_run)         # Play only (middle)
+        time.sleep(a.play_settle)
+        _click(*step, win, a.dry_run)              # Start play (lower-left)
+        last_step = time.time()
+
     # The deal currently on screen is already loaded & waiting at Play only:
-    print("[cardplay-clicker] starting — clicking Play only for the current "
-          "deal", flush=True)
-    time.sleep(a.play_settle)
-    _click(*play_only, win, a.dry_run)
+    print("[cardplay-clicker] starting on the current deal", flush=True)
+    begin_deal(1)
     deals_done = 1
 
     while deals_done <= a.deals:
@@ -133,10 +145,7 @@ def main(argv=None) -> int:
                 if deals_done > a.deals:
                     break
                 playing = False
-                print(f"[cardplay-clicker] deal {deals_done}/{a.deals} — "
-                      f"Play only", flush=True)
-                time.sleep(a.play_settle)
-                _click(*play_only, win, a.dry_run)
+                begin_deal(deals_done)
             elif _PLAY.search(line):
                 playing = True
                 last_step = time.time()
