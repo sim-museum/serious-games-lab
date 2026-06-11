@@ -1090,15 +1090,27 @@ class LiveMatchWidget(QWidget):
         gen = QPushButton("① Generate PBN + enable no-peek")
         gen.setStyleSheet("font-weight:bold;")
         cal = QPushButton("② Calibrate clicker buttons…")
-        run = QPushButton("③ Launch cardplay clicker")
+        cal_a = QPushButton("②b Calibrate Autoplay (for baseline)…")
+        run = QPushButton("③ Launch cardplay clicker (biq run)")
         off = QPushButton("Disable no-peek mode (back to MC+DDS)")
-        for b in (gen, cal, run, off):
+        for b in (gen, cal, cal_a, run, off):
             v.addWidget(b)
-        _lab("In Q-Plus: Own deals ▸ Use…, pick BIQ_NOPEEK.PBN, set Read=Bids, "
-             "then start a Q-Plus-vs-biq game and choose CARD PLAY. Enable "
-             "no-peek BEFORE (re)starting the biq clients so they pick it up. "
-             "②: hover over 'Play only' (middle) then the lower-left button as "
-             "each countdown ends — watch the panel log. ③ runs hands-off.",
+        brow = QHBoxLayout()
+        base = QPushButton("④ Run baseline (all-Q-Plus)")
+        base.setStyleSheet("font-weight:bold;")
+        dtime = QSpinBox(); dtime.setRange(5, 180); dtime.setValue(35)
+        brow.addWidget(base, 1)
+        brow.addWidget(QLabel("deal-time(s):")); brow.addWidget(dtime)
+        v.addLayout(brow)
+        _lab("BIQ RUN (③): Own deals ▸ Use…, pick BIQ_NOPEEK.PBN, Read=Bids, "
+             "start a Q-Plus-vs-biq CARD PLAY game; enable no-peek BEFORE "
+             "(re)starting the biq clients. ②: hover 'Play only' then the "
+             "lower-left button each countdown.\n"
+             "BASELINE (④): the SAME PBN as a LOCAL all-Computer game (Read="
+             "Bids, no biq) at the SAME Level — gives Q-Plus's tricks on the "
+             "forced contracts. Needs ②b (Autoplay) calibrated; advances by "
+             "deal-time, so set it bigger than the slowest deal. Save the match "
+             "→ compare the two .qss for the clean no-peek-vs-Q-Plus number.",
              grey=True)
         close = QPushButton("Close")
         v.addWidget(close)
@@ -1133,6 +1145,28 @@ class LiveMatchWidget(QWidget):
             self._append("[nopeek] CALIBRATE — hover 'Play only' (middle) then "
                          "the lower-left button as each 6s countdown ends.")
 
+        def do_cal_auto():
+            self._clk = self._mk_proc("nopeek")
+            self._clk.setArguments(
+                ["-u", "tools/qplus_cardplay_clicker.py",
+                 "--recalibrate-autoplay"])
+            self._clk.start()
+            self._append("[nopeek] CALIBRATE AUTOPLAY — start a deal playing "
+                         "(Play only → Start play) so the Autoplay button shows, "
+                         "then hover it as the countdown ends.")
+
+        def do_baseline():
+            self._clk = self._mk_proc("nopeek")
+            self._clk.setArguments(
+                ["-u", "tools/qplus_cardplay_clicker.py", "--no-log",
+                 "--deals", str(deals.value()),
+                 "--deal-time", str(dtime.value())])
+            self._clk.start()
+            self._append(f"[nopeek] BASELINE (all-Q-Plus) running {deals.value()}"
+                         f" deals, deal-time {dtime.value()}s — set up the LOCAL "
+                         f"all-Computer game first (deal 1 at 'Play only'). "
+                         f"Hands-off; Save match when done.")
+
         def do_run():
             if not BIQ_S_LOG.exists():
                 self._append("[nopeek] WARN: no biq South log yet — start the "
@@ -1154,7 +1188,9 @@ class LiveMatchWidget(QWidget):
 
         gen.clicked.connect(do_gen)
         cal.clicked.connect(do_cal)
+        cal_a.clicked.connect(do_cal_auto)
         run.clicked.connect(do_run)
+        base.clicked.connect(do_baseline)
         off.clicked.connect(do_off)
         close.clicked.connect(dlg.hide)
         dlg.show()
