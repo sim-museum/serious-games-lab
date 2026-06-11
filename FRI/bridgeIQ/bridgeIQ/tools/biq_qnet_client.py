@@ -955,15 +955,17 @@ class BiqClient:
         return max(legal, key=lambda c: c.rank.value)
 
     def _choose_card(self, seat: Seat) -> Optional[Card]:
-        """Card for `seat` via the MC+DDS engine, ISOLATED IN A FORKED CHILD.
+        """Card for `seat`, ISOLATED IN A FORKED CHILD.
 
-        libdds can SEGFAULT under load — uncatchable in-process, it would kill
-        the client and wedge the whole match (seen live on a 64-board run at
-        120 samples). So we fork: the child runs the DDS-heavy MC, writes the
-        card to a pipe, and os._exit(0)s (skipping the libdds thread teardown
-        that itself segfaults). A crash/hang in the child costs ONE card — the
-        parent falls back to a legal card — never the client. The parent never
-        runs DDS itself, so it can't be killed by it."""
+        BOTH engines now use libdds — the MC+DDS play AND the no-peek ALPHA-MU
+        search (DDS on belief-sampled layouts + a consistent line). libdds can
+        SEGFAULT under load — uncatchable in-process, it would kill the client
+        and wedge the whole match (seen live on a 64-board run). So we fork: the
+        child runs the DDS-heavy compute, writes the card to a pipe, and
+        os._exit(0)s (skipping the libdds thread teardown that itself
+        segfaults). A crash/hang in the child costs ONE card — the parent falls
+        back to a legal card — never the client. The parent never runs DDS
+        itself, so it can't be killed by it."""
         board = BoardState(
             board_number=self.board.board_number,
             dealer=self.board.dealer,
@@ -974,29 +976,26 @@ class BiqClient:
             tricks=list(self.completed_tricks),
         )
         cur = list(self.current_trick)
-        # NO-PEEK engine: pure technique, never samples/solves hidden hands.
-        # In a live Q-NET game biq only holds its own + dummy cards anyway, so
-        # this is the natural fit — and it needs no DDS, hence no fork/segfault.
-        if self.nopeek:
-            from backend import nopeek as _nopeek
-            try:
-                card = _nopeek.decide(board, seat, current_trick_cards=cur)
-                if card is not None:
-                    return card
-            except Exception as e:
-                self.log(f"nopeek error for {seat.name}: {e}")
-            return self._legal_fallback_card(seat)
+
+        def _compute() -> Optional[Card]:
+            # no-peek (alpha-mu; pure belief — only own + dummy cards) or MC+DDS
+            if self.nopeek:
+                from backend import nopeek as _nopeek
+                return _nopeek.decide(board, seat, current_trick_cards=cur)
+            resp = self.engine.get_mc_card_play(
+                board, seat, current_trick_cards=cur,
+                num_samples=self.num_samples)
+            return resp.action
+
         try:
             r, w = os.pipe()
             pid = os.fork()
         except OSError:
             # fork unavailable — best-effort in-process (old behaviour)
             try:
-                resp = self.engine.get_mc_card_play(
-                    board, seat, current_trick_cards=cur,
-                    num_samples=self.num_samples)
-                if resp.action is not None:
-                    return resp.action
+                card = _compute()
+                if card is not None:
+                    return card
             except Exception:
                 pass
             return self._legal_fallback_card(seat)
@@ -1007,11 +1006,9 @@ class BiqClient:
             except OSError:
                 pass
             try:
-                resp = self.engine.get_mc_card_play(
-                    board, seat, current_trick_cards=cur,
-                    num_samples=self.num_samples)
-                if resp.action is not None:
-                    os.write(w, format_card(resp.action).encode("latin-1"))
+                card = _compute()
+                if card is not None:
+                    os.write(w, format_card(card).encode("latin-1"))
             except Exception:
                 pass
             finally:
@@ -1055,8 +1052,8 @@ class BiqClient:
                 return parse_card_token(data.decode("latin-1"))
             except Exception:
                 pass
-        self.log(f"MC child produced no card for {seat.name} "
-                 f"(libdds crash/hang) — playing a legal fallback")
+        self.log(f"card child produced no card for {seat.name} "
+                 f"(engine crash/hang) — playing a legal fallback")
         return self._legal_fallback_card(seat)
 
     def _play_card(self, seat: Seat, card: Card) -> None:
