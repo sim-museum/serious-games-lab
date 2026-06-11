@@ -338,7 +338,8 @@ class BiqClient:
         self.verbose = verbose
         self._logfh = None
         if log_path:
-            self._logfh = open(log_path, "a")
+            self._logfh = open(log_path, "a", buffering=1)   # line-buffered so
+            #          log-watchers (the cardplay clicker) see events at once
             # Fingerprint the bidder this run is ACTUALLY using — content hash
             # + a U1/U2/U3 marker (Case C). Three baselines were silently run
             # on a reverted bidder before this existed; run_preflight checks it.

@@ -85,7 +85,7 @@ def main(argv=None) -> int:
                    help="biq client log to gate clicks on (e.g. "
                         "tools/runs/biq_S.log)")
     p.add_argument("--deals", type=int, default=32)
-    p.add_argument("--card-delay", type=float, default=2.5,
+    p.add_argument("--card-delay", type=float, default=1.5,
                    help="seconds between Next-card clicks during play")
     p.add_argument("--play-settle", type=float, default=1.5,
                    help="wait after a new deal before clicking Play only")
@@ -113,7 +113,6 @@ def main(argv=None) -> int:
     fh = open(log, "r", errors="replace")
     fh.seek(0, 2)                              # only NEW lines from here
     _NEW = re.compile(r"NEW DEAL")
-    _PLAY = re.compile(r"FORCED CONTRACT|play begins|begin_play")
 
     deals_done = 0
     playing = False
@@ -122,14 +121,17 @@ def main(argv=None) -> int:
     def begin_deal(n):
         # Per deal: Play only (MIDDLE) brings up the auction + the lower-left
         # "Start play" button; click that (lower-left "step" position) to
-        # actually start the cardplay. Only after that does biq get begin_play.
-        nonlocal last_step
+        # actually start the cardplay. We then start Next-card stepping right
+        # away (time-based) rather than waiting on the log — the opening lead is
+        # biq's, so the table is ready within --card-delay.
+        nonlocal last_step, playing
         print(f"[cardplay-clicker] deal {n}/{a.deals} — Play only + Start play",
               flush=True)
         time.sleep(a.play_settle)
         _click(*play_only, win, a.dry_run)         # Play only (middle)
         time.sleep(a.play_settle)
         _click(*step, win, a.dry_run)              # Start play (lower-left)
+        playing = True
         last_step = time.time()
 
     # The deal currently on screen is already loaded & waiting at Play only:
@@ -144,11 +146,8 @@ def main(argv=None) -> int:
                 deals_done += 1
                 if deals_done > a.deals:
                     break
-                playing = False
-                begin_deal(deals_done)
-            elif _PLAY.search(line):
-                playing = True
-                last_step = time.time()
+                playing = False           # stop stepping until next Start play
+                begin_deal(deals_done)     # Play only + Start play (sets playing)
             continue
         # no new line: step the play (only while a deal is actually in play)
         now = time.time()
