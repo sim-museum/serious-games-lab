@@ -32,6 +32,9 @@ BIQ_ROOT = Path(__file__).resolve().parent.parent
 WP_SERVER = BIQ_ROOT.parent.parent / "WP"
 QSS_DIR = (BIQ_ROOT.parent.parent
            / "WP/drive_c/games/qbridge17/DATA/LOCAL-MATCHES")
+IMPORTED_DEALS_DIR = QSS_DIR.parent / "IMPORTED-DEALS"
+NOPEEK_PBN = IMPORTED_DEALS_DIR / "BIQ_NOPEEK.PBN"   # forced-contract deck for
+#                       the no-peek-vs-Q-Plus cardplay-only head-to-head
 PROXY_LOG = BIQ_ROOT / "tools/runs/qnet_session.log"
 BIQ_LOG = BIQ_ROOT / "tools/runs/biq_session.log"
 BIQ_N_LOG = BIQ_ROOT / "tools/runs/biq_N.log"
@@ -1052,6 +1055,110 @@ class LiveMatchWidget(QWidget):
         close.clicked.connect(dlg.hide)
         dlg.show()
 
+    def show_nopeek_dialog(self):
+        """No-peek vs Q-Plus CARDPLAY-only head-to-head, end to end:
+        generate a forced-contract PBN, flip biq's clients to the no-peek
+        engine, and drive the cardplay clicker — so the whole workflow is one
+        place and the PBN biq plays is guaranteed to match Q-Plus's."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle("No-peek cardplay vs Q-Plus")
+        v = QVBoxLayout(dlg)
+
+        def _lab(txt, grey=False):
+            la = QLabel(txt); la.setWordWrap(True)
+            if grey:
+                la.setStyleSheet("color:#666;")
+            v.addWidget(la)
+            return la
+
+        _lab("Head-to-head CARDPLAY vs Q-Plus on FORCED contracts (no bidding) "
+             "— measures the no-peek engine against a real opponent, not biq's "
+             "own PIMC. biq plays its seats with the no-peek engine.")
+        row = QHBoxLayout()
+        deals = QSpinBox(); deals.setRange(1, 128); deals.setValue(32)
+        seed = QSpinBox(); seed.setRange(1, 9999); seed.setValue(5)
+        row.addWidget(QLabel("Deals:")); row.addWidget(deals)
+        row.addWidget(QLabel("Seed:")); row.addWidget(seed)
+        v.addLayout(row)
+        status = QLabel("no-peek mode: OFF")
+        status.setStyleSheet("font-weight:bold; color:#a00;")
+        if getattr(self, "_nopeek_pbn", None):
+            status.setText(f"no-peek mode: ON ({Path(self._nopeek_pbn).name})")
+            status.setStyleSheet("font-weight:bold; color:#080;")
+        v.addWidget(status)
+
+        gen = QPushButton("① Generate PBN + enable no-peek")
+        gen.setStyleSheet("font-weight:bold;")
+        cal = QPushButton("② Calibrate clicker buttons…")
+        run = QPushButton("③ Launch cardplay clicker")
+        off = QPushButton("Disable no-peek mode (back to MC+DDS)")
+        for b in (gen, cal, run, off):
+            v.addWidget(b)
+        _lab("In Q-Plus: Own deals ▸ Use…, pick BIQ_NOPEEK.PBN, set Read=Bids, "
+             "then start a Q-Plus-vs-biq game and choose CARD PLAY. Enable "
+             "no-peek BEFORE (re)starting the biq clients so they pick it up. "
+             "②: hover over 'Play only' (middle) then the lower-left button as "
+             "each countdown ends — watch the panel log. ③ runs hands-off.",
+             grey=True)
+        close = QPushButton("Close")
+        v.addWidget(close)
+
+        def do_gen():
+            IMPORTED_DEALS_DIR.mkdir(parents=True, exist_ok=True)
+            self._pbn_proc = self._mk_proc("nopeek")
+            self._pbn_proc.setArguments(
+                ["-u", "tools/gen_forced_pbn.py", "--deals",
+                 str(deals.value()), "--seed", str(seed.value()),
+                 "--out", str(NOPEEK_PBN)])
+
+            def done(*_a):
+                self._nopeek_pbn = NOPEEK_PBN
+                status.setText(f"no-peek mode: ON ({NOPEEK_PBN.name}, "
+                               f"{deals.value()} deals)")
+                status.setStyleSheet("font-weight:bold; color:#080;")
+                self._append(
+                    f"[nopeek] PBN ready: {NOPEEK_PBN}. biq clients will now "
+                    f"play NO-PEEK. Load it in Q-Plus (Read=Bids) and start a "
+                    f"CARD PLAY game.")
+            self._pbn_proc.finished.connect(done)
+            self._pbn_proc.start()
+            self._append(f"[nopeek] generating {deals.value()}-deal "
+                         f"forced-contract PBN (seed {seed.value()})…")
+
+        def do_cal():
+            self._clk = self._mk_proc("nopeek")
+            self._clk.setArguments(
+                ["-u", "tools/qplus_cardplay_clicker.py", "--recalibrate"])
+            self._clk.start()
+            self._append("[nopeek] CALIBRATE — hover 'Play only' (middle) then "
+                         "the lower-left button as each 6s countdown ends.")
+
+        def do_run():
+            if not BIQ_S_LOG.exists():
+                self._append("[nopeek] WARN: no biq South log yet — start the "
+                             "biq clients (no-peek mode ON) first.")
+            self._clk = self._mk_proc("nopeek")
+            self._clk.setArguments(
+                ["-u", "tools/qplus_cardplay_clicker.py", "--watch",
+                 str(BIQ_S_LOG), "--deals", str(deals.value())])
+            self._clk.start()
+            self._append(f"[nopeek] cardplay clicker running for "
+                         f"{deals.value()} deals — hands-off (don't touch the "
+                         f"mouse).")
+
+        def do_off():
+            self._nopeek_pbn = None
+            status.setText("no-peek mode: OFF")
+            status.setStyleSheet("font-weight:bold; color:#a00;")
+            self._append("[nopeek] no-peek mode OFF — biq clients use MC+DDS.")
+
+        gen.clicked.connect(do_gen)
+        cal.clicked.connect(do_cal)
+        run.clicked.connect(do_run)
+        off.clicked.connect(do_off)
+        close.clicked.connect(dlg.hide)
+        dlg.show()
+
     def _ab_refs(self):
         """(BASE_REF, CAND_REF) from ab_bidder.sh's defaults."""
         base, cand = "f50a1ce", "p3cand"
@@ -1406,15 +1513,17 @@ class LiveMatchWidget(QWidget):
                 "--port", str(port), "--seat", seat,
                 "--num-samples", str(self.samples.value()),
                 "--log", str(log_path), "--auto-system"]
-        # No-peek cardplay + forced-contract PBN (set env vars before launching
-        # the panel to run a no-peek-vs-Q-Plus cardplay-only head-to-head):
-        #   BIQ_NOPEEK=1   -> play cards with the no-peek engine
-        #   BIQ_FORCED_PBN=<path> -> recover contracts when Q-Plus skips bidding
-        if os.environ.get("BIQ_NOPEEK"):
+        # No-peek cardplay + forced-contract PBN. Enabled from the
+        # "No-peek cardplay…" dialog (sets self._nopeek_pbn) or via env vars
+        # (BIQ_NOPEEK=1, BIQ_FORCED_PBN=<path>). In this mode biq plays cards
+        # with the no-peek engine and recovers contracts when Q-Plus skips
+        # bidding (cardplay-only games).
+        forced = getattr(self, "_nopeek_pbn", None) or \
+            os.environ.get("BIQ_FORCED_PBN")
+        if getattr(self, "_nopeek_pbn", None) or os.environ.get("BIQ_NOPEEK"):
             args.append("--nopeek")
-        forced = os.environ.get("BIQ_FORCED_PBN")
         if forced:
-            args += ["--pbn", forced]
+            args += ["--pbn", str(forced)]
         return args
 
     def _pair_seats(self):
@@ -2719,6 +2828,10 @@ class ControlPanel(QMainWindow):
         # only rotation-proof way to A/B a bidder change against Q-Plus.
         mb.addAction("🃏 Generate deck…").triggered.connect(
             self.live.show_deck_dialog)
+        # Top-level: the no-peek-vs-Q-Plus CARDPLAY-only head-to-head, all in
+        # one place (generate forced PBN, flip biq to no-peek, drive clicker).
+        mb.addAction("🛡 No-peek cardplay…").triggered.connect(
+            self.live.show_nopeek_dialog)
         # Top-level: validate the newest run matched the locked rig before
         # trusting its IMPs (closed room on, fixed system, deck-sourced).
         mb.addAction("✓ Validate run").triggered.connect(
