@@ -80,6 +80,14 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--watch", type=Path)
+    p.add_argument("--no-log", action="store_true",
+                   help="all-Q-Plus baseline (session B): no biq log to gate "
+                        "on, so drive purely by time — Play only/Start play/"
+                        "Autoplay, wait --deal-time, Next deal. Needs Autoplay "
+                        "calibrated (--recalibrate-autoplay).")
+    p.add_argument("--deal-time", type=float, default=25.0,
+                   help="[--no-log] seconds to let Autoplay finish a deal "
+                        "before clicking Next deal (bump if deals run long)")
     p.add_argument("--deals", type=int, default=64)
     p.add_argument("--card-delay", type=float, default=0.8,
                    help="seconds between Next-card clicks (stepping fallback)")
@@ -117,14 +125,17 @@ def main(argv=None) -> int:
           + ("" if use_auto else " — run --recalibrate-autoplay for the fast "
              "path"), flush=True)
 
-    if not a.watch:
-        print("error: --watch <biq log> is required to run", file=sys.stderr)
+    if not a.watch and not a.no_log:
+        print("error: --watch <biq log> (or --no-log) is required",
+              file=sys.stderr)
         return 2
-    while not a.watch.exists():
-        print(f"[cardplay-clicker] waiting for {a.watch} …", flush=True)
-        time.sleep(1)
-    fh = open(a.watch, "r", errors="replace")
-    fh.seek(0, 2)
+    fh = None
+    if not a.no_log:
+        while not a.watch.exists():
+            print(f"[cardplay-clicker] waiting for {a.watch} …", flush=True)
+            time.sleep(1)
+        fh = open(a.watch, "r", errors="replace")
+        fh.seek(0, 2)
     _NEW = re.compile(r"NEW DEAL")
     _SCORE = re.compile(r"report_score|SCORE:")
 
@@ -154,6 +165,20 @@ def main(argv=None) -> int:
         else:
             playing, awaiting = True, False
             last_step = time.time()
+
+    # --- no-log time-based mode: session B (all-Q-Plus baseline) ---
+    if a.no_log:
+        if not use_auto:
+            print("error: --no-log needs Autoplay calibrated — run "
+                  "--recalibrate-autoplay during a live deal first",
+                  file=sys.stderr)
+            return 2
+        for n in range(1, a.deals + 1):
+            begin_deal(n)                                 # Play only/Start/Autoplay
+            time.sleep(a.deal_time)                       # let the deal play out
+            _click(step, win, a.dry_run)                  # Next deal
+        print(f"[cardplay-clicker] done — {a.deals} deals (no-log)", flush=True)
+        return 0
 
     print("[cardplay-clicker] starting on the current deal", flush=True)
     begin_deal(1)
