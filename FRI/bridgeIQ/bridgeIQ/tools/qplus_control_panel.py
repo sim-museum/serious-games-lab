@@ -1075,7 +1075,7 @@ class LiveMatchWidget(QWidget):
              "— measures the no-peek engine against a real opponent, not biq's "
              "own PIMC. biq plays its seats with the no-peek engine.")
         row = QHBoxLayout()
-        deals = QSpinBox(); deals.setRange(1, 128); deals.setValue(32)
+        deals = QSpinBox(); deals.setRange(1, 64); deals.setValue(64)
         seed = QSpinBox(); seed.setRange(1, 9999); seed.setValue(5)
         row.addWidget(QLabel("Deals:")); row.addWidget(deals)
         row.addWidget(QLabel("Seed:")); row.addWidget(seed)

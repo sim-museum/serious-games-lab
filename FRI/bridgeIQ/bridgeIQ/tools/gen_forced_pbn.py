@@ -9,7 +9,7 @@ as a real auction, so Q-Plus loads each board and starts at the opening lead in
 that exact contract. Drop the file in Q-Plus's IMPORTED-DEALS and load it with
 Read = Bids (or Auto).
 
-  python3 tools/gen_forced_pbn.py --deals 32 --seed 5 --out forced_s5.pbn
+  python3 tools/gen_forced_pbn.py --deals 64 --seed 5 --out forced_s5.pbn
   # then copy forced_s5.pbn to <qplus>/DATA/IMPORTED-DEALS/
 
 The same deals/contracts are reproducible offline for the no-peek side, so the
@@ -50,7 +50,7 @@ def _vuln(board: int) -> str:
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--deals", type=int, default=32)
+    ap.add_argument("--deals", type=int, default=64)
     ap.add_argument("--seed", type=int, default=5)
     ap.add_argument("--ns-system", default="SAYC")
     ap.add_argument("--ew-system", default="SAYC")
