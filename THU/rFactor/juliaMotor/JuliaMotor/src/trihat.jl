@@ -71,7 +71,17 @@ function TriangleHAT(track_dir::AbstractString; cell::Real=15.0)
         end
     end
     isempty(tris) && throw(ArgumentError("no HAT triangles found in $track_dir"))
+    TriangleHAT(tris; cell=cell)
+end
 
+"""
+    TriangleHAT(tris::Vector{Tri}; cell=15.0) -> TriangleHAT
+
+Build the surface from world-space triangles directly (Y = up = height) — for
+non-rFactor tracks (e.g. the GPL Zandvoort .3do remapped to Y-up).
+"""
+function TriangleHAT(tris::Vector{Tri}; cell::Real=15.0)
+    isempty(tris) && throw(ArgumentError("no HAT triangles given"))
     xs = Float64[]; zs = Float64[]
     for t in tris, v in (t.a, t.b, t.c)
         push!(xs, v[1]); push!(zs, v[3])

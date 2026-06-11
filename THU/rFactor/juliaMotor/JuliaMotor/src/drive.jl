@@ -82,6 +82,13 @@ function DriveCar(model::VehicleModel, aiw;
              Float64(v_couple))
 end
 
+# build directly from a prebuilt TrackSurface (GPL tracks: no AIW)
+function DriveCar(model::VehicleModel, ts::TrackSurface;
+                  terrain::Union{Nothing,TriangleHAT}=nothing,
+                  max_steer::Real=0.35, v_couple::Real=8.0)
+    DriveCar(model, ts, terrain, Float64(max_steer), Float64(v_couple))
+end
+
 """
     spawn(car; fuel=40.0, waypoint=1) -> CarState
 

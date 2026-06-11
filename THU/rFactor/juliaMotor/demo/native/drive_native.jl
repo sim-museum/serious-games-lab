@@ -6,24 +6,34 @@
 using GLFW, ModernGL, LinearAlgebra
 using JuliaMotor, RFactorData
 include("render.jl"); using .Render
+include("gpltrack.jl"); using .GPLTrack
 include("audio.jl"); using .EngineAudio
 
-# ---- load physics + geometry ----
+# ---- load physics + geometry: the GPL Zandvoort track + Vanwall-calibrated physics ----
 const GD = default_gamedata()
-const DIR = joinpath(GD, "Locations", "Zandvoort67")
 const VEH = load_vehicle(joinpath(GD,"Vehicles","F158","Vanwall","Teams","LewisEvans","LewisEvans.veh"))
-const MODEL = VehicleModel(VEH)
-const AIW = read_aiw(joinpath(DIR,"zandvoort67.AIW"))
-print("loading collision surface… "); flush(stdout)
-const TERRAIN = TriangleHAT(DIR); println(TERRAIN)
-const CAR = DriveCar(MODEL, AIW; terrain=TERRAIN)
+const MODEL = VehicleModel(VEH)              # physics (Lotus-49 calibration is the future goal)
+const ZD = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/tracks/zandvort"
+const ZTRK = joinpath(ZD, "zandvort.3do")
+print("loading GPL track… "); flush(stdout)
+const TRACKMESH = Render.GPL3DO.parse_3do(ZTRK)
+const TERRAIN = GPLTrack.build_hat(TRACKMESH)            # ground/elevation from the .3do
+const TRKSURF = GPLTrack.build_surface(GPLTrack.trk_centreline(joinpath(ZD,"zandvort.trk")), TERRAIN)
+const CAR = DriveCar(MODEL, TRKSURF; terrain=TERRAIN)    # racing ribbon from the .trk centreline
+println(TERRAIN, "  ", TRKSURF)
 print("extracting geometry… "); flush(stdout)
-const TRACK = Render.extract_track(DIR)        # per-mesh, with UVs + texture name
-const CARP  = Render.extract_car_parts(GD)     # body/cockpit/driver, textured (livery)
-println(length(TRACK), " track parts + ", length(CARP), " car parts")
-# wheels at the real PM hub positions (rig frame); front pair steers, all spin
-const WHEELS = (( 1.4f0,0.33f0, 0.735f0,true,0.33f0,0.19f0), ( 1.4f0,0.33f0,-0.735f0,true,0.33f0,0.19f0),
-                (-1.4f0,0.33f0, 0.705f0,false,0.34f0,0.24f0), (-1.4f0,0.33f0,-0.705f0,false,0.34f0,0.24f0))
+const TRACK = Render.extract_gpl_car(ZTRK; track=true, mirror=true, exclude=("ltraymap","lshad","wiref_s"))   # GPL Zandvoort (no wire fences)
+# ---- GPL Lotus 49 (replaces the rFactor Vanwall; the authentic GPL-pivot car) ----
+const LOTDIR = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/cars/cars67/lotus"
+const GPLTEX = Render.gpl_texture_index(LOTDIR)
+const LOT3DO = joinpath(LOTDIR,"lotus.3do")
+const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","lotmirt",Render.STEER_TEX...), exclude_groups=(6600,3560))  # no hands/dup-mirror/teal front-susp
+const SWPARTS, SWCENTER, SWAXIS = Render.extract_gpl_steering(LOT3DO)   # steering wheel + pivot
+println(length(TRACK), " track parts + ", length(CARP), " Lotus body parts")
+const BODY_OFF = Float32[-0.55, 0.30, 0.0]     # centre body on X, lift onto the wheels
+# wheel hubs (rig frame X fwd, Y=radius, Z left); front pair steers, all spin
+const WHEELS = (( 1.05f0, 0.62f0,true, 0.31f0,"lotwlf"), ( 1.05f0,-0.62f0,true, 0.31f0,"lotwrf"),
+                (-1.15f0, 0.66f0,false,0.34f0,"lotwlr"), (-1.15f0,-0.66f0,false,0.34f0,"lotwrr"))
 
 # ---- GL init (visible window on the user's display) ----
 const W, H = 1440, 810
@@ -34,9 +44,10 @@ GLFW.WindowHint(GLFW.CONTEXT_VERSION_MAJOR, 3); GLFW.WindowHint(GLFW.CONTEXT_VER
 GLFW.WindowHint(GLFW.OPENGL_PROFILE, GLFW.OPENGL_CORE_PROFILE)
 GLFW.WindowHint(GLFW.OPENGL_FORWARD_COMPAT, true)
 GLFW.WindowHint(GLFW.SAMPLES, 4)                  # 4× MSAA — smooth the jaggies
-win = GLFW.CreateWindow(W, H, "juliaMotor — 1958 Vanwall @ Zandvoort")
+win = GLFW.CreateWindow(W, H, "juliaMotor — 1967 Lotus 49 @ Zandvoort")
 GLFW.MakeContextCurrent(win); GLFW.SwapInterval(1)
 glEnable(GL_DEPTH_TEST); glEnable(GL_MULTISAMPLE)
+glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)   # GPL cutout/glass alpha
 prog = Render.program(); glUseProgram(prog)
 glUniform3f(glGetUniformLocation(prog,"uLightDir"), 0.4f0, 1.0f0, 0.25f0)
 skyprog = Render.skyprogram(); skyvao = Render.empty_vao()
@@ -45,14 +56,16 @@ depthprog = Render.depthprogram(); (shadowfbo, shadowtex) = Render.make_shadow_f
 const LIGHTDIR = Float32[0.4, 1.0, 0.25]
 const ENG = EngineAudio.build(GD); EngineAudio.start(ENG)   # real onboard engine samples, RPM-crossfaded
 print("loading textures… "); flush(stdout)
-const TEXIDX = Render.texture_index(DIR)
-trackItems = Render.build_track(TRACK, TEXIDX)
-const CARTEX = Render.car_texture_index(GD)
-carItems   = Render.build_track(CARP, CARTEX)
-swItem     = Render.build_track([Render.extract_steering_wheel(GD)], CARTEX)[1]   # wood-rim wheel
+const TEXIDX = Render.gpl_texture_index(ZD)
+trackItems = Render.build_gpl(TRACK, TEXIDX)
+carItems   = Render.build_gpl(CARP, GPLTEX)        # Lotus body, GPL .mip textures
+# four Lotus wheels — keep the untextured black tyre body (only the car body drops "")
+load_wheel(nm) = Render.build_gpl(Render.extract_gpl_car(joinpath(LOTDIR,nm*".3do");
+                    exclude=("ltraymap","lshad"), tint=(0.12f0,0.12f0,0.13f0)), GPLTEX)  # force dark tyre
+const WHEELITEMS = Dict(nm => load_wheel(nm) for nm in ("lotwlf","lotwrf","lotwlr","lotwrr"))
+swItems = Render.build_gpl(SWPARTS, GPLTEX)        # steering wheel (rotated with steer)
 println(count(it->it.tex!=0, trackItems), "/", length(trackItems), " track + ",
-        count(it->it.tex!=0, carItems), "/", length(carItems), " car parts textured")
-wheelItem  = Render.item(Render.wheel_mesh(0.33f0, 0.13f0))     # narrow period tyre, ×4
+        count(it->it.tex!=0, carItems), "/", length(carItems), " Lotus parts textured")
 const PROJ = Render.perspective(deg2rad(62f0), Float32(W/H), 0.3f0, 5000f0)
 
 # ---- input: edge-detected shift, view + auto-gearbox toggle ----
@@ -89,11 +102,14 @@ end
 
 # ---- camera ----
 function camera(cs)
-    wx,wy,wz = cs.x, cs.y, -cs.z; fx,fz = cos(cs.θ), -sin(cs.θ)
+    wx,wy,wz = cs.x, cs.y, -cs.z; fx,fz = cos(cs.θ), -sin(cs.θ)   # render world un-mirrors physics z
     if CTL.view == 1                                  # chase
         eye=[wx-fx*9, wy+3.2, wz-fz*9]; ctr=[wx+fx*3, wy+0.6, wz+fz*3]
-    else                                             # cockpit (driver's eyes, over the wheel)
-        eye=[wx-fx*0.35, wy+0.92, wz-fz*0.35]; ctr=[eye[1]+fx*9, eye[2]-1.8, eye[3]+fz*9]
+    else                                             # cockpit: driver's eye in the body frame, over the wheel
+        ex,ey,ez,drop = 0.30f0, 0.56f0, 0.0f0, 1.25f0           # eye in body-local rig (X fwd,Y up,Z lat)
+        rx = BODY_OFF[1]+ex; ry = BODY_OFF[2]+ey; rz = BODY_OFF[3]+ez
+        eye=[wx + rx*fx - rz*fz, wy + ry, wz + rx*fz + rz*fx]   # rig→world (roty θ + carpos)
+        ctr=[wx + (rx+4)*fx - rz*fz, wy + (ry-drop), wz + (rx+4)*fz + rz*fx]
     end
     PROJ * Render.lookat(Float32.(eye), Float32.(ctr), Float32[0,1,0]), Float32.(eye)
 end
@@ -117,35 +133,34 @@ function main()
 
         vp, eye = camera(cs)
         carModel = Render.translate(Float32[cs.x, cs.y, -cs.z]) * Render.roty(Float32(cs.θ))
+        bodyModel = carModel * Render.translate(BODY_OFF)
         δ = Float32(inp.steer * CAR.max_steer)
-        wheelmats = [carModel * Render.translate(Float32[wx,wy,wz]) *
+        wheelmat(wx,wz,steer,r) = carModel * Render.translate(Float32[wx, r, wz]) *
                      (steer ? Render.roty(δ) : Render.ident()) * Render.rotz(Float32(spin))
-                     for (wx,wy,wz,steer,r,hw) in WHEELS]
         # ---- shadow pass: scene depth from the sun, light box on the car ----
         lightVP = Render.light_vp(Float32[cs.x, cs.y, -cs.z], LIGHTDIR)
         Render.shadow_pass(depthprog, shadowfbo, lightVP) do dp
             for it in trackItems; Render.draw_depth(dp, it, Render.ident()); end
-            for it in carItems; Render.draw_depth(dp, it, carModel); end
-            for m in wheelmats; Render.draw_depth(dp, wheelItem, m); end
+            for it in carItems; Render.draw_depth(dp, it, bodyModel); end
+            for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw_depth(dp, it, wheelmat(wx,wz,steer,r)); end
         end
         # ---- main pass ----
         glViewport(0,0,W,H); glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
         Render.draw_sky(skyprog, skyvao, inv(vp), eye, LIGHTDIR)
-        Render.set_scene_uniforms(prog, eye); Render.bind_shadow(prog, shadowtex, lightVP)
-        for it in trackItems; Render.draw(prog, it, vp, Render.ident()); end
-        for it in carItems; Render.draw(prog, it, vp, carModel; bright=1.5); end
-        for m in wheelmats; Render.draw(prog, wheelItem, vp, m); end
-        if CTL.view == 0                           # steering wheel — cockpit view, turns with steer
-            swModel = carModel * Render.translate(Float32[0.05,0.66,0]) * Render.rotz(0.6f0) * Render.rotx(Float32(-inp.steer*3.5))
-            Render.draw(prog, swItem, vp, swModel; bright=1.3)
-        end
+        Render.set_scene_uniforms(prog, eye; fognear=400f0, fogfar=2800f0); Render.bind_shadow(prog, shadowtex, lightVP)
+        for it in trackItems; Render.draw(prog, it, vp, Render.ident(); bright=0.55); end
+        for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.15, spec=0.4); end
+        for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, vp, wheelmat(wx,wz,steer,r)); end
+        # steering wheel — spin about its column axis with steering input
+        swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5)) * Render.translate(-SWCENTER)
+        for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2); end
         Render.hud_draw(hudprog, hudvao, hudvbo,
             Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, MODEL.eng.rev_limit, inp.throttle, inp.brake, cs.tc), W, H)
         GLFW.SwapBuffers(win)
 
         frames += 1
         if now - titleT > 0.25
-            GLFW.SetWindowTitle(win, "juliaMotor — Vanwall — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
+            GLFW.SetWindowTitle(win, "juliaMotor — Lotus 49 — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
                 (cs.ontrack ? "" : "  [OFF TRACK]"))
             titleT = now
         end

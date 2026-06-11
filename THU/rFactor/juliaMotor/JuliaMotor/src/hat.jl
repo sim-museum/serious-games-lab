@@ -85,6 +85,40 @@ function TrackSurface(aiw::AIWFile; cell::Real=20.0)
                  buckets, aiw.lap_length)
 end
 
+"""
+    TrackSurface(pts::Vector{NTuple{3,Float64}}; halfwidth=8.0, cell=20.0)
+
+Build the ribbon from a raw ordered centreline (closed loop) — for non-rFactor
+tracks (GPL .trk).  `pts` are (x, y, z) with y the surface height.  perp = left
+of the horizontal tangent, normal = up, lapdist = cumulative horizontal distance.
+"""
+function TrackSurface(pts::Vector{NTuple{3,Float64}}; halfwidth::Real=8.0, cell::Real=20.0)
+    n = length(pts); n >= 2 || throw(ArgumentError("need ≥2 centreline points"))
+    pos = pts
+    perp = NTuple{3,Float64}[]; nrm = NTuple{3,Float64}[]
+    hw = NTuple{2,Float64}[]; ld = Float64[]; d = 0.0
+    for i in 1:n
+        a = pos[i]; bn = pos[mod1(i+1, n)]
+        tx = bn[1]-a[1]; tz = bn[3]-a[3]; tl = hypot(tx, tz); tl < 1e-6 && (tl = 1.0)
+        push!(perp, (-tz/tl, 0.0, tx/tl)); push!(nrm, (0.0,1.0,0.0))
+        push!(hw, (Float64(halfwidth), Float64(halfwidth))); push!(ld, d)
+        d += hypot(bn[1]-a[1], bn[3]-a[3])
+    end
+    segs = collect(1:n)
+    xs = [p[1] for p in pos]; zs = [p[3] for p in pos]
+    x0, z0 = minimum(xs)-cell, minimum(zs)-cell
+    nx = ceil(Int, (maximum(xs)+cell-x0)/cell); nz = ceil(Int, (maximum(zs)+cell-z0)/cell)
+    buckets = [Int[] for _ in 1:nx*nz]
+    cellof(x,z) = (clamp(floor(Int,(x-x0)/cell),0,nx-1), clamp(floor(Int,(z-z0)/cell),0,nz-1))
+    for s in segs
+        a = pos[s]; b = pos[mod1(s+1,n)]; (ax,az),(bx,bz) = cellof(a[1],a[3]), cellof(b[1],b[3])
+        for cx in min(ax,bx):max(ax,bx), cz in min(az,bz):max(az,bz)
+            push!(buckets[cz*nx + cx + 1], s)
+        end
+    end
+    TrackSurface(pos, perp, nrm, hw, ld, segs, Float64(cell), x0, z0, nx, nz, buckets, d)
+end
+
 """Result of a HAT query at a world (x, z)."""
 struct HATResult
     height::Float64

@@ -9,6 +9,8 @@
 module Render
 using GLFW, ModernGL, LinearAlgebra
 using JuliaMotor, RFactorData
+include("gpl3do.jl"); using .GPL3DO        # Grand Prix Legends model parser (Lotus 49)
+include("gplmip.jl"); using .GPLMip        # GPL .mip texture decoder
 
 const CATCOL = Dict(
     "road"=>(0.27f0,0.27f0,0.29f0), "curb"=>(0.76f0,0.29f0,0.24f0), "grass"=>(0.25f0,0.48f0,0.21f0),
@@ -241,6 +243,21 @@ end
 function rotx(a)
     c,s = cos(a),sin(a); M=ident(); M[2,2]=c; M[2,3]=-s; M[3,2]=s; M[3,3]=c; Float32.(M)
 end
+# average vertex normal of a mesh part (11-float stride) — the steering wheel's
+# disc normal, i.e. its column axis (already raked toward the front axle in the mesh)
+function disc_normal(v)
+    n=length(v)÷11; nx=ny=nz=0.0
+    for k in 0:n-1; nx+=v[k*11+4]; ny+=v[k*11+5]; nz+=v[k*11+6]; end
+    Float32.(normalize([nx,ny,nz]))
+end
+# rotation about an arbitrary unit axis (Rodrigues) — used to spin the steering
+# wheel about its own column axis (the disc normal) without re-orienting it
+function rotaxis(axis, θ)
+    x,y,z = normalize(Float64.(collect(axis))); c=cos(θ); s=sin(θ); t=1-c; M=ident()
+    M[1,1]=t*x*x+c;   M[1,2]=t*x*y-s*z; M[1,3]=t*x*z+s*y
+    M[2,1]=t*x*y+s*z; M[2,2]=t*y*y+c;   M[2,3]=t*y*z-s*x
+    M[3,1]=t*x*z-s*y; M[3,2]=t*y*z+s*x; M[3,3]=t*z*z+c; Float32.(M)
+end
 function perspective(fovy,aspect,near,far)
     f=1/tan(fovy/2); M=zeros(Float32,4,4)
     M[1,1]=f/aspect;M[2,2]=f;M[3,3]=(far+near)/(near-far);M[3,4]=2*far*near/(near-far);M[4,3]=-1; M
@@ -267,7 +284,7 @@ const FSRC = """
 in vec3 vN; in vec3 vC; in vec2 vUV; in vec3 vWorld; in vec4 vLS; out vec4 o;
 uniform vec3 uLightDir; uniform sampler2D uTex; uniform int uHasTex; uniform float uBright;
 uniform vec3 uCamPos; uniform vec3 uFogCol; uniform float uFogNear; uniform float uFogFar;
-uniform sampler2D uShadow; uniform float uShadowTexel;
+uniform sampler2D uShadow; uniform float uShadowTexel; uniform float uSpec;
 float shadow(vec3 N){
   vec3 lp = vLS.xyz/vLS.w*0.5+0.5;
   if(lp.z>1.0 || lp.x<0.0||lp.x>1.0||lp.y<0.0||lp.y>1.0) return 1.0;
@@ -285,7 +302,15 @@ void main(){
   float diff=max(dot(N,normalize(uLightDir)),0.0)*shadow(N);
   vec3 sky=vec3(0.81,0.89,0.97), grd=vec3(0.33,0.38,0.25);
   vec3 amb=mix(grd,sky,0.5+0.5*N.y)*0.6;
-  vec3 lit = pow(t.rgb*(amb+diff*0.95)*uBright, vec3(0.85));
+  vec3 base = t.rgb;
+  if(uHasTex==1 && max(abs(vUV.x),abs(vUV.y)) > 3.0)   // tiling surface: break up the visible repeat
+    base *= texture(uTex, vUV*0.07).rgb * 1.7;
+  vec3 lit = pow(base*(amb+diff*0.95)*uBright, vec3(0.85));
+  if(uSpec > 0.0){                               // Blinn-Phong sheen (painted/chrome bodywork)
+    vec3 V = normalize(uCamPos - vWorld);
+    float s = pow(max(dot(N, normalize(normalize(uLightDir)+V)), 0.0), 28.0) * uSpec * step(0.01, diff);
+    lit += s * vec3(1.0, 0.97, 0.9);
+  }
   float fog = clamp((length(vWorld-uCamPos)-uFogNear)/(uFogFar-uFogNear), 0.0, 1.0);
   o=vec4(mix(lit, uFogCol, fog*fog), 1.0);
 }"""
@@ -345,6 +370,69 @@ function draw_sky(skyprog, vao, invVP, campos, lightdir)
     u3(skyprog,"uCamPos",campos); u3(skyprog,"uHorizon",HORIZON); u3(skyprog,"uZenith",ZENITH); u3(skyprog,"uLightDir",lightdir)
     glBindVertexArray(vao); glDrawArrays(GL_TRIANGLES,0,3)
     glDepthMask(GL_TRUE); glEnable(GL_DEPTH_TEST)
+end
+# ---- post-process anti-aliasing (FXAA) -------------------------------------
+# MSAA only smooths geometry silhouettes; the faceted/decoded body shows hard
+# *internal* edges that MSAA can't touch.  We render the scene into an offscreen
+# (multisampled) FBO, resolve it, then run Lottes' FXAA over the whole image so
+# every contrast edge — silhouette and facet alike — is softened.  The HUD is
+# drawn afterwards, straight to the screen, so it stays crisp.
+const FXAA_VS = """
+#version 330 core
+const vec2 P[3]=vec2[3](vec2(-1,-1),vec2(3,-1),vec2(-1,3));
+out vec2 uv; void main(){ vec2 p=P[gl_VertexID]; uv=p*0.5+0.5; gl_Position=vec4(p,0,1); }"""
+const FXAA_FS = """
+#version 330 core
+in vec2 uv; out vec4 o; uniform sampler2D uTex; uniform vec2 uInv;
+float L(vec3 c){ return dot(c, vec3(0.299,0.587,0.114)); }
+void main(){
+  vec3 mC=texture(uTex,uv).rgb;
+  vec3 nw=texture(uTex,uv+vec2(-1,-1)*uInv).rgb, ne=texture(uTex,uv+vec2(1,-1)*uInv).rgb;
+  vec3 sw=texture(uTex,uv+vec2(-1, 1)*uInv).rgb, se=texture(uTex,uv+vec2(1, 1)*uInv).rgb;
+  float lnw=L(nw),lne=L(ne),lsw=L(sw),lse=L(se),lm=L(mC);
+  float lmin=min(lm,min(min(lnw,lne),min(lsw,lse))), lmax=max(lm,max(max(lnw,lne),max(lsw,lse)));
+  if(lmax-lmin < 0.045){ o=vec4(mC,1.0); return; }       // no edge here
+  vec2 dir=vec2(-((lnw+lne)-(lsw+lse)), ((lnw+lsw)-(lne+lse)));
+  float red=max((lnw+lne+lsw+lse)*0.25*(1.0/8.0), 1.0/128.0);
+  float rcp=1.0/(min(abs(dir.x),abs(dir.y))+red);
+  dir=clamp(dir*rcp, vec2(-8.0), vec2(8.0))*uInv;
+  vec3 a=0.5*(texture(uTex,uv+dir*(1.0/3.0-0.5)).rgb + texture(uTex,uv+dir*(2.0/3.0-0.5)).rgb);
+  vec3 b=a*0.5 + 0.25*(texture(uTex,uv+dir*-0.5).rgb + texture(uTex,uv+dir*0.5).rgb);
+  float lb=L(b);
+  o=vec4((lb<lmin||lb>lmax)?a:b, 1.0);
+}"""
+function fxaa_program()
+    p=glCreateProgram(); glAttachShader(p,compile(FXAA_VS,GL_VERTEX_SHADER)); glAttachShader(p,compile(FXAA_FS,GL_FRAGMENT_SHADER)); glLinkProgram(p); p
+end
+# multisampled scene FBO + single-sample resolve target (sampleable color texture)
+function make_scene_fbo(w, h; samples=4)
+    ms=Ref{GLuint}(); glGenFramebuffers(1,ms); glBindFramebuffer(GL_FRAMEBUFFER, ms[])
+    c=Ref{GLuint}(); glGenRenderbuffers(1,c); glBindRenderbuffer(GL_RENDERBUFFER, c[])
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_RGBA8, w, h)
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, c[])
+    d=Ref{GLuint}(); glGenRenderbuffers(1,d); glBindRenderbuffer(GL_RENDERBUFFER, d[])
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_DEPTH_COMPONENT24, w, h)
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, d[])
+    rf=Ref{GLuint}(); glGenFramebuffers(1,rf); glBindFramebuffer(GL_FRAMEBUFFER, rf[])
+    rt=Ref{GLuint}(); glGenTextures(1,rt); glBindTexture(GL_TEXTURE_2D, rt[])
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,w,h,0,GL_RGBA,GL_UNSIGNED_BYTE,C_NULL)
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR)
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE)
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, rt[], 0)
+    glBindFramebuffer(GL_FRAMEBUFFER, 0)
+    (ms[], rf[], rt[])
+end
+# resolve the multisampled scene into the single-sample texture, then FXAA to screen
+function resolve_and_fxaa(fxaaprog, vao, msfbo, resolvefbo, resolvetex, w, h)
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, msfbo); glBindFramebuffer(GL_DRAW_FRAMEBUFFER, resolvefbo)
+    glBlitFramebuffer(0,0,w,h, 0,0,w,h, GL_COLOR_BUFFER_BIT, GL_NEAREST)
+    glBindFramebuffer(GL_FRAMEBUFFER, 0); glViewport(0,0,w,h)
+    glDisable(GL_DEPTH_TEST)
+    glUseProgram(fxaaprog); glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, resolvetex)
+    glUniform1i(glGetUniformLocation(fxaaprog,"uTex"), 0)
+    glUniform2f(glGetUniformLocation(fxaaprog,"uInv"), 1f0/w, 1f0/h)
+    glBindVertexArray(vao); glDrawArrays(GL_TRIANGLES,0,3)
+    glEnable(GL_DEPTH_TEST)
 end
 # ---- shadow mapping: render scene depth from the sun's POV into a depth
 # texture, then compare in the main pass (PCF-softened) to darken what the sun
@@ -470,8 +558,8 @@ function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,tc=nothing)
     end
     bar(320, thr, green); bar(350, brk, red)
     rf = rpm/max(revlim,1f0); bar(380, rf, rf>0.9 ? red : amber)
-    if tc !== nothing                                          # traction circles (2×2)
-        bx=470; by=H-92; sp=58; R=26
+    if tc !== nothing                                          # traction circles (2×2), centred over the road
+        sp=58; R=26; bx=W/2 - sp/2; by=H/2 - sp/2
         htraction!(v,bx,by,R,tc[1]); htraction!(v,bx+sp,by,R,tc[2])
         htraction!(v,bx,by+sp,R,tc[3]); htraction!(v,bx+sp,by+sp,R,tc[4])
     end
@@ -558,6 +646,123 @@ function load_dds(b)
     tex[]
 end
 
+# ---- Grand Prix Legends assets (Lotus 49) ---------------------------------
+"""Decode a GPL .mip file and upload it as an RGBA texture (GL builds the mips)."""
+function load_mip(path)
+    w,h,rgba = GPLMip.decode_mip(path)
+    tex=Ref{GLuint}(); glGenTextures(1,tex); glBindTexture(GL_TEXTURE_2D,tex[])
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,w,h,0,GL_RGBA,GL_UNSIGNED_BYTE,rgba)
+    glGenerateMipmap(GL_TEXTURE_2D)
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_REPEAT); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_REPEAT)
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR)
+    aniso=Ref{Float32}(0f0); glGetFloatv(GLenum(0x84FF),aniso)
+    aniso[]>1 && glTexParameterf(GL_TEXTURE_2D,GLenum(0x84FE),min(aniso[],16f0))
+    tex[]
+end
+
+"""Index every .mip in a GPL car folder: lowercase basename (no extension) → path."""
+function gpl_texture_index(dir)
+    idx=Dict{String,String}()
+    for f in readdir(dir; join=true)
+        endswith(lowercase(f),".mip") && (idx[lowercase(basename(f))[1:end-4]] = f)
+    end
+    idx
+end
+
+"""Extract a GPL .3do car into textured TrackParts (one per texture), in the
+car rig frame (X fwd, Y up, Z left).  GPL is X=fwd, Y=lateral, Z=up; V is flipped
+(GPL 0=top, GL 0=bottom).  The reflection-tray / blob-shadow planes are dropped."""
+# `exclude`: GPL environment-only textures — ltraymap (under-car reflection tray)
+# and lshad (blob shadow); we do our own shadows.  Untextured + lotblack interior
+# panels are KEPT now that positioners place them correctly (they were only "strays"
+# when collapsed to the origin) — needed for a solid cockpit.
+function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=())
+    m = GPL3DO.parse_3do(path3do)
+    groups = Dict{String,Vector{Float32}}()
+    edge(a,b) = sqrt((a[1]-b[1])^2+(a[2]-b[2])^2+(a[3]-b[3])^2)
+    function triarea(p)
+        ux=p[2][1]-p[1][1]; uy=p[2][2]-p[1][2]; uz=p[2][3]-p[1][3]
+        vx=p[3][1]-p[1][1]; vy=p[3][2]-p[1][2]; vz=p[3][3]-p[1][3]
+        0.5f0*sqrt((uy*vz-uz*vy)^2 + (uz*vx-ux*vz)^2 + (ux*vy-uy*vx)^2)
+    end
+    keep(t) = let L = max(edge(t.p[1],t.p[2]), edge(t.p[2],t.p[3]), edge(t.p[1],t.p[3])),
+                  A = triarea(t.p)
+        track ? (!(t.tex in exclude) && A >= 1f-7) :   # track: huge legit polys, only drop degenerate
+                (!(t.tex in exclude) && L <= 2.0f0 && A >= 1f-7 && !(A > 0 && L/(2A/L) > 200f0))
+    end
+    kept = [m.tris[i] for i in eachindex(m.tris) if keep(m.tris[i]) && !(m.groups[i] in exclude_groups)]
+    # smooth normals: average the per-triangle normals across shared vertex
+    # positions so GPL's flat (T-81F) polys don't facet the curved bodywork
+    nsum = Dict{NTuple{3,Int32},NTuple{3,Float32}}()
+    qk(p) = (round(Int32,p[1]*2000), round(Int32,p[2]*2000), round(Int32,p[3]*2000))
+    if smooth
+        for t in kept, i in 1:3
+            k=qk(t.p[i]); n=t.n[i]; s=get(nsum,k,(0f0,0f0,0f0))
+            nsum[k]=(s[1]+n[1], s[2]+n[2], s[3]+n[3])
+        end
+    end
+    sm(p,fallback) = begin
+        s = get(nsum, qk(p), (0f0,0f0,0f0)); l = sqrt(s[1]^2+s[2]^2+s[3]^2)
+        l < 1f-6 ? fallback : (s[1]/l, s[2]/l, s[3]/l)
+    end
+    for t in kept
+        v = get!(groups, t.tex, Float32[])
+        mz = mirror ? -1f0 : 1f0   # negate render-Z → right-handed track frame (gx,gz,-gy)
+        for i in 1:3
+            p=t.p[i]; n = smooth ? sm(p, t.n[i]) : t.n[i]; uv=t.uv[i]
+            c = tint === nothing ? t.col : tint           # GPL flat-shade colour (or override)
+            append!(v, (p[1],p[3],p[2]*mz, n[1],n[3],n[2]*mz, c[1],c[2],c[3], uv[1], 1f0-uv[2]))
+        end
+    end
+    [TrackPart(v, tex, grey) for (tex,v) in groups]
+end
+
+# GPL Lotus steering-wheel face billboard textures (the painted red rim + spokes
+# + badge).  Extracted separately so the app can spin it about its column axis.
+const STEER_TEX = ("sterlot","lotster","lsterlog")
+"""Extract the steering wheel as its own parts + pivot (centre, column axis) in the
+rig frame (X fwd, Y up, Z left), so the app can rotate it with steering input."""
+function extract_gpl_steering(path3do)
+    m = GPL3DO.parse_3do(path3do)
+    groups = Dict{String,Vector{Float32}}()
+    cx=cy=cz=0.0; nx=ny=nz=0.0; n=0
+    for t in m.tris
+        (t.tex == "sterlot" || t.tex == "lsterlog") || continue   # red face + badge only (lotster is the blue dup)
+        v = get!(groups, t.tex, Float32[])
+        for i in 1:3
+            p=t.p[i]; nn=t.n[i]; uv=t.uv[i]
+            append!(v, (p[1],p[3],p[2], nn[1],nn[3],nn[2], 0.7f0,0.72f0,0.74f0, uv[1], 1f0-uv[2]))
+            cx+=p[1]; cy+=p[3]; cz+=p[2]; nx+=nn[1]; ny+=nn[3]; nz+=nn[2]; n+=1
+        end
+    end
+    n==0 && return (TrackPart[], Float32[0,0,0], Float32[1,0,0])
+    center = Float32[cx/n, cy/n, cz/n]
+    al = normalize([nx,ny,nz]); axis = Float32[al[1],al[2],al[3]]
+    ([TrackPart(v, tex, (0.7f0,0.72f0,0.74f0)) for (tex,v) in groups], center, axis)
+end
+
+"""Build textured Items for GPL parts, resolving each texture via the .mip index."""
+function build_gpl(parts, mipidx)
+    cache=Dict{String,GLuint}(); items=Item[]
+    for p in parts
+        vao,n = upload(p.verts); tid=GLuint(0)
+        if p.tex != ""
+            key=lowercase(p.tex)
+            tid = get!(cache,key) do
+                path = get(mipidx, key, "")
+                if path == "" && length(key) >= 5      # SRB/detail name (e.g. trump→trumphi)
+                    for (k,v) in mipidx
+                        startswith(k, key) && (path = v; break)
+                    end
+                end
+                path == "" ? GLuint(0) : load_mip(path)
+            end
+        end
+        push!(items, Item(vao,n,tid,p.col))
+    end
+    items
+end
+
 """Index every .dds in the track's .mas archives (name → bytes), so textures
 referenced by the meshes can be found and uploaded on demand."""
 function texture_index(dir)
@@ -601,9 +806,10 @@ function build_track(parts, texidx)
     items
 end
 setmat(prog,name,M)=glUniformMatrix4fv(glGetUniformLocation(prog,name),1,GL_FALSE,M)
-function draw(prog, item::Item, vp, model; bright::Real=1.0)
+function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0)
     setmat(prog,"uVP",vp); setmat(prog,"uModel",model)
     glUniform1f(glGetUniformLocation(prog,"uBright"), Float32(bright))
+    glUniform1f(glGetUniformLocation(prog,"uSpec"), Float32(spec))
     if item.tex != 0
         glUniform1i(glGetUniformLocation(prog,"uHasTex"),1)
         glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D,item.tex)
