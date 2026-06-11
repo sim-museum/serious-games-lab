@@ -409,8 +409,11 @@ def _discard(board: BoardState, seat: Seat, legal: List[Card],
 
 # ------------------------------------------------------------------- entry
 
-_AMU_WORLDS = 6           # sampled defender layouts (beliefs) per decision
-_AMU_DEPTH = 2            # alpha-mu search depth in tricks
+import os
+_AMU_WORLDS = int(os.environ.get("BIQ_AMU_WORLDS", "6"))   # sampled layouts/decision
+_AMU_DEPTH = int(os.environ.get("BIQ_AMU_DEPTH", "2"))     # alpha-mu depth in tricks
+_AMU_BUDGET = float(os.environ.get("BIQ_AMU_BUDGET", "5")) # per-decision seconds
+_AMU_DEFENSE = os.environ.get("BIQ_AMU_DEFENSE", "1") == "1"  # defence alpha-mu
 _DDS = None
 
 
@@ -424,26 +427,43 @@ def _get_dds():
 
 def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
                   declarer: Seat, trump: Optional[Suit]) -> Optional[Card]:
-    """Declarer-side card via alpha-mu: sample defender layouts consistent with
-    the play (a BELIEF — never the actual cards), DDS-evaluate, commit ONE line
-    across indistinguishable layouts. DDS on representative samples is not
-    peeking; the consistent strategy avoids PIMC's omniscient tells."""
+    """Card via alpha-mu: sample the HIDDEN layouts consistent with the play (a
+    BELIEF — never the actual cards), DDS-evaluate, commit ONE line across
+    indistinguishable layouts. DDS on representative samples is not peeking; the
+    consistent strategy avoids PIMC's omniscient tells.
+
+    Declaring: biq sees both its hands, the two defenders are hidden, and biq
+    plays a consistent line for {declarer, dummy} to MAX declarer tricks.
+    Defending: biq sees its hand + dummy; declarer AND partner are hidden; biq
+    plays a consistent line for its ONE seat to MAX defensive tricks. Other
+    seats (a hidden partner, the opponents) each play DD-best for their own side
+    at the leaves — cooperation and competition fall out automatically."""
     from . import declarer_search, alphamu
-    samples, defenders = declarer_search._sample_defenders(
-        b, seat, trick, declarer, _AMU_WORLDS)
+    dummy = declarer.partner()
+    defending = seat.is_ns() != declarer.is_ns()
+    if defending:
+        # need dummy faced to sample only declarer + partner as the hidden hands
+        if dummy not in b.hands or not b.hands[dummy].cards:
+            return None
+        known_seats, biq_seats = {seat, dummy}, {seat}
+    else:
+        known_seats, biq_seats = {declarer, dummy}, {declarer, dummy}
+    samples, hidden = declarer_search._sample_defenders(
+        b, seat, trick, declarer, _AMU_WORLDS, known_seats=known_seats)
     if not samples:
         return None
     worlds = []
     for a in samples:
         w = {}
         for s in (Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST):
-            if s in defenders:
+            if s in hidden:
                 w[s] = frozenset(a[s])
             else:
                 w[s] = frozenset(c.suit.value * 13 + c.rank.value
                                  for c in b.hands[s].cards)
         worlds.append(w)
-    amu = alphamu.AlphaMu(trump, declarer, _get_dds(), depth=_AMU_DEPTH)
+    amu = alphamu.AlphaMu(trump, declarer, _get_dds(), depth=_AMU_DEPTH,
+                          time_budget=_AMU_BUDGET, biq_seats=biq_seats)
     return amu.choose(b, seat, trick, worlds)
 
 
@@ -486,12 +506,12 @@ def decide(board: BoardState, seat: Seat,
 
     if opening:
         return _opening_lead(b, seat)
-    # DECLARER alpha-mu search: DDS on belief-sampled defender layouts + a
-    # consistent line. Strong (DDS evaluates vs best defence) without peeking
-    # or PIMC's omniscient tells. Applied at LEADS (the strategic decisions —
-    # follows use the fast per-seat technique) to keep it tractable.
+    # Alpha-mu search: DDS on belief-sampled hidden layouts + a consistent line.
+    # Strong (DDS evaluates vs best play) without peeking or PIMC's omniscient
+    # tells. Declarer side always; defenders when BIQ_AMU_DEFENSE (the partner is
+    # hidden too, so defence samples declarer + partner).
     if (search and board.contract is not None
-            and seat.is_ns() == declarer.is_ns()):
+            and (seat.is_ns() == declarer.is_ns() or _AMU_DEFENSE)):
         amc = _alphamu_card(b, seat, trick, declarer, trump)
         if amc is not None and any(c.suit == amc.suit and c.rank == amc.rank
                                    for c in legal):

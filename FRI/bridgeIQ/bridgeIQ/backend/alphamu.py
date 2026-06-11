@@ -120,13 +120,21 @@ class AlphaMu:
 
     def __init__(self, trump: Optional[Suit], declarer: Seat,
                  dds: Optional[DDSolver] = None, depth: int = 2,
-                 time_budget: float = 5.0):
+                 time_budget: float = 5.0, biq_seats=None):
         self.trump_suit = trump
         self.trump = None if trump is None else trump.value
         self.strain = _strain_i(trump)
         self.declarer = declarer
         self.dummy = declarer.partner()
-        self.max_seats = {declarer, self.dummy}
+        # Seat(s) biq controls and plays a CONSISTENT line for (MAX). Declaring:
+        # {declarer, dummy}. Defending: biq's one seat. Every OTHER seat plays
+        # DD-best for its OWN side at the leaves, so a hidden partner cooperates
+        # and the opponents compete — for free, via the per-seat DDS solve.
+        self.max_seats = set(biq_seats) if biq_seats is not None \
+            else {declarer, self.dummy}
+        # Objective = tricks for biq's SIDE (declarer tricks when declaring,
+        # defensive tricks when defending).
+        self.biq_ns = next(iter(self.max_seats)).is_ns()
         self.dds = dds or DDSolver()
         self.depth = depth
         self.time_budget = time_budget
@@ -156,7 +164,7 @@ class AlphaMu:
         res = self.dds.solve(self.strain, leader.value, [], [_pbn(hands)],
                              solutions=1)
         toplay_tricks = max((t[0] for t in res.values()), default=0)
-        decl = toplay_tricks if leader.is_ns() == self.declarer.is_ns() \
+        decl = toplay_tricks if leader.is_ns() == self.biq_ns \
             else per_hand - toplay_tricks
         self._leaf_cache[key] = decl
         return decl
@@ -295,7 +303,7 @@ class AlphaMu:
         for _obs, sub in splits.items():
             w0 = sub[0][0]
             winner = _trick_winner(wtrick[w0], self.trump)
-            dt = decl_tricks + (1 if winner.is_ns() == self.declarer.is_ns()
+            dt = decl_tricks + (1 if winner.is_ns() == self.biq_ns
                                 else 0)
             if depth - 1 <= 0 or len(whands[w0][winner]) == 0:
                 for w, hh in sub:

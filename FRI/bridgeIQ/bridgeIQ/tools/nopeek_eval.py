@@ -66,7 +66,13 @@ def main():
     ap.add_argument("--seed", type=int, default=5)
     ap.add_argument("--ns-system", default="SAYC")
     ap.add_argument("--ew-system", default="SAYC")
+    ap.add_argument("--rng", type=int, default=None,
+                    help="sampler seed (default=--seed); vary it (same --seed) "
+                         "to gauge Monte-Carlo variance on the SAME deals")
     a = ap.parse_args()
+    import random
+    random.seed(a.seed if a.rng is None else a.rng)   # reproducible sampler
+    # draws -> A/B comparisons aren't swamped by run-to-run noise (~0.2 tr/deal)
     dds = DDSolver()
     ns_sys, ew_sys = get_system(a.ns_system), get_system(a.ew_system)
 

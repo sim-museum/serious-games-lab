@@ -43,11 +43,16 @@ def _winner(cards: List[Card], leader: Seat, trump: Optional[Suit]) -> Seat:
 
 
 def _sample_defenders(board: BoardState, seat: Seat, current_trick: List[Card],
-                      declarer: Seat, k: int):
-    """k plausible assignments of the unseen cards to the two defenders, honouring
-    remaining counts, shown-out voids, and vacant-places weighting."""
+                      declarer: Seat, k: int, known_seats=None):
+    """k plausible assignments of the unseen cards to the HIDDEN seats, honouring
+    remaining counts, shown-out voids, and vacant-places weighting.
+
+    `known_seats` are the seats whose cards we legitimately see; the unseen cards
+    are dealt among the rest. Default {declarer, dummy} = declaring (defenders
+    hidden). For DEFENCE pass {biq_seat, dummy} so declarer + partner are the
+    hidden seats sampled."""
     dummy = declarer.partner()
-    decl_side = {declarer, dummy}
+    decl_side = set(known_seats) if known_seats is not None else {declarer, dummy}
     defenders = [s for s in _ALL if s not in decl_side]
     known = {_c52(c) for s in decl_side for c in board.hands.get(s, Hand()).cards}
     played = {_c52(c) for t in board.tricks for c in t.cards}
