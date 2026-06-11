@@ -307,6 +307,13 @@ def _lead(board: BoardState, seat: Seat, legal: List[Card],
         fin = _develop_finesse(board, seat, legal, trump, declarer)
         if fin is not None:
             return fin
+        # DECLARER PLANNER (sees both hands): rather than lead a passive low card
+        # into nothing, CROSS to the partner hand when it holds the winners.
+        from . import declarer_plan
+        pc = declarer_plan.plan_lead(board, seat, declarer, trump)
+        if pc is not None and any(c.suit == pc.suit and c.rank == pc.rank
+                                  for c in legal):
+            return pc
         # 4) otherwise lead low from our longest non-trump side suit
         by = _by_suit([c for c in legal if c.suit != trump]) or _by_suit(legal)
         if by:
