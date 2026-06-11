@@ -409,9 +409,26 @@ def _discard(board: BoardState, seat: Seat, legal: List[Card],
 
 # ------------------------------------------------------------------- entry
 
+def _lead_candidates(legal: List[Card]) -> List[Card]:
+    """Prune lead candidates to the distinct ones worth searching: the highest
+    and lowest card of each suit (leading the 5 vs the 4 of a suit rarely
+    differs), cutting rollout cost."""
+    by = _by_suit(legal)
+    out = []
+    for s in by:
+        cs = by[s]                                     # high → low
+        out.append(cs[0])
+        if cs[-1] is not cs[0]:
+            out.append(cs[-1])
+    return out
+
+
 def decide(board: BoardState, seat: Seat,
-           current_trick_cards: Optional[List[Card]] = None) -> Optional[Card]:
-    """Pick `seat`'s card using only entitled information. Redacts first."""
+           current_trick_cards: Optional[List[Card]] = None,
+           search: bool = True) -> Optional[Card]:
+    """Pick `seat`'s card using only entitled information. Redacts first.
+    `search=True` lets the DECLARER use a single-dummy lookahead at its leads;
+    rollouts call back with search=False (greedy policy, no recursion)."""
     trick = list(current_trick_cards or [])
     b = redact(board, seat, trick)
     hand = b.hands[seat]
@@ -432,6 +449,10 @@ def decide(board: BoardState, seat: Seat,
     if opening:
         return _opening_lead(b, seat)
     if on_lead:
+        # (Declarer SEARCH — backend.declarer_search — is shelved: a no-DDS
+        # policy rollout inherits the weak no-peek defence and measured
+        # net-neutral. The `search` flag is retained for a future stronger
+        # rollout/evaluator.)
         return _lead(b, seat, legal, trump, declarer)
     if any(c.suit == lead_suit for c in legal):
         return _follow(b, seat, legal, trick, trump, declarer)
