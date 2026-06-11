@@ -29,11 +29,17 @@ v1 scope: biq DECLARING (controls declarer + dummy). Defence (hidden partner)
 is a later phase; callers fall back to PIMC when biq is not declarer-side.
 """
 from __future__ import annotations
+import time
 from typing import Dict, List, Optional, Tuple
 from collections import defaultdict
 
 from .models import Seat, Suit, Rank, Card, BoardState
 from .dds import DDSolver
+
+
+class _Budget(Exception):
+    """Raised inside the search when the per-decision time budget is spent, so
+    choose() can return the best card found so far (bounds live latency)."""
 
 _RANKS = "AKQJT98765432"   # index = rank.value (0=A .. 12=2); lower value = higher card
 
@@ -60,6 +66,27 @@ def _legal(hand: frozenset, lead_suit: Optional[int]) -> List[int]:
         if follow:
             return sorted(follow)
     return sorted(hand)
+
+
+def _collapse(cards: List[int]) -> List[int]:
+    """Collapse touching (consecutive-rank) cards in each suit to one
+    representative (the lowest of the run) — they are interchangeable for play,
+    so the search needn't branch on all of them. Big cut to the branching factor
+    with no loss (e.g. KQJ -> J, AJT87 -> A,T,7)."""
+    by = {}
+    for c in cards:
+        by.setdefault(c // 13, []).append(c % 13)
+    out = []
+    for su, ranks in by.items():
+        ranks.sort()                                   # rank.value ascending
+        i = 0
+        while i < len(ranks):
+            j = i
+            while j + 1 < len(ranks) and ranks[j + 1] == ranks[j] + 1:
+                j += 1
+            out.append(su * 13 + ranks[j])             # lowest card of the run
+            i = j + 1
+    return out
 
 
 def _trick_winner(cards: List[Tuple[Seat, int]], trump: Optional[int]) -> Seat:
@@ -92,7 +119,8 @@ class AlphaMu:
     a DDS handle and a small cache."""
 
     def __init__(self, trump: Optional[Suit], declarer: Seat,
-                 dds: Optional[DDSolver] = None, depth: int = 2):
+                 dds: Optional[DDSolver] = None, depth: int = 2,
+                 time_budget: float = 5.0):
         self.trump_suit = trump
         self.trump = None if trump is None else trump.value
         self.strain = _strain_i(trump)
@@ -101,7 +129,13 @@ class AlphaMu:
         self.max_seats = {declarer, self.dummy}
         self.dds = dds or DDSolver()
         self.depth = depth
+        self.time_budget = time_budget
+        self._deadline = None
         self._leaf_cache: Dict[Tuple, int] = {}
+
+    def _tick(self):
+        if self._deadline is not None and time.time() > self._deadline:
+            raise _Budget
 
     def _is_max(self, seat: Seat) -> bool:
         return seat in self.max_seats
@@ -114,6 +148,7 @@ class AlphaMu:
         cached = self._leaf_cache.get(key)
         if cached is not None:
             return cached
+        self._tick()
         per_hand = len(hands[leader])
         if per_hand == 0:
             self._leaf_cache[key] = 0
@@ -132,6 +167,7 @@ class AlphaMu:
         legal = _legal(hands[seat], _suit(trick52[0]) if trick52 else None)
         if len(legal) == 1:
             return legal[0]
+        self._tick()
         res = self.dds.solve(self.strain, leader.value, list(trick52),
                              [_pbn(hands)], solutions=1)
         # DDS returns the best card(s) for the side to play (the defender):
@@ -296,20 +332,21 @@ class AlphaMu:
         # search continues mid-trick if biq is not on lead.
         group = [(i, dict(w)) for i, w in enumerate(worlds)]
         best_c, best_val = None, None
+        self._deadline = time.time() + self.time_budget
         for c in cands:
             # force biq's `seat` card = c, replay the rest of this trick + search
             partial = []
             for i, w in group:
                 hh = dict(w)
-                # remove already-played trick cards belonging to known seats is
-                # unnecessary (worlds are full remaining incl. current trick not
-                # yet removed); remove biq's chosen card now.
                 hh[seat] = hh[seat] - {c}
                 tr = [(Seat((leader.value + k) % 4), cc)
                       for k, cc in enumerate(trick52)] + [(seat, c)]
                 partial.append((i, hh, tr))
-            vals = self._continue_trick(partial, seat.next(), leader, 0,
-                                        self.depth)
+            try:
+                vals = self._continue_trick(partial, seat.next(), leader, 0,
+                                            self.depth)
+            except _Budget:
+                break                # out of time — keep the best evaluated so far
             mean = sum(vals.values()) / len(vals)
             if best_val is None or mean > best_val:
                 best_val, best_c = mean, c

@@ -409,6 +409,44 @@ def _discard(board: BoardState, seat: Seat, legal: List[Card],
 
 # ------------------------------------------------------------------- entry
 
+_AMU_WORLDS = 6           # sampled defender layouts (beliefs) per decision
+_AMU_DEPTH = 2            # alpha-mu search depth in tricks
+_DDS = None
+
+
+def _get_dds():
+    global _DDS
+    if _DDS is None:
+        from .dds import DDSolver
+        _DDS = DDSolver()
+    return _DDS
+
+
+def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
+                  declarer: Seat, trump: Optional[Suit]) -> Optional[Card]:
+    """Declarer-side card via alpha-mu: sample defender layouts consistent with
+    the play (a BELIEF — never the actual cards), DDS-evaluate, commit ONE line
+    across indistinguishable layouts. DDS on representative samples is not
+    peeking; the consistent strategy avoids PIMC's omniscient tells."""
+    from . import declarer_search, alphamu
+    samples, defenders = declarer_search._sample_defenders(
+        b, seat, trick, declarer, _AMU_WORLDS)
+    if not samples:
+        return None
+    worlds = []
+    for a in samples:
+        w = {}
+        for s in (Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST):
+            if s in defenders:
+                w[s] = frozenset(a[s])
+            else:
+                w[s] = frozenset(c.suit.value * 13 + c.rank.value
+                                 for c in b.hands[s].cards)
+        worlds.append(w)
+    amu = alphamu.AlphaMu(trump, declarer, _get_dds(), depth=_AMU_DEPTH)
+    return amu.choose(b, seat, trick, worlds)
+
+
 def _lead_candidates(legal: List[Card]) -> List[Card]:
     """Prune lead candidates to the distinct ones worth searching: the highest
     and lowest card of each suit (leading the 5 vs the 4 of a suit rarely
@@ -448,11 +486,17 @@ def decide(board: BoardState, seat: Seat,
 
     if opening:
         return _opening_lead(b, seat)
+    # DECLARER alpha-mu search: DDS on belief-sampled defender layouts + a
+    # consistent line. Strong (DDS evaluates vs best defence) without peeking
+    # or PIMC's omniscient tells. Applied at LEADS (the strategic decisions —
+    # follows use the fast per-seat technique) to keep it tractable.
+    if (search and board.contract is not None
+            and seat.is_ns() == declarer.is_ns()):
+        amc = _alphamu_card(b, seat, trick, declarer, trump)
+        if amc is not None and any(c.suit == amc.suit and c.rank == amc.rank
+                                   for c in legal):
+            return amc
     if on_lead:
-        # (Declarer SEARCH — backend.declarer_search — is shelved: a no-DDS
-        # policy rollout inherits the weak no-peek defence and measured
-        # net-neutral. The `search` flag is retained for a future stronger
-        # rollout/evaluator.)
         return _lead(b, seat, legal, trump, declarer)
     if any(c.suit == lead_suit for c in legal):
         return _follow(b, seat, legal, trick, trump, declarer)
