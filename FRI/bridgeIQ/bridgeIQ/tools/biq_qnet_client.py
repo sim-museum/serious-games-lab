@@ -815,19 +815,29 @@ class BiqClient:
             return seat.is_ns() == self.my_seat.is_ns()
         return seat == self.my_seat
 
+    def _ensure_forced_contract(self) -> None:
+        """Recover the contract from the forced PBN when Q-Plus runs cardplay-
+        only and never sent it via bidding. Idempotent. Called from both
+        begin_play AND the first card — Q-Plus does not always send begin_play
+        for every deal (seen live: deal 5 jumped straight to the opening lead),
+        and without this the client crashes on a None trick_leader."""
+        if self.contract is not None:
+            return
+        c = self._forced.get(self._cur_deal_sig)
+        if c is None:
+            return
+        self.contract = c
+        self.declarer = c.declarer
+        self.board.contract = c
+        self.trick_leader = Seat((c.declarer.value + 1) % 4)
+        self.log(f"FORCED CONTRACT (no bidding): {c.level}"
+                 f"{c.suit.to_char()} by {c.declarer.name} "
+                 f"(opening lead from {self.trick_leader.name})")
+
     def _on_begin_play(self, args: List[str]) -> None:
         # Cardplay-only game (forced-contract PBN): there was no bidding, so
-        # self.contract is still None and Q-Plus never sends a contract. Recover
-        # it from the forced PBN by matching this deal's signature.
-        if self.contract is None and self._cur_deal_sig in self._forced:
-            c = self._forced[self._cur_deal_sig]
-            self.contract = c
-            self.declarer = c.declarer
-            self.board.contract = c
-            self.trick_leader = Seat((c.declarer.value + 1) % 4)
-            self.log(f"FORCED CONTRACT (no bidding): {c.level}"
-                     f"{c.suit.to_char()} by {c.declarer.name} "
-                     f"(opening lead from {self.trick_leader.name})")
+        # self.contract is still None and Q-Plus never sends a contract.
+        self._ensure_forced_contract()
         # Multiple begin_play messages observed (server broadcasts per
         # seat). Send our ack once.
         if not self._begin_play_seen:
@@ -843,6 +853,9 @@ class BiqClient:
     def _on_card(self, args: List[str]) -> None:
         if len(args) < 2:
             return
+        # Cardplay-only deals can start (opening lead) with NO begin_play, so
+        # recover the contract here too before we touch trick_leader.
+        self._ensure_forced_contract()
         seat = _SEAT_FROM_NAME[args[0]]
         card = parse_card_token(args[1])
         try:
