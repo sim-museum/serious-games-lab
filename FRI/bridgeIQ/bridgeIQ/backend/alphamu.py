@@ -121,7 +121,8 @@ class AlphaMu:
     def __init__(self, trump: Optional[Suit], declarer: Seat,
                  dds: Optional[DDSolver] = None, depth: int = 2,
                  time_budget: float = 5.0, biq_seats=None,
-                 defense_rollout_leaf: bool = False, vul=None):
+                 defense_rollout_leaf: bool = False, vul=None,
+                 signal_margin: float = 0.0):
         self.trump_suit = trump
         self.trump = None if trump is None else trump.value
         self.strain = _strain_i(trump)
@@ -143,6 +144,11 @@ class AlphaMu:
             and self.biq_ns != declarer.is_ns()
         self._vul = vul
         self._roll_cache: Dict = {}
+        # How far below the best a card may score and still be SIGNAL-tie-broken.
+        # 0 = only exact ties (biq signals rarely/noisily). A small margin
+        # (~0.1-0.2 tr) makes biq a RELIABLE signaller — it always plays the
+        # convention card among near-equal spots — at a bounded trick cost.
+        self.signal_margin = signal_margin
         self.dds = dds or DDSolver()
         self.depth = depth
         self.time_budget = time_budget
@@ -384,8 +390,9 @@ class AlphaMu:
         # TIE-BREAK by signal: among cards that tie for the best value (no trick
         # cost), let the caller pick the one carrying the standard signal.
         if tiebreak is not None and best_val is not None:
+            margin = self.signal_margin if self.signal_margin > 0 else 1e-9
             tied = [Card.from_code52(c) for c, m in scored
-                    if m >= best_val - 1e-9]
+                    if m >= best_val - margin]
             if len(tied) > 1:
                 pick = tiebreak(tied)
                 if pick is not None:

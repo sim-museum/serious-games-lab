@@ -428,6 +428,11 @@ _DEF_ROLLOUT_LEAF = os.environ.get("BIQ_DEF_ROLLOUT_LEAF", "0") == "1"  # alpha-
 # defence with a realistic-partner ROLLOUT leaf (vs the perfect-DD DDS leaf)
 _READ_SIGNALS = os.environ.get("BIQ_READ_SIGNALS", "0") == "1"  # hard-filter the
 # defence sampler by PARTNER's signals (convention-inversion); see signal_read
+_SIGNAL_MARGIN = float(os.environ.get("BIQ_SIGNAL_MARGIN", "0.15"))  # trick
+# budget for RELIABLE signalling: widen the alpha-mu tie set so biq always plays
+# the convention card among cards it rates within 0.15 tr of best (alpha-mu's
+# near-ties are noise; the signal heuristic is a better arbiter). A/B 3 seeds:
+# trick-neutral-to-positive vs margin 0 (0.786 vs 0.797). 0 = exact ties only.
 _DDS = None
 
 
@@ -496,7 +501,7 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
     amu = alphamu.AlphaMu(trump, declarer, _get_dds(), depth=_AMU_DEPTH,
                           time_budget=_AMU_BUDGET, biq_seats=biq_seats,
                           defense_rollout_leaf=(defending and _DEF_ROLLOUT_LEAF),
-                          vul=b.vulnerability)
+                          vul=b.vulnerability, signal_margin=_SIGNAL_MARGIN)
     # When DEFENDING, break trick-equivalent ties by the standard signal so the
     # carding reads like a real defender (zero trick cost — these tie for best).
     tb = None
