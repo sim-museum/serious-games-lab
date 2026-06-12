@@ -51,6 +51,58 @@ function build_hat(mesh; cell=20.0)
     JuliaMotor.TriangleHAT(tris; cell=cell)
 end
 
+"""A placed trackside object: an external .3do instanced at a GPL-world transform."""
+struct ObjInst
+    name::String      # object .3do basename (lowercase)
+    x::Float64; y::Float64; z::Float64    # GPL world position (x,y horizontal, z up)
+    yaw::Float64      # rotation about vertical (rad)
+    scale::Float64
+end
+
+"""
+    trackside_objects(path3do; objnames) -> Vector{ObjInst}
+
+Scan a GPL track .3do's PRIM section for object-INSTANCE records and return the
+placements.  Each record is 11 words: [0]=name string-offset, [1]=0, [2]=0x13
+(positioner marker), [3..5]=X,Y,Z (GPL world), [6]=yaw, [7..8]=other rot (≈0),
+[9]=scale.  `objnames` is the set of valid object basenames (lowercase) — names
+matching one of these (with [1]==0,[2]==0x13 and finite/in-range floats) are the
+authored trackside objects (crowds, grandstands, signs, billboards, vegetation).
+"""
+function trackside_objects(path3do; objnames::Set{String})
+    b = read(path3do)
+    u32(o)=(o<0||o+4>length(b)) ? UInt32(0) : UInt32(b[o+1])|(UInt32(b[o+2])<<8)|(UInt32(b[o+3])<<16)|(UInt32(b[o+4])<<24)
+    f32(o)=reinterpret(Float32,u32(o)); tg(o)=String(b[o+1:o+4])
+    strn=prim=0; strnsz=0; o=12
+    while o+12<=length(b)
+        t=tg(o); sz=Int(u32(o+8)); data=o+12
+        t=="NRTS" && (strn=data; strnsz=sz)
+        t=="MIRP" && (prim=data)
+        o=data+sz; o+=(4-o%4)%4
+    end
+    (strn==0 || prim==0) && return ObjInst[]
+    off2name=Dict{Int,String}(); cur=UInt8[]; p=0
+    for i in strn:strn+strnsz-1
+        c=b[i+1]
+        if c==0xFF; break
+        elseif c==0x00; off2name[p]=String(copy(cur)); p+=length(cur)+1; empty!(cur)
+        else push!(cur,c); end
+    end
+    out=ObjInst[]; primlen=length(b)-prim; k=0
+    while k+44 <= primlen
+        w0=Int(u32(prim+k))
+        if haskey(off2name,w0) && lowercase(off2name[w0]) in objnames &&
+           u32(prim+k+4)==0 && u32(prim+k+8)==19
+            X=f32(prim+k+12); Y=f32(prim+k+16); Z=f32(prim+k+20); yaw=f32(prim+k+24); sc=f32(prim+k+36)
+            if all(isfinite,(X,Y,Z,yaw,sc)) && abs(X)<2000 && abs(Y)<2000 && abs(Z)<50 && 0<sc<100
+                push!(out, ObjInst(lowercase(off2name[w0]), X, Y, Z, yaw, sc))
+            end
+        end
+        k+=4
+    end
+    out
+end
+
 """Build the racing-ribbon TrackSurface from the centreline, lifted to ground height."""
 function build_surface(centreline, hat; halfwidth=9.0)
     pos = NTuple{3,Float64}[]

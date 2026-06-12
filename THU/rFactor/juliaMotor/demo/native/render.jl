@@ -11,6 +11,7 @@ using GLFW, ModernGL, LinearAlgebra
 using JuliaMotor, RFactorData
 include("gpl3do.jl"); using .GPL3DO        # Grand Prix Legends model parser (Lotus 49)
 include("gplmip.jl"); using .GPLMip        # GPL .mip texture decoder
+include("gpldat.jl"); using .GPLDat        # GPL track .dat archive (packed objects/textures)
 
 const CATCOL = Dict(
     "road"=>(0.27f0,0.27f0,0.29f0), "curb"=>(0.76f0,0.29f0,0.24f0), "grass"=>(0.25f0,0.48f0,0.21f0),
@@ -243,6 +244,7 @@ end
 function rotx(a)
     c,s = cos(a),sin(a); M=ident(); M[2,2]=c; M[2,3]=-s; M[3,2]=s; M[3,3]=c; Float32.(M)
 end
+scalexyz(x,y,z) = Float32[x 0 0 0; 0 y 0 0; 0 0 z 0; 0 0 0 1]
 # average vertex normal of a mesh part (11-float stride) — the steering wheel's
 # disc normal, i.e. its column axis (already raked toward the front axle in the mesh)
 function disc_normal(v)
@@ -284,7 +286,8 @@ const FSRC = """
 in vec3 vN; in vec3 vC; in vec2 vUV; in vec3 vWorld; in vec4 vLS; out vec4 o;
 uniform vec3 uLightDir; uniform sampler2D uTex; uniform int uHasTex; uniform float uBright;
 uniform vec3 uCamPos; uniform vec3 uFogCol; uniform float uFogNear; uniform float uFogFar;
-uniform sampler2D uShadow; uniform float uShadowTexel; uniform float uSpec;
+uniform sampler2D uShadow; uniform float uShadowTexel; uniform float uSpec; uniform int uBackFlip;
+uniform int uSky;
 float shadow(vec3 N){
   vec3 lp = vLS.xyz/vLS.w*0.5+0.5;
   if(lp.z>1.0 || lp.x<0.0||lp.x>1.0||lp.y<0.0||lp.y>1.0) return 1.0;
@@ -295,8 +298,10 @@ float shadow(vec3 N){
   return s/9.0;
 }
 void main(){
-  vec4 t = uHasTex==1 ? texture(uTex,vUV) : vec4(vC,1.0);
-  if(uHasTex==1 && t.a < 0.5) discard;          // alpha-tested cutouts (fences, crowd, signage)
+  vec2 uv = (uBackFlip==1 && !gl_FrontFacing) ? vec2(1.0-vUV.x, vUV.y) : vUV;  // un-mirror back-facing sign text
+  vec4 t = uHasTex==1 ? texture(uTex,uv) : vec4(vC,1.0);
+  if(uHasTex==1 && t.a < 0.04) discard;         // drop only the fully-transparent (rest → alpha-to-coverage)
+  if(uSky==1){ o=vec4(t.rgb, 1.0); return; }     // horizon ring: unlit, unfogged backdrop
   vec3 N = dot(vN,vN) > 1e-6 ? normalize(vN) : vec3(0.0,1.0,0.0);  // guard zero/degenerate normals
   if(!gl_FrontFacing) N=-N;
   float diff=max(dot(N,normalize(uLightDir)),0.0)*shadow(N);
@@ -312,7 +317,7 @@ void main(){
     lit += s * vec3(1.0, 0.97, 0.9);
   }
   float fog = clamp((length(vWorld-uCamPos)-uFogNear)/(uFogFar-uFogNear), 0.0, 1.0);
-  o=vec4(mix(lit, uFogCol, fog*fog), 1.0);
+  o=vec4(mix(lit, uFogCol, fog*fog), uHasTex==1 ? t.a : 1.0);   // alpha → MSAA coverage (smooth cutout edges)
 }"""
 # depth-only program for the shadow pass (render the scene from the sun's POV)
 const DEPTH_VS = """
@@ -544,25 +549,41 @@ function htraction!(v,cx,cy,baseR,tc)
     hquad!(v,cx+dx-3,cy+dy-3,6,6,col)
 end
 
-"""Compose the instrument readout: big 7-seg speed, gear, throttle/brake/rpm
-bars, and the four per-wheel traction circles.  `tc`=(FL,FR,RL,RR) (long,lat,radius)
-or nothing.  Returns the HUD vertex list for `hud_draw`."""
-function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,tc=nothing)
+"""Render a lap time `secs` as 7-segment M:SS.t at (x,y) in colour c."""
+function htime!(v,x,y,secs,c; Wd=18,Hd=30,T=4,gap=6)
+    secs = max(0.0, Float64(secs)); m = floor(Int, secs/60); s = secs - 60m
+    si = floor(Int, s); ti = floor(Int, (s-si)*10); cx = Float64(x)
+    hdigit!(v,cx,y,Wd,Hd,T, m%10, c); cx += Wd+gap
+    hquad!(v,cx,y+Hd*0.28,T,T,c); hquad!(v,cx,y+Hd*0.60,T,T,c); cx += T+gap   # colon
+    hdigit!(v,cx,y,Wd,Hd,T, si÷10, c); cx += Wd+3
+    hdigit!(v,cx,y,Wd,Hd,T, si%10, c); cx += Wd+gap
+    hquad!(v,cx,y+Hd-T,T,T,c); cx += T+gap                                    # decimal point
+    hdigit!(v,cx,y,Wd,Hd,T, ti, c)
+end
+
+"""Compose the instrument readout: big 7-seg speed (bottom-left), gear (bottom-
+right), throttle/brake/rpm bars, the four per-wheel traction circles (over the
+nose), and last/best lap times (top-left).  `tc`=(FL,FR,RL,RR) (long,lat,radius)
+or nothing; `lastlap`/`bestlap` in seconds (0 = none).  Returns the HUD vertex list."""
+function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,tc=nothing; lastlap=0.0, bestlap=0.0, manual=false)
     v=Float32[]
     white=(0.90,0.95,1.0); amber=(1.0,0.82,0.35); green=(0.42,0.82,0.42); red=(0.95,0.35,0.30); dim=(0.16,0.18,0.22)
-    hnumber!(v, 40, H-104, 40, 76, 11, kmh, white)             # speed (big)
-    hdigit!(v, 250, H-98, 38, 66, 10, clamp(round(Int,gear),0,9), amber)  # gear
+    hnumber!(v, 40, H-104, 40, 76, 11, kmh, white)             # speed (big, bottom-left)
+    hdigit!(v, W-92, H-104, 40, 76, 11, clamp(round(Int,gear),0,9), amber)  # gear (bottom-right)
+    hquad!(v, W-100, H-118, 12, 12, manual ? amber : green)    # shift-mode dot: green=auto amber=manual
     function bar(x,frac,col)
-        bw=22; bh=78; by=H-104; hquad!(v,x,by,bw,bh,dim)
+        bw=20; bh=70; by=H-104; hquad!(v,x,by,bw,bh,dim)
         f=clamp(frac,0,1); f>0 && hquad!(v,x,by+bh*(1-f),bw,bh*f,col)
     end
-    bar(320, thr, green); bar(350, brk, red)
-    rf = rpm/max(revlim,1f0); bar(380, rf, rf>0.9 ? red : amber)
-    if tc !== nothing                                          # traction circles (2×2), centred over the road
-        sp=58; R=26; bx=W/2 - sp/2; by=H/2 - sp/2
+    bar(250, thr, green); bar(278, brk, red)
+    rf = rpm/max(revlim,1f0); bar(306, rf, rf>0.9 ? red : amber)
+    if tc !== nothing                                          # traction circles (2×2), small, over the black cowl in front of the wheel
+        sp=46; R=16; bx=W/2 - sp/2; by=round(Int, H*0.485)   # dark stable background (not the moving road)
         htraction!(v,bx,by,R,tc[1]); htraction!(v,bx+sp,by,R,tc[2])
         htraction!(v,bx,by+sp,R,tc[3]); htraction!(v,bx+sp,by+sp,R,tc[4])
     end
+    lastlap > 0 && htime!(v, 40, 28, lastlap, white)           # last lap (white, top-left)
+    bestlap > 0 && htime!(v, 40, 74, bestlap, green)           # best lap (green, below)
     v
 end
 function hud_draw(prog,vao,vbo,v,W,H)
@@ -647,26 +668,68 @@ function load_dds(b)
 end
 
 # ---- Grand Prix Legends assets (Lotus 49) ---------------------------------
-"""Decode a GPL .mip file and upload it as an RGBA texture (GL builds the mips)."""
-function load_mip(path)
-    w,h,rgba = GPLMip.decode_mip(path)
+"""Upload decoded RGBA pixels as a GL texture (GL builds the mips)."""
+function upload_rgba(w, h, rgba)
     tex=Ref{GLuint}(); glGenTextures(1,tex); glBindTexture(GL_TEXTURE_2D,tex[])
     glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,w,h,0,GL_RGBA,GL_UNSIGNED_BYTE,rgba)
     glGenerateMipmap(GL_TEXTURE_2D)
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_REPEAT); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_REPEAT)
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR)
+    glTexParameterf(GL_TEXTURE_2D, GLenum(0x8501), 0f0)   # GL_TEXTURE_LOD_BIAS: neutral (any sharpen shimmers GPL sign text at distance)
     aniso=Ref{Float32}(0f0); glGetFloatv(GLenum(0x84FF),aniso)
     aniso[]>1 && glTexParameterf(GL_TEXTURE_2D,GLenum(0x84FE),min(aniso[],16f0))
     tex[]
 end
+function load_mip(path)
+    w,h,rgba = GPLMip.decode_mip(path); upload_rgba(w,h,rgba)
+end
 
-"""Index every .mip in a GPL car folder: lowercase basename (no extension) → path."""
+# GPL texture provider: resolves a texture NAME to decoded RGBA, from loose .mip /
+# .srb files in a folder AND from any track .dat archive there (both .mip and the
+# sprite .srb, which embeds a MIP).  This is how trackside-object textures — many
+# packed in the .dat or stored as .srb — get found.
+struct GPLTex
+    paths::Dict{String,String}            # name(.ext stripped) → loose file path
+    dat::Dict{String,Vector{UInt8}}       # lowercase "name.ext" → bytes (from .dat)
+end
+
+"""Index a GPL folder's textures: loose .mip/.srb + every .dat archive's .mip/.srb."""
 function gpl_texture_index(dir)
-    idx=Dict{String,String}()
+    paths=Dict{String,String}(); dat=Dict{String,Vector{UInt8}}()
     for f in readdir(dir; join=true)
-        endswith(lowercase(f),".mip") && (idx[lowercase(basename(f))[1:end-4]] = f)
+        lf=lowercase(f)
+        (endswith(lf,".mip")||endswith(lf,".srb")) && (paths[lowercase(basename(f))[1:end-4]] = f)
+        if endswith(lf,".dat")
+            try; merge!(dat, GPLDat.parse_dat(f)); catch; end
+        end
     end
-    idx
+    GPLTex(paths, dat)
+end
+
+"""Resolve a texture name → (w,h,rgba) from the provider, or `nothing`."""
+function tex_rgba(idx::GPLTex, name::AbstractString)
+    key=lowercase(name)
+    p = get(idx.paths, key, "")
+    if p != ""
+        try
+            return endswith(lowercase(p),".srb") ? GPLMip.decode_srb_bytes(read(p)) : GPLMip.decode_mip(p)
+        catch; end
+    end
+    for (ext, dec) in ((".mip", GPLMip.decode_mip_bytes), (".srb", GPLMip.decode_srb_bytes))
+        v = get(idx.dat, key*ext, nothing)
+        if v !== nothing
+            try; return dec(v); catch; end
+        end
+    end
+    # SRB/detail-name fallback: a name that prefixes a real texture (e.g. trump→trumphi)
+    if length(key) >= 5
+        for (k,pp) in idx.paths
+            if startswith(k, key)
+                try; return endswith(lowercase(pp),".srb") ? GPLMip.decode_srb_bytes(read(pp)) : GPLMip.decode_mip(pp); catch; end
+            end
+        end
+    end
+    nothing
 end
 
 """Extract a GPL .3do car into textured TrackParts (one per texture), in the
@@ -676,7 +739,13 @@ car rig frame (X fwd, Y up, Z left).  GPL is X=fwd, Y=lateral, Z=up; V is flippe
 # and lshad (blob shadow); we do our own shadows.  Untextured + lotblack interior
 # panels are KEPT now that positioners place them correctly (they were only "strays"
 # when collapsed to the origin) — needed for a solid cockpit.
-function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=())
+function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, dedup=nothing)
+    # text reads right when the texture mapping preserves handedness: the mirror=true
+    # remap (gx,gz,-gy) is a rotation (no flip needed); mirror=false is a reflection
+    # (needs V flipped to compensate).  So uflip=false, vflip=!mirror.
+    uflip === nothing && (uflip = false)
+    vflip === nothing && (vflip = !mirror)
+    maxlat = Float32(maxlat)
     m = GPL3DO.parse_3do(path3do)
     groups = Dict{String,Vector{Float32}}()
     edge(a,b) = sqrt((a[1]-b[1])^2+(a[2]-b[2])^2+(a[3]-b[3])^2)
@@ -685,16 +754,42 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), grey=(0.72f0,0.7
         vx=p[3][1]-p[1][1]; vy=p[3][2]-p[1][2]; vz=p[3][3]-p[1][3]
         0.5f0*sqrt((uy*vz-uz*vy)^2 + (uz*vx-ux*vz)^2 + (ux*vy-uy*vx)^2)
     end
+    # the jaggie tan/yellow cockpit-floor panels are untextured + yellowish — drop
+    # them for a clean interior (the cockpit just fades to dark downward instead).
+    yellowish(c) = c[1]>0.55f0 && c[2]>0.40f0 && c[3]<0.40f0 && c[1] > c[3]+0.22f0
+    overlat(t) = maxlat < Inf32 && max(abs(t.p[1][2]),abs(t.p[2][2]),abs(t.p[3][2])) > maxlat  # GPL gy = lateral
     keep(t) = let L = max(edge(t.p[1],t.p[2]), edge(t.p[2],t.p[3]), edge(t.p[1],t.p[3])),
                   A = triarea(t.p)
-        track ? (!(t.tex in exclude) && A >= 1f-7) :   # track: huge legit polys, only drop degenerate
+        (cockpit_clean && t.tex=="" && yellowish(t.col)) || overlat(t) ? false :
+        track ? (!(t.tex in exclude) && A >= 1f-7 && L <= maxedge) :   # track: huge legit polys (objects pass maxedge to drop stray giant polys)
                 (!(t.tex in exclude) && L <= 2.0f0 && A >= 1f-7 && !(A > 0 && L/(2A/L) > 200f0))
     end
     kept = [m.tris[i] for i in eachindex(m.tris) if keep(m.tris[i]) && !(m.groups[i] in exclude_groups)]
+    qk(p) = (round(Int32,p[1]*2000), round(Int32,p[2]*2000), round(Int32,p[3]*2000))
+    # de-duplicate coplanar panels: GPL signs/awnings/walls are double-sided (front+back),
+    # often with a few-mm THICKNESS — so they're NOT exact-vertex duplicates and still
+    # z-FIGHT (flickers only when moving — depth precision at distance can't separate them).
+    # Key each tri by CENTROID (1.5cm grid) + AREA: a panel's front & back share a centroid
+    # (offset only by the mm thickness) and identical area, so they collapse regardless of
+    # thickness or how the quad was triangulated.  Sort textured tris first → a textured
+    # decal wins over a blank backing (keeps the sign legible).  The shader renders the
+    # surviving face two-sided (uBackFlip un-mirrors the back).  On for track + objects.
+    if dedup === nothing; dedup = track; end
+    if dedup
+        ckey(t) = (round(Int32,(t.p[1][1]+t.p[2][1]+t.p[3][1])/3*64),
+                   round(Int32,(t.p[1][2]+t.p[2][2]+t.p[3][2])/3*64),
+                   round(Int32,(t.p[1][3]+t.p[2][3]+t.p[3][3])/3*64),
+                   round(Int32, triarea(t.p)*1f5))
+        sort!(kept, by = t -> (t.tex == "" ? 1 : 0))   # stable: textured tris seen first
+        seen = Set{NTuple{4,Int32}}()
+        kept = filter(kept) do t
+            k = ckey(t)
+            (k in seen) ? false : (push!(seen, k); true)
+        end
+    end
     # smooth normals: average the per-triangle normals across shared vertex
     # positions so GPL's flat (T-81F) polys don't facet the curved bodywork
     nsum = Dict{NTuple{3,Int32},NTuple{3,Float32}}()
-    qk(p) = (round(Int32,p[1]*2000), round(Int32,p[2]*2000), round(Int32,p[3]*2000))
     if smooth
         for t in kept, i in 1:3
             k=qk(t.p[i]); n=t.n[i]; s=get(nsum,k,(0f0,0f0,0f0))
@@ -711,7 +806,7 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), grey=(0.72f0,0.7
         for i in 1:3
             p=t.p[i]; n = smooth ? sm(p, t.n[i]) : t.n[i]; uv=t.uv[i]
             c = tint === nothing ? t.col : tint           # GPL flat-shade colour (or override)
-            append!(v, (p[1],p[3],p[2]*mz, n[1],n[3],n[2]*mz, c[1],c[2],c[3], uv[1], 1f0-uv[2]))
+            append!(v, (p[1],p[3],p[2]*mz, n[1],n[3],n[2]*mz, c[1],c[2],c[3], uflip ? 1f0-uv[1] : uv[1], vflip ? 1f0-uv[2] : uv[2]))
         end
     end
     [TrackPart(v, tex, grey) for (tex,v) in groups]
@@ -742,25 +837,118 @@ function extract_gpl_steering(path3do)
 end
 
 """Build textured Items for GPL parts, resolving each texture via the .mip index."""
-function build_gpl(parts, mipidx)
+function build_gpl(parts, idx::GPLTex)
     cache=Dict{String,GLuint}(); items=Item[]
     for p in parts
         vao,n = upload(p.verts); tid=GLuint(0)
         if p.tex != ""
             key=lowercase(p.tex)
             tid = get!(cache,key) do
-                path = get(mipidx, key, "")
-                if path == "" && length(key) >= 5      # SRB/detail name (e.g. trump→trumphi)
-                    for (k,v) in mipidx
-                        startswith(k, key) && (path = v; break)
-                    end
-                end
-                path == "" ? GLuint(0) : load_mip(path)
+                r = tex_rgba(idx, key)
+                r === nothing ? GLuint(0) : upload_rgba(r[1], r[2], r[3])
             end
         end
         push!(items, Item(vao,n,tid,p.col))
     end
     items
+end
+
+# ---- GPL SRB billboards (trees, crowds, signs, flags) ----------------------
+# Many trackside "objects" are camera-facing SPRITES: a stub .3do (a T-003 node +
+# one vertex whose Z is the sprite height) that names an .srb/.mip texture.  We
+# render each as a quad that yaws to face the camera.
+"""Read a GPL billboard stub .3do → (height, width, texture-name candidates).
+The SZYX vertices give the sprite size: z-extent = height, horizontal extent = width.
+Some stubs carry a real quad (e.g. single1 = 2×3m), some just a height marker
+(tree1 z=7), some nothing (flagger = one (0,0,0) vertex → human-scale default).
+width=0 means "derive from the texture aspect"."""
+function billboard_stub(path)
+    b = read(path)
+    u32(o)=(o<0||o+4>length(b)) ? UInt32(0) : UInt32(b[o+1])|(UInt32(b[o+2])<<8)|(UInt32(b[o+3])<<16)|(UInt32(b[o+4])<<24)
+    f32(o)=reinterpret(Float32,u32(o)); tg(o)=String(b[o+1:o+4])
+    xyz=strn=0; nv=0; strnsz=0; o=12
+    while o+12<=length(b)
+        t=tg(o); sz=Int(u32(o+8)); d=o+12
+        t=="SZYX" && (xyz=d; nv=sz÷16); t=="NRTS" && (strn=d; strnsz=sz)
+        o=d+sz; o+=(4-o%4)%4
+    end
+    zmn=Inf32; zmx=-Inf32; xmn=Inf32; xmx=-Inf32; ymn=Inf32; ymx=-Inf32
+    for k in 0:nv-1
+        x=f32(xyz+k*16+4); y=f32(xyz+k*16+8); z=f32(xyz+k*16+12)
+        zmn=min(zmn,z); zmx=max(zmx,z); xmn=min(xmn,x); xmx=max(xmx,x); ymn=min(ymn,y); ymx=max(ymx,y)
+    end
+    zext = nv>0 ? zmx-zmn : 0f0
+    hext = nv>1 ? max(xmx-xmn, ymx-ymn) : 0f0
+    height = zext > 0.5f0 ? zext : 2.5f0          # no height marker → human/marshal default
+    width  = hext > 0.5f0 ? hext : 0f0             # 0 → derive from texture aspect
+    strs=String[]; cur=UInt8[]
+    for i in strn:strn+strnsz-1
+        c=b[i+1]; c==0xFF && break
+        c==0x00 ? (push!(strs,String(copy(cur))); empty!(cur)) : push!(cur,c)
+    end
+    !isempty(cur) && push!(strs,String(copy(cur)))
+    (height, width, strs)
+end
+
+"""Build a camera-facing billboard Item for a texture name → (Item, texW, texH) or
+nothing.  Unit quad: x∈[-0.5,0.5], y∈[0,1] (stands on the ground), z=0.  Normal points
+UP so the sprite is lit bright (not darkened by a facing-the-camera Lambert term)."""
+function build_billboard(texname, idx::GPLTex)
+    r = tex_rgba(idx, texname); r === nothing && return nothing
+    tid = upload_rgba(r[1], r[2], r[3])
+    q=Float32[]
+    vtx(x,y,u,v) = append!(q, (x,y,0f0, 0f0,1f0,0f0, 1f0,1f0,1f0, u,v))   # normal up
+    vtx(-0.5f0,0f0,0f0,1f0); vtx(0.5f0,0f0,1f0,1f0); vtx(0.5f0,1f0,1f0,0f0)
+    vtx(-0.5f0,0f0,0f0,1f0); vtx(0.5f0,1f0,1f0,0f0); vtx(-0.5f0,1f0,0f0,0f0)
+    vao,n = upload(q)
+    (Item(vao,n,tid,(1f0,1f0,1f0)), Float32(r[1]), Float32(r[2]))
+end
+
+# ---- GPL horizon ring (sky dome backdrop) ----------------------------------
+# GPL's backdrop is not a .3do but 12 square MIP panels (horiz0..horiz11), each a
+# 30° slice of a cylinder wrapped around the track: hazy sky in the upper ~80%,
+# distant dune/scrub silhouette along the bottom.  We build it as a camera-centred
+# ring drawn unlit + unfogged (uSky=1) just after the gradient sky, so the scene
+# (which fogs into the same haze) dissolves into it.
+"""Build the 12-panel GPL horizon ring as backdrop Items (one textured quad each).
+`R` ring radius (kept < far plane); `e_lo`/`e_hi` bottom/top elevation; the
+silhouette band (bottom ~20% of each panel) straddles e_lo→0 so it sits on the
+horizon line.  `yaw0` rotates the whole ring to register it with the track."""
+function build_horizon(idx::GPLTex; R=2500f0, e_lo=deg2rad(-6f0), e_hi=deg2rad(24f0), yaw0=0f0, n=12)
+    items = Item[]
+    h_lo = R*tan(Float32(e_lo)); h_hi = R*tan(Float32(e_hi)); dθ = 2f0π/n
+    for i in 0:n-1
+        r = tex_rgba(idx, "horiz$(i)"); r === nothing && continue
+        tid = upload_rgba(r[1], r[2], r[3])
+        θ0 = Float32(yaw0 + i*dθ); θ1 = Float32(yaw0 + (i+1)*dθ)
+        x0=R*cos(θ0); z0=R*sin(θ0); x1=R*cos(θ1); z1=R*sin(θ1)
+        q=Float32[]
+        vtx(x,y,z,u,v)=append!(q,(x,y,z, 0f0,0f0,0f0, 1f0,1f0,1f0, u,v))  # normal unused (unlit)
+        vtx(x0,h_lo,z0, 0f0,1f0); vtx(x1,h_lo,z1, 1f0,1f0); vtx(x1,h_hi,z1, 1f0,0f0)
+        vtx(x0,h_lo,z0, 0f0,1f0); vtx(x1,h_hi,z1, 1f0,0f0); vtx(x0,h_hi,z0, 0f0,0f0)
+        vao,m = upload(q)
+        push!(items, Item(vao,m,tid,(1f0,1f0,1f0)))
+    end
+    items
+end
+
+"""Draw the horizon ring centred on the camera, unlit + unfogged, behind the scene
+(depth-write off so closer geometry overwrites it)."""
+function draw_horizon(prog, ring, vp, campos)
+    isempty(ring) && return
+    glUniform1i(glGetUniformLocation(prog,"uSky"), 1)
+    glDepthMask(GL_FALSE)
+    M = translate(Float32[campos[1],campos[2],campos[3]])
+    for it in ring; draw(prog, it, vp, M; bright=1.0); end
+    glDepthMask(GL_TRUE)
+    glUniform1i(glGetUniformLocation(prog,"uSky"), 0)
+end
+
+"""Model matrix for a billboard at render `pos` (base), sized `w`×`h`, yawed to face
+the camera at `eye`."""
+function billboard_model(pos, w, h, eye)
+    yaw = atan(eye[1]-pos[1], eye[3]-pos[3])
+    translate(Float32[pos[1],pos[2],pos[3]]) * roty(Float32(yaw)) * scalexyz(Float32(w),Float32(h),1f0)
 end
 
 """Index every .dds in the track's .mas archives (name → bytes), so textures

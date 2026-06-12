@@ -1,0 +1,4 @@
+# per-run telemetry logs
+sand_racer_*.txt
+# joystick calibration is machine-specific
+joystick.conf

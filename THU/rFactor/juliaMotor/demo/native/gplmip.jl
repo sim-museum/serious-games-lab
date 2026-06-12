@@ -8,7 +8,7 @@
 # w,h,stride ; "ATAD"(DATA) indexed pixels }.  type2 = per-image palette, other = 16bit.
 module GPLMip
 
-export decode_mip
+export decode_mip, decode_mip_bytes, decode_srb_bytes
 
 @inline u32(b,o) = (o+4 > length(b)) ? UInt32(0) :
     UInt32(b[o+1]) | (UInt32(b[o+2])<<8) | (UInt32(b[o+3])<<16) | (UInt32(b[o+4])<<24)
@@ -26,12 +26,20 @@ function sections(b, start)
     secs
 end
 
+"""Decode a GPL .srb (sprite) -> the embedded MIP as (w,h,rgba).  An SRB is a small
+size header + an embedded standard MIP file ("PIM "…)."""
+function decode_srb_bytes(b::AbstractVector{UInt8})
+    p = findfirst([0x50,0x49,0x4d,0x20], b)         # "PIM "
+    p === nothing && error("no embedded MIP in SRB")
+    decode_mip_bytes(b[first(p):end])
+end
+
 """Decode a .mip file -> (width, height, rgba::Vector{UInt8}) of the largest level."""
-function decode_mip(path::AbstractString)
-    b = read(path)
-    tag(b,0) == "PIM " || error("not a MIP: $path")
+decode_mip(path::AbstractString) = decode_mip_bytes(read(path))
+function decode_mip_bytes(b::AbstractVector{UInt8})
+    tag(b,0) == "PIM " || error("not a MIP")
     # DHPM/MPHD section at offset 12
-    tag(b,12) == "DHPM" || error("no MPHD in $path")
+    tag(b,12) == "DHPM" || error("no MPHD")
     mp = 24                                  # MPHD data start (12 + 12-byte section hdr)
     mtype = Int(b[mp+1])
     powW  = Int(u32(b, mp+1)); powH = Int(u32(b, mp+5))
