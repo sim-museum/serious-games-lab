@@ -334,7 +334,8 @@ class AlphaMu:
     # ---- entry point ----
     def choose(self, board: BoardState, seat: Seat,
                current_trick_cards: List[Card],
-               worlds: List[Dict[Seat, frozenset]]) -> Optional[Card]:
+               worlds: List[Dict[Seat, frozenset]],
+               tiebreak=None) -> Optional[Card]:
         """Pick biq's card for `seat` (must be declarer-side). `worlds` are full
         determinizations: dict[Seat]->frozenset(c52) of REMAINING cards, all
         consistent with biq's information (MAX seats identical across worlds)."""
@@ -357,6 +358,7 @@ class AlphaMu:
         # trick's cards already removed, plus the partial trick replayed so the
         # search continues mid-trick if biq is not on lead.
         group = [(i, dict(w)) for i, w in enumerate(worlds)]
+        scored = []                      # (c52, mean) for every evaluated card
         best_c, best_val = None, None
         self._deadline = time.time() + self.time_budget
         for c in cands:
@@ -374,6 +376,18 @@ class AlphaMu:
             except _Budget:
                 break                # out of time — keep the best evaluated so far
             mean = sum(vals.values()) / len(vals)
+            scored.append((c, mean))
             if best_val is None or mean > best_val:
                 best_val, best_c = mean, c
-        return Card.from_code52(best_c) if best_c is not None else None
+        if best_c is None:
+            return None
+        # TIE-BREAK by signal: among cards that tie for the best value (no trick
+        # cost), let the caller pick the one carrying the standard signal.
+        if tiebreak is not None and best_val is not None:
+            tied = [Card.from_code52(c) for c, m in scored
+                    if m >= best_val - 1e-9]
+            if len(tied) > 1:
+                pick = tiebreak(tied)
+                if pick is not None:
+                    return pick
+        return Card.from_code52(best_c)

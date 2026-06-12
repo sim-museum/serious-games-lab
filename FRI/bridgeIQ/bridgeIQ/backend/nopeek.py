@@ -368,11 +368,17 @@ def _follow(board: BoardState, seat: Seat, legal: List[Card],
     low = legal[-1]
     high = legal[0]
 
+    from . import signals
     if our_side_winning and pos in (2, 3):
-        return low                                     # partner/dummy winning: low
+        # partner/dummy winning — play a non-winning card, but SIGNAL with it
+        # (attitude if partner's suit, count if an opponent's): textbook carding
+        # at zero trick cost (every legal card here loses this trick anyway).
+        return signals.choose_signal_card(legal, board, seat, trick, declarer,
+                                           trump)
     beating = [c for c in legal if _beats(c, win_card, led, trump)]
     if not beating:
-        return low                                     # can't win: low (signal TODO)
+        return signals.choose_signal_card(legal, board, seat, trick, declarer,
+                                           trump)
     # HOLD-UP (NT): duck a single stopper to cut defenders' communications.
     if trump is None and _should_holdup(board, seat, trick, declarer, legal):
         return low
@@ -399,12 +405,14 @@ def _follow(board: BoardState, seat: Seat, legal: List[Card],
 
 def _discard(board: BoardState, seat: Seat, legal: List[Card],
              trick: List[Card], declarer: Seat) -> Card:
-    """Void in the led suit and not ruffing: pitch a safe low card."""
+    """Void in the led suit and not ruffing: pitch a safe card that SIGNALS
+    (suit-preference / attitude) instead of a bare low spot."""
+    from . import signals
     safe = filter_safe_discards(legal, board, seat, trick, declarer)
-    by = _by_suit(safe)
-    # pitch from the shortest suit, lowest card (keep length + guards)
-    shortest = min(by, key=lambda s: (len(by[s]), s.value))
-    return by[shortest][-1]
+    trump = (board.contract.suit
+             if board.contract and board.contract.suit != Suit.NOTRUMP
+             else None)
+    return signals.choose_signal_card(safe, board, seat, trick, declarer, trump)
 
 
 # ------------------------------------------------------------------- entry
@@ -470,7 +478,14 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
                           time_budget=_AMU_BUDGET, biq_seats=biq_seats,
                           defense_rollout_leaf=(defending and _DEF_ROLLOUT_LEAF),
                           vul=b.vulnerability)
-    return amu.choose(b, seat, trick, worlds)
+    # When DEFENDING, break trick-equivalent ties by the standard signal so the
+    # carding reads like a real defender (zero trick cost — these tie for best).
+    tb = None
+    if defending:
+        from . import signals
+        tb = lambda tied: signals.choose_signal_card(
+            tied, b, seat, trick, declarer, trump)
+    return amu.choose(b, seat, trick, worlds, tiebreak=tb)
 
 
 def _defense_rollout_card(b: BoardState, seat: Seat, trick: List[Card],
