@@ -426,6 +426,8 @@ _DEF_ROLLOUT = os.environ.get("BIQ_DEF_ROLLOUT", "0") == "1"  # defence rollout
 # (realistic no-peek partner) INSTEAD of alpha-mu defence's perfect-DD partner
 _DEF_ROLLOUT_LEAF = os.environ.get("BIQ_DEF_ROLLOUT_LEAF", "0") == "1"  # alpha-mu
 # defence with a realistic-partner ROLLOUT leaf (vs the perfect-DD DDS leaf)
+_READ_SIGNALS = os.environ.get("BIQ_READ_SIGNALS", "0") == "1"  # hard-filter the
+# defence sampler by PARTNER's signals (convention-inversion); see signal_read
 _DDS = None
 
 
@@ -460,8 +462,25 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
         known_seats, biq_seats = {seat, dummy}, {seat}
     else:
         known_seats, biq_seats = {declarer, dummy}, {declarer, dummy}
-    samples, hidden = declarer_search._sample_defenders(
-        b, seat, trick, declarer, _AMU_WORLDS, known_seats=known_seats)
+    if defending and _READ_SIGNALS:
+        # HARD-FILTER the sampled partner hands by partner's own signals: keep
+        # only layouts biq's convention would have produced (legitimate info —
+        # partner is telling us). Over-sample, filter, fall back if too few.
+        from . import signal_read
+        recs = signal_read.read(b, seat, declarer, trump)
+        raw, hidden = declarer_search._sample_defenders(
+            b, seat, trick, declarer, _AMU_WORLDS * 4, known_seats=known_seats)
+        if recs and raw:
+            partner = seat.partner()
+            kept = [a for a in raw
+                    if signal_read.consistent(recs, set(a[partner]))]
+            samples = kept[:_AMU_WORLDS] if len(kept) >= 2 \
+                else raw[:_AMU_WORLDS]
+        else:
+            samples = raw[:_AMU_WORLDS]
+    else:
+        samples, hidden = declarer_search._sample_defenders(
+            b, seat, trick, declarer, _AMU_WORLDS, known_seats=known_seats)
     if not samples:
         return None
     worlds = []

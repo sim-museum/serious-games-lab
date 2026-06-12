@@ -1,0 +1,133 @@
+"""Reading PARTNER's defensive signals — the complement to backend.signals.
+
+biq EMITS standard signals (backend.signals); this lets it LISTEN. Reading
+partner's signals is legitimate information (partner tells you publicly — not
+peeking) and genuinely sharpens defence. The method is convention-INVERSION:
+biq knows the convention it expects partner to use (the same standard attitude/
+count it emits), so a candidate partner hand is CONSISTENT only if, played under
+that convention, it would have produced the very card partner actually played.
+
+  * read(board, seat, ...)         -> the readable signal records from partner's
+                                      completed plays.
+  * consistent(records, hand, ...) -> True if a hand reproduces every signal
+                                      (the HARD FILTER for the sampler).
+  * mis_signals(records, ...)      -> the signals partner's ACTUAL hand would
+                                      NOT have produced (end-of-hand teaching
+                                      feedback + the auto-disable counter).
+
+Only CLEAR free signals are read: partner followed suit, did not win, played a
+SPOT (not an honour), and had a choice — attitude when our side led the suit,
+count when an opponent did. Forced cards carry no signal, so they constrain
+nothing.
+"""
+from __future__ import annotations
+from typing import Dict, List, Optional
+
+from .models import Seat, Suit, Card, BoardState
+
+_HONOUR = 3   # rank.value: A=0,K=1,Q=2,J=3 honours; T=4; spots 5..12
+
+
+def _c52(c: Card) -> int:
+    return c.suit.value * 13 + c.rank.value
+
+
+def _suit_i(c52: int) -> int:
+    return c52 // 13
+
+
+def _rank_i(c52: int) -> int:
+    return c52 % 13
+
+
+def _winner_pos(cards: List[Card], trump: Optional[Suit]) -> int:
+    wi, wc, lead = 0, cards[0], cards[0].suit
+    for i, c in enumerate(cards[1:], 1):
+        c_t = trump is not None and c.suit == trump
+        w_t = trump is not None and wc.suit == trump
+        if c_t and not w_t:
+            wi, wc = i, c
+        elif c_t and w_t and c.rank.value < wc.rank.value:
+            wi, wc = i, c
+        elif not c_t and not w_t and c.suit == lead \
+                and c.rank.value < wc.rank.value:
+            wi, wc = i, c
+    return wi
+
+
+def read(board: BoardState, seat: Seat, declarer: Seat,
+         trump: Optional[Suit]) -> List[dict]:
+    """Readable signal records from PARTNER's completed plays. Each:
+    {trick, suit, attitude(bool), card52, played} where `played` maps each later
+    trick index to the c52 partner played (to reconstruct partner's hand at the
+    signal)."""
+    partner = seat.partner()
+    # what partner played, per completed trick
+    pplayed: Dict[int, int] = {}
+    rows = []
+    for i, t in enumerate(board.tricks):
+        if not t.cards or len(t.cards) < 4:
+            continue
+        ppos = (partner.value - t.leader.value) % 4
+        pcard = t.cards[ppos]
+        pplayed[i] = _c52(pcard)
+        rows.append((i, t, pcard))
+    out = []
+    for i, t, pcard in rows:
+        led = t.cards[0].suit
+        if pcard.suit != led:
+            continue                                   # discard — suit-pref TODO
+        if pcard.rank.value <= _HONOUR:
+            continue                                   # honour — not a spot signal
+        if _winner_pos(t.cards, trump) == (partner.value - t.leader.value) % 4:
+            continue                                   # partner won — not a signal
+        attitude = t.leader.is_ns() == seat.is_ns()    # our suit -> attitude
+        later = {j: c for j, c in pplayed.items() if j >= i}
+        out.append({"trick": i, "suit": led, "attitude": attitude,
+                    "card52": _c52(pcard), "played": later})
+    return out
+
+
+def _convention_card(rec: dict, hand_at_trick: set) -> Optional[int]:
+    """The c52 biq's convention would play from `hand_at_trick` for `rec`, or
+    None if there was no free choice (so nothing to read)."""
+    suit = rec["suit"].value
+    in_suit = [c for c in hand_at_trick if _suit_i(c) == suit]
+    spots = [c for c in in_suit if _rank_i(c) > _HONOUR + 1] or in_suit
+    if len(spots) < 2:
+        return None
+    if rec["attitude"]:
+        high = any(_rank_i(c) <= _HONOUR for c in in_suit)   # honour -> encourage
+    else:
+        high = (len(in_suit) % 2 == 0)                       # count: even -> high
+    spots = sorted(spots, key=_rank_i)                       # high card first
+    return spots[0] if high else spots[-1]
+
+
+def _hand_at(rec: dict, remaining: set) -> set:
+    """Partner's holding when it gave `rec`: cards still held now plus every card
+    partner has played from the signal trick onward."""
+    return set(remaining) | set(rec["played"].values())
+
+
+def consistent(records: List[dict], remaining: set) -> bool:
+    """HARD FILTER: does a partner hand (c52 set of remaining cards) reproduce
+    every readable signal under biq's convention?"""
+    for rec in records:
+        conv = _convention_card(rec, _hand_at(rec, remaining))
+        if conv is not None and conv != rec["card52"]:
+            return False
+    return True
+
+
+def mis_signals(records: List[dict], actual_remaining: set) -> List[dict]:
+    """Signals partner's ACTUAL hand would NOT have produced under the
+    convention — end-of-hand teaching feedback / auto-disable counter. Each:
+    {trick, suit, played52, expected52}."""
+    out = []
+    for rec in records:
+        conv = _convention_card(rec, _hand_at(rec, actual_remaining))
+        if conv is not None and conv != rec["card52"]:
+            out.append({"trick": rec["trick"], "suit": rec["suit"],
+                        "played52": rec["card52"], "expected52": conv})
+    return out
