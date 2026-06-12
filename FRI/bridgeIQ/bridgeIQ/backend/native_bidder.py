@@ -4953,6 +4953,41 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
                 return bid(from_lvl, unbid_major,
                            why=f"{from_lvl}{unbid_major.to_char()}: "
                                f"4-card fit after partner's negative X")
+            # 3-card support IS a fit (partner promised 4+ → 7-8 card fit):
+            # raise the major rather than rebidding a side suit. Failing to
+            # do so was RANDOM-019 (3C instead of 3H on a 9-card fit, -7 IMP).
+            # Minimum → simple raise; extras (15+, or a good 13-14 with
+            # shortness in the overcall suit) → jump invite; 18+ → game.
+            if my_major == 3:
+                highest_lvl, highest_suit = 0, None
+                for _seat, b in state.bids:
+                    if b.is_pass or b.is_double or b.is_redouble:
+                        continue
+                    if b.suit is None:
+                        continue
+                    if (b.level > highest_lvl
+                            or (b.level == highest_lvl
+                                and highest_suit is not None
+                                and _BID_RANK[b.suit] > _BID_RANK[highest_suit])):
+                        highest_lvl, highest_suit = b.level, b.suit
+                if highest_suit is None:
+                    from_lvl = 1
+                elif _BID_RANK[unbid_major] > _BID_RANK[highest_suit]:
+                    from_lvl = highest_lvl
+                else:
+                    from_lvl = highest_lvl + 1
+                short_in_opp = (rho_suit is not None
+                                and e.suit_lengths.get(rho_suit, 3) <= 1)
+                extras = hcp >= 15 or (hcp >= 13 and short_in_opp)
+                if hcp >= 18:
+                    lvl = max(4, from_lvl)
+                elif extras and from_lvl + 1 <= 4:
+                    lvl = from_lvl + 1
+                else:
+                    lvl = from_lvl
+                return bid(lvl, unbid_major,
+                           why=f"{lvl}{unbid_major.to_char()}: 3-card support "
+                               f"raise after partner's negative X")
         # 3-card promised major + good hand (15+) → cuebid or jump
         # in own suit; without extras prefer NT or rebid own suit.
         # Stopper in overcall suit + balanced → 1NT-or-cheapest NT.

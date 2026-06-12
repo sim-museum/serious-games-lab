@@ -414,6 +414,8 @@ _AMU_WORLDS = int(os.environ.get("BIQ_AMU_WORLDS", "6"))   # sampled layouts/dec
 _AMU_DEPTH = int(os.environ.get("BIQ_AMU_DEPTH", "2"))     # alpha-mu depth in tricks
 _AMU_BUDGET = float(os.environ.get("BIQ_AMU_BUDGET", "5")) # per-decision seconds
 _AMU_DEFENSE = os.environ.get("BIQ_AMU_DEFENSE", "1") == "1"  # defence alpha-mu
+_DEF_ROLLOUT = os.environ.get("BIQ_DEF_ROLLOUT", "0") == "1"  # defence rollout
+# (realistic no-peek partner) INSTEAD of alpha-mu defence's perfect-DD partner
 _DDS = None
 
 
@@ -467,6 +469,17 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
     return amu.choose(b, seat, trick, worlds)
 
 
+def _defense_rollout_card(b: BoardState, seat: Seat, trick: List[Card],
+                          declarer: Seat, trump: Optional[Suit],
+                          legal: List[Card]) -> Optional[Card]:
+    """Defensive card via MC rollout with a REALISTIC no-peek partner (vs
+    alpha-mu defence's perfect-DD partner). See backend.defender_search."""
+    from . import defender_search
+    return defender_search.best_defense(
+        b, seat, trick, declarer, trump, legal, _get_dds(),
+        samples=_AMU_WORLDS, time_budget=_AMU_BUDGET)
+
+
 def _lead_candidates(legal: List[Card]) -> List[Card]:
     """Prune lead candidates to the distinct ones worth searching: the highest
     and lowest card of each suit (leading the 5 vs the 4 of a suit rarely
@@ -510,9 +523,13 @@ def decide(board: BoardState, seat: Seat,
     # Strong (DDS evaluates vs best play) without peeking or PIMC's omniscient
     # tells. Declarer side always; defenders when BIQ_AMU_DEFENSE (the partner is
     # hidden too, so defence samples declarer + partner).
-    if (search and board.contract is not None
-            and (seat.is_ns() == declarer.is_ns() or _AMU_DEFENSE)):
-        amc = _alphamu_card(b, seat, trick, declarer, trump)
+    if search and board.contract is not None:
+        defending = seat.is_ns() != declarer.is_ns()
+        amc = None
+        if defending and _DEF_ROLLOUT:
+            amc = _defense_rollout_card(b, seat, trick, declarer, trump, legal)
+        elif not defending or _AMU_DEFENSE:
+            amc = _alphamu_card(b, seat, trick, declarer, trump)
         if amc is not None and any(c.suit == amc.suit and c.rank == amc.rank
                                    for c in legal):
             return amc
