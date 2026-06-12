@@ -120,7 +120,8 @@ class AlphaMu:
 
     def __init__(self, trump: Optional[Suit], declarer: Seat,
                  dds: Optional[DDSolver] = None, depth: int = 2,
-                 time_budget: float = 5.0, biq_seats=None):
+                 time_budget: float = 5.0, biq_seats=None,
+                 defense_rollout_leaf: bool = False, vul=None):
         self.trump_suit = trump
         self.trump = None if trump is None else trump.value
         self.strain = _strain_i(trump)
@@ -135,6 +136,13 @@ class AlphaMu:
         # Objective = tricks for biq's SIDE (declarer tricks when declaring,
         # defensive tricks when defending).
         self.biq_ns = next(iter(self.max_seats)).is_ns()
+        # Leaf with a REALISTIC partner: when DEFENDING, evaluate the horizon by
+        # rolling out (partner = no-peek, opponents = DD) instead of the DDS
+        # leaf (which plays the hidden partner double-dummy = a perfect partner).
+        self._roll_leaf = defense_rollout_leaf \
+            and self.biq_ns != declarer.is_ns()
+        self._vul = vul
+        self._roll_cache: Dict = {}
         self.dds = dds or DDSolver()
         self.depth = depth
         self.time_budget = time_budget
@@ -161,6 +169,16 @@ class AlphaMu:
         if per_hand == 0:
             self._leaf_cache[key] = 0
             return 0
+        if self._roll_leaf:
+            # realistic-partner rollout: returns DECLARER tricks from here; biq
+            # is defending (biq_ns != declarer), so biq's side = per_hand - decl.
+            from . import defender_search
+            decl_tr = defender_search.rollout_from(
+                hands, leader, self.declarer, self.trump_suit, self._vul,
+                self.dds, self._roll_cache)
+            decl = per_hand - decl_tr
+            self._leaf_cache[key] = decl
+            return decl
         res = self.dds.solve(self.strain, leader.value, [], [_pbn(hands)],
                              solutions=1)
         toplay_tricks = max((t[0] for t in res.values()), default=0)

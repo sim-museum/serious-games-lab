@@ -416,6 +416,8 @@ _AMU_BUDGET = float(os.environ.get("BIQ_AMU_BUDGET", "5")) # per-decision second
 _AMU_DEFENSE = os.environ.get("BIQ_AMU_DEFENSE", "1") == "1"  # defence alpha-mu
 _DEF_ROLLOUT = os.environ.get("BIQ_DEF_ROLLOUT", "0") == "1"  # defence rollout
 # (realistic no-peek partner) INSTEAD of alpha-mu defence's perfect-DD partner
+_DEF_ROLLOUT_LEAF = os.environ.get("BIQ_DEF_ROLLOUT_LEAF", "0") == "1"  # alpha-mu
+# defence with a realistic-partner ROLLOUT leaf (vs the perfect-DD DDS leaf)
 _DDS = None
 
 
@@ -465,7 +467,9 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
                                  for c in b.hands[s].cards)
         worlds.append(w)
     amu = alphamu.AlphaMu(trump, declarer, _get_dds(), depth=_AMU_DEPTH,
-                          time_budget=_AMU_BUDGET, biq_seats=biq_seats)
+                          time_budget=_AMU_BUDGET, biq_seats=biq_seats,
+                          defense_rollout_leaf=(defending and _DEF_ROLLOUT_LEAF),
+                          vul=b.vulnerability)
     return amu.choose(b, seat, trick, worlds)
 
 

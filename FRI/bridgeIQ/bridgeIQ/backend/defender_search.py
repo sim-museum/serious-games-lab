@@ -120,6 +120,62 @@ def _rollout(board: BoardState, seat: Seat, current_trick: List[Card],
     return dt
 
 
+def rollout_from(hands52: Dict[Seat, frozenset], leader: Seat, declarer: Seat,
+                 trump: Optional[Suit], vul, dds: DDSolver, cache: dict) -> int:
+    """Play a LEAF position (alpha-mu horizon) to the end and return the
+    DECLARER side's trick count from here. biq's side (the defenders) play the
+    no-peek policy; declarer + dummy play DD-best. `hands52` = remaining cards
+    per seat (frozenset c52); `leader` is on lead at a trick boundary.
+
+    This is alpha-mu's leaf with a REALISTIC partner instead of DDS's perfect
+    one: keep the strong consistent biq search above the horizon, model the
+    hidden partner as it really plays below it."""
+    from . import nopeek
+    from .models import Contract
+    decl_ns = declarer.is_ns()
+    opp = {declarer, declarer.partner()}
+    hands = {s: Hand(cards=[Card.from_code52(x) for x in hands52[s]])
+             for s in _ALL}
+    # Reconstruct already-played cards into placeholder tricks so redact() sees
+    # dummy as exposed (the void/count inference off these is approximate — a
+    # leaf estimate; the remaining hands, which drive technique, are exact).
+    in_hand = set()
+    for s in _ALL:
+        in_hand |= set(hands52[s])
+    played = [Card.from_code52(x) for x in range(52) if x not in in_hand]
+    placeholder = [Trick(cards=played[i:i + 4], leader=Seat.NORTH,
+                         winner=_winner(played[i:i + 4], Seat.NORTH, trump))
+                   for i in range(0, len(played) - 3, 4)]
+    rb = BoardState(board_number=1, dealer=declarer, vulnerability=vul,
+                    hands=hands, auction=[],
+                    contract=Contract(level=1, suit=(trump or Suit.NOTRUMP),
+                                      declarer=declarer),
+                    tricks=placeholder)
+    strain_i = _strain_i(trump)
+    dt = 0
+    cur, trick = leader, []
+    while any(rb.hands[s].cards for s in _ALL):
+        rb.current_trick = Trick(cards=list(trick), leader=leader)
+        while len(trick) < 4:
+            if cur in opp:
+                hd = {s: rb.hands[s].cards for s in _ALL}
+                card = _dd_card(dds, strain_i, hd, cur, leader, trick, cache)
+            else:
+                card = nopeek.decide(rb, cur, list(trick), search=False)
+            rb.hands[cur].cards = [c for c in rb.hands[cur].cards
+                                   if not (c.suit == card.suit
+                                           and c.rank == card.rank)]
+            trick.append(card)
+            cur = cur.next()
+        w = _winner(trick, leader, trump)
+        rb.tricks.append(Trick(cards=list(trick), leader=leader, winner=w))
+        rb.current_trick = None
+        dt += (w.is_ns() == decl_ns)
+        leader = cur = w
+        trick = []
+    return dt
+
+
 def best_defense(board: BoardState, seat: Seat, current_trick: List[Card],
                  declarer: Seat, trump: Optional[Suit], legal: List[Card],
                  dds: DDSolver, samples: int = 6,
