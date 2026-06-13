@@ -1082,7 +1082,11 @@ class LiveMatchWidget(QWidget):
         v.addLayout(row)
         status = QLabel("no-peek mode: OFF")
         status.setStyleSheet("font-weight:bold; color:#a00;")
-        if getattr(self, "_nopeek_pbn", None):
+        if getattr(self, "_whole_system", False):
+            status.setText("WHOLE-SYSTEM mode: ON (biq bids + no-peek play — "
+                           "load deck Read=AUTO)")
+            status.setStyleSheet("font-weight:bold; color:#080;")
+        elif getattr(self, "_nopeek_pbn", None):
             status.setText(f"no-peek mode: ON ({Path(self._nopeek_pbn).name})")
             status.setStyleSheet("font-weight:bold; color:#080;")
         v.addWidget(status)
@@ -1112,8 +1116,23 @@ class LiveMatchWidget(QWidget):
              "deal-time, so set it bigger than the slowest deal. Save the match "
              "→ compare the two .qss for the clean no-peek-vs-Q-Plus number.",
              grey=True)
+        _lab("— or —", grey=True)
+        ws = QPushButton("◆ Enable WHOLE-SYSTEM mode (biq BIDS + no-peek play)")
+        ws.setStyleSheet("font-weight:bold; color:#005;")
+        v.addWidget(ws)
+        _lab("WHOLE-SYSTEM (bidding + cardplay): no forced contract. Load a "
+             "DEAL-ONLY deck (RND_S* / SLAM_S*) with Read=AUTO so Q-Plus bids; "
+             "biq bids too and plays no-peek (--nopeek, NO --pbn). Click this, "
+             "then go through the normal 8-step startup procedure as usual "
+             "(start biq AFTER enabling, so the clients pick up the mode). "
+             "Save the .qss per run.", grey=True)
         close = QPushButton("Close")
         v.addWidget(close)
+
+        def _set_status(text, ok):
+            status.setText(text)
+            status.setStyleSheet(
+                "font-weight:bold; color:%s;" % ("#080" if ok else "#a00"))
 
         def do_gen():
             IMPORTED_DEALS_DIR.mkdir(parents=True, exist_ok=True)
@@ -1125,6 +1144,7 @@ class LiveMatchWidget(QWidget):
 
             def done(*_a):
                 self._nopeek_pbn = NOPEEK_PBN
+                self._whole_system = False        # cardplay-only excludes it
                 status.setText(f"no-peek mode: ON ({NOPEEK_PBN.name}, "
                                f"{deals.value()} deals)")
                 status.setStyleSheet("font-weight:bold; color:#080;")
@@ -1182,9 +1202,23 @@ class LiveMatchWidget(QWidget):
 
         def do_off():
             self._nopeek_pbn = None
-            status.setText("no-peek mode: OFF")
-            status.setStyleSheet("font-weight:bold; color:#a00;")
+            self._whole_system = False
+            _set_status("no-peek mode: OFF", ok=False)
             self._append("[nopeek] no-peek mode OFF — biq clients use MC+DDS.")
+
+        def do_whole():
+            # MODE TOGGLE ONLY — does not start anything. biq clients launched
+            # after this (via the normal startup steps) get --nopeek and NO
+            # --pbn, so biq bids and plays no-peek; no contract is forced.
+            self._whole_system = True
+            self._nopeek_pbn = None               # suppress forced-contract PBN
+            _set_status("WHOLE-SYSTEM mode: ON (biq bids + no-peek play — "
+                        "load deck Read=AUTO)", ok=True)
+            self._append(
+                "[whole-system] ON — biq clients will BID and play no-peek "
+                "(--nopeek, no --pbn). Load a DEAL-ONLY deck (RND_S*/SLAM_S*) "
+                "in Q-Plus with Read=AUTO, then click through the normal 8-step "
+                "startup procedure. Start biq AFTER enabling this.")
 
         gen.clicked.connect(do_gen)
         cal.clicked.connect(do_cal)
@@ -1192,6 +1226,7 @@ class LiveMatchWidget(QWidget):
         run.clicked.connect(do_run)
         base.clicked.connect(do_baseline)
         off.clicked.connect(do_off)
+        ws.clicked.connect(do_whole)
         close.clicked.connect(dlg.hide)
         dlg.show()
 
@@ -1554,9 +1589,14 @@ class LiveMatchWidget(QWidget):
         # (BIQ_NOPEEK=1, BIQ_FORCED_PBN=<path>). In this mode biq plays cards
         # with the no-peek engine and recovers contracts when Q-Plus skips
         # bidding (cardplay-only games).
-        forced = getattr(self, "_nopeek_pbn", None) or \
-            os.environ.get("BIQ_FORCED_PBN")
-        if getattr(self, "_nopeek_pbn", None) or os.environ.get("BIQ_NOPEEK"):
+        # WHOLE-SYSTEM mode: biq bids AND plays no-peek — --nopeek with NO --pbn,
+        # so biq recovers each contract from the live auction (deck loaded
+        # Read=Auto). Forced-contract PBN is deliberately suppressed here.
+        whole = getattr(self, "_whole_system", False)
+        forced = None if whole else (getattr(self, "_nopeek_pbn", None) or
+                                     os.environ.get("BIQ_FORCED_PBN"))
+        if whole or getattr(self, "_nopeek_pbn", None) \
+                or os.environ.get("BIQ_NOPEEK"):
             args.append("--nopeek")
         if forced:
             args += ["--pbn", str(forced)]
