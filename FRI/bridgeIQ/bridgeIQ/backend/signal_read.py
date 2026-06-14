@@ -113,10 +113,13 @@ def _convention_card(rec: dict, hand_at_trick: set) -> Optional[int]:
     spots = [c for c in in_suit if _rank_i(c) > _HONOUR + 1] or in_suit
     if len(spots) < 2:
         return None
+    from . import signals
+    udca = signals.is_udca()                                 # match the emitter
     if rec["attitude"]:
-        high = any(_rank_i(c) <= _HONOUR for c in in_suit)   # honour -> encourage
+        like = any(_rank_i(c) <= _HONOUR for c in in_suit)   # honour -> encourage
+        high = (like != udca)
     else:
-        high = (len(in_suit) % 2 == 0)                       # count: even -> high
+        high = ((len(in_suit) % 2 == 0) != udca)             # count: even -> high
     spots = sorted(spots, key=_rank_i)                       # high card first
     return spots[0] if high else spots[-1]
 

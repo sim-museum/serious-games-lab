@@ -82,6 +82,9 @@ class PreferencesConfig:
     use_monte_carlo_play: bool = True  # Monte Carlo simulation (MC+DDS fallback)
     use_nopeek_play: bool = True  # no-peek alpha-mu engine (default - strongest;
     # never peeks at hidden cards, signals + reads partner signals)
+    signalling_convention: str = "standard"  # defensive carding biq plays AND
+    # expects from partner: "standard" (hi=encourage, hi-lo=even) or "udca"
+    # (upside-down count & attitude). Emitter + reader both use it.
     legacy_colors: bool = False  # Use legacy 2-color mode (red and black only)
     show_ben_bid_analysis: bool = False  # Show BEN bid analysis panel (disabled by default)
     # Which engine bots consult for bidding. "native" → the rule-based
@@ -347,6 +350,17 @@ class ConfigManager:
             self.config.preferences.use_double_dummy_play = data["preference.use_dd_play"] == "1"
         if "preference.use_mc_play" in data:
             self.config.preferences.use_monte_carlo_play = data["preference.use_mc_play"] == "1"
+        if "preference.use_nopeek_play" in data:
+            self.config.preferences.use_nopeek_play = data["preference.use_nopeek_play"] == "1"
+        if "preference.signalling" in data:
+            self.config.preferences.signalling_convention = data["preference.signalling"]
+        # Apply the signalling convention to the live engine (emitter + reader).
+        try:
+            from backend import signals as _sig
+            _sig.set_convention(
+                self.config.preferences.signalling_convention == "udca")
+        except Exception:
+            pass
         if "preference.legacy_colors" in data:
             self.config.preferences.legacy_colors = data["preference.legacy_colors"] == "1"
         if "preference.show_ben_bid_analysis" in data:
@@ -412,6 +426,8 @@ class ConfigManager:
             "preference.language": self.config.preferences.language,
             "preference.use_dd_play": "1" if self.config.preferences.use_double_dummy_play else "0",
             "preference.use_mc_play": "1" if self.config.preferences.use_monte_carlo_play else "0",
+            "preference.use_nopeek_play": "1" if self.config.preferences.use_nopeek_play else "0",
+            "preference.signalling": self.config.preferences.signalling_convention,
             "preference.legacy_colors": "1" if self.config.preferences.legacy_colors else "0",
             "preference.show_ben_bid_analysis": "1" if self.config.preferences.show_ben_bid_analysis else "0",
             "preference.bidding_engine": self.config.preferences.bidding_engine,

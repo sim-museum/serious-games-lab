@@ -18,11 +18,28 @@ keeping with biq's textbook-not-eccentric philosophy. The single entry point is
 choose_signal_card(); per-seat carding and the alpha-mu tie-break both call it.
 """
 from __future__ import annotations
+import os
 from typing import List, Optional
 
 from .models import Seat, Suit, Rank, Card, BoardState
 
 _HONOUR = 3   # rank.value: A=0,K=1,Q=2,J=3 are honours; T=4; spots are 5..12
+
+# Signalling CONVENTION (the config setting every serious app exposes). False =
+# STANDARD (high spot encourages / high-low shows even count); True = UPSIDE-DOWN
+# (UDCA: low spot encourages / low-high shows even). The emitter AND the reader
+# (signal_read) both consult this, so biq's signals and its reading of partner
+# always agree. Set from the GUI preference via set_convention().
+_UDCA = os.environ.get("BIQ_SIGNAL_UDCA", "0") == "1"
+
+
+def set_convention(udca: bool) -> None:
+    global _UDCA
+    _UDCA = bool(udca)
+
+
+def is_udca() -> bool:
+    return _UDCA
 
 
 def _winner_seat(trick: List[Card], leader: Seat, trump: Optional[Suit]) -> Seat:
@@ -105,5 +122,7 @@ def choose_signal_card(cands: List[Card], board: BoardState, seat: Seat,
         or winner.is_ns() == seat.is_ns()
     suit_cards = [c for c in board.hands[seat].cards if c.suit == led]
     if partner_context:                       # ATTITUDE
-        return _hl(cands, high=_like_suit(suit_cards, trump))
-    return _hl(cands, high=(len(suit_cards) % 2 == 0))   # COUNT (even = high)
+        like = _like_suit(suit_cards, trump)
+        return _hl(cands, high=(like != _UDCA))          # UDCA flips encourage
+    even = (len(suit_cards) % 2 == 0)                     # COUNT
+    return _hl(cands, high=(even != _UDCA))               # std: even=high spot
