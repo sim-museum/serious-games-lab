@@ -3673,6 +3673,30 @@ def _respond_to_minor_competitive(state, e: HandEval, system) -> Bid:
         elif overcall_suit in (Suit.CLUBS, Suit.DIAMONDS):
             can_neg_dbl = (e.suit_lengths[Suit.HEARTS] >= 4
                            and e.suit_lengths[Suit.SPADES] >= 4)
+    # With a 5+ card unbid MAJOR, BID it naturally instead of a negative double
+    # (the double only promises 4; bidding shows the longer suit + playing
+    # strength — bug bd55: 1D-1H with 7 spades doubled instead of bidding 1S).
+    if overcall.level <= neg_max and hcp >= 6:
+        long_major = None
+        if overcall_suit == Suit.HEARTS and e.suit_lengths[Suit.SPADES] >= 5:
+            long_major = Suit.SPADES
+        elif overcall_suit == Suit.SPADES and e.suit_lengths[Suit.HEARTS] >= 5:
+            long_major = Suit.HEARTS
+        elif overcall_suit in (Suit.CLUBS, Suit.DIAMONDS):
+            for m in (Suit.SPADES, Suit.HEARTS):
+                if e.suit_lengths[m] >= 5:
+                    long_major = m
+                    break
+        if long_major is not None:
+            last_lvl = state.last_level or 1
+            lvl = (last_lvl if _BID_RANK[long_major] > _BID_RANK[overcall_suit]
+                   else last_lvl + 1)
+            cand = bid(lvl, long_major,
+                       why=f"{lvl}{long_major.to_char()} natural "
+                           f"({e.suit_lengths[long_major]}+), not a neg double")
+            if _is_legal_bid(cand, state):
+                return cand
+
     if can_neg_dbl:
         return double(
             why=f"Negative double (Sputnik ≤{neg_max})")
@@ -4573,6 +4597,21 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
                 if b.suit is not None and b.suit != Suit.NOTRUMP:
                     opp_suit = b.suit
                     break
+            # REBID OPENER'S OWN 6+ SUIT before reopening-doubling: a long
+            # self-sufficient suit should be DESCRIBED, not doubled (bug bd25:
+            # 1H-X-P-2C with 7 hearts reopening-doubled instead of rebidding 3H).
+            if (opp_suit is not None and op.suit not in (None, Suit.NOTRUMP)
+                    and e.suit_lengths.get(op.suit, 0) >= 6):
+                last_lvl = state.last_level or 1
+                lvl = (last_lvl if _BID_RANK[op.suit] > _BID_RANK[opp_suit]
+                       else last_lvl + 1)
+                if e.hcp >= 15 and lvl < 4:
+                    lvl += 1
+                cand = bid(lvl, op.suit,
+                           why=f"{lvl}{op.suit.to_char()}: rebid "
+                               f"{e.suit_lengths[op.suit]}-card suit, not X")
+                if lvl <= 5 and _is_legal_bid(cand, state):
+                    return cand
             if (opp_suit is not None
                     and e.suit_lengths.get(opp_suit, 0) <= 2
                     and e.hcp >= 13):
@@ -7301,7 +7340,11 @@ def _overcall(state, e: HandEval, system) -> Bid:
         elif level == 2:
             if am_vulnerable:
                 ok = ((length >= 6 and suit_hcp >= 5 and hcp >= 11)
-                      or (length >= 5 and suit_hcp >= 8 and hcp >= 11))
+                      or (length >= 5 and suit_hcp >= 8 and hcp >= 11)
+                      # COMPETE: a sound 6-card suit (≥2 honours) + 11 HCP is a
+                      # fine 2-level overcall even vul (bug bd10: passed 2♣ with
+                      # ♣QJ9432 + 11 HCP, letting opps steal — UNDER-COMPETE).
+                      or (length >= 6 and suit_hcp >= 3 and hcp >= 11))
             else:
                 # NV 2-level overcall: standard 6+ card with Q-x-x
                 # quality at 10+ HCP. Also accept a 6+ card suit
@@ -7309,7 +7352,8 @@ def _overcall(state, e: HandEval, system) -> Bid:
                 # 2♣ with QXXXXX clubs and 13 HCP (seed=200 board 9).
                 ok = ((length >= 6 and suit_hcp >= 4 and hcp >= 10)
                       or (length >= 5 and suit_hcp >= 6 and hcp >= 10)
-                      or (length >= 6 and suit_hcp >= 2 and hcp >= 12))
+                      or (length >= 6 and suit_hcp >= 2 and hcp >= 12)
+                      or (length >= 6 and suit_hcp >= 3 and hcp >= 11))
             if ok and hcp <= 16:
                 return bid(level, s,
                            why=f"2{s.to_char()} natural overcall "
