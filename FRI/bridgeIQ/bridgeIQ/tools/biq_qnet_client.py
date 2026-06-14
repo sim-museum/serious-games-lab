@@ -1112,6 +1112,41 @@ class BiqClient:
 
     def _on_report_score(self, args: List[str]) -> None:
         self.log(f"SCORE: {args[0] if args else ''}")
+        self._review_partner_signals()
+
+    def _review_partner_signals(self) -> None:
+        """End-of-hand: review PARTNER's signals (reconstructed from the played
+        cards — no peeking) and let signal_trust escalate / auto-disable if the
+        partner mis-signals. Only when biq DEFENDED (a declarer has no partner
+        signals to read)."""
+        if not self.nopeek or self.contract is None \
+                or len(self.completed_tricks) < 1:
+            return
+        if self.my_seat.is_ns() == self.contract.declarer.is_ns():
+            return                                    # biq declared — nothing to read
+        try:
+            from backend import signal_read, signal_trust
+            if not getattr(self, "_trust_init", False):
+                signal_trust.reset(on_message=lambda m: self.log(f"[signals] {m}"))
+                self._trust_init = True
+            trump = (self.contract.suit
+                     if self.contract.suit != Suit.NOTRUMP else None)
+            board = BoardState(
+                board_number=self.board.board_number, dealer=self.board.dealer,
+                vulnerability=self.board.vulnerability,
+                hands={s: Hand(cards=[]) for s in Seat}, auction=[],
+                contract=self.contract, tricks=list(self.completed_tricks))
+            recs = signal_read.read(board, self.my_seat,
+                                    self.contract.declarer, trump)
+            signal_trust.review_hand(recs, set())
+            flag = signal_trust.status_flag()
+            if flag and not getattr(self, "_flag_shown", False):
+                self.log(f"[signals] {flag}")
+                self._flag_shown = True
+            elif not flag:
+                self._flag_shown = False
+        except Exception as e:
+            self.log(f"[signals] review error: {e}")
 
 
 def main(argv=None) -> int:
