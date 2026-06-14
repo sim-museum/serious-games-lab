@@ -4422,6 +4422,22 @@ def _precision_2d_rebid(state, e: HandEval, p_last: Bid, system) -> Bid:
 def _opener_rebid(state, e: HandEval, system: str) -> Bid:
     op = state.opening_bid
 
+    # Opener with EXTRAS must not pass below game opposite an invitation. If
+    # responder made an invitational JUMP rebid of its own major (e.g. 1S then
+    # 3S) in an uncontested auction, accept to game with 16+ HCP and 2+ support
+    # (bug bd59: 1H-1S-2D-3S, opener 19 HCP passed 3S instead of bidding 4S).
+    pb = list(state.partner_bids)
+    opps_acted = any(not b.is_pass for b in
+                     (list(state.lho_bids) + list(state.rho_bids)))
+    if (len(pb) >= 2 and e.hcp >= 16 and not opps_acted
+            and pb[-1].suit in (Suit.HEARTS, Suit.SPADES)
+            and pb[-1].level == 3
+            and any(x.suit == pb[-1].suit and x.level == 1 for x in pb[:-1])
+            and e.suit_lengths.get(pb[-1].suit, 0) >= 2):
+        return bid(4, pb[-1].suit,
+                   why=f"Accept invitational jump: 4{pb[-1].suit.to_char()} "
+                       f"({e.hcp} HCP + {e.suit_lengths[pb[-1].suit]} support)")
+
     if not state.partner_bids:
         # Partner has only passed so far. When opps overcalled AND
         # advanced into a fit, opener with extras + shortness in
@@ -7313,7 +7329,15 @@ def _overcall(state, e: HandEval, system) -> Bid:
     #   S held S♠Tx H♠AKQ96 D♠AQJ6 C♠Jx (17 HCP, 5-4-2-2) and biq passed
     #   because all four paths failed — Q-Plus made the takeout-X and
     #   collected +1100 from a doomed 3HX-E later in the auction.
-    if hcp >= 12 and e.suit_lengths[op.suit] <= 2:
+    # A shape-based takeout double is only safe through the 3-level. Once the
+    # opponents have FREELY bid game (4+), a double is PENALTY and needs real
+    # DEFENSIVE tricks, not takeout shape — doubling a cold game on side-suit
+    # honours that just get ruffed is a disaster (bug bd22: 13 HCP / 2.0 QT,
+    # singleton trump + ♣AKQJ6, doubled 4♥ that makes 12 DD for −1390). Above
+    # the 3-level, pass unless we hold genuine defence.
+    contract_level = state.last_level or op.level
+    if (hcp >= 12 and e.suit_lengths[op.suit] <= 2
+            and contract_level <= 3):
         unbid_lengths = [e.suit_lengths[s] for s in unbid]
         # Strong takeout (17+ HCP): relax the 3-card unbid rule to
         # allow ONE 2-card unbid suit. Only on our FIRST action —
