@@ -5718,6 +5718,32 @@ def _responder_rebid(state, e: HandEval, system) -> Bid:
             and state.my_bids[0].suit == Suit.NOTRUMP):
         return _precision_2d_relay_followup(state, e, p_last)
 
+    # Jacoby transfer COMPLETION: 1NT - 2D/2H (transfer) - opener accepts. I
+    # showed 5+ in the major; place the contract by strength instead of PASSING
+    # the completion (bug bd37: 1NT-2H-2S-Pass with 14 HCP dropped a cold game).
+    if (op.suit == Suit.NOTRUMP and op.level == 1
+            and len(state.my_bids) == 1
+            and state.my_bids[0].level == 2
+            and state.my_bids[0].suit in (Suit.DIAMONDS, Suit.HEARTS)):
+        major = (Suit.HEARTS if state.my_bids[0].suit == Suit.DIAMONDS
+                 else Suit.SPADES)
+        mlen = e.suit_lengths.get(major, 0)
+        if mlen >= 5 and p_last.suit == major:   # opener accepted the transfer
+            hcp = e.hcp
+            if hcp <= 7:
+                return passb(why=f"Transfer signoff in {major.to_char()} (weak)")
+            if hcp <= 9:
+                return (bid(3, major, why="Transfer then invite (6+ major)")
+                        if mlen >= 6 else
+                        bid(2, Suit.NOTRUMP, why="Transfer then invite (5 major)"))
+            if hcp >= 16:
+                return bid(4, Suit.NOTRUMP, alert=True,
+                           why=f"Transfer then quant slam-try ({hcp} HCP)")
+            return (bid(4, major, why="Transfer then game (6+ major)")
+                    if mlen >= 6 else
+                    bid(3, Suit.NOTRUMP,
+                        why="Transfer then game (5 major, choice of games)"))
+
     # If partner showed extras, drive to game; if min, settle
     return _generic_responder_rebid(state, e, p_last, system)
 
@@ -6683,6 +6709,25 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
         if hcp >= 6:
             return bid(1, Suit.NOTRUMP, why="1NT: 6-9, no fit")
         return passb()
+
+    # FALLBACK — never ABANDON a long suit. If my first response was a suit I
+    # hold 6+ of and opener neither raised it nor we found a better strain,
+    # REBID it rather than passing the auction out (bug bd59: 1H-1S-2D with 7
+    # spades passed instead of rebidding spades — dropping cold games/slams).
+    if (state.my_bids and state.my_bids[0].suit not in (None, Suit.NOTRUMP)
+            and e.suit_lengths.get(state.my_bids[0].suit, 0) >= 6
+            and opener_rebid.suit != state.my_bids[0].suit):
+        my_suit = state.my_bids[0].suit
+        rank = {Suit.CLUBS: 0, Suit.DIAMONDS: 1, Suit.HEARTS: 2,
+                Suit.SPADES: 3, Suit.NOTRUMP: 4}
+        lvl = (opener_rebid.level if rank[my_suit] > rank[opener_rebid.suit]
+               else opener_rebid.level + 1)
+        if hcp >= 10 and lvl < 4:
+            lvl += 1                              # invitational+ — push on
+        if lvl <= 7:
+            return bid(lvl, my_suit,
+                       why=f"Rebid {e.suit_lengths[my_suit]}-card "
+                           f"{my_suit.to_char()} ({hcp} HCP) — don't abandon it")
 
     return passb()
 
