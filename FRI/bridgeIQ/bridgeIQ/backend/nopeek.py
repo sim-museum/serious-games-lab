@@ -426,8 +426,10 @@ _DEF_ROLLOUT = os.environ.get("BIQ_DEF_ROLLOUT", "0") == "1"  # defence rollout
 # (realistic no-peek partner) INSTEAD of alpha-mu defence's perfect-DD partner
 _DEF_ROLLOUT_LEAF = os.environ.get("BIQ_DEF_ROLLOUT_LEAF", "0") == "1"  # alpha-mu
 # defence with a realistic-partner ROLLOUT leaf (vs the perfect-DD DDS leaf)
-_READ_SIGNALS = os.environ.get("BIQ_READ_SIGNALS", "0") == "1"  # hard-filter the
-# defence sampler by PARTNER's signals (convention-inversion); see signal_read
+_READ_SIGNALS = os.environ.get("BIQ_READ_SIGNALS", "1") == "1"  # hard-filter the
+# defence sampler by PARTNER's signals (convention-inversion); see signal_read.
+# Default ON now that emitter/reader are aligned (net-positive) and the
+# signal_trust auto-disable protects against an unreliable (human) partner.
 _SIGNAL_MARGIN = float(os.environ.get("BIQ_SIGNAL_MARGIN", "0.15"))  # trick
 # budget for RELIABLE signalling: widen the alpha-mu tie set so biq always plays
 # the convention card among cards it rates within 0.15 tr of best (alpha-mu's
@@ -467,10 +469,12 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
         known_seats, biq_seats = {seat, dummy}, {seat}
     else:
         known_seats, biq_seats = {declarer, dummy}, {declarer, dummy}
-    if defending and _READ_SIGNALS:
+    from . import signal_trust
+    if defending and _READ_SIGNALS and signal_trust.reading_active():
         # HARD-FILTER the sampled partner hands by partner's own signals: keep
         # only layouts biq's convention would have produced (legitimate info —
         # partner is telling us). Over-sample, filter, fall back if too few.
+        # Gated by signal_trust so an unreliable partner gets auto-tuned out.
         from . import signal_read
         recs = signal_read.read(b, seat, declarer, trump)
         raw, hidden = declarer_search._sample_defenders(
