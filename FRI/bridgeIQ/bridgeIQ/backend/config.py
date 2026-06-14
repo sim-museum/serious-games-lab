@@ -79,7 +79,9 @@ class PreferencesConfig:
     moved_cards_speed: float = 0.5
     language: str = "eng"
     use_double_dummy_play: bool = False
-    use_monte_carlo_play: bool = True  # Monte Carlo simulation (default - strongest)
+    use_monte_carlo_play: bool = True  # Monte Carlo simulation (MC+DDS fallback)
+    use_nopeek_play: bool = True  # no-peek alpha-mu engine (default - strongest;
+    # never peeks at hidden cards, signals + reads partner signals)
     legacy_colors: bool = False  # Use legacy 2-color mode (red and black only)
     show_ben_bid_analysis: bool = False  # Show BEN bid analysis panel (disabled by default)
     # Which engine bots consult for bidding. "native" → the rule-based

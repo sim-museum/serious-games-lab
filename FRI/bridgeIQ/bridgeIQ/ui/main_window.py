@@ -104,6 +104,18 @@ class EngineWorker(QThread):
                 response = bidder.get_bid(self.board, self.seat)
                 self.bid_ready.emit(response)
             elif self.task == 'card':
+                from backend.config import get_config_manager
+                prefs = get_config_manager().config.preferences
+                # NO-PEEK engine (default, strongest): alpha-mu single-dummy that
+                # never sees hidden cards, emits + reads standard signals. It
+                # handles the opening lead itself (native_lead).
+                if getattr(prefs, 'use_nopeek_play', True):
+                    from backend import nopeek
+                    from backend.engine import EngineResponse
+                    card = nopeek.decide(self.board, self.seat, self.trick_cards)
+                    self.card_ready.emit(EngineResponse(action=card,
+                                                        who="no-peek"))
+                    return
                 # Check if this is the opening lead (first card of play phase)
                 # Opening lead: no tricks completed yet and current trick is empty
                 is_opening_lead = (
@@ -114,8 +126,6 @@ class EngineWorker(QThread):
                     response = self.engine.get_opening_lead(self.board)
                 else:
                     # Route to the selected play engine
-                    from backend.config import get_config_manager
-                    prefs = get_config_manager().config.preferences
                     if prefs.use_monte_carlo_play:
                         response = self.engine.get_mc_card_play(
                             self.board, self.seat, self.trick_cards
@@ -357,6 +367,7 @@ class GameController:
             # Check if play is complete
             if len(self.board.tricks) == 13:
                 self.current_phase = 'finished'
+                self._review_human_signals()
                 return True
 
             # Enter waiting state for "Next Card" button
@@ -367,6 +378,27 @@ class GameController:
             self.current_seat = self.current_seat.next()
 
         return True
+
+    def _review_human_signals(self):
+        """At hand-end, review each HUMAN defender's signals (biq reads them to
+        sharpen its defence). signal_trust escalates complain/warn/auto-disable
+        if the human mis-signals; messages + the on-screen flag flow via the
+        on_message callback the main window registered at reset()."""
+        try:
+            from backend import signal_read, signal_trust
+            c = self.board.contract
+            if c is None:
+                return
+            decl = c.declarer
+            trump = c.suit if c.suit != Suit.NOTRUMP else None
+            humans = [s for s, p in self.players.items()
+                      if p.player_type == PlayerType.HUMAN
+                      and s.is_ns() != decl.is_ns()]   # human DEFENDERS only
+            for h in humans:
+                recs = signal_read.read(self.board, h.partner(), decl, trump)
+                signal_trust.review_hand(recs, set())
+        except Exception:
+            pass
 
     def advance_to_next_trick(self):
         """Called when user clicks Next Card after a trick completes"""
@@ -815,6 +847,11 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(content_widget, stretch=1)
 
+        # Q-Plus-style status strip: deal number + source on the left, both
+        # pairs' bidding systems on the right. (Per-seat network/Computer
+        # icons live on the table itself, next to each seat label.)
+        self._setup_status_strip(main_layout)
+
         # Bottom toolbar container
         self.toolbar_container = QFrame()
         self.toolbar_container.setStyleSheet(f"""
@@ -826,6 +863,78 @@ class MainWindow(QMainWindow):
         self.toolbar_container.setFixedHeight(45)
 
         main_layout.addWidget(self.toolbar_container)
+
+    def _setup_status_strip(self, main_layout):
+        """A thin Q-Plus-style status strip under the table: deal number +
+        source on the left, both pairs' bidding systems on the right. The
+        per-seat network/Computer icons live on the table itself."""
+        self.status_strip = QFrame()
+        self.status_strip.setStyleSheet(
+            "QFrame { background-color: #1f3b44; "
+            "border-top: 1px solid #3a6a7a; } QLabel { color: #e6f0f2; }")
+        self.status_strip.setFixedHeight(24)
+        row = QHBoxLayout(self.status_strip)
+        row.setContentsMargins(8, 0, 8, 0)
+        self.deal_info_label = QLabel("Deal: —")
+        self.deal_info_label.setFont(QFont("Arial", 10))
+        self.systems_strip_label = QLabel("")
+        self.systems_strip_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        row.addWidget(self.deal_info_label)
+        row.addStretch(1)
+        row.addWidget(self.systems_strip_label)
+        main_layout.addWidget(self.status_strip)
+        self._refresh_status_strip()
+
+    def _deal_source_str(self):
+        """(board_number, pavlicek-id-or-None) for the current deal. The
+        Pavlicek id (biq's analog of Q-Plus's deal source) is computed once
+        from the full 52-card deal and cached on the board, so it survives
+        the hands depleting during play."""
+        board = getattr(getattr(self, 'controller', None), 'board', None)
+        if board is None:
+            return None, None
+        num = getattr(board, 'board_number', None)
+        src = getattr(board, '_pavlicek_src', None)
+        if src is None:
+            try:
+                hands = board.hands
+                if hands and sum(len(hands[s].cards) for s in Seat) == 52:
+                    src = format_deal_base72(deal_to_number(hands))
+                    board._pavlicek_src = src
+            except Exception:
+                src = None
+        return num, src
+
+    def _refresh_status_strip(self):
+        """Repaint the deal/source + both-pair-systems strip. Cheap; safe to
+        call from deal load, network (re)config, and system switches."""
+        if not hasattr(self, 'deal_info_label'):
+            return
+        num, src = self._deal_source_str()
+        net = (getattr(self, 'network_controller', None) is not None
+               and getattr(self.network_controller, 'is_active', False))
+        origin = "network" if net else "local"
+        parts = []
+        if num is not None:
+            parts.append(f"Deal #{num}")
+        parts.append(f"src {origin}:{src}" if src else f"src {origin}")
+        self.deal_info_label.setText("   ·   ".join(parts))
+        try:
+            ns = self._active_bidding_system('NS')
+            ew = self._active_bidding_system('EW')
+            self.systems_strip_label.setText(
+                f"NS: {ns.name}      EW: {ew.name}")
+        except Exception:
+            self.systems_strip_label.setText("")
+
+    def _push_seat_types_to_table(self):
+        """Mirror the controller's per-seat player types onto the table so
+        each seat label shows the right icon (👤/🖥/🖧)."""
+        try:
+            mapping = {s: self.controller.players[s].player_type for s in Seat}
+            self.table_view.set_seat_types(mapping)
+        except Exception:
+            pass
 
     def _setup_menus(self):
         """Setup the menu bar"""
@@ -981,6 +1090,10 @@ class MainWindow(QMainWindow):
         repeat_action.triggered.connect(self._on_repeat_deal)
         deal_menu.addAction(repeat_action)
 
+        variations_action = QAction("&Variations…", self)
+        variations_action.triggered.connect(self._on_deal_variations)
+        deal_menu.addAction(variations_action)
+
         prev_deal_action = QAction("&Previous Deal", self)
         prev_deal_action.setShortcut(Qt.Key.Key_F4)
         prev_deal_action.triggered.connect(self._on_previous_deal)
@@ -1089,6 +1202,19 @@ class MainWindow(QMainWindow):
         self.flowchart_action.triggered.connect(
             self._on_show_bidding_flowchart)
         view_menu.addAction(self.flowchart_action)
+
+        # Defensive carding: explain the meaning of the most
+        # recently played defensive card under the configured
+        # signaling conventions (attitude / count / suit-
+        # preference / UDCA polarity). Q-Plus's "Display meaning
+        # of signals and conventional treatments in defense" —
+        # backed by backend.signal_explainer.
+        self.signal_meaning_action = QAction(
+            "Explain last &signal…", self)
+        self.signal_meaning_action.setShortcut("Ctrl+Shift+S")
+        self.signal_meaning_action.triggered.connect(
+            self._on_explain_last_signal)
+        view_menu.addAction(self.signal_meaning_action)
 
         view_menu.addSeparator()
 
@@ -1633,6 +1759,24 @@ class MainWindow(QMainWindow):
         self.engine_status.setStyleSheet(f"color: {COLORS['text_white']};")
         statusbar.addPermanentWidget(self.engine_status)
 
+        # Flag shown when biq has stopped reading partner's (your) signals
+        # because they were unreliable. Hidden until that happens.
+        self.signal_flag = QLabel("")
+        self.signal_flag.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        self.signal_flag.setStyleSheet("color: #ffcc00;")
+        statusbar.addPermanentWidget(self.signal_flag)
+
+    def _on_signal_note(self, msg: str):
+        """After-hand signalling feedback from signal_trust (complain/warn/
+        disable/recover). Shown in the status bar; the persistent ⛔ flag tracks
+        whether biq is currently reading the human's signals."""
+        try:
+            from backend import signal_trust
+            self.status_label.setText(msg)
+            self.signal_flag.setText(signal_trust.status_flag() or "")
+        except Exception:
+            pass
+
     def _connect_signals(self):
         """Connect UI signals"""
         self.table_view.card_played.connect(self._on_card_played)
@@ -1701,6 +1845,18 @@ class MainWindow(QMainWindow):
                               "The bridge engine is not yet initialized.")
             return
 
+        # Register signal-trust ONCE per app session (not per deal) so the
+        # partner-signal pressure accumulates ACROSS hands — that's what lets
+        # "if it keeps happening" escalate complain -> warn -> auto-disable.
+        try:
+            from backend import signal_trust
+            if not getattr(self, '_signal_trust_init', False):
+                signal_trust.reset(on_message=self._on_signal_note)
+                self._signal_trust_init = True
+                self.signal_flag.setText("")
+        except Exception:
+            pass
+
         # If in teams match mode, use the teams board method
         if self.teams_match is not None and self.match_controller is not None:
             # Advance to next board in teams match
@@ -1760,6 +1916,7 @@ class MainWindow(QMainWindow):
         self.next_card_btn.setEnabled(False)
 
         self.status_label.setText(f"Board {board.board_number}: {board.dealer.to_char()} deals")
+        self._refresh_status_strip()
 
         # One-Player runtime — give the user the manual hand-entry
         # dialog so the seat they're playing carries the hand they
@@ -2666,6 +2823,164 @@ For more information, see the README file."""
                                    f"The {table.value} room result for board {board_num} "
                                    "is not yet available.")
 
+    def _on_explain_last_signal(self):
+        """View → Explain last signal… — interpret the most recent
+        defensive card under the configured signal conventions and
+        pop the explanation. Q-Plus's "Display of meaning of
+        signals + conventional treatments in defense"."""
+        board = self.controller.board
+        if (board is None or board.contract is None
+                or not (board.tricks or board.current_trick)):
+            QMessageBox.information(
+                self, "No defensive card yet",
+                "Play has to be under way for a signal to interpret.")
+            return
+        # Find the most recent defensive card. Walk backwards
+        # through the current trick, then the completed tricks.
+        from backend.signal_explainer import (
+            SignalConfig, explain_defensive_card,
+        )
+        declarer = board.contract.declarer
+        defensive_side_ns = not declarer.is_ns()
+        last_def_card = None
+        last_def_seat = None
+        last_def_trick_idx = None
+        last_def_position = None
+        candidate_tricks = []
+        if board.current_trick and board.current_trick.cards:
+            candidate_tricks.append(
+                (len(board.tricks), board.current_trick))
+        for ti, tr in reversed(list(enumerate(board.tricks))):
+            candidate_tricks.append((ti, tr))
+        for trick_idx, trick in candidate_tricks:
+            seat = trick.leader
+            for pos, c in enumerate(trick.cards):
+                if seat.is_ns() == defensive_side_ns:
+                    last_def_card = c
+                    last_def_seat = seat
+                    last_def_trick_idx = trick_idx
+                    last_def_position = pos
+                seat = seat.next()
+            if last_def_card is not None:
+                break
+        if last_def_card is None:
+            QMessageBox.information(
+                self, "No defensive card",
+                "No defensive card has been played yet.")
+            return
+        # Figure out the rest of the context for the explainer.
+        trick = (board.tricks[last_def_trick_idx]
+                 if last_def_trick_idx < len(board.tricks)
+                 else board.current_trick)
+        led_suit = trick.cards[0].suit if trick.cards else None
+        partner_seat = last_def_seat.partner()
+        led_by_partner = (trick.leader == partner_seat)
+        trump = (board.contract.suit
+                 if board.contract.suit != Suit.NOTRUMP else None)
+        # Prior cards by this defender in this suit, this hand.
+        prior_in_suit: list = []
+        for t in board.tricks[:last_def_trick_idx] + (
+                [board.current_trick]
+                if (last_def_trick_idx >= len(board.tricks)
+                    and board.current_trick is not None) else []):
+            if t is None or not t.cards:
+                continue
+            seat = t.leader
+            for c in t.cards:
+                if (seat == last_def_seat
+                        and c.suit == last_def_card.suit
+                        and c is not last_def_card):
+                    prior_in_suit.append(c)
+                seat = seat.next()
+        is_discard = (led_suit is not None
+                      and last_def_card.suit != led_suit
+                      and last_def_card.suit != trump)
+        cfg_mgr = get_config_manager()
+        cfg = cfg_mgr.config
+        sig_str = (cfg.signal_conventions_ns.signal_string
+                   if last_def_seat.is_ns()
+                   else cfg.signal_conventions_ew.signal_string)
+        sig_cfg = SignalConfig.from_signal_string(sig_str)
+        explanation = explain_defensive_card(
+            card=last_def_card,
+            defender=last_def_seat,
+            trick_index=last_def_trick_idx,
+            position_in_trick=last_def_position,
+            led_by_partner=led_by_partner,
+            led_suit=led_suit,
+            trump_suit=trump,
+            prior_cards_in_suit_by_defender=prior_in_suit,
+            is_discard=is_discard,
+            signal_config=sig_cfg,
+        )
+        if explanation is None:
+            explanation = ("No clean signal applies to this card "
+                           "(forced play or third-and-later card).")
+        QMessageBox.information(
+            self, f"Signal — {last_def_seat.to_char()}",
+            f"Trick {last_def_trick_idx + 1}, position "
+            f"{last_def_position + 1}: {last_def_seat.to_char()} "
+            f"played\n\n  {explanation}")
+
+    def _on_deal_variations(self):
+        """Deal → Variations… — replay the current deal with a
+        structural transform applied (swap two hands, exchange two
+        suits, rotate the table). Q-Plus's `Deal → Variations`
+        feature. The dealer + vulnerability are preserved so the
+        auction context is the same — only the cards move.
+
+        Mutates the current board's hands in place and resets the
+        auction / play state, matching what `_on_repeat_deal` does
+        for an auction-restart replay.
+        """
+        if not self.controller.board:
+            QMessageBox.information(
+                self, "No deal", "Start a deal first.")
+            return
+        from .dialogs.deal_variations import (
+            DealVariationsDialog, apply_variation,
+        )
+        dlg = DealVariationsDialog(self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        key = dlg.chosen_key()
+        if key is None:
+            return
+        try:
+            new_board = apply_variation(self.controller.board, key)
+        except ValueError as ex:
+            QMessageBox.warning(
+                self, "Variation failed", str(ex))
+            return
+        # In-place mutation, matching the `_on_repeat_deal` pattern.
+        board = self.controller.board
+        for s in Seat:
+            if s in new_board.hands:
+                board.hands[s] = Hand(
+                    cards=list(new_board.hands[s].cards))
+        board.tricks = []
+        board.current_trick = None
+        board.declarer_tricks = 0
+        board.defense_tricks = 0
+        board.auction = []
+        board.contract = None
+        self.controller.current_phase = 'bidding'
+        self.controller.current_seat = board.dealer
+        self.controller.declarer = None
+        self.controller.dummy = None
+        self.original_hands = {
+            s: Hand(cards=list(board.hands[s].cards))
+            for s in Seat if s in board.hands
+        }
+        self.table_view.set_board(board)
+        self.bidding_box.clear()
+        self.bidding_box.set_auction([], board.dealer)
+        self.bidding_box.setVisible(True)
+        self.status_label.setText(
+            f"Variation applied ({key}) — replay this hand and "
+            "compare to the original")
+        self._advance_game()
+
     def _on_repeat_deal(self):
         """Replay the just-finished deal — Q-Plus `.repeat-f`. Pops
         the Repeat Deal modal to let the user choose whether to
@@ -2911,7 +3226,7 @@ For more information, see the README file."""
             self.next_card_btn.setEnabled(False)
 
             self.status_label.setText(f"Board {board.board_number}: {board.dealer.to_char()} deals")
-
+            self._refresh_status_strip()
             self._advance_game()
 
         except ValueError as e:
@@ -2988,6 +3303,7 @@ For more information, see the README file."""
         self.next_card_btn.setEnabled(False)
 
         self.status_label.setText(f"Board {board.board_number}: {board.dealer.to_char()} deals")
+        self._refresh_status_strip()
         self._advance_game()
 
     def _on_save_entered_deals(self):
@@ -3292,6 +3608,8 @@ For more information, see the README file."""
             except Exception:
                 pass
             self._update_available_bids()
+        # Keep the bottom status strip's NS/EW systems in sync.
+        self._refresh_status_strip()
 
     @staticmethod
     def _format_system_summary(spec) -> str:
@@ -4325,6 +4643,7 @@ For more information, see the README file."""
         self.controller.board = board
         self.controller.current_phase = 'bidding'
         self.controller.current_seat = board.dealer
+        self._refresh_status_strip()
 
         # DIAGNOSTIC — surface enough to debug "guest sees no cards":
         # which seat the local user is at, what cards arrived per seat,
@@ -4494,6 +4813,9 @@ For more information, see the README file."""
         for seat in Seat:
             player_type = self.network_controller.get_player_type_for_seat(seat)
             self.controller.players[seat].player_type = player_type
+        # Surface who's network/Computer on the table + strip.
+        self._push_seat_types_to_table()
+        self._refresh_status_strip()
 
     def _configure_single_player(self):
         """Revert to single-player mode (South-as-human, no rotation)."""
@@ -4508,6 +4830,8 @@ For more information, see the README file."""
         # showing the wrong hand on the next deal.
         self._user_seat = Seat.SOUTH
         self.table_view.set_local_seat(Seat.SOUTH)
+        self._push_seat_types_to_table()
+        self._refresh_status_strip()
 
     def _start_network_game(self):
         """Start a network game (server generates deal)."""
@@ -4550,6 +4874,7 @@ For more information, see the README file."""
 
         self._set_toolbar_mode('ingame')
         self.status_label.setText(f"Board {board.board_number}: {board.dealer.to_char()} deals")
+        self._refresh_status_strip()
         self._advance_game()
 
     def _is_waiting_for_remote(self) -> bool:
