@@ -83,16 +83,33 @@ def read(board: BoardState, seat: Seat, declarer: Seat,
             continue                                   # partner won — not a signal
         attitude = t.leader.is_ns() == seat.is_ns()    # our suit -> attitude
         later = {j: c for j, c in pplayed.items() if j >= i}
-        out.append({"trick": i, "suit": led, "attitude": attitude,
-                    "card52": _c52(pcard), "played": later})
+        ppos = (partner.value - t.leader.value) % 4
+        before = [_c52(c) for c in t.cards[:ppos]]
+        out.append({"trick": i, "suit": led.value, "attitude": attitude,
+                    "card52": _c52(pcard), "played": later, "before": before,
+                    "trump": None if trump is None else trump.value})
     return out
+
+
+def _could_win(rec: dict, in_suit: list) -> bool:
+    """Could partner have WON the trick when it played (so its card was a real
+    win-or-duck decision, not a pure signal)? Matches the emitter, which only
+    signals deterministically when it cannot win."""
+    led, tr = rec["suit"], rec["trump"]
+    before = rec["before"]
+    if tr is not None and led != tr and any(_suit_i(c) == tr for c in before):
+        return False                       # ruffed before us — following can't win
+    best = min((_rank_i(c) for c in before if _suit_i(c) == led), default=99)
+    return any(_rank_i(c) < best for c in in_suit)   # we hold a higher card
 
 
 def _convention_card(rec: dict, hand_at_trick: set) -> Optional[int]:
     """The c52 biq's convention would play from `hand_at_trick` for `rec`, or
     None if there was no free choice (so nothing to read)."""
-    suit = rec["suit"].value
+    suit = rec["suit"]
     in_suit = [c for c in hand_at_trick if _suit_i(c) == suit]
+    if _could_win(rec, in_suit):
+        return None                          # was a win-or-duck choice, not a signal
     spots = [c for c in in_suit if _rank_i(c) > _HONOUR + 1] or in_suit
     if len(spots) < 2:
         return None

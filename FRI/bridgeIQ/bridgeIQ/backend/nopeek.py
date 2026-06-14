@@ -568,6 +568,19 @@ def decide(board: BoardState, seat: Seat,
     # hidden too, so defence samples declarer + partner).
     if search and board.contract is not None:
         defending = seat.is_ns() != declarer.is_ns()
+        # PURE-SIGNAL situation: defending, following the led suit, and unable to
+        # win the trick. The choice among our spots is trick-neutral here, so we
+        # play the STANDARD signal among ALL legal cards — exactly what
+        # signal_read inverts — making biq a perfectly READABLE signaller (so a
+        # partner reading these signals never filters out biq's true hand).
+        # Bypass alpha-mu for this card only.
+        if (defending and lead_suit is not None and legal
+                and legal[0].suit == lead_suit):
+            wi = _winning_index(trick, trump)
+            if not any(_beats(c, trick[wi], lead_suit, trump) for c in legal):
+                from . import signals as _sig
+                return _sig.choose_signal_card(legal, b, seat, trick,
+                                               declarer, trump)
         amc = None
         if defending and _DEF_ROLLOUT:
             amc = _defense_rollout_card(b, seat, trick, declarer, trump, legal)
