@@ -2386,6 +2386,20 @@ def _maybe_slam_try(state: AuctionState, eval_: HandEval,
                        f"combined HCP")
         if _is_legal_bid(cand, state):
             return cand
+    # Self-sufficient 6+ suit I have SHOWN, no agreed fit: treat my own long
+    # strong suit as trump and drive RKC (captures unagreed-fit slams — bd11:
+    # 1S opener with AQJT63 + 19 HCP whose partner never raised spades).
+    if tr is None and combined >= 31:
+        for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
+            if (eval_.suit_lengths.get(s, 0) >= 6
+                    and eval_.suit_hcp.get(s, 0) >= 5
+                    and any(b.suit == s and not b.is_pass
+                            for b in state.my_bids)):
+                cand = bid(4, Suit.NOTRUMP, alert=True,
+                           why=f"RKC: self-sufficient {s.to_char()}, "
+                               f"~{combined}+ HCP")
+                if _is_legal_bid(cand, state):
+                    return cand
     # NT slam: no fit but balanced and combined >= 33 -> quantitative 4NT.
     if (tr is None and (eval_.is_balanced or eval_.is_semi_balanced)
             and combined >= 33):
