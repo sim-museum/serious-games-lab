@@ -2304,6 +2304,98 @@ def _partner_was_forcing(state: AuctionState) -> bool:
     return False
 
 
+def _slam_already_explored(state: AuctionState) -> bool:
+    for _s, b in state.bids:
+        if b.is_pass or b.is_double or b.is_redouble:
+            continue
+        if b.level >= 5:
+            return True
+        if b.level == 4 and b.suit == Suit.NOTRUMP:
+            return True
+    return False
+
+
+def _opening_min_hcp(b: Bid) -> int:
+    if b.suit is None:
+        return 0
+    if b.level == 1:
+        return 15 if b.suit == Suit.NOTRUMP else 12
+    if b.level == 2 and b.suit in (Suit.NOTRUMP, Suit.CLUBS):
+        return 20                         # strong 2NT / 2C (Precision 2C ~ too)
+    return 5                              # weak two / three-level preempt
+
+
+def _response_min_hcp(b: Bid, opening: Optional[Bid]) -> int:
+    """Partner's FIRST response to MY opening (conservative floor)."""
+    if b.suit is None or opening is None:
+        return 6
+    # 2-over-1 GF: non-jump 2-level new lower-ranking suit over a 1-of-suit open.
+    if (opening.level == 1 and opening.suit != Suit.NOTRUMP
+            and b.level == 2 and b.suit not in (Suit.NOTRUMP, opening.suit)
+            and _BID_RANK[b.suit] < _BID_RANK[opening.suit]):
+        return 12
+    # Jacoby 2NT (1M-2NT): GF raise with a fit.
+    if (opening.suit in (Suit.HEARTS, Suit.SPADES) and opening.level == 1
+            and b.level == 2 and b.suit == Suit.NOTRUMP):
+        return 13
+    # 3-level jump raise of opener's suit — limit+.
+    if b.level >= 3 and b.suit == opening.suit:
+        return 10
+    return 6                              # 1-level / single raise / 1NT — floor
+
+
+def _partner_min_hcp(state: AuctionState) -> int:
+    """Conservative estimate of partner's SHOWN minimum HCP — a floor, used only
+    to GATE slam exploration (under-estimating just misses a slam; over-
+    estimating bids a phantom, which is worse, so we stay conservative)."""
+    partner = state.seat.partner()
+    if not state.partner_bids:
+        return 0
+    partner_opened = (state.opener_seat == partner)
+    for b in state.partner_bids:
+        if b.is_pass or b.is_double or b.is_redouble or b.suit is None:
+            continue
+        return (_opening_min_hcp(b) if partner_opened
+                else _response_min_hcp(b, state.opening_bid))
+    return 0
+
+
+def _maybe_slam_try(state: AuctionState, eval_: HandEval,
+                    system) -> Optional[Bid]:
+    """Initiate slam exploration before the role logic signs off in game — the
+    −385 MISSED-SLAM leak (biq reaches game then parks). Gated on a real
+    COMBINED-value floor (my HCP + partner's shown minimum) so it fires only in
+    the true slam zone, not on a strong hand opposite a minimum partner."""
+    if any(not b.is_pass for b in
+           (list(state.rho_bids) + list(state.lho_bids))):
+        return None                       # uncontested only
+    if eval_.hcp < 14 or _slam_already_explored(state):
+        return None                       # the driving hand needs values
+    last_level = state.last_level or 1
+    if not (3 <= last_level <= 4):
+        return None
+    combined = eval_.hcp + _partner_min_hcp(state)
+    ctx = derive_context(state)
+    tr = getattr(ctx, "trump", None)
+    # Suit slam: AGREED trump fit I also hold, combined >= 31 -> RKC.
+    if (tr is not None and tr.suit in (Suit.SPADES, Suit.HEARTS,
+                                       Suit.DIAMONDS, Suit.CLUBS)
+            and eval_.suit_lengths.get(tr.suit, 0) >= 3 and combined >= 30):
+        cand = bid(4, Suit.NOTRUMP, alert=True,
+                   why=f"RKC: agreed {tr.suit.to_char()} fit, ~{combined}+ "
+                       f"combined HCP")
+        if _is_legal_bid(cand, state):
+            return cand
+    # NT slam: no fit but balanced and combined >= 33 -> quantitative 4NT.
+    if (tr is None and (eval_.is_balanced or eval_.is_semi_balanced)
+            and combined >= 33):
+        cand = bid(4, Suit.NOTRUMP, alert=True,
+                   why=f"Quantitative 4NT: balanced, ~{combined}+ combined HCP")
+        if _is_legal_bid(cand, state):
+            return cand
+    return None
+
+
 def _safe_forced_bid(state: AuctionState, eval_: HandEval,
                      system) -> Optional[Bid]:
     """Pick a conservative continuation when we shouldn't pass.
@@ -2706,6 +2798,14 @@ def _decide_bid_impl(state: AuctionState, eval_: HandEval, system) -> Bid:
     cb = _try_cuebid_pipeline(state, eval_, system)
     if cb is not None:
         return cb
+
+    # SLAM-TRY INITIATION — before the natural role logic parks us in game, the
+    # driving hand in an uncontested slam-zone auction (combined HCP floor +
+    # agreed fit, or balanced) starts RKC / quantitative 4NT. Intercepts every
+    # game sign-off the role logic would otherwise produce (the −385 leak).
+    sl = _maybe_slam_try(state, eval_, system)
+    if sl is not None:
+        return sl
 
     partner = state.seat.partner()
     is_my_partnership_opener = (state.opener_seat in (state.seat, partner))
