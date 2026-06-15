@@ -14,10 +14,12 @@
 using ModelingToolkit
 using ModelingToolkit: t_nounits as t, D_nounits as D
 
-# Cosworth-DFV-like torque curve [N·m] (heuristic — fit to telemetry later via
-# T_wheel = I·ω̇ + Fx·Rw from acceleration runs).  Smooth in rpm & throttle.
-function engine_torque(rpm, throttle; Tpeak = 360.0, rpm_peak = 7500.0,
-                       spread = 4500.0, redline = 9500.0, eb = 0.012, Tmin_frac = 0.2)
+# Cosworth-DFV torque curve [N·m], FIT to telemetry (fit/fit_engine.jl): peak
+# 409 N·m at ~8200 rpm, matching WOT straight-line accel across 4400–7100 rpm
+# (rpm_peak pinned to the DFV-realistic range since clean accel data only reveals
+# the rising part).  Smooth in rpm & throttle.  ±~20% absolute (CdA/η/Rw/inertia).
+function engine_torque(rpm, throttle; Tpeak = 409.0, rpm_peak = 8211.0,
+                       spread = 6000.0, redline = 9500.0, eb = 0.012, Tmin_frac = 0.2)
     wot = Tpeak * max(Tmin_frac, 1 - ((rpm - rpm_peak)/spread)^2)   # WOT torque
     cut = 0.5*(1 - tanh((rpm - redline)/200.0))                     # smooth redline fuel cut
     throttle*wot*cut - (1 - throttle)*eb*rpm                        # blend WOT ↔ engine braking

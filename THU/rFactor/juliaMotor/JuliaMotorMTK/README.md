@@ -232,9 +232,15 @@ combined slip).
       validation remains the per-corner fit (lateral R²=0.96). Speed prescribed and
       κ=0 here (isolating the well-fit lateral model); a full driven replay needs
       the engine curve fit first.
-- [ ] Refinements: fit the engine torque curve from telemetry; LSD clutch-pack;
-      tyre thermal/pressure; camber; reversed-Z-free combined-slip in the full
-      driven replay.
+- [x] **Engine torque curve fit from telemetry** (`fit/fit_engine.jl`). From WOT
+      straight-line accel (no wheelspin): `F_drive = m·LongAccel + drag + rot-inertia`
+      (LongAccel's specific-force form cancels the ±12° grade), `T = F_drive·Rw/(gear·
+      final·η)` vs logged RPM, across 1770 samples / 4 laps with per-file gearing.
+      Result: **peak ~409 N·m at ~8200 rpm** (≈ DFV-class), matching the data over
+      4400–7100 rpm (RMS 11 N·m). Peak pinned to the DFV range since clean accel
+      only reveals the rising part; ±~20% absolute (CdA/η/Rw). Now in `powertrain.jl`.
+- [ ] Refinements: LSD clutch-pack; tyre thermal/pressure; camber; a full *driven*
+      telemetry replay (free speed) now that the engine is fit.
 - [ ] Chassis body (load transfer via `Corner.Fext`), powertrain, steering, full assembly.
 
 ### MTK v11 API note
