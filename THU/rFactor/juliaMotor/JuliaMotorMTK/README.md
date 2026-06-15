@@ -141,8 +141,20 @@ combined slip).
       `System` API. Validated by `test/test_corner_tyre.jl`: tyre `Fy` saturates at
       μ·Fz, MTK matches the pure law to ~1e-13 N; corner settles to the exact static
       load with 2.05 Hz body / 16.2 Hz wheel-hop modes.
-- [ ] Fit tyre `pKy1/Cy/Ey/μy` to the skidpad — current placeholders peak at ~17°
-      slip (too soft; should be ~6–9°). First real iRacing match.
+- [x] **Skidpad tyre fit** (`fit/fit_skidpad.jl`). Method: on a flat skidpad in
+      quasi-steady cornering each axle's normalised grip `Fy/Fz = ay/g` exactly
+      (Newton), so μ is read off geometry-free; slip angle from `VelocityX/Y` +
+      `YawRate` + steer (wheelbase 2.41 m, weight split → a,b). 11.4k quasi-steady
+      samples (filtered for forward motion, |β|<30°, low yaw-accel). Magic Formula
+      fitted per axle (dependency-free Nelder-Mead). **Results** (fitted into
+      `tyre.jl` as `TYRE_SKIDPAD_FRONT/REAR`):
+      - FRONT μy=1.21, Cy=1.35, Ey=0.40, pKy1=25.7 — peak grip 1.21 g by 7.6° slip.
+      - REAR  μy=1.30, Cy=1.00, Ey=0.33, pKy1=33.8 — peak grip 1.27 g by 8.7° slip
+        (rear stiffer — bigger rear tyre, physically correct).
+      - Loop closure (predicted vs measured ay/g, 11.4k samples): front R²=0.90,
+        rear R²=0.81. Caveats: axle-effective (L/R load-sensitivity folded in),
+        single load (pKy2 unidentified), post-peak falloff not resolved (skidpad
+        holds the limit, doesn't push deep past it), longitudinal not fitted.
 - [ ] Combined-slip coupling (friction ellipse) + camber; couple `Corner.Fz → Tyre.Fz`.
 - [ ] Chassis body (load transfer via `Corner.Fext`), powertrain, steering, full assembly.
 

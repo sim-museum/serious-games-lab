@@ -36,6 +36,19 @@ const TYRE_DEFAULTS = (
     Bt   = 8.0,      # pneumatic-trail decay with slip
 )
 
+# Fitted to the iRacing Lotus 49 skidpad (fit/fit_skidpad.jl): normalised lateral
+# grip curve per axle, isothermal.  μ ~1.2 front / 1.3 rear, rear tyre stiffer
+# (bigger rear tyre); peak grip reached by ~7.6°/8.7° slip; loop-closure R²
+# 0.90/0.81 vs measured ay.  Fz0 = per-corner static axle load (2830/2, 3339/2).
+# Longitudinal (μx,Cx,Ex,pKx1) NOT fitted — skidpad is lateral-only; placeholders.
+# Splat into the Tyre constructor: `Tyre(; name=:t, TYRE_SKIDPAD_FRONT...)`.
+const TYRE_SKIDPAD_FRONT = (
+    Fz0 = 1415.0, μy = 1.213, μx = 1.213, Cy = 1.345, Cx = 1.6,
+    Ey = 0.40, Ex = -0.5, pKy1 = 25.7, pKy2 = 2.2, pKx1 = 18.0, t0 = 0.035, Bt = 8.0)
+const TYRE_SKIDPAD_REAR = (
+    Fz0 = 1670.0, μy = 1.304, μx = 1.304, Cy = 1.000, Cx = 1.6,
+    Ey = 0.329, Ex = -0.5, pKy1 = 33.8, pKy2 = 2.2, pKx1 = 18.0, t0 = 0.035, Bt = 8.0)
+
 "Pure-Julia lateral force Fy(Fz, α) — mirror of the symbolic `Tyre.Fy` eq."
 function tyre_fy(Fz, α; p = TYRE_DEFAULTS)
     Ky = mf_stiffness(Fz, p.Fz0, p.pKy1, p.pKy2)
