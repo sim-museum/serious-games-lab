@@ -1,0 +1,60 @@
+@startuml cardplay_only_sequence
+title bridgeIQ — Card-Play-Only Flow (Sequence)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+actor User
+participant "MainWindow" as MW
+participant "MiniBridge /\nRepeatDeal dialog" as DLG
+participant "GameController" as GC
+participant "EngineWorker\n(QThread)" as EW
+participant "nopeek (card engine)" as ENG
+participant "TableView" as TV
+
+== Set contract (no auction) ==
+alt MiniBridge
+  MW -> DLG : _maybe_run_minibridge_rounds(board)
+  User -> DLG : announce points -> pick level/suit/dbl
+  DLG --> MW : (level, suit, doubled) ; declarer resolved by HP
+else Repeat Deal — keep contract
+  MW -> DLG : _on_repeat_deal()
+  User -> DLG : "keep prior contract, skip auction"
+  DLG --> MW : preserved contract
+end
+MW -> GC : set_contract_direct(contract)
+GC -> GC : synthesize auction[1]; set declarer/dummy/leader; phase='play'
+MW -> TV : update_auction(synthetic) ; set_contract(contract, declarer)
+MW -> MW : _advance_game() -> _advance_play()
+
+== Play loop (13 tricks) ==
+note over MW : opening lead by opening_leader
+loop each card
+  alt COMPUTER seat
+    MW -> EW : request_card(board, seat, trick)
+    EW -> ENG : nopeek.decide(board, seat, trick)
+    ENG --> EW : card
+    EW --> MW : card_ready -> _on_engine_card()
+    MW -> GC : play_card(card)
+  else HUMAN seat
+    MW -> TV : set_hand_selectable(seat, true)
+    User -> MW : click card -> _on_card_played(seat, card)
+    MW -> GC : play_card(card)
+  end
+  MW -> TV : play_card_to_trick(seat, card)
+  opt first card of hand
+    MW -> MW : _maybe_reveal_dummy_after_lead()
+    MW -> TV : show_dummy(dummy)
+  end
+  alt trick complete (4 cards)
+    GC --> MW : phase='waiting_next'
+    User -> MW : Next Card -> advance_to_next_trick()
+  end
+end
+
+== End of hand ==
+GC -> GC : 13 tricks -> _review_human_signals(); phase='finished'
+MW -> MW : _show_result()
+MW -> TV : show_end_of_hand_view(original_hands, tricks)
+MW -> User : EndOfHandDialog (score / result)
+User -> MW : Next Deal / Repeat
+@enduml

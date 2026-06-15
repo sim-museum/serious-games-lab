@@ -1,0 +1,47 @@
+@startuml mixed_corpus_sequence
+title Mixed-Corpus — RunWorker per-deal loop (sequence)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+actor Operator
+participant "CorpusTab (UI)" as TAB
+participant "RunWorker\n(QThread)" as RW
+participant "xdotool" as XDO
+participant "Q-Plus (Wine)" as QP
+database "manifest + BDE" as MAN
+database "BDL/QSS\noutput" as OUT
+
+Operator -> TAB : Generate corpus
+TAB -> MAN : write manifest (per-deal NS/EW systems + hands)
+Operator -> TAB : Write BDE to Q-Plus
+TAB -> MAN : BDE file(s) -> ~/.qplus_own_deals/
+Operator -> TAB : Run
+TAB -> RW : start(RunConfig: positions, system_pairs, timings)
+
+loop each deal in system_pairs
+  RW -> XDO : Next deal click (skip 1st if qplus_on_starting_deal)
+  XDO -> QP : advance deal
+  RW -> XDO : open bidding-system dialog
+  RW -> XDO : click N/S radio+list, E/W radio+list (robust), Close
+  XDO -> QP : systems set for this deal
+  RW -> RW : verify screenshot (status-bar systems)
+  RW -> XDO : Start bidding
+  RW -> QP : (auction runs)  -- wait after_start_bidding_s
+  RW -> XDO : Autoplay
+  RW -> RW : wait for screen quiescence (per_deal_s safety)
+  alt batch boundary (deals_per_match)
+    RW --> TAB : batch_break signal
+    Operator -> QP : (auto or manual) Save match + exit
+    RW -> XDO : relaunch -> Own deals -> next BDE -> Play
+    RW -> RW : _post_rollover_skip = true
+  end
+  RW --> TAB : progress(deal, total) ; status
+end
+RW --> TAB : finished(ok)
+QP -> OUT : BDL/QSS written
+
+Operator -> TAB : Verify BDL vs manifest
+TAB -> OUT : parse_bdl_with_systems()  -> mismatch report
+Operator -> TAB : Reconcile manifest to BDL
+TAB -> MAN : auto-fix system labels where cards match
+@enduml

@@ -1,0 +1,59 @@
+@startuml mixed_corpus_activity
+title Mixed-Corpus Panel — Generate→Run→Verify (activity).  Colour = cleanup status
+
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #FDFDFD
+  BorderColor #444
+  DiamondBackgroundColor #FDFDFD
+}
+legend top right
+  |= colour |= meaning |
+  |<#E8FFE8> green | KEEP |
+  |<#FFF3CC> yellow | one-time / occasional |
+  |<#FADbd8> red | LEGACY — likely unused now |
+endlegend
+
+start
+partition "Calibration tab (one-time)" {
+  #FFF3CC:Capture 17 required click positions\n(menu, 4 radios, 5 system lists, 3 dialog btns, 3 main UI);
+  #FFF3CC:Capture optional positions\n(Simulation close, Match-End, 8 rollover keys);
+  #E8FFE8:Test — cycle 5 mixed N/S≠E/W pairs + screenshots;
+}
+
+partition "Corpus tab (Random / Matrix / Slam / Grand)" {
+  :Set seed / sys-seed / count / HCP threshold;
+  #E8FFE8:"Generate corpus" -> manifest table (per-deal systems + hands);
+  #E8FFE8:"Write BDE to Q-Plus" -> ~/.qplus_own_deals/\n(>64 deals: split into batch BDEs b1,b2,...);
+
+  :Set timing knobs (dialog-step / next-deal / start-bidding /\nper-deal safety) + starting_deal_index + verify_screenshots;
+  #FADbd8:screenshot_per_deal toggle (legacy; verify_screenshots covers it);
+
+  #E8FFE8:"Run" -> RunWorker (QThread) drives Q-Plus deal-by-deal;
+}
+
+partition "RunWorker per-deal loop" {
+  repeat
+    :Next deal (skipped on 1st if qplus_on_starting_deal);
+    :Open bidding-system dialog -> set N/S + E/W (robust double-clicks);
+    :verify screenshot (new layout + status-bar systems);
+    :Start bidding -> wait auction;
+    :Autoplay -> wait for screen quiescence;
+    if (hit 64-deal batch boundary?) then (yes)
+      #FFF3CC:Rollover: Save match+exit -> relaunch -> Own deals -> next BDE -> Play;
+    endif
+  repeat while (more deals?) is (yes)
+  -> no;
+}
+
+partition "Post-run verification" {
+  #E8FFE8:"Verify BDL vs manifest" — report dealer/vul/system/card mismatches;
+  #E8FFE8:"Reconcile manifest to BDL" — auto-fix labels where cards still match;
+}
+stop
+
+note right
+  is_curated repeat-deal path (matrix 25-cell) exists but the matrix
+  is normally run as distinct "Next deal" cells -> repeat-deal path likely cold.
+end note
+@enduml

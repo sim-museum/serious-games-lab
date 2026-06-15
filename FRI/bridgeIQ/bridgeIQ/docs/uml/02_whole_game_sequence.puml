@@ -1,0 +1,89 @@
+@startuml whole_game_sequence
+title bridgeIQ — Whole Game Flow (Sequence)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+actor User
+participant "MainWindow" as MW
+participant "GameController" as GC
+participant "EngineWorker\n(QThread)" as EW
+participant "native_bidder /\nnopeek" as ENG
+participant "TableView" as TV
+participant "NetworkController" as NET
+
+== New deal ==
+User -> MW : First Deal
+MW -> GC : new_deal(board#)
+GC --> MW : board (phase='bidding', seat=dealer)
+MW -> TV : set_board(board)
+MW -> MW : _advance_game() -> _advance_bidding()
+
+== Bidding loop (until auction complete) ==
+loop each seat to call
+  alt COMPUTER seat
+    MW -> EW : request_bid(board, seat)
+    EW -> ENG : get_bid(board, seat)
+    ENG --> EW : EngineResponse(bid)
+    EW --> MW : bid_ready -> _on_engine_bid()
+    MW -> GC : make_bid(bid)
+  else HUMAN seat
+    MW -> TV : bidding_box.set_enabled(true)
+    User -> MW : click bid -> _on_bid_made(bid)
+    MW -> GC : make_bid(bid)
+    opt network game
+      MW -> NET : broadcast_bid(seat, bid)
+    end
+  else NETWORK seat
+    NET --> MW : remote_bid_received -> _on_network_remote_bid()
+    MW -> GC : (append bid)
+  end
+  GC --> MW : seat = next
+end
+
+GC -> GC : is_auction_complete() == true
+GC -> GC : _setup_play() (declarer/dummy/leader; phase='play')
+MW -> TV : set_contract(contract, declarer)
+
+== Play loop (13 tricks) ==
+MW -> MW : _advance_game() -> _advance_play()
+note over MW : opening lead by opening_leader
+loop each card
+  alt COMPUTER seat
+    MW -> EW : request_card(board, seat, trick)
+    EW -> ENG : nopeek.decide(board, seat, trick)
+    ENG --> EW : card
+    EW --> MW : card_ready -> _on_engine_card()
+    MW -> GC : play_card(card)
+  else HUMAN seat
+    MW -> TV : set_hand_selectable(seat, true)
+    User -> MW : click card -> _on_card_played(seat, card)
+    MW -> GC : play_card(card)
+    opt network game
+      MW -> NET : broadcast_card(seat, card)
+    end
+  end
+  MW -> TV : play_card_to_trick(seat, card)
+  opt first card of hand
+    MW -> MW : _maybe_reveal_dummy_after_lead()
+    MW -> TV : show_dummy(dummy)
+  end
+  alt trick complete (4 cards)
+    GC --> MW : phase='waiting_next'
+    MW -> MW : _handle_trick_complete()  (status: "Next Card")
+    User -> MW : Next Card -> _on_next_card()
+    MW -> GC : advance_to_next_trick()  (phase='play')
+  end
+end
+
+== End of hand ==
+GC -> GC : 13 tricks -> _review_human_signals(); phase='finished'
+MW -> MW : _show_result()
+MW -> TV : show_end_of_hand_view(original_hands, tricks)
+MW -> User : EndOfHandDialog (score / result)
+alt teams match
+  MW -> MW : complete_open_room() + start_closed_room_async()
+  MW -> User : IMP swing -> scoring_table
+end
+User -> MW : Next Deal -> _on_next_deal()
+MW -> GC : new_deal()  (loop)
+@enduml
