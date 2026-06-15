@@ -812,7 +812,17 @@ class BridgeEngine:
                             if not eligible:
                                 valid = False
                                 break
-                            chosen = random.choice(eligible)
+                            # Vacant-places weighting (restricted choice): a
+                            # seat with more remaining unknown slots is
+                            # proportionally more likely to hold each missing
+                            # card — so a seat shown SHORT in other suits is
+                            # modelled as LONGER here. Uniform choice ignored
+                            # this; it's the single-dummy positive-count
+                            # inference the MC was missing (cardplay project #1).
+                            chosen = random.choices(
+                                eligible,
+                                weights=[remaining[s] for s in eligible],
+                                k=1)[0]
                             sample.setdefault(chosen, set()).add(c52)
                             remaining[chosen] -= 1
 

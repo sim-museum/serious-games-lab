@@ -275,4 +275,167 @@ The `run.sh` script automatically activates the venv if it exists.
   - `keras==3.6.0` → `keras>=3.6.0`
   - `requires-python = "==3.12"` → `requires-python = ">=3.12"`
 
+## Q-Plus 17.1 — Tournament protocol mechanism (2026-05-30)
+
+Research notes for when bridgeIQ might want to participate in a
+computer-bridge tournament as one seat at a TableManager-driven
+table. Q-Plus is taken as the reference because we already drive
+it as the diff oracle, but the mechanism is the standard one used
+by every competition-grade bridge program.
+
+Q-Plus 17.1 speaks the **BlueChip TableManager protocol** (also
+called the **WBridge5 protocol**) — the de-facto standard for
+computer-bridge tournaments since 1997, and the protocol the
+World Computer Bridge Championship runs on. Distinct from
+Q-Plus's internal `Q-NET.EXE` peer-to-peer mechanism, which is
+the channel two Q-Plus instances use to play each other.
+
+### Evidence in the local binary
+
+`/home/h/sgl/FRI/WP/drive_c/games/qbridge17/QBRIDGE.EXE` contains
+the protocol's wire-message format strings verbatim. `strings`
+output includes:
+
+```
+Connecting "%s" as %s using protocol version %d
+%s ready for teams
+%s ready to start
+Start of board
+%s ready for cards
+%s ready for %s's bid
+%s ready for dummy
+%s ready for %s's card to trick %d
+%s ready for deal
+tablemanager
+Tournament
+.\LIB\WBRIDGE5\WB_1.DLL
+wb_dll
+```
+
+These are the verbatim verbs of the BlueChip TableManager
+protocol. The `LIB/WBRIDGE5/WB_1.DLL` reference is a numbered
+plugin shim Q-Plus expects to load when acting as a protocol
+partner. That directory does NOT exist in the 17.1 install on
+disk (`LIB/` only contains `STRINGS/` and `BITMAPS/`) — either
+the plugin was dropped from the 17.1 consumer bundle or it ships
+only with a separate tournament-edition build. The speaking-half
+strings are still compiled into the main `.EXE`.
+
+The internal player-role symbols are `FG_PLAYER_HUMAN`,
+`FG_PLAYER_REMOTE`, `FG_PLAYER_EXT`, `FG_PLAYER_ADV` (visible
+roles: Human, Computer, Extern). The protocol-client role is
+NOT one of the documented Configuration → Players options — it's
+gated behind the missing DLL.
+
+### How the protocol works
+
+1. A separate **TableManager** program runs on a host (e.g.
+   `BlueChip TableManager.exe`, `WBridge5 TableManager.exe`, or
+   any compatible re-implementation). The TableManager is the
+   only process that knows the deals.
+2. Four bridge-playing programs each connect over TCP, each
+   identifying itself as a single seat (North / East / South /
+   West).
+3. The TableManager sends each program ONLY its own 13 cards and
+   only the cards each player has played publicly (plus dummy
+   when revealed). Each program has no information about the
+   other three seats except for the bidding and cardplay as
+   communicated.
+4. Bidding and play proceed by plain-text request/response on
+   the TCP connection. Example:
+
+   ```
+   Client → server: Connecting "biq" as South using protocol version 18
+   Server → client: South ("biq") seated
+   Client          : South ready for teams
+   Server          : Teams : N/S : "TeamA". E/W : "TeamB"
+   Client          : South ready to start
+   Server          : Start of board
+   Server          : Board number 1. Dealer North. Neither vulnerable.
+   Server          : South's cards: S Q J 7 4. H A K J 9 2. D 9 7. C 8 4.
+   ...bidding...
+   Client          : South ready for North's bid
+   Server          : North passes
+   Client          : South bids 1S
+   ...play...
+   Server          : South to lead
+   Client          : South plays SA
+   Server          : South plays SA           (broadcast to all)
+   Client          : South ready for East's card to trick 1
+   ```
+
+5. All four programs see the same bidding / play stream; none
+   see the other three hands until the deal completes (or until
+   dummy is exposed after the opening lead).
+
+This is the protocol the WCBC runs on. Every serious computer
+bridge program (GIB, Jack, WBridge5, BridgeBaron, Micro Bridge,
+Q-Plus historically) implements the client side.
+
+### How to drive Q-Plus 17.1 into this mode
+
+Inferred from the binary; manual is silent. If we ever want to
+actually use it:
+
+* The protocol-client implementation is compiled into
+  `QBRIDGE.EXE` itself.
+* Activation expects to dynamically load
+  `LIB/WBRIDGE5/WB_1.DLL`. Not present in our install. Either
+  (a) it shipped only with Q-Plus 12 / 15 and 17.1 dropped it,
+  or (b) it ships with a "tournament edition" build distinct
+  from the consumer install.
+* No command-line switch is obvious in the strings (`/CON`,
+  `/MAT`, etc. are the only ones I found, none protocol-related).
+  Activation is most likely via a hidden menu item that only
+  appears when the plugin loads, or a flag in one of the
+  `CONFIG/B-*.CFB` binary configs.
+* Practical path: contact `support@q-plus.com` for the WBridge5
+  plugin DLL or the tournament-edition build. The speaking-half
+  is already there — it's gated behind the missing plugin.
+
+### Documented manual fallback: the Extern player role
+
+`MANUAL/ENG/2-PLAYERS-A.DOC` documents the `Extern` player role,
+which gives the same information model as the WBridge5 protocol
+but driven by a human at a keyboard instead of TCP:
+
+> "Each player must enter the bids and plays made by the player
+> at the other computer. This information must be passed back
+> and forth during the deal. When you are entering the cards for
+> your partner, you will get an extra window which displays all
+> the cards partner possibly owns."
+
+Set South to `Human`, the other three to `Extern`, and Q-Plus
+plays one seat with no knowledge of the other three hands except
+for the bids and cards keyed in by hand. This is how the
+1990s-era computer-bridge events worked before WBridge5
+standardised the wire format.
+
+### What `Q-NET.EXE` actually is (and isn't)
+
+Easy to confuse with the above; it is NOT the WBridge5 protocol:
+
+* Q-NET implements Q-Plus's INTERNAL networking: two Q-Plus
+  instances on two PCs connecting over LAN, or both connecting
+  to a central Q-plus server over the internet, so two humans
+  can play together (one per PC). Each PC's Q-Plus drives one
+  seat, the other Q-Plus drives the other three.
+* Transport: TCP/IP, DDE (Dynamic Data Exchange — the Windows
+  IPC channel between `QBRIDGE.EXE` and `Q-NET.EXE` on the same
+  PC), and historically modem. Strings include
+  `<---> TCP/IP client [ %s ] connected (slot %d)`,
+  `DDE_CMD_CONNECT`, `MODEM : not connected`.
+* The wire format is proprietary to Q-Plus and NOT the BlueChip
+  TableManager protocol.
+* Exposed via `Network → Start bridge server on this PC` /
+  `Connect to local bridge server` / `Connect to Q-plus bridge
+  server`. Useful for human-vs-human, not for competition-style
+  program-vs-program.
+
+In summary: Q-NET is for two Q-Pluses to play with each other;
+the BlueChip / WB_1 mechanism is for one Q-Plus to play one seat
+in a wider computer-bridge tournament driven by an external
+TableManager. The same `QBRIDGE.EXE` binary has both, with very
+different intended uses.
+
 ## Created: January 2025

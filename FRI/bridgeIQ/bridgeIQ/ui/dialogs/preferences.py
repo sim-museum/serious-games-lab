@@ -140,15 +140,41 @@ class PreferencesDialog(QDialog):
             "Uses the double-dummy solver assuming all cards are visible.\n"
             "Unrealistically strong — sees through the backs of cards."
         )
+        self.play_nopeek_radio = QRadioButton(
+            "No-peek (alpha-mu) — strongest, signals with partner")
+        self.play_nopeek_radio.setToolTip(
+            "Never looks at hidden cards. Plays a single-dummy alpha-mu search,\n"
+            "emits standard defensive signals AND reads partner's signals.\n"
+            "The strongest honest engine — recommended."
+        )
         self.play_mode_group.addButton(self.play_mc_radio, 0)
         self.play_mode_group.addButton(self.play_engine_radio, 1)
         self.play_mode_group.addButton(self.play_dd_radio, 2)
+        self.play_mode_group.addButton(self.play_nopeek_radio, 3)
+        play_layout.addWidget(self.play_nopeek_radio)
         play_layout.addWidget(self.play_mc_radio)
         play_layout.addWidget(self.play_engine_radio)
         play_layout.addWidget(self.play_dd_radio)
 
         play_group.setLayout(play_layout)
         layout.addWidget(play_group)
+
+        # Defensive signalling convention (biq plays this AND expects it from
+        # partner; the partner-signal reader stays in sync).
+        sig_group = QGroupBox("Defensive Signalling")
+        sig_layout = QHBoxLayout()
+        sig_layout.addWidget(QLabel("Convention:"))
+        self.signalling_combo = QComboBox()
+        self.signalling_combo.addItem("Standard (high = encourage, hi-lo = even)",
+                                      "standard")
+        self.signalling_combo.addItem("Upside-down (UDCA: low = encourage)",
+                                      "udca")
+        self.signalling_combo.setToolTip(
+            "Attitude/count signals biq gives and reads from partner.\n"
+            "Standard or Upside-Down Count & Attitude (UDCA).")
+        sig_layout.addWidget(self.signalling_combo, 1)
+        sig_group.setLayout(sig_layout)
+        layout.addWidget(sig_group)
 
         layout.addStretch()
         return widget
@@ -377,13 +403,20 @@ class PreferencesDialog(QDialog):
 
         self.anim_slider.setValue(int(self.prefs.moved_cards_speed * 100))
 
-        # Play mode setting
-        if self.prefs.use_monte_carlo_play:
+        # Play mode setting (no-peek takes precedence — it's the strongest)
+        if getattr(self.prefs, 'use_nopeek_play', False):
+            self.play_nopeek_radio.setChecked(True)
+        elif self.prefs.use_monte_carlo_play:
             self.play_mc_radio.setChecked(True)
         elif self.prefs.use_double_dummy_play:
             self.play_dd_radio.setChecked(True)
         else:
             self.play_engine_radio.setChecked(True)
+
+        # Defensive signalling convention
+        idx = self.signalling_combo.findData(
+            getattr(self.prefs, 'signalling_convention', 'standard'))
+        self.signalling_combo.setCurrentIndex(max(0, idx))
 
         # Display settings
         if self.prefs.suit_layout == SuitLayout.SHDC:
@@ -470,8 +503,19 @@ class PreferencesDialog(QDialog):
         self.prefs.moved_cards_speed = self.anim_slider.value() / 100.0
 
         # Play mode setting
+        self.prefs.use_nopeek_play = self.play_nopeek_radio.isChecked()
         self.prefs.use_monte_carlo_play = self.play_mc_radio.isChecked()
         self.prefs.use_double_dummy_play = self.play_dd_radio.isChecked()
+
+        # Defensive signalling convention — apply to the live engine now so the
+        # emitter and the partner-signal reader both switch together.
+        self.prefs.signalling_convention = \
+            self.signalling_combo.currentData() or "standard"
+        try:
+            from backend import signals as _sig
+            _sig.set_convention(self.prefs.signalling_convention == "udca")
+        except Exception:
+            pass
 
         # Display settings
         if self.suit_layout_combo.currentIndex() == 0:

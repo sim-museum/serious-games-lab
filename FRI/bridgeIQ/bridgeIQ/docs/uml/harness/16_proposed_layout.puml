@@ -1,0 +1,49 @@
+@startuml proposed_layout
+salt
+{
+  {+ "Control Panel — PROPOSED simplified layout (wireframe, for discussion)" }
+  {* File | Setup | Help }
+  {
+    {^"1. Configure"
+      Deals: "64  " | Seat: ^S^ | Samples: "50"
+      [X] biq+biq (N/S Extern)   [ ] Auto-exit at end
+    }
+  }
+  {
+    {^"2. Mode  (one selector replaces 4 scattered groups)"
+      Mode: ^Whole-system (default)^
+      "  └ options swap by mode: A/B (A/B), Side (Double-Pair), PBN (No-peek)"
+    }
+  }
+  {
+    {^"3. Run  (one path)"
+      [ ▶ Start ]  [ ⏸ Step ▷ ]  [ ⏮ Reset ]
+      "progress: ▮▮▮▮▮▯▯▯  deal 5/8"
+      "● server   ● biq   ● clicker"
+    }
+  }
+  {
+    {^"4. Result"
+      "M2026-..-X.qss   -341 IMP / 59 bd"
+      [ Export .qss ] | [ Aggregate ] | [ ⏻ Stop + kill wine ]
+    }
+  }
+  {
+    {^"Setup menu (one-time, hidden from main view)"
+      "• Calibrate server buttons"
+      "• Calibrate clicker / autoplay"
+      "• Launch Q-Plus  • New run (reset logs)"
+    }
+  }
+}
+note bottom
+  Consolidation moves:
+  1) ONE start path (Start = old "Run full session"; Step ▷ keeps the debugger).
+     Delete the "Manual startup steps" trio.
+  2) ONE "Mode" dropdown {Whole-system, A/B, Double-Pair, No-peek cardplay}
+     replaces the four separate group boxes / sub-dialog.
+  3) All CALIBRATION + housekeeping moves under a "Setup" menu — it is one-time,
+     not per-run, so it should not crowd the run controls.
+  This is a PROPOSAL — confirm before any code change.
+end note
+@enduml

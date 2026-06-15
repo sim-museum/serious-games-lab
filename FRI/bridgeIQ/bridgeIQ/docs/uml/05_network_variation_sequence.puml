@@ -1,0 +1,56 @@
+@startuml network_variation_sequence
+title bridgeIQ — Whole Game VARIATION: Networked play (biq<->biq lobby; Q-NET deferred)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+actor "Host user" as Host
+participant "MainWindow\n(host)" as MWh
+participant "NetworkController" as NET
+participant "MainWindow\n(guest)" as MWg
+actor "Guest user" as Guest
+
+== Lobby: biq <-> biq (native JSON protocol) ==
+Host -> MWh : Network > Start Server
+MWh -> NET : start_server(port, name, seat)
+NET --> MWh : server_started -> NetworkLobbyDialog (live seat map)
+
+Guest -> MWg : Network > Connect to Server
+MWg -> NET : connect_to_server(host, port, name)
+NET -> NET : CONNECT_REQUEST / CONNECT_ACCEPT
+NET --> MWg : connection_established -> _on_network_connected()
+Guest -> MWg : click seat -> request_seat()  (SEAT_REQUEST)
+NET --> MWh : client_joined / seat_map_changed
+
+Host -> MWh : "Start Game"
+MWh -> NET : start_game()  (GAME_START broadcast)
+MWh -> MWh : _start_network_game()
+
+== Deal + bidding (host authoritative) ==
+MWh -> NET : new_deal() ; broadcast_deal(board)  (DEAL_START)
+NET --> MWg : deal_received -> phase='bidding'
+note over MWh, MWg
+  Each seat owned by exactly one app instance.
+  Local turn  -> human/AI bids, then broadcast_bid() (BID_MADE).
+  Remote turn -> wait, then remote_bid_received -> _on_network_remote_bid().
+  Same pattern for cards: broadcast_card() / remote_card_received,
+  dummy reveal (broadcast_dummy_reveal), and the "Next Card"
+  ack (broadcast_trick_clear / trick_clear_received).
+end note
+
+== End of board / scoring ==
+MWh -> MWh : _show_result() (+ teams: start_closed_room_async)
+MWh -> NET : broadcast_closed_room_ingested(run)  (CLOSED_ROOM_INGESTED)
+NET --> MWg : closed_room_ingested -> scoring_table comparison row
+
+== SEPARATE PATH (deferred): Q-NET server, Q-Plus as client ==
+note over MWh, NET
+  Distinct from the biq<->biq JSON lobby above. Q-Plus speaks Q-NET
+  (bracketed text tokens), NOT biq's JSON. Plan: wrap the proven
+  tools/biq_qnet_server.py BiqServer in a QThread whose callbacks
+  {status, deal, bid, contract, card, board_done} emit Qt signals
+  to drive the same TableView + status strip.
+  STATUS: BiqServer callbacks DONE; QThread + GUI action TO BUILD.
+  Q-Plus-as-server + biq client (tools/biq_qnet_client.py) is the
+  proven, already-working measurement path.
+end note
+@enduml

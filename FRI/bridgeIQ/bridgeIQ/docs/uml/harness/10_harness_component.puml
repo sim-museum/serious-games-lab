@@ -1,0 +1,90 @@
+@startuml harness_component
+title biq Test Harness — Components & Artifacts (what orchestrates what)
+
+skinparam shadowing false
+skinparam componentStyle rectangle
+left to right direction
+
+actor Operator
+
+package "GUI panels (PyQt)" #E8F4FF {
+  [qplus_control_panel.py\n«single biq-vs-Q-Plus match»] as CP
+  [qplus_mixed_corpus.py\n«corpus gen + multi-deal run»] as MC
+}
+
+package "Q-Plus side (Wine)" #FFF3E0 {
+  [QBRIDGE.EXE\n(Q-Plus 17.1)] as QP
+  [xdotool clicks] as XDO
+}
+
+package "biq engine" #E8FFE8 {
+  [biq_qnet_client.py\n(seat client; --nopeek/--pbn)] as CLI
+  [biq_qnet_server.py\n(BiqServer; Q-Plus as client)] as SRV
+}
+
+package "Autoclickers" {
+  [qplus_button_loop.py\n(deal loop driver)] as BL
+  [qplus_cardplay_clicker.py\n(no-peek cardplay)] as CC
+  [qplus_4computer_clicker.py\n(all-Q-Plus baseline)] as C4
+}
+
+package "Deck generators" {
+  [gen_deal_pbn.py] as GD
+  [gen_forced_pbn.py] as GF
+  [corpus gens\n(random / matrix / slam / grand)] as CG
+}
+
+package "Analyzers" #F3E8FF {
+  [whole_system_analyze.py] as WSA
+  [qnet_score_aggregate.py] as AGG
+  [double_pair_compare.py] as DPC
+  [slam_bidding_eval.py] as SBE
+}
+
+database "Artifacts" #FAFAFA {
+  folder "PBN/BDE decks\nIMPORTED-DEALS/, ~/.qplus_own_deals/" as DECKS
+  folder ".qss matches\nLOCAL-MATCHES/" as QSS
+  folder "calibration JSON\n~/.qplus_*.json" as CAL
+  folder "logs\ntools/runs/" as LOGS
+}
+
+Operator --> CP
+Operator --> MC
+
+CP --> QP : launch wine
+CP --> CLI : spawn (seat/port/samples)
+CP --> BL : spawn (--deals --watch)
+CP --> CC : spawn (no-peek mode)
+CP --> C4 : spawn (double-pair R3)
+CP --> GF : gen forced PBN
+CP --> AGG : aggregate
+CP --> DPC : compare rooms
+CP ..> CAL : reads server-button cal
+
+MC --> QP : drives via clicks
+MC --> XDO
+MC --> CG : generate corpus
+MC ..> CAL : 17+ click positions
+
+BL --> XDO
+CC --> XDO
+QP <-- XDO
+
+CLI <--> QP : Q-NET (TCP)
+SRV <--> QP : Q-NET (TCP, Q-Plus = client)
+
+GD --> DECKS
+GF --> DECKS
+CG --> DECKS
+QP --> QSS : save match
+CLI --> LOGS
+QSS --> WSA
+QSS --> AGG
+QSS --> SBE
+LOGS --> DPC
+
+note bottom of SRV
+  Q-NET server path: BiqServer callbacks done,
+  GUI QThread wiring TO BUILD (not yet a panel button).
+end note
+@enduml
