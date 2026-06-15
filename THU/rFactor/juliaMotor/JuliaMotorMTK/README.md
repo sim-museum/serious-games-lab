@@ -188,9 +188,19 @@ combined slip).
       (Fz 0.76→3.2 kN, Fy tracks at corr 0.95); a load-transfer `Fext` shows more
       load → more force but Fy/Fz collapsing 0.98→0.43 — the load-sensitivity
       mechanism (pKy2) of outer-tyre overload in hard cornering, now in the model.
+- [x] **Chassis body — closed four-corner car** (`src/components/vehicle.jl`).
+      Planar body (states v, r; inputs u, δ) with 4 `CornerAssembly`s: computes each
+      corner's slip angle from body kinematics + steer, sums the tyre forces into
+      Newton-Euler (`m(v̇+u·r)=ΣFy`, `Izz·ṙ=Σ moments`), and distributes lateral/
+      longitudinal **load transfer** back to each `Corner.Fext`. No algebraic loop
+      (dynamic suspension breaks it). 18-state stiff DAE, solves with FBDF.
+      Step-steer test (`test/test_vehicle.jl`): reaches steady cornering with
+      **ay = u·r exactly**, load conserved (Σ = m·g), outer wheels loaded, and a
+      realistic understeer balance.
 - [ ] Combined-slip coupling (friction ellipse) + camber.
-- [ ] Chassis body: distribute the 4 corners' `Fext` from lateral/longitudinal
-      load transfer; then slip angles from body kinematics → a closed 4-corner car.
+- [ ] Powertrain (engine→clutch→gearbox→diff) + brakes + wheel-spin states → drive
+      `u`/κ from throttle/brake instead of prescribing speed; then telemetry replay
+      (feed measured δ, throttle, brake → compare yaw rate / trajectory to the .ibt).
 - [ ] Chassis body (load transfer via `Corner.Fext`), powertrain, steering, full assembly.
 
 ### MTK v11 API note
