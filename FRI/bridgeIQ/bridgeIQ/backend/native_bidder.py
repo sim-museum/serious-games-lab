@@ -1114,6 +1114,15 @@ def _asker_after_rkc(state: 'AuctionState', e: HandEval, system) -> Bid:
 
     pk, pq = _resolve_rkc_keys(e, state, partner_resp, variant)
     my_keys = _keycard_count(e, trump, system)
+    # Hard arithmetic: only 5 keycards exist. If the 0/3 or 1/4 ambiguity was
+    # resolved HIGH but my own keys make the total exceed 5, the high reading is
+    # impossible — partner must hold the low number (bd5: I hold 3, partner's 5D
+    # is 1-or-4, so it MUST be 1; the strength heuristic wrongly took 4 → drove
+    # to a 7 that was off the heart ace).
+    if my_keys + pk > 5:
+        keys_lo, _q = _parse_rkc_response(partner_resp, variant)
+        if keys_lo is not None:
+            pk = keys_lo
     total = my_keys + pk
     have_q = _has_trump_queen(e, trump) or (pq is True)
 
@@ -1123,15 +1132,18 @@ def _asker_after_rkc(state: 'AuctionState', e: HandEval, system) -> Bid:
     if total == 3 and not have_q:
         return bid(5, trump, why="Off 2 keys + queen missing — sign off in 5")
 
-    # 4+ keys + queen → king-ask via 5NT.
-    if total >= 4 and have_q:
+    # ALL 5 keys + queen → king-ask via 5NT. The 5NT king-ask promises every
+    # keycard (it invites GRAND); asking it while off a keycard let biq drive to
+    # 7 missing an ace — bd5 (1S-3S-4NT-5D=1key-5NT-6D-7S, off the heart ace)
+    # and bd2 went down. Off even ONE keycard, grand is impossible → small slam.
+    if total >= 5 and have_q:
         return bid(5, Suit.NOTRUMP, alert=True,
-                   why=f"RKC {variant}: {total}/5 keys + Q — asking for kings")
+                   why=f"RKC {variant}: all {total}/5 keys + Q — asking for kings")
 
-    # 4 keys, no queen confirmed → small slam.
+    # 4 keys (off one) — small slam is the ceiling, queen or not.
     if total == 4:
         return bid(6, trump,
-                   why=f"4/5 keys, queen unclear — small slam in {trump.to_char()}")
+                   why=f"4/5 keys (off one) — small slam in {trump.to_char()}")
 
     # All 5 keys but queen still unclear — small slam is safe.
     return bid(6, trump,
@@ -5608,8 +5620,15 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
                        why="Best-lie 1NT rebid (12-14, awkward 5-4-2-2-ish shape)")
         return passb()
 
-    # Partner's Jacoby 2NT (1M-2NT)
-    if op_suit in (Suit.HEARTS, Suit.SPADES) and p_last.level == 2 and p_last.suit == Suit.NOTRUMP:
+    # Partner's Jacoby 2NT (1M-2NT) — must be a DIRECT response: partner's
+    # ONLY bid is this 2NT, made straight over my 1M opening. Without this
+    # guard the handler also fired on a NATURAL 2NT that arrived after a 2/1
+    # (e.g. 1S-2D-2S-2NT), making opener bid "3-of-shortness" in a suit it may
+    # be VOID in (bd61: 1S-2D-2S-2NT → 3H with a heart void → 4H, −200).
+    if (op_suit in (Suit.HEARTS, Suit.SPADES)
+            and p_last.level == 2 and p_last.suit == Suit.NOTRUMP
+            and len(state.partner_bids) == 1
+            and len(state.my_bids) == 1):
         # Show shortness if any (split among singletons/voids in side suits)
         for short in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES):
             if short == op_suit:
