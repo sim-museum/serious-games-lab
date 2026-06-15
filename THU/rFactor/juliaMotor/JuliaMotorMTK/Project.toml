@@ -1,0 +1,17 @@
+name = "JuliaMotorMTK"
+uuid = "63d45777-2407-4e25-9bc6-8ba928fd8daa"
+version = "0.1.0"
+authors = ["Zand Racer / juliaMotor"]
+
+[deps]
+DataInterpolations = "82cc6244-b520-54b8-b5a6-8a565e85f1d0"
+ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
+ModelingToolkitStandardLibrary = "16a59e39-deab-5bd0-87e4-056b12336739"
+OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
+
+[compat]
+DataInterpolations = "8.10.0"
+ModelingToolkit = "11.26.8"
+ModelingToolkitStandardLibrary = "2.29.0"
+OrdinaryDiffEq = "7.0.0"
+julia = "1.12"
