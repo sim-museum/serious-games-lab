@@ -214,8 +214,14 @@ combined slip).
       grip — physical); 70% braking → **−1.27 g** (at the μx limit) with the front
       bias showing (κf→−0.98 near lockup, rear light). Engine curve to be fit from
       telemetry; LSD/clutch-slip are refinements (rigid driveline for now).
-- [ ] Integrate powertrain into the full `Vehicle` (u a state, per-axle ωf/ωr,
-      κ→tyres) so combined slip engages during braking-into-corners.
+- [x] **Full driven car** (`src/components/vehicle_driven.jl`, `DrivenVehicle`):
+      powertrain integrated into the chassis — `u` is now a state driven by the
+      longitudinal tyre forces, ωf/ωr wheel-spin states generate each corner's κ,
+      and throttle/brake/gear/δ are the inputs. 22-state stiff DAE. Test
+      (`test/test_vehicle_driven.jl`, trail-braking): braking (κ<0) while cornering
+      (α=5.2°) at |a|=1.25 g (the μ limit) → **combined slip engages** (gc=0.99 on
+      the least-loaded front), load conserved, front loaded by braking. Combined
+      slip now bites in the vehicle as designed.
 - [ ] **Telemetry replay**: feed a measured `.ibt` lap (δ, throttle, brake) → compare
       the model's yaw rate / speed / trajectory to the recording. End-to-end validation.
 - [ ] Chassis body (load transfer via `Corner.Fext`), powertrain, steering, full assembly.
