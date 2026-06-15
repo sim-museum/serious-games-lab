@@ -205,9 +205,19 @@ combined slip).
       (`test/test_combined_slip.jl`): resultant pinned to the ellipse, `Fy` falls
       then recovers past the longitudinal peak; MTK `Tyre` matches; no vehicle
       regression. Camber still TODO.
-- [ ] Powertrain (engine→clutch→gearbox→diff) + brakes + wheel-spin states → drive
-      `u`/κ from throttle/brake instead of prescribing speed; then telemetry replay
-      (feed measured δ, throttle, brake → compare yaw rate / trajectory to the .ibt).
+- [x] **Powertrain + brakes** (`src/components/powertrain.jl`). DFV-like engine
+      torque curve → rigid driveline (gear×final, engine inertia reflected) → rear
+      wheels (RWD); brakes split front/rear by bias (53.5%) on all wheels. Wheel-spin
+      states ωf/ωr generate **κ = (ω·Rw−u)/u** from throttle/brake; body speed u
+      integrates ΣFx − drag. Validated (`test/test_powertrain.jl`): 2nd-gear WOT →
+      20→46 m/s at 0.4 g with traction-limited **wheelspin** (κr→0.8, drive torque >
+      grip — physical); 70% braking → **−1.27 g** (at the μx limit) with the front
+      bias showing (κf→−0.98 near lockup, rear light). Engine curve to be fit from
+      telemetry; LSD/clutch-slip are refinements (rigid driveline for now).
+- [ ] Integrate powertrain into the full `Vehicle` (u a state, per-axle ωf/ωr,
+      κ→tyres) so combined slip engages during braking-into-corners.
+- [ ] **Telemetry replay**: feed a measured `.ibt` lap (δ, throttle, brake) → compare
+      the model's yaw rate / speed / trajectory to the recording. End-to-end validation.
 - [ ] Chassis body (load transfer via `Corner.Fext`), powertrain, steering, full assembly.
 
 ### MTK v11 API note
