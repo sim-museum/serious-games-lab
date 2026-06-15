@@ -222,8 +222,19 @@ combined slip).
       (α=5.2°) at |a|=1.25 g (the μ limit) → **combined slip engages** (gc=0.99 on
       the least-loaded front), load conserved, front loaded by braking. Combined
       slip now bites in the vehicle as designed.
-- [ ] **Telemetry replay**: feed a measured `.ibt` lap (δ, throttle, brake) → compare
-      the model's yaw rate / speed / trajectory to the recording. End-to-end validation.
+- [x] **Telemetry replay** (`fit/replay.jl`): feed a measured Nordschleife lap's
+      speed/steering/long-accel (via `DataInterpolations` registered as symbolic
+      inputs) into the chassis model, integrate v & yaw from the measured initial
+      state, and compare the model's **yaw rate** to the recording. Over an 8 s
+      window the open-loop model tracks at **corr ≈ 0.7, RMS ≈ 0.06 rad/s** (vs a
+      ±0.85 range). Honest limitation: open-loop integration drifts over long
+      windows (the real driver closes the path-following loop) — the rigorous force
+      validation remains the per-corner fit (lateral R²=0.96). Speed prescribed and
+      κ=0 here (isolating the well-fit lateral model); a full driven replay needs
+      the engine curve fit first.
+- [ ] Refinements: fit the engine torque curve from telemetry; LSD clutch-pack;
+      tyre thermal/pressure; camber; reversed-Z-free combined-slip in the full
+      driven replay.
 - [ ] Chassis body (load transfer via `Corner.Fext`), powertrain, steering, full assembly.
 
 ### MTK v11 API note
