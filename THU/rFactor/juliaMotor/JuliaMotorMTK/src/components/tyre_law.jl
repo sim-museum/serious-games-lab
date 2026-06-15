@@ -60,3 +60,18 @@ function tyre_fx(Fz, κ; p = TYRE_DEFAULTS)
     Bx = Kx / (p.Cx * p.μx * Fz + 1e-6)
     p.μx * Fz * mf_branch(Bx * κ, p.Cx, p.Ex)
 end
+
+# Combined slip via the FRICTION ELLIPSE.  The pure-slip forces Fx0(κ), Fy0(α)
+# each saturate at μ·Fz, so their normalised demands ex=Fx0/(μx·Fz),
+# ey=Fy0/(μy·Fz) are each ≤1.  When BOTH slips are present the resultant demand
+# ρ=√(ex²+ey²) can exceed 1; we scale both forces by g=min(1, 1/ρ) so the force
+# vector sits on the ellipse.  In pure slip one demand is 0 ⇒ ρ≤1 ⇒ g=1, so the
+# fitted pure-slip curves are untouched; coupling only bites when sliding while
+# cornering.   Returns (Fx, Fy).
+function tyre_forces(Fz, α, κ; p = TYRE_DEFAULTS)
+    Fx0 = tyre_fx(Fz, κ; p = p)
+    Fy0 = tyre_fy(Fz, α; p = p)
+    ρ = sqrt((Fx0/(p.μx*Fz + 1e-6))^2 + (Fy0/(p.μy*Fz + 1e-6))^2 + 1e-9)
+    g = min(1.0, 1.0/ρ)
+    (g*Fx0, g*Fy0)
+end

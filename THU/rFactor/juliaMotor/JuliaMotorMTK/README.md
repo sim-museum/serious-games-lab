@@ -197,7 +197,14 @@ combined slip).
       Step-steer test (`test/test_vehicle.jl`): reaches steady cornering with
       **ay = u·r exactly**, load conserved (Σ = m·g), outer wheels loaded, and a
       realistic understeer balance.
-- [ ] Combined-slip coupling (friction ellipse) + camber.
+- [x] **Combined-slip coupling** (friction ellipse, `tyre_law.jl` `tyre_forces` +
+      MTK `Tyre`): pure-slip `Fx0(κ)`/`Fy0(α)` scaled by `g=min(1, 1/ρ)`,
+      `ρ=√((Fx0/μxFz)²+(Fy0/μyFz)²)`, so sliding-while-cornering shares the friction
+      budget and the resultant caps at the μ·Fz ellipse. Pure slip is untouched
+      (one slip ⇒ ρ≤1 ⇒ g=1, fitted curves preserved). Test
+      (`test/test_combined_slip.jl`): resultant pinned to the ellipse, `Fy` falls
+      then recovers past the longitudinal peak; MTK `Tyre` matches; no vehicle
+      regression. Camber still TODO.
 - [ ] Powertrain (engine→clutch→gearbox→diff) + brakes + wheel-spin states → drive
       `u`/κ from throttle/brake instead of prescribing speed; then telemetry replay
       (feed measured δ, throttle, brake → compare yaw rate / trajectory to the .ibt).
