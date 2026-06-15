@@ -1,5 +1,53 @@
 # biq — Claude Code project notes
 
+## STATUS — slam bidding + harness cleanup (2026-06-14)
+
+Shipped on branch **24.04** and merged to **main** (merge `a01ef7a`). Run the app
+with `./run.sh` (just fixed: it now uses the venv python directly — bare `python`
+isn't always on PATH). Default seating is human-South + biq N/E/W; config uses the
+`native` bidder (N/S Precision90M, E/W SAYC) + no-peek cardplay — i.e. all the
+latest engine, no setup needed.
+
+**Slam bidding — five safe fixes (all in `backend/native_bidder.py`).** Each gated
+so 256-512-deal random regressions hold ZERO NEW phantoms (the hard rule; any
+blind HCP bump over-fires — measured repeatedly):
+- Jacoby 2NT responder continuation: place the contract in the agreed major,
+  never raise opener's shortness reply (was `1S-2NT-3H-4H`, a 4-card heart fit).
+- Killed phantom 7-level grands: the 5NT king-ask now needs ALL 5 keycards (was
+  ≥4 = off a key); plus a hard total-keycards-=-5 clamp in `_asker_after_rkc`.
+- Opener Jacoby-2NT reply only fires on a DIRECT 2NT (not a natural 2NT after a
+  2/1) — stopped opener bidding 3-of-shortness in a VOID suit.
+- Strong balanced responder (19+) bids 4NT quant instead of parking in 3NT.
+- Don't pass opener's jump-rebid (1X-1Y-3X) with game values — drive to game / RKC.
+Measured live: slam-deck OVERBID bucket −91→−39, ZERO phantom grands / wrong-strain
+in the latest run (M2026-06-14-O, −2.91/bd — best slam-deck number yet). Remaining
+frontier = the MISSED-SLAM bucket (NT/minor/distributional slams biq stops short
+of); needs control-showing, NOT HCP gates — a crude attempt re-adds phantoms, so
+DEFERRED. Also fixed a pre-existing `_opener_rebid` crash (`KeyError None` when
+reopening a takeout double, `opp_suit` is None). A ~0.4% baseline phantom-slam rate
+on wide random sampling is pre-existing + still open.
+
+**Test-harness GUI simplified** (`tools/qplus_control_panel.py`): four groups
+(1 Configure · 2 Mode · 3 Run · 4 Result); a single **Mode** dropdown
+{Whole-system, A/B, Double-pair, No-peek} replaces the four scattered boxes / the
+no-peek pop-up; one **▶ Start** path (+ the Step/Autopilot debugger); calibration +
+utilities moved to Setup/Tools menus. The manual-startup trio + advanced knobs are
+gated by the run flow, so they stay (Setup ▸ Advanced settings). Embedded
+LiveMatchWidget tab in `qplus_mixed_corpus.py` unaffected.
+
+**UML docs** under `docs/uml/` (app flows) and `docs/uml/harness/` (test harness) —
+PlantUML + PNGs, READMEs with `file:line` anchors. The harness diagrams include a
+colour-coded cleanup map and the proposed layout that's now implemented.
+
+**Validation/measurement reminders.** `tools/run_preflight.py` grades a run vs the
+locked rig → INVALID / VALID-with-warnings / VALID; the common "VALID with
+warnings" is just the deck-source WARN (deal-number labels, an A/B-pair concern).
+Slam-bidding changes: validate offline with `tools/slam_bidding_eval.py` + a
+random-deal phantom sweep BEFORE trusting; the live truth is a whole-system run
+through `tools/whole_system_analyze.py`. NB pre-existing uncommitted WIP in the
+tree (`bidding_systems.py`, `table_view.py`, a `probes.pbn` deletion, …) is NOT
+mine and was left untouched.
+
 ## STATUS — no-peek cardplay engine (2026-06-12)
 
 biq's no-peek cardplay (`backend/nopeek.py`) is now an **alpha-mu** engine: DDS
