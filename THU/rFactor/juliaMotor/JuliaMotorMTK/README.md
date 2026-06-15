@@ -155,6 +155,23 @@ combined slip).
         rear R²=0.81. Caveats: axle-effective (L/R load-sensitivity folded in),
         single load (pKy2 unidentified), post-peak falloff not resolved (skidpad
         holds the limit, doesn't push deep past it), longitudinal not fitted.
+- [x] **Nürburgring fit / cross-validation** (`fit/fit_nurburgring.jl`, 4 laps,
+      45k clean samples). Forward-predicts `ay` from per-axle slip + loads (loads
+      from measured `VertAccel`, so grade is handled implicitly) and `ax` from
+      braking slip ratios.
+      - **Cross-validation (headline):** the skidpad tyre predicts Nordschleife
+        lateral accel at **R²=0.86** on 23k independent cornering samples — the
+        grip curve generalises to a road course untouched.
+      - **Longitudinal (new, adopted):** μx≈1.27 (matches lateral μ → friction
+        isotropy), pKx1≈16.6, peak at κ≈−0.16; from braking events with κ down to
+        −1 (full lock). Written into `tyre_law.jl`.
+      - **Deliberately not adopted:** the free fit's μ_scale≈1.48 (overfits banked
+        Karussell / compression high-g, where 2.1 g is car *tilt*, not grip) and
+        CdA≈1.9 m² (lumps engine-braking + rolling into "drag"). pKy2 (load
+        sensitivity) is **not identifiable** from forward-`ay` — barely moves.
+- [ ] **Load sensitivity (pKy2)** properly, via the per-corner model driven by the
+      measured `shockDefl`/`rideHeight` channels → real per-corner `Fz` (not assumed
+      transfer). This is the right tool the forward-`ay` method lacked.
 - [ ] Combined-slip coupling (friction ellipse) + camber; couple `Corner.Fz → Tyre.Fz`.
 - [ ] Chassis body (load transfer via `Corner.Fext`), powertrain, steering, full assembly.
 

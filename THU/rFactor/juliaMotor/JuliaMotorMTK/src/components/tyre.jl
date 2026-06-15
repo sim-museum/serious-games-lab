@@ -1,67 +1,15 @@
 # Isothermal tyre — Pacejka-style Magic Formula, pure-slip Fx/Fy + aligning
 # moment Mz.  No thermal/pressure coupling yet (v1): peak friction μ is constant.
 #
-# The force law lives in plain functions (the single source of truth) and is
-# *inlined* symbolically inside the `Tyre` @mtkmodel — Symbolics traces straight
-# through `mf_branch`/`mf_stiffness` since they have no value-dependent control
-# flow.  Slip angle α and slip ratio κ in SI (rad / unitless); forces in N, Mz N·m.
-#
-# Validation path: the .ibt logs no per-tyre force, so a tyre is checked
-# indirectly — summed Fy across the four corners must equal m·LatAccel on the
-# skidpad (steady ~1.5 g circles).  These functions give that Fy(α, Fz).
+# The force law lives in plain functions in `tyre_law.jl` (the single source of
+# truth, no MTK dep) and is *inlined* symbolically into the `Tyre` System below —
+# Symbolics traces straight through `mf_branch`/`mf_stiffness` (no value-dependent
+# control flow).  Slip angle α / slip ratio κ in SI; forces N, Mz N·m.
 
 using ModelingToolkit
 using ModelingToolkit: t_nounits as t, D_nounits as D
 
-"Sine Magic-Formula branch: sin(C·atan(x − E·(x − atan x)))."
-mf_branch(x, C, E) = sin(C * atan(x - E * (x - atan(x))))
-
-"Load-dependent slip stiffness K(Fz) = p1·Fz0·sin(2·atan(Fz/(p2·Fz0))) — rises
-then saturates with load, the standard MF shape (units: N/rad for α, N for κ)."
-mf_stiffness(Fz, Fz0, p1, p2) = p1 * Fz0 * sin(2 * atan(Fz / (p2 * Fz0)))
-
-"Default isothermal tyre parameters (placeholders — fitted to .ibt later)."
-const TYRE_DEFAULTS = (
-    Fz0 = 3000.0,    # nominal vertical load [N]
-    μy  = 1.30,      # lateral peak friction
-    μx  = 1.30,      # longitudinal peak friction
-    Cy  = 1.40,      # lateral shape
-    Cx  = 1.60,      # longitudinal shape
-    Ey  = -0.5,      # lateral curvature
-    Ex  = -0.5,      # longitudinal curvature
-    pKy1 = 14.0,     # peak cornering stiffness factor (Kα ≈ pKy1·Fz near Fz0)
-    pKy2 = 2.2,      # load (×Fz0) at which cornering stiffness peaks
-    pKx1 = 18.0,     # longitudinal slip-stiffness factor
-    t0   = 0.035,    # peak pneumatic trail [m]
-    Bt   = 8.0,      # pneumatic-trail decay with slip
-)
-
-# Fitted to the iRacing Lotus 49 skidpad (fit/fit_skidpad.jl): normalised lateral
-# grip curve per axle, isothermal.  μ ~1.2 front / 1.3 rear, rear tyre stiffer
-# (bigger rear tyre); peak grip reached by ~7.6°/8.7° slip; loop-closure R²
-# 0.90/0.81 vs measured ay.  Fz0 = per-corner static axle load (2830/2, 3339/2).
-# Longitudinal (μx,Cx,Ex,pKx1) NOT fitted — skidpad is lateral-only; placeholders.
-# Splat into the Tyre constructor: `Tyre(; name=:t, TYRE_SKIDPAD_FRONT...)`.
-const TYRE_SKIDPAD_FRONT = (
-    Fz0 = 1415.0, μy = 1.213, μx = 1.213, Cy = 1.345, Cx = 1.6,
-    Ey = 0.40, Ex = -0.5, pKy1 = 25.7, pKy2 = 2.2, pKx1 = 18.0, t0 = 0.035, Bt = 8.0)
-const TYRE_SKIDPAD_REAR = (
-    Fz0 = 1670.0, μy = 1.304, μx = 1.304, Cy = 1.000, Cx = 1.6,
-    Ey = 0.329, Ex = -0.5, pKy1 = 33.8, pKy2 = 2.2, pKx1 = 18.0, t0 = 0.035, Bt = 8.0)
-
-"Pure-Julia lateral force Fy(Fz, α) — mirror of the symbolic `Tyre.Fy` eq."
-function tyre_fy(Fz, α; p = TYRE_DEFAULTS)
-    Ky = mf_stiffness(Fz, p.Fz0, p.pKy1, p.pKy2)
-    By = Ky / (p.Cy * p.μy * Fz + 1e-6)
-    p.μy * Fz * mf_branch(By * α, p.Cy, p.Ey)
-end
-
-"Pure-Julia longitudinal force Fx(Fz, κ)."
-function tyre_fx(Fz, κ; p = TYRE_DEFAULTS)
-    Kx = p.pKx1 * Fz
-    Bx = Kx / (p.Cx * p.μx * Fz + 1e-6)
-    p.μx * Fz * mf_branch(Bx * κ, p.Cx, p.Ex)
-end
+include("tyre_law.jl")   # mf_branch, mf_stiffness, TYRE_DEFAULTS, presets, tyre_fy/fx
 
 # ----- the acausal component --------------------------------------------------
 # Fz, α, κ are inputs (driven by the suspension + chassis kinematics in the full
