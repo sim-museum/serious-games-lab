@@ -6169,6 +6169,35 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
     hcp = e.hcp
     op = state.opening_bid
 
+    # Opener JUMP-REBID their own suit (1X-(1Y)-3X): ~16-18 HCP + a strong 6+
+    # suit, forcing to game. With my response at the 1-level, 3-of-opener's-suit
+    # is a single jump (the minimum rebid is the 2-level). NEVER pass it — bd57
+    # (1C-1H-3C) had responder pass with 15 HCP, dropping a cold game AND the
+    # 6C slam (31+ combined). Drive to game; slam-try with a fit + real extras.
+    if (op is not None and op.level == 1
+            and opener_rebid is not None and opener_rebid.level == 3
+            and opener_rebid.suit == op.suit
+            and state.my_bids and state.my_bids[0].level == 1
+            and state.my_bids[0].suit not in (None, Suit.NOTRUMP)
+            and not _slam_already_explored(state)):
+        fit = e.suit_lengths.get(op.suit, 0)
+        if hcp >= 8:                          # invitational+ opposite a 16-18 jump
+            combined = hcp + 16
+            if combined >= 33 and fit >= 3:
+                return bid(4, Suit.NOTRUMP, alert=True,
+                           why=f"RKC: opener jump-rebid + {fit}-card support, "
+                               f"{hcp} HCP ({combined}+ combined)")
+            if e.is_balanced:
+                return bid(3, Suit.NOTRUMP,
+                           why=f"3NT: game over opener's jump-rebid ({hcp} HCP)")
+            if fit >= 3 and op.suit in (Suit.CLUBS, Suit.DIAMONDS):
+                return bid(5, op.suit,
+                           why=f"5{op.suit.to_char()}: game raise of opener's "
+                               f"jump-rebid ({hcp} HCP)")
+            return bid(3, Suit.NOTRUMP,
+                       why=f"3NT: forced game over opener's jump-rebid "
+                           f"({hcp} HCP)")
+
     # 1M-2X-2M-2NT-3M preference: I bid 2/1 then 2NT (typically a
     # GF probe asking opener for more info); opener rebid the major
     # a SECOND time, confirming 6+ trumps (or strong 5+ in a 2/1 GF
@@ -6742,6 +6771,15 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
             return bid(target_lvl, my_major,
                        why=f"{target_lvl}{my_major.to_char()}: 6+ own "
                            f"suit, {hcp} HCP invitational")
+        # SLAM-zone balanced responder: invite slam with a QUANTITATIVE 4NT
+        # instead of parking in 3NT. 19+ opposite any opening is ~31+ combined;
+        # opener's quant-response places the final contract (passes 4NT with a
+        # dead minimum, raises to 6NT with extras). bd43: a 23-HCP balanced S
+        # bid a quiet 3NT opposite a 1D opener — 35 combined, a cold slam left
+        # on the table. No agreed trump here, so 4NT reads as quantitative.
+        if hcp >= 19 and e.is_balanced and not _slam_already_explored(state):
+            return bid(4, Suit.NOTRUMP, alert=True,
+                       why=f"4NT quant: {hcp} HCP balanced — invite slam")
         # Balanced 13+ with stopper in unbid suit → 3NT.
         if hcp >= 13 and e.is_balanced:
             return bid(3, Suit.NOTRUMP,
