@@ -1,8 +1,8 @@
-# sand_racer / native GPL Lotus 49 — status & guide
+# zand_racer / native GPL Lotus 49 — status & guide
 
 A native OpenGL (GLFW + ModernGL + GLSL) driving sim: a **1967 Lotus 49 on GPL's
 Zandvoort**, driven by JuliaMotor physics. `drive_native.jl` is the dev app here;
-it is packaged standalone as **`sand_racer`** at `/home/g/sand_racer/` (outside the
+it is packaged standalone as **`zand_racer`** at `/home/g/zand_racer/` (outside the
 repo — it bundles copyrighted GPL assets, personal use). The exhaustive multi-session
 history lives in the assistant memory `juliamotor-project.md`; this file is the
 working summary.
@@ -11,7 +11,7 @@ working summary.
 ```
 cd demo/native
 julia -t 2 --project=. drive_native.jl          # opens a GLFW window on your display
-JM_SMOKE=1 julia -t 2 --project=. drive_native.jl   # headless self-test → dumps /tmp/sand_hud.ppm and exits
+JM_SMOKE=1 julia -t 2 --project=. drive_native.jl   # headless self-test → dumps /tmp/zand_hud.ppm and exits
 ```
 First load is ~3–4 min (parses the track, extracts ~70 trackside objects, decodes
 MIP textures). Controls: **W/S** gas·brake, **A/D** steer, **E/Q** shift, **C** clutch,
@@ -38,7 +38,7 @@ GOTCHAS (and see memory `sandracer-launch`):
 - `gpl3do.jl` / `gplmip.jl` / `gpldat.jl` / `gpltrack.jl` — GPL asset loaders:
   `.3do` meshes, `.mip`/`.srb` textures, the `.dat` archive, `.trk` centreline + HAT.
 - `joycfg.jl` / `calibrate.jl` — joystick mapping + calibration wizard.
-- `sand_racer_*.txt` — per-run telemetry logs (gitignored).
+- `zand_racer_*.txt` — per-run telemetry logs (gitignored).
 
 ## Current state (2026-06-11)
 Drivable and visually close to GPL Zandvoort:
@@ -60,7 +60,7 @@ Drivable and visually close to GPL Zandvoort:
 ## Physics caveat
 Still **Vanwall-calibrated** physics (validated vs the user's rFactor DAQ). The end
 goal is **Path B**: a physics-based brush-tyre Lotus 49 calibrated vs iRacing Lotus 49
-telemetry — see `../../DOC/pathB-scope.md`. `sand_racer` ships a serialized
+telemetry — see `../../DOC/pathB-scope.md`. `zand_racer` ships a serialized
 `lotus_physics.jls` so it needs no rFactor install.
 
 ## Open items

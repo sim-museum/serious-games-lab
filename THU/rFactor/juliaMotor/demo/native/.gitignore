@@ -1,4 +1,6 @@
 # per-run telemetry logs
+zand_racer_*.txt
+# legacy-named logs from before the Zand Racer rename
 sand_racer_*.txt
 # joystick calibration is machine-specific
 joystick.conf

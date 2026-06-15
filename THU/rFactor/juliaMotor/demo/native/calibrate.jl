@@ -1,4 +1,4 @@
-# sand_racer joystick calibration wizard.  Run it, then follow the terminal prompts
+# zand_racer joystick calibration wizard.  Run it, then follow the terminal prompts
 # (hold a control to an extreme, then press ANY joystick button to confirm).  Writes
 # joystick.conf next to this file; the driving app loads it automatically.
 #
@@ -58,7 +58,7 @@ function capture_value(ax)                  # value of a known axis at a button 
 end
 
 function main()
-    println("\n  ── sand_racer joystick calibration ──\n")
+    println("\n  ── zand_racer joystick calibration ──\n")
     GLFW.Init(); GLFW.WindowHint(GLFW.VISIBLE, false)
     win = GLFW.CreateWindow(160, 120, "calibrate"); GLFW.MakeContextCurrent(win)
     GLFW.PollEvents()

@@ -197,12 +197,12 @@ function main()
     lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = cs.laps; tsamp = 0
     fmt_lap(s) = (m=floor(Int,s/60); sec=s-60m; si=floor(Int,sec); ms=round(Int,(sec-si)*1000);
                   "$m:$(lpad(si,2,'0')).$(lpad(ms,3,'0'))")
-    telem = SMOKE ? nothing : open("sand_racer_$(round(Int,time())).txt", "w")
+    telem = SMOKE ? nothing : open("zand_racer_$(round(Int,time())).txt", "w")
     telem !== nothing && write(telem,
-        "# sand_racer telemetry — Lotus 49 @ Zandvoort\n# t\tlap\tlapdist\tkmh\tthr\tbrk\tsteer\tclu\tgear\trpm\tx\tz\tlat\talong\tontrack\n")
+        "# zand_racer telemetry — Lotus 49 @ Zandvoort\n# t\tlap\tlapdist\tkmh\tthr\tbrk\tsteer\tclu\tgear\trpm\tx\tz\tlat\talong\tontrack\n")
     println("\n  Drive:  W/S gas·brake   A/D steer   E/Q shift   C clutch   R respawn   V view   G auto⇄manual   M mute   Esc quit")
     println("  Manual mode (G) is realistic: hold the clutch (C / stick button) to shift.")
-    println("  Lap times top-left: white = last, green = best.  Telemetry → ./sand_racer_*.txt")
+    println("  Lap times top-left: white = last, green = best.  Telemetry → ./zand_racer_*.txt")
     println("  (Logitech joystick works natively — push=throttle, pull=brake, roll=steer)\n")
     while !GLFW.WindowShouldClose(win)
         GLFW.PollEvents()
@@ -268,7 +268,7 @@ function main()
         GLFW.SwapBuffers(win)
         if SMOKE && frames == 38                   # headless self-test: dump one frame
             buf=Vector{UInt8}(undef,W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,buf)
-            open("/tmp/sand_hud.ppm","w") do io; write(io,"P6\n$W $H\n255\n")
+            open("/tmp/zand_hud.ppm","w") do io; write(io,"P6\n$W $H\n255\n")
                 for y in H:-1:1, x in 1:W; o=((y-1)*W+(x-1))*3; write(io,buf[o+1],buf[o+2],buf[o+3]); end; end
         end
 
