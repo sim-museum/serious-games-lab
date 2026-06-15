@@ -181,8 +181,16 @@ combined slip).
       the four tyres, **pKy2=1.71** (from the 2.2 placeholder) with a sane μ_scale=1.08
       (vs the 1.48 overfit under assumed transfer) → lateral **R²=0.963**. Adopted into
       `tyre_law.jl`. The real outer/inner load split is what exposes the sensitivity.
-- [ ] Combined-slip coupling (friction ellipse) + camber; couple `Corner.Fz → Tyre.Fz`
-      in the MTK assembly (the load model is the data-side counterpart now validated).
+- [x] **`Corner.Fz → Tyre.Fz` coupled** in the MTK assembly (`CornerAssembly`,
+      `src/components/corner_assembly.jl`): one wheel station where the suspension's
+      computed load drives the tyre. Test (`test/test_corner_assembly.jl`): static
+      load → tyre Fy matches the pure law exactly; a road bump flows load to grip
+      (Fz 0.76→3.2 kN, Fy tracks at corr 0.95); a load-transfer `Fext` shows more
+      load → more force but Fy/Fz collapsing 0.98→0.43 — the load-sensitivity
+      mechanism (pKy2) of outer-tyre overload in hard cornering, now in the model.
+- [ ] Combined-slip coupling (friction ellipse) + camber.
+- [ ] Chassis body: distribute the 4 corners' `Fext` from lateral/longitudinal
+      load transfer; then slip angles from body kinematics → a closed 4-corner car.
 - [ ] Chassis body (load transfer via `Corner.Fext`), powertrain, steering, full assembly.
 
 ### MTK v11 API note
