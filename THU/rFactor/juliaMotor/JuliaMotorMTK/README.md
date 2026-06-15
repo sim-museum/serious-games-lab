@@ -169,10 +169,20 @@ combined slip).
         Karussell / compression high-g, where 2.1 g is car *tilt*, not grip) and
         CdA≈1.9 m² (lumps engine-braking + rolling into "drag"). pKy2 (load
         sensitivity) is **not identifiable** from forward-`ay` — barely moves.
-- [ ] **Load sensitivity (pKy2)** properly, via the per-corner model driven by the
-      measured `shockDefl`/`rideHeight` channels → real per-corner `Fz` (not assumed
-      transfer). This is the right tool the forward-`ay` method lacked.
-- [ ] Combined-slip coupling (friction ellipse) + camber; couple `Corner.Fz → Tyre.Fz`.
+- [x] **Per-corner load model** (`src/corner_loads.jl`, `fit/corner_loads.jl`).
+      Real per-corner `Fz` from the measured shock channels:
+      `Fz_i = cw_i + MR·ks_i·(shockDefl_i − ref_i) + cd·shockVel_i`, with `cw_i`/`ks_i`
+      from CarSetup, `ref_i` from quasi-static cruising, and `MR`/`cd` **calibrated**
+      by the constraint that the four corner loads sum to the measured total normal
+      load `m·VertAccel`. Results: **MR=0.78** (physical — Lotus 49 inboard rockers),
+      cd≈2050 N/(m/s), Σloads vs measured **R²=0.885**; per-corner loads physical
+      (means match static corner weights).
+- [x] **Load sensitivity identified**: feeding the *measured* per-corner loads into
+      the four tyres, **pKy2=1.71** (from the 2.2 placeholder) with a sane μ_scale=1.08
+      (vs the 1.48 overfit under assumed transfer) → lateral **R²=0.963**. Adopted into
+      `tyre_law.jl`. The real outer/inner load split is what exposes the sensitivity.
+- [ ] Combined-slip coupling (friction ellipse) + camber; couple `Corner.Fz → Tyre.Fz`
+      in the MTK assembly (the load model is the data-side counterpart now validated).
 - [ ] Chassis body (load transfer via `Corner.Fext`), powertrain, steering, full assembly.
 
 ### MTK v11 API note
