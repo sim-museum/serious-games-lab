@@ -4761,8 +4761,16 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
                     if n_in_s > best_len:
                         best_len, best_suit = n_in_s, s
                 if best_suit is not None and best_len >= 6:
-                    # Bid at the cheapest legal level.
-                    lvl = 2 if _BID_RANK[best_suit] > _BID_RANK[opp_suit] else 3
+                    # Bid at the cheapest legal level. opp_suit is None when the
+                    # only opponent action was a DOUBLE (no suit) — e.g.
+                    # 1H-P-P-X; then a 2-level side-suit rebid is always legal
+                    # over the 1-level opening, so there's nothing to outrank.
+                    # (Without this guard _BID_RANK[None] crashed the bidder:
+                    # seed7 bd32 Acol, opener 14 HCP + 6 clubs reopening a
+                    # takeout double.)
+                    lvl = 2 if (opp_suit is None
+                                or _BID_RANK[best_suit] > _BID_RANK[opp_suit]
+                                ) else 3
                     if lvl <= 3:
                         return bid(lvl, best_suit,
                                    why=f"{lvl}{best_suit.to_char()}: "
