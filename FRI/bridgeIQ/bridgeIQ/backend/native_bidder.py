@@ -5913,6 +5913,46 @@ def _responder_rebid(state, e: HandEval, system) -> Bid:
                     bid(3, Suit.NOTRUMP,
                         why="Transfer then game (5 major, choice of games)"))
 
+    # Jacoby 2NT continuation: MY 2NT over partner's 1M opening set the major as
+    # trump (GF, 4+ support, 13+). Partner has now replied — 3-of-a-side-suit =
+    # SHORTNESS, 3M = 16-17, 3NT = 18-19, 4M = minimum sign-off. Place the
+    # contract IN THE AGREED MAJOR; NEVER raise opener's shortness reply (the
+    # old fall-through to _generic_responder_rebid read 3H as natural hearts and
+    # bid 4H — a 4-card fit instead of the agreed 6-4 spades).
+    if (op.level == 1 and op.suit in (Suit.HEARTS, Suit.SPADES)
+            and len(state.my_bids) >= 1
+            and state.my_bids[0].level == 2
+            and state.my_bids[0].suit == Suit.NOTRUMP
+            and not (p_last.is_pass or p_last.is_double or p_last.is_redouble)
+            and p_last.suit is not None):
+        trump = op.suit
+        short_suit = None
+        if p_last.suit == Suit.NOTRUMP and p_last.level == 3:
+            opener_min = 18                       # 3NT = 18-19 balanced extras
+        elif p_last.suit == trump and p_last.level == 3:
+            opener_min = 16                       # 3M = 16-17, no shortness
+        elif p_last.level == 3 and p_last.suit != trump:
+            opener_min = 12                       # 3-of-side = shortness, min
+            short_suit = p_last.suit
+        else:
+            opener_min = 12                       # 4M sign-off (minimum)
+        combined = e.hcp + opener_min
+        # A side singleton/void is a WORKING shortness when I have length there
+        # (ruffing values) and few high cards wasted opposite it.
+        short_fits = (short_suit is not None
+                      and e.suit_lengths.get(short_suit, 0) >= 3
+                      and e.suit_hcp.get(short_suit, 0) <= 3)
+        if (not _slam_already_explored(state)
+                and (combined >= 30 or (short_fits and combined >= 28))):
+            return bid(4, Suit.NOTRUMP, alert=True,
+                       why=f"Jacoby 2NT slam-try: RKC ({e.hcp}+{opener_min} "
+                           f"combined, trump {trump.to_char()})")
+        # No slam interest — settle in the agreed major's GAME.
+        if p_last.suit == trump and p_last.level >= 4:
+            return passb(why=f"Jacoby 2NT: accept 4{trump.to_char()} sign-off")
+        return bid(4, trump,
+                   why=f"Jacoby 2NT: sign off in 4{trump.to_char()} game")
+
     # If partner showed extras, drive to game; if min, settle
     return _generic_responder_rebid(state, e, p_last, system)
 
