@@ -266,8 +266,17 @@ combined slip).
       (FL 124 / FR 150 / RL 139 / RR 157 °C from 60), **outer tyres run hotter**
       (more load → more slip power), and the overheated outer-front's grip drops to
       gT=0.84 (past the 90 °C optimum) — the full temperature→grip feedback loop.
-- [ ] Optional refinements: LSD clutch-pack; a closed-loop driver model to remove
-      open-loop drift for full-lap replays.
+- [x] **Clutch-pack LSD** (`src/components/lsd.jl`). Locking torque `T_lock =
+      preload + κ_drive·max(T_in,0) + κ_coast·max(−T_in,0)`, `κ_ramp = Clsd·plates/
+      tan(ramp)`, transferred fast→slow as `T_lock·tanh(Δω)` — Lotus 49 CarSetup
+      values (6 plates, 41 N·m preload, 50°/80° drive/coast ramps). `RearAxleLSD`
+      unlumps the rear into two wheel states. Test (`test/test_lsd.jl`, split grip
+      900/2600 N, 2nd-gear WOT): open diff spins the light inner wheel (κ=0.95,
+      ΣFx=1535 N, 31.5 m/s); the LSD cuts inner spin to 0.04, lifts drive force to
+      2004 N and speed to 45.2 m/s — torque recovered to the gripping wheel.
+- [ ] Optional: integrate the LSD into the full vehicle (unlump the rear axle in
+      `DrivenVehicle`/`ThermalVehicle`); a closed-loop driver model for drift-free
+      full-lap replays.
 - [ ] Chassis body (load transfer via `Corner.Fext`), powertrain, steering, full assembly.
 
 ### MTK v11 API note
