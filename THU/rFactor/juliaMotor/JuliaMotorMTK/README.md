@@ -239,8 +239,16 @@ combined slip).
       Result: **peak ~409 N·m at ~8200 rpm** (≈ DFV-class), matching the data over
       4400–7100 rpm (RMS 11 N·m). Peak pinned to the DFV range since clean accel
       only reveals the rising part; ±~20% absolute (CdA/η/Rw). Now in `powertrain.jl`.
-- [ ] Refinements: LSD clutch-pack; tyre thermal/pressure; camber; a full *driven*
-      telemetry replay (free speed) now that the engine is fit.
+- [x] **FULL driven replay** (`fit/replay_driven.jl`): feed a measured lap's
+      steering/throttle/brake/gear into `DrivenVehicle` and let **speed evolve freely**
+      from the fitted engine + driveline + brakes. End-to-end result over a 12 s
+      Nordschleife window: **speed corr 0.93–0.99** (RMS drifts 0.6→3.8 m/s open-loop
+      — small force errors integrate), **yaw rate corr 0.99**, RMS ≈0.05 rad/s. The
+      whole model reproduces a real segment's speed *and* yaw from just the driver's
+      inputs. (Aggressive/long windows drift more — open-loop has no path/speed
+      feedback; this is the headline closed-loop-physics validation.)
+- [ ] Optional refinements: LSD clutch-pack; tyre thermal/pressure; camber; a
+      closed-loop driver model to remove open-loop drift for full-lap replays.
 - [ ] Chassis body (load transfer via `Corner.Fext`), powertrain, steering, full assembly.
 
 ### MTK v11 API note
