@@ -193,7 +193,12 @@ end
 # ---- main loop (in a function — avoids top-level soft scope, runs faster) ----
 function main()
     cs0 = spawn(CAR; v0=0.0)                         # JuliaMotor spawn → track-start pose
-    groundz(x,z) = (h=JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf); h[3] ? Float64(h[1]) : 0.0)
+    LASTZ = Ref(0.0); ONTRACK = Ref(true)
+    function groundz(x, z)                            # HAT elevation; off-surface holds last height
+        h = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf)
+        h[3] ? (LASTZ[] = Float64(h[1]); ONTRACK[] = true) : (ONTRACK[] = false)
+        LASTZ[]
+    end
     cs = build_car(x0=cs0.x, z0=cs0.z, θ0=cs0.θ, v0=8.0)   # MTK car (rolling start; handling model)
     spin = 0.0; last = time(); frames = 0; titleT = last
     v_prev = cs.v; pitch_dyn = 0.0; pitch_ter = 0.0    # dive/squat + terrain-slope pitch (smoothed)
@@ -215,7 +220,7 @@ function main()
         now = time(); dt = clamp(now-last, 0.0, 0.05); last = now
         inp, rst = read_input()
         if rst; respawn!(cs)
-        else; step_car!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60; groundz=groundz); end
+        else; step_car!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60; groundz=groundz); cs.ontrack = ONTRACK[]; end
         spin -= cs.v*dt/0.33
         ENG.rpm[] = cs.rpm                         # feed the engine-audio thread
 
