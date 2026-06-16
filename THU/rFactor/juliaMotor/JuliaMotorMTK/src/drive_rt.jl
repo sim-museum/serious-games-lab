@@ -72,12 +72,13 @@ driver works the clutch + gears, else the adapter auto-clutches and auto-shifts.
 function step_car!(c::Car, throttle, brake, steer, dt;
                    clutch = 0.0, up = false, dn = false, manual = false,
                    groundz = (x,z)->0.0)
+    held = abs(c.v) < 1.0 && throttle < 0.05         # auto-hold at a standstill: no idle creep-off
     if manual                                        # driver clutch + manual gears
-        c.s_clu(c.integ, clamp(clutch, 0, 1))
+        c.s_clu(c.integ, held ? 1.0 : clamp(clutch, 0, 1))
         up && c.gear < 5 && (c.gear += 1; c.s_gr(c.integ, GEARS[c.gear]))
         dn && c.gear > 1 && (c.gear -= 1; c.s_gr(c.integ, GEARS[c.gear]))
     else                                             # auto-clutch (slip in/out on throttle+motion)
-        ae = clamp((c.rpm - 1400.0)/1000.0, 0, 1) * clamp(max(2*throttle, c.v/2), 0, 1)
+        ae = held ? 0.0 : clamp((c.rpm - 1400.0)/1000.0, 0, 1) * clamp(max(2*throttle, c.v/2), 0, 1)
         c.s_clu(c.integ, clamp(1.0 - ae, 0, 1))
     end
     c.s_thr(c.integ, clamp(throttle, 0, 1))

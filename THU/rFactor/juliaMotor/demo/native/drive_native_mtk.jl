@@ -144,7 +144,7 @@ const PROJ = Render.perspective(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0)  # 
 mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; view::Int; auto::Bool; end
 # shift mode: AUTO (auto-shift, no clutch) by default; SAND_SHIFT=manual starts in
 # realistic mode (you shift E/Q, clutch required).  G toggles in-app.
-const CTL = Ctl(false,false,false,false,false, 0, get(ENV,"ZAND_SHIFT","manual") == "auto")   # MANUAL by default
+const CTL = Ctl(false,false,false,false,false, 1, get(ENV,"ZAND_SHIFT","manual") == "auto")   # MANUAL by default
 key(k) = GLFW.GetKey(win, k) == GLFW.PRESS
 function read_input()
     thr=brk=str=clu=0.0; up=dn=false
