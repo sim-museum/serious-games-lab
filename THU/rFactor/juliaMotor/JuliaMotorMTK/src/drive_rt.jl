@@ -43,11 +43,12 @@ function build_car(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0)
     sys = mtkcompile(DrivenVehicleRT(name = :car))
     prob = ODEProblem(sys, [sys.u => v0, sys.ωf => v0/0.30, sys.ωr => v0/RW_R,
                             sys.ωe => 209.4, sys.X => x0, sys.Y => z0, sys.ψ => θ0], (0.0, 1e7))
-    # CAPPED for real-time: dtmin + force_dtmin guarantee step!(dt) returns in bounded
-    # time even in a stiff transient (it takes the floor step and advances rather than
-    # subdividing forever → never freezes the render loop).  Looser tol = faster + robust.
+    # FIXED-STEP for hard real-time guarantees: an adaptive solver can subdivide into
+    # thousands of tiny steps in a stiff transient and freeze the render loop.  A fixed
+    # step (Rosenbrock23 is L-stable, so it stays stable for the stiff wheel-slip/clutch
+    # modes even at this rate) does a bounded number of substeps per frame — never hangs.
     integ = init(prob, Rosenbrock23(); save_everystep = false, dense = false,
-                 abstol = 1e-3, reltol = 1e-3, dtmin = 2e-5, force_dtmin = true, maxiters = 50_000)
+                 adaptive = false, dt = 1/300)
     # one batched getter for all per-frame reads (compiled once → sub-ms steady state)
     getall = ModelingToolkit.getsym(sys, [sys.X, sys.Y, sys.ψ, sys.u, sys.v, sys.rpm,
         sys.FL.tyre.Fx, sys.FR.tyre.Fx, sys.RL.tyre.Fx, sys.RR.tyre.Fx,
@@ -90,6 +91,7 @@ function step_car!(c::Car, throttle, brake, steer, dt;
     c.y = groundz(c.x, c.z)
     mg4 = 617.0*9.80665/4
     c.tc = ntuple(i -> (a[6+i]/mg4, a[10+i]/mg4, hypot(a[6+i], a[10+i])/mg4), 4)
+    (!isfinite(c.v) || abs(c.v) > 110) && return respawn!(c)   # safety net: recover from any divergence
     if !manual                                       # auto-shift on road-speed-implied rpm
         grpm = (a[4]/RW_R)*GEARS[c.gear]*FINAL*60/(2π)
         if grpm > 8500 && c.gear < 5;                       c.gear += 1; c.s_gr(c.integ, GEARS[c.gear])
