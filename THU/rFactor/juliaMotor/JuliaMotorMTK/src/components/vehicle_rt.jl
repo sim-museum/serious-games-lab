@@ -24,9 +24,11 @@ function DrivenVehicleRT(; name,
     @named RL = CornerAssembly(corner = rear_corner,  tyre = TYRE_SKIDPAD_REAR)
     @named RR = CornerAssembly(corner = rear_corner,  tyre = TYRE_SKIDPAD_REAR)
 
-    # driver inputs are PARAMETERS (updated live); vehicle params too
-    ps = @parameters m=m Izz=Izz a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L Rw_f=Rw_f Rw_r=Rw_r Iw=Iw Ieng=Ieng η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0
-    vars = @variables u(t)=8.0 v(t)=0.0 r(t)=0.0 ωf(t)=26.7 ωr(t)=24.2 ay(t) ax(t) rpm(t) X(t)=0.0 Y(t)=0.0 ψ(t)=0.0
+    # driver inputs are PARAMETERS (updated live); vehicle + clutch params too.
+    # Clutch/launch: Ie engine inertia, c_c clutch coupling, T_cap capacity, idle.
+    ps = @parameters m=m Izz=Izz a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0
+    # ωe = engine speed [rad/s], starts at idle (2000 rpm). ωf/ωr wheel speeds start ~0.
+    vars = @variables u(t)=0.0 v(t)=0.0 r(t)=0.0 ωf(t)=0.0 ωr(t)=0.0 ωe(t)=209.4 ay(t) ax(t) rpm(t) X(t)=0.0 Y(t)=0.0 ψ(t)=0.0
 
     gr = gear*final; drag = 0.5*ρair*CdA*u^2
     spec = ((FL, a,  tf/2, δ, -1, -1, mf, tf, Rw_f, :f),
@@ -36,7 +38,9 @@ function DrivenVehicleRT(; name,
     eqs = Equation[]; Fyb=Any[]; Fxb=Any[]; Mz=Any[]; Fx_f=Any[]; Fx_r=Any[]
     for (ca, xi, yi, st, slat, slong, maxle, trk, Rw, axle) in spec
         vx = u - r*yi;  vy = v + r*xi
-        α  = st - atan(vy, vx)
+        # low-speed regularisation: bounded slip-angle denominator + lateral fade-in
+        # so a stationary car generates no phantom cornering force (launch goes straight)
+        α  = (st - atan(vy, max(vx, 0.5))) * min(1.0, abs(vx)/1.5)
         ωax = axle == :f ? ωf : ωr
         κ  = (ωax*Rw - vx)/(vx + 0.5)
         fxb = ca.tyre.Fx*cos(st) - ca.tyre.Fy*sin(st)
@@ -47,17 +51,25 @@ function DrivenVehicleRT(; name,
         append!(eqs, [ca.tyre.α ~ α, ca.tyre.κ ~ κ, ca.corner.zr ~ 0.0, ca.corner.Fext ~ -ΔFz])
     end
     ΣFx = Fxb[1]+Fxb[2]+Fxb[3]+Fxb[4];  ΣFy = Fyb[1]+Fyb[2]+Fyb[3]+Fyb[4]
+    # --- slipping clutch / standing-start launch ---
+    ωgb = ωr*gr                                       # gearbox-input (clutch driven) speed
+    # auto-clutch engagement: needs throttle-or-motion AND revs above idle (anti-stall).
+    # The anti-stall factor opens the clutch below ~1400 rpm so it can't drag the engine
+    # to a stall; the throttle/motion factor keeps it open at idle standstill.
+    engage = clamp((rpm - 1400.0)/1000.0, 0.0, 1.0) * clamp(max(2.0*throttle, abs(u)/2.0), 0.0, 1.0)
+    Tcl = clamp(c_c*(ωe - ωgb), -T_cap*engage, T_cap*engage)   # viscous clutch, capped & slipping
+    Tidle = k_idle*max(0.0, idle_rpm - rpm)            # idle controller (holds ~2000 rpm)
     push!(eqs,
-        rpm ~ ωr*gr*60/(2π),
+        rpm ~ ωe*60/(2π),                             # engine rpm IS the engine-speed state
         ax ~ (ΣFx - drag)/m,
         ay ~ ΣFy/m,
         m*(D(u) - v*r) ~ ΣFx - drag,
         m*(D(v) + u*r) ~ ΣFy,
         Izz*D(r) ~ a*(Fyb[1]+Fyb[2]) - b*(Fyb[3]+Fyb[4])
                    - tf/2*(Fxb[1]-Fxb[2]) - tr/2*(Fxb[3]-Fxb[4]) + Mz[1]+Mz[2]+Mz[3]+Mz[4],
+        Ie*D(ωe) ~ engine_torque(rpm, throttle) + Tidle - Tcl,        # engine spins freely vs clutch
         2*Iw*D(ωf) ~ -brake*Tbrake_max*bias*tanh(ωf) - (Fx_f[1]+Fx_f[2])*Rw_f,
-        (2*Iw + Ieng*gr^2)*D(ωr) ~ engine_torque(rpm, throttle)*gr*η
-                                   - brake*Tbrake_max*(1-bias)*tanh(ωr) - (Fx_r[1]+Fx_r[2])*Rw_r,
+        2*Iw*D(ωr) ~ Tcl*gr*η - brake*Tbrake_max*(1-bias)*tanh(ωr) - (Fx_r[1]+Fx_r[2])*Rw_r,
         # world-frame position for rendering (heading ψ, body vel u,v)
         D(X) ~ u*cos(ψ) - v*sin(ψ),
         D(Y) ~ u*sin(ψ) + v*cos(ψ),
