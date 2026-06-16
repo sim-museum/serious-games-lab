@@ -26,6 +26,7 @@ print("loading GPL track… "); flush(stdout)
 const TRACKMESH = Render.GPL3DO.parse_3do(ZTRK)
 const TERRAIN = GPLTrack.build_hat(TRACKMESH)            # ground/elevation from the .3do
 const TRKSURF = GPLTrack.build_surface(GPLTrack.trk_centreline(joinpath(ZD,"zandvort.trk")), TERRAIN)
+const LAPLEN = maximum(TRKSURF.lapdist)   # Zandvoort lap length [m], for start/finish wrap detection
 const CAR = DriveCar(MODEL, TRKSURF; terrain=TERRAIN)    # racing ribbon from the .trk centreline
 println(TERRAIN, "  ", TRKSURF)
 print("extracting geometry… "); flush(stdout)
@@ -225,7 +226,13 @@ function main()
         if rst; respawn!(cs)
         else; step_car!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
-                        groundz=groundz); cs.ontrack = ONTRACK[]; end
+                        groundz=groundz)
+            hr = JuliaMotor.hat(TRKSURF, cs.x, cs.z)            # track-relative position
+            if hr.found
+                (cs.lapdist > 0.75*LAPLEN && hr.lapdist < 0.25*LAPLEN) && (cs.laps += 1)  # crossed S/F
+                cs.lapdist = hr.lapdist; cs.lateral = hr.lateral; cs.along = hr.lapdist; cs.ontrack = hr.on_track
+            else; cs.ontrack = false; end
+        end
         spin -= cs.v*dt/0.33
         ENG.rpm[] = cs.rpm                         # feed the engine-audio thread
 
