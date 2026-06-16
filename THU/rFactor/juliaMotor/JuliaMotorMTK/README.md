@@ -247,8 +247,20 @@ combined slip).
       whole model reproduces a real segment's speed *and* yaw from just the driver's
       inputs. (Aggressive/long windows drift more — open-loop has no path/speed
       feedback; this is the headline closed-loop-physics validation.)
-- [ ] Optional refinements: LSD clutch-pack; tyre thermal/pressure; camber; a
-      closed-loop driver model to remove open-loop drift for full-lap replays.
+- [x] **Tyre thermal / pressure / camber** (`src/components/tyre_thermal.jl`,
+      `ThermalTyre`). A surface-temperature STATE (`Csurf·dT/dt = friction-power −
+      convective cooling`), grip multipliers `μ_temp(T)` (peaks at optimal temp) and
+      `μ_press(p)` (peaks at reference pressure), and camber thrust `Fy += Fz·Cγ·γ`.
+      Test (`test/test_tyre_thermal.jl`): a cold tyre heats 50→106 °C under slip
+      (into the observed 34–131 °C range) and grip rises toward the optimum; +2°
+      camber adds 209 N. **Honest:** these are STRUCTURAL physics additions, not
+      telemetry fits — the .ibt's iRacing thermal model doesn't track a lumped
+      slip-power model (d(tempM)/dt vs slip-power corr ≈ 0), carcass temp + pressure
+      are ~static, and there's no per-tyre force to fit μ(T); coefficients are
+      physics-reasonable, calibrated to the observed operating ranges.
+- [ ] Optional refinements: LSD clutch-pack; integrate `ThermalTyre` into the
+      vehicle (4 temp states); a closed-loop driver model to remove open-loop drift
+      for full-lap replays.
 - [ ] Chassis body (load transfer via `Corner.Fext`), powertrain, steering, full assembly.
 
 ### MTK v11 API note
