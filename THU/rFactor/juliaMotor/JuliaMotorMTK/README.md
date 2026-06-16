@@ -281,8 +281,21 @@ combined slip).
       `lock_scale` parameter): open diff lets the unloaded inner rear free-spin
       (κ=0.38, Δω=39, ax=0.30 g); the LSD ties the rears together (Δω=0.4) so the
       loaded outer puts power down → ax=0.47 g (+57% corner-exit traction).
-- [ ] Optional: a closed-loop driver model for drift-free full-lap replays
-      (everything else — forces, loads, driveline, thermal, LSD — is in place).
+- [x] **Closed-loop driver model** (`src/components/driver.jl`, `ClosedLoopVehicle`).
+      The controls layer that drives the car itself: PI on (u_ref−u) → throttle/brake,
+      kinematic feedforward + PI on (r_ref−r) → steer, leaky-integrator anti-windup
+      (2 controller states). Test (`test/test_driver.jl`, steady corner): tracks
+      u_ref=28 m/s to ≤0.17 m/s and r_ref=0.25 rad/s to ≤0.003 rad/s, holding steady
+      with **no open-loop drift** (the steer feedback compensates the model's
+      understeer to hit the target yaw). Feed it telemetry/racing-line references for
+      drift-free full-lap replays or lap-time simulation.
+
+**The model is structurally complete** — every force/load/driveline parameter is
+telemetry-fit and validated, the closed four-corner car runs with combined slip,
+suspension load transfer, fitted powertrain, clutch-pack LSD, and per-corner tyre
+thermal feedback, and a closed-loop driver can drive it. Vehicle variants:
+`Vehicle` (handling), `DrivenVehicle` (powertrain), `ThermalVehicle`,
+`DrivenVehicleLSD`, `ClosedLoopVehicle`.
 - [ ] Chassis body (load transfer via `Corner.Fext`), powertrain, steering, full assembly.
 
 ### MTK v11 API note
