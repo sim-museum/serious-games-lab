@@ -274,9 +274,15 @@ combined slip).
       900/2600 N, 2nd-gear WOT): open diff spins the light inner wheel (κ=0.95,
       ΣFx=1535 N, 31.5 m/s); the LSD cuts inner spin to 0.04, lifts drive force to
       2004 N and speed to 45.2 m/s — torque recovered to the gripping wheel.
-- [ ] Optional: integrate the LSD into the full vehicle (unlump the rear axle in
-      `DrivenVehicle`/`ThermalVehicle`); a closed-loop driver model for drift-free
-      full-lap replays.
+- [x] **LSD integrated into the vehicle** (`src/components/vehicle_lsd.jl`,
+      `DrivenVehicleLSD`). Rear axle unlumped into ωRL/ωRR (24 states), engine
+      coupled to the carrier (average) speed, clutch-pack LSD locking between them.
+      Test (`test/test_vehicle_lsd.jl`, power-on left corner, open vs LSD via the
+      `lock_scale` parameter): open diff lets the unloaded inner rear free-spin
+      (κ=0.38, Δω=39, ax=0.30 g); the LSD ties the rears together (Δω=0.4) so the
+      loaded outer puts power down → ax=0.47 g (+57% corner-exit traction).
+- [ ] Optional: a closed-loop driver model for drift-free full-lap replays
+      (everything else — forces, loads, driveline, thermal, LSD — is in place).
 - [ ] Chassis body (load transfer via `Corner.Fext`), powertrain, steering, full assembly.
 
 ### MTK v11 API note
