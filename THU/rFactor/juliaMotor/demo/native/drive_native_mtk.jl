@@ -11,7 +11,10 @@ include("render.jl"); using .Render
 include("gpltrack.jl"); using .GPLTrack
 include("audio.jl"); using .EngineAudio
 include("joycfg.jl"); using .JoyCfg
-const JOYMAP = JoyCfg.loadmap(joinpath(@__DIR__, "joystick.conf"))   # from calibrate.jl, or default
+const JOYMAP = let m = JoyCfg.loadmap(joinpath(@__DIR__, "joystick.conf"))
+    JoyCfg.JoyMap(m.steer, m.throttle, m.brake, JoyCfg.Ctrl(4, -1.0, 1.0),   # clutch on the X3D SLIDER (axis 4)
+                  m.up_btn, m.dn_btn, m.clutch_btn, m.deadzone)
+end
 
 # ---- load physics + geometry: the GPL Zandvoort track + Vanwall-calibrated physics ----
 const GD = default_gamedata()
@@ -141,7 +144,7 @@ const PROJ = Render.perspective(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0)  # 
 mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; view::Int; auto::Bool; end
 # shift mode: AUTO (auto-shift, no clutch) by default; SAND_SHIFT=manual starts in
 # realistic mode (you shift E/Q, clutch required).  G toggles in-app.
-const CTL = Ctl(false,false,false,false,false, 0, get(ENV,"SAND_SHIFT","auto") != "manual")
+const CTL = Ctl(false,false,false,false,false, 0, get(ENV,"ZAND_SHIFT","manual") == "auto")   # MANUAL by default
 key(k) = GLFW.GetKey(win, k) == GLFW.PRESS
 function read_input()
     thr=brk=str=clu=0.0; up=dn=false
@@ -220,7 +223,9 @@ function main()
         now = time(); dt = clamp(now-last, 0.0, 0.05); last = now
         inp, rst = read_input()
         if rst; respawn!(cs)
-        else; step_car!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60; groundz=groundz); cs.ontrack = ONTRACK[]; end
+        else; step_car!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
+                        clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
+                        groundz=groundz); cs.ontrack = ONTRACK[]; end
         spin -= cs.v*dt/0.33
         ENG.rpm[] = cs.rpm                         # feed the engine-audio thread
 

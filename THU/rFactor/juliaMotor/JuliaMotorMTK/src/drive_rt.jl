@@ -27,7 +27,7 @@ const RW_R     = 0.33
 
 mutable struct Car
     sys; integ
-    s_thr; s_brk; s_st; s_gr                        # parameter setters
+    s_thr; s_brk; s_st; s_gr; s_clu                 # parameter setters
     getall                                          # batched observed getter (compiled once)
     gear::Int
     # CarState-like render fields
@@ -50,7 +50,7 @@ function build_car(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0)
         sys.FL.tyre.Fx, sys.FR.tyre.Fx, sys.RL.tyre.Fx, sys.RR.tyre.Fx,
         sys.FL.tyre.Fy, sys.FR.tyre.Fy, sys.RL.tyre.Fy, sys.RR.tyre.Fy, sys.ωr])
     c = Car(sys, integ, setp(sys, sys.throttle), setp(sys, sys.brake), setp(sys, sys.δ),
-            setp(sys, sys.gear), getall, 1,
+            setp(sys, sys.gear), setp(sys, sys.clutch), getall, 1,
             x0, 0.0, z0, θ0, v0, 0.0, 0.0, 1,
             ntuple(_ -> (0.0,0.0,0.0), 4), 0.0, 0, 0.0, 0.0, true)
     c.s_gr(c.integ, GEARS[c.gear])
@@ -59,9 +59,20 @@ function build_car(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0)
     c
 end
 
-"Advance the car by dt with driver inputs (throttle, brake, steer ∈ [-1,1]).
-`groundz(x,z)` returns track-surface elevation for rendering (default flat)."
-function step_car!(c::Car, throttle, brake, steer, dt; groundz = (x,z)->0.0)
+"Advance the car by dt.  throttle/brake/steer ∈ [0,1]/[0,1]/[-1,1]; `clutch` ∈ [0,1]
+(0 engaged, 1 pressed); `up`/`dn` are one-frame shift events; `manual=true` ⇒ the
+driver works the clutch + gears, else the adapter auto-clutches and auto-shifts."
+function step_car!(c::Car, throttle, brake, steer, dt;
+                   clutch = 0.0, up = false, dn = false, manual = false,
+                   groundz = (x,z)->0.0)
+    if manual                                        # driver clutch + manual gears
+        c.s_clu(c.integ, clamp(clutch, 0, 1))
+        up && c.gear < 5 && (c.gear += 1; c.s_gr(c.integ, GEARS[c.gear]))
+        dn && c.gear > 1 && (c.gear -= 1; c.s_gr(c.integ, GEARS[c.gear]))
+    else                                             # auto-clutch (slip in/out on throttle+motion)
+        ae = clamp((c.rpm - 1400.0)/1000.0, 0, 1) * clamp(max(2*throttle, c.v/2), 0, 1)
+        c.s_clu(c.integ, clamp(1.0 - ae, 0, 1))
+    end
     c.s_thr(c.integ, clamp(throttle, 0, 1))
     c.s_brk(c.integ, clamp(brake, 0, 1))
     c.s_st(c.integ, clamp(steer, -1, 1) * MAXSTEER)
@@ -73,11 +84,11 @@ function step_car!(c::Car, throttle, brake, steer, dt; groundz = (x,z)->0.0)
     c.y = groundz(c.x, c.z)
     mg4 = 617.0*9.80665/4
     c.tc = ntuple(i -> (a[6+i]/mg4, a[10+i]/mg4, hypot(a[6+i], a[10+i])/mg4), 4)
-    # auto-shift on the locked-equivalent rpm from ROAD speed u (a[4]) — not the
-    # engine rpm (pinned high during clutch slip) nor wheel speed (spikes on wheelspin).
-    grpm = (a[4]/RW_R)*GEARS[c.gear]*FINAL*60/(2π)
-    if grpm > 8500 && c.gear < 5;                         c.gear += 1; c.s_gr(c.integ, GEARS[c.gear])
-    elseif grpm < 3400 && c.gear > 1 && throttle < 0.9;   c.gear -= 1; c.s_gr(c.integ, GEARS[c.gear]); end
+    if !manual                                       # auto-shift on road-speed-implied rpm
+        grpm = (a[4]/RW_R)*GEARS[c.gear]*FINAL*60/(2π)
+        if grpm > 8500 && c.gear < 5;                       c.gear += 1; c.s_gr(c.integ, GEARS[c.gear])
+        elseif grpm < 3400 && c.gear > 1 && throttle < 0.9; c.gear -= 1; c.s_gr(c.integ, GEARS[c.gear]); end
+    end
     c
 end
 

@@ -26,7 +26,7 @@ function DrivenVehicleRT(; name,
 
     # driver inputs are PARAMETERS (updated live); vehicle + clutch params too.
     # Clutch/launch: Ie engine inertia, c_c clutch coupling, T_cap capacity, idle.
-    ps = @parameters m=m Izz=Izz a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0
+    ps = @parameters m=m Izz=Izz a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0
     # ωe = engine speed [rad/s], starts at idle (2000 rpm). ωf/ωr wheel speeds start ~0.
     vars = @variables u(t)=0.0 v(t)=0.0 r(t)=0.0 ωf(t)=0.0 ωr(t)=0.0 ωe(t)=209.4 ay(t) ax(t) rpm(t) X(t)=0.0 Y(t)=0.0 ψ(t)=0.0
 
@@ -53,10 +53,11 @@ function DrivenVehicleRT(; name,
     ΣFx = Fxb[1]+Fxb[2]+Fxb[3]+Fxb[4];  ΣFy = Fyb[1]+Fyb[2]+Fyb[3]+Fyb[4]
     # --- slipping clutch / standing-start launch ---
     ωgb = ωr*gr                                       # gearbox-input (clutch driven) speed
-    # auto-clutch engagement: needs throttle-or-motion AND revs above idle (anti-stall).
-    # The anti-stall factor opens the clutch below ~1400 rpm so it can't drag the engine
-    # to a stall; the throttle/motion factor keeps it open at idle standstill.
-    engage = clamp((rpm - 1400.0)/1000.0, 0.0, 1.0) * clamp(max(2.0*throttle, abs(u)/2.0), 0.0, 1.0)
+    # clutch engagement = clutch-released fraction (1−clutch) × anti-stall.  `clutch`
+    # is the driver pedal (0 released/engaged, 1 pressed/disengaged); the adapter sets
+    # it from the slider in MANUAL or computes an auto value in AUTO.  Anti-stall opens
+    # the clutch below ~1000 rpm so it can't drag the engine to a dead stall.
+    engage = clamp((rpm - 1000.0)/600.0, 0.0, 1.0) * (1.0 - clutch)
     Tcl = clamp(c_c*(ωe - ωgb), -T_cap*engage, T_cap*engage)   # viscous clutch, capped & slipping
     Tidle = k_idle*max(0.0, idle_rpm - rpm)            # idle controller (holds ~2000 rpm)
     push!(eqs,

@@ -25,4 +25,16 @@ for _ in 1:120; step_car!(c, 0.0, 1.0, 0.0, 1/60); end   # 2 s hard braking
 println("  after 2 s braking: v=$(round(c.v*3.6,digits=1)) km/h")
 @assert c.v*3.6 < 40   "braking should slow it markedly"
 
-println("\nLAUNCH MODEL OK ✓ — idles at rest, launches from a standing start, brakes.")
+println("\n=== 4) MANUAL clutch launch: rev with clutch in, then drop it ===")
+c = build_car(v0 = 0.0)
+for _ in 1:60; step_car!(c, 1.0, 0.0, 0.0, 1/60; clutch = 1.0, manual = true); end   # clutch IN, rev
+println("  clutch in + full throttle 1 s: v=$(round(c.v*3.6,digits=1)) km/h  rpm=$(round(Int,c.rpm))  (revs, car still)")
+@assert c.v < 1.0    "clutch in ⇒ car must stay put"
+@assert c.rpm > 5000 "engine should rev freely with the clutch in"
+for sec in 1:4
+    for _ in 1:60; step_car!(c, 1.0, 0.0, 0.0, 1/60; clutch = 0.0, manual = true); end   # clutch OUT
+    println("  clutch out t=$(sec)s: v=$(round(c.v*3.6,digits=1)) km/h  rpm=$(round(Int,c.rpm))  gear=$(c.gear)")
+end
+@assert c.v*3.6 > 40 "dropping the clutch should launch the car"
+
+println("\nLAUNCH MODEL OK ✓ — idles, AUTO + MANUAL-clutch standing starts, brakes.")
