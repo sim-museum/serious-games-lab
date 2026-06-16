@@ -43,8 +43,11 @@ function build_car(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0)
     sys = mtkcompile(DrivenVehicleRT(name = :car))
     prob = ODEProblem(sys, [sys.u => v0, sys.ωf => v0/0.30, sys.ωr => v0/RW_R,
                             sys.ωe => 209.4, sys.X => x0, sys.Y => z0, sys.ψ => θ0], (0.0, 1e7))
+    # CAPPED for real-time: dtmin + force_dtmin guarantee step!(dt) returns in bounded
+    # time even in a stiff transient (it takes the floor step and advances rather than
+    # subdividing forever → never freezes the render loop).  Looser tol = faster + robust.
     integ = init(prob, Rosenbrock23(); save_everystep = false, dense = false,
-                 abstol = 1e-4, reltol = 1e-4)
+                 abstol = 1e-3, reltol = 1e-3, dtmin = 2e-5, force_dtmin = true, maxiters = 50_000)
     # one batched getter for all per-frame reads (compiled once → sub-ms steady state)
     getall = ModelingToolkit.getsym(sys, [sys.X, sys.Y, sys.ψ, sys.u, sys.v, sys.rpm,
         sys.FL.tyre.Fx, sys.FR.tyre.Fx, sys.RL.tyre.Fx, sys.RR.tyre.Fx,
@@ -53,10 +56,13 @@ function build_car(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0)
             setp(sys, sys.gear), setp(sys, sys.clutch), getall, 1,
             x0, 0.0, z0, θ0, v0, 0.0, 0.0, 1,
             ntuple(_ -> (0.0,0.0,0.0), 4), 0.0, 0, 0.0, 0.0, true)
-    c.s_gr(c.integ, GEARS[c.gear])
-    for _ in 1:5; step!(integ, 1/60, true); end     # warm up step! + getter (compile at load)
-    getall(integ);  reinit!(integ)                  # then reset to the spawn state
-    c
+    c.s_gr(c.integ, GEARS[c.gear]);  getall(integ)
+    for _ in 1:3; step_car!(c, 0.3, 0.0, 0.0, 1/60); end                          # warm AUTO path
+    for _ in 1:3; step_car!(c, 0.3, 0.0, 0.0, 1/60; clutch = 0.5, manual = true); end  # warm MANUAL path
+    reinit!(c.integ); c.gear = 1; c.s_gr(c.integ, GEARS[1])                       # reset to spawn
+    a = getall(c.integ)                                                           # refresh struct fields
+    c.x = a[1]; c.z = a[2]; c.θ = a[3]; c.v = sqrt(a[4]^2 + a[5]^2); c.rpm = a[6]  # (else stale warmup v
+    c                                                                             #  spuriously engages the auto-clutch)
 end
 
 "Advance the car by dt.  throttle/brake/steer ∈ [0,1]/[0,1]/[-1,1]; `clutch` ∈ [0,1]
