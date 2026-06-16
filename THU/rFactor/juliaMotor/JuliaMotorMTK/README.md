@@ -258,9 +258,16 @@ combined slip).
       slip-power model (d(tempM)/dt vs slip-power corr ≈ 0), carcass temp + pressure
       are ~static, and there's no per-tyre force to fit μ(T); coefficients are
       physics-reasonable, calibrated to the observed operating ranges.
-- [ ] Optional refinements: LSD clutch-pack; integrate `ThermalTyre` into the
-      vehicle (4 temp states); a closed-loop driver model to remove open-loop drift
-      for full-lap replays.
+- [x] **ThermalTyre integrated into the vehicle** (`src/components/thermal_vehicle.jl`,
+      `ThermalVehicle` = `DrivenVehicle` with `ThermalCornerAssembly` per corner).
+      26-state model: each tyre carries its own surface-temperature state, fed the
+      contact-patch speed for slip-power heating + cooling. Test
+      (`test/test_thermal_vehicle.jl`, 25 s left corner): per-corner temps evolve
+      (FL 124 / FR 150 / RL 139 / RR 157 °C from 60), **outer tyres run hotter**
+      (more load → more slip power), and the overheated outer-front's grip drops to
+      gT=0.84 (past the 90 °C optimum) — the full temperature→grip feedback loop.
+- [ ] Optional refinements: LSD clutch-pack; a closed-loop driver model to remove
+      open-loop drift for full-lap replays.
 - [ ] Chassis body (load transfer via `Corner.Fext`), powertrain, steering, full assembly.
 
 ### MTK v11 API note
