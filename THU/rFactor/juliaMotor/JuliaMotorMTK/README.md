@@ -289,6 +289,12 @@ combined slip).
       with **no open-loop drift** (the steer feedback compensates the model's
       understeer to hit the target yaw). Feed it telemetry/racing-line references for
       drift-free full-lap replays or lap-time simulation.
+- [x] **Closed-loop telemetry replay** (`fit/replay_closed.jl`): feed the recorded
+      lap's speed + yaw rate as references; the driver computes throttle/brake/steer.
+      On the **same 30 s window where open-loop diverged** (yaw corr 0.14): drift-free
+      **speed corr 0.994, yaw corr 0.918**. And an inverse-dynamics validation — the
+      driver's required inputs match the REAL driver's: steering corr 0.71, throttle
+      0.83, brake 0.58 (the model needs similar inputs to produce the same motion).
 
 **The model is structurally complete** — every force/load/driveline parameter is
 telemetry-fit and validated, the closed four-corner car runs with combined slip,
