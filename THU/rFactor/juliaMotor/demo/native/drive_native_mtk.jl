@@ -16,12 +16,70 @@ const JOYMAP = let m = JoyCfg.loadmap(joinpath(@__DIR__, "joystick.conf"))
                   m.up_btn, m.dn_btn, m.clutch_btn, m.deadzone)
 end
 
+# ---- track selection (upfront, before the long load) ----
+# Honour TRACK=zandvoort|skidpad if set; otherwise, when launched interactively,
+# prompt the driver to choose.  (nurburgring = TBD, shown but not yet selectable.)
+function choose_track()
+    haskey(ENV, "TRACK")     && return lowercase(ENV["TRACK"])
+    haskey(ENV, "JM_SMOKE")  && return "zandvoort"          # headless self-test
+    isa(stdin, Base.TTY)     || return "zandvoort"          # non-interactive → default
+    println("""
+
+      ╔════════════════════════════════════════════════╗
+      ║          juliaMotor — choose your track         ║
+      ╠════════════════════════════════════════════════╣
+      ║   1) Zandvoort   GPL 1967 circuit (default)     ║
+      ║   2) Skidpad     flat centripetal pad,          ║
+      ║                  Ø10–200 m circles (10 m steps)  ║
+      ╚════════════════════════════════════════════════╝""")
+    print("\n  Track [1/2] (Enter = 1): "); flush(stdout)
+    return strip(readline()) == "2" ? "skidpad" : "zandvoort"
+end
+const TRACKSEL = choose_track()
+const SKIDPAD  = TRACKSEL == "skidpad"
+println("  → track: ", uppercasefirst(TRACKSEL))
+
+# Procedural skidpad / centripetal pad: flat asphalt + concentric measurement
+# circles, diameters 10..200 m (radii 5..100 m).  Returns Render.TrackParts
+# (11-float verts: pos3, normal3, col3, uv2; up-normal, no texture → vertex colour).
+function skidpad_parts()
+    up = (0f0,1f0,0f0)
+    push3!(v,x,y,z,c) = append!(v, Float32[x,y,z, up[1],up[2],up[3], c[1],c[2],c[3], 0f0,0f0])
+    parts = Render.TrackPart[]
+    # ground: dark asphalt quad, 260 x 260 m at y=0
+    g = Float32[]; asph=(0.27f0,0.28f0,0.30f0); S=130f0
+    for (ax,az,bx,bz,cx,cz) in ((-S,-S, S,-S, S,S), (-S,-S, S,S, -S,S))
+        push3!(g,ax,0f0,az,asph); push3!(g,bx,0f0,bz,asph); push3!(g,cx,0f0,cz,asph)
+    end
+    push!(parts, Render.TrackPart(g, "", asph))
+    # circles: a thin band (annulus) per diameter, white; 50 m multiples brighter/yellow
+    for d in 10:10:200
+        r = Float32(d/2); ring=Float32[]; w=(d%50==0 ? 0.30f0 : 0.16f0); y=0.02f0
+        col = d%50==0 ? (1f0,0.92f0,0.35f0) : (0.92f0,0.93f0,0.96f0)
+        seg = max(72, round(Int, r*3.5))
+        for i in 0:seg-1
+            a0=2f0*Float32(pi)*i/seg; a1=2f0*Float32(pi)*(i+1)/seg
+            xi0=(r-w)*cos(a0); zi0=(r-w)*sin(a0); xo0=(r+w)*cos(a0); zo0=(r+w)*sin(a0)
+            xi1=(r-w)*cos(a1); zi1=(r-w)*sin(a1); xo1=(r+w)*cos(a1); zo1=(r+w)*sin(a1)
+            push3!(ring,xi0,y,zi0,col); push3!(ring,xo0,y,zo0,col); push3!(ring,xo1,y,zo1,col)
+            push3!(ring,xi0,y,zi0,col); push3!(ring,xo1,y,zo1,col); push3!(ring,xi1,y,zi1,col)
+        end
+        push!(parts, Render.TrackPart(ring, "", col))
+    end
+    parts
+end
+
 # ---- load physics + geometry: the GPL Zandvoort track + Vanwall-calibrated physics ----
 const GD = default_gamedata()
 const VEH = load_vehicle(joinpath(GD,"Vehicles","F158","Vanwall","Teams","LewisEvans","LewisEvans.veh"))
 const MODEL = VehicleModel(VEH)              # physics (Lotus-49 calibration is the future goal)
 const ZD = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/tracks/zandvort"
 const ZTRK = joinpath(ZD, "zandvort.3do")
+if SKIDPAD
+    print("building skidpad... "); flush(stdout)
+    const TRACK = skidpad_parts()
+    println("flat pad + 20 measurement circles, diameters 10-200 m")
+else
 print("loading GPL track… "); flush(stdout)
 const TRACKMESH = Render.GPL3DO.parse_3do(ZTRK)
 const TERRAIN = GPLTrack.build_hat(TRACKMESH)            # ground/elevation from the .3do
@@ -31,6 +89,7 @@ const CAR = DriveCar(MODEL, TRKSURF; terrain=TERRAIN)    # racing ribbon from th
 println(TERRAIN, "  ", TRKSURF)
 print("extracting geometry… "); flush(stdout)
 const TRACK = Render.extract_gpl_car(ZTRK; track=true, mirror=true, exclude=("ltraymap","lshad","wiref_s"))   # GPL Zandvoort (no wire fences)
+end
 # ---- GPL Lotus 49 (replaces the rFactor Vanwall; the authentic GPL-pivot car) ----
 const LOTDIR = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/cars/cars67/lotus"
 const GPLTEX = Render.gpl_texture_index(LOTDIR)
@@ -72,6 +131,10 @@ const HORIZON_RING = Render.build_horizon(TEXIDX)
 # ---- Phase 3 (a): auto-place trackside objects (GPL .3do geometry, textured from
 # loose files + the packed zandvort.dat).  Names + transforms come from the .3do
 # instance records; geometry/textures resolve from loose files OR the .dat archive.
+if SKIDPAD
+    global OBJECTS = Any[]
+    global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
+else
 const DATPACK = isfile(joinpath(ZD,"zandvort.dat")) ? Render.GPLDat.parse_dat(joinpath(ZD,"zandvort.dat")) : Dict{String,Vector{UInt8}}()
 const TMPOBJ = mktempdir()
 objpath(nm) = (p=joinpath(ZD, nm*".3do"); isfile(p) ? p :
@@ -131,6 +194,7 @@ let objnames=Set{String}()
     end
 end
 println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards placed")
+end
 carItems   = Render.build_gpl(CARP, GPLTEX)        # Lotus body, GPL .mip textures
 # four Lotus wheels — keep the untextured black tyre body (only the car body drops "")
 load_wheel(nm) = Render.build_gpl(Render.extract_gpl_car(joinpath(LOTDIR,nm*".3do");
@@ -173,6 +237,7 @@ end
 
 # ---- terrain pitch: slope under the car from the HAT, sampled fore & aft ----
 function terrain_pitch(cs)
+    SKIDPAD && return 0.0   # flat pad → no slope
     L = 1.5; fx = cos(cs.θ); fz = sin(cs.θ)               # physics forward (x, z)
     hf = JuliaMotor.hat3d(TERRAIN, cs.x+fx*L, cs.z+fz*L; ref=Inf)
     hr = JuliaMotor.hat3d(TERRAIN, cs.x-fx*L, cs.z-fz*L; ref=Inf)
@@ -196,14 +261,15 @@ end
 
 # ---- main loop (in a function — avoids top-level soft scope, runs faster) ----
 function main()
-    cs0 = spawn(CAR; v0=0.0)                         # JuliaMotor spawn → track-start pose
+    cs0 = SKIDPAD ? (x=0.0, z=0.0, θ=0.0) : spawn(CAR; v0=0.0)   # spawn pose (skidpad: pad centre)
     LASTZ = Ref(0.0); ONTRACK = Ref(true)
     function groundz(x, z)                            # HAT elevation; off-surface holds last height
+        SKIDPAD && return 0.0   # flat skidpad → no elevation
         h = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf)
         h[3] ? (LASTZ[] = Float64(h[1]); ONTRACK[] = true) : (ONTRACK[] = false)
         LASTZ[]
     end
-    cs = build_car(x0=cs0.x, z0=cs0.z, θ0=cs0.θ, v0=8.0)   # MTK car (rolling start; handling model)
+    cs = build_car(x0=cs0.x, z0=cs0.z, θ0=cs0.θ, v0=0.0)   # MTK car — standing start
     spin = 0.0; last = time(); frames = 0; titleT = last
     v_prev = cs.v; pitch_dyn = 0.0; pitch_ter = 0.0    # dive/squat + terrain-slope pitch (smoothed)
     # lap timing + telemetry log
@@ -227,11 +293,13 @@ function main()
         else; step_car!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
                         groundz=groundz)
+            if !SKIDPAD     # track position + lap timing (Zandvoort only)
             hr = JuliaMotor.hat(TRKSURF, cs.x, cs.z)            # track-relative position
             if hr.found
                 (cs.lapdist > 0.75*LAPLEN && hr.lapdist < 0.25*LAPLEN) && (cs.laps += 1)  # crossed S/F
                 cs.lapdist = hr.lapdist; cs.lateral = hr.lateral; cs.along = hr.lapdist; cs.ontrack = hr.on_track
             else; cs.ontrack = false; end
+            end
         end
         spin -= cs.v*dt/0.33
         ENG.rpm[] = cs.rpm                         # feed the engine-audio thread
@@ -258,7 +326,7 @@ function main()
         carModel = Render.translate(Float32[cs.x, cs.y, -cs.z]) * Render.roty(Float32(cs.θ)) *
                    Render.rotz(Float32(pitch_ter))                       # whole car follows the hill
         bodyModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.translate(BODY_OFF)  # body dives/squats
-        δ = Float32(inp.steer * CAR.max_steer)
+        δ = Float32(inp.steer * (SKIDPAD ? 0.30 : CAR.max_steer))
         wheelmat(wx,wz,steer,r) = carModel * Render.translate(Float32[wx, r, wz]) *
                      (steer ? Render.roty(δ) : Render.ident()) * Render.rotz(Float32(spin))
         # ---- shadow pass: scene depth from the sun, light box on the car ----
