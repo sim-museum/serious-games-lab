@@ -296,6 +296,15 @@ combined slip).
       driver's required inputs match the REAL driver's: steering corr 0.71, throttle
       0.83, brake 0.58 (the model needs similar inputs to produce the same motion).
 
+- [x] **Lap-time simulation** (`fit/laptime.jl`) — the headline application. On a
+      3.4 km / 6-corner test circuit: a quasi-steady-state friction-circle solver
+      (cornering limit √(μg/κ) + forward traction/power pass + backward braking pass)
+      using the model's fitted grip (μ=1.25) and engine power (**454 hp** from the
+      fitted curve) gives an **optimal lap of 1:14.27** (top speed 304 km/h, hairpin
+      67 km/h). Then the **closed-loop car driven around the line** completes a full
+      dynamic lap in 89.84 s (at 85% of the limit for full-lap stability) — the whole
+      model + driver running a lap, not just a point-mass.
+
 **The model is structurally complete** — every force/load/driveline parameter is
 telemetry-fit and validated, the closed four-corner car runs with combined slip,
 suspension load transfer, fitted powertrain, clutch-pack LSD, and per-corner tyre
