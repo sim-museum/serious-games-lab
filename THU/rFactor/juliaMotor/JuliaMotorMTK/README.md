@@ -305,6 +305,15 @@ combined slip).
       dynamic lap in 89.84 s (at 85% of the limit for full-lap stability) — the whole
       model + driver running a lap, not just a point-mass.
 
+- [x] **Lap-sim vs the recorded lap** (`fit/compare_lap.jl`). The .ibt has a 12.1 km
+      (61%) Nordschleife segment; reconstruct the driven line's curvature κ(s)=|yaw|/v,
+      run the QSS sim on that exact line, and compare. **Speed-profile corr = 0.91** —
+      model and human brake/accelerate in the *same* places, validating the model's
+      relative cornering. The model's QSS optimum is 29% quicker (258 vs 362 s), but
+      the human's top speed (249 vs 294 km/h capable) marks a **cautious sub-limit
+      drive**, so the gap is mostly driver margin — a flat-out reference lap would be
+      needed to anchor absolute grip. Honest: shape validated, absolute pace not.
+
 **The model is structurally complete** — every force/load/driveline parameter is
 telemetry-fit and validated, the closed four-corner car runs with combined slip,
 suspension load transfer, fitted powertrain, clutch-pack LSD, and per-corner tyre
