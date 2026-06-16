@@ -28,15 +28,19 @@ function choose_track()
       ╔════════════════════════════════════════════════╗
       ║          juliaMotor — choose your track         ║
       ╠════════════════════════════════════════════════╣
-      ║   1) Zandvoort   GPL 1967 circuit (default)     ║
-      ║   2) Skidpad     flat centripetal pad,          ║
-      ║                  Ø10–200 m circles (10 m steps)  ║
+      ║   1) Zandvoort     GPL 1967 circuit (default)   ║
+      ║   2) Skidpad       flat centripetal pad,        ║
+      ║                    Ø10–200 m circles (10 m step) ║
+      ║   3) Nürburgring   rFactor Nordschleife 1967,   ║
+      ║                    22.7 km, full elevation      ║
       ╚════════════════════════════════════════════════╝""")
-    print("\n  Track [1/2] (Enter = 1): "); flush(stdout)
-    return strip(readline()) == "2" ? "skidpad" : "zandvoort"
+    print("\n  Track [1/2/3] (Enter = 1): "); flush(stdout)
+    s = strip(readline())
+    return s == "2" ? "skidpad" : s == "3" ? "nurburgring" : "zandvoort"
 end
 const TRACKSEL = choose_track()
 const SKIDPAD  = TRACKSEL == "skidpad"
+const NURB     = TRACKSEL == "nurburgring"
 println("  → track: ", uppercasefirst(TRACKSEL))
 
 # Procedural skidpad / centripetal pad: flat asphalt + concentric measurement
@@ -69,6 +73,23 @@ function skidpad_parts()
     parts
 end
 
+# rFactor Nürburgring (Nurburg67): the loose .scn/.aiw live in a Burg67/ subdir
+# while the geometry/texture .mas archives sit in the parent Locations dir (plus the
+# shared commonmaps.mas).  TriangleHAT/extract_track/texture_index each readdir() a
+# single dir for both, so we stage a consolidated dir of symlinks and return it.
+function nurburgring_dir()
+    ND = "/home/g/sgl/THU/rFactor/WP/drive_c/Program Files/rFactor/GameData/Locations/Nurburg67"
+    D  = joinpath(tempdir(), "jm_nurburg67")
+    if !isdir(D) || !isfile(joinpath(D, "Burg67.SCN"))
+        rm(D; force=true, recursive=true); mkpath(D)
+        for f in ("Burg67/Burg67.SCN","Burg67/Burg67.AIW","Burg67.mas","Burg67Map.mas")
+            symlink(joinpath(ND, f), joinpath(D, basename(f)))
+        end
+        symlink(joinpath(ND, "..", "commonmaps.mas"), joinpath(D, "commonmaps.mas"))
+    end
+    D
+end
+
 # ---- load physics + geometry: the GPL Zandvoort track + Vanwall-calibrated physics ----
 const GD = default_gamedata()
 const VEH = load_vehicle(joinpath(GD,"Vehicles","F158","Vanwall","Teams","LewisEvans","LewisEvans.veh"))
@@ -79,6 +100,15 @@ if SKIDPAD
     print("building skidpad... "); flush(stdout)
     const TRACK = skidpad_parts()
     println("flat pad + 20 measurement circles, diameters 10-200 m")
+elseif NURB
+    print("loading rFactor Nürburgring… "); flush(stdout)
+    const NURBDIR = nurburgring_dir()
+    const TERRAIN = nothing                                   # elevation comes from the AIW ribbon, not a HAT
+    const TRKSURF = JuliaMotor.TrackSurface(read_aiw(joinpath(NURBDIR, "Burg67.AIW")))
+    const LAPLEN  = maximum(TRKSURF.lapdist)
+    const CAR     = DriveCar(MODEL, TRKSURF; terrain=nothing) # ribbon carries height + lap dist + lateral
+    const TRACK   = Render.extract_track(NURBDIR)             # 3794 rFactor meshes, UV + texture name
+    println("Nordschleife: ", length(TRACK), " parts, lap ", round(Int, LAPLEN), " m")
 else
 print("loading GPL track… "); flush(stdout)
 const TRACKMESH = Render.GPL3DO.parse_3do(ZTRK)
@@ -124,14 +154,16 @@ depthprog = Render.depthprogram(); (shadowfbo, shadowtex) = Render.make_shadow_f
 const LIGHTDIR = Float32[0.4, 1.0, 0.25]
 const ENG = EngineAudio.build(GD); EngineAudio.start(ENG)   # real onboard engine samples, RPM-crossfaded
 print("loading textures… "); flush(stdout)
-const TEXIDX = Render.gpl_texture_index(ZD)
-trackItems = Render.build_gpl(TRACK, TEXIDX)
+const TEXIDX = NURB ? Render.texture_index(NURBDIR) : Render.gpl_texture_index(ZD)
+trackItems = NURB ? Render.build_track(TRACK, TEXIDX) : Render.build_gpl(TRACK, TEXIDX)
 # GPL sky dome: the 12-panel horizon ring (horiz0..11), camera-centred backdrop.
-const HORIZON_RING = Render.build_horizon(TEXIDX)
+# (rFactor Nürburgring carries its own sky in the geometry → no GPL ring.)
+const HORIZON_RING = NURB ? nothing : Render.build_horizon(TEXIDX)
 # ---- Phase 3 (a): auto-place trackside objects (GPL .3do geometry, textured from
 # loose files + the packed zandvort.dat).  Names + transforms come from the .3do
 # instance records; geometry/textures resolve from loose files OR the .dat archive.
-if SKIDPAD
+# (skidpad + Nürburgring carry their own scenery in the track geometry → none here.)
+if SKIDPAD || NURB
     global OBJECTS = Any[]
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
 else
@@ -239,6 +271,11 @@ end
 function terrain_pitch(cs)
     SKIDPAD && return 0.0   # flat pad → no slope
     L = 1.5; fx = cos(cs.θ); fz = sin(cs.θ)               # physics forward (x, z)
+    if NURB                                              # slope from the AIW ribbon height
+        hf = JuliaMotor.hat(TRKSURF, cs.x+fx*L, cs.z+fz*L)
+        hr = JuliaMotor.hat(TRKSURF, cs.x-fx*L, cs.z-fz*L)
+        return (hf.found && hr.found) ? atan(hf.height-hr.height, 2L) : 0.0
+    end
     hf = JuliaMotor.hat3d(TERRAIN, cs.x+fx*L, cs.z+fz*L; ref=Inf)
     hr = JuliaMotor.hat3d(TERRAIN, cs.x-fx*L, cs.z-fz*L; ref=Inf)
     (hf[3] && hr[3]) ? atan(hf[1]-hr[1], 2L) : 0.0        # front higher → nose up (+)
@@ -265,6 +302,11 @@ function main()
     LASTZ = Ref(0.0); ONTRACK = Ref(true)
     function groundz(x, z)                            # HAT elevation; off-surface holds last height
         SKIDPAD && return 0.0   # flat skidpad → no elevation
+        if NURB                                       # Nürburgring height from the AIW ribbon
+            hr = JuliaMotor.hat(TRKSURF, x, z)
+            hr.found ? (LASTZ[] = hr.height; ONTRACK[] = hr.on_track) : (ONTRACK[] = false)
+            return LASTZ[]
+        end
         h = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf)
         h[3] ? (LASTZ[] = Float64(h[1]); ONTRACK[] = true) : (ONTRACK[] = false)
         LASTZ[]
@@ -340,7 +382,7 @@ function main()
         glViewport(0,0,W,H); glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
         Render.draw_sky(skyprog, skyvao, inv(vp), eye, LIGHTDIR)
         Render.set_scene_uniforms(prog, eye; fognear=400f0, fogfar=2800f0); Render.bind_shadow(prog, shadowtex, lightVP)
-        Render.draw_horizon(prog, HORIZON_RING, vp, eye)   # GPL horizon ring backdrop
+        HORIZON_RING === nothing || Render.draw_horizon(prog, HORIZON_RING, vp, eye)   # GPL horizon ring backdrop
         for it in trackItems; Render.draw(prog, it, vp, Render.ident(); bright=0.55); end
         glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 1)   # un-mirror far-side sign backs (objects only)
         for (items,mat) in OBJECTS, it in items; Render.draw(prog, it, vp, mat; bright=0.85); end  # trackside objects
