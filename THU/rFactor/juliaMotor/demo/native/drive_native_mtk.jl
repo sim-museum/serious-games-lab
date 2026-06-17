@@ -104,7 +104,7 @@ end
 # landmass), transform each to world coords, and emit (a) world-space GPL tris for the
 # collision HAT and (b) render TrackParts (GPL→render remap (gx,gz,-gy), grouped by
 # texture).  This is what fills the void around the road on the GPL Nürburgring.
-function gpl_scenery(ztrk, datpack)
+function gpl_scenery(ztrk, datpack, ribbon)
     pls = Render.GPL3DO.gpl_placements(ztrk)
     function placemat(t)
         d=(t[1],t[2],t[3]); m=(t[4],t[5],t[6]); s = t[7] <= 0 ? 1.0 : t[7]
@@ -131,7 +131,19 @@ function gpl_scenery(ztrk, datpack)
                Float32(M[3,1]*n[1]+M[3,2]*n[2]+M[3,3]*n[3]))
         for tr in mesh.tris
             w=(ap(tr.p[1]),ap(tr.p[2]),ap(tr.p[3])); nn=(rn(tr.n[1]),rn(tr.n[2]),rn(tr.n[3]))
-            push!(hat, Render.GPL3DO.Tri(w, nn, tr.uv, tr.tex, tr.col))
+            # DROP scenery that intrudes into the road corridor (mis-placed/tilted objects
+            # poking through the track) — render AND collision.  GPL world (gx,gy,gz=up);
+            # the racing ribbon is queried in (gx,gy), road height is hr.height.
+            cgx=(w[1][1]+w[2][1]+w[3][1])/3; cgy=(w[1][2]+w[2][2]+w[3][2])/3; cgz=(w[1][3]+w[2][3]+w[3][3])/3
+            hr = JuliaMotor.hat(ribbon, cgx, cgy)
+            (hr.found && abs(hr.lateral) < 5.0 && abs(cgz - hr.height) < 3.0) && continue
+            # COLLISION: only near-HORIZONTAL scenery (ground/banks) goes in the HAT — never
+            # walls/buildings/bridges/signs, or the car climbs them.  GPL z is up, so a ground
+            # tri's geometric normal is z-dominant; a vertical structure's is not.
+            ux=w[2][1]-w[1][1]; uy=w[2][2]-w[1][2]; uz=w[2][3]-w[1][3]
+            vx=w[3][1]-w[1][1]; vy=w[3][2]-w[1][2]; vz=w[3][3]-w[1][3]
+            nz=ux*vy-uy*vx; nl=sqrt((uy*vz-uz*vy)^2+(uz*vx-ux*vz)^2+nz^2)
+            (nl > 1f-6 && abs(nz)/nl > 0.4f0) && push!(hat, Render.GPL3DO.Tri(w, nn, tr.uv, tr.tex, tr.col))
             v=get!(groups, tr.tex, Float32[])
             for i in 1:3
                 q=w[i]; n=nn[i]; uv=tr.uv[i]
@@ -157,25 +169,26 @@ if SKIDPAD
 else
     print("loading GPL ", GPLNAME, "… "); flush(stdout)
     const TRACKMESH0 = Render.GPL3DO.parse_3do(ZTRK)
+    # Align the racing line against the ROAD-only HAT (precise — scenery terrain in the
+    # full HAT would let the line drift onto the grass verge); the road ribbon then doubles
+    # as the corridor filter for scenery placement.
+    const TERRAIN0 = GPLTrack.build_hat(TRACKMESH0)
+    const ALIGNED  = align_centreline(GPLTrack.trk_centreline(joinpath(ZD, GPLNAME*".trk")), TERRAIN0)
+    const RIBBON0  = GPLTrack.build_surface(ALIGNED, TERRAIN0)
     # GPL Nürburgring places its landmass/scenery as .dat sub-objects via 0x0E nodes;
     # load + place them so the road isn't floating over a void (Zandvoort has none).
     SECTRI = Render.GPL3DO.Tri[]; SECPARTS = Render.TrackPart[]
     if NURB && isfile(joinpath(ZD, "nurburg.dat"))
         print("scenery… "); flush(stdout)
         dp = Render.GPLDat.parse_dat(joinpath(ZD, "nurburg.dat"))
-        SECTRI, SECPARTS = gpl_scenery(ZTRK, dp)
+        SECTRI, SECPARTS = gpl_scenery(ZTRK, dp, RIBBON0)
         print(length(SECPARTS), " groups / ", length(SECTRI), " tris… ")
     end
     const TRACKMESH = isempty(SECTRI) ? TRACKMESH0 :
         Render.GPL3DO.Mesh3DO([TRACKMESH0.tris; SECTRI], TRACKMESH0.textures,
                               [TRACKMESH0.groups; fill(0, length(SECTRI))])
-    # align the racing line against the ROAD-only HAT (precise — scenery terrain in the
-    # full HAT would let the line drift onto the grass verge), then use the full HAT (with
-    # scenery) for ground height / collision.
-    const TERRAIN0 = GPLTrack.build_hat(TRACKMESH0)
     const TERRAIN  = isempty(SECTRI) ? TERRAIN0 : GPLTrack.build_hat(TRACKMESH)
-    const TRKSURF  = GPLTrack.build_surface(
-        align_centreline(GPLTrack.trk_centreline(joinpath(ZD, GPLNAME*".trk")), TERRAIN0), TERRAIN)
+    const TRKSURF  = GPLTrack.build_surface(ALIGNED, TERRAIN)
     const LAPLEN = maximum(TRKSURF.lapdist)              # lap length [m], for start/finish wrap detection
     const CAR = DriveCar(MODEL, TRKSURF; terrain=TERRAIN)    # racing ribbon from the .trk centreline
     println(TERRAIN, "  ", TRKSURF)
