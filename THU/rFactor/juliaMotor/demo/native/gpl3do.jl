@@ -6,7 +6,7 @@
 module GPL3DO
 using LinearAlgebra
 
-export Mesh3DO, parse_3do
+export Mesh3DO, parse_3do, gpl_placements
 
 # positioner local matrix: Translate(d) * Rot(m, GPL Euler about X,Y,Z) * Scale(s).
 # Places a sub-object (hands, wheel, mirrors, suspension) relative to its parent.
@@ -202,6 +202,51 @@ function parse_3do(path::AbstractString)
     root = Int(u32(b, prim_off))                    # first 4 bytes of PRIM data = root offset
     walk(root, "", 0, I4, 0)
     Mesh3DO(tris, sort(collect(used_tex)), groups)
+end
+
+"""
+    gpl_placements(path) -> Vector{Tuple{String, NTuple{7,Float64}}}
+
+GPL places `.dat` scenery meshes (corner terrain sections, trees, signs, buildings)
+into a track via PRIM node type 0x0E — a "named external sub-object reference":
+`[14, string-offset, 0,  19, dx,dy,dz, rx,ry,rz, scale, child]` (an inline 0x13
+positioner).  The geometry lives in a separate `.dat` mesh named by the string; the
+positioner gives its WORLD transform.  These nodes hang under unhandled parents (so the
+main walk never reaches them) and their translations are huge (the regular positioner
+clamp would zero them), so we recover them by scanning PRIM for the fixed signature.
+Returns (sub-object name, (dx,dy,dz, rx,ry,rz, scale)) per placement.
+"""
+function gpl_placements(path::AbstractString)
+    b = read(path)
+    String(b[1:4]) == "4OD3" || error("not a 3DO4 file: $path")
+    strn_off = strn_sz = prim_off = prim_sz = 0
+    o = 12
+    while o + 12 <= length(b)
+        t = tag(b, o); sz = Int(u32(b, o+8)); data = o + 12
+        t == "NRTS" && (strn_off = data; strn_sz = sz)
+        t == "MIRP" && (prim_off = data; prim_sz = sz)
+        o = data + sz; o += (4 - o % 4) % 4
+    end
+    # string offset (byte into STRN data) → name
+    strings = String[]; cur = UInt8[]
+    for i in strn_off : strn_off + strn_sz - 1
+        c = b[i+1]
+        if c == 0xFF; break
+        elseif c == 0x00; push!(strings, String(copy(cur))); empty!(cur)
+        else push!(cur, c); end
+    end
+    stroff = Dict{Int,String}(); let q = 0
+        for s in strings; stroff[q] = s; q += length(s) + 1; end
+    end
+    res = Tuple{String,NTuple{7,Float64}}[]
+    for N in prim_off : 4 : prim_off + prim_sz - 44
+        (u32(b,N) == 14 && u32(b,N+8) == 0 && u32(b,N+12) == 19) || continue
+        nm = get(stroff, Int(u32(b,N+4)), ""); nm == "" && continue
+        res = push!(res, (nm, (Float64(f32(b,N+16)), Float64(f32(b,N+20)), Float64(f32(b,N+24)),
+                               Float64(f32(b,N+28)), Float64(f32(b,N+32)), Float64(f32(b,N+36)),
+                               Float64(f32(b,N+40)))))
+    end
+    res
 end
 
 end # module

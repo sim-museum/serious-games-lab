@@ -99,6 +99,49 @@ function align_centreline(cl, hat)
     [(p[1]+best[2], p[2]+best[3]) for p in cl]
 end
 
+# GPL scenery placement: load the .dat sub-object meshes the main .3do places via its
+# 0x0E nodes (corner terrain sections, trees, signs, buildings — the Nordschleife
+# landmass), transform each to world coords, and emit (a) world-space GPL tris for the
+# collision HAT and (b) render TrackParts (GPL→render remap (gx,gz,-gy), grouped by
+# texture).  This is what fills the void around the road on the GPL Nürburgring.
+function gpl_scenery(ztrk, datpack)
+    pls = Render.GPL3DO.gpl_placements(ztrk)
+    function placemat(t)
+        d=(t[1],t[2],t[3]); m=(t[4],t[5],t[6]); s = t[7] <= 0 ? 1.0 : t[7]
+        cx,sx=cos(m[1]),sin(m[1]); cy,sy=cos(m[2]),sin(m[2]); cz,sz=cos(m[3]),sin(m[3])
+        Rx=[1.0 0 0;0 cx -sx;0 sx cx]; Ry=[cy 0 sy;0 1.0 0;-sy 0 cy]; Rz=[cz -sz 0;sz cz 0;0 0 1.0]
+        R=(Rz*Ry*Rx).*s
+        [R[1,1] R[1,2] R[1,3] d[1]; R[2,1] R[2,2] R[2,3] d[2]; R[3,1] R[3,2] R[3,3] d[3]; 0 0 0 1.0]
+    end
+    cache=Dict{String,Any}(); tmp=tempdir()
+    getmesh(nm)=get!(cache, lowercase(nm)) do
+        v=get(datpack, lowercase(nm*".3do"), nothing); v===nothing && return nothing
+        tp=joinpath(tmp,"jm_nb_"*lowercase(nm)*".3do"); isfile(tp)||write(tp,v)
+        try Render.GPL3DO.parse_3do(tp) catch; nothing end
+    end
+    hat=Render.GPL3DO.Tri[]; groups=Dict{String,Vector{Float32}}()
+    for (nm,t) in pls
+        mesh=getmesh(nm); mesh===nothing && continue
+        M=placemat(t)
+        ap(q)=(Float32(M[1,1]*q[1]+M[1,2]*q[2]+M[1,3]*q[3]+M[1,4]),
+               Float32(M[2,1]*q[1]+M[2,2]*q[2]+M[2,3]*q[3]+M[2,4]),
+               Float32(M[3,1]*q[1]+M[3,2]*q[2]+M[3,3]*q[3]+M[3,4]))
+        rn(n)=(Float32(M[1,1]*n[1]+M[1,2]*n[2]+M[1,3]*n[3]),
+               Float32(M[2,1]*n[1]+M[2,2]*n[2]+M[2,3]*n[3]),
+               Float32(M[3,1]*n[1]+M[3,2]*n[2]+M[3,3]*n[3]))
+        for tr in mesh.tris
+            w=(ap(tr.p[1]),ap(tr.p[2]),ap(tr.p[3])); nn=(rn(tr.n[1]),rn(tr.n[2]),rn(tr.n[3]))
+            push!(hat, Render.GPL3DO.Tri(w, nn, tr.uv, tr.tex, tr.col))
+            v=get!(groups, tr.tex, Float32[])
+            for i in 1:3
+                q=w[i]; n=nn[i]; uv=tr.uv[i]
+                append!(v, Float32[q[1],q[3],-q[2], n[1],n[3],-n[2], tr.col[1],tr.col[2],tr.col[3], uv[1],uv[2]])
+            end
+        end
+    end
+    (hat, [Render.TrackPart(v, tex, (0.5f0,0.5f0,0.5f0)) for (tex,v) in groups])
+end
+
 # ---- load physics + geometry: the GPL Zandvoort track + Vanwall-calibrated physics ----
 const GD = default_gamedata()
 const VEH = load_vehicle(joinpath(GD,"Vehicles","F158","Vanwall","Teams","LewisEvans","LewisEvans.veh"))
@@ -113,15 +156,31 @@ if SKIDPAD
     println("flat pad + 20 measurement circles, diameters 10-200 m")
 else
     print("loading GPL ", GPLNAME, "… "); flush(stdout)
-    const TRACKMESH = Render.GPL3DO.parse_3do(ZTRK)
-    const TERRAIN = GPLTrack.build_hat(TRACKMESH)        # ground/elevation from the .3do
-    const TRKSURF = GPLTrack.build_surface(
-        align_centreline(GPLTrack.trk_centreline(joinpath(ZD, GPLNAME*".trk")), TERRAIN), TERRAIN)
+    const TRACKMESH0 = Render.GPL3DO.parse_3do(ZTRK)
+    # GPL Nürburgring places its landmass/scenery as .dat sub-objects via 0x0E nodes;
+    # load + place them so the road isn't floating over a void (Zandvoort has none).
+    SECTRI = Render.GPL3DO.Tri[]; SECPARTS = Render.TrackPart[]
+    if NURB && isfile(joinpath(ZD, "nurburg.dat"))
+        print("scenery… "); flush(stdout)
+        dp = Render.GPLDat.parse_dat(joinpath(ZD, "nurburg.dat"))
+        SECTRI, SECPARTS = gpl_scenery(ZTRK, dp)
+        print(length(SECPARTS), " groups / ", length(SECTRI), " tris… ")
+    end
+    const TRACKMESH = isempty(SECTRI) ? TRACKMESH0 :
+        Render.GPL3DO.Mesh3DO([TRACKMESH0.tris; SECTRI], TRACKMESH0.textures,
+                              [TRACKMESH0.groups; fill(0, length(SECTRI))])
+    # align the racing line against the ROAD-only HAT (precise — scenery terrain in the
+    # full HAT would let the line drift onto the grass verge), then use the full HAT (with
+    # scenery) for ground height / collision.
+    const TERRAIN0 = GPLTrack.build_hat(TRACKMESH0)
+    const TERRAIN  = isempty(SECTRI) ? TERRAIN0 : GPLTrack.build_hat(TRACKMESH)
+    const TRKSURF  = GPLTrack.build_surface(
+        align_centreline(GPLTrack.trk_centreline(joinpath(ZD, GPLNAME*".trk")), TERRAIN0), TERRAIN)
     const LAPLEN = maximum(TRKSURF.lapdist)              # lap length [m], for start/finish wrap detection
     const CAR = DriveCar(MODEL, TRKSURF; terrain=TERRAIN)    # racing ribbon from the .trk centreline
     println(TERRAIN, "  ", TRKSURF)
     print("extracting geometry… "); flush(stdout)
-    const TRACK = Render.extract_gpl_car(ZTRK; track=true, mirror=true, exclude=("ltraymap","lshad","wiref_s"))
+    const TRACK = [Render.extract_gpl_car(ZTRK; track=true, mirror=true, exclude=("ltraymap","lshad","wiref_s")); SECPARTS]
 end
 # ---- GPL Lotus 49 (replaces the rFactor Vanwall; the authentic GPL-pivot car) ----
 const LOTDIR = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/cars/cars67/lotus"
