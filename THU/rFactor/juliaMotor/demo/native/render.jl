@@ -667,32 +667,6 @@ function load_dds(b)
     tex[]
 end
 
-"""Average RGB of a DDS (skips near-transparent texels), 0..1.  Flat-colour
-fallback for meshes whose UVs don't parse — so they read as their texture's
-overall tone (grey asphalt, green trees) instead of sampling garbage coords."""
-function dds_avg_color(b)
-    W,H,rgba = decode_dds(b)
-    (W==0 || isempty(rgba)) && return (0.5f0,0.5f0,0.5f0)
-    rs=0; gs=0; bs=0; cnt=0
-    @inbounds for i in 1:4:length(rgba)-3
-        rgba[i+3] < 0x40 && continue          # skip transparent texels (tree/sign cutouts)
-        rs+=Int(rgba[i]); gs+=Int(rgba[i+1]); bs+=Int(rgba[i+2]); cnt+=1
-    end
-    cnt==0 && return (0.4f0,0.45f0,0.4f0)
-    (Float32(rs/cnt/255), Float32(gs/cnt/255), Float32(bs/cnt/255))
-end
-
-"""True if a part's per-vertex UVs are non-finite or astronomically out of range
-— a GMT variant whose UV array parse_gmt_uv couldn't locate, so it can't be
-textured (sampling at NaN/1e36 gives a flat, wrongly-tinted surface)."""
-function bad_uvs(verts)
-    @inbounds for i in 0:(length(verts)÷11)-1
-        u=verts[11i+10]; v=verts[11i+11]
-        (isfinite(u) && isfinite(v) && abs(u)<1f4 && abs(v)<1f4) || return true
-    end
-    false
-end
-
 # ---- Grand Prix Legends assets (Lotus 49) ---------------------------------
 """Upload decoded RGBA pixels as a GL texture (GL builds the mips)."""
 function upload_rgba(w, h, rgba)
@@ -1004,36 +978,13 @@ function upload(interleaved)
     Ref{GLuint}(vao[])[], GLsizei(length(interleaved)÷11)
 end
 """Upload track parts; resolve each part's diffuse texture from the index."""
-# rFactor terrain blend/control maps (e.g. _rgbmap.dds) aren't a visible surface —
-# the engine blends detail layers (a1/a2/a3) through them.  We can't replicate the
-# multitexture blend, and showing the control map directly gives a flat light-grey
-# road that the sky-blue ambient tints blue.  Flat-shade those parts as dark asphalt.
-is_ctrlmap(nm) = startswith(nm,"_") || occursin("rgbmap",nm) || occursin("mixmap",nm) ||
-                 occursin("blendmap",nm) || occursin("ctrlmap",nm)
 function build_track(parts, texidx)
-    cache=Dict{String,GLuint}(); avgc=Dict{String,NTuple{3,Float32}}(); items=Item[]
+    cache=Dict{String,GLuint}(); items=Item[]
     for p in parts
-        key = lowercase(p.tex)
-        if p.tex != "" && (is_ctrlmap(key) || bad_uvs(p.verts))   # untexturable → flat-shade
-            avg = get!(avgc, key) do
-                is_ctrlmap(key) && return (0.25f0,0.26f0,0.25f0)   # control map → dark asphalt
-                c = haskey(texidx,key) ? dds_avg_color(texidx[key]) : (0.5f0,0.5f0,0.5f0)
-                lum=(c[1]+c[2]+c[3])/3; sat=maximum(c)-minimum(c)
-                # a bright, near-neutral texture is also likely a terrain control map
-                (lum > 0.45f0 && sat < 0.12f0) ? (0.26f0,0.27f0,0.26f0) : c
-            end
-            verts = copy(p.verts)
-            @inbounds for i in 0:(length(verts)÷11)-1
-                verts[11i+7]=avg[1]; verts[11i+8]=avg[2]; verts[11i+9]=avg[3]
-                verts[11i+10]=0f0;   verts[11i+11]=0f0
-            end
-            vao,n = upload(verts)
-            push!(items, Item(vao,n,GLuint(0),avg))
-            continue
-        end
         vao,n = upload(p.verts)
         tid=GLuint(0)
         if p.tex != ""
+            key=lowercase(p.tex)
             tid = get!(cache,key) do
                 haskey(texidx,key) ? load_dds(texidx[key]) : GLuint(0)
             end

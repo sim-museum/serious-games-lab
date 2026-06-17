@@ -73,80 +73,55 @@ function skidpad_parts()
     parts
 end
 
-# rFactor Nürburgring (Nurburg67): the loose .scn/.aiw live in a Burg67/ subdir
-# while the geometry/texture .mas archives sit in the parent Locations dir (plus the
-# shared commonmaps.mas).  TriangleHAT/extract_track/texture_index each readdir() a
-# single dir for both, so we stage a consolidated dir of symlinks and return it.
-function nurburgring_dir()
-    ND = "/home/g/sgl/THU/rFactor/WP/drive_c/Program Files/rFactor/GameData/Locations/Nurburg67"
-    D  = joinpath(tempdir(), "jm_nurburg67")
-    if !isdir(D) || !isfile(joinpath(D, "Burg67.SCN"))
-        rm(D; force=true, recursive=true); mkpath(D)
-        for f in ("Burg67/Burg67.SCN","Burg67/Burg67.AIW","Burg67.mas","Burg67Map.mas")
-            symlink(joinpath(ND, f), joinpath(D, basename(f)))
-        end
-        symlink(joinpath(ND, "..", "commonmaps.mas"), joinpath(D, "commonmaps.mas"))
+# GPL .trk centreline ↔ mesh alignment.  The .trk start point can be parsed with a
+# large constant offset from the .3do mesh (the GPL Nürburgring start sits ~87 km off
+# in z), which would float the racing line off the ground.  The line's SHAPE is
+# correct, so we slide it (pure translation) to maximise overlap with the terrain HAT:
+# estimate the offset from bbox centres, then grid-search + refine.  Zandvoort already
+# aligns (offset ≈ 0) so it's returned untouched.
+function align_centreline(cl, hat)
+    sample = cl[1:max(1, length(cl) ÷ 400):end]
+    cov(dx, dz) = count(p -> JuliaMotor.hat3d(hat, p[1]+dx, p[2]+dz; ref=Inf)[3], sample) / length(sample)
+    cov(0.0, 0.0) > 0.6 && return cl                              # already on the mesh (Zandvoort)
+    xs = Float64[]; zs = Float64[]
+    for tr in hat.tris, p in (tr.a, tr.b, tr.c); push!(xs, p[1]); push!(zs, p[3]); end
+    dx0 = (minimum(xs)+maximum(xs))/2 - (minimum(p[1] for p in cl)+maximum(p[1] for p in cl))/2
+    dz0 = (minimum(zs)+maximum(zs))/2 - (minimum(p[2] for p in cl)+maximum(p[2] for p in cl))/2
+    best = (cov(dx0, dz0), dx0, dz0)
+    for dx in dx0-400:40:dx0+400, dz in dz0-400:40:dz0+400
+        c = cov(dx, dz); c > best[1] && (best = (c, dx, dz))
     end
-    D
-end
-
-# Synthetic road ribbon from the AIW racing line.  This mod's GMT meshes are a
-# variant our parser mis-reads (garbage vertex positions/UVs), so the visible road
-# geometry is offset from the AIW and the car spawns over a GAP — you'd see the sky
-# horizon colour below the horizon (the "blue road").  The TrackSurface already
-# carries the centreline + lateral half-widths + height where the car actually
-# drives, so we lay a dark-asphalt strip (+ white edge lines) along it: guaranteed
-# visible road under the car, independent of the broken mesh extraction.
-function road_ribbon(ts)
-    up=(0f0,1f0,0f0); g=Float32[]
-    push3!(x,y,z,c)=append!(g, Float32[x,y,z, up[1],up[2],up[3], c[1],c[2],c[3], 0f0,0f0])
-    rc((p,pe,off,dy)) = (Float32(p[1]+pe[1]*off), Float32(p[2]+dy), Float32(-(p[3]+pe[3]*off)))  # render (x,y,-z)
-    quad(a,b,c2,d,col)=(push3!(a...,col);push3!(b...,col);push3!(c2...,col); push3!(a...,col);push3!(c2...,col);push3!(d...,col))
-    asph=(0.21f0,0.215f0,0.22f0); line=(0.80f0,0.80f0,0.78f0)
-    n=length(ts.pos)
-    for i in 1:n-1
-        p0=ts.pos[i]; p1=ts.pos[i+1]; e0=ts.perp[i]; e1=ts.perp[i+1]
-        l0,r0=ts.halfwidth[i]; l1,r1=ts.halfwidth[i+1]
-        (l0+r0 < 0.5 || l1+r1 < 0.5) && continue                  # skip degenerate widths
-        L0=rc((p0,e0, l0,0.10)); R0=rc((p0,e0,-r0,0.10)); L1=rc((p1,e1, l1,0.10)); R1=rc((p1,e1,-r1,0.10))
-        quad(L0,R0,R1,L1, asph)                                   # asphalt strip
-        # white edge lines (0.15 m inboard band) at +0.12 m
-        Le0=rc((p0,e0,l0,0.12)); Le0i=rc((p0,e0,l0-0.18,0.12)); Le1=rc((p1,e1,l1,0.12)); Le1i=rc((p1,e1,l1-0.18,0.12))
-        Re0=rc((p0,e0,-r0,0.12)); Re0i=rc((p0,e0,-r0+0.18,0.12)); Re1=rc((p1,e1,-r1,0.12)); Re1i=rc((p1,e1,-r1+0.18,0.12))
-        quad(Le0i,Le0,Le1,Le1i, line); quad(Re0,Re0i,Re1i,Re1, line)
+    for dx in best[2]-40:8:best[2]+40, dz in best[3]-40:8:best[3]+40
+        c = cov(dx, dz); c > best[1] && (best = (c, dx, dz))
     end
-    Render.TrackPart(g, "", asph)
+    println("centreline aligned: ", round(Int, best[1]*100), "% on terrain, offset (",
+            round(Int, best[2]), ", ", round(Int, best[3]), ")")
+    [(p[1]+best[2], p[2]+best[3]) for p in cl]
 end
 
 # ---- load physics + geometry: the GPL Zandvoort track + Vanwall-calibrated physics ----
 const GD = default_gamedata()
 const VEH = load_vehicle(joinpath(GD,"Vehicles","F158","Vanwall","Teams","LewisEvans","LewisEvans.veh"))
 const MODEL = VehicleModel(VEH)              # physics (Lotus-49 calibration is the future goal)
-const ZD = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/tracks/zandvort"
-const ZTRK = joinpath(ZD, "zandvort.3do")
+const GPLBASE = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/tracks"
+const GPLNAME = NURB ? "nurburg" : "zandvort"           # both are GPL tracks (same .3do/.trk/.mip pipeline)
+const ZD   = joinpath(GPLBASE, GPLNAME)
+const ZTRK = joinpath(ZD, GPLNAME * ".3do")
 if SKIDPAD
     print("building skidpad... "); flush(stdout)
     const TRACK = skidpad_parts()
     println("flat pad + 20 measurement circles, diameters 10-200 m")
-elseif NURB
-    print("loading rFactor Nürburgring… "); flush(stdout)
-    const NURBDIR = nurburgring_dir()
-    const TERRAIN = nothing                                   # elevation comes from the AIW ribbon, not a HAT
-    const TRKSURF = JuliaMotor.TrackSurface(read_aiw(joinpath(NURBDIR, "Burg67.AIW")))
-    const LAPLEN  = maximum(TRKSURF.lapdist)
-    const CAR     = DriveCar(MODEL, TRKSURF; terrain=nothing) # ribbon carries height + lap dist + lateral
-    const TRACK   = push!(Render.extract_track(NURBDIR), road_ribbon(TRKSURF))  # rFactor meshes + AIW road strip
-    println("Nordschleife: ", length(TRACK), " parts, lap ", round(Int, LAPLEN), " m")
 else
-print("loading GPL track… "); flush(stdout)
-const TRACKMESH = Render.GPL3DO.parse_3do(ZTRK)
-const TERRAIN = GPLTrack.build_hat(TRACKMESH)            # ground/elevation from the .3do
-const TRKSURF = GPLTrack.build_surface(GPLTrack.trk_centreline(joinpath(ZD,"zandvort.trk")), TERRAIN)
-const LAPLEN = maximum(TRKSURF.lapdist)   # Zandvoort lap length [m], for start/finish wrap detection
-const CAR = DriveCar(MODEL, TRKSURF; terrain=TERRAIN)    # racing ribbon from the .trk centreline
-println(TERRAIN, "  ", TRKSURF)
-print("extracting geometry… "); flush(stdout)
-const TRACK = Render.extract_gpl_car(ZTRK; track=true, mirror=true, exclude=("ltraymap","lshad","wiref_s"))   # GPL Zandvoort (no wire fences)
+    print("loading GPL ", GPLNAME, "… "); flush(stdout)
+    const TRACKMESH = Render.GPL3DO.parse_3do(ZTRK)
+    const TERRAIN = GPLTrack.build_hat(TRACKMESH)        # ground/elevation from the .3do
+    const TRKSURF = GPLTrack.build_surface(
+        align_centreline(GPLTrack.trk_centreline(joinpath(ZD, GPLNAME*".trk")), TERRAIN), TERRAIN)
+    const LAPLEN = maximum(TRKSURF.lapdist)              # lap length [m], for start/finish wrap detection
+    const CAR = DriveCar(MODEL, TRKSURF; terrain=TERRAIN)    # racing ribbon from the .trk centreline
+    println(TERRAIN, "  ", TRKSURF)
+    print("extracting geometry… "); flush(stdout)
+    const TRACK = Render.extract_gpl_car(ZTRK; track=true, mirror=true, exclude=("ltraymap","lshad","wiref_s"))
 end
 # ---- GPL Lotus 49 (replaces the rFactor Vanwall; the authentic GPL-pivot car) ----
 const LOTDIR = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/cars/cars67/lotus"
@@ -182,15 +157,15 @@ depthprog = Render.depthprogram(); (shadowfbo, shadowtex) = Render.make_shadow_f
 const LIGHTDIR = Float32[0.4, 1.0, 0.25]
 const ENG = EngineAudio.build(GD); EngineAudio.start(ENG)   # real onboard engine samples, RPM-crossfaded
 print("loading textures… "); flush(stdout)
-const TEXIDX = NURB ? Render.texture_index(NURBDIR) : Render.gpl_texture_index(ZD)
-trackItems = NURB ? Render.build_track(TRACK, TEXIDX) : Render.build_gpl(TRACK, TEXIDX)
+const TEXIDX = Render.gpl_texture_index(ZD)
+trackItems = Render.build_gpl(TRACK, TEXIDX)
 # GPL sky dome: the 12-panel horizon ring (horiz0..11), camera-centred backdrop.
-# (rFactor Nürburgring carries its own sky in the geometry → no GPL ring.)
-const HORIZON_RING = NURB ? nothing : Render.build_horizon(TEXIDX)
+const HORIZON_RING = Render.build_horizon(TEXIDX)
 # ---- Phase 3 (a): auto-place trackside objects (GPL .3do geometry, textured from
 # loose files + the packed zandvort.dat).  Names + transforms come from the .3do
 # instance records; geometry/textures resolve from loose files OR the .dat archive.
-# (skidpad + Nürburgring carry their own scenery in the track geometry → none here.)
+# (skidpad is bare; Nürburgring scenery is mostly baked into nurburg.3do — the
+#  Zandvoort-tuned .dat object placement below is skipped for it for now.)
 if SKIDPAD || NURB
     global OBJECTS = Any[]
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
@@ -299,11 +274,6 @@ end
 function terrain_pitch(cs)
     SKIDPAD && return 0.0   # flat pad → no slope
     L = 1.5; fx = cos(cs.θ); fz = sin(cs.θ)               # physics forward (x, z)
-    if NURB                                              # slope from the AIW ribbon height
-        hf = JuliaMotor.hat(TRKSURF, cs.x+fx*L, cs.z+fz*L)
-        hr = JuliaMotor.hat(TRKSURF, cs.x-fx*L, cs.z-fz*L)
-        return (hf.found && hr.found) ? atan(hf.height-hr.height, 2L) : 0.0
-    end
     hf = JuliaMotor.hat3d(TERRAIN, cs.x+fx*L, cs.z+fz*L; ref=Inf)
     hr = JuliaMotor.hat3d(TERRAIN, cs.x-fx*L, cs.z-fz*L; ref=Inf)
     (hf[3] && hr[3]) ? atan(hf[1]-hr[1], 2L) : 0.0        # front higher → nose up (+)
@@ -330,11 +300,6 @@ function main()
     LASTZ = Ref(0.0); ONTRACK = Ref(true)
     function groundz(x, z)                            # HAT elevation; off-surface holds last height
         SKIDPAD && return 0.0   # flat skidpad → no elevation
-        if NURB                                       # Nürburgring height from the AIW ribbon
-            hr = JuliaMotor.hat(TRKSURF, x, z)
-            hr.found ? (LASTZ[] = hr.height; ONTRACK[] = hr.on_track) : (ONTRACK[] = false)
-            return LASTZ[]
-        end
         h = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf)
         h[3] ? (LASTZ[] = Float64(h[1]); ONTRACK[] = true) : (ONTRACK[] = false)
         LASTZ[]
