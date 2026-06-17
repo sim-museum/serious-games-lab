@@ -291,11 +291,15 @@ uniform int uSky;
 float shadow(vec3 N){
   vec3 lp = vLS.xyz/vLS.w*0.5+0.5;
   if(lp.z>1.0 || lp.x<0.0||lp.x>1.0||lp.y<0.0||lp.y>1.0) return 1.0;
-  float bias = max(0.0025*(1.0-dot(N,normalize(uLightDir))), 0.0006);
+  float bias = max(0.0035*(1.0-dot(N,normalize(uLightDir))), 0.0018);   // larger → kill flat-ground acne
   float s=0.0;
   for(int x=-1;x<=1;x++) for(int y=-1;y<=1;y++)
     s += (lp.z-bias > texture(uShadow, lp.xy+vec2(x,y)*uShadowTexel).r) ? 0.0 : 1.0;
-  return s/9.0;
+  s /= 9.0;
+  // fade shadowing to fully-lit before the shadow-map box edge, so the box boundary
+  // (which tracks the car) isn't a visible "light carpet" sweeping the ground
+  vec2 e = abs(lp.xy - 0.5);
+  return mix(s, 1.0, smoothstep(0.40, 0.5, max(e.x, e.y)));
 }
 void main(){
   vec2 uv = (uBackFlip==1 && !gl_FrontFacing) ? vec2(1.0-vUV.x, vUV.y) : vUV;  // un-mirror back-facing sign text
@@ -308,8 +312,8 @@ void main(){
   vec3 sky=vec3(0.81,0.89,0.97), grd=vec3(0.33,0.38,0.25);
   vec3 amb=mix(grd,sky,0.5+0.5*N.y)*0.6;
   vec3 base = t.rgb;
-  if(uHasTex==1 && max(abs(vUV.x),abs(vUV.y)) > 3.0)   // tiling surface: break up the visible repeat
-    base *= texture(uTex, vUV*0.07).rgb * 1.7;
+  if(uHasTex==1 && max(abs(vUV.x),abs(vUV.y)) > 3.0)   // tiling surface: gently break up the repeat
+    base *= mix(vec3(1.0), texture(uTex, vUV*0.07).rgb * 1.7, 0.45);   // softer → no harsh light/dark patches
   vec3 lit = pow(base*(amb+diff*0.95)*uBright, vec3(0.85));
   if(uSpec > 0.0){                               // Blinn-Phong sheen (painted/chrome bodywork)
     vec3 V = normalize(uCamPos - vWorld);
