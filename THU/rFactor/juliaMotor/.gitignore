@@ -1,3 +1,5 @@
 
 # iRacing .ibt telemetry (large binaries, personal copies)
 data/iracing/*.ibt
+# juliaMotor-emitted .ibt telemetry (JM_IBT) — same format, for iRacing comparison
+data/juliaracer/*.ibt

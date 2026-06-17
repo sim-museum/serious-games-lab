@@ -18,7 +18,7 @@ for f in ("tyre.jl","corner.jl","corner_assembly.jl","powertrain.jl","vehicle_rt
     include(joinpath(HERE, "components", f))
 end
 
-export Car, build_car, step_car!, respawn!
+export Car, build_car, step_car!, respawn!, telemetry
 
 const GEARS    = [2.23, 1.72, 1.32, 1.09, 0.916]   # Lotus 49 gearbox
 const FINAL    = 4.11
@@ -99,6 +99,19 @@ function step_car!(c::Car, throttle, brake, steer, dt;
         elseif grpm < 3400 && c.gear > 1 && throttle < 0.9; c.gear -= 1; c.s_gr(c.integ, GEARS[c.gear]); end
     end
     c
+end
+
+"Extra physics observables for telemetry export (.ibt), beyond the per-frame
+render fields: body velocities u (fwd), v (lat), yaw rate r, long/lat accel, and
+front/rear wheel speeds.  The getter is compiled once per system and cached, so
+this stays cheap when polled every tick.  Returns a NamedTuple."
+const _TELCACHE = IdDict{Any,Any}()
+function telemetry(c::Car)
+    g = get!(_TELCACHE, c.sys) do
+        ModelingToolkit.getsym(c.sys, [c.sys.u, c.sys.v, c.sys.r, c.sys.ax, c.sys.ay, c.sys.ωf, c.sys.ωr])
+    end
+    a = g(c.integ)
+    (u = a[1], v = a[2], r = a[3], ax = a[4], ay = a[5], ωf = a[6], ωr = a[7])
 end
 
 "Reset the car to its spawn position/state (R key)."

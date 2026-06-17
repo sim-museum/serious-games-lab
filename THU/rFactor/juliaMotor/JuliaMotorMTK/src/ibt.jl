@@ -14,7 +14,7 @@
 
 module IBT
 
-export IBTFile, channel, channels, ibt_open, session_yaml
+export IBTFile, channel, channels, ibt_open, session_yaml, write_ibt
 
 # irSDK var types → (julia type, byte size)
 const VARTYPE = Dict(
@@ -96,6 +96,45 @@ function channel(f::IBTFile, name::AbstractString; idx::Int=1)
     @inbounds for r in 0:f.nrows-1
         o = base + r*f.bufLen
         out[r+1] = Float64(reinterpret(T, f.raw[o+1:o+sz])[1])
+    end
+    out
+end
+
+# ---- writing ----------------------------------------------------------------
+# write one channel value (Float64) into a data row at its byte offset, as the
+# channel's irSDK type (char/bool/int/bitfield/float/double).
+function _putval!(buf::Vector{UInt8}, off::Int, vtype::Int, val::Real)
+    T, sz = VARTYPE[vtype]
+    x = T === Bool ? (val > 0.5) : T <: Integer ? round(T, clamp(val, Float64(typemin(T)), Float64(typemax(T)))) : T(val)
+    b = reinterpret(UInt8, [x])
+    @inbounds for k in 1:sz; buf[off+k] = b[k]; end
+end
+
+"""    write_ibt(out, template::IBTFile, samples) -> out
+
+Write an iRacing-compatible .ibt at `out`, reusing `template`'s header + variable
+table + session YAML verbatim (so any iRacing tool / our own reader parses it
+identically), and filling the data buffer from `samples` — a vector of
+`Dict{String,<:Real}` mapping iRacing channel names (e.g. "Speed", "RPM",
+"LongAccel") to values, one dict per 1/`tickRate`-second tick.  Channels absent
+from a sample are written as zero.  This lets juliaMotor emit telemetry in the
+exact format iRacing produces, for side-by-side lap comparison / model tuning.
+"""
+function write_ibt(out::AbstractString, tmpl::IBTFile, samples::AbstractVector)
+    hdr = copy(tmpl.raw[1:tmpl.dataOffset])             # header + var table + YAML, unchanged
+    n = length(samples)
+    hdr[48+1:48+4] = reinterpret(UInt8, Int32[n])       # varBuf[0].tickCount = sample count
+    open(out, "w") do io
+        write(io, hdr)
+        row = Vector{UInt8}(undef, tmpl.bufLen)
+        for s in samples
+            fill!(row, 0x00)
+            for (name, val) in s
+                v = get(tmpl.vars, name, nothing); v === nothing && continue
+                _putval!(row, v.offset, v.type, Float64(val))
+            end
+            write(io, row)
+        end
     end
     out
 end

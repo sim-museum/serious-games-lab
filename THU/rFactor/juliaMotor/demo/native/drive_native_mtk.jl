@@ -4,9 +4,10 @@
 # Zandvoort + Vanwall geometry, with native keyboard AND joystick input.  The
 # first step toward an rF1-fidelity self-contained app; the rendering core is
 # render.jl.
-using GLFW, ModernGL, LinearAlgebra
+using GLFW, ModernGL, LinearAlgebra, Dates
 using JuliaMotor, RFactorData
 include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/drive_rt.jl"); using .DriveRT  # MTK physics
+include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/ibt.jl"); using .IBT           # iRacing .ibt telemetry writer
 include("render.jl"); using .Render
 include("gpltrack.jl"); using .GPLTrack
 include("audio.jl"); using .EngineAudio
@@ -42,6 +43,19 @@ const TRACKSEL = choose_track()
 const SKIDPAD  = TRACKSEL == "skidpad"
 const NURB     = TRACKSEL == "nurburgring"
 println("  → track: ", uppercasefirst(TRACKSEL))
+
+# ---- iRacing .ibt telemetry export (JM_IBT=1) ----
+# Record the lap in iRacing's exact .ibt format so juliaMotor laps can be diffed
+# against gold-standard iRacing telemetry (same car/track, similar laps) to tune the
+# model.  We reuse a real iRacing .ibt of the matching car/track as the header+var-
+# table+YAML template (so the file is byte-identical in structure / any iRacing tool
+# reads it) and fill the channels juliaMotor produces.
+const IBTREC = haskey(ENV, "JM_IBT")
+const IBTDIR = "/home/g/sgl/THU/rFactor/juliaMotor/data/iracing"
+const IBTNAME = NURB ? "nurburgring nordschleife" : SKIDPAD ? "skidpad" : "zandvoort"
+const IBTTMPL = NURB ? joinpath(IBTDIR, "lotus49_nurburgring nordschleife 2026-06-14 11-11-37.ibt") :
+                SKIDPAD ? joinpath(IBTDIR, "lotus49_skidpad 2026-06-14 10-49-07.ibt") :
+                joinpath(IBTDIR, "lotus49_nurburgring nordschleife 2026-06-14 11-11-37.ibt")  # zandvoort: borrow layout
 
 # Procedural skidpad / centripetal pad: flat asphalt + concentric measurement
 # circles, diameters 10..200 m (radii 5..100 m).  Returns Render.TrackParts
@@ -387,6 +401,8 @@ function main()
     lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = cs.laps; tsamp = 0
     fmt_lap(s) = (m=floor(Int,s/60); sec=s-60m; si=floor(Int,sec); ms=round(Int,(sec-si)*1000);
                   "$m:$(lpad(si,2,'0')).$(lpad(ms,3,'0'))")
+    ibt_samples = IBTREC ? Dict{String,Float64}[] : nothing      # iRacing-format telemetry rows
+    IBTREC && println("  recording iRacing .ibt telemetry (JM_IBT) — template: ", basename(IBTTMPL))
     telem = SMOKE ? nothing : open("zand_racer_$(round(Int,time())).txt", "w")
     telem !== nothing && write(telem,
         "# zand_racer telemetry — Lotus 49 @ Zandvoort\n# t\tlap\tlapdist\tkmh\tthr\tbrk\tsteer\tclu\tgear\trpm\tx\tz\tlat\talong\tontrack\n")
@@ -414,6 +430,24 @@ function main()
         end
         spin -= cs.v*dt/0.33
         ENG.rpm[] = cs.rpm                         # feed the engine-audio thread
+
+        # ---- iRacing .ibt telemetry sample (one row per frame, ~60 Hz) ----
+        if ibt_samples !== nothing && !rst
+            tl = telemetry(cs); δw = inp.steer * (SKIDPAD ? 0.30 : CAR.max_steer)
+            push!(ibt_samples, Dict{String,Float64}(
+                "SessionTime"=>cs.t, "SessionTick"=>Float64(length(ibt_samples)+1),
+                "IsOnTrack"=>cs.ontrack ? 1.0 : 0.0,
+                "Speed"=>cs.v, "RPM"=>cs.rpm, "Gear"=>Float64(cs.gear),
+                "Throttle"=>inp.throttle, "Brake"=>inp.brake, "Clutch"=>1.0-inp.clutch,
+                "SteeringWheelAngle"=>δw,
+                "Lap"=>Float64(cs.laps+1), "LapCompleted"=>Float64(cs.laps),
+                "LapDist"=>cs.lapdist, "LapDistPct"=>(SKIDPAD ? 0.0 : (LAPLEN>0 ? cs.lapdist/LAPLEN : 0.0)),
+                "Yaw"=>cs.θ, "YawRate"=>tl.r,
+                "VelocityX"=>tl.u, "VelocityY"=>tl.v, "VelocityZ"=>0.0,
+                "LongAccel"=>tl.ax, "LatAccel"=>tl.ay, "VertAccel"=>9.80665,
+                "LFspeed"=>tl.ωf*0.30, "RFspeed"=>tl.ωf*0.30, "LRspeed"=>tl.ωr*0.33, "RRspeed"=>tl.ωr*0.33,
+                "Alt"=>cs.y))
+        end
 
         # ---- lap timing + telemetry log ----
         if cs.laps > prev_laps
@@ -480,6 +514,19 @@ function main()
         end
     end
     telem !== nothing && close(telem)
+    if ibt_samples !== nothing && !isempty(ibt_samples)
+        try
+            tmpl = ibt_open(IBTTMPL)
+            ts = Dates.format(Dates.now(), "yyyy-mm-dd HH-MM-SS")
+            odir = get(ENV, "JM_IBT_DIR", joinpath(dirname(dirname(@__DIR__)), "data", "juliaracer"))
+            mkpath(odir)
+            out = joinpath(odir, "lotus49_$(IBTNAME) $(ts).ibt")   # iRacing filename convention
+            write_ibt(out, tmpl, ibt_samples)
+            println("  wrote iRacing telemetry: ", out, "  (", length(ibt_samples), " ticks, ", filesize(out)÷1024, " KB)")
+        catch e
+            println("  .ibt export failed: ", e)
+        end
+    end
     EngineAudio.stop!(ENG)
     GLFW.Terminate()
     println("bye")
