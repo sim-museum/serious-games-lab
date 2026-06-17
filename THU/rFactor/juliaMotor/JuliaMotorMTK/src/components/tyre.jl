@@ -34,7 +34,9 @@ function Tyre(; name,
         # friction ellipse: cap the resultant of (Fx0, Fy0) at the μ·Fz ellipse
         gc  ~ min(1.0, 1.0 / sqrt((Fx0/(μx*Fz + 1e-6))^2 + (Fy0/(μy*Fz + 1e-6))^2 + 1e-9)),
         Fx  ~ gc * Fx0,
-        Fy  ~ gc * Fy0,
+        # Gyκ: lateral grip collapses with longitudinal slip (wheelspin/lock) → snap oversteer;
+        # ≈1 for κ<0.1, falls past κ≈0.25.  κ=0 ⇒ 1 (fitted pure-slip curve untouched).
+        Fy  ~ gc * Fy0 / (1.0 + (κ / 0.25)^4),
         Mz  ~ -(t0 / (1 + (Bt*α)^2)) * Fy,
     ]
     System(eqs, t, vars, ps; name)

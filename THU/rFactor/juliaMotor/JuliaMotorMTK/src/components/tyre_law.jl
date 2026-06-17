@@ -40,12 +40,27 @@ const TYRE_DEFAULTS = (
 # outer/inner loads expose it; μy unchanged (skidpad μ is the controlled measure;
 # the per-corner fit's μ_scale was a mild 1.08, within uncertainty).
 # Splat into the Tyre constructor: `Tyre(; name=:t, TYRE_SKIDPAD_FRONT...)`.
+# Cy>1 gives the Magic Formula a post-peak FALLOFF (grip drops once slip exceeds the
+# peak), as on period bias-ply tyres — the steady-state skidpad fit can't see this
+# (you never drive past peak at steady state) so it returned Cy≈1 (monotonic), which
+# made the car wash wide instead of snapping.  Rear made peakier than the front so the
+# rear lets go first (power-on snap oversteer).  Peak μ and low-slip stiffness (Ky) are
+# preserved — Cy only reshapes at/after the limit.
 const TYRE_SKIDPAD_FRONT = (
     Fz0 = 1415.0, μy = 1.213, μx = 1.213, Cy = 1.345, Cx = 1.6,
     Ey = 0.40, Ex = -0.5, pKy1 = 25.7, pKy2 = 1.71, pKx1 = 16.6, t0 = 0.035, Bt = 8.0)
 const TYRE_SKIDPAD_REAR = (
     Fz0 = 1670.0, μy = 1.304, μx = 1.304, Cy = 1.000, Cx = 1.6,
     Ey = 0.329, Ex = -0.5, pKy1 = 33.8, pKy2 = 1.71, pKx1 = 16.6, t0 = 0.035, Bt = 8.0)
+
+# Lateral-grip loss from longitudinal slip (wheelspin / lock-up).  The friction ellipse
+# alone under-collapses lateral grip during wheelspin, because the pure longitudinal
+# force Fx0 FALLS past its peak κ (Cx>1) so its ellipse demand drops — leaving spurious
+# lateral grip on a spinning tyre.  Gyκ directly scales Fy down with |κ|: ≈1 for normal
+# accel (κ<0.1), collapsing past κ≈0.25 → power-on snap oversteer.  κ=0 ⇒ Gyκ=1, so the
+# fitted pure-slip lateral curve is untouched.  κ0 sets the wheelspin threshold.
+const KAPPA0_LAT = 0.25
+gyk(κ) = 1.0 / (1.0 + (κ / KAPPA0_LAT)^4)
 
 "Pure-Julia lateral force Fy(Fz, α) — mirror of the symbolic `Tyre.Fy` eq."
 function tyre_fy(Fz, α; p = TYRE_DEFAULTS)
@@ -73,5 +88,5 @@ function tyre_forces(Fz, α, κ; p = TYRE_DEFAULTS)
     Fy0 = tyre_fy(Fz, α; p = p)
     ρ = sqrt((Fx0/(p.μx*Fz + 1e-6))^2 + (Fy0/(p.μy*Fz + 1e-6))^2 + 1e-9)
     g = min(1.0, 1.0/ρ)
-    (g*Fx0, g*Fy0)
+    (g*Fx0, g*Fy0*gyk(κ))
 end
