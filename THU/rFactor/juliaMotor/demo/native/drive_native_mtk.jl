@@ -60,17 +60,42 @@ const IBTTMPL = NURB ? joinpath(IBTDIR, "lotus49_nurburgring nordschleife 2026-0
 # Procedural skidpad / centripetal pad: flat asphalt + concentric measurement
 # circles, diameters 10..200 m (radii 5..100 m).  Returns Render.TrackParts
 # (11-float verts: pos3, normal3, col3, uv2; up-normal, no texture → vertex colour).
+# 7-segment lit-segment table (a top, b TR, c BR, d bottom, e BL, f TL, g mid)
+const SEG7 = Dict('0'=>(1,1,1,1,1,1,0),'1'=>(0,1,1,0,0,0,0),'2'=>(1,1,0,1,1,0,1),
+                  '3'=>(1,1,1,1,0,0,1),'4'=>(0,1,1,0,0,1,1),'5'=>(1,0,1,1,0,1,1),
+                  '6'=>(1,0,1,1,1,1,1),'7'=>(1,1,1,0,0,0,0),'8'=>(1,1,1,1,1,1,1),'9'=>(1,1,1,1,0,1,1))
 function skidpad_parts()
     up = (0f0,1f0,0f0)
     push3!(v,x,y,z,c) = append!(v, Float32[x,y,z, up[1],up[2],up[3], c[1],c[2],c[3], 0f0,0f0])
+    # quad on the pad (xz plane at height y), 2 tris, ccw from above
+    quad!(v,x0,z0,x1,z1,y,c) = (push3!(v,x0,y,z0,c);push3!(v,x1,y,z1,c);push3!(v,x1,y,z0,c);   # CCW from above
+                                push3!(v,x0,y,z0,c);push3!(v,x0,y,z1,c);push3!(v,x1,y,z1,c))
+    # a flat 7-segment digit in a (u,v) cell [0..0.62]×[0..1]; map u→x, v→z
+    function digit!(v, ch, x0, z0, s, th, c)
+        S = get(SEG7, ch, (0,0,0,0,0,0,0)); W=0.62f0
+        seg = Dict(1=>(th,W-th, 1-th,1f0), 2=>(W-th,W, 0.5f0,1-th), 3=>(W-th,W, th,0.5f0),
+                   4=>(th,W-th, 0f0,th),   5=>(0f0,th, th,0.5f0),   6=>(0f0,th, 0.5f0,1-th),
+                   7=>(th,W-th, 0.5f0-th/2,0.5f0+th/2))
+        for k in 1:7
+            S[k]==1 || continue; (u0,u1,v0,v1)=seg[k]
+            quad!(v, x0+u0*s, z0+v0*s, x0+u1*s, z0+v1*s, 0.03f0, c)
+        end
+    end
+    # a number string centred at (cx,cz), digit height `s`, placed flat
+    function label!(v, n::Int, cx, cz, s, c)
+        ds = string(n); nd=length(ds); adv=0.78f0*s; total=(nd-1)*adv + 0.62f0*s
+        x0 = cx - total/2
+        for ch in ds; digit!(v, ch, x0, cz - s/2, s, 0.13f0, c); x0 += adv; end
+    end
     parts = Render.TrackPart[]
-    # ground: dark asphalt quad, 260 x 260 m at y=0
-    g = Float32[]; asph=(0.27f0,0.28f0,0.30f0); S=130f0
+    # ground: medium-grey macadam, 320 x 320 m at y=0
+    g = Float32[]; asph=(0.62f0,0.63f0,0.64f0); S=160f0
     for (ax,az,bx,bz,cx,cz) in ((-S,-S, S,-S, S,S), (-S,-S, S,S, -S,S))
-        push3!(g,ax,0f0,az,asph); push3!(g,bx,0f0,bz,asph); push3!(g,cx,0f0,cz,asph)
+        push3!(g,ax,0f0,az,asph); push3!(g,cx,0f0,cz,asph); push3!(g,bx,0f0,bz,asph)  # CCW from above (front-facing)
     end
     push!(parts, Render.TrackPart(g, "", asph))
     # circles: a thin band (annulus) per diameter, white; 50 m multiples brighter/yellow
+    labels = Float32[]; lcol = (1f0,0.95f0,0.45f0)
     for d in 10:10:200
         r = Float32(d/2); ring=Float32[]; w=(d%50==0 ? 0.30f0 : 0.16f0); y=0.02f0
         col = d%50==0 ? (1f0,0.92f0,0.35f0) : (0.92f0,0.93f0,0.96f0)
@@ -79,11 +104,16 @@ function skidpad_parts()
             a0=2f0*Float32(pi)*i/seg; a1=2f0*Float32(pi)*(i+1)/seg
             xi0=(r-w)*cos(a0); zi0=(r-w)*sin(a0); xo0=(r+w)*cos(a0); zo0=(r+w)*sin(a0)
             xi1=(r-w)*cos(a1); zi1=(r-w)*sin(a1); xo1=(r+w)*cos(a1); zo1=(r+w)*sin(a1)
-            push3!(ring,xi0,y,zi0,col); push3!(ring,xo0,y,zo0,col); push3!(ring,xo1,y,zo1,col)
-            push3!(ring,xi0,y,zi0,col); push3!(ring,xo1,y,zo1,col); push3!(ring,xi1,y,zi1,col)
+            push3!(ring,xi0,y,zi0,col); push3!(ring,xo1,y,zo1,col); push3!(ring,xo0,y,zo0,col)  # CCW from above
+            push3!(ring,xi0,y,zi0,col); push3!(ring,xi1,y,zi1,col); push3!(ring,xo1,y,zo1,col)
         end
         push!(parts, Render.TrackPart(ring, "", col))
+        # diameter label in metres, just outside the ring at the +x and -x edges
+        ls = clamp(Float32(d)*0.18f0, 2.0f0, 9.0f0)         # bigger circles → bigger label
+        label!(labels, d,  r + ls*0.9f0, 0f0, ls, lcol)
+        label!(labels, d, -(r + ls*0.9f0), 0f0, ls, lcol)
     end
+    push!(parts, Render.TrackPart(labels, "", lcol))
     parts
 end
 
@@ -250,7 +280,7 @@ print("loading textures… "); flush(stdout)
 const TEXIDX = Render.gpl_texture_index(ZD)
 trackItems = Render.build_gpl(TRACK, TEXIDX)
 # GPL sky dome: the 12-panel horizon ring (horiz0..11), camera-centred backdrop.
-const HORIZON_RING = Render.build_horizon(TEXIDX)
+const HORIZON_RING = SKIDPAD ? nothing : Render.build_horizon(TEXIDX)   # skidpad: clear blue sky, no GPL ring
 # ---- Phase 3 (a): auto-place trackside objects (GPL .3do geometry, textured from
 # loose files + the packed zandvort.dat).  Names + transforms come from the .3do
 # instance records; geometry/textures resolve from loose files OR the .dat archive.
@@ -483,7 +513,10 @@ function main()
         end
         # ---- main pass ----
         glViewport(0,0,W,H); glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
-        Render.draw_sky(skyprog, skyvao, inv(vp), eye, LIGHTDIR)
+        Render.draw_sky(skyprog, skyvao, inv(vp), eye, LIGHTDIR;
+                        cloud = SKIDPAD ? 0.18 : 1.0,                       # skidpad: near-clear blue sky
+                        zenith = SKIDPAD ? (0.20f0,0.42f0,0.78f0) : Render.ZENITH,
+                        horizon = SKIDPAD ? (0.62f0,0.74f0,0.88f0) : Render.HORIZON)
         Render.set_scene_uniforms(prog, eye; fognear=400f0, fogfar=2800f0); Render.bind_shadow(prog, shadowtex, lightVP)
         HORIZON_RING === nothing || Render.draw_horizon(prog, HORIZON_RING, vp, eye)   # GPL horizon ring backdrop
         for it in trackItems; Render.draw(prog, it, vp, Render.ident(); bright=0.55); end

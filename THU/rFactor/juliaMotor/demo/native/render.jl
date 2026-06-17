@@ -334,7 +334,7 @@ out vec2 ndc; void main(){ ndc=P[gl_VertexID]; gl_Position=vec4(P[gl_VertexID],0
 const SKY_FS = """
 #version 330 core
 in vec2 ndc; out vec4 o;
-uniform mat4 uInvVP; uniform vec3 uCamPos; uniform vec3 uHorizon; uniform vec3 uZenith; uniform vec3 uLightDir;
+uniform mat4 uInvVP; uniform vec3 uCamPos; uniform vec3 uHorizon; uniform vec3 uZenith; uniform vec3 uLightDir; uniform float uCloud;
 float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
 float noise(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f);
   return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y); }
@@ -347,7 +347,7 @@ void main(){
   if(dir.y > 0.01){                                  // procedural cloud layer
     vec2 cp = (uCamPos.xz + dir.xz/dir.y*1400.0)*0.0011;
     float c = fbm(cp);
-    float cov = smoothstep(0.52,0.82,c) * smoothstep(0.015,0.22,dir.y);
+    float cov = smoothstep(0.52,0.82,c) * smoothstep(0.015,0.22,dir.y) * uCloud;
     col = mix(col, mix(vec3(0.75,0.78,0.84), vec3(1.0), c), cov*0.9);
     sun *= (1.0 - cov*0.85);
   }
@@ -368,11 +368,12 @@ end
 function empty_vao(); v=Ref{GLuint}(); glGenVertexArrays(1,v); v[]; end
 u3(prog,name,t)=glUniform3f(glGetUniformLocation(prog,name), Float32(t[1]),Float32(t[2]),Float32(t[3]))
 """Draw the gradient sky behind everything (depth test off, no depth write)."""
-function draw_sky(skyprog, vao, invVP, campos, lightdir)
+function draw_sky(skyprog, vao, invVP, campos, lightdir; cloud::Real=1.0, horizon=HORIZON, zenith=ZENITH)
     glDisable(GL_DEPTH_TEST); glDepthMask(GL_FALSE)
     glUseProgram(skyprog)
     glUniformMatrix4fv(glGetUniformLocation(skyprog,"uInvVP"),1,GL_FALSE,Matrix{Float32}(invVP))
-    u3(skyprog,"uCamPos",campos); u3(skyprog,"uHorizon",HORIZON); u3(skyprog,"uZenith",ZENITH); u3(skyprog,"uLightDir",lightdir)
+    u3(skyprog,"uCamPos",campos); u3(skyprog,"uHorizon",horizon); u3(skyprog,"uZenith",zenith); u3(skyprog,"uLightDir",lightdir)
+    glUniform1f(glGetUniformLocation(skyprog,"uCloud"), Float32(cloud))
     glBindVertexArray(vao); glDrawArrays(GL_TRIANGLES,0,3)
     glDepthMask(GL_TRUE); glEnable(GL_DEPTH_TEST)
 end
