@@ -38,11 +38,15 @@ function DrivenVehicleRT(; name,
     eqs = Equation[]; Fyb=Any[]; Fxb=Any[]; Mz=Any[]; Fx_f=Any[]; Fx_r=Any[]
     for (ca, xi, yi, st, slat, slong, maxle, trk, Rw, axle) in spec
         vx = u - r*yi;  vy = v + r*xi
-        # low-speed regularisation: bounded slip-angle denominator + lateral fade-in
-        # so a stationary car generates no phantom cornering force (launch goes straight)
+        # Energy conservation: the longitudinal slip denominator must be ≥ 0 at ANY heading.
+        # The old `vx+0.5` went NEGATIVE for a corner moving backward in a spin, flipping κ's
+        # sign so the "braking" force drove the car (it sped up while braking + pinwheeled).
+        # Using |vx| keeps κ's sign tied to (ωRw−vx) ⇒ the force always opposes the longitudinal
+        # slip.  α keeps its origin-safe forward-clamped form (atan's Jacobian is singular at a
+        # standstill); the low-speed fade kills phantom cornering force there.
         α  = (st - atan(vy, max(vx, 0.5))) * min(1.0, abs(vx)/1.5)
         ωax = axle == :f ? ωf : ωr
-        κ  = (ωax*Rw - vx)/(vx + 0.5)
+        κ  = (ωax*Rw - vx)/(abs(vx) + 0.5)
         fxb = ca.tyre.Fx*cos(st) - ca.tyre.Fy*sin(st)
         fyb = ca.tyre.Fx*sin(st) + ca.tyre.Fy*cos(st)
         push!(Fyb, fyb); push!(Fxb, fxb); push!(Mz, ca.tyre.Mz)

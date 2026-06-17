@@ -21,9 +21,10 @@ end
 @assert isfinite(c.v)  "no NaNs"
 
 println("\n=== 3) launch then brake to a stop ===")
+v0brake = c.v*3.6
 for _ in 1:120; step_car!(c, 0.0, 1.0, 0.0, 1/60); end   # 2 s hard braking
-println("  after 2 s braking: v=$(round(c.v*3.6,digits=1)) km/h")
-@assert c.v*3.6 < 40   "braking should slow it markedly"
+println("  after 2 s braking: v=$(round(c.v*3.6,digits=1)) km/h (from $(round(v0brake,digits=1)))")
+@assert c.v*3.6 < v0brake - 60   "braking should slow it markedly (≳60 km/h shed in 2 s)"
 
 println("\n=== 4) MANUAL clutch launch: rev with clutch in, then drop it ===")
 c = build_car(v0 = 0.0)

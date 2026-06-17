@@ -23,21 +23,29 @@ function Tyre(; name,
         Ex = TYRE_DEFAULTS.Ex, pKy1 = TYRE_DEFAULTS.pKy1, pKy2 = TYRE_DEFAULTS.pKy2,
         pKx1 = TYRE_DEFAULTS.pKx1, t0 = TYRE_DEFAULTS.t0, Bt = TYRE_DEFAULTS.Bt)
     ps = @parameters Fz0=Fz0 μy=μy μx=μx Cy=Cy Cx=Cx Ey=Ey Ex=Ex pKy1=pKy1 pKy2=pKy2 pKx1=pKx1 t0=t0 Bt=Bt
-    vars = @variables Fz(t) α(t) κ(t) Fy(t) Fx(t) Mz(t) Ky(t) Fy0(t) Fx0(t) gc(t)
+    vars = @variables Fz(t) α(t) κ(t) Fy(t) Fx(t) Mz(t) Ky(t) σ(t) Fmag(t)
     #            Fz: vertical load [N] (in)   α: slip angle [rad] (in)   κ: slip ratio (in)
     #            Fy/Fx: lateral/longitudinal force [N] (out, combined)   Mz: aligning moment [N·m]
-    #            Fy0/Fx0: pure-slip forces   gc: friction-ellipse combined-slip scale
+    #            σ: combined slip magnitude   Fmag: friction-circle force magnitude
+    # PHYSICS-BASED combined slip (energy-conserving — no empirical coupling): the friction
+    # force has magnitude μ·Fz·MF(σ), where σ combines longitudinal (κ) and lateral (sin α)
+    # slip, and is DIRECTED ALONG THE SLIP VECTOR (κ, sin α) — i.e. opposite the contact-patch
+    # slip velocity.  This dissipates energy at ANY heading (no spurious speed-up in a spin)
+    # AND gives power-on snap oversteer for free: when the rear spins up (κ large) the slip
+    # vector points longitudinally, so the force is mostly longitudinal and almost no lateral
+    # grip is left → the rear lets go.  Pure lateral (κ=0) ⇒ the fitted Fy0(α); pure
+    # longitudinal (α=0) ⇒ Fx at the fitted peak μ·Fz.
     eqs = [
-        Ky  ~ mf_stiffness(Fz, Fz0, pKy1, pKy2),
-        Fy0 ~ μy*Fz * mf_branch(Ky/(Cy*μy*Fz + 1e-6) * α, Cy, Ey),
-        Fx0 ~ μx*Fz * mf_branch((pKx1*Fz)/(Cx*μx*Fz + 1e-6) * κ, Cx, Ex),
-        # friction ellipse: cap the resultant of (Fx0, Fy0) at the μ·Fz ellipse
-        gc  ~ min(1.0, 1.0 / sqrt((Fx0/(μx*Fz + 1e-6))^2 + (Fy0/(μy*Fz + 1e-6))^2 + 1e-9)),
-        Fx  ~ gc * Fx0,
-        # Gyκ: lateral grip collapses with longitudinal slip (wheelspin/lock) → snap oversteer;
-        # ≈1 for κ<0.1, falls past κ≈0.25.  κ=0 ⇒ 1 (fitted pure-slip curve untouched).
-        Fy  ~ gc * Fy0 / (1.0 + (κ / 0.25)^4),
-        Mz  ~ -(t0 / (1 + (Bt*α)^2)) * Fy,
+        # σ in the slip-DIRECTION (κ/σ, sinα/σ) carries a small floor (0.02) so the unit
+        # direction stays well-conditioned near zero slip; the force MAGNITUDE Fmag uses the
+        # true slip (1e-9 floor) so peak grip is unaffected.  The direction floor only rounds
+        # the split at near-zero slip, where the force → 0 anyway (κ,sinα → 0).
+        Ky   ~ mf_stiffness(Fz, Fz0, pKy1, pKy2),
+        σ    ~ sqrt(κ^2 + sin(α)^2 + 0.02^2),
+        Fmag ~ μy*Fz * mf_branch(Ky/(Cy*μy*Fz + 1e-6) * sqrt(κ^2 + sin(α)^2 + 1e-9), Cy, Ey),
+        Fx   ~ Fmag * κ / σ,
+        Fy   ~ Fmag * sin(α) / σ,
+        Mz   ~ -(t0 / (1 + (Bt*α)^2)) * Fy,
     ]
     System(eqs, t, vars, ps; name)
 end

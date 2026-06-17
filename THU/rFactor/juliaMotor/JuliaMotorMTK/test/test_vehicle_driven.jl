@@ -22,27 +22,29 @@ prob = ODEProblem(sys, [sys.car.u => 42.0, sys.car.ωf => 140.0, sys.car.ωr => 
 sol  = solve(prob, FBDF(); reltol = 1e-6, abstol = 1e-6)
 @test Symbol(sol.retcode) == :Success
 
-# scan the whole trajectory for the peak combined-slip activation (min gc over corners×time)
+# combined-slip activation: with both κ and α present, the force vector tilts off the pure-
+# lateral axis, so the lateral-force fraction sinα/σ drops below 1 (longitudinal slip steals
+# lateral grip).  Scan the trajectory for the strongest coupling (min lateral fraction).
 corners = (sys.car.FL, sys.car.FR, sys.car.RL, sys.car.RR)
-gcmin = minimum(minimum(sol[c.tyre.gc]) for c in corners)
+latfracmin = minimum(minimum(abs.(sin.(sol[c.tyre.α])) ./ sol[c.tyre.σ]) for c in corners)
 tt = 1.5
 u  = sol(tt; idxs = sys.car.u);  ay = sol(tt; idxs = sys.car.ay);  ax = sol(tt; idxs = sys.car.ax);  r = sol(tt; idxs = sys.car.r)
 κFL = sol(tt; idxs = sys.car.FL.tyre.κ);  αFL = sol(tt; idxs = sys.car.FL.tyre.α)
-gc  = [sol(tt; idxs = c.tyre.gc) for c in corners]
+latfrac = [abs(sin(sol(tt; idxs = c.tyre.α))) / sol(tt; idxs = c.tyre.σ) for c in corners]
 FzFL = sol(tt; idxs = sys.car.FL.corner.Fz); FzFR = sol(tt; idxs = sys.car.FR.corner.Fz)
 FzRL = sol(tt; idxs = sys.car.RL.corner.Fz); FzRR = sol(tt; idxs = sys.car.RR.corner.Fz)
 
 println("\n  STATE at t=$(tt)s (trail-braking: brake 0.40 + δ 0.06 rad):")
 println("    u=$(round(u,digits=1)) m/s   ax=$(round(ax/9.80665,digits=2)) g   ay=$(round(ay/9.80665,digits=2)) g   |a|=$(round(hypot(ax,ay)/9.80665,digits=2)) g")
 println("    front tyre: slip ratio κ=$(round(κFL,digits=3)) (braking)  slip angle α=$(round(rad2deg(αFL),digits=2))°  ⇒ BOTH nonzero")
-println("    combined-slip gc: FL=$(round(gc[1],digits=3)) FR=$(round(gc[2],digits=3)) RL=$(round(gc[3],digits=3)) RR=$(round(gc[4],digits=3))   min over run=$(round(gcmin,digits=3))")
+println("    lateral-force fraction sinα/σ: FL=$(round(latfrac[1],digits=3)) FR=$(round(latfrac[2],digits=3)) RL=$(round(latfrac[3],digits=3)) RR=$(round(latfrac[4],digits=3))   min over run=$(round(latfracmin,digits=3))")
 println("    corner loads N: FL=$(round(FzFL)) FR=$(round(FzFR)) | RL=$(round(FzRL)) RR=$(round(FzRR))  (front loaded by braking)")
 
 @test r > 0 && ay > 0                                  # it corners
 @test ax < -0.4*9.80665                                # and brakes
 @test κFL < -0.01                                       # front braking slip (negative κ)
 @test abs(rad2deg(αFL)) > 0.3                           # and a slip angle (cornering)
-@test gcmin < 0.99                                      # COMBINED SLIP engages (friction ellipse bites)
+@test latfracmin < 0.99                                 # COMBINED SLIP engages (longitudinal slip steals lateral grip)
 @test FzFL+FzFR > FzRL+FzRR                             # braking loads the front axle
 @test 5000 < FzFL+FzFR+FzRL+FzRR < 7600                # vertical load ≈ m·g (+ longitudinal transfer)
 

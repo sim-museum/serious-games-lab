@@ -53,15 +53,6 @@ const TYRE_SKIDPAD_REAR = (
     Fz0 = 1670.0, μy = 1.304, μx = 1.304, Cy = 1.000, Cx = 1.6,
     Ey = 0.329, Ex = -0.5, pKy1 = 33.8, pKy2 = 1.71, pKx1 = 16.6, t0 = 0.035, Bt = 8.0)
 
-# Lateral-grip loss from longitudinal slip (wheelspin / lock-up).  The friction ellipse
-# alone under-collapses lateral grip during wheelspin, because the pure longitudinal
-# force Fx0 FALLS past its peak κ (Cx>1) so its ellipse demand drops — leaving spurious
-# lateral grip on a spinning tyre.  Gyκ directly scales Fy down with |κ|: ≈1 for normal
-# accel (κ<0.1), collapsing past κ≈0.25 → power-on snap oversteer.  κ=0 ⇒ Gyκ=1, so the
-# fitted pure-slip lateral curve is untouched.  κ0 sets the wheelspin threshold.
-const KAPPA0_LAT = 0.25
-gyk(κ) = 1.0 / (1.0 + (κ / KAPPA0_LAT)^4)
-
 "Pure-Julia lateral force Fy(Fz, α) — mirror of the symbolic `Tyre.Fy` eq."
 function tyre_fy(Fz, α; p = TYRE_DEFAULTS)
     Ky = mf_stiffness(Fz, p.Fz0, p.pKy1, p.pKy2)
@@ -76,17 +67,20 @@ function tyre_fx(Fz, κ; p = TYRE_DEFAULTS)
     p.μx * Fz * mf_branch(Bx * κ, p.Cx, p.Ex)
 end
 
-# Combined slip via the FRICTION ELLIPSE.  The pure-slip forces Fx0(κ), Fy0(α)
-# each saturate at μ·Fz, so their normalised demands ex=Fx0/(μx·Fz),
-# ey=Fy0/(μy·Fz) are each ≤1.  When BOTH slips are present the resultant demand
-# ρ=√(ex²+ey²) can exceed 1; we scale both forces by g=min(1, 1/ρ) so the force
-# vector sits on the ellipse.  In pure slip one demand is 0 ⇒ ρ≤1 ⇒ g=1, so the
-# fitted pure-slip curves are untouched; coupling only bites when sliding while
-# cornering.   Returns (Fx, Fy).
+# PHYSICS-BASED combined slip (mirror of the symbolic `Tyre` in tyre.jl).  The
+# friction force has magnitude μ·Fz·MF(σ), with σ = √(κ² + sin²α) the combined
+# slip, and is DIRECTED ALONG THE SLIP VECTOR (κ, sinα) — i.e. opposite the
+# contact-patch slip velocity.  This is energy-conserving at any heading (the
+# force always dissipates → no spurious speed-up in a spin) AND gives power-on
+# snap oversteer for free: when a tyre spins up (κ large) the slip vector points
+# longitudinally, so almost no lateral grip is left and the rear lets go.  Pure
+# lateral (κ=0) ⇒ the fitted Fy0(α); pure longitudinal (α=0) ⇒ Fx at peak μ·Fz.
+# Returns (Fx, Fy).
 function tyre_forces(Fz, α, κ; p = TYRE_DEFAULTS)
-    Fx0 = tyre_fx(Fz, κ; p = p)
-    Fy0 = tyre_fy(Fz, α; p = p)
-    ρ = sqrt((Fx0/(p.μx*Fz + 1e-6))^2 + (Fy0/(p.μy*Fz + 1e-6))^2 + 1e-9)
-    g = min(1.0, 1.0/ρ)
-    (g*Fx0, g*Fy0*gyk(κ))
+    Ky = mf_stiffness(Fz, p.Fz0, p.pKy1, p.pKy2)
+    By = Ky / (p.Cy * p.μy * Fz + 1e-6)
+    sx = κ; sy = sin(α)
+    Fmag = p.μy * Fz * mf_branch(By * sqrt(sx^2 + sy^2 + 1e-9), p.Cy, p.Ey)
+    σ = sqrt(sx^2 + sy^2 + 0.02^2)
+    (Fmag * sx / σ, Fmag * sy / σ)
 end
