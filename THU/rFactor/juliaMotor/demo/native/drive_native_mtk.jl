@@ -90,6 +90,34 @@ function nurburgring_dir()
     D
 end
 
+# Synthetic road ribbon from the AIW racing line.  This mod's GMT meshes are a
+# variant our parser mis-reads (garbage vertex positions/UVs), so the visible road
+# geometry is offset from the AIW and the car spawns over a GAP — you'd see the sky
+# horizon colour below the horizon (the "blue road").  The TrackSurface already
+# carries the centreline + lateral half-widths + height where the car actually
+# drives, so we lay a dark-asphalt strip (+ white edge lines) along it: guaranteed
+# visible road under the car, independent of the broken mesh extraction.
+function road_ribbon(ts)
+    up=(0f0,1f0,0f0); g=Float32[]
+    push3!(x,y,z,c)=append!(g, Float32[x,y,z, up[1],up[2],up[3], c[1],c[2],c[3], 0f0,0f0])
+    rc((p,pe,off,dy)) = (Float32(p[1]+pe[1]*off), Float32(p[2]+dy), Float32(-(p[3]+pe[3]*off)))  # render (x,y,-z)
+    quad(a,b,c2,d,col)=(push3!(a...,col);push3!(b...,col);push3!(c2...,col); push3!(a...,col);push3!(c2...,col);push3!(d...,col))
+    asph=(0.21f0,0.215f0,0.22f0); line=(0.80f0,0.80f0,0.78f0)
+    n=length(ts.pos)
+    for i in 1:n-1
+        p0=ts.pos[i]; p1=ts.pos[i+1]; e0=ts.perp[i]; e1=ts.perp[i+1]
+        l0,r0=ts.halfwidth[i]; l1,r1=ts.halfwidth[i+1]
+        (l0+r0 < 0.5 || l1+r1 < 0.5) && continue                  # skip degenerate widths
+        L0=rc((p0,e0, l0,0.10)); R0=rc((p0,e0,-r0,0.10)); L1=rc((p1,e1, l1,0.10)); R1=rc((p1,e1,-r1,0.10))
+        quad(L0,R0,R1,L1, asph)                                   # asphalt strip
+        # white edge lines (0.15 m inboard band) at +0.12 m
+        Le0=rc((p0,e0,l0,0.12)); Le0i=rc((p0,e0,l0-0.18,0.12)); Le1=rc((p1,e1,l1,0.12)); Le1i=rc((p1,e1,l1-0.18,0.12))
+        Re0=rc((p0,e0,-r0,0.12)); Re0i=rc((p0,e0,-r0+0.18,0.12)); Re1=rc((p1,e1,-r1,0.12)); Re1i=rc((p1,e1,-r1+0.18,0.12))
+        quad(Le0i,Le0,Le1,Le1i, line); quad(Re0,Re0i,Re1i,Re1, line)
+    end
+    Render.TrackPart(g, "", asph)
+end
+
 # ---- load physics + geometry: the GPL Zandvoort track + Vanwall-calibrated physics ----
 const GD = default_gamedata()
 const VEH = load_vehicle(joinpath(GD,"Vehicles","F158","Vanwall","Teams","LewisEvans","LewisEvans.veh"))
@@ -107,7 +135,7 @@ elseif NURB
     const TRKSURF = JuliaMotor.TrackSurface(read_aiw(joinpath(NURBDIR, "Burg67.AIW")))
     const LAPLEN  = maximum(TRKSURF.lapdist)
     const CAR     = DriveCar(MODEL, TRKSURF; terrain=nothing) # ribbon carries height + lap dist + lateral
-    const TRACK   = Render.extract_track(NURBDIR)             # 3794 rFactor meshes, UV + texture name
+    const TRACK   = push!(Render.extract_track(NURBDIR), road_ribbon(TRKSURF))  # rFactor meshes + AIW road strip
     println("Nordschleife: ", length(TRACK), " parts, lap ", round(Int, LAPLEN), " m")
 else
 print("loading GPL track… "); flush(stdout)
