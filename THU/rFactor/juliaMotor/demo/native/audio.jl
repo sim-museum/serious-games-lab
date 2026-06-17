@@ -74,13 +74,23 @@ end
 """Start the audio thread (needs Julia ≥2 threads).  Returns the Engine; update
 `eng.rpm[]` from the game loop, call `stop!(eng)` to end."""
 function start(eng::Engine)
+    haskey(ENV, "JM_NOSOUND") && (println("  engine audio off (JM_NOSOUND)"); return eng)
     isempty(eng.voices) && (@warn "no engine samples found — no sound"; return eng)
     if Threads.nthreads() < 2
         @warn "sound needs ≥2 threads — relaunch with: julia -t 2 …"; return eng
     end
     eng.running[]=true
     Threads.@spawn begin
-        stream = PortAudioStream(0,2; samplerate=44100, latency=0.08)
+        local stream
+        try
+            stream = PortAudioStream(0,2; samplerate=44100, latency=0.08)
+        catch e
+            # PortAudio/ALSA couldn't open the output device (no device, busy, or a
+            # PipeWire/ALSA quirk) — the sim runs fine, just silently.  Set JM_NOSOUND=1
+            # to skip the attempt and avoid the C-level ALSA error spam entirely.
+            @warn "engine audio unavailable (couldn't open an audio device) — running silently; set JM_NOSOUND=1 to skip audio"
+            eng.running[]=false; return
+        end
         buf = zeros(Float32, 1024, 2)
         try
             while eng.running[]; mix!(buf, eng); write(stream, buf); end
