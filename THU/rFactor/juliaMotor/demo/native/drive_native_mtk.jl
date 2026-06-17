@@ -108,9 +108,13 @@ function gpl_scenery(ztrk, datpack, ribbon)
     pls = Render.GPL3DO.gpl_placements(ztrk)
     function placemat(t)
         d=(t[1],t[2],t[3]); m=(t[4],t[5],t[6]); s = t[7] <= 0 ? 1.0 : t[7]
-        cx,sx=cos(m[1]),sin(m[1]); cy,sy=cos(m[2]),sin(m[2]); cz,sz=cos(m[3]),sin(m[3])
-        Rx=[1.0 0 0;0 cx -sx;0 sx cx]; Ry=[cy 0 sy;0 1.0 0;-sy 0 cy]; Rz=[cz -sz 0;sz cz 0;0 0 1.0]
-        R=(Rz*Ry*Rx).*s
+        # GPL placement Euler angles: the 1st is YAW about UP (GPL comp-3), not roll about
+        # the long axis — applied as yaw, terrain sections orient to the track and towers/
+        # signs stay upright (just turned); applied as roll they all tilt over.  2nd = pitch
+        # (comp-2), 3rd = roll (comp-1); rare in scenery.
+        ca,sa=cos(m[1]),sin(m[1]); cb,sb=cos(m[2]),sin(m[2]); cc,sc=cos(m[3]),sin(m[3])
+        Ryaw=[ca -sa 0; sa ca 0; 0 0 1.0]; Rpit=[cb 0 sb; 0 1.0 0; -sb 0 cb]; Rrol=[1.0 0 0; 0 cc -sc; 0 sc cc]
+        R=(Rrol*Rpit*Ryaw).*s
         [R[1,1] R[1,2] R[1,3] d[1]; R[2,1] R[2,2] R[2,3] d[2]; R[3,1] R[3,2] R[3,3] d[3]; 0 0 0 1.0]
     end
     cache=Dict{String,Any}(); tmp=tempdir()
