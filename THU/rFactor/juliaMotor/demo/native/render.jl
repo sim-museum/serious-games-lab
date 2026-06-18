@@ -326,6 +326,10 @@ void main(){
       // edge ~1px (smooth + stable) at any distance.  Gated to cutouts so blended overlays
       // (the racing groove) keep their soft alpha and don't harden into a black strip.
       t.a = clamp((t.a - 0.5) / max(fwidth(t.a), 1e-4) + 0.5, 0.0, 1.0);
+      // Far away the wires are sub-pixel (fwidth huge → alpha stuck ~0.5, keeps crawling):
+      // fade that UNRESOLVED partial alpha toward transparent with distance so it drops out
+      // cleanly.  Solid alpha (signs) → pow(1.0,·)=1 stays; only the flickery mid-alpha goes.
+      t.a = pow(t.a, 1.0 + smoothstep(140.0, 460.0, length(vWorld-uCamPos))*4.0);
     } else if(t.a < 0.04) discard;              // blended/opaque: plain soft alpha-to-coverage
   }
   if(uSky==1){ o=vec4(t.rgb, 1.0); return; }     // horizon ring: unlit, unfogged backdrop
