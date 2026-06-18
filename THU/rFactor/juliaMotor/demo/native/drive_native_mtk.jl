@@ -188,9 +188,22 @@ function gpl_scenery(ztrk, datpack, ribbon)
         m = try Render.GPL3DO.parse_3do(tp) catch; nothing end
         m===nothing ? nothing : dedup_scenery(m.tris)
     end
-    hat=Render.GPL3DO.Tri[]; groups=Dict{String,Vector{Float32}}()
+    # Flat HORIZONTAL sprite stubs (UP-extent ≈ 0, small): GPL draws these camera-facing,
+    # but rendering the raw quad as geometry lays them flat on the ground = the "horizontal
+    # floating signs/people".  A real standing sign (XK_FLAT3, shell ~11 m) has vertical
+    # extent; a flat stub (SIGN1/SIGNX/sign2m…) has UP≈0.  Skip the flat stubs.
+    spritecache=Dict{String,Bool}()
+    issprite(nm,mesh)=get!(spritecache,nm) do
+        lo3=Inf;hi3=-Inf;loh=Inf;hih=-Inf
+        for tr in mesh, p in tr.p
+            lo3=min(lo3,p[3]);hi3=max(hi3,p[3]);loh=min(loh,p[1],p[2]);hih=max(hih,p[1],p[2])
+        end
+        (hi3-lo3) < 0.5 && (hih-loh) < 6.0
+    end
+    hat=Render.GPL3DO.Tri[]; groups=Dict{String,Vector{Float32}}(); nskip=0
     for (nm,t) in pls
-        mesh=getmesh(nm); mesh===nothing && continue
+        mesh=getmesh(nm); (mesh===nothing || isempty(mesh)) && continue
+        issprite(nm,mesh) && (nskip+=1; continue)   # flat horizontal sprite stub
         M=placemat(t)
         ap(q)=(Float32(M[1,1]*q[1]+M[1,2]*q[2]+M[1,3]*q[3]+M[1,4]),
                Float32(M[2,1]*q[1]+M[2,2]*q[2]+M[2,3]*q[3]+M[2,4]),
@@ -228,6 +241,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
             end
         end
     end
+    nskip > 0 && print("(skipped ", nskip, " flat sprite stubs) ")
     (hat, [Render.TrackPart(v, tex, (0.5f0,0.5f0,0.5f0)) for (tex,v) in groups])
 end
 
@@ -276,7 +290,7 @@ end
 const LOTDIR = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/cars/cars67/lotus"
 const GPLTEX = Render.gpl_texture_index(LOTDIR)
 const LOT3DO = joinpath(LOTDIR,"lotus.3do")
-const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","lotmirt",Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0)  # no hands/dup-mirror/teal front-susp; drop tan floor; clip splayed rear (insect legs)
+const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","lotmirt","windlot",Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0)  # no hands/dup-mirror/teal front-susp/tan scuttle "rug"; drop tan floor; clip splayed rear
 const SWPARTS, SWCENTER, SWAXIS = Render.extract_gpl_steering(LOT3DO)   # steering wheel + pivot
 println(length(TRACK), " track parts + ", length(CARP), " Lotus body parts")
 const BODY_OFF = Float32[-0.55, 0.30, 0.0]     # centre body on X, lift onto the wheels

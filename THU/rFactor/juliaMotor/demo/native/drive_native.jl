@@ -29,7 +29,7 @@ const TRACK = Render.extract_gpl_car(ZTRK; track=true, mirror=true, exclude=("lt
 const LOTDIR = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/cars/cars67/lotus"
 const GPLTEX = Render.gpl_texture_index(LOTDIR)
 const LOT3DO = joinpath(LOTDIR,"lotus.3do")
-const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","lotmirt",Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0)  # no hands/dup-mirror/teal front-susp; drop tan floor; clip splayed rear (insect legs)
+const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","lotmirt","windlot",Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0)  # no hands/dup-mirror/teal front-susp/tan scuttle "rug"; drop tan floor; clip splayed rear
 const SWPARTS, SWCENTER, SWAXIS = Render.extract_gpl_steering(LOT3DO)   # steering wheel + pivot
 println(length(TRACK), " track parts + ", length(CARP), " Lotus body parts")
 const BODY_OFF = Float32[-0.55, 0.30, 0.0]     # centre body on X, lift onto the wheels
