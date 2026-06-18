@@ -305,7 +305,15 @@ float shadow(vec3 N){
 void main(){
   vec2 uv = (uBackFlip==1 && !gl_FrontFacing) ? vec2(1.0-vUV.x, vUV.y) : vUV;  // un-mirror back-facing sign text
   vec4 t = uHasTex==1 ? texture(uTex,uv) : vec4(vC,1.0);
-  if(uHasTex==1 && t.a < 0.04) discard;         // drop only the fully-transparent (rest → alpha-to-coverage)
+  if(uHasTex==1){
+    if(t.a < 0.04) discard;                     // drop the fully-transparent
+    // Sharpen the cutout alpha to a ~1-pixel transition (Ben Golus AA-to-coverage):
+    // distant chain-link fences / hedges / sign edges shimmer because mipmapping
+    // softens their alpha to mid-grey, and alpha-to-coverage then dithers it per
+    // pixel.  Rescaling by the screen-space derivative keeps the edge ~1px wide at
+    // any distance — smooth AND stable.  Opaque texels (fwidth≈0) clamp to 1.
+    t.a = clamp((t.a - 0.5) / max(fwidth(t.a), 1e-4) + 0.5, 0.0, 1.0);
+  }
   if(uSky==1){ o=vec4(t.rgb, 1.0); return; }     // horizon ring: unlit, unfogged backdrop
   vec3 N = dot(vN,vN) > 1e-6 ? normalize(vN) : vec3(0.0,1.0,0.0);  // guard zero/degenerate normals
   if(!gl_FrontFacing) N=-N;
@@ -315,7 +323,9 @@ void main(){
   vec3 base = t.rgb;
   if(uHasTex==1 && max(abs(vUV.x),abs(vUV.y)) > 3.0)   // tiling surface: gently break up the repeat
     base *= mix(vec3(1.0), texture(uTex, vUV*0.07).rgb * 1.7, 0.45);   // softer → no harsh light/dark patches
-  vec3 lit = pow(base*(amb+uAmbFill+diff*0.95)*uBright, vec3(0.85));
+  vec3 lit = pow(base*(amb+0.5*uAmbFill+diff*0.95)*uBright, vec3(0.85));
+  lit += uAmbFill*vec3(0.13,0.135,0.125);   // ADDITIVE fill: lifts pure-black cockpit parts
+                                            // (tub/dash) to a visible dark grey, as GPL pre-lights them
   if(uSpec > 0.0){                               // Blinn-Phong sheen (painted/chrome bodywork)
     vec3 V = normalize(uCamPos - vWorld);
     float s = pow(max(dot(N, normalize(normalize(uLightDir)+V)), 0.0), 28.0) * uSpec * step(0.01, diff);
