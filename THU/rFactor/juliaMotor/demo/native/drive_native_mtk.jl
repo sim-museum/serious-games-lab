@@ -148,6 +148,26 @@ end
 # landmass), transform each to world coords, and emit (a) world-space GPL tris for the
 # collision HAT and (b) render TrackParts (GPL→render remap (gx,gz,-gy), grouped by
 # texture).  This is what fills the void around the road on the GPL Nürburgring.
+# Collapse a GPL .dat sub-object's coplanar front/back face pairs (thin signs, fences,
+# billboards are modelled two-sided) into one face — the duplicate pair z-fights at
+# distance and "flickers like fluorescent lights".  Keyed on quantised centroid+area;
+# textured faces win so the survivor keeps its texture.  Rendering is two-sided
+# (no backface cull) so the single face still shows from both sides.
+function dedup_scenery(tris)
+    isempty(tris) && return tris
+    seen = Set{NTuple{4,Int}}(); keep = eltype(tris)[]
+    for i in sort(collect(eachindex(tris)); by = j -> isempty(tris[j].tex) ? 1 : 0)
+        tr = tris[i]; a,b,c = tr.p[1], tr.p[2], tr.p[3]
+        cx=(a[1]+b[1]+c[1])/3; cy=(a[2]+b[2]+c[2])/3; cz=(a[3]+b[3]+c[3])/3
+        ux=b[1]-a[1];uy=b[2]-a[2];uz=b[3]-a[3]; vx=c[1]-a[1];vy=c[2]-a[2];vz=c[3]-a[3]
+        ar=0.5*sqrt((uy*vz-uz*vy)^2+(uz*vx-ux*vz)^2+(ux*vy-uy*vx)^2)
+        key=(round(Int,cx/0.08),round(Int,cy/0.08),round(Int,cz/0.08),round(Int,ar/0.05))
+        key in seen && continue
+        push!(seen,key); push!(keep,tr)
+    end
+    keep
+end
+
 function gpl_scenery(ztrk, datpack, ribbon)
     pls = Render.GPL3DO.gpl_placements(ztrk)
     function placemat(t)
@@ -165,7 +185,8 @@ function gpl_scenery(ztrk, datpack, ribbon)
     getmesh(nm)=get!(cache, lowercase(nm)) do
         v=get(datpack, lowercase(nm*".3do"), nothing); v===nothing && return nothing
         tp=joinpath(tmp,"jm_nb_"*lowercase(nm)*".3do"); isfile(tp)||write(tp,v)
-        try Render.GPL3DO.parse_3do(tp) catch; nothing end
+        m = try Render.GPL3DO.parse_3do(tp) catch; nothing end
+        m===nothing ? nothing : dedup_scenery(m.tris)
     end
     hat=Render.GPL3DO.Tri[]; groups=Dict{String,Vector{Float32}}()
     for (nm,t) in pls
@@ -177,8 +198,16 @@ function gpl_scenery(ztrk, datpack, ribbon)
         rn(n)=(Float32(M[1,1]*n[1]+M[1,2]*n[2]+M[1,3]*n[3]),
                Float32(M[2,1]*n[1]+M[2,2]*n[2]+M[2,3]*n[3]),
                Float32(M[3,1]*n[1]+M[3,2]*n[2]+M[3,3]*n[3]))
-        for tr in mesh.tris
+        for tr in mesh
             w=(ap(tr.p[1]),ap(tr.p[2]),ap(tr.p[3])); nn=(rn(tr.n[1]),rn(tr.n[2]),rn(tr.n[3]))
+            # DROP stray garbage geometry: a tri with a huge or wildly-stretched edge is a
+            # vertex parsed at a junk coordinate — these render as the giant jagged "Star
+            # Destroyer" shapes floating off in the sky.  Real scenery tris are < ~80 m.
+            e1=hypot(w[2][1]-w[1][1],w[2][2]-w[1][2],w[2][3]-w[1][3])
+            e2=hypot(w[3][1]-w[2][1],w[3][2]-w[2][2],w[3][3]-w[2][3])
+            e3=hypot(w[1][1]-w[3][1],w[1][2]-w[3][2],w[1][3]-w[3][3])
+            emax=max(e1,e2,e3); emin=min(e1,e2,e3)
+            (emax > 150f0 || (emax > 70f0 && emax > 10f0*emin)) && continue
             # DROP scenery that intrudes into the road corridor (mis-placed/tilted objects
             # poking through the track) — render AND collision.  GPL world (gx,gy,gz=up);
             # the racing ribbon is queried in (gx,gy), road height is hr.height.
