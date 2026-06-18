@@ -287,6 +287,7 @@ in vec3 vN; in vec3 vC; in vec2 vUV; in vec3 vWorld; in vec4 vLS; out vec4 o;
 uniform vec3 uLightDir; uniform sampler2D uTex; uniform int uHasTex; uniform float uBright;
 uniform vec3 uCamPos; uniform vec3 uFogCol; uniform float uFogNear; uniform float uFogFar;
 uniform sampler2D uShadow; uniform float uShadowTexel; uniform float uSpec; uniform int uBackFlip;
+uniform float uAmbFill;   // flat fill light (GPL pre-lit cockpit interior — lifts self-shadowed faces)
 uniform int uSky;
 float shadow(vec3 N){
   vec3 lp = vLS.xyz/vLS.w*0.5+0.5;
@@ -314,7 +315,7 @@ void main(){
   vec3 base = t.rgb;
   if(uHasTex==1 && max(abs(vUV.x),abs(vUV.y)) > 3.0)   // tiling surface: gently break up the repeat
     base *= mix(vec3(1.0), texture(uTex, vUV*0.07).rgb * 1.7, 0.45);   // softer → no harsh light/dark patches
-  vec3 lit = pow(base*(amb+diff*0.95)*uBright, vec3(0.85));
+  vec3 lit = pow(base*(amb+uAmbFill+diff*0.95)*uBright, vec3(0.85));
   if(uSpec > 0.0){                               // Blinn-Phong sheen (painted/chrome bodywork)
     vec3 V = normalize(uCamPos - vWorld);
     float s = pow(max(dot(N, normalize(normalize(uLightDir)+V)), 0.0), 28.0) * uSpec * step(0.01, diff);
@@ -999,10 +1000,11 @@ function build_track(parts, texidx)
     items
 end
 setmat(prog,name,M)=glUniformMatrix4fv(glGetUniformLocation(prog,name),1,GL_FALSE,M)
-function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0)
+function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0)
     setmat(prog,"uVP",vp); setmat(prog,"uModel",model)
     glUniform1f(glGetUniformLocation(prog,"uBright"), Float32(bright))
     glUniform1f(glGetUniformLocation(prog,"uSpec"), Float32(spec))
+    glUniform1f(glGetUniformLocation(prog,"uAmbFill"), Float32(ambfill))
     if item.tex != 0
         glUniform1i(glGetUniformLocation(prog,"uHasTex"),1)
         glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D,item.tex)

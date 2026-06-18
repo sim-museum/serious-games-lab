@@ -553,11 +553,13 @@ function main()
         for (items,mat) in OBJECTS, it in items; Render.draw(prog, it, vp, mat; bright=0.85); end  # trackside objects
         glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
         for (it,pos,w,h) in BILLBOARDS; Render.draw(prog, it, vp, Render.billboard_model(pos,w,h,eye); bright=1.05); end  # trees/sprites
-        for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.15, spec=0.4); end
+        # ambfill lifts the self-shadowed cockpit interior out of black (GPL pre-lights it
+        # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
+        for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.15, spec=0.22, ambfill=0.34); end
         for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, vp, wheelmat(wx,wz,steer,r)); end
         # steering wheel — spin about its column axis with steering input
         swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5)) * Render.translate(-SWCENTER)
-        for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2); end
+        for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2, ambfill=0.34); end
         Render.hud_draw(hudprog, hudvao, hudvbo,
             Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, 9500.0, inp.throttle, inp.brake, cs.tc;
                                lastlap=(SMOKE ? 94.3 : last_lap), bestlap=(SMOKE ? 92.1 : best_lap), manual=!CTL.auto), W, H)
