@@ -45,7 +45,7 @@ SMOKE && GLFW.WindowHint(GLFW.VISIBLE, false)
 GLFW.WindowHint(GLFW.CONTEXT_VERSION_MAJOR, 4); GLFW.WindowHint(GLFW.CONTEXT_VERSION_MINOR, 5)  # 4.5 → glClipControl (reversed-Z)
 GLFW.WindowHint(GLFW.OPENGL_PROFILE, GLFW.OPENGL_CORE_PROFILE)
 GLFW.WindowHint(GLFW.OPENGL_FORWARD_COMPAT, true)
-GLFW.WindowHint(GLFW.SAMPLES, 4)                  # 4× MSAA — smooth the jaggies
+GLFW.WindowHint(GLFW.SAMPLES, 8)                  # 8× MSAA — smooth jaggies + finer alpha-to-coverage
 win = GLFW.CreateWindow(W, H, "juliaMotor — 1967 Lotus 49 @ Zandvoort")
 GLFW.MakeContextCurrent(win); GLFW.SwapInterval(1)
 glEnable(GL_DEPTH_TEST); glEnable(GL_MULTISAMPLE)

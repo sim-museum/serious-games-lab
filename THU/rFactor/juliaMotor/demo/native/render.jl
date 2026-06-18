@@ -687,11 +687,13 @@ function load_dds(b)
             glCompressedTexImage2D(GL_TEXTURE_2D,lvl,DXT1GL,w,h,0,sz,b[off+1:off+sz])
             off+=sz; w÷=2; h÷=2
         end
+        CUTOUT_TEX[tex[]] = true   # DXT1 = 1-bit alpha → cutout (chain-link/foliage); no-op if opaque
     else                        # DXT3/5: software-decode to RGBA for reliable 8-bit alpha
         W,H,rgba = decode_dds(b)
         (W==0 || isempty(rgba)) && (glDeleteTextures(1,tex); return GLuint(0))
         glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,W,H,0,GL_RGBA,GL_UNSIGNED_BYTE,rgba)
         glGenerateMipmap(GL_TEXTURE_2D)
+        CUTOUT_TEX[tex[]] = classify_cutout(rgba)   # 8-bit alpha → groove/blended stays soft
     end
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_REPEAT); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_REPEAT)
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR)
