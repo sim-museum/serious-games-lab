@@ -299,6 +299,7 @@ uniform vec3 uLightDir; uniform sampler2D uTex; uniform int uHasTex; uniform flo
 uniform vec3 uCamPos; uniform vec3 uFogCol; uniform float uFogNear; uniform float uFogFar;
 uniform sampler2D uShadow; uniform float uShadowTexel; uniform float uSpec; uniform int uBackFlip;
 uniform float uAmbFill;   // flat fill light (GPL pre-lit cockpit interior — lifts self-shadowed faces)
+uniform int uCutout;      // 1 for chain-link/foliage cutouts → sharpen alpha edge (kill shimmer)
 uniform int uSky;
 float shadow(vec3 N){
   vec3 lp = vLS.xyz/vLS.w*0.5+0.5;
@@ -316,7 +317,17 @@ float shadow(vec3 N){
 void main(){
   vec2 uv = (uBackFlip==1 && !gl_FrontFacing) ? vec2(1.0-vUV.x, vUV.y) : vUV;  // un-mirror back-facing sign text
   vec4 t = uHasTex==1 ? texture(uTex,uv) : vec4(vC,1.0);
-  if(uHasTex==1 && t.a < 0.04) discard;         // drop only the fully-transparent (rest → alpha-to-coverage)
+  if(uHasTex==1){
+    if(uCutout==1){
+      if(t.a < 0.02) discard;
+      // CUTOUTS ONLY (chain-link/foliage): sharpen the alpha to a ~1px screen-space edge.
+      // Distant cutouts shimmer because mipmapping softens their alpha to mid-grey and
+      // alpha-to-coverage then dithers it per pixel; rescaling by the derivative keeps the
+      // edge ~1px (smooth + stable) at any distance.  Gated to cutouts so blended overlays
+      // (the racing groove) keep their soft alpha and don't harden into a black strip.
+      t.a = clamp((t.a - 0.5) / max(fwidth(t.a), 1e-4) + 0.5, 0.0, 1.0);
+    } else if(t.a < 0.04) discard;              // blended/opaque: plain soft alpha-to-coverage
+  }
   if(uSky==1){ o=vec4(t.rgb, 1.0); return; }     // horizon ring: unlit, unfogged backdrop
   vec3 N = dot(vN,vN) > 1e-6 ? normalize(vN) : vec3(0.0,1.0,0.0);  // guard zero/degenerate normals
   if(!gl_FrontFacing) N=-N;
@@ -691,8 +702,25 @@ end
 
 # ---- Grand Prix Legends assets (Lotus 49) ---------------------------------
 """Upload decoded RGBA pixels as a GL texture (GL builds the mips)."""
+# Per-texture CUTOUT classification: a chain-link / foliage texture has BIMODAL alpha —
+# a real fraction of fully-transparent texels (the holes) and the rest opaque, with few
+# mid-alpha texels.  A blended overlay (the racing groove) instead has lots of mid-alpha
+# (a smooth gradient).  Only cutouts get the FS alpha-edge sharpening, so the groove (and
+# opaque surfaces) keep their soft alpha-to-coverage — this is what makes the shimmer fix
+# safe (the global sharpening broke the groove).  texid → is-cutout.
+const CUTOUT_TEX = Dict{GLuint,Bool}()
+function classify_cutout(rgba)
+    N = length(rgba) ÷ 4; N == 0 && return false
+    nt = 0; nmid = 0
+    @inbounds for i in 4:4:length(rgba)
+        a = rgba[i]
+        a < 26 ? (nt += 1) : (a <= 230 && (nmid += 1))   # <0.1 transparent ; 0.1..0.9 mid
+    end
+    nt/N > 0.05 && nmid/N < 0.22         # holes present AND sharp edges (not a gradient)
+end
 function upload_rgba(w, h, rgba)
     tex=Ref{GLuint}(); glGenTextures(1,tex); glBindTexture(GL_TEXTURE_2D,tex[])
+    CUTOUT_TEX[tex[]] = classify_cutout(rgba)
     glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,w,h,0,GL_RGBA,GL_UNSIGNED_BYTE,rgba)
     glGenerateMipmap(GL_TEXTURE_2D)
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_REPEAT); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_REPEAT)
@@ -1021,6 +1049,7 @@ function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, amb
     glUniform1f(glGetUniformLocation(prog,"uBright"), Float32(bright))
     glUniform1f(glGetUniformLocation(prog,"uSpec"), Float32(spec))
     glUniform1f(glGetUniformLocation(prog,"uAmbFill"), Float32(ambfill))
+    glUniform1i(glGetUniformLocation(prog,"uCutout"), get(CUTOUT_TEX, item.tex, false) ? 1 : 0)
     if item.tex != 0
         glUniform1i(glGetUniformLocation(prog,"uHasTex"),1)
         glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D,item.tex)
