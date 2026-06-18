@@ -289,7 +289,7 @@ const W, H = 1440, 810
 const SMOKE = haskey(ENV, "JM_SMOKE")     # headless self-test: hidden window, auto-exit
 GLFW.Init()
 SMOKE && GLFW.WindowHint(GLFW.VISIBLE, false)
-GLFW.WindowHint(GLFW.CONTEXT_VERSION_MAJOR, 3); GLFW.WindowHint(GLFW.CONTEXT_VERSION_MINOR, 3)
+GLFW.WindowHint(GLFW.CONTEXT_VERSION_MAJOR, 4); GLFW.WindowHint(GLFW.CONTEXT_VERSION_MINOR, 5)  # 4.5 → glClipControl (reversed-Z)
 GLFW.WindowHint(GLFW.OPENGL_PROFILE, GLFW.OPENGL_CORE_PROFILE)
 GLFW.WindowHint(GLFW.OPENGL_FORWARD_COMPAT, true)
 GLFW.WindowHint(GLFW.SAMPLES, 4)                  # 4× MSAA — smooth the jaggies
@@ -387,7 +387,7 @@ const WHEELITEMS = Dict(nm => load_wheel(nm) for nm in ("lotwlf","lotwrf","lotwl
 swItems = Render.build_gpl(SWPARTS, GPLTEX)        # steering wheel (rotated with steer)
 println(count(it->it.tex!=0, trackItems), "/", length(trackItems), " track + ",
         count(it->it.tex!=0, carItems), "/", length(carItems), " Lotus parts textured")
-const PROJ = Render.perspective(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0)  # tighter range → less distant z-fight (horizon ring R=2500 < far)
+const PROJ = Render.perspective_revz(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0)  # reversed-Z: near-uniform depth precision → kills distant z-fight (signs on fences)
 
 # ---- input: edge-detected shift, view + auto-gearbox toggle ----
 mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; view::Int; auto::Bool; end
@@ -540,8 +540,10 @@ function main()
             for it in carItems; Render.draw_depth(dp, it, bodyModel); end
             for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw_depth(dp, it, wheelmat(wx,wz,steer,r)); end
         end
-        # ---- main pass ----
-        glViewport(0,0,W,H); glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
+        # ---- main pass (reversed-Z: [0,1] clip, near→1/far→0, GEQUAL, clear 0) ----
+        glViewport(0,0,W,H)
+        glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE); glDepthFunc(GL_GEQUAL); glClearDepth(0.0)
+        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
         Render.draw_sky(skyprog, skyvao, inv(vp), eye, LIGHTDIR;
                         cloud = SKIDPAD ? 0.18 : 1.0,                       # skidpad: near-clear blue sky
                         zenith = SKIDPAD ? (0.20f0,0.42f0,0.78f0) : Render.ZENITH,

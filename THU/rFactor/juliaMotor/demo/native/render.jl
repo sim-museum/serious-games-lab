@@ -264,6 +264,17 @@ function perspective(fovy,aspect,near,far)
     f=1/tan(fovy/2); M=zeros(Float32,4,4)
     M[1,1]=f/aspect;M[2,2]=f;M[3,3]=(far+near)/(near-far);M[3,4]=2*far*near/(near-far);M[4,3]=-1; M
 end
+# Reversed-Z perspective: maps near→1, far→0 into a [0,1] clip-depth range.  Needs the
+# main pass set up with glClipControl(ZERO_TO_ONE) + glDepthFunc(GEQUAL) + glClearDepth(0).
+# Combined with a float depth buffer this spreads depth precision near-UNIFORMLY with
+# distance (the float exponent near 0 cancels the 1/z crunch), so coplanar surfaces at
+# 150 m+ (advertising signs on fences) stop z-fighting — the strobe a standard [−1,1]
+# 24-bit buffer can't avoid.
+function perspective_revz(fovy,aspect,near,far)
+    f=1/tan(fovy/2); M=zeros(Float32,4,4)
+    M[1,1]=f/aspect; M[2,2]=f
+    M[3,3]=near/(far-near); M[3,4]=far*near/(far-near); M[4,3]=-1; M
+end
 function lookat(eye,ctr,up)
     f=normalize(ctr.-eye); s=normalize(cross(f,up)); u=cross(s,f)
     Float32[ s[1] s[2] s[3] -dot(s,eye); u[1] u[2] u[3] -dot(u,eye); -f[1] -f[2] -f[3] dot(f,eye); 0 0 0 1 ]
@@ -478,6 +489,9 @@ function light_vp(center, lightdir; R=70.0, depth=400.0)
     ortho(-R,R,-R,R,1.0,depth) * lookat(eye, Float64.(center), up)
 end
 function shadow_pass(drawfn, depthprog, fbo, lightVP; size=SHADOW_SIZE)
+    # the shadow map stays STANDARD depth ([0,1] clip, near→0, LESS) regardless of the
+    # reversed-Z main pass — so the shadow map + the sampler logic in the FS are untouched
+    glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE); glDepthFunc(GL_LESS); glClearDepth(1.0)
     glBindFramebuffer(GL_FRAMEBUFFER,fbo); glViewport(0,0,size,size); glClear(GL_DEPTH_BUFFER_BIT)
     glUseProgram(depthprog); glUniformMatrix4fv(glGetUniformLocation(depthprog,"uLightVP"),1,GL_FALSE,Matrix{Float32}(lightVP))
     glEnable(GL_POLYGON_OFFSET_FILL); glPolygonOffset(2.5f0, 4.0f0)
