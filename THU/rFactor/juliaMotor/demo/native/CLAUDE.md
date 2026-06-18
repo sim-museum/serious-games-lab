@@ -51,11 +51,14 @@ Drivable and visually close to GPL Zandvoort:
   Always overcast (static GPL textures).
 - Lap timing + on-screen lap times + ~10 Hz telemetry logging; traction circles (per-
   wheel grip, 2×2) on the black cowl in the line of sight; clutch/auto shift (G).
-- **Flicker**: GPL double-sided panels (signs/awnings) z-fight at distance. Mitigated
-  by a centroid+area dedup that collapses the thin front/back face pairs (the surviving
-  face renders two-sided via the `uBackFlip` uniform). Depth is near 0.35 / far 3000;
-  precision at distance is near-plane-bound (~3.8mm @150m) and can't improve much
-  without reversed-Z (deferred — touches the shadow pass + GL context version).
+- **Flicker / z-fight**: SOLVED with **reversed-Z** (GL 4.5 context + glClipControl
+  ZERO_TO_ONE + reversed-Z projection `perspective_revz` near→1/far→0 + GL_GEQUAL +
+  clearDepth 0 + 32F depth buffer). Per-pass: the shadow pass forces STANDARD depth
+  (NEGATIVE_ONE_TO_ONE/LESS/clear-1) so the shadow map + FS sampler are untouched; only
+  the main camera is reversed. The horizon-ring backdrop passes via GEQUAL. This killed
+  the distant coplanar strobe (signs on fences) a [−1,1] 1/z buffer couldn't resolve.
+  Within-mesh double-sided pairs are still collapsed by the centroid+area dedup. NOTE for
+  future shader/depth work: the main pass is reversed-Z — don't assume LESS / clear-1.
 
 ## Physics caveat
 Still **Vanwall-calibrated** physics (validated vs the user's rFactor DAQ). The end
@@ -64,6 +67,9 @@ telemetry — see `../../DOC/pathB-scope.md`. `zand_racer` ships a serialized
 `lotus_physics.jls` so it needs no rFactor install.
 
 ## Open items
-- Reversed-Z (or GPL polygon-priority sort) for the last coplanar-decal z-fighting.
+- Cockpit "shining rug" = the tan scuttle `windlot` (RGB 0.44,0.41,0.14); still too bright
+  in the Nürburgring cockpit — matte or exclude it. Mirrors render black (no RTT).
+- Floating hillside signs / horizontal people = GPL placement Euler pitch/roll the
+  yaw-only `placemat` convention mis-applies (see `gpl_scenery` in drive_native_mtk.jl).
 - Path B tyre/engine calibration vs iRacing 49 telemetry.
 - Limit-handling autonomous driver (human driving is fine without it).
