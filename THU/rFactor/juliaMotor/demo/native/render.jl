@@ -424,7 +424,7 @@ function make_scene_fbo(w, h; samples=4)
     glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_RGBA8, w, h)
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, c[])
     d=Ref{GLuint}(); glGenRenderbuffers(1,d); glBindRenderbuffer(GL_RENDERBUFFER, d[])
-    glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_DEPTH_COMPONENT24, w, h)
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_DEPTH_COMPONENT32F, w, h)  # 32F: +8 depth bits → less distant z-fight (signs on fences) without reversed-Z
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, d[])
     rf=Ref{GLuint}(); glGenFramebuffers(1,rf); glBindFramebuffer(GL_FRAMEBUFFER, rf[])
     rt=Ref{GLuint}(); glGenTextures(1,rt); glBindTexture(GL_TEXTURE_2D, rt[])
