@@ -62,6 +62,20 @@ from ui.styles import get_suit_color
 SUIT_ROWS: List[Suit] = [Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS]
 SUIT_NAME = {Suit.SPADES: "spades", Suit.HEARTS: "hearts",
              Suit.DIAMONDS: "diamonds", Suit.CLUBS: "clubs"}
+
+# Suit colours tuned for THIS view's dark background — the app's normal
+# palette (black spades, dark-blue diamonds) is meant for white card faces
+# and is unreadable here. Four-colour, all high-contrast on #0f2740.
+TV_SUIT_COLOR = {
+    Suit.SPADES:   "#e8eef6",   # near-white (black was invisible on blue)
+    Suit.HEARTS:   "#ff6b6b",
+    Suit.DIAMONDS: "#ffb44d",   # orange (dark blue was invisible on blue)
+    Suit.CLUBS:    "#57d07b",
+}
+
+
+def _suit_color(suit: Suit) -> str:
+    return TV_SUIT_COLOR.get(suit, "#e8eef6")
 HONOURS = [Rank.ACE, Rank.KING, Rank.QUEEN, Rank.JACK]
 ALL_CARDS: List[Card] = [Card(s, r) for s in SUIT_ROWS for r in Rank]
 
@@ -898,7 +912,7 @@ def _tag_html(tag: str) -> str:
 
 
 def _card_glyph(card: Card) -> str:
-    col = get_suit_color(SUIT_NAME[card.suit])
+    col = _suit_color(card.suit)
     return (f"<span style='color:{col}; font-weight:bold'>"
             f"{card.suit.symbol()}{card.rank.to_char()}</span>")
 
@@ -958,8 +972,8 @@ class HandGridWidget(QFrame):
         outer.addWidget(self.title)
 
         grid = QGridLayout()
-        grid.setHorizontalSpacing(8)
-        grid.setVerticalSpacing(1)
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(8)
         hdr_k = QLabel("Known"); hdr_o = QLabel("Other")
         for h in (hdr_k, hdr_o):
             h.setStyleSheet("color:#7fa8cc; font-size:14px; border:0;")
@@ -973,15 +987,15 @@ class HandGridWidget(QFrame):
         for i, su in enumerate(SUIT_ROWS, start=1):
             sl = QLabel(su.symbol())
             sl.setStyleSheet(
-                f"color:{get_suit_color(SUIT_NAME[su])}; font-weight:bold;"
+                f"color:{_suit_color(su)}; font-weight:bold; font-size:30px;"
                 f" border:0; background:transparent;")
             kl = QLabel("—")
             kl.setTextFormat(Qt.TextFormat.RichText)
-            kl.setFont(QFont("Monospace", 16))
+            kl.setFont(QFont("Monospace", 32))   # 2× — the grids had lots of slack
             kl.setStyleSheet("border:0;")
             ol = QLabel("")
             ol.setTextFormat(Qt.TextFormat.RichText)
-            ol.setStyleSheet("color:#9fb6cc; font-size:14px; border:0;")
+            ol.setStyleSheet("color:#9fb6cc; font-size:17px; border:0;")
             self._suit_lbl[su] = sl
             self._known_lbl[su] = kl
             self._other_lbl[su] = ol
@@ -1003,7 +1017,7 @@ class HandGridWidget(QFrame):
         tint = f"background:{TRUMP_TINT}; border-radius:3px;" if trump else \
             "background:transparent;"
         self._suit_lbl[suit].setStyleSheet(
-            f"color:{get_suit_color(SUIT_NAME[suit])}; font-weight:bold;"
+            f"color:{_suit_color(suit)}; font-weight:bold; font-size:30px;"
             f" border:0; {tint}")
 
 
@@ -1583,7 +1597,7 @@ class TeachingView(QWidget):
             c = played.get(seat)
             if c is None:
                 return "·"
-            col = get_suit_color(SUIT_NAME[c.suit])
+            col = _suit_color(c.suit)
             html = (f"<span style='color:{col}; font-weight:bold'>"
                     f"{c.suit.symbol()}{c.rank.to_char()}</span>")
             r = cur_reads.get(seat)
@@ -1622,7 +1636,7 @@ def _render_known(ranks_high_to_low: List[Rank], suit: Suit,
     stoppers = stoppers or set()
     knockout = knockout or set()
     cross = cross or set()
-    col = get_suit_color(SUIT_NAME[suit])
+    col = _suit_color(suit)
     parts = []
     for r in ranks_high_to_low:
         ch = r.to_char()
