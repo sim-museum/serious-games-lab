@@ -31,6 +31,7 @@ state is missing, so the view is safe to refresh at any point in a hand.
 """
 
 import json
+import random
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Tuple
@@ -359,6 +360,24 @@ def losing_trick_count(hand_known: Dict[Suit, List[Rank]]) -> Optional[int]:
     return losers
 
 
+def suit_loser_ranks(held: List[Rank], rem_of_suit: Set[Rank]) -> Set[Rank]:
+    """Which of THIS hand's cards are losers, LTC-style. Among the top live
+    ranks of the suit (capped at the hand's length, ≤3) count the ones this hand
+    does NOT hold; that many of its LOWEST cards are the losers. Counted against
+    the still-LIVE ranks, so once an honour has been cashed the cards below it
+    stop being losers (they've been promoted). Mirrors the LTC number already
+    shown in the Plan, but marks the specific cards."""
+    if not held:
+        return set()
+    held_sorted = sorted(held)                       # high→low (ACE=0)
+    live_top = sorted(rem_of_suit)                    # high→low
+    n = min(3, len(held_sorted))
+    missing = sum(1 for r in live_top[:n] if r not in held_sorted)
+    if missing <= 0:
+        return set()
+    return set(held_sorted[len(held_sorted) - missing:])   # lowest `missing`
+
+
 def finesse_hints(declarer, dummy, visible, layout):
     """8-ever-9-never style hints for missing honours in the declaring side's
     combined suits. Needs both hands face-up. Returns short strings."""
@@ -384,19 +403,45 @@ def finesse_hints(declarer, dummy, visible, layout):
     return out
 
 
-def squeeze_threats(board, declarer, dummy, visible, layout):
+def _declaring_losers(declarer, dummy, visible, layout) -> Optional[int]:
+    """Approximate the declaring side's remaining losers (both hands face-up):
+    per suit, the losers of the LONGER holding (the short hand's extra low cards
+    are ruffed / pitched). Used to spot the rectified-count moment for a
+    squeeze. Heuristic — a static LTC-style count, not a DDS play-out."""
+    if None in (declarer, dummy) or declarer not in visible or dummy not in visible:
+        return None
+    rem = layout["rem_ranks"]
+    total = 0
+    for su in SUIT_ROWS:
+        d = layout["known"][declarer][su]
+        m = layout["known"][dummy][su]
+        longer = d if len(d) >= len(m) else m
+        total += len(suit_loser_ranks(longer, rem[su]))
+    return total
+
+
+def squeeze_threats(board, declarer, dummy, visible, layout, trump=None):
     """Threat (menace) suits = where the declaring side holds the card just
     below the master that an opponent guards; a defender guarding ≥2 threats is
     'busy' (a squeeze candidate). Needs both declaring hands face-up. Returns
-    {threats: {suit: guard_seat}, busy: [seat]} or None."""
+    {threats: {suit: guard_seat}, busy: [seat], type, rectified, losers} or None.
+
+    `type` classifies the position (Love's families): simple/positional (one
+    busy defender), double (both defenders busy), trump (trumps still out with a
+    menace), criss-cross (two one-card menaces split across the two declaring
+    hands). `rectified` is True when the side is down to its last loser — the
+    squeeze operates now; otherwise it's the count still to be rectified."""
     if declarer is None or dummy is None \
             or declarer not in visible or dummy not in visible:
         return None
     rem = layout["rem_ranks"]
     defenders = [s for s in Seat if s.is_ns() != declarer.is_ns()]
     threats = {}
+    menace_hand = {}            # suit -> 'declarer' / 'dummy' (where our card is)
     for su in SUIT_ROWS:
-        ours = set(layout["known"][declarer][su]) | set(layout["known"][dummy][su])
+        d = set(layout["known"][declarer][su])
+        m = set(layout["known"][dummy][su])
+        ours = d | m
         if not ours:
             continue
         boss = boss_rank(rem, su)
@@ -406,15 +451,155 @@ def squeeze_threats(board, declarer, dummy, visible, layout):
         holder = _holder_of(layout, su, boss, visible)
         if holder in defenders:
             threats[su] = holder
+            menace_hand[su] = "declarer" if (d and not m) else (
+                "dummy" if (m and not d) else "both")
     from collections import Counter
     cnt = Counter(threats.values())
     busy = [d for d, c in cnt.items() if c >= 2]
-    return {"threats": threats, "busy": busy}
+
+    losers = _declaring_losers(declarer, dummy, visible, layout)
+    rectified = (losers == 1) if losers is not None else None
+
+    stype = None
+    if threats:
+        if trump is not None and rem.get(trump):
+            stype = "trump"
+        elif len(busy) >= 2:
+            stype = "double"
+        elif len(threats) >= 2 and len(busy) == 1:
+            # criss-cross when the two menaces sit in DIFFERENT declaring hands
+            # (each entered from the opposite hand); else a plain simple squeeze.
+            hands = {menace_hand[s] for s in threats if menace_hand[s] != "both"}
+            stype = "criss-cross" if hands == {"declarer", "dummy"} else "simple"
+        else:
+            stype = "simple/positional"
+    return {"threats": threats, "busy": busy, "type": stype,
+            "rectified": rectified, "losers": losers}
 
 
-def honour_placement(board: BoardState, visible: Set[Seat], layout):
+_HCP_VAL = {Rank.ACE: 4, Rank.KING: 3, Rank.QUEEN: 2, Rank.JACK: 1}
+
+
+def bayes_distribution(board, visible, layout, constraints,
+                       samples=120, max_attempts=4000, rng=None):
+    """Monte-Carlo posterior over the hidden hands — a real card-by-card
+    distribution, not just vacant-space counting.
+
+    Sample full deals of the unseen cards to the hidden seats consistent with
+    ALL of: each seat's exact remaining count, the proven/forced cards, the
+    shown voids, and each seat's auction constraints (HCP range + per-suit
+    length range). Every accepted deal is one equally-likely world; aggregating
+    gives per-(seat,suit) length probabilities and per-unseen-honour location
+    probabilities.
+
+    Returns {"samples": k, "length": {seat:{suit:{len:p}}},
+             "honour": {(suit,rank):{seat:p}}} or None when too few valid worlds
+    were found (the caller then falls back to the vacant-space estimate).
+    `rng` may be a seeded random.Random for reproducible tests."""
+    from collections import Counter
+    rng = rng or random.Random()
+    hidden = [s for s in Seat if s not in visible]
+    if not hidden:
+        return None
+    _, voids, all_played = collect_play(board)
+    seen = set(all_played)
+    for s in visible:
+        h = board.hands.get(s) if board.hands else None
+        seen |= {_cid(c) for c in (getattr(h, "cards", []) or [])}
+    inferred = layout.get("inferred", {})
+    fixed = {s: [] for s in hidden}
+    fixed_ids = set()
+    for s in hidden:
+        for su in SUIT_ROWS:
+            for r in inferred.get(s, {}).get(su, set()):
+                c = Card(su, r)
+                fixed[s].append(c)
+                fixed_ids.add(_cid(c))
+    need = {s: layout["remaining_count"][s] - len(fixed[s]) for s in hidden}
+    if any(n < 0 for n in need.values()):
+        return None
+    free = [c for c in ALL_CARDS
+            if _cid(c) not in seen and _cid(c) not in fixed_ids]
+    if sum(need.values()) != len(free):
+        return None                       # bookkeeping mismatch — bail
+    unseen_honours = [Card(su, r) for su in SUIT_ROWS for r in HONOURS
+                      if _cid(Card(su, r)) not in seen
+                      and _cid(Card(su, r)) not in fixed_ids]
+
+    def cons(s):
+        return constraints.get(s) if constraints else None
+
+    def suit_max(s, su):
+        c = cons(s)
+        return c.suit_len.get(su.value, (0, 13))[1] if c is not None else 13
+
+    length_acc = {s: {su: Counter() for su in SUIT_ROWS} for s in hidden}
+    honour_acc = {(c.suit, c.rank): Counter() for c in unseen_honours}
+    valid = attempts = 0
+    while valid < samples and attempts < max_attempts:
+        attempts += 1
+        hand = {s: list(fixed[s]) for s in hidden}
+        per_suit = {s: Counter(x.suit for x in fixed[s]) for s in hidden}
+        cap = dict(need)
+        pool = free[:]
+        rng.shuffle(pool)
+        ok = True
+        for c in pool:
+            opts = [s for s in hidden
+                    if cap[s] > 0 and c.suit not in voids[s]
+                    and per_suit[s][c.suit] < suit_max(s, c.suit)]
+            if not opts:
+                ok = False
+                break
+            s = rng.choice(opts)
+            hand[s].append(c)
+            per_suit[s][c.suit] += 1
+            cap[s] -= 1
+        if not ok or any(cap[s] != 0 for s in hidden):
+            continue
+        good = True
+        for s in hidden:
+            c = cons(s)
+            if c is None:
+                continue
+            hcp = sum(_HCP_VAL.get(x.rank, 0) for x in hand[s])
+            if not (c.hcp_min <= hcp <= c.hcp_max):
+                good = False
+                break
+            for su in SUIT_ROWS:
+                lo, hi = c.suit_len.get(su.value, (0, 13))
+                if not (lo <= per_suit[s][su] <= hi):
+                    good = False
+                    break
+            if not good:
+                break
+        if not good:
+            continue
+        valid += 1
+        for s in hidden:
+            for su in SUIT_ROWS:
+                length_acc[s][su][per_suit[s][su]] += 1
+            ids = {_cid(x) for x in hand[s]}
+            for hc in unseen_honours:
+                if _cid(hc) in ids:
+                    honour_acc[(hc.suit, hc.rank)][s] += 1
+    if valid < max(8, samples // 5):
+        return None
+    length = {s: {su: {ln: round(c / valid, 3)
+                       for ln, c in length_acc[s][su].items()}
+                  for su in SUIT_ROWS} for s in hidden}
+    honour = {k: {s: round(c / valid, 3) for s, c in v.items()}
+              for k, v in honour_acc.items() if v}
+    return {"samples": valid, "length": length, "honour": honour}
+
+
+def honour_placement(board: BoardState, visible: Set[Seat], layout,
+                     posterior=None):
     """For each unseen honour, where it can be. Returns list of
-    (suit, rank, label) where label is a proven seat or a side."""
+    (suit, rank, label) where label is a proven seat or a side. When a
+    Bayesian `posterior` (from bayes_distribution) is supplied, the
+    probabilistic labels use its sampled card-by-card probabilities instead of
+    the cruder vacant-space ratio."""
     out = []
     played, voids, all_played = collect_play(board)
     seen_or_visible = set(all_played)            # card-ids
@@ -438,9 +623,16 @@ def honour_placement(board: BoardState, visible: Set[Seat], layout):
             if len(cands) == 1:
                 label = f"{cands[0].to_char()} (proven)"
             else:
-                tot = sum(vacant[s] for s in cands) or 1
-                pcts = sorted(((s, round(100 * vacant[s] / tot))
-                               for s in cands), key=lambda x: -x[1])
+                post = (posterior or {}).get("honour", {}).get((su, r))
+                if post:
+                    # Bayesian card-by-card probabilities (preferred).
+                    pcts = sorted(((s, round(100 * post.get(s, 0)))
+                                   for s in cands), key=lambda x: -x[1])
+                else:
+                    # Fall back to the vacant-space ratio.
+                    tot = sum(vacant[s] for s in cands) or 1
+                    pcts = sorted(((s, round(100 * vacant[s] / tot))
+                                   for s in cands), key=lambda x: -x[1])
                 if len(cands) == 2 and cands[0].is_ns() == cands[1].is_ns() \
                         and pcts[0][1] == pcts[1][1]:
                     label = "N/S" if cands[0].is_ns() else "E/W"
@@ -612,7 +804,7 @@ def signal_reads(board, declarer: Optional[Seat], trump: Optional[Suit],
     out.extend(_completed_discard_reads(board, declarer, trump,
                                         defenders, carding_for, visible))
     # Suit-preference on ruff-giving leads (trump contracts).
-    out.extend(ruff_lead_reads(board, declarer, trump, carding_for))
+    out.extend(ruff_lead_reads(board, declarer, trump, carding_for, visible))
     out.sort(key=lambda r: r["trick"])
     return out
 
@@ -682,6 +874,26 @@ def _attitude_discard_honest(board, seat, card, trick_index, cfg, visible):
     like = any(r.value <= _HONOUR_VAL for r in held)        # honour present
     want_high = like if cfg.attitude == "standard" else (not like)
     return _honest_from_spots(spots, want_high, card.rank, card.suit)
+
+
+_SP_VAL = {Rank.ACE: 4, Rank.KING: 3, Rank.QUEEN: 2, Rank.JACK: 1}
+
+
+def _suit_pref_honest(board, seat, target, other, trick_index, visible):
+    """A suit-preference signal points at `target` (over `other`). Honest when
+    the signaller actually holds more values/entry in `target` than in `other`.
+    Checkable only when the signaller is face-up; returns (honest, None) —
+    suit-preference has no single 'expected card'. None when it can't be judged
+    (signaller hidden, or equal values either way)."""
+    ht = _holding_at_suit(board, seat, target, trick_index, visible)
+    ho = _holding_at_suit(board, seat, other, trick_index, visible)
+    if ht is None or ho is None:
+        return (None, None)
+    vt = sum(_SP_VAL.get(r, 0) for r in ht)
+    vo = sum(_SP_VAL.get(r, 0) for r in ho)
+    if vt == vo:
+        return (None, None)
+    return (vt > vo, None)
 
 
 def _trump_echo_honest(board, seat, card, trick_index, cfg, trump, visible):
@@ -804,18 +1016,27 @@ def _completed_discard_reads(board, declarer, trump, defenders, carding_for,
             if tag in ("enc", "disc"):           # attitude discard — checkable
                 honest, expected = _attitude_discard_honest(
                     board, seat, c, j, cfg, visible)
+            elif tag == "sp":                    # suit-preference (Lavinthal)
+                cands = [s for s in SUIT_ROWS if s != c.suit and s != trump]
+                if len(cands) == 2:
+                    hi = _is_high(c, live)
+                    target = cands[0] if hi else cands[1]
+                    other = cands[1] if hi else cands[0]
+                    honest, expected = _suit_pref_honest(
+                        board, seat, target, other, j, visible)
             out.append({"seat": seat, "trick": j, "card": c, "suit": c.suit,
                         "tag": tag, "meaning": meaning, "kind": "dsc",
                         "honest": honest, "expected": expected})
     return out
 
 
-def ruff_lead_reads(board, declarer, trump, carding_for):
+def ruff_lead_reads(board, declarer, trump, carding_for, visible=None):
     """Suit-preference on a ruff-giving LEAD (trump contracts): a defender leads
     a suit its partner is known void in (and partner still has trumps), so the
     lead's rank steers the ruff return — high → higher of the two other side
     suits, low → lower. Returns reads (kind 'sp')."""
     out = []
+    visible = visible or set()
     if trump is None or declarer is None:
         return out
     _, voids, all_played = collect_play(board)
@@ -858,9 +1079,12 @@ def ruff_lead_reads(board, declarer, trump, carding_for):
         live = _live_ranks_of_suit(board, led, j, [])
         high = _is_high(cards[0], live)
         target = cands[0] if high else cands[1]
+        other = cands[1] if high else cands[0]
+        honest, expected = _suit_pref_honest(board, ldr, target, other, j,
+                                             visible)
         out.append({"seat": ldr, "trick": j, "card": cards[0], "suit": led,
                     "tag": "sp", "meaning": f"ruff-return → {target.symbol()}",
-                    "kind": "ruflead", "honest": None, "expected": None})
+                    "kind": "ruflead", "honest": honest, "expected": expected})
     return out
 
 
@@ -937,7 +1161,7 @@ def _signal_chip(rd: dict) -> str:
     return out
 
 
-def _honour_hint_map(board, visible, layout) -> Dict[Tuple[Seat, Suit], str]:
+def _honour_hint_map(board, visible, layout, posterior=None) -> Dict[Tuple[Seat, Suit], str]:
     """For each hidden seat + suit, a compact 'where's the missing honour'
     hint built from honour_placement's PROBABILISTIC verdicts (proven honours
     already render in the Known column, so they're skipped here). We surface a
@@ -945,7 +1169,7 @@ def _honour_hint_map(board, visible, layout) -> Dict[Tuple[Seat, Suit], str]:
     columns with the same coin-flip."""
     import re
     out: Dict[Tuple[Seat, Suit], List[str]] = {}
-    for su, r, label in honour_placement(board, visible, layout):
+    for su, r, label in honour_placement(board, visible, layout, posterior):
         if "proven" in label:
             continue
         pcts = re.findall(r'([NESW])\s+(\d+)%', label)
@@ -1209,6 +1433,8 @@ class TeachingView(QWidget):
             + _chip("A", MASTER_BG) + " master · "
             + "<span style='border:1px solid " + ACC_GREEN + ";border-radius:3px;"
               "padding:0 2px'>K</span> sure winner · "
+            + "<span style='border:1px solid " + ACC_RED + ";border-radius:3px;"
+              "padding:0 2px'>x</span> loser (LTC) · "
             + "<span style='border:1px dashed " + ACC_YELLOW + ";border-radius:3px;"
               "padding:0 2px'>Q</span> placed (inferred) · "
             + _chip("E", ACC_GREEN) + " entry · "
@@ -1330,12 +1556,22 @@ class TeachingView(QWidget):
         danger = (danger_info(board, contract, declarer, visible, layout,
                               constraints) if self.detail != BEGINNER else None)
         # Squeeze threats / busy defender (Expert).
-        squeeze = (squeeze_threats(board, declarer, dummy, visible, layout)
+        squeeze = (squeeze_threats(board, declarer, dummy, visible, layout, trump)
                    if self.detail == EXPERT else None)
 
         # Per-(seat,suit) defensive-signal reads + probabilistic honour hints —
         # surfaced in each defender's OTHER column so the right-hand side tells
         # you what biq's carding has revealed, not just suit lengths.
+        # Bayesian posterior over the hidden hands (Expert only — it's a Monte-
+        # Carlo sampler). Feeds honour-location probabilities + the shape line.
+        self._posterior = None
+        if self.detail == EXPERT and not all(s in visible for s in Seat):
+            try:
+                self._posterior = bayes_distribution(
+                    board, visible, layout, constraints)
+            except Exception:
+                self._posterior = None
+
         sig_map: Dict[Tuple[Seat, Suit], dict] = {}
         hint_map: Dict[Tuple[Seat, Suit], str] = {}
         if self.detail != BEGINNER and contract is not None and declarer is not None:
@@ -1346,7 +1582,8 @@ class TeachingView(QWidget):
             except Exception:
                 sig_map = {}
             try:
-                hint_map = _honour_hint_map(board, visible, layout)
+                hint_map = _honour_hint_map(board, visible, layout,
+                                            self._posterior)
             except Exception:
                 hint_map = {}
 
@@ -1435,8 +1672,14 @@ class TeachingView(QWidget):
                             and b not in known):
                         cross = {max(known)}      # lowest card (highest value)
             inferred = layout.get("inferred", {}).get(seat, {}).get(su, set())
+            # Losers (LTC) — marked for the DECLARING side, the counterpart of
+            # the green sure-winner boxes.
+            losers: Set[Rank] = set()
+            if self.detail != BEGINNER and seat in (declarer, dummy):
+                losers = suit_loser_ranks(known, rem[su]) - wins
             known_html = _render_known(known, su, wins, boss, entries,
-                                       stoppers, knockout, cross, inferred)
+                                       stoppers, knockout, cross, inferred,
+                                       losers)
             other_html = self._other_for(seat, su, visible, layout,
                                          constraints, sig_map, hint_map)
             w.set_row(su, known_html, other_html, trump == su)
@@ -1633,23 +1876,58 @@ class TeachingView(QWidget):
             rows.append(f"<tr><td><b>{s.to_char()}</b></td>" + "".join(cells) +
                         f"<td>{layout['remaining_count'][s]}</td></tr>")
         rows.append("</table>")
-        # Honour placement.
-        hp = honour_placement(board, visible, layout)
+        post = getattr(self, "_posterior", None)
+        # Honour placement (Bayesian probabilities when the posterior is ready).
+        hp = honour_placement(board, visible, layout, post)
         if hp:
             parts = []
             for su, r, label in hp:
                 parts.append(f"{su.symbol()}{r.to_char()}: {label}")
-            rows.append("<br><b>Missing honours</b><br>" +
+            tag = (f" <span style='color:{ACC_BLUE};font-size:12px'>"
+                   f"(Bayes, {post['samples']} worlds)</span>" if post else "")
+            rows.append("<br><b>Missing honours</b>" + tag + "<br>" +
                         " · ".join(parts))
+        # Most-likely shape of each hidden hand, from the posterior.
+        if post and post.get("length"):
+            shp = []
+            for s in [s for s in Seat if s not in visible]:
+                lt = post["length"].get(s)
+                if not lt:
+                    continue
+                best = []
+                for su in SUIT_ROWS:
+                    dist = lt.get(su) or {}
+                    if dist:
+                        ln = max(dist, key=lambda k: dist[k])
+                        best.append(str(ln))
+                    else:
+                        best.append("?")
+                shp.append(f"{s.to_char()} {'-'.join(best)}")
+            if shp:
+                rows.append("<br><b>Likely shape</b> "
+                            "<span style='color:#9fb6cc;font-size:12px'>"
+                            "(♠♥♦♣)</span><br>" + " · ".join(shp))
         # Squeeze threats / busy defender.
         if squeeze and squeeze.get("threats"):
             tl = " ".join(f"{su.symbol()}({d.to_char()})"
                           for su, d in squeeze["threats"].items())
             line = "<br><b>Threats</b> " + tl
+            stype = squeeze.get("type")
+            if stype:
+                line += (f" <span style='color:{ACC_PURPLE}'>[{stype}]</span>")
             if squeeze.get("busy"):
                 bb = "/".join(d.to_char() for d in squeeze["busy"])
-                line += (f" — <span style='color:#e8b06a'>{bb} is busy "
-                         f"(squeeze on)</span>")
+                line += (f" — <span style='color:#e8b06a'>{bb} is busy</span>")
+            # Rectified-count state — does the squeeze operate now?
+            rect = squeeze.get("rectified")
+            losers = squeeze.get("losers")
+            if rect is True:
+                line += (f"<br><span style='color:{ACC_GREEN}'>Count rectified "
+                         f"(1 loser left) — squeeze operates now.</span>")
+            elif rect is False and losers is not None:
+                line += (f"<br><span style='color:#e8b06a'>Rectify the count: "
+                         f"duck {max(0, losers - 1)} more (──{losers} losers"
+                         f" left).</span>")
             rows.append(line)
         blocks.append("".join(rows))
         self.p_count.set_html("<br>".join(blocks))
@@ -1686,9 +1964,12 @@ class TeachingView(QWidget):
                 # Honesty marker — only meaningful when the signaller is face-up
                 # (review / Show All). ✗ flags a false-card; ✓ (Expert) confirms.
                 mark = ""
-                if r.get("honest") is False and r.get("expected") is not None:
-                    mark = (f" <span style='color:#ff9a9a'>✗ false "
-                            f"(→ {_card_glyph(r['expected'])})</span>")
+                if r.get("honest") is False:
+                    if r.get("expected") is not None:
+                        mark = (f" <span style='color:#ff9a9a'>✗ false "
+                                f"(→ {_card_glyph(r['expected'])})</span>")
+                    else:    # suit-preference false-card — no single honest card
+                        mark = " <span style='color:#ff9a9a'>✗ false</span>"
                 elif r.get("honest") is True and self.detail == EXPERT:
                     mark = " <span style='color:#7ad17a'>✓</span>"
                 lines.append(
@@ -1795,7 +2076,8 @@ def _render_known(ranks_high_to_low: List[Rank], suit: Suit,
                   stoppers: Optional[Set[Rank]] = None,
                   knockout: Optional[Set[Rank]] = None,
                   cross: Optional[Set[Rank]] = None,
-                  inferred: Optional[Set[Rank]] = None) -> str:
+                  inferred: Optional[Set[Rank]] = None,
+                  losers: Optional[Set[Rank]] = None) -> str:
     if not ranks_high_to_low:
         return "<span style='color:#5f7689'>—</span>"
     entries = entries or set()
@@ -1803,6 +2085,7 @@ def _render_known(ranks_high_to_low: List[Rank], suit: Suit,
     knockout = knockout or set()
     cross = cross or set()
     inferred = inferred or set()
+    losers = losers or set()
     col = _suit_color(suit)
     parts = []
     for r in ranks_high_to_low:
@@ -1815,6 +2098,10 @@ def _render_known(ranks_high_to_low: List[Rank], suit: Suit,
             # sure winner — vivid green box (was a faint underline)
             style += (f"color:{col}; border:1px solid {ACC_GREEN};"
                       f" border-radius:3px; padding:0 2px; font-weight:bold;")
+        elif r in losers:
+            # a loser (LTC) — red box, the counterpart of the green winner box
+            style += (f"color:{col}; border:1px solid {ACC_RED};"
+                      f" border-radius:3px; padding:0 2px;")
         elif r in inferred:
             # PLACED by deduction (hand is hidden but this card must be here) —
             # dashed outline so it reads as "known, not seen".

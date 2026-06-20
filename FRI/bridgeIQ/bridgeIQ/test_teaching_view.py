@@ -315,6 +315,81 @@ def test_finesse_and_squeeze_and_vacant_spaces():
     assert any(label == "E/W" for _, _, label in hp)
 
 
+def test_loser_marking():
+    allr = set(Rank)
+    # KQx with the ace still out → the small card is the loser (LTC = 1).
+    assert tv.suit_loser_ranks([Rank.KING, Rank.QUEEN, Rank.THREE], allr) \
+        == {Rank.THREE}
+    # AKQ → no losers.
+    assert tv.suit_loser_ranks([Rank.ACE, Rank.KING, Rank.QUEEN], allr) == set()
+    # Axx → missing K and Q → the two low cards are losers.
+    assert tv.suit_loser_ranks([Rank.ACE, Rank.SEVEN, Rank.SIX], allr) \
+        == {Rank.SEVEN, Rank.SIX}
+    # Rendered Known cell draws the red loser box.
+    html = tv._render_known([Rank.KING, Rank.QUEEN, Rank.THREE], Suit.SPADES,
+                            winners=set(), boss=None, losers={Rank.THREE})
+    assert tv.ACC_RED in html
+
+
+def test_suit_pref_honesty():
+    b = _full_board()
+    b.hands[Seat.WEST] = Hand(cards=[_c('H', 'A'), _c('H', 'K'),
+                                     _c('C', '3'), _c('C', '2')])
+    vis = {Seat.WEST}
+    # Points to hearts, where West actually holds A K → honest.
+    h, exp = tv._suit_pref_honest(b, Seat.WEST, Suit.HEARTS, Suit.CLUBS, 0, vis)
+    assert h is True and exp is None
+    # Points to clubs (no values there) → false-card.
+    h2, _ = tv._suit_pref_honest(b, Seat.WEST, Suit.CLUBS, Suit.HEARTS, 0, vis)
+    assert h2 is False
+    # Signaller hidden → not checkable.
+    h3, _ = tv._suit_pref_honest(b, Seat.WEST, Suit.HEARTS, Suit.CLUBS, 0, set())
+    assert h3 is None
+
+
+def test_squeeze_type_and_rectified():
+    b2 = _full_board(level=3, strain=Suit.NOTRUMP)
+    b2.hands = {
+        Seat.SOUTH: Hand(cards=[_c('S', 'K'), _c('H', 'K'), _c('D', '2'), _c('D', '3'),
+                                _c('D', '4'), _c('D', '5'), _c('D', '6'), _c('C', '2'),
+                                _c('C', '3'), _c('C', '4'), _c('C', '5'), _c('C', '6'),
+                                _c('C', '7')]),
+        Seat.NORTH: Hand(cards=[_c('S', '2'), _c('H', '2'), _c('D', '7'), _c('D', '8'),
+                                _c('D', '9'), _c('D', 'T'), _c('D', 'J'), _c('C', '8'),
+                                _c('C', '9'), _c('C', 'T'), _c('C', 'J'), _c('C', 'Q'),
+                                _c('C', 'K')]),
+        Seat.WEST: Hand(cards=[_c('S', 'A'), _c('H', 'A'), _c('S', '5'), _c('S', '4'),
+                               _c('S', '3'), _c('H', '5'), _c('H', '4'), _c('H', '3'),
+                               _c('D', 'A'), _c('D', 'K'), _c('D', 'Q'), _c('S', '6'),
+                               _c('H', '6')]),
+        Seat.EAST: Hand(cards=[_c('S', 'Q'), _c('S', 'J'), _c('S', 'T'), _c('S', '9'),
+                               _c('S', '8'), _c('S', '7'), _c('H', 'Q'), _c('H', 'J'),
+                               _c('H', 'T'), _c('H', '9'), _c('H', '8'), _c('H', '7'),
+                               _c('C', 'A')])}
+    vis = {Seat.SOUTH, Seat.NORTH, Seat.WEST, Seat.EAST}
+    layout2 = tv.known_layout(b2, vis)
+    sq = tv.squeeze_threats(b2, Seat.SOUTH, Seat.NORTH, vis, layout2, None)
+    # Both one-card menaces sit in declarer's hand → a simple squeeze (NT).
+    assert sq["type"] == "simple"
+    assert isinstance(sq["losers"], int)
+    assert sq["rectified"] in (True, False)
+
+
+def test_bayes_distribution():
+    import random as _r
+    b = _full_board(level=3, strain=Suit.NOTRUMP)   # N♠ E♥ S♦ W♣
+    vis = {Seat.NORTH, Seat.SOUTH}                   # E/W hidden
+    layout = tv.known_layout(b, vis)
+    post = tv.bayes_distribution(b, vis, layout, {}, samples=80, rng=_r.Random(1))
+    assert post is not None and post["samples"] > 0
+    # Every unseen honour is placed in exactly one hidden hand each world, so its
+    # E/W probabilities sum to ~1, and only E/W are candidates.
+    for (su, r), probs in post["honour"].items():
+        assert 0.9 <= sum(probs.values()) <= 1.0001
+        assert set(probs) <= {Seat.EAST, Seat.WEST}
+    assert Seat.EAST in post["length"] and Seat.WEST in post["length"]
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):
