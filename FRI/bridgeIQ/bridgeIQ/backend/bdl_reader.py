@@ -83,12 +83,16 @@ class BDLReader:
 
     def read_file(self, filepath: Path) -> List[BDLDeal]:
         """Read BDL file and return list of deals"""
+        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+        return self.read_lines(lines)
+
+    def read_lines(self, lines: List[str]) -> List[BDLDeal]:
+        """Parse already-read BDL lines. Used for .bdl files and for the
+        D1-prefixed deal blocks embedded in a Q-Plus .qss score export."""
         deals = []
         self.current_deal = None
         self.current_section = None
-
-        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
-            lines = f.readlines()
 
         i = 0
         while i < len(lines):
@@ -771,6 +775,32 @@ def load_bdl_file(filepath: str) -> List[BDLDeal]:
     """Convenience function to load BDL file"""
     reader = BDLReader()
     return reader.read_file(Path(filepath))
+
+
+def load_qss_file(filepath: str) -> List[BDLDeal]:
+    """Load a Q-Plus .qss teams score export as a list of deals.
+
+    A .qss interleaves per-board metadata (DI/DD/RE/IM/…) with a full BDL
+    deal block whose every line is prefixed with "D1 " (or "D1"). Those
+    blocks carry the hands, auction, contract and card-by-card play — the
+    same content as a .bdl log — so we strip the "D1" prefix and reuse the
+    BDL parser. Returns the same BDLDeal list as load_bdl_file, so the
+    closed-room ingest (hands + contract + play) works identically.
+    """
+    out_lines: List[str] = []
+    with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+        for raw in f:
+            line = raw.rstrip('\n\r')
+            if line.startswith('D1 '):
+                out_lines.append(line[3:])
+            elif line == 'D1':
+                out_lines.append('')
+    if not out_lines:
+        return []
+    # Lead with a separator so the reader opens the FIRST deal too (the first
+    # D1 block has no preceding "****", unlike later ones).
+    payload = ['****\n'] + [ln + '\n' for ln in out_lines]
+    return BDLReader().read_lines(payload)
 
 
 def bdl_deal_to_board_run(deal: BDLDeal, table=None) -> Optional['BenBoardRun']:

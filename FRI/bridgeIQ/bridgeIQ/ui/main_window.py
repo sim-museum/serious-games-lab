@@ -9103,7 +9103,8 @@ For more information, see the README file."""
         to board number); if none match, asks the user.
         """
         from backend.qplus import qplus_bdl_log_dir, newest_bdl_path
-        from backend.bdl_reader import load_bdl_file, bdl_deal_to_board_run
+        from backend.bdl_reader import (load_bdl_file, load_qss_file,
+                                        bdl_deal_to_board_run)
         from backend.models import BenTable
 
         # Default the picker to the qplus log dir + newest BDL.
@@ -9124,15 +9125,15 @@ For more information, see the README file."""
             return
 
         from .dialogs.dialog_style import styled_warning, styled_info
-        # A .qss is Q-Plus's teams score export — it carries the per-board
-        # RESULT (raw score + IMP) but not the hands or card play, so it can't
-        # drive the card-by-card compare. Show its closed-room results instead.
-        if filename.lower().endswith(".qss"):
-            self._show_qss_results(filename)
-            return
-
+        # Both .bdl logs and .qss teams exports carry the full deal (hands,
+        # auction, contract, card-by-card play); the .qss just wraps each BDL
+        # block in "D1 " lines, which load_qss_file strips. Either way we get
+        # the same BDLDeal list and the same closed-room ingest.
         try:
-            deals = load_bdl_file(filename)
+            if filename.lower().endswith(".qss"):
+                deals = load_qss_file(filename)
+            else:
+                deals = load_bdl_file(filename)
         except Exception as e:
             styled_warning(self, "Read error",
                            f"Could not parse the file:\n{e}")
@@ -9179,47 +9180,6 @@ For more information, see the README file."""
                 self.network_controller.broadcast_closed_room_ingested(run)
             except Exception as e:
                 print(f"[ingest qplus] broadcast failed: {e}", flush=True)
-
-    def _show_qss_results(self, path):
-        """Parse a Q-Plus .qss teams score export (the reader the test harness
-        uses) and show the per-board closed-room results. A .qss carries scores
-        + IMP only — no hands or card play — so this is a results summary, not a
-        replayable ingest; use the .bdl log for the card-by-card compare."""
-        from .dialogs.dialog_style import styled_warning, styled_info
-        try:
-            import importlib.util
-            qpath = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                'tools', 'qss_score_aggregate.py')
-            spec = importlib.util.spec_from_file_location(
-                "qss_score_aggregate", qpath)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            deals = mod.parse_qss(path)
-        except Exception as e:
-            styled_warning(self, "Read error",
-                           f"Could not parse the .qss file:\n{e}")
-            return
-        if not deals:
-            styled_warning(self, "Nothing to load",
-                           "No scored boards were found in that .qss "
-                           "(it may be empty or not a teams export).")
-            return
-        ns_tot = ew_tot = 0
-        lines = []
-        for d in deals:
-            im = d.get("im") or (0, 0)
-            re_ = d.get("re")
-            ns_tot += im[0]
-            ew_tot += im[1]
-            re_txt = f"   (raw {re_[0]:+d} / {re_[1]:+d})" if re_ else ""
-            lines.append(f"{d.get('id', '?')}:  IMP  N/S {im[0]:+d}  "
-                         f"E/W {im[1]:+d}{re_txt}")
-        shown = lines[:40]
-        more = "" if len(lines) <= 40 else f"\n… and {len(lines) - 40} more"
-        summary = (f"{len(deals)} boards — IMP totals:  N/S {ns_tot:+d}   "
-                   f"E/W {ew_tot:+d}\n\n" + "\n".join(shown) + more)
-        styled_info(self, "Closed-room results (.qss)", summary)
 
     def _open_compare_for_board(self, board_number: int):
         """Open the side-by-side Compare dialog for the given board.
@@ -9296,6 +9256,18 @@ For more information, see the README file."""
         for d in deals:
             if d.pavlicek_id and d.pavlicek_id in existing_pavs:
                 return d
+        # The deal labels in a .qss/.bdl (RANDOM-001…) aren't our base-72 ids,
+        # but the CARDS are — compute the pavlicek from the hands and match
+        # that, so a 64-board export auto-picks the open-room deal instead of
+        # making the user scroll a long list.
+        if existing_pavs:
+            for d in deals:
+                try:
+                    if d.hands and all(s in d.hands for s in Seat):
+                        if format_deal_base72(deal_to_number(d.hands)) in existing_pavs:
+                            return d
+                except Exception:
+                    pass
         for d in deals:
             if d.board_number in existing_boards:
                 return d
