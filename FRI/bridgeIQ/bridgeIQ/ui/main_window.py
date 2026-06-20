@@ -675,9 +675,21 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("BridgeIQ")
         self.setMinimumSize(1200, 920)
 
-        # Set window background and ensure menus have proper contrast
+        # Set window background and ensure menus have proper contrast. The big
+        # content area gets a warm pokerIQ glow via #centralArea. NB the bare
+        # `background-color` cascades into child message boxes, so those are
+        # styled with their OWN readable stylesheet at the call site
+        # (MESSAGEBOX_STYLESHEET) — a widget's own sheet beats the inherited bg,
+        # which a rule here cannot reliably do for the box's sub-labels.
         self.setStyleSheet(f"""
-            background-color: {COLORS['background']};
+            QMainWindow {{ background-color: {COLORS['background']}; }}
+            QWidget#centralArea {{
+                background: qradialgradient(cx:0.5, cy:0.30, radius:1.15,
+                    fx:0.5, fy:0.30, stop:0 #18262f, stop:0.8 {COLORS['background']});
+            }}
+            QMenuBar {{ background-color: {COLORS['background']}; color: #eef3f7; }}
+            QMenuBar::item {{ background: transparent; padding: 4px 11px; }}
+            QMenuBar::item:selected {{ background-color: #34465c; }}
             QMenu {{
                 background-color: #f0f0f0;
                 color: #000000;
@@ -794,14 +806,17 @@ class MainWindow(QMainWindow):
     def _setup_ui(self):
         """Setup the main UI layout"""
         central = QWidget()
+        central.setObjectName("centralArea")   # warm pokerIQ backdrop glow
         self.setCentralWidget(central)
 
         main_layout = QVBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # Main content area
+        # Main content area — transparent so the #centralArea gradient shows
+        # through (the bg is no longer cascaded universally, so set it here).
         content_widget = QWidget()
+        content_widget.setStyleSheet("background: transparent;")
         content_layout = QHBoxLayout(content_widget)
         content_layout.setContentsMargins(5, 5, 5, 5)
 
@@ -829,6 +844,7 @@ class MainWindow(QMainWindow):
 
         # Right side: Bidding box and analysis (hidden during card play)
         self.right_panel = QWidget()
+        self.right_panel.setStyleSheet("background: transparent;")
         self.right_panel.setMaximumWidth(280)
         right_layout = QVBoxLayout(self.right_panel)
         right_layout.setContentsMargins(5, 5, 5, 5)
@@ -1469,11 +1485,28 @@ class MainWindow(QMainWindow):
             }
         """
 
+        # Primary action buttons get pokerIQ's green "go" accent so the bottom
+        # row isn't all flat slate.
+        primary_button_style = """
+            QPushButton {
+                background-color: #2a7d4f;
+                color: #06121f;
+                border: 1px solid #3fb950;
+                border-radius: 3px;
+                padding: 5px 15px;
+                font-size: 12px;
+                font-weight: 600;
+                min-width: 90px;
+            }
+            QPushButton:hover { background-color: #34995f; border: 1px solid #d9b25b; }
+            QPushButton:pressed { background-color: #226340; }
+        """
+
         # === Opening screen buttons ===
         self.opening_buttons = []
 
         self.first_deal_btn = QPushButton("First deal")
-        self.first_deal_btn.setStyleSheet(toolbar_button_style)
+        self.first_deal_btn.setStyleSheet(primary_button_style)
         self.first_deal_btn.clicked.connect(self._on_first_deal)
         layout.addWidget(self.first_deal_btn)
         self.opening_buttons.append(self.first_deal_btn)
@@ -1483,12 +1516,6 @@ class MainWindow(QMainWindow):
         self.pair_tourn_btn.clicked.connect(self._on_pair_tournament)
         layout.addWidget(self.pair_tourn_btn)
         self.opening_buttons.append(self.pair_tourn_btn)
-
-        self.closed_room_toolbar_btn = QPushButton("Closed Room")
-        self.closed_room_toolbar_btn.setStyleSheet(toolbar_button_style)
-        self.closed_room_toolbar_btn.clicked.connect(self._on_closed_room_start)
-        layout.addWidget(self.closed_room_toolbar_btn)
-        self.opening_buttons.append(self.closed_room_toolbar_btn)
 
         self.team_tourn_btn = QPushButton("Team tourn.")
         self.team_tourn_btn.setStyleSheet(toolbar_button_style)
@@ -1508,10 +1535,21 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.opening_help_btn)
         self.opening_buttons.append(self.opening_help_btn)
 
+        # Closed Room is a biq extra (not part of Q-Plus's First deal / Pair /
+        # Team / Match control / Help row), so keep that Q-Plus order intact and
+        # place Closed Room at the far right — never on the lower left. Shown
+        # only when a Q-Plus build is configured (see _apply_qplus_visibility).
+        self.closed_room_toolbar_btn = QPushButton("Closed Room")
+        self.closed_room_toolbar_btn.setStyleSheet(toolbar_button_style)
+        self.closed_room_toolbar_btn.clicked.connect(self._on_closed_room_start)
+        layout.addWidget(self.closed_room_toolbar_btn)
+        self.opening_buttons.append(self.closed_room_toolbar_btn)
+
         # === In-game buttons ===
         self.ingame_buttons = []
 
         self.next_deal_btn = ToolbarButton("Next deal")
+        self.next_deal_btn.setStyleSheet(primary_button_style)   # green "go"
         self.next_deal_btn.clicked.connect(self._on_next_deal)
         layout.addWidget(self.next_deal_btn)
         self.ingame_buttons.append(self.next_deal_btn)
@@ -1620,6 +1658,8 @@ class MainWindow(QMainWindow):
           over Q-NET.
         """
         box = QMessageBox(self)
+        from .dialogs.dialog_style import MESSAGEBOX_STYLESHEET
+        box.setStyleSheet(MESSAGEBOX_STYLESHEET)   # readable on the dark window
         box.setWindowTitle("Closed Room")
         box.setText("How should the closed room be played?")
         box.setInformativeText(
@@ -5395,11 +5435,16 @@ For more information, see the README file."""
 
     def _claude_disabled_notice(self):
         try:
-            QMessageBox.information(
-                self, "Claude Code is off",
+            from .dialogs.dialog_style import MESSAGEBOX_STYLESHEET
+            box = QMessageBox(self)
+            box.setStyleSheet(MESSAGEBOX_STYLESHEET)
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setWindowTitle("Claude Code is off")
+            box.setText(
                 "Claude Code analysis is disabled.\n\n"
                 "Enable it in Preferences → AI & Network to use post-hand "
                 "analysis, annotated transcripts and AI hints.")
+            box.exec()
         except Exception:
             pass
 
@@ -5433,15 +5478,19 @@ For more information, see the README file."""
         """Force-quit Q-Plus + all wine so a stale Q-NET socket / hung Q-Plus
         can't block the next closed-room run."""
         import subprocess
-        reply = QMessageBox.question(
-            self, "Kill all wine processes?",
+        from .dialogs.dialog_style import MESSAGEBOX_STYLESHEET
+        box = QMessageBox(self)
+        box.setStyleSheet(MESSAGEBOX_STYLESHEET)
+        box.setWindowTitle("Kill all wine processes?")
+        box.setText(
             "Force-quit Q-Plus and ALL wine processes?\n\n"
             "This clears a stale Q-NET listen socket and any hung Q-Plus so "
             "biq E/W can attach cleanly next time. Any unsaved Q-Plus score "
-            "table is lost.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        if reply != QMessageBox.StandardButton.Yes:
+            "table is lost.")
+        box.setStandardButtons(QMessageBox.StandardButton.Yes
+                               | QMessageBox.StandardButton.No)
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        if box.exec() != QMessageBox.StandardButton.Yes:
             return
         # Bracketed patterns never match this python process's own argv.
         script = ("wineserver -k 2>/dev/null; "
