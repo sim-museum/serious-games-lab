@@ -56,6 +56,10 @@ class PreferencesDialog(QDialog):
         logging_tab = self._create_logging_tab()
         tabs.addTab(logging_tab, "Logging")
 
+        # AI & Network tab
+        ai_tab = self._create_ai_tab()
+        tabs.addTab(ai_tab, "AI && Network")
+
         layout.addWidget(tabs)
 
         # Buttons
@@ -240,6 +244,13 @@ class PreferencesDialog(QDialog):
         )
         table_layout.addWidget(self.show_ben_analysis_check)
 
+        self.show_bid_info_panel_check = QCheckBox(
+            "Show bid-information panel on the bidding screen")
+        self.show_bid_info_panel_check.setToolTip(
+            "Dock the 'Information about the bids' panel at the upper-left of\n"
+            "the bidding screen (embedded, not a separate window).")
+        table_layout.addWidget(self.show_bid_info_panel_check)
+
         table_group.setLayout(table_layout)
         layout.addWidget(table_group)
 
@@ -393,6 +404,47 @@ class PreferencesDialog(QDialog):
         layout.addStretch()
         return widget
 
+    def _create_ai_tab(self) -> QWidget:
+        """Create the AI & Network settings tab (Claude Code + Q-Plus)."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        ai_group = QGroupBox("Claude Code (AI analysis)")
+        ai_layout = QVBoxLayout()
+        self.claude_enabled_check = QCheckBox("Enable Claude Code integration")
+        self.claude_enabled_check.setToolTip(
+            "Allow post-hand AI analysis, annotated transcripts and AI hints\n"
+            "via the `claude` command-line tool. OFF by default — it shells\n"
+            "out to Claude, costs tokens, and isn't needed for ordinary play.")
+        ai_layout.addWidget(self.claude_enabled_check)
+        note = QLabel("When off, the 'Claude analysis' buttons are hidden and "
+                      "no AI calls are made.")
+        note.setWordWrap(True)
+        ai_layout.addWidget(note)
+        ai_group.setLayout(ai_layout)
+        layout.addWidget(ai_group)
+
+        qp_group = QGroupBox("Q-Plus (closed-room / network play)")
+        qp_layout = QVBoxLayout()
+        qp_row = QHBoxLayout()
+        qp_row.addWidget(QLabel("Q-Plus available:"))
+        self.qplus_combo = QComboBox()
+        # value order matches ("none","demo","full")
+        self.qplus_combo.addItems(["None (no Q-Plus installed)",
+                                   "Demo build", "Full (licensed)"])
+        qp_row.addWidget(self.qplus_combo)
+        qp_row.addStretch()
+        qp_layout.addLayout(qp_row)
+        qnote = QLabel("Closed-room and Q-NET features (biq E/W vs Q-Plus N/S) "
+                       "are hidden unless a Q-Plus build is available.")
+        qnote.setWordWrap(True)
+        qp_layout.addWidget(qnote)
+        qp_group.setLayout(qp_layout)
+        layout.addWidget(qp_group)
+
+        layout.addStretch()
+        return widget
+
     def _load_current_settings(self):
         """Load current configuration into dialog."""
         # Mouse settings
@@ -427,6 +479,13 @@ class PreferencesDialog(QDialog):
         self.swap_ns_check.setChecked(self.prefs.swap_ns_declarer)
         self.legacy_colors_check.setChecked(self.prefs.legacy_colors)
         self.show_ben_analysis_check.setChecked(self.prefs.show_ben_bid_analysis)
+        self.show_bid_info_panel_check.setChecked(
+            getattr(self.prefs, "show_bid_info_panel", True))
+        self.claude_enabled_check.setChecked(
+            getattr(self.prefs, "claude_code_enabled", False))
+        self.qplus_combo.setCurrentIndex(
+            {"none": 0, "demo": 1, "full": 2}.get(
+                getattr(self.prefs, "qplus_availability", "none"), 0))
 
         # Bidding settings
         self.show_alerts_check.setChecked(self.prefs.show_alert_marks)
@@ -526,6 +585,10 @@ class PreferencesDialog(QDialog):
         self.prefs.swap_ns_declarer = self.swap_ns_check.isChecked()
         self.prefs.legacy_colors = self.legacy_colors_check.isChecked()
         self.prefs.show_ben_bid_analysis = self.show_ben_analysis_check.isChecked()
+        self.prefs.show_bid_info_panel = self.show_bid_info_panel_check.isChecked()
+        self.prefs.claude_code_enabled = self.claude_enabled_check.isChecked()
+        self.prefs.qplus_availability = ("none", "demo", "full")[
+            self.qplus_combo.currentIndex()]
 
         # Bidding engine
         self.prefs.bidding_engine = self.bidding_engine_combo.currentData() or "native"

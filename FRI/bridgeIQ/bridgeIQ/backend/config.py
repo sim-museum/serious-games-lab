@@ -126,6 +126,18 @@ class PreferencesConfig:
     mini_show_all_hcp: bool = True
     mini_auto_declarer: bool = True
     mini_suggest_contract: bool = True
+    # Show the "Information about the bids" panel docked at the upper-left of
+    # the bidding screen (embedded, not a floating window). Off hides it.
+    show_bid_info_panel: bool = True
+    # Claude Code integration (post-hand AI analysis, annotated transcripts,
+    # AI hints). OFF by default — it shells out to the `claude` CLI, costs
+    # tokens, and isn't needed for ordinary play. Turn on in Preferences.
+    claude_code_enabled: bool = False
+    # Whether a Q-Plus install is available for closed-room / Q-NET play.
+    # "none"  → no Q-Plus (default): hide the closed-room / Q-NET features.
+    # "demo"  → Q-Plus demo build available (limited boards).
+    # "full"  → full licensed Q-Plus available.
+    qplus_availability: str = "none"
 
 
 @dataclass
@@ -407,6 +419,16 @@ class ConfigManager:
         if "preference.mini_suggest_contract" in data:
             self.config.preferences.mini_suggest_contract = (
                 data["preference.mini_suggest_contract"] == "1")
+        if "preference.show_bid_info_panel" in data:
+            self.config.preferences.show_bid_info_panel = (
+                data["preference.show_bid_info_panel"] == "1")
+        if "preference.claude_code_enabled" in data:
+            self.config.preferences.claude_code_enabled = (
+                data["preference.claude_code_enabled"] == "1")
+        if "preference.qplus_availability" in data:
+            v = data["preference.qplus_availability"].strip().lower()
+            if v in ("none", "demo", "full"):
+                self.config.preferences.qplus_availability = v
 
     def save_preferences(self):
         """Save user preferences."""
@@ -448,6 +470,12 @@ class ConfigManager:
                 "1" if self.config.preferences.mini_auto_declarer else "0"),
             "preference.mini_suggest_contract": (
                 "1" if self.config.preferences.mini_suggest_contract else "0"),
+            "preference.show_bid_info_panel": (
+                "1" if self.config.preferences.show_bid_info_panel else "0"),
+            "preference.claude_code_enabled": (
+                "1" if self.config.preferences.claude_code_enabled else "0"),
+            "preference.qplus_availability":
+                self.config.preferences.qplus_availability,
         }
         self._write_config_file(filepath, data, description="BridgeIQ preferences")
 

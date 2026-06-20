@@ -778,6 +778,12 @@ class MainWindow(QMainWindow):
         self._setup_bottom_toolbar()
         self._setup_statusbar()
         self._setup_bid_info_window()
+        # Embed the bid-info panel at the upper-left of the bidding screen and
+        # apply the AI/Network/bid-info visibility toggles (all widgets now
+        # exist: table view, menu actions, toolbar buttons).
+        self._embed_bid_info_panel()
+        self._apply_bid_info_visibility()
+        self._apply_qplus_visibility()
 
         # Connect signals
         self._connect_signals()
@@ -813,6 +819,13 @@ class MainWindow(QMainWindow):
         self._teaching_timer = QTimer(self)
         self._teaching_timer.setInterval(500)
         self._teaching_timer.timeout.connect(self._refresh_teaching_view)
+        # App-wide key filter so keyboard card-play works from ANY view —
+        # including the instrumented view, whose combo boxes would otherwise
+        # eat the suit/rank letters before they reach keyPressEvent. The
+        # filter is inert outside the human's play turn (see _handle_play_key).
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
 
         # Right side: Bidding box and analysis (hidden during card play)
         self.right_panel = QWidget()
@@ -1254,13 +1267,13 @@ class MainWindow(QMainWindow):
         simulation_action.triggered.connect(self._on_simulation)
         view_menu.addAction(simulation_action)
 
-        qplus_sim_action = QAction("Q-Plus Simulation &Pop-up...", self)
-        qplus_sim_action.setToolTip(
+        self.qplus_sim_action = QAction("Q-Plus Simulation &Pop-up...", self)
+        self.qplus_sim_action.setToolTip(
             "Open the Q-Plus-style slam simulation pop-up "
             "(auto-opens on the user's turn when slam is in scope)."
         )
-        qplus_sim_action.triggered.connect(self._on_qplus_simulation)
-        view_menu.addAction(qplus_sim_action)
+        self.qplus_sim_action.triggered.connect(self._on_qplus_simulation)
+        view_menu.addAction(self.qplus_sim_action)
 
         auction_tricks_action = QAction("&Auction and Played Tricks...", self)
         auction_tricks_action.triggered.connect(self._on_view_auction_tricks)
@@ -1373,6 +1386,17 @@ class MainWindow(QMainWindow):
             "shown in the score table.")
         self.ingest_lin_action.triggered.connect(self._on_load_lin_database)
         extras_menu.addAction(self.ingest_lin_action)
+
+        extras_menu.addSeparator()
+        # Recovery: force-quit every wine/Q-Plus process so a stale Q-NET
+        # socket or a hung Q-Plus can't block the next closed-room run.
+        self.kill_wine_action = QAction("&Kill all wine processes", self)
+        self.kill_wine_action.setToolTip(
+            "Force-quit Q-Plus and ALL wine processes (wineserver -k + pkill).\n"
+            "Use when biq E/W can't attach to the Q-Plus network because a "
+            "previous session left a stale Q-NET socket open.")
+        self.kill_wine_action.triggered.connect(self._on_kill_all_wine)
+        extras_menu.addAction(self.kill_wine_action)
 
         # Network menu
         network_menu = menubar.addMenu("&Network")
@@ -1718,16 +1742,17 @@ class MainWindow(QMainWindow):
         self._set_toolbar_mode('opening')
 
     def _setup_bid_info_window(self):
-        """Setup the bidding-information window as an independent top-level
-        window. Previously a QDockWidget — that hybrid behaviour caused it
-        to sometimes dock back into the main window and sometimes hide
-        behind it on a single-monitor setup. A plain top-level QWidget
-        with Qt.WindowType.Window is always free-floating, draggable, and
-        keeps the same show/hide API the rest of main_window relies on.
+        """Setup the bidding-information panel. It is built here as a plain
+        QWidget and later EMBEDDED at the upper-left of the bidding screen by
+        _embed_bid_info_panel() (no free-floating window). Visibility follows
+        the F3 toggle and the Preferences 'show bid-info panel' option.
         """
-        self.bid_info_dock = QWidget(None, Qt.WindowType.Window)
-        self.bid_info_dock.setWindowTitle("Information about the bids ...")
-        self.bid_info_dock.setStyleSheet("background-color: #f8f8f8;")
+        self.bid_info_dock = QWidget()
+        self.bid_info_dock.setObjectName("bidInfoPanel")
+        # A self-contained light panel that reads on the dark table backdrop.
+        self.bid_info_dock.setStyleSheet(
+            "#bidInfoPanel { background-color: #f4f6f8;"
+            " border: 1px solid #d9b25b; border-radius: 6px; }")
 
         # Content widget — laid out directly inside the top-level window.
         bid_info_widget = self.bid_info_dock
@@ -1798,9 +1823,9 @@ class MainWindow(QMainWindow):
         avail_scroll.setWidget(self.available_bids_widget)
         bid_info_layout.addWidget(avail_scroll)
 
-        self.bid_info_dock.setMinimumWidth(450)
-        self.bid_info_dock.resize(480, 500)
-        self.bid_info_dock.move(30, 100)
+        # Compact panel sized to sit at the upper-left of the bidding screen.
+        self.bid_info_dock.setFixedWidth(430)
+        self.bid_info_dock.setMaximumHeight(560)
 
     def _setup_statusbar(self):
         """Setup the status bar"""
@@ -1970,7 +1995,7 @@ class MainWindow(QMainWindow):
 
         # Show bid info window for bidding phase
         if self.bid_info_action.isChecked():
-            self.bid_info_dock.show()
+            self._apply_bid_info_visibility()
 
         # Set visibility based on player types
         for seat in Seat:
@@ -2817,7 +2842,7 @@ For more information, see the README file."""
 
         # Show bid info window
         if self.bid_info_action.isChecked():
-            self.bid_info_dock.show()
+            self._apply_bid_info_visibility()
 
         # Set visibility for players
         for seat in Seat:
@@ -3284,7 +3309,7 @@ For more information, see the README file."""
 
             # Show bid info window for bidding phase
             if self.bid_info_action.isChecked():
-                self.bid_info_dock.show()
+                self._apply_bid_info_visibility()
 
             for seat in Seat:
                 player = self.controller.players[seat]
@@ -3361,7 +3386,7 @@ For more information, see the README file."""
 
         # Show bid info window for bidding phase
         if self.bid_info_action.isChecked():
-            self.bid_info_dock.show()
+            self._apply_bid_info_visibility()
 
         for seat in Seat:
             player = self.controller.players[seat]
@@ -3628,6 +3653,9 @@ For more information, see the README file."""
         # Bidding-system selection may have changed — re-tag the
         # information-about-bids window with the new system's labels.
         self._refresh_active_system()
+        # Apply the AI & Network toggles live.
+        self._apply_qplus_visibility()
+        self._apply_bid_info_visibility()
 
     def _on_show_all_hands(self):
         """Toggle showing all hands"""
@@ -3681,12 +3709,47 @@ For more information, see the README file."""
         except Exception as e:
             print(f"[teaching view] refresh failed: {e}", flush=True)
 
+    def _embed_bid_info_panel(self):
+        """Reparent the bid-info panel onto the bidding screen (table view) and
+        pin it to the upper-left corner as an overlay."""
+        dock = getattr(self, "bid_info_dock", None)
+        host = getattr(self, "table_view", None)
+        if dock is None or host is None:
+            return
+        try:
+            dock.setParent(host)
+            dock.move(10, 10)
+            dock.raise_()
+        except Exception:
+            pass
+
+    def _bid_info_pref(self) -> bool:
+        try:
+            from backend.config import get_config_manager
+            return bool(getattr(get_config_manager().config.preferences,
+                                "show_bid_info_panel", True))
+        except Exception:
+            return True
+
+    def _apply_bid_info_visibility(self):
+        """The panel shows only when BOTH the Preferences toggle is on AND the
+        F3 'Bidding Information' action is checked."""
+        dock = getattr(self, "bid_info_dock", None)
+        if dock is None:
+            return
+        want = self._bid_info_pref()
+        act = getattr(self, "bid_info_action", None)
+        if act is not None:
+            act.setEnabled(want)
+            want = want and act.isChecked()
+        dock.setVisible(want)
+        if want:
+            dock.raise_()
+
     def _on_toggle_bid_info(self, checked: bool):
-        """Toggle bidding information window"""
-        if checked:
-            self.bid_info_dock.show()
-        else:
-            self.bid_info_dock.hide()
+        """Toggle the embedded bidding-information panel (respects the
+        Preferences 'show bid-info panel' option)."""
+        self._apply_bid_info_visibility()
 
     def _active_bidding_system(self, side: str = None):
         """Resolve the configured `BiddingSystem` spec.
@@ -4810,7 +4873,7 @@ For more information, see the README file."""
             self.table_view.set_hand_visible(seat, visible)
 
         if self.bid_info_action.isChecked():
-            self.bid_info_dock.show()
+            self._apply_bid_info_visibility()
 
         self._set_toolbar_mode('ingame')
         self._advance_game()
@@ -4986,7 +5049,7 @@ For more information, see the README file."""
             self.table_view.set_hand_visible(seat, visible)
 
         if self.bid_info_action.isChecked():
-            self.bid_info_dock.show()
+            self._apply_bid_info_visibility()
 
         self._set_toolbar_mode('ingame')
         self.status_label.setText(f"Board {board.board_number}: {board.dealer.to_char()} deals")
@@ -5312,6 +5375,77 @@ For more information, see the README file."""
             f"BDL:\n{state_text}{engine_block}"
         )
 
+    def _claude_enabled(self) -> bool:
+        """Claude Code integration is opt-in (Preferences → AI & Network),
+        default OFF."""
+        try:
+            from backend.config import get_config_manager
+            return bool(get_config_manager().config.preferences.claude_code_enabled)
+        except Exception:
+            return False
+
+    def _claude_disabled_notice(self):
+        try:
+            QMessageBox.information(
+                self, "Claude Code is off",
+                "Claude Code analysis is disabled.\n\n"
+                "Enable it in Preferences → AI & Network to use post-hand "
+                "analysis, annotated transcripts and AI hints.")
+        except Exception:
+            pass
+
+    def _qplus_availability(self) -> str:
+        """'none' (default) / 'demo' / 'full' — gates closed-room / Q-NET."""
+        try:
+            from backend.config import get_config_manager
+            return getattr(get_config_manager().config.preferences,
+                           "qplus_availability", "none")
+        except Exception:
+            return "none"
+
+    def _qplus_available(self) -> bool:
+        return self._qplus_availability() != "none"
+
+    def _apply_qplus_visibility(self):
+        """Show closed-room / Q-NET / Q-Plus features only when a Q-Plus
+        build is configured (Preferences → AI & Network). Default: hidden."""
+        avail = self._qplus_available()
+        for attr in ("closed_room_toolbar_btn",):
+            w = getattr(self, attr, None)
+            if w is not None:
+                w.setVisible(avail)
+        for attr in ("ingest_qplus_action", "ingest_lin_action",
+                     "qplus_sim_action", "kill_wine_action"):
+            a = getattr(self, attr, None)
+            if a is not None:
+                a.setVisible(avail)
+
+    def _on_kill_all_wine(self):
+        """Force-quit Q-Plus + all wine so a stale Q-NET socket / hung Q-Plus
+        can't block the next closed-room run."""
+        import subprocess
+        reply = QMessageBox.question(
+            self, "Kill all wine processes?",
+            "Force-quit Q-Plus and ALL wine processes?\n\n"
+            "This clears a stale Q-NET listen socket and any hung Q-Plus so "
+            "biq E/W can attach cleanly next time. Any unsaved Q-Plus score "
+            "table is lost.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        # Bracketed patterns never match this python process's own argv.
+        script = ("wineserver -k 2>/dev/null; "
+                  "pkill -9 -f 'wineserve[r]'; pkill -9 -f 'win[e]'; "
+                  "pkill -9 -f 'QBRIDG[E]'; pkill -9 -f 'Q-NE[T]'; "
+                  "pkill -9 -f 'syste[m]32'; pkill -9 -f 'biq_qnet_clien[t]'")
+        try:
+            subprocess.run(["bash", "-c", script], timeout=15)
+            self.status_label.setText(
+                "Killed all wine/Q-Plus processes — Q-NET socket cleared.")
+        except Exception as e:
+            self.status_label.setText(f"Kill wine failed: {e}")
+
     def _run_claude_with_dialog(self, prompt: str, title: str, wait_label: str,
                                  timeout_seconds: int = 300, preamble: str = "",
                                  bdl_text: str = "",
@@ -5335,6 +5469,10 @@ For more information, see the README file."""
         re-clicking before play has advanced doesn't burn another
         Claude turn.
         """
+        # Claude Code must be enabled in Preferences (default off).
+        if not self._claude_enabled():
+            self._claude_disabled_notice()
+            return
         # Cache short-circuit — check BEFORE we open the progress
         # dialog or spawn the subprocess.
         if cache_key is not None:
@@ -5991,6 +6129,19 @@ For more information, see the README file."""
         if self._handle_play_key(event):
             return
         super().keyPressEvent(event)
+
+    def eventFilter(self, obj, event):
+        """Route play-keys to the card handler no matter which widget has
+        focus (e.g. a combo box on the instrumented view). Inert unless it's
+        the human's turn in the play phase, so it never steals keys from the
+        bidding box or normal navigation."""
+        try:
+            from PyQt6.QtCore import QEvent
+            if event.type() == QEvent.Type.KeyPress and self._handle_play_key(event):
+                return True
+        except Exception:
+            pass
+        return super().eventFilter(obj, event)
 
     def _handle_play_key(self, event) -> bool:
         c = getattr(self, 'controller', None)
@@ -7147,6 +7298,12 @@ For more information, see the README file."""
                 self._on_dialog_generate_closed_room)
         except Exception:
             pass
+        # Generate-closed-room needs Q-Plus; hide it when none is available.
+        if not self._qplus_available():
+            for attr in ("gen_closed_btn",):
+                b = getattr(dialog, attr, None)
+                if b is not None:
+                    b.hide()
 
         # Claude analysis — runs the pending hand critique. If the
         # closed room has been ingested between hand end and click,
@@ -7157,6 +7314,11 @@ For more information, see the README file."""
                 self._on_dialog_claude_analysis)
         except Exception:
             pass
+        # Hide the Claude button unless Claude Code is enabled (default off).
+        if not self._claude_enabled():
+            b = getattr(dialog, "claude_btn", None)
+            if b is not None:
+                b.hide()
 
         # Next deal — use the DEDICATED next_deal_requested signal,
         # not the broad accepted signal. Review / Score / Repeat all
@@ -7170,16 +7332,24 @@ For more information, see the README file."""
             pass
 
     def _show_end_of_hand_dialog(self, dialog):
-        """Show the end-of-hand dialog non-modally and keep a ref.
-
-        Non-modal so the user can interact with the main window (open
-        the score sheet, drag the Q-Plus harness around, etc.) while
-        the end-of-hand banner is visible. We hold a reference on
-        self so the dialog isn't garbage-collected.
+        """Show the end-of-hand summary as an EMBEDDED overlay panel inside the
+        main window (no unattached windows). It floats centred over the table
+        area; the user can still reach the menus/score sheet around it.
         """
-        from .dialogs.dialog_style import make_detachable
+        from PyQt6.QtCore import Qt as _Qt
+        host = self.centralWidget() or self
         try:
-            make_detachable(dialog)
+            dialog.setParent(host)
+            dialog.setWindowFlags(_Qt.WindowType.Widget)
+        except Exception:
+            pass
+        dialog.adjustSize()
+        # Centre over the host, clamped into view.
+        try:
+            ds = dialog.sizeHint()
+            x = max(0, (host.width() - ds.width()) // 2)
+            y = max(0, (host.height() - ds.height()) // 3)
+            dialog.move(x, y)
         except Exception:
             pass
         dialog.show()
@@ -7189,8 +7359,9 @@ For more information, see the README file."""
         survivors = []
         for d in self._end_of_hand_dialogs:
             try:
-                if d.isVisible():
-                    survivors.append(d)
+                if d is not dialog and d.isVisible():
+                    # only one summary at a time — close older embedded panels
+                    d.close()
             except RuntimeError:
                 pass
         survivors.append(dialog)
@@ -7675,6 +7846,9 @@ For more information, see the README file."""
         so even across restarts the user sees the same wording when
         opening the BDL log file.
         """
+        if not self._claude_enabled():
+            self._claude_disabled_notice()
+            return
         import shutil
         import subprocess
         import threading
@@ -8979,6 +9153,8 @@ For more information, see the README file."""
         so the prompt automatically gets the comparison form when a
         Q-Plus row is present and the open-room-only form otherwise.
         """
+        if not self._claude_enabled():
+            return                       # silent no-op when Claude is off
         pending = self._claude_pending
         if not pending or pending.get('analyzed'):
             return
