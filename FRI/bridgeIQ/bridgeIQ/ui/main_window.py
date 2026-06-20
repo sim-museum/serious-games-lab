@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QSplitter, QMenuBar, QMenu, QStatusBar, QToolBar, QLabel,
     QProgressBar, QMessageBox, QFileDialog, QApplication,
     QDockWidget, QPushButton, QFrame, QSizePolicy, QInputDialog,
-    QDialog
+    QDialog, QStackedWidget
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread, pyqtSlot
 from PyQt6.QtGui import QAction, QKeySequence, QFont, QIcon
@@ -798,9 +798,20 @@ class MainWindow(QMainWindow):
         content_layout = QHBoxLayout(content_widget)
         content_layout.setContentsMargins(5, 5, 5, 5)
 
-        # Left side: Table view
+        # Left side: Table view, with an instrumented (teaching) view as an
+        # alternate page selected by the "Instrumented" toolbar button.
         self.table_view = TableView()
-        content_layout.addWidget(self.table_view, stretch=3)
+        from .teaching_view import TeachingView
+        self.teaching_view = TeachingView()
+        self.table_stack = QStackedWidget()
+        self.table_stack.addWidget(self.table_view)      # page 0 = normal
+        self.table_stack.addWidget(self.teaching_view)   # page 1 = instrumented
+        content_layout.addWidget(self.table_stack, stretch=3)
+        # While the instrumented view is up, refresh it on a light timer so
+        # it tracks play without threading a call through every play site.
+        self._teaching_timer = QTimer(self)
+        self._teaching_timer.setInterval(500)
+        self._teaching_timer.timeout.connect(self._refresh_teaching_view)
 
         # Right side: Bidding box and analysis (hidden during card play)
         self.right_panel = QWidget()
@@ -1532,6 +1543,16 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.review_btn)
         self.ingame_buttons.append(self.review_btn)
 
+        # Toggle between the normal table and the instrumented teaching view.
+        self.teaching_btn = ToolbarButton("Instrumented")
+        self.teaching_btn.setCheckable(True)
+        self.teaching_btn.setToolTip(
+            "Toggle the instrumented teaching/analysis view: per-hand "
+            "Known/Other suit grid, count, entries, plan and coaching.")
+        self.teaching_btn.toggled.connect(self._on_toggle_teaching_view)
+        layout.addWidget(self.teaching_btn)
+        self.ingame_buttons.append(self.teaching_btn)
+
         self.help_btn = ToolbarButton("Help")
         self.help_btn.clicked.connect(self._on_about)
         layout.addWidget(self.help_btn)
@@ -1564,9 +1585,55 @@ class MainWindow(QMainWindow):
         self._on_new_deal()
 
     def _on_closed_room_start(self):
-        """Handle Closed Room button - start with closed room and switch to in-game mode."""
-        self._set_toolbar_mode('ingame')
-        self._on_closed_room()
+        """Closed Room button — let the user pick how to run it.
+
+        • Internal all-biq — biq plays all four seats double-dummy,
+          instantly, in-app (the original behaviour).
+        • Real Q-Plus (harness) — launch the test harness and play a
+          genuine closed room live: biq E/W vs Q-Plus N/S, card by card
+          over Q-NET.
+        """
+        box = QMessageBox(self)
+        box.setWindowTitle("Closed Room")
+        box.setText("How should the closed room be played?")
+        box.setInformativeText(
+            "Internal all-biq — biq plays all four seats double-dummy, "
+            "instantly, without leaving bridgeIQ.\n\n"
+            "Real Q-Plus (harness) — launch the test harness to play it "
+            "out live: biq sits E/W, Q-Plus sits N/S.")
+        internal_btn = box.addButton(
+            "Internal all-biq", QMessageBox.ButtonRole.AcceptRole)
+        real_btn = box.addButton(
+            "Real Q-Plus (harness)…", QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(internal_btn)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is internal_btn:
+            self._set_toolbar_mode('ingame')
+            self._on_closed_room()
+        elif clicked is real_btn:
+            self._launch_real_closed_room()
+
+    def _launch_real_closed_room(self):
+        """Launch the test harness in Closed Room mode for the current
+        deal: biq E/W vs Q-Plus N/S, played out live over Q-NET.
+
+        Needs a fully-dealt board (four 13-card hands). Deals one first
+        if the table is empty so the button works straight from the
+        opening screen.
+        """
+        board = self.controller.board
+        if board is None:
+            self._on_new_deal()
+            board = self.controller.board
+            if board is None:
+                return
+        self._launch_qplus_harness(board, closed_room=True)
+        self.status_label.setText(
+            "Launched test harness — Closed Room (biq E/W vs Q-Plus N/S). "
+            "Follow the numbered steps in the harness window."
+        )
 
     def _on_menu_new_deal(self):
         """Handle File > New Deal menu - return to opening screen."""
@@ -3564,6 +3631,53 @@ For more information, see the README file."""
         """Toggle showing all hands"""
         for seat in Seat:
             self.table_view.set_hand_visible(seat, True)
+        # If the instrumented view is up, more face-up hands means more
+        # exact cards to show — refresh straight away.
+        self._refresh_teaching_view()
+
+    def _on_toggle_teaching_view(self, checked: bool):
+        """Switch the table area between the normal table (page 0) and the
+        instrumented teaching view (page 1)."""
+        stack = getattr(self, 'table_stack', None)
+        if stack is None:
+            return
+        stack.setCurrentIndex(1 if checked else 0)
+        if checked:
+            self._refresh_teaching_view()
+            self._teaching_timer.start()
+        else:
+            self._teaching_timer.stop()
+
+    def _refresh_teaching_view(self):
+        """Repaint the instrumented view from the current play state. Cheap
+        no-op unless that view is the one currently showing."""
+        view = getattr(self, 'teaching_view', None)
+        stack = getattr(self, 'table_stack', None)
+        if view is None or stack is None or stack.currentIndex() != 1:
+            return
+        board = self.controller.board if getattr(self, 'controller', None) else None
+        contract = getattr(board, 'contract', None) if board else None
+        declarer = getattr(self.controller, 'declarer', None)
+        dummy = getattr(self.controller, 'dummy', None)
+        if declarer is None and contract is not None:
+            declarer = contract.declarer
+        if dummy is None and declarer is not None:
+            dummy = declarer.partner()
+        try:
+            visible = self.table_view.face_up_seats()
+        except Exception:
+            visible = set()
+        try:
+            ns_sys = self._active_bidding_system('NS')
+            ew_sys = self._active_bidding_system('EW')
+        except Exception:
+            ns_sys = ew_sys = None
+        try:
+            view.refresh(board=board, contract=contract, declarer=declarer,
+                         dummy=dummy, visible_seats=visible,
+                         ns_system=ns_sys, ew_system=ew_sys)
+        except Exception as e:
+            print(f"[teaching view] refresh failed: {e}", flush=True)
 
     def _on_toggle_bid_info(self, checked: bool):
         """Toggle bidding information window"""
@@ -7025,7 +7139,15 @@ For more information, see the README file."""
         self._end_of_hand_dialogs = survivors
 
     def _on_dialog_generate_closed_room(self):
-        """End-of-hand dialog button → spawn harness + Q-Plus.
+        """End-of-hand dialog button → spawn the harness on its Closed
+        Room wizard for a real Q-Plus closed room.
+
+        The open room was just played by the human + biq as N/S against
+        biq E/W. The closed room replays the SAME deal with Q-Plus N/S
+        and biq networked in as E/W (live over Q-NET), so the comparison
+        isolates the human/biq N/S pair against Q-Plus. After the closed
+        room is played, Extras → Ingest Q-Plus closed room brings the
+        result back for the IMP swing.
 
         The previous behaviour fired this automatically from
         _show_result, which surprised users who hadn't asked for a
@@ -7034,10 +7156,10 @@ For more information, see the README file."""
         """
         if self.controller.board is None:
             return
-        self._launch_qplus_harness(self.controller.board)
+        self._launch_qplus_harness(self.controller.board, closed_room=True)
         self.status_label.setText(
-            "Launched Q-Plus harness — play the deal, then use "
-            "Extras → Ingest Q-Plus closed room to bring the result back."
+            "Launched closed-room harness — Q-Plus N/S vs biq E/W. Follow "
+            "the steps, then Extras → Ingest Q-Plus closed room for the swing."
         )
 
     def _on_send_current_to_harness(self):
@@ -7429,12 +7551,15 @@ For more information, see the README file."""
                 }
             self._on_show_scores()
 
-    def _launch_qplus_harness(self, board):
+    def _launch_qplus_harness(self, board, closed_room: bool = False):
         """Spawn the guiHarness (bridgeHarness.sh) preloaded with this deal's
         base-72 code, dealer, and vulnerability, so the host can manually
         play the closed room in Q-Plus without leaving bridgeIQ. No-op
         if the harness script can't be located or if the deal has no full
         hand data.
+
+        When ``closed_room`` is set the harness is opened on its Closed
+        Room tab (biq E/W vs Q-Plus N/S over Q-NET) via --closed-room.
 
         Dealer and vulnerability are passed via `--dealer` / `--vuln` so
         the harness can show them on the entry tab — and, once Q-Plus's
@@ -7468,10 +7593,13 @@ For more information, see the README file."""
                 'Both': 'Both',
             }
             vuln_token = vuln_map.get(board.vulnerability.value, 'None')
+            cmd = [script, "--base72", code,
+                   "--dealer", dealer_char,
+                   "--vuln", vuln_token]
+            if closed_room:
+                cmd.append("--closed-room")
             subprocess.Popen(
-                [script, "--base72", code,
-                 "--dealer", dealer_char,
-                 "--vuln", vuln_token],
+                cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,

@@ -45,6 +45,14 @@ FRI_DIR = SCRIPT_DIR.parent                           # FRI
 REPO_ROOT = FRI_DIR.parent                            # sgl
 CALIBRATION_FILE = SCRIPT_DIR / "calibration.json"
 
+# biq repo + its Q-NET client, used by the Closed Room tab to put biq
+# in the E/W seats of a live Q-Plus match. The repo nests one level
+# (FRI/bridgeIQ/bridgeIQ); its venv sits one level up from that.
+BIQ_ROOT = FRI_DIR / "bridgeIQ" / "bridgeIQ"
+BIQ_VENV_PYTHON = FRI_DIR / "bridgeIQ" / "venv" / "bin" / "python"
+BIQ_QNET_CLIENT = BIQ_ROOT / "tools" / "biq_qnet_client.py"
+BIQ_QNET_LOG_DIR = BIQ_ROOT / "tools" / "runs"
+
 # ---------------------------------------------------------------------------
 # Card constants
 # ---------------------------------------------------------------------------
@@ -1381,7 +1389,7 @@ class CaptureButton(QPushButton):
 
 
 class BridgeHarness(QMainWindow):
-    def __init__(self, launch_qplus: bool = True):
+    def __init__(self, launch_qplus: bool = True, closed_room: bool = False):
         super().__init__()
         self.setWindowTitle("Bridge Harness \u2014 Q-Plus Bridge")
         # 16 calibration rows + the source / display panels make the
@@ -1395,6 +1403,13 @@ class BridgeHarness(QMainWindow):
         self._worker = None
         self._source_pbn_path = None  # for workflow
         self._qplus_proc = None       # Popen handle for the Q-Plus child
+        # Closed Room tab: the two biq Q-NET client processes (East, West)
+        # and the timer that tails their logs into the on-screen view.
+        self._biq_procs = {}          # seat-char -> Popen
+        self._biq_log_paths = {}      # seat-char -> Path
+        self._biq_log_offsets = {}    # seat-char -> int (bytes already shown)
+        self._biq_logfiles = {}       # seat-char -> open file (child's stdout/stderr)
+        self._biq_log_timer = None
         # Dealer / vulnerability for the loaded deal (normalised tokens).
         # bridgeIQ passes these on --dealer / --vuln so the closed-room
         # entry in Q-Plus matches the open-room conditions. Empty string
@@ -1405,9 +1420,17 @@ class BridgeHarness(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_entry_tab(), "Hand Entry")
         self.tabs.addTab(self._build_workflow_tab(), "Comparison Workflow")
+        self._closed_room_tab_index = self.tabs.addTab(
+            self._build_closed_room_tab(), "Closed Room (biq E/W)")
         self.setCentralWidget(self.tabs)
 
         self.statusBar().showMessage("Ready")
+
+        # Opened straight into the closed-room flow by bridgeIQ
+        # (--closed-room). Bring that tab forward once the rest of the
+        # window is constructed.
+        if closed_room:
+            self.tabs.setCurrentIndex(self._closed_room_tab_index)
 
         # The harness drives Q-Plus through its window \u2014 auto-launch
         # Q-Plus on startup so users always see them together. Callers
@@ -1593,6 +1616,7 @@ class BridgeHarness(QMainWindow):
         if v:
             self.vulnerability = v
         self._update_dealer_vuln_display()
+        self._cr_refresh_deal()
         parts = []
         if self.dealer:
             parts.append(f"dealer = {self.dealer}")
@@ -1632,7 +1656,396 @@ class BridgeHarness(QMainWindow):
         # Hand Entry tab is index 0; bring it forward so the harness opens
         # ready for the user to click Enter Deal into Q-Plus.
         self.tabs.setCurrentIndex(0)
+        self._cr_refresh_deal()
         self.statusBar().showMessage(f"Deal loaded from base-72: {code}")
+
+    # ---- Closed Room tab (biq E/W vs Q-Plus N/S over Q-NET) ---------------
+
+    def show_closed_room_tab(self):
+        """Bring the Closed Room tab forward and refresh its deal panel.
+
+        Called from main() after --closed-room so bridgeIQ's "Closed
+        Room → Real Q-Plus" path lands the user straight on the wizard.
+        """
+        self.tabs.setCurrentIndex(self._closed_room_tab_index)
+        self._cr_refresh_deal()
+
+    def _build_closed_room_tab(self):
+        """A guided, click-through closed room: biq sits East+West, Q-Plus
+        sits North+South, and the board is played out live over Q-NET.
+
+        biq's side is driven by two `biq_qnet_client.py` processes (one
+        per seat, --pair) that join Q-Plus acting as a Q-NET bridge
+        server. The numbered steps mirror the proven CLI flow
+        (tools/qplus_two_biq.sh) but as buttons, with a live log.
+        """
+        outer = QWidget()
+        outer_layout = QVBoxLayout(outer)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameStyle(0)
+        inner = QWidget()
+        layout = QVBoxLayout(inner)
+
+        intro = QLabel(
+            "Play a real closed room against Q-Plus: <b>biq sits East + "
+            "West, Q-Plus sits North + South</b>, card by card over "
+            "Q-NET. Work down the numbered steps.")
+        intro.setWordWrap(True)
+        intro.setStyleSheet("padding: 4px 0;")
+        layout.addWidget(intro)
+
+        # --- Deal summary -------------------------------------------------
+        deal_group = QGroupBox("This deal")
+        deal_layout = QVBoxLayout(deal_group)
+        self.cr_deal_display = QTextEdit()
+        self.cr_deal_display.setReadOnly(True)
+        self.cr_deal_display.setFont(QFont("Monospace", 10))
+        self.cr_deal_display.setMaximumHeight(220)
+        deal_layout.addWidget(self.cr_deal_display)
+        b72_row = QHBoxLayout()
+        b72_row.addWidget(QLabel("Base-72:"))
+        self.cr_base72 = QLineEdit()
+        self.cr_base72.setReadOnly(True)
+        self.cr_base72.setFont(QFont("Monospace", 11))
+        b72_row.addWidget(self.cr_base72, stretch=1)
+        deal_layout.addLayout(b72_row)
+        self.cr_dv_label = QLabel("Dealer: (not set)    Vulnerability: (not set)")
+        self.cr_dv_label.setFont(QFont("Monospace", 10))
+        deal_layout.addWidget(self.cr_dv_label)
+        layout.addWidget(deal_group)
+
+        # --- Step 1: deal into Q-Plus ------------------------------------
+        s1 = QGroupBox("1 · Put this deal into Q-Plus")
+        s1l = QVBoxLayout(s1)
+        s1l.addWidget(QLabel(
+            "Write the deal to Q-Plus's OWN-DEALS folder, then in Q-Plus "
+            "load it (Own Deals → Open) so the closed room plays the "
+            "SAME board as bridgeIQ's open room."))
+        self.cr_write_bde_btn = QPushButton(
+            "Write deal to OWN-DEALS/ (.BDE)")
+        self.cr_write_bde_btn.setStyleSheet(
+            "padding: 6px; background-color: #cfe4ff;")
+        self.cr_write_bde_btn.clicked.connect(self._write_bde_deal)
+        s1l.addWidget(self.cr_write_bde_btn)
+        layout.addWidget(s1)
+
+        # --- Step 2: start the Q-Plus Q-NET server -----------------------
+        s2 = QGroupBox("2 · Start the Q-Plus Q-NET server (N/S = Q-Plus)")
+        s2l = QVBoxLayout(s2)
+        s2l.addWidget(QLabel(
+            "In Q-Plus:\n"
+            "  • Configuration → Players: East = Extern, West = "
+            "Extern, North = Computer, South = Computer.\n"
+            "  • Network → Start bridge server → set the port "
+            "below → Start.\n"
+            "  • Match Control → new Closed-Room teams match."))
+        port_row = QHBoxLayout()
+        port_row.addWidget(QLabel("Server port:"))
+        self.cr_port_spin = QSpinBox()
+        self.cr_port_spin.setRange(1, 65535)
+        self.cr_port_spin.setValue(5555)
+        port_row.addWidget(self.cr_port_spin)
+        self.cr_check_btn = QPushButton("Check server")
+        self.cr_check_btn.clicked.connect(self._cr_check_server)
+        port_row.addWidget(self.cr_check_btn)
+        port_row.addStretch()
+        s2l.addLayout(port_row)
+        self.cr_server_status = QLabel("Server not checked yet.")
+        self.cr_server_status.setStyleSheet("color: #555;")
+        s2l.addWidget(self.cr_server_status)
+        layout.addWidget(s2)
+
+        # --- Step 3: seat biq E/W ----------------------------------------
+        s3 = QGroupBox("3 · Seat biq at East + West")
+        s3l = QVBoxLayout(s3)
+        s3l.addWidget(QLabel(
+            "Launches two biq clients (East and West, partnership mode) "
+            "that join the server above and play biq's bidding + cardplay."))
+        sys_row = QHBoxLayout()
+        sys_row.addWidget(QLabel("Bidding system:"))
+        self.cr_system_combo = QComboBox()
+        self.cr_system_combo.setEditable(True)
+        self.cr_system_combo.addItems(
+            ["SAYC", "TwoOverOne", "StandardAcol", "Precision90M"])
+        sys_row.addWidget(self.cr_system_combo)
+        self.cr_auto_system = QCheckBox("Match Q-Plus (auto-system)")
+        self.cr_auto_system.setChecked(True)
+        self.cr_auto_system.setToolTip(
+            "Sync biq's system to whatever Q-Plus reports for E/W, so the "
+            "two biq seats and Q-Plus agree on the partnership system.")
+        sys_row.addWidget(self.cr_auto_system)
+        sys_row.addStretch()
+        s3l.addLayout(sys_row)
+        btn_row = QHBoxLayout()
+        self.cr_connect_btn = QPushButton("Connect biq E/W")
+        self.cr_connect_btn.setStyleSheet(
+            "font-weight: bold; padding: 6px; background-color: #d6ffd6;")
+        self.cr_connect_btn.clicked.connect(self._cr_connect_biq)
+        btn_row.addWidget(self.cr_connect_btn)
+        self.cr_disconnect_btn = QPushButton("Disconnect")
+        self.cr_disconnect_btn.setEnabled(False)
+        self.cr_disconnect_btn.clicked.connect(self._cr_disconnect_biq)
+        btn_row.addWidget(self.cr_disconnect_btn)
+        btn_row.addStretch()
+        s3l.addLayout(btn_row)
+        self.cr_biq_status = QLabel("biq not connected.")
+        self.cr_biq_status.setStyleSheet("color: #555;")
+        s3l.addWidget(self.cr_biq_status)
+        layout.addWidget(s3)
+
+        # --- Step 4: play + watch ----------------------------------------
+        s4 = QGroupBox("4 · Play the board and watch")
+        s4l = QVBoxLayout(s4)
+        s4l.addWidget(QLabel(
+            "In Q-Plus, deal the board (click 'Closed Room' / deal board 1). "
+            "biq E/W then bids and plays automatically — live log below. "
+            "When the match ends, save it in Q-Plus (Score → Save and "
+            "send) and aggregate the .qss with tools/qss_score_aggregate.py."))
+        self.cr_log = QTextEdit()
+        self.cr_log.setReadOnly(True)
+        self.cr_log.setFont(QFont("Monospace", 9))
+        self.cr_log.setMinimumHeight(160)
+        s4l.addWidget(self.cr_log)
+        layout.addWidget(s4)
+
+        layout.addStretch()
+        scroll.setWidget(inner)
+        outer_layout.addWidget(scroll)
+        return outer
+
+    def _cr_refresh_deal(self):
+        """Refresh the Closed Room tab's deal summary from the loaded
+        hands / dealer / vulnerability. No-op until the tab is built."""
+        if getattr(self, "cr_deal_display", None) is None:
+            return
+        if self.hands:
+            self._show_deal(self.hands, self.cr_deal_display, self.cr_base72)
+        d = self.dealer or "(not set)"
+        v = self.vulnerability or "(not set)"
+        self.cr_dv_label.setText(f"Dealer: {d}    Vulnerability: {v}")
+
+    def _cr_python_bin(self):
+        """Interpreter for the biq Q-NET client: prefer biq's own venv
+        (it has biq's deps), else fall back to system python3."""
+        import shutil
+        if BIQ_VENV_PYTHON.exists():
+            return str(BIQ_VENV_PYTHON)
+        return shutil.which("python3") or "python3"
+
+    def _cr_check_server(self):
+        """Probe for a TCP listener on the chosen port (non-intrusive:
+        reads `ss -tln` rather than opening a real Q-NET connection).
+        Returns True if something is listening."""
+        port = int(self.cr_port_spin.value())
+        listening = False
+        try:
+            out = subprocess.run(["ss", "-tln"], capture_output=True,
+                                 text=True, timeout=3).stdout
+            listening = any(f":{port} " in line for line in out.splitlines())
+        except (FileNotFoundError, subprocess.SubprocessError):
+            import socket
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=1.0):
+                    listening = True
+            except OSError:
+                listening = False
+        if listening:
+            self.cr_server_status.setText(
+                f"✓ A server is listening on 127.0.0.1:{port}.")
+            self.cr_server_status.setStyleSheet("color: #060;")
+        else:
+            self.cr_server_status.setText(
+                f"✗ Nothing on 127.0.0.1:{port} yet — start the "
+                f"Q-Plus bridge server.")
+            self.cr_server_status.setStyleSheet("color: #900;")
+        return listening
+
+    def _cr_connect_biq(self):
+        """Spawn the two biq Q-NET clients (East, West, --pair) that join
+        the Q-Plus server and play biq's side of the closed room."""
+        if not BIQ_QNET_CLIENT.is_file():
+            QMessageBox.warning(
+                self, "biq client not found",
+                f"Could not find the biq Q-NET client at:\n{BIQ_QNET_CLIENT}\n\n"
+                "The harness expects the biq repo under "
+                "FRI/bridgeIQ/bridgeIQ.")
+            return
+        if self._biq_procs:
+            QMessageBox.information(
+                self, "Already connected",
+                "biq E/W clients are already running. Disconnect first to "
+                "restart them.")
+            return
+        if not self._cr_check_server():
+            ret = QMessageBox.question(
+                self, "Server not detected",
+                "No Q-NET server seems to be listening on this port yet.\n"
+                "Start it in Q-Plus first, or connect anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if ret != QMessageBox.StandardButton.Yes:
+                return
+
+        port = int(self.cr_port_spin.value())
+        system = self.cr_system_combo.currentText().strip() or "SAYC"
+        auto = self.cr_auto_system.isChecked()
+        py = self._cr_python_bin()
+        try:
+            BIQ_QNET_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(BIQ_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+        # Unbuffered so the verbose session stream (handshake, bids, cards)
+        # AND any uncaught traceback land in the log file line-by-line for
+        # the live tail — without this a redirected stderr block-buffers.
+        env["PYTHONUNBUFFERED"] = "1"
+
+        started = []
+        for seat in ("E", "W"):
+            log_path = BIQ_QNET_LOG_DIR / f"closed_room_biq_{seat}.log"
+            # Redirect the child's stdout+stderr into this file: it carries
+            # the full verbose session output and any crash traceback, so a
+            # client that dies before joining still says why.
+            try:
+                logf = open(log_path, "wb")
+            except OSError:
+                logf = None
+            cmd = [py, str(BIQ_QNET_CLIENT),
+                   "--host", "127.0.0.1", "--port", str(port),
+                   "--seat", seat, "--pair",
+                   "--system", system]
+            if auto:
+                cmd.append("--auto-system")
+            try:
+                proc = subprocess.Popen(
+                    cmd, cwd=str(BIQ_ROOT), env=env,
+                    stdout=(logf or subprocess.DEVNULL),
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True)
+            except Exception as ex:
+                if logf is not None:
+                    logf.close()
+                self._cr_append_log(f"[harness] failed to start biq {seat}: {ex}")
+                continue
+            self._biq_procs[seat] = proc
+            self._biq_logfiles[seat] = logf
+            self._biq_log_paths[seat] = log_path
+            self._biq_log_offsets[seat] = 0
+            started.append(seat)
+            self._cr_append_log(
+                f"[harness] started biq {seat} (pid {proc.pid}) — "
+                f"system {system}{' (auto)' if auto else ''}")
+
+        if started:
+            self.cr_biq_status.setText(
+                f"biq running: {', '.join(started)} — waiting for "
+                f"handshake / deal…")
+            self.cr_biq_status.setStyleSheet("color: #060;")
+            self.cr_connect_btn.setEnabled(False)
+            self.cr_disconnect_btn.setEnabled(True)
+            self._cr_start_log_tail()
+        else:
+            self.cr_biq_status.setText("biq failed to start — see log.")
+            self.cr_biq_status.setStyleSheet("color: #900;")
+
+    def _cr_disconnect_biq(self):
+        """Stop both biq clients (and their process groups, so any DDS
+        helper children go with them)."""
+        import signal
+        for seat, proc in list(self._biq_procs.items()):
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            except Exception:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+        for seat, proc in list(self._biq_procs.items()):
+            try:
+                proc.wait(timeout=2)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        had_any = bool(self._biq_procs)
+        self._biq_procs.clear()
+        for seat, logf in list(self._biq_logfiles.items()):
+            try:
+                if logf is not None:
+                    logf.close()
+            except Exception:
+                pass
+        self._biq_logfiles.clear()
+        self._cr_stop_log_tail()
+        if getattr(self, "cr_biq_status", None) is not None:
+            self.cr_biq_status.setText("biq E/W stopped.")
+            self.cr_biq_status.setStyleSheet("color: #555;")
+            self.cr_connect_btn.setEnabled(True)
+            self.cr_disconnect_btn.setEnabled(False)
+        if had_any:
+            self._cr_append_log("[harness] biq E/W disconnected.")
+
+    def _cr_start_log_tail(self):
+        if self._biq_log_timer is None:
+            self._biq_log_timer = QTimer(self)
+            self._biq_log_timer.timeout.connect(self._cr_poll_logs)
+        self._biq_log_timer.start(700)
+
+    def _cr_stop_log_tail(self):
+        if self._biq_log_timer is not None:
+            self._biq_log_timer.stop()
+
+    def _cr_poll_logs(self):
+        """Append new lines from each biq client's --log file, and report
+        any client that has exited."""
+        for seat in ("E", "W"):
+            path = self._biq_log_paths.get(seat)
+            if not path or not path.exists():
+                continue
+            try:
+                data = path.read_bytes()
+            except OSError:
+                continue
+            off = self._biq_log_offsets.get(seat, 0)
+            if len(data) <= off:
+                continue
+            chunk = data[off:].decode("utf-8", "replace")
+            self._biq_log_offsets[seat] = len(data)
+            for line in chunk.splitlines():
+                if line.strip():
+                    self._cr_append_log(f"[{seat}] {line}")
+
+        for seat, proc in list(self._biq_procs.items()):
+            if proc.poll() is not None:
+                self._cr_append_log(
+                    f"[harness] biq {seat} exited (code {proc.returncode}).")
+                self._biq_procs.pop(seat, None)
+        if not self._biq_procs:
+            self._cr_stop_log_tail()
+            if getattr(self, "cr_connect_btn", None) is not None:
+                self.cr_connect_btn.setEnabled(True)
+                self.cr_disconnect_btn.setEnabled(False)
+                self.cr_biq_status.setText("biq E/W finished / stopped.")
+                self.cr_biq_status.setStyleSheet("color: #555;")
+
+    def _cr_append_log(self, text: str):
+        log = getattr(self, "cr_log", None)
+        if log is None:
+            return
+        log.append(text.rstrip("\n"))
+
+    def closeEvent(self, event):
+        """Tear down any running biq clients so they don't outlive the
+        harness window."""
+        try:
+            self._cr_disconnect_biq()
+        except Exception:
+            pass
+        super().closeEvent(event)
 
     # ---- Hand Entry tab ---------------------------------------------------
 
@@ -2333,12 +2746,16 @@ def main():
     parser.add_argument("--vuln", default="", help="Vulnerability (None / NS / EW / Both)")
     parser.add_argument("--no-launch-qplus", action="store_true",
                         help="Don't auto-launch Q-Plus (caller has already launched it)")
+    parser.add_argument("--closed-room", action="store_true",
+                        help="Open the Closed Room tab (biq E/W vs Q-Plus "
+                             "N/S over Q-NET) and walk through a live match")
     known, remaining = parser.parse_known_args()
 
     app = QApplication(remaining)
     app.setStyle("Fusion")
 
-    window = BridgeHarness(launch_qplus=not known.no_launch_qplus)
+    window = BridgeHarness(launch_qplus=not known.no_launch_qplus,
+                           closed_room=known.closed_room)
     window.show()
 
     if known.source:
@@ -2347,6 +2764,10 @@ def main():
         window.load_base72(known.base72)
     if known.dealer or known.vuln:
         window.set_dealer_vuln(known.dealer, known.vuln)
+    # load_base72 forces the Hand Entry tab forward; re-assert the Closed
+    # Room tab last so --closed-room always lands the user on the wizard.
+    if known.closed_room:
+        window.show_closed_room_tab()
 
     sys.exit(app.exec_())
 

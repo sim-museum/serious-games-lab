@@ -1700,6 +1700,24 @@ class TableView(QWidget):
         # Re-balance side columns now that the dummy widget is sized.
         self._balance_side_columns()
 
+    def face_up_seats(self) -> set:
+        """Logical seats whose hand is currently shown face-up.
+
+        Used by the instrumented (teaching) view to decide which hands
+        it may render as exact cards vs. inference only. Reads the live
+        widget state so it tracks dummy reveal, Show All, the local
+        seat, and network reveals without separate bookkeeping.
+        """
+        out = set()
+        for logical in Seat:
+            try:
+                w = self.hand_widgets[self._display_seat(logical)]
+                if w.isVisible() and getattr(w, "face_up", False):
+                    out.add(logical)
+            except (KeyError, AttributeError):
+                continue
+        return out
+
     def set_hand_visible(self, seat: Seat, visible: bool):
         # Re-balance side columns when an E or W hand toggles, so
         # showing the dummy doesn't shove the trick area off-centre.
