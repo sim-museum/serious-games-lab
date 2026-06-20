@@ -40,8 +40,8 @@ COLORS = {
 # Card dimensions - sized to fill 1920x1080 screen.
 # Bumped from 140×198 → 160×224 so the south human hand reads more
 # easily and the dummy 4-row layout has bigger pip / rank text.
-CARD_WIDTH = 160
-CARD_HEIGHT = 224
+CARD_WIDTH = 147
+CARD_HEIGHT = 206
 CARD_OVERLAP = 84  # How much cards overlap (shows ~76px per card — proportional to 75/140 before)
 # Inter-suit gap. We earlier had to dial this down to 55 because the
 # south row also carried a 140-px right spacer which pushed the fan
@@ -606,14 +606,14 @@ class TrickAreaWidget(QFrame):
     # band); the green rounded rectangle is painted as an inset rect
     # inside paintEvent, leaving the band as transparent so the
     # arrows visually sit outside the green box.
-    OUTER_MARGIN = 48        # space around the green box for arrows
+    OUTER_MARGIN = 34        # space around the green box for arrows
     GREEN_WIDTH  = 460
-    GREEN_HEIGHT = 400
+    GREEN_HEIGHT = 300
     AREA_WIDTH   = GREEN_WIDTH  + 2 * OUTER_MARGIN
     AREA_HEIGHT  = GREEN_HEIGHT + 2 * OUTER_MARGIN
 
-    TRICK_CARD_WIDTH = 130
-    TRICK_CARD_HEIGHT = 182
+    TRICK_CARD_WIDTH = 90
+    TRICK_CARD_HEIGHT = 126
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -661,7 +661,7 @@ class TrickAreaWidget(QFrame):
         center_x, center_y = m + gw // 2, m + gh // 2
         chevron_size = 40
         # Gap between the played card and the green-box border.
-        card_inset = 22
+        card_inset = 13
 
         positions = {
             Seat.NORTH: (center_x - tcw // 2, m + card_inset),
@@ -1712,7 +1712,10 @@ class TableView(QWidget):
         for logical in Seat:
             try:
                 w = self.hand_widgets[self._display_seat(logical)]
-                if w.isVisible() and getattr(w, "face_up", False):
+                # `not isHidden()` (the widget's own flag), NOT isVisible():
+                # when the instrumented view is shown the table_view page is
+                # hidden, which would make isVisible() False for every hand.
+                if (not w.isHidden()) and getattr(w, "face_up", False):
                     out.add(logical)
             except (KeyError, AttributeError):
                 continue

@@ -893,7 +893,7 @@ _SIGNAL_TAG_COLOR = {"enc": "#7ad17a", "disc": "#e08a8a",
 
 def _tag_html(tag: str) -> str:
     col = _SIGNAL_TAG_COLOR.get(tag, "#9fb6cc")
-    return (f"<span style='color:{col}; font-size:12px; font-weight:bold'>"
+    return (f"<span style='color:{col}; font-size:13px; font-weight:bold'>"
             f"{tag}</span>")
 
 
@@ -962,7 +962,7 @@ class HandGridWidget(QFrame):
         grid.setVerticalSpacing(1)
         hdr_k = QLabel("Known"); hdr_o = QLabel("Other")
         for h in (hdr_k, hdr_o):
-            h.setStyleSheet("color:#7fa8cc; font-size:12px; border:0;")
+            h.setStyleSheet("color:#7fa8cc; font-size:14px; border:0;")
         grid.addWidget(QLabel(""), 0, 0)
         grid.addWidget(hdr_k, 0, 1)
         grid.addWidget(hdr_o, 0, 2)
@@ -977,11 +977,11 @@ class HandGridWidget(QFrame):
                 f" border:0; background:transparent;")
             kl = QLabel("—")
             kl.setTextFormat(Qt.TextFormat.RichText)
-            kl.setFont(QFont("Monospace", 14))
+            kl.setFont(QFont("Monospace", 16))
             kl.setStyleSheet("border:0;")
             ol = QLabel("")
             ol.setTextFormat(Qt.TextFormat.RichText)
-            ol.setStyleSheet("color:#9fb6cc; font-size:12px; border:0;")
+            ol.setStyleSheet("color:#9fb6cc; font-size:14px; border:0;")
             self._suit_lbl[su] = sl
             self._known_lbl[su] = kl
             self._other_lbl[su] = ol
@@ -1017,10 +1017,10 @@ class TeachingView(QWidget):
         # the default tooltip palette renders black on this dark background.
         self.setStyleSheet(
             "TeachingView { background:#0a1d31; }"
-            "QLabel { font-size: 14px; }"
-            "QComboBox { font-size: 14px; }"
+            "QLabel { font-size: 16px; }"
+            "QComboBox { font-size: 15px; }"
             "QToolTip { color:#eaf2fb; background-color:#16324f;"
-            " border:1px solid #6fa8d6; padding:5px; font-size:13px; }")
+            " border:1px solid #6fa8d6; padding:5px; font-size:14px; }")
         root = QVBoxLayout(self)
         root.setContentsMargins(6, 6, 6, 6)
         root.setSpacing(4)
@@ -1105,7 +1105,7 @@ class TeachingView(QWidget):
             "2<sup style='color:#c0d060'>↦</sup> entry to partner · "
             "tinted = trumps")
         legend.setTextFormat(Qt.TextFormat.RichText)
-        legend.setStyleSheet("color:#9fb6cc; font-size:12px;")
+        legend.setStyleSheet("color:#9fb6cc; font-size:13px;")
         root.addWidget(legend)
         tip = ("Gold = current master · bold+underline = sure winner · "
                "ᵉ = entry (access to declarer/dummy) · ˢ = stopper (NT)")
@@ -1485,7 +1485,7 @@ class TeachingView(QWidget):
             if r11 is not None:
                 blocks.append(
                     f"<b>Lead</b> {_card_glyph(r11['card'])} "
-                    f"<span style='color:#9fb6cc;font-size:10px'>(4th-best?)</span>"
+                    f"<span style='color:#9fb6cc;font-size:12px'>(4th-best?)</span>"
                     f"<br>Rule of 11: {r11['higher']} higher out; you see "
                     f"{r11['seen']} → <b>{r11['hidden']}</b> in the hidden "
                     f"hand(s).")
@@ -1521,7 +1521,7 @@ class TeachingView(QWidget):
                     f"now <b>{seat.to_char()}</b> {_card_glyph(r['card'])} → "
                     f"{r['meaning']} {_tag_html(r['tag'])}")
             head = (f"<b>Signals</b> "
-                    f"<span style='color:#9fb6cc;font-size:10px'>"
+                    f"<span style='color:#9fb6cc;font-size:12px'>"
                     f"(N/S {ns_c} · E/W {ew_c})</span>")
             if lines:
                 blocks.append(head + "<br>" + "<br>".join(lines))
