@@ -53,6 +53,29 @@ BIQ_VENV_PYTHON = FRI_DIR / "bridgeIQ" / "venv" / "bin" / "python"
 BIQ_QNET_CLIENT = BIQ_ROOT / "tools" / "biq_qnet_client.py"
 BIQ_QNET_LOG_DIR = BIQ_ROOT / "tools" / "runs"
 
+# System wine 9 — REQUIRED to run Q-Plus's Q-NET server. Under the TkG 6.21
+# Lutris runner (used elsewhere for card glyphs) the q-net module accepts the
+# TCP connection but never reads it, so biq E/W can never attach. Override with
+# the WINE9_BIN env var if your wine-9 lives elsewhere.
+WINE9_BIN = os.environ.get("WINE9_BIN", "/usr/bin/wine")
+
+
+def _wine9_status(wine_bin=WINE9_BIN):
+    """Return (is_wine9, version_string). is_wine9 is True only when `wine_bin`
+    exists and reports a wine 9.x (or newer) version."""
+    if not (wine_bin and (os.path.isabs(wine_bin) and os.path.exists(wine_bin)
+                          or shutil.which(wine_bin))):
+        return (False, "")
+    try:
+        out = subprocess.run([wine_bin, "--version"], capture_output=True,
+                             text=True, timeout=10)
+        ver = (out.stdout or out.stderr or "").strip().splitlines()[0] if (
+            out.stdout or out.stderr) else ""
+    except (OSError, subprocess.SubprocessError):
+        return (False, "")
+    m = re.search(r'wine-(\d+)', ver)
+    return (bool(m) and int(m.group(1)) >= 9, ver)
+
 # ---------------------------------------------------------------------------
 # Card constants
 # ---------------------------------------------------------------------------
@@ -1402,6 +1425,7 @@ class BridgeHarness(QMainWindow):
         self.calibration = load_calibration()
         self._worker = None
         self._source_pbn_path = None  # for workflow
+        self._closed_room = closed_room  # opened for a live Q-NET closed room
         self._qplus_proc = None       # Popen handle for the Q-Plus child
         # Closed Room tab: the two biq Q-NET client processes (East, West)
         # and the timer that tails their logs into the on-screen view.
@@ -1513,14 +1537,35 @@ class BridgeHarness(QMainWindow):
                 "Ready (Q-Plus not installed under FRI/WP \u2014 comparison "
                 "workflow disabled).")
             return
-        # bridgeHarness.sh sources launcher/lib/wine_runner.sh which
-        # exports WINE / WINESERVER / WINELOADER pointing at the
-        # Lutris runner pinned for qplus.sh in
-        # config/wine_runners.csv (lutris-6.21-6-x86_64). Prefer that
-        # absolute path over PATH lookup so we use the same wine
-        # version the regular launcher uses \u2014 /usr/bin/wine renders
-        # Q-Plus's Hand Input dialog with empty card-glyph boxes.
-        wine_bin = os.environ.get('WINE') or shutil.which('wine')
+        # Two runners, two needs:
+        #  \u2022 Comparison workflow \u2192 the TkG Lutris runner (WINE env, set by
+        #    bridgeHarness.sh's wine_runner.sh) so Q-Plus's Hand Input dialog
+        #    renders the \u2660\u2665\u2666\u2663 card glyphs (/usr/bin/wine shows empty boxes).
+        #  \u2022 Closed room (live Q-NET) \u2192 system wine 9 is MANDATORY: under the
+        #    TkG 6.21 runner Q-Plus's q-net module accepts the TCP connection
+        #    but never reads it, so biq E/W can never attach. Glyphs don't
+        #    matter for the headless closed-room match.
+        if self._closed_room:
+            wine_bin = WINE9_BIN
+            ok, ver = _wine9_status(wine_bin)
+            if not ok:
+                from PyQt5.QtWidgets import QMessageBox
+                resp = QMessageBox.warning(
+                    self, "wine 9 not found",
+                    "The closed room needs system <b>wine 9</b> to run "
+                    "Q-Plus's Q-NET server.<br><br>"
+                    f"Found: <tt>{ver or (WINE9_BIN + ' missing')}</tt>.<br><br>"
+                    "Under the TkG runner Q-Plus accepts the connection but "
+                    "never reads it, so <b>biq E/W can't attach</b>. Install "
+                    "wine 9 (e.g. <tt>sudo apt install wine</tt>) for a "
+                    "working closed room.<br><br>Start Q-Plus anyway?",
+                    QMessageBox.Ok | QMessageBox.Cancel, QMessageBox.Cancel)
+                if resp != QMessageBox.Ok:
+                    self.statusBar().showMessage(
+                        "Q-Plus not started \u2014 wine 9 required for Q-NET.")
+                    return
+        else:
+            wine_bin = os.environ.get('WINE') or shutil.which('wine')
         if not wine_bin:
             self.statusBar().showMessage(
                 "Ready (wine not installed \u2014 Q-Plus cannot launch).")

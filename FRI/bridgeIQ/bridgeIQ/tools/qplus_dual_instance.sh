@@ -57,10 +57,22 @@ fi
 # render under it, but that's irrelevant for the headless biq client /
 # automated measurement. See backend/QNET_PROTOCOL.md.
 WINE_BIN_SERVER="${WINE_BIN_SERVER:-/usr/bin/wine}"
-if [ ! -x "$WINE_BIN_SERVER" ]; then
+if [ ! -x "$WINE_BIN_SERVER" ] && ! command -v "$WINE_BIN_SERVER" >/dev/null 2>&1; then
     echo "WARN: $WINE_BIN_SERVER not executable; falling back to \$WINE_BIN ($WINE_BIN)" >&2
     WINE_BIN_SERVER="$WINE_BIN"
 fi
+
+# Verify the server runner is wine 9+ — Q-NET only works under it. Returns 0
+# (true) when it is, and prints the version. Used to warn before the server
+# starts; we warn rather than hard-fail so a user who knows better can proceed.
+check_wine9() {
+    local bin="$1" ver
+    ver="$("$bin" --version 2>/dev/null | head -1)"
+    case "$ver" in
+        wine-9*|wine-1[0-9]*|wine-[2-9][0-9]*) WINE9_VER="$ver"; return 0 ;;
+        *) WINE9_VER="$ver"; return 1 ;;
+    esac
+}
 
 cmd="${1:-help}"
 
@@ -85,9 +97,19 @@ case "$cmd" in
     cd "$FRI_ROOT"
     export WINEPREFIX="$WP_SERVER"
     export WINEARCH=win32
-    echo "Launching Q-Plus SERVER instance..."
+    if check_wine9 "$WINE_BIN_SERVER"; then
+        echo "Launching Q-Plus SERVER instance..."
+        echo "  Wine runner: $WINE_BIN_SERVER ($WINE9_VER — q-net OK)"
+    else
+        echo "  ********************************************************************" >&2
+        echo "  WARNING: server wine runner is NOT wine 9 ($WINE9_VER)." >&2
+        echo "  Q-NET will NOT work: Q-Plus accepts the connection but never reads" >&2
+        echo "  it, so biq E/W can never attach. Install wine 9 (apt install wine)" >&2
+        echo "  or set WINE_BIN_SERVER=/usr/bin/wine. Launching anyway..." >&2
+        echo "  ********************************************************************" >&2
+        echo "Launching Q-Plus SERVER instance..."
+    fi
     echo "  Wine prefix: $WINEPREFIX"
-    echo "  Wine runner: $WINE_BIN_SERVER (system wine — required for q-net networking)"
     echo ""
     echo "Inside Q-Plus, do:"
     echo "  1. Menu Network → Start bridge server on this PC"
