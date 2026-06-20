@@ -1788,11 +1788,13 @@ class TeachingView(QWidget):
         per_suit = []
         ltot = 0
         for su in SUIT_ROWS:
-            n = 0
-            for hseat in (declarer, dummy):
-                if hseat is not None and hseat in visible:
-                    n += len(suit_loser_ranks(layout["known"][hseat][su], rem[su])
-                             - winners_in_hand(layout["known"][hseat][su], rem[su]))
+            holds = [layout["known"][hs][su] for hs in (declarer, dummy)
+                     if hs is not None and hs in visible]
+            if not holds:
+                continue
+            longer = max(holds, key=len)     # combined losers ≈ the long hand
+            n = len(suit_loser_ranks(longer, rem[su])
+                    - winners_in_hand(longer, rem[su]))
             ltot += n
             if n:
                 per_suit.append(f"{su.symbol()}{n}")
@@ -2413,3 +2415,173 @@ def _sys_name(system) -> str:
     if system is None:
         return "?"
     return getattr(system, "name", None) or str(system)
+
+
+# ---------------------------------------------------------------------------
+# Whole-deal instrumentation summary — a plain-text rundown of the deal through
+# EVERY panel lens, for feeding to an external reviewer (Claude) so its
+# commentary is grounded in biq's own instrumentation rather than generic.
+# ---------------------------------------------------------------------------
+
+def _review_carding_for():
+    """carding_for callback using the configured Preferences → Carding defaults."""
+    def f(seat: Seat) -> CardingConfig:
+        name = _default_preset_name("ns" if seat.is_ns() else "ew")
+        base = CARDING_PRESETS.get(name, _default_carding())
+        smith = {"Off": "off", "Standard": "standard",
+                 "Reverse": "reverse"}.get(_default_smith(), "off")
+        return replace(base, smith=smith)
+    return f
+
+
+def instrumentation_summary(original_hands, played_board, contract,
+                            declarer, dummy) -> str:
+    """Build a structured, plain-text instrumentation rundown of a COMPLETED
+    deal, covering each feature of the instrumented view:
+    counting, the declarer plan (top tricks, losers/LTC, draw-trumps, trump
+    split, entries, hold-up, danger hand, finesses), squeeze ingredients, the
+    opening-lead Rule-of-11 read, and the full defensive-signal log with
+    honesty. `original_hands` is the deal as dealt; `played_board` carries the
+    completed tricks. Robust: any section that can't be computed is skipped."""
+    out: List[str] = []
+
+    def sec(title):
+        out.append("")
+        out.append(title)
+
+    allv = set(Seat)
+    trump = contract.suit if (contract and contract.suit != Suit.NOTRUMP) else None
+
+    # Board (as dealt) for the static counting / planning lenses.
+    ob = None
+    try:
+        ob = BoardState(
+            board_number=getattr(played_board, "board_number", 0),
+            dealer=getattr(played_board, "dealer", Seat.NORTH),
+            vulnerability=getattr(played_board, "vulnerability", None),
+            hands={s: original_hands[s] for s in Seat})
+        if contract is not None:
+            ob.contract = contract
+    except Exception:
+        ob = None
+
+    # 1. COUNTING — HCP + shape of every hand.
+    try:
+        sec("COUNTING (deal as dealt):")
+        for s in Seat:
+            h = original_hands[s]
+            shp = "-".join(str(sum(1 for c in h.cards if c.suit == su))
+                           for su in SUIT_ROWS)
+            out.append(f"  {s.to_char()}: {h.hcp()} HCP  shape {shp} (S-H-D-C)")
+    except Exception:
+        pass
+
+    # 2. DECLARER PLAN — top tricks, losers, draw-trumps, trump split, entries,
+    #    hold-up, danger hand, finesses (all from the as-dealt layout).
+    if ob is not None and declarer is not None:
+        try:
+            layout = known_layout(ob, allv)
+            rem = layout["rem_ranks"]
+            sec("DECLARER PLAN:")
+            if dummy is not None:
+                tt = side_top_tricks(ob, (declarer, dummy), allv, layout)
+                if tt is not None:
+                    out.append(f"  Top tricks (declaring side): {tt}")
+            ltc = losing_trick_count({su: layout['known'][declarer][su]
+                                      for su in SUIT_ROWS})
+            out.append(f"  Declarer LTC: {ltc}")
+            # losers per suit (declaring side; combined ≈ the long hand)
+            per = []
+            for su in SUIT_ROWS:
+                holds = [layout['known'][hs][su] for hs in (declarer, dummy)
+                         if hs is not None]
+                longer = max(holds, key=len) if holds else []
+                n = len(suit_loser_ranks(longer, rem[su])
+                        - winners_in_hand(longer, rem[su]))
+                if n:
+                    per.append(f"{su.symbol()}{n}")
+            if per:
+                out.append(f"  Losers by suit: {' '.join(per)}")
+            if trump is None:
+                out.append("  Strain: notrump — count winners, develop the long suit.")
+            else:
+                out.append(f"  Trump: {trump.symbol()}. Draw trumps unless a ruff/"
+                           f"entry needs them first.")
+                if dummy is not None:
+                    held = (len(layout['known'][declarer][trump]) +
+                            len(layout['known'][dummy][trump]))
+                    o = max(0, len(rem[trump]) - held)
+                    odds = split_odds(o)
+                    if odds:
+                        out.append(f"  Trumps out: {o} — a-priori {odds[0][0]} "
+                                   f"{odds[0][1]}%")
+                    defs = [s for s in Seat if s not in (declarer, dummy)]
+                    out.append("  Defenders' trumps: " + " ".join(
+                        f"{d.to_char()}={len(layout['known'][d][trump])}"
+                        for d in defs))
+            ent = []
+            for hs, tag in ((declarer, "declarer"), (dummy, "dummy")):
+                if hs is None:
+                    continue
+                suits = [su.symbol() for su in SUIT_ROWS
+                         if boss_rank(rem, su) in layout['known'][hs][su]]
+                if suits:
+                    ent.append(f"{tag} {''.join(suits)}")
+            if ent:
+                out.append("  Entries (hold the master): " + "; ".join(ent))
+            hu = holdup_rule_of_seven(ob, contract, declarer, dummy, allv, layout)
+            if hu is not None and hu.get("n_total", 0) > 0:
+                out.append(f"  Hold-up (Rule of 7): duck {hu['n_total']} in "
+                           f"{hu['suit'].symbol()}")
+            dg = danger_info(ob, contract, declarer, allv, layout, {})
+            if dg is not None:
+                out.append(f"  Danger hand: {dg['seat'].to_char()} "
+                           f"(threat {dg['threat'].symbol()})")
+            for h in finesse_hints(declarer, dummy, allv, layout):
+                out.append(f"  Finesse: {h}")
+            sq = squeeze_threats(ob, declarer, dummy, allv, layout, trump)
+            if sq and sq.get("threats"):
+                tl = " ".join(f"{su.symbol()}({d.to_char()})"
+                              for su, d in sq["threats"].items())
+                line = f"  Squeeze: threats {tl}"
+                if sq.get("type"):
+                    line += f" [{sq['type']}]"
+                if sq.get("busy"):
+                    line += " busy " + "/".join(d.to_char() for d in sq["busy"])
+                out.append(line)
+        except Exception:
+            pass
+
+    # 3. OPENING LEAD — Rule of 11 read.
+    try:
+        r11 = rule_of_eleven(played_board, allv)
+        if r11 is not None:
+            sec("OPENING LEAD:")
+            out.append(f"  {r11['card'].suit.symbol()}{r11['card'].rank.to_char()}"
+                       f" as 4th-best → Rule of 11: {r11['higher']} higher out.")
+    except Exception:
+        pass
+
+    # 4. DEFENSIVE SIGNALS — the full read log with honesty (deal complete, so
+    #    every signaller's holding is reconstructable).
+    try:
+        reads = signal_reads(played_board, declarer, trump,
+                             _review_carding_for(), allv)
+        if reads:
+            sec("DEFENSIVE SIGNALS (what each card said):")
+            for r in reads:
+                suit = "" if r.get("kind") in ("dsc", "smith", "ruflead") \
+                    or r.get("tag") in ("ruff", "te") else f" {r['suit'].symbol()}"
+                mark = ""
+                if r.get("honest") is False:
+                    mark = " [FALSE-CARD]"
+                elif r.get("honest") is True:
+                    mark = " [honest]"
+                out.append(
+                    f"  T{r['trick'] + 1} {r['seat'].to_char()} "
+                    f"{r['card'].suit.symbol()}{r['card'].rank.to_char()} → "
+                    f"{r['meaning']}{suit} ({r['tag']}){mark}")
+    except Exception:
+        pass
+
+    return "\n".join(out).strip()

@@ -30,12 +30,15 @@ Upper hand, Entry); and defensive signals (attitude / count / suit-preference).
   hand (own + dummy + Show All); for a hidden hand only cards forced there (sole
   seat not shown out of the suit). Computed in `known_layout()`.
 - **OTHER column** — inferred length range (auction constraints ∩ play),
-  `void`, exact count for visible hands. `suit_length_text()`.
-- **Highlights on Known cards** — current master/boss (gold), top-run sure
-  winners (bold underline), trump suit (row tint), **entry** to declarer/dummy
-  (superscript `ᵉ` on the access card = highest sure winner, `top_entry_rank`),
-  and **stopper** (superscript `ˢ`, NT only, on the guarding honour by the
-  length-guard rule A/Kx/Qxx/Jxxx, `stopper_rank`). A legend row explains them.
+  `void`, exact count for visible hands (`suit_length_text()`), PLUS the latest
+  defensive-signal chip biq read in that suit and a "where's the missing honour"
+  hint (`_other_for`).
+- **Highlights on Known cards** — vivid, high-contrast markers (no superscripts):
+  current master/boss (gold fill), top-run sure winners (green box), **losers**
+  (red box, declaring side, `suit_loser_ranks`), cards **placed by deduction**
+  (dashed outline), trump suit (row tint), and inverse-video role chips —
+  **E** entry (`top_entry_rank`), **S** stopper (NT, `stopper_rank`), **KO**
+  knock-out, **→** card that reaches partner. A legend row explains them.
   `_render_known()`.
 - **Corner panels** — Contract/Tricks; Plan (top tricks, LTC, trump-control
   warning, entries, **danger hand + knock-out entry**); Count/Honours (Expert:
@@ -169,11 +172,45 @@ title and the Count panel.
 `signalling_convention` preference (`_app_default_udca`) and persist
 (`_save_prefs`/`_load_prefs` → `CONFIG/teaching_view.json`).
 
-All covered by `test_teaching_view.py` (12 tests).
+**Loser marking + label** — declaring-side loser cards (LTC-style,
+`suit_loser_ranks`) are drawn with a red box in the Known column, the
+counterpart of the green sure-winner box, with a per-suit "Losers: ♠N ♥N …"
+label in the Plan panel.
 
-Deferred (genuinely out of scope for now): a full Bayesian card-by-card
-distribution engine (today: vacant-space approximation + a-priori split odds);
-recognising specific squeeze TYPES (simple/double/trump/criss-cross) and
-auto-detecting the rectified-count moment; honesty for pure suit-preference reads
-(intent-based, not mechanically checkable); a dedicated Preferences-dialog tab
-for carding (the header selectors are the config surface, now persisted).
+**Bayesian card-by-card distribution** (`bayes_distribution`) — a Monte-Carlo
+posterior over the hidden hands: sample full deals of the unseen cards
+consistent with each seat's exact remaining count, the proven/forced cards, the
+shown voids AND the auction HCP/length constraints; aggregate to per-(seat,suit)
+length probabilities and per-honour location probabilities. Feeds the
+honour-placement labels + Other-column hints and a "Likely shape" line in the
+Count panel (Expert). Falls back to the vacant-space estimate when too few valid
+worlds are found.
+
+**Squeeze types + rectified count** — `squeeze_threats` now classifies the
+position (simple/positional, double, trump, criss-cross) and reports the
+rectified-count state (down to the last loser → the squeeze operates now) via
+`_declaring_losers`; shown in the Count panel.
+
+**Suit-preference read honesty** (`_suit_pref_honest`) — a Lavinthal discard /
+ruff-lead suit-preference signal is checked, when the signaller is face-up,
+against the side suit where they actually hold the values; a false-card shows a
+red ✗.
+
+**Carding Preferences tab** — Preferences → Carding sets the per-pair carding
+presets + Smith echo, persisted to `B-PREFER.CFG`. The header selectors and this
+tab share the SAME config (single source of truth); changing either updates both
+(`reload_carding_defaults`).
+
+**Whole-deal instrumentation summary for Claude** (`instrumentation_summary`) —
+when Claude Code reviews a completed deal it is fed a plain-text rundown of the
+deal through EVERY lens above (counting, the declarer plan, squeeze, the Rule-of-
+11 lead read, and the full defensive-signal log with honesty) and instructed to
+critique the deal through those features.
+
+All covered by `test_teaching_view.py` (16 tests).
+
+Deferred (genuinely out of scope for now): auto-detecting the EXACT rectified-
+count moment trick-by-trick during play (today: a static all-but-one-loser
+heuristic from the current holdings); intent-based honesty for signals that are
+not mechanically checkable even with the hand face-up (e.g. a deceptive
+suit-preference where the values genuinely sit elsewhere by design).

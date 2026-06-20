@@ -7963,6 +7963,22 @@ For more information, see the README file."""
             closed_summary += "\n"
         hand_text += closed_summary
 
+        # Instrumentation rundown — run EVERY instrumented-view lens over this
+        # completed deal so Claude can critique it through the same tools the
+        # teaching view shows the user (counting, losers/LTC, draw-trumps,
+        # trump split, entries, hold-up, danger hand, finesses, squeeze, and the
+        # defensive-signal log with honesty).
+        instr_summary = ""
+        try:
+            from .teaching_view import instrumentation_summary
+            decl = contract.declarer if contract is not None else None
+            dmy = decl.partner() if decl is not None else None
+            if self.original_hands and decl is not None:
+                instr_summary = instrumentation_summary(
+                    self.original_hands, board, contract, decl, dmy)
+        except Exception as e:
+            print(f"[claude] instrumentation summary failed: {e}", flush=True)
+
         human_seats = [f"{seat_names[s]} ({p.name})"
                        for s, p in self.controller.players.items()
                        if p.player_type == PlayerType.HUMAN]
@@ -8054,8 +8070,22 @@ For more information, see the README file."""
                     "  • Keep each annotation under ~25 words; multiple "
                     "short ones beat one long paragraph.\n"
                     "  • Do not output anything outside the BDL frame.\n\n"
+                    "Critique the deal THROUGH THE LENS of bridgeIQ's "
+                    "instrumented-view features, applied to THIS deal — work "
+                    "each one into your '>>' annotations where it's relevant: "
+                    "counting (HCP/shape), the declarer plan (top tricks, "
+                    "losers / LTC and which suits they're in, the draw-trumps "
+                    "question, the trump split, entries / transportation, the "
+                    "Rule-of-7 hold-up, the danger hand, finesses), squeeze "
+                    "ingredients (threats, type, rectified count), the "
+                    "opening-lead Rule-of-11 read, and the defensive-signal "
+                    "log (attitude / count / suit-preference / Smith / trump "
+                    "echo, and any false-cards). Use the INSTRUMENTATION block "
+                    "below as the ground truth for those reads.\n\n"
                     f"The human player(s) at the open room: {human_desc}."
                     f"{comparison_note}\n\n"
+                    f"INSTRUMENTATION (biq's reads for this deal):\n"
+                    f"{instr_summary or '(unavailable)'}\n\n"
                     f"BDL:\n{hand_text}"
                 )
                 # Opus 4.7 with extended thinking, longer timeout to
