@@ -189,7 +189,8 @@ def test_stopper_and_entry_highlights():
     html = tv._render_known([Rank.KING, Rank.THREE], Suit.SPADES,
                             winners=set(), boss=None,
                             entries={Rank.KING}, stoppers={Rank.KING})
-    assert ">e</sup>" in html and ">s</sup>" in html
+    # Vivid inverse-video chips (no superscripts): E = entry, S = stopper.
+    assert ">E</span>" in html and ">S</span>" in html
 
 
 def test_danger_hand_and_knockout_entry():
@@ -217,7 +218,7 @@ def test_danger_hand_and_knockout_entry():
     # A knock-out badge is rendered on that card.
     html = tv._render_known([Rank.ACE, Rank.FIVE], Suit.CLUBS, set(), None,
                             knockout={Rank.ACE})
-    assert "⊗</sup>" in html
+    assert ">KO</span>" in html
     # Suit contracts have no danger-hand read (you ruff).
     b.contract = Contract(level=4, suit=Suit.SPADES, declarer=Seat.SOUTH)
     assert tv.danger_info(b, b.contract, Seat.SOUTH, vis, layout, {}) is None

@@ -236,12 +236,18 @@ def known_layout(board: BoardState, visible: Set[Seat]):
 
     known: Dict[Seat, Dict[Suit, List[Rank]]] = {
         s: {su: [] for su in SUIT_ROWS} for s in Seat}
+    # inferred[seat][suit] = ranks PLACED by deduction in a HIDDEN hand (the
+    # card must be there because every other hidden hand is void / full). These
+    # are "known" but not "seen" — the grid outlines them differently.
+    inferred: Dict[Seat, Dict[Suit, Set[Rank]]] = {
+        s: {su: set() for su in SUIT_ROWS} for s in Seat}
     for s in visible:
         for c in visible_cards[s]:
             known[s][c.suit].append(c.rank)
     for s in hidden:
         for c in proven[s]:
             known[s][c.suit].append(c.rank)
+            inferred[s][c.suit].add(c.rank)
     for s in Seat:
         for su in SUIT_ROWS:
             known[s][su].sort()   # ACE=0 first → high to low
@@ -251,7 +257,8 @@ def known_layout(board: BoardState, visible: Set[Seat]):
         unseen_by_suit[c.suit] += 1
 
     return {
-        "known": known, "voids": voids, "remaining_count": remaining_count,
+        "known": known, "inferred": inferred, "voids": voids,
+        "remaining_count": remaining_count,
         "unseen_by_suit": unseen_by_suit, "all_played": all_played,
         "rem_ranks": remaining_ranks(all_played),
     }
@@ -911,6 +918,50 @@ def _tag_html(tag: str) -> str:
             f"{tag}</span>")
 
 
+# Short Other-column labels for each signal tag (the full text shows in the
+# Coaching/Signals panel; the grid cell just needs a glanceable chip).
+_SIGNAL_SHORT = {"enc": "likes", "disc": "drop", "even": "even", "odd": "odd",
+                 "ruff": "3·ruff", "te": "tr-ct", "sp": "S-pref",
+                 "smith": "Smith"}
+
+
+def _signal_chip(rd: dict) -> str:
+    """A vivid inverse-video chip summarising one defensive signal read for a
+    suit, with a ✗ flag when the engine knows it was a false-card."""
+    tag = rd.get("tag", "")
+    col = _SIGNAL_TAG_COLOR.get(tag, ACC_BLUE)
+    label = _SIGNAL_SHORT.get(tag) or (rd.get("meaning") or tag)
+    out = _chip(label, col)
+    if rd.get("honest") is False:
+        out += _chip("✗", ACC_RED)
+    return out
+
+
+def _honour_hint_map(board, visible, layout) -> Dict[Tuple[Seat, Suit], str]:
+    """For each hidden seat + suit, a compact 'where's the missing honour'
+    hint built from honour_placement's PROBABILISTIC verdicts (proven honours
+    already render in the Known column, so they're skipped here). We surface a
+    hint only for the favoured seat at ≥55% to avoid cluttering both defenders'
+    columns with the same coin-flip."""
+    import re
+    out: Dict[Tuple[Seat, Suit], List[str]] = {}
+    for su, r, label in honour_placement(board, visible, layout):
+        if "proven" in label:
+            continue
+        pcts = re.findall(r'([NESW])\s+(\d+)%', label)
+        if not pcts:
+            continue
+        sc, p = max(pcts, key=lambda x: int(x[1]))
+        if int(p) < 55:
+            continue
+        seat = {s.to_char(): s for s in Seat}.get(sc)
+        if seat is None:
+            continue
+        out.setdefault((seat, su), []).append(f"{r.to_char()}?{p}%")
+    return {k: _chip(" ".join(v), ACC_GOLD, outline=True)
+            for k, v in out.items()}
+
+
 def _card_glyph(card: Card) -> str:
     col = _suit_color(card.suit)
     return (f"<span style='color:{col}; font-weight:bold'>"
@@ -921,27 +972,55 @@ def _card_glyph(card: Card) -> str:
 # Qt widgets
 # ---------------------------------------------------------------------------
 
-PANEL_BG = "#0d141c"   # pokerIQ panel
+PANEL_BG = "#101820"   # pokerIQ panel (slightly warmer)
 PANEL_FG = "#eef3f7"   # pokerIQ ink
-GRID_BG = "#121922"   # pokerIQ card-dark
-MASTER_BG = "#ffe08a"
-TRUMP_TINT = "#3a5d3a"
+GRID_BG = "#13202a"   # pokerIQ card-dark (warmer green-ink)
+MASTER_BG = "#ffd54a"  # gold — current master
+TRUMP_TINT = "#1f5a3a"  # vivid green wash on the trump row
+PANEL_LINE = "#2c4a3a"  # warm green-grey panel border
+
+# pokerIQ accent palette — used for vivid, colour-coded markers and borders
+# instead of faint superscripts. Each role gets its own hue.
+ACC_GOLD   = "#d9b25b"   # master / declaring side
+ACC_GREEN  = "#3fb950"   # entry / sure access
+ACC_BLUE   = "#58a6ff"   # stopper / count
+ACC_RED    = "#f85149"   # danger / knock-out
+ACC_ORANGE = "#f0883e"   # cross-hand transport / suit-pref
+ACC_YELLOW = "#ffd84d"   # attention
+ACC_PURPLE = "#a87fff"   # busy / squeeze
+
+
+def _chip(text: str, bg: str, fg: str = "#06121f", outline: bool = False) -> str:
+    """An inverse-video (or outlined) inline badge — readable at a glance,
+    unlike the old tiny superscripts. `outline` draws the glyph in the accent
+    colour inside a thin border instead of solid fill (used for INFERRED, not
+    yet seen, cards)."""
+    if outline:
+        return (f"<span style='color:{bg}; border:1px solid {bg};"
+                f" border-radius:3px; padding:0 2px; font-size:12px;"
+                f" font-weight:bold;'>{text}</span>")
+    return (f"<span style='background:{bg}; color:{fg}; border-radius:3px;"
+            f" padding:0 3px; font-size:12px; font-weight:bold;'>{text}</span>")
 
 
 class _Panel(QFrame):
     """A small titled analysis panel for a corner of the cross."""
 
-    def __init__(self, title: str, parent=None):
+    def __init__(self, title: str, parent=None, accent: str = ACC_GOLD):
         super().__init__(parent)
         self.setFrameShape(QFrame.Shape.StyledPanel)
+        # A thicker accent left-border gives each panel its own hue (pokerIQ
+        # colour-coded panels) without shouting.
         self.setStyleSheet(
             f"background:{PANEL_BG}; color:{PANEL_FG};"
-            f" border:1px solid #243447; border-radius:6px;")
+            f" border:1px solid {PANEL_LINE}; border-left:3px solid {accent};"
+            f" border-radius:6px;")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(8, 6, 8, 6)
         lay.setSpacing(2)
         self._title = QLabel(title)
-        self._title.setStyleSheet("font-weight:bold; color:#d9b25b;")
+        self._title.setStyleSheet(f"font-weight:bold; color:{accent};"
+                                  f" border:0; font-size:15px;")
         lay.addWidget(self._title)
         self.body = QLabel("")
         self.body.setTextFormat(Qt.TextFormat.RichText)
@@ -960,15 +1039,18 @@ class HandGridWidget(QFrame):
     def __init__(self, seat: Seat, parent=None):
         super().__init__(parent)
         self.seat = seat
+        self._accent = PANEL_LINE
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setStyleSheet(
-            f"background:{GRID_BG}; border:1px solid #243447; border-radius:6px;")
+            f"background:{GRID_BG}; border:2px solid {PANEL_LINE};"
+            f" border-radius:8px;")
         outer = QVBoxLayout(self)
         outer.setContentsMargins(6, 4, 6, 4)
         outer.setSpacing(2)
 
         self.title = QLabel(seat.name.title())
-        self.title.setStyleSheet("color:#eef3f7; font-weight:bold; border:0;")
+        self.title.setStyleSheet("color:#eef3f7; font-weight:bold; border:0;"
+                                 " font-size:16px;")
         outer.addWidget(self.title)
 
         grid = QGridLayout()
@@ -976,7 +1058,8 @@ class HandGridWidget(QFrame):
         grid.setVerticalSpacing(8)
         hdr_k = QLabel("Known"); hdr_o = QLabel("Other")
         for h in (hdr_k, hdr_o):
-            h.setStyleSheet("color:#7fa8cc; font-size:14px; border:0;")
+            h.setStyleSheet(f"color:{ACC_GREEN}; font-size:14px; border:0;"
+                            " font-weight:bold;")
         grid.addWidget(QLabel(""), 0, 0)
         grid.addWidget(hdr_k, 0, 1)
         grid.addWidget(hdr_o, 0, 2)
@@ -1010,6 +1093,16 @@ class HandGridWidget(QFrame):
     def set_title(self, text: str):
         self.title.setText(text)
 
+    def set_accent(self, color: str):
+        """Recolour the hand frame's border — declaring side gold, defenders
+        green, danger hand red (pokerIQ-style coloured seat boxes)."""
+        if color == self._accent:
+            return
+        self._accent = color
+        self.setStyleSheet(
+            f"background:{GRID_BG}; border:2px solid {color};"
+            f" border-radius:8px;")
+
     def set_row(self, suit: Suit, known_html: str, other_html: str,
                 trump: bool):
         self._known_lbl[suit].setText(known_html or "—")
@@ -1030,7 +1123,9 @@ class TeachingView(QWidget):
         # Bigger base text throughout, and a readable (light-on-dark) tooltip —
         # the default tooltip palette renders black on this dark background.
         self.setStyleSheet(
-            "TeachingView { background:#0c1117; }"
+            # warm radial-gradient backdrop, matching pokerIQ's felt glow
+            "TeachingView { background:qradialgradient(cx:0.5, cy:0.0,"
+            " radius:1.2, fx:0.5, fy:0.0, stop:0 #18242e, stop:0.7 #0a0e13); }"
             "QLabel { font-size: 16px; }"
             "QComboBox { font-size: 15px; }"
             "QToolTip { color:#eaf2fb; background-color:#16324f;"
@@ -1085,10 +1180,10 @@ class TeachingView(QWidget):
         grid = QGridLayout()
         grid.setSpacing(6)
         # Panels in the corners.
-        self.p_contract = _Panel("Contract / Tricks")
-        self.p_plan = _Panel("Plan")
-        self.p_count = _Panel("Count / Honours")
-        self.p_coach = _Panel("Coaching / Signals")
+        self.p_contract = _Panel("Contract / Tricks", accent=ACC_GOLD)
+        self.p_plan = _Panel("Plan", accent=ACC_GREEN)
+        self.p_count = _Panel("Count / Honours", accent=ACC_BLUE)
+        self.p_coach = _Panel("Coaching / Signals", accent=ACC_ORANGE)
         # Hand grids on the edges.
         self.hands = {s: HandGridWidget(s) for s in Seat}
         # Centre: current trick + on-lead.
@@ -1110,19 +1205,26 @@ class TeachingView(QWidget):
         root.addLayout(grid, stretch=1)
 
         legend = QLabel(
-            "Known-column highlights:  "
-            "<span style='background:#ffe08a;color:#222'>&nbsp;A&nbsp;</span> master · "
-            "<b><u>K</u></b> sure winner · "
-            "Q<sup style='color:#5fd0a0'>e</sup> entry · "
-            "J<sup style='color:#7fb3e0'>s</sup> stopper · "
-            "A<sup style='color:#ff7a7a'>⊗</sup> knock-out · "
-            "2<sup style='color:#c0d060'>↦</sup> entry to partner · "
-            "tinted = trumps")
+            "Known column:  "
+            + _chip("A", MASTER_BG) + " master · "
+            + "<span style='border:1px solid " + ACC_GREEN + ";border-radius:3px;"
+              "padding:0 2px'>K</span> sure winner · "
+            + "<span style='border:1px dashed " + ACC_YELLOW + ";border-radius:3px;"
+              "padding:0 2px'>Q</span> placed (inferred) · "
+            + _chip("E", ACC_GREEN) + " entry · "
+            + _chip("S", ACC_BLUE) + " stopper · "
+            + _chip("KO", ACC_RED) + " knock-out · "
+            + _chip("→", ACC_ORANGE) + " to partner · "
+            + "<span style='background:" + TRUMP_TINT + "'>&nbsp;♣&nbsp;</span> trumps")
         legend.setTextFormat(Qt.TextFormat.RichText)
         legend.setStyleSheet("color:#9fb6cc; font-size:13px;")
         root.addWidget(legend)
-        tip = ("Gold = current master · bold+underline = sure winner · "
-               "ᵉ = entry (access to declarer/dummy) · ˢ = stopper (NT)")
+        tip = ("Boxed letters are role chips: E = entry (access to "
+               "declarer/dummy), S = stopper (NT), KO = knock-out, → = card "
+               "that reaches partner. Gold fill = current master; green box = "
+               "sure winner; dashed box = a card PLACED by deduction (hidden "
+               "hand). The Other column shows length, the latest defensive "
+               "signal, and where a missing honour probably sits.")
         for hw in self.hands.values():
             hw.setToolTip(tip)
 
@@ -1231,10 +1333,28 @@ class TeachingView(QWidget):
         squeeze = (squeeze_threats(board, declarer, dummy, visible, layout)
                    if self.detail == EXPERT else None)
 
+        # Per-(seat,suit) defensive-signal reads + probabilistic honour hints —
+        # surfaced in each defender's OTHER column so the right-hand side tells
+        # you what biq's carding has revealed, not just suit lengths.
+        sig_map: Dict[Tuple[Seat, Suit], dict] = {}
+        hint_map: Dict[Tuple[Seat, Suit], str] = {}
+        if self.detail != BEGINNER and contract is not None and declarer is not None:
+            try:
+                for r in signal_reads(board, declarer, trump,
+                                      self._carding_for, visible):
+                    sig_map[(r["seat"], r["suit"])] = r   # chronological → latest
+            except Exception:
+                sig_map = {}
+            try:
+                hint_map = _honour_hint_map(board, visible, layout)
+            except Exception:
+                hint_map = {}
+
         # Hand grids.
         for s in Seat:
             self._render_hand(s, board, visible, layout, rem, trump,
-                              constraints, declarer, dummy, danger, squeeze)
+                              constraints, declarer, dummy, danger, squeeze,
+                              sig_map, hint_map)
 
         # Panels.
         self._render_contract_panel(board, contract, declarer)
@@ -1246,16 +1366,26 @@ class TeachingView(QWidget):
         self._render_centre(board, contract, declarer, trump)
 
     def _render_hand(self, seat, board, visible, layout, rem, trump,
-                     constraints, declarer, dummy, danger=None, squeeze=None):
+                     constraints, declarer, dummy, danger=None, squeeze=None,
+                     sig_map=None, hint_map=None):
         w = self.hands[seat]
+        sig_map = sig_map or {}
+        hint_map = hint_map or {}
         role = ""
+        accent = PANEL_LINE
         if declarer is not None and seat == declarer:
             role = " · Declarer"
+            accent = ACC_GOLD
         elif dummy is not None and seat == dummy:
             role = " · Dummy"
+            accent = ACC_GOLD
+        elif declarer is not None and seat.is_ns() != declarer.is_ns():
+            accent = ACC_GREEN          # a defender
         is_danger = bool(danger) and danger["seat"] == seat
         if is_danger:
             role += "  ⚠ danger"
+            accent = ACC_RED
+        w.set_accent(accent)
         if squeeze and seat in squeeze.get("busy", []):
             role += "  ◆ busy"
         n_left = layout["remaining_count"][seat]
@@ -1304,19 +1434,35 @@ class TeachingView(QWidget):
                     if (b is not None and b in layout["known"][mate][su]
                             and b not in known):
                         cross = {max(known)}      # lowest card (highest value)
+            inferred = layout.get("inferred", {}).get(seat, {}).get(su, set())
             known_html = _render_known(known, su, wins, boss, entries,
-                                       stoppers, knockout, cross)
+                                       stoppers, knockout, cross, inferred)
             other_html = self._other_for(seat, su, visible, layout,
-                                         constraints)
+                                         constraints, sig_map, hint_map)
             w.set_row(su, known_html, other_html, trump == su)
 
-    def _other_for(self, seat, su, visible, layout, constraints) -> str:
+    def _other_for(self, seat, su, visible, layout, constraints,
+                   sig_map=None, hint_map=None) -> str:
         if self.detail == BEGINNER:
             # Beginners: only proven voids, nothing speculative.
             if seat not in visible and su in layout["voids"][seat]:
-                return "void"
+                return "<span style='color:#9fb6cc'>void</span>"
             return ""
-        return suit_length_text(seat, su, visible, layout, constraints)
+        sig_map = sig_map or {}
+        hint_map = hint_map or {}
+        parts = [f"<span style='color:#9fb6cc'>"
+                 f"{suit_length_text(seat, su, visible, layout, constraints)}"
+                 f"</span>"]
+        # What biq's defensive carding has told us about this defender's suit.
+        rd = sig_map.get((seat, su))
+        if rd is not None:
+            parts.append(_signal_chip(rd))
+        # Where a missing honour probably sits (proven ones already show in the
+        # Known column with a dashed outline, so this is the speculative part).
+        hint = hint_map.get((seat, su))
+        if hint:
+            parts.append(hint)
+        return " ".join(parts)
 
     def _render_contract_panel(self, board, contract, declarer):
         if contract is None:
@@ -1368,6 +1514,25 @@ class TeachingView(QWidget):
                     top = odds[0]
                     lines.append(f"Trumps out: <b>{out}</b> — likely "
                                  f"{top[0]} ({top[1]}%)")
+                # Defenders' actual split, shown once it becomes CLEAR (a
+                # defender shows out, or is face-up). The "count the hand"
+                # payoff: when one defender is void the other holds them all.
+                defs = [s for s in Seat if s not in (declarer, dummy)]
+                voided = [d for d in defs if trump in layout['voids'][d]]
+                facing = [d for d in defs if d in visible]
+                if len(voided) == 1:
+                    other = [d for d in defs if d not in voided][0]
+                    lines.append(
+                        f"<span style='color:{ACC_GREEN}'>Defenders' trumps: "
+                        f"<b>{voided[0].to_char()}</b> void → "
+                        f"<b>{other.to_char()}</b> holds all {out}.</span>")
+                elif facing:
+                    cnt = " · ".join(
+                        (f"<b>{d.to_char()} {len(layout['known'][d][trump])}</b>"
+                         if d in visible else f"{d.to_char()} ?") for d in defs)
+                    lines.append(
+                        f"<span style='color:{ACC_GREEN}'>Defenders' trumps: "
+                        f"{cnt}</span>")
             # Master trump still out?
             boss_t = boss_rank(layout["rem_ranks"], trump)
             holder = _holder_of(layout, trump, boss_t, visible)
@@ -1629,32 +1794,42 @@ def _render_known(ranks_high_to_low: List[Rank], suit: Suit,
                   entries: Optional[Set[Rank]] = None,
                   stoppers: Optional[Set[Rank]] = None,
                   knockout: Optional[Set[Rank]] = None,
-                  cross: Optional[Set[Rank]] = None) -> str:
+                  cross: Optional[Set[Rank]] = None,
+                  inferred: Optional[Set[Rank]] = None) -> str:
     if not ranks_high_to_low:
         return "<span style='color:#5f7689'>—</span>"
     entries = entries or set()
     stoppers = stoppers or set()
     knockout = knockout or set()
     cross = cross or set()
+    inferred = inferred or set()
     col = _suit_color(suit)
     parts = []
     for r in ranks_high_to_low:
         ch = r.to_char()
         style = f"color:{col};"
         if boss is not None and r == boss:
-            style += (f"background:{MASTER_BG}; color:#222; font-weight:bold;"
-                      f" border-radius:3px; padding:0 2px;")
+            style += (f"background:{MASTER_BG}; color:#06121f; font-weight:bold;"
+                      f" border-radius:3px; padding:0 3px;")
         elif r in winners:
-            style += "font-weight:bold; text-decoration:underline;"
+            # sure winner — vivid green box (was a faint underline)
+            style += (f"color:{col}; border:1px solid {ACC_GREEN};"
+                      f" border-radius:3px; padding:0 2px; font-weight:bold;")
+        elif r in inferred:
+            # PLACED by deduction (hand is hidden but this card must be here) —
+            # dashed outline so it reads as "known, not seen".
+            style += (f"color:{col}; border:1px dashed {ACC_YELLOW};"
+                      f" border-radius:3px; padding:0 2px;")
+        # Vivid inverse-video role chips replace the old superscripts.
         badge = ""
         if r in entries:        # access to this hand
-            badge += "<sup style='color:#5fd0a0'>e</sup>"
+            badge += _chip("E", ACC_GREEN)
         if r in stoppers:       # guards the suit (NT)
-            badge += "<sup style='color:#7fb3e0'>s</sup>"
+            badge += _chip("S", ACC_BLUE)
         if r in knockout:       # danger hand's entry to knock out
-            badge += "<sup style='color:#ff7a7a'>⊗</sup>"
+            badge += _chip("KO", ACC_RED)
         if r in cross:          # low card that reaches partner's winner
-            badge += "<sup style='color:#c0d060'>↦</sup>"
+            badge += _chip("→", ACC_ORANGE)
         parts.append(f"<span style='{style}'>{ch}</span>{badge}")
     return " ".join(parts)
 
