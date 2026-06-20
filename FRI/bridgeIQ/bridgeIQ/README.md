@@ -1,9 +1,14 @@
 # BridgeIQ
 
 A PyQt6 bridge application for Ubuntu 24.04 with a classic desktop Bridge
-interface. Bidding is rule-based (Q-Plus-style); card play uses Monte-Carlo
-sampling on top of the libdds double-dummy solver. No neural networks, no
-TensorFlow.
+interface. Bidding is rule-based and system-driven (Q-Plus-style, seven
+systems); card play uses a no-peek alpha-mu engine (DDS on belief-sampled
+hidden layouts, never peeking) with a Monte-Carlo + DDS fallback, on top of the
+libdds double-dummy solver. No neural networks, no TensorFlow.
+
+> For the full guide see `../DOC/bridgeIQ_README.md`; for engineering notes see
+> `CLAUDE.md`. The instrumented (teaching) view is documented in
+> `docs/instrumented_view.md`.
 
 ## Features
 
@@ -165,7 +170,8 @@ bridgeIQ/
 In `Configuration > Players`:
 - **Human**: You control this seat
 - **Computer**: bridgeIQ plays this seat
-- **External**: For network play (not implemented)
+- **External**: a networked seat (LAN play, or a Q-NET seat for closed-room
+  play vs Q-Plus)
 
 ### Game Modes
 
