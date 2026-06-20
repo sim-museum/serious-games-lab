@@ -138,6 +138,13 @@ class PreferencesConfig:
     # "demo"  → Q-Plus demo build available (limited boards).
     # "full"  → full licensed Q-Plus available.
     qplus_availability: str = "none"
+    # Per-pair carding agreement shown/decoded in the instrumented view. Preset
+    # names from teaching_view.CARDING_PRESETS ("Standard", "Upside-down",
+    # "Std + Lavinthal", "UDCA + Lavinthal"). Empty = derive from
+    # signalling_convention. smith_echo ∈ Off / Standard / Reverse.
+    carding_ns: str = ""
+    carding_ew: str = ""
+    smith_echo: str = "Off"
 
 
 @dataclass
@@ -429,6 +436,14 @@ class ConfigManager:
             v = data["preference.qplus_availability"].strip().lower()
             if v in ("none", "demo", "full"):
                 self.config.preferences.qplus_availability = v
+        if "preference.carding_ns" in data:
+            self.config.preferences.carding_ns = data["preference.carding_ns"].strip()
+        if "preference.carding_ew" in data:
+            self.config.preferences.carding_ew = data["preference.carding_ew"].strip()
+        if "preference.smith_echo" in data:
+            v = data["preference.smith_echo"].strip()
+            if v in ("Off", "Standard", "Reverse"):
+                self.config.preferences.smith_echo = v
 
     def save_preferences(self):
         """Save user preferences."""
@@ -476,6 +491,9 @@ class ConfigManager:
                 "1" if self.config.preferences.claude_code_enabled else "0"),
             "preference.qplus_availability":
                 self.config.preferences.qplus_availability,
+            "preference.carding_ns": self.config.preferences.carding_ns,
+            "preference.carding_ew": self.config.preferences.carding_ew,
+            "preference.smith_echo": self.config.preferences.smith_echo,
         }
         self._write_config_file(filepath, data, description="BridgeIQ preferences")
 

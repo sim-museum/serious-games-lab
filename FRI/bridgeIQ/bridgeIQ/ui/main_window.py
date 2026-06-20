@@ -3656,6 +3656,11 @@ For more information, see the README file."""
         # Apply the AI & Network toggles live.
         self._apply_qplus_visibility()
         self._apply_bid_info_visibility()
+        # Carding defaults may have changed — refresh the instrumented view's
+        # header selectors from the shared Preferences config.
+        tv = getattr(self, "teaching_view", None)
+        if tv is not None and hasattr(tv, "reload_carding_defaults"):
+            tv.reload_carding_defaults()
 
     def _on_show_all_hands(self):
         """Toggle showing all hands"""

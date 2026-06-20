@@ -60,6 +60,10 @@ class PreferencesDialog(QDialog):
         ai_tab = self._create_ai_tab()
         tabs.addTab(ai_tab, "AI && Network")
 
+        # Carding tab (defensive-signalling defaults for the instrumented view)
+        carding_tab = self._create_carding_tab()
+        tabs.addTab(carding_tab, "Carding")
+
         layout.addWidget(tabs)
 
         # Buttons
@@ -445,6 +449,61 @@ class PreferencesDialog(QDialog):
         layout.addStretch()
         return widget
 
+    # Carding presets surfaced in the dialog. "" = derive from the signalling
+    # convention; the rest match teaching_view.CARDING_PRESETS.
+    _CARDING_CHOICES = [
+        ("Auto (from signalling convention)", ""),
+        ("Standard", "Standard"),
+        ("Upside-down (UDCA)", "Upside-down"),
+        ("Std + Lavinthal", "Std + Lavinthal"),
+        ("UDCA + Lavinthal", "UDCA + Lavinthal"),
+    ]
+
+    def _create_carding_tab(self) -> QWidget:
+        """Defensive-signalling agreements per pair + Smith echo — the defaults
+        the instrumented (teaching) view decodes signals with."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        grp = QGroupBox("Defensive carding agreements")
+        gl = QVBoxLayout()
+
+        ns_row = QHBoxLayout()
+        ns_row.addWidget(QLabel("N/S carding:"))
+        self.carding_ns_combo = QComboBox()
+        self.carding_ns_combo.addItems([lbl for lbl, _ in self._CARDING_CHOICES])
+        ns_row.addWidget(self.carding_ns_combo)
+        ns_row.addStretch()
+        gl.addLayout(ns_row)
+
+        ew_row = QHBoxLayout()
+        ew_row.addWidget(QLabel("E/W carding:"))
+        self.carding_ew_combo = QComboBox()
+        self.carding_ew_combo.addItems([lbl for lbl, _ in self._CARDING_CHOICES])
+        ew_row.addWidget(self.carding_ew_combo)
+        ew_row.addStretch()
+        gl.addLayout(ew_row)
+
+        sm_row = QHBoxLayout()
+        sm_row.addWidget(QLabel("Smith echo (NT):"))
+        self.smith_echo_combo = QComboBox()
+        self.smith_echo_combo.addItems(["Off", "Standard", "Reverse"])
+        sm_row.addWidget(self.smith_echo_combo)
+        sm_row.addStretch()
+        gl.addLayout(sm_row)
+
+        note = QLabel(
+            "These set how the instrumented view reads attitude / count / "
+            "suit-preference / Smith signals for each pair. You can also change "
+            "them live from the instrumented view's header; both share this "
+            "setting.")
+        note.setWordWrap(True)
+        gl.addWidget(note)
+        grp.setLayout(gl)
+        layout.addWidget(grp)
+        layout.addStretch()
+        return widget
+
     def _load_current_settings(self):
         """Load current configuration into dialog."""
         # Mouse settings
@@ -486,6 +545,17 @@ class PreferencesDialog(QDialog):
         self.qplus_combo.setCurrentIndex(
             {"none": 0, "demo": 1, "full": 2}.get(
                 getattr(self.prefs, "qplus_availability", "none"), 0))
+        # Carding tab
+        vals = [v for _, v in self._CARDING_CHOICES]
+        def _carding_idx(v):
+            return vals.index(v) if v in vals else 0
+        self.carding_ns_combo.setCurrentIndex(
+            _carding_idx(getattr(self.prefs, "carding_ns", "")))
+        self.carding_ew_combo.setCurrentIndex(
+            _carding_idx(getattr(self.prefs, "carding_ew", "")))
+        sm = getattr(self.prefs, "smith_echo", "Off")
+        self.smith_echo_combo.setCurrentText(
+            sm if sm in ("Off", "Standard", "Reverse") else "Off")
 
         # Bidding settings
         self.show_alerts_check.setChecked(self.prefs.show_alert_marks)
@@ -589,6 +659,10 @@ class PreferencesDialog(QDialog):
         self.prefs.claude_code_enabled = self.claude_enabled_check.isChecked()
         self.prefs.qplus_availability = ("none", "demo", "full")[
             self.qplus_combo.currentIndex()]
+        vals = [v for _, v in self._CARDING_CHOICES]
+        self.prefs.carding_ns = vals[self.carding_ns_combo.currentIndex()]
+        self.prefs.carding_ew = vals[self.carding_ew_combo.currentIndex()]
+        self.prefs.smith_echo = self.smith_echo_combo.currentText()
 
         # Bidding engine
         self.prefs.bidding_engine = self.bidding_engine_combo.currentData() or "native"

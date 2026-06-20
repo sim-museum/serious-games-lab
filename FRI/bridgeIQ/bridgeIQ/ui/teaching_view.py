@@ -137,8 +137,30 @@ def _default_carding() -> CardingConfig:
                          discards="attitude")
 
 
-def _default_preset_name() -> str:
+def _cfg_prefs():
+    try:
+        from backend.config import get_config_manager
+        return get_config_manager().config.preferences
+    except Exception:
+        return None
+
+
+def _default_preset_name(side: str = "ns") -> str:
+    """Default carding preset for a side ('ns'/'ew'), from Preferences →
+    Carding when set, else derived from the signalling convention."""
+    p = _cfg_prefs()
+    if p is not None:
+        v = (getattr(p, "carding_ns", "") if side == "ns"
+             else getattr(p, "carding_ew", "")) or ""
+        if v in CARDING_PRESETS:
+            return v
     return "Upside-down" if _app_default_udca() else "Standard"
+
+
+def _default_smith() -> str:
+    p = _cfg_prefs()
+    v = getattr(p, "smith_echo", "Off") if p is not None else "Off"
+    return v if v in ("Off", "Standard", "Reverse") else "Off"
 
 
 def _tv_config_path() -> Path:
@@ -1371,19 +1393,19 @@ class TeachingView(QWidget):
         self.detail_combo.currentTextChanged.connect(self._on_detail_changed)
         header.addWidget(self.detail_combo)
 
-        # Per-pair carding agreement — N/S and E/W decoded independently.
-        default_preset = _default_preset_name()
+        # Per-pair carding agreement — N/S and E/W decoded independently. The
+        # defaults come from Preferences → Carding (single shared source).
         header.addSpacing(12)
         header.addWidget(self._mk_label("Carding N/S:"))
         self.ns_carding_combo = QComboBox()
         self.ns_carding_combo.addItems(list(CARDING_PRESETS.keys()))
-        self.ns_carding_combo.setCurrentText(default_preset)
+        self.ns_carding_combo.setCurrentText(_default_preset_name("ns"))
         self.ns_carding_combo.currentTextChanged.connect(self._on_carding_changed)
         header.addWidget(self.ns_carding_combo)
         header.addWidget(self._mk_label("E/W:"))
         self.ew_carding_combo = QComboBox()
         self.ew_carding_combo.addItems(list(CARDING_PRESETS.keys()))
-        self.ew_carding_combo.setCurrentText(default_preset)
+        self.ew_carding_combo.setCurrentText(_default_preset_name("ew"))
         self.ew_carding_combo.currentTextChanged.connect(self._on_carding_changed)
         header.addWidget(self.ew_carding_combo)
 
@@ -1392,7 +1414,7 @@ class TeachingView(QWidget):
         header.addWidget(self._mk_label("Smith:"))
         self.smith_combo = QComboBox()
         self.smith_combo.addItems(["Off", "Standard", "Reverse"])
-        self.smith_combo.setCurrentText("Off")
+        self.smith_combo.setCurrentText(_default_smith())
         self.smith_combo.currentTextChanged.connect(self._on_carding_changed)
         header.addWidget(self.smith_combo)
 
@@ -1457,28 +1479,51 @@ class TeachingView(QWidget):
         self._last_state = None    # cached args for re-render on detail change
         self._load_prefs()         # restore persisted selectors
 
+    def reload_carding_defaults(self):
+        """Re-read the carding selectors from Preferences → Carding (called
+        when the user changes them in the Preferences dialog). Block the combo
+        signals so this doesn't re-save stale values mid-update."""
+        ns, ew, sm = (_default_preset_name("ns"), _default_preset_name("ew"),
+                      _default_smith())
+        for cb, val in ((self.ns_carding_combo, ns),
+                        (self.ew_carding_combo, ew),
+                        (self.smith_combo, sm)):
+            cb.blockSignals(True)
+            cb.setCurrentText(val)
+            cb.blockSignals(False)
+        if self._last_state is not None:
+            self.refresh(**self._last_state)
+
     def _load_prefs(self):
+        # Detail persists in the view's own json; carding lives in the shared
+        # Preferences config (so the Preferences → Carding tab and these header
+        # selectors are one source of truth) and is already applied above.
         try:
             data = json.loads(_tv_config_path().read_text())
         except Exception:
             return
         if data.get("detail") in (BEGINNER, INTERMEDIATE, EXPERT):
             self.detail_combo.setCurrentText(data["detail"])
-        if data.get("ns_carding") in CARDING_PRESETS:
-            self.ns_carding_combo.setCurrentText(data["ns_carding"])
-        if data.get("ew_carding") in CARDING_PRESETS:
-            self.ew_carding_combo.setCurrentText(data["ew_carding"])
-        if data.get("smith") in ("Off", "Standard", "Reverse"):
-            self.smith_combo.setCurrentText(data["smith"])
 
     def _save_prefs(self):
         try:
             _tv_config_path().write_text(json.dumps({
                 "detail": self.detail_combo.currentText(),
-                "ns_carding": self.ns_carding_combo.currentText(),
-                "ew_carding": self.ew_carding_combo.currentText(),
-                "smith": self.smith_combo.currentText(),
             }, indent=2))
+        except Exception:
+            pass
+
+    def _save_carding_to_config(self):
+        """Persist the header carding selectors to the shared Preferences."""
+        p = _cfg_prefs()
+        if p is None:
+            return
+        try:
+            from backend.config import get_config_manager
+            p.carding_ns = self.ns_carding_combo.currentText()
+            p.carding_ew = self.ew_carding_combo.currentText()
+            p.smith_echo = self.smith_combo.currentText()
+            get_config_manager().save_preferences()
         except Exception:
             pass
 
@@ -1494,7 +1539,7 @@ class TeachingView(QWidget):
             self.refresh(**self._last_state)
 
     def _on_carding_changed(self, _text):
-        self._save_prefs()
+        self._save_carding_to_config()
         if self._last_state is not None:
             self.refresh(**self._last_state)
 
@@ -1737,6 +1782,23 @@ class TeachingView(QWidget):
             tt = side_top_tricks(board, side, visible, layout)
             if tt is not None:
                 lines.append(f"Top tricks (declaring side): <b>{tt}</b>")
+        # Loser label — names which suits the red-boxed losers are in (declaring
+        # side), so the marks are spelled out, not just coloured.
+        rem = layout["rem_ranks"]
+        per_suit = []
+        ltot = 0
+        for su in SUIT_ROWS:
+            n = 0
+            for hseat in (declarer, dummy):
+                if hseat is not None and hseat in visible:
+                    n += len(suit_loser_ranks(layout["known"][hseat][su], rem[su])
+                             - winners_in_hand(layout["known"][hseat][su], rem[su]))
+            ltot += n
+            if n:
+                per_suit.append(f"{su.symbol()}{n}")
+        if per_suit:
+            lines.append(f"<span style='color:{ACC_RED}'>Losers: "
+                         f"{' '.join(per_suit)}</span> (total {ltot})")
         if trump is None:
             lines.append("NT: count winners, develop the rest in your "
                          "longest suit — build before you cash.")
