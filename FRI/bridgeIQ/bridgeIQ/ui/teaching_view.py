@@ -893,7 +893,7 @@ _SIGNAL_TAG_COLOR = {"enc": "#7ad17a", "disc": "#e08a8a",
 
 def _tag_html(tag: str) -> str:
     col = _SIGNAL_TAG_COLOR.get(tag, "#9fb6cc")
-    return (f"<span style='color:{col}; font-size:10px; font-weight:bold'>"
+    return (f"<span style='color:{col}; font-size:12px; font-weight:bold'>"
             f"{tag}</span>")
 
 
@@ -962,7 +962,7 @@ class HandGridWidget(QFrame):
         grid.setVerticalSpacing(1)
         hdr_k = QLabel("Known"); hdr_o = QLabel("Other")
         for h in (hdr_k, hdr_o):
-            h.setStyleSheet("color:#7fa8cc; font-size:10px; border:0;")
+            h.setStyleSheet("color:#7fa8cc; font-size:12px; border:0;")
         grid.addWidget(QLabel(""), 0, 0)
         grid.addWidget(hdr_k, 0, 1)
         grid.addWidget(hdr_o, 0, 2)
@@ -977,11 +977,11 @@ class HandGridWidget(QFrame):
                 f" border:0; background:transparent;")
             kl = QLabel("—")
             kl.setTextFormat(Qt.TextFormat.RichText)
-            kl.setFont(QFont("Monospace", 12))
+            kl.setFont(QFont("Monospace", 14))
             kl.setStyleSheet("border:0;")
             ol = QLabel("")
             ol.setTextFormat(Qt.TextFormat.RichText)
-            ol.setStyleSheet("color:#9fb6cc; font-size:10px; border:0;")
+            ol.setStyleSheet("color:#9fb6cc; font-size:12px; border:0;")
             self._suit_lbl[su] = sl
             self._known_lbl[su] = kl
             self._other_lbl[su] = ol
@@ -1013,7 +1013,14 @@ class TeachingView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.detail = INTERMEDIATE
-        self.setStyleSheet("background:#0a1d31;")
+        # Bigger base text throughout, and a readable (light-on-dark) tooltip —
+        # the default tooltip palette renders black on this dark background.
+        self.setStyleSheet(
+            "TeachingView { background:#0a1d31; }"
+            "QLabel { font-size: 14px; }"
+            "QComboBox { font-size: 14px; }"
+            "QToolTip { color:#eaf2fb; background-color:#16324f;"
+            " border:1px solid #6fa8d6; padding:5px; font-size:13px; }")
         root = QVBoxLayout(self)
         root.setContentsMargins(6, 6, 6, 6)
         root.setSpacing(4)
@@ -1098,7 +1105,7 @@ class TeachingView(QWidget):
             "2<sup style='color:#c0d060'>↦</sup> entry to partner · "
             "tinted = trumps")
         legend.setTextFormat(Qt.TextFormat.RichText)
-        legend.setStyleSheet("color:#7f96ac; font-size:10px;")
+        legend.setStyleSheet("color:#9fb6cc; font-size:12px;")
         root.addWidget(legend)
         tip = ("Gold = current master · bold+underline = sure winner · "
                "ᵉ = entry (access to declarer/dummy) · ˢ = stopper (NT)")
