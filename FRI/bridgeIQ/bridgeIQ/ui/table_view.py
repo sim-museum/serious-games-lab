@@ -40,8 +40,8 @@ COLORS = {
 # Card dimensions - sized to fill 1920x1080 screen.
 # Bumped from 140×198 → 160×224 so the south human hand reads more
 # easily and the dummy 4-row layout has bigger pip / rank text.
-CARD_WIDTH = 147
-CARD_HEIGHT = 206
+CARD_WIDTH = 160
+CARD_HEIGHT = 224
 CARD_OVERLAP = 84  # How much cards overlap (shows ~76px per card — proportional to 75/140 before)
 # Inter-suit gap. We earlier had to dial this down to 55 because the
 # south row also carried a 140-px right spacer which pushed the fan
@@ -599,25 +599,42 @@ class FannedHandWidget(QWidget):
 
 
 class TrickAreaWidget(QFrame):
-    """Green table center with played cards at fixed compass positions"""
+    """Green table center with played cards at compass positions.
 
-    # Trick area — green box plus an outer band where the compass
-    # arrows sit. The widget covers the OUTER rect (green + arrow
-    # band); the green rounded rectangle is painted as an inset rect
-    # inside paintEvent, leaving the band as transparent so the
-    # arrows visually sit outside the green box.
-    OUTER_MARGIN = 34        # space around the green box for arrows
-    GREEN_WIDTH  = 460
-    GREEN_HEIGHT = 300
-    AREA_WIDTH   = GREEN_WIDTH  + 2 * OUTER_MARGIN
-    AREA_HEIGHT  = GREEN_HEIGHT + 2 * OUTER_MARGIN
+    The whole thing — green box, played cards, arrows — SCALES to the
+    size the layout gives the widget, so on a tall window the cards are
+    large and on a cramped 1080 they shrink to fit instead of being
+    clipped. Geometry is recomputed in resizeEvent against a fixed
+    DESIGN size (the look at scale 1.0); a min-scale floor keeps the
+    bidding overlay readable and stops it collapsing to nothing.
+    """
 
-    TRICK_CARD_WIDTH = 90
-    TRICK_CARD_HEIGHT = 126
+    # Design (scale = 1.0) geometry. The widget covers the OUTER rect
+    # (green + arrow band); the green rounded rect is painted inset so
+    # the band stays transparent and the arrows sit outside the green.
+    DESIGN_BAND   = 44        # arrow band around the green box
+    DESIGN_GREEN_W = 460
+    DESIGN_GREEN_H = 360
+    DESIGN_CARD_W = 130
+    DESIGN_CARD_H = 182
+    DESIGN_CARD_INSET = 18    # gap between a played card and the green border
+    DESIGN_CHEVRON = 40
+    DESIGN_ARROW_GAP = 4
+    AREA_WIDTH  = DESIGN_GREEN_W + 2 * DESIGN_BAND
+    AREA_HEIGHT = DESIGN_GREEN_H + 2 * DESIGN_BAND
+    MIN_SCALE = 0.74         # floor — keeps the green ≥ the bidding overlay
+    MAX_SCALE = 1.0          # never grow the cards past the design size
+    BID_W, BID_H = 320, 260  # bidding overlay (fixed; centred in the green)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(self.AREA_WIDTH, self.AREA_HEIGHT)
+        self.setMinimumSize(round(self.AREA_WIDTH * self.MIN_SCALE),
+                            round(self.AREA_HEIGHT * self.MIN_SCALE))
+        # Take the vertical space the layout offers (so a taller window
+        # gives bigger cards); keep a preferred width so the side columns
+        # aren't squeezed.
+        self.setSizePolicy(QSizePolicy.Policy.Preferred,
+                           QSizePolicy.Policy.Expanding)
         # Transparent background — the green box is rendered in
         # paintEvent inside an inset rect so the outer band where
         # the compass arrows live shows the page colour behind it.
@@ -630,82 +647,95 @@ class TrickAreaWidget(QFrame):
         self.auction = []
         self.dealer = Seat.NORTH
         self.bidding_status = ""
-
+        self._green_rect = QRect(self.DESIGN_BAND, self.DESIGN_BAND,
+                                 self.DESIGN_GREEN_W, self.DESIGN_GREEN_H)
         self._setup_ui()
 
-    def paintEvent(self, event):
-        """Paint the green box as an inset rounded rectangle.
+    def sizeHint(self) -> QSize:
+        return QSize(self.AREA_WIDTH, self.AREA_HEIGHT)
 
-        The widget's overall size includes a transparent outer band
-        for the compass arrows; the green table itself only covers
-        the inset rect.
-        """
+    def _scale(self) -> float:
+        s = min(self.width() / self.AREA_WIDTH,
+                self.height() / self.AREA_HEIGHT)
+        return max(self.MIN_SCALE, min(self.MAX_SCALE, s))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._relayout()
+
+    def _relayout(self):
+        """Recompute the green box + every child's geometry for the
+        current widget size."""
+        s = self._scale()
+        band = self.DESIGN_BAND * s
+        gw, gh = self.DESIGN_GREEN_W * s, self.DESIGN_GREEN_H * s
+        area_w, area_h = gw + 2 * band, gh + 2 * band
+        ox = (self.width() - area_w) / 2.0
+        oy = (self.height() - area_h) / 2.0
+        green = QRect(round(ox + band), round(oy + band), round(gw), round(gh))
+        self._green_rect = green
+        cx, cy = green.center().x(), green.center().y()
+        cw, ch = self.DESIGN_CARD_W * s, self.DESIGN_CARD_H * s
+        inset = self.DESIGN_CARD_INSET * s
+
+        card_geom = {
+            Seat.NORTH: (cx - cw / 2, green.top() + inset),
+            Seat.SOUTH: (cx - cw / 2, green.bottom() - inset - ch),
+            Seat.WEST:  (green.left() + inset, cy - ch / 2),
+            Seat.EAST:  (green.right() - inset - cw, cy - ch / 2),
+        }
+        for seat, (x, y) in card_geom.items():
+            w = self.card_widgets.get(seat)
+            if w is not None:
+                w.setFixedSize(round(cw), round(ch))
+                w.move(round(x), round(y))
+
+        chev = self.DESIGN_CHEVRON * s
+        gap = self.DESIGN_ARROW_GAP * s
+        arrow_geom = {
+            'N': (cx - chev / 2, green.top() - gap - chev),
+            'S': (cx - chev / 2, green.bottom() + gap),
+            'W': (green.left() - gap - chev, cy - chev / 2),
+            'E': (green.right() + gap, cy - chev / 2),
+        }
+        for d, (x, y) in arrow_geom.items():
+            a = getattr(self, "arrows", {}).get(d)
+            if a is not None:
+                a.setFixedSize(round(chev), round(chev))
+                a.move(round(x), round(y))
+
+        if getattr(self, "bidding_widget", None) is not None:
+            self.bidding_widget.move(cx - self.BID_W // 2, cy - self.BID_H // 2)
+
+    def paintEvent(self, event):
+        """Paint the green box as an inset rounded rectangle, sized and
+        centred for the current scale (computed in _relayout)."""
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        m = self.OUTER_MARGIN
-        inset = QRect(m, m, self.GREEN_WIDTH, self.GREEN_HEIGHT)
         painter.setPen(QPen(QColor("#1a5c30"), 4))
         painter.setBrush(QBrush(QColor(COLORS['table_green'])))
-        painter.drawRoundedRect(inset, 12, 12)
+        painter.drawRoundedRect(self._green_rect, 12, 12)
 
     def _setup_ui(self):
-        # Absolute positioning. Coordinates are relative to the
-        # widget origin (which is the outer-band top-left); the
-        # green box sits at (OUTER_MARGIN, OUTER_MARGIN).
-        m = self.OUTER_MARGIN
-        gw, gh = self.GREEN_WIDTH, self.GREEN_HEIGHT
-        tcw, tch = self.TRICK_CARD_WIDTH, self.TRICK_CARD_HEIGHT
-
-        # Geometric centre of the green box (in widget coordinates).
-        center_x, center_y = m + gw // 2, m + gh // 2
-        chevron_size = 40
-        # Gap between the played card and the green-box border.
-        card_inset = 13
-
-        positions = {
-            Seat.NORTH: (center_x - tcw // 2, m + card_inset),
-            Seat.SOUTH: (center_x - tcw // 2, m + gh - card_inset - tch),
-            Seat.WEST:  (m + card_inset, center_y - tch // 2),
-            Seat.EAST:  (m + gw - card_inset - tcw, center_y - tch // 2),
-        }
-
-        # Create card widgets with fixed positions
+        # Create the child widgets; their geometry is set by _relayout
+        # (called on every resize), so positions here are placeholders.
         for seat in Seat:
             cw_widget = CardWidget(parent=self)
-            cw_widget.setFixedSize(tcw, tch)
             cw_widget.setVisible(False)
-            cw_widget.move(positions[seat][0], positions[seat][1])
             self.card_widgets[seat] = cw_widget
 
-        # Direction arrows live in the OUTER band, just outside the
-        # green box. The triangle's flat side hugs the green border;
-        # the apex points outward.
-        arrow_gap = 4   # space between green border and arrow's flat side
-        arrow_positions = {
-            'N': (center_x - chevron_size // 2,
-                  m - arrow_gap - chevron_size),
-            'S': (center_x - chevron_size // 2,
-                  m + gh + arrow_gap),
-            'W': (m - arrow_gap - chevron_size,
-                  center_y - chevron_size // 2),
-            'E': (m + gw + arrow_gap,
-                  center_y - chevron_size // 2),
-        }
         # Keep references keyed by direction so set_vulnerability can
         # repaint the matching pair (NS or EW) pink.
         self.arrows: Dict[str, DirectionArrow] = {}
-        for d, pos in arrow_positions.items():
-            arrow = DirectionArrow(d, self)
-            arrow.setFixedSize(chevron_size, chevron_size)
-            arrow.move(pos[0], pos[1])
-            self.arrows[d] = arrow
+        for d in ('N', 'S', 'W', 'E'):
+            self.arrows[d] = DirectionArrow(d, self)
 
-        # Bidding table overlay — centred on the green box.
+        # Bidding table overlay — fixed size, centred on the green box.
         self.bidding_widget = BiddingTableWidget(self)
-        bw, bh = 320, 260
-        self.bidding_widget.move(center_x - bw // 2, center_y - bh // 2)
-        self.bidding_widget.setFixedSize(bw, bh)
+        self.bidding_widget.setFixedSize(self.BID_W, self.BID_H)
+
+        self._relayout()
 
     def set_show_bidding(self, show: bool):
         self.show_bidding = show
@@ -1289,20 +1319,26 @@ class TableView(QWidget):
         # natural width and doesn't stretch asymmetrically; the side
         # columns absorb extra horizontal space equally (stretch=1 each).
         trick_container_widget = QWidget()
+        # Expand vertically so the extra height a tall window gives the
+        # middle row reaches the (Expanding) trick area inside.
+        trick_container_widget.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                             QSizePolicy.Policy.Expanding)
         trick_container = QVBoxLayout(trick_container_widget)
         trick_container.setContentsMargins(0, 0, 0, 0)
         # Asymmetric stretches so the felt floats UP within
         # middle_layout — leaves a clear gap below the felt before
         # the S label/cards, keeping the bottom of the green table
         # from being visually crowded by the S fan.
-        trick_container.addStretch(1)
+        # The trick area now scales to the height it's given, so let it
+        # FILL the middle column vertically (no centering stretches) and
+        # just centre it horizontally. A taller window → a taller middle
+        # → bigger cards; a cramped one → the felt shrinks to fit.
         trick_h_wrapper = QHBoxLayout()
         trick_h_wrapper.addStretch()
         self.trick_area = TrickAreaWidget()
         trick_h_wrapper.addWidget(self.trick_area)
         trick_h_wrapper.addStretch()
-        trick_container.addLayout(trick_h_wrapper)
-        trick_container.addStretch(3)
+        trick_container.addLayout(trick_h_wrapper, stretch=1)
         middle_layout.addWidget(trick_container_widget, stretch=0)
 
         # East column
@@ -1375,11 +1411,11 @@ class TableView(QWidget):
         south_label_row.addStretch()
         layout.addLayout(south_label_row)
 
-        # Push the south hand fan lower in the empty space between
-        # the green table and the bottom bar — the previous layout
-        # parked it directly under the label with a large unused
-        # gap above the contract / tricks panels.
-        layout.addStretch(1)
+        # A small fixed gap below the label. The trick area (middle row)
+        # is now the only EXPANDING region, so it claims all spare height
+        # and scales up on a taller window; an expanding stretch here
+        # would instead swallow that height and starve the felt.
+        layout.addSpacing(16)
 
         # Hand row — the 13-card fan, centered.
         south_row = QHBoxLayout()
