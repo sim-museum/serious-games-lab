@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QTimer, QRect, QPoint
 from PyQt6.QtGui import (
     QFont, QColor, QPalette, QPainter, QBrush, QPen, QPolygon, QFontMetrics,
-    QPixmap, QImage
+    QPixmap, QImage, QRadialGradient
 )
 import os
 
@@ -28,7 +28,8 @@ from typing import Optional, List, Dict
 COLORS = {
     'background': '#0c1117',     # pokerIQ --bg (near-black)
     'table_green': '#15543a',    # pokerIQ --felt (muted dark green)
-    'felt_rail': '#3a2a1a',      # pokerIQ --rail (brown table edge)
+    'felt_hi': '#1d7a52',        # brighter felt centre (radial-gradient glow)
+    'felt_rail': '#4a3420',      # pokerIQ --rail (warm brown table edge)
     'panel_teal': '#0d141c',     # pokerIQ panel background
     'card_back': '#5e1414',      # pokerIQ card-back red
     'card_border': '#d9b25b',    # pokerIQ --gold
@@ -44,7 +45,7 @@ COLORS = {
     'button_bg': '#2b3a4d',      # pokerIQ summary-button
     'button_text': '#eef3f7',
     'selectable_border': '#d9b25b',  # gold = your turn (pokerIQ feel)
-    'line': '#243447',           # subtle panel border
+    'line': '#2c4a3a',           # subtle warm green-grey panel border
 }
 
 # Card dimensions - sized to fill 1920x1080 screen.
@@ -723,9 +724,16 @@ class TrickAreaWidget(QFrame):
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor(COLORS['felt_rail']), 5))   # brown rail (pokerIQ)
-        painter.setBrush(QBrush(QColor(COLORS['table_green'])))
-        painter.drawRoundedRect(self._green_rect, 12, 12)
+        # Brown rail + a radial-gradient felt (brighter at centre) for the
+        # warm pokerIQ table glow instead of a flat green.
+        g = self._green_rect
+        grad = QRadialGradient(float(g.center().x()), float(g.center().y()),
+                               float(max(g.width(), g.height())) / 1.4)
+        grad.setColorAt(0.0, QColor(COLORS['felt_hi']))
+        grad.setColorAt(1.0, QColor(COLORS['table_green']))
+        painter.setPen(QPen(QColor(COLORS['felt_rail']), 7))   # brown rail (pokerIQ)
+        painter.setBrush(QBrush(grad))
+        painter.drawRoundedRect(g, 14, 14)
 
     def _setup_ui(self):
         # Create the child widgets; their geometry is set by _relayout
@@ -1195,7 +1203,12 @@ class TableView(QWidget):
         # reveal_dummy() after the opening lead is played.
         self.dummy_revealed = True
 
-        self.setStyleSheet(f"background-color: {COLORS['background']};")
+        # Warm radial-gradient backdrop (pokerIQ felt glow) instead of a flat
+        # near-black fill, for a consistent look with pokerIQ.
+        self.setStyleSheet(
+            "TableView { background: qradialgradient(cx:0.5, cy:0.32,"
+            " radius:1.1, fx:0.5, fy:0.32, stop:0 #16242e,"
+            f" stop:0.75 {COLORS['background']}); }}")
         self._setup_ui()
 
     def _display_seat(self, logical_seat: Seat) -> Seat:
@@ -1227,7 +1240,7 @@ class TableView(QWidget):
         # North label
         self.north_label = QLabel("N: biq")
         self.north_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
-        self.north_label.setStyleSheet("QLabel { background-color: #14202c; color: #eef3f7; padding: 2px 8px; border-radius: 3px; }")
+        self.north_label.setStyleSheet("QLabel { background-color: #14202c; color: #eef3f7; padding: 2px 8px; border:1px solid #3fb950; border-radius: 4px; }")
         self.north_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.north_label.setFixedWidth(140)
 
@@ -1292,7 +1305,7 @@ class TableView(QWidget):
         # horizontal padding. Was 70, which clipped both Declarer and
         # Dummy down to "D".
         self.west_label.setMinimumWidth(160)
-        self.west_label.setStyleSheet("QLabel { background-color: #14202c; color: #eef3f7; padding: 3px 8px; border-radius: 3px; }")
+        self.west_label.setStyleSheet("QLabel { background-color: #14202c; color: #eef3f7; padding: 3px 8px; border:1px solid #3fb950; border-radius: 4px; }")
         self.west_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         west_vbox.addStretch()
         # Q-Plus visual: W label floats next to the LEFT edge of the
@@ -1359,7 +1372,7 @@ class TableView(QWidget):
         self.east_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
         # See west_label note — 160 fits "Declarer" / "Dummy" cleanly.
         self.east_label.setMinimumWidth(160)
-        self.east_label.setStyleSheet("QLabel { background-color: #14202c; color: #eef3f7; padding: 3px 8px; border-radius: 3px; }")
+        self.east_label.setStyleSheet("QLabel { background-color: #14202c; color: #eef3f7; padding: 3px 8px; border:1px solid #3fb950; border-radius: 4px; }")
         self.east_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         east_vbox.addStretch()
         # Mirror of the W layout — label inside a horizontal sub-row,
@@ -1404,7 +1417,7 @@ class TableView(QWidget):
 
         self.south_label = QLabel("S: HUMAN")
         self.south_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
-        self.south_label.setStyleSheet("QLabel { background-color: #14202c; color: #58a6ff; padding: 2px 8px; border-radius: 3px; }")
+        self.south_label.setStyleSheet("QLabel { background-color: #14202c; color: #58a6ff; padding: 2px 8px; border:1px solid #58a6ff; border-radius: 4px; }")
         self.south_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.south_label.setFixedWidth(140)
 
