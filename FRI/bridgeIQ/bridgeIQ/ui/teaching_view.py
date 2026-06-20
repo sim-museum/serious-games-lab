@@ -1183,29 +1183,40 @@ def _signal_chip(rd: dict) -> str:
     return out
 
 
+def _honour_color(p: float) -> Optional[str]:
+    """Confidence colour for a missing-honour LOCATION probability (0..1):
+    green > 85%, orange > 70%, red > 55%; below that it's too uncertain to
+    place in a hand (it shows only in the Count/Honours panel)."""
+    if p > 0.85:
+        return ACC_GREEN
+    if p > 0.70:
+        return ACC_ORANGE
+    if p > 0.55:
+        return ACC_RED
+    return None
+
+
 def _honour_hint_map(board, visible, layout, posterior=None) -> Dict[Tuple[Seat, Suit], str]:
-    """For each hidden seat + suit, a compact 'where's the missing honour'
-    hint built from honour_placement's PROBABILISTIC verdicts (proven honours
-    already render in the Known column, so they're skipped here). We surface a
-    hint only for the favoured seat at ≥55% to avoid cluttering both defenders'
-    columns with the same coin-flip."""
+    """For EACH hidden seat + suit, the missing honours likely to sit there as
+    COLOUR-CODED letters (green >85% · orange >70% · red >55%) with NO numbers —
+    the exact percentages live in the Count/Honours panel. Proven honours are
+    skipped (they already render in that hand's Known column)."""
     import re
-    out: Dict[Tuple[Seat, Suit], List[str]] = {}
+    seat_by_char = {s.to_char(): s for s in Seat}
+    acc: Dict[Tuple[Seat, Suit], List[str]] = {}
     for su, r, label in honour_placement(board, visible, layout, posterior):
         if "proven" in label:
             continue
-        pcts = re.findall(r'([NESW])\s+(\d+)%', label)
-        if not pcts:
-            continue
-        sc, p = max(pcts, key=lambda x: int(x[1]))
-        if int(p) < 55:
-            continue
-        seat = {s.to_char(): s for s in Seat}.get(sc)
-        if seat is None:
-            continue
-        out.setdefault((seat, su), []).append(f"{r.to_char()}?{p}%")
-    return {k: _chip(" ".join(v), ACC_GOLD, outline=True)
-            for k, v in out.items()}
+        for sc, pc in re.findall(r'([NESW])\s+(\d+)%', label):
+            seat = seat_by_char.get(sc)
+            if seat is None:
+                continue
+            col = _honour_color(int(pc) / 100.0)
+            if col:
+                acc.setdefault((seat, su), []).append(
+                    f"<span style='color:{col};font-weight:bold'>"
+                    f"{r.to_char()}</span>")
+    return {k: "".join(v) for k, v in acc.items()}
 
 
 def _card_glyph(card: Card) -> str:
@@ -1470,9 +1481,11 @@ class TeachingView(QWidget):
         tip = ("Boxed letters are role chips: E = entry (access to "
                "declarer/dummy), S = stopper (NT), KO = knock-out, → = card "
                "that reaches partner. Gold fill = current master; green box = "
-               "sure winner; dashed box = a card PLACED by deduction (hidden "
-               "hand). The Other column shows length, the latest defensive "
-               "signal, and where a missing honour probably sits.")
+               "sure winner; red box = loser; dashed box = a card PLACED by "
+               "deduction (hidden hand). The Other column shows the max length "
+               "range, the likely (≈) count, the latest defensive signal, and "
+               "colour-coded missing honours likely here — green >85%, "
+               "orange >70%, red >55% (exact % is in the Count/Honours panel).")
         for hw in self.hands.values():
             hw.setToolTip(tip)
 
@@ -1632,11 +1645,20 @@ class TeachingView(QWidget):
             except Exception:
                 hint_map = {}
 
+        # Likely (most-probable) length per hidden seat/suit, from the posterior
+        # — shown alongside the max range in each hand's Other column.
+        shape_map: Dict[Tuple[Seat, Suit], int] = {}
+        if self._posterior and self._posterior.get("length"):
+            for s, suits in self._posterior["length"].items():
+                for su, dist in suits.items():
+                    if dist:
+                        shape_map[(s, su)] = max(dist, key=lambda k: dist[k])
+
         # Hand grids.
         for s in Seat:
             self._render_hand(s, board, visible, layout, rem, trump,
                               constraints, declarer, dummy, danger, squeeze,
-                              sig_map, hint_map)
+                              sig_map, hint_map, shape_map)
 
         # Panels.
         self._render_contract_panel(board, contract, declarer)
@@ -1649,10 +1671,11 @@ class TeachingView(QWidget):
 
     def _render_hand(self, seat, board, visible, layout, rem, trump,
                      constraints, declarer, dummy, danger=None, squeeze=None,
-                     sig_map=None, hint_map=None):
+                     sig_map=None, hint_map=None, shape_map=None):
         w = self.hands[seat]
         sig_map = sig_map or {}
         hint_map = hint_map or {}
+        shape_map = shape_map or {}
         role = ""
         accent = PANEL_LINE
         if declarer is not None and seat == declarer:
@@ -1726,11 +1749,12 @@ class TeachingView(QWidget):
                                        stoppers, knockout, cross, inferred,
                                        losers)
             other_html = self._other_for(seat, su, visible, layout,
-                                         constraints, sig_map, hint_map)
+                                         constraints, sig_map, hint_map,
+                                         shape_map)
             w.set_row(su, known_html, other_html, trump == su)
 
     def _other_for(self, seat, su, visible, layout, constraints,
-                   sig_map=None, hint_map=None) -> str:
+                   sig_map=None, hint_map=None, shape_map=None) -> str:
         if self.detail == BEGINNER:
             # Beginners: only proven voids, nothing speculative.
             if seat not in visible and su in layout["voids"][seat]:
@@ -1738,15 +1762,21 @@ class TeachingView(QWidget):
             return ""
         sig_map = sig_map or {}
         hint_map = hint_map or {}
-        parts = [f"<span style='color:#9fb6cc'>"
-                 f"{suit_length_text(seat, su, visible, layout, constraints)}"
-                 f"</span>"]
+        shape_map = shape_map or {}
+        # Max length range, then the likely (Bayesian most-probable) count.
+        rng = suit_length_text(seat, su, visible, layout, constraints)
+        txt = f"<span style='color:#9fb6cc'>{rng}</span>"
+        likely = shape_map.get((seat, su))
+        if likely is not None and seat not in visible and str(likely) != rng:
+            txt += (f" <span style='color:{ACC_BLUE};font-size:13px'>"
+                    f"≈{likely}</span>")
+        parts = [txt]
         # What biq's defensive carding has told us about this defender's suit.
         rd = sig_map.get((seat, su))
         if rd is not None:
             parts.append(_signal_chip(rd))
-        # Where a missing honour probably sits (proven ones already show in the
-        # Known column with a dashed outline, so this is the speculative part).
+        # Colour-coded missing honours likely in this hand (proven ones already
+        # show in the Known column; exact % stays in the Count/Honours panel).
         hint = hint_map.get((seat, su))
         if hint:
             parts.append(hint)

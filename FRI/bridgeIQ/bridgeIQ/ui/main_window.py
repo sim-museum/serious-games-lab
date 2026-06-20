@@ -3737,8 +3737,9 @@ For more information, see the README file."""
             return True
 
     def _apply_bid_info_visibility(self):
-        """The panel shows only when BOTH the Preferences toggle is on AND the
-        F3 'Bidding Information' action is checked."""
+        """The panel shows only DURING BIDDING, and only when BOTH the
+        Preferences toggle is on AND the F3 'Bidding Information' action is
+        checked. It is always hidden during card play / finished."""
         dock = getattr(self, "bid_info_dock", None)
         if dock is None:
             return
@@ -3747,6 +3748,9 @@ For more information, see the README file."""
         if act is not None:
             act.setEnabled(want)
             want = want and act.isChecked()
+        phase = getattr(getattr(self, "controller", None), "current_phase", None)
+        if phase != 'bidding':
+            want = False                 # never overlay the cards during play
         dock.setVisible(want)
         if want:
             dock.raise_()
@@ -5203,7 +5207,7 @@ For more information, see the README file."""
             prompt=prompt,
             title=f"Claude hint — {'bidding' if phase == 'bidding' else 'card play'}",
             wait_label=f"Claude is thinking about your {'bid' if phase == 'bidding' else 'card'}...",
-            timeout_seconds=300,
+            timeout_seconds=600,
             preamble=preamble_text,
             bdl_text=state_text,
             cache_key=hint_cache_key,
@@ -5452,7 +5456,7 @@ For more information, see the README file."""
             self.status_label.setText(f"Kill wine failed: {e}")
 
     def _run_claude_with_dialog(self, prompt: str, title: str, wait_label: str,
-                                 timeout_seconds: int = 300, preamble: str = "",
+                                 timeout_seconds: int = 600, preamble: str = "",
                                  bdl_text: str = "",
                                  cache_key: str | None = None):
         """Run claude -p with a progress dialog, then show the result.
@@ -8095,7 +8099,7 @@ For more information, see the README file."""
                      '--model', 'claude-opus-4-7',
                      '--thinking', 'enabled',
                      '--max-turns', '1', analysis_prompt],
-                    capture_output=True, text=True, timeout=300
+                    capture_output=True, text=True, timeout=600
                 )
                 stdout = (r.stdout or '').strip()
                 stderr = (r.stderr or '').strip()
@@ -8109,7 +8113,7 @@ For more information, see the README file."""
                         parts.append(f"stdout: {stdout[:500]}")
                     result_holder['error'] = "\n".join(parts)
             except subprocess.TimeoutExpired:
-                result_holder['error'] = "claude timed out after 300 seconds."
+                result_holder['error'] = "claude timed out after 600 seconds."
             except Exception as e:
                 result_holder['error'] = f"claude call failed: {e!r}"
 
