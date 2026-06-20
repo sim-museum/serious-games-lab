@@ -428,7 +428,7 @@ class FannedHandWidget(QWidget):
             text = f"{self.seat.to_char()}: HUMAN"
             style = "background-color: #88ccff; color: black; padding: 3px 10px; border-radius: 4px;"
         else:
-            text = f"{self.seat.to_char()}: BEN"
+            text = f"{self.seat.to_char()}: biq"
             style = "background-color: #d0d0e0; color: black; padding: 3px 10px; border-radius: 4px;"
         self.label.setText(text)
         self.label.setStyleSheet(f"QLabel {{ {style} }}")
@@ -1215,7 +1215,7 @@ class TableView(QWidget):
         north_row.setContentsMargins(0, 0, 0, 0)
 
         # North label
-        self.north_label = QLabel("N: BEN")
+        self.north_label = QLabel("N: biq")
         self.north_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
         self.north_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 2px 8px; border-radius: 3px; }")
         self.north_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1276,7 +1276,7 @@ class TableView(QWidget):
         self.west_column = QWidget()
         west_vbox = QVBoxLayout(self.west_column)
         west_vbox.setContentsMargins(0, 0, 0, 0)
-        self.west_label = QLabel("W: BEN")
+        self.west_label = QLabel("W: biq")
         self.west_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
         # 160 px easily fits "W: Declarer" / "E: Dummy" with the 8-px
         # horizontal padding. Was 70, which clipped both Declarer and
@@ -1345,7 +1345,7 @@ class TableView(QWidget):
         self.east_column = QWidget()
         east_vbox = QVBoxLayout(self.east_column)
         east_vbox.setContentsMargins(0, 0, 0, 0)
-        self.east_label = QLabel("E: BEN")
+        self.east_label = QLabel("E: biq")
         self.east_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
         # See west_label note — 160 fits "Declarer" / "Dummy" cleanly.
         self.east_label.setMinimumWidth(160)
@@ -1687,7 +1687,7 @@ class TableView(QWidget):
                 label.setText(f"{char}: HUMAN")
                 label.setStyleSheet(styles['human'])
             else:
-                label.setText(f"{char}: BEN")
+                label.setText(f"{char}: biq")
                 label.setStyleSheet(styles['ai'])
 
         self.contract_label.setText(f"{contract.declarer.to_char()} {contract.to_str()}")

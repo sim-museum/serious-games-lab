@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BridgeIQ - A PyQt6 bridge application using the BEN engine.
+bridgeIQ - A PyQt6 bridge application (native rule-based engine).
 Classic desktop Bridge interface.
 
 Usage:
@@ -169,7 +169,7 @@ def main():
     splash = QSplashScreen(splash_pix)
     splash.setFont(QFont("Arial", 14))
     splash.showMessage(
-        "BridgeIQ\n\nLoading BEN Engine...\n\nPowered by Neural Networks",
+        "bridgeIQ\n\nLoading…",
         Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignBottom,
         Qt.GlobalColor.darkBlue
     )
@@ -178,7 +178,7 @@ def main():
 
     try:
         # Import main window (this triggers TensorFlow loading)
-        logger.info("Loading TensorFlow and BEN engine...")
+        logger.info("Loading bridgeIQ...")
         from ui.main_window import MainWindow
 
         # Create and show main window
@@ -204,7 +204,7 @@ def main():
         splash.close()
         QMessageBox.critical(None, "Startup Error",
                             f"Failed to start BridgeIQ:\n\n{e}\n\n"
-                            "Make sure BEN engine is properly installed.")
+                            "See the log file for details.")
         sys.exit(1)
 
 

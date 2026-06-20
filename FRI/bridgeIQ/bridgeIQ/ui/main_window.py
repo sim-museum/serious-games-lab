@@ -41,7 +41,7 @@ from .dialogs.programming_help import ProgrammingHelpDialog
 from backend import BridgeEngine, BoardState
 from network import NetworkGameController
 from backend.models import (
-    Seat, Suit, Vulnerability, Bid, Card, Contract, Hand, PlayerType, Player, Trick,
+    Seat, Suit, Rank, Vulnerability, Bid, Card, Contract, Hand, PlayerType, Player, Trick,
     BenTable, BenBoardRun, BenTeamsMatch
 )
 from backend.pavlicek import number_to_deal, parse_deal_number, deal_to_number, format_deal_base72, int_to_base72
@@ -1821,7 +1821,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
         statusbar.addPermanentWidget(self.progress_bar)
 
-        self.engine_status = QLabel("Engine: Not Ready")
+        self.engine_status = QLabel("Starting…")
         self.engine_status.setFont(QFont("Arial", 14))
         self.engine_status.setStyleSheet(f"color: {COLORS['text_white']};")
         statusbar.addPermanentWidget(self.engine_status)
@@ -1882,9 +1882,9 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
 
         if success:
-            self.engine_status.setText("Engine: Ready")
+            self.engine_status.setText("Ready")
             self.engine_status.setStyleSheet("color: #00ff00;")
-            self.status_label.setText("Engine initialized. Press Ctrl+N for new deal.")
+            self.status_label.setText("Press Ctrl+N or “First deal” to start a hand.")
 
             # Create worker thread
             self.engine_worker = EngineWorker(self.engine)
@@ -1892,9 +1892,9 @@ class MainWindow(QMainWindow):
             self.engine_worker.card_ready.connect(self._on_engine_card)
             self.engine_worker.error.connect(self._on_engine_error)
         else:
-            self.engine_status.setText("Engine: Failed")
+            self.engine_status.setText("Not ready")
             self.engine_status.setStyleSheet("color: #ff0000;")
-            self.status_label.setText("Engine initialization failed!")
+            self.status_label.setText("Could not start — see the log file.")
 
     def _update_window_title(self):
         """Update window title with board number"""
@@ -4424,7 +4424,7 @@ For more information, see the README file."""
             "<p>A bridge playing and analysis application "
             "powered by the BEN neural network engine.</p>"
             "<p>Classic desktop Bridge interface.</p>"
-            "<p><b>Engine:</b> BEN v0.8.7.4<br>"
+            "<p><b>Engine:</b> biq (native, rule-based)<br>"
             "<b>UI:</b> PyQt6</p>"
         )
         msg.setStandardButtons(QMessageBox.StandardButton.Ok)
@@ -4719,7 +4719,7 @@ For more information, see the README file."""
         styled_info(
             self, "Host Disconnected",
             f"Lost connection to the host ({reason}). "
-            f"BEN will take over the other three seats so you can finish the hand."
+            f"biq will take over the other three seats so you can finish the hand."
         )
         # Drop the network controller back to idle so other code paths
         # (next-deal, hint, save) treat us as offline again.
@@ -5075,7 +5075,7 @@ For more information, see the README file."""
                     trick_cards = board.current_trick.cards if board.current_trick else []
                     resp = self.engine.get_card_play(board, seat, trick_cards)
                     if resp and resp.action:
-                        engine_text = f"BEN suggests: play {resp.action.to_str()}"
+                        engine_text = f"biq suggests: play {resp.action.to_str()}"
                         if resp.candidates:
                             cands = ", ".join(f"{c.card.to_str()} ({c.score:.2f})"
                                               for c in resp.candidates[:5])
@@ -5304,7 +5304,7 @@ For more information, see the README file."""
             "the Bids block and the leader/winner markers in the Tricks "
             "block — do not infer seats from order alone. If a BEN "
             "card-play suggestion is shown, say whether you agree (BEN "
-            "card-play is system-agnostic). BEN bidding suggestions are "
+            "card-play is system-agnostic). biq bidding suggestions are "
             "NEVER shown because BEN was trained only on SAYC / 2-over-1 "
             "and can't reason about Precision / Acol / French calls.\n\n"
             f"BDL:\n{state_text}{engine_block}"
@@ -5978,6 +5978,62 @@ For more information, see the README file."""
         self._update_available_bids()
 
         self._advance_game()
+
+    def keyPressEvent(self, event):
+        """Full keyboard play: during the human's turn in the play phase,
+        a suit key (S/H/D/C) then a rank key (A K Q J T 9-2; 0 = ten) plays
+        that card — and when you must follow suit, the rank alone is enough.
+        Mirrors the mouse path exactly (routes through _on_card_played), so
+        every cardplay command works with EITHER input. Bidding already has
+        both (the bidding box's number/letter keys + its buttons)."""
+        if self._handle_play_key(event):
+            return
+        super().keyPressEvent(event)
+
+    def _handle_play_key(self, event) -> bool:
+        c = getattr(self, 'controller', None)
+        if c is None or getattr(c, 'current_phase', None) != 'play':
+            return False
+        if not c.is_human_turn():
+            return False
+        seat = c.current_seat
+        if seat is None or not c.board:
+            return False
+        text = (event.text() or "").upper()
+        suit_map = {'S': Suit.SPADES, 'H': Suit.HEARTS,
+                    'D': Suit.DIAMONDS, 'C': Suit.CLUBS}
+        if text in suit_map:
+            self._kbd_play_suit = suit_map[text]
+            self.status_label.setText(
+                f"{text} — now press a rank (A K Q J T 9–2).")
+            return True
+        rank_chars = "AKQJT0987654321"
+        if text and text in rank_chars and len(text) == 1:
+            try:
+                rank = Rank.from_char('T' if text in ('0', '1') else text)
+            except Exception:
+                return False
+            suit = getattr(self, '_kbd_play_suit', None)
+            hand = c.board.hands.get(seat)
+            if suit is None:
+                # No suit armed — if we must follow, the suit is forced.
+                led = c.get_lead_suit()
+                if led and hand and any(cd.suit == led for cd in hand.cards):
+                    suit = led
+            if suit is None:
+                self.status_label.setText(
+                    "Press a suit first (S/H/D/C), then the rank.")
+                return True
+            self._kbd_play_suit = None
+            actual = next((cd for cd in (hand.cards if hand else [])
+                           if cd.suit == suit and cd.rank == rank), None)
+            if actual is None:
+                self.status_label.setText(
+                    f"No {text} of {suit.to_char()} in your hand.")
+                return True
+            self._on_card_played(seat, actual)   # same validated path as a click
+            return True
+        return False
 
     def _on_card_played(self, seat: Seat, card: Card):
         """Handle human card play"""
@@ -8154,7 +8210,7 @@ For more information, see the README file."""
             self.network_controller.broadcast_bid(bidder, bid)
 
         # Show analysis
-        text = f"BEN bid: {bid.symbol()}\n"
+        text = f"biq bid: {bid.symbol()}\n"
         if response.candidates:
             text += "\nCandidates:\n"
             for cand in response.candidates[:5]:
@@ -9060,21 +9116,30 @@ For more information, see the README file."""
             default_path = str(log_dir)
 
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Select Q-Plus BDL file", default_path,
-            "BDL files (*.bdl);;All files (*)"
+            self, "Select Q-Plus closed-room file", default_path,
+            "Q-Plus files (*.bdl *.qss);;BDL log (*.bdl);;"
+            "QSS score export (*.qss);;All files (*)"
         )
         if not filename:
+            return
+
+        from .dialogs.dialog_style import styled_warning, styled_info
+        # A .qss is Q-Plus's teams score export — it carries the per-board
+        # RESULT (raw score + IMP) but not the hands or card play, so it can't
+        # drive the card-by-card compare. Show its closed-room results instead.
+        if filename.lower().endswith(".qss"):
+            self._show_qss_results(filename)
             return
 
         try:
             deals = load_bdl_file(filename)
         except Exception as e:
-            QMessageBox.warning(self, "BDL Read Error",
-                                f"Could not parse BDL file:\n{e}")
+            styled_warning(self, "Read error",
+                           f"Could not parse the file:\n{e}")
             return
         if not deals:
-            QMessageBox.warning(self, "Empty BDL",
-                                "No deals were found in the selected BDL file.")
+            styled_warning(self, "Nothing to load",
+                           "No deals were found in the selected file.")
             return
 
         # Pick the deal that matches an existing open-room result, if any.
@@ -9084,15 +9149,18 @@ For more information, see the README file."""
 
         run = bdl_deal_to_board_run(chosen, table=BenTable.CLOSED)
         if run is None:
-            QMessageBox.warning(self, "Incomplete BDL",
-                                "The selected deal is missing the contract or "
-                                "the four hands; can't build a closed-room run.")
+            styled_warning(
+                self, "Deal not played out",
+                "That deal has only the hands recorded — no contract or card "
+                "play — so there's nothing to compare against the open room.\n\n"
+                "Pick a deal that was actually bid and played (it shows a "
+                "contract in the list).")
             return
 
         attached = self._attach_closed_room_run(run, replace_ai_run=True)
         if not attached:
-            QMessageBox.information(
-                self, "Closed Room Ingested",
+            styled_info(
+                self, "Closed room loaded",
                 f"Loaded board {run.board_number}, but no matching open-room "
                 "result was found — added as a standalone score-sheet entry."
             )
@@ -9111,6 +9179,47 @@ For more information, see the README file."""
                 self.network_controller.broadcast_closed_room_ingested(run)
             except Exception as e:
                 print(f"[ingest qplus] broadcast failed: {e}", flush=True)
+
+    def _show_qss_results(self, path):
+        """Parse a Q-Plus .qss teams score export (the reader the test harness
+        uses) and show the per-board closed-room results. A .qss carries scores
+        + IMP only — no hands or card play — so this is a results summary, not a
+        replayable ingest; use the .bdl log for the card-by-card compare."""
+        from .dialogs.dialog_style import styled_warning, styled_info
+        try:
+            import importlib.util
+            qpath = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                'tools', 'qss_score_aggregate.py')
+            spec = importlib.util.spec_from_file_location(
+                "qss_score_aggregate", qpath)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            deals = mod.parse_qss(path)
+        except Exception as e:
+            styled_warning(self, "Read error",
+                           f"Could not parse the .qss file:\n{e}")
+            return
+        if not deals:
+            styled_warning(self, "Nothing to load",
+                           "No scored boards were found in that .qss "
+                           "(it may be empty or not a teams export).")
+            return
+        ns_tot = ew_tot = 0
+        lines = []
+        for d in deals:
+            im = d.get("im") or (0, 0)
+            re_ = d.get("re")
+            ns_tot += im[0]
+            ew_tot += im[1]
+            re_txt = f"   (raw {re_[0]:+d} / {re_[1]:+d})" if re_ else ""
+            lines.append(f"{d.get('id', '?')}:  IMP  N/S {im[0]:+d}  "
+                         f"E/W {im[1]:+d}{re_txt}")
+        shown = lines[:40]
+        more = "" if len(lines) <= 40 else f"\n… and {len(lines) - 40} more"
+        summary = (f"{len(deals)} boards — IMP totals:  N/S {ns_tot:+d}   "
+                   f"E/W {ew_tot:+d}\n\n" + "\n".join(shown) + more)
+        styled_info(self, "Closed-room results (.qss)", summary)
 
     def _open_compare_for_board(self, board_number: int):
         """Open the side-by-side Compare dialog for the given board.
@@ -9191,21 +9300,40 @@ For more information, see the README file."""
             if d.board_number in existing_boards:
                 return d
 
-        # No match — let the user pick from a simple list.
-        from PyQt6.QtWidgets import QInputDialog
-        labels = [
-            f"Board {d.board_number}"
-            + (f" — {d.contract.to_str()} by {d.declarer.to_char()}"
-               if d.contract and d.declarer else "")
-            for d in deals
-        ]
-        choice, ok = QInputDialog.getItem(
-            self, "Pick Deal", "Multiple deals in this BDL — which is the closed room?",
-            labels, 0, False,
-        )
-        if not ok:
+        # No match — let the user pick. Build distinguishable, informative
+        # labels (the Q-Plus deal id + the contract), and flag the deals that
+        # can't be ingested (passed out / no play). "Board 0" twice was
+        # useless when the BDL used deal ids like BB-181111 rather than board
+        # numbers.
+        def _label(i, d):
+            name = (d.pavlicek_id
+                    or (f"Board {d.board_number}" if d.board_number
+                        else f"Deal {i + 1}"))
+            if d.contract:
+                dec = d.declarer or d.contract.declarer
+                tail = d.contract.to_str() + (f" by {dec.to_char()}" if dec else "")
+            else:
+                tail = "no contract / not played — can't ingest"
+            return f"{i + 1}. {name} — {tail}"
+
+        labels = [_label(i, d) for i, d in enumerate(deals)]
+        # Default the selection to the first PLAYED deal (one with a contract),
+        # so the user isn't pre-pointed at an un-ingestable passed-out board.
+        default_idx = next((i for i, d in enumerate(deals) if d.contract), 0)
+
+        from PyQt6.QtWidgets import QInputDialog, QDialog
+        from .dialogs.dialog_style import apply_dialog_style
+        dlg = QInputDialog(self)
+        dlg.setWindowTitle("Pick deal")
+        dlg.setLabelText("Multiple deals in this file — which is the closed "
+                         "room?")
+        dlg.setComboBoxItems(labels)
+        dlg.setComboBoxEditable(False)
+        dlg.setTextValue(labels[default_idx])
+        apply_dialog_style(dlg)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return None
-        return deals[labels.index(choice)]
+        return deals[labels.index(dlg.textValue())]
 
     def _attach_closed_room_run(self, run, replace_ai_run: bool = True) -> bool:
         """Attach a closed-room BenBoardRun to the matching BoardResult.
