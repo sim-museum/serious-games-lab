@@ -646,19 +646,20 @@ class ToolbarButton(QPushButton):
             QPushButton {{
                 background-color: {COLORS['button_bg']};
                 color: {COLORS['button_text']};
-                border: 1px solid #4a6a7a;
+                border: 1px solid #2f4256;
                 border-radius: 4px;
                 padding: 4px 10px;
             }}
             QPushButton:hover {{
-                background-color: #70a0b0;
+                background-color: #34465c;
+                border: 1px solid {COLORS['gold']};
             }}
             QPushButton:pressed {{
-                background-color: #5080a0;
+                background-color: #22303f;
             }}
             QPushButton:disabled {{
-                background-color: #4a5a6a;
-                color: #888888;
+                background-color: #1a2330;
+                color: #5a6675;
             }}
         """)
 
@@ -828,8 +829,8 @@ class MainWindow(QMainWindow):
         self.analysis_label.setFont(QFont("Monospace", 14))
         self.analysis_label.setStyleSheet(f"""
             QLabel {{
-                background-color: #2a3a4a;
-                border: 1px solid #4a5a6a;
+                background-color: #121922;
+                border: 1px solid #243447;
                 padding: 8px;
                 font-family: monospace;
                 font-size: 22px;
@@ -868,7 +869,7 @@ class MainWindow(QMainWindow):
         self.toolbar_container.setStyleSheet(f"""
             QFrame {{
                 background-color: {COLORS['panel_teal']};
-                border-top: 2px solid #3a6a7a;
+                border-top: 2px solid #243447;
             }}
         """)
         self.toolbar_container.setFixedHeight(45)
@@ -881,8 +882,8 @@ class MainWindow(QMainWindow):
         per-seat network/Computer icons live on the table itself."""
         self.status_strip = QFrame()
         self.status_strip.setStyleSheet(
-            "QFrame { background-color: #1f3b44; "
-            "border-top: 1px solid #3a6a7a; } QLabel { color: #e6f0f2; }")
+            "QFrame { background-color: #0d141c; "
+            "border-top: 1px solid #243447; } QLabel { color: #9aa7b4; }")
         self.status_strip.setFixedHeight(24)
         row = QHBoxLayout(self.status_strip)
         row.setContentsMargins(8, 0, 8, 0)
@@ -1427,19 +1428,20 @@ class MainWindow(QMainWindow):
 
         toolbar_button_style = """
             QPushButton {
-                background-color: #d0d0d0;
-                color: #000000;
-                border: 1px solid #808080;
+                background-color: #2b3a4d;
+                color: #eef3f7;
+                border: 1px solid #2f4256;
                 border-radius: 3px;
                 padding: 5px 15px;
                 font-size: 12px;
                 min-width: 90px;
             }
             QPushButton:hover {
-                background-color: #e0e0e0;
+                background-color: #34465c;
+                border: 1px solid #d9b25b;
             }
             QPushButton:pressed {
-                background-color: #b0b0b0;
+                background-color: #22303f;
             }
         """
 
@@ -1883,7 +1885,7 @@ class MainWindow(QMainWindow):
 
         if success:
             self.engine_status.setText("Ready")
-            self.engine_status.setStyleSheet("color: #00ff00;")
+            self.engine_status.setStyleSheet("color: #3fb950;")
             self.status_label.setText("Press Ctrl+N or “First deal” to start a hand.")
 
             # Create worker thread
@@ -1893,7 +1895,7 @@ class MainWindow(QMainWindow):
             self.engine_worker.error.connect(self._on_engine_error)
         else:
             self.engine_status.setText("Not ready")
-            self.engine_status.setStyleSheet("color: #ff0000;")
+            self.engine_status.setStyleSheet("color: #f85149;")
             self.status_label.setText("Could not start — see the log file.")
 
     def _update_window_title(self):

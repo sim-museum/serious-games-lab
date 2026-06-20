@@ -15,15 +15,15 @@ class SuitColorMode(IntEnum):
 # Traditional colors (2-color: black and red)
 TRADITIONAL_SUIT_COLORS = {
     'spades': '#000000',
-    'hearts': '#cc0000',
-    'diamonds': '#cc0000',
+    'hearts': '#d23b3b',
+    'diamonds': '#d23b3b',
     'clubs': '#000000',
 }
 
 # Four-color mode (each suit has distinct color)
 FOUR_COLOR_SUIT_COLORS = {
     'spades': '#000000',    # Black
-    'hearts': '#cc0000',    # Red
+    'hearts': '#d23b3b',    # Red
     'diamonds': '#0000cc',  # Blue
     'clubs': '#006400',     # Dark Green
 }

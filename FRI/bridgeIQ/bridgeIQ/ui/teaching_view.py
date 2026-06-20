@@ -921,9 +921,9 @@ def _card_glyph(card: Card) -> str:
 # Qt widgets
 # ---------------------------------------------------------------------------
 
-PANEL_BG = "#13314f"
-PANEL_FG = "#e8eef5"
-GRID_BG = "#0f2740"
+PANEL_BG = "#0d141c"   # pokerIQ panel
+PANEL_FG = "#eef3f7"   # pokerIQ ink
+GRID_BG = "#121922"   # pokerIQ card-dark
 MASTER_BG = "#ffe08a"
 TRUMP_TINT = "#3a5d3a"
 
@@ -936,12 +936,12 @@ class _Panel(QFrame):
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setStyleSheet(
             f"background:{PANEL_BG}; color:{PANEL_FG};"
-            f" border:1px solid #2c5a86; border-radius:6px;")
+            f" border:1px solid #243447; border-radius:6px;")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(8, 6, 8, 6)
         lay.setSpacing(2)
         self._title = QLabel(title)
-        self._title.setStyleSheet("font-weight:bold; color:#9ec9ef;")
+        self._title.setStyleSheet("font-weight:bold; color:#d9b25b;")
         lay.addWidget(self._title)
         self.body = QLabel("")
         self.body.setTextFormat(Qt.TextFormat.RichText)
@@ -962,13 +962,13 @@ class HandGridWidget(QFrame):
         self.seat = seat
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setStyleSheet(
-            f"background:{GRID_BG}; border:1px solid #2c5a86; border-radius:6px;")
+            f"background:{GRID_BG}; border:1px solid #243447; border-radius:6px;")
         outer = QVBoxLayout(self)
         outer.setContentsMargins(6, 4, 6, 4)
         outer.setSpacing(2)
 
         self.title = QLabel(seat.name.title())
-        self.title.setStyleSheet("color:#cfe2f5; font-weight:bold; border:0;")
+        self.title.setStyleSheet("color:#eef3f7; font-weight:bold; border:0;")
         outer.addWidget(self.title)
 
         grid = QGridLayout()
@@ -1030,7 +1030,7 @@ class TeachingView(QWidget):
         # Bigger base text throughout, and a readable (light-on-dark) tooltip —
         # the default tooltip palette renders black on this dark background.
         self.setStyleSheet(
-            "TeachingView { background:#0a1d31; }"
+            "TeachingView { background:#0c1117; }"
             "QLabel { font-size: 16px; }"
             "QComboBox { font-size: 15px; }"
             "QToolTip { color:#eaf2fb; background-color:#16324f;"
@@ -1042,7 +1042,7 @@ class TeachingView(QWidget):
         # Header: title + detail selector + systems.
         header = QHBoxLayout()
         h = QLabel("Instrumented view")
-        h.setStyleSheet("color:#cfe2f5; font-weight:bold; font-size:14px;")
+        h.setStyleSheet("color:#d9b25b; font-weight:bold; font-size:14px;")
         header.addWidget(h)
         header.addSpacing(12)
         header.addWidget(self._mk_label("Detail:"))
@@ -1156,7 +1156,7 @@ class TeachingView(QWidget):
 
     def _mk_label(self, text):
         lbl = QLabel(text)
-        lbl.setStyleSheet("color:#9ec9ef;")
+        lbl.setStyleSheet("color:#9aa7b4;")
         return lbl
 
     def _on_detail_changed(self, text):
@@ -1576,7 +1576,7 @@ class TeachingView(QWidget):
                         "threat in the upper hand, entry to it.</span>")
         if tips:
             blocks.append("<br>".join(f"• {t}" for t in tips))
-        self.p_coach.set_html("<hr style='border:0;border-top:1px solid #2c5a86'>"
+        self.p_coach.set_html("<hr style='border:0;border-top:1px solid #243447'>"
                               .join(blocks))
 
     def _render_centre(self, board, contract, declarer, trump):

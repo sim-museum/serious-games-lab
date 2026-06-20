@@ -15,26 +15,36 @@ from PyQt6.QtGui import (
 import os
 
 from backend.models import (
-    BoardState, Card, Hand, Seat, Suit, Trick, Vulnerability, Contract, Rank
+    BoardState, Card, Hand, Seat, Suit, Trick, Vulnerability, Contract, Rank,
+    PlayerType
 )
 from typing import Optional, List, Dict
 
 
-# BridgeIQ color scheme
+# BridgeIQ color scheme — matched to pokerIQ for a consistent look across the
+# two games: near-black background, muted dark-green felt with a brown rail,
+# gold accents, light "ink" text. (pokerIQ palette: bg #0c1117, felt #15543a,
+# gold #d9b25b, ink #eef3f7, card-red #d23b3b, accent #58a6ff.)
 COLORS = {
-    'background': '#1a3a5c',
-    'table_green': '#2d9c40',
-    'panel_teal': '#4a7c8a',
-    'card_back': '#1a2a4a',
-    'card_border': '#c0a050',
-    'card_face': '#ffffff',
-    'text_white': '#ffffff',
-    'text_black': '#000000',
-    'vuln_red': '#cc0000',
-    'highlight': '#ffff88',
-    'button_bg': '#6090a0',
-    'button_text': '#ffffff',
-    'selectable_border': '#ff0000',
+    'background': '#0c1117',     # pokerIQ --bg (near-black)
+    'table_green': '#15543a',    # pokerIQ --felt (muted dark green)
+    'felt_rail': '#3a2a1a',      # pokerIQ --rail (brown table edge)
+    'panel_teal': '#0d141c',     # pokerIQ panel background
+    'card_back': '#5e1414',      # pokerIQ card-back red
+    'card_border': '#d9b25b',    # pokerIQ --gold
+    'card_face': '#f6f7f9',      # pokerIQ card face
+    'text_white': '#eef3f7',     # pokerIQ --ink
+    'text_muted': '#9aa7b4',     # pokerIQ --muted
+    'text_black': '#1a1f29',     # pokerIQ --card-dark (text on light)
+    'gold': '#d9b25b',           # pokerIQ --gold accent
+    'accent': '#58a6ff',         # pokerIQ --accent (hero/turn blue)
+    'pos': '#3fb950',            # pokerIQ --pos
+    'vuln_red': '#f85149',       # pokerIQ --neg
+    'highlight': '#d9b25b',      # pokerIQ gold (turn glow)
+    'button_bg': '#2b3a4d',      # pokerIQ summary-button
+    'button_text': '#eef3f7',
+    'selectable_border': '#d9b25b',  # gold = your turn (pokerIQ feel)
+    'line': '#243447',           # subtle panel border
 }
 
 # Card dimensions - sized to fill 1920x1080 screen.
@@ -419,17 +429,17 @@ class FannedHandWidget(QWidget):
     def _update_label(self):
         if self.is_dummy:
             text = f"{self.seat.to_char()} / Dummy"
-            style = "background-color: #ff6688; color: black; padding: 3px 10px; border-radius: 4px;"
+            style = "background-color: #14202c; color: #3fb950; padding: 3px 10px; border-radius: 4px;"
         elif self.is_declarer:
             text = f"{self.seat.to_char()} / Declarer"
-            style = "background-color: #ff6688; color: black; padding: 3px 10px; border-radius: 4px;"
+            style = "background-color: #14202c; color: #d9b25b; padding: 3px 10px; border-radius: 4px;"
         elif self.is_human:
             # Show HUMAN label for human player
             text = f"{self.seat.to_char()}: HUMAN"
-            style = "background-color: #88ccff; color: black; padding: 3px 10px; border-radius: 4px;"
+            style = "background-color: #14202c; color: #58a6ff; padding: 3px 10px; border-radius: 4px;"
         else:
             text = f"{self.seat.to_char()}: biq"
-            style = "background-color: #d0d0e0; color: black; padding: 3px 10px; border-radius: 4px;"
+            style = "background-color: #14202c; color: #eef3f7; padding: 3px 10px; border-radius: 4px;"
         self.label.setText(text)
         self.label.setStyleSheet(f"QLabel {{ {style} }}")
 
@@ -713,7 +723,7 @@ class TrickAreaWidget(QFrame):
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor("#1a5c30"), 4))
+        painter.setPen(QPen(QColor(COLORS['felt_rail']), 5))   # brown rail (pokerIQ)
         painter.setBrush(QBrush(QColor(COLORS['table_green'])))
         painter.drawRoundedRect(self._green_rect, 12, 12)
 
@@ -1024,7 +1034,7 @@ class InfoPanel(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setStyleSheet(f"""
-            QFrame {{ background-color: {COLORS['panel_teal']}; border: 1px solid #2a5c6a; border-radius: 4px; }}
+            QFrame {{ background-color: {COLORS['panel_teal']}; border: 1px solid #243447; border-radius: 4px; }}
             QLabel {{ color: {COLORS['text_white']}; }}
         """)
 
@@ -1217,7 +1227,7 @@ class TableView(QWidget):
         # North label
         self.north_label = QLabel("N: biq")
         self.north_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
-        self.north_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 2px 8px; border-radius: 3px; }")
+        self.north_label.setStyleSheet("QLabel { background-color: #14202c; color: #eef3f7; padding: 2px 8px; border-radius: 3px; }")
         self.north_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.north_label.setFixedWidth(140)
 
@@ -1282,7 +1292,7 @@ class TableView(QWidget):
         # horizontal padding. Was 70, which clipped both Declarer and
         # Dummy down to "D".
         self.west_label.setMinimumWidth(160)
-        self.west_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
+        self.west_label.setStyleSheet("QLabel { background-color: #14202c; color: #eef3f7; padding: 3px 8px; border-radius: 3px; }")
         self.west_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         west_vbox.addStretch()
         # Q-Plus visual: W label floats next to the LEFT edge of the
@@ -1349,7 +1359,7 @@ class TableView(QWidget):
         self.east_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
         # See west_label note — 160 fits "Declarer" / "Dummy" cleanly.
         self.east_label.setMinimumWidth(160)
-        self.east_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
+        self.east_label.setStyleSheet("QLabel { background-color: #14202c; color: #eef3f7; padding: 3px 8px; border-radius: 3px; }")
         self.east_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         east_vbox.addStretch()
         # Mirror of the W layout — label inside a horizontal sub-row,
@@ -1394,7 +1404,7 @@ class TableView(QWidget):
 
         self.south_label = QLabel("S: HUMAN")
         self.south_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
-        self.south_label.setStyleSheet("QLabel { background-color: #88ccff; color: black; padding: 2px 8px; border-radius: 3px; }")
+        self.south_label.setStyleSheet("QLabel { background-color: #14202c; color: #58a6ff; padding: 2px 8px; border-radius: 3px; }")
         self.south_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.south_label.setFixedWidth(140)
 
@@ -1663,10 +1673,10 @@ class TableView(QWidget):
             Seat.WEST: self.west_label,
         }
         styles = {
-            'declarer': "QLabel { background-color: #88ff88; color: black; padding: 3px 8px; border-radius: 3px; }",
-            'dummy':    "QLabel { background-color: #ff6688; color: black; padding: 3px 8px; border-radius: 3px; }",
-            'human':    "QLabel { background-color: #88ccff; color: black; padding: 2px 8px; border-radius: 3px; }",
-            'ai':       "QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }",
+            'declarer': "QLabel { background-color: #14202c; color: #d9b25b; padding: 3px 8px; border-radius: 3px; }",
+            'dummy':    "QLabel { background-color: #14202c; color: #3fb950; padding: 3px 8px; border-radius: 3px; }",
+            'human':    "QLabel { background-color: #14202c; color: #58a6ff; padding: 2px 8px; border-radius: 3px; }",
+            'ai':       "QLabel { background-color: #14202c; color: #eef3f7; padding: 3px 8px; border-radius: 3px; }",
         }
         for physical_seat, label in labels.items():
             logical = self._logical_seat(physical_seat)
