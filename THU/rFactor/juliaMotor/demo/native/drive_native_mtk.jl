@@ -12,9 +12,24 @@ include("render.jl"); using .Render
 include("gpltrack.jl"); using .GPLTrack
 include("audio.jl"); using .EngineAudio
 include("joycfg.jl"); using .JoyCfg
-const JOYMAP = let m = JoyCfg.loadmap(joinpath(@__DIR__, "joystick.conf"))
-    JoyCfg.JoyMap(m.steer, m.throttle, m.brake, JoyCfg.Ctrl(4, -1.0, 1.0),   # clutch on the X3D SLIDER (axis 4)
-                  m.up_btn, m.dn_btn, m.clutch_btn, m.deadzone)
+include("ffb.jl"); using .FFB
+# Force-feedback tuning (env-overridable). SIGN=-1 ⇒ force opposes the front lateral
+# force, so the wheel self-centres (measured: steer-left gives +front_lat).
+const FFB_ON     = !haskey(ENV, "JM_NOFFB")
+const FFB_GAIN   = parse(Float64, get(ENV, "JM_FFB_GAIN", "1.3"))     # pre-soft-clip gain on the aligning torque
+const FFB_SIGN   = parse(Float64, get(ENV, "JM_FFB_SIGN", "-1.0"))    # -1 ⇒ resist (self-centre)
+const FFB_ATRAIL = parse(Float64, get(ENV, "JM_FFB_TRAIL", "0.18"))   # front slip [rad] where pneumatic trail is spent
+const FFB_TFLOOR = 0.40                                               # residual mechanical trail (caster) — wheel lightens, not dead
+const FFB_AF     = 1.314                                              # CG → front axle [m]
+const FFB_DELTA  = 0.30                                               # road-wheel angle at full lock [rad] (matches DriveRT)
+const _JOYCONF = joinpath(@__DIR__, "joystick.conf")
+const JOYMAP = if isfile(_JOYCONF)
+    JoyCfg.loadmap(_JOYCONF)                                  # honour gui.py / calibrate.jl (TX clutch pedal, etc.)
+else
+    let m = JoyCfg.defaultmap()                              # no config → old Logitech X3D default
+        JoyCfg.JoyMap(m.steer, m.throttle, m.brake, JoyCfg.Ctrl(4, -1.0, 1.0),   # clutch on the X3D SLIDER (axis 4)
+                      m.up_btn, m.dn_btn, m.clutch_btn, m.deadzone)
+    end
 end
 
 # ---- track selection (upfront, before the long load) ----
@@ -50,7 +65,7 @@ println("  → track: ", uppercasefirst(TRACKSEL))
 # model.  We reuse a real iRacing .ibt of the matching car/track as the header+var-
 # table+YAML template (so the file is byte-identical in structure / any iRacing tool
 # reads it) and fill the channels juliaMotor produces.
-const IBTREC = haskey(ENV, "JM_IBT")
+const IBTREC = !haskey(ENV, "JM_NOIBT")          # .ibt telemetry ON by default (set JM_NOIBT to disable)
 const IBTDIR = "/home/g/sgl/THU/rFactor/juliaMotor/data/iracing"
 const IBTNAME = NURB ? "nurburgring nordschleife" : SKIDPAD ? "skidpad" : "zandvoort"
 const IBTTMPL = NURB ? joinpath(IBTDIR, "lotus49_nurburgring nordschleife 2026-06-14 11-11-37.ibt") :
@@ -87,6 +102,27 @@ function skidpad_parts()
         x0 = cx - total/2
         for ch in ds; digit!(v, ch, x0, cz - s/2, s, 0.13f0, c); x0 += adv; end
     end
+    # a flat number PAINTED on the pad at ring point (cx,cz), oriented RADIALLY (digit "up" =
+    # radially outward, width along the tangent), so it reads upright from the centre. No back
+    # face ⇒ no mirror ambiguity. Digit cell (u,v) → world via the radial/tangent basis, on the ground.
+    FSEG = Dict(1=>(0.13f0,0.49f0,0.87f0,1f0), 2=>(0.49f0,0.62f0,0.5f0,0.87f0), 3=>(0.49f0,0.62f0,0.13f0,0.5f0),
+                4=>(0.13f0,0.49f0,0f0,0.13f0), 5=>(0f0,0.13f0,0.13f0,0.5f0), 6=>(0f0,0.13f0,0.5f0,0.87f0),
+                7=>(0.13f0,0.49f0,0.435f0,0.565f0))
+    function flabel!(v, n::Int, cx, cz, s, c)
+        r=sqrt(cx^2+cz^2); rx=cx/r; rz=cz/r; tx=-rz; tz=rx           # radial-out, tangent
+        wpt(uu,vv) = (cx + uu*s*tx + vv*s*rx, cz + uu*s*tz + vv*s*rz)
+        ds=string(n); adv=0.78f0; total=Float32((length(ds)-1)*adv+0.62f0); u0=-total/2
+        for ch in ds
+            S=get(SEG7,ch,(0,0,0,0,0,0,0))
+            for k in 1:7
+                S[k]==1 || continue; (a0,a1,b0,b1)=FSEG[k]
+                (x00,z00)=wpt(u0+a0,b0); (x10,z10)=wpt(u0+a1,b0); (x11,z11)=wpt(u0+a1,b1); (x01,z01)=wpt(u0+a0,b1)
+                push3!(v,x00,0.04f0,z00,c); push3!(v,x10,0.04f0,z10,c); push3!(v,x11,0.04f0,z11,c)
+                push3!(v,x00,0.04f0,z00,c); push3!(v,x11,0.04f0,z11,c); push3!(v,x01,0.04f0,z01,c)
+            end
+            u0+=adv
+        end
+    end
     parts = Render.TrackPart[]
     # ground: medium-grey macadam, 320 x 320 m at y=0
     g = Float32[]; asph=(0.62f0,0.63f0,0.64f0); S=160f0
@@ -108,12 +144,33 @@ function skidpad_parts()
             push3!(ring,xi0,y,zi0,col); push3!(ring,xi1,y,zi1,col); push3!(ring,xo1,y,zo1,col)
         end
         push!(parts, Render.TrackPart(ring, "", col))
-        # diameter label in metres, just outside the ring at the +x and -x edges
-        ls = clamp(Float32(d)*0.18f0, 2.0f0, 9.0f0)         # bigger circles → bigger label
-        label!(labels, d,  r + ls*0.9f0, 0f0, ls, lcol)
-        label!(labels, d, -(r + ls*0.9f0), 0f0, ls, lcol)
+        # diameter label in metres — flat on the ground, on the yellow (50 m) rings only,
+        # at the 4 cardinal points (each reads upright from the pad centre)
+        if d % 50 == 0
+            ls = clamp(Float32(d)*0.06f0, 2.0f0, 5.0f0)
+            flabel!(labels, d, 0f0,  r, ls, lcol); flabel!(labels, d, 0f0, -r, ls, lcol)
+            flabel!(labels, d,  r, 0f0, ls, lcol); flabel!(labels, d, -r, 0f0, ls, lcol)
+        end
     end
     push!(parts, Render.TrackPart(labels, "", lcol))
+
+    # ---- central orange cones (period 1967 skidpad markers) — orient the driver to the centre ----
+    cones = Float32[]; ocol = (0.95f0, 0.42f0, 0.10f0)
+    function cone!(v, cx, cz, h, rad, c)
+        n = 6
+        for i in 0:n-1
+            a0 = 2f0*Float32(pi)*i/n; a1 = 2f0*Float32(pi)*(i+1)/n
+            push3!(v, cx+rad*cos(a0), 0f0, cz+rad*sin(a0), c)
+            push3!(v, cx+rad*cos(a1), 0f0, cz+rad*sin(a1), c)
+            push3!(v, cx, h, cz, c)                          # apex
+        end
+    end
+    for k in 0:5                                             # ring of 6 cones inside the 10 m circle
+        ang = Float32(k)*Float32(pi)/3; cone!(cones, 2.6f0*cos(ang), 2.6f0*sin(ang), 0.62f0, 0.22f0, ocol)
+    end
+    cone!(cones, 0f0, 0f0, 0.7f0, 0.26f0, ocol)             # one dead centre
+    push!(parts, Render.TrackPart(cones, "", ocol))
+    # (distant scenery is BORROWED from GPL tracks — a horizon backdrop ring, see HORIZON_RING below)
     parts
 end
 
@@ -323,7 +380,15 @@ print("loading textures… "); flush(stdout)
 const TEXIDX = Render.gpl_texture_index(ZD)
 trackItems = Render.build_gpl(TRACK, TEXIDX)
 # GPL sky dome: the 12-panel horizon ring (horiz0..11), camera-centred backdrop.
-const HORIZON_RING = SKIDPAD ? nothing : Render.build_horizon(TEXIDX)   # skidpad: clear blue sky, no GPL ring
+const HORIZON_RING = if !SKIDPAD
+    Render.build_horizon(TEXIDX)
+else   # skidpad: borrow the Nürburgring (Eifel forest) horizon backdrop for orientation
+    try
+        Render.build_horizon(Render.gpl_texture_index(joinpath(GPLBASE, "nurburg")))
+    catch e
+        println("  skidpad horizon (nurburg) unavailable (", e, ") — clear sky"); nothing
+    end
+end
 # ---- Phase 3 (a): auto-place trackside objects (GPL .3do geometry, textured from
 # loose files + the packed zandvort.dat).  Names + transforms come from the .3do
 # instance records; geometry/textures resolve from loose files OR the .dat archive.
@@ -405,8 +470,8 @@ const PROJ = Render.perspective_revz(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0
 
 # ---- input: edge-detected shift, view + auto-gearbox toggle ----
 mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; view::Int; auto::Bool; end
-# shift mode: AUTO (auto-shift, no clutch) by default; SAND_SHIFT=manual starts in
-# realistic mode (you shift E/Q, clutch required).  G toggles in-app.
+# shift mode: MANUAL by default — no auto-shift, no auto-clutch (you work the clutch to
+# launch and to shift E/Q, or it bogs). ZAND_SHIFT=auto opts into the assists; G toggles in-app.
 const CTL = Ctl(false,false,false,false,false, 1, get(ENV,"ZAND_SHIFT","manual") == "auto")   # MANUAL by default
 key(k) = GLFW.GetKey(win, k) == GLFW.PRESS
 function read_input()
@@ -468,6 +533,12 @@ function main()
         LASTZ[]
     end
     cs = build_car(x0=cs0.x, z0=cs0.z, θ0=cs0.θ, v0=0.0)   # MTK car — standing start
+    # ---- force feedback: self-aligning torque from the front-axle lateral force ----
+    # force = SIGN·GAIN·(Fy_FL+Fy_FR), faded out near standstill.  The front Fy rises as the
+    # tyres bite and DROPS past the grip peak → the wheel goes light = you feel understeer.
+    ffb = (FFB_ON && !SMOKE) ? FFB.open_ffb() : nothing
+    (ffb !== nothing && ffb.ok) ? println("  force feedback: ON  (", ffb.path, ", gain ", FFB_GAIN, ")") :
+                                  println("  force feedback: off", FFB_ON ? " (no wheel found)" : " (JM_NOFFB)")
     spin = 0.0; last = time(); frames = 0; titleT = last
     v_prev = cs.v; pitch_dyn = 0.0; pitch_ter = 0.0    # dive/squat + terrain-slope pitch (smoothed)
     # lap timing + telemetry log
@@ -502,7 +573,20 @@ function main()
             end
         end
         spin -= cs.v*dt/0.33
-        ENG.rpm[] = cs.rpm                         # feed the engine-audio thread
+        ENG.rpm[] = isfinite(cs.rpm) ? cs.rpm : 700.0   # feed the engine-audio thread (never NaN)
+
+        # ---- force feedback: aligning torque = front-axle Fy × pneumatic trail ----
+        # Builds through turn-in, then LIGHTENS as the front slip angle grows and the
+        # pneumatic trail collapses (you feel understeer). A mechanical-trail floor keeps
+        # it from going dead; tanh soft-clips so it never hard-pins (always some headroom).
+        if ffb !== nothing && ffb.ok
+            tl  = telemetry(cs)
+            αf  = atan(tl.v + FFB_AF*tl.r, max(tl.u, 1.0)) - clamp(inp.steer, -1, 1)*FFB_DELTA
+            trail = FFB_TFLOOR + (1 - FFB_TFLOOR) * clamp(1 - abs(αf)/FFB_ATRAIL, 0.0, 1.0)
+            mz  = (cs.tc[1][2] + cs.tc[2][2]) * trail
+            spd = clamp(cs.v/2.5, 0.0, 1.0)                    # fade in with speed (no rest buzz)
+            FFB.set_force!(ffb, tanh(FFB_SIGN * FFB_GAIN * mz * spd))
+        end
 
         # ---- iRacing .ibt telemetry sample (one row per frame, ~60 Hz) ----
         if ibt_samples !== nothing && !rst
@@ -577,7 +661,7 @@ function main()
         swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5)) * Render.translate(-SWCENTER)
         for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2, ambfill=0.34); end
         Render.hud_draw(hudprog, hudvao, hudvbo,
-            Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, 9500.0, inp.throttle, inp.brake, cs.tc;
+            Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, 9500.0, inp.throttle, inp.brake, inp.clutch, cs.tc;
                                lastlap=(SMOKE ? 94.3 : last_lap), bestlap=(SMOKE ? 92.1 : best_lap), manual=!CTL.auto), W, H)
         GLFW.SwapBuffers(win)
         if SMOKE && frames == 38                   # headless self-test: dump one frame
@@ -588,7 +672,7 @@ function main()
 
         frames += 1
         if now - titleT > 0.25
-            GLFW.SetWindowTitle(win, "juliaMotor — Lotus 49 — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
+            GLFW.SetWindowTitle(win, "juliaMotor — Lotus 49 — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear == 0 ? "N" : string(cs.gear)) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
                 (cs.ontrack ? "" : "  [OFF TRACK]"))
             titleT = now
         end
@@ -607,6 +691,7 @@ function main()
             println("  .ibt export failed: ", e)
         end
     end
+    ffb !== nothing && FFB.close_ffb(ffb)
     EngineAudio.stop!(ENG)
     GLFW.Terminate()
     println("bye")

@@ -4,3 +4,4 @@ zand_racer_*.txt
 sand_racer_*.txt
 # joystick calibration is machine-specific
 joystick.conf
+joystick_profiles/

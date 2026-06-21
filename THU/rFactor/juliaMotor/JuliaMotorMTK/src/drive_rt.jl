@@ -20,7 +20,8 @@ end
 
 export Car, build_car, step_car!, respawn!, telemetry
 
-const GEARS    = [2.23, 1.72, 1.32, 1.09, 0.916]   # Lotus 49 gearbox
+const GEARS    = [2.23, 1.72, 1.32, 1.09, 0.916]   # Lotus 49 gearbox (gear 1..5)
+gearratio(g::Int) = g <= 0 ? 0.0 : GEARS[g]        # g=0 ⇒ NEUTRAL (ratio 0 ⇒ clutch decoupled, engine idles free)
 const FINAL    = 4.11
 const MAXSTEER = 0.30                               # road-wheel angle at full lock [rad]
 const RW_R     = 0.33
@@ -28,6 +29,7 @@ const RW_R     = 0.33
 mutable struct Car
     sys; integ
     s_thr; s_brk; s_st; s_gr; s_clu                 # parameter setters
+    s_we                                            # engine-speed STATE setter (for restart after a stall)
     getall                                          # batched observed getter (compiled once)
     gear::Int
     # CarState-like render fields
@@ -54,13 +56,13 @@ function build_car(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0)
         sys.FL.tyre.Fx, sys.FR.tyre.Fx, sys.RL.tyre.Fx, sys.RR.tyre.Fx,
         sys.FL.tyre.Fy, sys.FR.tyre.Fy, sys.RL.tyre.Fy, sys.RR.tyre.Fy, sys.ωr])
     c = Car(sys, integ, setp(sys, sys.throttle), setp(sys, sys.brake), setp(sys, sys.δ),
-            setp(sys, sys.gear), setp(sys, sys.clutch), getall, 1,
+            setp(sys, sys.gear), setp(sys, sys.clutch), ModelingToolkit.setu(sys, sys.ωe), getall, 1,
             x0, 0.0, z0, θ0, v0, 0.0, 0.0, 1,
             ntuple(_ -> (0.0,0.0,0.0), 4), 0.0, 0, 0.0, 0.0, true)
     c.s_gr(c.integ, GEARS[c.gear]);  getall(integ)
     for _ in 1:3; step_car!(c, 0.3, 0.0, 0.0, 1/60); end                          # warm AUTO path
     for _ in 1:3; step_car!(c, 0.3, 0.0, 0.0, 1/60; clutch = 0.5, manual = true); end  # warm MANUAL path
-    reinit!(c.integ); c.gear = 1; c.s_gr(c.integ, GEARS[1])                       # reset to spawn
+    reinit!(c.integ); c.gear = 0; c.s_gr(c.integ, 0.0)                            # spawn in NEUTRAL (like GPL/rF/iRacing)
     a = getall(c.integ)                                                           # refresh struct fields
     c.x = a[1]; c.z = a[2]; c.θ = a[3]; c.v = sqrt(a[4]^2 + a[5]^2); c.rpm = a[6]  # (else stale warmup v
     c                                                                             #  spuriously engages the auto-clutch)
@@ -72,12 +74,13 @@ driver works the clutch + gears, else the adapter auto-clutches and auto-shifts.
 function step_car!(c::Car, throttle, brake, steer, dt;
                    clutch = 0.0, up = false, dn = false, manual = false,
                    groundz = (x,z)->0.0)
-    held = abs(c.v) < 1.0 && throttle < 0.05         # auto-hold at a standstill: no idle creep-off
-    if manual                                        # driver clutch + manual gears
-        c.s_clu(c.integ, held ? 1.0 : clamp(clutch, 0, 1))
-        up && c.gear < 5 && (c.gear += 1; c.s_gr(c.integ, GEARS[c.gear]))
-        dn && c.gear > 1 && (c.gear -= 1; c.s_gr(c.integ, GEARS[c.gear]))
+    held = abs(c.v) < 1.0 && throttle < 0.05         # auto-hold at a standstill (AUTO mode only)
+    if manual                                        # driver clutch + manual gears — NO auto-clutch.
+        c.s_clu(c.integ, clamp(clutch, 0, 1))        # clutch is 100% the driver's: you must slip it
+        up && c.gear < 5 && (c.gear += 1; c.s_gr(c.integ, gearratio(c.gear)))   # N→1→…→5
+        dn && c.gear > 0 && (c.gear -= 1; c.s_gr(c.integ, gearratio(c.gear)))   # …→1→N
     else                                             # auto-clutch (slip in/out on throttle+motion)
+        c.gear == 0 && (c.gear = 1; c.s_gr(c.integ, GEARS[1]))   # AUTO auto-engages 1st out of neutral
         ae = held ? 0.0 : clamp((c.rpm - 1400.0)/1000.0, 0, 1) * clamp(max(2*throttle, c.v/2), 0, 1)
         c.s_clu(c.integ, clamp(1.0 - ae, 0, 1))
     end
@@ -88,12 +91,17 @@ function step_car!(c::Car, throttle, brake, steer, dt;
     a = c.getall(c.integ)                            # [X,Y,ψ,u,v,rpm, 4×Fx, 4×Fy, ωr]
     c.x = a[1];  c.z = a[2];  c.θ = a[3]
     c.v = sqrt(a[4]^2 + a[5]^2);  c.t = c.integ.t
-    c.rpm = clamp(a[6], 600.0, 9700.0);  c.gear_n = c.gear
+    c.rpm = clamp(a[6], 0.0, 9700.0);  c.gear_n = c.gear   # floor 0 so a STALLED engine reads ~0, not 600
+    # rF1-style restart: a stalled engine fires back to idle the instant you disengage the drivetrain
+    # (clutch pedal in, or shift to neutral). Otherwise a stall stays a stall.
+    if c.rpm < 350.0 && (clamp(clutch, 0, 1) > 0.5 || c.gear == 0)
+        c.s_we(c.integ, 209.44); c.rpm = 2000.0           # 209.44 rad/s = 2000 rpm idle
+    end
     c.y = groundz(c.x, c.z)
     mg4 = 617.0*9.80665/4
     c.tc = ntuple(i -> (a[6+i]/mg4, a[10+i]/mg4, hypot(a[6+i], a[10+i])/mg4), 4)
     (!isfinite(c.v) || abs(c.v) > 110) && return respawn!(c)   # safety net: recover from any divergence
-    if !manual                                       # auto-shift on road-speed-implied rpm
+    if !manual && c.gear >= 1                         # auto-shift on road-speed-implied rpm
         grpm = (a[4]/RW_R)*GEARS[c.gear]*FINAL*60/(2π)
         if grpm > 8500 && c.gear < 5;                       c.gear += 1; c.s_gr(c.integ, GEARS[c.gear])
         elseif grpm < 3400 && c.gear > 1 && throttle < 0.9; c.gear -= 1; c.s_gr(c.integ, GEARS[c.gear]); end

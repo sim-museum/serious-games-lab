@@ -28,6 +28,7 @@ println("  after 2 s braking: v=$(round(c.v*3.6,digits=1)) km/h (from $(round(v0
 
 println("\n=== 4) MANUAL clutch launch: rev with clutch in, then drop it ===")
 c = build_car(v0 = 0.0)
+step_car!(c, 0.0, 0.0, 0.0, 1/60; clutch = 1.0, manual = true, up = true)            # N → 1st (spawns in neutral)
 for _ in 1:60; step_car!(c, 1.0, 0.0, 0.0, 1/60; clutch = 1.0, manual = true); end   # clutch IN, rev
 println("  clutch in + full throttle 1 s: v=$(round(c.v*3.6,digits=1)) km/h  rpm=$(round(Int,c.rpm))  (revs, car still)")
 @assert c.v < 1.0    "clutch in ⇒ car must stay put"

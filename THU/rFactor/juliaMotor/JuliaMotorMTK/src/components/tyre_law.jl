@@ -46,11 +46,18 @@ const TYRE_DEFAULTS = (
 # made the car wash wide instead of snapping.  Rear made peakier than the front so the
 # rear lets go first (power-on snap oversteer).  Peak μ and low-slip stiffness (Ky) are
 # preserved — Cy only reshapes at/after the limit.
+# μ raised ×1.13 (1.213→1.371 front, 1.304→1.474 rear) to match the iRacing skidpad .ibt
+# peak of 1.40 g (Path-B calibration; the original ×1.0 fit the user's rFactor DAQ at ~1.24 g).
+# Front/rear ratio preserved, so the peak grip balance is unchanged.
+# HANDLING BALANCE flipped to OVERSTEER (Path-B, to match iRacing's snappy Lotus 49): the
+# post-peak grip FALLOFF (Cy>1) is now on the REAR (Cy 1.0→1.45 — rear breaks away sharply →
+# the car whips around in a spin) instead of the front (Cy 1.345→1.10 — front now holds, so it
+# no longer washes wide / "floats outward").  Peak μ is unchanged (Cy only shapes post-peak).
 const TYRE_SKIDPAD_FRONT = (
-    Fz0 = 1415.0, μy = 1.213, μx = 1.213, Cy = 1.345, Cx = 1.6,
+    Fz0 = 1415.0, μy = 1.45, μx = 1.45, Cy = 1.40, Cx = 1.6,    # Cy↑ 1.2→1.4: front lets go a bit too → calmer spin + stronger braking
     Ey = 0.40, Ex = -0.5, pKy1 = 25.7, pKy2 = 1.71, pKx1 = 16.6, t0 = 0.035, Bt = 8.0)
 const TYRE_SKIDPAD_REAR = (
-    Fz0 = 1670.0, μy = 1.304, μx = 1.304, Cy = 1.000, Cx = 1.6,
+    Fz0 = 1670.0, μy = 1.55, μx = 1.55, Cy = 1.45, Cx = 1.6,   # μ↓ for ~1.4 g, Cy↓ to calm the 277°/s spin toward 183
     Ey = 0.329, Ex = -0.5, pKy1 = 33.8, pKy2 = 1.71, pKx1 = 16.6, t0 = 0.035, Bt = 8.0)
 
 "Pure-Julia lateral force Fy(Fz, α) — mirror of the symbolic `Tyre.Fy` eq."

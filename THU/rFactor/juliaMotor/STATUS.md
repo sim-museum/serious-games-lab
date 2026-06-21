@@ -1,73 +1,68 @@
-# juliaMotor — status (2026-06-17)
+# juliaMotor — status (2026-06-20)
 
-Branch: `julia-racer`. A Julia physics engine (`JuliaMotorMTK`, ModelingToolkit) + a
-native OpenGL renderer (`demo/native`) for a 1967 Lotus 49 on GPL tracks (Zandvoort,
-skidpad, Nürburgring Nordschleife). End goal "Path B": physics-based Lotus 49 tuned vs
-gold-standard iRacing telemetry.
+Branch: `julia-racer`. A Julia physics engine (`JuliaMotorMTK`, ModelingToolkit) + a native
+OpenGL renderer (`demo/native`) for a 1967 Lotus 49 on GPL tracks (Zandvoort, skidpad,
+Nürburgring). Goal "Path B": a physics-based Lotus 49 tuned vs gold-standard iRacing telemetry.
 
 ## Apps / how to run
 ```
 cd demo/native
-TRACK=nurburgring JM_NOSOUND=1 julia -t 2 --project=. drive_native_mtk.jl   # 3 tracks (1 Zandvoort / 2 skidpad / 3 Nürburgring)
-JM_IBT=1 …                                                                   # also emit an iRacing-format .ibt
-julia -t 2 --project=. drive_native.jl                                       # standalone Zandvoort app (packaged as zand_racer)
-JM_SMOKE=1 …                                                                 # headless self-test → /tmp/zand_hud.ppm (Zandvoort only), auto-exit
+python3 gui.py                                # PyQt6 front-end (recommended): launch + controller calibration
+julia -t 2 --project=. drive_native_mtk.jl    # 3 tracks (Skidpad is the GUI default), TRACK=zandvoort|skidpad|nurburgring
+JM_SMOKE=1 …                                  # headless self-test (forces Zandvoort), auto-exit
 ```
-Driver is GL 4.6 (NVIDIA GTX 1660). First load ~3–4 min. JM_NOSOUND=1 skips audio.
+First load ~3–4 min. Env: `JM_NOSOUND`, `JM_NOIBT` (telemetry ON by default → `data/juliaracer/`),
+`JM_FFB_GAIN`/`JM_FFB_SIGN`/`JM_NOFFB`.
 
-## Physics — DONE this session
-- **Energy-conserving, physics-based combined-slip tyre** (`5721f32`) replacing the empirical
-  Gyκ snap-oversteer hack. The friction force has magnitude μ·Fz·MF(σ) over combined slip
-  σ=√(κ²+sin²α), **directed along the slip vector** (opposite the contact-patch slip velocity).
-  One law gives: energy dissipated at any heading (a spin scrubs off and STOPS — no more
-  speed-up-while-braking pinwheel), power-on snap oversteer for free, and the fitted pure-slip
-  curves preserved. Files: `JuliaMotorMTK/src/components/{tyre.jl,tyre_law.jl,vehicle_rt.jl}`.
-- Tests pass: launch 0→121 km/h, brake 121→40 in 2 s, steady grip 1.17 g, driven replay 1.27 g
-  trail-braking. (`test_launch.jl`, `test_drive_rt.jl`, `test_vehicle_driven.jl`.)
-- **`.ibt` comparison tool** `JuliaMotorMTK/tools/ibt_compare.jl` (`4f83480`): iRacing gold vs a
-  JM_IBT run, per-channel min/mean/max + skidpad grip + energy-runaway check.
+## NEW this session — PyQt GUI + Thrustmaster TX wheel + FFB
+- **`gui.py`** (PyQt6, system `python3-pyqt6`): **Drive** tab (track + mute + .ibt + Launch; Skidpad
+  default) and **Calibrate controller** tab (live axis bars / button lamps + hold-each-control wizard →
+  writes `joystick.conf`). Reads the stick through GLFW via **`joyserver.jl`** (a hidden-window GLFW
+  poller streaming `{name,axes,buttons}` JSON) so calibrated axis indices match the game exactly.
+  Python `JoyMap` mirrors `joycfg.jl`. Works for the Logitech X3D and the Thrustmaster TX.
+- **Thrustmaster TX on Linux** (USB `044f:b664` Xbox/GIP mode exposes only steer+clutch+buttons via
+  `xpad` — NO accel/brake pedals). Fix = **`tmdrv`** (`/home/g/src/tmdrv`, `sudo ./tmdrv.py -d
+  thrustmaster_tx`) re-enumerates to full mode `044f:b669` (4 normalized axes). Auto-init on plug-in:
+  `/etc/systemd/system/tmdrv-tx.service` + `/etc/udev/rules.d/99-thrustmaster-tx.rules`.
+- **Force feedback WORKS**: built+installed **`hid-tmff2`** (`/home/g/src/hid-tmff2`, `make && sudo make
+  install && sudo make udev-rules`), binds `TX_ACTIVE=0xb669`. FF bitmap `0x31fff0000` (FF_CONSTANT etc.).
+  **`ffb.jl`** = Julia evdev FF writer (EVIOCSFF), wired into `drive_native_mtk.jl`: wheel force =
+  self-aligning torque from front-axle Fy × pneumatic trail (you feel the front load up / lighten).
+  `ffbtest.py` is the raw-evdev reference. `/dev/input/event5` is user-writable (uaccess ACL), no root.
+- **Diagnostics**: `joydiag.py` (axis range / movement-order), `joybtn.py` (button capture).
 
-## Rendering — DONE this session
-- **Reversed-Z depth** (`3d52f16`,`3cf8e72`): GL 4.5 context + glClipControl(ZERO_TO_ONE) +
-  reversed projection (`perspective_revz`, near→1/far→0) + GEQUAL + clearDepth 0. Per-pass: the
-  shadow pass stays standard so the shadow map/sampler are untouched. Killed the sign-on-fence
-  *depth* z-fight. Both apps. (NOTE: this app renders to the DEFAULT framebuffer, so the earlier
-  32F-depth-FBO change `3ff9896` is inert — reversed-Z runs on the default 24-bit depth.)
-- **Cutout alpha pipeline** for chain-link/foliage shimmer: per-texture classification by alpha
-  histogram (`b7e1355`,`99758ec` — incl. the `load_dds` path the fences actually use), edge
-  sharpening gated to cutouts only (groove stays soft), distance-fade of unresolved far alpha
-  (`d2b5f96`), 8× MSAA. Reduced the strobe a lot but did NOT eliminate it (see open issues).
-- **Scenery cleanup**: de-dup GPL double-sided panels + drop stray "Star Destroyer" tris
-  (`6d0b2ac`); skip flat horizontal sprite stubs (`f329b07`).
-- **Cockpit**: additive ambient fill lifts pure-black tub/dash to a visible dark grey
-  (`60ccbd1`,`c7c5630`); excluded the tan scuttle `windlot` (the "shining rug") (`f329b07`).
+## GPL force feedback (Wine)
+- Switched the game runner **`lutris-5.7` → `lutris-fshack-7.2`** (modern DInput FFB) in BOTH
+  `THU/gpl.sh` AND `config/wine_runners.csv` (the `~/sgl` launcher reads the CSV — that was the real one).
+- Set `HKCU\Software\Wine\DirectInput "DisableHidraw"="Y"` in the WP prefix (legacy evdev path → wheel
+  visible to GPL with FFB). FF tuning lives in GPL **`core.ini`** `[ Joy ]` (NOT `gpla67.ini` — that's AI
+  physics): `force_feedback_damping 40→8`, `max_steering_torque 225→200`.
 
-## OPEN ISSUES (user still sees these on the Nürburgring)
-1. **Fence flicker — RESIDUAL.** Four layered fixes applied (reversed-Z, cutout sharpening,
-   8× MSAA, distance fade). Down from "epilepsy-inducing" to a persistent residual. This is the
-   inherent distant alpha-cutout aliasing of forward rendering; the only complete cures are
-   temporal AA (needs motion vectors + history) or supersampling (big perf hit) — both large
-   architectural changes, not yet done.
-2. **"Shining rug" — STILL REPORTED on Nürburgring.** Excluding `windlot` removed the tan
-   cockpit scuttle and was VERIFIED on the Zandvoort cockpit (SMOKE). But the user still sees a
-   "shining rug" on the Nürburgring that earlier was described as "lined up with the racing
-   groove, sometimes on the right" — which sounds like a GROUND/track artifact (a specular or
-   shadow-box stripe following the racing line), NOT the cockpit scuttle. **Needs re-diagnosis
-   with a fresh Nürburgring screenshot** (SMOKE can't reach Nürburgring — it forces Zandvoort).
-3. **Horizontal floating people — STILL THERE.** The flat-sprite-stub skip (`f329b07`) targets
-   `SIGN1/SIGNX/sign2m/s_aden` (UP≈0 quads). But the `flagger` marshals are billboard stubs with
-   **0 triangles** — they never render via `gpl_scenery`, so the floating *people* come from a
-   DIFFERENT path (the trackside-object / crowd / billboard system in `drive_native_mtk.jl`).
-   **Not yet chased.** Next step: instrument which code path emits the horizontal people on the
-   Nürburgring (the `OBJECTS`/`BILLBOARDS` build near the trackside-object loader).
-- **Mirrors render black** (no render-to-texture). Separate feature, not started.
+## Physics — DONE this session (toward iRacing skidpad: 1.40 g, 183°/s spin)
+- **Removed the non-physical low-speed `α` fade** → single physical low-speed reference velocity
+  `Vref = √(vx² + Vlow²)` (Vlow=1) — force opposes the slip velocity at any heading, dies only at rest,
+  Jacobian bounded. (`vehicle_rt.jl`.)
+- **Aero drag `u²` → `u·|u|`** (was injecting energy when the car moved backward post-spin) + **rolling
+  resistance** added (Crr 0.026, tanh knee) — a coast actually stops.
+- **Engine: stall + restart + WHEEL-LOCK.** Spawns in **neutral** (gear "N"); idle only acts when the
+  clutch is decoupled (no idle-creep); a bogged engine **stalls** (combustion/idle die below ~300 rpm);
+  a **dead engine resists being motored** (`−(1−run)·45·ωe`) so a stall in gear drags the wheels to lock
+  → tyres skid at ~1 g → stops in ~3 s (was a 25 s glide). rF1-style restart on clutch-in OR shift-to-N.
+- **MANUAL by default** — no auto-clutch, no auto-shift.
+- **Tyre calibration** (`tyre_law.jl`): front μ1.45/Cy1.40, rear μ1.55/Cy1.45. Measured vs iRacing
+  skidpad .ibt: **grip 1.45 g (iRacing 1.40 ✓)**; spin yaw ~247°/s (iRacing 183 — still a touch hot).
+- Tests: `test_launch`, `test_drive_rt`, `test_vehicle_driven` pass.
 
-## Physics tuning workflow (Path B, next)
-- Re-drive the skidpad with the FIXED tyre (`TRACK=skidpad JM_IBT=1 …`), then
-  `julia --project=. JuliaMotorMTK/tools/ibt_compare.jl "<iRacing skidpad.ibt>" "<new.ibt>"`.
-- Known data gaps: iRacing skidpad peaks ~1.5 g (target may be higher than the fitted 1.2–1.3 g);
-  the JM `.ibt` writes the ROAD-wheel angle as SteeringWheelAngle (±17°) vs iRacing's steering-
-  wheel angle (±385° via the ~15:1 ratio) — apply the ratio for the steering trace to line up.
+## Renderer / HUD — DONE this session
+- HUD: gear digit raised (was clipped) + shows **"N"** for neutral; pedal bars reordered to physical
+  **clutch · brake · throttle** (+ a clutch bar); **RPM is now a tachometer DIAL** (2× size).
+- Skidpad: orange **cones** in the centre circle; diameter labels **flat on the ground**, radial, at the
+  4 cardinal points of the **yellow (50 m)** rings only (50/100/150/200); **Nürburgring horizon** backdrop
+  for orientation (other scene choices removed).
 
-## Memory
-Assistant memory `juliamotor-project.md` and `demo/native/CLAUDE.md` track the longer history.
+## OPEN / next
+- **Tyre direction-normalized combined slip** (the flagged refactor): the combined law uses the *lateral*
+  curve (Cy) for the *longitudinal* force too, so front Cy couples into braking grip (LongAccel 1.12 g vs
+  iRacing 2.19) and fails `test_combined_slip:34`. Proper fix = normalize slip per direction (long→Cx).
+- Spin yaw 247 vs 183 — trim oversteer slightly from the next .ibt.
+- Mirrors render black (no RTT). Nürburgring fence flicker / floating people (pre-existing).

@@ -10,14 +10,51 @@ working summary.
 ## Run it
 ```
 cd demo/native
+python3 gui.py                                  # PyQt6 front-end: launch + controller calibration (recommended)
 julia -t 2 --project=. drive_native.jl          # opens a GLFW window on your display
 JM_SMOKE=1 julia -t 2 --project=. drive_native.jl   # headless self-test → dumps /tmp/zand_hud.ppm and exits
 ```
 First load is ~3–4 min (parses the track, extracts ~70 trackside objects, decodes
 MIP textures). Controls: **W/S** gas·brake, **A/D** steer, **E/Q** shift, **C** clutch,
 **G** auto⇄manual, **V** view (cockpit/chase), **R** respawn, **M** mute, **Esc** quit.
-Logitech Extreme 3D Pro works natively (push=throttle, pull=brake, roll=steer);
-`calibrate.jl` (terminal wizard) writes `joystick.conf`.
+
+## GUI + controller calibration (`gui.py`)
+`gui.py` (PyQt6, system `python3-pyqt6`) is the front-end. Two tabs: **Drive** (pick
+track Zandvoort/Skidpad/Nürburgring + mute/IBT options → launches `drive_native_mtk.jl`)
+and **Calibrate controller** (live axis bars + button lamps + a hold-each-control wizard
+→ writes `joystick.conf`). Works for the **Logitech Extreme 3D Pro** (as before) AND a
+**Thrustmaster TX wheel with clutch/brake/accelerator pedals** (enumerates as "Generic
+X-Box pad"); the wizard discovers each pedal/paddle so any layout maps.
+
+### Thrustmaster TX wheel on Linux — REQUIRES tmdrv (2026-06-19)
+The TX wheel ships in **Xbox/GIP mode** (USB `044f:b664`), where the generic `xpad`
+driver exposes only steering + clutch + buttons — the **accelerator and brake pedals
+send no axis data at all** (proven by GLFW capture; `xpad` doesn't decode the wheel's
+pedal reports). The fix is **`tmdrv`** (her001/tmdrv, a Python USB mode-switch tool,
+cloned to `/home/g/src/tmdrv`): `sudo ./tmdrv.py -d thrustmaster_tx` sends two control
+transfers that re-enumerate the wheel to **full mode `044f:b669`** = a proper HID wheel
+with 4 normalized axes (steer=axis1 ±1, accel=axis4, brake=axis2, clutch=axis3; pedals
+rest +1.0 → press −1.0; TX brake is stiff, full press only ~+0.38) + paddles (up=btn2,
+dn=btn1). Deps: `sudo pip3 install --break-system-packages libusb1` (apt's
+`python3-libusb1` wasn't in the index). The committed `joystick.conf` / profile
+`joystick_profiles/Thrustmaster_TX_Racing_Wheel.conf` capture this mapping.
+**Auto-init on plug-in**: `/etc/systemd/system/tmdrv-tx.service` (oneshot, runs tmdrv)
+triggered by `/etc/udev/rules.d/99-thrustmaster-tx.rules` (matches the b664 add event,
+`systemctl --no-block restart tmdrv-tx.service`). Staged copies live in
+`/home/g/src/tmdrv/`. The wheel reverts to b664 on power-cycle/unplug; the udev rule
+re-runs tmdrv automatically. Force feedback would need the `hid-tmff2` DKMS module (not
+installed). Diagnostic helpers: `joydiag.py` (axis range + movement-order timeline),
+`joybtn.py` (button capture) — both stream via `joyserver.jl`.
+
+KEY DESIGN: `joystick.conf` axis indices are in **GLFW's** ordering, so the GUI must read
+the stick through GLFW, not pygame/evdev (which number axes differently). It does so via
+`joyserver.jl` — a hidden-window GLFW poller that streams `{name,axes,buttons}` JSON lines
+on stdout; `gui.py` spawns it and calibrates against exactly the indices the game uses.
+The Python `JoyMap` in `gui.py` mirrors `joycfg.jl` (same file format, same `apply`).
+`calibrate.jl` (terminal wizard) still works and writes the same file. Per-device configs
+are also stashed under `joystick_profiles/` on Save. NOTE: `drive_native_mtk.jl` no longer
+hardcodes clutch→axis 4; it honours `joystick.conf` when present (so the TX clutch pedal
+works), falling back to the X3D slider only when no config exists.
 
 GOTCHAS (and see memory `sandracer-launch`):
 - The live (non-SMOKE) run **block-buffers stdout** to a log file — it can sit at
@@ -37,7 +74,9 @@ GOTCHAS (and see memory `sandracer-launch`):
   the horizon sky-dome, billboards.
 - `gpl3do.jl` / `gplmip.jl` / `gpldat.jl` / `gpltrack.jl` — GPL asset loaders:
   `.3do` meshes, `.mip`/`.srb` textures, the `.dat` archive, `.trk` centreline + HAT.
-- `joycfg.jl` / `calibrate.jl` — joystick mapping + calibration wizard.
+- `gui.py` — PyQt6 front-end: launch tab + controller-calibration tab.
+- `joyserver.jl` — GLFW joystick → JSON-line streamer that feeds `gui.py` (index parity).
+- `joycfg.jl` / `calibrate.jl` — joystick mapping module + terminal calibration wizard.
 - `zand_racer_*.txt` — per-run telemetry logs (gitignored).
 
 ## Current state (2026-06-11)

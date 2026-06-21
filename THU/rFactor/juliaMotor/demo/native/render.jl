@@ -550,8 +550,8 @@ function hquad!(v,x,y,w,h,c)
 end
 const SEG7 = (63,6,91,79,102,109,125,7,127,111)     # digit → lit-segment bitmask (a..g)
 function hdigit!(v,x,y,W,H,T,d,c)
-    (0<=d<=9) || return
-    m=SEG7[d+1]; vl=(H-3T)/2
+    m = d < 0 ? 84 : (0<=d<=9 ? SEG7[d+1] : return)   # d<0 ⇒ lowercase "n" (segments c+e+g) for NEUTRAL
+    vl=(H-3T)/2
     (m&1)!=0  && hquad!(v,x+T,y,W-2T,T,c)            # a top
     (m&32)!=0 && hquad!(v,x,y+T,T,vl,c)              # f upper-left
     (m&2)!=0  && hquad!(v,x+W-T,y+T,T,vl,c)          # b upper-right
@@ -598,22 +598,41 @@ function htime!(v,x,y,secs,c; Wd=18,Hd=30,T=4,gap=6)
     hdigit!(v,cx,y,Wd,Hd,T, ti, c)
 end
 
+# Tachometer DIAL: 270° sweep (frac 0→1 maps 225°→−45°, clockwise through the top), tick dots
+# (red past `redfrac`), and a needle. Pixel space, y down.
+function hdial!(v,cx,cy,R,frac,redfrac,dimc,litc,redc)
+    a0=Float32(deg2rad(225.0)); a1=Float32(deg2rad(-45.0))
+    arc(f)=a0+(a1-a0)*clamp(Float32(f),0f0,1f0)
+    n=30
+    for i in 0:n
+        f=i/n; θ=arc(f); c = f>=redfrac ? redc : dimc
+        hquad!(v, cx+R*cos(θ)-1.6f0, cy-R*sin(θ)-1.6f0, 3.2f0, 3.2f0, c)
+    end
+    θ=arc(frac); nx=cx+(R-2f0)*cos(θ); ny=cy-(R-2f0)*sin(θ)   # needle
+    bx=sin(θ)*2.3f0; by=cos(θ)*2.3f0                           # perpendicular base half-width
+    append!(v, Float32[cx+bx,cy+by, litc[1],litc[2],litc[3]])
+    append!(v, Float32[cx-bx,cy-by, litc[1],litc[2],litc[3]])
+    append!(v, Float32[nx,ny,        litc[1],litc[2],litc[3]])
+    hquad!(v, cx-2.5f0, cy-2.5f0, 5f0, 5f0, litc)             # hub
+end
+
 """Compose the instrument readout: big 7-seg speed (bottom-left), gear (bottom-
 right), throttle/brake/rpm bars, the four per-wheel traction circles (over the
 nose), and last/best lap times (top-left).  `tc`=(FL,FR,RL,RR) (long,lat,radius)
 or nothing; `lastlap`/`bestlap` in seconds (0 = none).  Returns the HUD vertex list."""
-function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,tc=nothing; lastlap=0.0, bestlap=0.0, manual=false)
+function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,clu=0.0,tc=nothing; lastlap=0.0, bestlap=0.0, manual=false)
     v=Float32[]
-    white=(0.90,0.95,1.0); amber=(1.0,0.82,0.35); green=(0.42,0.82,0.42); red=(0.95,0.35,0.30); dim=(0.16,0.18,0.22)
+    white=(0.90,0.95,1.0); amber=(1.0,0.82,0.35); green=(0.42,0.82,0.42); red=(0.95,0.35,0.30); dim=(0.16,0.18,0.22); blue=(0.35,0.65,1.0)
     hnumber!(v, 40, H-104, 40, 76, 11, kmh, white)             # speed (big, bottom-left)
-    hdigit!(v, W-92, H-104, 40, 76, 11, clamp(round(Int,gear),0,9), amber)  # gear (bottom-right)
-    hquad!(v, W-100, H-118, 12, 12, manual ? amber : green)    # shift-mode dot: green=auto amber=manual
+    hdigit!(v, W-92, H-150, 40, 76, 11, (round(Int,gear) <= 0 ? -1 : clamp(round(Int,gear),1,9)), amber)  # gear (N for neutral), raised so it isn't clipped
+    hquad!(v, W-100, H-164, 12, 12, manual ? amber : green)    # shift-mode dot: green=auto amber=manual
     function bar(x,frac,col)
         bw=20; bh=70; by=H-104; hquad!(v,x,by,bw,bh,dim)
         f=clamp(frac,0,1); f>0 && hquad!(v,x,by+bh*(1-f),bw,bh*f,col)
     end
-    bar(250, thr, green); bar(278, brk, red)
-    rf = rpm/max(revlim,1f0); bar(306, rf, rf>0.9 ? red : amber)
+    bar(250, clu, blue); bar(278, brk, red); bar(306, thr, green)   # pedal order = physical: clutch, brake, throttle
+    rf = rpm/max(revlim,1f0)                                        # rpm as a tachometer DIAL (2× size)
+    hdial!(v, 430, H-100, 60, rf, 0.88, (0.40,0.45,0.52), rf>0.88 ? red : amber, red)
     if tc !== nothing                                          # traction circles (2×2), small, over the black cowl in front of the wheel
         sp=46; R=16; bx=W/2 - sp/2; by=round(Int, H*0.485)   # dark stable background (not the moving road)
         htraction!(v,bx,by,R,tc[1]); htraction!(v,bx+sp,by,R,tc[2])

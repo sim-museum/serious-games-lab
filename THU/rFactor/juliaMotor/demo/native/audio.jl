@@ -55,12 +55,13 @@ end
 # mix one output buffer (frames×2): triangular RPM crossfade + per-sample pitch
 function mix!(out::Matrix{Float32}, eng::Engine)
     fill!(out, 0f0); N=size(out,1)
-    rpm=max(eng.rpm[],700.0); master=eng.master[]; span=2200.0
+    r=eng.rpm[]; rpm = isfinite(r) ? max(r,700.0) : 700.0   # sanitise: a NaN rpm (stall transient)
+    master=eng.master[]; span=2200.0                         # must NOT poison the voice phases forever
     tot=0.0; for v in eng.voices; tot += max(0.0,1-abs(rpm-v.natural)/span); end
     tot<1e-6 && (tot=1.0)
     @inbounds for v in eng.voices
         g=Float32(max(0.0,1-abs(rpm-v.natural)/span)/tot*master); g<1f-4 && continue
-        rate=clamp(rpm/v.natural,0.5,1.5); len=length(v.data); ph=v.phase
+        rate=clamp(rpm/v.natural,0.5,1.5); len=length(v.data); ph=isfinite(v.phase) ? v.phase : 0.0   # heal a NaN phase
         for i in 1:N
             idx=unsafe_trunc(Int,ph); fr=Float32(ph-idx)
             a=v.data[idx % len + 1]; b=v.data[(idx+1) % len + 1]

@@ -24,9 +24,13 @@ setup_wine_runner() {
     fi
 }
 
-# GE-Proton for InstallShield installers, 5.7 for running (GUI apps need X11 driver)
+# GE-Proton for InstallShield installers. Game runner = Wine 7.2 (fshack) — the same runner
+# the rFactor/MigAlley sims use here, with a modern DirectInput FFB stack that forwards force
+# feedback to the Linux evdev wheel (the old 5.7 runner couldn't), so the Thrustmaster TX gets
+# FFB in GPL. NOTE: when launched via the ~/sgl launcher this is OVERRIDDEN by
+# config/wine_runners.csv (the launcher sets SGL_GAME_SCRIPT) — the runner is changed THERE too.
 RUNNER_INSTALL="lutris-GE-Proton8-26-x86_64"
-RUNNER_GAME="lutris-5.7-x86_64"
+RUNNER_GAME="lutris-fshack-7.2-x86_64"
 
 # Set up game runner unless already configured by the launcher
 if [[ -z "${SGL_GAME_SCRIPT:-}" ]]; then

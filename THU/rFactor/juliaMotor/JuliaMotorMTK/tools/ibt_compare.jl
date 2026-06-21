@@ -14,7 +14,8 @@ length(ARGS) >= 2 || error("usage: julia ibt_compare.jl <iRacing.ibt> <juliarace
 ref = ibt_open(ARGS[1])      # iRacing gold
 jm  = ibt_open(ARGS[2])      # juliaMotor
 
-stat(f, ch) = (v = try channel(f, ch) catch; return nothing end;
+stat(f, ch) = (v0 = try channel(f, ch) catch; return nothing end;
+               v = filter(isfinite, v0);   # real iRacing files have NaN rows (pit/pre-session)
                isempty(v) ? nothing : (n=length(v), lo=minimum(v), mu=sum(v)/length(v), hi=maximum(v),
                                         amax=maximum(abs, v)))
 fmt(x) = lpad(x === nothing ? "—" : string(round(x, digits=2)), 9)
