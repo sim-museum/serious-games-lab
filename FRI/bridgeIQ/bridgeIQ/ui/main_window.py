@@ -5506,15 +5506,20 @@ For more information, see the README file."""
         box.setDefaultButton(QMessageBox.StandardButton.No)
         if box.exec() != QMessageBox.StandardButton.Yes:
             return
-        # Bracketed patterns never match this python process's own argv.
-        script = ("wineserver -k 2>/dev/null; "
-                  "pkill -9 -f 'wineserve[r]'; pkill -9 -f 'win[e]'; "
-                  "pkill -9 -f 'QBRIDG[E]'; pkill -9 -f 'Q-NE[T]'; "
-                  "pkill -9 -f 'syste[m]32'; pkill -9 -f 'biq_qnet_clien[t]'")
+        # Scope the wine teardown to the Q-Plus WINEPREFIX (wineserver -k tears
+        # down exactly that prefix's session) and only SIGKILL the named Windows
+        # binaries. A broad `pkill -f wine` is NOT used — it matched and killed
+        # bridgeIQ itself. The remaining patterns name the .EXE/.py explicitly so
+        # they can never hit a python process.
+        prefix = os.path.normpath(os.path.join(
+            os.path.dirname(__file__), "..", "..", "..", "WP"))
+        script = (f'WINEPREFIX="{prefix}" wineserver -k 2>/dev/null; sleep 0.3; '
+                  "pkill -9 -f 'QBRIDGE\\.EXE'; pkill -9 -f 'Q-NET\\.EXE'; "
+                  "pkill -9 -f 'biq_qnet_client\\.py'")
         try:
             subprocess.run(["bash", "-c", script], timeout=15)
             self.status_label.setText(
-                "Killed all wine/Q-Plus processes — Q-NET socket cleared.")
+                "Exited Q-Plus and killed its wine session — Q-NET socket cleared.")
         except Exception as e:
             self.status_label.setText(f"Kill wine failed: {e}")
 

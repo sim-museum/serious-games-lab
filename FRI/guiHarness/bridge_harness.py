@@ -1525,11 +1525,16 @@ class BridgeHarness(QMainWindow):
         # give Q-Plus a moment to shut its window before we escalate
         for _ in range(15):
             QApplication.processEvents(); time.sleep(0.1)
-        # 2) Clean wine shutdown of the prefix, then SIGKILL only stragglers.
-        script = ("wineserver -k 2>/dev/null; sleep 0.4; "
-                  "pkill -9 -f 'wineserve[r]'; pkill -9 -f 'win[e]'; "
-                  "pkill -9 -f 'QBRIDG[E]'; pkill -9 -f 'Q-NE[T]'; "
-                  "pkill -9 -f 'syste[m]32'; pkill -9 -f 'biq_qnet_clien[t]'")
+        # 2) Clean wine shutdown SCOPED TO THE Q-PLUS PREFIX, then SIGKILL only
+        #    the named Windows binaries. We deliberately do NOT pkill broad
+        #    substrings like 'wine' — that matched and killed bridgeIQ itself.
+        #    `wineserver -k` with WINEPREFIX tears down exactly that prefix's
+        #    wine session and touches nothing else; the remaining pkills name
+        #    the .EXE/script explicitly so they can never hit a python process.
+        prefix = str(FRI_DIR / "WP")
+        script = (f'WINEPREFIX="{prefix}" wineserver -k 2>/dev/null; sleep 0.4; '
+                  "pkill -9 -f 'QBRIDGE\\.EXE'; pkill -9 -f 'Q-NET\\.EXE'; "
+                  "pkill -9 -f 'biq_qnet_client\\.py'")
         try:
             subprocess.run(["bash", "-c", script], timeout=20)
         except Exception as e:
