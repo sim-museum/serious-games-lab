@@ -240,41 +240,51 @@ def main():
         # terminal, so the user only sees a dock entry ("gear") and the main
         # window never appears. raise_/activateWindow + an active window state
         # bring it forward on the current workspace.
-        def _place_on_active_screen():
-            # The window manager was cascading the window OFF-SCREEN (e.g. at
-            # x=2086 on a 1920-wide display / multi-head setup), so the user
-            # only saw a dock "gear" and no window. Centre it on the screen the
-            # user is actually on (the one under the mouse cursor), clamped
-            # fully inside that screen's visible area.
+        def _active_screen():
             try:
                 from PyQt6.QtGui import QCursor
-                scr_obj = QApplication.screenAt(QCursor.pos()) or app.primaryScreen()
+                return QApplication.screenAt(QCursor.pos()) or app.primaryScreen()
+            except Exception:
+                return app.primaryScreen()
+
+        def _show_on_active_screen():
+            # The WM was placing the window OFF-SCREEN (cascade / multi-head),
+            # so the user only saw a dock "gear". Pin it to the screen the user
+            # is actually on (cursor's monitor) by giving it that screen's
+            # geometry, then MAXIMIZE there — a maximized window fills the
+            # monitor, so it can't be off-screen or hidden behind the terminal.
+            try:
+                scr_obj = _active_screen()
                 scr = scr_obj.availableGeometry()
-                w = min(window.width(), scr.width())
-                h = min(window.height(), scr.height())
-                x = scr.left() + max(0, (scr.width() - w) // 2)
-                y = scr.top() + max(0, (scr.height() - h) // 2)
-                window.move(x, y)
+                logger.info(
+                    f"placement: active screen '{scr_obj.name()}' avail={scr}; "
+                    f"all screens={[(s.name(), s.geometry()) for s in app.screens()]}")
+                window.setGeometry(scr)        # assign to that monitor
+            except Exception as _e:
+                logger.warning(f"placement geometry failed: {_e}")
+            window.showMaximized()
+            try:
+                window.setWindowState(
+                    (window.windowState() & ~Qt.WindowState.WindowMinimized)
+                    | Qt.WindowState.WindowMaximized | Qt.WindowState.WindowActive)
+            except Exception:
+                pass
+            window.raise_()
+            window.activateWindow()
+            try:
+                logger.info(
+                    f"window after show: geom={window.geometry()} "
+                    f"frame={window.frameGeometry()} visible={window.isVisible()} "
+                    f"state={int(window.windowState())}")
             except Exception:
                 pass
 
         def show_main():
             splash.finish(window)
-            _place_on_active_screen()   # set position BEFORE mapping (avoid WM cascade)
-            window.show()
-            _place_on_active_screen()   # re-assert with the real mapped size
-            window.setWindowState(
-                (window.windowState() & ~Qt.WindowState.WindowMinimized)
-                | Qt.WindowState.WindowActive)
-            window.raise_()
-            window.activateWindow()
-            # Re-assert position + front shortly after, in case the WM moved it
-            # again during initial mapping.
-            def _settle():
-                _place_on_active_screen()
-                window.raise_()
-                window.activateWindow()
-            QTimer.singleShot(400, _settle)
+            _show_on_active_screen()
+            # Re-assert shortly after, in case the WM relocated it during the
+            # initial map.
+            QTimer.singleShot(400, _show_on_active_screen)
             logger.info("Application ready")
 
         QTimer.singleShot(1000, show_main)
