@@ -1657,6 +1657,14 @@ class MainWindow(QMainWindow):
           genuine closed room live: biq E/W vs Q-Plus N/S, card by card
           over Q-NET.
         """
+        # The "Real Q-Plus (harness)" path only makes sense with a Q-Plus
+        # build configured. With no Q-Plus available there's just one way to
+        # play a closed room — four biq bots in-app — so skip the chooser and
+        # run it directly.
+        if not self._qplus_available():
+            self._set_toolbar_mode('ingame')
+            self._on_closed_room()
+            return
         box = QMessageBox(self)
         from .dialogs.dialog_style import MESSAGEBOX_STYLESHEET
         box.setStyleSheet(MESSAGEBOX_STYLESHEET)   # readable on the dark window
@@ -1673,6 +1681,11 @@ class MainWindow(QMainWindow):
             "Real Q-Plus (harness)…", QMessageBox.ButtonRole.ActionRole)
         box.addButton(QMessageBox.StandardButton.Cancel)
         box.setDefaultButton(internal_btn)
+        # QMessageBox sizes every button to one shared width; the long custom
+        # labels ("Internal all-biq", "Real Q-Plus (harness)…") overflow it and
+        # get clipped. Widen each button to its own text's hint so nothing cuts.
+        for b in box.buttons():
+            b.setMinimumWidth(b.sizeHint().width() + 16)
         box.exec()
         clicked = box.clickedButton()
         if clicked is internal_btn:
@@ -5434,17 +5447,17 @@ For more information, see the README file."""
             return False
 
     def _claude_disabled_notice(self):
+        # Use styled_info (a custom word-wrapping QDialog) rather than a raw
+        # QMessageBox: under the dark window stylesheet the plain message box
+        # doesn't size to its text and clips the right edge ("…is disable",
+        # "…AI &"). styled_info pins a sensible wrap width so nothing is cut.
         try:
-            from .dialogs.dialog_style import MESSAGEBOX_STYLESHEET
-            box = QMessageBox(self)
-            box.setStyleSheet(MESSAGEBOX_STYLESHEET)
-            box.setIcon(QMessageBox.Icon.Information)
-            box.setWindowTitle("Claude Code is off")
-            box.setText(
+            from .dialogs.dialog_style import styled_info
+            styled_info(
+                self, "Claude Code is off",
                 "Claude Code analysis is disabled.\n\n"
                 "Enable it in Preferences → AI & Network to use post-hand "
                 "analysis, annotated transcripts and AI hints.")
-            box.exec()
         except Exception:
             pass
 
@@ -5464,10 +5477,11 @@ For more information, see the README file."""
         """Show closed-room / Q-NET / Q-Plus features only when a Q-Plus
         build is configured (Preferences → AI & Network). Default: hidden."""
         avail = self._qplus_available()
-        for attr in ("closed_room_toolbar_btn",):
-            w = getattr(self, attr, None)
-            if w is not None:
-                w.setVisible(avail)
+        # NOTE: the Closed Room button is intentionally NOT gated on Q-Plus.
+        # Its "Internal all-biq" mode plays all four seats with biq bots and
+        # needs no Q-Plus build, so the button stays available always (its
+        # visibility is governed by the normal opening/toolbar logic). Only
+        # the genuinely Q-Plus-dependent menu actions are hidden below.
         for attr in ("ingest_qplus_action", "ingest_lin_action",
                      "qplus_sim_action", "kill_wine_action"):
             a = getattr(self, attr, None)
@@ -5848,8 +5862,11 @@ For more information, see the README file."""
 
         dialog = QDialog(self)
         dialog.setWindowTitle(title)
+        # Maximizable + large default so the analysis can fill a 1920×1080 screen.
+        dialog.setWindowFlags(dialog.windowFlags()
+                              | Qt.WindowType.WindowMaximizeButtonHint)
         dialog.setMinimumSize(960, 640)
-        dialog.resize(1100, 760)
+        dialog.resize(1280, 860)
         dialog.setStyleSheet("QDialog { background-color: #e8e8f0; color: #000; }")
         layout = QVBoxLayout(dialog)
 
@@ -5875,7 +5892,8 @@ For more information, see the README file."""
             text = "\n".join(buf)
             html_parts.append(
                 f'<pre style="font-family: Monospace; font-size: {BDL_FONT_PT}pt; '
-                f'color: {BDL_COLOR}; margin: 0; line-height: 1.3;">'
+                f'color: {BDL_COLOR}; margin: 0; line-height: 1.3; '
+                f'white-space: pre-wrap; word-wrap: break-word;">'
                 f'{escape(text)}</pre>'
             )
             buf.clear()
@@ -5932,7 +5950,14 @@ For more information, see the README file."""
             f"QTextEdit {{ background-color: {BG_COLOR}; color: #000;"
             f" border: 1px solid #aaa; padding: 14px; }}"
         )
+        # Wrap everything to the window width — never make the user scroll
+        # left/right. WrapAtWordBoundaryOrAnywhere + horizontal scrollbar OFF
+        # forces even the monospace BDL blocks to reflow into the window, so a
+        # maximized dialog on 1920×1080 shows all output justified to fit.
+        from PyQt6.QtGui import QTextOption
         editor.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        editor.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        editor.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         editor.setHtml("".join(html_parts))
         editor.moveCursor(QTextCursor.MoveOperation.Start)
 
@@ -8016,21 +8041,51 @@ For more information, see the README file."""
             closed_summary += "\n"
         hand_text += closed_summary
 
-        # Instrumentation rundown — run EVERY instrumented-view lens over this
+        # Instrumentation rundown — run EVERY instrumented-view lens over the
         # completed deal so Claude can critique it through the same tools the
         # teaching view shows the user (counting, losers/LTC, draw-trumps,
         # trump split, entries, hold-up, danger hand, finesses, squeeze, and the
-        # defensive-signal log with honesty).
+        # defensive-signal log with honesty). Built for BOTH rooms when a closed
+        # room is present, so the comparison is grounded the same way each side.
+        from .teaching_view import instrumentation_summary
         instr_summary = ""
+        closed_instr = ""
         try:
-            from .teaching_view import instrumentation_summary
             decl = contract.declarer if contract is not None else None
             dmy = decl.partner() if decl is not None else None
             if self.original_hands and decl is not None:
                 instr_summary = instrumentation_summary(
                     self.original_hands, board, contract, decl, dmy)
         except Exception as e:
-            print(f"[claude] instrumentation summary failed: {e}", flush=True)
+            print(f"[claude] open-room instrumentation failed: {e}", flush=True)
+        if closed_run and closed_run.contract and getattr(closed_run, 'original_hands', None):
+            try:
+                from backend.models import BoardState as _BS, Hand as _H
+                cb = _BS(board_number=closed_run.board_number, dealer=board.dealer,
+                         vulnerability=board.vulnerability,
+                         hands={s: _H(cards=[]) for s in Seat})
+                cb.tricks = list(closed_run.tricks or [])
+                cb.contract = closed_run.contract
+                cdecl = closed_run.contract.declarer
+                cdmy = cdecl.partner() if cdecl is not None else None
+                closed_instr = instrumentation_summary(
+                    closed_run.original_hands, cb, closed_run.contract, cdecl, cdmy)
+            except Exception as e:
+                print(f"[claude] closed-room instrumentation failed: {e}", flush=True)
+
+        # Bidding systems each side used, so Claude can critique the AUCTION
+        # (not just the cardplay) in each system's terms.
+        try:
+            _pf = self.config_manager.config.preferences
+            open_ns_sys = (_pf.ns_bidding_system or _pf.native_bidding_system or "SAYC")
+            open_ew_sys = (_pf.ew_bidding_system or _pf.native_bidding_system or "SAYC")
+        except Exception:
+            open_ns_sys = open_ew_sys = "SAYC"
+        closed_ns_sys = (getattr(closed_run, 'ns_bidding_system', '') or "?") if closed_run else ""
+        closed_ew_sys = (getattr(closed_run, 'ew_bidding_system', '') or "?") if closed_run else ""
+        systems_text = (f"Open room systems — N/S: {open_ns_sys}, E/W: {open_ew_sys}."
+                        + (f" Closed room systems — N/S: {closed_ns_sys}, E/W: {closed_ew_sys}."
+                           if closed_run else ""))
 
         human_seats = [f"{seat_names[s]} ({p.name})"
                        for s, p in self.controller.players.items()
@@ -8110,8 +8165,10 @@ For more information, see the README file."""
                     "  • Reproduce the BDL exactly, line by line, "
                     "preserving every non-annotation line.\n"
                     "  • After the Bids block, insert one or more '>>' "
-                    "lines that critique the auction (sound? off-shape? "
-                    "missed game?).\n"
+                    "lines that critique the auction IN EACH SIDE'S BIDDING "
+                    "SYSTEM (see SYSTEMS below) — was each call correct for "
+                    "that system, off-shape, a missed game/slam, a better "
+                    "convention available?\n"
                     "  • After the Tricks block, insert '>>' lines that "
                     "critique the play and defense, naming specific "
                     "tricks where decisions mattered.\n"
@@ -8133,13 +8190,19 @@ For more information, see the README file."""
                     "ingredients (threats, type, rectified count), the "
                     "opening-lead Rule-of-11 read, and the defensive-signal "
                     "log (attitude / count / suit-preference / Smith / trump "
-                    "echo, and any false-cards). Use the INSTRUMENTATION block "
-                    "below as the ground truth for those reads.\n\n"
+                    "echo, and any false-cards). Use the INSTRUMENTATION "
+                    "block(s) below as the ground truth for those reads. When a "
+                    "closed room is present, critique BOTH rooms through these "
+                    "lenses — bidding AND cardplay — and explain which side did "
+                    "better and why, in instrumented-view terms.\n\n"
+                    f"SYSTEMS: {systems_text}\n"
                     f"The human player(s) at the open room: {human_desc}."
                     f"{comparison_note}\n\n"
-                    f"INSTRUMENTATION (biq's reads for this deal):\n"
+                    f"INSTRUMENTATION — OPEN ROOM (biq's reads):\n"
                     f"{instr_summary or '(unavailable)'}\n\n"
-                    f"BDL:\n{hand_text}"
+                    + (f"INSTRUMENTATION — CLOSED ROOM (biq's reads):\n{closed_instr}\n\n"
+                       if closed_instr else "")
+                    + f"BDL:\n{hand_text}"
                 )
                 # Opus 4.7 with extended thinking, longer timeout to
                 # accommodate think-then-write for full hand annotations.
