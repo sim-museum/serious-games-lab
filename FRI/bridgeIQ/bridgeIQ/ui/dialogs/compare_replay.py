@@ -1141,8 +1141,9 @@ class CompareReplayDialog(QDialog):
             host._run_claude_with_dialog(
                 prompt=prompt,
                 title=title,
-                wait_label="Claude Opus 4.7 is comparing the two rooms…",
-                timeout_seconds=420,
+                wait_label="Claude Opus 4.7 is comparing the two rooms… "
+                           "(a full two-room critique can take several minutes)",
+                timeout_seconds=900,
             )
             return
         # Fallback path — no MainWindow reachable (unlikely): run claude
@@ -1179,7 +1180,7 @@ class CompareReplayDialog(QDialog):
             r = subprocess.run(
                 ['claude', '-p', '--model', 'claude-opus-4-7',
                  '--thinking', 'enabled', '--max-turns', '1', prompt],
-                capture_output=True, text=True, timeout=420,
+                capture_output=True, text=True, timeout=900,
             )
             text = (r.stdout or '').strip()
         except Exception as ex:

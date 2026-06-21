@@ -305,7 +305,7 @@ class DealAnalysisDialog(QDialog):
                     ['claude', '-p',
                      '--model', 'claude-opus-4-7',
                      '--max-turns', '1', prompt],
-                    capture_output=True, text=True, timeout=240,
+                    capture_output=True, text=True, timeout=600,
                 )
                 if r.returncode == 0 and (r.stdout or '').strip():
                     result['text'] = r.stdout.strip()

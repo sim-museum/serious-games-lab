@@ -30,7 +30,7 @@ from PyQt5.QtWidgets import (
     QGroupBox, QLabel, QLineEdit, QPushButton, QTextEdit, QFileDialog,
     QRadioButton, QButtonGroup, QSpinBox, QMessageBox, QTabWidget,
     QFormLayout, QComboBox, QStatusBar, QSplitter, QCheckBox,
-    QScrollArea,
+    QScrollArea, QAction,
 )
 
 import pyautogui
@@ -1449,6 +1449,7 @@ class BridgeHarness(QMainWindow):
         self.setCentralWidget(self.tabs)
 
         self.statusBar().showMessage("Ready")
+        self._build_menu_bar()
 
         # Opened straight into the closed-room flow by bridgeIQ
         # (--closed-room). Bring that tab forward once the rest of the
@@ -1462,6 +1463,85 @@ class BridgeHarness(QMainWindow):
         # can pass launch_qplus=False to suppress the second instance.
         if launch_qplus:
             self._launch_qplus_if_installed()
+
+    def _build_menu_bar(self):
+        """A small menu so the wine/Q-Plus reset is always reachable,
+        regardless of which tab is showing. A hung Q-Plus or a stale Q-NET
+        listen socket otherwise blocks the next closed-room run with no
+        in-harness way to clear it."""
+        qmenu = self.menuBar().addMenu("&Q-Plus")
+        self.kill_wine_action = QAction("&Kill all wine processes", self)
+        self.kill_wine_action.setShortcut("Ctrl+K")
+        self.kill_wine_action.setStatusTip(
+            "Force-quit Q-Plus and all wine processes to clear a stale "
+            "Q-NET socket or a hung Q-Plus before the next closed-room run.")
+        self.kill_wine_action.triggered.connect(self._on_kill_all_wine)
+        qmenu.addAction(self.kill_wine_action)
+
+    def _on_kill_all_wine(self):
+        """Force-quit Q-Plus + all wine so a stale Q-NET socket / hung Q-Plus
+        can't block the next closed-room run. Mirrors bridgeIQ's
+        Extras -> Kill all wine processes."""
+        resp = QMessageBox.question(
+            self, "Kill all wine processes?",
+            "Force-quit Q-Plus and ALL wine processes?\n\n"
+            "This clears a stale Q-NET listen socket and any hung Q-Plus so "
+            "biq E/W can attach cleanly next time. Any unsaved Q-Plus score "
+            "table is lost.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if resp != QMessageBox.Yes:
+            return
+        # 1) Exit Q-Plus CLEANLY first. SIGKILLing QBRIDGE.EXE outright leaves a
+        #    dead X window behind, which the desktop then shows as a
+        #    "force quit / wait" dialog. SIGTERM (+ asking the window manager to
+        #    close its window) lets wine tear the window down properly, so the
+        #    user isn't left staring at a hung Q-Plus.
+        self.statusBar().showMessage("Exiting Q-Plus cleanly…")
+        QApplication.processEvents()
+        procs = [self._qplus_proc]
+        try:
+            procs += list(self._biq_procs.values())
+        except Exception:
+            pass
+        for p in procs:
+            if p is None:
+                continue
+            try:
+                p.terminate()            # SIGTERM — wine closes the app window
+            except Exception:
+                pass
+        # Nudge any Q-Plus window shut via the WM as a belt-and-suspenders
+        # (matches by the launcher pid and by title; no-op without xdotool).
+        try:
+            pid = getattr(self._qplus_proc, 'pid', None)
+            close = "command -v xdotool >/dev/null || exit 0; "
+            if pid:
+                close += f"for w in $(xdotool search --pid {pid} 2>/dev/null); do xdotool windowclose $w; done; "
+            close += ("for w in $(xdotool search --name 'Q-Plus' 2>/dev/null) "
+                      "$(xdotool search --name 'QBridge' 2>/dev/null); do xdotool windowclose $w; done; true")
+            subprocess.run(["bash", "-c", close], timeout=5)
+        except Exception:
+            pass
+        # give Q-Plus a moment to shut its window before we escalate
+        for _ in range(15):
+            QApplication.processEvents(); time.sleep(0.1)
+        # 2) Clean wine shutdown of the prefix, then SIGKILL only stragglers.
+        script = ("wineserver -k 2>/dev/null; sleep 0.4; "
+                  "pkill -9 -f 'wineserve[r]'; pkill -9 -f 'win[e]'; "
+                  "pkill -9 -f 'QBRIDG[E]'; pkill -9 -f 'Q-NE[T]'; "
+                  "pkill -9 -f 'syste[m]32'; pkill -9 -f 'biq_qnet_clien[t]'")
+        try:
+            subprocess.run(["bash", "-c", script], timeout=20)
+        except Exception as e:
+            self.statusBar().showMessage(f"Kill wine failed: {e}")
+            return
+        self._qplus_proc = None
+        try:
+            self._biq_procs.clear()
+        except Exception:
+            pass
+        self.statusBar().showMessage(
+            "Exited Q-Plus and killed all wine — Q-NET socket cleared.")
 
     def _qplus_install_dir(self):
         """Path of the installed Q-Plus directory, or None if not installed."""

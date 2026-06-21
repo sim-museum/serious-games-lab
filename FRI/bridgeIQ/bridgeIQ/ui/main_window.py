@@ -5260,7 +5260,7 @@ For more information, see the README file."""
             prompt=prompt,
             title=f"Claude hint — {'bidding' if phase == 'bidding' else 'card play'}",
             wait_label=f"Claude is thinking about your {'bid' if phase == 'bidding' else 'card'}...",
-            timeout_seconds=600,
+            timeout_seconds=900,
             preamble=preamble_text,
             bdl_text=state_text,
             cache_key=hint_cache_key,
@@ -5519,7 +5519,7 @@ For more information, see the README file."""
             self.status_label.setText(f"Kill wine failed: {e}")
 
     def _run_claude_with_dialog(self, prompt: str, title: str, wait_label: str,
-                                 timeout_seconds: int = 600, preamble: str = "",
+                                 timeout_seconds: int = 900, preamble: str = "",
                                  bdl_text: str = "",
                                  cache_key: str | None = None):
         """Run claude -p with a progress dialog, then show the result.
@@ -8211,7 +8211,7 @@ For more information, see the README file."""
                      '--model', 'claude-opus-4-7',
                      '--thinking', 'enabled',
                      '--max-turns', '1', analysis_prompt],
-                    capture_output=True, text=True, timeout=600
+                    capture_output=True, text=True, timeout=900
                 )
                 stdout = (r.stdout or '').strip()
                 stderr = (r.stderr or '').strip()
@@ -8225,7 +8225,7 @@ For more information, see the README file."""
                         parts.append(f"stdout: {stdout[:500]}")
                     result_holder['error'] = "\n".join(parts)
             except subprocess.TimeoutExpired:
-                result_holder['error'] = "claude timed out after 600 seconds."
+                result_holder["error"] = "claude timed out after 900 seconds."
             except Exception as e:
                 result_holder['error'] = f"claude call failed: {e!r}"
 
