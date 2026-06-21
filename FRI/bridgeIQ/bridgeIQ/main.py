@@ -55,6 +55,28 @@ def main():
     # Set application style
     app.setStyle("Fusion")
 
+    # Single-instance guard. Launching biq again (e.g. clicking the launcher a
+    # second time) should RAISE the running window, not start another copy that
+    # piles up as a windowless dock entry. We probe a local socket; if an
+    # instance answers, we tell it to come forward and exit immediately.
+    _SINGLE_KEY = "bridgeIQ-single-instance"
+    single_server = None
+    try:
+        from PyQt6.QtNetwork import QLocalServer, QLocalSocket
+        _probe = QLocalSocket()
+        _probe.connectToServer(_SINGLE_KEY)
+        if _probe.waitForConnected(300):
+            _probe.write(b"activate"); _probe.flush(); _probe.waitForBytesWritten(300)
+            _probe.disconnectFromServer()
+            logger.info("bridgeIQ already running — raising the existing window.")
+            os._exit(0)
+        _probe.abort()
+        QLocalServer.removeServer(_SINGLE_KEY)   # clear any stale socket
+        single_server = QLocalServer()
+        single_server.listen(_SINGLE_KEY)
+    except Exception as e:
+        logger.warning(f"single-instance guard unavailable: {e}")
+
     # Set application-wide styling for proper contrast
     app.setStyleSheet("""
         QMenu {
@@ -185,10 +207,42 @@ def main():
         window = MainWindow()
         logger.info("Main window created successfully")
 
-        # Close splash and show window
+        # When a second launch pings the single-instance socket, bring this
+        # window to the front (and onto the current workspace) instead.
+        def _bring_to_front():
+            try:
+                window.showNormal()
+                window.setWindowState(
+                    (window.windowState() & ~Qt.WindowState.WindowMinimized)
+                    | Qt.WindowState.WindowActive)
+                window.raise_(); window.activateWindow()
+            except Exception:
+                pass
+        if single_server is not None:
+            def _on_second_launch():
+                conn = single_server.nextPendingConnection()
+                if conn is not None:
+                    conn.disconnectFromServer()
+                _bring_to_front()
+            single_server.newConnection.connect(_on_second_launch)
+
+        # Close splash and show window. Force the window to the FRONT — when
+        # biq is launched from a full-screen terminal launcher, the window
+        # manager's focus-stealing prevention otherwise opens it BEHIND the
+        # terminal, so the user only sees a dock entry ("gear") and the main
+        # window never appears. raise_/activateWindow + an active window state
+        # bring it forward on the current workspace.
         def show_main():
-            splash.finish(window)
             window.show()
+            try:
+                window.setWindowState(
+                    (window.windowState() & ~Qt.WindowState.WindowMinimized)
+                    | Qt.WindowState.WindowActive)
+            except Exception:
+                pass
+            window.raise_()
+            window.activateWindow()
+            splash.finish(window)
             logger.info("Application ready")
 
         QTimer.singleShot(1000, show_main)
