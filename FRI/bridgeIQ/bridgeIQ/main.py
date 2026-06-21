@@ -241,11 +241,12 @@ def main():
         # window never appears. raise_/activateWindow + an active window state
         # bring it forward on the current workspace.
         def _active_screen():
-            try:
-                from PyQt6.QtGui import QCursor
-                return QApplication.screenAt(QCursor.pos()) or app.primaryScreen()
-            except Exception:
-                return app.primaryScreen()
+            # Use the PRIMARY screen — that's the main monitor where the
+            # launcher/terminal lives, i.e. the screen the user is looking at.
+            # (Earlier we used the screen under the mouse cursor, but on a
+            # multi-monitor setup the idle cursor can sit on the OTHER monitor,
+            # so biq maximized on a screen the user wasn't watching → "gear".)
+            return app.primaryScreen()
 
         def _show_on_active_screen():
             # The WM was placing the window OFF-SCREEN (cascade / multi-head),
