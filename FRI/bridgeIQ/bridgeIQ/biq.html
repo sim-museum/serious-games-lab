@@ -124,7 +124,7 @@ select{background:#0d141c;color:var(--ink);border:1px solid var(--line);border-r
       <button class="btn go" id="newBtn">New deal</button>
     </div>
   </div>
-  <div class="note">Single self-contained file — full local play (deal · bid · play · score · instrumented view). No network / closed-room. Bid with the box or keyboard (1–7 then ♣♦♥♠/N, p=pass, x=double); play a card by clicking it or pressing its suit then rank.</div>
+  <div class="note">Single self-contained file — full local play (deal · bid · play · score · instrumented view). No network / closed-room. Bid with the box or keyboard (1–7 then ♣♦♥♠/N, p=pass, x=double); play a card by clicking it or pressing its suit then rank. <b>Engine port in progress (built from web/src):</b> scoring and the Bayesian shape/honour estimator are faithful transpiles of the Python validated against it; the full 7-system bidder and DDS/no-peek cardplay are being ported next.</div>
 
   <div class="wrap" id="tableWrap">
     <div class="tablecol">
@@ -144,6 +144,162 @@ select{background:#0d141c;color:var(--ink);border:1px solid var(--line);border-r
 
 <script>
 "use strict";
+/* Validated engine modules (faithful transpiles of the Python backend) are
+ * injected here by web/build.js from web/src/engine/. They publish onto window.BIQ. */
+/*ENGINE-START*/
+/* --- engine/scoring.js --- */
+/* scoring.js — faithful transpile of backend/scoring.py
+ * (calculate_contract_score + diff_to_imps + IMP table). Validated against the
+ * Python in web/test/scoring.test.js. Browser-global on BIQ; node-exported. */
+(function(){
+"use strict";
+const IMP_TABLE=[
+  [20,0],[50,1],[90,2],[130,3],[170,4],
+  [220,5],[270,6],[320,7],[370,8],[430,9],
+  [500,10],[600,11],[750,12],[900,13],[1100,14],
+  [1300,15],[1500,16],[1750,17],[2000,18],[2250,19],
+  [2500,20],[3000,21],[3500,22],[4000,23],[Infinity,24]
+];
+function diffToImps(diff){
+  const ad=Math.abs(diff);
+  for(const [t,imps] of IMP_TABLE){ if(ad<t) return diff>=0?imps:-imps; }
+  return diff>=0?24:-24;
+}
+// strain: 'C','D','H','S','N'. doubled/redoubled: booleans. Returns score from
+// the declarer's perspective (positive = made, negative = down).
+function contractScore(level,strain,doubled,redoubled,tricks,vulnerable){
+  const target=6+level, result=tricks-target;
+  if(result<0){
+    const under=-result;
+    if(redoubled){
+      if(vulnerable) return under>0?-(400+600*(under-1)):0;
+      let s=0; for(let i=0;i<under;i++) s+= i===0?200:(i<3?400:600); return -s;
+    } else if(doubled){
+      if(vulnerable) return under>0?-(200+300*(under-1)):0;
+      let s=0; for(let i=0;i<under;i++) s+= i===0?100:(i<3?200:300); return -s;
+    } else {
+      return vulnerable? -100*under : -50*under;
+    }
+  }
+  let trick;
+  if(strain==='N') trick=40+30*(level-1);
+  else if(strain==='S'||strain==='H') trick=30*level;
+  else trick=20*level;
+  if(doubled) trick*=2;
+  if(redoubled) trick*=4;
+  let score=trick;
+  score += trick>=100 ? (vulnerable?500:300) : 50;        // game / partscore
+  if(level===6) score += vulnerable?750:500;              // small slam
+  else if(level===7) score += vulnerable?1500:1000;       // grand slam
+  if(doubled) score+=50;
+  if(redoubled) score+=100;
+  if(result>0){
+    if(redoubled) score += result*(vulnerable?400:200);
+    else if(doubled) score += result*(vulnerable?200:100);
+    else score += result*((strain==='N'||strain==='S'||strain==='H')?30:20);
+  }
+  return score;
+}
+const api={diffToImps,contractScore,IMP_TABLE};
+if(typeof module!=='undefined') module.exports=api;
+if(typeof window!=='undefined') window.BIQ=Object.assign(window.BIQ||{},api);
+})();
+
+/* --- engine/bayes.js --- */
+/* bayes.js — Bayesian shape & honour estimator. Faithful transpile of
+ * teaching_view.bayes_distribution: a Monte-Carlo posterior over the hidden
+ * hands, sampling full deals of the unseen cards consistent with each hidden
+ * seat's exact remaining count, shown voids, per-suit length caps and HCP
+ * range, then aggregating per-(seat,suit) length probabilities and per-honour
+ * location probabilities. Validated in web/test/bayes.test.js. */
+(function(){
+"use strict";
+const SUITS=['S','H','D','C'];
+const HONRANK={A:4,K:3,Q:2,J:1};
+function mulberry32(seed){let a=seed>>>0;return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+
+/* opts:
+ *   hidden:   [seatIdx]                       hidden seats
+ *   need:     {seat:int}                      cards still to deal to each (net of fixed)
+ *   voids:    {seat:Set('S'..'C')}            suits a seat is known void in
+ *   suitMax:  {seat:{suit:int}}               per-suit length cap (from auction)
+ *   suitMin:  {seat:{suit:int}}               per-suit length floor (default 0)
+ *   hcp:      {seat:[min,max]}                HCP window (counts hcp of dealt+fixed)
+ *   fixedHcp: {seat:int}                      HCP already proven in the seat (fixed cards)
+ *   fixedLen: {seat:{suit:int}}              suit lengths already proven (fixed cards)
+ *   free:     [card]                          unseen cards to distribute (card='Sx')
+ *   honours:  [card]                          unseen honours to locate (subset of free)
+ *   samples, maxAttempts, seed
+ * returns {samples, length:{seat:{suit:{len:prob}}}, honour:{card:{seat:prob}}} or null */
+function bayesDistribution(opts){
+  const hidden=opts.hidden, free=opts.free, need=opts.need;
+  const voids=opts.voids||{}, suitMax=opts.suitMax||{}, suitMin=opts.suitMin||{};
+  const hcp=opts.hcp||{}, fixedHcp=opts.fixedHcp||{}, fixedLen=opts.fixedLen||{};
+  const honours=opts.honours||[];
+  const samples=opts.samples||120, maxAttempts=opts.maxAttempts||4000;
+  const rng=mulberry32((opts.seed!=null?opts.seed:1)>>>0);
+  if(!hidden.length) return null;
+  let total=0; for(const s of hidden) total+=need[s];
+  if(total!==free.length) return null;     // bookkeeping mismatch → caller falls back
+
+  const lenAcc={}, honAcc={};
+  for(const s of hidden){ lenAcc[s]={}; for(const su of SUITS) lenAcc[s][su]={}; }
+  for(const c of honours){ honAcc[c]={}; }
+  const smax=(s,su)=> (suitMax[s]&&suitMax[s][su]!=null)?suitMax[s][su]:13;
+  const smin=(s,su)=> (suitMin[s]&&suitMin[s][su]!=null)?suitMin[s][su]:0;
+  const flen=(s,su)=> (fixedLen[s]&&fixedLen[s][su])||0;
+
+  let valid=0, attempts=0;
+  while(valid<samples && attempts<maxAttempts){
+    attempts++;
+    const hand={}, perSuit={}, cap={};
+    for(const s of hidden){ hand[s]=[]; perSuit[s]={S:flen(s,'S'),H:flen(s,'H'),D:flen(s,'D'),C:flen(s,'C')}; cap[s]=need[s]; }
+    const pool=free.slice();
+    // Fisher-Yates with seeded rng
+    for(let i=pool.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+    let ok=true;
+    for(const c of pool){
+      const su=c[0];
+      const opt=hidden.filter(s=>cap[s]>0 && !(voids[s]&&voids[s].has(su)) && perSuit[s][su]<smax(s,su));
+      if(!opt.length){ok=false;break;}
+      const s=opt[Math.floor(rng()*opt.length)];
+      hand[s].push(c); perSuit[s][su]++; cap[s]--;
+    }
+    if(!ok) continue;
+    if(hidden.some(s=>cap[s]!==0)) continue;
+    // acceptance: HCP window + per-suit min
+    let good=true;
+    for(const s of hidden){
+      if(hcp[s]){
+        let h=fixedHcp[s]||0; for(const c of hand[s]) h+=HONRANK[c[1]]||0;
+        if(h<hcp[s][0]||h>hcp[s][1]){good=false;break;}
+      }
+      for(const su of SUITS){ if(perSuit[s][su]<smin(s,su)){good=false;break;} }
+      if(!good)break;
+    }
+    if(!good) continue;
+    valid++;
+    for(const s of hidden){
+      for(const su of SUITS){ const L=perSuit[s][su]; lenAcc[s][su][L]=(lenAcc[s][su][L]||0)+1; }
+      const ids=new Set(hand[s]);
+      for(const hc of honours){ if(ids.has(hc)) honAcc[hc][s]=(honAcc[hc][s]||0)+1; }
+    }
+  }
+  if(valid<Math.max(8,Math.floor(samples/5))) return null;
+  const length={}, honour={};
+  for(const s of hidden){ length[s]={}; for(const su of SUITS){ length[s][su]={}; for(const L in lenAcc[s][su]) length[s][su][L]=lenAcc[s][su][L]/valid; } }
+  for(const c of honours){ honour[c]={}; for(const s in honAcc[c]) honour[c][s]=honAcc[c][s]/valid; }
+  return {samples:valid, length, honour};
+}
+
+// honour confidence colour (mirrors teaching_view._honour_color)
+function honourColor(p){ return p>0.85?'green':p>0.70?'orange':p>0.55?'red':null; }
+
+const api={bayesDistribution,honourColor};
+if(typeof module!=='undefined') module.exports=api;
+if(typeof window!=='undefined') window.BIQ=Object.assign(window.BIQ||{},api);
+})();
+/*ENGINE-END*/
 /* ============================================================ ENGINE ===== */
 const SUITS=['S','H','D','C'];               // 0..3 ; NT='N'
 const SUIT_SYM={S:'♠',H:'♥',D:'♦',C:'♣',N:'NT'};
@@ -525,42 +681,8 @@ function chooseCard(G,seat){
 
 /* ----------------------------------------------------- SCORING ---------- */
 function scoreContract(con,tricks,vulDecl){
-  const need=con.level+6, made=tricks>=need, over=tricks-need;
-  const minor=con.strain==='C'||con.strain==='D';
-  const major=con.strain==='H'||con.strain==='S';
-  const d=con.doubled; // 0,1,2
-  let score=0;
-  if(made){
-    let per=minor?20:30, base=con.level*per; if(con.strain==='N')base=40+(con.level-1)*30;
-    if(d===1)base*=2; if(d===2)base*=4;
-    score+=base;
-    const game=base>=100;
-    score+= game?(vulDecl?500:300):50;          // game / part-score bonus
-    if(d===1)score+=50; if(d===2)score+=100;     // insult bonus
-    // overtricks
-    if(over>0){
-      if(d===0)score+=over*(minor?20:30);
-      else score+=over*(d===2?(vulDecl?400:200):(vulDecl?200:100));
-    }
-    // slam
-    if(con.level===6)score+=vulDecl?750:500;
-    if(con.level===7)score+=vulDecl?1500:1000;
-    return score; // positive to declarer
-  } else {
-    const down=need-tricks;
-    if(d===0){score=down*(vulDecl?100:50);}
-    else{
-      // doubled undertricks
-      let pts=0;
-      for(let i=1;i<=down;i++){
-        if(vulDecl)pts+=(i===1?200:300);
-        else pts+=(i===1?100:(i<=3?200:300));
-      }
-      if(d===2)pts*=2;
-      score=pts;
-    }
-    return -score; // negative to declarer
-  }
+  // delegate to the validated transpile of backend/scoring.py (BIQ.contractScore)
+  return BIQ.contractScore(con.level,con.strain,con.doubled===1,con.doubled===2,tricks,vulDecl);
 }
 
 /* ============================================================ UI ========= */
@@ -579,6 +701,7 @@ function newDeal(){
   const vulCycle=['None','NS','EW','Both']; G.vul=vulCycle[(G.seed)%4];
   G.auction=[]; G.phase='bidding'; G.turn=G.dealer; G.contract=null; G.dummy=null;
   G.trick=[]; G.tricksNS=0; G.tricksEW=0; G.playCount=0; G.showAll=false;
+  G.voidsShown={0:new Set(),1:new Set(),2:new Set(),3:new Set()}; G.playedCards=[];
   setStatus(`Board ${G.seed} · Dealer ${SEATS[G.dealer]} · Vul ${G.vul} — auction in progress.`);
   render(); maybeBotBid();
 }
@@ -624,6 +747,7 @@ function playCard(seat,card){
   if(G.phase!=='play'||seat!==G.turn)return;
   const legal=legalPlays(G.hands[seat],G.trick);
   if(!legal.includes(card))return;
+  if(G.trick.length>0){const led=G.trick[0].card[0];if(card[0]!==led)G.voidsShown[seat].add(led);} // show-out → void
   G.hands[seat]=G.hands[seat].filter(c=>c!==card);
   G.trick.push({seat,card});
   G.playCount++;
@@ -842,6 +966,7 @@ function suitLoserRanks(cards,suit){
 }
 function renderInstr(){
   trackPlayed();
+  G._post=computeBayes();
   const root=$('#instr');root.innerHTML='';
   const con=G.contract;const trump=con?con.strain:null;
   const decSide=con?isNS(con.declarer):null;
@@ -902,10 +1027,15 @@ function knownCell(seat,suit,seeIt){
 function otherCell(seat,suit,seeIt){
   if(G.detail==='Beginner')return seeIt?'':'';
   if(seeIt)return ''+G.hands[seat].filter(c=>c[0]===suit).length;
-  // hidden: inferred length range from played-out + a simple guess
+  // hidden: max range + Bayesian likely (≈) count + colour-coded honours
   const played=(G.playedCards||[]).filter(c=>c[0]===suit).length;
-  const out=13-played-knownOfSuit(suit); // unknown in this suit among hidden hands
-  return out<=0?'0':('0-'+Math.min(out,13));
+  const out=13-played-knownOfSuit(suit);
+  const rng=out<=0?'0':('0-'+Math.min(out,13));
+  let html=rng;
+  const lk=likelyLen(seat,suit);
+  if(lk!=null && String(lk)!==rng) html+=` <span style="color:var(--accent);font-size:12px">≈${lk}</span>`;
+  const hon=honourHtmlFor(seat,suit); if(hon) html+=' '+hon;
+  return html;
 }
 function knownOfSuit(suit){let n=0;for(const seat of[0,1,2,3])if(canSee(seat))n+=G.hands[seat].filter(c=>c[0]===suit).length;return n;}
 function centrePanel(){
@@ -963,6 +1093,20 @@ function countPanel(){
     }
     html+='</table>';
   }
+  // Bayesian estimator: missing-honour locations (with %) + likely shapes.
+  const p=G._post;
+  if(p){
+    const hidden=[0,1,2,3].filter(s=>!canSee(s));
+    const honParts=[];
+    for(const su of SUITS)for(const r of ['A','K','Q','J']){
+      const pr=p.honour[su+r];if(!pr)continue;
+      const seg=hidden.filter(s=>pr[s]>=0.05).map(s=>`${SEATS[s]} ${Math.round(pr[s]*100)}%`).join(' ');
+      if(seg)honParts.push(`${symSpan(su)}${r}: ${seg}`);
+    }
+    if(honParts.length)html+=`<br><b>Missing honours</b> <span class="muted" style="font-size:11px">(Bayes, ${p.samples} worlds)</span><br>`+honParts.join(' · ');
+    const shapes=hidden.map(s=>{const parts=SUITS.map(su=>{const L=likelyLen(s,su);return L==null?'?':L;});return `${SEATS[s]} ${parts.join('-')}`;});
+    if(shapes.length)html+=`<br><b>Likely shape</b> <span class="muted" style="font-size:11px">(♠♥♦♣)</span><br>`+shapes.join(' · ');
+  }
   return html;
 }
 function coachPanel(){
@@ -981,6 +1125,31 @@ function trackPlayed(){
   // recompute from orig minus current hands
   const cur=new Set();for(const seat of[0,1,2,3])for(const c of G.hands[seat])cur.add(c);
   G.playedCards=[];for(const seat of[0,1,2,3])for(const c of G.orig[seat])if(!cur.has(c))G.playedCards.push(c);
+}
+// Bayesian shape & honour posterior over the hidden hands (validated estimator).
+function computeBayes(){
+  trackPlayed();
+  if(G.detail==='Beginner')return null;
+  const hidden=[0,1,2,3].filter(s=>!canSee(s));
+  if(!hidden.length)return null;
+  const seen=new Set(G.playedCards);
+  for(const s of[0,1,2,3])if(canSee(s))for(const c of G.hands[s])seen.add(c);
+  const all=[];for(const su of SUITS)for(const r of RANKS)all.push(su+r);
+  const free=all.filter(c=>!seen.has(c));
+  const need={};let tot=0;for(const s of hidden){need[s]=G.hands[s].length;tot+=need[s];}
+  if(tot!==free.length)return null;
+  const voids={};for(const s of hidden)voids[s]=G.voidsShown&&G.voidsShown[s]||new Set();
+  const honours=free.filter(c=>'AKQJ'.includes(c[1]));
+  try{return BIQ.bayesDistribution({hidden,need,voids,free,honours,
+    samples:G.detail==='Expert'?160:90,seed:(G.seed*131+G.playCount)>>>0});}
+  catch(e){return null;}
+}
+const HCOL={green:'var(--pos)',orange:'var(--orange)',red:'var(--neg)'};
+function likelyLen(seat,suit){const p=G._post;if(!p||!p.length[seat])return null;const d=p.length[seat][suit]||{};let best=null,bp=-1;for(const L in d)if(d[L]>bp){bp=d[L];best=+L;}return best;}
+function honourHtmlFor(seat,suit){ // colour-coded honours likely in this hidden seat (no %)
+  const p=G._post;if(!p)return '';let out=[];
+  for(const r of ['A','K','Q','J']){const c=suit+r;const pr=p.honour[c];if(!pr)continue;const col=BIQ.honourColor(pr[seat]||0);if(col)out.push(`<span style="color:${HCOL[col]};font-weight:700">${r}</span>`);}
+  return out.join('');
 }
 
 /* ============================================================ EVENTS ===== */
