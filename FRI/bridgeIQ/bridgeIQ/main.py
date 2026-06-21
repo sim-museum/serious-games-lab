@@ -63,17 +63,25 @@ def main():
     single_server = None
     try:
         from PyQt6.QtNetwork import QLocalServer, QLocalSocket
-        _probe = QLocalSocket()
-        _probe.connectToServer(_SINGLE_KEY)
-        if _probe.waitForConnected(300):
-            _probe.write(b"activate"); _probe.flush(); _probe.waitForBytesWritten(300)
-            _probe.disconnectFromServer()
-            logger.info("bridgeIQ already running — raising the existing window.")
-            os._exit(0)
-        _probe.abort()
-        QLocalServer.removeServer(_SINGLE_KEY)   # clear any stale socket
         single_server = QLocalServer()
-        single_server.listen(_SINGLE_KEY)
+        single_server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
+        if not single_server.listen(_SINGLE_KEY):
+            # The name is taken. Distinguish a LIVE instance from a stale socket
+            # left by a crashed/killed one: only a live instance accepts a
+            # connection. (Connecting first, as a probe, is unreliable — a stale
+            # socket file could linger; listening first lets us self-heal.)
+            _probe = QLocalSocket()
+            _probe.connectToServer(_SINGLE_KEY)
+            if _probe.waitForConnected(300):
+                _probe.write(b"activate"); _probe.flush()
+                _probe.waitForBytesWritten(300); _probe.disconnectFromServer()
+                logger.info("bridgeIQ already running — raising the existing window.")
+                os._exit(0)
+            # stale socket from a dead instance — clear it and take over
+            _probe.abort()
+            QLocalServer.removeServer(_SINGLE_KEY)
+            single_server.listen(_SINGLE_KEY)
+            logger.info("cleared a stale single-instance socket; starting normally.")
     except Exception as e:
         logger.warning(f"single-instance guard unavailable: {e}")
 
