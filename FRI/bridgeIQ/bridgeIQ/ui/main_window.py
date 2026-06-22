@@ -2618,6 +2618,51 @@ class MainWindow(QMainWindow):
             return False
         return True
 
+    def _minibridge_auto_contract(self, board, declarer, dummy):
+        """Pick a sensible MiniBridge contract for the declaring side from its
+        combined HCP and longest combined fit. Used as the bot declarer's
+        choice and as the hint for the human declarer."""
+        from backend.models import Suit, Contract
+        hcp = board.hands[declarer].hcp() + board.hands[dummy].hcp()
+
+        def lengths(seat):
+            d = {Suit.SPADES: 0, Suit.HEARTS: 0,
+                 Suit.DIAMONDS: 0, Suit.CLUBS: 0}
+            for c in board.hands[seat].cards:
+                d[c.suit] += 1
+            return d
+        a, b = lengths(declarer), lengths(dummy)
+        comb = {su: a[su] + b[su] for su in a}
+
+        # Prefer an 8+ major fit, else an 8+ minor fit, else no-trumps.
+        strain = Suit.NOTRUMP
+        for su in (Suit.SPADES, Suit.HEARTS):
+            if comb[su] >= 8:
+                strain = su
+                break
+        else:
+            for su in (Suit.DIAMONDS, Suit.CLUBS):
+                if comb[su] >= 9:        # minors need length to be worth it
+                    strain = su
+                    break
+
+        is_major = strain in (Suit.SPADES, Suit.HEARTS)
+        is_minor = strain in (Suit.DIAMONDS, Suit.CLUBS)
+        if hcp >= 37:
+            level = 7
+        elif hcp >= 33:
+            level = 6
+        elif hcp >= 25:
+            level = 4 if is_major else (5 if is_minor else 3)   # 4M / 5m / 3NT
+        elif hcp >= 23:
+            level = 3 if is_major else 2                          # invitational
+        elif hcp >= 19:
+            level = 2 if (is_major or is_minor) else 1
+        else:
+            level = 1
+        level = max(1, min(7, level))
+        return Contract(level=level, suit=strain, declarer=declarer)
+
     def _maybe_run_minibridge_rounds(self, board):
         """If the user is in MiniBridge mode, run the two simplified
         rounds (announce points → pick contract) and start card play
@@ -2654,47 +2699,12 @@ class MainWindow(QMainWindow):
         except Exception:
             user_hp = partner_hp = None
 
-        # Round 1 — user announces their side's combined HP. We
-        # offer the actual combined HP as the hint; the user can
-        # override (in a teaching setting they might want to enter
-        # a different number to see how the program responds).
-        hint = (user_hp + partner_hp) if user_hp is not None else None
-        round1 = MiniBridgePointsDialog(
-            seat_char=user_seat.to_char(),
-            hint_hp=hint, parent=self)
-        if round1.exec() != QDialog.DialogCode.Accepted:
-            return
-        announced_side_hp = round1.get_points() or 0
+        from backend.models import Suit, Contract
 
-        # Round 2 — pick the contract. Hint: a heuristic based on
-        # combined HP and whether the user's side has a fit. For
-        # MVP we just suggest 3NT for ≥ 25 HP, 1NT for 12–18, Pass
-        # otherwise — Q-Plus actually computes the recommended
-        # contract from declarer's hand shape; we'll improve later.
-        suggested_level = None
-        suggested_suit = None
-        if announced_side_hp >= 33:
-            suggested_level, suggested_suit = 6, 'NT'
-        elif announced_side_hp >= 25:
-            suggested_level, suggested_suit = 3, 'NT'
-        elif announced_side_hp >= 22:
-            suggested_level, suggested_suit = 2, 'NT'
-        elif announced_side_hp >= 18:
-            suggested_level, suggested_suit = 1, 'NT'
-        else:
-            suggested_level, suggested_suit = 1, 'C'
-        round2 = MiniBridgeContractDialog(
-            hint_level=suggested_level,
-            hint_suit=suggested_suit, parent=self)
-        if round2.exec() != QDialog.DialogCode.Accepted:
-            return
-        contract_data = round2.get_contract()
-        if contract_data is None:
-            return
-        level, suit_char, doubled, redoubled = contract_data
-
-        # Resolve declarer: side with more total HP; within that
-        # side, the seat with more individual HP.
+        # Step 1 — determine the declaring side and declarer FROM THE POINTS,
+        # BEFORE any contract is chosen (real MiniBridge order). Declaring side
+        # = more combined HP (N/S wins ties); declarer = the higher-HP seat of
+        # that side; partner is dummy.
         try:
             hps = {s: board.hands[s].hcp() for s in Seat}
         except Exception:
@@ -2707,18 +2717,49 @@ class MainWindow(QMainWindow):
         else:
             declarer = (Seat.EAST if hps[Seat.EAST] >= hps[Seat.WEST]
                         else Seat.WEST)
-
-        from backend.models import Suit, Contract
+        dummy = declarer.partner()
         suit_map = {'S': Suit.SPADES, 'H': Suit.HEARTS,
                     'D': Suit.DIAMONDS, 'C': Suit.CLUBS,
                     'NT': Suit.NOTRUMP}
-        contract = Contract(
-            level=level,
-            suit=suit_map.get(suit_char, Suit.NOTRUMP),
-            doubled=bool(doubled),
-            redoubled=bool(redoubled),
-            declarer=declarer,
-        )
+
+        if declarer == user_seat:
+            # The human declares: expose dummy (declarer sees both hands when
+            # choosing in MiniBridge), then announce points and pick a contract.
+            try:
+                self.table_view.set_hand_visible(dummy, True)
+            except Exception:
+                pass
+            round1 = MiniBridgePointsDialog(
+                seat_char=user_seat.to_char(),
+                hint_hp=hps[declarer] + hps[dummy], parent=self)
+            if round1.exec() != QDialog.DialogCode.Accepted:
+                return
+            auto = self._minibridge_auto_contract(board, declarer, dummy)
+            round2 = MiniBridgeContractDialog(
+                hint_level=auto.level,
+                hint_suit=('NT' if auto.suit == Suit.NOTRUMP
+                           else auto.suit.to_char()),
+                parent=self)
+            if round2.exec() != QDialog.DialogCode.Accepted:
+                return
+            cd = round2.get_contract()
+            if cd is None:
+                return
+            level, suit_char, doubled, redoubled = cd
+            contract = Contract(
+                level=level, suit=suit_map.get(suit_char, Suit.NOTRUMP),
+                doubled=bool(doubled), redoubled=bool(redoubled),
+                declarer=declarer)
+        else:
+            # A bot declares (the opponents, or the user's partner): the engine
+            # chooses the contract from the two declaring hands; the user
+            # defends (or sits as dummy).
+            contract = self._minibridge_auto_contract(board, declarer, dummy)
+            QMessageBox.information(
+                self, "MiniBridge",
+                f"{declarer.to_char()} has the stronger side "
+                f"({max(ns, ew)} HCP) and declares {contract.to_str()}.")
+
         self.controller.set_contract_direct(contract)
         # Refresh UI to reflect the fresh play phase.
         try:
