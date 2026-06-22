@@ -2065,6 +2065,37 @@ class MainWindow(QMainWindow):
                 self.status_label.setText("Teams match complete!")
             return
 
+        # Tournament-file deal source: play the file's deals in order rather
+        # than dealing random ones (Q-Plus deal source = Deal file).
+        queue = getattr(self, '_deal_queue', None)
+        if queue:
+            import copy
+            pos = getattr(self, '_deal_queue_pos', 0)
+            if pos >= len(queue):
+                self.status_label.setText(
+                    "Tournament file complete — all deals played.")
+                try:
+                    self._on_show_scores()
+                except Exception:
+                    pass
+                return
+            board = copy.deepcopy(queue[pos])   # keep the queue pristine
+            self._deal_queue_pos = pos + 1
+            if not getattr(board, 'board_number', 0):
+                board.board_number = pos + 1
+            self.controller.board = board
+            self.controller.current_phase = 'bidding'
+            self.controller.current_seat = board.dealer
+            self.controller.declarer = None
+            self.controller.dummy = None
+            self.controller.opening_leader = None
+            self.controller.human_controls_declarer = False
+            self._present_fresh_board(board)
+            self.status_label.setText(
+                f"Tournament deal {pos + 1}/{len(queue)}: "
+                f"{board.dealer.to_char()} deals")
+            return
+
         board = self.controller.new_deal()
 
         # Deal filter (random deals only): reject-sample until the deal matches
@@ -2787,11 +2818,19 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def _on_pair_tournament(self):
-        """Start a pairs tournament"""
-        # Show match control dialog for pairs configuration
+        """Start a pairs tournament — Pairs (Matchpoints) scoring; plays a
+        tournament-file deal source in order when one is selected."""
         dialog = MatchControlDialog(self)
+        # Default a pairs tournament to MP scoring for convenience.
+        try:
+            dialog.mp_radio.setChecked(True)
+        except Exception:
+            pass
         if dialog.exec():
             settings = dialog.get_settings()
+            self.teams_match = None
+            self.match_controller = None
+            self._apply_match_settings(settings)
             self.status_label.setText("Pairs tournament started")
             self._on_new_deal()
 
@@ -2878,13 +2917,18 @@ class MainWindow(QMainWindow):
                 f"Board {board_num} — play your hand; closed room runs after.")
 
     def _on_team_tournament(self):
-        """Start a teams tournament"""
-        # Show match control dialog for teams configuration
+        """Start a teams tournament — IMP scoring. Closed-room comparison runs
+        the 4-bot teams match; a tournament-file source plays the file's deals."""
         dialog = MatchControlDialog(self)
         if dialog.exec():
             settings = dialog.get_settings()
             if settings.get('comparison') == 'closed_room':
                 self._start_teams_match(settings)
+            else:
+                self.teams_match = None
+                self.match_controller = None
+                if self._apply_match_settings(settings):
+                    self._on_new_deal()
             self.status_label.setText("Teams tournament started")
 
     def _on_help(self):
@@ -2920,6 +2964,57 @@ For more information, see the README file."""
         dialog = ProgrammingHelpDialog(self)
         dialog.exec()
 
+    def _apply_match_settings(self, settings: dict):
+        """Honor the Match Control axes that aren't the closed-room teams path:
+        the scoring method (Rubber/IMP/MP) and a 'From file' deal source (load
+        the tournament file's deals into a playable queue). Returns True if a
+        tournament-file deal queue was loaded."""
+        from backend.scoring import ScoringType
+        smap = {'rubber': ScoringType.RUBBER, 'imp': ScoringType.TEAMS,
+                'mp': ScoringType.PAIRS}
+        st = smap.get(settings.get('scoring'))
+        if st is not None and not self.scoring_table.results:
+            self.scoring_table.scoring_type = st     # don't change mid-match
+        self._deal_queue = []
+        self._deal_queue_pos = 0
+        if settings.get('source') == 'file' and settings.get('file_path'):
+            boards = self._load_deal_queue_from_file(settings['file_path'])
+            if boards:
+                self._deal_queue = boards
+                self._deal_queue_pos = max(
+                    0, int(settings.get('first_deal', 1)) - 1)
+                self.status_label.setText(
+                    f"Tournament file: {len(boards)} deals loaded "
+                    f"(starting at #{self._deal_queue_pos + 1}).")
+                return True
+            self.status_label.setText(
+                "Tournament file: no playable deals found.")
+        return False
+
+    def _load_deal_queue_from_file(self, path: str):
+        """Read a deal file (.pbn / .bdl) into a list of fully-dealt
+        BoardStates for tournament play. Best-effort; returns []."""
+        from pathlib import Path
+        p = Path(path)
+        out = []
+        try:
+            if p.suffix.lower() == '.bdl':
+                from backend.bdl_reader import BDLReader
+                out = [d.to_board_state() for d in BDLReader().read_file(p)]
+            elif p.suffix.lower() == '.pbn':
+                from backend.pbn_exporter import PBNParser
+                out = list(PBNParser().parse_file(p))
+        except Exception as e:
+            print(f"deal-queue load failed: {e!r}", flush=True)
+        # Keep only boards with all four 13-card hands.
+        good = []
+        for b in out:
+            hands = getattr(b, 'hands', None) or {}
+            if len(hands) >= 4 and all(
+                    len(getattr(hands[s], 'cards', [])) == 13 for s in hands):
+                good.append(b)
+        return good
+
     def _on_match_control(self):
         """Show match control dialog"""
         dialog = MatchControlDialog(self)
@@ -2933,6 +3028,9 @@ For more information, see the README file."""
                 # Clear teams match state for non-teams modes
                 self.teams_match = None
                 self.match_controller = None
+                # Honor scoring method + a tournament-file deal source.
+                if self._apply_match_settings(settings):
+                    self._on_new_deal()      # start playing the file's deals
 
     def _start_teams_match(self, settings: dict):
         """Start a new teams match with closed room comparison."""
