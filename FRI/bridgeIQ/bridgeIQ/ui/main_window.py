@@ -7296,6 +7296,18 @@ For more information, see the README file."""
             # via QTimer so the bidding box paints first.
             QTimer.singleShot(0, self._maybe_popup_slam_simulation)
         else:
+            # One-Player non-peek: the engine must NEVER be asked to bid a seat
+            # whose hand it isn't allowed to know (even under autoplay). Fall
+            # back to manual entry via the bidding box, mirroring the per-card
+            # entry guard in _advance_play.
+            if (getattr(self, '_one_player_active', False)
+                    and not self._one_player_seat_known(current_seat)):
+                self.bidding_box.set_enabled(True)
+                self.status_label.setText(
+                    f"One-Player: enter the bid {current_seat.to_char()} "
+                    "made at the table.")
+                return
+
             self.bidding_box.set_enabled(False)
             self.status_label.setText(
                 f"Thinking ({current_seat.to_char()})..."
