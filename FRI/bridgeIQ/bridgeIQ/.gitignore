@@ -9,3 +9,9 @@ wbridge5_diff_*.txt
 # explicit so a fresh clone of just this subdirectory works).
 __pycache__/
 *.pyc
+
+# Coach book corpus — generated from the personal book library by
+# tools/ingest_book_library.py. Large + regenerate-on-demand, so not source.
+# The authored note_catalog.json IS source and stays tracked.
+backend/data/coach/corpus.jsonl
+backend/data/coach/topic_index.json

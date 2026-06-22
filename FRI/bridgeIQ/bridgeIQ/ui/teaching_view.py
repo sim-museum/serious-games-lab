@@ -1660,6 +1660,26 @@ class TeachingView(QWidget):
                               constraints, declarer, dummy, danger, squeeze,
                               sig_map, hint_map, shape_map)
 
+        # Book-grounded coaching note + no-peek whole-deal 13-trick plan,
+        # surfaced inside the Plan panel. Computed from the SAME `visible` /
+        # `layout` the rest of the view uses — never peeks. Lazy imports avoid
+        # a circular import (coach_notes / whole_deal_plan import from here).
+        self._coach_note_html = ""
+        self._coach_plan_html = ""
+        if contract is not None and declarer is not None:
+            try:
+                from ui import coach_notes
+                from ui.whole_deal_plan import (whole_deal_plan,
+                                                render_whole_deal_plan)
+                self._coach_note_html = coach_notes.coaching_note(
+                    board, declarer, "play", ns_system, ew_system,
+                    visible, layout)
+                plan = whole_deal_plan(board, declarer, declarer, dummy,
+                                       contract, visible, layout)
+                self._coach_plan_html = render_whole_deal_plan(plan, html=True)
+            except Exception:
+                self._coach_note_html = self._coach_note_html or ""
+
         # Panels.
         self._render_contract_panel(board, contract, declarer)
         self._render_plan_panel(board, contract, declarer, dummy, visible,
@@ -1807,6 +1827,11 @@ class TeachingView(QWidget):
             self.p_plan.set_html("")
             return
         lines = []
+        # Coaching note (book-grounded, system/vuln/card-specific) leads the
+        # panel; the whole-deal 13-trick plan is appended at the end.
+        coach_note = getattr(self, "_coach_note_html", "")
+        if coach_note:
+            lines.append(f"<b style='color:{ACC_GOLD}'>Coach:</b> {coach_note}")
         side = (declarer, dummy) if dummy is not None else None
         if side is not None:
             tt = side_top_tricks(board, side, visible, layout)
@@ -1918,6 +1943,9 @@ class TeachingView(QWidget):
         if self.detail == EXPERT:
             for h in finesse_hints(declarer, dummy, visible, layout):
                 lines.append(f"<span style='color:#9fb6cc'>{h}</span>")
+        coach_plan = getattr(self, "_coach_plan_html", "")
+        if coach_plan:
+            lines.append("<hr>" + coach_plan)
         self.p_plan.set_html("<br>".join(lines))
 
     def _entry_summary(self, layout, visible, declarer, dummy) -> str:

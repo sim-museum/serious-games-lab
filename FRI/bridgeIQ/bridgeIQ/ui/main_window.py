@@ -5256,15 +5256,139 @@ For more information, see the README file."""
             "hint:"
             + _hashlib.sha1(prompt.encode('utf-8')).hexdigest()
         )
-        self._run_claude_with_dialog(
-            prompt=prompt,
-            title=f"Claude hint — {'bidding' if phase == 'bidding' else 'card play'}",
-            wait_label=f"Claude is thinking about your {'bid' if phase == 'bidding' else 'card'}...",
-            timeout_seconds=900,
-            preamble=preamble_text,
-            bdl_text=state_text,
-            cache_key=hint_cache_key,
-        )
+
+        # --- Offline, book-grounded coaching note + whole-deal plan ---------
+        # The note (and, in play, the 13-trick plan) is computed locally from
+        # the live board state — system params, vulnerability, the visible /
+        # inferable cards — and shown immediately, with no Claude dependency.
+        # NO PEEKING: everything flows through the legitimately face-up seats.
+        note, plan_text, topics = "", "", []
+        try:
+            from . import coach_notes
+            from . import whole_deal_plan as wdp_mod
+            ns_spec = self._active_bidding_system('NS')
+            ew_spec = self._active_bidding_system('EW')
+            visible = set(self.table_view.face_up_seats())
+            note, topics = coach_notes.coaching_context(
+                board, seat, phase, ns_spec, ew_spec, visible)
+            if phase == 'play':
+                declarer = board.contract.declarer if board.contract else None
+                dummy = declarer.partner() if declarer is not None else None
+                plan = wdp_mod.whole_deal_plan(
+                    board, seat, declarer, dummy, board.contract, visible)
+                plan_text = wdp_mod.render_whole_deal_plan(plan)
+        except Exception as e:
+            note = note or f"(coach note unavailable: {e!r})"
+
+        # Record the offline advice as comments in the .BDL (live) and queue it
+        # for the .qss (written at close / export).
+        self._record_advice(note, plan_text)
+
+        # Claude is the deeper, optional second layer — gated by Preferences.
+        def _ask_claude():
+            grounded = prompt
+            try:
+                from . import coach_notes
+                passages = coach_notes.book_passages(topics, limit=3)
+                if passages:
+                    blocks = "\n\n".join(
+                        f"[{p['book']}]\n{p['text']}" for p in passages)
+                    grounded = (
+                        prompt
+                        + "\n\nBOOK CONTEXT (excerpts from the player's bridge "
+                        "library — use as grounding, do not quote verbatim):\n"
+                        + blocks)
+            except Exception:
+                grounded = prompt
+            self._run_claude_with_dialog(
+                prompt=grounded,
+                title=f"Claude hint — {'bidding' if phase == 'bidding' else 'card play'}",
+                wait_label=f"Claude is thinking about your {'bid' if phase == 'bidding' else 'card'}...",
+                timeout_seconds=900,
+                preamble=preamble_text,
+                bdl_text=state_text,
+                cache_key=hint_cache_key,
+            )
+
+        self._show_coach_dialog(note, plan_text, phase, _ask_claude)
+
+    def _record_advice(self, note: str, plan_text: str = ""):
+        """Write coaching advice as comments into the active .BDL (immediately)
+        and queue it for the .qss (written at close/export). Idempotent within
+        a session so re-opening the same hint doesn't duplicate blocks."""
+        parts = [p for p in (note, plan_text) if p and not p.startswith("(")]
+        if not parts:
+            return
+        text = "\n".join(parts)
+        if not hasattr(self, '_recorded_advice'):
+            self._recorded_advice = set()
+        key = hash(text)
+        if key in self._recorded_advice:
+            return
+        self._recorded_advice.add(key)
+        try:
+            self.game_logger._append_commentary_to_bdl("Coach — " + text)
+        except Exception:
+            pass
+        try:
+            self.scoring_table.record_comment("Coach — " + text)
+        except Exception:
+            pass
+
+    def _show_coach_dialog(self, note: str, plan_text: str, phase: str,
+                           ask_claude_cb):
+        """Show the offline coaching note (+ 13-trick plan in play), with an
+        'Ask Claude' button enabled only when Claude is on in Preferences."""
+        from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton,
+                                      QScrollArea, QWidget, QHBoxLayout)
+        from PyQt6.QtGui import QFont
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(
+            f"Hint — {'bidding' if phase == 'bidding' else 'card play'}")
+        dlg.setMinimumWidth(560)
+        dlg.setStyleSheet("background-color: #e8e8f0; color: #000;")
+        lay = QVBoxLayout(dlg)
+
+        hdr = QLabel("Coaching note")
+        hdr.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+        lay.addWidget(hdr)
+        note_lbl = QLabel(note or "No specific note for this situation.")
+        note_lbl.setWordWrap(True)
+        note_lbl.setFont(QFont("Arial", 12))
+        lay.addWidget(note_lbl)
+
+        if plan_text:
+            ph = QLabel("Whole-deal plan")
+            ph.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+            lay.addWidget(ph)
+            plan_lbl = QLabel(plan_text)
+            plan_lbl.setWordWrap(True)
+            plan_lbl.setFont(QFont("Arial", 11))
+            area = QScrollArea()
+            area.setWidgetResizable(True)
+            inner = QWidget()
+            il = QVBoxLayout(inner)
+            il.addWidget(plan_lbl)
+            area.setWidget(inner)
+            area.setMaximumHeight(220)
+            lay.addWidget(area)
+
+        btn_row = QHBoxLayout()
+        ask_btn = QPushButton("Ask Claude for deeper advice")
+        if self._claude_enabled():
+            ask_btn.clicked.connect(lambda: (dlg.accept(), ask_claude_cb()))
+        else:
+            ask_btn.setEnabled(False)
+            ask_btn.setToolTip("Enable in Preferences → AI & Network "
+                               "(shells out to the claude CLI, costs tokens).")
+        btn_row.addWidget(ask_btn)
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dlg.reject)
+        btn_row.addWidget(close_btn)
+        lay.addLayout(btn_row)
+
+        dlg.exec()
 
     def _build_hint_state_text(self, board, seat, phase) -> str:
         """Serialize the current board state for a Claude hint prompt as
