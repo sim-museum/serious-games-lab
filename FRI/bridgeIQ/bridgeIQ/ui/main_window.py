@@ -2977,6 +2977,8 @@ For more information, see the README file."""
             self.scoring_table.scoring_type = st     # don't change mid-match
         self._deal_queue = []
         self._deal_queue_pos = 0
+        self._field_results = {}
+        self._comparison_mode = settings.get('comparison')
         if settings.get('source') == 'file' and settings.get('file_path'):
             boards = self._load_deal_queue_from_file(settings['file_path'])
             if boards:
@@ -2993,26 +2995,47 @@ For more information, see the README file."""
 
     def _load_deal_queue_from_file(self, path: str):
         """Read a deal file (.pbn / .bdl) into a list of fully-dealt
-        BoardStates for tournament play. Best-effort; returns []."""
+        BoardStates for tournament play, and record any per-board results the
+        file carries into self._field_results (keyed by board number) for the
+        Results-of-file comparison. Best-effort; returns []."""
         from pathlib import Path
         p = Path(path)
         out = []
+        recs = []        # parallel list of (ns_score, contract) or None
         try:
             if p.suffix.lower() == '.bdl':
                 from backend.bdl_reader import BDLReader
-                out = [d.to_board_state() for d in BDLReader().read_file(p)]
+                deals = BDLReader().read_file(p)
+                for d in deals:
+                    out.append(d.to_board_state())
+                    recs.append(d if d.contract is not None else None)
             elif p.suffix.lower() == '.pbn':
                 from backend.pbn_exporter import PBNParser
                 out = list(PBNParser().parse_file(p))
+                recs = [None] * len(out)
         except Exception as e:
             print(f"deal-queue load failed: {e!r}", flush=True)
-        # Keep only boards with all four 13-card hands.
+        # Keep only boards with all four 13-card hands; assign sequential board
+        # numbers when the file leaves them at 0 so deals and recorded results
+        # stay aligned (the Results-of-file lookup keys on board number).
         good = []
-        for b in out:
+        if not hasattr(self, '_field_results'):
+            self._field_results = {}
+        seq = 0
+        for b, rec in zip(out, recs + [None] * (len(out) - len(recs))):
             hands = getattr(b, 'hands', None) or {}
-            if len(hands) >= 4 and all(
-                    len(getattr(hands[s], 'cards', [])) == 13 for s in hands):
-                good.append(b)
+            if not (len(hands) >= 4 and all(
+                    len(getattr(hands[s], 'cards', [])) == 13 for s in hands)):
+                continue
+            seq += 1
+            if not getattr(b, 'board_number', 0):
+                b.board_number = seq
+            good.append(b)
+            if rec is not None:
+                self._field_results.setdefault(b.board_number, []).append({
+                    'ns_score': rec.ns_score, 'ew_score': rec.ew_score,
+                    'contract': rec.contract, 'declarer': rec.declarer,
+                    'tricks_made': rec.tricks_made})
         return good
 
     def _on_match_control(self):
@@ -8299,6 +8322,7 @@ For more information, see the README file."""
                 board_run=board_run,
             )
             self.scoring_table.add_result(result)
+            self._apply_field_comparison(result)
         except Exception as e:
             print(f"Error adding to scoring table: {e}", flush=True)
 
@@ -9349,6 +9373,39 @@ For more information, see the README file."""
         except Exception as ex:
             self._show_plain_dialog("Expected tricks (hidden hands)",
                                     f"Could not compute: {ex!r}", error=True)
+
+    def _apply_field_comparison(self, result):
+        """Results-of-file comparison (Q-Plus): score the user's just-played
+        board against the result(s) the tournament file recorded for it.
+        Teams -> IMP vs the file's NS score; Pairs -> matchpoints vs the field.
+        Sets result.imps / result.matchpoints so the score table shows it."""
+        if getattr(self, '_comparison_mode', None) != 'file':
+            return
+        field = getattr(self, '_field_results', {}).get(result.board_number)
+        if not field:
+            return
+        from backend.scoring import diff_to_imps, ScoringType
+        field_ns = [f['ns_score'] for f in field]
+        if self.scoring_table.scoring_type == ScoringType.TEAMS:
+            imp = diff_to_imps(result.ns_score - field_ns[0])
+            result.imps = imp
+            self.status_label.setText(
+                f"Board {result.board_number}: your N/S {result.ns_score:+d} "
+                f"vs file {field_ns[0]:+d}  →  {imp:+d} IMP")
+        elif self.scoring_table.scoring_type == ScoringType.PAIRS:
+            # 2 matchpoints per field score beaten, 1 per tie (Q-Plus style).
+            mp = 0.0
+            for s in field_ns:
+                if result.ns_score > s:
+                    mp += 2
+                elif result.ns_score == s:
+                    mp += 1
+            top = 2 * len(field_ns)
+            result.matchpoints = mp
+            pct = (100.0 * mp / top) if top else 0.0
+            self.status_label.setText(
+                f"Board {result.board_number}: {mp:.0f}/{top} MP "
+                f"({pct:.0f}%) vs the field")
 
     def _on_view_auction_tricks(self):
         """Show the Record (auction + played tricks) dialog detached.
