@@ -742,6 +742,11 @@ class MainWindow(QMainWindow):
 
         # Parallel closed room worker (started at deal time, joined at hand end)
         self._pending_closed_room: Optional[dict] = None
+        # Board number whose teams-match closed room has been kicked off in
+        # parallel (Q-Plus semantics: the closed room plays AT THE SAME TIME as
+        # the human's open room). The end-of-hand handler joins it instead of
+        # starting a fresh, slow run. None = not yet started for the current board.
+        self._closed_room_async_started: Optional[int] = None
         # Snapshot of the just-finished hand awaiting Claude analysis. Set
         # by _show_result, consumed by _maybe_run_pending_claude after a
         # Q-Plus ingest or before the next deal.
@@ -2776,9 +2781,39 @@ class MainWindow(QMainWindow):
             # Register the current board with the match controller
             self.match_controller.start_board(board_num, board)
 
-        # Note: Closed room will be started after human finishes their hand
-        # to avoid concurrent engine access (which causes broken pipe errors)
-        self.status_label.setText(f"Board {board_num} - Play your hand first, then closed room will run")
+        # Q-Plus semantics: the closed room (four biq bots) plays the SAME deal
+        # AT THE SAME TIME as you play the open room. Kick it off now so it runs
+        # in parallel; the end-of-hand handler then joins the already-running
+        # (or finished) worker. (The old "play your hand first" sequencing was a
+        # BEN-subprocess-era workaround against broken pipes; the engine is now
+        # in-process and serialises DDS access through its own re-entrant lock,
+        # and the closed room plays an INDEPENDENT game off a pristine copy of
+        # the dealt hands — so concurrent play is safe and self-contained.)
+        self._closed_room_async_started = None     # fresh match → fresh start
+        self._begin_parallel_closed_room(board_num)
+
+    def _begin_parallel_closed_room(self, board_num: int):
+        """Start the four-biq-bot closed room in the background so it plays the
+        same deal at the same time as the human's open room (Q-Plus 'Closed
+        Room' behaviour). Idempotent per board. The closed room is independent
+        — it bids and plays off a pristine copy of the dealt hands, so starting
+        it early changes nothing except that it runs concurrently."""
+        if self.teams_match is None or self.match_controller is None:
+            return
+        if self._closed_room_async_started == board_num:
+            return
+        try:
+            self.match_controller.start_closed_room_async(
+                board_num, callback=self._on_closed_room_complete)
+            self._closed_room_async_started = board_num
+            self.status_label.setText(
+                f"Board {board_num} — closed room (4 biq bots) is playing "
+                f"alongside you.")
+        except Exception as e:
+            self._closed_room_async_started = None
+            print(f"parallel closed room failed to start: {e!r}", flush=True)
+            self.status_label.setText(
+                f"Board {board_num} — play your hand; closed room runs after.")
 
     def _on_team_tournament(self):
         """Start a teams tournament"""
@@ -2880,8 +2915,10 @@ For more information, see the README file."""
         # Register with match controller
         self.match_controller.start_board(board_num, board)
 
-        # Note: Closed room will be started after human finishes their hand
-        # to avoid concurrent engine access (which causes broken pipe errors)
+        # Q-Plus semantics: start the four-bot closed room now so it plays this
+        # deal at the same time as the human (joined at hand end).
+        self._closed_room_async_started = None
+        self._begin_parallel_closed_room(board_num)
 
         # Setup the UI for play
         self.table_view.set_board(board)
@@ -7882,16 +7919,21 @@ For more information, see the README file."""
             # Complete the open room result
             self.match_controller.complete_open_room(board.board_number, board)
 
-            # Now run the closed room (after human finishes to avoid concurrent engine access)
-            self.status_label.setText("Running closed room...")
-            QApplication.processEvents()
-
-            # Start closed room and wait for completion
+            # The closed room is normally already running in parallel (started
+            # at deal time — Q-Plus semantics). Only start it here if it wasn't
+            # pre-started for this board; otherwise just join the worker.
             self._closed_room_result = None
-            self.match_controller.start_closed_room_async(
-                board.board_number,
-                callback=self._on_closed_room_complete
-            )
+            if self._closed_room_async_started != board.board_number:
+                self.status_label.setText("Running closed room...")
+                QApplication.processEvents()
+                self.match_controller.start_closed_room_async(
+                    board.board_number,
+                    callback=self._on_closed_room_complete
+                )
+            else:
+                self.status_label.setText("Joining closed room (4 biq bots)...")
+                QApplication.processEvents()
+            self._closed_room_async_started = None
 
             # Wait for closed room to complete via a proper Qt event
             # loop. The previous version polled QApplication.process
