@@ -233,6 +233,89 @@ def _play_features(board, seat, declarer, dummy, contract, visible, layout
     return feats, vals
 
 
+def cards_played(board) -> int:
+    """Total cards played so far (completed tricks + the current trick)."""
+    n = 0
+    for t in (getattr(board, "tricks", None) or []):
+        n += len(getattr(t, "cards", None) or [])
+    ct = getattr(board, "current_trick", None)
+    if ct is not None:
+        n += len(getattr(ct, "cards", None) or [])
+    return n
+
+
+def is_play_start(board) -> bool:
+    """True while still on the FIRST trick — the moment a whole-deal plan is
+    made. After trick one completes, advice should be about the next card."""
+    return len(getattr(board, "tricks", None) or []) == 0
+
+
+def _mid_play_note(board, seat, declarer, dummy, contract, visible, layout
+                   ) -> Tuple[str, list]:
+    """Technique-of-the-moment for the CURRENT trick (not a whole-deal plan).
+    No-peek: reads only `layout` (visible-derived) + the public current trick.
+    The concrete card is supplied separately by biq's engine in the dialog."""
+    trump = (contract.suit if contract.suit != Suit.NOTRUMP else None) \
+        if contract else None
+    rem = layout["rem_ranks"]
+    ct = getattr(board, "current_trick", None)
+    trick_cards = list(getattr(ct, "cards", None) or []) if ct else []
+    led = trick_cards[0].suit if trick_cards else None
+    on_lead = led is None
+    declarer_side = seat is None or (declarer is not None
+                                     and seat.is_ns() == declarer.is_ns())
+
+    if declarer_side and declarer is not None and dummy is not None:
+        if on_lead:
+            if trump is not None and declarer in visible and dummy in visible:
+                held = (len(layout["known"][declarer][trump]) +
+                        len(layout["known"][dummy][trump]))
+                out = max(0, len(rem[trump]) - held)
+                boss_t = boss_rank(rem, trump)
+                holder = _holder_of(layout, trump, boss_t, visible)
+                opp_master = (boss_t is not None and holder is not None
+                              and holder not in (declarer, dummy))
+                if out > 0 and not opp_master:
+                    return (f"Draw the last {out} trump(s), then cash your "
+                            f"side winners.", ["drawing_trumps"])
+                if out > 0 and opp_master:
+                    return ("Keep trump control — take your winners and concede "
+                            "the master trump late.", ["drawing_trumps"])
+            cash = [su for su in SUIT_ROWS
+                    if (b := boss_rank(rem, su)) is not None
+                    and (b in layout["known"][declarer][su]
+                         or b in layout["known"][dummy][su])]
+            if cash:
+                syms = "".join(s.symbol() for s in cash)
+                return (f"On lead: cash your winners ({syms}) — high card from "
+                        f"the short hand first.", ["entries"])
+            return ("On lead: lead toward your high cards or cross for a marked "
+                    "finesse; save entries for the long suit.", ["entries"])
+        return ("Win in the hand that protects your entries; duck when you can "
+                "spare it to keep communications.", ["entries"])
+
+    # Defender — own hand (+ dummy) only.
+    if on_lead:
+        return ("On lead: continue your established suit or return partner's; "
+                "shift only with a clear reason.", ["opening_lead", "signals"])
+    my = (layout["known"].get(seat) if seat is not None else None) or {}
+    have_led = bool(my.get(led)) if led is not None else True
+    if not have_led and trump is not None:
+        return (f"Out of {led.symbol()} — ruff if it gains a trick, else pitch "
+                f"a loser and signal.", ["signals", "ruff"])
+    pos = 1
+    if ct is not None and trick_cards and getattr(ct, "leader", None) is not None:
+        pos = ((int(seat) - int(ct.leader)) % 4) + 1
+    if pos == 2:
+        return ("Second hand low — keep your honours to capture declarer's, "
+                "unless you must grab a setting trick.", ["signals"])
+    if pos == 3:
+        return ("Third hand high — play high to force declarer's honour "
+                "(finesse against dummy only when it's marked).", ["signals"])
+    return ("Follow suit and signal honestly (attitude/count) so partner can "
+            "read the position.", ["signals"])
+
+
 def _match(rule_when: dict, feats: dict) -> bool:
     return all(feats.get(k) == v for k, v in rule_when.items())
 
@@ -271,6 +354,12 @@ def coaching_context(board: BoardState, seat: Optional[Seat], phase: str,
             dummy = declarer.partner() if declarer is not None else None
             if layout is None:
                 layout = known_layout(board, visible)
+            # Whole-deal planning advice only at the START of play; once trick
+            # one is over, switch to technique-of-the-moment for the next card.
+            if board.contract is not None and declarer is not None \
+                    and not is_play_start(board):
+                return _mid_play_note(board, seat, declarer, dummy,
+                                      board.contract, visible, layout)
             feats, vals = _play_features(board, seat, declarer, dummy,
                                          board.contract, visible, layout)
 

@@ -1674,9 +1674,15 @@ class TeachingView(QWidget):
                 self._coach_note_html = coach_notes.coaching_note(
                     board, declarer, "play", ns_system, ew_system,
                     visible, layout)
-                plan = whole_deal_plan(board, declarer, declarer, dummy,
-                                       contract, visible, layout)
-                self._coach_plan_html = render_whole_deal_plan(plan, html=True)
+                # The whole-deal 13-trick plan is a start-of-play artifact —
+                # show it only on the first trick; after that the coach note is
+                # already next-card technique (the live panel facts cover the
+                # rest), so the plan would just repeat stale guidance.
+                if coach_notes.is_play_start(board):
+                    plan = whole_deal_plan(board, declarer, declarer, dummy,
+                                           contract, visible, layout)
+                    self._coach_plan_html = render_whole_deal_plan(
+                        plan, html=True)
             except Exception:
                 self._coach_note_html = self._coach_note_html or ""
 

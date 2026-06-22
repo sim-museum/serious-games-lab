@@ -5271,7 +5271,11 @@ For more information, see the README file."""
             visible = set(self.table_view.face_up_seats())
             note, topics = coach_notes.coaching_context(
                 board, seat, phase, ns_spec, ew_spec, visible)
-            if phase == 'play':
+            # The whole-deal 13-trick plan is a START-of-play artifact: show it
+            # only while still on the first trick (the planning moment). Once
+            # trick one is over, the note above is already next-card advice and
+            # the plan would just repeat stale beginning-of-hand guidance.
+            if phase == 'play' and coach_notes.is_play_start(board):
                 declarer = board.contract.declarer if board.contract else None
                 dummy = declarer.partner() if declarer is not None else None
                 plan = wdp_mod.whole_deal_plan(
@@ -5279,6 +5283,13 @@ For more information, see the README file."""
                 plan_text = wdp_mod.render_whole_deal_plan(plan)
         except Exception as e:
             note = note or f"(coach note unavailable: {e!r})"
+
+        # biq's own engine names the concrete next card to play — surface it in
+        # the dialog (especially mid-play, where the note is technique, not a
+        # full plan). `engine_text` was computed above for the play phase.
+        engine_line = ""
+        if phase == 'play' and engine_text:
+            engine_line = engine_text.splitlines()[0]
 
         # Record the offline advice as comments in the .BDL (live) and queue it
         # for the .qss (written at close / export).
@@ -5310,7 +5321,8 @@ For more information, see the README file."""
                 cache_key=hint_cache_key,
             )
 
-        self._show_coach_dialog(note, plan_text, phase, _ask_claude)
+        self._show_coach_dialog(note, plan_text, phase, _ask_claude,
+                                next_card=engine_line)
 
     def _record_advice(self, note: str, plan_text: str = ""):
         """Write coaching advice as comments into the active .BDL (immediately)
@@ -5336,9 +5348,10 @@ For more information, see the README file."""
             pass
 
     def _show_coach_dialog(self, note: str, plan_text: str, phase: str,
-                           ask_claude_cb):
-        """Show the offline coaching note (+ 13-trick plan in play), with an
-        'Ask Claude' button enabled only when Claude is on in Preferences."""
+                           ask_claude_cb, next_card: str = ""):
+        """Show the offline coaching note — plus, in play, biq's suggested next
+        card and (only at the start of play) the 13-trick plan. The 'Ask Claude'
+        button offers deeper advice (gated by Preferences)."""
         from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton,
                                       QScrollArea, QWidget, QHBoxLayout)
         from PyQt6.QtGui import QFont
@@ -5357,6 +5370,14 @@ For more information, see the README file."""
         note_lbl.setWordWrap(True)
         note_lbl.setFont(QFont("Arial", 12))
         lay.addWidget(note_lbl)
+
+        # Concrete next card (play phase) — the actionable "what to play now".
+        if next_card:
+            card_lbl = QLabel("▶ " + next_card)
+            card_lbl.setWordWrap(True)
+            card_lbl.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+            card_lbl.setStyleSheet("color:#1a5e1a;")
+            lay.addWidget(card_lbl)
 
         if plan_text:
             ph = QLabel("Whole-deal plan")

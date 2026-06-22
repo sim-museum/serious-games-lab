@@ -93,51 +93,73 @@ def test_note_reflects_vulnerability_on_preempt():
     assert "stretch" in n_white
 
 
-# ---- Play: declarer note is specific, defender note differs --------------
-def _nt_board():
-    """3NT by South; West has led, so a trick exists and threat suit is set."""
-    b = BoardState(board_number=1, dealer=Seat.SOUTH,
-                   vulnerability=Vulnerability.NONE, hands={
+# ---- Play: start-of-play plan vs mid-play next-card technique -------------
+def _nt_hands():
+    return {
         Seat.SOUTH: _hand("SA SK SQ S4 HA H3 H2 DK D4 D3 C5 C4 C2"),
         Seat.NORTH: _hand("S5 S3 S2 HK H4 DA DQ D5 D2 C9 C8 C7 C3"),
         Seat.EAST:  _hand("S9 S8 HQ HJ HT H9 H8 D9 D8 CA CK CQ CJ"),
         Seat.WEST:  _hand("SJ ST S7 S6 H7 H6 H5 DJ DT D7 D6 CT C6"),
-    })
+    }
+
+
+def _nt_board_start():
+    """3NT by South, still on trick one: West has led, dummy is down."""
+    b = BoardState(board_number=1, dealer=Seat.SOUTH,
+                   vulnerability=Vulnerability.NONE, hands=_nt_hands())
     b.contract = Contract(level=3, suit=Suit.NOTRUMP, declarer=Seat.SOUTH)
-    # West leads a heart (their long suit); all follow.
-    b.tricks = [Trick(cards=[_c('H', '5'), _c('H', 'K'), _c('H', '8'), _c('H', '2')],
-                      leader=Seat.WEST, winner=Seat.NORTH)]
+    lead = _c('H', '5')
+    b.hands[Seat.WEST].cards.remove(lead)
+    b.current_trick = Trick(cards=[lead], leader=Seat.WEST)
+    b.tricks = []                                   # is_play_start() -> True
+    return b
+
+
+def _nt_board_mid():
+    """Same 3NT, but trick one is complete -> mid-play (next-card advice)."""
+    b = BoardState(board_number=1, dealer=Seat.SOUTH,
+                   vulnerability=Vulnerability.NONE, hands=_nt_hands())
+    b.contract = Contract(level=3, suit=Suit.NOTRUMP, declarer=Seat.SOUTH)
+    b.tricks = [Trick(cards=[_c('H', '5'), _c('H', 'K'), _c('H', '8'),
+                             _c('H', '2')], leader=Seat.WEST, winner=Seat.NORTH)]
     for seat, c in zip([Seat.WEST, Seat.NORTH, Seat.EAST, Seat.SOUTH],
                        b.tricks[0].cards):
         b.hands[seat].cards.remove(c)
     return b
 
 
-def test_play_declarer_note_nonempty_and_specific():
-    b = _nt_board()
-    visible = {Seat.SOUTH, Seat.NORTH}
-    note = coaching_note(b, Seat.SOUTH, "play", None, None, visible)
-    assert note and len(note) > 10
-    # mentions a concrete suit symbol (specific to the cards)
-    assert any(sym in note for sym in ("♠", "♥", "♦", "♣"))
-
-
-def test_play_defender_note_differs_from_declarer():
-    b = _nt_board()
-    decl = coaching_note(b, Seat.SOUTH, "play", None, None,
+def test_play_start_gives_planning_note():
+    import ui.coach_notes as cn
+    b = _nt_board_start()
+    assert cn.is_play_start(b)
+    note = coaching_note(b, Seat.SOUTH, "play", None, None,
                          {Seat.SOUTH, Seat.NORTH})
-    deff = coaching_note(b, Seat.WEST, "play", None, None,
+    assert note and any(sym in note for sym in ("♠", "♥", "♦", "♣"))
+
+
+def test_play_midplay_differs_from_start():
+    import ui.coach_notes as cn
+    start = coaching_note(_nt_board_start(), Seat.SOUTH, "play", None, None,
+                          {Seat.SOUTH, Seat.NORTH})
+    bm = _nt_board_mid()
+    assert not cn.is_play_start(bm)
+    mid = coaching_note(bm, Seat.SOUTH, "play", None, None,
+                        {Seat.SOUTH, Seat.NORTH})
+    assert mid and mid != start                     # next-card technique, not the plan
+
+
+def test_play_defender_start_mentions_set():
+    deff = coaching_note(_nt_board_start(), Seat.WEST, "play", None, None,
                          {Seat.WEST, Seat.NORTH})
-    assert decl != deff
     assert "beat it" in deff or "set" in deff.lower()
 
 
-def test_play_note_never_peeks():
-    b = _nt_board()
-    visible = {Seat.SOUTH, Seat.NORTH}
-    b.hands = _HandsGuard(b.hands, allowed=visible)   # raise on E/W access
-    note = coaching_note(b, Seat.SOUTH, "play", None, None, visible)
-    assert note                                       # produced without peeking
+def test_play_note_never_peeks_start_and_mid():
+    for b in (_nt_board_start(), _nt_board_mid()):
+        visible = {Seat.SOUTH, Seat.NORTH}
+        b.hands = _HandsGuard(b.hands, allowed=visible)   # raise on E/W access
+        note = coaching_note(b, Seat.SOUTH, "play", None, None, visible)
+        assert note                                       # built without peeking
 
 
 # ---- Always returns something --------------------------------------------
