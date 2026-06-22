@@ -1140,10 +1140,21 @@ class MainWindow(QMainWindow):
         variations_action.triggered.connect(self._on_deal_variations)
         deal_menu.addAction(variations_action)
 
+        # Q-Plus lists Next Deal / Previous Deal under the Deal menu (biq also
+        # has Next on the toolbar — keep both, like Q-Plus).
+        next_deal_action = QAction("&Next Deal", self)
+        next_deal_action.triggered.connect(self._on_next_deal)
+        deal_menu.addAction(next_deal_action)
+
         prev_deal_action = QAction("&Previous Deal", self)
         prev_deal_action.setShortcut(Qt.Key.Key_F4)
         prev_deal_action.triggered.connect(self._on_previous_deal)
         deal_menu.addAction(prev_deal_action)
+
+        # Computer Multiplay belongs under Deal in Q-Plus.
+        multiplay_action = QAction("Computer &Multiplay...", self)
+        multiplay_action.triggered.connect(self._on_multiplay)
+        deal_menu.addAction(multiplay_action)
 
         deal_menu.addSeparator()
 
@@ -1193,7 +1204,8 @@ class MainWindow(QMainWindow):
         view_menu = menubar.addMenu("&View")
         view_menu.setStyleSheet(self._menu_style)
 
-        show_all_action = QAction("Show &All Hands", self)
+        # Q-Plus calls this "Open all hands" — match the wording.
+        show_all_action = QAction("&Open All Hands", self)
         show_all_action.setShortcut(Qt.Key.Key_F2)
         show_all_action.triggered.connect(self._on_show_all_hands)
         view_menu.addAction(show_all_action)
@@ -1359,12 +1371,6 @@ class MainWindow(QMainWindow):
         self.minibridge_action.setCheckable(True)
         self.minibridge_action.triggered.connect(self._on_minibridge)
         extras_menu.addAction(self.minibridge_action)
-
-        extras_menu.addSeparator()
-
-        multiplay_action = QAction("Computer &Multiplay...", self)
-        multiplay_action.triggered.connect(self._on_multiplay)
-        extras_menu.addAction(multiplay_action)
 
         extras_menu.addSeparator()
 
@@ -2023,6 +2029,19 @@ class MainWindow(QMainWindow):
             return
 
         board = self.controller.new_deal()
+
+        # Deal filter (random deals only): reject-sample until the deal matches
+        # the configured filter, capped so an impossible filter can't hang.
+        flt = getattr(self, '_active_deal_filter', None)
+        if flt:
+            attempts = 0
+            while attempts < 5000 and not self._deal_passes_filter(board, flt):
+                board = self.controller.new_deal()
+                attempts += 1
+            if not self._deal_passes_filter(board, flt):
+                self.status_label.setText(
+                    "Deal filter: no matching deal in 5000 tries — "
+                    "using the last deal (loosen the filter?).")
 
         # Store a deep copy of original hands for logging
         self.original_hands = {}
@@ -3259,9 +3278,97 @@ For more information, see the README file."""
         self._advance_game()
 
     def _on_deal_filter(self):
-        """Show deal filter dialog"""
+        """Show the deal filter dialog and remember the configured filter so
+        subsequent RANDOM deals are reject-sampled to match it (Q-Plus: a deal
+        filter is only useful for randomly dealt deals, not tournament deals)."""
         dialog = DealFilterDialog(self)
-        dialog.exec()
+        if dialog.exec():
+            self._active_deal_filter = dialog.get_filter()
+            if self._active_deal_filter:
+                self.status_label.setText(
+                    "Deal filter active — new random deals will match it "
+                    "(open the dialog and disable it to clear).")
+            else:
+                self.status_label.setText("Deal filter cleared.")
+
+    def _deal_passes_filter(self, board, flt) -> bool:
+        """True if `board` satisfies the deal-filter dict from DealFilterDialog
+        (HCP ranges per seat / N+S / E+W, South & North suit-length min/max, and
+        feature flags). Missing constraints pass. Never raises."""
+        if not flt:
+            return True
+        try:
+            from backend.models import Seat, Suit, Rank
+            hands = board.hands
+            seatmap = {'North': Seat.NORTH, 'East': Seat.EAST,
+                       'South': Seat.SOUTH, 'West': Seat.WEST}
+
+            def hcp(seat):
+                return hands[seat].hcp()
+
+            def lengths(seat):
+                d = {Suit.SPADES: 0, Suit.HEARTS: 0,
+                     Suit.DIAMONDS: 0, Suit.CLUBS: 0}
+                for c in hands[seat].cards:
+                    d[c.suit] += 1
+                return d
+
+            for name, rng in (flt.get('hcp_ranges') or {}).items():
+                lo, hi = rng
+                if name in seatmap:
+                    v = hcp(seatmap[name])
+                elif name == 'N+S':
+                    v = hcp(Seat.NORTH) + hcp(Seat.SOUTH)
+                elif name == 'E+W':
+                    v = hcp(Seat.EAST) + hcp(Seat.WEST)
+                else:
+                    continue
+                if not (lo <= v <= hi):
+                    return False
+
+            suitkey = {'S': Suit.SPADES, 'H': Suit.HEARTS,
+                       'D': Suit.DIAMONDS, 'C': Suit.CLUBS}
+            for who, store in (('South', flt.get('south_lengths')),
+                               ('North', flt.get('north_lengths'))):
+                if not store:
+                    continue
+                L = lengths(seatmap[who])
+                for sl, suit in suitkey.items():
+                    mn = store.get(f"{who}_{sl}_Min", 0)
+                    mx = store.get(f"{who}_{sl}_Max", 13)
+                    if not (mn <= L[suit] <= mx):
+                        return False
+
+            feats = flt.get('features') or {}
+            sl = lengths(Seat.SOUTH)
+            shape = tuple(sorted(sl.values(), reverse=True))
+            ns = hcp(Seat.NORTH) + hcp(Seat.SOUTH)
+            if feats.get('south_balanced') and shape not in (
+                    (4, 3, 3, 3), (4, 4, 3, 2), (5, 3, 3, 2)):
+                return False
+            if feats.get('south_5_major') and not (
+                    sl[Suit.SPADES] >= 5 or sl[Suit.HEARTS] >= 5):
+                return False
+            if feats.get('south_2c_opener') and hcp(Seat.SOUTH) < 22:
+                return False
+            if feats.get('slam_zone') and ns < 33:
+                return False
+            if feats.get('game_zone') and ns < 25:
+                return False
+            if feats.get('south_stoppers'):
+                for suit in suitkey.values():
+                    ranks = {c.rank for c in hands[Seat.SOUTH].cards
+                             if c.suit == suit}
+                    n = sl[suit]
+                    has = (Rank.ACE in ranks
+                           or (Rank.KING in ranks and n >= 2)
+                           or (Rank.QUEEN in ranks and n >= 3)
+                           or (Rank.JACK in ranks and n >= 4))
+                    if not has:
+                        return False
+            return True
+        except Exception:
+            return True       # never block dealing on a filter bug
 
     def _on_set_dealer_vul(self):
         """Q-Plus .set-dealer — pick a new dealer and vulnerability
