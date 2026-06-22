@@ -17,7 +17,7 @@ class ClaimDialog(QDialog):
     def __init__(self, parent=None, remaining_tricks=13, declarer_tricks=0,
                  defense_tricks=0, is_declarer=True):
         super().__init__(parent)
-        self.setWindowTitle("Claim Tricks")
+        self.setWindowTitle("Claim or Concede")
         self.setMinimumWidth(350)
         apply_dialog_style(self)
 
@@ -87,10 +87,19 @@ class ClaimDialog(QDialog):
         # Buttons
         button_layout = QHBoxLayout()
 
-        self.ok_btn = QPushButton("OK")
+        self.ok_btn = QPushButton("Claim")
         self.ok_btn.clicked.connect(self._on_ok)
         self.ok_btn.setMinimumWidth(80)
         button_layout.addWidget(self.ok_btn)
+
+        # Concede the rest in one click: the asking side takes none of the
+        # remaining tricks (Q-Plus pairs Claim with Concede).
+        self.concede_btn = QPushButton("Concede Rest")
+        self.concede_btn.setToolTip(
+            "Give up all remaining tricks to the other side.")
+        self.concede_btn.clicked.connect(self._on_concede)
+        self.concede_btn.setMinimumWidth(90)
+        button_layout.addWidget(self.concede_btn)
 
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.clicked.connect(self.reject)
@@ -108,6 +117,14 @@ class ClaimDialog(QDialog):
     def _on_ok(self):
         self.claimed_tricks = self.tricks_spin.value()
         self.verify = self.verify_radio.isChecked()
+        self.accept()
+
+    def _on_concede(self):
+        """Concede the rest — the asking side takes 0 of the remaining tricks
+        (declarer concedes all to the defence, or vice-versa). Always accepted,
+        never 'verified' (you can't be wrong about conceding)."""
+        self.claimed_tricks = 0
+        self.verify = False
         self.accept()
 
     def get_claimed_tricks(self):

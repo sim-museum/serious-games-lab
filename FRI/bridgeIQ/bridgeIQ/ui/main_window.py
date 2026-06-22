@@ -2080,6 +2080,12 @@ class MainWindow(QMainWindow):
                     "Deal filter: no matching deal in 5000 tries — "
                     "using the last deal (loosen the filter?).")
 
+        self._present_fresh_board(board)
+
+    def _present_fresh_board(self, board):
+        """Set up the table/bidding UI for a freshly-dealt board and start the
+        auction. Shared by New Deal and Previous Deal so both go through the
+        same full reset (original hands, undo history, visibility, bots)."""
         # Store a deep copy of original hands for logging
         self.original_hands = {}
         for seat, hand in board.hands.items():
@@ -9553,7 +9559,10 @@ For more information, see the README file."""
         self._review_dialogs = survivors
 
     def _on_previous_deal(self):
-        """Go to the previous deal."""
+        """Go to the previous deal (Q-Plus: the deal with the minor number
+        decreased). random_deal() is seeded by board number, so deal n-1 is the
+        same deterministic deal Q-Plus would show. Goes through the full
+        new-deal setup (state reset + auction start), not a partial redraw."""
         if not self.controller.board:
             self.status_label.setText("No current deal")
             return
@@ -9562,23 +9571,17 @@ For more information, see the README file."""
         if current_num <= 1:
             self.status_label.setText("Already at first deal")
             return
-
-        # Generate previous deal
         prev_num = current_num - 1
-        self.status_label.setText(f"Loading deal #{prev_num}...")
 
-        # Create new board with previous number
-        from backend.models import BoardState
-        new_board = self.engine.random_deal(prev_num)
+        # In a teams match, step the board pointer back and re-deal that board
+        # number (the previous deal of the scoring table).
+        if self.teams_match is not None and self.match_controller is not None:
+            self.teams_match.current_board = prev_num
+            self._start_teams_board(prev_num)
+            return
 
-        # Setup the new deal
-        self.controller.board = new_board
-        self.controller.current_phase = 'bidding'
-        self.controller.current_seat = new_board.dealer
-
-        # Reset UI
-        self._display_deal(new_board)
-        self._update_button_states()
+        board = self.controller.new_deal(prev_num)   # full reset, deterministic
+        self._present_fresh_board(board)
         self.status_label.setText(f"Deal #{prev_num} loaded")
 
     def _on_lead_signal(self, pair: str):
