@@ -5376,12 +5376,36 @@ For more information, see the README file."""
 
         btn_row = QHBoxLayout()
         ask_btn = QPushButton("Ask Claude for deeper advice")
-        if self._claude_enabled():
-            ask_btn.clicked.connect(lambda: (dlg.accept(), ask_claude_cb()))
-        else:
-            ask_btn.setEnabled(False)
-            ask_btn.setToolTip("Enable in Preferences → AI & Network "
-                               "(shells out to the claude CLI, costs tokens).")
+
+        def _on_ask():
+            # Always functional: if Claude is on, run it; if not, offer to
+            # turn it on (it's an opt-in feature) rather than sit there dead.
+            if self._claude_enabled():
+                dlg.accept()
+                ask_claude_cb()
+                return
+            from PyQt6.QtWidgets import QMessageBox
+            box = QMessageBox(dlg)
+            box.setWindowTitle("Claude is turned off")
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setText("Deeper AI advice uses the Claude CLI — an opt-in "
+                        "feature (it costs tokens and isn't needed for "
+                        "ordinary play).")
+            box.setInformativeText("Enable it in Preferences → AI & Network?")
+            open_btn = box.addButton("Open Preferences…",
+                                     QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            if box.clickedButton() is open_btn:
+                dlg.accept()
+                self._on_preferences()
+                # If the user just enabled it, go straight to the advice.
+                if self._claude_enabled():
+                    ask_claude_cb()
+
+        ask_btn.clicked.connect(_on_ask)
+        ask_btn.setToolTip("Deeper AI advice via the Claude CLI "
+                           "(opt-in; enable in Preferences → AI & Network).")
         btn_row.addWidget(ask_btn)
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(dlg.reject)
