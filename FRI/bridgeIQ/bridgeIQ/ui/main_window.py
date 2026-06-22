@@ -805,6 +805,9 @@ class MainWindow(QMainWindow):
         # Connect signals
         self._connect_signals()
 
+        # Resume a match saved with File / Save Match + Exit (Q-Plus parity).
+        self._maybe_restore_saved_match()
+
         # Initialize engine in background
         QTimer.singleShot(100, self._initialize_engine)
 
@@ -1078,6 +1081,15 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
 
+        # Q-Plus: Save Match + Exit resumes the match next start; plain Exit
+        # starts fresh.
+        save_exit_action = QAction("Save &Match + Exit", self)
+        save_exit_action.setToolTip(
+            "Save the current scoring table so the next start resumes it, "
+            "then close (Q-Plus 'Save Match + Exit').")
+        save_exit_action.triggered.connect(self._on_save_match_and_exit)
+        file_menu.addAction(save_exit_action)
+
         exit_action = QAction("E&xit", self)
         exit_action.setShortcut(QKeySequence.StandardKey.Quit)
         exit_action.triggered.connect(self.close)
@@ -1116,6 +1128,18 @@ class MainWindow(QMainWindow):
         check_action = QAction("&Check Configuration!", self)
         check_action.triggered.connect(self._on_config_check)
         config_menu.addAction(check_action)
+
+        config_menu.addSeparator()
+
+        # Q-Plus: save / retrieve named configuration sets (a folder holding
+        # the B-*.CFG files).
+        save_cfg_action = QAction("Sa&ve Configuration...", self)
+        save_cfg_action.triggered.connect(self._on_save_configuration)
+        config_menu.addAction(save_cfg_action)
+
+        retrieve_cfg_action = QAction("&Retrieve Configuration...", self)
+        retrieve_cfg_action.triggered.connect(self._on_retrieve_configuration)
+        config_menu.addAction(retrieve_cfg_action)
 
         config_menu.addSeparator()
 
@@ -1371,6 +1395,19 @@ class MainWindow(QMainWindow):
         self.minibridge_action.setCheckable(True)
         self.minibridge_action.triggered.connect(self._on_minibridge)
         extras_menu.addAction(self.minibridge_action)
+
+        # Q-Plus: Check user actions — report weak bids/cards as you make them.
+        # biq's equivalent is the live blunder check (a single toggle); surface
+        # it here as a checkable item bound to the preference.
+        self.check_actions_action = QAction("&Check User Actions", self)
+        self.check_actions_action.setCheckable(True)
+        try:
+            self.check_actions_action.setChecked(bool(
+                self.config_manager.config.preferences.blunder_check_enabled))
+        except Exception:
+            pass
+        self.check_actions_action.toggled.connect(self._on_check_user_actions)
+        extras_menu.addAction(self.check_actions_action)
 
         extras_menu.addSeparator()
 
@@ -9565,6 +9602,108 @@ For more information, see the README file."""
 
         dialog = ConfigCheckDialog(self)
         dialog.exec()
+
+    def _on_save_configuration(self):
+        """Q-Plus Configuration / Save configuration — write the current
+        settings (the B-*.CFG set) into a user-chosen folder so it can be
+        retrieved later."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from pathlib import Path
+        import shutil
+        dest = QFileDialog.getExistingDirectory(
+            self, "Save configuration to folder", str(Path.home()))
+        if not dest:
+            return
+        try:
+            self.config_manager.save_all()           # flush current → CONFIG/
+            src = self.config_manager.config_dir
+            n = 0
+            for cfg in ("B-INIT.CFG", "B-MATCH.CFG", "B-PREFER.CFG"):
+                p = src / cfg
+                if p.exists():
+                    shutil.copy(p, Path(dest) / cfg)
+                    n += 1
+            self.status_label.setText(
+                f"Configuration saved to {dest} ({n} files).")
+        except Exception as ex:
+            QMessageBox.warning(self, "Save configuration failed", str(ex))
+
+    def _on_retrieve_configuration(self):
+        """Q-Plus Configuration / Retrieve configuration — load a previously
+        saved configuration set (a folder of B-*.CFG files) into the active
+        config. Some changes (players/systems) take effect on the next deal."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from pathlib import Path
+        import shutil
+        src = QFileDialog.getExistingDirectory(
+            self, "Retrieve configuration from folder", str(Path.home()))
+        if not src:
+            return
+        srcp = Path(src)
+        if not any((srcp / c).exists() for c in
+                   ("B-INIT.CFG", "B-MATCH.CFG", "B-PREFER.CFG")):
+            QMessageBox.warning(
+                self, "Retrieve configuration",
+                "That folder has no B-*.CFG configuration files.")
+            return
+        try:
+            dst = self.config_manager.config_dir
+            for cfg in ("B-INIT.CFG", "B-MATCH.CFG", "B-PREFER.CFG"):
+                p = srcp / cfg
+                if p.exists():
+                    shutil.copy(p, dst / cfg)
+            self.config_manager.load_all()
+            try:
+                self._refresh_suit_colors()
+            except Exception:
+                pass
+            self.status_label.setText(
+                "Configuration retrieved. Player/system changes apply "
+                "from the next deal.")
+        except Exception as ex:
+            QMessageBox.warning(self, "Retrieve configuration failed", str(ex))
+
+    def _on_check_user_actions(self, checked: bool):
+        """Q-Plus Extras / Check user actions — toggle the live blunder check
+        (reports weak bids/cards as you make them)."""
+        try:
+            self.config_manager.config.preferences.blunder_check_enabled = bool(
+                checked)
+            self.config_manager.save_preferences()
+        except Exception:
+            pass
+        self.status_label.setText(
+            f"Check user actions: {'ON' if checked else 'OFF'}.")
+
+    def _on_save_match_and_exit(self):
+        """Q-Plus File / Save Match + Exit — persist the scoring table so the
+        next start resumes it, then close. (Plain Exit starts fresh.)"""
+        try:
+            self.config_manager.save_all()
+            path = self.config_manager.config_dir / "SAVED-MATCH.qss"
+            self.scoring_table.save(str(path))
+        except Exception as ex:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Save Match failed",
+                                f"Could not save the match:\n{ex}")
+            return
+        self._match_saved_on_exit = True
+        self.close()
+
+    def _maybe_restore_saved_match(self):
+        """At startup, resume a match saved via 'Save Match + Exit' (then
+        consume it so a later plain Exit starts fresh, matching Q-Plus)."""
+        try:
+            from backend.scoring import ScoringTable
+            path = self.config_manager.config_dir / "SAVED-MATCH.qss"
+            if not path.exists():
+                return
+            self.scoring_table = ScoringTable.load(str(path))
+            path.unlink()
+            self.status_label.setText(
+                "Resumed saved match (Save Match + Exit).")
+        except Exception as e:
+            print(f"saved-match restore failed: {e!r}", flush=True)
 
     def _on_minibridge(self):
         """Toggle or configure One Player / MiniBridge mode. The
