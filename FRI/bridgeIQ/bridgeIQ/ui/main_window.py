@@ -9177,6 +9177,18 @@ For more information, see the README file."""
         result = dialog.exec()
 
         if result == QDialog.DialogCode.Accepted:
+            # Q-Plus result modes (card play): conventional meaning / expected
+            # tricks (hidden vs open). When any is requested, show those instead
+            # of the point-count dialog.
+            if (dialog.want_conventional or dialog.want_tricks_hidden
+                    or dialog.want_tricks_open):
+                if dialog.want_conventional:
+                    self._on_explain_last_signal()
+                if dialog.want_tricks_hidden:
+                    self._show_expected_tricks_hidden()
+                if dialog.want_tricks_open:
+                    self._on_dd_analysis()
+                return
             if dialog.own_hand:
                 # Show own hand evaluation
                 current_seat = self.controller.current_seat
@@ -9210,6 +9222,35 @@ For more information, see the README file."""
                     eval_dialog.exec()
                 else:
                     self.status_label.setText(f"No hand data for {about_seat}")
+
+    def _show_expected_tricks_hidden(self):
+        """Q-Plus 'Expected tricks with hidden hands' — biq's MC+DDS engine
+        scores each legal card for the player to act using only legal knowledge
+        of the hidden hands. Shown as a per-card list."""
+        board = self.controller.board
+        seat = self.controller.current_seat
+        if (board is None or seat is None
+                or self.controller.current_phase != 'play'):
+            self._show_plain_dialog(
+                "Expected tricks (hidden hands)",
+                "Available during card play, on the turn of the player to act.")
+            return
+        try:
+            trick = (board.current_trick.cards
+                     if board.current_trick else [])
+            resp = self.engine.get_mc_card_play(board, seat, trick)
+            cands = getattr(resp, 'candidates', None) or []
+            lines = [f"Expected tricks (hidden hands) for {seat.to_char()} — "
+                     f"MC+DDS over sampled layouts:", ""]
+            for c in cands:
+                lines.append(f"   {c.card.to_str()}:  {c.score:.2f}")
+            if not cands and getattr(resp, 'action', None):
+                lines.append(f"   suggested: {resp.action.to_str()}")
+            self._show_plain_dialog("Expected tricks (hidden hands)",
+                                    "\n".join(lines))
+        except Exception as ex:
+            self._show_plain_dialog("Expected tricks (hidden hands)",
+                                    f"Could not compute: {ex!r}", error=True)
 
     def _on_view_auction_tricks(self):
         """Show the Record (auction + played tricks) dialog detached.
