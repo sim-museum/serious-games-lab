@@ -704,14 +704,33 @@ class CompareReplayDialog(QDialog):
         self.bidding_btn.clicked.connect(self._on_show_bidding_logs)
         bottom.addWidget(self.bidding_btn)
 
-        self.transcript_btn = QPushButton("Annotated transcript (Claude)")
-        self.transcript_btn.setToolTip(
-            "Send both BDLs (open + closed room) to Claude with "
-            "extended thinking and get a side-by-side annotated transcript: "
-            "bidding differences, card-play differences, what the human "
-            "did well, and where they could improve."
+        # biq's own offline comparison — deterministic, no Claude, never times
+        # out, works even when Claude is disabled.
+        self.biq_compare_btn = QPushButton("biq comparison")
+        self.biq_compare_btn.setToolTip(
+            "biq's own side-by-side write-up of the two rooms — contracts, "
+            "result, IMP swing, and where the auctions/leads diverged. "
+            "Instant, offline, no Claude needed."
         )
-        self.transcript_btn.clicked.connect(self._on_annotated_transcript)
+        self.biq_compare_btn.clicked.connect(self._on_biq_comparison)
+        bottom.addWidget(self.biq_compare_btn)
+
+        # Claude critique — a scope menu so the user can pick a small, fast
+        # request (quick / bidding / play) instead of the slow full critique.
+        from PyQt6.QtWidgets import QMenu
+        self.transcript_btn = QPushButton("Claude critique ▾")
+        self.transcript_btn.setToolTip(
+            "Ask Claude to compare the two rooms. Pick a scope — a quick "
+            "verdict or one topic returns fast; the full critique is "
+            "thorough but slow."
+        )
+        critique_menu = QMenu(self.transcript_btn)
+        for _scope in ('quick', 'bidding', 'play', 'full'):
+            _lbl = self._SCOPE_META[_scope][0]
+            act = critique_menu.addAction(_lbl)
+            act.triggered.connect(
+                lambda _checked=False, s=_scope: self._on_annotated_transcript(s))
+        self.transcript_btn.setMenu(critique_menu)
         bottom.addWidget(self.transcript_btn)
 
         self.engine_compare_btn = QPushButton("Engine compare")
@@ -905,24 +924,35 @@ class CompareReplayDialog(QDialog):
             include_footer=False,
         )
 
-    def _build_transcript_prompt(self) -> str:
-        """Assemble the side-by-side comparison prompt."""
-        left_bdl = self._run_to_bdl(self.left_run) or "(no left BDL available)"
-        right_bdl = self._run_to_bdl(self.right_run) or "(no right BDL available)"
-        return (
-            "You are reviewing the SAME bridge deal played at two different "
-            "tables in a teams match. Compare the two rooms side by side and "
-            "produce an annotated transcript that a human bridge player can "
-            "study to improve their game.\n\n"
-            "Use FULL hindsight (every hand is visible to you, both rooms "
-            "are complete). Open room = the table where a human played at "
-            "one or more seats. Closed room = the bot reference table "
-            "(Q-Plus, BridgeIQ, etc.) for the same deal — it's the "
-            "yardstick.\n\n"
-            f"=== OPEN ROOM ({self._left_label}) ===\n"
-            f"{left_bdl}\n\n"
-            f"=== CLOSED ROOM ({self._right_label}) ===\n"
-            f"{right_bdl}\n\n"
+    # Scope presets for the Claude critique. Each is (menu label, wait note,
+    # timeout seconds, task block). The smaller scopes are FAST — they ask for
+    # far less output, so they return well inside their timeout instead of the
+    # multi-minute full critique that was timing out.
+    _TASK_BLOCKS = {
+        'quick': (
+            "TASK: In 6–10 sentences total, give a quick verdict — which "
+            "room reached the better contract, the single biggest BIDDING "
+            "difference, the single biggest CARD-PLAY difference, the IMP "
+            "swing and who won it, and the ONE thing the human should most "
+            "take away. Be concise; do not walk the deal card by card."
+        ),
+        'bidding': (
+            "TASK: Compare ONLY the bidding. Walk the auction round by round; "
+            "for each call that DIFFERS between the rooms, say who was right "
+            "and why (HCP, shape, vulnerability, system: SAYC / 2-over-1 / "
+            "Precision). End with: what the human bid well, and the single "
+            "auction call they should most reconsider. Ignore the card play."
+        ),
+        'play': (
+            "TASK: Compare ONLY the card play (assume the contracts as given). "
+            "Walk the play trick by trick: opening lead, declarer's plan, key "
+            "defensive plays and signals. When the rooms diverge, name the "
+            "principle (suit-preference, second-hand-low, hold-up, endplay, "
+            "squeeze, count) that should drive the choice. End with what the "
+            "human played well and their one biggest technical leak. Ignore "
+            "the auction."
+        ),
+        'full': (
             "TASKS:\n"
             "1. Annotated bidding comparison. Walk through the auction "
             "round by round. For each call that DIFFERS between the two "
@@ -945,7 +975,35 @@ class CompareReplayDialog(QDialog):
             "Each item should name the spot (auction round or trick "
             "number), the actual choice, the better alternative, and a "
             "short principle so it transfers to similar future deals. "
-            "Don't pad with generic advice; cite the specific cards.\n\n"
+            "Don't pad with generic advice; cite the specific cards."
+        ),
+    }
+    _SCOPE_META = {
+        'quick':   ("Quick verdict (fast)", 180),
+        'bidding': ("Bidding only", 360),
+        'play':    ("Card play only", 360),
+        'full':    ("Full critique (slow)", 900),
+    }
+
+    def _build_transcript_prompt(self, scope: str = 'full') -> str:
+        """Assemble the side-by-side comparison prompt for the given scope."""
+        left_bdl = self._run_to_bdl(self.left_run) or "(no left BDL available)"
+        right_bdl = self._run_to_bdl(self.right_run) or "(no right BDL available)"
+        task = self._TASK_BLOCKS.get(scope, self._TASK_BLOCKS['full'])
+        return (
+            "You are reviewing the SAME bridge deal played at two different "
+            "tables in a teams match. Compare the two rooms side by side and "
+            "help a human bridge player study to improve their game.\n\n"
+            "Use FULL hindsight (every hand is visible to you, both rooms "
+            "are complete). Open room = the table where a human played at "
+            "one or more seats. Closed room = the bot reference table "
+            "(Q-Plus, BridgeIQ, etc.) for the same deal — it's the "
+            "yardstick.\n\n"
+            f"=== OPEN ROOM ({self._left_label}) ===\n"
+            f"{left_bdl}\n\n"
+            f"=== CLOSED ROOM ({self._right_label}) ===\n"
+            f"{right_bdl}\n\n"
+            f"{task}\n\n"
             "Format the output as Markdown with clear section headers. "
             "Use code blocks for short BDL fragments when quoting "
             "auction lines or trick cards verbatim. Keep the tone "
@@ -1128,22 +1186,173 @@ class CompareReplayDialog(QDialog):
         v.addWidget(close)
         dlg.show()
 
-    def _on_annotated_transcript(self):
-        """Generate the side-by-side annotated transcript via Claude."""
-        prompt = self._build_transcript_prompt()
+    # ------------------------------------------------------------------
+    # biq's own offline comparison — deterministic, no Claude. Compares the
+    # two rooms' contracts, results, IMP swing, auctions and opening leads.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _fmt_contract(run: BenBoardRun) -> str:
+        c = run.contract
+        if c is None:
+            return "passed out"
+        dbl = ("XX" if getattr(c, 'redoubled', False)
+               else "X" if getattr(c, 'doubled', False) else "")
+        try:
+            strain = c.suit.symbol()
+        except Exception:
+            strain = str(getattr(c, 'suit', ''))
+        return f"{c.level}{strain}{dbl} by {c.declarer.to_char()}"
+
+    @staticmethod
+    def _fmt_result(run: BenBoardRun) -> str:
+        c = run.contract
+        if c is None:
+            return "—"
+        try:
+            diff = run.declarer_tricks - c.target_tricks()
+        except Exception:
+            return f"{run.declarer_tricks} tricks"
+        made = ("made exactly" if diff == 0
+                else f"made +{diff}" if diff > 0 else f"down {abs(diff)}")
+        return f"{run.declarer_tricks} tricks — {made}"
+
+    @staticmethod
+    def _opening_lead(run: BenBoardRun) -> str:
+        try:
+            first = run.tricks[0].cards[0]
+            return first.symbol() if hasattr(first, 'symbol') else str(first)
+        except Exception:
+            return "—"
+
+    def _build_biq_comparison_html(self) -> str:
+        from backend.models import diff_to_imps, BoardState, Seat
+        L, R = self.left_run, self.right_run
+        l_ns, r_ns = L.ns_score, R.ns_score
+        # Cross-IMP: the value of the NS-score difference between the tables.
+        swing = diff_to_imps(abs(l_ns - r_ns))
+        if l_ns > r_ns:
+            verdict = (f"Open room is <b>{swing} IMP</b> better for N/S."
+                       if swing else "Rooms are level for N/S.")
+        elif r_ns > l_ns:
+            verdict = (f"Closed room is <b>{swing} IMP</b> better for N/S."
+                       if swing else "Rooms are level for N/S.")
+        else:
+            verdict = "Both rooms scored the same — flat board."
+
+        h = ['<div style="font-family: Arial; font-size: 12pt;">']
+        h.append(f"<h2>biq comparison — Board {L.board_number}</h2>")
+        h.append(f"<p style='font-size:13pt;'>{verdict}</p>")
+
+        # Result table.
+        h.append('<table cellpadding="6" cellspacing="0" border="1" '
+                 'style="border-collapse:collapse; width:100%;">')
+        h.append("<tr style='background:#e0e0e0;'><th></th>"
+                 f"<th>Open ({self._left_label})</th>"
+                 f"<th>Closed ({self._right_label})</th></tr>")
+
+        def row(label, lv, rv, hi=False):
+            bg = " style='background:#fff3cd;'" if hi else ""
+            return (f"<tr{bg}><td><b>{label}</b></td>"
+                    f"<td>{lv}</td><td>{rv}</td></tr>")
+
+        lc, rc = self._fmt_contract(L), self._fmt_contract(R)
+        h.append(row("Contract", lc, rc, hi=(lc != rc)))
+        h.append(row("Result", self._fmt_result(L), self._fmt_result(R)))
+        ll, rl = self._opening_lead(L), self._opening_lead(R)
+        h.append(row("Opening lead", ll, rl, hi=(ll != rl)))
+        h.append(row("N/S score", f"{l_ns:+d}", f"{r_ns:+d}"))
+        h.append(row("E/W score", f"{L.ew_score:+d}", f"{R.ew_score:+d}"))
+        h.append("</table>")
+
+        # Auction divergence — call by call.
+        try:
+            dealer, _ = BoardState._board_dealer_vuln(L.board_number)
+        except Exception:
+            dealer = Seat.NORTH
+
+        def _bid_str(b):
+            try:
+                return b.symbol()
+            except Exception:
+                return str(b)
+
+        la, ra = list(L.auction), list(R.auction)
+        h.append("<h3>Auction</h3>")
+        if la == ra:
+            h.append("<p>Both rooms bid <b>identically</b>.</p>")
+        else:
+            h.append('<table cellpadding="6" cellspacing="0" border="1" '
+                     'style="border-collapse:collapse; width:100%;">')
+            h.append("<tr style='background:#e0e0e0;'><th>#</th><th>Seat</th>"
+                     "<th>Open</th><th>Closed</th></tr>")
+            for i in range(max(len(la), len(ra))):
+                seat = Seat((int(dealer) + i) % 4)
+                lb = _bid_str(la[i]) if i < len(la) else "—"
+                rb = _bid_str(ra[i]) if i < len(ra) else "—"
+                bg = " style='background:#ffe0e0;'" if lb != rb else ""
+                h.append(f"<tr{bg}><td>{i + 1}</td>"
+                         f"<td>{seat.to_char()}</td>"
+                         f"<td><b>{lb}</b></td><td><b>{rb}</b></td></tr>")
+            h.append("</table>")
+            h.append("<p style='color:#444;'>Rows in red are where the two "
+                     "rooms made a different call.</p>")
+
+        h.append("<p style='color:#666; font-size:10pt;'>biq's own read — "
+                 "no Claude. For a coached, prose critique use "
+                 "<b>Claude critique</b>.</p>")
+        h.append("</div>")
+        return "".join(h)
+
+    def _on_biq_comparison(self):
+        """Pop biq's own offline two-room comparison (no Claude)."""
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton
+        from PyQt6.QtGui import QFont
+        from .dialog_style import make_detachable
+        try:
+            html = self._build_biq_comparison_html()
+        except Exception as ex:
+            html = f"<p>Could not build the comparison: {ex!r}</p>"
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"biq comparison — Board {self.left_run.board_number}")
+        dlg.resize(1000, 760)
+        make_detachable(dlg)
+        v = QVBoxLayout(dlg)
+        view = QTextEdit()
+        view.setReadOnly(True)
+        view.setHtml(html)
+        view.setFont(QFont("Arial", 11))
+        v.addWidget(view, stretch=1)
+        close = QPushButton("Close")
+        close.clicked.connect(dlg.close)
+        v.addWidget(close)
+        dlg.show()
+
+    def _on_annotated_transcript(self, scope: str = 'full'):
+        """Generate the side-by-side annotated transcript via Claude.
+
+        `scope` selects how much to ask for — 'quick' / 'bidding' / 'play' /
+        'full'. The smaller scopes return fast (and carry shorter timeouts) so
+        the user has a request that won't time out."""
+        prompt = self._build_transcript_prompt(scope)
+        label, timeout = self._SCOPE_META.get(scope, self._SCOPE_META['full'])
         host = self._find_main_window()
-        title = (f"Annotated transcript — Board {self.left_run.board_number}"
+        title = (f"Claude critique ({label}) — Board "
+                 f"{self.left_run.board_number}"
                  if self.left_run.board_number == self.right_run.board_number
-                 else (f"Annotated transcript — "
+                 else (f"Claude critique ({label}) — "
                        f"{self.left_run.board_number} vs "
                        f"{self.right_run.board_number}"))
+        wait = ("Claude is comparing the two rooms…"
+                if scope != 'full'
+                else "Claude is comparing the two rooms… "
+                     "(a full two-room critique can take several minutes)")
         if host is not None and hasattr(host, '_run_claude_with_dialog'):
             host._run_claude_with_dialog(
                 prompt=prompt,
                 title=title,
-                wait_label="Claude is comparing the two rooms… "
-                           "(a full two-room critique can take several minutes)",
-                timeout_seconds=900,
+                wait_label=wait,
+                timeout_seconds=timeout,
             )
             return
         # Fallback path — no MainWindow reachable (unlikely): run claude
