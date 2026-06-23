@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BridgeIQ - A PyQt6 bridge application using the BEN engine.
+bridgeIQ - A PyQt6 bridge application (native rule-based engine).
 Classic desktop Bridge interface.
 
 Usage:
@@ -54,6 +54,36 @@ def main():
 
     # Set application style
     app.setStyle("Fusion")
+
+    # Single-instance guard. Launching biq again (e.g. clicking the launcher a
+    # second time) should RAISE the running window, not start another copy that
+    # piles up as a windowless dock entry. We probe a local socket; if an
+    # instance answers, we tell it to come forward and exit immediately.
+    _SINGLE_KEY = "bridgeIQ-single-instance"
+    single_server = None
+    try:
+        from PyQt6.QtNetwork import QLocalServer, QLocalSocket
+        single_server = QLocalServer()
+        single_server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
+        if not single_server.listen(_SINGLE_KEY):
+            # The name is taken. Distinguish a LIVE instance from a stale socket
+            # left by a crashed/killed one: only a live instance accepts a
+            # connection. (Connecting first, as a probe, is unreliable — a stale
+            # socket file could linger; listening first lets us self-heal.)
+            _probe = QLocalSocket()
+            _probe.connectToServer(_SINGLE_KEY)
+            if _probe.waitForConnected(300):
+                _probe.write(b"activate"); _probe.flush()
+                _probe.waitForBytesWritten(300); _probe.disconnectFromServer()
+                logger.info("bridgeIQ already running — raising the existing window.")
+                os._exit(0)
+            # stale socket from a dead instance — clear it and take over
+            _probe.abort()
+            QLocalServer.removeServer(_SINGLE_KEY)
+            single_server.listen(_SINGLE_KEY)
+            logger.info("cleared a stale single-instance socket; starting normally.")
+    except Exception as e:
+        logger.warning(f"single-instance guard unavailable: {e}")
 
     # Set application-wide styling for proper contrast
     app.setStyleSheet("""
@@ -169,7 +199,7 @@ def main():
     splash = QSplashScreen(splash_pix)
     splash.setFont(QFont("Arial", 14))
     splash.showMessage(
-        "BridgeIQ\n\nLoading BEN Engine...\n\nPowered by Neural Networks",
+        "bridgeIQ\n\nLoading…",
         Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignBottom,
         Qt.GlobalColor.darkBlue
     )
@@ -178,17 +208,84 @@ def main():
 
     try:
         # Import main window (this triggers TensorFlow loading)
-        logger.info("Loading TensorFlow and BEN engine...")
+        logger.info("Loading bridgeIQ...")
         from ui.main_window import MainWindow
 
         # Create and show main window
         window = MainWindow()
         logger.info("Main window created successfully")
 
-        # Close splash and show window
+        # When a second launch pings the single-instance socket, bring this
+        # window to the front (and onto the current workspace) instead.
+        def _bring_to_front():
+            try:
+                window.showNormal()
+                window.setWindowState(
+                    (window.windowState() & ~Qt.WindowState.WindowMinimized)
+                    | Qt.WindowState.WindowActive)
+                window.raise_(); window.activateWindow()
+            except Exception:
+                pass
+        if single_server is not None:
+            def _on_second_launch():
+                conn = single_server.nextPendingConnection()
+                if conn is not None:
+                    conn.disconnectFromServer()
+                _bring_to_front()
+            single_server.newConnection.connect(_on_second_launch)
+
+        # Close splash and show window. Force the window to the FRONT — when
+        # biq is launched from a full-screen terminal launcher, the window
+        # manager's focus-stealing prevention otherwise opens it BEHIND the
+        # terminal, so the user only sees a dock entry ("gear") and the main
+        # window never appears. raise_/activateWindow + an active window state
+        # bring it forward on the current workspace.
+        def _active_screen():
+            # Use the PRIMARY screen — that's the main monitor where the
+            # launcher/terminal lives, i.e. the screen the user is looking at.
+            # (Earlier we used the screen under the mouse cursor, but on a
+            # multi-monitor setup the idle cursor can sit on the OTHER monitor,
+            # so biq maximized on a screen the user wasn't watching → "gear".)
+            return app.primaryScreen()
+
+        def _show_on_active_screen():
+            # The WM was placing the window OFF-SCREEN (cascade / multi-head),
+            # so the user only saw a dock "gear". Pin it to the screen the user
+            # is actually on (cursor's monitor) by giving it that screen's
+            # geometry, then MAXIMIZE there — a maximized window fills the
+            # monitor, so it can't be off-screen or hidden behind the terminal.
+            try:
+                scr_obj = _active_screen()
+                scr = scr_obj.availableGeometry()
+                logger.info(
+                    f"placement: active screen '{scr_obj.name()}' avail={scr}; "
+                    f"all screens={[(s.name(), s.geometry()) for s in app.screens()]}")
+                window.setGeometry(scr)        # assign to that monitor
+            except Exception as _e:
+                logger.warning(f"placement geometry failed: {_e}")
+            window.showMaximized()
+            try:
+                window.setWindowState(
+                    (window.windowState() & ~Qt.WindowState.WindowMinimized)
+                    | Qt.WindowState.WindowMaximized | Qt.WindowState.WindowActive)
+            except Exception:
+                pass
+            window.raise_()
+            window.activateWindow()
+            try:
+                logger.info(
+                    f"window after show: geom={window.geometry()} "
+                    f"frame={window.frameGeometry()} visible={window.isVisible()} "
+                    f"state={int(window.windowState())}")
+            except Exception:
+                pass
+
         def show_main():
             splash.finish(window)
-            window.show()
+            _show_on_active_screen()
+            # Re-assert shortly after, in case the WM relocated it during the
+            # initial map.
+            QTimer.singleShot(400, _show_on_active_screen)
             logger.info("Application ready")
 
         QTimer.singleShot(1000, show_main)
@@ -204,7 +301,7 @@ def main():
         splash.close()
         QMessageBox.critical(None, "Startup Error",
                             f"Failed to start BridgeIQ:\n\n{e}\n\n"
-                            "Make sure BEN engine is properly installed.")
+                            "See the log file for details.")
         sys.exit(1)
 
 

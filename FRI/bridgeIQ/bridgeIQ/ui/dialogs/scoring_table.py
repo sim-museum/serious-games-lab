@@ -432,7 +432,7 @@ class ScoringTableDialog(QDialog):
         """Save scoring table to file."""
         filename, _ = QFileDialog.getSaveFileName(
             self, "Save Scoring Table", "",
-            "BEN Score Sheet (*.qss);;All Files (*)"
+            "BridgeIQ Score Sheet (*.qss);;All Files (*)"
         )
         if filename:
             if not filename.endswith('.qss'):
@@ -447,7 +447,7 @@ class ScoringTableDialog(QDialog):
         """Load scoring table from file."""
         filename, _ = QFileDialog.getOpenFileName(
             self, "Load Scoring Table", "",
-            "BEN Score Sheet (*.qss);;All Files (*)"
+            "BridgeIQ Score Sheet (*.qss);;All Files (*)"
         )
         if filename:
             try:

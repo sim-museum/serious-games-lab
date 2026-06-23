@@ -56,6 +56,14 @@ class PreferencesDialog(QDialog):
         logging_tab = self._create_logging_tab()
         tabs.addTab(logging_tab, "Logging")
 
+        # AI & Network tab
+        ai_tab = self._create_ai_tab()
+        tabs.addTab(ai_tab, "AI && Network")
+
+        # Carding tab (defensive-signalling defaults for the instrumented view)
+        carding_tab = self._create_carding_tab()
+        tabs.addTab(carding_tab, "Carding")
+
         layout.addWidget(tabs)
 
         # Buttons
@@ -130,9 +138,9 @@ class PreferencesDialog(QDialog):
             "solves each double-dummy, and picks the best card on average.\n"
             "Strong and practical — the same technique used by Bridge Baron."
         )
-        self.play_engine_radio = QRadioButton("BEN neural network engine")
+        self.play_engine_radio = QRadioButton("BridgeIQ neural-net engine")
         self.play_engine_radio.setToolTip(
-            "Uses BEN's neural network for card play decisions.\n"
+            "Uses BridgeIQ's neural-net for card play decisions.\n"
             "Fast but often makes poor plays."
         )
         self.play_dd_radio = QRadioButton("Double-dummy optimal play")
@@ -233,12 +241,19 @@ class PreferencesDialog(QDialog):
         )
         table_layout.addWidget(self.legacy_colors_check)
 
-        self.show_ben_analysis_check = QCheckBox("Show BEN bid analysis panel")
+        self.show_ben_analysis_check = QCheckBox("Show bid analysis panel")
         self.show_ben_analysis_check.setToolTip(
-            "Show the BEN bid analysis panel during bidding.\n"
-            "Displays BEN's recommended bid and candidate scores."
+            "Show the BridgeIQ bid analysis panel during bidding.\n"
+            "Displays BridgeIQ's recommended bid and candidate scores."
         )
         table_layout.addWidget(self.show_ben_analysis_check)
+
+        self.show_bid_info_panel_check = QCheckBox(
+            "Show bid-information panel on the bidding screen")
+        self.show_bid_info_panel_check.setToolTip(
+            "Dock the 'Information about the bids' panel at the upper-left of\n"
+            "the bidding screen (embedded, not a separate window).")
+        table_layout.addWidget(self.show_bid_info_panel_check)
 
         table_group.setLayout(table_layout)
         layout.addWidget(table_group)
@@ -299,13 +314,13 @@ class PreferencesDialog(QDialog):
         engine_row.addWidget(QLabel("Bots use:"))
         self.bidding_engine_combo = QComboBox()
         self.bidding_engine_combo.addItem("Native (Q-Plus-style rule engine, default)", "native")
-        self.bidding_engine_combo.addItem("BEN (neural net)", "BEN")
+        self.bidding_engine_combo.addItem("BridgeIQ (neural net)", "BEN")
         self.bidding_engine_combo.setToolTip(
             "Native is a from-scratch rule-based bidder modeled on Q-Plus 17,\n"
             "covering SAYC, 2/1, Acol, French, and three Precision variants\n"
             "with their full Q-Plus convention sets (default).\n"
-            "BEN is the Anthropic-trained neural-net bidder.\n"
-            "Card play always uses BEN regardless of this setting."
+            "BridgeIQ's neural-net bidder.\n"
+            "Card play always uses the BridgeIQ engine regardless of this setting."
         )
         engine_row.addWidget(self.bidding_engine_combo)
         engine_row.addStretch()
@@ -393,6 +408,102 @@ class PreferencesDialog(QDialog):
         layout.addStretch()
         return widget
 
+    def _create_ai_tab(self) -> QWidget:
+        """Create the AI & Network settings tab (Claude Code + Q-Plus)."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        ai_group = QGroupBox("Claude Code (AI analysis)")
+        ai_layout = QVBoxLayout()
+        self.claude_enabled_check = QCheckBox("Enable Claude Code integration")
+        self.claude_enabled_check.setToolTip(
+            "Allow post-hand AI analysis, annotated transcripts and AI hints\n"
+            "via the `claude` command-line tool. OFF by default — it shells\n"
+            "out to Claude, costs tokens, and isn't needed for ordinary play.")
+        ai_layout.addWidget(self.claude_enabled_check)
+        note = QLabel("When off, the 'Claude analysis' buttons are hidden and "
+                      "no AI calls are made.")
+        note.setWordWrap(True)
+        ai_layout.addWidget(note)
+        ai_group.setLayout(ai_layout)
+        layout.addWidget(ai_group)
+
+        qp_group = QGroupBox("Q-Plus (closed-room / network play)")
+        qp_layout = QVBoxLayout()
+        qp_row = QHBoxLayout()
+        qp_row.addWidget(QLabel("Q-Plus available:"))
+        self.qplus_combo = QComboBox()
+        # value order matches ("none","demo","full")
+        self.qplus_combo.addItems(["None (no Q-Plus installed)",
+                                   "Demo build", "Full (licensed)"])
+        qp_row.addWidget(self.qplus_combo)
+        qp_row.addStretch()
+        qp_layout.addLayout(qp_row)
+        qnote = QLabel("Closed-room and Q-NET features (biq E/W vs Q-Plus N/S) "
+                       "are hidden unless a Q-Plus build is available.")
+        qnote.setWordWrap(True)
+        qp_layout.addWidget(qnote)
+        qp_group.setLayout(qp_layout)
+        layout.addWidget(qp_group)
+
+        layout.addStretch()
+        return widget
+
+    # Carding presets surfaced in the dialog. "" = derive from the signalling
+    # convention; the rest match teaching_view.CARDING_PRESETS.
+    _CARDING_CHOICES = [
+        ("Auto (from signalling convention)", ""),
+        ("Standard", "Standard"),
+        ("Upside-down (UDCA)", "Upside-down"),
+        ("Std + Lavinthal", "Std + Lavinthal"),
+        ("UDCA + Lavinthal", "UDCA + Lavinthal"),
+    ]
+
+    def _create_carding_tab(self) -> QWidget:
+        """Defensive-signalling agreements per pair + Smith echo — the defaults
+        the instrumented (teaching) view decodes signals with."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        grp = QGroupBox("Defensive carding agreements")
+        gl = QVBoxLayout()
+
+        ns_row = QHBoxLayout()
+        ns_row.addWidget(QLabel("N/S carding:"))
+        self.carding_ns_combo = QComboBox()
+        self.carding_ns_combo.addItems([lbl for lbl, _ in self._CARDING_CHOICES])
+        ns_row.addWidget(self.carding_ns_combo)
+        ns_row.addStretch()
+        gl.addLayout(ns_row)
+
+        ew_row = QHBoxLayout()
+        ew_row.addWidget(QLabel("E/W carding:"))
+        self.carding_ew_combo = QComboBox()
+        self.carding_ew_combo.addItems([lbl for lbl, _ in self._CARDING_CHOICES])
+        ew_row.addWidget(self.carding_ew_combo)
+        ew_row.addStretch()
+        gl.addLayout(ew_row)
+
+        sm_row = QHBoxLayout()
+        sm_row.addWidget(QLabel("Smith echo (NT):"))
+        self.smith_echo_combo = QComboBox()
+        self.smith_echo_combo.addItems(["Off", "Standard", "Reverse"])
+        sm_row.addWidget(self.smith_echo_combo)
+        sm_row.addStretch()
+        gl.addLayout(sm_row)
+
+        note = QLabel(
+            "These set how the instrumented view reads attitude / count / "
+            "suit-preference / Smith signals for each pair. You can also change "
+            "them live from the instrumented view's header; both share this "
+            "setting.")
+        note.setWordWrap(True)
+        gl.addWidget(note)
+        grp.setLayout(gl)
+        layout.addWidget(grp)
+        layout.addStretch()
+        return widget
+
     def _load_current_settings(self):
         """Load current configuration into dialog."""
         # Mouse settings
@@ -427,6 +538,24 @@ class PreferencesDialog(QDialog):
         self.swap_ns_check.setChecked(self.prefs.swap_ns_declarer)
         self.legacy_colors_check.setChecked(self.prefs.legacy_colors)
         self.show_ben_analysis_check.setChecked(self.prefs.show_ben_bid_analysis)
+        self.show_bid_info_panel_check.setChecked(
+            getattr(self.prefs, "show_bid_info_panel", True))
+        self.claude_enabled_check.setChecked(
+            getattr(self.prefs, "claude_code_enabled", False))
+        self.qplus_combo.setCurrentIndex(
+            {"none": 0, "demo": 1, "full": 2}.get(
+                getattr(self.prefs, "qplus_availability", "none"), 0))
+        # Carding tab
+        vals = [v for _, v in self._CARDING_CHOICES]
+        def _carding_idx(v):
+            return vals.index(v) if v in vals else 0
+        self.carding_ns_combo.setCurrentIndex(
+            _carding_idx(getattr(self.prefs, "carding_ns", "")))
+        self.carding_ew_combo.setCurrentIndex(
+            _carding_idx(getattr(self.prefs, "carding_ew", "")))
+        sm = getattr(self.prefs, "smith_echo", "Off")
+        self.smith_echo_combo.setCurrentText(
+            sm if sm in ("Off", "Standard", "Reverse") else "Off")
 
         # Bidding settings
         self.show_alerts_check.setChecked(self.prefs.show_alert_marks)
@@ -526,6 +655,14 @@ class PreferencesDialog(QDialog):
         self.prefs.swap_ns_declarer = self.swap_ns_check.isChecked()
         self.prefs.legacy_colors = self.legacy_colors_check.isChecked()
         self.prefs.show_ben_bid_analysis = self.show_ben_analysis_check.isChecked()
+        self.prefs.show_bid_info_panel = self.show_bid_info_panel_check.isChecked()
+        self.prefs.claude_code_enabled = self.claude_enabled_check.isChecked()
+        self.prefs.qplus_availability = ("none", "demo", "full")[
+            self.qplus_combo.currentIndex()]
+        vals = [v for _, v in self._CARDING_CHOICES]
+        self.prefs.carding_ns = vals[self.carding_ns_combo.currentIndex()]
+        self.prefs.carding_ew = vals[self.carding_ew_combo.currentIndex()]
+        self.prefs.smith_echo = self.smith_echo_combo.currentText()
 
         # Bidding engine
         self.prefs.bidding_engine = self.bidding_engine_combo.currentData() or "native"

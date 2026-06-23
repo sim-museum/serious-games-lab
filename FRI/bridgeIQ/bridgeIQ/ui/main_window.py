@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QSplitter, QMenuBar, QMenu, QStatusBar, QToolBar, QLabel,
     QProgressBar, QMessageBox, QFileDialog, QApplication,
     QDockWidget, QPushButton, QFrame, QSizePolicy, QInputDialog,
-    QDialog
+    QDialog, QStackedWidget
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread, pyqtSlot
 from PyQt6.QtGui import QAction, QKeySequence, QFont, QIcon
@@ -41,7 +41,7 @@ from .dialogs.programming_help import ProgrammingHelpDialog
 from backend import BridgeEngine, BoardState
 from network import NetworkGameController
 from backend.models import (
-    Seat, Suit, Vulnerability, Bid, Card, Contract, Hand, PlayerType, Player, Trick,
+    Seat, Suit, Rank, Vulnerability, Bid, Card, Contract, Hand, PlayerType, Player, Trick,
     BenTable, BenBoardRun, BenTeamsMatch
 )
 from backend.pavlicek import number_to_deal, parse_deal_number, deal_to_number, format_deal_base72, int_to_base72
@@ -646,19 +646,20 @@ class ToolbarButton(QPushButton):
             QPushButton {{
                 background-color: {COLORS['button_bg']};
                 color: {COLORS['button_text']};
-                border: 1px solid #4a6a7a;
+                border: 1px solid #2f4256;
                 border-radius: 4px;
                 padding: 4px 10px;
             }}
             QPushButton:hover {{
-                background-color: #70a0b0;
+                background-color: #34465c;
+                border: 1px solid {COLORS['gold']};
             }}
             QPushButton:pressed {{
-                background-color: #5080a0;
+                background-color: #22303f;
             }}
             QPushButton:disabled {{
-                background-color: #4a5a6a;
-                color: #888888;
+                background-color: #1a2330;
+                color: #5a6675;
             }}
         """)
 
@@ -674,9 +675,21 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("BridgeIQ")
         self.setMinimumSize(1200, 920)
 
-        # Set window background and ensure menus have proper contrast
+        # Set window background and ensure menus have proper contrast. The big
+        # content area gets a warm pokerIQ glow via #centralArea. NB the bare
+        # `background-color` cascades into child message boxes, so those are
+        # styled with their OWN readable stylesheet at the call site
+        # (MESSAGEBOX_STYLESHEET) — a widget's own sheet beats the inherited bg,
+        # which a rule here cannot reliably do for the box's sub-labels.
         self.setStyleSheet(f"""
-            background-color: {COLORS['background']};
+            QMainWindow {{ background-color: {COLORS['background']}; }}
+            QWidget#centralArea {{
+                background: qradialgradient(cx:0.5, cy:0.30, radius:1.15,
+                    fx:0.5, fy:0.30, stop:0 #18262f, stop:0.8 {COLORS['background']});
+            }}
+            QMenuBar {{ background-color: {COLORS['background']}; color: #eef3f7; }}
+            QMenuBar::item {{ background: transparent; padding: 4px 11px; }}
+            QMenuBar::item:selected {{ background-color: #34465c; }}
             QMenu {{
                 background-color: #f0f0f0;
                 color: #000000;
@@ -729,6 +742,11 @@ class MainWindow(QMainWindow):
 
         # Parallel closed room worker (started at deal time, joined at hand end)
         self._pending_closed_room: Optional[dict] = None
+        # Board number whose teams-match closed room has been kicked off in
+        # parallel (Q-Plus semantics: the closed room plays AT THE SAME TIME as
+        # the human's open room). The end-of-hand handler joins it instead of
+        # starting a fresh, slow run. None = not yet started for the current board.
+        self._closed_room_async_started: Optional[int] = None
         # Snapshot of the just-finished hand awaiting Claude analysis. Set
         # by _show_result, consumed by _maybe_run_pending_claude after a
         # Q-Plus ingest or before the next deal.
@@ -777,9 +795,18 @@ class MainWindow(QMainWindow):
         self._setup_bottom_toolbar()
         self._setup_statusbar()
         self._setup_bid_info_window()
+        # Embed the bid-info panel at the upper-left of the bidding screen and
+        # apply the AI/Network/bid-info visibility toggles (all widgets now
+        # exist: table view, menu actions, toolbar buttons).
+        self._embed_bid_info_panel()
+        self._apply_bid_info_visibility()
+        self._apply_qplus_visibility()
 
         # Connect signals
         self._connect_signals()
+
+        # Resume a match saved with File / Save Match + Exit (Q-Plus parity).
+        self._maybe_restore_saved_match()
 
         # Initialize engine in background
         QTimer.singleShot(100, self._initialize_engine)
@@ -787,23 +814,45 @@ class MainWindow(QMainWindow):
     def _setup_ui(self):
         """Setup the main UI layout"""
         central = QWidget()
+        central.setObjectName("centralArea")   # warm pokerIQ backdrop glow
         self.setCentralWidget(central)
 
         main_layout = QVBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # Main content area
+        # Main content area — transparent so the #centralArea gradient shows
+        # through (the bg is no longer cascaded universally, so set it here).
         content_widget = QWidget()
+        content_widget.setStyleSheet("background: transparent;")
         content_layout = QHBoxLayout(content_widget)
         content_layout.setContentsMargins(5, 5, 5, 5)
 
-        # Left side: Table view
+        # Left side: Table view, with an instrumented (teaching) view as an
+        # alternate page selected by the "Instrumented" toolbar button.
         self.table_view = TableView()
-        content_layout.addWidget(self.table_view, stretch=3)
+        from .teaching_view import TeachingView
+        self.teaching_view = TeachingView()
+        self.table_stack = QStackedWidget()
+        self.table_stack.addWidget(self.table_view)      # page 0 = normal
+        self.table_stack.addWidget(self.teaching_view)   # page 1 = instrumented
+        content_layout.addWidget(self.table_stack, stretch=3)
+        # While the instrumented view is up, refresh it on a light timer so
+        # it tracks play without threading a call through every play site.
+        self._teaching_timer = QTimer(self)
+        self._teaching_timer.setInterval(500)
+        self._teaching_timer.timeout.connect(self._refresh_teaching_view)
+        # App-wide key filter so keyboard card-play works from ANY view —
+        # including the instrumented view, whose combo boxes would otherwise
+        # eat the suit/rank letters before they reach keyPressEvent. The
+        # filter is inert outside the human's play turn (see _handle_play_key).
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
 
         # Right side: Bidding box and analysis (hidden during card play)
         self.right_panel = QWidget()
+        self.right_panel.setStyleSheet("background: transparent;")
         self.right_panel.setMaximumWidth(280)
         right_layout = QVBoxLayout(self.right_panel)
         right_layout.setContentsMargins(5, 5, 5, 5)
@@ -817,8 +866,8 @@ class MainWindow(QMainWindow):
         self.analysis_label.setFont(QFont("Monospace", 14))
         self.analysis_label.setStyleSheet(f"""
             QLabel {{
-                background-color: #2a3a4a;
-                border: 1px solid #4a5a6a;
+                background-color: #121922;
+                border: 1px solid #243447;
                 padding: 8px;
                 font-family: monospace;
                 font-size: 22px;
@@ -857,7 +906,7 @@ class MainWindow(QMainWindow):
         self.toolbar_container.setStyleSheet(f"""
             QFrame {{
                 background-color: {COLORS['panel_teal']};
-                border-top: 2px solid #3a6a7a;
+                border-top: 2px solid #243447;
             }}
         """)
         self.toolbar_container.setFixedHeight(45)
@@ -870,8 +919,8 @@ class MainWindow(QMainWindow):
         per-seat network/Computer icons live on the table itself."""
         self.status_strip = QFrame()
         self.status_strip.setStyleSheet(
-            "QFrame { background-color: #1f3b44; "
-            "border-top: 1px solid #3a6a7a; } QLabel { color: #e6f0f2; }")
+            "QFrame { background-color: #0d141c; "
+            "border-top: 1px solid #243447; } QLabel { color: #9aa7b4; }")
         self.status_strip.setFixedHeight(24)
         row = QHBoxLayout(self.status_strip)
         row.setContentsMargins(8, 0, 8, 0)
@@ -1032,6 +1081,15 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
 
+        # Q-Plus: Save Match + Exit resumes the match next start; plain Exit
+        # starts fresh.
+        save_exit_action = QAction("Save &Match + Exit", self)
+        save_exit_action.setToolTip(
+            "Save the current scoring table so the next start resumes it, "
+            "then close (Q-Plus 'Save Match + Exit').")
+        save_exit_action.triggered.connect(self._on_save_match_and_exit)
+        file_menu.addAction(save_exit_action)
+
         exit_action = QAction("E&xit", self)
         exit_action.setShortcut(QKeySequence.StandardKey.Quit)
         exit_action.triggered.connect(self.close)
@@ -1073,6 +1131,18 @@ class MainWindow(QMainWindow):
 
         config_menu.addSeparator()
 
+        # Q-Plus: save / retrieve named configuration sets (a folder holding
+        # the B-*.CFG files).
+        save_cfg_action = QAction("Sa&ve Configuration...", self)
+        save_cfg_action.triggered.connect(self._on_save_configuration)
+        config_menu.addAction(save_cfg_action)
+
+        retrieve_cfg_action = QAction("&Retrieve Configuration...", self)
+        retrieve_cfg_action.triggered.connect(self._on_retrieve_configuration)
+        config_menu.addAction(retrieve_cfg_action)
+
+        config_menu.addSeparator()
+
         prefs_action = QAction("&Preferences...", self)
         prefs_action.triggered.connect(self._on_preferences)
         config_menu.addAction(prefs_action)
@@ -1094,10 +1164,21 @@ class MainWindow(QMainWindow):
         variations_action.triggered.connect(self._on_deal_variations)
         deal_menu.addAction(variations_action)
 
+        # Q-Plus lists Next Deal / Previous Deal under the Deal menu (biq also
+        # has Next on the toolbar — keep both, like Q-Plus).
+        next_deal_action = QAction("&Next Deal", self)
+        next_deal_action.triggered.connect(self._on_next_deal)
+        deal_menu.addAction(next_deal_action)
+
         prev_deal_action = QAction("&Previous Deal", self)
         prev_deal_action.setShortcut(Qt.Key.Key_F4)
         prev_deal_action.triggered.connect(self._on_previous_deal)
         deal_menu.addAction(prev_deal_action)
+
+        # Computer Multiplay belongs under Deal in Q-Plus.
+        multiplay_action = QAction("Computer &Multiplay...", self)
+        multiplay_action.triggered.connect(self._on_multiplay)
+        deal_menu.addAction(multiplay_action)
 
         deal_menu.addSeparator()
 
@@ -1147,7 +1228,8 @@ class MainWindow(QMainWindow):
         view_menu = menubar.addMenu("&View")
         view_menu.setStyleSheet(self._menu_style)
 
-        show_all_action = QAction("Show &All Hands", self)
+        # Q-Plus calls this "Open all hands" — match the wording.
+        show_all_action = QAction("&Open All Hands", self)
         show_all_action.setShortcut(Qt.Key.Key_F2)
         show_all_action.triggered.connect(self._on_show_all_hands)
         view_menu.addAction(show_all_action)
@@ -1242,13 +1324,13 @@ class MainWindow(QMainWindow):
         simulation_action.triggered.connect(self._on_simulation)
         view_menu.addAction(simulation_action)
 
-        qplus_sim_action = QAction("Q-Plus Simulation &Pop-up...", self)
-        qplus_sim_action.setToolTip(
+        self.qplus_sim_action = QAction("Q-Plus Simulation &Pop-up...", self)
+        self.qplus_sim_action.setToolTip(
             "Open the Q-Plus-style slam simulation pop-up "
             "(auto-opens on the user's turn when slam is in scope)."
         )
-        qplus_sim_action.triggered.connect(self._on_qplus_simulation)
-        view_menu.addAction(qplus_sim_action)
+        self.qplus_sim_action.triggered.connect(self._on_qplus_simulation)
+        view_menu.addAction(self.qplus_sim_action)
 
         auction_tricks_action = QAction("&Auction and Played Tricks...", self)
         auction_tricks_action.triggered.connect(self._on_view_auction_tricks)
@@ -1314,11 +1396,18 @@ class MainWindow(QMainWindow):
         self.minibridge_action.triggered.connect(self._on_minibridge)
         extras_menu.addAction(self.minibridge_action)
 
-        extras_menu.addSeparator()
-
-        multiplay_action = QAction("Computer &Multiplay...", self)
-        multiplay_action.triggered.connect(self._on_multiplay)
-        extras_menu.addAction(multiplay_action)
+        # Q-Plus: Check user actions — report weak bids/cards as you make them.
+        # biq's equivalent is the live blunder check (a single toggle); surface
+        # it here as a checkable item bound to the preference.
+        self.check_actions_action = QAction("&Check User Actions", self)
+        self.check_actions_action.setCheckable(True)
+        try:
+            self.check_actions_action.setChecked(bool(
+                self.config_manager.config.preferences.blunder_check_enabled))
+        except Exception:
+            pass
+        self.check_actions_action.toggled.connect(self._on_check_user_actions)
+        extras_menu.addAction(self.check_actions_action)
 
         extras_menu.addSeparator()
 
@@ -1361,6 +1450,17 @@ class MainWindow(QMainWindow):
             "shown in the score table.")
         self.ingest_lin_action.triggered.connect(self._on_load_lin_database)
         extras_menu.addAction(self.ingest_lin_action)
+
+        extras_menu.addSeparator()
+        # Recovery: force-quit every wine/Q-Plus process so a stale Q-NET
+        # socket or a hung Q-Plus can't block the next closed-room run.
+        self.kill_wine_action = QAction("&Kill all wine processes", self)
+        self.kill_wine_action.setToolTip(
+            "Force-quit Q-Plus and ALL wine processes (wineserver -k + pkill).\n"
+            "Use when biq E/W can't attach to the Q-Plus network because a "
+            "previous session left a stale Q-NET socket open.")
+        self.kill_wine_action.triggered.connect(self._on_kill_all_wine)
+        extras_menu.addAction(self.kill_wine_action)
 
         # Network menu
         network_menu = menubar.addMenu("&Network")
@@ -1416,27 +1516,45 @@ class MainWindow(QMainWindow):
 
         toolbar_button_style = """
             QPushButton {
-                background-color: #d0d0d0;
-                color: #000000;
-                border: 1px solid #808080;
+                background-color: #2b3a4d;
+                color: #eef3f7;
+                border: 1px solid #2f4256;
                 border-radius: 3px;
                 padding: 5px 15px;
                 font-size: 12px;
                 min-width: 90px;
             }
             QPushButton:hover {
-                background-color: #e0e0e0;
+                background-color: #34465c;
+                border: 1px solid #d9b25b;
             }
             QPushButton:pressed {
-                background-color: #b0b0b0;
+                background-color: #22303f;
             }
+        """
+
+        # Primary action buttons get pokerIQ's green "go" accent so the bottom
+        # row isn't all flat slate.
+        primary_button_style = """
+            QPushButton {
+                background-color: #2a7d4f;
+                color: #06121f;
+                border: 1px solid #3fb950;
+                border-radius: 3px;
+                padding: 5px 15px;
+                font-size: 12px;
+                font-weight: 600;
+                min-width: 90px;
+            }
+            QPushButton:hover { background-color: #34995f; border: 1px solid #d9b25b; }
+            QPushButton:pressed { background-color: #226340; }
         """
 
         # === Opening screen buttons ===
         self.opening_buttons = []
 
         self.first_deal_btn = QPushButton("First deal")
-        self.first_deal_btn.setStyleSheet(toolbar_button_style)
+        self.first_deal_btn.setStyleSheet(primary_button_style)
         self.first_deal_btn.clicked.connect(self._on_first_deal)
         layout.addWidget(self.first_deal_btn)
         self.opening_buttons.append(self.first_deal_btn)
@@ -1446,12 +1564,6 @@ class MainWindow(QMainWindow):
         self.pair_tourn_btn.clicked.connect(self._on_pair_tournament)
         layout.addWidget(self.pair_tourn_btn)
         self.opening_buttons.append(self.pair_tourn_btn)
-
-        self.closed_room_toolbar_btn = QPushButton("Closed Room")
-        self.closed_room_toolbar_btn.setStyleSheet(toolbar_button_style)
-        self.closed_room_toolbar_btn.clicked.connect(self._on_closed_room_start)
-        layout.addWidget(self.closed_room_toolbar_btn)
-        self.opening_buttons.append(self.closed_room_toolbar_btn)
 
         self.team_tourn_btn = QPushButton("Team tourn.")
         self.team_tourn_btn.setStyleSheet(toolbar_button_style)
@@ -1471,10 +1583,21 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.opening_help_btn)
         self.opening_buttons.append(self.opening_help_btn)
 
+        # Closed Room is a biq extra (not part of Q-Plus's First deal / Pair /
+        # Team / Match control / Help row), so keep that Q-Plus order intact and
+        # place Closed Room at the far right — never on the lower left. Shown
+        # only when a Q-Plus build is configured (see _apply_qplus_visibility).
+        self.closed_room_toolbar_btn = QPushButton("Closed Room")
+        self.closed_room_toolbar_btn.setStyleSheet(toolbar_button_style)
+        self.closed_room_toolbar_btn.clicked.connect(self._on_closed_room_start)
+        layout.addWidget(self.closed_room_toolbar_btn)
+        self.opening_buttons.append(self.closed_room_toolbar_btn)
+
         # === In-game buttons ===
         self.ingame_buttons = []
 
         self.next_deal_btn = ToolbarButton("Next deal")
+        self.next_deal_btn.setStyleSheet(primary_button_style)   # green "go"
         self.next_deal_btn.clicked.connect(self._on_next_deal)
         layout.addWidget(self.next_deal_btn)
         self.ingame_buttons.append(self.next_deal_btn)
@@ -1532,6 +1655,16 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.review_btn)
         self.ingame_buttons.append(self.review_btn)
 
+        # Toggle between the normal table and the instrumented teaching view.
+        self.teaching_btn = ToolbarButton("Instrumented")
+        self.teaching_btn.setCheckable(True)
+        self.teaching_btn.setToolTip(
+            "Toggle the instrumented teaching/analysis view: per-hand "
+            "Known/Other suit grid, count, entries, plan and coaching.")
+        self.teaching_btn.toggled.connect(self._on_toggle_teaching_view)
+        layout.addWidget(self.teaching_btn)
+        self.ingame_buttons.append(self.teaching_btn)
+
         self.help_btn = ToolbarButton("Help")
         self.help_btn.clicked.connect(self._on_about)
         layout.addWidget(self.help_btn)
@@ -1564,9 +1697,70 @@ class MainWindow(QMainWindow):
         self._on_new_deal()
 
     def _on_closed_room_start(self):
-        """Handle Closed Room button - start with closed room and switch to in-game mode."""
-        self._set_toolbar_mode('ingame')
-        self._on_closed_room()
+        """Closed Room button — let the user pick how to run it.
+
+        • Internal all-biq — biq plays all four seats double-dummy,
+          instantly, in-app (the original behaviour).
+        • Real Q-Plus (harness) — launch the test harness and play a
+          genuine closed room live: biq E/W vs Q-Plus N/S, card by card
+          over Q-NET.
+        """
+        # The "Real Q-Plus (harness)" path only makes sense with a Q-Plus
+        # build configured. With no Q-Plus available there's just one way to
+        # play a closed room — four biq bots in-app — so skip the chooser and
+        # run it directly.
+        if not self._qplus_available():
+            self._set_toolbar_mode('ingame')
+            self._on_closed_room()
+            return
+        box = QMessageBox(self)
+        from .dialogs.dialog_style import MESSAGEBOX_STYLESHEET
+        box.setStyleSheet(MESSAGEBOX_STYLESHEET)   # readable on the dark window
+        box.setWindowTitle("Closed Room")
+        box.setText("How should the closed room be played?")
+        box.setInformativeText(
+            "Internal all-biq — biq plays all four seats double-dummy, "
+            "instantly, without leaving bridgeIQ.\n\n"
+            "Real Q-Plus (harness) — launch the test harness to play it "
+            "out live: biq sits E/W, Q-Plus sits N/S.")
+        internal_btn = box.addButton(
+            "Internal all-biq", QMessageBox.ButtonRole.AcceptRole)
+        real_btn = box.addButton(
+            "Real Q-Plus (harness)…", QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(internal_btn)
+        # QMessageBox sizes every button to one shared width; the long custom
+        # labels ("Internal all-biq", "Real Q-Plus (harness)…") overflow it and
+        # get clipped. Widen each button to its own text's hint so nothing cuts.
+        for b in box.buttons():
+            b.setMinimumWidth(b.sizeHint().width() + 16)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is internal_btn:
+            self._set_toolbar_mode('ingame')
+            self._on_closed_room()
+        elif clicked is real_btn:
+            self._launch_real_closed_room()
+
+    def _launch_real_closed_room(self):
+        """Launch the test harness in Closed Room mode for the current
+        deal: biq E/W vs Q-Plus N/S, played out live over Q-NET.
+
+        Needs a fully-dealt board (four 13-card hands). Deals one first
+        if the table is empty so the button works straight from the
+        opening screen.
+        """
+        board = self.controller.board
+        if board is None:
+            self._on_new_deal()
+            board = self.controller.board
+            if board is None:
+                return
+        self._launch_qplus_harness(board, closed_room=True)
+        self.status_label.setText(
+            "Launched test harness — Closed Room (biq E/W vs Q-Plus N/S). "
+            "Follow the numbered steps in the harness window."
+        )
 
     def _on_menu_new_deal(self):
         """Handle File > New Deal menu - return to opening screen."""
@@ -1580,6 +1774,9 @@ class MainWindow(QMainWindow):
 
     def _on_next_deal(self):
         """Handle Next deal button - return to opening screen or advance teams match."""
+        # Close the end-of-hand summary overlay so it doesn't linger over the
+        # next deal.
+        self._dismiss_end_of_hand_dialogs()
         # Strip the Q-Plus end-of-hand winner outlines from the
         # previous deal so the next hand starts visually clean.
         try:
@@ -1649,16 +1846,17 @@ class MainWindow(QMainWindow):
         self._set_toolbar_mode('opening')
 
     def _setup_bid_info_window(self):
-        """Setup the bidding-information window as an independent top-level
-        window. Previously a QDockWidget — that hybrid behaviour caused it
-        to sometimes dock back into the main window and sometimes hide
-        behind it on a single-monitor setup. A plain top-level QWidget
-        with Qt.WindowType.Window is always free-floating, draggable, and
-        keeps the same show/hide API the rest of main_window relies on.
+        """Setup the bidding-information panel. It is built here as a plain
+        QWidget and later EMBEDDED at the upper-left of the bidding screen by
+        _embed_bid_info_panel() (no free-floating window). Visibility follows
+        the F3 toggle and the Preferences 'show bid-info panel' option.
         """
-        self.bid_info_dock = QWidget(None, Qt.WindowType.Window)
-        self.bid_info_dock.setWindowTitle("Information about the bids ...")
-        self.bid_info_dock.setStyleSheet("background-color: #f8f8f8;")
+        self.bid_info_dock = QWidget()
+        self.bid_info_dock.setObjectName("bidInfoPanel")
+        # A self-contained light panel that reads on the dark table backdrop.
+        self.bid_info_dock.setStyleSheet(
+            "#bidInfoPanel { background-color: #f4f6f8;"
+            " border: 1px solid #d9b25b; border-radius: 6px; }")
 
         # Content widget — laid out directly inside the top-level window.
         bid_info_widget = self.bid_info_dock
@@ -1729,9 +1927,9 @@ class MainWindow(QMainWindow):
         avail_scroll.setWidget(self.available_bids_widget)
         bid_info_layout.addWidget(avail_scroll)
 
-        self.bid_info_dock.setMinimumWidth(450)
-        self.bid_info_dock.resize(480, 500)
-        self.bid_info_dock.move(30, 100)
+        # Compact panel sized to sit at the upper-left of the bidding screen.
+        self.bid_info_dock.setFixedWidth(430)
+        self.bid_info_dock.setMaximumHeight(560)
 
     def _setup_statusbar(self):
         """Setup the status bar"""
@@ -1754,7 +1952,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
         statusbar.addPermanentWidget(self.progress_bar)
 
-        self.engine_status = QLabel("Engine: Not Ready")
+        self.engine_status = QLabel("Starting…")
         self.engine_status.setFont(QFont("Arial", 14))
         self.engine_status.setStyleSheet(f"color: {COLORS['text_white']};")
         statusbar.addPermanentWidget(self.engine_status)
@@ -1815,9 +2013,9 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
 
         if success:
-            self.engine_status.setText("Engine: Ready")
-            self.engine_status.setStyleSheet("color: #00ff00;")
-            self.status_label.setText("Engine initialized. Press Ctrl+N for new deal.")
+            self.engine_status.setText("Ready")
+            self.engine_status.setStyleSheet("color: #3fb950;")
+            self.status_label.setText("Press Ctrl+N or “First deal” to start a hand.")
 
             # Create worker thread
             self.engine_worker = EngineWorker(self.engine)
@@ -1825,9 +2023,9 @@ class MainWindow(QMainWindow):
             self.engine_worker.card_ready.connect(self._on_engine_card)
             self.engine_worker.error.connect(self._on_engine_error)
         else:
-            self.engine_status.setText("Engine: Failed")
-            self.engine_status.setStyleSheet("color: #ff0000;")
-            self.status_label.setText("Engine initialization failed!")
+            self.engine_status.setText("Not ready")
+            self.engine_status.setStyleSheet("color: #f85149;")
+            self.status_label.setText("Could not start — see the log file.")
 
     def _update_window_title(self):
         """Update window title with board number"""
@@ -1870,8 +2068,58 @@ class MainWindow(QMainWindow):
                 self.status_label.setText("Teams match complete!")
             return
 
+        # Tournament-file deal source: play the file's deals in order rather
+        # than dealing random ones (Q-Plus deal source = Deal file).
+        queue = getattr(self, '_deal_queue', None)
+        if queue:
+            import copy
+            pos = getattr(self, '_deal_queue_pos', 0)
+            if pos >= len(queue):
+                self.status_label.setText(
+                    "Tournament file complete — all deals played.")
+                try:
+                    self._on_show_scores()
+                except Exception:
+                    pass
+                return
+            board = copy.deepcopy(queue[pos])   # keep the queue pristine
+            self._deal_queue_pos = pos + 1
+            if not getattr(board, 'board_number', 0):
+                board.board_number = pos + 1
+            self.controller.board = board
+            self.controller.current_phase = 'bidding'
+            self.controller.current_seat = board.dealer
+            self.controller.declarer = None
+            self.controller.dummy = None
+            self.controller.opening_leader = None
+            self.controller.human_controls_declarer = False
+            self._present_fresh_board(board)
+            self.status_label.setText(
+                f"Tournament deal {pos + 1}/{len(queue)}: "
+                f"{board.dealer.to_char()} deals")
+            return
+
         board = self.controller.new_deal()
 
+        # Deal filter (random deals only): reject-sample until the deal matches
+        # the configured filter, capped so an impossible filter can't hang.
+        flt = getattr(self, '_active_deal_filter', None)
+        if flt:
+            attempts = 0
+            while attempts < 5000 and not self._deal_passes_filter(board, flt):
+                board = self.controller.new_deal()
+                attempts += 1
+            if not self._deal_passes_filter(board, flt):
+                self.status_label.setText(
+                    "Deal filter: no matching deal in 5000 tries — "
+                    "using the last deal (loosen the filter?).")
+
+        self._present_fresh_board(board)
+
+    def _present_fresh_board(self, board):
+        """Set up the table/bidding UI for a freshly-dealt board and start the
+        auction. Shared by New Deal and Previous Deal so both go through the
+        same full reset (original hands, undo history, visibility, bots)."""
         # Store a deep copy of original hands for logging
         self.original_hands = {}
         for seat, hand in board.hands.items():
@@ -1901,7 +2149,7 @@ class MainWindow(QMainWindow):
 
         # Show bid info window for bidding phase
         if self.bid_info_action.isChecked():
-            self.bid_info_dock.show()
+            self._apply_bid_info_visibility()
 
         # Set visibility based on player types
         for seat in Seat:
@@ -2373,6 +2621,51 @@ class MainWindow(QMainWindow):
             return False
         return True
 
+    def _minibridge_auto_contract(self, board, declarer, dummy):
+        """Pick a sensible MiniBridge contract for the declaring side from its
+        combined HCP and longest combined fit. Used as the bot declarer's
+        choice and as the hint for the human declarer."""
+        from backend.models import Suit, Contract
+        hcp = board.hands[declarer].hcp() + board.hands[dummy].hcp()
+
+        def lengths(seat):
+            d = {Suit.SPADES: 0, Suit.HEARTS: 0,
+                 Suit.DIAMONDS: 0, Suit.CLUBS: 0}
+            for c in board.hands[seat].cards:
+                d[c.suit] += 1
+            return d
+        a, b = lengths(declarer), lengths(dummy)
+        comb = {su: a[su] + b[su] for su in a}
+
+        # Prefer an 8+ major fit, else an 8+ minor fit, else no-trumps.
+        strain = Suit.NOTRUMP
+        for su in (Suit.SPADES, Suit.HEARTS):
+            if comb[su] >= 8:
+                strain = su
+                break
+        else:
+            for su in (Suit.DIAMONDS, Suit.CLUBS):
+                if comb[su] >= 9:        # minors need length to be worth it
+                    strain = su
+                    break
+
+        is_major = strain in (Suit.SPADES, Suit.HEARTS)
+        is_minor = strain in (Suit.DIAMONDS, Suit.CLUBS)
+        if hcp >= 37:
+            level = 7
+        elif hcp >= 33:
+            level = 6
+        elif hcp >= 25:
+            level = 4 if is_major else (5 if is_minor else 3)   # 4M / 5m / 3NT
+        elif hcp >= 23:
+            level = 3 if is_major else 2                          # invitational
+        elif hcp >= 19:
+            level = 2 if (is_major or is_minor) else 1
+        else:
+            level = 1
+        level = max(1, min(7, level))
+        return Contract(level=level, suit=strain, declarer=declarer)
+
     def _maybe_run_minibridge_rounds(self, board):
         """If the user is in MiniBridge mode, run the two simplified
         rounds (announce points → pick contract) and start card play
@@ -2409,47 +2702,12 @@ class MainWindow(QMainWindow):
         except Exception:
             user_hp = partner_hp = None
 
-        # Round 1 — user announces their side's combined HP. We
-        # offer the actual combined HP as the hint; the user can
-        # override (in a teaching setting they might want to enter
-        # a different number to see how the program responds).
-        hint = (user_hp + partner_hp) if user_hp is not None else None
-        round1 = MiniBridgePointsDialog(
-            seat_char=user_seat.to_char(),
-            hint_hp=hint, parent=self)
-        if round1.exec() != QDialog.DialogCode.Accepted:
-            return
-        announced_side_hp = round1.get_points() or 0
+        from backend.models import Suit, Contract
 
-        # Round 2 — pick the contract. Hint: a heuristic based on
-        # combined HP and whether the user's side has a fit. For
-        # MVP we just suggest 3NT for ≥ 25 HP, 1NT for 12–18, Pass
-        # otherwise — Q-Plus actually computes the recommended
-        # contract from declarer's hand shape; we'll improve later.
-        suggested_level = None
-        suggested_suit = None
-        if announced_side_hp >= 33:
-            suggested_level, suggested_suit = 6, 'NT'
-        elif announced_side_hp >= 25:
-            suggested_level, suggested_suit = 3, 'NT'
-        elif announced_side_hp >= 22:
-            suggested_level, suggested_suit = 2, 'NT'
-        elif announced_side_hp >= 18:
-            suggested_level, suggested_suit = 1, 'NT'
-        else:
-            suggested_level, suggested_suit = 1, 'C'
-        round2 = MiniBridgeContractDialog(
-            hint_level=suggested_level,
-            hint_suit=suggested_suit, parent=self)
-        if round2.exec() != QDialog.DialogCode.Accepted:
-            return
-        contract_data = round2.get_contract()
-        if contract_data is None:
-            return
-        level, suit_char, doubled, redoubled = contract_data
-
-        # Resolve declarer: side with more total HP; within that
-        # side, the seat with more individual HP.
+        # Step 1 — determine the declaring side and declarer FROM THE POINTS,
+        # BEFORE any contract is chosen (real MiniBridge order). Declaring side
+        # = more combined HP (N/S wins ties); declarer = the higher-HP seat of
+        # that side; partner is dummy.
         try:
             hps = {s: board.hands[s].hcp() for s in Seat}
         except Exception:
@@ -2462,18 +2720,49 @@ class MainWindow(QMainWindow):
         else:
             declarer = (Seat.EAST if hps[Seat.EAST] >= hps[Seat.WEST]
                         else Seat.WEST)
-
-        from backend.models import Suit, Contract
+        dummy = declarer.partner()
         suit_map = {'S': Suit.SPADES, 'H': Suit.HEARTS,
                     'D': Suit.DIAMONDS, 'C': Suit.CLUBS,
                     'NT': Suit.NOTRUMP}
-        contract = Contract(
-            level=level,
-            suit=suit_map.get(suit_char, Suit.NOTRUMP),
-            doubled=bool(doubled),
-            redoubled=bool(redoubled),
-            declarer=declarer,
-        )
+
+        if declarer == user_seat:
+            # The human declares: expose dummy (declarer sees both hands when
+            # choosing in MiniBridge), then announce points and pick a contract.
+            try:
+                self.table_view.set_hand_visible(dummy, True)
+            except Exception:
+                pass
+            round1 = MiniBridgePointsDialog(
+                seat_char=user_seat.to_char(),
+                hint_hp=hps[declarer] + hps[dummy], parent=self)
+            if round1.exec() != QDialog.DialogCode.Accepted:
+                return
+            auto = self._minibridge_auto_contract(board, declarer, dummy)
+            round2 = MiniBridgeContractDialog(
+                hint_level=auto.level,
+                hint_suit=('NT' if auto.suit == Suit.NOTRUMP
+                           else auto.suit.to_char()),
+                parent=self)
+            if round2.exec() != QDialog.DialogCode.Accepted:
+                return
+            cd = round2.get_contract()
+            if cd is None:
+                return
+            level, suit_char, doubled, redoubled = cd
+            contract = Contract(
+                level=level, suit=suit_map.get(suit_char, Suit.NOTRUMP),
+                doubled=bool(doubled), redoubled=bool(redoubled),
+                declarer=declarer)
+        else:
+            # A bot declares (the opponents, or the user's partner): the engine
+            # chooses the contract from the two declaring hands; the user
+            # defends (or sits as dummy).
+            contract = self._minibridge_auto_contract(board, declarer, dummy)
+            QMessageBox.information(
+                self, "MiniBridge",
+                f"{declarer.to_char()} has the stronger side "
+                f"({max(ns, ew)} HCP) and declares {contract.to_str()}.")
+
         self.controller.set_contract_direct(contract)
         # Refresh UI to reflect the fresh play phase.
         try:
@@ -2573,11 +2862,19 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def _on_pair_tournament(self):
-        """Start a pairs tournament"""
-        # Show match control dialog for pairs configuration
+        """Start a pairs tournament — Pairs (Matchpoints) scoring; plays a
+        tournament-file deal source in order when one is selected."""
         dialog = MatchControlDialog(self)
+        # Default a pairs tournament to MP scoring for convenience.
+        try:
+            dialog.mp_radio.setChecked(True)
+        except Exception:
+            pass
         if dialog.exec():
             settings = dialog.get_settings()
+            self.teams_match = None
+            self.match_controller = None
+            self._apply_match_settings(settings)
             self.status_label.setText("Pairs tournament started")
             self._on_new_deal()
 
@@ -2608,12 +2905,15 @@ class MainWindow(QMainWindow):
         board = self.controller.board
         board_num = board.board_number
 
-        # Create a single-board teams match if not already in one
+        # Create the closed-room teams match if not already in one. Open-ended
+        # (num_boards huge) so each "Next deal" deals a FRESH closed-room board
+        # and runs the 4-bot room again, accumulating IMPs — instead of the
+        # match "completing" after a single board with no way to play another.
         if self.teams_match is None or self.match_controller is None:
             import uuid
             self.teams_match = BenTeamsMatch(
                 match_id=str(uuid.uuid4()),
-                num_boards=1,
+                num_boards=board_num + 100000,
                 current_board=board_num,
                 ns_bidding_system=self._current_pair_systems()[0],
                 ew_bidding_system=self._current_pair_systems()[1],
@@ -2629,18 +2929,53 @@ class MainWindow(QMainWindow):
             # Register the current board with the match controller
             self.match_controller.start_board(board_num, board)
 
-        # Note: Closed room will be started after human finishes their hand
-        # to avoid concurrent engine access (which causes broken pipe errors)
-        self.status_label.setText(f"Board {board_num} - Play your hand first, then closed room will run")
+        # Q-Plus semantics: the closed room (four biq bots) plays the SAME deal
+        # AT THE SAME TIME as you play the open room. Kick it off now so it runs
+        # in parallel; the end-of-hand handler then joins the already-running
+        # (or finished) worker. (The old "play your hand first" sequencing was a
+        # BEN-subprocess-era workaround against broken pipes; the engine is now
+        # in-process and serialises DDS access through its own re-entrant lock,
+        # and the closed room plays an INDEPENDENT game off a pristine copy of
+        # the dealt hands — so concurrent play is safe and self-contained.)
+        self._closed_room_async_started = None     # fresh match → fresh start
+        self._begin_parallel_closed_room(board_num)
+
+    def _begin_parallel_closed_room(self, board_num: int):
+        """Start the four-biq-bot closed room in the background so it plays the
+        same deal at the same time as the human's open room (Q-Plus 'Closed
+        Room' behaviour). Idempotent per board. The closed room is independent
+        — it bids and plays off a pristine copy of the dealt hands, so starting
+        it early changes nothing except that it runs concurrently."""
+        if self.teams_match is None or self.match_controller is None:
+            return
+        if self._closed_room_async_started == board_num:
+            return
+        try:
+            self.match_controller.start_closed_room_async(
+                board_num, callback=self._on_closed_room_complete)
+            self._closed_room_async_started = board_num
+            self.status_label.setText(
+                f"Board {board_num} — closed room (4 biq bots) is playing "
+                f"alongside you.")
+        except Exception as e:
+            self._closed_room_async_started = None
+            print(f"parallel closed room failed to start: {e!r}", flush=True)
+            self.status_label.setText(
+                f"Board {board_num} — play your hand; closed room runs after.")
 
     def _on_team_tournament(self):
-        """Start a teams tournament"""
-        # Show match control dialog for teams configuration
+        """Start a teams tournament — IMP scoring. Closed-room comparison runs
+        the 4-bot teams match; a tournament-file source plays the file's deals."""
         dialog = MatchControlDialog(self)
         if dialog.exec():
             settings = dialog.get_settings()
             if settings.get('comparison') == 'closed_room':
                 self._start_teams_match(settings)
+            else:
+                self.teams_match = None
+                self.match_controller = None
+                if self._apply_match_settings(settings):
+                    self._on_new_deal()
             self.status_label.setText("Teams tournament started")
 
     def _on_help(self):
@@ -2676,6 +3011,80 @@ For more information, see the README file."""
         dialog = ProgrammingHelpDialog(self)
         dialog.exec()
 
+    def _apply_match_settings(self, settings: dict):
+        """Honor the Match Control axes that aren't the closed-room teams path:
+        the scoring method (Rubber/IMP/MP) and a 'From file' deal source (load
+        the tournament file's deals into a playable queue). Returns True if a
+        tournament-file deal queue was loaded."""
+        from backend.scoring import ScoringType
+        smap = {'rubber': ScoringType.RUBBER, 'imp': ScoringType.TEAMS,
+                'mp': ScoringType.PAIRS}
+        st = smap.get(settings.get('scoring'))
+        if st is not None and not self.scoring_table.results:
+            self.scoring_table.scoring_type = st     # don't change mid-match
+        self._deal_queue = []
+        self._deal_queue_pos = 0
+        self._field_results = {}
+        self._comparison_mode = settings.get('comparison')
+        if settings.get('source') == 'file' and settings.get('file_path'):
+            boards = self._load_deal_queue_from_file(settings['file_path'])
+            if boards:
+                self._deal_queue = boards
+                self._deal_queue_pos = max(
+                    0, int(settings.get('first_deal', 1)) - 1)
+                self.status_label.setText(
+                    f"Tournament file: {len(boards)} deals loaded "
+                    f"(starting at #{self._deal_queue_pos + 1}).")
+                return True
+            self.status_label.setText(
+                "Tournament file: no playable deals found.")
+        return False
+
+    def _load_deal_queue_from_file(self, path: str):
+        """Read a deal file (.pbn / .bdl) into a list of fully-dealt
+        BoardStates for tournament play, and record any per-board results the
+        file carries into self._field_results (keyed by board number) for the
+        Results-of-file comparison. Best-effort; returns []."""
+        from pathlib import Path
+        p = Path(path)
+        out = []
+        recs = []        # parallel list of (ns_score, contract) or None
+        try:
+            if p.suffix.lower() == '.bdl':
+                from backend.bdl_reader import BDLReader
+                deals = BDLReader().read_file(p)
+                for d in deals:
+                    out.append(d.to_board_state())
+                    recs.append(d if d.contract is not None else None)
+            elif p.suffix.lower() == '.pbn':
+                from backend.pbn_exporter import PBNParser
+                out = list(PBNParser().parse_file(p))
+                recs = [None] * len(out)
+        except Exception as e:
+            print(f"deal-queue load failed: {e!r}", flush=True)
+        # Keep only boards with all four 13-card hands; assign sequential board
+        # numbers when the file leaves them at 0 so deals and recorded results
+        # stay aligned (the Results-of-file lookup keys on board number).
+        good = []
+        if not hasattr(self, '_field_results'):
+            self._field_results = {}
+        seq = 0
+        for b, rec in zip(out, recs + [None] * (len(out) - len(recs))):
+            hands = getattr(b, 'hands', None) or {}
+            if not (len(hands) >= 4 and all(
+                    len(getattr(hands[s], 'cards', [])) == 13 for s in hands)):
+                continue
+            seq += 1
+            if not getattr(b, 'board_number', 0):
+                b.board_number = seq
+            good.append(b)
+            if rec is not None:
+                self._field_results.setdefault(b.board_number, []).append({
+                    'ns_score': rec.ns_score, 'ew_score': rec.ew_score,
+                    'contract': rec.contract, 'declarer': rec.declarer,
+                    'tricks_made': rec.tricks_made})
+        return good
+
     def _on_match_control(self):
         """Show match control dialog"""
         dialog = MatchControlDialog(self)
@@ -2689,6 +3098,9 @@ For more information, see the README file."""
                 # Clear teams match state for non-teams modes
                 self.teams_match = None
                 self.match_controller = None
+                # Honor scoring method + a tournament-file deal source.
+                if self._apply_match_settings(settings):
+                    self._on_new_deal()      # start playing the file's deals
 
     def _start_teams_match(self, settings: dict):
         """Start a new teams match with closed room comparison."""
@@ -2733,8 +3145,10 @@ For more information, see the README file."""
         # Register with match controller
         self.match_controller.start_board(board_num, board)
 
-        # Note: Closed room will be started after human finishes their hand
-        # to avoid concurrent engine access (which causes broken pipe errors)
+        # Q-Plus semantics: start the four-bot closed room now so it plays this
+        # deal at the same time as the human (joined at hand end).
+        self._closed_room_async_started = None
+        self._begin_parallel_closed_room(board_num)
 
         # Setup the UI for play
         self.table_view.set_board(board)
@@ -2748,7 +3162,7 @@ For more information, see the README file."""
 
         # Show bid info window
         if self.bid_info_action.isChecked():
-            self.bid_info_dock.show()
+            self._apply_bid_info_visibility()
 
         # Set visibility for players
         for seat in Seat:
@@ -2797,7 +3211,7 @@ For more information, see the README file."""
                 self, "No Teams Match",
                 "No teams match is active.\n\n"
                 "To start a teams match, go to Deal > Match Control\n"
-                "and select 'Against Closed Room (BEN vs BEN)' under Comparison."
+                "and select 'Against Closed Room (BridgeIQ vs BridgeIQ)' under Comparison."
             )
             return
 
@@ -3000,6 +3414,9 @@ For more information, see the README file."""
         )
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
+        # Close the end-of-hand summary so it doesn't sit over the table while
+        # the computer replays the deal.
+        self._dismiss_end_of_hand_dialogs()
         choice = dlg.get_choice()
 
         board = self.controller.board
@@ -3075,9 +3492,97 @@ For more information, see the README file."""
         self._advance_game()
 
     def _on_deal_filter(self):
-        """Show deal filter dialog"""
+        """Show the deal filter dialog and remember the configured filter so
+        subsequent RANDOM deals are reject-sampled to match it (Q-Plus: a deal
+        filter is only useful for randomly dealt deals, not tournament deals)."""
         dialog = DealFilterDialog(self)
-        dialog.exec()
+        if dialog.exec():
+            self._active_deal_filter = dialog.get_filter()
+            if self._active_deal_filter:
+                self.status_label.setText(
+                    "Deal filter active — new random deals will match it "
+                    "(open the dialog and disable it to clear).")
+            else:
+                self.status_label.setText("Deal filter cleared.")
+
+    def _deal_passes_filter(self, board, flt) -> bool:
+        """True if `board` satisfies the deal-filter dict from DealFilterDialog
+        (HCP ranges per seat / N+S / E+W, South & North suit-length min/max, and
+        feature flags). Missing constraints pass. Never raises."""
+        if not flt:
+            return True
+        try:
+            from backend.models import Seat, Suit, Rank
+            hands = board.hands
+            seatmap = {'North': Seat.NORTH, 'East': Seat.EAST,
+                       'South': Seat.SOUTH, 'West': Seat.WEST}
+
+            def hcp(seat):
+                return hands[seat].hcp()
+
+            def lengths(seat):
+                d = {Suit.SPADES: 0, Suit.HEARTS: 0,
+                     Suit.DIAMONDS: 0, Suit.CLUBS: 0}
+                for c in hands[seat].cards:
+                    d[c.suit] += 1
+                return d
+
+            for name, rng in (flt.get('hcp_ranges') or {}).items():
+                lo, hi = rng
+                if name in seatmap:
+                    v = hcp(seatmap[name])
+                elif name == 'N+S':
+                    v = hcp(Seat.NORTH) + hcp(Seat.SOUTH)
+                elif name == 'E+W':
+                    v = hcp(Seat.EAST) + hcp(Seat.WEST)
+                else:
+                    continue
+                if not (lo <= v <= hi):
+                    return False
+
+            suitkey = {'S': Suit.SPADES, 'H': Suit.HEARTS,
+                       'D': Suit.DIAMONDS, 'C': Suit.CLUBS}
+            for who, store in (('South', flt.get('south_lengths')),
+                               ('North', flt.get('north_lengths'))):
+                if not store:
+                    continue
+                L = lengths(seatmap[who])
+                for sl, suit in suitkey.items():
+                    mn = store.get(f"{who}_{sl}_Min", 0)
+                    mx = store.get(f"{who}_{sl}_Max", 13)
+                    if not (mn <= L[suit] <= mx):
+                        return False
+
+            feats = flt.get('features') or {}
+            sl = lengths(Seat.SOUTH)
+            shape = tuple(sorted(sl.values(), reverse=True))
+            ns = hcp(Seat.NORTH) + hcp(Seat.SOUTH)
+            if feats.get('south_balanced') and shape not in (
+                    (4, 3, 3, 3), (4, 4, 3, 2), (5, 3, 3, 2)):
+                return False
+            if feats.get('south_5_major') and not (
+                    sl[Suit.SPADES] >= 5 or sl[Suit.HEARTS] >= 5):
+                return False
+            if feats.get('south_2c_opener') and hcp(Seat.SOUTH) < 22:
+                return False
+            if feats.get('slam_zone') and ns < 33:
+                return False
+            if feats.get('game_zone') and ns < 25:
+                return False
+            if feats.get('south_stoppers'):
+                for suit in suitkey.values():
+                    ranks = {c.rank for c in hands[Seat.SOUTH].cards
+                             if c.suit == suit}
+                    n = sl[suit]
+                    has = (Rank.ACE in ranks
+                           or (Rank.KING in ranks and n >= 2)
+                           or (Rank.QUEEN in ranks and n >= 3)
+                           or (Rank.JACK in ranks and n >= 4))
+                    if not has:
+                        return False
+            return True
+        except Exception:
+            return True       # never block dealing on a filter bug
 
     def _on_set_dealer_vul(self):
         """Q-Plus .set-dealer — pick a new dealer and vulnerability
@@ -3215,7 +3720,7 @@ For more information, see the README file."""
 
             # Show bid info window for bidding phase
             if self.bid_info_action.isChecked():
-                self.bid_info_dock.show()
+                self._apply_bid_info_visibility()
 
             for seat in Seat:
                 player = self.controller.players[seat]
@@ -3292,7 +3797,7 @@ For more information, see the README file."""
 
         # Show bid info window for bidding phase
         if self.bid_info_action.isChecked():
-            self.bid_info_dock.show()
+            self._apply_bid_info_visibility()
 
         for seat in Seat:
             player = self.controller.players[seat]
@@ -3559,18 +4064,119 @@ For more information, see the README file."""
         # Bidding-system selection may have changed — re-tag the
         # information-about-bids window with the new system's labels.
         self._refresh_active_system()
+        # Apply the AI & Network toggles live.
+        self._apply_qplus_visibility()
+        self._apply_bid_info_visibility()
+        # Carding defaults may have changed — refresh the instrumented view's
+        # header selectors from the shared Preferences config.
+        tv = getattr(self, "teaching_view", None)
+        if tv is not None and hasattr(tv, "reload_carding_defaults"):
+            tv.reload_carding_defaults()
 
     def _on_show_all_hands(self):
         """Toggle showing all hands"""
         for seat in Seat:
             self.table_view.set_hand_visible(seat, True)
+        # If the instrumented view is up, more face-up hands means more
+        # exact cards to show — refresh straight away.
+        self._refresh_teaching_view()
+
+    def _on_toggle_teaching_view(self, checked: bool):
+        """Switch the table area between the normal table (page 0) and the
+        instrumented teaching view (page 1)."""
+        stack = getattr(self, 'table_stack', None)
+        if stack is None:
+            return
+        stack.setCurrentIndex(1 if checked else 0)
+        if checked:
+            self._refresh_teaching_view()
+            self._teaching_timer.start()
+        else:
+            self._teaching_timer.stop()
+
+    def _refresh_teaching_view(self):
+        """Repaint the instrumented view from the current play state. Cheap
+        no-op unless that view is the one currently showing."""
+        view = getattr(self, 'teaching_view', None)
+        stack = getattr(self, 'table_stack', None)
+        if view is None or stack is None or stack.currentIndex() != 1:
+            return
+        board = self.controller.board if getattr(self, 'controller', None) else None
+        contract = getattr(board, 'contract', None) if board else None
+        declarer = getattr(self.controller, 'declarer', None)
+        dummy = getattr(self.controller, 'dummy', None)
+        if declarer is None and contract is not None:
+            declarer = contract.declarer
+        if dummy is None and declarer is not None:
+            dummy = declarer.partner()
+        try:
+            visible = self.table_view.face_up_seats()
+        except Exception:
+            visible = set()
+        try:
+            ns_sys = self._active_bidding_system('NS')
+            ew_sys = self._active_bidding_system('EW')
+        except Exception:
+            ns_sys = ew_sys = None
+        try:
+            view.refresh(board=board, contract=contract, declarer=declarer,
+                         dummy=dummy, visible_seats=visible,
+                         ns_system=ns_sys, ew_system=ew_sys)
+        except Exception as e:
+            print(f"[teaching view] refresh failed: {e}", flush=True)
+
+    def _embed_bid_info_panel(self):
+        """Reparent the bid-info panel onto the bidding screen (table view) and
+        pin it to the upper-left corner as an overlay."""
+        dock = getattr(self, "bid_info_dock", None)
+        host = getattr(self, "table_view", None)
+        if dock is None or host is None:
+            return
+        try:
+            dock.setParent(host)
+            dock.move(10, 10)
+            dock.raise_()
+        except Exception:
+            pass
+
+    def _bid_info_pref(self) -> bool:
+        try:
+            from backend.config import get_config_manager
+            return bool(getattr(get_config_manager().config.preferences,
+                                "show_bid_info_panel", True))
+        except Exception:
+            return True
+
+    def _apply_bid_info_visibility(self):
+        """The panel shows only DURING BIDDING, and only when BOTH the
+        Preferences toggle is on AND the F3 'Bidding Information' action is
+        checked. It is always hidden during card play / finished."""
+        dock = getattr(self, "bid_info_dock", None)
+        if dock is None:
+            return
+        want = self._bid_info_pref()
+        act = getattr(self, "bid_info_action", None)
+        if act is not None:
+            act.setEnabled(want)
+            want = want and act.isChecked()
+        phase = getattr(getattr(self, "controller", None), "current_phase", None)
+        if phase != 'bidding':
+            want = False                 # never overlay the cards during play
+        dock.setVisible(want)
+        if want:
+            dock.raise_()
+        # Shift the table right while the panel overlays the top-left, so the
+        # West column / label isn't clipped behind it; restore when hidden.
+        try:
+            inset = (dock.width() + 22) if want else 0
+            self.table_view.set_left_inset(inset)
+        except Exception:
+            pass
 
     def _on_toggle_bid_info(self, checked: bool):
-        """Toggle bidding information window"""
-        if checked:
-            self.bid_info_dock.show()
-        else:
-            self.bid_info_dock.hide()
+        """Toggle the embedded bidding-information panel (respects the
+        Preferences 'show bid-info panel' option)."""
+        self._apply_bid_info_visibility()
 
     def _active_bidding_system(self, side: str = None):
         """Resolve the configured `BiddingSystem` spec.
@@ -4308,9 +4914,9 @@ For more information, see the README file."""
         msg.setText(
             "<h2 style='margin:0'>BridgeIQ</h2>"
             "<p>A bridge playing and analysis application "
-            "powered by the BEN neural network engine.</p>"
+            "powered by the BridgeIQ engine.</p>"
             "<p>Classic desktop Bridge interface.</p>"
-            "<p><b>Engine:</b> BEN v0.8.7.4<br>"
+            "<p><b>Engine:</b> biq (native, rule-based)<br>"
             "<b>UI:</b> PyQt6</p>"
         )
         msg.setStandardButtons(QMessageBox.StandardButton.Ok)
@@ -4582,7 +5188,7 @@ For more information, see the README file."""
             # freed seat. Do not exit network mode.
             self._configure_network_players()
             self.status_label.setText(
-                f"Guest disconnected ({reason}); BEN now controls the freed seat."
+                f"Guest disconnected ({reason}); BridgeIQ now controls the freed seat."
             )
             # If we were mid-hand waiting on the (now-departed) guest's
             # turn, kick the engine so BEN takes over and play resumes
@@ -4605,7 +5211,7 @@ For more information, see the README file."""
         styled_info(
             self, "Host Disconnected",
             f"Lost connection to the host ({reason}). "
-            f"BEN will take over the other three seats so you can finish the hand."
+            f"biq will take over the other three seats so you can finish the hand."
         )
         # Drop the network controller back to idle so other code paths
         # (next-deal, hint, save) treat us as offline again.
@@ -4694,7 +5300,7 @@ For more information, see the README file."""
             self.table_view.set_hand_visible(seat, visible)
 
         if self.bid_info_action.isChecked():
-            self.bid_info_dock.show()
+            self._apply_bid_info_visibility()
 
         self._set_toolbar_mode('ingame')
         self._advance_game()
@@ -4870,7 +5476,7 @@ For more information, see the README file."""
             self.table_view.set_hand_visible(seat, visible)
 
         if self.bid_info_action.isChecked():
-            self.bid_info_dock.show()
+            self._apply_bid_info_visibility()
 
         self._set_toolbar_mode('ingame')
         self.status_label.setText(f"Board {board.board_number}: {board.dealer.to_char()} deals")
@@ -4961,12 +5567,12 @@ For more information, see the README file."""
                     trick_cards = board.current_trick.cards if board.current_trick else []
                     resp = self.engine.get_card_play(board, seat, trick_cards)
                     if resp and resp.action:
-                        engine_text = f"BEN suggests: play {resp.action.to_str()}"
+                        engine_text = f"biq suggests: play {resp.action.to_str()}"
                         if resp.candidates:
                             cands = ", ".join(f"{c.card.to_str()} ({c.score:.2f})"
                                               for c in resp.candidates[:5])
                             engine_text += (
-                                f"\nBEN candidates (score = TensorFlow NN "
+                                f"\nBridgeIQ candidates (score = MC "
                                 f"confidence 0–1): {cands}"
                             )
         except Exception as e:
@@ -5015,15 +5621,184 @@ For more information, see the README file."""
             "hint:"
             + _hashlib.sha1(prompt.encode('utf-8')).hexdigest()
         )
-        self._run_claude_with_dialog(
-            prompt=prompt,
-            title=f"Claude hint — {'bidding' if phase == 'bidding' else 'card play'}",
-            wait_label=f"Claude is thinking about your {'bid' if phase == 'bidding' else 'card'}...",
-            timeout_seconds=300,
-            preamble=preamble_text,
-            bdl_text=state_text,
-            cache_key=hint_cache_key,
-        )
+
+        # --- Offline, book-grounded coaching note + whole-deal plan ---------
+        # The note (and, in play, the 13-trick plan) is computed locally from
+        # the live board state — system params, vulnerability, the visible /
+        # inferable cards — and shown immediately, with no Claude dependency.
+        # NO PEEKING: everything flows through the legitimately face-up seats.
+        note, plan_text, topics = "", "", []
+        try:
+            from . import coach_notes
+            from . import whole_deal_plan as wdp_mod
+            ns_spec = self._active_bidding_system('NS')
+            ew_spec = self._active_bidding_system('EW')
+            visible = set(self.table_view.face_up_seats())
+            note, topics = coach_notes.coaching_context(
+                board, seat, phase, ns_spec, ew_spec, visible)
+            # The whole-deal 13-trick plan is a START-of-play artifact: show it
+            # only while still on the first trick (the planning moment). Once
+            # trick one is over, the note above is already next-card advice and
+            # the plan would just repeat stale beginning-of-hand guidance.
+            if phase == 'play' and coach_notes.is_play_start(board):
+                declarer = board.contract.declarer if board.contract else None
+                dummy = declarer.partner() if declarer is not None else None
+                plan = wdp_mod.whole_deal_plan(
+                    board, seat, declarer, dummy, board.contract, visible)
+                plan_text = wdp_mod.render_whole_deal_plan(plan)
+        except Exception as e:
+            note = note or f"(coach note unavailable: {e!r})"
+
+        # biq's own engine names the concrete next card to play — surface it in
+        # the dialog (especially mid-play, where the note is technique, not a
+        # full plan). `engine_text` was computed above for the play phase.
+        engine_line = ""
+        if phase == 'play' and engine_text:
+            engine_line = engine_text.splitlines()[0]
+
+        # Record the offline advice as comments in the .BDL (live) and queue it
+        # for the .qss (written at close / export).
+        self._record_advice(note, plan_text)
+
+        # Claude is the deeper, optional second layer — gated by Preferences.
+        def _ask_claude():
+            grounded = prompt
+            try:
+                from . import coach_notes
+                passages = coach_notes.book_passages(topics, limit=3)
+                if passages:
+                    blocks = "\n\n".join(
+                        f"[{p['book']}]\n{p['text']}" for p in passages)
+                    grounded = (
+                        prompt
+                        + "\n\nBOOK CONTEXT (excerpts from the player's bridge "
+                        "library — use as grounding, do not quote verbatim):\n"
+                        + blocks)
+            except Exception:
+                grounded = prompt
+            self._run_claude_with_dialog(
+                prompt=grounded,
+                title=f"Claude hint — {'bidding' if phase == 'bidding' else 'card play'}",
+                wait_label=f"Claude is thinking about your {'bid' if phase == 'bidding' else 'card'}...",
+                timeout_seconds=900,
+                preamble=preamble_text,
+                bdl_text=state_text,
+                cache_key=hint_cache_key,
+            )
+
+        self._show_coach_dialog(note, plan_text, phase, _ask_claude,
+                                next_card=engine_line)
+
+    def _record_advice(self, note: str, plan_text: str = ""):
+        """Write coaching advice as comments into the active .BDL (immediately)
+        and queue it for the .qss (written at close/export). Idempotent within
+        a session so re-opening the same hint doesn't duplicate blocks."""
+        parts = [p for p in (note, plan_text) if p and not p.startswith("(")]
+        if not parts:
+            return
+        text = "\n".join(parts)
+        if not hasattr(self, '_recorded_advice'):
+            self._recorded_advice = set()
+        key = hash(text)
+        if key in self._recorded_advice:
+            return
+        self._recorded_advice.add(key)
+        try:
+            self.game_logger._append_commentary_to_bdl("Coach — " + text)
+        except Exception:
+            pass
+        try:
+            self.scoring_table.record_comment("Coach — " + text)
+        except Exception:
+            pass
+
+    def _show_coach_dialog(self, note: str, plan_text: str, phase: str,
+                           ask_claude_cb, next_card: str = ""):
+        """Show the offline coaching note — plus, in play, biq's suggested next
+        card and (only at the start of play) the 13-trick plan. The 'Ask Claude'
+        button offers deeper advice (gated by Preferences)."""
+        from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton,
+                                      QScrollArea, QWidget, QHBoxLayout)
+        from PyQt6.QtGui import QFont
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(
+            f"Hint — {'bidding' if phase == 'bidding' else 'card play'}")
+        dlg.setMinimumWidth(560)
+        dlg.setStyleSheet("background-color: #e8e8f0; color: #000;")
+        lay = QVBoxLayout(dlg)
+
+        hdr = QLabel("Coaching note")
+        hdr.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+        lay.addWidget(hdr)
+        note_lbl = QLabel(note or "No specific note for this situation.")
+        note_lbl.setWordWrap(True)
+        note_lbl.setFont(QFont("Arial", 12))
+        lay.addWidget(note_lbl)
+
+        # Concrete next card (play phase) — the actionable "what to play now".
+        if next_card:
+            card_lbl = QLabel("▶ " + next_card)
+            card_lbl.setWordWrap(True)
+            card_lbl.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+            card_lbl.setStyleSheet("color:#1a5e1a;")
+            lay.addWidget(card_lbl)
+
+        if plan_text:
+            ph = QLabel("Whole-deal plan")
+            ph.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+            lay.addWidget(ph)
+            plan_lbl = QLabel(plan_text)
+            plan_lbl.setWordWrap(True)
+            plan_lbl.setFont(QFont("Arial", 11))
+            area = QScrollArea()
+            area.setWidgetResizable(True)
+            inner = QWidget()
+            il = QVBoxLayout(inner)
+            il.addWidget(plan_lbl)
+            area.setWidget(inner)
+            area.setMaximumHeight(220)
+            lay.addWidget(area)
+
+        btn_row = QHBoxLayout()
+        ask_btn = QPushButton("Ask Claude for deeper advice")
+
+        def _on_ask():
+            # Always functional: if Claude is on, run it; if not, offer to
+            # turn it on (it's an opt-in feature) rather than sit there dead.
+            if self._claude_enabled():
+                dlg.accept()
+                ask_claude_cb()
+                return
+            from PyQt6.QtWidgets import QMessageBox
+            box = QMessageBox(dlg)
+            box.setWindowTitle("Claude is turned off")
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setText("Deeper AI advice uses the Claude CLI — an opt-in "
+                        "feature (it costs tokens and isn't needed for "
+                        "ordinary play).")
+            box.setInformativeText("Enable it in Preferences → AI & Network?")
+            open_btn = box.addButton("Open Preferences…",
+                                     QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            if box.clickedButton() is open_btn:
+                dlg.accept()
+                self._on_preferences()
+                # If the user just enabled it, go straight to the advice.
+                if self._claude_enabled():
+                    ask_claude_cb()
+
+        ask_btn.clicked.connect(_on_ask)
+        ask_btn.setToolTip("Deeper AI advice via the Claude CLI "
+                           "(opt-in; enable in Preferences → AI & Network).")
+        btn_row.addWidget(ask_btn)
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dlg.reject)
+        btn_row.addWidget(close_btn)
+        lay.addLayout(btn_row)
+
+        dlg.exec()
 
     def _build_hint_state_text(self, board, seat, phase) -> str:
         """Serialize the current board state for a Claude hint prompt as
@@ -5190,14 +5965,124 @@ For more information, see the README file."""
             "the Bids block and the leader/winner markers in the Tricks "
             "block — do not infer seats from order alone. If a BEN "
             "card-play suggestion is shown, say whether you agree (BEN "
-            "card-play is system-agnostic). BEN bidding suggestions are "
+            "card-play is system-agnostic). biq bidding suggestions are "
             "NEVER shown because BEN was trained only on SAYC / 2-over-1 "
             "and can't reason about Precision / Acol / French calls.\n\n"
             f"BDL:\n{state_text}{engine_block}"
         )
 
+    def _claude_enabled(self) -> bool:
+        """Claude Code integration is opt-in (Preferences → AI & Network),
+        default OFF."""
+        try:
+            from backend.config import get_config_manager
+            return bool(get_config_manager().config.preferences.claude_code_enabled)
+        except Exception:
+            return False
+
+    def _claude_disabled_notice(self):
+        """Tell the user Claude is off — and offer a button straight to
+        Preferences to switch it on."""
+        from PyQt6.QtWidgets import QMessageBox
+        box = QMessageBox(self)
+        try:
+            from .dialogs.dialog_style import MESSAGEBOX_STYLESHEET
+            box.setStyleSheet(MESSAGEBOX_STYLESHEET)
+        except Exception:
+            pass
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("Claude is off")
+        box.setText("Claude analysis is disabled — it's an opt-in feature.")
+        box.setInformativeText(
+            "Enable it in Preferences → AI & Network to use post-hand "
+            "analysis, annotated transcripts and AI hints.")
+        open_btn = box.addButton("Open Preferences…",
+                                 QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("OK", QMessageBox.ButtonRole.RejectRole)
+        for b in box.buttons():
+            b.setMinimumWidth(b.sizeHint().width() + 16)
+        # Give the text room and keep it flush-left — the shared stylesheet's
+        # narrow min-width otherwise wraps mid-word ("…disabled — i") and the
+        # ragged lines read as awkward justification.
+        from PyQt6.QtWidgets import QLabel
+        for lbl in box.findChildren(QLabel):
+            if lbl.objectName() in ("qt_msgbox_label",
+                                    "qt_msgbox_informativelabel"):
+                lbl.setWordWrap(True)
+                lbl.setMinimumWidth(400)
+                lbl.setAlignment(Qt.AlignmentFlag.AlignLeft
+                                 | Qt.AlignmentFlag.AlignVCenter)
+        box.exec()
+        if box.clickedButton() is open_btn:
+            try:
+                self._on_preferences()
+            except Exception:
+                pass
+
+    def _qplus_availability(self) -> str:
+        """'none' (default) / 'demo' / 'full' — gates closed-room / Q-NET."""
+        try:
+            from backend.config import get_config_manager
+            return getattr(get_config_manager().config.preferences,
+                           "qplus_availability", "none")
+        except Exception:
+            return "none"
+
+    def _qplus_available(self) -> bool:
+        return self._qplus_availability() != "none"
+
+    def _apply_qplus_visibility(self):
+        """Show closed-room / Q-NET / Q-Plus features only when a Q-Plus
+        build is configured (Preferences → AI & Network). Default: hidden."""
+        avail = self._qplus_available()
+        # NOTE: the Closed Room button is intentionally NOT gated on Q-Plus.
+        # Its "Internal all-biq" mode plays all four seats with biq bots and
+        # needs no Q-Plus build, so the button stays available always (its
+        # visibility is governed by the normal opening/toolbar logic). Only
+        # the genuinely Q-Plus-dependent menu actions are hidden below.
+        for attr in ("ingest_qplus_action", "ingest_lin_action",
+                     "qplus_sim_action", "kill_wine_action"):
+            a = getattr(self, attr, None)
+            if a is not None:
+                a.setVisible(avail)
+
+    def _on_kill_all_wine(self):
+        """Force-quit Q-Plus + all wine so a stale Q-NET socket / hung Q-Plus
+        can't block the next closed-room run."""
+        import subprocess
+        from .dialogs.dialog_style import MESSAGEBOX_STYLESHEET
+        box = QMessageBox(self)
+        box.setStyleSheet(MESSAGEBOX_STYLESHEET)
+        box.setWindowTitle("Kill all wine processes?")
+        box.setText(
+            "Force-quit Q-Plus and ALL wine processes?\n\n"
+            "This clears a stale Q-NET listen socket and any hung Q-Plus so "
+            "biq E/W can attach cleanly next time. Any unsaved Q-Plus score "
+            "table is lost.")
+        box.setStandardButtons(QMessageBox.StandardButton.Yes
+                               | QMessageBox.StandardButton.No)
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        if box.exec() != QMessageBox.StandardButton.Yes:
+            return
+        # Scope the wine teardown to the Q-Plus WINEPREFIX (wineserver -k tears
+        # down exactly that prefix's session) and only SIGKILL the named Windows
+        # binaries. A broad `pkill -f wine` is NOT used — it matched and killed
+        # bridgeIQ itself. The remaining patterns name the .EXE/.py explicitly so
+        # they can never hit a python process.
+        prefix = os.path.normpath(os.path.join(
+            os.path.dirname(__file__), "..", "..", "..", "WP"))
+        script = (f'WINEPREFIX="{prefix}" wineserver -k 2>/dev/null; sleep 0.3; '
+                  "pkill -9 -f 'QBRIDGE\\.EXE'; pkill -9 -f 'Q-NET\\.EXE'; "
+                  "pkill -9 -f 'biq_qnet_client\\.py'")
+        try:
+            subprocess.run(["bash", "-c", script], timeout=15)
+            self.status_label.setText(
+                "Exited Q-Plus and killed its wine session — Q-NET socket cleared.")
+        except Exception as e:
+            self.status_label.setText(f"Kill wine failed: {e}")
+
     def _run_claude_with_dialog(self, prompt: str, title: str, wait_label: str,
-                                 timeout_seconds: int = 300, preamble: str = "",
+                                 timeout_seconds: int = 900, preamble: str = "",
                                  bdl_text: str = "",
                                  cache_key: str | None = None):
         """Run claude -p with a progress dialog, then show the result.
@@ -5219,6 +6104,10 @@ For more information, see the README file."""
         re-clicking before play has advanced doesn't burn another
         Claude turn.
         """
+        # Claude Code must be enabled in Preferences (default off).
+        if not self._claude_enabled():
+            self._claude_disabled_notice()
+            return
         # Cache short-circuit — check BEFORE we open the progress
         # dialog or spawn the subprocess.
         if cache_key is not None:
@@ -5268,6 +6157,34 @@ For more information, see the README file."""
         p_bar.setStyleSheet("QProgressBar { border: 1px solid #aaa; border-radius: 3px; }"
                             "QProgressBar::chunk { background-color: #4a9; }")
         p_layout.addWidget(p_bar)
+        # Cancel — Claude can take a long time; let the user bail out. Cancelling
+        # kills the subprocess and skips rendering.
+        cancel_holder = {'cancelled': False}
+        # Set once the run completes normally, BEFORE we close the progress
+        # dialog. Closing a QDialog emits `rejected` (Qt calls reject() from
+        # closeEvent), which is wired to _cancel_claude — without this guard a
+        # successful request would mark itself cancelled at teardown and the
+        # result would be thrown away ("Claude request cancelled" every time).
+        done_holder = {'done': False}
+        proc_holder = {'proc': None}
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet("QPushButton { padding: 6px 18px; }")
+
+        def _cancel_claude():
+            if done_holder['done']:
+                return
+            cancel_holder['cancelled'] = True
+            cancel_btn.setEnabled(False)
+            p_label.setText("Cancelling…")
+            proc = proc_holder.get('proc')
+            if proc is not None and proc.poll() is None:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+        cancel_btn.clicked.connect(_cancel_claude)
+        progress.rejected.connect(_cancel_claude)   # the window's X also cancels
+        p_layout.addWidget(cancel_btn)
         progress.show()
         QApplication.processEvents()
 
@@ -5286,31 +6203,40 @@ For more information, see the README file."""
         result_holder = {'text': None, 'error': None}
 
         def _run_claude():
+            # Use Opus 4.8 with extended thinking. Popen (not subprocess.run)
+            # so the Cancel button can terminate it mid-flight.
             try:
-                # Use Opus 4.7 with extended thinking — same invocation as
-                # the poker code uses for hand annotations.  The bare
-                # --thinking flag was rejected by older builds; the value
-                # variant works on every released CLI.
-                r = subprocess.run(
+                proc = subprocess.Popen(
                     ['claude', '-p',
-                     '--model', 'claude-opus-4-7',
+                     '--model', 'claude-opus-4-8',
                      '--thinking', 'enabled',
                      '--max-turns', '1', prompt],
-                    capture_output=True, text=True, timeout=timeout_seconds
-                )
-                stdout = (r.stdout or '').strip()
-                stderr = (r.stderr or '').strip()
-                if r.returncode == 0 and len(stdout) > 5:
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                proc_holder['proc'] = proc
+                try:
+                    stdout, stderr = proc.communicate(timeout=timeout_seconds)
+                except subprocess.TimeoutExpired:
+                    try:
+                        proc.kill()
+                        proc.communicate()
+                    except Exception:
+                        pass
+                    result_holder['error'] = (
+                        f"claude timed out after {timeout_seconds} seconds.")
+                    return
+                if cancel_holder['cancelled']:
+                    return
+                stdout = (stdout or '').strip()
+                stderr = (stderr or '').strip()
+                if proc.returncode == 0 and len(stdout) > 5:
                     result_holder['text'] = stdout
                 else:
-                    parts = [f"claude exited {r.returncode}"]
+                    parts = [f"claude exited {proc.returncode}"]
                     if stderr:
                         parts.append(f"stderr: {stderr[:500]}")
                     if stdout:
                         parts.append(f"stdout: {stdout[:500]}")
                     result_holder['error'] = "\n".join(parts)
-            except subprocess.TimeoutExpired:
-                result_holder['error'] = f"claude timed out after {timeout_seconds} seconds."
             except Exception as e:
                 result_holder['error'] = f"claude call failed: {e!r}"
 
@@ -5319,7 +6245,30 @@ For more information, see the README file."""
         while thread.is_alive():
             QApplication.processEvents()
             thread.join(timeout=0.1)
-        progress.close()
+            if cancel_holder['cancelled']:
+                break
+        # Make sure a cancelled subprocess is really gone.
+        if cancel_holder['cancelled']:
+            proc = proc_holder.get('proc')
+            if proc is not None and proc.poll() is None:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        # Mark done so the close()-triggered `rejected` below is a no-op rather
+        # than a spurious cancel.
+        if not cancel_holder['cancelled']:
+            done_holder['done'] = True
+        try:
+            progress.close()
+        except Exception:
+            pass
+        if cancel_holder['cancelled']:
+            try:
+                self.status_label.setText("Claude request cancelled.")
+            except Exception:
+                pass
+            return
 
         if pidfile:
             try:
@@ -5337,38 +6286,53 @@ For more information, see the README file."""
                 self._claude_cache = {}
             self._claude_cache[cache_key] = text
 
-        if bdl_text:
-            # BDL-annotated rendering. Even on failure we still show the
-            # BDL so the user sees the same context Claude was given.
-            preface = preamble.rstrip()
-            framed = bdl_text
-            if preface:
-                framed = preface + "\n\n" + bdl_text
-            self._show_annotated_bdl_dialog(
-                title=title,
-                bdl_text=framed,
-                claude_text=text or "",
-                error=not text,
-            )
-            if not text:
-                # Surface the error inline at the top, since the
-                # annotated dialog itself doesn't show errors.
+        # Render inside a guard: an exception escaping this Qt slot would abort
+        # the whole app (PyQt aborts on unhandled slot exceptions) — exactly the
+        # "Claude error, then the window vanished" failure. Never let that out.
+        try:
+            if bdl_text:
+                # BDL-annotated rendering. Even on failure we still show the
+                # BDL so the user sees the same context Claude was given.
+                preface = preamble.rstrip()
+                framed = bdl_text
+                if preface:
+                    framed = preface + "\n\n" + bdl_text
+                self._show_annotated_bdl_dialog(
+                    title=title,
+                    bdl_text=framed,
+                    claude_text=text or "",
+                    error=not text,
+                )
+                if not text:
+                    # Surface the error inline at the top, since the
+                    # annotated dialog itself doesn't show errors.
+                    self._show_plain_dialog(
+                        title + " (claude error)",
+                        f"Claude did not return a response.\n\n"
+                        f"{error or 'No output received.'}",
+                        error=True,
+                    )
+                return
+
+            if text:
+                self._show_plain_dialog(title, f"{preamble}{text}", error=False)
+            else:
                 self._show_plain_dialog(
-                    title + " (claude error)",
-                    f"Claude did not return a response.\n\n"
+                    title,
+                    f"{preamble}Claude did not return a response.\n\n"
                     f"{error or 'No output received.'}",
                     error=True,
                 )
-            return
-
-        if text:
-            self._show_plain_dialog(title, f"{preamble}{text}", error=False)
-        else:
-            self._show_plain_dialog(
-                title,
-                f"{preamble}Claude did not return a response.\n\n{error or 'No output received.'}",
-                error=True,
-            )
+        except Exception as ex:
+            import traceback
+            traceback.print_exc()
+            try:
+                self._show_plain_dialog(
+                    title + " (display error)",
+                    f"Claude returned, but rendering the result failed:\n{ex!r}",
+                    error=True)
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # PlantUML rendering — for the card-play hint plan diagrams. Tries
@@ -5536,8 +6500,11 @@ For more information, see the README file."""
 
         dialog = QDialog(self)
         dialog.setWindowTitle(title)
+        # Maximizable + large default so the analysis can fill a 1920×1080 screen.
+        dialog.setWindowFlags(dialog.windowFlags()
+                              | Qt.WindowType.WindowMaximizeButtonHint)
         dialog.setMinimumSize(960, 640)
-        dialog.resize(1100, 760)
+        dialog.resize(1280, 860)
         dialog.setStyleSheet("QDialog { background-color: #e8e8f0; color: #000; }")
         layout = QVBoxLayout(dialog)
 
@@ -5563,7 +6530,8 @@ For more information, see the README file."""
             text = "\n".join(buf)
             html_parts.append(
                 f'<pre style="font-family: Monospace; font-size: {BDL_FONT_PT}pt; '
-                f'color: {BDL_COLOR}; margin: 0; line-height: 1.3;">'
+                f'color: {BDL_COLOR}; margin: 0; line-height: 1.3; '
+                f'white-space: pre-wrap; word-wrap: break-word;">'
                 f'{escape(text)}</pre>'
             )
             buf.clear()
@@ -5620,7 +6588,14 @@ For more information, see the README file."""
             f"QTextEdit {{ background-color: {BG_COLOR}; color: #000;"
             f" border: 1px solid #aaa; padding: 14px; }}"
         )
+        # Wrap everything to the window width — never make the user scroll
+        # left/right. WrapAtWordBoundaryOrAnywhere + horizontal scrollbar OFF
+        # forces even the monospace BDL blocks to reflow into the window, so a
+        # maximized dialog on 1920×1080 shows all output justified to fit.
+        from PyQt6.QtGui import QTextOption
         editor.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        editor.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        editor.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         editor.setHtml("".join(html_parts))
         editor.moveCursor(QTextCursor.MoveOperation.Start)
 
@@ -5724,77 +6699,174 @@ For more information, see the README file."""
         self._plain_dialogs = survivors
 
     def _on_undo(self):
-        """Undo last card play (only works during current trick before it completes)"""
-        # Disable undo during network play to prevent sync issues
+        """Take back to your last decision point (Q-Plus 'back up').
+
+        Card play: removes cards from the end — your own AND the computer's
+        responses, across a completed trick if need be — until your most recent
+        card is taken back, then it's your turn to replay. Bidding: removes the
+        computer's calls and your last call so you can bid again. Repeatable.
+        """
         if self.network_controller.is_active:
             self.status_label.setText("Undo not available during network play")
             return
-
-        if self.controller.current_phase not in ('play', 'waiting_next'):
-            self.status_label.setText("Undo only available during card play")
-            return
-
-        if not self.card_history:
+        board = self.controller.board
+        if board is None:
             self.status_label.setText("Nothing to undo")
             return
+        phase = self.controller.current_phase
+        if phase == 'bidding':
+            self._undo_last_user_bid(board)
+        elif phase in ('play', 'waiting_next', 'finished'):
+            self._undo_last_user_card(board)
+        else:
+            self.status_label.setText(
+                "Undo is available during bidding and card play")
 
-        # Only allow undo if the last card was played by human and trick is not complete
-        # or if we're in waiting_next state (trick just completed)
-        board = self.controller.board
-        current_trick = board.current_trick
+    def _seat_at(self, base, offset):
+        from backend.models import Seat as _Seat
+        return _Seat((int(base) + int(offset)) % 4)
 
-        if self.controller.current_phase == 'waiting_next':
-            # Trick just completed - can't undo after trick is done
-            self.status_label.setText("Cannot undo after trick is complete")
-            return
+    def _has_user_play(self, board) -> bool:
+        """True if any card already played belongs to a seat the human controls
+        (their own seat, or dummy when the human declares)."""
+        seen = set()
+        seqs = list(getattr(board, 'tricks', None) or [])
+        ct = getattr(board, 'current_trick', None)
+        if ct is not None:
+            seqs.append(ct)
+        for tr in seqs:
+            if id(tr) in seen:
+                continue
+            seen.add(id(tr))
+            for i in range(len(tr.cards)):
+                if self.controller._human_controls_seat(
+                        self._seat_at(tr.leader, i)):
+                    return True
+        return False
 
-        if not current_trick or len(current_trick.cards) == 0:
-            self.status_label.setText("Nothing to undo in current trick")
-            return
-
-        # Find the last human card in the history
-        last_entry = self.card_history[-1]
-        seat, card, is_human = last_entry
-
-        if not is_human:
-            self.status_label.setText("Cannot undo computer's card")
-            return
-
-        # Remove from history
-        self.card_history.pop()
-
-        # Restore card to hand
-        if seat in board.hands:
+    def _undo_one_card(self, board):
+        """Remove the single most-recently-played card, restore it to its
+        owner's hand, and reverse any trick credit. Returns the seat whose card
+        was removed, or None when there are no cards left to undo."""
+        ct = getattr(board, 'current_trick', None)
+        if ct is not None and ct.cards:
+            # In 'waiting_next' the completed trick is BOTH current_trick and
+            # board.tricks[-1] (same object) and was already credited — detach
+            # and reverse the credit before pulling a card.
+            if board.tricks and board.tricks[-1] is ct:
+                board.tricks.pop()
+                self._reverse_trick_credit(board, ct.winner)
+            ct.winner = None
+            idx = len(ct.cards) - 1
+            card = ct.cards.pop(idx)
+            seat = self._seat_at(ct.leader, idx)
             board.hands[seat].cards.append(card)
+            if not ct.cards:
+                board.current_trick = None
+            return seat
+        # Between tricks: reopen the last completed trick.
+        if getattr(board, 'tricks', None):
+            tr = board.tricks.pop()
+            self._reverse_trick_credit(board, tr.winner)
+            tr.winner = None
+            idx = len(tr.cards) - 1
+            card = tr.cards.pop(idx)
+            seat = self._seat_at(tr.leader, idx)
+            board.hands[seat].cards.append(card)
+            board.current_trick = tr if tr.cards else None
+            return seat
+        return None
 
-        # Remove from current trick
-        if current_trick.cards and current_trick.cards[-1] == card:
-            current_trick.cards.pop()
-            current_trick.winner = None  # Reset winner
+    def _reverse_trick_credit(self, board, winner):
+        if winner is None or getattr(board, 'contract', None) is None:
+            return
+        if winner.is_ns() == board.contract.declarer.is_ns():
+            board.declarer_tricks = max(0, board.declarer_tricks - 1)
+        else:
+            board.defense_tricks = max(0, board.defense_tricks - 1)
 
-        # Reset current seat to the player who played the undone card
-        self.controller.current_seat = seat
+    def _undo_last_user_card(self, board):
+        if not self._has_user_play(board):
+            self.status_label.setText("Nothing of yours to take back.")
+            return
+        # Autoplay + undo don't mix — the engine would instantly replay.
+        if self.autoplay_btn.isChecked():
+            self.autoplay_btn.setChecked(False)
+        last_seat = None
+        count = 0
+        for _ in range(64):
+            seat = self._undo_one_card(board)
+            if seat is None:
+                break
+            last_seat = seat
+            count += 1
+            if self.controller._human_controls_seat(seat):
+                break
+        self.controller.current_phase = 'play'
+        if last_seat is not None:
+            self.controller.current_seat = last_seat
+        self._refresh_after_undo(board)
+        try:
+            self._advance_game()
+        except Exception:
+            pass
+        who = last_seat.to_char() if last_seat is not None else ''
+        self.status_label.setText(
+            f"Took back {count} card{'s' if count != 1 else ''} — "
+            f"your play ({who})")
 
-        # Update table view - rebuild the hand and clear trick display
-        self.table_view.hand_widgets[seat].set_hand(board.hands[seat])
-        self.table_view.clear_trick()
+    def _undo_last_user_bid(self, board):
+        auction = getattr(board, 'auction', None) or []
+        if not any(self.controller._human_controls_seat(self._seat_at(board.dealer, i))
+                   for i in range(len(auction))):
+            self.status_label.setText("Nothing of yours to take back.")
+            return
+        last_seat = None
+        while auction:
+            i = len(auction) - 1
+            seat = self._seat_at(board.dealer, i)
+            auction.pop()
+            last_seat = seat
+            if self.controller._human_controls_seat(seat):
+                break
+        self.controller.current_phase = 'bidding'
+        if last_seat is not None:
+            self.controller.current_seat = last_seat
+        try:
+            self.bidding_box.set_auction(list(auction), board.dealer)
+        except Exception:
+            pass
+        try:
+            self._update_available_bids()
+        except Exception:
+            pass
+        try:
+            self._advance_game()
+        except Exception:
+            pass
+        who = last_seat.to_char() if last_seat is not None else ''
+        self.status_label.setText(f"Took back your last bid — your bid ({who})")
 
-        # Re-show any remaining cards in the trick
-        for i, c in enumerate(current_trick.cards):
-            trick_seat = Seat((current_trick.leader.value + i) % 4)
-            self.table_view.play_card_to_trick(trick_seat, c)
-
-        # Update button state
-        self.undo_btn.setEnabled(len(self.card_history) > 0 and
-                                  any(h[2] for h in self.card_history))
-
-        self.status_label.setText(f"Undid {card.to_str()} by {seat.to_char()}")
-
-    def _on_claim(self):
-        """Claim remaining tricks"""
-        if self.controller.current_phase == 'play':
-            QMessageBox.information(self, "Claim",
-                                   "Claim feature not yet implemented.")
+    def _refresh_after_undo(self, board):
+        """Re-render hands + the current trick after a take-back."""
+        for s in Seat:
+            try:
+                self.table_view.hand_widgets[s].set_hand(board.hands[s])
+            except Exception:
+                pass
+        try:
+            self.table_view.clear_trick()
+            ct = getattr(board, 'current_trick', None)
+            if ct:
+                for i, c in enumerate(ct.cards):
+                    self.table_view.play_card_to_trick(
+                        self._seat_at(ct.leader, i), c)
+        except Exception:
+            pass
+        try:
+            self._update_button_states()
+        except Exception:
+            pass
 
     def _on_next_card(self):
         """Advance to next trick after a trick completes"""
@@ -5864,6 +6936,75 @@ For more information, see the README file."""
         self._update_available_bids()
 
         self._advance_game()
+
+    def keyPressEvent(self, event):
+        """Full keyboard play: during the human's turn in the play phase,
+        a suit key (S/H/D/C) then a rank key (A K Q J T 9-2; 0 = ten) plays
+        that card — and when you must follow suit, the rank alone is enough.
+        Mirrors the mouse path exactly (routes through _on_card_played), so
+        every cardplay command works with EITHER input. Bidding already has
+        both (the bidding box's number/letter keys + its buttons)."""
+        if self._handle_play_key(event):
+            return
+        super().keyPressEvent(event)
+
+    def eventFilter(self, obj, event):
+        """Route play-keys to the card handler no matter which widget has
+        focus (e.g. a combo box on the instrumented view). Inert unless it's
+        the human's turn in the play phase, so it never steals keys from the
+        bidding box or normal navigation."""
+        try:
+            from PyQt6.QtCore import QEvent
+            if event.type() == QEvent.Type.KeyPress and self._handle_play_key(event):
+                return True
+        except Exception:
+            pass
+        return super().eventFilter(obj, event)
+
+    def _handle_play_key(self, event) -> bool:
+        c = getattr(self, 'controller', None)
+        if c is None or getattr(c, 'current_phase', None) != 'play':
+            return False
+        if not c.is_human_turn():
+            return False
+        seat = c.current_seat
+        if seat is None or not c.board:
+            return False
+        text = (event.text() or "").upper()
+        suit_map = {'S': Suit.SPADES, 'H': Suit.HEARTS,
+                    'D': Suit.DIAMONDS, 'C': Suit.CLUBS}
+        if text in suit_map:
+            self._kbd_play_suit = suit_map[text]
+            self.status_label.setText(
+                f"{text} — now press a rank (A K Q J T 9–2).")
+            return True
+        rank_chars = "AKQJT0987654321"
+        if text and text in rank_chars and len(text) == 1:
+            try:
+                rank = Rank.from_char('T' if text in ('0', '1') else text)
+            except Exception:
+                return False
+            suit = getattr(self, '_kbd_play_suit', None)
+            hand = c.board.hands.get(seat)
+            if suit is None:
+                # No suit armed — if we must follow, the suit is forced.
+                led = c.get_lead_suit()
+                if led and hand and any(cd.suit == led for cd in hand.cards):
+                    suit = led
+            if suit is None:
+                self.status_label.setText(
+                    "Press a suit first (S/H/D/C), then the rank.")
+                return True
+            self._kbd_play_suit = None
+            actual = next((cd for cd in (hand.cards if hand else [])
+                           if cd.suit == suit and cd.rank == rank), None)
+            if actual is None:
+                self.status_label.setText(
+                    f"No {text} of {suit.to_char()} in your hand.")
+                return True
+            self._on_card_played(seat, actual)   # same validated path as a click
+            return True
+        return False
 
     def _on_card_played(self, seat: Seat, card: Card):
         """Handle human card play"""
@@ -6255,7 +7396,7 @@ For more information, see the README file."""
             f"{'s' if trick_loss >= 1.5 else ''}</b> on average "
             f"compared with the best play.</div>"
             f"<div style='font-size:18px; color:#333; margin-top:8px;'>"
-            f"Get a hint (BEN's recommendation + Claude's "
+            f"Get a hint (BridgeIQ's recommendation + Claude's "
             f"explanation), or cancel and pick again? "
             f"Re-clicking the same card after dismissing this "
             f"dialog will commit your original play.</div>"
@@ -6305,6 +7446,13 @@ For more information, see the README file."""
         # players can't peek at another seat's hand by clicking Hint
         # while it isn't their turn.
         self._refresh_hint_button_state()
+        # Refresh Claim / Undo enable state every turn so Claim is available
+        # throughout card play (it was created disabled and only refreshed in
+        # one place, leaving it greyed out during the hand).
+        try:
+            self._update_button_states()
+        except Exception:
+            pass
 
     def _refresh_hint_button_state(self):
         """Grey the Hint toolbar button when it isn't the user's turn."""
@@ -6367,6 +7515,18 @@ For more information, see the README file."""
             # via QTimer so the bidding box paints first.
             QTimer.singleShot(0, self._maybe_popup_slam_simulation)
         else:
+            # One-Player non-peek: the engine must NEVER be asked to bid a seat
+            # whose hand it isn't allowed to know (even under autoplay). Fall
+            # back to manual entry via the bidding box, mirroring the per-card
+            # entry guard in _advance_play.
+            if (getattr(self, '_one_player_active', False)
+                    and not self._one_player_seat_known(current_seat)):
+                self.bidding_box.set_enabled(True)
+                self.status_label.setText(
+                    f"One-Player: enter the bid {current_seat.to_char()} "
+                    "made at the table.")
+                return
+
             self.bidding_box.set_enabled(False)
             self.status_label.setText(
                 f"Thinking ({current_seat.to_char()})..."
@@ -6413,8 +7573,13 @@ For more information, see the README file."""
             if (hasattr(self, "teaching_panel_action")
                     and self.teaching_panel_action.isChecked()):
                 self._refresh_inferences_from_board()
-            # Hide bid info window during card play
+            # Hide bid info window during card play — and undo the table
+            # right-shift it caused, so cardplay isn't off-centre / clipped.
             self.bid_info_dock.hide()
+            try:
+                self.table_view.set_left_inset(0)
+            except Exception:
+                pass
             # Dummy reveal is broadcast strictly after the opening lead
             # — see _maybe_reveal_dummy_after_lead. Even when the host's
             # side declared and dummy is already shown locally, guests
@@ -6975,6 +8140,12 @@ For more information, see the README file."""
                 self._on_dialog_generate_closed_room)
         except Exception:
             pass
+        # Generate-closed-room needs Q-Plus; hide it when none is available.
+        if not self._qplus_available():
+            for attr in ("gen_closed_btn",):
+                b = getattr(dialog, attr, None)
+                if b is not None:
+                    b.hide()
 
         # Claude analysis — runs the pending hand critique. If the
         # closed room has been ingested between hand end and click,
@@ -6985,6 +8156,11 @@ For more information, see the README file."""
                 self._on_dialog_claude_analysis)
         except Exception:
             pass
+        # Hide the Claude button unless Claude Code is enabled (default off).
+        if not self._claude_enabled():
+            b = getattr(dialog, "claude_btn", None)
+            if b is not None:
+                b.hide()
 
         # Next deal — use the DEDICATED next_deal_requested signal,
         # not the broad accepted signal. Review / Score / Repeat all
@@ -6997,17 +8173,35 @@ For more information, see the README file."""
         except Exception:
             pass
 
-    def _show_end_of_hand_dialog(self, dialog):
-        """Show the end-of-hand dialog non-modally and keep a ref.
+    def _dismiss_end_of_hand_dialogs(self):
+        """Close any embedded end-of-hand summary overlay so it doesn't sit on
+        top of the table while the next deal / repeat plays out."""
+        for d in list(getattr(self, '_end_of_hand_dialogs', []) or []):
+            try:
+                d.close()
+            except Exception:
+                pass
+        self._end_of_hand_dialogs = []
 
-        Non-modal so the user can interact with the main window (open
-        the score sheet, drag the Q-Plus harness around, etc.) while
-        the end-of-hand banner is visible. We hold a reference on
-        self so the dialog isn't garbage-collected.
+    def _show_end_of_hand_dialog(self, dialog):
+        """Show the end-of-hand summary as an EMBEDDED overlay panel inside the
+        main window (no unattached windows). It floats centred over the table
+        area; the user can still reach the menus/score sheet around it.
         """
-        from .dialogs.dialog_style import make_detachable
+        from PyQt6.QtCore import Qt as _Qt
+        host = self.centralWidget() or self
         try:
-            make_detachable(dialog)
+            dialog.setParent(host)
+            dialog.setWindowFlags(_Qt.WindowType.Widget)
+        except Exception:
+            pass
+        dialog.adjustSize()
+        # Centre over the host, clamped into view.
+        try:
+            ds = dialog.sizeHint()
+            x = max(0, (host.width() - ds.width()) // 2)
+            y = max(0, (host.height() - ds.height()) // 3)
+            dialog.move(x, y)
         except Exception:
             pass
         dialog.show()
@@ -7017,15 +8211,24 @@ For more information, see the README file."""
         survivors = []
         for d in self._end_of_hand_dialogs:
             try:
-                if d.isVisible():
-                    survivors.append(d)
+                if d is not dialog and d.isVisible():
+                    # only one summary at a time — close older embedded panels
+                    d.close()
             except RuntimeError:
                 pass
         survivors.append(dialog)
         self._end_of_hand_dialogs = survivors
 
     def _on_dialog_generate_closed_room(self):
-        """End-of-hand dialog button → spawn harness + Q-Plus.
+        """End-of-hand dialog button → spawn the harness on its Closed
+        Room wizard for a real Q-Plus closed room.
+
+        The open room was just played by the human + biq as N/S against
+        biq E/W. The closed room replays the SAME deal with Q-Plus N/S
+        and biq networked in as E/W (live over Q-NET), so the comparison
+        isolates the human/biq N/S pair against Q-Plus. After the closed
+        room is played, Extras → Ingest Q-Plus closed room brings the
+        result back for the IMP swing.
 
         The previous behaviour fired this automatically from
         _show_result, which surprised users who hadn't asked for a
@@ -7034,10 +8237,10 @@ For more information, see the README file."""
         """
         if self.controller.board is None:
             return
-        self._launch_qplus_harness(self.controller.board)
+        self._launch_qplus_harness(self.controller.board, closed_room=True)
         self.status_label.setText(
-            "Launched Q-Plus harness — play the deal, then use "
-            "Extras → Ingest Q-Plus closed room to bring the result back."
+            "Launched closed-room harness — Q-Plus N/S vs biq E/W. Follow "
+            "the steps, then Extras → Ingest Q-Plus closed room for the swing."
         )
 
     def _on_send_current_to_harness(self):
@@ -7274,16 +8477,21 @@ For more information, see the README file."""
             # Complete the open room result
             self.match_controller.complete_open_room(board.board_number, board)
 
-            # Now run the closed room (after human finishes to avoid concurrent engine access)
-            self.status_label.setText("Running closed room...")
-            QApplication.processEvents()
-
-            # Start closed room and wait for completion
+            # The closed room is normally already running in parallel (started
+            # at deal time — Q-Plus semantics). Only start it here if it wasn't
+            # pre-started for this board; otherwise just join the worker.
             self._closed_room_result = None
-            self.match_controller.start_closed_room_async(
-                board.board_number,
-                callback=self._on_closed_room_complete
-            )
+            if self._closed_room_async_started != board.board_number:
+                self.status_label.setText("Running closed room...")
+                QApplication.processEvents()
+                self.match_controller.start_closed_room_async(
+                    board.board_number,
+                    callback=self._on_closed_room_complete
+                )
+            else:
+                self.status_label.setText("Joining closed room (4 biq bots)...")
+                QApplication.processEvents()
+            self._closed_room_async_started = None
 
             # Wait for closed room to complete via a proper Qt event
             # loop. The previous version polled QApplication.process
@@ -7401,6 +8609,7 @@ For more information, see the README file."""
                 board_run=board_run,
             )
             self.scoring_table.add_result(result)
+            self._apply_field_comparison(result)
         except Exception as e:
             print(f"Error adding to scoring table: {e}", flush=True)
 
@@ -7429,12 +8638,15 @@ For more information, see the README file."""
                 }
             self._on_show_scores()
 
-    def _launch_qplus_harness(self, board):
+    def _launch_qplus_harness(self, board, closed_room: bool = False):
         """Spawn the guiHarness (bridgeHarness.sh) preloaded with this deal's
         base-72 code, dealer, and vulnerability, so the host can manually
         play the closed room in Q-Plus without leaving bridgeIQ. No-op
         if the harness script can't be located or if the deal has no full
         hand data.
+
+        When ``closed_room`` is set the harness is opened on its Closed
+        Room tab (biq E/W vs Q-Plus N/S over Q-NET) via --closed-room.
 
         Dealer and vulnerability are passed via `--dealer` / `--vuln` so
         the harness can show them on the entry tab — and, once Q-Plus's
@@ -7468,10 +8680,13 @@ For more information, see the README file."""
                 'Both': 'Both',
             }
             vuln_token = vuln_map.get(board.vulnerability.value, 'None')
+            cmd = [script, "--base72", code,
+                   "--dealer", dealer_char,
+                   "--vuln", vuln_token]
+            if closed_room:
+                cmd.append("--closed-room")
             subprocess.Popen(
-                [script, "--base72", code,
-                 "--dealer", dealer_char,
-                 "--vuln", vuln_token],
+                cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
@@ -7489,6 +8704,9 @@ For more information, see the README file."""
         so even across restarts the user sees the same wording when
         opening the BDL log file.
         """
+        if not self._claude_enabled():
+            self._claude_disabled_notice()
+            return
         import shutil
         import subprocess
         import threading
@@ -7598,6 +8816,52 @@ For more information, see the README file."""
             closed_summary += "\n"
         hand_text += closed_summary
 
+        # Instrumentation rundown — run EVERY instrumented-view lens over the
+        # completed deal so Claude can critique it through the same tools the
+        # teaching view shows the user (counting, losers/LTC, draw-trumps,
+        # trump split, entries, hold-up, danger hand, finesses, squeeze, and the
+        # defensive-signal log with honesty). Built for BOTH rooms when a closed
+        # room is present, so the comparison is grounded the same way each side.
+        from .teaching_view import instrumentation_summary
+        instr_summary = ""
+        closed_instr = ""
+        try:
+            decl = contract.declarer if contract is not None else None
+            dmy = decl.partner() if decl is not None else None
+            if self.original_hands and decl is not None:
+                instr_summary = instrumentation_summary(
+                    self.original_hands, board, contract, decl, dmy)
+        except Exception as e:
+            print(f"[claude] open-room instrumentation failed: {e}", flush=True)
+        if closed_run and closed_run.contract and getattr(closed_run, 'original_hands', None):
+            try:
+                from backend.models import BoardState as _BS, Hand as _H
+                cb = _BS(board_number=closed_run.board_number, dealer=board.dealer,
+                         vulnerability=board.vulnerability,
+                         hands={s: _H(cards=[]) for s in Seat})
+                cb.tricks = list(closed_run.tricks or [])
+                cb.contract = closed_run.contract
+                cdecl = closed_run.contract.declarer
+                cdmy = cdecl.partner() if cdecl is not None else None
+                closed_instr = instrumentation_summary(
+                    closed_run.original_hands, cb, closed_run.contract, cdecl, cdmy)
+            except Exception as e:
+                print(f"[claude] closed-room instrumentation failed: {e}", flush=True)
+
+        # Bidding systems each side used, so Claude can critique the AUCTION
+        # (not just the cardplay) in each system's terms.
+        try:
+            _pf = self.config_manager.config.preferences
+            open_ns_sys = (_pf.ns_bidding_system or _pf.native_bidding_system or "SAYC")
+            open_ew_sys = (_pf.ew_bidding_system or _pf.native_bidding_system or "SAYC")
+        except Exception:
+            open_ns_sys = open_ew_sys = "SAYC"
+        closed_ns_sys = (getattr(closed_run, 'ns_bidding_system', '') or "?") if closed_run else ""
+        closed_ew_sys = (getattr(closed_run, 'ew_bidding_system', '') or "?") if closed_run else ""
+        systems_text = (f"Open room systems — N/S: {open_ns_sys}, E/W: {open_ew_sys}."
+                        + (f" Closed room systems — N/S: {closed_ns_sys}, E/W: {closed_ew_sys}."
+                           if closed_run else ""))
+
         human_seats = [f"{seat_names[s]} ({p.name})"
                        for s, p in self.controller.players.items()
                        if p.player_type == PlayerType.HUMAN]
@@ -7676,8 +8940,10 @@ For more information, see the README file."""
                     "  • Reproduce the BDL exactly, line by line, "
                     "preserving every non-annotation line.\n"
                     "  • After the Bids block, insert one or more '>>' "
-                    "lines that critique the auction (sound? off-shape? "
-                    "missed game?).\n"
+                    "lines that critique the auction IN EACH SIDE'S BIDDING "
+                    "SYSTEM (see SYSTEMS below) — was each call correct for "
+                    "that system, off-shape, a missed game/slam, a better "
+                    "convention available?\n"
                     "  • After the Tricks block, insert '>>' lines that "
                     "critique the play and defense, naming specific "
                     "tricks where decisions mattered.\n"
@@ -7689,18 +8955,38 @@ For more information, see the README file."""
                     "  • Keep each annotation under ~25 words; multiple "
                     "short ones beat one long paragraph.\n"
                     "  • Do not output anything outside the BDL frame.\n\n"
+                    "Critique the deal THROUGH THE LENS of bridgeIQ's "
+                    "instrumented-view features, applied to THIS deal — work "
+                    "each one into your '>>' annotations where it's relevant: "
+                    "counting (HCP/shape), the declarer plan (top tricks, "
+                    "losers / LTC and which suits they're in, the draw-trumps "
+                    "question, the trump split, entries / transportation, the "
+                    "Rule-of-7 hold-up, the danger hand, finesses), squeeze "
+                    "ingredients (threats, type, rectified count), the "
+                    "opening-lead Rule-of-11 read, and the defensive-signal "
+                    "log (attitude / count / suit-preference / Smith / trump "
+                    "echo, and any false-cards). Use the INSTRUMENTATION "
+                    "block(s) below as the ground truth for those reads. When a "
+                    "closed room is present, critique BOTH rooms through these "
+                    "lenses — bidding AND cardplay — and explain which side did "
+                    "better and why, in instrumented-view terms.\n\n"
+                    f"SYSTEMS: {systems_text}\n"
                     f"The human player(s) at the open room: {human_desc}."
                     f"{comparison_note}\n\n"
-                    f"BDL:\n{hand_text}"
+                    f"INSTRUMENTATION — OPEN ROOM (biq's reads):\n"
+                    f"{instr_summary or '(unavailable)'}\n\n"
+                    + (f"INSTRUMENTATION — CLOSED ROOM (biq's reads):\n{closed_instr}\n\n"
+                       if closed_instr else "")
+                    + f"BDL:\n{hand_text}"
                 )
                 # Opus 4.7 with extended thinking, longer timeout to
                 # accommodate think-then-write for full hand annotations.
                 r = subprocess.run(
                     ['claude', '-p',
-                     '--model', 'claude-opus-4-7',
+                     '--model', 'claude-opus-4-8',
                      '--thinking', 'enabled',
                      '--max-turns', '1', analysis_prompt],
-                    capture_output=True, text=True, timeout=300
+                    capture_output=True, text=True, timeout=900
                 )
                 stdout = (r.stdout or '').strip()
                 stderr = (r.stderr or '').strip()
@@ -7714,7 +9000,7 @@ For more information, see the README file."""
                         parts.append(f"stdout: {stdout[:500]}")
                     result_holder['error'] = "\n".join(parts)
             except subprocess.TimeoutExpired:
-                result_holder['error'] = "claude timed out after 300 seconds."
+                result_holder["error"] = "claude timed out after 900 seconds."
             except Exception as e:
                 result_holder['error'] = f"claude call failed: {e!r}"
 
@@ -8026,7 +9312,7 @@ For more information, see the README file."""
             self.network_controller.broadcast_bid(bidder, bid)
 
         # Show analysis
-        text = f"BEN bid: {bid.symbol()}\n"
+        text = f"biq bid: {bid.symbol()}\n"
         if response.candidates:
             text += "\nCandidates:\n"
             for cand in response.candidates[:5]:
@@ -8300,6 +9586,18 @@ For more information, see the README file."""
         result = dialog.exec()
 
         if result == QDialog.DialogCode.Accepted:
+            # Q-Plus result modes (card play): conventional meaning / expected
+            # tricks (hidden vs open). When any is requested, show those instead
+            # of the point-count dialog.
+            if (dialog.want_conventional or dialog.want_tricks_hidden
+                    or dialog.want_tricks_open):
+                if dialog.want_conventional:
+                    self._on_explain_last_signal()
+                if dialog.want_tricks_hidden:
+                    self._show_expected_tricks_hidden()
+                if dialog.want_tricks_open:
+                    self._on_dd_analysis()
+                return
             if dialog.own_hand:
                 # Show own hand evaluation
                 current_seat = self.controller.current_seat
@@ -8333,6 +9631,68 @@ For more information, see the README file."""
                     eval_dialog.exec()
                 else:
                     self.status_label.setText(f"No hand data for {about_seat}")
+
+    def _show_expected_tricks_hidden(self):
+        """Q-Plus 'Expected tricks with hidden hands' — biq's MC+DDS engine
+        scores each legal card for the player to act using only legal knowledge
+        of the hidden hands. Shown as a per-card list."""
+        board = self.controller.board
+        seat = self.controller.current_seat
+        if (board is None or seat is None
+                or self.controller.current_phase != 'play'):
+            self._show_plain_dialog(
+                "Expected tricks (hidden hands)",
+                "Available during card play, on the turn of the player to act.")
+            return
+        try:
+            trick = (board.current_trick.cards
+                     if board.current_trick else [])
+            resp = self.engine.get_mc_card_play(board, seat, trick)
+            cands = getattr(resp, 'candidates', None) or []
+            lines = [f"Expected tricks (hidden hands) for {seat.to_char()} — "
+                     f"MC+DDS over sampled layouts:", ""]
+            for c in cands:
+                lines.append(f"   {c.card.to_str()}:  {c.score:.2f}")
+            if not cands and getattr(resp, 'action', None):
+                lines.append(f"   suggested: {resp.action.to_str()}")
+            self._show_plain_dialog("Expected tricks (hidden hands)",
+                                    "\n".join(lines))
+        except Exception as ex:
+            self._show_plain_dialog("Expected tricks (hidden hands)",
+                                    f"Could not compute: {ex!r}", error=True)
+
+    def _apply_field_comparison(self, result):
+        """Results-of-file comparison (Q-Plus): score the user's just-played
+        board against the result(s) the tournament file recorded for it.
+        Teams -> IMP vs the file's NS score; Pairs -> matchpoints vs the field.
+        Sets result.imps / result.matchpoints so the score table shows it."""
+        if getattr(self, '_comparison_mode', None) != 'file':
+            return
+        field = getattr(self, '_field_results', {}).get(result.board_number)
+        if not field:
+            return
+        from backend.scoring import diff_to_imps, ScoringType
+        field_ns = [f['ns_score'] for f in field]
+        if self.scoring_table.scoring_type == ScoringType.TEAMS:
+            imp = diff_to_imps(result.ns_score - field_ns[0])
+            result.imps = imp
+            self.status_label.setText(
+                f"Board {result.board_number}: your N/S {result.ns_score:+d} "
+                f"vs file {field_ns[0]:+d}  →  {imp:+d} IMP")
+        elif self.scoring_table.scoring_type == ScoringType.PAIRS:
+            # 2 matchpoints per field score beaten, 1 per tie (Q-Plus style).
+            mp = 0.0
+            for s in field_ns:
+                if result.ns_score > s:
+                    mp += 2
+                elif result.ns_score == s:
+                    mp += 1
+            top = 2 * len(field_ns)
+            result.matchpoints = mp
+            pct = (100.0 * mp / top) if top else 0.0
+            self.status_label.setText(
+                f"Board {result.board_number}: {mp:.0f}/{top} MP "
+                f"({pct:.0f}%) vs the field")
 
     def _on_view_auction_tricks(self):
         """Show the Record (auction + played tricks) dialog detached.
@@ -8563,22 +9923,22 @@ For more information, see the README file."""
         if not self.controller.board or not self.controller.board.contract:
             return
 
-        # Calculate tricks
-        declarer_tricks = getattr(self.controller, 'declarer_tricks', 0)
-        defense_tricks = getattr(self.controller, 'defense_tricks', 0)
+        # Tricks taken so far live on the BOARD (not the controller) — reading
+        # them off the controller returned 0/0, so the claim mis-scored and,
+        # worse, never finalised the hand (no score, Next disabled, stuck).
+        board = self.controller.board
+        declarer_tricks = getattr(board, 'declarer_tricks', 0)
+        defense_tricks = getattr(board, 'defense_tricks', 0)
         remaining = 13 - declarer_tricks - defense_tricks
 
         if remaining <= 0:
             self.status_label.setText("No tricks remaining to claim")
             return
 
-        # Is current player declarer or dummy's partner?
-        declarer = self.controller.board.contract.declarer
+        declarer = board.contract.declarer
         current = self.controller.current_seat
-        is_declarer_side = (
-            current == declarer or
-            current.partner() == declarer
-        )
+        is_declarer_side = (current is not None
+                            and current.is_ns() == declarer.is_ns())
 
         dialog = ClaimDialog(
             self,
@@ -8588,34 +9948,47 @@ For more information, see the README file."""
             is_declarer=is_declarer_side
         )
 
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            claimed = dialog.get_claimed_tricks()
-            if dialog.verify:
-                # Verify with DD solver
-                self.status_label.setText("Verifying claim...")
-                # Would use DD solver to verify
-                self.status_label.setText(f"Claim verified: Declarer makes {declarer_tricks + claimed}")
-            else:
-                # Accept claim
-                final_declarer = declarer_tricks + claimed
-                final_defense = defense_tricks + (remaining - claimed)
-                self.status_label.setText(
-                    f"Claim accepted: Declarer {final_declarer}, Defense {final_defense}"
-                )
-                # Would end the hand here
-                self.controller.current_phase = 'finished'
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        # get_claimed_tricks() always returns DECLARER's share of the rest.
+        claimed = max(0, min(remaining, dialog.get_claimed_tricks()))
+        final_declarer = declarer_tricks + claimed
+        final_defense = defense_tricks + (remaining - claimed)
+
+        # Apply to the board and END the hand on the normal scoring path
+        # (same as the natural 13th-trick finish): this scores it, adds it to
+        # the score table, shows the end-of-hand dialog, and enables Next deal.
+        board.declarer_tricks = final_declarer
+        board.defense_tricks = final_defense
+        self.controller.current_phase = 'finished'
+        try:
+            self.table_view.update_tricks(final_declarer, final_defense)
+        except Exception:
+            pass
+        verb = "verified" if dialog.verify else "accepted"
+        self.status_label.setText(
+            f"Claim {verb}: Declarer {final_declarer}, Defense {final_defense}")
+        QTimer.singleShot(400, self._show_result)
 
     def _update_button_states(self):
         """Update enabled state of toolbar buttons based on game phase."""
         phase = self.controller.current_phase
 
-        # Undo button - only during play when there are human cards to undo
-        # Disabled during network play to prevent sync issues
+        # Undo / take-back — enabled whenever the human has a call or card to
+        # take back (bidding OR play), like Q-Plus. Off during network play.
         if hasattr(self, 'undo_btn'):
-            can_undo = (phase == 'play' and
-                       len(self.card_history) > 0 and
-                       any(h[2] for h in self.card_history) and  # h[2] is is_human
-                       not self.network_controller.is_active)  # Disable during network play
+            can_undo = False
+            board = self.controller.board
+            if board is not None and not self.network_controller.is_active:
+                if phase == 'bidding':
+                    auction = getattr(board, 'auction', None) or []
+                    can_undo = any(
+                        self.controller._human_controls_seat(
+                            self._seat_at(board.dealer, i))
+                        for i in range(len(auction)))
+                elif phase in ('play', 'waiting_next', 'finished'):
+                    can_undo = self._has_user_play(board)
             self.undo_btn.setEnabled(can_undo)
 
         # Claim button - only during play
@@ -8682,7 +10055,10 @@ For more information, see the README file."""
         self._review_dialogs = survivors
 
     def _on_previous_deal(self):
-        """Go to the previous deal."""
+        """Go to the previous deal (Q-Plus: the deal with the minor number
+        decreased). random_deal() is seeded by board number, so deal n-1 is the
+        same deterministic deal Q-Plus would show. Goes through the full
+        new-deal setup (state reset + auction start), not a partial redraw."""
         if not self.controller.board:
             self.status_label.setText("No current deal")
             return
@@ -8691,23 +10067,17 @@ For more information, see the README file."""
         if current_num <= 1:
             self.status_label.setText("Already at first deal")
             return
-
-        # Generate previous deal
         prev_num = current_num - 1
-        self.status_label.setText(f"Loading deal #{prev_num}...")
 
-        # Create new board with previous number
-        from backend.models import BoardState
-        new_board = self.engine.random_deal(prev_num)
+        # In a teams match, step the board pointer back and re-deal that board
+        # number (the previous deal of the scoring table).
+        if self.teams_match is not None and self.match_controller is not None:
+            self.teams_match.current_board = prev_num
+            self._start_teams_board(prev_num)
+            return
 
-        # Setup the new deal
-        self.controller.board = new_board
-        self.controller.current_phase = 'bidding'
-        self.controller.current_seat = new_board.dealer
-
-        # Reset UI
-        self._display_deal(new_board)
-        self._update_button_states()
+        board = self.controller.new_deal(prev_num)   # full reset, deterministic
+        self._present_fresh_board(board)
         self.status_label.setText(f"Deal #{prev_num} loaded")
 
     def _on_lead_signal(self, pair: str):
@@ -8731,6 +10101,108 @@ For more information, see the README file."""
 
         dialog = ConfigCheckDialog(self)
         dialog.exec()
+
+    def _on_save_configuration(self):
+        """Q-Plus Configuration / Save configuration — write the current
+        settings (the B-*.CFG set) into a user-chosen folder so it can be
+        retrieved later."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from pathlib import Path
+        import shutil
+        dest = QFileDialog.getExistingDirectory(
+            self, "Save configuration to folder", str(Path.home()))
+        if not dest:
+            return
+        try:
+            self.config_manager.save_all()           # flush current → CONFIG/
+            src = self.config_manager.config_dir
+            n = 0
+            for cfg in ("B-INIT.CFG", "B-MATCH.CFG", "B-PREFER.CFG"):
+                p = src / cfg
+                if p.exists():
+                    shutil.copy(p, Path(dest) / cfg)
+                    n += 1
+            self.status_label.setText(
+                f"Configuration saved to {dest} ({n} files).")
+        except Exception as ex:
+            QMessageBox.warning(self, "Save configuration failed", str(ex))
+
+    def _on_retrieve_configuration(self):
+        """Q-Plus Configuration / Retrieve configuration — load a previously
+        saved configuration set (a folder of B-*.CFG files) into the active
+        config. Some changes (players/systems) take effect on the next deal."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from pathlib import Path
+        import shutil
+        src = QFileDialog.getExistingDirectory(
+            self, "Retrieve configuration from folder", str(Path.home()))
+        if not src:
+            return
+        srcp = Path(src)
+        if not any((srcp / c).exists() for c in
+                   ("B-INIT.CFG", "B-MATCH.CFG", "B-PREFER.CFG")):
+            QMessageBox.warning(
+                self, "Retrieve configuration",
+                "That folder has no B-*.CFG configuration files.")
+            return
+        try:
+            dst = self.config_manager.config_dir
+            for cfg in ("B-INIT.CFG", "B-MATCH.CFG", "B-PREFER.CFG"):
+                p = srcp / cfg
+                if p.exists():
+                    shutil.copy(p, dst / cfg)
+            self.config_manager.load_all()
+            try:
+                self._refresh_suit_colors()
+            except Exception:
+                pass
+            self.status_label.setText(
+                "Configuration retrieved. Player/system changes apply "
+                "from the next deal.")
+        except Exception as ex:
+            QMessageBox.warning(self, "Retrieve configuration failed", str(ex))
+
+    def _on_check_user_actions(self, checked: bool):
+        """Q-Plus Extras / Check user actions — toggle the live blunder check
+        (reports weak bids/cards as you make them)."""
+        try:
+            self.config_manager.config.preferences.blunder_check_enabled = bool(
+                checked)
+            self.config_manager.save_preferences()
+        except Exception:
+            pass
+        self.status_label.setText(
+            f"Check user actions: {'ON' if checked else 'OFF'}.")
+
+    def _on_save_match_and_exit(self):
+        """Q-Plus File / Save Match + Exit — persist the scoring table so the
+        next start resumes it, then close. (Plain Exit starts fresh.)"""
+        try:
+            self.config_manager.save_all()
+            path = self.config_manager.config_dir / "SAVED-MATCH.qss"
+            self.scoring_table.save(str(path))
+        except Exception as ex:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Save Match failed",
+                                f"Could not save the match:\n{ex}")
+            return
+        self._match_saved_on_exit = True
+        self.close()
+
+    def _maybe_restore_saved_match(self):
+        """At startup, resume a match saved via 'Save Match + Exit' (then
+        consume it so a later plain Exit starts fresh, matching Q-Plus)."""
+        try:
+            from backend.scoring import ScoringTable
+            path = self.config_manager.config_dir / "SAVED-MATCH.qss"
+            if not path.exists():
+                return
+            self.scoring_table = ScoringTable.load(str(path))
+            path.unlink()
+            self.status_label.setText(
+                "Resumed saved match (Save Match + Exit).")
+        except Exception as e:
+            print(f"saved-match restore failed: {e!r}", flush=True)
 
     def _on_minibridge(self):
         """Toggle or configure One Player / MiniBridge mode. The
@@ -8793,6 +10265,8 @@ For more information, see the README file."""
         so the prompt automatically gets the comparison form when a
         Q-Plus row is present and the open-room-only form otherwise.
         """
+        if not self._claude_enabled():
+            return                       # silent no-op when Claude is off
         pending = self._claude_pending
         if not pending or pending.get('analyzed'):
             return
@@ -8919,7 +10393,8 @@ For more information, see the README file."""
         to board number); if none match, asks the user.
         """
         from backend.qplus import qplus_bdl_log_dir, newest_bdl_path
-        from backend.bdl_reader import load_bdl_file, bdl_deal_to_board_run
+        from backend.bdl_reader import (load_bdl_file, load_qss_file,
+                                        bdl_deal_to_board_run)
         from backend.models import BenTable
 
         # Default the picker to the qplus log dir + newest BDL.
@@ -8932,21 +10407,30 @@ For more information, see the README file."""
             default_path = str(log_dir)
 
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Select Q-Plus BDL file", default_path,
-            "BDL files (*.bdl);;All files (*)"
+            self, "Select Q-Plus closed-room file", default_path,
+            "Q-Plus files (*.bdl *.qss);;BDL log (*.bdl);;"
+            "QSS score export (*.qss);;All files (*)"
         )
         if not filename:
             return
 
+        from .dialogs.dialog_style import styled_warning, styled_info
+        # Both .bdl logs and .qss teams exports carry the full deal (hands,
+        # auction, contract, card-by-card play); the .qss just wraps each BDL
+        # block in "D1 " lines, which load_qss_file strips. Either way we get
+        # the same BDLDeal list and the same closed-room ingest.
         try:
-            deals = load_bdl_file(filename)
+            if filename.lower().endswith(".qss"):
+                deals = load_qss_file(filename)
+            else:
+                deals = load_bdl_file(filename)
         except Exception as e:
-            QMessageBox.warning(self, "BDL Read Error",
-                                f"Could not parse BDL file:\n{e}")
+            styled_warning(self, "Read error",
+                           f"Could not parse the file:\n{e}")
             return
         if not deals:
-            QMessageBox.warning(self, "Empty BDL",
-                                "No deals were found in the selected BDL file.")
+            styled_warning(self, "Nothing to load",
+                           "No deals were found in the selected file.")
             return
 
         # Pick the deal that matches an existing open-room result, if any.
@@ -8956,15 +10440,18 @@ For more information, see the README file."""
 
         run = bdl_deal_to_board_run(chosen, table=BenTable.CLOSED)
         if run is None:
-            QMessageBox.warning(self, "Incomplete BDL",
-                                "The selected deal is missing the contract or "
-                                "the four hands; can't build a closed-room run.")
+            styled_warning(
+                self, "Deal not played out",
+                "That deal has only the hands recorded — no contract or card "
+                "play — so there's nothing to compare against the open room.\n\n"
+                "Pick a deal that was actually bid and played (it shows a "
+                "contract in the list).")
             return
 
         attached = self._attach_closed_room_run(run, replace_ai_run=True)
         if not attached:
-            QMessageBox.information(
-                self, "Closed Room Ingested",
+            styled_info(
+                self, "Closed room loaded",
                 f"Loaded board {run.board_number}, but no matching open-room "
                 "result was found — added as a standalone score-sheet entry."
             )
@@ -9059,25 +10546,56 @@ For more information, see the README file."""
         for d in deals:
             if d.pavlicek_id and d.pavlicek_id in existing_pavs:
                 return d
+        # The deal labels in a .qss/.bdl (RANDOM-001…) aren't our base-72 ids,
+        # but the CARDS are — compute the pavlicek from the hands and match
+        # that, so a 64-board export auto-picks the open-room deal instead of
+        # making the user scroll a long list.
+        if existing_pavs:
+            for d in deals:
+                try:
+                    if d.hands and all(s in d.hands for s in Seat):
+                        if format_deal_base72(deal_to_number(d.hands)) in existing_pavs:
+                            return d
+                except Exception:
+                    pass
         for d in deals:
             if d.board_number in existing_boards:
                 return d
 
-        # No match — let the user pick from a simple list.
-        from PyQt6.QtWidgets import QInputDialog
-        labels = [
-            f"Board {d.board_number}"
-            + (f" — {d.contract.to_str()} by {d.declarer.to_char()}"
-               if d.contract and d.declarer else "")
-            for d in deals
-        ]
-        choice, ok = QInputDialog.getItem(
-            self, "Pick Deal", "Multiple deals in this BDL — which is the closed room?",
-            labels, 0, False,
-        )
-        if not ok:
+        # No match — let the user pick. Build distinguishable, informative
+        # labels (the Q-Plus deal id + the contract), and flag the deals that
+        # can't be ingested (passed out / no play). "Board 0" twice was
+        # useless when the BDL used deal ids like BB-181111 rather than board
+        # numbers.
+        def _label(i, d):
+            name = (d.pavlicek_id
+                    or (f"Board {d.board_number}" if d.board_number
+                        else f"Deal {i + 1}"))
+            if d.contract:
+                dec = d.declarer or d.contract.declarer
+                tail = d.contract.to_str() + (f" by {dec.to_char()}" if dec else "")
+            else:
+                tail = "no contract / not played — can't ingest"
+            return f"{i + 1}. {name} — {tail}"
+
+        labels = [_label(i, d) for i, d in enumerate(deals)]
+        # Default the selection to the first PLAYED deal (one with a contract),
+        # so the user isn't pre-pointed at an un-ingestable passed-out board.
+        default_idx = next((i for i, d in enumerate(deals) if d.contract), 0)
+
+        from PyQt6.QtWidgets import QInputDialog, QDialog
+        from .dialogs.dialog_style import apply_dialog_style
+        dlg = QInputDialog(self)
+        dlg.setWindowTitle("Pick deal")
+        dlg.setLabelText("Multiple deals in this file — which is the closed "
+                         "room?")
+        dlg.setComboBoxItems(labels)
+        dlg.setComboBoxEditable(False)
+        dlg.setTextValue(labels[default_idx])
+        apply_dialog_style(dlg)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return None
-        return deals[labels.index(choice)]
+        return deals[labels.index(dlg.textValue())]
 
     def _attach_closed_room_run(self, run, replace_ai_run: bool = True) -> bool:
         """Attach a closed-room BenBoardRun to the matching BoardResult.

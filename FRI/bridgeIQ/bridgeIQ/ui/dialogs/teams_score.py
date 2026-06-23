@@ -141,6 +141,20 @@ class TeamsScoreDialog(QDialog):
         # Buttons
         button_layout = QHBoxLayout()
 
+        # Compare — open vs closed room, side by side, for the selected board.
+        compare_btn = QPushButton("Compare (open vs closed)")
+        compare_btn.setToolTip("Side-by-side replay of your table and the "
+                               "closed room for the selected board.")
+        compare_btn.clicked.connect(self._on_compare)
+        button_layout.addWidget(compare_btn)
+
+        # Replay — step through the selected board's open room.
+        replay_btn = QPushButton("Replay")
+        replay_btn.setToolTip("Replay the selected board (or click a contract "
+                              "cell).")
+        replay_btn.clicked.connect(self._on_replay_selected)
+        button_layout.addWidget(replay_btn)
+
         # Export button
         export_btn = QPushButton("Export...")
         export_btn.clicked.connect(self._on_export)
@@ -155,6 +169,52 @@ class TeamsScoreDialog(QDialog):
         button_layout.addWidget(close_btn)
 
         layout.addLayout(button_layout)
+
+    def _selected_board_num(self):
+        """Board number of the currently selected row, or None."""
+        row = self.table.currentRow()
+        if row < 0:
+            row = 0 if self.table.rowCount() == 1 else -1
+        if row < 0:
+            return None
+        cell = self.table.item(row, 3)
+        try:
+            return int(cell.text()) if cell else None
+        except Exception:
+            return None
+
+    def _on_compare(self):
+        """Open the side-by-side open-vs-closed replay for the selected board."""
+        from PyQt6.QtWidgets import QMessageBox
+        board_num = self._selected_board_num()
+        if board_num is None:
+            QMessageBox.information(self, "Compare", "Select a board row first.")
+            return
+        runs = self.match.board_runs.get(board_num, {})
+        open_r = runs.get(BenTable.OPEN)
+        closed_r = runs.get(BenTable.CLOSED)
+        if not (open_r and getattr(open_r, 'played', False)
+                and closed_r and getattr(closed_r, 'played', False)):
+            QMessageBox.information(
+                self, "Compare",
+                "Both the open room and the closed room must be complete "
+                "to compare this board.")
+            return
+        try:
+            from .compare_replay import CompareReplayDialog
+            CompareReplayDialog(open_r, closed_r, parent=self).exec()
+        except Exception as ex:
+            QMessageBox.warning(self, "Compare",
+                                f"Could not open the comparison:\n{ex}")
+
+    def _on_replay_selected(self):
+        """Replay the selected board's open room (same as clicking its cell)."""
+        from PyQt6.QtWidgets import QMessageBox
+        board_num = self._selected_board_num()
+        if board_num is None:
+            QMessageBox.information(self, "Replay", "Select a board row first.")
+            return
+        self.contract_clicked.emit(board_num, BenTable.OPEN)
 
     def _populate_table(self):
         """Fill the table with match results."""

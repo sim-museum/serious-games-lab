@@ -175,6 +175,11 @@ class ScoringTable:
             'N': '', 'E': '', 'S': '', 'W': '',
             'NS': '', 'EW': '',
         }
+        # Free-text advice / coaching comments to be written into the .qss as
+        # leading `#` comment lines whenever it is next exported. There is no
+        # live .qss during play (it's produced at close / export), so advice is
+        # queued here and rides along the next write. See record_comment().
+        self._pending_comments: List[str] = []
 
     def add_result(self, result: BoardResult):
         """Add a board result."""
@@ -313,6 +318,25 @@ class ScoringTable:
 
         return "\n".join(lines)
 
+    def record_comment(self, comment: str):
+        """Queue a free-text comment to be written into the .qss (as `#`
+        lines) the next time it is exported. Multi-line text is split so each
+        physical line becomes its own `#` comment. De-duplicated."""
+        if not comment:
+            return
+        for ln in str(comment).splitlines() or [str(comment)]:
+            entry = ln.rstrip()
+            if entry and entry not in self._pending_comments:
+                self._pending_comments.append(entry)
+
+    def append_comment(self, filepath: str, comment: str):
+        """Append `#` comment lines to an ALREADY-saved .qss file."""
+        if not comment:
+            return
+        block = "".join(f"# {ln.rstrip()}\n" for ln in str(comment).splitlines())
+        with open(filepath, 'a') as f:
+            f.write(block)
+
     def to_qss_format(self) -> str:
         """Export to BridgeIQ Score Sheet format."""
         lines = [
@@ -321,6 +345,10 @@ class ScoringTable:
             f".date = {self.date}",
             f"scoring.method = {self.scoring_type.value}",
         ]
+        # Coaching / advice comments captured during the session (hint dialog,
+        # instrumentation). Kept as `#` lines so the loader skips them.
+        for c in self._pending_comments:
+            lines.append(f"# {c}")
         for key in ('N', 'E', 'S', 'W', 'NS', 'EW'):
             name = (self.player_names or {}).get(key, '')
             if name:

@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bridgeIQ — standalone</title>
+<style>
+/* bridgeIQ standalone — pokerIQ-style dark theme. */
+:root{
+  --bg:#0c1117; --felt:#15543a; --felt-hi:#1d7a52; --rail:#4a3420;
+  --ink:#eef3f7; --muted:#9aa7b4; --line:#2c4a3a; --gold:#d9b25b;
+  --pos:#3fb950; --neg:#f85149; --accent:#58a6ff; --orange:#f0883e;
+  --panel:#101820; --grid:#13202a; --card:#f6f7f9; --card-dark:#1a1f29;
+  --sp:#e8eef6; --he:#ff6b6b; --di:#ffb44d; --cl:#57d07b; /* dark-bg 4-colour */
+}
+*{box-sizing:border-box;}
+html,body{margin:0;height:100%;}
+body{background:radial-gradient(120% 100% at 50% 0%,#18262f,#0a0e13 75%);
+  color:var(--ink);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
+#app{max-width:1500px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;}
+button{font:inherit;cursor:pointer;}
+.muted{color:var(--muted);}
+/* top bar */
+.top{display:flex;align-items:center;gap:18px;padding:10px 18px;border-bottom:1px solid var(--line);}
+.brand{font-size:24px;letter-spacing:.5px;} .brand b{color:var(--gold);}
+.top .status{flex:1;color:var(--muted);font-size:15px;}
+.menu{display:flex;gap:8px;flex-wrap:wrap;}
+.btn{background:#2b3a4d;color:var(--ink);border:1px solid #2f4256;border-radius:6px;padding:7px 13px;font-size:14px;}
+.btn:hover{border-color:var(--gold);background:#34465c;}
+.btn.go{background:#2a7d4f;color:#06121f;border-color:var(--pos);font-weight:600;}
+.btn.go:hover{background:#34995f;border-color:var(--gold);}
+.btn.on{background:var(--accent);color:#06121f;border-color:var(--accent);font-weight:600;}
+select{background:#0d141c;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font:inherit;}
+/* table */
+.wrap{flex:1;display:flex;gap:10px;padding:10px;min-height:0;}
+.tablecol{flex:1;display:flex;flex-direction:column;min-width:0;}
+.felt{position:relative;flex:1;border-radius:20px;
+  background:radial-gradient(120% 120% at 50% 35%,var(--felt-hi),var(--felt));
+  border:8px solid var(--rail);box-shadow:inset 0 0 50px rgba(0,0,0,.5);
+  display:grid;grid-template-columns:1fr 1.3fr 1fr;grid-template-rows:auto 1fr auto;
+  gap:6px;padding:14px;min-height:560px;}
+.seatbox{background:rgba(8,16,22,.72);border:2px solid var(--line);border-radius:10px;padding:8px 10px;}
+.seatbox .nm{font-weight:700;font-size:14px;display:flex;justify-content:space-between;align-items:center;}
+.seatbox.turn{border-color:var(--gold);box-shadow:0 0 12px rgba(217,178,91,.4);}
+.seatbox.dec{border-color:var(--gold);} .seatbox.def{border-color:var(--pos);}
+.seatbox .tag{font-size:11px;color:#06121f;background:var(--gold);border-radius:4px;padding:1px 6px;}
+.n{grid-area:1/2/2/3;justify-self:center;} .s{grid-area:3/2/4/3;justify-self:center;}
+.w{grid-area:2/1/3/2;align-self:center;} .e{grid-area:2/3/3/4;align-self:center;justify-self:end;}
+.center{grid-area:2/2/3/3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;}
+.hand{display:flex;flex-wrap:wrap;gap:2px;margin-top:4px;justify-content:center;max-width:340px;}
+.hand.vert .suitline{display:flex;gap:2px;}
+.suitrow{display:flex;align-items:center;gap:3px;font-size:15px;line-height:1.5;}
+.suitrow .sym{width:16px;text-align:center;font-weight:700;}
+.card{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:42px;
+  background:var(--card);color:var(--card-dark);border:1px solid #cbd2da;border-radius:5px;
+  font-weight:700;font-size:18px;padding:0 3px;user-select:none;}
+.card.red{color:#d23b3b;} .card.play{cursor:pointer;}
+.card.play:hover{transform:translateY(-5px);box-shadow:0 4px 10px rgba(0,0,0,.5);border-color:var(--gold);}
+.card.back{background:repeating-linear-gradient(45deg,#7a1f1f,#7a1f1f 6px,#5e1414 6px,#5e1414 12px);
+  color:transparent;border-color:#4a0f0f;width:26px;}
+.cardmini{font-weight:700;}
+/* trick */
+.trick{display:grid;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(3,60px);}
+.trick .t-n{grid-area:1/2;} .trick .t-s{grid-area:3/2;} .trick .t-w{grid-area:2/1;} .trick .t-e{grid-area:2/3;}
+.trick .slot{display:flex;align-items:center;justify-content:center;}
+.potline{color:var(--gold);font-weight:700;}
+/* bidding box */
+.bidbox{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;width:300px;}
+.bidgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:6px;}
+.bid{background:#1a2330;border:1px solid var(--line);border-radius:6px;padding:7px 0;text-align:center;font-weight:700;font-size:15px;}
+.bid:hover:not(.dis){border-color:var(--gold);} .bid.dis{opacity:.32;cursor:default;}
+.callrow{display:flex;gap:4px;margin-top:6px;}
+.callrow .bid{flex:1;}
+.auction{margin-top:10px;width:100%;border-collapse:collapse;font-size:14px;}
+.auction th{color:var(--muted);font-weight:600;border-bottom:1px solid var(--line);padding:2px 4px;}
+.auction td{text-align:center;padding:2px 4px;}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;}
+.bidinfo{margin-top:10px;font-size:13px;color:var(--muted);max-height:180px;overflow:auto;}
+.bidinfo b{color:var(--ink);}
+/* result modal */
+.modalbg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50;}
+.modal{background:#121922;border:1px solid var(--line);border-radius:14px;padding:24px 30px;text-align:center;max-width:520px;}
+.modal h2{margin:.2em 0;color:var(--gold);}
+.score{font-size:30px;font-weight:800;margin:10px 0;}
+/* instrument view */
+.instr{flex:1;display:grid;grid-template-columns:1fr 1.2fr 1fr;grid-template-rows:auto auto auto;gap:8px;}
+.ipanel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px;}
+.ipanel.contract{border-left:3px solid var(--gold);} .ipanel.plan{border-left:3px solid var(--pos);}
+.ipanel.count{border-left:3px solid var(--accent);} .ipanel.coach{border-left:3px solid var(--orange);}
+.ipanel h3{margin:0 0 4px;font-size:14px;}
+.ipanel.contract h3{color:var(--gold);} .ipanel.plan h3{color:var(--pos);}
+.ipanel.count h3{color:var(--accent);} .ipanel.coach h3{color:var(--orange);}
+.hgrid{background:var(--grid);border:2px solid var(--line);border-radius:8px;padding:6px 8px;font-size:14px;}
+.hgrid.dec{border-color:var(--gold);} .hgrid.def{border-color:var(--pos);}
+.hgrid h3{margin:0 0 4px;font-size:14px;}
+.hgrid table{width:100%;border-collapse:collapse;}
+.hgrid td{padding:2px 3px;vertical-align:top;}
+.hgrid .colh{color:var(--pos);font-weight:700;font-size:12px;}
+.chip{border-radius:3px;padding:0 3px;font-size:11px;font-weight:700;color:#06121f;}
+.box{border-radius:3px;padding:0 2px;}
+.legend{font-size:12px;color:var(--muted);padding:4px 10px;}
+.sym-s{color:var(--sp);} .sym-h{color:var(--he);} .sym-d{color:var(--di);} .sym-c{color:var(--cl);}
+.hide{display:none;}
+.note{font-size:12px;color:var(--muted);padding:2px 18px 10px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top">
+    <div class="brand">bridge<b>IQ</b> <span style="font-size:13px" class="muted">standalone</span></div>
+    <div class="status" id="status">Press “New deal” to begin.</div>
+    <div class="menu">
+      <select id="systemSel" title="Bidding system">
+        <option value="SAYC">SAYC</option>
+        <option value="2/1">2/1 game-force</option>
+        <option value="Acol">Standard Acol</option>
+        <option value="French">Standard French</option>
+        <option value="Precision">Precision</option>
+      </select>
+      <select id="detailSel" title="Instrument detail"><option>Beginner</option><option selected>Intermediate</option><option>Expert</option></select>
+      <button class="btn" id="showAllBtn">Show all</button>
+      <button class="btn" id="instrBtn">Instrumented</button>
+      <button class="btn" id="hintBtn">Hint</button>
+      <button class="btn go" id="newBtn">New deal</button>
+    </div>
+  </div>
+  <div class="note">Single self-contained file — full local play (deal · bid · play · score · instrumented view). No network / closed-room. Bid with the box or keyboard (1–7 then ♣♦♥♠/N, p=pass, x=double); play a card by clicking it or pressing its suit then rank. <b>Engine port in progress (built from web/src):</b> scoring and the Bayesian shape/honour estimator are faithful transpiles of the Python validated against it; the full 7-system bidder and DDS/no-peek cardplay are being ported next.</div>
+
+  <div class="wrap" id="tableWrap">
+    <div class="tablecol">
+      <div class="felt" id="felt"></div>
+    </div>
+    <div class="bidbox panel" id="sidebar"></div>
+  </div>
+
+  <div class="wrap hide" id="instrWrap">
+    <div class="tablecol">
+      <div class="instr" id="instr"></div>
+      <div class="legend" id="ilegend"></div>
+    </div>
+  </div>
+</div>
+<div id="modalHost"></div>
+
+<script>
+"use strict";
+/* Validated engine modules (faithful transpiles of the Python backend) are
+ * injected here by web/build.js from web/src/engine/. They publish onto window.BIQ. */
+/*ENGINE-START*/
+/* --- engine/scoring.js --- */
+/* scoring.js — faithful transpile of backend/scoring.py
+ * (calculate_contract_score + diff_to_imps + IMP table). Validated against the
+ * Python in web/test/scoring.test.js. Browser-global on BIQ; node-exported. */
+(function(){
+"use strict";
+const IMP_TABLE=[
+  [20,0],[50,1],[90,2],[130,3],[170,4],
+  [220,5],[270,6],[320,7],[370,8],[430,9],
+  [500,10],[600,11],[750,12],[900,13],[1100,14],
+  [1300,15],[1500,16],[1750,17],[2000,18],[2250,19],
+  [2500,20],[3000,21],[3500,22],[4000,23],[Infinity,24]
+];
+function diffToImps(diff){
+  const ad=Math.abs(diff);
+  for(const [t,imps] of IMP_TABLE){ if(ad<t) return diff>=0?imps:-imps; }
+  return diff>=0?24:-24;
+}
+// strain: 'C','D','H','S','N'. doubled/redoubled: booleans. Returns score from
+// the declarer's perspective (positive = made, negative = down).
+function contractScore(level,strain,doubled,redoubled,tricks,vulnerable){
+  const target=6+level, result=tricks-target;
+  if(result<0){
+    const under=-result;
+    if(redoubled){
+      if(vulnerable) return under>0?-(400+600*(under-1)):0;
+      let s=0; for(let i=0;i<under;i++) s+= i===0?200:(i<3?400:600); return -s;
+    } else if(doubled){
+      if(vulnerable) return under>0?-(200+300*(under-1)):0;
+      let s=0; for(let i=0;i<under;i++) s+= i===0?100:(i<3?200:300); return -s;
+    } else {
+      return vulnerable? -100*under : -50*under;
+    }
+  }
+  let trick;
+  if(strain==='N') trick=40+30*(level-1);
+  else if(strain==='S'||strain==='H') trick=30*level;
+  else trick=20*level;
+  if(doubled) trick*=2;
+  if(redoubled) trick*=4;
+  let score=trick;
+  score += trick>=100 ? (vulnerable?500:300) : 50;        // game / partscore
+  if(level===6) score += vulnerable?750:500;              // small slam
+  else if(level===7) score += vulnerable?1500:1000;       // grand slam
+  if(doubled) score+=50;
+  if(redoubled) score+=100;
+  if(result>0){
+    if(redoubled) score += result*(vulnerable?400:200);
+    else if(doubled) score += result*(vulnerable?200:100);
+    else score += result*((strain==='N'||strain==='S'||strain==='H')?30:20);
+  }
+  return score;
+}
+const api={diffToImps,contractScore,IMP_TABLE};
+if(typeof module!=='undefined') module.exports=api;
+if(typeof window!=='undefined') window.BIQ=Object.assign(window.BIQ||{},api);
+})();
+
+/* --- engine/bayes.js --- */
+/* bayes.js — Bayesian shape & honour estimator. Faithful transpile of
+ * teaching_view.bayes_distribution: a Monte-Carlo posterior over the hidden
+ * hands, sampling full deals of the unseen cards consistent with each hidden
+ * seat's exact remaining count, shown voids, per-suit length caps and HCP
+ * range, then aggregating per-(seat,suit) length probabilities and per-honour
+ * location probabilities. Validated in web/test/bayes.test.js. */
+(function(){
+"use strict";
+const SUITS=['S','H','D','C'];
+const HONRANK={A:4,K:3,Q:2,J:1};
+function mulberry32(seed){let a=seed>>>0;return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+
+/* opts:
+ *   hidden:   [seatIdx]                       hidden seats
+ *   need:     {seat:int}                      cards still to deal to each (net of fixed)
+ *   voids:    {seat:Set('S'..'C')}            suits a seat is known void in
+ *   suitMax:  {seat:{suit:int}}               per-suit length cap (from auction)
+ *   suitMin:  {seat:{suit:int}}               per-suit length floor (default 0)
+ *   hcp:      {seat:[min,max]}                HCP window (counts hcp of dealt+fixed)
+ *   fixedHcp: {seat:int}                      HCP already proven in the seat (fixed cards)
+ *   fixedLen: {seat:{suit:int}}              suit lengths already proven (fixed cards)
+ *   free:     [card]                          unseen cards to distribute (card='Sx')
+ *   honours:  [card]                          unseen honours to locate (subset of free)
+ *   samples, maxAttempts, seed
+ * returns {samples, length:{seat:{suit:{len:prob}}}, honour:{card:{seat:prob}}} or null */
+function bayesDistribution(opts){
+  const hidden=opts.hidden, free=opts.free, need=opts.need;
+  const voids=opts.voids||{}, suitMax=opts.suitMax||{}, suitMin=opts.suitMin||{};
+  const hcp=opts.hcp||{}, fixedHcp=opts.fixedHcp||{}, fixedLen=opts.fixedLen||{};
+  const honours=opts.honours||[];
+  const samples=opts.samples||120, maxAttempts=opts.maxAttempts||4000;
+  const rng=mulberry32((opts.seed!=null?opts.seed:1)>>>0);
+  if(!hidden.length) return null;
+  let total=0; for(const s of hidden) total+=need[s];
+  if(total!==free.length) return null;     // bookkeeping mismatch → caller falls back
+
+  const lenAcc={}, honAcc={};
+  for(const s of hidden){ lenAcc[s]={}; for(const su of SUITS) lenAcc[s][su]={}; }
+  for(const c of honours){ honAcc[c]={}; }
+  const smax=(s,su)=> (suitMax[s]&&suitMax[s][su]!=null)?suitMax[s][su]:13;
+  const smin=(s,su)=> (suitMin[s]&&suitMin[s][su]!=null)?suitMin[s][su]:0;
+  const flen=(s,su)=> (fixedLen[s]&&fixedLen[s][su])||0;
+
+  let valid=0, attempts=0;
+  while(valid<samples && attempts<maxAttempts){
+    attempts++;
+    const hand={}, perSuit={}, cap={};
+    for(const s of hidden){ hand[s]=[]; perSuit[s]={S:flen(s,'S'),H:flen(s,'H'),D:flen(s,'D'),C:flen(s,'C')}; cap[s]=need[s]; }
+    const pool=free.slice();
+    // Fisher-Yates with seeded rng
+    for(let i=pool.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+    let ok=true;
+    for(const c of pool){
+      const su=c[0];
+      const opt=hidden.filter(s=>cap[s]>0 && !(voids[s]&&voids[s].has(su)) && perSuit[s][su]<smax(s,su));
+      if(!opt.length){ok=false;break;}
+      const s=opt[Math.floor(rng()*opt.length)];
+      hand[s].push(c); perSuit[s][su]++; cap[s]--;
+    }
+    if(!ok) continue;
+    if(hidden.some(s=>cap[s]!==0)) continue;
+    // acceptance: HCP window + per-suit min
+    let good=true;
+    for(const s of hidden){
+      if(hcp[s]){
+        let h=fixedHcp[s]||0; for(const c of hand[s]) h+=HONRANK[c[1]]||0;
+        if(h<hcp[s][0]||h>hcp[s][1]){good=false;break;}
+      }
+      for(const su of SUITS){ if(perSuit[s][su]<smin(s,su)){good=false;break;} }
+      if(!good)break;
+    }
+    if(!good) continue;
+    valid++;
+    for(const s of hidden){
+      for(const su of SUITS){ const L=perSuit[s][su]; lenAcc[s][su][L]=(lenAcc[s][su][L]||0)+1; }
+      const ids=new Set(hand[s]);
+      for(const hc of honours){ if(ids.has(hc)) honAcc[hc][s]=(honAcc[hc][s]||0)+1; }
+    }
+  }
+  if(valid<Math.max(8,Math.floor(samples/5))) return null;
+  const length={}, honour={};
+  for(const s of hidden){ length[s]={}; for(const su of SUITS){ length[s][su]={}; for(const L in lenAcc[s][su]) length[s][su][L]=lenAcc[s][su][L]/valid; } }
+  for(const c of honours){ honour[c]={}; for(const s in honAcc[c]) honour[c][s]=honAcc[c][s]/valid; }
+  return {samples:valid, length, honour};
+}
+
+// honour confidence colour (mirrors teaching_view._honour_color)
+function honourColor(p){ return p>0.85?'green':p>0.70?'orange':p>0.55?'red':null; }
+
+const api={bayesDistribution,honourColor};
+if(typeof module!=='undefined') module.exports=api;
+if(typeof window!=='undefined') window.BIQ=Object.assign(window.BIQ||{},api);
+})();
+/*ENGINE-END*/
+/* ============================================================ ENGINE ===== */
+const SUITS=['S','H','D','C'];               // 0..3 ; NT='N'
+const SUIT_SYM={S:'♠',H:'♥',D:'♦',C:'♣',N:'NT'};
+const SUIT_CLASS={S:'sym-s',H:'sym-h',D:'sym-d',C:'sym-c'};
+const RANKS=['A','K','Q','J','T','9','8','7','6','5','4','3','2'];
+const RVAL={A:14,K:13,Q:12,J:11,T:10,'9':9,'8':8,'7':7,'6':6,'5':5,'4':4,'3':3,'2':2};
+const HCP={A:4,K:3,Q:2,J:1};
+const SEATS=['N','E','S','W'];               // 0..3 clockwise
+const HUMAN=2;                               // South
+function partnerOf(i){return (i+2)%4;}
+function isNS(i){return i===0||i===2;}
+
+// seeded RNG (mulberry32)
+function rng(seed){let a=seed>>>0;return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function deal(seed){
+  const cards=[];for(const s of SUITS)for(const r of RANKS)cards.push(s+r);
+  const rnd=rng(seed);
+  for(let i=cards.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[cards[i],cards[j]]=[cards[j],cards[i]];}
+  const hands=[[],[],[],[]];
+  for(let i=0;i<52;i++)hands[i%4].push(cards[i]);
+  return hands.map(sortHand);
+}
+function sortHand(h){return h.slice().sort((a,b)=>{const sa=SUITS.indexOf(a[0]),sb=SUITS.indexOf(b[0]);if(sa!==sb)return sa-sb;return RANKS.indexOf(a[1])-RANKS.indexOf(b[1]);});}
+function hcp(h){return h.reduce((s,c)=>s+(HCP[c[1]]||0),0);}
+function lengths(h){const L={S:0,H:0,D:0,C:0};for(const c of h)L[c[0]]++;return L;}
+function suitCards(h,s){return h.filter(c=>c[0]===s);}
+function lenpts(h){const L=lengths(h);let p=0;for(const s of SUITS)if(L[s]>4)p+=L[s]-4;return hcp(h)+p;}
+function isBalanced(h){const L=lengths(h);const v=SUITS.map(s=>L[s]).sort((a,b)=>a-b);
+  // no void/singleton, at most one doubleton
+  return v[0]>=2 && v.filter(x=>x===2).length<=1;}
+function longestSuit(h,suits){let best=null,bl=-1;for(const s of (suits||SUITS)){const l=lengths(h)[s];if(l>bl){bl=l;best=s;}}return best;}
+
+/* ----------------------------------------------------- BIDDING (SAYC) --- */
+// A call: {kind:'P'|'B'|'X'|'XX', level, strain}  strain in C D H S N
+function callStr(c){if(c.kind==='P')return 'Pass';if(c.kind==='X')return 'Dbl';if(c.kind==='XX')return 'Rdbl';return c.level+SUIT_SYM[c.strain];}
+const STRAIN_ORD={C:0,D:1,H:2,S:3,N:4};
+function bidRank(c){return c.level*5+STRAIN_ORD[c.strain];}
+function lastRealBid(auction){for(let i=auction.length-1;i>=0;i--){if(auction[i].call.kind==='B')return auction[i];}return null;}
+function legalCall(auction,c){
+  if(c.kind==='P')return true;
+  const lr=lastRealBid(auction);
+  if(c.kind==='B'){if(!lr)return true;return bidRank(c)>bidRank(lr.call);}
+  // X: there must be an opponent's bid as the last real call (no intervening bid by our side), and not already doubled
+  const idx=auction.length;
+  // find last non-pass call
+  let last=null;for(let i=auction.length-1;i>=0;i--){if(auction[i].call.kind!=='P'){last=auction[i];break;}}
+  if(c.kind==='X'){if(!last||last.call.kind!=='B')return false;return true;}
+  if(c.kind==='XX'){if(!last||last.call.kind!=='X')return false;return true;}
+  return false;
+}
+
+// describe a bid for the info panel (very short)
+function describe(call,hand){
+  if(call.kind==='P')return 'Pass — nothing more to say.';
+  if(call.kind==='X')return 'Takeout / penalty double.';
+  if(call.kind==='XX')return 'Redouble.';
+  return SUIT_SYM[call.strain]+' bid — '+(call.level)+' level.';
+}
+
+// Per-system parameters. The five systems differ mainly in opening structure
+// (NT range, major length, strong-club) plus a couple of conventions; the
+// constructive response/rebid machinery is shared and adapts to the NT range.
+const SYS={
+  'SAYC':     {majorLen:5, ntMin:15, ntMax:17, nt2:21, strongClub:false, weakNT:false, betterMinor:false, twoOne:false},
+  '2/1':      {majorLen:5, ntMin:15, ntMax:17, nt2:21, strongClub:false, weakNT:false, betterMinor:false, twoOne:true},
+  'Acol':     {majorLen:4, ntMin:12, ntMax:14, nt2:21, strongClub:false, weakNT:true,  betterMinor:false, twoOne:false},
+  'French':   {majorLen:5, ntMin:15, ntMax:17, nt2:21, strongClub:false, weakNT:false, betterMinor:true,  twoOne:false},
+  'Precision':{majorLen:5, ntMin:13, ntMax:15, nt2:21, strongClub:true,  weakNT:false, betterMinor:false, twoOne:false},
+};
+function sysOf(name){return SYS[name]||SYS['SAYC'];}
+
+// The bidder. Returns a legal call for `me` given the auction so far.
+function decideBid(auction, hand, me, dealer, vul, system){
+  const sys=sysOf(system);
+  const p=hcp(hand), L=lengths(hand), tp=lenpts(hand), bal=isBalanced(hand);
+  const partner=partnerOf(me);
+  const myCalls=auction.filter(a=>a.seat===me);
+  const myBids=myCalls.filter(a=>a.call.kind==='B');
+  const partnerBids=auction.filter(a=>a.seat===partner&&a.call.kind==='B');
+  const firstBid=auction.find(a=>a.call.kind==='B');           // overall opener
+  const iOpened=firstBid&&firstBid.seat===me;
+  const partnerOpened=firstBid&&firstBid.seat===partner;
+  const weOpened=firstBid&&isNS(firstBid.seat)===isNS(me);
+  const oppOpened=firstBid&&!weOpened;
+  const lr=lastRealBid(auction);
+  const lastByUs=lr&&isNS(lr.seat)===isNS(me);
+
+  function mk(level,strain){return {kind:'B',level,strain};}
+  function ok(c){return legalCall(auction,c);}
+  function up(c){let lvl=c.level;while(lvl<=7){const cc=mk(lvl,c.strain);if(ok(cc))return cc;lvl++;}return null;}
+
+  // Hard stop: if OUR side already declared game-or-higher, don't climb further
+  // (no slam machinery here — better to stop than run away).
+  if(lastByUs){
+    const c=lr.call;
+    const gamePlus=(c.strain==='N'&&c.level>=3)||((c.strain==='H'||c.strain==='S')&&c.level>=4)
+      ||((c.strain==='C'||c.strain==='D')&&c.level>=5)||c.level>=6;
+    if(gamePlus)return {kind:'P'};
+  }
+
+  if(!firstBid)return openingBid(hand,p,L,tp,bal,ok,mk,up,sys);
+
+  // ---- opponents opened and we haven't bid: overcall / takeout double, ONCE ----
+  if(oppOpened && !weOpened){
+    if(myCalls.some(a=>a.call.kind!=='P'))return {kind:'P'};   // already acted → pass
+    return competeOverOpponent(hand,p,L,bal,lr,ok,mk);
+  }
+
+  // ---- partner opened ----
+  if(partnerOpened){
+    if(myBids.length===0)return respond(hand,p,L,tp,bal,partnerBids,ok,mk,up,sys);
+    return responderRebid(hand,p,L,tp,bal,partnerBids,myBids,ok,mk,up,sys);
+  }
+
+  // ---- I opened ----
+  if(iOpened){
+    if(partnerBids.length&&myBids.length===1)return openerRebid(hand,p,L,tp,bal,myBids,partnerBids,ok,mk,up,sys);
+    return {kind:'P'};
+  }
+  return {kind:'P'};
+}
+
+function competeOverOpponent(hand,p,L,bal,lr,ok,mk){
+  const os=lr.call.strain;
+  // takeout double: opening values, short in their suit, support for the others
+  if(p>=12 && (os==='N'||L[os]<=2)){
+    let support=true;for(const s of SUITS)if(s!==os&&L[s]<3)support=false;
+    if(support&&ok({kind:'X'}))return {kind:'X'};
+  }
+  // natural overcall with a good 5+ suit, at the cheapest legal level (1 or 2)
+  const ov=longestSuit(hand);
+  if(p>=8&&p<=16&&L[ov]>=5){
+    const c1=mk(1,ov);if(ok(c1))return c1;
+    const c2=mk(2,ov);if(L[ov]>=5&&p>=10&&ok(c2))return c2;
+  }
+  if(bal&&p>=15&&p<=18&&os!=='N'&&L[os]>=2){const c=mk(1,'N');if(ok(c))return c;}
+  return {kind:'P'};
+}
+
+// Responder's second turn — conservative: accept invitations / bid game with
+// enough, support a known fit, else pass. Never invents new escalation.
+function responderRebid(hand,p,L,tp,bal,partnerBids,myBids,ok,mk,up,sys){
+  const lastP=partnerBids[partnerBids.length-1].call;
+  // if partner jumped to / is at game already, pass
+  // raise partner's last suit to game with extras and a fit
+  if(lastP.strain!=='N'&&L[lastP.strain]>=3&&tp>=12){
+    const lvl=(lastP.strain==='H'||lastP.strain==='S')?4:5;
+    const c=up(mk(lvl,lastP.strain));if(c&&c.level<=lvl)return c;
+  }
+  // strong balanced → 3NT
+  if(bal&&tp>=12){const c=mk(3,'N');if(ok(c))return c;}
+  return {kind:'P'};
+}
+
+function openMajor(hand,L,sys){ // longest qualifying major (length rule per system)
+  const need=sys.majorLen;
+  if(L.S>=need||L.H>=need){if(L.S>L.H)return 'S';if(L.H>L.S)return 'H';return L.S>=need?'S':'H';}
+  return null;
+}
+function openMinor(L,sys){
+  if(sys.betterMinor){if(L.D>L.C)return 'D';if(L.C>L.D)return 'C';return L.D>=3?'D':'C';}
+  // standard: 4-4 open 1D, 3-3 open 1C, else longer
+  if(L.D>L.C)return 'D'; if(L.C>L.D)return 'C';
+  return L.D>=4?'D':'C';
+}
+function preempt(hand,p,L,ok,mk){
+  if(p>=5&&p<=10){
+    for(const s of ['S','H','D']){if(L[s]===6){const c=mk(2,s);if(ok(c))return c;}}
+    for(const s of ['S','H','D','C']){if(L[s]>=7){const c=mk(3,s);if(ok(c))return c;}}
+  }
+  return null;
+}
+function openingBid(hand,p,L,tp,bal,ok,mk,up,sys){
+  // --- Precision: strong, forcing 1C ---
+  if(sys.strongClub){
+    if(p>=16){const c=mk(1,'C');if(ok(c))return c;}                 // strong artificial
+    if(bal&&p>=sys.ntMin&&p<=sys.ntMax)return mk(1,'N');             // 13-15 NT
+    if(p>=11&&p<=15){
+      const m=openMajor(hand,L,sys); if(m)return mk(1,m);            // 11-15 5+ major
+      if(L.C>=6){const c=mk(2,'C');if(ok(c))return c;}               // 11-15 6+ clubs
+      return mk(1,'D');                                              // 11-15 catch-all (may be short)
+    }
+    if(bal&&p>=20&&p<=21)return mk(2,'N');
+    const pe=preempt(hand,p,L,ok,mk); if(pe)return pe;
+    return {kind:'P'};
+  }
+  // --- Natural systems (SAYC / 2-over-1 / Acol / French) ---
+  if(p>=22){const c=mk(2,'C');if(ok(c))return c;}                    // strong artificial 2C
+  if(bal&&p>=20&&p<=sys.nt2)return mk(2,'N');
+  if(bal&&p>=sys.ntMin&&p<=sys.ntMax)return mk(1,'N');               // weak (12-14) or strong (15-17) NT
+  if(tp>=12||p>=12){
+    const m=openMajor(hand,L,sys); if(m)return mk(1,m);
+    return mk(1,openMinor(L,sys));
+  }
+  const pe=preempt(hand,p,L,ok,mk); if(pe)return pe;
+  return {kind:'P'};
+}
+
+function respond(hand,p,L,tp,bal,partnerBids,ok,mk,up,sys){
+  sys=sys||sysOf('SAYC');
+  const open=partnerBids[0].call; // partner's opening
+  // ---- Precision strong 1C (artificial, 16+) ----
+  if(sys.strongClub&&open.level===1&&open.strain==='C'&&partnerBids.length===1){
+    if(p<8){const c=mk(1,'D');if(ok(c))return c;}                    // negative
+    const ls=longestSuit(hand);
+    if(L[ls]>=5&&ls!=='C'){const c=mk(STRAIN_ORD[ls]>STRAIN_ORD['D']?1:2,ls);if(ok(c))return c;}
+    if(bal&&p>=14){const c=mk(2,'N');if(ok(c))return c;}
+    const c=mk(1,'N');if(ok(c))return c;                             // 8-13 balanced-ish
+    return {kind:'P'};
+  }
+  // ---- responses to 1NT (range-aware: game when p+ntMin>=25, invite when p+ntMax>=25) ----
+  if(partnerBids.length===1&&open.level===1&&open.strain==='N'){
+    const gameP=Math.max(0,25-sys.ntMin), inviteP=Math.max(0,25-sys.ntMax);
+    if(p>=inviteP&&(L.H>=4||L.S>=4)){const c=mk(2,'C');if(ok(c))return c;} // Stayman
+    if(L.H>=5){const c=mk(2,'D');if(ok(c))return c;}                 // transfer to H
+    if(L.S>=5){const c=mk(2,'H');if(ok(c))return c;}                 // transfer to S
+    if(p>=gameP){const c=mk(3,'N');if(ok(c))return c;}
+    if(p>=inviteP){const c=mk(2,'N');if(ok(c))return c;}
+    return {kind:'P'};
+  }
+  // ---- responses to 2NT ----
+  if(open.level===2&&open.strain==='N'){
+    if(p>=5){const c=mk(3,'N');if(ok(c))return c;}
+    return {kind:'P'};
+  }
+  // ---- responses to a suit opening ----
+  if(open.strain!=='N'&&open.level<=2){
+    const os=open.strain, fit=L[os];
+    const major=os==='H'||os==='S';
+    // raise partner's MAJOR with 3+ support
+    if(major&&fit>=3){
+      if(tp>=13){const c=up(mk(4,os));if(c)return c;}       // game raise
+      if(tp>=11){const c=up(mk(3,os));if(c)return c;}       // limit raise
+      const c=up(mk(2,os));if(c)return c;                   // single raise 6-10
+    }
+    // new suit at the 1 level, up the line (4+), 6+ pts
+    if(p>=6){
+      for(const s of ['D','H','S']){
+        if(STRAIN_ORD[s]>STRAIN_ORD[os]&&L[s]>=4){const c=mk(1,s);if(ok(c))return c;}
+      }
+      // 2/1 new suit with 10+ and a good suit
+      if(p>=11){const ls=longestSuit(hand,SUITS.filter(s=>s!==os));if(L[ls]>=4){const c=mk(2,ls);if(ok(c))return c;}}
+    }
+    // raise a MINOR with 5+ support and no major to show
+    if(!major&&fit>=4&&p>=6&&!(L.H>=4||L.S>=4)){
+      if(tp>=11){const c=up(mk(3,os));if(c)return c;}
+      const c=up(mk(2,os));if(c)return c;
+    }
+    // 1NT response 6-10
+    if(p>=6&&p<=10){const c=mk(1,'N');if(ok(c))return c;}
+    if(p>=11&&bal){const c=mk(2,'N');if(ok(c))return c;}
+    return {kind:'P'};
+  }
+  // ---- responding to strong 2C ----
+  if(open.level===2&&open.strain==='C'){
+    if(p>=8){const ls=longestSuit(hand);if(L[ls]>=5&&ls!=='C'){const c=mk(2,ls);if(ok(c))return c;}const c=mk(2,'N');if(ok(c))return c;}
+    const c=mk(2,'D');if(ok(c))return c; // waiting
+    return {kind:'P'};
+  }
+  // ---- partner pre-empted ----
+  if(open.level>=2){
+    if(tp>=16){const c=up(mk(4,open.strain));if(c)return c;}
+    return {kind:'P'};
+  }
+  return {kind:'P'};
+}
+
+function openerRebid(hand,p,L,tp,bal,myBids,partnerBids,ok,mk,up,sys){
+  sys=sys||sysOf('SAYC');
+  const open=myBids[0].call, resp=partnerBids[partnerBids.length-1].call;
+  // partner raised my suit -> evaluate game
+  if(resp.strain===open.strain&&open.strain!=='N'){
+    const major=open.strain==='H'||open.strain==='S';
+    if(major){
+      if(tp>=18){const c=up(mk(4,open.strain));if(c)return c;}
+      return {kind:'P'};
+    }
+    if(tp>=18&&bal){const c=mk(3,'N');if(ok(c))return c;}
+    return {kind:'P'};
+  }
+  // partner bid a new suit -> support, rebid, or NT
+  if(resp.strain!=='N'){
+    if(L[resp.strain]>=4){ // support partner
+      const lvl=tp>=18?(resp.strain==='H'||resp.strain==='S'?4:3):3;
+      const c=up(mk(lvl,resp.strain));if(c)return c;
+    }
+    if(L[open.strain]>=6){const c=up(mk(tp>=16?3:2,open.strain));if(c)return c;} // rebid own 6+
+    if(bal){const lvl=p>=18?3:(p>=15?2:1);const c=up(mk(lvl,'N'));if(c)return c;}
+    // new suit
+    const ns=longestSuit(hand,SUITS.filter(s=>s!==open.strain&&s!==resp.strain));
+    if(L[ns]>=4){const c=up(mk(2,ns));if(c)return c;}
+    return {kind:'P'};
+  }
+  // partner responded NT
+  if(resp.strain==='N'){
+    if(tp>=18){const c=mk(3,'N');if(ok(c))return c;}
+    if(L[open.strain]>=6){const c=up(mk(2,open.strain));if(c)return c;}
+    return {kind:'P'};
+  }
+  return {kind:'P'};
+}
+
+/* ----------------------------------------------------- AUCTION STATE ---- */
+function auctionDone(auction){
+  if(auction.length<4)return false;
+  const last3=auction.slice(-3);
+  if(auction.some(a=>a.call.kind==='B') && last3.every(a=>a.call.kind==='P'))return true;
+  if(auction.length===4 && auction.every(a=>a.call.kind==='P'))return true;
+  return false;
+}
+function finalContract(auction){
+  const lr=lastRealBid(auction);
+  if(!lr)return null; // passed out
+  // doubled state
+  let dbl=0;for(let i=auction.length-1;i>=0;i--){if(auction[i].call.kind==='B')break;if(auction[i].call.kind==='XX'){dbl=2;break;}if(auction[i].call.kind==='X'){dbl=1;break;}}
+  // declarer: first of the contract side to name the strain
+  const side=isNS(lr.seat);
+  let declarer=null;
+  for(const a of auction){if(a.call.kind==='B'&&a.call.strain===lr.call.strain&&isNS(a.seat)===side){declarer=a.seat;break;}}
+  return {level:lr.call.level,strain:lr.call.strain,declarer,doubled:dbl};
+}
+
+/* ----------------------------------------------------- CARD PLAY -------- */
+function trickWinner(cards,leadSuit,trump){ // cards: [{seat,card}]
+  let best=cards[0];
+  for(const c of cards.slice(1)){
+    const cs=c.card[0],bs=best.card[0];
+    if(trump!=='N'&&cs===trump&&bs!==trump)best=c;
+    else if(cs===bs&&RVAL[c.card[1]]>RVAL[best.card[1]])best=c;
+  }
+  return best.seat;
+}
+function legalPlays(hand,trick){
+  if(trick.length===0)return hand.slice();
+  const led=trick[0].card[0];
+  const follow=hand.filter(c=>c[0]===led);
+  return follow.length?follow:hand.slice();
+}
+// Heuristic bot card choice. state has hands, trick, trump, declarer, dummy.
+function chooseCard(G,seat){
+  const hand=G.hands[seat], trick=G.trick, trump=G.contract.strain;
+  const legal=legalPlays(hand,trick);
+  if(legal.length===1)return legal[0];
+  const byRank=(a,b)=>RVAL[a[1]]-RVAL[b[1]];
+  legal.sort(byRank);
+  if(trick.length===0){ // leading
+    const isDecSide=isNS(seat)===isNS(G.contract.declarer);
+    if(!isDecSide){ // defender lead: top of a 3-seq, else 4th best of longest
+      const L=lengths(hand);
+      let best=null,bl=0;for(const s of SUITS){if(L[s]>bl&&!(trump!=='N'&&s===trump)){bl=L[s];best=s;}}
+      if(!best)best=longestSuit(hand);
+      const sc=suitCards(hand,best).sort((a,b)=>RANKS.indexOf(a[1])-RANKS.indexOf(b[1]));
+      // top of touching honours
+      if(sc.length>=2&&RVAL[sc[0][1]]-RVAL[sc[1][1]]===1&&RVAL[sc[0][1]]>=11)return sc[0];
+      return sc[Math.min(3,sc.length-1)]; // 4th best (or lowest)
+    }
+    // declarer/dummy lead: draw trumps if we hold the boss-ish, else cash a winner, else low
+    if(trump!=='N'){const t=suitCards(hand,trump);if(t.length){const high=t.sort(byRank).slice(-1)[0];if(RVAL[high[1]]>=12)return high;}}
+    return legal.slice(-1)[0][0]===trump?legal[0]:legal.slice(-1)[0]; // cash a high card
+  }
+  // following
+  const led=trick[0].card[0];
+  const curWin=trickWinner(trick,led,trump);
+  const partnerWinning=isNS(curWin)===isNS(seat);
+  // can we beat the current winning card?
+  const winCard=trick.find(t=>t.seat===curWin).card;
+  function beats(c){if(c[0]===winCard[0])return RVAL[c[1]]>RVAL[winCard[1]];if(trump!=='N'&&c[0]===trump&&winCard[0]!==trump)return true;return false;}
+  const winners=legal.filter(beats);
+  const lastToPlay=trick.length===3;
+  if(partnerWinning && !lastToPlay)return legal[0]; // partner winning: duck low
+  if(partnerWinning && lastToPlay)return legal[0];  // still low
+  if(winners.length){
+    winners.sort(byRank);
+    // win as cheaply as possible (lastToPlay or 3rd-hand-high)
+    return winners[0];
+  }
+  return legal[0]; // can't win: lowest
+}
+
+/* ----------------------------------------------------- SCORING ---------- */
+function scoreContract(con,tricks,vulDecl){
+  // delegate to the validated transpile of backend/scoring.py (BIQ.contractScore)
+  return BIQ.contractScore(con.level,con.strain,con.doubled===1,con.doubled===2,tricks,vulDecl);
+}
+
+/* ============================================================ UI ========= */
+const G={seed:0,hands:[[],[],[],[]],orig:[[],[],[],[]],dealer:0,vul:'None',
+  auction:[],phase:'idle',turn:0,contract:null,dummy:null,
+  trick:[],trickLead:0,tricksNS:0,tricksEW:0,playCount:0,
+  showAll:false,instr:false,detail:'Intermediate',system:'SAYC',
+  kbdSuit:null,handTotal:0};
+const $=s=>document.querySelector(s);
+function setStatus(t){$('#status').innerHTML=t;}
+
+function newDeal(){
+  G.seed=(G.seed+1)||((Math.floor(Math.random()*1e9))||1);
+  G.hands=deal(G.seed); G.orig=G.hands.map(h=>h.slice());
+  G.dealer=(G.dealer+1)%4;
+  const vulCycle=['None','NS','EW','Both']; G.vul=vulCycle[(G.seed)%4];
+  G.auction=[]; G.phase='bidding'; G.turn=G.dealer; G.contract=null; G.dummy=null;
+  G.trick=[]; G.tricksNS=0; G.tricksEW=0; G.playCount=0; G.showAll=false;
+  G.voidsShown={0:new Set(),1:new Set(),2:new Set(),3:new Set()}; G.playedCards=[];
+  setStatus(`Board ${G.seed} · Dealer ${SEATS[G.dealer]} · Vul ${G.vul} — auction in progress.`);
+  render(); maybeBotBid();
+}
+
+function vulFor(seat){if(G.vul==='Both')return true;if(G.vul==='None')return false;return G.vul==='NS'?isNS(seat):!isNS(seat);}
+
+/* ----- bidding flow ----- */
+function makeCall(call){
+  if(G.phase!=='bidding')return;
+  if(!legalCall(G.auction,call)){return;}
+  G.auction.push({seat:G.turn,call});
+  if(auctionDone(G.auction)){return finishAuction();}
+  G.turn=(G.turn+1)%4; render(); maybeBotBid();
+}
+function maybeBotBid(){
+  if(G.phase!=='bidding')return;
+  if(G.turn===HUMAN){render();return;}
+  setTimeout(()=>{
+    if(G.phase!=='bidding'||G.turn===HUMAN)return;
+    let call=decideBid(G.auction,G.hands[G.turn],G.turn,G.dealer,G.vul,G.system);
+    if(!legalCall(G.auction,call))call={kind:'P'};
+    makeCall(call);
+  },420);
+}
+function finishAuction(){
+  const con=finalContract(G.auction);
+  if(!con){setStatus(`Board ${G.seed} — passed out. No score.`);G.phase='done';render();return;}
+  G.contract=con; G.dummy=partnerOf(con.declarer);
+  G.phase='play'; G.trickLead=(con.declarer+1)%4; G.turn=G.trickLead; G.trick=[];
+  setStatus(contractLabel()+` — opening lead by ${SEATS[G.turn]}.`);
+  render(); maybeBotPlay();
+}
+function contractLabel(){const c=G.contract;return `${c.level}${SUIT_SYM[c.strain]}${c.doubled===1?' X':c.doubled===2?' XX':''} by ${SEATS[c.declarer]}`;}
+
+/* ----- play flow ----- */
+function canSee(seat){return G.showAll||seat===HUMAN||(G.phase==='play'&&seat===G.dummy&&G.playCount>0)||G.phase==='done';}
+function humanControls(seat){ // human plays own hand + dummy when declarer
+  if(seat===HUMAN)return true;
+  if(G.contract&&G.contract.declarer===HUMAN&&seat===G.dummy)return true;
+  return false;
+}
+function playCard(seat,card){
+  if(G.phase!=='play'||seat!==G.turn)return;
+  const legal=legalPlays(G.hands[seat],G.trick);
+  if(!legal.includes(card))return;
+  if(G.trick.length>0){const led=G.trick[0].card[0];if(card[0]!==led)G.voidsShown[seat].add(led);} // show-out → void
+  G.hands[seat]=G.hands[seat].filter(c=>c!==card);
+  G.trick.push({seat,card});
+  G.playCount++;
+  if(G.trick.length===4){
+    const led=G.trick[0].card[0];
+    const w=trickWinner(G.trick,led,G.contract.strain);
+    if(isNS(w))G.tricksNS++;else G.tricksEW++;
+    render();
+    setTimeout(()=>{
+      G.trick=[]; G.trickLead=w; G.turn=w;
+      if(G.tricksNS+G.tricksEW===13)return finishPlay();
+      render(); maybeBotPlay();
+    },800);
+    return;
+  }
+  G.turn=(G.turn+1)%4; render(); maybeBotPlay();
+}
+function maybeBotPlay(){
+  if(G.phase!=='play')return;
+  if(humanControls(G.turn)){render();return;}
+  setTimeout(()=>{
+    if(G.phase!=='play'||humanControls(G.turn))return;
+    const card=chooseCard(G,G.turn);
+    playCard(G.turn,card);
+  },520);
+}
+function finishPlay(){
+  G.phase='done';
+  const decTricks=isNS(G.contract.declarer)?G.tricksNS:G.tricksEW;
+  const sc=scoreContract(G.contract,decTricks,vulFor(G.contract.declarer));
+  const need=G.contract.level+6, diff=decTricks-need;
+  const made=decTricks>=need;
+  const res=made?(diff>0?`making +${diff}`:'making exactly'):`down ${need-decTricks}`;
+  G.lastScore={con:contractLabel(),tricks:decTricks,res,score:sc};
+  render(); showResult();
+}
+
+/* ----- rendering ----- */
+function cardEl(card,playable,small){
+  const red=card[0]==='H'||card[0]==='D';
+  const e=document.createElement('span');
+  e.className='card'+(red?' red':'')+(playable?' play':'')+(small?' mini':'');
+  e.textContent=SUIT_SYM[card[0]]+card[1];
+  if(playable){e.onclick=()=>playCard(G.turn,card);}
+  return e;
+}
+function handHtml(seat,faceUp){
+  const wrap=document.createElement('div');wrap.className='hand vert';
+  const hand=G.hands[seat];
+  for(const s of SUITS){
+    const sc=hand.filter(c=>c[0]===s);
+    const row=document.createElement('div');row.className='suitrow';
+    const sym=document.createElement('span');sym.className='sym '+SUIT_CLASS[s];sym.textContent=SUIT_SYM[s];
+    row.appendChild(sym);
+    if(!faceUp){const b=document.createElement('span');b.className='muted';b.textContent=sc.length?('🂠').repeat(0)+sc.length+' cards':'—';
+      // hidden: just show count
+      b.textContent=sc.length?'·'.repeat(sc.length):'—';row.appendChild(b);wrap.appendChild(row);continue;}
+    if(!sc.length){const d=document.createElement('span');d.className='muted';d.textContent='—';row.appendChild(d);}
+    const canPlay=faceUp&&G.phase==='play'&&seat===G.turn&&humanControls(seat);
+    const legal=canPlay?legalPlays(hand,G.trick):[];
+    for(const c of sc){
+      const playable=canPlay&&legal.includes(c);
+      const e=cardEl(c,playable);e.style.minWidth='26px';e.style.height='34px';e.style.fontSize='15px';
+      row.appendChild(e);
+    }
+    wrap.appendChild(row);
+  }
+  return wrap;
+}
+function seatBox(seat){
+  const box=document.createElement('div');
+  box.className='seatbox '+SEATS[seat].toLowerCase();
+  if(G.phase==='bidding'&&seat===G.turn)box.classList.add('turn');
+  if(G.phase==='play'&&seat===G.turn)box.classList.add('turn');
+  if(G.contract){if(seat===G.contract.declarer||seat===G.dummy)box.classList.add('dec');else box.classList.add('def');}
+  const nm=document.createElement('div');nm.className='nm';
+  let label=SEATS[seat]+(seat===HUMAN?' (You)':'');
+  if(G.contract&&seat===G.contract.declarer)label+=' — Declarer';
+  if(G.contract&&seat===G.dummy)label+=' — Dummy';
+  const hp=canSee(seat)?` <span class="muted">${hcp(G.orig[seat])} HCP</span>`:'';
+  nm.innerHTML=`<span>${label}</span>${hp}`;
+  box.appendChild(nm);
+  const faceUp=canSee(seat);
+  box.appendChild(handHtml(seat,faceUp));
+  return box;
+}
+function trickArea(){
+  const t=document.createElement('div');t.className='trick';
+  const pos={};G.trick.forEach(p=>pos[p.seat]=p.card);
+  for(const seat of [0,1,2,3]){
+    const slot=document.createElement('div');slot.className='slot t-'+SEATS[seat].toLowerCase();
+    if(pos[seat])slot.appendChild(cardEl(pos[seat],false));
+    t.appendChild(slot);
+  }
+  return t;
+}
+function render(){
+  if(G.instr){renderInstr();}
+  $('#instrWrap').classList.toggle('hide',!G.instr);
+  $('#tableWrap').classList.toggle('hide',G.instr);
+  $('#instrBtn').classList.toggle('on',G.instr);
+  if(G.instr)return;
+  const felt=$('#felt');felt.innerHTML='';
+  const n=seatBox(0);n.classList.add('n');felt.appendChild(n);
+  const w=seatBox(3);w.classList.add('w');felt.appendChild(w);
+  const center=document.createElement('div');center.className='center';
+  if(G.phase==='play'){center.appendChild(trickArea());
+    const sc=document.createElement('div');sc.className='potline';
+    sc.textContent=`NS ${G.tricksNS}  ·  EW ${G.tricksEW}   (${contractLabel()})`;center.appendChild(sc);}
+  else if(G.phase==='bidding'){const d=document.createElement('div');d.className='muted';d.textContent='Auction';center.appendChild(d);}
+  felt.appendChild(center);
+  const e=seatBox(1);e.classList.add('e');felt.appendChild(e);
+  const s=seatBox(2);s.classList.add('s');felt.appendChild(s);
+  renderSidebar();
+}
+function renderSidebar(){
+  const sb=$('#sidebar');sb.innerHTML='';
+  if(G.phase==='bidding'){
+    const h=document.createElement('div');h.innerHTML=`<b>Bidding box</b> <span class="muted">— ${SEATS[G.turn]} to call</span>`;sb.appendChild(h);
+    const grid=document.createElement('div');grid.className='bidgrid';
+    // header strains
+    for(const s of ['C','D','H','S','N']){const hd=document.createElement('div');hd.className='bid dis '+(s!=='N'?SUIT_CLASS[s]:'');hd.style.opacity=.9;hd.textContent=SUIT_SYM[s];grid.appendChild(hd);}
+    for(let lvl=1;lvl<=7;lvl++)for(const s of ['C','D','H','S','N']){
+      const c={kind:'B',level:lvl,strain:s};const legal=G.turn===HUMAN&&legalCall(G.auction,c);
+      const b=document.createElement('div');b.className='bid'+(legal?'':' dis')+(s!=='N'?' '+SUIT_CLASS[s]:'');
+      b.textContent=lvl+SUIT_SYM[s];
+      if(legal)b.onclick=()=>{showBidInfo(c);makeCall(c);};
+      grid.appendChild(b);
+    }
+    sb.appendChild(grid);
+    const row=document.createElement('div');row.className='callrow';
+    for(const k of ['P','X','XX']){const c={kind:k};const legal=G.turn===HUMAN&&legalCall(G.auction,c);
+      const b=document.createElement('div');b.className='bid'+(legal?'':' dis');b.textContent=k==='P'?'Pass':k==='X'?'Dbl':'Rdbl';
+      if(legal)b.onclick=()=>makeCall(c);row.appendChild(b);}
+    sb.appendChild(row);
+  }else if(G.phase==='play'){
+    const h=document.createElement('div');h.innerHTML=`<b>${contractLabel()}</b>`;sb.appendChild(h);
+    const d=document.createElement('div');d.className='muted';d.style.marginTop='6px';
+    const decTricks=isNS(G.contract.declarer)?G.tricksNS:G.tricksEW;
+    d.innerHTML=`Declarer tricks: <b style="color:var(--ink)">${decTricks}</b> / need ${G.contract.level+6}<br>${SEATS[G.turn]} to play`;
+    sb.appendChild(d);
+  }
+  // auction table
+  sb.appendChild(auctionTable());
+  // bid info
+  const info=document.createElement('div');info.className='bidinfo';info.id='bidinfo';
+  info.innerHTML=`<b>System:</b> ${G.system}. <span class="muted">Bids explained as you make them.</span>`;
+  sb.appendChild(info);
+}
+function auctionTable(){
+  const t=document.createElement('table');t.className='auction';
+  const head=document.createElement('tr');for(const s of SEATS){const th=document.createElement('th');th.textContent=s;head.appendChild(th);}t.appendChild(head);
+  // pad to dealer
+  let cells=[];for(let i=0;i<G.dealer;i++)cells.push('');
+  for(const a of G.auction)cells.push(callStr(a.call));
+  let tr=document.createElement('tr');
+  cells.forEach((c,i)=>{const td=document.createElement('td');td.textContent=c;tr.appendChild(td);if((i+1)%4===0){t.appendChild(tr);tr=document.createElement('tr');}});
+  if(tr.children.length)t.appendChild(tr);
+  return t;
+}
+function showBidInfo(call){const el=$('#bidinfo');if(el)el.innerHTML=`<b>${callStr(call)}</b> — ${describe(call,G.hands[HUMAN])}`;}
+
+/* ----- result modal ----- */
+function showResult(){
+  const s=G.lastScore;const ns=isNS(G.contract.declarer)?s.score:-s.score;
+  const host=$('#modalHost');host.innerHTML='';
+  const bg=document.createElement('div');bg.className='modalbg';
+  const m=document.createElement('div');m.className='modal';
+  m.innerHTML=`<h2>${s.con}</h2><div>${s.tricks} tricks — ${s.res}</div>
+    <div class="score" style="color:${ns>=0?'var(--pos)':'var(--neg)'}">NS ${ns>=0?'+':''}${ns}</div>
+    <div class="muted">Board ${G.seed} · Vul ${G.vul}</div>`;
+  const btns=document.createElement('div');btns.style.marginTop='14px';
+  const b1=document.createElement('button');b1.className='btn';b1.textContent='Review (show all)';b1.onclick=()=>{G.showAll=true;host.innerHTML='';render();};
+  const b2=document.createElement('button');b2.className='btn go';b2.textContent='Next deal';b2.style.marginLeft='8px';b2.onclick=()=>{host.innerHTML='';newDeal();};
+  btns.appendChild(b1);btns.appendChild(b2);m.appendChild(btns);
+  bg.appendChild(m);host.appendChild(bg);
+}
+
+/* ----- HINT ----- */
+function hint(){
+  if(G.phase==='bidding'&&G.turn===HUMAN){
+    const c=decideBid(G.auction,G.hands[HUMAN],HUMAN,G.dealer,G.vul,G.system);
+    setStatus(`Hint: the engine would call <b>${callStr(c)}</b>.`);
+  }else if(G.phase==='play'&&humanControls(G.turn)){
+    const c=chooseCard(G,G.turn);
+    setStatus(`Hint: try <b>${SUIT_SYM[c[0]]+c[1]}</b>.`);
+  }else setStatus('Hint available on your turn.');
+}
+
+/* ============================================================ INSTRUMENT = */
+function known(seat){ // cards we can prove for a seat right now
+  if(canSee(seat))return G.hands[seat].slice();
+  // forced: a card is forced to a hidden seat if every other hidden seat is void in it
+  return []; // simplified for hidden hands
+}
+function remainingRanks(suit){ // ranks of suit still in play
+  const seen=new Set();
+  for(const seat of [0,1,2,3])if(canSee(seat))for(const c of G.hands[seat])if(c[0]===suit)seen.add(c[1]);
+  for(const t of G.playLog||[]){} // (play already removed from hands)
+  // ranks still held somewhere = all ranks minus those played
+  const played=new Set(G.playedCards||[]);
+  return RANKS.filter(r=>!played.has(suit+r));
+}
+function winnersIn(cards,suit){ // top run held in suit vs remaining
+  const held=cards.filter(c=>c[0]===suit).map(c=>c[1]);
+  const rem=remainingRanks(suit);
+  const wins=[];for(const r of rem){if(held.includes(r))wins.push(r);else break;}
+  return wins;
+}
+function suitLoserRanks(cards,suit){
+  const held=cards.filter(c=>c[0]===suit).map(c=>c[1]).sort((a,b)=>RANKS.indexOf(a)-RANKS.indexOf(b));
+  if(!held.length)return [];
+  const rem=remainingRanks(suit);const n=Math.min(3,held.length);
+  let missing=0;for(let i=0;i<n;i++)if(!held.includes(rem[i]))missing++;
+  return missing<=0?[]:held.slice(held.length-missing);
+}
+function renderInstr(){
+  trackPlayed();
+  G._post=computeBayes();
+  const root=$('#instr');root.innerHTML='';
+  const con=G.contract;const trump=con?con.strain:null;
+  const decSide=con?isNS(con.declarer):null;
+  // panels + hands in a 3x3 cross
+  root.appendChild(ipanel('contract','Contract / Tricks',contractPanel()));
+  root.appendChild(handGrid(0));
+  root.appendChild(ipanel('plan','Plan',planPanel()));
+  root.appendChild(handGrid(3));
+  root.appendChild(centrePanel());
+  root.appendChild(handGrid(1));
+  root.appendChild(ipanel('count','Count / Honours',countPanel()));
+  root.appendChild(handGrid(2));
+  root.appendChild(ipanel('coach','Coaching / Signals',coachPanel()));
+  $('#ilegend').innerHTML=
+    `Known: <span class="box" style="background:var(--gold);color:#06121f">&nbsp;A&nbsp;</span> master · `+
+    `<span class="box" style="border:1px solid var(--pos)">K</span> sure winner · `+
+    `<span class="box" style="border:1px solid var(--neg)">x</span> loser · tinted = trumps. `+
+    `Detail: ${G.detail}.`;
+}
+function ipanel(cls,title,bodyHtml){const d=document.createElement('div');d.className='ipanel '+cls;d.innerHTML=`<h3>${title}</h3>`+bodyHtml;return d;}
+function symSpan(s){return `<span class="${SUIT_CLASS[s]}">${SUIT_SYM[s]}</span>`;}
+function handGrid(seat){
+  const d=document.createElement('div');d.className='hgrid';
+  if(G.contract){if(seat===G.contract.declarer||seat===G.dummy)d.classList.add('dec');else d.classList.add('def');}
+  let role='';if(G.contract){if(seat===G.contract.declarer)role=' · Declarer';else if(seat===G.dummy)role=' · Dummy';}
+  const seeIt=canSee(seat);
+  const hcpTxt=seeIt?` <span class="muted">${hcp(G.hands[seat])} HCP</span>`:'';
+  let html=`<h3>${SEATS[seat]}${role} (${G.hands[seat].length})${hcpTxt}</h3>`;
+  html+='<table><tr><td></td><td class="colh">Known</td><td class="colh">Other</td></tr>';
+  for(const s of SUITS){
+    const cards=seeIt?G.hands[seat]:[];
+    html+=`<tr><td class="${SUIT_CLASS[s]}" style="font-weight:700">${SUIT_SYM[s]}</td>`;
+    html+=`<td>${knownCell(seat,s,seeIt)}</td>`;
+    html+=`<td class="muted">${otherCell(seat,s,seeIt)}</td></tr>`;
+  }
+  html+='</table>';
+  d.innerHTML=html;
+  return d;
+}
+function knownCell(seat,suit,seeIt){
+  if(!seeIt)return '<span class="muted">—</span>';
+  const cards=G.hands[seat];const sc=cards.filter(c=>c[0]===suit).map(c=>c[1]);
+  if(!sc.length)return '<span class="muted">—</span>';
+  const rem=remainingRanks(suit);const boss=rem[0];
+  const wins=winnersIn(cards,suit);
+  const decSide=G.contract&&(seat===G.contract.declarer||seat===G.dummy);
+  const losers=decSide?suitLoserRanks(cards,suit).filter(r=>!wins.includes(r)):[];
+  const isTrump=G.contract&&G.contract.strain===suit;
+  return sc.map(r=>{
+    let st='';
+    if(r===boss)st='background:var(--gold);color:#06121f;border-radius:3px;padding:0 2px;font-weight:700';
+    else if(wins.includes(r))st='border:1px solid var(--pos);border-radius:3px;padding:0 1px';
+    else if(losers.includes(r))st='border:1px solid var(--neg);border-radius:3px;padding:0 1px';
+    if(isTrump)st+=';background:rgba(63,185,80,.18)';
+    return `<span class="${SUIT_CLASS[suit]}" style="${st}">${r}</span>`;
+  }).join(' ');
+}
+function otherCell(seat,suit,seeIt){
+  if(G.detail==='Beginner')return seeIt?'':'';
+  if(seeIt)return ''+G.hands[seat].filter(c=>c[0]===suit).length;
+  // hidden: max range + Bayesian likely (≈) count + colour-coded honours
+  const played=(G.playedCards||[]).filter(c=>c[0]===suit).length;
+  const out=13-played-knownOfSuit(suit);
+  const rng=out<=0?'0':('0-'+Math.min(out,13));
+  let html=rng;
+  const lk=likelyLen(seat,suit);
+  if(lk!=null && String(lk)!==rng) html+=` <span style="color:var(--accent);font-size:12px">≈${lk}</span>`;
+  const hon=honourHtmlFor(seat,suit); if(hon) html+=' '+hon;
+  return html;
+}
+function knownOfSuit(suit){let n=0;for(const seat of[0,1,2,3])if(canSee(seat))n+=G.hands[seat].filter(c=>c[0]===suit).length;return n;}
+function centrePanel(){
+  const d=document.createElement('div');d.className='ipanel';d.style.borderLeft='3px solid var(--line)';
+  d.innerHTML='<h3>Table</h3>';
+  if(G.phase==='play'){
+    const t=trickArea();d.appendChild(t);
+    const p=document.createElement('div');p.className='muted';p.style.marginTop='6px';p.textContent=`NS ${G.tricksNS} · EW ${G.tricksEW} — ${SEATS[G.turn]} to play`;d.appendChild(p);
+  }else{const p=document.createElement('div');p.className='muted';p.textContent=G.phase==='bidding'?'Auction in progress.':'No board.';d.appendChild(p);}
+  return d;
+}
+function contractPanel(){
+  if(!G.contract)return '<span class="muted">Auction in progress.</span>';
+  const c=G.contract;const decTricks=isNS(c.declarer)?G.tricksNS:G.tricksEW;
+  const defTricks=isNS(c.declarer)?G.tricksEW:G.tricksNS;
+  const need=Math.max(0,(c.level+6)-decTricks);const defNeed=Math.max(0,(14-(c.level+6))-defTricks);
+  return `<b>${contractLabel()}</b><br>Declarer ${decTricks} · Defence ${defTricks}<br>`+
+    `<b>The race:</b> declarer needs ${need} more, defence needs ${defNeed} to beat it.<br>`+
+    `<span class="muted">Vul ${G.vul}</span>`;
+}
+function planPanel(){
+  if(!G.contract||G.detail==='Beginner')return '<span class="muted">Plan appears at Intermediate / Expert.</span>';
+  const c=G.contract,trump=c.strain;const dec=c.declarer,dummy=G.dummy;
+  let lines=[];
+  if(canSee(dec)&&canSee(dummy)){
+    // losers per suit (combined long hand)
+    let per=[],tot=0;
+    for(const s of SUITS){
+      const holds=[suitCards(G.hands[dec],s),suitCards(G.hands[dummy],s)].sort((a,b)=>b.length-a.length);
+      const longer=holds[0];const wins=winnersIn(longer,s);
+      const lz=suitLoserRanks(longer,s).filter(r=>!wins.includes(r)).length;tot+=lz;if(lz)per.push(symSpan(s)+lz);
+    }
+    if(per.length)lines.push(`<span style="color:var(--neg)">Losers: ${per.join(' ')}</span> (total ${tot})`);
+  }
+  if(trump==='N')lines.push('NT: count winners, develop your longest suit.');
+  else{
+    lines.push('<i>Shall I draw trumps? If not, why not?</i>');
+    const rem=remainingRanks(trump);const boss=rem[0];
+    let holder=null;for(const seat of[0,1,2,3])if(canSee(seat)&&G.hands[seat].some(x=>x===trump+boss))holder=seat;
+    if(holder!==null){const ours=(holder===dec||holder===dummy);
+      lines.push(ours?'Trump master is yours — draw trumps unless you need a ruff.':`<span style="color:var(--gold)">Opponent holds the master trump (${symSpan(trump)}${boss}).</span>`);}
+  }
+  return lines.join('<br>')||'<span class="muted">—</span>';
+}
+function countPanel(){
+  if(G.detail==='Beginner')return '<span class="muted">Counting aids at Intermediate / Expert.</span>';
+  let seen=0;for(const seat of[0,1,2,3])if(canSee(seat))seen+=hcp(G.hands[seat]);
+  let html=`Unseen HCP <b>${40-seen}</b>`;
+  if(G.detail==='Expert'){
+    html+='<table style="margin-top:4px;font-size:13px"><tr><td></td>'+SUITS.map(s=>`<td>${symSpan(s)}</td>`).join('')+'<td>cards</td></tr>';
+    for(const seat of[0,1,2,3]){
+      html+=`<tr><td><b>${SEATS[seat]}</b></td>`;
+      for(const s of SUITS){const v=canSee(seat)?G.hands[seat].filter(c=>c[0]===s).length:'?';html+=`<td>${v}</td>`;}
+      html+=`<td>${G.hands[seat].length}</td></tr>`;
+    }
+    html+='</table>';
+  }
+  // Bayesian estimator: missing-honour locations (with %) + likely shapes.
+  const p=G._post;
+  if(p){
+    const hidden=[0,1,2,3].filter(s=>!canSee(s));
+    const honParts=[];
+    for(const su of SUITS)for(const r of ['A','K','Q','J']){
+      const pr=p.honour[su+r];if(!pr)continue;
+      const seg=hidden.filter(s=>pr[s]>=0.05).map(s=>`${SEATS[s]} ${Math.round(pr[s]*100)}%`).join(' ');
+      if(seg)honParts.push(`${symSpan(su)}${r}: ${seg}`);
+    }
+    if(honParts.length)html+=`<br><b>Missing honours</b> <span class="muted" style="font-size:11px">(Bayes, ${p.samples} worlds)</span><br>`+honParts.join(' · ');
+    const shapes=hidden.map(s=>{const parts=SUITS.map(su=>{const L=likelyLen(s,su);return L==null?'?':L;});return `${SEATS[s]} ${parts.join('-')}`;});
+    if(shapes.length)html+=`<br><b>Likely shape</b> <span class="muted" style="font-size:11px">(♠♥♦♣)</span><br>`+shapes.join(' · ');
+  }
+  return html;
+}
+function coachPanel(){
+  let tips=[];
+  if(G.phase==='bidding')tips.push('Bidding — note each call’s meaning.');
+  else if(G.contract){
+    if(G.contract.strain==='N')tips.push('Count sure tricks, then develop the long suit before cashing.');
+    else tips.push('Count losers first; then decide whether to draw trumps now.');
+    tips.push('Watch the spot cards — high-low shows count / encouragement.');
+  }
+  return '• '+tips.join('<br>• ');
+}
+// track played cards for the instrument inferences
+function trackPlayed(){
+  if(!G.playedCards)G.playedCards=[];
+  // recompute from orig minus current hands
+  const cur=new Set();for(const seat of[0,1,2,3])for(const c of G.hands[seat])cur.add(c);
+  G.playedCards=[];for(const seat of[0,1,2,3])for(const c of G.orig[seat])if(!cur.has(c))G.playedCards.push(c);
+}
+// Bayesian shape & honour posterior over the hidden hands (validated estimator).
+function computeBayes(){
+  trackPlayed();
+  if(G.detail==='Beginner')return null;
+  const hidden=[0,1,2,3].filter(s=>!canSee(s));
+  if(!hidden.length)return null;
+  const seen=new Set(G.playedCards);
+  for(const s of[0,1,2,3])if(canSee(s))for(const c of G.hands[s])seen.add(c);
+  const all=[];for(const su of SUITS)for(const r of RANKS)all.push(su+r);
+  const free=all.filter(c=>!seen.has(c));
+  const need={};let tot=0;for(const s of hidden){need[s]=G.hands[s].length;tot+=need[s];}
+  if(tot!==free.length)return null;
+  const voids={};for(const s of hidden)voids[s]=G.voidsShown&&G.voidsShown[s]||new Set();
+  const honours=free.filter(c=>'AKQJ'.includes(c[1]));
+  try{return BIQ.bayesDistribution({hidden,need,voids,free,honours,
+    samples:G.detail==='Expert'?160:90,seed:(G.seed*131+G.playCount)>>>0});}
+  catch(e){return null;}
+}
+const HCOL={green:'var(--pos)',orange:'var(--orange)',red:'var(--neg)'};
+function likelyLen(seat,suit){const p=G._post;if(!p||!p.length[seat])return null;const d=p.length[seat][suit]||{};let best=null,bp=-1;for(const L in d)if(d[L]>bp){bp=d[L];best=+L;}return best;}
+function honourHtmlFor(seat,suit){ // colour-coded honours likely in this hidden seat (no %)
+  const p=G._post;if(!p)return '';let out=[];
+  for(const r of ['A','K','Q','J']){const c=suit+r;const pr=p.honour[c];if(!pr)continue;const col=BIQ.honourColor(pr[seat]||0);if(col)out.push(`<span style="color:${HCOL[col]};font-weight:700">${r}</span>`);}
+  return out.join('');
+}
+
+/* ============================================================ EVENTS ===== */
+/* expose pure engine for node tests (before the DOM-only boot block) */
+if(typeof module!=='undefined')module.exports={deal,hcp,lengths,decideBid,legalCall,auctionDone,finalContract,scoreContract,trickWinner,legalPlays,chooseCard,bidRank,isBalanced,SYS,
+  _ui:{G,newDeal,makeCall,playCard,render,get phase(){return G.phase;}}};
+
+if(typeof document!=='undefined'){
+$('#newBtn').onclick=newDeal;
+$('#showAllBtn').onclick=()=>{G.showAll=!G.showAll;$('#showAllBtn').classList.toggle('on',G.showAll);render();};
+$('#instrBtn').onclick=()=>{G.instr=!G.instr;render();};
+$('#hintBtn').onclick=hint;
+$('#detailSel').onchange=e=>{G.detail=e.target.value;render();};
+$('#systemSel').onchange=e=>{G.system=e.target.value;};
+document.addEventListener('keydown',e=>{
+  const k=e.key.toUpperCase();
+  if(G.phase==='bidding'&&G.turn===HUMAN){
+    if(k==='P'){makeCall({kind:'P'});return;}
+    if(k==='X'){const c={kind:legalCall(G.auction,{kind:'XX'})?'XX':'X'};makeCall(c);return;}
+    if('1234567'.includes(k)){G.kbdLevel=+k;setStatus(`Level ${k} — now press a strain (C D H S N).`);return;}
+    if('CDHSN'.includes(k)&&G.kbdLevel){const c={kind:'B',level:G.kbdLevel,strain:k};G.kbdLevel=null;if(legalCall(G.auction,c)){showBidInfo(c);makeCall(c);}return;}
+  }
+  if(G.phase==='play'&&humanControls(G.turn)){
+    if('SHDC'.includes(k)){G.kbdSuit=k;return;}
+    if('AKQJT98765432'.includes(k)){
+      let suit=G.kbdSuit;const hand=G.hands[G.turn];
+      if(!suit){const led=G.trick[0]&&G.trick[0].card[0];if(led&&hand.some(c=>c[0]===led))suit=led;}
+      if(!suit)return;const card=suit+(k==='0'?'T':k);G.kbdSuit=null;
+      if(hand.includes(card)&&legalPlays(hand,G.trick).includes(card))playCard(G.turn,card);
+    }
+  }
+});
+
+/* boot */
+render();
+setStatus('Press “New deal” to begin. (South is you.)');
+} /* end DOM-only block */
+</script>
+</body>
+</html>

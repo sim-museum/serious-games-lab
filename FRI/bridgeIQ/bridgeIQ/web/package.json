@@ -1,0 +1,10 @@
+{
+  "name": "bridgeiq-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Single-file browser build of bridgeIQ — a faithful transpile of the Python engine, assembled from web/src/engine/ into ../biq.html.",
+  "scripts": {
+    "build": "node build.js",
+    "test": "node test/scoring.test.js && node test/bayes.test.js"
+  }
+}

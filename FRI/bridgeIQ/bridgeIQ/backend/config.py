@@ -126,6 +126,25 @@ class PreferencesConfig:
     mini_show_all_hcp: bool = True
     mini_auto_declarer: bool = True
     mini_suggest_contract: bool = True
+    # Show the "Information about the bids" panel docked at the upper-left of
+    # the bidding screen (embedded, not a floating window). Off hides it.
+    show_bid_info_panel: bool = True
+    # Claude Code integration (post-hand AI analysis, annotated transcripts,
+    # AI hints). OFF by default — it shells out to the `claude` CLI, costs
+    # tokens, and isn't needed for ordinary play. Turn on in Preferences.
+    claude_code_enabled: bool = False
+    # Whether a Q-Plus install is available for closed-room / Q-NET play.
+    # "none"  → no Q-Plus (default): hide the closed-room / Q-NET features.
+    # "demo"  → Q-Plus demo build available (limited boards).
+    # "full"  → full licensed Q-Plus available.
+    qplus_availability: str = "none"
+    # Per-pair carding agreement shown/decoded in the instrumented view. Preset
+    # names from teaching_view.CARDING_PRESETS ("Standard", "Upside-down",
+    # "Std + Lavinthal", "UDCA + Lavinthal"). Empty = derive from
+    # signalling_convention. smith_echo ∈ Off / Standard / Reverse.
+    carding_ns: str = ""
+    carding_ew: str = ""
+    smith_echo: str = "Off"
 
 
 @dataclass
@@ -147,11 +166,11 @@ class GameConfig:
     version: str = "17.1"
 
     # Players
-    north: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="N: BEN"))
-    east: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="E: BEN"))
+    north: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="N: BridgeIQ"))
+    east: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="E: BridgeIQ"))
     south: PlayerConfig = field(default_factory=lambda: PlayerConfig(
         player_type=PlayerType.HUMAN, visible=True, name="S: HUMAN"))
-    west: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="W: BEN"))
+    west: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="W: BridgeIQ"))
 
     # Strength settings (0-100)
     strength_ns: int = 72
@@ -407,6 +426,24 @@ class ConfigManager:
         if "preference.mini_suggest_contract" in data:
             self.config.preferences.mini_suggest_contract = (
                 data["preference.mini_suggest_contract"] == "1")
+        if "preference.show_bid_info_panel" in data:
+            self.config.preferences.show_bid_info_panel = (
+                data["preference.show_bid_info_panel"] == "1")
+        if "preference.claude_code_enabled" in data:
+            self.config.preferences.claude_code_enabled = (
+                data["preference.claude_code_enabled"] == "1")
+        if "preference.qplus_availability" in data:
+            v = data["preference.qplus_availability"].strip().lower()
+            if v in ("none", "demo", "full"):
+                self.config.preferences.qplus_availability = v
+        if "preference.carding_ns" in data:
+            self.config.preferences.carding_ns = data["preference.carding_ns"].strip()
+        if "preference.carding_ew" in data:
+            self.config.preferences.carding_ew = data["preference.carding_ew"].strip()
+        if "preference.smith_echo" in data:
+            v = data["preference.smith_echo"].strip()
+            if v in ("Off", "Standard", "Reverse"):
+                self.config.preferences.smith_echo = v
 
     def save_preferences(self):
         """Save user preferences."""
@@ -448,6 +485,15 @@ class ConfigManager:
                 "1" if self.config.preferences.mini_auto_declarer else "0"),
             "preference.mini_suggest_contract": (
                 "1" if self.config.preferences.mini_suggest_contract else "0"),
+            "preference.show_bid_info_panel": (
+                "1" if self.config.preferences.show_bid_info_panel else "0"),
+            "preference.claude_code_enabled": (
+                "1" if self.config.preferences.claude_code_enabled else "0"),
+            "preference.qplus_availability":
+                self.config.preferences.qplus_availability,
+            "preference.carding_ns": self.config.preferences.carding_ns,
+            "preference.carding_ew": self.config.preferences.carding_ew,
+            "preference.smith_echo": self.config.preferences.smith_echo,
         }
         self._write_config_file(filepath, data, description="BridgeIQ preferences")
 
