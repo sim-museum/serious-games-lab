@@ -70,7 +70,8 @@ SUIT_NAME = {Suit.SPADES: "spades", Suit.HEARTS: "hearts",
 TV_SUIT_COLOR = {
     Suit.SPADES:   "#e8eef6",   # near-white (black was invisible on blue)
     Suit.HEARTS:   "#ff6b6b",
-    Suit.DIAMONDS: "#ffb44d",   # orange (dark blue was invisible on blue)
+    Suit.DIAMONDS: "#5aa6ff",   # blue, to match the (4-colour) card diamonds
+                                # — a bright blue stays readable on the dark felt
     Suit.CLUBS:    "#57d07b",
 }
 
@@ -308,7 +309,7 @@ def suit_length_text(seat: Seat, suit: Suit, visible: Set[Seat], layout,
     """Short OTHER-cell length token for a suit row."""
     known = layout["known"][seat][suit]
     if seat in visible:
-        return f"{len(known)}"
+        return "void" if not known else f"{len(known)}"
     if suit in layout["voids"][seat]:
         return "void"
     lo, hi = 0, 13
