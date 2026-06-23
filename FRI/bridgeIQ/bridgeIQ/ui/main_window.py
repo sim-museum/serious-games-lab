@@ -4168,7 +4168,7 @@ For more information, see the README file."""
         # Shift the table right while the panel overlays the top-left, so the
         # West column / label isn't clipped behind it; restore when hidden.
         try:
-            inset = (dock.width() + 22) if want else 5
+            inset = (dock.width() + 22) if want else 0
             self.table_view.set_left_inset(inset)
         except Exception:
             pass
@@ -7550,8 +7550,13 @@ For more information, see the README file."""
             if (hasattr(self, "teaching_panel_action")
                     and self.teaching_panel_action.isChecked()):
                 self._refresh_inferences_from_board()
-            # Hide bid info window during card play
+            # Hide bid info window during card play — and undo the table
+            # right-shift it caused, so cardplay isn't off-centre / clipped.
             self.bid_info_dock.hide()
+            try:
+                self.table_view.set_left_inset(0)
+            except Exception:
+                pass
             # Dummy reveal is broadcast strictly after the opening lead
             # — see _maybe_reveal_dummy_after_lead. Even when the host's
             # side declared and dummy is already shown locally, guests

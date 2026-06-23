@@ -1303,6 +1303,10 @@ class TableView(QWidget):
         # the upper-left of the screen instead of the middle.
         middle_layout = QHBoxLayout()
         middle_layout.setSpacing(10)
+        # Kept so the bid-info panel overlay can shift JUST this row (W/felt/E)
+        # right of itself, without moving the bottom hand (which would push the
+        # rightmost suit off-screen). See set_left_inset.
+        self._middle_layout = middle_layout
 
         # West column
         self.west_column = QWidget()
@@ -1544,14 +1548,15 @@ class TableView(QWidget):
     }
 
     def set_left_inset(self, px: int):
-        """Shift the whole table right by `px`. Used while the bid-info panel
-        (a fixed-width overlay pinned at the top-left) is showing, so the West
-        column / label isn't clipped underneath it."""
-        lay = self.layout()
+        """Shift ONLY the middle play row (W | felt | E) right by `px`, used
+        while the bid-info panel overlay covers the top-left so the West label
+        isn't clipped. The bottom hand row is untouched (insetting the whole
+        table pushed the rightmost suit off-screen)."""
+        lay = getattr(self, '_middle_layout', None)
         if lay is None:
             return
         m = lay.contentsMargins()
-        lay.setContentsMargins(max(5, int(px)), m.top(), m.right(), m.bottom())
+        lay.setContentsMargins(max(0, int(px)), m.top(), m.right(), m.bottom())
 
     def set_seat_types(self, mapping: Dict[Seat, PlayerType]):
         """Push the real per-seat player types (from the game controller /
