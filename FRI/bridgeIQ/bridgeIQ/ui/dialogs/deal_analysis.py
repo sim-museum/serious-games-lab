@@ -288,7 +288,7 @@ class DealAnalysisDialog(QDialog):
         progress.setWindowTitle("Deal Analysis")
         progress.setFixedSize(420, 110)
         p_layout = QVBoxLayout(progress)
-        p_label = QLabel("Claude Opus 4.7 is grading your actions…")
+        p_label = QLabel("Claude is grading your actions…")
         p_label.setFont(QFont("Arial", 12))
         p_layout.addWidget(p_label)
         p_bar = QProgressBar()

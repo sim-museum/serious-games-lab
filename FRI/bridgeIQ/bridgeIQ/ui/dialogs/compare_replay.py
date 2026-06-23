@@ -706,7 +706,7 @@ class CompareReplayDialog(QDialog):
 
         self.transcript_btn = QPushButton("Annotated transcript (Claude)")
         self.transcript_btn.setToolTip(
-            "Send both BDLs (open + closed room) to Claude Opus 4.7 with "
+            "Send both BDLs (open + closed room) to Claude with "
             "extended thinking and get a side-by-side annotated transcript: "
             "bidding differences, card-play differences, what the human "
             "did well, and where they could improve."
@@ -1141,7 +1141,7 @@ class CompareReplayDialog(QDialog):
             host._run_claude_with_dialog(
                 prompt=prompt,
                 title=title,
-                wait_label="Claude Opus 4.7 is comparing the two rooms… "
+                wait_label="Claude is comparing the two rooms… "
                            "(a full two-room critique can take several minutes)",
                 timeout_seconds=900,
             )

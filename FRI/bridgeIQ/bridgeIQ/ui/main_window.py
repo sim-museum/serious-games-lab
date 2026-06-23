@@ -1774,6 +1774,9 @@ class MainWindow(QMainWindow):
 
     def _on_next_deal(self):
         """Handle Next deal button - return to opening screen or advance teams match."""
+        # Close the end-of-hand summary overlay so it doesn't linger over the
+        # next deal.
+        self._dismiss_end_of_hand_dialogs()
         # Strip the Q-Plus end-of-hand winner outlines from the
         # previous deal so the next hand starts visually clean.
         try:
@@ -3411,6 +3414,9 @@ For more information, see the README file."""
         )
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
+        # Close the end-of-hand summary so it doesn't sit over the table while
+        # the computer replays the deal.
+        self._dismiss_end_of_hand_dialogs()
         choice = dlg.get_choice()
 
         board = self.controller.board
@@ -5975,19 +5981,32 @@ For more information, see the README file."""
             return False
 
     def _claude_disabled_notice(self):
-        # Use styled_info (a custom word-wrapping QDialog) rather than a raw
-        # QMessageBox: under the dark window stylesheet the plain message box
-        # doesn't size to its text and clips the right edge ("…is disable",
-        # "…AI &"). styled_info pins a sensible wrap width so nothing is cut.
+        """Tell the user Claude is off — and offer a button straight to
+        Preferences to switch it on."""
+        from PyQt6.QtWidgets import QMessageBox
+        box = QMessageBox(self)
         try:
-            from .dialogs.dialog_style import styled_info
-            styled_info(
-                self, "Claude Code is off",
-                "Claude Code analysis is disabled.\n\n"
-                "Enable it in Preferences → AI & Network to use post-hand "
-                "analysis, annotated transcripts and AI hints.")
+            from .dialogs.dialog_style import MESSAGEBOX_STYLESHEET
+            box.setStyleSheet(MESSAGEBOX_STYLESHEET)
         except Exception:
             pass
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("Claude is off")
+        box.setText("Claude analysis is disabled — it's an opt-in feature.")
+        box.setInformativeText(
+            "Enable it in Preferences → AI & Network to use post-hand "
+            "analysis, annotated transcripts and AI hints.")
+        open_btn = box.addButton("Open Preferences…",
+                                 QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("OK", QMessageBox.ButtonRole.RejectRole)
+        for b in box.buttons():
+            b.setMinimumWidth(b.sizeHint().width() + 16)
+        box.exec()
+        if box.clickedButton() is open_btn:
+            try:
+                self._on_preferences()
+            except Exception:
+                pass
 
     def _qplus_availability(self) -> str:
         """'none' (default) / 'demo' / 'full' — gates closed-room / Q-NET."""
@@ -8118,6 +8137,16 @@ For more information, see the README file."""
             dialog.next_deal_requested.connect(self._on_next_deal)
         except Exception:
             pass
+
+    def _dismiss_end_of_hand_dialogs(self):
+        """Close any embedded end-of-hand summary overlay so it doesn't sit on
+        top of the table while the next deal / repeat plays out."""
+        for d in list(getattr(self, '_end_of_hand_dialogs', []) or []):
+            try:
+                d.close()
+            except Exception:
+                pass
+        self._end_of_hand_dialogs = []
 
     def _show_end_of_hand_dialog(self, dialog):
         """Show the end-of-hand summary as an EMBEDDED overlay panel inside the
