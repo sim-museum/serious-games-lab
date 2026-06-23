@@ -6816,12 +6816,6 @@ For more information, see the README file."""
         except Exception:
             pass
 
-    def _on_claim(self):
-        """Claim remaining tricks"""
-        if self.controller.current_phase == 'play':
-            QMessageBox.information(self, "Claim",
-                                   "Claim feature not yet implemented.")
-
     def _on_next_card(self):
         """Advance to next trick after a trick completes"""
 
@@ -9855,22 +9849,22 @@ For more information, see the README file."""
         if not self.controller.board or not self.controller.board.contract:
             return
 
-        # Calculate tricks
-        declarer_tricks = getattr(self.controller, 'declarer_tricks', 0)
-        defense_tricks = getattr(self.controller, 'defense_tricks', 0)
+        # Tricks taken so far live on the BOARD (not the controller) — reading
+        # them off the controller returned 0/0, so the claim mis-scored and,
+        # worse, never finalised the hand (no score, Next disabled, stuck).
+        board = self.controller.board
+        declarer_tricks = getattr(board, 'declarer_tricks', 0)
+        defense_tricks = getattr(board, 'defense_tricks', 0)
         remaining = 13 - declarer_tricks - defense_tricks
 
         if remaining <= 0:
             self.status_label.setText("No tricks remaining to claim")
             return
 
-        # Is current player declarer or dummy's partner?
-        declarer = self.controller.board.contract.declarer
+        declarer = board.contract.declarer
         current = self.controller.current_seat
-        is_declarer_side = (
-            current == declarer or
-            current.partner() == declarer
-        )
+        is_declarer_side = (current is not None
+                            and current.is_ns() == declarer.is_ns())
 
         dialog = ClaimDialog(
             self,
@@ -9880,22 +9874,28 @@ For more information, see the README file."""
             is_declarer=is_declarer_side
         )
 
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            claimed = dialog.get_claimed_tricks()
-            if dialog.verify:
-                # Verify with DD solver
-                self.status_label.setText("Verifying claim...")
-                # Would use DD solver to verify
-                self.status_label.setText(f"Claim verified: Declarer makes {declarer_tricks + claimed}")
-            else:
-                # Accept claim
-                final_declarer = declarer_tricks + claimed
-                final_defense = defense_tricks + (remaining - claimed)
-                self.status_label.setText(
-                    f"Claim accepted: Declarer {final_declarer}, Defense {final_defense}"
-                )
-                # Would end the hand here
-                self.controller.current_phase = 'finished'
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        # get_claimed_tricks() always returns DECLARER's share of the rest.
+        claimed = max(0, min(remaining, dialog.get_claimed_tricks()))
+        final_declarer = declarer_tricks + claimed
+        final_defense = defense_tricks + (remaining - claimed)
+
+        # Apply to the board and END the hand on the normal scoring path
+        # (same as the natural 13th-trick finish): this scores it, adds it to
+        # the score table, shows the end-of-hand dialog, and enables Next deal.
+        board.declarer_tricks = final_declarer
+        board.defense_tricks = final_defense
+        self.controller.current_phase = 'finished'
+        try:
+            self.table_view.update_tricks(final_declarer, final_defense)
+        except Exception:
+            pass
+        verb = "verified" if dialog.verify else "accepted"
+        self.status_label.setText(
+            f"Claim {verb}: Declarer {final_declarer}, Defense {final_defense}")
+        QTimer.singleShot(400, self._show_result)
 
     def _update_button_states(self):
         """Update enabled state of toolbar buttons based on game phase."""
