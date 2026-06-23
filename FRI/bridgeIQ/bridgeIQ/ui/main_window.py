@@ -3205,7 +3205,7 @@ For more information, see the README file."""
                 self, "No Teams Match",
                 "No teams match is active.\n\n"
                 "To start a teams match, go to Deal > Match Control\n"
-                "and select 'Against Closed Room (BEN vs BEN)' under Comparison."
+                "and select 'Against Closed Room (BridgeIQ vs BridgeIQ)' under Comparison."
             )
             return
 
@@ -4898,7 +4898,7 @@ For more information, see the README file."""
         msg.setText(
             "<h2 style='margin:0'>BridgeIQ</h2>"
             "<p>A bridge playing and analysis application "
-            "powered by the BEN neural network engine.</p>"
+            "powered by the BridgeIQ engine.</p>"
             "<p>Classic desktop Bridge interface.</p>"
             "<p><b>Engine:</b> biq (native, rule-based)<br>"
             "<b>UI:</b> PyQt6</p>"
@@ -5172,7 +5172,7 @@ For more information, see the README file."""
             # freed seat. Do not exit network mode.
             self._configure_network_players()
             self.status_label.setText(
-                f"Guest disconnected ({reason}); BEN now controls the freed seat."
+                f"Guest disconnected ({reason}); BridgeIQ now controls the freed seat."
             )
             # If we were mid-hand waiting on the (now-departed) guest's
             # turn, kick the engine so BEN takes over and play resumes
@@ -5556,7 +5556,7 @@ For more information, see the README file."""
                             cands = ", ".join(f"{c.card.to_str()} ({c.score:.2f})"
                                               for c in resp.candidates[:5])
                             engine_text += (
-                                f"\nBEN candidates (score = TensorFlow NN "
+                                f"\nBridgeIQ candidates (score = MC "
                                 f"confidence 0–1): {cands}"
                             )
         except Exception as e:

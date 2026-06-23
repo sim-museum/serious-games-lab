@@ -917,7 +917,7 @@ class CompareReplayDialog(QDialog):
             "Use FULL hindsight (every hand is visible to you, both rooms "
             "are complete). Open room = the table where a human played at "
             "one or more seats. Closed room = the bot reference table "
-            "(Q-Plus, BEN, etc.) for the same deal — it's the "
+            "(Q-Plus, BridgeIQ, etc.) for the same deal — it's the "
             "yardstick.\n\n"
             f"=== OPEN ROOM ({self._left_label}) ===\n"
             f"{left_bdl}\n\n"

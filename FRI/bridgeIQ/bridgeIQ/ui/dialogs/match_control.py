@@ -109,7 +109,7 @@ class MatchControlDialog(QDialog):
 
         self.comparison_buttons = QButtonGroup(self)
 
-        self.closed_room_radio = QRadioButton("Against Closed Room (BEN vs BEN)")
+        self.closed_room_radio = QRadioButton("Against Closed Room (BridgeIQ vs BridgeIQ)")
         self.closed_room_radio.setChecked(True)
         self.comparison_buttons.addButton(self.closed_room_radio, 0)
         comparison_layout.addWidget(self.closed_room_radio)

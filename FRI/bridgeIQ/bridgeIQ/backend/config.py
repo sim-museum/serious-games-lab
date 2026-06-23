@@ -166,11 +166,11 @@ class GameConfig:
     version: str = "17.1"
 
     # Players
-    north: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="N: BEN"))
-    east: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="E: BEN"))
+    north: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="N: BridgeIQ"))
+    east: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="E: BridgeIQ"))
     south: PlayerConfig = field(default_factory=lambda: PlayerConfig(
         player_type=PlayerType.HUMAN, visible=True, name="S: HUMAN"))
-    west: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="W: BEN"))
+    west: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="W: BridgeIQ"))
 
     # Strength settings (0-100)
     strength_ns: int = 72

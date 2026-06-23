@@ -138,9 +138,9 @@ class PreferencesDialog(QDialog):
             "solves each double-dummy, and picks the best card on average.\n"
             "Strong and practical — the same technique used by Bridge Baron."
         )
-        self.play_engine_radio = QRadioButton("BEN neural network engine")
+        self.play_engine_radio = QRadioButton("BridgeIQ neural-net engine")
         self.play_engine_radio.setToolTip(
-            "Uses BEN's neural network for card play decisions.\n"
+            "Uses BridgeIQ's neural-net for card play decisions.\n"
             "Fast but often makes poor plays."
         )
         self.play_dd_radio = QRadioButton("Double-dummy optimal play")
@@ -314,13 +314,13 @@ class PreferencesDialog(QDialog):
         engine_row.addWidget(QLabel("Bots use:"))
         self.bidding_engine_combo = QComboBox()
         self.bidding_engine_combo.addItem("Native (Q-Plus-style rule engine, default)", "native")
-        self.bidding_engine_combo.addItem("BEN (neural net)", "BEN")
+        self.bidding_engine_combo.addItem("BridgeIQ (neural net)", "BEN")
         self.bidding_engine_combo.setToolTip(
             "Native is a from-scratch rule-based bidder modeled on Q-Plus 17,\n"
             "covering SAYC, 2/1, Acol, French, and three Precision variants\n"
             "with their full Q-Plus convention sets (default).\n"
-            "BEN is the Anthropic-trained neural-net bidder.\n"
-            "Card play always uses BEN regardless of this setting."
+            "BridgeIQ's neural-net bidder.\n"
+            "Card play always uses the BridgeIQ engine regardless of this setting."
         )
         engine_row.addWidget(self.bidding_engine_combo)
         engine_row.addStretch()
