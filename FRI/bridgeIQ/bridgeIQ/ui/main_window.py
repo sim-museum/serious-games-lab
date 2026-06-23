@@ -6160,11 +6160,19 @@ For more information, see the README file."""
         # Cancel — Claude can take a long time; let the user bail out. Cancelling
         # kills the subprocess and skips rendering.
         cancel_holder = {'cancelled': False}
+        # Set once the run completes normally, BEFORE we close the progress
+        # dialog. Closing a QDialog emits `rejected` (Qt calls reject() from
+        # closeEvent), which is wired to _cancel_claude — without this guard a
+        # successful request would mark itself cancelled at teardown and the
+        # result would be thrown away ("Claude request cancelled" every time).
+        done_holder = {'done': False}
         proc_holder = {'proc': None}
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setStyleSheet("QPushButton { padding: 6px 18px; }")
 
         def _cancel_claude():
+            if done_holder['done']:
+                return
             cancel_holder['cancelled'] = True
             cancel_btn.setEnabled(False)
             p_label.setText("Cancelling…")
@@ -6247,6 +6255,10 @@ For more information, see the README file."""
                     proc.kill()
                 except Exception:
                     pass
+        # Mark done so the close()-triggered `rejected` below is a no-op rather
+        # than a spurious cancel.
+        if not cancel_holder['cancelled']:
+            done_holder['done'] = True
         try:
             progress.close()
         except Exception:
