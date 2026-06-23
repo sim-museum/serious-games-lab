@@ -335,6 +335,47 @@ def suit_length_text(seat: Seat, suit: Suit, visible: Set[Seat], layout,
     return f"{lo}-{hi}"
 
 
+def original_shape(board: BoardState, seat: Seat, visible: Set[Seat],
+                   layout, constraints) -> Dict[Suit, int]:
+    """ORIGINAL (13-card) suit lengths known so far for `seat`.
+
+    Returns {suit: int} for every suit whose ORIGINAL length is now PINNED — a
+    face-up hand pins all four at once; a hidden hand pins a suit when it shows
+    out (void) or the count forces the length. Suits not yet determined are
+    omitted. original = (cards already played in the suit) + (current length,
+    when exactly known). No peeking: hidden hands flow only through `layout` /
+    `suit_length_text`, never `board.hands`.
+    """
+    played, _v, _a = collect_play(board)
+    pn = {su: 0 for su in SUIT_ROWS}
+    for cid in played.get(seat, ()):              # cid = suit*13 + rank
+        su = Suit(cid // 13)
+        if su in pn:
+            pn[su] += 1
+    out: Dict[Suit, int] = {}
+    for su in SUIT_ROWS:
+        txt = suit_length_text(seat, su, visible, layout, constraints)
+        cur = 0 if txt == "void" else (int(txt) if txt.isdigit() else None)
+        if cur is not None:
+            out[su] = cur + pn[su]
+    return out
+
+
+def shape_html(shape: Dict[Suit, int]) -> str:
+    """Compact coloured shape line ♠a ♥b ♦c ♣d ('?' where not yet known).
+    Empty string when nothing is known yet, so the line stays hidden."""
+    if not shape:
+        return ""
+    parts = []
+    for su in SUIT_ROWS:
+        v = shape.get(su)
+        parts.append(
+            f"<span style='color:{_suit_color(su)}'>{su.symbol()}</span>"
+            f"{v if v is not None else '?'}")
+    return ("<span style='color:#7f93a6'>shape</span>&nbsp;&nbsp;"
+            + "&nbsp;&nbsp;".join(parts))
+
+
 def winners_in_hand(held: List[Rank], rem_of_suit: Set[Rank]) -> Set[Rank]:
     """Top-run sure winners: walk remaining ranks high→low while this
     hand holds them; stop at the first gap (a rank held elsewhere)."""
@@ -1368,10 +1409,24 @@ class HandGridWidget(QFrame):
         grid.setColumnStretch(1, 3)
         grid.setColumnStretch(2, 2)
         outer.addLayout(grid)
+
+        # Lower-right: this seat's ORIGINAL (13-card) hand shape, revealed as
+        # soon as it's known — exact for a face-up hand, progressively for a
+        # hidden one. Lets a defender judge count signals from the table.
+        self._shape_lbl = QLabel("")
+        self._shape_lbl.setTextFormat(Qt.TextFormat.RichText)
+        self._shape_lbl.setAlignment(Qt.AlignmentFlag.AlignRight
+                                     | Qt.AlignmentFlag.AlignVCenter)
+        self._shape_lbl.setStyleSheet("color:#9fb6cc; font-size:15px; border:0;")
+        outer.addWidget(self._shape_lbl)
         self.setMinimumWidth(230)
 
     def set_title(self, text: str):
         self.title.setText(text)
+
+    def set_shape(self, html: str):
+        """Set the lower-right original-shape line (empty string hides it)."""
+        self._shape_lbl.setText(html or "")
 
     def set_accent(self, color: str):
         """Recolour the hand frame's border — declaring side gold, defenders
@@ -1761,6 +1816,12 @@ class TeachingView(QWidget):
             if (c.hcp_min, c.hcp_max) != (0, 37):
                 hcp_txt = f"  {c.hcp_min}-{c.hcp_max} HCP"
         w.set_title(f"{seat.name.title()}{role}  ({n_left} cards)" + hcp_txt)
+        # Lower-right: original (13-card) shape, revealed as soon as it's known.
+        try:
+            w.set_shape(shape_html(
+                original_shape(board, seat, visible, layout, constraints)))
+        except Exception:
+            w.set_shape("")
 
         for su in SUIT_ROWS:
             known = layout["known"][seat][su]
