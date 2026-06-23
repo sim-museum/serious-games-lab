@@ -1810,6 +1810,16 @@ class TeachingView(QWidget):
                                          shape_map)
             w.set_row(su, known_html, other_html, trump == su)
 
+    def _floating_ranks(self, su, visible, layout):
+        """Ranks of `su` still in play that are NOT pinned to a specific hand —
+        i.e. cards known to be in one of the hidden hands but not which one.
+        Returned high→low (ACE first)."""
+        rem = layout["rem_ranks"].get(su, set())
+        held = set()
+        for s in Seat:                       # visible holdings + hidden inferred
+            held |= set(layout["known"][s][su])
+        return sorted(rem - held)
+
     def _other_for(self, seat, su, visible, layout, constraints,
                    sig_map=None, hint_map=None, shape_map=None) -> str:
         if self.detail == BEGINNER:
@@ -1828,6 +1838,20 @@ class TeachingView(QWidget):
             txt += (f" <span style='color:{ACC_BLUE};font-size:13px'>"
                     f"≈{likely}</span>")
         parts = [txt]
+        # Outstanding cards whose hidden hand isn't pinned down yet — they could
+        # be in THIS hand or the other hidden hand. Show the actual ranks (not
+        # just a length range) so you can see whether your spot beats them.
+        # Capped so early-hand cells (many floaters) stay readable.
+        if seat not in visible and su not in layout["voids"][seat]:
+            floating = self._floating_ranks(su, visible, layout)
+            if 1 <= len(floating) <= 6:
+                glyphs = "".join(r.to_char() for r in floating)
+                other = [s for s in Seat if s not in visible and s != seat]
+                where = other[0].to_char() if len(other) == 1 else "the other hand"
+                parts.append(
+                    f"<span style='color:{ACC_PURPLE}' "
+                    f"title='Outstanding {su.symbol()}{glyphs} — in this hand "
+                    f"or {where}'>↔{glyphs}</span>")
         # What biq's defensive carding has told us about this defender's suit.
         rd = sig_map.get((seat, su))
         if rd is not None:
