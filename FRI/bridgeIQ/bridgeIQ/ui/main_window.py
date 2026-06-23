@@ -6001,6 +6001,17 @@ For more information, see the README file."""
         box.addButton("OK", QMessageBox.ButtonRole.RejectRole)
         for b in box.buttons():
             b.setMinimumWidth(b.sizeHint().width() + 16)
+        # Give the text room and keep it flush-left — the shared stylesheet's
+        # narrow min-width otherwise wraps mid-word ("…disabled — i") and the
+        # ragged lines read as awkward justification.
+        from PyQt6.QtWidgets import QLabel
+        for lbl in box.findChildren(QLabel):
+            if lbl.objectName() in ("qt_msgbox_label",
+                                    "qt_msgbox_informativelabel"):
+                lbl.setWordWrap(True)
+                lbl.setMinimumWidth(400)
+                lbl.setAlignment(Qt.AlignmentFlag.AlignLeft
+                                 | Qt.AlignmentFlag.AlignVCenter)
         box.exec()
         if box.clickedButton() is open_btn:
             try:
