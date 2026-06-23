@@ -1,0 +1,88 @@
+DOCTYPE: BDL 17.1
+.description.eng = "Worked play hands from 'Bridge Basics: A Beginner's Guide' (Ron Klinger). All four hands are the book's own cards (transcribed by vision from the hand diagrams); each Commentary carries the book's Lead / Correct play / Wrong play notes. A first set; the book has 36 such hands."
+
+************************************************************
+Deal         :  BB-Hand1
+Deal-text    :  Bridge Basics (Klinger) Hand 1 - high-card-from-shortage
+Dealer       :  North
+Vuln         :  None
+Contract     :  1NT  East
+N: S T9432 H 5 D JT96 C KQT
+E: S K8 H A76 D K432 C A973
+S: S 65 H KQJT82 D A8 C J85
+W: S AQJ7 H 943 D Q75 C 642
+Commentary   :  East plays 1NT; South leads the HK (top of sequence). Correct play: win the
+             :  HA, play the SK (HIGH card from the SHORT side) then a spade over to dummy's
+             :  SAQJ7 and cash the spade winners; then lead a diamond to the DK to set up a
+             :  diamond trick - 7 tricks. Wrong play: leading a low spade first, or cashing
+             :  the CA before setting up the diamond - the defence then beats it with
+             :  hearts, clubs and the DA.
+
+************************************************************
+Deal         :  BB-Hand2
+Deal-text    :  Bridge Basics (Klinger) Hand 2 - unblock the high card from shortage
+Dealer       :  East
+Vuln         :  NS
+Contract     :  3NT  North
+N: S AJ3 H Q54 D AK52 C T63
+E: S K54 H AJT987 D QT87 C -
+S: S 876 H K6 D 943 C AKQJ2
+W: S QT92 H 32 D J6 C 98754
+Commentary   :  North plays 3NT; East leads the HJ (interior sequence - top of the touching
+             :  cards). Correct play: win the heart and start clubs, playing the C10 from
+             :  hand and the C2 from dummy (HIGH-from-shortage); now cash the clubs, the SA
+             :  and the DA-K. Wrong play: failing to unblock the C10 on the first or second
+             :  round restricts the long club suit.
+
+************************************************************
+Deal         :  BB-Hand3
+Deal-text    :  Bridge Basics (Klinger) Hand 3 - overtake to reach dummy
+Dealer       :  East
+Vuln         :  EW
+Contract     :  3NT  South
+N: S AKT2 H A4 D 643 C 8532
+E: S 986 H K875 D A97 C 974
+S: S QJ H 632 D J852 C AKQJ
+W: S 7543 H QJT9 D KQT C T6
+Commentary   :  South plays 3NT; West leads the HQ (top of sequence; with equal length lead
+             :  the stronger suit). Correct play: take the HA at once, lead a low spade to
+             :  the SQ (high-from-shortage), then the SJ, OVERTAKING with dummy's SK or SA
+             :  to reach the long spades; cash the spade and club winners. Wrong play:
+             :  playing the SA or SK on the first round, or failing to overtake the second
+             :  spade - dummy gets stranded.
+
+************************************************************
+Deal         :  BB-Hand4
+Deal-text    :  Bridge Basics (Klinger) Hand 4 - overtake to run the diamonds
+Dealer       :  West
+Vuln         :  Both
+Contract     :  3NT  West
+N: S J92 H AK2 D KQJ C 8632
+E: S T8753 H Q76 D 972 C K9
+S: S KQ H J43 D AT653 C QJ4
+W: S A64 H T985 D 84 C AT75
+Commentary   :  West plays 3NT; North leads the S5 (fourth-highest). Correct play: win the
+             :  spade, then run the diamonds - lead to the DK, cash the DQ, then play the DJ
+             :  OVERTAKING with dummy's DA so dummy's long diamonds all cash; then the
+             :  hearts and the SJ - 9 tricks. Wrong play: failing to overtake the third
+             :  diamond, or playing the DA on the first or second round, strands the suit
+             :  and lets the defence beat 3NT.
+
+************************************************************
+Deal         :  BB-Hand6
+Deal-text    :  Bridge Basics (Klinger) Hand 6 - high card from the short side first
+Dealer       :  North
+Vuln         :  None
+Contract     :  3NT  North
+N: S 853 H A432 D AKQJ C Q5
+E: S A6 H KQJ97 D 983 C 972
+S: S QJ2 H 865 D 764 C AKJ6
+W: S KT974 H T D T52 C T843
+Commentary   :  North plays 3NT; East leads the HK (top of sequence). Correct play: win the
+             :  HA, play the CQ FIRST (HIGH card from the short side), then the other clubs
+             :  and the four diamonds - 3NT made. Wrong play: playing a low club to dummy's
+             :  ace and then cashing the CK wastes the CQ and you finish a trick short;
+             :  keeping the high honour on the short side keeps the suit running with an
+             :  entry.
+
+************************************************************

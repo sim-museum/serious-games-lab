@@ -1655,6 +1655,18 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.review_btn)
         self.ingame_buttons.append(self.review_btn)
 
+        # Closed room — reachable on EVERY hand, not just the opening screen.
+        # Starts the 4-biq-bot closed room for the current deal, or (when one
+        # is already running in parallel) opens the open-vs-closed comparison.
+        self.closed_room_btn = ToolbarButton("Closed room")
+        self.closed_room_btn.setToolTip(
+            "Closed room: four biq bots play this same deal in parallel.\n"
+            "Start it for the current deal, or — once it's running — view\n"
+            "the open-vs-closed (IMP) comparison.")
+        self.closed_room_btn.clicked.connect(self._on_closed_room_button)
+        layout.addWidget(self.closed_room_btn)
+        self.ingame_buttons.append(self.closed_room_btn)
+
         # Toggle between the normal table and the instrumented teaching view.
         self.teaching_btn = ToolbarButton("Instrumented")
         self.teaching_btn.setCheckable(True)
@@ -1695,6 +1707,19 @@ class MainWindow(QMainWindow):
         self.match_controller = None
         self._set_toolbar_mode('ingame')
         self._on_new_deal()
+
+    def _on_closed_room_button(self):
+        """Play-toolbar 'Closed room' button — available on every hand.
+
+        When a closed-room match is already running (four biq bots playing
+        this deal in parallel) we open the open-vs-closed comparison for the
+        boards played so far. Otherwise we start closed-room play for the
+        current deal — the same entry point as the opening-screen button.
+        """
+        if self.teams_match is not None and self.match_controller is not None:
+            self._on_view_teams_score()
+        else:
+            self._on_closed_room_start()
 
     def _on_closed_room_start(self):
         """Closed Room button — let the user pick how to run it.
@@ -1979,6 +2004,104 @@ class MainWindow(QMainWindow):
         """Connect UI signals"""
         self.table_view.card_played.connect(self._on_card_played)
         self.bidding_box.bid_selected.connect(self._on_bid_made)
+        # Click-to-explain (gated by the explain_actions_enabled preference).
+        self.table_view.explain_bid_requested.connect(self._on_explain_bid)
+        self.table_view.explain_card_requested.connect(self._on_explain_card)
+        self._sync_explain_enabled()
+
+    def _sync_explain_enabled(self):
+        """Push the explain-actions preference to the table view."""
+        try:
+            on = bool(self.config_manager.config.preferences
+                      .explain_actions_enabled)
+        except Exception:
+            on = False
+        self.table_view.set_explain_enabled(on)
+
+    def _seat_is_biq(self, seat: Seat) -> bool:
+        """True when `seat` is played by biq (a bot), not a human."""
+        try:
+            return (self.controller.players[seat].player_type
+                    != PlayerType.HUMAN)
+        except Exception:
+            return False
+
+    def _show_explanation(self, explanation):
+        from .dialogs import ExplanationDialog
+        dlg = ExplanationDialog(explanation, self)
+        dlg.exec()
+
+    def _on_explain_bid(self, seat: Seat, bid):
+        """Pop the why-popup for a clicked bid (gated by the preference)."""
+        try:
+            from backend import explain
+            from backend.bid_descriptions import system_for_prefs
+            board = self.controller.board
+            auction = list(getattr(board, "auction", []) or [])
+            # Locate this exact call to slice the auction before it.
+            idx = next((i for i, b in enumerate(auction) if b is bid), None)
+            if idx is None:
+                idx = len(auction)
+            before = auction[:idx]
+            prefs = self.config_manager.config.preferences
+            side = 'NS' if seat.is_ns() else 'EW'
+            system = system_for_prefs(prefs, side)
+            who = "native" if self._seat_is_biq(seat) else ""
+            ex = explain.explain_bid(bid, before, seat, board.dealer,
+                                     system, engine_who=who)
+            self._show_explanation(ex)
+        except Exception as e:
+            self.status_label.setText(f"Could not explain bid: {e}")
+
+    def _on_explain_card(self, seat: Seat, card):
+        """Pop the why-popup for a clicked played card."""
+        if not self._seat_is_biq(seat):
+            self.status_label.setText(
+                "Explanations describe biq's actions; this was your own play.")
+            return
+        try:
+            from backend import explain
+            board = self.controller.board
+            # Find the trick + position holding this card.
+            tricks = list(getattr(board, "tricks", []) or [])
+            cur = getattr(board, "current_trick", None)
+            if cur is not None and getattr(cur, "cards", None):
+                tricks = tricks + [cur]
+            found_trick = found_pos = None
+            for t_i, trick in enumerate(tricks):
+                for c_i, c in enumerate(trick.cards):
+                    if c.suit == card.suit and c.rank == card.rank:
+                        found_trick, found_pos = (t_i, trick), c_i
+                        break
+                if found_trick is not None:
+                    break
+            if found_trick is None:
+                return
+            t_i, trick = found_trick
+            before = list(trick.cards[:found_pos])
+            is_opening_lead = (t_i == 0 and found_pos == 0)
+            who = self._current_play_engine_label()
+            ex = explain.explain_card(
+                card, seat, before, trick.leader,
+                getattr(board, "contract", None), is_opening_lead,
+                engine_who=who)
+            self._show_explanation(ex)
+        except Exception as e:
+            self.status_label.setText(f"Could not explain card: {e}")
+
+    def _current_play_engine_label(self) -> str:
+        """Name biq's active card-play engine, from preferences."""
+        try:
+            p = self.config_manager.config.preferences
+            if getattr(p, "use_nopeek_play", False):
+                return "no-peek"
+            if getattr(p, "use_monte_carlo_play", False):
+                return "MC"
+            if getattr(p, "use_double_dummy_play", False):
+                return "DDS"
+        except Exception:
+            pass
+        return ""
 
     def _setup_network_signals(self):
         """Setup network controller signals"""
@@ -4061,6 +4184,8 @@ For more information, see the README file."""
             self.table_view.refresh_colors()
         # Update analysis panel visibility based on preference
         self.analysis_label.setVisible(self.config_manager.config.preferences.show_ben_bid_analysis)
+        # Keep the click-to-explain affordance in sync with its preference.
+        self._sync_explain_enabled()
         # Bidding-system selection may have changed — re-tag the
         # information-about-bids window with the new system's labels.
         self._refresh_active_system()
@@ -6001,17 +6126,37 @@ For more information, see the README file."""
         box.addButton("OK", QMessageBox.ButtonRole.RejectRole)
         for b in box.buttons():
             b.setMinimumWidth(b.sizeHint().width() + 16)
-        # Give the text room and keep it flush-left — the shared stylesheet's
-        # narrow min-width otherwise wraps mid-word ("…disabled — i") and the
-        # ragged lines read as awkward justification.
-        from PyQt6.QtWidgets import QLabel
+        # Give the text room and keep it flush-left. The shared stylesheet
+        # pins QLabel min-width to 200px, so the main line otherwise clips
+        # ("…disabled — i") and the informative text wraps raggedly. Per-label
+        # min-width doesn't reliably widen a QMessageBox, so we force the
+        # overall width with a zero-height spacer spanning the grid's columns;
+        # the labels then wrap cleanly at the wider box.
+        from PyQt6.QtWidgets import QLabel, QSpacerItem, QSizePolicy
         for lbl in box.findChildren(QLabel):
             if lbl.objectName() in ("qt_msgbox_label",
                                     "qt_msgbox_informativelabel"):
                 lbl.setWordWrap(True)
-                lbl.setMinimumWidth(400)
                 lbl.setAlignment(Qt.AlignmentFlag.AlignLeft
                                  | Qt.AlignmentFlag.AlignVCenter)
+        grid = box.layout()
+        try:
+            # Force the TEXT column wide so the labels fill it and wrap
+            # cleanly. The spacer has to land in the same column as the
+            # message labels (column 2 in current Qt; detected here so a
+            # layout change can't silently re-narrow the box).
+            text_col = grid.columnCount() - 1
+            for i in range(grid.count()):
+                w = grid.itemAt(i).widget()
+                if w is not None and w.objectName() == "qt_msgbox_label":
+                    text_col = grid.getItemPosition(i)[1]
+                    break
+            grid.addItem(
+                QSpacerItem(460, 0, QSizePolicy.Policy.Minimum,
+                            QSizePolicy.Policy.Minimum),
+                grid.rowCount(), text_col)
+        except Exception:
+            pass
         box.exec()
         if box.clickedButton() is open_btn:
             try:
@@ -6084,7 +6229,8 @@ For more information, see the README file."""
     def _run_claude_with_dialog(self, prompt: str, title: str, wait_label: str,
                                  timeout_seconds: int = 900, preamble: str = "",
                                  bdl_text: str = "",
-                                 cache_key: str | None = None):
+                                 cache_key: str | None = None,
+                                 extended_thinking: bool = True):
         """Run claude -p with a progress dialog, then show the result.
 
         Shared between the end-of-hand analysis and the Hint button. Shows an
@@ -6203,14 +6349,17 @@ For more information, see the README file."""
         result_holder = {'text': None, 'error': None}
 
         def _run_claude():
-            # Use Opus 4.8 with extended thinking. Popen (not subprocess.run)
-            # so the Cancel button can terminate it mid-flight.
+            # Opus 4.8. Extended thinking is the main latency driver, so the
+            # caller can turn it OFF (e.g. the "Quick verdict (fast)" scope) to
+            # get a concise answer back well inside the timeout; deeper scopes
+            # keep it on. Popen (not subprocess.run) so Cancel can kill it.
+            cmd = ['claude', '-p', '--model', 'claude-opus-4-8']
+            if extended_thinking:
+                cmd += ['--thinking', 'enabled']
+            cmd += ['--max-turns', '1', prompt]
             try:
                 proc = subprocess.Popen(
-                    ['claude', '-p',
-                     '--model', 'claude-opus-4-8',
-                     '--thinking', 'enabled',
-                     '--max-turns', '1', prompt],
+                    cmd,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 proc_holder['proc'] = proc
                 try:

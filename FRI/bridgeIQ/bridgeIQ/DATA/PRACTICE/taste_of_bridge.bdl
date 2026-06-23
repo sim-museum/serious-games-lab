@@ -1,0 +1,117 @@
+DOCTYPE: BDL 17.1
+.description.eng = "Practice hands from 'A Taste of Bridge' (Jeff Bayone, Master Point Press, 2017). Each deal is the book's complete four-hand layout; the Commentary carries the book's explanation of the correct play. Faithful: all cards are the book's."
+
+************************************************************
+Deal         :  ToB-Ch5-H1
+Deal-text    :  A Taste of Bridge - Ch5 Practice Hand #1
+Dealer       :  South
+Vuln         :  None
+Contract     :  6NT  South
+N: S AK3 H AQ5 D Q873 C A62
+E: S 87 H JT98 D 962 C T943
+S: S Q52 H K63 D KJT4 C KQ5
+W: S JT964 H 742 D A5 C J87
+Commentary   :  South plays 6NT (needs twelve tricks); West leads the SJ.
+             :  Nine quick tricks: SAKQ, HAKQ, DAKQ. Spades/hearts/diamonds have NO
+             :  extra potential. The 3 extra tricks must come from CLUBS: drive out the
+             :  CA so the long clubs (AK..QJ) promote. Go after that potential FIRST -
+             :  before cashing winners. Win trick 1, knock out the CA, then cash the
+             :  twelve. Cautionary line in the book: if you greedily cash spade winners
+             :  first you set up West's long spades (JT964) and go down. Establish your
+             :  tricks before the opponents' - the SKQ are stoppers, let them stay.
+
+************************************************************
+Deal         :  ToB-Ch5-H2
+Deal-text    :  A Taste of Bridge - Ch5 Practice Hand #2
+Dealer       :  South
+Vuln         :  None
+Contract     :  3NT  South
+N: S A76 H K96 D 5432 C A43
+E: S JT93 H T843 D A6 C Q82
+S: S K542 H AQ2 D QJT9 C K7
+W: S Q8 H J75 D K87 C JT965
+Commentary   :  South plays 3NT (needs nine tricks); West leads the CJ (top of JT965).
+             :  Seven quick tricks: SAK, HAKQ, CAK. Two more needed. Diamonds is the
+             :  engine: South holds QJT9 - drive out the opponents' DA and DK to promote
+             :  two long diamonds. Attack diamonds IMMEDIATELY (go after potential
+             :  first). It is a race: the defenders can set up clubs (West's JT965), so
+             :  if you dawdle they cash out first. Lead diamonds before touching your
+             :  side winners and you win the race to nine.
+
+************************************************************
+Deal         :  ToB-Ch7-H1
+Deal-text    :  A Taste of Bridge - Ch7 Hand #1
+Dealer       :  South
+Vuln         :  None
+Contract     :  6NT  South
+N: S 64 H 76 D QJ93 C KQT94
+E: S 95 H JT982 D 654 C 872
+S: S AK73 H AK5 D AK2 C J63
+W: S QJT82 H Q43 D T87 C A5
+Commentary   :  South plays 6NT (needs twelve); West leads the SQ. Eight tricks off the
+             :  top: two spades, two hearts, four diamonds, none in clubs. The four extra
+             :  tricks all come from CLUBS - South's CJ solidifies dummy's CKQT94. Drive
+             :  out the CA and the rest are winners. Technique: cash honours from the
+             :  SHORT side first in both diamonds (DAK from hand, then D2 over to dummy's
+             :  DQJ) and clubs (CJ before crossing to the long KQT94) so you never strand
+             :  the long winner. Plan: win T1, knock out the CA first, then 2+2+4+4 = 12.
+
+************************************************************
+Deal         :  ToB-Ch9-H1
+Deal-text    :  A Taste of Bridge - Ch9 Hand #1
+Dealer       :  South
+Vuln         :  None
+Contract     :  7NT  South
+N: S AQ H JT9 D AKQ C 65432
+E: S J87542 H Q74 D 83 C 98
+S: S 63 H AK5 D 742 C AKQJT
+W: S KT9 H 8632 D JT965 C 7
+Commentary   :  South plays 7NT - all thirteen tricks - West leads the DJ. The hands are
+             :  'mirror' 5-3-3-2, so the only chances are the two tenaces: dummy's SAQ
+             :  over West and the heart suit. Win the diamond in dummy (North), then take
+             :  TWO finesses. First lead the HJ and let it ride - East has the HQ, it
+             :  holds. Cross to South in clubs and lead a spade toward the SAQ - the
+             :  queen catches West's SK. Both finesses win (about a 1-in-4 shot, but it
+             :  is the only line) and all thirteen are there to claim. Lead low toward
+             :  strength each time.
+
+************************************************************
+Deal         :  ToB-Ch9-H2
+Deal-text    :  A Taste of Bridge - Ch9 Hand #2
+Dealer       :  South
+Vuln         :  None
+Contract     :  3NT  South
+N: S J84 H AKJ D 8743 C 742
+E: S Q7 H 972 D K965 C K963
+S: S A632 H Q54 D AQJT C A5
+W: S KT95 H T863 D 2 C QJT8
+Commentary   :  South plays 3NT (nine+); West leads the CQ. Only six quick tricks, so you
+             :  need three diamond tricks from AQJT opposite 8743. Lead diamonds from the
+             :  WEAK hand (North) THROUGH East toward the strength: place East with the
+             :  DK and finesse. Win the club, cross to dummy with a heart, run a diamond
+             :  to the ten/jack; repeat. (Overtake a heart honour with the ace/king so
+             :  you keep an entry to dummy.) West shows out on the second round - count
+             :  4-4-4-1, so East still has DK guarded; finesse a third time. Four diamonds
+             :  + five tricks = nine. From weakness toward strength.
+
+************************************************************
+Deal         :  ToB-Ch9-H3
+Deal-text    :  A Taste of Bridge - Ch9 Hand #3
+Dealer       :  South
+Vuln         :  None
+Contract     :  3NT  South
+N: S 852 H K96 D J63 C KQ74
+E: S KQT3 H J5 D 752 C J965
+S: S A76 H A83 D AKQT4 C 82
+W: S J94 H QT742 D 98 C AT3
+Commentary   :  South plays 3NT and wants TEN tricks; West leads the H4 (4th best from a
+             :  broken five-card suit). Eight on top: one spade, two hearts, five diamonds.
+             :  The tenth trick is a 'forcing' finesse in clubs - you hold KQ74 opposite
+             :  82 and the opponents have the CA. Lead clubs FROM the South hand toward
+             :  dummy, forcing West (who must hold the CA for the plan to work) to commit
+             :  first. If he rises with the ace, dummy's KQ are good; if he ducks, win an
+             :  honour, return to South and lead the second club - West is endplayed
+             :  either way. ~50%: it needs West, not East, to hold the CA. Lead to the
+             :  honours, not from them.
+
+************************************************************

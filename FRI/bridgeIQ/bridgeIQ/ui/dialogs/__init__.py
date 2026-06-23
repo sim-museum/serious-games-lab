@@ -7,6 +7,7 @@ from .match_control import MatchControlDialog
 from .deal_filter import DealFilterDialog
 from .score_table import ScoreTableDialog
 from .simulation import SimulationDialog
+from .qplus_simulation import QPlusSimulationDialog
 from .end_of_hand import EndOfHandDialog, PassedOutDialog
 from .teams_score import TeamsScoreDialog
 from .replay_view import ReplayViewDialog
@@ -22,6 +23,7 @@ from .review_dialog import ReviewDialog
 from .log_viewer_dialog import LogViewerDialog, PreviousLogsDialog
 from .lead_signal_dialog import LeadSignalDialog, StrengthDialog, ConfigCheckDialog
 from .minibridge_dialog import MiniBridgeDialog, RubberScoringDialog, MultiplayDialog
+from .explanation_dialog import ExplanationDialog
 
 __all__ = [
     'PlayerConfigDialog',
@@ -29,6 +31,7 @@ __all__ = [
     'DealFilterDialog',
     'ScoreTableDialog',
     'SimulationDialog',
+    'QPlusSimulationDialog',
     'EndOfHandDialog',
     'PassedOutDialog',
     'TeamsScoreDialog',
@@ -51,4 +54,5 @@ __all__ = [
     'MiniBridgeDialog',
     'RubberScoringDialog',
     'MultiplayDialog',
+    'ExplanationDialog',
 ]

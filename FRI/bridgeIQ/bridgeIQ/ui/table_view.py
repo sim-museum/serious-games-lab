@@ -67,6 +67,10 @@ class CardWidget(QWidget):
     """Playing card widget using traditional card images from tmcgui deck."""
 
     card_clicked = pyqtSignal(object)
+    # Fires on ANY left-click of a face-up card, regardless of `selectable`
+    # (card_clicked is gated by selectable because it drives actual play).
+    # Used by the trick area to offer a why-this-card explanation popup.
+    card_pressed = pyqtSignal(object)
 
     SUIT_SYMBOLS = {
         Suit.SPADES: '♠',
@@ -296,8 +300,12 @@ class CardWidget(QWidget):
         self.update()
 
     def mousePressEvent(self, event):
-        if self.card and self.selectable and event.button() == Qt.MouseButton.LeftButton:
-            self.card_clicked.emit(self.card)
+        if self.card and event.button() == Qt.MouseButton.LeftButton:
+            # Always announce the press (for explanation), then the
+            # selectable-gated click that drives actual card play.
+            self.card_pressed.emit(self.card)
+            if self.selectable:
+                self.card_clicked.emit(self.card)
 
     def enterEvent(self, event):
         """Highlight card when mouse enters if selectable"""
@@ -637,8 +645,13 @@ class TrickAreaWidget(QFrame):
     MAX_SCALE = 1.0          # never grow the cards past the design size
     BID_W, BID_H = 320, 260  # bidding overlay (fixed; centred in the green)
 
+    # Emitted (seat, card) when a played card is clicked while the
+    # "explain biq's actions" mode is on.
+    card_explain_requested = pyqtSignal(object, object)
+
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._explain_enabled = False
         self.setMinimumSize(round(self.AREA_WIDTH * self.MIN_SCALE),
                             round(self.AREA_HEIGHT * self.MIN_SCALE))
         # Take the vertical space the layout offers (so a taller window
@@ -741,6 +754,8 @@ class TrickAreaWidget(QFrame):
         for seat in Seat:
             cw_widget = CardWidget(parent=self)
             cw_widget.setVisible(False)
+            cw_widget.card_pressed.connect(
+                lambda _c, s=seat: self._on_played_card_pressed(s))
             self.card_widgets[seat] = cw_widget
 
         # Keep references keyed by direction so set_vulnerability can
@@ -754,6 +769,23 @@ class TrickAreaWidget(QFrame):
         self.bidding_widget.setFixedSize(self.BID_W, self.BID_H)
 
         self._relayout()
+
+    def set_explain_enabled(self, on: bool):
+        """Toggle click-to-explain on played cards (and the centre bidding
+        overlay's bid cells), updating cursors for feedback."""
+        self._explain_enabled = bool(on)
+        cursor = (Qt.CursorShape.PointingHandCursor if on
+                  else Qt.CursorShape.ArrowCursor)
+        for cw in self.card_widgets.values():
+            cw.setCursor(cursor)
+        self.bidding_widget.set_explain_enabled(on)
+
+    def _on_played_card_pressed(self, seat: Seat):
+        if not self._explain_enabled:
+            return
+        card = self.played_cards.get(seat)
+        if card is not None:
+            self.card_explain_requested.emit(seat, card)
 
     def set_show_bidding(self, show: bool):
         self.show_bidding = show
@@ -877,6 +909,11 @@ class BiddingTableWidget(QFrame):
     N/E/S/W version we started with).
     """
 
+    # Emitted (seat, bid) when the user clicks a bid cell while the
+    # "explain biq's actions" mode is on. MainWindow decides whether to
+    # actually pop the explanation (it knows who made the bid).
+    bid_clicked = pyqtSignal(object, object)
+
     # Cell sizing kept here so set_auction can reproduce it without
     # the magic numbers drifting between the header row and the body.
     _CELL_W = 70
@@ -891,7 +928,28 @@ class BiddingTableWidget(QFrame):
             " border-radius: 6px; }"
         )
         self.setMinimumSize(260, 180)
+        # Click-to-explain support: filled in by set_auction, toggled by
+        # set_explain_enabled (off by default — matches the preference).
+        self._explain_enabled = False
+        self._bid_cells = []
         self._setup_ui()
+
+    def set_explain_enabled(self, on: bool):
+        """Enable/disable click-to-explain on bid cells (cursor + clicks)."""
+        self._explain_enabled = bool(on)
+        for cell in self._bid_cells:
+            cell.setCursor(Qt.CursorShape.PointingHandCursor if on
+                           else Qt.CursorShape.ArrowCursor)
+
+    def eventFilter(self, obj, event):
+        from PyQt6.QtCore import QEvent
+        if (self._explain_enabled
+                and event.type() == QEvent.Type.MouseButtonPress
+                and event.button() == Qt.MouseButton.LeftButton
+                and getattr(obj, "_biq_bid", None) is not None):
+            self.bid_clicked.emit(obj._biq_seat, obj._biq_bid)
+            return True
+        return super().eventFilter(obj, event)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -982,6 +1040,7 @@ class BiddingTableWidget(QFrame):
 
         # Clear body.
         self._clear_layout(self.bids_layout)
+        self._bid_cells = []
 
         # Build rows of four cells. Position 0 in each row is dealer's
         # seat — bids feed in dealer-first order.
@@ -993,7 +1052,7 @@ class BiddingTableWidget(QFrame):
             current_row = QHBoxLayout()
             current_row.setSpacing(2)
 
-        for bid in auction:
+        for i, bid in enumerate(auction):
             if col == 0:
                 _new_row()
             if getattr(bid, 'is_pass', False):
@@ -1008,6 +1067,15 @@ class BiddingTableWidget(QFrame):
             else:
                 text = bid.symbol() if hasattr(bid, 'symbol') else str(bid)
                 cell = self._make_cell(text, kind='bid')
+            # Tag each real bid cell with its seat + bid so a click can be
+            # routed to the explanation popup. Bids feed dealer-first, so
+            # seat i = dealer + i (mod 4).
+            cell._biq_seat = Seat((dealer.value + i) % 4)
+            cell._biq_bid = bid
+            cell.installEventFilter(self)
+            if self._explain_enabled:
+                cell.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._bid_cells.append(cell)
             current_row.addWidget(cell)
             col += 1
             if col >= 4:
@@ -1182,6 +1250,10 @@ class TableView(QWidget):
     """Main table view for 1920x1080"""
 
     card_played = pyqtSignal(object, object)
+    # Re-exposed from the inner trick area / bidding overlay so MainWindow
+    # can offer the "explain biq's action" popup.
+    explain_bid_requested = pyqtSignal(object, object)    # (seat, bid)
+    explain_card_requested = pyqtSignal(object, object)   # (seat, card)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1372,6 +1444,10 @@ class TableView(QWidget):
         trick_h_wrapper = QHBoxLayout()
         trick_h_wrapper.addStretch()
         self.trick_area = TrickAreaWidget()
+        self.trick_area.card_explain_requested.connect(
+            self.explain_card_requested)
+        self.trick_area.bidding_widget.bid_clicked.connect(
+            self.explain_bid_requested)
         trick_h_wrapper.addWidget(self.trick_area)
         trick_h_wrapper.addStretch()
         trick_container.addLayout(trick_h_wrapper, stretch=1)
@@ -1497,6 +1573,10 @@ class TableView(QWidget):
 
         # Hide tricks panel during bidding
         self.tricks_panel.setVisible(False)
+
+    def set_explain_enabled(self, on: bool):
+        """Enable/disable the click-to-explain affordance on bids + cards."""
+        self.trick_area.set_explain_enabled(on)
 
     def set_local_seat(self, seat: Seat):
         """Rotate the table so the given seat is at the bottom (South widget).

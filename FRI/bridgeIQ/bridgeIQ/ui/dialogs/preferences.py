@@ -255,6 +255,15 @@ class PreferencesDialog(QDialog):
             "the bidding screen (embedded, not a separate window).")
         table_layout.addWidget(self.show_bid_info_panel_check)
 
+        self.explain_actions_check = QCheckBox(
+            "Explain biq's actions (click a bid or card for a why-popup)")
+        self.explain_actions_check.setToolTip(
+            "When on, clicking a bid in the auction or a card biq has played\n"
+            "pops up a window explaining the call/play: how a bid fits the\n"
+            "chosen bidding system and why it was chosen, or which card-play\n"
+            "technique applies. A teaching aid; off by default.")
+        table_layout.addWidget(self.explain_actions_check)
+
         table_group.setLayout(table_layout)
         layout.addWidget(table_group)
 
@@ -540,6 +549,8 @@ class PreferencesDialog(QDialog):
         self.show_ben_analysis_check.setChecked(self.prefs.show_ben_bid_analysis)
         self.show_bid_info_panel_check.setChecked(
             getattr(self.prefs, "show_bid_info_panel", True))
+        self.explain_actions_check.setChecked(
+            getattr(self.prefs, "explain_actions_enabled", False))
         self.claude_enabled_check.setChecked(
             getattr(self.prefs, "claude_code_enabled", False))
         self.qplus_combo.setCurrentIndex(
@@ -656,6 +667,7 @@ class PreferencesDialog(QDialog):
         self.prefs.legacy_colors = self.legacy_colors_check.isChecked()
         self.prefs.show_ben_bid_analysis = self.show_ben_analysis_check.isChecked()
         self.prefs.show_bid_info_panel = self.show_bid_info_panel_check.isChecked()
+        self.prefs.explain_actions_enabled = self.explain_actions_check.isChecked()
         self.prefs.claude_code_enabled = self.claude_enabled_check.isChecked()
         self.prefs.qplus_availability = ("none", "demo", "full")[
             self.qplus_combo.currentIndex()]
