@@ -4156,6 +4156,13 @@ For more information, see the README file."""
         dock.setVisible(want)
         if want:
             dock.raise_()
+        # Shift the table right while the panel overlays the top-left, so the
+        # West column / label isn't clipped behind it; restore when hidden.
+        try:
+            inset = (dock.width() + 22) if want else 5
+            self.table_view.set_left_inset(inset)
+        except Exception:
+            pass
 
     def _on_toggle_bid_info(self, checked: bool):
         """Toggle the embedded bidding-information panel (respects the

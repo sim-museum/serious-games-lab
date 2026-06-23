@@ -1195,6 +1195,15 @@ class TableView(QWidget):
         # network mode so a guest at East/N/W sees their own hand at the
         # bottom of the screen.
         self._local_seat: Seat = Seat.SOUTH
+        # Per-seat player type, so the seat labels can show a Q-Plus-style
+        # icon (👤 local human / 🖥 local Computer / 🖧 networked Extern).
+        # main_window pushes the real map via set_seat_types() whenever the
+        # network player config changes; default is single-player (South
+        # human, rest Computer).
+        self._seat_types: Dict[Seat, PlayerType] = {
+            s: (PlayerType.HUMAN if s == Seat.SOUTH else PlayerType.COMPUTER)
+            for s in Seat
+        }
         self._rotation_quarters: int = 0  # number of 90° steps applied
         self.is_play_phase = False
         # True once dummy is visible. setup_declarer_play() flips this
@@ -1519,13 +1528,61 @@ class TableView(QWidget):
         # setup_declarer_play and set_board so we don't override them here).
         self._refresh_seat_labels()
 
+    # Icon + display name + background per player type, Q-Plus style. The
+    # local human's own seat reads "You"; networked seats get the 🖧 glyph
+    # and a distinct tint so it's obvious at a glance who is remote.
+    _TYPE_ICON = {
+        PlayerType.HUMAN: "👤",
+        PlayerType.COMPUTER: "🖥",
+        PlayerType.EXTERNAL: "🖧",
+    }
+    # Seat-label TEXT colours on a dark chip (pokerIQ tones).
+    _TYPE_BG = {
+        PlayerType.HUMAN: "#58a6ff",     # local user — accent blue
+        PlayerType.COMPUTER: "#eef3f7",  # local AI — ink
+        PlayerType.EXTERNAL: "#3fb950",  # networked — green
+    }
+
+    def set_left_inset(self, px: int):
+        """Shift the whole table right by `px`. Used while the bid-info panel
+        (a fixed-width overlay pinned at the top-left) is showing, so the West
+        column / label isn't clipped underneath it."""
+        lay = self.layout()
+        if lay is None:
+            return
+        m = lay.contentsMargins()
+        lay.setContentsMargins(max(5, int(px)), m.top(), m.right(), m.bottom())
+
+    def set_seat_types(self, mapping: Dict[Seat, PlayerType]):
+        """Push the real per-seat player types (from the game controller /
+        network controller). Repaints the seat labels with the right icons."""
+        for s in Seat:
+            if s in mapping and mapping[s] is not None:
+                self._seat_types[s] = mapping[s]
+        self._refresh_seat_labels()
+
+    def _seat_label_markup(self, logical: Seat):
+        """(text, stylesheet) for a seat label: '<char>: <icon> <who>'."""
+        char = {Seat.NORTH: 'N', Seat.EAST: 'E',
+                Seat.SOUTH: 'S', Seat.WEST: 'W'}[logical]
+        ptype = self._seat_types.get(logical, PlayerType.COMPUTER)
+        icon = self._TYPE_ICON.get(ptype, "🖥")
+        if logical == self._local_seat and ptype == PlayerType.HUMAN:
+            who = "You"
+        else:
+            who = {PlayerType.HUMAN: "Human",
+                   PlayerType.COMPUTER: "Computer",
+                   PlayerType.EXTERNAL: "Network"}.get(ptype, "Computer")
+        fg = self._TYPE_BG.get(ptype, "#eef3f7")
+        style = (f"QLabel {{ background-color: #14202c; color: {fg}; "
+                 f"padding: 2px 8px; border-radius: 3px; }}")
+        return f"{char}: {icon} {who}", style
+
     def _refresh_seat_labels(self):
-        """Set the four position labels to identify the logical seat in each
-        physical position. Called whenever rotation changes; downstream
-        helpers (setup_declarer_play, set_board) are free to overwrite with
-        role info ("Dummy", "Declarer", etc.) afterwards."""
-        char_names = {Seat.NORTH: 'N', Seat.EAST: 'E',
-                      Seat.SOUTH: 'S', Seat.WEST: 'W'}
+        """Set the four position labels to identify the logical seat (and its
+        player type) in each physical position. Called whenever rotation or
+        the player-type map changes; downstream helpers (setup_declarer_play,
+        set_board) are free to overwrite with role info afterwards."""
         labels = {
             Seat.NORTH: self.north_label,
             Seat.EAST: self.east_label,
@@ -1534,18 +1591,9 @@ class TableView(QWidget):
         }
         for physical_seat, label in labels.items():
             logical = self._logical_seat(physical_seat)
-            if logical == self._local_seat:
-                label.setText(f"{char_names[logical]}: HUMAN")
-                label.setStyleSheet(
-                    "QLabel { background-color: #88ccff; color: black; "
-                    "padding: 2px 8px; border-radius: 3px; }"
-                )
-            else:
-                label.setText(f"{char_names[logical]}: BEN")
-                label.setStyleSheet(
-                    "QLabel { background-color: #d0d0e0; color: black; "
-                    "padding: 2px 8px; border-radius: 3px; }"
-                )
+            text, style = self._seat_label_markup(logical)
+            label.setText(text)
+            label.setStyleSheet(style)
 
     def _on_card_selected(self, seat: Seat, card: Card):
         self.card_played.emit(seat, card)
@@ -1592,6 +1640,10 @@ class TableView(QWidget):
         self.trick_area.clear_trick()
         self.trick_area.set_show_bidding(True)
         self.trick_area.set_auction([], board.dealer)
+        # Clear any leftover "bidding finished" status from the previous
+        # deal — otherwise the next board opens with the auction-complete
+        # message showing before a single bid has been made.
+        self.trick_area.set_bidding_status("")
         self.tricks_label.setText("0 : 0")
         self.contract_label.setText("")
 
