@@ -250,12 +250,28 @@ def known_layout(board: BoardState, visible: Set[Seat]):
     hidden = [s for s in Seat if s not in visible]
     unseen = [c for c in ALL_CARDS if _cid(c) not in seen_or_visible]
 
+    # Iterative forced placement: a card is PROVEN in a hidden seat when only
+    # one hidden seat can hold it — that seat is neither void in the suit nor
+    # already FULL (its proven cards have reached its remaining-card count).
+    # Re-loop until nothing changes, so count-completion propagates: e.g. once
+    # West's other suits fill its hand, a remaining diamond is forced to East
+    # even though West never "showed out" of diamonds.
     cap = {s: remaining_count[s] for s in hidden}
     proven: Dict[Seat, List[Card]] = {s: [] for s in hidden}
-    for c in unseen:
-        cands = [s for s in hidden if c.suit not in voids[s] and cap[s] > 0]
-        if len(cands) == 1:
-            proven[cands[0]].append(c)
+    remaining = list(unseen)
+    changed = True
+    while changed and remaining:
+        changed = False
+        still = []
+        for c in remaining:
+            cands = [s for s in hidden
+                     if c.suit not in voids[s] and len(proven[s]) < cap[s]]
+            if len(cands) == 1:
+                proven[cands[0]].append(c)
+                changed = True
+            else:
+                still.append(c)
+        remaining = still
 
     known: Dict[Seat, Dict[Suit, List[Rank]]] = {
         s: {su: [] for su in SUIT_ROWS} for s in Seat}
@@ -299,8 +315,14 @@ def suit_length_text(seat: Seat, suit: Suit, visible: Set[Seat], layout,
     c = constraints.get(seat) if constraints else None
     if c is not None:
         lo, hi = c.suit_len.get(suit.value, (0, 13))
+    # Max = the cards of this suit PROVEN here, plus the unseen cards of the
+    # suit not yet pinned to any hidden seat (and capped by this hand's size).
+    # When every unseen card of the suit is placed, uncertain == 0 → exact.
+    inferred_total = sum(len(layout["known"][h][suit])
+                         for h in Seat if h not in visible)
+    uncertain = max(0, layout["unseen_by_suit"].get(suit, 0) - inferred_total)
     lo = max(lo, len(known))
-    hi = min(hi, layout["unseen_by_suit"].get(suit, 0) + len(known))
+    hi = min(hi, len(known) + uncertain, layout["remaining_count"][seat])
     if lo > hi:
         lo = hi
     if lo == hi:
@@ -1384,7 +1406,16 @@ class TeachingView(QWidget):
             "TeachingView { background:qradialgradient(cx:0.5, cy:0.0,"
             " radius:1.2, fx:0.5, fy:0.0, stop:0 #18242e, stop:0.7 #0a0e13); }"
             "QLabel { font-size: 16px; }"
-            "QComboBox { font-size: 15px; }"
+            # The combo boxes (Detail / Carding N/S / E/W / Smith) need
+            # explicit colours: without them the popup's currently-selected
+            # row renders white-on-white (blank) while the other rows are
+            # black-on-white. Pin the closed box and the popup list, and give
+            # the selected row a visible blue highlight.
+            "QComboBox { font-size: 15px; color:#0c0c0c; background:#ffffff;"
+            " border:1px solid #5a7088; border-radius:3px; padding:2px 6px; }"
+            "QComboBox QAbstractItemView { background:#ffffff; color:#0c0c0c;"
+            " selection-background-color:#3070b0; selection-color:#ffffff;"
+            " outline:0; }"
             "QToolTip { color:#eaf2fb; background-color:#16324f;"
             " border:1px solid #6fa8d6; padding:5px; font-size:14px; }")
         root = QVBoxLayout(self)
