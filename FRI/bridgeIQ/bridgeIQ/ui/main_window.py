@@ -7423,6 +7423,13 @@ For more information, see the README file."""
         # players can't peek at another seat's hand by clicking Hint
         # while it isn't their turn.
         self._refresh_hint_button_state()
+        # Refresh Claim / Undo enable state every turn so Claim is available
+        # throughout card play (it was created disabled and only refreshed in
+        # one place, leaving it greyed out during the hand).
+        try:
+            self._update_button_states()
+        except Exception:
+            pass
 
     def _refresh_hint_button_state(self):
         """Grey the Hint toolbar button when it isn't the user's turn."""
