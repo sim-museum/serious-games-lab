@@ -144,15 +144,107 @@ def _bidding_features(board, seat, system) -> Tuple[dict, dict]:
     feats["has_5card_major"] = bool(e.five_card_majors)
     feats["openable"] = e.hcp >= 12 and e.hcp < strong_min
 
-    try:
-        from backend.bidding_flowchart import flowchart_for
-        _, commentary = flowchart_for(board, seat, system)
-        vals["what"] = commentary or "Bid what your system shows for this hand."
-    except Exception:
-        vals["what"] = "Bid what your system shows for this hand."
+    # Context-sensitive "what to do now". The opening-bid flowchart only makes
+    # sense when nobody has opened; once the auction is live, use a role-aware
+    # note (opener's rebid / responder / overcaller / competitive) so the hint
+    # actually matches the seat's position instead of always showing the generic
+    # "responding to partner" menu.
+    if is_opening:
+        try:
+            from backend.bidding_flowchart import flowchart_for
+            _, commentary = flowchart_for(board, seat, system)
+            vals["what"] = commentary or "Open by your system for this hand."
+        except Exception:
+            vals["what"] = "Open by your system for this hand."
+    else:
+        vals["what"] = _bidding_role_note(board, seat, system, e)
 
     vals["vuln_clause"] = _vuln_clause(board.vulnerability.is_vulnerable(seat))
     return feats, vals
+
+
+def _call_sym(b) -> str:
+    """Display a call as e.g. '1♣' / 'Pass' / 'Dbl'."""
+    try:
+        if getattr(b, "is_pass", False):
+            return "Pass"
+        if getattr(b, "is_double", False):
+            return "Dbl"
+        if getattr(b, "is_redouble", False):
+            return "Rdbl"
+        return b.symbol()
+    except Exception:
+        try:
+            return b.to_str()
+        except Exception:
+            return "?"
+
+
+def _bidding_role_note(board, seat, system, e) -> str:
+    """A short, auction-aware coaching note: who opened, did the opponents act,
+    and what is THIS seat's job now (rebid / respond / overcall / compete)."""
+    auction = list(getattr(board, "auction", None) or [])
+    dealer = board.dealer
+
+    def bidder(i):
+        return Seat((int(dealer) + i) % 4)
+
+    opener = opener_call = None
+    for i, b in enumerate(auction):
+        if not getattr(b, "is_pass", False):
+            opener, opener_call = bidder(i), b
+            break
+    partner = seat.partner()
+    opp_acted = any((bidder(i) not in (seat, partner))
+                    and not getattr(b, "is_pass", False)
+                    for i, b in enumerate(auction))
+    my_calls = [b for i, b in enumerate(auction)
+                if bidder(i) == seat and not getattr(b, "is_pass", False)]
+    hcp = e.hcp
+    longest = e.longest_suit
+    long_n = e.suit_lengths[longest]
+    sym = longest.symbol()
+    two_one = getattr(system, "two_over_one_min_hcp", 10)
+    oc = _call_sym(opener_call) if opener_call is not None else "1 of a suit"
+
+    if opener is None:
+        return "Nobody has opened — open by your system, or pass a weak hand."
+
+    # You opened — this is your REBID.
+    if opener == seat:
+        comp = (" The opponents overcalled, and partner is limited, so don't "
+                "overreach.") if opp_acted else ""
+        if long_n >= 6:
+            return (f"You opened — this is your rebid. With {hcp} HCP and {long_n} "
+                    f"{sym}, a simple rebid of your suit is a minimum (~12-15); "
+                    f"jump in it to show extras (16-18).{comp}")
+        return (f"You opened — this is your rebid. {hcp} HCP: rebid 1NT/2NT by "
+                f"strength, raise partner with support, or show a second suit; "
+                f"stay low when minimum.{comp}")
+
+    # Partner opened — you are RESPONDING.
+    if opener == partner:
+        if opp_acted:
+            return (f"Partner opened {oc} and the opponents overcalled. With {hcp} "
+                    f"HCP: a new suit is forcing, a negative double shows the unbid "
+                    f"major(s), a cue-bid is a strong raise, a simple raise is "
+                    f"competitive — pass a flat minimum.")
+        return (f"Partner opened {oc}. Respond by your {hcp} HCP: 1NT (6-10), a new "
+                f"suit at the 1-level (6+ HCP, 4+ cards), or a raise with support. "
+                f"A new suit at the 2-level is game-forcing (~{two_one}+).")
+
+    # An opponent opened.
+    their_suit = (opener_call.suit.symbol()
+                  if opener_call is not None
+                  and getattr(opener_call, "suit", None) is not None
+                  and opener_call.suit != Suit.NOTRUMP else "their suit")
+    if not my_calls:
+        return (f"{opener.to_char()} opened {oc}. Overcall a good 5+ suit (~8-16), "
+                f"double for takeout (short in {their_suit}, support for the "
+                f"others), or pass a flat minimum.")
+    return ("Competitive auction — both sides are bidding. Compete to the level of "
+            f"your fit; don't push {hcp} HCP into their strength. Double is "
+            "takeout/penalty by agreement.")
 
 
 def _call_glyph(call: str) -> str:

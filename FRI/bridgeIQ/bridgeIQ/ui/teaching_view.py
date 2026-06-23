@@ -1759,7 +1759,7 @@ class TeachingView(QWidget):
             c = constraints[seat]
             if (c.hcp_min, c.hcp_max) != (0, 37):
                 hcp_txt = f"  {c.hcp_min}-{c.hcp_max} HCP"
-        w.set_title(f"{seat.name.title()}{role}  ({n_left})" + hcp_txt)
+        w.set_title(f"{seat.name.title()}{role}  ({n_left} cards)" + hcp_txt)
 
         for su in SUIT_ROWS:
             known = layout["known"][seat][su]
