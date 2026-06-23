@@ -2902,12 +2902,15 @@ class MainWindow(QMainWindow):
         board = self.controller.board
         board_num = board.board_number
 
-        # Create a single-board teams match if not already in one
+        # Create the closed-room teams match if not already in one. Open-ended
+        # (num_boards huge) so each "Next deal" deals a FRESH closed-room board
+        # and runs the 4-bot room again, accumulating IMPs — instead of the
+        # match "completing" after a single board with no way to play another.
         if self.teams_match is None or self.match_controller is None:
             import uuid
             self.teams_match = BenTeamsMatch(
                 match_id=str(uuid.uuid4()),
-                num_boards=1,
+                num_boards=board_num + 100000,
                 current_board=board_num,
                 ns_bidding_system=self._current_pair_systems()[0],
                 ew_bidding_system=self._current_pair_systems()[1],
