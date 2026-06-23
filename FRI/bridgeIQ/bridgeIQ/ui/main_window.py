@@ -6117,6 +6117,26 @@ For more information, see the README file."""
         p_bar.setStyleSheet("QProgressBar { border: 1px solid #aaa; border-radius: 3px; }"
                             "QProgressBar::chunk { background-color: #4a9; }")
         p_layout.addWidget(p_bar)
+        # Cancel — Claude can take a long time; let the user bail out. Cancelling
+        # kills the subprocess and skips rendering.
+        cancel_holder = {'cancelled': False}
+        proc_holder = {'proc': None}
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet("QPushButton { padding: 6px 18px; }")
+
+        def _cancel_claude():
+            cancel_holder['cancelled'] = True
+            cancel_btn.setEnabled(False)
+            p_label.setText("Cancelling…")
+            proc = proc_holder.get('proc')
+            if proc is not None and proc.poll() is None:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+        cancel_btn.clicked.connect(_cancel_claude)
+        progress.rejected.connect(_cancel_claude)   # the window's X also cancels
+        p_layout.addWidget(cancel_btn)
         progress.show()
         QApplication.processEvents()
 
@@ -6135,31 +6155,40 @@ For more information, see the README file."""
         result_holder = {'text': None, 'error': None}
 
         def _run_claude():
+            # Use Opus 4.8 with extended thinking. Popen (not subprocess.run)
+            # so the Cancel button can terminate it mid-flight.
             try:
-                # Use Opus 4.7 with extended thinking — same invocation as
-                # the poker code uses for hand annotations.  The bare
-                # --thinking flag was rejected by older builds; the value
-                # variant works on every released CLI.
-                r = subprocess.run(
+                proc = subprocess.Popen(
                     ['claude', '-p',
-                     '--model', 'claude-opus-4-7',
+                     '--model', 'claude-opus-4-8',
                      '--thinking', 'enabled',
                      '--max-turns', '1', prompt],
-                    capture_output=True, text=True, timeout=timeout_seconds
-                )
-                stdout = (r.stdout or '').strip()
-                stderr = (r.stderr or '').strip()
-                if r.returncode == 0 and len(stdout) > 5:
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                proc_holder['proc'] = proc
+                try:
+                    stdout, stderr = proc.communicate(timeout=timeout_seconds)
+                except subprocess.TimeoutExpired:
+                    try:
+                        proc.kill()
+                        proc.communicate()
+                    except Exception:
+                        pass
+                    result_holder['error'] = (
+                        f"claude timed out after {timeout_seconds} seconds.")
+                    return
+                if cancel_holder['cancelled']:
+                    return
+                stdout = (stdout or '').strip()
+                stderr = (stderr or '').strip()
+                if proc.returncode == 0 and len(stdout) > 5:
                     result_holder['text'] = stdout
                 else:
-                    parts = [f"claude exited {r.returncode}"]
+                    parts = [f"claude exited {proc.returncode}"]
                     if stderr:
                         parts.append(f"stderr: {stderr[:500]}")
                     if stdout:
                         parts.append(f"stdout: {stdout[:500]}")
                     result_holder['error'] = "\n".join(parts)
-            except subprocess.TimeoutExpired:
-                result_holder['error'] = f"claude timed out after {timeout_seconds} seconds."
             except Exception as e:
                 result_holder['error'] = f"claude call failed: {e!r}"
 
@@ -6168,7 +6197,26 @@ For more information, see the README file."""
         while thread.is_alive():
             QApplication.processEvents()
             thread.join(timeout=0.1)
-        progress.close()
+            if cancel_holder['cancelled']:
+                break
+        # Make sure a cancelled subprocess is really gone.
+        if cancel_holder['cancelled']:
+            proc = proc_holder.get('proc')
+            if proc is not None and proc.poll() is None:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        try:
+            progress.close()
+        except Exception:
+            pass
+        if cancel_holder['cancelled']:
+            try:
+                self.status_label.setText("Claude request cancelled.")
+            except Exception:
+                pass
+            return
 
         if pidfile:
             try:
@@ -6186,38 +6234,53 @@ For more information, see the README file."""
                 self._claude_cache = {}
             self._claude_cache[cache_key] = text
 
-        if bdl_text:
-            # BDL-annotated rendering. Even on failure we still show the
-            # BDL so the user sees the same context Claude was given.
-            preface = preamble.rstrip()
-            framed = bdl_text
-            if preface:
-                framed = preface + "\n\n" + bdl_text
-            self._show_annotated_bdl_dialog(
-                title=title,
-                bdl_text=framed,
-                claude_text=text or "",
-                error=not text,
-            )
-            if not text:
-                # Surface the error inline at the top, since the
-                # annotated dialog itself doesn't show errors.
+        # Render inside a guard: an exception escaping this Qt slot would abort
+        # the whole app (PyQt aborts on unhandled slot exceptions) — exactly the
+        # "Claude error, then the window vanished" failure. Never let that out.
+        try:
+            if bdl_text:
+                # BDL-annotated rendering. Even on failure we still show the
+                # BDL so the user sees the same context Claude was given.
+                preface = preamble.rstrip()
+                framed = bdl_text
+                if preface:
+                    framed = preface + "\n\n" + bdl_text
+                self._show_annotated_bdl_dialog(
+                    title=title,
+                    bdl_text=framed,
+                    claude_text=text or "",
+                    error=not text,
+                )
+                if not text:
+                    # Surface the error inline at the top, since the
+                    # annotated dialog itself doesn't show errors.
+                    self._show_plain_dialog(
+                        title + " (claude error)",
+                        f"Claude did not return a response.\n\n"
+                        f"{error or 'No output received.'}",
+                        error=True,
+                    )
+                return
+
+            if text:
+                self._show_plain_dialog(title, f"{preamble}{text}", error=False)
+            else:
                 self._show_plain_dialog(
-                    title + " (claude error)",
-                    f"Claude did not return a response.\n\n"
+                    title,
+                    f"{preamble}Claude did not return a response.\n\n"
                     f"{error or 'No output received.'}",
                     error=True,
                 )
-            return
-
-        if text:
-            self._show_plain_dialog(title, f"{preamble}{text}", error=False)
-        else:
-            self._show_plain_dialog(
-                title,
-                f"{preamble}Claude did not return a response.\n\n{error or 'No output received.'}",
-                error=True,
-            )
+        except Exception as ex:
+            import traceback
+            traceback.print_exc()
+            try:
+                self._show_plain_dialog(
+                    title + " (display error)",
+                    f"Claude returned, but rendering the result failed:\n{ex!r}",
+                    error=True)
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # PlantUML rendering — for the card-play hint plan diagrams. Tries
@@ -8852,7 +8915,7 @@ For more information, see the README file."""
                 # accommodate think-then-write for full hand annotations.
                 r = subprocess.run(
                     ['claude', '-p',
-                     '--model', 'claude-opus-4-7',
+                     '--model', 'claude-opus-4-8',
                      '--thinking', 'enabled',
                      '--max-turns', '1', analysis_prompt],
                     capture_output=True, text=True, timeout=900

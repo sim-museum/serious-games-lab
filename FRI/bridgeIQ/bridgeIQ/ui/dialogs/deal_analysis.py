@@ -303,7 +303,7 @@ class DealAnalysisDialog(QDialog):
             try:
                 r = subprocess.run(
                     ['claude', '-p',
-                     '--model', 'claude-opus-4-7',
+                     '--model', 'claude-opus-4-8',
                      '--max-turns', '1', prompt],
                     capture_output=True, text=True, timeout=600,
                 )

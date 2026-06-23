@@ -1178,7 +1178,7 @@ class CompareReplayDialog(QDialog):
             return
         try:
             r = subprocess.run(
-                ['claude', '-p', '--model', 'claude-opus-4-7',
+                ['claude', '-p', '--model', 'claude-opus-4-8',
                  '--thinking', 'enabled', '--max-turns', '1', prompt],
                 capture_output=True, text=True, timeout=900,
             )
