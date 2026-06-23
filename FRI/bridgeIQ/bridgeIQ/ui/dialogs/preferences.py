@@ -241,10 +241,10 @@ class PreferencesDialog(QDialog):
         )
         table_layout.addWidget(self.legacy_colors_check)
 
-        self.show_ben_analysis_check = QCheckBox("Show BEN bid analysis panel")
+        self.show_ben_analysis_check = QCheckBox("Show bid analysis panel")
         self.show_ben_analysis_check.setToolTip(
-            "Show the BEN bid analysis panel during bidding.\n"
-            "Displays BEN's recommended bid and candidate scores."
+            "Show the BridgeIQ bid analysis panel during bidding.\n"
+            "Displays BridgeIQ's recommended bid and candidate scores."
         )
         table_layout.addWidget(self.show_ben_analysis_check)
 

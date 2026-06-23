@@ -6584,71 +6584,174 @@ For more information, see the README file."""
         self._plain_dialogs = survivors
 
     def _on_undo(self):
-        """Undo last card play (only works during current trick before it completes)"""
-        # Disable undo during network play to prevent sync issues
+        """Take back to your last decision point (Q-Plus 'back up').
+
+        Card play: removes cards from the end — your own AND the computer's
+        responses, across a completed trick if need be — until your most recent
+        card is taken back, then it's your turn to replay. Bidding: removes the
+        computer's calls and your last call so you can bid again. Repeatable.
+        """
         if self.network_controller.is_active:
             self.status_label.setText("Undo not available during network play")
             return
-
-        if self.controller.current_phase not in ('play', 'waiting_next'):
-            self.status_label.setText("Undo only available during card play")
-            return
-
-        if not self.card_history:
+        board = self.controller.board
+        if board is None:
             self.status_label.setText("Nothing to undo")
             return
+        phase = self.controller.current_phase
+        if phase == 'bidding':
+            self._undo_last_user_bid(board)
+        elif phase in ('play', 'waiting_next', 'finished'):
+            self._undo_last_user_card(board)
+        else:
+            self.status_label.setText(
+                "Undo is available during bidding and card play")
 
-        # Only allow undo if the last card was played by human and trick is not complete
-        # or if we're in waiting_next state (trick just completed)
-        board = self.controller.board
-        current_trick = board.current_trick
+    def _seat_at(self, base, offset):
+        from backend.models import Seat as _Seat
+        return _Seat((int(base) + int(offset)) % 4)
 
-        if self.controller.current_phase == 'waiting_next':
-            # Trick just completed - can't undo after trick is done
-            self.status_label.setText("Cannot undo after trick is complete")
-            return
+    def _has_user_play(self, board) -> bool:
+        """True if any card already played belongs to a seat the human controls
+        (their own seat, or dummy when the human declares)."""
+        seen = set()
+        seqs = list(getattr(board, 'tricks', None) or [])
+        ct = getattr(board, 'current_trick', None)
+        if ct is not None:
+            seqs.append(ct)
+        for tr in seqs:
+            if id(tr) in seen:
+                continue
+            seen.add(id(tr))
+            for i in range(len(tr.cards)):
+                if self.controller._human_controls_seat(
+                        self._seat_at(tr.leader, i)):
+                    return True
+        return False
 
-        if not current_trick or len(current_trick.cards) == 0:
-            self.status_label.setText("Nothing to undo in current trick")
-            return
-
-        # Find the last human card in the history
-        last_entry = self.card_history[-1]
-        seat, card, is_human = last_entry
-
-        if not is_human:
-            self.status_label.setText("Cannot undo computer's card")
-            return
-
-        # Remove from history
-        self.card_history.pop()
-
-        # Restore card to hand
-        if seat in board.hands:
+    def _undo_one_card(self, board):
+        """Remove the single most-recently-played card, restore it to its
+        owner's hand, and reverse any trick credit. Returns the seat whose card
+        was removed, or None when there are no cards left to undo."""
+        ct = getattr(board, 'current_trick', None)
+        if ct is not None and ct.cards:
+            # In 'waiting_next' the completed trick is BOTH current_trick and
+            # board.tricks[-1] (same object) and was already credited — detach
+            # and reverse the credit before pulling a card.
+            if board.tricks and board.tricks[-1] is ct:
+                board.tricks.pop()
+                self._reverse_trick_credit(board, ct.winner)
+            ct.winner = None
+            idx = len(ct.cards) - 1
+            card = ct.cards.pop(idx)
+            seat = self._seat_at(ct.leader, idx)
             board.hands[seat].cards.append(card)
+            if not ct.cards:
+                board.current_trick = None
+            return seat
+        # Between tricks: reopen the last completed trick.
+        if getattr(board, 'tricks', None):
+            tr = board.tricks.pop()
+            self._reverse_trick_credit(board, tr.winner)
+            tr.winner = None
+            idx = len(tr.cards) - 1
+            card = tr.cards.pop(idx)
+            seat = self._seat_at(tr.leader, idx)
+            board.hands[seat].cards.append(card)
+            board.current_trick = tr if tr.cards else None
+            return seat
+        return None
 
-        # Remove from current trick
-        if current_trick.cards and current_trick.cards[-1] == card:
-            current_trick.cards.pop()
-            current_trick.winner = None  # Reset winner
+    def _reverse_trick_credit(self, board, winner):
+        if winner is None or getattr(board, 'contract', None) is None:
+            return
+        if winner.is_ns() == board.contract.declarer.is_ns():
+            board.declarer_tricks = max(0, board.declarer_tricks - 1)
+        else:
+            board.defense_tricks = max(0, board.defense_tricks - 1)
 
-        # Reset current seat to the player who played the undone card
-        self.controller.current_seat = seat
+    def _undo_last_user_card(self, board):
+        if not self._has_user_play(board):
+            self.status_label.setText("Nothing of yours to take back.")
+            return
+        # Autoplay + undo don't mix — the engine would instantly replay.
+        if self.autoplay_btn.isChecked():
+            self.autoplay_btn.setChecked(False)
+        last_seat = None
+        count = 0
+        for _ in range(64):
+            seat = self._undo_one_card(board)
+            if seat is None:
+                break
+            last_seat = seat
+            count += 1
+            if self.controller._human_controls_seat(seat):
+                break
+        self.controller.current_phase = 'play'
+        if last_seat is not None:
+            self.controller.current_seat = last_seat
+        self._refresh_after_undo(board)
+        try:
+            self._advance_game()
+        except Exception:
+            pass
+        who = last_seat.to_char() if last_seat is not None else ''
+        self.status_label.setText(
+            f"Took back {count} card{'s' if count != 1 else ''} — "
+            f"your play ({who})")
 
-        # Update table view - rebuild the hand and clear trick display
-        self.table_view.hand_widgets[seat].set_hand(board.hands[seat])
-        self.table_view.clear_trick()
+    def _undo_last_user_bid(self, board):
+        auction = getattr(board, 'auction', None) or []
+        if not any(self.controller._human_controls_seat(self._seat_at(board.dealer, i))
+                   for i in range(len(auction))):
+            self.status_label.setText("Nothing of yours to take back.")
+            return
+        last_seat = None
+        while auction:
+            i = len(auction) - 1
+            seat = self._seat_at(board.dealer, i)
+            auction.pop()
+            last_seat = seat
+            if self.controller._human_controls_seat(seat):
+                break
+        self.controller.current_phase = 'bidding'
+        if last_seat is not None:
+            self.controller.current_seat = last_seat
+        try:
+            self.bidding_box.set_auction(list(auction), board.dealer)
+        except Exception:
+            pass
+        try:
+            self._update_available_bids()
+        except Exception:
+            pass
+        try:
+            self._advance_game()
+        except Exception:
+            pass
+        who = last_seat.to_char() if last_seat is not None else ''
+        self.status_label.setText(f"Took back your last bid — your bid ({who})")
 
-        # Re-show any remaining cards in the trick
-        for i, c in enumerate(current_trick.cards):
-            trick_seat = Seat((current_trick.leader.value + i) % 4)
-            self.table_view.play_card_to_trick(trick_seat, c)
-
-        # Update button state
-        self.undo_btn.setEnabled(len(self.card_history) > 0 and
-                                  any(h[2] for h in self.card_history))
-
-        self.status_label.setText(f"Undid {card.to_str()} by {seat.to_char()}")
+    def _refresh_after_undo(self, board):
+        """Re-render hands + the current trick after a take-back."""
+        for s in Seat:
+            try:
+                self.table_view.hand_widgets[s].set_hand(board.hands[s])
+            except Exception:
+                pass
+        try:
+            self.table_view.clear_trick()
+            ct = getattr(board, 'current_trick', None)
+            if ct:
+                for i, c in enumerate(ct.cards):
+                    self.table_view.play_card_to_trick(
+                        self._seat_at(ct.leader, i), c)
+        except Exception:
+            pass
+        try:
+            self._update_button_states()
+        except Exception:
+            pass
 
     def _on_claim(self):
         """Claim remaining tricks"""
@@ -7184,7 +7287,7 @@ For more information, see the README file."""
             f"{'s' if trick_loss >= 1.5 else ''}</b> on average "
             f"compared with the best play.</div>"
             f"<div style='font-size:18px; color:#333; margin-top:8px;'>"
-            f"Get a hint (BEN's recommendation + Claude's "
+            f"Get a hint (BridgeIQ's recommendation + Claude's "
             f"explanation), or cancel and pick again? "
             f"Re-clicking the same card after dismissing this "
             f"dialog will commit your original play.</div>"
@@ -9735,13 +9838,20 @@ For more information, see the README file."""
         """Update enabled state of toolbar buttons based on game phase."""
         phase = self.controller.current_phase
 
-        # Undo button - only during play when there are human cards to undo
-        # Disabled during network play to prevent sync issues
+        # Undo / take-back — enabled whenever the human has a call or card to
+        # take back (bidding OR play), like Q-Plus. Off during network play.
         if hasattr(self, 'undo_btn'):
-            can_undo = (phase == 'play' and
-                       len(self.card_history) > 0 and
-                       any(h[2] for h in self.card_history) and  # h[2] is is_human
-                       not self.network_controller.is_active)  # Disable during network play
+            can_undo = False
+            board = self.controller.board
+            if board is not None and not self.network_controller.is_active:
+                if phase == 'bidding':
+                    auction = getattr(board, 'auction', None) or []
+                    can_undo = any(
+                        self.controller._human_controls_seat(
+                            self._seat_at(board.dealer, i))
+                        for i in range(len(auction)))
+                elif phase in ('play', 'waiting_next', 'finished'):
+                    can_undo = self._has_user_play(board)
             self.undo_btn.setEnabled(can_undo)
 
         # Claim button - only during play
