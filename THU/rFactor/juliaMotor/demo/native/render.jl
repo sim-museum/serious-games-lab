@@ -633,8 +633,8 @@ function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,clu=0.0,tc=nothing; lastlap
     bar(250, clu, blue); bar(278, brk, red); bar(306, thr, green)   # pedal order = physical: clutch, brake, throttle
     rf = rpm/max(revlim,1f0)                                        # rpm as a tachometer DIAL (2× size)
     hdial!(v, 430, H-100, 60, rf, 0.88, (0.40,0.45,0.52), rf>0.88 ? red : amber, red)
-    if tc !== nothing                                          # traction circles (2×2), small, over the black cowl in front of the wheel
-        sp=46; R=16; bx=W/2 - sp/2; by=round(Int, H*0.485)   # dark stable background (not the moving road)
+    if tc !== nothing                                          # traction circles (2×2) docked beside the RPM dial (bottom)
+        sp=42; R=14; bx=510; by=H-140                          # just right of the tachometer, not floating over the road
         htraction!(v,bx,by,R,tc[1]); htraction!(v,bx+sp,by,R,tc[2])
         htraction!(v,bx,by+sp,R,tc[3]); htraction!(v,bx+sp,by+sp,R,tc[4])
     end

@@ -26,7 +26,7 @@ from PyQt6.QtGui import QColor, QFont, QPalette
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFrame, QGridLayout, QGroupBox,
     QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar, QPushButton,
-    QPlainTextEdit, QSizePolicy, QTabWidget, QVBoxLayout, QWidget,
+    QPlainTextEdit, QSizePolicy, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -541,14 +541,24 @@ class DriveTab(QWidget):
         form = QGridLayout()
         form.addWidget(QLabel("Track:"), 0, 0)
         self.track = QComboBox()
-        self.track.addItems(["Zandvoort", "Skidpad", "Nürburgring"])
+        self.track.addItems(["Zandvoort", "Skidpad", "Nürburgring", "Watkins Glen", "Monza", "Spa"])
         self.track.setCurrentIndex(1)        # Skidpad default
         form.addWidget(self.track, 0, 1)
+        form.addWidget(QLabel("Mode:"), 1, 0)
+        self.mode = QComboBox()
+        self.mode.addItems(["Practice", "Training", "Race"])   # GPL-style session modes
+        form.addWidget(self.mode, 1, 1)
+        form.addWidget(QLabel("Laps (race):"), 2, 0)
+        self.laps = QSpinBox(); self.laps.setRange(1, 99); self.laps.setValue(3)
+        form.addWidget(self.laps, 2, 1)
+        form.addWidget(QLabel("AI cars:"), 3, 0)
+        self.ai = QSpinBox(); self.ai.setRange(0, 5); self.ai.setValue(0)
+        form.addWidget(self.ai, 3, 1)
         self.mute = QCheckBox("Mute engine audio (JM_NOSOUND)")
-        form.addWidget(self.mute, 1, 1)
+        form.addWidget(self.mute, 4, 1)
         self.ibt = QCheckBox("Record iRacing .ibt telemetry → data/juliaracer/")
         self.ibt.setChecked(True)        # on by default
-        form.addWidget(self.ibt, 2, 1)
+        form.addWidget(self.ibt, 5, 1)
         root.addLayout(form)
 
         brow = QHBoxLayout()
@@ -581,7 +591,11 @@ class DriveTab(QWidget):
         # free the device so the game's GLFW owns joystick #1 cleanly
         self.joy.stop_reader()
         qenv = QProcessEnvironment.systemEnvironment()
-        qenv.insert("TRACK", ["zandvoort", "skidpad", "nurburgring"][self.track.currentIndex()])
+        qenv.insert("TRACK", ["zandvoort", "skidpad", "nurburgring",
+                              "watglen", "monza", "spa"][self.track.currentIndex()])
+        qenv.insert("JM_MODE", ["practice", "training", "race"][self.mode.currentIndex()])
+        qenv.insert("JM_LAPS", str(self.laps.value()))
+        qenv.insert("JM_AI", str(self.ai.value()))
         if self.mute.isChecked():
             qenv.insert("JM_NOSOUND", "1")
         if not self.ibt.isChecked():     # telemetry is on by default; this disables it

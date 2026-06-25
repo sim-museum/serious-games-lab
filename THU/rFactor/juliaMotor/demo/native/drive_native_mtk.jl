@@ -60,6 +60,15 @@ const SKIDPAD  = TRACKSEL == "skidpad"
 const NURB     = TRACKSEL == "nurburgring"
 println("  → track: ", uppercasefirst(TRACKSEL))
 
+# ---- session mode + race config (GPL-style: Practice / Training / Race) ----
+const MODE      = lowercase(get(ENV, "JM_MODE", "practice"))   # practice | training | race
+const RACE_LAPS = max(1, tryparse(Int, get(ENV, "JM_LAPS", "3")) |> x -> x === nothing ? 3 : x)
+const N_AI      = clamp(tryparse(Int, get(ENV, "JM_AI", "0")) |> x -> x === nothing ? 0 : x, 0, 5)
+const IS_RACE   = MODE == "race"
+const IS_TRAIN  = MODE == "training"
+println("  → mode: ", uppercasefirst(MODE),
+        IS_RACE ? "  ($RACE_LAPS laps" * (N_AI>0 ? ", $N_AI AI cars)" : ")") : "")
+
 # ---- iRacing .ibt telemetry export (JM_IBT=1) ----
 # Record the lap in iRacing's exact .ibt format so juliaMotor laps can be diffed
 # against gold-standard iRacing telemetry (same car/track, similar laps) to tune the
@@ -480,7 +489,7 @@ const PROJ = Render.perspective_revz(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0
 mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; view::Int; auto::Bool; end
 # shift mode: MANUAL by default — no auto-shift, no auto-clutch (you work the clutch to
 # launch and to shift E/Q, or it bogs). ZAND_SHIFT=auto opts into the assists; G toggles in-app.
-const CTL = Ctl(false,false,false,false,false, 1, get(ENV,"ZAND_SHIFT","manual") == "auto")   # MANUAL by default
+const CTL = Ctl(false,false,false,false,false, 1, get(ENV,"ZAND_SHIFT","manual") == "auto" || IS_TRAIN)   # MANUAL by default; Training = auto-shift aid
 key(k) = GLFW.GetKey(win, k) == GLFW.PRESS
 function read_input()
     thr=brk=str=clu=0.0; up=dn=false
@@ -550,7 +559,7 @@ function main()
     spin = 0.0; last = time(); frames = 0; titleT = last
     v_prev = cs.v; pitch_dyn = 0.0; pitch_ter = 0.0    # dive/squat + terrain-slope pitch (smoothed)
     # lap timing + telemetry log
-    lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = cs.laps; tsamp = 0
+    lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = cs.laps; tsamp = 0; race_done = false
     fmt_lap(s) = (m=floor(Int,s/60); sec=s-60m; si=floor(Int,sec); ms=round(Int,(sec-si)*1000);
                   "$m:$(lpad(si,2,'0')).$(lpad(ms,3,'0'))")
     ibt_samples = IBTREC ? Dict{String,Float64}[] : nothing      # iRacing-format telemetry rows
@@ -627,6 +636,11 @@ function main()
             (best_lap == 0.0 || last_lap < best_lap) && (best_lap = last_lap)
             telem !== nothing && (write(telem, "# LAP $(cs.laps)  $(fmt_lap(last_lap))\n"); flush(telem))
             println("  lap $(cs.laps): $(fmt_lap(last_lap))", last_lap==best_lap ? "  (best)" : "")
+            if IS_RACE && cs.laps >= RACE_LAPS && !race_done    # race distance complete
+                race_done = true
+                println("\n  ═══════ RACE FINISHED — $RACE_LAPS laps ═══════")
+                println("  best $(fmt_lap(best_lap))   last $(fmt_lap(last_lap))\n")
+            end
         elseif cs.laps < prev_laps                 # respawn reset the lap counter
             lap_t0 = cs.t
         end
@@ -694,6 +708,8 @@ function main()
         frames += 1
         if now - titleT > 0.25
             GLFW.SetWindowTitle(win, "juliaMotor — Lotus 49 — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear == 0 ? "N" : string(cs.gear)) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
+                (IS_RACE ? (race_done ? "  ✦ FINISHED" : "  — lap $(min(cs.laps+1,RACE_LAPS))/$RACE_LAPS") :
+                           "  [$(uppercasefirst(MODE))]") *
                 (cs.ontrack ? "" : "  [OFF TRACK]"))
             titleT = now
         end
