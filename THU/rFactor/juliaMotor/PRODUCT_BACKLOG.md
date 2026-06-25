@@ -104,6 +104,17 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   supported E6 work. E6 (physics-based brush Lotus 49, no fudge) is the live default model. ✅
   REMAINING (PO-dependent / cosmetic): confirm the brush feel (drive `JM_BRUSH` vs `JM_MAGIC`);
   E4 graphics polish (needs PO eyes on a drive); silence the cosmetic JM_3D landing warnings.
+- 2026-06-25 PO bug batch (test-drive): (1) **FFB straight-line wander** — added a soft
+  deadzone on the front-axle lateral force (`FFB_DEAD`, `JM_FFB_DEAD`, default 0.06 mg/4) so
+  contact-patch noise no longer tugs the wheel on a straight; the self-aligning torque on real
+  cornering is untouched. (2) **Silent on Nürburgring** — audio was `start()`ed at build time, so
+  it underflowed/died during the 3-min track load; moved `EngineAudio.start` to AFTER the load,
+  just before the game loop. (3) **"Grip a little low / slid off the hill"** — the brush μy was
+  fit to the binned-MEDIAN skidpad curve (≈1.2 g), which UNDER-states the achievable peak (iRacing
+  raw peak lateral 1.4–1.58 g; the driver corners ~1.4 g). Re-set μy toward the achievable peak
+  (front 1.36, rear 1.40; μx 1.42/1.45) — the measured low-slip stiffness Cα is preserved, so it's
+  a calibration to the iRacing PEAK grip, not a fudge. `JM_GRIP` scales it for feel. test_brush_slip
+  still green; smoke clean.
 - 2026-06-25 E7 FIX (PO bug report: Watkins Glen "molasses"): the boundary was clamping at 13 m
   from the racing-LINE centreline, so driving on the wide grass/runoff (13–25 m off-line) was
   falsely contained every frame → speed bled to a crawl. Diagnosed from the PO's drive (.ibt: 84%

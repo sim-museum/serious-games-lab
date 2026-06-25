@@ -30,16 +30,20 @@ friction varies with load but can never reach 0 or go negative (which would make
 brush's μ-division blow up on a load transient) — physical AND numerically safe."
 brush_mu(Fz, μ, kμ, Fz0) = μ * clamp(1.0 - kμ * (Fz/Fz0 - 1.0), 0.4, 1.6)
 
-# physical tyre parameter sets (front/rear), IDENTIFIED from the iRacing Lotus 49
-# skidpad grip curve by fit/validate_brush.jl (2-param fit, RMS 0.02/0.04 g):
-#   μ  = the measured PEAK grip (1.19/1.21 g — the real friction, NOT the fudged 1.40+)
-#   Cα = the measured low-slip cornering stiffness (20.5/24.0 /rad)
-# This is a period bias-ply: low stiffness, grip peaks ~9-10° slip, plateaus at μ.
-# NO ×1.13 grip fudge and NO Magic-Formula Cy/Ey shape knobs.
+# physical tyre parameter sets (front/rear), IDENTIFIED from the iRacing Lotus 49:
+#   Cα = the measured low-slip cornering stiffness (20.5/24.0 /rad)  [validate_brush.jl]
+#   μx = the measured straight-line BRAKE grip (1.42/1.45 g)         [fit_brush_long.jl]
 #   Cκ (longitudinal stiffness) is a physical estimate pending a braking-data fit;
 #   kμ (friction load-sensitivity) pending a multi-load (Nürburgring) fit.
-const BRUSH_FRONT = (μ = 1.19, μx = 1.42, Cα = 20.5, Cκ = 28.0, kμ = 0.08, Fz0 = 1415.0)
-const BRUSH_REAR  = (μ = 1.21, μx = 1.42, Cα = 24.0, Cκ = 28.0, kμ = 0.08, Fz0 = 1670.0)
+# This is a period bias-ply: low stiffness, grip peaks ~9-10° slip, plateaus at μ.
+# NO Magic-Formula Cy/Ey shape knobs — the curve SHAPE is pure brush mechanics.
+#   μy: the binned-MEDIAN skidpad curve peaks at ~1.2 g, but that median under-states
+#   the achievable peak — iRacing's raw peak lateral is ~1.4-1.58 g and the driver
+#   corners at ~1.4 g.  μy is set toward that achievable peak so the car grips like the
+#   real one (the measured low-slip cornering stiffness Cα is preserved); JM_GRIP scales it.
+const _GRIP = parse(Float64, get(ENV, "JM_GRIP", "1.0"))   # global grip trim (feel)
+const BRUSH_FRONT = (μ = 1.36*_GRIP, μx = 1.42*_GRIP, Cα = 20.5, Cκ = 28.0, kμ = 0.08, Fz0 = 1415.0)
+const BRUSH_REAR  = (μ = 1.40*_GRIP, μx = 1.45*_GRIP, Cα = 24.0, Cκ = 28.0, kμ = 0.08, Fz0 = 1670.0)
 
 "Pure-lateral brush force Fy(Fz, α) — for fitting/validation."
 function brush_fy(Fz, α; p = BRUSH_FRONT)

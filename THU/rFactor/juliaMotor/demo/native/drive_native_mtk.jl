@@ -24,6 +24,7 @@ const FFB_ATRAIL = parse(Float64, get(ENV, "JM_FFB_TRAIL", "0.18"))   # front sl
 const FFB_TFLOOR = 0.40                                               # residual mechanical trail (caster) — wheel lightens, not dead
 const FFB_AF     = 1.314                                              # CG → front axle [m]
 const FFB_DELTA  = 0.30                                               # road-wheel angle at full lock [rad] (matches DriveRT)
+const FFB_DEAD   = parse(Float64, get(ENV, "JM_FFB_DEAD", "0.06"))   # deadzone on the front-axle force (mg/4 units) — kills straight-line wander
 const _JOYCONF = joinpath(@__DIR__, "joystick.conf")
 const JOYMAP = if isfile(_JOYCONF)
     JoyCfg.loadmap(_JOYCONF)                                  # honour gui.py / calibrate.jl (TX clutch pedal, etc.)
@@ -408,7 +409,7 @@ skyprog = Render.skyprogram(); skyvao = Render.empty_vao()
 hudprog = Render.hud_program(); (hudvao, hudvbo) = Render.hud_buffers()
 depthprog = Render.depthprogram(); (shadowfbo, shadowtex) = Render.make_shadow_fbo()
 const LIGHTDIR = Float32[0.4, 1.0, 0.25]
-const ENG = EngineAudio.build_lotus(gamedata = GD); EngineAudio.start(ENG)   # iRacing-derived Lotus 49 DFV loops, RPM-crossfaded (falls back to onboard set)
+const ENG = EngineAudio.build_lotus(gamedata = GD)   # GPL Ford DFV V8, RPM-pitched; START is deferred to just before the game loop (below)
 print("loading textures… "); flush(stdout)
 const TEXIDX = Render.gpl_texture_index(ZD)
 trackItems = Render.build_gpl(TRACK, TEXIDX)
@@ -592,6 +593,8 @@ function main()
     println("  Manual mode (G) is realistic: hold the clutch (C / stick button) to shift.")
     println("  Lap times top-left: white = last, green = best.  Telemetry → ./zand_racer_*.txt")
     println("  (Logitech joystick works natively — push=throttle, pull=brake, roll=steer)\n")
+    EngineAudio.start(ENG)   # start audio NOW (after the long track load) — starting it mid-load
+                             # let the stream underflow on big tracks (Nürburgring) and go silent
     while !GLFW.WindowShouldClose(win)
         GLFW.PollEvents()
         key(GLFW.KEY_ESCAPE) && break
@@ -627,7 +630,9 @@ function main()
             tl  = telemetryX(cs)
             αf  = atan(tl.v + FFB_AF*tl.r, max(tl.u, 1.0)) - clamp(inp.steer, -1, 1)*FFB_DELTA
             trail = FFB_TFLOOR + (1 - FFB_TFLOOR) * clamp(1 - abs(αf)/FFB_ATRAIL, 0.0, 1.0)
-            mz  = (cs.tc[1][2] + cs.tc[2][2]) * trail
+            fy = cs.tc[1][2] + cs.tc[2][2]                     # front-axle lateral force (mg/4 units)
+            fy = abs(fy) > FFB_DEAD ? fy - sign(fy)*FFB_DEAD : 0.0   # soft deadzone: no spurious straight-line pull
+            mz  = fy * trail
             spd = clamp(cs.v/2.5, 0.0, 1.0)                    # fade in with speed (no rest buzz)
             FFB.set_force!(ffb, tanh(FFB_SIGN * FFB_GAIN * mz * spd))
         end

@@ -375,6 +375,12 @@ if [[ ! -f "$WINEPREFIX/drive_c/windows/system32/mfc42.dll" ]]; then
         /d "C:\\users\\$USER\\AppData\\Roaming" /f &>/dev/null || true
     wineserver -k 2>/dev/null || true
     sleep 1
+    # Re-init synchronously after the -k flush so the prefix is fully booted
+    # (and %AppData% populated) BEFORE winetricks probes it. Without this,
+    # winetricks spawns a fresh wineserver, its %AppData% query races that
+    # boot, returns empty, and aborts the mfc42 extraction.
+    wine wineboot --init >/dev/null 2>&1
+    wineserver -w 2>/dev/null || true
     winetricks -q mfc42 || true
 fi
 

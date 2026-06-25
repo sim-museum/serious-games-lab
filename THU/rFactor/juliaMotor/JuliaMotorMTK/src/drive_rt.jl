@@ -44,7 +44,7 @@ end
 start (engine idling, clutch open; throttle revs + engages it to launch)."
 function build_car(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, brush = !haskey(ENV, "JM_MAGIC"))
     sys = mtkcompile(DrivenVehicleRT(name = :car, brush = brush))   # physics brush by DEFAULT; JM_MAGIC ⇒ old Magic-Formula tyre
-    println(brush ? "  TYRE: physics-based brush model (default; μ≈1.2, no fudge) — set JM_MAGIC=1 for the old fudged tyre" :
+    println(brush ? "  TYRE: physics-based brush model (default; μ≈1.4 peak, no fudge — JM_GRIP scales) — set JM_MAGIC=1 for the old tyre" :
                     "  TYRE: Magic-Formula tyre (JM_MAGIC)")
     prob = ODEProblem(sys, [sys.u => v0, sys.ωf => v0/0.30, sys.ωr => v0/RW_R,
                             sys.ωe => 209.4, sys.X => x0, sys.Y => z0, sys.ψ => θ0], (0.0, 1e7))
