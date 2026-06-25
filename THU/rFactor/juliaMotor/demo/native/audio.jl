@@ -41,6 +41,14 @@ end
 const SAMPLES = (("idle1e.WAV",1600.0), ("v4g.wav",2700.0), ("l4f.wav",4500.0),
                  ("l2e.wav",6200.0), ("h1g.wav",8000.0))
 
+# Lotus 49 (Cosworth DFV V8) loops cut from the iRacing onboard recording by
+# demo/native/sound/extract_samples.py; each file's natural RPM = its detected
+# firing pitch (4th order), so the RPM crossfade + pitch-trim stay in tune.
+const LOTUS_SAMPLES = (("lotus_2400.wav",2400.0), ("lotus_3500.wav",3500.0),
+                       ("lotus_4650.wav",4650.0), ("lotus_5100.wav",5100.0),
+                       ("lotus_6350.wav",6350.0), ("lotus_8100.wav",8100.0),
+                       ("lotus_10050.wav",10050.0))
+
 """Build the engine from the car's onboard sample set (`Sounds/F158/Vanwall_V254/IN`)."""
 function build(gamedata)
     dir = joinpath(gamedata,"Sounds","F158","Vanwall_V254","IN")
@@ -50,6 +58,19 @@ function build(gamedata)
         d,_ = load_wav(p); push!(voices, Voice(d, rpm, 0.0))
     end
     Engine(voices, Threads.Atomic{Float64}(1600.0), Threads.Atomic{Float64}(0.7), Threads.Atomic{Bool}(false))
+end
+
+"""Build the Lotus 49 engine from the iRacing-derived DFV loops in `dir`
+(defaults to `sound/lotus` next to this file).  Falls back to `build(gamedata)`
+if no Lotus samples are present."""
+function build_lotus(; dir = joinpath(@__DIR__, "sound", "lotus"), gamedata = "")
+    voices = Voice[]
+    for (f,rpm) in LOTUS_SAMPLES
+        p = joinpath(dir,f); isfile(p) || continue
+        d,_ = load_wav(p); push!(voices, Voice(d, rpm, 0.0))
+    end
+    isempty(voices) && return build(gamedata)          # no Lotus loops → onboard set
+    Engine(voices, Threads.Atomic{Float64}(2000.0), Threads.Atomic{Float64}(0.7), Threads.Atomic{Bool}(false))
 end
 
 # mix one output buffer (frames×2): triangular RPM crossfade + per-sample pitch

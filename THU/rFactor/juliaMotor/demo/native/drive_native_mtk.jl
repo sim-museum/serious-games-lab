@@ -6,7 +6,8 @@
 # render.jl.
 using GLFW, ModernGL, LinearAlgebra, Dates
 using JuliaMotor, RFactorData
-include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/drive_rt.jl"); using .DriveRT  # MTK physics
+include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/drive_rt.jl"); using .DriveRT  # MTK physics (planar)
+include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/drive_rt3d.jl"); using .DriveRT3D  # full-3D physics (JM_3D=1)
 include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/ibt.jl"); using .IBT           # iRacing .ibt telemetry writer
 include("render.jl"); using .Render
 include("gpltrack.jl"); using .GPLTrack
@@ -358,6 +359,13 @@ const WHEELS = (( 1.05f0, 0.62f0,true, 0.31f0,"lotwlf"), ( 1.05f0,-0.62f0,true, 
 # ---- GL init (visible window on the user's display) ----
 const W, H = 1440, 810
 const SMOKE = haskey(ENV, "JM_SMOKE")     # headless self-test: hidden window, auto-exit
+const CAR3D = haskey(ENV, "JM_3D")        # full-3D vehicle (heave/pitch/roll + jumps) instead of the planar model
+# physics dispatch — Car3D is field/method-compatible with DriveRT.Car (superset)
+build_carX(; kw...)        = CAR3D ? DriveRT3D.build_car3d(; kw...) : DriveRT.build_car(; kw...)
+step_carX!(c, a...; kw...) = CAR3D ? DriveRT3D.step_car3d!(c, a...; kw...) : DriveRT.step_car!(c, a...; kw...)
+telemetryX(c)              = CAR3D ? DriveRT3D.telemetry3d(c) : DriveRT.telemetry(c)
+respawnX!(c)               = CAR3D ? DriveRT3D.respawn3d!(c) : DriveRT.respawn!(c)
+CAR3D && println("  PHYSICS: full-3D vehicle (JM_3D) — heave/pitch/roll + suspension travel + jumps")
 GLFW.Init()
 SMOKE && GLFW.WindowHint(GLFW.VISIBLE, false)
 GLFW.WindowHint(GLFW.CONTEXT_VERSION_MAJOR, 4); GLFW.WindowHint(GLFW.CONTEXT_VERSION_MINOR, 5)  # 4.5 → glClipControl (reversed-Z)
@@ -375,7 +383,7 @@ skyprog = Render.skyprogram(); skyvao = Render.empty_vao()
 hudprog = Render.hud_program(); (hudvao, hudvbo) = Render.hud_buffers()
 depthprog = Render.depthprogram(); (shadowfbo, shadowtex) = Render.make_shadow_fbo()
 const LIGHTDIR = Float32[0.4, 1.0, 0.25]
-const ENG = EngineAudio.build(GD); EngineAudio.start(ENG)   # real onboard engine samples, RPM-crossfaded
+const ENG = EngineAudio.build_lotus(gamedata = GD); EngineAudio.start(ENG)   # iRacing-derived Lotus 49 DFV loops, RPM-crossfaded (falls back to onboard set)
 print("loading textures… "); flush(stdout)
 const TEXIDX = Render.gpl_texture_index(ZD)
 trackItems = Render.build_gpl(TRACK, TEXIDX)
@@ -532,7 +540,7 @@ function main()
         h[3] ? (LASTZ[] = Float64(h[1]); ONTRACK[] = true) : (ONTRACK[] = false)
         LASTZ[]
     end
-    cs = build_car(x0=cs0.x, z0=cs0.z, θ0=cs0.θ, v0=0.0)   # MTK car — standing start
+    cs = build_carX(x0=cs0.x, z0=cs0.z, θ0=cs0.θ, v0=0.0)   # MTK car — standing start (planar or full-3D)
     # ---- force feedback: self-aligning torque from the front-axle lateral force ----
     # force = SIGN·GAIN·(Fy_FL+Fy_FR), faded out near standstill.  The front Fy rises as the
     # tyres bite and DROPS past the grip peak → the wheel goes light = you feel understeer.
@@ -560,8 +568,8 @@ function main()
         SMOKE && frames >= 40 && break
         now = time(); dt = clamp(now-last, 0.0, 0.05); last = now
         inp, rst = read_input()
-        if rst; respawn!(cs)
-        else; step_car!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
+        if rst; respawnX!(cs)
+        else; step_carX!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
                         groundz=groundz)
             if !SKIDPAD     # track position + lap timing (Zandvoort only)
@@ -580,7 +588,7 @@ function main()
         # pneumatic trail collapses (you feel understeer). A mechanical-trail floor keeps
         # it from going dead; tanh soft-clips so it never hard-pins (always some headroom).
         if ffb !== nothing && ffb.ok
-            tl  = telemetry(cs)
+            tl  = telemetryX(cs)
             αf  = atan(tl.v + FFB_AF*tl.r, max(tl.u, 1.0)) - clamp(inp.steer, -1, 1)*FFB_DELTA
             trail = FFB_TFLOOR + (1 - FFB_TFLOOR) * clamp(1 - abs(αf)/FFB_ATRAIL, 0.0, 1.0)
             mz  = (cs.tc[1][2] + cs.tc[2][2]) * trail
@@ -590,8 +598,8 @@ function main()
 
         # ---- iRacing .ibt telemetry sample (one row per frame, ~60 Hz) ----
         if ibt_samples !== nothing && !rst
-            tl = telemetry(cs); δw = inp.steer * (SKIDPAD ? 0.30 : CAR.max_steer)
-            push!(ibt_samples, Dict{String,Float64}(
+            tl = telemetryX(cs); δw = inp.steer * (SKIDPAD ? 0.30 : CAR.max_steer)
+            row = Dict{String,Float64}(
                 "SessionTime"=>cs.t, "SessionTick"=>Float64(length(ibt_samples)+1),
                 "IsOnTrack"=>cs.ontrack ? 1.0 : 0.0,
                 "Speed"=>cs.v, "RPM"=>cs.rpm, "Gear"=>Float64(cs.gear),
@@ -601,9 +609,16 @@ function main()
                 "LapDist"=>cs.lapdist, "LapDistPct"=>(SKIDPAD ? 0.0 : (LAPLEN>0 ? cs.lapdist/LAPLEN : 0.0)),
                 "Yaw"=>cs.θ, "YawRate"=>tl.r,
                 "VelocityX"=>tl.u, "VelocityY"=>tl.v, "VelocityZ"=>0.0,
-                "LongAccel"=>tl.ax, "LatAccel"=>tl.ay, "VertAccel"=>9.80665,
+                # VertAccel is REAL in 3-D mode (the planar model has no vertical DOF → 1 g stub)
+                "LongAccel"=>tl.ax, "LatAccel"=>tl.ay, "VertAccel"=>(CAR3D ? tl.vacc : 9.80665),
                 "LFspeed"=>tl.ωf*0.30, "RFspeed"=>tl.ωf*0.30, "LRspeed"=>tl.ωr*0.33, "RRspeed"=>tl.ωr*0.33,
-                "Alt"=>cs.y))
+                "Alt"=>cs.y)
+            if CAR3D                                   # real ride heights + body attitude (Flugplatz benchmark)
+                row["LFrideHeight"]=tl.rh[1]; row["RFrideHeight"]=tl.rh[2]
+                row["LRrideHeight"]=tl.rh[3]; row["RRrideHeight"]=tl.rh[4]
+                row["Pitch"]=tl.pitch; row["Roll"]=tl.roll
+            end
+            push!(ibt_samples, row)
         end
 
         # ---- lap timing + telemetry log ----
@@ -622,12 +637,18 @@ function main()
 
         # ---- body pitch: accel→squat (nose up), brake→dive (nose down); + terrain slope ----
         acc = clamp((cs.v - v_prev)/max(dt,1e-3), -15.0, 15.0); v_prev = cs.v
-        pitch_dyn += (clamp(0.0016*acc, -0.013, 0.013) - pitch_dyn) * min(1.0, dt*3.5)  # subtle, heavily damped (no rock)
         pitch_ter += (terrain_pitch(cs) - pitch_ter) * min(1.0, dt*6)
+        rollv = 0.0
+        if CAR3D
+            pitch_dyn = cs.pitch - pitch_ter          # REAL body pitch (minus the slope carModel already applies)
+            rollv = cs.roll                           # REAL body roll
+        else
+            pitch_dyn += (clamp(0.0016*acc, -0.013, 0.013) - pitch_dyn) * min(1.0, dt*3.5)  # faked, heavily damped
+        end
         vp, eye = camera(cs, pitch_ter + pitch_dyn)
         carModel = Render.translate(Float32[cs.x, cs.y, -cs.z]) * Render.roty(Float32(cs.θ)) *
                    Render.rotz(Float32(pitch_ter))                       # whole car follows the hill
-        bodyModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.translate(BODY_OFF)  # body dives/squats
+        bodyModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv)) * Render.translate(BODY_OFF)  # body dives/squats + rolls (3-D)
         δ = Float32(inp.steer * (SKIDPAD ? 0.30 : CAR.max_steer))
         wheelmat(wx,wz,steer,r) = carModel * Render.translate(Float32[wx, r, wz]) *
                      (steer ? Render.roty(δ) : Render.ident()) * Render.rotz(Float32(spin))

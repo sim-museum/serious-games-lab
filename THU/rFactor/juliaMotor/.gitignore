@@ -3,3 +3,10 @@
 data/iracing/*.ibt
 # juliaMotor-emitted .ibt telemetry (JM_IBT) — same format, for iRacing comparison
 data/juliaracer/*.ibt
+# iRacing .ibt also in dated subfolders (large personal binaries)
+data/iracing/**/*.ibt
+# generated engine-sound preview (regenerate via demo/native/sound/preview_engine.jl)
+demo/native/sound/lotus49_rev_preview.wav
+# python bytecode
+__pycache__/
+*.pyc

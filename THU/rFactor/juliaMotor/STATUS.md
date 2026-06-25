@@ -1,3 +1,23 @@
+# juliaMotor — status (2026-06-24)
+
+## NEW (2026-06-24): 3-test iRacing benchmark + FULL-3D model + Lotus DFV engine sound
+- **Benchmark** vs fresh iRacing `.ibt` (`BENCHMARK_2026-06-24.md`, `data/iracing/2026-06-24/`):
+  skidpad grip 1.46 g vs iRacing 1.58 (spin still hot); **engine-braking downshift ✅ PASS**
+  (`JuliaMotorMTK/tools/engbrake_probe.jl`, +750–1300 rpm/shift vs iRacing +1000–1700);
+  Flugplatz jump was a physics gap → now closed. Tool `data/iracing/profile_ibt.py`.
+- **FULL-3D Lotus 49** (`JuliaMotorMTK/src/components/vehicle_3d.jl` `DrivenVehicle3D`):
+  sprung heave/pitch/roll + 4 unsprung w/ ground contact (smooth Fz→0 clamp) + explicit
+  gravity → **jumps, dives, rolls; load transfer emerges from attitude**. Validated
+  (`tools/vehicle3d_probe.jl`): static ΣFz=mg, dive, roll+transfer, jump 0.53 s air →
+  VertAccel 0 g airborne → +2.76 g landing. Real-time adapter `src/drive_rt3d.jl`
+  (`Car3D`); wired into the app behind **`JM_3D=1`** with REAL VertAccel/ride-height/
+  pitch/roll in the `.ibt` (ride heights 74–76 mm match iRacing ~75). `JM_3D` opt-in.
+- **Engine sound** = real iRacing Lotus 49 DFV (`audio.jl` `build_lotus`, 7 loops in
+  `demo/native/sound/lotus/`; DFV 4th-order spectral extraction in `sound/extract_samples.py`).
+  Audition `demo/native/sound/lotus49_rev_preview.wav`.
+
+---
+
 # juliaMotor — status (2026-06-20)
 
 Branch: `julia-racer`. A Julia physics engine (`JuliaMotorMTK`, ModelingToolkit) + a native
