@@ -57,3 +57,11 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   3-D drive smoke runs clean, guard doesn't false-trigger on legit jumps (pitch 0.16°). JM_3D is
   still opt-in; default is the planar model. Remaining S4 (E4): flicker/cockpit-rug/floating-people
   polish — best verified by PO test-drives.
+- 2026-06-25 Sprint 5 (E6) started — physics-based BRUSH tyre. `brush_tyre.jl`: force from
+  contact-patch bristle mechanics (adhesion→sliding), `F = μ·Fz·(1−(1−ξ)³)`, params PHYSICAL
+  (μ friction, Cα/Cκ stiffness, kμ load-sensitivity) — no Magic-Formula Cy/Ey knobs, no ×1.13
+  grip fudge. `fit/validate_brush.jl` identifies μ, Cα straight from the iRacing skidpad grip
+  curve: FRONT μ=1.19 Cα=20.5 (RMS 0.021 g), REAR μ=1.21 Cα=24.0 (RMS 0.042 g) — BETTER than the
+  fudged Magic Formula (0.20/0.30 g, which overshot to 1.4 g). KEY: the real Lotus tyre is a soft
+  bias-ply μ≈1.2 peaking ~9-10°, not the fudged 1.4 g. NEXT: wire brush into the Tyre component +
+  re-validate full skidpad/Nürburgring; fit Cκ (braking) + kμ (multi-load); then JM_3D contact.
