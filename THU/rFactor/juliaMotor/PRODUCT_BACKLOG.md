@@ -63,5 +63,9 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   grip fudge. `fit/validate_brush.jl` identifies μ, Cα straight from the iRacing skidpad grip
   curve: FRONT μ=1.19 Cα=20.5 (RMS 0.021 g), REAR μ=1.21 Cα=24.0 (RMS 0.042 g) — BETTER than the
   fudged Magic Formula (0.20/0.30 g, which overshot to 1.4 g). KEY: the real Lotus tyre is a soft
-  bias-ply μ≈1.2 peaking ~9-10°, not the fudged 1.4 g. NEXT: wire brush into the Tyre component +
-  re-validate full skidpad/Nürburgring; fit Cκ (braking) + kμ (multi-load); then JM_3D contact.
+  bias-ply μ≈1.2 peaking ~9-10°, not the fudged 1.4 g.
+- 2026-06-25 E6: brush tyre WIRED into the car (opt-in JM_BRUSH). `BrushTyre` MTK component
+  (smooth/branchless brush law, tyre.jl); `CornerAssembly`/`DrivenVehicleRT`/`build_car` thread a
+  `brush` flag. Verified (`brush_grip_probe.jl`): the wired brush car peaks at 1.03 g vs the Magic
+  Formula's 1.24 g — ratio 0.83 = exactly the physical μ ratio (1.21/1.45): the fudge is gone.
+  NEXT: brush for the 3-D car; fit Cκ (braking) + kμ (multi-load); make brush default; JM_3D contact.

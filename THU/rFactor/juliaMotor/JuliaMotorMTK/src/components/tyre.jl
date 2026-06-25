@@ -10,6 +10,30 @@ using ModelingToolkit
 using ModelingToolkit: t_nounits as t, D_nounits as D
 
 include("tyre_law.jl")   # mf_branch, mf_stiffness, TYRE_DEFAULTS, presets, tyre_fy/fx
+include("brush_tyre.jl") # PHYSICS-BASED brush: brush_forces + BRUSH_FRONT/REAR presets
+
+# ----- the PHYSICS-BASED brush tyre as an MTK component -----------------------
+# Same Fz/α/κ → Fx/Fy/Mz interface as `Tyre`, but the force is the contact-patch
+# brush law F = μ·Fz·(1−(1−ξ)³) (smooth/branchless via min for the symbolic graph),
+# with PHYSICAL parameters (μ, Cα, Cκ, kμ) — no Magic-Formula Cy/Ey, no grip fudge.
+function BrushTyre(; name, μ = BRUSH_FRONT.μ, Cα = BRUSH_FRONT.Cα, Cκ = BRUSH_FRONT.Cκ,
+                   kμ = BRUSH_FRONT.kμ, Fz0 = BRUSH_FRONT.Fz0, t0 = 0.035)
+    ps = @parameters μ=μ Cα=Cα Cκ=Cκ kμ=kμ Fz0=Fz0 t0=t0
+    vars = @variables Fz(t) α(t) κ(t) Fy(t) Fx(t) Mz(t) μe(t) gx(t) gy(t) gg(t) ξ(t) sat(t) Fmag(t)
+    eqs = [
+        μe   ~ μ * (1.0 - kμ*(Fz/Fz0 - 1.0)),          # friction load-sensitivity (physical)
+        gx   ~ Cκ*κ,                                    # stiffness-weighted slip components
+        gy   ~ Cα*sin(α),
+        gg   ~ sqrt(gx^2 + gy^2 + 1e-6),               # magnitude (with direction floor)
+        ξ    ~ sqrt(gx^2 + gy^2) / (3.0*μe + 1e-6),    # normalized slip
+        sat  ~ 1.0 - (1.0 - min(ξ, 1.0))^3,            # brush adhesion→sliding (branchless)
+        Fmag ~ μe*Fz * sat,
+        Fx   ~ Fmag * gx/gg,                           # force along the deflection vector (friction ellipse)
+        Fy   ~ Fmag * gy/gg,
+        Mz   ~ -t0 * (1.0 - min(ξ, 1.0)) * Fy,         # pneumatic trail collapses as the patch slides
+    ]
+    System(eqs, t, vars, ps; name)
+end
 
 # ----- the acausal component --------------------------------------------------
 # Fz, α, κ are inputs (driven by the suspension + chassis kinematics in the full

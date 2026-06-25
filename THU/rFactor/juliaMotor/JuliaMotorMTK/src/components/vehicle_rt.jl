@@ -13,16 +13,17 @@ function DrivenVehicleRT(; name,
         h = 0.30, front_frac = 0.455,
         Rw_f = 0.30, Rw_r = 0.33, Iw = 1.0, Ieng = 0.10, η = 0.9, final = 4.11,
         bias = 0.535, Tbrake_max = 4200.0, CdA = 0.9, ρair = 1.10,   # brake torque ↑ (was 3000, felt weak)
-        throttle0 = 0.0, brake0 = 0.0, steer0 = 0.0, gear0 = 1.72,
+        throttle0 = 0.0, brake0 = 0.0, steer0 = 0.0, gear0 = 1.72, brush = false,
         front_corner = (Fz_static = 1376.0, ks = 18_250.0, cs = 2500.0,
                         m_s = 120.0, m_u = 20.0, kt = 180_000.0, ct = 300.0),
         rear_corner  = (Fz_static = 1650.0, ks = 29_200.0, cs = 3000.0,
                         m_s = 148.0, m_u = 20.0, kt = 200_000.0, ct = 300.0))
     L = a + b; mf = m*front_frac; mr = m*(1 - front_frac)
-    @named FL = CornerAssembly(corner = front_corner, tyre = TYRE_SKIDPAD_FRONT)
-    @named FR = CornerAssembly(corner = front_corner, tyre = TYRE_SKIDPAD_FRONT)
-    @named RL = CornerAssembly(corner = rear_corner,  tyre = TYRE_SKIDPAD_REAR)
-    @named RR = CornerAssembly(corner = rear_corner,  tyre = TYRE_SKIDPAD_REAR)
+    # brush=true ⇒ the physics-based brush tyre (no fudge); else the Magic-Formula preset
+    @named FL = CornerAssembly(corner = front_corner, tyre = TYRE_SKIDPAD_FRONT, brush = brush, brushp = BRUSH_FRONT)
+    @named FR = CornerAssembly(corner = front_corner, tyre = TYRE_SKIDPAD_FRONT, brush = brush, brushp = BRUSH_FRONT)
+    @named RL = CornerAssembly(corner = rear_corner,  tyre = TYRE_SKIDPAD_REAR,  brush = brush, brushp = BRUSH_REAR)
+    @named RR = CornerAssembly(corner = rear_corner,  tyre = TYRE_SKIDPAD_REAR,  brush = brush, brushp = BRUSH_REAR)
 
     # driver inputs are PARAMETERS (updated live); vehicle + clutch params too.
     # Clutch/launch: Ie engine inertia, c_c clutch coupling, T_cap capacity, idle.
