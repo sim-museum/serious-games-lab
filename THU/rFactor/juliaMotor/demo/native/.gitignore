@@ -5,3 +5,5 @@ sand_racer_*.txt
 # joystick calibration is machine-specific
 joystick.conf
 joystick_profiles/
+# prebuilt sysimage (large, machine-specific — build via build_sysimage.jl)
+jlracer.so

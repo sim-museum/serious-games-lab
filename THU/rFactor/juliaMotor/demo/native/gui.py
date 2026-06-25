@@ -606,9 +606,19 @@ class DriveTab(QWidget):
         self.proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
         self.proc.readyReadStandardOutput.connect(self._log)
         self.proc.finished.connect(self._done)
-        self.proc.start(find_julia(), ["-t", "2", "--project=.", "drive_native_mtk.jl"])
+        # use the prebuilt sysimage if present (skips ~40-80 s of physics/render JIT)
+        jlargs = ["-t", "2", "--project=."]
+        sysimg = os.path.join(HERE, "jlracer.so")
+        fast = os.path.exists(sysimg)
+        if fast:
+            jlargs += ["-J", sysimg]
+        jlargs.append("drive_native_mtk.jl")
+        self.proc.start(find_julia(), jlargs)
         self.log.clear()
-        self.log.appendPlainText("launching drive_native_mtk.jl … (first load ~3–4 min)\n")
+        self.log.appendPlainText(
+            "launching drive_native_mtk.jl … " +
+            ("(sysimage: faster start)\n" if fast else
+             "(first load ~3–4 min — run build_sysimage.jl once to speed this up)\n"))
         self.launch_b.setEnabled(False)
         self.stop_b.setEnabled(True)
 

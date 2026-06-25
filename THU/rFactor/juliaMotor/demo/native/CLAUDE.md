@@ -14,8 +14,11 @@ python3 gui.py                                  # PyQt6 front-end: launch + cont
 julia -t 2 --project=. drive_native.jl          # opens a GLFW window on your display
 JM_SMOKE=1 julia -t 2 --project=. drive_native.jl   # headless self-test → dumps /tmp/zand_hud.ppm and exits
 ```
-First load is ~3–4 min (parses the track, extracts ~70 trackside objects, decodes
-MIP textures). Controls: **W/S** gas·brake, **A/D** steer, **E/Q** shift, **C** clutch,
+First load is ~2–3 min: ~40–80 s is one-time Julia/MTK/render JIT (track-independent),
+the rest is the per-track GPL parse (extract ~70 objects, decode MIP textures, build the
+HAT). **To cut the JIT:** `julia build_sysimage.jl` once (~20–40 min) writes `jlracer.so`;
+`gui.py` then auto-launches with `-J jlracer.so` and only the per-track parse remains. The
+sysimage is gitignored (large, machine-specific) — rebuild it after physics/render changes. Controls: **W/S** gas·brake, **A/D** steer, **E/Q** shift, **C** clutch,
 **G** auto⇄manual, **V** view (cockpit/chase), **R** respawn, **M** mute, **Esc** quit.
 
 ## GUI + controller calibration (`gui.py`)
