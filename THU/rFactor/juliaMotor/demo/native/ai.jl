@@ -1,0 +1,66 @@
+# RaceAI — simple, robust rail-following opponents for the race mode.  Each AI car
+# tracks the track centreline at a curvature-limited speed (slows for corners, runs
+# out the straights) and is rendered as a Lotus 49.  This is a VISUAL/gameplay AI
+# (not the full physics model) — enough for a field of up to 5 opponents that drive
+# a believable line, start on a grid, and complete laps.
+module RaceAI
+
+struct AILine
+    x::Vector{Float64}; z::Vector{Float64}; y::Vector{Float64}
+    s::Vector{Float64}                 # cumulative arc length [m]
+    θ::Vector{Float64}                 # tangent heading [rad]
+    κ::Vector{Float64}                 # curvature [1/m]
+    total::Float64                     # lap length [m]
+end
+
+wrapπ(a) = a > π ? a - 2π : a < -π ? a + 2π : a
+
+"Build an AI racing line from centreline points `pts` (each (x,z) in physics frame)
+and a `groundz(x,z)->y` elevation function."
+function build_line(pts, groundz)
+    n = length(pts)
+    x = Float64[p[1] for p in pts]; z = Float64[p[2] for p in pts]
+    s = zeros(n); for i in 2:n; s[i] = s[i-1] + hypot(x[i]-x[i-1], z[i]-z[i-1]); end
+    θ = [atan(z[i%n+1]-z[i], x[i%n+1]-x[i]) for i in 1:n]
+    κ = zeros(n)
+    for i in 1:n
+        j = i % n + 1; ds = max(j == 1 ? (s[end]-s[i]) : (s[j]-s[i]), 0.5)
+        κ[i] = abs(wrapπ(θ[j]-θ[i])) / ds
+    end
+    y = Float64[(h = groundz(x[i], z[i]); isfinite(h) ? h : 0.0) for i in 1:n]
+    AILine(x, z, y, s, θ, κ, s[end])
+end
+
+mutable struct AICar; s::Float64; v::Float64; lap::Int; lane::Float64; end
+
+"Grid of `n` AI cars staggered ~9 m apart behind arc-length `start_s`, alternating lanes."
+init_cars(line::AILine, n; start_s = 0.0) =
+    [AICar(mod(start_s - 9.0*i, line.total), 25.0, 0, iseven(i) ? 2.4 : -2.4) for i in 1:n]
+
+function _locate(line::AILine, sq)
+    sq = mod(sq, line.total)
+    i = clamp(searchsortedlast(line.s, sq), 1, length(line.s)-1)
+    f = (sq - line.s[i]) / max(line.s[i+1]-line.s[i], 1e-6)
+    i, f
+end
+
+"Advance one AI car by `dt`; returns its world pose (x, y, z, heading)."
+function step!(car::AICar, line::AILine, dt; amax = 11.0, vmax = 74.0, vmin = 12.0)
+    i, _  = _locate(line, car.s)
+    ia, _ = _locate(line, car.s + max(car.v*0.9, 10.0))     # look ahead for the limiting corner
+    κ = max(line.κ[i], line.κ[ia], 1e-4)
+    vtarget = clamp(sqrt(amax/κ), vmin, vmax)
+    car.v += clamp(vtarget - car.v, -30.0*dt, 9.0*dt)       # brake harder than it accelerates
+    prev = mod(car.s, line.total)
+    car.s += car.v*dt
+    mod(car.s, line.total) < prev && (car.lap += 1)         # crossed start/finish
+    i, f = _locate(line, car.s); j = i % length(line.x) + 1
+    x = line.x[i]*(1-f) + line.x[j]*f
+    z = line.z[i]*(1-f) + line.z[j]*f
+    y = line.y[i]*(1-f) + line.y[j]*f
+    θ = line.θ[i] + f*wrapπ(line.θ[j]-line.θ[i])
+    x += car.lane * (-sin(θ));  z += car.lane * cos(θ)      # lane offset (left = (-sinθ, cosθ))
+    (x, y, z, θ)
+end
+
+end # module

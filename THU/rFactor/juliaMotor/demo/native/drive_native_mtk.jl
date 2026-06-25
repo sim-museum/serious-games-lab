@@ -14,6 +14,7 @@ include("gpltrack.jl"); using .GPLTrack
 include("audio.jl"); using .EngineAudio
 include("joycfg.jl"); using .JoyCfg
 include("ffb.jl"); using .FFB
+include("ai.jl"); using .RaceAI           # rail-following race opponents (JM_AI)
 # Force-feedback tuning (env-overridable). SIGN=-1 ⇒ force opposes the front lateral
 # force, so the wheel self-centres (measured: steer-left gives +front_lat).
 const FFB_ON     = !haskey(ENV, "JM_NOFFB")
@@ -563,6 +564,10 @@ function main()
         LASTZ[]
     end
     cs = build_carX(x0=cs0.x, z0=cs0.z, θ0=cs0.θ, v0=0.0)   # MTK car — standing start (planar or full-3D)
+    # ---- AI opponents (race field): rail-followers on the centreline ----
+    AILINE = (!SKIDPAD && N_AI > 0) ? RaceAI.build_line(ALIGNED, groundz) : nothing
+    AICARS = AILINE === nothing ? RaceAI.AICar[] : RaceAI.init_cars(AILINE, N_AI; start_s = 30.0)
+    AILINE !== nothing && println("  → $(length(AICARS)) AI Lotus 49s on the racing line")
     # ---- force feedback: self-aligning torque from the front-axle lateral force ----
     # force = SIGN·GAIN·(Fy_FL+Fy_FR), faded out near standstill.  The front Fy rises as the
     # tyres bite and DROPS past the grip peak → the wheel goes light = you feel understeer.
@@ -679,12 +684,22 @@ function main()
         δ = Float32(inp.steer * (SKIDPAD ? 0.30 : CAR.max_steer))
         wheelmat(wx,wz,steer,r) = carModel * Render.translate(Float32[wx, r, wz]) *
                      (steer ? Render.roty(δ) : Render.ident()) * Render.rotz(Float32(spin))
+        # advance + place the AI field (rail-followers on the centreline)
+        ai_poses = AILINE === nothing ? NTuple{4,Float64}[] :
+                   [RaceAI.step!(c, AILINE, dt > 1e-4 ? dt : 1/60) for c in AICARS]
+        aiCar(p)  = Render.translate(Float32[p[1], p[2], -p[3]]) * Render.roty(Float32(p[4]))
+        aiBody(p) = aiCar(p) * Render.translate(BODY_OFF)
+        aiWheel(p,wx,wz,r) = aiCar(p) * Render.translate(Float32[wx, r, wz]) * Render.rotz(Float32(spin))
         # ---- shadow pass: scene depth from the sun, light box on the car ----
         lightVP = Render.light_vp(Float32[cs.x, cs.y, -cs.z], LIGHTDIR)
         Render.shadow_pass(depthprog, shadowfbo, lightVP) do dp
             for it in trackItems; Render.draw_depth(dp, it, Render.ident()); end
             for it in carItems; Render.draw_depth(dp, it, bodyModel); end
             for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw_depth(dp, it, wheelmat(wx,wz,steer,r)); end
+            for p in ai_poses                                  # AI cars cast shadows too
+                for it in carItems; Render.draw_depth(dp, it, aiBody(p)); end
+                for (wx,wz,_,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw_depth(dp, it, aiWheel(p,wx,wz,r)); end
+            end
         end
         # ---- main pass (reversed-Z: [0,1] clip, near→1/far→0, GEQUAL, clear 0) ----
         glViewport(0,0,W,H)
@@ -704,6 +719,10 @@ function main()
         # ambfill lifts the self-shadowed cockpit interior out of black (GPL pre-lights it
         # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
         for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.15, spec=0.10, ambfill=0.34); end
+        for p in ai_poses                                       # AI Lotus 49 field
+            for it in carItems; Render.draw(prog, it, vp, aiBody(p); bright=1.15, spec=0.10, ambfill=0.34); end
+            for (wx,wz,_,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, vp, aiWheel(p,wx,wz,r)); end
+        end
         for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, vp, wheelmat(wx,wz,steer,r)); end
         # steering wheel — spin about its column axis with steering input
         swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5)) * Render.translate(-SWCENTER)
