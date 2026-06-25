@@ -559,6 +559,8 @@ class DriveTab(QWidget):
         self.ibt = QCheckBox("Record iRacing .ibt telemetry → data/juliaracer/")
         self.ibt.setChecked(True)        # on by default
         form.addWidget(self.ibt, 5, 1)
+        self.d3 = QCheckBox("3-D physics — enables jumps (experimental; JM_3D)")
+        form.addWidget(self.d3, 6, 1)
         root.addLayout(form)
 
         brow = QHBoxLayout()
@@ -600,6 +602,8 @@ class DriveTab(QWidget):
             qenv.insert("JM_NOSOUND", "1")
         if not self.ibt.isChecked():     # telemetry is on by default; this disables it
             qenv.insert("JM_NOIBT", "1")
+        if self.d3.isChecked():          # full-3D vertical dynamics: the planar model can't leave the ground
+            qenv.insert("JM_3D", "1")
         self.proc = QProcess(self)
         self.proc.setProcessEnvironment(qenv)
         self.proc.setWorkingDirectory(HERE)
