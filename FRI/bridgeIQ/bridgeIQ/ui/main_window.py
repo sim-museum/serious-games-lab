@@ -259,6 +259,15 @@ class GameController:
         self.current_seat = self.opening_leader
         self.current_phase = 'play'
 
+        # A human who is declarer (or dummy) plays BOTH hands of the
+        # declaring side — same rule _setup_play applies after a real
+        # auction. Without this the engine would auto-play dummy.
+        human_seat = next((s for s, p in self.players.items()
+                           if p.player_type == PlayerType.HUMAN), None)
+        if human_seat is not None:
+            self.human_controls_declarer = human_seat in (self.declarer,
+                                                          self.dummy)
+
     def _setup_play(self):
         """Setup for card play after bidding"""
         auction = self.board.auction
@@ -2243,6 +2252,15 @@ class MainWindow(QMainWindow):
         """Set up the table/bidding UI for a freshly-dealt board and start the
         auction. Shared by New Deal and Previous Deal so both go through the
         same full reset (original hands, undo history, visibility, bots)."""
+        # A board is now in play — show the in-game toolbar (Next card, …)
+        # rather than the opening lobby (First deal, …). The First-deal /
+        # Closed-room buttons already do this; deals started from Match
+        # Control / a tournament file must too.
+        try:
+            self._set_toolbar_mode('ingame')
+        except Exception:
+            pass
+
         # Store a deep copy of original hands for logging
         self.original_hands = {}
         for seat, hand in board.hands.items():
