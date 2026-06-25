@@ -251,8 +251,8 @@ class GameController:
         self.board.contract = contract
         self.board.auction = [Bid(level=contract.level,
                                   suit=contract.suit,
-                                  doubled=contract.doubled,
-                                  redoubled=contract.redoubled)]
+                                  is_double=contract.doubled,
+                                  is_redouble=contract.redoubled)]
         self.declarer = contract.declarer
         self.dummy = contract.declarer.partner()
         self.opening_leader = contract.declarer.next()
@@ -2310,6 +2310,15 @@ class MainWindow(QMainWindow):
         except Exception as ex:
             print(f"[minibridge] runtime failed: {ex!r}", flush=True)
 
+        # Preset-contract deals — when the deal file already carries a
+        # contract + declarer (e.g. the practice decks), skip the auction
+        # and play straight from that contract. No-op unless MiniBridge
+        # left us in bidding and the board has a usable contract.
+        try:
+            self._maybe_play_from_preset_contract(board)
+        except Exception as ex:
+            print(f"[preset-contract] runtime failed: {ex!r}", flush=True)
+
         # Closed room (AI vs AI) is started after the human finishes the
         # hand — running it in parallel with human play made both sides
         # contend for the BEN engine and the game appeared to hang.
@@ -2909,6 +2918,55 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+    def _maybe_play_from_preset_contract(self, board):
+        """If ``board`` arrived with a contract + declarer already set (a deal
+        file that carries the final contract, e.g. the practice decks), skip
+        the auction and play straight from that contract — Q-Plus plays such
+        'own deals' from their stored contract rather than re-bidding them.
+
+        No-op when: there is no usable contract; MiniBridge or a real auction
+        has already moved us out of the bidding phase; or the board carries a
+        real multi-call auction we should replay instead.
+        """
+        # Only fire while still set up for a fresh auction.
+        if self.controller.current_phase != 'bidding':
+            return
+        contract = getattr(board, 'contract', None)
+        declarer = getattr(contract, 'declarer', None) if contract else None
+        if contract is None or declarer is None:
+            return
+        # A board that already holds a genuine auction (more than the single
+        # synthesised contract-bid) should be replayed through bidding, not
+        # short-circuited. Practice decks have an empty auction.
+        auction = getattr(board, 'auction', None) or []
+        if len(auction) > 1:
+            return
+
+        self.controller.set_contract_direct(contract)
+
+        # Replace the bidding box with the contract banner, exactly as the
+        # MiniBridge path does after it picks a contract.
+        try:
+            self.bidding_box.setVisible(False)
+        except Exception:
+            pass
+        try:
+            self.table_view.update_auction(
+                self.controller.board.auction, self.controller.board.dealer)
+        except Exception:
+            pass
+        try:
+            self.table_view.set_contract(
+                contract.to_str(), declarer.to_char())
+        except Exception:
+            pass
+
+        leader = declarer.next()
+        self.status_label.setText(
+            f"Board {board.board_number}: {contract.to_str()} by "
+            f"{declarer.to_char()} (from deal file) — {leader.to_char()} "
+            f"leads. Auction skipped.")
+
     def _on_print_current_hand(self):
         """File → Print Current Hand. Q-Plus spec at BRIDGE.HLQ
         .printing (lines 1930-1940): pick a card layout on the left
@@ -3092,7 +3150,15 @@ class MainWindow(QMainWindow):
         dialog = MatchControlDialog(self)
         if dialog.exec():
             settings = dialog.get_settings()
-            if settings.get('comparison') == 'closed_room':
+            # A selected deal file plays its deals (skipping the auction when
+            # the file carries the contract); otherwise the closed-room teams
+            # path runs.
+            if settings.get('source') == 'file' and settings.get('file_path'):
+                self.teams_match = None
+                self.match_controller = None
+                if self._apply_match_settings(settings):
+                    self._on_new_deal()
+            elif settings.get('comparison') == 'closed_room':
                 self._start_teams_match(settings)
             else:
                 self.teams_match = None
@@ -3149,6 +3215,9 @@ For more information, see the README file."""
         self._deal_queue_pos = 0
         self._field_results = {}
         self._comparison_mode = settings.get('comparison')
+        # Deal filter from Match Control (applies to biq's random deals).
+        if 'deal_filter' in settings:
+            self._active_deal_filter = settings.get('deal_filter')
         if settings.get('source') == 'file' and settings.get('file_path'):
             boards = self._load_deal_queue_from_file(settings['file_path'])
             if boards:
@@ -3214,8 +3283,15 @@ For more information, see the README file."""
         if dialog.exec():
             settings = dialog.get_settings()
 
-            # Check if closed room comparison is enabled
-            if settings.get('comparison') == 'closed_room':
+            # A selected deal file plays its own deals (and skips the auction
+            # when the file carries the contract). Otherwise a closed-room
+            # comparison starts the teams match.
+            if settings.get('source') == 'file' and settings.get('file_path'):
+                self.teams_match = None
+                self.match_controller = None
+                if self._apply_match_settings(settings):
+                    self._on_new_deal()
+            elif settings.get('comparison') == 'closed_room':
                 self._start_teams_match(settings)
             else:
                 # Clear teams match state for non-teams modes
