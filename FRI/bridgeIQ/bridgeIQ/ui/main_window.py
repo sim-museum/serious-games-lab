@@ -3272,9 +3272,13 @@ For more information, see the README file."""
                 recs = [None] * len(out)
         except Exception as e:
             print(f"deal-queue load failed: {e!r}", flush=True)
-        # Keep only boards with all four 13-card hands; assign sequential board
-        # numbers when the file leaves them at 0 so deals and recorded results
-        # stay aligned (the Results-of-file lookup keys on board number).
+        # Keep only boards with all four 13-card hands; number them
+        # sequentially by position in the file so "Next deal" visibly
+        # advances (1, 2, 3, …). We override any board number the file
+        # carried because some books restart their own numbering per
+        # chapter (e.g. "Practice Hand #1" appears in several chapters),
+        # which would make the deal counter regress and look stuck. The
+        # Results-of-file lookup keys on this same sequential number.
         good = []
         if not hasattr(self, '_field_results'):
             self._field_results = {}
@@ -3285,8 +3289,7 @@ For more information, see the README file."""
                     len(getattr(hands[s], 'cards', [])) == 13 for s in hands)):
                 continue
             seq += 1
-            if not getattr(b, 'board_number', 0):
-                b.board_number = seq
+            b.board_number = seq
             good.append(b)
             if rec is not None:
                 self._field_results.setdefault(b.board_number, []).append({
