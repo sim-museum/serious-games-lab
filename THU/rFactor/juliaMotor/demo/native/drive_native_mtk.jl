@@ -388,6 +388,8 @@ build_carX(; kw...)        = CAR3D ? DriveRT3D.build_car3d(; kw...) : DriveRT.bu
 step_carX!(c, a...; kw...) = CAR3D ? DriveRT3D.step_car3d!(c, a...; kw...) : DriveRT.step_car!(c, a...; kw...)
 telemetryX(c)              = CAR3D ? DriveRT3D.telemetry3d(c) : DriveRT.telemetry(c)
 respawnX!(c)               = CAR3D ? DriveRT3D.respawn3d!(c) : DriveRT.respawn!(c)
+containX!(c, x, z; kw...)  = CAR3D ? DriveRT3D.contain3d!(c, x, z; kw...) : DriveRT.contain!(c, x, z; kw...)
+const FENCE = parse(Float64, get(ENV, "JM_FENCE", "13.0"))   # E7: track boundary (m from centreline) — you can't leave the world
 CAR3D && println("  PHYSICS: full-3D vehicle (JM_3D) — heave/pitch/roll + suspension travel + jumps")
 GLFW.Init()
 SMOKE && GLFW.WindowHint(GLFW.VISIBLE, false)
@@ -604,6 +606,8 @@ function main()
             if hr.found
                 (cs.lapdist > 0.75*LAPLEN && hr.lapdist < 0.25*LAPLEN) && (cs.laps += 1)  # crossed S/F
                 cs.lapdist = hr.lapdist; cs.lateral = hr.lateral; cs.along = hr.lapdist; cs.ontrack = hr.on_track
+                over = hr.lateral - clamp(hr.lateral, -FENCE, FENCE)   # E7 boundary: past the fence/hedge?
+                abs(over) > 0.01 && containX!(cs, cs.x - over*hr.perp[1], cs.z - over*hr.perp[2]; vdamp=0.5)  # collide → held in the world, speed bled
             else; cs.ontrack = false; end
             end
         end

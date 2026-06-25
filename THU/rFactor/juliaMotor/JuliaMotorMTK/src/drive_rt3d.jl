@@ -20,7 +20,7 @@ for f in ("tyre.jl","powertrain.jl","vehicle_3d.jl")
     include(joinpath(HERE, "components", f))
 end
 
-export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!
+export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!
 
 const GEARS = [2.23, 1.72, 1.32, 1.09, 0.916]
 gearratio(g::Int) = g <= 0 ? 0.0 : GEARS[g]
@@ -37,6 +37,7 @@ mutable struct Car3D
     s_thr; s_brk; s_st; s_gr; s_clu; s_we
     s_zr::NTuple{4,Any}                            # per-wheel road DISPLACEMENT setters
     s_vr::NTuple{4,Any}                            # per-wheel road VELOCITY setters (feed-forward)
+    s_pos; s_vel                                   # world-pos (X,Y) + body-vel (u,v) STATE setters (boundary)
     getall
     gear::Int
     zref::Float64                                  # tracked ground reference height [m]
@@ -62,6 +63,7 @@ function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0)
               setp(sys,sys.gear), setp(sys,sys.clutch), ModelingToolkit.setu(sys, sys.ωe),
               (setp(sys,sys.zrFL),setp(sys,sys.zrFR),setp(sys,sys.zrRL),setp(sys,sys.zrRR)),
               (setp(sys,sys.vrFL),setp(sys,sys.vrFR),setp(sys,sys.vrRL),setp(sys,sys.vrRR)),
+              ModelingToolkit.setu(sys,[sys.X,sys.Y]), ModelingToolkit.setu(sys,[sys.u,sys.v]),
               getall, 1, y0, ntuple(_->0.0,4),
               x0, y0, z0, θ0, v0, 0.0, 0.0, 1, ntuple(_->(0.0,0.0,0.0),4),
               0.0, 0, 0.0, 0.0, true, 0.0, 0.0, 9.80665, 0.0, ntuple(_->RH0,4))
@@ -160,6 +162,15 @@ function telemetry3d(c::Car3D)
     a = g(c.integ)
     (u=a[1], v=a[2], r=a[3], ax=a[4], ay=a[5], ωf=a[6], ωr=a[7], vacc=c.vacc,
      pitch=c.pitch, roll=c.roll, rh=c.rh)
+end
+
+"Fence collision: snap onto the boundary (xnew,znew) + bleed speed (E7)."
+function contain3d!(c::Car3D, xnew, znew; vdamp = 0.45)
+    a = c.getall(c.integ)
+    c.s_pos(c.integ, [xnew, znew])
+    c.s_vel(c.integ, [a[4]*vdamp, a[5]*vdamp])
+    c.x = xnew; c.z = znew; c.v = sqrt((a[4]*vdamp)^2 + (a[5]*vdamp)^2)
+    c
 end
 
 function respawn3d!(c::Car3D)

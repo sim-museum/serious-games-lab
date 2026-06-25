@@ -18,7 +18,7 @@ for f in ("tyre.jl","corner.jl","corner_assembly.jl","powertrain.jl","vehicle_rt
     include(joinpath(HERE, "components", f))
 end
 
-export Car, build_car, step_car!, respawn!, telemetry
+export Car, build_car, step_car!, respawn!, telemetry, contain!
 
 const GEARS    = [2.23, 1.72, 1.32, 1.09, 0.916]   # Lotus 49 gearbox (gear 1..5)
 gearratio(g::Int) = g <= 0 ? 0.0 : GEARS[g]        # g=0 ⇒ NEUTRAL (ratio 0 ⇒ clutch decoupled, engine idles free)
@@ -30,6 +30,7 @@ mutable struct Car
     sys; integ
     s_thr; s_brk; s_st; s_gr; s_clu                 # parameter setters
     s_we                                            # engine-speed STATE setter (for restart after a stall)
+    s_pos; s_vel                                    # world-position (X,Y) + body-velocity (u,v) STATE setters (boundary)
     getall                                          # batched observed getter (compiled once)
     gear::Int
     # CarState-like render fields
@@ -56,7 +57,8 @@ function build_car(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0)
         sys.FL.tyre.Fx, sys.FR.tyre.Fx, sys.RL.tyre.Fx, sys.RR.tyre.Fx,
         sys.FL.tyre.Fy, sys.FR.tyre.Fy, sys.RL.tyre.Fy, sys.RR.tyre.Fy, sys.ωr])
     c = Car(sys, integ, setp(sys, sys.throttle), setp(sys, sys.brake), setp(sys, sys.δ),
-            setp(sys, sys.gear), setp(sys, sys.clutch), ModelingToolkit.setu(sys, sys.ωe), getall, 1,
+            setp(sys, sys.gear), setp(sys, sys.clutch), ModelingToolkit.setu(sys, sys.ωe),
+            ModelingToolkit.setu(sys, [sys.X, sys.Y]), ModelingToolkit.setu(sys, [sys.u, sys.v]), getall, 1,
             x0, 0.0, z0, θ0, v0, 0.0, 0.0, 1,
             ntuple(_ -> (0.0,0.0,0.0), 4), 0.0, 0, 0.0, 0.0, true)
     c.s_gr(c.integ, GEARS[c.gear]);  getall(integ)
@@ -120,6 +122,16 @@ function telemetry(c::Car)
     end
     a = g(c.integ)
     (u = a[1], v = a[2], r = a[3], ax = a[4], ay = a[5], ωf = a[6], ωr = a[7])
+end
+
+"Snap the car onto the track boundary (xnew, znew) and bleed its speed — a
+fence/hedge collision that keeps the car inside the game world (E7)."
+function contain!(c::Car, xnew, znew; vdamp = 0.45)
+    a = c.getall(c.integ)
+    c.s_pos(c.integ, [xnew, znew])
+    c.s_vel(c.integ, [a[4]*vdamp, a[5]*vdamp])           # u,v body velocities (getall idx 4,5) — fence scrubs speed
+    c.x = xnew; c.z = znew; c.v = sqrt((a[4]*vdamp)^2 + (a[5]*vdamp)^2)
+    c
 end
 
 "Reset the car to its spawn position/state (R key)."

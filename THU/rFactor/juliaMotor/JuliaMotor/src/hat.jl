@@ -127,6 +127,7 @@ struct HATResult
     lateral::Float64      # signed offset from centerline (m, + along perp)
     lapdist::Float64      # distance into lap at the projection (m)
     found::Bool           # false if no ribbon segment is near (x, z)
+    perp::NTuple{2,Float64}  # horizontal lateral unit vector (x, z) — for boundary correction
 end
 
 """
@@ -156,7 +157,7 @@ function hat(ts::TrackSurface, x::Real, z::Real)
             end
         end
     end
-    best == 0 && return HATResult(0.0, (0.0, 1.0, 0.0), false, 0.0, 0.0, false)
+    best == 0 && return HATResult(0.0, (0.0, 1.0, 0.0), false, 0.0, 0.0, false, (1.0, 0.0))
 
     s = best; t = bestt; s2 = mod1(s + 1, n)
     a, b = ts.pos[s], ts.pos[s2]
@@ -176,5 +177,5 @@ function hat(ts::TrackSurface, x::Real, z::Real)
     hwr = ts.halfwidth[s][2] + t * (ts.halfwidth[s2][2] - ts.halfwidth[s][2])
     ontrack = -hwr <= lat <= hwl
     ld = ts.lapdist[s] + t * (ts.lapdist[s2] - ts.lapdist[s])
-    HATResult(height, nn, ontrack, lat, ld, true)
+    HATResult(height, nn, ontrack, lat, ld, true, (pp[1], pp[3]))
 end

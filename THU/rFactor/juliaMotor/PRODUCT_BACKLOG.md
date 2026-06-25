@@ -41,7 +41,12 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   10 km), Spa (`spa67`, 14 km) selectable + drivable. Generic track loader (`track_file`
   extracts `.3do`/`.trk` from the track `.dat`); fixed an `Int32` dedup overflow on monza10k's
   garbage verts (coord-sanity filter + Int64 keys). All 6 tracks load headless clean.
-- 2026-06-25 Sprint 3 DONE: E2 — up to 5 AI Lotus 49s (`ai.jl` RaceAI). Rail-followers on the
-  `.trk` centreline at curvature-limited speed; grid start (staggered, alternating lanes); lap
-  counting; rendered as Lotus 49s with shadows. Verified: a 4-car field drives the racing line
-  ahead of the player (snapshot). Full-physics AI + live standings = future polish.
+- 2026-06-25 Sprint 3 DONE (commit 91b8e31): E2 — up to 5 AI Lotus 49s (`ai.jl` RaceAI).
+  Rail-followers on the `.trk` centreline at curvature-limited speed; grid start; lap counting;
+  rendered as Lotus 49s with shadows. Verified: a 4-car field drives the racing line ahead of
+  the player. Full-physics AI + live standings = future polish.
+- 2026-06-25 Sprint 4 (in progress): E7 DONE — per-track collision boundary. `HATResult.perp`
+  added (`JuliaMotor/hat.jl`); `contain!`/`contain3d!` state setters snap the car onto the fence
+  line + bleed speed (both adapters); the game collides the car at `FENCE`=13 m from the
+  centreline (`JM_FENCE` to tune). Verified (`boundary_probe.jl`): car steered off-track is held
+  at 13.01 m, 89→1 km/h — cannot leave the world. Next in S4: JM_3D divergence guards; graphics.
