@@ -317,9 +317,22 @@ const GD = default_gamedata()
 const VEH = load_vehicle(joinpath(GD,"Vehicles","F158","Vanwall","Teams","LewisEvans","LewisEvans.veh"))
 const MODEL = VehicleModel(VEH)              # physics (Lotus-49 calibration is the future goal)
 const GPLBASE = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/tracks"
-const GPLNAME = NURB ? "nurburg" : "zandvort"           # both are GPL tracks (same .3do/.trk/.mip pipeline)
+# TRACKSEL → GPL track folder (all share the .3do/.trk/.mip/.dat pipeline)
+const GPLNAME = get(Dict("nurburgring"=>"nurburg", "zandvoort"=>"zandvort",
+                         "watglen"=>"watglen", "monza"=>"monza10k", "spa"=>"spa67"),
+                    TRACKSEL, "zandvort")
 const ZD   = joinpath(GPLBASE, GPLNAME)
-const ZTRK = joinpath(ZD, GPLNAME * ".3do")
+# the track's packed archive (geometry/centreline/textures/objects live here on most tracks)
+const TRACKDAT = (p=joinpath(ZD, GPLNAME*".dat"); isfile(p) ? Render.GPLDat.parse_dat(p) : Dict{String,Vector{UInt8}}())
+const TMPTRK = mktempdir()
+"Path to a track file (`base`+`ext`, e.g. \".3do\"/\".trk\"): loose on disk if present, else extracted from the track .dat."
+function track_file(base, ext)
+    p = joinpath(ZD, base*ext); isfile(p) && return p
+    v = get(TRACKDAT, lowercase(base*ext), nothing)
+    v === nothing && return p
+    q = joinpath(TMPTRK, base*ext); write(q, v); q
+end
+const ZTRK = track_file(GPLNAME, ".3do")
 if SKIDPAD
     print("building skidpad... "); flush(stdout)
     const TRACK = skidpad_parts()
@@ -331,7 +344,7 @@ else
     # full HAT would let the line drift onto the grass verge); the road ribbon then doubles
     # as the corridor filter for scenery placement.
     const TERRAIN0 = GPLTrack.build_hat(TRACKMESH0)
-    const ALIGNED  = align_centreline(GPLTrack.trk_centreline(joinpath(ZD, GPLNAME*".trk")), TERRAIN0)
+    const ALIGNED  = align_centreline(GPLTrack.trk_centreline(track_file(GPLNAME, ".trk")), TERRAIN0)
     const RIBBON0  = GPLTrack.build_surface(ALIGNED, TERRAIN0)
     # GPL Nürburgring places its landmass/scenery as .dat sub-objects via 0x0E nodes;
     # load + place them so the road isn't floating over a void (Zandvoort has none).
@@ -415,7 +428,7 @@ if SKIDPAD || NURB
     global OBJECTS = Any[]
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
 else
-const DATPACK = isfile(joinpath(ZD,"zandvort.dat")) ? Render.GPLDat.parse_dat(joinpath(ZD,"zandvort.dat")) : Dict{String,Vector{UInt8}}()
+const DATPACK = TRACKDAT     # trackside objects come from the track's own .dat (generic across tracks)
 const TMPOBJ = mktempdir()
 objpath(nm) = (p=joinpath(ZD, nm*".3do"); isfile(p) ? p :
     (v=get(DATPACK, lowercase(nm*".3do"), nothing); v===nothing ? "" :

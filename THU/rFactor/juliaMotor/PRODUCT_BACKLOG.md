@@ -31,3 +31,8 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
 
 ## Status log
 - 2026-06-25 Sprint 1 started. E5 done (traction circles → beside RPM dial, `render.jl`).
+- 2026-06-25 Sprint 1 DONE (commit 71aa1ee): E5 + E1 modes/laps.
+- 2026-06-25 Sprint 2 DONE: E3 — Watkins Glen (`watglen`), Monza (`monza10k`, 10 km), Spa
+  (`spa67`, 14 km) selectable + drivable. Generic track loader (`track_file` extracts
+  `.3do`/`.trk` from the track `.dat`); fixed an `Int32` dedup overflow on monza10k's garbage
+  verts (coord-sanity filter + Int64 keys, `render.jl`). All 6 tracks load headless clean.

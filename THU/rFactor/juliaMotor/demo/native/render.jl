@@ -833,14 +833,17 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), grey=(0.72f0,0.7
     # them for a clean interior (the cockpit just fades to dark downward instead).
     yellowish(c) = c[1]>0.55f0 && c[2]>0.40f0 && c[3]<0.40f0 && c[1] > c[3]+0.22f0
     overlat(t) = maxlat < Inf32 && max(abs(t.p[1][2]),abs(t.p[2][2]),abs(t.p[3][2])) > maxlat  # GPL gy = lateral
+    cmax(t) = max(abs(t.p[1][1]),abs(t.p[1][2]),abs(t.p[1][3]), abs(t.p[2][1]),abs(t.p[2][2]),abs(t.p[2][3]),
+                  abs(t.p[3][1]),abs(t.p[3][2]),abs(t.p[3][3]))
     keep(t) = let L = max(edge(t.p[1],t.p[2]), edge(t.p[2],t.p[3]), edge(t.p[1],t.p[3])),
                   A = triarea(t.p)
+        !(isfinite(L) && isfinite(A) && cmax(t) < 5f4) ? false :       # drop garbage/huge stray verts (e.g. monza10k ~1e6-unit coords)
         (cockpit_clean && t.tex=="" && yellowish(t.col)) || overlat(t) ? false :
         track ? (!(t.tex in exclude) && A >= 1f-7 && L <= maxedge) :   # track: huge legit polys (objects pass maxedge to drop stray giant polys)
                 (!(t.tex in exclude) && L <= 2.0f0 && A >= 1f-7 && !(A > 0 && L/(2A/L) > 200f0))
     end
     kept = [m.tris[i] for i in eachindex(m.tris) if keep(m.tris[i]) && !(m.groups[i] in exclude_groups)]
-    qk(p) = (round(Int32,p[1]*2000), round(Int32,p[2]*2000), round(Int32,p[3]*2000))
+    qk(p) = (round(Int,p[1]*2000), round(Int,p[2]*2000), round(Int,p[3]*2000))
     # de-duplicate coplanar panels: GPL signs/awnings/walls are double-sided (front+back),
     # often with a few-mm THICKNESS — so they're NOT exact-vertex duplicates and still
     # z-FIGHT (flickers only when moving — depth precision at distance can't separate them).
@@ -851,12 +854,12 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), grey=(0.72f0,0.7
     # surviving face two-sided (uBackFlip un-mirrors the back).  On for track + objects.
     if dedup === nothing; dedup = track; end
     if dedup
-        ckey(t) = (round(Int32,(t.p[1][1]+t.p[2][1]+t.p[3][1])/3*64),
-                   round(Int32,(t.p[1][2]+t.p[2][2]+t.p[3][2])/3*64),
-                   round(Int32,(t.p[1][3]+t.p[2][3]+t.p[3][3])/3*64),
-                   round(Int32, triarea(t.p)*1f5))
+        ckey(t) = (round(Int,(t.p[1][1]+t.p[2][1]+t.p[3][1])/3*64),
+                   round(Int,(t.p[1][2]+t.p[2][2]+t.p[3][2])/3*64),
+                   round(Int,(t.p[1][3]+t.p[2][3]+t.p[3][3])/3*64),
+                   round(Int, triarea(t.p)*1f5))
         sort!(kept, by = t -> (t.tex == "" ? 1 : 0))   # stable: textured tris seen first
-        seen = Set{NTuple{4,Int32}}()
+        seen = Set{NTuple{4,Int}}()
         kept = filter(kept) do t
             k = ckey(t)
             (k in seen) ? false : (push!(seen, k); true)
