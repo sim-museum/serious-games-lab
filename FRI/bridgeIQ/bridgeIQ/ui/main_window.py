@@ -8427,28 +8427,41 @@ For more information, see the README file."""
         self._end_of_hand_dialogs = []
 
     def _show_end_of_hand_dialog(self, dialog):
-        """Show the end-of-hand summary as an EMBEDDED overlay panel inside the
-        main window (no unattached windows). It floats centred over the table
-        area; the user can still reach the menus/score sheet around it.
+        """Show the end-of-hand summary as a MOVABLE top-level window — a real
+        title bar the user can grab to drag it aside and see the cards behind
+        it. Non-modal and owned by the main window (so it stays above the
+        table and is raised with it); the main window keeps a reference.
         """
         from PyQt6.QtCore import Qt as _Qt
-        host = self.centralWidget() or self
         try:
-            dialog.setParent(host)
-            dialog.setWindowFlags(_Qt.WindowType.Widget)
+            # A proper window (title bar + system menu + close), not an
+            # embedded child overlay — so it can be moved off the cards.
+            dialog.setParent(self)
+            dialog.setWindowFlags(
+                _Qt.WindowType.Window
+                | _Qt.WindowType.WindowTitleHint
+                | _Qt.WindowType.WindowSystemMenuHint
+                | _Qt.WindowType.WindowCloseButtonHint)
+            dialog.setModal(False)
         except Exception:
             pass
         dialog.adjustSize()
-        # Centre over the host, clamped into view.
+        # Initial position: centred over the main window (global coords),
+        # but the user can drag it anywhere from here.
         try:
             ds = dialog.sizeHint()
-            x = max(0, (host.width() - ds.width()) // 2)
-            y = max(0, (host.height() - ds.height()) // 3)
+            g = self.frameGeometry()
+            x = g.x() + max(0, (g.width() - ds.width()) // 2)
+            y = g.y() + max(0, (g.height() - ds.height()) // 3)
             dialog.move(x, y)
         except Exception:
             pass
         dialog.show()
         dialog.raise_()
+        try:
+            dialog.activateWindow()
+        except Exception:
+            pass
         if not hasattr(self, '_end_of_hand_dialogs'):
             self._end_of_hand_dialogs = []
         survivors = []
