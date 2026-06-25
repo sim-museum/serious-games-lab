@@ -49,4 +49,11 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   added (`JuliaMotor/hat.jl`); `contain!`/`contain3d!` state setters snap the car onto the fence
   line + bleed speed (both adapters); the game collides the car at `FENCE`=13 m from the
   centreline (`JM_FENCE` to tune). Verified (`boundary_probe.jl`): car steered off-track is held
-  at 13.01 m, 89→1 km/h — cannot leave the world. Next in S4: JM_3D divergence guards; graphics.
+  at 13.01 m, 89→1 km/h — cannot leave the world.
+- 2026-06-25 Sprint 4: JM_3D divergence guard DONE (E4/E6). The 3-D model could blow the vertical
+  subsystem up on extreme terrain (pitch→296556° on the full Nürburgring → renderer drew garbage
+  = the "flickering/flung-parts" the PO saw). `step_car3d!` now resets the vertical states to
+  static if pitch/roll>0.7 rad or |heave|>3 m or non-finite (keeps in-plane motion). Verified:
+  3-D drive smoke runs clean, guard doesn't false-trigger on legit jumps (pitch 0.16°). JM_3D is
+  still opt-in; default is the planar model. Remaining S4 (E4): flicker/cockpit-rug/floating-people
+  polish — best verified by PO test-drives.

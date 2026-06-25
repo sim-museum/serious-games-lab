@@ -38,6 +38,7 @@ mutable struct Car3D
     s_zr::NTuple{4,Any}                            # per-wheel road DISPLACEMENT setters
     s_vr::NTuple{4,Any}                            # per-wheel road VELOCITY setters (feed-forward)
     s_pos; s_vel                                   # world-pos (X,Y) + body-vel (u,v) STATE setters (boundary)
+    s_vreset                                       # vertical-subsystem reset (divergence guard)
     getall
     gear::Int
     zref::Float64                                  # tracked ground reference height [m]
@@ -64,6 +65,8 @@ function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0)
               (setp(sys,sys.zrFL),setp(sys,sys.zrFR),setp(sys,sys.zrRL),setp(sys,sys.zrRR)),
               (setp(sys,sys.vrFL),setp(sys,sys.vrFR),setp(sys,sys.vrRL),setp(sys,sys.vrRR)),
               ModelingToolkit.setu(sys,[sys.X,sys.Y]), ModelingToolkit.setu(sys,[sys.u,sys.v]),
+              ModelingToolkit.setu(sys,[sys.z,sys.w,sys.th,sys.q,sys.ph,sys.pp,
+                  sys.zuFL,sys.vuFL,sys.zuFR,sys.vuFR,sys.zuRL,sys.vuRL,sys.zuRR,sys.vuRR]),
               getall, 1, y0, ntuple(_->0.0,4),
               x0, y0, z0, θ0, v0, 0.0, 0.0, 1, ntuple(_->(0.0,0.0,0.0),4),
               0.0, 0, 0.0, 0.0, true, 0.0, 0.0, 9.80665, 0.0, ntuple(_->RH0,4))
@@ -137,6 +140,15 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
     c.x = a[1]; c.z = a[2]; c.θ = a[3]
     c.v = sqrt(a[4]^2 + a[5]^2); c.t = c.integ.t; c.rpm = clamp(a[6], 0.0, 9700.0); c.gear_n = c.gear
     c.heave = a[15]; c.pitch = a[16]; c.roll = a[17]; c.vacc = a[18]
+    # DIVERGENCE GUARD: the stiff tyre contact on extreme terrain can blow the vertical
+    # subsystem up (pitch → 1e5°). If it leaves sane bounds, reset the vertical states to
+    # static (keep the in-plane motion) so the renderer never draws garbage. The proper fix
+    # is a more robust contact model (E6) — this keeps JM_3D usable meanwhile.
+    if !(isfinite(c.pitch) && isfinite(c.roll) && isfinite(c.heave)) ||
+       abs(c.pitch) > 0.7 || abs(c.roll) > 0.7 || abs(c.heave) > 3.0
+        c.s_vreset(c.integ, zeros(14))
+        c.heave = 0.0; c.pitch = 0.0; c.roll = 0.0; c.vacc = 9.80665
+    end
     if c.rpm < 350.0 && (clamp(clutch, 0, 1) > 0.5 || c.gear == 0)
         c.s_we(c.integ, 209.44); c.rpm = 2000.0
     end
