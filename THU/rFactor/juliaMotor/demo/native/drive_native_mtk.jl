@@ -24,7 +24,8 @@ const FFB_ATRAIL = parse(Float64, get(ENV, "JM_FFB_TRAIL", "0.18"))   # front sl
 const FFB_TFLOOR = 0.40                                               # residual mechanical trail (caster) — wheel lightens, not dead
 const FFB_AF     = 1.314                                              # CG → front axle [m]
 const FFB_DELTA  = 0.30                                               # road-wheel angle at full lock [rad] (matches DriveRT)
-const FFB_DEAD   = parse(Float64, get(ENV, "JM_FFB_DEAD", "0.06"))   # deadzone on the front-axle force (mg/4 units) — kills straight-line wander
+const FFB_SQ     = parse(Float64, get(ENV, "JM_FFB_SQ",  "0.12"))   # squelch knee: fy·fy²/(fy²+SQ²) — smoothly suppresses small force, NO flat dead-band
+const FFB_LP     = parse(Float64, get(ENV, "JM_FFB_LP",  "0.10"))   # low-pass time-constant [s] on the FFB force — kills oscillatory wander, keeps it continuous
 const _JOYCONF = joinpath(@__DIR__, "joystick.conf")
 const JOYMAP = if isfile(_JOYCONF)
     JoyCfg.loadmap(_JOYCONF)                                  # honour gui.py / calibrate.jl (TX clutch pedal, etc.)
@@ -579,6 +580,7 @@ function main()
     (ffb !== nothing && ffb.ok) ? println("  force feedback: ON  (", ffb.path, ", gain ", FFB_GAIN, ")") :
                                   println("  force feedback: off", FFB_ON ? " (no wheel found)" : " (JM_NOFFB)")
     spin = 0.0; last = time(); frames = 0; titleT = last
+    ffb_f = 0.0                                       # low-pass-filtered FFB force (continuity across frames)
     v_prev = cs.v; pitch_dyn = 0.0; pitch_ter = 0.0    # dive/squat + terrain-slope pitch (smoothed)
     # lap timing + telemetry log
     lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = cs.laps; tsamp = 0; race_done = false
@@ -631,10 +633,12 @@ function main()
             αf  = atan(tl.v + FFB_AF*tl.r, max(tl.u, 1.0)) - clamp(inp.steer, -1, 1)*FFB_DELTA
             trail = FFB_TFLOOR + (1 - FFB_TFLOOR) * clamp(1 - abs(αf)/FFB_ATRAIL, 0.0, 1.0)
             fy = cs.tc[1][2] + cs.tc[2][2]                     # front-axle lateral force (mg/4 units)
-            fy = abs(fy) > FFB_DEAD ? fy - sign(fy)*FFB_DEAD : 0.0   # soft deadzone: no spurious straight-line pull
+            fy = fy * fy*fy / (fy*fy + FFB_SQ*FFB_SQ)          # smooth squelch: small noise → ~0 with zero slope, big force passes; NO dead-band
             mz  = fy * trail
             spd = clamp(cs.v/2.5, 0.0, 1.0)                    # fade in with speed (no rest buzz)
-            FFB.set_force!(ffb, tanh(FFB_SIGN * FFB_GAIN * mz * spd))
+            target = tanh(FFB_SIGN * FFB_GAIN * mz * spd)
+            ffb_f += (target - ffb_f) * clamp(dt/FFB_LP, 0.0, 1.0)   # 1st-order low-pass: continuous, no jitter wander
+            FFB.set_force!(ffb, ffb_f)
         end
 
         # ---- iRacing .ibt telemetry sample (one row per frame, ~60 Hz) ----

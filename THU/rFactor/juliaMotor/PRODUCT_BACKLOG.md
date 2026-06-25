@@ -115,6 +115,29 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   (front 1.36, rear 1.40; μx 1.42/1.45) — the measured low-slip stiffness Cα is preserved, so it's
   a calibration to the iRacing PEAK grip, not a fudge. `JM_GRIP` scales it for feel. test_brush_slip
   still green; smoke clean.
+- 2026-06-25 PO bug batch 2 (Nürburgring test-drive): (1) **Flugplatz "magnet pulls right,
+  slides off the hill"** — diagnosed from the JM .ibt: at the climb (dist ~3900-4075 m) the car,
+  at FULL THROTTLE in 3rd gear (~7500 rpm) at 48-50 m/s, develops yaw with steer=EXACTLY 0.000
+  and diverges into a grip-limit spin (yaw 0.03→1.0 rad/s, lat pinned 13.2 = 1.35 g). Planar
+  physics never touches terrain (groundz only sets render height) so it's NOT terrain-coupled —
+  it's a power-on directional instability. `stability_probe.jl` reproduces: full-throttle release
+  of a 7° steer DIVERGES, coast/part-throttle (0.4) RECOVERS. Mechanism: full throttle puts the
+  rear at its LONGITUDINAL traction limit (wheel force ~5600 N > rear grip ~4800 N ⇒ wheelspin)
+  ⇒ the friction ellipse leaves the rear ~zero LATERAL grip ⇒ any yaw runs away. The iRacing .ibt
+  is the gold standard: full-throttle high-speed near-straight yaw median 0.025, max 0.127 rad/s
+  (rock stable) — so OUR model was genuinely too unstable, a real defect. FIX (no physics fudge):
+  a **traction/stability aid** (`TC_ON`, `JM_NOTC` to disable, `JM_TC_SLIP`) trims the THROTTLE
+  input to hold the rear just below its slip limit (target κ 0.06) — shapes the driver input like a
+  careful right foot / period driving aid; tyre + engine physics unchanged. Verified: 48 m/s
+  full-throttle release now DAMPS (yaw 0.32→0.12) and the car still accelerates to ~290 km/h with
+  straight-line yaw ≈0; mirrored into the 3-D step. (2) **Sound dies after a moment** — the audio
+  feeder thread closed the stream + exited on the first xrun (the frame-rate hitch starves it);
+  now it REOPENS and keeps going, latency 0.08→0.20 to buffer hitches. (3) **FFB dead-band then
+  snap** — replaced the hard deadzone with a smooth squelch fy·fy²/(fy²+SQ²) (no flat band) + a
+  1st-order low-pass on the force (kills oscillatory wander, fully continuous). (4) **Startup
+  delay** — built a PackageCompiler sysimage (`jlracer.so`, auto-used by gui.py): ~24 s faster
+  (140→116 s on zandvoort). Bulk remaining = per-track GPL parse + runtime mtkcompile of the
+  included model; further cuts need track-parse caching / packaging the model (follow-up).
 - 2026-06-25 E7 FIX (PO bug report: Watkins Glen "molasses"): the boundary was clamping at 13 m
   from the racing-LINE centreline, so driving on the wide grass/runoff (13–25 m off-line) was
   falsely contained every frame → speed bled to a crawl. Diagnosed from the PO's drive (.ibt: 84%

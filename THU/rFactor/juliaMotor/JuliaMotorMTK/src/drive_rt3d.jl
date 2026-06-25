@@ -28,6 +28,8 @@ const FINAL = 4.11
 const MAXSTEER = 0.30
 const RW_R = 0.33
 const RH0 = 0.075                                  # static chassis ride height [m] (for the rideHeight channel)
+const TC_ON   = !haskey(ENV, "JM_NOTC")            # traction aid (see drive_rt.jl) — keeps the rear below its slip limit
+const TC_SLIP = parse(Float64, get(ENV, "JM_TC_SLIP", "0.06"))
 
 # wheel body offsets (xi long +fwd, yi lat +left), from DrivenVehicle3D geometry
 const WHEELS = ((1.314, 0.75), (1.314, -0.75), (-1.096, 0.75), (-1.096, -0.75))   # FL FR RL RR
@@ -63,7 +65,7 @@ function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
     integ = init(prob, Rosenbrock23(); save_everystep = false, dense = false, adaptive = false, dt = dt)
     getall = ModelingToolkit.getsym(sys, [sys.X, sys.Y, sys.ψ, sys.u, sys.v, sys.rpm,
         sys.FL.Fx, sys.FR.Fx, sys.RL.Fx, sys.RR.Fx, sys.FL.Fy, sys.FR.Fy, sys.RL.Fy, sys.RR.Fy,
-        sys.z, sys.th, sys.ph, sys.az, sys.FzFL, sys.FzFR, sys.FzRL, sys.FzRR])
+        sys.z, sys.th, sys.ph, sys.az, sys.FzFL, sys.FzFR, sys.FzRL, sys.FzRR, sys.ωr])
     c = Car3D(sys, integ, setp(sys,sys.throttle), setp(sys,sys.brake), setp(sys,sys.δ),
               setp(sys,sys.gear), setp(sys,sys.clutch), ModelingToolkit.setu(sys, sys.ωe),
               (setp(sys,sys.zrFL),setp(sys,sys.zrFR),setp(sys,sys.zrRL),setp(sys,sys.zrRR)),
@@ -98,7 +100,12 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
         ae = held ? 0.0 : clamp((c.rpm - 1400.0)/1000.0, 0, 1) * clamp(max(2*throttle, c.v/2), 0, 1)
         c.s_clu(c.integ, clamp(1.0 - ae, 0, 1))
     end
-    c.s_thr(c.integ, clamp(throttle, 0, 1)); c.s_brk(c.integ, clamp(brake, 0, 1))
+    thr = clamp(throttle, 0, 1)
+    if TC_ON && thr > 0.0                                  # traction aid: keep the rear below its slip limit
+        a0 = c.getall(c.integ); κr = (a0[23]*RW_R - a0[4]) / max(abs(a0[4]), 3.0)
+        κr > TC_SLIP && (thr *= clamp(1.0 - 4.0*(κr - TC_SLIP)/TC_SLIP, 0.05, 1.0))
+    end
+    c.s_thr(c.integ, thr); c.s_brk(c.integ, clamp(brake, 0, 1))
     c.s_st(c.integ, clamp(steer, -1, 1) * MAXSTEER)
     # --- advance in solver-rate SUBSTEPS, resampling the road under each wheel every
     #     substep so the road input is CONTINUOUS (not a per-frame staircase), and

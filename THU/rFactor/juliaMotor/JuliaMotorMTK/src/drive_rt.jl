@@ -26,6 +26,15 @@ const FINAL    = 4.11
 const MAXSTEER = 0.30                               # road-wheel angle at full lock [rad]
 const RW_R     = 0.33
 
+# Traction/stability aid (driver aid, NOT a physics change — it shapes the throttle
+# input, like a careful right foot or a period "driving aid").  The 400 bhp DFV can
+# overpower the rears at speed (full-throttle wheel force > rear grip ⇒ wheelspin ⇒
+# the rear loses lateral grip ⇒ power-spin — exactly the iRacing-validated limit).
+# This eases throttle when the rear slip-ratio exceeds TC_SLIP so the rear stays just
+# below its grip limit and keeps lateral grip.  Off ⇒ raw, spin-on-power physics.
+const TC_ON    = !haskey(ENV, "JM_NOTC")
+const TC_SLIP  = parse(Float64, get(ENV, "JM_TC_SLIP", "0.06"))   # target peak rear slip-ratio (below the 0.155 peak ⇒ lateral grip kept)
+
 mutable struct Car
     sys; integ
     s_thr; s_brk; s_st; s_gr; s_clu                 # parameter setters
@@ -88,7 +97,15 @@ function step_car!(c::Car, throttle, brake, steer, dt;
         ae = held ? 0.0 : clamp((c.rpm - 1400.0)/1000.0, 0, 1) * clamp(max(2*throttle, c.v/2), 0, 1)
         c.s_clu(c.integ, clamp(1.0 - ae, 0, 1))
     end
-    c.s_thr(c.integ, clamp(throttle, 0, 1))
+    # traction aid: trim throttle when the rear is breaking into wheelspin (slip-ratio
+    # past TC_SLIP) — keeps the rear below its grip limit so it retains lateral grip.
+    thr = clamp(throttle, 0, 1)
+    if TC_ON && thr > 0.0
+        a0 = c.getall(c.integ)                            # [...,4:u,...,15:ωr]
+        κr = (a0[15]*RW_R - a0[4]) / max(abs(a0[4]), 3.0) # rear slip-ratio estimate
+        κr > TC_SLIP && (thr *= clamp(1.0 - 4.0*(κr - TC_SLIP)/TC_SLIP, 0.05, 1.0))
+    end
+    c.s_thr(c.integ, thr)
     c.s_brk(c.integ, clamp(brake, 0, 1))
     c.s_st(c.integ, clamp(steer, -1, 1) * MAXSTEER)
     step!(c.integ, max(dt, 1e-3), true)

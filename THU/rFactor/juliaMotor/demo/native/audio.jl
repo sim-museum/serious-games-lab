@@ -163,21 +163,31 @@ function start(eng::Engine)
     end
     eng.running[]=true
     Threads.@spawn begin
-        local stream
-        try
-            stream = PortAudioStream(0,2; samplerate=44100, latency=0.08)
-        catch e
-            # PortAudio/ALSA couldn't open the output device (no device, busy, or a
-            # PipeWire/ALSA quirk) — the sim runs fine, just silently.  Set JM_NOSOUND=1
-            # to skip the attempt and avoid the C-level ALSA error spam entirely.
-            @warn "engine audio unavailable (couldn't open an audio device) — running silently; set JM_NOSOUND=1 to skip audio"
-            eng.running[]=false; return
-        end
         buf = zeros(Float32, 1024, 2)
-        try
-            while eng.running[]; mix!(buf, eng); write(stream, buf); end
-        catch e; @warn "audio thread error" e
-        finally; close(stream); end
+        opened = false
+        # Resilient feeder: a render-loop hitch (first-frame JIT, GC) can starve this
+        # thread and xrun the stream.  On a write error we REOPEN the stream and keep
+        # going (was: close + exit ⇒ silent for the rest of the session).  Larger
+        # latency buffers a multi-100-ms stall before it underflows at all.
+        while eng.running[]
+            local stream
+            try
+                stream = PortAudioStream(0,2; samplerate=44100, latency=0.20)
+                opened = true
+            catch e
+                # couldn't open the device at all (no device / busy / PipeWire quirk):
+                # the sim runs fine, just silently.  Don't spin — give up.
+                opened || @warn "engine audio unavailable (couldn't open an audio device) — running silently; set JM_NOSOUND=1 to skip audio"
+                eng.running[]=false; break
+            end
+            try
+                while eng.running[]; mix!(buf, eng); write(stream, buf); end
+            catch e
+                @warn "audio xrun — reopening stream" e        # underflow: reopen, don't die
+            finally
+                try; close(stream); catch; end
+            end
+        end
     end
     eng
 end
