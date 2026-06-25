@@ -76,3 +76,11 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   μ_dir=1/√((cosψ/μx)²+(sinψ/μy)²) (pure-lat ⇒ μy, pure-long ⇒ μx). Re-verified: anisotropic brush
   compiles + drives stably, lateral grip unchanged (1.03 g, ratio 0.83). NEXT: kμ multi-load fit;
   make brush default (needs a JM_BRUSH test-drive for feel); 3-D contact robustness.
+- 2026-06-25 E6: brush works in the 3-D car too (3-D contact robustness). Root cause of the
+  earlier instability = the friction-ellipse `μdir=1/√(…)` was 1/0 at EXACTLY zero slip (the build
+  warmup starts the car at zero slip → NaN). Reformulated to per-axis normalized slip
+  (ξx=Cκκ/3μx, ξy=Cα·sinα/3μy; F = μ·Fz·sat·ξ/|ξ|) — no 1/0, physics-equivalent (planar grip
+  unchanged 1.03 g). brush now WIRED into DrivenVehicle3D + build_car3d (JM_BRUSH); verified it
+  drives + JUMPS to finite/sane state (v, pitch finite; the divergence guard absorbs the few
+  recoverable hard-landing solver aborts). `build_car3d` gained a `dt` knob for finer contact.
+  Remaining polish: silence the recoverable landing warnings (finer substep / tyre relaxation).

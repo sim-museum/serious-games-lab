@@ -61,10 +61,11 @@ the friction ellipse + the per-direction stiffness emerge from the physics."""
 function brush_forces(Fz, α, κ; p = BRUSH_FRONT)
     μy = brush_mu(Fz, p.μ,  p.kμ, p.Fz0)
     μx = brush_mu(Fz, p.μx, p.kμ, p.Fz0)
-    gx = p.Cκ*κ;  gy = p.Cα*sin(α)
-    gg = sqrt(gx^2 + gy^2 + 1e-9)               # deflection magnitude (direction floor)
-    μdir = 1.0 / sqrt((gx/gg/μx)^2 + (gy/gg/μy)^2)   # elliptical directional friction
-    ξ  = sqrt(gx^2 + gy^2) / (3.0*μdir)
-    Fmag = μdir*Fz * brush_sat(ξ)
-    (Fmag*gx/gg, Fmag*gy/gg)
+    # per-axis NORMALIZED slip (1 = that axis's friction limit) — the ellipse lives here,
+    # and this form has NO 1/0 at zero slip (the force → 0 there, cleanly).
+    ξx = p.Cκ*κ / (3.0*μx);  ξy = p.Cα*sin(α) / (3.0*μy)
+    ξ  = sqrt(ξx^2 + ξy^2)
+    s  = brush_sat(ξ)                          # utilization in [0,1]
+    ξg = sqrt(ξx^2 + ξy^2) + 1e-9              # direction floor (force = 0 at exactly zero slip)
+    (μx*Fz*s*ξx/ξg, μy*Fz*s*ξy/ξg)            # along the deflection dir; magnitude on the friction ellipse
 end

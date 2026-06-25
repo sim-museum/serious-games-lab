@@ -52,11 +52,13 @@ mutable struct Car3D
     rh::NTuple{4,Float64}                           # per-corner ride height [m] (FL FR RL RR)
 end
 
-function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0)
-    sys = mtkcompile(DrivenVehicle3D(name = :car))
+function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
+                     brush = haskey(ENV, "JM_BRUSH"), dt = 1/300)
+    sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush))   # JM_BRUSH ⇒ physics-based brush tyre
+    brush && println("  TYRE (3-D): physics-based brush model (JM_BRUSH)")
     prob = ODEProblem(sys, [sys.u => v0, sys.ωf => v0/0.30, sys.ωr => v0/RW_R,
                             sys.ωe => 209.4, sys.X => x0, sys.Y => z0, sys.ψ => θ0], (0.0, 1e7))
-    integ = init(prob, Rosenbrock23(); save_everystep = false, dense = false, adaptive = false, dt = 1/300)
+    integ = init(prob, Rosenbrock23(); save_everystep = false, dense = false, adaptive = false, dt = dt)
     getall = ModelingToolkit.getsym(sys, [sys.X, sys.Y, sys.ψ, sys.u, sys.v, sys.rpm,
         sys.FL.Fx, sys.FR.Fx, sys.RL.Fx, sys.RR.Fx, sys.FL.Fy, sys.FR.Fy, sys.RL.Fy, sys.RR.Fy,
         sys.z, sys.th, sys.ph, sys.az, sys.FzFL, sys.FzFR, sys.FzRL, sys.FzRR])

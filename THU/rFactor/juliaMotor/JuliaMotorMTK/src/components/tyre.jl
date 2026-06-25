@@ -19,19 +19,17 @@ include("brush_tyre.jl") # PHYSICS-BASED brush: brush_forces + BRUSH_FRONT/REAR 
 function BrushTyre(; name, μ = BRUSH_FRONT.μ, μx = BRUSH_FRONT.μx, Cα = BRUSH_FRONT.Cα,
                    Cκ = BRUSH_FRONT.Cκ, kμ = BRUSH_FRONT.kμ, Fz0 = BRUSH_FRONT.Fz0, t0 = 0.035)
     ps = @parameters μ=μ μx=μx Cα=Cα Cκ=Cκ kμ=kμ Fz0=Fz0 t0=t0
-    vars = @variables Fz(t) α(t) κ(t) Fy(t) Fx(t) Mz(t) μye(t) μxe(t) μdir(t) gx(t) gy(t) gg(t) ξ(t) sat(t) Fmag(t)
+    vars = @variables Fz(t) α(t) κ(t) Fy(t) Fx(t) Mz(t) μye(t) μxe(t) ξx(t) ξy(t) ξ(t) sat(t) ξg(t)
     eqs = [
         μye  ~ μ  * (1.0 - kμ*(Fz/Fz0 - 1.0)),         # lateral friction (load-sensitive)
         μxe  ~ μx * (1.0 - kμ*(Fz/Fz0 - 1.0)),         # longitudinal friction (anisotropic)
-        gx   ~ Cκ*κ,                                    # stiffness-weighted slip components
-        gy   ~ Cα*sin(α),
-        gg   ~ sqrt(gx^2 + gy^2 + 1e-6),               # deflection magnitude (direction floor)
-        μdir ~ 1.0 / sqrt((gx/gg/μxe)^2 + (gy/gg/μye)^2),   # elliptical directional friction
-        ξ    ~ sqrt(gx^2 + gy^2) / (3.0*μdir + 1e-6),  # normalized slip
+        ξx   ~ Cκ*κ      / (3.0*μxe),                  # per-axis NORMALIZED slip (1 = friction limit)
+        ξy   ~ Cα*sin(α) / (3.0*μye),                  # — the ellipse lives here, no 1/0 at zero slip
+        ξ    ~ sqrt(ξx^2 + ξy^2),
         sat  ~ 1.0 - (1.0 - min(ξ, 1.0))^3,            # brush adhesion→sliding (branchless)
-        Fmag ~ μdir*Fz * sat,
-        Fx   ~ Fmag * gx/gg,                           # force along the deflection vector
-        Fy   ~ Fmag * gy/gg,
+        ξg   ~ sqrt(ξx^2 + ξy^2) + 1e-9,               # direction floor (force = 0 at exactly zero slip)
+        Fx   ~ μxe*Fz * sat * ξx/ξg,                   # along the deflection dir; magnitude on the ellipse
+        Fy   ~ μye*Fz * sat * ξy/ξg,
         Mz   ~ -t0 * (1.0 - min(ξ, 1.0)) * Fy,         # pneumatic trail collapses as the patch slides
     ]
     System(eqs, t, vars, ps; name)

@@ -30,16 +30,17 @@ function DrivenVehicle3D(; name,
         a = 1.314, b = 1.096, tf = 1.50, tr = 1.50, h = 0.30, front_frac = 0.455,
         Rw_f = 0.30, Rw_r = 0.33, Iw = 1.0, η = 0.9, final = 4.11,
         bias = 0.535, Tbrake_max = 4200.0, CdA = 0.9, ρair = 1.10, g = 9.80665,
-        throttle0 = 0.0, brake0 = 0.0, steer0 = 0.0, gear0 = 1.72,
+        throttle0 = 0.0, brake0 = 0.0, steer0 = 0.0, gear0 = 1.72, brush = false,
         front_corner = (ks = 18_250.0, cs = 2500.0, m_s = 120.0, m_u = 20.0, kt = 180_000.0, ct = 300.0),
         rear_corner  = (ks = 29_200.0, cs = 3000.0, m_s = 148.0, m_u = 20.0, kt = 200_000.0, ct = 300.0))
     L = a + b; mf = m*front_frac; mr = m*(1 - front_frac)
     M_s = 2*(front_corner.m_s + rear_corner.m_s)          # total sprung mass
 
-    @named FL = Tyre(; TYRE_SKIDPAD_FRONT...)
-    @named FR = Tyre(; TYRE_SKIDPAD_FRONT...)
-    @named RL = Tyre(; TYRE_SKIDPAD_REAR...)
-    @named RR = Tyre(; TYRE_SKIDPAD_REAR...)
+    # brush=true ⇒ physics-based brush tyre (no fudge); else the Magic-Formula preset
+    FL = brush ? BrushTyre(; name=:FL, BRUSH_FRONT...) : Tyre(; name=:FL, TYRE_SKIDPAD_FRONT...)
+    FR = brush ? BrushTyre(; name=:FR, BRUSH_FRONT...) : Tyre(; name=:FR, TYRE_SKIDPAD_FRONT...)
+    RL = brush ? BrushTyre(; name=:RL, BRUSH_REAR...)  : Tyre(; name=:RL, TYRE_SKIDPAD_REAR...)
+    RR = brush ? BrushTyre(; name=:RR, BRUSH_REAR...)  : Tyre(; name=:RR, TYRE_SKIDPAD_REAR...)
 
     ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0
     # in-plane + powertrain states
