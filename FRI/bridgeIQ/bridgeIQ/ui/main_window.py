@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QSplitter, QMenuBar, QMenu, QStatusBar, QToolBar, QLabel,
     QProgressBar, QMessageBox, QFileDialog, QApplication,
     QDockWidget, QPushButton, QFrame, QSizePolicy, QInputDialog,
-    QDialog, QStackedWidget
+    QDialog, QStackedWidget, QTextEdit
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread, pyqtSlot
 from PyQt6.QtGui import QAction, QKeySequence, QFont, QIcon
@@ -888,6 +888,27 @@ class MainWindow(QMainWindow):
 
         # Set initial visibility based on preference
         self.analysis_label.setVisible(self.config_manager.config.preferences.show_ben_bid_analysis)
+
+        # Book note — the deal file's Commentary (the textbook's Lead /
+        # Correct play / Wrong play notes for a practice hand). Shown on
+        # the right during play of a deal that carries commentary; hidden
+        # otherwise. Read-only and scrollable so long notes fit.
+        self.book_note = QTextEdit()
+        self.book_note.setReadOnly(True)
+        self.book_note.setVisible(False)
+        self.book_note.setMaximumHeight(360)
+        self.book_note.setStyleSheet(f"""
+            QTextEdit {{
+                background-color: #1b2330;
+                border: 1px solid #c8a24a;
+                border-radius: 4px;
+                padding: 8px;
+                font-family: 'DejaVu Sans', Arial, sans-serif;
+                font-size: 14px;
+                color: {COLORS['text_white']};
+            }}
+        """)
+        right_layout.addWidget(self.book_note)
 
         right_layout.addStretch()
         content_layout.addWidget(self.right_panel)
@@ -2261,6 +2282,19 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+        # Book note — if this deal carries the textbook's play commentary
+        # (a practice-deck hand), load it so it can be shown during play.
+        try:
+            note = (getattr(board, '_commentary', '') or '').strip()
+            if note:
+                self.book_note.setPlainText(note)
+                self.book_note.setVisible(True)
+            else:
+                self.book_note.clear()
+                self.book_note.setVisible(False)
+        except Exception:
+            pass
+
         # Store a deep copy of original hands for logging
         self.original_hands = {}
         for seat, hand in board.hands.items():
@@ -3264,7 +3298,11 @@ For more information, see the README file."""
                 from backend.bdl_reader import BDLReader
                 deals = BDLReader().read_file(p)
                 for d in deals:
-                    out.append(d.to_board_state())
+                    bs = d.to_board_state()
+                    # to_board_state() drops the Commentary; carry it so the
+                    # book's play notes can be shown during play.
+                    bs._commentary = getattr(d, 'commentary', '') or ''
+                    out.append(bs)
                     recs.append(d if d.contract is not None else None)
             elif p.suffix.lower() == '.pbn':
                 from backend.pbn_exporter import PBNParser
@@ -7809,8 +7847,18 @@ For more information, see the README file."""
             self._dummy_broadcasted_for_board = False
             self.table_view.setup_declarer_play(self.controller.board.contract)
             self.table_view.set_auction_complete("bidding finished")
-            # Hide right panel (bidding box + analysis) and next deal button during card play
-            self.right_panel.setVisible(False)
+            # Hide right panel (bidding box + analysis) during card play —
+            # UNLESS this deal carries a book note, which stays visible on
+            # the right so the player can read the textbook's line while
+            # playing. Keep only the note in that case (bidding box hidden).
+            has_book_note = bool(
+                getattr(self, 'book_note', None)
+                and self.book_note.toPlainText().strip())
+            self.right_panel.setVisible(has_book_note)
+            if has_book_note:
+                self.bidding_box.setVisible(False)
+                self.analysis_label.setVisible(False)
+                self.book_note.setVisible(True)
             self.next_deal_btn.setVisible(False)
             # Teaching panel: populate with auction inferences now
             # that cardplay is starting. Only if the user has the
