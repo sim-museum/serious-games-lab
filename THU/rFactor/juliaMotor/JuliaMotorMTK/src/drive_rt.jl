@@ -34,6 +34,11 @@ const RW_R     = 0.33
 # below its grip limit and keeps lateral grip.  Off ⇒ raw, spin-on-power physics.
 const TC_ON    = !haskey(ENV, "JM_NOTC")
 const TC_SLIP  = parse(Float64, get(ENV, "JM_TC_SLIP", "0.06"))   # target peak rear slip-ratio (below the 0.155 peak ⇒ lateral grip kept)
+# SPEED GATE: the aid is OFF at low speed (so a deliberate 1st-gear peel-out / skidpad
+# spin still happens) and ramps to full by TC_VHI (so the catastrophic HIGH-speed
+# straight-line divergence at Flugplatz is caught).  Skidpad limit ≈ 18 m/s ⇒ raw.
+const TC_VLO   = parse(Float64, get(ENV, "JM_TC_VLO", "25.0"))    # [m/s] below ⇒ no aid (peel-out allowed)
+const TC_VHI   = parse(Float64, get(ENV, "JM_TC_VHI", "38.0"))    # [m/s] above ⇒ full aid
 
 mutable struct Car
     sys; integ
@@ -102,8 +107,11 @@ function step_car!(c::Car, throttle, brake, steer, dt;
     thr = clamp(throttle, 0, 1)
     if TC_ON && thr > 0.0
         a0 = c.getall(c.integ)                            # [...,4:u,...,15:ωr]
-        κr = (a0[15]*RW_R - a0[4]) / max(abs(a0[4]), 3.0) # rear slip-ratio estimate
-        κr > TC_SLIP && (thr *= clamp(1.0 - 4.0*(κr - TC_SLIP)/TC_SLIP, 0.05, 1.0))
+        gate = clamp((abs(a0[4]) - TC_VLO) / (TC_VHI - TC_VLO), 0.0, 1.0)  # 0 at low speed → peel-out lives
+        if gate > 0.0
+            κr = (a0[15]*RW_R - a0[4]) / max(abs(a0[4]), 3.0)  # rear slip-ratio estimate
+            κr > TC_SLIP && (thr *= clamp(1.0 - 4.0*gate*(κr - TC_SLIP)/TC_SLIP, 0.05, 1.0))
+        end
     end
     c.s_thr(c.integ, thr)
     c.s_brk(c.integ, clamp(brake, 0, 1))

@@ -30,6 +30,8 @@ const RW_R = 0.33
 const RH0 = 0.075                                  # static chassis ride height [m] (for the rideHeight channel)
 const TC_ON   = !haskey(ENV, "JM_NOTC")            # traction aid (see drive_rt.jl) — keeps the rear below its slip limit
 const TC_SLIP = parse(Float64, get(ENV, "JM_TC_SLIP", "0.06"))
+const TC_VLO  = parse(Float64, get(ENV, "JM_TC_VLO", "25.0"))   # speed gate: off below, full above (peel-out lives at low speed)
+const TC_VHI  = parse(Float64, get(ENV, "JM_TC_VHI", "38.0"))
 
 # wheel body offsets (xi long +fwd, yi lat +left), from DrivenVehicle3D geometry
 const WHEELS = ((1.314, 0.75), (1.314, -0.75), (-1.096, 0.75), (-1.096, -0.75))   # FL FR RL RR
@@ -101,9 +103,13 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
         c.s_clu(c.integ, clamp(1.0 - ae, 0, 1))
     end
     thr = clamp(throttle, 0, 1)
-    if TC_ON && thr > 0.0                                  # traction aid: keep the rear below its slip limit
-        a0 = c.getall(c.integ); κr = (a0[23]*RW_R - a0[4]) / max(abs(a0[4]), 3.0)
-        κr > TC_SLIP && (thr *= clamp(1.0 - 4.0*(κr - TC_SLIP)/TC_SLIP, 0.05, 1.0))
+    if TC_ON && thr > 0.0                                  # traction aid: keep the rear below its slip limit (HIGH speed only)
+        a0 = c.getall(c.integ)
+        gate = clamp((abs(a0[4]) - TC_VLO) / (TC_VHI - TC_VLO), 0.0, 1.0)   # 0 at low speed → peel-out lives
+        if gate > 0.0
+            κr = (a0[23]*RW_R - a0[4]) / max(abs(a0[4]), 3.0)
+            κr > TC_SLIP && (thr *= clamp(1.0 - 4.0*gate*(κr - TC_SLIP)/TC_SLIP, 0.05, 1.0))
+        end
     end
     c.s_thr(c.integ, thr); c.s_brk(c.integ, clamp(brake, 0, 1))
     c.s_st(c.integ, clamp(steer, -1, 1) * MAXSTEER)

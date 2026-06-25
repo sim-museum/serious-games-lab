@@ -575,15 +575,25 @@ function hcircle!(v,cx,cy,r,t,c;seg=22)
     px,py=cx+r,cy
     for i in 1:seg; a=2π*i/seg; qx,qy=cx+r*cos(a),cy+r*sin(a); hline!(v,px,py,qx,qy,t,c); px,py=qx,qy; end
 end
-"""One per-wheel traction circle: ring sized by that tyre's grip (radius), with
+"Filled (SOLID) disc — triangle fan emitted as GL_TRIANGLES (center, p_i, p_i+1)."
+function hdisc!(v,cx,cy,r,c;seg=26)
+    for i in 1:seg
+        a0=2π*(i-1)/seg; a1=2π*i/seg
+        append!(v, Float32[cx,cy, c[1],c[2],c[3]])
+        append!(v, Float32[cx+r*cos(a0),cy+r*sin(a0), c[1],c[2],c[3]])
+        append!(v, Float32[cx+r*cos(a1),cy+r*sin(a1), c[1],c[2],c[3]])
+    end
+end
+"""One per-wheel traction circle: SOLID disc sized by that tyre's grip (radius), with
 a force dot coloured by utilisation (green→amber→red).  `tc` = (long, lat, radius)."""
 function htraction!(v,cx,cy,baseR,tc)
     long,lat,rad = Float64(tc[1]),Float64(tc[2]),max(Float64(tc[3]),1e-3)
     R=baseR*clamp(rad/1.1,0.35,1.7); util=hypot(long,lat)/rad
     col = util<0.6 ? (0.40,0.80,0.40) : util<0.85 ? (0.92,0.80,0.32) : (0.95,0.35,0.30)
-    hcircle!(v,cx,cy,R,2.0,(0.48,0.53,0.60))
+    hdisc!(v,cx,cy,R,(0.09,0.10,0.13))            # SOLID opaque backing (no see-through road)
+    hcircle!(v,cx,cy,R,2.5,(0.58,0.64,0.72))      # bright grip ring
     dx=-lat/rad*R; dy=-long/rad*R                 # g-g: +lat→left, +long→up
-    hquad!(v,cx+dx-3,cy+dy-3,6,6,col)
+    hquad!(v,cx+dx-4,cy+dy-4,8,8,col)             # force dot (bigger)
 end
 
 """Render a lap time `secs` as 7-segment M:SS.t at (x,y) in colour c."""
@@ -633,8 +643,8 @@ function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,clu=0.0,tc=nothing; lastlap
     bar(250, clu, blue); bar(278, brk, red); bar(306, thr, green)   # pedal order = physical: clutch, brake, throttle
     rf = rpm/max(revlim,1f0)                                        # rpm as a tachometer DIAL (2× size)
     hdial!(v, 430, H-100, 60, rf, 0.88, (0.40,0.45,0.52), rf>0.88 ? red : amber, red)
-    if tc !== nothing                                          # traction circles (2×2) docked beside the RPM dial (bottom)
-        sp=42; R=14; bx=510; by=H-140                          # just right of the tachometer, not floating over the road
+    if tc !== nothing                                          # traction circles (2×2) to the RIGHT of the dial, vertically centred on it
+        sp=58; R=22; bx=545; by=H-100-sp÷2                     # dial is at (430,H-100) r=60 ⇒ grid centroid at (bx+sp/2, H-100)
         htraction!(v,bx,by,R,tc[1]); htraction!(v,bx+sp,by,R,tc[2])
         htraction!(v,bx,by+sp,R,tc[3]); htraction!(v,bx+sp,by+sp,R,tc[4])
     end
