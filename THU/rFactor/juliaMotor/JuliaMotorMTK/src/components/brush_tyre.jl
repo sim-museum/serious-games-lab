@@ -25,8 +25,10 @@
 "Brush saturation 1−(1−ξ)³ — the adhesion→sliding force fraction (parabolic pressure)."
 brush_sat(ξ) = ξ < 1.0 ? ξ*(3.0 - ξ*(3.0 - ξ)) : 1.0
 
-"Load-sensitive friction coefficient μ(Fz)."
-brush_mu(Fz, μ, kμ, Fz0) = μ * (1.0 - kμ * (Fz/Fz0 - 1.0))
+"Load-sensitive friction coefficient μ(Fz).  The load factor is CLAMPED to [0.4,1.6]:
+friction varies with load but can never reach 0 or go negative (which would make the
+brush's μ-division blow up on a load transient) — physical AND numerically safe."
+brush_mu(Fz, μ, kμ, Fz0) = μ * clamp(1.0 - kμ * (Fz/Fz0 - 1.0), 0.4, 1.6)
 
 # physical tyre parameter sets (front/rear), IDENTIFIED from the iRacing Lotus 49
 # skidpad grip curve by fit/validate_brush.jl (2-param fit, RMS 0.02/0.04 g):
@@ -64,8 +66,7 @@ function brush_forces(Fz, α, κ; p = BRUSH_FRONT)
     # per-axis NORMALIZED slip (1 = that axis's friction limit) — the ellipse lives here,
     # and this form has NO 1/0 at zero slip (the force → 0 there, cleanly).
     ξx = p.Cκ*κ / (3.0*μx);  ξy = p.Cα*sin(α) / (3.0*μy)
-    ξ  = sqrt(ξx^2 + ξy^2)
-    s  = brush_sat(ξ)                          # utilization in [0,1]
-    ξg = sqrt(ξx^2 + ξy^2) + 1e-9              # direction floor (force = 0 at exactly zero slip)
-    (μx*Fz*s*ξx/ξg, μy*Fz*s*ξy/ξg)            # along the deflection dir; magnitude on the friction ellipse
+    ξ  = sqrt(ξx^2 + ξy^2 + 1e-9)              # floor INSIDE the sqrt → the autodiff Jacobian
+    s  = brush_sat(ξ)                          # is finite at zero slip (sqrt(0)' = 0/0 = NaN otherwise)
+    (μx*Fz*s*ξx/ξ, μy*Fz*s*ξy/ξ)              # along the deflection dir; magnitude on the friction ellipse
 end

@@ -19,17 +19,16 @@ include("brush_tyre.jl") # PHYSICS-BASED brush: brush_forces + BRUSH_FRONT/REAR 
 function BrushTyre(; name, μ = BRUSH_FRONT.μ, μx = BRUSH_FRONT.μx, Cα = BRUSH_FRONT.Cα,
                    Cκ = BRUSH_FRONT.Cκ, kμ = BRUSH_FRONT.kμ, Fz0 = BRUSH_FRONT.Fz0, t0 = 0.035)
     ps = @parameters μ=μ μx=μx Cα=Cα Cκ=Cκ kμ=kμ Fz0=Fz0 t0=t0
-    vars = @variables Fz(t) α(t) κ(t) Fy(t) Fx(t) Mz(t) μye(t) μxe(t) ξx(t) ξy(t) ξ(t) sat(t) ξg(t)
+    vars = @variables Fz(t) α(t) κ(t) Fy(t) Fx(t) Mz(t) μye(t) μxe(t) ξx(t) ξy(t) ξ(t) sat(t)
     eqs = [
-        μye  ~ μ  * (1.0 - kμ*(Fz/Fz0 - 1.0)),         # lateral friction (load-sensitive)
-        μxe  ~ μx * (1.0 - kμ*(Fz/Fz0 - 1.0)),         # longitudinal friction (anisotropic)
+        μye  ~ μ  * clamp(1.0 - kμ*(Fz/Fz0 - 1.0), 0.4, 1.6),  # lateral friction (load-sensitive, clamped >0)
+        μxe  ~ μx * clamp(1.0 - kμ*(Fz/Fz0 - 1.0), 0.4, 1.6),  # longitudinal friction (anisotropic, clamped >0)
         ξx   ~ Cκ*κ      / (3.0*μxe),                  # per-axis NORMALIZED slip (1 = friction limit)
         ξy   ~ Cα*sin(α) / (3.0*μye),                  # — the ellipse lives here, no 1/0 at zero slip
-        ξ    ~ sqrt(ξx^2 + ξy^2),
-        sat  ~ 1.0 - (1.0 - min(ξ, 1.0))^3,            # brush adhesion→sliding (branchless)
-        ξg   ~ sqrt(ξx^2 + ξy^2) + 1e-9,               # direction floor (force = 0 at exactly zero slip)
-        Fx   ~ μxe*Fz * sat * ξx/ξg,                   # along the deflection dir; magnitude on the ellipse
-        Fy   ~ μye*Fz * sat * ξy/ξg,
+        ξ    ~ sqrt(ξx^2 + ξy^2 + 1e-9),               # floor INSIDE the sqrt → autodiff Jacobian finite at
+        sat  ~ 1.0 - (1.0 - min(ξ, 1.0))^3,            #   zero slip (sqrt(0)' = 0/0 = NaN breaks the solver)
+        Fx   ~ μxe*Fz * sat * ξx/ξ,                    # along the deflection dir; magnitude on the ellipse
+        Fy   ~ μye*Fz * sat * ξy/ξ,
         Mz   ~ -t0 * (1.0 - min(ξ, 1.0)) * Fy,         # pneumatic trail collapses as the patch slides
     ]
     System(eqs, t, vars, ps; name)

@@ -53,9 +53,9 @@ mutable struct Car3D
 end
 
 function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
-                     brush = haskey(ENV, "JM_BRUSH"), dt = 1/300)
-    sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush))   # JM_BRUSH ⇒ physics-based brush tyre
-    brush && println("  TYRE (3-D): physics-based brush model (JM_BRUSH)")
+                     brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
+    sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush))   # physics brush by DEFAULT; JM_MAGIC ⇒ Magic-Formula tyre
+    println(brush ? "  TYRE (3-D): physics-based brush model (default)" : "  TYRE (3-D): Magic-Formula tyre (JM_MAGIC)")
     prob = ODEProblem(sys, [sys.u => v0, sys.ωf => v0/0.30, sys.ωr => v0/RW_R,
                             sys.ωe => 209.4, sys.X => x0, sys.Y => z0, sys.ψ => θ0], (0.0, 1e7))
     # the divergence guard handles recovery from the rare hard-landing solver abort; a finer

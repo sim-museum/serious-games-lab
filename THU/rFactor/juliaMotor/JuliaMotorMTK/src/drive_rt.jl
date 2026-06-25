@@ -42,9 +42,10 @@ end
 
 "Build the real-time car, spawned at world (x0,z0) heading θ0.  v0=0 ⇒ standing
 start (engine idling, clutch open; throttle revs + engages it to launch)."
-function build_car(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, brush = haskey(ENV, "JM_BRUSH"))
-    sys = mtkcompile(DrivenVehicleRT(name = :car, brush = brush))   # JM_BRUSH ⇒ physics-based brush tyre
-    brush && println("  TYRE: physics-based brush model (JM_BRUSH) — μ≈1.2, no fudge")
+function build_car(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, brush = !haskey(ENV, "JM_MAGIC"))
+    sys = mtkcompile(DrivenVehicleRT(name = :car, brush = brush))   # physics brush by DEFAULT; JM_MAGIC ⇒ old Magic-Formula tyre
+    println(brush ? "  TYRE: physics-based brush model (default; μ≈1.2, no fudge) — set JM_MAGIC=1 for the old fudged tyre" :
+                    "  TYRE: Magic-Formula tyre (JM_MAGIC)")
     prob = ODEProblem(sys, [sys.u => v0, sys.ωf => v0/0.30, sys.ωr => v0/RW_R,
                             sys.ωe => 209.4, sys.X => x0, sys.Y => z0, sys.ψ => θ0], (0.0, 1e7))
     # FIXED-STEP for hard real-time guarantees: an adaptive solver can subdivide into

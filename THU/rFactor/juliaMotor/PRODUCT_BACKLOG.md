@@ -84,3 +84,11 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   drives + JUMPS to finite/sane state (v, pitch finite; the divergence guard absorbs the few
   recoverable hard-landing solver aborts). `build_car3d` gained a `dt` knob for finer contact.
   Remaining polish: silence the recoverable landing warnings (finer substep / tyre relaxation).
+- 2026-06-25 E6: brush is now the DEFAULT tyre (the fudge is retired). Found + fixed a subtle bug
+  that had made the brush undriveable: `ξ=sqrt(ξx²+ξy²)` is `sqrt(0)` at zero slip, and the
+  Rosenbrock autodiff JACOBIAN `0/(2·sqrt(0))=NaN` (the force VALUE is fine — a function sweep
+  couldn't see it; the Magic Formula's smooth sin/atan has no sqrt(0)). Fix: floor INSIDE the sqrt
+  (`sqrt(ξx²+ξy²+1e-9)`). Also clamped the friction load-factor >0. `build_car`/`build_car3d` now
+  default to brush; `JM_MAGIC=1` restores the old fudged tyre. VERIFIED: car launches from rest +
+  accelerates (72 km/h in test_drive_rt, was stuck at 36); live app runs clean by default, no NaN.
+  E6 essentially DONE — the physics-based, no-fudge Lotus 49 tyre is the live model.
