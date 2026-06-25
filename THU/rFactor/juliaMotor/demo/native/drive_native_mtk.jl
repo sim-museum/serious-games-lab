@@ -559,6 +559,7 @@ end
 function main()
     cs0 = SKIDPAD ? (x=0.0, z=0.0, θ=0.0) : spawn(CAR; v0=0.0)   # spawn pose (skidpad: pad centre)
     LASTZ = Ref(0.0); ONTRACK = Ref(true)
+    LASTGX = Ref(cs0.x); LASTGZ = Ref(cs0.z)   # last position INSIDE the world (terrain HAT) — for the boundary
     function groundz(x, z)                            # HAT elevation; off-surface holds last height
         SKIDPAD && return 0.0   # flat skidpad → no elevation
         h = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf)
@@ -606,9 +607,13 @@ function main()
             if hr.found
                 (cs.lapdist > 0.75*LAPLEN && hr.lapdist < 0.25*LAPLEN) && (cs.laps += 1)  # crossed S/F
                 cs.lapdist = hr.lapdist; cs.lateral = hr.lateral; cs.along = hr.lapdist; cs.ontrack = hr.on_track
-                over = hr.lateral - clamp(hr.lateral, -FENCE, FENCE)   # E7 boundary: past the fence/hedge?
-                abs(over) > 0.01 && containX!(cs, cs.x - over*hr.perp[1], cs.z - over*hr.perp[2]; vdamp=0.5)  # collide → held in the world, speed bled
             else; cs.ontrack = false; end
+            # E7 boundary = the WORLD edge (the terrain HAT): you can drive the road AND the grass
+            # freely, but if you go off the HAT you've left the world → snap back to the last spot
+            # inside it (a fence/hedge collision) and bleed speed.  (Based on the HAT, NOT the racing
+            # line, so it never slows you on a wide road/grass — that was the Watkins Glen "molasses".)
+            if ONTRACK[]; LASTGX[] = cs.x; LASTGZ[] = cs.z         # remember where we were inside the world
+            else; containX!(cs, LASTGX[], LASTGZ[]; vdamp=0.4); end # off the terrain → held at the edge
             end
         end
         spin -= cs.v*dt/0.33

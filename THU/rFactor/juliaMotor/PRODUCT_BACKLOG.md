@@ -104,3 +104,12 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   supported E6 work. E6 (physics-based brush Lotus 49, no fudge) is the live default model. ✅
   REMAINING (PO-dependent / cosmetic): confirm the brush feel (drive `JM_BRUSH` vs `JM_MAGIC`);
   E4 graphics polish (needs PO eyes on a drive); silence the cosmetic JM_3D landing warnings.
+- 2026-06-25 E7 FIX (PO bug report: Watkins Glen "molasses"): the boundary was clamping at 13 m
+  from the racing-LINE centreline, so driving on the wide grass/runoff (13–25 m off-line) was
+  falsely contained every frame → speed bled to a crawl. Diagnosed from the PO's drive (.ibt: 84%
+  of slow frames OFF-TRACK; the .txt log: 552 frames at 13–25 m lateral). Reconstructing those
+  positions against the watglen terrain HAT: the car was **off the HAT 0% of the time** — always
+  inside the world, just off the narrow ribbon. Fix: boundary now keys off the **terrain HAT (the
+  world)**, not the ribbon — drive road + grass freely; only going off the terrain snaps you back
+  to the last in-world spot (a fence collision). Would have triggered 0× on that drive. Verified
+  watglen loads + runs clean.
