@@ -24,8 +24,8 @@ const FFB_ATRAIL = parse(Float64, get(ENV, "JM_FFB_TRAIL", "0.18"))   # front sl
 const FFB_TFLOOR = 0.40                                               # residual mechanical trail (caster) — wheel lightens, not dead
 const FFB_AF     = 1.314                                              # CG → front axle [m]
 const FFB_DELTA  = 0.30                                               # road-wheel angle at full lock [rad] (matches DriveRT)
-const FFB_SQ     = parse(Float64, get(ENV, "JM_FFB_SQ",  "0.12"))   # squelch knee: fy·fy²/(fy²+SQ²) — smoothly suppresses small force, NO flat dead-band
-const FFB_LP     = parse(Float64, get(ENV, "JM_FFB_LP",  "0.10"))   # low-pass time-constant [s] on the FFB force — kills oscillatory wander, keeps it continuous
+const FFB_SQ     = parse(Float64, get(ENV, "JM_FFB_SQ",  "0.03"))   # squelch knee: fy·fy²/(fy²+SQ²) — only the tiniest force is suppressed; center stays alive
+const FFB_LP     = parse(Float64, get(ENV, "JM_FFB_LP",  "0.06"))   # low-pass time-constant [s] on the FFB force — kills oscillatory wander, keeps it continuous
 const _JOYCONF = joinpath(@__DIR__, "joystick.conf")
 const JOYMAP = if isfile(_JOYCONF)
     JoyCfg.loadmap(_JOYCONF)                                  # honour gui.py / calibrate.jl (TX clutch pedal, etc.)
