@@ -31,10 +31,21 @@ if all deals pass.
 |------|------|-------|-------|
 | `taste_of_bridge.bdl` | A Taste of Bridge — Jeff Bayone (Master Point Press, 2017) | 6 | All faithful (Ch 5 ×2, Ch 7 ×1, Ch 9 ×3) — declarer-play problems with the correct line explained. Source: digital-text PDF. |
 | `bridge_for_dummies.bdl` | Bridge for Dummies — Eddie Kantar (Wiley, 3rd ed.) | 12 | Faithful. Hands transcribed by VISION from the book's diagram images; explanations from the EPUB prose. (A 13th, Fig 17-13, was dropped — the book's diagram misprints the diamond suit.) Declarer-play + defensive-signalling lessons. |
-| `bridge_basics.bdl` | Bridge Basics: A Beginner's Guide — Ron Klinger | 5 | Faithful. First 5 of the book's 36 numbered play hands; four single-hand grid pages (one per seat) assembled into deals and vision-transcribed. Commentary = the book's Lead / Correct play / Wrong play notes. 31 more available. |
+| `bridge_basics.bdl` | Bridge Basics: A Beginner's Guide — Ron Klinger | 36 | Faithful. **All 36** numbered play hands. The four single-seat grid pages (pg179–182: North/East/South/West) are vision-transcribed and assigned to the compass exactly as the book labels them. Dealer follows the standard board rotation N,E,S,W (the `*` dealer mark on every grid confirms it); vulnerability + theme come from the chapter; declarer is fixed by who holds the opening-lead card. Commentary = the book's Lead / Correct play / Wrong play (and Bidding) notes. |
 
-**Total: 23 validated deals across 3 teaching books.** Every deal verified through
+**Total: 54 validated deals across 3 teaching books.** Every deal verified through
 biq's `BDLReader`: four hands, 13 cards each, 52 unique cards.
+
+### Seat assignment (Bridge Basics)
+The earlier 5-deal cut assigned the four grid hands to the compass by a rotation
+that did not match the book's own page labels. That is harmless for a `Nil`-vul
+deal (a bridge layout is rotation-symmetric) but mislabels which pair is
+vulnerable otherwise. The full 36-deal build keeps the book's literal labels
+(grid page "North" = North, etc.), validated two ways: (1) the seat holding the
+stated opening-lead card is the leader and its RHO is declarer — checked against
+the chapter contract for all 36; (2) the 52-unique-card check. Hand 5 (dropped
+last pass for a "lead/holding inconsistency") is consistent under the correct
+labels and is now included.
 
 ## Extraction pipelines
 
@@ -65,7 +76,12 @@ biq's `BDLReader`: four hands, 13 cards each, 52 unique cards.
   Bergen Vol I, The Hog Takes to Precision (Mollo).
 
 ### Remaining / not yet built
-- **Bridge Basics (Klinger)** — 31 more numbered play hands (Hands 6–36) available via the same grid-assembly pipeline.
+- **Bridge Basics (Klinger)** — DONE: all 36 numbered play hands shipped.
+- **The Everything Bridge Book (Manley)** — EPUB, but NOT the clean grid-page case.
+  Cards in prose are runs of inline suit-symbol images (spade/heart/diamond/club)
+  with the ranks as text; the full four-hand layouts are separate page-figure
+  scan images with no index. Extraction needs a per-figure visual scan to locate
+  the four-hand play deals and match each to its prose "correct play" — a distinct
+  effort from the Klinger grid pages. Not completed in this pass.
 - **The Joy of Bridge (Grant/Rodwell)** — scanned PDF; prose OCRs cleanly, but its full four-hand PLAY deals are sparse and scattered (most example hands are single-hand bidding lessons), and deal pages aren't distinguishable from auction tables by OCR. Needs a dedicated page-by-page visual scan to locate the play deals — not completed in this pass.
-- **The Everything Bridge Book (Manley)** — EPUB images, same pipeline as Kantar/Klinger.
-- **5 Weeks to Winning Bridge (Sheinwold)** — large digital-text PDF.
+- **5 Weeks to Winning Bridge (Sheinwold)** — large digital-text PDF; lesson-based, hands scattered through prose.
