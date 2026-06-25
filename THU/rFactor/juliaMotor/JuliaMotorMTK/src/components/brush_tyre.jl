@@ -12,12 +12,15 @@
 #     F = μ·Fz                                         for ξ > 1   (full sliding)
 #
 # with the normalized slip  ξ = (stiffness·slip)/(3·μ).  Everything is PHYSICAL:
-#   μ    friction coefficient (tyre↔road)         → sets PEAK grip  (peak = μ·Fz)
+#   μ    LATERAL friction (μy)                     → peak cornering grip = μ·Fz
+#   μx   LONGITUDINAL friction                      → peak brake/drive grip = μx·Fz
 #   Cα   cornering-stiffness coefficient [1/rad]   → CFα = Cα·Fz (lateral slope)
 #   Cκ   longitudinal slip-stiffness coefficient   → CFκ = Cκ·Fz (brake/drive slope)
 #   kμ   friction load-sensitivity [-]             → μ(Fz) = μ·(1 − kμ·(Fz/Fz0 − 1))
-# CFα ∝ Fz is the brush result for a load-independent tread stiffness; kμ adds the
-# (real, measured) drop in grip coefficient at high load — also physical, not a knob.
+# The friction LIMIT is an ELLIPSE (μx ≠ μy — a real, measured anisotropy: the iRacing
+# Lotus brakes at ~1.42 g but corners at ~1.2 g).  CFα ∝ Fz is the brush result for a
+# load-independent tread stiffness; kμ adds the measured drop in grip at high load.
+# All physical — no Magic-Formula shape knobs, no grip fudge.
 
 "Brush saturation 1−(1−ξ)³ — the adhesion→sliding force fraction (parabolic pressure)."
 brush_sat(ξ) = ξ < 1.0 ? ξ*(3.0 - ξ*(3.0 - ξ)) : 1.0
@@ -33,8 +36,8 @@ brush_mu(Fz, μ, kμ, Fz0) = μ * (1.0 - kμ * (Fz/Fz0 - 1.0))
 # NO ×1.13 grip fudge and NO Magic-Formula Cy/Ey shape knobs.
 #   Cκ (longitudinal stiffness) is a physical estimate pending a braking-data fit;
 #   kμ (friction load-sensitivity) pending a multi-load (Nürburgring) fit.
-const BRUSH_FRONT = (μ = 1.19, Cα = 20.5, Cκ = 26.0, kμ = 0.08, Fz0 = 1415.0)
-const BRUSH_REAR  = (μ = 1.21, Cα = 24.0, Cκ = 30.0, kμ = 0.08, Fz0 = 1670.0)
+const BRUSH_FRONT = (μ = 1.19, μx = 1.42, Cα = 20.5, Cκ = 28.0, kμ = 0.08, Fz0 = 1415.0)
+const BRUSH_REAR  = (μ = 1.21, μx = 1.42, Cα = 24.0, Cκ = 28.0, kμ = 0.08, Fz0 = 1670.0)
 
 "Pure-lateral brush force Fy(Fz, α) — for fitting/validation."
 function brush_fy(Fz, α; p = BRUSH_FRONT)
@@ -43,23 +46,25 @@ function brush_fy(Fz, α; p = BRUSH_FRONT)
     sign(α) * μ*Fz * brush_sat(ξ)
 end
 
-"Pure-longitudinal brush force Fx(Fz, κ)."
+"Pure-longitudinal brush force Fx(Fz, κ) — uses the LONGITUDINAL friction μx."
 function brush_fx(Fz, κ; p = BRUSH_FRONT)
-    μ = brush_mu(Fz, p.μ, p.kμ, p.Fz0)
+    μ = brush_mu(Fz, p.μx, p.kμ, p.Fz0)
     ξ = p.Cκ*abs(κ) / (3.0*μ)
     sign(κ) * μ*Fz * brush_sat(ξ)
 end
 
-"""Combined brush force (Fx, Fy).  Magnitude = μ·Fz·brush_sat(ξ) with ξ the
-stiffness-weighted combined slip, directed along the deflection vector
-(Cκ·κ, Cα·sinα) — the friction ellipse emerges from the physics (each direction
-carries its own stiffness, so longitudinal slip doesn't borrow lateral stiffness)."""
+"""Combined brush force (Fx, Fy).  The deflection vector is (Cκ·κ, Cα·sinα); the
+friction LIMIT is an ellipse (μx longitudinal, μy lateral), so the directional
+friction is μ_dir = 1/√((cosψ/μx)² + (sinψ/μy)²) along the deflection direction ψ.
+Magnitude = μ_dir·Fz·brush_sat(ξ).  Pure lateral ⇒ μy·Fz; pure longitudinal ⇒ μx·Fz;
+the friction ellipse + the per-direction stiffness emerge from the physics."""
 function brush_forces(Fz, α, κ; p = BRUSH_FRONT)
-    μ = brush_mu(Fz, p.μ, p.kμ, p.Fz0)
+    μy = brush_mu(Fz, p.μ,  p.kμ, p.Fz0)
+    μx = brush_mu(Fz, p.μx, p.kμ, p.Fz0)
     gx = p.Cκ*κ;  gy = p.Cα*sin(α)
-    g  = sqrt(gx^2 + gy^2)
-    ξ  = g / (3.0*μ)
-    Fmag = μ*Fz * brush_sat(ξ)
-    gg = sqrt(gx^2 + gy^2 + 1e-6)               # direction floor (well-conditioned near 0)
+    gg = sqrt(gx^2 + gy^2 + 1e-9)               # deflection magnitude (direction floor)
+    μdir = 1.0 / sqrt((gx/gg/μx)^2 + (gy/gg/μy)^2)   # elliptical directional friction
+    ξ  = sqrt(gx^2 + gy^2) / (3.0*μdir)
+    Fmag = μdir*Fz * brush_sat(ξ)
     (Fmag*gx/gg, Fmag*gy/gg)
 end
