@@ -92,3 +92,9 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   default to brush; `JM_MAGIC=1` restores the old fudged tyre. VERIFIED: car launches from rest +
   accelerates (72 km/h in test_drive_rt, was stuck at 36); live app runs clean by default, no NaN.
   E6 essentially DONE — the physics-based, no-fudge Lotus 49 tyre is the live model.
+- 2026-06-25 E6: brush FIXES the long-standing combined-slip glitch. The Magic Formula's
+  combined law borrowed the lateral curve for the longitudinal force (the `test_combined_slip:34`
+  open item); the brush carries a separate stiffness AND friction per axis, so it doesn't. New
+  `test/test_brush_slip.jl` proves it: friction ELLIPSE holds (anisotropic μx≠μy), per-axis
+  consistency is EXACT (pure Fx=brush_fx, pure Fy=brush_fy — the assert the Magic Formula fails),
+  and the MTK BrushTyre component matches the pure law. A physics glitch fixed by the physics model.
