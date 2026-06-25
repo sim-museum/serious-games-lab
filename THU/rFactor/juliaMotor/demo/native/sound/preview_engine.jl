@@ -21,9 +21,7 @@ function write_wav(path, stereo::Matrix{Float32}, sr=44100)
 end
 
 eng = EngineAudio.build_lotus()
-println("  Lotus engine: ", length(eng.voices), " voices @ ",
-        [round(Int,v.natural) for v in eng.voices], " rpm")
-@assert !isempty(eng.voices) "no Lotus samples loaded"
+println("  Lotus engine: ", eng.proc ? "PROCEDURAL DFV V8 synth" : "$(length(eng.voices)) WAV voices")
 
 sr = 44100; dur = 10.0; N = round(Int, sr*dur)
 out = zeros(Float32, N, 2)

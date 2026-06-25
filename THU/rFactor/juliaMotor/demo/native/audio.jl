@@ -36,18 +36,32 @@ mutable struct Engine
     rpm::Threads.Atomic{Float64}
     master::Threads.Atomic{Float64}
     running::Threads.Atomic{Bool}
+    proc::Bool             # PROCEDURAL synth (Cosworth DFV V8) — fallback when GPL audio is absent
+    phase::Float64         # crank-rotation phase for the synth [0,1)
+    single::Bool           # SINGLE-loop wide-pitch playback (GPL engine sample)
 end
 
 const SAMPLES = (("idle1e.WAV",1600.0), ("v4g.wav",2700.0), ("l4f.wav",4500.0),
                  ("l2e.wav",6200.0), ("h1g.wav",8000.0))
 
-# Lotus 49 (Cosworth DFV V8) loops cut from the iRacing onboard recording by
-# demo/native/sound/extract_samples.py; each file's natural RPM = its detected
-# firing pitch (4th order), so the RPM crossfade + pitch-trim stay in tune.
-const LOTUS_SAMPLES = (("lotus_2400.wav",2400.0), ("lotus_3500.wav",3500.0),
-                       ("lotus_4650.wav",4650.0), ("lotus_5100.wav",5100.0),
-                       ("lotus_6350.wav",6350.0), ("lotus_8100.wav",8100.0),
-                       ("lotus_10050.wav",10050.0))
+# GPL's own Lotus 49 engine: the Ford Cosworth DFV V8 loop, pitch-shifted by RPM
+# (GPL plays one steady loop across the whole rev range).  Measured firing pitch
+# of the loop ≈ 347 Hz ⇒ ~5200 rpm (V8 4th order).
+const GPL_ENGINE_WAV = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/sound/66fordV8.wav"
+const GPL_ENGINE_RPM = 5200.0
+
+"Linear-resample mono Float32 audio from `sr` to 44.1 kHz (so playback pitch math is clean)."
+function resample44k(data::Vector{Float32}, sr)
+    sr == 44100 && return data
+    n = max(1, round(Int, length(data)*44100/sr)); step = sr/44100
+    out = Vector{Float32}(undef, n); L = length(data)
+    @inbounds for i in 1:n
+        p = (i-1)*step + 1; k = unsafe_trunc(Int, p); fr = Float32(p - k)
+        a = data[clamp(k,1,L)]; b = data[clamp(k+1,1,L)]
+        out[i] = a*(1f0-fr) + b*fr
+    end
+    out
+end
 
 """Build the engine from the car's onboard sample set (`Sounds/F158/Vanwall_V254/IN`)."""
 function build(gamedata)
@@ -57,24 +71,70 @@ function build(gamedata)
         p = joinpath(dir,f); isfile(p) || continue
         d,_ = load_wav(p); push!(voices, Voice(d, rpm, 0.0))
     end
-    Engine(voices, Threads.Atomic{Float64}(1600.0), Threads.Atomic{Float64}(0.7), Threads.Atomic{Bool}(false))
+    Engine(voices, Threads.Atomic{Float64}(1600.0), Threads.Atomic{Float64}(0.7), Threads.Atomic{Bool}(false), false, 0.0, false)
 end
 
-"""Build the Lotus 49 engine from the iRacing-derived DFV loops in `dir`
-(defaults to `sound/lotus` next to this file).  Falls back to `build(gamedata)`
-if no Lotus samples are present."""
-function build_lotus(; dir = joinpath(@__DIR__, "sound", "lotus"), gamedata = "")
-    voices = Voice[]
-    for (f,rpm) in LOTUS_SAMPLES
-        p = joinpath(dir,f); isfile(p) || continue
-        d,_ = load_wav(p); push!(voices, Voice(d, rpm, 0.0))
+"""Build the Lotus 49 engine from GPL's own audio: the Ford Cosworth DFV V8 loop
+(`GPL/sound/66fordV8.wav`), pitch-shifted by RPM the way GPL plays it.  Falls back
+to a procedural DFV synth if the GPL audio isn't found (never to WAV voice clips)."""
+function build_lotus(; gpl_engine = GPL_ENGINE_WAV, kwargs...)
+    if isfile(gpl_engine)
+        d, sr = load_wav(gpl_engine)
+        v = Voice(resample44k(d, sr), GPL_ENGINE_RPM, 0.0)
+        return Engine([v], Threads.Atomic{Float64}(1800.0), Threads.Atomic{Float64}(0.7),
+                      Threads.Atomic{Bool}(false), false, 0.0, true)
     end
-    isempty(voices) && return build(gamedata)          # no Lotus loops → onboard set
-    Engine(voices, Threads.Atomic{Float64}(2000.0), Threads.Atomic{Float64}(0.7), Threads.Atomic{Bool}(false))
+    Engine(Voice[], Threads.Atomic{Float64}(1800.0), Threads.Atomic{Float64}(0.7),
+           Threads.Atomic{Bool}(false), true, 0.0, false)   # procedural fallback
 end
 
-# mix one output buffer (frames×2): triangular RPM crossfade + per-sample pitch
+# Single GPL loop, pitched across the whole rev range (rate = rpm / reference rpm).
+function mix_single!(out::Matrix{Float32}, eng::Engine)
+    v = eng.voices[1]; len = length(v.data)
+    r = eng.rpm[]; rpm = isfinite(r) ? max(r, 500.0) : 500.0
+    master = Float32(eng.master[])
+    rate = clamp(rpm / v.natural, 0.22, 2.4)               # WIDE pitch (one loop, idle→redline)
+    ph = isfinite(v.phase) ? v.phase : 0.0
+    @inbounds for i in 1:size(out,1)
+        idx = unsafe_trunc(Int, ph); fr = Float32(ph - idx)
+        a = v.data[idx % len + 1]; b = v.data[(idx+1) % len + 1]
+        s = (a*(1f0-fr) + b*fr) * master
+        out[i,1] = s; out[i,2] = s
+        ph += rate; ph >= len && (ph -= len)
+    end
+    v.phase = ph
+end
+
+# Cosworth DFV V8 exhaust spectrum, by ENGINE ORDER (k = harmonics of crank rotation):
+# 4th order = the firing note (8 cyl, 4-stroke ⇒ 4 power strokes/rev); 2nd/6th give the
+# V8 body/burble; 8/12/16 the metallic top-end wail.  (k, amplitude)
+const DFV_ORDERS = ((1,0.10),(2,0.55),(3,0.16),(4,1.00),(5,0.18),(6,0.45),
+                    (8,0.60),(10,0.24),(12,0.32),(16,0.14))
+
+# Procedural V8 synth: fills the buffer from the crank phase at the current RPM.
+function mix_proc!(out::Matrix{Float32}, eng::Engine)
+    N = size(out,1)
+    r = eng.rpm[]; rpm = isfinite(r) ? clamp(r, 700.0, 10500.0) : 700.0
+    master = eng.master[]
+    crank = rpm/60.0                                   # crank revs / second [Hz]
+    inc = crank/44100.0                                # phase increment per sample
+    amp = master * clamp(0.30 + 0.70*(rpm-1200.0)/8000.0, 0.20, 1.0)   # louder with revs
+    ph = isfinite(eng.phase) ? eng.phase : 0.0
+    @inbounds for i in 1:N
+        s = 0.0
+        for (k,a) in DFV_ORDERS; s += a*sin(2π*k*ph); end
+        s += 0.05*(2rand() - 1)                        # induction / exhaust hiss
+        v = Float32(tanh(s*0.55) * amp * 0.5)          # soft-clip for body, never hard-pin
+        out[i,1] = v; out[i,2] = v
+        ph += inc; ph >= 1.0 && (ph -= 1.0)
+    end
+    eng.phase = ph
+end
+
+# mix one output buffer (frames×2): procedural synth, OR triangular RPM crossfade + per-sample pitch
 function mix!(out::Matrix{Float32}, eng::Engine)
+    if eng.single; mix_single!(out, eng); return; end
+    if eng.proc;   mix_proc!(out, eng);   return; end
     fill!(out, 0f0); N=size(out,1)
     r=eng.rpm[]; rpm = isfinite(r) ? max(r,700.0) : 700.0   # sanitise: a NaN rpm (stall transient)
     master=eng.master[]; span=2200.0                         # must NOT poison the voice phases forever
@@ -97,7 +157,7 @@ end
 `eng.rpm[]` from the game loop, call `stop!(eng)` to end."""
 function start(eng::Engine)
     haskey(ENV, "JM_NOSOUND") && (println("  engine audio off (JM_NOSOUND)"); return eng)
-    isempty(eng.voices) && (@warn "no engine samples found — no sound"; return eng)
+    (!eng.proc && isempty(eng.voices)) && (@warn "no engine samples found — no sound"; return eng)
     if Threads.nthreads() < 2
         @warn "sound needs ≥2 threads — relaunch with: julia -t 2 …"; return eng
     end
