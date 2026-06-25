@@ -1323,7 +1323,9 @@ class TableView(QWidget):
         self.north_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
         self.north_label.setStyleSheet("QLabel { background-color: #14202c; color: #eef3f7; padding: 2px 8px; border:1px solid #3fb950; border-radius: 4px; }")
         self.north_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.north_label.setFixedWidth(140)
+        # 180 fits the longest label, "S: Declarer (you)" / "N: Dummy (you)";
+        # 140 clipped them to "Declarer (you" with the leading char cut off.
+        self.north_label.setFixedWidth(180)
 
         # North hand
         self.hand_widgets[Seat.NORTH].set_player_info(is_human=False)
@@ -1389,7 +1391,7 @@ class TableView(QWidget):
         # 160 px easily fits "W: Declarer" / "E: Dummy" with the 8-px
         # horizontal padding. Was 70, which clipped both Declarer and
         # Dummy down to "D".
-        self.west_label.setMinimumWidth(160)
+        self.west_label.setMinimumWidth(180)
         self.west_label.setStyleSheet("QLabel { background-color: #14202c; color: #eef3f7; padding: 3px 8px; border:1px solid #3fb950; border-radius: 4px; }")
         self.west_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         west_vbox.addStretch()
@@ -1460,7 +1462,7 @@ class TableView(QWidget):
         self.east_label = QLabel("E: biq")
         self.east_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
         # See west_label note — 160 fits "Declarer" / "Dummy" cleanly.
-        self.east_label.setMinimumWidth(160)
+        self.east_label.setMinimumWidth(180)
         self.east_label.setStyleSheet("QLabel { background-color: #14202c; color: #eef3f7; padding: 3px 8px; border:1px solid #3fb950; border-radius: 4px; }")
         self.east_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         east_vbox.addStretch()
@@ -1508,7 +1510,7 @@ class TableView(QWidget):
         self.south_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
         self.south_label.setStyleSheet("QLabel { background-color: #14202c; color: #58a6ff; padding: 2px 8px; border:1px solid #58a6ff; border-radius: 4px; }")
         self.south_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.south_label.setFixedWidth(140)
+        self.south_label.setFixedWidth(180)  # fit "S: Declarer (you)"
 
         self.hand_widgets[Seat.SOUTH].set_player_info(is_human=True)
 

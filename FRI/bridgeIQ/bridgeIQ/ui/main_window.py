@@ -897,6 +897,10 @@ class MainWindow(QMainWindow):
         self.book_note.setReadOnly(True)
         self.book_note.setVisible(False)
         self.book_note.setMaximumHeight(360)
+        # Keep the panel a readable width (it shares the 280-px right
+        # column with the bidding box); without a floor it collapses to a
+        # few pixels during play and wraps one letter per line.
+        self.book_note.setMinimumWidth(252)
         self.book_note.setStyleSheet(f"""
             QTextEdit {{
                 background-color: #1b2330;
