@@ -98,3 +98,9 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   `test/test_brush_slip.jl` proves it: friction ELLIPSE holds (anisotropic μx≠μy), per-axis
   consistency is EXACT (pure Fx=brush_fx, pure Fy=brush_fy — the assert the Magic Formula fails),
   and the MTK BrushTyre component matches the pure law. A physics glitch fixed by the physics model.
+- 2026-06-25 E6: kμ (friction load-sensitivity) is NOT fittable from the data — the iRacing `.ibt`
+  has shock deflections (→ per-corner load) but NO per-corner tyre-FORCE channels, so grip-vs-load
+  can't be measured. Kept at the physical default (0.08). This exhausts the autonomous, data-
+  supported E6 work. E6 (physics-based brush Lotus 49, no fudge) is the live default model. ✅
+  REMAINING (PO-dependent / cosmetic): confirm the brush feel (drive `JM_BRUSH` vs `JM_MAGIC`);
+  E4 graphics polish (needs PO eyes on a drive); silence the cosmetic JM_3D landing warnings.
