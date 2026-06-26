@@ -3770,14 +3770,12 @@ For more information, see the README file."""
 
         if choice.start_with_play and board.contract is not None:
             # Skip auction — keep the contract from the previous run.
-            preserved = board.contract
-            from backend.models import Bid as _Bid
-            board.auction = [_Bid(
-                level=preserved.level, suit=preserved.suit,
-                doubled=preserved.doubled,
-                redoubled=preserved.redoubled,
-            )]
-            self.controller.set_contract_direct(preserved)
+            # set_contract_direct rebuilds board.auction from the contract
+            # (a single synthesised contract-bid) and sets declarer / dummy /
+            # opening leader / play phase. (It builds the Bid with the right
+            # is_double/is_redouble kwargs; the old manual build used the
+            # non-existent doubled=/redoubled= and crashed.)
+            self.controller.set_contract_direct(board.contract)
         else:
             # Restart from the auction.
             board.auction = []
