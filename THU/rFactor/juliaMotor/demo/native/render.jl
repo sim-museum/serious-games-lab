@@ -281,8 +281,8 @@ function lookat(eye,ctr,up)
 end
 
 # ---- shaders (textured diffuse × two-sided Lambert + hemispheric ambient) ----
-const HORIZON = (0.66f0, 0.72f0, 0.78f0)      # pale haze — fog + sky horizon share it
-const ZENITH  = (0.28f0, 0.46f0, 0.72f0)
+const HORIZON = (0.78f0, 0.78f0, 0.75f0)      # warm pale haze (was cold blue 0.66,0.72,0.78) — fog + sky horizon share it
+const ZENITH  = (0.40f0, 0.56f0, 0.78f0)      # paler/hazier blue (was deep 0.28,0.46,0.72) — GPL's overcast-ish sky
 const VSRC = """
 #version 330 core
 layout(location=0) in vec3 pos; layout(location=1) in vec3 nrm;
@@ -336,12 +336,12 @@ void main(){
   vec3 N = dot(vN,vN) > 1e-6 ? normalize(vN) : vec3(0.0,1.0,0.0);  // guard zero/degenerate normals
   if(!gl_FrontFacing) N=-N;
   float diff=max(dot(N,normalize(uLightDir)),0.0)*shadow(N);
-  vec3 sky=vec3(0.81,0.89,0.97), grd=vec3(0.33,0.38,0.25);
-  vec3 amb=mix(grd,sky,0.5+0.5*N.y)*0.6;
+  vec3 sky=vec3(0.95,0.93,0.86), grd=vec3(0.34,0.36,0.26);   // sky-fill WARMED (was cold blue 0.81,0.89,0.97 → blue cast)
+  vec3 amb=mix(grd,sky,0.5+0.5*N.y)*0.46;                     // lower fill (was 0.6) ⇒ darker shadows ⇒ more contrast
   vec3 base = t.rgb;
   if(uHasTex==1 && max(abs(vUV.x),abs(vUV.y)) > 3.0)   // tiling surface: gently break up the repeat
     base *= mix(vec3(1.0), texture(uTex, vUV*0.07).rgb * 1.7, 0.45);   // softer → no harsh light/dark patches
-  vec3 lit = pow(base*(amb+0.5*uAmbFill+diff*0.95)*uBright, vec3(0.85));
+  vec3 lit = pow(base*(amb+0.5*uAmbFill+diff*1.15)*uBright, vec3(0.94));   // stronger sun (0.95→1.15) + gamma→neutral (0.85→0.94) ⇒ GPL contrast
   lit += uAmbFill*vec3(0.13,0.135,0.125);   // ADDITIVE fill: lifts pure-black cockpit parts
                                             // (tub/dash) to a visible dark grey, as GPL pre-lights them
   if(uSpec > 0.0){                               // Blinn-Phong sheen (painted/chrome bodywork)
