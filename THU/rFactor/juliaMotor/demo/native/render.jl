@@ -584,20 +584,26 @@ function hdisc!(v,cx,cy,r,c;seg=26)
         append!(v, Float32[cx+r*cos(a1),cy+r*sin(a1), c[1],c[2],c[3]])
     end
 end
+# nominal static grip μ·Fz [mg/4 units] that maps to the base ring radius — so a tyre
+# at static load draws ~baseR, a loaded (outside/squatting) tyre draws BIGGER, a light
+# (inside/airborne) tyre draws SMALLER.  (front static ≈1.24, rear ≈1.53 ⇒ ~1.38 avg.)
+const GRIP_REF = 1.38
 """One per-wheel traction circle.  `tc` = (Fx_long, Fy_lat, GRIP=μ·Fz), all in mg/4.
-The RING is the friction limit (fixed visual radius); the dot is the force vector
-NORMALIZED by the grip, so it sits INSIDE the ring while the tyre has grip in hand
-(green), reaches the EDGE at the limit, and goes OUTSIDE when the tyre breaks away
-and skids (red).  util = |F|/grip."""
-function htraction!(v,cx,cy,R,tc)
+The RING RADIUS scales with the grip (μ·Fz) — it GROWS as the tyre loads up under
+weight transfer and SHRINKS as it goes light — and the dot is the force at the same
+pixels-per-Newton scale, so it sits INSIDE the ring with grip in hand (green), at the
+EDGE at the limit, and OUTSIDE when the tyre breaks away and skids (red)."""
+function htraction!(v,cx,cy,baseR,tc)
     long,lat,grip = Float64(tc[1]),Float64(tc[2]),max(Float64(tc[3]),1e-3)
+    s = baseR / GRIP_REF                           # pixels per (mg/4) — common scale for ring AND force
+    R = clamp(grip*s, baseR*0.45, baseR*1.7)       # ring = the grip limit (varies with load)
     util = hypot(long,lat)/grip                    # 1.0 = at the friction limit (skid onset)
     col = util<0.7 ? (0.40,0.80,0.40) : util<0.95 ? (0.92,0.80,0.32) : (0.95,0.32,0.28)
     hdisc!(v,cx,cy,R,(0.09,0.10,0.13))             # SOLID opaque backing (no see-through road)
-    hcircle!(v,cx,cy,R,2.5,(0.58,0.64,0.72))       # bright grip ring = the friction limit
-    nx=-lat/grip; ny=-long/grip                    # normalized force: 1.0 = ring edge; +lat→left, +long→up
-    m=hypot(nx,ny); m>1.55 && (nx*=1.55/m; ny*=1.55/m)   # cap just outside the ring so a big skid stays on-screen
-    hquad!(v,cx+nx*R-4,cy+ny*R-4,8,8,col)          # force dot: inside=grip in hand, outside=skidding
+    hcircle!(v,cx,cy,R,2.5,(0.58,0.64,0.72))       # bright grip ring = the friction limit (size = grip)
+    dx=-lat*s; dy=-long*s                          # force at the SAME scale: |dx,dy| reaches R at the limit
+    m=hypot(dx,dy); cap=R*1.5; m>cap && (dx*=cap/m; dy*=cap/m)   # cap a big skid so the dot stays on-screen
+    hquad!(v,cx+dx-4,cy+dy-4,8,8,col)              # force dot: inside=grip in hand, outside=skidding
 end
 
 """Render a lap time `secs` as 7-segment M:SS.t at (x,y) in colour c."""
