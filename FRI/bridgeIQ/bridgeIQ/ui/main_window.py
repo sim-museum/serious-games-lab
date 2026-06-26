@@ -2313,6 +2313,8 @@ class MainWindow(QMainWindow):
                 self.autoplay_btn.setChecked(False)
         except Exception:
             pass
+        # Fresh hand — the previous deal's claim shouldn't blank this table.
+        self._eoh_clear_all_hands = False
 
         # Book note — if this deal carries the textbook's play commentary
         # (a practice-deck hand), load it so it can be shown during play.
@@ -8787,6 +8789,15 @@ For more information, see the README file."""
                     self.original_hands,
                     list(board.tricks) if board.tricks else [],
                 )
+            # After a claim, clear the table — the hands are populated
+            # face-up (so View ▸ Open All Hands can show them) but hidden,
+            # since the unplayed cards weren't played and four full hands
+            # overflow the table.
+            if getattr(self, '_eoh_clear_all_hands', False):
+                for seat in Seat:
+                    self.table_view.set_hand_visible(seat, False)
+                self.table_view.clear_trick()
+            self._eoh_clear_all_hands = False
         except Exception as ex:
             print(f"end-of-hand view failed: {ex!r}", flush=True)
 
@@ -8991,9 +9002,11 @@ For more information, see the README file."""
         except Exception as e:
             print(f"Error adding to scoring table: {e}", flush=True)
 
-        # Show all hands at end
-        for seat in Seat:
-            self.table_view.set_hand_visible(seat, True)
+        # Hand visibility at end of play is decided earlier:
+        # show_end_of_hand_view() reveals the declaring side (declarer +
+        # dummy) and a claim hides everything. Don't blanket-reveal all four
+        # here — the defenders' hands run off-screen and the user can use
+        # View ▸ Open All Hands (F2) to see them.
 
         # Post-hand sequence (normal play only, not teams match):
         # The end-of-hand dialog now drives both the harness launch
@@ -10340,6 +10353,11 @@ For more information, see the README file."""
         board.declarer_tricks = final_declarer
         board.defense_tricks = final_defense
         self.controller.current_phase = 'finished'
+        # A claim ends play with cards still in hand. The post-mortem can't
+        # lay out four full hands without overflowing, and the unplayed
+        # cards weren't actually played — so clear the table after a claim.
+        # The hands stay populated (View ▸ Open All Hands / F2 shows them).
+        self._eoh_clear_all_hands = True
         try:
             self.table_view.update_tricks(final_declarer, final_defense)
         except Exception:
