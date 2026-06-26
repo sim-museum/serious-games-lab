@@ -1854,6 +1854,14 @@ class MainWindow(QMainWindow):
         if not still_in_bidding:
             self._maybe_run_pending_claude()
 
+        # Practice-deck / tournament-file queue is the authoritative deal
+        # source: advance through the book even if a teams match was started
+        # (e.g. the user pressed Closed room on a practice deal). Without this
+        # the teams branch below would deal a fresh random board instead.
+        queue = getattr(self, '_deal_queue', None)
+        if queue and getattr(self, '_deal_queue_pos', 0) < len(queue):
+            self._on_new_deal()
+            return
 
         # If in teams match mode during bidding, user wants to discard this hand
         if self.teams_match is not None and self.match_controller is not None:
@@ -2212,6 +2220,17 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+        # Practice-deck / tournament-file queue takes priority over the
+        # teams-match path: once a deal file is loaded it stays the deal
+        # source for "Next deal" (advancing through the book), even if the
+        # user pressed Closed room in between. This also routes every deal
+        # through _present_fresh_board, which refreshes the book note. The
+        # queue branch lives further down; jump to it when one is active.
+        queue = getattr(self, '_deal_queue', None)
+        if queue and getattr(self, '_deal_queue_pos', 0) < len(queue):
+            self._play_next_queued_deal()
+            return
+
         # If in teams match mode, use the teams board method
         if self.teams_match is not None and self.match_controller is not None:
             # Advance to next board in teams match
@@ -2223,37 +2242,6 @@ class MainWindow(QMainWindow):
                 # Match complete - show final scores
                 self._on_view_teams_score()
                 self.status_label.setText("Teams match complete!")
-            return
-
-        # Tournament-file deal source: play the file's deals in order rather
-        # than dealing random ones (Q-Plus deal source = Deal file).
-        queue = getattr(self, '_deal_queue', None)
-        if queue:
-            import copy
-            pos = getattr(self, '_deal_queue_pos', 0)
-            if pos >= len(queue):
-                self.status_label.setText(
-                    "Tournament file complete — all deals played.")
-                try:
-                    self._on_show_scores()
-                except Exception:
-                    pass
-                return
-            board = copy.deepcopy(queue[pos])   # keep the queue pristine
-            self._deal_queue_pos = pos + 1
-            if not getattr(board, 'board_number', 0):
-                board.board_number = pos + 1
-            self.controller.board = board
-            self.controller.current_phase = 'bidding'
-            self.controller.current_seat = board.dealer
-            self.controller.declarer = None
-            self.controller.dummy = None
-            self.controller.opening_leader = None
-            self.controller.human_controls_declarer = False
-            self._present_fresh_board(board)
-            self.status_label.setText(
-                f"Tournament deal {pos + 1}/{len(queue)}: "
-                f"{board.dealer.to_char()} deals")
             return
 
         board = self.controller.new_deal()
@@ -2272,6 +2260,38 @@ class MainWindow(QMainWindow):
                     "using the last deal (loosen the filter?).")
 
         self._present_fresh_board(board)
+
+    def _play_next_queued_deal(self):
+        """Present the next deal from the practice-deck / tournament-file
+        queue (Q-Plus deal source = Deal file). Plays the file's deals in
+        order; _present_fresh_board then skips the auction when the deal
+        carries a contract and shows its book note."""
+        import copy
+        queue = self._deal_queue
+        pos = getattr(self, '_deal_queue_pos', 0)
+        if pos >= len(queue):
+            self.status_label.setText(
+                "Tournament file complete — all deals played.")
+            try:
+                self._on_show_scores()
+            except Exception:
+                pass
+            return
+        board = copy.deepcopy(queue[pos])   # keep the queue pristine
+        self._deal_queue_pos = pos + 1
+        if not getattr(board, 'board_number', 0):
+            board.board_number = pos + 1
+        self.controller.board = board
+        self.controller.current_phase = 'bidding'
+        self.controller.current_seat = board.dealer
+        self.controller.declarer = None
+        self.controller.dummy = None
+        self.controller.opening_leader = None
+        self.controller.human_controls_declarer = False
+        self._present_fresh_board(board)
+        self.status_label.setText(
+            f"Tournament deal {pos + 1}/{len(queue)}: "
+            f"{board.dealer.to_char()} deals")
 
     def _present_fresh_board(self, board):
         """Set up the table/bidding UI for a freshly-dealt board and start the
@@ -3395,6 +3415,14 @@ For more information, see the README file."""
             return
 
         print(f"Starting teams board {board_num}", flush=True)
+
+        # A teams board is a fresh random deal, not a book deal — clear any
+        # book note left over from a practice-deck deal so it doesn't linger.
+        try:
+            self.book_note.clear()
+            self.book_note.setVisible(False)
+        except Exception:
+            pass
 
         # Generate a new deal
         board = self.controller.new_deal(board_num)
@@ -10227,7 +10255,7 @@ For more information, see the README file."""
         """Handle claim button - claim remaining tricks."""
         from .dialogs import ClaimDialog
 
-        if self.controller.current_phase != 'play':
+        if self.controller.current_phase not in ('play', 'waiting_next'):
             self.status_label.setText("Claim is only available during play")
             return
 
@@ -10302,9 +10330,10 @@ For more information, see the README file."""
                     can_undo = self._has_user_play(board)
             self.undo_btn.setEnabled(can_undo)
 
-        # Claim button - only during play
+        # Claim button - available throughout card play, including the
+        # between-tricks pause (phase 'waiting_next') after a trick completes.
         if hasattr(self, 'claim_btn'):
-            self.claim_btn.setEnabled(phase == 'play')
+            self.claim_btn.setEnabled(phase in ('play', 'waiting_next'))
 
         # Review button - only after hand is finished
         if hasattr(self, 'review_btn'):
