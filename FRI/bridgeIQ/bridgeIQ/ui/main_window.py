@@ -8428,6 +8428,8 @@ For more information, see the README file."""
         # bookkeeping; use the same path the user takes for the
         # final trick.
         self.controller.current_phase = 'finished'
+        # A claim leaves cards unplayed — clear the table (see _on_claim).
+        self._eoh_clear_all_hands = True
         self.table_view.update_tricks(
             board.declarer_tricks, board.defense_tricks)
         self.status_label.setText(
