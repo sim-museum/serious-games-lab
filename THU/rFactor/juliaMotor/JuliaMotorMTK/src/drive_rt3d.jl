@@ -171,7 +171,13 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
     end
     c.y = c.zref + c.heave                          # world body height (terrain ref + heave; rises in a jump)
     mg4 = 617.0*9.80665/4
-    c.tc = ntuple(i -> (a[6+i]/mg4, a[10+i]/mg4, hypot(a[6+i], a[10+i])/mg4), 4)
+    # tc[i] = (Fx, Fy, GRIP LIMIT μ·Fz) all in mg/4 units.  The 3rd entry is the
+    # friction-circle RADIUS (the available grip, μ·Fz from the real per-corner load
+    # a[18+i]=Fz), NOT the force magnitude — so the HUD dot sits INSIDE the ring in
+    # normal driving and reaches/exceeds the edge only when the tyre is at its limit.
+    # μ_f/μ_r match brush_tyre.jl BRUSH_FRONT.μ / BRUSH_REAR.μ (lateral grip).
+    μc = (1.36, 1.36, 1.40, 1.40)
+    c.tc = ntuple(i -> (a[6+i]/mg4, a[10+i]/mg4, μc[i]*max(a[18+i],1.0)/mg4), 4)
     # per-corner ride height = static + chassis-mount rise − road drop (grows when a wheel droops in the air)
     c.rh = ntuple(i -> RH0 + (WHEELS[i][1]*c.pitch + WHEELS[i][2]*c.roll + c.heave) - (terr[i]-c.zref), 4)
     (!isfinite(c.v) || abs(c.v) > 110) && return respawn3d!(c)

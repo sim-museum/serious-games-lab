@@ -384,7 +384,7 @@ const WHEELS = (( 1.05f0, 0.62f0,true, 0.31f0,"lotwlf"), ( 1.05f0,-0.62f0,true, 
 # ---- GL init (visible window on the user's display) ----
 const W, H = 1440, 810
 const SMOKE = haskey(ENV, "JM_SMOKE")     # headless self-test: hidden window, auto-exit
-const CAR3D = haskey(ENV, "JM_3D")        # full-3D vehicle (heave/pitch/roll + jumps) instead of the planar model
+const CAR3D = !haskey(ENV, "JM_2D")       # full-3D vehicle (heave/pitch/roll + jumps) is the DEFAULT; JM_2D forces the planar model
 # physics dispatch — Car3D is field/method-compatible with DriveRT.Car (superset)
 build_carX(; kw...)        = CAR3D ? DriveRT3D.build_car3d(; kw...) : DriveRT.build_car(; kw...)
 step_carX!(c, a...; kw...) = CAR3D ? DriveRT3D.step_car3d!(c, a...; kw...) : DriveRT.step_car!(c, a...; kw...)
@@ -392,7 +392,8 @@ telemetryX(c)              = CAR3D ? DriveRT3D.telemetry3d(c) : DriveRT.telemetr
 respawnX!(c)               = CAR3D ? DriveRT3D.respawn3d!(c) : DriveRT.respawn!(c)
 containX!(c, x, z; kw...)  = CAR3D ? DriveRT3D.contain3d!(c, x, z; kw...) : DriveRT.contain!(c, x, z; kw...)
 const FENCE = parse(Float64, get(ENV, "JM_FENCE", "13.0"))   # E7: track boundary (m from centreline) — you can't leave the world
-CAR3D && println("  PHYSICS: full-3D vehicle (JM_3D) — heave/pitch/roll + suspension travel + jumps")
+println(CAR3D ? "  PHYSICS: full-3D vehicle (default) — heave/pitch/roll + suspension travel + jumps" :
+                "  PHYSICS: planar 2-D model (JM_2D)")
 GLFW.Init()
 SMOKE && GLFW.WindowHint(GLFW.VISIBLE, false)
 GLFW.WindowHint(GLFW.CONTEXT_VERSION_MAJOR, 4); GLFW.WindowHint(GLFW.CONTEXT_VERSION_MINOR, 5)  # 4.5 → glClipControl (reversed-Z)

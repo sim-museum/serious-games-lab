@@ -128,7 +128,11 @@ function step_car!(c::Car, throttle, brake, steer, dt;
     end
     c.y = groundz(c.x, c.z)
     mg4 = 617.0*9.80665/4
-    c.tc = ntuple(i -> (a[6+i]/mg4, a[10+i]/mg4, hypot(a[6+i], a[10+i])/mg4), 4)
+    # tc[i] = (Fx, Fy, GRIP μ·Fz) in mg/4 — planar has no per-corner load, so use the
+    # STATIC tyre load (front 1376 N, rear 1650 N) × μ.  (Human car is 3-D; this is the
+    # JM_2D / AI path.)  μ_f/μ_r match brush_tyre.jl.
+    grip = (1.36*1376.0/mg4, 1.36*1376.0/mg4, 1.40*1650.0/mg4, 1.40*1650.0/mg4)
+    c.tc = ntuple(i -> (a[6+i]/mg4, a[10+i]/mg4, grip[i]), 4)
     (!isfinite(c.v) || abs(c.v) > 110) && return respawn!(c)   # safety net: recover from any divergence
     if !manual && c.gear >= 1                         # auto-shift on road-speed-implied rpm
         grpm = (a[4]/RW_R)*GEARS[c.gear]*FINAL*60/(2π)

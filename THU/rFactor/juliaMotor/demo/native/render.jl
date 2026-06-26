@@ -584,16 +584,20 @@ function hdisc!(v,cx,cy,r,c;seg=26)
         append!(v, Float32[cx+r*cos(a1),cy+r*sin(a1), c[1],c[2],c[3]])
     end
 end
-"""One per-wheel traction circle: SOLID disc sized by that tyre's grip (radius), with
-a force dot coloured by utilisation (green→amber→red).  `tc` = (long, lat, radius)."""
-function htraction!(v,cx,cy,baseR,tc)
-    long,lat,rad = Float64(tc[1]),Float64(tc[2]),max(Float64(tc[3]),1e-3)
-    R=baseR*clamp(rad/1.1,0.35,1.7); util=hypot(long,lat)/rad
-    col = util<0.6 ? (0.40,0.80,0.40) : util<0.85 ? (0.92,0.80,0.32) : (0.95,0.35,0.30)
-    hdisc!(v,cx,cy,R,(0.09,0.10,0.13))            # SOLID opaque backing (no see-through road)
-    hcircle!(v,cx,cy,R,2.5,(0.58,0.64,0.72))      # bright grip ring
-    dx=-lat/rad*R; dy=-long/rad*R                 # g-g: +lat→left, +long→up
-    hquad!(v,cx+dx-4,cy+dy-4,8,8,col)             # force dot (bigger)
+"""One per-wheel traction circle.  `tc` = (Fx_long, Fy_lat, GRIP=μ·Fz), all in mg/4.
+The RING is the friction limit (fixed visual radius); the dot is the force vector
+NORMALIZED by the grip, so it sits INSIDE the ring while the tyre has grip in hand
+(green), reaches the EDGE at the limit, and goes OUTSIDE when the tyre breaks away
+and skids (red).  util = |F|/grip."""
+function htraction!(v,cx,cy,R,tc)
+    long,lat,grip = Float64(tc[1]),Float64(tc[2]),max(Float64(tc[3]),1e-3)
+    util = hypot(long,lat)/grip                    # 1.0 = at the friction limit (skid onset)
+    col = util<0.7 ? (0.40,0.80,0.40) : util<0.95 ? (0.92,0.80,0.32) : (0.95,0.32,0.28)
+    hdisc!(v,cx,cy,R,(0.09,0.10,0.13))             # SOLID opaque backing (no see-through road)
+    hcircle!(v,cx,cy,R,2.5,(0.58,0.64,0.72))       # bright grip ring = the friction limit
+    nx=-lat/grip; ny=-long/grip                    # normalized force: 1.0 = ring edge; +lat→left, +long→up
+    m=hypot(nx,ny); m>1.55 && (nx*=1.55/m; ny*=1.55/m)   # cap just outside the ring so a big skid stays on-screen
+    hquad!(v,cx+nx*R-4,cy+ny*R-4,8,8,col)          # force dot: inside=grip in hand, outside=skidding
 end
 
 """Render a lap time `secs` as 7-segment M:SS.t at (x,y) in colour c."""
