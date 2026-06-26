@@ -273,6 +273,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
     end
     hat=Render.GPL3DO.Tri[]; groups=Dict{String,Vector{Float32}}(); nskip=0
     for (nm,t) in pls
+        startswith(nm,"treesrb") && continue        # forest-BACKDROP "paintings" (streea/b/c) — render as a streaky smear
         mesh=getmesh(nm); (mesh===nothing || isempty(mesh)) && continue
         issprite(nm,mesh) && (nskip+=1; continue)   # flat horizontal sprite stub
         M=placemat(t)
@@ -484,8 +485,10 @@ let objnames=Set{String}()
     drop(nm) = startswith(nm,"grass") || startswith(nm,"herbe") || nm == "infield" ||
                startswith(nm,"tent") || startswith(nm,"single") || startswith(nm,"ppl") ||
                startswith(nm,"intree") ||                                    # INFIELD tree lines (100s of m wide) → distant central "smear"
+               startswith(nm,"treesrb") ||                                   # forest-BACKDROP billboards (streea/b/c) → painted "tree clump"
                startswith(nm,"flagger") || startswith(nm,"rescu") || startswith(nm,"photo")  # marshals/photographers = people too
-    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw)))
+    istree(nm) = startswith(nm,"tree") || startswith(nm,"newt") || startswith(nm,"intree")  # foliage → graze-fade (no end-on smear)
+    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw)), istree(i.name))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
                           !drop(i.name) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(ploz(i))]
     # billboards: (Item, render-pos base, width, height) — drawn camera-facing per frame
@@ -744,7 +747,7 @@ function main()
         HORIZON_RING === nothing || Render.draw_horizon(prog, HORIZON_RING, vp, eye)   # GPL horizon ring backdrop
         for it in trackItems; Render.draw(prog, it, vp, Render.ident(); bright=0.55); end
         glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 1)   # un-mirror far-side sign backs (objects only)
-        for (items,mat) in OBJECTS, it in items; Render.draw(prog, it, vp, mat; bright=0.85); end  # trackside objects
+        for (items,mat,grz) in OBJECTS, it in items; Render.draw(prog, it, vp, mat; bright=0.85, graze=grz); end  # trackside objects (trees graze-fade)
         glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
         for (it,pos,w,h) in BILLBOARDS; Render.draw(prog, it, vp, Render.billboard_model(pos,w,h,eye); bright=1.05); end  # trees/sprites
         # ambfill lifts the self-shadowed cockpit interior out of black (GPL pre-lights it

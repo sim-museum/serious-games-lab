@@ -300,6 +300,7 @@ uniform vec3 uCamPos; uniform vec3 uFogCol; uniform float uFogNear; uniform floa
 uniform sampler2D uShadow; uniform float uShadowTexel; uniform float uSpec; uniform int uBackFlip;
 uniform float uAmbFill;   // flat fill light (GPL pre-lit cockpit interior — lifts self-shadowed faces)
 uniform int uCutout;      // 1 for chain-link/foliage cutouts → sharpen alpha edge (kill shimmer)
+uniform int uGraze;       // 1 for GPL tree-LINE meshes → fade faces viewed edge-on (kills the end-on "smear")
 uniform int uSky;
 float shadow(vec3 N){
   vec3 lp = vLS.xyz/vLS.w*0.5+0.5;
@@ -350,7 +351,12 @@ void main(){
     lit += s * vec3(1.0, 0.97, 0.9);
   }
   float fog = clamp((length(vWorld-uCamPos)-uFogNear)/(uFogFar-uFogNear), 0.0, 1.0);
-  o=vec4(mix(lit, uFogCol, fog*fog), uHasTex==1 ? t.a : 1.0);   // alpha → MSAA coverage (smooth cutout edges)
+  float alpha = uHasTex==1 ? t.a : 1.0;
+  if(uGraze==1){                                  // tree-line mesh: fade quads seen edge-on (no streaky end-on smear)
+    float g = abs(dot(N, normalize(uCamPos - vWorld)));   // 0 = edge-on, 1 = face-on
+    alpha *= smoothstep(0.05, 0.32, g);
+  }
+  o=vec4(mix(lit, uFogCol, fog*fog), alpha);     // alpha → MSAA coverage (smooth cutout edges)
 }"""
 # depth-only program for the shadow pass (render the scene from the sun's POV)
 const DEPTH_VS = """
@@ -1092,11 +1098,12 @@ function build_track(parts, texidx)
     items
 end
 setmat(prog,name,M)=glUniformMatrix4fv(glGetUniformLocation(prog,name),1,GL_FALSE,M)
-function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0)
+function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0, graze::Bool=false)
     setmat(prog,"uVP",vp); setmat(prog,"uModel",model)
     glUniform1f(glGetUniformLocation(prog,"uBright"), Float32(bright))
     glUniform1f(glGetUniformLocation(prog,"uSpec"), Float32(spec))
     glUniform1f(glGetUniformLocation(prog,"uAmbFill"), Float32(ambfill))
+    glUniform1i(glGetUniformLocation(prog,"uGraze"), graze ? 1 : 0)
     glUniform1i(glGetUniformLocation(prog,"uCutout"), get(CUTOUT_TEX, item.tex, false) ? 1 : 0)
     if item.tex != 0
         glUniform1i(glGetUniformLocation(prog,"uHasTex"),1)
