@@ -40,7 +40,8 @@ end
 clutch∈[0,1], up::Bool, dn::Bool) per a JoyMap."""
 function apply(m::JoyMap, js, bs)
     s = clamp(1.0 - 2.0 * _norm(m.steer, js), -1.0, 1.0)   # a=full-left→+1, b=full-right→-1
-    abs(s) < m.deadzone && (s = 0.0)
+    # NO steering deadzone — the wheel must be continuous right through center (a dead
+    # band makes it unresponsive near center). Throttle/brake keep theirs (creep).
     thr = clamp(_norm(m.throttle, js), 0.0, 1.0); thr < m.deadzone && (thr = 0.0)
     brk = clamp(_norm(m.brake,    js), 0.0, 1.0); brk < m.deadzone && (brk = 0.0)
     btn(i) = (bs !== nothing && i >= 1 && length(bs) >= i && bs[i] != 0)
