@@ -56,7 +56,7 @@ end
 
 "Build the real-time car, spawned at world (x0,z0) heading θ0.  v0=0 ⇒ standing
 start (engine idling, clutch open; throttle revs + engages it to launch)."
-function build_car(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, brush = !haskey(ENV, "JM_MAGIC"))
+function build_car(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0, brush = !haskey(ENV, "JM_MAGIC"))
     sys = mtkcompile(DrivenVehicleRT(name = :car, brush = brush))   # physics brush by DEFAULT; JM_MAGIC ⇒ old Magic-Formula tyre
     println(brush ? "  TYRE: physics-based brush model (default; μ≈1.4 peak, no fudge — JM_GRIP scales) — set JM_MAGIC=1 for the old tyre" :
                     "  TYRE: Magic-Formula tyre (JM_MAGIC)")

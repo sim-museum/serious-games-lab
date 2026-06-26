@@ -24,8 +24,9 @@ const FFB_ATRAIL = parse(Float64, get(ENV, "JM_FFB_TRAIL", "0.18"))   # front sl
 const FFB_TFLOOR = 0.40                                               # residual mechanical trail (caster) — wheel lightens, not dead
 const FFB_AF     = 1.314                                              # CG → front axle [m]
 const FFB_DELTA  = 0.30                                               # road-wheel angle at full lock [rad] (matches DriveRT)
-const FFB_SQ     = parse(Float64, get(ENV, "JM_FFB_SQ",  "0.03"))   # squelch knee: fy·fy²/(fy²+SQ²) — only the tiniest force is suppressed; center stays alive
-const FFB_LP     = parse(Float64, get(ENV, "JM_FFB_LP",  "0.06"))   # low-pass time-constant [s] on the FFB force — kills oscillatory wander, keeps it continuous
+const FFB_SQ     = parse(Float64, get(ENV, "JM_FFB_SQ",  "0.03"))   # squelch knee on the ROAD term only (kills tyre-force noise; the spring keeps center alive)
+const FFB_LP     = parse(Float64, get(ENV, "JM_FFB_LP",  "0.05"))   # low-pass time-constant [s] on the FFB force — smooths jostle, keeps it continuous
+const FFB_SPRING = parse(Float64, get(ENV, "JM_FFB_SPRING", "0.55"))# self-centering SPRING ∝ wheel angle — smooth return-to-center so there's NO dead zone
 const _JOYCONF = joinpath(@__DIR__, "joystick.conf")
 const JOYMAP = if isfile(_JOYCONF)
     JoyCfg.loadmap(_JOYCONF)                                  # honour gui.py / calibrate.jl (TX clutch pedal, etc.)
@@ -569,7 +570,8 @@ function main()
         h[3] ? (LASTZ[] = Float64(h[1]); ONTRACK[] = true) : (ONTRACK[] = false)
         LASTZ[]
     end
-    cs = build_carX(x0=cs0.x, z0=cs0.z, θ0=cs0.θ, v0=0.0)   # MTK car — standing start (planar or full-3D)
+    y0spawn = groundz(cs0.x, cs0.z)                          # terrain height at spawn (3-D needs it; else the car spawns 100s of m off the ground and the contact explodes)
+    cs = build_carX(x0=cs0.x, z0=cs0.z, θ0=cs0.θ, v0=0.0, y0=y0spawn)   # MTK car — standing start (planar or full-3D)
     # ---- AI opponents (race field): rail-followers on the centreline ----
     AILINE = (!SKIDPAD && N_AI > 0) ? RaceAI.build_line(ALIGNED, groundz) : nothing
     AICARS = AILINE === nothing ? RaceAI.AICar[] : RaceAI.init_cars(AILINE, N_AI; start_s = 30.0)
@@ -633,12 +635,13 @@ function main()
             tl  = telemetryX(cs)
             αf  = atan(tl.v + FFB_AF*tl.r, max(tl.u, 1.0)) - clamp(inp.steer, -1, 1)*FFB_DELTA
             trail = FFB_TFLOOR + (1 - FFB_TFLOOR) * clamp(1 - abs(αf)/FFB_ATRAIL, 0.0, 1.0)
-            fy = cs.tc[1][2] + cs.tc[2][2]                     # front-axle lateral force (mg/4 units)
-            fy = fy * fy*fy / (fy*fy + FFB_SQ*FFB_SQ)          # smooth squelch: small noise → ~0 with zero slope, big force passes; NO dead-band
+            fy = cs.tc[1][2] + cs.tc[2][2]                     # front-axle lateral force (mg/4 units) — the ROAD feel
+            fy = fy * fy*fy / (fy*fy + FFB_SQ*FFB_SQ)          # squelch only the tyre-force NOISE (jostle), not the spring
             mz  = fy * trail
-            spd = clamp(cs.v/2.5, 0.0, 1.0)                    # fade in with speed (no rest buzz)
-            target = tanh(FFB_SIGN * FFB_GAIN * mz * spd)
-            ffb_f += (target - ffb_f) * clamp(dt/FFB_LP, 0.0, 1.0)   # 1st-order low-pass: continuous, no jitter wander
+            spd = clamp(cs.v/2.5, 0.0, 1.0)                    # road feel fades in with speed
+            spr = FFB_SPRING * clamp(inp.steer, -1, 1)         # self-centering spring ∝ wheel angle — ALWAYS present ⇒ no dead center
+            target = tanh(FFB_SIGN * (FFB_GAIN * mz * spd + spr))
+            ffb_f += (target - ffb_f) * clamp(dt/FFB_LP, 0.0, 1.0)   # 1st-order low-pass: smooth, continuous
             FFB.set_force!(ffb, ffb_f)
         end
 
