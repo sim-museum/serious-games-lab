@@ -486,6 +486,7 @@ let objnames=Set{String}()
                startswith(nm,"tent") || startswith(nm,"single") || startswith(nm,"ppl") ||
                startswith(nm,"intree") ||                                    # INFIELD tree lines (100s of m wide) → distant central "smear"
                startswith(nm,"treesrb") ||                                   # forest-BACKDROP billboards (streea/b/c) → painted "tree clump"
+               startswith(nm,"grndp") || startswith(nm,"crowd") || startswith(nm,"spect") ||  # spectator CROWDS (PO: no crowds)
                startswith(nm,"flagger") || startswith(nm,"rescu") || startswith(nm,"photo")  # marshals/photographers = people too
     istree(nm) = startswith(nm,"tree") || startswith(nm,"newt") || startswith(nm,"intree")  # foliage → graze-fade (no end-on smear)
     global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw)), istree(i.name))
