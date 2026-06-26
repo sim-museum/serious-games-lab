@@ -473,21 +473,25 @@ let objnames=Set{String}()
     end
     # SNAP every object to OUR terrain (the HAT) instead of its authored GPL height —
     # this kills floaters (GPL placed trees/crowds on dune terrain that ours doesn't match).
-    groundz(x,y) = (h=JuliaMotor.hat3d(TERRAIN, Float64(x), Float64(y); ref=Inf); h[3] ? Float32(h[1]) : -999f0)  # -999 = OFF the HAT (would float)
-    onground(gz) = -900f0 < gz <= 7f0       # on our terrain & not floating high (drops OFF-HAT + sky-high placements)
+    groundz(x,y) = (h=JuliaMotor.hat3d(TERRAIN, Float64(x), Float64(y); ref=Inf); h[3] ? Float32(h[1]) : -999f0)  # -999 = OFF the HAT
+    # placement height: snap to OUR terrain where the HAT covers it (kills floaters from a
+    # terrain mismatch); else fall back to the object's AUTHORED GPL height (same frame as the
+    # track mesh) so far-trackside objects the HAT doesn't reach aren't lost.
+    ploz(i)  = (gz = groundz(i.x, i.y); gz > -900f0 ? gz : Float32(i.z))
+    onground(h) = -60f0 < h < 250f0         # sane elevation (hilly tracks reach ~40 m); drops only absurd values
     # drop: ground-cover planes (grass/herbe/infield), white "fuel-tank" tents, and the
     # spectator OVERPOPULATION (single* ≈300, ppl_* crowds) — far more than real Zandvoort.
     drop(nm) = startswith(nm,"grass") || startswith(nm,"herbe") || nm == "infield" ||
                startswith(nm,"tent") || startswith(nm,"single") || startswith(nm,"ppl") ||
                startswith(nm,"flagger") || startswith(nm,"rescu") || startswith(nm,"photo")  # marshals/photographers = people too
-    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, groundz(i.x,i.y), -i.y]) * Render.roty(Float32(-i.yaw)))
+    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw)))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
-                          !drop(i.name) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(groundz(i.x,i.y))]
+                          !drop(i.name) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(ploz(i))]
     # billboards: (Item, render-pos base, width, height) — drawn camera-facing per frame
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     for i in insts
         bb = get(bbinfo, i.name, nothing); (bb === nothing || drop(i.name)) && continue
-        gz = groundz(i.x,i.y); onground(gz) || continue
+        gz = ploz(i); onground(gz) || continue
         item, tw, th, h, wid = bb
         w = wid > 0f0 ? wid : h*tw/max(th,1f0)
         push!(BILLBOARDS, (item, (Float32(i.x), gz, Float32(-i.y)), Float32(w), Float32(h)))
