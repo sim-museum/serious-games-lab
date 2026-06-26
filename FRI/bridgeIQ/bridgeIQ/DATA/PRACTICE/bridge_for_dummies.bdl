@@ -1,0 +1,190 @@
+DOCTYPE: BDL 17.1
+.description.eng = "Worked example deals from 'Bridge for Dummies' (Eddie Kantar, Wiley, 3rd ed.). All four hands are the book's own cards, transcribed by vision from the diagram images; each Commentary carries the book's explanation of the correct play. (Figure 17-13 was omitted: the book's diagram misprints the diamond suit.)"
+
+************************************************************
+Deal         :  BfD-Fig3-6
+Deal-text    :  Bridge for Dummies (Kantar) Fig 3-6 - establish BEFORE cashing
+Dealer       :  South
+Vuln         :  None
+Contract     :  6NT  South
+N: S KQ6 H AQJ D KQJT C A43
+E: S 854 H T54 D 9873 C J95
+S: S A32 H K98 D 6542 C KQ7
+W: S JT97 H 7632 D A C T862
+Commentary   :  South plays 6NT (twelve tricks); West leads the SJ. If you greedily cash
+             :  sure tricks first (SAKQ, HAKQ, then clubs) you strand yourself and hand the
+             :  defence its setting tricks. Diamonds (KQJT vs 6542) is the suit with EXTRA
+             :  potential: knock out West's lone DA FIRST to establish dummy's long
+             :  diamonds, THEN cash out. Establish before you cash.
+
+************************************************************
+Deal         :  BfD-Fig4-11
+Deal-text    :  Bridge for Dummies (Kantar) Fig 4-11 - the hold-up play
+Dealer       :  South
+Vuln         :  None
+Contract     :  3NT  South
+N: S 65 H A54 D KQJT9 C 654
+E: S 432 H J963 D A87 C JT9
+S: S A87 H KQ2 D 5432 C AQ8
+W: S KQJT9 H T87 D 6 C K732
+Commentary   :  South plays 3NT (nine tricks); West leads the SK to set up his long spades.
+             :  Five top tricks; the four extra come from DKQJT9 once the DA is gone.
+             :  Danger: East wins the DA and pushes a spade through while West still has
+             :  spades. HOLD UP - duck the first two spades, win the SA on the THIRD round;
+             :  now East has no spade to return when you drive out the DA.
+
+************************************************************
+Deal         :  BfD-ProYoungMan
+Deal-text    :  Bridge for Dummies (Kantar) - the pro & the young man: UNBLOCK
+Dealer       :  South
+Vuln         :  None
+Contract     :  3NT  South
+N: S 85 H 86 D 62 C KQJT765
+E: S KQ42 H QT75 D T43 C 94
+S: S AT3 H A943 D A875 C A2
+W: S J976 H KJ2 D KQJ9 C 83
+Commentary   :  South plays 3NT; West leads the DK. Four aces plus dummy's CKQJT765 make ten
+             :  IF the clubs run. But South's CA2 sits opposite the long suit, so UNBLOCK:
+             :  win the DA, cash the CA (HIGH card from the SHORT side), then a low club to
+             :  dummy's CT and run the rest. Lead the low club first (as the young man did)
+             :  and the suit blocks - seven club tricks shrink to two.
+
+************************************************************
+Deal         :  BfD-Fig5-1
+Deal-text    :  Bridge for Dummies (Kantar) Fig 5-1 - the power of a trump suit
+Dealer       :  South
+Vuln         :  None
+Contract     :  4S  South
+N: S 9853 H 763 D AKQ C A76
+E: S 74 H T95 D JT7543 C J8
+S: S AKQJ2 H 84 D 962 C KQ4
+W: S T6 H AKQJ2 D 8 C T9532
+Commentary   :  South plays 4S; West leads the HA and bangs down hearts. In 3NT West would
+             :  simply cash five hearts (AKQJ2) and beat you - but with spades trumps you
+             :  ruff the third or fourth heart and stop the bleeding. Draw trumps and claim.
+             :  This is why most hands are played in a trump suit.
+
+************************************************************
+Deal         :  BfD-Fig5-11
+Deal-text    :  Bridge for Dummies (Kantar) Fig 5-11 - count losers, keep control
+Dealer       :  South
+Vuln         :  None
+Contract     :  4S  South
+N: S 6543 H 542 D A43 C AKQ
+E: S 7 H JT98 D KQ C J97653
+S: S AKQT82 H 763 D T2 C 42
+W: S J9 H AKQ D J98765 C T8
+Commentary   :  South plays 4S; West leads the HA. Before touching dummy, count losers a
+             :  suit at a time starting with trumps. Draw trumps (they break) and use
+             :  dummy's DA and the solid CAKQ to park losers. Always make a plan before
+             :  playing to trick one.
+
+************************************************************
+Deal         :  BfD-Fig5-12
+Deal-text    :  Bridge for Dummies (Kantar) Fig 5-12 - cash winners BEFORE drawing trumps
+Dealer       :  South
+Vuln         :  None
+Contract     :  4S  South
+N: S T532 H AKQ D A72 C 832
+E: S 74 H T762 D T643 C AT6
+S: S KQJ98 H 54 D 985 C KQJ
+W: S A6 H J983 D KQJ C 9754
+Commentary   :  South plays 4S; West leads the DK, promoting his DQJ. Your losers are
+             :  IMMEDIATE - if the opponents get in they cash out. So take your extra
+             :  winners (pitch losers on dummy's HAKQ) BEFORE drawing trumps; only then
+             :  knock the trumps out. Order matters.
+
+************************************************************
+Deal         :  BfD-Fig7-1
+Deal-text    :  Bridge for Dummies (Kantar) Fig 7-1 - establish dummy's side suit
+Dealer       :  South
+Vuln         :  None
+Contract     :  4H  South
+N: S 753 H A32 D AK432 C J5
+E: S T942 H 7 D QJT C T9432
+S: S J86 H KQJT98 D 65 C A8
+W: S AKQ H 654 D 987 C KQ76
+Commentary   :  South plays 4H; West leads the SA. You can afford three losers. The fifth
+             :  diamond in dummy (AK432) can be set up: cash DAK, ruff a diamond high, then
+             :  use a dummy entry (HA) to reach the established long diamond and pitch a
+             :  loser. Establishing a long side suit needs length, high cards, and entries.
+
+************************************************************
+Deal         :  BfD-Fig7-7
+Deal-text    :  Bridge for Dummies (Kantar) Fig 7-7 - grand slam via a long suit
+Dealer       :  South
+Vuln         :  None
+Contract     :  7H  South
+N: S AK3 H Q2 D K5432 C 642
+E: S 965 H 743 D QJ86 C QJ9
+S: S 72 H AKJT98 D A7 C AK8
+W: S QJT84 H 65 D T9 C T753
+Commentary   :  South plays 7H (all thirteen); West leads the SQ. Same method as a part-
+             :  score, bigger stakes: count losers, then establish dummy's DK5432. Win the
+             :  spade, draw trumps, cash DA and DK, ruff diamonds good with the long trumps,
+             :  and reach the established diamonds with a trump entry to pitch the spade
+             :  loser.
+
+************************************************************
+Deal         :  BfD-Fig8-3
+Deal-text    :  Bridge for Dummies (Kantar) Fig 8-3 - ruff losers in the short hand
+Dealer       :  South
+Vuln         :  None
+Contract     :  4H  South
+N: S 43 H 54 D AK765 C 8765
+E: S J987 H A76 D QT2 C T32
+S: S AK2 H KQJT98 D 43 C 94
+W: S QT65 H 32 D J98 C AKQJ
+Commentary   :  South plays 4H; West cashes the CAKQ. Count losers: a heart, a spade, two
+             :  clubs. The cure is to RUFF your loser (the small spade) in the SHORT trump
+             :  hand (dummy) before drawing all the trumps - dummy's little trumps do work
+             :  your long trumps cannot.
+
+************************************************************
+Deal         :  BfD-Fig8-5
+Deal-text    :  Bridge for Dummies (Kantar) Fig 8-5 - preserve dummy's trumps
+Dealer       :  South
+Vuln         :  None
+Contract     :  4H  South
+N: S 53 H T43 D 643 C 87542
+E: S KJ984 H 86 D T752 C T6
+S: S 762 H AKQJ9 D AKQ C A3
+W: S AQT H 752 D J98 C KQJ9
+Commentary   :  South plays 4H; West leads the CK. You can lose only three. With three spade
+             :  losers and a club, you must ruff a spade in dummy - but the defenders will
+             :  lead trumps to remove dummy's ruffers. Keep enough dummy trumps to outlast
+             :  them: give up the spades you must and ruff the long spade before your last
+             :  dummy trump is gone.
+
+************************************************************
+Deal         :  BfD-Fig18-9
+Deal-text    :  Bridge for Dummies (Kantar) Fig 18-9 - encouraging high-low for a ruff
+Dealer       :  South
+Vuln         :  None
+Contract     :  4H  South
+N: S Q65 H KQ98 D AQJ2 C 43
+E: S 73 H 52 D K765 C T9765
+S: S JT4 H AJT76 D 43 C AK8
+W: S AK982 H 43 D T98 C QJ2
+Commentary   :  Opponents reach 4H (South declares). Partner (West) leads the SA, marking
+             :  the SK too. You sit East with a doubleton spade (73) - perfect for a third-
+             :  round ruff. Signal HIGH-LOW (play the S7 then the S3) to tell partner you
+             :  began with two and want a third spade to trump. You need only four tricks to
+             :  beat it.
+
+************************************************************
+Deal         :  BfD-Fig18-10
+Deal-text    :  Bridge for Dummies (Kantar) Fig 18-10 - discouraging low-high
+Dealer       :  South
+Vuln         :  None
+Contract     :  4H  South
+N: S 763 H T876 D AQJT C 42
+E: S 984 H 932 D 987 C AT87
+S: S QT5 H AKQJ4 D K5 C K53
+W: S AKJ2 H 5 D 6432 C QJ96
+Commentary   :  Opponents reach 4H (South declares). Partner (West) leads the SA. You sit
+             :  East with nothing useful in spades (984). Discourage with a LOW-HIGH signal
+             :  - play your lowest spade, the S4 - so partner stops leading spades and
+             :  switches to a suit where your side has tricks.
+
+************************************************************

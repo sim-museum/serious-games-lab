@@ -978,11 +978,16 @@ class CompareReplayDialog(QDialog):
             "Don't pad with generic advice; cite the specific cards."
         ),
     }
+    # (menu label, timeout seconds, extended_thinking). The quick verdict
+    # runs WITHOUT extended thinking — thinking is the latency driver, and a
+    # 6-10 sentence verdict doesn't need it, so it returns well inside the
+    # timeout instead of blowing past it as it did before. The deeper scopes
+    # keep thinking on (and longer timeouts) for a more rigorous critique.
     _SCOPE_META = {
-        'quick':   ("Quick verdict (fast)", 180),
-        'bidding': ("Bidding only", 360),
-        'play':    ("Card play only", 360),
-        'full':    ("Full critique (slow)", 900),
+        'quick':   ("Quick verdict (fast)", 300, False),
+        'bidding': ("Bidding only", 360, True),
+        'play':    ("Card play only", 360, True),
+        'full':    ("Full critique (slow)", 900, True),
     }
 
     def _build_transcript_prompt(self, scope: str = 'full') -> str:
@@ -1335,7 +1340,8 @@ class CompareReplayDialog(QDialog):
         'full'. The smaller scopes return fast (and carry shorter timeouts) so
         the user has a request that won't time out."""
         prompt = self._build_transcript_prompt(scope)
-        label, timeout = self._SCOPE_META.get(scope, self._SCOPE_META['full'])
+        label, timeout, extended_thinking = self._SCOPE_META.get(
+            scope, self._SCOPE_META['full'])
         host = self._find_main_window()
         title = (f"Claude critique ({label}) — Board "
                  f"{self.left_run.board_number}"
@@ -1353,6 +1359,7 @@ class CompareReplayDialog(QDialog):
                 title=title,
                 wait_label=wait,
                 timeout_seconds=timeout,
+                extended_thinking=extended_thinking,
             )
             return
         # Fallback path — no MainWindow reachable (unlikely): run claude

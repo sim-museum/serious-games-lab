@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QSplitter, QMenuBar, QMenu, QStatusBar, QToolBar, QLabel,
     QProgressBar, QMessageBox, QFileDialog, QApplication,
     QDockWidget, QPushButton, QFrame, QSizePolicy, QInputDialog,
-    QDialog, QStackedWidget
+    QDialog, QStackedWidget, QTextEdit
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread, pyqtSlot
 from PyQt6.QtGui import QAction, QKeySequence, QFont, QIcon
@@ -251,13 +251,22 @@ class GameController:
         self.board.contract = contract
         self.board.auction = [Bid(level=contract.level,
                                   suit=contract.suit,
-                                  doubled=contract.doubled,
-                                  redoubled=contract.redoubled)]
+                                  is_double=contract.doubled,
+                                  is_redouble=contract.redoubled)]
         self.declarer = contract.declarer
         self.dummy = contract.declarer.partner()
         self.opening_leader = contract.declarer.next()
         self.current_seat = self.opening_leader
         self.current_phase = 'play'
+
+        # A human who is declarer (or dummy) plays BOTH hands of the
+        # declaring side — same rule _setup_play applies after a real
+        # auction. Without this the engine would auto-play dummy.
+        human_seat = next((s for s, p in self.players.items()
+                           if p.player_type == PlayerType.HUMAN), None)
+        if human_seat is not None:
+            self.human_controls_declarer = human_seat in (self.declarer,
+                                                          self.dummy)
 
     def _setup_play(self):
         """Setup for card play after bidding"""
@@ -879,6 +888,31 @@ class MainWindow(QMainWindow):
 
         # Set initial visibility based on preference
         self.analysis_label.setVisible(self.config_manager.config.preferences.show_ben_bid_analysis)
+
+        # Book note — the deal file's Commentary (the textbook's Lead /
+        # Correct play / Wrong play notes for a practice hand). Shown on
+        # the right during play of a deal that carries commentary; hidden
+        # otherwise. Read-only and scrollable so long notes fit.
+        self.book_note = QTextEdit()
+        self.book_note.setReadOnly(True)
+        self.book_note.setVisible(False)
+        self.book_note.setMaximumHeight(360)
+        # Keep the panel a readable width (it shares the 280-px right
+        # column with the bidding box); without a floor it collapses to a
+        # few pixels during play and wraps one letter per line.
+        self.book_note.setMinimumWidth(252)
+        self.book_note.setStyleSheet(f"""
+            QTextEdit {{
+                background-color: #1b2330;
+                border: 1px solid #c8a24a;
+                border-radius: 4px;
+                padding: 8px;
+                font-family: 'DejaVu Sans', Arial, sans-serif;
+                font-size: 14px;
+                color: {COLORS['text_white']};
+            }}
+        """)
+        right_layout.addWidget(self.book_note)
 
         right_layout.addStretch()
         content_layout.addWidget(self.right_panel)
@@ -1655,6 +1689,18 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.review_btn)
         self.ingame_buttons.append(self.review_btn)
 
+        # Closed room — reachable on EVERY hand, not just the opening screen.
+        # Starts the 4-biq-bot closed room for the current deal, or (when one
+        # is already running in parallel) opens the open-vs-closed comparison.
+        self.closed_room_btn = ToolbarButton("Closed room")
+        self.closed_room_btn.setToolTip(
+            "Closed room: four biq bots play this same deal in parallel.\n"
+            "Start it for the current deal, or — once it's running — view\n"
+            "the open-vs-closed (IMP) comparison.")
+        self.closed_room_btn.clicked.connect(self._on_closed_room_button)
+        layout.addWidget(self.closed_room_btn)
+        self.ingame_buttons.append(self.closed_room_btn)
+
         # Toggle between the normal table and the instrumented teaching view.
         self.teaching_btn = ToolbarButton("Instrumented")
         self.teaching_btn.setCheckable(True)
@@ -1695,6 +1741,19 @@ class MainWindow(QMainWindow):
         self.match_controller = None
         self._set_toolbar_mode('ingame')
         self._on_new_deal()
+
+    def _on_closed_room_button(self):
+        """Play-toolbar 'Closed room' button — available on every hand.
+
+        When a closed-room match is already running (four biq bots playing
+        this deal in parallel) we open the open-vs-closed comparison for the
+        boards played so far. Otherwise we start closed-room play for the
+        current deal — the same entry point as the opening-screen button.
+        """
+        if self.teams_match is not None and self.match_controller is not None:
+            self._on_view_teams_score()
+        else:
+            self._on_closed_room_start()
 
     def _on_closed_room_start(self):
         """Closed Room button — let the user pick how to run it.
@@ -1788,13 +1847,20 @@ class MainWindow(QMainWindow):
         still_in_bidding = (self.controller.current_phase == 'bidding' or
                            (self.controller.board and not self.controller.board.contract))
 
-        # Flush any pending Claude analysis from the previous hand. If the
-        # user ingested a Q-Plus closed room, Claude already ran on ingest
-        # (idempotent flag); otherwise we run it now with just the open
-        # room so the user sees a critique before moving on.
-        if not still_in_bidding:
-            self._maybe_run_pending_claude()
+        # Claude analysis is MANUAL only — it does NOT run automatically when
+        # a deal finishes or on Next deal. The user runs it from the
+        # end-of-hand dialog's "Claude analysis" button or Extras ▸ Hand Log
+        # (Claude Analysis) when they want it. (_show_result still stages the
+        # pending-hand context so those buttons have something to analyse.)
 
+        # Practice-deck / tournament-file queue is the authoritative deal
+        # source: advance through the book even if a teams match was started
+        # (e.g. the user pressed Closed room on a practice deal). Without this
+        # the teams branch below would deal a fresh random board instead.
+        queue = getattr(self, '_deal_queue', None)
+        if queue and getattr(self, '_deal_queue_pos', 0) < len(queue):
+            self._on_new_deal()
+            return
 
         # If in teams match mode during bidding, user wants to discard this hand
         if self.teams_match is not None and self.match_controller is not None:
@@ -1979,6 +2045,104 @@ class MainWindow(QMainWindow):
         """Connect UI signals"""
         self.table_view.card_played.connect(self._on_card_played)
         self.bidding_box.bid_selected.connect(self._on_bid_made)
+        # Click-to-explain (gated by the explain_actions_enabled preference).
+        self.table_view.explain_bid_requested.connect(self._on_explain_bid)
+        self.table_view.explain_card_requested.connect(self._on_explain_card)
+        self._sync_explain_enabled()
+
+    def _sync_explain_enabled(self):
+        """Push the explain-actions preference to the table view."""
+        try:
+            on = bool(self.config_manager.config.preferences
+                      .explain_actions_enabled)
+        except Exception:
+            on = False
+        self.table_view.set_explain_enabled(on)
+
+    def _seat_is_biq(self, seat: Seat) -> bool:
+        """True when `seat` is played by biq (a bot), not a human."""
+        try:
+            return (self.controller.players[seat].player_type
+                    != PlayerType.HUMAN)
+        except Exception:
+            return False
+
+    def _show_explanation(self, explanation):
+        from .dialogs import ExplanationDialog
+        dlg = ExplanationDialog(explanation, self)
+        dlg.exec()
+
+    def _on_explain_bid(self, seat: Seat, bid):
+        """Pop the why-popup for a clicked bid (gated by the preference)."""
+        try:
+            from backend import explain
+            from backend.bid_descriptions import system_for_prefs
+            board = self.controller.board
+            auction = list(getattr(board, "auction", []) or [])
+            # Locate this exact call to slice the auction before it.
+            idx = next((i for i, b in enumerate(auction) if b is bid), None)
+            if idx is None:
+                idx = len(auction)
+            before = auction[:idx]
+            prefs = self.config_manager.config.preferences
+            side = 'NS' if seat.is_ns() else 'EW'
+            system = system_for_prefs(prefs, side)
+            who = "native" if self._seat_is_biq(seat) else ""
+            ex = explain.explain_bid(bid, before, seat, board.dealer,
+                                     system, engine_who=who)
+            self._show_explanation(ex)
+        except Exception as e:
+            self.status_label.setText(f"Could not explain bid: {e}")
+
+    def _on_explain_card(self, seat: Seat, card):
+        """Pop the why-popup for a clicked played card."""
+        if not self._seat_is_biq(seat):
+            self.status_label.setText(
+                "Explanations describe biq's actions; this was your own play.")
+            return
+        try:
+            from backend import explain
+            board = self.controller.board
+            # Find the trick + position holding this card.
+            tricks = list(getattr(board, "tricks", []) or [])
+            cur = getattr(board, "current_trick", None)
+            if cur is not None and getattr(cur, "cards", None):
+                tricks = tricks + [cur]
+            found_trick = found_pos = None
+            for t_i, trick in enumerate(tricks):
+                for c_i, c in enumerate(trick.cards):
+                    if c.suit == card.suit and c.rank == card.rank:
+                        found_trick, found_pos = (t_i, trick), c_i
+                        break
+                if found_trick is not None:
+                    break
+            if found_trick is None:
+                return
+            t_i, trick = found_trick
+            before = list(trick.cards[:found_pos])
+            is_opening_lead = (t_i == 0 and found_pos == 0)
+            who = self._current_play_engine_label()
+            ex = explain.explain_card(
+                card, seat, before, trick.leader,
+                getattr(board, "contract", None), is_opening_lead,
+                engine_who=who)
+            self._show_explanation(ex)
+        except Exception as e:
+            self.status_label.setText(f"Could not explain card: {e}")
+
+    def _current_play_engine_label(self) -> str:
+        """Name biq's active card-play engine, from preferences."""
+        try:
+            p = self.config_manager.config.preferences
+            if getattr(p, "use_nopeek_play", False):
+                return "no-peek"
+            if getattr(p, "use_monte_carlo_play", False):
+                return "MC"
+            if getattr(p, "use_double_dummy_play", False):
+                return "DDS"
+        except Exception:
+            pass
+        return ""
 
     def _setup_network_signals(self):
         """Setup network controller signals"""
@@ -2055,6 +2219,17 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+        # Practice-deck / tournament-file queue takes priority over the
+        # teams-match path: once a deal file is loaded it stays the deal
+        # source for "Next deal" (advancing through the book), even if the
+        # user pressed Closed room in between. This also routes every deal
+        # through _present_fresh_board, which refreshes the book note. The
+        # queue branch lives further down; jump to it when one is active.
+        queue = getattr(self, '_deal_queue', None)
+        if queue and getattr(self, '_deal_queue_pos', 0) < len(queue):
+            self._play_next_queued_deal()
+            return
+
         # If in teams match mode, use the teams board method
         if self.teams_match is not None and self.match_controller is not None:
             # Advance to next board in teams match
@@ -2066,37 +2241,6 @@ class MainWindow(QMainWindow):
                 # Match complete - show final scores
                 self._on_view_teams_score()
                 self.status_label.setText("Teams match complete!")
-            return
-
-        # Tournament-file deal source: play the file's deals in order rather
-        # than dealing random ones (Q-Plus deal source = Deal file).
-        queue = getattr(self, '_deal_queue', None)
-        if queue:
-            import copy
-            pos = getattr(self, '_deal_queue_pos', 0)
-            if pos >= len(queue):
-                self.status_label.setText(
-                    "Tournament file complete — all deals played.")
-                try:
-                    self._on_show_scores()
-                except Exception:
-                    pass
-                return
-            board = copy.deepcopy(queue[pos])   # keep the queue pristine
-            self._deal_queue_pos = pos + 1
-            if not getattr(board, 'board_number', 0):
-                board.board_number = pos + 1
-            self.controller.board = board
-            self.controller.current_phase = 'bidding'
-            self.controller.current_seat = board.dealer
-            self.controller.declarer = None
-            self.controller.dummy = None
-            self.controller.opening_leader = None
-            self.controller.human_controls_declarer = False
-            self._present_fresh_board(board)
-            self.status_label.setText(
-                f"Tournament deal {pos + 1}/{len(queue)}: "
-                f"{board.dealer.to_char()} deals")
             return
 
         board = self.controller.new_deal()
@@ -2116,10 +2260,87 @@ class MainWindow(QMainWindow):
 
         self._present_fresh_board(board)
 
+    def _play_next_queued_deal(self):
+        """Present the next deal from the practice-deck / tournament-file
+        queue (Q-Plus deal source = Deal file). Plays the file's deals in
+        order; _present_fresh_board then skips the auction when the deal
+        carries a contract and shows its book note."""
+        import copy
+        queue = self._deal_queue
+        pos = getattr(self, '_deal_queue_pos', 0)
+        if pos >= len(queue):
+            self.status_label.setText(
+                "Tournament file complete — all deals played.")
+            try:
+                self._on_show_scores()
+            except Exception:
+                pass
+            return
+        board = copy.deepcopy(queue[pos])   # keep the queue pristine
+        self._deal_queue_pos = pos + 1
+        if not getattr(board, 'board_number', 0):
+            board.board_number = pos + 1
+        self.controller.board = board
+        self.controller.current_phase = 'bidding'
+        self.controller.current_seat = board.dealer
+        self.controller.declarer = None
+        self.controller.dummy = None
+        self.controller.opening_leader = None
+        self.controller.human_controls_declarer = False
+        self._present_fresh_board(board)
+        self.status_label.setText(
+            f"Tournament deal {pos + 1}/{len(queue)}: "
+            f"{board.dealer.to_char()} deals")
+
     def _present_fresh_board(self, board):
         """Set up the table/bidding UI for a freshly-dealt board and start the
         auction. Shared by New Deal and Previous Deal so both go through the
         same full reset (original hands, undo history, visibility, bots)."""
+        # A board is now in play — show the in-game toolbar (Next card, …)
+        # rather than the opening lobby (First deal, …). The First-deal /
+        # Closed-room buttons already do this; deals started from Match
+        # Control / a tournament file must too.
+        try:
+            self._set_toolbar_mode('ingame')
+        except Exception:
+            pass
+
+        # Autoplay is a per-deal choice — never carry it into the next hand.
+        # (Unchecking emits the toggle, which is a no-op when turning off.)
+        try:
+            if self.autoplay_btn.isChecked():
+                self.autoplay_btn.setChecked(False)
+        except Exception:
+            pass
+        # Fresh hand — the previous deal's claim shouldn't blank this table.
+        self._eoh_clear_all_hands = False
+
+        # Book note — if this deal carries the textbook's play commentary
+        # (a practice-deck hand), load it so it can be shown during play.
+        note = (getattr(board, '_commentary', '') or '').strip()
+        try:
+            if note:
+                self.book_note.setPlainText(note)
+                self.book_note.setVisible(True)
+            else:
+                self.book_note.clear()
+                self.book_note.setVisible(False)
+        except Exception:
+            pass
+
+        # Closed room is meaningless on a practice-deck hand (the contract is
+        # fixed by the book, so re-bidding it 4-bot just confuses the score
+        # sheet) — disable it for book deals (identified by their commentary),
+        # but keep it for ordinary deals and tournament files.
+        is_practice = bool(note)
+        try:
+            self.closed_room_btn.setEnabled(not is_practice)
+            self.closed_room_btn.setToolTip(
+                "Not available for practice-deck hands"
+                if is_practice else "")
+        except Exception:
+            pass
+
         # Store a deep copy of original hands for logging
         self.original_hands = {}
         for seat, hand in board.hands.items():
@@ -2186,6 +2407,15 @@ class MainWindow(QMainWindow):
             self._maybe_run_minibridge_rounds(board)
         except Exception as ex:
             print(f"[minibridge] runtime failed: {ex!r}", flush=True)
+
+        # Preset-contract deals — when the deal file already carries a
+        # contract + declarer (e.g. the practice decks), skip the auction
+        # and play straight from that contract. No-op unless MiniBridge
+        # left us in bidding and the board has a usable contract.
+        try:
+            self._maybe_play_from_preset_contract(board)
+        except Exception as ex:
+            print(f"[preset-contract] runtime failed: {ex!r}", flush=True)
 
         # Closed room (AI vs AI) is started after the human finishes the
         # hand — running it in parallel with human play made both sides
@@ -2786,6 +3016,55 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+    def _maybe_play_from_preset_contract(self, board):
+        """If ``board`` arrived with a contract + declarer already set (a deal
+        file that carries the final contract, e.g. the practice decks), skip
+        the auction and play straight from that contract — Q-Plus plays such
+        'own deals' from their stored contract rather than re-bidding them.
+
+        No-op when: there is no usable contract; MiniBridge or a real auction
+        has already moved us out of the bidding phase; or the board carries a
+        real multi-call auction we should replay instead.
+        """
+        # Only fire while still set up for a fresh auction.
+        if self.controller.current_phase != 'bidding':
+            return
+        contract = getattr(board, 'contract', None)
+        declarer = getattr(contract, 'declarer', None) if contract else None
+        if contract is None or declarer is None:
+            return
+        # A board that already holds a genuine auction (more than the single
+        # synthesised contract-bid) should be replayed through bidding, not
+        # short-circuited. Practice decks have an empty auction.
+        auction = getattr(board, 'auction', None) or []
+        if len(auction) > 1:
+            return
+
+        self.controller.set_contract_direct(contract)
+
+        # Replace the bidding box with the contract banner, exactly as the
+        # MiniBridge path does after it picks a contract.
+        try:
+            self.bidding_box.setVisible(False)
+        except Exception:
+            pass
+        try:
+            self.table_view.update_auction(
+                self.controller.board.auction, self.controller.board.dealer)
+        except Exception:
+            pass
+        try:
+            self.table_view.set_contract(
+                contract.to_str(), declarer.to_char())
+        except Exception:
+            pass
+
+        leader = declarer.next()
+        self.status_label.setText(
+            f"Board {board.board_number}: {contract.to_str()} by "
+            f"{declarer.to_char()} (from deal file) — {leader.to_char()} "
+            f"leads. Auction skipped.")
+
     def _on_print_current_hand(self):
         """File → Print Current Hand. Q-Plus spec at BRIDGE.HLQ
         .printing (lines 1930-1940): pick a card layout on the left
@@ -2969,7 +3248,15 @@ class MainWindow(QMainWindow):
         dialog = MatchControlDialog(self)
         if dialog.exec():
             settings = dialog.get_settings()
-            if settings.get('comparison') == 'closed_room':
+            # A selected deal file plays its deals (skipping the auction when
+            # the file carries the contract); otherwise the closed-room teams
+            # path runs.
+            if settings.get('source') == 'file' and settings.get('file_path'):
+                self.teams_match = None
+                self.match_controller = None
+                if self._apply_match_settings(settings):
+                    self._on_new_deal()
+            elif settings.get('comparison') == 'closed_room':
                 self._start_teams_match(settings)
             else:
                 self.teams_match = None
@@ -3026,6 +3313,9 @@ For more information, see the README file."""
         self._deal_queue_pos = 0
         self._field_results = {}
         self._comparison_mode = settings.get('comparison')
+        # Deal filter from Match Control (applies to biq's random deals).
+        if 'deal_filter' in settings:
+            self._active_deal_filter = settings.get('deal_filter')
         if settings.get('source') == 'file' and settings.get('file_path'):
             boards = self._load_deal_queue_from_file(settings['file_path'])
             if boards:
@@ -3054,7 +3344,11 @@ For more information, see the README file."""
                 from backend.bdl_reader import BDLReader
                 deals = BDLReader().read_file(p)
                 for d in deals:
-                    out.append(d.to_board_state())
+                    bs = d.to_board_state()
+                    # to_board_state() drops the Commentary; carry it so the
+                    # book's play notes can be shown during play.
+                    bs._commentary = getattr(d, 'commentary', '') or ''
+                    out.append(bs)
                     recs.append(d if d.contract is not None else None)
             elif p.suffix.lower() == '.pbn':
                 from backend.pbn_exporter import PBNParser
@@ -3062,9 +3356,13 @@ For more information, see the README file."""
                 recs = [None] * len(out)
         except Exception as e:
             print(f"deal-queue load failed: {e!r}", flush=True)
-        # Keep only boards with all four 13-card hands; assign sequential board
-        # numbers when the file leaves them at 0 so deals and recorded results
-        # stay aligned (the Results-of-file lookup keys on board number).
+        # Keep only boards with all four 13-card hands; number them
+        # sequentially by position in the file so "Next deal" visibly
+        # advances (1, 2, 3, …). We override any board number the file
+        # carried because some books restart their own numbering per
+        # chapter (e.g. "Practice Hand #1" appears in several chapters),
+        # which would make the deal counter regress and look stuck. The
+        # Results-of-file lookup keys on this same sequential number.
         good = []
         if not hasattr(self, '_field_results'):
             self._field_results = {}
@@ -3075,8 +3373,7 @@ For more information, see the README file."""
                     len(getattr(hands[s], 'cards', [])) == 13 for s in hands)):
                 continue
             seq += 1
-            if not getattr(b, 'board_number', 0):
-                b.board_number = seq
+            b.board_number = seq
             good.append(b)
             if rec is not None:
                 self._field_results.setdefault(b.board_number, []).append({
@@ -3091,8 +3388,15 @@ For more information, see the README file."""
         if dialog.exec():
             settings = dialog.get_settings()
 
-            # Check if closed room comparison is enabled
-            if settings.get('comparison') == 'closed_room':
+            # A selected deal file plays its own deals (and skips the auction
+            # when the file carries the contract). Otherwise a closed-room
+            # comparison starts the teams match.
+            if settings.get('source') == 'file' and settings.get('file_path'):
+                self.teams_match = None
+                self.match_controller = None
+                if self._apply_match_settings(settings):
+                    self._on_new_deal()
+            elif settings.get('comparison') == 'closed_room':
                 self._start_teams_match(settings)
             else:
                 # Clear teams match state for non-teams modes
@@ -3133,6 +3437,19 @@ For more information, see the README file."""
             return
 
         print(f"Starting teams board {board_num}", flush=True)
+
+        # A teams board is a fresh random deal, not a book deal — clear any
+        # book note left over from a practice-deck deal, re-enable Closed
+        # room, and reset autoplay (a per-deal choice).
+        try:
+            self.book_note.clear()
+            self.book_note.setVisible(False)
+            self.closed_room_btn.setEnabled(True)
+            self.closed_room_btn.setToolTip("")
+            if self.autoplay_btn.isChecked():
+                self.autoplay_btn.setChecked(False)
+        except Exception:
+            pass
 
         # Generate a new deal
         board = self.controller.new_deal(board_num)
@@ -3454,14 +3771,12 @@ For more information, see the README file."""
 
         if choice.start_with_play and board.contract is not None:
             # Skip auction — keep the contract from the previous run.
-            preserved = board.contract
-            from backend.models import Bid as _Bid
-            board.auction = [_Bid(
-                level=preserved.level, suit=preserved.suit,
-                doubled=preserved.doubled,
-                redoubled=preserved.redoubled,
-            )]
-            self.controller.set_contract_direct(preserved)
+            # set_contract_direct rebuilds board.auction from the contract
+            # (a single synthesised contract-bid) and sets declarer / dummy /
+            # opening leader / play phase. (It builds the Bid with the right
+            # is_double/is_redouble kwargs; the old manual build used the
+            # non-existent doubled=/redoubled= and crashed.)
+            self.controller.set_contract_direct(board.contract)
         else:
             # Restart from the auction.
             board.auction = []
@@ -4061,6 +4376,8 @@ For more information, see the README file."""
             self.table_view.refresh_colors()
         # Update analysis panel visibility based on preference
         self.analysis_label.setVisible(self.config_manager.config.preferences.show_ben_bid_analysis)
+        # Keep the click-to-explain affordance in sync with its preference.
+        self._sync_explain_enabled()
         # Bidding-system selection may have changed — re-tag the
         # information-about-bids window with the new system's labels.
         self._refresh_active_system()
@@ -5496,8 +5813,23 @@ For more information, see the README file."""
         return not self.network_controller.is_my_seat(current_seat)
 
     def _on_auto_play_toggle(self, checked: bool):
-        """Toggle auto play mode"""
-        if checked and self.controller.current_phase not in ('idle', 'finished'):
+        """Toggle auto play mode.
+
+        ON: kick the play loop so it starts straight away — including from
+        the between-tricks pause (phase 'waiting_next'), where it must clear
+        the trick via Next-card rather than _advance_game.
+
+        OFF: nothing to do here. _advance_play and _handle_trick_complete
+        re-read the button state every card, so play hands control back to
+        the human at the next declarer/dummy card — i.e. clicking Autoplay
+        again stops it.
+        """
+        if not checked:
+            return
+        phase = self.controller.current_phase
+        if phase == 'waiting_next':
+            self._on_next_card()
+        elif phase not in ('idle', 'finished', None):
             self._advance_game()
 
     def _is_local_user_turn(self) -> bool:
@@ -6001,17 +6333,37 @@ For more information, see the README file."""
         box.addButton("OK", QMessageBox.ButtonRole.RejectRole)
         for b in box.buttons():
             b.setMinimumWidth(b.sizeHint().width() + 16)
-        # Give the text room and keep it flush-left — the shared stylesheet's
-        # narrow min-width otherwise wraps mid-word ("…disabled — i") and the
-        # ragged lines read as awkward justification.
-        from PyQt6.QtWidgets import QLabel
+        # Give the text room and keep it flush-left. The shared stylesheet
+        # pins QLabel min-width to 200px, so the main line otherwise clips
+        # ("…disabled — i") and the informative text wraps raggedly. Per-label
+        # min-width doesn't reliably widen a QMessageBox, so we force the
+        # overall width with a zero-height spacer spanning the grid's columns;
+        # the labels then wrap cleanly at the wider box.
+        from PyQt6.QtWidgets import QLabel, QSpacerItem, QSizePolicy
         for lbl in box.findChildren(QLabel):
             if lbl.objectName() in ("qt_msgbox_label",
                                     "qt_msgbox_informativelabel"):
                 lbl.setWordWrap(True)
-                lbl.setMinimumWidth(400)
                 lbl.setAlignment(Qt.AlignmentFlag.AlignLeft
                                  | Qt.AlignmentFlag.AlignVCenter)
+        grid = box.layout()
+        try:
+            # Force the TEXT column wide so the labels fill it and wrap
+            # cleanly. The spacer has to land in the same column as the
+            # message labels (column 2 in current Qt; detected here so a
+            # layout change can't silently re-narrow the box).
+            text_col = grid.columnCount() - 1
+            for i in range(grid.count()):
+                w = grid.itemAt(i).widget()
+                if w is not None and w.objectName() == "qt_msgbox_label":
+                    text_col = grid.getItemPosition(i)[1]
+                    break
+            grid.addItem(
+                QSpacerItem(460, 0, QSizePolicy.Policy.Minimum,
+                            QSizePolicy.Policy.Minimum),
+                grid.rowCount(), text_col)
+        except Exception:
+            pass
         box.exec()
         if box.clickedButton() is open_btn:
             try:
@@ -6084,7 +6436,8 @@ For more information, see the README file."""
     def _run_claude_with_dialog(self, prompt: str, title: str, wait_label: str,
                                  timeout_seconds: int = 900, preamble: str = "",
                                  bdl_text: str = "",
-                                 cache_key: str | None = None):
+                                 cache_key: str | None = None,
+                                 extended_thinking: bool = True):
         """Run claude -p with a progress dialog, then show the result.
 
         Shared between the end-of-hand analysis and the Hint button. Shows an
@@ -6203,14 +6556,17 @@ For more information, see the README file."""
         result_holder = {'text': None, 'error': None}
 
         def _run_claude():
-            # Use Opus 4.8 with extended thinking. Popen (not subprocess.run)
-            # so the Cancel button can terminate it mid-flight.
+            # Opus 4.8. Extended thinking is the main latency driver, so the
+            # caller can turn it OFF (e.g. the "Quick verdict (fast)" scope) to
+            # get a concise answer back well inside the timeout; deeper scopes
+            # keep it on. Popen (not subprocess.run) so Cancel can kill it.
+            cmd = ['claude', '-p', '--model', 'claude-opus-4-8']
+            if extended_thinking:
+                cmd += ['--thinking', 'enabled']
+            cmd += ['--max-turns', '1', prompt]
             try:
                 proc = subprocess.Popen(
-                    ['claude', '-p',
-                     '--model', 'claude-opus-4-8',
-                     '--thinking', 'enabled',
-                     '--max-turns', '1', prompt],
+                    cmd,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 proc_holder['proc'] = proc
                 try:
@@ -7563,8 +7919,18 @@ For more information, see the README file."""
             self._dummy_broadcasted_for_board = False
             self.table_view.setup_declarer_play(self.controller.board.contract)
             self.table_view.set_auction_complete("bidding finished")
-            # Hide right panel (bidding box + analysis) and next deal button during card play
-            self.right_panel.setVisible(False)
+            # Hide right panel (bidding box + analysis) during card play —
+            # UNLESS this deal carries a book note, which stays visible on
+            # the right so the player can read the textbook's line while
+            # playing. Keep only the note in that case (bidding box hidden).
+            has_book_note = bool(
+                getattr(self, 'book_note', None)
+                and self.book_note.toPlainText().strip())
+            self.right_panel.setVisible(has_book_note)
+            if has_book_note:
+                self.bidding_box.setVisible(False)
+                self.analysis_label.setVisible(False)
+                self.book_note.setVisible(True)
             self.next_deal_btn.setVisible(False)
             # Teaching panel: populate with auction inferences now
             # that cardplay is starting. Only if the user has the
@@ -8061,6 +8427,8 @@ For more information, see the README file."""
         # bookkeeping; use the same path the user takes for the
         # final trick.
         self.controller.current_phase = 'finished'
+        # A claim leaves cards unplayed — clear the table (see _on_claim).
+        self._eoh_clear_all_hands = True
         self.table_view.update_tricks(
             board.declarer_tricks, board.defense_tricks)
         self.status_label.setText(
@@ -8184,28 +8552,41 @@ For more information, see the README file."""
         self._end_of_hand_dialogs = []
 
     def _show_end_of_hand_dialog(self, dialog):
-        """Show the end-of-hand summary as an EMBEDDED overlay panel inside the
-        main window (no unattached windows). It floats centred over the table
-        area; the user can still reach the menus/score sheet around it.
+        """Show the end-of-hand summary as a MOVABLE top-level window — a real
+        title bar the user can grab to drag it aside and see the cards behind
+        it. Non-modal and owned by the main window (so it stays above the
+        table and is raised with it); the main window keeps a reference.
         """
         from PyQt6.QtCore import Qt as _Qt
-        host = self.centralWidget() or self
         try:
-            dialog.setParent(host)
-            dialog.setWindowFlags(_Qt.WindowType.Widget)
+            # A proper window (title bar + system menu + close), not an
+            # embedded child overlay — so it can be moved off the cards.
+            dialog.setParent(self)
+            dialog.setWindowFlags(
+                _Qt.WindowType.Window
+                | _Qt.WindowType.WindowTitleHint
+                | _Qt.WindowType.WindowSystemMenuHint
+                | _Qt.WindowType.WindowCloseButtonHint)
+            dialog.setModal(False)
         except Exception:
             pass
         dialog.adjustSize()
-        # Centre over the host, clamped into view.
+        # Initial position: centred over the main window (global coords),
+        # but the user can drag it anywhere from here.
         try:
             ds = dialog.sizeHint()
-            x = max(0, (host.width() - ds.width()) // 2)
-            y = max(0, (host.height() - ds.height()) // 3)
+            g = self.frameGeometry()
+            x = g.x() + max(0, (g.width() - ds.width()) // 2)
+            y = g.y() + max(0, (g.height() - ds.height()) // 3)
             dialog.move(x, y)
         except Exception:
             pass
         dialog.show()
         dialog.raise_()
+        try:
+            dialog.activateWindow()
+        except Exception:
+            pass
         if not hasattr(self, '_end_of_hand_dialogs'):
             self._end_of_hand_dialogs = []
         survivors = []
@@ -8409,6 +8790,15 @@ For more information, see the README file."""
                     self.original_hands,
                     list(board.tricks) if board.tricks else [],
                 )
+            # After a claim, clear the table — the hands are populated
+            # face-up (so View ▸ Open All Hands can show them) but hidden,
+            # since the unplayed cards weren't played and four full hands
+            # overflow the table.
+            if getattr(self, '_eoh_clear_all_hands', False):
+                for seat in Seat:
+                    self.table_view.set_hand_visible(seat, False)
+                self.table_view.clear_trick()
+            self._eoh_clear_all_hands = False
         except Exception as ex:
             print(f"end-of-hand view failed: {ex!r}", flush=True)
 
@@ -8613,9 +9003,11 @@ For more information, see the README file."""
         except Exception as e:
             print(f"Error adding to scoring table: {e}", flush=True)
 
-        # Show all hands at end
-        for seat in Seat:
-            self.table_view.set_hand_visible(seat, True)
+        # Hand visibility at end of play is decided earlier:
+        # show_end_of_hand_view() reveals the declaring side (declarer +
+        # dummy) and a claim hides everything. Don't blanket-reveal all four
+        # here — the defenders' hands run off-screen and the user can use
+        # View ▸ Open All Hands (F2) to see them.
 
         # Post-hand sequence (normal play only, not teams match):
         # The end-of-hand dialog now drives both the harness launch
@@ -9916,7 +10308,7 @@ For more information, see the README file."""
         """Handle claim button - claim remaining tricks."""
         from .dialogs import ClaimDialog
 
-        if self.controller.current_phase != 'play':
+        if self.controller.current_phase not in ('play', 'waiting_next'):
             self.status_label.setText("Claim is only available during play")
             return
 
@@ -9962,6 +10354,11 @@ For more information, see the README file."""
         board.declarer_tricks = final_declarer
         board.defense_tricks = final_defense
         self.controller.current_phase = 'finished'
+        # A claim ends play with cards still in hand. The post-mortem can't
+        # lay out four full hands without overflowing, and the unplayed
+        # cards weren't actually played — so clear the table after a claim.
+        # The hands stay populated (View ▸ Open All Hands / F2 shows them).
+        self._eoh_clear_all_hands = True
         try:
             self.table_view.update_tricks(final_declarer, final_defense)
         except Exception:
@@ -9991,9 +10388,10 @@ For more information, see the README file."""
                     can_undo = self._has_user_play(board)
             self.undo_btn.setEnabled(can_undo)
 
-        # Claim button - only during play
+        # Claim button - available throughout card play, including the
+        # between-tricks pause (phase 'waiting_next') after a trick completes.
         if hasattr(self, 'claim_btn'):
-            self.claim_btn.setEnabled(phase == 'play')
+            self.claim_btn.setEnabled(phase in ('play', 'waiting_next'))
 
         # Review button - only after hand is finished
         if hasattr(self, 'review_btn'):

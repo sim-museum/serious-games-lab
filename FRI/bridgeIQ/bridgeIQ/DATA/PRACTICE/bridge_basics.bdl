@@ -1,0 +1,667 @@
+DOCTYPE: BDL 17.1
+.description.eng = "Worked play hands from 'Bridge Basics: A Beginner's Guide' (Ron Klinger). All 36 numbered play hands. The four hands are the book's own cards, transcribed from its per-seat hand-diagram pages and assigned to the compass exactly as the book labels them; each Commentary carries the book's Lead / Correct play / Wrong play notes."
+
+************************************************************
+Deal         :  BB-Hand1
+Deal-text    :  Bridge Basics (Klinger) Hand 1 - High-Cards-from-Shortage, Low-from-Length
+Dealer       :  North
+Vuln         :  None
+Contract     :  1NT  South
+N: S AQJ7 H 943 D Q75 C 642
+E: S T9432 H 5 D JT96 C KQT
+S: S K8 H A76 D K432 C A973
+W: S 65 H KQJT82 D A8 C J85
+Commentary   :  Lead: HK. Top of sequence. Correct play: After taking the HA, play the
+             :  SK (high-from-shortage) followed by a spade to dummy and cash the other
+             :  spade winners. Then lead a diamond to your king to set up a diamond
+             :  trick. 7 tricks. Wrong play: (1) Playing a low spade rather than the
+             :  king first. (2) Cashing the CA before setting up a diamond trick. This
+             :  would allow the defense to defeat the contract with hearts and clubs and
+             :  the DA.
+
+************************************************************
+Deal         :  BB-Hand2
+Deal-text    :  Bridge Basics (Klinger) Hand 2 - Overcalling - the High-Card-from-Shortage Principle
+Dealer       :  East
+Vuln         :  NS
+Contract     :  3NT  East
+N: S QT92 H 32 D J6 C 98754
+E: S AJ3 H Q54 D AK52 C T63
+S: S K54 H AJT987 D QT87 C -
+W: S 876 H K6 D 943 C AKQJ2
+Commentary   :  Lead: HJ. With an interior sequence (starting in the middle of a suit),
+             :  lead top of the cards that are in sequence. Correct play: Win the first
+             :  heart and start on the clubs, playing the 10 from hand and the 2 from
+             :  dummy (high-from-shortage). Cash the clubs, the ace of spades and A-K of
+             :  diamonds. Wrong play: Failing to win with the 10 of clubs on the first
+             :  or second round of clubs. This restricts you to just four club tricks
+             :  because of the 5-0 split and you could go off.
+
+************************************************************
+Deal         :  BB-Hand3
+Deal-text    :  Bridge Basics (Klinger) Hand 3 - Overtaking a Winner in Order to Reach Dummy
+Dealer       :  South
+Vuln         :  EW
+Contract     :  3NT  West
+N: S 7543 H QJT9 D KQT C T6
+E: S AKT2 H A4 D 643 C 8532
+S: S 986 H K875 D A97 C 974
+W: S QJ H 632 D J852 C AKQJ
+Commentary   :  Lead: HQ. Top of sequence. With equal length, lead the stronger suit.
+             :  Correct play: Take the HA at once and lead a low spade to the queen
+             :  (high-from-shortage), then SJ, overtaking with dummy's king or ace. Cash
+             :  the spade and club winners. Wrong play: (1) Playing SA or SK on the
+             :  first round of spades. (2) Failing to overtake the second round of
+             :  spades with dummy's ace or king. This would leave two spade winners
+             :  stranded in dummy.
+
+************************************************************
+Deal         :  BB-Hand4
+Deal-text    :  Bridge Basics (Klinger) Hand 4 - Overtaking a Winner to Gain Access to Dummy
+Dealer       :  West
+Vuln         :  Both
+Contract     :  3NT  North
+N: S J92 H AK2 D KQJ C 8632
+E: S T8753 H Q76 D 972 C K9
+S: S KQ H J43 D AT653 C QJ4
+W: S A64 H T985 D 84 C AT75
+Commentary   :  Lead: S5, fourth-highest. Correct play: West should win SA and return a
+             :  spade. Lead a diamond to the king, cash the DQ and then play the DJ,
+             :  overtaking with dummy's ace. Cash the diamonds, the hearts and the jack
+             :  of spades. 9 tricks. Wrong play: (1) Failing to overtake the third round
+             :  of diamonds. This allows the defense to defeat 3NT. (2) Playing the DA
+             :  on the first or second round of diamonds. This will "block" the diamonds
+             :  and thus leave two diamond winners stranded in dummy.
+
+************************************************************
+Deal         :  BB-Hand5
+Deal-text    :  Bridge Basics (Klinger) Hand 5 - Defence - Return Partner's Lead
+Dealer       :  North
+Vuln         :  None
+Contract     :  1NT  South
+N: S AQ53 H 863 D 742 C T85
+E: S T982 H Q54 D KQJ9 C K2
+S: S KJ4 H AK72 D A85 C J63
+W: S 76 H JT9 D T63 C AQ974
+Commentary   :  Lead: C7. Against no-trumps, lead your long suit. Choose the fourth-
+             :  highest when no sequence of three or more cards is held. Play: East
+             :  plays the CK (third-hand-high), winning the trick, and returns a club.
+             :  Return your partner's lead unless you have a very good alternative. The
+             :  defenders win the first five tricks, South discarding red suit losers
+             :  from both hands. Do not discard a spade. South wins the HJ switch at
+             :  trick 6 and cashes four spades, playing the king first, then the jack,
+             :  then low to dummy.
+
+************************************************************
+Deal         :  BB-Hand6
+Deal-text    :  Bridge Basics (Klinger) Hand 6 - The High-Card-from-Shortage Principle
+Dealer       :  East
+Vuln         :  None
+Contract     :  3NT  East
+N: S KT974 H T D T52 C T843
+E: S 853 H A432 D AKQJ C Q5
+S: S A6 H KQJ97 D 983 C 972
+W: S QJ2 H 865 D 764 C AKJ6
+Commentary   :  Lead: HK. Top of the sequence. Correct play: Win the HA, play the queen
+             :  of clubs (high-from-shortage first), then the other clubs and the four
+             :  diamonds. 3NT made. Wrong play: (1) Playing the 5 of clubs to dummy's
+             :  ace and next cashing the CK costs you the queen of clubs and you will
+             :  fail by one trick. (2) Playing the C5 to a winner in dummy and the C6 to
+             :  your queen leaves two club winners in dummy and no quick entry to reach
+             :  them.
+
+************************************************************
+Deal         :  BB-Hand7
+Deal-text    :  Bridge Basics (Klinger) Hand 7 - Overtaking a Winner in Order to Reach Dummy
+Dealer       :  South
+Vuln         :  EW
+Contract     :  3NT  North
+N: S Q98 H 7654 D AQ C AKQ6
+E: S KJ3 H KQJ9 D 8752 C JT
+S: S 764 H A8 D KJT4 C 8432
+W: S AT52 H T32 D 963 C 975
+Commentary   :  Lead: HK. With equally long suits, lead the stronger. Top from sequence.
+             :  Correct play: After winning the HA, lead a low diamond to the ace (high-
+             :  from-shortage, low-from-length) and play DQ, overtaking with dummy's
+             :  king. Cash the diamond winners, followed by the clubs. 9 tricks. Wrong
+             :  play: (1) Winning the first round of diamonds with the queen. This
+             :  "blocks" the diamonds. (2) Winning the first round of diamonds with the
+             :  ace, but failing to overtake the DQ with dummy's king.
+
+************************************************************
+Deal         :  BB-Hand8
+Deal-text    :  Bridge Basics (Klinger) Hand 8 - Overtaking a Winner to Gain Access to Dummy
+Dealer       :  West
+Vuln         :  Both
+Contract     :  1NT  West
+N: S 874 H Q96 D Q8 C KJ942
+E: S QT32 H 854 D 963 C A65
+S: S 965 H KJT2 D KJT7 C Q3
+W: S AKJ H A73 D A542 C T87
+Commentary   :  Lead: C4, fourth-highest. Correct play: If a low card is played from
+             :  dummy, South plays the CQ (third-hand-high) and returns a club. After
+             :  winning the CA, declarer should play a spade to the ace (high-from-
+             :  shortage), cash the SK (high-from-shortage), and lead the SJ, overtaking
+             :  with dummy's queen to cash the ST next. Making 7 tricks. Wrong play: (1)
+             :  Playing the SJ on the first or second round of spades, thus "blocking"
+             :  the spade suit. (2) Failing to overtake the SJ with dummy's queen on the
+             :  third round of spades. The SQ is now stranded.
+
+************************************************************
+Deal         :  BB-Hand9
+Deal-text    :  Bridge Basics (Klinger) Hand 9 - Drawing Trumps - Discard a Loser on Dummy's Winner
+Dealer       :  North
+Vuln         :  None
+Contract     :  4S  North
+N: S AKQ983 H A86 D Q3 C JT
+E: S J H KQJT53 D A982 C 93
+S: S 7654 H 972 D J54 C AKQ
+W: S T2 H 4 D KT76 C 876542
+Commentary   :  Bidding : North's 3S invites South to bid game with 8+ points. Lead :
+             :  HK, top of sequence. Play : North wins HA, draws trumps in two rounds
+             :  and plays A, K, Q of clubs to discard a red suit loser. It is normal to
+             :  draw trumps first. Wrong play : (1) Failing to win the HA at trick one.
+             :  West would ruff the next heart and could defeat 4S. (2) Playing clubs
+             :  before drawing trumps. East ruffs the third round of clubs and 4S would
+             :  be beaten.
+
+************************************************************
+Deal         :  BB-Hand10
+Deal-text    :  Bridge Basics (Klinger) Hand 10 - Drawing Trumps - Setting Up Winners to Discard a Loser
+Dealer       :  East
+Vuln         :  NS
+Contract     :  4S  West
+N: S T6 H 82 D 9843 C KT642
+E: S AQ43 H AK7 D KQT72 C 9
+S: S 752 H QJT93 D A6 C AQ5
+W: S KJ98 H 654 D J5 C J873
+Commentary   :  Bidding : West is just worth the 1S response and East re-values to 21
+             :  points, counting 3 for the singleton since support is held for West's
+             :  suit. Lead : H8. Lead your partner's suit. From a doubleton, lead the
+             :  top card. Play : Win the HA. Draw trumps in three rounds. Next play the
+             :  jack of diamonds to knock out the ace and so set up the other diamonds
+             :  as winners. When the lead is regained, play the diamonds and discard a
+             :  heart loser and two clubs. Set up a long suit before playing to ruff
+             :  losers.
+
+************************************************************
+Deal         :  BB-Hand11
+Deal-text    :  Bridge Basics (Klinger) Hand 11 - Ruffing a Loser in Dummy - Drawing Trumps Delayed
+Dealer       :  South
+Vuln         :  Both
+Contract     :  3H  South
+N: S 53 H 92 D KQ93 C J8742
+E: S 7642 H T7 D AJT8 C AT9
+S: S AK9 H AK8643 D 76 C Q5
+W: S QJT8 H QJ5 D 542 C K63
+Commentary   :  Bidding : South's 3H shows six hearts and 16-18 points, inviting North
+             :  to bid game with more than 6-7 points. Lead : SQ. Top of sequence. Play
+             :  : South should win and play the other spade winner, followed by the
+             :  third spade, ruffed in dummy. Next, the A-K of hearts should be followed
+             :  by a diamond to the king. Wrong play : Failing to ruff the spade loser
+             :  in dummy. If South plays A-K of hearts at once, dummy is unable to ruff
+             :  a spade and there are five losers.
+
+************************************************************
+Deal         :  BB-Hand12
+Deal-text    :  Bridge Basics (Klinger) Hand 12 - Urgent Discard of a Loser - Drawing Trumps Delayed
+Dealer       :  West
+Vuln         :  None
+Contract     :  4H  East
+N: S 54 H 86 D AT932 C T754
+E: S 732 H QJT95 D K76 C 62
+S: S KQJT6 H A73 D 54 C J98
+W: S A98 H K42 D QJ8 C AKQ3
+Commentary   :  Bidding : West, too strong to open 1NT, makes a jump-rebid in NT. East
+             :  repeats the hearts to show five, asking West to choose 4H or 3NT. Lead :
+             :  SK. Top of sequence. Play : Win SA. Play CA, CK, CQ to discard one spade
+             :  loser. Then lead trumps. When the lead is regained, draw the missing
+             :  trumps, followed by diamonds to knock out the DA. You lose one spade,
+             :  one heart, and one diamond. Do not lead trumps before taking a discard
+             :  on dummy's clubs. Do not lead the fourth round of clubs.
+
+************************************************************
+Deal         :  BB-Hand13
+Deal-text    :  Bridge Basics (Klinger) Hand 13 - Coping with a Bad Break - the Marked Finesse
+Dealer       :  North
+Vuln         :  Both
+Contract     :  4H  South
+N: S T74 H AKQT D K C J8762
+E: S 952 H - D T87654 C T543
+S: S QJ H 76543 D QJ32 C AK
+W: S AK863 H J982 D A9 C Q9
+Commentary   :  Bidding : With 13 points opposite an opening, South always intended to
+             :  reach game. When North raised hearts that settled the matter. Lead : SA,
+             :  normal from A-K suits. Play : After the top spades and the DA, South
+             :  wins the next trick and plays the HA. When East shows out, play a club
+             :  to hand and lead a heart towards dummy, finessing the 10 when West plays
+             :  low. Draw West's trumps and use the ST or the CJ to discard a diamond
+             :  loser.
+
+************************************************************
+Deal         :  BB-Hand14
+Deal-text    :  Bridge Basics (Klinger) Hand 14 - Drawing Trumps - the Marked Finesse
+Dealer       :  East
+Vuln         :  None
+Contract     :  4S  East
+N: S - H T854 D A753 C 87432
+E: S 976432 H AKQ D KQ C Q9
+S: S QT8 H 96 D T862 C AKT5
+W: S AKJ5 H J732 D J94 C J6
+Commentary   :  Bidding : West's 3S jump-raise shows 10-12 points and 4+ trumps. It
+             :  invites game. With extras, East accepts. Lead : CA, normal from A-K
+             :  suits. Play : South cashes the top clubs and shifts to a red suit. When
+             :  East comes in, East leads a spade to the ace. North shows out, East
+             :  knows that South began with Q-10-8 and still has Q-x left. To capture
+             :  the queen, East returns to hand with a heart and leads a spade,
+             :  finessing dummy's jack. The last trump is drawn and East loses at most
+             :  one diamond and two clubs.
+
+************************************************************
+Deal         :  BB-Hand15
+Deal-text    :  Bridge Basics (Klinger) Hand 15 - Drawing Trumps in the Correct Order - the Marked Finesse
+Dealer       :  South
+Vuln         :  Both
+Contract     :  4H  North
+N: S A975 H KQ42 D 852 C KQ
+E: S T8632 H J865 D 94 C 75
+S: S K H AT73 D J63 C AJT93
+W: S QJ4 H 9 D AKQT7 C 8642
+Commentary   :  Bidding : 1H was "up-the-line." Lead : D9. Your partner's suit is first
+             :  choice. Play high-low with a doubleton. Play : After three diamond
+             :  tricks and a black suit exit, play off the K-Q of hearts first (keep the
+             :  A-10 tenace intact). When West discards, finesse against East's jack,
+             :  thus not losing a heart trick. If trumps were 3-2, the order of playing
+             :  the top trumps would not matter. K-Q first caters for East holding J-x-
+             :  x-x. Had West continued with a fourth diamond, North should ruff this in
+             :  hand, not in dummy. If East over-ruffs, dummy can over-ruff.
+
+************************************************************
+Deal         :  BB-Hand16
+Deal-text    :  Bridge Basics (Klinger) Hand 16 - Drawing Trumps - Marked Finesse - Repeating the Finesse
+Dealer       :  West
+Vuln         :  None
+Contract     :  4S  West
+N: S - H T9632 D 97542 C AK8
+E: S K52 H QJ7 D AKQ C J942
+S: S Q986 H A5 D 863 C QT75
+W: S AJT743 H K84 D JT C 63
+Commentary   :  Bidding : After 1NT, West re-values to 11 points for a spade contract,
+             :  enough for game opposite 15-17 points. Lead : CA, normal from A-K suits.
+             :  Play : South plays the C7 on the ace and the C5 on the king. High-low on
+             :  your partner's lead is a signal for your partner to continue that suit.
+             :  West ruffs the next club and leads a spade to the king, high card from
+             :  shortage first. When North shows out, West continues by finessing the
+             :  jack of spades, leading a diamond to dummy and finessing the ST. The SA
+             :  draws South's queen and West then sets up the heart winners.
+
+************************************************************
+Deal         :  BB-Hand17
+Deal-text    :  Bridge Basics (Klinger) Hand 17 - 2NT Opening - Suit Contract - Finessing
+Dealer       :  North
+Vuln         :  None
+Contract     :  4H  South
+N: S AQJ3 H AK D AJ42 C QJ9
+E: S 754 H 9542 D KQT9 C T3
+S: S 862 H QJ8763 D 7 C 865
+W: S KT9 H T D 8653 C AK742
+Commentary   :  Bidding : South knows that N-S must have eight or more hearts and has
+             :  enough to bid game. Note that 3NT fails as there is no entry to the
+             :  South hand. Lead : CA, normal from A-K suits. Play : East signals high-
+             :  low, CT then C3, and ruffs the third round. The DA wins the DK exit and
+             :  the HA, HK are cashed. A diamond is ruffed and the last trump is drawn.
+             :  A spade is led: low-queen-low. When this finesse works, ruff another
+             :  diamond and finesse the jack of spades for ten tricks.
+
+************************************************************
+Deal         :  BB-Hand18
+Deal-text    :  Bridge Basics (Klinger) Hand 18 - Demand Opening - Weakness Response - Finessing
+Dealer       :  East
+Vuln         :  NS
+Contract     :  4S  West
+N: S T H JT9532 D 98 C A872
+E: S 8643 H 87 D 5432 C 543
+S: S QJ9 H A64 D QT7 C JT96
+W: S AK752 H KQ D AKJ6 C KQ
+Commentary   :  Bidding : 2NT is the negative reply. East supports the spades later.
+             :  Lead : HJ. Top of a sequence. Play : When in, West plays A-K of spades.
+             :  Normally leave the last trump out if it is a winner, but you need to
+             :  reach dummy to take the diamond finesse. Concede a spade, win the
+             :  return, cash one top diamond (in case the queen drops), cross to dummy
+             :  with a trump, and lead a diamond, finessing the jack. The finesse for a
+             :  queen is normally taken on the second round of the suit.
+
+************************************************************
+Deal         :  BB-Hand19
+Deal-text    :  Bridge Basics (Klinger) Hand 19 - 2NT Opening - Suit Response - Finessing
+Dealer       :  South
+Vuln         :  NS
+Contract     :  4H  North
+N: S A H 86532 D 7432 C 753
+E: S 9742 H KT7 D 965 C AKQ
+S: S KQ86 H AQJ D AKQ C J42
+W: S JT53 H 94 D JT8 C T986
+Commentary   :  Bidding : North's 3H shows five hearts and South has support. 3NT is
+             :  beaten without difficulty as North's ace of spades entry is easily
+             :  knocked out. Lead : CA, normal from A-K suits. Play : East cashes three
+             :  clubs and switches to a spade. North wins and the best chance to avoid a
+             :  heart loser is to finesse for the king. Low heart, low, queen . . . the
+             :  finesse works. Ruff a spade to come back to hand and lead a low heart,
+             :  low, finesse the jack. The HA then captures the king and declarer has
+             :  the rest of the tricks.
+
+************************************************************
+Deal         :  BB-Hand20
+Deal-text    :  Bridge Basics (Klinger) Hand 20 - Refusing to Over-ruff - Discarding a Loser Instead
+Dealer       :  West
+Vuln         :  None
+Contract     :  4S  East
+N: S 8 H QJ974 D QT742 C 92
+E: S AKQ5432 H AK D AJ C J8
+S: S JT9 H 86 D K5 C AK6543
+W: S 76 H T532 D 9863 C QT7
+Commentary   :  Bidding : East's 3S rebid shows at least six spades, so West raises to
+             :  4S. Lead : CA, normal from A-K suits. Play : North's high-low, 9 then 2
+             :  in clubs, asks South to continue clubs. North ruffs the third club. If
+             :  East over-ruffs, South's J-10-9 becomes a trump trick and, with a
+             :  diamond to be lost, declarer is one down. This is unlucky for East but
+             :  there is a perfectly good counter-measure. On the third club, declarer
+             :  should not over-ruff. Discard the jack of diamonds and ten tricks are
+             :  quite safe.
+
+************************************************************
+Deal         :  BB-Hand21
+Deal-text    :  Bridge Basics (Klinger) Hand 21 - 2NT Opening - Setting Up Extra Tricks - Finessing
+Dealer       :  North
+Vuln         :  None
+Contract     :  6NT  East
+N: S 9652 H JT943 D 652 C T
+E: S AK7 H A82 D AQ3 C KQ54
+S: S T83 H 75 D JT98 C A976
+W: S QJ4 H KQ6 D K74 C J832
+Commentary   :  Bidding : With 12 HCP opposite 2NT 21-22, West has just enough for slam.
+             :  Lead : DJ. Top of a sequence. Play : With 9 tricks outside clubs, 3 club
+             :  tricks are needed to succeed. Win the lead in dummy and play a club to
+             :  the King. If it wins continue with the CQ, while if the CK is taken by
+             :  the ace, win the return and cash the CQ. When North shows out on the
+             :  second club, take a finesse of dummy's C8 on the next round. Wrong play
+             :  : Playing winners in the other suits before tackling clubs.
+
+************************************************************
+Deal         :  BB-Hand22
+Deal-text    :  Bridge Basics (Klinger) Hand 22 - Leaving the Top Trump Out While You Discard a Loser
+Dealer       :  East
+Vuln         :  NS
+Contract     :  6H  North
+N: S J6 H 97532 D A2 C AQJ5
+E: S KQT H QJ8 D 84 C K9762
+S: S A2 H AK64 D KQJ765 C 8
+W: S 987543 H T D T93 C T43
+Commentary   :  Bidding : 4H showed enough for game opposite 6 points, so that South
+             :  must have 19-20 points or more. With 14 points, North bids to a slam
+             :  after checking on aces. Lead : SK. The lead from K-Q-10 or K-Q-x is the
+             :  king. Play : Win the SA. Play the A-K of hearts, the DA, a diamond to
+             :  the king and on the third diamond, discard your spade loser. East ruffs,
+             :  but the spade loser has been eliminated.
+
+************************************************************
+Deal         :  BB-Hand23
+Deal-text    :  Bridge Basics (Klinger) Hand 23 - Rejecting a Finesse - Delaying Trumps - Discarding a Loser
+Dealer       :  South
+Vuln         :  Both
+Contract     :  6H  South
+N: S AKQJ2 H KQJ4 D AQJ C 2
+E: S 96543 H A8 D K2 C 9654
+S: S 7 H T97532 D 63 C AKJ3
+W: S T8 H 6 D T98754 C QT87
+Commentary   :  Bidding : South's 3H , a positive reply with 5+ hearts, is enough for
+             :  North to check on aces and bid slam. Lead : DT. Top of a sequence. Play
+             :  : Win the DA, play SA-K to discard the diamond loser and then lead
+             :  trumps. Later the last trump is drawn and losing clubs are ruffed or
+             :  discarded on the spade winners. Wrong play : (1) Taking the unnecessary
+             :  diamond finesse at trick 1. (2) Playing trumps before taking a discard.
+             :  East wins HA, cashes DK.
+
+************************************************************
+Deal         :  BB-Hand24
+Deal-text    :  Bridge Basics (Klinger) Hand 24 - Card Combinations - Setting Up Winners to Discard Losers
+Dealer       :  West
+Vuln         :  None
+Contract     :  6S  West
+N: S QT9 H JT98 D QT9 C 965
+E: S AJ73 H KQ D 873 C JT84
+S: S - H 765432 D J62 C A732
+W: S K86542 H A D AK54 C KQ
+Commentary   :  Bidding : After East's 3S showed 10-12 points and support, West re-
+             :  values to 23 points, checks on aces, and bids the small slam. Lead : HJ.
+             :  Top of a sequence. Play : Win the HA, play SK next, preserving the A-J
+             :  tenace in dummy just in case a finesse is needed. When South shows out,
+             :  finesse the SJ, cash the SA to draw the last trump and then lead a club
+             :  to knock out the ace. Later you can discard two diamond losers on the
+             :  winners in dummy.
+
+************************************************************
+Deal         :  BB-Hand25
+Deal-text    :  Bridge Basics (Klinger) Hand 25 - Shut-out Opening - Establishing a Second Suit in Hand
+Dealer       :  North
+Vuln         :  None
+Contract     :  4S  North
+N: S AKQ9765 H 2 D 8 C 9873
+E: S T H KQJ83 D AJ5 C 6542
+S: S 42 H A7 D 976432 C QJT
+W: S J83 H T9654 D KQT C AK
+Commentary   :  Bidding : With 7 tricks not vulnerable, North has enough to open 4S
+             :  rather than 3S. Neither East nor West is strong enough to bid over that.
+             :  Note that if West were the dealer, West would open 1H and over North's
+             :  4S overcall, East would compete to 5H, which would succeed. North's 4S
+             :  opening has shut East-West out of the game they could make. Lead : HK.
+             :  Top of a sequence. Play : Win HA, draw trumps in three rounds and then
+             :  lead clubs at each opportunity to set up two extra tricks after the CA-K
+             :  are forced out.
+
+************************************************************
+Deal         :  BB-Hand26
+Deal-text    :  Bridge Basics (Klinger) Hand 26 - Play from Dummy at Trick 1 - Establishing a Long Suit
+Dealer       :  East
+Vuln         :  NS
+Contract     :  3NT  West
+N: S KQ76 H KT873 D J98 C 2
+E: S 42 H Q4 D 63 C KQJ8763
+S: S J85 H J92 D Q7542 C AT
+W: S AT93 H A65 D AKT C 954
+Commentary   :  Bidding : With six playing tricks and not vulnerable, East may open 3C.
+             :  With a balanced hand, all outside suits covered and four tricks opposite
+             :  East's six, West should choose 3NT. Lead : H7. Fourth-highest. Play :
+             :  Play the HQ from dummy, hoping to win the trick (when North has the
+             :  king). When the HQ holds, lead clubs to force out the ace. Once the CA
+             :  has gone, dummy's clubs are high. South should return a heart, partner's
+             :  suit, but West wins and cashes the clubs and other winners.
+
+************************************************************
+Deal         :  BB-Hand27
+Deal-text    :  Bridge Basics (Klinger) Hand 27 - Slam Bidding after a Pre-empt - Setting Up a Long Suit
+Dealer       :  South
+Vuln         :  Both
+Contract     :  6D  South
+N: S J H AQJ D KT9 C A98763
+E: S AQ762 H K5432 D 7 C T2
+S: S 8 H T7 D AQJ865432 C 5
+W: S KT9543 H 986 D - C KQJ4
+Commentary   :  Bidding : With eight tricks vulnerable, South opens 4D rather than 3D.
+             :  With three sure winners and potential for another in three other suits,
+             :  North bids to slam after checking on aces. Lead : CK. Top of a sequence.
+             :  Play : The best play is to set up the club suit. Win CA, ruff a club
+             :  high, diamond to dummy's 9, ruff a club, diamond to dummy's 10, ruff a
+             :  club. The last two clubs in dummy are high. Diamond to the king (or a
+             :  heart to the ace) and play the clubs on which a spade and a heart are
+             :  discarded.
+
+************************************************************
+Deal         :  BB-Hand28
+Deal-text    :  Bridge Basics (Klinger) Hand 28 - Pre-emptive Opening - Counting Tricks - Slam Bidding
+Dealer       :  West
+Vuln         :  None
+Contract     :  7NT  East
+N: S T6432 H - D K932 C T876
+E: S A95 H KT54 D A6 C AKQJ
+S: S KQJ8 H QJ D 8754 C 952
+W: S 7 H A987632 D QJT C 43
+Commentary   :  Bidding : With five playing tricks in hearts and one in diamonds, West
+             :  opens 3H not vulnerable. East has enough for a slam and after finding
+             :  the missing ace, East counts tricks: one in spades, seven in hearts
+             :  (given that West has seven hearts to the ace), one in diamonds and four
+             :  in clubs. With 13 top winners, choose 7NT, mainly because you eliminate
+             :  the risk of the opening lead being ruffed. Lead : SK. Top of a sequence.
+             :  Play : Win and play out the hearts, being careful to play the HT early,
+             :  so that the hearts are not blocked.
+
+************************************************************
+Deal         :  BB-Hand29
+Deal-text    :  Bridge Basics (Klinger) Hand 29 - Overcall - Leading Partner's Suit - Creating a Void
+Dealer       :  North
+Vuln         :  None
+Contract     :  4H  South
+N: S AK H K862 D KQT93 C T5
+E: S 6543 H 95 D A C AQJ863
+S: S QJ72 H AQJT7 D J4 C 94
+W: S T98 H 43 D 87652 C K72
+Commentary   :  Bidding : East's suit is excellent and warrants the overcall. South's 2H
+             :  shows 10 points or better so that North, worth 17 points in support of
+             :  hearts, has no trouble raising to 4H . Lead : C2. Lead bottom from three
+             :  or four to an honor. Play : East should take the CA, cash the DA to
+             :  create a void and lead a low club. West wins with the CK and East ruffs
+             :  the diamond return. This plan would also work if West's C2 lead were a
+             :  singleton, but if West wrongly leads the CK, 4H will succeed.
+
+************************************************************
+Deal         :  BB-Hand30
+Deal-text    :  Bridge Basics (Klinger) Hand 30 - Raising an Overcall - Reading the Lead - Creating a Void
+Dealer       :  East
+Vuln         :  None
+Contract     :  2S  West
+N: S 65 H 2 D J7643 C J7542
+E: S Q842 H QJT7 D Q98 C K9
+S: S A7 H A86543 D AK C T63
+W: S KJT93 H K9 D T52 C AQ8
+Commentary   :  Bidding : As the top limit for an overcall is 16 HCP, East raises only
+             :  to 2S. No one has enough to push higher. Lead : H2. It is normal to lead
+             :  your partner's suit and a singleton is very attractive. Play : South can
+             :  see that the lead is a singleton. Only one other heart is missing and
+             :  with a doubleton, your partner would lead the top card, not the bottom.
+             :  South cashes DA-K (A-then-K to show a doubleton), creating a void, and
+             :  leads a heart for North to ruff. South ruffs the diamond return and the
+             :  SA is the setting trick.
+
+************************************************************
+Deal         :  BB-Hand31
+Deal-text    :  Bridge Basics (Klinger) Hand 31 - Raising an Overcall - Third Hand High - Finding a Switch
+Dealer       :  South
+Vuln         :  None
+Contract     :  3S  East
+N: S 52 H A932 D 82 C J9864
+E: S AKJ984 H K D K75 C T53
+S: S 76 H QJT76 D AQ63 C A2
+W: S QT3 H 854 D JT94 C KQ7
+Commentary   :  Bidding : East has enough for 2S and South should compete to 3H . Do not
+             :  sell out at the two-level if your side has a trump fit. 3H would
+             :  succeed, but West raises partner to 3S. 3-card support is quite enough
+             :  to raise an overcall. Lead : HQ. Top of a sequence. Play : Deducing that
+             :  East holds the HK, North plays the ace. When the HK drops, it is futile
+             :  to continue with hearts. North switches to the D8, top from a doubleton.
+             :  South wins, cashes the second diamond winner, and continues diamonds.
+             :  North ruffs the third round and the CA defeats the contract.
+
+************************************************************
+Deal         :  BB-Hand32
+Deal-text    :  Bridge Basics (Klinger) Hand 32 - Reading the Lead - Third Hand High - Finding the Switch
+Dealer       :  West
+Vuln         :  None
+Contract     :  4H  North
+N: S AK H AT9852 D K3 C KJT
+E: S Q6 H J D QJT964 C AQ87
+S: S JT9 H KQ63 D 82 C 6532
+W: S 875432 H 74 D A75 C 94
+Commentary   :  Bidding : East's good suit justifies the 2D overcall. West is too weak
+             :  to raise to 3D . After receiving support, North re-values to 20 points.
+             :  Lead : DQ. Top of a sequence. Play : From the lead, West knows that
+             :  declarer has the DK and so plays the DA (third-hand-high). When the DK
+             :  does not fall, West sees there are no more diamond tricks for the
+             :  defense. If returning your partner's suit is futile, it is usually
+             :  better to switch. West shifts to the C9 (top from a doubleton) and ruffs
+             :  the third club to defeat 4H.
+
+************************************************************
+Deal         :  BB-Hand33
+Deal-text    :  Bridge Basics (Klinger) Hand 33 - Leading towards Honor Cards When Two Honors Are Missing
+Dealer       :  North
+Vuln         :  None
+Contract     :  4H  East
+N: S JT8743 H 6 D T95 C J53
+E: S A2 H 98732 D K3 C QT62
+S: S 9 H AJT D Q872 C AK987
+W: S KQ65 H KQ54 D AJ64 C 4
+Commentary   :  Bidding : East's 2H jump reply to the double shows 10-12 points. Lead :
+             :  CA. Normal from A-K suits. Play : South switches to the S9. East wins in
+             :  hand and leads a heart to the K, which wins. As South is marked with the
+             :  HA, do not lead a second heart from dummy. A diamond goes to the king
+             :  and another heart is led towards dummy. This holds the defense to just
+             :  one trump trick. One club loser can be ruffed later and another goes on
+             :  the third spade.
+
+************************************************************
+Deal         :  BB-Hand34
+Deal-text    :  Bridge Basics (Klinger) Hand 34 - Delaying Trumps to Take a Quick Discard
+Dealer       :  East
+Vuln         :  EW
+Contract     :  4H  North
+N: S 8 H KJT654 D A6 C J962
+E: S J543 H AQ2 D KQJ84 C Q
+S: S AKT6 H 983 D 52 C AK74
+W: S Q972 H 7 D T973 C T853
+Commentary   :  Bidding : North is worth 13 points (3 for the singleton and 1 for the
+             :  doubleton). With 13 points or more opposite a takeout double, you should
+             :  reach some game. 4H is the clear choice. Lead : DK. Prefer the sequence.
+             :  Play : Win DA, play the SA and SK to discard the diamond loser. Then
+             :  lead a trump, finessing the jack. Declarer should keep on with trumps
+             :  until all are drawn. West should hold on to the clubs ("keep length with
+             :  dummy"). When East shows out on the second club, North finesses the C9
+             :  if necessary.
+
+************************************************************
+Deal         :  BB-Hand35
+Deal-text    :  Bridge Basics (Klinger) Hand 35 - Signalling with a Doubleton - Card Reading by Declarer
+Dealer       :  South
+Vuln         :  Both
+Contract     :  2H  South
+N: S AKQJ H K753 D K C Q432
+E: S T9742 H T86 D AT3 C 95
+S: S 63 H AJ42 D 9864 C T76
+W: S 85 H Q9 D QJ752 C AKJ8
+Commentary   :  Bidding : Opposite 0-9 points, North is worth a mild try for game and
+             :  raises to 2H , but South is too weak to bid on. Lead : CA. A-K leads are
+             :  attractive. Play : East signals with the C9 to encourage a club
+             :  continuation and ruffs the third round of clubs. East cashes the DA and
+             :  exits with a diamond or a spade. With only 17 HCP missing and the DA
+             :  with East, the HQ is marked with West. South rejects the normal finesse
+             :  for the queen when holding eight trumps and plays the HK and HA. The HQ
+             :  drops, lucky-9 tricks.
+
+************************************************************
+Deal         :  BB-Hand36
+Deal-text    :  Bridge Basics (Klinger) Hand 36 - Card Reading - Finessing - Careful Use of Entries
+Dealer       :  West
+Vuln         :  Both
+Contract     :  3NT  West
+N: S KQJT7 H K862 D 94 C AT
+E: S 5 H AQJT D AQ52 C K872
+S: S 864 H 95 D T763 C 9643
+W: S A932 H 743 D KJ8 C QJ5
+Commentary   :  Bidding : 2NT denies four hearts and shows 10-12 points, balanced, with
+             :  at least one stopper in spades. East has enough to try for game and 3NT
+             :  looks the best bet. Lead : SK, to set up the spades. Play : After taking
+             :  the SA, West should realize that it is futile to go for clubs. North
+             :  will win and cash the rest of the spades. As only 13 HCP are missing,
+             :  North must have the HK for the opening bid. So, finesse HQ, diamond to
+             :  the jack, finesse HJ, diamond to the king, finesse HT, and you have nine
+             :  tricks.
+

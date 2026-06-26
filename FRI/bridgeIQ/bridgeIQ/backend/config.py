@@ -145,6 +145,11 @@ class PreferencesConfig:
     carding_ns: str = ""
     carding_ew: str = ""
     smith_echo: str = "Off"
+    # Explain biq's actions: when ON, clicking a bid in the auction or a card
+    # on the table pops up a window explaining why biq made that call/play
+    # (how it fits the bidding system / what card-play technique applies).
+    # OFF by default — it's a teaching aid, not needed for ordinary play.
+    explain_actions_enabled: bool = False
 
 
 @dataclass
@@ -444,6 +449,9 @@ class ConfigManager:
             v = data["preference.smith_echo"].strip()
             if v in ("Off", "Standard", "Reverse"):
                 self.config.preferences.smith_echo = v
+        if "preference.explain_actions_enabled" in data:
+            self.config.preferences.explain_actions_enabled = (
+                data["preference.explain_actions_enabled"] == "1")
 
     def save_preferences(self):
         """Save user preferences."""
@@ -494,6 +502,9 @@ class ConfigManager:
             "preference.carding_ns": self.config.preferences.carding_ns,
             "preference.carding_ew": self.config.preferences.carding_ew,
             "preference.smith_echo": self.config.preferences.smith_echo,
+            "preference.explain_actions_enabled": (
+                "1" if self.config.preferences.explain_actions_enabled
+                else "0"),
         }
         self._write_config_file(filepath, data, description="BridgeIQ preferences")
 

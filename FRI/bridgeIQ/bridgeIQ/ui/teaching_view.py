@@ -327,7 +327,9 @@ def suit_length_text(seat: Seat, suit: Suit, visible: Set[Seat], layout,
     if lo > hi:
         lo = hi
     if lo == hi:
-        return f"{lo}"
+        # A pinned length of exactly 0 is a void — always say so, even when
+        # it was inferred (every card placed elsewhere) rather than shown out.
+        return "void" if lo == 0 else f"{lo}"
     if lo <= 0 and hi >= 13:
         return "?"
     if hi >= 7 and lo >= 5:
