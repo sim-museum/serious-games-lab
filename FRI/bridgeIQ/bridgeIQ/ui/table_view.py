@@ -1969,20 +1969,27 @@ class TableView(QWidget):
         """
         if not original_hands:
             return
-        # 1) Re-spread every seat's original 13-card hand face up so
-        #    the user can see all of them at once. Both opponents'
-        #    panels are unhidden — by design, end-of-hand shows the
-        #    whole table.
+        # 1) Set every seat's original 13-card hand face up, but only
+        #    REVEAL the declaring side (declarer + dummy) — those were
+        #    already on screen during play. The defenders are populated
+        #    (face up) yet left hidden so the table doesn't get crammed
+        #    with two extra hands that run off-screen; View ▸ Open All
+        #    Hands (F2) reveals them on demand. A defender the user
+        #    already revealed (F2 mid-play) stays revealed.
+        declaring = {s for s in (self.declarer, self.dummy) if s is not None}
         for physical_seat, widget in self.hand_widgets.items():
-            try:
-                widget.setVisible(True)
-            except Exception:
-                pass
             logical = self._logical_seat(physical_seat)
             hand = original_hands.get(logical)
             if hand is None:
                 continue
             widget.set_hand(hand, face_up=True)
+            # Reveal declarer + dummy (or everything if we can't tell
+            # which side declared — never leave the table blank).
+            if not declaring or logical in declaring:
+                try:
+                    widget.setVisible(True)
+                except Exception:
+                    pass
             widget.set_selectable(False)
 
         # 2) Compute the winning card per trick and apply the flag.
