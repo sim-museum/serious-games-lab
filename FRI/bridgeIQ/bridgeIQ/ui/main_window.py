@@ -1847,12 +1847,11 @@ class MainWindow(QMainWindow):
         still_in_bidding = (self.controller.current_phase == 'bidding' or
                            (self.controller.board and not self.controller.board.contract))
 
-        # Flush any pending Claude analysis from the previous hand. If the
-        # user ingested a Q-Plus closed room, Claude already ran on ingest
-        # (idempotent flag); otherwise we run it now with just the open
-        # room so the user sees a critique before moving on.
-        if not still_in_bidding:
-            self._maybe_run_pending_claude()
+        # Claude analysis is MANUAL only — it does NOT run automatically when
+        # a deal finishes or on Next deal. The user runs it from the
+        # end-of-hand dialog's "Claude analysis" button or Extras ▸ Hand Log
+        # (Claude Analysis) when they want it. (_show_result still stages the
+        # pending-hand context so those buttons have something to analyse.)
 
         # Practice-deck / tournament-file queue is the authoritative deal
         # source: advance through the book even if a teams match was started
