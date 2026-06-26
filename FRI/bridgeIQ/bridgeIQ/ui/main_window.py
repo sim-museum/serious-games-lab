@@ -2306,16 +2306,37 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+        # Autoplay is a per-deal choice — never carry it into the next hand.
+        # (Unchecking emits the toggle, which is a no-op when turning off.)
+        try:
+            if self.autoplay_btn.isChecked():
+                self.autoplay_btn.setChecked(False)
+        except Exception:
+            pass
+
         # Book note — if this deal carries the textbook's play commentary
         # (a practice-deck hand), load it so it can be shown during play.
+        note = (getattr(board, '_commentary', '') or '').strip()
         try:
-            note = (getattr(board, '_commentary', '') or '').strip()
             if note:
                 self.book_note.setPlainText(note)
                 self.book_note.setVisible(True)
             else:
                 self.book_note.clear()
                 self.book_note.setVisible(False)
+        except Exception:
+            pass
+
+        # Closed room is meaningless on a practice-deck hand (the contract is
+        # fixed by the book, so re-bidding it 4-bot just confuses the score
+        # sheet) — disable it for book deals (identified by their commentary),
+        # but keep it for ordinary deals and tournament files.
+        is_practice = bool(note)
+        try:
+            self.closed_room_btn.setEnabled(not is_practice)
+            self.closed_room_btn.setToolTip(
+                "Not available for practice-deck hands"
+                if is_practice else "")
         except Exception:
             pass
 
@@ -3417,10 +3438,15 @@ For more information, see the README file."""
         print(f"Starting teams board {board_num}", flush=True)
 
         # A teams board is a fresh random deal, not a book deal — clear any
-        # book note left over from a practice-deck deal so it doesn't linger.
+        # book note left over from a practice-deck deal, re-enable Closed
+        # room, and reset autoplay (a per-deal choice).
         try:
             self.book_note.clear()
             self.book_note.setVisible(False)
+            self.closed_room_btn.setEnabled(True)
+            self.closed_room_btn.setToolTip("")
+            if self.autoplay_btn.isChecked():
+                self.autoplay_btn.setChecked(False)
         except Exception:
             pass
 
@@ -5788,8 +5814,23 @@ For more information, see the README file."""
         return not self.network_controller.is_my_seat(current_seat)
 
     def _on_auto_play_toggle(self, checked: bool):
-        """Toggle auto play mode"""
-        if checked and self.controller.current_phase not in ('idle', 'finished'):
+        """Toggle auto play mode.
+
+        ON: kick the play loop so it starts straight away — including from
+        the between-tricks pause (phase 'waiting_next'), where it must clear
+        the trick via Next-card rather than _advance_game.
+
+        OFF: nothing to do here. _advance_play and _handle_trick_complete
+        re-read the button state every card, so play hands control back to
+        the human at the next declarer/dummy card — i.e. clicking Autoplay
+        again stops it.
+        """
+        if not checked:
+            return
+        phase = self.controller.current_phase
+        if phase == 'waiting_next':
+            self._on_next_card()
+        elif phase not in ('idle', 'finished', None):
             self._advance_game()
 
     def _is_local_user_turn(self) -> bool:
