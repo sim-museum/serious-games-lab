@@ -498,7 +498,7 @@ let objnames=Set{String}()
         push!(BILLBOARDS, (item, (Float32(i.x), gz, Float32(-i.y)), Float32(w), Float32(h)))
     end
 end
-println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards placed")
+println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards placed"); flush(stdout)
 end
 carItems   = Render.build_gpl(CARP, GPLTEX)        # Lotus body, GPL .mip textures
 # four Lotus wheels — keep the untextured black tyre body (only the car body drops "")
@@ -601,7 +601,7 @@ function main()
     telem = SMOKE ? nothing : open("zand_racer_$(round(Int,time())).txt", "w")
     telem !== nothing && write(telem,
         "# zand_racer telemetry — Lotus 49 @ Zandvoort\n# t\tlap\tlapdist\tkmh\tthr\tbrk\tsteer\tclu\tgear\trpm\tx\tz\tlat\talong\tontrack\n")
-    println("\n  Drive:  W/S gas·brake   A/D steer   E/Q shift   C clutch   R respawn   V view   G auto⇄manual   M mute   Esc quit")
+    println("\n  Drive:  W/S gas·brake   A/D steer   E/Q shift   C clutch   R respawn   V view   G auto⇄manual   M mute   Esc quit"); flush(stdout)
     println("  Manual mode (G) is realistic: hold the clutch (C / stick button) to shift.")
     println("  Lap times top-left: white = last, green = best.  Telemetry → ./zand_racer_*.txt")
     println("  (Logitech joystick works natively — push=throttle, pull=brake, roll=steer)\n")

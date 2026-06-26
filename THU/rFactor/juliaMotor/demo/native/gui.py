@@ -582,10 +582,25 @@ class DriveTab(QWidget):
         note.setStyleSheet("color:#888")
         root.addWidget(note)
 
+        self.progress = QProgressBar()
+        self.progress.setVisible(False)
+        self.progress.setTextVisible(True)
+        self.progress.setMinimumHeight(22)
+        root.addWidget(self.progress)
+
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setStyleSheet("font-family:monospace;font-size:11px")
         root.addWidget(self.log, 1)
+
+    # loading milestones the game flushes to stdout, in execution order → (substring, %, label)
+    LOAD_STAGES = [
+        ("loading GPL", 20, "loading track…"),
+        ("extracting geometry", 45, "extracting geometry…"),
+        ("loading textures", 62, "decoding textures…"),
+        ("placed", 85, "placing scenery…"),
+        ("Drive:", 100, "ready — window opening"),
+    ]
 
     def launch(self):
         if self.proc and self.proc.state() != QProcess.ProcessState.NotRunning:
@@ -625,6 +640,10 @@ class DriveTab(QWidget):
              "(first load ~3–4 min — run build_sysimage.jl once to speed this up)\n"))
         self.launch_b.setEnabled(False)
         self.stop_b.setEnabled(True)
+        self._stage = 0
+        self.progress.setRange(0, 0)             # indeterminate "busy" during the Julia/MTK compile (no output yet)
+        self.progress.setFormat("compiling…")
+        self.progress.setVisible(True)
 
     def stop(self):
         if self.proc:
@@ -633,12 +652,24 @@ class DriveTab(QWidget):
                 self.proc.kill()
 
     def _log(self):
-        self.log.appendPlainText(bytes(self.proc.readAllStandardOutput()).decode(errors="replace").rstrip())
+        text = bytes(self.proc.readAllStandardOutput()).decode(errors="replace")
+        self.log.appendPlainText(text.rstrip())
+        for marker, pct, label in self.LOAD_STAGES:        # advance the progress bar through load milestones
+            if marker in text and pct > getattr(self, "_stage", 0):
+                if self.progress.maximum() == 0:           # leave "busy" mode for a real percentage
+                    self.progress.setRange(0, 100)
+                self._stage = pct
+                self.progress.setValue(pct)
+                self.progress.setFormat(f"{label}  %p%")
 
     def _done(self):
         self.log.appendPlainText("\n— game exited —")
         self.launch_b.setEnabled(True)
         self.stop_b.setEnabled(False)
+        self.progress.setVisible(False)
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.progress.setFormat("")
 
 
 class Main(QMainWindow):
