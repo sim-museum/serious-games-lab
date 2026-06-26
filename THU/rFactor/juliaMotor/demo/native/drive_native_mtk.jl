@@ -396,12 +396,12 @@ const FENCE = parse(Float64, get(ENV, "JM_FENCE", "13.0"))   # E7: track boundar
 println(CAR3D ? "  PHYSICS: full-3D vehicle (default) — heave/pitch/roll + suspension travel + jumps" :
                 "  PHYSICS: planar 2-D model (JM_2D)")
 GLFW.Init()
-SMOKE && GLFW.WindowHint(GLFW.VISIBLE, false)
+GLFW.WindowHint(GLFW.VISIBLE, false)   # stay HIDDEN through the long texture load (no WM "Not Responding"); shown once the render loop starts
 GLFW.WindowHint(GLFW.CONTEXT_VERSION_MAJOR, 4); GLFW.WindowHint(GLFW.CONTEXT_VERSION_MINOR, 5)  # 4.5 → glClipControl (reversed-Z)
 GLFW.WindowHint(GLFW.OPENGL_PROFILE, GLFW.OPENGL_CORE_PROFILE)
 GLFW.WindowHint(GLFW.OPENGL_FORWARD_COMPAT, true)
 GLFW.WindowHint(GLFW.SAMPLES, 8)                  # 8× MSAA — smooth jaggies + finer alpha-to-coverage (cutout shimmer)
-win = GLFW.CreateWindow(W, H, "juliaMotor — 1967 Lotus 49 @ Zandvoort")
+win = GLFW.CreateWindow(W, H, "Julia Racer — $(uppercasefirst(TRACKSEL)) (loading…)")
 GLFW.MakeContextCurrent(win); GLFW.SwapInterval(1)
 glEnable(GL_DEPTH_TEST); glEnable(GL_MULTISAMPLE)
 glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE)                                   # MSAA-smooth the alpha cutout edges (signs/trees/crowd)
@@ -483,6 +483,7 @@ let objnames=Set{String}()
     # spectator OVERPOPULATION (single* ≈300, ppl_* crowds) — far more than real Zandvoort.
     drop(nm) = startswith(nm,"grass") || startswith(nm,"herbe") || nm == "infield" ||
                startswith(nm,"tent") || startswith(nm,"single") || startswith(nm,"ppl") ||
+               startswith(nm,"intree") ||                                    # INFIELD tree lines (100s of m wide) → distant central "smear"
                startswith(nm,"flagger") || startswith(nm,"rescu") || startswith(nm,"photo")  # marshals/photographers = people too
     global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw)))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
@@ -513,7 +514,7 @@ const PROJ = Render.perspective_revz(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0
 mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; view::Int; auto::Bool; end
 # shift mode: MANUAL by default — no auto-shift, no auto-clutch (you work the clutch to
 # launch and to shift E/Q, or it bogs). ZAND_SHIFT=auto opts into the assists; G toggles in-app.
-const CTL = Ctl(false,false,false,false,false, 1, get(ENV,"ZAND_SHIFT","manual") == "auto" || IS_TRAIN)   # MANUAL by default; Training = auto-shift aid
+const CTL = Ctl(false,false,false,false,false, parse(Int, get(ENV,"JM_VIEW","1")), get(ENV,"ZAND_SHIFT","manual") == "auto" || IS_TRAIN)   # view 1=chase 0=cockpit; MANUAL by default; Training = auto-shift aid
 key(k) = GLFW.GetKey(win, k) == GLFW.PRESS
 function read_input()
     thr=brk=str=clu=0.0; up=dn=false
@@ -606,6 +607,7 @@ function main()
     println("  (Logitech joystick works natively — push=throttle, pull=brake, roll=steer)\n")
     EngineAudio.start(ENG)   # start audio NOW (after the long track load) — starting it mid-load
                              # let the stream underflow on big tracks (Nürburgring) and go silent
+    SMOKE || GLFW.ShowWindow(win)   # reveal the window now that loading is done (avoids the WM "Not Responding")
     while !GLFW.WindowShouldClose(win)
         GLFW.PollEvents()
         key(GLFW.KEY_ESCAPE) && break
@@ -747,9 +749,9 @@ function main()
         for (it,pos,w,h) in BILLBOARDS; Render.draw(prog, it, vp, Render.billboard_model(pos,w,h,eye); bright=1.05); end  # trees/sprites
         # ambfill lifts the self-shadowed cockpit interior out of black (GPL pre-lights it
         # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
-        for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.15, spec=0.10, ambfill=0.34); end
+        for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.25, spec=0.10, ambfill=0.62); end   # lift the self-shadowed cockpit tub out of black (GPL pre-lights it to grey)
         for p in ai_poses                                       # AI Lotus 49 field
-            for it in carItems; Render.draw(prog, it, vp, aiBody(p); bright=1.15, spec=0.10, ambfill=0.34); end
+            for it in carItems; Render.draw(prog, it, vp, aiBody(p); bright=1.25, spec=0.10, ambfill=0.62); end
             for (wx,wz,_,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, vp, aiWheel(p,wx,wz,r)); end
         end
         for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, vp, wheelmat(wx,wz,steer,r)); end
@@ -770,7 +772,7 @@ function main()
 
         frames += 1
         if now - titleT > 0.25
-            GLFW.SetWindowTitle(win, "juliaMotor — Lotus 49 — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear == 0 ? "N" : string(cs.gear)) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
+            GLFW.SetWindowTitle(win, "Julia Racer — $(uppercasefirst(TRACKSEL)) — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear == 0 ? "N" : string(cs.gear)) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
                 (IS_RACE ? (race_done ? "  ✦ FINISHED" : "  — lap $(min(cs.laps+1,RACE_LAPS))/$RACE_LAPS") :
                            "  [$(uppercasefirst(MODE))]") *
                 (cs.ontrack ? "" : "  [OFF TRACK]"))
