@@ -24,6 +24,21 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   that collides and contains the car inside the game world (per-track boundary from the GPL
   geometry / ribbon edge). Slotted into Sprint 4 (world) — see plan.
 
+### PO race-completeness batch (2026-06-26) — "use scrum to achieve these epics"
+- **E8 Distinct GPL grid:** the 5 AI cars are the standard GPL '67 chassis — **Ferrari,
+  Brabham, BRM, Eagle, Cooper** (= GPL `coventry`) — each rendered as its own GPL car, not
+  copies of the Lotus 49. The player is the Lotus 49. All look like the GPL cars (PO ref shots
+  on the `84AF-CC77` drive). Lotus 49 cockpit per the ref shots.
+- **E9 Qualifying → grid:** a qualifying lap before the race sets the starting order (player's
+  best qual lap vs the AI pace ranks the grid).
+- **E10 Fuel:** the Lotus starts with enough fuel to finish **race length + ~5 laps** (tank
+  sized from a per-lap burn model; HUD fuel readout). The AI need not model fuel.
+- **E11 AI pace %:** the user sets AI speed as a percentage where **100 % = the GPL AI car
+  laptime** for that track; the field's pace scales so a clean lap ≈ refLap / pct.
+- **E12 AI control = JM 2-D model, rFactor-style:** the AI cars use the JuliaMotor **2-D**
+  vehicle model, driven by a path-following controller (the way rFactor's AI drive the AIW
+  line), not a kinematic rail. Robust kinematic fallback kept (`JM_AI_KINEMATIC`).
+
 ## Sprint plan
 - **Sprint 1 — HUD + race config (E5, E1).** Traction circles relocated ✅; GUI mode/laps/#AI
   inputs; game mode logic (race → finish at N laps; practice/training = timed/free).
@@ -33,6 +48,17 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   robustness; per-track collision boundaries (no driving off the world).
 - **Sprint 5+ — Physics (E6).** Brush-tyre Lotus 49 in `JuliaMotorMTK`; validate vs the iRacing
   `.ibt`; replace the calibrated-curve tyre; JM_3D divergence guards.
+
+### Race-completeness sprint plan (E8–E12, PO pre-approved 2026-06-26)
+- **R-Sprint 1 — Distinct GPL grid (E8).** Generic GPL-car loader (`gplcar.jl`); AI field renders
+  Ferrari/Brabham/BRM/Eagle/Cooper, auto-levelled, per-car wheels. Snapshot verifies 5 distinct cars.
+- **R-Sprint 2 — AI pace % (E11).** Per-track GPL ref-laptime table; AI target speed scales to
+  refLap/pct; `JM_AI_PCT` + GUI %.
+- **R-Sprint 3 — Qualifying → grid (E9).** Qual phase sets grid; race starts in grid order.
+- **R-Sprint 4 — Fuel (E10).** Per-lap burn, tank = (laps+5)·burn, HUD readout.
+- **R-Sprint 5 — Physics-model AI + results (E12).** AI on the JM 2-D model + path controller;
+  live standings + finish/results. Kinematic fallback retained.
+- **R-Sprint 6 — Boundaries audit (E7).** Probe all 6 tracks; confirm the car can't leave the world.
 
 ## Status log
 - 2026-06-25 Sprint 1 started. E5 done (traction circles → beside RPM dial, `render.jl`).

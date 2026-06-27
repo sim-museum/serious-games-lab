@@ -302,6 +302,10 @@ uniform float uAmbFill;   // flat fill light (GPL pre-lit cockpit interior — l
 uniform int uCutout;      // 1 for chain-link/foliage cutouts → sharpen alpha edge (kill shimmer)
 uniform int uGraze;       // 1 for GPL tree-LINE meshes → fade faces viewed edge-on (kills the end-on "smear")
 uniform int uSky;
+uniform vec3 uSunCol;     // directional-sun tint (warm white on the sunny grade; white = neutral GPL)
+uniform vec3 uAmbSky;     // up-facing sky-fill colour (cool blue on the sunny grade → cooler shadows)
+uniform float uSat;       // output saturation multiplier (>1 = punchier sunny colours; 1 = neutral)
+uniform vec3 uSkyTint;    // GPL horizon-ring multiply (warm/brighten the overcast band toward sunny)
 float shadow(vec3 N){
   vec3 lp = vLS.xyz/vLS.w*0.5+0.5;
   if(lp.z>1.0 || lp.x<0.0||lp.x>1.0||lp.y<0.0||lp.y>1.0) return 1.0;
@@ -333,16 +337,16 @@ void main(){
       t.a = pow(t.a, 1.0 + smoothstep(140.0, 460.0, length(vWorld-uCamPos))*4.0);
     } else if(t.a < 0.04) discard;              // blended/opaque: plain soft alpha-to-coverage
   }
-  if(uSky==1){ o=vec4(t.rgb, 1.0); return; }     // horizon ring: unlit, unfogged backdrop
+  if(uSky==1){ o=vec4(t.rgb*uSkyTint, 1.0); return; }     // horizon ring: unlit, unfogged backdrop (tinted/brightened per grade)
   vec3 N = dot(vN,vN) > 1e-6 ? normalize(vN) : vec3(0.0,1.0,0.0);  // guard zero/degenerate normals
   if(!gl_FrontFacing) N=-N;
   float diff=max(dot(N,normalize(uLightDir)),0.0)*shadow(N);
-  vec3 sky=vec3(0.95,0.93,0.86), grd=vec3(0.34,0.36,0.26);   // sky-fill WARMED (was cold blue 0.81,0.89,0.97 → blue cast)
-  vec3 amb=mix(grd,sky,0.5+0.5*N.y)*0.46;                     // lower fill (was 0.6) ⇒ darker shadows ⇒ more contrast
+  vec3 grd=vec3(0.34,0.36,0.26);                             // ground-bounce fill (warm)
+  vec3 amb=mix(grd,uAmbSky,0.5+0.5*N.y)*0.46;                // sky-fill: uAmbSky tints the up-facing fill (cool=sunny shadows)
   vec3 base = t.rgb;
   if(uHasTex==1 && max(abs(vUV.x),abs(vUV.y)) > 3.0)   // tiling surface: gently break up the repeat
     base *= mix(vec3(1.0), texture(uTex, vUV*0.07).rgb * 1.7, 0.45);   // softer → no harsh light/dark patches
-  vec3 lit = pow(base*(amb+0.5*uAmbFill+diff*1.15)*uBright, vec3(0.94));   // stronger sun (0.95→1.15) + gamma→neutral (0.85→0.94) ⇒ GPL contrast
+  vec3 lit = pow(base*(amb+0.5*uAmbFill+diff*1.15*uSunCol)*uBright, vec3(0.94));   // stronger sun (0.95→1.15), tinted by uSunCol; gamma→neutral (0.85→0.94) ⇒ GPL contrast
   lit += uAmbFill*vec3(0.13,0.135,0.125);   // ADDITIVE fill: lifts pure-black cockpit parts
                                             // (tub/dash) to a visible dark grey, as GPL pre-lights them
   if(uSpec > 0.0){                               // Blinn-Phong sheen (painted/chrome bodywork)
@@ -350,6 +354,7 @@ void main(){
     float s = pow(max(dot(N, normalize(normalize(uLightDir)+V)), 0.0), 28.0) * uSpec * step(0.01, diff);
     lit += s * vec3(1.0, 0.97, 0.9);
   }
+  lit = mix(vec3(dot(lit, vec3(0.299,0.587,0.114))), lit, uSat);   // grade: punch up colour for the sunny look (uSat=1 → no-op)
   float fog = clamp((length(vWorld-uCamPos)-uFogNear)/(uFogFar-uFogNear), 0.0, 1.0);
   float alpha = uHasTex==1 ? t.a : 1.0;
   if(uGraze==1){                                  // tree-line mesh: fade quads seen edge-on (no streaky end-on smear)
@@ -533,9 +538,13 @@ function bind_shadow(prog, shadowtex, lightVP; unit=1, size=SHADOW_SIZE)
 end
 
 """Per-frame scene uniforms (camera position + distance fog into the haze)."""
-function set_scene_uniforms(prog, campos; fognear=300f0, fogfar=2400f0)
+function set_scene_uniforms(prog, campos; fognear=300f0, fogfar=2400f0,
+                            fogcol=HORIZON, suncol=(1f0,1f0,1f0),
+                            ambsky=(0.95f0,0.93f0,0.86f0), sat=1f0)
     glUseProgram(prog)
-    u3(prog,"uCamPos",campos); u3(prog,"uFogCol",HORIZON)
+    u3(prog,"uCamPos",campos); u3(prog,"uFogCol",fogcol)
+    u3(prog,"uSunCol",suncol); u3(prog,"uAmbSky",ambsky)
+    glUniform1f(glGetUniformLocation(prog,"uSat"),Float32(sat))
     glUniform1f(glGetUniformLocation(prog,"uFogNear"),Float32(fognear))
     glUniform1f(glGetUniformLocation(prog,"uFogFar"),Float32(fogfar))
 end
@@ -840,7 +849,7 @@ car rig frame (X fwd, Y up, Z left).  GPL is X=fwd, Y=lateral, Z=up; V is flippe
 # and lshad (blob shadow); we do our own shadows.  Untextured + lotblack interior
 # panels are KEPT now that positioners place them correctly (they were only "strays"
 # when collapsed to the origin) — needed for a solid cockpit.
-function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, dedup=nothing)
+function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, dedup=nothing, drop_green=false)
     # text reads right when the texture mapping preserves handedness: the mirror=true
     # remap (gx,gz,-gy) is a rotation (no flip needed); mirror=false is a reflection
     # (needs V flipped to compensate).  So uflip=false, vflip=!mirror.
@@ -858,6 +867,17 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), grey=(0.72f0,0.7
     # the jaggie tan/yellow cockpit-floor panels are untextured + yellowish — drop
     # them for a clean interior (the cockpit just fades to dark downward instead).
     yellowish(c) = c[1]>0.55f0 && c[2]>0.40f0 && c[3]<0.40f0 && c[1] > c[3]+0.22f0
+    # GPL cars carry an under-car reflection TRAY ("<prefix>traymap") + blob SHADOW
+    # ("<prefix>shad") — environment planes (the tray resolves to no texture → flat
+    # bright-green, the shadow a dark splat) that we never want (we cast our own
+    # shadows).  Drop them generically by name suffix so every chassis is covered
+    # (Lotus ltraymap/lshad, Ferrari ftraymap, Brabham rtraymap, … all match).
+    istray(tex) = endswith(tex,"traymap") || endswith(tex,"shad")
+    # some chassis also carry an UNTEXTURED saturated-green placeholder plane (the
+    # tray's twin).  Real bodywork green is always textured (livery .mip), so an
+    # untextured pure-green poly is the placeholder → drop it.  Gated by `drop_green`
+    # (AI cars only) so the player Lotus's green-col cockpit tub is never touched.
+    traygreen(c) = drop_green && c[2]>0.45f0 && c[1]<0.30f0 && c[3]<0.30f0
     overlat(t) = maxlat < Inf32 && max(abs(t.p[1][2]),abs(t.p[2][2]),abs(t.p[3][2])) > maxlat  # GPL gy = lateral
     cmax(t) = max(abs(t.p[1][1]),abs(t.p[1][2]),abs(t.p[1][3]), abs(t.p[2][1]),abs(t.p[2][2]),abs(t.p[2][3]),
                   abs(t.p[3][1]),abs(t.p[3][2]),abs(t.p[3][3]))
@@ -866,7 +886,7 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), grey=(0.72f0,0.7
         !(isfinite(L) && isfinite(A) && cmax(t) < 5f4) ? false :       # drop garbage/huge stray verts (e.g. monza10k ~1e6-unit coords)
         (cockpit_clean && t.tex=="" && yellowish(t.col)) || overlat(t) ? false :
         track ? (!(t.tex in exclude) && A >= 1f-7 && L <= maxedge) :   # track: huge legit polys (objects pass maxedge to drop stray giant polys)
-                (!(t.tex in exclude) && L <= 2.0f0 && A >= 1f-7 && !(A > 0 && L/(2A/L) > 200f0))
+                (!(t.tex in exclude) && !istray(t.tex) && !(t.tex=="" && traygreen(t.col)) && L <= 2.0f0 && A >= 1f-7 && !(A > 0 && L/(2A/L) > 200f0))
     end
     kept = [m.tris[i] for i in eachindex(m.tris) if keep(m.tris[i]) && !(m.groups[i] in exclude_groups)]
     qk(p) = (round(Int,p[1]*2000), round(Int,p[2]*2000), round(Int,p[3]*2000))
@@ -1020,6 +1040,30 @@ silhouette band (bottom ~20% of each panel) straddles e_lo→0 so it sits on the
 horizon line.  `yaw0` rotates the whole ring to register it with the track."""
 function build_horizon(idx::GPLTex; R=2500f0, e_lo=deg2rad(-6f0), e_hi=deg2rad(24f0), yaw0=0f0, n=12)
     items = Item[]
+    # Two GPL horizon conventions: a 12-panel RING (horiz0..11, each a 30° slice — Zandvoort)
+    # or a SINGLE panoramic STRIP (only horiz0, e.g. Watkins Glen) meant to wrap the full 360°.
+    # Detect the single-strip case (horiz0 present, horiz1 absent) and wrap that one texture
+    # around a thin horizon band, else the lone 30° slice gets stretched ~1.4 km tall (a white
+    # vertical "smear").  The strip is hazy-sky-over-hills, so a low, thin band sits at the horizon.
+    if tex_rgba(idx, "horiz0") !== nothing && tex_rgba(idx, "horiz1") === nothing
+        r = tex_rgba(idx, "horiz0"); tid = upload_rgba(r[1], r[2], r[3])
+        # crop the strip's top hazy-white sky rows (they'd read as a bright band against our
+        # own blue sky); keep the ridge + tree content (vtop→bottom) as a low horizon band.
+        ns = 48; dθ = 2f0π/ns; slo = deg2rad(-5f0); shi = deg2rad(4f0); vtop = 0.34f0
+        h_lo = R*tan(Float32(slo)); h_hi = R*tan(Float32(shi))
+        q=Float32[]
+        sv(x,y,z,u,v)=append!(q,(x,y,z, 0f0,0f0,0f0, 1f0,1f0,1f0, u,v))
+        for i in 0:ns-1
+            θ0=Float32(yaw0+i*dθ); θ1=Float32(yaw0+(i+1)*dθ)
+            x0=R*cos(θ0); z0=R*sin(θ0); x1=R*cos(θ1); z1=R*sin(θ1)
+            u0=Float32(i/ns); u1=Float32((i+1)/ns)              # wrap the panorama exactly once around 360°
+            sv(x0,h_lo,z0, u0,1f0); sv(x1,h_lo,z1, u1,1f0); sv(x1,h_hi,z1, u1,vtop)
+            sv(x0,h_lo,z0, u0,1f0); sv(x1,h_hi,z1, u1,vtop); sv(x0,h_hi,z0, u0,vtop)
+        end
+        vao,m = upload(q)
+        push!(items, Item(vao,m,tid,(1f0,1f0,1f0)))
+        return items
+    end
     h_lo = R*tan(Float32(e_lo)); h_hi = R*tan(Float32(e_hi)); dθ = 2f0π/n
     for i in 0:n-1
         r = tex_rgba(idx, "horiz$(i)"); r === nothing && continue
@@ -1038,9 +1082,10 @@ end
 
 """Draw the horizon ring centred on the camera, unlit + unfogged, behind the scene
 (depth-write off so closer geometry overwrites it)."""
-function draw_horizon(prog, ring, vp, campos)
+function draw_horizon(prog, ring, vp, campos; tint=(1f0,1f0,1f0))
     isempty(ring) && return
     glUniform1i(glGetUniformLocation(prog,"uSky"), 1)
+    u3(prog,"uSkyTint",tint)
     glDepthMask(GL_FALSE)
     M = translate(Float32[campos[1],campos[2],campos[3]])
     for it in ring; draw(prog, it, vp, M; bright=1.0); end
@@ -1071,6 +1116,59 @@ end
 
 # ---- mesh upload / draw ----
 struct Item; vao::GLuint; n::GLsizei; tex::GLuint; col::NTuple{3,Float32}; end
+
+# ---- generic GPL car loader (player Lotus + the AI grid: Ferrari/Brabham/…) --
+"""Axis-aligned bbox over the rig-frame positions of TrackParts (verts stride 11,
+pos at offsets 1:3).  Returns a NamedTuple (xmin,xmax,ymin,ymax,zmin,zmax)."""
+function parts_bbox(parts)
+    xmn=ymn=zmn=Inf32; xmx=ymx=zmx=-Inf32
+    for p in parts
+        v = p.verts
+        @inbounds for i in 1:11:length(v)-10
+            x=v[i]; y=v[i+1]; z=v[i+2]
+            xmn=min(xmn,x); xmx=max(xmx,x); ymn=min(ymn,y); ymx=max(ymx,y); zmn=min(zmn,z); zmx=max(zmx,z)
+        end
+    end
+    (xmin=xmn, xmax=xmx, ymin=ymn, ymax=ymx, zmin=zmn, zmax=zmx)
+end
+
+"A loaded GPL car: body Items, a name→Items wheel cache, an auto-derived body
+offset (rig frame), and the wheel placement spec (hubX, hubZ, steers?, radius, mesh)."
+struct GPLCarModel
+    name::String
+    body::Vector{Item}
+    wheels::Dict{String,Vector{Item}}
+    body_off::NTuple{3,Float32}
+    wheelspec::Vector{Tuple{Float32,Float32,Bool,Float32,String}}
+end
+
+"""Load a GPL '67 car (body + wheels) from its `cars67/<dir>` folder, AUTO-LEVELLED
+to sit centred on its wheels.  `body_floor` = the world-Y the body underside should
+reach (pass the player Lotus's `bbox.ymin + BODY_OFF[2]` so the whole grid sits at a
+common height).  `wheelspec` reuses the Lotus hub geometry (all '67 cars are
+dimensionally near-identical) with each car's own wheel mesh names; a missing mesh
+loads as nothing (drawn wheel-less rather than crashing)."""
+function load_gpl_car(name, dir, body3do, wheelspec;
+                      exclude=("ltraymap","lshad"), maxlat=Inf32, exclude_groups=(),
+                      body_floor=0.0f0, wheeltint=(0.12f0,0.12f0,0.13f0))
+    tex   = gpl_texture_index(dir)
+    parts = extract_gpl_car(joinpath(dir, body3do); exclude=exclude, maxlat=maxlat, exclude_groups=exclude_groups, drop_green=true)
+    body  = build_gpl(parts, tex)
+    bb    = parts_bbox(parts)
+    off_x = -(bb.xmin + bb.xmax) / 2f0
+    off_z = -(bb.zmin + bb.zmax) / 2f0
+    off_y = body_floor - bb.ymin
+    wheels = Dict{String,Vector{Item}}()
+    for (_,_,_,_,mesh) in wheelspec
+        haskey(wheels, mesh) && continue
+        path = joinpath(dir, mesh*".3do")
+        wheels[mesh] = isfile(path) ?
+            build_gpl(extract_gpl_car(path; exclude=("ltraymap","lshad"), tint=wheeltint), tex) : Item[]
+    end
+    GPLCarModel(name, body, wheels, (Float32(off_x), Float32(off_y), Float32(off_z)),
+                Vector{Tuple{Float32,Float32,Bool,Float32,String}}(wheelspec))
+end
+
 function upload(interleaved)
     vao=Ref{GLuint}(); glGenVertexArrays(1,vao); glBindVertexArray(vao[])
     vbo=Ref{GLuint}(); glGenBuffers(1,vbo); glBindBuffer(GL_ARRAY_BUFFER,vbo[])

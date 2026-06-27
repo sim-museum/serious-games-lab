@@ -385,6 +385,12 @@ const WHEELS = (( 1.05f0, 0.62f0,true, 0.31f0,"lotwlf"), ( 1.05f0,-0.62f0,true, 
 
 # ---- GL init (visible window on the user's display) ----
 const W, H = 1440, 810
+# distance culling (squared, render-world units = m): skip far trackside objects/billboards
+# per frame so the big layouts (Spa ~5.7k instances, Monza, Nürburgring) keep their FPS.
+# Sized larger than small circuits (Zandvoort ~1.3 km) so those cull nothing — visible only
+# on the big valleys where the far half-track would otherwise be drawn every frame.
+const OBJ_CULL2 = 2200f0^2      # mesh objects (buildings/grandstands/trees) — keep distant landmarks
+const BB_CULL2  = 1300f0^2      # billboards (tree/shrub/crowd sprites) — far ones add little
 const SMOKE = haskey(ENV, "JM_SMOKE")     # headless self-test: hidden window, auto-exit
 const CAR3D = !haskey(ENV, "JM_2D")       # full-3D vehicle (heave/pitch/roll + jumps) is the DEFAULT; JM_2D forces the planar model
 # physics dispatch — Car3D is field/method-compatible with DriveRT.Car (superset)
@@ -413,6 +419,24 @@ skyprog = Render.skyprogram(); skyvao = Render.empty_vao()
 hudprog = Render.hud_program(); (hudvao, hudvbo) = Render.hud_buffers()
 depthprog = Render.depthprogram(); (shadowfbo, shadowtex) = Render.make_shadow_fbo()
 const LIGHTDIR = Float32[0.4, 1.0, 0.25]
+# ---- per-track colour grade -------------------------------------------------
+# The road circuits (Nürburgring/Monza/Watkins Glen/Spa) get a bright-sunny-day
+# grade matched to the iRacing reference shots: a saturated blue sky gradient,
+# pale-blue haze, warm-white sun + cool-blue sky-fill (warm sun / cool shadow),
+# punchier saturation, and a warmed/brightened GPL horizon ring so the overcast
+# photographic band reads as hazy daylight rather than gloom.  Zandvoort and the
+# skidpad keep the existing GPL overcast look.
+struct ColourGrade
+    zenith::NTuple{3,Float32}; horizon::NTuple{3,Float32}   # sky gradient; horizon also = fog/haze colour
+    cloud::Float32                                          # procedural cloud coverage
+    suncol::NTuple{3,Float32}; ambsky::NTuple{3,Float32}; sat::Float32   # sun tint / sky-fill tint / saturation
+    ringtint::NTuple{3,Float32}                             # GPL horizon-ring multiply (warm + brighten)
+end
+const GRADE_GPL   = ColourGrade((0.40,0.56,0.78),(0.78,0.78,0.75),1.0, (1,1,1),(0.95,0.93,0.86),1.0, (1,1,1))
+const GRADE_SUNNY = ColourGrade((0.20,0.47,0.85),(0.80,0.88,0.97),1.0, (1.07,1.0,0.85),(0.72,0.82,0.99),1.18, (1.28,1.27,1.30))
+const GRADE_SKIDPAD = ColourGrade((0.20,0.42,0.78),(0.62,0.74,0.88),0.18, (1,1,1),(0.95,0.93,0.86),1.0, (1,1,1))
+const GRADE = SKIDPAD ? GRADE_SKIDPAD :
+              (TRACKSEL in ("nurburgring","monza","watglen","spa")) ? GRADE_SUNNY : GRADE_GPL
 const ENG = EngineAudio.build_lotus(gamedata = GD)   # GPL Ford DFV V8, RPM-pitched; START is deferred to just before the game loop (below)
 print("loading textures… "); flush(stdout)
 const TEXIDX = Render.gpl_texture_index(ZD)
@@ -441,15 +465,20 @@ const TMPOBJ = mktempdir()
 objpath(nm) = (p=joinpath(ZD, nm*".3do"); isfile(p) ? p :
     (v=get(DATPACK, lowercase(nm*".3do"), nothing); v===nothing ? "" :
      (tp=joinpath(TMPOBJ, nm*".3do"); isfile(tp)||write(tp,v); tp)))
-# people textures painted onto the structures (pit wall, grandstands) — excluded so the
-# stands/buildings stay but the crowds on them go (user: remove ALL people).
-const CROWD_TEX = ("ltraymap","lshad","pplrow01","pplrow02","pplrow03","pplrow04",
-    "pitppl01","pitppl02","pitppl03","pitppl04","crowdv","crowdw","crwdtop",
-    "lcrowd3","lcrowd4","sidecrd2","people01","people02","people03","people04","people05","tmpstnd")
+# stands-only crowd policy (user): KEEP the seated grandstand/pit-wall crowds, so we no
+# longer strip their painted-on people textures — only the GPL shadow/tray artifacts go.
+# (Loose roadside people are dropped by name in drop() below, not by texture.)
+const CROWD_TEX = ("ltraymap","lshad")
 let objnames=Set{String}()
     for f in readdir(ZD); endswith(lowercase(f),".3do") && push!(objnames, lowercase(replace(f,r"\.3do$"i=>""))); end
     for k in keys(DATPACK); endswith(k,".3do") && push!(objnames, replace(k,r"\.3do$"=>"")); end
     insts = GPLTrack.trackside_objects(ZTRK; objnames=objnames)
+    # Trees (tree*/newt*) ship as SINGLE flat textured panels with a chroma-key (green/grey)
+    # background — fine in GPL where they're drawn as camera-facing sprites, but as a static
+    # MESH our pipeline renders them face-on with raw UVs and no alpha cutout → a tall white
+    # "smear" (the famous Watkins pit-straight artifact).  Force these down the BILLBOARD path
+    # (clean 0-1 UVs + alpha-keyed cutout, always camera-facing) like Zandvoort's trees.
+    treeish(nm) = startswith(nm,"tree") || startswith(nm,"newt")
     objmesh=Dict{String,Any}(); ymn=Dict{String,Float32}(); ymx=Dict{String,Float32}(); bbinfo=Dict{String,Any}()
     for inst in insts
         (haskey(objmesh, inst.name) || haskey(bbinfo, inst.name)) && continue
@@ -457,7 +486,7 @@ let objnames=Set{String}()
         if p == ""; objmesh[inst.name]=nothing; continue; end
         try
             full = Render.extract_gpl_car(p; track=true, mirror=true)   # un-stripped: decides stub vs geometry
-            if isempty(full)                               # a real billboard stub (tree/sprite)
+            if isempty(full) || treeish(inst.name)         # a billboard stub (tree/sprite) — or a tree panel forced to one
                 h, wid, strs = Render.billboard_stub(p); bb=nothing
                 for s in strs; bb = Render.build_billboard(s, TEXIDX); bb !== nothing && break; end
                 bbinfo[inst.name] = bb===nothing ? nothing : (bb[1], bb[2], bb[3], h, wid)
@@ -479,24 +508,40 @@ let objnames=Set{String}()
     # terrain mismatch); else fall back to the object's AUTHORED GPL height (same frame as the
     # track mesh) so far-trackside objects the HAT doesn't reach aren't lost.
     ploz(i)  = (gz = groundz(i.x, i.y); gz > -900f0 ? gz : Float32(i.z))
-    onground(h) = -60f0 < h < 250f0         # sane elevation (hilly tracks reach ~40 m); drops only absurd values
-    # drop: ground-cover planes (grass/herbe/infield), white "fuel-tank" tents, and the
-    # spectator OVERPOPULATION (single* ≈300, ppl_* crowds) — far more than real Zandvoort.
-    drop(nm) = startswith(nm,"grass") || startswith(nm,"herbe") || nm == "infield" ||
-               startswith(nm,"tent") || startswith(nm,"single") || startswith(nm,"ppl") ||
+    # track's own vertical band (GPL-z, = HAT height) — some classic layouts are authored with a
+    # large vertical offset (Spa sits at z≈294..498 m, not ≈0), so a hard-coded height window is
+    # wrong.  On-HAT objects are snapped to the terrain ⇒ grounded by construction (always keep);
+    # only OFF-HAT objects (authored-z fallback) get a sanity check, relative to the track band.
+    trkzlo=Inf32; trkzhi=-Inf32
+    for t in TRACKMESH.tris, vi in 1:3; z=Float32(t.p[vi][3]); trkzlo=min(trkzlo,z); trkzhi=max(trkzhi,z); end
+    onground(i) = (gz = groundz(i.x, i.y); gz > -900f0 || (trkzlo-150f0 < Float32(i.z) < trkzhi+150f0))
+    # crowd policy = STANDS ONLY: keep seated grandstand / pit-wall crowds (these read as
+    # populated stands, matching the GPL screenshots), drop loose roadside people.
+    standcrowd(nm) = startswith(nm,"grndpe") || startswith(nm,"pitpeo") || startswith(nm,"pitppl") ||
+                     startswith(nm,"pplrow") || startswith(nm,"peprow") || startswith(nm,"plrow")
+    # drop: ground-cover planes (grass/herbe/infield), white "fuel-tank" tents, infield/backdrop
+    # tree smears, and LOOSE people only — marshals, photographers, rescue crews, lone figures,
+    # and standing roadside spectators (Spa people*/pelf*).  Seated stand crowds are kept above.
+    drop(nm) = !standcrowd(nm) && (
+               startswith(nm,"grass") || startswith(nm,"herbe") || nm == "infield" ||
+               startswith(nm,"tent") || startswith(nm,"single") ||
                startswith(nm,"intree") ||                                    # INFIELD tree lines (100s of m wide) → distant central "smear"
-               startswith(nm,"treesrb") ||                                   # forest-BACKDROP billboards (streea/b/c) → painted "tree clump"
-               startswith(nm,"grndp") || startswith(nm,"crowd") || startswith(nm,"spect") ||  # spectator CROWDS (PO: no crowds)
-               startswith(nm,"flagger") || startswith(nm,"rescu") || startswith(nm,"photo")  # marshals/photographers = people too
+               startswith(nm,"treesrb") || startswith(nm,"treefill") ||      # forest-BACKDROP / gap-fill quads → streaky "painted tree" smear (Watkins pit-straight)
+               startswith(nm,"ppl") || startswith(nm,"people") || startswith(nm,"pelf") ||  # loose standing spectators
+               startswith(nm,"p_s") || startswith(nm,"pform") ||             # Spa distributed standing-spectator sprites (p_s1..19 = p_s1srb, ~900) + pform1 (foreground photographer); NB not p_armco/p_*
+               nm in ("chrisa","sergioa","thomasa","hatzia","stefana","starter") ||  # Spa named loose figures (Chris/sergio/thomas/Hatzi/Stefan/starter) — NOT prinz*/spider* (cars)
+               startswith(nm,"grndp") || startswith(nm,"crowd") || startswith(nm,"spect") ||
+               startswith(nm,"flagger") || startswith(nm,"rescu") ||
+               startswith(nm,"photo") || startswith(nm,"fotograf"))          # marshals/photographers = loose people
     istree(nm) = startswith(nm,"tree") || startswith(nm,"newt") || startswith(nm,"intree")  # foliage → graze-fade (no end-on smear)
-    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw)), istree(i.name))
+    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw)), istree(i.name), (Float32(i.x), ploz(i), Float32(-i.y)))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
-                          !drop(i.name) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(ploz(i))]
+                          !drop(i.name) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
     # billboards: (Item, render-pos base, width, height) — drawn camera-facing per frame
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     for i in insts
         bb = get(bbinfo, i.name, nothing); (bb === nothing || drop(i.name)) && continue
-        gz = ploz(i); onground(gz) || continue
+        onground(i) || continue; gz = ploz(i)
         item, tw, th, h, wid = bb
         w = wid > 0f0 ? wid : h*tw/max(th,1f0)
         push!(BILLBOARDS, (item, (Float32(i.x), gz, Float32(-i.y)), Float32(w), Float32(h)))
@@ -512,6 +557,34 @@ const WHEELITEMS = Dict(nm => load_wheel(nm) for nm in ("lotwlf","lotwrf","lotwl
 swItems = Render.build_gpl(SWPARTS, GPLTEX)        # steering wheel (rotated with steer)
 println(count(it->it.tex!=0, trackItems), "/", length(trackItems), " track + ",
         count(it->it.tex!=0, carItems), "/", length(carItems), " Lotus parts textured")
+
+# ---- E8: the AI grid = the standard GPL '67 chassis (Ferrari/Brabham/BRM/Eagle/
+# Cooper), each its OWN GPL car, not Lotus copies.  Auto-levelled onto a common
+# floor (the Lotus body underside) and reusing the Lotus wheel geometry with each
+# car's own wheel meshes ('67 cars are dimensionally near-identical).  The player
+# is always the Lotus 49. ----
+const AIBASE = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/cars/cars67"
+const BODY_FLOOR = Render.parts_bbox(CARP).ymin + BODY_OFF[2]   # world-Y the body underside reaches
+aiwheels(lf,rf,lr,rr) = Tuple{Float32,Float32,Bool,Float32,String}[
+    ( 1.05f0, 0.62f0, true,  0.31f0, lf), ( 1.05f0, -0.62f0, true,  0.31f0, rf),
+    (-1.15f0, 0.66f0, false, 0.34f0, lr), (-1.15f0, -0.66f0, false, 0.34f0, rr)]
+# (display name, cars67 folder, body .3do, wheel meshes) — order = grid order
+const AISPECS = [
+    ("Ferrari", "ferrari",  "ferrari.3do",  ("f222lf","f222rf","f444lr","f444rr")),
+    ("Brabham", "brabham",  "brabham.3do",  ("brablf","brabrf","brablr","brabrr")),
+    ("BRM",     "brm",      "brm.3do",      ("brm2lf","brm2rf","brm4lr","brm4rr")),
+    ("Eagle",   "eagle",    "eagle.3do",    ("eotwlf","eotwrf","eotwlr","eotwrr")),
+    ("Cooper",  "coventry", "coventry.3do", ("cooplf","cooprf","cooplr","cooprr")),  # GPL Cooper = the coventry chassis
+]
+AICARMODELS = Render.GPLCarModel[]
+if !SKIDPAD && N_AI > 0
+    for (nm, dir, body, w) in AISPECS[1:N_AI]
+        print("  loading AI car: $nm … "); flush(stdout)
+        push!(AICARMODELS, Render.load_gpl_car(nm, joinpath(AIBASE,dir), body, aiwheels(w...);
+                              exclude=("ltraymap","lshad"), maxlat=0.9f0, body_floor=BODY_FLOOR))
+        println("$(length(AICARMODELS[end].body)) parts")
+    end
+end
 const PROJ = Render.perspective_revz(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0)  # reversed-Z: near-uniform depth precision → kills distant z-fight (signs on fences)
 
 # ---- input: edge-detected shift, view + auto-gearbox toggle ----
@@ -584,7 +657,8 @@ function main()
     # ---- AI opponents (race field): rail-followers on the centreline ----
     AILINE = (!SKIDPAD && N_AI > 0) ? RaceAI.build_line(ALIGNED, groundz) : nothing
     AICARS = AILINE === nothing ? RaceAI.AICar[] : RaceAI.init_cars(AILINE, N_AI; start_s = 30.0)
-    AILINE !== nothing && println("  → $(length(AICARS)) AI Lotus 49s on the racing line")
+    AICHASSIS = AICARMODELS[1:length(AICARS)]   # grid slot i → AISPECS[i] (Ferrari, Brabham, …)
+    AILINE !== nothing && println("  → AI grid: ", join((m.name for m in AICHASSIS), ", "))
     # ---- force feedback: self-aligning torque from the front-axle lateral force ----
     # force = SIGN·GAIN·(Fy_FL+Fy_FR), faded out near standstill.  The front Fy rises as the
     # tyres bite and DROPS past the grip peak → the wheel goes light = you feel understeer.
@@ -723,7 +797,7 @@ function main()
         ai_poses = AILINE === nothing ? NTuple{4,Float64}[] :
                    [RaceAI.step!(c, AILINE, dt > 1e-4 ? dt : 1/60) for c in AICARS]
         aiCar(p)  = Render.translate(Float32[p[1], p[2], -p[3]]) * Render.roty(Float32(p[4]))
-        aiBody(p) = aiCar(p) * Render.translate(BODY_OFF)
+        aiBody(p, cm) = aiCar(p) * Render.translate(collect(cm.body_off))
         aiWheel(p,wx,wz,r) = aiCar(p) * Render.translate(Float32[wx, r, wz]) * Render.rotz(Float32(spin))
         # ---- shadow pass: scene depth from the sun, light box on the car ----
         lightVP = Render.light_vp(Float32[cs.x, cs.y, -cs.z], LIGHTDIR)
@@ -731,9 +805,9 @@ function main()
             for it in trackItems; Render.draw_depth(dp, it, Render.ident()); end
             for it in carItems; Render.draw_depth(dp, it, bodyModel); end
             for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw_depth(dp, it, wheelmat(wx,wz,steer,r)); end
-            for p in ai_poses                                  # AI cars cast shadows too
-                for it in carItems; Render.draw_depth(dp, it, aiBody(p)); end
-                for (wx,wz,_,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw_depth(dp, it, aiWheel(p,wx,wz,r)); end
+            for (p, cm) in zip(ai_poses, AICHASSIS)            # AI cars cast shadows too
+                for it in cm.body; Render.draw_depth(dp, it, aiBody(p, cm)); end
+                for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw_depth(dp, it, aiWheel(p,wx,wz,r)); end
             end
         end
         # ---- main pass (reversed-Z: [0,1] clip, near→1/far→0, GEQUAL, clear 0) ----
@@ -741,22 +815,28 @@ function main()
         glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE); glDepthFunc(GL_GEQUAL); glClearDepth(0.0)
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
         Render.draw_sky(skyprog, skyvao, inv(vp), eye, LIGHTDIR;
-                        cloud = SKIDPAD ? 0.18 : 1.0,                       # skidpad: near-clear blue sky
-                        zenith = SKIDPAD ? (0.20f0,0.42f0,0.78f0) : Render.ZENITH,
-                        horizon = SKIDPAD ? (0.62f0,0.74f0,0.88f0) : Render.HORIZON)
-        Render.set_scene_uniforms(prog, eye; fognear=400f0, fogfar=2800f0); Render.bind_shadow(prog, shadowtex, lightVP)
-        HORIZON_RING === nothing || Render.draw_horizon(prog, HORIZON_RING, vp, eye)   # GPL horizon ring backdrop
+                        cloud = GRADE.cloud, zenith = GRADE.zenith, horizon = GRADE.horizon)
+        Render.set_scene_uniforms(prog, eye; fognear=400f0, fogfar=2800f0,
+                                  fogcol=GRADE.horizon, suncol=GRADE.suncol, ambsky=GRADE.ambsky, sat=GRADE.sat)
+        Render.bind_shadow(prog, shadowtex, lightVP)
+        HORIZON_RING === nothing || Render.draw_horizon(prog, HORIZON_RING, vp, eye; tint=GRADE.ringtint)   # GPL horizon ring backdrop
         for it in trackItems; Render.draw(prog, it, vp, Render.ident(); bright=0.55); end
         glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 1)   # un-mirror far-side sign backs (objects only)
-        for (items,mat,grz) in OBJECTS, it in items; Render.draw(prog, it, vp, mat; bright=0.85, graze=grz); end  # trackside objects (trees graze-fade)
+        for (items,mat,grz,opos) in OBJECTS                       # trackside objects (trees graze-fade)
+            (eye[1]-opos[1])^2+(eye[2]-opos[2])^2+(eye[3]-opos[3])^2 > OBJ_CULL2 && continue   # distance cull
+            for it in items; Render.draw(prog, it, vp, mat; bright=0.85, graze=grz); end
+        end
         glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
-        for (it,pos,w,h) in BILLBOARDS; Render.draw(prog, it, vp, Render.billboard_model(pos,w,h,eye); bright=1.05); end  # trees/sprites
+        for (it,pos,w,h) in BILLBOARDS                            # trees/sprites
+            (eye[1]-pos[1])^2+(eye[2]-pos[2])^2+(eye[3]-pos[3])^2 > BB_CULL2 && continue       # distance cull
+            Render.draw(prog, it, vp, Render.billboard_model(pos,w,h,eye); bright=1.05)
+        end
         # ambfill lifts the self-shadowed cockpit interior out of black (GPL pre-lights it
         # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
         for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.25, spec=0.10, ambfill=0.62); end   # lift the self-shadowed cockpit tub out of black (GPL pre-lights it to grey)
-        for p in ai_poses                                       # AI Lotus 49 field
-            for it in carItems; Render.draw(prog, it, vp, aiBody(p); bright=1.25, spec=0.10, ambfill=0.62); end
-            for (wx,wz,_,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, vp, aiWheel(p,wx,wz,r)); end
+        for (p, cm) in zip(ai_poses, AICHASSIS)                 # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper)
+            for it in cm.body; Render.draw(prog, it, vp, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end
+            for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp, aiWheel(p,wx,wz,r)); end
         end
         for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, vp, wheelmat(wx,wz,steer,r)); end
         # steering wheel — spin about its column axis with steering input

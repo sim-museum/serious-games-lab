@@ -89,13 +89,22 @@ function trackside_objects(path3do; objnames::Set{String})
         else push!(cur,c); end
     end
     out=ObjInst[]; primlen=length(b)-prim; k=0
+    # Anchor on the GPL 0x0E "named external sub-object reference" signature
+    # [14, name-offset, 0, 19(=0x13 inline positioner), dx,dy,dz, rx,ry,rz, scale, child]
+    # rather than the (fragile) name-offset word.  The 3-word type/marker (14,_,0,19) makes
+    # this self-validating — the old name-anchored scan produced 442k coincidental hits that
+    # only a tight coord clamp could trim, which silently dropped most of the hilly large
+    # layouts (Spa: 9121 real placements, but z reaches 470 m → the old z<200 net kept 65).
     while k+44 <= primlen
-        w0=Int(u32(prim+k))
-        if haskey(off2name,w0) && lowercase(off2name[w0]) in objnames &&
-           u32(prim+k+4)==0 && u32(prim+k+8)==19
-            X=f32(prim+k+12); Y=f32(prim+k+16); Z=f32(prim+k+20); yaw=f32(prim+k+24); sc=f32(prim+k+36)
-            if all(isfinite,(X,Y,Z,yaw,sc)) && abs(X)<2000 && abs(Y)<2000 && abs(Z)<50 && 0<sc<100
-                push!(out, ObjInst(lowercase(off2name[w0]), X, Y, Z, yaw, sc))
+        if u32(prim+k)==14 && u32(prim+k+8)==0 && u32(prim+k+12)==19
+            wn=Int(u32(prim+k+4))
+            if haskey(off2name,wn) && lowercase(off2name[wn]) in objnames
+                X=f32(prim+k+16); Y=f32(prim+k+20); Z=f32(prim+k+24); yaw=f32(prim+k+28); sc=f32(prim+k+40)
+                # loose sanity only — the 0x0E signature already rejects garbage; bounds sized
+                # for the largest classic layouts (Spa/Monza ~±8 km horizontal, hillsides ~500 m).
+                if all(isfinite,(X,Y,Z,yaw,sc)) && abs(X)<50000 && abs(Y)<50000 && abs(Z)<5000 && 0<sc<1000
+                    push!(out, ObjInst(lowercase(off2name[wn]), X, Y, Z, yaw, sc))
+                end
             end
         end
         k+=4
