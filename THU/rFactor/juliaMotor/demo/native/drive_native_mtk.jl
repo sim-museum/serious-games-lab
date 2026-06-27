@@ -479,7 +479,7 @@ step_carX!(c, a...; kw...) = CAR3D ? DriveRT3D.step_car3d!(c, a...; kw...) : Dri
 telemetryX(c)              = CAR3D ? DriveRT3D.telemetry3d(c) : DriveRT.telemetry(c)
 respawnX!(c)               = CAR3D ? DriveRT3D.respawn3d!(c) : DriveRT.respawn!(c)
 containX!(c, x, z; kw...)  = CAR3D ? DriveRT3D.contain3d!(c, x, z; kw...) : DriveRT.contain!(c, x, z; kw...)
-bumpX!(c, dvx, dvz, dr, dvy=0.0) = CAR3D ? DriveRT3D.bump3d!(c, dvx, dvz, dr, dvy) : DriveRT.bump!(c, dvx, dvz, dr)   # GD: collision impulse (+vertical launch, 3-D)
+bumpX!(c, dvx, dvz, dr, dvy=0.0, dpp=0.0) = CAR3D ? DriveRT3D.bump3d!(c, dvx, dvz, dr, dvy, dpp) : DriveRT.bump!(c, dvx, dvz, dr)   # GD: collision impulse (+vertical launch + roll for cartwheels, 3-D)
 # AI run the full 3-D physics model too (weight transfer + jumps).  Aliases keep call sites tidy.
 const AICarT  = DriveRT3D.Car3D
 const AIbuild = DriveRT3D.build_cars3d
@@ -1141,9 +1141,10 @@ function main()
                 vrel = (pa.v*cos(pa.θ)-pb.v*cos(pb.θ))*nx + (pa.v*sin(pa.θ)-pb.v*sin(pb.θ))*nz
                 vrel <= 0.2 && continue
                 j = 1.45*vrel*280.0                       # (1+e)·vrel·reduced-mass, e=0.45, m=560 each
-                acrossa = abs(-nx*sin(pa.θ)+nz*cos(pa.θ)); vl = clamp((j/560)*acrossa*0.55, 0.0, 7.0)  # wheel-climb launch
-                AIbump!(pa, -(j/560)*nx, -(j/560)*nz, clamp(-(j/560)*0.04, -1.0, 1.0), vl)
-                AIbump!(pb,  (j/560)*nx,  (j/560)*nz, clamp( (j/560)*0.04, -1.0, 1.0), vl)
+                acrossa = -nx*sin(pa.θ)+nz*cos(pa.θ); vl = clamp((j/560)*abs(acrossa)*0.55, 0.0, 7.0)  # wheel-climb launch
+                dr2 = clamp(sign(acrossa)*vl*0.8, -6.0, 6.0)
+                AIbump!(pa, -(j/560)*nx, -(j/560)*nz, clamp(-(j/560)*0.04, -1.0, 1.0), vl, dr2)
+                AIbump!(pb,  (j/560)*nx,  (j/560)*nz, clamp( (j/560)*0.04, -1.0, 1.0), vl, -dr2)
             end
             [(pc.x, isfinite(pc.y) ? pc.y : groundz(pc.x, pc.z), pc.z, pc.θ) for pc in AIPHYS]   # pc.y = 3-D height → AI visibly jump/heave
         else
@@ -1168,13 +1169,14 @@ function main()
                 j = (1+restn)*vrel*mr
                 lat = -dx*sin(cs.θ) + dz*cos(cs.θ)            # contact offset in the player's frame → spin sign
                 # a SIDE (wheel-to-wheel) hit climbs → vertical launch; a square hit doesn't.
-                across_p = abs(-nx*sin(cs.θ) + nz*cos(cs.θ))
-                vlaunch = clamp((j/pm)*across_p*0.55, 0.0, 7.0)
-                bumpX!(cs, -(j/pm)*nx, -(j/pm)*nz, clamp(-sign(lat)*(j/pm)*0.05, -1.5, 1.5), vlaunch)
+                across_p = -nx*sin(cs.θ) + nz*cos(cs.θ)
+                vlaunch = clamp(abs(across_p)*(j/pm)*0.55, 0.0, 7.0)
+                droll = clamp(sign(across_p)*vlaunch*0.8, -6.0, 6.0)   # wheel-climb → roll rate → cartwheel
+                bumpX!(cs, -(j/pm)*nx, -(j/pm)*nz, clamp(-sign(lat)*(j/pm)*0.05, -1.5, 1.5), vlaunch, droll)
                 ffb_jolt = clamp(-sign(lat)*(j/pm)*0.18 - 0.25*sign(vrel), -1.0, 1.0)   # FF jolt — feel the hit
                 if AI_PHYSICS                                  # the AI is a real physics car → impulse it too
                     alat = -dx*sin(aθ) + dz*cos(aθ)
-                    AIbump!(AIPHYS[k], (j/am)*nx, (j/am)*nz, clamp(sign(alat)*(j/am)*0.05, -1.5, 1.5), vlaunch)
+                    AIbump!(AIPHYS[k], (j/am)*nx, (j/am)*nz, clamp(sign(alat)*(j/am)*0.05, -1.5, 1.5), vlaunch, -droll)
                 else
                     along  = nx*cos(aθ) + nz*sin(aθ); across = -nx*sin(aθ) + nz*cos(aθ)
                     ac.v   = max(0.0, ac.v + (j/am)*along*0.6)    # pushed along its heading (rear-ended ⇒ sped up; nosed ⇒ slowed)

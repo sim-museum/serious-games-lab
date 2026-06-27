@@ -195,8 +195,15 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
     # subsystem up (pitch → 1e5°). If it leaves sane bounds, reset the vertical states to
     # static (keep the in-plane motion) so the renderer never draws garbage. The proper fix
     # is a more robust contact model (E6) — this keeps JM_3D usable meanwhile.
-    if !(isfinite(c.pitch) && isfinite(c.roll) && isfinite(c.heave)) ||
-       abs(c.pitch) > 0.7 || abs(c.roll) > 0.7 || abs(c.heave) > 3.0
+    # AIRBORNE-AWARE guard: on the ground, a big pitch/roll = the vertical solver diverging → reset.
+    # But with NO wheel load (in the air, e.g. launched off another car's wheel or a ramp), a big
+    # attitude is a legit TUMBLE/cartwheel — let it rotate; only catch true divergence (non-finite or
+    # absurd).  On landing the on-ground branch snaps it back upright so the suspension model copes.
+    fztot = a[19] + a[20] + a[21] + a[22]                       # total wheel load (N)
+    airborne = fztot < 600.0
+    if !(isfinite(c.pitch) && isfinite(c.roll) && isfinite(c.heave)) || abs(c.heave) > 12.0 ||
+       (!airborne && (abs(c.pitch) > 0.7 || abs(c.roll) > 0.7)) ||
+       (airborne && (abs(c.pitch) > 12.0 || abs(c.roll) > 12.0))
         c.s_vreset(c.integ, zeros(14))
         c.heave = 0.0; c.pitch = 0.0; c.roll = 0.0; c.vacc = 9.80665
     end
@@ -266,10 +273,12 @@ function place3d!(c::Car3D, x, z, θ; v = 0.0)
     c
 end
 const _WSET3D = IdDict()
+const _PPSET3D = IdDict()
 """Rigid-body collision impulse (3-D car): world-frame velocity change (dvx,dvz) + yaw-rate dr
-+ an optional VERTICAL kick `dvy` (sets the heave velocity `w` → the car JUMPS — e.g. a
-spinning wheel climbing another car's wheel launches it into the air, GPL-style)."""
-function bump3d!(c::Car3D, dvx, dvz, dr, dvy = 0.0)
++ an optional VERTICAL kick `dvy` (heave velocity `w` → the car JUMPS) + a ROLL-rate kick `dpp`
+(roll velocity → with the relaxed airborne guard the car can CARTWHEEL when a spinning wheel
+climbs another car/ramp, GPL-style)."""
+function bump3d!(c::Car3D, dvx, dvz, dr, dvy = 0.0, dpp = 0.0)
     a = c.getall(c.integ); θ = a[3]; u = a[4]; v = a[5]
     wvx = u*cos(θ) - v*sin(θ) + dvx
     wvz = u*sin(θ) + v*cos(θ) + dvz
@@ -286,6 +295,12 @@ function bump3d!(c::Car3D, dvx, dvz, dr, dvy = 0.0)
         try
             ws = get!(() -> (ModelingToolkit.getsym(c.sys, c.sys.w), ModelingToolkit.setu(c.sys, c.sys.w)), _WSET3D, c.sys)
             ws[2](c.integ, ws[1](c.integ) + dvy)     # add upward heave velocity → launch
+        catch; end
+    end
+    if dpp != 0.0
+        try
+            ps = get!(() -> (ModelingToolkit.getsym(c.sys, c.sys.pp), ModelingToolkit.setu(c.sys, c.sys.pp)), _PPSET3D, c.sys)
+            ps[2](c.integ, ps[1](c.integ) + dpp)     # add roll velocity → cartwheel
         catch; end
     end
     c.v = sqrt(nu^2 + nv^2)
