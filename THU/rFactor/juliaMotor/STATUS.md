@@ -1,7 +1,21 @@
-# Julia Racer — Status (2026-06-25)
+# Julia Racer — Status (2026-06-26)
 
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/gui.py` (or `drive_native_mtk.jl`).
+
+## Race mode (2026-06-26 — full "race the GPL grid")
+Pick **Race** + laps + #AI + AI speed % in the GUI. Flow: **qualify one lap → grid set by
+qual order → standing-ish race → finish classification**. Details + env flags in
+`PRODUCT_BACKLOG.md` (E8–E12) and memory `juliamotor-race-mode`:
+- **Grid of the real GPL '67 cars** — player Lotus 49 vs Ferrari/Brabham/BRM/Eagle/Cooper
+  (Cooper = the GPL `coventry` chassis), each its own GPL model (`Render.load_gpl_car`).
+- **Qualifying → grid** (`RaceAI.grid_order`); **AI pace %** where 100 % = GPL AI laptime
+  (`JM_AI_PCT`); **fuel** sized to finish + 5 laps; **live standings** + finish order.
+- **Multi-rail AI** (`RaceAI.step_field!`) — GPL-style line/inside/outside rails to pass +
+  evade the other AI and the human (PO chose this over physics-AI; hybrid path in
+  `demo/native/RACE_AI_NOTES.md`).
+- **Every track is sealed** (E7) — can't drive off the world; `JM_BOUNDARY_TEST` audits it
+  (Nürburgring centreline drift near lap-end is a known AI-line follow-up).
 
 ## Working / done
 
