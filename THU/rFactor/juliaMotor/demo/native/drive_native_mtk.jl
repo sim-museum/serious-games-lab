@@ -777,8 +777,13 @@ function main()
     θ0spawn = if SKIDPAD
         cs0.θ
     else
-        look = min(4, length(ALIGNED)-1)
-        atan(ALIGNED[1+look][2]-ALIGNED[1][2], ALIGNED[1+look][1]-ALIGNED[1][1])
+        # walk ~8 m down the centreline from PAST the S/F seam (point 2) for a clean straight-ahead
+        # heading — a fixed point-count baseline gave a cock-eyed grid pose where the seam kinks.
+        base = min(2, length(ALIGNED)-1); j = base; acc = 0.0
+        while acc < 8.0 && j < length(ALIGNED)
+            acc += hypot(ALIGNED[j+1][1]-ALIGNED[j][1], ALIGNED[j+1][2]-ALIGNED[j][2]); j += 1
+        end
+        atan(ALIGNED[j][2]-ALIGNED[base][2], ALIGNED[j][1]-ALIGNED[base][1])
     end
     cs = build_carX(x0=cs0.x, z0=cs0.z, θ0=θ0spawn, v0=0.0, y0=y0spawn)   # MTK car — standing start (planar or full-3D)
     # ---- AI opponents (race field): rail-followers on the centreline ----
@@ -846,6 +851,7 @@ function main()
                                   println("  force feedback: off", FFB_ON ? " (no wheel found)" : " (JM_NOFFB)")
     spin = 0.0; last = time(); frames = 0; titleT = last
     ai_stuck = zeros(Int, length(AIPHYS))     # GC: per-AI stalled-frame counter (stuck-recovery)
+    ai_onroad = trues(length(AIPHYS))         # per-AI: on the real racing surface this frame? (grass + draft gate)
     ffb_f = 0.0                                       # low-pass-filtered FFB force (continuity across frames)
     ffb_jolt = 0.0                                    # transient FFB jolt on collisions/impacts (decays each frame)
     fy_lp = 0.0                                        # low-pass front-axle force for FFB (de-spikes the coarse mesh)
@@ -890,6 +896,12 @@ function main()
         prank
     end
     DO_QUAL && println("\n  QUALIFYING — drive a lap then press ENTER to start the race (it also\n  auto-starts if the start/finish line registers a clean lap).  ENTER = go racing.")
+    # NO-QUAL race: form a proper 2-wide grid up front with YOU at the back (no qual time ⇒ last),
+    # so the field starts in ordered rows ahead and you watch them launch — instead of the ad-hoc
+    # init-stagger that put cars beside you and then snapped them into line on the first frames.
+    if !DO_QUAL && HOLD_START
+        player_grid[] = form_grid!(Inf)
+    end
     # ---- E10: fuel load ----  tank sized so the player can finish + ~FUEL_MARGIN laps.
     FUEL_ON   = !SKIDPAD
     burn_lap  = FUEL_ON ? FUEL_LPK * LAPLEN/1000 : 0.0          # litres per lap (distance-based)
@@ -1153,13 +1165,19 @@ function main()
                 thr, brk, st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i],
                                                  pc.x, pc.z, pc.θ, pc.v, AIyaw(pc); power = AI_POWER)
                 DriveRT3D.step_car3d!(pc, thr, brk, st, ddt; manual=false, groundz=groundz)
-                if abs(AICARS[i].lane) > ROAD_HALFW && pc.v > 2.5    # AI on the grass → the same drag/slip penalty
+                # GRASS via the REAL racing surface (TRKSURF.on_track) — the SAME test the player and
+                # the renderer use, so the AI "see" exactly the road you see (the lane-width threshold
+                # let them run the grass on straights where the centreline isn't centred on the road).
+                hs = JuliaMotor.hat(TRKSURF, pc.x, pc.z)
+                ai_onroad[i] = !(hs.found && !hs.on_track)
+                if !ai_onroad[i] && pc.v > 2.5                        # AI off the racing surface → grass penalty
                     AIbump!(pc, -GRASS_DRAG*pc.v*cos(pc.θ)*ddt, -GRASS_DRAG*pc.v*sin(pc.θ)*ddt, (2*rand()-1)*GRASS_SLIP*ddt)
                 end
             end
             # slipstream: each AI tucked behind the player or another AI on a straight gets a forward tow
             let plead = (cs.x, cs.z, cs.θ, cs.v)
                 for (i, pc) in enumerate(AIPHYS)
+                    ai_onroad[i] || continue                         # no slingshot while off the road (you crawl on grass)
                     leads = NTuple{4,Float64}[plead]
                     for j in 1:length(AIPHYS); j != i && push!(leads, (AIPHYS[j].x, AIPHYS[j].z, AIPHYS[j].θ, AIPHYS[j].v)); end
                     tw = draft_tow(pc.x, pc.z, pc.θ, pc.v, leads)
@@ -1191,8 +1209,8 @@ function main()
         # momentum-exchange impulse: the player (real vehicle physics) is knocked off line + spun
         # via bumpX!, the AI is shoved aside + spun + scrubbed.  The wheels keep spinning with motion.
         if race_go[] && !rst && !isempty(ai_poses)
-            # slipstream for the PLAYER: tuck behind an AI on a straight → tow → slingshot past
-            if AI_PHYSICS
+            # slipstream for the PLAYER: tuck behind an AI on a straight → tow → slingshot past (not on grass)
+            if AI_PHYSICS && JuliaMotor.hat(TRKSURF, cs.x, cs.z).on_track
                 plds = [(p[1], p[3], p[4], AICARS[k].v) for (k,p) in enumerate(ai_poses)]
                 ptw = draft_tow(cs.x, cs.z, cs.θ, cs.v, plds)
                 ptw > 0.0 && bumpX!(cs, ptw*cos(cs.θ)*ddt, ptw*sin(cs.θ)*ddt, 0.0)

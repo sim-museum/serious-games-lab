@@ -58,8 +58,27 @@ function build_line(pts, groundz; spacing = 3.0, halfwidth = 3.3)
             rx[i] = x[i] + off*nx[i]; rz[i] = z[i] + off*nz[i]
         end
     end
-    rl = Float64[(rx[i]-x[i])*nx[i] + (rz[i]-z[i])*nz[i] for i in 1:n]
-    # curvature of the RACING LINE (smoother than the centreline → higher, more realistic corner
+    rlg = Float64[(rx[i]-x[i])*nx[i] + (rz[i]-z[i])*nz[i] for i in 1:n]   # geometric (out-in-out) offset
+    # APEX TYPE by corner: a bend that OPENS onto a faster section (slow-in/fast-out) wants a LATE
+    # apex — sacrifice entry to get on the power early for the straight; a bend leading into a SLOWER
+    # section (fast-in/slow-out) wants an EARLY apex.  Detect the speed trend through each corner and
+    # shift its apex along the track (sample the offset from earlier s ⇒ the apex lands later).
+    κg = zeros(n)                                          # geometric-line curvature (for the trend)
+    for i in 1:n; j=i%n+1; ds=max(hypot(rx[j]-rx[i], rz[j]-rz[i]),0.5); κg[i]=abs(wrapπ(atan(rz[j]-rz[i],rx[j]-rx[i]) - atan(rz[i]-rz[mod(i-2,n)+1], rx[i]-rx[mod(i-2,n)+1])))/ds; end
+    vp = [sqrt(8.0/max(κg[i], 1e-3)) for i in 1:n]         # corner-speed proxy
+    W  = max(1, round(Int, 22/spacing))                   # ±22 m trend baseline
+    sh = zeros(n)
+    for i in 1:n
+        κg[i] > 1/130 || continue                         # only in genuine corners
+        trend = vp[mod(i-1+W,n)+1] - vp[mod(i-1-W,n)+1]   # faster ahead (+) ⇒ late, slower ahead (−) ⇒ early
+        sh[i] = clamp(trend*0.18, -2.5, 2.5)              # apex shift in metres
+    end
+    shs = zeros(n)                                        # smooth the shift so the line stays continuous
+    for i in 1:n; a=0.0; for d in -W:W; a += sh[mod(i-1+d,n)+1]; end; shs[i]=a/(2W+1); end
+    di(arr, p) = (p=mod(p-1,n)+1; lo=floor(Int,p); f=p-lo; lo=mod(lo-1,n)+1; hi=mod(lo,n)+1; arr[lo]*(1-f)+arr[hi]*f)  # circular lerp
+    rl = Float64[di(rlg, i - shs[i]/spacing) for i in 1:n]   # late: sample from earlier index ⇒ apex lands later
+    rx = Float64[x[i] + rl[i]*nx[i] for i in 1:n]; rz = Float64[z[i] + rl[i]*nz[i] for i in 1:n]
+    # curvature of the FINAL RACING LINE (smoother than the centreline → higher, more realistic corner
     # speeds where the line straightens the bend), smoothed over a ~9 m window
     θr = [atan(rz[i%n+1]-rz[i], rx[i%n+1]-rx[i]) for i in 1:n]
     κr = zeros(n)
@@ -330,6 +349,9 @@ function controller(line::AILine, cs, clane, dev, tv, cx, cz, cθ, cv, r; power 
     # detuned car has lower accel/top speed → a fixed pace it can't exceed (and can wash out hot).
     thr = (cv < tv ? clamp((tv-cv)*0.25, 0, 1) * clamp(1.4 - 2.2*abs(steer), 0.0, 1.0) : 0.0) * power
     brk = cv > tv + 1.0 ? clamp((cv-tv)*0.25, 0, 1) : 0.0
+    # TRAIL BRAKING: don't dump the brake at turn-in — carry a little into the corner (loads the
+    # front tyres, rotates the car to the apex), fading as the wheel unwinds.  Small so it never spins.
+    (brk < 0.05 && abs(steer) > 0.2 && cv > tv*0.92) && (brk = clamp(0.10*abs(steer), 0.0, 0.18))
     (thr, brk, steer)
 end
 
