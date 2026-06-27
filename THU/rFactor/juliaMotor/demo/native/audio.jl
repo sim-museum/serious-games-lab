@@ -181,7 +181,18 @@ function start(eng::Engine)
                 eng.running[]=false; break
             end
             try
-                while eng.running[]; mix!(buf, eng); write(stream, buf); end
+                while eng.running[]
+                    mix!(buf, eng)
+                    # SANITISE before PortAudio: a single NaN/Inf or out-of-range sample makes
+                    # the C Float32→Int32 converter crash the WHOLE process (uncatchable in
+                    # Julia — it's a C-level fault, seen as the window vanishing).  Clamp to
+                    # [-1,1] and zero any non-finite so the stream can never take us down.
+                    @inbounds for i in eachindex(buf)
+                        x = buf[i]
+                        buf[i] = isfinite(x) ? (x > 1f0 ? 1f0 : x < -1f0 ? -1f0 : x) : 0f0
+                    end
+                    write(stream, buf)
+                end
             catch e
                 @warn "audio xrun — reopening stream" e        # underflow: reopen, don't die
             finally
