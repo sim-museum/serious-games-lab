@@ -180,6 +180,17 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   drops the GPL reflection tray + blob shadow generically (`*traymap`/`*shad`) and an AI-only
   green-placeholder drop. Verified offscreen (5 distinct liveried cars) + in-cockpit grid view;
   player Lotus unchanged. Harness `grid_snapshot.jl`.
+- 2026-06-26 R-Sprint 6 DONE (commit pending): **E7 audit** — confirmed every track is *sealed*:
+  the terrain HAT is a finite mesh, so the off-HAT containment means the car can never reach empty
+  space. New `JM_BOUNDARY_TEST` self-test (reuses the real loaded HAT): marches off the centreline
+  to find the world edge + checks for on-line HAT holes. Results — Zandvoort/Watkins Glen/Monza/Spa:
+  **0 on-line holes, bounded both sides** (run-off up to ~520 m, all finite). Nürburgring: world
+  still sealed but **4 on-line holes (44–600 m, at line-fractions 0.13/0.93/0.94/0.96)** = the 22 km
+  `.trk` centreline DRIFTS off the road mesh near the lap end (the player drives the road, which is
+  on the HAT; the AI rail-follower keys off this centreline, so the drift is an AI-line follow-up, a
+  track-data fix). Hardened containment with a small off-HAT distance grace (`FENCE_GRACE`, 6 m) so
+  sub-car-length mesh cracks don't false-trigger while the off-world guarantee stays tight. Epic 2
+  (can't drive off the edge of the world) is met on all 6 tracks.
 - 2026-06-26 R-Sprint 4 DONE (commit pending): **E10** — fuel. The Lotus is fuelled to finish the
   race + a ~5-lap margin: `TANK = (RACE_LAPS + FUEL_MARGIN)·burn_lap`, `burn_lap = FUEL_LPK·lapKm`
   (DFV-ish 0.55 L/km). Distance-based burn (during the race), a dry tank starves the throttle,

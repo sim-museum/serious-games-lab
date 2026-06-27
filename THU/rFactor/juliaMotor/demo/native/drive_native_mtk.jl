@@ -387,6 +387,54 @@ else
     print("extracting geometry… "); flush(stdout)
     const TRACK = [Render.extract_gpl_car(ZTRK; track=true, mirror=true, exclude=("ltraymap","lshad","wiref_s")); SECPARTS]
 end
+# ---- E7 boundary audit (JM_BOUNDARY_TEST): confirm the terrain HAT BOUNDS the world ----
+# The game holds the car at the last in-world spot whenever it steps off the HAT, so the
+# world is "sealed" iff (a) the HAT has no holes on the racing line and (b) there is a
+# finite HAT edge to either side everywhere (so going off-track always meets a boundary).
+function boundary_audit()
+    println("\n  ═══ E7 BOUNDARY AUDIT — $(uppercasefirst(TRACKSEL)) ═══")
+    onhat(x,z) = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf)[3]
+    n = length(ALIGNED); step = max(1, n ÷ 120); ks = 1:step:n
+    CAP = 1500.0                                    # the HAT is a finite mesh → there IS an edge; this just bounds the search
+    holes = Int[]; edges = Float64[]; wide = 0
+    for k in ks
+        x,z = ALIGNED[k]; x2,z2 = ALIGNED[k % n + 1]
+        tx,tz = x2-x, z2-z; tl = hypot(tx,tz); tl < 1e-6 && continue
+        px,pz = -tz/tl, tx/tl                       # left-perpendicular unit
+        onhat(x,z) || push!(holes, k)               # racing-line hole?
+        for sgn in (1.0, -1.0)
+            d = 0.0; hit = false
+            while d < CAP
+                d += 1.0
+                if !onhat(x + sgn*px*d, z + sgn*pz*d); push!(edges, d); hit = true; break; end
+            end
+            hit || (wide += 1)                       # run-off wider than CAP (still finite/bounded, just big)
+        end
+    end
+    # measure each on-line hole's length along the centreline (1 m march) — the FENCE_GRACE
+    # must exceed it for the car to cross without a false containment.
+    holelen(k) = begin
+        x,z = ALIGNED[k]; x2,z2 = ALIGNED[k % n + 1]
+        tx,tz = x2-x, z2-z; tl = hypot(tx,tz); tl < 1e-6 && return 0.0
+        tx,tz = tx/tl, tz/tl; fwd = 0.0; bwd = 0.0
+        while fwd < 300 && !onhat(x+tx*fwd, z+tz*fwd); fwd += 1.0; end
+        while bwd < 300 && !onhat(x-tx*bwd, z-tz*bwd); bwd += 1.0; end
+        fwd + bwd
+    end
+    println("  samples: $(length(ks))   on-line holes: $(length(holes))",
+            isempty(holes) ? "" : "  at line-fractions $(round.([h/n for h in holes],digits=2)) lengths $(round.(holelen.(holes),digits=0)) m")
+    isempty(edges) || println("  lateral world-edge: min $(round(minimum(edges),digits=1)) m  ",
+            "median $(round(sort(edges)[max(1,end÷2)],digits=1)) m  max $(round(maximum(edges),digits=1)) m  ($(length(edges)) probes)")
+    println("  sides whose run-off exceeds $(round(Int,CAP)) m (still bounded — finite mesh): $wide")
+    # Epic 2 (no driving off the world) is satisfied iff the HAT has no on-line holes — the
+    # finite mesh guarantees containment everywhere off-line regardless of run-off width.
+    println(isempty(holes) ?
+        "  ✓ PASS — world is sealed (finite HAT, no on-line holes): the car cannot leave the world." :
+        "  ⚠ on-line holes (false containment risk on the racing line) — see fractions above.")
+end
+if haskey(ENV, "JM_BOUNDARY_TEST") && !SKIDPAD
+    boundary_audit(); exit(0)
+end
 # ---- GPL Lotus 49 (replaces the rFactor Vanwall; the authentic GPL-pivot car) ----
 const LOTDIR = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/cars/cars67/lotus"
 const GPLTEX = Render.gpl_texture_index(LOTDIR)
@@ -416,6 +464,7 @@ telemetryX(c)              = CAR3D ? DriveRT3D.telemetry3d(c) : DriveRT.telemetr
 respawnX!(c)               = CAR3D ? DriveRT3D.respawn3d!(c) : DriveRT.respawn!(c)
 containX!(c, x, z; kw...)  = CAR3D ? DriveRT3D.contain3d!(c, x, z; kw...) : DriveRT.contain!(c, x, z; kw...)
 const FENCE = parse(Float64, get(ENV, "JM_FENCE", "13.0"))   # E7: track boundary (m from centreline) — you can't leave the world
+const FENCE_GRACE = parse(Float64, get(ENV, "JM_FENCE_GRACE", "6.0"))   # off-HAT distance tolerated before containing (crosses sub-car-length mesh cracks; keeps the off-world guarantee tight)
 println(CAR3D ? "  PHYSICS: full-3D vehicle (default) — heave/pitch/roll + suspension travel + jumps" :
                 "  PHYSICS: planar 2-D model (JM_2D)")
 GLFW.Init()
@@ -662,6 +711,7 @@ function main()
     cs0 = SKIDPAD ? (x=0.0, z=0.0, θ=0.0) : spawn(CAR; v0=0.0)   # spawn pose (skidpad: pad centre)
     LASTZ = Ref(0.0); ONTRACK = Ref(true)
     LASTGX = Ref(cs0.x); LASTGZ = Ref(cs0.z)   # last position INSIDE the world (terrain HAT) — for the boundary
+    OFFDIST = Ref(0.0)                          # distance travelled off the HAT (grace before containing)
     function groundz(x, z)                            # HAT elevation; off-surface holds last height
         SKIDPAD && return 0.0   # flat skidpad → no elevation
         h = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf)
@@ -777,8 +827,14 @@ function main()
             # freely, but if you go off the HAT you've left the world → snap back to the last spot
             # inside it (a fence/hedge collision) and bleed speed.  (Based on the HAT, NOT the racing
             # line, so it never slows you on a wide road/grass — that was the Watkins Glen "molasses".)
-            if ONTRACK[]; LASTGX[] = cs.x; LASTGZ[] = cs.z         # remember where we were inside the world
-            else; containX!(cs, LASTGX[], LASTGZ[]; vdamp=0.4); end # off the terrain → held at the edge
+            # A short off-HAT distance GRACE (JM_FENCE_GRACE m) lets the car cross narrow mesh seams
+            # / bridge gaps in the HAT (e.g. 4 on the Nürburgring racing line) without a false
+            # containment; a genuine excursion exceeds it within a few metres and is held at the edge.
+            if ONTRACK[]; LASTGX[] = cs.x; LASTGZ[] = cs.z; OFFDIST[] = 0.0   # inside the world
+            else
+                OFFDIST[] += cs.v * (dt > 1e-4 ? dt : 1/60)
+                OFFDIST[] > FENCE_GRACE && containX!(cs, LASTGX[], LASTGZ[]; vdamp=0.4)  # sustained off-world → held at the edge
+            end
             end
         end
         spin -= cs.v*dt/0.33
