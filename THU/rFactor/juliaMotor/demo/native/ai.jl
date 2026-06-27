@@ -8,9 +8,10 @@ module RaceAI
 
 struct AILine
     x::Vector{Float64}; z::Vector{Float64}; y::Vector{Float64}
-    s::Vector{Float64}                 # cumulative arc length [m]
-    θ::Vector{Float64}                 # tangent heading [rad]
-    κ::Vector{Float64}                 # curvature [1/m]
+    s::Vector{Float64}                 # cumulative arc length [m] (along the CENTRELINE)
+    θ::Vector{Float64}                 # centreline tangent heading [rad] (defines the lateral frame)
+    κ::Vector{Float64}                 # curvature of the RACING LINE [1/m] (drives the corner-speed model)
+    rl::Vector{Float64}                # racing-line lateral offset from the centreline [m] (out-in-out apexes)
     total::Float64                     # lap length [m]
 end
 
@@ -20,7 +21,7 @@ wrapπ(a) = a > π ? a - 2π : a < -π ? a + 2π : a
 and a `groundz(x,z)->y` elevation function.  Resamples to ~`spacing` m so tight corners are
 well-represented (a coarse line is a polygon that the AI chord across = corner-cutting) and
 the per-point curvature is accurate."
-function build_line(pts, groundz; spacing = 3.0)
+function build_line(pts, groundz; spacing = 3.0, halfwidth = 3.3)
     # arc-length resample the closed input polyline to ~`spacing` metres
     m = length(pts)
     cum = zeros(m+1); for i in 1:m; cum[i+1] = cum[i] + hypot(pts[i%m+1][1]-pts[i][1], pts[i%m+1][2]-pts[i][2]); end
@@ -41,19 +42,50 @@ function build_line(pts, groundz; spacing = 3.0)
         j = i % n + 1; ds = max(j == 1 ? (s[end]-s[i]) : (s[j]-s[i]), 0.5)
         κ0[i] = abs(wrapπ(θ[j]-θ[i])) / ds
     end
-    κ = zeros(n)                                  # smooth over a ~9 m window (fine segments → noisy single-segment κ)
+    # ---- RACING LINE: out-in-out apexes via curvature-minimising relaxation, kept within the
+    # track band (±halfwidth of the centreline).  Pulling the line taut (Laplacian smoothing,
+    # clamped to the band) makes it run wide into a corner, clip the inside at the apex and track
+    # back out — the geometric "the line" of "Anatomy of a Corner" — instead of sitting on the
+    # centreline (so the AI no longer apex-cut into the grass or sit on the outer edge mid-corner).
+    rx = copy(x); rz = copy(z)
+    nx = Float64[-sin(θ[i]) for i in 1:n]; nz = Float64[cos(θ[i]) for i in 1:n]   # left-normal
+    for _ in 1:600
+        for i in 1:n
+            p = mod(i-2, n)+1; q = i % n + 1
+            mx = 0.5*(rx[p]+rx[q]); mz = 0.5*(rz[p]+rz[q])
+            rx[i] += 0.25*(mx-rx[i]); rz[i] += 0.25*(mz-rz[i])
+            off = clamp((rx[i]-x[i])*nx[i] + (rz[i]-z[i])*nz[i], -halfwidth, halfwidth)  # stay on the road
+            rx[i] = x[i] + off*nx[i]; rz[i] = z[i] + off*nz[i]
+        end
+    end
+    rl = Float64[(rx[i]-x[i])*nx[i] + (rz[i]-z[i])*nz[i] for i in 1:n]
+    # curvature of the RACING LINE (smoother than the centreline → higher, more realistic corner
+    # speeds where the line straightens the bend), smoothed over a ~9 m window
+    θr = [atan(rz[i%n+1]-rz[i], rx[i%n+1]-rx[i]) for i in 1:n]
+    κr = zeros(n)
     for i in 1:n
-        a = 0.0; for d in -1:1; a += κ0[mod(i-1+d, n)+1]; end; κ[i] = a/3
+        j = i % n + 1; ds = max(hypot(rx[j]-rx[i], rz[j]-rz[i]), 0.5)
+        κr[i] = abs(wrapπ(θr[j]-θr[i])) / ds
+    end
+    κ = zeros(n)
+    for i in 1:n
+        a = 0.0; for d in -2:2; a += κr[mod(i-1+d, n)+1]; end; κ[i] = a/5
     end
     y = Float64[(h = groundz(x[i], z[i]); isfinite(h) ? h : 0.0) for i in 1:n]
-    AILine(x, z, y, s, θ, κ, s[end])
+    AILine(x, z, y, s, θ, κ, rl, s[end])
+end
+
+"Racing-line lateral offset (m, left +) at arc-length `s`."
+function racelane(line::AILine, s)
+    i, f = _locate(line, s); j = i % length(line.rl) + 1
+    line.rl[i]*(1-f) + line.rl[j]*f
 end
 
 mutable struct AICar; s::Float64; v::Float64; lap::Int; lane::Float64; tlane::Float64; spin::Float64; follow::Float64; end
 AICar(s, v, lap, lane) = AICar(s, v, lap, lane, lane, 0.0, 0.0)   # tlane=current lane; spin=collision yaw; follow=tailgate timer (s)
 
-const RAIL     = 3.0    # inside/outside rail offset from the race line (m)
-const LANE_MAX = 3.6    # never exceed this lateral offset (keeps the car on the track)
+const RAIL     = 2.6    # pass-deviation offset to either side of the racing line (m)
+const LANE_MAX = 4.2    # never exceed this lateral offset (racing line ±3.3 + a pass move, still on the 5.5 m road)
 const CAR_LEN  = 4.2    # car length (m) — single-file spacing + collision longitudinal extent
 const CAR_WID  = 1.7    # car width (m) — collision lateral extent
 
@@ -73,7 +105,7 @@ end
 
 "Grid of `n` AI cars staggered ~9 m apart behind arc-length `start_s`, alternating lanes."
 init_cars(line::AILine, n; start_s = 0.0) =
-    [AICar(mod(start_s - 9.0*i, line.total), 25.0, 0, iseven(i) ? 2.4 : -2.4) for i in 1:n]
+    [AICar(mod(start_s - 9.0*i, line.total), 25.0, 0, iseven(i) ? 2.4 : -2.4, 0.0, 0.0, 0.0) for i in 1:n]  # tlane=0 = on the racing line
 
 function _locate(line::AILine, sq)
     sq = mod(sq, line.total)
@@ -163,7 +195,8 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
             (gap < car.v*0.6 + CAR_LEN && abs(car.lane - blane) < 1.6) && (vt = min(vt, b[3]))  # still stuck behind → match speed
         end
         isfinite(rel) && player !== nothing && (vt = min(vt, max(player[3]*rel, 6.0)))   # ~player pace — never run away
-        car.lane += clamp(car.tlane - car.lane, -2.4*dt, 2.4*dt)   # deliberate lane changes (not twitchy)
+        tgt = clamp(racelane(line, car.s) + car.tlane, -LANE_MAX, LANE_MAX)   # racing line + pass deviation
+        car.lane += clamp(tgt - car.lane, -2.4*dt, 2.4*dt)        # deliberate lane changes (not twitchy)
         car.lane  = clamp(car.lane, -LANE_MAX, LANE_MAX)
         car.v     = advance_speed(car.v, vt, dt)            # realistic accel/brake (not slot-car)
         car.spin *= exp(-dt/0.45)                           # collision yaw decays back to the line heading
@@ -233,21 +266,29 @@ function plan!(cars::Vector{AICar}, line::AILine; player = nothing, scale = 1.0,
     maxκ(s, dist) = begin κ = 1e-4; off = 0.0; while off <= dist; κ = max(κ, line.κ[_locate(line, s+off)[1]]); off += 6.0; end; κ end
     vts = Float64[]
     for (i, car) in enumerate(cars)
-        vt = _vtarget(line, car.s, car.v; amax, vmax, vmin, scale)
+        # PER-CAR IMPERFECTION so the field isn't robotically identical: a steady pace bias (±2.5 %),
+        # plus a rare "brake too late" twitch that carries a touch too much speed into a corner — an
+        # understandable error that can run a car a little wide (heightens realism; recovery still catches it).
+        bias  = 1.0 + 0.05*(((0.61*i) % 1.0) - 0.5)
+        gaffe = (rand() < 0.0015) ? 1.10 : 1.0
+        vt = _vtarget(line, car.s, car.v; amax, vmax, vmin, scale) * bias * gaffe
         b = blocker(car.s, i); gap = b === nothing ? Inf : b[1]; blane = b === nothing ? 0.0 : b[2]; bv = b === nothing ? Inf : b[3]
+        dlane  = b === nothing ? Inf : abs(car.lane - blane)            # lateral separation from the car ahead
         tail   = car.v*0.9 + 10.0                                       # following distance that counts as "tailgating"
         zone   = max(car.v*2.0, 45.0)                                   # passing-zone look-ahead
-        straight = maxκ(car.s, zone) < 1/75.0                           # corner radius > 75 m ⇒ safe to pull out
-        # per-car patience (deterministic, staggered so the field doesn't pull out in unison): 1.2–3.0 s
-        patience = 1.2 + 1.8*((0.37*i) % 1.0)
-        edge   = bv + 1.5 < vt                                          # we'd be quicker than the car ahead if free
+        straight = maxκ(car.s, zone) < 1/75.0                          # corner radius > 75 m ⇒ a straight to slingshot on
+        overlap  = gap < CAR_LEN*0.7                                    # "front wheels past his cockpit" by corner entry
+        patience = 1.2 + 1.8*((0.37*i) % 1.0)                          # staggered so the field doesn't pull out in unison
+        edge   = bv + 1.0 < vt                                          # we'd be quicker than the car ahead if free
         if car.tlane == 0.0
-            if gap < tail && abs(car.lane - blane) < 2.4                # sitting in the dirty air behind a car
+            if gap < tail && dlane < 2.4                                # sitting in the dirty air behind a car
                 car.follow += dt
-                # STRATEGIC pass: only commit once we've tailgated long enough AND it's a straight (own the
-                # corner = don't dive-bomb into it) AND we actually have the pace to make it stick.
-                if car.follow > patience && straight && edge
-                    car.tlane = blane >= 0.0 ? -RAIL : RAIL             # pick a side and commit
+                # COMMIT a pass once we've kept the pressure on (patience) AND have the pace, EITHER on a
+                # straight (slingshot) OR — into a corner — only if we've already drawn alongside (the GPL
+                # overlap rule: you may take the corner only with front-wheel overlap by entry; else you do
+                # NOT own it → tuck in and wait for the leader to make a mistake).
+                if car.follow > patience && edge && (straight || overlap)
+                    car.tlane = blane >= 0.0 ? -RAIL : RAIL             # pull out to the side with room
                     car.follow = 0.0
                 elseif gap < car.v*0.6 + CAR_LEN                        # else hold station — match speed, don't ram
                     vt = min(vt, bv)
@@ -256,11 +297,11 @@ function plan!(cars::Vector{AICar}, line::AILine; player = nothing, scale = 1.0,
                 car.follow = max(0.0, car.follow - dt)                  # nobody ahead → patience resets
             end
         else
-            if gap > car.v*1.7 + 30.0                                   # clear ahead → ease back to the race line
+            if gap > car.v*1.7 + 30.0                                   # clear ahead → ease back to the racing line
                 car.tlane = 0.0
-            elseif !straight && gap > CAR_LEN*1.3                       # corner coming and not yet alongside → ABORT,
-                car.tlane = 0.0; vt = min(vt, bv)                       #   tuck back in behind (yield the corner)
-            elseif gap < car.v*0.6 + CAR_LEN && abs(car.lane - blane) < 1.6
+            elseif !straight && !overlap                                # corner here and NOT alongside → yield it:
+                car.tlane = 0.0; vt = min(vt, bv)                       #   tuck back in behind (don't dive-bomb)
+            elseif gap < car.v*0.6 + CAR_LEN && dlane < 1.6
                 vt = min(vt, bv)                                        # still stuck behind in the passing lane → match speed
             end
         end
@@ -270,19 +311,21 @@ function plan!(cars::Vector{AICar}, line::AILine; player = nothing, scale = 1.0,
     vts
 end
 
-"""Steering/throttle/brake for one hybrid-physics AI to track the rail at `tlane` at speed
-`tv` (the PROVEN controller: short-look-ahead pursuit + cross-track + yaw-damp, corner
-throttle-cut).  `cs`/`clane` = the car's current arc-length/lateral (from projection),
-`cθ`/`cv`/`r` its heading/speed/yaw-rate.  Returns (throttle, brake, steer)."""
-function controller(line::AILine, cs, clane, tlane, tv, cx, cz, cθ, cv, r; power = 1.0)
+"""Steering/throttle/brake for one hybrid-physics AI to track the RACING LINE (plus a pass
+`dev`iation, e.g. ±RAIL to pull out alongside) at speed `tv` (short-look-ahead pursuit +
+cross-track + yaw-damp, corner throttle-cut).  `cs`/`clane` = the car's current arc-length/
+lateral (from projection), `cθ`/`cv`/`r` its heading/speed/yaw-rate.  Returns (thr, brk, steer)."""
+function controller(line::AILine, cs, clane, dev, tv, cx, cz, cθ, cv, r; power = 1.0)
     la = clamp(6.0 + cv*0.35, 6.0, 20.0)                  # look-ahead DISTANCE in metres (density-independent)
     # SHORTEN the look-ahead in a tight corner so the chord follows the arc instead of cutting the
     # apex to the inside (the T1-hairpin problem): cap it to a fraction of the corner radius.
     κloc = max(line.κ[_locate(line, cs)[1]], line.κ[_locate(line, cs + 0.5*la)[1]], 1e-4)
     la = clamp(min(la, 0.32/κloc), 4.0, 20.0)
-    lp = pose_at(line, cs + la, tlane)                    # look-ahead point ON the target rail
+    tlane = clamp(racelane(line, cs + la) + dev, -LANE_MAX, LANE_MAX)    # target = racing line ahead + pass offset
+    here  = clamp(racelane(line, cs)      + dev, -LANE_MAX, LANE_MAX)
+    lp = pose_at(line, cs + la, tlane)                    # look-ahead point ON the racing line
     herr = wrapπ(atan(lp[3]-cz, lp[1]-cx) - cθ)
-    steer = clamp(3.0*herr - 0.24*(clane - tlane) - 0.22*r, -1.0, 1.0)   # tighter line-follow (don't flatten corners)
+    steer = clamp(3.0*herr - 0.24*(clane - here) - 0.22*r, -1.0, 1.0)   # tight line-follow (don't flatten corners)
     # `power` = the AI's engine-power tune (set ONCE pre-race, not per frame): caps throttle so a
     # detuned car has lower accel/top speed → a fixed pace it can't exceed (and can wash out hot).
     thr = (cv < tv ? clamp((tv-cv)*0.25, 0, 1) * clamp(1.4 - 2.2*abs(steer), 0.0, 1.0) : 0.0) * power

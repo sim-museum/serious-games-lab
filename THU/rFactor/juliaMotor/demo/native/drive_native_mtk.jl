@@ -83,6 +83,22 @@ const AI_PHYSICS = !haskey(ENV, "JM_AI_KINEMATIC")
 # legitimately ahead.  1.0 = full DFV power (GPL-fast); lower detunes them.  JM_AI_POWER tunes it.
 const AI_POWER  = clamp(tryparse(Float64, get(ENV, "JM_AI_POWER", "0.90")) |> x -> x === nothing ? 0.90 : x, 0.4, 1.0)
 const CONTACT_D = parse(Float64, get(ENV, "JM_CONTACT_D", "2.1"))   # collision = ACTUAL contact (≈ car width); no repel-from-afar
+# SLIPSTREAM (GPL models it): tucking into the hole a car ahead punches in the air gives a forward
+# tow → you reel them in on a straight and slingshot past.  Returns the tow accel (m/s²) on a
+# follower at (fx,fz,fθ,fv) from the nearest aligned car ahead in `leads` = [(x,z,θ,v)…].
+const DRAFT_LEN = 26.0; const DRAFT_LAT = 2.8; const TOW_MAX = 4.0   # draft reach (m), lateral catch (m), max tow (m/s²)
+function draft_tow(fx, fz, fθ, fv, leads)
+    fv < 26.0 && return 0.0                                          # the tow only matters at speed (straights)
+    hx = cos(fθ); hz = sin(fθ); best = 0.0
+    for L in leads
+        dx = L[1]-fx; dz = L[2]-fz; ahead = dx*hx + dz*hz            # distance the lead is in FRONT of us
+        (ahead < 2.0 || ahead > DRAFT_LEN) && continue
+        abs(-dx*hz + dz*hx) > DRAFT_LAT && continue                 # must be lined up behind it, not beside
+        abs(RaceAI.wrapπ(L[3]-fθ)) > 0.5 && continue                # headings aligned (same way down the road)
+        best = max(best, TOW_MAX*(1.0 - ahead/DRAFT_LEN))           # closer = stronger tow
+    end
+    best
+end
 # GPL '67 AI reference laptimes (s) — the "100 %" anchor.  Sourced from GPL AI/hotlap
 # pace per circuit; tunable per car/setup via JM_AI_REFLAP (overrides the table).  At
 # AI_PCT=100 the field is paced to hit exactly this laptime regardless of the rail
@@ -1141,6 +1157,15 @@ function main()
                     AIbump!(pc, -GRASS_DRAG*pc.v*cos(pc.θ)*ddt, -GRASS_DRAG*pc.v*sin(pc.θ)*ddt, (2*rand()-1)*GRASS_SLIP*ddt)
                 end
             end
+            # slipstream: each AI tucked behind the player or another AI on a straight gets a forward tow
+            let plead = (cs.x, cs.z, cs.θ, cs.v)
+                for (i, pc) in enumerate(AIPHYS)
+                    leads = NTuple{4,Float64}[plead]
+                    for j in 1:length(AIPHYS); j != i && push!(leads, (AIPHYS[j].x, AIPHYS[j].z, AIPHYS[j].θ, AIPHYS[j].v)); end
+                    tw = draft_tow(pc.x, pc.z, pc.θ, pc.v, leads)
+                    tw > 0.0 && AIbump!(pc, tw*cos(pc.θ)*ddt, tw*sin(pc.θ)*ddt, 0.0)
+                end
+            end
             # AI↔AI collisions (physics): pairwise overlap + closing → momentum exchange (both react)
             for a in 1:length(AIPHYS)-1, b in a+1:length(AIPHYS)
                 pa = AIPHYS[a]; pb = AIPHYS[b]
@@ -1166,6 +1191,12 @@ function main()
         # momentum-exchange impulse: the player (real vehicle physics) is knocked off line + spun
         # via bumpX!, the AI is shoved aside + spun + scrubbed.  The wheels keep spinning with motion.
         if race_go[] && !rst && !isempty(ai_poses)
+            # slipstream for the PLAYER: tuck behind an AI on a straight → tow → slingshot past
+            if AI_PHYSICS
+                plds = [(p[1], p[3], p[4], AICARS[k].v) for (k,p) in enumerate(ai_poses)]
+                ptw = draft_tow(cs.x, cs.z, cs.θ, cs.v, plds)
+                ptw > 0.0 && bumpX!(cs, ptw*cos(cs.θ)*ddt, ptw*sin(cs.θ)*ddt, 0.0)
+            end
             pm = 560.0; am = 560.0; restn = 0.45; mr = pm*am/(pm+am)   # elastic-ish (billiard-ball nudge)
             pvx = cs.v*cos(cs.θ); pvz = cs.v*sin(cs.θ)
             for (k, p) in enumerate(ai_poses)
