@@ -82,6 +82,12 @@ const AI_REFLAP = (v = tryparse(Float64, get(ENV, "JM_AI_REFLAP", ""));
                    v === nothing ? get(REF_LAP, TRACKSEL, 90.0) : v)
 println("  → mode: ", uppercasefirst(MODE),
         IS_RACE ? "  ($RACE_LAPS laps" * (N_AI>0 ? ", $N_AI AI cars)" : ")") : "")
+# ---- E10: fuel.  The Lotus is fuelled to finish the race + a margin of ~5 laps. ----
+# GPL Ford-DFV-ish burn (L/km); the tank is sized to (laps+margin)·burn so the player
+# always has enough to finish with a cushion.  Distance-based so the laps-of-fuel figure
+# is honest.  Practice/Training get a generous tank; the skidpad has no laps → no fuel.
+const FUEL_LPK    = clamp(tryparse(Float64, get(ENV,"JM_FUEL_LPK","0.55")) |> x-> x===nothing ? 0.55 : x, 0.05, 5.0)
+const FUEL_MARGIN = max(0, tryparse(Int, get(ENV,"JM_FUEL_MARGIN","5")) |> x-> x===nothing ? 5 : x)
 
 # ---- iRacing .ibt telemetry export (JM_IBT=1) ----
 # Record the lap in iRacing's exact .ibt format so juliaMotor laps can be diffed
@@ -722,6 +728,16 @@ function main()
         prank
     end
     DO_QUAL && println("\n  QUALIFYING — complete one lap to set your grid slot.")
+    # ---- E10: fuel load ----  tank sized so the player can finish + ~FUEL_MARGIN laps.
+    FUEL_ON   = !SKIDPAD
+    burn_lap  = FUEL_ON ? FUEL_LPK * LAPLEN/1000 : 0.0          # litres per lap (distance-based)
+    fuel_laps = IS_RACE ? (RACE_LAPS + FUEL_MARGIN) : 40        # practice/training: a generous tank
+    fuel      = Ref(FUEL_ON ? burn_lap * fuel_laps : 0.0)
+    if FUEL_ON
+        println("  → fuel: ", round(fuel[],digits=1), " L = ", fuel_laps, " laps",
+                IS_RACE ? " ($RACE_LAPS race + $FUEL_MARGIN margin)" : "",
+                "  (", round(burn_lap,digits=2), " L/lap)")
+    end
     ibt_samples = IBTREC ? Dict{String,Float64}[] : nothing      # iRacing-format telemetry rows
     IBTREC && println("  recording iRacing .ibt telemetry (JM_IBT) — template: ", basename(IBTTMPL))
     telem = SMOKE ? nothing : open("zand_racer_$(round(Int,time())).txt", "w")
@@ -740,6 +756,13 @@ function main()
         SMOKE && frames >= 40 && break
         now = time(); dt = clamp(now-last, 0.0, 0.05); last = now
         inp, rst = read_input()
+        # E10: burn fuel by distance (only once racing); a dry tank starves the engine.
+        if FUEL_ON && phase[] == :race && !rst
+            fuel[] = max(0.0, fuel[] - FUEL_LPK * cs.v * (dt > 1e-4 ? dt : 1/60) / 1000)
+            fuel[] <= 0 && (inp = DriveInput(throttle=0.0, brake=inp.brake, steer=inp.steer,
+                            clutch=inp.clutch, shift_up=inp.shift_up, shift_down=inp.shift_down, autoshift=inp.autoshift))
+        end
+        rst && FUEL_ON && (fuel[] = burn_lap * fuel_laps)        # respawn refuels
         if rst; respawnX!(cs)
         else; step_carX!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
@@ -914,6 +937,7 @@ function main()
                 (phase[] == :qual ? "  ⏱ QUALIFYING" :
                  IS_RACE ? (race_done ? "  ✦ FINISHED — started P$(player_grid[])" : "  — lap $(min(cs.laps+1,RACE_LAPS))/$RACE_LAPS") :
                            "  [$(uppercasefirst(MODE))]") *
+                (FUEL_ON ? "  — fuel $(round(Int,fuel[]))L ($(round(burn_lap>0 ? fuel[]/burn_lap : 0,digits=1)) laps)" : "") *
                 (cs.ontrack ? "" : "  [OFF TRACK]"))
             titleT = now
         end

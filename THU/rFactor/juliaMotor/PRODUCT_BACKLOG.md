@@ -180,6 +180,11 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   drops the GPL reflection tray + blob shadow generically (`*traymap`/`*shad`) and an AI-only
   green-placeholder drop. Verified offscreen (5 distinct liveried cars) + in-cockpit grid view;
   player Lotus unchanged. Harness `grid_snapshot.jl`.
+- 2026-06-26 R-Sprint 4 DONE (commit pending): **E10** — fuel. The Lotus is fuelled to finish the
+  race + a ~5-lap margin: `TANK = (RACE_LAPS + FUEL_MARGIN)·burn_lap`, `burn_lap = FUEL_LPK·lapKm`
+  (DFV-ish 0.55 L/km). Distance-based burn (during the race), a dry tank starves the throttle,
+  respawn refuels; title-bar readout "fuel NL (M laps)". Practice/Training get a 40-lap tank;
+  skidpad has no fuel. `JM_FUEL_LPK`/`JM_FUEL_MARGIN` tune it. Verified: 3-lap race → 8 laps fuel.
 - 2026-06-26 R-Sprint 3 DONE (commit pending): **E9** — qualifying → grid. Race mode opens in a
   QUALIFYING phase (AI hidden); the player's one completed lap sets the grid via
   `RaceAI.grid_order` (player + AI ref qual times sorted pole-first). The field is then arranged
