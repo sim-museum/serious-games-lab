@@ -87,6 +87,40 @@ function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
     c
 end
 
+"""Compile the 3-D car ONCE and build `length(poses)` cars sharing the system (so a field of
+3-D AI doesn't pay N× mtkcompile).  `poses` = Vector of (x0,z0,θ0,v0)."""
+function build_cars3d(poses; brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
+    sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush))
+    s_thr=setp(sys,sys.throttle); s_brk=setp(sys,sys.brake); s_st=setp(sys,sys.δ)
+    s_gr=setp(sys,sys.gear); s_clu=setp(sys,sys.clutch); s_we=ModelingToolkit.setu(sys,sys.ωe)
+    s_zr=(setp(sys,sys.zrFL),setp(sys,sys.zrFR),setp(sys,sys.zrRL),setp(sys,sys.zrRR))
+    s_vr=(setp(sys,sys.vrFL),setp(sys,sys.vrFR),setp(sys,sys.vrRL),setp(sys,sys.vrRR))
+    s_pos=ModelingToolkit.setu(sys,[sys.X,sys.Y]); s_vel=ModelingToolkit.setu(sys,[sys.u,sys.v])
+    s_vreset=ModelingToolkit.setu(sys,[sys.z,sys.w,sys.th,sys.q,sys.ph,sys.pp,
+                  sys.zuFL,sys.vuFL,sys.zuFR,sys.vuFR,sys.zuRL,sys.vuRL,sys.zuRR,sys.vuRR])
+    getall=ModelingToolkit.getsym(sys, [sys.X, sys.Y, sys.ψ, sys.u, sys.v, sys.rpm,
+        sys.FL.Fx, sys.FR.Fx, sys.RL.Fx, sys.RR.Fx, sys.FL.Fy, sys.FR.Fy, sys.RL.Fy, sys.RR.Fy,
+        sys.z, sys.th, sys.ph, sys.az, sys.FzFL, sys.FzFR, sys.FzRL, sys.FzRR, sys.ωr])
+    cars=Car3D[]
+    for (x0,z0,θ0,v0) in poses
+        prob = ODEProblem(sys, [sys.u=>v0, sys.ωf=>v0/0.30, sys.ωr=>v0/RW_R,
+                                sys.ωe=>209.4, sys.X=>x0, sys.Y=>z0, sys.ψ=>θ0], (0.0,1e7))
+        integ = init(prob, Rosenbrock23(); save_everystep=false, dense=false, adaptive=false, dt=dt)
+        c = Car3D(sys, integ, s_thr,s_brk,s_st,s_gr,s_clu,s_we, s_zr, s_vr, s_pos,s_vel, s_vreset,
+                  getall, 1, 0.0, ntuple(_->0.0,4),
+                  x0, 0.0, z0, θ0, v0, 0.0, 0.0, 1, ntuple(_->(0.0,0.0,0.0),4),
+                  0.0, 0, 0.0, 0.0, true, 0.0, 0.0, 9.80665, 0.0, ntuple(_->RH0,4))
+        c.s_gr(c.integ, GEARS[c.gear]); getall(integ)
+        for _ in 1:3; step_car3d!(c, 0.3, 0.0, 0.0, 1/60); end
+        for _ in 1:3; step_car3d!(c, 0.3, 0.0, 0.0, 1/60; clutch=0.5, manual=true); end
+        reinit!(c.integ); c.gear=0; c.s_gr(c.integ, 0.0)
+        a=getall(c.integ); c.x=a[1]; c.z=a[2]; c.θ=a[3]; c.v=sqrt(a[4]^2+a[5]^2); c.rpm=a[6]
+        c.zref=0.0; c.zr_prev=ntuple(_->0.0,4)
+        push!(cars, c)
+    end
+    cars
+end
+
 "Advance the 3-D car by dt.  Inputs as DriveRT.step_car!.  `groundz(x,z)->h`
 gives terrain elevation (used to drive the suspension under each wheel)."
 function step_car3d!(c::Car3D, throttle, brake, steer, dt;
@@ -215,6 +249,22 @@ function respawn3d!(c::Car3D)
 end
 
 const _RSET3D = IdDict()
+function yawrate3d(c::Car3D)
+    gs = get!(() -> (ModelingToolkit.getsym(c.sys, c.sys.r), ModelingToolkit.setu(c.sys, c.sys.r)), _RSET3D, c.sys)
+    gs[1](c.integ)
+end
+const _PSI3D = IdDict()
+"Place the 3-D car at world (x,z) facing θ with forward speed v (e.g. onto a grid slot)."
+function place3d!(c::Car3D, x, z, θ; v = 0.0)
+    c.s_pos(c.integ, [x, z])
+    try
+        pset = get!(() -> ModelingToolkit.setu(c.sys, c.sys.ψ), _PSI3D, c.sys)
+        pset(c.integ, θ)
+    catch; end
+    c.s_vel(c.integ, [v, 0.0])
+    c.x = x; c.z = z; c.θ = θ; c.v = v
+    c
+end
 "Rigid-body collision impulse (3-D car): world-frame velocity change (dvx,dvz) + yaw-rate dr."
 function bump3d!(c::Car3D, dvx, dvz, dr)
     a = c.getall(c.integ); θ = a[3]; u = a[4]; v = a[5]

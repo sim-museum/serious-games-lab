@@ -479,6 +479,12 @@ telemetryX(c)              = CAR3D ? DriveRT3D.telemetry3d(c) : DriveRT.telemetr
 respawnX!(c)               = CAR3D ? DriveRT3D.respawn3d!(c) : DriveRT.respawn!(c)
 containX!(c, x, z; kw...)  = CAR3D ? DriveRT3D.contain3d!(c, x, z; kw...) : DriveRT.contain!(c, x, z; kw...)
 bumpX!(c, dvx, dvz, dr)    = CAR3D ? DriveRT3D.bump3d!(c, dvx, dvz, dr)    : DriveRT.bump!(c, dvx, dvz, dr)   # GD: collision impulse
+# AI run the full 3-D physics model too (weight transfer + jumps).  Aliases keep call sites tidy.
+const AICarT  = DriveRT3D.Car3D
+const AIbuild = DriveRT3D.build_cars3d
+const AIyaw   = DriveRT3D.yawrate3d
+const AIbump! = DriveRT3D.bump3d!
+const AIplace! = DriveRT3D.place3d!
 const FENCE = parse(Float64, get(ENV, "JM_FENCE", "13.0"))   # E7: track boundary (m from centreline) — you can't leave the world
 const FENCE_GRACE = parse(Float64, get(ENV, "JM_FENCE_GRACE", "2.5"))   # off-HAT distance before the trackside collision fires (tolerates sub-car mesh cracks; small so the fence feels like a wall)
 const GRASS_DRAG = parse(Float64, get(ENV, "JM_GRASS_DRAG", "0.9"))      # grass penalty: per-second velocity loss on the verge (GPL "slow grass")
@@ -768,11 +774,11 @@ function main()
     AICHASSIS = AICARMODELS[1:length(AICARS)]   # grid slot i → AISPECS[i] (Ferrari, Brabham, …)
     # GC: build the AI as PHYSICS cars (one shared compile) placed on the grid; AICARS stays the
     # rail "brain" (s/lane/v/tlane/lap), updated each frame from the physics by projection.
-    AIPHYS = DriveRT.Car[]
+    AIPHYS = AICarT[]
     if AI_PHYSICS && AILINE !== nothing
-        print("  building $(length(AICARS)) physics AI (shared JM 2-D model)… "); flush(stdout)
+        print("  building $(length(AICARS)) physics AI (shared JM 3-D model)… "); flush(stdout)
         poses = [(p = RaceAI.pose_at(AILINE, c.s, c.lane); (p[1], p[3], p[4], 0.0)) for c in AICARS]
-        AIPHYS = DriveRT.build_cars(poses)
+        AIPHYS = AIbuild(poses)
         println("done")
     end
     # E11: pace the field.  Target laptime = refLap × (100/pct); the speed scale that
@@ -788,7 +794,7 @@ function main()
     end
     # JM_AI_TEST: drive the physics field on the REAL loaded track (no player) → laps/spins, exit.
     if AI_PHYSICS && haskey(ENV, "JM_AI_TEST") && !isempty(AIPHYS)
-        for (i,pc) in enumerate(AIPHYS); p = RaceAI.pose_at(AILINE, AICARS[i].s, AICARS[i].lane); DriveRT.place!(pc, p[1], p[3], p[4]; v=12.0); end
+        for (i,pc) in enumerate(AIPHYS); p = RaceAI.pose_at(AILINE, AICARS[i].s, AICARS[i].lane); AIplace!(pc, p[1], p[3], p[4]; v=12.0); end
         N=length(AIPHYS); maxr=0.0; spins=0; maxlat=0.0; aidist=zeros(N); stuck=zeros(Int,N); scon=zeros(Int,N); lastx=[pc.x for pc in AIPHYS]; lastz=[pc.z for pc in AIPHYS]
         nstep=5400   # 90 s
         for _ in 1:nstep
@@ -798,14 +804,14 @@ function main()
                 aidist[i] += hypot(pc.x-lastx[i], pc.z-lastz[i]); lastx[i]=pc.x; lastz[i]=pc.z
                 if pc.v < 1.4 || abs(lat) > 14.0      # mirror the live recovery: stalled OR off-track
                     stuck[i]+=1; scon[i]+=1
-                    if scon[i] > (abs(lat)>14.0 ? 24 : 100); rp=RaceAI.pose_at(AILINE, s+10.0, 0.0); DriveRT.place!(pc, rp[1], rp[3], rp[4]; v=max(8.0,pc.v*0.7)); scon[i]=0; end
+                    if scon[i] > (abs(lat)>14.0 ? 24 : 100); rp=RaceAI.pose_at(AILINE, s+10.0, 0.0); AIplace!(pc, rp[1], rp[3], rp[4]; v=max(8.0,pc.v*0.7)); scon[i]=0; end
                 else; scon[i]=0; end
             end
             vts = RaceAI.plan!(AICARS, AILINE; scale=1.0, amax=8.0)
             for (i,pc) in enumerate(AIPHYS)
-                r = DriveRT.yawrate(pc); maxr = max(maxr, abs(r)); abs(r) > 2.5 && (spins += 1)
+                r = AIyaw(pc); maxr = max(maxr, abs(r)); abs(r) > 2.5 && (spins += 1)
                 thr,brk,st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i], pc.x, pc.z, pc.θ, pc.v, r; power=AI_POWER)
-                DriveRT.step_car!(pc, thr, brk, st, 1/60; manual=false)
+                DriveRT3D.step_car3d!(pc, thr, brk, st, 1/60; manual=false, groundz=groundz)
             end
         end
         avgkmh = round.(Int, aidist ./ 90 .* 3.6)
@@ -854,7 +860,7 @@ function main()
             c.s = mod(-(r - prank)*ROW, AILINE.total)      # ahead (+s) if it out-qualified the player
             c.v = 0.0; c.lap = 0
             c.lane = isodd(r) ? GRID_LANE : -GRID_LANE; c.tlane = c.lane
-            AI_PHYSICS && (gp = RaceAI.pose_at(AILINE, c.s, c.lane); DriveRT.place!(AIPHYS[i], gp[1], gp[3], gp[4]; v=0.0))
+            AI_PHYSICS && (gp = RaceAI.pose_at(AILINE, c.s, c.lane); AIplace!(AIPHYS[i], gp[1], gp[3], gp[4]; v=0.0))
         end
         println("\n  ═══ GRID (from qualifying) ═══")
         for (p, id) in enumerate(order)
@@ -1101,7 +1107,7 @@ function main()
                     ai_stuck[i] += 1
                     lim = abs(lat) > 14.0 ? 24 : 100      # off-track: recover within ~0.4 s; stalled: ~1.7 s
                     if ai_stuck[i] > lim
-                        rp = RaceAI.pose_at(AILINE, s + 10.0, 0.0); DriveRT.place!(pc, rp[1], rp[3], rp[4]; v = max(8.0, pc.v*0.7)); ai_stuck[i] = 0
+                        rp = RaceAI.pose_at(AILINE, s + 10.0, 0.0); AIplace!(pc, rp[1], rp[3], rp[4]; v = max(8.0, pc.v*0.7)); ai_stuck[i] = 0
                     end
                 else; ai_stuck[i] = 0; end
             end
@@ -1110,10 +1116,10 @@ function main()
             vts = RaceAI.plan!(AICARS, AILINE; scale = 1.0, amax = 8.0)
             for (i, pc) in enumerate(AIPHYS)
                 thr, brk, st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i],
-                                                 pc.x, pc.z, pc.θ, pc.v, DriveRT.yawrate(pc); power = AI_POWER)
-                DriveRT.step_car!(pc, thr, brk, st, ddt; manual = false)
+                                                 pc.x, pc.z, pc.θ, pc.v, AIyaw(pc); power = AI_POWER)
+                DriveRT3D.step_car3d!(pc, thr, brk, st, ddt; manual=false, groundz=groundz)
                 if abs(AICARS[i].lane) > ROAD_HALFW && pc.v > 2.5    # AI on the grass → the same drag/slip penalty
-                    DriveRT.bump!(pc, -GRASS_DRAG*pc.v*cos(pc.θ)*ddt, -GRASS_DRAG*pc.v*sin(pc.θ)*ddt, (2*rand()-1)*GRASS_SLIP*ddt)
+                    AIbump!(pc, -GRASS_DRAG*pc.v*cos(pc.θ)*ddt, -GRASS_DRAG*pc.v*sin(pc.θ)*ddt, (2*rand()-1)*GRASS_SLIP*ddt)
                 end
             end
             # AI↔AI collisions (physics): pairwise overlap + closing → momentum exchange (both react)
@@ -1125,10 +1131,10 @@ function main()
                 vrel = (pa.v*cos(pa.θ)-pb.v*cos(pb.θ))*nx + (pa.v*sin(pa.θ)-pb.v*sin(pb.θ))*nz
                 vrel <= 0.2 && continue
                 j = 1.45*vrel*280.0                       # (1+e)·vrel·reduced-mass, e=0.45, m=560 each
-                DriveRT.bump!(pa, -(j/560)*nx, -(j/560)*nz, clamp(-(j/560)*0.04, -1.0, 1.0))
-                DriveRT.bump!(pb,  (j/560)*nx,  (j/560)*nz, clamp( (j/560)*0.04, -1.0, 1.0))
+                AIbump!(pa, -(j/560)*nx, -(j/560)*nz, clamp(-(j/560)*0.04, -1.0, 1.0))
+                AIbump!(pb,  (j/560)*nx,  (j/560)*nz, clamp( (j/560)*0.04, -1.0, 1.0))
             end
-            [(pc.x, groundz(pc.x, pc.z), pc.z, pc.θ) for pc in AIPHYS]
+            [(pc.x, isfinite(pc.y) ? pc.y : groundz(pc.x, pc.z), pc.z, pc.θ) for pc in AIPHYS]   # pc.y = 3-D height → AI visibly jump/heave
         else
             pp = RaceAI.project(AILINE, cs.x, cs.z)                # the human as a racecraft object (s, lateral, speed)
             poses, hit = RaceAI.step_field!(AICARS, AILINE, ddt; scale = AI_SCALE, player = (pp[1], pp[2], cs.v), rel = AI_REL)
@@ -1154,7 +1160,7 @@ function main()
                 ffb_jolt = clamp(-sign(lat)*(j/pm)*0.14, -1.0, 1.0)   # FF jolt — feel the hit in the wheel
                 if AI_PHYSICS                                  # the AI is a real physics car → impulse it too
                     alat = -dx*sin(aθ) + dz*cos(aθ)
-                    DriveRT.bump!(AIPHYS[k], (j/am)*nx, (j/am)*nz, clamp(sign(alat)*(j/am)*0.05, -1.5, 1.5))
+                    AIbump!(AIPHYS[k], (j/am)*nx, (j/am)*nz, clamp(sign(alat)*(j/am)*0.05, -1.5, 1.5))
                 else
                     along  = nx*cos(aθ) + nz*sin(aθ); across = -nx*sin(aθ) + nz*cos(aθ)
                     ac.v   = max(0.0, ac.v + (j/am)*along*0.6)    # pushed along its heading (rear-ended ⇒ sped up; nosed ⇒ slowed)
