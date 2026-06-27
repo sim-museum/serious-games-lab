@@ -788,6 +788,17 @@ function main()
                 IS_RACE ? " ($RACE_LAPS race + $FUEL_MARGIN margin)" : "",
                 "  (", round(burn_lap,digits=2), " L/lap)")
     end
+    # ---- live race standings: rank everyone by race progress (laps + lap fraction) ----
+    function standings()
+        pp = cs.laps + (FUEL_ON && LAPLEN > 0 ? clamp(cs.lapdist/LAPLEN, 0.0, 1.0) : 0.0)
+        entries = Tuple{Int,Float64}[(0, pp)]
+        for (i,c) in enumerate(AICARS)
+            push!(entries, (i, c.lap + (AILINE === nothing ? 0.0 : c.s/AILINE.total)))
+        end
+        sort!(entries, by = e -> -e[2])                # most progress = P1
+        entries
+    end
+    ent_name(id) = id == 0 ? "You" : AICHASSIS[id].name
     ibt_samples = IBTREC ? Dict{String,Float64}[] : nothing      # iRacing-format telemetry rows
     IBTREC && println("  recording iRacing .ibt telemetry (JM_IBT) — template: ", basename(IBTTMPL))
     telem = SMOKE ? nothing : open("zand_racer_$(round(Int,time())).txt", "w")
@@ -898,7 +909,16 @@ function main()
             if IS_RACE && cs.laps >= RACE_LAPS && !race_done    # race distance complete
                 race_done = true
                 println("\n  ═══════ RACE FINISHED — $RACE_LAPS laps ═══════")
-                println("  best $(fmt_lap(best_lap))   last $(fmt_lap(last_lap))   started P$(player_grid[])\n")
+                if !isempty(AICARS)
+                    fin = standings()
+                    println("  ── final classification ──")
+                    for (p, (id, _)) in enumerate(fin)
+                        println("   P$p  ", ent_name(id), id==0 ? "  (started P$(player_grid[]), best $(fmt_lap(best_lap)))" : "")
+                    end
+                else
+                    println("  best $(fmt_lap(best_lap))   last $(fmt_lap(last_lap))")
+                end
+                println()
             end
             end
         elseif cs.laps < prev_laps                 # respawn reset the lap counter
@@ -991,7 +1011,9 @@ function main()
         if now - titleT > 0.25
             GLFW.SetWindowTitle(win, "Julia Racer — $(uppercasefirst(TRACKSEL)) — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear == 0 ? "N" : string(cs.gear)) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
                 (phase[] == :qual ? "  ⏱ QUALIFYING" :
-                 IS_RACE ? (race_done ? "  ✦ FINISHED — started P$(player_grid[])" : "  — lap $(min(cs.laps+1,RACE_LAPS))/$RACE_LAPS") :
+                 IS_RACE ? (race_done ? "  ✦ FINISHED — started P$(player_grid[])" :
+                            "  — lap $(min(cs.laps+1,RACE_LAPS))/$RACE_LAPS" *
+                            (isempty(AICARS) ? "" : "  Pos P$(findfirst(e->e[1]==0, standings()))/$(length(AICARS)+1)")) :
                            "  [$(uppercasefirst(MODE))]") *
                 (FUEL_ON ? "  — fuel $(round(Int,fuel[]))L ($(round(burn_lap>0 ? fuel[]/burn_lap : 0,digits=1)) laps)" : "") *
                 (cs.ontrack ? "" : "  [OFF TRACK]"))
