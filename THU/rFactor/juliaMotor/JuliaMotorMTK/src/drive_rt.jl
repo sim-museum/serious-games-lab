@@ -172,4 +172,26 @@ function respawn!(c::Car)
     c
 end
 
+# cached yaw-rate setter per system (setu compiles once; reused for every collision frame)
+const _RSET = IdDict()
+"Apply a rigid-body collision impulse to the car: a world-frame velocity change
+`(dvx, dvz)` plus a yaw-rate change `dr` (rad/s) — so a hit knocks the car off line,
+scrubs speed, and spins it, all through the real vehicle state."
+function bump!(c::Car, dvx, dvz, dr)
+    a = c.getall(c.integ); θ = a[3]; u = a[4]; v = a[5]
+    wvx = u*cos(θ) - v*sin(θ) + dvx                     # world velocity + impulse
+    wvz = u*sin(θ) + v*cos(θ) + dvz
+    nu =  wvx*cos(θ) + wvz*sin(θ)                       # back to body frame (u,v)
+    nv = -wvx*sin(θ) + wvz*cos(θ)
+    c.s_vel(c.integ, [nu, nv])
+    if dr != 0.0
+        try                                              # r may be a derived var on some builds → skip the spin if unsettable
+            gs = get!(() -> (ModelingToolkit.getsym(c.sys, c.sys.r), ModelingToolkit.setu(c.sys, c.sys.r)), _RSET, c.sys)
+            gs[2](c.integ, gs[1](c.integ) + dr)          # yaw rate += dr (cached getter/setter)
+        catch; end
+    end
+    c.v = sqrt(nu^2 + nv^2)
+    c
+end
+
 end # module

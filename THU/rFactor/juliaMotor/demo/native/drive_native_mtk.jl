@@ -470,6 +470,7 @@ step_carX!(c, a...; kw...) = CAR3D ? DriveRT3D.step_car3d!(c, a...; kw...) : Dri
 telemetryX(c)              = CAR3D ? DriveRT3D.telemetry3d(c) : DriveRT.telemetry(c)
 respawnX!(c)               = CAR3D ? DriveRT3D.respawn3d!(c) : DriveRT.respawn!(c)
 containX!(c, x, z; kw...)  = CAR3D ? DriveRT3D.contain3d!(c, x, z; kw...) : DriveRT.contain!(c, x, z; kw...)
+bumpX!(c, dvx, dvz, dr)    = CAR3D ? DriveRT3D.bump3d!(c, dvx, dvz, dr)    : DriveRT.bump!(c, dvx, dvz, dr)   # GD: collision impulse
 const FENCE = parse(Float64, get(ENV, "JM_FENCE", "13.0"))   # E7: track boundary (m from centreline) — you can't leave the world
 const FENCE_GRACE = parse(Float64, get(ENV, "JM_FENCE_GRACE", "6.0"))   # off-HAT distance tolerated before containing (crosses sub-car-length mesh cracks; keeps the off-world guarantee tight)
 println(CAR3D ? "  PHYSICS: full-3D vehicle (default) — heave/pitch/roll + suspension travel + jumps" :
@@ -994,7 +995,29 @@ function main()
                                             scale = AI_SCALE, player = (pp[1], pp[2], cs.v), rel = AI_REL)
             ai_hit[] = hit; poses
         end
-        ai_hit[] && !rst && containX!(cs, cs.x, cs.z; vdamp = 0.85)   # an AI made contact → the player feels a bump (speed bleed)
+        # GD: rigid-body collision — when the player and an AI overlap and are CLOSING, apply a
+        # momentum-exchange impulse: the player (real vehicle physics) is knocked off line + spun
+        # via bumpX!, the AI is shoved aside + spun + scrubbed.  The wheels keep spinning with motion.
+        if race_go[] && !rst && !isempty(ai_poses)
+            pm = 560.0; am = 560.0; restn = 0.15; mr = pm*am/(pm+am)
+            pvx = cs.v*cos(cs.θ); pvz = cs.v*sin(cs.θ)
+            for (k, p) in enumerate(ai_poses)
+                dx = p[1] - cs.x; dz = p[3] - cs.z; d = hypot(dx, dz)
+                (d < 1e-3 || d > 3.6) && continue            # not touching
+                nx = dx/d; nz = dz/d                          # contact normal, player → AI
+                ac = AICARS[k]; aθ = p[4]
+                avx = ac.v*cos(aθ); avz = ac.v*sin(aθ)
+                vrel = (pvx-avx)*nx + (pvz-avz)*nz            # closing speed along the normal
+                vrel <= 0.2 && continue                       # separating → no new impulse
+                j = (1+restn)*vrel*mr
+                lat = -dx*sin(cs.θ) + dz*cos(cs.θ)            # contact offset in the player's frame → spin sign
+                bumpX!(cs, -(j/pm)*nx, -(j/pm)*nz, clamp(-sign(lat)*(j/pm)*0.05, -1.5, 1.5))
+                along  = nx*cos(aθ) + nz*sin(aθ); across = -nx*sin(aθ) + nz*cos(aθ)
+                ac.v   = max(0.0, ac.v + (j/am)*along*0.6)    # pushed along its heading (rear-ended ⇒ sped up; nosed ⇒ slowed)
+                ac.lane = clamp(ac.lane + (j/am)*across*0.12, -RaceAI.LANE_MAX, RaceAI.LANE_MAX)  # shoved aside
+                ac.spin += clamp((j/am)*across*0.04, -0.6, 0.6)   # yaw twitch
+            end
+        end
         aiCar(p)  = Render.translate(Float32[p[1], p[2], -p[3]]) * Render.roty(Float32(p[4]))
         aiBody(p, cm) = aiCar(p) * Render.translate(collect(cm.body_off))
         aiWheel(p,wx,wz,r) = aiCar(p) * Render.translate(Float32[wx, r, wz]) * Render.rotz(Float32(spin))

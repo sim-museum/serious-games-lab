@@ -214,4 +214,23 @@ function respawn3d!(c::Car3D)
     c
 end
 
+const _RSET3D = IdDict()
+"Rigid-body collision impulse (3-D car): world-frame velocity change (dvx,dvz) + yaw-rate dr."
+function bump3d!(c::Car3D, dvx, dvz, dr)
+    a = c.getall(c.integ); θ = a[3]; u = a[4]; v = a[5]
+    wvx = u*cos(θ) - v*sin(θ) + dvx
+    wvz = u*sin(θ) + v*cos(θ) + dvz
+    nu =  wvx*cos(θ) + wvz*sin(θ)
+    nv = -wvx*sin(θ) + wvz*cos(θ)
+    c.s_vel(c.integ, [nu, nv])
+    if dr != 0.0
+        try
+            gs = get!(() -> (ModelingToolkit.getsym(c.sys, c.sys.r), ModelingToolkit.setu(c.sys, c.sys.r)), _RSET3D, c.sys)
+            gs[2](c.integ, gs[1](c.integ) + dr)
+        catch; end
+    end
+    c.v = sqrt(nu^2 + nv^2)
+    c
+end
+
 end # module
