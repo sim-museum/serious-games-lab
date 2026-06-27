@@ -472,7 +472,7 @@ respawnX!(c)               = CAR3D ? DriveRT3D.respawn3d!(c) : DriveRT.respawn!(
 containX!(c, x, z; kw...)  = CAR3D ? DriveRT3D.contain3d!(c, x, z; kw...) : DriveRT.contain!(c, x, z; kw...)
 bumpX!(c, dvx, dvz, dr)    = CAR3D ? DriveRT3D.bump3d!(c, dvx, dvz, dr)    : DriveRT.bump!(c, dvx, dvz, dr)   # GD: collision impulse
 const FENCE = parse(Float64, get(ENV, "JM_FENCE", "13.0"))   # E7: track boundary (m from centreline) — you can't leave the world
-const FENCE_GRACE = parse(Float64, get(ENV, "JM_FENCE_GRACE", "6.0"))   # off-HAT distance tolerated before containing (crosses sub-car-length mesh cracks; keeps the off-world guarantee tight)
+const FENCE_GRACE = parse(Float64, get(ENV, "JM_FENCE_GRACE", "2.5"))   # off-HAT distance before the trackside collision fires (tolerates sub-car mesh cracks; small so the fence feels like a wall)
 println(CAR3D ? "  PHYSICS: full-3D vehicle (default) — heave/pitch/roll + suspension travel + jumps" :
                 "  PHYSICS: planar 2-D model (JM_2D)")
 GLFW.Init()
@@ -881,7 +881,19 @@ function main()
             if ONTRACK[]; LASTGX[] = cs.x; LASTGZ[] = cs.z; OFFDIST[] = 0.0   # inside the world
             else
                 OFFDIST[] += cs.v * (dt > 1e-4 ? dt : 1/60)
-                OFFDIST[] > FENCE_GRACE && containX!(cs, LASTGX[], LASTGZ[]; vdamp=0.4)  # sustained off-world → held at the edge
+                if OFFDIST[] > FENCE_GRACE       # G5: hit the trackside boundary → a PHYSICAL collision
+                    nwx = LASTGX[]-cs.x; nwz = LASTGZ[]-cs.z; nl = hypot(nwx,nwz)   # wall normal: back into the world
+                    nl < 1e-3 && (nwx = cos(cs.θ+π); nwz = sin(cs.θ+π); nl = 1.0)
+                    nwx /= nl; nwz /= nl
+                    pvx = cs.v*cos(cs.θ); pvz = cs.v*sin(cs.θ)
+                    vn = pvx*nwx + pvz*nwz                       # inward-normal speed (<0 = leaving the world)
+                    tx = -nwz; tz = nwx; vt = pvx*tx + pvz*tz    # tangent (along the fence)
+                    e = 0.30; fric = 0.55                        # restitution + fence grab (scrub tangential)
+                    dvn = (vn < 0 ? -e*vn : 0.0) - vn; dvt = -fric*vt
+                    containX!(cs, LASTGX[], LASTGZ[]; vdamp=1.0)  # shove back to the edge (position), keep velocity
+                    bumpX!(cs, dvn*nwx+dvt*tx, dvn*nwz+dvt*tz, clamp(sign(vt)*abs(vn)*0.05, -1.2, 1.2))  # bounce + scrub + glance-spin
+                    OFFDIST[] = 0.0
+                end
             end
             end
         end
