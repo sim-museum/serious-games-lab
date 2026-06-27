@@ -180,7 +180,16 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   drops the GPL reflection tray + blob shadow generically (`*traymap`/`*shad`) and an AI-only
   green-placeholder drop. Verified offscreen (5 distinct liveried cars) + in-cockpit grid view;
   player Lotus unchanged. Harness `grid_snapshot.jl`.
-- 2026-06-26 R-Sprint 6 DONE (commit pending): **E7 audit** — confirmed every track is *sealed*:
+- 2026-06-26 R-Sprint 5 part 1 DONE (commit 797e454): **E12 results** — live standings (rank by
+  laps+fraction; title "Pos P3/6") + a full finishing classification at the flag.
+- 2026-06-26 R-Sprint 5 part 2 (E12 physics AI) — FEASIBILITY PROBED, PO decision pending.
+  A pure-pursuit + speed controller on the planar JM model (`ai_phys_probe.jl`, synthetic oval):
+  **performance is a non-issue** (median planar step 0.23 ms → 5 AI ≈ 1 ms/frame), and the model
+  tracks a straight perfectly (cte 0.03 m), but the quick controller **spins in the tight bend**
+  (cte 37 m, 189 spin frames). The model is stable; a path-follower that holds racing pace without
+  spinning is the long-flagged "robust limit-handling autonomous driver" open problem. Raised to the
+  PO: keep the GPL-paced rail-follower (robust, already meets pace/grid/distinct-car) vs. invest in
+  the physics-AI controller vs. ship a gentle physics-AI opt-in alongside the rail default. — confirmed every track is *sealed*:
   the terrain HAT is a finite mesh, so the off-HAT containment means the car can never reach empty
   space. New `JM_BOUNDARY_TEST` self-test (reuses the real loaded HAT): marches off the centreline
   to find the world edge + checks for on-line HAT holes. Results — Zandvoort/Watkins Glen/Monza/Spa:
