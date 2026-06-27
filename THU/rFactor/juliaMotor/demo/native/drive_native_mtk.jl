@@ -702,6 +702,16 @@ function terrain_pitch(cs)
     (hf[3] && hr[3]) ? atan(hf[1]-hr[1], 2L) : 0.0        # front higher → nose up (+)
 end
 
+# ---- terrain ROLL: cross-slope under the car (left vs right), so a 3-D car on a banked
+# embankment LISTS with the surface (its up-normal stays perpendicular to the ground) ----
+function terrain_roll(cs)
+    SKIDPAD && return 0.0
+    L = 1.3; lx = -sin(cs.θ); lz = cos(cs.θ)               # car's LEFT direction (perp to heading)
+    hl = JuliaMotor.hat3d(TERRAIN, cs.x+lx*L, cs.z+lz*L; ref=Inf)
+    hr = JuliaMotor.hat3d(TERRAIN, cs.x-lx*L, cs.z-lz*L; ref=Inf)
+    (hl[3] && hr[3]) ? atan(hl[1]-hr[1], 2L) : 0.0         # left higher → list right
+end
+
 # ---- camera (pitch = total body pitch, applied to the cockpit view only) ----
 function camera(cs, pitch=0.0)
     wx,wy,wz = cs.x, cs.y, -cs.z; fx,fz = cos(cs.θ), -sin(cs.θ)   # render world un-mirrors physics z
@@ -740,7 +750,11 @@ function main()
     end
     cs = build_carX(x0=cs0.x, z0=cs0.z, θ0=θ0spawn, v0=0.0, y0=y0spawn)   # MTK car — standing start (planar or full-3D)
     # ---- AI opponents (race field): rail-followers on the centreline ----
-    AILINE = (!SKIDPAD && N_AI > 0) ? RaceAI.build_line(ALIGNED, groundz) : nothing
+    # CLINE = the centreline, built ALWAYS (off-skidpad) so the PLAYER's lap counting can use a
+    # robust projection wrap instead of the ribbon lapdist (the ribbon has a seam at S/F that
+    # broke the wrap → laps never counted → no finish).  AILINE = CLINE when there's a field.
+    CLINE  = !SKIDPAD ? RaceAI.build_line(ALIGNED, groundz) : nothing
+    AILINE = (CLINE !== nothing && N_AI > 0) ? CLINE : nothing
     AICARS = AILINE === nothing ? RaceAI.AICar[] : RaceAI.init_cars(AILINE, N_AI; start_s = 30.0)
     AICHASSIS = AICARMODELS[1:length(AICARS)]   # grid slot i → AISPECS[i] (Ferrari, Brabham, …)
     # GC: build the AI as PHYSICS cars (one shared compile) placed on the grid; AICARS stays the
@@ -772,12 +786,12 @@ function main()
             for (i,pc) in enumerate(AIPHYS)
                 s,lat = RaceAI.project(AILINE, pc.x, pc.z); AICARS[i].s=s; AICARS[i].lane=lat; AICARS[i].v=pc.v
                 aidist[i] += hypot(pc.x-lastx[i], pc.z-lastz[i]); lastx[i]=pc.x; lastz[i]=pc.z
-                if pc.v < 1.4
+                if pc.v < 1.4 || abs(lat) > 14.0      # mirror the live recovery: stalled OR off-track
                     stuck[i]+=1; scon[i]+=1
-                    if scon[i] > 100; rp=RaceAI.pose_at(AILINE, s+8.0, 0.0); DriveRT.place!(pc, rp[1], rp[3], rp[4]; v=9.0); scon[i]=0; end
+                    if scon[i] > (abs(lat)>14.0 ? 24 : 100); rp=RaceAI.pose_at(AILINE, s+10.0, 0.0); DriveRT.place!(pc, rp[1], rp[3], rp[4]; v=max(8.0,pc.v*0.7)); scon[i]=0; end
                 else; scon[i]=0; end
             end
-            vts = RaceAI.plan!(AICARS, AILINE; scale=AI_SCALE, player=(1e7,0.0,40.0), rel=AI_REL)
+            vts = RaceAI.plan!(AICARS, AILINE; scale=AI_SCALE, player=(1e7,0.0,40.0), rel=AI_REL, amax=8.0)
             for (i,pc) in enumerate(AIPHYS)
                 r = DriveRT.yawrate(pc); maxr = max(maxr, abs(r)); abs(r) > 2.5 && (spins += 1)
                 thr,brk,st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i], pc.x, pc.z, pc.θ, pc.v, r)
@@ -800,9 +814,10 @@ function main()
     ffb_f = 0.0                                       # low-pass-filtered FFB force (continuity across frames)
     fy_lp = 0.0                                        # low-pass front-axle force for FFB (de-spikes the coarse mesh)
     tc_hud = ntuple(_->(0.0,0.0,1.0), 4)              # smoothed traction-circle display (kills coarse-mesh flicker)
-    v_prev = cs.v; pitch_dyn = 0.0; pitch_ter = 0.0    # dive/squat + terrain-slope pitch (smoothed)
+    v_prev = cs.v; pitch_dyn = 0.0; pitch_ter = 0.0; roll_ter = 0.0    # dive/squat + terrain-slope pitch + cross-slope roll (smoothed)
     # lap timing + telemetry log
     lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = cs.laps; tsamp = 0; race_done = false; enterPrev = false
+    player_s_prev = CLINE === nothing ? 0.0 : RaceAI.project(CLINE, cs.x, cs.z)[1]   # for robust lap-wrap detection
     fmt_lap(s) = (m=floor(Int,s/60); sec=s-60m; si=floor(Int,sec); ms=round(Int,(sec-si)*1000);
                   "$m:$(lpad(si,2,'0')).$(lpad(ms,3,'0'))")
     # ---- E9: qualifying → grid order ----
@@ -811,7 +826,7 @@ function main()
     # races, the skidpad, JM_NOQUAL, and headless smoke (which can't drive a lap).
     DO_QUAL  = IS_RACE && N_AI > 0 && !SKIDPAD && !haskey(ENV,"JM_NOQUAL") && !SMOKE
     phase    = Ref(DO_QUAL ? :qual : :race)
-    player_grid = Ref(0)
+    player_grid = Ref(0); player_finpos = Ref(0)
     # Standing start: in a race the AI sit on the grid until YOU floor the throttle, then
     # the whole field launches together — so you never miss the start by looking away.
     HOLD_START = IS_RACE && N_AI > 0 && !SKIDPAD && !SMOKE
@@ -905,12 +920,18 @@ function main()
         else; step_carX!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
                         groundz=groundz)
-            if !SKIDPAD     # track position + lap timing (Zandvoort only)
-            hr = JuliaMotor.hat(TRKSURF, cs.x, cs.z)            # track-relative position
+            if !SKIDPAD     # track position + lap timing
+            hr = JuliaMotor.hat(TRKSURF, cs.x, cs.z)            # track-relative position (for lapdist/lateral HUD)
             if hr.found
-                (cs.lapdist > 0.75*LAPLEN && hr.lapdist < 0.25*LAPLEN) && (cs.laps += 1)  # crossed S/F
                 cs.lapdist = hr.lapdist; cs.lateral = hr.lateral; cs.along = hr.lapdist; cs.ontrack = hr.on_track
             else; cs.ontrack = false; end
+            # ROBUST lap counting: wrap of the centreline-projection arc-length (the ribbon lapdist
+            # has a seam at S/F that never wrapped → laps stayed 0 → no finish).  Same method the AI use.
+            if CLINE !== nothing
+                ps = RaceAI.project(CLINE, cs.x, cs.z)[1]
+                (player_s_prev > CLINE.total*0.7 && ps < CLINE.total*0.3 && race_go[]) && (cs.laps += 1)
+                player_s_prev = ps
+            end
             # E7 boundary = the WORLD edge (the terrain HAT): you can drive the road AND the grass
             # freely, but if you go off the HAT you've left the world → snap back to the last spot
             # inside it (a fence/hedge collision) and bleed speed.  (Based on the HAT, NOT the racing
@@ -1000,12 +1021,16 @@ function main()
                 println("\n  ═══════ RACE FINISHED — $RACE_LAPS laps ═══════")
                 if !isempty(AICARS)
                     fin = standings()
+                    player_finpos[] = findfirst(e -> e[1] == 0, fin)
+                    println("\n  ══════ YOU FINISHED — P$(player_finpos[]) of $(length(fin)) ══════")
+                    println("  started P$(player_grid[])   best lap $(fmt_lap(best_lap))   total $(fmt_lap(cs.t))")
                     println("  ── final classification ──")
                     for (p, (id, _)) in enumerate(fin)
-                        println("   P$p  ", ent_name(id), id==0 ? "  (started P$(player_grid[]), best $(fmt_lap(best_lap)))" : "")
+                        println("   P$p  ", ent_name(id), id==0 ? "  ← YOU (best $(fmt_lap(best_lap)))" : "")
                     end
                 else
-                    println("  best $(fmt_lap(best_lap))   last $(fmt_lap(last_lap))")
+                    player_finpos[] = 1
+                    println("  YOU FINISHED   best $(fmt_lap(best_lap))   total $(fmt_lap(cs.t))")
                 end
                 println()
             end
@@ -1021,6 +1046,7 @@ function main()
         # ---- body pitch: accel→squat (nose up), brake→dive (nose down); + terrain slope ----
         acc = clamp((cs.v - v_prev)/max(dt,1e-3), -15.0, 15.0); v_prev = cs.v
         pitch_ter += (terrain_pitch(cs) - pitch_ter) * min(1.0, dt*6)
+        roll_ter  += (terrain_roll(cs)  - roll_ter)  * min(1.0, dt*6)   # car lists with the cross-slope (3-D)
         rollv = 0.0
         if CAR3D
             pitch_dyn = cs.pitch - pitch_ter          # REAL body pitch (minus the slope carModel already applies)
@@ -1030,7 +1056,7 @@ function main()
         end
         vp, eye = camera(cs, pitch_ter + pitch_dyn)
         carModel = Render.translate(Float32[cs.x, cs.y, -cs.z]) * Render.roty(Float32(cs.θ)) *
-                   Render.rotz(Float32(pitch_ter))                       # whole car follows the hill
+                   Render.rotz(Float32(pitch_ter)) * Render.rotx(Float32(roll_ter))   # whole car follows the hill (pitch + cross-slope roll)
         bodyModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv)) * Render.translate(BODY_OFF)  # body dives/squats + rolls (3-D)
         δ = Float32(inp.steer * (SKIDPAD ? 0.30 : CAR.max_steer))
         wheelmat(wx,wz,steer,r) = carModel * Render.translate(Float32[wx, r, wz]) *
@@ -1049,16 +1075,19 @@ function main()
                 s, lat = RaceAI.project(AILINE, pc.x, pc.z); prevs = AICARS[i].s
                 AICARS[i].s = s; AICARS[i].lane = lat; AICARS[i].v = pc.v
                 (prevs > AILINE.total*0.7 && s < AILINE.total*0.3) && (AICARS[i].lap += 1)
-                # stuck-recovery: a stalled AI (e.g. off a drifting centreline) snaps back onto the line
-                if pc.v < 1.4
+                # recovery: a stalled AI, or one that's run WAY off the racing line (off track at a
+                # corner), is snapped back onto the line — so an AI can never drive off and vanish.
+                off = pc.v < 1.4 || abs(lat) > 14.0
+                if off
                     ai_stuck[i] += 1
-                    if ai_stuck[i] > 100      # ~1.7 s stalled → put it back on the racing line, rolling
-                        rp = RaceAI.pose_at(AILINE, s + 8.0, 0.0); DriveRT.place!(pc, rp[1], rp[3], rp[4]; v = 9.0); ai_stuck[i] = 0
+                    lim = abs(lat) > 14.0 ? 24 : 100      # off-track: recover within ~0.4 s; stalled: ~1.7 s
+                    if ai_stuck[i] > lim
+                        rp = RaceAI.pose_at(AILINE, s + 10.0, 0.0); DriveRT.place!(pc, rp[1], rp[3], rp[4]; v = max(8.0, pc.v*0.7)); ai_stuck[i] = 0
                     end
                 else; ai_stuck[i] = 0; end
             end
             pp = RaceAI.project(AILINE, cs.x, cs.z)
-            vts = RaceAI.plan!(AICARS, AILINE; scale = AI_SCALE, player = (pp[1], pp[2], cs.v), rel = AI_REL)
+            vts = RaceAI.plan!(AICARS, AILINE; scale = AI_SCALE, player = (pp[1], pp[2], cs.v), rel = AI_REL, amax = 8.0)  # conservative corner speed → don't run wide
             for (i, pc) in enumerate(AIPHYS)
                 thr, brk, st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i],
                                                  pc.x, pc.z, pc.θ, pc.v, DriveRT.yawrate(pc))
@@ -1131,7 +1160,7 @@ function main()
         glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
         for (it,pos,w,h) in BILLBOARDS                            # trees/sprites
             (eye[1]-pos[1])^2+(eye[2]-pos[2])^2+(eye[3]-pos[3])^2 > BB_CULL2 && continue       # distance cull
-            Render.draw(prog, it, vp, Render.billboard_model(pos,w,h,eye); bright=1.05)
+            Render.draw(prog, it, vp, Render.billboard_model(pos,w,h,eye); bright=1.55, ambfill=0.85)  # sprites read near-unlit (colorful signs, not "burned")
         end
         # ambfill lifts the self-shadowed cockpit interior out of black (GPL pre-lights it
         # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
@@ -1161,7 +1190,7 @@ function main()
             GLFW.SetWindowTitle(win, "Julia Racer — $(uppercasefirst(TRACKSEL)) — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear == 0 ? "N" : string(cs.gear)) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
                 (phase[] == :qual ? "  ⏱ QUALIFYING — drive a lap, then press ENTER to start the race" :
                  (!race_go[]) ? "  🏁 GET READY — floor the throttle to start (the field launches with you)" :
-                 IS_RACE ? (race_done ? "  ✦ FINISHED — started P$(player_grid[])" :
+                 IS_RACE ? (race_done ? "  ✦ FINISHED P$(player_finpos[])/$(length(AICARS)+1) — best $(fmt_lap(best_lap)) (started P$(player_grid[]))" :
                             "  — lap $(min(cs.laps+1,RACE_LAPS))/$RACE_LAPS" *
                             (isempty(AICARS) ? "" : "  Pos P$(findfirst(e->e[1]==0, standings()))/$(length(AICARS)+1)")) :
                            "  [$(uppercasefirst(MODE))]") *
