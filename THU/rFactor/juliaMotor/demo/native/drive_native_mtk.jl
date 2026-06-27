@@ -1123,7 +1123,11 @@ function main()
             end
             # physics handles the pace (engine + grip); no per-frame rubber-band (rel=Inf), no corner-speed
             # scaling — the FIXED tune is the engine power (AI_POWER).  Conservative grip cap (amax).
-            vts = RaceAI.plan!(AICARS, AILINE; scale = 1.0, amax = 8.0)
+            # The HUMAN is fed in as a racecraft object so the AI tailgate-then-pass the player too
+            # (strategic: wait for a straight, own the corner — see RaceAI.plan!).
+            ppr = RaceAI.project(AILINE, cs.x, cs.z)
+            vts = RaceAI.plan!(AICARS, AILINE; scale = 1.0, amax = 8.0, dt = ddt,
+                               player = (ppr[1], ppr[2], cs.v))
             for (i, pc) in enumerate(AIPHYS)
                 thr, brk, st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i],
                                                  pc.x, pc.z, pc.θ, pc.v, AIyaw(pc); power = AI_POWER)

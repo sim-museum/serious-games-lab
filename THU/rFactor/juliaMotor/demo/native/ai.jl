@@ -49,8 +49,8 @@ function build_line(pts, groundz; spacing = 3.0)
     AILine(x, z, y, s, θ, κ, s[end])
 end
 
-mutable struct AICar; s::Float64; v::Float64; lap::Int; lane::Float64; tlane::Float64; spin::Float64; end
-AICar(s, v, lap, lane) = AICar(s, v, lap, lane, lane, 0.0)   # tlane defaults to current lane; spin = collision yaw
+mutable struct AICar; s::Float64; v::Float64; lap::Int; lane::Float64; tlane::Float64; spin::Float64; follow::Float64; end
+AICar(s, v, lap, lane) = AICar(s, v, lap, lane, lane, 0.0, 0.0)   # tlane=current lane; spin=collision yaw; follow=tailgate timer (s)
 
 const RAIL     = 3.0    # inside/outside rail offset from the race line (m)
 const LANE_MAX = 3.6    # never exceed this lateral offset (keeps the car on the track)
@@ -216,7 +216,7 @@ car — the JM physics model + the controller do the motion.  Each `AICar` must 
 its `s`, `lane`, `v` updated from its physics car (project it onto the line).  Returns the
 per-car target speed `vt`."""
 function plan!(cars::Vector{AICar}, line::AILine; player = nothing, scale = 1.0, rel = Inf,
-               amax = 11.0, vmax = 74.0, vmin = 12.0)
+               amax = 11.0, vmax = 74.0, vmin = 12.0, dt = 1/60)
     total = line.total
     blocker(s_i, skip) = begin
         bg = Inf; res = nothing
@@ -229,15 +229,40 @@ function plan!(cars::Vector{AICar}, line::AILine; player = nothing, scale = 1.0,
         end
         res
     end
+    # peak curvature over [s, s+dist] → is the section ahead straight enough to PASS on?
+    maxκ(s, dist) = begin κ = 1e-4; off = 0.0; while off <= dist; κ = max(κ, line.κ[_locate(line, s+off)[1]]); off += 6.0; end; κ end
     vts = Float64[]
     for (i, car) in enumerate(cars)
         vt = _vtarget(line, car.s, car.v; amax, vmax, vmin, scale)
-        b = blocker(car.s, i); gap = b === nothing ? Inf : b[1]; blane = b === nothing ? 0.0 : b[2]
+        b = blocker(car.s, i); gap = b === nothing ? Inf : b[1]; blane = b === nothing ? 0.0 : b[2]; bv = b === nothing ? Inf : b[3]
+        tail   = car.v*0.9 + 10.0                                       # following distance that counts as "tailgating"
+        zone   = max(car.v*2.0, 45.0)                                   # passing-zone look-ahead
+        straight = maxκ(car.s, zone) < 1/75.0                           # corner radius > 75 m ⇒ safe to pull out
+        # per-car patience (deterministic, staggered so the field doesn't pull out in unison): 1.2–3.0 s
+        patience = 1.2 + 1.8*((0.37*i) % 1.0)
+        edge   = bv + 1.5 < vt                                          # we'd be quicker than the car ahead if free
         if car.tlane == 0.0
-            (gap < car.v*1.0 + 14.0 && abs(car.lane - blane) < 2.2) && (car.tlane = blane >= 0.0 ? -RAIL : RAIL)
+            if gap < tail && abs(car.lane - blane) < 2.4                # sitting in the dirty air behind a car
+                car.follow += dt
+                # STRATEGIC pass: only commit once we've tailgated long enough AND it's a straight (own the
+                # corner = don't dive-bomb into it) AND we actually have the pace to make it stick.
+                if car.follow > patience && straight && edge
+                    car.tlane = blane >= 0.0 ? -RAIL : RAIL             # pick a side and commit
+                    car.follow = 0.0
+                elseif gap < car.v*0.6 + CAR_LEN                        # else hold station — match speed, don't ram
+                    vt = min(vt, bv)
+                end
+            else
+                car.follow = max(0.0, car.follow - dt)                  # nobody ahead → patience resets
+            end
         else
-            (gap > car.v*1.7 + 30.0) && (car.tlane = 0.0)
-            (gap < car.v*0.6 + CAR_LEN && abs(car.lane - blane) < 1.6) && (vt = min(vt, b[3]))
+            if gap > car.v*1.7 + 30.0                                   # clear ahead → ease back to the race line
+                car.tlane = 0.0
+            elseif !straight && gap > CAR_LEN*1.3                       # corner coming and not yet alongside → ABORT,
+                car.tlane = 0.0; vt = min(vt, bv)                       #   tuck back in behind (yield the corner)
+            elseif gap < car.v*0.6 + CAR_LEN && abs(car.lane - blane) < 1.6
+                vt = min(vt, bv)                                        # still stuck behind in the passing lane → match speed
+            end
         end
         isfinite(rel) && player !== nothing && (vt = min(vt, max(player[3]*rel, 6.0)))
         push!(vts, vt)
