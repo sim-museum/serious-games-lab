@@ -747,7 +747,7 @@ function main()
     tc_hud = ntuple(_->(0.0,0.0,1.0), 4)              # smoothed traction-circle display (kills coarse-mesh flicker)
     v_prev = cs.v; pitch_dyn = 0.0; pitch_ter = 0.0    # dive/squat + terrain-slope pitch (smoothed)
     # lap timing + telemetry log
-    lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = cs.laps; tsamp = 0; race_done = false
+    lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = cs.laps; tsamp = 0; race_done = false; enterPrev = false
     fmt_lap(s) = (m=floor(Int,s/60); sec=s-60m; si=floor(Int,sec); ms=round(Int,(sec-si)*1000);
                   "$m:$(lpad(si,2,'0')).$(lpad(ms,3,'0'))")
     # ---- E9: qualifying → grid order ----
@@ -777,7 +777,7 @@ function main()
         println("  → You qualified P$prank of $(length(order))\n"); flush(stdout)
         prank
     end
-    DO_QUAL && println("\n  QUALIFYING — complete one lap to set your grid slot.")
+    DO_QUAL && println("\n  QUALIFYING — drive a lap then press ENTER to start the race (it also\n  auto-starts if the start/finish line registers a clean lap).  ENTER = go racing.")
     # ---- E10: fuel load ----  tank sized so the player can finish + ~FUEL_MARGIN laps.
     FUEL_ON   = !SKIDPAD
     burn_lap  = FUEL_ON ? FUEL_LPK * LAPLEN/1000 : 0.0          # litres per lap (distance-based)
@@ -817,6 +817,19 @@ function main()
         SMOKE && frames >= 40 && break
         now = time(); dt = clamp(now-last, 0.0, 0.05); last = now
         inp, rst = read_input()
+        # E9: end qualifying on ENTER (or it auto-ends on a clean lap).  This guarantees you
+        # can always start the race even if the S/F line doesn't register the lap (the ribbon
+        # can have a seam at start/finish).  Your qual time = best clean lap, else estimated
+        # from how far round you got (so a near-complete lap still earns a fair grid slot).
+        enterNow = key(GLFW.KEY_ENTER) || key(GLFW.KEY_KP_ENTER)
+        if phase[] == :qual && enterNow && !enterPrev
+            qt = best_lap > 0.0 ? best_lap :
+                 (cs.lapdist > 0.30*LAPLEN ? (cs.t - lap_t0) * LAPLEN / max(cs.lapdist, 1.0) : Inf)
+            player_grid[] = form_grid!(qt)
+            phase[] = :race
+            cs.laps = 0; last_lap = 0.0; best_lap = 0.0; race_done = false; lap_t0 = cs.t
+        end
+        enterPrev = enterNow
         # E10: burn fuel by distance (only once racing); a dry tank starves the engine.
         if FUEL_ON && phase[] == :race && !rst
             fuel[] = max(0.0, fuel[] - FUEL_LPK * cs.v * (dt > 1e-4 ? dt : 1/60) / 1000)
@@ -1014,7 +1027,7 @@ function main()
         frames += 1
         if now - titleT > 0.25
             GLFW.SetWindowTitle(win, "Julia Racer — $(uppercasefirst(TRACKSEL)) — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear == 0 ? "N" : string(cs.gear)) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
-                (phase[] == :qual ? "  ⏱ QUALIFYING" :
+                (phase[] == :qual ? "  ⏱ QUALIFYING — drive a lap, then press ENTER to start the race" :
                  IS_RACE ? (race_done ? "  ✦ FINISHED — started P$(player_grid[])" :
                             "  — lap $(min(cs.laps+1,RACE_LAPS))/$RACE_LAPS" *
                             (isempty(AICARS) ? "" : "  Pos P$(findfirst(e->e[1]==0, standings()))/$(length(AICARS)+1)")) :
