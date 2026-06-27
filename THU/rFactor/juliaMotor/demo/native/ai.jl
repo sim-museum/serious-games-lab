@@ -188,6 +188,55 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
     (poses, player_hit)
 end
 
+"""Brain-only racecraft for the HYBRID-PHYSICS AI: decide each car's target rail (`tlane`,
+with the same pass-hysteresis as the kinematic field) and target speed, WITHOUT moving the
+car — the JM physics model + the controller do the motion.  Each `AICar` must already have
+its `s`, `lane`, `v` updated from its physics car (project it onto the line).  Returns the
+per-car target speed `vt`."""
+function plan!(cars::Vector{AICar}, line::AILine; player = nothing, scale = 1.0, rel = Inf,
+               amax = 11.0, vmax = 74.0, vmin = 12.0)
+    total = line.total
+    blocker(s_i, skip) = begin
+        bg = Inf; res = nothing
+        for (k,c) in enumerate(cars)
+            k == skip && continue
+            g = mod(c.s - s_i, total); (0.0 < g < bg) && (bg = g; res = (g, c.lane, c.v))
+        end
+        if player !== nothing
+            g = mod(player[1] - s_i, total); (0.0 < g < bg) && (bg = g; res = (g, player[2], player[3]))
+        end
+        res
+    end
+    vts = Float64[]
+    for (i, car) in enumerate(cars)
+        vt = _vtarget(line, car.s, car.v; amax, vmax, vmin, scale)
+        b = blocker(car.s, i); gap = b === nothing ? Inf : b[1]; blane = b === nothing ? 0.0 : b[2]
+        if car.tlane == 0.0
+            (gap < car.v*1.0 + 14.0 && abs(car.lane - blane) < 2.2) && (car.tlane = blane >= 0.0 ? -RAIL : RAIL)
+        else
+            (gap > car.v*1.7 + 30.0) && (car.tlane = 0.0)
+            (gap < car.v*0.6 + CAR_LEN && abs(car.lane - blane) < 1.6) && (vt = min(vt, b[3]))
+        end
+        isfinite(rel) && player !== nothing && (vt = min(vt, max(player[3]*rel, 6.0)))
+        push!(vts, vt)
+    end
+    vts
+end
+
+"""Steering/throttle/brake for one hybrid-physics AI to track the rail at `tlane` at speed
+`tv` (the PROVEN controller: short-look-ahead pursuit + cross-track + yaw-damp, corner
+throttle-cut).  `cs`/`clane` = the car's current arc-length/lateral (from projection),
+`cθ`/`cv`/`r` its heading/speed/yaw-rate.  Returns (throttle, brake, steer)."""
+function controller(line::AILine, cs, clane, tlane, tv, cx, cz, cθ, cv, r)
+    la = clamp(round(Int, 3 + cv*0.22), 3, length(line.x)-1) * (line.total/length(line.x))
+    lp = pose_at(line, cs + la, tlane)                    # look-ahead point ON the target rail
+    herr = wrapπ(atan(lp[3]-cz, lp[1]-cx) - cθ)
+    steer = clamp(2.6*herr - 0.14*(clane - tlane) - 0.20*r, -1.0, 1.0)
+    thr = cv < tv ? clamp((tv-cv)*0.25, 0, 1) * clamp(1.4 - 2.2*abs(steer), 0.0, 1.0) : 0.0
+    brk = cv > tv + 1.0 ? clamp((cv-tv)*0.2, 0, 1) : 0.0
+    (thr, brk, steer)
+end
+
 """Grid order from a qualifying session.  `player_time` is the human's best qual lap
 (`Inf` if they set none → starts last); `ai_times` the AI reference qual times.  Returns
 the entrant ids sorted pole-first, where id 0 = the player and id i = AI car i.  The

@@ -75,6 +75,9 @@ const AI_PCT    = clamp(tryparse(Float64, get(ENV, "JM_AI_PCT", "100")) |> x -> 
 # AI never run away from the human: each is capped to AI_REL × the player's current speed
 # (default 1.10 = at most 10 % faster) so it stays a close, raceable field.
 const AI_REL    = clamp(tryparse(Float64, get(ENV, "JM_AI_REL", "1.10")) |> x -> x === nothing ? 1.10 : x, 1.0, 4.0)
+# GC: the AI run the JM 2-D PHYSICS model (real grip/inertia) steered by a rail controller,
+# by default.  JM_AI_KINEMATIC falls back to the (also-good) kinematic rail field.
+const AI_PHYSICS = !haskey(ENV, "JM_AI_KINEMATIC")
 # GPL '67 AI reference laptimes (s) — the "100 %" anchor.  Sourced from GPL AI/hotlap
 # pace per circuit; tunable per car/setup via JM_AI_REFLAP (overrides the table).  At
 # AI_PCT=100 the field is paced to hit exactly this laptime regardless of the rail
@@ -740,6 +743,15 @@ function main()
     AILINE = (!SKIDPAD && N_AI > 0) ? RaceAI.build_line(ALIGNED, groundz) : nothing
     AICARS = AILINE === nothing ? RaceAI.AICar[] : RaceAI.init_cars(AILINE, N_AI; start_s = 30.0)
     AICHASSIS = AICARMODELS[1:length(AICARS)]   # grid slot i → AISPECS[i] (Ferrari, Brabham, …)
+    # GC: build the AI as PHYSICS cars (one shared compile) placed on the grid; AICARS stays the
+    # rail "brain" (s/lane/v/tlane/lap), updated each frame from the physics by projection.
+    AIPHYS = DriveRT.Car[]
+    if AI_PHYSICS && AILINE !== nothing
+        print("  building $(length(AICARS)) physics AI (shared JM 2-D model)… "); flush(stdout)
+        poses = [(p = RaceAI.pose_at(AILINE, c.s, c.lane); (p[1], p[3], p[4], 0.0)) for c in AICARS]
+        AIPHYS = DriveRT.build_cars(poses)
+        println("done")
+    end
     # E11: pace the field.  Target laptime = refLap × (100/pct); the speed scale that
     # hits it = naturalLap / targetLap (lap time ∝ 1/speed).  Clamped to a sane band.
     AI_T0    = AILINE === nothing ? 0.0 : RaceAI.natural_laptime(AILINE)
@@ -751,6 +763,32 @@ function main()
                 "s → target ", round(AI_TGT,digits=1), "s; rail ", round(AI_T0,digits=1),
                 "s, scale ", round(AI_SCALE,digits=2), ")")
     end
+    # JM_AI_TEST: drive the physics field on the REAL loaded track (no player) → laps/spins, exit.
+    if AI_PHYSICS && haskey(ENV, "JM_AI_TEST") && !isempty(AIPHYS)
+        for (i,pc) in enumerate(AIPHYS); p = RaceAI.pose_at(AILINE, AICARS[i].s, AICARS[i].lane); DriveRT.place!(pc, p[1], p[3], p[4]; v=12.0); end
+        N=length(AIPHYS); maxr=0.0; spins=0; aidist=zeros(N); stuck=zeros(Int,N); scon=zeros(Int,N); lastx=[pc.x for pc in AIPHYS]; lastz=[pc.z for pc in AIPHYS]
+        nstep=5400   # 90 s
+        for _ in 1:nstep
+            for (i,pc) in enumerate(AIPHYS)
+                s,lat = RaceAI.project(AILINE, pc.x, pc.z); AICARS[i].s=s; AICARS[i].lane=lat; AICARS[i].v=pc.v
+                aidist[i] += hypot(pc.x-lastx[i], pc.z-lastz[i]); lastx[i]=pc.x; lastz[i]=pc.z
+                if pc.v < 1.4
+                    stuck[i]+=1; scon[i]+=1
+                    if scon[i] > 100; rp=RaceAI.pose_at(AILINE, s+8.0, 0.0); DriveRT.place!(pc, rp[1], rp[3], rp[4]; v=9.0); scon[i]=0; end
+                else; scon[i]=0; end
+            end
+            vts = RaceAI.plan!(AICARS, AILINE; scale=AI_SCALE, player=(1e7,0.0,40.0), rel=AI_REL)
+            for (i,pc) in enumerate(AIPHYS)
+                r = DriveRT.yawrate(pc); maxr = max(maxr, abs(r)); abs(r) > 2.5 && (spins += 1)
+                thr,brk,st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i], pc.x, pc.z, pc.θ, pc.v, r)
+                DriveRT.step_car!(pc, thr, brk, st, 1/60; manual=false)
+            end
+        end
+        avgkmh = round.(Int, aidist ./ 90 .* 3.6)
+        println("  AI self-test on $(TRACKSEL) (90s): dist=", round.(Int,aidist), "m  avg_kmh=$avgkmh  max_yaw=$(round(maxr,digits=2))  spins=$spins  stuck_frames=$stuck")
+        println(spins < 30 && minimum(aidist) > 800 && maximum(stuck) < 200 ? "  ✓ physics AI lap the real track cleanly" : "  ⚠ AI struggle here — tune controller")
+        exit(0)
+    end
     # ---- force feedback: self-aligning torque from the front-axle lateral force ----
     # force = SIGN·GAIN·(Fy_FL+Fy_FR), faded out near standstill.  The front Fy rises as the
     # tyres bite and DROPS past the grip peak → the wheel goes light = you feel understeer.
@@ -758,6 +796,7 @@ function main()
     (ffb !== nothing && ffb.ok) ? println("  force feedback: ON  (", ffb.path, ", gain ", FFB_GAIN, ")") :
                                   println("  force feedback: off", FFB_ON ? " (no wheel found)" : " (JM_NOFFB)")
     spin = 0.0; last = time(); frames = 0; titleT = last
+    ai_stuck = zeros(Int, length(AIPHYS))     # GC: per-AI stalled-frame counter (stuck-recovery)
     ffb_f = 0.0                                       # low-pass-filtered FFB force (continuity across frames)
     fy_lp = 0.0                                        # low-pass front-axle force for FFB (de-spikes the coarse mesh)
     tc_hud = ntuple(_->(0.0,0.0,1.0), 4)              # smoothed traction-circle display (kills coarse-mesh flicker)
@@ -789,6 +828,7 @@ function main()
             c.s = mod(-(r - prank)*ROW, AILINE.total)      # ahead (+s) if it out-qualified the player
             c.v = 0.0; c.lap = 0
             c.lane = isodd(r) ? GRID_LANE : -GRID_LANE; c.tlane = c.lane
+            AI_PHYSICS && (gp = RaceAI.pose_at(AILINE, c.s, c.lane); DriveRT.place!(AIPHYS[i], gp[1], gp[3], gp[4]; v=0.0))
         end
         println("\n  ═══ GRID (from qualifying) ═══")
         for (p, id) in enumerate(order)
@@ -996,15 +1036,38 @@ function main()
         wheelmat(wx,wz,steer,r) = carModel * Render.translate(Float32[wx, r, wz]) *
                      (steer ? Render.roty(δ) : Render.ident()) * Render.rotz(Float32(spin))
         # advance + place the AI field (rail-followers on the centreline)
-        ai_hit = Ref(false)
+        ai_hit = Ref(false); ddt = dt > 1e-4 ? dt : 1/60
         ai_poses = if AILINE === nothing || phase[] != :race      # AI hidden until the race starts (after qualifying)
             NTuple{4,Float64}[]
-        elseif !race_go[]                                          # standing on the grid (not yet launched)
-            [RaceAI.pose_at(AILINE, c.s, c.lane) for c in AICARS]
+        elseif !race_go[]                                         # standing on the grid (not yet launched)
+            AI_PHYSICS ? [(pc.x, groundz(pc.x, pc.z), pc.z, pc.θ) for pc in AIPHYS] :
+                         [RaceAI.pose_at(AILINE, c.s, c.lane) for c in AICARS]
+        elseif AI_PHYSICS
+            # GC HYBRID: project each physics car onto the line → update the brain → the controller
+            # steers it toward its rail at the planned speed → step the JM 2-D physics.
+            for (i, pc) in enumerate(AIPHYS)
+                s, lat = RaceAI.project(AILINE, pc.x, pc.z); prevs = AICARS[i].s
+                AICARS[i].s = s; AICARS[i].lane = lat; AICARS[i].v = pc.v
+                (prevs > AILINE.total*0.7 && s < AILINE.total*0.3) && (AICARS[i].lap += 1)
+                # stuck-recovery: a stalled AI (e.g. off a drifting centreline) snaps back onto the line
+                if pc.v < 1.4
+                    ai_stuck[i] += 1
+                    if ai_stuck[i] > 100      # ~1.7 s stalled → put it back on the racing line, rolling
+                        rp = RaceAI.pose_at(AILINE, s + 8.0, 0.0); DriveRT.place!(pc, rp[1], rp[3], rp[4]; v = 9.0); ai_stuck[i] = 0
+                    end
+                else; ai_stuck[i] = 0; end
+            end
+            pp = RaceAI.project(AILINE, cs.x, cs.z)
+            vts = RaceAI.plan!(AICARS, AILINE; scale = AI_SCALE, player = (pp[1], pp[2], cs.v), rel = AI_REL)
+            for (i, pc) in enumerate(AIPHYS)
+                thr, brk, st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i],
+                                                 pc.x, pc.z, pc.θ, pc.v, DriveRT.yawrate(pc))
+                DriveRT.step_car!(pc, thr, brk, st, ddt; manual = false)
+            end
+            [(pc.x, groundz(pc.x, pc.z), pc.z, pc.θ) for pc in AIPHYS]
         else
             pp = RaceAI.project(AILINE, cs.x, cs.z)                # the human as a racecraft object (s, lateral, speed)
-            poses, hit = RaceAI.step_field!(AICARS, AILINE, dt > 1e-4 ? dt : 1/60;
-                                            scale = AI_SCALE, player = (pp[1], pp[2], cs.v), rel = AI_REL)
+            poses, hit = RaceAI.step_field!(AICARS, AILINE, ddt; scale = AI_SCALE, player = (pp[1], pp[2], cs.v), rel = AI_REL)
             ai_hit[] = hit; poses
         end
         # GD: rigid-body collision — when the player and an AI overlap and are CLOSING, apply a
@@ -1024,10 +1087,15 @@ function main()
                 j = (1+restn)*vrel*mr
                 lat = -dx*sin(cs.θ) + dz*cos(cs.θ)            # contact offset in the player's frame → spin sign
                 bumpX!(cs, -(j/pm)*nx, -(j/pm)*nz, clamp(-sign(lat)*(j/pm)*0.05, -1.5, 1.5))
-                along  = nx*cos(aθ) + nz*sin(aθ); across = -nx*sin(aθ) + nz*cos(aθ)
-                ac.v   = max(0.0, ac.v + (j/am)*along*0.6)    # pushed along its heading (rear-ended ⇒ sped up; nosed ⇒ slowed)
-                ac.lane = clamp(ac.lane + (j/am)*across*0.12, -RaceAI.LANE_MAX, RaceAI.LANE_MAX)  # shoved aside
-                ac.spin += clamp((j/am)*across*0.04, -0.6, 0.6)   # yaw twitch
+                if AI_PHYSICS                                  # the AI is a real physics car → impulse it too
+                    alat = -dx*sin(aθ) + dz*cos(aθ)
+                    DriveRT.bump!(AIPHYS[k], (j/am)*nx, (j/am)*nz, clamp(sign(alat)*(j/am)*0.05, -1.5, 1.5))
+                else
+                    along  = nx*cos(aθ) + nz*sin(aθ); across = -nx*sin(aθ) + nz*cos(aθ)
+                    ac.v   = max(0.0, ac.v + (j/am)*along*0.6)    # pushed along its heading (rear-ended ⇒ sped up; nosed ⇒ slowed)
+                    ac.lane = clamp(ac.lane + (j/am)*across*0.12, -RaceAI.LANE_MAX, RaceAI.LANE_MAX)  # shoved aside
+                    ac.spin += clamp((j/am)*across*0.04, -0.6, 0.6)   # yaw twitch
+                end
             end
         end
         aiCar(p)  = Render.translate(Float32[p[1], p[2], -p[3]]) * Render.roty(Float32(p[4]))

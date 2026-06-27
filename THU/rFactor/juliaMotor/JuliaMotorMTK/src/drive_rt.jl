@@ -86,6 +86,34 @@ function build_car(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0, brush = 
     c                                                                             #  spuriously engages the auto-clutch)
 end
 
+"""Compile the planar car ONCE and build `length(poses)` cars sharing the system, so a
+field of AI doesn't pay N× `mtkcompile`.  `poses` = Vector of (x0,z0,θ0,v0).  Each car gets
+its own integrator (independent state) but shares the compiled setters/getter."""
+function build_cars(poses; brush = !haskey(ENV, "JM_MAGIC"))
+    sys = mtkcompile(DrivenVehicleRT(name = :car, brush = brush))
+    s_thr = setp(sys, sys.throttle); s_brk = setp(sys, sys.brake); s_st = setp(sys, sys.δ)
+    s_gr  = setp(sys, sys.gear);     s_clu = setp(sys, sys.clutch); s_we = ModelingToolkit.setu(sys, sys.ωe)
+    s_pos = ModelingToolkit.setu(sys, [sys.X, sys.Y]); s_vel = ModelingToolkit.setu(sys, [sys.u, sys.v])
+    getall = ModelingToolkit.getsym(sys, [sys.X, sys.Y, sys.ψ, sys.u, sys.v, sys.rpm,
+        sys.FL.tyre.Fx, sys.FR.tyre.Fx, sys.RL.tyre.Fx, sys.RR.tyre.Fx,
+        sys.FL.tyre.Fy, sys.FR.tyre.Fy, sys.RL.tyre.Fy, sys.RR.tyre.Fy, sys.ωr])
+    cars = Car[]
+    for (x0, z0, θ0, v0) in poses
+        prob = ODEProblem(sys, [sys.u => v0, sys.ωf => v0/0.30, sys.ωr => v0/RW_R,
+                                sys.ωe => 209.4, sys.X => x0, sys.Y => z0, sys.ψ => θ0], (0.0, 1e7))
+        integ = init(prob, Rosenbrock23(); save_everystep = false, dense = false, adaptive = false, dt = 1/300)
+        c = Car(sys, integ, s_thr, s_brk, s_st, s_gr, s_clu, s_we, s_pos, s_vel, getall, 1,
+                x0, 0.0, z0, θ0, v0, 0.0, 0.0, 1, ntuple(_ -> (0.0,0.0,0.0), 4), 0.0, 0, 0.0, 0.0, true)
+        c.s_gr(c.integ, GEARS[c.gear]); getall(integ)
+        for _ in 1:3; step_car!(c, 0.3, 0.0, 0.0, 1/60); end
+        for _ in 1:3; step_car!(c, 0.3, 0.0, 0.0, 1/60; clutch = 0.5, manual = true); end
+        reinit!(c.integ); c.gear = 0; c.s_gr(c.integ, 0.0)
+        a = getall(c.integ); c.x = a[1]; c.z = a[2]; c.θ = a[3]; c.v = sqrt(a[4]^2 + a[5]^2); c.rpm = a[6]
+        push!(cars, c)
+    end
+    cars
+end
+
 "Advance the car by dt.  throttle/brake/steer ∈ [0,1]/[0,1]/[-1,1]; `clutch` ∈ [0,1]
 (0 engaged, 1 pressed); `up`/`dn` are one-frame shift events; `manual=true` ⇒ the
 driver works the clutch + gears, else the adapter auto-clutches and auto-shifts."
@@ -174,6 +202,24 @@ end
 
 # cached yaw-rate setter per system (setu compiles once; reused for every collision frame)
 const _RSET = IdDict()
+"Current yaw rate r [rad/s] (cached getter) — for the AI controller's yaw damping."
+function yawrate(c::Car)
+    gs = get!(() -> (ModelingToolkit.getsym(c.sys, c.sys.r), ModelingToolkit.setu(c.sys, c.sys.r)), _RSET, c.sys)
+    gs[1](c.integ)
+end
+
+const _PSI = IdDict()
+"Place the car at world (x,z) facing θ with forward speed v (e.g. onto a grid slot)."
+function place!(c::Car, x, z, θ; v = 0.0)
+    c.s_pos(c.integ, [x, z])
+    try
+        pset = get!(() -> ModelingToolkit.setu(c.sys, c.sys.ψ), _PSI, c.sys)
+        pset(c.integ, θ)
+    catch; end
+    c.s_vel(c.integ, [v, 0.0])
+    c.x = x; c.z = z; c.θ = θ; c.v = v
+    c
+end
 "Apply a rigid-body collision impulse to the car: a world-frame velocity change
 `(dvx, dvz)` plus a yaw-rate change `dr` (rad/s) — so a hit knocks the car off line,
 scrubs speed, and spins it, all through the real vehicle state."
