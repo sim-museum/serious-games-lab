@@ -71,6 +71,23 @@ Sprint order (autonomous): **GA** Lotus/AI GPL fidelity (G1) → **GB** smooth r
 kill skittering (G3) → **GC** hybrid-physics AI (G2) → **GD** rigid-body car collisions (G4)
 → **GE** trackside-object collisions (G5).
 
+### Autonomous session log (2026-06-26, PO away)
+- **GA Lotus fidelity** (partial): tan scuttle restored (`windlot`) — committed. Decoded all
+  Lotus textures: the green-body livery (stripe/#1/TEAM LOTUS) is NOT in any texture (GPL
+  driver-skin system); gauges (`dash7a`) + driver arms render dark/wing (UV/geometry) — deep
+  RE deferred. AI chassis already show distinct GPL liveries.
+- **GB skittering** ✅ (commit): pass hysteresis + commitment → 60 s packed field = 1 lane
+  reversal (was hundreds). Also longitudinal PHYSICS accel + player-relative pace cap landed
+  earlier (a844e17).
+- **GD car collisions** ✅ (commit): `bump!`/`bump3d!` apply a real impulse to the player's
+  vehicle state (velocity + yaw rate); momentum-exchange on player↔AI contact. Verified live.
+- **GE trackside collisions** ✅ (commit): the world-edge boundary is now a physical bounce
+  (restitution + fence-grab scrub + glance spin) via `bump!`, not a snap-back.
+- **GC hybrid-physics AI**: controller PROVEN viable (tracks 0.19 m, 0 spins with throttle-cut
+  + auto-gearbox + conservative speed; recipe + integration plan in `RACE_AI_NOTES.md`). The
+  large integration (5 cars sharing the compiled MTK system, real-track generalization) is the
+  remaining step — left for PO feel-validation; the live AI stays the strong kinematic model.
+
 ### Race-completeness sprint plan (E8–E12, PO pre-approved 2026-06-26)
 - **R-Sprint 1 — Distinct GPL grid (E8).** Generic GPL-car loader (`gplcar.jl`); AI field renders
   Ferrari/Brabham/BRM/Eagle/Cooper, auto-levelled, per-car wheels. Snapshot verifies 5 distinct cars.

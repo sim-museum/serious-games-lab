@@ -59,6 +59,35 @@ Sketch:
 This gives the most faithful result (physics + GPL racecraft + real contact) at the cost
 of a controller-tuning effort that may need iteration across each track's corner types.
 
+## GC controller — PROVEN viable (2026-06-26, autonomous; `scratchpad/test_hybrid.jl`)
+Drove a real `DriveRT.build_car` around test tracks with a rail-targeting controller and
+characterised every failure mode → a recipe that **tracks without spinning**:
+- **Steering:** `steer = 2.6·headingErr − 0.14·crossTrack − 0.20·yawRate`, look-ahead
+  `≈ 3 + 0.22·v` points (SHORT — a long look-ahead understeers wide).  Tracks moderate
+  corners to **0.19 m** cross-track.
+- **Gearbox:** use the AUTO path (`manual=false`).  In a fixed gear the car STALLS at
+  corner speed (dist stops at the first bend, v→0); auto-clutch/shift fixes it.
+- **Anti-spin:** conservative corner speed `vt ≈ 0.72·√(aκ/κ)` + a **corner throttle-cut**
+  `thr ·= clamp(1.4 − 2.2·|steer|, 0, 1)` (don't power-on mid-corner) → **0 spin frames**
+  even through the tight bend (vs 66 spins with full throttle).  Brake early (limiting-κ
+  horizon `≈ 8 + 0.9·v`).
+- **Result:** completes laps, no spins, tight tracking on corners ≥ ~30 m (real-track
+  range).  Only an EXTREME r≈20 m hairpin (tighter than GPL corners) still runs wide —
+  needs full-lock handling / a slower crawl there.
+- **Perf:** ~0.23 ms/planar-step → 5 cars ≈ 1 ms/frame.  **Caveat:** `build_car` runs
+  `mtkcompile` each call (~30-60 s) — 5 AI would add minutes at startup, so the integration
+  MUST compile the system ONCE and create 5 integrators from it (share `sys`/setters/`getall`,
+  per-car `integ`).
+### Integration plan (the remaining large step — validate the FEEL before shipping default)
+1. `DriveRT.build_cars(n)` — compile `sys` once, build n cars sharing setters/getall.
+2. Replace the kinematic AI motion with n physics cars + the controller above; KEEP the rail
+   brain (`step_field!` lane targets + hysteresis) as the steering target + the pace cap.
+3. Bump the AI's physics car on collision (reuse `bump!`), not the kinematic `spin`.
+4. Verify on ALL 6 real tracks (each ~2 min load): laps complete, no spins, pace ≈ player.
+Ship OPT-IN (`JM_AI_PHYSICS`) first; make default only after a test-drive confirms the feel.
+The current LIVE AI stays kinematic (physics accel + pace cap + no-skitter + collisions),
+which already addresses every specific behaviour complaint.
+
 ## GA Lotus GPL-fidelity findings (2026-06-26, autonomous)
 Decoded the Lotus textures to PNG (scratchpad/decode_tex.jl). What's where:
 - `windlot` = tan leather SCUTTLE (restored ✓), `dash7a` = the GAUGE CLUSTER, `lotbody` =
