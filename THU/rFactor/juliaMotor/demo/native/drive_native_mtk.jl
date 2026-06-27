@@ -1095,11 +1095,16 @@ function main()
                      (steer ? Render.roty(δ) : Render.ident()) * Render.rotz(Float32(spin))
         # advance + place the AI field (rail-followers on the centreline)
         ai_hit = Ref(false); ddt = dt > 1e-4 ? dt : 1/60
+        # an AI car's body orientation = its physics pitch (already settles to the fore/aft slope) +
+        # (cross-slope terrain bank + physics roll) — so AI LIST on a dune side / roll in a collision,
+        # exactly like the player's 3-D car (was yaw-only → they stayed flat).  6-tuple (x,y,z,θ,pitch,roll).
+        aibankP(pc) = (isfinite(pc.pitch) ? pc.pitch : 0.0, (isfinite(pc.roll) ? pc.roll : 0.0) + terrain_roll(pc))
+        aibankK(p)  = (cs=(x=p[1], z=p[3], θ=p[4]); (terrain_pitch(cs), terrain_roll(cs)))   # kinematic: terrain only
         ai_poses = if AILINE === nothing || phase[] != :race      # AI hidden until the race starts (after qualifying)
-            NTuple{4,Float64}[]
+            NTuple{6,Float64}[]
         elseif !race_go[]                                         # standing on the grid (not yet launched)
-            AI_PHYSICS ? [(pc.x, groundz(pc.x, pc.z), pc.z, pc.θ) for pc in AIPHYS] :
-                         [RaceAI.pose_at(AILINE, c.s, c.lane) for c in AICARS]
+            AI_PHYSICS ? [(b=aibankP(pc); (pc.x, groundz(pc.x, pc.z), pc.z, pc.θ, b[1], b[2])) for pc in AIPHYS] :
+                         [(p=RaceAI.pose_at(AILINE, c.s, c.lane); b=aibankK(p); (p[1],p[2],p[3],p[4],b[1],b[2])) for c in AICARS]
         elseif AI_PHYSICS
             # GC HYBRID: project each physics car onto the line → update the brain → the controller
             # steers it toward its rail at the planned speed → step the JM 2-D physics.
@@ -1150,11 +1155,12 @@ function main()
                 AIbump!(pa, -(j/560)*nx, -(j/560)*nz, clamp(-(j/560)*0.04, -1.0, 1.0), vl, dr2)
                 AIbump!(pb,  (j/560)*nx,  (j/560)*nz, clamp( (j/560)*0.04, -1.0, 1.0), vl, -dr2)
             end
-            [(pc.x, isfinite(pc.y) ? pc.y : groundz(pc.x, pc.z), pc.z, pc.θ) for pc in AIPHYS]   # pc.y = 3-D height → AI visibly jump/heave
+            [(b=aibankP(pc); (pc.x, isfinite(pc.y) ? pc.y : groundz(pc.x, pc.z), pc.z, pc.θ, b[1], b[2])) for pc in AIPHYS]   # pc.y = 3-D height → AI visibly jump/heave; pitch/roll → list + roll
         else
             pp = RaceAI.project(AILINE, cs.x, cs.z)                # the human as a racecraft object (s, lateral, speed)
             poses, hit = RaceAI.step_field!(AICARS, AILINE, ddt; scale = AI_SCALE, player = (pp[1], pp[2], cs.v), rel = AI_REL)
-            ai_hit[] = hit; poses
+            ai_hit[] = hit
+            [(b=aibankK(p); (p[1],p[2],p[3],p[4],b[1],b[2])) for p in poses]   # add terrain bank (kinematic has no body roll)
         end
         # GD: rigid-body collision — when the player and an AI overlap and are CLOSING, apply a
         # momentum-exchange impulse: the player (real vehicle physics) is knocked off line + spun
@@ -1189,7 +1195,8 @@ function main()
                 end
             end
         end
-        aiCar(p)  = Render.translate(Float32[p[1], p[2], -p[3]]) * Render.roty(Float32(p[4]))
+        aiCar(p)  = Render.translate(Float32[p[1], p[2], -p[3]]) * Render.roty(Float32(p[4])) *
+                    Render.rotz(Float32(p[5])) * Render.rotx(Float32(p[6]))   # body follows the hill (pitch + cross-slope/collision roll)
         aiBody(p, cm) = aiCar(p) * Render.translate(collect(cm.body_off))
         aiWheel(p,wx,wz,r) = aiCar(p) * Render.translate(Float32[wx, r, wz]) * Render.rotz(Float32(spin))
         # ---- shadow pass: scene depth from the sun, light box on the car ----
