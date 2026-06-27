@@ -481,6 +481,9 @@ containX!(c, x, z; kw...)  = CAR3D ? DriveRT3D.contain3d!(c, x, z; kw...) : Driv
 bumpX!(c, dvx, dvz, dr)    = CAR3D ? DriveRT3D.bump3d!(c, dvx, dvz, dr)    : DriveRT.bump!(c, dvx, dvz, dr)   # GD: collision impulse
 const FENCE = parse(Float64, get(ENV, "JM_FENCE", "13.0"))   # E7: track boundary (m from centreline) — you can't leave the world
 const FENCE_GRACE = parse(Float64, get(ENV, "JM_FENCE_GRACE", "2.5"))   # off-HAT distance before the trackside collision fires (tolerates sub-car mesh cracks; small so the fence feels like a wall)
+const GRASS_DRAG = parse(Float64, get(ENV, "JM_GRASS_DRAG", "0.9"))      # grass penalty: per-second velocity loss on the verge (GPL "slow grass")
+const GRASS_SLIP = parse(Float64, get(ENV, "JM_GRASS_SLIP", "0.5"))      # grass penalty: random yaw wobble (reduced grip feel)
+const ROAD_HALFW = parse(Float64, get(ENV, "JM_ROAD_HALFW", "5.5"))      # racing-surface half-width (m); beyond it = grass
 println(CAR3D ? "  PHYSICS: full-3D vehicle (default) — heave/pitch/roll + suspension travel + jumps" :
                 "  PHYSICS: planar 2-D model (JM_2D)")
 GLFW.Init()
@@ -819,6 +822,7 @@ function main()
     spin = 0.0; last = time(); frames = 0; titleT = last
     ai_stuck = zeros(Int, length(AIPHYS))     # GC: per-AI stalled-frame counter (stuck-recovery)
     ffb_f = 0.0                                       # low-pass-filtered FFB force (continuity across frames)
+    ffb_jolt = 0.0                                    # transient FFB jolt on collisions/impacts (decays each frame)
     fy_lp = 0.0                                        # low-pass front-axle force for FFB (de-spikes the coarse mesh)
     tc_hud = ntuple(_->(0.0,0.0,1.0), 4)              # smoothed traction-circle display (kills coarse-mesh flicker)
     v_prev = cs.v; pitch_dyn = 0.0; pitch_ter = 0.0; roll_ter = 0.0    # dive/squat + terrain-slope pitch + cross-slope roll (smoothed)
@@ -939,6 +943,12 @@ function main()
                 (player_s_prev > CLINE.total*0.7 && ps < CLINE.total*0.3 && race_go[]) && (cs.laps += 1)
                 player_s_prev = ps
             end
+            # GPL GRASS PENALTY: off the racing surface (on the verge/grass) but still in the world →
+            # reduced grip + drag: scrub speed and add a little slip wobble (so cutting onto grass costs you).
+            if hr.found && !hr.on_track && cs.v > 2.5 && race_go[] && !rst
+                gdt = dt > 1e-4 ? dt : 1/60
+                bumpX!(cs, -GRASS_DRAG*cs.v*cos(cs.θ)*gdt, -GRASS_DRAG*cs.v*sin(cs.θ)*gdt, (2*rand()-1)*GRASS_SLIP*gdt)
+            end
             # E7 boundary = the WORLD edge (the terrain HAT): you can drive the road AND the grass
             # freely, but if you go off the HAT you've left the world → snap back to the last spot
             # inside it (a fence/hedge collision) and bleed speed.  (Based on the HAT, NOT the racing
@@ -960,6 +970,7 @@ function main()
                     dvn = (vn < 0 ? -e*vn : 0.0) - vn; dvt = -fric*vt
                     containX!(cs, LASTGX[], LASTGZ[]; vdamp=1.0)  # shove back to the edge (position), keep velocity
                     bumpX!(cs, dvn*nwx+dvt*tx, dvn*nwz+dvt*tz, clamp(sign(vt)*abs(vn)*0.05, -1.2, 1.2))  # bounce + scrub + glance-spin
+                    ffb_jolt = clamp(sign(vt)*abs(vn)*0.18, -1.0, 1.0)   # FF jolt off the fence/hay
                     OFFDIST[] = 0.0
                 end
             end
@@ -984,8 +995,9 @@ function main()
             spr = FFB_SPRING * clamp(inp.steer, -1, 1)         # self-centering spring ∝ wheel angle — ALWAYS present ⇒ no dead center
             target = tanh(FFB_SIGN * (FFB_GAIN * mz * spd + spr))
             ffb_f += (target - ffb_f) * clamp(dt/FFB_LP, 0.0, 1.0)   # 1st-order low-pass: smooth, continuous
-            FFB.set_force!(ffb, ffb_f)
+            FFB.set_force!(ffb, clamp(ffb_f + ffb_jolt, -1.0, 1.0))  # + a transient JOLT on impacts (collision/fence)
         end
+        ffb_jolt *= exp(-(dt > 1e-4 ? dt : 1/60)/0.06)              # the impact jolt decays fast (~60 ms)
 
         # ---- iRacing .ibt telemetry sample (one row per frame, ~60 Hz) ----
         if ibt_samples !== nothing && !rst
@@ -1100,6 +1112,9 @@ function main()
                 thr, brk, st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i],
                                                  pc.x, pc.z, pc.θ, pc.v, DriveRT.yawrate(pc); power = AI_POWER)
                 DriveRT.step_car!(pc, thr, brk, st, ddt; manual = false)
+                if abs(AICARS[i].lane) > ROAD_HALFW && pc.v > 2.5    # AI on the grass → the same drag/slip penalty
+                    DriveRT.bump!(pc, -GRASS_DRAG*pc.v*cos(pc.θ)*ddt, -GRASS_DRAG*pc.v*sin(pc.θ)*ddt, (2*rand()-1)*GRASS_SLIP*ddt)
+                end
             end
             # AI↔AI collisions (physics): pairwise overlap + closing → momentum exchange (both react)
             for a in 1:length(AIPHYS)-1, b in a+1:length(AIPHYS)
@@ -1136,6 +1151,7 @@ function main()
                 j = (1+restn)*vrel*mr
                 lat = -dx*sin(cs.θ) + dz*cos(cs.θ)            # contact offset in the player's frame → spin sign
                 bumpX!(cs, -(j/pm)*nx, -(j/pm)*nz, clamp(-sign(lat)*(j/pm)*0.05, -1.5, 1.5))
+                ffb_jolt = clamp(-sign(lat)*(j/pm)*0.14, -1.0, 1.0)   # FF jolt — feel the hit in the wheel
                 if AI_PHYSICS                                  # the AI is a real physics car → impulse it too
                     alat = -dx*sin(aθ) + dz*cos(aθ)
                     DriveRT.bump!(AIPHYS[k], (j/am)*nx, (j/am)*nz, clamp(sign(alat)*(j/am)*0.05, -1.5, 1.5))

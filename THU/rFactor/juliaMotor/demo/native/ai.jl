@@ -17,16 +17,33 @@ end
 wrapπ(a) = a > π ? a - 2π : a < -π ? a + 2π : a
 
 "Build an AI racing line from centreline points `pts` (each (x,z) in physics frame)
-and a `groundz(x,z)->y` elevation function."
-function build_line(pts, groundz)
+and a `groundz(x,z)->y` elevation function.  Resamples to ~`spacing` m so tight corners are
+well-represented (a coarse line is a polygon that the AI chord across = corner-cutting) and
+the per-point curvature is accurate."
+function build_line(pts, groundz; spacing = 3.0)
+    # arc-length resample the closed input polyline to ~`spacing` metres
+    m = length(pts)
+    cum = zeros(m+1); for i in 1:m; cum[i+1] = cum[i] + hypot(pts[i%m+1][1]-pts[i][1], pts[i%m+1][2]-pts[i][2]); end
+    total = cum[m+1]; nfine = max(m, round(Int, total/spacing))
+    fine = Vector{Tuple{Float64,Float64}}(undef, nfine)
+    for k in 1:nfine
+        d = (k-1)/nfine * total
+        j = clamp(searchsortedlast(cum, d), 1, m); f = (d - cum[j]) / max(cum[j+1]-cum[j], 1e-9)
+        a = pts[j]; b = pts[j%m+1]; fine[k] = (a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f)
+    end
+    pts = fine
     n = length(pts)
     x = Float64[p[1] for p in pts]; z = Float64[p[2] for p in pts]
     s = zeros(n); for i in 2:n; s[i] = s[i-1] + hypot(x[i]-x[i-1], z[i]-z[i-1]); end
     θ = [atan(z[i%n+1]-z[i], x[i%n+1]-x[i]) for i in 1:n]
-    κ = zeros(n)
+    κ0 = zeros(n)
     for i in 1:n
         j = i % n + 1; ds = max(j == 1 ? (s[end]-s[i]) : (s[j]-s[i]), 0.5)
-        κ[i] = abs(wrapπ(θ[j]-θ[i])) / ds
+        κ0[i] = abs(wrapπ(θ[j]-θ[i])) / ds
+    end
+    κ = zeros(n)                                  # smooth over a ~9 m window (fine segments → noisy single-segment κ)
+    for i in 1:n
+        a = 0.0; for d in -1:1; a += κ0[mod(i-1+d, n)+1]; end; κ[i] = a/3
     end
     y = Float64[(h = groundz(x[i], z[i]); isfinite(h) ? h : 0.0) for i in 1:n]
     AILine(x, z, y, s, θ, κ, s[end])
@@ -233,7 +250,11 @@ end
 throttle-cut).  `cs`/`clane` = the car's current arc-length/lateral (from projection),
 `cθ`/`cv`/`r` its heading/speed/yaw-rate.  Returns (throttle, brake, steer)."""
 function controller(line::AILine, cs, clane, tlane, tv, cx, cz, cθ, cv, r; power = 1.0)
-    la = clamp(6.0 + cv*0.5, 6.0, 32.0)                   # look-ahead DISTANCE in metres (density-independent → no corner-cutting)
+    la = clamp(6.0 + cv*0.35, 6.0, 20.0)                  # look-ahead DISTANCE in metres (density-independent)
+    # SHORTEN the look-ahead in a tight corner so the chord follows the arc instead of cutting the
+    # apex to the inside (the T1-hairpin problem): cap it to a fraction of the corner radius.
+    κloc = max(line.κ[_locate(line, cs)[1]], line.κ[_locate(line, cs + 0.5*la)[1]], 1e-4)
+    la = clamp(min(la, 0.32/κloc), 4.0, 20.0)
     lp = pose_at(line, cs + la, tlane)                    # look-ahead point ON the target rail
     herr = wrapπ(atan(lp[3]-cz, lp[1]-cx) - cθ)
     steer = clamp(3.0*herr - 0.24*(clane - tlane) - 0.22*r, -1.0, 1.0)   # tighter line-follow (don't flatten corners)
