@@ -72,6 +72,9 @@ const IS_RACE   = MODE == "race"
 const IS_TRAIN  = MODE == "training"
 # E11: AI speed as a percentage — 100 % = the GPL AI car laptime for the track.
 const AI_PCT    = clamp(tryparse(Float64, get(ENV, "JM_AI_PCT", "100")) |> x -> x === nothing ? 100.0 : x, 30.0, 200.0)
+# AI never run away from the human: each is capped to AI_REL × the player's current speed
+# (default 1.10 = at most 10 % faster) so it stays a close, raceable field.
+const AI_REL    = clamp(tryparse(Float64, get(ENV, "JM_AI_REL", "1.10")) |> x -> x === nothing ? 1.10 : x, 1.0, 4.0)
 # GPL '67 AI reference laptimes (s) — the "100 %" anchor.  Sourced from GPL AI/hotlap
 # pace per circuit; tunable per car/setup via JM_AI_REFLAP (overrides the table).  At
 # AI_PCT=100 the field is paced to hit exactly this laptime regardless of the rail
@@ -723,7 +726,15 @@ function main()
         LASTZ[]
     end
     y0spawn = groundz(cs0.x, cs0.z)                          # terrain height at spawn (3-D needs it; else the car spawns 100s of m off the ground and the contact explodes)
-    cs = build_carX(x0=cs0.x, z0=cs0.z, θ0=cs0.θ, v0=0.0, y0=y0spawn)   # MTK car — standing start (planar or full-3D)
+    # robust spawn heading: the single S/F seam segment can give a sideways tangent, so
+    # take the heading from a few points DOWN the centreline (the real start-straight direction).
+    θ0spawn = if SKIDPAD
+        cs0.θ
+    else
+        look = min(4, length(ALIGNED)-1)
+        atan(ALIGNED[1+look][2]-ALIGNED[1][2], ALIGNED[1+look][1]-ALIGNED[1][1])
+    end
+    cs = build_carX(x0=cs0.x, z0=cs0.z, θ0=θ0spawn, v0=0.0, y0=y0spawn)   # MTK car — standing start (planar or full-3D)
     # ---- AI opponents (race field): rail-followers on the centreline ----
     AILINE = (!SKIDPAD && N_AI > 0) ? RaceAI.build_line(ALIGNED, groundz) : nothing
     AICARS = AILINE === nothing ? RaceAI.AICar[] : RaceAI.init_cars(AILINE, N_AI; start_s = 30.0)
@@ -761,6 +772,10 @@ function main()
     DO_QUAL  = IS_RACE && N_AI > 0 && !SKIDPAD && !haskey(ENV,"JM_NOQUAL") && !SMOKE
     phase    = Ref(DO_QUAL ? :qual : :race)
     player_grid = Ref(0)
+    # Standing start: in a race the AI sit on the grid until YOU floor the throttle, then
+    # the whole field launches together — so you never miss the start by looking away.
+    HOLD_START = IS_RACE && N_AI > 0 && !SKIDPAD && !SMOKE
+    race_go    = Ref(!HOLD_START)
     # AI reference qual times: the paced target + a small per-car spread so the grid lines
     # up in chassis order (~0.35 s/slot at 87 s) rather than a dead heat.
     ai_quals = [AI_TGT * (1 + 0.004*(i-1)) for i in 1:length(AICARS)]
@@ -834,6 +849,10 @@ function main()
             cs.laps = 0; last_lap = 0.0; best_lap = 0.0; race_done = false; lap_t0 = cs.t
         end
         enterPrev = enterNow
+        # green light: the field launches the moment you ask for throttle (standing start)
+        if HOLD_START && !race_go[] && phase[] == :race && inp.throttle > 0.15
+            race_go[] = true; lap_t0 = cs.t          # start the clock at the launch
+        end
         # E10: burn fuel by distance (only once racing); a dry tank starves the engine.
         if FUEL_ON && phase[] == :race && !rst
             fuel[] = max(0.0, fuel[] - FUEL_LPK * cs.v * (dt > 1e-4 ? dt : 1/60) / 1000)
@@ -964,12 +983,18 @@ function main()
         wheelmat(wx,wz,steer,r) = carModel * Render.translate(Float32[wx, r, wz]) *
                      (steer ? Render.roty(δ) : Render.ident()) * Render.rotz(Float32(spin))
         # advance + place the AI field (rail-followers on the centreline)
+        ai_hit = Ref(false)
         ai_poses = if AILINE === nothing || phase[] != :race      # AI hidden until the race starts (after qualifying)
             NTuple{4,Float64}[]
+        elseif !race_go[]                                          # standing on the grid (not yet launched)
+            [RaceAI.pose_at(AILINE, c.s, c.lane) for c in AICARS]
         else
             pp = RaceAI.project(AILINE, cs.x, cs.z)                # the human as a racecraft object (s, lateral, speed)
-            RaceAI.step_field!(AICARS, AILINE, dt > 1e-4 ? dt : 1/60; scale = AI_SCALE, player = (pp[1], pp[2], cs.v))
+            poses, hit = RaceAI.step_field!(AICARS, AILINE, dt > 1e-4 ? dt : 1/60;
+                                            scale = AI_SCALE, player = (pp[1], pp[2], cs.v), rel = AI_REL)
+            ai_hit[] = hit; poses
         end
+        ai_hit[] && !rst && containX!(cs, cs.x, cs.z; vdamp = 0.85)   # an AI made contact → the player feels a bump (speed bleed)
         aiCar(p)  = Render.translate(Float32[p[1], p[2], -p[3]]) * Render.roty(Float32(p[4]))
         aiBody(p, cm) = aiCar(p) * Render.translate(collect(cm.body_off))
         aiWheel(p,wx,wz,r) = aiCar(p) * Render.translate(Float32[wx, r, wz]) * Render.rotz(Float32(spin))
@@ -1032,6 +1057,7 @@ function main()
         if now - titleT > 0.25
             GLFW.SetWindowTitle(win, "Julia Racer — $(uppercasefirst(TRACKSEL)) — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear == 0 ? "N" : string(cs.gear)) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
                 (phase[] == :qual ? "  ⏱ QUALIFYING — drive a lap, then press ENTER to start the race" :
+                 (!race_go[]) ? "  🏁 GET READY — floor the throttle to start (the field launches with you)" :
                  IS_RACE ? (race_done ? "  ✦ FINISHED — started P$(player_grid[])" :
                             "  — lap $(min(cs.laps+1,RACE_LAPS))/$RACE_LAPS" *
                             (isempty(AICARS) ? "" : "  Pos P$(findfirst(e->e[1]==0, standings()))/$(length(AICARS)+1)")) :

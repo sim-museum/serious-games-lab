@@ -32,11 +32,27 @@ function build_line(pts, groundz)
     AILine(x, z, y, s, θ, κ, s[end])
 end
 
-mutable struct AICar; s::Float64; v::Float64; lap::Int; lane::Float64; tlane::Float64; end
-AICar(s, v, lap, lane) = AICar(s, v, lap, lane, lane)   # tlane defaults to the current lane
+mutable struct AICar; s::Float64; v::Float64; lap::Int; lane::Float64; tlane::Float64; spin::Float64; end
+AICar(s, v, lap, lane) = AICar(s, v, lap, lane, lane, 0.0)   # tlane defaults to current lane; spin = collision yaw
 
 const RAIL     = 3.0    # inside/outside rail offset from the race line (m)
 const LANE_MAX = 3.6    # never exceed this lateral offset (keeps the car on the track)
+const CAR_LEN  = 4.2    # car length (m) — single-file spacing + collision longitudinal extent
+const CAR_WID  = 1.7    # car width (m) — collision lateral extent
+
+# Longitudinal physics so the AI ACCELERATE like cars (not slot cars): traction-limited
+# off the line, power-limited + aero drag at speed → a natural build-up and top speed.
+const AI_MASS = 560.0; const AI_PMAX = 300_000.0   # ~Lotus 49: 560 kg, ~400 bhp
+const AI_FMAX = 6800.0; const AI_DRAG = 0.42; const AI_BRAKE = 16.0   # traction N, ½ρ·CdA, brake m/s²
+function advance_speed(v, vtarget, dt)
+    if v < vtarget
+        Fdrive = min(AI_FMAX, AI_PMAX / max(v, 8.0))       # power = force×speed → force falls off at speed
+        a = (Fdrive - AI_DRAG*v*v) / AI_MASS               # minus aero drag
+        min(v + a*dt, vtarget)
+    else
+        max(v - AI_BRAKE*dt, vtarget)                      # decel-limited braking
+    end
+end
 
 "Grid of `n` AI cars staggered ~9 m apart behind arc-length `start_s`, alternating lanes."
 init_cars(line::AILine, n; start_s = 0.0) =
@@ -88,12 +104,13 @@ function step!(car::AICar, line::AILine, dt; amax = 11.0, vmax = 74.0, vmin = 12
     pose_at(line, car.s, car.lane)
 end
 
-"""Advance the whole AI field for `dt` with GPL-style racecraft: each car follows the
-race line but moves to an inside/outside RAIL to pass or evade the nearest car ahead —
-another AI OR the human (`player` = (s, lateral, v) or nothing) — and matches speed when
-it's too close to get by (so it never rams).  Returns each car's world pose, in order."""
+"""Advance the AI field with GPL-style racecraft + simple collision physics.  Returns
+`(poses, player_hit)`: each car's world pose (heading carries a collision yaw `spin`), and
+whether an AI made contact with the human (so the app can give the player a bump).  `rel`
+caps every AI to `rel × player_speed` so the field never runs away from the human."""
 function step_field!(cars::Vector{AICar}, line::AILine, dt;
-                     scale = 1.0, player = nothing, amax = 11.0, vmax = 74.0, vmin = 12.0)
+                     scale = 1.0, player = nothing, rel = Inf,
+                     amax = 11.0, vmax = 74.0, vmin = 12.0)
     total = line.total
     blocker(s_i, skip) = begin                              # nearest object ahead → (gap, lane, v) or nothing
         bg = Inf; res = nothing
@@ -106,24 +123,62 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
         end
         res
     end
-    poses = NTuple{4,Float64}[]
+    # 1) decide a line + speed, then advance with the longitudinal PHYSICS model
     for (i, car) in enumerate(cars)
         vt = _vtarget(line, car.s, car.v; amax, vmax, vmin, scale)
         b = blocker(car.s, i)
-        if b !== nothing && b[1] < car.v*0.9 + 12.0 && abs(car.lane - b[2]) < 2.2
-            car.tlane = b[2] >= 0.0 ? -RAIL : RAIL          # dive to the rail away from the car ahead
-            (b[1] < car.v*0.5 + 6.0 && abs(car.lane - b[2]) < 1.8) && (vt = min(vt, b[3] + 0.5))  # too close → match speed, don't ram
+        if b !== nothing && b[1] < car.v*0.9 + 12.0 && abs(car.lane - b[2]) < 2.4
+            car.tlane = b[2] >= 0.0 ? -RAIL : RAIL          # pull to the rail away from the car ahead to pass
+            (b[1] < car.v*0.6 + CAR_LEN) && (vt = min(vt, b[3]))   # can't get by yet → match its speed (queue, don't ram)
         else
-            car.tlane = 0.0                                 # clear → drift back to the race line
+            car.tlane = 0.0                                 # clear → back to the race line
         end
-        car.lane += clamp(car.tlane - car.lane, -3.5*dt, 3.5*dt)   # blend to the target rail
-        car.lane  = clamp(car.lane, -LANE_MAX, LANE_MAX)           # stay on track
-        car.v    += clamp(vt - car.v, -30.0*dt, 9.0*dt)
+        isfinite(rel) && player !== nothing && (vt = min(vt, max(player[3]*rel, 6.0)))   # ~player pace — never run away
+        car.lane += clamp(car.tlane - car.lane, -3.5*dt, 3.5*dt)
+        car.lane  = clamp(car.lane, -LANE_MAX, LANE_MAX)
+        car.v     = advance_speed(car.v, vt, dt)            # realistic accel/brake (not slot-car)
+        car.spin *= exp(-dt/0.45)                           # collision yaw decays back to the line heading
         prev = mod(car.s, total); car.s += car.v*dt
         mod(car.s, total) < prev && (car.lap += 1)
-        push!(poses, pose_at(line, car.s, car.lane))
     end
-    poses
+    # 2) keep cars from passing THROUGH each other: same-lane → queue single file; side-by-side
+    #    overlap → push apart + add opposite yaw spin + bleed speed (a contact).
+    n = length(cars)
+    for a in 1:n, b in 1:n
+        a == b && continue
+        Δs = mod(cars[a].s - cars[b].s, total)              # how far a is AHEAD of b
+        Δs > total/2 && continue                            # only handle b catching a (a ahead)
+        dl = cars[a].lane - cars[b].lane
+        Δs < CAR_LEN || continue
+        if abs(dl) < CAR_WID*0.7                             # ~same lane → b queues behind a (no pass-through)
+            cars[b].s = cars[a].s - CAR_LEN
+            cars[b].v = min(cars[b].v, cars[a].v)
+        elseif abs(dl) < CAR_WID                             # side-by-side touch → rub + twitch
+            push = (CAR_WID - abs(dl)) * 0.5; d = dl >= 0 ? 1.0 : -1.0
+            cars[a].lane = clamp(cars[a].lane + d*push, -LANE_MAX, LANE_MAX)
+            cars[b].lane = clamp(cars[b].lane - d*push, -LANE_MAX, LANE_MAX)
+            cars[a].spin += 0.18*d; cars[b].spin -= 0.18*d
+            cars[a].v *= 0.97; cars[b].v *= 0.97
+        end
+    end
+    # 3) contact with the HUMAN: the AI yields (steps aside + twitches + slows); flag a bump
+    player_hit = false
+    if player !== nothing
+        for c in cars
+            Δs = mod(c.s - player[1] + total/2, total) - total/2
+            if abs(Δs) < CAR_LEN && abs(c.lane - player[2]) < CAR_WID
+                d = (c.lane - player[2]) >= 0 ? 1.0 : -1.0
+                c.lane = clamp(c.lane + d*1.3, -LANE_MAX, LANE_MAX)
+                c.spin += 0.22*d; c.v *= 0.9
+                player_hit = true
+            end
+        end
+    end
+    poses = NTuple{4,Float64}[]
+    for c in cars
+        p = pose_at(line, c.s, c.lane); push!(poses, (p[1], p[2], p[3], p[4] + c.spin))
+    end
+    (poses, player_hit)
 end
 
 """Grid order from a qualifying session.  `player_time` is the human's best qual lap
