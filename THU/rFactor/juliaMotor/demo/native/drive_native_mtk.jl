@@ -734,7 +734,7 @@ function camera(cs, pitch=0.0)
     if CTL.view == 1                                  # chase — level horizon, so you see the body pitch
         eye=[wx-fx*9, wy+3.2, wz-fz*9]; ctr=[wx+fx*3, wy+0.6, wz+fz*3]
     else                                             # cockpit: driver's eye in the body frame, over the wheel
-        ex,ey,ez,drop = 0.30f0, 0.56f0, 0.0f0, 1.25f0           # eye in body-local rig (X fwd,Y up,Z lat)
+        ex,ey,ez,drop = parse(Float32,get(ENV,"JM_EYE_X","0.22")), parse(Float32,get(ENV,"JM_EYE_Y","0.62")), 0.0f0, parse(Float32,get(ENV,"JM_EYE_DROP","1.6"))   # GPL-style: lower seat / more dash + cowl in view (tunable via JM_EYE_*)
         rx = BODY_OFF[1]+ex; ry = BODY_OFF[2]+ey; rz = BODY_OFF[3]+ez
         fwd = 4*cos(pitch) + drop*sin(pitch); up = 4*sin(pitch) - drop*cos(pitch)  # tilt look dir by pitch
         eye=[wx + rx*fx - rz*fz, wy + ry, wz + rx*fz + rz*fx]   # rig→world (roty θ + carpos)
