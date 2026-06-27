@@ -83,10 +83,13 @@ kill skittering (G3) → **GC** hybrid-physics AI (G2) → **GD** rigid-body car
   vehicle state (velocity + yaw rate); momentum-exchange on player↔AI contact. Verified live.
 - **GE trackside collisions** ✅ (commit): the world-edge boundary is now a physical bounce
   (restitution + fence-grab scrub + glance spin) via `bump!`, not a snap-back.
-- **GC hybrid-physics AI**: controller PROVEN viable (tracks 0.19 m, 0 spins with throttle-cut
-  + auto-gearbox + conservative speed; recipe + integration plan in `RACE_AI_NOTES.md`). The
-  large integration (5 cars sharing the compiled MTK system, real-track generalization) is the
-  remaining step — left for PO feel-validation; the live AI stays the strong kinematic model.
+- **GC hybrid-physics AI** ✅ (commit e97cb45): INTEGRATED + live (default; JM_AI_KINEMATIC
+  fallback). `DriveRT.build_cars` shares one compiled MTK system across 5 cars (~29 s, not 5×);
+  `RaceAI.plan!` (brain) + `RaceAI.controller` (proven recipe) drive them; stuck-recovery snaps a
+  stalled AI back to the line; collisions impulse the AI's physics car. Verified (JM_AI_TEST):
+  Zandvoort 5 cars 0 spins ~110 km/h, Nürburgring 0 spins + drift recovery, ~1 ms/frame.
+  **All five GPL-comparable epics (G1–G5) now delivered** (G1 Lotus livery/gauges partial — GPL
+  skin/UV RE deferred).
 
 ### Race-completeness sprint plan (E8–E12, PO pre-approved 2026-06-26)
 - **R-Sprint 1 — Distinct GPL grid (E8).** Generic GPL-car loader (`gplcar.jl`); AI field renders
