@@ -58,3 +58,20 @@ Sketch:
 
 This gives the most faithful result (physics + GPL racecraft + real contact) at the cost
 of a controller-tuning effort that may need iteration across each track's corner types.
+
+## GA Lotus GPL-fidelity findings (2026-06-26, autonomous)
+Decoded the Lotus textures to PNG (scratchpad/decode_tex.jl). What's where:
+- `windlot` = tan leather SCUTTLE (restored ✓), `dash7a` = the GAUGE CLUSTER, `lotbody` =
+  the DRIVER's suit, `lo133` = FORD engine, `frontlot`/`lid`/`lotsho` = suspension,
+  `lotback` = black dash padding, `lo134`/`top`/`rear` = thin trim edges.
+- **The green body livery + yellow nose stripe + #1 roundel + TEAM LOTUS are NOT in any
+  accessible texture.** The body is flat green poly-colour; the painted number/stripe come
+  from GPL's runtime driver-SKIN system (per-grid-slot), which we don't yet reproduce.
+Deferred GA items (deep GPL RE, low ROI vs the AI epics):
+- Gauge cluster renders dark/occluded at the cockpit camera though `dash7a` resolves +
+  the poly survives filters (UV or normal/lighting issue).
+- Driver arms (`lohand`/`lotarms`) render as splayed chrome "wings" (sub-object positioner
+  geometry issue) — kept excluded.
+- Body number/stripe/TEAM LOTUS = GPL driver-skin system (would need to emulate it).
+The cockpit is much closer now (tan scuttle + red wheel + mirrors + green cowl); the AI
+chassis already show their distinct GPL liveries (flat poly colours: red Ferrari, etc.).
