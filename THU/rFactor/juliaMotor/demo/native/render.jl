@@ -849,7 +849,7 @@ car rig frame (X fwd, Y up, Z left).  GPL is X=fwd, Y=lateral, Z=up; V is flippe
 # and lshad (blob shadow); we do our own shadows.  Untextured + lotblack interior
 # panels are KEPT now that positioners place them correctly (they were only "strays"
 # when collapsed to the origin) — needed for a solid cockpit.
-function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, dedup=nothing, drop_green=false)
+function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, dedup=nothing, drop_green=false)
     # text reads right when the texture mapping preserves handedness: the mirror=true
     # remap (gx,gz,-gy) is a rotation (no flip needed); mirror=false is a reflection
     # (needs V flipped to compensate).  So uflip=false, vflip=!mirror.
@@ -883,6 +883,7 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), grey=(0.72f0,0.7
                   abs(t.p[3][1]),abs(t.p[3][2]),abs(t.p[3][3]))
     keep(t) = let L = max(edge(t.p[1],t.p[2]), edge(t.p[2],t.p[3]), edge(t.p[1],t.p[3])),
                   A = triarea(t.p)
+        !isempty(only) && !(t.tex in only) ? false :                   # `only` set ⇒ keep just those textures (e.g. the gauge cluster)
         !(isfinite(L) && isfinite(A) && cmax(t) < 5f4) ? false :       # drop garbage/huge stray verts (e.g. monza10k ~1e6-unit coords)
         (cockpit_clean && t.tex=="" && yellowish(t.col)) || overlat(t) ? false :
         track ? (!(t.tex in exclude) && A >= 1f-7 && L <= maxedge) :   # track: huge legit polys (objects pass maxedge to drop stray giant polys)

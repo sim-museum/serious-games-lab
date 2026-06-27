@@ -453,7 +453,8 @@ const LOT3DO = joinpath(LOTDIR,"lotus.3do")
 # element; the earlier "rug" was the untextured yellow floor, which cockpit_clean drops, not
 # windlot which is properly tan-textured).  Still drop hands/dup-mirror/teal front-susp/tan
 # floor + clip the splayed-rear chrome.
-const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","lotmirt",Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0)
+const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","lotmirt","dash7a",Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0)
+const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (its normals face down → dark in the body draw)
 const SWPARTS, SWCENTER, SWAXIS = Render.extract_gpl_steering(LOT3DO)   # steering wheel + pivot
 println(length(TRACK), " track parts + ", length(CARP), " Lotus body parts")
 const BODY_OFF = Float32[-0.55, 0.30, 0.0]     # centre body on X, lift onto the wheels
@@ -630,6 +631,7 @@ end
 println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards placed"); flush(stdout)
 end
 carItems   = Render.build_gpl(CARP, GPLTEX)        # Lotus body, GPL .mip textures
+gaugeItems = Render.build_gpl(GAUGEP, GPLTEX)      # gauge cluster (drawn near-unlit so it reads)
 # four Lotus wheels — keep the untextured black tyre body (only the car body drops "")
 load_wheel(nm) = Render.build_gpl(Render.extract_gpl_car(joinpath(LOTDIR,nm*".3do");
                     exclude=("ltraymap","lshad"), tint=(0.12f0,0.12f0,0.13f0)), GPLTEX)  # force dark tyre
@@ -1183,6 +1185,7 @@ function main()
         # ambfill lifts the self-shadowed cockpit interior out of black (GPL pre-lights it
         # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
         for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.25, spec=0.10, ambfill=0.62); end   # lift the self-shadowed cockpit tub out of black (GPL pre-lights it to grey)
+        for it in gaugeItems; Render.draw(prog, it, vp, bodyModel; bright=1.5, spec=0.0, ambfill=0.95); end    # gauge cluster: near-unlit → readable tach + dials
         for (p, cm) in zip(ai_poses, AICHASSIS)                 # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper)
             for it in cm.body; Render.draw(prog, it, vp, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end
             for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp, aiWheel(p,wx,wz,r)); end
