@@ -127,14 +127,21 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
     for (i, car) in enumerate(cars)
         vt = _vtarget(line, car.s, car.v; amax, vmax, vmin, scale)
         b = blocker(car.s, i)
-        if b !== nothing && b[1] < car.v*0.9 + 12.0 && abs(car.lane - b[2]) < 2.4
-            car.tlane = b[2] >= 0.0 ? -RAIL : RAIL          # pull to the rail away from the car ahead to pass
-            (b[1] < car.v*0.6 + CAR_LEN) && (vt = min(vt, b[3]))   # can't get by yet → match its speed (queue, don't ram)
+        gap   = b === nothing ? Inf : b[1]
+        blane = b === nothing ? 0.0 : b[2]
+        # HYSTERESIS so the AI commit to a pass instead of skittering between rails like a
+        # water-insect: ENGAGE a move only when genuinely catching a car ahead in our lane;
+        # once committed to a rail, HOLD it until well clear (a much larger release gap).
+        if car.tlane == 0.0
+            if gap < car.v*1.0 + 14.0 && abs(car.lane - blane) < 2.2
+                car.tlane = blane >= 0.0 ? -RAIL : RAIL     # pick ONE side and commit
+            end
         else
-            car.tlane = 0.0                                 # clear → back to the race line
+            (gap > car.v*1.7 + 30.0) && (car.tlane = 0.0)   # clear ahead → ease back to the race line
+            (gap < car.v*0.6 + CAR_LEN && abs(car.lane - blane) < 1.6) && (vt = min(vt, b[3]))  # still stuck behind → match speed
         end
         isfinite(rel) && player !== nothing && (vt = min(vt, max(player[3]*rel, 6.0)))   # ~player pace — never run away
-        car.lane += clamp(car.tlane - car.lane, -3.5*dt, 3.5*dt)
+        car.lane += clamp(car.tlane - car.lane, -2.4*dt, 2.4*dt)   # deliberate lane changes (not twitchy)
         car.lane  = clamp(car.lane, -LANE_MAX, LANE_MAX)
         car.v     = advance_speed(car.v, vt, dt)            # realistic accel/brake (not slot-car)
         car.spin *= exp(-dt/0.45)                           # collision yaw decays back to the line heading
