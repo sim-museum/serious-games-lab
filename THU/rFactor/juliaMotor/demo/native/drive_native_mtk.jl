@@ -768,7 +768,7 @@ function main()
             r = findfirst(==(i), order)
             c.s = mod(-(r - prank)*ROW, AILINE.total)      # ahead (+s) if it out-qualified the player
             c.v = 0.0; c.lap = 0
-            c.lane = isodd(r) ? GRID_LANE : -GRID_LANE
+            c.lane = isodd(r) ? GRID_LANE : -GRID_LANE; c.tlane = c.lane
         end
         println("\n  ═══ GRID (from qualifying) ═══")
         for (p, id) in enumerate(order)
@@ -947,8 +947,12 @@ function main()
         wheelmat(wx,wz,steer,r) = carModel * Render.translate(Float32[wx, r, wz]) *
                      (steer ? Render.roty(δ) : Render.ident()) * Render.rotz(Float32(spin))
         # advance + place the AI field (rail-followers on the centreline)
-        ai_poses = (AILINE === nothing || phase[] != :race) ? NTuple{4,Float64}[] :   # AI hidden until the race starts (after qualifying)
-                   [RaceAI.step!(c, AILINE, dt > 1e-4 ? dt : 1/60; scale = AI_SCALE) for c in AICARS]
+        ai_poses = if AILINE === nothing || phase[] != :race      # AI hidden until the race starts (after qualifying)
+            NTuple{4,Float64}[]
+        else
+            pp = RaceAI.project(AILINE, cs.x, cs.z)                # the human as a racecraft object (s, lateral, speed)
+            RaceAI.step_field!(AICARS, AILINE, dt > 1e-4 ? dt : 1/60; scale = AI_SCALE, player = (pp[1], pp[2], cs.v))
+        end
         aiCar(p)  = Render.translate(Float32[p[1], p[2], -p[3]]) * Render.roty(Float32(p[4]))
         aiBody(p, cm) = aiCar(p) * Render.translate(collect(cm.body_off))
         aiWheel(p,wx,wz,r) = aiCar(p) * Render.translate(Float32[wx, r, wz]) * Render.rotz(Float32(spin))
