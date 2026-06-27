@@ -82,6 +82,7 @@ const AI_PHYSICS = !haskey(ENV, "JM_AI_KINEMATIC")
 # the AI race at a fixed pace they can't exceed (and can wash out if hot), so a fast human gets
 # legitimately ahead.  1.0 = full DFV power (GPL-fast); lower detunes them.  JM_AI_POWER tunes it.
 const AI_POWER  = clamp(tryparse(Float64, get(ENV, "JM_AI_POWER", "0.90")) |> x -> x === nothing ? 0.90 : x, 0.4, 1.0)
+const CONTACT_D = parse(Float64, get(ENV, "JM_CONTACT_D", "2.1"))   # collision = ACTUAL contact (≈ car width); no repel-from-afar
 # GPL '67 AI reference laptimes (s) — the "100 %" anchor.  Sourced from GPL AI/hotlap
 # pace per circuit; tunable per car/setup via JM_AI_REFLAP (overrides the table).  At
 # AI_PCT=100 the field is paced to hit exactly this laptime regardless of the rail
@@ -478,7 +479,7 @@ step_carX!(c, a...; kw...) = CAR3D ? DriveRT3D.step_car3d!(c, a...; kw...) : Dri
 telemetryX(c)              = CAR3D ? DriveRT3D.telemetry3d(c) : DriveRT.telemetry(c)
 respawnX!(c)               = CAR3D ? DriveRT3D.respawn3d!(c) : DriveRT.respawn!(c)
 containX!(c, x, z; kw...)  = CAR3D ? DriveRT3D.contain3d!(c, x, z; kw...) : DriveRT.contain!(c, x, z; kw...)
-bumpX!(c, dvx, dvz, dr)    = CAR3D ? DriveRT3D.bump3d!(c, dvx, dvz, dr)    : DriveRT.bump!(c, dvx, dvz, dr)   # GD: collision impulse
+bumpX!(c, dvx, dvz, dr, dvy=0.0) = CAR3D ? DriveRT3D.bump3d!(c, dvx, dvz, dr, dvy) : DriveRT.bump!(c, dvx, dvz, dr)   # GD: collision impulse (+vertical launch, 3-D)
 # AI run the full 3-D physics model too (weight transfer + jumps).  Aliases keep call sites tidy.
 const AICarT  = DriveRT3D.Car3D
 const AIbuild = DriveRT3D.build_cars3d
@@ -802,9 +803,11 @@ function main()
                 s,lat = RaceAI.project(AILINE, pc.x, pc.z); AICARS[i].s=s; AICARS[i].lane=lat; AICARS[i].v=pc.v
                 maxlat = max(maxlat, abs(lat))
                 aidist[i] += hypot(pc.x-lastx[i], pc.z-lastz[i]); lastx[i]=pc.x; lastz[i]=pc.z
-                if pc.v < 1.4 || abs(lat) > 14.0      # mirror the live recovery: stalled OR off-track
+                offhat = !JuliaMotor.hat3d(TERRAIN, pc.x, pc.z; ref=Inf)[3]
+                if pc.v < 1.4 || abs(lat) > 9.0 || offhat      # mirror the live recovery
                     stuck[i]+=1; scon[i]+=1
-                    if scon[i] > (abs(lat)>14.0 ? 24 : 100); rp=RaceAI.pose_at(AILINE, s+10.0, 0.0); AIplace!(pc, rp[1], rp[3], rp[4]; v=max(8.0,pc.v*0.7)); scon[i]=0; end
+                    lim = (offhat || abs(lat)>12.0) ? 6 : (abs(lat)>9.0 ? 18 : 90)
+                    if scon[i] > lim; rp=RaceAI.pose_at(AILINE, s+10.0, 0.0); AIplace!(pc, rp[1], rp[3], rp[4]; v=max(8.0,pc.v*0.6)); scon[i]=0; end
                 else; scon[i]=0; end
             end
             vts = RaceAI.plan!(AICARS, AILINE; scale=1.0, amax=8.0)
@@ -834,7 +837,8 @@ function main()
     v_prev = cs.v; pitch_dyn = 0.0; pitch_ter = 0.0; roll_ter = 0.0    # dive/squat + terrain-slope pitch + cross-slope roll (smoothed)
     # lap timing + telemetry log
     lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = cs.laps; tsamp = 0; race_done = false; enterPrev = false
-    player_s_prev = CLINE === nothing ? 0.0 : RaceAI.project(CLINE, cs.x, cs.z)[1]   # for robust lap-wrap detection
+    player_s_prev = CLINE === nothing ? 0.0 : RaceAI.project(CLINE, cs.x, cs.z)[1]   # for robust lap detection
+    player_prog = 0.0                                                                # accumulated track arc-length (laps = ⌊prog/total⌋)
     fmt_lap(s) = (m=floor(Int,s/60); sec=s-60m; si=floor(Int,sec); ms=round(Int,(sec-si)*1000);
                   "$m:$(lpad(si,2,'0')).$(lpad(ms,3,'0'))")
     # ---- E9: qualifying → grid order ----
@@ -942,12 +946,15 @@ function main()
             if hr.found
                 cs.lapdist = hr.lapdist; cs.lateral = hr.lateral; cs.along = hr.lapdist; cs.ontrack = hr.on_track
             else; cs.ontrack = false; end
-            # ROBUST lap counting: wrap of the centreline-projection arc-length (the ribbon lapdist
-            # has a seam at S/F that never wrapped → laps stayed 0 → no finish).  Same method the AI use.
+            # ROBUST lap counting via ACCUMULATED track progress (a lap = a lap's worth of arc-length
+            # covered), so it counts even if you cross the line OFF the road (slid wide at the finish).
             if CLINE !== nothing
                 ps = RaceAI.project(CLINE, cs.x, cs.z)[1]
-                (player_s_prev > CLINE.total*0.7 && ps < CLINE.total*0.3 && race_go[]) && (cs.laps += 1)
+                ds = ps - player_s_prev
+                ds < -CLINE.total/2 && (ds += CLINE.total); ds > CLINE.total/2 && (ds -= CLINE.total)  # unwrap
+                race_go[] && abs(ds) < CLINE.total*0.4 && (player_prog += ds)   # ignore projection jumps
                 player_s_prev = ps
+                while cs.laps < floor(Int, player_prog/CLINE.total); cs.laps += 1; end
             end
             # GPL GRASS PENALTY: off the racing surface (on the verge/grass) but still in the world →
             # reduced grip + drag: scrub speed and add a little slip wobble (so cutting onto grass costs you).
@@ -1102,12 +1109,15 @@ function main()
                 (prevs > AILINE.total*0.7 && s < AILINE.total*0.3) && (AICARS[i].lap += 1)
                 # recovery: a stalled AI, or one that's run WAY off the racing line (off track at a
                 # corner), is snapped back onto the line — so an AI can never drive off and vanish.
-                off = pc.v < 1.4 || abs(lat) > 14.0
+                # recover BEFORE it can climb a dune/leave the world: at the road-edge (not 14 m out),
+                # and hard-recover if it's off the terrain HAT entirely (the "mid-air on the dune" case).
+                offhat = !JuliaMotor.hat3d(TERRAIN, pc.x, pc.z; ref=Inf)[3]
+                off = pc.v < 1.4 || abs(lat) > 9.0 || offhat
                 if off
                     ai_stuck[i] += 1
-                    lim = abs(lat) > 14.0 ? 24 : 100      # off-track: recover within ~0.4 s; stalled: ~1.7 s
+                    lim = (offhat || abs(lat) > 12.0) ? 6 : (abs(lat) > 9.0 ? 18 : 90)   # snap back fast when truly off
                     if ai_stuck[i] > lim
-                        rp = RaceAI.pose_at(AILINE, s + 10.0, 0.0); AIplace!(pc, rp[1], rp[3], rp[4]; v = max(8.0, pc.v*0.7)); ai_stuck[i] = 0
+                        rp = RaceAI.pose_at(AILINE, s + 10.0, 0.0); AIplace!(pc, rp[1], rp[3], rp[4]; v = max(8.0, pc.v*0.6)); ai_stuck[i] = 0
                     end
                 else; ai_stuck[i] = 0; end
             end
@@ -1126,13 +1136,14 @@ function main()
             for a in 1:length(AIPHYS)-1, b in a+1:length(AIPHYS)
                 pa = AIPHYS[a]; pb = AIPHYS[b]
                 dx = pb.x-pa.x; dz = pb.z-pa.z; d = hypot(dx,dz)
-                (d < 1e-3 || d > 3.5) && continue
+                (d < 1e-3 || d > CONTACT_D) && continue   # actual contact only
                 nx = dx/d; nz = dz/d
                 vrel = (pa.v*cos(pa.θ)-pb.v*cos(pb.θ))*nx + (pa.v*sin(pa.θ)-pb.v*sin(pb.θ))*nz
                 vrel <= 0.2 && continue
                 j = 1.45*vrel*280.0                       # (1+e)·vrel·reduced-mass, e=0.45, m=560 each
-                AIbump!(pa, -(j/560)*nx, -(j/560)*nz, clamp(-(j/560)*0.04, -1.0, 1.0))
-                AIbump!(pb,  (j/560)*nx,  (j/560)*nz, clamp( (j/560)*0.04, -1.0, 1.0))
+                acrossa = abs(-nx*sin(pa.θ)+nz*cos(pa.θ)); vl = clamp((j/560)*acrossa*0.55, 0.0, 7.0)  # wheel-climb launch
+                AIbump!(pa, -(j/560)*nx, -(j/560)*nz, clamp(-(j/560)*0.04, -1.0, 1.0), vl)
+                AIbump!(pb,  (j/560)*nx,  (j/560)*nz, clamp( (j/560)*0.04, -1.0, 1.0), vl)
             end
             [(pc.x, isfinite(pc.y) ? pc.y : groundz(pc.x, pc.z), pc.z, pc.θ) for pc in AIPHYS]   # pc.y = 3-D height → AI visibly jump/heave
         else
@@ -1148,7 +1159,7 @@ function main()
             pvx = cs.v*cos(cs.θ); pvz = cs.v*sin(cs.θ)
             for (k, p) in enumerate(ai_poses)
                 dx = p[1] - cs.x; dz = p[3] - cs.z; d = hypot(dx, dz)
-                (d < 1e-3 || d > 3.6) && continue            # not touching
+                (d < 1e-3 || d > CONTACT_D) && continue       # ACTUAL contact only (≈ a car width — no "repel from afar")
                 nx = dx/d; nz = dz/d                          # contact normal, player → AI
                 ac = AICARS[k]; aθ = p[4]
                 avx = ac.v*cos(aθ); avz = ac.v*sin(aθ)
@@ -1156,11 +1167,14 @@ function main()
                 vrel <= 0.2 && continue                       # separating → no new impulse
                 j = (1+restn)*vrel*mr
                 lat = -dx*sin(cs.θ) + dz*cos(cs.θ)            # contact offset in the player's frame → spin sign
-                bumpX!(cs, -(j/pm)*nx, -(j/pm)*nz, clamp(-sign(lat)*(j/pm)*0.05, -1.5, 1.5))
-                ffb_jolt = clamp(-sign(lat)*(j/pm)*0.14, -1.0, 1.0)   # FF jolt — feel the hit in the wheel
+                # a SIDE (wheel-to-wheel) hit climbs → vertical launch; a square hit doesn't.
+                across_p = abs(-nx*sin(cs.θ) + nz*cos(cs.θ))
+                vlaunch = clamp((j/pm)*across_p*0.55, 0.0, 7.0)
+                bumpX!(cs, -(j/pm)*nx, -(j/pm)*nz, clamp(-sign(lat)*(j/pm)*0.05, -1.5, 1.5), vlaunch)
+                ffb_jolt = clamp(-sign(lat)*(j/pm)*0.18 - 0.25*sign(vrel), -1.0, 1.0)   # FF jolt — feel the hit
                 if AI_PHYSICS                                  # the AI is a real physics car → impulse it too
                     alat = -dx*sin(aθ) + dz*cos(aθ)
-                    AIbump!(AIPHYS[k], (j/am)*nx, (j/am)*nz, clamp(sign(alat)*(j/am)*0.05, -1.5, 1.5))
+                    AIbump!(AIPHYS[k], (j/am)*nx, (j/am)*nz, clamp(sign(alat)*(j/am)*0.05, -1.5, 1.5), vlaunch)
                 else
                     along  = nx*cos(aθ) + nz*sin(aθ); across = -nx*sin(aθ) + nz*cos(aθ)
                     ac.v   = max(0.0, ac.v + (j/am)*along*0.6)    # pushed along its heading (rear-ended ⇒ sped up; nosed ⇒ slowed)

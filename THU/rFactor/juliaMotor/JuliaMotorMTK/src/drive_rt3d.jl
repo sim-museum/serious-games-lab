@@ -265,8 +265,11 @@ function place3d!(c::Car3D, x, z, θ; v = 0.0)
     c.x = x; c.z = z; c.θ = θ; c.v = v
     c
 end
-"Rigid-body collision impulse (3-D car): world-frame velocity change (dvx,dvz) + yaw-rate dr."
-function bump3d!(c::Car3D, dvx, dvz, dr)
+const _WSET3D = IdDict()
+"""Rigid-body collision impulse (3-D car): world-frame velocity change (dvx,dvz) + yaw-rate dr
++ an optional VERTICAL kick `dvy` (sets the heave velocity `w` → the car JUMPS — e.g. a
+spinning wheel climbing another car's wheel launches it into the air, GPL-style)."""
+function bump3d!(c::Car3D, dvx, dvz, dr, dvy = 0.0)
     a = c.getall(c.integ); θ = a[3]; u = a[4]; v = a[5]
     wvx = u*cos(θ) - v*sin(θ) + dvx
     wvz = u*sin(θ) + v*cos(θ) + dvz
@@ -277,6 +280,12 @@ function bump3d!(c::Car3D, dvx, dvz, dr)
         try
             gs = get!(() -> (ModelingToolkit.getsym(c.sys, c.sys.r), ModelingToolkit.setu(c.sys, c.sys.r)), _RSET3D, c.sys)
             gs[2](c.integ, gs[1](c.integ) + dr)
+        catch; end
+    end
+    if dvy != 0.0
+        try
+            ws = get!(() -> (ModelingToolkit.getsym(c.sys, c.sys.w), ModelingToolkit.setu(c.sys, c.sys.w)), _WSET3D, c.sys)
+            ws[2](c.integ, ws[1](c.integ) + dvy)     # add upward heave velocity → launch
         catch; end
     end
     c.v = sqrt(nu^2 + nv^2)
