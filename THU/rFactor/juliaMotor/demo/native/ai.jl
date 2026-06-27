@@ -65,6 +65,17 @@ function step!(car::AICar, line::AILine, dt; amax = 11.0, vmax = 74.0, vmin = 12
     (x, y, z, θ)
 end
 
+"""Grid order from a qualifying session.  `player_time` is the human's best qual lap
+(`Inf` if they set none → starts last); `ai_times` the AI reference qual times.  Returns
+the entrant ids sorted pole-first, where id 0 = the player and id i = AI car i.  The
+position of id 0 in the result is the player's grid slot (1 = pole)."""
+function grid_order(player_time, ai_times)
+    entr = Tuple{Int,Float64}[(0, player_time)]
+    for i in eachindex(ai_times); push!(entr, (i, Float64(ai_times[i]))); end
+    sort!(entr, by = x -> x[2])
+    [e[1] for e in entr]
+end
+
 """Simulate one AI car around a full lap at the given `scale` and return the lap
 time (s).  Used to calibrate the pace: knowing the natural lap time at scale 1.0,
 the app picks the scale that makes a clean lap hit the GPL reference laptime ×

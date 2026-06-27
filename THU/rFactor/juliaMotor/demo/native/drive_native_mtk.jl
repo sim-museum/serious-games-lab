@@ -694,6 +694,34 @@ function main()
     lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = cs.laps; tsamp = 0; race_done = false
     fmt_lap(s) = (m=floor(Int,s/60); sec=s-60m; si=floor(Int,sec); ms=round(Int,(sec-si)*1000);
                   "$m:$(lpad(si,2,'0')).$(lpad(ms,3,'0'))")
+    # ---- E9: qualifying → grid order ----
+    # One qualifying lap sets the grid: the field is arranged around the player by qual
+    # time (faster qualifiers start ahead on track, slower behind).  Skipped for solo
+    # races, the skidpad, JM_NOQUAL, and headless smoke (which can't drive a lap).
+    DO_QUAL  = IS_RACE && N_AI > 0 && !SKIDPAD && !haskey(ENV,"JM_NOQUAL") && !SMOKE
+    phase    = Ref(DO_QUAL ? :qual : :race)
+    player_grid = Ref(0)
+    # AI reference qual times: the paced target + a small per-car spread so the grid lines
+    # up in chassis order (~0.35 s/slot at 87 s) rather than a dead heat.
+    ai_quals = [AI_TGT * (1 + 0.004*(i-1)) for i in 1:length(AICARS)]
+    ROW = 9.0; GRID_LANE = 2.2          # grid row gap (m) + 2-wide lane offset
+    function form_grid!(qtime)
+        order = RaceAI.grid_order(qtime, ai_quals)        # pole-first entrant ids (0 = player)
+        prank = findfirst(==(0), order)
+        for (i, c) in enumerate(AICARS)
+            r = findfirst(==(i), order)
+            c.s = mod(-(r - prank)*ROW, AILINE.total)      # ahead (+s) if it out-qualified the player
+            c.v = 0.0; c.lap = 0
+            c.lane = isodd(r) ? GRID_LANE : -GRID_LANE
+        end
+        println("\n  ═══ GRID (from qualifying) ═══")
+        for (p, id) in enumerate(order)
+            println("   P$p  ", id==0 ? "You — $(fmt_lap(qtime))" : AICHASSIS[id].name)
+        end
+        println("  → You qualified P$prank of $(length(order))\n"); flush(stdout)
+        prank
+    end
+    DO_QUAL && println("\n  QUALIFYING — complete one lap to set your grid slot.")
     ibt_samples = IBTREC ? Dict{String,Float64}[] : nothing      # iRacing-format telemetry rows
     IBTREC && println("  recording iRacing .ibt telemetry (JM_IBT) — template: ", basename(IBTTMPL))
     telem = SMOKE ? nothing : open("zand_racer_$(round(Int,time())).txt", "w")
@@ -780,13 +808,19 @@ function main()
         # ---- lap timing + telemetry log ----
         if cs.laps > prev_laps
             last_lap = cs.t - lap_t0; lap_t0 = cs.t
+            if phase[] == :qual                              # qualifying lap done → form the grid, start the race
+                player_grid[] = form_grid!(last_lap)
+                phase[] = :race
+                cs.laps = 0; last_lap = 0.0; best_lap = 0.0; race_done = false   # race starts fresh
+            else
             (best_lap == 0.0 || last_lap < best_lap) && (best_lap = last_lap)
             telem !== nothing && (write(telem, "# LAP $(cs.laps)  $(fmt_lap(last_lap))\n"); flush(telem))
             println("  lap $(cs.laps): $(fmt_lap(last_lap))", last_lap==best_lap ? "  (best)" : "")
             if IS_RACE && cs.laps >= RACE_LAPS && !race_done    # race distance complete
                 race_done = true
                 println("\n  ═══════ RACE FINISHED — $RACE_LAPS laps ═══════")
-                println("  best $(fmt_lap(best_lap))   last $(fmt_lap(last_lap))\n")
+                println("  best $(fmt_lap(best_lap))   last $(fmt_lap(last_lap))   started P$(player_grid[])\n")
+            end
             end
         elseif cs.laps < prev_laps                 # respawn reset the lap counter
             lap_t0 = cs.t
@@ -814,7 +848,7 @@ function main()
         wheelmat(wx,wz,steer,r) = carModel * Render.translate(Float32[wx, r, wz]) *
                      (steer ? Render.roty(δ) : Render.ident()) * Render.rotz(Float32(spin))
         # advance + place the AI field (rail-followers on the centreline)
-        ai_poses = AILINE === nothing ? NTuple{4,Float64}[] :
+        ai_poses = (AILINE === nothing || phase[] != :race) ? NTuple{4,Float64}[] :   # AI hidden until the race starts (after qualifying)
                    [RaceAI.step!(c, AILINE, dt > 1e-4 ? dt : 1/60; scale = AI_SCALE) for c in AICARS]
         aiCar(p)  = Render.translate(Float32[p[1], p[2], -p[3]]) * Render.roty(Float32(p[4]))
         aiBody(p, cm) = aiCar(p) * Render.translate(collect(cm.body_off))
@@ -877,7 +911,8 @@ function main()
         frames += 1
         if now - titleT > 0.25
             GLFW.SetWindowTitle(win, "Julia Racer — $(uppercasefirst(TRACKSEL)) — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear == 0 ? "N" : string(cs.gear)) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
-                (IS_RACE ? (race_done ? "  ✦ FINISHED" : "  — lap $(min(cs.laps+1,RACE_LAPS))/$RACE_LAPS") :
+                (phase[] == :qual ? "  ⏱ QUALIFYING" :
+                 IS_RACE ? (race_done ? "  ✦ FINISHED — started P$(player_grid[])" : "  — lap $(min(cs.laps+1,RACE_LAPS))/$RACE_LAPS") :
                            "  [$(uppercasefirst(MODE))]") *
                 (cs.ontrack ? "" : "  [OFF TRACK]"))
             titleT = now

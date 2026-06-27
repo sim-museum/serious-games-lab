@@ -180,6 +180,13 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   drops the GPL reflection tray + blob shadow generically (`*traymap`/`*shad`) and an AI-only
   green-placeholder drop. Verified offscreen (5 distinct liveried cars) + in-cockpit grid view;
   player Lotus unchanged. Harness `grid_snapshot.jl`.
+- 2026-06-26 R-Sprint 3 DONE (commit pending): **E9** — qualifying → grid. Race mode opens in a
+  QUALIFYING phase (AI hidden); the player's one completed lap sets the grid via
+  `RaceAI.grid_order` (player + AI ref qual times sorted pole-first). The field is then arranged
+  *around* the player by qual order — faster qualifiers ahead on track (+s), slower behind, 2-wide
+  lane stagger — so the working player lap/finish logic is untouched (no player reposition).
+  `JM_NOQUAL`/smoke/solo/skidpad skip it. Verified: `grid_order` (pole/mid/last/Inf) + placement
+  invariants (ahead⇔out-qualified) unit-tested; race smoke still renders the field.
 - 2026-06-26 R-Sprint 2 DONE (commit pending): **E11** — AI speed %, 100 % = the GPL AI laptime.
   `REF_LAP` table (per-track GPL '67 anchor, `JM_AI_REFLAP` override) + `RaceAI.natural_laptime`
   (measures the rail follower's own lap) → speed `scale = naturalLap / (refLap·100/pct)`, applied
