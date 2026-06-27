@@ -70,6 +70,16 @@ const RACE_LAPS = max(1, tryparse(Int, get(ENV, "JM_LAPS", "3")) |> x -> x === n
 const N_AI      = clamp(tryparse(Int, get(ENV, "JM_AI", "0")) |> x -> x === nothing ? 0 : x, 0, 5)
 const IS_RACE   = MODE == "race"
 const IS_TRAIN  = MODE == "training"
+# E11: AI speed as a percentage — 100 % = the GPL AI car laptime for the track.
+const AI_PCT    = clamp(tryparse(Float64, get(ENV, "JM_AI_PCT", "100")) |> x -> x === nothing ? 100.0 : x, 30.0, 200.0)
+# GPL '67 AI reference laptimes (s) — the "100 %" anchor.  Sourced from GPL AI/hotlap
+# pace per circuit; tunable per car/setup via JM_AI_REFLAP (overrides the table).  At
+# AI_PCT=100 the field is paced to hit exactly this laptime regardless of the rail
+# follower's own natural pace (see RaceAI.natural_laptime).
+const REF_LAP = Dict("zandvoort"=>87.0, "nurburgring"=>500.0, "watglen"=>67.0,
+                     "monza"=>105.0, "spa"=>213.0, "skidpad"=>30.0)
+const AI_REFLAP = (v = tryparse(Float64, get(ENV, "JM_AI_REFLAP", ""));
+                   v === nothing ? get(REF_LAP, TRACKSEL, 90.0) : v)
 println("  → mode: ", uppercasefirst(MODE),
         IS_RACE ? "  ($RACE_LAPS laps" * (N_AI>0 ? ", $N_AI AI cars)" : ")") : "")
 
@@ -658,7 +668,17 @@ function main()
     AILINE = (!SKIDPAD && N_AI > 0) ? RaceAI.build_line(ALIGNED, groundz) : nothing
     AICARS = AILINE === nothing ? RaceAI.AICar[] : RaceAI.init_cars(AILINE, N_AI; start_s = 30.0)
     AICHASSIS = AICARMODELS[1:length(AICARS)]   # grid slot i → AISPECS[i] (Ferrari, Brabham, …)
-    AILINE !== nothing && println("  → AI grid: ", join((m.name for m in AICHASSIS), ", "))
+    # E11: pace the field.  Target laptime = refLap × (100/pct); the speed scale that
+    # hits it = naturalLap / targetLap (lap time ∝ 1/speed).  Clamped to a sane band.
+    AI_T0    = AILINE === nothing ? 0.0 : RaceAI.natural_laptime(AILINE)
+    AI_TGT   = AI_REFLAP * 100.0 / AI_PCT
+    AI_SCALE = AILINE === nothing ? 1.0 : clamp(AI_T0 / max(AI_TGT, 1.0), 0.4, 2.2)
+    if AILINE !== nothing
+        println("  → AI grid: ", join((m.name for m in AICHASSIS), ", "))
+        println("  → AI pace: ", round(Int,AI_PCT), "% of GPL (ref ", round(AI_REFLAP,digits=1),
+                "s → target ", round(AI_TGT,digits=1), "s; rail ", round(AI_T0,digits=1),
+                "s, scale ", round(AI_SCALE,digits=2), ")")
+    end
     # ---- force feedback: self-aligning torque from the front-axle lateral force ----
     # force = SIGN·GAIN·(Fy_FL+Fy_FR), faded out near standstill.  The front Fy rises as the
     # tyres bite and DROPS past the grip peak → the wheel goes light = you feel understeer.
@@ -795,7 +815,7 @@ function main()
                      (steer ? Render.roty(δ) : Render.ident()) * Render.rotz(Float32(spin))
         # advance + place the AI field (rail-followers on the centreline)
         ai_poses = AILINE === nothing ? NTuple{4,Float64}[] :
-                   [RaceAI.step!(c, AILINE, dt > 1e-4 ? dt : 1/60) for c in AICARS]
+                   [RaceAI.step!(c, AILINE, dt > 1e-4 ? dt : 1/60; scale = AI_SCALE) for c in AICARS]
         aiCar(p)  = Render.translate(Float32[p[1], p[2], -p[3]]) * Render.roty(Float32(p[4]))
         aiBody(p, cm) = aiCar(p) * Render.translate(collect(cm.body_off))
         aiWheel(p,wx,wz,r) = aiCar(p) * Render.translate(Float32[wx, r, wz]) * Render.rotz(Float32(spin))

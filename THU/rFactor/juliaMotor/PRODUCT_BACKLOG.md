@@ -173,3 +173,15 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
   world)**, not the ribbon — drive road + grass freely; only going off the terrain snaps you back
   to the last in-world spot (a fence collision). Would have triggered 0× on that drive. Verified
   watglen loads + runs clean.
+- 2026-06-26 R-Sprint 1 DONE (commit fc31dea): **E8** — the AI grid is the 5 standard GPL '67
+  chassis (Ferrari/Brabham/BRM/Eagle/Cooper=`coventry`), each its own GPL car, not Lotus copies.
+  `render.jl` generic loader (`parts_bbox`/`GPLCarModel`/`load_gpl_car`) auto-levels each chassis
+  onto a common floor + reuses Lotus wheel geometry with per-car wheel meshes; `extract_gpl_car`
+  drops the GPL reflection tray + blob shadow generically (`*traymap`/`*shad`) and an AI-only
+  green-placeholder drop. Verified offscreen (5 distinct liveried cars) + in-cockpit grid view;
+  player Lotus unchanged. Harness `grid_snapshot.jl`.
+- 2026-06-26 R-Sprint 2 DONE (commit pending): **E11** — AI speed %, 100 % = the GPL AI laptime.
+  `REF_LAP` table (per-track GPL '67 anchor, `JM_AI_REFLAP` override) + `RaceAI.natural_laptime`
+  (measures the rail follower's own lap) → speed `scale = naturalLap / (refLap·100/pct)`, applied
+  in `RaceAI.step!`. `JM_AI_PCT` env + GUI "AI speed %" spin. Verified: 100 % paces Zandvoort to
+  87 s (scale 1.16 on a 101 s rail), 80 % → 109 s.

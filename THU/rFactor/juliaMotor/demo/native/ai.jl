@@ -44,12 +44,14 @@ function _locate(line::AILine, sq)
     i, f
 end
 
-"Advance one AI car by `dt`; returns its world pose (x, y, z, heading)."
-function step!(car::AICar, line::AILine, dt; amax = 11.0, vmax = 74.0, vmin = 12.0)
+"Advance one AI car by `dt`; returns its world pose (x, y, z, heading).  `scale`
+multiplies the target/limit speed so the field can be paced to a chosen laptime
+(see `natural_laptime` + the `JM_AI_PCT` calibration)."
+function step!(car::AICar, line::AILine, dt; amax = 11.0, vmax = 74.0, vmin = 12.0, scale = 1.0)
     i, _  = _locate(line, car.s)
     ia, _ = _locate(line, car.s + max(car.v*0.9, 10.0))     # look ahead for the limiting corner
     κ = max(line.κ[i], line.κ[ia], 1e-4)
-    vtarget = clamp(sqrt(amax/κ), vmin, vmax)
+    vtarget = clamp(sqrt(amax/κ)*scale, vmin, vmax*scale)
     car.v += clamp(vtarget - car.v, -30.0*dt, 9.0*dt)       # brake harder than it accelerates
     prev = mod(car.s, line.total)
     car.s += car.v*dt
@@ -61,6 +63,20 @@ function step!(car::AICar, line::AILine, dt; amax = 11.0, vmax = 74.0, vmin = 12
     θ = line.θ[i] + f*wrapπ(line.θ[j]-line.θ[i])
     x += car.lane * (-sin(θ));  z += car.lane * cos(θ)      # lane offset (left = (-sinθ, cosθ))
     (x, y, z, θ)
+end
+
+"""Simulate one AI car around a full lap at the given `scale` and return the lap
+time (s).  Used to calibrate the pace: knowing the natural lap time at scale 1.0,
+the app picks the scale that makes a clean lap hit the GPL reference laptime ×
+(100/pct).  Robust to a non-closing line (caps at ~2× the straight-line estimate)."""
+function natural_laptime(line::AILine; scale = 1.0, dt = 1/60)
+    car = AICar(0.0, 25.0, 0, 0.0)
+    t = 0.0; tmax = 4.0 * line.total / 10.0 + 30.0    # generous cap (≥ lap at ~10 m/s)
+    while car.lap < 1 && t < tmax
+        step!(car, line, dt; scale = scale)
+        t += dt
+    end
+    t
 end
 
 end # module

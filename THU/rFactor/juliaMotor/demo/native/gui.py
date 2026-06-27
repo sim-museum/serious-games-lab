@@ -554,13 +554,17 @@ class DriveTab(QWidget):
         form.addWidget(QLabel("AI cars:"), 3, 0)
         self.ai = QSpinBox(); self.ai.setRange(0, 5); self.ai.setValue(0)
         form.addWidget(self.ai, 3, 1)
+        form.addWidget(QLabel("AI speed %:"), 4, 0)
+        self.ai_pct = QSpinBox(); self.ai_pct.setRange(30, 200); self.ai_pct.setValue(100)
+        self.ai_pct.setToolTip("100% = the GPL AI car laptime for the track; lower is slower.")
+        form.addWidget(self.ai_pct, 4, 1)
         self.mute = QCheckBox("Mute engine audio (JM_NOSOUND)")
-        form.addWidget(self.mute, 4, 1)
+        form.addWidget(self.mute, 5, 1)
         self.ibt = QCheckBox("Record iRacing .ibt telemetry → data/juliaracer/")
         self.ibt.setChecked(True)        # on by default
-        form.addWidget(self.ibt, 5, 1)
+        form.addWidget(self.ibt, 6, 1)
         self.d2 = QCheckBox("Simplified 2-D physics (no jumps, lighter; JM_2D)")
-        form.addWidget(self.d2, 6, 1)   # 3-D is the default; tick this only to fall back to planar
+        form.addWidget(self.d2, 7, 1)   # 3-D is the default; tick this only to fall back to planar
         root.addLayout(form)
 
         brow = QHBoxLayout()
@@ -613,6 +617,7 @@ class DriveTab(QWidget):
         qenv.insert("JM_MODE", ["practice", "training", "race"][self.mode.currentIndex()])
         qenv.insert("JM_LAPS", str(self.laps.value()))
         qenv.insert("JM_AI", str(self.ai.value()))
+        qenv.insert("JM_AI_PCT", str(self.ai_pct.value()))
         if self.mute.isChecked():
             qenv.insert("JM_NOSOUND", "1")
         if not self.ibt.isChecked():     # telemetry is on by default; this disables it
