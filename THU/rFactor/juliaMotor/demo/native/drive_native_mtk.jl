@@ -78,6 +78,10 @@ const AI_REL    = clamp(tryparse(Float64, get(ENV, "JM_AI_REL", "1.10")) |> x ->
 # GC: the AI run the JM 2-D PHYSICS model (real grip/inertia) steered by a rail controller,
 # by default.  JM_AI_KINEMATIC falls back to the (also-good) kinematic rail field.
 const AI_PHYSICS = !haskey(ENV, "JM_AI_KINEMATIC")
+# Physics-AI pace is set ONCE here via ENGINE POWER (throttle cap), NOT a per-frame rubber-band:
+# the AI race at a fixed pace they can't exceed (and can wash out if hot), so a fast human gets
+# legitimately ahead.  1.0 = full DFV power (GPL-fast); lower detunes them.  JM_AI_POWER tunes it.
+const AI_POWER  = clamp(tryparse(Float64, get(ENV, "JM_AI_POWER", "0.90")) |> x -> x === nothing ? 0.90 : x, 0.4, 1.0)
 # GPL '67 AI reference laptimes (s) — the "100 %" anchor.  Sourced from GPL AI/hotlap
 # pace per circuit; tunable per car/setup via JM_AI_REFLAP (overrides the table).  At
 # AI_PCT=100 the field is paced to hit exactly this laptime regardless of the rail
@@ -780,26 +784,27 @@ function main()
     # JM_AI_TEST: drive the physics field on the REAL loaded track (no player) → laps/spins, exit.
     if AI_PHYSICS && haskey(ENV, "JM_AI_TEST") && !isempty(AIPHYS)
         for (i,pc) in enumerate(AIPHYS); p = RaceAI.pose_at(AILINE, AICARS[i].s, AICARS[i].lane); DriveRT.place!(pc, p[1], p[3], p[4]; v=12.0); end
-        N=length(AIPHYS); maxr=0.0; spins=0; aidist=zeros(N); stuck=zeros(Int,N); scon=zeros(Int,N); lastx=[pc.x for pc in AIPHYS]; lastz=[pc.z for pc in AIPHYS]
+        N=length(AIPHYS); maxr=0.0; spins=0; maxlat=0.0; aidist=zeros(N); stuck=zeros(Int,N); scon=zeros(Int,N); lastx=[pc.x for pc in AIPHYS]; lastz=[pc.z for pc in AIPHYS]
         nstep=5400   # 90 s
         for _ in 1:nstep
             for (i,pc) in enumerate(AIPHYS)
                 s,lat = RaceAI.project(AILINE, pc.x, pc.z); AICARS[i].s=s; AICARS[i].lane=lat; AICARS[i].v=pc.v
+                maxlat = max(maxlat, abs(lat))
                 aidist[i] += hypot(pc.x-lastx[i], pc.z-lastz[i]); lastx[i]=pc.x; lastz[i]=pc.z
                 if pc.v < 1.4 || abs(lat) > 14.0      # mirror the live recovery: stalled OR off-track
                     stuck[i]+=1; scon[i]+=1
                     if scon[i] > (abs(lat)>14.0 ? 24 : 100); rp=RaceAI.pose_at(AILINE, s+10.0, 0.0); DriveRT.place!(pc, rp[1], rp[3], rp[4]; v=max(8.0,pc.v*0.7)); scon[i]=0; end
                 else; scon[i]=0; end
             end
-            vts = RaceAI.plan!(AICARS, AILINE; scale=AI_SCALE, player=(1e7,0.0,40.0), rel=AI_REL, amax=8.0)
+            vts = RaceAI.plan!(AICARS, AILINE; scale=1.0, amax=8.0)
             for (i,pc) in enumerate(AIPHYS)
                 r = DriveRT.yawrate(pc); maxr = max(maxr, abs(r)); abs(r) > 2.5 && (spins += 1)
-                thr,brk,st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i], pc.x, pc.z, pc.θ, pc.v, r)
+                thr,brk,st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i], pc.x, pc.z, pc.θ, pc.v, r; power=AI_POWER)
                 DriveRT.step_car!(pc, thr, brk, st, 1/60; manual=false)
             end
         end
         avgkmh = round.(Int, aidist ./ 90 .* 3.6)
-        println("  AI self-test on $(TRACKSEL) (90s): dist=", round.(Int,aidist), "m  avg_kmh=$avgkmh  max_yaw=$(round(maxr,digits=2))  spins=$spins  stuck_frames=$stuck")
+        println("  AI self-test on $(TRACKSEL) (90s): dist=", round.(Int,aidist), "m  avg_kmh=$avgkmh  max_yaw=$(round(maxr,digits=2))  spins=$spins  max_lat=$(round(maxlat,digits=1))m  stuck=$stuck")
         println(spins < 30 && minimum(aidist) > 800 && maximum(stuck) < 200 ? "  ✓ physics AI lap the real track cleanly" : "  ⚠ AI struggle here — tune controller")
         exit(0)
     end
@@ -1086,12 +1091,25 @@ function main()
                     end
                 else; ai_stuck[i] = 0; end
             end
-            pp = RaceAI.project(AILINE, cs.x, cs.z)
-            vts = RaceAI.plan!(AICARS, AILINE; scale = AI_SCALE, player = (pp[1], pp[2], cs.v), rel = AI_REL, amax = 8.0)  # conservative corner speed → don't run wide
+            # physics handles the pace (engine + grip); no per-frame rubber-band (rel=Inf), no corner-speed
+            # scaling — the FIXED tune is the engine power (AI_POWER).  Conservative grip cap (amax).
+            vts = RaceAI.plan!(AICARS, AILINE; scale = 1.0, amax = 8.0)
             for (i, pc) in enumerate(AIPHYS)
                 thr, brk, st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i],
-                                                 pc.x, pc.z, pc.θ, pc.v, DriveRT.yawrate(pc))
+                                                 pc.x, pc.z, pc.θ, pc.v, DriveRT.yawrate(pc); power = AI_POWER)
                 DriveRT.step_car!(pc, thr, brk, st, ddt; manual = false)
+            end
+            # AI↔AI collisions (physics): pairwise overlap + closing → momentum exchange (both react)
+            for a in 1:length(AIPHYS)-1, b in a+1:length(AIPHYS)
+                pa = AIPHYS[a]; pb = AIPHYS[b]
+                dx = pb.x-pa.x; dz = pb.z-pa.z; d = hypot(dx,dz)
+                (d < 1e-3 || d > 3.5) && continue
+                nx = dx/d; nz = dz/d
+                vrel = (pa.v*cos(pa.θ)-pb.v*cos(pb.θ))*nx + (pa.v*sin(pa.θ)-pb.v*sin(pb.θ))*nz
+                vrel <= 0.2 && continue
+                j = 1.45*vrel*280.0                       # (1+e)·vrel·reduced-mass, e=0.45, m=560 each
+                DriveRT.bump!(pa, -(j/560)*nx, -(j/560)*nz, clamp(-(j/560)*0.04, -1.0, 1.0))
+                DriveRT.bump!(pb,  (j/560)*nx,  (j/560)*nz, clamp( (j/560)*0.04, -1.0, 1.0))
             end
             [(pc.x, groundz(pc.x, pc.z), pc.z, pc.θ) for pc in AIPHYS]
         else
@@ -1103,7 +1121,7 @@ function main()
         # momentum-exchange impulse: the player (real vehicle physics) is knocked off line + spun
         # via bumpX!, the AI is shoved aside + spun + scrubbed.  The wheels keep spinning with motion.
         if race_go[] && !rst && !isempty(ai_poses)
-            pm = 560.0; am = 560.0; restn = 0.15; mr = pm*am/(pm+am)
+            pm = 560.0; am = 560.0; restn = 0.45; mr = pm*am/(pm+am)   # elastic-ish (billiard-ball nudge)
             pvx = cs.v*cos(cs.θ); pvz = cs.v*sin(cs.θ)
             for (k, p) in enumerate(ai_poses)
                 dx = p[1] - cs.x; dz = p[3] - cs.z; d = hypot(dx, dz)

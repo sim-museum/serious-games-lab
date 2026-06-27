@@ -86,11 +86,16 @@ function project(line::AILine, x, z)
     (line.s[bi], lat)
 end
 
-"Curvature-limited target speed for a car at arc-length `s` moving at `v` (m/s)."
+"Curvature-limited target speed at arc-length `s`, moving at `v` (m/s).  Scans a BRAKING
+HORIZON ahead (∝ speed) for the tightest corner, so the car slows BEFORE a tight bend
+instead of arriving too hot and washing out."
 function _vtarget(line::AILine, s, v; amax, vmax, vmin, scale)
-    i, _  = _locate(line, s)
-    ia, _ = _locate(line, s + max(v*0.9, 10.0))             # look ahead for the limiting corner
-    κ = max(line.κ[i], line.κ[ia], 1e-4)
+    κ = max(line.κ[_locate(line, s)[1]], 1e-4)
+    horizon = max(v*2.2, 30.0)                              # metres to look ahead (longer the faster you go)
+    off = 5.0
+    while off <= horizon
+        κ = max(κ, line.κ[_locate(line, s + off)[1]]); off += 6.0
+    end
     clamp(sqrt(amax/κ)*scale, vmin, vmax*scale)
 end
 
@@ -227,13 +232,15 @@ end
 `tv` (the PROVEN controller: short-look-ahead pursuit + cross-track + yaw-damp, corner
 throttle-cut).  `cs`/`clane` = the car's current arc-length/lateral (from projection),
 `cθ`/`cv`/`r` its heading/speed/yaw-rate.  Returns (throttle, brake, steer)."""
-function controller(line::AILine, cs, clane, tlane, tv, cx, cz, cθ, cv, r)
-    la = clamp(round(Int, 3 + cv*0.22), 3, length(line.x)-1) * (line.total/length(line.x))
+function controller(line::AILine, cs, clane, tlane, tv, cx, cz, cθ, cv, r; power = 1.0)
+    la = clamp(6.0 + cv*0.5, 6.0, 32.0)                   # look-ahead DISTANCE in metres (density-independent → no corner-cutting)
     lp = pose_at(line, cs + la, tlane)                    # look-ahead point ON the target rail
     herr = wrapπ(atan(lp[3]-cz, lp[1]-cx) - cθ)
-    steer = clamp(2.6*herr - 0.14*(clane - tlane) - 0.20*r, -1.0, 1.0)
-    thr = cv < tv ? clamp((tv-cv)*0.25, 0, 1) * clamp(1.4 - 2.2*abs(steer), 0.0, 1.0) : 0.0
-    brk = cv > tv + 1.0 ? clamp((cv-tv)*0.2, 0, 1) : 0.0
+    steer = clamp(3.0*herr - 0.24*(clane - tlane) - 0.22*r, -1.0, 1.0)   # tighter line-follow (don't flatten corners)
+    # `power` = the AI's engine-power tune (set ONCE pre-race, not per frame): caps throttle so a
+    # detuned car has lower accel/top speed → a fixed pace it can't exceed (and can wash out hot).
+    thr = (cv < tv ? clamp((tv-cv)*0.25, 0, 1) * clamp(1.4 - 2.2*abs(steer), 0.0, 1.0) : 0.0) * power
+    brk = cv > tv + 1.0 ? clamp((cv-tv)*0.25, 0, 1) : 0.0
     (thr, brk, steer)
 end
 
