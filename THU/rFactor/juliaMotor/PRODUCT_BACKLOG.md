@@ -49,6 +49,28 @@ Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and 
 - **Sprint 5+ — Physics (E6).** Brush-tyre Lotus 49 in `JuliaMotorMTK`; validate vs the iRacing
   `.ibt`; replace the calibrated-curve tyre; JM_3D divergence guards.
 
+### "Comparable to GPL" epics (PO 2026-06-26, autonomous — PO away for hours)
+Goal: make JM look + behave like GPL, but with the superior JM Modelica-style engine
+(iRacing-calibrated). PO pre-approves all planning/reviews; work autonomously, verify with
+offscreen snapshots (vs `ref/gpl/` + the PO's lotus49/AI shots) + headless tests.
+- **G1 Cars look like GPL:** the Lotus 49 + 5 AI chassis match the GPL gold standard —
+  body livery DECALS (yellow nose stripe, #1 roundel, TEAM LOTUS), the cockpit gauge
+  cluster, the tan scuttle (done), driver. Crack the decal/UV gap (textures resolve but
+  render flat green).
+- **G2 Hybrid-physics AI:** AI run the JM 2-D physics model (real accel/grip/inertia)
+  steered by a rail-targeting controller — robust (no spins) across all tracks.
+- **G3 Realistic group behavior:** no slot-car/bead riding (done: longitudinal physics),
+  no skittering between rails ("water-insect") — deliberate, committed passes with
+  hysteresis; believable pack racing like GPL.
+- **G4 Rigid-body collisions:** ram an AI → both cars react with impulse + yaw + rotating
+  wheels (the player fully in the physics), as in GPL.
+- **G5 Trackside-object collisions:** hit a fence/hedge/building → a physical collision
+  response (not just the invisible HAT snap-back), as in GPL.
+
+Sprint order (autonomous): **GA** Lotus/AI GPL fidelity (G1) → **GB** smooth racecraft,
+kill skittering (G3) → **GC** hybrid-physics AI (G2) → **GD** rigid-body car collisions (G4)
+→ **GE** trackside-object collisions (G5).
+
 ### Race-completeness sprint plan (E8–E12, PO pre-approved 2026-06-26)
 - **R-Sprint 1 — Distinct GPL grid (E8).** Generic GPL-car loader (`gplcar.jl`); AI field renders
   Ferrari/Brabham/BRM/Eagle/Cooper, auto-levelled, per-car wheels. Snapshot verifies 5 distinct cars.
