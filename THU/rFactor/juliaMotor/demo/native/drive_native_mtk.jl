@@ -501,14 +501,31 @@ const LOT3DO = joinpath(LOTDIR,"lotus.3do")
 # grey = the fallback colour for the one UNTEXTURED body part (a big inner-tub/underside shell, 2043
 # verts) — the default light grey rendered it as white faceted clutter in the cockpit corners; a dark
 # cockpit-interior grey hides it (it's interior/underside, invisible externally).
-const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","dash7a","windlot",Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0, grey=(0.11f0,0.12f0,0.13f0))   # keep the mirrors; drop hands/arms + the gauge cluster + windscreen (drawn separately)
+# mirror parts — pulled OUT of the body so they can be re-placed onto the cowl/plexiglass and
+# tilted toward the eye (GPL: two round mirrors at the SIDES, mid-height; the default render
+# saw the chrome housing torpedo-on at the bottom corners).
+const MIRROR_TEX = ("mirror","lotmirt","lrm","lrimext","lotubase","lotubas2")
+const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","dash7a","windlot",MIRROR_TEX...,Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0, grey=(0.11f0,0.12f0,0.13f0))   # drop hands/arms + gauge cluster + windscreen + mirrors (all drawn separately)
 const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (dial faces in the texture's lower-V region; keep default vflip)
 const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0)  # the plexiglass windscreen — drawn LAST, near-transparent (glass), so the suspension shows through (GPL gold standard)
+const MIRRORP = Render.extract_gpl_car(LOT3DO; only=MIRROR_TEX, maxlat=0.95f0)   # rear-view mirrors — re-placed on the cowl (see MIRRORMAT)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read
 # upside-down.  Mirror the gauge in height about its own centre so the dial face turns up toward the eye.
 const GCY = (b = Render.parts_bbox(GAUGEP); Float32((b.ymin + b.ymax)/2))
-const GAUGEFLIP = Render.translate(Float32[0,GCY,0]) * Render.scalexyz(1f0,-1f0,1f0) * Render.translate(Float32[0,-GCY,0])
+# GPL puts the gauge binnacle UP, just above the wheel hub (gauges read above the badge); dash7a is
+# modelled LOW, so lift it (JM_GAUGE_Y) and nudge it back toward the eye (JM_GAUGE_X) onto the cowl.
+const GAUGE_DY = parse(Float32, get(ENV,"JM_GAUGE_Y","0.16"))
+const GAUGE_DX = parse(Float32, get(ENV,"JM_GAUGE_X","-0.04"))
+const GAUGEFLIP = Render.translate(Float32[GAUGE_DX,GCY+GAUGE_DY,0]) * Render.scalexyz(1f0,-1f0,1f0) * Render.translate(Float32[0,-GCY,0])
 const SWPARTS, SWCENTER, SWAXIS = Render.extract_gpl_steering(LOT3DO)   # steering wheel + pivot
+# Mirrors: re-place onto the cowl/plexiglass top, tilt the faces back toward the eye so they read as
+# round mirrors at the sides (not chrome torpedoes at the bottom).  Tuned via JM_MIRROR_*.
+const MCEN = (b = Render.parts_bbox(MIRRORP); Float32[(b.xmin+b.xmax)/2, (b.ymin+b.ymax)/2, 0f0])
+const MIRROR_DY   = parse(Float32, get(ENV,"JM_MIRROR_Y","0.05"))
+const MIRROR_DX   = parse(Float32, get(ENV,"JM_MIRROR_X","0.06"))
+const MIRROR_TILT = deg2rad(parse(Float32, get(ENV,"JM_MIRROR_TILT","15")))   # tip the faces up toward the eye
+const MIRRORMAT = Render.translate(Float32[MIRROR_DX,MIRROR_DY,0]) *
+                  Render.translate(MCEN) * Render.rotz(MIRROR_TILT) * Render.translate(-MCEN)
 println(length(TRACK), " track parts + ", length(CARP), " Lotus body parts")
 const BODY_OFF = Float32[-0.55, 0.30, 0.0]     # centre body on X, lift onto the wheels
 # wheel hubs (rig frame X fwd, Y=radius, Z left); front pair steers, all spin
@@ -715,6 +732,7 @@ end
 carItems   = Render.build_gpl(CARP, GPLTEX)        # Lotus body, GPL .mip textures
 gaugeItems = Render.build_gpl(GAUGEP, GPLTEX)      # gauge cluster (drawn near-unlit so it reads)
 windItems  = Render.build_gpl(WINDP, GPLTEX)       # plexiglass windscreen (drawn last, transparent)
+mirrorItems = Render.build_gpl(MIRRORP, GPLTEX)    # rear-view mirrors (re-placed on the cowl, MIRRORMAT)
 # four Lotus wheels — keep the untextured black tyre body (only the car body drops "")
 load_wheel(nm) = Render.build_gpl(Render.extract_gpl_car(joinpath(LOTDIR,nm*".3do");
                     exclude=("ltraymap","lshad"), tint=(0.12f0,0.12f0,0.13f0)), GPLTEX)  # force dark tyre
@@ -1452,6 +1470,9 @@ function main()
             for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp, aiWheel(p,wx,wz,r)); end
         end
         for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, vp, wheelmat(wx,wz,steer,r)); end
+        # rear-view mirrors — re-placed onto the cowl/plexiglass, faces tilted toward the eye (GPL look).
+        # No render-to-texture, so the glass reads as a dark tinted disc rather than a live reflection.
+        for it in mirrorItems; Render.draw(prog, it, vp, bodyModel*MIRRORMAT; bright=0.85, spec=0.18, ambfill=0.30); end
         # steering wheel — spin about its column axis with steering input
         swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5)) * Render.translate(-SWCENTER)
         for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2, ambfill=0.34); end
