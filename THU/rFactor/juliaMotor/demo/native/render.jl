@@ -1039,9 +1039,13 @@ function build_horizon(idx::GPLTex; R=2500f0, e_lo=deg2rad(-6f0), e_hi=deg2rad(2
     # vertical "smear").  The strip is hazy-sky-over-hills, so a low, thin band sits at the horizon.
     if tex_rgba(idx, "horiz0") !== nothing && tex_rgba(idx, "horiz1") === nothing
         r = tex_rgba(idx, "horiz0"); tid = upload_rgba(r[1], r[2], r[3])
-        # crop the strip's top hazy-white sky rows (they'd read as a bright band against our
-        # own blue sky); keep the ridge + tree content (vtop→bottom) as a low horizon band.
-        ns = 48; dθ = 2f0π/ns; slo = deg2rad(-5f0); shi = deg2rad(4f0); vtop = 0.34f0
+        # crop the strip's top hazy-white sky rows (they'd read as a bright "smear" band against
+        # our own blue sky); keep only the lower ridge + tree content (vtop→bottom) as a low, thin
+        # horizon band so the autumn tree-line sits under the blue sky (Watkins gold standard).
+        ns = 48; dθ = 2f0π/ns
+        slo = deg2rad(parse(Float32, get(ENV,"JM_STRIP_LO","-5")))
+        shi = deg2rad(parse(Float32, get(ENV,"JM_STRIP_HI","2.2")))
+        vtop = parse(Float32, get(ENV,"JM_STRIP_VTOP","0.52"))
         h_lo = R*tan(Float32(slo)); h_hi = R*tan(Float32(shi))
         q=Float32[]
         sv(x,y,z,u,v)=append!(q,(x,y,z, 0f0,0f0,0f0, 1f0,1f0,1f0, u,v))

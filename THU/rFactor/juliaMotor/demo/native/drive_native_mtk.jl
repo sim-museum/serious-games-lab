@@ -658,6 +658,7 @@ end
 if SKIDPAD || NURB
     global OBJECTS = Any[]
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
+    global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
 else
 const DATPACK = TRACKDAT     # trackside objects come from the track's own .dat (generic across tracks)
 const TMPOBJ = mktempdir()
@@ -766,17 +767,41 @@ let objnames=Set{String}()
         r = solidR(lowercase(i.name)); (r <= 0.0 || !onground(i)) && continue
         push!(SOLIDS, (Float64(i.x), Float64(i.y), r))
     end
-    # billboards: (Item, render-pos base, width, height) — drawn camera-facing per frame
+    # billboards: (Item, render-pos base, width, height) — drawn camera-facing per frame.
+    # WIDE panoramic forest strips (GPL Watkins `tree*` 80–380 m across, authored as one big
+    # quad) must NOT be camera-faced — a 380 m sprite swung to face the eye becomes a giant flat
+    # "wall" across the view.  They're STATIC backdrop panels: draw at their AUTHORED yaw (lining
+    # the forest edge) with the clean alpha-keyed billboard quad + graze-fade.  Only narrow
+    # individual-tree / sign sprites stay camera-facing.
+    WIDE_PANEL = parse(Float32, get(ENV,"JM_WIDE_PANEL","30"))
+    DROP_FOREST = get(ENV,"JM_DROP_FOREST","1")!="0"   # default: drop the wide backdrop forest panels
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
+    global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     for i in insts
         bb = get(bbinfo, i.name, nothing); (bb === nothing || drop(i.name)) && continue
         onground(i) || continue; gz = ploz(i)
         item, tw, th, h, wid = bb
         w = wid > 0f0 ? wid : h*tw/max(th,1f0)
-        push!(BILLBOARDS, (item, (Float32(i.x), gz, Float32(-i.y)), Float32(w), Float32(h)))
+        if w > WIDE_PANEL
+            # WIDE panoramic forest strip (80–380 m).  These duplicate the distant forest already
+            # baked into the GPL horizon ring AND can only render as a near-field "wall" (face-on) or
+            # an edge-on smear — the famous Watkins pit-straight artifact.  Drop them by default and
+            # let the horizon ring carry the tree-line (JM_DROP_FOREST=0 → keep as static panels).
+            DROP_FOREST || push!(STATICTREES, (item, (Float32(i.x), gz, Float32(-i.y)), Float32(w), Float32(h), Float32(-i.yaw)))
+        else
+            push!(BILLBOARDS, (item, (Float32(i.x), gz, Float32(-i.y)), Float32(w), Float32(h)))
+        end
+    end
+    if get(ENV,"JM_OBJDIAG","")!=""
+        kn = unique([i.name for i in insts if get(objmesh,i.name,nothing)!==nothing && !drop(i.name) && onground(i)])
+        tall = sort([(nm, get(ymx,nm,0f0)-get(ymn,nm,0f0)) for nm in kn], by=x->-x[2])
+        println("== JM_OBJDIAG tallest kept geometry objects =="); for (nm,h) in tall[1:min(end,25)]; println("   ", rpad(nm,16), round(h,digits=1), " m"); end
+        bbn = unique([i.name for i in insts if get(bbinfo,i.name,nothing)!==nothing && !drop(i.name) && onground(i)])
+        bbt = sort([(nm, bbinfo[nm][4], bbinfo[nm][5]) for nm in bbn], by=x->-x[2])
+        println("== JM_OBJDIAG billboards (name  h×w m) =="); for (nm,h,wd) in bbt; println("   ", rpad(nm,16), round(h,digits=1), " × ", round(wd,digits=1)); end; flush(stdout)
     end
 end
-println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards + ", length(SOLIDS), " solid (collidable)"); flush(stdout)
+println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards + ", length(STATICTREES), " forest panels + ", length(SOLIDS), " solid (collidable)"); flush(stdout)
 end
 carItems   = Render.build_gpl(CARP, GPLTEX)        # Lotus body, GPL .mip textures
 gaugeItems = Render.build_gpl(GAUGEP, GPLTEX)      # gauge cluster (drawn near-unlit so it reads)
@@ -1505,6 +1530,10 @@ function main()
         for (items,mat,grz,opos) in OBJECTS                       # trackside objects (trees graze-fade)
             (eye[1]-opos[1])^2+(eye[2]-opos[2])^2+(eye[3]-opos[3])^2 > OBJ_CULL2 && continue   # distance cull
             for it in items; Render.draw(prog, it, vp, mat; bright=0.85, graze=grz); end
+        end
+        for (it,pos,w,h,yaw) in STATICTREES                      # wide forest-edge panels (authored yaw, graze-fade)
+            (eye[1]-pos[1])^2+(eye[2]-pos[2])^2+(eye[3]-pos[3])^2 > BB_CULL2 && continue
+            Render.draw(prog, it, vp, Render.translate(Float32[pos[1],pos[2],pos[3]])*Render.roty(yaw)*Render.scalexyz(w,h,1f0); bright=1.3, ambfill=0.8)
         end
         glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
         for (it,pos,w,h) in BILLBOARDS                            # trees/sprites
