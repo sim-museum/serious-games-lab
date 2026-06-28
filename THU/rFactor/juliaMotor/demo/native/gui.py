@@ -559,13 +559,18 @@ class DriveTab(QWidget):
         self.ai_pct = QSpinBox(); self.ai_pct.setRange(30, 200); self.ai_pct.setValue(100)
         self.ai_pct.setToolTip("100% = the GPL AI car laptime for the track; lower is slower.")
         form.addWidget(self.ai_pct, 4, 1)
+        form.addWidget(QLabel("Gearbox:"), 5, 0)
+        self.gearbox = QComboBox()
+        self.gearbox.addItems(["Automatic (auto-clutch + auto-shift)", "Manual (clutch C + shift E/Q)"])
+        self.gearbox.setToolTip("Automatic shifts up/down by speed and needs no clutch; Manual = work the clutch (G also toggles in-game).")
+        form.addWidget(self.gearbox, 5, 1)
         self.mute = QCheckBox("Mute engine audio (JM_NOSOUND)")
-        form.addWidget(self.mute, 5, 1)
+        form.addWidget(self.mute, 6, 1)
         self.ibt = QCheckBox("Record iRacing .ibt telemetry → data/juliaracer/")
         self.ibt.setChecked(True)        # on by default
-        form.addWidget(self.ibt, 6, 1)
+        form.addWidget(self.ibt, 7, 1)
         self.d2 = QCheckBox("Simplified 2-D physics (no jumps, lighter; JM_2D)")
-        form.addWidget(self.d2, 7, 1)   # 3-D is the default; tick this only to fall back to planar
+        form.addWidget(self.d2, 8, 1)   # 3-D is the default; tick this only to fall back to planar
         root.addLayout(form)
 
         brow = QHBoxLayout()
@@ -619,6 +624,7 @@ class DriveTab(QWidget):
         qenv.insert("JM_LAPS", str(self.laps.value()))
         qenv.insert("JM_AI", str(self.ai.value()))
         qenv.insert("JM_AI_PCT", str(self.ai_pct.value()))
+        qenv.insert("ZAND_SHIFT", "auto" if self.gearbox.currentIndex() == 0 else "manual")
         if self.mute.isChecked():
             qenv.insert("JM_NOSOUND", "1")
         if not self.ibt.isChecked():     # telemetry is on by default; this disables it

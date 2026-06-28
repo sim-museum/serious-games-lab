@@ -299,6 +299,7 @@ uniform vec3 uLightDir; uniform sampler2D uTex; uniform int uHasTex; uniform flo
 uniform vec3 uCamPos; uniform vec3 uFogCol; uniform float uFogNear; uniform float uFogFar;
 uniform sampler2D uShadow; uniform float uShadowTexel; uniform float uSpec; uniform int uBackFlip;
 uniform float uAmbFill;   // flat fill light (GPL pre-lit cockpit interior — lifts self-shadowed faces)
+uniform float uAlpha;     // per-draw opacity multiplier (1 = opaque; <1 = glass, e.g. the windscreen)
 uniform int uCutout;      // 1 for chain-link/foliage cutouts → sharpen alpha edge (kill shimmer)
 uniform int uGraze;       // 1 for GPL tree-LINE meshes → fade faces viewed edge-on (kills the end-on "smear")
 uniform int uSky;
@@ -361,7 +362,7 @@ void main(){
     float g = abs(dot(N, normalize(uCamPos - vWorld)));   // 0 = edge-on, 1 = face-on
     alpha *= smoothstep(0.05, 0.32, g);
   }
-  o=vec4(mix(lit, uFogCol, fog*fog), alpha);     // alpha → MSAA coverage (smooth cutout edges)
+  o=vec4(mix(lit, uFogCol, fog*fog), alpha*uAlpha);     // alpha → MSAA coverage (smooth cutout edges); uAlpha = glass
 }"""
 # depth-only program for the shadow pass (render the scene from the sun's POV)
 const DEPTH_VS = """
@@ -1187,10 +1188,11 @@ function build_track(parts, texidx)
     items
 end
 setmat(prog,name,M)=glUniformMatrix4fv(glGetUniformLocation(prog,name),1,GL_FALSE,M)
-function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0, graze::Bool=false)
+function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0, graze::Bool=false, alpha::Real=1.0)
     setmat(prog,"uVP",vp); setmat(prog,"uModel",model)
     glUniform1f(glGetUniformLocation(prog,"uBright"), Float32(bright))
     glUniform1f(glGetUniformLocation(prog,"uSpec"), Float32(spec))
+    glUniform1f(glGetUniformLocation(prog,"uAlpha"), Float32(alpha))
     glUniform1f(glGetUniformLocation(prog,"uAmbFill"), Float32(ambfill))
     glUniform1i(glGetUniformLocation(prog,"uGraze"), graze ? 1 : 0)
     glUniform1i(glGetUniformLocation(prog,"uCutout"), get(CUTOUT_TEX, item.tex, false) ? 1 : 0)

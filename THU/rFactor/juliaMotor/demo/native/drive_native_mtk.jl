@@ -501,8 +501,9 @@ const LOT3DO = joinpath(LOTDIR,"lotus.3do")
 # grey = the fallback colour for the one UNTEXTURED body part (a big inner-tub/underside shell, 2043
 # verts) — the default light grey rendered it as white faceted clutter in the cockpit corners; a dark
 # cockpit-interior grey hides it (it's interior/underside, invisible externally).
-const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","dash7a",Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0, grey=(0.11f0,0.12f0,0.13f0))   # keep the mirrors (GPL cockpit shows them); drop hands/arms + the gauge cluster (drawn separately)
+const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","dash7a","windlot",Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0, grey=(0.11f0,0.12f0,0.13f0))   # keep the mirrors; drop hands/arms + the gauge cluster + windscreen (drawn separately)
 const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (dial faces in the texture's lower-V region; keep default vflip)
+const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0)  # the plexiglass windscreen — drawn LAST, near-transparent (glass), so the suspension shows through (GPL gold standard)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read
 # upside-down.  Mirror the gauge in height about its own centre so the dial face turns up toward the eye.
 const GCY = (b = Render.parts_bbox(GAUGEP); Float32((b.ymin + b.ymax)/2))
@@ -711,6 +712,7 @@ println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboar
 end
 carItems   = Render.build_gpl(CARP, GPLTEX)        # Lotus body, GPL .mip textures
 gaugeItems = Render.build_gpl(GAUGEP, GPLTEX)      # gauge cluster (drawn near-unlit so it reads)
+windItems  = Render.build_gpl(WINDP, GPLTEX)       # plexiglass windscreen (drawn last, transparent)
 # four Lotus wheels — keep the untextured black tyre body (only the car body drops "")
 load_wheel(nm) = Render.build_gpl(Render.extract_gpl_car(joinpath(LOTDIR,nm*".3do");
                     exclude=("ltraymap","lshad"), tint=(0.12f0,0.12f0,0.13f0)), GPLTEX)  # force dark tyre
@@ -1255,9 +1257,11 @@ function main()
         vp, eye = camera(cs, pitch_ter + pitch_dyn, roll_ter + rollv)   # cockpit cam = full body orientation → cockpit stationary, world tilts
         carModel = Render.translate(Float32[cs.x, cs.y, -cs.z]) * Render.roty(Float32(cs.θ)) *
                    Render.rotz(Float32(pitch_ter)) * Render.rotx(Float32(roll_ter))   # whole car follows the hill (pitch + cross-slope roll)
-        bodyModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv)) * Render.translate(BODY_OFF)  # body dives/squats + rolls (3-D)
+        tiltModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv))   # full body tilt (terrain + dynamic)
+        bodyModel = tiltModel * Render.translate(BODY_OFF)  # body dives/squats + rolls (3-D)
         δ = Float32(inp.steer * (SKIDPAD ? 0.30 : CAR.max_steer))
-        wheelmat(wx,wz,steer,r) = carModel * Render.translate(Float32[wx, r, wz]) *
+        # wheels ride the FULL body tilt (tiltModel), so they stay rigid/level with the cockpit on a bank (PO)
+        wheelmat(wx,wz,steer,r) = tiltModel * Render.translate(Float32[wx, r, wz]) *
                      (steer ? Render.roty(δ) : Render.ident()) * Render.rotz(Float32(spin))
         # advance + place the AI field (rail-followers on the centreline)
         ai_hit = Ref(false); ddt = dt > 1e-4 ? dt : 1/60
@@ -1449,6 +1453,11 @@ function main()
         # steering wheel — spin about its column axis with steering input
         swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5)) * Render.translate(-SWCENTER)
         for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2, ambfill=0.34); end
+        # plexiglass WINDSCREEN — drawn LAST, near-transparent (glass), depth-write OFF so the moving front
+        # suspension + track read through it (GPL gold standard), not a bright opaque gold rim.
+        glDepthMask(GL_FALSE)
+        for it in windItems; Render.draw(prog, it, vp, bodyModel; bright=1.05, spec=0.0, ambfill=0.5, alpha=0.16); end
+        glDepthMask(GL_TRUE)
         α_tc = clamp(dt/0.10, 0.0, 1.0)              # smooth the traction-circle display (coarse-mesh Fz spikes → no flicker)
         tc_hud = ntuple(i -> ntuple(j -> tc_hud[i][j] + (cs.tc[i][j]-tc_hud[i][j])*α_tc, 3), 4)
         Render.hud_draw(hudprog, hudvao, hudvbo,
