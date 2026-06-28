@@ -18,6 +18,7 @@ Run:  python3 gui.py        (from demo/native/, or anywhere — paths are resolv
 """
 import json
 import os
+import re
 import shutil
 import sys
 
@@ -718,6 +719,92 @@ class DriveTab(QWidget):
             QApplication.instance().quit()
 
 
+class ReplayTab(QWidget):
+    """E18: pick a saved .jmr race recording and watch it back (cockpit/chase + VCR keys)."""
+    def __init__(self, joy):
+        super().__init__()
+        self.joy = joy
+        self.proc = None
+        self.dir = os.path.join(os.path.dirname(os.path.dirname(HERE)), "data", "juliaracer")
+        v = QVBoxLayout(self)
+        v.addWidget(QLabel("Pick a saved race recording (.jmr) and watch it back:"))
+        self.combo = QComboBox()
+        v.addWidget(self.combo)
+        row = QHBoxLayout()
+        self.refresh_b = QPushButton("Refresh")
+        self.watch_b = QPushButton("Watch replay")
+        self.stop_b = QPushButton("Stop")
+        self.stop_b.setEnabled(False)
+        row.addWidget(self.refresh_b)
+        row.addWidget(self.watch_b)
+        row.addWidget(self.stop_b)
+        v.addLayout(row)
+        v.addWidget(QLabel("In the replay:  SPACE play/pause · ←/→ scrub · ↑/↓ speed · V cockpit/chase · Esc quit"))
+        self.log = QPlainTextEdit()
+        self.log.setReadOnly(True)
+        v.addWidget(self.log)
+        self.refresh_b.clicked.connect(self.refresh)
+        self.watch_b.clicked.connect(self.watch)
+        self.stop_b.clicked.connect(self.stop)
+        self.refresh()
+
+    def refresh(self):
+        self.combo.clear()
+        try:
+            files = sorted((f for f in os.listdir(self.dir) if f.endswith(".jmr")), reverse=True)
+        except OSError:
+            files = []
+        self.combo.addItems(files)
+
+    def watch(self):
+        if self.proc and self.proc.state() != QProcess.ProcessState.NotRunning:
+            return
+        name = self.combo.currentText()
+        if not name:
+            return
+        m = re.match(r"replay_(\w+) (\d+)ai", name)
+        if not m:
+            self.log.appendPlainText("could not read track / car count from the filename")
+            return
+        track, nai = m.group(1), m.group(2)
+        self.joy.stop_reader()
+        qenv = QProcessEnvironment.systemEnvironment()
+        qenv.insert("TRACK", track)
+        qenv.insert("JM_MODE", "race")
+        qenv.insert("JM_AI", nai)
+        qenv.insert("JM_REPLAY", os.path.join(self.dir, name))
+        qenv.insert("JM_VIEW", "0")
+        self.proc = QProcess(self)
+        self.proc.setProcessEnvironment(qenv)
+        self.proc.setWorkingDirectory(HERE)
+        self.proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        self.proc.readyReadStandardOutput.connect(
+            lambda: self.log.appendPlainText(
+                bytes(self.proc.readAllStandardOutput()).decode(errors="replace").rstrip()))
+        self.proc.finished.connect(self._done)
+        jlargs = ["-t", "2", "--project=."]
+        sysimg = os.path.join(HERE, "jlracer.so")
+        if os.path.exists(sysimg):
+            jlargs += ["-J", sysimg]
+        jlargs.append("drive_native_mtk.jl")
+        self.proc.start(find_julia(), jlargs)
+        self.log.clear()
+        self.log.appendPlainText(f"replaying {name} … (loading)")
+        self.watch_b.setEnabled(False)
+        self.stop_b.setEnabled(True)
+
+    def stop(self):
+        if self.proc:
+            self.proc.terminate()
+            if not self.proc.waitForFinished(2000):
+                self.proc.kill()
+
+    def _done(self):
+        self.log.appendPlainText("\n— replay ended —")
+        self.watch_b.setEnabled(True)
+        self.stop_b.setEnabled(False)
+
+
 class Main(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -727,16 +814,18 @@ class Main(QMainWindow):
         tabs = QTabWidget()
         self.cal = CalibrateTab(self.joy, self._reload)
         self.drive = DriveTab(self.joy)
+        self.replay = ReplayTab(self.joy)
         tabs.addTab(self.drive, "Drive")
+        tabs.addTab(self.replay, "Replay")
         tabs.addTab(self.cal, "Calibrate controller")
         tabs.currentChanged.connect(self._tab)
         self.setCentralWidget(tabs)
         self.joy.start_reader(1)
 
     def _tab(self, i):
-        # keep the reader alive while calibrating; it's harmless during Drive too,
-        # but DriveTab.launch() stops it so the game owns the device cleanly.
-        if i == 1 and self.joy.state() == QProcess.ProcessState.NotRunning:
+        # keep the reader alive while calibrating (tab 2); it's harmless during Drive too,
+        # but DriveTab.launch()/ReplayTab.watch() stop it so the game owns the device cleanly.
+        if i == 2 and self.joy.state() == QProcess.ProcessState.NotRunning:
             self.joy.start_reader(1)
 
     def _reload(self):

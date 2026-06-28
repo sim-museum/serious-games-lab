@@ -1492,7 +1492,7 @@ function main()
             ts = Dates.format(Dates.now(), "yyyy-mm-dd HH-MM-SS")
             odir = get(ENV, "JM_IBT_DIR", joinpath(dirname(dirname(@__DIR__)), "data", "juliaracer"))
             mkpath(odir)
-            out = joinpath(odir, "replay_$(TRACKSEL) $(ts).jmr")
+            out = joinpath(odir, "replay_$(TRACKSEL) $(length(AICARS))ai $(ts).jmr")   # filename encodes track + AI count for the GUI picker
             names = String["Lotus 49"]; for m in AICHASSIS; push!(names, m.name); end
             nf = length(replay_buf) ÷ (1 + 4*REPLAY_NCAR)
             serialize(out, (track=TRACKSEL, ncar=REPLAY_NCAR, names=names, fps=15, nframes=nf, data=replay_buf))
