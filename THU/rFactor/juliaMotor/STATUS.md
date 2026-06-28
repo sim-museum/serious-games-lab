@@ -3,6 +3,30 @@
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/gui.py` (or `drive_native_mtk.jl`).
 
+## Sky + per-track graphics pass (2026-06-28 — E19–E22, autonomous sprint)
+Against the PO's GPL gold-standard screenshots (`/run/media/g/84AF-CC77/<track>/`). All
+SMOKE-verified vs the namesake reference shots:
+- **E19 — blue iRacing sky, no seam** (Zandvoort): the overcast horizon ring used to wall up
+  into the procedural blue skydome with a hard grey seam. Now a clear blue gradient + scattered
+  clouds, and the GPL horizon ring is CROPPED to a thin low hill-band so the blue sky shows
+  above it. Verified: seam gone, blue sky + white clouds.
+- **E20 — mirrors are clean round discs** (were chrome torpedoes in the corners). Pulled out of
+  the body, re-placed on the cowl. (Still render as dark discs — no RTT reflections.)
+- **E21 — visible plexiglass** restored (alpha, depth-write off).
+- **E22 — per-track sky grades** vs each gold standard: **Spa** bright blue + white cloud over
+  green forest; **Monza** hazy bright blue-white daylight; **Watkins** hazy blue; **Nürburgring**
+  a dedicated STORMY OVERCAST grade (heavy grey deck, desaturated) matching its genuinely moody
+  reference; Zandvoort its own blue grade. (The old shared `GRADE_SUNNY` was cloud=1.0 overcast.)
+- **Watkins forest-wall / pit-straight "smear" RESOLVED** (long-standing open item): the GPL
+  `tree*` objects there are wide PANORAMIC forest strips (80–380 m across, one big quad). Forced
+  camera-facing, each swung to face the eye → a giant flat yellow "wall"; static face-on → the
+  same wall; static edge-on → the grey-green smear. They duplicate the forest already baked into
+  the horizon ring, so they're DROPPED by default (`JM_DROP_FOREST=0` keeps them as static
+  authored-yaw panels), and the single-strip horizon crop was tightened (`JM_STRIP_HI`/`_VTOP`)
+  so its hazy-white sky top no longer reads as a bright band. Result: clean low tree-line horizon,
+  no walls, no smear. Spa (2990 narrow tree billboards, 0 wide panels) + Monza (1565/0) unchanged.
+  `JM_OBJDIAG=1` lists the tallest geometry + billboard sizes for future scenery debugging.
+
 ## Live-test feedback pass (2026-06-28 — FF wheel + cockpit/suspension)
 Driven on the Thrustmaster TX FF wheel; the PO's feedback this round + what landed:
 - **"Always on grass" / bogging FIXED** (root cause the PO spotted): the grass penalty was
@@ -102,13 +126,11 @@ red at/over the edge when skidding); temporally smoothed (no flicker).
   graze-fade (edge-on faces fade so a row doesn't streak into a smear).
 
 ## Open items
-- **Start/finish "smear"** (Watkins Glen, dark grey-green fuzzy mass behind the bridge): NOT
-  fully resolved. Exhaustive elimination ruled out every named object group (trees, fence,
-  tower, signs, billboards, crowds), the track mesh, the horizon ring, and the baked
-  scenery. Dropping ALL objects faded it (region 91→111) but didn't clear it → it appears
-  to be a COMBINATION (partly trackside trees, partly a track-mesh/backdrop-layer element
-  not yet isolated). Next: a live "hide object group" debug toggle or a pixel→object picker
-  instead of blind elimination.
+- **Start/finish "smear"** (Watkins Glen): **RESOLVED 2026-06-28** — it was the wide panoramic
+  `tree*` forest strips (camera-faced into walls / edge-on smear) plus the horizon-strip's
+  hazy-white sky top. Wide panels dropped + strip crop tightened (see the E22 section above).
+- **Mirrors render as dark discs** (no render-to-texture) — GPL shows live reflections; ours are
+  flat tinted discs. A fixed dim sky/track tint would read more like glass than black voids.
 - **Car/cockpit GPL pass** — pending the PO's Lotus 49 cockpit/exterior reference shots
   (`ref/gpl/`); will match cockpit tone + green/livery to GPL then.
 - Repeat the scenery + color pass on Nürburgring / Monza / Spa once Watkins Glen is signed off.
