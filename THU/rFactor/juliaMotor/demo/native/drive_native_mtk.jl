@@ -991,7 +991,10 @@ function main()
             end
             # GPL GRASS PENALTY: off the racing surface (on the verge/grass) but still in the world →
             # reduced grip + drag: scrub speed and add a little slip wobble (so cutting onto grass costs you).
-            if hr.found && !hr.on_track && cs.v > 2.5 && race_go[] && !rst
+            # NB use |lateral|>ROAD_HALFW, NOT hr.on_track — the TrackSurface is 9 m half-wide (for robust
+            # projection) but the rendered GPL road is only ~ROAD_HALFW, so on_track stays true well into
+            # the grass (cars ran the verge penalty-free).  ROAD_HALFW matches what you actually see.
+            if hr.found && abs(hr.lateral) > ROAD_HALFW && cs.v > 2.5 && race_go[] && !rst
                 gdt = dt > 1e-4 ? dt : 1/60
                 bumpX!(cs, -GRASS_DRAG*cs.v*cos(cs.θ)*gdt, -GRASS_DRAG*cs.v*sin(cs.θ)*gdt, (2*rand()-1)*GRASS_SLIP*gdt)
             end
@@ -1170,11 +1173,11 @@ function main()
                 thr, brk, st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i],
                                                  pc.x, pc.z, pc.θ, pc.v, AIyaw(pc); power = AI_POWER)
                 DriveRT3D.step_car3d!(pc, thr, brk, st, ddt; manual=false, groundz=groundz)
-                # GRASS via the REAL racing surface (TRKSURF.on_track) — the SAME test the player and
-                # the renderer use, so the AI "see" exactly the road you see (the lane-width threshold
-                # let them run the grass on straights where the centreline isn't centred on the road).
+                # GRASS by the rendered road half-width (|lateral|>ROAD_HALFW), the SAME yardstick as the
+                # player — NOT TRKSURF.on_track, whose 9 m half-width is far wider than the visible road, so
+                # AI ran the verge near the finish straight penalty-free + drafting (PO saw them do exactly that).
                 hs = JuliaMotor.hat(TRKSURF, pc.x, pc.z)
-                ai_onroad[i] = !(hs.found && !hs.on_track)
+                ai_onroad[i] = !(hs.found && abs(hs.lateral) > ROAD_HALFW)
                 if !ai_onroad[i] && pc.v > 2.5                        # AI off the racing surface → grass penalty
                     AIbump!(pc, -GRASS_DRAG*pc.v*cos(pc.θ)*ddt, -GRASS_DRAG*pc.v*sin(pc.θ)*ddt, (2*rand()-1)*GRASS_SLIP*ddt)
                 end
@@ -1215,7 +1218,7 @@ function main()
         # via bumpX!, the AI is shoved aside + spun + scrubbed.  The wheels keep spinning with motion.
         if race_go[] && !rst && !isempty(ai_poses)
             # slipstream for the PLAYER: tuck behind an AI on a straight → tow → slingshot past (not on grass)
-            if AI_PHYSICS && JuliaMotor.hat(TRKSURF, cs.x, cs.z).on_track
+            if AI_PHYSICS && (ph = JuliaMotor.hat(TRKSURF, cs.x, cs.z); ph.found && abs(ph.lateral) <= ROAD_HALFW)
                 plds = [(p[1], p[3], p[4], AICARS[k].v) for (k,p) in enumerate(ai_poses)]
                 ptw = draft_tow(cs.x, cs.z, cs.θ, cs.v, plds)
                 ptw > 0.0 && bumpX!(cs, ptw*cos(cs.θ)*ddt, ptw*sin(cs.θ)*ddt, 0.0)
@@ -1288,7 +1291,16 @@ function main()
         # ambfill lifts the self-shadowed cockpit interior out of black (GPL pre-lights it
         # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
         for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.25, spec=0.10, ambfill=0.62); end   # lift the self-shadowed cockpit tub out of black (GPL pre-lights it to grey)
-        for it in gaugeItems; Render.draw(prog, it, vp, bodyModel; bright=1.5, spec=0.0, ambfill=0.95); end    # gauge cluster: near-unlit → readable tach + dials
+        # gauge cluster (real GPL dash7A dial faces): the dash sits BELOW the scuttle/black panels in the
+        # mesh, so it's occluded from the driver's eye → draw it depth-test-OFF so the dials read on the
+        # dash, near-unlit (bright + ambfill) so the faces are legible.  Only matters in the cockpit view.
+        if CTL.view == 0
+            glDisable(GL_DEPTH_TEST)
+            for it in gaugeItems; Render.draw(prog, it, vp, bodyModel; bright=1.6, spec=0.0, ambfill=0.95); end
+            glEnable(GL_DEPTH_TEST)
+        else
+            for it in gaugeItems; Render.draw(prog, it, vp, bodyModel; bright=1.5, spec=0.0, ambfill=0.95); end
+        end
         for (p, cm) in zip(ai_poses, AICHASSIS)                 # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper)
             for it in cm.body; Render.draw(prog, it, vp, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end
             for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp, aiWheel(p,wx,wz,r)); end
