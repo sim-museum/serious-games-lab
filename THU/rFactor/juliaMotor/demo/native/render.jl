@@ -661,18 +661,8 @@ function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,clu=0.0,tc=nothing; lastlap
     hnumber!(v, 40, H-104, 40, 76, 11, kmh, white)             # speed (big, bottom-left)
     hdigit!(v, W-92, H-150, 40, 76, 11, (round(Int,gear) <= 0 ? -1 : clamp(round(Int,gear),1,9)), amber)  # gear (N for neutral), raised so it isn't clipped
     hquad!(v, W-100, H-164, 12, 12, manual ? amber : green)    # shift-mode dot: green=auto amber=manual
-    function bar(x,frac,col)
-        bw=20; bh=70; by=H-104; hquad!(v,x,by,bw,bh,dim)
-        f=clamp(frac,0,1); f>0 && hquad!(v,x,by+bh*(1-f),bw,bh*f,col)
-    end
-    bar(250, clu, blue); bar(278, brk, red); bar(306, thr, green)   # pedal order = physical: clutch, brake, throttle
-    rf = rpm/max(revlim,1f0)                                        # rpm as a tachometer DIAL (2× size)
-    hdial!(v, 430, H-100, 60, rf, 0.88, (0.40,0.45,0.52), rf>0.88 ? red : amber, red)
-    if tc !== nothing                                          # traction circles (2×2) to the RIGHT of the dial, vertically centred on it
-        sp=58; R=22; bx=545; by=H-100-sp÷2                     # dial is at (430,H-100) r=60 ⇒ grid centroid at (bx+sp/2, H-100)
-        htraction!(v,bx,by,R,tc[1]); htraction!(v,bx+sp,by,R,tc[2])
-        htraction!(v,bx,by+sp,R,tc[3]); htraction!(v,bx+sp,by+sp,R,tc[4])
-    end
+    # HUD decluttered (PO, E13): pedal bar charts, the hand-drawn RPM dial, and the per-wheel traction
+    # circles are REMOVED so the real GPL dash reads clean.  Keep speed, gear, and the lap times only.
     lastlap > 0 && htime!(v, 40, 28, lastlap, white)           # last lap (white, top-left)
     bestlap > 0 && htime!(v, 40, 74, bestlap, green)           # best lap (green, below)
     v

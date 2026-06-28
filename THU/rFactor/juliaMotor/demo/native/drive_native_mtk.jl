@@ -474,7 +474,7 @@ const LOT3DO = joinpath(LOTDIR,"lotus.3do")
 # grey = the fallback colour for the one UNTEXTURED body part (a big inner-tub/underside shell, 2043
 # verts) — the default light grey rendered it as white faceted clutter in the cockpit corners; a dark
 # cockpit-interior grey hides it (it's interior/underside, invisible externally).
-const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","lotmirt","lotmir","dash7a","mirror","lrm","lotubase","lotubas2",Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0, grey=(0.11f0,0.12f0,0.13f0))
+const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","dash7a",Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0, grey=(0.11f0,0.12f0,0.13f0))   # keep the mirrors (GPL cockpit shows them); drop hands/arms + the gauge cluster (drawn separately)
 const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (dial faces in the texture's lower-V region; keep default vflip)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read
 # upside-down.  Mirror the gauge in height about its own centre so the dial face turns up toward the eye.
@@ -702,6 +702,9 @@ if !SKIDPAD && N_AI > 0
     end
 end
 const PROJ = Render.perspective_revz(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0)  # reversed-Z: near-uniform depth precision → kills distant z-fight (signs on fences)
+# GPL's cockpit uses a WIDE field of view — the mirrors sit at the screen edges and you see lots of road.
+# A separate wide projection for the cockpit view (tunable via JM_FOV) reproduces that immersive look.
+const PROJ_COCKPIT = Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_FOV","80"))), Float32(W/H), 0.20f0, 3000f0)
 
 # ---- input: edge-detected shift, view + auto-gearbox toggle ----
 mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; view::Int; auto::Bool; end
@@ -763,13 +766,13 @@ function camera(cs, pitch=0.0, roll=0.0)
     # COCKPIT: the camera is rigidly BOLTED to the body (same yaw·pitch·roll as the chassis), so the
     # cockpit/dash/wheel are STATIONARY on screen and the WORLD tilts — the driver's head stays normal to
     # the surface the car is on (GPL behaviour), instead of the car appearing to lean under a level horizon.
-    ex,ey,ez,drop = parse(Float32,get(ENV,"JM_EYE_X","0.30")), parse(Float32,get(ENV,"JM_EYE_Y","0.54")), 0.0f0, parse(Float32,get(ENV,"JM_EYE_DROP","0.85"))   # lower seat + look ~straight ahead (see the track), dash in the lower frame; tunable via JM_EYE_*
+    ex,ey,ez,drop = parse(Float32,get(ENV,"JM_EYE_X","0.46")), parse(Float32,get(ENV,"JM_EYE_Y","0.40")), 0.0f0, parse(Float32,get(ENV,"JM_EYE_DROP","0.55"))   # GPL: low seat just behind the wheel, ~level gaze (see the road), dash fills the lower frame; tunable via JM_EYE_*
     R = Render.roty(Float32(cs.θ)) * Render.rotz(Float32(pitch)) * Render.rotx(Float32(roll))   # = the chassis rotation
     R3(a,b,c) = (w = R * Float32[a,b,c,0f0]; Float32[w[1],w[2],w[3]])     # rotate a body-frame direction into the world
     eye = Float32[wx,wy,wz] + R3(BODY_OFF[1]+ex, BODY_OFF[2]+ey, BODY_OFF[3]+ez)   # eye fixed in the body frame
     ctr = eye + R3(4f0, -drop, 0f0)                                       # look forward + a slight downward drop
     up  = R3(0f0, 1f0, 0f0)                                               # camera up = the body's up (= surface normal)
-    PROJ * Render.lookat(eye, ctr, up), eye
+    PROJ_COCKPIT * Render.lookat(eye, ctr, up), eye                       # WIDE FOV cockpit (GPL look)
 end
 
 # ---- main loop (in a function — avoids top-level soft scope, runs faster) ----
