@@ -10,3 +10,7 @@ demo/native/sound/lotus49_rev_preview.wav
 # python bytecode
 __pycache__/
 *.pyc
+
+# generated replay recordings
+data/juliaracer/*.jmr
+*.jmr
