@@ -504,11 +504,18 @@ const LOT3DO = joinpath(LOTDIR,"lotus.3do")
 # mirror parts — pulled OUT of the body so they can be re-placed onto the cowl/plexiglass and
 # tilted toward the eye (GPL: two round mirrors at the SIDES, mid-height; the default render
 # saw the chrome housing torpedo-on at the bottom corners).
-const MIRROR_TEX = ("mirror","lotmirt","lrm","lrimext","lotubase","lotubas2")
+# ALL mirror parts excluded from the body; but we only DRAW the round face + rim (mirror/lrm/lrimext)
+# — the bulky chrome HOUSING (lotmirt) + stalk (lotubase/lotubas2) read as a "chrome torpedo" (no RTT),
+# so dropping them leaves a clean round disc on the cowl like the GPL gold standard.
+const MIRROR_TEX  = ("mirror","lotmirt","lrm","lrimext","lotubase","lotubas2")   # excluded from CARP
+const MIRROR_DRAW = ("mirror","lrm","lrimext")                                   # actually drawn (disc + rim)
 const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","dash7a","windlot",MIRROR_TEX...,Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0, grey=(0.11f0,0.12f0,0.13f0))   # drop hands/arms + gauge cluster + windscreen + mirrors (all drawn separately)
 const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (dial faces in the texture's lower-V region; keep default vflip)
-const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0)  # the plexiglass windscreen — drawn LAST, near-transparent (glass), so the suspension shows through (GPL gold standard)
-const MIRRORP = Render.extract_gpl_car(LOT3DO; only=MIRROR_TEX, maxlat=0.95f0)   # rear-view mirrors — re-placed on the cowl (see MIRRORMAT)
+const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0)  # the plexiglass windscreen — drawn LAST, faintly visible glass, so the suspension shows through (GPL gold standard)
+# FRONT SUSPENSION (lsusp1 = the front rocker/wishbone, only in the front groups 6600/3560 — so no
+# double-draw with CARP) — drawn with the body so the wishbones show ahead through the plexiglass (PO).
+const FSUSPP = Render.extract_gpl_car(LOT3DO; only=("lsusp1",), maxlat=1.3f0)
+const MIRRORP = Render.extract_gpl_car(LOT3DO; only=MIRROR_DRAW, maxlat=0.95f0)  # rear-view mirrors — clean disc, re-placed on the cowl (see MIRRORMAT)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read
 # upside-down.  Mirror the gauge in height about its own centre so the dial face turns up toward the eye.
 const GCY = (b = Render.parts_bbox(GAUGEP); Float32((b.ymin + b.ymax)/2))
@@ -524,7 +531,8 @@ const MCEN = (b = Render.parts_bbox(MIRRORP); Float32[(b.xmin+b.xmax)/2, (b.ymin
 const MIRROR_DY   = parse(Float32, get(ENV,"JM_MIRROR_Y","0.10"))
 const MIRROR_DX   = parse(Float32, get(ENV,"JM_MIRROR_X","0.075"))
 const MIRROR_TILT = deg2rad(parse(Float32, get(ENV,"JM_MIRROR_TILT","16")))   # tip the faces up toward the eye
-const MIRROR_SCALE = parse(Float32, get(ENV,"JM_MIRROR_SCALE","0.85"))   # shrink toward the GPL round-mirror size
+const MIRROR_SCALE = parse(Float32, get(ENV,"JM_MIRROR_SCALE","0.62"))   # shrink toward the GPL round-mirror size
+const WIND_ALPHA   = parse(Float32, get(ENV,"JM_WIND_ALPHA","0.30"))     # plexiglass opacity — faintly visible (was 0.16 = invisible)
 const MIRRORMAT = Render.translate(Float32[MIRROR_DX,MIRROR_DY,0]) *
                   Render.translate(MCEN) * Render.rotz(MIRROR_TILT) * Render.scalexyz(MIRROR_SCALE,MIRROR_SCALE,MIRROR_SCALE) * Render.translate(-MCEN)
 println(length(TRACK), " track parts + ", length(CARP), " Lotus body parts")
@@ -761,6 +769,7 @@ carItems   = Render.build_gpl(CARP, GPLTEX)        # Lotus body, GPL .mip textur
 gaugeItems = Render.build_gpl(GAUGEP, GPLTEX)      # gauge cluster (drawn near-unlit so it reads)
 windItems  = Render.build_gpl(WINDP, GPLTEX)       # plexiglass windscreen (drawn last, transparent)
 mirrorItems = Render.build_gpl(MIRRORP, GPLTEX)    # rear-view mirrors (re-placed on the cowl, MIRRORMAT)
+fsuspItems  = Render.build_gpl(FSUSPP, GPLTEX)     # front suspension wishbones (visible through the screen)
 # four Lotus wheels — keep the untextured black tyre body (only the car body drops "")
 load_wheel(nm) = Render.build_gpl(Render.extract_gpl_car(joinpath(LOTDIR,nm*".3do");
                     exclude=("ltraymap","lshad"), tint=(0.12f0,0.12f0,0.13f0)), GPLTEX)  # force dark tyre
@@ -1507,16 +1516,19 @@ function main()
             for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp, aiWheel(p,wx,wz,r)); end
         end
         for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, vp, wheelmat(wx,wz,steer,r)); end
+        # front suspension wishbones — ahead of the cockpit, visible through the plexiglass (PO gold standard)
+        for it in fsuspItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.15, ambfill=0.5); end
         # rear-view mirrors — re-placed onto the cowl/plexiglass, faces tilted toward the eye (GPL look).
         # No render-to-texture, so the glass reads as a dark tinted disc rather than a live reflection.
         for it in mirrorItems; Render.draw(prog, it, vp, bodyModel*MIRRORMAT; bright=0.85, spec=0.18, ambfill=0.30); end
         # steering wheel — spin about its column axis with steering input
         swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5)) * Render.translate(-SWCENTER)
         for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2, ambfill=0.34); end
-        # plexiglass WINDSCREEN — drawn LAST, near-transparent (glass), depth-write OFF so the moving front
-        # suspension + track read through it (GPL gold standard), not a bright opaque gold rim.
+        # plexiglass WINDSCREEN — drawn LAST, FAINTLY VISIBLE glass (PO: it had vanished at 0.16), depth-write
+        # OFF so the front suspension + track read through it (GPL gold standard) but the screen still reads as
+        # a tinted curved plexiglass, not a bright opaque gold rim.  JM_WIND_ALPHA tunes it.
         glDepthMask(GL_FALSE)
-        for it in windItems; Render.draw(prog, it, vp, bodyModel; bright=1.05, spec=0.0, ambfill=0.5, alpha=0.16); end
+        for it in windItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.05, ambfill=0.5, alpha=WIND_ALPHA); end
         glDepthMask(GL_TRUE)
         α_tc = clamp(dt/0.10, 0.0, 1.0)              # smooth the traction-circle display (coarse-mesh Fz spikes → no flicker)
         tc_hud = ntuple(i -> ntuple(j -> tc_hud[i][j] + (cs.tc[i][j]-tc_hud[i][j])*α_tc, 3), 4)
