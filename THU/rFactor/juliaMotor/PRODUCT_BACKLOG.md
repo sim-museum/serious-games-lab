@@ -336,3 +336,25 @@ Against the GPL Zandvoort cockpit shot (`/run/media/g/84AF-CC77/zandervoort/…0
 - ⏳ Remaining cockpit gap vs gold: bright riveted-aluminium tub sides + gear lever (the untextured tub shell
   is darkened to kill faceted clutter — needs a real aluminium texture, not a flat brighten), front tyres at
   the lower-side edges (behind the dark coaming), gloved hands on the wheel.
+
+## Autonomous block — 2026-06-28 PM (PO away 3 h, scrum pre-approved)
+PO feedback on the FF-wheel live test (Image #15 ours vs #16 gold standard):
+✅ gear bogging FIXED (grass false-fire). Remaining + new epics:
+
+- **E19 Blue sky / kill the horizon seam:** ours draws a blue procedural skydome AND the grey GPL
+  overcast horizon-ring, meeting in a hard discontinuous seam. PO wants a consistent iRacing BLUE
+  sky (not overcast). Crop the 12-panel ring to a thin low hill-band + blue-sky GRADE.
+- **E20 Mirrors:** still too big/chrome (torpedoes). Match the GPL round-mirror size/position
+  (small discs on thin stalks, mid-height). `JM_MIRROR_*`.
+- **E21 Transparent screen + suspension wishbones:** PO says "transparent screen MISSING" — we over-
+  did the alpha (it vanished). Restore a faintly-visible plexiglass (yellow arcs, like #16) with the
+  front suspension wishbones/rockers + front tyres visible THROUGH it.
+- **E22 Per-track graphics grade vs gold standard (PO):** for EACH track, tune colour + scenery
+  against that track's gold-standard screenshots in `/run/media/g/84AF-CC77/<track>/` — e.g. Spa via
+  `/run/media/g/84AF-CC77/spa`. Tracks: zandervoort (done-ish), spa, monza, nurburgring, watkinsGlenn.
+
+### Sprint plan (PO pre-approved)
+- **Sprint A — E19 sky seam** (current track, highest-visible).
+- **Sprint B — E20 mirrors + E21 transparent screen/wishbones** (cockpit fidelity).
+- **Sprint C — E22 per-track grades:** Spa → Monza → Nürburgring → Watkins Glen, each vs its ref folder.
+Progress logged below.
