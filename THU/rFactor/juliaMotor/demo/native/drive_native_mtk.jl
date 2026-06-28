@@ -1002,6 +1002,25 @@ function main()
     REPLAY_REC = IS_RACE && N_AI > 0 && isempty(REPLAY_FILE) && (!SMOKE || haskey(ENV,"JM_REPLAY_REC"))
     replay_buf = REPLAY_REC ? Float32[] : nothing; replay_t = Ref(-1.0); REPLAY_NCAR = 1 + length(AICARS)
     IBTREC && println("  recording iRacing .ibt telemetry (JM_IBT) — template: ", basename(IBTTMPL))
+    # E18 PLAYBACK: load the recording; the loop sets poses from it instead of simulating (VCR keys below).
+    REPLAY = !isempty(REPLAY_FILE)
+    repd = REPLAY ? deserialize(REPLAY_FILE) : nothing
+    rep_rt = Ref(0.0); rep_play = Ref(true); rep_speed = Ref(1.0)
+    rep_dur = REPLAY ? max(repd.nframes - 1, 0)/repd.fps : 0.0
+    rep_st  = REPLAY ? 1 + 4*repd.ncar : 0
+    # interpolated poses at replay time rt → (player (x,y,z,θ), Vector of AI (x,y,z,θ))
+    function replay_poses(rt)
+        d = repd.data; nf = repd.nframes; f = clamp(rt*repd.fps, 0.0, nf-1.0)
+        i0 = floor(Int, f); i1 = min(i0+1, nf-1); g = f - i0
+        b0 = i0*rep_st; b1 = i1*rep_st
+        lerp(o) = d[b0+o]*(1-g) + d[b1+o]*g
+        lerpθ(o) = (a=d[b0+o]; a + (mod(d[b1+o]-a+π, 2π)-π)*g)   # shortest-arc heading lerp
+        player = (lerp(2), lerp(3), lerp(4), lerpθ(5))
+        ais = NTuple{4,Float64}[]
+        for k in 1:(repd.ncar-1); o = 5 + 4*(k-1); push!(ais, (lerp(o+1), lerp(o+2), lerp(o+3), lerpθ(o+4))); end
+        (player, ais)
+    end
+    REPLAY && println("  ▶ REPLAY: $(basename(REPLAY_FILE)) — $(repd.nframes) frames, $(round(rep_dur,digits=1))s, $(repd.ncar) cars\n  SPACE play/pause · ←/→ seek 5s · ↑/↓ speed · V view · Esc quit")
     telem = SMOKE ? nothing : open("zand_racer_$(round(Int,time())).txt", "w")
     telem !== nothing && write(telem,
         "# zand_racer telemetry — Lotus 49 @ Zandvoort\n# t\tlap\tlapdist\tkmh\tthr\tbrk\tsteer\tclu\tgear\trpm\tx\tz\tlat\talong\tontrack\n")
