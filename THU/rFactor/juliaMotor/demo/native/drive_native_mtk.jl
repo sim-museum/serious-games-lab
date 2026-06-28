@@ -470,7 +470,10 @@ const LOT3DO = joinpath(LOTDIR,"lotus.3do")
 # element; the earlier "rug" was the untextured yellow floor, which cockpit_clean drops, not
 # windlot which is properly tan-textured).  Still drop hands/dup-mirror/teal front-susp/tan
 # floor + clip the splayed-rear chrome.
-const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","lotmirt","dash7a",Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0)
+# grey = the fallback colour for the one UNTEXTURED body part (a big inner-tub/underside shell, 2043
+# verts) — the default light grey rendered it as white faceted clutter in the cockpit corners; a dark
+# cockpit-interior grey hides it (it's interior/underside, invisible externally).
+const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","lotmirt","lotmir","dash7a","mirror","lrm","lotubase","lotubas2",Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0, grey=(0.11f0,0.12f0,0.13f0))
 const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (its normals face down → dark in the body draw)
 const SWPARTS, SWCENTER, SWAXIS = Render.extract_gpl_steering(LOT3DO)   # steering wheel + pivot
 println(length(TRACK), " track parts + ", length(CARP), " Lotus body parts")
@@ -750,7 +753,7 @@ function camera(cs, pitch=0.0)
     if CTL.view == 1                                  # chase — level horizon, so you see the body pitch
         eye=[wx-fx*9, wy+3.2, wz-fz*9]; ctr=[wx+fx*3, wy+0.6, wz+fz*3]
     else                                             # cockpit: driver's eye in the body frame, over the wheel
-        ex,ey,ez,drop = parse(Float32,get(ENV,"JM_EYE_X","0.22")), parse(Float32,get(ENV,"JM_EYE_Y","0.62")), 0.0f0, parse(Float32,get(ENV,"JM_EYE_DROP","1.6"))   # GPL-style: lower seat / more dash + cowl in view (tunable via JM_EYE_*)
+        ex,ey,ez,drop = parse(Float32,get(ENV,"JM_EYE_X","0.36")), parse(Float32,get(ENV,"JM_EYE_Y","0.60")), 0.0f0, parse(Float32,get(ENV,"JM_EYE_DROP","1.95"))   # GPL-style: seated behind the wheel, looking down the nose — red wheel + dash in view (tunable via JM_EYE_*)
         rx = BODY_OFF[1]+ex; ry = BODY_OFF[2]+ey; rz = BODY_OFF[3]+ez
         fwd = 4*cos(pitch) + drop*sin(pitch); up = 4*sin(pitch) - drop*cos(pitch)  # tilt look dir by pitch
         eye=[wx + rx*fx - rz*fz, wy + ry, wz + rx*fz + rz*fx]   # rig→world (roty θ + carpos)
@@ -888,11 +891,12 @@ function main()
             c.lane = isodd(r) ? GRID_LANE : -GRID_LANE; c.tlane = c.lane
             AI_PHYSICS && (gp = RaceAI.pose_at(AILINE, c.s, c.lane); AIplace!(AIPHYS[i], gp[1], gp[3], gp[4]; v=0.0))
         end
-        println("\n  ═══ GRID (from qualifying) ═══")
+        println(isfinite(qtime) ? "\n  ═══ GRID (from qualifying) ═══" : "\n  ═══ GRID ═══")
         for (p, id) in enumerate(order)
-            println("   P$p  ", id==0 ? "You — $(fmt_lap(qtime))" : AICHASSIS[id].name)
+            println("   P$p  ", id==0 ? (isfinite(qtime) ? "You — $(fmt_lap(qtime))" : "You") : AICHASSIS[id].name)
         end
-        println("  → You qualified P$prank of $(length(order))\n"); flush(stdout)
+        println(isfinite(qtime) ? "  → You qualified P$prank of $(length(order))\n" :
+                                  "  → You start P$prank of $(length(order)) — floor it to launch the field\n"); flush(stdout)
         prank
     end
     DO_QUAL && println("\n  QUALIFYING — drive a lap then press ENTER to start the race (it also\n  auto-starts if the start/finish line registers a clean lap).  ENTER = go racing.")
@@ -958,8 +962,9 @@ function main()
         if HOLD_START && !race_go[] && phase[] == :race && inp.throttle > 0.15
             race_go[] = true; lap_t0 = cs.t          # start the clock at the launch
         end
-        # E10: burn fuel by distance (only once racing); a dry tank starves the engine.
-        if FUEL_ON && phase[] == :race && !rst
+        # E10: burn fuel by distance (only once the race is GREEN — never while you sit on the grid
+        # waiting to launch, or you could starve the tank before you've even pressed the throttle).
+        if FUEL_ON && race_go[] && !rst
             fuel[] = max(0.0, fuel[] - FUEL_LPK * cs.v * (dt > 1e-4 ? dt : 1/60) / 1000)
             fuel[] <= 0 && (inp = DriveInput(throttle=0.0, brake=inp.brake, steer=inp.steer,
                             clutch=inp.clutch, shift_up=inp.shift_up, shift_down=inp.shift_down, autoshift=inp.autoshift))
