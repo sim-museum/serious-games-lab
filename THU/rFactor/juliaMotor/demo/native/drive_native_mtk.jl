@@ -656,7 +656,9 @@ let objnames=Set{String}()
     # placement height: snap to OUR terrain where the HAT covers it (kills floaters from a
     # terrain mismatch); else fall back to the object's AUTHORED GPL height (same frame as the
     # track mesh) so far-trackside objects the HAT doesn't reach aren't lost.
-    ploz(i)  = (gz = groundz(i.x, i.y); gz > -900f0 ? gz : Float32(i.z))
+    # off the finite HAT (distant backdrop) the GPL data's own z is used — but it can place buildings
+    # floating in the sky; clamp it to the track's vertical extent so they sit on the ground at the horizon.
+    ploz(i)  = (gz = groundz(i.x, i.y); gz > -900f0 ? gz : clamp(Float32(i.z), trkzlo, trkzhi))
     # track's own vertical band (GPL-z, = HAT height) — some classic layouts are authored with a
     # large vertical offset (Spa sits at z≈294..498 m, not ≈0), so a hard-coded height window is
     # wrong.  On-HAT objects are snapped to the terrain ⇒ grounded by construction (always keep);
