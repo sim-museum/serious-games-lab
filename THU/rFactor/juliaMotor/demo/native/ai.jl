@@ -21,7 +21,7 @@ wrapπ(a) = a > π ? a - 2π : a < -π ? a + 2π : a
 and a `groundz(x,z)->y` elevation function.  Resamples to ~`spacing` m so tight corners are
 well-represented (a coarse line is a polygon that the AI chord across = corner-cutting) and
 the per-point curvature is accurate."
-function build_line(pts, groundz; spacing = 3.0, halfwidth = 3.3)
+function build_line(pts, groundz; spacing = 3.0, halfwidth = 3.0)   # E16: racing-line band kept off the edges (apex ≥ ~a car-width inside the 5.5 m road)
     # arc-length resample the closed input polyline to ~`spacing` metres
     m = length(pts)
     cum = zeros(m+1); for i in 1:m; cum[i+1] = cum[i] + hypot(pts[i%m+1][1]-pts[i][1], pts[i%m+1][2]-pts[i][2]); end
@@ -103,8 +103,8 @@ end
 mutable struct AICar; s::Float64; v::Float64; lap::Int; lane::Float64; tlane::Float64; spin::Float64; follow::Float64; end
 AICar(s, v, lap, lane) = AICar(s, v, lap, lane, lane, 0.0, 0.0)   # tlane=current lane; spin=collision yaw; follow=tailgate timer (s)
 
-const RAIL     = 2.6    # pass-deviation offset to either side of the racing line (m)
-const LANE_MAX = 4.2    # never exceed this lateral offset (racing line ±3.3 + a pass move, still on the 5.5 m road)
+const RAIL     = 2.4    # pass-deviation offset to either side of the racing line (m)
+const LANE_MAX = 3.8    # E16 (PO): never get within ~a car-width of either edge — road half-width 5.5 − car 1.7 = 3.8
 const CAR_LEN  = 4.2    # car length (m) — single-file spacing + collision longitudinal extent
 const CAR_WID  = 1.7    # car width (m) — collision lateral extent
 
