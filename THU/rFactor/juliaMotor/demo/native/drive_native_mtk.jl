@@ -474,7 +474,11 @@ const LOT3DO = joinpath(LOTDIR,"lotus.3do")
 # verts) — the default light grey rendered it as white faceted clutter in the cockpit corners; a dark
 # cockpit-interior grey hides it (it's interior/underside, invisible externally).
 const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","lotmirt","lotmir","dash7a","mirror","lrm","lotubase","lotubas2",Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0, grey=(0.11f0,0.12f0,0.13f0))
-const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (its normals face down → dark in the body draw)
+const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (dial faces in the texture's lower-V region; keep default vflip)
+# The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read
+# upside-down.  Mirror the gauge in height about its own centre so the dial face turns up toward the eye.
+const GCY = (b = Render.parts_bbox(GAUGEP); Float32((b.ymin + b.ymax)/2))
+const GAUGEFLIP = Render.translate(Float32[0,GCY,0]) * Render.scalexyz(1f0,-1f0,1f0) * Render.translate(Float32[0,-GCY,0])
 const SWPARTS, SWCENTER, SWAXIS = Render.extract_gpl_steering(LOT3DO)   # steering wheel + pivot
 println(length(TRACK), " track parts + ", length(CARP), " Lotus body parts")
 const BODY_OFF = Float32[-0.55, 0.30, 0.0]     # centre body on X, lift onto the wheels
@@ -1296,10 +1300,10 @@ function main()
         # dash, near-unlit (bright + ambfill) so the faces are legible.  Only matters in the cockpit view.
         if CTL.view == 0
             glDisable(GL_DEPTH_TEST)
-            for it in gaugeItems; Render.draw(prog, it, vp, bodyModel; bright=1.6, spec=0.0, ambfill=0.95); end
+            for it in gaugeItems; Render.draw(prog, it, vp, bodyModel*GAUGEFLIP; bright=1.6, spec=0.0, ambfill=0.95); end
             glEnable(GL_DEPTH_TEST)
         else
-            for it in gaugeItems; Render.draw(prog, it, vp, bodyModel; bright=1.5, spec=0.0, ambfill=0.95); end
+            for it in gaugeItems; Render.draw(prog, it, vp, bodyModel*GAUGEFLIP; bright=1.5, spec=0.0, ambfill=0.95); end
         end
         for (p, cm) in zip(ai_poses, AICHASSIS)                 # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper)
             for it in cm.body; Render.draw(prog, it, vp, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end
