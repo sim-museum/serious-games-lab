@@ -141,7 +141,7 @@ println("  → mode: ", uppercasefirst(MODE),
 # always has enough to finish with a cushion.  Distance-based so the laps-of-fuel figure
 # is honest.  Practice/Training get a generous tank; the skidpad has no laps → no fuel.
 const FUEL_LPK    = clamp(tryparse(Float64, get(ENV,"JM_FUEL_LPK","0.55")) |> x-> x===nothing ? 0.55 : x, 0.05, 5.0)
-const FUEL_MARGIN = max(0, tryparse(Int, get(ENV,"JM_FUEL_MARGIN","5")) |> x-> x===nothing ? 5 : x)
+const FUEL_MARGIN = max(0, tryparse(Int, get(ENV,"JM_FUEL_MARGIN","10")) |> x-> x===nothing ? 10 : x)   # generous margin so a long session can't strand you
 
 # ---- iRacing .ibt telemetry export (JM_IBT=1) ----
 # Record the lap in iRacing's exact .ibt format so juliaMotor laps can be diffed
@@ -1062,6 +1062,8 @@ function main()
             player_grid[] = form_grid!(qt)
             phase[] = :race
             cs.laps = 0; last_lap = 0.0; best_lap = 0.0; race_done = false; lap_t0 = cs.t
+            launch_done[] = false                       # re-arm the launch assist for the actual race start
+            FUEL_ON && (fuel[] = burn_lap * fuel_laps)   # always start the race on a FULL tank (no practice carry-over)
         end
         enterPrev = accelNow
         # green light: the field launches the moment you ask for throttle (standing start)
