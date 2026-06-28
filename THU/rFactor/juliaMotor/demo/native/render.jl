@@ -1056,7 +1056,12 @@ function build_horizon(idx::GPLTex; R=2500f0, e_lo=deg2rad(-6f0), e_hi=deg2rad(2
         push!(items, Item(vao,m,tid,(1f0,1f0,1f0)))
         return items
     end
-    h_lo = R*tan(Float32(e_lo)); h_hi = R*tan(Float32(e_hi)); dθ = 2f0π/n
+    # 12-panel RING: CROP to a thin LOW hill-band.  Drawing the full 30°-tall GPL panels put their
+    # grey overcast SKY rows up to +24°, walling against our blue procedural skydome (a hard seam, E19).
+    # Keep only the lower (ridge/dune/horizon) rows of each panel (v: vtop→1) as a low band (e_lo→bandhi),
+    # so the distant scenery sits on the horizon and the blue sky shows above it — no seam.
+    bandhi = deg2rad(parse(Float32, get(ENV,"JM_RING_HI","6"))); vtop = parse(Float32, get(ENV,"JM_RING_VTOP","0.40"))
+    h_lo = R*tan(Float32(e_lo)); h_hi = R*tan(Float32(bandhi)); dθ = 2f0π/n
     for i in 0:n-1
         r = tex_rgba(idx, "horiz$(i)"); r === nothing && continue
         tid = upload_rgba(r[1], r[2], r[3])
@@ -1064,8 +1069,8 @@ function build_horizon(idx::GPLTex; R=2500f0, e_lo=deg2rad(-6f0), e_hi=deg2rad(2
         x0=R*cos(θ0); z0=R*sin(θ0); x1=R*cos(θ1); z1=R*sin(θ1)
         q=Float32[]
         vtx(x,y,z,u,v)=append!(q,(x,y,z, 0f0,0f0,0f0, 1f0,1f0,1f0, u,v))  # normal unused (unlit)
-        vtx(x0,h_lo,z0, 0f0,1f0); vtx(x1,h_lo,z1, 1f0,1f0); vtx(x1,h_hi,z1, 1f0,0f0)
-        vtx(x0,h_lo,z0, 0f0,1f0); vtx(x1,h_hi,z1, 1f0,0f0); vtx(x0,h_hi,z0, 0f0,0f0)
+        vtx(x0,h_lo,z0, 0f0,1f0); vtx(x1,h_lo,z1, 1f0,1f0); vtx(x1,h_hi,z1, 1f0,vtop)
+        vtx(x0,h_lo,z0, 0f0,1f0); vtx(x1,h_hi,z1, 1f0,vtop); vtx(x0,h_hi,z0, 0f0,vtop)
         vao,m = upload(q)
         push!(items, Item(vao,m,tid,(1f0,1f0,1f0)))
     end

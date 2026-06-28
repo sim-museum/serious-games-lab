@@ -608,10 +608,10 @@ end
 const GRADE_GPL   = ColourGrade((0.40,0.56,0.78),(0.78,0.78,0.75),1.0, (1,1,1),(0.95,0.93,0.86),1.0, (1,1,1))
 const GRADE_SUNNY = ColourGrade((0.20,0.47,0.85),(0.80,0.88,0.97),1.0, (1.07,1.0,0.85),(0.72,0.82,0.99),1.18, (1.28,1.27,1.30))
 const GRADE_SKIDPAD = ColourGrade((0.20,0.42,0.78),(0.62,0.74,0.88),0.18, (1,1,1),(0.95,0.93,0.86),1.0, (1,1,1))
-# E17 (PO): GPL Zandvoort is OVERCAST (grey sky) but the GROUND is VIVID — green grass, colourful crowd
-# and signs.  The old GPL grade left sat=1.0 = grey.  Punch the saturation + lift the ambient so the
-# ground reads colourful, while the overcast sky (cloud=1) + grey haze stay.  Tuned vs zandervoort/ refs.
-const GRADE_ZAND  = ColourGrade((0.56,0.63,0.74),(0.84,0.84,0.82),1.0, (1.03,1.01,0.95),(0.93,0.93,0.89),1.40, (1.10,1.07,1.02))
+# E19 (PO): BLUE SKY per iRacing (not GPL overcast).  The old overcast grade (cloud=1, grey horizon)
+# seamed against the procedural blue skydome.  Now a clear blue gradient + scattered clouds; the GPL
+# horizon ring is cropped to a thin low hill-band (build_horizon) so it no longer walls up into the sky.
+const GRADE_ZAND  = ColourGrade((0.24,0.46,0.80),(0.74,0.83,0.92),0.45, (1.07,1.0,0.85),(0.70,0.80,0.98),1.30, (1.12,1.10,1.06))
 const GRADE = SKIDPAD ? GRADE_SKIDPAD :
               TRACKSEL == "zandvoort" ? GRADE_ZAND :
               (TRACKSEL in ("nurburgring","monza","watglen","spa")) ? GRADE_SUNNY : GRADE_GPL
