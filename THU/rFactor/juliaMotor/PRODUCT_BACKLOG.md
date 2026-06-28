@@ -260,3 +260,79 @@ kill skittering (G3) → **GC** hybrid-physics AI (G2) → **GD** rigid-body car
   (measures the rail follower's own lap) → speed `scale = naturalLap / (refLap·100/pct)`, applied
   in `RaceAI.step!`. `JM_AI_PCT` env + GUI "AI speed %" spin. Verified: 100 % paces Zandvoort to
   87 s (scale 1.16 on a 101 s rail), 80 % → 109 s.
+
+---
+
+## 2026-06-28 — PO MISSION: "a racing sim that looks just like GPL" (5-hour autonomous block)
+
+**Goal (PO):** complete a racing sim that *looks just like GPL* — the 5 GPL tracks, the human always
+in the Lotus 49. PO pre-approves all planning/reviews; work autonomously; if blocked, switch tasks.
+
+**Gold-standard refs:** `/run/media/g/84AF-CC77/` — per-track screenshot folders (new `zandervoort/`
+incl. fresh GPL cockpit shots 2026-06-28 02:5x) + per-car folders. KEY: GPL tracks are **colourful,
+not grey** (vivid green grass, colourful crowd/signs); the GPL cockpit eye sits **low, looking straight
+down the road** (not high looking down at the nose), with a big dark dash, the red Lotus-badged wheel,
+and round mirrors.
+
+### New backlog (epics E13–E18)
+- **E13 Cockpit fidelity (TOP PRIORITY):** match the GPL Lotus 49 cockpit exactly — eye position low +
+  level (see the road, not the nose), dashboard geometry (big central tach + flanking gauges, dark dash),
+  red Lotus wheel, round mirrors. **Remove the HUD clutter** (pedal bar charts, traction circles,
+  hand-drawn RPM dial) for now. Iterate vs `zandervoort/` cockpit refs.
+- **E14 Results screen:** race finish → on-exit results/classification; quit or restart/choose-track.
+- **E15 Trackside-object collision:** haybales/fences/buildings solid for player+AI. Snout head-on =
+  bounce back (current); a SPINNING WHEEL into the bales adds ANGULAR+linear momentum → lifts the rear.
+- **E16 AI line discipline:** keep AI ≥ a car-width off both track edges; prefer the racing line.
+- **E17 Per-track graphics grade:** for EACH track, tune colour/scenery vs that track's ref folder —
+  GPL is more colourful, less grey. (Zandvoort first — has the most refs.)
+- **E18 Replay:** record all car poses per race, save with the .ibt; GUI picks an .ibt → 3-D playback
+  (cockpit/chase) with VCR controls (play/pause/FF/rewind/clickable slider).
+
+### Sprint plan (PO pre-approved)
+- **Sprint 1 — Cockpit (E13):** strip HUD clutter; eye position + dashboard + wheel + mirrors to match
+  the GPL refs. *DoD:* offscreen cockpit snapshot visibly matches `ref_zand1`.
+- **Sprint 2 — Race loop (E14) + AI line discipline (E16).**
+- **Sprint 3 — Trackside collision + spinning-wheel lift (E15).**
+- **Sprint 4 — Per-track colour grade (E17), Zandvoort then the rest.**
+- **Sprint 5 — Replay (E18).**
+
+Progress log appended below as each item lands.
+
+### Sprint 1 progress
+
+**Sprint 1–3 done (2026-06-28):**
+- ✅ E13 Cockpit: wide cockpit FOV (PROJ_COCKPIT 80°), low+level eye (JM_EYE 0.46/0.40/0.55), big dash with
+  upright dials, mirrors restored, HUD decluttered (no bars/traction/RPM-dial). Matches the GPL refs. (977833c)
+- ✅ E16 AI line discipline: LANE_MAX 3.8 + racing-line band 3.0 (≥ a car-width off both edges). (f875e16)
+- ◑ E17 Zandvoort grade: GRADE_ZAND (sat 1.40, lifted ambient) — crowd/signs colourful; green grass still
+  needs track-mesh material work (verges are sandy grey). (f875e16)
+- ✅ E15 Trackside collision: SOLIDS list (haie bales/barriers/buildings/vehicles), snout=bounce, spinning
+  wheel climbs → launch+roll, rear-wheel climb → bump3d! pitch kick lifts the rear. Player+AI. (84a51d3)
+- ⏳ E14 Results screen, E18 Replay — next.
+
+**Sprint 5 done (2026-06-28) — E14 + E18:**
+- ✅ E14 Results screen (458e129): race finish → last_race_result.txt → GUI Race-Result dialog
+  (Race again / Choose track / Quit).
+- ✅ E18 Replay (382007c record, 868ef49 playback, 3c943a5 GUI): races record all-car poses → .jmr;
+  JM_REPLAY plays it back from cockpit/chase with VCR keys (SPACE/←→/↑↓/V); GUI "Replay" tab picks a .jmr.
+  Remaining nicety: a clickable in-GUI timeline slider (needs GUI↔game IPC; keyboard scrub covers seeking).
+
+**ALL six PO epics for the block delivered (E13✅ E14✅ E15✅ E16✅ E17◑ E18✅).** Remaining polish:
+green grass (track-mesh material), mirror glass (RTT), the clickable replay slider, per-track grades for
+the other 4 circuits.
+
+### Cockpit deep-dive (2026-06-28) — PO gold-standard pass
+Against the GPL Zandvoort cockpit shot (`/run/media/g/84AF-CC77/zandervoort/…02-53-08.png`):
+- ✅ Transparent plexiglass (`windlot`→`windItems`, alpha 0.16, depth-write off) — gold rim gone, road shows through. (419e4ca)
+- ✅ Wheels stay level with the cockpit (`wheelmat` on `tiltModel`). (419e4ca)
+- ✅ Trackside objects no longer sky-float (`ploz` clamps z to the track z-range). (e73eaac)
+- ✅ Gauge binnacle lifted onto the cowl around the hub (`JM_GAUGE_Y/X`); mirrors pulled out of the body and
+  re-placed as round discs at the SIDES mid-height (`JM_MIRROR_Y/X/TILT`) — was chrome torpedoes at the
+  bottom corners. (c84d7df)
+- ✅ GUI Auto/Manual gearbox switch; verified AUTO auto-shifts up (8500) AND down (3400, off-throttle) by
+  road speed + auto-engages 1st (`drive_rt3d.jl`).
+- Eye position re-tested (forward/lower) and REVERTED — moving the eye forward loses the wheel/dash framing;
+  GPL's "closer" look is dash-geometry, not camera. Current eye (0.46/0.40/0.55) is correct.
+- ⏳ Remaining cockpit gap vs gold: bright riveted-aluminium tub sides + gear lever (the untextured tub shell
+  is darkened to kill faceted clutter — needs a real aluminium texture, not a flat brighten), front tyres at
+  the lower-side edges (behind the dark coaming), gloved hands on the wheel.
