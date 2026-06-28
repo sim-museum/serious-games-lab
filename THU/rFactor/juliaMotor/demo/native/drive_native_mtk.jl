@@ -67,6 +67,7 @@ println("  → track: ", uppercasefirst(TRACKSEL))
 # ---- session mode + race config (GPL-style: Practice / Training / Race) ----
 const MODE      = lowercase(get(ENV, "JM_MODE", "practice"))   # practice | training | race
 const RACE_LAPS = max(1, tryparse(Int, get(ENV, "JM_LAPS", "3")) |> x -> x === nothing ? 3 : x)
+const PRACTICE_SEC = 60.0 * (tryparse(Float64, get(ENV, "JM_PRACTICE_MIN", "15")) |> x -> x === nothing ? 15.0 : x)   # GPL-style practice session length before the race (T = accelerate time)
 const N_AI      = clamp(tryparse(Int, get(ENV, "JM_AI", "0")) |> x -> x === nothing ? 0 : x, 0, 5)
 const IS_RACE   = MODE == "race"
 const IS_TRAIN  = MODE == "training"
@@ -704,9 +705,10 @@ const PROJ = Render.perspective_revz(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0
 
 # ---- input: edge-detected shift, view + auto-gearbox toggle ----
 mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; view::Int; auto::Bool; end
-# shift mode: MANUAL by default — no auto-shift, no auto-clutch (you work the clutch to
-# launch and to shift E/Q, or it bogs). ZAND_SHIFT=auto opts into the assists; G toggles in-app.
-const CTL = Ctl(false,false,false,false,false, parse(Int, get(ENV,"JM_VIEW","1")), get(ENV,"ZAND_SHIFT","manual") == "auto" || IS_TRAIN)   # view 1=chase 0=cockpit; MANUAL by default; Training = auto-shift aid
+# shift mode: AUTO by default (auto-clutch + auto-shift) — press throttle and GO, the car never bogs
+# on the line or out of a slow corner.  Press G in-app for MANUAL (work the clutch on C, shift E/Q —
+# release the clutch too low and it crawls/bogs, just like the real thing).  ZAND_SHIFT=manual forces it.
+const CTL = Ctl(false,false,false,false,false, parse(Int, get(ENV,"JM_VIEW","1")), get(ENV,"ZAND_SHIFT","auto") != "manual")   # view 1=chase 0=cockpit; AUTO gearbox by default (G toggles)
 key(k) = GLFW.GetKey(win, k) == GLFW.PRESS
 function read_input()
     thr=brk=str=clu=0.0; up=dn=false
@@ -761,7 +763,7 @@ function camera(cs, pitch=0.0, roll=0.0)
     # COCKPIT: the camera is rigidly BOLTED to the body (same yaw·pitch·roll as the chassis), so the
     # cockpit/dash/wheel are STATIONARY on screen and the WORLD tilts — the driver's head stays normal to
     # the surface the car is on (GPL behaviour), instead of the car appearing to lean under a level horizon.
-    ex,ey,ez,drop = parse(Float32,get(ENV,"JM_EYE_X","0.36")), parse(Float32,get(ENV,"JM_EYE_Y","0.60")), 0.0f0, parse(Float32,get(ENV,"JM_EYE_DROP","1.95"))   # tunable via JM_EYE_*
+    ex,ey,ez,drop = parse(Float32,get(ENV,"JM_EYE_X","0.30")), parse(Float32,get(ENV,"JM_EYE_Y","0.54")), 0.0f0, parse(Float32,get(ENV,"JM_EYE_DROP","0.85"))   # lower seat + look ~straight ahead (see the track), dash in the lower frame; tunable via JM_EYE_*
     R = Render.roty(Float32(cs.θ)) * Render.rotz(Float32(pitch)) * Render.rotx(Float32(roll))   # = the chassis rotation
     R3(a,b,c) = (w = R * Float32[a,b,c,0f0]; Float32[w[1],w[2],w[3]])     # rotate a body-frame direction into the world
     eye = Float32[wx,wy,wz] + R3(BODY_OFF[1]+ex, BODY_OFF[2]+ey, BODY_OFF[3]+ez)   # eye fixed in the body frame
@@ -889,8 +891,8 @@ function main()
     # One qualifying lap sets the grid: the field is arranged around the player by qual
     # time (faster qualifiers start ahead on track, slower behind).  Skipped for solo
     # races, the skidpad, JM_NOQUAL, and headless smoke (which can't drive a lap).
-    DO_QUAL  = IS_RACE && N_AI > 0 && !SKIDPAD && !haskey(ENV,"JM_NOQUAL") && !SMOKE
-    phase    = Ref(DO_QUAL ? :qual : :race)
+    DO_QUAL  = IS_RACE && N_AI > 0 && !SKIDPAD && !haskey(ENV,"JM_NOQUAL") && !SMOKE   # = run a practice session first
+    phase    = Ref(DO_QUAL ? :practice : :race)
     player_grid = Ref(0); player_finpos = Ref(0)
     # Standing start: in a race the AI sit on the grid until YOU floor the throttle, then
     # the whole field launches together — so you never miss the start by looking away.
@@ -911,15 +913,14 @@ function main()
             c.lane = isodd(r) ? GRID_LANE : -GRID_LANE; c.tlane = c.lane
             AI_PHYSICS && (gp = RaceAI.pose_at(AILINE, c.s, c.lane); AIplace!(AIPHYS[i], gp[1], gp[3], gp[4]; v=0.0))
         end
-        println(isfinite(qtime) ? "\n  ═══ GRID (from qualifying) ═══" : "\n  ═══ GRID ═══")
+        println(isfinite(qtime) ? "\n  ═══ GRID (from your practice best) ═══" : "\n  ═══ GRID ═══")
         for (p, id) in enumerate(order)
-            println("   P$p  ", id==0 ? (isfinite(qtime) ? "You — $(fmt_lap(qtime))" : "You") : AICHASSIS[id].name)
+            println("   P$p  ", id==0 ? (isfinite(qtime) ? "You — $(fmt_lap(qtime))" : "You (no practice lap)") : AICHASSIS[id].name)
         end
-        println(isfinite(qtime) ? "  → You qualified P$prank of $(length(order))\n" :
-                                  "  → You start P$prank of $(length(order)) — floor it to launch the field\n"); flush(stdout)
+        println("  → You start P$prank of $(length(order)) — floor it to launch the field\n"); flush(stdout)
         prank
     end
-    DO_QUAL && println("\n  QUALIFYING — drive a lap then press ENTER to start the race (it also\n  auto-starts if the start/finish line registers a clean lap).  ENTER = go racing.")
+    DO_QUAL && println("\n  PRACTICE ($(round(Int,PRACTICE_SEC/60)) min) — lap to set your grid slot (your best lap = your\n  starting position; no lap = back of the grid).  Press T to ACCELERATE TIME straight to the race.")
     # NO-QUAL race: form a proper 2-wide grid up front with YOU at the back (no qual time ⇒ last),
     # so the field starts in ordered rows ahead and you watch them launch — instead of the ad-hoc
     # init-stagger that put cars beside you and then snapped them into line on the first frames.
@@ -953,7 +954,8 @@ function main()
     telem !== nothing && write(telem,
         "# zand_racer telemetry — Lotus 49 @ Zandvoort\n# t\tlap\tlapdist\tkmh\tthr\tbrk\tsteer\tclu\tgear\trpm\tx\tz\tlat\talong\tontrack\n")
     println("\n  Drive:  W/S gas·brake   A/D steer   E/Q shift   C clutch   R respawn   V view   G auto⇄manual   M mute   Esc quit"); flush(stdout)
-    println("  Manual mode (G) is realistic: hold the clutch (C / stick button) to shift.")
+    println("  AUTO gearbox by default — just press the throttle and go (no clutch needed).  Press G for")
+    println("  MANUAL: hold the clutch (C / stick button) to shift E/Q (release it too low and it bogs).")
     println("  Lap times top-left: white = last, green = best.  Telemetry → ./zand_racer_*.txt")
     println("  (Logitech joystick works natively — push=throttle, pull=brake, roll=steer)\n")
     EngineAudio.start(ENG)   # start audio NOW (after the long track load) — starting it mid-load
@@ -969,15 +971,16 @@ function main()
         # can always start the race even if the S/F line doesn't register the lap (the ribbon
         # can have a seam at start/finish).  Your qual time = best clean lap, else estimated
         # from how far round you got (so a near-complete lap still earns a fair grid slot).
-        enterNow = key(GLFW.KEY_ENTER) || key(GLFW.KEY_KP_ENTER)
-        if phase[] == :qual && enterNow && !enterPrev
-            qt = best_lap > 0.0 ? best_lap :
-                 (cs.lapdist > 0.30*LAPLEN ? (cs.t - lap_t0) * LAPLEN / max(cs.lapdist, 1.0) : Inf)
+        # END PRACTICE → go to the race grid: press T (accelerate time) or ENTER, or the practice clock
+        # runs out (PRACTICE_SEC).  Your grid slot = your best practice lap (none → back of the grid).
+        accelNow = key(GLFW.KEY_T) || key(GLFW.KEY_ENTER) || key(GLFW.KEY_KP_ENTER)
+        if phase[] == :practice && ((accelNow && !enterPrev) || cs.t >= PRACTICE_SEC)
+            qt = best_lap > 0.0 ? best_lap : Inf       # no clean practice lap ⇒ start at the back
             player_grid[] = form_grid!(qt)
             phase[] = :race
             cs.laps = 0; last_lap = 0.0; best_lap = 0.0; race_done = false; lap_t0 = cs.t
         end
-        enterPrev = enterNow
+        enterPrev = accelNow
         # green light: the field launches the moment you ask for throttle (standing start)
         if HOLD_START && !race_go[] && phase[] == :race && inp.throttle > 0.15
             race_go[] = true; lap_t0 = cs.t          # start the clock at the launch
@@ -1105,15 +1108,12 @@ function main()
         # ---- lap timing + telemetry log ----
         if cs.laps > prev_laps
             last_lap = cs.t - lap_t0; lap_t0 = cs.t
-            if phase[] == :qual                              # qualifying lap done → form the grid, start the race
-                player_grid[] = form_grid!(last_lap)
-                phase[] = :race
-                cs.laps = 0; last_lap = 0.0; best_lap = 0.0; race_done = false   # race starts fresh
-            else
             (best_lap == 0.0 || last_lap < best_lap) && (best_lap = last_lap)
             telem !== nothing && (write(telem, "# LAP $(cs.laps)  $(fmt_lap(last_lap))\n"); flush(telem))
-            println("  lap $(cs.laps): $(fmt_lap(last_lap))", last_lap==best_lap ? "  (best)" : "")
-            if IS_RACE && cs.laps >= RACE_LAPS && !race_done    # race distance complete
+            println(phase[] == :practice ? "  practice lap: $(fmt_lap(last_lap))" : "  lap $(cs.laps): $(fmt_lap(last_lap))",
+                    last_lap==best_lap ? "  (best)" : "")   # practice laps just bank your best for the grid
+            begin
+            if phase[] == :race && cs.laps >= RACE_LAPS && !race_done    # race distance complete
                 race_done = true
                 println("\n  ═══════ RACE FINISHED — $RACE_LAPS laps ═══════")
                 if !isempty(AICARS)
