@@ -624,6 +624,12 @@ class DriveTab(QWidget):
             qenv.insert("JM_NOIBT", "1")
         if self.d2.isChecked():          # opt out of the default full-3D physics back to the planar model
             qenv.insert("JM_2D", "1")
+        # E14: clear any stale race result so the post-race screen only shows THIS race
+        self._result_path = os.path.join(HERE, "last_race_result.txt")
+        try:
+            os.remove(self._result_path)
+        except OSError:
+            pass
         self.proc = QProcess(self)
         self.proc.setProcessEnvironment(qenv)
         self.proc.setWorkingDirectory(HERE)
@@ -675,6 +681,41 @@ class DriveTab(QWidget):
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress.setFormat("")
+        self._show_result()
+
+    def _show_result(self):
+        # E14: after a race, show the finishing result with Race again / Choose track / Quit.
+        path = getattr(self, "_result_path", os.path.join(HERE, "last_race_result.txt"))
+        if not os.path.exists(path):
+            return
+        try:
+            rows = [ln.rstrip("\n").split("\t") for ln in open(path) if ln.strip()]
+        except OSError:
+            return
+        d = {r[0]: r[1] for r in rows if len(r) == 2 and not r[0].startswith("P")}
+        grid = [r[1] for r in rows if r[0].startswith("P") and len(r) == 2]
+        lines = [
+            f"<b>RACE RESULT — {d.get('track','?').title()}, {d.get('laps','?')} laps</b>",
+            f"You finished <b>P{d.get('you_pos','?')}</b> of {d.get('field','?')} "
+            f"(started P{d.get('you_start','?')})",
+            f"Best lap {d.get('you_best','-')} &nbsp;·&nbsp; Total {d.get('you_total','-')}",
+            "<hr>",
+        ]
+        for i, name in enumerate(grid, 1):
+            lines.append(f"&nbsp;<b>P{i}&nbsp; {name}</b>" if name == "You" else f"&nbsp;P{i}&nbsp; {name}")
+        box = QMessageBox(self)
+        box.setWindowTitle("Race Result")
+        box.setTextFormat(Qt.TextFormat.RichText)
+        box.setText("<br>".join(lines))
+        again = box.addButton("Race again", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Choose track", QMessageBox.ButtonRole.RejectRole)   # just closes → back to the Drive tab
+        quit_b = box.addButton("Quit", QMessageBox.ButtonRole.DestructiveRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is again:
+            self.launch()
+        elif clicked is quit_b:
+            QApplication.instance().quit()
 
 
 class Main(QMainWindow):

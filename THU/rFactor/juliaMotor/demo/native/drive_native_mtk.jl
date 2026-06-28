@@ -1173,20 +1173,25 @@ function main()
             if phase[] == :race && cs.laps >= RACE_LAPS && !race_done    # race distance complete
                 race_done = true
                 println("\n  ═══════ RACE FINISHED — $RACE_LAPS laps ═══════")
-                if !isempty(AICARS)
-                    fin = standings()
-                    player_finpos[] = findfirst(e -> e[1] == 0, fin)
-                    println("\n  ══════ YOU FINISHED — P$(player_finpos[]) of $(length(fin)) ══════")
-                    println("  started P$(player_grid[])   best lap $(fmt_lap(best_lap))   total $(fmt_lap(cs.t))")
-                    println("  ── final classification ──")
-                    for (p, (id, _)) in enumerate(fin)
-                        println("   P$p  ", ent_name(id), id==0 ? "  ← YOU (best $(fmt_lap(best_lap)))" : "")
-                    end
-                else
-                    player_finpos[] = 1
-                    println("  YOU FINISHED   best $(fmt_lap(best_lap))   total $(fmt_lap(cs.t))")
+                order = isempty(AICARS) ? [(0, 0.0)] : standings()
+                player_finpos[] = findfirst(e -> e[1] == 0, order)
+                println("\n  ══════ YOU FINISHED — P$(player_finpos[]) of $(length(order)) ══════")
+                println("  started P$(player_grid[])   best lap $(fmt_lap(best_lap))   total $(fmt_lap(cs.t))")
+                println("  ── final classification ──")
+                for (p, (id, _)) in enumerate(order)
+                    println("   P$p  ", ent_name(id), id==0 ? "  ← YOU (best $(fmt_lap(best_lap)))" : "")
                 end
                 println()
+                # E14: write the result for the GUI's post-race results screen (quit / race again / choose track)
+                try
+                    open(joinpath(@__DIR__, "last_race_result.txt"), "w") do io
+                        println(io, "track\t$(TRACKSEL)"); println(io, "laps\t$RACE_LAPS")
+                        println(io, "you_pos\t$(player_finpos[])"); println(io, "field\t$(length(order))")
+                        println(io, "you_start\t$(player_grid[])")
+                        println(io, "you_best\t$(best_lap > 0 ? fmt_lap(best_lap) : "-")"); println(io, "you_total\t$(fmt_lap(cs.t))")
+                        for (p, (id, _)) in enumerate(order); println(io, "P$p\t$(ent_name(id))"); end
+                    end
+                catch e; @warn "result write failed" e; end
             end
             end
         elseif cs.laps < prev_laps                 # respawn reset the lap counter
