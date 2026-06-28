@@ -751,19 +751,23 @@ function terrain_roll(cs)
     (hl[3] && hr[3]) ? atan(hl[1]-hr[1], 2L) : 0.0         # left higher → list right
 end
 
-# ---- camera (pitch = total body pitch, applied to the cockpit view only) ----
-function camera(cs, pitch=0.0)
+# ---- camera (pitch/roll = total body orientation, applied to the cockpit view only) ----
+function camera(cs, pitch=0.0, roll=0.0)
     wx,wy,wz = cs.x, cs.y, -cs.z; fx,fz = cos(cs.θ), -sin(cs.θ)   # render world un-mirrors physics z
-    if CTL.view == 1                                  # chase — level horizon, so you see the body pitch
+    if CTL.view == 1                                  # chase — level horizon, so you SEE the body pitch/roll
         eye=[wx-fx*9, wy+3.2, wz-fz*9]; ctr=[wx+fx*3, wy+0.6, wz+fz*3]
-    else                                             # cockpit: driver's eye in the body frame, over the wheel
-        ex,ey,ez,drop = parse(Float32,get(ENV,"JM_EYE_X","0.36")), parse(Float32,get(ENV,"JM_EYE_Y","0.60")), 0.0f0, parse(Float32,get(ENV,"JM_EYE_DROP","1.95"))   # GPL-style: seated behind the wheel, looking down the nose — red wheel + dash in view (tunable via JM_EYE_*)
-        rx = BODY_OFF[1]+ex; ry = BODY_OFF[2]+ey; rz = BODY_OFF[3]+ez
-        fwd = 4*cos(pitch) + drop*sin(pitch); up = 4*sin(pitch) - drop*cos(pitch)  # tilt look dir by pitch
-        eye=[wx + rx*fx - rz*fz, wy + ry, wz + rx*fz + rz*fx]   # rig→world (roty θ + carpos)
-        ctr=[wx + (rx+fwd)*fx - rz*fz, wy + (ry+up), wz + (rx+fwd)*fz + rz*fx]
+        return PROJ * Render.lookat(Float32.(eye), Float32.(ctr), Float32[0,1,0]), Float32.(eye)
     end
-    PROJ * Render.lookat(Float32.(eye), Float32.(ctr), Float32[0,1,0]), Float32.(eye)
+    # COCKPIT: the camera is rigidly BOLTED to the body (same yaw·pitch·roll as the chassis), so the
+    # cockpit/dash/wheel are STATIONARY on screen and the WORLD tilts — the driver's head stays normal to
+    # the surface the car is on (GPL behaviour), instead of the car appearing to lean under a level horizon.
+    ex,ey,ez,drop = parse(Float32,get(ENV,"JM_EYE_X","0.36")), parse(Float32,get(ENV,"JM_EYE_Y","0.60")), 0.0f0, parse(Float32,get(ENV,"JM_EYE_DROP","1.95"))   # tunable via JM_EYE_*
+    R = Render.roty(Float32(cs.θ)) * Render.rotz(Float32(pitch)) * Render.rotx(Float32(roll))   # = the chassis rotation
+    R3(a,b,c) = (w = R * Float32[a,b,c,0f0]; Float32[w[1],w[2],w[3]])     # rotate a body-frame direction into the world
+    eye = Float32[wx,wy,wz] + R3(BODY_OFF[1]+ex, BODY_OFF[2]+ey, BODY_OFF[3]+ez)   # eye fixed in the body frame
+    ctr = eye + R3(4f0, -drop, 0f0)                                       # look forward + a slight downward drop
+    up  = R3(0f0, 1f0, 0f0)                                               # camera up = the body's up (= surface normal)
+    PROJ * Render.lookat(eye, ctr, up), eye
 end
 
 # ---- main loop (in a function — avoids top-level soft scope, runs faster) ----
@@ -798,6 +802,17 @@ function main()
     # robust projection wrap instead of the ribbon lapdist (the ribbon has a seam at S/F that
     # broke the wrap → laps never counted → no finish).  AILINE = CLINE when there's a field.
     CLINE  = !SKIDPAD ? RaceAI.build_line(ALIGNED, groundz) : nothing
+    if CLINE !== nothing && haskey(ENV,"JM_LATDIAG")   # diagnose grass-threshold false-fire at the start
+        pl = RaceAI.project(CLINE, cs.x, cs.z); ph = JuliaMotor.hat(TRKSURF, cs.x, cs.z)
+        println("  LATDIAG spawn: CLINE lat=", round(pl[2],digits=2), "  TRKSURF found=", ph.found,
+                " lat=", round(ph.lateral,digits=2), " on_track=", ph.on_track, " (ROAD_HALFW=", ROAD_HALFW, ")")
+        for d in 5.0:5.0:40.0
+            sp = RaceAI.pose_at(CLINE, RaceAI.project(CLINE, cs.x, cs.z)[1]+d, 0.0)
+            ph2 = JuliaMotor.hat(TRKSURF, sp[1], sp[3]); pl2 = RaceAI.project(CLINE, sp[1], sp[3])
+            println("    +", Int(d), "m on centreline: CLINE lat=", round(pl2[2],digits=2), "  TRKSURF lat=", round(ph2.lateral,digits=2), " on_track=", ph2.on_track)
+        end
+        flush(stdout)
+    end
     AILINE = (CLINE !== nothing && N_AI > 0) ? CLINE : nothing
     AICARS = AILINE === nothing ? RaceAI.AICar[] : RaceAI.init_cars(AILINE, N_AI; start_s = 30.0)
     AICHASSIS = AICARMODELS[1:length(AICARS)]   # grid slot i → AISPECS[i] (Ferrari, Brabham, …)
@@ -881,6 +896,7 @@ function main()
     # the whole field launches together — so you never miss the start by looking away.
     HOLD_START = IS_RACE && N_AI > 0 && !SKIDPAD && !SMOKE
     race_go    = Ref(!HOLD_START)
+    launch_done = Ref(false)     # the initial standing-start getaway is over (car has reached speed once)
     # AI reference qual times: the paced target + a small per-car spread so the grid lines
     # up in chassis order (~0.35 s/slot at 87 s) rather than a dead heat.
     ai_quals = [AI_TGT * (1 + 0.004*(i-1)) for i in 1:length(AICARS)]
@@ -965,6 +981,15 @@ function main()
         # green light: the field launches the moment you ask for throttle (standing start)
         if HOLD_START && !race_go[] && phase[] == :race && inp.throttle > 0.15
             race_go[] = true; lap_t0 = cs.t          # start the clock at the launch
+        end
+        # LAUNCH ASSIST: the on-screen prompt is "floor the throttle to start", so flooring it MUST get
+        # you rolling even in MANUAL — auto-engage the gearbox + drop the clutch for the initial getaway
+        # only (until the car first reaches speed), then hand fully back to manual shifting.  Without it
+        # the car sits in neutral / bogs on the line.
+        race_go[] && cs.v > 9.0 && (launch_done[] = true)
+        if race_go[] && !rst && !CTL.auto && !launch_done[] && cs.v < 6.0 && inp.throttle > 0.05
+            inp = DriveInput(throttle=inp.throttle, brake=inp.brake, steer=inp.steer,
+                             clutch=0.0, shift_up=false, shift_down=false, autoshift=true)
         end
         # E10: burn fuel by distance (only once the race is GREEN — never while you sit on the grid
         # waiting to launch, or you could starve the tank before you've even pressed the throttle).
@@ -1126,7 +1151,7 @@ function main()
         else
             pitch_dyn += (clamp(0.0016*acc, -0.013, 0.013) - pitch_dyn) * min(1.0, dt*3.5)  # faked, heavily damped
         end
-        vp, eye = camera(cs, pitch_ter + pitch_dyn)
+        vp, eye = camera(cs, pitch_ter + pitch_dyn, roll_ter + rollv)   # cockpit cam = full body orientation → cockpit stationary, world tilts
         carModel = Render.translate(Float32[cs.x, cs.y, -cs.z]) * Render.roty(Float32(cs.θ)) *
                    Render.rotz(Float32(pitch_ter)) * Render.rotx(Float32(roll_ter))   # whole car follows the hill (pitch + cross-slope roll)
         bodyModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv)) * Render.translate(BODY_OFF)  # body dives/squats + rolls (3-D)
