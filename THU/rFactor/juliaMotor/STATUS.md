@@ -3,6 +3,29 @@
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/gui.py` (or `drive_native_mtk.jl`).
 
+## Live-test feedback pass (2026-06-28 — FF wheel + cockpit/suspension)
+Driven on the Thrustmaster TX FF wheel; the PO's feedback this round + what landed:
+- **"Always on grass" / bogging FIXED** (root cause the PO spotted): the grass penalty was
+  FALSE-FIRING on every corner — a racing line uses the FULL track width, reaching the tarmac
+  edge at ~5.5 m off the centreline = the old `ROAD_HALFW` threshold, so normal cornering
+  tripped the verge penalty, and the drag (0.9 = ~90 %/s speed loss) scrubbed speed mid-corner.
+  Raised the threshold to 7.5 m (clears the widest racing line) + softened the drag to 0.30 and
+  the slip-wobble to 0.15. `JM_ROAD_HALFW` / `JM_GRASS_DRAG` / `JM_GRASS_SLIP` tune it.
+- **Wheels now FLOAT on the suspension** (were bolted to the chassis): `wheelmat` rides
+  `carModel` (terrain-follow, planted + upright), NOT `tiltModel`, while the body keeps the
+  dynamic dive/squat/roll. So braking pitches the nose down toward the planted front wheels
+  (they appear to RISE), power squats (drop), roll-right leans onto the right wheel (rises) and
+  lifts the left. `JM_SUSP_GAIN` (1.8) amplifies it to read from the cockpit.
+- **Front/rear track WIDENED** (±0.62/0.66 → ±0.76/0.74) — the narrow stance read as "wheels
+  bolted together"; also brings the front tyres into view at the cockpit edges. `JM_TRACK_F/R`.
+- **Floating buildings FIXED for real**: off-HAT backdrop objects now MARCH to the terrain-edge
+  height (`edgez`) instead of clamping to the track z-band — they rest on the ground at the horizon.
+- **Mirrors** nudged up + scaled toward the GPL round-mirror size (`JM_MIRROR_Y/SCALE`).
+- **STILL OPEN from this round** (PO): show the suspension ARMS between wheel and chassis; the
+  horizon "blank band" (likely the finite-HAT edge meeting the sky-ring — needs investigation);
+  the launch-from-standstill clutch bog in MANUAL (period-correct; AUTO/G avoids it) — confirm
+  whether the PO wants a more forgiving manual launch; and dialing `JM_SUSP_GAIN` to taste.
+
 ## Cockpit deep-dive (2026-06-28 — match the GPL gold-standard cockpit)
 Per the PO's gold-standard Zandvoort cockpit shot (mirrors on the cowl at the sides, gauge
 binnacle around the wheel hub, near-transparent plexiglass). Done this pass:
