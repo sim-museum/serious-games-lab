@@ -508,8 +508,13 @@ const LOT3DO = joinpath(LOTDIR,"lotus.3do")
 # — the bulky chrome HOUSING (lotmirt) + stalk (lotubase/lotubas2) read as a "chrome torpedo" (no RTT),
 # so dropping them leaves a clean round disc on the cowl like the GPL gold standard.
 const MIRROR_TEX  = ("mirror","lotmirt","lrm","lrimext","lotubase","lotubas2")   # excluded from CARP
-const MIRROR_DRAW = ("mirror","lrm","lrimext")                                   # actually drawn (disc + rim)
-const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","dash7a","windlot",MIRROR_TEX...,Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0, grey=(0.11f0,0.12f0,0.13f0))   # drop hands/arms + gauge cluster + windscreen + mirrors (all drawn separately)
+const MIRROR_DRAW = ("mirror","lrm")                                             # actually drawn (glass disc only — the chrome rim "lrimext" sat in front of the glass and read as a torpedo TUBE, so it's dropped)
+const TUB_GREY = parse(Float32, get(ENV,"JM_TUB_GREY","0.11"))   # untextured cockpit-tub shade (raise to lift the dark coaming "black band" toward the GPL aluminium tub)
+# GPL gold standard shows the gloved hands/forearms filling the lower cockpit (where we otherwise
+# see a black band).  JM_HANDS=1 keeps lohand+lotarms in the body (drawn at the centred wheel).
+const HANDS = get(ENV,"JM_HANDS","0") != "0"   # default OFF: the static GPL arm mesh doesn't match our re-placed wheel/eye → giant silver arms in the sky
+const _HAND_EXC = HANDS ? ("ltraymap","lshad","dash7a","windlot") : ("ltraymap","lshad","lohand","lotarms","dash7a","windlot")
+const CARP   = Render.extract_gpl_car(LOT3DO; exclude=(_HAND_EXC...,MIRROR_TEX...,Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # gauge cluster + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0
 const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (dial faces in the texture's lower-V region; keep default vflip)
 const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0)  # the plexiglass windscreen — drawn LAST, faintly visible glass, so the suspension shows through (GPL gold standard)
 # FRONT SUSPENSION (lsusp1 = the front rocker/wishbone, only in the front groups 6600/3560 — so no
@@ -525,16 +530,20 @@ const GAUGE_DY = parse(Float32, get(ENV,"JM_GAUGE_Y","0.16"))
 const GAUGE_DX = parse(Float32, get(ENV,"JM_GAUGE_X","-0.04"))
 const GAUGEFLIP = Render.translate(Float32[GAUGE_DX,GCY+GAUGE_DY,0]) * Render.scalexyz(1f0,-1f0,1f0) * Render.translate(Float32[0,-GCY,0])
 const SWPARTS, SWCENTER, SWAXIS = Render.extract_gpl_steering(LOT3DO)   # steering wheel + pivot
-# Mirrors: re-place onto the cowl/plexiglass top, tilt the faces back toward the eye so they read as
-# round mirrors at the sides (not chrome torpedoes at the bottom).  Tuned via JM_MIRROR_*.
+# Mirrors: GPL gold standard = two round discs LOW at the screen edges (level with the front-tyre
+# tops), on outward stalks — NOT high near the wheel.  Mesh frame: x=fwd, y=up, z=lateral (the two
+# discs sit at z=±0.36).  So MIRROR_Y lowers them, MIRROR_X moves them fwd, and MIRROR_SPREAD scales
+# the z separation to push the pair OUT toward the edges (the old scale=0.62 about z=0 pulled them
+# INboard + up — "too high").  Tuned via JM_MIRROR_*.
 const MCEN = (b = Render.parts_bbox(MIRRORP); Float32[(b.xmin+b.xmax)/2, (b.ymin+b.ymax)/2, 0f0])
-const MIRROR_DY   = parse(Float32, get(ENV,"JM_MIRROR_Y","0.10"))
+const MIRROR_DY   = parse(Float32, get(ENV,"JM_MIRROR_Y","-0.02"))   # LOWER onto the cowl sides (was +0.10 = too high) — fully-visible discs just above the tub edge
 const MIRROR_DX   = parse(Float32, get(ENV,"JM_MIRROR_X","0.075"))
-const MIRROR_TILT = deg2rad(parse(Float32, get(ENV,"JM_MIRROR_TILT","16")))   # tip the faces up toward the eye
-const MIRROR_SCALE = parse(Float32, get(ENV,"JM_MIRROR_SCALE","0.62"))   # shrink toward the GPL round-mirror size
+const MIRROR_TILT = deg2rad(parse(Float32, get(ENV,"JM_MIRROR_TILT","22")))   # tip the faces up toward the eye
+const MIRROR_SCALE = parse(Float32, get(ENV,"JM_MIRROR_SCALE","0.5"))    # disc SIZE (round-mirror size)
+const MIRROR_SPREAD = parse(Float32, get(ENV,"JM_MIRROR_SPREAD","1.7"))   # lateral separation multiplier — push the pair out to the screen edges
 const WIND_ALPHA   = parse(Float32, get(ENV,"JM_WIND_ALPHA","0.30"))     # plexiglass opacity — faintly visible (was 0.16 = invisible)
 const MIRRORMAT = Render.translate(Float32[MIRROR_DX,MIRROR_DY,0]) *
-                  Render.translate(MCEN) * Render.rotz(MIRROR_TILT) * Render.scalexyz(MIRROR_SCALE,MIRROR_SCALE,MIRROR_SCALE) * Render.translate(-MCEN)
+                  Render.translate(MCEN) * Render.rotz(MIRROR_TILT) * Render.scalexyz(MIRROR_SCALE,MIRROR_SCALE,MIRROR_SCALE*MIRROR_SPREAD) * Render.translate(-MCEN)
 println(length(TRACK), " track parts + ", length(CARP), " Lotus body parts")
 const BODY_OFF = Float32[-0.55, 0.30, 0.0]     # centre body on X, lift onto the wheels
 # Visual suspension-travel gain: amplifies the chassis dive/squat/roll the wheels FLOAT against, so the
@@ -561,7 +570,7 @@ const CAR3D = !haskey(ENV, "JM_2D")       # full-3D vehicle (heave/pitch/roll + 
 build_carX(; kw...)        = CAR3D ? DriveRT3D.build_car3d(; kw...) : DriveRT.build_car(; kw...)
 step_carX!(c, a...; kw...) = CAR3D ? DriveRT3D.step_car3d!(c, a...; kw...) : DriveRT.step_car!(c, a...; kw...)
 telemetryX(c)              = CAR3D ? DriveRT3D.telemetry3d(c) : DriveRT.telemetry(c)
-respawnX!(c)               = CAR3D ? DriveRT3D.respawn3d!(c) : DriveRT.respawn!(c)
+respawnX!(c; groundz=nothing) = CAR3D ? DriveRT3D.respawn3d!(c; groundz=groundz) : DriveRT.respawn!(c)
 containX!(c, x, z; kw...)  = CAR3D ? DriveRT3D.contain3d!(c, x, z; kw...) : DriveRT.contain!(c, x, z; kw...)
 bumpX!(c, dvx, dvz, dr, dvy=0.0, dpp=0.0, dq=0.0) = CAR3D ? DriveRT3D.bump3d!(c, dvx, dvz, dr, dvy, dpp, dq) : DriveRT.bump!(c, dvx, dvz, dr)   # GD: collision impulse (+vertical launch + roll/pitch for cartwheels + rear-lift, 3-D)
 # AI run the full 3-D physics model too (weight transfer + jumps).  Aliases keep call sites tidy.
@@ -579,7 +588,7 @@ const FENCE_GRACE = parse(Float64, get(ENV, "JM_FENCE_GRACE", "2.5"))   # off-HA
 # a gentle "slow grass", never a molasses bog.
 const GRASS_DRAG = parse(Float64, get(ENV, "JM_GRASS_DRAG", "0.30"))     # grass penalty: per-second velocity loss on the verge (GPL "slow grass")
 const GRASS_SLIP = parse(Float64, get(ENV, "JM_GRASS_SLIP", "0.15"))     # grass penalty: random yaw wobble (reduced grip feel)
-const ROAD_HALFW = parse(Float64, get(ENV, "JM_ROAD_HALFW", "7.5"))      # racing-surface half-width (m); beyond it = grass
+const ROAD_HALFW = parse(Float64, get(ENV, "JM_ROAD_HALFW", "9.0"))      # racing-surface half-width (m); beyond it = grass. Matched to the robust 9 m TrackSurface corridor so the centreline-projection wobble through tight ESSES (Watkins) no longer reads as "on grass" and bogs the car on the real road (E30).
 const KEEP_GRASS = haskey(ENV, "JM_KEEP_GRASS")    # E17 experiment: render the GPL green grass-cover planes (dropped by default)
 println(CAR3D ? "  PHYSICS: full-3D vehicle (default) — heave/pitch/roll + suspension travel + jumps" :
                 "  PHYSICS: planar 2-D model (JM_2D)")
@@ -630,12 +639,17 @@ const GRADE_SPA   = ColourGrade((0.22,0.45,0.82),(0.72,0.82,0.93),0.50, (1.07,1.
 const GRADE_MONZA = ColourGrade((0.31,0.51,0.80),(0.85,0.90,0.96),0.34, (1.07,1.02,0.90),(0.74,0.83,0.97),1.18, (1.17,1.15,1.11))
 const GRADE_WATK  = ColourGrade((0.28,0.48,0.80),(0.82,0.87,0.93),0.40, (1.10,1.02,0.86),(0.74,0.82,0.96),1.26, (1.21,1.16,1.06))
 const GRADE_NURB  = ColourGrade((0.42,0.48,0.56),(0.66,0.68,0.70),1.0, (0.92,0.92,0.95),(0.72,0.74,0.80),0.88, (0.90,0.91,0.96))
+# PO (2026-06-28): REMOVE the blue sky from ALL tracks — the procedural blue skydome seamed against
+# the GPL overcast horizon ring (overcast lower sky vs blue upper sky).  One even OVERCAST grade whose
+# skydome grey MATCHES the GPL horizon-ring grey → no seam.  Bright ambsky + high sat keep the trackside
+# objects VIBRANT (not the "carbonized" look) under the flat overcast light, matching the GPL gold standard.
+# NEUTRAL GREY zenith (only a hint cool) — a bluish zenith showed through the GAPS between the
+# procedural clouds and still read as "blue sky" (Monza).  Grey gaps + white cloud texture = a flat
+# overcast deck at any camera position.
+const GRADE_OVERCAST = ColourGrade((0.66,0.67,0.69),(0.76,0.765,0.77),1.0, (1.0,1.0,0.98),(0.88,0.89,0.92),1.12, (1.10,1.10,1.10))
 const GRADE = SKIDPAD ? GRADE_SKIDPAD :
-              TRACKSEL == "zandvoort"   ? GRADE_ZAND :
-              TRACKSEL == "spa"         ? GRADE_SPA :
-              TRACKSEL == "monza"       ? GRADE_MONZA :
-              TRACKSEL == "watglen"     ? GRADE_WATK :
-              TRACKSEL == "nurburgring" ? GRADE_NURB : GRADE_GPL
+              TRACKSEL == "nurburgring" ? GRADE_NURB :   # Nürburgring gold standard is genuinely STORMY overcast (moodier grey)
+              GRADE_OVERCAST
 const ENG = EngineAudio.build_lotus(gamedata = GD)   # GPL Ford DFV V8, RPM-pitched; START is deferred to just before the game loop (below)
 print("loading textures… "); flush(stdout)
 const TEXIDX = Render.gpl_texture_index(ZD)
@@ -659,6 +673,7 @@ if SKIDPAD || NURB
     global OBJECTS = Any[]
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
+    global SOLIDS = NTuple{3,Float64}[]   # no collidable trackside objects on skidpad / Nürburgring (scenery baked in) — without this solid_hit() throws UndefVarError on the first collision check
 else
 const DATPACK = TRACKDAT     # trackside objects come from the track's own .dat (generic across tracks)
 const TMPOBJ = mktempdir()
@@ -733,6 +748,16 @@ let objnames=Set{String}()
     trkzlo=Inf32; trkzhi=-Inf32
     for t in TRACKMESH.tris, vi in 1:3; z=Float32(t.p[vi][3]); trkzlo=min(trkzlo,z); trkzhi=max(trkzhi,z); end
     onground(i) = (gz = groundz(i.x, i.y); gz > -900f0 || (trkzlo-150f0 < Float32(i.z) < trkzhi+150f0))
+    # E31: drop trackside obstacles that sit ON the racing surface.  GPL authored some object rows
+    # ACROSS the road (Monza tree "curtains" the car drives through) + hedge boxes that TRAP the car
+    # (the Monza underpass).  An object whose (x,y) projects inside the paved corridor is in the way.
+    # Mesh objects that legitimately SPAN the track (bridges/gantries) are kept — only camera-facing
+    # tree billboards + collidable SOLIDS are filtered, and solids use a tighter band so genuine
+    # apex hay bales / edge barriers survive.
+    function on_road(x, y, halfw)
+        hr = JuliaMotor.hat(TRKSURF, Float64(x), Float64(y))
+        hr.found && abs(hr.lateral) < halfw
+    end
     # crowd policy = STANDS ONLY: keep seated grandstand / pit-wall crowds (these read as
     # populated stands, matching the GPL screenshots), drop loose roadside people.
     standcrowd(nm) = startswith(nm,"grndpe") || startswith(nm,"pitpeo") || startswith(nm,"pitppl") ||
@@ -765,6 +790,7 @@ let objnames=Set{String}()
     global SOLIDS = NTuple{3,Float64}[]
     for i in insts
         r = solidR(lowercase(i.name)); (r <= 0.0 || !onground(i)) && continue
+        on_road(i.x, i.y, ROAD_HALFW - 2.0) && continue   # E31: don't make a collidable wall ON the road (the trapping hedge-box)
         push!(SOLIDS, (Float64(i.x), Float64(i.y), r))
     end
     # billboards: (Item, render-pos base, width, height) — drawn camera-facing per frame.
@@ -779,7 +805,9 @@ let objnames=Set{String}()
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     for i in insts
         bb = get(bbinfo, i.name, nothing); (bb === nothing || drop(i.name)) && continue
-        onground(i) || continue; gz = ploz(i)
+        onground(i) || continue
+        on_road(i.x, i.y, ROAD_HALFW) && continue   # E31: drop sprites planted ON the road (the Monza tree "curtain" across the track)
+        gz = ploz(i)
         item, tw, th, h, wid = bb
         w = wid > 0f0 ? wid : h*tw/max(th,1f0)
         if w > WIDE_PANEL
@@ -798,7 +826,13 @@ let objnames=Set{String}()
         println("== JM_OBJDIAG tallest kept geometry objects =="); for (nm,h) in tall[1:min(end,25)]; println("   ", rpad(nm,16), round(h,digits=1), " m"); end
         bbn = unique([i.name for i in insts if get(bbinfo,i.name,nothing)!==nothing && !drop(i.name) && onground(i)])
         bbt = sort([(nm, bbinfo[nm][4], bbinfo[nm][5]) for nm in bbn], by=x->-x[2])
-        println("== JM_OBJDIAG billboards (name  h×w m) =="); for (nm,h,wd) in bbt; println("   ", rpad(nm,16), round(h,digits=1), " × ", round(wd,digits=1)); end; flush(stdout)
+        println("== JM_OBJDIAG billboards (name  h×w m) =="); for (nm,h,wd) in bbt; println("   ", rpad(nm,16), round(h,digits=1), " × ", round(wd,digits=1)); end
+        # floaters: objects/billboards placed high above the track low point (trkzlo) — the PO's
+        # "buildings floating high overhead".  on=on-HAT (snapped), off=off-HAT (edgez/trkzlo fallback).
+        flo = sort([(i.name, ploz(i), groundz(i.x,i.y)>-900f0) for i in insts
+                    if (get(objmesh,i.name,nothing)!==nothing||get(bbinfo,i.name,nothing)!==nothing) && !drop(i.name) && onground(i)], by=x->-x[2])
+        println("== JM_OBJDIAG highest-placed (trkzlo=", round(trkzlo,digits=1), " trkzhi=", round(trkzhi,digits=1), ") =="); seen=Set{String}()
+        for (nm,py,onhat) in flo; nm in seen && continue; push!(seen,nm); length(seen)>22 && break; println("   ", rpad(nm,16), "y=", rpad(round(py,digits=1),7), onhat ? "on-HAT" : "OFF-HAT"); end; flush(stdout)
     end
 end
 println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards + ", length(STATICTREES), " forest panels + ", length(SOLIDS), " solid (collidable)"); flush(stdout)
@@ -1096,7 +1130,7 @@ function main()
     ent_name(id) = id == 0 ? "You" : AICHASSIS[id].name
     ibt_samples = IBTREC ? Dict{String,Float64}[] : nothing      # iRacing-format telemetry rows
     # E18: record ALL car poses (player + AI) for replay — a flat Float32 buffer, ~15 Hz, written .jmr at exit
-    REPLAY_REC = IS_RACE && N_AI > 0 && isempty(REPLAY_FILE) && (!SMOKE || haskey(ENV,"JM_REPLAY_REC"))
+    REPLAY_REC = IS_RACE && N_AI > 0 && isempty(REPLAY_FILE) && !haskey(ENV,"JM_NOREPLAY") && (!SMOKE || haskey(ENV,"JM_REPLAY_REC"))
     replay_buf = REPLAY_REC ? Float32[] : nothing; replay_t = Ref(-1.0); REPLAY_NCAR = 1 + length(AICARS)
     IBTREC && println("  recording iRacing .ibt telemetry (JM_IBT) — template: ", basename(IBTTMPL))
     # E18 PLAYBACK: load the recording; the loop sets poses from it instead of simulating (VCR keys below).
@@ -1184,7 +1218,7 @@ function main()
                             clutch=inp.clutch, shift_up=inp.shift_up, shift_down=inp.shift_down, autoshift=inp.autoshift))
         end
         rst && FUEL_ON && (fuel[] = burn_lap * fuel_laps)        # respawn refuels
-        if rst; respawnX!(cs)
+        if rst; respawnX!(cs; groundz=groundz)
         else; step_carX!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
                         groundz=groundz)
@@ -1525,11 +1559,11 @@ function main()
                                   fogcol=GRADE.horizon, suncol=GRADE.suncol, ambsky=GRADE.ambsky, sat=GRADE.sat)
         Render.bind_shadow(prog, shadowtex, lightVP)
         HORIZON_RING === nothing || Render.draw_horizon(prog, HORIZON_RING, vp, eye; tint=GRADE.ringtint)   # GPL horizon ring backdrop
-        for it in trackItems; Render.draw(prog, it, vp, Render.ident(); bright=0.55); end
+        for it in trackItems; Render.draw(prog, it, vp, Render.ident(); bright=0.72, ambfill=0.34); end   # ambfill lifts shadowed walls/fences out of the "carbonized" black under the flat overcast light
         glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 1)   # un-mirror far-side sign backs (objects only)
         for (items,mat,grz,opos) in OBJECTS                       # trackside objects (trees graze-fade)
             (eye[1]-opos[1])^2+(eye[2]-opos[2])^2+(eye[3]-opos[3])^2 > OBJ_CULL2 && continue   # distance cull
-            for it in items; Render.draw(prog, it, vp, mat; bright=0.85, graze=grz); end
+            for it in items; Render.draw(prog, it, vp, mat; bright=1.05, ambfill=0.55, graze=grz); end   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
         end
         for (it,pos,w,h,yaw) in STATICTREES                      # wide forest-edge panels (authored yaw, graze-fade)
             (eye[1]-pos[1])^2+(eye[2]-pos[2])^2+(eye[3]-pos[3])^2 > BB_CULL2 && continue
@@ -1562,7 +1596,7 @@ function main()
         for it in fsuspItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.15, ambfill=0.5); end
         # rear-view mirrors — re-placed onto the cowl/plexiglass, faces tilted toward the eye (GPL look).
         # No render-to-texture, so the glass reads as a dark tinted disc rather than a live reflection.
-        for it in mirrorItems; Render.draw(prog, it, vp, bodyModel*MIRRORMAT; bright=0.85, spec=0.18, ambfill=0.30); end
+        for it in mirrorItems; Render.draw(prog, it, vp, bodyModel*MIRRORMAT; bright=1.25, spec=0.30, ambfill=0.75); end   # pale silver disc (no RTT) — reads as a mirror, not a black hole
         # steering wheel — spin about its column axis with steering input
         swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5)) * Render.translate(-SWCENTER)
         for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2, ambfill=0.34); end
@@ -1580,7 +1614,7 @@ function main()
         GLFW.SwapBuffers(win)
         if SMOKE && frames == 38                   # headless self-test: dump one frame
             buf=Vector{UInt8}(undef,W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,buf)
-            open("/tmp/zand_hud.ppm","w") do io; write(io,"P6\n$W $H\n255\n")
+            open(get(ENV,"JM_DUMP","/tmp/zand_hud.ppm"),"w") do io; write(io,"P6\n$W $H\n255\n")
                 for y in H:-1:1, x in 1:W; o=((y-1)*W+(x-1))*3; write(io,buf[o+1],buf[o+2],buf[o+3]); end; end
         end
 

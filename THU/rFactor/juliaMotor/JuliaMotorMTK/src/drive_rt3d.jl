@@ -223,9 +223,14 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
     c.rh = ntuple(i -> RH0 + (WHEELS[i][1]*c.pitch + WHEELS[i][2]*c.roll + c.heave) - (terr[i]-c.zref), 4)
     (!isfinite(c.v) || abs(c.v) > 110) && return respawn3d!(c)
     if !manual && c.gear >= 1
+        # auto-shift on engine RPM.  The box is close-ratio with a TALL launch gear (1st pulls
+        # to ~115 km/h at the old 8500 up-point), so on a tight circuit the car sat in 1st almost
+        # the whole lap.  Shift up earlier (7000, still in the DFV power band) so it works UP through
+        # the gears in normal driving, and downshift more readily (4100, off heavy throttle) so it
+        # drops a gear into corners.  Hysteresis gap (7000↔4100) is wide enough that it never hunts.
         grpm = (a[4]/RW_R)*GEARS[c.gear]*FINAL*60/(2π)
-        if grpm > 8500 && c.gear < 5;                       c.gear += 1; c.s_gr(c.integ, GEARS[c.gear])
-        elseif grpm < 3400 && c.gear > 1 && throttle < 0.9; c.gear -= 1; c.s_gr(c.integ, GEARS[c.gear]); end
+        if grpm > 7000 && c.gear < 5;                        c.gear += 1; c.s_gr(c.integ, GEARS[c.gear])
+        elseif grpm < 4100 && c.gear > 1 && throttle < 0.85; c.gear -= 1; c.s_gr(c.integ, GEARS[c.gear]); end
     end
     c
 end
@@ -249,9 +254,17 @@ function contain3d!(c::Car3D, xnew, znew; vdamp = 0.45)
     c
 end
 
-function respawn3d!(c::Car3D)
+function respawn3d!(c::Car3D; groundz = nothing)
     reinit!(c.integ); c.gear = 1; c.s_gr(c.integ, GEARS[1])
+    c.s_vreset(c.integ, zeros(14))                 # zero the vertical subsystem → spawn settled (no "superball" bounce)
     a = c.getall(c.integ); c.x = a[1]; c.z = a[2]; c.θ = a[3]; c.v = a[4]; c.rpm = a[6]
+    c.heave = 0.0; c.pitch = 0.0; c.roll = 0.0; c.vacc = 9.80665
+    # re-anchor the ground reference to the terrain UNDER the respawn point — otherwise zref keeps the
+    # last (crash-site) height and the suspension sees a huge road step on the first frame → it bounces.
+    if groundz !== nothing
+        h = groundz(c.x, c.z); c.zref = isfinite(h) ? Float64(h) : 0.0
+    end
+    c.zr_prev = ntuple(_ -> 0.0, 4); c.y = c.zref
     c
 end
 

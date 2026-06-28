@@ -372,3 +372,50 @@ Progress logged below.
   `tree*` strips dropped — they duplicated the horizon ring; single-strip crop tightened).
   Spa/Monza confirmed unchanged (0 wide panels). Commits: E19 ebecafb, E20/E21 5c62db2,
   E22 grades 4394e31, Watkins f9a5112.
+
+## PO live-drive batch (2026-06-28) — "drove all 5 tracks" — E23…E37
+Reported after driving all five tracks; ref shots in track-namesake dirs on `84AF-CC77`.
+Status: ✅ done+SMOKE-verified · ⬛ partial · ⏳ open.
+- **E23 ✅ Nürburgring race crash:** `UndefVarError: SOLIDS not defined` (solid_hit) the instant
+  you touch the throttle — the `SKIDPAD||NURB` branch never defined `SOLIDS`. Fixed (empty list).
+- **E24 ⬛ Replay store-by-default:** GUI "Record race replay (all cars)" checkbox, ON by default
+  (untick → `JM_NOREPLAY`). Records all 6 cars. (replay multi-cam viewer = E25.)
+- **E25 ⏳ Replay camera controls:** add to the replay viewer (a) switch CAR and (b) switch VIEW
+  through the GPL camera set — cockpit, "Nintendo"/above-rear, RR susp/tyre/tailpipe, driver+front
+  (incl. RF tyre/susp), rear (both rear tyres), front-of-hood, front-driver-helmet-dash, top-down-
+  behind-head, GPL F10 rear, distant-whole-car-from-left, distant-rear. Ref: `84AF-CC77/eagle`.
+- **E26 ✅ No skidpad in Race:** GUI greys out Skidpad when Mode=Race (and bumps off it).
+- **E27 ✅ Remove blue sky (seam):** one OVERCAST grade for all tracks — skydome grey matches the
+  GPL horizon-ring grey → the blue/overcast seam is gone (Nürburgring keeps its moodier storm grey).
+- **E28 ✅ AI never appeared (except Nürburgring):** the GUI's "AI cars" defaulted to 0, so Race
+  with the default gave an empty grid. Now Race defaults to 5 AI. (Field still gridds after the
+  practice/qual phase — press T to fast-forward to the race.)
+- **E29 ✅ "Post-Hiroshima" carbonized trackside objects:** shadowed/away faces fell to ~0.13 bright
+  → near-black. Raised object+wall `ambfill` (flat overcast fill) → vibrant grandstands/banners/
+  buildings matching the GPL gold standard. SMOKE-verified Zandvoort + Watkins.
+- **E30 ⏳ Watkins esses BOG:** car bogs through the esses — is that section's surface tagged grass /
+  high-drag? Audit the Watkins `.trk` surface-type → drag mapping.
+- **E31 ⏳ Monza objects across the track:** a "curtain of tree silhouettes" spanning the track, and
+  a hedge-box near the underpass that traps the car. Monza-specific object placement / collision.
+- **E32 ⏳ Superball respawn / hard hit:** car bounces straight up-and-down (stays horizontal) on
+  respawn and on a hard object hit — no cartwheel/roll. Vertical subsystem not re-settled (zref
+  stale on respawn) + on-ground attitude guard kills roll/pitch before a cartwheel can develop.
+- **E33 ⏳ Watkins balcony support in the road:** a grandstand/balcony support protrudes onto the
+  racing surface (img #23). Object placement / collision footprint.
+- **E34 ✅ Zandvoort "floating buildings":** the dark slabs floating against the sky were the
+  CARBONIZED objects (E29) reading as black cut-outs against the bright sky — properly lit they sit
+  on the ground. SMOKE chase-view at the start shows no floaters. (Re-confirm while driving.)
+- **E35 ⏳ Zandvoort yellow panel on the front wheels:** a yellow/tan panel stuck to the front of the
+  wheels in cockpit view (img #25) — likely the `windlot` scuttle mis-placed. Cockpit fidelity.
+- **E36 ⏳ Black cockpit band deep-dive:** the gold standard fills the band's SIDES with bright silver
+  riveted-aluminium tub that our eye/coaming geometry hides; centre dark dash is correct. Needs an
+  eye/tub-geometry pass (not the untextured grey — `JM_TUB_GREY` proved inert; hands re-add = giant
+  arms). PO explicitly wants this dug into.
+- **E37 ✅ Auto-shift "always in 1st":** (from the prior message) tall close-ratio 1st pulled to
+  ~115 km/h before the old 8500 up-point. Up 7000 / down 4100 / gate 0.85 → shifts through all 5.
+
+### Sprint plan (this batch, PO pre-approved "scrum as before")
+- **Sprint D — stop-the-bleeding (DONE):** E23 crash, E27 sky, E29 carbon, E26/E28/E24 GUI, E37 shift.
+- **Sprint E — physics/placement:** E32 superball → E30 Watkins bog → E31 Monza curtain → E33 balcony.
+- **Sprint F — cockpit fidelity:** E35 yellow panel → E36 black band.
+- **Sprint G — replay cinematics:** E25 multi-camera/car replay viewer.

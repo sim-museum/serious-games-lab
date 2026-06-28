@@ -569,9 +569,17 @@ class DriveTab(QWidget):
         self.ibt = QCheckBox("Record iRacing .ibt telemetry → data/juliaracer/")
         self.ibt.setChecked(True)        # on by default
         form.addWidget(self.ibt, 7, 1)
+        self.replay = QCheckBox("Record race replay (all cars) → data/juliaracer/")
+        self.replay.setChecked(True)     # on by default (PO); untick to skip recording
+        self.replay.setToolTip("Saves a .jmr recording of every car each race — replay it from the Replay tab.")
+        form.addWidget(self.replay, 8, 1)
         self.d2 = QCheckBox("Simplified 2-D physics (no jumps, lighter; JM_2D)")
-        form.addWidget(self.d2, 8, 1)   # 3-D is the default; tick this only to fall back to planar
+        form.addWidget(self.d2, 9, 1)   # 3-D is the default; tick this only to fall back to planar
         root.addLayout(form)
+
+        # a race needs opponents and can't run on the skidpad — keep the form coherent as the mode changes
+        self.mode.currentIndexChanged.connect(self._mode_changed)
+        self._mode_changed(self.mode.currentIndex())
 
         brow = QHBoxLayout()
         self.launch_b = QPushButton("Launch")
@@ -612,6 +620,18 @@ class DriveTab(QWidget):
         ("Drive:", 100, "ready — window opening"),
     ]
 
+    def _mode_changed(self, idx):
+        """Race (idx 2) needs opponents and can't run on the skidpad."""
+        is_race = (idx == 2)
+        skid = self.track.model().item(1)        # "Skidpad" entry
+        if skid is not None:
+            skid.setEnabled(not is_race)         # grey it out for races (item 4: no race at the skidpad)
+        if is_race:
+            if self.track.currentIndex() == 1:   # currently on Skidpad → bump to Zandvoort
+                self.track.setCurrentIndex(0)
+            if self.ai.value() == 0:             # a race with 0 AI shows no field — default to a full grid (item 6)
+                self.ai.setValue(5)
+
     def launch(self):
         if self.proc and self.proc.state() != QProcess.ProcessState.NotRunning:
             return
@@ -629,6 +649,8 @@ class DriveTab(QWidget):
             qenv.insert("JM_NOSOUND", "1")
         if not self.ibt.isChecked():     # telemetry is on by default; this disables it
             qenv.insert("JM_NOIBT", "1")
+        if not self.replay.isChecked():  # replay recording is on by default; this disables it
+            qenv.insert("JM_NOREPLAY", "1")
         if self.d2.isChecked():          # opt out of the default full-3D physics back to the planar model
             qenv.insert("JM_2D", "1")
         # E14: clear any stale race result so the post-race screen only shows THIS race
