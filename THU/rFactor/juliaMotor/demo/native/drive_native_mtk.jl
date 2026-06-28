@@ -521,16 +521,23 @@ const SWPARTS, SWCENTER, SWAXIS = Render.extract_gpl_steering(LOT3DO)   # steeri
 # Mirrors: re-place onto the cowl/plexiglass top, tilt the faces back toward the eye so they read as
 # round mirrors at the sides (not chrome torpedoes at the bottom).  Tuned via JM_MIRROR_*.
 const MCEN = (b = Render.parts_bbox(MIRRORP); Float32[(b.xmin+b.xmax)/2, (b.ymin+b.ymax)/2, 0f0])
-const MIRROR_DY   = parse(Float32, get(ENV,"JM_MIRROR_Y","0.05"))
-const MIRROR_DX   = parse(Float32, get(ENV,"JM_MIRROR_X","0.06"))
-const MIRROR_TILT = deg2rad(parse(Float32, get(ENV,"JM_MIRROR_TILT","15")))   # tip the faces up toward the eye
+const MIRROR_DY   = parse(Float32, get(ENV,"JM_MIRROR_Y","0.10"))
+const MIRROR_DX   = parse(Float32, get(ENV,"JM_MIRROR_X","0.075"))
+const MIRROR_TILT = deg2rad(parse(Float32, get(ENV,"JM_MIRROR_TILT","16")))   # tip the faces up toward the eye
+const MIRROR_SCALE = parse(Float32, get(ENV,"JM_MIRROR_SCALE","0.85"))   # shrink toward the GPL round-mirror size
 const MIRRORMAT = Render.translate(Float32[MIRROR_DX,MIRROR_DY,0]) *
-                  Render.translate(MCEN) * Render.rotz(MIRROR_TILT) * Render.translate(-MCEN)
+                  Render.translate(MCEN) * Render.rotz(MIRROR_TILT) * Render.scalexyz(MIRROR_SCALE,MIRROR_SCALE,MIRROR_SCALE) * Render.translate(-MCEN)
 println(length(TRACK), " track parts + ", length(CARP), " Lotus body parts")
 const BODY_OFF = Float32[-0.55, 0.30, 0.0]     # centre body on X, lift onto the wheels
-# wheel hubs (rig frame X fwd, Y=radius, Z left); front pair steers, all spin
-const WHEELS = (( 1.05f0, 0.62f0,true, 0.31f0,"lotwlf"), ( 1.05f0,-0.62f0,true, 0.31f0,"lotwrf"),
-                (-1.15f0, 0.66f0,false,0.34f0,"lotwlr"), (-1.15f0,-0.66f0,false,0.34f0,"lotwrr"))
+# Visual suspension-travel gain: amplifies the chassis dive/squat/roll the wheels FLOAT against, so the
+# 1967 car's soft suspension reads clearly from the cockpit (the wheels are decoupled — see wheelmat).
+const SUSP_GAIN = parse(Float32, get(ENV,"JM_SUSP_GAIN","1.8"))
+# wheel hubs (rig frame X fwd, Y=radius, Z left); front pair steers, all spin.  Front/rear track WIDENED
+# (was ±0.62/±0.66) — the Lotus 49 ran ~1.52 m tracks; the narrow stance read as "wheels bolted together".
+const WTRACK_F = parse(Float32, get(ENV,"JM_TRACK_F","0.76"))   # front half-track (m)
+const WTRACK_R = parse(Float32, get(ENV,"JM_TRACK_R","0.74"))   # rear half-track (m)
+const WHEELS = (( 1.05f0, WTRACK_F,true, 0.31f0,"lotwlf"), ( 1.05f0,-WTRACK_F,true, 0.31f0,"lotwrf"),
+                (-1.15f0, WTRACK_R,false,0.34f0,"lotwlr"), (-1.15f0,-WTRACK_R,false,0.34f0,"lotwrr"))
 
 # ---- GL init (visible window on the user's display) ----
 const W, H = 1440, 810
@@ -557,9 +564,14 @@ const AIbump! = DriveRT3D.bump3d!
 const AIplace! = DriveRT3D.place3d!
 const FENCE = parse(Float64, get(ENV, "JM_FENCE", "13.0"))   # E7: track boundary (m from centreline) — you can't leave the world
 const FENCE_GRACE = parse(Float64, get(ENV, "JM_FENCE_GRACE", "2.5"))   # off-HAT distance before the trackside collision fires (tolerates sub-car mesh cracks; small so the fence feels like a wall)
-const GRASS_DRAG = parse(Float64, get(ENV, "JM_GRASS_DRAG", "0.9"))      # grass penalty: per-second velocity loss on the verge (GPL "slow grass")
-const GRASS_SLIP = parse(Float64, get(ENV, "JM_GRASS_SLIP", "0.5"))      # grass penalty: random yaw wobble (reduced grip feel)
-const ROAD_HALFW = parse(Float64, get(ENV, "JM_ROAD_HALFW", "5.5"))      # racing-surface half-width (m); beyond it = grass
+# GRASS PENALTY (feel): SOFTENED — at 0.9 the drag scrubbed ~90 %/s of speed, and the 5.5 m threshold
+# false-fired on every corner exit (the racing line legitimately uses the FULL track width, reaching the
+# tarmac edge at ~5.5 m off the centreline) → the car felt like it was "always on grass" / bogging.  Now
+# the threshold clears the widest racing line (only a genuine off-track excursion trips it) and the drag is
+# a gentle "slow grass", never a molasses bog.
+const GRASS_DRAG = parse(Float64, get(ENV, "JM_GRASS_DRAG", "0.30"))     # grass penalty: per-second velocity loss on the verge (GPL "slow grass")
+const GRASS_SLIP = parse(Float64, get(ENV, "JM_GRASS_SLIP", "0.15"))     # grass penalty: random yaw wobble (reduced grip feel)
+const ROAD_HALFW = parse(Float64, get(ENV, "JM_ROAD_HALFW", "7.5"))      # racing-surface half-width (m); beyond it = grass
 const KEEP_GRASS = haskey(ENV, "JM_KEEP_GRASS")    # E17 experiment: render the GPL green grass-cover planes (dropped by default)
 println(CAR3D ? "  PHYSICS: full-3D vehicle (default) — heave/pitch/roll + suspension travel + jumps" :
                 "  PHYSICS: planar 2-D model (JM_2D)")
@@ -675,7 +687,23 @@ let objnames=Set{String}()
     # track mesh) so far-trackside objects the HAT doesn't reach aren't lost.
     # off the finite HAT (distant backdrop) the GPL data's own z is used — but it can place buildings
     # floating in the sky; clamp it to the track's vertical extent so they sit on the ground at the horizon.
-    ploz(i)  = (gz = groundz(i.x, i.y); gz > -900f0 ? gz : clamp(Float32(i.z), trkzlo, trkzhi))
+    # track XY centre — the march target for grounding OFF-HAT backdrop objects.
+    TRKCX = sum(p[1] for p in ALIGNED)/length(ALIGNED); TRKCY = sum(p[2] for p in ALIGNED)/length(ALIGNED)
+    # OFF-HAT objects (distant backdrop the finite terrain doesn't reach): the GPL authored-z floats
+    # buildings in the sky.  March from the object TOWARD the track centre until we hit the HAT, and sit
+    # the object at that terrain-EDGE height — so far grandstands/buildings rest on the ground at the
+    # horizon instead of hovering above it.  Fall back to the track's low point if the march finds nothing.
+    function edgez(x, y)
+        dx = TRKCX - x; dy = TRKCY - y; d = hypot(dx, dy)
+        d < 1f-3 && return trkzlo
+        ux = dx/d; uy = dy/d; s = 0f0
+        while s < d
+            gz = groundz(x + ux*s, y + uy*s); gz > -900f0 && return gz
+            s += 8f0
+        end
+        trkzlo
+    end
+    ploz(i)  = (gz = groundz(i.x, i.y); gz > -900f0 ? gz : edgez(Float32(i.x), Float32(i.y)))
     # track's own vertical band (GPL-z, = HAT height) — some classic layouts are authored with a
     # large vertical offset (Spa sits at z≈294..498 m, not ≈0), so a hard-coded height window is
     # wrong.  On-HAT objects are snapped to the terrain ⇒ grounded by construction (always keep);
@@ -1268,11 +1296,15 @@ function main()
         roll_ter  += (terrain_roll(cs)  - roll_ter)  * min(1.0, dt*6)   # car lists with the cross-slope (3-D)
         rollv = 0.0
         if CAR3D
-            pitch_dyn = cs.pitch - pitch_ter          # REAL body pitch (minus the slope carModel already applies)
-            rollv = cs.roll                           # REAL body roll
+            pitch_dyn = (cs.pitch - pitch_ter) * SUSP_GAIN   # REAL body pitch (minus the slope carModel already applies), visually amplified
+            rollv = cs.roll * SUSP_GAIN                      # REAL body roll
         else
-            pitch_dyn += (clamp(0.0016*acc, -0.013, 0.013) - pitch_dyn) * min(1.0, dt*3.5)  # faked, heavily damped
+            # planar model has no 3-D body state — synthesise dive/squat + corner roll from the
+            # longitudinal accel / steering so the chassis still pitches/rolls over the planted wheels.
+            pitch_dyn += (clamp(-0.010*acc, -0.06, 0.06)*SUSP_GAIN - pitch_dyn) * min(1.0, dt*4.0)   # brake → nose DOWN
+            rollv     += (clamp(-0.05*inp.steer*min(cs.v/20,1.0), -0.05, 0.05)*SUSP_GAIN - rollv) * min(1.0, dt*4.0)  # corner lean
         end
+        pitch_dyn = clamp(pitch_dyn, -0.11, 0.11); rollv = clamp(rollv, -0.10, 0.10)   # ±~6° cap (no over-rotate)
         REPLAY && (pitch_dyn = 0.0; rollv = 0.0)      # replay: body follows the terrain only (no recorded suspension state)
         vp, eye = camera(cs, pitch_ter + pitch_dyn, roll_ter + rollv)   # cockpit cam = full body orientation → cockpit stationary, world tilts
         carModel = Render.translate(Float32[cs.x, cs.y, -cs.z]) * Render.roty(Float32(cs.θ)) *
@@ -1280,8 +1312,13 @@ function main()
         tiltModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv))   # full body tilt (terrain + dynamic)
         bodyModel = tiltModel * Render.translate(BODY_OFF)  # body dives/squats + rolls (3-D)
         δ = Float32(inp.steer * (SKIDPAD ? 0.30 : CAR.max_steer))
-        # wheels ride the FULL body tilt (tiltModel), so they stay rigid/level with the cockpit on a bank (PO)
-        wheelmat(wx,wz,steer,r) = tiltModel * Render.translate(Float32[wx, r, wz]) *
+        # WHEELS FLOAT ON THE SUSPENSION (PO): the wheels stay PLANTED on the road (carModel = terrain
+        # follow only, NO dynamic dive/squat/roll), while the CHASSIS pitches/rolls/heaves above them
+        # (bodyModel = tiltModel).  So under braking the nose dives toward the planted front wheels → the
+        # front wheels appear to RISE relative to the cockpit; squat on power → they drop; roll right →
+        # the body leans onto the planted right wheel (it rises) and lifts off the left (it drops).  The
+        # wheels stay UPRIGHT/level (they never get the body lean) — they're not bolted to the chassis.
+        wheelmat(wx,wz,steer,r) = carModel * Render.translate(Float32[wx, r, wz]) *
                      (steer ? Render.roty(δ) : Render.ident()) * Render.rotz(Float32(spin))
         # advance + place the AI field (rail-followers on the centreline)
         ai_hit = Ref(false); ddt = dt > 1e-4 ? dt : 1/60
