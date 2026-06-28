@@ -274,11 +274,12 @@ function place3d!(c::Car3D, x, z, θ; v = 0.0)
 end
 const _WSET3D = IdDict()
 const _PPSET3D = IdDict()
+const _QSET3D = IdDict()
 """Rigid-body collision impulse (3-D car): world-frame velocity change (dvx,dvz) + yaw-rate dr
 + an optional VERTICAL kick `dvy` (heave velocity `w` → the car JUMPS) + a ROLL-rate kick `dpp`
-(roll velocity → with the relaxed airborne guard the car can CARTWHEEL when a spinning wheel
-climbs another car/ramp, GPL-style)."""
-function bump3d!(c::Car3D, dvx, dvz, dr, dvy = 0.0, dpp = 0.0)
+(roll velocity → CARTWHEEL when a spinning wheel climbs) + a PITCH-rate kick `dq` (a rear wheel
+climbing a hay bale pitches the nose down ⇒ LIFTS THE REAR, GPL-style)."""
+function bump3d!(c::Car3D, dvx, dvz, dr, dvy = 0.0, dpp = 0.0, dq = 0.0)
     a = c.getall(c.integ); θ = a[3]; u = a[4]; v = a[5]
     wvx = u*cos(θ) - v*sin(θ) + dvx
     wvz = u*sin(θ) + v*cos(θ) + dvz
@@ -301,6 +302,12 @@ function bump3d!(c::Car3D, dvx, dvz, dr, dvy = 0.0, dpp = 0.0)
         try
             ps = get!(() -> (ModelingToolkit.getsym(c.sys, c.sys.pp), ModelingToolkit.setu(c.sys, c.sys.pp)), _PPSET3D, c.sys)
             ps[2](c.integ, ps[1](c.integ) + dpp)     # add roll velocity → cartwheel
+        catch; end
+    end
+    if dq != 0.0
+        try
+            qs = get!(() -> (ModelingToolkit.getsym(c.sys, c.sys.q), ModelingToolkit.setu(c.sys, c.sys.q)), _QSET3D, c.sys)
+            qs[2](c.integ, qs[1](c.integ) + dq)      # add pitch velocity → nose down / rear lifts
         catch; end
     end
     c.v = sqrt(nu^2 + nv^2)

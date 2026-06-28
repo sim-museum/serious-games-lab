@@ -100,6 +100,32 @@ function draft_tow(fx, fz, fθ, fv, leads)
     end
     best
 end
+
+# E15: collide a car (x,z,θ,v) with the nearest SOLID trackside object (haybales/fences/buildings).
+# Returns the impulse (dvx,dvz,dr,dvy,dpp) to feed bump3d!, or nothing.  A square SNOUT hit (contact on
+# the car's centreline) bounces it straight back; a hit toward a WHEEL (offset to the side) makes the
+# spinning wheel CLIMB the obstacle → a vertical launch + roll (angular + linear momentum), per the PO.
+const CARHALF = 1.4    # car collision half-extent (m)
+function solid_hit(x, z, θ, v)
+    v < 1.2 && return nothing
+    @inbounds for (ox, oz, r) in SOLIDS
+        dx = x - ox; dz = z - oz; d = hypot(dx, dz)
+        rr = r + CARHALF
+        (d >= rr || d < 1e-3) && continue
+        nx = dx/d; nz = dz/d                              # outward normal (object → car)
+        vn = v*cos(θ)*nx + v*sin(θ)*nz                    # car speed along it (<0 = driving INTO the object)
+        vn >= -0.3 && continue                            # not closing on it
+        across = -dx*sin(θ) + dz*cos(θ)                   # contact across the car (which side/wheel)
+        along  =  dx*cos(θ) + dz*sin(θ)                   # >0 ⇒ object behind the car (a REAR-wheel hit)
+        e = 0.45; j = (1+e)*(-vn)                         # bounce straight back (linear)
+        lift  = clamp(abs(across)/CARHALF * (-vn) * 0.45, 0.0, 6.0)   # a WHEEL (offset) hit climbs → launch
+        droll = clamp(sign(across)*lift*0.8, -5.0, 5.0)               # …and rolls toward the climb
+        dpitch = clamp(-sign(along)*lift*0.7, -4.0, 4.0)             # rear wheel climbs ⇒ nose down ⇒ REAR LIFTS
+        dr    = clamp(-sign(across)*(-vn)*0.04, -1.0, 1.0)            # yaw twitch off the obstacle
+        return (j*nx, j*nz, dr, lift, droll, dpitch)
+    end
+    nothing
+end
 # GPL '67 AI reference laptimes (s) — the "100 %" anchor.  Sourced from GPL AI/hotlap
 # pace per circuit; tunable per car/setup via JM_AI_REFLAP (overrides the table).  At
 # AI_PCT=100 the field is paced to hit exactly this laptime regardless of the rail
@@ -503,7 +529,7 @@ step_carX!(c, a...; kw...) = CAR3D ? DriveRT3D.step_car3d!(c, a...; kw...) : Dri
 telemetryX(c)              = CAR3D ? DriveRT3D.telemetry3d(c) : DriveRT.telemetry(c)
 respawnX!(c)               = CAR3D ? DriveRT3D.respawn3d!(c) : DriveRT.respawn!(c)
 containX!(c, x, z; kw...)  = CAR3D ? DriveRT3D.contain3d!(c, x, z; kw...) : DriveRT.contain!(c, x, z; kw...)
-bumpX!(c, dvx, dvz, dr, dvy=0.0, dpp=0.0) = CAR3D ? DriveRT3D.bump3d!(c, dvx, dvz, dr, dvy, dpp) : DriveRT.bump!(c, dvx, dvz, dr)   # GD: collision impulse (+vertical launch + roll for cartwheels, 3-D)
+bumpX!(c, dvx, dvz, dr, dvy=0.0, dpp=0.0, dq=0.0) = CAR3D ? DriveRT3D.bump3d!(c, dvx, dvz, dr, dvy, dpp, dq) : DriveRT.bump!(c, dvx, dvz, dr)   # GD: collision impulse (+vertical launch + roll/pitch for cartwheels + rear-lift, 3-D)
 # AI run the full 3-D physics model too (weight transfer + jumps).  Aliases keep call sites tidy.
 const AICarT  = DriveRT3D.Car3D
 const AIbuild = DriveRT3D.build_cars3d
@@ -515,6 +541,7 @@ const FENCE_GRACE = parse(Float64, get(ENV, "JM_FENCE_GRACE", "2.5"))   # off-HA
 const GRASS_DRAG = parse(Float64, get(ENV, "JM_GRASS_DRAG", "0.9"))      # grass penalty: per-second velocity loss on the verge (GPL "slow grass")
 const GRASS_SLIP = parse(Float64, get(ENV, "JM_GRASS_SLIP", "0.5"))      # grass penalty: random yaw wobble (reduced grip feel)
 const ROAD_HALFW = parse(Float64, get(ENV, "JM_ROAD_HALFW", "5.5"))      # racing-surface half-width (m); beyond it = grass
+const KEEP_GRASS = haskey(ENV, "JM_KEEP_GRASS")    # E17 experiment: render the GPL green grass-cover planes (dropped by default)
 println(CAR3D ? "  PHYSICS: full-3D vehicle (default) — heave/pitch/roll + suspension travel + jumps" :
                 "  PHYSICS: planar 2-D model (JM_2D)")
 GLFW.Init()
@@ -643,7 +670,7 @@ let objnames=Set{String}()
     # tree smears, and LOOSE people only — marshals, photographers, rescue crews, lone figures,
     # and standing roadside spectators (Spa people*/pelf*).  Seated stand crowds are kept above.
     drop(nm) = !standcrowd(nm) && (
-               startswith(nm,"grass") || startswith(nm,"herbe") || nm == "infield" ||
+               (startswith(nm,"grass") && !KEEP_GRASS) || (startswith(nm,"herbe") && !KEEP_GRASS) || nm == "infield" ||
                startswith(nm,"tent") || startswith(nm,"single") ||
                startswith(nm,"intree") ||                                    # INFIELD tree lines (100s of m wide) → distant central "smear"
                startswith(nm,"treesrb") || startswith(nm,"treefill") ||      # forest-BACKDROP / gap-fill quads → streaky "painted tree" smear (Watkins pit-straight)
@@ -657,6 +684,18 @@ let objnames=Set{String}()
     global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw)), istree(i.name), (Float32(i.x), ploz(i), Float32(-i.y)))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
                           !drop(i.name) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
+    # E15: SOLID trackside objects the car can hit — (physics x, z, collision radius m).  Buildings,
+    # barriers/hedges (haybales = Zandvoort `haie`), towers, parked vehicles.  NOT trees/signs/people.
+    solidR(nm) = startswith(nm,"hut")||startswith(nm,"pitbldg")||startswith(nm,"hotel")||startswith(nm,"bigbosch")||nm=="mega2"||startswith(nm,"longtent") ? 5.0 :
+                 startswith(nm,"tower")||startswith(nm,"megafon") ? 2.0 :
+                 startswith(nm,"haie") ? 2.2 :                                                        # hedges / hay rows lining the track
+                 startswith(nm,"armco")||startswith(nm,"barrier")||startswith(nm,"fence")||startswith(nm,"wall") ? 1.2 :
+                 startswith(nm,"caravn")||startswith(nm,"vwvan")||startswith(nm,"ftruck")||startswith(nm,"ambul")||nm=="car2"||startswith(nm,"rescu") ? 2.4 : 0.0
+    global SOLIDS = NTuple{3,Float64}[]
+    for i in insts
+        r = solidR(lowercase(i.name)); (r <= 0.0 || !onground(i)) && continue
+        push!(SOLIDS, (Float64(i.x), Float64(i.y), r))
+    end
     # billboards: (Item, render-pos base, width, height) — drawn camera-facing per frame
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     for i in insts
@@ -667,7 +706,7 @@ let objnames=Set{String}()
         push!(BILLBOARDS, (item, (Float32(i.x), gz, Float32(-i.y)), Float32(w), Float32(h)))
     end
 end
-println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards placed"); flush(stdout)
+println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards + ", length(SOLIDS), " solid (collidable)"); flush(stdout)
 end
 carItems   = Render.build_gpl(CARP, GPLTEX)        # Lotus body, GPL .mip textures
 gaugeItems = Render.build_gpl(GAUGEP, GPLTEX)      # gauge cluster (drawn near-unlit so it reads)
@@ -868,6 +907,7 @@ function main()
                 r = AIyaw(pc); maxr = max(maxr, abs(r)); abs(r) > 2.5 && (spins += 1)
                 thr,brk,st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i], pc.x, pc.z, pc.θ, pc.v, r; power=AI_POWER)
                 DriveRT3D.step_car3d!(pc, thr, brk, st, 1/60; manual=false, groundz=groundz)
+                ho = solid_hit(pc.x, pc.z, pc.θ, pc.v); ho !== nothing && AIbump!(pc, ho[1], ho[2], ho[3], ho[4], ho[5], ho[6])   # E15 in the self-test too
             end
         end
         avgkmh = round.(Int, aidist ./ 90 .* 3.6)
@@ -1065,6 +1105,15 @@ function main()
             end
             end
         end
+        # E15: player vs SOLID trackside objects (haybales/fences/buildings) — snout = bounce back,
+        # a spinning wheel into the bales climbs → launch + roll.  + an FFB jolt so you feel the hit.
+        if !rst && !SKIDPAD
+            h = solid_hit(cs.x, cs.z, cs.θ, cs.v)
+            if h !== nothing
+                bumpX!(cs, h[1], h[2], h[3], h[4], h[5], h[6])
+                ffb_jolt = clamp((h[3] >= 0 ? 1.0 : -1.0) * 0.7, -1.0, 1.0)
+            end
+        end
         spin -= cs.v*dt/0.33
         ENG.rpm[] = isfinite(cs.rpm) ? cs.rpm : 700.0   # feed the engine-audio thread (never NaN)
 
@@ -1218,6 +1267,8 @@ function main()
                 if !ai_onroad[i] && pc.v > 2.5                        # AI off the racing surface → grass penalty
                     AIbump!(pc, -GRASS_DRAG*pc.v*cos(pc.θ)*ddt, -GRASS_DRAG*pc.v*sin(pc.θ)*ddt, (2*rand()-1)*GRASS_SLIP*ddt)
                 end
+                ho = solid_hit(pc.x, pc.z, pc.θ, pc.v)               # E15: AI vs solid objects (no driving through bales)
+                ho !== nothing && AIbump!(pc, ho[1], ho[2], ho[3], ho[4], ho[5], ho[6])
             end
             # slipstream: each AI tucked behind the player or another AI on a straight gets a forward tow
             let plead = (cs.x, cs.z, cs.θ, cs.v)
