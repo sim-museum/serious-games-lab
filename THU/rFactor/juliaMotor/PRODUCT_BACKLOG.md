@@ -358,3 +358,17 @@ PO feedback on the FF-wheel live test (Image #15 ours vs #16 gold standard):
 - **Sprint B — E20 mirrors + E21 transparent screen/wishbones** (cockpit fidelity).
 - **Sprint C — E22 per-track grades:** Spa → Monza → Nürburgring → Watkins Glen, each vs its ref folder.
 Progress logged below.
+
+### Sprint review (2026-06-28, autonomous) — E19–E22 DONE, all SMOKE-verified vs gold standards
+- **E19 ✅** blue sky, horizon seam GONE (Zandvoort): blue skydome + cropped low hill-band ring.
+- **E20 ✅** mirrors are clean round discs on the cowl (no RTT → dark discs; tint = future polish).
+- **E21 ⬛ partial:** transparent plexiglass RESTORED (alpha, depth-write off). **Front tyres /
+  wishbones through the screen still DEFERRED** — the front tyres sit behind the dark cockpit
+  coaming from the driver eye; isolating the GPL upper-wishbone + framing the tyres into the lower
+  corners (without the prior eye-move regressions) is the remaining work.
+- **E22 ✅** per-track sky grades vs each gold standard: Spa (blue+forest), Monza (hazy bright),
+  Nürburgring (STORMY OVERCAST — its real look), Watkins (hazy blue), Zandvoort (blue). BONUS:
+  the long-standing **Watkins pit-straight "smear" / forest-wall RESOLVED** (wide panoramic
+  `tree*` strips dropped — they duplicated the horizon ring; single-strip crop tightened).
+  Spa/Monza confirmed unchanged (0 wide panels). Commits: E19 ebecafb, E20/E21 5c62db2,
+  E22 grades 4394e31, Watkins f9a5112.
