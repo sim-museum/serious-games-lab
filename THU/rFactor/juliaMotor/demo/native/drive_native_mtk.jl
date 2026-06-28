@@ -1006,6 +1006,7 @@ function main()
     REPLAY = !isempty(REPLAY_FILE)
     repd = REPLAY ? deserialize(REPLAY_FILE) : nothing
     rep_rt = Ref(0.0); rep_play = Ref(true); rep_speed = Ref(1.0)
+    rep_psp = Ref(false); rep_pup = Ref(false); rep_pdn = Ref(false)   # VCR key edge-detect
     rep_dur = REPLAY ? max(repd.nframes - 1, 0)/repd.fps : 0.0
     rep_st  = REPLAY ? 1 + 4*repd.ncar : 0
     # interpolated poses at replay time rt → (player (x,y,z,θ), Vector of AI (x,y,z,θ))
@@ -1038,6 +1039,17 @@ function main()
         SMOKE && frames >= 40 && break
         now = time(); dt = clamp(now-last, 0.0, 0.05); last = now
         inp, rst = read_input()
+        if REPLAY                                   # E18 PLAYBACK: VCR + set poses from the recording, skip the sim
+            sp = key(GLFW.KEY_SPACE); (sp && !rep_psp[]) && (rep_play[] = !rep_play[]); rep_psp[] = sp
+            up = key(GLFW.KEY_UP);   (up && !rep_pup[]) && (rep_speed[] = clamp(rep_speed[]*2, 0.25, 8.0)); rep_pup[] = up
+            dn = key(GLFW.KEY_DOWN); (dn && !rep_pdn[]) && (rep_speed[] = clamp(rep_speed[]/2, 0.25, 8.0)); rep_pdn[] = dn
+            key(GLFW.KEY_RIGHT) && (rep_rt[] = clamp(rep_rt[] + 8*dt, 0.0, rep_dur))   # hold to scrub
+            key(GLFW.KEY_LEFT)  && (rep_rt[] = clamp(rep_rt[] - 8*dt, 0.0, rep_dur))
+            rep_play[] && (rep_rt[] = clamp(rep_rt[] + dt*rep_speed[], 0.0, rep_dur))
+            (pp, rep_ai_raw) = replay_poses(rep_rt[])
+            cs.x = pp[1]; cs.y = pp[2]; cs.z = pp[3]; cs.θ = pp[4]; cs.v = 0.0; cs.pitch = 0.0; cs.roll = 0.0
+            @goto skipsim
+        end
         # E9: end qualifying on ENTER (or it auto-ends on a clean lap).  This guarantees you
         # can always start the race even if the S/F line doesn't register the lap (the ribbon
         # can have a seam at start/finish).  Your qual time = best clean lap, else estimated
@@ -1225,6 +1237,7 @@ function main()
             write(telem, "$(round(cs.t,digits=2))\t$(cs.laps)\t$(round(cs.lapdist,digits=1))\t$(round(cs.v*3.6,digits=1))\t$(round(inp.throttle,digits=2))\t$(round(inp.brake,digits=2))\t$(round(inp.steer,digits=2))\t$(round(inp.clutch,digits=2))\t$(cs.gear)\t$(round(Int,cs.rpm))\t$(round(cs.x,digits=1))\t$(round(cs.z,digits=1))\t$(round(cs.lateral,digits=2))\t$(round(cs.along,digits=2))\t$(cs.ontrack ? 1 : 0)\n")
         end
 
+        @label skipsim   # E18 replay jumps here — cs pose is already set from the recording
         # ---- body pitch: accel→squat (nose up), brake→dive (nose down); + terrain slope ----
         acc = clamp((cs.v - v_prev)/max(dt,1e-3), -15.0, 15.0); v_prev = cs.v
         pitch_ter += (terrain_pitch(cs) - pitch_ter) * min(1.0, dt*6)
@@ -1236,6 +1249,7 @@ function main()
         else
             pitch_dyn += (clamp(0.0016*acc, -0.013, 0.013) - pitch_dyn) * min(1.0, dt*3.5)  # faked, heavily damped
         end
+        REPLAY && (pitch_dyn = 0.0; rollv = 0.0)      # replay: body follows the terrain only (no recorded suspension state)
         vp, eye = camera(cs, pitch_ter + pitch_dyn, roll_ter + rollv)   # cockpit cam = full body orientation → cockpit stationary, world tilts
         carModel = Render.translate(Float32[cs.x, cs.y, -cs.z]) * Render.roty(Float32(cs.θ)) *
                    Render.rotz(Float32(pitch_ter)) * Render.rotx(Float32(roll_ter))   # whole car follows the hill (pitch + cross-slope roll)
@@ -1250,7 +1264,9 @@ function main()
         # exactly like the player's 3-D car (was yaw-only → they stayed flat).  6-tuple (x,y,z,θ,pitch,roll).
         aibankP(pc) = (isfinite(pc.pitch) ? pc.pitch : 0.0, (isfinite(pc.roll) ? pc.roll : 0.0) + terrain_roll(pc))
         aibankK(p)  = (cs=(x=p[1], z=p[3], θ=p[4]); (terrain_pitch(cs), terrain_roll(cs)))   # kinematic: terrain only
-        ai_poses = if AILINE === nothing || phase[] != :race      # AI hidden until the race starts (after qualifying)
+        ai_poses = if REPLAY                                       # E18: AI poses straight from the recording
+            NTuple{6,Float64}[(a[1],a[2],a[3],a[4],0.0,0.0) for a in rep_ai_raw]
+        elseif AILINE === nothing || phase[] != :race              # AI hidden until the race starts (after qualifying)
             NTuple{6,Float64}[]
         elseif !race_go[]                                         # standing on the grid (not yet launched)
             AI_PHYSICS ? [(b=aibankP(pc); (pc.x, groundz(pc.x, pc.z), pc.z, pc.θ, b[1], b[2])) for pc in AIPHYS] :
@@ -1332,7 +1348,7 @@ function main()
         # GD: rigid-body collision — when the player and an AI overlap and are CLOSING, apply a
         # momentum-exchange impulse: the player (real vehicle physics) is knocked off line + spun
         # via bumpX!, the AI is shoved aside + spun + scrubbed.  The wheels keep spinning with motion.
-        if race_go[] && !rst && !isempty(ai_poses)
+        if !REPLAY && race_go[] && !rst && !isempty(ai_poses)
             # slipstream for the PLAYER: tuck behind an AI on a straight → tow → slingshot past (not on grass)
             if AI_PHYSICS && (ph = JuliaMotor.hat(TRKSURF, cs.x, cs.z); ph.found && abs(ph.lateral) <= ROAD_HALFW)
                 plds = [(p[1], p[3], p[4], AICARS[k].v) for (k,p) in enumerate(ai_poses)]
