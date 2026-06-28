@@ -4,7 +4,7 @@
 # Zandvoort + Vanwall geometry, with native keyboard AND joystick input.  The
 # first step toward an rF1-fidelity self-contained app; the rendering core is
 # render.jl.
-using GLFW, ModernGL, LinearAlgebra, Dates
+using GLFW, ModernGL, LinearAlgebra, Dates, Serialization
 using JuliaMotor, RFactorData
 include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/drive_rt.jl"); using .DriveRT  # MTK physics (planar)
 include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/drive_rt3d.jl"); using .DriveRT3D  # full-3D physics (JM_3D=1)
@@ -150,6 +150,7 @@ const FUEL_MARGIN = max(0, tryparse(Int, get(ENV,"JM_FUEL_MARGIN","5")) |> x-> x
 # table+YAML template (so the file is byte-identical in structure / any iRacing tool
 # reads it) and fill the channels juliaMotor produces.
 const IBTREC = !haskey(ENV, "JM_NOIBT")          # .ibt telemetry ON by default (set JM_NOIBT to disable)
+const REPLAY_FILE = get(ENV, "JM_REPLAY", "")    # E18: if set, PLAY BACK this .jmr recording instead of driving
 const IBTDIR = "/home/g/sgl/THU/rFactor/juliaMotor/data/iracing"
 const IBTNAME = NURB ? "nurburgring nordschleife" : SKIDPAD ? "skidpad" : "zandvoort"
 const IBTTMPL = NURB ? joinpath(IBTDIR, "lotus49_nurburgring nordschleife 2026-06-14 11-11-37.ibt") :
@@ -997,6 +998,9 @@ function main()
     end
     ent_name(id) = id == 0 ? "You" : AICHASSIS[id].name
     ibt_samples = IBTREC ? Dict{String,Float64}[] : nothing      # iRacing-format telemetry rows
+    # E18: record ALL car poses (player + AI) for replay — a flat Float32 buffer, ~15 Hz, written .jmr at exit
+    REPLAY_REC = IS_RACE && N_AI > 0 && isempty(REPLAY_FILE) && (!SMOKE || haskey(ENV,"JM_REPLAY_REC"))
+    replay_buf = REPLAY_REC ? Float32[] : nothing; replay_t = Ref(-1.0); REPLAY_NCAR = 1 + length(AICARS)
     IBTREC && println("  recording iRacing .ibt telemetry (JM_IBT) — template: ", basename(IBTTMPL))
     telem = SMOKE ? nothing : open("zand_racer_$(round(Int,time())).txt", "w")
     telem !== nothing && write(telem,
@@ -1345,6 +1349,12 @@ function main()
                 end
             end
         end
+        # E18: record all car poses (player + AI) at ~15 Hz once the race is GREEN, for replay
+        if replay_buf !== nothing && race_go[] && !rst && length(ai_poses) == length(AICARS) && (cs.t - replay_t[]) >= 1/15
+            replay_t[] = cs.t
+            push!(replay_buf, Float32(cs.t), Float32(cs.x), Float32(cs.y), Float32(cs.z), Float32(cs.θ))
+            for p in ai_poses; push!(replay_buf, Float32(p[1]), Float32(p[2]), Float32(p[3]), Float32(p[4])); end
+        end
         aiCar(p)  = Render.translate(Float32[p[1], p[2], -p[3]]) * Render.roty(Float32(p[4])) *
                     Render.rotz(Float32(p[5])) * Render.rotx(Float32(p[6]))   # body follows the hill (pitch + cross-slope/collision roll)
         aiBody(p, cm) = aiCar(p) * Render.translate(collect(cm.body_off))
@@ -1441,6 +1451,18 @@ function main()
         catch e
             println("  .ibt export failed: ", e)
         end
+    end
+    if replay_buf !== nothing && !isempty(replay_buf)   # E18: save the all-car replay alongside the .ibt
+        try
+            ts = Dates.format(Dates.now(), "yyyy-mm-dd HH-MM-SS")
+            odir = get(ENV, "JM_IBT_DIR", joinpath(dirname(dirname(@__DIR__)), "data", "juliaracer"))
+            mkpath(odir)
+            out = joinpath(odir, "replay_$(TRACKSEL) $(ts).jmr")
+            names = String["Lotus 49"]; for m in AICHASSIS; push!(names, m.name); end
+            nf = length(replay_buf) ÷ (1 + 4*REPLAY_NCAR)
+            serialize(out, (track=TRACKSEL, ncar=REPLAY_NCAR, names=names, fps=15, nframes=nf, data=replay_buf))
+            println("  wrote replay: ", out, "  (", nf, " frames, ", filesize(out)÷1024, " KB)")
+        catch e; println("  replay export failed: ", e); end
     end
     ffb !== nothing && FFB.close_ffb(ffb)
     EngineAudio.stop!(ENG)
