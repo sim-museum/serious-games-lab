@@ -1,7 +1,31 @@
-# Julia Racer — Status (2026-06-26)
+# Julia Racer — Status (2026-06-28)
 
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/gui.py` (or `drive_native_mtk.jl`).
+
+## Cockpit deep-dive (2026-06-28 — match the GPL gold-standard cockpit)
+Per the PO's gold-standard Zandvoort cockpit shot (mirrors on the cowl at the sides, gauge
+binnacle around the wheel hub, near-transparent plexiglass). Done this pass:
+- **Transparent plexiglass** — `windlot` extracted + drawn LAST at alpha≈0.16, depth-write
+  off (uAlpha shader uniform). The bright gold rim is gone; you see the road/scenery through
+  it. Tunable nowhere yet (alpha literal).
+- **Wheels stay level with the cockpit** — `wheelmat` rides the full body tilt (`tiltModel`).
+- **Trackside objects no longer float** — `ploz` clamps an object's z to the track z-range
+  when it has no ground sample (was sky-floating buildings on the horizon).
+- **Gauge binnacle lifted** — `dash7a` is modelled LOW (below the hub); GPL puts it UP.
+  Lift via `JM_GAUGE_Y` (0.16) + nudge back via `JM_GAUGE_X` so the dials read on the cowl
+  around the wheel, not dumped at the screen bottom.
+- **Mirrors re-placed onto the cowl** — pulled out of the body (`MIRROR_TEX`) and tilted back
+  toward the eye (`JM_MIRROR_Y/X/TILT`) → round discs at the SIDES mid-height (was chrome
+  torpedoes in the bottom corners). No RTT, so they read as dark tinted discs, not live
+  reflections.
+- **GUI Auto/Manual gearbox switch** + verified the AUTO path auto-shifts up (8500 rpm-equiv)
+  AND down (3400, off-throttle) by road speed, auto-engaging 1st from neutral (`drive_rt3d.jl`).
+- **Remaining cockpit gap** vs gold standard: bright riveted-aluminium tub sides + gear lever
+  (ours reads dark — the one untextured tub shell was darkened to kill faceted clutter), the
+  front tyres peeking in at the lower-side edges (currently behind the dark coaming), and
+  gloved hands on the wheel (excluded). Front suspension proper is hidden under the nose from
+  the driver's eye in the real car; what GPL shows there is the front tyre + upper wishbone.
 
 ## Race mode (2026-06-26 — full "race the GPL grid")
 Pick **Race** + laps + #AI + AI speed % in the GUI. Flow: **qualify one lap → grid set by
