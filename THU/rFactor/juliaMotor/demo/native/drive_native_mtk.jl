@@ -620,9 +620,22 @@ const GRADE_SKIDPAD = ColourGrade((0.20,0.42,0.78),(0.62,0.74,0.88),0.18, (1,1,1
 # seamed against the procedural blue skydome.  Now a clear blue gradient + scattered clouds; the GPL
 # horizon ring is cropped to a thin low hill-band (build_horizon) so it no longer walls up into the sky.
 const GRADE_ZAND  = ColourGrade((0.24,0.46,0.80),(0.74,0.83,0.92),0.45, (1.07,1.0,0.85),(0.70,0.80,0.98),1.30, (1.12,1.10,1.06))
+# E22 (PO): per-track grades vs the GPL gold-standard screenshots on the USB ref drive.
+# SPA  — bright blue + puffy white cloud over lush green forest (sunny, saturated green).
+# MONZA — hazy bright blue-white daylight (light haze, near-white horizon, thin cloud).
+# WATKINS — hazy blue with a warm ring tint for the autumn tree-line.
+# NURB  — genuinely STORMY OVERCAST in the gold standard (heavy grey cloud, moody, desaturated);
+#         keep the full cloud deck but cool + darken it rather than the blue-sky look.
+const GRADE_SPA   = ColourGrade((0.22,0.45,0.82),(0.72,0.82,0.93),0.50, (1.07,1.0,0.85),(0.70,0.80,0.98),1.34, (1.10,1.13,1.05))
+const GRADE_MONZA = ColourGrade((0.31,0.51,0.80),(0.85,0.90,0.96),0.34, (1.07,1.02,0.90),(0.74,0.83,0.97),1.18, (1.17,1.15,1.11))
+const GRADE_WATK  = ColourGrade((0.28,0.48,0.80),(0.82,0.87,0.93),0.40, (1.10,1.02,0.86),(0.74,0.82,0.96),1.26, (1.21,1.16,1.06))
+const GRADE_NURB  = ColourGrade((0.42,0.48,0.56),(0.66,0.68,0.70),1.0, (0.92,0.92,0.95),(0.72,0.74,0.80),0.88, (0.90,0.91,0.96))
 const GRADE = SKIDPAD ? GRADE_SKIDPAD :
-              TRACKSEL == "zandvoort" ? GRADE_ZAND :
-              (TRACKSEL in ("nurburgring","monza","watglen","spa")) ? GRADE_SUNNY : GRADE_GPL
+              TRACKSEL == "zandvoort"   ? GRADE_ZAND :
+              TRACKSEL == "spa"         ? GRADE_SPA :
+              TRACKSEL == "monza"       ? GRADE_MONZA :
+              TRACKSEL == "watglen"     ? GRADE_WATK :
+              TRACKSEL == "nurburgring" ? GRADE_NURB : GRADE_GPL
 const ENG = EngineAudio.build_lotus(gamedata = GD)   # GPL Ford DFV V8, RPM-pitched; START is deferred to just before the game loop (below)
 print("loading textures… "); flush(stdout)
 const TEXIDX = Render.gpl_texture_index(ZD)
