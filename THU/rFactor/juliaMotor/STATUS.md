@@ -3,6 +3,30 @@
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/gui.py` (or `drive_native_mtk.jl`).
 
+## PO 15-item live-drive batch — ALL CODE FIXES IN (2026-06-28, E23–E37)
+The PO drove all 5 tracks and filed 15 items (backlog E23–E37). Every one now has its fix landed:
+- **Crash/flow:** E23 Nürburgring race crash (`SOLIDS` undefined → defined []); E28 AI never
+  appeared (qualifying made opt-in `JM_QUAL` → default goes straight to the grid with AI visible;
+  GUI AI default = 5); E26 no Skidpad in Race; E24 replay recorded by default.
+- **Graphics:** E27 removed blue sky (one OVERCAST grade, neutral-grey zenith so cloud gaps aren't
+  blue); E29 "carbonized" objects (raised per-draw `ambfill` → vibrant grandstands/banners);
+  E34 Zandvoort "floating buildings" = the same carbonized slabs, lit properly they sit on the ground.
+- **Cockpit (deep-dive):** E36 black band below the wheel = the **DRIVER FIGURE's own torso/lap**
+  (`driver5`/`lotbody`/`lotsho`/`knees`/`neck`) seen from inside the figure — pulled into a separate
+  `driverItems` drawn ONLY in chase/external view; cockpit now shows green BRG tub, LOTUS hub badge,
+  gauges, tan dash (≈ gold standard). E35 "yellow panel on the front wheels" = the same driver knees/lap,
+  resolved by the same pull.
+- **E25 REPLAY CINEMATIC VIEWER (new):** `.jmr` playback now cycles SIX GPL cameras with **V**
+  (cockpit · chase/above-rear · TV/distant · F10 rear · nose/front · RR-suspension) and switches the
+  focus car with **C** (player + every recorded AI). `replay_camera(mode,x,y,z,θ)`; `N_AI` in replay
+  comes from the recording so every car renders; title shows camera+car+VCR. Headless-verified on
+  Zandvoort (all 6 angles frame the car; C switches to the red Ferrari).
+- **E37** auto-shift through all 5 gears (up 7000 / down 4100 / gate 0.85).
+- **Awaiting PO re-drive to close** (code in, felt-while-driving, can't self-verify headless):
+  E30 Watkins esses bog (ROAD_HALFW 7.5→9.0) · E31 Monza tree-curtain/hedge-box (on_road filter drops
+  road-planted sprites + hedge solids) · E32 superball respawn/hard-hit (respawn3d! settles flat;
+  cartwheel case untested) · E33 Watkins balcony (pitbldg pushed 5 m off the road — confirm it's the one).
+
 ## Sky + per-track graphics pass (2026-06-28 — E19–E22, autonomous sprint)
 Against the PO's GPL gold-standard screenshots (`/run/media/g/84AF-CC77/<track>/`). All
 SMOKE-verified vs the namesake reference shots:
