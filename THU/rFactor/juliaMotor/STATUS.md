@@ -25,10 +25,15 @@ grass-molasses), AI must not entangle/flop; ignore wheelspin in AI collisions if
   (≤7 m/s up) + ROLL (cartwheel) into the AI's 3-D body — the flop, and likely the E38 hyperspace
   (violent impulse diverged the MTK integrator).  Now: planar push + mild yaw, no launch/roll, capped —
   AI bump like billiard balls.  The player keeps full collision feel.
-- **AI model status:** the DEFAULT race AI is **kinematic** (rail-bound) and laps the Nürburgring
-  cleanly (131-133 km/h, max_lat 4.0 m, no spins) — stable on all tracks.  The opt-in **physics AI**
-  (`JM_AI_PHYSICS`) still diverges on the hilly tracks (Nürburgring self-test: max_yaw blows up, cars
-  spin/stick) — a deeper **G2 controller-tuning** task, left opt-in/experimental.
+- **AI model status (self-test, 5 cars × 90 s):** the DEFAULT race AI is **kinematic** (rail-bound)
+  and laps every track cleanly (Nürburgring 131-133 km/h, max_lat 4.0 m, no spins) — this is the
+  shipping race experience, non-flopping on all 5 tracks.  The opt-in **physics AI** (`JM_AI_PHYSICS`):
+  Zandvoort ✓ clean (max_yaw 1.45, 0 spins), Monza borderline (228 spins but laps at ~125 km/h), but
+  **Spa and Nürburgring DIVERGE** — the 3-D MTK integrator's yaw rate explodes (281 / 1239) on the big
+  elevation/speed.  That's the **E6 "3-D model robust on real terrain / no divergence"** gap, NOT a
+  controller spin — `place3d!` recovery can't reset a diverged integrator.  So physics AI is viable on
+  the flat tracks only; the launcher correctly leaves it OFF (kinematic default).  E55 fixes landed
+  for it anyway (collision de-launch + spin-save), valid where the physics is stable.
 - **Still needs PO re-drive to close:** E52 (drive Monza Lesmos→Ascari, confirm you pass under the
   banking), E55 (race with AI, confirm no flopping).  Deferred scenery: E43/E44/E45/E46/E41.
 
