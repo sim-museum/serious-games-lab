@@ -759,6 +759,16 @@ monza_obj_grade(nm) =
     ((startswith(nm,"nbank")||startswith(nm,"sbank")||startswith(nm,"sbnk")||startswith(nm,"nbnk")||startswith(nm,"bnk")) &&
         !occursin("ads",nm) && !occursin("shel",nm) && !occursin("pep",nm)) ? :bank :
     :keep
+# E46: the GPL crowd MIP renders over-BLUE (worst on Zandvoort's main grandstand — garish blue rows).
+# A per-draw colour multiply warms + de-blues the grandstand/crowd objects toward varied skin/clothing
+# tones (it can't fix the texture's horizontal SMEAR, which is UV/geometry — that needs a re-map).
+# Cross-track by name pattern; default tint warms red/green a touch and cuts blue ~22 %.  Tunable.
+const CROWD_TINT = (parse(Float32, get(ENV,"JM_CROWD_TR","1.12")),
+                    parse(Float32, get(ENV,"JM_CROWD_TG","1.04")),
+                    parse(Float32, get(ENV,"JM_CROWD_TB","0.78")))
+is_crowd_obj(nm) = occursin("stand", nm) || occursin("tribun", nm) || occursin("crowd", nm) ||
+                   occursin("spect", nm) || startswith(nm,"grnd") || startswith(nm,"pplrow") ||
+                   startswith(nm,"peprow") || startswith(nm,"plrow") || startswith(nm,"pitpe")
 # GPL sky dome: the 12-panel horizon ring (horiz0..11), camera-centred backdrop.
 const HORIZON_RING = if !SKIDPAD
     Render.build_horizon(TEXIDX)
@@ -2024,7 +2034,8 @@ function main()
                 g = monza_obj_grade(onm)
                 g === :road && ((ob, oa) = (MZ_ROAD_B, MZ_ROAD_A)); g === :bank && ((ob, oa) = (MZ_BANK_B, MZ_BANK_A))
             end
-            for it in items; Render.draw(prog, it, vp, mat; bright=ob, ambfill=oa, graze=grz); end   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
+            otint = is_crowd_obj(onm) ? CROWD_TINT : (1f0,1f0,1f0)   # E46: warm/de-blue the over-blue grandstand crowd MIP
+            for it in items; Render.draw(prog, it, vp, mat; bright=ob, ambfill=oa, graze=grz, tint=otint); end   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
         end
         for (it,pos,w,h,yaw) in STATICTREES                      # wide forest-edge panels (authored yaw, graze-fade)
             (eye[1]-pos[1])^2+(eye[2]-pos[2])^2+(eye[3]-pos[3])^2 > BB_CULL2 && continue

@@ -307,6 +307,7 @@ uniform vec3 uSunCol;     // directional-sun tint (warm white on the sunny grade
 uniform vec3 uAmbSky;     // up-facing sky-fill colour (cool blue on the sunny grade → cooler shadows)
 uniform float uSat;       // output saturation multiplier (>1 = punchier sunny colours; 1 = neutral)
 uniform vec3 uSkyTint;    // GPL horizon-ring multiply (warm/brighten the overcast band toward sunny)
+uniform vec3 uTint;       // per-draw colour multiply (default white = no-op; e.g. de-blue the crowd MIP)
 float shadow(vec3 N){
   vec3 lp = vLS.xyz/vLS.w*0.5+0.5;
   if(lp.z>1.0 || lp.x<0.0||lp.x>1.0||lp.y<0.0||lp.y>1.0) return 1.0;
@@ -344,7 +345,7 @@ void main(){
   float diff=max(dot(N,normalize(uLightDir)),0.0)*shadow(N);
   vec3 grd=vec3(0.34,0.36,0.26);                             // ground-bounce fill (warm)
   vec3 amb=mix(grd,uAmbSky,0.5+0.5*N.y)*0.46;                // sky-fill: uAmbSky tints the up-facing fill (cool=sunny shadows)
-  vec3 base = t.rgb;
+  vec3 base = t.rgb * uTint;                                 // per-draw colour multiply (default white)
   if(uHasTex==1 && max(abs(vUV.x),abs(vUV.y)) > 3.0)   // tiling surface: gently break up the repeat
     base *= mix(vec3(1.0), texture(uTex, vUV*0.07).rgb * 1.7, 0.45);   // softer → no harsh light/dark patches
   vec3 lit = pow(base*(amb+0.5*uAmbFill+diff*1.15*uSunCol)*uBright, vec3(0.94));   // stronger sun (0.95→1.15), tinted by uSunCol; gamma→neutral (0.85→0.94) ⇒ GPL contrast
@@ -548,6 +549,7 @@ function set_scene_uniforms(prog, campos; fognear=300f0, fogfar=2400f0,
     glUniform1f(glGetUniformLocation(prog,"uSat"),Float32(sat))
     glUniform1f(glGetUniformLocation(prog,"uFogNear"),Float32(fognear))
     glUniform1f(glGetUniformLocation(prog,"uFogFar"),Float32(fogfar))
+    glUniform3f(glGetUniformLocation(prog,"uTint"),1f0,1f0,1f0)   # frame default white (draws that bypass draw(), e.g. the horizon ring)
 end
 
 # ---- 2D HUD: flat-coloured quads in pixel space (7-segment digits + bars), no
@@ -1210,8 +1212,9 @@ function build_track(parts, texidx)
     items
 end
 setmat(prog,name,M)=glUniformMatrix4fv(glGetUniformLocation(prog,name),1,GL_FALSE,M)
-function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0, graze::Bool=false, alpha::Real=1.0)
+function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0, graze::Bool=false, alpha::Real=1.0, tint=(1f0,1f0,1f0))
     setmat(prog,"uVP",vp); setmat(prog,"uModel",model)
+    glUniform3f(glGetUniformLocation(prog,"uTint"), Float32(tint[1]), Float32(tint[2]), Float32(tint[3]))   # per-draw colour multiply (default white = no-op)
     glUniform1f(glGetUniformLocation(prog,"uBright"), Float32(bright))
     glUniform1f(glGetUniformLocation(prog,"uSpec"), Float32(spec))
     glUniform1f(glGetUniformLocation(prog,"uAlpha"), Float32(alpha))
