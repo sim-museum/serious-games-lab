@@ -953,6 +953,15 @@ function extract_gpl_steering(path3do)
     n==0 && return (TrackPart[], Float32[0,0,0], Float32[1,0,0])
     center = Float32[cx/n, cy/n, cz/n]
     al = normalize([nx,ny,nz]); axis = Float32[al[1],al[2],al[3]]
+    # E50: the LOTUS badge (lsterlog) sits COPLANAR with the red hub face (sterlot) — they
+    # z-fought, so the wheel centre shimmered.  Push the badge ~3 mm toward the driver
+    # (along the column axis = the front-facing normal) so it always wins the depth test.
+    if haskey(groups, "lsterlog")
+        v = groups["lsterlog"]; ε = 0.003f0
+        for i in 0:11:length(v)-11
+            v[i+1] += ε*axis[1]; v[i+2] += ε*axis[2]; v[i+3] += ε*axis[3]
+        end
+    end
     ([TrackPart(v, tex, (0.7f0,0.72f0,0.74f0)) for (tex,v) in groups], center, axis)
 end
 

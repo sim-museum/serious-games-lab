@@ -564,7 +564,7 @@ const MIRROR_DX   = parse(Float32, get(ENV,"JM_MIRROR_X","0.075"))
 const MIRROR_TILT = deg2rad(parse(Float32, get(ENV,"JM_MIRROR_TILT","-25")))   # E48: stand the discs UPRIGHT facing the eye (+22 read as "angled down" — we saw the top faces)
 const MIRROR_SCALE = parse(Float32, get(ENV,"JM_MIRROR_SCALE","0.5"))    # disc SIZE (round-mirror size)
 const MIRROR_SPREAD = parse(Float32, get(ENV,"JM_MIRROR_SPREAD","1.7"))   # lateral separation multiplier — push the pair out to the screen edges
-const WIND_ALPHA   = parse(Float32, get(ENV,"JM_WIND_ALPHA","0.30"))     # plexiglass opacity — faintly visible (was 0.16 = invisible)
+const WIND_ALPHA   = parse(Float32, get(ENV,"JM_WIND_ALPHA","0.0"))      # E49: OFF — windlot is the tan SCUTTLE, not glass; drawn translucent it read as an angled "plywood board" (PO). Cockpit is cleaner without it. JM_WIND_ALPHA>0 re-enables.
 const MIRRORMAT = Render.translate(Float32[MIRROR_DX,MIRROR_DY,0]) *
                   Render.translate(MCEN) * Render.rotz(MIRROR_TILT) * Render.scalexyz(MIRROR_SCALE,MIRROR_SCALE,MIRROR_SCALE*MIRROR_SPREAD) * Render.translate(-MCEN)
 println(length(TRACK), " track parts + ", length(CARP), " Lotus body parts")
@@ -1730,9 +1730,11 @@ function main()
         # plexiglass WINDSCREEN — drawn LAST, FAINTLY VISIBLE glass (PO: it had vanished at 0.16), depth-write
         # OFF so the front suspension + track read through it (GPL gold standard) but the screen still reads as
         # a tinted curved plexiglass, not a bright opaque gold rim.  JM_WIND_ALPHA tunes it.
-        glDepthMask(GL_FALSE)
-        for it in windItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.05, ambfill=0.5, alpha=WIND_ALPHA); end
-        glDepthMask(GL_TRUE)
+        if WIND_ALPHA > 0
+            glDepthMask(GL_FALSE)
+            for it in windItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.05, ambfill=0.5, alpha=WIND_ALPHA); end
+            glDepthMask(GL_TRUE)
+        end
         α_tc = clamp(dt/0.10, 0.0, 1.0)              # smooth the traction-circle display (coarse-mesh Fz spikes → no flicker)
         tc_hud = ntuple(i -> ntuple(j -> tc_hud[i][j] + (cs.tc[i][j]-tc_hud[i][j])*α_tc, 3), 4)
         Render.hud_draw(hudprog, hudvao, hudvbo,
