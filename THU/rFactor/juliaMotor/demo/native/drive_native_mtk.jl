@@ -655,8 +655,9 @@ const FENCE_GRACE = parse(Float64, get(ENV, "JM_FENCE_GRACE", "2.5"))   # off-HA
 # tarmac edge at ~5.5 m off the centreline) → the car felt like it was "always on grass" / bogging.  Now
 # the threshold clears the widest racing line (only a genuine off-track excursion trips it) and the drag is
 # a gentle "slow grass", never a molasses bog.
-const GRASS_DRAG = parse(Float64, get(ENV, "JM_GRASS_DRAG", "0.30"))     # grass penalty: per-second velocity loss on the verge (GPL "slow grass")
-const GRASS_SLIP = parse(Float64, get(ENV, "JM_GRASS_SLIP", "0.15"))     # grass penalty: random yaw wobble (reduced grip feel)
+const GRASS_DRAG = parse(Float64, get(ENV, "JM_GRASS_DRAG", "0.30"))     # grass penalty: per-second velocity loss on the verge (GPL "slow grass") — now AI-only (player uses μ)
+const GRASS_SLIP = parse(Float64, get(ENV, "JM_GRASS_SLIP", "0.15"))     # grass penalty: random yaw wobble (reduced grip feel) — AI-only
+const GRASS_MU   = clamp(parse(Float64, get(ENV, "JM_GRASS_MU", "0.5")), 0.1, 1.0)   # E56: PLAYER grass = per-wheel tyre friction fraction (a wheel off the surface loses real grip + pulls)
 const ROAD_HALFW = parse(Float64, get(ENV, "JM_ROAD_HALFW", "9.0"))      # racing-surface half-width (m); beyond it = grass. Matched to the robust 9 m TrackSurface corridor so the centreline-projection wobble through tight ESSES (Watkins) no longer reads as "on grass" and bogs the car on the real road (E30).
 const KEEP_GRASS = haskey(ENV, "JM_KEEP_GRASS")    # E17 experiment: render the GPL green grass-cover planes (dropped by default)
 println(CAR3D ? "  PHYSICS: full-3D vehicle (default) — heave/pitch/roll + suspension travel + jumps" :
@@ -1583,6 +1584,22 @@ function main()
                     cpk > 1.0e3 && (ffb_jolt = clamp(sign(cmz != 0 ? cmz : 1.0) * min(cpk/8.0e4, 1.0), -1.0, 1.0))  # feel the hit
                 end
                 DriveRT3D.extforce3d!(cs; Fx = cfx, Fy = cfy, Mz = cmz, CdA_scale = PLAYER_CDA[])
+                # E56 grass = per-wheel tyre μ: any wheel off the racing surface loses real grip (and
+                # pulls the car) in the brush model — replaces the bumpX! grass drag/yaw hack (which is
+                # now AI-only).  Only project the 4 wheels when the car is near/over the edge (cheap on-track).
+                μFL = μFR = μRL = μRR = 1.0
+                if !SKIDPAD && !rst
+                    hc = JuliaMotor.hat(TRKSURF, cs.x, cs.z)
+                    if hc.found && abs(hc.lateral) > ROAD_HALFW - 1.2
+                        cθg = cos(cs.θ); sθg = sin(cs.θ)
+                        wmu(xi, yi) = (wx = cs.x + xi*cθg - yi*sθg; wz = cs.z + xi*sθg + yi*cθg;
+                                       hw = JuliaMotor.hat(TRKSURF, wx, wz);
+                                       (hw.found && abs(hw.lateral) > ROAD_HALFW) ? GRASS_MU : 1.0)
+                        μFL = wmu( 1.314,  0.75); μFR = wmu( 1.314, -0.75)
+                        μRL = wmu(-1.096,  0.75); μRR = wmu(-1.096, -0.75)
+                    end
+                end
+                DriveRT3D.wheelmu3d!(cs, μFL, μFR, μRL, μRR)
             end
             step_carX!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
@@ -1602,15 +1619,9 @@ function main()
                 player_s_prev = ps
                 while cs.laps < floor(Int, player_prog/CLINE.total); cs.laps += 1; end
             end
-            # GPL GRASS PENALTY: off the racing surface (on the verge/grass) but still in the world →
-            # reduced grip + drag: scrub speed and add a little slip wobble (so cutting onto grass costs you).
-            # NB use |lateral|>ROAD_HALFW, NOT hr.on_track — the TrackSurface is 9 m half-wide (for robust
-            # projection) but the rendered GPL road is only ~ROAD_HALFW, so on_track stays true well into
-            # the grass (cars ran the verge penalty-free).  ROAD_HALFW matches what you actually see.
-            if hr.found && abs(hr.lateral) > ROAD_HALFW && cs.v > 2.5 && race_go[] && !rst
-                gdt = dt > 1e-4 ? dt : 1/60
-                bumpX!(cs, -GRASS_DRAG*cs.v*cos(cs.θ)*gdt, -GRASS_DRAG*cs.v*sin(cs.θ)*gdt, (2*rand()-1)*GRASS_SLIP*gdt)
-            end
+            # E56: the PLAYER grass penalty is now per-wheel tyre μ applied BEFORE the step (above) —
+            # a wheel off the racing surface loses real grip in the brush model and pulls the car, rather
+            # than the old post-step bumpX! drag/yaw scrub.  (The AI keep the bumpX! grass penalty.)
             # E7 boundary = the WORLD edge (the terrain HAT): you can drive the road AND the grass
             # freely, but if you go off the HAT you've left the world → snap back to the last spot
             # inside it (a fence/hedge collision) and bleed speed.  (Based on the HAT, NOT the racing

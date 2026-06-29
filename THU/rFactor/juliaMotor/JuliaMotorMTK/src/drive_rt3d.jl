@@ -20,7 +20,7 @@ for f in ("tyre.jl","powertrain.jl","vehicle_3d.jl")
     include(joinpath(HERE, "components", f))
 end
 
-export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force
+export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, wheelmu3d!
 
 const GEARS = [2.23, 1.72, 1.32, 1.09, 0.916]
 gearratio(g::Int) = g <= 0 ? 0.0 : GEARS[g]
@@ -44,6 +44,7 @@ mutable struct Car3D
     s_pos; s_vel                                   # world-pos (X,Y) + body-vel (u,v) STATE setters (boundary)
     s_vreset                                       # vertical-subsystem reset (divergence guard)
     s_fx; s_fy; s_mz; s_cda                        # E56: body-frame external force/moment + drag-scale PORT setters
+    s_mu::NTuple{4,Any}                            # E56: per-wheel tyre μscale setters (FL FR RL RR) — grass grip loss
     getall
     gear::Int
     zref::Float64                                  # tracked ground reference height [m]
@@ -55,6 +56,17 @@ mutable struct Car3D
     lapdist::Float64; laps::Int; lateral::Float64; along::Float64; ontrack::Bool
     pitch::Float64; roll::Float64; vacc::Float64; heave::Float64
     rh::NTuple{4,Float64}                           # per-corner ride height [m] (FL FR RL RR)
+end
+
+# E56: build the four per-wheel μscale setters (BrushTyre only; the JM_MAGIC Tyre has no μscale →
+# fall back to no-op setters so wheelmu3d! is harmless there).
+function _musetters(sys)
+    try
+        (setp(sys,sys.FL.μscale), setp(sys,sys.FR.μscale), setp(sys,sys.RL.μscale), setp(sys,sys.RR.μscale))
+    catch
+        nop = (integ, v) -> nothing
+        (nop, nop, nop, nop)
+    end
 end
 
 function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
@@ -77,6 +89,7 @@ function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
               ModelingToolkit.setu(sys,[sys.z,sys.w,sys.th,sys.q,sys.ph,sys.pp,
                   sys.zuFL,sys.vuFL,sys.zuFR,sys.vuFR,sys.zuRL,sys.vuRL,sys.zuRR,sys.vuRR]),
               setp(sys,sys.Fx_ext),setp(sys,sys.Fy_ext),setp(sys,sys.Mz_ext),setp(sys,sys.CdA_scale),
+              _musetters(sys),
               getall, 1, y0, ntuple(_->0.0,4),
               x0, y0, z0, θ0, v0, 0.0, 0.0, 1, ntuple(_->(0.0,0.0,0.0),4),
               0.0, 0, 0.0, 0.0, true, 0.0, 0.0, 9.80665, 0.0, ntuple(_->RH0,4))
@@ -101,6 +114,7 @@ function build_cars3d(poses; brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
     s_vreset=ModelingToolkit.setu(sys,[sys.z,sys.w,sys.th,sys.q,sys.ph,sys.pp,
                   sys.zuFL,sys.vuFL,sys.zuFR,sys.vuFR,sys.zuRL,sys.vuRL,sys.zuRR,sys.vuRR])
     s_fx=setp(sys,sys.Fx_ext); s_fy=setp(sys,sys.Fy_ext); s_mz=setp(sys,sys.Mz_ext); s_cda=setp(sys,sys.CdA_scale)
+    s_mu=_musetters(sys)
     getall=ModelingToolkit.getsym(sys, [sys.X, sys.Y, sys.ψ, sys.u, sys.v, sys.rpm,
         sys.FL.Fx, sys.FR.Fx, sys.RL.Fx, sys.RR.Fx, sys.FL.Fy, sys.FR.Fy, sys.RL.Fy, sys.RR.Fy,
         sys.z, sys.th, sys.ph, sys.az, sys.FzFL, sys.FzFR, sys.FzRL, sys.FzRR, sys.ωr])
@@ -110,7 +124,7 @@ function build_cars3d(poses; brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
                                 sys.ωe=>209.4, sys.X=>x0, sys.Y=>z0, sys.ψ=>θ0], (0.0,1e7))
         integ = init(prob, Rosenbrock23(); save_everystep=false, dense=false, adaptive=false, dt=dt)
         c = Car3D(sys, integ, s_thr,s_brk,s_st,s_gr,s_clu,s_we, s_zr, s_vr, s_pos,s_vel, s_vreset,
-                  s_fx,s_fy,s_mz,s_cda,
+                  s_fx,s_fy,s_mz,s_cda, s_mu,
                   getall, 1, 0.0, ntuple(_->0.0,4),
                   x0, 0.0, z0, θ0, v0, 0.0, 0.0, 1, ntuple(_->(0.0,0.0,0.0),4),
                   0.0, 0, 0.0, 0.0, true, 0.0, 0.0, 9.80665, 0.0, ntuple(_->RH0,4))
@@ -329,6 +343,16 @@ contact force for the frame and call with no contact (defaults) to release (`ext
 function extforce3d!(c::Car3D; Fx = 0.0, Fy = 0.0, Mz = 0.0, CdA_scale = 1.0)
     c.s_fx(c.integ, Fx); c.s_fy(c.integ, Fy); c.s_mz(c.integ, Mz)
     c.s_cda(c.integ, clamp(CdA_scale, 0.0, 2.0))
+    c
+end
+
+"""E56 grass grip: set each wheel's tyre friction multiplier (FL,FR,RL,RR; 1 = tarmac, <1 = grass).
+A wheel on the verge loses real grip in the brush tyre model — so two wheels on the grass pull the
+car and cost cornering/braking, exactly as in GPL — replacing the bumpX! grass drag/yaw hack.  Call
+before step_car3d! each frame; pass 1.0 for wheels on the racing surface."""
+function wheelmu3d!(c::Car3D, μFL, μFR, μRL, μRR)
+    c.s_mu[1](c.integ, clamp(μFL, 0.05, 1.0)); c.s_mu[2](c.integ, clamp(μFR, 0.05, 1.0))
+    c.s_mu[3](c.integ, clamp(μRL, 0.05, 1.0)); c.s_mu[4](c.integ, clamp(μRR, 0.05, 1.0))
     c
 end
 
