@@ -627,3 +627,16 @@ maze you steer into; the other 4 tracks render correctly." Fixed the brightness 
 - **E46 ✅ blue crowd de-blued:** per-draw `uTint` shader uniform + warm/de-blue tint on grandstand/
   crowd objects (cross-track, JM_CROWD_T*). The garish electric-blue → varied tones. Residual: the
   crowd MIP's horizontal SMEAR (UV/geometry, needs a re-map — separate from the tint).
+
+### Physics-AI Nürburgring — failed experiments log (2026-06-29, autonomous)
+Bounded controller fixes for the Nürburgring physics-AI stuck/launch loop, all TESTED and rejected
+(so they're not re-tried). The kinematic AI laps Nürburgring cleanly; physics-AI is opt-in.
+- **amax=6 (conservative corner speed):** WORSE on both tracks (Spa 1014→1434 spins, 3/5→1/5;
+  Nürburgring catastrophic — a car into 17 km of teleport-loop). Reverted; JM_AI_AMAX=8.0 kept.
+- **airborne-aware controller (coast straight / no throttle in free-fall, vacc<2.5):** marginal on
+  Nürburgring (spins 1025→992, within noise; still 4/5 stuck + 1 launching) and slightly WORSE on Spa
+  (1014→1479, 3/5→2/5). Reverted — the failure isn't airborne-input-driven.
+- **CONCLUSION:** the Nürburgring physics-AI failure is deep 3-D-model airborne/contact instability on
+  the extreme rFactor jumps (spin→launch→respawn), NOT controller-tunable. Needs core model work
+  (landing-contact stability) — a large, separate E6 effort. Physics-AI is viable on the flatter GPL
+  tracks (Zandvoort clean, Spa 3/5 lapping via the committed anti-spin); kinematic stays the default.
