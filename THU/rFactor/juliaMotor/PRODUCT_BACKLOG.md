@@ -640,3 +640,15 @@ Bounded controller fixes for the Nürburgring physics-AI stuck/launch loop, all 
   the extreme rFactor jumps (spin→launch→respawn), NOT controller-tunable. Needs core model work
   (landing-contact stability) — a large, separate E6 effort. Physics-AI is viable on the flatter GPL
   tracks (Zandvoort clean, Spa 3/5 lapping via the committed anti-spin); kinematic stays the default.
+
+### PO Zandvoort drive feedback (2026-06-29, autonomous) — fixes
+- **E45 ✅ floating horizon buildings = `hotels`** — identified by drop-test (310 m garbage bbox that
+  never grounds → hovers above the grandstand). Dropped it; horizon now clean (ring+dunes carry the
+  backdrop). New `JM_DROPTEST=<prefix,…>` env diagnostic for fast scenery ID.
+- **AI line cuts grass at T1 ✅** — `build_line` now curvature-tapers the apex band (full ±halfwidth on
+  fast corners, →halfwidth/2 at hairpins) so the racing line stays on tarmac at tight corners (Tarzan).
+- **Audio device race ✅** (earlier) — the engine-audio open now RETRIES the PipeWire startup race
+  instead of giving up → sound works (verified: game holds /dev/snd/pcmC0D0p).
+- **Sound cut T1→S/F ⏳** — likely first-lap JIT starving the audio thread (recovers at lap end); awaiting
+  PO confirm whether it recurs on lap 2+ (if so → a per-section render hitch to chase).
+- **No carbonized objects ✅** (E57 grade) — PO confirmed "nice improvement".
