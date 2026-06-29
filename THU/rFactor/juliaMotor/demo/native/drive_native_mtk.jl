@@ -949,11 +949,11 @@ const PROJ = Render.perspective_revz(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0
 const PROJ_COCKPIT = Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_FOV","80"))), Float32(W/H), 0.20f0, 3000f0)
 
 # ---- input: edge-detected shift, view + auto-gearbox toggle ----
-mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; view::Int; auto::Bool; end
+mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; prevRec::Bool; view::Int; auto::Bool; end
 # shift mode: AUTO by default (auto-clutch + auto-shift) — press throttle and GO, the car never bogs
 # on the line or out of a slow corner.  Press G in-app for MANUAL (work the clutch on C, shift E/Q —
 # release the clutch too low and it crawls/bogs, just like the real thing).  ZAND_SHIFT=manual forces it.
-const CTL = Ctl(false,false,false,false,false, parse(Int, get(ENV,"JM_VIEW","1")), get(ENV,"ZAND_SHIFT","auto") != "manual")   # view 1=chase 0=cockpit; AUTO gearbox by default (G toggles)
+const CTL = Ctl(false,false,false,false,false,false, parse(Int, get(ENV,"JM_VIEW","1")), get(ENV,"ZAND_SHIFT","auto") != "manual")   # view 1=chase 0=cockpit; AUTO gearbox by default (G toggles)
 key(k) = GLFW.GetKey(win, k) == GLFW.PRESS
 function read_input()
     thr=brk=str=clu=0.0; up=dn=false
@@ -974,9 +974,14 @@ function read_input()
     kv = key(GLFW.KEY_V); (kv && !CTL.prevV) && (CTL.view = 1-CTL.view); CTL.prevV = kv
     kg = key(GLFW.KEY_G); (kg && !CTL.prevG) && (CTL.auto = !CTL.auto); CTL.prevG = kg
     km = key(GLFW.KEY_M); (km && !CTL.prevM) && (ENG.master[] = ENG.master[]>0 ? 0.0 : 0.7); CTL.prevM = km
-    rst = key(GLFW.KEY_R)
+    # R = respawn at the start; SHIFT+R (GPL) = recover onto the centreline at the CURRENT lap position
+    # (upright, stopped) so you can rejoin from the grass/a spin without teleporting to the line.  recover
+    # is EDGE-triggered (one drop per press); both set `rst` so the per-frame respawn guards still apply.
+    rkey  = key(GLFW.KEY_R); shift = key(GLFW.KEY_LEFT_SHIFT) || key(GLFW.KEY_RIGHT_SHIFT)
+    recover = rkey && shift && !CTL.prevRec; CTL.prevRec = rkey && shift
+    rst = (rkey && !shift) || recover
     (DriveInput(throttle=clamp(thr,0,1), brake=clamp(brk,0,1), steer=clamp(str,-1,1),
-                clutch=clu, shift_up=upE, shift_down=dnE, autoshift=CTL.auto), rst)
+                clutch=clu, shift_up=upE, shift_down=dnE, autoshift=CTL.auto), rst, recover)
 end
 
 # ---- terrain pitch: slope under the car from the HAT, sampled fore & aft ----
@@ -1095,6 +1100,20 @@ function main()
             println("    +", Int(d), "m on centreline: CLINE lat=", round(pl2[2],digits=2), "  TRKSURF lat=", round(ph2.lateral,digits=2), " on_track=", ph2.on_track)
         end
         flush(stdout)
+    end
+    # JM_START_S=<metres>: teleport the standing car to this distance along the centreline before the
+    # game loop starts — lets a SMOKE render photograph ANY point on the lap (scenery QA: the Watkins
+    # balcony, the Nürburgring carbonized stretch, …), not just the start/finish line.  Re-anchors the
+    # vertical state to the terrain there so the car doesn't slam/diverge on a big-elevation track.
+    if CLINE !== nothing && CAR3D && haskey(ENV, "JM_START_S")
+        s0 = clamp(parse(Float64, ENV["JM_START_S"]), 0.0, CLINE.total)
+        p  = RaceAI.pose_at(CLINE, s0, 0.0)                 # (x, y, z, θ) on the racing line
+        DriveRT3D.place3d!(cs, p[1], p[3], p[4]; v = 0.0)
+        cs.s_vreset(cs.integ, zeros(14))                    # zero the vertical subsystem (no spawn bounce)
+        h = groundz(p[1], p[3]); isfinite(h) && (cs.zref = Float64(h))
+        cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
+        println("  JM_START_S: car placed at s=", round(Int, s0), " m on the centreline (x=",
+                round(Int, p[1]), " z=", round(Int, p[3]), ")"); flush(stdout)
     end
     AILINE = (CLINE !== nothing && N_AI > 0) ? CLINE : nothing
     AICARS = AILINE === nothing ? RaceAI.AICar[] : RaceAI.init_cars(AILINE, N_AI; start_s = 30.0)
@@ -1284,7 +1303,7 @@ function main()
     telem = SMOKE ? nothing : open("zand_racer_$(round(Int,time())).txt", "w")
     telem !== nothing && write(telem,
         "# zand_racer telemetry — Lotus 49 @ Zandvoort\n# t\tlap\tlapdist\tkmh\tthr\tbrk\tsteer\tclu\tgear\trpm\tx\tz\tlat\talong\tontrack\n")
-    println("\n  Drive:  W/S gas·brake   A/D steer   E/Q shift   C clutch   R respawn   V view   G auto⇄manual   M mute   Esc quit"); flush(stdout)
+    println("\n  Drive:  W/S gas·brake   A/D steer   E/Q shift   C clutch   R respawn   ⇧R recover-to-track   V view   G auto⇄manual   M mute   Esc quit"); flush(stdout)
     println("  AUTO gearbox by default — just press the throttle and go (no clutch needed).  Press G for")
     println("  MANUAL: hold the clutch (C / stick button) to shift E/Q (release it too low and it bogs).")
     println("  Lap times top-left: white = last, green = best.  Telemetry → ./zand_racer_*.txt")
@@ -1297,7 +1316,7 @@ function main()
         key(GLFW.KEY_ESCAPE) && break
         SMOKE && frames >= 40 && break
         now = time(); dt = clamp(now-last, 0.0, 0.05); last = now
-        inp, rst = read_input()
+        inp, rst, recover = read_input()
         if REPLAY                                   # E18 PLAYBACK: VCR + set poses from the recording, skip the sim
             sp = key(GLFW.KEY_SPACE); (sp && !rep_psp[]) && (rep_play[] = !rep_play[]); rep_psp[] = sp
             up = key(GLFW.KEY_UP);   (up && !rep_pup[]) && (rep_speed[] = clamp(rep_speed[]*2, 0.25, 8.0)); rep_pup[] = up
@@ -1354,7 +1373,14 @@ function main()
                             clutch=inp.clutch, shift_up=inp.shift_up, shift_down=inp.shift_down, autoshift=inp.autoshift))
         end
         rst && FUEL_ON && (fuel[] = burn_lap * fuel_laps)        # respawn refuels
-        if rst; respawnX!(cs; groundz=groundz)
+        if recover && CLINE !== nothing && CAR3D
+            # SHIFT-R: drop back onto the centreline at the CURRENT lap position, upright + stopped
+            sR = RaceAI.project(CLINE, cs.x, cs.z)[1]; pR = RaceAI.pose_at(CLINE, sR, 0.0)
+            DriveRT3D.place3d!(cs, pR[1], pR[3], pR[4]; v=0.0)
+            cs.s_vreset(cs.integ, zeros(14))
+            hR = groundz(pR[1], pR[3]); isfinite(hR) && (cs.zref = Float64(hR))
+            cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
+        elseif rst; respawnX!(cs; groundz=groundz)
         else; step_carX!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
                         groundz=groundz)
