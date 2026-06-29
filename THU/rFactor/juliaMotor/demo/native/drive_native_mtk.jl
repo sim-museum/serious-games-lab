@@ -514,7 +514,17 @@ const TUB_GREY = parse(Float32, get(ENV,"JM_TUB_GREY","0.11"))   # untextured co
 # see a black band).  JM_HANDS=1 keeps lohand+lotarms in the body (drawn at the centred wheel).
 const HANDS = get(ENV,"JM_HANDS","0") != "0"   # default OFF: the static GPL arm mesh doesn't match our re-placed wheel/eye → giant silver arms in the sky
 const _HAND_EXC = HANDS ? ("ltraymap","lshad","dash7a","windlot") : ("ltraymap","lshad","lohand","lotarms","dash7a","windlot")
-const CARP   = Render.extract_gpl_car(LOT3DO; exclude=(_HAND_EXC...,MIRROR_TEX...,Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # gauge cluster + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0
+# E36 black band: `lotblack` is the matte-black cockpit surround/dash that fills the lower view as a
+# full-width band (it occludes the tub behind it, so JM_TUB_GREY never lifted it).  JM_NO_LOTBLACK=1
+# drops it (diagnostic) to reveal the tub underneath.
+const _LOTBLACK_EXC = get(ENV,"JM_NO_LOTBLACK","0") != "0" ? ("lotblack",) : ()
+const _EXTRA_EXC = Tuple(split(get(ENV,"JM_EXTRA_EXCLUDE",""), ",", keepempty=false))   # E36 band bisection: drop these textures from CARP
+# E36: the "black band" below the wheel was the DRIVER FIGURE's own torso/lap — from the cockpit eye
+# (inside the driver) his body filled the lower view, occluding the green tub + LOTUS hub badge.  Pull
+# the driver body OUT of CARP and draw it only in CHASE view (driverItems below) so the cockpit is clear.
+const DRIVER_TEX = ("driver5","lotbody","lotsho","knees","neck")
+const CARP   = Render.extract_gpl_car(LOT3DO; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # driver body + gauge + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0
+const DRIVERP = Render.extract_gpl_car(LOT3DO; only=DRIVER_TEX, maxlat=0.95f0)   # the driver figure — drawn only in CHASE view (occludes the cockpit from the in-car eye)
 const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (dial faces in the texture's lower-V region; keep default vflip)
 const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0)  # the plexiglass windscreen — drawn LAST, faintly visible glass, so the suspension shows through (GPL gold standard)
 # FRONT SUSPENSION (lsusp1 = the front rocker/wishbone, only in the front groups 6600/3560 — so no
@@ -842,6 +852,7 @@ gaugeItems = Render.build_gpl(GAUGEP, GPLTEX)      # gauge cluster (drawn near-u
 windItems  = Render.build_gpl(WINDP, GPLTEX)       # plexiglass windscreen (drawn last, transparent)
 mirrorItems = Render.build_gpl(MIRRORP, GPLTEX)    # rear-view mirrors (re-placed on the cowl, MIRRORMAT)
 fsuspItems  = Render.build_gpl(FSUSPP, GPLTEX)     # front suspension wishbones (visible through the screen)
+driverItems = Render.build_gpl(DRIVERP, GPLTEX)    # driver figure — drawn only in chase view (E36)
 # four Lotus wheels — keep the untextured black tyre body (only the car body drops "")
 load_wheel(nm) = Render.build_gpl(Render.extract_gpl_car(joinpath(LOTDIR,nm*".3do");
                     exclude=("ltraymap","lshad"), tint=(0.12f0,0.12f0,0.13f0)), GPLTEX)  # force dark tyre
@@ -1071,7 +1082,10 @@ function main()
     # One qualifying lap sets the grid: the field is arranged around the player by qual
     # time (faster qualifiers start ahead on track, slower behind).  Skipped for solo
     # races, the skidpad, JM_NOQUAL, and headless smoke (which can't drive a lap).
-    DO_QUAL  = IS_RACE && N_AI > 0 && !SKIDPAD && !haskey(ENV,"JM_NOQUAL") && !SMOKE   # = run a practice session first
+    # Qualifying is OPT-IN (JM_QUAL).  By default a Race goes STRAIGHT TO THE GRID with all AI lined
+    # up ahead (form_grid!(Inf) below) and visible — floor it to launch.  The old default ran a 15-min
+    # PRACTICE first during which the AI were HIDDEN, so "select Race" looked like "no AI appeared" (PO).
+    DO_QUAL  = IS_RACE && N_AI > 0 && !SKIDPAD && haskey(ENV,"JM_QUAL") && !SMOKE
     phase    = Ref(DO_QUAL ? :practice : :race)
     player_grid = Ref(0); player_finpos = Ref(0)
     # Standing start: in a race the AI sit on the grid until YOU floor the throttle, then
@@ -1577,6 +1591,9 @@ function main()
         # ambfill lifts the self-shadowed cockpit interior out of black (GPL pre-lights it
         # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
         for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.25, spec=0.10, ambfill=0.62); end   # lift the self-shadowed cockpit tub out of black (GPL pre-lights it to grey)
+        if CTL.view != 0   # the driver figure occludes the cockpit from the in-car eye (E36 black band) → chase only
+            for it in driverItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.10, ambfill=0.55); end
+        end
         # gauge cluster (real GPL dash7A dial faces): the dash sits BELOW the scuttle/black panels in the
         # mesh, so it's occluded from the driver's eye → draw it depth-test-OFF so the dials read on the
         # dash, near-unlit (bright + ambfill) so the faces are legible.  Only matters in the cockpit view.

@@ -921,7 +921,11 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
         mz = mirror ? -1f0 : 1f0   # negate render-Z → right-handed track frame (gx,gz,-gy)
         for i in 1:3
             p=t.p[i]; n = smooth ? sm(p, t.n[i]) : t.n[i]; uv=t.uv[i]
-            c = tint === nothing ? t.col : tint           # GPL flat-shade colour (or override)
+            # E36: untextured COCKPIT tris (the tub/floor) take the `grey` shade when JM_TUB_GREY makes it
+            # silver — the `grey` param was a no-op before (baked vertex colour used t.col).  Gated on
+            # cockpit_clean + a >0.2 grey so the DEFAULT dark tub is unchanged (no regression); only an
+            # explicit silver JM_TUB_GREY recolours the tub.
+            c = (cockpit_clean && t.tex=="" && grey[1] > 0.2f0) ? grey : (tint === nothing ? t.col : tint)   # GPL flat-shade colour (or override)
             append!(v, (p[1],p[3],p[2]*mz, n[1],n[3],n[2]*mz, c[1],c[2],c[3], uflip ? 1f0-uv[1] : uv[1], vflip ? 1f0-uv[2] : uv[2]))
         end
     end

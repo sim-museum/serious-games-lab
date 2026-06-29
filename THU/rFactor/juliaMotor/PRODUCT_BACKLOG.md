@@ -387,9 +387,11 @@ Status: ✅ done+SMOKE-verified · ⬛ partial · ⏳ open.
 - **E26 ✅ No skidpad in Race:** GUI greys out Skidpad when Mode=Race (and bumps off it).
 - **E27 ✅ Remove blue sky (seam):** one OVERCAST grade for all tracks — skydome grey matches the
   GPL horizon-ring grey → the blue/overcast seam is gone (Nürburgring keeps its moodier storm grey).
-- **E28 ✅ AI never appeared (except Nürburgring):** the GUI's "AI cars" defaulted to 0, so Race
-  with the default gave an empty grid. Now Race defaults to 5 AI. (Field still gridds after the
-  practice/qual phase — press T to fast-forward to the race.)
+- **E28 ✅ AI never appeared (except Nürburgring):** TWO causes — (1) GUI "AI cars" defaulted to 0;
+  now defaults to 5. (2) Even at AI=5 the field was HIDDEN during the default 15-min practice/qual
+  phase (the "press T to start" hint was log-only, not on-window), so Race looked empty. FIX:
+  qualifying is now OPT-IN (`JM_QUAL` / GUI checkbox, default OFF) → Race goes STRAIGHT TO THE GRID
+  with all AI lined up ahead and visible; floor it to launch the field.
 - **E29 ✅ "Post-Hiroshima" carbonized trackside objects:** shadowed/away faces fell to ~0.13 bright
   → near-black. Raised object+wall `ambfill` (flat overcast fill) → vibrant grandstands/banners/
   buildings matching the GPL gold standard. SMOKE-verified Zandvoort + Watkins.
@@ -407,10 +409,13 @@ Status: ✅ done+SMOKE-verified · ⬛ partial · ⏳ open.
   on the ground. SMOKE chase-view at the start shows no floaters. (Re-confirm while driving.)
 - **E35 ⏳ Zandvoort yellow panel on the front wheels:** a yellow/tan panel stuck to the front of the
   wheels in cockpit view (img #25) — likely the `windlot` scuttle mis-placed. Cockpit fidelity.
-- **E36 ⏳ Black cockpit band deep-dive:** the gold standard fills the band's SIDES with bright silver
-  riveted-aluminium tub that our eye/coaming geometry hides; centre dark dash is correct. Needs an
-  eye/tub-geometry pass (not the untextured grey — `JM_TUB_GREY` proved inert; hands re-add = giant
-  arms). PO explicitly wants this dug into.
+- **E36 ✅ Black cockpit band — SOLVED (deep-dive):** the band was the DRIVER FIGURE's own torso/lap
+  (`driver5`/`lotbody`/`lotsho`/`knees`/`neck`) — from the in-car eye (inside the driver) his body
+  filled the lower view and OCCLUDED the green tub + LOTUS hub badge. Pulled the driver out of CARP
+  (`DRIVER_TEX`) and draw it only in CHASE view → cockpit now shows green tub, badge, gauges (≈ gold
+  standard). Also found: the `grey`/`JM_TUB_GREY` param was a no-op (baked vertex colour used t.col) —
+  now revived (gated >0.2) as a real silver-tub knob; keeping the GPL yellow floor recolours to silver
+  but it's jaggy, so left dark by default.
 - **E37 ✅ Auto-shift "always in 1st":** (from the prior message) tall close-ratio 1st pulled to
   ~115 km/h before the old 8500 up-point. Up 7000 / down 4100 / gate 0.85 → shifts through all 5.
 

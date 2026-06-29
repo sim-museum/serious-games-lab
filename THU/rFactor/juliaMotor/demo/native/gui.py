@@ -553,7 +553,7 @@ class DriveTab(QWidget):
         self.laps = QSpinBox(); self.laps.setRange(1, 99); self.laps.setValue(3)
         form.addWidget(self.laps, 2, 1)
         form.addWidget(QLabel("AI cars:"), 3, 0)
-        self.ai = QSpinBox(); self.ai.setRange(0, 5); self.ai.setValue(0)
+        self.ai = QSpinBox(); self.ai.setRange(0, 5); self.ai.setValue(5)   # default to a full grid (PO)
         form.addWidget(self.ai, 3, 1)
         form.addWidget(QLabel("AI speed %:"), 4, 0)
         self.ai_pct = QSpinBox(); self.ai_pct.setRange(30, 200); self.ai_pct.setValue(100)
@@ -573,8 +573,12 @@ class DriveTab(QWidget):
         self.replay.setChecked(True)     # on by default (PO); untick to skip recording
         self.replay.setToolTip("Saves a .jmr recording of every car each race — replay it from the Replay tab.")
         form.addWidget(self.replay, 8, 1)
+        self.qual = QCheckBox("Qualifying session first (your hot lap sets the grid)")
+        self.qual.setChecked(False)      # default OFF: Race goes straight to the grid with the AI visible
+        self.qual.setToolTip("Off (default): start on the grid, floor it to launch the field. On: a practice/qualifying session sets your grid slot first (press T to end it).")
+        form.addWidget(self.qual, 9, 1)
         self.d2 = QCheckBox("Simplified 2-D physics (no jumps, lighter; JM_2D)")
-        form.addWidget(self.d2, 9, 1)   # 3-D is the default; tick this only to fall back to planar
+        form.addWidget(self.d2, 10, 1)   # 3-D is the default; tick this only to fall back to planar
         root.addLayout(form)
 
         # a race needs opponents and can't run on the skidpad — keep the form coherent as the mode changes
@@ -651,6 +655,8 @@ class DriveTab(QWidget):
             qenv.insert("JM_NOIBT", "1")
         if not self.replay.isChecked():  # replay recording is on by default; this disables it
             qenv.insert("JM_NOREPLAY", "1")
+        if self.qual.isChecked():        # opt in to a qualifying session (default: straight to the grid)
+            qenv.insert("JM_QUAL", "1")
         if self.d2.isChecked():          # opt out of the default full-3D physics back to the planar model
             qenv.insert("JM_2D", "1")
         # E14: clear any stale race result so the post-race screen only shows THIS race
