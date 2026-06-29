@@ -1,7 +1,38 @@
-# Julia Racer — Status (2026-06-28)
+# Julia Racer — Status (2026-06-29)
 
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/juliaRacer.py` (or `drive_native_mtk.jl`).
+
+## Latest (2026-06-29) — PO live-test fixes + E56 "all-Modelica human car" epic
+
+**Race-crash FIXED (commit) — was blocking every race.** `aibankK(p) = (cs=(x=,z=,θ=);…)`
+re-bound the *player* car `cs` (a named closure shares the enclosing binding) to a NamedTuple,
+so the next render frame's `light_vp(cs.y)` threw `FieldError`. Crashed every kinematic-AI race
+at frame 1. Renamed the local → `cc`. Script fix, **live now (no rebuild)**.
+
+**E56 EPIC — human car = 100% MTK/Modelica components, AI = slot car (PO directive).**
+PO: "the human car's full physical modelling is what gives GPL its sense of accuracy; the AI are
+just special effects — slot cars that don't hog the spotlight by flipping." So:
+- **Human car:** every *interaction* becomes a physical force component fed into the ODE (never a
+  `bumpX!`/`containX!` state hack): **draft**=aero `CdA_scale` (wake → less drag → tow);
+  **collisions**=spring-dampers (wall = stiff `k` → bounce; hedge/haybale = weak `k` + strong `c`
+  → drive in, decelerate, **get stuck**); **grass**=per-wheel tyre `μ`; **return-to-track = SHIFT-R
+  only** (delete the auto snap-back/containment).
+- **AI:** stays kinematic slot car (rail-bound, can't flip) — the definitive AI.
+- **E56.1 foundation DONE (commit):** `DrivenVehicle3D` gains `Fx_ext, Fy_ext, Mz_ext` + `CdA_scale`
+  ports summed into `D(u)/D(v)/D(r)` (defaults 0/1 ⇒ behaviour unchanged). Verified compiles +
+  steps + the port is integrated. **NB the physics is `include`d as SOURCE** (`drive_rt3d.jl` →
+  `vehicle_3d.jl`, `mtkcompile` at startup), so model edits are **LIVE at next launch — no
+  `jlracer.so` rebuild** (the sysimage only bakes the MTK/solver machinery).
+- **Next:** DriveRT3D port setters → game-loop spring-damper contact law + delete player
+  `containX!`/`bumpX!`; then draft `CdA_scale`; then grass `μ`; then boundary = physical walls.
+
+**Monza rendering (pre-existing, still open):** the **road renders near-white** (the `asphalt`
+texture is too bright — it IS textured, not untextured) and **barriers render carbonized-black**
+(opposite problems → need a per-surface split, can't fix with one brightness knob). The banking is
+now *physically* drivable (E52 HAT overpass-drop, verified) but still **renders as a wall**, so it
+reads as a maze you steer into. Monza is the combined banked circuit — inherently busy; the other
+4 tracks render correctly.
 
 ## Autonomous night batch (2026-06-28 → 29) — E52 Monza banking, E54 sweep, E55 AI flop
 PO mandate: "run scrum autonomously till 8am; clean race on all 5 tracks (no obstructions, no
