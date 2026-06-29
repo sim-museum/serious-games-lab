@@ -3,6 +3,35 @@
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/juliaRacer.py` (or `drive_native_mtk.jl`).
 
+## Autonomous night batch (2026-06-28 → 29) — E52 Monza banking, E54 sweep, E55 AI flop
+PO mandate: "run scrum autonomously till 8am; clean race on all 5 tracks (no obstructions, no
+grass-molasses), AI must not entangle/flop; ignore wheelspin in AI collisions if needed."
+
+- **E52/E54a ✅ Monza — drive UNDER the banking** (commits 4db1c16 + follow-ups). This Monza is the
+  COMBINED banked circuit; where the road course passes under the sopraelevata, the single-valued HAT
+  returned the banking deck (car climbed it / hit a wall = "can't drive through").  Fix: `build_hat`
+  geometric **overpass-drop** removes a deck triangle only where ROAD asphalt lies beneath (the
+  underpass) — the drivable banking OVAL (deck over grass) is kept — plus a Monza-only **wall-climb
+  guard** in `groundz` for the banking ISLAND over the road-mesh gap (reject >3 m jumps → coast).
+  Verified: `JM_DRIVETEST` stays on the road (−1.1→1.3 m) through both crossings; cockpit shows a clear
+  road, not the black wall.  Banking still rendered (you drive under it like a bridge).
+- **E54 ✅ molasses CLEAR + JM_SWEEP harness.** New `JM_SWEEP=<step>`: headless centreline sweep
+  reporting on-road SOLID/mesh/billboard obstructions (with lateral + base-height), HAT walls/cliffs/
+  holes, and false-grass spots (centreline off the .trk surface = a grass-penalty molasses).  Result:
+  **NO false-grass / walls / holes** on Zandvoort, Spa, Watkins, Monza(handled) — no molasses bog for a
+  car on the racing line.  E51 (Monza Lesmo tree-curtain) confirmed already gone (E31 filter).  A sweep
+  object frame bug was found+fixed (objects were projected with z negated).
+- **E55 ✅ AI collisions planar-only.** Both AI↔AI and player↔AI contacts injected a wheel-climb LAUNCH
+  (≤7 m/s up) + ROLL (cartwheel) into the AI's 3-D body — the flop, and likely the E38 hyperspace
+  (violent impulse diverged the MTK integrator).  Now: planar push + mild yaw, no launch/roll, capped —
+  AI bump like billiard balls.  The player keeps full collision feel.
+- **AI model status:** the DEFAULT race AI is **kinematic** (rail-bound) and laps the Nürburgring
+  cleanly (131-133 km/h, max_lat 4.0 m, no spins) — stable on all tracks.  The opt-in **physics AI**
+  (`JM_AI_PHYSICS`) still diverges on the hilly tracks (Nürburgring self-test: max_yaw blows up, cars
+  spin/stick) — a deeper **G2 controller-tuning** task, left opt-in/experimental.
+- **Still needs PO re-drive to close:** E52 (drive Monza Lesmos→Ascari, confirm you pass under the
+  banking), E55 (race with AI, confirm no flopping).  Deferred scenery: E43/E44/E45/E46/E41.
+
 ## PO 15-item live-drive batch — ALL CODE FIXES IN (2026-06-28, E23–E37)
 The PO drove all 5 tracks and filed 15 items (backlog E23–E37). Every one now has its fix landed:
 - **Crash/flow:** E23 Nürburgring race crash (`SOLIDS` undefined → defined []); E28 AI never
