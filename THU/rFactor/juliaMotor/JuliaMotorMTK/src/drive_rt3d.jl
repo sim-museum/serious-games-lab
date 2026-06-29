@@ -239,6 +239,15 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
     c.tc = ntuple(i -> (a[6+i]/mg4, a[10+i]/mg4, μc[i]*max(a[18+i],1.0)/mg4), 4)
     # per-corner ride height = static + chassis-mount rise − road drop (grows when a wheel droops in the air)
     c.rh = ntuple(i -> RH0 + (WHEELS[i][1]*c.pitch + WHEELS[i][2]*c.roll + c.heave) - (terr[i]-c.zref), 4)
+    # E6: YAW-RATE divergence guard.  The stiff 3-D tyre/contact can spin the yaw rate r up to 100s of
+    # rad/s on the big elevation/speed (Spa Eau Rouge, Nürburgring) — the integrator diverging, which the
+    # VERTICAL guard above can't catch and place3d! can't reset.  A real spin is < ~3 rad/s, so a > 10 rad/s
+    # yaw is unphysical: clamp it back IN PLACE (not a respawn → no inchworm teleport, E38) so the car
+    # stays on track and controllable instead of cartwheeling to hyperspace.  Player unaffected (never >10).
+    let gs = get!(() -> (ModelingToolkit.getsym(c.sys, c.sys.r), ModelingToolkit.setu(c.sys, c.sys.r)), _RSET3D, c.sys)
+        rr = gs[1](c.integ)
+        (!isfinite(rr) || abs(rr) > 10.0) && gs[2](c.integ, clamp(isfinite(rr) ? rr : 0.0, -3.5, 3.5))
+    end
     (!isfinite(c.v) || abs(c.v) > 110) && return respawn3d!(c)
     if !manual && c.gear >= 1
         # auto-shift on engine RPM.  The box is close-ratio with a TALL launch gear (1st pulls
