@@ -108,6 +108,9 @@ const AI_PCT    = clamp(tryparse(Float64, get(ENV, "JM_AI_PCT", "100")) |> x -> 
 # AI never run away from the human: each is capped to AI_REL × the player's current speed
 # (default 1.10 = at most 10 % faster) so it stays a close, raceable field.
 const AI_REL    = clamp(tryparse(Float64, get(ENV, "JM_AI_REL", "1.10")) |> x -> x === nothing ? 1.10 : x, 1.0, 4.0)
+# E12/G2: physics-AI corner-speed limit (lateral m/s² assumed for vtarget=√(amax/κ)).  Lower = the AI
+# brakes earlier / takes corners slower → fewer over-speed-entry spins on the hilly tracks, at some pace.
+const AI_AMAX   = clamp(parse(Float64, get(ENV, "JM_AI_AMAX", "8.0")), 4.0, 14.0)
 # AI model: KINEMATIC multi-rail field by DEFAULT (RaceAI.step_field! — robust, GPL-authentic,
 # never spins or leaves the rail; the PO's chosen "GPL 3-rail" AI).  The physics-AI path is
 # OPT-IN via JM_AI_PHYSICS, per RACE_AI_NOTES.md ("ship opt-in first; default only after a
@@ -1380,7 +1383,7 @@ function main()
                     if scon[i] > lim; rp=RaceAI.pose_at(AILINE, s+10.0, 0.0); AIplace!(pc, rp[1], rp[3], rp[4]; v=max(8.0,pc.v*0.6)); scon[i]=0; end
                 else; scon[i]=0; end
             end
-            vts = RaceAI.plan!(AICARS, AILINE; scale=1.0, amax=8.0)
+            vts = RaceAI.plan!(AICARS, AILINE; scale=1.0, amax=AI_AMAX)
             for (i,pc) in enumerate(AIPHYS)
                 r = AIyaw(pc); maxr = max(maxr, abs(r)); abs(r) > 2.5 && (spins += 1)
                 thr,brk,st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i], pc.x, pc.z, pc.θ, pc.v, r; power=AI_POWER)
@@ -1877,7 +1880,7 @@ function main()
             # The HUMAN is fed in as a racecraft object so the AI tailgate-then-pass the player too
             # (strategic: wait for a straight, own the corner — see RaceAI.plan!).
             ppr = RaceAI.project(AILINE, cs.x, cs.z)
-            vts = RaceAI.plan!(AICARS, AILINE; scale = 1.0, amax = 8.0, dt = ddt,
+            vts = RaceAI.plan!(AICARS, AILINE; scale = 1.0, amax = AI_AMAX, dt = ddt,
                                player = (ppr[1], ppr[2], cs.v))
             for (i, pc) in enumerate(AIPHYS)
                 thr, brk, st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i],

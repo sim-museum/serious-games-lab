@@ -17,6 +17,13 @@ counter-yaw damping (steers into the slide) and lifts throttle (kills RWD power-
 beats an earlier-engaging 0.85/2.5 (which made Spa worse). Physics-AI stays opt-in (kinematic is the
 shipping default); 2/5 Spa cars still struggle (diminishing returns / run-to-run variance).
 
+**Corner-speed sweep (concluded):** `JM_AI_AMAX` now tunes the physics-AI corner-speed limit
+(default 8.0). A sweep to 6.0 made BOTH tracks worse (Spa spins 1014→1434, 3/5→1/5; Nürburgring
+catastrophic — a car into a spin→launch→respawn loop accumulating 17 km of teleport-distance). So
+8.0 is the validated optimum and corner-speed is NOT the lever — the Nürburgring failure is deep
+3-D-model airborne instability on the extreme rFactor jumps (spin→launch→respawn), not the controller.
+That's a larger model-robustness effort (deferred; opt-in path, kinematic default laps it cleanly).
+
 **Nürburgring verification (worst divergence case):** the E6 yaw guard GENERALIZES — `max_yaw`
 1239 → 9.99 rad/s (no blow-up). BUT Nürburgring physics-AI is still not viable for a different reason
 — `max_lat 350 m` (cars leave the track; one displaced to 6998 m / 280 km/h): a POSITION / line-
