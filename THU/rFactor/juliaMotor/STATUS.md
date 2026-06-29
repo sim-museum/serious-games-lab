@@ -3,7 +3,21 @@
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/juliaRacer.py` (or `drive_native_mtk.jl`).
 
-## Latest (2026-06-29 PM) — E6 yaw-rate divergence guard + render QA (autonomous)
+## Latest (2026-06-29 PM) — G2/E12 physics-AI anti-spin controller (autonomous)
+
+The physics-AI controller chased the line with a fixed aggressive gain and held throttle through a
+slide, so on the hilly tracks (where the 3-D model's load transfers break grip) it AMPLIFIED an
+incipient slide into a spin (the residual after the E6 divergence guard). `controller()` now reads
+the yaw rate as a slide signal — above a normal corner's ~1 rad/s it eases the line-chase gain, ramps
+counter-yaw damping (steers into the slide) and lifts throttle (kills RWD power-oversteer); below
+`JM_AI_SPIN_LO` it's unchanged. **Verified** (physics-AI self-test, 5 cars, 90 s): Spa spins
+1514→1014 (−33%), **3 of 5 cars now lap cleanly at 102–116 km/h** (was 1); Zandvoort NO regression
+(0 spins, max_yaw 1.43, clean). Cumulative with E6: Spa physics-AI went from diverge-to-hyperspace
+(max_yaw 281) to the majority lapping at race pace. A tuning sweep confirmed `SPIN_LO/HI = 1.0/3.0`
+beats an earlier-engaging 0.85/2.5 (which made Spa worse). Physics-AI stays opt-in (kinematic is the
+shipping default); 2/5 Spa cars still struggle (diminishing returns / run-to-run variance).
+
+## Earlier (2026-06-29 PM) — E6 yaw-rate divergence guard + render QA (autonomous)
 
 **E6 — 3-D integrator no longer diverges on the big tracks.** The stiff 3-D tyre/contact could spin
 the yaw rate `r` to hundreds of rad/s on Spa/Nürburgring elevation (the integrator diverging, which
