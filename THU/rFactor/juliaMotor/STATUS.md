@@ -34,11 +34,19 @@ A multi-part PO request, delivered in five commits:
 (grandstands left, Pirelli pit wall right), the lap heads down toward the Curva Grande / Lesmos;
 the banking comes later. Lap = 9998 m (confirmed by render at s=0 and s=1800).
 
-**Still open from the batch:** D3 dune spectators (perpendicular rows hanging off the dunes —
-PO OK'd reorient-or-delete; `JM_CROWDDIAG` added to identify them), D4 SHIFT-R-off-road + AI
-cuts T1 (centreline vs visible-road offset; `ROAD_HALFW`=9.0 vs the racing-line's 5.5 m
-assumption — under investigation), DUNLOP banner mirrored on the left stand (deferred: a
-`mirror=true` per-instance winding issue, a global flip would break the correct signs).
+**D4 FIXED — SHIFT-R-off-road + AI cuts T1.** Diagnosed (JM_START_S renders + JM_LATDIAG): the
+centreline is dead-on the road on straights but the GPL `.trk` line is the racing GROOVE — through
+corners it hugs the road EDGE, so lane-0 sat at the tarmac edge (inside wheels on grass) and the AI
+apexed further inside still. `recentre_on_road()` now pulls each centreline point a clamped (±4 m),
+smoothed fraction toward the road-mesh midpoint (only on-road points, only toward the road → can't
+strand the line). Both the racing line and physics ribbon derive from it, so SHIFT-R, the AI cut, and
+the asymmetric grass corridor are fixed together. Verified Zandvoort (s=560 car pulled ~2.6 m back onto
+tarmac, S/F barely moves). `JM_NO_RECENTRE=1` restores the raw line.
+
+**Still open from the batch:** D3 dune spectators (perpendicular rows hanging off the dunes — PO OK'd
+reorient-or-delete; `JM_CROWDDIAG` shows Zandvoort keeps 0 standcrowd rows, so they're billboards/other
+objects — needs a dune-section render to pin down), DUNLOP banner mirrored on the left stand (deferred:
+a `mirror=true` per-instance winding issue, a global flip would break the correct signs).
 
 ## Earlier (2026-06-29 PM) — E46 de-blue the grandstand crowd (autonomous)
 
