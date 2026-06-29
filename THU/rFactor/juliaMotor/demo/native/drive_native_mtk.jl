@@ -822,9 +822,13 @@ let objnames=Set{String}()
                startswith(nm,"flagger") || startswith(nm,"rescu") ||
                startswith(nm,"photo") || startswith(nm,"fotograf"))          # marshals/photographers = loose people
     istree(nm) = startswith(nm,"tree") || startswith(nm,"newt") || startswith(nm,"intree")  # foliage → graze-fade (no end-on smear)
+    # E40: a kept STAND crowd row must not sit on the paved racing surface — at Spa the peprow* rows
+    # by Eau Rouge (and on the start straight) projected to |lat| < ROAD_HALFW = a "line of people
+    # standing in the road".  Drop crowd that lands on the road; the grandstands (set further back) stay.
+    onroad_crowd(i) = standcrowd(i.name) && on_road(i.x, i.y, ROAD_HALFW)
     global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw)), istree(i.name), (Float32(i.x), ploz(i), Float32(-i.y)))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
-                          !drop(i.name) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
+                          !drop(i.name) && !onroad_crowd(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
     # E15: SOLID trackside objects the car can hit — (physics x, z, collision radius m).  Buildings,
     # barriers/hedges (haybales = Zandvoort `haie`), towers, parked vehicles.  NOT trees/signs/people.
     solidR(nm) = startswith(nm,"hut")||startswith(nm,"pitbldg")||startswith(nm,"hotel")||startswith(nm,"bigbosch")||nm=="mega2"||startswith(nm,"longtent") ? 5.0 :
