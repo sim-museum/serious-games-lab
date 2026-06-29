@@ -49,12 +49,18 @@ function build_line(pts, groundz; spacing = 3.0, halfwidth = 3.0)   # E16: racin
     # centreline (so the AI no longer apex-cut into the grass or sit on the outer edge mid-corner).
     rx = copy(x); rz = copy(z)
     nx = Float64[-sin(θ[i]) for i in 1:n]; nz = Float64[cos(θ[i]) for i in 1:n]   # left-normal
+    # TAPER the apex band by curvature: at a TIGHT corner (hairpin, high κ) the inside edge is close,
+    # so the full ±halfwidth apex offset reaches the inside GRASS (the Zandvoort T1/Tarzan apex-on-grass).
+    # Shrink the band toward halfwidth/2 as the corner tightens (κ ≥ ~1/22 m ⇒ a real hairpin); fast
+    # corners (low κ) keep the full band.  Smoothed so the line stays continuous.
+    hwκ = [halfwidth * (1.0 - 0.5*clamp((κ0[i]-0.018)/0.045, 0.0, 1.0)) for i in 1:n]
+    hw  = similar(hwκ); for i in 1:n; a=0.0; for d in -3:3; a += hwκ[mod(i-1+d,n)+1]; end; hw[i]=a/7; end
     for _ in 1:600
         for i in 1:n
             p = mod(i-2, n)+1; q = i % n + 1
             mx = 0.5*(rx[p]+rx[q]); mz = 0.5*(rz[p]+rz[q])
             rx[i] += 0.25*(mx-rx[i]); rz[i] += 0.25*(mz-rz[i])
-            off = clamp((rx[i]-x[i])*nx[i] + (rz[i]-z[i])*nz[i], -halfwidth, halfwidth)  # stay on the road
+            off = clamp((rx[i]-x[i])*nx[i] + (rz[i]-z[i])*nz[i], -hw[i], hw[i])   # stay on the road (curvature-tapered band)
             rx[i] = x[i] + off*nx[i]; rz[i] = z[i] + off*nz[i]
         end
     end
