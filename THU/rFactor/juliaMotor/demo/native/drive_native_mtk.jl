@@ -639,6 +639,11 @@ const SUSP_GAIN = parse(Float32, get(ENV,"JM_SUSP_GAIN","1.8"))
 # stays toward vertical.  So the landscape no longer strobes back-and-forth (which gave the PO a headache).
 # τ = the follow time-constant (s): banks held >~τ are fully followed; sub-τ jolts are largely rejected.
 const CAM_TILT_TAU = parse(Float64, get(ENV,"JM_CAM_TILT_TAU","0.35"))
+# PO: the cockpit "rocks back and forth too much" — the head should barely move.  The CAR BODY still
+# pitches/rolls fully (you SEE the chassis work over its planted wheels), but the CAMERA follows only
+# this fraction of the dynamic body rock (squat/dive/lean).  Slow terrain banks are followed in full
+# (that's the GPL head→road-normal behaviour); only the fast dynamic rock is damped out of the head.
+const CAM_DYN = parse(Float64, get(ENV,"JM_CAM_DYN","0.18"))
 # wheel hubs (rig frame X fwd, Y=radius, Z left); front pair steers, all spin.  Front/rear track WIDENED
 # (was ±0.62/±0.66) — the Lotus 49 ran ~1.52 m tracks; the narrow stance read as "wheels bolted together".
 const WTRACK_F = parse(Float32, get(ENV,"JM_TRACK_F","0.76"))   # front half-track (m)
@@ -1904,8 +1909,10 @@ function main()
         # with the car (chassis fixed on screen, horizon tilts); fast jolts are rejected so the head stays
         # toward vertical and the CHASSIS rocks on screen instead (no headache-inducing landscape strobe).
         αcam = 1.0 - exp(-(dt > 1e-4 ? dt : 1/60)/CAM_TILT_TAU)
-        cam_pitch += ((pitch_ter + pitch_dyn) - cam_pitch) * αcam
-        cam_roll  += ((roll_ter  + rollv    ) - cam_roll ) * αcam
+        # head follows the FULL slow terrain bank but only CAM_DYN of the dynamic body rock → the cockpit
+        # barely rocks while the chassis (bodyModel below) keeps its full pitch/roll over the wheels.
+        cam_pitch += ((pitch_ter + CAM_DYN*pitch_dyn) - cam_pitch) * αcam
+        cam_roll  += ((roll_ter  + CAM_DYN*rollv    ) - cam_roll ) * αcam
         vp, eye = camera(cs, cam_pitch, cam_roll)     # head = low-pass tilt; body keeps full tilt → high-freq rock shows on the chassis
         if REPLAY     # E25: cinematic cameras follow the FOCUS car (player or any AI) from its recorded pose
             fp = rep_focus[] == 0 ? (cs.x, cs.y, cs.z, cs.θ) :
