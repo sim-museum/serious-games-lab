@@ -52,7 +52,7 @@ textures (so they can't be name-excluded).  Keeping the LOWER surface wherever t
 road course intact under the banking.  (The banking is still RENDERED — this only touches collision.)
 Safe here because the road course never drives OVER anything; do NOT enable on tracks with real
 drive-over bridges (Nürburgring)."""
-function build_hat(mesh; cell=20.0, exclude=Set{String}(), exclude_pred=nothing, drop_overpass=false, over_gap=2.0)
+function build_hat(mesh; cell=20.0, exclude=Set{String}(), exclude_pred=nothing, drop_overpass=false, over_gap=2.0, road_pred=nothing)
     g(t,i) = (Float64(t.p[i][1]), Float64(t.p[i][3]), Float64(t.p[i][2]))   # GPL(x,y,z) → Y-up (x, z_up→y, y→z)
     keep = trues(length(mesh.tris))
     for (k,t) in enumerate(mesh.tris)
@@ -91,6 +91,9 @@ function build_hat(mesh; cell=20.0, exclude=Set{String}(), exclude_pred=nothing,
                 cands = get(grid, (gkey[1]+dx, gkey[2]+dz), nothing); cands === nothing && continue
                 for j in cands
                     j == k && continue
+                    # only a ROAD surface below counts (the underpass): the banking deck over the road
+                    # is dropped, but the drivable banking OVAL — deck over GRASS — is kept.
+                    (road_pred === nothing || road_pred(lowercase(mesh.tris[j].tex))) || continue
                     h = under_h(mesh.tris[j], cx, cz)
                     if h !== nothing && h < cy - over_gap
                         dropped = true; break

@@ -64,17 +64,16 @@ const SKIDPAD  = TRACKSEL == "skidpad"
 const NURB     = TRACKSEL == "nurburgring"
 const MONZA    = TRACKSEL == "monza"
 println("  → track: ", uppercasefirst(TRACKSEL))
-# E52: GPL Monza '67 is the road course — the high-speed BANKING (sopraelevata) is decorative scenery
-# the car never drives, but its deck/structure mesh sits ABOVE the road course where they cross.  A
-# single-valued HAT would return the banking deck (the car climbs onto it / hits a "wall" = "can't drive
-# through").  Exclude the banking surfaces from the COLLISION HAT only (still rendered) so groundz returns
-# the road beneath.  Names from JM_TEXDIAG (track-mesh textures by mean height).
-const HAT_EXCLUDE = MONZA ? Set(["banking","bnkback","bnkbck4",
-                                 "brdgbnkr","brdgbnkm","brdgbnkl","brdgbnur","brdgbnul","brdgbnum"]) : Set{String}()
-# NB the road and banking SHARE the per-section sNN[bl]N asphalt textures (section-based naming), so
-# the banking can't be name-excluded without also dropping the road — the geometric overpass-drop
-# (build_hat drop_overpass) separates them by elevation instead.
+# E52: this Monza is the COMBINED banked circuit — the road course AND the high-speed BANKING oval are
+# BOTH part of the lap, but where they cross the banking deck sits ABOVE the road course.  A single-
+# valued HAT returns the topmost surface (the banking), so the car climbs onto it / hits a "wall" at the
+# underpass ("can't drive through").  build_hat's geometric overpass-drop removes a deck triangle ONLY
+# where a ROAD-asphalt surface lies beneath it (the underpass), so the drivable banking OVAL (deck over
+# GRASS) is untouched.  The road + banking SHARE the sNN[bl]N section textures, so this can't be done by
+# name.  ROAD_PRED classifies the lower surface; HAT_EXCLUDE stays empty (no blanket texture drop).
+const HAT_EXCLUDE = Set{String}()
 const HAT_EXCLUDE_PRED = nothing
+const ROAD_PRED = MONZA ? (lt -> occursin("asp", lt) || startswith(lt,"groove") || startswith(lt,"kerb")) : nothing
 
 # ---- session mode + race config (GPL-style: Practice / Training / Race) ----
 const MODE      = lowercase(get(ENV, "JM_MODE", "practice"))   # practice | training | race
@@ -444,7 +443,7 @@ else
     # Align the racing line against the ROAD-only HAT (precise — scenery terrain in the
     # full HAT would let the line drift onto the grass verge); the road ribbon then doubles
     # as the corridor filter for scenery placement.
-    const TERRAIN0 = GPLTrack.build_hat(TRACKMESH0; exclude=HAT_EXCLUDE, exclude_pred=HAT_EXCLUDE_PRED, drop_overpass=MONZA)
+    const TERRAIN0 = GPLTrack.build_hat(TRACKMESH0; exclude=HAT_EXCLUDE, exclude_pred=HAT_EXCLUDE_PRED, drop_overpass=MONZA, road_pred=ROAD_PRED)
     const ALIGNED  = align_centreline(GPLTrack.trk_centreline(track_file(GPLNAME, ".trk")), TERRAIN0)
     const RIBBON0  = GPLTrack.build_surface(ALIGNED, TERRAIN0)
     # GPL Nürburgring places its landmass/scenery as .dat sub-objects via 0x0E nodes;
@@ -459,7 +458,7 @@ else
     const TRACKMESH = isempty(SECTRI) ? TRACKMESH0 :
         Render.GPL3DO.Mesh3DO([TRACKMESH0.tris; SECTRI], TRACKMESH0.textures,
                               [TRACKMESH0.groups; fill(0, length(SECTRI))])
-    const TERRAIN  = isempty(SECTRI) ? TERRAIN0 : GPLTrack.build_hat(TRACKMESH; exclude=HAT_EXCLUDE, exclude_pred=HAT_EXCLUDE_PRED, drop_overpass=MONZA)
+    const TERRAIN  = isempty(SECTRI) ? TERRAIN0 : GPLTrack.build_hat(TRACKMESH; exclude=HAT_EXCLUDE, exclude_pred=HAT_EXCLUDE_PRED, drop_overpass=MONZA, road_pred=ROAD_PRED)
     const TRKSURF  = GPLTrack.build_surface(ALIGNED, TERRAIN)
     const LAPLEN = maximum(TRKSURF.lapdist)              # lap length [m], for start/finish wrap detection
     const CAR = DriveCar(MODEL, TRKSURF; terrain=TERRAIN)    # racing ribbon from the .trk centreline
@@ -1216,6 +1215,41 @@ function main()
             end
             flush(stdout)
         end
+    end
+    # ---- E54 sweep harness: walk the whole centreline and report anything that would block or bog a
+    # car ON the racing line — on-road mesh/billboard obstructions, HAT walls/cliffs/holes, and
+    # "false-grass" spots (the centreline projecting off the .trk racing surface ⇒ a grass-penalty
+    # MOLASSES even though the car is on the road).  Headless, no game loop.  JM_SWEEP=<step m> (or 1).
+    if CLINE !== nothing && haskey(ENV,"JM_SWEEP") && isdefined(Main,:OBJINSTS)
+        step = (v = tryparse(Float64, get(ENV,"JM_SWEEP","")); v === nothing || v < 1 ? 15.0 : v)
+        kept_mesh = [(nm,ox,oz) for (nm,ox,oz,oy,kind,dropped) in OBJINSTS if kind===:mesh && !dropped]
+        kept_bb   = [(nm,ox,oz) for (nm,ox,oz,oy,kind,dropped) in OBJINSTS if kind===:bb   && !dropped]
+        println("\n==== JM_SWEEP ", uppercasefirst(TRACKSEL), "  (step=", round(Int,step),
+                " m, total=", round(Int,CLINE.total), " m, ROAD_HALFW=", ROAD_HALFW, ") ====")
+        groundz(RaceAI.pose_at(CLINE,0.0,0.0)[1], RaceAI.pose_at(CLINE,0.0,0.0)[3]; acquire=true)
+        prevtop = JuliaMotor.hat3d(TERRAIN, RaceAI.pose_at(CLINE,0.0,0.0)[1], RaceAI.pose_at(CLINE,0.0,0.0)[3]; ref=Inf)
+        nclean = 0; anoms = String[]
+        s = 0.0
+        while s <= CLINE.total
+            p = RaceAI.pose_at(CLINE, s, 0.0); px, pz = p[1], p[3]
+            top = JuliaMotor.hat3d(TERRAIN, px, pz; ref=Inf)
+            hr  = JuliaMotor.hat(TRKSURF, px, pz)
+            flags = String[]
+            top[3] || push!(flags, "OFF-HAT(hole)")
+            (top[3] && prevtop[3] && abs(top[1]-prevtop[1]) > 3.0) && push!(flags, "WALL/CLIFF Δh=$(round(top[1]-prevtop[1],digits=1))m")
+            (!hr.found || abs(hr.lateral) > ROAD_HALFW) && push!(flags, "FALSE-GRASS lat=$(hr.found ? round(hr.lateral,digits=1) : "MISS")")
+            mobs = [nm for (nm,ox,oz) in kept_mesh if hypot(ox-px, oz-pz) < ROAD_HALFW]
+            bobs = [nm for (nm,ox,oz) in kept_bb   if hypot(ox-px, oz-pz) < ROAD_HALFW]
+            isempty(mobs) || push!(flags, "ON-ROAD MESH: " * join(unique(mobs)[1:min(end,4)], ","))
+            isempty(bobs) || push!(flags, "ON-ROAD BILLBOARD: " * join(unique(bobs)[1:min(end,4)], ","))
+            if isempty(flags); nclean += 1
+            else; push!(anoms, string("  s=", lpad(round(Int,s),5), "  ", join(flags, " | ")))
+            end
+            prevtop = top; s += step
+        end
+        println(length(anoms), " anomaly point(s), ", nclean, " clean:")
+        for a in anoms; println(a); end
+        flush(stdout); exit(0)
     end
     AILINE = (CLINE !== nothing && N_AI > 0) ? CLINE : nothing
     AICARS = AILINE === nothing ? RaceAI.AICar[] : RaceAI.init_cars(AILINE, N_AI; start_s = 30.0)
