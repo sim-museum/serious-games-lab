@@ -884,9 +884,18 @@ let objnames=Set{String}()
     # spot diagnostic — lets a mid-lap render report exactly which authored objects sit near the
     # car, even when their CENTROID is >13 m off-centreline but the mesh spans the road (E52: the
     # wide grandstand/wall whose centroid clears the on_road filter yet its extent blocks the track).
-    global OBJINSTS = [(i.name, Float32(i.x), Float32(-i.y), ploz(i),
-                        get(objmesh,i.name,nothing)!==nothing ? :mesh : (get(bbinfo,i.name,nothing)!==nothing ? :bb : :none),
-                        drop(i.name)) for i in insts]
+    # (name, world-x, world-z, base-y, RENDER fate, is-SOLID).  The fate mirrors the SAME filters that
+    # build OBJECTS / BILLBOARDS / SOLIDS — drop(), onroad_crowd, on_road and onground — so the JM_SWEEP
+    # harness sees exactly what is actually rendered / collidable (not the raw instance list).
+    # NB store world-z in the PHYSICS / HAT / .trk frame (= GPL y, NOT the render frame's −y) so the
+    # JM_SWEEP / JM_SPOT projections onto TRKSURF/CLINE match the on_road classifier exactly.
+    global OBJINSTS = [begin
+        ismesh = get(objmesh,i.name,nothing) !== nothing; isbb = get(bbinfo,i.name,nothing) !== nothing; og = onground(i)
+        kmesh  = ismesh && !drop(i.name) && !onroad_crowd(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && og
+        kbb    = isbb   && !drop(i.name) && og && !on_road(i.x, i.y, ROAD_HALFW)
+        issolid = solidR(lowercase(i.name)) > 0.0 && og && !on_road(i.x, i.y, ROAD_HALFW - 2.0)
+        (i.name, Float32(i.x), Float32(i.y), ploz(i), kmesh ? :mesh : kbb ? :bb : :dropped, issolid)
+    end for i in insts]
     if get(ENV,"JM_TEXDIAG","")!=""
         # track-mesh textures by HEIGHT band — to spot the Monza banking surface (a large mesh high
         # above the road) so it can be excluded from the collision HAT (E52: road passes under it).
@@ -1161,9 +1170,9 @@ function main()
         if get(ENV,"JM_OBJDIAG","")!="" && isdefined(Main,:OBJINSTS)
             rad = parse(Float64, get(ENV,"JM_SPOT_RAD","70"))
             near = NTuple{3,Any}[]
-            for (nm,ox,oz,oy,kind,dropped) in OBJINSTS
+            for (nm,ox,oz,oy,kind,issolid) in OBJINSTS
                 d = hypot(Float64(ox)-p[1], Float64(oz)-p[3])
-                d < rad && push!(near, (round(d,digits=1), "$nm $(kind)$(dropped ? "·DROP" : "")", round(Float64(oy),digits=1)))
+                d < rad && push!(near, (round(d,digits=1), "$nm $(kind)$(issolid ? "·SOLID" : "")", round(Float64(oy),digits=1)))
             end
             sort!(near, by=x->x[1])
             println("  JM_SPOT objects within ", round(Int,rad), " m of the car (d  name kind  base-y):")
@@ -1231,8 +1240,9 @@ function main()
         # the track (base ≫ road height) is overhead furniture, not a blocker.  dy = base-y − road-y.
         OBJ_MAX_DY = parse(Float64, get(ENV,"JM_OBJ_MAX_DY","3.0"))
         objdy(ox,oz,oy) = (rh = JuliaMotor.hat3d(TERRAIN, Float64(ox), Float64(oz); ref=Inf); rh[3] ? round(Float64(oy)-rh[1],digits=1) : 0.0)
-        kept_mesh = [(nm,ox,oz,olat(ox,oz),objdy(ox,oz,oy)) for (nm,ox,oz,oy,kind,dropped) in OBJINSTS if kind===:mesh && !dropped]
-        kept_bb   = [(nm,ox,oz,olat(ox,oz),objdy(ox,oz,oy)) for (nm,ox,oz,oy,kind,dropped) in OBJINSTS if kind===:bb   && !dropped]
+        kept_mesh  = [(nm,ox,oz,olat(ox,oz),objdy(ox,oz,oy)) for (nm,ox,oz,oy,kind,issolid) in OBJINSTS if kind===:mesh]
+        kept_bb    = [(nm,ox,oz,olat(ox,oz),objdy(ox,oz,oy)) for (nm,ox,oz,oy,kind,issolid) in OBJINSTS if kind===:bb]
+        kept_solid = [(nm,ox,oz,olat(ox,oz),objdy(ox,oz,oy)) for (nm,ox,oz,oy,kind,issolid) in OBJINSTS if issolid]
         println("\n==== JM_SWEEP ", uppercasefirst(TRACKSEL), "  (step=", round(Int,step),
                 " m, total=", round(Int,CLINE.total), " m, ROAD_HALFW=", ROAD_HALFW, ") ====")
         groundz(RaceAI.pose_at(CLINE,0.0,0.0)[1], RaceAI.pose_at(CLINE,0.0,0.0)[3]; acquire=true)
@@ -1247,8 +1257,10 @@ function main()
             top[3] || push!(flags, "OFF-HAT(hole)")
             (top[3] && prevtop[3] && abs(top[1]-prevtop[1]) > 3.0) && push!(flags, "WALL/CLIFF Δh=$(round(top[1]-prevtop[1],digits=1))m")
             (!hr.found || abs(hr.lateral) > ROAD_HALFW) && push!(flags, "FALSE-GRASS lat=$(hr.found ? round(hr.lateral,digits=1) : "MISS")")
+            sobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_solid if hypot(ox-px, oz-pz) < ROAD_HALFW && abs(lat) < ROAD_HALFW && dy < OBJ_MAX_DY]
             mobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_mesh if hypot(ox-px, oz-pz) < ROAD_HALFW && abs(lat) < BLOCK_LAT && dy < OBJ_MAX_DY]
             bobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_bb   if hypot(ox-px, oz-pz) < ROAD_HALFW && abs(lat) < BLOCK_LAT && dy < OBJ_MAX_DY]
+            isempty(sobs) || push!(flags, "SOLID-ON-ROAD(collidable!): " * join(unique(sobs)[1:min(end,4)], ","))
             isempty(mobs) || push!(flags, "ON-ROAD MESH: " * join(unique(mobs)[1:min(end,4)], ","))
             isempty(bobs) || push!(flags, "ON-ROAD BILLBOARD: " * join(unique(bobs)[1:min(end,4)], ","))
             if isempty(flags); nclean += 1
