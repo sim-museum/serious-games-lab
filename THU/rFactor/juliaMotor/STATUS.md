@@ -17,6 +17,14 @@ counter-yaw damping (steers into the slide) and lifts throttle (kills RWD power-
 beats an earlier-engaging 0.85/2.5 (which made Spa worse). Physics-AI stays opt-in (kinematic is the
 shipping default); 2/5 Spa cars still struggle (diminishing returns / run-to-run variance).
 
+**Nürburgring verification (worst divergence case):** the E6 yaw guard GENERALIZES — `max_yaw`
+1239 → 9.99 rad/s (no blow-up). BUT Nürburgring physics-AI is still not viable for a different reason
+— `max_lat 350 m` (cars leave the track; one displaced to 6998 m / 280 km/h): a POSITION / line-
+following failure on the extreme 22 km elevation (likely airborne launches off the big jumps landing
+far off-line, or a poor rFactor racing line), NOT the yaw divergence. So: **divergence = fixed on both
+Spa & Nürburgring**; full physics-AI viability is Spa-partial, Nürburgring-blocked on a separate
+position problem (deferred — opt-in path; kinematic AI laps Nürburgring cleanly as the default).
+
 ## Earlier (2026-06-29 PM) — E6 yaw-rate divergence guard + render QA (autonomous)
 
 **E6 — 3-D integrator no longer diverges on the big tracks.** The stiff 3-D tyre/contact could spin
