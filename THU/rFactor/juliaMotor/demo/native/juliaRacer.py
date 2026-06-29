@@ -547,17 +547,24 @@ class DriveTab(QWidget):
         form.addWidget(self.track, 0, 1)
         form.addWidget(QLabel("Mode:"), 1, 0)
         self.mode = QComboBox()
-        self.mode.addItems(["Practice", "Training", "Race"])   # GPL-style session modes
+        self.mode.addItems(["Practice", "Race"])   # Practice = lone car; Race = AI grid
         form.addWidget(self.mode, 1, 1)
-        form.addWidget(QLabel("Laps (race):"), 2, 0)
+        # Race-only fields (Laps / AI cars / AI speed) — hidden in Practice (a lone car has none)
+        self.laps_l = QLabel("Laps (race):")
+        form.addWidget(self.laps_l, 2, 0)
         self.laps = QSpinBox(); self.laps.setRange(1, 99); self.laps.setValue(3)
         form.addWidget(self.laps, 2, 1)
-        form.addWidget(QLabel("AI cars:"), 3, 0)
+        self.ai_l = QLabel("AI cars:")
+        form.addWidget(self.ai_l, 3, 0)
         self.ai = QSpinBox(); self.ai.setRange(0, 5); self.ai.setValue(5)   # default to a full grid (PO)
         form.addWidget(self.ai, 3, 1)
-        form.addWidget(QLabel("AI speed %:"), 4, 0)
+        self.ai_pct_l = QLabel("AI speed %:")
+        form.addWidget(self.ai_pct_l, 4, 0)
         self.ai_pct = QSpinBox(); self.ai_pct.setRange(30, 200); self.ai_pct.setValue(100)
-        self.ai_pct.setToolTip("100% = the GPL AI car laptime for the track; lower is slower.")
+        self.ai_pct.setToolTip("Field pace as a % of the track's GPL-AI reference lap time: 100% = the "
+                               "GPL AI car's laptime for this circuit, 50% = double that laptime (half "
+                               "pace), 150% = a laptime 1/1.5 as long. (They're still capped to ~1.1× "
+                               "your own speed so they can't run away.)")
         form.addWidget(self.ai_pct, 4, 1)
         form.addWidget(QLabel("Gearbox:"), 5, 0)
         self.gearbox = QComboBox()
@@ -625,15 +632,18 @@ class DriveTab(QWidget):
     ]
 
     def _mode_changed(self, idx):
-        """Race (idx 2) needs opponents and can't run on the skidpad."""
-        is_race = (idx == 2)
+        """Race (idx 1) needs opponents and can't run on the skidpad; Practice is a lone car
+        (no Laps / AI cars / AI speed — those rows are hidden)."""
+        is_race = (idx == 1)
+        for w in (self.laps_l, self.laps, self.ai_l, self.ai, self.ai_pct_l, self.ai_pct):
+            w.setVisible(is_race)                # race-only fields: hidden in Practice
         skid = self.track.model().item(1)        # "Skidpad" entry
         if skid is not None:
-            skid.setEnabled(not is_race)         # grey it out for races (item 4: no race at the skidpad)
+            skid.setEnabled(not is_race)         # grey it out for races (no race at the skidpad)
         if is_race:
             if self.track.currentIndex() == 1:   # currently on Skidpad → bump to Zandvoort
                 self.track.setCurrentIndex(0)
-            if self.ai.value() == 0:             # a race with 0 AI shows no field — default to a full grid (item 6)
+            if self.ai.value() == 0:             # a race with 0 AI shows no field — default to a full grid
                 self.ai.setValue(5)
 
     def launch(self):
@@ -644,9 +654,10 @@ class DriveTab(QWidget):
         qenv = QProcessEnvironment.systemEnvironment()
         qenv.insert("TRACK", ["zandvoort", "skidpad", "nurburgring",
                               "watglen", "monza", "spa"][self.track.currentIndex()])
-        qenv.insert("JM_MODE", ["practice", "training", "race"][self.mode.currentIndex()])
+        is_race = (self.mode.currentIndex() == 1)
+        qenv.insert("JM_MODE", "race" if is_race else "practice")
         qenv.insert("JM_LAPS", str(self.laps.value()))
-        qenv.insert("JM_AI", str(self.ai.value()))
+        qenv.insert("JM_AI", str(self.ai.value() if is_race else 0))   # Practice = lone car (no AI grid)
         qenv.insert("JM_AI_PCT", str(self.ai_pct.value()))
         qenv.insert("ZAND_SHIFT", "auto" if self.gearbox.currentIndex() == 0 else "manual")
         if self.mute.isChecked():
