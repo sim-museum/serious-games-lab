@@ -117,6 +117,10 @@ const SPIN_LIM  = parse(Float64, get(ENV, "JM_SPIN_LIM", "1.4"))
 # tow → you reel them in on a straight and slingshot past.  Returns the tow accel (m/s²) on a
 # follower at (fx,fz,fθ,fv) from the nearest aligned car ahead in `leads` = [(x,z,θ,v)…].
 const DRAFT_LEN = 26.0; const DRAFT_LAT = 2.8; const TOW_MAX = 4.0   # draft reach (m), lateral catch (m), max tow (m/s²)
+# E56: the PLAYER's draft is a real AERO effect — tucking into the wake cuts frontal drag
+# (CdA_scale<1 fed through the chassis ODE), it is NOT a forward velocity bump.  DRAFT_DRAG_CUT
+# = the max fraction of drag removed right in the tow (≈45 %); it tapers to 0 at the draft edge.
+const DRAFT_DRAG_CUT = clamp(parse(Float64, get(ENV, "JM_DRAFT_CUT", "0.45")), 0.0, 0.8)
 function draft_tow(fx, fz, fθ, fv, leads)
     fv < 26.0 && return 0.0                                          # the tow only matters at speed (straights)
     hx = cos(fθ); hz = sin(fθ); best = 0.0
@@ -1108,6 +1112,7 @@ function main()
     LASTZ = Ref(0.0); ONTRACK = Ref(true)
     LASTGX = Ref(cs0.x); LASTGZ = Ref(cs0.z)   # last position INSIDE the world (terrain HAT) — for the boundary
     OFFDIST = Ref(0.0)                          # distance travelled off the HAT (grace before containing)
+    PLAYER_CDA = Ref(1.0)                        # E56: player drag scale fed to the chassis ODE next frame (draft tow)
     # The Monza banking deck-over-road is removed from TERRAIN by build_hat's overpass-drop, so the
     # topmost remaining surface under the crossings is the road.  Where the banking deck spans a GAP in
     # the road mesh (first underpass) there is nothing below to keep, so the deck survives — guard it
@@ -1546,7 +1551,11 @@ function main()
             hR = groundz(pR[1], pR[3]; acquire=true); isfinite(hR) && (cs.zref = Float64(hR))
             cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
         elseif rst; respawnX!(cs; groundz=groundz)
-        else; step_carX!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
+        else
+            # E56: feed last frame's draft drag-scale into the chassis ODE before stepping, so the
+            # slipstream tow is a REAL reduced-drag aero effect the solver integrates (not a velocity bump).
+            CAR3D && DriveRT3D.extforce3d!(cs; CdA_scale = PLAYER_CDA[])
+            step_carX!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
                         groundz=groundz)
             if !SKIDPAD     # track position + lap timing
@@ -1841,12 +1850,15 @@ function main()
         # GD: rigid-body collision — when the player and an AI overlap and are CLOSING, apply a
         # momentum-exchange impulse: the player (real vehicle physics) is knocked off line + spun
         # via bumpX!, the AI is shoved aside + spun + scrubbed.  The wheels keep spinning with motion.
+        CAR3D && (PLAYER_CDA[] = 1.0)             # E56: default = full drag; the draft below cuts it for next frame's step
         if !REPLAY && race_go[] && !rst && !isempty(ai_poses)
-            # slipstream for the PLAYER: tuck behind an AI on a straight → tow → slingshot past (not on grass)
-            if AI_PHYSICS && (ph = JuliaMotor.hat(TRKSURF, cs.x, cs.z); ph.found && abs(ph.lateral) <= ROAD_HALFW)
+            # E56 slipstream for the PLAYER: tuck behind a car on a straight → reduced frontal drag
+            # (CdA_scale<1) → you reel them in + slingshot past.  A REAL aero effect integrated by the
+            # chassis ODE next frame, not a forward velocity bump.  Works vs the default kinematic field too.
+            if CAR3D && (ph = JuliaMotor.hat(TRKSURF, cs.x, cs.z); ph.found && abs(ph.lateral) <= ROAD_HALFW)
                 plds = [(p[1], p[3], p[4], AICARS[k].v) for (k,p) in enumerate(ai_poses)]
                 ptw = draft_tow(cs.x, cs.z, cs.θ, cs.v, plds)
-                ptw > 0.0 && bumpX!(cs, ptw*cos(cs.θ)*ddt, ptw*sin(cs.θ)*ddt, 0.0)
+                ptw > 0.0 && (PLAYER_CDA[] = 1.0 - DRAFT_DRAG_CUT * clamp(ptw/TOW_MAX, 0.0, 1.0))
             end
             pm = 560.0; am = 560.0; restn = 0.45; mr = pm*am/(pm+am)   # elastic-ish (billiard-ball nudge)
             pvx = cs.v*cos(cs.θ); pvz = cs.v*sin(cs.θ)
