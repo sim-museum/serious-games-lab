@@ -3,7 +3,44 @@
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/juliaRacer.py` (or `drive_native_mtk.jl`).
 
-## Latest (2026-06-29 PM) — E46 de-blue the grandstand crowd (autonomous)
+## Latest (2026-06-29 eve) — PO batch: AI pace=GPLrank, field spread, results, cockpit
+
+A multi-part PO request, delivered in five commits:
+
+- **AI pace = GPLrank (A).** `REF_LAP` is now the GPLrank (1967) benchmark times; 100 % AI =
+  the fastest car hits that lap (Monza10k uses GPL55Rank 2:46.5). The GUI auto-presets the
+  AI-speed % on track-select to `GPLrank / your-best-lap · 100` (the fastest AI matches your
+  best lap), 50 % with no recorded lap — reads a new per-track `human_best.txt` the sim writes
+  whenever your best lap improves (practice or race). The PO's real 3:54.6 Zandvoort lap got
+  recorded → Zandvoort presets to ~37 %.
+- **Field spreads by physics (B).** Per-car power/weight (`AICAR_PHYS`) → a pace factor so the
+  Eagle-Weslake out-runs the heavy BRM H16; removed the 1.1× rubber-band cap (now opt-in
+  `JM_AI_REL`); grid fastest-first; rare GPL-style mishaps (run wide/spin → crawl, drop back)
+  in both AI models. Verified: the field strings out; race smoke loads clean (Eagle gridded P1).
+- **GPL-style results (C).** `last_race_result.txt` now carries the best lap of ANYONE, the
+  player's per-lap times, and a gap-to-winner column. The GUI post-race screen is a tabbed
+  dialog: Classification (order + gap + fastest lap) and Your laps (per-lap, best flagged).
+- **Cockpit closer to GPL gold.** The tan LEATHER SCUTTLE (`windlot`) is drawn OPAQUE by default
+  (it had been off because *translucent* it read as a "plywood board"; solid it's the GPL scuttle
+  sweeping to the side cowls). The matte-black `lotblack` "band" (the angular plywood facets the
+  PO flagged) is dropped by default. No driver figure (cockpit-absent, unchanged). Verified
+  headless (Zandvoort cockpit). Small residual dark facet directly below the wheel hub remains
+  (mostly wheel-occluded).
+- **Cockpit barely rocks.** New `CAM_DYN` (`JM_CAM_DYN`=0.18): the head follows only 18 % of the
+  dynamic body pitch/roll — the chassis still rocks fully, slow terrain banks still fully
+  followed, only the fast rock is damped out of the head.
+
+**Monza10k first lap (PO Q):** the road course — start/finish is the road-course PIT STRAIGHT
+(grandstands left, Pirelli pit wall right), the lap heads down toward the Curva Grande / Lesmos;
+the banking comes later. Lap = 9998 m (confirmed by render at s=0 and s=1800).
+
+**Still open from the batch:** D3 dune spectators (perpendicular rows hanging off the dunes —
+PO OK'd reorient-or-delete; `JM_CROWDDIAG` added to identify them), D4 SHIFT-R-off-road + AI
+cuts T1 (centreline vs visible-road offset; `ROAD_HALFW`=9.0 vs the racing-line's 5.5 m
+assumption — under investigation), DUNLOP banner mirrored on the left stand (deferred: a
+`mirror=true` per-instance winding issue, a global flip would break the correct signs).
+
+## Earlier (2026-06-29 PM) — E46 de-blue the grandstand crowd (autonomous)
 
 The GPL crowd MIP renders garish electric-blue (worst on Zandvoort's main grandstand). Added a
 per-draw colour-multiply uniform `uTint` (FSRC `base *= uTint`; default white, set every frame +

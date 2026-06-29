@@ -1027,6 +1027,23 @@ let objnames=Set{String}()
         println("== JM_OBJDIAG mesh objects in/near the road (|lat| < ROAD_HALFW+4 = ", round(ROAD_HALFW+4.0,digits=1), " m;  relyaw 0/±180=parallel, ±90=PERPENDICULAR) ==")
         for (nm,lat,ld,ry) in onroad_objs; println("   ", rpad(nm,16), "lat=", rpad(lat,7), " lapdist=", rpad(ld,7), " relyaw=", ry, "°"); end; flush(stdout)
     end
+    # D3 (PO): the dune spectators run PERPENDICULAR to the road and hang off the dunes.  List every kept
+    # crowd row with its lateral offset + orientation so we can tell grandstand crowds (near, parallel)
+    # from loose dune lines (far, perpendicular).  relyaw near ±90 = the row faces ACROSS the road.
+    if get(ENV,"JM_CROWDDIAG","")!=""
+        cr = NTuple{4,Any}[]
+        for i in insts
+            standcrowd(i.name) || continue
+            hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
+            lat = hr.found ? round(hr.lateral,digits=1) : NaN
+            ry  = hr.found ? round(rad2deg(rem2pi(Float64(i.yaw)-atan(-hr.perp[2],hr.perp[1]), RoundNearest))) : NaN
+            push!(cr, (lowercase(i.name), lat, hr.found ? round(hr.lapdist,digits=0) : NaN, ry))
+        end
+        sort!(cr, by=x->(x[1], isnan(x[2]) ? 1e9 : abs(x[2])))
+        println("== JM_CROWDDIAG kept crowd rows (lat NaN = off the road ribbon = out on the dunes; relyaw ±90 = PERPENDICULAR) ==")
+        for (nm,lat,ld,ry) in cr; println("   ", rpad(nm,12), "lat=", rpad(lat,8), " lapdist=", rpad(ld,8), " relyaw=", ry); end
+        println("   (", length(cr), " crowd rows kept)"); flush(stdout)
+    end
 end
 println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards + ", length(STATICTREES), " forest panels + ", length(SOLIDS), " solid (collidable)"); flush(stdout)
 end
