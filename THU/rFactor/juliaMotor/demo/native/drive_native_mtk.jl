@@ -589,9 +589,10 @@ const TUB_GREY = parse(Float32, get(ENV,"JM_TUB_GREY","0.11"))   # untextured co
 const HANDS = get(ENV,"JM_HANDS","0") != "0"   # default OFF: the static GPL arm mesh doesn't match our re-placed wheel/eye → giant silver arms in the sky
 const _HAND_EXC = HANDS ? ("ltraymap","lshad","dash7a","windlot") : ("ltraymap","lshad","lohand","lotarms","dash7a","windlot")
 # E36 black band: `lotblack` is the matte-black cockpit surround/dash that fills the lower view as a
-# full-width band (it occludes the tub behind it, so JM_TUB_GREY never lifted it).  JM_NO_LOTBLACK=1
-# drops it (diagnostic) to reveal the tub underneath.
-const _LOTBLACK_EXC = get(ENV,"JM_NO_LOTBLACK","0") != "0" ? ("lotblack",) : ()
+# full-width band — the angular black "plywood" facets the PO flagged.  DROPPED by default now that the
+# tan windlot scuttle (WIND_ALPHA=1) covers that area like the GPL gold standard; JM_KEEP_LOTBLACK=1
+# brings the black band back.
+const _LOTBLACK_EXC = get(ENV,"JM_KEEP_LOTBLACK","0") != "0" ? () : ("lotblack",)
 const _EXTRA_EXC = Tuple(split(get(ENV,"JM_EXTRA_EXCLUDE",""), ",", keepempty=false))   # E36 band bisection: drop these textures from CARP
 # E36: the "black band" below the wheel was the DRIVER FIGURE's own torso/lap — from the cockpit eye
 # (inside the driver) his body filled the lower view, occluding the green tub + LOTUS hub badge.  Pull
@@ -625,7 +626,7 @@ const MIRROR_DX   = parse(Float32, get(ENV,"JM_MIRROR_X","0.075"))
 const MIRROR_TILT = deg2rad(parse(Float32, get(ENV,"JM_MIRROR_TILT","-25")))   # E48: stand the discs UPRIGHT facing the eye (+22 read as "angled down" — we saw the top faces)
 const MIRROR_SCALE = parse(Float32, get(ENV,"JM_MIRROR_SCALE","0.5"))    # disc SIZE (round-mirror size)
 const MIRROR_SPREAD = parse(Float32, get(ENV,"JM_MIRROR_SPREAD","1.7"))   # lateral separation multiplier — push the pair out to the screen edges
-const WIND_ALPHA   = parse(Float32, get(ENV,"JM_WIND_ALPHA","0.0"))      # E49: OFF — windlot is the tan SCUTTLE, not glass; drawn translucent it read as an angled "plywood board" (PO). Cockpit is cleaner without it. JM_WIND_ALPHA>0 re-enables.
+const WIND_ALPHA   = parse(Float32, get(ENV,"JM_WIND_ALPHA","1.0"))      # PO: windlot = the tan LEATHER SCUTTLE (the defining GPL cockpit element). The earlier OFF default came from drawing it TRANSLUCENT (read as an angled "plywood board"); drawn OPAQUE (1.0) it is the GPL scuttle sweeping up to the cowl on both sides. JM_WIND_ALPHA<1 makes it glassy again.
 const MIRRORMAT = Render.translate(Float32[MIRROR_DX,MIRROR_DY,0]) *
                   Render.translate(MCEN) * Render.rotz(MIRROR_TILT) * Render.scalexyz(MIRROR_SCALE,MIRROR_SCALE,MIRROR_SCALE*MIRROR_SPREAD) * Render.translate(-MCEN)
 println(length(TRACK), " track parts + ", length(CARP), " Lotus body parts")
