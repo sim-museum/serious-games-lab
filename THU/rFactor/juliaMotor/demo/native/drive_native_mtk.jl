@@ -572,6 +572,12 @@ const BODY_OFF = Float32[-0.55, 0.30, 0.0]     # centre body on X, lift onto the
 # Visual suspension-travel gain: amplifies the chassis dive/squat/roll the wheels FLOAT against, so the
 # 1967 car's soft suspension reads clearly from the cockpit (the wheels are decoupled — see wheelmat).
 const SUSP_GAIN = parse(Float32, get(ENV,"JM_SUSP_GAIN","1.8"))
+# GPL cockpit head stabiliser (E53): the camera UP follows only the LOW-FREQUENCY chassis tilt.
+# A slow road bank rolls the view WITH the car (head → road normal, chassis fixed on screen, horizon
+# tilts); a fast jolt (curb strike) does NOT roll the view — the CHASSIS rocks on screen while the head
+# stays toward vertical.  So the landscape no longer strobes back-and-forth (which gave the PO a headache).
+# τ = the follow time-constant (s): banks held >~τ are fully followed; sub-τ jolts are largely rejected.
+const CAM_TILT_TAU = parse(Float64, get(ENV,"JM_CAM_TILT_TAU","0.35"))
 # wheel hubs (rig frame X fwd, Y=radius, Z left); front pair steers, all spin.  Front/rear track WIDENED
 # (was ±0.62/±0.66) — the Lotus 49 ran ~1.52 m tracks; the narrow stance read as "wheels bolted together".
 const WTRACK_F = parse(Float32, get(ENV,"JM_TRACK_F","0.76"))   # front half-track (m)
@@ -874,16 +880,20 @@ let objnames=Set{String}()
         for (nm,py,onhat) in flo; nm in seen && continue; push!(seen,nm); length(seen)>22 && break; println("   ", rpad(nm,16), "y=", rpad(round(py,digits=1),7), onhat ? "on-HAT" : "OFF-HAT"); end; flush(stdout)
         # E33: MESH objects whose base sits IN/NEAR the road corridor (the Watkins balcony-support-in-road).
         # on_road returns |lateral| under the halfwidth; report any kept mesh within ROAD_HALFW+4 m of centre.
-        onroad_objs = NTuple{3,Any}[]
+        onroad_objs = NTuple{4,Any}[]
         for i in insts
             (get(objmesh,i.name,nothing)===nothing || drop(i.name) || !onground(i)) && continue
             (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 || continue
             hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
-            hr.found && abs(hr.lateral) < parse(Float64,get(ENV,"JM_OBJDIAG_LAT","$(ROAD_HALFW+4.0)")) && push!(onroad_objs, (i.name, round(hr.lateral,digits=1), round(hr.lapdist,digits=0)))
+            # road tangent angle from perp (lateral unit vec rotated -90°); object yaw RELATIVE to it:
+            # |relyaw| near 0/180 = wall runs PARALLEL to the road, near ±90 = PERPENDICULAR storefront (E41)
+            roadθ = atan(-hr.perp[2], hr.perp[1])
+            relyaw = rad2deg(rem2pi(Float64(i.yaw) - roadθ, RoundNearest))
+            hr.found && abs(hr.lateral) < parse(Float64,get(ENV,"JM_OBJDIAG_LAT","$(ROAD_HALFW+4.0)")) && push!(onroad_objs, (i.name, round(hr.lateral,digits=1), round(hr.lapdist,digits=0), round(relyaw,digits=0)))
         end
         sort!(onroad_objs, by=x->abs(x[2]))
-        println("== JM_OBJDIAG mesh objects in/near the road (|lat| < ROAD_HALFW+4 = ", round(ROAD_HALFW+4.0,digits=1), " m) ==")
-        for (nm,lat,ld) in onroad_objs; println("   ", rpad(nm,16), "lat=", rpad(lat,7), " lapdist=", ld, " m"); end; flush(stdout)
+        println("== JM_OBJDIAG mesh objects in/near the road (|lat| < ROAD_HALFW+4 = ", round(ROAD_HALFW+4.0,digits=1), " m;  relyaw 0/±180=parallel, ±90=PERPENDICULAR) ==")
+        for (nm,lat,ld,ry) in onroad_objs; println("   ", rpad(nm,16), "lat=", rpad(lat,7), " lapdist=", rpad(ld,7), " relyaw=", ry, "°"); end; flush(stdout)
     end
 end
 println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards + ", length(STATICTREES), " forest panels + ", length(SOLIDS), " solid (collidable)"); flush(stdout)
@@ -991,9 +1001,11 @@ function camera(cs, pitch=0.0, roll=0.0)
         eye=[wx-fx*9, wy+3.2, wz-fz*9]; ctr=[wx+fx*3, wy+0.6, wz+fz*3]
         return PROJ * Render.lookat(Float32.(eye), Float32.(ctr), Float32[0,1,0]), Float32.(eye)
     end
-    # COCKPIT: the camera is rigidly BOLTED to the body (same yaw·pitch·roll as the chassis), so the
-    # cockpit/dash/wheel are STATIONARY on screen and the WORLD tilts — the driver's head stays normal to
-    # the surface the car is on (GPL behaviour), instead of the car appearing to lean under a level horizon.
+    # COCKPIT: the camera takes yaw from the chassis and pitch/roll from the LOW-PASS head tilt (E53,
+    # caller-supplied cam_pitch/cam_roll).  On a slow road bank that low-pass ≈ the chassis tilt, so the
+    # cockpit is stationary on screen and the WORLD tilts (head → surface normal, GPL behaviour); on a fast
+    # jolt the low-pass lags, so the chassis (drawn at FULL tilt) rocks on screen while the horizon stays
+    # level — no headache-inducing landscape strobe.
     ex,ey,ez,drop = parse(Float32,get(ENV,"JM_EYE_X","0.46")), parse(Float32,get(ENV,"JM_EYE_Y","0.40")), 0.0f0, parse(Float32,get(ENV,"JM_EYE_DROP","0.55"))   # GPL: low seat just behind the wheel, ~level gaze (see the road), dash fills the lower frame; tunable via JM_EYE_*
     R = Render.roty(Float32(cs.θ)) * Render.rotz(Float32(pitch)) * Render.rotx(Float32(roll))   # = the chassis rotation
     R3(a,b,c) = (w = R * Float32[a,b,c,0f0]; Float32[w[1],w[2],w[3]])     # rotate a body-frame direction into the world
@@ -1165,6 +1177,7 @@ function main()
     fy_lp = 0.0                                        # low-pass front-axle force for FFB (de-spikes the coarse mesh)
     tc_hud = ntuple(_->(0.0,0.0,1.0), 4)              # smoothed traction-circle display (kills coarse-mesh flicker)
     v_prev = cs.v; pitch_dyn = 0.0; pitch_ter = 0.0; roll_ter = 0.0    # dive/squat + terrain-slope pitch + cross-slope roll (smoothed)
+    cam_pitch = 0.0; cam_roll = 0.0                                    # E53: low-pass head tilt for the cockpit camera (lags fast jolts)
     # lap timing + telemetry log
     lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = cs.laps; tsamp = 0; race_done = false; enterPrev = false
     player_s_prev = CLINE === nothing ? 0.0 : RaceAI.project(CLINE, cs.x, cs.z)[1]   # for robust lap detection
@@ -1506,7 +1519,13 @@ function main()
         end
         pitch_dyn = clamp(pitch_dyn, -0.11, 0.11); rollv = clamp(rollv, -0.10, 0.10)   # ±~6° cap (no over-rotate)
         REPLAY && (pitch_dyn = 0.0; rollv = 0.0)      # replay: body follows the terrain only (no recorded suspension state)
-        vp, eye = camera(cs, pitch_ter + pitch_dyn, roll_ter + rollv)   # cockpit cam = full body orientation → cockpit stationary, world tilts
+        # E53: the cockpit camera follows only the LOW-FREQUENCY chassis tilt — slow banks roll the view
+        # with the car (chassis fixed on screen, horizon tilts); fast jolts are rejected so the head stays
+        # toward vertical and the CHASSIS rocks on screen instead (no headache-inducing landscape strobe).
+        αcam = 1.0 - exp(-(dt > 1e-4 ? dt : 1/60)/CAM_TILT_TAU)
+        cam_pitch += ((pitch_ter + pitch_dyn) - cam_pitch) * αcam
+        cam_roll  += ((roll_ter  + rollv    ) - cam_roll ) * αcam
+        vp, eye = camera(cs, cam_pitch, cam_roll)     # head = low-pass tilt; body keeps full tilt → high-freq rock shows on the chassis
         if REPLAY     # E25: cinematic cameras follow the FOCUS car (player or any AI) from its recorded pose
             fp = rep_focus[] == 0 ? (cs.x, cs.y, cs.z, cs.θ) :
                  (rf = rep_ai_raw[rep_focus[]]; (rf[1], rf[2], rf[3], rf[4]))
