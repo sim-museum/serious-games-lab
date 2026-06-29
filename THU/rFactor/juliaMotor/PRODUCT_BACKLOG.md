@@ -464,14 +464,20 @@ felt while driving). Next PO session on Watkins + Monza closes them — or reope
   (idle) at Spa, speed crawls 0–26 km/h in 1st; Nürburgring "pinned at 35 floored in 1st, bogs immediately
   in 2nd". Looks like a per-frame speed-scrub (grass-drag false-trigger on-road, or off-HAT containment
   bleeding speed) keyed to these tracks' HAT/centreline. Possibly same root as E38 (bad lateral/HAT).
-- **E42 🔴 Spa off-world slide + superball:** sliding off to the right just past Eau Rouge, the car slid
-  all the way down a field, OFF THE EDGE OF THE WORLD, then superball-bounced back — world-boundary/off-HAT
-  containment not holding at Spa.
+- **E42 ✅ Spa off-world slide + superball — FIXED (commit 19038b0):** the boundary snap reset only the
+  HORIZONTAL pose, leaving the vertical suspension loaded against the down-a-field height → re-entry slammed
+  the contact = superball. `contain3d!` now gains `settle`+`groundz`: on a boundary hit it zeroes the
+  vertical states and re-anchors zref to the snap-point terrain (same reset respawn3d! uses). Also mitigates
+  E52's "can't get out" bounce. Needs PO re-drive to confirm feel.
 
 **Scenery/placement:**
-- **E40 ⏳ Spa people-line into the road** before Eau Rouge — a row of spectators extends onto the track.
+- **E40 ✅ Spa people-line into the road — FIXED (commit 462a1cc):** stand-crowd rows (peprow*) that
+  projected onto the paved surface (|lat|<ROAD_HALFW) by Eau Rouge + the start straight are now dropped
+  (19 rows removed at Spa); grandstands set back (|lat|>9) stay. JM_OBJDIAG now prints per-object relyaw.
 - **E41 ⏳ Spa storefronts perpendicular** to the road (should be parallel) — the ENGLEBERT/pit buildings
-  on the right are rotated 90° (yaw wrong).
+  on the right are rotated 90° (yaw wrong). DEFERRED: JM_OBJDIAG relyaw shows Spa houses have a WIDE yaw
+  spread (28–160°), no clean systematic 90° error → can't fix blind. Needs a GPL reference screenshot of
+  the offending storefronts to know the correct facing.
 - **E43 🔁 Watkins balcony STILL protrudes into the road** — E33 pitbldg nudge did NOT fix it; the real
   offender is a different object (re-identify from the Watglen start shot; the gantry/timing structure).
 - **E44 ⏳ Nürburgring right-side objects carbonized** — left-side crowd/banners colourful, RIGHT side
@@ -479,14 +485,34 @@ felt while driving). Next PO session on Watkins + Monza closes them — or reope
 - **E45 🔁 Zandvoort horizon buildings still floating midair** — E34 thought-fixed; still hanging. Re-open.
 - **E46 ⏳ Zandvoort crowd too blue** at the left grandstand (colour grade / crowd texture tint).
 - **E51 🔁 Monza tree-curtain across the road at the Lesmos** (E31 re-open — still there).
-- **E52 🔁 Monza tunnel wall + hedge maze trap** — thick wall near the tunnel superball-bounces the car
-  into a tall green hedge maze it can't escape (E31 re-open — the hedge box / on_road filter missed it).
+- **E52 🟡 Monza tunnel wall + hedge maze trap — PARTIALLY FIXED:** the "superball-bounce + can't get out"
+  was the E42 vertical-bounce loop (now fixed). JM_OBJDIAG shows no hedge/wall MESH on the road at the
+  tunnel (br_tun at lat 2.2 is the overhead structure, not collidable). Residual "thick wall" is likely the
+  tunnel section in the collision HAT (TRACKMESH bypasses the object HAT filter) — needs PO re-drive to see
+  if E42 resolved it before chasing the HAT.
 
 **Car / cockpit:**
-- **E47 ⏳ Auto-shift short-shift gears 1→2:** up-shift point too high; car nearly peels out before it
-  shifts up out of 1st/2nd. Lower the up-RPM for the low gears (short-shift).
-- **E48 ⏳ Mirrors angled DOWN** — at about the right place now, but tilted down showing ground, not the
-  road behind. Reduce JM_MIRROR_TILT / flip sign.
-- **E49 ⏳ Plexiglass "plywood board" up front** — an angled flat tan/dark polygon attached to the front
-  wheels; is that the windscreen (`windlot`)? It reads as a misplaced board, not glass.
-- **E50 ⏳ Ferrari wheel-centre shimmers** — the AI Ferrari front wheel hub z-fights/shimmers.
+- **E47 ✅ Auto-shift short-shift 1st/2nd — FIXED (commit 2dc660a):** up-RPM lowered for the low gears
+  (1st=5000, 2nd=5800, 3rd–5th=7000) so the launch is clean instead of peeling out. Gated to auto mode.
+- **E48 ✅ Mirrors angled DOWN — FIXED (commit 2dc660a):** JM_MIRROR_TILT flipped +22→−25 so the discs
+  stand UPRIGHT facing the driver (verified in the skidpad cockpit render).
+- **E49 ✅ Plexiglass "plywood board" — FIXED (commit 6f8bac4):** the "glass" was windlot, the tan SCUTTLE,
+  drawn translucent → read as an angled plywood board. JM_WIND_ALPHA defaulted to 0 (draw skipped); the
+  cockpit scuttle is cleaner without it.
+- **E50 ✅ Wheel-centre shimmer — FIXED (commit 6f8bac4):** the LOTUS badge (lsterlog) was coplanar with the
+  red hub face → z-fight. Badge offset ~3 mm toward the driver along the column axis. (Read as the player's
+  steering-wheel hub; verified the badge still renders proudly.)
+
+**Cockpit camera (PO correction 2026-06-28):**
+- **E53 ✅ GPL cockpit head stabiliser — FIXED (commit 446c821):** the camera was bolted to the FULL chassis
+  tilt, so fast suspension jolts rolled the whole world → landscape strobe → headache. Now the camera
+  pitch/roll follow only a LOW-PASS of the chassis tilt (τ=JM_CAM_TILT_TAU=0.35 s) while the chassis is drawn
+  at FULL tilt. PO's rule: "the horizon may tilt slowly but not quickly; quick tilt → the CAR does the
+  tilting." Slow bank → view rolls with car (horizon tilts, chassis fixed); fast curb → chassis rocks on
+  screen, horizon stays level. Needs PO re-drive to confirm the feel/τ.
+
+**Deferred — need a PO re-drive or GPL reference screenshot at the specific spot (can't verify/​fix headless; SMOKE only captures the spawn frame):**
+- **E43** Watkins balcony-in-road · **E44** Nürburgring right-side carbonized (start straight looks fine on
+  both sides — offender is out on the lap) · **E45** Zandvoort floating horizon buildings · **E46** Zandvoort
+  blue crowd · **E51** Monza Lesmo tree-curtain (on-road sprites already dropped by E31; residual is a wide
+  near-road tree billboard — needs the spot to retune without stripping legit roadside trees).
