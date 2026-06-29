@@ -450,3 +450,43 @@ All of E30/E31/E32/E33 have their code fix in; they can't be self-verified headl
 felt while driving). Next PO session on Watkins + Monza closes them — or reopens with specifics.
 - E30 Watkins esses bog · E31 Monza curtain/hedge · E32 superball (esp. the hard-hit/cartwheel case)
   · E33 Watkins balcony (confirm pitbldg was the one) · E34 Zandvoort floaters (confirm while moving).
+
+## PO live-drive batch #2 (2026-06-28 PM) — "Spa race + all tracks", 28 screenshots — E38…E52
+**CRITICAL (race-breaking):**
+- **E38 🔴 AI cars hyperspace off-track + cartwheel/tangle (Spa, Nürburgring):** on throttle the whole AI
+  field vanishes, reappears OFF the road to the RIGHT, proceeds parallel to the track in a tangled
+  "inchworm", clumps up bumping each other, then the clump disappears and pops back 5 car-lengths on
+  "like beetles missing legs" (cartwheeling, upside-down, superball-bouncing). Screenshots show AI on the
+  right verge tumbling. Happens on the two BIG tracks (Spa ~5.7k objects, Nürburgring); Zandvoort/Watkins
+  grids looked OK. Likely the 3-D physics-AI (AIPHYS) blowing up on these tracks' terrain/centreline, or
+  the AI rail/lane offset placing them off-line. THE top priority — makes racing unplayable.
+- **E39 🔴 Player BOG on the big tracks (Spa, Nürburgring):** car won't accelerate — RPM pinned ~1950
+  (idle) at Spa, speed crawls 0–26 km/h in 1st; Nürburgring "pinned at 35 floored in 1st, bogs immediately
+  in 2nd". Looks like a per-frame speed-scrub (grass-drag false-trigger on-road, or off-HAT containment
+  bleeding speed) keyed to these tracks' HAT/centreline. Possibly same root as E38 (bad lateral/HAT).
+- **E42 🔴 Spa off-world slide + superball:** sliding off to the right just past Eau Rouge, the car slid
+  all the way down a field, OFF THE EDGE OF THE WORLD, then superball-bounced back — world-boundary/off-HAT
+  containment not holding at Spa.
+
+**Scenery/placement:**
+- **E40 ⏳ Spa people-line into the road** before Eau Rouge — a row of spectators extends onto the track.
+- **E41 ⏳ Spa storefronts perpendicular** to the road (should be parallel) — the ENGLEBERT/pit buildings
+  on the right are rotated 90° (yaw wrong).
+- **E43 🔁 Watkins balcony STILL protrudes into the road** — E33 pitbldg nudge did NOT fix it; the real
+  offender is a different object (re-identify from the Watglen start shot; the gantry/timing structure).
+- **E44 ⏳ Nürburgring right-side objects carbonized** — left-side crowd/banners colourful, RIGHT side
+  (pit wall/buildings) still post-Hiroshima dark. Per-side lighting/ambfill gap.
+- **E45 🔁 Zandvoort horizon buildings still floating midair** — E34 thought-fixed; still hanging. Re-open.
+- **E46 ⏳ Zandvoort crowd too blue** at the left grandstand (colour grade / crowd texture tint).
+- **E51 🔁 Monza tree-curtain across the road at the Lesmos** (E31 re-open — still there).
+- **E52 🔁 Monza tunnel wall + hedge maze trap** — thick wall near the tunnel superball-bounces the car
+  into a tall green hedge maze it can't escape (E31 re-open — the hedge box / on_road filter missed it).
+
+**Car / cockpit:**
+- **E47 ⏳ Auto-shift short-shift gears 1→2:** up-shift point too high; car nearly peels out before it
+  shifts up out of 1st/2nd. Lower the up-RPM for the low gears (short-shift).
+- **E48 ⏳ Mirrors angled DOWN** — at about the right place now, but tilted down showing ground, not the
+  road behind. Reduce JM_MIRROR_TILT / flip sign.
+- **E49 ⏳ Plexiglass "plywood board" up front** — an angled flat tan/dark polygon attached to the front
+  wheels; is that the windscreen (`windlot`)? It reads as a misplaced board, not glass.
+- **E50 ⏳ Ferrari wheel-centre shimmers** — the AI Ferrari front wheel hub z-fights/shimmers.
