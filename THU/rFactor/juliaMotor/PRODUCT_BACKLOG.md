@@ -407,8 +407,10 @@ Status: ✅ done+SMOKE-verified · ⬛ partial · ⏳ open.
 - **E34 ✅ Zandvoort "floating buildings":** the dark slabs floating against the sky were the
   CARBONIZED objects (E29) reading as black cut-outs against the bright sky — properly lit they sit
   on the ground. SMOKE chase-view at the start shows no floaters. (Re-confirm while driving.)
-- **E35 ⏳ Zandvoort yellow panel on the front wheels:** a yellow/tan panel stuck to the front of the
-  wheels in cockpit view (img #25) — likely the `windlot` scuttle mis-placed. Cockpit fidelity.
+- **E35 ✅ Zandvoort yellow panel on the front wheels:** RESOLVED by the E36 driver-figure pull — the
+  yellow/tan panel "stuck to the front of the wheels" was the driver's knees/lap (`knees`/`lotbody`)
+  seen from inside the figure. With the driver hidden in cockpit, the cockpit render shows green tub +
+  badge + gauges and NO yellow panel (SMOKE-verified Zandvoort cockpit). Re-confirm while driving.
 - **E36 ✅ Black cockpit band — SOLVED (deep-dive):** the band was the DRIVER FIGURE's own torso/lap
   (`driver5`/`lotbody`/`lotsho`/`knees`/`neck`) — from the in-car eye (inside the driver) his body
   filled the lower view and OCCLUDED the green tub + LOTUS hub badge. Pulled the driver out of CARP
@@ -422,5 +424,14 @@ Status: ✅ done+SMOKE-verified · ⬛ partial · ⏳ open.
 ### Sprint plan (this batch, PO pre-approved "scrum as before")
 - **Sprint D — stop-the-bleeding (DONE):** E23 crash, E27 sky, E29 carbon, E26/E28/E24 GUI, E37 shift.
 - **Sprint E — physics/placement:** E32 superball → E30 Watkins bog → E31 Monza curtain → E33 balcony.
-- **Sprint F — cockpit fidelity:** E35 yellow panel → E36 black band.
+- **Sprint F — cockpit fidelity (DONE):** E36 black band + E35 yellow panel (both = driver-figure pull).
 - **Sprint G — replay cinematics:** E25 multi-camera/car replay viewer.
+
+### Remaining open (post-Sprint-F)
+- **E32 ⏳ Superball respawn / hard hit** — respawn3d! unit-tested settles flat; hard-hit cartwheel
+  still untested (needs live PO re-drive into a wall).
+- **E30 ⏳ Watkins esses bog** — ROAD_HALFW 7.5→9.0 widens the drivable corridor; PO re-drive to confirm.
+- **E31 ⏳ Monza curtain / hedge box** — on_road filter dropped 1565→1342 billboards + hedge solids; re-drive.
+- **E33 ⏳ Watkins balcony support in road** — collision removed by on_road SOLIDS filter; mesh leg may
+  still be visible (cosmetic). Needs the offending object identified to cull or shift it.
+- **E25 ⏳ Replay multi-camera/car viewer** — Sprint G, large feature.
