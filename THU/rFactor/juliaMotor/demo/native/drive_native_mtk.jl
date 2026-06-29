@@ -1221,9 +1221,18 @@ function main()
     # "false-grass" spots (the centreline projecting off the .trk racing surface ⇒ a grass-penalty
     # MOLASSES even though the car is on the road).  Headless, no game loop.  JM_SWEEP=<step m> (or 1).
     if CLINE !== nothing && haskey(ENV,"JM_SWEEP") && isdefined(Main,:OBJINSTS)
+        olat(ox,oz) = (hr = JuliaMotor.hat(TRKSURF, Float64(ox), Float64(oz)); hr.found ? round(hr.lateral,digits=1) : 999.0)
         step = (v = tryparse(Float64, get(ENV,"JM_SWEEP","")); v === nothing || v < 1 ? 15.0 : v)
-        kept_mesh = [(nm,ox,oz) for (nm,ox,oz,oy,kind,dropped) in OBJINSTS if kind===:mesh && !dropped]
-        kept_bb   = [(nm,ox,oz) for (nm,ox,oz,oy,kind,dropped) in OBJINSTS if kind===:bb   && !dropped]
+        # project each kept object's centroid onto the .trk → its lateral offset.  An object whose
+        # CENTROID is well inside the road half-width (|lat| < ROAD_HALFW-1) is a genuine blocker; one
+        # near/beyond the edge (|lat| ≈ 9+) is roadside furniture (signs/flags/edge trees) — exclude it.
+        BLOCK_LAT = ROAD_HALFW - 1.0
+        # an object only blocks if its base sits near ROAD level — a gantry/bridge/sign spanning OVER
+        # the track (base ≫ road height) is overhead furniture, not a blocker.  dy = base-y − road-y.
+        OBJ_MAX_DY = parse(Float64, get(ENV,"JM_OBJ_MAX_DY","3.0"))
+        objdy(ox,oz,oy) = (rh = JuliaMotor.hat3d(TERRAIN, Float64(ox), Float64(oz); ref=Inf); rh[3] ? round(Float64(oy)-rh[1],digits=1) : 0.0)
+        kept_mesh = [(nm,ox,oz,olat(ox,oz),objdy(ox,oz,oy)) for (nm,ox,oz,oy,kind,dropped) in OBJINSTS if kind===:mesh && !dropped]
+        kept_bb   = [(nm,ox,oz,olat(ox,oz),objdy(ox,oz,oy)) for (nm,ox,oz,oy,kind,dropped) in OBJINSTS if kind===:bb   && !dropped]
         println("\n==== JM_SWEEP ", uppercasefirst(TRACKSEL), "  (step=", round(Int,step),
                 " m, total=", round(Int,CLINE.total), " m, ROAD_HALFW=", ROAD_HALFW, ") ====")
         groundz(RaceAI.pose_at(CLINE,0.0,0.0)[1], RaceAI.pose_at(CLINE,0.0,0.0)[3]; acquire=true)
@@ -1238,8 +1247,8 @@ function main()
             top[3] || push!(flags, "OFF-HAT(hole)")
             (top[3] && prevtop[3] && abs(top[1]-prevtop[1]) > 3.0) && push!(flags, "WALL/CLIFF Δh=$(round(top[1]-prevtop[1],digits=1))m")
             (!hr.found || abs(hr.lateral) > ROAD_HALFW) && push!(flags, "FALSE-GRASS lat=$(hr.found ? round(hr.lateral,digits=1) : "MISS")")
-            mobs = [nm for (nm,ox,oz) in kept_mesh if hypot(ox-px, oz-pz) < ROAD_HALFW]
-            bobs = [nm for (nm,ox,oz) in kept_bb   if hypot(ox-px, oz-pz) < ROAD_HALFW]
+            mobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_mesh if hypot(ox-px, oz-pz) < ROAD_HALFW && abs(lat) < BLOCK_LAT && dy < OBJ_MAX_DY]
+            bobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_bb   if hypot(ox-px, oz-pz) < ROAD_HALFW && abs(lat) < BLOCK_LAT && dy < OBJ_MAX_DY]
             isempty(mobs) || push!(flags, "ON-ROAD MESH: " * join(unique(mobs)[1:min(end,4)], ","))
             isempty(bobs) || push!(flags, "ON-ROAD BILLBOARD: " * join(unique(bobs)[1:min(end,4)], ","))
             if isempty(flags); nclean += 1
@@ -1783,7 +1792,12 @@ function main()
                     tw > 0.0 && AIbump!(pc, tw*cos(pc.θ)*ddt, tw*sin(pc.θ)*ddt, 0.0)
                 end
             end
-            # AI↔AI collisions (physics): pairwise overlap + closing → momentum exchange (both react)
+            # AI↔AI collisions (physics): pairwise overlap + closing → PLANAR momentum exchange only.
+            # E55 (PO-authorised "ignore wheelspin in AI collisions"): the old response injected a
+            # wheel-climb LAUNCH (upward heave) + ROLL into each car's 3-D body, so AI flipped, cartwheeled
+            # and — the violent impulse diverging the MTK integrator — hyperspaced off-track (E38).  AI now
+            # bump like billiard balls: push apart along the contact normal + a mild yaw nudge, NO vertical
+            # launch and NO roll, so the field stays flat and nose-to-tail.  Impulse capped (no hyperspace).
             for a in 1:length(AIPHYS)-1, b in a+1:length(AIPHYS)
                 pa = AIPHYS[a]; pb = AIPHYS[b]
                 dx = pb.x-pa.x; dz = pb.z-pa.z; d = hypot(dx,dz)
@@ -1791,11 +1805,9 @@ function main()
                 nx = dx/d; nz = dz/d
                 vrel = (pa.v*cos(pa.θ)-pb.v*cos(pb.θ))*nx + (pa.v*sin(pa.θ)-pb.v*sin(pb.θ))*nz
                 vrel <= 0.2 && continue
-                j = 1.45*vrel*280.0                       # (1+e)·vrel·reduced-mass, e=0.45, m=560 each
-                acrossa = -nx*sin(pa.θ)+nz*cos(pa.θ); vl = clamp((j/560)*abs(acrossa)*0.55, 0.0, 7.0)  # wheel-climb launch
-                dr2 = clamp(sign(acrossa)*vl*0.8, -6.0, 6.0)
-                AIbump!(pa, -(j/560)*nx, -(j/560)*nz, clamp(-(j/560)*0.04, -1.0, 1.0), vl, dr2)
-                AIbump!(pb,  (j/560)*nx,  (j/560)*nz, clamp( (j/560)*0.04, -1.0, 1.0), vl, -dr2)
+                imp = clamp(1.45*vrel*280.0/560, 0.0, 4.0)   # (1+e)·vrel·reduced-mass / m, capped at 4 m/s
+                AIbump!(pa, -imp*nx, -imp*nz, clamp(-imp*0.04, -0.6, 0.6))   # planar push + mild yaw; no dvy/dpp
+                AIbump!(pb,  imp*nx,  imp*nz, clamp( imp*0.04, -0.6, 0.6))
             end
             [(b=aibankP(pc); (pc.x, isfinite(pc.y) ? pc.y : groundz(pc.x, pc.z), pc.z, pc.θ, b[1], b[2])) for pc in AIPHYS]   # pc.y = 3-D height → AI visibly jump/heave; pitch/roll → list + roll
         else
@@ -1834,7 +1846,9 @@ function main()
                 ffb_jolt = clamp(-sign(lat)*(j/pm)*0.18 - 0.25*sign(vrel), -1.0, 1.0)   # FF jolt — feel the hit
                 if AI_PHYSICS                                  # the AI is a real physics car → impulse it too
                     alat = -dx*sin(aθ) + dz*cos(aθ)
-                    AIbump!(AIPHYS[k], (j/am)*nx, (j/am)*nz, clamp(sign(alat)*(j/am)*0.05, -1.5, 1.5), vlaunch, -droll)
+                    # E55: PLANAR push + mild yaw only — no vertical launch / roll on the AI (it must not
+                    # flip or cartwheel when the player nudges it), even though the player still feels the hit.
+                    AIbump!(AIPHYS[k], (j/am)*nx, (j/am)*nz, clamp(sign(alat)*(j/am)*0.05, -1.0, 1.0))
                 else
                     along  = nx*cos(aθ) + nz*sin(aθ); across = -nx*sin(aθ) + nz*cos(aθ)
                     ac.v   = max(0.0, ac.v + (j/am)*along*0.6)    # pushed along its heading (rear-ended ⇒ sped up; nosed ⇒ slowed)
