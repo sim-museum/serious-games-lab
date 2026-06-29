@@ -141,7 +141,7 @@ end
 const CARHALF = 1.4    # car collision half-extent (m)
 function solid_hit(x, z, θ, v)
     v < 1.2 && return nothing
-    @inbounds for (ox, oz, r) in SOLIDS
+    @inbounds for (ox, oz, r, _kind) in SOLIDS
         dx = x - ox; dz = z - oz; d = hypot(dx, dz)
         rr = r + CARHALF
         (d >= rr || d < 1e-3) && continue
@@ -158,6 +158,26 @@ function solid_hit(x, z, θ, v)
         return (j*nx, j*nz, dr, lift, droll, dpitch)
     end
     nothing
+end
+# E56: object collision CLASS for the all-Modelica PLAYER contact law — hedges/hay rows (Zandvoort
+# `haie`) are soft (drive in, bleed speed, get stuck); everything else (walls/armco/fences/buildings/
+# towers/parked vehicles) is a hard elastic wall (bounce).  The AI still use the kinematic solid_hit.
+solidkind(nm) = startswith(nm, "haie") ? :soft : :wall
+# E56: sum the spring-damper CONTACT forces from every SOLID the PLAYER car penetrates into one
+# body-frame (Fx,Fy,Mz) to feed extforce3d! BEFORE the step (the solver integrates the collision —
+# no bumpX! state hack).  Returns the net force/moment + a peak-penetration proxy for the FFB jolt.
+function solid_contact(x, z, θ, v, dt)
+    Fx = 0.0; Fy = 0.0; Mz = 0.0; peak = 0.0
+    @inbounds for (ox, oz, r, kind) in SOLIDS
+        dx = x - ox; dz = z - oz; d = hypot(dx, dz)
+        rr = r + CARHALF
+        (d >= rr || d < 1e-3) && continue
+        nx = dx/d; nz = dz/d
+        vn = v*cos(θ)*nx + v*sin(θ)*nz                    # car speed along the outward normal (<0 = into it)
+        (fx, fy, mz) = DriveRT3D.contact_force(rr - d, nx, nz, vn, θ; kind = kind, dt = dt)
+        Fx += fx; Fy += fy; Mz += mz; peak = max(peak, hypot(fx, fy))
+    end
+    (Fx, Fy, Mz, peak)
 end
 # GPL '67 AI reference laptimes (s) — the "100 %" anchor.  Sourced from GPL AI/hotlap
 # pace per circuit; tunable per car/setup via JM_AI_REFLAP (overrides the table).  At
@@ -722,7 +742,7 @@ if SKIDPAD || NURB
     global OBJECTS = Any[]
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
-    global SOLIDS = NTuple{3,Float64}[]   # no collidable trackside objects on skidpad / Nürburgring (scenery baked in) — without this solid_hit() throws UndefVarError on the first collision check
+    global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]   # no collidable trackside objects on skidpad / Nürburgring (scenery baked in) — without this solid_hit()/solid_contact() throws UndefVarError on the first collision check
     global OBJINSTS = Tuple{String,Float32,Float32,Float32,Symbol,Bool}[]   # no placed objects here, but JM_SWEEP/JM_SPOT still need it defined to run the HAT/molasses checks
 else
 const DATPACK = TRACKDAT     # trackside objects come from the track's own .dat (generic across tracks)
@@ -857,11 +877,12 @@ let objnames=Set{String}()
                  startswith(nm,"haie") ? 2.2 :                                                        # hedges / hay rows lining the track
                  startswith(nm,"armco")||startswith(nm,"barrier")||startswith(nm,"fence")||startswith(nm,"wall") ? 1.2 :
                  startswith(nm,"caravn")||startswith(nm,"vwvan")||startswith(nm,"ftruck")||startswith(nm,"ambul")||nm=="car2"||startswith(nm,"rescu") ? 2.4 : 0.0
-    global SOLIDS = NTuple{3,Float64}[]
+    global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]
     for i in insts
-        r = solidR(lowercase(i.name)); (r <= 0.0 || !onground(i)) && continue
+        nml = lowercase(i.name)
+        r = solidR(nml); (r <= 0.0 || !onground(i)) && continue
         on_road(i.x, i.y, ROAD_HALFW - 2.0) && continue   # E31: don't make a collidable wall ON the road (the trapping hedge-box)
-        push!(SOLIDS, (Float64(i.x), Float64(i.y), r))
+        push!(SOLIDS, (Float64(i.x), Float64(i.y), r, solidkind(nml)))   # E56: tag wall vs hedge/hay for the contact law
     end
     # billboards: (Item, render-pos base, width, height) — drawn camera-facing per frame.
     # WIDE panoramic forest strips (GPL Watkins `tree*` 80–380 m across, authored as one big
@@ -1552,9 +1573,17 @@ function main()
             cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
         elseif rst; respawnX!(cs; groundz=groundz)
         else
-            # E56: feed last frame's draft drag-scale into the chassis ODE before stepping, so the
-            # slipstream tow is a REAL reduced-drag aero effect the solver integrates (not a velocity bump).
-            CAR3D && DriveRT3D.extforce3d!(cs; CdA_scale = PLAYER_CDA[])
+            # E56 ALL-MODELICA human car: feed the trackside spring-damper CONTACT force (wall = bounce,
+            # hedge/hay = bury & stick) + last frame's draft drag-scale into the chassis ODE BEFORE the
+            # step, so both are forces the solver INTEGRATES — no post-step bumpX!/containX! state hack.
+            if CAR3D
+                cfx = cfy = cmz = 0.0
+                if !SKIDPAD && !rst
+                    (cfx, cfy, cmz, cpk) = solid_contact(cs.x, cs.z, cs.θ, cs.v, dt > 1e-4 ? dt : 1/60)
+                    cpk > 1.0e3 && (ffb_jolt = clamp(sign(cmz != 0 ? cmz : 1.0) * min(cpk/8.0e4, 1.0), -1.0, 1.0))  # feel the hit
+                end
+                DriveRT3D.extforce3d!(cs; Fx = cfx, Fy = cfy, Mz = cmz, CdA_scale = PLAYER_CDA[])
+            end
             step_carX!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
                         groundz=groundz)
@@ -1615,15 +1644,9 @@ function main()
             end
             end
         end
-        # E15: player vs SOLID trackside objects (haybales/fences/buildings) — snout = bounce back,
-        # a spinning wheel into the bales climbs → launch + roll.  + an FFB jolt so you feel the hit.
-        if !rst && !SKIDPAD
-            h = solid_hit(cs.x, cs.z, cs.θ, cs.v)
-            if h !== nothing
-                bumpX!(cs, h[1], h[2], h[3], h[4], h[5], h[6])
-                ffb_jolt = clamp((h[3] >= 0 ? 1.0 : -1.0) * 0.7, -1.0, 1.0)
-            end
-        end
+        # E56: the player's trackside-object collision is now the all-Modelica spring-damper CONTACT
+        # force applied BEFORE the step (above) — the old post-step solid_hit→bumpX! state hack is gone.
+        # (The AI still use the kinematic solid_hit; they're slot cars.)
         spin -= cs.v*dt/0.33
         ENG.rpm[] = isfinite(cs.rpm) ? cs.rpm : 700.0   # feed the engine-audio thread (never NaN)
 

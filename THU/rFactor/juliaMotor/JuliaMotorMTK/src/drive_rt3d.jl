@@ -20,7 +20,7 @@ for f in ("tyre.jl","powertrain.jl","vehicle_3d.jl")
     include(joinpath(HERE, "components", f))
 end
 
-export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!
+export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force
 
 const GEARS = [2.23, 1.72, 1.32, 1.09, 0.916]
 gearratio(g::Int) = g <= 0 ? 0.0 : GEARS[g]
@@ -286,6 +286,37 @@ function respawn3d!(c::Car3D; groundz = nothing)
     end
     c.zr_prev = ntuple(_ -> 0.0, 4); c.y = c.zref
     c
+end
+
+"""E56 spring-damper trackside CONTACT kernel (the human car's all-Modelica collision response).
+Given a penetration `δ` [m, >0] into an object, the world-frame OUTWARD normal `(nx,nz)` (object→car),
+the car's velocity component `vn` along +n [m/s; <0 = driving INTO the object], heading `θ`, and the
+object `kind`, return the body-frame `(Fx,Fy,Mz)` to feed `extforce3d!` BEFORE the step.
+
+  :wall  — stiff spring + one-sided damper (resist approach only) ⇒ ELASTIC bounce-back.
+  :soft  — weak spring (with a crush `give` dead-zone) + two-sided viscous damper ⇒ the car drives
+           IN, the damper bleeds its speed, and the soft spring barely pushes back ⇒ it gets STUCK
+           (a hedge / hay row), yet can't pass clean through (deep penetration past `give` resists).
+
+The outward force is clamped to a per-frame impulse ≤ m·CONTACT_DVMAX (a penalty contact) so a stiff
+wall held constant over a render frame can't blow the integrator up.  Contact can only PUSH, not pull."""
+const CONTACT_DVMAX = 16.0
+function contact_force(δ, nx, nz, vn, θ; kind = :wall, m = 617.0, dt = 1/60, arm = 1.4)
+    δ <= 0.0 && return (0.0, 0.0, 0.0)
+    if kind === :soft
+        k = 7.0e3; c = 9.0e3; give = 2.2; twoSided = true        # weak + viscous + crush give → bury & stick
+    else
+        k = 2.5e6; c = 2.5e4; give = 0.0; twoSided = false       # stiff + elastic → bounce
+    end
+    δeff = max(δ - give, 0.0)                                     # the soft give-zone holds the car with no push-back
+    damp = twoSided ? -c*vn : -c*min(vn, 0.0)                    # :wall damps approach only (so it rebounds)
+    Fn = max(k*δeff + damp, 0.0)                                  # along +n (outward); a contact never pulls
+    Fn = min(Fn, m*CONTACT_DVMAX/max(dt, 1e-3))                  # clamp per-frame impulse → solver-stable
+    cθ = cos(θ); sθ = sin(θ)
+    Fx = Fn*( nx*cθ + nz*sθ);  Fy = Fn*(-nx*sθ + nz*cθ)         # world force → body frame
+    rx = (-nx*cθ - nz*sθ)*arm; ry = ( nx*sθ - nz*cθ)*arm        # contact point ≈ CG − n·arm, in body frame
+    Mz = rx*Fy - ry*Fx                                           # yaw from the contact lever
+    (Fx, Fy, Mz)
 end
 
 """E56 ALL-MODELICA CONTACT: feed body-frame external force `Fx`,`Fy` [N] + yaw moment `Mz` [N·m]
