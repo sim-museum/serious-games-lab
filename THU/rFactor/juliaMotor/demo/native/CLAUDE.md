@@ -10,19 +10,19 @@ working summary.
 ## Run it
 ```
 cd demo/native
-python3 gui.py                                  # PyQt6 front-end: launch + controller calibration (recommended)
+python3 juliaRacer.py                                  # PyQt6 front-end: launch + controller calibration (recommended)
 julia -t 2 --project=. drive_native.jl          # opens a GLFW window on your display
 JM_SMOKE=1 julia -t 2 --project=. drive_native.jl   # headless self-test → dumps /tmp/zand_hud.ppm and exits
 ```
 First load is ~2–3 min: ~40–80 s is one-time Julia/MTK/render JIT (track-independent),
 the rest is the per-track GPL parse (extract ~70 objects, decode MIP textures, build the
 HAT). **To cut the JIT:** `julia build_sysimage.jl` once (~20–40 min) writes `jlracer.so`;
-`gui.py` then auto-launches with `-J jlracer.so` and only the per-track parse remains. The
+`juliaRacer.py` then auto-launches with `-J jlracer.so` and only the per-track parse remains. The
 sysimage is gitignored (large, machine-specific) — rebuild it after physics/render changes. Controls: **W/S** gas·brake, **A/D** steer, **E/Q** shift, **C** clutch,
 **G** auto⇄manual, **V** view (cockpit/chase), **R** respawn, **M** mute, **Esc** quit.
 
-## GUI + controller calibration (`gui.py`)
-`gui.py` (PyQt6, system `python3-pyqt6`) is the front-end. Two tabs: **Drive** (pick
+## GUI + controller calibration (`juliaRacer.py`)
+`juliaRacer.py` (PyQt6, system `python3-pyqt6`) is the front-end. Two tabs: **Drive** (pick
 track Zandvoort/Skidpad/Nürburgring + mute/IBT options → launches `drive_native_mtk.jl`)
 and **Calibrate controller** (live axis bars + button lamps + a hold-each-control wizard
 → writes `joystick.conf`). Works for the **Logitech Extreme 3D Pro** (as before) AND a
@@ -52,8 +52,8 @@ installed). Diagnostic helpers: `joydiag.py` (axis range + movement-order timeli
 KEY DESIGN: `joystick.conf` axis indices are in **GLFW's** ordering, so the GUI must read
 the stick through GLFW, not pygame/evdev (which number axes differently). It does so via
 `joyserver.jl` — a hidden-window GLFW poller that streams `{name,axes,buttons}` JSON lines
-on stdout; `gui.py` spawns it and calibrates against exactly the indices the game uses.
-The Python `JoyMap` in `gui.py` mirrors `joycfg.jl` (same file format, same `apply`).
+on stdout; `juliaRacer.py` spawns it and calibrates against exactly the indices the game uses.
+The Python `JoyMap` in `juliaRacer.py` mirrors `joycfg.jl` (same file format, same `apply`).
 `calibrate.jl` (terminal wizard) still works and writes the same file. Per-device configs
 are also stashed under `joystick_profiles/` on Save. NOTE: `drive_native_mtk.jl` no longer
 hardcodes clutch→axis 4; it honours `joystick.conf` when present (so the TX clutch pedal
@@ -77,8 +77,8 @@ GOTCHAS (and see memory `sandracer-launch`):
   the horizon sky-dome, billboards.
 - `gpl3do.jl` / `gplmip.jl` / `gpldat.jl` / `gpltrack.jl` — GPL asset loaders:
   `.3do` meshes, `.mip`/`.srb` textures, the `.dat` archive, `.trk` centreline + HAT.
-- `gui.py` — PyQt6 front-end: launch tab + controller-calibration tab.
-- `joyserver.jl` — GLFW joystick → JSON-line streamer that feeds `gui.py` (index parity).
+- `juliaRacer.py` — PyQt6 front-end: launch tab + controller-calibration tab.
+- `joyserver.jl` — GLFW joystick → JSON-line streamer that feeds `juliaRacer.py` (index parity).
 - `joycfg.jl` / `calibrate.jl` — joystick mapping module + terminal calibration wizard.
 - `zand_racer_*.txt` — per-run telemetry logs (gitignored).
 

@@ -29,7 +29,7 @@ const FFB_LP     = parse(Float64, get(ENV, "JM_FFB_LP",  "0.05"))   # low-pass t
 const FFB_SPRING = parse(Float64, get(ENV, "JM_FFB_SPRING", "0.55"))# self-centering SPRING ∝ wheel angle — smooth return-to-center so there's NO dead zone
 const _JOYCONF = joinpath(@__DIR__, "joystick.conf")
 const JOYMAP = if isfile(_JOYCONF)
-    JoyCfg.loadmap(_JOYCONF)                                  # honour gui.py / calibrate.jl (TX clutch pedal, etc.)
+    JoyCfg.loadmap(_JOYCONF)                                  # honour juliaRacer.py / calibrate.jl (TX clutch pedal, etc.)
 else
     let m = JoyCfg.defaultmap()                              # no config → old Logitech X3D default
         JoyCfg.JoyMap(m.steer, m.throttle, m.brake, JoyCfg.Ctrl(4, -1.0, 1.0),   # clutch on the X3D SLIDER (axis 4)

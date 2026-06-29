@@ -1,7 +1,7 @@
 # Julia Racer — Status (2026-06-28)
 
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
-renderer. Branch `julia-racer`. Launch via `demo/native/gui.py` (or `drive_native_mtk.jl`).
+renderer. Branch `julia-racer`. Launch via `demo/native/juliaRacer.py` (or `drive_native_mtk.jl`).
 
 ## PO 15-item live-drive batch — ALL CODE FIXES IN (2026-06-28, E23–E37)
 The PO drove all 5 tracks and filed 15 items (backlog E23–E37). Every one now has its fix landed:
