@@ -706,6 +706,22 @@ let objnames=Set{String}()
     for f in readdir(ZD); endswith(lowercase(f),".3do") && push!(objnames, lowercase(replace(f,r"\.3do$"i=>""))); end
     for k in keys(DATPACK); endswith(k,".3do") && push!(objnames, replace(k,r"\.3do$"=>"")); end
     insts = GPLTrack.trackside_objects(ZTRK; objnames=objnames)
+    # E33 (Watkins): the pit/press building (`pitbldg`) sits ~13 m off the racing line at the S/F,
+    # and its cantilevered balcony overhangs the road edge ("balcony support protrudes into the road").
+    # Nudge any too-close pitbldg OUTWARD (away from the nearest centreline point) so the overhang
+    # clears the road.  Per-track + named so no other scenery moves; the collision was already removed
+    # by the E31 on_road SOLIDS filter.  Tunable / disable via JM_PITBLDG_PUSH (metres, 0 = off).
+    let push = parse(Float64, get(ENV, "JM_PITBLDG_PUSH", TRACKSEL=="watkinsglen" ? "5.0" : "0.0"))
+        if push > 0.0 && !isempty(ALIGNED)
+            nearest(ix,iy) = (bd=Inf; bj=1; for (j,p) in enumerate(ALIGNED); d=(p[1]-ix)^2+(p[2]-iy)^2; d<bd && (bd=d; bj=j); end; ALIGNED[bj])
+            insts = map(insts) do i
+                i.name != "pitbldg" && return i
+                lx,ly = nearest(i.x, i.y); dx=i.x-lx; dy=i.y-ly; d=hypot(dx,dy)
+                (d < 1e-3 || d > 18.0) && return i      # only nudge the close copy at the S/F, push outward along the normal
+                GPLTrack.ObjInst(i.name, i.x+dx/d*push, i.y+dy/d*push, i.z, i.yaw, i.scale)
+            end
+        end
+    end
     # Trees (tree*/newt*) ship as SINGLE flat textured panels with a chroma-key (green/grey)
     # background — fine in GPL where they're drawn as camera-facing sprites, but as a static
     # MESH our pipeline renders them face-on with raw UVs and no alpha cutout → a tall white
@@ -851,6 +867,18 @@ let objnames=Set{String}()
                     if (get(objmesh,i.name,nothing)!==nothing||get(bbinfo,i.name,nothing)!==nothing) && !drop(i.name) && onground(i)], by=x->-x[2])
         println("== JM_OBJDIAG highest-placed (trkzlo=", round(trkzlo,digits=1), " trkzhi=", round(trkzhi,digits=1), ") =="); seen=Set{String}()
         for (nm,py,onhat) in flo; nm in seen && continue; push!(seen,nm); length(seen)>22 && break; println("   ", rpad(nm,16), "y=", rpad(round(py,digits=1),7), onhat ? "on-HAT" : "OFF-HAT"); end; flush(stdout)
+        # E33: MESH objects whose base sits IN/NEAR the road corridor (the Watkins balcony-support-in-road).
+        # on_road returns |lateral| under the halfwidth; report any kept mesh within ROAD_HALFW+4 m of centre.
+        onroad_objs = NTuple{3,Any}[]
+        for i in insts
+            (get(objmesh,i.name,nothing)===nothing || drop(i.name) || !onground(i)) && continue
+            (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 || continue
+            hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
+            hr.found && abs(hr.lateral) < parse(Float64,get(ENV,"JM_OBJDIAG_LAT","$(ROAD_HALFW+4.0)")) && push!(onroad_objs, (i.name, round(hr.lateral,digits=1), round(hr.lapdist,digits=0)))
+        end
+        sort!(onroad_objs, by=x->abs(x[2]))
+        println("== JM_OBJDIAG mesh objects in/near the road (|lat| < ROAD_HALFW+4 = ", round(ROAD_HALFW+4.0,digits=1), " m) ==")
+        for (nm,lat,ld) in onroad_objs; println("   ", rpad(nm,16), "lat=", rpad(lat,7), " lapdist=", ld, " m"); end; flush(stdout)
     end
 end
 println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards + ", length(STATICTREES), " forest panels + ", length(SOLIDS), " solid (collidable)"); flush(stdout)
