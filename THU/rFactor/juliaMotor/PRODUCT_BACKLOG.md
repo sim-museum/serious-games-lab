@@ -437,6 +437,16 @@ Status: ✅ done+SMOKE-verified · ⬛ partial · ⏳ open.
   still untested (needs live PO re-drive into a wall).
 - **E30 ⏳ Watkins esses bog** — ROAD_HALFW 7.5→9.0 widens the drivable corridor; PO re-drive to confirm.
 - **E31 ⏳ Monza curtain / hedge box** — on_road filter dropped 1565→1342 billboards + hedge solids; re-drive.
-- **E33 ⏳ Watkins balcony support in road** — collision removed by on_road SOLIDS filter; mesh leg may
-  still be visible (cosmetic). Needs the offending object identified to cull or shift it.
-- **E25 ⏳ Replay multi-camera/car viewer** — Sprint G, large feature.
+- **E33 ✅(tentative) Watkins balcony support in road** — collision removed by on_road SOLIDS filter (E31).
+  Diagnostic added (JM_OBJDIAG mesh-in-road report + JM_OBJDIAG_LAT) → the closest building to the road at
+  the S/F is `pitbldg` (lat −13.2 m, lapdist 89 m), an 8.8 m pit/press box whose balcony cantilevers over
+  the road edge. Pushed it 5 m outward along the track normal (JM_PITBLDG_PUSH, Watkins default) → lat −18.2 m,
+  overhang clears the 9 m road. TENTATIVE: couldn't visually confirm pitbldg is THE balcony from the spawn
+  view — needs a PO re-drive (or the PO's screenshot/location) to confirm; if wrong, the diagnostic pinpoints
+  the real mesh and the push is harmless/tunable.
+
+### NEEDS PO RE-DRIVE TO CLOSE (code done, awaiting live confirm)
+All of E30/E31/E32/E33 have their code fix in; they can't be self-verified headless (they're
+felt while driving). Next PO session on Watkins + Monza closes them — or reopens with specifics.
+- E30 Watkins esses bog · E31 Monza curtain/hedge · E32 superball (esp. the hard-hit/cartwheel case)
+  · E33 Watkins balcony (confirm pitbldg was the one) · E34 Zandvoort floaters (confirm while moving).
