@@ -246,7 +246,10 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
     # stays on track and controllable instead of cartwheeling to hyperspace.  Player unaffected (never >10).
     let gs = get!(() -> (ModelingToolkit.getsym(c.sys, c.sys.r), ModelingToolkit.setu(c.sys, c.sys.r)), _RSET3D, c.sys)
         rr = gs[1](c.integ)
-        (!isfinite(rr) || abs(rr) > 10.0) && gs[2](c.integ, clamp(isfinite(rr) ? rr : 0.0, -3.5, 3.5))
+        # a diverged yaw is GARBAGE (no meaningful cornering intent in it), so STRAIGHTEN the car —
+        # keep a small sign-preserving residual (≤0.8 rad/s) rather than leaving it spinning at the
+        # clamp ceiling, which would re-seed the divergence next step.
+        (!isfinite(rr) || abs(rr) > 10.0) && gs[2](c.integ, isfinite(rr) ? clamp(rr, -0.8, 0.8) : 0.0)
     end
     (!isfinite(c.v) || abs(c.v) > 110) && return respawn3d!(c)
     if !manual && c.gear >= 1
