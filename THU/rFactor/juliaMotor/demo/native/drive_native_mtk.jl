@@ -1320,8 +1320,12 @@ function main()
         # you rolling even in MANUAL — auto-engage the gearbox + drop the clutch for the initial getaway
         # only (until the car first reaches speed), then hand fully back to manual shifting.  Without it
         # the car sits in neutral / bogs on the line.
-        race_go[] && cs.v > 9.0 && (launch_done[] = true)
-        if race_go[] && !rst && !CTL.auto && !launch_done[] && cs.v < 6.0 && inp.throttle > 0.05
+        # E39: latch launch_done only once the car is genuinely ROLLING (12 km/h), and keep the assist
+        # engaged the WHOLE way there (no speed ceiling) — the old assist cut out at 6 km/h while the
+        # latch was at 9, leaving a 6–9 km/h dead gap where, on the uphill Spa/Nürburgring starts, the
+        # clutch returned to manual, the engine fell to idle (~1950 rpm pinned) and the car bogged/oscillated.
+        race_go[] && cs.v > 12.0 && (launch_done[] = true)
+        if race_go[] && !rst && !CTL.auto && !launch_done[] && inp.throttle > 0.05
             inp = DriveInput(throttle=inp.throttle, brake=inp.brake, steer=inp.steer,
                              clutch=0.0, shift_up=false, shift_down=false, autoshift=true)
         end
