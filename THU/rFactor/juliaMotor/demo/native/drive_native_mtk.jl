@@ -1751,7 +1751,7 @@ function main()
         # (cross-slope terrain bank + physics roll) — so AI LIST on a dune side / roll in a collision,
         # exactly like the player's 3-D car (was yaw-only → they stayed flat).  6-tuple (x,y,z,θ,pitch,roll).
         aibankP(pc) = (isfinite(pc.pitch) ? pc.pitch : 0.0, (isfinite(pc.roll) ? pc.roll : 0.0) + terrain_roll(pc))
-        aibankK(p)  = (cs=(x=p[1], z=p[3], θ=p[4]); (terrain_pitch(cs), terrain_roll(cs)))   # kinematic: terrain only
+        aibankK(p)  = (cc=(x=p[1], z=p[3], θ=p[4]); (terrain_pitch(cc), terrain_roll(cc)))   # kinematic: terrain only (NB local must NOT be named `cs` — that would clobber the player car in the enclosing scope → cs.y FieldError)
         ai_poses = if REPLAY                                       # E18: AI poses straight from the recording
             NTuple{6,Float64}[(a[1],a[2],a[3],a[4],0.0,0.0) for a in rep_ai_raw]
         elseif AILINE === nothing || phase[] != :race              # AI hidden until the race starts (after qualifying)
