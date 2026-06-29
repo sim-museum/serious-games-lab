@@ -20,7 +20,7 @@ for f in ("tyre.jl","powertrain.jl","vehicle_3d.jl")
     include(joinpath(HERE, "components", f))
 end
 
-export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!
+export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!
 
 const GEARS = [2.23, 1.72, 1.32, 1.09, 0.916]
 gearratio(g::Int) = g <= 0 ? 0.0 : GEARS[g]
@@ -43,6 +43,7 @@ mutable struct Car3D
     s_vr::NTuple{4,Any}                            # per-wheel road VELOCITY setters (feed-forward)
     s_pos; s_vel                                   # world-pos (X,Y) + body-vel (u,v) STATE setters (boundary)
     s_vreset                                       # vertical-subsystem reset (divergence guard)
+    s_fx; s_fy; s_mz; s_cda                        # E56: body-frame external force/moment + drag-scale PORT setters
     getall
     gear::Int
     zref::Float64                                  # tracked ground reference height [m]
@@ -75,6 +76,7 @@ function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
               ModelingToolkit.setu(sys,[sys.X,sys.Y]), ModelingToolkit.setu(sys,[sys.u,sys.v]),
               ModelingToolkit.setu(sys,[sys.z,sys.w,sys.th,sys.q,sys.ph,sys.pp,
                   sys.zuFL,sys.vuFL,sys.zuFR,sys.vuFR,sys.zuRL,sys.vuRL,sys.zuRR,sys.vuRR]),
+              setp(sys,sys.Fx_ext),setp(sys,sys.Fy_ext),setp(sys,sys.Mz_ext),setp(sys,sys.CdA_scale),
               getall, 1, y0, ntuple(_->0.0,4),
               x0, y0, z0, θ0, v0, 0.0, 0.0, 1, ntuple(_->(0.0,0.0,0.0),4),
               0.0, 0, 0.0, 0.0, true, 0.0, 0.0, 9.80665, 0.0, ntuple(_->RH0,4))
@@ -98,6 +100,7 @@ function build_cars3d(poses; brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
     s_pos=ModelingToolkit.setu(sys,[sys.X,sys.Y]); s_vel=ModelingToolkit.setu(sys,[sys.u,sys.v])
     s_vreset=ModelingToolkit.setu(sys,[sys.z,sys.w,sys.th,sys.q,sys.ph,sys.pp,
                   sys.zuFL,sys.vuFL,sys.zuFR,sys.vuFR,sys.zuRL,sys.vuRL,sys.zuRR,sys.vuRR])
+    s_fx=setp(sys,sys.Fx_ext); s_fy=setp(sys,sys.Fy_ext); s_mz=setp(sys,sys.Mz_ext); s_cda=setp(sys,sys.CdA_scale)
     getall=ModelingToolkit.getsym(sys, [sys.X, sys.Y, sys.ψ, sys.u, sys.v, sys.rpm,
         sys.FL.Fx, sys.FR.Fx, sys.RL.Fx, sys.RR.Fx, sys.FL.Fy, sys.FR.Fy, sys.RL.Fy, sys.RR.Fy,
         sys.z, sys.th, sys.ph, sys.az, sys.FzFL, sys.FzFR, sys.FzRL, sys.FzRR, sys.ωr])
@@ -107,6 +110,7 @@ function build_cars3d(poses; brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
                                 sys.ωe=>209.4, sys.X=>x0, sys.Y=>z0, sys.ψ=>θ0], (0.0,1e7))
         integ = init(prob, Rosenbrock23(); save_everystep=false, dense=false, adaptive=false, dt=dt)
         c = Car3D(sys, integ, s_thr,s_brk,s_st,s_gr,s_clu,s_we, s_zr, s_vr, s_pos,s_vel, s_vreset,
+                  s_fx,s_fy,s_mz,s_cda,
                   getall, 1, 0.0, ntuple(_->0.0,4),
                   x0, 0.0, z0, θ0, v0, 0.0, 0.0, 1, ntuple(_->(0.0,0.0,0.0),4),
                   0.0, 0, 0.0, 0.0, true, 0.0, 0.0, 9.80665, 0.0, ntuple(_->RH0,4))
@@ -281,6 +285,19 @@ function respawn3d!(c::Car3D; groundz = nothing)
         h = groundz(c.x, c.z); c.zref = isfinite(h) ? Float64(h) : 0.0
     end
     c.zr_prev = ntuple(_ -> 0.0, 4); c.y = c.zref
+    c
+end
+
+"""E56 ALL-MODELICA CONTACT: feed body-frame external force `Fx`,`Fy` [N] + yaw moment `Mz` [N·m]
+and an aero drag scale `CdA_scale` (≤1 in a slipstream = less drag = tow) into the chassis ODE.
+Unlike `bump3d!` (an instantaneous velocity/rate STATE hack), these are PARAMETER ports the solver
+INTEGRATES over the step — so a spring-damper contact law `F = kδ + cδ̇` becomes a real, momentum-
+conserving collision (wall = stiff k → bounce; hedge = weak k + strong c → drive in & get stuck).
+Call once per frame BEFORE `step_car3d!`; the values HOLD until the next call, so pass the *total*
+contact force for the frame and call with no contact (defaults) to release (`extforce3d!(c)`)."""
+function extforce3d!(c::Car3D; Fx = 0.0, Fy = 0.0, Mz = 0.0, CdA_scale = 1.0)
+    c.s_fx(c.integ, Fx); c.s_fy(c.integ, Fy); c.s_mz(c.integ, Mz)
+    c.s_cda(c.integ, clamp(CdA_scale, 0.0, 2.0))
     c
 end
 
