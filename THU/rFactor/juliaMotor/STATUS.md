@@ -3,7 +3,31 @@
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/juliaRacer.py` (or `drive_native_mtk.jl`).
 
-## Latest (2026-06-29 eve) — PO batch: AI pace=GPLrank, field spread, results, cockpit
+## Latest (2026-06-29 late) — PO feedback round 2: collisions, cockpit motion, R1
+
+- **Collisions conserve momentum (P1/P2/P3).** The kinematic AI no longer darts aside
+  (`across` lane-shove 0.12→0.04, capped) or gets rocketed forward (the rear-end boost is
+  now bounded: nosed → slowed ≤8 m/s, rear-ended → ≤2.5 m/s nudge, never to the player's
+  speed), and the player PAYS a hard longitudinal scrub (≤55% of speed) driving into a car —
+  so you can't plow through and the AI doesn't "flit off like an insect." The FF jolt on
+  car/curb/object is wired (`set_force! += ffb_jolt`, 60 ms decay) — it fires once an FF wheel
+  is active (the TX needs hid-tmff2; hardware gap, not code).
+- **Cockpit motion (M1).** Still pitched/heaved too much → `CAM_DYN` 0.18→0.10 and a new heave
+  damp (`CAM_HEAVE` 0.22, τ 0.45): the eye tracks a slow height baseline but only 22% of the
+  suspension porpoise — the head barely bobs, the chassis still works on its springs.
+- **R1 (finished P6 after leading).** Pace scaling is verified correct (37% → AI cover ~half
+  the 100% distance). The suspect is the OLD collision boost inflating the slow field's lap
+  count when plowed through (now fixed). A race-finish DIAG dump (AI pace + each car's raw
+  lap+fraction + your prog/laps) will pinpoint any residual mismatch next race.
+- **AI% preset.** The 37% was a STALE junk lap (3:54); `human_best.txt` now holds the real
+  2:07 → the GUI presets ~68% (≈ the PO's expected 75%). NB the formula pace-matches the
+  fastest AI to your BEST lap, which is faster than your race AVERAGE — so a win needs
+  consistent pace; lower the % for an easier field.
+- **Cockpit visuals.** Front track 0.76→0.90 m (tyres were too close). The residual lower-centre
+  "plywood" is the driverless FOOTWELL (gold standard fills it with the driver's lap) + C3 front
+  suspension — both deferred (need geometry / a windscreen-transparency split).
+
+## Earlier (2026-06-29 eve) — PO batch: AI pace=GPLrank, field spread, results, cockpit
 
 A multi-part PO request, delivered in five commits:
 
