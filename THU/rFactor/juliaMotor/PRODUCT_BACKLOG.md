@@ -599,3 +599,18 @@ maze you steer into; the other 4 tracks render correctly." Fixed the brightness 
   `JM_MONZA_{ROAD,DARK,BANK,OTHER}_{B,A}` tune it.
 - **Verified** by offscreen snapshots (start + mid-lap tree-lined straight) + a Zandvoort no-regression
   render. **Deferred (E52):** the banking still reads as a flat slab (geometry) — now grey, not white.
+
+### Render QA sweep + test verification (2026-06-29, autonomous, post-E57)
+- **Cross-track render sweep (offscreen start snapshots):** Spa ✅ excellent (grey asphalt + yellow
+  line, Armco, ENGLEBERT/pits, flags, crowds), Watkins Glen ✅ good (asphalt + dashed lines, KENDALL/
+  DUNLOP gantry, hay bales), Zandvoort ✅ good. **Monza was the sole outlier** (fixed by E57). So the
+  renderer is solid track-wide.
+- **E46 blue crowd — confirmed cross-track** (worst on Zandvoort's main grandstand = oversaturated blue
+  horizontal STREAKS; mild at Watkins). It's not just a hue tint — the texture is smeared/stretched, and
+  a proper de-blue needs a per-draw TINT uniform in the shader (the current `draw()` only exposes
+  bright/ambfill, no colour tint). Deferred as a small shader change (or a GPL crowd-MIP reference).
+- **Pre-existing TEST failure (NOT from E56/E57):** `test_corner_tyre.jl:44` fails — the MTK Magic-
+  Formula `Tyre` Fy diverges from the pure `tyre_fy` law by ~194 N. `TyreSweep` uses `Tyre()` (the legacy
+  MF path), which none of my changes touched (E56.5 only added `μscale` to `BrushTyre`); likely stale
+  since the combined-slip Tyre reformulation (5721f32). The DEFAULT brush path is clean: `test_brush_slip`
+  ✅ and `test_vehicle_driven` ✅. Tracked as a legacy-MF test-vs-law mismatch (brush is the shipping tyre).
