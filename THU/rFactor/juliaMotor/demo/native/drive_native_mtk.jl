@@ -683,7 +683,7 @@ const CAM_HEAVE     = parse(Float64, get(ENV,"JM_CAM_HEAVE","0.22"))
 const CAM_HEAVE_TAU = parse(Float64, get(ENV,"JM_CAM_HEAVE_TAU","0.45"))
 # wheel hubs (rig frame X fwd, Y=radius, Z left); front pair steers, all spin.  Front/rear track WIDENED
 # (was ±0.62/±0.66) — the Lotus 49 ran ~1.52 m tracks; the narrow stance read as "wheels bolted together".
-const WTRACK_F = parse(Float32, get(ENV,"JM_TRACK_F","0.76"))   # front half-track (m)
+const WTRACK_F = parse(Float32, get(ENV,"JM_TRACK_F","0.90"))   # front half-track (m) — PO: front tyres read too close together; spread them toward the GPL gold-standard stance
 const WTRACK_R = parse(Float32, get(ENV,"JM_TRACK_R","0.74"))   # rear half-track (m)
 const WHEELS = (( 1.05f0, WTRACK_F,true, 0.31f0,"lotwlf"), ( 1.05f0,-WTRACK_F,true, 0.31f0,"lotwrf"),
                 (-1.15f0, WTRACK_R,false,0.34f0,"lotwlr"), (-1.15f0,-WTRACK_R,false,0.34f0,"lotwrr"))
@@ -2219,7 +2219,7 @@ function main()
         end
         # ambfill lifts the self-shadowed cockpit interior out of black (GPL pre-lights it
         # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
-        for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.25, spec=0.10, ambfill=0.62); end   # lift the self-shadowed cockpit tub out of black (GPL pre-lights it to grey)
+        for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly) so it stops reading as a hard black "plywood" notch
         if CTL.view != 0   # the driver figure occludes the cockpit from the in-car eye (E36 black band) → chase only
             for it in driverItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.10, ambfill=0.55); end
         end
@@ -2251,7 +2251,9 @@ function main()
         # a tinted curved plexiglass, not a bright opaque gold rim.  JM_WIND_ALPHA tunes it.
         if WIND_ALPHA > 0
             glDepthMask(GL_FALSE)
-            for it in windItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.05, ambfill=0.5, alpha=WIND_ALPHA); end
+            # PO: flatter, dimmer lighting so the leather scuttle reads as smooth matte tan — not stark
+            # cream "plywood" wedges clashing with the dark footwell notch the (omitted) driver would fill.
+            for it in windItems; Render.draw(prog, it, vp, bodyModel; bright=0.82, spec=0.02, ambfill=0.72, alpha=WIND_ALPHA); end
             glDepthMask(GL_TRUE)
         end
         α_tc = clamp(dt/0.10, 0.0, 1.0)              # smooth the traction-circle display (coarse-mesh Fz spikes → no flicker)
