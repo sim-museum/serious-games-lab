@@ -714,6 +714,7 @@ if SKIDPAD || NURB
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     global SOLIDS = NTuple{3,Float64}[]   # no collidable trackside objects on skidpad / Nürburgring (scenery baked in) — without this solid_hit() throws UndefVarError on the first collision check
+    global OBJINSTS = Tuple{String,Float32,Float32,Float32,Symbol,Bool}[]   # no placed objects here, but JM_SWEEP/JM_SPOT still need it defined to run the HAT/molasses checks
 else
 const DATPACK = TRACKDAT     # trackside objects come from the track's own .dat (generic across tracks)
 const TMPOBJ = mktempdir()
