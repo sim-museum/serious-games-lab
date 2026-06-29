@@ -674,7 +674,13 @@ const CAM_TILT_TAU = parse(Float64, get(ENV,"JM_CAM_TILT_TAU","0.35"))
 # pitches/rolls fully (you SEE the chassis work over its planted wheels), but the CAMERA follows only
 # this fraction of the dynamic body rock (squat/dive/lean).  Slow terrain banks are followed in full
 # (that's the GPL head→road-normal behaviour); only the fast dynamic rock is damped out of the head.
-const CAM_DYN = parse(Float64, get(ENV,"JM_CAM_DYN","0.18"))
+const CAM_DYN = parse(Float64, get(ENV,"JM_CAM_DYN","0.10"))
+# PO round 2: the cockpit still "pitches and HEAVES way too much … iRacing doesn't porpoise this much."
+# Damp the camera HEIGHT too: track a slow baseline that follows real elevation (cresting a hill) but
+# only CAM_HEAVE of the fast suspension bob (porpoise) reaches the eye — so the head barely bobs while
+# the chassis still heaves on its springs.  CAM_HEAVE_TAU = baseline follow time-constant (s).
+const CAM_HEAVE     = parse(Float64, get(ENV,"JM_CAM_HEAVE","0.22"))
+const CAM_HEAVE_TAU = parse(Float64, get(ENV,"JM_CAM_HEAVE_TAU","0.45"))
 # wheel hubs (rig frame X fwd, Y=radius, Z left); front pair steers, all spin.  Front/rear track WIDENED
 # (was ±0.62/±0.66) — the Lotus 49 ran ~1.52 m tracks; the narrow stance read as "wheels bolted together".
 const WTRACK_F = parse(Float32, get(ENV,"JM_TRACK_F","0.76"))   # front half-track (m)
@@ -1189,8 +1195,8 @@ function terrain_roll(cs)
 end
 
 # ---- camera (pitch/roll = total body orientation, applied to the cockpit view only) ----
-function camera(cs, pitch=0.0, roll=0.0)
-    wx,wy,wz = cs.x, cs.y, -cs.z; fx,fz = cos(cs.θ), -sin(cs.θ)   # render world un-mirrors physics z
+function camera(cs, pitch=0.0, roll=0.0, yeye=nothing)
+    wx,wy,wz = cs.x, (yeye === nothing ? cs.y : yeye), -cs.z; fx,fz = cos(cs.θ), -sin(cs.θ)   # render world un-mirrors physics z; yeye = heave-damped eye height (cockpit)
     if CTL.view == 1                                  # chase — level horizon, so you SEE the body pitch/roll
         eye=[wx-fx*9, wy+3.2, wz-fz*9]; ctr=[wx+fx*3, wy+0.6, wz+fz*3]
         return PROJ * Render.lookat(Float32.(eye), Float32.(ctr), Float32[0,1,0]), Float32.(eye)
@@ -1526,6 +1532,7 @@ function main()
     tc_hud = ntuple(_->(0.0,0.0,1.0), 4)              # smoothed traction-circle display (kills coarse-mesh flicker)
     v_prev = cs.v; pitch_dyn = 0.0; pitch_ter = 0.0; roll_ter = 0.0    # dive/squat + terrain-slope pitch + cross-slope roll (smoothed)
     cam_pitch = 0.0; cam_roll = 0.0                                    # E53: low-pass head tilt for the cockpit camera (lags fast jolts)
+    cam_ybase = cs.y                                                   # PO: slow baseline of the eye height → reject suspension porpoise
     # lap timing + telemetry log
     lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = cs.laps; tsamp = 0; race_done = false; enterPrev = false
     # C (PO): GPL-style results — the player's per-lap times, plus each AI car's lap clock so we can
@@ -1892,6 +1899,14 @@ function main()
                 player_finpos[] = findfirst(e -> e[1] == 0, order)
                 println("\n  ══════ YOU FINISHED — P$(player_finpos[]) of $(length(order)) ══════")
                 println("  started P$(player_grid[])   best lap $(fmt_lap(best_lap))   total $(fmt_lap(cs.t))")
+                # R1 DIAG (PO finished-6th-when-1st): dump the ACTUAL progress the standings ranked on, so a
+                # mismatch with what you saw on track is unambiguous.  AI pace + the raw lap+fraction each.
+                println("  ── R1 DIAG  (AI pace ", round(Int,AI_PCT), "% → target ", round(AI_TGT,digits=1),
+                        "s/lap;  YOU laps=", cs.laps, " prog=", round(player_prog/(CLINE===nothing ? 1 : CLINE.total), digits=2), ") ──")
+                for (i,c) in enumerate(AICARS)
+                    println("     ", rpad(AISPECS[i][1],8), " lap=", c.lap, " prog=", round(c.lap + c.s/AILINE.total, digits=2),
+                            " v=", round(Int,c.v*3.6), "km/h pace=", round(Int,c.pace*100), "%")
+                end
                 println("  ── final classification ──")
                 for (p, (id, _)) in enumerate(order)
                     println("   P$p  ", ent_name(id), id==0 ? "  ← YOU (best $(fmt_lap(best_lap)))" : "")
@@ -1961,7 +1976,11 @@ function main()
         # barely rocks while the chassis (bodyModel below) keeps its full pitch/roll over the wheels.
         cam_pitch += ((pitch_ter + CAM_DYN*pitch_dyn) - cam_pitch) * αcam
         cam_roll  += ((roll_ter  + CAM_DYN*rollv    ) - cam_roll ) * αcam
-        vp, eye = camera(cs, cam_pitch, cam_roll)     # head = low-pass tilt; body keeps full tilt → high-freq rock shows on the chassis
+        # heave: the baseline catches up to the true height (real elevation), but only CAM_HEAVE of the
+        # fast bob (cs.y − baseline = the suspension porpoise) reaches the eye → the head barely heaves.
+        cam_ybase += (cs.y - cam_ybase) * (1.0 - exp(-(dt > 1e-4 ? dt : 1/60)/CAM_HEAVE_TAU))
+        cam_yeye   = cam_ybase + CAM_HEAVE*(cs.y - cam_ybase)
+        vp, eye = camera(cs, cam_pitch, cam_roll, cam_yeye)   # head = low-pass tilt + damped heave; body keeps full motion
         if REPLAY     # E25: cinematic cameras follow the FOCUS car (player or any AI) from its recorded pose
             fp = rep_focus[] == 0 ? (cs.x, cs.y, cs.z, cs.θ) :
                  (rf = rep_ai_raw[rep_focus[]]; (rf[1], rf[2], rf[3], rf[4]))
@@ -2114,17 +2133,26 @@ function main()
                 vlaunch = clamp(abs(across_p)*(j/pm)*0.55, 0.0, 7.0)
                 droll = clamp(sign(across_p)*vlaunch*0.8, -6.0, 6.0)   # wheel-climb → roll rate → cartwheel
                 bumpX!(cs, -(j/pm)*nx, -(j/pm)*nz, clamp(-sign(lat)*(j/pm)*0.05, -1.5, 1.5), vlaunch, droll)
-                ffb_jolt = clamp(-sign(lat)*(j/pm)*0.18 - 0.25*sign(vrel), -1.0, 1.0)   # FF jolt — feel the hit
+                # PO: ramming a heavy car must COST you — a hard longitudinal scrub so you can't plow through
+                # the field.  along_p>0 = the car is ahead of you (you drove INTO it) → you lose forward speed.
+                along_p = nx*cos(cs.θ) + nz*sin(cs.θ)
+                along_p > 0.25 && (cs.v = max(0.0, cs.v - clamp((j/pm)*along_p*0.7, 0.0, cs.v*0.55)))
+                ffb_jolt = clamp(-sign(lat)*(j/pm)*0.18 - 0.4*sign(vrel), -1.0, 1.0)   # FF jolt — feel the hit (curb/object/car)
                 if AI_PHYSICS                                  # the AI is a real physics car → impulse it too
                     alat = -dx*sin(aθ) + dz*cos(aθ)
                     # E55: PLANAR push + mild yaw only — no vertical launch / roll on the AI (it must not
                     # flip or cartwheel when the player nudges it), even though the player still feels the hit.
                     AIbump!(AIPHYS[k], (j/am)*nx, (j/am)*nz, clamp(sign(alat)*(j/am)*0.05, -1.0, 1.0))
                 else
+                    # PO: the kinematic AI must NOT "flit off like an insect" or get ROCKETED forward (which
+                    # inflated its lap count — see R1).  A real crash is ENERGY-LOSSY: it does not propel the
+                    # victim.  So the AI HOLDS its line (tiny lateral shove + a decaying yaw twitch carry the
+                    # "knocked" look) and its speed change is BOUNDED — nosed ⇒ slowed, rear-ended ⇒ only a
+                    # small bounded nudge, never dragged up toward the (fast) player's speed.
                     along  = nx*cos(aθ) + nz*sin(aθ); across = -nx*sin(aθ) + nz*cos(aθ)
-                    ac.v   = max(0.0, ac.v + (j/am)*along*0.6)    # pushed along its heading (rear-ended ⇒ sped up; nosed ⇒ slowed)
-                    ac.lane = clamp(ac.lane + (j/am)*across*0.12, -RaceAI.LANE_MAX, RaceAI.LANE_MAX)  # shoved aside
-                    ac.spin += clamp((j/am)*across*0.04, -0.6, 0.6)   # yaw twitch
+                    ac.v   = max(0.0, ac.v + clamp((j/am)*along, -8.0, 2.5))            # bounded: no escape-velocity boost
+                    ac.lane = clamp(ac.lane + clamp((j/am)*across*0.04, -0.7, 0.7), -RaceAI.LANE_MAX, RaceAI.LANE_MAX)  # gentle nudge, not a dart
+                    ac.spin += clamp((j/am)*across*0.06, -0.8, 0.8)   # yaw twitch (decays) — looks knocked, not weightless
                 end
             end
         end
