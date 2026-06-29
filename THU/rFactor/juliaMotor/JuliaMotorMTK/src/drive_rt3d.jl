@@ -229,7 +229,11 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
         # the gears in normal driving, and downshift more readily (4100, off heavy throttle) so it
         # drops a gear into corners.  Hysteresis gap (7000↔4100) is wide enough that it never hunts.
         grpm = (a[4]/RW_R)*GEARS[c.gear]*FINAL*60/(2π)
-        if grpm > 7000 && c.gear < 5;                        c.gear += 1; c.s_gr(c.integ, GEARS[c.gear])
+        # E47: SHORT-SHIFT out of the low gears — the tall 1st/2nd multiply torque so much that holding
+        # them to 7000 spins the wheels up ("almost peel out before it shifts").  Up-shift earlier in 1st/2nd
+        # (5000/5800) so the launch is clean; keep 7000 for 3rd-5th where wheelspin isn't an issue.
+        up_rpm = c.gear == 1 ? 5000 : c.gear == 2 ? 5800 : 7000
+        if grpm > up_rpm && c.gear < 5;                      c.gear += 1; c.s_gr(c.integ, GEARS[c.gear])
         elseif grpm < 4100 && c.gear > 1 && throttle < 0.85; c.gear -= 1; c.s_gr(c.integ, GEARS[c.gear]); end
     end
     c

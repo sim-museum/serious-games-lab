@@ -561,7 +561,7 @@ const SWPARTS, SWCENTER, SWAXIS = Render.extract_gpl_steering(LOT3DO)   # steeri
 const MCEN = (b = Render.parts_bbox(MIRRORP); Float32[(b.xmin+b.xmax)/2, (b.ymin+b.ymax)/2, 0f0])
 const MIRROR_DY   = parse(Float32, get(ENV,"JM_MIRROR_Y","-0.02"))   # LOWER onto the cowl sides (was +0.10 = too high) — fully-visible discs just above the tub edge
 const MIRROR_DX   = parse(Float32, get(ENV,"JM_MIRROR_X","0.075"))
-const MIRROR_TILT = deg2rad(parse(Float32, get(ENV,"JM_MIRROR_TILT","22")))   # tip the faces up toward the eye
+const MIRROR_TILT = deg2rad(parse(Float32, get(ENV,"JM_MIRROR_TILT","-25")))   # E48: stand the discs UPRIGHT facing the eye (+22 read as "angled down" — we saw the top faces)
 const MIRROR_SCALE = parse(Float32, get(ENV,"JM_MIRROR_SCALE","0.5"))    # disc SIZE (round-mirror size)
 const MIRROR_SPREAD = parse(Float32, get(ENV,"JM_MIRROR_SPREAD","1.7"))   # lateral separation multiplier — push the pair out to the screen edges
 const WIND_ALPHA   = parse(Float32, get(ENV,"JM_WIND_ALPHA","0.30"))     # plexiglass opacity — faintly visible (was 0.16 = invisible)
