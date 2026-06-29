@@ -68,7 +68,15 @@ println("  → track: ", uppercasefirst(TRACKSEL))
 const MODE      = lowercase(get(ENV, "JM_MODE", "practice"))   # practice | training | race
 const RACE_LAPS = max(1, tryparse(Int, get(ENV, "JM_LAPS", "3")) |> x -> x === nothing ? 3 : x)
 const PRACTICE_SEC = 60.0 * (tryparse(Float64, get(ENV, "JM_PRACTICE_MIN", "15")) |> x -> x === nothing ? 15.0 : x)   # GPL-style practice session length before the race (T = accelerate time)
-const N_AI      = clamp(tryparse(Int, get(ENV, "JM_AI", "0")) |> x -> x === nothing ? 0 : x, 0, 5)
+# In REPLAY the field size comes from the RECORDING (so every recorded car gets a chassis to
+# draw + camera-focus), not JM_AI — else focusing the replay camera on an AI shows empty track.
+const N_AI      = let rf = get(ENV, "JM_REPLAY", "")
+    if !isempty(rf) && isfile(rf)
+        try; clamp(deserialize(rf).ncar - 1, 0, 5); catch; 5; end
+    else
+        clamp(tryparse(Int, get(ENV, "JM_AI", "0")) |> x -> x === nothing ? 0 : x, 0, 5)
+    end
+end
 const IS_RACE   = MODE == "race"
 const IS_TRAIN  = MODE == "training"
 # E11: AI speed as a percentage — 100 % = the GPL AI car laptime for the track.
@@ -962,6 +970,40 @@ function camera(cs, pitch=0.0, roll=0.0)
     PROJ_COCKPIT * Render.lookat(eye, ctr, up), eye                       # WIDE FOV cockpit (GPL look)
 end
 
+# ---- E25: replay cinematic cameras — GPL-style angles for the multi-cam replay viewer ----
+# Each follows the FOCUS car (player or any AI) from its recorded pose (x,y,z,θ); no driving
+# state, so cameras are purely geometric off the pose.  Cycle with V; switch focus car with C.
+const REPLAY_CAMS  = (:cockpit, :chase, :tv, :f10, :nose, :rsusp)
+const REPLAY_CAM_LABEL = ("COCKPIT", "CHASE (above rear)", "TV / DISTANT",
+                          "F10 REAR", "NOSE / FRONT", "RR SUSPENSION")
+function replay_camera(mode, x, y, z, θ)
+    wx, wy, wz = Float32(x), Float32(y), Float32(-z)        # render world un-mirrors physics z
+    fx, fz = Float32(cos(θ)), Float32(-sin(θ))             # render forward (horizontal)
+    rx, rz = -fz, fx                                        # render right = forward × up (horizontal)
+    P = Float32[wx, wy, wz]
+    if mode === :cockpit
+        ex,ey,drop = parse(Float32,get(ENV,"JM_EYE_X","0.46")), parse(Float32,get(ENV,"JM_EYE_Y","0.40")), parse(Float32,get(ENV,"JM_EYE_DROP","0.55"))
+        R = Render.roty(Float32(θ))
+        R3(a,b,c) = (w = R*Float32[a,b,c,0f0]; Float32[w[1],w[2],w[3]])
+        eye = P + R3(BODY_OFF[1]+ex, BODY_OFF[2]+ey, 0f0)
+        ctr = eye + R3(4f0, -drop, 0f0); up = R3(0f0,1f0,0f0)
+        return PROJ_COCKPIT * Render.lookat(eye, ctr, up), eye
+    end
+    eye, ctr = if mode === :chase
+        (Float32[wx-fx*9, wy+3.2f0, wz-fz*9],  Float32[wx+fx*3, wy+0.6f0, wz+fz*3])
+    elseif mode === :tv                                    # high & to the side, panning — the GPL "distant" TV cam
+        (Float32[wx+rx*15-fx*5, wy+9.5f0, wz+rz*15-fz*5],  Float32[wx, wy+0.6f0, wz])
+    elseif mode === :f10                                   # GPL F10 = low bumper cam just behind, looking forward
+        (Float32[wx-fx*6, wy+1.3f0, wz-fz*6],  Float32[wx+fx*8, wy+0.9f0, wz+fz*8])
+    elseif mode === :nose                                  # camera ahead, looking back at the nose + driver
+        (Float32[wx+fx*7, wy+1.2f0, wz+fz*7],  Float32[wx, wy+0.7f0, wz])
+    else                                                   # :rsusp — close-up on the right-rear corner (tyre/tailpipe)
+        cx = wx - fx*1.8f0 + rx*1.0f0; cz = wz - fz*1.8f0 + rz*1.0f0
+        (Float32[cx+rx*1.6f0-fx*0.4f0, wy+0.75f0, cz+rz*1.6f0-fz*0.4f0],  Float32[cx, wy+0.40f0, cz])
+    end
+    PROJ * Render.lookat(eye, ctr, Float32[0,1,0]), eye
+end
+
 # ---- main loop (in a function — avoids top-level soft scope, runs faster) ----
 function main()
     cs0 = SKIDPAD ? (x=0.0, z=0.0, θ=0.0) : spawn(CAR; v0=0.0)   # spawn pose (skidpad: pad centre)
@@ -1011,7 +1053,7 @@ function main()
     # GC: build the AI as PHYSICS cars (one shared compile) placed on the grid; AICARS stays the
     # rail "brain" (s/lane/v/tlane/lap), updated each frame from the physics by projection.
     AIPHYS = AICarT[]
-    if AI_PHYSICS && AILINE !== nothing
+    if AI_PHYSICS && AILINE !== nothing && isempty(REPLAY_FILE)   # replay: AI poses come from the recording, no physics build needed
         print("  building $(length(AICARS)) physics AI (shared JM 3-D model)… "); flush(stdout)
         poses = [(p = RaceAI.pose_at(AILINE, c.s, c.lane); (p[1], p[3], p[4], 0.0)) for c in AICARS]
         AIPHYS = AIbuild(poses)
@@ -1150,8 +1192,11 @@ function main()
     # E18 PLAYBACK: load the recording; the loop sets poses from it instead of simulating (VCR keys below).
     REPLAY = !isempty(REPLAY_FILE)
     repd = REPLAY ? deserialize(REPLAY_FILE) : nothing
-    rep_rt = Ref(0.0); rep_play = Ref(true); rep_speed = Ref(1.0)
+    rep_rt = Ref(parse(Float64,get(ENV,"JM_REPLAY_T","0.0"))); rep_play = Ref(true); rep_speed = Ref(1.0)
     rep_psp = Ref(false); rep_pup = Ref(false); rep_pdn = Ref(false)   # VCR key edge-detect
+    rep_focus = Ref(clamp(parse(Int,get(ENV,"JM_REPLAY_FOCUS","0")), 0, REPLAY ? repd.ncar-1 : 0))   # E25: focus car (0=player, 1.. = AI)
+    rep_cam = Ref(clamp(parse(Int,get(ENV,"JM_REPLAY_CAM","2")), 1, length(REPLAY_CAMS)))             # E25: camera mode index (start CHASE)
+    rep_pn = Ref(false); rep_pv = Ref(false)                          # E25: C (switch car) / V (switch angle) edge-detect
     rep_dur = REPLAY ? max(repd.nframes - 1, 0)/repd.fps : 0.0
     rep_st  = REPLAY ? 1 + 4*repd.ncar : 0
     # interpolated poses at replay time rt → (player (x,y,z,θ), Vector of AI (x,y,z,θ))
@@ -1166,7 +1211,8 @@ function main()
         for k in 1:(repd.ncar-1); o = 5 + 4*(k-1); push!(ais, (lerp(o+1), lerp(o+2), lerp(o+3), lerpθ(o+4))); end
         (player, ais)
     end
-    REPLAY && println("  ▶ REPLAY: $(basename(REPLAY_FILE)) — $(repd.nframes) frames, $(round(rep_dur,digits=1))s, $(repd.ncar) cars\n  SPACE play/pause · ←/→ seek 5s · ↑/↓ speed · V view · Esc quit")
+    REPLAY && println("  ▶ REPLAY: $(basename(REPLAY_FILE)) — $(repd.nframes) frames, $(round(rep_dur,digits=1))s, $(repd.ncar) cars\n" *
+        "  SPACE play/pause · ←/→ seek · ↑/↓ speed · V switch ANGLE (cockpit/chase/TV/F10/nose/RR-susp) · C switch CAR · Esc quit")
     telem = SMOKE ? nothing : open("zand_racer_$(round(Int,time())).txt", "w")
     telem !== nothing && write(telem,
         "# zand_racer telemetry — Lotus 49 @ Zandvoort\n# t\tlap\tlapdist\tkmh\tthr\tbrk\tsteer\tclu\tgear\trpm\tx\tz\tlat\talong\tontrack\n")
@@ -1191,8 +1237,12 @@ function main()
             key(GLFW.KEY_RIGHT) && (rep_rt[] = clamp(rep_rt[] + 8*dt, 0.0, rep_dur))   # hold to scrub
             key(GLFW.KEY_LEFT)  && (rep_rt[] = clamp(rep_rt[] - 8*dt, 0.0, rep_dur))
             rep_play[] && (rep_rt[] = clamp(rep_rt[] + dt*rep_speed[], 0.0, rep_dur))
+            cf = key(GLFW.KEY_C); (cf && !rep_pn[]) && (rep_focus[] = mod(rep_focus[]+1, repd.ncar)); rep_pn[] = cf   # E25: switch CAR
+            cvv = key(GLFW.KEY_V); (cvv && !rep_pv[]) && (rep_cam[] = mod1(rep_cam[]+1, length(REPLAY_CAMS))); rep_pv[] = cvv  # E25: switch ANGLE
             (pp, rep_ai_raw) = replay_poses(rep_rt[])
             cs.x = pp[1]; cs.y = pp[2]; cs.z = pp[3]; cs.θ = pp[4]; cs.v = 0.0; cs.pitch = 0.0; cs.roll = 0.0
+            # cockpit interior only renders for the player car in COCKPIT mode; every other angle shows the driver figure + full car
+            CTL.view = (REPLAY_CAMS[rep_cam[]] === :cockpit && rep_focus[] == 0) ? 0 : 1
             @goto skipsim
         end
         # E9: end qualifying on ENTER (or it auto-ends on a clean lap).  This guarantees you
@@ -1402,6 +1452,11 @@ function main()
         pitch_dyn = clamp(pitch_dyn, -0.11, 0.11); rollv = clamp(rollv, -0.10, 0.10)   # ±~6° cap (no over-rotate)
         REPLAY && (pitch_dyn = 0.0; rollv = 0.0)      # replay: body follows the terrain only (no recorded suspension state)
         vp, eye = camera(cs, pitch_ter + pitch_dyn, roll_ter + rollv)   # cockpit cam = full body orientation → cockpit stationary, world tilts
+        if REPLAY     # E25: cinematic cameras follow the FOCUS car (player or any AI) from its recorded pose
+            fp = rep_focus[] == 0 ? (cs.x, cs.y, cs.z, cs.θ) :
+                 (rf = rep_ai_raw[rep_focus[]]; (rf[1], rf[2], rf[3], rf[4]))
+            vp, eye = replay_camera(REPLAY_CAMS[rep_cam[]], fp[1], fp[2], fp[3], fp[4])
+        end
         carModel = Render.translate(Float32[cs.x, cs.y, -cs.z]) * Render.roty(Float32(cs.θ)) *
                    Render.rotz(Float32(pitch_ter)) * Render.rotx(Float32(roll_ter))   # whole car follows the hill (pitch + cross-slope roll)
         tiltModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv))   # full body tilt (terrain + dynamic)
@@ -1636,7 +1691,13 @@ function main()
         end
 
         frames += 1
-        if now - titleT > 0.25
+        if now - titleT > 0.25 && REPLAY
+            carname = rep_focus[] == 0 ? (isempty(repd.names) ? "Player" : repd.names[1]) :
+                      (rep_focus[] < length(repd.names) ? repd.names[rep_focus[]+1] : "AI $(rep_focus[])")
+            GLFW.SetWindowTitle(win, "▶ REPLAY — $(uppercasefirst(TRACKSEL)) — 📷 $(REPLAY_CAM_LABEL[rep_cam[]]) — 🏎 $carname [$(rep_focus[]+1)/$(repd.ncar)]" *
+                "  —  $(round(rep_rt[],digits=1))/$(round(rep_dur,digits=1))s  $(rep_play[] ? "▶" : "⏸")×$(rep_speed[])   ·  V angle · C car · SPACE play · ←/→ seek · ↑/↓ speed")
+            titleT = now
+        elseif now - titleT > 0.25
             GLFW.SetWindowTitle(win, "Julia Racer — $(uppercasefirst(TRACKSEL)) — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear == 0 ? "N" : string(cs.gear)) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
                 (phase[] == :qual ? "  ⏱ QUALIFYING — drive a lap, then press ENTER to start the race" :
                  (!race_go[]) ? "  🏁 GET READY — floor the throttle to start (the field launches with you)" :
