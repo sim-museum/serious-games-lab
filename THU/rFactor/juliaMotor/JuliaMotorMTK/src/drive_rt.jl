@@ -185,7 +185,7 @@ end
 
 "Snap the car onto the track boundary (xnew, znew) and bleed its speed — a
 fence/hedge collision that keeps the car inside the game world (E7)."
-function contain!(c::Car, xnew, znew; vdamp = 0.45)
+function contain!(c::Car, xnew, znew; vdamp = 0.45, settle = false, groundz = nothing)  # settle/groundz: planar model has no vertical subsystem → ignored (parity with contain3d!)
     a = c.getall(c.integ)
     c.s_pos(c.integ, [xnew, znew])
     c.s_vel(c.integ, [a[4]*vdamp, a[5]*vdamp])           # u,v body velocities (getall idx 4,5) — fence scrubs speed

@@ -249,12 +249,24 @@ function telemetry3d(c::Car3D)
      pitch=c.pitch, roll=c.roll, rh=c.rh)
 end
 
-"Fence collision: snap onto the boundary (xnew,znew) + bleed speed (E7)."
-function contain3d!(c::Car3D, xnew, znew; vdamp = 0.45)
+"Fence collision: snap onto the boundary (xnew,znew) + bleed speed (E7).
+E42: `settle` zeroes the VERTICAL subsystem and re-anchors zref to the terrain under the
+snap point — without it, snapping back from a steep off-world slide leaves the suspension
+loaded against the old (down-a-field) height, so re-entry slams the contact and the car
+'superball'-bounces back onto the track.  Pass `groundz` so zref lands on the real edge height."
+function contain3d!(c::Car3D, xnew, znew; vdamp = 0.45, settle = false, groundz = nothing)
     a = c.getall(c.integ)
     c.s_pos(c.integ, [xnew, znew])
     c.s_vel(c.integ, [a[4]*vdamp, a[5]*vdamp])
     c.x = xnew; c.z = znew; c.v = sqrt((a[4]*vdamp)^2 + (a[5]*vdamp)^2)
+    if settle
+        c.s_vreset(c.integ, zeros(14))
+        c.heave = 0.0; c.pitch = 0.0; c.roll = 0.0; c.vacc = 9.80665
+        if groundz !== nothing
+            h = groundz(xnew, znew); isfinite(h) && (c.zref = Float64(h))
+        end
+        c.zr_prev = ntuple(_ -> 0.0, 4); c.y = c.zref
+    end
     c
 end
 

@@ -1384,7 +1384,7 @@ function main()
                     tx = -nwz; tz = nwx; vt = pvx*tx + pvz*tz    # tangent (along the fence)
                     e = 0.30; fric = 0.55                        # restitution + fence grab (scrub tangential)
                     dvn = (vn < 0 ? -e*vn : 0.0) - vn; dvt = -fric*vt
-                    containX!(cs, LASTGX[], LASTGZ[]; vdamp=1.0)  # shove back to the edge (position), keep velocity
+                    containX!(cs, LASTGX[], LASTGZ[]; vdamp=1.0, settle=true, groundz=groundz)  # shove back to the edge (position), keep velocity; settle vertical so a steep off-world snap doesn't superball (E42)
                     bumpX!(cs, dvn*nwx+dvt*tx, dvn*nwz+dvt*tz, clamp(sign(vt)*abs(vn)*0.05, -1.2, 1.2))  # bounce + scrub + glance-spin
                     ffb_jolt = clamp(sign(vt)*abs(vn)*0.18, -1.0, 1.0)   # FF jolt off the fence/hay
                     OFFDIST[] = 0.0
