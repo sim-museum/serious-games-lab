@@ -380,10 +380,15 @@ Status: ✅ done+SMOKE-verified · ⬛ partial · ⏳ open.
   you touch the throttle — the `SKIDPAD||NURB` branch never defined `SOLIDS`. Fixed (empty list).
 - **E24 ⬛ Replay store-by-default:** GUI "Record race replay (all cars)" checkbox, ON by default
   (untick → `JM_NOREPLAY`). Records all 6 cars. (replay multi-cam viewer = E25.)
-- **E25 ⏳ Replay camera controls:** add to the replay viewer (a) switch CAR and (b) switch VIEW
-  through the GPL camera set — cockpit, "Nintendo"/above-rear, RR susp/tyre/tailpipe, driver+front
-  (incl. RF tyre/susp), rear (both rear tyres), front-of-hood, front-driver-helmet-dash, top-down-
-  behind-head, GPL F10 rear, distant-whole-car-from-left, distant-rear. Ref: `84AF-CC77/eagle`.
+- **E25 ✅ Replay camera controls:** the replay viewer now switches (a) CAR with **C** (cycles player +
+  every recorded AI) and (b) VIEW with **V** through six GPL cameras: COCKPIT · CHASE (above-rear/"Nintendo")
+  · TV/DISTANT (high panning whole-car) · F10 REAR (low bumper) · NOSE/FRONT (driver + nose) · RR SUSPENSION
+  (right-rear tyre/tailpipe close-up). `replay_camera(mode,x,y,z,θ)` builds each geometrically off the
+  recorded pose; window title shows camera + car + VCR state. KEY FIX: in replay N_AI comes from the
+  RECORDING's car count (not JM_AI) so every recorded car gets a chassis to draw + focus on (was: empty
+  track when focusing an AI). `JM_REPLAY_CAM`/`_FOCUS`/`_T` env overrides. Headless-verified on Zandvoort
+  (all 6 angles frame the car; C switches to the red Ferrari with the field rendered). gui.py hints updated.
+  (Could add more angles later — RF susp, top-down, distant-rear — the camera table is data-driven.)
 - **E26 ✅ No skidpad in Race:** GUI greys out Skidpad when Mode=Race (and bumps off it).
 - **E27 ✅ Remove blue sky (seam):** one OVERCAST grade for all tracks — skydome grey matches the
   GPL horizon-ring grey → the blue/overcast seam is gone (Nürburgring keeps its moodier storm grey).
@@ -425,9 +430,9 @@ Status: ✅ done+SMOKE-verified · ⬛ partial · ⏳ open.
 - **Sprint D — stop-the-bleeding (DONE):** E23 crash, E27 sky, E29 carbon, E26/E28/E24 GUI, E37 shift.
 - **Sprint E — physics/placement:** E32 superball → E30 Watkins bog → E31 Monza curtain → E33 balcony.
 - **Sprint F — cockpit fidelity (DONE):** E36 black band + E35 yellow panel (both = driver-figure pull).
-- **Sprint G — replay cinematics:** E25 multi-camera/car replay viewer.
+- **Sprint G — replay cinematics (DONE):** E25 multi-camera/car replay viewer (6 GPL angles + car-switch).
 
-### Remaining open (post-Sprint-F)
+### Remaining open (post-Sprint-G)
 - **E32 ⏳ Superball respawn / hard hit** — respawn3d! unit-tested settles flat; hard-hit cartwheel
   still untested (needs live PO re-drive into a wall).
 - **E30 ⏳ Watkins esses bog** — ROAD_HALFW 7.5→9.0 widens the drivable corridor; PO re-drive to confirm.
