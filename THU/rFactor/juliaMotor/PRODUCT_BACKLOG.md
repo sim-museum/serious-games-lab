@@ -584,3 +584,18 @@ stay kinematic. Return-to-track = SHIFT-R only.
   hedge "get stuck" vs wall bounce, grass grip-loss/pull, and especially the **world-edge wall** (confirm
   it contains at racing speed with no jarring teleport; tune JM_FENCE_FAR / wall stiffness if needed).
   All six increments pass their headless smokes + the 40-frame full-game smoke (Zandvoort, AI) runs clean.
+
+### E57 — Monza render legibility (PO-flagged, 2026-06-29, autonomous) ✅
+PO: Monza "road renders near-white, barriers carbonized-black, banking renders as a wall → reads as a
+maze you steer into; the other 4 tracks render correctly." Fixed the brightness legibility:
+- **Root cause:** the GPL `asphalt` MIP is over-bright, and in the COMBINED circuit the drivable
+  surface is split between the `trrow01` track mesh and placed OBJECTS (paddock/connector/banking) —
+  drawn at full object brightness — so the start-line "snow" foreground was actually the `paddock`/
+  `cgroad` objects, not the road mesh. A single brightness knob couldn't reach both.
+- **Fix (Monza-gated):** per-surface grade of BOTH the track surfaces (classified by GPL texture name
+  into a parallel `TRACKCAT`: road `trrow*`/`asp*`, barriers `armco*`/`yarmc*`/`brdg*`, banking `s##*`)
+  AND the paved/banking OBJECTS by name (`paddock`/`cgroad`/`chicane`/`ascari`/`sec*`, `nbank`/`sbank*`
+  banking — keeping ad-boards/grandstands bright). Road 0.72→0.42, barriers lifted, banking→grey.
+  `JM_MONZA_{ROAD,DARK,BANK,OTHER}_{B,A}` tune it.
+- **Verified** by offscreen snapshots (start + mid-lap tree-lined straight) + a Zandvoort no-regression
+  render. **Deferred (E52):** the banking still reads as a flat slab (geometry) — now grey, not white.

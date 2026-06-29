@@ -3,7 +3,20 @@
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/juliaRacer.py` (or `drive_native_mtk.jl`).
 
-## Latest (2026-06-29 PM) — E56 "all-Modelica human car" BUILT OUT (autonomous, E56.2–E56.6)
+## Latest (2026-06-29 PM) — E57 Monza render legibility (autonomous)
+
+Monza no longer renders as a blinding near-white "maze". Root cause: its `asphalt` MIP is
+over-bright AND in this COMBINED circuit the road is split between the `trrow01` track mesh and
+placed OBJECTS (paddock / connector roads / banking), drawn at full object brightness — so one
+brightness knob couldn't reach it all. Fix (Monza-gated; other 4 tracks untouched): classify both
+track surfaces (by GPL texture name → `TRACKCAT`) and paved/banking OBJECTS (by name) and grade
+each — road 0.72→0.42 bright (proper grey asphalt), barriers lifted from carbonized black, banking
+toned from white to grey, and the start-line "snow" foreground (which was the `paddock`/`cgroad`
+objects) greyed. Tunable via `JM_MONZA_{ROAD,DARK,BANK,OTHER}_{B,A}`. Verified with offscreen
+snapshots at the start + mid-lap; Zandvoort re-render confirms no regression. **Still open (deferred
+E52):** the banking reads as a flat slab (geometry), now grey rather than blinding white.
+
+## Earlier (2026-06-29 PM) — E56 "all-Modelica human car" BUILT OUT (autonomous, E56.2–E56.6)
 
 Continuing the E56 epic autonomously from the E56.1 port foundation. Every PLAYER interaction is
 now a physical force/parameter integrated by the chassis ODE — the `bumpX!`/`containX!` state hacks
