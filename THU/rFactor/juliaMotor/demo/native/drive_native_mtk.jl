@@ -897,8 +897,10 @@ let objnames=Set{String}()
     # drop: ground-cover planes (grass/herbe/infield), white "fuel-tank" tents, infield/backdrop
     # tree smears, and LOOSE people only — marshals, photographers, rescue crews, lone figures,
     # and standing roadside spectators (Spa people*/pelf*).  Seated stand crowds are kept above.
-    drop(nm) = !standcrowd(nm) && (
+    _droptest = split(get(ENV,"JM_DROPTEST",""), ',', keepempty=false)   # diagnostic: drop comma-listed name PREFIXES
+    drop(nm) = (!isempty(_droptest) && any(p->startswith(nm,p), _droptest)) || (!standcrowd(nm) && (
                (startswith(nm,"grass") && !KEEP_GRASS) || (startswith(nm,"herbe") && !KEEP_GRASS) || nm == "infield" ||
+               nm == "hotels" ||                                             # E45: Zandvoort backdrop building cluster — a 310 m garbage bbox that never grounds → floats in the sky above the grandstand; the horizon ring + dunes carry the backdrop without it
                startswith(nm,"tent") || startswith(nm,"single") ||
                startswith(nm,"intree") ||                                    # INFIELD tree lines (100s of m wide) → distant central "smear"
                startswith(nm,"treesrb") || startswith(nm,"treefill") ||      # forest-BACKDROP / gap-fill quads → streaky "painted tree" smear (Watkins pit-straight)
@@ -907,7 +909,7 @@ let objnames=Set{String}()
                nm in ("chrisa","sergioa","thomasa","hatzia","stefana","starter") ||  # Spa named loose figures (Chris/sergio/thomas/Hatzi/Stefan/starter) — NOT prinz*/spider* (cars)
                startswith(nm,"grndp") || startswith(nm,"crowd") || startswith(nm,"spect") ||
                startswith(nm,"flagger") || startswith(nm,"rescu") ||
-               startswith(nm,"photo") || startswith(nm,"fotograf"))          # marshals/photographers = loose people
+               startswith(nm,"photo") || startswith(nm,"fotograf")))         # marshals/photographers = loose people
     istree(nm) = startswith(nm,"tree") || startswith(nm,"newt") || startswith(nm,"intree")  # foliage → graze-fade (no end-on smear)
     # E40: a kept STAND crowd row must not sit on the paved racing surface — at Spa the peprow* rows
     # by Eau Rouge (and on the start straight) projected to |lat| < ROAD_HALFW = a "line of people
