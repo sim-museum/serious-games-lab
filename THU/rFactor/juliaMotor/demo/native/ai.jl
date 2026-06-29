@@ -105,6 +105,10 @@ AICar(s, v, lap, lane) = AICar(s, v, lap, lane, lane, 0.0, 0.0)   # tlane=curren
 
 const RAIL     = 2.4    # pass-deviation offset to either side of the racing line (m)
 const LANE_MAX = 3.8    # E16 (PO): never get within ~a car-width of either edge — road half-width 5.5 − car 1.7 = 3.8
+# E12/G2 physics-AI anti-spin band (yaw rate rad/s): below SPIN_LO = normal cornering (controller
+# unchanged); SPIN_LO→SPIN_HI ramps the slide-catch (ease line-chase, add counter-yaw, lift throttle).
+const SPIN_LO  = parse(Float64, get(ENV, "JM_AI_SPIN_LO", "1.0"))
+const SPIN_HI  = parse(Float64, get(ENV, "JM_AI_SPIN_HI", "3.0"))
 const CAR_LEN  = 4.2    # car length (m) — single-file spacing + collision longitudinal extent
 const CAR_WID  = 1.7    # car width (m) — collision lateral extent
 
@@ -344,10 +348,19 @@ function controller(line::AILine, cs, clane, dev, tv, cx, cz, cθ, cv, r; power 
     here  = clamp(racelane(line, cs)      + dev, -LANE_MAX, LANE_MAX)
     lp = pose_at(line, cs + la, tlane)                    # look-ahead point ON the racing line
     herr = wrapπ(atan(lp[3]-cz, lp[1]-cx) - cθ)
-    steer = clamp(3.0*herr - 0.24*(clane - here) - 0.22*r, -1.0, 1.0)   # tight line-follow (don't flatten corners)
+    # E12/G2 ANTI-SPIN (catch the slide): a normal corner yaw rate is < ~1 rad/s (r = v·κ), so a HIGHER
+    # r means the car is starting to slide/spin — the failure mode on the hilly/blind tracks (Spa,
+    # Nürburgring), where the 3-D model's load transfers break grip and the aggressive line-chase gain
+    # AMPLIFIES the slide.  As r climbs into the slide band: ease the line-chase gain (stop fighting it),
+    # ramp the counter-yaw damping (steer into the slide), and LIFT the throttle (kill RWD power-oversteer).
+    # Below SPIN_LO it's all unchanged ⇒ flat-track pace/line is untouched.
+    slide = clamp((abs(r) - SPIN_LO) / (SPIN_HI - SPIN_LO), 0.0, 1.0)   # 0 = normal cornering → 1 = spinning
+    hgain = 3.0 * (1.0 - 0.45*slide)                      # line-follow gain (eased when sliding)
+    yawd  = 0.22 + 0.55*slide                             # counter-yaw damping (ramped when sliding)
+    steer = clamp(hgain*herr - 0.24*(clane - here) - yawd*r, -1.0, 1.0)   # tight line-follow (don't flatten corners)
     # `power` = the AI's engine-power tune (set ONCE pre-race, not per frame): caps throttle so a
     # detuned car has lower accel/top speed → a fixed pace it can't exceed (and can wash out hot).
-    thr = (cv < tv ? clamp((tv-cv)*0.25, 0, 1) * clamp(1.4 - 2.2*abs(steer), 0.0, 1.0) : 0.0) * power
+    thr = (cv < tv ? clamp((tv-cv)*0.25, 0, 1) * clamp(1.4 - 2.2*abs(steer), 0.0, 1.0) : 0.0) * power * (1.0 - 0.75*slide)
     brk = cv > tv + 1.0 ? clamp((cv-tv)*0.25, 0, 1) : 0.0
     # TRAIL BRAKING: don't dump the brake at turn-in — carry a little into the corner (loads the
     # front tyres, rotates the car to the apex), fading as the wheel unwinds.  Small so it never spins.
