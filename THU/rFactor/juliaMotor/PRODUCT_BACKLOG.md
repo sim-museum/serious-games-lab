@@ -614,3 +614,16 @@ maze you steer into; the other 4 tracks render correctly." Fixed the brightness 
   MF path), which none of my changes touched (E56.5 only added `μscale` to `BrushTyre`); likely stale
   since the combined-slip Tyre reformulation (5721f32). The DEFAULT brush path is clean: `test_brush_slip`
   ✅ and `test_vehicle_driven` ✅. Tracked as a legacy-MF test-vs-law mismatch (brush is the shipping tyre).
+
+### Physics-AI robustness + E46 crowd (2026-06-29, autonomous, post-QA)
+- **E6 ✅ 3-D yaw divergence guard:** Spa physics-AI max_yaw 281→9.9, Nürburgring 1239→9.99 — the
+  integrator no longer blows up on big terrain (player unaffected; clamp only >10 rad/s).
+- **G2/E12 ✅ physics-AI anti-spin controller:** above ~1 rad/s yaw the controller catches the slide
+  (ease line-chase gain, ramp counter-yaw, lift throttle). Spa 3/5 cars now lap at race pace (was 1),
+  spins 1514→1014; Zandvoort no regression. `JM_AI_AMAX` knob added — 8.0 validated optimum (6.0 worse).
+- **Nürburgring physics-AI ⏳ DEFERRED:** still not viable — a spin→launch→respawn loop on the extreme
+  rFactor jumps (cars fly off-line, max_lat 350 m+). NOT controller/corner-speed-tunable — it's deep
+  3-D-model AIRBORNE instability (a bigger E6 model-robustness effort). Opt-in; kinematic AI laps it.
+- **E46 ✅ blue crowd de-blued:** per-draw `uTint` shader uniform + warm/de-blue tint on grandstand/
+  crowd objects (cross-track, JM_CROWD_T*). The garish electric-blue → varied tones. Residual: the
+  crowd MIP's horizontal SMEAR (UV/geometry, needs a re-map — separate from the tint).

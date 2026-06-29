@@ -3,7 +3,17 @@
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/juliaRacer.py` (or `drive_native_mtk.jl`).
 
-## Latest (2026-06-29 PM) — G2/E12 physics-AI anti-spin controller (autonomous)
+## Latest (2026-06-29 PM) — E46 de-blue the grandstand crowd (autonomous)
+
+The GPL crowd MIP renders garish electric-blue (worst on Zandvoort's main grandstand). Added a
+per-draw colour-multiply uniform `uTint` (FSRC `base *= uTint`; default white, set every frame +
+every `draw()` call ⇒ no draw path can render black) and apply a warm/de-blue tint
+(`JM_CROWD_T{R,G,B}` = 1.12/1.04/0.78) to grandstand/crowd objects (`is_crowd_obj`) cross-track.
+Verified offscreen (Zandvoort): the electric blue → warmer varied tones; road/banners/car untouched,
+no black artifacts. The crowd texture's horizontal SMEAR remains (UV/geometry, needs a re-map — a
+tint can't fix it); the stand structure warms slightly (object-level tint side effect; all tunable).
+
+## Earlier (2026-06-29 PM) — G2/E12 physics-AI anti-spin controller (autonomous)
 
 The physics-AI controller chased the line with a fixed aggressive gain and held throttle through a
 slide, so on the hilly tracks (where the 3-D model's load transfers break grip) it AMPLIFIED an
