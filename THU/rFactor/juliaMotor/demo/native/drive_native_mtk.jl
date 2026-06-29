@@ -108,6 +108,11 @@ const AI_PHYSICS = haskey(ENV, "JM_AI_PHYSICS")
 # legitimately ahead.  1.0 = full DFV power (GPL-fast); lower detunes them.  JM_AI_POWER tunes it.
 const AI_POWER  = clamp(tryparse(Float64, get(ENV, "JM_AI_POWER", "0.90")) |> x -> x === nothing ? 0.90 : x, 0.4, 1.0)
 const CONTACT_D = parse(Float64, get(ENV, "JM_CONTACT_D", "2.1"))   # collision = ACTUAL contact (≈ car width); no repel-from-afar
+# E55/E38: a physics AI whose heading deviates more than this from the rail tangent has SPUN OUT (the
+# controller can oscillate into a spin on the hilly/blind tracks).  It won't trip the slow/off-line
+# recovery (it's still fast + near the line), so it spins forever → "flopping/strange" field.  Treat a
+# >SPIN_LIM heading error as off-line and snap it back to the rail heading fast.  (≈80°.)
+const SPIN_LIM  = parse(Float64, get(ENV, "JM_SPIN_LIM", "1.4"))
 # SLIPSTREAM (GPL models it): tucking into the hole a car ahead punches in the air gives a forward
 # tow → you reel them in on a straight and slingshot past.  Returns the tow accel (m/s²) on a
 # follower at (fx,fz,fθ,fv) from the nearest aligned car ahead in `leads` = [(x,z,θ,v)…].
@@ -1307,9 +1312,11 @@ function main()
                 maxlat = max(maxlat, abs(lat))
                 aidist[i] += hypot(pc.x-lastx[i], pc.z-lastz[i]); lastx[i]=pc.x; lastz[i]=pc.z
                 offhat = !JuliaMotor.hat3d(TERRAIN, pc.x, pc.z; ref=Inf)[3]
-                if pc.v < 1.4 || abs(lat) > 9.0 || offhat      # mirror the live recovery
+                railθ = RaceAI.pose_at(AILINE, s, 0.0)[4]
+                spun = abs(atan(sin(pc.θ - railθ), cos(pc.θ - railθ))) > SPIN_LIM
+                if pc.v < 1.4 || abs(lat) > 9.0 || offhat || spun      # mirror the live recovery (+ spin-save)
                     stuck[i]+=1; scon[i]+=1
-                    lim = (offhat || abs(lat)>12.0) ? 6 : (abs(lat)>9.0 ? 18 : 90)
+                    lim = (offhat || abs(lat)>12.0 || spun) ? 6 : (abs(lat)>9.0 ? 18 : 90)
                     if scon[i] > lim; rp=RaceAI.pose_at(AILINE, s+10.0, 0.0); AIplace!(pc, rp[1], rp[3], rp[4]; v=max(8.0,pc.v*0.6)); scon[i]=0; end
                 else; scon[i]=0; end
             end
@@ -1764,10 +1771,12 @@ function main()
                 # recover BEFORE it can climb a dune/leave the world: at the road-edge (not 14 m out),
                 # and hard-recover if it's off the terrain HAT entirely (the "mid-air on the dune" case).
                 offhat = !JuliaMotor.hat3d(TERRAIN, pc.x, pc.z; ref=Inf)[3]
-                off = pc.v < 1.4 || abs(lat) > 9.0 || offhat
+                railθ = RaceAI.pose_at(AILINE, s, 0.0)[4]
+                spun = abs(atan(sin(pc.θ - railθ), cos(pc.θ - railθ))) > SPIN_LIM   # heading way off the rail = spun out
+                off = pc.v < 1.4 || abs(lat) > 9.0 || offhat || spun
                 if off
                     ai_stuck[i] += 1
-                    lim = (offhat || abs(lat) > 12.0) ? 6 : (abs(lat) > 9.0 ? 18 : 90)   # snap back fast when truly off
+                    lim = (offhat || abs(lat) > 12.0 || spun) ? 6 : (abs(lat) > 9.0 ? 18 : 90)   # snap back fast when truly off / spun
                     if ai_stuck[i] > lim
                         rp = RaceAI.pose_at(AILINE, s + 10.0, 0.0); AIplace!(pc, rp[1], rp[3], rp[4]; v = max(8.0, pc.v*0.6)); ai_stuck[i] = 0
                     end
