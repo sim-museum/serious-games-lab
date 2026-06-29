@@ -3,7 +3,34 @@
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/juliaRacer.py` (or `drive_native_mtk.jl`).
 
-## Latest (2026-06-29) — PO live-test fixes + E56 "all-Modelica human car" epic
+## Latest (2026-06-29 PM) — E56 "all-Modelica human car" BUILT OUT (autonomous, E56.2–E56.6)
+
+Continuing the E56 epic autonomously from the E56.1 port foundation. Every PLAYER interaction is
+now a physical force/parameter integrated by the chassis ODE — the `bumpX!`/`containX!` state hacks
+are gone for the human car (the AI stay kinematic slot cars). **All `include`d as SOURCE ⇒ LIVE at
+next launch, no `jlracer.so` rebuild.** Each increment has its own headless smoke + the 40-frame
+full-game smoke (Zandvoort + AI) runs clean:
+- **E56.2 — `extforce3d!` port setters** (Fx/Fy/Mz/CdA_scale on `Car3D`). `extforce3d_smoke`.
+- **E56.3 — draft = `CdA_scale`** aero tow (cuts frontal drag, not a velocity bump); now works vs the
+  default kinematic field, not just physics-AI. `JM_DRAFT_CUT`.
+- **E56.4 — trackside collision = spring-damper force** (`contact_force` kernel: `:wall` bounces,
+  `:soft` haie hedges/hay bury-and-stick via a crush give-zone + viscous damper; per-frame impulse
+  clamped for solver stability). SOLIDS tagged by kind; player `solid_hit→bumpX!` deleted.
+  `contact_smoke`: wall bounces, hedge sticks, no pass-through, no divergence.
+- **E56.5 — grass = per-wheel tyre μ** (`BrushTyre.μscale` + `wheelmu3d!`; the game projects all 4
+  wheels and drops μ off the racing surface → a wheel on grass loses real grip + pulls the car).
+  Player bumpX! grass hack deleted (AI keep theirs). `wheelmu_smoke`: μ=0.5 halves grip.
+- **E56.6 — boundary = physical wall** (stiff inward `contact_force(:wall)`; the car bounces off the
+  world edge with NO routine teleport — the auto `containX!` snap-back is gone; recovery = SHIFT-R).
+  A far failsafe (`JM_FENCE_FAR`=16 m) still seals the world against a true escape. `boundary3d_smoke`:
+  contained at 20/40/60 m/s (penetration 2.6–4.4 m, bounces, no failsafe, no divergence).
+
+**PO re-drive to close (felt, not headless-verifiable):** draft slingshot feel; hedge-stick vs
+wall-bounce; grass grip-loss/pull; and especially the **world-edge wall** (confirm it contains at
+racing speed with no jarring teleport; `JM_FENCE_FAR` / wall stiffness are tunable if it leaks or
+feels harsh). New env knobs: `JM_DRAFT_CUT`, `JM_GRASS_MU`, `JM_FENCE_FAR`.
+
+## Earlier 2026-06-29 — PO live-test fixes + E56 "all-Modelica human car" epic (foundation)
 
 **Race-crash FIXED (commit) — was blocking every race.** `aibankK(p) = (cs=(x=,z=,θ=);…)`
 re-bound the *player* car `cs` (a named closure shares the enclosing binding) to a NamedTuple,

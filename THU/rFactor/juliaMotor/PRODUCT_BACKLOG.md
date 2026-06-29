@@ -552,3 +552,35 @@ is a GPL look-and-feel clone. Two new EPICS:
 - **Sprint D — E55 AI stability:** de-tangle the AI contact model (simplified AI collision; ignore
   wheelspin) so the field never flops. Folds in E38.
 - **Sprint E — remaining scenery (E51/E44/E43/E45/E46/E41):** spot-render each via JM_START_S, fix.
+
+### E56 — "all-Modelica human car" epic (PO directive, 2026-06-29)
+PO: "the human car's full physical modelling is what gives GPL its sense of accuracy; the AI are
+just slot cars that mustn't hog the spotlight by flipping." Every PLAYER *interaction* becomes a
+physical force/parameter fed into the chassis ODE (never a `bumpX!`/`containX!` state hack); the AI
+stay kinematic. Return-to-track = SHIFT-R only.
+- **E56.1 ✅ force ports** (commit 27fc6f1): `DrivenVehicle3D` gains `Fx_ext/Fy_ext/Mz_ext` + `CdA_scale`
+  ports summed into `D(u)/D(v)/D(r)`/drag (defaults ⇒ unchanged).
+- **E56.2 ✅ port setters + `extforce3d!`**: `Car3D` setters for the 4 ports + a per-frame setter API.
+  Verified (extforce3d_smoke): Fy→drift, release→decays, CdA 0.6→+10 km/h, Mz→yaw.
+- **E56.3 ✅ draft = `CdA_scale`**: the player slipstream cuts frontal drag (a real aero tow the solver
+  integrates), not a forward velocity bump; works vs the default kinematic field too. JM_DRAFT_CUT.
+- **E56.4 ✅ trackside collision = spring-damper force**: new `contact_force` kernel — `:wall` (stiff,
+  elastic → bounce) vs `:soft` haie hedges/hay (weak spring + crush give + viscous damper → drive in,
+  bleed speed, get STUCK), per-frame impulse clamped for stability. SOLIDS tagged by kind; fed before
+  the step; player `solid_hit→bumpX!` deleted (AI keep it). Verified (contact_smoke): wall bounces,
+  hedge buries & sticks, no pass-through, no divergence.
+- **E56.5 ✅ grass = per-wheel tyre μ**: `BrushTyre` gains `μscale`; `wheelmu3d!` sets each wheel's μ;
+  the game projects all 4 wheels and drops μ to JM_GRASS_MU off the surface (a wheel on grass loses
+  real grip + pulls the car), replacing the player bumpX! grass hack (AI keep theirs). Verified
+  (wheelmu_smoke): μ=0.5 halves cornering grip.
+- **E56.6 ✅ boundary = physical wall**: the world edge is now a stiff inward `contact_force(:wall)` —
+  the car bounces off physically with NO routine teleport (the auto containX! snap-back is gone);
+  recovery is SHIFT-R. A far failsafe (JM_FENCE_FAR=16 m past the edge) still hard-seals the world so
+  the car can never fall into the void. Verified (boundary3d_smoke): contained at 20/40/60 m/s
+  (penetration 2.6–4.4 m, bounces back, failsafe never fires, no divergence).
+- **Physics is `include`d as SOURCE** (`drive_rt3d.jl`→`vehicle_3d.jl`/`tyre.jl`, `mtkcompile` at
+  startup) ⇒ all of the above are LIVE at next launch, **no `jlracer.so` rebuild**.
+- **Awaiting PO re-drive to close (felt, can't self-verify headless):** the draft slingshot feel, the
+  hedge "get stuck" vs wall bounce, grass grip-loss/pull, and especially the **world-edge wall** (confirm
+  it contains at racing speed with no jarring teleport; tune JM_FENCE_FAR / wall stiffness if needed).
+  All six increments pass their headless smokes + the 40-frame full-game smoke (Zandvoort, AI) runs clean.

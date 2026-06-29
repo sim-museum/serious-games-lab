@@ -650,6 +650,7 @@ const AIbump! = DriveRT3D.bump3d!
 const AIplace! = DriveRT3D.place3d!
 const FENCE = parse(Float64, get(ENV, "JM_FENCE", "13.0"))   # E7: track boundary (m from centreline) — you can't leave the world
 const FENCE_GRACE = parse(Float64, get(ENV, "JM_FENCE_GRACE", "2.5"))   # off-HAT distance before the trackside collision fires (tolerates sub-car mesh cracks; small so the fence feels like a wall)
+const FENCE_FAR  = parse(Float64, get(ENV, "JM_FENCE_FAR", "16.0"))     # E56: the physical wall contains within a few m; if the car is STILL this far past the edge the wall failed → a last-resort (non-routine) hard containment so it can never escape into the void
 # GRASS PENALTY (feel): SOFTENED — at 0.9 the drag scrubbed ~90 %/s of speed, and the 5.5 m threshold
 # false-fired on every corner exit (the racing line legitimately uses the FULL track width, reaching the
 # tarmac edge at ~5.5 m off the centreline) → the car felt like it was "always on grass" / bogging.  Now
@@ -1135,6 +1136,7 @@ function main()
     LASTGX = Ref(cs0.x); LASTGZ = Ref(cs0.z)   # last position INSIDE the world (terrain HAT) — for the boundary
     OFFDIST = Ref(0.0)                          # distance travelled off the HAT (grace before containing)
     PLAYER_CDA = Ref(1.0)                        # E56: player drag scale fed to the chassis ODE next frame (draft tow)
+    BND_FX = Ref(0.0); BND_FY = Ref(0.0); BND_MZ = Ref(0.0)   # E56: world-edge physical-wall force (body frame) fed next frame
     # The Monza banking deck-over-road is removed from TERRAIN by build_hat's overpass-drop, so the
     # topmost remaining surface under the crossings is the road.  Where the banking deck spans a GAP in
     # the road mesh (first underpass) there is nothing below to keep, so the deck survives — guard it
@@ -1583,7 +1585,9 @@ function main()
                     (cfx, cfy, cmz, cpk) = solid_contact(cs.x, cs.z, cs.θ, cs.v, dt > 1e-4 ? dt : 1/60)
                     cpk > 1.0e3 && (ffb_jolt = clamp(sign(cmz != 0 ? cmz : 1.0) * min(cpk/8.0e4, 1.0), -1.0, 1.0))  # feel the hit
                 end
-                DriveRT3D.extforce3d!(cs; Fx = cfx, Fy = cfy, Mz = cmz, CdA_scale = PLAYER_CDA[])
+                # add last frame's world-edge physical-wall force (E56.6) to the trackside contact force
+                DriveRT3D.extforce3d!(cs; Fx = cfx + BND_FX[], Fy = cfy + BND_FY[], Mz = cmz + BND_MZ[],
+                                      CdA_scale = PLAYER_CDA[])
                 # E56 grass = per-wheel tyre μ: any wheel off the racing surface loses real grip (and
                 # pulls the car) in the brush model — replaces the bumpX! grass drag/yaw hack (which is
                 # now AI-only).  Only project the 4 wheels when the car is near/over the edge (cheap on-track).
@@ -1630,27 +1634,39 @@ function main()
             # / bridge gaps in the HAT (e.g. 4 on the Nürburgring racing line) without a false
             # containment; a genuine excursion exceeds it within a few metres and is held at the edge.
             if ONTRACK[]; LASTGX[] = cs.x; LASTGZ[] = cs.z; OFFDIST[] = 0.0   # inside the world
+                BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0               # E56: release the world-edge wall
             elseif hr.found && abs(hr.lateral) < ROAD_HALFW
                 # E52: off the TERRAIN .3do mesh but still inside the road corridor (the .trk ribbon
                 # is continuous) → a gap in the collision mesh UNDER the Monza banking overpass, not the
                 # world edge.  Coast through at the held height; advance the in-world anchor so the
                 # FENCE_GRACE containment never fires across the (~20 m) underpass.
                 LASTGX[] = cs.x; LASTGZ[] = cs.z; OFFDIST[] = 0.0
+                BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0
             else
                 OFFDIST[] += cs.v * (dt > 1e-4 ? dt : 1/60)
-                if OFFDIST[] > FENCE_GRACE       # G5: hit the trackside boundary → a PHYSICAL collision
-                    nwx = LASTGX[]-cs.x; nwz = LASTGZ[]-cs.z; nl = hypot(nwx,nwz)   # wall normal: back into the world
-                    nl < 1e-3 && (nwx = cos(cs.θ+π); nwz = sin(cs.θ+π); nl = 1.0)
-                    nwx /= nl; nwz /= nl
+                # E56: the WORLD EDGE is now a PHYSICAL WALL, not a position snap-back.  nl = the car's
+                # straight-line distance past the last in-world spot = the instantaneous penetration; feed a
+                # stiff spring-damper (the same contact_force(:wall) kernel) back INTO the world so the car
+                # bounces off the edge as a real wall — no teleport.  Recovery from a spin/excursion is
+                # SHIFT-R only (the auto routine snap-back is gone).  FENCE_GRACE keeps the wall off narrow
+                # HAT mesh seams; a last-resort hard containment (FENCE_FAR) still seals the world if the
+                # wall somehow fails (so the car can NEVER fall into the void).
+                nwx = LASTGX[]-cs.x; nwz = LASTGZ[]-cs.z; nl = hypot(nwx,nwz)   # wall normal: back into the world
+                nl < 1e-3 && (nwx = cos(cs.θ+π); nwz = sin(cs.θ+π); nl = 1.0)
+                nwx /= nl; nwz /= nl
+                if nl > FENCE_GRACE
                     pvx = cs.v*cos(cs.θ); pvz = cs.v*sin(cs.θ)
-                    vn = pvx*nwx + pvz*nwz                       # inward-normal speed (<0 = leaving the world)
-                    tx = -nwz; tz = nwx; vt = pvx*tx + pvz*tz    # tangent (along the fence)
-                    e = 0.30; fric = 0.55                        # restitution + fence grab (scrub tangential)
-                    dvn = (vn < 0 ? -e*vn : 0.0) - vn; dvt = -fric*vt
-                    containX!(cs, LASTGX[], LASTGZ[]; vdamp=1.0, settle=true, groundz=groundz)  # shove back to the edge (position), keep velocity; settle vertical so a steep off-world snap doesn't superball (E42)
-                    bumpX!(cs, dvn*nwx+dvt*tx, dvn*nwz+dvt*tz, clamp(sign(vt)*abs(vn)*0.05, -1.2, 1.2))  # bounce + scrub + glance-spin
-                    ffb_jolt = clamp(sign(vt)*abs(vn)*0.18, -1.0, 1.0)   # FF jolt off the fence/hay
-                    OFFDIST[] = 0.0
+                    vn = pvx*nwx + pvz*nwz                       # car speed along the INWARD normal (<0 = leaving)
+                    gdt = dt > 1e-4 ? dt : 1/60
+                    (bfx, bfy, bmz) = DriveRT3D.contact_force(nl - FENCE_GRACE, nwx, nwz, vn, cs.θ; kind = :wall, dt = gdt)
+                    BND_FX[] = bfx; BND_FY[] = bfy; BND_MZ[] = bmz
+                    ffb_jolt = clamp(-vn*0.05, -1.0, 1.0)        # FF jolt off the world-edge wall
+                    if nl > FENCE_GRACE + FENCE_FAR              # the wall failed to contain → last-resort seal (rare; never in normal play)
+                        containX!(cs, LASTGX[], LASTGZ[]; vdamp=0.3, settle=true, groundz=groundz)
+                        BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0; OFFDIST[] = 0.0
+                    end
+                else
+                    BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0
                 end
             end
             end
