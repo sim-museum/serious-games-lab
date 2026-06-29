@@ -164,7 +164,7 @@ function start(eng::Engine)
     eng.running[]=true
     Threads.@spawn begin
         buf = zeros(Float32, 1024, 2)
-        opened = false
+        opened = false; openfails = 0
         # Resilient feeder: a render-loop hitch (first-frame JIT, GC) can starve this
         # thread and xrun the stream.  On a write error we REOPEN the stream and keep
         # going (was: close + exit ⇒ silent for the rest of the session).  Larger
@@ -173,12 +173,19 @@ function start(eng::Engine)
             local stream
             try
                 stream = PortAudioStream(0,2; samplerate=44100, latency=0.20)
-                opened = true
+                opened = true; openfails = 0
             catch e
-                # couldn't open the device at all (no device / busy / PipeWire quirk):
-                # the sim runs fine, just silently.  Don't spin — give up.
-                opened || @warn "engine audio unavailable (couldn't open an audio device) — running silently; set JM_NOSOUND=1 to skip audio"
-                eng.running[]=false; break
+                # couldn't open the device THIS attempt.  On PipeWire/PulseAudio the default ALSA
+                # device (hw:0,0) can be momentarily held by the server when the game starts up, so
+                # the FIRST open often loses an exclusive-access race → previously we gave up here and
+                # the whole session was silent.  RETRY for a few seconds (the server frees/suspends the
+                # idle device shortly); only give up if it's genuinely unavailable.
+                openfails += 1
+                if openfails >= 60                      # ~6 s of retries
+                    @warn "engine audio unavailable (couldn't open an audio device after retries) — running silently; set JM_NOSOUND=1 to skip audio" e
+                    eng.running[]=false; break
+                end
+                sleep(0.1); continue                    # device busy/transient → wait and retry
             end
             try
                 while eng.running[]
