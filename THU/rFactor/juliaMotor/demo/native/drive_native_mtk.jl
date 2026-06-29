@@ -359,6 +359,34 @@ function align_centreline(cl, hat)
     [(p[1]+best[2], p[2]+best[3]) for p in cl]
 end
 
+# D4 (PO): the GPL .trk DRIVING line hugs the road EDGE through corners (it is the racing groove, not the
+# geometric centre of the tarmac), so lane-0 — what SHIFT-R drops you onto and what the AI takes as its
+# reference — sits at the road edge, half on the grass, and the AI apexes even further inside onto the
+# grass ("as if the road is two car-widths wider on the inside").  Re-centre each centreline point on the
+# VISIBLE road: scan left + right along the lateral normal to the road-mesh edges (the road-only HAT) and
+# move the point toward the MIDPOINT (a damped, clamped, smoothed fraction so a one-sided pit-lane/apron
+# can't drag it and the line stays continuous).  JM_NO_RECENTRE=1 restores the raw .trk line.
+function recentre_on_road(cl, hat; reach = 14.0, step = 0.5, frac = 1.0, cap = 4.0)
+    n = length(cl)
+    on(x, z) = JuliaMotor.hat3d(hat, x, z; ref = Inf)[3]
+    nrm(i) = (q = cl[mod(i, n)+1]; r = cl[mod(i-2, n)+1]; tx = q[1]-r[1]; ty = q[2]-r[2];
+              tl = hypot(tx, ty); tl < 1e-6 ? (0.0, 0.0) : (-ty/tl, tx/tl))   # left-hand normal
+    raw = zeros(n)
+    for i in 1:n
+        p = cl[i]; (nx, ny) = nrm(i)
+        (nx == 0.0 && ny == 0.0 || !on(p[1], p[2])) && continue        # only recentre points already on road
+        hi = 0.0; while hi < reach && on(p[1]+nx*(hi+step), p[2]+ny*(hi+step)); hi += step; end
+        lo = 0.0; while lo < reach && on(p[1]-nx*(lo+step), p[2]-ny*(lo+step)); lo += step; end
+        raw[i] = clamp(frac*(hi - lo)/2, -cap, cap)                    # +→ shift LEFT toward the midpoint
+    end
+    sm = zeros(n); W = 3                                               # box-smooth (discrete edge sampling is jittery)
+    for i in 1:n; a = 0.0; for d in -W:W; a += raw[mod(i-1+d, n)+1]; end; sm[i] = a/(2W+1); end
+    out = [(p = cl[i]; (nx, ny) = nrm(i); (p[1]+nx*sm[i], p[2]+ny*sm[i])) for i in 1:n]
+    println("centreline re-centred on the visible road: max shift ", round(maximum(abs, sm), digits=1),
+            " m, mean ", round(sum(abs, sm)/n, digits=2), " m, at-start ", round(sm[1], digits=2), " m")
+    out
+end
+
 # GPL scenery placement: load the .dat sub-object meshes the main .3do places via its
 # 0x0E nodes (corner terrain sections, trees, signs, buildings — the Nordschleife
 # landmass), transform each to world coords, and emit (a) world-space GPL tris for the
@@ -494,7 +522,9 @@ else
     # full HAT would let the line drift onto the grass verge); the road ribbon then doubles
     # as the corridor filter for scenery placement.
     const TERRAIN0 = GPLTrack.build_hat(TRACKMESH0; exclude=HAT_EXCLUDE, exclude_pred=HAT_EXCLUDE_PRED, drop_overpass=MONZA, road_pred=ROAD_PRED)
-    const ALIGNED  = align_centreline(GPLTrack.trk_centreline(track_file(GPLNAME, ".trk")), TERRAIN0)
+    const ALIGNED  = let a = align_centreline(GPLTrack.trk_centreline(track_file(GPLNAME, ".trk")), TERRAIN0)
+        haskey(ENV, "JM_NO_RECENTRE") ? a : recentre_on_road(a, TERRAIN0)   # D4: pull lane-0 to the road's geometric centre
+    end
     const RIBBON0  = GPLTrack.build_surface(ALIGNED, TERRAIN0)
     # GPL Nürburgring places its landmass/scenery as .dat sub-objects via 0x0E nodes;
     # load + place them so the road isn't floating over a void (Zandvoort has none).
