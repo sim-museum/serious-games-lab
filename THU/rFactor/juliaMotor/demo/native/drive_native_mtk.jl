@@ -62,7 +62,19 @@ end
 const TRACKSEL = choose_track()
 const SKIDPAD  = TRACKSEL == "skidpad"
 const NURB     = TRACKSEL == "nurburgring"
+const MONZA    = TRACKSEL == "monza"
 println("  → track: ", uppercasefirst(TRACKSEL))
+# E52: GPL Monza '67 is the road course — the high-speed BANKING (sopraelevata) is decorative scenery
+# the car never drives, but its deck/structure mesh sits ABOVE the road course where they cross.  A
+# single-valued HAT would return the banking deck (the car climbs onto it / hits a "wall" = "can't drive
+# through").  Exclude the banking surfaces from the COLLISION HAT only (still rendered) so groundz returns
+# the road beneath.  Names from JM_TEXDIAG (track-mesh textures by mean height).
+const HAT_EXCLUDE = MONZA ? Set(["banking","bnkback","bnkbck4",
+                                 "brdgbnkr","brdgbnkm","brdgbnkl","brdgbnur","brdgbnul","brdgbnum"]) : Set{String}()
+# NB the road and banking SHARE the per-section sNN[bl]N asphalt textures (section-based naming), so
+# the banking can't be name-excluded without also dropping the road — the geometric overpass-drop
+# (build_hat drop_overpass) separates them by elevation instead.
+const HAT_EXCLUDE_PRED = nothing
 
 # ---- session mode + race config (GPL-style: Practice / Training / Race) ----
 const MODE      = lowercase(get(ENV, "JM_MODE", "practice"))   # practice | training | race
@@ -432,7 +444,7 @@ else
     # Align the racing line against the ROAD-only HAT (precise — scenery terrain in the
     # full HAT would let the line drift onto the grass verge); the road ribbon then doubles
     # as the corridor filter for scenery placement.
-    const TERRAIN0 = GPLTrack.build_hat(TRACKMESH0)
+    const TERRAIN0 = GPLTrack.build_hat(TRACKMESH0; exclude=HAT_EXCLUDE, exclude_pred=HAT_EXCLUDE_PRED, drop_overpass=MONZA)
     const ALIGNED  = align_centreline(GPLTrack.trk_centreline(track_file(GPLNAME, ".trk")), TERRAIN0)
     const RIBBON0  = GPLTrack.build_surface(ALIGNED, TERRAIN0)
     # GPL Nürburgring places its landmass/scenery as .dat sub-objects via 0x0E nodes;
@@ -447,7 +459,7 @@ else
     const TRACKMESH = isempty(SECTRI) ? TRACKMESH0 :
         Render.GPL3DO.Mesh3DO([TRACKMESH0.tris; SECTRI], TRACKMESH0.textures,
                               [TRACKMESH0.groups; fill(0, length(SECTRI))])
-    const TERRAIN  = isempty(SECTRI) ? TERRAIN0 : GPLTrack.build_hat(TRACKMESH)
+    const TERRAIN  = isempty(SECTRI) ? TERRAIN0 : GPLTrack.build_hat(TRACKMESH; exclude=HAT_EXCLUDE, exclude_pred=HAT_EXCLUDE_PRED, drop_overpass=MONZA)
     const TRKSURF  = GPLTrack.build_surface(ALIGNED, TERRAIN)
     const LAPLEN = maximum(TRKSURF.lapdist)              # lap length [m], for start/finish wrap detection
     const CAR = DriveCar(MODEL, TRKSURF; terrain=TERRAIN)    # racing ribbon from the .trk centreline
@@ -869,6 +881,24 @@ let objnames=Set{String}()
             push!(BILLBOARDS, (item, (Float32(i.x), gz, Float32(-i.y)), Float32(w), Float32(h)))
         end
     end
+    # Named instance table (name, world-x, world-z, base-y, kind, dropped?) for the JM_START_S
+    # spot diagnostic — lets a mid-lap render report exactly which authored objects sit near the
+    # car, even when their CENTROID is >13 m off-centreline but the mesh spans the road (E52: the
+    # wide grandstand/wall whose centroid clears the on_road filter yet its extent blocks the track).
+    global OBJINSTS = [(i.name, Float32(i.x), Float32(-i.y), ploz(i),
+                        get(objmesh,i.name,nothing)!==nothing ? :mesh : (get(bbinfo,i.name,nothing)!==nothing ? :bb : :none),
+                        drop(i.name)) for i in insts]
+    if get(ENV,"JM_TEXDIAG","")!=""
+        # track-mesh textures by HEIGHT band — to spot the Monza banking surface (a large mesh high
+        # above the road) so it can be excluded from the collision HAT (E52: road passes under it).
+        th = Dict{String,Vector{Float32}}()
+        for t in TRACKMESH.tris, vi in 1:3; push!(get!(th,t.tex,Float32[]), Float32(t.p[vi][3])); end
+        rows = [(tex, length(zs)÷3, minimum(zs), sum(zs)/length(zs), maximum(zs)) for (tex,zs) in th]
+        sort!(rows, by=r->-r[4])
+        println("== JM_TEXDIAG track-mesh textures by mean height (tex  ntri  zmin  zmean  zmax) ==")
+        for (tex,n,zmn,zmu,zmx) in rows; println("   ", rpad(tex=="" ? "<none>" : tex,14), rpad(n,7), " zmin=", rpad(round(zmn,digits=1),8), "zmean=", rpad(round(zmu,digits=1),8), "zmax=", round(zmx,digits=1)); end
+        flush(stdout)
+    end
     if get(ENV,"JM_OBJDIAG","")!=""
         kn = unique([i.name for i in insts if get(objmesh,i.name,nothing)!==nothing && !drop(i.name) && onground(i)])
         tall = sort([(nm, get(ymx,nm,0f0)-get(ymn,nm,0f0)) for nm in kn], by=x->-x[2])
@@ -1064,13 +1094,28 @@ function main()
     LASTZ = Ref(0.0); ONTRACK = Ref(true)
     LASTGX = Ref(cs0.x); LASTGZ = Ref(cs0.z)   # last position INSIDE the world (terrain HAT) — for the boundary
     OFFDIST = Ref(0.0)                          # distance travelled off the HAT (grace before containing)
-    function groundz(x, z)                            # HAT elevation; off-surface holds last height
+    # The Monza banking deck-over-road is removed from TERRAIN by build_hat's overpass-drop, so the
+    # topmost remaining surface under the crossings is the road.  Where the banking deck spans a GAP in
+    # the road mesh (first underpass) there is nothing below to keep, so the deck survives — guard it
+    # here: a car can't instantly climb several metres, so a height that jumps > WALL_CLIMB above the
+    # last on-road height is a wall/island; reject it (coast at the held height, off-surface) instead of
+    # teleporting up onto it.  `acquire=true` bypasses the guard to re-anchor from scratch (spawn/teleport).
+    WALL_CLIMB = parse(Float64, get(ENV, "JM_WALL_CLIMB", "3.0"))
+    function groundz(x, z; acquire = false)
         SKIDPAD && return 0.0   # flat skidpad → no elevation
         h = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf)
-        h[3] ? (LASTZ[] = Float64(h[1]); ONTRACK[] = true) : (ONTRACK[] = false)
+        # Wall guard gated to MONZA: Monza is flat, so the only multi-metre upward jump is the banking
+        # island over the road gap.  On hilly tracks (Nürburgring) real crests + the shared LASTZ across
+        # the AI field would false-fire, so those keep the unguarded path.
+        if h[3] && (acquire || !MONZA || Float64(h[1]) <= LASTZ[] + WALL_CLIMB)
+            LASTZ[] = Float64(h[1]); ONTRACK[] = true
+        else
+            ONTRACK[] = false      # off the HAT, or an implausible upward jump (wall/island) → hold last height
+        end
         LASTZ[]
     end
-    y0spawn = groundz(cs0.x, cs0.z)                          # terrain height at spawn (3-D needs it; else the car spawns 100s of m off the ground and the contact explodes)
+    y0spawn = groundz(cs0.x, cs0.z; acquire=true)            # terrain height at spawn (3-D needs it; else the car spawns 100s of m off the ground and the contact explodes) — bootstrap LASTZ from topmost
+
     # robust spawn heading: the single S/F seam segment can give a sideways tangent, so
     # take the heading from a few points DOWN the centreline (the real start-straight direction).
     θ0spawn = if SKIDPAD
@@ -1110,10 +1155,67 @@ function main()
         p  = RaceAI.pose_at(CLINE, s0, 0.0)                 # (x, y, z, θ) on the racing line
         DriveRT3D.place3d!(cs, p[1], p[3], p[4]; v = 0.0)
         cs.s_vreset(cs.integ, zeros(14))                    # zero the vertical subsystem (no spawn bounce)
-        h = groundz(p[1], p[3]); isfinite(h) && (cs.zref = Float64(h))
+        h = groundz(p[1], p[3]; acquire=true); isfinite(h) && (cs.zref = Float64(h))
         cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
         println("  JM_START_S: car placed at s=", round(Int, s0), " m on the centreline (x=",
-                round(Int, p[1]), " z=", round(Int, p[3]), ")"); flush(stdout)
+                round(Int, p[1]), " z=", round(Int, p[3]), ")")
+        if get(ENV,"JM_OBJDIAG","")!="" && isdefined(Main,:OBJINSTS)
+            rad = parse(Float64, get(ENV,"JM_SPOT_RAD","70"))
+            near = NTuple{3,Any}[]
+            for (nm,ox,oz,oy,kind,dropped) in OBJINSTS
+                d = hypot(Float64(ox)-p[1], Float64(oz)-p[3])
+                d < rad && push!(near, (round(d,digits=1), "$nm $(kind)$(dropped ? "·DROP" : "")", round(Float64(oy),digits=1)))
+            end
+            sort!(near, by=x->x[1])
+            println("  JM_SPOT objects within ", round(Int,rad), " m of the car (d  name kind  base-y):")
+            for (d,lbl,oy) in near; println("     d=", rpad(d,7), rpad(lbl,22), " y=", oy); end
+            # Forward HAT scan: sample the terrain height ahead along the centreline both as the
+            # physics currently queries it (ref=Inf → TOPMOST surface) and following the road
+            # (ref = road height + clearance).  A spike in the ref=Inf column at the Monza
+            # banking underpass = the car gets lifted onto the overpass deck ("can't drive through").
+            road_h = JuliaMotor.hat3d(TERRAIN, p[1], p[3]; ref=Inf)[1]
+            println("  JM_HATSCAN ahead (s  top=ref∞  follow=road+3):  road_h@car=", round(road_h,digits=1))
+            for ds in 0.0:10.0:140.0
+                sp = RaceAI.pose_at(CLINE, min(s0+ds, CLINE.total), 0.0)
+                ht = JuliaMotor.hat3d(TERRAIN, sp[1], sp[3]; ref=Inf)
+                hf = JuliaMotor.hat3d(TERRAIN, sp[1], sp[3]; ref=road_h+3.0)
+                println("     +", rpad(Int(ds),4), "m  top=", rpad(ht[3] ? round(ht[1],digits=1) : "MISS", 8),
+                        "follow=", rpad(hf[3] ? round(hf[1],digits=1) : "MISS", 8),
+                        (ht[3] && hf[3] && ht[1]-hf[1] > 1.5) ? "  <== OVERPASS SPIKE" : "")
+            end
+            # Simulate the car stepping forward: groundz with the live follow-ref (LASTZ updates each
+            # step, exactly as the game loop drives it).  If it stays on the road (no jump to the 3.6-11.7
+            # banking deck) the height fix holds; ontrack=false across the gap = the corridor-coast branch.
+            # which TRACKMESH textures cover the spike points? (point-in-tri in XZ → tex + interpolated h)
+            function cover_tex(qx, qz)
+                out = Tuple{String,Float64}[]
+                for t in TRACKMESH.tris
+                    ax,az = Float64(t.p[1][1]), Float64(t.p[1][2]); bx,bz = Float64(t.p[2][1]), Float64(t.p[2][2]); cx,cz = Float64(t.p[3][1]), Float64(t.p[3][2])
+                    d = (bz-cz)*(ax-cx)+(cx-bx)*(az-cz); abs(d) < 1e-9 && continue
+                    wa = ((bz-cz)*(qx-cx)+(cx-bx)*(qz-cz))/d; wb = ((cz-az)*(qx-cx)+(ax-cx)*(qz-cz))/d; wc = 1-wa-wb
+                    (wa>=-0.01 && wb>=-0.01 && wc>=-0.01) || continue
+                    h = wa*Float64(t.p[1][3])+wb*Float64(t.p[2][3])+wc*Float64(t.p[3][3])
+                    push!(out, (t.tex, round(h,digits=1)))
+                end
+                sort!(out, by=x->-x[2]); out
+            end
+            for ds in (15.0, 120.0)
+                sp = RaceAI.pose_at(CLINE, min(s0+ds,CLINE.total), 0.0)
+                println("  JM_COVER s+", Int(ds), " (x=", round(Int,sp[1]), " z=", round(Int,sp[3]), "): ",
+                        join([string(tx=="" ? "<none>" : tx, "@", h) for (tx,h) in cover_tex(sp[1], sp[3])], "  "))
+            end
+            LASTZ[] = road_h
+            println("  JM_DRIVETEST follow-ref groundz stepping forward from s=", round(Int,s0), ":")
+            for ds in 0.0:5.0:160.0
+                sp = RaceAI.pose_at(CLINE, min(s0+ds, CLINE.total), 0.0)
+                hrb = JuliaMotor.hat(TRKSURF, sp[1], sp[3])
+                g = groundz(sp[1], sp[3])
+                println("     +", rpad(Int(ds),4), "m  groundz=", rpad(round(g,digits=1),7),
+                        " ribbon=", rpad(hrb.found ? round(hrb.height,digits=1) : "MISS",7),
+                        " lat=", rpad(round(hrb.lateral,digits=1),6), " ontrack=", ONTRACK[])
+            end
+            flush(stdout)
+        end
     end
     AILINE = (CLINE !== nothing && N_AI > 0) ? CLINE : nothing
     AICARS = AILINE === nothing ? RaceAI.AICar[] : RaceAI.init_cars(AILINE, N_AI; start_s = 30.0)
@@ -1378,7 +1480,7 @@ function main()
             sR = RaceAI.project(CLINE, cs.x, cs.z)[1]; pR = RaceAI.pose_at(CLINE, sR, 0.0)
             DriveRT3D.place3d!(cs, pR[1], pR[3], pR[4]; v=0.0)
             cs.s_vreset(cs.integ, zeros(14))
-            hR = groundz(pR[1], pR[3]); isfinite(hR) && (cs.zref = Float64(hR))
+            hR = groundz(pR[1], pR[3]; acquire=true); isfinite(hR) && (cs.zref = Float64(hR))
             cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
         elseif rst; respawnX!(cs; groundz=groundz)
         else; step_carX!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
@@ -1416,6 +1518,12 @@ function main()
             # / bridge gaps in the HAT (e.g. 4 on the Nürburgring racing line) without a false
             # containment; a genuine excursion exceeds it within a few metres and is held at the edge.
             if ONTRACK[]; LASTGX[] = cs.x; LASTGZ[] = cs.z; OFFDIST[] = 0.0   # inside the world
+            elseif hr.found && abs(hr.lateral) < ROAD_HALFW
+                # E52: off the TERRAIN .3do mesh but still inside the road corridor (the .trk ribbon
+                # is continuous) → a gap in the collision mesh UNDER the Monza banking overpass, not the
+                # world edge.  Coast through at the held height; advance the in-world anchor so the
+                # FENCE_GRACE containment never fires across the (~20 m) underpass.
+                LASTGX[] = cs.x; LASTGZ[] = cs.z; OFFDIST[] = 0.0
             else
                 OFFDIST[] += cs.v * (dt > 1e-4 ? dt : 1/60)
                 if OFFDIST[] > FENCE_GRACE       # G5: hit the trackside boundary → a PHYSICAL collision

@@ -40,13 +40,74 @@ function trk_centreline(path; subdiv::Int=5)
     pts
 end
 
-"""Build the ground TriangleHAT from a parsed GPL track mesh (Render.GPL3DO.Mesh3DO)."""
-function build_hat(mesh; cell=20.0)
+"""Build the ground TriangleHAT from a parsed GPL track mesh (Render.GPL3DO.Mesh3DO).
+
+`exclude` = extra texture names dropped from the COLLISION HAT.
+
+`drop_overpass` (Monza): drop any triangle that has ANOTHER surface more than `over_gap` m
+BELOW its centroid — i.e. an overpass deck / embankment sitting over a lower surface.  GPL
+Monza '67 is the road course; the high-speed BANKING (sopraelevata) crosses OVER the road but
+is decorative (never driven), and its deck + grass embankment share the general `grasss1`/asphalt
+textures (so they can't be name-excluded).  Keeping the LOWER surface wherever two stack leaves the
+road course intact under the banking.  (The banking is still RENDERED — this only touches collision.)
+Safe here because the road course never drives OVER anything; do NOT enable on tracks with real
+drive-over bridges (Nürburgring)."""
+function build_hat(mesh; cell=20.0, exclude=Set{String}(), exclude_pred=nothing, drop_overpass=false, over_gap=2.0)
+    g(t,i) = (Float64(t.p[i][1]), Float64(t.p[i][3]), Float64(t.p[i][2]))   # GPL(x,y,z) → Y-up (x, z_up→y, y→z)
+    keep = trues(length(mesh.tris))
+    for (k,t) in enumerate(mesh.tris)
+        lt = lowercase(t.tex)
+        (t.tex in VERTICAL || lt in exclude || (exclude_pred !== nothing && exclude_pred(lt))) && (keep[k] = false)
+    end
+    if drop_overpass
+        # Drop a triangle only if ANOTHER surface lies directly beneath its centroid (precise
+        # point-in-triangle in XZ) by more than `over_gap` — true vertical stacking = an overpass
+        # deck / embankment over the road.  (A grass ditch BESIDE the road is not under the road's
+        # centroid, so the road survives — the bug a coarse cell-min check had.)  Candidates are
+        # bucketed on a grid so this stays ~O(n).
+        gc = 12.0
+        cen = Vector{NTuple{3,Float64}}(undef, length(mesh.tris))
+        grid = Dict{NTuple{2,Int},Vector{Int}}()
+        for (k,t) in enumerate(mesh.tris)
+            cx = (Float64(t.p[1][1])+Float64(t.p[2][1])+Float64(t.p[3][1]))/3
+            cy = (Float64(t.p[1][3])+Float64(t.p[2][3])+Float64(t.p[3][3]))/3   # GPL-z = height
+            cz = (Float64(t.p[1][2])+Float64(t.p[2][2])+Float64(t.p[3][2]))/3   # GPL-y = world Z
+            cen[k] = (cx, cy, cz)
+            push!(get!(grid, (floor(Int,cx/gc), floor(Int,cz/gc)), Int[]), k)
+        end
+        # height of triangle u's plane at (qx,qz) if the point is inside u's XZ projection, else nothing
+        function under_h(u, qx, qz)
+            ax,az = Float64(u.p[1][1]), Float64(u.p[1][2]); bx,bz = Float64(u.p[2][1]), Float64(u.p[2][2]); cx2,cz2 = Float64(u.p[3][1]), Float64(u.p[3][2])
+            d = (bz-cz2)*(ax-cx2)+(cx2-bx)*(az-cz2); abs(d) < 1e-9 && return nothing
+            wa = ((bz-cz2)*(qx-cx2)+(cx2-bx)*(qz-cz2))/d; wb = ((cz2-az)*(qx-cx2)+(ax-cx2)*(qz-cz2))/d; wc = 1-wa-wb
+            (wa >= -0.02 && wb >= -0.02 && wc >= -0.02) || return nothing
+            wa*Float64(u.p[1][3]) + wb*Float64(u.p[2][3]) + wc*Float64(u.p[3][3])
+        end
+        for k in eachindex(mesh.tris)
+            keep[k] || continue
+            cx,cy,cz = cen[k]; gkey = (floor(Int,cx/gc), floor(Int,cz/gc))
+            dropped = false
+            for dz in -1:1, dx in -1:1
+                cands = get(grid, (gkey[1]+dx, gkey[2]+dz), nothing); cands === nothing && continue
+                for j in cands
+                    j == k && continue
+                    h = under_h(mesh.tris[j], cx, cz)
+                    if h !== nothing && h < cy - over_gap
+                        dropped = true; break
+                    end
+                end
+                dropped && break
+            end
+            dropped && (keep[k] = false)
+        end
+        # (The banking ISLAND over the road-mesh GAP at the first underpass — no road tri beneath it,
+        # so pass 1 can't see it — is handled at the physics level by groundz's anti-wall-climb guard:
+        # the car can't instantly climb 9 m, so that height is rejected and it coasts the gap.)
+    end
     tris = JuliaMotor.Tri[]
-    for t in mesh.tris
-        t.tex in VERTICAL && continue
-        v(i) = (Float64(t.p[i][1]), Float64(t.p[i][3]), Float64(t.p[i][2]))   # GPL→Y-up
-        push!(tris, JuliaMotor.Tri(v(1), v(2), v(3)))
+    for (k,t) in enumerate(mesh.tris)
+        keep[k] || continue
+        push!(tris, JuliaMotor.Tri(g(t,1), g(t,2), g(t,3)))
     end
     JuliaMotor.TriangleHAT(tris; cell=cell)
 end

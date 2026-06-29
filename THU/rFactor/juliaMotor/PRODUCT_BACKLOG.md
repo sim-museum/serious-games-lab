@@ -516,3 +516,39 @@ felt while driving). Next PO session on Watkins + Monza closes them — or reope
   both sides — offender is out on the lap) · **E45** Zandvoort floating horizon buildings · **E46** Zandvoort
   blue crowd · **E51** Monza Lesmo tree-curtain (on-road sprites already dropped by E31; residual is a wide
   near-road tree billboard — needs the spot to retune without stripping legit roadside trees).
+
+## PO autonomous mandate (2026-06-28 night) — "run scrum till 8am; GPL look-and-feel clone"
+PO away until 08:00 2026-06-29. Standing order: **run the scrum process autonomously; if a sprint is
+blocked by an impediment only the PO can clear, switch to another sprint — don't stop** until Julia Racer
+is a GPL look-and-feel clone. Two new EPICS:
+
+- **E54 🏁 Clean race on all 5 tracks (no road obstructions, no grass-molasses on the racing line):**
+  I can run a race at **Spa, Monza, Zandvoort, Watkins Glen, or Nürburgring** vs 5 AI cars with
+  **(a)** no objects/obstructions on the drivable road (as the Monza banking wall / hedge-box was), and
+  **(b)** no grass-like hindrance bogging a car that is ON the road (as at Watkins Glen E30/E39). Method:
+  **spawn at increments around each track** (JM_START_S sweep) and verify (i) nothing blocks the racing
+  surface, (ii) `groundz`/surface-tag never reads "grass/off-HAT" for a car on the centreline (no
+  molasses). Build an automated per-track sweep harness (HAT + object scan) so this is regression-checkable
+  headless. *Acceptance:* a clean flying lap on each track at racing pace with no stop/▲-height/▲-drag
+  anomaly on the centreline, and no mesh/billboard intruding within the road half-width.
+  - **E54a (this commit):** Monza banking underpass — the road passes UNDER the sopraelevata; the banking
+    deck was in the collision HAT so the car climbed it / hit a wall. FIX: `HAT_EXCLUDE` drops the
+    banking deck + bridge-banking textures from the HAT (still rendered); the ~20 m road-mesh gap under
+    the first crossing is bridged by the in-corridor coast branch (off-mesh but inside the .trk corridor
+    ⇒ no fence). Verified by JM_DRIVETEST HAT scan (no more 3.6–11.7 m banking spikes on the centreline).
+
+- **E55 🤖 AI cars must not entangle / flop:** AI cars should never get entangled with each other and
+  "flop around in strange ways". **Authorised simplification:** *ignore wheelspin (and, more generally,
+  fine tyre dynamics) in collisions involving AI cars* if that stabilises them — AI may use a simpler,
+  robust contact/handling model. *Acceptance:* a full race where the AI field runs nose-to-tail through
+  every corner without cartwheeling, stacking, or vibrating apart (relates to E38 hyperspace/tangle).
+
+### Autonomous sprint plan (PO pre-approved)
+- **Sprint A — E54a Monza road clear (banking HAT):** ✅ code done; re-drive to confirm.
+- **Sprint B — E54 sweep harness:** automated JM_START_S HAT+object sweep over all 5 tracks → report any
+  on-road mesh/billboard or grass-tag-on-centreline. Drives the rest of E54.
+- **Sprint C — E54b grass-molasses:** wherever the sweep flags a grass/off-HAT tag on the racing line
+  (Watkins esses E30, Spa/Nürburgring bog E39), widen/retag the corridor so an on-road car never bogs.
+- **Sprint D — E55 AI stability:** de-tangle the AI contact model (simplified AI collision; ignore
+  wheelspin) so the field never flops. Folds in E38.
+- **Sprint E — remaining scenery (E51/E44/E43/E45/E46/E41):** spot-render each via JM_START_S, fix.
