@@ -84,9 +84,14 @@ const AI_PCT    = clamp(tryparse(Float64, get(ENV, "JM_AI_PCT", "100")) |> x -> 
 # AI never run away from the human: each is capped to AI_REL × the player's current speed
 # (default 1.10 = at most 10 % faster) so it stays a close, raceable field.
 const AI_REL    = clamp(tryparse(Float64, get(ENV, "JM_AI_REL", "1.10")) |> x -> x === nothing ? 1.10 : x, 1.0, 4.0)
-# GC: the AI run the JM 2-D PHYSICS model (real grip/inertia) steered by a rail controller,
-# by default.  JM_AI_KINEMATIC falls back to the (also-good) kinematic rail field.
-const AI_PHYSICS = !haskey(ENV, "JM_AI_KINEMATIC")
+# AI model: KINEMATIC multi-rail field by DEFAULT (RaceAI.step_field! — robust, GPL-authentic,
+# never spins or leaves the rail; the PO's chosen "GPL 3-rail" AI).  The physics-AI path is
+# OPT-IN via JM_AI_PHYSICS, per RACE_AI_NOTES.md ("ship opt-in first; default only after a
+# test-drive confirms the feel").  E38: the physics AI were defaulted ON by a regression and
+# blew up on the big tracks (Spa Eau Rouge, Nürburgring) — cartwheeling off the road, the
+# recovery snap-forward producing the "inchworm" teleport, and clustering on the player so it
+# bogged (E39).  Kinematic AI track the line cleanly and don't contact the player on the grid.
+const AI_PHYSICS = haskey(ENV, "JM_AI_PHYSICS")
 # Physics-AI pace is set ONCE here via ENGINE POWER (throttle cap), NOT a per-frame rubber-band:
 # the AI race at a fixed pace they can't exceed (and can wash out if hot), so a fast human gets
 # legitimately ahead.  1.0 = full DFV power (GPL-fast); lower detunes them.  JM_AI_POWER tunes it.
@@ -1126,6 +1131,24 @@ function main()
         avgkmh = round.(Int, aidist ./ 90 .* 3.6)
         println("  AI self-test on $(TRACKSEL) (90s): dist=", round.(Int,aidist), "m  avg_kmh=$avgkmh  max_yaw=$(round(maxr,digits=2))  spins=$spins  max_lat=$(round(maxlat,digits=1))m  stuck=$stuck")
         println(spins < 30 && minimum(aidist) > 800 && maximum(stuck) < 200 ? "  ✓ physics AI lap the real track cleanly" : "  ⚠ AI struggle here — tune controller")
+        exit(0)
+    end
+    # JM_AI_TEST for the KINEMATIC field (the default): step_field! for 90 s, report tracking.
+    # Kinematic AI are rail-bound so they can't spin/leave the line — this verifies the field
+    # ADVANCES (laps the track) and stays on-rail (low max_lat) on the big tracks (E38).
+    if !AI_PHYSICS && haskey(ENV, "JM_AI_TEST") && AILINE !== nothing && !isempty(AICARS)
+        N=length(AICARS); maxlat=0.0; aidist=zeros(N)
+        lastp=[RaceAI.pose_at(AILINE, c.s, c.lane) for c in AICARS]
+        for _ in 1:5400   # 90 s @ 60 Hz   (player far behind + fast so AI_REL doesn't cap the pace)
+            poses,_ = RaceAI.step_field!(AICARS, AILINE, 1/60; scale=AI_SCALE, player=(-1e9,0.0,100.0), rel=AI_REL)
+            for (i,p) in enumerate(poses)
+                maxlat = max(maxlat, abs(RaceAI.project(AILINE, p[1], p[3])[2]))   # true lateral off the line (p[2] is ELEVATION)
+                aidist[i] += hypot(p[1]-lastp[i][1], p[3]-lastp[i][3]); lastp[i]=p
+            end
+        end
+        avgkmh = round.(Int, aidist ./ 90 .* 3.6)
+        println("  KINEMATIC AI self-test on $(TRACKSEL) (90s): dist=", round.(Int,aidist), "m  avg_kmh=$avgkmh  max_lat=$(round(maxlat,digits=1))m")
+        println(minimum(aidist) > 800 && maxlat < 12.0 ? "  ✓ kinematic AI lap the real track on-rail (no spins possible)" : "  ⚠ field not advancing / off-rail — check AILINE")
         exit(0)
     end
     # ---- force feedback: self-aligning torque from the front-axle lateral force ----
