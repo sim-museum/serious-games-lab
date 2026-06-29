@@ -7,3 +7,6 @@ joystick.conf
 joystick_profiles/
 # prebuilt sysimage (large, machine-specific — build via build_sysimage.jl)
 jlracer.so
+# per-session race state (the GUI's post-race screen + AI-% preset read these; not source)
+last_race_result.txt
+human_best.txt

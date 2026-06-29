@@ -106,8 +106,11 @@ function racelane(line::AILine, s)
     line.rl[i]*(1-f) + line.rl[j]*f
 end
 
-mutable struct AICar; s::Float64; v::Float64; lap::Int; lane::Float64; tlane::Float64; spin::Float64; follow::Float64; end
-AICar(s, v, lap, lane) = AICar(s, v, lap, lane, lane, 0.0, 0.0)   # tlane=current lane; spin=collision yaw; follow=tailgate timer (s)
+mutable struct AICar; s::Float64; v::Float64; lap::Int; lane::Float64; tlane::Float64; spin::Float64; follow::Float64
+    pace::Float64        # per-car PHYSICS pace factor (power/weight) — the Eagle out-paces the BRM (the field spreads)
+    mishap::Float64      # remaining time (s) of a current off/spin mishap — drops the car right back, GPL-style
+end
+AICar(s, v, lap, lane) = AICar(s, v, lap, lane, lane, 0.0, 0.0, 1.0, 0.0)   # tlane=current lane; spin=collision yaw; follow=tailgate timer (s)
 
 const RAIL     = 2.4    # pass-deviation offset to either side of the racing line (m)
 const LANE_MAX = 3.8    # E16 (PO): never get within ~a car-width of either edge — road half-width 5.5 − car 1.7 = 3.8
@@ -134,7 +137,7 @@ end
 
 "Grid of `n` AI cars staggered ~9 m apart behind arc-length `start_s`, alternating lanes."
 init_cars(line::AILine, n; start_s = 0.0) =
-    [AICar(mod(start_s - 9.0*i, line.total), 25.0, 0, iseven(i) ? 2.4 : -2.4, 0.0, 0.0, 0.0) for i in 1:n]  # tlane=0 = on the racing line
+    [AICar(mod(start_s - 9.0*i, line.total), 25.0, 0, iseven(i) ? 2.4 : -2.4, 0.0, 0.0, 0.0, 1.0, 0.0) for i in 1:n]  # tlane=0 = on the racing line; pace set by the app from car physics
 
 function _locate(line::AILine, sq)
     sq = mod(sq, line.total)
@@ -208,7 +211,12 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
     end
     # 1) decide a line + speed, then advance with the longitudinal PHYSICS model
     for (i, car) in enumerate(cars)
-        vt = _vtarget(line, car.s, car.v; amax, vmax, vmin, scale)
+        vt = _vtarget(line, car.s, car.v; amax, vmax, vmin, scale) * car.pace   # per-car PHYSICS pace → the field spreads (Eagle out-runs the BRM)
+        if car.mishap > 0.0                                    # GPL-style MISHAP in progress: ran wide / spun → crawl, drop right back
+            car.mishap -= dt; vt *= 0.22
+        elseif rand() < 8.0e-6                                 # rare: a fresh mishap (~1-2 across the field per race)
+            car.mishap = 2.4
+        end
         b = blocker(car.s, i)
         gap   = b === nothing ? Inf : b[1]
         blane = b === nothing ? 0.0 : b[2]
@@ -295,12 +303,13 @@ function plan!(cars::Vector{AICar}, line::AILine; player = nothing, scale = 1.0,
     maxκ(s, dist) = begin κ = 1e-4; off = 0.0; while off <= dist; κ = max(κ, line.κ[_locate(line, s+off)[1]]); off += 6.0; end; κ end
     vts = Float64[]
     for (i, car) in enumerate(cars)
-        # PER-CAR IMPERFECTION so the field isn't robotically identical: a steady pace bias (±2.5 %),
-        # plus a rare "brake too late" twitch that carries a touch too much speed into a corner — an
-        # understandable error that can run a car a little wide (heightens realism; recovery still catches it).
-        bias  = 1.0 + 0.05*(((0.61*i) % 1.0) - 0.5)
+        # PER-CAR PHYSICS PACE (power/weight) so the field SPREADS like GPL — the Eagle out-paces the BRM
+        # — plus a rare "brake too late" twitch (carry a touch too much speed in) and a GPL-style MISHAP
+        # (run wide / spin → crawl, drop right back).  pace replaces the old index-based ±2.5 % fudge.
         gaffe = (rand() < 0.0015) ? 1.10 : 1.0
-        vt = _vtarget(line, car.s, car.v; amax, vmax, vmin, scale) * bias * gaffe
+        if car.mishap > 0.0; car.mishap -= dt; elseif rand() < 8.0e-6; car.mishap = 2.4; end
+        mish  = car.mishap > 0.0 ? 0.22 : 1.0
+        vt = _vtarget(line, car.s, car.v; amax, vmax, vmin, scale) * car.pace * gaffe * mish
         b = blocker(car.s, i); gap = b === nothing ? Inf : b[1]; blane = b === nothing ? 0.0 : b[2]; bv = b === nothing ? Inf : b[3]
         dlane  = b === nothing ? Inf : abs(car.lane - blane)            # lateral separation from the car ahead
         tail   = car.v*0.9 + 10.0                                       # following distance that counts as "tailgating"

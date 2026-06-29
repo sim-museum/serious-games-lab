@@ -25,7 +25,7 @@ import sys
 from PyQt6.QtCore import QProcess, QProcessEnvironment, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPalette
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QFrame, QGridLayout, QGroupBox,
+    QApplication, QCheckBox, QComboBox, QDialog, QFrame, QGridLayout, QGroupBox,
     QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar, QPushButton,
     QPlainTextEdit, QSizePolicy, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
@@ -33,6 +33,41 @@ from PyQt6.QtWidgets import (
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONF = os.path.join(HERE, "joystick.conf")
 PROFILE_DIR = os.path.join(HERE, "joystick_profiles")
+
+# TRACK env keys in the same order as the Track dropdown (Zandvoort, Skidpad, Nürburgring, …).
+TRACK_KEYS = ["zandvoort", "skidpad", "nurburgring", "watglen", "monza", "spa"]
+# A1/A3: GPLrank (1967) benchmark laptimes in seconds — MUST match REF_LAP in drive_native_mtk.jl.
+# 100 % AI = the fastest car achieves this; the per-track preset = REF_LAP/human_best · 100.
+REF_LAP = {"zandvoort": 86.848, "nurburgring": 501.931, "watglen": 66.912,
+           "monza": 166.5, "spa": 200.342, "skidpad": 30.0}
+
+
+def human_bests():
+    """A3: read human_best.txt ('<track>\\t<seconds>' per line) → {track: seconds}. Empty if absent."""
+    out = {}
+    try:
+        with open(os.path.join(HERE, "human_best.txt")) as f:
+            for ln in f:
+                sp = ln.strip().split("\t")
+                if len(sp) == 2:
+                    try:
+                        out[sp[0]] = float(sp[1])
+                    except ValueError:
+                        pass
+    except OSError:
+        pass
+    return out
+
+
+def preset_ai_pct(track_key):
+    """A3: the AI-speed % that paces the fastest AI car at the human's best lap for this track:
+    % = GPLrank_ref / human_best · 100 (so a human 2 min vs a 1.5 min ref → 75 %).  No recorded
+    human lap → 50 %.  Clamped to the spinbox range [30, 200]."""
+    best = human_bests().get(track_key)
+    ref = REF_LAP.get(track_key)
+    if not best or not ref:
+        return 50
+    return max(30, min(200, round(ref / best * 100)))
 
 
 def find_julia():
@@ -561,11 +596,14 @@ class DriveTab(QWidget):
         self.ai_pct_l = QLabel("AI speed %:")
         form.addWidget(self.ai_pct_l, 4, 0)
         self.ai_pct = QSpinBox(); self.ai_pct.setRange(30, 200); self.ai_pct.setValue(100)
-        self.ai_pct.setToolTip("Field pace as a % of the track's GPL-AI reference lap time: 100% = the "
-                               "GPL AI car's laptime for this circuit, 50% = double that laptime (half "
-                               "pace), 150% = a laptime 1/1.5 as long. (They're still capped to ~1.1× "
-                               "your own speed so they can't run away.)")
+        self.ai_pct.setToolTip("Field pace as a % of the track's GPLrank reference lap time: 100% = the "
+                               "fastest AI car hits the GPLrank time for this circuit. Auto-preset when you "
+                               "pick a track to GPLrank/your-best-lap·100 (so the fastest AI matches your "
+                               "best lap); 50% if you've no recorded lap yet. Edit it freely.")
         form.addWidget(self.ai_pct, 4, 1)
+        self.ai_pct_note = QLabel("")          # A3: shows how the preset was derived (your best vs GPLrank)
+        self.ai_pct_note.setStyleSheet("color:#888;font-size:10px")
+        form.addWidget(self.ai_pct_note, 4, 2)
         form.addWidget(QLabel("Gearbox:"), 5, 0)
         self.gearbox = QComboBox()
         self.gearbox.addItems(["Automatic (auto-clutch + auto-shift)", "Manual (clutch C + shift E/Q)"])
@@ -591,6 +629,9 @@ class DriveTab(QWidget):
         # a race needs opponents and can't run on the skidpad — keep the form coherent as the mode changes
         self.mode.currentIndexChanged.connect(self._mode_changed)
         self._mode_changed(self.mode.currentIndex())
+        # A3: when the track changes, pre-set the AI-speed % to match the human's best lap on that track
+        self.track.currentIndexChanged.connect(self._track_changed)
+        self._track_changed(self.track.currentIndex())
 
         brow = QHBoxLayout()
         self.launch_b = QPushButton("Launch")
@@ -645,6 +686,22 @@ class DriveTab(QWidget):
                 self.track.setCurrentIndex(0)
             if self.ai.value() == 0:             # a race with 0 AI shows no field — default to a full grid
                 self.ai.setValue(5)
+
+    def _track_changed(self, idx):
+        """A3: pre-set AI-speed % to GPLrank/your-best·100 for the chosen track (50% if no recorded lap)."""
+        key = TRACK_KEYS[idx] if 0 <= idx < len(TRACK_KEYS) else "zandvoort"
+        self.ai_pct.setValue(preset_ai_pct(key))
+        best = human_bests().get(key)
+        if best:
+            m, s = divmod(best, 60)
+            self.ai_pct_note.setText(f"≈ your best {int(m)}:{s:06.3f} vs GPLrank {self._fmt(REF_LAP.get(key,0))}")
+        else:
+            self.ai_pct_note.setText("no recorded lap yet → 50%")
+
+    @staticmethod
+    def _fmt(sec):
+        m, s = divmod(sec, 60)
+        return f"{int(m)}:{s:06.3f}"
 
     def launch(self):
         if self.proc and self.proc.state() != QProcess.ProcessState.NotRunning:
@@ -730,7 +787,9 @@ class DriveTab(QWidget):
         self._show_result()
 
     def _show_result(self):
-        # E14: after a race, show the finishing result with Race again / Choose track / Quit.
+        # E14/C (PO): after a race, a GPL-style result with TWO tabs — Classification (finishing order +
+        # gap-to-winner + best lap of anyone) and Your laps (your time on every lap) — and Race again /
+        # Choose track / Quit.
         path = getattr(self, "_result_path", os.path.join(HERE, "last_race_result.txt"))
         if not os.path.exists(path):
             return
@@ -738,29 +797,76 @@ class DriveTab(QWidget):
             rows = [ln.rstrip("\n").split("\t") for ln in open(path) if ln.strip()]
         except OSError:
             return
-        d = {r[0]: r[1] for r in rows if len(r) == 2 and not r[0].startswith("P")}
-        grid = [r[1] for r in rows if r[0].startswith("P") and len(r) == 2]
-        lines = [
-            f"<b>RACE RESULT — {d.get('track','?').title()}, {d.get('laps','?')} laps</b>",
+        d = {r[0]: r[1] for r in rows if len(r) >= 2 and not r[0].startswith("P")}
+        # Pn rows: name + optional gap-to-winner column
+        grid = [(r[1], r[2] if len(r) >= 3 else "") for r in rows if r[0].startswith("P") and len(r) >= 2]
+        best_any = next((r[1:] for r in rows if r[0] == "best_any"), ["-", "-"])
+        your_laps = d.get("you_laps", "").split(",") if d.get("you_laps") else []
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Race Result")
+        dlg.setMinimumWidth(440)
+        v = QVBoxLayout(dlg)
+        head = QLabel(
+            f"<b>{d.get('track','?').title()} — {d.get('laps','?')} laps</b><br>"
             f"You finished <b>P{d.get('you_pos','?')}</b> of {d.get('field','?')} "
-            f"(started P{d.get('you_start','?')})",
-            f"Best lap {d.get('you_best','-')} &nbsp;·&nbsp; Total {d.get('you_total','-')}",
-            "<hr>",
-        ]
-        for i, name in enumerate(grid, 1):
-            lines.append(f"&nbsp;<b>P{i}&nbsp; {name}</b>" if name == "You" else f"&nbsp;P{i}&nbsp; {name}")
-        box = QMessageBox(self)
-        box.setWindowTitle("Race Result")
-        box.setTextFormat(Qt.TextFormat.RichText)
-        box.setText("<br>".join(lines))
-        again = box.addButton("Race again", QMessageBox.ButtonRole.AcceptRole)
-        box.addButton("Choose track", QMessageBox.ButtonRole.RejectRole)   # just closes → back to the Drive tab
-        quit_b = box.addButton("Quit", QMessageBox.ButtonRole.DestructiveRole)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked is again:
+            f"(started P{d.get('you_start','?')})")
+        head.setTextFormat(Qt.TextFormat.RichText)
+        v.addWidget(head)
+        tabs = QTabWidget()
+
+        # --- Classification tab: P, car, gap-to-winner; plus fastest lap of the whole field ---
+        crows = ["<table cellspacing=0 cellpadding=4 width='100%'>",
+                 "<tr style='color:#888'><th align=left>Pos</th><th align=left>Car</th>"
+                 "<th align=right>Gap</th></tr>"]
+        for i, (name, gap) in enumerate(grid, 1):
+            you = (name == "You")
+            sty = " style='background:#23304a'" if you else ""
+            nm = f"<b>{name}</b>" if you else name
+            crows.append(f"<tr{sty}><td>P{i}</td><td>{nm}</td><td align=right>{gap}</td></tr>")
+        crows.append("</table>")
+        fast = (f"<br><b>Fastest lap:</b> {best_any[0]}"
+                + (f" &nbsp;({best_any[1]})" if len(best_any) > 1 else ""))
+        cl = QLabel("".join(crows) + fast)
+        cl.setTextFormat(Qt.TextFormat.RichText)
+        cw = QWidget(); cv = QVBoxLayout(cw); cv.addWidget(cl); cv.addStretch(1)
+        tabs.addTab(cw, "Classification")
+
+        # --- Your laps tab: your time on each lap (best highlighted) ---
+        lrows = ["<table cellspacing=0 cellpadding=4 width='100%'>",
+                 "<tr style='color:#888'><th align=left>Lap</th><th align=right>Time</th></tr>"]
+        best_str = d.get("you_best", "")
+        seen_best = False
+        for i, lt in enumerate(your_laps, 1):
+            mark = ""
+            if lt == best_str and not seen_best:        # flag the (first) fastest of your laps
+                mark = " &nbsp;<span style='color:#6c6'>(best)</span>"; seen_best = True
+            lrows.append(f"<tr><td>Lap {i}</td><td align=right>{lt}{mark}</td></tr>")
+        lrows.append("</table>")
+        if not your_laps:
+            lrows = ["<i>No completed laps recorded.</i>"]
+        ll = QLabel("".join(lrows)
+                    + f"<br><b>Your best:</b> {d.get('you_best','-')} &nbsp;·&nbsp; "
+                      f"<b>Total:</b> {d.get('you_total','-')}")
+        ll.setTextFormat(Qt.TextFormat.RichText)
+        lw = QWidget(); lv = QVBoxLayout(lw); lv.addWidget(ll); lv.addStretch(1)
+        tabs.addTab(lw, "Your laps")
+        v.addWidget(tabs)
+
+        brow = QHBoxLayout()
+        again_b = QPushButton("Race again"); choose_b = QPushButton("Choose track"); quit_b = QPushButton("Quit")
+        brow.addWidget(again_b); brow.addWidget(choose_b); brow.addStretch(1); brow.addWidget(quit_b)
+        v.addLayout(brow)
+        result = {"action": "choose"}
+        again_b.clicked.connect(lambda: (result.update(action="again"), dlg.accept()))
+        choose_b.clicked.connect(dlg.accept)
+        quit_b.clicked.connect(lambda: (result.update(action="quit"), dlg.accept()))
+        dlg.exec()
+        # A3: a fresh best lap may have been recorded this race → refresh the AI-% preset for the shown track
+        self._track_changed(self.track.currentIndex())
+        if result["action"] == "again":
             self.launch()
-        elif clicked is quit_b:
+        elif result["action"] == "quit":
             QApplication.instance().quit()
 
 

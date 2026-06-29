@@ -105,9 +105,11 @@ const IS_RACE   = MODE == "race"
 const IS_TRAIN  = MODE == "training"
 # E11: AI speed as a percentage — 100 % = the GPL AI car laptime for the track.
 const AI_PCT    = clamp(tryparse(Float64, get(ENV, "JM_AI_PCT", "100")) |> x -> x === nothing ? 100.0 : x, 30.0, 200.0)
-# AI never run away from the human: each is capped to AI_REL × the player's current speed
-# (default 1.10 = at most 10 % faster) so it stays a close, raceable field.
-const AI_REL    = clamp(tryparse(Float64, get(ENV, "JM_AI_REL", "1.10")) |> x -> x === nothing ? 1.10 : x, 1.0, 4.0)
+# GPL spread: by DEFAULT the field runs its own (physics-paced) speed and SPREADS OUT — the Eagle
+# pulls away from the BRM, exactly as the PO wants.  The field pace is anchored to the human via the
+# GUI's per-track % preset (≈ the human's best lap), so it doesn't run away.  Opt back into the old
+# "never more than JM_AI_REL × the player's current speed" rubber-band by setting JM_AI_REL.
+const AI_REL    = haskey(ENV, "JM_AI_REL") ? clamp(parse(Float64, ENV["JM_AI_REL"]), 1.0, 4.0) : Inf
 # E12/G2: physics-AI corner-speed limit (lateral m/s² assumed for vtarget=√(amax/κ)).  Lower = the AI
 # brakes earlier / takes corners slower → fewer over-speed-entry spins on the hilly tracks, at some pace.
 const AI_AMAX   = clamp(parse(Float64, get(ENV, "JM_AI_AMAX", "8.0")), 4.0, 14.0)
@@ -199,8 +201,11 @@ end
 # pace per circuit; tunable per car/setup via JM_AI_REFLAP (overrides the table).  At
 # AI_PCT=100 the field is paced to hit exactly this laptime regardless of the rail
 # follower's own natural pace (see RaceAI.natural_laptime).
-const REF_LAP = Dict("zandvoort"=>87.0, "nurburgring"=>500.0, "watglen"=>67.0,
-                     "monza"=>105.0, "spa"=>213.0, "skidpad"=>30.0)
+# GPLrank (1967) benchmark laptimes (gplrank.schuerkamp.de) — 100 % AI pace = the FASTEST car
+# achieves this.  Monza is the 10 km BANKED combined circuit → use the GPL55Rank "Monza 10k" 2:46.5
+# (the only ranked time for that layout; the 1967 list only has the Monza road course).
+const REF_LAP = Dict("zandvoort"=>86.848, "nurburgring"=>501.931, "watglen"=>66.912,
+                     "monza"=>166.5, "spa"=>200.342, "skidpad"=>30.0)
 const AI_REFLAP = (v = tryparse(Float64, get(ENV, "JM_AI_REFLAP", ""));
                    v === nothing ? get(REF_LAP, TRACKSEL, 90.0) : v)
 println("  → mode: ", uppercasefirst(MODE),
@@ -1051,6 +1056,16 @@ const AISPECS = [
     ("Eagle",   "eagle",    "eagle.3do",    ("eotwlf","eotwrf","eotwlr","eotwrr")),
     ("Cooper",  "coventry", "coventry.3do", ("cooplf","cooprf","cooplr","cooprr")),  # GPL Cooper = the coventry chassis
 ]
+# B (PO): per-car (power bhp, mass kg) — period GPL '67 specs — so the field spreads by PHYSICS, not a
+# fudge.  Pace ∝ power/weight (tempered: most of a lap is grip-limited, shared, so a big power/weight
+# gap → a smaller laptime gap).  Order matches AISPECS.  The Eagle-Weslake out-paces the heavy BRM H16.
+const AICAR_PHYS = [
+    (390.0, 560.0),   # Ferrari 312        V12
+    (330.0, 525.0),   # Brabham BT24       Repco V8 (light)
+    (400.0, 615.0),   # BRM P115           H16 (heavy)
+    (395.0, 555.0),   # Eagle T1G          Weslake V12
+    (360.0, 600.0),   # Cooper T81         Maserati V12 (heavy)
+]
 AICARMODELS = Render.GPLCarModel[]
 if !SKIDPAD && N_AI > 0
     for (nm, dir, body, w) in AISPECS[1:N_AI]
@@ -1355,6 +1370,22 @@ function main()
     end
     AILINE = (CLINE !== nothing && N_AI > 0) ? CLINE : nothing
     AICARS = AILINE === nothing ? RaceAI.AICar[] : RaceAI.init_cars(AILINE, N_AI; start_s = 30.0)
+    # B (PO): physics-based per-car pace.  power/weight → pace, tempered + normalised so the FASTEST car
+    # present = 1.0 (it hits the GPLrank ref at 100 %); the rest spread back by their deficit so the field
+    # strings out like GPL (the Eagle pulls away from the BRM) instead of running as a tight bunch.
+    if !isempty(AICARS)
+        pw = [AICAR_PHYS[i][1]/AICAR_PHYS[i][2] for i in 1:length(AICARS)]
+        pwmax = maximum(pw)
+        for (i, c) in enumerate(AICARS); c.pace = 1.0 - 0.35*(1.0 - pw[i]/pwmax); end
+        # GRID by pace (fastest at the front — what qualifying would do) so the field spreads in the
+        # RIGHT order: the quick cars lead and stretch the gap, instead of a fast car stuck mid-pack
+        # behind a slower one on a tight track.  Keeps each car's identity; only the start slot moves.
+        for (rank, ci) in enumerate(sortperm([c.pace for c in AICARS], rev=true))
+            AICARS[ci].s = mod(30.0 - 9.0*rank, AILINE.total); AICARS[ci].lane = isodd(rank) ? -2.4 : 2.4
+        end
+        println("  → AI pace spread (power/weight, gridded fastest-first): ",
+                join(["$(AISPECS[i][1]) $(round(Int,AICARS[i].pace*100))%" for i in 1:length(AICARS)], ", "))
+    end
     AICHASSIS = AICARMODELS[1:length(AICARS)]   # grid slot i → AISPECS[i] (Ferrari, Brabham, …)
     # GC: build the AI as PHYSICS cars (one shared compile) placed on the grid; AICARS stays the
     # rail "brain" (s/lane/v/tlane/lap), updated each frame from the physics by projection.
@@ -1434,6 +1465,7 @@ function main()
                                   println("  force feedback: off", FFB_ON ? " (no wheel found)" : " (JM_NOFFB)")
     spin = 0.0; last = time(); frames = 0; titleT = last
     ai_stuck = zeros(Int, length(AIPHYS))     # GC: per-AI stalled-frame counter (stuck-recovery)
+    ai_lap_prev = zeros(Int, length(AICARS))  # C: previous-frame AI lap counter → detect a completed lap → time it
     ai_onroad = trues(length(AIPHYS))         # per-AI: on the real racing surface this frame? (grass + draft gate)
     ffb_f = 0.0                                       # low-pass-filtered FFB force (continuity across frames)
     ffb_jolt = 0.0                                    # transient FFB jolt on collisions/impacts (decays each frame)
@@ -1443,10 +1475,29 @@ function main()
     cam_pitch = 0.0; cam_roll = 0.0                                    # E53: low-pass head tilt for the cockpit camera (lags fast jolts)
     # lap timing + telemetry log
     lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = cs.laps; tsamp = 0; race_done = false; enterPrev = false
+    # C (PO): GPL-style results — the player's per-lap times, plus each AI car's lap clock so we can
+    # report the best lap turned by ANYONE.  ai_lapt0 = the wall-clock at which each AI's current lap began.
+    player_laps = Float64[]                                   # the player's completed lap times (s), in order
+    ai_lapt0 = zeros(length(AICARS)); ai_best = fill(Inf, length(AICARS))   # AI lap timing → best lap per car
     player_s_prev = CLINE === nothing ? 0.0 : RaceAI.project(CLINE, cs.x, cs.z)[1]   # for robust lap detection
     player_prog = 0.0                                                                # accumulated track arc-length (laps = ⌊prog/total⌋)
     fmt_lap(s) = (m=floor(Int,s/60); sec=s-60m; si=floor(Int,sec); ms=round(Int,(sec-si)*1000);
                   "$m:$(lpad(si,2,'0')).$(lpad(ms,3,'0'))")
+    # A3: maintain a per-track human-best-lap file (human_best.txt: "<track>\t<seconds>") the GUI reads to
+    # pre-set the AI-speed %.  Merge-and-rewrite so existing tracks survive; only overwrite if this is faster.
+    function save_human_best(track, t)
+        try
+            path = joinpath(@__DIR__, "human_best.txt")
+            bests = Dict{String,Float64}()
+            isfile(path) && for ln in eachline(path)
+                sp = split(strip(ln), '\t')
+                length(sp) == 2 && (v = tryparse(Float64, sp[2])) !== nothing && (bests[sp[1]] = v)
+            end
+            (!haskey(bests, track) || t < bests[track]) || return     # not an improvement → leave the file
+            bests[track] = t
+            open(path, "w") do io; for (k,v) in bests; println(io, "$k\t$(round(v, digits=3))"); end; end
+        catch e; @warn "human_best write failed" e; end
+    end
     # ---- E9: qualifying → grid order ----
     # One qualifying lap sets the grid: the field is arranged around the player by qual
     # time (faster qualifiers start ahead on track, slower behind).  Skipped for solo
@@ -1771,7 +1822,12 @@ function main()
         # ---- lap timing + telemetry log ----
         if cs.laps > prev_laps
             last_lap = cs.t - lap_t0; lap_t0 = cs.t
-            (best_lap == 0.0 || last_lap < best_lap) && (best_lap = last_lap)
+            improved = best_lap == 0.0 || last_lap < best_lap
+            improved && (best_lap = last_lap)
+            phase[] == :race && push!(player_laps, last_lap)   # C: bank this lap for the per-lap results tab
+            # A3: persist the player's best lap for THIS track (practice OR race) the moment it improves, so
+            # the GUI can pre-set the AI-speed % to the pace matching the human's best (≈ GPLrank/best·100).
+            improved && cs.laps >= 1 && save_human_best(TRACKSEL, best_lap)
             telem !== nothing && (write(telem, "# LAP $(cs.laps)  $(fmt_lap(last_lap))\n"); flush(telem))
             println(phase[] == :practice ? "  practice lap: $(fmt_lap(last_lap))" : "  lap $(cs.laps): $(fmt_lap(last_lap))",
                     last_lap==best_lap ? "  (best)" : "")   # practice laps just bank your best for the grid
@@ -1788,6 +1844,18 @@ function main()
                     println("   P$p  ", ent_name(id), id==0 ? "  ← YOU (best $(fmt_lap(best_lap)))" : "")
                 end
                 println()
+                # C (PO): GPL-style classification with a TIME GAP to the winner.  Each car's total race
+                # time is its elapsed time scaled to the full distance (cs.t · LAPS / progress) — the leader
+                # (most progress) has the smallest, so gap = est − leader_est ≥ 0; a car a full lap or more
+                # down is shown "+N lap(s)" instead.  Best lap of ANYONE = min(player best, every AI best).
+                lead_prog = order[1][2]
+                est_time(prog) = cs.t * RACE_LAPS / max(prog, 0.01)
+                lead_est = est_time(lead_prog)
+                # best lap turned by anyone in the field (player or an AI)
+                best_any = best_lap > 0 ? best_lap : Inf; best_any_who = best_lap > 0 ? "You" : "-"
+                for i in 1:length(AICARS)
+                    if ai_best[i] < best_any; best_any = ai_best[i]; best_any_who = ent_name(i); end
+                end
                 # E14: write the result for the GUI's post-race results screen (quit / race again / choose track)
                 try
                     open(joinpath(@__DIR__, "last_race_result.txt"), "w") do io
@@ -1795,7 +1863,14 @@ function main()
                         println(io, "you_pos\t$(player_finpos[])"); println(io, "field\t$(length(order))")
                         println(io, "you_start\t$(player_grid[])")
                         println(io, "you_best\t$(best_lap > 0 ? fmt_lap(best_lap) : "-")"); println(io, "you_total\t$(fmt_lap(cs.t))")
-                        for (p, (id, _)) in enumerate(order); println(io, "P$p\t$(ent_name(id))"); end
+                        println(io, "best_any\t$(isfinite(best_any) ? fmt_lap(best_any) : "-")\t$best_any_who")
+                        println(io, "you_laps\t", join((fmt_lap(t) for t in player_laps), ","))   # C: per-lap times tab
+                        for (p, (id, prog)) in enumerate(order)
+                            laps_down = floor(Int, lead_prog - prog)
+                            gap = p == 1 ? "" : (laps_down >= 1 ? "+$laps_down lap$(laps_down>1 ? "s" : "")" :
+                                                                  "+$(fmt_lap(est_time(prog) - lead_est))")
+                            println(io, "P$p\t$(ent_name(id))\t$gap")   # name + gap-to-winner column
+                        end
                     end
                 catch e; @warn "result write failed" e; end
             end
@@ -1942,6 +2017,17 @@ function main()
             poses, hit = RaceAI.step_field!(AICARS, AILINE, ddt; scale = AI_SCALE, player = (pp[1], pp[2], cs.v), rel = AI_REL)
             ai_hit[] = hit
             [(b=aibankK(p); (p[1],p[2],p[3],p[4],b[1],b[2])) for p in poses]   # add terrain bank (kinematic has no body roll)
+        end
+        # C: time each AI lap — works for BOTH the physics and kinematic fields (we watch AICARS[i].lap,
+        # which both paths bump as the car crosses start/finish).  ai_best[i] = that car's fastest lap.
+        if phase[] == :race && race_go[]
+            for i in 1:length(AICARS)
+                if AICARS[i].lap > ai_lap_prev[i]
+                    lt = cs.t - ai_lapt0[i]; ai_lapt0[i] = cs.t
+                    ai_lap_prev[i] > 0 && (ai_best[i] = min(ai_best[i], lt))   # skip lap 0→1 (the grid launch)
+                    ai_lap_prev[i] = AICARS[i].lap
+                end
+            end
         end
         # GD: rigid-body collision — when the player and an AI overlap and are CLOSING, apply a
         # momentum-exchange impulse: the player (real vehicle physics) is knocked off line + spun
