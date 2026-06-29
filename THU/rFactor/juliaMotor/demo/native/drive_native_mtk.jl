@@ -63,6 +63,19 @@ const TRACKSEL = choose_track()
 const SKIDPAD  = TRACKSEL == "skidpad"
 const NURB     = TRACKSEL == "nurburgring"
 const MONZA    = TRACKSEL == "monza"
+# E57: Monza-only per-surface brightness — its `asphalt` MIP is over-bright (the road renders near-white,
+# washing the scene to "snow") while the barriers/armco render carbonized-black under the flat overcast.
+# The default track bright/ambfill (0.72/0.34) is fine on the other 4 GPL tracks, so this is gated to Monza.
+# Road: pull bright/ambfill WAY down to land the asphalt on a real grey.  Barriers ("dark" category):
+# lift like the trackside objects do.  Tunable via JM_MONZA_* if the PO wants to re-grade.
+const MZ_ROAD_B = parse(Float64, get(ENV, "JM_MONZA_ROAD_B", "0.42"))   # road brightness  (default 0.72)
+const MZ_ROAD_A = parse(Float64, get(ENV, "JM_MONZA_ROAD_A", "0.10"))   # road ambient fill (default 0.34)
+const MZ_DARK_B = parse(Float64, get(ENV, "JM_MONZA_DARK_B", "1.05"))   # barrier brightness
+const MZ_DARK_A = parse(Float64, get(ENV, "JM_MONZA_DARK_A", "0.55"))   # barrier ambient fill (lift the carbonized black)
+const MZ_BANK_B = parse(Float64, get(ENV, "JM_MONZA_BANK_B", "0.55"))   # sopraelevata banking deck: tone the glaring white concrete down toward grey
+const MZ_BANK_A = parse(Float64, get(ENV, "JM_MONZA_BANK_A", "0.22"))   # (geometry still reads as a wall — that's the deferred E52 banking-mesh issue — but at least not blinding white)
+const MZ_OTHER_B = parse(Float64, get(ENV, "JM_MONZA_OTHER_B", "0.72")) # everything else (grass/verge/kerb/structure) — default grade (diagnostic-tunable)
+const MZ_OTHER_A = parse(Float64, get(ENV, "JM_MONZA_OTHER_A", "0.34"))
 println("  → track: ", uppercasefirst(TRACKSEL))
 # E52: this Monza is the COMBINED banked circuit — the road course AND the high-speed BANKING oval are
 # BOTH part of the lap, but where they cross the banking deck sits ABOVE the road course.  A single-
@@ -725,6 +738,24 @@ const ENG = EngineAudio.build_lotus(gamedata = GD)   # GPL Ford DFV V8, RPM-pitc
 print("loading textures… "); flush(stdout)
 const TEXIDX = Render.gpl_texture_index(ZD)
 trackItems = Render.build_gpl(TRACK, TEXIDX)
+# E57: build_gpl is 1:1 with TRACK, but Items drop the texture NAME (GPL parts all carry the same
+# fallback grey col) — so classify each track surface HERE from its TrackPart.tex name for the per-
+# surface render grade below.  GPL Monza names: road = trrow*/asp* (the over-bright asphalt MIP),
+# barriers = armco*/yarmc*/brdg(arm|fen)* (carbonized under the overcast).  Other tracks → :other.
+monza_surf(t) = (startswith(t,"trrow") || startswith(t,"asp")) ? :road :
+                (startswith(t,"armco") || startswith(t,"yarmc") || startswith(t,"brdgarm") || startswith(t,"brdgfen")) ? :dark :
+                occursin(r"^s\d\d", t) ? :bank :    # the sopraelevata banking segments (s07b2, s12l1, …) — over-bright white slabs
+                :other
+const TRACKCAT = MONZA ? [monza_surf(lowercase(p.tex)) for p in TRACK] : Symbol[]
+# E57: in the COMBINED Monza the paddock + banking + road-course corner sections are placed OBJECTS
+# (not part of trrow01), drawn at full object brightness ⇒ the paddock/connector pavement glares white
+# and the banking deck blinds.  Grade those paved/banking objects by NAME like the track surfaces;
+# leave grandstands/towers/ad-boards (front*/tower*/nbnkads*) at the normal bright object grade.
+monza_obj_grade(nm) =
+    (nm in ("paddock","cgroad","chicane","ascari","bnk_trcr") || occursin(r"^sec\d", nm)) ? :road :
+    ((startswith(nm,"nbank")||startswith(nm,"sbank")||startswith(nm,"sbnk")||startswith(nm,"nbnk")||startswith(nm,"bnk")) &&
+        !occursin("ads",nm) && !occursin("shel",nm) && !occursin("pep",nm)) ? :bank :
+    :keep
 # GPL sky dome: the 12-panel horizon ring (horiz0..11), camera-centred backdrop.
 const HORIZON_RING = if !SKIDPAD
     Render.build_horizon(TEXIDX)
@@ -869,7 +900,7 @@ let objnames=Set{String}()
     # by Eau Rouge (and on the start straight) projected to |lat| < ROAD_HALFW = a "line of people
     # standing in the road".  Drop crowd that lands on the road; the grandstands (set further back) stay.
     onroad_crowd(i) = standcrowd(i.name) && on_road(i.x, i.y, ROAD_HALFW)
-    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw)), istree(i.name), (Float32(i.x), ploz(i), Float32(-i.y)))
+    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw)), istree(i.name), (Float32(i.x), ploz(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
                           !drop(i.name) && !onroad_crowd(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
     # E15: SOLID trackside objects the car can hit — (physics x, z, collision radius m).  Buildings,
@@ -1972,11 +2003,25 @@ function main()
                                   fogcol=GRADE.horizon, suncol=GRADE.suncol, ambsky=GRADE.ambsky, sat=GRADE.sat)
         Render.bind_shadow(prog, shadowtex, lightVP)
         HORIZON_RING === nothing || Render.draw_horizon(prog, HORIZON_RING, vp, eye; tint=GRADE.ringtint)   # GPL horizon ring backdrop
-        for it in trackItems; Render.draw(prog, it, vp, Render.ident(); bright=0.72, ambfill=0.34); end   # ambfill lifts shadowed walls/fences out of the "carbonized" black under the flat overcast light
+        for (ti, it) in enumerate(trackItems)                        # ambfill lifts shadowed walls/fences out of the "carbonized" black under the flat overcast light
+            if MONZA                                                 # E57: per-surface grade — its asphalt MIP is over-bright, its barriers carbonized
+                cat = TRACKCAT[ti]
+                b, a = cat === :road ? (MZ_ROAD_B, MZ_ROAD_A) : cat === :dark ? (MZ_DARK_B, MZ_DARK_A) :
+                       cat === :bank ? (MZ_BANK_B, MZ_BANK_A) : (MZ_OTHER_B, MZ_OTHER_A)
+                Render.draw(prog, it, vp, Render.ident(); bright=b, ambfill=a)
+            else
+                Render.draw(prog, it, vp, Render.ident(); bright=0.72, ambfill=0.34)
+            end
+        end
         glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 1)   # un-mirror far-side sign backs (objects only)
-        for (items,mat,grz,opos) in OBJECTS                       # trackside objects (trees graze-fade)
+        for (items,mat,grz,opos,onm) in OBJECTS                   # trackside objects (trees graze-fade)
             (eye[1]-opos[1])^2+(eye[2]-opos[2])^2+(eye[3]-opos[3])^2 > OBJ_CULL2 && continue   # distance cull
-            for it in items; Render.draw(prog, it, vp, mat; bright=1.05, ambfill=0.55, graze=grz); end   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
+            ob, oa = 1.05, 0.55                                    # default object grade (grandstands/buildings)
+            if MONZA                                               # E57: tone the combined-circuit paved/banking object surfaces
+                g = monza_obj_grade(onm)
+                g === :road && ((ob, oa) = (MZ_ROAD_B, MZ_ROAD_A)); g === :bank && ((ob, oa) = (MZ_BANK_B, MZ_BANK_A))
+            end
+            for it in items; Render.draw(prog, it, vp, mat; bright=ob, ambfill=oa, graze=grz); end   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
         end
         for (it,pos,w,h,yaw) in STATICTREES                      # wide forest-edge panels (authored yaw, graze-fade)
             (eye[1]-pos[1])^2+(eye[2]-pos[2])^2+(eye[3]-pos[3])^2 > BB_CULL2 && continue
