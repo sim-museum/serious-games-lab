@@ -3,7 +3,24 @@
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/juliaRacer.py` (or `drive_native_mtk.jl`).
 
-## Latest (2026-06-29 PM) — E57 Monza render legibility (autonomous)
+## Latest (2026-06-29 PM) — E6 yaw-rate divergence guard + render QA (autonomous)
+
+**E6 — 3-D integrator no longer diverges on the big tracks.** The stiff 3-D tyre/contact could spin
+the yaw rate `r` to hundreds of rad/s on Spa/Nürburgring elevation (the integrator diverging, which
+the vertical guard couldn't catch and `place3d!` couldn't reset — the physics-AI "cartwheel to
+hyperspace"). `step_car3d!` now clamps a clearly-diverged yaw (>10 rad/s, vs a real spin's <3) back
+in place to ≤3.5 — no respawn/teleport. **Verified:** Spa physics-AI self-test `max_yaw` **281 → 9.9
+rad/s**; normal driving byte-identical (drive3d/contact smokes unchanged). This closes the DIVERGENCE
+gap; the physics-AI *controller* still oscillates into (now-recoverable) spins on hilly tracks
+(`spins=2121` on Spa) — separate tuning, so kinematic AI stays the shipping default.
+
+**Render QA sweep:** Spa ✅ + Watkins Glen ✅ + Zandvoort ✅ render well (Monza was the sole outlier,
+fixed by E57). Residual cross-track issue: **E46 blue/streaky crowd** (worst on Zandvoort's main
+grandstand) — needs a per-draw shader TINT uniform (deferred). Pre-existing `test_corner_tyre:44`
+failure is the legacy Magic-Formula `Tyre` vs `tyre_fy` (~194 N) — NOT from E56/E57 (brush path clean:
+`test_brush_slip` ✅, `test_vehicle_driven` ✅).
+
+## Earlier (2026-06-29 PM) — E57 Monza render legibility (autonomous)
 
 Monza no longer renders as a blinding near-white "maze". Root cause: its `asphalt` MIP is
 over-bright AND in this COMBINED circuit the road is split between the `trrow01` track mesh and
