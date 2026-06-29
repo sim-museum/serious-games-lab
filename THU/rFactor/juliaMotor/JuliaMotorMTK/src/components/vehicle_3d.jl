@@ -42,7 +42,7 @@ function DrivenVehicle3D(; name,
     RL = brush ? BrushTyre(; name=:RL, BRUSH_REAR...)  : Tyre(; name=:RL, TYRE_SKIDPAD_REAR...)
     RR = brush ? BrushTyre(; name=:RR, BRUSH_REAR...)  : Tyre(; name=:RR, TYRE_SKIDPAD_REAR...)
 
-    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0
+    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0
     # in-plane + powertrain states
     vplane = @variables u(t)=0.0 v(t)=0.0 r(t)=0.0 ωf(t)=0.0 ωr(t)=0.0 ωe(t)=209.4 ay(t) ax(t) az(t) rpm(t) X(t)=0.0 Y(t)=0.0 ψ(t)=0.0
     # vertical / attitude states (sprung): heave z, pitch th, roll ph + rates
@@ -52,7 +52,12 @@ function DrivenVehicle3D(; name,
     vfz  = @variables FzFL(t) FzFR(t) FzRL(t) FzRR(t)     # tyre vertical loads (observed)
     vars = vcat(vplane, vatt, vuns, vfz)
 
-    gr = gear*final; drag = 0.5*ρair*CdA*u*abs(u)
+    # CdA_scale (≤1 in a leading car's slipstream) makes DRAFT a real aero effect — reduced frontal
+    # drag in the wake → the tow, not a forward velocity bump.  Fx_ext/Fy_ext/Mz_ext are body-frame
+    # external force/moment input ports for the spring-damper CONTACT components (walls = stiff spring,
+    # hedge/haybale = weak spring + strong damper): the game loop computes F = kδ + cδ̇ from penetration
+    # and feeds it here, so the impulse is INTEGRATED by the ODE (no ad-hoc bumpX!).
+    gr = gear*final; drag = 0.5*ρair*CdA*CdA_scale*u*abs(u)
     rr = 0.026*m*g*tanh(u/0.12)
     εF = 80.0                                             # contact/clamp rounding scale [N]
 
@@ -103,12 +108,12 @@ function DrivenVehicle3D(; name,
     push!(eqs,
         rpm ~ ωe*60/(2π),
         # ---- in-plane body (total mass m; Fz now load-transferred by the suspension) ----
-        ax ~ (ΣFx - drag - rr)/m,
-        ay ~ ΣFy/m,
-        m*(D(u) - v*r) ~ ΣFx - drag - rr,
-        m*(D(v) + u*r) ~ ΣFy,
+        ax ~ (ΣFx - drag - rr + Fx_ext)/m,
+        ay ~ (ΣFy + Fy_ext)/m,
+        m*(D(u) - v*r) ~ ΣFx - drag - rr + Fx_ext,
+        m*(D(v) + u*r) ~ ΣFy + Fy_ext,
         Izz*D(r) ~ a*(Fyb[1]+Fyb[2]) - b*(Fyb[3]+Fyb[4])
-                   - tf/2*(Fxb[1]-Fxb[2]) - tr/2*(Fxb[3]-Fxb[4]) + Mz[1]+Mz[2]+Mz[3]+Mz[4],
+                   - tf/2*(Fxb[1]-Fxb[2]) - tr/2*(Fxb[3]-Fxb[4]) + Mz[1]+Mz[2]+Mz[3]+Mz[4] + Mz_ext,
         # ---- sprung body vertical / attitude (explicit gravity → can go airborne) ----
         D(z) ~ w,
         M_s*D(w) ~ ΣFs - M_s*g,
