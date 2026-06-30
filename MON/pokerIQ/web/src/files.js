@@ -84,13 +84,14 @@
   function buyChips(ctx) {
     const { ctrl, view } = ctx;
     const card = document.createElement('div'); card.className = 'modal-card';
-    const hero = ctrl.game.players[0];
+    const heroSeat = (ctrl.humanSeats && ctrl.humanSeats.size) ? Math.min(...ctrl.humanSeats) : 0;
+    const hero = ctrl.game.players[heroSeat];
     card.innerHTML = `<h2>Buy more chips</h2>
       <div class="sub">Top up <b>${esc(hero.name)}</b>'s stack between hands. Current stack: <b>$${hero.stack}</b>.</div>
       <div class="buy-row"><label>Add chips $</label><input type="number" id="bc-amt" value="200" min="1" step="50"></div>
       <div class="modal-actions"></div>`;
     const add = document.createElement('button'); add.className = 'btn check'; add.textContent = 'Add chips';
-    add.onclick = () => { const v = parseInt(card.querySelector('#bc-amt').value, 10) || 0; if (v > 0) ctrl.buyChips(v, 0); view.closeModal(); };
+    add.onclick = () => { const v = parseInt(card.querySelector('#bc-amt').value, 10) || 0; if (v > 0) ctrl.buyChips(v, heroSeat); view.closeModal(); };
     const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Cancel';
     close.onclick = () => view.closeModal();
     card.querySelector('.modal-actions').append(add, close);

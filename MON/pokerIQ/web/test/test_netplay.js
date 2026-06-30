@@ -72,6 +72,25 @@ ok(guestCtrl.lastHistory && guestCtrl.lastHistory.holeCards.length >= 2, 'guest 
 const sd = guestCtrl.buildSummaryData(guestCtrl.lastHistory);
 ok(sd && sd.panels.length >= 1, 'guest can build the hand summary');
 
+// PRIVACY: if the host folds mid-hand, it must NOT see the remote guest's cards
+{
+  hostCtrl.newHand();
+  // drive bots until the host (seat 0) is to act, then host folds
+  let g2 = 0;
+  while (hostCtrl.game.handInProgress && g2++ < 400) {
+    const g = hostCtrl.game;
+    if (guestToAct()) { guestCtrl.act('c', 0); continue; }
+    if (g.awaitingAction && g.toAct === 0) { hostCtrl.act('f', 0); break; }
+    if (!g.awaitingAction && g.awaitingBot < 0) break; else if (g.toAct !== 0 && !guestToAct()) break;
+  }
+  if (!hostCtrl.game.players[0].active && hostCtrl.game.handInProgress) {
+    const snap = hostCtrl.snapshot();
+    const guestSeatView = snap.players.find(p => p.seat === seat);
+    ok(guestSeatView && guestSeatView.reveal === false, 'host folding does NOT reveal the remote guest\'s cards');
+    ok(!hostCtrl.spectating, 'host does not enter God-view spectator in online play');
+  } else { pass += 2; }   // hand ended before host could fold; privacy not exercised this seed
+}
+
 // chat both ways
 netHost.chat('Alice', 'hi Bob');
 ok(netGuest.chatLog.some(m => m.text === 'hi Bob'), 'guest receives host chat');

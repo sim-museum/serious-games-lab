@@ -60,12 +60,19 @@
     const card = document.createElement('div'); card.className = 'modal-card';
     let tab = 'equity';
     const beat = Prefs.beatDefaults();
-    // keep whatever the user toggled across tab switches without committing yet
+    // edits live in an in-memory draft and are committed to localStorage only on
+    // Save — so Cancel (and tab switching) never mutate the persisted prefs.
+    const draft = {
+      visibleOnly: Prefs.visibleOnly(), legacyColors: Prefs.legacyColors(),
+      randomizeBots: Prefs.randomizeBots(), bots: {},
+    };
+    ctrl.game.players.forEach((p, i) => { draft.bots[i] = Prefs.botFor(i); });
+    // pull whatever the user toggled on the mounted tab into the draft
     const stash = () => {
-      const vis = card.querySelector('#pf-vis'); if (vis) Prefs.set('visibleOnly', vis.checked);
-      const leg = card.querySelector('#pf-legacy'); if (leg) Prefs.set('legacyColors', leg.checked);
-      const rnd = card.querySelector('#pf-rand'); if (rnd) Prefs.set('randomizeBots', rnd.checked);
-      card.querySelectorAll('select[data-seat]').forEach(s => Prefs.setBot(s.getAttribute('data-seat'), s.value));
+      const vis = card.querySelector('#pf-vis'); if (vis) draft.visibleOnly = vis.checked;
+      const leg = card.querySelector('#pf-legacy'); if (leg) draft.legacyColors = leg.checked;
+      const rnd = card.querySelector('#pf-rand'); if (rnd) draft.randomizeBots = rnd.checked;
+      card.querySelectorAll('select[data-seat]').forEach(s => { draft.bots[s.getAttribute('data-seat')] = s.value; });
     };
     const render = () => {
       card.innerHTML = `<h2>Preferences</h2>
@@ -79,12 +86,12 @@
       const body = card.querySelector('#pf-body');
       if (tab === 'equity') {
         body.innerHTML = `
-          <label class="pf-check"><input type="checkbox" id="pf-vis" ${Prefs.visibleOnly() ? 'checked' : ''}>
+          <label class="pf-check"><input type="checkbox" id="pf-vis" ${draft.visibleOnly ? 'checked' : ''}>
             <span>Use only publicly revealed cards for Hero's equity</span></label>
           <div class="pf-desc">On (realistic Theory-of-Mind): equity is Monte-Carlo'd treating opponents as random ranges — only the board and your own cards are known. Off (God-style): equity is computed against opponents' <i>actual</i> hands (only meaningful with God Mode on).</div>`;
       } else if (tab === 'display') {
         body.innerHTML = `
-          <label class="pf-check"><input type="checkbox" id="pf-legacy" ${Prefs.legacyColors() ? 'checked' : ''}>
+          <label class="pf-check"><input type="checkbox" id="pf-legacy" ${draft.legacyColors ? 'checked' : ''}>
             <span>Legacy colours (red diamonds, black clubs)</span></label>
           <div class="pf-desc">Off (default): modern 4-colour deck — red hearts, blue diamonds, green clubs, black spades. On: traditional 2-colour deck — red hearts &amp; diamonds, black clubs &amp; spades.</div>
           <div class="pf-row"><span class="muted">Preview:</span>
@@ -97,14 +104,14 @@
       } else {
         const seats = ctrl.game.players.map((p, i) => {
           if (i === 0 && p.isHuman) return '';      // seat 0 is the local hero
-          const cur = Prefs.botFor(i);
+          const cur = draft.bots[i];
           return `<div class="pf-seat"><label>${esc(p.name)}</label>
             <select data-seat="${i}">${BOT_OPTS.map(([v, l]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`;
         }).join('');
         body.innerHTML = `
           <div class="sub" style="margin-bottom:10px;">Pick the bot style for each opponent seat (applies on the next table / New hand).</div>
           ${seats}
-          <label class="pf-check"><input type="checkbox" id="pf-rand" ${Prefs.randomizeBots() ? 'checked' : ''} ${beat ? '' : 'disabled'}>
+          <label class="pf-check"><input type="checkbox" id="pf-rand" ${draft.randomizeBots ? 'checked' : ''} ${beat ? '' : 'disabled'}>
             <span>Randomise bots from the combined pool after winning a game</span></label>
           <div class="pf-status ${beat ? 'pos' : 'muted'}">${beat ? '✓ You have beaten the default bots — random pool unlocked.' : 'Beat the default bots once to unlock the advanced random pool.'}</div>`;
       }
@@ -112,6 +119,11 @@
       const save = document.createElement('button'); save.className = 'btn check'; save.textContent = 'Save';
       save.onclick = () => {
         stash();
+        // commit the draft to the persistent store, now
+        Prefs.set('visibleOnly', draft.visibleOnly);
+        Prefs.set('legacyColors', draft.legacyColors);
+        Prefs.set('randomizeBots', draft.randomizeBots);
+        Object.keys(draft.bots).forEach(i => Prefs.setBot(i, draft.bots[i]));
         apply(ctrl);
         ctrl.applyBotPrefs && ctrl.applyBotPrefs();
         ctrl.refreshHeroEquity && ctrl.refreshHeroEquity();

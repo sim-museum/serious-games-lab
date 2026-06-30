@@ -126,8 +126,10 @@
 
   // Render the per-POV analysis blocks, marking !/!?/?!/? glyphs.
   function blocksHTML(results) {
+    // highlight annotation marks; lookahead for the trailing boundary so the
+    // shared space isn't consumed (adjacent marks + end-of-line marks both match)
     const mark = t => esc(t)
-      .replace(/(\s)(!\?|\?!|!|\?)(\s|$)/g, (m, a, g, b) => a + `<span class="cl-mark ${g === '!' ? 'good' : g === '?' ? 'bad' : 'dub'}">${g}</span>` + b);
+      .replace(/(\s|^)(!\?|\?!|!|\?)(?=\s|$|<)/g, (m, a, g) => a + `<span class="cl-mark ${g === '!' ? 'good' : g === '?' ? 'bad' : 'dub'}">${g}</span>`);
     return results.map(r => `<div class="cl-block"><span class="who">${esc(r.player)} — ${esc(r.model)}</span>${mark(r.text).replace(/\n/g, '<br>')}</div>`).join('');
   }
 

@@ -133,6 +133,7 @@
     // review the current state, then "Pass device →" to continue.
     maybeEnterSpectator(foldedSeat) {
       if (this.spectating) return;
+      if (this.netHost) return;   // host fold must not God-view remote humans' cards
       if (!this.humanSeats.has(foldedSeat)) return;          // a bot folded
       if (!this.game.handInProgress) return;
       if (this.game.activePlayers().length < 2) return;       // hand's over anyway
@@ -254,6 +255,7 @@
       if (type === 'handStart') {
         this.history = {
           handNumber: payload.handNumber,
+          sb: this.game.sb(), bb: this.game.bb(), seatCount: this.game.players.length,
           startStacks: payload.startStacks,
           // all hole cards (god view) for the hand summary
           holeCards: this.game.players.filter(p => p.hand.length).map(p => ({ seat: p.seat, name: p.name, cards: p.hand.slice() })),
@@ -546,6 +548,7 @@
       if (!Prefs) return;
       for (let i = 0; i < this.game.players.length; i++) {
         if (this.humanSeats.has(i)) continue;
+        if (this.remoteSeats.has(i)) continue;   // a remote guest owns this seat — never botify it
         const pick = Prefs.botFor(i);
         if (!pick || pick === 'default') continue;
         const p = this.game.players[i];
@@ -603,7 +606,7 @@
       // Calibration trainer can Brier-score it once the hand resolves.
       if (this.journal && seat === this.heroSeat() && this.heroEquity != null) {
         const a = action === 'f' ? 'fold' : action === 'r' ? 'raise' : (this.game.legalActions(seat).canCheck ? 'check' : 'call');
-        this.journal.record({ handNumber: this.game.handNumber, street: this.streetName(), action: a, predictedEquity: this.heroEquity });
+        this.journal.record({ handNumber: this.game.handNumber, seat, street: this.streetName(), action: a, predictedEquity: this.heroEquity });
       }
       this.game.applyAction(seat, action, amount);
       if (action === 'f') this.maybeEnterSpectator(seat);   // fold → watch (God view)
@@ -687,8 +690,8 @@
       const heroResultSeat = this.follower ? this.mySeat : 0;
       const heroNet = (result.net.find(n => n.seat === heroResultSeat) || { net: 0 }).net;
       this.stats.recordHandResult(heroNet);
-      // attach the predicted-equity journal entries' outcome, for Brier calibration
-      if (this.journal) this.journal.attachResult(this.game.handNumber, heroNet);
+      // attach each journalled decision to its own seat's outcome (Brier calibration)
+      if (this.journal) this.journal.attachResultForHand(this.game.handNumber, result.net);
       if (this.lastHistory) this.handHistories.push(this.lastHistory);
       this.render();
       this.onHandEnd(result);
@@ -723,7 +726,7 @@
           tableStats: this.tableStats, logMsgs: this.logbook.msgs.slice(),
           gameStatusLogged: this.logbook.gameStatusLogged, logStarted: this.logStarted,
           handResult: this.handResult, history: this.history, lastHistory: this.lastHistory,
-          humanSeats: [...this.humanSeats], hotseat: this.hotseat,
+          handHistories: this.handHistories, humanSeats: [...this.humanSeats], hotseat: this.hotseat,
           origPlayerCount: this.origPlayerCount, origBlinds: this.origBlinds,
           session: { hand_results: this.stats.handResults.slice(), bbAmount: this.stats.bbAmount },
         },
@@ -758,6 +761,7 @@
       this.prevBlindLevel = c.prevBlindLevel || 0; this.holeStats = c.holeStats || {};
       this.tableStats = c.tableStats || {}; this.history = c.history || null;
       this.lastHistory = c.lastHistory || null; this.handResult = c.handResult || null;
+      this.handHistories = c.handHistories || [];
       this.humanSeats = new Set(c.humanSeats || [0]); this.hotseat = !!c.hotseat;
       this.armed = !this.hotseat;
       this.origPlayerCount = c.origPlayerCount != null ? c.origPlayerCount : null;
@@ -914,7 +918,9 @@
       h = h || this.lastHistory; if (!h) return null;
       const cs = cards => cards.map(c => E.cardToStr(c)).join(' ');
       const L = [];
-      L.push(`Hand #${h.handNumber} — ${this.game.players.length}-handed No-Limit Hold'em, blinds $${this.game.sb()}/$${this.game.bb()}`);
+      const sb = h.sb != null ? h.sb : this.game.sb(), bb = h.bb != null ? h.bb : this.game.bb();
+      const nseats = h.seatCount != null ? h.seatCount : this.game.players.length;
+      L.push(`Hand #${h.handNumber} — ${nseats}-handed No-Limit Hold'em, blinds $${sb}/$${bb}`);
       L.push('Hands (known, god view):');
       (h.holeCards || []).forEach(x => L.push(`  ${x.name} (seat ${x.seat}): ${cs(x.cards)}`));
       const startBy = {}; (h.startStacks || []).forEach(x => startBy[x.seat] = x.stack);
@@ -961,6 +967,9 @@
     // which seats' hole cards are face-up right now
     seatReveal(seat, active) {
       if (this.handResult) return true;                    // showdown: reveal ALL (incl. folded) for review
+      // online host: never expose a remote human's cards mid-hand, even if the
+      // host folds (the host runs the engine and physically holds every card).
+      if (this.netHost && this.remoteSeats.has(seat) && this.game.handInProgress) return false;
       if (this.godMode || this.spectating) return true;
       if (this.hotseat) return this.armed && seat === this.game.toAct && this.humanSeats.has(seat);
       // single-player: hero (seat 0) always; villains after hero folds
@@ -972,7 +981,8 @@
     snapshot() {
       const g = this.game, hs = this.heroSeat();
       // Once the (single-player) hero folds (or god mode), reveal villains + tells.
-      const heroFolded = !this.hotseat && !g.players[0].active && g.handInProgress;
+      // Not for the online host: it must never auto-reveal remote humans' cards.
+      const heroFolded = !this.hotseat && !this.netHost && !g.players[0].active && g.handInProgress;
       const revealVillains = this.godMode || heroFolded;
       const showTellsEff = this.showTells || heroFolded;
       const armedHuman = this.humanToAct() && (!this.hotseat || this.armed) && !this.remoteSeats.has(g.toAct);
@@ -1395,7 +1405,10 @@
       if (view !== 'basic') act.appendChild(mk('Analysis', 'ghost', () => this.switchSummary('basic')));
       if (view !== 'stats') act.appendChild(mk('Stats', 'btn check', () => this.switchSummary('stats')));
       if (view !== 'log') act.appendChild(mk('Hand Log', 'btn raise', () => this.switchSummary('log')));
-      if (PC) act.appendChild(mk('🔍 Analyze (Claude)', 'btn summary', () => PC.analyzeHand({ ctrl: this.ctrl, view: this }, h, 'critique')));
+      if (PC) {
+        act.appendChild(mk('🔍 Analyze (Claude)', 'btn summary', () => PC.analyzeHand({ ctrl: this.ctrl, view: this }, h, 'critique')));
+        act.appendChild(mk('✎ Annotate', 'ghost', () => PC.analyzeHand({ ctrl: this.ctrl, view: this }, h, 'annotate')));
+      }
       act.appendChild(mk('Close', 'ghost', () => this.closeModal()));
       return card;
     }

@@ -1187,7 +1187,9 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
           p.totalInvested = sp.totalInvested || 0;
           if (sp.hand) p.hand = sp.hand.slice();
         }
-        this.players = this.players.filter(Boolean);
+        // the host's player set is authoritative + contiguous — drop any stale
+        // local seats beyond it (e.g. a guest whose pre-join table was larger).
+        this.players.length = gs.players.length;
       }
       if (gs.board) this.board = gs.board.slice();
       if (gs.pot != null) this.pot = gs.pot;
@@ -1204,14 +1206,17 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     }
 
     // Compact authoritative state for one recipient seat (host → that peer).
-    // Reveals the recipient's own cards; opponents' cards only when `revealAll`.
-    netStateFor(seat, revealAll) {
+    // Reveals the recipient's own cards; opponents' cards only for seats in the
+    // `revealSeats` set (the genuine-showdown contenders — never folded muckers
+    // or an uncontested winner).
+    netStateFor(seat, revealSeats) {
+      const reveal = s => s === seat || (revealSeats && revealSeats.has(s));
       return {
         players: this.players.map(p => ({
           seat: p.seat, name: p.name, style: p.isHuman ? 'human' : p.style,
           stack: p.stack, betInRound: p.betInRound, active: p.active,
           allIn: p.allIn, lastAction: p.lastAction, totalInvested: p.totalInvested,
-          hand: (revealAll || p.seat === seat) ? p.hand.slice() : [],
+          hand: reveal(p.seat) ? p.hand.slice() : [],
         })),
         board: this.board.slice(), pot: this.pot, currentBet: this.currentBet,
         toAct: this.toAct, dealerIdx: this.dealerIdx, streetIdx: this.streetIdx,
@@ -1716,11 +1721,22 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
   class DecisionJournal {
     constructor() { this.entries = []; this.pending = []; }
     record(fields) {
-      const e = Object.assign({ handNumber: null, street: '', action: '', predictedEquity: null, result: null }, fields);
+      const e = Object.assign({ handNumber: null, seat: null, street: '', action: '', predictedEquity: null, result: null }, fields);
       this.entries.push(e);
       if (e.result == null) this.pending.push(e);
       return e;
     }
+    // resolve each pending entry against ITS OWN seat's net (matters in hotseat,
+    // where several humans log decisions in the same hand).
+    attachResultForHand(handNumber, netArray) {
+      const netBySeat = {}; (netArray || []).forEach(n => { netBySeat[n.seat] = n.net; });
+      this.pending = this.pending.filter(e => {
+        if (e.handNumber !== handNumber) return true;
+        const d = e.seat != null && netBySeat[e.seat] != null ? netBySeat[e.seat] : 0;
+        e.result = d > 0 ? 1 : 0; e.resultDollars = d; return false;
+      });
+    }
+    // back-compat single-seat resolver (seat 0 / single human)
     attachResult(handNumber, resultDollars) {
       const actual = resultDollars > 0 ? 1 : 0;
       this.pending = this.pending.filter(e => {
@@ -2763,6 +2779,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     // review the current state, then "Pass device →" to continue.
     maybeEnterSpectator(foldedSeat) {
       if (this.spectating) return;
+      if (this.netHost) return;   // host fold must not God-view remote humans' cards
       if (!this.humanSeats.has(foldedSeat)) return;          // a bot folded
       if (!this.game.handInProgress) return;
       if (this.game.activePlayers().length < 2) return;       // hand's over anyway
@@ -2884,6 +2901,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       if (type === 'handStart') {
         this.history = {
           handNumber: payload.handNumber,
+          sb: this.game.sb(), bb: this.game.bb(), seatCount: this.game.players.length,
           startStacks: payload.startStacks,
           // all hole cards (god view) for the hand summary
           holeCards: this.game.players.filter(p => p.hand.length).map(p => ({ seat: p.seat, name: p.name, cards: p.hand.slice() })),
@@ -3176,6 +3194,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       if (!Prefs) return;
       for (let i = 0; i < this.game.players.length; i++) {
         if (this.humanSeats.has(i)) continue;
+        if (this.remoteSeats.has(i)) continue;   // a remote guest owns this seat — never botify it
         const pick = Prefs.botFor(i);
         if (!pick || pick === 'default') continue;
         const p = this.game.players[i];
@@ -3233,7 +3252,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       // Calibration trainer can Brier-score it once the hand resolves.
       if (this.journal && seat === this.heroSeat() && this.heroEquity != null) {
         const a = action === 'f' ? 'fold' : action === 'r' ? 'raise' : (this.game.legalActions(seat).canCheck ? 'check' : 'call');
-        this.journal.record({ handNumber: this.game.handNumber, street: this.streetName(), action: a, predictedEquity: this.heroEquity });
+        this.journal.record({ handNumber: this.game.handNumber, seat, street: this.streetName(), action: a, predictedEquity: this.heroEquity });
       }
       this.game.applyAction(seat, action, amount);
       if (action === 'f') this.maybeEnterSpectator(seat);   // fold → watch (God view)
@@ -3317,8 +3336,8 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       const heroResultSeat = this.follower ? this.mySeat : 0;
       const heroNet = (result.net.find(n => n.seat === heroResultSeat) || { net: 0 }).net;
       this.stats.recordHandResult(heroNet);
-      // attach the predicted-equity journal entries' outcome, for Brier calibration
-      if (this.journal) this.journal.attachResult(this.game.handNumber, heroNet);
+      // attach each journalled decision to its own seat's outcome (Brier calibration)
+      if (this.journal) this.journal.attachResultForHand(this.game.handNumber, result.net);
       if (this.lastHistory) this.handHistories.push(this.lastHistory);
       this.render();
       this.onHandEnd(result);
@@ -3353,7 +3372,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
           tableStats: this.tableStats, logMsgs: this.logbook.msgs.slice(),
           gameStatusLogged: this.logbook.gameStatusLogged, logStarted: this.logStarted,
           handResult: this.handResult, history: this.history, lastHistory: this.lastHistory,
-          humanSeats: [...this.humanSeats], hotseat: this.hotseat,
+          handHistories: this.handHistories, humanSeats: [...this.humanSeats], hotseat: this.hotseat,
           origPlayerCount: this.origPlayerCount, origBlinds: this.origBlinds,
           session: { hand_results: this.stats.handResults.slice(), bbAmount: this.stats.bbAmount },
         },
@@ -3388,6 +3407,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       this.prevBlindLevel = c.prevBlindLevel || 0; this.holeStats = c.holeStats || {};
       this.tableStats = c.tableStats || {}; this.history = c.history || null;
       this.lastHistory = c.lastHistory || null; this.handResult = c.handResult || null;
+      this.handHistories = c.handHistories || [];
       this.humanSeats = new Set(c.humanSeats || [0]); this.hotseat = !!c.hotseat;
       this.armed = !this.hotseat;
       this.origPlayerCount = c.origPlayerCount != null ? c.origPlayerCount : null;
@@ -3544,7 +3564,9 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       h = h || this.lastHistory; if (!h) return null;
       const cs = cards => cards.map(c => E.cardToStr(c)).join(' ');
       const L = [];
-      L.push(`Hand #${h.handNumber} — ${this.game.players.length}-handed No-Limit Hold'em, blinds $${this.game.sb()}/$${this.game.bb()}`);
+      const sb = h.sb != null ? h.sb : this.game.sb(), bb = h.bb != null ? h.bb : this.game.bb();
+      const nseats = h.seatCount != null ? h.seatCount : this.game.players.length;
+      L.push(`Hand #${h.handNumber} — ${nseats}-handed No-Limit Hold'em, blinds $${sb}/$${bb}`);
       L.push('Hands (known, god view):');
       (h.holeCards || []).forEach(x => L.push(`  ${x.name} (seat ${x.seat}): ${cs(x.cards)}`));
       const startBy = {}; (h.startStacks || []).forEach(x => startBy[x.seat] = x.stack);
@@ -3591,6 +3613,9 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     // which seats' hole cards are face-up right now
     seatReveal(seat, active) {
       if (this.handResult) return true;                    // showdown: reveal ALL (incl. folded) for review
+      // online host: never expose a remote human's cards mid-hand, even if the
+      // host folds (the host runs the engine and physically holds every card).
+      if (this.netHost && this.remoteSeats.has(seat) && this.game.handInProgress) return false;
       if (this.godMode || this.spectating) return true;
       if (this.hotseat) return this.armed && seat === this.game.toAct && this.humanSeats.has(seat);
       // single-player: hero (seat 0) always; villains after hero folds
@@ -3602,7 +3627,8 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     snapshot() {
       const g = this.game, hs = this.heroSeat();
       // Once the (single-player) hero folds (or god mode), reveal villains + tells.
-      const heroFolded = !this.hotseat && !g.players[0].active && g.handInProgress;
+      // Not for the online host: it must never auto-reveal remote humans' cards.
+      const heroFolded = !this.hotseat && !this.netHost && !g.players[0].active && g.handInProgress;
       const revealVillains = this.godMode || heroFolded;
       const showTellsEff = this.showTells || heroFolded;
       const armedHuman = this.humanToAct() && (!this.hotseat || this.armed) && !this.remoteSeats.has(g.toAct);
@@ -4025,7 +4051,10 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       if (view !== 'basic') act.appendChild(mk('Analysis', 'ghost', () => this.switchSummary('basic')));
       if (view !== 'stats') act.appendChild(mk('Stats', 'btn check', () => this.switchSummary('stats')));
       if (view !== 'log') act.appendChild(mk('Hand Log', 'btn raise', () => this.switchSummary('log')));
-      if (PC) act.appendChild(mk('🔍 Analyze (Claude)', 'btn summary', () => PC.analyzeHand({ ctrl: this.ctrl, view: this }, h, 'critique')));
+      if (PC) {
+        act.appendChild(mk('🔍 Analyze (Claude)', 'btn summary', () => PC.analyzeHand({ ctrl: this.ctrl, view: this }, h, 'critique')));
+        act.appendChild(mk('✎ Annotate', 'ghost', () => PC.analyzeHand({ ctrl: this.ctrl, view: this }, h, 'annotate')));
+      }
       act.appendChild(mk('Close', 'ghost', () => this.closeModal()));
       return card;
     }
@@ -4513,13 +4542,14 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
   function buyChips(ctx) {
     const { ctrl, view } = ctx;
     const card = document.createElement('div'); card.className = 'modal-card';
-    const hero = ctrl.game.players[0];
+    const heroSeat = (ctrl.humanSeats && ctrl.humanSeats.size) ? Math.min(...ctrl.humanSeats) : 0;
+    const hero = ctrl.game.players[heroSeat];
     card.innerHTML = `<h2>Buy more chips</h2>
       <div class="sub">Top up <b>${esc(hero.name)}</b>'s stack between hands. Current stack: <b>$${hero.stack}</b>.</div>
       <div class="buy-row"><label>Add chips $</label><input type="number" id="bc-amt" value="200" min="1" step="50"></div>
       <div class="modal-actions"></div>`;
     const add = document.createElement('button'); add.className = 'btn check'; add.textContent = 'Add chips';
-    add.onclick = () => { const v = parseInt(card.querySelector('#bc-amt').value, 10) || 0; if (v > 0) ctrl.buyChips(v, 0); view.closeModal(); };
+    add.onclick = () => { const v = parseInt(card.querySelector('#bc-amt').value, 10) || 0; if (v > 0) ctrl.buyChips(v, heroSeat); view.closeModal(); };
     const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Cancel';
     close.onclick = () => view.closeModal();
     card.querySelector('.modal-actions').append(add, close);
@@ -4677,12 +4707,19 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     const card = document.createElement('div'); card.className = 'modal-card';
     let tab = 'equity';
     const beat = Prefs.beatDefaults();
-    // keep whatever the user toggled across tab switches without committing yet
+    // edits live in an in-memory draft and are committed to localStorage only on
+    // Save — so Cancel (and tab switching) never mutate the persisted prefs.
+    const draft = {
+      visibleOnly: Prefs.visibleOnly(), legacyColors: Prefs.legacyColors(),
+      randomizeBots: Prefs.randomizeBots(), bots: {},
+    };
+    ctrl.game.players.forEach((p, i) => { draft.bots[i] = Prefs.botFor(i); });
+    // pull whatever the user toggled on the mounted tab into the draft
     const stash = () => {
-      const vis = card.querySelector('#pf-vis'); if (vis) Prefs.set('visibleOnly', vis.checked);
-      const leg = card.querySelector('#pf-legacy'); if (leg) Prefs.set('legacyColors', leg.checked);
-      const rnd = card.querySelector('#pf-rand'); if (rnd) Prefs.set('randomizeBots', rnd.checked);
-      card.querySelectorAll('select[data-seat]').forEach(s => Prefs.setBot(s.getAttribute('data-seat'), s.value));
+      const vis = card.querySelector('#pf-vis'); if (vis) draft.visibleOnly = vis.checked;
+      const leg = card.querySelector('#pf-legacy'); if (leg) draft.legacyColors = leg.checked;
+      const rnd = card.querySelector('#pf-rand'); if (rnd) draft.randomizeBots = rnd.checked;
+      card.querySelectorAll('select[data-seat]').forEach(s => { draft.bots[s.getAttribute('data-seat')] = s.value; });
     };
     const render = () => {
       card.innerHTML = `<h2>Preferences</h2>
@@ -4696,12 +4733,12 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       const body = card.querySelector('#pf-body');
       if (tab === 'equity') {
         body.innerHTML = `
-          <label class="pf-check"><input type="checkbox" id="pf-vis" ${Prefs.visibleOnly() ? 'checked' : ''}>
+          <label class="pf-check"><input type="checkbox" id="pf-vis" ${draft.visibleOnly ? 'checked' : ''}>
             <span>Use only publicly revealed cards for Hero's equity</span></label>
           <div class="pf-desc">On (realistic Theory-of-Mind): equity is Monte-Carlo'd treating opponents as random ranges — only the board and your own cards are known. Off (God-style): equity is computed against opponents' <i>actual</i> hands (only meaningful with God Mode on).</div>`;
       } else if (tab === 'display') {
         body.innerHTML = `
-          <label class="pf-check"><input type="checkbox" id="pf-legacy" ${Prefs.legacyColors() ? 'checked' : ''}>
+          <label class="pf-check"><input type="checkbox" id="pf-legacy" ${draft.legacyColors ? 'checked' : ''}>
             <span>Legacy colours (red diamonds, black clubs)</span></label>
           <div class="pf-desc">Off (default): modern 4-colour deck — red hearts, blue diamonds, green clubs, black spades. On: traditional 2-colour deck — red hearts &amp; diamonds, black clubs &amp; spades.</div>
           <div class="pf-row"><span class="muted">Preview:</span>
@@ -4714,14 +4751,14 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       } else {
         const seats = ctrl.game.players.map((p, i) => {
           if (i === 0 && p.isHuman) return '';      // seat 0 is the local hero
-          const cur = Prefs.botFor(i);
+          const cur = draft.bots[i];
           return `<div class="pf-seat"><label>${esc(p.name)}</label>
             <select data-seat="${i}">${BOT_OPTS.map(([v, l]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`;
         }).join('');
         body.innerHTML = `
           <div class="sub" style="margin-bottom:10px;">Pick the bot style for each opponent seat (applies on the next table / New hand).</div>
           ${seats}
-          <label class="pf-check"><input type="checkbox" id="pf-rand" ${Prefs.randomizeBots() ? 'checked' : ''} ${beat ? '' : 'disabled'}>
+          <label class="pf-check"><input type="checkbox" id="pf-rand" ${draft.randomizeBots ? 'checked' : ''} ${beat ? '' : 'disabled'}>
             <span>Randomise bots from the combined pool after winning a game</span></label>
           <div class="pf-status ${beat ? 'pos' : 'muted'}">${beat ? '✓ You have beaten the default bots — random pool unlocked.' : 'Beat the default bots once to unlock the advanced random pool.'}</div>`;
       }
@@ -4729,6 +4766,11 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       const save = document.createElement('button'); save.className = 'btn check'; save.textContent = 'Save';
       save.onclick = () => {
         stash();
+        // commit the draft to the persistent store, now
+        Prefs.set('visibleOnly', draft.visibleOnly);
+        Prefs.set('legacyColors', draft.legacyColors);
+        Prefs.set('randomizeBots', draft.randomizeBots);
+        Object.keys(draft.bots).forEach(i => Prefs.setBot(i, draft.bots[i]));
         apply(ctrl);
         ctrl.applyBotPrefs && ctrl.applyBotPrefs();
         ctrl.refreshHeroEquity && ctrl.refreshHeroEquity();
@@ -4882,8 +4924,10 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 
   // Render the per-POV analysis blocks, marking !/!?/?!/? glyphs.
   function blocksHTML(results) {
+    // highlight annotation marks; lookahead for the trailing boundary so the
+    // shared space isn't consumed (adjacent marks + end-of-line marks both match)
     const mark = t => esc(t)
-      .replace(/(\s)(!\?|\?!|!|\?)(\s|$)/g, (m, a, g, b) => a + `<span class="cl-mark ${g === '!' ? 'good' : g === '?' ? 'bad' : 'dub'}">${g}</span>` + b);
+      .replace(/(\s|^)(!\?|\?!|!|\?)(?=\s|$|<)/g, (m, a, g) => a + `<span class="cl-mark ${g === '!' ? 'good' : g === '?' ? 'bad' : 'dub'}">${g}</span>`);
     return results.map(r => `<div class="cl-block"><span class="who">${esc(r.player)} — ${esc(r.model)}</span>${mark(r.text).replace(/\n/g, '<br>')}</div>`).join('');
   }
 
@@ -5024,7 +5068,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       this.ctrl.remoteSeats.add(seat);
       this.seatByPeer[peer] = seat; this.peerBySeat[seat] = peer;
       this.t.send(peer, { t: 'welcome', seat, sb: g.sb(), bb: g.bb(), hostName: this.hostName });
-      this.t.send(peer, { t: 'state', gs: g.netStateFor(seat, !g.handInProgress) });
+      this.t.send(peer, { t: 'state', gs: g.netStateFor(seat, null) });   // own cards only on join
       this.broadcast({ t: 'sys', text: `${name} joined (seat ${seat + 1})` });
       this.chatLog.push({ from: '—', text: `${name} joined`, sys: true });
       return true;
@@ -5039,6 +5083,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     }
 
     onPeerClose(peer) {
+      this.pending = this.pending.filter(p => p !== peer);   // drop if they left before being seated
       const seat = this.seatByPeer[peer];
       if (seat != null) {
         // turn the seat back into a bot so the table keeps playing
@@ -5059,7 +5104,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 
     requestAction(seat, legal) {
       const peer = this.peerBySeat[seat]; if (!peer) return;
-      this.t.send(peer, { t: 'act', legal: legalWire(this.ctrl.game, seat), gs: this.ctrl.game.netStateFor(seat, false) });
+      this.t.send(peer, { t: 'act', legal: legalWire(this.ctrl.game, seat), gs: this.ctrl.game.netStateFor(seat, null) });
     }
 
     remoteAction(peer, msg) {
@@ -5073,10 +5118,17 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     // every engine event → forward to peers with their tailored authoritative state
     onEngineEvent(type, payload) {
       const g = this.ctrl.game;
-      const revealAll = !g.handInProgress;   // showdown: reveal all hole cards
+      // at a GENUINE showdown (hand over with ≥2 players still in) reveal the
+      // contenders' cards to everyone; an uncontested win reveals nothing, and
+      // folded muckers' cards stay hidden.
+      let revealSeats = null;
+      if (!g.handInProgress) {
+        const contenders = g.players.filter(p => p.active);
+        if (contenders.length >= 2) revealSeats = new Set(contenders.map(p => p.seat));
+      }
       for (const peer of Object.keys(this.seatByPeer)) {
         const seat = this.seatByPeer[peer];
-        this.t.send(peer, { t: 'ev', type, payload, gs: g.netStateFor(seat, revealAll) });
+        this.t.send(peer, { t: 'ev', type, payload, gs: g.netStateFor(seat, revealSeats) });
       }
     }
 
@@ -5109,6 +5161,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       switch (msg.t) {
         case 'welcome':
           ctrl.mySeat = msg.seat; this.seated = true;
+          ctrl.humanSeats = new Set([msg.seat]);   // all humanSeats-keyed logic now points at our real seat
           this.hostName = msg.hostName;
           this.onUpdate(); ctrl.render();
           break;
