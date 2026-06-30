@@ -670,18 +670,14 @@ const SUSP_GAIN = parse(Float32, get(ENV,"JM_SUSP_GAIN","1.8"))
 # stays toward vertical.  So the landscape no longer strobes back-and-forth (which gave the PO a headache).
 # τ = the follow time-constant (s): banks held >~τ are fully followed; sub-τ jolts are largely rejected.
 const CAM_TILT_TAU = parse(Float64, get(ENV,"JM_CAM_TILT_TAU","0.35"))
-# PO: the cockpit "rocks back and forth too much" — the head should barely move.  The CAR BODY still
-# pitches/rolls fully (you SEE the chassis work over its planted wheels), but the CAMERA follows only
-# this fraction of the dynamic body rock (squat/dive/lean).  Slow terrain banks are followed in full
-# (that's the GPL head→road-normal behaviour); only the fast dynamic rock is damped out of the head.
-const CAM_DYN = parse(Float64, get(ENV,"JM_CAM_DYN","0.10"))
-# PO round 2: the cockpit still "pitches and HEAVES way too much … iRacing doesn't porpoise this much."
-# Damp the camera HEIGHT too: track a slow baseline that follows real elevation (cresting a hill) but
-# only CAM_HEAVE of the fast suspension bob (porpoise) reaches the eye — so the head barely bobs while
-# the chassis still heaves on its springs.  CAM_HEAVE_TAU = baseline follow time-constant (s).
-const CAM_HEAVE     = parse(Float64, get(ENV,"JM_CAM_HEAVE","0.12"))
+# CAM_HEAVE_TAU = the eye-height baseline follow time-constant (s): the eye tracks the LOW-FREQ height
+# (cresting a hill) and rejects the fast suspension bob (porpoise), which the cockpit conveys subtly.
 const CAM_HEAVE_TAU = parse(Float64, get(ENV,"JM_CAM_HEAVE_TAU","0.45"))
-const CAM_HEAVE_CAP = parse(Float64, get(ENV,"JM_CAM_HEAVE_CAP","0.08"))   # hard cap (m) on the eye's vertical deviation — a big heave can't throw the view
+# PO (round 3 refinement): the cockpit is NOT rigid to the eye.  The EYE follows only the LOW-FREQ of
+# the full chassis motion (slow banks tilt the VIEW — one horizon side rises, the other dips); the
+# COCKPIT conveys the HIGH-FREQ residual (jolts, curbs) as a SMALL motion RELATIVE to the view, so it
+# suggests motion without moving the horizon (which gave the PO a headache).  COCKPIT_HF = that fraction.
+const COCKPIT_HF = parse(Float64, get(ENV,"JM_COCKPIT_HF","0.14"))
 # wheel hubs (rig frame X fwd, Y=radius, Z left); front pair steers, all spin.  Front/rear track WIDENED
 # (was ±0.62/±0.66) — the Lotus 49 ran ~1.52 m tracks; the narrow stance read as "wheels bolted together".
 const WTRACK_F = parse(Float32, get(ENV,"JM_TRACK_F","0.90"))   # front half-track (m) — PO: front tyres read too close together; spread them toward the GPL gold-standard stance
@@ -1447,7 +1443,10 @@ function main()
         # RIGHT order: the quick cars lead and stretch the gap, instead of a fast car stuck mid-pack
         # behind a slower one on a tight track.  Keeps each car's identity; only the start slot moves.
         for (rank, ci) in enumerate(sortperm([c.pace for c in AICARS], rev=true))
-            AICARS[ci].s = mod(30.0 - 9.0*rank, AILINE.total); AICARS[ci].lane = isodd(rank) ? -2.4 : 2.4
+            # s = 9·(N+1−rank): front car (rank 1) furthest along, all POSITIVE and < total so NO car
+            # wraps just behind S/F (which made the back grid cross the line on frame 1 → a spurious +1
+            # lap, the residual standings error).  Start every car cleanly on lap 0, just past the line.
+            AICARS[ci].s = 9.0*(length(AICARS) + 1 - rank); AICARS[ci].lap = 0; AICARS[ci].lane = isodd(rank) ? -2.4 : 2.4
         end
         println("  → AI pace spread (power/weight, gridded fastest-first): ",
                 join(["$(AISPECS[i][1]) $(round(Int,AICARS[i].pace*100))%" for i in 1:length(AICARS)], ", "))
@@ -1509,17 +1508,25 @@ function main()
     # Kinematic AI are rail-bound so they can't spin/leave the line — this verifies the field
     # ADVANCES (laps the track) and stays on-rail (low max_lat) on the big tracks (E38).
     if !AI_PHYSICS && haskey(ENV, "JM_AI_TEST") && AILINE !== nothing && !isempty(AICARS)
+        nsec = clamp(something(tryparse(Int, get(ENV,"JM_AI_TEST","90")), 90), 1, 1200)
         N=length(AICARS); maxlat=0.0; aidist=zeros(N)
         lastp=[RaceAI.pose_at(AILINE, c.s, c.lane) for c in AICARS]
-        for _ in 1:5400   # 90 s @ 60 Hz   (player far behind + fast so AI_REL doesn't cap the pace)
+        for _ in 1:nsec*60
             poses,_ = RaceAI.step_field!(AICARS, AILINE, 1/60; scale=AI_SCALE, player=(-1e9,0.0,100.0), rel=AI_REL)
             for (i,p) in enumerate(poses)
                 maxlat = max(maxlat, abs(RaceAI.project(AILINE, p[1], p[3])[2]))   # true lateral off the line (p[2] is ELEVATION)
                 aidist[i] += hypot(p[1]-lastp[i][1], p[3]-lastp[i][3]); lastp[i]=p
             end
         end
-        avgkmh = round.(Int, aidist ./ 90 .* 3.6)
-        println("  KINEMATIC AI self-test on $(TRACKSEL) (90s): dist=", round.(Int,aidist), "m  avg_kmh=$avgkmh  max_lat=$(round(maxlat,digits=1))m")
+        avgkmh = round.(Int, aidist ./ nsec .* 3.6)
+        println("  KINEMATIC AI self-test on $(TRACKSEL) ($(nsec)s): dist=", round.(Int,aidist), "m  avg_kmh=$avgkmh  max_lat=$(round(maxlat,digits=1))m")
+        # R1 PROOF: progress = lap + lap-fraction.  The OLD standings used c.lap + c.s/total, but c.s
+        # ACCUMULATES so c.s/total == the lap count again → ~2× (the bug).  The FIX uses the fraction.
+        for (i,c) in enumerate(AICARS)
+            oldp = c.lap + c.s/AILINE.total; newp = c.lap + mod(c.s, AILINE.total)/AILINE.total
+            println("    ", rpad(AISPECS[i][1],8), " lap=", c.lap, "  OLD prog=", round(oldp,digits=2),
+                    " (2× bug)   NEW prog=", round(newp,digits=2), " ✓")
+        end
         println(minimum(aidist) > 800 && maxlat < 12.0 ? "  ✓ kinematic AI lap the real track on-rail (no spins possible)" : "  ⚠ field not advancing / off-rail — check AILINE")
         exit(0)
     end
@@ -1590,7 +1597,10 @@ function main()
         for (i, c) in enumerate(AICARS)
             r = findfirst(==(i), order)
             c.s = mod(-(r - prank)*ROW, AILINE.total)      # ahead (+s) if it out-qualified the player
-            c.v = 0.0; c.lap = 0
+            # a car gridded BEHIND the player wraps to just-behind S/F, so it crosses the line on the first
+            # frames — that start-line crossing is NOT a completed lap, so start it on lap −1 to absorb it
+            # (else its lap count runs 1 high and it "laps" you in the standings).
+            c.v = 0.0; c.lap = (r > prank) ? -1 : 0
             c.lane = isodd(r) ? GRID_LANE : -GRID_LANE; c.tlane = c.lane
             AI_PHYSICS && (gp = RaceAI.pose_at(AILINE, c.s, c.lane); AIplace!(AIPHYS[i], gp[1], gp[3], gp[4]; v=0.0))
         end
@@ -1999,15 +2009,14 @@ function main()
         # with the car (chassis fixed on screen, horizon tilts); fast jolts are rejected so the head stays
         # toward vertical and the CHASSIS rocks on screen instead (no headache-inducing landscape strobe).
         αcam = 1.0 - exp(-(dt > 1e-4 ? dt : 1/60)/CAM_TILT_TAU)
-        # head follows the FULL slow terrain bank but only CAM_DYN of the dynamic body rock → the cockpit
-        # barely rocks while the chassis (bodyModel below) keeps its full pitch/roll over the wheels.
-        cam_pitch += ((pitch_ter + CAM_DYN*pitch_dyn) - cam_pitch) * αcam
-        cam_roll  += ((roll_ter  + CAM_DYN*rollv    ) - cam_roll ) * αcam
-        # heave: the baseline catches up to the true height (real elevation), but only CAM_HEAVE of the
-        # fast bob (cs.y − baseline = the suspension porpoise) reaches the eye → the head barely heaves.
-        cam_ybase += (cs.y - cam_ybase) * (1.0 - exp(-(dt > 1e-4 ? dt : 1/60)/CAM_HEAVE_TAU))
-        cam_yeye   = cam_ybase + clamp(CAM_HEAVE*(cs.y - cam_ybase), -CAM_HEAVE_CAP, CAM_HEAVE_CAP)
-        vp, eye = camera(cs, cam_pitch, cam_roll, cam_yeye)   # head = low-pass tilt + damped heave; body keeps full motion
+        # THE EYE = the LOW-FREQUENCY of the full chassis tilt/height.  A slow road bank rolls the VIEW
+        # (horizon tilts — one side rises, the other dips); a fast jolt is rejected (lags), so the horizon
+        # does NOT strobe (the PO's headache).  The low-pass time-constant is the freq knife.
+        fpitch = pitch_ter + pitch_dyn; froll = roll_ter + rollv      # the FULL chassis tilt (terrain + dynamic)
+        cam_pitch += (fpitch - cam_pitch) * αcam
+        cam_roll  += (froll  - cam_roll ) * αcam
+        cam_ybase += (cs.y   - cam_ybase) * (1.0 - exp(-(dt > 1e-4 ? dt : 1/60)/CAM_HEAVE_TAU))
+        vp, eye = camera(cs, cam_pitch, cam_roll, cam_ybase)   # eye = LOW-FREQ tilt + height only
         if REPLAY     # E25: cinematic cameras follow the FOCUS car (player or any AI) from its recorded pose
             fp = rep_focus[] == 0 ? (cs.x, cs.y, cs.z, cs.θ) :
                  (rf = rep_ai_raw[rep_focus[]]; (rf[1], rf[2], rf[3], rf[4]))
@@ -2017,13 +2026,16 @@ function main()
                    Render.rotz(Float32(pitch_ter)) * Render.rotx(Float32(roll_ter))   # whole car follows the hill (pitch + cross-slope roll)
         tiltModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv))   # full body tilt (terrain + dynamic)
         bodyModel = tiltModel * Render.translate(BODY_OFF)  # body dives/squats + rolls (3-D)
-        # PO: in COCKPIT view the dash/wheel/scuttle must be RIGID to the eye — otherwise the head is
-        # stabilised (cam_yeye/cam_pitch damped) while the body heaves at FULL amplitude, so the cockpit
-        # "fills the screen then drops to an ejection seat".  Draw the cockpit body in the SAME damped frame
-        # the eye is built from → dash rock-steady, and the WORLD carries the chassis motion (GPL behaviour).
-        cockpitModel = Render.translate(Float32[cs.x, cam_yeye, -cs.z]) * Render.roty(Float32(cs.θ)) *
-                       Render.rotz(Float32(cam_pitch)) * Render.rotx(Float32(cam_roll)) * Render.translate(BODY_OFF)
-        dashModel = (CTL.view == 0 && !REPLAY) ? cockpitModel : bodyModel   # cockpit parts use the eye frame in-car, full motion in chase
+        # PO: in COCKPIT view the cockpit is NOT rigid to the eye and NOT at full motion.  It conveys the
+        # HIGH-FREQ residual (full − low-freq eye) as a SMALL motion (COCKPIT_HF) RELATIVE to the view:
+        # a fast jolt jiggles the cockpit a little (suggesting motion) WITHOUT moving the horizon; a slow
+        # bank has ~zero residual so the cockpit sits steady in the tilting view.  (Chase = full motion.)
+        ck_pitch = cam_pitch + COCKPIT_HF*(fpitch - cam_pitch)
+        ck_roll  = cam_roll  + COCKPIT_HF*(froll  - cam_roll )
+        ck_y     = cam_ybase + COCKPIT_HF*(cs.y   - cam_ybase)
+        cockpitModel = Render.translate(Float32[cs.x, ck_y, -cs.z]) * Render.roty(Float32(cs.θ)) *
+                       Render.rotz(Float32(ck_pitch)) * Render.rotx(Float32(ck_roll)) * Render.translate(BODY_OFF)
+        dashModel = (CTL.view == 0 && !REPLAY) ? cockpitModel : bodyModel   # cockpit = eye + subtle HF in-car; full motion in chase
         δ = Float32(inp.steer * (SKIDPAD ? 0.30 : CAR.max_steer))
         # WHEELS FLOAT ON THE SUSPENSION (PO): the wheels stay PLANTED on the road (carModel = terrain
         # follow only, NO dynamic dive/squat/roll), while the CHASSIS pitches/rolls/heaves above them
