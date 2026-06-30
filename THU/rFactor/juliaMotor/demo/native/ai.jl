@@ -257,14 +257,19 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
         if abs(dl) < CAR_WID*0.7                             # ~same lane → b queues single-file behind a
             cars[b].s = cars[a].s - CAR_LEN
             cars[b].v = min(cars[b].v, cars[a].v)
-        elseif abs(dl) < CAR_WID                             # PO: side-by-side overlap → DON'T sustain a rub/clump.
-            # The TRAILING car (b, behind a) YIELDS: ease apart, drop back, and commit to tucking into line
-            # behind a (no more rubbing/twitch that clumped the field and crawled them to a stop).
+        elseif abs(dl) < CAR_WID                             # side-by-side overlap → resolve to single file.
+            # PO round 4: "AI had a lot of trouble with this track — I only saw them once, bunched up."  The
+            # old yield multiplied the trailing car's speed by 0.90 EVERY FRAME while overlapping; at a tight
+            # corner (the Lesmos chicane) step-1 re-converges both cars' target lanes within a car-width every
+            # frame, so the *0.90 compounded (0.9^30 ≈ 0.04 in half a second) and the whole field crawled to a
+            # stop and clumped.  Fix: the TRAILING car (b) TUCKS into single file behind a — eased apart a bit
+            # laterally, dropped back to a clean following gap, speed matched (NOT multiplied) — exactly how a
+            # field threads a chicane.  No per-frame compounding, so no crawl.
             push = (CAR_WID - abs(dl)) * 0.5; d = dl >= 0 ? 1.0 : -1.0
             cars[a].lane = clamp(cars[a].lane + d*push, -LANE_MAX, LANE_MAX)
             cars[b].lane = clamp(cars[b].lane - d*push, -LANE_MAX, LANE_MAX)
-            cars[b].v *= 0.90                                # decelerate to fall in BEHIND a (resolve to single file)
-            cars[b].tlane *= 0.5                             # stop fighting for the same gap — settle back toward the line
+            cars[b].s = cars[a].s - CAR_LEN                  # fall in BEHIND a (single file) — bounded, no compounding decel
+            cars[b].v = min(cars[b].v, cars[a].v)            # match a's speed, don't crawl to a halt
         end
     end
     # 3) contact with the HUMAN: the AI yields (steps aside + twitches + slows); flag a bump

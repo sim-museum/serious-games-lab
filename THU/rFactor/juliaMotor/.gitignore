@@ -14,3 +14,9 @@ __pycache__/
 # generated replay recordings
 data/juliaracer/*.jmr
 *.jmr
+
+# runtime: human lap-time stash for AI % preset
+human_recent.txt
+human_best.txt
+demo/native/human_recent.txt
+demo/native/human_best.txt

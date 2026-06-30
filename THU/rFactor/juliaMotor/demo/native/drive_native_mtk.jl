@@ -958,6 +958,8 @@ let objnames=Set{String}()
                startswith(nm,"tent") || startswith(nm,"single") ||
                startswith(nm,"intree") ||                                    # INFIELD tree lines (100s of m wide) → distant central "smear"
                startswith(nm,"treesrb") || startswith(nm,"treefill") ||      # forest-BACKDROP / gap-fill quads → streaky "painted tree" smear (Watkins pit-straight)
+               startswith(nm,"trbk") || startswith(nm,"brbk") ||             # Monza underpass tree/bush BANKS (trbk1-8/brbk1-3 at lapdist ~3100-3440, lat ~5 m) — MESH foliage that bypasses the sprite on-road filter and renders as dark vertical smears ACROSS the road (PO round 4: "7 stands of trees across the track near the underpass")
+               startswith(nm,"tuntbk") ||                                    # tunnel-edge tree bank (same dark-smear foliage by the underpass)
                startswith(nm,"ppl") || startswith(nm,"people") || startswith(nm,"pelf") ||  # loose standing spectators
                startswith(nm,"p_s") || startswith(nm,"pform") ||             # Spa distributed standing-spectator sprites (p_s1..19 = p_s1srb, ~900) + pform1 (foreground photographer); NB not p_armco/p_*
                nm in ("chrisa","sergioa","thomasa","hatzia","stefana","starter") ||  # Spa named loose figures (Chris/sergio/thomas/Hatzi/Stefan/starter) — NOT prinz*/spider* (cars)
@@ -1000,7 +1002,12 @@ let objnames=Set{String}()
     # the forest edge) with the clean alpha-keyed billboard quad + graze-fade.  Only narrow
     # individual-tree / sign sprites stay camera-facing.
     WIDE_PANEL = parse(Float32, get(ENV,"JM_WIDE_PANEL","30"))
-    DROP_FOREST = get(ENV,"JM_DROP_FOREST","1")!="0"   # default: drop the wide backdrop forest panels
+    # KEEP the wide forest panels on MONZA (PO round 4: "once you leave the grandstands you're driving on a
+    # ribbon of road over a void/desert — need all the roadside trees back").  Monza's tree line (trees01-23,
+    # 100-160 m strips) is what fills the void around the road; its horizon ring doesn't carry trees the way
+    # Watkins' does.  Drawn as STATIC authored-yaw backdrop panels (graze-fade), they line the circuit without
+    # the camera-faced "wall".  Other tracks keep the default (drop, let the horizon ring carry the tree-line).
+    DROP_FOREST = get(ENV,"JM_DROP_FOREST", MONZA ? "0" : "1")!="0"
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     for i in insts
@@ -1761,9 +1768,22 @@ function main()
         end
         rst && FUEL_ON && (fuel[] = burn_lap * fuel_laps)        # respawn refuels
         if recover && CLINE !== nothing && CAR3D
-            # SHIFT-R: drop back onto the centreline at the CURRENT lap position, upright + stopped
+            # SHIFT-R: drop back onto the centreline at the CURRENT lap position, upright + stopped.
             sR = RaceAI.project(CLINE, cs.x, cs.z)[1]; pR = RaceAI.pose_at(CLINE, sR, 0.0)
-            DriveRT3D.place3d!(cs, pR[1], pR[3], pR[4]; v=0.0)
+            # PO round 4: "SH-R never puts you in the CENTRE of the track, always off to one side."  On Monza
+            # the recentre is OFF, so lane-0 is the raw .trk GROOVE — which hugs the road edge.  Drop on the
+            # road's GEOMETRIC centre instead: scan left+right along the lateral normal to the road-mesh edges
+            # and offset to the midpoint.  (On recentred tracks the offset comes out ≈0 — lane-0 is already
+            # centred — so this is safe everywhere.)
+            cx0, cz0, θ0 = pR[1], pR[3], pR[4]
+            nLx = -sin(θ0); nLz = cos(θ0)                              # left-hand normal
+            onroadR(x, z) = JuliaMotor.hat3d(TERRAIN0, x, z; ref = Inf)[3]
+            hiR = 0.0; while hiR < 10.0 && onroadR(cx0 + nLx*(hiR+0.5), cz0 + nLz*(hiR+0.5)); hiR += 0.5; end
+            loR = 0.0; while loR < 10.0 && onroadR(cx0 - nLx*(loR+0.5), cz0 - nLz*(loR+0.5)); loR += 0.5; end
+            offR = clamp((hiR - loR)/2, -5.0, 5.0)
+            cxR = cx0 + nLx*offR; czR = cz0 + nLz*offR
+            DriveRT3D.place3d!(cs, cxR, czR, θ0; v=0.0)
+            pR = (cxR, pR[2], czR, θ0)
             cs.s_vreset(cs.integ, zeros(14))
             hR = groundz(pR[1], pR[3]; acquire=true); isfinite(hR) && (cs.zref = Float64(hR))
             cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
@@ -2181,16 +2201,28 @@ function main()
                 vrel = (pvx-avx)*nx + (pvz-avz)*nz            # closing speed along the normal
                 vrel <= 0.2 && continue                       # separating → no new closing impulse (the contact kick already fired)
                 j = (1+restn)*vrel*mr
-                # a SIDE (wheel-to-wheel) hit climbs → vertical launch; a square hit doesn't.
+                # PO round 4: "colliding with AI should be a LOT more of a jolt — right now I have no fear,
+                # it just knocks us both a little and I get the better of it."  The player (a REAL physics
+                # car) now takes a HARD knock so a clash with another car is a genuine event to be feared —
+                # PLAYER_HIT amplifies the lateral/normal shove well past the symmetric momentum exchange.
+                # (The AI stays BOUNDED below — R1: it must not be rocketed / have its lap count inflated.)
+                PLAYER_HIT = 1.8
+                # subtle VERTICAL unsettle on a side (wheel-to-wheel) hit — the PO asked for "the wheelspin
+                # vertical element back, but not exaggerated, and no superball": a small hop + body rock, not
+                # a launch.  Capped low (3.0 m/s, was 7 = superball) and only on a glancing/offset contact.
                 across_p = -nx*sin(cs.θ) + nz*cos(cs.θ)
-                vlaunch = clamp(abs(across_p)*(j/pm)*0.55, 0.0, 7.0)
-                droll = clamp(sign(across_p)*vlaunch*0.8, -6.0, 6.0)   # wheel-climb → roll rate → cartwheel
-                bumpX!(cs, -(j/pm)*nx, -(j/pm)*nz, clamp(-sign(lat)*(j/pm)*0.05, -1.5, 1.5), vlaunch, droll)
-                # PO: ramming a heavy car must COST you — a hard longitudinal scrub so you can't plow through
-                # the field.  along_p>0 = the car is ahead of you (you drove INTO it) → you lose forward speed.
+                vlaunch = clamp(abs(across_p)*(j/pm)*0.45, 0.0, 3.0)
+                droll = clamp(sign(across_p)*vlaunch*0.7, -4.0, 4.0)   # wheel-climb → body rock (bounded — no cartwheel)
+                bumpX!(cs, -PLAYER_HIT*(j/pm)*nx, -PLAYER_HIT*(j/pm)*nz,
+                       clamp(-sign(lat)*PLAYER_HIT*(j/pm)*0.06, -2.2, 2.2), vlaunch, droll)
+                # PO: a clash must COST you SPEED — not just when you rear-end a car (along_p>0) but on ANY
+                # solid contact, so you can't trade paint and sail on.  A bigger scrub for driving INTO a car,
+                # a smaller one for a side-swipe — a real crash bleeds your momentum either way.
                 along_p = nx*cos(cs.θ) + nz*sin(cs.θ)
-                along_p > 0.25 && (cs.v = max(0.0, cs.v - clamp((j/pm)*along_p*0.7, 0.0, cs.v*0.55)))
-                ffb_jolt = clamp(ffb_jolt - sign(lat)*(j/pm)*0.18 - 0.4*sign(vrel), -1.0, 1.0)   # a CLOSING hit adds to the contact kick
+                scrub = along_p > 0.25 ? clamp(PLAYER_HIT*(j/pm)*along_p*0.7, 0.0, cs.v*0.6) :
+                                         clamp((j/pm)*0.35, 0.0, cs.v*0.25)   # side contact still bleeds some speed
+                cs.v = max(0.0, cs.v - scrub)
+                ffb_jolt = clamp(ffb_jolt - sign(lat)*PLAYER_HIT*(j/pm)*0.22 - 0.5*sign(vrel), -1.0, 1.0)   # a CLOSING hit adds a bigger kick
                 if AI_PHYSICS                                  # the AI is a real physics car → impulse it too
                     alat = -dx*sin(aθ) + dz*cos(aθ)
                     # E55: PLANAR push + mild yaw only — no vertical launch / roll on the AI (it must not

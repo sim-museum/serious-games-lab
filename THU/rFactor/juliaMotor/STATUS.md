@@ -3,7 +3,42 @@
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/juliaRacer.py` (or `drive_native_mtk.jl`).
 
-## Latest (2026-06-29 latest) — PO round 4: Monza road course, inelastic collisions, AI avoidance, cockpit revert
+## Latest (2026-06-29 night-2) — PO round 5: Monza scenery, collision feel, AI crawl
+
+First Monza race on the road course went well (PO won P1), with five follow-ups:
+
+- **Monza no longer a "ribbon over a void."** Monza's tree line (the wide `trees01-23` strips, 100–160 m)
+  was being dropped as "forest panels" (the Watkins anti-smear default), so once you left the grandstands
+  the road ran over bare desert.  KEEP the forest panels on Monza (`DROP_FOREST` defaults 0 for MONZA) —
+  drawn as static authored-yaw backdrop panels (graze-fade), they line the whole circuit.  Verified
+  headless: forest panels 0→53, the void now wraps in a continuous tree-line.
+- **"7 stands of trees across the track" at the underpass — fixed.** The `trbk1-8`/`brbk1-3`/`tuntbk`
+  tree-bank MESHES (lapdist ~3100–3440, lat ~5 m) bypassed the sprite on-road filter (meshes are kept as
+  potential bridges/gantries) and rendered as dark vertical smears across the road after the Lesmos.
+  Dropped by name.  Verified: the underpass is now clear — bridge visible, road open, forest behind.
+- **Trackside-object collisions no longer "a big rubber band that slings you back."** A stiff penalty
+  SPRING is conservative — it stores k·δ² on the way in and returns it all on the way out, no matter how
+  much damping is layered on (at rest vn≈0 so the damper is silent and only the spring acts).  Re-tuned
+  `contact_force` to a SOFT spring + STRONG damper (wall k 1.5e6→4e5, c 9e4→1.5e5; soft k 1.2e5→8e4,
+  c 4e4→7e4) and dropped the per-frame outward Δv cap `CONTACT_DVMAX` 16→8 — you drive in, stop dead, and
+  ease back onto the road, no catapult.
+- **Colliding with AI is now something to fear.** The old symmetric momentum exchange (`j/pm ≈ 0.56·vrel`)
+  was a mild knock and a glancing hit cost no speed, so the player plowed through "and got the better of
+  it."  The PLAYER now takes a hard knock (`PLAYER_HIT 1.8×` on the normal/lateral shove + bigger FF kick)
+  and ANY contact scrubs speed (a big scrub driving into a car, a smaller one side-swiping).  A subtle
+  VERTICAL unsettle returns on wheel-to-wheel hits (a hop + body rock, capped 3.0 m/s — "no superball").
+  The AI response stays BOUNDED (R1: it must not be rocketed or have its lap count inflated).
+- **AI crawl/clump on Monza fixed ("I only saw them once, bunched up").** The side-by-side yield multiplied
+  the trailing car's speed by 0.90 EVERY FRAME while overlapping; at a tight corner (the Lesmos chicane)
+  step-1 re-converges both cars' target lanes within a car-width every frame, so the `*0.90` compounded
+  (`0.9^30 ≈ 0.04` in half a second) and the field crawled to a stop and clumped.  Now the trailing car
+  TUCKS into single file behind (eased apart, dropped to a clean gap, speed matched — not multiplied), the
+  way a real field threads a chicane.  No per-frame compounding → no crawl.
+- **SHIFT-R now drops you on the road CENTRE.** With recentre off on Monza, lane-0 is the raw `.trk` groove
+  that hugs the road edge — "SH-R always put me off to one side."  SHIFT-R now scans to the road-mesh edges
+  and drops at the geometric midpoint (offset ≈0 on recentred tracks, so safe everywhere).
+
+## Earlier (2026-06-29 latest) — PO round 4: Monza road course, inelastic collisions, AI avoidance, cockpit revert
 
 - **Monza fixed — switched from the broken monza10k to the regular road course.** monza10k is
   GPL's 10 km banked *combined* circuit (road + old oval); our pipeline mishandles it (lap ~9998 m,

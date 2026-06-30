@@ -326,13 +326,20 @@ object `kind`, return the body-frame `(Fx,Fy,Mz)` to feed `extforce3d!` BEFORE t
 
 The outward force is clamped to a per-frame impulse ≤ m·CONTACT_DVMAX (a penalty contact) so a stiff
 wall held constant over a render frame can't blow the integrator up.  Contact can only PUSH, not pull."""
-const CONTACT_DVMAX = 16.0
+const CONTACT_DVMAX = 8.0                                          # PO round-4: a hit must not FLING the car — cap the per-frame outward Δv (was 16 = "rubber-band sling-back")
 function contact_force(δ, nx, nz, vn, θ; kind = :wall, m = 617.0, dt = 1/60, arm = 1.4)
     δ <= 0.0 && return (0.0, 0.0, 0.0)
+    # PO round 4: trackside objects still felt like "a big rubber band that slings you back the other
+    # way".  A stiff penalty SPRING is conservative — it stores k·δ² of energy on the way in and returns
+    # all of it on the way out (the sling), no matter how much damping is layered on top (at rest vn≈0 so
+    # the damper is silent and only the spring acts).  INELASTIC contact = a SOFT spring (just enough to
+    # stop slow creep-through, its static push is a gentle nudge not a catapult) + a STRONG two-sided
+    # damper that does the real work of killing the approach velocity.  You drive in, stop dead, and ease
+    # back onto the road — no catapult.
     if kind === :soft
-        k = 1.2e5; c = 4.0e4; give = 0.3; twoSided = true        # PO: haybales were still "as if not there" — firmed 4× (k 3e4→1.2e5) so you crush in, lose real speed, and get punished, like the kerbs; two-sided damping = no bounce, still softer than a :wall (you can plough through, slowly)
+        k = 8.0e4; c = 7.0e4; give = 0.3; twoSided = true        # hedge/hay: weak spring, strong damp — crush in, bleed speed, no spring-back
     else
-        k = 1.5e6; c = 9.0e4; give = 0.0; twoSided = true        # PO: collisions INELASTIC, more damping — a two-sided damper (was one-sided = full elastic rebound) absorbs the bounce, so a curb clip scrubs energy and eases you back onto the road instead of ping-ponging you between the kerbs
+        k = 4.0e5; c = 1.5e5; give = 0.0; twoSided = true        # barrier/wall: soft spring (gentle release) + strong damper (hard stop) ⇒ inelastic, no sling
     end
     δeff = max(δ - give, 0.0)                                     # the soft give-zone holds the car with no push-back
     damp = twoSided ? -c*vn : -c*min(vn, 0.0)                    # :wall damps approach only (so it rebounds)
