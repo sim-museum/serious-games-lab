@@ -36,6 +36,7 @@
       this.stats = new PA.SessionStats(2);
       this.oppModel = new PA.OpponentModel();
       this.tilt = new PA.TiltDetector();
+      this.journal = new PA.DecisionJournal();   // Brier-calibration source
 
       this.events = [];           // recent log lines for the feed
       this.handResult = null;
@@ -43,6 +44,7 @@
       this.lastStreet = 'Preflop';
       this.history = null;        // structured per-hand history (building)
       this.lastHistory = null;    // last completed hand's history (for summary)
+      this.handHistories = [];    // every completed hand this session (replay browser)
       this.training = !!opts.training;   // ToM training screen on/off
       this.tomTab = 'advisor';    // active ToM tab
       this.rangeMode = 'neutral'; // 'loose'(opps weak) | 'neutral' | 'tight'(opps strong)
@@ -70,6 +72,13 @@
       this.specPaused = true;        // bots-only run-out starts PAUSED (readable)
       this.spectatedThisHand = false;// drove the spectator this hand → auto-open summary
       this.handAssists = {};         // {playerName: Set(assist)} used while still in hand
+      // ---- online play (WebRTC) ----
+      this.remoteSeats = new Set();  // host: seats controlled by remote peers
+      this.netHost = null;           // host: NetHost driver (broadcasts events)
+      this.netGuest = null;          // guest: NetGuest driver (sends actions)
+      this.follower = !!opts.follower; // guest: mirror state, never runs the engine
+      this.mySeat = opts.mySeat != null ? opts.mySeat : 0;
+      this.requestedRemote = -1;     // host: seat we've already sent ACTION_REQUEST for
 
       this.game = new PG.Game({
         rng: opts.rng || Math.random,
@@ -86,7 +95,7 @@
     humanToAct() { return this.game.awaitingAction && this.humanSeats.has(this.game.toAct); }
     // the seat to render as "the viewer/hero" — the acting human in hotseat,
     // else seat 0. All hero-perspective analysis keys off this.
-    heroSeat() { return this.humanToAct() ? this.game.toAct : 0; }
+    heroSeat() { if (this.follower) return this.mySeat; return this.humanToAct() ? this.game.toAct : 0; }
     // hotseat privacy gate: a human must arm before their cards are shown.
     // Suppressed while a just-folded player is mid-review (they pass first).
     get passGate() { return this.hotseat && this.humanToAct() && !this.armed && !this.spectating; }
@@ -103,7 +112,7 @@
     // Manual God peek pre-fold is only allowed when there are no other human
     // players (you can't peek at other humans' cards mid-hand). After you fold,
     // the spectator God-view is always available regardless.
-    canUseGod() { return this.humanSeats.size <= 1; }
+    canUseGod() { if (this.follower || this.netHost) return false; return this.humanSeats.size <= 1; }
     toggleGod() {
       if (!this.godMode && !this.canUseGod()) return;   // blocked: humans at the table
       this.godMode = !this.godMode;
@@ -199,12 +208,24 @@
     }
 
     newHand() {
+      // guests never deal — the host drives hand starts over the wire
+      if (this.follower) return;
       this.handResult = null;
       this.events = [];
       this.heroEquity = null;
       if (this.hotseat) this.armed = false;   // first player must arm
+      // "beat the defaults": every bot busted, a human still has chips → unlock
+      // the advanced random pool (mirrors beat_defaults_unlocked).
+      const withChips = this.game.players.filter(p => p.stack > 0);
+      if (withChips.length >= 1 && withChips.every(p => this.humanSeats.has(p.seat)) &&
+          this.game.players.some(p => !this.humanSeats.has(p.seat))) {
+        this.markBeatDefaults && this.markBeatDefaults();
+      }
       // bust-out → offer reset
       if (this.game.players.filter(p => p.stack > 0).length < 2) this.game.resetStacks();
+      // host: seat any guests who joined mid-hand before dealing
+      if (this.netHost) this.netHost.applyPendingSeats();
+      this.applyBotPrefs && this.applyBotPrefs();
       this.stats.bbAmount = this.game.bb();
       const ok = this.game.dealHand();
       if (!ok) { this.game.resetStacks(); this.game.dealHand(); }
@@ -248,6 +269,7 @@
         this.logStreet(payload);
         if (this.spectating) this.captureSpecSnapshot();
       } else if (type === 'action') {
+        this.requestedRemote = -1;   // a turn resolved → allow the next ACTION_REQUEST
         this.recordHistoryAction(payload);
         this.trackOppAction(payload);
         this.logAction(payload);
@@ -257,6 +279,8 @@
         this.logHandEnd(payload);
         this.onHandComplete(payload);
       }
+      // host: forward every engine event to connected peers
+      if (this.netHost) this.netHost.onEngineEvent(type, payload);
     }
 
     // ---- exact-format log writers (mirror pokerIQ.py) ----
@@ -309,7 +333,10 @@
       // computed over actual hands at the freshly-dealt board.
       const active = g.activePlayers();
       let eq = [];
-      if (active.length >= 2) eq = E.equityMultiway(active.map(p => p.hand), payload.board, { iterations: 300, rng: this.auxRng });
+      // [STATS] needs god-view hands; a guest mirror only knows its own, so skip
+      // when any active hand is unknown (the host's log carries the real numbers).
+      const allKnown = active.every(p => p.hand.length === 2);
+      if (active.length >= 2 && allKnown) eq = E.equityMultiway(active.map(p => p.hand), payload.board, { iterations: 300, rng: this.auxRng });
       const rows = active.map((p, i) => {
         const toCall = Math.max(0, g.currentBet - p.betInRound);
         const potOdds = (g.pot + toCall) > 0 ? toCall / (g.pot + toCall) : 0;
@@ -496,9 +523,41 @@
     refreshHeroEquity() {
       const hero = this.game.players[this.heroSeat()];
       if (!hero.active || !hero.hand.length) { this.heroEquity = null; return; }
-      const opps = this.game.activePlayers().filter(p => p !== hero).length || 1;
-      this.heroEquity = E.equityVsRandom(hero.hand, this.game.board,
-        { iterations: this.opts.equityIters || 600, opponents: opps, rng: this.auxRng });
+      const others = this.game.activePlayers().filter(p => p !== hero);
+      const iters = this.opts.equityIters || 600;
+      // Prefs ▸ Equity: "use only publicly revealed cards" (default true) → vs
+      // random ranges. Off → true (god) equity against opponents' actual hands.
+      if (this.visibleCardsOnly === false && others.every(p => p.hand.length === 2)) {
+        const eq = E.equityMultiway([hero.hand].concat(others.map(p => p.hand)), this.game.board, { iterations: iters, rng: this.auxRng });
+        this.heroEquity = eq[0] != null ? eq[0] : null;
+      } else {
+        this.heroEquity = E.equityVsRandom(hero.hand, this.game.board,
+          { iterations: iters, opponents: others.length || 1, rng: this.auxRng });
+      }
+    }
+
+    // Apply per-seat bot preferences (Prefs ▸ AI Opponents) to the current
+    // table. 'default' leaves the seat's lineup style alone. Takes effect on the
+    // next hand (changing a busy seat mid-hand would desync the engine).
+    applyBotPrefs() {
+      const P = root.PokerPrefs;
+      const Prefs = P ? P.Prefs : null;
+      const names = PG.CUTE_NAMES;
+      if (!Prefs) return;
+      for (let i = 0; i < this.game.players.length; i++) {
+        if (this.humanSeats.has(i)) continue;
+        const pick = Prefs.botFor(i);
+        if (!pick || pick === 'default') continue;
+        const p = this.game.players[i];
+        p.style = pick;
+        p.name = names[pick] || p.name;
+      }
+    }
+
+    // Called at end of a game (hero outlasts all bots) to unlock the random pool.
+    markBeatDefaults() {
+      const P = root.PokerPrefs;
+      if (P && P.Prefs) P.Prefs.set('beatDefaults', true);
     }
 
     // advisor readout for the hero panel
@@ -535,9 +594,17 @@
 
     // the acting human seat plays
     act(action, amount) {
+      // guest: relay to the host instead of touching the (mirror) engine
+      if (this.follower) { if (this.netGuest) this.netGuest.sendAction(action, amount); return; }
       if (!this.humanToAct()) return;
       const seat = this.game.toAct;
       this.stats.actionFinished();
+      // journal this decision (equity at decision time = the prediction) so the
+      // Calibration trainer can Brier-score it once the hand resolves.
+      if (this.journal && seat === this.heroSeat() && this.heroEquity != null) {
+        const a = action === 'f' ? 'fold' : action === 'r' ? 'raise' : (this.game.legalActions(seat).canCheck ? 'check' : 'call');
+        this.journal.record({ handNumber: this.game.handNumber, street: this.streetName(), action: a, predictedEquity: this.heroEquity });
+      }
       this.game.applyAction(seat, action, amount);
       if (action === 'f') this.maybeEnterSpectator(seat);   // fold → watch (God view)
       if (this.hotseat) this.armed = false;   // re-gate for the next player
@@ -552,6 +619,18 @@
     // used by the headless tests) or step it on a timer so play is watchable.
     pump() {
       const g = this.game;
+      // guest mirror never advances the engine itself — it only renders whatever
+      // authoritative state the host has streamed in.
+      if (this.follower) { this.render(); return; }
+      // host: when a REMOTE seat is to act, ask that peer for an action (once)
+      // and wait — don't surface local buttons or run a bot timer. (Remote seats
+      // are 'human' style to the engine but are NOT in the host's humanSeats, so
+      // their cards stay hidden from the host.)
+      if (this.netHost && g.awaitingAction && this.remoteSeats.has(g.toAct)) {
+        if (this.requestedRemote !== g.toAct) { this.requestedRemote = g.toAct; this.netHost.requestAction(g.toAct, g.legalActions(g.toAct)); }
+        this.render();
+        return;
+      }
       // A folded human is reviewing (God view). If another human still has to
       // act, freeze the hand until they tap "Pass device →" (so the device can
       // hand off privately). If only bots remain, let the run-out play live so
@@ -582,9 +661,15 @@
       if (g.handInProgress && g.awaitingBot >= 0) {
         if (this.botDelayMs <= 0) {
           let guard = 0;
-          while (g.handInProgress && g.awaitingBot >= 0 && !this.humanToAct()) {
+          while (g.handInProgress && g.awaitingBot >= 0 && !this.humanToAct()
+                 && !(this.netHost && g.awaitingAction && this.remoteSeats.has(g.toAct))) {
             if (++guard > 500) break;
             g.stepBot();
+          }
+          // stopped at a remote seat → ask that peer (the top-of-pump branch is
+          // not re-entered on this synchronous path)
+          if (this.netHost && g.awaitingAction && this.remoteSeats.has(g.toAct) && this.requestedRemote !== g.toAct) {
+            this.requestedRemote = g.toAct; this.netHost.requestAction(g.toAct, g.legalActions(g.toAct));
           }
           if (this.humanToAct() && !this.passGate) this.stats.actionStarted();
           this.render();
@@ -599,10 +684,103 @@
 
     onHandComplete(result) {
       this.handResult = result;
-      const heroNet = (result.net.find(n => n.seat === 0) || { net: 0 }).net;
+      const heroResultSeat = this.follower ? this.mySeat : 0;
+      const heroNet = (result.net.find(n => n.seat === heroResultSeat) || { net: 0 }).net;
       this.stats.recordHandResult(heroNet);
+      // attach the predicted-equity journal entries' outcome, for Brier calibration
+      if (this.journal) this.journal.attachResult(this.game.handNumber, heroNet);
+      if (this.lastHistory) this.handHistories.push(this.lastHistory);
       this.render();
       this.onHandEnd(result);
+    }
+
+    // ---- save / restore a full game (File ▸ Save / Load) ----
+    // Mirrors pokerIQ.py _build_save_state / _apply_save_state: persists the
+    // engine + the session-derived state so a loaded game resumes mid-hand.
+    saveState() {
+      const g = this.game;
+      return {
+        pokerIQ_save_version: 2,
+        saved_at: this.dateStr(),
+        game: {
+          players: g.players.map(p => ({
+            name: p.name, style: p.style, seat: p.seat, stack: p.stack,
+            hand: p.hand.slice(), active: p.active, betInRound: p.betInRound,
+            actionsThisRound: p.actionsThisRound, totalInvested: p.totalInvested,
+            lastAction: p.lastAction, allIn: p.allIn,
+          })),
+          board: g.board.slice(), deck: g.deck.slice(), pot: g.pot,
+          dealerIdx: g.dealerIdx, currentBet: g.currentBet, streetIdx: g.streetIdx,
+          toAct: g.toAct, minRaiseTo: g.minRaiseTo, lastRaiseSize: g.lastRaiseSize,
+          handNumber: g.handNumber, blindLevel: g.blindLevel,
+          handInProgress: g.handInProgress, awaitingAction: g.awaitingAction,
+          awaitingBot: g.awaitingBot, actionLog: g.actionLog.slice(),
+          lastResult: g.lastResult,
+        },
+        ctrl: {
+          events: this.events.slice(), lastStreet: this.lastStreet,
+          prevBlindLevel: this.prevBlindLevel, holeStats: this.holeStats,
+          tableStats: this.tableStats, logMsgs: this.logbook.msgs.slice(),
+          gameStatusLogged: this.logbook.gameStatusLogged, logStarted: this.logStarted,
+          handResult: this.handResult, history: this.history, lastHistory: this.lastHistory,
+          humanSeats: [...this.humanSeats], hotseat: this.hotseat,
+          origPlayerCount: this.origPlayerCount, origBlinds: this.origBlinds,
+          session: { hand_results: this.stats.handResults.slice(), bbAmount: this.stats.bbAmount },
+        },
+      };
+    }
+
+    loadState(s) {
+      if (!s || !s.game) throw new Error('not a PokerIQ save file');
+      const G = s.game;
+      const g = new PG.Game({
+        rng: this.opts.rng || Math.random, godMode: this.godMode, manualBots: true,
+        seats: G.players.map(p => ({ name: p.name, style: p.style })),
+        botDecide: (gg, p) => PB.decide(gg, p),
+        onEvent: (t, payload) => this.onGameEvent(t, payload),
+      });
+      G.players.forEach((sp, i) => {
+        const p = g.players[i];
+        p.stack = sp.stack; p.hand = sp.hand.slice(); p.active = sp.active;
+        p.betInRound = sp.betInRound; p.actionsThisRound = sp.actionsThisRound;
+        p.totalInvested = sp.totalInvested; p.lastAction = sp.lastAction; p.allIn = sp.allIn;
+      });
+      g.board = G.board.slice(); g.deck = (G.deck || []).slice(); g.pot = G.pot;
+      g.dealerIdx = G.dealerIdx; g.currentBet = G.currentBet; g.streetIdx = G.streetIdx;
+      g.toAct = G.toAct; g.minRaiseTo = G.minRaiseTo; g.lastRaiseSize = G.lastRaiseSize;
+      g.handNumber = G.handNumber; g.blindLevel = G.blindLevel;
+      g.handInProgress = G.handInProgress; g.awaitingAction = G.awaitingAction;
+      g.awaitingBot = (G.awaitingBot == null ? -1 : G.awaitingBot); g.actionLog = (G.actionLog || []).slice();
+      g.lastResult = G.lastResult || null;
+      this.game = g;
+      const c = s.ctrl || {};
+      this.events = (c.events || []).slice(); this.lastStreet = c.lastStreet || 'Preflop';
+      this.prevBlindLevel = c.prevBlindLevel || 0; this.holeStats = c.holeStats || {};
+      this.tableStats = c.tableStats || {}; this.history = c.history || null;
+      this.lastHistory = c.lastHistory || null; this.handResult = c.handResult || null;
+      this.humanSeats = new Set(c.humanSeats || [0]); this.hotseat = !!c.hotseat;
+      this.armed = !this.hotseat;
+      this.origPlayerCount = c.origPlayerCount != null ? c.origPlayerCount : null;
+      this.origBlinds = c.origBlinds || null;
+      this.logbook = new (getLog()).LogBook();
+      this.logbook.msgs = (c.logMsgs || []).slice();
+      this.logbook.gameStatusLogged = !!c.gameStatusLogged;
+      this.logStarted = !!c.logStarted;
+      if (c.session) { this.stats.handResults = (c.session.hand_results || []).slice(); this.stats.bbAmount = c.session.bbAmount || g.bb(); }
+      this.heroEquity = null;
+      if (g.handInProgress) this.refreshHeroEquity();
+      this.render();
+      this.pump();
+    }
+
+    // Buy more chips between hands (single-player top-up), mirrors File ▸ Buy More Chips.
+    buyChips(amount, seat) {
+      seat = seat == null ? 0 : seat;
+      const p = this.game.players[seat];
+      if (!p || amount <= 0) return false;
+      p.stack += Math.floor(amount);
+      this.render();
+      return true;
     }
 
     // derive a player's action-tag set this hand from the history
@@ -729,6 +907,50 @@
       };
     }
 
+    // Build a god-view, line-numbered hand text for Claude analysis — mirrors the
+    // desktop ClaudeAnalysisThread input (hole cards + numbered action lines per
+    // street + result). Returns { text, lineMap } where lineMap[n] = action ref.
+    handTextForClaude(h) {
+      h = h || this.lastHistory; if (!h) return null;
+      const cs = cards => cards.map(c => E.cardToStr(c)).join(' ');
+      const L = [];
+      L.push(`Hand #${h.handNumber} — ${this.game.players.length}-handed No-Limit Hold'em, blinds $${this.game.sb()}/$${this.game.bb()}`);
+      L.push('Hands (known, god view):');
+      (h.holeCards || []).forEach(x => L.push(`  ${x.name} (seat ${x.seat}): ${cs(x.cards)}`));
+      const startBy = {}; (h.startStacks || []).forEach(x => startBy[x.seat] = x.stack);
+      L.push('Starting stacks: ' + (h.startStacks || []).map(x => `${x.name} $${x.stack}`).join(', '));
+      let n = 0; const lineMap = {};
+      const verb = a => a.action === 'post' ? `posts $${a.amount}`
+        : a.action === 'raise' ? (a.opening ? `bets $${a.total}` : `raises to $${a.total}`)
+        : a.action === 'call' ? `calls $${a.amount}` : a.action === 'check' ? 'checks' : a.action === 'fold' ? 'folds' : a.action;
+      (h.streets || []).forEach(st => {
+        const board = st.board && st.board.length ? ` [board: ${cs(st.board)}]` : '';
+        L.push('');
+        L.push(`--- ${st.name} ---${board}`);
+        st.actions.forEach(a => {
+          if (a.action === 'post') { L.push(`    ${a.name} ${verb(a)}`); return; }
+          n += 1; lineMap[n] = { seat: a.seat, street: st.name };
+          L.push(`${n}. ${a.name} ${verb(a)}`);
+        });
+      });
+      if (h.result) {
+        L.push('');
+        L.push('Result:');
+        (h.result.net || []).forEach(r => L.push(`  ${r.name}: ${r.net >= 0 ? '+' : '-'}$${Math.abs(r.net)} (→ $${r.stack})`));
+      }
+      return { text: L.join('\n'), lineMap, lineCount: n };
+    }
+
+    // Which human-ish POVs to critique (all human seats; fallback to seat 0).
+    claudePovs() {
+      const h = this.lastHistory || this.history;
+      const seats = (this.humanSeats && this.humanSeats.size) ? [...this.humanSeats] : [0];
+      return seats.map(s => {
+        const p = this.game.players[s];
+        return { name: p ? p.name : ('Seat ' + s), seat: s };
+      });
+    }
+
     lastAggressorSeat() {
       if (!this.history) return -1;
       let seat = -1;
@@ -753,7 +975,7 @@
       const heroFolded = !this.hotseat && !g.players[0].active && g.handInProgress;
       const revealVillains = this.godMode || heroFolded;
       const showTellsEff = this.showTells || heroFolded;
-      const armedHuman = this.humanToAct() && (!this.hotseat || this.armed);
+      const armedHuman = this.humanToAct() && (!this.hotseat || this.armed) && !this.remoteSeats.has(g.toAct);
       return {
         players: g.players.map(p => ({
           seat: p.seat, name: p.name, style: p.style, stack: p.stack,
@@ -826,10 +1048,13 @@
           <div class="piq-menu">
             <label class="train-toggle" id="piq-train"><span class="tt-knob"></span><span class="tt-lab">Training</span></label>
             <button data-act="players" class="ghost">Players</button>
+            <button data-act="net" class="ghost" title="Play remotely with friends — serverless WebRTC, no install">Online</button>
             <button data-act="tells" class="ghost">Tells</button>
             <button data-act="god" class="ghost">God</button>
             <button data-act="trainers" class="ghost">Trainers ▾</button>
             <button data-act="stats" class="ghost">Stats</button>
+            <button data-act="file" class="ghost" title="Save / load a game, buy chips, replay a log">File ▾</button>
+            <button data-act="prefs" class="ghost">Prefs</button>
             <button data-act="savelog" class="ghost" title="Download the full session log (PyQt-format) for AI analysis">⤓ Log</button>
             <button data-act="help" class="ghost">?</button>
           </div>
@@ -876,6 +1101,10 @@
         else if (this.onMenu) this.onMenu(act);
       });
       this.el.train.addEventListener('click', () => { this.ctrl.toggleTraining(); });
+      // keyboard shortcuts (parity with the desktop app: F/K/C/R/B/N/G/S/T/Space + arrows)
+      if (typeof document !== 'undefined' && document.addEventListener) {
+        document.addEventListener('keydown', e => this.onKey(e));
+      }
       // delegated clicks inside the ToM view (tabs + range-mode radio)
       this.el.tomView.addEventListener('click', e => {
         const tab = e.target.closest('[data-tab]'); if (tab) { this.ctrl.tomTab = tab.getAttribute('data-tab'); this.ctrl.render(); return; }
@@ -883,7 +1112,44 @@
       });
     }
 
+    // keyboard shortcuts — only when not typing into a field / modal open
+    onKey(e) {
+      const s = this._last; if (!s) return;
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (this.el.modal && this.el.modal.style.display !== 'none') return;
+      const k = (e.key || '').toLowerCase();
+      // spectator navigation
+      if (s.spectating) {
+        if (e.key === 'ArrowLeft') { this.ctrl.specPrev(); e.preventDefault(); }
+        else if (e.key === 'ArrowRight') { this.ctrl.specNext(); e.preventDefault(); }
+        else if (e.key === 'Escape') { this.ctrl.exitSpectator(); e.preventDefault(); }
+        return;
+      }
+      if (s.handResult) {                      // between hands
+        if (k === 'n' || k === 'enter') { if (this.ctrl.canDeal !== false) this.ctrl.newHand(); e.preventDefault(); }
+        else if (k === 'h') { this.showHandSummary(this.ctrl.lastHistory); e.preventDefault(); }
+        return;
+      }
+      if (k === 'g') { this.ctrl.toggleGod(); e.preventDefault(); return; }
+      if (k === 't') { this.ctrl.toggleTraining(); e.preventDefault(); return; }
+      if (k === 'y') { this.ctrl.toggleTells(); e.preventDefault(); return; }   // 's' is taken by spades; use Y for tells? keep both
+      if (k === 's') { this.ctrl.toggleTells(); e.preventDefault(); return; }
+      // betting actions (only when it's the local human's turn and not gated)
+      if (!s.awaitingHero || !s.legal || s.passGate) return;
+      const L = s.legal;
+      if (k === 'f') { this.ctrl.act('f', 0); e.preventDefault(); }
+      else if (k === 'k' && L.canCheck) { this.ctrl.act('c', 0); e.preventDefault(); }
+      else if (k === 'c' && !L.canCheck) { this.ctrl.act('c', 0); e.preventDefault(); }
+      else if (e.key === ' ') { this.ctrl.act('c', 0); e.preventDefault(); }   // primary: check or call
+      else if ((k === 'r' || k === 'b') && L.canRaise) {
+        const amt = Math.min(L.maxRaiseTo, Math.max(L.minRaiseTo, Math.floor(L.pot * 0.66) + L.toCall));
+        this.ctrl.act('r', amt); e.preventDefault();
+      }
+    }
+
     render(s) {
+      this._last = s;
       this.el.hand.textContent = `Hand #${s.handNumber} · ${s.street}`;
       this.el.blinds.textContent = `Blinds $${s.sb}/$${s.bb}`;
       this.el.session.textContent = `Session ${s.session.hands}h · ${s.session.bb100 >= 0 ? '+' : ''}${s.session.bb100.toFixed(1)} bb/100`;
@@ -1120,12 +1386,16 @@
       if (view === 'stats') body = this.summaryStatsHTML(data, flags);
       else if (view === 'log') body = this.summaryLogHTML(h);
       else body = this.summaryBasicHTML(data, flags);
-      card.innerHTML = `<h2>Hand Summary</h2><div class="hs-body">${body}</div><div class="modal-actions hs-actions"></div>`;
+      // any Claude analysis already run for this hand shows at the top
+      const PC = root.PokerClaude;
+      const claudeBlock = (h.claudeAnalysis && PC) ? `<div class="hs-claude"><h3 style="margin:0 0 8px;color:var(--pos);">Claude analysis</h3>${PC.blocksHTML(h.claudeAnalysis)}</div>` : '';
+      card.innerHTML = `<h2>Hand Summary</h2><div class="hs-body">${claudeBlock}${body}</div><div class="modal-actions hs-actions"></div>`;
       const mk = (label, cls, fn) => { const b = document.createElement('button'); b.className = cls; b.textContent = label; b.onclick = fn; return b; };
       const act = card.querySelector('.hs-actions');
       if (view !== 'basic') act.appendChild(mk('Analysis', 'ghost', () => this.switchSummary('basic')));
       if (view !== 'stats') act.appendChild(mk('Stats', 'btn check', () => this.switchSummary('stats')));
       if (view !== 'log') act.appendChild(mk('Hand Log', 'btn raise', () => this.switchSummary('log')));
+      if (PC) act.appendChild(mk('🔍 Analyze (Claude)', 'btn summary', () => PC.analyzeHand({ ctrl: this.ctrl, view: this }, h, 'critique')));
       act.appendChild(mk('Close', 'ghost', () => this.closeModal()));
       return card;
     }

@@ -11,7 +11,7 @@ const SRC = path.join(__dirname, 'src');
 const OUT = path.join(__dirname, '..', 'pokerIQ.html');
 
 const css = fs.readFileSync(path.join(SRC, 'styles.css'), 'utf8');
-const order = ['engine.js', 'game.js', 'bots.js', 'analytics.js', 'tomlogic.js', 'tom.js', 'logfile.js', 'ui.js', 'trainers.js', 'main.js'];
+const order = ['engine.js', 'game.js', 'bots.js', 'analytics.js', 'tomlogic.js', 'tom.js', 'logfile.js', 'ui.js', 'trainers.js', 'files.js', 'prefs.js', 'claude.js', 'netplay.js', 'main.js'];
 const js = order.map(f => `// ===== ${f} =====\n` + fs.readFileSync(path.join(SRC, f), 'utf8')).join('\n\n');
 
 const html = `<!DOCTYPE html>
@@ -36,10 +36,22 @@ ${js}
 fs.writeFileSync(OUT, html);
 const kb = (Buffer.byteLength(html) / 1024).toFixed(0);
 console.log(`built ${path.relative(path.join(__dirname, '..', '..', '..'), OUT)} — ${kb} KB, ${html.split('\n').length} lines`);
-// guard: no external network references allowed (truly self-contained).
-// Match real external resources — a markup src/href pointing at a URL, or any
-// http(s)/cdn reference — but NOT JS property assignments like `a.href = url`
-// (which we use for the in-memory blob download).
-const bad = html.match(/(?:src|href)\s*=\s*["'](?!#)(?:https?:|\/\/)|https?:\/\/[^"'\s]|\bcdn\./gi);
+// guard: no external resources are LOADED at page-load (truly self-contained —
+// no external <script>/<link>/<img>, no CDN). Opt-in *runtime* endpoints that
+// the user explicitly triggers (the Anthropic API for Claude analysis; STUN for
+// WebRTC online play) are allowed — they don't make the file non-self-contained,
+// they're network actions the user invokes, mirroring the desktop app's CLI /
+// LAN features. Strip those known runtime hosts before scanning.
+const RUNTIME_HOSTS = [
+  'https://api.anthropic.com',     // Claude hand-analysis (user supplies a key)
+  'https://console.anthropic.com', // referenced in help text only
+  'stun:',                         // WebRTC peer connectivity (online play)
+];
+let scan = html;
+for (const h of RUNTIME_HOSTS) scan = scan.split(h).join('runtime-endpoint');
+// Match real external resources — a markup src/href pointing at a URL, a CDN
+// reference, or any remaining bare http(s) URL — but NOT JS property assignments
+// like `a.href = url` (the in-memory blob download).
+const bad = scan.match(/(?:src|href)\s*=\s*["'](?!#)(?:https?:|\/\/)|https?:\/\/[^"'\s]|\bcdn\./gi);
 if (bad) { console.error('  WARNING external refs:', bad); process.exit(1); }
-console.log('  self-contained: no external network references');
+console.log('  self-contained: no external resources loaded (runtime API/STUN endpoints are opt-in)');

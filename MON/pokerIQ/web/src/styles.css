@@ -6,7 +6,7 @@
   --bg:#0c1117; --felt:#15543a; --felt2:#0f4030; --rail:#3a2a1a;
   --ink:#eef3f7; --muted:#9aa7b4; --line:#243; --gold:#d9b25b;
   --chip:#e6c04a; --pos:#3fb950; --neg:#f85149; --neu:#9aa7b4; --accent:#58a6ff;
-  --card-red:#d23b3b; --card-dark:#1a1f29;
+  --card-red:#d23b3b; --card-dark:#1a1f29; --card-blue:#1f6fd0; --card-green:#1f9d57;
 }
 *{box-sizing:border-box;}
 html,body{margin:0;height:100%;}
@@ -69,7 +69,12 @@ button{font:inherit;cursor:pointer;}
   width:60px;height:84px;border-radius:8px;background:#f6f7f9;color:var(--card-dark);
   box-shadow:0 2px 5px rgba(0,0,0,.45);font-weight:700;line-height:1;border:1px solid #cfd6df;}
 .card b{font-size:26px;} .card i{font-style:normal;font-size:23px;}
-.card.heart,.card.diamond{color:var(--card-red);}
+/* modern 4-color deck (desktop default): red hearts, blue diamonds, green clubs, dark spades */
+.card.heart{color:var(--card-red);} .card.diamond{color:var(--card-blue);}
+.card.club{color:var(--card-green);} .card.spade{color:var(--card-dark);}
+/* legacy 2-color deck (Prefs ▸ Display): red hearts+diamonds, black clubs+spades */
+.legacy-colors .card.heart,.legacy-colors .card.diamond{color:var(--card-red);}
+.legacy-colors .card.club,.legacy-colors .card.spade{color:var(--card-dark);}
 .card.back{background:repeating-linear-gradient(45deg,#7a1f1f,#7a1f1f 7px,#5e1414 7px,#5e1414 14px);border:1px solid #4a0f0f;}
 .card.empty{background:transparent;border:1px dashed rgba(255,255,255,.18);box-shadow:none;}
 .seat .card{width:48px;height:66px;} .seat .card b{font-size:20px;} .seat .card i{font-size:17px;}
@@ -292,3 +297,46 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 .hs-hindsight{margin-top:10px;background:#1a1408;border-left:4px solid var(--gold);border-radius:6px;
   padding:10px 14px;color:#e6cf9a;font-size:16px;line-height:1.4;}
 .hs-hindsight b{color:var(--gold);}
+
+/* ===== File menu, hand-history, prefs, online, claude dialogs ===== */
+.log-preview{width:100%;min-height:180px;max-height:46vh;background:#0b0f15;color:#cfe3d6;border:1px solid var(--line);
+  border-radius:8px;padding:12px 14px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px;resize:vertical;white-space:pre;overflow:auto;}
+.lg-file{display:block;margin:6px 0 12px;font-size:16px;color:var(--ink);}
+.buy-row{display:flex;align-items:center;gap:12px;font-size:19px;margin:8px 0;}
+.buy-row input,.pf-row input,.net-row input{background:#0b0f15;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:9px 12px;font-size:18px;}
+.hh-scroll{max-height:56vh;overflow:auto;border:1px solid var(--line);border-radius:10px;}
+.hh-table,.net-table{width:100%;border-collapse:collapse;font-size:17px;}
+.hh-table th,.net-table th{position:sticky;top:0;background:#0d141c;text-align:left;color:var(--muted);font-size:13px;
+  text-transform:uppercase;letter-spacing:.4px;padding:8px 12px;}
+.hh-table td,.net-table td{padding:7px 12px;border-top:1px solid var(--line);font-variant-numeric:tabular-nums;}
+.hh-table .hh-cards{font-family:ui-monospace,monospace;color:var(--gold);}
+.hh-nav{margin-right:auto;display:flex;align-items:center;gap:8px;}
+/* preferences */
+.pf-tabs{display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--line);}
+.pf-tab{background:transparent;border:0;border-bottom:2px solid transparent;color:var(--muted);padding:8px 14px;font-size:18px;cursor:pointer;}
+.pf-tab.on{color:var(--ink);border-bottom-color:var(--gold);font-weight:600;}
+.pf-row{display:flex;align-items:center;gap:12px;margin:14px 0;font-size:18px;}
+.pf-row label.lead{min-width:170px;}
+.pf-check{display:flex;align-items:flex-start;gap:10px;margin:14px 0;font-size:18px;cursor:pointer;}
+.pf-check input{margin-top:5px;transform:scale(1.3);}
+.pf-desc{color:var(--muted);font-size:15px;margin:-6px 0 14px 32px;line-height:1.4;}
+.pf-seat{display:grid;grid-template-columns:120px 1fr;gap:10px;align-items:center;margin:9px 0;font-size:17px;}
+.pf-seat select{background:#0b0f15;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:17px;width:100%;}
+.pf-status{font-size:15px;margin-top:10px;}
+/* online / netplay */
+.net-step{background:#0d141c;border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0;}
+.net-step h3{margin:0 0 8px;font-size:19px;color:var(--accent);}
+.net-blob{width:100%;min-height:90px;background:#0b0f15;color:#9fd2b4;border:1px solid var(--line);border-radius:8px;
+  padding:10px 12px;font-family:ui-monospace,monospace;font-size:12px;resize:vertical;word-break:break-all;}
+.net-chat{height:160px;overflow:auto;background:#0b0f15;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:16px;}
+.net-chat .me{color:var(--accent);} .net-chat .sys{color:var(--muted);font-style:italic;}
+.net-pill{display:inline-block;padding:2px 10px;border-radius:20px;font-size:14px;font-weight:600;}
+.net-pill.on{background:var(--pos);color:#06121f;} .net-pill.off{background:#54606c;color:#fff;} .net-pill.wait{background:var(--gold);color:#06121f;}
+.net-badge{position:fixed;right:14px;bottom:14px;z-index:55;background:#121922;border:1px solid var(--line);border-radius:10px;
+  padding:8px 12px;font-size:15px;color:var(--ink);box-shadow:0 4px 18px rgba(0,0,0,.5);}
+/* claude analysis */
+.cl-block{background:#0d1a12;border-left:4px solid var(--pos);border-radius:8px;padding:12px 16px;margin:12px 0;font-size:17px;line-height:1.5;}
+.cl-block .who{color:var(--pos);font-weight:700;display:block;margin-bottom:4px;}
+.cl-mark{font-weight:800;} .cl-mark.good{color:var(--pos);} .cl-mark.dub{color:var(--gold);} .cl-mark.bad{color:var(--neg);}
+.cl-busy{color:var(--gold);font-style:italic;}
+.cl-key{width:100%;font-family:ui-monospace,monospace;font-size:14px;}

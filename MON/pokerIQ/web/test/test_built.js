@@ -83,5 +83,50 @@ ok(built === Object.keys(window.PokerTrainers.REGISTRY).length, `all ${built} tr
 window.PIQ.openStats();
 ok(document.querySelector('.modal-card h2').textContent.includes('statistics'), 'stats panel opens');
 
+// ---- new desktop-parity features wired through the real menu ----
+const view = window.PIQ.view;
+ok(typeof window.PokerNet === 'object' && typeof window.PokerClaude === 'object' &&
+   typeof window.PokerFiles === 'object' && typeof window.PokerPrefs === 'object', 'new modules present in build');
+
+// menu buttons exist
+['net', 'file', 'prefs'].forEach(a => ok(app.querySelector(`[data-act="${a}"]`) != null, `menu button "${a}" present`));
+
+// Preferences opens with all three tabs
+view.onMenu('prefs');
+ok(/Preferences/.test(document.querySelector('.modal-card h2').textContent), 'Preferences dialog opens');
+ok(document.querySelectorAll('.pf-tab').length === 3, 'Preferences has Equity/Display/AI tabs');
+view.closeModal();
+
+// File ▾ popup → Save game modal
+view.onMenu('file');
+const filepop = document.querySelector('.menu-pop');
+ok(filepop && [...filepop.querySelectorAll('button')].some(b => /Save game/.test(b.textContent)), 'File menu lists Save game');
+const saveItem = [...filepop.querySelectorAll('button')].find(b => /Save game/.test(b.textContent));
+saveItem.click();
+ok(/Save game/.test(document.querySelector('.modal-card h2').textContent), 'Save game dialog opens');
+// the save payload round-trips through loadState
+const saveText = document.querySelector('.log-preview').value;
+ok(saveText.length > 50 && JSON.parse(saveText).game, 'save JSON is valid + has game state');
+view.closeModal();
+
+// Online (WebRTC) dialog opens (jsdom has no RTCPeerConnection → graceful path still builds the menu)
+view.onMenu('net');
+ok(/online/i.test(document.querySelector('.modal-card h2').textContent), 'Online play dialog opens');
+view.closeModal();
+
+// Hand Summary → Analyze (Claude) with no key shows the key prompt (no network)
+view.showHandSummary(ctrl.lastHistory);
+const analyzeBtn = [...document.querySelectorAll('.modal-card .btn')].find(b => /Analyze \(Claude\)/.test(b.textContent));
+ok(analyzeBtn != null, 'Hand Summary has an Analyze (Claude) button');
+analyzeBtn.click();
+ok(/Claude/.test(document.querySelector('.modal-card h2').textContent), 'Claude analysis dialog opens');
+ok(/API key/.test(document.querySelector('#cl-body').textContent), 'prompts for an API key when none set (no silent network)');
+view.closeModal();
+
+// legacy-colours preference toggles the 4-colour deck class
+window.PokerPrefs.Prefs.set('legacyColors', true); window.PokerPrefs.apply(ctrl);
+ok(app.classList.contains('legacy-colors') || document.body.classList.contains('legacy-colors'), 'legacy-colours pref applies a class');
+window.PokerPrefs.Prefs.set('legacyColors', false); window.PokerPrefs.apply(ctrl);
+
 console.log(`\n${fail === 0 ? '✓ ALL PASS' : '✗ FAILURES'} — ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

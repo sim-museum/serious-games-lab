@@ -26,7 +26,7 @@
       const ctx = {
         rng: Math.random,
         stats: ctrl.stats,
-        predictions: [],                      // calibration: none logged yet
+        predictions: ctrl.journal ? ctrl.journal.sessionPredictions() : [],   // calibration (Brier)
         actionHistory: ctrl.events.slice(),   // range narrowing uses last hand's log
         close: () => view.closeModal(),
       };
@@ -81,13 +81,17 @@
           <div class="k">Tells</div><div>show opponent ranges, leaks & thinking level</div>
           <div class="k">Raise</div><div>slider + ½ / ¾ / Pot / All-in quick buttons</div>
         </div>
-        <h3 style="margin:14px 0 6px;color:#9aa7b4;font-size:13px;text-transform:uppercase;">Not in the browser build</h3>
-        <div class="notice">
-          <b>LAN multiplayer</b> and <b>Claude hand-analysis</b> from the desktop app are intentionally
-          omitted: a single sandboxed HTML file cannot open raw TCP sockets or shell out to the
-          <code>claude</code> CLI. Everything else — engine, equity, bots, analytics, trainers, and
-          lifetime stats — runs fully offline in this one file.
+        <h3 style="margin:14px 0 6px;color:#9aa7b4;font-size:13px;text-transform:uppercase;">Full desktop parity — in one HTML file</h3>
+        <div class="kv">
+          <div class="k">Online play</div><div><b>Online</b> — serverless WebRTC: host a table, send invite codes, friends join from any browser (no install, no server).</div>
+          <div class="k">Hotseat</div><div><b>Players</b> — pass-and-play for up to 6 on one device, with privacy gates.</div>
+          <div class="k">Claude analysis</div><div>Hand Summary ▸ <b>Analyze (Claude)</b> — critiques your play via the Anthropic API (your own key; add it under ⚙ in that dialog).</div>
+          <div class="k">File</div><div>Save / load a game (mid-hand), buy chips, replay any hand, hand-class P&amp;L.</div>
+          <div class="k">Prefs</div><div>Equity mode, 4-colour / legacy deck, per-seat bot lineup.</div>
         </div>
+        <div class="notice" style="margin-top:10px;">Everything — engine, equity, 9 bots, analytics, Theory of Mind, 8 trainers, lifetime stats —
+          runs from this one self-contained file. Only two features reach the network, and only when <i>you</i> trigger them:
+          Online play (peer-to-peer WebRTC + optional STUN) and Claude analysis (your key → api.anthropic.com). Nothing is loaded at page-load.</div>
         <div class="modal-actions"></div>`;
       const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Close';
       close.onclick = () => view.closeModal();
@@ -174,10 +178,24 @@
     function botName(style) { return (root.PokerGame.CUTE_NAMES[style]) || 'Bot'; }
     function defaultBotFor() { return 'tight'; }
 
+    const fileCtx = () => ({ ctrl, view });
     view.onMenu = (act) => {
       if (act === 'players') { openPlayers(); return; }
       if (act === 'trainers') {
         view.popupMenu('trainers', Object.keys(PT.REGISTRY).map(k => [PT.REGISTRY[k].label, () => openTrainer(k)]));
+      } else if (act === 'file') {
+        const F = root.PokerFiles;
+        view.popupMenu('file', [
+          ['💾 Save game', () => F.saveGame(fileCtx())],
+          ['📂 Load game', () => F.loadGame(fileCtx())],
+          ['🪙 Buy more chips', () => F.buyChips(fileCtx())],
+          ['🎞 Hand history (replay)', () => F.handHistory(fileCtx())],
+          ['📊 Hand-class P&L', () => F.handClassPnL(fileCtx())],
+        ]);
+      } else if (act === 'net') {
+        if (root.PokerNet) root.PokerNet.openMenu({ ctrl, view });
+      } else if (act === 'prefs') {
+        if (root.PokerPrefs) root.PokerPrefs.openDialog({ ctrl, view });
       } else if (act === 'stats') {
         openStats();
       } else if (act === 'savelog') {
@@ -190,6 +208,9 @@
     // expose dropped-feature notices via keyboard shortcut help / future menu
     ctrl.openDroppedNotice = droppedNotice;
     root.PIQ = { ctrl, view, openTrainer, openStats, droppedNotice, saveLog };
+
+    // apply persisted preferences (equity mode, deck colours, bot lineup)
+    if (root.PokerPrefs) root.PokerPrefs.apply(ctrl);
 
     ctrl.newHand();
     return root.PIQ;

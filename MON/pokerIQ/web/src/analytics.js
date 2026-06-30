@@ -243,6 +243,33 @@
   }
   const pct = f => Math.round(f * 100) + '%';
 
+  // ---- DecisionJournal (Brier calibration source) ----
+  // Records each hero decision with the equity at that moment as the prediction,
+  // then attaches the hand's win/loss outcome. sessionPredictions() yields
+  // (predicted, actual 0/1) pairs for the Calibration (Brier) trainer. Ports
+  // pokerIQ.py DecisionJournal (sans the free-text rationale prompt).
+  class DecisionJournal {
+    constructor() { this.entries = []; this.pending = []; }
+    record(fields) {
+      const e = Object.assign({ handNumber: null, street: '', action: '', predictedEquity: null, result: null }, fields);
+      this.entries.push(e);
+      if (e.result == null) this.pending.push(e);
+      return e;
+    }
+    attachResult(handNumber, resultDollars) {
+      const actual = resultDollars > 0 ? 1 : 0;
+      this.pending = this.pending.filter(e => {
+        if (e.handNumber === handNumber) { e.result = actual; e.resultDollars = resultDollars; return false; }
+        return true;
+      });
+    }
+    // [(predicted 0..1, actual 0/1)] for resolved, prediction-bearing entries
+    sessionPredictions() {
+      return this.entries.filter(e => e.result != null && e.predictedEquity != null)
+        .map(e => [e.predictedEquity, e.result]);
+    }
+  }
+
   // ---- TiltDetector (decision-time spike heuristic) ----
   class TiltDetector {
     constructor() { this.baseline = null; }
@@ -276,7 +303,7 @@
 
   const API = {
     classifyBoard, sklanskyDistance, nashPushPct, handStrengthPercentile, heroActionEV,
-    SessionStats, OpponentModel, TiltDetector, STYLE_RANGES, rangeFor,
+    SessionStats, OpponentModel, TiltDetector, DecisionJournal, STYLE_RANGES, rangeFor,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.PokerAnalytics = API;

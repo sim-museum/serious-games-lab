@@ -13,7 +13,7 @@
   --bg:#0c1117; --felt:#15543a; --felt2:#0f4030; --rail:#3a2a1a;
   --ink:#eef3f7; --muted:#9aa7b4; --line:#243; --gold:#d9b25b;
   --chip:#e6c04a; --pos:#3fb950; --neg:#f85149; --neu:#9aa7b4; --accent:#58a6ff;
-  --card-red:#d23b3b; --card-dark:#1a1f29;
+  --card-red:#d23b3b; --card-dark:#1a1f29; --card-blue:#1f6fd0; --card-green:#1f9d57;
 }
 *{box-sizing:border-box;}
 html,body{margin:0;height:100%;}
@@ -76,7 +76,12 @@ button{font:inherit;cursor:pointer;}
   width:60px;height:84px;border-radius:8px;background:#f6f7f9;color:var(--card-dark);
   box-shadow:0 2px 5px rgba(0,0,0,.45);font-weight:700;line-height:1;border:1px solid #cfd6df;}
 .card b{font-size:26px;} .card i{font-style:normal;font-size:23px;}
-.card.heart,.card.diamond{color:var(--card-red);}
+/* modern 4-color deck (desktop default): red hearts, blue diamonds, green clubs, dark spades */
+.card.heart{color:var(--card-red);} .card.diamond{color:var(--card-blue);}
+.card.club{color:var(--card-green);} .card.spade{color:var(--card-dark);}
+/* legacy 2-color deck (Prefs ▸ Display): red hearts+diamonds, black clubs+spades */
+.legacy-colors .card.heart,.legacy-colors .card.diamond{color:var(--card-red);}
+.legacy-colors .card.club,.legacy-colors .card.spade{color:var(--card-dark);}
 .card.back{background:repeating-linear-gradient(45deg,#7a1f1f,#7a1f1f 7px,#5e1414 7px,#5e1414 14px);border:1px solid #4a0f0f;}
 .card.empty{background:transparent;border:1px dashed rgba(255,255,255,.18);box-shadow:none;}
 .seat .card{width:48px;height:66px;} .seat .card b{font-size:20px;} .seat .card i{font-size:17px;}
@@ -299,6 +304,49 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 .hs-hindsight{margin-top:10px;background:#1a1408;border-left:4px solid var(--gold);border-radius:6px;
   padding:10px 14px;color:#e6cf9a;font-size:16px;line-height:1.4;}
 .hs-hindsight b{color:var(--gold);}
+
+/* ===== File menu, hand-history, prefs, online, claude dialogs ===== */
+.log-preview{width:100%;min-height:180px;max-height:46vh;background:#0b0f15;color:#cfe3d6;border:1px solid var(--line);
+  border-radius:8px;padding:12px 14px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px;resize:vertical;white-space:pre;overflow:auto;}
+.lg-file{display:block;margin:6px 0 12px;font-size:16px;color:var(--ink);}
+.buy-row{display:flex;align-items:center;gap:12px;font-size:19px;margin:8px 0;}
+.buy-row input,.pf-row input,.net-row input{background:#0b0f15;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:9px 12px;font-size:18px;}
+.hh-scroll{max-height:56vh;overflow:auto;border:1px solid var(--line);border-radius:10px;}
+.hh-table,.net-table{width:100%;border-collapse:collapse;font-size:17px;}
+.hh-table th,.net-table th{position:sticky;top:0;background:#0d141c;text-align:left;color:var(--muted);font-size:13px;
+  text-transform:uppercase;letter-spacing:.4px;padding:8px 12px;}
+.hh-table td,.net-table td{padding:7px 12px;border-top:1px solid var(--line);font-variant-numeric:tabular-nums;}
+.hh-table .hh-cards{font-family:ui-monospace,monospace;color:var(--gold);}
+.hh-nav{margin-right:auto;display:flex;align-items:center;gap:8px;}
+/* preferences */
+.pf-tabs{display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--line);}
+.pf-tab{background:transparent;border:0;border-bottom:2px solid transparent;color:var(--muted);padding:8px 14px;font-size:18px;cursor:pointer;}
+.pf-tab.on{color:var(--ink);border-bottom-color:var(--gold);font-weight:600;}
+.pf-row{display:flex;align-items:center;gap:12px;margin:14px 0;font-size:18px;}
+.pf-row label.lead{min-width:170px;}
+.pf-check{display:flex;align-items:flex-start;gap:10px;margin:14px 0;font-size:18px;cursor:pointer;}
+.pf-check input{margin-top:5px;transform:scale(1.3);}
+.pf-desc{color:var(--muted);font-size:15px;margin:-6px 0 14px 32px;line-height:1.4;}
+.pf-seat{display:grid;grid-template-columns:120px 1fr;gap:10px;align-items:center;margin:9px 0;font-size:17px;}
+.pf-seat select{background:#0b0f15;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:17px;width:100%;}
+.pf-status{font-size:15px;margin-top:10px;}
+/* online / netplay */
+.net-step{background:#0d141c;border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0;}
+.net-step h3{margin:0 0 8px;font-size:19px;color:var(--accent);}
+.net-blob{width:100%;min-height:90px;background:#0b0f15;color:#9fd2b4;border:1px solid var(--line);border-radius:8px;
+  padding:10px 12px;font-family:ui-monospace,monospace;font-size:12px;resize:vertical;word-break:break-all;}
+.net-chat{height:160px;overflow:auto;background:#0b0f15;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:16px;}
+.net-chat .me{color:var(--accent);} .net-chat .sys{color:var(--muted);font-style:italic;}
+.net-pill{display:inline-block;padding:2px 10px;border-radius:20px;font-size:14px;font-weight:600;}
+.net-pill.on{background:var(--pos);color:#06121f;} .net-pill.off{background:#54606c;color:#fff;} .net-pill.wait{background:var(--gold);color:#06121f;}
+.net-badge{position:fixed;right:14px;bottom:14px;z-index:55;background:#121922;border:1px solid var(--line);border-radius:10px;
+  padding:8px 12px;font-size:15px;color:var(--ink);box-shadow:0 4px 18px rgba(0,0,0,.5);}
+/* claude analysis */
+.cl-block{background:#0d1a12;border-left:4px solid var(--pos);border-radius:8px;padding:12px 16px;margin:12px 0;font-size:17px;line-height:1.5;}
+.cl-block .who{color:var(--pos);font-weight:700;display:block;margin-bottom:4px;}
+.cl-mark{font-weight:800;} .cl-mark.good{color:var(--pos);} .cl-mark.dub{color:var(--gold);} .cl-mark.bad{color:var(--neg);}
+.cl-busy{color:var(--gold);font-style:italic;}
+.cl-key{width:100%;font-family:ui-monospace,monospace;font-size:14px;}
 
 </style>
 </head>
@@ -1123,6 +1171,56 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       return pots;
     }
 
+    // ---- online follower: apply an authoritative game-state blob from the host ----
+    // Mutates existing Player objects (preserving identity for the view). Hidden
+    // opponents arrive with hand:[]; at showdown the host reveals every hand.
+    applyNet(gs) {
+      if (!gs) return;
+      if (gs.players) {
+        for (const sp of gs.players) {
+          let p = this.players[sp.seat];
+          if (!p) { p = new Player(sp.name, sp.style, sp.seat); this.players[sp.seat] = p; }
+          p.name = sp.name; p.style = sp.style;
+          p.stack = sp.stack; p.betInRound = sp.betInRound || 0;
+          p.active = !!sp.active; p.allIn = !!sp.allIn;
+          p.lastAction = sp.lastAction || null;
+          p.totalInvested = sp.totalInvested || 0;
+          if (sp.hand) p.hand = sp.hand.slice();
+        }
+        this.players = this.players.filter(Boolean);
+      }
+      if (gs.board) this.board = gs.board.slice();
+      if (gs.pot != null) this.pot = gs.pot;
+      if (gs.currentBet != null) this.currentBet = gs.currentBet;
+      if (gs.toAct != null) this.toAct = gs.toAct;
+      if (gs.dealerIdx != null) this.dealerIdx = gs.dealerIdx;
+      if (gs.streetIdx != null) this.streetIdx = gs.streetIdx;
+      if (gs.blindLevel != null) this.blindLevel = gs.blindLevel;
+      if (gs.handNumber != null) this.handNumber = gs.handNumber;
+      if (gs.handInProgress != null) this.handInProgress = gs.handInProgress;
+      if (gs.awaitingAction != null) this.awaitingAction = gs.awaitingAction;
+      if (gs.minRaiseTo != null) this.minRaiseTo = gs.minRaiseTo;
+      if (gs.lastRaiseSize != null) this.lastRaiseSize = gs.lastRaiseSize;
+    }
+
+    // Compact authoritative state for one recipient seat (host → that peer).
+    // Reveals the recipient's own cards; opponents' cards only when `revealAll`.
+    netStateFor(seat, revealAll) {
+      return {
+        players: this.players.map(p => ({
+          seat: p.seat, name: p.name, style: p.isHuman ? 'human' : p.style,
+          stack: p.stack, betInRound: p.betInRound, active: p.active,
+          allIn: p.allIn, lastAction: p.lastAction, totalInvested: p.totalInvested,
+          hand: (revealAll || p.seat === seat) ? p.hand.slice() : [],
+        })),
+        board: this.board.slice(), pot: this.pot, currentBet: this.currentBet,
+        toAct: this.toAct, dealerIdx: this.dealerIdx, streetIdx: this.streetIdx,
+        blindLevel: this.blindLevel, handNumber: this.handNumber,
+        handInProgress: this.handInProgress, awaitingAction: this.awaitingAction,
+        minRaiseTo: this.minRaiseTo, lastRaiseSize: this.lastRaiseSize,
+      };
+    }
+
     // bust-out check / table reset
     bustedSeats() { return this.players.filter(p => p.stack <= 0).map(p => p.seat); }
     resetStacks() {
@@ -1610,6 +1708,33 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
   }
   const pct = f => Math.round(f * 100) + '%';
 
+  // ---- DecisionJournal (Brier calibration source) ----
+  // Records each hero decision with the equity at that moment as the prediction,
+  // then attaches the hand's win/loss outcome. sessionPredictions() yields
+  // (predicted, actual 0/1) pairs for the Calibration (Brier) trainer. Ports
+  // pokerIQ.py DecisionJournal (sans the free-text rationale prompt).
+  class DecisionJournal {
+    constructor() { this.entries = []; this.pending = []; }
+    record(fields) {
+      const e = Object.assign({ handNumber: null, street: '', action: '', predictedEquity: null, result: null }, fields);
+      this.entries.push(e);
+      if (e.result == null) this.pending.push(e);
+      return e;
+    }
+    attachResult(handNumber, resultDollars) {
+      const actual = resultDollars > 0 ? 1 : 0;
+      this.pending = this.pending.filter(e => {
+        if (e.handNumber === handNumber) { e.result = actual; e.resultDollars = resultDollars; return false; }
+        return true;
+      });
+    }
+    // [(predicted 0..1, actual 0/1)] for resolved, prediction-bearing entries
+    sessionPredictions() {
+      return this.entries.filter(e => e.result != null && e.predictedEquity != null)
+        .map(e => [e.predictedEquity, e.result]);
+    }
+  }
+
   // ---- TiltDetector (decision-time spike heuristic) ----
   class TiltDetector {
     constructor() { this.baseline = null; }
@@ -1643,7 +1768,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 
   const API = {
     classifyBoard, sklanskyDistance, nashPushPct, handStrengthPercentile, heroActionEV,
-    SessionStats, OpponentModel, TiltDetector, STYLE_RANGES, rangeFor,
+    SessionStats, OpponentModel, TiltDetector, DecisionJournal, STYLE_RANGES, rangeFor,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.PokerAnalytics = API;
@@ -2541,6 +2666,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       this.stats = new PA.SessionStats(2);
       this.oppModel = new PA.OpponentModel();
       this.tilt = new PA.TiltDetector();
+      this.journal = new PA.DecisionJournal();   // Brier-calibration source
 
       this.events = [];           // recent log lines for the feed
       this.handResult = null;
@@ -2548,6 +2674,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       this.lastStreet = 'Preflop';
       this.history = null;        // structured per-hand history (building)
       this.lastHistory = null;    // last completed hand's history (for summary)
+      this.handHistories = [];    // every completed hand this session (replay browser)
       this.training = !!opts.training;   // ToM training screen on/off
       this.tomTab = 'advisor';    // active ToM tab
       this.rangeMode = 'neutral'; // 'loose'(opps weak) | 'neutral' | 'tight'(opps strong)
@@ -2575,6 +2702,13 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       this.specPaused = true;        // bots-only run-out starts PAUSED (readable)
       this.spectatedThisHand = false;// drove the spectator this hand → auto-open summary
       this.handAssists = {};         // {playerName: Set(assist)} used while still in hand
+      // ---- online play (WebRTC) ----
+      this.remoteSeats = new Set();  // host: seats controlled by remote peers
+      this.netHost = null;           // host: NetHost driver (broadcasts events)
+      this.netGuest = null;          // guest: NetGuest driver (sends actions)
+      this.follower = !!opts.follower; // guest: mirror state, never runs the engine
+      this.mySeat = opts.mySeat != null ? opts.mySeat : 0;
+      this.requestedRemote = -1;     // host: seat we've already sent ACTION_REQUEST for
 
       this.game = new PG.Game({
         rng: opts.rng || Math.random,
@@ -2591,7 +2725,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     humanToAct() { return this.game.awaitingAction && this.humanSeats.has(this.game.toAct); }
     // the seat to render as "the viewer/hero" — the acting human in hotseat,
     // else seat 0. All hero-perspective analysis keys off this.
-    heroSeat() { return this.humanToAct() ? this.game.toAct : 0; }
+    heroSeat() { if (this.follower) return this.mySeat; return this.humanToAct() ? this.game.toAct : 0; }
     // hotseat privacy gate: a human must arm before their cards are shown.
     // Suppressed while a just-folded player is mid-review (they pass first).
     get passGate() { return this.hotseat && this.humanToAct() && !this.armed && !this.spectating; }
@@ -2608,7 +2742,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     // Manual God peek pre-fold is only allowed when there are no other human
     // players (you can't peek at other humans' cards mid-hand). After you fold,
     // the spectator God-view is always available regardless.
-    canUseGod() { return this.humanSeats.size <= 1; }
+    canUseGod() { if (this.follower || this.netHost) return false; return this.humanSeats.size <= 1; }
     toggleGod() {
       if (!this.godMode && !this.canUseGod()) return;   // blocked: humans at the table
       this.godMode = !this.godMode;
@@ -2704,12 +2838,24 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     }
 
     newHand() {
+      // guests never deal — the host drives hand starts over the wire
+      if (this.follower) return;
       this.handResult = null;
       this.events = [];
       this.heroEquity = null;
       if (this.hotseat) this.armed = false;   // first player must arm
+      // "beat the defaults": every bot busted, a human still has chips → unlock
+      // the advanced random pool (mirrors beat_defaults_unlocked).
+      const withChips = this.game.players.filter(p => p.stack > 0);
+      if (withChips.length >= 1 && withChips.every(p => this.humanSeats.has(p.seat)) &&
+          this.game.players.some(p => !this.humanSeats.has(p.seat))) {
+        this.markBeatDefaults && this.markBeatDefaults();
+      }
       // bust-out → offer reset
       if (this.game.players.filter(p => p.stack > 0).length < 2) this.game.resetStacks();
+      // host: seat any guests who joined mid-hand before dealing
+      if (this.netHost) this.netHost.applyPendingSeats();
+      this.applyBotPrefs && this.applyBotPrefs();
       this.stats.bbAmount = this.game.bb();
       const ok = this.game.dealHand();
       if (!ok) { this.game.resetStacks(); this.game.dealHand(); }
@@ -2753,6 +2899,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
         this.logStreet(payload);
         if (this.spectating) this.captureSpecSnapshot();
       } else if (type === 'action') {
+        this.requestedRemote = -1;   // a turn resolved → allow the next ACTION_REQUEST
         this.recordHistoryAction(payload);
         this.trackOppAction(payload);
         this.logAction(payload);
@@ -2762,6 +2909,8 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
         this.logHandEnd(payload);
         this.onHandComplete(payload);
       }
+      // host: forward every engine event to connected peers
+      if (this.netHost) this.netHost.onEngineEvent(type, payload);
     }
 
     // ---- exact-format log writers (mirror pokerIQ.py) ----
@@ -2814,7 +2963,10 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       // computed over actual hands at the freshly-dealt board.
       const active = g.activePlayers();
       let eq = [];
-      if (active.length >= 2) eq = E.equityMultiway(active.map(p => p.hand), payload.board, { iterations: 300, rng: this.auxRng });
+      // [STATS] needs god-view hands; a guest mirror only knows its own, so skip
+      // when any active hand is unknown (the host's log carries the real numbers).
+      const allKnown = active.every(p => p.hand.length === 2);
+      if (active.length >= 2 && allKnown) eq = E.equityMultiway(active.map(p => p.hand), payload.board, { iterations: 300, rng: this.auxRng });
       const rows = active.map((p, i) => {
         const toCall = Math.max(0, g.currentBet - p.betInRound);
         const potOdds = (g.pot + toCall) > 0 ? toCall / (g.pot + toCall) : 0;
@@ -3001,9 +3153,41 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     refreshHeroEquity() {
       const hero = this.game.players[this.heroSeat()];
       if (!hero.active || !hero.hand.length) { this.heroEquity = null; return; }
-      const opps = this.game.activePlayers().filter(p => p !== hero).length || 1;
-      this.heroEquity = E.equityVsRandom(hero.hand, this.game.board,
-        { iterations: this.opts.equityIters || 600, opponents: opps, rng: this.auxRng });
+      const others = this.game.activePlayers().filter(p => p !== hero);
+      const iters = this.opts.equityIters || 600;
+      // Prefs ▸ Equity: "use only publicly revealed cards" (default true) → vs
+      // random ranges. Off → true (god) equity against opponents' actual hands.
+      if (this.visibleCardsOnly === false && others.every(p => p.hand.length === 2)) {
+        const eq = E.equityMultiway([hero.hand].concat(others.map(p => p.hand)), this.game.board, { iterations: iters, rng: this.auxRng });
+        this.heroEquity = eq[0] != null ? eq[0] : null;
+      } else {
+        this.heroEquity = E.equityVsRandom(hero.hand, this.game.board,
+          { iterations: iters, opponents: others.length || 1, rng: this.auxRng });
+      }
+    }
+
+    // Apply per-seat bot preferences (Prefs ▸ AI Opponents) to the current
+    // table. 'default' leaves the seat's lineup style alone. Takes effect on the
+    // next hand (changing a busy seat mid-hand would desync the engine).
+    applyBotPrefs() {
+      const P = root.PokerPrefs;
+      const Prefs = P ? P.Prefs : null;
+      const names = PG.CUTE_NAMES;
+      if (!Prefs) return;
+      for (let i = 0; i < this.game.players.length; i++) {
+        if (this.humanSeats.has(i)) continue;
+        const pick = Prefs.botFor(i);
+        if (!pick || pick === 'default') continue;
+        const p = this.game.players[i];
+        p.style = pick;
+        p.name = names[pick] || p.name;
+      }
+    }
+
+    // Called at end of a game (hero outlasts all bots) to unlock the random pool.
+    markBeatDefaults() {
+      const P = root.PokerPrefs;
+      if (P && P.Prefs) P.Prefs.set('beatDefaults', true);
     }
 
     // advisor readout for the hero panel
@@ -3040,9 +3224,17 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 
     // the acting human seat plays
     act(action, amount) {
+      // guest: relay to the host instead of touching the (mirror) engine
+      if (this.follower) { if (this.netGuest) this.netGuest.sendAction(action, amount); return; }
       if (!this.humanToAct()) return;
       const seat = this.game.toAct;
       this.stats.actionFinished();
+      // journal this decision (equity at decision time = the prediction) so the
+      // Calibration trainer can Brier-score it once the hand resolves.
+      if (this.journal && seat === this.heroSeat() && this.heroEquity != null) {
+        const a = action === 'f' ? 'fold' : action === 'r' ? 'raise' : (this.game.legalActions(seat).canCheck ? 'check' : 'call');
+        this.journal.record({ handNumber: this.game.handNumber, street: this.streetName(), action: a, predictedEquity: this.heroEquity });
+      }
       this.game.applyAction(seat, action, amount);
       if (action === 'f') this.maybeEnterSpectator(seat);   // fold → watch (God view)
       if (this.hotseat) this.armed = false;   // re-gate for the next player
@@ -3057,6 +3249,18 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     // used by the headless tests) or step it on a timer so play is watchable.
     pump() {
       const g = this.game;
+      // guest mirror never advances the engine itself — it only renders whatever
+      // authoritative state the host has streamed in.
+      if (this.follower) { this.render(); return; }
+      // host: when a REMOTE seat is to act, ask that peer for an action (once)
+      // and wait — don't surface local buttons or run a bot timer. (Remote seats
+      // are 'human' style to the engine but are NOT in the host's humanSeats, so
+      // their cards stay hidden from the host.)
+      if (this.netHost && g.awaitingAction && this.remoteSeats.has(g.toAct)) {
+        if (this.requestedRemote !== g.toAct) { this.requestedRemote = g.toAct; this.netHost.requestAction(g.toAct, g.legalActions(g.toAct)); }
+        this.render();
+        return;
+      }
       // A folded human is reviewing (God view). If another human still has to
       // act, freeze the hand until they tap "Pass device →" (so the device can
       // hand off privately). If only bots remain, let the run-out play live so
@@ -3087,9 +3291,15 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       if (g.handInProgress && g.awaitingBot >= 0) {
         if (this.botDelayMs <= 0) {
           let guard = 0;
-          while (g.handInProgress && g.awaitingBot >= 0 && !this.humanToAct()) {
+          while (g.handInProgress && g.awaitingBot >= 0 && !this.humanToAct()
+                 && !(this.netHost && g.awaitingAction && this.remoteSeats.has(g.toAct))) {
             if (++guard > 500) break;
             g.stepBot();
+          }
+          // stopped at a remote seat → ask that peer (the top-of-pump branch is
+          // not re-entered on this synchronous path)
+          if (this.netHost && g.awaitingAction && this.remoteSeats.has(g.toAct) && this.requestedRemote !== g.toAct) {
+            this.requestedRemote = g.toAct; this.netHost.requestAction(g.toAct, g.legalActions(g.toAct));
           }
           if (this.humanToAct() && !this.passGate) this.stats.actionStarted();
           this.render();
@@ -3104,10 +3314,103 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 
     onHandComplete(result) {
       this.handResult = result;
-      const heroNet = (result.net.find(n => n.seat === 0) || { net: 0 }).net;
+      const heroResultSeat = this.follower ? this.mySeat : 0;
+      const heroNet = (result.net.find(n => n.seat === heroResultSeat) || { net: 0 }).net;
       this.stats.recordHandResult(heroNet);
+      // attach the predicted-equity journal entries' outcome, for Brier calibration
+      if (this.journal) this.journal.attachResult(this.game.handNumber, heroNet);
+      if (this.lastHistory) this.handHistories.push(this.lastHistory);
       this.render();
       this.onHandEnd(result);
+    }
+
+    // ---- save / restore a full game (File ▸ Save / Load) ----
+    // Mirrors pokerIQ.py _build_save_state / _apply_save_state: persists the
+    // engine + the session-derived state so a loaded game resumes mid-hand.
+    saveState() {
+      const g = this.game;
+      return {
+        pokerIQ_save_version: 2,
+        saved_at: this.dateStr(),
+        game: {
+          players: g.players.map(p => ({
+            name: p.name, style: p.style, seat: p.seat, stack: p.stack,
+            hand: p.hand.slice(), active: p.active, betInRound: p.betInRound,
+            actionsThisRound: p.actionsThisRound, totalInvested: p.totalInvested,
+            lastAction: p.lastAction, allIn: p.allIn,
+          })),
+          board: g.board.slice(), deck: g.deck.slice(), pot: g.pot,
+          dealerIdx: g.dealerIdx, currentBet: g.currentBet, streetIdx: g.streetIdx,
+          toAct: g.toAct, minRaiseTo: g.minRaiseTo, lastRaiseSize: g.lastRaiseSize,
+          handNumber: g.handNumber, blindLevel: g.blindLevel,
+          handInProgress: g.handInProgress, awaitingAction: g.awaitingAction,
+          awaitingBot: g.awaitingBot, actionLog: g.actionLog.slice(),
+          lastResult: g.lastResult,
+        },
+        ctrl: {
+          events: this.events.slice(), lastStreet: this.lastStreet,
+          prevBlindLevel: this.prevBlindLevel, holeStats: this.holeStats,
+          tableStats: this.tableStats, logMsgs: this.logbook.msgs.slice(),
+          gameStatusLogged: this.logbook.gameStatusLogged, logStarted: this.logStarted,
+          handResult: this.handResult, history: this.history, lastHistory: this.lastHistory,
+          humanSeats: [...this.humanSeats], hotseat: this.hotseat,
+          origPlayerCount: this.origPlayerCount, origBlinds: this.origBlinds,
+          session: { hand_results: this.stats.handResults.slice(), bbAmount: this.stats.bbAmount },
+        },
+      };
+    }
+
+    loadState(s) {
+      if (!s || !s.game) throw new Error('not a PokerIQ save file');
+      const G = s.game;
+      const g = new PG.Game({
+        rng: this.opts.rng || Math.random, godMode: this.godMode, manualBots: true,
+        seats: G.players.map(p => ({ name: p.name, style: p.style })),
+        botDecide: (gg, p) => PB.decide(gg, p),
+        onEvent: (t, payload) => this.onGameEvent(t, payload),
+      });
+      G.players.forEach((sp, i) => {
+        const p = g.players[i];
+        p.stack = sp.stack; p.hand = sp.hand.slice(); p.active = sp.active;
+        p.betInRound = sp.betInRound; p.actionsThisRound = sp.actionsThisRound;
+        p.totalInvested = sp.totalInvested; p.lastAction = sp.lastAction; p.allIn = sp.allIn;
+      });
+      g.board = G.board.slice(); g.deck = (G.deck || []).slice(); g.pot = G.pot;
+      g.dealerIdx = G.dealerIdx; g.currentBet = G.currentBet; g.streetIdx = G.streetIdx;
+      g.toAct = G.toAct; g.minRaiseTo = G.minRaiseTo; g.lastRaiseSize = G.lastRaiseSize;
+      g.handNumber = G.handNumber; g.blindLevel = G.blindLevel;
+      g.handInProgress = G.handInProgress; g.awaitingAction = G.awaitingAction;
+      g.awaitingBot = (G.awaitingBot == null ? -1 : G.awaitingBot); g.actionLog = (G.actionLog || []).slice();
+      g.lastResult = G.lastResult || null;
+      this.game = g;
+      const c = s.ctrl || {};
+      this.events = (c.events || []).slice(); this.lastStreet = c.lastStreet || 'Preflop';
+      this.prevBlindLevel = c.prevBlindLevel || 0; this.holeStats = c.holeStats || {};
+      this.tableStats = c.tableStats || {}; this.history = c.history || null;
+      this.lastHistory = c.lastHistory || null; this.handResult = c.handResult || null;
+      this.humanSeats = new Set(c.humanSeats || [0]); this.hotseat = !!c.hotseat;
+      this.armed = !this.hotseat;
+      this.origPlayerCount = c.origPlayerCount != null ? c.origPlayerCount : null;
+      this.origBlinds = c.origBlinds || null;
+      this.logbook = new (getLog()).LogBook();
+      this.logbook.msgs = (c.logMsgs || []).slice();
+      this.logbook.gameStatusLogged = !!c.gameStatusLogged;
+      this.logStarted = !!c.logStarted;
+      if (c.session) { this.stats.handResults = (c.session.hand_results || []).slice(); this.stats.bbAmount = c.session.bbAmount || g.bb(); }
+      this.heroEquity = null;
+      if (g.handInProgress) this.refreshHeroEquity();
+      this.render();
+      this.pump();
+    }
+
+    // Buy more chips between hands (single-player top-up), mirrors File ▸ Buy More Chips.
+    buyChips(amount, seat) {
+      seat = seat == null ? 0 : seat;
+      const p = this.game.players[seat];
+      if (!p || amount <= 0) return false;
+      p.stack += Math.floor(amount);
+      this.render();
+      return true;
     }
 
     // derive a player's action-tag set this hand from the history
@@ -3234,6 +3537,50 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       };
     }
 
+    // Build a god-view, line-numbered hand text for Claude analysis — mirrors the
+    // desktop ClaudeAnalysisThread input (hole cards + numbered action lines per
+    // street + result). Returns { text, lineMap } where lineMap[n] = action ref.
+    handTextForClaude(h) {
+      h = h || this.lastHistory; if (!h) return null;
+      const cs = cards => cards.map(c => E.cardToStr(c)).join(' ');
+      const L = [];
+      L.push(`Hand #${h.handNumber} — ${this.game.players.length}-handed No-Limit Hold'em, blinds $${this.game.sb()}/$${this.game.bb()}`);
+      L.push('Hands (known, god view):');
+      (h.holeCards || []).forEach(x => L.push(`  ${x.name} (seat ${x.seat}): ${cs(x.cards)}`));
+      const startBy = {}; (h.startStacks || []).forEach(x => startBy[x.seat] = x.stack);
+      L.push('Starting stacks: ' + (h.startStacks || []).map(x => `${x.name} $${x.stack}`).join(', '));
+      let n = 0; const lineMap = {};
+      const verb = a => a.action === 'post' ? `posts $${a.amount}`
+        : a.action === 'raise' ? (a.opening ? `bets $${a.total}` : `raises to $${a.total}`)
+        : a.action === 'call' ? `calls $${a.amount}` : a.action === 'check' ? 'checks' : a.action === 'fold' ? 'folds' : a.action;
+      (h.streets || []).forEach(st => {
+        const board = st.board && st.board.length ? ` [board: ${cs(st.board)}]` : '';
+        L.push('');
+        L.push(`--- ${st.name} ---${board}`);
+        st.actions.forEach(a => {
+          if (a.action === 'post') { L.push(`    ${a.name} ${verb(a)}`); return; }
+          n += 1; lineMap[n] = { seat: a.seat, street: st.name };
+          L.push(`${n}. ${a.name} ${verb(a)}`);
+        });
+      });
+      if (h.result) {
+        L.push('');
+        L.push('Result:');
+        (h.result.net || []).forEach(r => L.push(`  ${r.name}: ${r.net >= 0 ? '+' : '-'}$${Math.abs(r.net)} (→ $${r.stack})`));
+      }
+      return { text: L.join('\n'), lineMap, lineCount: n };
+    }
+
+    // Which human-ish POVs to critique (all human seats; fallback to seat 0).
+    claudePovs() {
+      const h = this.lastHistory || this.history;
+      const seats = (this.humanSeats && this.humanSeats.size) ? [...this.humanSeats] : [0];
+      return seats.map(s => {
+        const p = this.game.players[s];
+        return { name: p ? p.name : ('Seat ' + s), seat: s };
+      });
+    }
+
     lastAggressorSeat() {
       if (!this.history) return -1;
       let seat = -1;
@@ -3258,7 +3605,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       const heroFolded = !this.hotseat && !g.players[0].active && g.handInProgress;
       const revealVillains = this.godMode || heroFolded;
       const showTellsEff = this.showTells || heroFolded;
-      const armedHuman = this.humanToAct() && (!this.hotseat || this.armed);
+      const armedHuman = this.humanToAct() && (!this.hotseat || this.armed) && !this.remoteSeats.has(g.toAct);
       return {
         players: g.players.map(p => ({
           seat: p.seat, name: p.name, style: p.style, stack: p.stack,
@@ -3331,10 +3678,13 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
           <div class="piq-menu">
             <label class="train-toggle" id="piq-train"><span class="tt-knob"></span><span class="tt-lab">Training</span></label>
             <button data-act="players" class="ghost">Players</button>
+            <button data-act="net" class="ghost" title="Play remotely with friends — serverless WebRTC, no install">Online</button>
             <button data-act="tells" class="ghost">Tells</button>
             <button data-act="god" class="ghost">God</button>
             <button data-act="trainers" class="ghost">Trainers ▾</button>
             <button data-act="stats" class="ghost">Stats</button>
+            <button data-act="file" class="ghost" title="Save / load a game, buy chips, replay a log">File ▾</button>
+            <button data-act="prefs" class="ghost">Prefs</button>
             <button data-act="savelog" class="ghost" title="Download the full session log (PyQt-format) for AI analysis">⤓ Log</button>
             <button data-act="help" class="ghost">?</button>
           </div>
@@ -3381,6 +3731,10 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
         else if (this.onMenu) this.onMenu(act);
       });
       this.el.train.addEventListener('click', () => { this.ctrl.toggleTraining(); });
+      // keyboard shortcuts (parity with the desktop app: F/K/C/R/B/N/G/S/T/Space + arrows)
+      if (typeof document !== 'undefined' && document.addEventListener) {
+        document.addEventListener('keydown', e => this.onKey(e));
+      }
       // delegated clicks inside the ToM view (tabs + range-mode radio)
       this.el.tomView.addEventListener('click', e => {
         const tab = e.target.closest('[data-tab]'); if (tab) { this.ctrl.tomTab = tab.getAttribute('data-tab'); this.ctrl.render(); return; }
@@ -3388,7 +3742,44 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       });
     }
 
+    // keyboard shortcuts — only when not typing into a field / modal open
+    onKey(e) {
+      const s = this._last; if (!s) return;
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (this.el.modal && this.el.modal.style.display !== 'none') return;
+      const k = (e.key || '').toLowerCase();
+      // spectator navigation
+      if (s.spectating) {
+        if (e.key === 'ArrowLeft') { this.ctrl.specPrev(); e.preventDefault(); }
+        else if (e.key === 'ArrowRight') { this.ctrl.specNext(); e.preventDefault(); }
+        else if (e.key === 'Escape') { this.ctrl.exitSpectator(); e.preventDefault(); }
+        return;
+      }
+      if (s.handResult) {                      // between hands
+        if (k === 'n' || k === 'enter') { if (this.ctrl.canDeal !== false) this.ctrl.newHand(); e.preventDefault(); }
+        else if (k === 'h') { this.showHandSummary(this.ctrl.lastHistory); e.preventDefault(); }
+        return;
+      }
+      if (k === 'g') { this.ctrl.toggleGod(); e.preventDefault(); return; }
+      if (k === 't') { this.ctrl.toggleTraining(); e.preventDefault(); return; }
+      if (k === 'y') { this.ctrl.toggleTells(); e.preventDefault(); return; }   // 's' is taken by spades; use Y for tells? keep both
+      if (k === 's') { this.ctrl.toggleTells(); e.preventDefault(); return; }
+      // betting actions (only when it's the local human's turn and not gated)
+      if (!s.awaitingHero || !s.legal || s.passGate) return;
+      const L = s.legal;
+      if (k === 'f') { this.ctrl.act('f', 0); e.preventDefault(); }
+      else if (k === 'k' && L.canCheck) { this.ctrl.act('c', 0); e.preventDefault(); }
+      else if (k === 'c' && !L.canCheck) { this.ctrl.act('c', 0); e.preventDefault(); }
+      else if (e.key === ' ') { this.ctrl.act('c', 0); e.preventDefault(); }   // primary: check or call
+      else if ((k === 'r' || k === 'b') && L.canRaise) {
+        const amt = Math.min(L.maxRaiseTo, Math.max(L.minRaiseTo, Math.floor(L.pot * 0.66) + L.toCall));
+        this.ctrl.act('r', amt); e.preventDefault();
+      }
+    }
+
     render(s) {
+      this._last = s;
       this.el.hand.textContent = `Hand #${s.handNumber} · ${s.street}`;
       this.el.blinds.textContent = `Blinds $${s.sb}/$${s.bb}`;
       this.el.session.textContent = `Session ${s.session.hands}h · ${s.session.bb100 >= 0 ? '+' : ''}${s.session.bb100.toFixed(1)} bb/100`;
@@ -3625,12 +4016,16 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       if (view === 'stats') body = this.summaryStatsHTML(data, flags);
       else if (view === 'log') body = this.summaryLogHTML(h);
       else body = this.summaryBasicHTML(data, flags);
-      card.innerHTML = `<h2>Hand Summary</h2><div class="hs-body">${body}</div><div class="modal-actions hs-actions"></div>`;
+      // any Claude analysis already run for this hand shows at the top
+      const PC = root.PokerClaude;
+      const claudeBlock = (h.claudeAnalysis && PC) ? `<div class="hs-claude"><h3 style="margin:0 0 8px;color:var(--pos);">Claude analysis</h3>${PC.blocksHTML(h.claudeAnalysis)}</div>` : '';
+      card.innerHTML = `<h2>Hand Summary</h2><div class="hs-body">${claudeBlock}${body}</div><div class="modal-actions hs-actions"></div>`;
       const mk = (label, cls, fn) => { const b = document.createElement('button'); b.className = cls; b.textContent = label; b.onclick = fn; return b; };
       const act = card.querySelector('.hs-actions');
       if (view !== 'basic') act.appendChild(mk('Analysis', 'ghost', () => this.switchSummary('basic')));
       if (view !== 'stats') act.appendChild(mk('Stats', 'btn check', () => this.switchSummary('stats')));
       if (view !== 'log') act.appendChild(mk('Hand Log', 'btn raise', () => this.switchSummary('log')));
+      if (PC) act.appendChild(mk('🔍 Analyze (Claude)', 'btn summary', () => PC.analyzeHand({ ctrl: this.ctrl, view: this }, h, 'critique')));
       act.appendChild(mk('Close', 'ghost', () => this.closeModal()));
       return card;
     }
@@ -4031,6 +4426,955 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
 
+// ===== files.js =====
+/*
+ * PokerIQ — File menu: Save / Load a game, Buy more chips, Hand-history replay
+ * browser, and the per-hand-class P&L table. Ports pokerIQ.py's File menu
+ * (_menu_save_game / _menu_load_game / Buy More Chips), the desktop
+ * HandClassPnLTable, and the hand-history replay that was a known web gap.
+ *
+ * Each builder takes { ctrl, view } and drives the shared modal host on the
+ * View. Browser-only (uses Blob/FileReader); the build inlines it as a global.
+ */
+(function (root) {
+  'use strict';
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+  function downloadText(name, text, mime) {
+    try {
+      const blob = new Blob([text], { type: mime || 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  // ---- Save game (download JSON) ----
+  function saveGame(ctx) {
+    const { ctrl, view } = ctx;
+    const state = ctrl.saveState();
+    const text = JSON.stringify(state, null, 2);
+    const d = ctrl.now();
+    const p2 = n => String(n).padStart(2, '0');
+    const name = `pokerIQ_save_${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}.json`;
+    const ok = downloadText(name, text, 'application/json');
+    const card = document.createElement('div'); card.className = 'modal-card';
+    card.innerHTML = `<h2>Save game</h2>
+      <div class="sub">${ok ? 'Saved as <code>' + esc(name) + '</code>.' : 'Download was blocked — copy the text below into a <code>.json</code> file.'} Load it later from <b>File ▸ Load game</b> to resume — mid-hand state and all.</div>
+      <textarea class="log-preview" readonly></textarea>
+      <div class="modal-actions"></div>`;
+    card.querySelector('.log-preview').value = text;
+    const copy = document.createElement('button'); copy.className = 'btn check'; copy.textContent = 'Copy';
+    copy.onclick = () => { const ta = card.querySelector('.log-preview'); ta.select(); try { navigator.clipboard.writeText(text); } catch (e) { try { document.execCommand('copy'); } catch (e2) {} } copy.textContent = 'Copied ✓'; };
+    const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Close';
+    close.onclick = () => view.closeModal();
+    card.querySelector('.modal-actions').append(copy, close);
+    view.showModal(card);
+  }
+
+  // ---- Load game (upload JSON or paste) ----
+  function loadGame(ctx) {
+    const { ctrl, view } = ctx;
+    const card = document.createElement('div'); card.className = 'modal-card';
+    card.innerHTML = `<h2>Load game</h2>
+      <div class="sub">Choose a <code>pokerIQ_save_*.json</code> file, or paste its contents. Resumes exactly where you saved.</div>
+      <input type="file" accept="application/json,.json" id="lg-file" class="lg-file">
+      <textarea class="log-preview" id="lg-text" placeholder="…or paste the save JSON here"></textarea>
+      <div class="lg-err" id="lg-err" style="color:#ff7777;min-height:18px;"></div>
+      <div class="modal-actions"></div>`;
+    const err = card.querySelector('#lg-err');
+    const apply = (text) => {
+      try {
+        const obj = JSON.parse(text);
+        ctrl.loadState(obj);
+        view.closeModal();
+      } catch (e) { err.textContent = 'Could not load: ' + (e && e.message ? e.message : 'invalid file'); }
+    };
+    card.querySelector('#lg-file').onchange = (e) => {
+      const f = e.target.files && e.target.files[0]; if (!f) return;
+      const r = new FileReader();
+      r.onload = () => apply(String(r.result));
+      r.onerror = () => { err.textContent = 'Could not read the file.'; };
+      r.readAsText(f);
+    };
+    const load = document.createElement('button'); load.className = 'btn check'; load.textContent = 'Load pasted text';
+    load.onclick = () => { const t = card.querySelector('#lg-text').value.trim(); if (t) apply(t); else err.textContent = 'Pick a file or paste the JSON.'; };
+    const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Cancel';
+    close.onclick = () => view.closeModal();
+    card.querySelector('.modal-actions').append(load, close);
+    view.showModal(card);
+  }
+
+  // ---- Buy more chips (between hands, single-player top-up) ----
+  function buyChips(ctx) {
+    const { ctrl, view } = ctx;
+    const card = document.createElement('div'); card.className = 'modal-card';
+    const hero = ctrl.game.players[0];
+    card.innerHTML = `<h2>Buy more chips</h2>
+      <div class="sub">Top up <b>${esc(hero.name)}</b>'s stack between hands. Current stack: <b>$${hero.stack}</b>.</div>
+      <div class="buy-row"><label>Add chips $</label><input type="number" id="bc-amt" value="200" min="1" step="50"></div>
+      <div class="modal-actions"></div>`;
+    const add = document.createElement('button'); add.className = 'btn check'; add.textContent = 'Add chips';
+    add.onclick = () => { const v = parseInt(card.querySelector('#bc-amt').value, 10) || 0; if (v > 0) ctrl.buyChips(v, 0); view.closeModal(); };
+    const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Cancel';
+    close.onclick = () => view.closeModal();
+    card.querySelector('.modal-actions').append(add, close);
+    view.showModal(card);
+  }
+
+  // ---- Hand-history replay browser ----
+  // Lists every completed hand this session; open any one's full Hand Summary,
+  // step prev/next. Closes the desktop's --replay gap for in-session review.
+  function handHistory(ctx) {
+    const { ctrl, view } = ctx;
+    const hist = ctrl.handHistories.slice();
+    const card = document.createElement('div'); card.className = 'modal-card hh-modal';
+    if (!hist.length) {
+      card.innerHTML = `<h2>Hand history</h2><div class="notice">No completed hands yet this session — play a hand, then come back to replay it.</div><div class="modal-actions"></div>`;
+      const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Close';
+      close.onclick = () => view.closeModal();
+      card.querySelector('.modal-actions').appendChild(close);
+      view.showModal(card); return;
+    }
+    const rows = hist.map((h, i) => {
+      const heroSeat = (ctrl.humanSeats && ctrl.humanSeats.size) ? Math.min(...ctrl.humanSeats) : 0;
+      const net = ((h.result && h.result.net) || []).find(n => n.seat === heroSeat);
+      const v = net ? net.net : 0;
+      const cls = v > 0 ? 'pos' : v < 0 ? 'neg' : 'muted';
+      const hero = (h.holeCards || []).find(x => x.seat === heroSeat);
+      const cards = hero ? hero.cards.map(c => root.PokerEngine.cardToStr(c)).join(' ') : '';
+      return `<tr data-i="${i}"><td>#${h.handNumber}</td><td class="hh-cards">${esc(cards)}</td><td class="${cls}">${v >= 0 ? '+' : '-'}$${Math.abs(v)}</td><td><button class="ghost hh-open" data-i="${i}">Replay ▸</button></td></tr>`;
+    }).join('');
+    card.innerHTML = `<h2>Hand history — ${hist.length} hand${hist.length > 1 ? 's' : ''}</h2>
+      <div class="sub">Replay any hand's full Theory-of-Mind summary (per-street equity, made hands, hindsight, results).</div>
+      <div class="hh-scroll"><table class="hh-table"><tr><th>Hand</th><th>Your cards</th><th>Net</th><th></th></tr>${rows}</table></div>
+      <div class="modal-actions"></div>`;
+    card.querySelector('.hh-scroll').addEventListener('click', e => {
+      const b = e.target.closest('.hh-open'); if (!b) return;
+      const i = parseInt(b.getAttribute('data-i'), 10);
+      replayHand(ctx, hist, i);
+    });
+    const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Close';
+    close.onclick = () => view.closeModal();
+    card.querySelector('.modal-actions').appendChild(close);
+    view.showModal(card);
+  }
+
+  // open one hand's summary with prev/next stepping through the session
+  function replayHand(ctx, hist, i) {
+    const { ctrl, view } = ctx;
+    i = Math.max(0, Math.min(hist.length - 1, i));
+    view.showHandSummary(hist[i]);
+    // graft prev/next controls onto the summary's action row
+    const act = view.el.modal.querySelector('.hs-actions');
+    if (act) {
+      const nav = document.createElement('span'); nav.className = 'hh-nav';
+      const prev = document.createElement('button'); prev.className = 'ghost'; prev.textContent = '◄ Prev hand'; prev.disabled = i <= 0;
+      prev.onclick = () => replayHand(ctx, hist, i - 1);
+      const idx = document.createElement('span'); idx.className = 'muted'; idx.textContent = ` Hand #${hist[i].handNumber} (${i + 1}/${hist.length}) `;
+      const next = document.createElement('button'); next.className = 'ghost'; next.textContent = 'Next hand ►'; next.disabled = i >= hist.length - 1;
+      next.onclick = () => replayHand(ctx, hist, i + 1);
+      nav.append(prev, idx, next);
+      act.insertBefore(nav, act.firstChild);
+    }
+  }
+
+  // ---- Hand-class P&L table (desktop HandClassPnLTable) ----
+  function handClassPnL(ctx) {
+    const { ctrl, view } = ctx;
+    const bb = ctrl.game.bb() || 2;
+    const rows = Object.values(ctrl.holeStats)
+      .sort((a, b) => b.net - a.net || a.cls.localeCompare(b.cls))
+      .slice(0, 50)
+      .map(h => {
+        const played = h.played || 0;
+        const bb100 = played > 0 ? (h.net / bb / played) * 100 : 0;
+        const cls = h.net > 0 ? 'pos' : h.net < 0 ? 'neg' : 'muted';
+        return `<tr><td>${esc(h.cls)}</td><td>${h.seen}</td><td>${h.won}</td><td>${h.lost}</td><td class="${cls}">${h.net >= 0 ? '+' : '-'}$${Math.abs(h.net)}</td><td class="${cls}">${bb100 >= 0 ? '+' : ''}${bb100.toFixed(1)}</td></tr>`;
+      }).join('');
+    const card = document.createElement('div'); card.className = 'modal-card hh-modal';
+    card.innerHTML = `<h2>bb/100 by starting hand</h2>
+      <div class="sub">Per-hand-class P&amp;L for this session — find the hand groups that leak (sorted by net).</div>
+      ${rows ? `<div class="hh-scroll"><table class="hh-table"><tr><th>Hand</th><th>Seen</th><th>Won</th><th>Lost</th><th>Net</th><th>bb/100</th></tr>${rows}</table></div>`
+        : '<div class="notice">No hands recorded yet — play some hands to populate this table.</div>'}
+      <div class="modal-actions"></div>`;
+    const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Close';
+    close.onclick = () => view.closeModal();
+    card.querySelector('.modal-actions').appendChild(close);
+    view.showModal(card);
+  }
+
+  const API = { saveGame, loadGame, buyChips, handHistory, handClassPnL };
+  if (typeof module !== 'undefined' && module.exports) module.exports = API;
+  else root.PokerFiles = API;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
+// ===== prefs.js =====
+/*
+ * PokerIQ — Preferences. Ports the desktop Preferences dialog (Equity / Display
+ * / AI Opponents tabs) and persists to localStorage (was QSettings):
+ *   - Equity:  use only publicly revealed cards for Hero's equity (default on)
+ *   - Display: legacy 2-colour deck (red hearts+diamonds, black clubs+spades)
+ *   - AI Opponents: per-seat bot type, randomise-after-win, beat-the-defaults
+ *                   unlock gate (matches BOT_PREFS + randomize_bots_enabled).
+ *
+ * The store is a thin typed wrapper over the shared safe localStorage (exported
+ * by analytics.js as root.__piqStore) so it degrades gracefully on file://.
+ */
+(function (root) {
+  'use strict';
+
+  const store = (root && root.__piqStore) || (function () {
+    const m = {}; return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; } };
+  })();
+  const getBool = (k, d) => { try { const v = store.getItem(k); return v == null ? d : v === 'true' || v === '1'; } catch (e) { return d; } };
+  const getStr = (k, d) => { try { const v = store.getItem(k); return v == null ? d : v; } catch (e) { return d; } };
+  const setVal = (k, v) => { try { store.setItem(k, String(v)); } catch (e) {} };
+
+  const KEYS = {
+    visibleOnly: 'piq.pref.visibleOnly',
+    legacyColors: 'piq.pref.legacyColors',
+    randomizeBots: 'piq.pref.randomizeBots',
+    beatDefaults: 'piq.pref.beatDefaults',
+  };
+
+  const Prefs = {
+    visibleOnly: () => getBool(KEYS.visibleOnly, true),
+    legacyColors: () => getBool(KEYS.legacyColors, false),
+    randomizeBots: () => getBool(KEYS.randomizeBots, false),
+    beatDefaults: () => getBool(KEYS.beatDefaults, false),
+    botFor: (seat) => getStr('piq.bot.' + seat, 'default'),
+    set: (k, v) => setVal(KEYS[k] || k, v),
+    setBot: (seat, v) => setVal('piq.bot.' + seat, v),
+  };
+
+  // Bot options (id → label) — mirror BOT_TYPE_OPTIONS / cute names.
+  const BOT_OPTS = [
+    ['default', 'Default (lineup)'],
+    ['tight', 'Tight Tim'], ['loose', 'Loose Bruce'], ['aggressive', 'Aggro Angela'],
+    ['shark', 'Sharkey Steve'], ['tom', 'Fluid Fiona'], ['optimal', 'Optimal Olivia'],
+    ['exploit', 'Exploit Eli'], ['icm', 'ICM Ian'], ['station', 'Station Stan'],
+    ['piq_basic_equity', 'Equity Eddie'], ['piq_improved_equity', 'Savvy Sarah'],
+  ];
+
+  // Apply persisted prefs to a controller + the document (called at boot and on save).
+  function apply(ctrl) {
+    ctrl.visibleCardsOnly = Prefs.visibleOnly();
+    const rootEl = (typeof document !== 'undefined') ? (document.getElementById('app') || document.body) : null;
+    if (rootEl) rootEl.classList.toggle('legacy-colors', Prefs.legacyColors());
+    ctrl.randomizeBotsEnabled = Prefs.randomizeBots();
+  }
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+  function openDialog(ctx) {
+    const { ctrl, view } = ctx;
+    const card = document.createElement('div'); card.className = 'modal-card';
+    let tab = 'equity';
+    const beat = Prefs.beatDefaults();
+    // keep whatever the user toggled across tab switches without committing yet
+    const stash = () => {
+      const vis = card.querySelector('#pf-vis'); if (vis) Prefs.set('visibleOnly', vis.checked);
+      const leg = card.querySelector('#pf-legacy'); if (leg) Prefs.set('legacyColors', leg.checked);
+      const rnd = card.querySelector('#pf-rand'); if (rnd) Prefs.set('randomizeBots', rnd.checked);
+      card.querySelectorAll('select[data-seat]').forEach(s => Prefs.setBot(s.getAttribute('data-seat'), s.value));
+    };
+    const render = () => {
+      card.innerHTML = `<h2>Preferences</h2>
+        <div class="pf-tabs">
+          <button class="pf-tab ${tab === 'equity' ? 'on' : ''}" data-t="equity">Equity</button>
+          <button class="pf-tab ${tab === 'display' ? 'on' : ''}" data-t="display">Display</button>
+          <button class="pf-tab ${tab === 'ai' ? 'on' : ''}" data-t="ai">AI Opponents</button>
+        </div>
+        <div class="pf-body" id="pf-body"></div>
+        <div class="modal-actions"></div>`;
+      const body = card.querySelector('#pf-body');
+      if (tab === 'equity') {
+        body.innerHTML = `
+          <label class="pf-check"><input type="checkbox" id="pf-vis" ${Prefs.visibleOnly() ? 'checked' : ''}>
+            <span>Use only publicly revealed cards for Hero's equity</span></label>
+          <div class="pf-desc">On (realistic Theory-of-Mind): equity is Monte-Carlo'd treating opponents as random ranges — only the board and your own cards are known. Off (God-style): equity is computed against opponents' <i>actual</i> hands (only meaningful with God Mode on).</div>`;
+      } else if (tab === 'display') {
+        body.innerHTML = `
+          <label class="pf-check"><input type="checkbox" id="pf-legacy" ${Prefs.legacyColors() ? 'checked' : ''}>
+            <span>Legacy colours (red diamonds, black clubs)</span></label>
+          <div class="pf-desc">Off (default): modern 4-colour deck — red hearts, blue diamonds, green clubs, black spades. On: traditional 2-colour deck — red hearts &amp; diamonds, black clubs &amp; spades.</div>
+          <div class="pf-row"><span class="muted">Preview:</span>
+            <span class="card heart"><b>A</b><i>♥</i></span><span class="card diamond"><b>K</b><i>♦</i></span>
+            <span class="card club"><b>Q</b><i>♣</i></span><span class="card spade"><b>J</b><i>♠</i></span></div>`;
+        setTimeout(() => {
+          const cb = card.querySelector('#pf-legacy'); const prevRow = card.querySelector('.pf-row');
+          if (cb && prevRow) { prevRow.classList.toggle('legacy-colors', cb.checked); cb.onchange = () => prevRow.classList.toggle('legacy-colors', cb.checked); }
+        }, 0);
+      } else {
+        const seats = ctrl.game.players.map((p, i) => {
+          if (i === 0 && p.isHuman) return '';      // seat 0 is the local hero
+          const cur = Prefs.botFor(i);
+          return `<div class="pf-seat"><label>${esc(p.name)}</label>
+            <select data-seat="${i}">${BOT_OPTS.map(([v, l]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`;
+        }).join('');
+        body.innerHTML = `
+          <div class="sub" style="margin-bottom:10px;">Pick the bot style for each opponent seat (applies on the next table / New hand).</div>
+          ${seats}
+          <label class="pf-check"><input type="checkbox" id="pf-rand" ${Prefs.randomizeBots() ? 'checked' : ''} ${beat ? '' : 'disabled'}>
+            <span>Randomise bots from the combined pool after winning a game</span></label>
+          <div class="pf-status ${beat ? 'pos' : 'muted'}">${beat ? '✓ You have beaten the default bots — random pool unlocked.' : 'Beat the default bots once to unlock the advanced random pool.'}</div>`;
+      }
+      const actions = card.querySelector('.modal-actions');
+      const save = document.createElement('button'); save.className = 'btn check'; save.textContent = 'Save';
+      save.onclick = () => {
+        stash();
+        apply(ctrl);
+        ctrl.applyBotPrefs && ctrl.applyBotPrefs();
+        ctrl.refreshHeroEquity && ctrl.refreshHeroEquity();
+        ctrl.render();
+        view.closeModal();
+      };
+      const cancel = document.createElement('button'); cancel.className = 'ghost'; cancel.textContent = 'Cancel';
+      cancel.onclick = () => view.closeModal();
+      actions.append(save, cancel);
+    };
+    card.addEventListener('click', e => {
+      const t = e.target.closest('.pf-tab'); if (!t) return;
+      stash(); tab = t.getAttribute('data-t'); render();
+    });
+    render();
+    view.showModal(card);
+  }
+
+  const API = { Prefs, apply, openDialog, BOT_OPTS, KEYS };
+  if (typeof module !== 'undefined' && module.exports) module.exports = API;
+  else root.PokerPrefs = API;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
+// ===== claude.js =====
+/*
+ * PokerIQ — Claude hand analysis, in the browser. Restores the desktop
+ * ClaudeAnalysisThread feature without the `claude` CLI: it calls the Anthropic
+ * Messages API directly from the page (the user supplies their own API key,
+ * stored in localStorage) using the dangerous-direct-browser-access header.
+ *
+ *   - critique mode: a ≤3-sentence per-player review (Hand Summary ▸ Analyze)
+ *   - annotate  mode: chess-engine !/!?/?!/? per-action marks + a RETROSPECTIVE
+ *     section with per-street hindsight paragraphs
+ *
+ * Model: claude-opus-4-8 with adaptive thinking (budget_tokens is rejected on
+ * 4.8). Network is opt-in and only fires when the user clicks Analyze.
+ */
+(function (root) {
+  'use strict';
+
+  const store = (root && root.__piqStore) || (function () {
+    const m = {}; return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; } };
+  })();
+  const KEY = 'piq.claude.key';
+  const MODEL = 'claude-opus-4-8';
+  const ENDPOINT = 'https://api.anthropic.com/v1/messages';
+
+  function getKey() { try { return store.getItem(KEY) || ''; } catch (e) { return ''; } }
+  function setKey(k) { try { if (k) store.setItem(KEY, k); else store.removeItem(KEY); } catch (e) {} }
+  function hasKey() { return !!getKey(); }
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+  function critiquePrompt(name, handText) {
+    return `Critique this poker hand from ${name}'s perspective (3 sentences max). ` +
+      `Was ${name}'s play correct? What was ${name}'s key decision? ` +
+      `Plain text only, no markdown.\n\n${handText}`;
+  }
+  function annotatePrompt(name, handText, lineCount, wordLimit) {
+    return `You are annotating a poker hand for ${name} like a chess engine annotates a game.\n` +
+      `The action lines are numbered 1..${lineCount}. For each meaningful action by ${name}, output one line:\n` +
+      `"N. <one-sentence comment, optionally ending with a marker !, !?, ?!, or ?>" where ` +
+      `! = strong play, !? = interesting, ?! = dubious, ? = mistake. Skip routine actions.\n` +
+      `Then a line "RETROSPECTIVE:" followed, for each street that was reached, by a line ` +
+      `"STREET[<Preflop|Flop|Turn|River>]:" and a short hindsight paragraph. Keep the whole ` +
+      `retrospective under ${wordLimit || 80} words. Plain text only, no markdown.\n\n${handText}`;
+  }
+
+  // One API call for one POV. Returns { player, seat, text, model } (text is an
+  // error string on failure so the UI can show it inline, like the desktop).
+  async function analyzeOne(pov, handText, opts) {
+    const fetchFn = (opts && opts.fetchFn) || (typeof fetch !== 'undefined' ? fetch : null);
+    const key = (opts && opts.key) || getKey();
+    const mode = (opts && opts.mode) || 'critique';
+    const model = (opts && opts.model) || MODEL;
+    if (!fetchFn) return { player: pov.name, seat: pov.seat, text: '(no fetch available in this environment)', model };
+    if (!key) return { player: pov.name, seat: pov.seat, text: '(no API key set — open ⚙ to add one)', model };
+    const prompt = mode === 'annotate'
+      ? annotatePrompt(pov.name, handText, opts.lineCount || 0, opts.wordLimit)
+      : critiquePrompt(pov.name, handText);
+    const body = {
+      model, max_tokens: mode === 'annotate' ? 1200 : 400,
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'high' },
+      messages: [{ role: 'user', content: prompt }],
+    };
+    try {
+      const resp = await fetchFn(ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) {
+        let detail = '';
+        try { const j = await resp.json(); detail = (j && j.error && j.error.message) || ''; } catch (e) {}
+        return { player: pov.name, seat: pov.seat, text: `(API error ${resp.status}${detail ? ': ' + detail : ''})`, model };
+      }
+      const data = await resp.json();
+      const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim()
+        || (data.stop_reason === 'refusal' ? '(model declined to analyze this hand)' : '(empty response)');
+      return { player: pov.name, seat: pov.seat, text, model };
+    } catch (e) {
+      // network/CORS failures land here
+      return { player: pov.name, seat: pov.seat, text: `(request failed: ${e && e.message ? e.message : 'network error'})`, model };
+    }
+  }
+
+  // Analyze a hand from each POV. Returns an array of result objects.
+  async function analyze(opts) {
+    const povs = (opts && opts.povs) || [];
+    const handText = (opts && opts.handText) || '';
+    const out = [];
+    for (const pov of povs) {                       // sequential keeps key rate-limit-friendly
+      const r = await analyzeOne(pov, handText, opts);
+      out.push(r);
+      if (opts && opts.onProgress) opts.onProgress(out.length, povs.length, pov.name);
+    }
+    return out;
+  }
+
+  // ---- UI ----
+  function keyRow(card, view) {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `<div class="pf-row"><label class="lead">Anthropic API key</label>
+      <input type="password" class="cl-key" id="cl-key" placeholder="sk-ant-..." value="${esc(getKey())}"></div>
+      <div class="pf-desc">Stored only in this browser's localStorage and sent directly to api.anthropic.com when you click Analyze. Get a key at console.anthropic.com. Leave blank and Save to remove it.</div>`;
+    return wrap;
+  }
+
+  function openSettings(ctx) {
+    const { view } = ctx;
+    const card = document.createElement('div'); card.className = 'modal-card';
+    card.innerHTML = `<h2>Claude analysis — settings</h2>
+      <div class="sub">PokerIQ can critique your hands with Claude (Opus 4.8). This calls the Anthropic API directly from your browser with your own key.</div>
+      <div id="cl-keyrow"></div>
+      <div class="modal-actions"></div>`;
+    card.querySelector('#cl-keyrow').appendChild(keyRow(card, view));
+    const save = document.createElement('button'); save.className = 'btn check'; save.textContent = 'Save';
+    save.onclick = () => { setKey(card.querySelector('#cl-key').value.trim()); view.closeModal(); };
+    const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Cancel';
+    close.onclick = () => view.closeModal();
+    card.querySelector('.modal-actions').append(save, close);
+    view.showModal(card);
+  }
+
+  // Render the per-POV analysis blocks, marking !/!?/?!/? glyphs.
+  function blocksHTML(results) {
+    const mark = t => esc(t)
+      .replace(/(\s)(!\?|\?!|!|\?)(\s|$)/g, (m, a, g, b) => a + `<span class="cl-mark ${g === '!' ? 'good' : g === '?' ? 'bad' : 'dub'}">${g}</span>` + b);
+    return results.map(r => `<div class="cl-block"><span class="who">${esc(r.player)} — ${esc(r.model)}</span>${mark(r.text).replace(/\n/g, '<br>')}</div>`).join('');
+  }
+
+  // The Hand Summary "Analyze with Claude" flow.
+  function analyzeHand(ctx, history, mode) {
+    const { ctrl, view } = ctx;
+    mode = mode || 'critique';
+    const h = history || ctrl.lastHistory;
+    const built = ctrl.handTextForClaude(h);
+    if (!built) return;
+    const povs = ctrl.claudePovs();
+    const card = document.createElement('div'); card.className = 'modal-card';
+    card.innerHTML = `<h2>Claude — hand analysis</h2>
+      <div class="sub">${mode === 'annotate' ? 'Per-action marks + retrospective' : 'Per-player critique (≤3 sentences each)'} from Claude Opus 4.8.</div>
+      <div id="cl-body"><div class="cl-busy">Running Claude (Opus 4.8, adaptive thinking)… 0/${povs.length}</div></div>
+      <div class="modal-actions"></div>`;
+    const body = card.querySelector('#cl-body');
+    const settings = document.createElement('button'); settings.className = 'ghost'; settings.textContent = '⚙ Key';
+    settings.onclick = () => openSettings(ctx);
+    const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Close';
+    close.onclick = () => view.closeModal();
+    card.querySelector('.modal-actions').append(settings, close);
+    view.showModal(card);
+
+    if (!hasKey()) {
+      body.innerHTML = `<div class="notice">No Anthropic API key set. Click <b>⚙ Key</b> below to add one — it stays in this browser and is sent only to api.anthropic.com.</div>`;
+      return;
+    }
+    // word-limit scales with hero loss severity (mirrors desktop retro_word_limit)
+    let wordLimit = 80;
+    const heroSeat = povs.length ? povs[0].seat : 0;
+    const net = ((h && h.result && h.result.net) || []).find(n => n.seat === heroSeat);
+    if (net && net.net < 0) wordLimit = Math.min(320, 80 + Math.floor(Math.abs(net.net) / Math.max(1, ctrl.game.bb())) * 8);
+
+    analyze({
+      povs, handText: built.text, mode, lineCount: built.lineCount, wordLimit,
+      onProgress: (done, total, name) => { body.innerHTML = `<div class="cl-busy">Running Claude (Opus 4.8)… ${done}/${total} — last: ${esc(name)}</div>`; },
+    }).then(results => {
+      body.innerHTML = blocksHTML(results);
+      // stash on the history so the Hand Summary can show it too
+      if (h) h.claudeAnalysis = results;
+    }).catch(e => { body.innerHTML = `<div class="notice">Analysis failed: ${esc(e && e.message ? e.message : 'error')}</div>`; });
+  }
+
+  const API = { getKey, setKey, hasKey, analyze, analyzeOne, openSettings, analyzeHand, blocksHTML, MODEL, ENDPOINT };
+  if (typeof module !== 'undefined' && module.exports) module.exports = API;
+  else root.PokerClaude = API;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
+// ===== netplay.js =====
+/*
+ * PokerIQ — online multiplayer, serverless. Restores the desktop LAN/network
+ * play (network/{server,client,protocol}.py) without any server: peers connect
+ * directly over WebRTC DataChannels using copy/paste signalling (offer/answer
+ * SDP blobs), so it still runs from one self-contained HTML file in any browser.
+ *
+ * Topology: the host runs the authoritative engine (its existing Controller);
+ * each guest is a remote seat. The host forwards every engine event plus a
+ * tailored authoritative game-state blob (own hole cards only; all at showdown)
+ * to each peer, and asks a peer for an action when it is that seat's turn. A
+ * guest mirrors the state and renders with the full PokerIQ UI (advisor, ToM,
+ * summary) computed locally from its own cards + the public board.
+ *
+ * NetHost / NetGuest take an abstract transport so the protocol is unit-tested
+ * with an in-memory loopback; RTCTransport is the real WebRTC implementation.
+ */
+(function (root) {
+  'use strict';
+
+  const PG = (typeof require !== 'undefined') ? require('./game.js') : root.PokerGame;
+
+  // ---------------- protocol helpers ----------------
+  const legalWire = (g, seat) => {
+    const L = g.legalActions(seat);
+    return { toCall: L.toCall, canCheck: L.canCheck, canRaise: L.canRaise, minRaiseTo: L.minRaiseTo, maxRaiseTo: L.maxRaiseTo, pot: L.pot };
+  };
+
+  // ---------------- Host ----------------
+  class NetHost {
+    constructor(ctrl, transport, opts = {}) {
+      this.ctrl = ctrl;
+      this.t = transport;
+      this.hostName = opts.hostName || 'Host';
+      this.seatByPeer = {};      // peerId -> seat
+      this.peerBySeat = {};      // seat -> peerId
+      this.nameByPeer = {};      // peerId -> display name
+      this.pending = [];         // peers awaiting a seat (joined mid-hand)
+      this.chatLog = [];
+      this.onUpdate = opts.onUpdate || function () {};
+      ctrl.netHost = this;
+      this.t.onMessage((peer, msg) => this.onPeerMessage(peer, msg));
+      if (this.t.onClose) this.t.onClose(peer => this.onPeerClose(peer));
+    }
+
+    seats() {
+      // {seatIndex: name|null} for the lobby view
+      const out = {};
+      this.ctrl.game.players.forEach(p => { out[p.seat] = this.ctrl.remoteSeats.has(p.seat) ? p.name : (p.seat === 0 ? this.hostName + ' (you)' : null); });
+      return out;
+    }
+    connectedPlayers() {
+      return Object.keys(this.seatByPeer).map(peer => ({ peer, seat: this.seatByPeer[peer], name: this.nameByPeer[peer] }));
+    }
+
+    onPeerMessage(peer, msg) {
+      if (!msg || !msg.t) return;
+      if (msg.t === 'join') this.join(peer, msg.name);
+      else if (msg.t === 'action') this.remoteAction(peer, msg);
+      else if (msg.t === 'chat') this.chat(this.nameByPeer[peer] || 'Guest', msg.text);
+    }
+
+    // open seats = bot seats with chips, not already remote
+    openSeat() {
+      const g = this.ctrl.game;
+      for (let i = 1; i < g.players.length; i++) {
+        const p = g.players[i];
+        if (p && p.stack > 0 && !this.ctrl.remoteSeats.has(i)) return i;
+      }
+      return -1;
+    }
+
+    join(peer, name) {
+      name = (name || 'Guest').slice(0, 12);
+      this.nameByPeer[peer] = name;
+      // seat now if between hands; otherwise queue for the next deal
+      if (!this.ctrl.game.handInProgress) this.seatPeer(peer);
+      else { if (!this.pending.includes(peer)) this.pending.push(peer); this.t.send(peer, { t: 'sys', text: 'Seated at the next hand…' }); }
+      this.onUpdate();
+    }
+
+    seatPeer(peer) {
+      const seat = this.openSeat();
+      if (seat < 0) { this.t.send(peer, { t: 'full' }); return false; }
+      const g = this.ctrl.game, name = this.nameByPeer[peer] || 'Guest';
+      g.players[seat].style = 'human';     // engine now waits for this seat
+      g.players[seat].name = name;
+      this.ctrl.remoteSeats.add(seat);
+      this.seatByPeer[peer] = seat; this.peerBySeat[seat] = peer;
+      this.t.send(peer, { t: 'welcome', seat, sb: g.sb(), bb: g.bb(), hostName: this.hostName });
+      this.t.send(peer, { t: 'state', gs: g.netStateFor(seat, !g.handInProgress) });
+      this.broadcast({ t: 'sys', text: `${name} joined (seat ${seat + 1})` });
+      this.chatLog.push({ from: '—', text: `${name} joined`, sys: true });
+      return true;
+    }
+
+    applyPendingSeats() {
+      // called from Controller.newHand (host) before dealing
+      const still = [];
+      for (const peer of this.pending) { if (!this.seatPeer(peer)) still.push(peer); }
+      this.pending = still;
+      this.ctrl.requestedRemote = -1;
+    }
+
+    onPeerClose(peer) {
+      const seat = this.seatByPeer[peer];
+      if (seat != null) {
+        // turn the seat back into a bot so the table keeps playing
+        this.ctrl.remoteSeats.delete(seat);
+        const g = this.ctrl.game, names = PG.CUTE_NAMES;
+        g.players[seat].style = 'tight'; g.players[seat].name = names.tight;
+        delete this.peerBySeat[seat];
+        this.broadcast({ t: 'sys', text: `${this.nameByPeer[peer] || 'A player'} left — seat ${seat + 1} is a bot now` });
+      }
+      delete this.seatByPeer[peer]; delete this.nameByPeer[peer];
+      this.onUpdate();
+      // if it was their turn, let the (now-bot) seat act
+      if (this.ctrl.game.awaitingAction && this.ctrl.game.toAct === seat) {
+        this.ctrl.game.awaitingAction = false; this.ctrl.game.awaitingBot = seat;
+        this.ctrl.pump();
+      }
+    }
+
+    requestAction(seat, legal) {
+      const peer = this.peerBySeat[seat]; if (!peer) return;
+      this.t.send(peer, { t: 'act', legal: legalWire(this.ctrl.game, seat), gs: this.ctrl.game.netStateFor(seat, false) });
+    }
+
+    remoteAction(peer, msg) {
+      const seat = this.seatByPeer[peer]; const g = this.ctrl.game;
+      if (seat == null || !g.awaitingAction || g.toAct !== seat) return;   // not your turn
+      g.applyAction(seat, msg.action, msg.amount || 0);   // emits events → broadcast
+      this.ctrl.render();
+      this.ctrl.pump();
+    }
+
+    // every engine event → forward to peers with their tailored authoritative state
+    onEngineEvent(type, payload) {
+      const g = this.ctrl.game;
+      const revealAll = !g.handInProgress;   // showdown: reveal all hole cards
+      for (const peer of Object.keys(this.seatByPeer)) {
+        const seat = this.seatByPeer[peer];
+        this.t.send(peer, { t: 'ev', type, payload, gs: g.netStateFor(seat, revealAll) });
+      }
+    }
+
+    chat(from, text) {
+      text = String(text || '').slice(0, 200);
+      this.chatLog.push({ from, text });
+      this.broadcast({ t: 'chat', from, text });
+      this.onUpdate();
+    }
+    broadcast(msg) { for (const peer of Object.keys(this.seatByPeer)) this.t.send(peer, msg); }
+  }
+
+  // ---------------- Guest ----------------
+  class NetGuest {
+    constructor(ctrl, transport, opts = {}) {
+      this.ctrl = ctrl;          // a follower Controller
+      this.t = transport;
+      this.name = opts.name || 'Guest';
+      this.chatLog = [];
+      this.onUpdate = opts.onUpdate || function () {};
+      this.seated = false;
+      ctrl.netGuest = this;
+      this.t.onMessage(msg => this.onMsg(msg));
+      this.t.send({ t: 'join', name: this.name });
+    }
+
+    onMsg(msg) {
+      if (!msg || !msg.t) return;
+      const ctrl = this.ctrl, g = ctrl.game;
+      switch (msg.t) {
+        case 'welcome':
+          ctrl.mySeat = msg.seat; this.seated = true;
+          this.hostName = msg.hostName;
+          this.onUpdate(); ctrl.render();
+          break;
+        case 'state':
+          g.applyNet(msg.gs); ctrl.render();
+          break;
+        case 'act':
+          g.applyNet(msg.gs); this.legal = msg.legal; ctrl.render();
+          break;
+        case 'ev':
+          g.applyNet(msg.gs);
+          // at showdown the host revealed every hand — make sure the building
+          // history carries them so the summary can show all hole cards.
+          if (msg.type === 'handEnd' && ctrl.history) {
+            ctrl.history.holeCards = g.players.filter(p => p.hand.length).map(p => ({ seat: p.seat, name: p.name, cards: p.hand.slice() }));
+          }
+          ctrl.onGameEvent(msg.type, msg.payload);
+          ctrl.render();
+          break;
+        case 'chat':
+          this.chatLog.push({ from: msg.from, text: msg.text }); this.onUpdate(); break;
+        case 'sys':
+          this.chatLog.push({ from: '—', text: msg.text, sys: true }); this.onUpdate(); break;
+        case 'full':
+          this.chatLog.push({ from: '—', text: 'Table is full — no open seat.', sys: true }); this.onUpdate(); break;
+      }
+    }
+
+    sendAction(action, amount) { this.t.send({ t: 'action', action, amount: amount || 0 }); }
+    sendChat(text) { text = String(text || '').slice(0, 200); this.t.send({ t: 'chat', text }); this.chatLog.push({ from: this.name, text, me: true }); this.onUpdate(); }
+  }
+
+  // ---------------- in-memory loopback transport (tests) ----------------
+  // A hub wiring one host transport to N guest transports with no network.
+  class LoopbackHub {
+    constructor() { this.hostRecv = null; this.guests = {}; this.closeCb = null; this._n = 0; }
+    hostTransport() {
+      const hub = this;
+      return {
+        onMessage(fn) { hub.hostRecv = fn; },
+        onClose(fn) { hub.closeCb = fn; },
+        send(peer, msg) { const gt = hub.guests[peer]; if (gt && gt._recv) gt._recv(clone(msg)); },
+        broadcast(msg) { for (const p of Object.keys(hub.guests)) this.send(p, msg); },
+      };
+    }
+    guestTransport() {
+      const hub = this; const id = 'peer' + (++hub._n);
+      const gt = {
+        id, _recv: null,
+        onMessage(fn) { gt._recv = fn; },
+        send(msg) { if (hub.hostRecv) hub.hostRecv(id, clone(msg)); },
+      };
+      hub.guests[id] = gt;
+      return gt;
+    }
+    dropGuest(id) { if (this.closeCb) this.closeCb(id); delete this.guests[id]; }
+  }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+  // ---------------- WebRTC transport (browser) ----------------
+  // Manual copy/paste signalling: no server. One RTCPeerConnection per guest on
+  // the host; one on the guest. SDP+ICE bundled into a single base64 blob so the
+  // handshake is two copy/pastes. STUN is optional (LAN works without it).
+  const ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
+  const enc = o => { try { return btoa(JSON.stringify(o)); } catch (e) { return ''; } };
+  const dec = s => { try { return JSON.parse(atob(s.trim())); } catch (e) { return null; } };
+  const haveRTC = () => typeof RTCPeerConnection !== 'undefined';
+
+  function gatherComplete(pc) {
+    return new Promise(res => {
+      if (pc.iceGatheringState === 'complete') return res();
+      const check = () => { if (pc.iceGatheringState === 'complete') { pc.removeEventListener('icegatheringstatechange', check); res(); } };
+      pc.addEventListener('icegatheringstatechange', check);
+      setTimeout(res, 4000);   // fall back after a moment (LAN candidates arrive fast)
+    });
+  }
+
+  // Host-side multi-peer transport over WebRTC.
+  class RTCHostTransport {
+    constructor() { this.peers = {}; this._msg = null; this._close = null; this._n = 0; }
+    onMessage(fn) { this._msg = fn; }
+    onClose(fn) { this._close = fn; }
+    send(peer, msg) { const p = this.peers[peer]; if (p && p.ch && p.ch.readyState === 'open') { try { p.ch.send(JSON.stringify(msg)); } catch (e) {} } }
+    broadcast(msg) { for (const id of Object.keys(this.peers)) this.send(id, msg); }
+    // create an offer blob for a new guest; returns {id, offer}
+    async createOffer() {
+      const id = 'peer' + (++this._n);
+      const pc = new RTCPeerConnection(ICE);
+      const ch = pc.createDataChannel('piq');
+      const rec = { pc, ch };
+      this.peers[id] = rec;
+      ch.onmessage = e => { if (this._msg) { const m = safe(e.data); if (m) this._msg(id, m); } };
+      ch.onclose = () => { if (this._close) this._close(id); delete this.peers[id]; };
+      pc.onconnectionstatechange = () => { if ((pc.connectionState === 'failed' || pc.connectionState === 'disconnected') && this._close) { this._close(id); } };
+      const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await gatherComplete(pc);
+      return { id, offer: enc(pc.localDescription) };
+    }
+    async acceptAnswer(id, blob) {
+      const rec = this.peers[id]; if (!rec) return false;
+      const ans = dec(blob); if (!ans) return false;
+      await rec.pc.setRemoteDescription(ans); return true;
+    }
+  }
+
+  // Guest-side single-peer transport over WebRTC.
+  class RTCGuestTransport {
+    constructor() { this.pc = null; this.ch = null; this._msg = null; this._open = null; }
+    onMessage(fn) { this._msg = fn; }
+    onOpen(fn) { this._open = fn; }
+    send(msg) { if (this.ch && this.ch.readyState === 'open') { try { this.ch.send(JSON.stringify(msg)); } catch (e) {} } }
+    // accept the host's offer blob, return our answer blob
+    async accept(offerBlob) {
+      const offer = dec(offerBlob); if (!offer) throw new Error('bad offer blob');
+      const pc = new RTCPeerConnection(ICE); this.pc = pc;
+      pc.ondatachannel = e => {
+        this.ch = e.channel;
+        this.ch.onopen = () => { if (this._open) this._open(); };
+        this.ch.onmessage = ev => { if (this._msg) { const m = safe(ev.data); if (m) this._msg(m); } };
+      };
+      await pc.setRemoteDescription(offer);
+      const ans = await pc.createAnswer(); await pc.setLocalDescription(ans); await gatherComplete(pc);
+      return enc(pc.localDescription);
+    }
+  }
+  function safe(d) { try { return JSON.parse(d); } catch (e) { return null; } }
+
+  const API = { NetHost, NetGuest, LoopbackHub, RTCHostTransport, RTCGuestTransport, haveRTC, enc, dec };
+  // attach the UI (browser only) lazily so Node tests don't need the DOM
+  if (typeof document !== 'undefined') { try { attachUI(API); } catch (e) {} }
+  if (typeof module !== 'undefined' && module.exports) module.exports = API;
+  else root.PokerNet = API;
+
+  // ---------------- UI ----------------
+  function attachUI(API) {
+    const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    API.openMenu = function (ctx) {
+      const { view } = ctx;
+      const card = document.createElement('div'); card.className = 'modal-card';
+      card.innerHTML = `<h2>Play online</h2>
+        <div class="sub">Serverless peer-to-peer poker over WebRTC — no install, no server. Host a table and send each friend an invite code, or join with one. Works across the internet (or just your LAN).</div>
+        <div class="modal-actions"></div>`;
+      const host = document.createElement('button'); host.className = 'btn check'; host.textContent = '🖥 Host a table';
+      host.onclick = () => { if (!API.haveRTC()) return noRTC(view); openHost(ctx); };
+      const join = document.createElement('button'); join.className = 'btn raise'; join.textContent = '🔗 Join a table';
+      join.onclick = () => { if (!API.haveRTC()) return noRTC(view); openJoin(ctx); };
+      const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Cancel';
+      close.onclick = () => view.closeModal();
+      card.querySelector('.modal-actions').append(host, join, close);
+      view.showModal(card);
+    };
+
+    function noRTC(view) {
+      const card = document.createElement('div'); card.className = 'modal-card';
+      card.innerHTML = `<h2>WebRTC unavailable</h2><div class="notice">This browser doesn't expose WebRTC, so peer-to-peer online play isn't available here. Hotseat (Players ▸ pass-and-play) still works for same-device multiplayer.</div><div class="modal-actions"></div>`;
+      const b = document.createElement('button'); b.className = 'ghost'; b.textContent = 'OK'; b.onclick = () => view.closeModal();
+      card.querySelector('.modal-actions').appendChild(b); view.showModal(card);
+    }
+
+    function chatPanelHTML() {
+      return `<div class="net-step"><h3>Table chat</h3><div class="net-chat" id="net-chat"></div>
+        <div class="pf-row"><input id="net-chat-in" placeholder="message…" style="flex:1"><button class="ghost" id="net-chat-send">Send</button></div></div>`;
+    }
+    function renderChat(card, log, send) {
+      const box = card.querySelector('#net-chat'); if (!box) return;
+      box.innerHTML = log.map(m => m.sys ? `<div class="sys">${esc(m.text)}</div>` : `<div class="${m.me ? 'me' : ''}"><b>${esc(m.from)}:</b> ${esc(m.text)}</div>`).join('');
+      box.scrollTop = box.scrollHeight;
+      const inp = card.querySelector('#net-chat-in'), btn = card.querySelector('#net-chat-send');
+      if (btn) btn.onclick = () => { const v = inp.value.trim(); if (v) { send(v); inp.value = ''; } };
+      if (inp) inp.onkeydown = e => { if (e.key === 'Enter') { const v = inp.value.trim(); if (v) { send(v); inp.value = ''; } } };
+    }
+
+    function openHost(ctx) {
+      const { ctrl, view } = ctx;
+      const name = (prompt('Your display name?', 'Host') || 'Host').slice(0, 12);
+      const transport = new API.RTCHostTransport();
+      const netHost = new API.NetHost(ctrl, transport, { hostName: name });
+      const card = document.createElement('div'); card.className = 'modal-card net-host';
+      const draw = () => {
+        const seats = netHost.seats();
+        const seatRows = Object.keys(seats).map(s => `<tr><td>Seat ${+s + 1}</td><td>${seats[s] ? esc(seats[s]) : '<span class="muted">bot / open</span>'}</td></tr>`).join('');
+        card.innerHTML = `<h2>Hosting — ${esc(name)}'s table</h2>
+          <div class="sub">Add a player to generate an invite code. Send it to your friend; paste their reply code below to connect them. Deal hands from the table as usual — guests play their own seats.</div>
+          <table class="net-table"><tr><th>Seat</th><th>Player</th></tr>${seatRows}</table>
+          <div class="net-step"><h3>1 — Invite a player</h3>
+            <button class="ghost" id="net-newoffer">➕ Generate invite code</button>
+            <textarea class="net-blob" id="net-offer" readonly placeholder="invite code appears here — copy &amp; send it"></textarea>
+            <button class="ghost" id="net-copyoffer">Copy invite</button></div>
+          <div class="net-step"><h3>2 — Connect them</h3>
+            <textarea class="net-blob" id="net-answer" placeholder="paste your friend's reply code here"></textarea>
+            <button class="ghost" id="net-accept">Connect player</button>
+            <span id="net-acc-msg" class="muted"></span></div>
+          ${chatPanelHTML()}
+          <div class="modal-actions"></div>`;
+        const done = document.createElement('button'); done.className = 'ghost'; done.textContent = 'Close';
+        done.onclick = () => view.closeModal();
+        card.querySelector('.modal-actions').appendChild(done);
+        let curOffer = null;
+        card.querySelector('#net-newoffer').onclick = async () => {
+          card.querySelector('#net-offer').value = 'generating…';
+          const { id, offer } = await transport.createOffer();
+          curOffer = id; card.querySelector('#net-offer').value = offer;
+        };
+        card.querySelector('#net-copyoffer').onclick = () => { const ta = card.querySelector('#net-offer'); ta.select(); try { navigator.clipboard.writeText(ta.value); } catch (e) {} };
+        card.querySelector('#net-accept').onclick = async () => {
+          const blob = card.querySelector('#net-answer').value.trim(); const msg = card.querySelector('#net-acc-msg');
+          if (!curOffer) { msg.textContent = 'generate an invite first'; return; }
+          msg.textContent = 'connecting…';
+          const okc = await transport.acceptAnswer(curOffer, blob);
+          msg.textContent = okc ? 'connected — they will be seated next hand' : 'could not read that code';
+          card.querySelector('#net-answer').value = '';
+        };
+        renderChat(card, netHost.chatLog, t => netHost.chat(name, t));
+      };
+      netHost.onUpdate = () => { draw(); };
+      draw();
+      view.showModal(card);
+    }
+
+    function openJoin(ctx) {
+      const { ctrl, view } = ctx;
+      const name = (prompt('Your display name?', 'Player') || 'Player').slice(0, 12);
+      const card = document.createElement('div'); card.className = 'modal-card';
+      card.innerHTML = `<h2>Join a table</h2>
+        <div class="sub">Paste the host's invite code, copy your reply code back to them, and you're in. Your seat, cards, advisor and Theory-of-Mind all run locally.</div>
+        <div class="net-step"><h3>1 — Paste the invite code</h3>
+          <textarea class="net-blob" id="net-offer" placeholder="paste the host's invite code"></textarea>
+          <button class="ghost" id="net-make">Generate my reply code</button></div>
+        <div class="net-step"><h3>2 — Send this back to the host</h3>
+          <textarea class="net-blob" id="net-answer" readonly placeholder="your reply code appears here"></textarea>
+          <button class="ghost" id="net-copyans">Copy reply</button>
+          <div id="net-status" class="muted"></div></div>
+        <div class="modal-actions"></div>`;
+      const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Close';
+      close.onclick = () => view.closeModal();
+      card.querySelector('.modal-actions').appendChild(close);
+      const transport = new API.RTCGuestTransport();
+      let guest = null;
+      transport.onOpen(() => {
+        card.querySelector('#net-status').textContent = 'connected! waiting for the host to deal…';
+        // hand the table over to the live game view; close the dialog shortly
+        setTimeout(() => view.closeModal(), 900);
+      });
+      card.querySelector('#net-make').onclick = async () => {
+        const offer = card.querySelector('#net-offer').value.trim();
+        const status = card.querySelector('#net-status');
+        if (!offer) { status.textContent = 'paste the invite code first'; return; }
+        try {
+          status.textContent = 'building reply…';
+          const ans = await transport.accept(offer);
+          card.querySelector('#net-answer').value = ans;
+          status.textContent = 'copy your reply code to the host →';
+          // become a follower: swap the controller into guest/mirror mode
+          ctrl.follower = true; ctrl.netGuest = null; ctrl.handResult = null; ctrl.history = null;
+          ctrl.humanSeats = new Set([ctrl.mySeat]); ctrl.hotseat = false;
+          guest = new API.NetGuest(ctrl, transport, { name });
+          guest.onUpdate = () => {};
+        } catch (e) { status.textContent = 'could not read that invite code'; }
+      };
+      card.querySelector('#net-copyans').onclick = () => { const ta = card.querySelector('#net-answer'); ta.select(); try { navigator.clipboard.writeText(ta.value); } catch (e) {} };
+      view.showModal(card);
+    }
+  }
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+
 // ===== main.js =====
 /*
  * PokerIQ — boot + wiring. Creates the Controller + View, hooks the top-menu
@@ -4060,7 +5404,7 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
       const ctx = {
         rng: Math.random,
         stats: ctrl.stats,
-        predictions: [],                      // calibration: none logged yet
+        predictions: ctrl.journal ? ctrl.journal.sessionPredictions() : [],   // calibration (Brier)
         actionHistory: ctrl.events.slice(),   // range narrowing uses last hand's log
         close: () => view.closeModal(),
       };
@@ -4115,13 +5459,17 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
           <div class="k">Tells</div><div>show opponent ranges, leaks & thinking level</div>
           <div class="k">Raise</div><div>slider + ½ / ¾ / Pot / All-in quick buttons</div>
         </div>
-        <h3 style="margin:14px 0 6px;color:#9aa7b4;font-size:13px;text-transform:uppercase;">Not in the browser build</h3>
-        <div class="notice">
-          <b>LAN multiplayer</b> and <b>Claude hand-analysis</b> from the desktop app are intentionally
-          omitted: a single sandboxed HTML file cannot open raw TCP sockets or shell out to the
-          <code>claude</code> CLI. Everything else — engine, equity, bots, analytics, trainers, and
-          lifetime stats — runs fully offline in this one file.
+        <h3 style="margin:14px 0 6px;color:#9aa7b4;font-size:13px;text-transform:uppercase;">Full desktop parity — in one HTML file</h3>
+        <div class="kv">
+          <div class="k">Online play</div><div><b>Online</b> — serverless WebRTC: host a table, send invite codes, friends join from any browser (no install, no server).</div>
+          <div class="k">Hotseat</div><div><b>Players</b> — pass-and-play for up to 6 on one device, with privacy gates.</div>
+          <div class="k">Claude analysis</div><div>Hand Summary ▸ <b>Analyze (Claude)</b> — critiques your play via the Anthropic API (your own key; add it under ⚙ in that dialog).</div>
+          <div class="k">File</div><div>Save / load a game (mid-hand), buy chips, replay any hand, hand-class P&amp;L.</div>
+          <div class="k">Prefs</div><div>Equity mode, 4-colour / legacy deck, per-seat bot lineup.</div>
         </div>
+        <div class="notice" style="margin-top:10px;">Everything — engine, equity, 9 bots, analytics, Theory of Mind, 8 trainers, lifetime stats —
+          runs from this one self-contained file. Only two features reach the network, and only when <i>you</i> trigger them:
+          Online play (peer-to-peer WebRTC + optional STUN) and Claude analysis (your key → api.anthropic.com). Nothing is loaded at page-load.</div>
         <div class="modal-actions"></div>`;
       const close = document.createElement('button'); close.className = 'ghost'; close.textContent = 'Close';
       close.onclick = () => view.closeModal();
@@ -4208,10 +5556,24 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     function botName(style) { return (root.PokerGame.CUTE_NAMES[style]) || 'Bot'; }
     function defaultBotFor() { return 'tight'; }
 
+    const fileCtx = () => ({ ctrl, view });
     view.onMenu = (act) => {
       if (act === 'players') { openPlayers(); return; }
       if (act === 'trainers') {
         view.popupMenu('trainers', Object.keys(PT.REGISTRY).map(k => [PT.REGISTRY[k].label, () => openTrainer(k)]));
+      } else if (act === 'file') {
+        const F = root.PokerFiles;
+        view.popupMenu('file', [
+          ['💾 Save game', () => F.saveGame(fileCtx())],
+          ['📂 Load game', () => F.loadGame(fileCtx())],
+          ['🪙 Buy more chips', () => F.buyChips(fileCtx())],
+          ['🎞 Hand history (replay)', () => F.handHistory(fileCtx())],
+          ['📊 Hand-class P&L', () => F.handClassPnL(fileCtx())],
+        ]);
+      } else if (act === 'net') {
+        if (root.PokerNet) root.PokerNet.openMenu({ ctrl, view });
+      } else if (act === 'prefs') {
+        if (root.PokerPrefs) root.PokerPrefs.openDialog({ ctrl, view });
       } else if (act === 'stats') {
         openStats();
       } else if (act === 'savelog') {
@@ -4224,6 +5586,9 @@ table.drill td,table.drill th{border:1px solid var(--line);padding:9px 11px;text
     // expose dropped-feature notices via keyboard shortcut help / future menu
     ctrl.openDroppedNotice = droppedNotice;
     root.PIQ = { ctrl, view, openTrainer, openStats, droppedNotice, saveLog };
+
+    // apply persisted preferences (equity mode, deck colours, bot lineup)
+    if (root.PokerPrefs) root.PokerPrefs.apply(ctrl);
 
     ctrl.newHand();
     return root.PIQ;

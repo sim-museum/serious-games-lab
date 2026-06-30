@@ -503,6 +503,56 @@
       return pots;
     }
 
+    // ---- online follower: apply an authoritative game-state blob from the host ----
+    // Mutates existing Player objects (preserving identity for the view). Hidden
+    // opponents arrive with hand:[]; at showdown the host reveals every hand.
+    applyNet(gs) {
+      if (!gs) return;
+      if (gs.players) {
+        for (const sp of gs.players) {
+          let p = this.players[sp.seat];
+          if (!p) { p = new Player(sp.name, sp.style, sp.seat); this.players[sp.seat] = p; }
+          p.name = sp.name; p.style = sp.style;
+          p.stack = sp.stack; p.betInRound = sp.betInRound || 0;
+          p.active = !!sp.active; p.allIn = !!sp.allIn;
+          p.lastAction = sp.lastAction || null;
+          p.totalInvested = sp.totalInvested || 0;
+          if (sp.hand) p.hand = sp.hand.slice();
+        }
+        this.players = this.players.filter(Boolean);
+      }
+      if (gs.board) this.board = gs.board.slice();
+      if (gs.pot != null) this.pot = gs.pot;
+      if (gs.currentBet != null) this.currentBet = gs.currentBet;
+      if (gs.toAct != null) this.toAct = gs.toAct;
+      if (gs.dealerIdx != null) this.dealerIdx = gs.dealerIdx;
+      if (gs.streetIdx != null) this.streetIdx = gs.streetIdx;
+      if (gs.blindLevel != null) this.blindLevel = gs.blindLevel;
+      if (gs.handNumber != null) this.handNumber = gs.handNumber;
+      if (gs.handInProgress != null) this.handInProgress = gs.handInProgress;
+      if (gs.awaitingAction != null) this.awaitingAction = gs.awaitingAction;
+      if (gs.minRaiseTo != null) this.minRaiseTo = gs.minRaiseTo;
+      if (gs.lastRaiseSize != null) this.lastRaiseSize = gs.lastRaiseSize;
+    }
+
+    // Compact authoritative state for one recipient seat (host → that peer).
+    // Reveals the recipient's own cards; opponents' cards only when `revealAll`.
+    netStateFor(seat, revealAll) {
+      return {
+        players: this.players.map(p => ({
+          seat: p.seat, name: p.name, style: p.isHuman ? 'human' : p.style,
+          stack: p.stack, betInRound: p.betInRound, active: p.active,
+          allIn: p.allIn, lastAction: p.lastAction, totalInvested: p.totalInvested,
+          hand: (revealAll || p.seat === seat) ? p.hand.slice() : [],
+        })),
+        board: this.board.slice(), pot: this.pot, currentBet: this.currentBet,
+        toAct: this.toAct, dealerIdx: this.dealerIdx, streetIdx: this.streetIdx,
+        blindLevel: this.blindLevel, handNumber: this.handNumber,
+        handInProgress: this.handInProgress, awaitingAction: this.awaitingAction,
+        minRaiseTo: this.minRaiseTo, lastRaiseSize: this.lastRaiseSize,
+      };
+    }
+
     // bust-out check / table reset
     bustedSeats() { return this.players.filter(p => p.stack <= 0).map(p => p.seat); }
     resetStacks() {

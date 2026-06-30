@@ -1,7 +1,11 @@
 # PokerIQ — single-file web port
 
-A self-contained `pokerIQ.html` (no server, no dependencies, no network) that
-ports the PyQt6 desktop trainer to the browser. Open the file and play.
+A self-contained `pokerIQ.html` (no server, no dependencies, nothing loaded at
+page-load) that ports the **full** PyQt6 desktop trainer to the browser — engine,
+bots, analytics, Theory of Mind, trainers, hotseat, **online multiplayer**, and
+**Claude hand-analysis**. Open the file and play. Two features reach the network
+and only when you trigger them: Online play (peer-to-peer WebRTC, optional STUN)
+and Claude analysis (your own API key → api.anthropic.com).
 
 ## Build
 
@@ -24,7 +28,11 @@ are zero external references.
 | `analytics.js` | board texture, sklansky, nash, EV, session/opponent stats | `classify_board`, `sklansky_distance`, `SessionStats`, `OpponentModel`, … |
 | `ui.js` | table view + controller (paced turns) | `PokerWindow`, `PokerTableWidget`, custom widgets |
 | `trainers.js` | 8 study modals | `AKQGameDialog`, `JamOrFoldTrainer`, `VarianceDashboard`, … |
-| `main.js` | boot + menu wiring + dropped-feature notices | `run_gui_mode` |
+| `files.js` | save/load game, buy chips, hand-history replay, hand-class P&L | File menu, `HandClassPnLTable`, `PlayerHistoryDialog` |
+| `prefs.js` | Preferences (equity mode, deck colours, per-seat bots) | `Preferences` dialog + `QSettings` |
+| `claude.js` | Claude hand-analysis via the Anthropic API (browser) | `ClaudeAnalysisThread` (no `claude` CLI) |
+| `netplay.js` | serverless WebRTC online play (host/guest, chat) | `network/{server,client,protocol}.py` (no TCP) |
+| `main.js` | boot + menu wiring | `run_gui_mode` |
 
 ## Verification
 
@@ -81,8 +89,9 @@ device to X — show my cards") that hides every hole card between turns and rev
 only the acting player's. The engine already stops at each human seat; the
 controller generalises the act/advisor/equity path from "seat 0" to the acting
 seat, so each player gets their own no-peek advisor too. (This is the
-zero-infrastructure form of multiplayer — everyone shares the one laptop running
-PokerIQ; remote play would need a WebSocket/WebRTC server.)
+zero-infrastructure form of multiplayer — everyone shares one device; for play
+across the internet use the **Online** menu, which connects browsers directly
+over WebRTC with no server.)
 
 **Fold → spectator (God view)** — **every** fold drops that player into a God-view
 review: all hole cards revealed plus a per-player equity table (Real god-equity /
@@ -103,18 +112,36 @@ attributed to that player and surfaces it in the Hand Summary, which everyone se
 (Theory of Mind / Training is **not** an assist — it shows your own advisor and
 models ranges, never peeking at actual cards.) Peeking is allowed; it's disclosed.
 
-**Intentionally dropped** (cannot run in a sandboxed single file):
-- **Remote/LAN multiplayer** — browsers can't open raw TCP sockets (a WebSocket
-  or WebRTC build with a small server could do remote play; hotseat covers
-  same-device play with zero infrastructure).
-- **Claude hand-analysis** — relied on shelling out to the `claude` CLI.
-- **TexasSolver** — 86 MB bundled C++ binary, never invoked by the app anyway.
+**Online multiplayer (Online menu)** — serverless peer-to-peer play over WebRTC
+DataChannels with copy/paste signalling (`netplay.js`, porting `network/*.py`).
+The host runs the authoritative engine and forwards every engine event plus a
+tailored authoritative state blob (each guest sees only its own hole cards until
+showdown) to each peer; a guest mirrors the state and renders the full UI —
+advisor, Theory of Mind, summary — computed locally from its own cards. Guests
+send actions back; the host applies them and rebroadcasts. Seats, mid-hand joins
+(seated next hand), disconnect-to-bot, table chat, and showdown reveal all work.
+No TCP sockets and no server: invites are SDP blobs you paste to each other (an
+optional public STUN server helps across NATs; LAN works without it).
 
-Both dropped features are surfaced honestly in the in-app **?** dialog rather
-than failing silently.
+**Claude hand-analysis (Hand Summary ▸ Analyze)** — calls the Anthropic Messages
+API directly from the browser (`claude.js`) with a user-supplied key kept in
+localStorage and the `anthropic-dangerous-direct-browser-access` header. Model
+`claude-opus-4-8` with adaptive thinking. Two modes: per-player critique (≤3
+sentences) and chess-engine annotate (!/!?/?!/? marks + a per-street RETROSPECTIVE
+whose length scales with the hero's loss). Replaces the desktop `claude` CLI.
 
-## Known gaps / polish backlog
+**File / Preferences** — Save & Load a game to JSON (mid-hand state included),
+Buy More Chips, a **hand-history replay** browser, the per-hand-class **P&L**
+table, and the full **Preferences** dialog (publicly-visible-cards equity mode,
+modern 4-colour vs legacy 2-colour deck, per-seat bot lineup with the
+beat-the-defaults random-pool unlock).
 
-- Hand-history replay browser and per-hand-class P&L table are not yet ported.
+**Not ported:** **TexasSolver** — an 86 MB bundled C++ binary the desktop app
+never actually invokes (not part of the running app's functionality).
+
+## Polish backlog (cosmetic)
+
 - Bot turn pacing is a fixed delay; no chip-movement animation.
 - Mobile layout is functional but the felt oval is tuned for desktop widths.
+- WebRTC across strict/symmetric NATs may need a TURN relay (LAN + most home
+  networks work with STUN alone).
