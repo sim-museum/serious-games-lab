@@ -679,8 +679,9 @@ const CAM_DYN = parse(Float64, get(ENV,"JM_CAM_DYN","0.10"))
 # Damp the camera HEIGHT too: track a slow baseline that follows real elevation (cresting a hill) but
 # only CAM_HEAVE of the fast suspension bob (porpoise) reaches the eye — so the head barely bobs while
 # the chassis still heaves on its springs.  CAM_HEAVE_TAU = baseline follow time-constant (s).
-const CAM_HEAVE     = parse(Float64, get(ENV,"JM_CAM_HEAVE","0.22"))
+const CAM_HEAVE     = parse(Float64, get(ENV,"JM_CAM_HEAVE","0.12"))
 const CAM_HEAVE_TAU = parse(Float64, get(ENV,"JM_CAM_HEAVE_TAU","0.45"))
+const CAM_HEAVE_CAP = parse(Float64, get(ENV,"JM_CAM_HEAVE_CAP","0.08"))   # hard cap (m) on the eye's vertical deviation — a big heave can't throw the view
 # wheel hubs (rig frame X fwd, Y=radius, Z left); front pair steers, all spin.  Front/rear track WIDENED
 # (was ±0.62/±0.66) — the Lotus 49 ran ~1.52 m tracks; the narrow stance read as "wheels bolted together".
 const WTRACK_F = parse(Float32, get(ENV,"JM_TRACK_F","0.90"))   # front half-track (m) — PO: front tyres read too close together; spread them toward the GPL gold-standard stance
@@ -1996,7 +1997,7 @@ function main()
         # heave: the baseline catches up to the true height (real elevation), but only CAM_HEAVE of the
         # fast bob (cs.y − baseline = the suspension porpoise) reaches the eye → the head barely heaves.
         cam_ybase += (cs.y - cam_ybase) * (1.0 - exp(-(dt > 1e-4 ? dt : 1/60)/CAM_HEAVE_TAU))
-        cam_yeye   = cam_ybase + CAM_HEAVE*(cs.y - cam_ybase)
+        cam_yeye   = cam_ybase + clamp(CAM_HEAVE*(cs.y - cam_ybase), -CAM_HEAVE_CAP, CAM_HEAVE_CAP)
         vp, eye = camera(cs, cam_pitch, cam_roll, cam_yeye)   # head = low-pass tilt + damped heave; body keeps full motion
         if REPLAY     # E25: cinematic cameras follow the FOCUS car (player or any AI) from its recorded pose
             fp = rep_focus[] == 0 ? (cs.x, cs.y, cs.z, cs.θ) :
@@ -2007,6 +2008,13 @@ function main()
                    Render.rotz(Float32(pitch_ter)) * Render.rotx(Float32(roll_ter))   # whole car follows the hill (pitch + cross-slope roll)
         tiltModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv))   # full body tilt (terrain + dynamic)
         bodyModel = tiltModel * Render.translate(BODY_OFF)  # body dives/squats + rolls (3-D)
+        # PO: in COCKPIT view the dash/wheel/scuttle must be RIGID to the eye — otherwise the head is
+        # stabilised (cam_yeye/cam_pitch damped) while the body heaves at FULL amplitude, so the cockpit
+        # "fills the screen then drops to an ejection seat".  Draw the cockpit body in the SAME damped frame
+        # the eye is built from → dash rock-steady, and the WORLD carries the chassis motion (GPL behaviour).
+        cockpitModel = Render.translate(Float32[cs.x, cam_yeye, -cs.z]) * Render.roty(Float32(cs.θ)) *
+                       Render.rotz(Float32(cam_pitch)) * Render.rotx(Float32(cam_roll)) * Render.translate(BODY_OFF)
+        dashModel = (CTL.view == 0 && !REPLAY) ? cockpitModel : bodyModel   # cockpit parts use the eye frame in-car, full motion in chase
         δ = Float32(inp.steer * (SKIDPAD ? 0.30 : CAR.max_steer))
         # WHEELS FLOAT ON THE SUSPENSION (PO): the wheels stay PLANTED on the road (carModel = terrain
         # follow only, NO dynamic dive/squat/roll), while the CHASSIS pitches/rolls/heaves above them
@@ -2236,7 +2244,7 @@ function main()
         end
         # ambfill lifts the self-shadowed cockpit interior out of black (GPL pre-lights it
         # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
-        for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly) so it stops reading as a hard black "plywood" notch
+        for it in carItems; Render.draw(prog, it, vp, dashModel; bright=1.2, spec=0.08, ambfill=0.78); end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly) so it stops reading as a hard black "plywood" notch
         if CTL.view != 0   # the driver figure occludes the cockpit from the in-car eye (E36 black band) → chase only
             for it in driverItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.10, ambfill=0.55); end
         end
@@ -2245,10 +2253,10 @@ function main()
         # dash, near-unlit (bright + ambfill) so the faces are legible.  Only matters in the cockpit view.
         if CTL.view == 0
             glDisable(GL_DEPTH_TEST)
-            for it in gaugeItems; Render.draw(prog, it, vp, bodyModel*GAUGEFLIP; bright=1.6, spec=0.0, ambfill=0.95); end
+            for it in gaugeItems; Render.draw(prog, it, vp, dashModel*GAUGEFLIP; bright=1.6, spec=0.0, ambfill=0.95); end
             glEnable(GL_DEPTH_TEST)
         else
-            for it in gaugeItems; Render.draw(prog, it, vp, bodyModel*GAUGEFLIP; bright=1.5, spec=0.0, ambfill=0.95); end
+            for it in gaugeItems; Render.draw(prog, it, vp, dashModel*GAUGEFLIP; bright=1.5, spec=0.0, ambfill=0.95); end
         end
         for (p, cm) in zip(ai_poses, AICHASSIS)                 # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper)
             for it in cm.body; Render.draw(prog, it, vp, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end
@@ -2256,12 +2264,12 @@ function main()
         end
         for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, vp, wheelmat(wx,wz,steer,r)); end
         # front suspension wishbones — ahead of the cockpit, visible through the plexiglass (PO gold standard)
-        for it in fsuspItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.15, ambfill=0.5); end
+        for it in fsuspItems; Render.draw(prog, it, vp, dashModel; bright=1.1, spec=0.15, ambfill=0.5); end
         # rear-view mirrors — re-placed onto the cowl/plexiglass, faces tilted toward the eye (GPL look).
         # No render-to-texture, so the glass reads as a dark tinted disc rather than a live reflection.
-        for it in mirrorItems; Render.draw(prog, it, vp, bodyModel*MIRRORMAT; bright=1.25, spec=0.30, ambfill=0.75); end   # pale silver disc (no RTT) — reads as a mirror, not a black hole
+        for it in mirrorItems; Render.draw(prog, it, vp, dashModel*MIRRORMAT; bright=1.25, spec=0.30, ambfill=0.75); end   # pale silver disc (no RTT) — reads as a mirror, not a black hole
         # steering wheel — spin about its column axis with steering input
-        swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5)) * Render.translate(-SWCENTER)
+        swModel = dashModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5)) * Render.translate(-SWCENTER)
         for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2, ambfill=0.34); end
         # plexiglass WINDSCREEN — drawn LAST, FAINTLY VISIBLE glass (PO: it had vanished at 0.16), depth-write
         # OFF so the front suspension + track read through it (GPL gold standard) but the screen still reads as
@@ -2270,7 +2278,7 @@ function main()
             glDepthMask(GL_FALSE)
             # PO: flatter, dimmer lighting so the leather scuttle reads as smooth matte tan — not stark
             # cream "plywood" wedges clashing with the dark footwell notch the (omitted) driver would fill.
-            for it in windItems; Render.draw(prog, it, vp, bodyModel; bright=0.82, spec=0.02, ambfill=0.72, alpha=WIND_ALPHA); end
+            for it in windItems; Render.draw(prog, it, vp, dashModel; bright=0.82, spec=0.02, ambfill=0.72, alpha=WIND_ALPHA); end
             glDepthMask(GL_TRUE)
         end
         α_tc = clamp(dt/0.10, 0.0, 1.0)              # smooth the traction-circle display (coarse-mesh Fz spikes → no flicker)
