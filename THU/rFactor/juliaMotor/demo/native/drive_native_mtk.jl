@@ -725,6 +725,12 @@ const ROAD_HALFW = parse(Float64, get(ENV, "JM_ROAD_HALFW", "9.0"))      # racin
 # road, so edge barriers fell inside it and got dropped from SOLIDS.  Exclude collidables only INSIDE the
 # real road (this half-width); anything at/beyond the edge stays solid.  JM_SOLID_EXCL_HW tunes it.
 const SOLID_EXCL_HW = parse(Float64, get(ENV, "JM_SOLID_EXCL_HW", "4.5"))
+# PO: per-name RENDER yaw correction (deg) for mis-oriented grandstands.  Verified the Zandvoort S/F
+# `gstand` is ALREADY ~parallel (a +90° test swung it fully ACROSS the track — clearly wrong), so the
+# default is 0; the relyaw≈88° reading is just the mesh's reference axis, not the visual length.  The
+# knob stays for fine angle tweaks (JM_GSTAND_YAW, deg).  Collision is centre+radius (orientation-free).
+const GSTAND_YAW = deg2rad(parse(Float64, get(ENV, "JM_GSTAND_YAW", "0")))
+objyawfix(nm) = startswith(lowercase(nm), "gstand") ? GSTAND_YAW : 0.0
 const KEEP_GRASS = haskey(ENV, "JM_KEEP_GRASS")    # E17 experiment: render the GPL green grass-cover planes (dropped by default)
 println(CAR3D ? "  PHYSICS: full-3D vehicle (default) — heave/pitch/roll + suspension travel + jumps" :
                 "  PHYSICS: planar 2-D model (JM_2D)")
@@ -964,7 +970,7 @@ let objnames=Set{String}()
     # by Eau Rouge (and on the start straight) projected to |lat| < ROAD_HALFW = a "line of people
     # standing in the road".  Drop crowd that lands on the road; the grandstands (set further back) stay.
     onroad_crowd(i) = standcrowd(i.name) && on_road(i.x, i.y, ROAD_HALFW)
-    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw)), istree(i.name), (Float32(i.x), ploz(i), Float32(-i.y)), lowercase(i.name))
+    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw + objyawfix(i.name))), istree(i.name), (Float32(i.x), ploz(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
                           !drop(i.name) && !onroad_crowd(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
     # E15: SOLID trackside objects the car can hit — (physics x, z, collision radius m).  Buildings,
