@@ -202,10 +202,9 @@ end
 # AI_PCT=100 the field is paced to hit exactly this laptime regardless of the rail
 # follower's own natural pace (see RaceAI.natural_laptime).
 # GPLrank (1967) benchmark laptimes (gplrank.schuerkamp.de) — 100 % AI pace = the FASTEST car
-# achieves this.  Monza is the 10 km BANKED combined circuit → use the GPL55Rank "Monza 10k" 2:46.5
-# (the only ranked time for that layout; the 1967 list only has the Monza road course).
+# achieves this.  Monza = the 1967 ROAD course (GPLrank 1:30.202), now that we run `monza` not monza10k.
 const REF_LAP = Dict("zandvoort"=>86.848, "nurburgring"=>501.931, "watglen"=>66.912,
-                     "monza"=>166.5, "spa"=>200.342, "skidpad"=>30.0)
+                     "monza"=>90.202, "spa"=>200.342, "skidpad"=>30.0)
 const AI_REFLAP = (v = tryparse(Float64, get(ENV, "JM_AI_REFLAP", ""));
                    v === nothing ? get(REF_LAP, TRACKSEL, 90.0) : v)
 println("  → mode: ", uppercasefirst(MODE),
@@ -497,15 +496,20 @@ const MODEL = VehicleModel(VEH)              # physics (Lotus-49 calibration is 
 const GPLBASE = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/tracks"
 # TRACKSEL → GPL track folder (all share the .3do/.trk/.mip/.dat pipeline)
 const GPLNAME = get(Dict("nurburgring"=>"nurburg", "zandvoort"=>"zandvort",
-                         "watglen"=>"watglen", "monza"=>"monza10k", "spa"=>"spa67"),
+                         "watglen"=>"watglen", "monza"=>"monza", "spa"=>"spa67"),   # PO: the regular Monza road course (not the broken monza10k banked combined circuit)
                     TRACKSEL, "zandvort")
 const ZD   = joinpath(GPLBASE, GPLNAME)
 # the track's packed archive (geometry/centreline/textures/objects live here on most tracks)
-const TRACKDAT = (p=joinpath(ZD, GPLNAME*".dat"); isfile(p) ? Render.GPLDat.parse_dat(p) : Dict{String,Vector{UInt8}}())
+# CASE-INSENSITIVE on disk: GPL ships mixed case (e.g. Monza's `monza.DAT`), and Linux is case-sensitive,
+# so match the wanted name against the real directory entries.
+find_ci(dir, name) = (isdir(dir) || return joinpath(dir, name);
+                      m = filter(f -> lowercase(f) == lowercase(name), readdir(dir));
+                      isempty(m) ? joinpath(dir, name) : joinpath(dir, m[1]))
+const TRACKDAT = (p = find_ci(ZD, GPLNAME*".dat"); isfile(p) ? Render.GPLDat.parse_dat(p) : Dict{String,Vector{UInt8}}())
 const TMPTRK = mktempdir()
 "Path to a track file (`base`+`ext`, e.g. \".3do\"/\".trk\"): loose on disk if present, else extracted from the track .dat."
 function track_file(base, ext)
-    p = joinpath(ZD, base*ext); isfile(p) && return p
+    p = find_ci(ZD, base*ext); isfile(p) && return p
     v = get(TRACKDAT, lowercase(base*ext), nothing)
     v === nothing && return p
     q = joinpath(TMPTRK, base*ext); write(q, v); q
@@ -523,7 +527,10 @@ else
     # as the corridor filter for scenery placement.
     const TERRAIN0 = GPLTrack.build_hat(TRACKMESH0; exclude=HAT_EXCLUDE, exclude_pred=HAT_EXCLUDE_PRED, drop_overpass=MONZA, road_pred=ROAD_PRED)
     const ALIGNED  = let a = align_centreline(GPLTrack.trk_centreline(track_file(GPLNAME, ".trk")), TERRAIN0)
-        haskey(ENV, "JM_NO_RECENTRE") ? a : recentre_on_road(a, TERRAIN0)   # D4: pull lane-0 to the road's geometric centre
+        # D4: pull lane-0 to the road's geometric centre (Zandvoort).  SKIP on Monza — its wide pit
+        # straight + pit lane skew the "midpoint" so the recentre over-shifts the racing line toward the
+        # pit wall (4 m, capped); the raw GPL .trk line is the correct groove there.
+        (haskey(ENV, "JM_NO_RECENTRE") || MONZA) ? a : recentre_on_road(a, TERRAIN0)
     end
     const RIBBON0  = GPLTrack.build_surface(ALIGNED, TERRAIN0)
     # GPL Nürburgring places its landmass/scenery as .dat sub-objects via 0x0E nodes;

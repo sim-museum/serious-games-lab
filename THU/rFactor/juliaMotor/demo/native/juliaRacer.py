@@ -39,7 +39,7 @@ TRACK_KEYS = ["zandvoort", "skidpad", "nurburgring", "watglen", "monza", "spa"]
 # A1/A3: GPLrank (1967) benchmark laptimes in seconds — MUST match REF_LAP in drive_native_mtk.jl.
 # 100 % AI = the fastest car achieves this; the per-track preset = REF_LAP/human_best · 100.
 REF_LAP = {"zandvoort": 86.848, "nurburgring": 501.931, "watglen": 66.912,
-           "monza": 166.5, "spa": 200.342, "skidpad": 30.0}
+           "monza": 90.202, "spa": 200.342, "skidpad": 30.0}
 
 
 def _read_track_times(fname):
