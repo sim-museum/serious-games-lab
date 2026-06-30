@@ -3,7 +3,31 @@
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/juliaRacer.py` (or `drive_native_mtk.jl`).
 
-## Latest (2026-06-29 late) — PO feedback round 2: collisions, cockpit motion, R1
+## Latest (2026-06-29 night) — PO round 3: R1 root-caused, solids, cockpit-rigid, FF live
+
+- **R1 SOLVED (the "+N laps" / finishing-far-back bug).** `standings()` computed AI progress as
+  `c.lap + c.s/total`, but the kinematic `car.s` ACCUMULATES (never wrapped) while `car.lap`
+  already counts laps — so `c.s/total` is the lap count again → every AI credited 2× its laps
+  and "lapped" the player. Proven by the result file (3 real laps shown as +3 laps). Fixed:
+  `c.lap + mod(c.s,total)/total`. Corrects the post-race classification AND the live HUD position.
+- **Solids (drove through stands/haybales).** Grandstands (`gstand`/`camstnd`) were never in
+  `solidR` → added as hard walls (Zandvoort 41→46 solids). Haybale `:soft` law had a 2.2 m crush
+  "give" ≈ the whole bale radius → you sailed through; firmed it (give 0.5 m, k 3e4) so you crush
+  in, lose speed, fire the FF jolt. Exclusion tightened ROAD_HALFW−2 (7 m) → `JM_SOLID_EXCL_HW`
+  4.5 m so edge barriers stay solid.
+- **Cockpit "ejection seat" fixed.** Round 2 damped the eye but drew the body at full motion → the
+  dash heaved relative to the steady eye. Now the cockpit body uses the damped eye frame
+  (`cockpitModel`) → dash rock-steady, world carries the motion. CAM_HEAVE 0.22→0.12 + a ±8 cm eye cap.
+- **AI% preset = MOST RECENT race AVERAGE** (was best lap) → field matches how you actually race.
+  Sim writes `human_recent.txt` each finish; GUI reads it (best lap, then 50%, as fallback).
+- **Results display:** winner's total time in the top row; the You row is a light highlight (was
+  black-on-navy = unreadable).
+- **FORCE FEEDBACK now actually works.** The TX's `hid-tmff2` driver was stale after a kernel bump
+  (only stock `hid_thrustmaster`, evdev `ff=0` → sim forces were silent no-ops; the user felt only
+  the wheel's firmware spring). Rebuilt + DKMS-installed for 7.0.0-27 → `ff=[31fff0000 0]`
+  (FF_CONSTANT live). See memory [[juliamotor-pyqt-gui-tx-wheel]].
+
+## Earlier (2026-06-29 late) — PO feedback round 2: collisions, cockpit motion, R1
 
 - **Collisions conserve momentum (P1/P2/P3).** The kinematic AI no longer darts aside
   (`across` lane-shove 0.12→0.04, capped) or gets rocketed forward (the rear-end boost is
