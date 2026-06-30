@@ -162,24 +162,26 @@ function start(eng::Engine)
         @warn "sound needs ≥2 threads — relaunch with: julia -t 2 …"; return eng
     end
     eng.running[]=true
+    LAT = parse(Float64, get(ENV, "JM_AUDIO_LATENCY", "0.30"))   # bigger buffer = more headroom for a render hitch (GC, a heavy section) before it underflows
     Threads.@spawn begin
         buf = zeros(Float32, 1024, 2)
-        opened = false; openfails = 0
-        # Resilient feeder: a render-loop hitch (first-frame JIT, GC) can starve this
-        # thread and xrun the stream.  On a write error we REOPEN the stream and keep
-        # going (was: close + exit ⇒ silent for the rest of the session).  Larger
-        # latency buffers a multi-100-ms stall before it underflows at all.
+        openfails = 0; wfails = 0
+        # Resilient feeder: a render-loop hitch (first-frame JIT, GC, a heavy trackside section) can
+        # starve this thread and xrun the stream.  On a write error we REOPEN and keep going, with a
+        # growing BACKOFF so we don't silently THRASH (open succeeds → next write fails → reopen …) — a
+        # short sleep lets PipeWire/ALSA recover the stream so the engine sound returns on its own
+        # instead of staying dead for the rest of the section (the PO's "sound cut out past the building,
+        # came back at the line").
         while eng.running[]
             local stream
             try
-                stream = PortAudioStream(0,2; samplerate=44100, latency=0.20)
-                opened = true; openfails = 0
+                stream = PortAudioStream(0,2; samplerate=44100, latency=LAT)
+                openfails = 0
             catch e
                 # couldn't open the device THIS attempt.  On PipeWire/PulseAudio the default ALSA
                 # device (hw:0,0) can be momentarily held by the server when the game starts up, so
-                # the FIRST open often loses an exclusive-access race → previously we gave up here and
-                # the whole session was silent.  RETRY for a few seconds (the server frees/suspends the
-                # idle device shortly); only give up if it's genuinely unavailable.
+                # the FIRST open often loses an exclusive-access race.  RETRY for a few seconds; only
+                # give up if it's genuinely unavailable.
                 openfails += 1
                 if openfails >= 60                      # ~6 s of retries
                     @warn "engine audio unavailable (couldn't open an audio device after retries) — running silently; set JM_NOSOUND=1 to skip audio" e
@@ -192,19 +194,21 @@ function start(eng::Engine)
                     mix!(buf, eng)
                     # SANITISE before PortAudio: a single NaN/Inf or out-of-range sample makes
                     # the C Float32→Int32 converter crash the WHOLE process (uncatchable in
-                    # Julia — it's a C-level fault, seen as the window vanishing).  Clamp to
-                    # [-1,1] and zero any non-finite so the stream can never take us down.
+                    # Julia — it's a C-level fault).  Clamp to [-1,1] and zero any non-finite.
                     @inbounds for i in eachindex(buf)
                         x = buf[i]
                         buf[i] = isfinite(x) ? (x > 1f0 ? 1f0 : x < -1f0 ? -1f0 : x) : 0f0
                     end
                     write(stream, buf)
+                    wfails = 0                           # a clean write → clear the failure backoff
                 end
             catch e
-                @warn "audio xrun — reopening stream" e        # underflow: reopen, don't die
+                wfails += 1
+                wfails <= 2 && @warn "audio xrun — reopening stream" e   # warn only the first couple (no log spam during a thrash)
             finally
                 try; close(stream); catch; end
             end
+            wfails > 0 && sleep(min(0.4, 0.05*wfails))   # back off on repeated write failures so the device can settle (breaks the silent reopen-thrash)
         end
     end
     eng
