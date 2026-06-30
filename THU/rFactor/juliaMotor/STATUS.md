@@ -3,7 +3,43 @@
 GPL-style racing sim: Lotus 49 on GPL tracks, JuliaMotor (MTK) physics, native OpenGL
 renderer. Branch `julia-racer`. Launch via `demo/native/juliaRacer.py` (or `drive_native_mtk.jl`).
 
-## Latest (2026-06-29 night) — PO round 3: R1 root-caused, solids, cockpit-rigid, FF live
+## Latest (2026-06-29 latest) — PO round 4: Monza road course, inelastic collisions, AI avoidance, cockpit revert
+
+- **Monza fixed — switched from the broken monza10k to the regular road course.** monza10k is
+  GPL's 10 km banked *combined* circuit (road + old oval); our pipeline mishandles it (lap ~9998 m,
+  banking confusion) — the PO's "this monza track seems broken." Now `GPLNAME "monza"=>"monza"`,
+  `REF_LAP 90.202` (GPLrank 1:30.202 road course). Added `find_ci()` case-insensitive on-disk
+  lookup — GPL ships `monza.DAT` (uppercase) and Linux is case-sensitive, so the lowercase lookup
+  silently missed the archive (a likely cause of the "broken" load). Recentre disabled for Monza
+  (`|| MONZA`): the wide pit straight skews the road-mesh midpoint so recentre over-shifts the line
+  toward the pit wall. Verified: classic pit straight renders, lap 5749 m, car on the racing line.
+- **Collisions now inelastic (more damping, less elasticity).** PO was "ping-ponged between curbs"
+  and "superball-bounced off a hilltop." `contact_force` walls 1.5e6/9e4 N (was springy), soft
+  bodies k 1.2e5 c 4e4 give 0.3; `restn` 0.45→0.12; corner damping ct 300→1000/1100 N·s/m kills the
+  jump-landing rebound. Restitution is mostly absorbed now — a curb hit scrubs speed instead of
+  storing it.
+- **FF kick on AI-car contact.** Object hits jolted the wheel but AI-car hits didn't. The AI-contact
+  jolt (`ffb_jolt = -sign(lat)·0.6`) now fires *before* the relative-velocity gate, so a side-swipe
+  always kicks the wheel.
+- **More collidables.** Bushes/hedges/haystacks far from S/F were driven through "as if not there" —
+  added `haie*/bush/shrub/hedge/haystk` as `:soft` solids (Zandvoort 46→296 solids).
+- **AI avoid each other (no more clumps).** Root cause (PO's diagnosis): identical objectives → same
+  point in space → collide. Fix: per-car lane bias (`lanebias`, `LANE_BIAS 0.7`) spreads the field
+  across the road, and the trailing car in a side-by-side yields (`v*0.90, tlane*0.5`) instead of
+  ramming. Verified 150 s field test: all cars 147–154 km/h, no stalls.
+- **Imperfect AI starts.** `rand()<0.45 → mishap 0.4–1.8 s` at the green so the field bogs/fumbles
+  off the line instead of launching in perfect lockstep.
+- **Cockpit camera REVERTED** to f37d37f (the PO's "driver-on-a-pogo-stick... put it back the way it
+  was"). Eye and body both ride `cs.y`; only chassis *tilt* is low-passed (slow banks roll the
+  horizon, curb jolts don't). Memory [[juliamotor-cockpit-camera]]: never decouple eye height again.
+- **Audio dropout fixed** ("sound cut out past the building, came back at the line"). A render hitch
+  xrun'd the stream; the reopen *reset* the failure counter → silent reopen-thrash that stayed dead
+  for the rest of the section. Added a `wfails` backoff so PipeWire/ALSA recovers and the engine
+  returns on its own. Exit also hard-`_exit(0)`s past the PortAudio `Pa_Terminate` segfault.
+- **Race result is a GUI TAB** (not a modal): `ResultTab` with Classification + per-lap inner tabs,
+  winner's total time top-right, the You row a readable light highlight, and a "Race again" button.
+
+## Earlier (2026-06-29 night) — PO round 3: R1 root-caused, solids, cockpit-rigid, FF live
 
 - **R1 SOLVED (the "+N laps" / finishing-far-back bug).** `standings()` computed AI progress as
   `c.lap + c.s/total`, but the kinematic `car.s` ACCUMULATES (never wrapped) while `car.lap`
