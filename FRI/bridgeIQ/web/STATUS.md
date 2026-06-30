@@ -69,6 +69,23 @@ copy the PyQt layout:
   current trick, count, coaching) toggled by the Instrumented button.
 - Default systems set to **SAYC / SAYC** to match the desktop default.
 
+## Visual fidelity pass (2026-06-30) — match the PyQt screens
+- **Cards fixed**: the dummy/around-table hands were rendering as tiny, fully
+  overlapped (invisible) cards. They are now **large, opaque, suit-grouped** like the
+  desktop (North across the top; East/West as suit rows down the sides; dummy clearly
+  visible during play). Dimmed (illegal) cards are only lightly de-emphasised.
+- **Instrumented view rebuilt** to match the desktop: a header strip (Instrumented
+  view · Detail · Carding N/S · E/W · Smith · N/S–E/W systems), a 3×3 grid —
+  Contract/Tricks · North · Plan / West · Table · East / Count-Honours · South ·
+  Coaching-Signals — each hand cell showing **Known | Other** columns per suit with
+  master/sure-winner markers, inferred ranges and voids for hidden hands, a "shape"
+  line, danger flags, "the race", a signal log, and the bottom **legend**. It overlays
+  the left panel + table and leaves the bidding box, exactly like the desktop.
+- **Play screen**: Hint now opens a **"Hint — card play"** dialog with a coaching
+  note, "▶ biq suggests: play X", and an **"Ask Claude for deeper advice"** button
+  (expands a local deep analysis — no API needed). Added a **Tricks  d : f** box,
+  the **Contract: W 3D** format (declarer first), and **"Your play (S)"** status.
+
 ## Monte-Carlo card play (2026-06-30) — real PIMC for early/mid tricks
 The `mc` engine (the default) now plays the early and middle tricks with genuine
 **Perfect-Information Monte-Carlo**, no longer peeking:

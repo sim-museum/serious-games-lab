@@ -153,8 +153,9 @@ button{font-family:inherit;color:inherit}
 .pcard{position:relative;background:var(--card);border:1px solid var(--card-edge);border-radius:6px;
   flex:0 0 auto;box-shadow:0 2px 4px rgba(0,0,0,.45)}
 .pcard.lg{width:86px;height:124px}
-.pcard.md{width:54px;height:76px}
-.pcard.sm{width:40px;height:58px}
+.pcard.md{width:60px;height:86px}
+.pcard.sm{width:44px;height:62px}
+.pcard.md .idx{font-size:13px}
 .pcard .idx{position:absolute;display:flex;flex-direction:column;align-items:center;line-height:.92;font-weight:800}
 .pcard.lg .idx{font-size:17px}.pcard.md .idx{font-size:12px}.pcard.sm .idx{font-size:10px}
 .pcard .idx.tl{top:3px;left:4px}
@@ -171,10 +172,16 @@ button{font-family:inherit;color:inherit}
 .pcard.back .idx,.pcard.back .pips,.pcard.back .court{display:none}
 .pcard.playable{cursor:pointer}
 .pcard.lg.playable:hover{transform:translateY(-16px);z-index:30;box-shadow:0 10px 18px rgba(0,0,0,.55)}
-.pcard.dimmed{opacity:.45}
+.pcard.dimmed{opacity:.6;filter:saturate(.5)}
 #southhand .suitgroup .pcard:not(:first-child){margin-left:-26px}
-.dummycol{display:flex;flex-direction:column}
-.dummycol .pcard:not(:first-child){margin-top:-58px}
+/* visible hands around the table — large + opaque, suit-grouped */
+.tableHand{position:absolute;z-index:6;display:flex;gap:8px;align-items:flex-start}
+.tableHand.th-n{top:18px;left:50%;transform:translateX(-50%);flex-direction:row}
+.tableHand.th-e{right:8px;top:50%;transform:translateY(-50%);flex-direction:column;gap:5px}
+.tableHand.th-w{left:8px;top:50%;transform:translateY(-50%);flex-direction:column;gap:5px}
+.tableHand .throw{display:flex;flex-direction:row}
+.tableHand .throw .pcard:not(:first-child){margin-left:-32px}
+.tableHand.th-n .throw .pcard:not(:first-child){margin-left:-34px}
 
 /* button row */
 #buttonrow{flex:0 0 auto;display:flex;gap:6px;padding:7px 10px;background:#1b1b22;border-top:1px solid #000;flex-wrap:wrap}
@@ -228,6 +235,12 @@ table.grid tr.hl td{background:#fff3cc}
 .btn:hover{background:#f0eee7}
 .btn.primary{background:#2f6fd0;color:#fff;border-color:#2257aa}
 .btn.primary:hover{background:#3a7ce0}
+.hint-note b{display:block;margin-bottom:3px;color:#16335f}
+.hint-sug{color:#1a7a33;font-weight:700;font-size:16px;margin:10px 0}
+.hint-deep{background:#eef3fb;border:1px solid #b9c6e0;border-radius:5px;padding:9px;margin-top:8px;font-size:13px;line-height:1.5}
+#tricksbox{position:absolute;right:10px;bottom:8px;background:#f3f1ea;color:#1a1a1a;border:1px solid #999;border-radius:3px;
+  padding:4px 10px;font-size:12px;text-align:center;min-width:84px}
+#tricksbox b{display:block;font-size:16px}
 
 /* toast */
 #toastwrap{position:fixed;bottom:46px;left:50%;transform:translateX(-50%);z-index:300;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none}
@@ -236,13 +249,49 @@ table.grid tr.hl td{background:#fff3cc}
 .toast.show{opacity:1;transform:none}
 .toast.good{border-left-color:var(--good)}.toast.bad{border-left-color:#d8453b}.toast.warn{border-left-color:#e0a52a}
 
-/* instrumented overlay */
-#instrument{position:absolute;inset:0;background:#11151acc;display:none;z-index:30;overflow:auto;padding:10px}
-#instrument.show{display:block}
-.inst-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;height:100%}
-.inst-cell{background:#1a1f27;border:1px solid #33404c;border-radius:6px;padding:8px;font-size:12px;color:#cdd6de;overflow:auto}
-.inst-cell h4{margin:0 0 6px;color:#ffe07a;font-size:12px}
-.inst-cell .row{display:flex;justify-content:space-between;border-bottom:1px solid #232c36;padding:1px 0}
+/* instrumented overlay — covers left panel + table, leaves the bidding column */
+#instrument{position:fixed;top:52px;left:0;right:300px;bottom:50px;background:#0c0f14;display:none;z-index:30;
+  flex-direction:column;padding:8px 10px}
+#instrument.show{display:flex}
+.inst-hdr{display:flex;align-items:center;gap:14px;padding:0 2px 8px;flex:0 0 auto;font-size:13px;flex-wrap:wrap}
+.inst-title{color:var(--good);font-weight:700}
+.inst-ctl{display:flex;align-items:center;gap:5px;color:#9fb0bd}
+.inst-ctl select{background:#0e1a22;color:#e8e8e8;border:1px solid #3a4a57;border-radius:4px;padding:2px 6px;font-size:12px}
+.inst-sys{margin-left:auto;color:#9fb0bd;font-size:12px}
+.inst-grid{flex:1 1 auto;display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr 1fr;gap:8px;min-height:0}
+.inst-cell{background:#0f141b;border:1px solid #2a3a47;border-radius:7px;padding:9px 11px;font-size:12.5px;color:#cdd6de;overflow:auto}
+.inst-cell.hand{border-color:#3a5d3f}
+.inst-cell.hand.danger{border-color:#b5483c}
+.inst-cell.plan,.inst-cell.coach{border-color:#3a5d3f}
+.inst-h{color:#ffe07a;font-weight:700;font-size:13px;margin-bottom:7px}
+.inst-h .warn{color:#ff7a6a;font-weight:700}
+.inst-h .hcpr{color:#bcd;font-weight:400;font-size:12px}
+.inst-cols{display:grid;grid-template-columns:26px 1fr 70px;color:#7f93a3;font-size:11px;border-bottom:1px solid #233140;padding-bottom:3px;margin-bottom:3px}
+.inst-cols .kcol,.inst-srow .kcol{padding-left:2px}
+.inst-cols .ocol,.inst-srow .ocol{text-align:left}
+.inst-srow{display:grid;grid-template-columns:26px 1fr 70px;align-items:center;padding:3px 0;font-size:14px;letter-spacing:1px}
+.inst-srow .su{font-size:15px}.inst-srow .su.trump{text-shadow:0 0 6px var(--gold)}
+.inst-srow .kcol{color:#e8eef3;font-weight:600}
+.inst-srow .ocol{color:#9fb0bd;font-size:13px;letter-spacing:0}
+.inst-srow .ocol.voidc .voidlbl{color:#ff8a6a}
+.inst-srow .muted{color:#4a5a67}
+.mk-a{background:#caa23a;color:#1a1a1a;border-radius:3px;padding:0 3px;font-weight:800}
+.mk-e{background:#2e6f4e;color:#cfeede;border-radius:3px;padding:0 3px;font-weight:700}
+.mk-s{background:#2a4d7a;color:#cfe0ff;border-radius:3px;padding:0 3px;font-weight:700}
+.mk-ko{background:#7a2a2a;color:#ffd6d6;border-radius:3px;padding:0 3px;font-weight:700}
+.inst-shape{margin-top:6px;text-align:right;color:#9fb0bd;font-size:12px}
+.inst-cell .race{color:#ffd98a}
+.inst-cell.plan b,.inst-cell.coach b{color:#cfe0d6}
+.inst-cell.plan .warn,.inst-cell.coach .warn{color:#ff7a6a}
+.inst-table{position:relative;height:120px}
+.inst-table .pcard{position:absolute;left:50%;top:50%}
+.inst-table .it-n{transform:translate(-50%,-120%)}.inst-table .it-s{transform:translate(-50%,20%)}
+.inst-table .it-e{transform:translate(20%,-50%)}.inst-table .it-w{transform:translate(-120%,-50%)}
+.inst-cell .lead-adv{background:#141d16;border:1px solid #2c4a32;border-radius:5px;padding:6px;margin-bottom:6px}
+.inst-cell .siglog{font-size:12px;line-height:1.5;margin:6px 0}.inst-cell .sig{color:#ffd98a}
+.inst-cell .hintln{color:#7f93a3;font-size:11.5px;margin-top:6px}
+.inst-legend{flex:0 0 auto;padding:6px 2px 0;color:#7f93a3;font-size:11.5px}
+.inst-legend .mk-a,.inst-legend .mk-e,.inst-legend .mk-s,.inst-legend .mk-ko{font-size:11px}
 
 </style>
 </head>
@@ -2297,17 +2346,13 @@ const UI=(function(){
     for(const seat of [N,E,W]){
       if(!handVisible(seat))continue;
       const cards=(b.phase==='bidding'||b.phase==='minibridge')?b.original[seat]:b.hands[seat];
-      const cont=el('div',{class:'tableHand'});
-      const vertical=(seat===E||seat===W);
-      cont.style.cssText='position:absolute;z-index:6;'+(seat===N?'top:30px;left:50%;transform:translateX(-50%);display:flex':
-        seat===W?'left:2px;top:50%;transform:translateY(-50%)':'right:2px;top:50%;transform:translateY(-50%)');
-      if(vertical){
-        const col=el('div',{class:'dummycol'});
-        for(const c of suitSorted(cards))col.appendChild(mkPlayCard(c,seat,'sm'));
-        cont.appendChild(col);
-      } else {
-        const row=el('div',{style:'display:flex'});
-        for(const c of suitSorted(cards)){const ce=mkPlayCard(c,seat,'sm');if(row.children.length)ce.style.marginLeft='-22px';row.appendChild(ce);}
+      const cont=el('div',{class:'tableHand th-'+SEAT_CHARS[seat].toLowerCase()});
+      // large, opaque, suit-grouped cards
+      for(const su of [S,H,D,C]){
+        const sc=cards.filter(c=>cSuit(c)===su).sort((a,b)=>cRank(a)-cRank(b));
+        if(!sc.length)continue;
+        const row=el('div',{class:'throw'});
+        for(const c of sc)row.appendChild(mkPlayCard(c,seat,'md'));
         cont.appendChild(row);
       }
       tz.appendChild(cont);
@@ -2406,10 +2451,17 @@ const UI=(function(){
       for(const c of sc)g.appendChild(mkPlayCard(c,vs,'lg'));
       hand.appendChild(g);
     }
-    // contract box
+    // contract box (declarer + contract, e.g. "W 3D")
     const cb=$('#contractbox');
-    if(b.contract)cb.innerHTML=`Contract:<b>${contractStr(b.contract)} ${SEAT_CHARS[b.contract.declarer]}</b>`;
+    if(b.contract){const c=b.contract;cb.innerHTML=`Contract:<b>${SEAT_CHARS[c.declarer]} ${c.level}${c.suit===NT?'NT':SUIT_CHARS[c.suit]}${c.redoubled?'XX':c.doubled?'X':''}</b>`;}
     else cb.innerHTML='Contract:<b>—</b>';
+    // tricks box (declarer : defence)
+    let tb=$('#tricksbox');
+    if((b.phase==='play'||b.phase==='finished')&&b.contract){
+      if(!tb){tb=el('div',{id:'tricksbox'});$('#southstrip').appendChild(tb);}
+      const declNS=seatIsNS(b.contract.declarer);
+      tb.innerHTML=`Tricks:<b>${declNS?b.nsTricks:b.ewTricks} : ${declNS?b.ewTricks:b.nsTricks}</b>`;
+    } else if(tb){tb.remove();}
   }
   function mkPlayCard(card,seat,size){
     const b=Game.board;
@@ -2461,8 +2513,8 @@ const UI=(function(){
     $('#st-ew').textContent=Bidding.getSystem(CONFIG.systemEW).name;
     let st='Ready';
     if(b){
-      if(b.phase==='bidding')st='Bidding — '+SEAT_NAME[Game.currentBidder()]+' to call';
-      else if(b.phase==='play')st=b.awaitingTrick?'Trick complete — Next card':(b.turn!=null?'Playing — '+SEAT_NAME[b.turn]+' to play':'Playing');
+      if(b.phase==='bidding')st=anyHumanToAct()?('Your bid ('+SEAT_CHARS[viewerSeat()]+')'):('Bidding — '+SEAT_NAME[Game.currentBidder()]+' to call');
+      else if(b.phase==='play')st=b.awaitingTrick?'Trick complete — Next card':(anyHumanToAct()?('Your play ('+SEAT_CHARS[viewerSeat()]+')'):(b.turn!=null?'Playing — '+SEAT_NAME[b.turn]+' to play':'Playing'));
       else if(b.phase==='finished')st='Deal complete';
       else if(b.phase==='passedout')st='Passed out';
       $('#st-deal').textContent='Deal #'+b.boardNumber+'  ·  src local:'+b.dealId.slice(0,14);
@@ -2471,43 +2523,153 @@ const UI=(function(){
     $('#st-status').textContent=st;
   }
 
-  /* ---------- instrumented (teaching) overlay ---------- */
-  function renderInstrument(){
-    const ov=$('#instrument');if(!ov.classList.contains('show')){return;}
-    ov.innerHTML='';const b=Game.board;if(!b){ov.innerHTML='<div class="inst-cell">No deal.</div>';return;}
-    const grid=el('div',{class:'inst-grid'});
-    const c=b.contract;
-    const cellTL=el('div',{class:'inst-cell'},[el('h4',{text:'Contract'}),el('div',{html:c?`${contractStr(c)} by ${SEAT_NAME[c.declarer]}`:'(none)'}),
-      el('div',{html:b.phase==='play'||b.phase==='finished'?`Declarer ${seatIsNS(c.declarer)?b.nsTricks:b.ewTricks} / Defence ${seatIsNS(c.declarer)?b.ewTricks:b.nsTricks}`:'auction in progress'})]);
-    function seatCell(seat){
-      const cell=el('div',{class:'inst-cell'});cell.appendChild(el('h4',{text:SEAT_NAME[seat]}));
-      const inf=inferSeat(seat);
-      cell.appendChild(el('div',{class:'row'},[el('span',{text:'HCP'}),el('span',{text:inf.hcp})]));
-      for(const su of [S,H,D,C])cell.appendChild(el('div',{class:'row'},[el('span',{html:`<span class="s-${SU_CLASS[su]}">${SUIT_SYM[su]}</span> length`}),el('span',{text:inf.len[su]})]));
-      return cell;
+  /* ---------- instrumented (teaching) view — inference, no peeking ---------- */
+  function instLabelSel(label,opts,value,onChange){
+    const wrap=el('span',{class:'inst-ctl'});wrap.appendChild(el('span',{class:'lbl',text:label}));
+    const s=el('select');for(const o of opts){const op=el('option',{value:o,text:o});if(o===value)op.selected=true;s.appendChild(op);}
+    s.addEventListener('change',()=>onChange(s.value));wrap.appendChild(s);return wrap;
+  }
+  function playedCount(seat){const b=Game.board;let n=0;for(const t of b.tricksPlayed)for(const c of t.cards)if(c.seat===seat)n++;
+    if(b.trick)for(const c of b.trick)if(c.seat===seat)n++;return n;}
+  function shownOut(seat,su){const b=Game.board;const all=(b.tricksPlayed||[]).map(t=>t.cards).concat(b.trick&&b.trick.length?[b.trick]:[]);
+    for(const tr of all){if(!tr.length)continue;const lead=cSuit(tr[0].card);for(const pc of tr)if(pc.seat===seat&&cSuit(pc.card)!==lead&&lead===su)return true;}return false;}
+  function inferHcpRange(seat){
+    const b=Game.board;const auc=b.auction||[];let opened=false,lo=0,hi=37,acted=false;
+    for(const x of auc){if(x.seat===seat){if(x.bid.kind==='B'){acted=true;
+      if(!opened){lo=11;hi=21;if(x.bid.level>=2&&!(x.bid.level===2&&x.bid.suit===C))lo=5,hi=11;if(x.bid.level>=3)lo=4,hi=10;}
+      else {lo=Math.max(lo,6);}}}
+      if(x.bid.kind==='B')opened=true;}
+    if(!acted){ // passed throughout
+      let everOpened=false;for(const x of auc){if(x.seat===seat&&x.bid.kind==='B')everOpened=true;}
+      // if seat had the chance to open and passed, cap
+      hi=12;lo=0;
     }
-    const plan=el('div',{class:'inst-cell'},[el('h4',{text:'Plan'}),el('div',{html:c?planText(c):'—'})]);
-    const center=el('div',{class:'inst-cell'},[el('h4',{text:'Current trick'}),
-      el('div',{html:(b.trick||[]).map(t=>SEAT_CHARS[t.seat]+':'+cSym(t.card)).join(' ')||'—'})]);
-    const coach=el('div',{class:'inst-cell'},[el('h4',{text:'Coaching'}),el('div',{id:'inst-coach',html:lastExplain||'Play a card or bid to see analysis.'})]);
-    grid.appendChild(cellTL);grid.appendChild(seatCell(N));grid.appendChild(plan);
-    grid.appendChild(seatCell(W));grid.appendChild(center);grid.appendChild(seatCell(E));
-    grid.appendChild(el('div',{class:'inst-cell'},[el('h4',{text:'Count / honours'}),el('div',{html:countText()})]));
-    grid.appendChild(seatCell(So));grid.appendChild(coach);
+    return lo+'-'+hi+' HCP';
+  }
+  function inferSuit(seat,su){const b=Game.board;
+    // if seat bid this suit naturally -> 4+/5+
+    for(const x of (b.auction||[])){if(x.seat===seat&&x.bid.kind==='B'&&x.bid.suit===su){return (x.bid.suit===H||x.bid.suit===S)?'5+':'3+';}}
+    const played=playedCount(seat);return '0-'+(13-played>7?7:13-played);
+  }
+  function knownCard(c){const r=cRank(c),ch=RANK_CHARS[r]==='T'?'10':RANK_CHARS[r];
+    if(r===0)return `<span class="mk-a">${ch}</span>`; if(r===1)return `<b>${ch}</b>`; return ch;}
+  function dangerSeat(seat){const b=Game.board;if(!b.contract||b.trump==null)return false;
+    if(seat===b.declarer||seat===b.dummy)return false; // defender
+    return shownOut(seat,b.trump)?false:true===false?false:( !handVisible(seat) && shownOut(seat,b.trump) );}
+  function renderInstrument(){
+    const ov=$('#instrument');if(!ov.classList.contains('show'))return;
+    ov.innerHTML='';const b=Game.board;
+    if(!b){ov.innerHTML='<div class="inst-cell">No deal.</div>';return;}
+    // header
+    const hdr=el('div',{class:'inst-hdr'});
+    hdr.appendChild(el('span',{class:'inst-title',text:'Instrumented view'}));
+    hdr.appendChild(instLabelSel('Detail:',['Beginner','Intermediate','Expert'],CONFIG.instDetail||'Intermediate',v=>{CONFIG.instDetail=v;render();}));
+    hdr.appendChild(instLabelSel('Carding N/S:',['Standard','Upside-down'],CONFIG.cardingNS==='udca'?'Upside-down':'Standard',v=>{CONFIG.cardingNS=v==='Upside-down'?'udca':'standard';}));
+    hdr.appendChild(instLabelSel('E/W:',['Standard','Upside-down'],CONFIG.cardingEW==='udca'?'Upside-down':'Standard',v=>{CONFIG.cardingEW=v==='Upside-down'?'udca':'standard';}));
+    hdr.appendChild(instLabelSel('Smith:',['Off','Standard','Reverse'],CONFIG.smith||'Off',v=>{CONFIG.smith=v;}));
+    hdr.appendChild(el('span',{class:'inst-sys',html:`N/S: ${Bidding.getSystem(CONFIG.systemNS).name} &nbsp; E/W: ${Bidding.getSystem(CONFIG.systemEW).name}`}));
+    ov.appendChild(hdr);
+    const grid=el('div',{class:'inst-grid'});
+    grid.appendChild(contractCell());grid.appendChild(handCell(N));grid.appendChild(planCell());
+    grid.appendChild(handCell(W));grid.appendChild(tableCell());grid.appendChild(handCell(E));
+    grid.appendChild(countCell());grid.appendChild(handCell(So));grid.appendChild(coachCell());
     ov.appendChild(grid);
+    ov.appendChild(el('div',{class:'inst-legend',html:'Known column: <span class="mk-a">A</span> master · <b>K</b> sure winner · <i>x</i> loser (LTC) · <b>Q</b> placed (inferred) · <span class="mk-e">E</span> entry · <span class="mk-s">S</span> stopper · <span class="mk-ko">KO</span> knock-out · → to partner · ♣ trumps'}));
   }
-  function inferSeat(seat){
+  function contractCell(){
+    const b=Game.board;const c=b.contract;const cell=el('div',{class:'inst-cell'});
+    cell.appendChild(el('div',{class:'inst-h',text:'Contract / Tricks'}));
+    if(!c){cell.appendChild(el('div',{text:'Auction in progress.'}));return cell;}
+    const declNS=seatIsNS(c.declarer);const declTr=declNS?b.nsTricks:b.ewTricks;const defTr=declNS?b.ewTricks:b.nsTricks;
+    const target=6+c.level;
+    cell.innerHTML+=`<div><b>${contractStr(c)}</b> by ${SEAT_NAME[c.declarer]}</div>`;
+    if(b.phase==='play'||b.phase==='finished'){
+      cell.innerHTML+=`<div>Declarer tricks <b>${declTr}</b>  Defence <b>${defTr}</b></div>`;
+      const declNeed=Math.max(0,target-declTr), defNeed=Math.max(0,(14-target)-defTr);
+      cell.innerHTML+=`<div class="race"><b>The race:</b> declarer needs <b>${declNeed}</b> more, defence needs <b>${defNeed}</b> to beat it.</div>`;
+    }
+    cell.innerHTML+=`<div>Vul: ${vulnerable(b.vul,c.declarer)?(declNS?'NS':'EW'):'none'}</div>`;
+    return cell;
+  }
+  function handCell(seat){
     const b=Game.board;const vis=handVisible(seat);
-    if(vis)return {hcp:handHcp(b.original[seat]),len:shape(b.original[seat])};
-    // infer from auction
-    let lo=0,hi=37;
-    for(const x of b.auction)if(x.seat===seat&&x.bid.kind!=='P'){lo=Math.max(lo,6);}
-    return {hcp:vis?handHcp(b.original[seat]):'?',len:[ '?','?','?','?']};
+    const cards=vis?((b.phase==='bidding'||b.phase==='minibridge')?b.original[seat]:b.hands[seat]):null;
+    let role='';if(seat===b.declarer&&b.phase!=='bidding')role=' · Declarer';else if(seat===b.dummy&&b.phase!=='bidding')role=' · Dummy';
+    const cnt=cards?cards.length:(b.phase==='bidding'?13:13-playedCount(seat));
+    const hcpLabel=vis?(handHcp(cards)+' HCP'):inferHcpRange(seat);
+    const danger=(!vis&&b.trump!=null&&seat!==b.declarer&&seat!==b.dummy&&shownOut(seat,b.trump));
+    const cell=el('div',{class:'inst-cell hand'+(danger?' danger':'')});
+    cell.appendChild(el('div',{class:'inst-h',html:`${danger?'<span class="warn">⚠ danger</span> ':''}${SEAT_NAME[seat]}${role} (${cnt} cards) <span class="hcpr">${hcpLabel}</span>`}));
+    cell.appendChild(el('div',{class:'inst-cols',html:'<span class="su"></span><span class="kcol">Known</span><span class="ocol">Other</span>'}));
+    for(const su of [S,H,D,C]){
+      const row=el('div',{class:'inst-srow'});
+      row.appendChild(el('span',{class:'su s-'+SU_CLASS[su]+(b.trump===su?' trump':''),text:SUIT_SYM[su]}));
+      if(vis){const sc=cards.filter(c=>cSuit(c)===su).sort((a,b)=>cRank(a)-cRank(b));
+        row.appendChild(el('span',{class:'kcol',html:sc.length?sc.map(knownCard).join(' '):'<span class="muted">—</span>'}));
+        row.appendChild(el('span',{class:'ocol',text:sc.length}));
+      } else {const so=shownOut(seat,su);
+        row.appendChild(el('span',{class:'kcol',html:'<span class="muted">—</span>'}));
+        row.appendChild(el('span',{class:'ocol'+(so?' voidc':''),html:so?'<span class="voidlbl">void</span>':inferSuit(seat,su)}));
+      }
+      cell.appendChild(row);
+    }
+    if(vis){const sh=shape(cards);cell.appendChild(el('div',{class:'inst-shape',html:'shape '+[S,H,D,C].map(su=>`<span class="s-${SU_CLASS[su]}">${SUIT_SYM[su]}</span>${sh[su]}`).join(' ')}));}
+    return cell;
   }
-  function planText(c){const b=Game.board;if(b.phase==='bidding')return 'Bidding';
-    const target=6+c.level;return `Target ${target} tricks. ${c.suit===NT?'No-trump — count winners, develop long suits.':'Trump '+SUIT_NAME[c.suit]+' — plan ruffs / draw trumps.'}`;}
-  function countText(){const b=Game.board;if(!b||b.phase==='bidding')return '—';
-    const out=[];const r=b.tricksPlayed.length;out.push(`${r} trick(s) played`);return out.join('<br>');}
+  function planCell(){
+    const b=Game.board;const cell=el('div',{class:'inst-cell plan'});cell.appendChild(el('div',{class:'inst-h',text:'Plan'}));
+    if(b.phase==='bidding'){cell.appendChild(el('div',{text:'Bidding in progress — describe your hand, find the fit, judge the level.'}));return cell;}
+    const c=b.contract;if(!c)return cell;
+    const onLead=b.turn!=null&&(b.trick.length===0);
+    const decl=c.declarer,dummy=b.dummy;
+    let html='';
+    const declCards=b.hands[decl]||[], dummyCards=b.hands[dummy]||[];
+    if(c.suit===NT){
+      html+='<b>Coach:</b> No-trump — count your sure winners and develop the long suit before the defence sets up theirs.<br>';
+    } else {
+      const trump=c.suit;const declT=suitLen(declCards,trump),dumT=suitLen(dummyCards,trump);
+      html+='<b>Coach:</b> Trump '+SUIT_SYM[trump]+' — draw trumps unless you need ruffs or an entry.<br>';
+      html+=`Trumps: declarer ${declT}, dummy ${dumT}.<br>`;
+      // danger: a defender void in trumps?
+      for(const d of [seatNext(decl),seatPartner(seatNext(decl))]){if(d!==decl&&d!==dummy&&shownOut(d,trump))html+=`<span class="warn">Danger:</span> ${SEAT_CHARS[d]} is void in trumps and can ruff — draw trumps first.<br>`;}
+    }
+    html+=`Target: ${6+c.level} tricks; ${b.tricksPlayed.length} played.`;
+    cell.innerHTML+=html;return cell;
+  }
+  function tableCell(){
+    const b=Game.board;const cell=el('div',{class:'inst-cell tbl'});cell.appendChild(el('div',{class:'inst-h',text:'Table'}));
+    const area=el('div',{class:'inst-table'});
+    for(const t of (b.trick||[])){const ce=cardEl(t.card,{size:'sm'});ce.classList.add('it-'+SEAT_CHARS[t.seat].toLowerCase());area.appendChild(ce);}
+    cell.appendChild(area);return cell;
+  }
+  function countCell(){
+    const b=Game.board;const cell=el('div',{class:'inst-cell'});cell.appendChild(el('div',{class:'inst-h',text:'Count / Honours'}));
+    let seen=0;for(let s=0;s<4;s++)if(handVisible(s))seen+=handHcp((b.phase==='bidding')?b.original[s]:b.hands[s]);
+    const unseen=40-seen;
+    const parts=[];for(let s=0;s<4;s++)if(!handVisible(s))parts.push(`${SEAT_CHARS[s]} ${inferHcpRange(s).replace(' HCP','')}`);
+    cell.innerHTML+=`<div>Unseen HCP <b>${unseen}</b>${parts.length?' · '+parts.join(' · '):''}</div>`;
+    return cell;
+  }
+  function coachCell(){
+    const b=Game.board;const cell=el('div',{class:'inst-cell coach'});cell.appendChild(el('div',{class:'inst-h',text:'Coaching / Signals'}));
+    if(b.phase==='bidding'){cell.innerHTML+='<div>• Bidding in progress — note each call\'s meaning.</div><div class="hintln">• Carding: attitude on partner\'s suit, count on declarer\'s, suit-preference on discards.</div>';return cell;}
+    // signal log from completed tricks (defender spot cards)
+    const lines=[];
+    (b.tricksPlayed||[]).forEach((t,i)=>{
+      const lead=cSuit(t.cards[0].card);
+      for(const pc of t.cards){
+        const sd=(pc.seat!==b.declarer&&pc.seat!==b.dummy);
+        if(!sd)continue;const r=cRank(pc.card);
+        if(cSuit(pc.card)!==lead)continue; // following
+        if(r>4){const hi=r<=7; // high spot
+          lines.push(`T${i+1} ${SEAT_CHARS[pc.seat]} ${SUIT_SYM[cSuit(pc.card)]}${RANK_CHARS[r]} → ${pc.seat===seatPartner(b.openingLeader)||true?'count':'attitude'} <span class="sig">${hi?'even':'odd'}</span>`);}
+      }
+    });
+    if(lastExplain)cell.innerHTML+=`<div class="lead-adv">${lastExplain}</div>`;
+    if(lines.length)cell.innerHTML+='<div class="siglog"><b>Signals</b><br>'+lines.slice(-7).join('<br>')+'</div>';
+    cell.innerHTML+='<div class="hintln">• Keep counting: track each suit\'s split as cards appear, and watch the discards.</div>';
+    return cell;
+  }
   let lastExplain='';
 
   /* ---------- full render ---------- */
@@ -2819,16 +2981,44 @@ const Dialogs=(function(){
   // -- hint / claim --
   A('hint',()=>{
     const b=Game.board;if(!b)return;
+    let title,note,suggest,deep;
     if(b.phase==='bidding'){const seat=Game.currentBidder();
       const r=Bidding.decideBid(b.hands[seat],{dealer:b.dealer,vul:b.vul,seat,bids:b.auction.map(x=>({bid:x.bid,why:x.why}))},systemForSeat(seat));
-      UI.showExplainer(`<span class="ex-bid">Hint: bid ${bidSym(r.bid)}</span><br><span class="ex-why">${r.bid.why}</span>`);
-      UI.toast('Hint: '+bidSym(r.bid));
+      title='Hint — bidding';note=r.bid.why||'Describe your hand and find the fit.';suggest='bid '+bidSym(r.bid);
+      const e=r.eval;deep=()=>`Your hand: <b>${e.hcp} HCP</b>, shape ${e.dist.join('-')}, ${e.losers} losers, ${e.controls} controls. `+
+        `The recommended call <b>${bidSym(r.bid)}</b> is chosen because: ${r.bid.why}. `+
+        (b.auction.length?'In the current auction, alternatives were ruled out as illegal or weaker.':'This is the opening that best describes the hand under '+Bidding.getSystem(systemForSeat(seat)).name+'.');
     } else if(b.phase==='play'&&b.turn!=null){
-      const ctx=Game.buildPlayCtx(b.turn);const r=Cardplay.chooseCard(ctx);
-      UI.showExplainer(`<span class="ex-bid">Hint: play ${cSym(r.card)}</span><br><span class="ex-why">${r.why}</span>`);
-      UI.toast('Hint: play '+cSym(r.card));
-    }
+      const seat=b.turn;const ctx=Game.buildPlayCtx(seat);const r=Cardplay.chooseCard(ctx);
+      title='Hint — card play';note=playLeadNote(b,seat);suggest='play '+cSym(r.card);
+      deep=()=>{
+        const e2=Game.buildPlayCtx(seat);const mc=Cardplay.mcChooseCard?null:null;
+        return `<b>${cSym(r.card)}</b> — ${r.why}.<br>`+
+          (r.mc?'Monte-Carlo dealt the unseen cards many ways and this card averaged the most tricks across those layouts.':
+           r.dd?'The endgame is small enough to solve exactly: this card is double-dummy optimal.':
+           'Rule-based: '+r.why+'.')+
+          `<br>Contract ${b.contract.level}${b.contract.suit===NT?'NT':SUIT_SYM[b.contract.suit]} by ${SEAT_NAME[b.contract.declarer]}; you have taken ${seatIsNS(seat)?b.nsTricks:b.ewTricks} on your side so far.`;
+      };
+    } else return;
+    const body=el('div');
+    body.appendChild(el('div',{class:'hint-note'},[el('b',{text:'Coaching note'}),el('div',{text:note})]));
+    body.appendChild(el('div',{class:'hint-sug',html:'▶ biq suggests: <b>'+suggest+'</b>'}));
+    const deepBox=el('div',{class:'hint-deep',style:'display:none'});
+    body.appendChild(deepBox);
+    modal({title,body,width:520,footer:[
+      {label:'Ask Claude for deeper advice',fn:()=>{deepBox.style.display='block';deepBox.innerHTML='<b>Deeper analysis</b><br>'+deep();}},
+      {label:'Close',primary:true},
+    ]});
   });
+  function playLeadNote(b,seat){
+    if(b.trick.length===0){
+      if(seat===b.openingLeader&&b.tricksPlayed.length===0)return 'Opening lead: top of a sequence, 4th-best from length, or your partner\'s suit; avoid leading away from honours into the unknown.';
+      const isDecl=seat===b.declarer||seat===b.dummy;
+      return isDecl?'On lead: draw trumps unless you need ruffs, then cash winners and develop your long suit.':
+        'On lead: continue your established suit or return partner\'s; shift only with a clear reason.';
+    }
+    return 'Following: second hand low, third hand high; win as cheaply as you can, and signal with spot cards.';
+  }
   A('claim',()=>{
     const b=Game.board;if(!b||b.phase!=='play'){UI.toast('Not in play','warn');return;}
     const remNS=DDS.nsTricks(b.hands,b.trump,b.turn!=null?b.turn:b.leader);
