@@ -1679,31 +1679,153 @@ const Cardplay=(function(){
     return {card,why:`Lead ${cSym(card)} from ${SUIT_NAME[bestSu]}`};
   }
   function totalRemaining(ctx){let n=0;for(let s=0;s<4;s++)n+=(ctx.hands[s]||[]).length;return n;}
+
+  /* ===================== MONTE-CARLO (PIMC) ===================== *
+   * For early/mid tricks the seat to act does NOT peek: it samples the hidden
+   * hands consistent with what it can prove (shown-out voids, remaining counts,
+   * vacant-places weighting) and a light auction HCP filter, rolls each sample
+   * out with the heuristic engine, and plays the card that averages the most
+   * tricks for its side. The endgame still uses exact double-dummy.
+   * ============================================================= */
+  // visible (provable) seats for the actor
+  function visibleSeats(ctx){
+    const vis=new Set([ctx.seat]);
+    if(ctx.dummyExposed&&ctx.dummy!=null)vis.add(ctx.dummy);
+    if(ctx.declarer!=null&&(ctx.seat===ctx.declarer||ctx.seat===ctx.dummy)){vis.add(ctx.declarer);vis.add(ctx.dummy);}
+    return vis;
+  }
+  // auction-derived HCP bounds per seat (light, robust)
+  function hcpBounds(ctx){
+    const b={};for(let s=0;s<4;s++)b[s]=[0,40];
+    const auc=ctx.auction||[]; let opened=false;
+    for(let i=0;i<auc.length;i++){
+      const x=auc[i];
+      if(x.bid.kind==='B'){
+        if(!opened){opened=true;b[x.seat][0]=Math.max(b[x.seat][0],10); // opener
+          // weak/preempt openings cap the top
+          if(x.bid.level>=2&&!(x.bid.level===2&&x.bid.suit===C&&x.bid.suit!==NT))b[x.seat]=[3,11];
+          if(x.bid.level>=3)b[x.seat]=[2,11];
+        } else {b[x.seat][0]=Math.max(b[x.seat][0],5);}
+      } else if(x.bid.kind==='P'&&!opened){
+        // declined to open in a seat that could have -> cap
+        b[x.seat][1]=Math.min(b[x.seat][1],12);
+      }
+    }
+    return b;
+  }
+  function plausible(hands,hidden,bounds){
+    for(const s of hidden){const h=handHcp(hands[s]);if(h<bounds[s][0]-1||h>bounds[s][1]+1)return false;}
+    return true;
+  }
+  // Build one sampled full layout (visible seats keep real cards). Returns hands or null.
+  function sampleLayout(ctx,bounds){
+    const vis=visibleSeats(ctx);
+    const hidden=[0,1,2,3].filter(s=>!vis.has(s));
+    if(!hidden.length)return null;
+    // pool of unseen cards + per-seat counts + shown-out voids
+    let pool=[];const need={},voidOf={};
+    for(const s of hidden){pool=pool.concat(ctx.hands[s]);need[s]=ctx.hands[s].length;voidOf[s]=new Set();}
+    const allTr=(ctx.tricksPlayed||[]).map(t=>t.cards).concat(ctx.trick&&ctx.trick.length?[ctx.trick]:[]);
+    for(const tr of allTr){if(!tr.length)continue;const lead=cSuit(tr[0].card);
+      for(const pc of tr){if(hidden.includes(pc.seat)&&cSuit(pc.card)!==lead)voidOf[pc.seat].add(lead);}}
+    // assign most-constrained cards first
+    const assign={};for(const s of hidden)assign[s]=[];
+    const left=Object.assign({},need);
+    const order=pool.slice().sort((a,b)=>{
+      const ea=hidden.filter(s=>!voidOf[s].has(cSuit(a))).length, eb=hidden.filter(s=>!voidOf[s].has(cSuit(b))).length;
+      return ea-eb;});
+    for(const card of order){
+      const elig=hidden.filter(s=>left[s]>0&&!voidOf[s].has(cSuit(card)));
+      if(!elig.length)return null; // dead end -> caller retries
+      // vacant-places weighting by remaining need
+      let tot=0;for(const s of elig)tot+=left[s];let r=Math.random()*tot,pick=elig[0];
+      for(const s of elig){r-=left[s];if(r<=0){pick=s;break;}}
+      assign[pick].push(card);left[pick]--;
+    }
+    const hands={};for(let s=0;s<4;s++)hands[s]=vis.has(s)?ctx.hands[s].slice():assign[s].sort((a,b)=>a-b);
+    return hands;
+  }
+  // heuristic playout from a (possibly mid-trick) position -> {ns,ew} future tricks
+  function playoutFrom(hands,trump,leader,trickCards,base){
+    hands={0:hands[0].slice(),1:hands[1].slice(),2:hands[2].slice(),3:hands[3].slice()};
+    let trick=trickCards.map(t=>({seat:t.seat,card:t.card}));
+    let curLeader=leader, toAct=trick.length?seatNext(trick[trick.length-1].seat):leader, ns=0,ew=0,guard=0;
+    while((hands[0].length+hands[1].length+hands[2].length+hands[3].length)>0&&guard++<80){
+      const rctx={hands,trump,declarer:base.declarer,dummy:base.dummy,trick:trick.slice(),leader:curLeader,
+        seat:toAct,tricksPlayed:[],contract:base.contract,vul:base.vul,auction:base.auction,
+        openingLeader:base.openingLeader,strength:'rule',rollout:true};
+      const r=chooseCard(rctx); let card=r&&r.card;
+      if(card==null){const ls=trick.length?cSuit(trick[0].card):-1;card=legalCards(hands[toAct],ls)[0];}
+      hands[toAct]=hands[toAct].filter(c=>c!==card);
+      trick.push({seat:toAct,card});
+      if(trick.length===4){const w=winnerOf(trick,trump);if(seatIsNS(w))ns++;else ew++;curLeader=w;toAct=w;trick=[];}
+      else toAct=seatNext(toAct);
+    }
+    return {ns,ew};
+  }
+  function mcChooseCard(ctx,legal){
+    const K=(CONFIG&&CONFIG.mcSamples)||14;
+    const bounds=hcpBounds(ctx);
+    const samples=[];
+    for(let i=0;i<K*3&&samples.length<K;i++){
+      const s=sampleLayout(ctx,bounds);
+      if(!s)continue;
+      const hidden=[0,1,2,3].filter(x=>!visibleSeats(ctx).has(x));
+      if(samples.length<K*2&&!plausible(s,hidden,bounds))continue; // soft HCP filter
+      samples.push(s);
+    }
+    if(!samples.length)return null;
+    const myNS=seatIsNS(ctx.seat);
+    const leader=ctx.leader!=null?ctx.leader:ctx.seat;
+    let best=null,bestV=-1e9;const per={};
+    for(const card of legal){
+      let total=0;
+      for(const sample of samples){
+        const hands={0:sample[0].slice(),1:sample[1].slice(),2:sample[2].slice(),3:sample[3].slice()};
+        hands[ctx.seat]=hands[ctx.seat].filter(c=>c!==card);
+        const trick=ctx.trick.map(t=>({seat:t.seat,card:t.card}));trick.push({seat:ctx.seat,card});
+        const res=playoutFrom(hands,ctx.trump,leader,trick,ctx);
+        total+=myNS?res.ns:res.ew;
+      }
+      const avg=total/samples.length;per[card]=avg;
+      if(avg>bestV){bestV=avg;best=card;}
+    }
+    return {card:best,value:bestV,samples:samples.length,perCard:per};
+  }
+
   // main entry
   function chooseCard(ctx){
     const leadSuit=ctx.trick.length?cSuit(ctx.trick[0].card):-1;
     const legal=legalCards(ctx.hands[ctx.seat],leadSuit);
     if(legal.length===1)return {card:legal[0],why:'Forced (only legal card)'};
+    // fast heuristic-only path used inside Monte-Carlo rollouts (no recursion)
+    if(ctx.rollout){
+      if(ctx.trick.length===0)return heuristicLead(ctx,legal);
+      return heuristicFollow(ctx,legal);
+    }
     ctx.vulMe=vulnerable(ctx.vul,ctx.seat);
     const isOpeningLead = ctx.trick.length===0 && (ctx.tricksPlayed||[]).length===0;
-    // exact double-dummy for small endings (strong + fast) unless rule-only mode
     const rem=totalRemaining(ctx);
-    // Exact double-dummy for the endgame (bounded so the browser never stalls):
-    // 'dd' mode searches deeper/larger, 'mc' uses the last 6 tricks.
+    // Exact double-dummy for the endgame (bounded so the browser never stalls).
     const ddThresh = ctx.strength==='dd'?28:24;
     const ddCap = ctx.strength==='dd'?600000:150000;
     const wantDD = ctx.strength!=='rule' && rem<=ddThresh && !isOpeningLead;
     if(wantDD){
       const r=DDS.bestCard(ctx.hands,ctx.trump,ctx.trick,ctx.seat,legal,ddCap);
-      if(r.card!=null&&!r.aborted){
-        return {card:r.card,why:`Double-dummy best line (${cSym(r.card)})`,dd:true,perCard:r.perCard};
-      }
+      if(r.card!=null&&!r.aborted)return {card:r.card,why:`Double-dummy best line (${cSym(r.card)})`,dd:true,perCard:r.perCard};
     }
+    // opening leads stay rule-based (as in native_lead.py)
     if(isOpeningLead)return openingLead(ctx);
+    // Monte-Carlo for the early/mid tricks in 'mc' mode (the realistic, non-peeking engine)
+    if(ctx.strength==='mc'&&rem>ddThresh&&ctx.trick.length>=0){
+      try{const r=mcChooseCard(ctx,legal);
+        if(r&&r.card!=null)return {card:r.card,why:`Monte-Carlo best: avg ${r.value.toFixed(2)} tricks over ${r.samples} sampled layouts (${cSym(r.card)})`,mc:true,perCard:r.perCard};
+      }catch(e){}
+    }
     if(ctx.trick.length===0)return heuristicLead(ctx,legal);
     return heuristicFollow(ctx,legal);
   }
-  return {chooseCard,openingLead,legalCards,winnerOf,leadCardInSuit,auctionSuits};
+  return {chooseCard,openingLead,legalCards,winnerOf,leadCardInSuit,auctionSuits,sampleLayout,mcChooseCard};
 })();
 
 /* ============================ 9. GAME STATE / CONTROLLER ============================ */
@@ -1712,6 +1834,7 @@ const CONFIG={
   systemNS:'SAYC', systemEW:'SAYC',
   cardingNS:'standard', cardingEW:'standard',
   strength:'mc',          // 'dd' | 'mc' | 'rule'
+  mcSamples:14,           // Monte-Carlo sampled layouts per early/mid card decision
   mode:'4player',         // '4player' | '1player' | 'allcomputer' | 'minibridge'
   onePlayerSeat:2,
   scoring:'Teams',        // Teams | Pairs | Rubber | Chicago
@@ -1853,7 +1976,7 @@ const Game=(function(){
       trick:board.trick.map(t=>({seat:t.seat,card:t.card})), leader:board.leader,
       seat, tricksPlayed:board.tricksPlayed, contract:board.contract, vul:board.vul,
       auction:board.auction.map(x=>({seat:x.seat,bid:x.bid})), openingLeader:board.openingLeader,
-      strength:CONFIG.strength};
+      dummyExposed:board.dummyExposed, strength:CONFIG.strength};
   }
   function computeCard(seat){
     const ctx=buildPlayCtx(seat);
@@ -2869,12 +2992,14 @@ const Dialogs=(function(){
   });
   A('playingStrength',()=>{
     const body=el('div');
-    const sel=select([{value:'dd',label:'Double-Dummy (strongest, sees all — slower)'},
-      {value:'mc',label:'Monte-Carlo + DD endgame (balanced, default)'},
-      {value:'rule',label:'Rule-based (fast, instant)'}],CONFIG.strength);
+    const sel=select([{value:'dd',label:'Double-Dummy (omniscient — sees all hands, strongest, slower)'},
+      {value:'mc',label:'Monte-Carlo (realistic — samples hidden hands, default)'},
+      {value:'rule',label:'Rule-based (fast heuristics, instant)'}],CONFIG.strength);
     body.appendChild(frow('Card-play engine',sel));
-    body.appendChild(el('div',{class:'hint',text:'DD endgame solving kicks in automatically once the ending is small enough; early tricks use heuristics in MC mode.'}));
-    modal({title:'Playing Strength',body,width:460,footer:[{label:'Cancel'},{label:'Apply',primary:true,fn:(c)=>{CONFIG.strength=sel.value;c();UI.renderStatus();persist();}}]});
+    const samp=el('input',{type:'number',min:4,max:60,value:CONFIG.mcSamples,style:'width:80px'});
+    body.appendChild(frow('Monte-Carlo samples',samp));
+    body.appendChild(el('div',{class:'hint',html:'<b>Monte-Carlo</b> plays without peeking: for each early/mid trick it deals the unseen cards many ways (consistent with the auction and the suits players have shown out of), rolls each layout out, and plays the card that wins the most tricks on average. The endgame switches to an exact double-dummy solver. More samples = stronger but slower (~'+'15 ms each).'}));
+    modal({title:'Playing Strength',body,width:500,footer:[{label:'Cancel'},{label:'Apply',primary:true,fn:(c)=>{CONFIG.strength=sel.value;CONFIG.mcSamples=Math.max(4,Math.min(60,parseInt(samp.value)||14));c();UI.renderStatus();persist();}}]});
   });
   function leadSignals(side){
     const body=el('div');

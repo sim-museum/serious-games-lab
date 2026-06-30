@@ -69,13 +69,30 @@ copy the PyQt layout:
   current trick, count, coaching) toggled by the Instrumented button.
 - Default systems set to **SAYC / SAYC** to match the desktop default.
 
-## Engine note (DD + MC) — NOT identical to PyQt, by platform necessity
-- **PyQt:** native `libdds.so` (full-speed C double-dummy) + Monte-Carlo sampling of
-  hidden hands with auction-derived HCP/shape constraints + alpha-mu no-peek play.
-- **Browser:** a hand-written JS double-dummy solver (correct; ~50–100× slower than
-  libdds) used **exactly for the endgame** (last ~6 tricks) with rule-based heuristics
-  for earlier tricks. No full-deal MC sampling / alpha-mu — a pure-JS full-deal solve
-  is too slow to run per card. Same *spirit*, weaker on early-trick declarer play.
+## Monte-Carlo card play (2026-06-30) — real PIMC for early/mid tricks
+The `mc` engine (the default) now plays the early and middle tricks with genuine
+**Perfect-Information Monte-Carlo**, no longer peeking:
+- For the seat to act, it samples the **hidden** hands many times (default 14,
+  configurable 4–60 in Configuration ▸ Playing Strength), consistent with what it
+  can prove: **shown-out voids**, remaining-card counts, **vacant-places weighting**,
+  and a light **auction HCP filter** (openers ≥ ~10, players who declined to open
+  capped, weak/preempt openers capped).
+- Each candidate card is **rolled out** across the samples and the one with the best
+  **average tricks for its side** is played.
+- The **endgame** still switches to the exact double-dummy solver, and **opening
+  leads** stay rule-based (as in `native_lead.py`). `dd` mode remains omniscient;
+  `rule` mode is pure heuristics.
+- Measured headless: fires correctly, **worst single card decision ~230 ms**,
+  0 exceptions over multi-deal runs. This narrows the gap with the desktop engine
+  on early-trick play; it still isn't `libdds`-speed PIMC, so all-computer batch runs
+  are slower (~6 s/deal with four MC seats), but interactive play stays snappy.
+
+### Still not identical to PyQt
+- **PyQt:** native `libdds.so` (full-speed C double-dummy) lets it run DD on *every*
+  MC sample at *every* trick, plus an alpha-mu no-peek refinement.
+- **Browser:** DD is reserved for the endgame; early/mid MC rollouts use the fast
+  heuristic engine (a pure-JS full-deal DD per sample per card is too slow). Same
+  family of method, lighter rollout evaluator.
 
 ## Files
 - `web/bridgeIQ.html` — the application (single file)
