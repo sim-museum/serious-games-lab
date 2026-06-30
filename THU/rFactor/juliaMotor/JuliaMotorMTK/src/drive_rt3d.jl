@@ -330,7 +330,7 @@ const CONTACT_DVMAX = 16.0
 function contact_force(δ, nx, nz, vn, θ; kind = :wall, m = 617.0, dt = 1/60, arm = 1.4)
     δ <= 0.0 && return (0.0, 0.0, 0.0)
     if kind === :soft
-        k = 3.0e4; c = 1.4e4; give = 0.5; twoSided = true        # PO: haybales must be FELT — small crush give (was 2.2 ≈ the whole bale radius → you sailed through), then a firm viscous scrub that bleeds speed + fires the FF jolt; still not a hard wall (you can plow through, slowly)
+        k = 1.2e5; c = 4.0e4; give = 0.3; twoSided = true        # PO: haybales were still "as if not there" — firmed 4× (k 3e4→1.2e5) so you crush in, lose real speed, and get punished, like the kerbs; two-sided damping = no bounce, still softer than a :wall (you can plough through, slowly)
     else
         k = 1.5e6; c = 9.0e4; give = 0.0; twoSided = true        # PO: collisions INELASTIC, more damping — a two-sided damper (was one-sided = full elastic rebound) absorbs the bounce, so a curb clip scrubs energy and eases you back onto the road instead of ping-ponging you between the kerbs
     end

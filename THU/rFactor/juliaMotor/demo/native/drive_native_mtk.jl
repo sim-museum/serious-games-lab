@@ -180,7 +180,7 @@ end
 # E56: object collision CLASS for the all-Modelica PLAYER contact law — hedges/hay rows (Zandvoort
 # `haie`) are soft (drive in, bleed speed, get stuck); everything else (walls/armco/fences/buildings/
 # towers/parked vehicles) is a hard elastic wall (bounce).  The AI still use the kinematic solid_hit.
-solidkind(nm) = startswith(nm, "haie") ? :soft : :wall
+solidkind(nm) = (startswith(nm,"haie")||startswith(nm,"bush")||startswith(nm,"shrub")||startswith(nm,"hedge")||startswith(nm,"haystk")) ? :soft : :wall
 # E56: sum the spring-damper CONTACT forces from every SOLID the PLAYER car penetrates into one
 # body-frame (Fx,Fy,Mz) to feed extforce3d! BEFORE the step (the solver integrates the collision —
 # no bumpX! state hack).  Returns the net force/moment + a peak-penetration proxy for the FFB jolt.
@@ -716,7 +716,7 @@ const ROAD_HALFW = parse(Float64, get(ENV, "JM_ROAD_HALFW", "9.0"))      # racin
 # SOLID — you can't drive through them.  The old exclusion (ROAD_HALFW−2 = 7 m) was wider than the real
 # road, so edge barriers fell inside it and got dropped from SOLIDS.  Exclude collidables only INSIDE the
 # real road (this half-width); anything at/beyond the edge stays solid.  JM_SOLID_EXCL_HW tunes it.
-const SOLID_EXCL_HW = parse(Float64, get(ENV, "JM_SOLID_EXCL_HW", "4.5"))
+const SOLID_EXCL_HW = parse(Float64, get(ENV, "JM_SOLID_EXCL_HW", "4.0"))
 # PO: per-name RENDER yaw correction (deg) for mis-oriented grandstands.  Verified the Zandvoort S/F
 # `gstand` is ALREADY ~parallel (a +90° test swung it fully ACROSS the track — clearly wrong), so the
 # default is 0; the relyaw≈88° reading is just the mesh's reference axis, not the visual length.  The
@@ -970,7 +970,7 @@ let objnames=Set{String}()
     solidR(nm) = startswith(nm,"hut")||startswith(nm,"pitbldg")||startswith(nm,"hotel")||startswith(nm,"bigbosch")||nm=="mega2"||startswith(nm,"longtent") ? 5.0 :
                  startswith(nm,"gstand")||startswith(nm,"grand")||startswith(nm,"tribun")||startswith(nm,"camstnd")||startswith(nm,"mgrand") ? 6.0 :   # PO: grandstands are SOLID (no driving through the stands)
                  startswith(nm,"tower")||startswith(nm,"megafon") ? 2.0 :
-                 startswith(nm,"haie") ? 2.2 :                                                        # hedges / hay rows lining the track
+                 startswith(nm,"haie")||startswith(nm,"bush")||startswith(nm,"shrub")||startswith(nm,"hedge")||startswith(nm,"haystk") ? 1.5 :   # hay rows + trackside bushes/hedges (PO: more objects hittable when you run wide — soft, you plough through with a penalty).  SMALL radius so they don't clip the racing groove
                  startswith(nm,"armco")||startswith(nm,"barrier")||startswith(nm,"fence")||startswith(nm,"wall") ? 1.2 :
                  startswith(nm,"caravn")||startswith(nm,"vwvan")||startswith(nm,"ftruck")||startswith(nm,"ambul")||nm=="car2"||startswith(nm,"rescu") ? 2.4 : 0.0
     global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]
@@ -979,6 +979,12 @@ let objnames=Set{String}()
         r = solidR(nml); (r <= 0.0 || !onground(i)) && continue
         on_road(i.x, i.y, SOLID_EXCL_HW) && continue   # E31: don't make a collidable wall ON the road (the trapping hedge-box) — but DO keep edge barriers/haybales solid (PO)
         push!(SOLIDS, (Float64(i.x), Float64(i.y), r, solidkind(nml)))   # E56: tag wall vs hedge/hay for the contact law
+    end
+    if get(ENV,"JM_SOLIDDIAG","")!=""
+        nm_solid = sort([(i.name, solidkind(lowercase(i.name))) for i in insts
+                         if solidR(lowercase(i.name)) > 0.0 && onground(i) && !on_road(i.x, i.y, SOLID_EXCL_HW)], by=x->x[1])
+        cnt = Dict{String,Int}(); for (n,_) in nm_solid; cnt[n]=get(cnt,n,0)+1; end
+        println("== JM_SOLIDDIAG ", length(SOLIDS), " solids: ", join(["$(n)×$(c)" for (n,c) in sort(collect(cnt))], ", "))
     end
     # billboards: (Item, render-pos base, width, height) — drawn camera-facing per frame.
     # WIDE panoramic forest strips (GPL Watkins `tree*` 80–380 m across, authored as one big
@@ -2357,6 +2363,11 @@ function main()
     ffb !== nothing && FFB.close_ffb(ffb)
     EngineAudio.stop!(ENG)
     GLFW.Terminate()
-    println("bye")
+    println("bye"); flush(stdout); flush(stderr)
+    # HARD exit: skip Julia's atexit handlers.  PortAudio registers one that calls Pa_Terminate, which
+    # SEGFAULTS in the ALSA/PipeWire stream teardown ("free(): corrupted unsorted chunks") on this box —
+    # a noisy crash AFTER the race is already fully written (telemetry/replay/result all flushed above).
+    # _exit terminates the process cleanly at the OS level, so the post-race exit is no longer a crash.
+    ccall(:_exit, Cvoid, (Cint,), 0)
 end
 main()
