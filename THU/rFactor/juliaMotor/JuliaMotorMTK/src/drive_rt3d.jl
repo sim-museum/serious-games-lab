@@ -330,7 +330,7 @@ const CONTACT_DVMAX = 16.0
 function contact_force(δ, nx, nz, vn, θ; kind = :wall, m = 617.0, dt = 1/60, arm = 1.4)
     δ <= 0.0 && return (0.0, 0.0, 0.0)
     if kind === :soft
-        k = 7.0e3; c = 9.0e3; give = 2.2; twoSided = true        # weak + viscous + crush give → bury & stick
+        k = 3.0e4; c = 1.4e4; give = 0.5; twoSided = true        # PO: haybales must be FELT — small crush give (was 2.2 ≈ the whole bale radius → you sailed through), then a firm viscous scrub that bleeds speed + fires the FF jolt; still not a hard wall (you can plow through, slowly)
     else
         k = 2.5e6; c = 2.5e4; give = 0.0; twoSided = false       # stiff + elastic → bounce
     end

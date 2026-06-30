@@ -724,6 +724,11 @@ const GRASS_DRAG = parse(Float64, get(ENV, "JM_GRASS_DRAG", "0.30"))     # grass
 const GRASS_SLIP = parse(Float64, get(ENV, "JM_GRASS_SLIP", "0.15"))     # grass penalty: random yaw wobble (reduced grip feel) — AI-only
 const GRASS_MU   = clamp(parse(Float64, get(ENV, "JM_GRASS_MU", "0.5")), 0.1, 1.0)   # E56: PLAYER grass = per-wheel tyre friction fraction (a wheel off the surface loses real grip + pulls)
 const ROAD_HALFW = parse(Float64, get(ENV, "JM_ROAD_HALFW", "9.0"))      # racing-surface half-width (m); beyond it = grass. Matched to the robust 9 m TrackSurface corridor so the centreline-projection wobble through tight ESSES (Watkins) no longer reads as "on grass" and bogs the car on the real road (E30).
+# PO: barriers/haybales/stands LINING the track (centre-to-object ≈ the real ~5.5 m road edge) must be
+# SOLID — you can't drive through them.  The old exclusion (ROAD_HALFW−2 = 7 m) was wider than the real
+# road, so edge barriers fell inside it and got dropped from SOLIDS.  Exclude collidables only INSIDE the
+# real road (this half-width); anything at/beyond the edge stays solid.  JM_SOLID_EXCL_HW tunes it.
+const SOLID_EXCL_HW = parse(Float64, get(ENV, "JM_SOLID_EXCL_HW", "4.5"))
 const KEEP_GRASS = haskey(ENV, "JM_KEEP_GRASS")    # E17 experiment: render the GPL green grass-cover planes (dropped by default)
 println(CAR3D ? "  PHYSICS: full-3D vehicle (default) — heave/pitch/roll + suspension travel + jumps" :
                 "  PHYSICS: planar 2-D model (JM_2D)")
@@ -969,6 +974,7 @@ let objnames=Set{String}()
     # E15: SOLID trackside objects the car can hit — (physics x, z, collision radius m).  Buildings,
     # barriers/hedges (haybales = Zandvoort `haie`), towers, parked vehicles.  NOT trees/signs/people.
     solidR(nm) = startswith(nm,"hut")||startswith(nm,"pitbldg")||startswith(nm,"hotel")||startswith(nm,"bigbosch")||nm=="mega2"||startswith(nm,"longtent") ? 5.0 :
+                 startswith(nm,"gstand")||startswith(nm,"grand")||startswith(nm,"tribun")||startswith(nm,"camstnd")||startswith(nm,"mgrand") ? 6.0 :   # PO: grandstands are SOLID (no driving through the stands)
                  startswith(nm,"tower")||startswith(nm,"megafon") ? 2.0 :
                  startswith(nm,"haie") ? 2.2 :                                                        # hedges / hay rows lining the track
                  startswith(nm,"armco")||startswith(nm,"barrier")||startswith(nm,"fence")||startswith(nm,"wall") ? 1.2 :
@@ -977,7 +983,7 @@ let objnames=Set{String}()
     for i in insts
         nml = lowercase(i.name)
         r = solidR(nml); (r <= 0.0 || !onground(i)) && continue
-        on_road(i.x, i.y, ROAD_HALFW - 2.0) && continue   # E31: don't make a collidable wall ON the road (the trapping hedge-box)
+        on_road(i.x, i.y, SOLID_EXCL_HW) && continue   # E31: don't make a collidable wall ON the road (the trapping hedge-box) — but DO keep edge barriers/haybales solid (PO)
         push!(SOLIDS, (Float64(i.x), Float64(i.y), r, solidkind(nml)))   # E56: tag wall vs hedge/hay for the contact law
     end
     # billboards: (Item, render-pos base, width, height) — drawn camera-facing per frame.
@@ -1020,7 +1026,7 @@ let objnames=Set{String}()
         ismesh = get(objmesh,i.name,nothing) !== nothing; isbb = get(bbinfo,i.name,nothing) !== nothing; og = onground(i)
         kmesh  = ismesh && !drop(i.name) && !onroad_crowd(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && og
         kbb    = isbb   && !drop(i.name) && og && !on_road(i.x, i.y, ROAD_HALFW)
-        issolid = solidR(lowercase(i.name)) > 0.0 && og && !on_road(i.x, i.y, ROAD_HALFW - 2.0)
+        issolid = solidR(lowercase(i.name)) > 0.0 && og && !on_road(i.x, i.y, SOLID_EXCL_HW)
         (i.name, Float32(i.x), Float32(i.y), ploz(i), kmesh ? :mesh : kbb ? :bb : :dropped, issolid)
     end for i in insts]
     if get(ENV,"JM_TEXDIAG","")!=""
@@ -1617,7 +1623,10 @@ function main()
         pp = cs.laps + (FUEL_ON && LAPLEN > 0 ? clamp(cs.lapdist/LAPLEN, 0.0, 1.0) : 0.0)
         entries = Tuple{Int,Float64}[(0, pp)]
         for (i,c) in enumerate(AICARS)
-            push!(entries, (i, c.lap + (AILINE === nothing ? 0.0 : c.s/AILINE.total)))
+            # R1 FIX: c.s ACCUMULATES (never wrapped) and c.lap already counts the laps, so c.s/total is
+            # the lap COUNT again — the old `c.lap + c.s/total` double-counted (2× laps) and "lapped" you.
+            # Use only the FRACTION of the current lap.
+            push!(entries, (i, c.lap + (AILINE === nothing ? 0.0 : mod(c.s, AILINE.total)/AILINE.total)))
         end
         sort!(entries, by = e -> -e[2])                # most progress = P1
         entries
@@ -1905,7 +1914,7 @@ function main()
                 println("  ── R1 DIAG  (AI pace ", round(Int,AI_PCT), "% → target ", round(AI_TGT,digits=1),
                         "s/lap;  YOU laps=", cs.laps, " prog=", round(player_prog/(CLINE===nothing ? 1 : CLINE.total), digits=2), ") ──")
                 for (i,c) in enumerate(AICARS)
-                    println("     ", rpad(AISPECS[i][1],8), " lap=", c.lap, " prog=", round(c.lap + c.s/AILINE.total, digits=2),
+                    println("     ", rpad(AISPECS[i][1],8), " lap=", c.lap, " prog=", round(c.lap + mod(c.s, AILINE.total)/AILINE.total, digits=2),
                             " v=", round(Int,c.v*3.6), "km/h pace=", round(Int,c.pace*100), "%")
                 end
                 println("  ── final classification ──")
