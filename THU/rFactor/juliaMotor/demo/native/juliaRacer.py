@@ -42,11 +42,11 @@ REF_LAP = {"zandvoort": 86.848, "nurburgring": 501.931, "watglen": 66.912,
            "monza": 166.5, "spa": 200.342, "skidpad": 30.0}
 
 
-def human_bests():
-    """A3: read human_best.txt ('<track>\\t<seconds>' per line) → {track: seconds}. Empty if absent."""
+def _read_track_times(fname):
+    """Read a '<track>\\t<seconds>' file → {track: seconds}. Empty if absent."""
     out = {}
     try:
-        with open(os.path.join(HERE, "human_best.txt")) as f:
+        with open(os.path.join(HERE, fname)) as f:
             for ln in f:
                 sp = ln.strip().split("\t")
                 if len(sp) == 2:
@@ -59,15 +59,26 @@ def human_bests():
     return out
 
 
+def human_bests():
+    """Per-track best lap (s) the sim banks whenever you improve."""
+    return _read_track_times("human_best.txt")
+
+
+def human_recents():
+    """B (PO): per-track MOST-RECENT race AVERAGE lap (s) — the sim overwrites it each race."""
+    return _read_track_times("human_recent.txt")
+
+
 def preset_ai_pct(track_key):
-    """A3: the AI-speed % that paces the fastest AI car at the human's best lap for this track:
-    % = GPLrank_ref / human_best · 100 (so a human 2 min vs a 1.5 min ref → 75 %).  No recorded
-    human lap → 50 %.  Clamped to the spinbox range [30, 200]."""
-    best = human_bests().get(track_key)
+    """B (PO): the AI-speed % that paces the fastest AI car at the driver's MOST RECENT race
+    AVERAGE on this track (so the field matches how you actually race, not a one-off hot lap):
+    % = GPLrank_ref / your_recent_average · 100.  Falls back to your best lap, then 50 % if
+    you've never raced/lapped here.  Clamped to the spinbox range [30, 200]."""
+    base = human_recents().get(track_key) or human_bests().get(track_key)
     ref = REF_LAP.get(track_key)
-    if not best or not ref:
+    if not base or not ref:
         return 50
-    return max(30, min(200, round(ref / best * 100)))
+    return max(30, min(200, round(ref / base * 100)))
 
 
 def find_julia():
@@ -688,13 +699,15 @@ class DriveTab(QWidget):
                 self.ai.setValue(5)
 
     def _track_changed(self, idx):
-        """A3: pre-set AI-speed % to GPLrank/your-best·100 for the chosen track (50% if no recorded lap)."""
+        """B: pre-set AI-speed % to GPLrank / your-most-recent-race-average · 100 (best lap, then 50%, as fallback)."""
         key = TRACK_KEYS[idx] if 0 <= idx < len(TRACK_KEYS) else "zandvoort"
         self.ai_pct.setValue(preset_ai_pct(key))
+        recent = human_recents().get(key)
         best = human_bests().get(key)
-        if best:
-            m, s = divmod(best, 60)
-            self.ai_pct_note.setText(f"≈ your best {int(m)}:{s:06.3f} vs GPLrank {self._fmt(REF_LAP.get(key,0))}")
+        if recent:
+            self.ai_pct_note.setText(f"≈ your recent avg {self._fmt(recent)} vs GPLrank {self._fmt(REF_LAP.get(key,0))}")
+        elif best:
+            self.ai_pct_note.setText(f"≈ your best {self._fmt(best)} vs GPLrank {self._fmt(REF_LAP.get(key,0))} (race for an avg)")
         else:
             self.ai_pct_note.setText("no recorded lap yet → 50%")
 
@@ -815,13 +828,14 @@ class DriveTab(QWidget):
         v.addWidget(head)
         tabs = QTabWidget()
 
-        # --- Classification tab: P, car, gap-to-winner; plus fastest lap of the whole field ---
+        # --- Classification tab: P, car, gap; P1's right column is the WINNER's total time ---
         crows = ["<table cellspacing=0 cellpadding=4 width='100%'>",
                  "<tr style='color:#888'><th align=left>Pos</th><th align=left>Car</th>"
-                 "<th align=right>Gap</th></tr>"]
+                 "<th align=right>Total&nbsp;/&nbsp;gap</th></tr>"]
         for i, (name, gap) in enumerate(grid, 1):
             you = (name == "You")
-            sty = " style='background:#23304a'" if you else ""
+            # PO: the You row must be READABLE — a LIGHT highlight with black text, not black-on-navy.
+            sty = " style='background:#ffe98a;color:#000'" if you else ""
             nm = f"<b>{name}</b>" if you else name
             crows.append(f"<tr{sty}><td>P{i}</td><td>{nm}</td><td align=right>{gap}</td></tr>")
         crows.append("</table>")

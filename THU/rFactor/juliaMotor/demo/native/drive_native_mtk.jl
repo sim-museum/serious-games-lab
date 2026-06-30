@@ -1933,14 +1933,31 @@ function main()
                         println(io, "you_best\t$(best_lap > 0 ? fmt_lap(best_lap) : "-")"); println(io, "you_total\t$(fmt_lap(cs.t))")
                         println(io, "best_any\t$(isfinite(best_any) ? fmt_lap(best_any) : "-")\t$best_any_who")
                         println(io, "you_laps\t", join((fmt_lap(t) for t in player_laps), ","))   # C: per-lap times tab
+                        println(io, "win_total\t$(fmt_lap(lead_est))")   # PO: the WINNER's total elapsed time (top row, right)
                         for (p, (id, prog)) in enumerate(order)
                             laps_down = floor(Int, lead_prog - prog)
-                            gap = p == 1 ? "" : (laps_down >= 1 ? "+$laps_down lap$(laps_down>1 ? "s" : "")" :
-                                                                  "+$(fmt_lap(est_time(prog) - lead_est))")
+                            # PO: the winner's row shows the winner's TOTAL TIME; everyone else a gap (or +N laps)
+                            gap = p == 1 ? fmt_lap(lead_est) :
+                                  (laps_down >= 1 ? "+$laps_down lap$(laps_down>1 ? "s" : "")" :
+                                                    "+$(fmt_lap(est_time(prog) - lead_est))")
                             println(io, "P$p\t$(ent_name(id))\t$gap")   # name + gap-to-winner column
                         end
                     end
                 catch e; @warn "result write failed" e; end
+                # B (PO): pre-fill the AI % from the driver's MOST RECENT race AVERAGE on this track (not the
+                # best lap) — so the field is paced to how you ACTUALLY race, not a one-off hot lap.  Overwrite
+                # (most-recent, not best) with this race's mean lap time.
+                if !isempty(player_laps)
+                    avg = sum(player_laps)/length(player_laps)
+                    try
+                        rp = joinpath(@__DIR__, "human_recent.txt"); recents = Dict{String,Float64}()
+                        isfile(rp) && for ln in eachline(rp)
+                            sp = split(strip(ln), '\t'); length(sp)==2 && (v=tryparse(Float64,sp[2]))!==nothing && (recents[sp[1]]=v)
+                        end
+                        recents[TRACKSEL] = avg
+                        open(rp, "w") do io; for (k,v) in recents; println(io, "$k\t$(round(v,digits=3))"); end; end
+                    catch e; @warn "human_recent write failed" e; end
+                end
             end
             end
         elseif cs.laps < prev_laps                 # respawn reset the lap counter
