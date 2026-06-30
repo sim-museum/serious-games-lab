@@ -519,7 +519,9 @@
           p.totalInvested = sp.totalInvested || 0;
           if (sp.hand) p.hand = sp.hand.slice();
         }
-        this.players = this.players.filter(Boolean);
+        // the host's player set is authoritative + contiguous — drop any stale
+        // local seats beyond it (e.g. a guest whose pre-join table was larger).
+        this.players.length = gs.players.length;
       }
       if (gs.board) this.board = gs.board.slice();
       if (gs.pot != null) this.pot = gs.pot;
@@ -536,14 +538,17 @@
     }
 
     // Compact authoritative state for one recipient seat (host → that peer).
-    // Reveals the recipient's own cards; opponents' cards only when `revealAll`.
-    netStateFor(seat, revealAll) {
+    // Reveals the recipient's own cards; opponents' cards only for seats in the
+    // `revealSeats` set (the genuine-showdown contenders — never folded muckers
+    // or an uncontested winner).
+    netStateFor(seat, revealSeats) {
+      const reveal = s => s === seat || (revealSeats && revealSeats.has(s));
       return {
         players: this.players.map(p => ({
           seat: p.seat, name: p.name, style: p.isHuman ? 'human' : p.style,
           stack: p.stack, betInRound: p.betInRound, active: p.active,
           allIn: p.allIn, lastAction: p.lastAction, totalInvested: p.totalInvested,
-          hand: (revealAll || p.seat === seat) ? p.hand.slice() : [],
+          hand: reveal(p.seat) ? p.hand.slice() : [],
         })),
         board: this.board.slice(), pot: this.pot, currentBet: this.currentBet,
         toAct: this.toAct, dealerIdx: this.dealerIdx, streetIdx: this.streetIdx,

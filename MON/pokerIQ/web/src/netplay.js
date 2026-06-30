@@ -87,7 +87,7 @@
       this.ctrl.remoteSeats.add(seat);
       this.seatByPeer[peer] = seat; this.peerBySeat[seat] = peer;
       this.t.send(peer, { t: 'welcome', seat, sb: g.sb(), bb: g.bb(), hostName: this.hostName });
-      this.t.send(peer, { t: 'state', gs: g.netStateFor(seat, !g.handInProgress) });
+      this.t.send(peer, { t: 'state', gs: g.netStateFor(seat, null) });   // own cards only on join
       this.broadcast({ t: 'sys', text: `${name} joined (seat ${seat + 1})` });
       this.chatLog.push({ from: '—', text: `${name} joined`, sys: true });
       return true;
@@ -102,6 +102,7 @@
     }
 
     onPeerClose(peer) {
+      this.pending = this.pending.filter(p => p !== peer);   // drop if they left before being seated
       const seat = this.seatByPeer[peer];
       if (seat != null) {
         // turn the seat back into a bot so the table keeps playing
@@ -122,7 +123,7 @@
 
     requestAction(seat, legal) {
       const peer = this.peerBySeat[seat]; if (!peer) return;
-      this.t.send(peer, { t: 'act', legal: legalWire(this.ctrl.game, seat), gs: this.ctrl.game.netStateFor(seat, false) });
+      this.t.send(peer, { t: 'act', legal: legalWire(this.ctrl.game, seat), gs: this.ctrl.game.netStateFor(seat, null) });
     }
 
     remoteAction(peer, msg) {
@@ -136,10 +137,17 @@
     // every engine event → forward to peers with their tailored authoritative state
     onEngineEvent(type, payload) {
       const g = this.ctrl.game;
-      const revealAll = !g.handInProgress;   // showdown: reveal all hole cards
+      // at a GENUINE showdown (hand over with ≥2 players still in) reveal the
+      // contenders' cards to everyone; an uncontested win reveals nothing, and
+      // folded muckers' cards stay hidden.
+      let revealSeats = null;
+      if (!g.handInProgress) {
+        const contenders = g.players.filter(p => p.active);
+        if (contenders.length >= 2) revealSeats = new Set(contenders.map(p => p.seat));
+      }
       for (const peer of Object.keys(this.seatByPeer)) {
         const seat = this.seatByPeer[peer];
-        this.t.send(peer, { t: 'ev', type, payload, gs: g.netStateFor(seat, revealAll) });
+        this.t.send(peer, { t: 'ev', type, payload, gs: g.netStateFor(seat, revealSeats) });
       }
     }
 
@@ -172,6 +180,7 @@
       switch (msg.t) {
         case 'welcome':
           ctrl.mySeat = msg.seat; this.seated = true;
+          ctrl.humanSeats = new Set([msg.seat]);   // all humanSeats-keyed logic now points at our real seat
           this.hostName = msg.hostName;
           this.onUpdate(); ctrl.render();
           break;

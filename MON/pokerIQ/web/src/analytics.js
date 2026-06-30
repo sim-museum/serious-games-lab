@@ -251,11 +251,22 @@
   class DecisionJournal {
     constructor() { this.entries = []; this.pending = []; }
     record(fields) {
-      const e = Object.assign({ handNumber: null, street: '', action: '', predictedEquity: null, result: null }, fields);
+      const e = Object.assign({ handNumber: null, seat: null, street: '', action: '', predictedEquity: null, result: null }, fields);
       this.entries.push(e);
       if (e.result == null) this.pending.push(e);
       return e;
     }
+    // resolve each pending entry against ITS OWN seat's net (matters in hotseat,
+    // where several humans log decisions in the same hand).
+    attachResultForHand(handNumber, netArray) {
+      const netBySeat = {}; (netArray || []).forEach(n => { netBySeat[n.seat] = n.net; });
+      this.pending = this.pending.filter(e => {
+        if (e.handNumber !== handNumber) return true;
+        const d = e.seat != null && netBySeat[e.seat] != null ? netBySeat[e.seat] : 0;
+        e.result = d > 0 ? 1 : 0; e.resultDollars = d; return false;
+      });
+    }
+    // back-compat single-seat resolver (seat 0 / single human)
     attachResult(handNumber, resultDollars) {
       const actual = resultDollars > 0 ? 1 : 0;
       this.pending = this.pending.filter(e => {
