@@ -120,6 +120,11 @@ const SPIN_LO  = parse(Float64, get(ENV, "JM_AI_SPIN_LO", "1.0"))
 const SPIN_HI  = parse(Float64, get(ENV, "JM_AI_SPIN_HI", "3.0"))
 const CAR_LEN  = 4.2    # car length (m) — single-file spacing + collision longitudinal extent
 const CAR_WID  = 1.7    # car width (m) — collision lateral extent
+# PO: the AI clumped because every car aimed for the SAME racing line (the same point in space) and so
+# kept colliding.  Give each car a small PERSISTENT lane bias (its own slightly-offset preferred line),
+# distinct per car, so the field naturally fans across the road instead of stacking on one groove.
+const LANE_BIAS = parse(Float64, get(ENV, "JM_AI_LANE_BIAS", "0.7"))
+lanebias(i, n) = n <= 1 ? 0.0 : LANE_BIAS * (2.0*((0.41*i) % 1.0) - 1.0)   # pseudo-random distinct offset per car
 
 # Longitudinal physics so the AI ACCELERATE like cars (not slot cars): traction-limited
 # off the line, power-limited + aero drag at speed → a natural build-up and top speed.
@@ -232,7 +237,7 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
             (gap < car.v*0.6 + CAR_LEN && abs(car.lane - blane) < 1.6) && (vt = min(vt, b[3]))  # still stuck behind → match speed
         end
         isfinite(rel) && player !== nothing && (vt = min(vt, max(player[3]*rel, 6.0)))   # ~player pace — never run away
-        tgt = clamp(racelane(line, car.s) + car.tlane, -LANE_MAX, LANE_MAX)   # racing line + pass deviation
+        tgt = clamp(racelane(line, car.s) + lanebias(i, length(cars)) + car.tlane, -LANE_MAX, LANE_MAX)   # racing line + per-car bias + pass deviation
         car.lane += clamp(tgt - car.lane, -2.4*dt, 2.4*dt)        # deliberate lane changes (not twitchy)
         car.lane  = clamp(car.lane, -LANE_MAX, LANE_MAX)
         car.v     = advance_speed(car.v, vt, dt)            # realistic accel/brake (not slot-car)
@@ -249,15 +254,17 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
         Δs > total/2 && continue                            # only handle b catching a (a ahead)
         dl = cars[a].lane - cars[b].lane
         Δs < CAR_LEN || continue
-        if abs(dl) < CAR_WID*0.7                             # ~same lane → b queues behind a (no pass-through)
+        if abs(dl) < CAR_WID*0.7                             # ~same lane → b queues single-file behind a
             cars[b].s = cars[a].s - CAR_LEN
             cars[b].v = min(cars[b].v, cars[a].v)
-        elseif abs(dl) < CAR_WID                             # side-by-side touch → rub + twitch
+        elseif abs(dl) < CAR_WID                             # PO: side-by-side overlap → DON'T sustain a rub/clump.
+            # The TRAILING car (b, behind a) YIELDS: ease apart, drop back, and commit to tucking into line
+            # behind a (no more rubbing/twitch that clumped the field and crawled them to a stop).
             push = (CAR_WID - abs(dl)) * 0.5; d = dl >= 0 ? 1.0 : -1.0
             cars[a].lane = clamp(cars[a].lane + d*push, -LANE_MAX, LANE_MAX)
             cars[b].lane = clamp(cars[b].lane - d*push, -LANE_MAX, LANE_MAX)
-            cars[a].spin += 0.18*d; cars[b].spin -= 0.18*d
-            cars[a].v *= 0.97; cars[b].v *= 0.97
+            cars[b].v *= 0.90                                # decelerate to fall in BEHIND a (resolve to single file)
+            cars[b].tlane *= 0.5                             # stop fighting for the same gap — settle back toward the line
         end
     end
     # 3) contact with the HUMAN: the AI yields (steps aside + twitches + slows); flag a bump

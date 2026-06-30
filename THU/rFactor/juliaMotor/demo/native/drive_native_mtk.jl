@@ -663,7 +663,7 @@ println(length(TRACK), " track parts + ", length(CARP), " Lotus body parts")
 const BODY_OFF = Float32[-0.55, 0.30, 0.0]     # centre body on X, lift onto the wheels
 # Visual suspension-travel gain: amplifies the chassis dive/squat/roll the wheels FLOAT against, so the
 # 1967 car's soft suspension reads clearly from the cockpit (the wheels are decoupled — see wheelmat).
-const SUSP_GAIN = parse(Float32, get(ENV,"JM_SUSP_GAIN","1.8"))
+const SUSP_GAIN = parse(Float32, get(ENV,"JM_SUSP_GAIN","0.9"))   # PO: cockpit motion must be SUBTLE — just a suggestion — and never rise enough to obscure the road ahead.  Halved from 1.8: the body (and the eye's dynamic gaze shift) pitch/roll/squat far less, so the dash barely moves and the view down the track stays clear.  (No structural camera change — that caused the pogo; this is amplitude only.)
 # GPL cockpit head stabiliser (E53): the camera UP follows only the LOW-FREQUENCY chassis tilt.
 # A slow road bank rolls the view WITH the car (head → road normal, chassis fixed on screen, horizon
 # tilts); a fast jolt (curb strike) does NOT roll the view — the CHASSIS rocks on screen while the head
@@ -1719,6 +1719,12 @@ function main()
         # green light: the field launches the moment you ask for throttle (standing start)
         if HOLD_START && !race_go[] && phase[] == :race && inp.throttle > 0.15
             race_go[] = true; lap_t0 = cs.t          # start the clock at the launch
+            # PO: the AI must NOT all launch perfectly — some bog / fluff a shift / spin up at the getaway.
+            # Each car independently has a chance to fumble (a brief mishap = crawl), varying in severity, so
+            # the field doesn't magically sail away in formation; the rest get clean launches.
+            for c in AICARS
+                rand() < 0.45 && (c.mishap = 0.4 + 1.4*rand())
+            end
         end
         # LAUNCH ASSIST: the on-screen prompt is "floor the throttle to start", so flooring it MUST get
         # you rolling even in MANUAL — auto-engage the gearbox + drop the clutch for the initial getaway
