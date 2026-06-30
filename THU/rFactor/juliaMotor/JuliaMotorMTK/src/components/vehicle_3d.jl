@@ -31,8 +31,11 @@ function DrivenVehicle3D(; name,
         Rw_f = 0.30, Rw_r = 0.33, Iw = 1.0, η = 0.9, final = 4.11,
         bias = 0.535, Tbrake_max = 4200.0, CdA = 0.9, ρair = 1.10, g = 9.80665,
         throttle0 = 0.0, brake0 = 0.0, steer0 = 0.0, gear0 = 1.72, brush = false,
-        front_corner = (ks = 18_250.0, cs = 2500.0, m_s = 120.0, m_u = 20.0, kt = 180_000.0, ct = 300.0),
-        rear_corner  = (ks = 29_200.0, cs = 3000.0, m_s = 148.0, m_u = 20.0, kt = 200_000.0, ct = 300.0))
+        # PO: ct (tyre vertical DAMPING) was 300 ≈ 8% of critical for the unsprung mass → the car
+        # "superball-bounced" on landing off a crest.  Raised to ~27% of critical so a jump landing is
+        # absorbed (inelastic), not sprung back; mainly affects bumps/landings, not steady cornering.
+        front_corner = (ks = 18_250.0, cs = 2500.0, m_s = 120.0, m_u = 20.0, kt = 180_000.0, ct = 1000.0),
+        rear_corner  = (ks = 29_200.0, cs = 3000.0, m_s = 148.0, m_u = 20.0, kt = 200_000.0, ct = 1100.0))
     L = a + b; mf = m*front_frac; mr = m*(1 - front_frac)
     M_s = 2*(front_corner.m_s + rear_corner.m_s)          # total sprung mass
 

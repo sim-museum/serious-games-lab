@@ -1757,7 +1757,7 @@ function main()
                 cfx = cfy = cmz = 0.0
                 if !SKIDPAD && !rst
                     (cfx, cfy, cmz, cpk) = solid_contact(cs.x, cs.z, cs.θ, cs.v, dt > 1e-4 ? dt : 1/60)
-                    cpk > 1.0e3 && (ffb_jolt = clamp(sign(cmz != 0 ? cmz : 1.0) * min(cpk/8.0e4, 1.0), -1.0, 1.0))  # feel the hit
+                    cpk > 1.0e3 && (ffb_jolt = clamp(sign(cmz != 0 ? cmz : 1.0) * min(cpk/4.0e4, 1.0), -1.0, 1.0))  # feel the hit (stronger — PO: object kick was too small)
                 end
                 # add last frame's world-edge physical-wall force (E56.6) to the trackside contact force
                 DriveRT3D.extforce3d!(cs; Fx = cfx + BND_FX[], Fy = cfy + BND_FY[], Mz = cmz + BND_MZ[],
@@ -1867,7 +1867,10 @@ function main()
             spr = FFB_SPRING * clamp(inp.steer, -1, 1)         # self-centering spring ∝ wheel angle — ALWAYS present ⇒ no dead center
             target = tanh(FFB_SIGN * (FFB_GAIN * mz * spd + spr))
             ffb_f += (target - ffb_f) * clamp(dt/FFB_LP, 0.0, 1.0)   # 1st-order low-pass: smooth, continuous
-            FFB.set_force!(ffb, clamp(ffb_f + ffb_jolt, -1.0, 1.0))  # + a transient JOLT on impacts (collision/fence)
+            # the impact JOLT takes PRIORITY over the steering force: scale the road/spring force down by
+            # the jolt size so a hit is always FELT, even mid-corner when ffb_f is already near full lock
+            # (otherwise `ffb_f + jolt` just clamps and you feel nothing — why AI hits read as "no kick").
+            FFB.set_force!(ffb, clamp(ffb_f*(1.0 - min(abs(ffb_jolt), 1.0)) + ffb_jolt, -1.0, 1.0))
         end
         ffb_jolt *= exp(-(dt > 1e-4 ? dt : 1/60)/0.06)              # the impact jolt decays fast (~60 ms)
 
@@ -2144,18 +2147,21 @@ function main()
                 ptw = draft_tow(cs.x, cs.z, cs.θ, cs.v, plds)
                 ptw > 0.0 && (PLAYER_CDA[] = 1.0 - DRAFT_DRAG_CUT * clamp(ptw/TOW_MAX, 0.0, 1.0))
             end
-            pm = 560.0; am = 560.0; restn = 0.45; mr = pm*am/(pm+am)   # elastic-ish (billiard-ball nudge)
+            pm = 560.0; am = 560.0; restn = 0.12; mr = pm*am/(pm+am)   # PO: car-to-car INELASTIC (was 0.45 = bouncy) — a hit shoves + scrubs, doesn't ping-pong
             pvx = cs.v*cos(cs.θ); pvz = cs.v*sin(cs.θ)
             for (k, p) in enumerate(ai_poses)
                 dx = p[1] - cs.x; dz = p[3] - cs.z; d = hypot(dx, dz)
                 (d < 1e-3 || d > CONTACT_D) && continue       # ACTUAL contact only (≈ a car width — no "repel from afar")
                 nx = dx/d; nz = dz/d                          # contact normal, player → AI
                 ac = AICARS[k]; aθ = p[4]
+                lat = -dx*sin(cs.θ) + dz*cos(cs.θ)            # contact offset in the player's frame → spin sign
+                # ANY car contact (even a sustained scrape, before the closing-impulse test) gives a clear
+                # FF kick, so you always FEEL the AI — not just on a square closing hit.
+                ffb_jolt = clamp(-sign(lat)*0.6, -1.0, 1.0)
                 avx = ac.v*cos(aθ); avz = ac.v*sin(aθ)
                 vrel = (pvx-avx)*nx + (pvz-avz)*nz            # closing speed along the normal
-                vrel <= 0.2 && continue                       # separating → no new impulse
+                vrel <= 0.2 && continue                       # separating → no new closing impulse (the contact kick already fired)
                 j = (1+restn)*vrel*mr
-                lat = -dx*sin(cs.θ) + dz*cos(cs.θ)            # contact offset in the player's frame → spin sign
                 # a SIDE (wheel-to-wheel) hit climbs → vertical launch; a square hit doesn't.
                 across_p = -nx*sin(cs.θ) + nz*cos(cs.θ)
                 vlaunch = clamp(abs(across_p)*(j/pm)*0.55, 0.0, 7.0)
@@ -2165,7 +2171,7 @@ function main()
                 # the field.  along_p>0 = the car is ahead of you (you drove INTO it) → you lose forward speed.
                 along_p = nx*cos(cs.θ) + nz*sin(cs.θ)
                 along_p > 0.25 && (cs.v = max(0.0, cs.v - clamp((j/pm)*along_p*0.7, 0.0, cs.v*0.55)))
-                ffb_jolt = clamp(-sign(lat)*(j/pm)*0.18 - 0.4*sign(vrel), -1.0, 1.0)   # FF jolt — feel the hit (curb/object/car)
+                ffb_jolt = clamp(ffb_jolt - sign(lat)*(j/pm)*0.18 - 0.4*sign(vrel), -1.0, 1.0)   # a CLOSING hit adds to the contact kick
                 if AI_PHYSICS                                  # the AI is a real physics car → impulse it too
                     alat = -dx*sin(aθ) + dz*cos(aθ)
                     # E55: PLANAR push + mild yaw only — no vertical launch / roll on the AI (it must not

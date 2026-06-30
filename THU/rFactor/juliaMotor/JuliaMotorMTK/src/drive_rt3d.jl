@@ -332,7 +332,7 @@ function contact_force(δ, nx, nz, vn, θ; kind = :wall, m = 617.0, dt = 1/60, a
     if kind === :soft
         k = 3.0e4; c = 1.4e4; give = 0.5; twoSided = true        # PO: haybales must be FELT — small crush give (was 2.2 ≈ the whole bale radius → you sailed through), then a firm viscous scrub that bleeds speed + fires the FF jolt; still not a hard wall (you can plow through, slowly)
     else
-        k = 2.5e6; c = 2.5e4; give = 0.0; twoSided = false       # stiff + elastic → bounce
+        k = 1.5e6; c = 9.0e4; give = 0.0; twoSided = true        # PO: collisions INELASTIC, more damping — a two-sided damper (was one-sided = full elastic rebound) absorbs the bounce, so a curb clip scrubs energy and eases you back onto the road instead of ping-ponging you between the kerbs
     end
     δeff = max(δ - give, 0.0)                                     # the soft give-zone holds the car with no push-back
     damp = twoSided ? -c*vn : -c*min(vn, 0.0)                    # :wall damps approach only (so it rebounds)
