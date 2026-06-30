@@ -579,10 +579,11 @@ class CalibrateTab(QWidget):
 # Launch tab
 # ---------------------------------------------------------------------------
 class DriveTab(QWidget):
-    def __init__(self, joy: JoyReader):
+    def __init__(self, joy: JoyReader, on_result=None):
         super().__init__()
         self.joy = joy
         self.proc = None
+        self.on_result = on_result   # PO: callback(path) to show the result in a TAB (not a modal)
         root = QVBoxLayout(self)
 
         form = QGridLayout()
@@ -797,91 +798,84 @@ class DriveTab(QWidget):
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress.setFormat("")
-        self._show_result()
+        # A fresh best/recent lap may have been recorded this race → refresh the AI-% preset.
+        self._track_changed(self.track.currentIndex())
+        # PO: show the result in a TAB, not a modal — robust even if the game crashed on exit (we just
+        # read last_race_result.txt, which is written when the race finishes, before any exit crash).
+        if self.on_result:
+            self.on_result(getattr(self, "_result_path", os.path.join(HERE, "last_race_result.txt")))
 
-    def _show_result(self):
-        # E14/C (PO): after a race, a GPL-style result with TWO tabs — Classification (finishing order +
-        # gap-to-winner + best lap of anyone) and Your laps (your time on every lap) — and Race again /
-        # Choose track / Quit.
-        path = getattr(self, "_result_path", os.path.join(HERE, "last_race_result.txt"))
+
+class ResultTab(QWidget):
+    """PO: the race result lives in a TAB (not a modal that duplicates 'choose track'). Two inner tabs —
+    Classification (order + winner total / gap) and Your laps — populated from last_race_result.txt."""
+    def __init__(self, on_again):
+        super().__init__()
+        self._on_again = on_again
+        v = QVBoxLayout(self)
+        self.head = QLabel("<i>No race yet — start one from the Drive tab.</i>")
+        self.head.setTextFormat(Qt.TextFormat.RichText)
+        v.addWidget(self.head)
+        self.tabs = QTabWidget()
+        self.cls = QLabel(); self.cls.setTextFormat(Qt.TextFormat.RichText)
+        cw = QWidget(); cv = QVBoxLayout(cw); cv.addWidget(self.cls); cv.addStretch(1)
+        self.tabs.addTab(cw, "Classification")
+        self.laps = QLabel(); self.laps.setTextFormat(Qt.TextFormat.RichText)
+        lw = QWidget(); lv = QVBoxLayout(lw); lv.addWidget(self.laps); lv.addStretch(1)
+        self.tabs.addTab(lw, "Your laps")
+        v.addWidget(self.tabs)
+        brow = QHBoxLayout()
+        again = QPushButton("Race again")
+        again.clicked.connect(lambda: self._on_again())
+        brow.addWidget(again); brow.addStretch(1)
+        v.addLayout(brow)
+
+    def load(self, path):
+        """Render last_race_result.txt into the tab. Returns True if a result was found."""
         if not os.path.exists(path):
-            return
+            return False
         try:
             rows = [ln.rstrip("\n").split("\t") for ln in open(path) if ln.strip()]
         except OSError:
-            return
+            return False
         d = {r[0]: r[1] for r in rows if len(r) >= 2 and not r[0].startswith("P")}
-        # Pn rows: name + optional gap-to-winner column
         grid = [(r[1], r[2] if len(r) >= 3 else "") for r in rows if r[0].startswith("P") and len(r) >= 2]
         best_any = next((r[1:] for r in rows if r[0] == "best_any"), ["-", "-"])
         your_laps = d.get("you_laps", "").split(",") if d.get("you_laps") else []
-
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Race Result")
-        dlg.setMinimumWidth(440)
-        v = QVBoxLayout(dlg)
-        head = QLabel(
+        self.head.setText(
             f"<b>{d.get('track','?').title()} — {d.get('laps','?')} laps</b><br>"
             f"You finished <b>P{d.get('you_pos','?')}</b> of {d.get('field','?')} "
             f"(started P{d.get('you_start','?')})")
-        head.setTextFormat(Qt.TextFormat.RichText)
-        v.addWidget(head)
-        tabs = QTabWidget()
-
-        # --- Classification tab: P, car, gap; P1's right column is the WINNER's total time ---
+        # Classification: P, car, winner-total / gap; You row a readable light highlight
         crows = ["<table cellspacing=0 cellpadding=4 width='100%'>",
                  "<tr style='color:#888'><th align=left>Pos</th><th align=left>Car</th>"
                  "<th align=right>Total&nbsp;/&nbsp;gap</th></tr>"]
         for i, (name, gap) in enumerate(grid, 1):
             you = (name == "You")
-            # PO: the You row must be READABLE — a LIGHT highlight with black text, not black-on-navy.
             sty = " style='background:#ffe98a;color:#000'" if you else ""
             nm = f"<b>{name}</b>" if you else name
             crows.append(f"<tr{sty}><td>P{i}</td><td>{nm}</td><td align=right>{gap}</td></tr>")
         crows.append("</table>")
         fast = (f"<br><b>Fastest lap:</b> {best_any[0]}"
                 + (f" &nbsp;({best_any[1]})" if len(best_any) > 1 else ""))
-        cl = QLabel("".join(crows) + fast)
-        cl.setTextFormat(Qt.TextFormat.RichText)
-        cw = QWidget(); cv = QVBoxLayout(cw); cv.addWidget(cl); cv.addStretch(1)
-        tabs.addTab(cw, "Classification")
-
-        # --- Your laps tab: your time on each lap (best highlighted) ---
-        lrows = ["<table cellspacing=0 cellpadding=4 width='100%'>",
-                 "<tr style='color:#888'><th align=left>Lap</th><th align=right>Time</th></tr>"]
-        best_str = d.get("you_best", "")
-        seen_best = False
-        for i, lt in enumerate(your_laps, 1):
-            mark = ""
-            if lt == best_str and not seen_best:        # flag the (first) fastest of your laps
-                mark = " &nbsp;<span style='color:#6c6'>(best)</span>"; seen_best = True
-            lrows.append(f"<tr><td>Lap {i}</td><td align=right>{lt}{mark}</td></tr>")
-        lrows.append("</table>")
-        if not your_laps:
+        self.cls.setText("".join(crows) + fast)
+        # Your laps: per-lap times, best flagged
+        if your_laps:
+            lrows = ["<table cellspacing=0 cellpadding=4 width='100%'>",
+                     "<tr style='color:#888'><th align=left>Lap</th><th align=right>Time</th></tr>"]
+            best_str = d.get("you_best", ""); seen_best = False
+            for i, lt in enumerate(your_laps, 1):
+                mark = ""
+                if lt == best_str and not seen_best:
+                    mark = " &nbsp;<span style='color:#6c6'>(best)</span>"; seen_best = True
+                lrows.append(f"<tr><td>Lap {i}</td><td align=right>{lt}{mark}</td></tr>")
+            lrows.append("</table>")
+        else:
             lrows = ["<i>No completed laps recorded.</i>"]
-        ll = QLabel("".join(lrows)
-                    + f"<br><b>Your best:</b> {d.get('you_best','-')} &nbsp;·&nbsp; "
-                      f"<b>Total:</b> {d.get('you_total','-')}")
-        ll.setTextFormat(Qt.TextFormat.RichText)
-        lw = QWidget(); lv = QVBoxLayout(lw); lv.addWidget(ll); lv.addStretch(1)
-        tabs.addTab(lw, "Your laps")
-        v.addWidget(tabs)
-
-        brow = QHBoxLayout()
-        again_b = QPushButton("Race again"); choose_b = QPushButton("Choose track"); quit_b = QPushButton("Quit")
-        brow.addWidget(again_b); brow.addWidget(choose_b); brow.addStretch(1); brow.addWidget(quit_b)
-        v.addLayout(brow)
-        result = {"action": "choose"}
-        again_b.clicked.connect(lambda: (result.update(action="again"), dlg.accept()))
-        choose_b.clicked.connect(dlg.accept)
-        quit_b.clicked.connect(lambda: (result.update(action="quit"), dlg.accept()))
-        dlg.exec()
-        # A3: a fresh best lap may have been recorded this race → refresh the AI-% preset for the shown track
-        self._track_changed(self.track.currentIndex())
-        if result["action"] == "again":
-            self.launch()
-        elif result["action"] == "quit":
-            QApplication.instance().quit()
+        self.laps.setText("".join(lrows)
+                          + f"<br><b>Your best:</b> {d.get('you_best','-')} &nbsp;·&nbsp; "
+                            f"<b>Total:</b> {d.get('you_total','-')}")
+        return True
 
 
 class ReplayTab(QWidget):
@@ -978,15 +972,27 @@ class Main(QMainWindow):
         self.resize(900, 640)
         self.joy = JoyReader(self)
         tabs = QTabWidget()
+        self.tabs = tabs
         self.cal = CalibrateTab(self.joy, self._reload)
-        self.drive = DriveTab(self.joy)
+        self.result = ResultTab(self._race_again)
+        self.drive = DriveTab(self.joy, on_result=self._show_result_tab)
         self.replay = ReplayTab(self.joy)
         tabs.addTab(self.drive, "Drive")
+        tabs.addTab(self.result, "Race Result")
         tabs.addTab(self.replay, "Replay")
         tabs.addTab(self.cal, "Calibrate controller")
         tabs.currentChanged.connect(self._tab)
         self.setCentralWidget(tabs)
         self.joy.start_reader(1)
+
+    def _show_result_tab(self, path):
+        """PO: after a race, populate the Race Result tab and switch to it (no modal popup)."""
+        if self.result.load(path):
+            self.tabs.setCurrentWidget(self.result)
+
+    def _race_again(self):
+        self.tabs.setCurrentWidget(self.drive)
+        self.drive.launch()
 
     def _tab(self, i):
         # keep the reader alive while calibrating (tab 2); it's harmless during Drive too,
