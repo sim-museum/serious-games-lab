@@ -1,126 +1,52 @@
-# BridgeIQ (BEN Engine)
+# bridgeIQ — project overview
 
-A PyQt6 bridge application for Ubuntu 24.04 with classic desktop Bridge interface,
-powered by the BEN (Bridge Engine) neural network.
+A PyQt6 desktop bridge application for Ubuntu 24.04 with a classic table
+interface. **bridgeIQ is neural-network-free** — there is no BEN and no
+TensorFlow. (That engine was removed; ignore any older note that mentions it.)
 
-> **IMPORTANT:** Always run from the venv! The BEN engine will not initialize otherwise.
-> ```bash
-> source venv/bin/activate && python -m bridgeIQ.main
-> ```
+> **Canonical engineering notes live in `../bridgeIQ/CLAUDE.md`** — current
+> status, the slam-bidding / cardplay history, the Q-NET setup, and the test
+> harness. This file is just a short orientation; keep deep notes in CLAUDE.md
+> so there is a single source of truth.
 
-## Project Overview
+## Engine
 
-This application provides a desktop bridge playing and analysis environment,
-treating BEN as a pure engine (bidding, play, analysis) while implementing
-a classic desktop bridge UI in PyQt6 as a separate layer.
+- **Bidding** — rule-based, system-driven: `backend/native_bidder.py`
+  (`NativeBiddingEngine`) over the seven specs in `backend/bidding_systems.py`
+  (SAYC, 2/1, Standard Acol, Standard French, Precision90M/90P/70). N/S and E/W
+  can run different systems.
+- **Opening leads** — `backend/native_lead.py`.
+- **Card play** — a no-peek **alpha-mu** engine (`backend/nopeek.py`): DDS on
+  belief-sampled hidden layouts with a consistent line across indistinguishable
+  samples; never peeks; emits + reads defensive signals (`backend/signals.py`,
+  `backend/signal_read.py`). A Monte-Carlo + DDS path (`get_mc_card_play`) also
+  exists. Double-dummy via the system `libdds`.
+- `engine.py`'s `BridgeEngine` now only loads the DDS solver.
 
-## Architecture
+## UI
 
+- `ui/main_window.py` — main window, menus, game control.
+- `ui/table_view.py` — the 4-hand table + trick area.
+- `ui/teaching_view.py` — the instrumented (teaching / analysis) view; see
+  `../bridgeIQ/docs/instrumented_view.md`.
+- `ui/dialogs/` — preferences, player config, scoring, deal filter, simulation.
+
+## Run
+
+```bash
+cd /home/h/sgl/FRI/bridgeIQ/bridgeIQ
+./run.sh            # uses venv/bin/python and sets PYTHONPATH itself
 ```
-bridgeIQ/           (~4,200 lines of code)
-├── main.py             # Application entry point
-├── run.sh              # Startup script
-├── test_basic.py       # Test suite
-├── README.md           # Documentation
-├── backend/        # BEN Engine wrapper
-│   ├── engine.py       # BridgeEngine class (bidding, play, analysis)
-│   └── models.py       # Data models (Card, Hand, Bid, Board, etc.)
-├── ui/      # PyQt6 UI (BridgeIQ style)
-│   ├── main_window.py  # Main window with menus and game control
-│   ├── table_view.py   # 4-hand table display with trick area
-│   ├── bidding_box.py  # Bidding interface with keyboard support
-│   └── dialogs/        # Configuration dialogs
-│       ├── player_config.py   # Human/Computer player settings
-│       ├── match_control.py   # Deal source, scoring, comparison
-│       ├── deal_filter.py     # HCP/shape filters
-│       ├── score_table.py     # IMP/MP/Rubber scoring
-│       └── simulation.py      # Bid simulation analysis
-└── data/config/        # Configuration files
-```
-
-## Key Features
-
-### BEN Backend Integration
-- **Direct Python API**: Imports BEN modules directly (no HTTP/WebSocket overhead)
-- **Model Loading**: TensorFlow models loaded on startup
-- **Bidding**: BEN's `BotBid` class for neural network bid decisions
-- **Play**: BEN's `BotLead` and `CardPlayer` for card play
-- **Analysis**: BEN's DDS solver for double-dummy analysis
-- **Score Calculation**: Contract scoring for IMP/MP/Rubber
-
-### BridgeIQ Style UI
-- **Table View**: Four-hand display around central trick area
-- **Vulnerability Indicator**: Visual N-S/E-W vulnerability display
-- **Bidding Box**: Color-coded buttons with suit symbols (♠♥♦♣)
-- **Auction Display**: Bid history in 4-column format
-- **HCP Display**: High card points shown for each hand
-- **Card Widgets**: Clickable cards with hover effects
-
-### Game Modes
-- **4-Player**: Human plays South, BEN plays N/E/W
-- **1-Player**: Single hand visible (realistic play)
-- **All-Computer**: Auto-play for analysis
-
-### Menus (BridgeIQ Style)
-- **File**: New deal, open/save files, export HTML
-- **Deal**: Match control, repeat deal, deal filters
-- **Configuration**: Players, bidding systems, preferences
-- **View**: Show all hands, scores, DD analysis, bid simulation
-- **Extras**: MiniBridge mode, one-player mode
-
-### Dialogs
-- **Player Configuration**: Human/Computer/External per seat
-- **Match Control**: Deal source, scoring method, comparison mode
-- **Deal Filter**: HCP ranges, shape constraints, special features
-- **Score Table**: IMP/MP/Rubber scoring with history
-- **Bid Simulation**: Evaluate candidate bids with samples
 
 ## Requirements
 
-- Ubuntu 24.04 (or compatible Linux)
-- Python 3.12+
-- PyQt6
-- TensorFlow 2.18+ (CPU)
-- BEN engine (included in `../ben/`)
+Ubuntu 24.04+, Python 3.12+, PyQt6, numpy, `libdds0`. No TensorFlow, no GPU.
 
-## Running the Application
+## Notable features
 
-**Important:** The app must be run from within the virtual environment.
-
-```bash
-cd /home/g/sgl/FRI/bridgeIQ/bridgeIQ
-./run.sh
-```
-
-Or manually:
-```bash
-source /home/g/sgl/FRI/bridgeIQ/venv/bin/activate
-export PYTHONPATH="bridgeIQ:ben/src:$PYTHONPATH"
-python bridgeIQ/main.py
-```
-
-The `run.sh` script automatically activates the venv if it exists.
-
-## Usage
-
-1. **New Deal**: Press `Ctrl+N` or File > New Deal
-2. **Bidding**: Click buttons or use keyboard (`p`=Pass, `1c`-`7n`=bids)
-3. **Play**: Click cards in your hand
-4. **Analysis**: View > Double Dummy Analysis or Bid Simulation
-
-## Technical Notes
-
-- BEN's Windows-only features (PIMC/BBA/SuitC) are disabled on Linux
-- TensorFlow runs in CPU mode (GPU optional)
-- Engine operations run in worker threads to keep UI responsive
-- Signals/slots pattern for GUI-backend communication
-
-## Files Modified in BEN
-
-- `pyproject.toml`: Relaxed version constraints for Linux compatibility
-  - `tensorflow-intel` → `tensorflow`
-  - `numpy==1.26.4` → `numpy>=1.26.4`
-  - `keras==3.6.0` → `keras>=3.6.0`
-  - `requires-python = "==3.12"` → `requires-python = ">=3.12"`
-
-## Created: January 2025
+Seven bidding systems · instrumented teaching view · defensive signalling ·
+closed-room play vs Q-Plus over Q-NET (needs a Q-Plus install + system wine 9) ·
+IMP/MP/Rubber scoring · DD analysis · bid simulation · blunder check ·
+PBN/BDL/QSS import · keyboard-or-mouse for every command. Preferences include a
+Claude Code toggle (off by default) and a Q-Plus availability setting (none by
+default). Full guide: `bridgeIQ_README.md`.

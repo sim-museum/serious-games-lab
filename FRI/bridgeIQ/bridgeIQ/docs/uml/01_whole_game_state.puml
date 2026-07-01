@@ -1,0 +1,59 @@
+@startuml whole_game_state
+title bridgeIQ — Whole Game Flow (State machine: GameController.current_phase)
+
+skinparam shadowing false
+skinparam state {
+  BackgroundColor #FDFDFD
+  BorderColor #444
+  ArrowColor #444
+}
+
+[*] --> Idle : app launch
+
+state Idle : opening screen / between deals
+
+Idle --> DealSetup : First Deal / Next Deal\n_on_new_deal() -> new_deal(board#)\nphase='bidding', seat=dealer
+
+state DealSetup <<choice>>
+DealSetup --> Bidding : normal deal
+DealSetup --> Bidding : one-player entry\n_maybe_run_one_player_entry()\n(other 3 seats -> HUMAN)
+DealSetup --> Play    : MiniBridge pref\nset_contract_direct()  (see 03)
+
+state Bidding {
+  [*] --> AwaitCall
+  AwaitCall --> AwaitCall : COMPUTER seat\nrequest_bid() -> _on_engine_bid()\nmake_bid(); seat=next
+  AwaitCall --> AwaitCall : HUMAN seat\nbidding_box -> _on_bid_made()\nmake_bid(); seat=next
+  AwaitCall --> AwaitCall : NETWORK seat\n_on_network_remote_bid()
+}
+note right of Bidding
+  bidder = native_bidder (per-seat system)
+  or BEN, per prefs.bidding_engine
+  Network: local bids broadcast_bid();
+  remote bids arrive as signals.
+end note
+
+Bidding --> Play     : is_auction_complete() AND a contract\n_setup_play(): set declarer/dummy/opening_leader\nphase='play'
+Bidding --> Finished : passed out (4 passes)\nphase='finished'
+
+state Play {
+  [*] --> OpeningLead
+  OpeningLead --> InTrick : 1st card played\n_maybe_reveal_dummy_after_lead()
+  InTrick --> InTrick : next card; seat=next\nCOMPUTER: request_card() -> _on_engine_card()\nHUMAN: table click -> _on_card_played()\nNETWORK: _on_network_remote_card()
+  InTrick --> WaitingNext : trick complete (4 cards)\nphase='waiting_next'
+  WaitingNext --> InTrick : "Next Card"\n_on_next_card() -> advance_to_next_trick()\nphase='play'
+}
+note right of Play
+  Card engine = no-peek alpha-mu (default),
+  else MC+DDS or DD per prefs.
+end note
+
+Play --> Finished : 13 tricks played\n_review_human_signals(); phase='finished'
+
+state Finished : _show_result() — score + end-of-hand view
+Finished --> Idle    : single player\nEndOfHandDialog -> Next Deal -> _on_next_deal()
+Finished --> Scoring : teams match\ncomplete_open_room() + start_closed_room_async()
+state Scoring : EndOfHandDialog (IMP swing) -> scoring_table
+Scoring --> Idle : Next board
+
+Finished --> [*] : quit
+@enduml

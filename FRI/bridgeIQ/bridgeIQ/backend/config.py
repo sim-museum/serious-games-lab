@@ -79,7 +79,12 @@ class PreferencesConfig:
     moved_cards_speed: float = 0.5
     language: str = "eng"
     use_double_dummy_play: bool = False
-    use_monte_carlo_play: bool = True  # Monte Carlo simulation (default - strongest)
+    use_monte_carlo_play: bool = True  # Monte Carlo simulation (MC+DDS fallback)
+    use_nopeek_play: bool = True  # no-peek alpha-mu engine (default - strongest;
+    # never peeks at hidden cards, signals + reads partner signals)
+    signalling_convention: str = "standard"  # defensive carding biq plays AND
+    # expects from partner: "standard" (hi=encourage, hi-lo=even) or "udca"
+    # (upside-down count & attitude). Emitter + reader both use it.
     legacy_colors: bool = False  # Use legacy 2-color mode (red and black only)
     show_ben_bid_analysis: bool = False  # Show BEN bid analysis panel (disabled by default)
     # Which engine bots consult for bidding. "native" → the rule-based
@@ -121,6 +126,30 @@ class PreferencesConfig:
     mini_show_all_hcp: bool = True
     mini_auto_declarer: bool = True
     mini_suggest_contract: bool = True
+    # Show the "Information about the bids" panel docked at the upper-left of
+    # the bidding screen (embedded, not a floating window). Off hides it.
+    show_bid_info_panel: bool = True
+    # Claude Code integration (post-hand AI analysis, annotated transcripts,
+    # AI hints). OFF by default — it shells out to the `claude` CLI, costs
+    # tokens, and isn't needed for ordinary play. Turn on in Preferences.
+    claude_code_enabled: bool = False
+    # Whether a Q-Plus install is available for closed-room / Q-NET play.
+    # "none"  → no Q-Plus (default): hide the closed-room / Q-NET features.
+    # "demo"  → Q-Plus demo build available (limited boards).
+    # "full"  → full licensed Q-Plus available.
+    qplus_availability: str = "none"
+    # Per-pair carding agreement shown/decoded in the instrumented view. Preset
+    # names from teaching_view.CARDING_PRESETS ("Standard", "Upside-down",
+    # "Std + Lavinthal", "UDCA + Lavinthal"). Empty = derive from
+    # signalling_convention. smith_echo ∈ Off / Standard / Reverse.
+    carding_ns: str = ""
+    carding_ew: str = ""
+    smith_echo: str = "Off"
+    # Explain biq's actions: when ON, clicking a bid in the auction or a card
+    # on the table pops up a window explaining why biq made that call/play
+    # (how it fits the bidding system / what card-play technique applies).
+    # OFF by default — it's a teaching aid, not needed for ordinary play.
+    explain_actions_enabled: bool = False
 
 
 @dataclass
@@ -142,11 +171,11 @@ class GameConfig:
     version: str = "17.1"
 
     # Players
-    north: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="N: BEN"))
-    east: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="E: BEN"))
+    north: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="N: BridgeIQ"))
+    east: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="E: BridgeIQ"))
     south: PlayerConfig = field(default_factory=lambda: PlayerConfig(
         player_type=PlayerType.HUMAN, visible=True, name="S: HUMAN"))
-    west: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="W: BEN"))
+    west: PlayerConfig = field(default_factory=lambda: PlayerConfig(name="W: BridgeIQ"))
 
     # Strength settings (0-100)
     strength_ns: int = 72
@@ -345,6 +374,17 @@ class ConfigManager:
             self.config.preferences.use_double_dummy_play = data["preference.use_dd_play"] == "1"
         if "preference.use_mc_play" in data:
             self.config.preferences.use_monte_carlo_play = data["preference.use_mc_play"] == "1"
+        if "preference.use_nopeek_play" in data:
+            self.config.preferences.use_nopeek_play = data["preference.use_nopeek_play"] == "1"
+        if "preference.signalling" in data:
+            self.config.preferences.signalling_convention = data["preference.signalling"]
+        # Apply the signalling convention to the live engine (emitter + reader).
+        try:
+            from backend import signals as _sig
+            _sig.set_convention(
+                self.config.preferences.signalling_convention == "udca")
+        except Exception:
+            pass
         if "preference.legacy_colors" in data:
             self.config.preferences.legacy_colors = data["preference.legacy_colors"] == "1"
         if "preference.show_ben_bid_analysis" in data:
@@ -391,6 +431,27 @@ class ConfigManager:
         if "preference.mini_suggest_contract" in data:
             self.config.preferences.mini_suggest_contract = (
                 data["preference.mini_suggest_contract"] == "1")
+        if "preference.show_bid_info_panel" in data:
+            self.config.preferences.show_bid_info_panel = (
+                data["preference.show_bid_info_panel"] == "1")
+        if "preference.claude_code_enabled" in data:
+            self.config.preferences.claude_code_enabled = (
+                data["preference.claude_code_enabled"] == "1")
+        if "preference.qplus_availability" in data:
+            v = data["preference.qplus_availability"].strip().lower()
+            if v in ("none", "demo", "full"):
+                self.config.preferences.qplus_availability = v
+        if "preference.carding_ns" in data:
+            self.config.preferences.carding_ns = data["preference.carding_ns"].strip()
+        if "preference.carding_ew" in data:
+            self.config.preferences.carding_ew = data["preference.carding_ew"].strip()
+        if "preference.smith_echo" in data:
+            v = data["preference.smith_echo"].strip()
+            if v in ("Off", "Standard", "Reverse"):
+                self.config.preferences.smith_echo = v
+        if "preference.explain_actions_enabled" in data:
+            self.config.preferences.explain_actions_enabled = (
+                data["preference.explain_actions_enabled"] == "1")
 
     def save_preferences(self):
         """Save user preferences."""
@@ -410,6 +471,8 @@ class ConfigManager:
             "preference.language": self.config.preferences.language,
             "preference.use_dd_play": "1" if self.config.preferences.use_double_dummy_play else "0",
             "preference.use_mc_play": "1" if self.config.preferences.use_monte_carlo_play else "0",
+            "preference.use_nopeek_play": "1" if self.config.preferences.use_nopeek_play else "0",
+            "preference.signalling": self.config.preferences.signalling_convention,
             "preference.legacy_colors": "1" if self.config.preferences.legacy_colors else "0",
             "preference.show_ben_bid_analysis": "1" if self.config.preferences.show_ben_bid_analysis else "0",
             "preference.bidding_engine": self.config.preferences.bidding_engine,
@@ -430,6 +493,18 @@ class ConfigManager:
                 "1" if self.config.preferences.mini_auto_declarer else "0"),
             "preference.mini_suggest_contract": (
                 "1" if self.config.preferences.mini_suggest_contract else "0"),
+            "preference.show_bid_info_panel": (
+                "1" if self.config.preferences.show_bid_info_panel else "0"),
+            "preference.claude_code_enabled": (
+                "1" if self.config.preferences.claude_code_enabled else "0"),
+            "preference.qplus_availability":
+                self.config.preferences.qplus_availability,
+            "preference.carding_ns": self.config.preferences.carding_ns,
+            "preference.carding_ew": self.config.preferences.carding_ew,
+            "preference.smith_echo": self.config.preferences.smith_echo,
+            "preference.explain_actions_enabled": (
+                "1" if self.config.preferences.explain_actions_enabled
+                else "0"),
         }
         self._write_config_file(filepath, data, description="BridgeIQ preferences")
 

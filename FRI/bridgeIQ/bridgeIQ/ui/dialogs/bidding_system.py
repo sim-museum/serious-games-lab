@@ -222,7 +222,7 @@ class BiddingSystemDialog(QDialog):
         try:
             from backend.config import get_config_manager
             self._engine_label = (
-                "BEN" if get_config_manager().config.preferences.bidding_engine
+                "BridgeIQ" if get_config_manager().config.preferences.bidding_engine
                 == "BEN" else "Native (Q-Plus)")
         except Exception:
             self._engine_label = "Native (Q-Plus)"

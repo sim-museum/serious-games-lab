@@ -1,0 +1,62 @@
+@startuml control_panel_activity
+title Control Panel — Match Workflow (activity).  Colour = cleanup status
+
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #FDFDFD
+  BorderColor #444
+  DiamondBackgroundColor #FDFDFD
+}
+legend top right
+  |= colour |= meaning |
+  |<#E8FFE8> green | KEEP — canonical path |
+  |<#FFF3CC> yellow | REDUNDANT — duplicates another path |
+  |<#FADbd8> red | LEGACY / rarely used |
+endlegend
+
+start
+:Open Control Panel;
+:Config dialog — deals / seat / samples / idle /\nsessions / pair(biq+biq) / auto / exit_auto;
+
+partition "Pick a MODE (optional)" {
+  if (test kind?) then (A/B)
+    #FFF3CC:A/B combo — Run A baseline / Run B candidate\n(locks systems, guards deal-set match);
+  elseif (teams) then (double-pair)
+    #FFF3CC:Double-Pair — biq N/S (Room1) then E/W (Room2)\nSave run -> Compare rooms -> IMP;
+  elseif (cardplay) then (no-peek)
+    #FADbd8:No-Peek dialog — (1) gen PBN  (2/2b) calibrate\n(3) cardplay clicker  (4) baseline   OR  (◆) WHOLE-SYSTEM;
+  else (plain)
+    #E8FFE8:Whole-system / closed-room match (default);
+  endif
+}
+
+partition "START a run — THREE overlapping ways (the clutter)" {
+  if (how to start?) then (A: full auto)
+    #E8FFE8:"▶ Run full session"\nlaunch -> server -> biq -> deal -> clicker, hands-off;
+  elseif (B: step debugger) then (8-step)
+    #E8FFE8:Startup Procedure — Step ▷ x8  /  Autopilot ▶\n(launch, server, minimise, biq, systems, seats, deal, clicker);
+  else (C: manual) then (Config dialog)
+    #FFF3CC:Manual startup steps\n"1 ▸ Start server+biq" / "2 ▸ Deal" / "3 ▸ Run autoclicker"\n(code says: "the stepper does these");
+  endif
+}
+
+:Q-Plus plays the deck vs biq (closed-room teams);
+:Health dots: ● server  ● biq  ● clicker;  progress bar;
+
+:"Export .qss"  ->  qnet_score_aggregate.py;
+:Result panel — teams IMP vs Q-Plus;
+
+if (more sessions?) then (yes)
+  #FADbd8:kill wine between sessions -> loop;
+else (no)
+  :"⏻ Exit Q-Plus (kill wine)"  +  "Stop all";
+endif
+stop
+
+note right
+  REDUNDANCY to resolve:
+  • 3 start paths (full / stepper / manual) -> keep the stepper, drop manual trio.
+  • Calibrate buttons (2/2b) are ONE-TIME setup, not per-run -> move to a Setup area.
+  • No-peek vs whole-system live in a sub-dialog -> surface as a single mode selector.
+end note
+@enduml

@@ -203,6 +203,56 @@ def parse_pbn_deal(pbn: str) -> Tuple[Seat, Vulnerability, dict]:
     return dealer, vul, hands
 
 
+_STRAIN_SUIT = {"S": Suit.SPADES, "H": Suit.HEARTS, "D": Suit.DIAMONDS,
+                "C": Suit.CLUBS, "NT": Suit.NOTRUMP, "N": Suit.NOTRUMP}
+
+
+def deal_signature(hands: dict) -> tuple:
+    """Canonical hashable signature of a 4-hand deal — matches a deal to its
+    PBN board independent of seat order / string formatting."""
+    return tuple(
+        tuple(sorted(c.suit.value * 13 + c.rank.value for c in hands[s].cards))
+        for s in (Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST))
+
+
+def parse_forced_pbn(path: str) -> dict:
+    """Read a forced-contract PBN (e.g. gen_forced_pbn output) and return
+    {deal_signature: Contract}. Lets the client recover the contract when
+    Q-Plus starts cardplay-only with NO bidding (it never sends a contract)."""
+    out, deal, decl, contract = {}, None, None, None
+
+    def _flush():
+        if not (deal and decl and contract):
+            return
+        try:
+            starter, hs = deal.split(":", 1)
+            seat = _SEAT_FROM_NAME[starter.strip()[-1]]
+            hands = {}
+            for h in hs.split():
+                hands[seat] = parse_pbn_hand(h)
+                seat = Seat((seat.value + 1) % 4)
+            strain = contract[1:].rstrip("Xx")
+            c = Contract(level=int(contract[0]), suit=_STRAIN_SUIT[strain],
+                         declarer=_SEAT_FROM_NAME[decl.strip()[0]],
+                         doubled=contract.rstrip().endswith("X"))
+            out[deal_signature(hands)] = c
+        except Exception:
+            pass
+
+    for line in Path(path).read_text(errors="replace").splitlines():
+        s = line.strip()
+        if s.startswith("[Board"):
+            _flush(); deal = decl = contract = None
+        elif s.startswith("[Deal"):
+            m = re.search(r'"([^"]*)"', s); deal = m.group(1) if m else None
+        elif s.startswith("[Declarer"):
+            m = re.search(r'"([^"]*)"', s); decl = m.group(1) if m else None
+        elif s.startswith("[Contract"):
+            m = re.search(r'"([^"]*)"', s); contract = m.group(1) if m else None
+    _flush()
+    return out
+
+
 def parse_bid_token(bid_str: str) -> Bid:
     s = bid_str.strip().lower()
     if s in ('p', 'pass', '-', ''):
@@ -262,12 +312,14 @@ _PAIR_IPC = Path(__file__).resolve().parent / "runs" / "pair_ipc"
 class BiqClient:
     def __init__(self, host: str, port: int, my_seat: Seat,
                   system: str = 'SAYC', name: str = 'biq',
-                  num_samples: int = 120, verbose: bool = True,
+                  num_samples: int = 50, verbose: bool = True,
                   log_path: Optional[str] = None,
                   system_file: Optional[str] = None,
                   auto_system: bool = False,
                   random_system: bool = False,
-                  pair_mode: bool = False):
+                  pair_mode: bool = False,
+                  nopeek: bool = False,
+                  pbn: Optional[str] = None):
         self.host = host
         self.port = port
         self.my_seat = my_seat
@@ -277,14 +329,32 @@ class BiqClient:
         self.auto_system = auto_system
         self.random_system = random_system
         self.pair_mode = pair_mode
+        self.nopeek = nopeek
         self.num_samples = num_samples
+        # Forced-contract PBN: when Q-Plus runs cardplay-only (no bidding), it
+        # never sends a contract, so recover it from the same PBN biq generated.
+        self._forced = parse_forced_pbn(pbn) if pbn else {}
+        self._cur_deal_sig = None
         self.verbose = verbose
         self._logfh = None
         if log_path:
-            self._logfh = open(log_path, "a")
+            self._logfh = open(log_path, "a", buffering=1)   # line-buffered so
+            #          log-watchers (the cardplay clicker) see events at once
+            # Fingerprint the bidder this run is ACTUALLY using — content hash
+            # + a U1/U2/U3 marker (Case C). Three baselines were silently run
+            # on a reverted bidder before this existed; run_preflight checks it.
+            import hashlib
+            try:
+                _nb = (Path(__file__).resolve().parent.parent
+                       / "backend" / "native_bidder.py").read_bytes()
+                _fp = (f"{hashlib.sha1(_nb).hexdigest()[:10]} "
+                       f"caseC={_nb.decode('latin-1').count('Case C')}")
+            except OSError:
+                _fp = "unknown"
             self._logfh.write(
                 f"\n=== biq_qnet session {time.strftime('%Y-%m-%d %H:%M:%S')} "
-                f"seat={my_seat.name} system={system} port={port} ===\n")
+                f"seat={my_seat.name} system={system} port={port} "
+                f"bidder={_fp} ===\n")
             self._logfh.flush()
         self.sock: Optional[socket.socket] = None
         self.buf = b''
@@ -507,10 +577,11 @@ class BiqClient:
         # args[3]: PBN deal '<dealer> <vul> <starter>:<hand> <hand> <hand> <hand>'
         self.deal_label = args[2] if len(args) > 2 else ""
         if self.pair_mode:
-            # New deal: clear last deal's consumed dummy-IPC files. Both
-            # clients are between deals here (no cardplay in flight), so
-            # this is race-free; cardplay writes come seconds later.
-            for f in _PAIR_IPC.glob("*.card"):
+            # New deal: clear last deal's consumed dummy-IPC + system-agreement
+            # files. Both clients are between deals here (no cardplay in
+            # flight), so this is race-free; cardplay writes come seconds later.
+            for f in list(_PAIR_IPC.glob("*.card")) + \
+                    list(_PAIR_IPC.glob("*.sys.*")):
                 try:
                     f.unlink()
                 except OSError:
@@ -527,6 +598,7 @@ class BiqClient:
             vulnerability=vul,
             hands=hands,
         )
+        self._cur_deal_sig = deal_signature(hands)
         self.auction = []
         self.bidder_seat = self.dealer
         self.contract = None
@@ -547,12 +619,71 @@ class BiqClient:
             ranks = sorted(by_suit[s], key=lambda r: r.value)
             chars = ''.join(_RANK_TO_CHAR[r] for r in ranks) or '-'
             self.log(f"  my {_SUIT_TO_CHAR[s].upper()}: {chars}")
+        # Publish our system early (pair mode) so the partner client has the
+        # full deal-setup window to see it before bidding's agreement check.
+        self._publish_system()
 
     def _on_start_bidding(self, args: List[str]) -> None:
         self.log("=== auction begins ===")
+        # Before any bid: in pair mode (biq plays BOTH seats of a side via two
+        # client processes), confirm this client and its partner client are on
+        # the SAME bidding system. A divergence here — e.g. one client synced
+        # the new deal's system and the other lagged on random/sequential
+        # cycling — would have the two biq seats bid as different partnerships
+        # and corrupt the auction. Loud WARNING on mismatch; no-op otherwise.
+        self._verify_partner_system()
         if self.bidder_seat == self.my_seat:
             time.sleep(0.4)
             self._send_my_bid()
+
+    def _publish_system(self) -> None:
+        """Pair mode: publish this client's current system for the deal so the
+        partner client can verify agreement. Called EARLY (at new deal) to give
+        the partner the whole deal-setup window of lead time, and again right
+        before bidding in case set_config changed the system in between."""
+        if not self.pair_mode or not self.deal_label:
+            return
+        try:
+            (_PAIR_IPC / f"{self.deal_label}.sys.{self.my_seat.to_char()}"
+             ).write_text(self.system)
+        except OSError as e:
+            self.log(f"system IPC write failed: {e}")
+
+    def _verify_partner_system(self, timeout: float = 8.0) -> None:
+        """Pair mode only: confirm the partner client is on the SAME bidding
+        system before the auction starts. Re-publishes ours first (the system
+        may have just changed via set_config), then polls for the partner's —
+        which it already published at new-deal, so this normally returns at
+        once and only waits if the partner is genuinely slow/gone."""
+        if not self.pair_mode or not self.deal_label:
+            return
+        self._publish_system()
+        mine_c = self.my_seat.to_char()
+        partner = self.my_seat.partner()
+        p = _PAIR_IPC / f"{self.deal_label}.sys.{partner.to_char()}"
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                theirs = p.read_text().strip()
+            except OSError:
+                theirs = ""
+            if theirs:
+                if theirs == self.system:
+                    self.log(f"system check OK — {mine_c} and "
+                             f"{partner.to_char()} both on {self.system}")
+                else:
+                    self.log(
+                        f"*** SYSTEM MISMATCH on {self.deal_label}: "
+                        f"{mine_c}={self.system} but "
+                        f"{partner.to_char()}={theirs}. The two biq seats are "
+                        f"on DIFFERENT systems — this auction is UNRELIABLE. "
+                        f"Use a FIXED system (not random/sequential) for a "
+                        f"clean measurement.")
+                return
+            time.sleep(0.1)
+        self.log(f"system check — partner {partner.to_char()} did not publish "
+                 f"a system within {timeout:.0f}s (partner not a biq client, "
+                 f"or crashed); skipping agreement check")
 
     def _on_bid(self, args: List[str]) -> None:
         if len(args) < 2:
@@ -684,7 +815,29 @@ class BiqClient:
             return seat.is_ns() == self.my_seat.is_ns()
         return seat == self.my_seat
 
+    def _ensure_forced_contract(self) -> None:
+        """Recover the contract from the forced PBN when Q-Plus runs cardplay-
+        only and never sent it via bidding. Idempotent. Called from both
+        begin_play AND the first card — Q-Plus does not always send begin_play
+        for every deal (seen live: deal 5 jumped straight to the opening lead),
+        and without this the client crashes on a None trick_leader."""
+        if self.contract is not None:
+            return
+        c = self._forced.get(self._cur_deal_sig)
+        if c is None:
+            return
+        self.contract = c
+        self.declarer = c.declarer
+        self.board.contract = c
+        self.trick_leader = Seat((c.declarer.value + 1) % 4)
+        self.log(f"FORCED CONTRACT (no bidding): {c.level}"
+                 f"{c.suit.to_char()} by {c.declarer.name} "
+                 f"(opening lead from {self.trick_leader.name})")
+
     def _on_begin_play(self, args: List[str]) -> None:
+        # Cardplay-only game (forced-contract PBN): there was no bidding, so
+        # self.contract is still None and Q-Plus never sends a contract.
+        self._ensure_forced_contract()
         # Multiple begin_play messages observed (server broadcasts per
         # seat). Send our ack once.
         if not self._begin_play_seen:
@@ -700,6 +853,9 @@ class BiqClient:
     def _on_card(self, args: List[str]) -> None:
         if len(args) < 2:
             return
+        # Cardplay-only deals can start (opening lead) with NO begin_play, so
+        # recover the contract here too before we touch trick_leader.
+        self._ensure_forced_contract()
         seat = _SEAT_FROM_NAME[args[0]]
         card = parse_card_token(args[1])
         try:
@@ -786,10 +942,30 @@ class BiqClient:
         self.log(f"dummy IPC timeout ({p.name}) — falling back to own engine")
         return None
 
+    def _legal_fallback_card(self, seat: Seat) -> Optional[Card]:
+        """A safe legal card with NO DDS — used when the MC child crashes or
+        hangs. Lowest card of the led suit (else lowest card)."""
+        lead = self.current_trick[0].suit if self.current_trick else None
+        legal = [c for c in self.board.hands[seat].cards
+                 if lead is None or c.suit == lead]
+        if not legal:
+            legal = list(self.board.hands[seat].cards)
+        if not legal:
+            return None
+        return max(legal, key=lambda c: c.rank.value)
+
     def _choose_card(self, seat: Seat) -> Optional[Card]:
-        """Compute the card to play for `seat` via the MC+DDS engine. When
-        the caller is the declarer choosing the dummy seat, the engine sees
-        both declaring hands so the line of play is coherent."""
+        """Card for `seat`, ISOLATED IN A FORKED CHILD.
+
+        BOTH engines now use libdds — the MC+DDS play AND the no-peek ALPHA-MU
+        search (DDS on belief-sampled layouts + a consistent line). libdds can
+        SEGFAULT under load — uncatchable in-process, it would kill the client
+        and wedge the whole match (seen live on a 64-board run). So we fork: the
+        child runs the DDS-heavy compute, writes the card to a pipe, and
+        os._exit(0)s (skipping the libdds thread teardown that itself
+        segfaults). A crash/hang in the child costs ONE card — the parent falls
+        back to a legal card — never the client. The parent never runs DDS
+        itself, so it can't be killed by it."""
         board = BoardState(
             board_number=self.board.board_number,
             dealer=self.board.dealer,
@@ -799,22 +975,86 @@ class BiqClient:
             contract=self.contract,
             tricks=list(self.completed_tricks),
         )
-        try:
+        cur = list(self.current_trick)
+
+        def _compute() -> Optional[Card]:
+            # no-peek (alpha-mu; pure belief — only own + dummy cards) or MC+DDS
+            if self.nopeek:
+                from backend import nopeek as _nopeek
+                return _nopeek.decide(board, seat, current_trick_cards=cur)
             resp = self.engine.get_mc_card_play(
-                board, seat, current_trick_cards=list(self.current_trick),
+                board, seat, current_trick_cards=cur,
                 num_samples=self.num_samples)
-            if resp.action is not None:
-                return resp.action
-        except Exception as e:
-            self.log(f"cardplay error: {e}; falling back to lowest legal")
-        lead = self.current_trick[0].suit if self.current_trick else None
-        legal = [c for c in self.board.hands[seat].cards
-                 if lead is None or c.suit == lead]
-        if not legal:
-            legal = self.board.hands[seat].cards
-        if not legal:
-            return None
-        return max(legal, key=lambda c: c.rank.value)
+            return resp.action
+
+        try:
+            r, w = os.pipe()
+            pid = os.fork()
+        except OSError:
+            # fork unavailable — best-effort in-process (old behaviour)
+            try:
+                card = _compute()
+                if card is not None:
+                    return card
+            except Exception:
+                pass
+            return self._legal_fallback_card(seat)
+
+        if pid == 0:                       # ---- child ----
+            try:
+                os.close(r)
+            except OSError:
+                pass
+            try:
+                card = _compute()
+                if card is not None:
+                    os.write(w, format_card(card).encode("latin-1"))
+            except Exception:
+                pass
+            finally:
+                try:
+                    os.close(w)
+                except OSError:
+                    pass
+                os._exit(0)              # skip libdds teardown segfault
+
+        # ---- parent ----
+        import select
+        os.close(w)
+        data = b""
+        deadline = time.time() + getattr(self, "card_timeout", 30.0)
+        try:
+            while time.time() < deadline:
+                rl, _, _ = select.select([r], [], [], deadline - time.time())
+                if not rl:
+                    break
+                chunk = os.read(r, 16)
+                if not chunk:
+                    break
+                data += chunk
+        except OSError:
+            pass
+        finally:
+            try:
+                os.close(r)
+            except OSError:
+                pass
+        # reap; kill if the child is still alive (hung / mid-crash)
+        try:
+            done, _ = os.waitpid(pid, os.WNOHANG)
+            if done == 0:
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
+        except (ChildProcessError, ProcessLookupError):
+            pass
+        if data.strip():
+            try:
+                return parse_card_token(data.decode("latin-1"))
+            except Exception:
+                pass
+        self.log(f"card child produced no card for {seat.name} "
+                 f"(engine crash/hang) — playing a legal fallback")
+        return self._legal_fallback_card(seat)
 
     def _play_card(self, seat: Seat, card: Card) -> None:
         """Submit `card` for `seat` on this connection + advance state.
@@ -872,6 +1112,41 @@ class BiqClient:
 
     def _on_report_score(self, args: List[str]) -> None:
         self.log(f"SCORE: {args[0] if args else ''}")
+        self._review_partner_signals()
+
+    def _review_partner_signals(self) -> None:
+        """End-of-hand: review PARTNER's signals (reconstructed from the played
+        cards — no peeking) and let signal_trust escalate / auto-disable if the
+        partner mis-signals. Only when biq DEFENDED (a declarer has no partner
+        signals to read)."""
+        if not self.nopeek or self.contract is None \
+                or len(self.completed_tricks) < 1:
+            return
+        if self.my_seat.is_ns() == self.contract.declarer.is_ns():
+            return                                    # biq declared — nothing to read
+        try:
+            from backend import signal_read, signal_trust
+            if not getattr(self, "_trust_init", False):
+                signal_trust.reset(on_message=lambda m: self.log(f"[signals] {m}"))
+                self._trust_init = True
+            trump = (self.contract.suit
+                     if self.contract.suit != Suit.NOTRUMP else None)
+            board = BoardState(
+                board_number=self.board.board_number, dealer=self.board.dealer,
+                vulnerability=self.board.vulnerability,
+                hands={s: Hand(cards=[]) for s in Seat}, auction=[],
+                contract=self.contract, tricks=list(self.completed_tricks))
+            recs = signal_read.read(board, self.my_seat,
+                                    self.contract.declarer, trump)
+            signal_trust.review_hand(recs, set())
+            flag = signal_trust.status_flag()
+            if flag and not getattr(self, "_flag_shown", False):
+                self.log(f"[signals] {flag}")
+                self._flag_shown = True
+            elif not flag:
+                self._flag_shown = False
+        except Exception as e:
+            self.log(f"[signals] review error: {e}")
 
 
 def main(argv=None) -> int:
@@ -888,9 +1163,10 @@ def main(argv=None) -> int:
                    help="biq bidding system (default SAYC)")
     p.add_argument("--name", default="biq",
                    help="display name to send in join_game")
-    p.add_argument("--num-samples", type=int, default=120,
-                   help="MC samples per cardplay decision (120 ≈ deterministic "
-                        "on close finesses; 40 misplayed them ~27%% of the time)")
+    p.add_argument("--num-samples", type=int, default=50,
+                   help="MC samples per cardplay decision (50 balances finesse "
+                        "accuracy vs the libdds crash rate; 120 crashed DDS "
+                        "~45x/64-board run → weak fallback cards)")
     p.add_argument("--quiet", action="store_true")
     p.add_argument("--log", default=None,
                    help="append all session output (handshake, deals, "
@@ -917,6 +1193,16 @@ def main(argv=None) -> int:
                         "own seat (incl. when dummy). Required when running "
                         "biq on both N and S — otherwise both fight over "
                         "both seats.")
+    p.add_argument("--nopeek", action="store_true",
+                   help="play CARDS with the no-peek technique engine "
+                        "(backend.nopeek) instead of MC+DDS — never looks at "
+                        "hidden cards. Bidding is unchanged. Use this to measure "
+                        "the no-peek engine head-to-head vs Q-Plus cardplay.")
+    p.add_argument("--pbn", default=None,
+                   help="path to the forced-contract PBN loaded into Q-Plus "
+                        "(e.g. gen_forced_pbn output). Required for cardplay-"
+                        "only games: Q-Plus skips bidding and never sends a "
+                        "contract, so biq recovers it from this file.")
     args = p.parse_args(argv)
     # Seat-aware: only clears a stuck same-seat client, so a biq+biq
     # partnership (N and S clients) can coexist.
@@ -929,7 +1215,8 @@ def main(argv=None) -> int:
         num_samples=args.num_samples,
         verbose=not args.quiet, log_path=args.log,
         system_file=args.system_file, auto_system=args.auto_system,
-        random_system=args.random_system, pair_mode=args.pair)
+        random_system=args.random_system, pair_mode=args.pair,
+        nopeek=args.nopeek, pbn=args.pbn)
     client.run()
     return 0
 

@@ -10,13 +10,17 @@ the rank string (e.g. ``AKQ75``). Validates that:
   • no rank repeats within a suit
   • the four suits sum to exactly 13 cards
 
-Caveats:
-  • The "formal proof of non-peeking" half of the spec requires
-    deeper engine work (the bot path currently sees all four
-    hands regardless of UI). That refactor is queued; this slice
-    ships the UI + the data path that swaps the user's typed
-    hand into ``board.hands[seat]`` so card play uses what the
-    user actually entered.
+Non-peeking is now ENFORCED structurally (no longer just a UI promise):
+  • At deal start the runtime installs the user's typed hand at the named
+    seat and clears the other three seats to EMPTY hands, so there is
+    literally no hidden-hand data for the engine to read.
+  • Every seat is flipped to a human-entered role; the engine is never
+    asked to bid or play a seat whose hand it isn't allowed to know.
+    Unknown seats are entered manually as they are revealed at the table
+    (``_advance_bidding`` / ``_advance_play`` route them to the bid / card
+    entry dialogs instead of the engine — see ``_one_player_seat_known``).
+  • Only the user's own seat and (after it comes down) dummy are known to
+    the engine; those are the only seats it may act for.
 """
 
 from __future__ import annotations

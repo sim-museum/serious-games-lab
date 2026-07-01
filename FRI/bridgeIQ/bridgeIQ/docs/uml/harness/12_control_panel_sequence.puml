@@ -1,0 +1,52 @@
+@startuml control_panel_sequence
+title Control Panel — One match via the 8-step stepper (canonical path)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+actor Operator
+participant "Control Panel" as CP
+participant "Q-Plus (Wine)" as QP
+participant "biq_qnet_client" as CLI
+participant "qplus_button_loop\n(autoclicker)" as BL
+participant "qnet_score_aggregate" as AGG
+database ".qss\n(LOCAL-MATCHES)" as QSS
+
+== Startup procedure (Step ▷ x8, or Autopilot ▶) ==
+Operator -> CP : Step 1
+CP -> QP : _step_launch() — spawn wine, dismiss splash
+Operator -> CP : Step 2
+CP -> QP : _step_start_server() — Network>Start, wait :5555
+Operator -> CP : Step 3
+CP -> QP : _step_minimize() — free Config menu
+Operator -> CP : Step 4
+CP -> CLI : _step_start_biq() — spawn, wait 'joined'
+CLI -> QP : connect :5555 (Q-NET)
+Operator -> CP : Step 5
+CP -> QP : _step_set_systems() — set N/S + E/W for deal 1
+Operator -> CP : Step 6
+CP -> QP : _step_east() — East=Computer (or South for Room 2)
+Operator -> CP : Step 7
+CP -> QP : _step_deal() — click 'Closed Room' (board 1)
+Operator -> CP : Step 8
+CP -> BL : _step_clicker() — start_clicker(--deals --watch --idle)
+
+== Match loop (autoclicker drives deals 2..N) ==
+loop each deal
+  BL -> QP : Next deal / Start bidding / Autoplay clicks
+  QP <-> CLI : bids + cards over Q-NET
+  CLI --> CP : log lines -> deals_list + progress bar
+  CP -> CP : _refresh_health() (● server ● biq ● clicker)
+end
+
+== Export & score ==
+Operator -> CP : "Export .qss"
+QP -> QSS : save match (View>Scoring>save+send)
+CP -> AGG : aggregate_qss(newest .qss)
+AGG --> CP : teams IMP vs Q-Plus -> Result panel
+
+== Teardown ==
+Operator -> CP : "⏻ Exit Q-Plus (kill wine)" / "Stop all"
+CP -> QP : wineserver -k ; pkill
+CP -> CLI : terminate
+CP -> BL : terminate
+@enduml

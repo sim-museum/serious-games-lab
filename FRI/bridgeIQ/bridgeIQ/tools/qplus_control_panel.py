@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QGroupBox, QHBoxLayout,
     QLabel, QListWidget, QListWidgetItem, QMainWindow, QPlainTextEdit,
     QProgressBar, QPushButton, QScrollArea, QSpinBox, QVBoxLayout, QWidget,
-    QGridLayout, QMessageBox,
+    QGridLayout, QMessageBox, QStackedWidget,
 )
 
 BIQ_ROOT = Path(__file__).resolve().parent.parent
@@ -32,6 +32,9 @@ BIQ_ROOT = Path(__file__).resolve().parent.parent
 WP_SERVER = BIQ_ROOT.parent.parent / "WP"
 QSS_DIR = (BIQ_ROOT.parent.parent
            / "WP/drive_c/games/qbridge17/DATA/LOCAL-MATCHES")
+IMPORTED_DEALS_DIR = QSS_DIR.parent / "IMPORTED-DEALS"
+NOPEEK_PBN = IMPORTED_DEALS_DIR / "BIQ_NOPEEK.PBN"   # forced-contract deck for
+#                       the no-peek-vs-Q-Plus cardplay-only head-to-head
 PROXY_LOG = BIQ_ROOT / "tools/runs/qnet_session.log"
 BIQ_LOG = BIQ_ROOT / "tools/runs/biq_session.log"
 BIQ_N_LOG = BIQ_ROOT / "tools/runs/biq_N.log"
@@ -58,7 +61,7 @@ AB_REF_FILE = BIQ_ROOT / "tools/runs/ab/ab_reference.json"  # Run-A deal id
 # Bump this on any user-visible behaviour change. It's shown in the title
 # bar AND logged on startup, so you can tell at a glance whether a freshly
 # launched panel actually has the latest fix (no more "did it reload?").
-PANEL_BUILD = "2026-06-05c · Run-B auto-infers the A reference from the last run"
+PANEL_BUILD = "2026-06-14 · simplified layout (Configure/Mode/Run/Result)"
 # Fixed seed for 'reproducible random' systems — both A and B pass the same
 # value so they draw identical per-deal systems on identical boards.
 REPRO_SYS_SEED = 20260604
@@ -307,6 +310,8 @@ class CalibrateDialog(QDialog):
                ("‘Players’ item in the Configuration menu", "players_item"),
                ("Set East = Computer (control in the Players dialog)",
                 "east_computer"),
+               ("Set South = Computer (Players dialog — Room 2 / E-W reset)",
+                "south_computer"),
                ("‘OK’ on the Players dialog", "players_ok")]
 
     def __init__(self, parent=None):
@@ -396,9 +401,13 @@ class CalibrationManagerDialog(QDialog):
             ("cfg_menu", "Configuration — top-level menu"),
             ("players_item", "Players — Configuration item"),
             ("east_computer", "East = Computer — Players dialog"),
+            ("south_computer", "South = Computer — Players dialog (Room 2 reset)"),
             ("players_ok", "OK — Players dialog"),
             ("view_menu", "View — top-level menu"),
             ("view_scoring_table", "View Scoring Table — View item"),
+            ("match_end", "‘View the scoring table’ — Match End dialog (pops "
+                          "up after the last board; dismisses it AND opens the "
+                          "scoring table, so the export skips the View menu)"),
             ("save_and_send", "Save and send — scoring table"),
             ("save_ok", "OK — after Save and send"),
         ]),
@@ -633,18 +642,51 @@ class LiveMatchWidget(QWidget):
 
     # ---------- UI ----------
     def _build_ui(self):
-        # Two-panel landscape: controls (1·2·3·4) on the left, live deal
-        # names + result + log on the right.
+        # PROPOSED simplified layout: four stacked control groups on the LEFT
+        # (1 Configure / 2 Mode / 3 Run / 4 Result); live deal names + log on
+        # the RIGHT. Calibration + one-off utilities live in the Setup/Tools
+        # menus (see ControlPanel._build_menu). Every widget attribute the run
+        # code reads (self.deals, self.pair, self.ns_sys, self.ab_combo, ...) is
+        # still created here or in _build_config_dialog — only the grouping moved.
         outer = QHBoxLayout(self)
-        root = QVBoxLayout()          # LEFT column — the controls
-        rightcol = QVBoxLayout()      # RIGHT column — deals / result / log
+        root = QVBoxLayout()          # LEFT — controls
+        rightcol = QVBoxLayout()      # RIGHT — deals + log
         outer.addLayout(root)
-        outer.addLayout(rightcol, 1)  # the output side takes the extra width
-        self._build_config_dialog()
+        outer.addLayout(rightcol, 1)
+        self._build_config_dialog()   # advanced knobs + manual steps (menu)
 
-        # ===== 1 ▏ Bidding systems =====
-        sys_box = QGroupBox("1 ▏ Bidding systems")
-        sh = QHBoxLayout(sys_box)
+        # ===== 1 · Configure =====
+        cfg_box = QGroupBox("1 · Configure")
+        cfl = QVBoxLayout(cfg_box)
+        grid = QGridLayout()
+        self.deals = QSpinBox(); self.deals.setRange(1, 1000); self.deals.setValue(64)
+        self.seat = QComboBox(); self.seat.addItems(["S", "N", "E", "W"])
+        self.samples = QSpinBox(); self.samples.setRange(5, 300); self.samples.setValue(50)
+        self.samples.setToolTip(
+            "MC samples per cardplay decision (no-peek uses its own budget). 50 "
+            "balances finesse accuracy vs the libdds crash rate.")
+        for col, (lab, w) in enumerate([("Deals", self.deals),
+                                        ("biq seat", self.seat),
+                                        ("MC samples", self.samples)]):
+            grid.addWidget(QLabel(lab), 0, col)
+            grid.addWidget(w, 1, col)
+        cfl.addLayout(grid)
+        optrow = QHBoxLayout()
+        self.pair = QCheckBox("biq+biq (N+S Extern)")
+        self.pair.setChecked(True)
+        self.pair.setToolTip(
+            "Run two biq clients as partners (N+S). Set Q-Plus to N=Extern, "
+            "S=Extern, E/W=Computer.")
+        self.exit_auto = QCheckBox("Auto-exit at end (export + kill wine)")
+        self.exit_auto.setToolTip(
+            "OFF (default): the run ends with Q-Plus running; you Export then "
+            "Exit by hand. ON: fully hands-off — auto-export, aggregate, then "
+            "kill wine.")
+        optrow.addWidget(self.pair)
+        optrow.addWidget(self.exit_auto)
+        optrow.addStretch(1)
+        cfl.addLayout(optrow)
+        sysrow = QHBoxLayout()
         _SYS_OPTS = ["sequential", "random"] + _SYS_NAMES
         self.ns_sys = QComboBox(); self.ns_sys.addItems(_SYS_OPTS)
         self.ew_sys = QComboBox(); self.ew_sys.addItems(_SYS_OPTS)
@@ -660,24 +702,182 @@ class LiveMatchWidget(QWidget):
                    "E/W independent. Frozen during an A/B so both runs match.")
         self.ns_sys.setToolTip(_systip)
         self.ew_sys.setToolTip(_systip)
-        sh.addWidget(QLabel("N/S")); sh.addWidget(self.ns_sys)
-        sh.addSpacing(18)
-        sh.addWidget(QLabel("E/W")); sh.addWidget(self.ew_sys)
-        sh.addStretch(1)
-        self.repro_random = QCheckBox("🔒 reproducible random")
+        sysrow.addWidget(QLabel("Systems  N/S")); sysrow.addWidget(self.ns_sys)
+        sysrow.addSpacing(12)
+        sysrow.addWidget(QLabel("E/W")); sysrow.addWidget(self.ew_sys)
+        self.repro_random = QCheckBox("🔒 repro-random")
         self.repro_random.setToolTip(
             "Only affects the 'random' mode: seed the per-deal choice so Run "
             "A and Run B draw the SAME random systems on the same boards. "
             "'sequential' is already repeatable with no seed, so leave this "
             "unticked when using it.")
-        sh.addWidget(self.repro_random)
-        root.addWidget(sys_box)
+        sysrow.addWidget(self.repro_random)
+        sysrow.addStretch(1)
+        cfl.addLayout(sysrow)
+        root.addWidget(cfg_box)
+        self.pair.toggled.connect(lambda on: self.seat.setEnabled(not on))
+        self.seat.setEnabled(not self.pair.isChecked())
 
-        # ===== 2 ▏ A/B test =====
-        ab_box = QGroupBox("2 ▏ A/B test  (swaps the bidder + guards the deals)")
-        abv = QVBoxLayout(ab_box)
-        abtop = QHBoxLayout()
-        abtop.addWidget(QLabel("Mode:"))
+        # ===== 2 · Mode  (one selector replaces the old A/B + double-pair +
+        #                  no-peek group boxes / dialog) =====
+        mode_box = QGroupBox("2 · Mode")
+        mvl = QVBoxLayout(mode_box)
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems([
+            "Whole-system  (biq bids + no-peek play)",
+            "A/B test  (swap bidder, guard deals)",
+            "Double-pair validation  (cards swapped)",
+            "No-peek cardplay  (forced contract)"])
+        self.mode_combo.setToolTip(
+            "Pick ONE run mode; the options below swap to match. Whole-system "
+            "is the standard closed-room measurement (biq bids and plays "
+            "no-peek). The mode-specific controls used to be four separate "
+            "boxes / a pop-up dialog.")
+        mvl.addWidget(self.mode_combo)
+        self.mode_stack = QStackedWidget()
+        self.mode_stack.addWidget(self._build_mode_whole())   # 0
+        self.mode_stack.addWidget(self._build_mode_ab())      # 1
+        self.mode_stack.addWidget(self._build_mode_dp())      # 2
+        self.mode_stack.addWidget(self._build_mode_nopeek())  # 3
+        mvl.addWidget(self.mode_stack)
+        root.addWidget(mode_box)
+
+        # ===== 3 · Run  (ONE start path: Start = full session; Step ▷ keeps the
+        #                 stepper/debugger) =====
+        run_box = QGroupBox("3 · Run")
+        rvl = QVBoxLayout(run_box)
+        self.step_list = QListWidget()
+        self.step_list.setFixedHeight(150)
+        self.step_list.setFont(QFont("monospace"))
+        self.step_list.setToolTip(
+            "Each step = one series of clicks. Step runs the next and stops "
+            "so you can watch the log and fix anything out of order; "
+            "Autopilot runs the rest. A failed step is retried by the next "
+            "Step. Reset moves the pointer back (doesn't undo Q-Plus state).")
+        self._steps = self._build_steps()
+        for i, (_key, label, _fn) in enumerate(self._steps):
+            QListWidgetItem(f"  •  {i + 1}. {label}", self.step_list)
+        rvl.addWidget(self.step_list)
+        rbtn = QHBoxLayout()
+        self.b_full = QPushButton("▶ Start")
+        self.b_full.setStyleSheet("font-weight:bold; padding:4px 12px;")
+        self.b_full.setToolTip(
+            "Run the whole thing hands-off: launch Q-Plus, start biq, deal, run "
+            "the autoclicker and aggregate. Sessions>1 loops, killing wine "
+            "between. Don't touch the mouse while it runs.")
+        self.b_step = QPushButton("Step ▷")
+        self.b_step.setToolTip("Run the next startup step, then stop and wait.")
+        self.b_auto = QPushButton("Autopilot ▶")
+        self.b_auto.setCheckable(True)
+        self.b_auto.setToolTip("Run all remaining steps back-to-back (asks first).")
+        self.b_steps_reset = QPushButton("⏮ Reset")
+        self.b_auto.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.b_steps_reset.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        for b in (self.b_full, self.b_step, self.b_auto, self.b_steps_reset):
+            rbtn.addWidget(b)
+        rbtn.addStretch(1)
+        rvl.addLayout(rbtn)
+        dotrow = QHBoxLayout()
+        self.dots = {n: Dot(n) for n in ("server", "biq", "clicker")}
+        for d in self.dots.values():
+            dotrow.addWidget(d)
+        dotrow.addStretch(1)
+        rvl.addLayout(dotrow)
+        self.bar = QProgressBar()
+        self.bar.setRange(0, 50)
+        self.bar.setFormat("Deal %v / %m")
+        rvl.addWidget(self.bar)
+        self.hint = QLabel("Configure (1), pick a Mode (2), press ▶ Start "
+                           "or Step ▷ (3); Export when done (4). "
+                           "Setup / Tools are in the menu bar.")
+        self.hint.setWordWrap(True)
+        self.hint.setStyleSheet("color:#555;")
+        rvl.addWidget(self.hint)
+        root.addWidget(run_box)
+
+        # ===== 4 · Result =====
+        res_box = QGroupBox("4 · Result")
+        rsl = QVBoxLayout(res_box)
+        self.result = QPlainTextEdit(); self.result.setReadOnly(True)
+        self.result.setMaximumBlockCount(2000)
+        self.result.setFont(QFont("monospace"))
+        self.result.setFixedHeight(96)
+        rsl.addWidget(self.result)
+        resbtn = QHBoxLayout()
+        self.b_export = QPushButton("Export .qss")
+        self.b_export.setToolTip(
+            "View ▸ Scoring Table ▸ Save and send ▸ OK in Q-Plus, "
+            "then aggregate from the new .qss.")
+        self.b_agg = QPushButton("Aggregate")
+        self.b_agg.setToolTip("Re-aggregate teams IMP from the newest .qss.")
+        self.b_stop = QPushButton("Stop all")
+        self.b_stop.setToolTip("Stop biq + the autoclicker (Q-Plus stays up).")
+        self.b_killwine = QPushButton("⏻ Kill wine")
+        self.b_killwine.setToolTip(
+            "Force-quit Q-Plus + all wine; clears the :5555 socket and the "
+            "64-board cap. Export the .qss FIRST.")
+        for b in (self.b_export, self.b_agg, self.b_stop, self.b_killwine):
+            resbtn.addWidget(b)
+        resbtn.addStretch(1)
+        rsl.addLayout(resbtn)
+        self.b_stop.setEnabled(False)
+        root.addWidget(res_box)
+        root.addStretch(1)
+
+        # ===== RIGHT column: live deal names + log =====
+        dealsbox = QGroupBox("Deals dealt  (name · dealer/vul)")
+        dv = QVBoxLayout(dealsbox)
+        self.deals_list = QListWidget()
+        self.deals_list.setFont(QFont("monospace"))
+        self.deals_list.setToolTip(
+            "Each deal's NAME as Q-Plus deals it. 'SLAM-001' etc. = your "
+            "loaded Own-deals deck; '4210-NN' = Q-Plus's own seed. Lets you "
+            "see at a glance which deal source is actually live.")
+        dv.addWidget(self.deals_list)
+        rightcol.addWidget(dealsbox, 2)
+        logbox = QGroupBox("Log (biq + autoclicker + panel)")
+        ll = QVBoxLayout(logbox)
+        self.log = QPlainTextEdit(); self.log.setReadOnly(True)
+        self.log.setMaximumBlockCount(4000)
+        self.log.setFont(QFont("monospace"))
+        ll.addWidget(self.log)
+        rightcol.addWidget(logbox, 3)
+
+        # ----- connections -----
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        self.ab_combo.currentIndexChanged.connect(self._on_ab_mode_changed)
+        self.b_clearref.clicked.connect(self._clear_ab_ref)
+        self.dp_side.currentIndexChanged.connect(self._on_dp_side_changed)
+        self.b_dp_save.clicked.connect(self._dp_save_room)
+        self.b_dp_cmp.clicked.connect(self._dp_compare)
+        self.b_dp_4cc.clicked.connect(self._dp_run_4computer)
+        self.b_dp_savebase.clicked.connect(self._dp_save_baseline)
+        self.b_step.clicked.connect(self._on_step_clicked)
+        self.b_auto.toggled.connect(self._on_autopilot_toggled)
+        self.b_steps_reset.clicked.connect(self._steps_reset)
+        self.b_full.clicked.connect(self.run_full_session)
+        self.b_export.clicked.connect(self._export_and_aggregate)
+        self.b_agg.clicked.connect(self.aggregate_qss)
+        self.b_killwine.clicked.connect(lambda: self.kill_all_wine(confirm=True))
+        self.b_stop.clicked.connect(self.stop_all)
+        self._on_mode_changed(0)
+        self._update_bidder_indicator()
+        self._refresh_ab_ref_label()
+
+    def _build_mode_whole(self):
+        w = QWidget(); v = QVBoxLayout(w); v.setContentsMargins(0, 0, 0, 0)
+        la = QLabel(
+            "Standard closed-room match: biq BIDS and plays NO-PEEK vs Q-Plus. "
+            "Load a DEAL-ONLY deck (RND_S*/SLAM_S*) with Read=AUTO so Q-Plus "
+            "bids too. Systems are set in Configure above.")
+        la.setWordWrap(True); la.setStyleSheet("color:#555;")
+        v.addWidget(la)
+        return w
+
+    def _build_mode_ab(self):
+        w = QWidget(); v = QVBoxLayout(w); v.setContentsMargins(0, 0, 0, 0)
+        top = QHBoxLayout()
+        top.addWidget(QLabel("Mode:"))
         self.ab_combo = QComboBox()
         self.ab_combo.addItems(["Off (single run)",
                                 "Run A — baseline (pre-fix)",
@@ -689,32 +889,30 @@ class LiveMatchWidget(QWidget):
             "the previous run 'Run A', it infers the reference from the last "
             "run's log automatically. Off = a normal single run. While A or B "
             "is selected the system dropdowns are frozen so both runs match.")
-        abtop.addWidget(self.ab_combo, 1)
+        top.addWidget(self.ab_combo, 1)
         self.lbl_bidder = QLabel("bidder: —")
         self.lbl_bidder.setStyleSheet("font-weight:bold;")
-        abtop.addWidget(self.lbl_bidder)
+        top.addWidget(self.lbl_bidder)
         self.b_clearref = QPushButton("✕ clear ref")
         self.b_clearref.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.b_clearref.setToolTip("Forget the locked Run-A reference.")
-        abtop.addWidget(self.b_clearref)
-        abv.addLayout(abtop)
-        abrow = QHBoxLayout()
+        top.addWidget(self.b_clearref)
+        v.addLayout(top)
+        row = QHBoxLayout()
         self.lbl_thisrun = QLabel("This run: —")
         self.lbl_thisrun.setStyleSheet("font-weight:bold;")
         self.lbl_abref = QLabel()
-        abrow.addWidget(self.lbl_thisrun)
-        abrow.addSpacing(16)
-        abrow.addWidget(self.lbl_abref)
-        abrow.addStretch(1)
-        abv.addLayout(abrow)
-        root.addWidget(ab_box)
+        row.addWidget(self.lbl_thisrun)
+        row.addSpacing(16)
+        row.addWidget(self.lbl_abref)
+        row.addStretch(1)
+        v.addLayout(row)
+        return w
 
-        # ===== 2b ▏ Double-pair validation (board-a-match) =====
-        dp_box = QGroupBox("2b ▏ Double-pair validation  (biq vs Q-Plus, "
-                           "cards swapped → board-a-match)")
-        dpv = QVBoxLayout(dp_box)
-        dptop = QHBoxLayout()
-        dptop.addWidget(QLabel("biq side:"))
+    def _build_mode_dp(self):
+        w = QWidget(); v = QVBoxLayout(w); v.setContentsMargins(0, 0, 0, 0)
+        top = QHBoxLayout()
+        top.addWidget(QLabel("biq side:"))
         self.dp_side = QComboBox()
         self.dp_side.addItems(["N/S  (Room 1)", "E/W  (Room 2)"])
         self.dp_side.setToolTip(
@@ -723,192 +921,96 @@ class LiveMatchWidget(QWidget):
             "  Room 2 — biq E/W vs Q-Plus N/S   (Q-Plus: E/W=Extern, N/S=Computer)\n"
             "biq holds both pairs over the two rooms, so card luck cancels — "
             "the unbiased teams test. Requires biq+biq (pair) mode.")
-        dptop.addWidget(self.dp_side, 1)
+        top.addWidget(self.dp_side, 1)
         self.b_dp_save = QPushButton("Save run → Room 1")
         self.b_dp_save.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.b_dp_save.setToolTip(
             "Copy this run's biq log to the Room-1/Room-2 slot for the "
             "board-a-match compare. Do it after each room's run finishes.")
-        dptop.addWidget(self.b_dp_save)
+        top.addWidget(self.b_dp_save)
         self.b_dp_cmp = QPushButton("Compare rooms → IMP")
         self.b_dp_cmp.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.b_dp_cmp.setToolTip(
             "Board-a-match: IMP = imp(Room1_NS − Room2_NS) per board. "
             "Positive net = biq AHEAD. Run after both rooms are saved.")
-        dptop.addWidget(self.b_dp_cmp)
-        dpv.addLayout(dptop)
-        # Baseline row — the all-Q-Plus run (R3) for the closed-room split.
-        dpbot = QHBoxLayout()
-        dpbot.addWidget(QLabel("Baseline (all-Q-Plus, R3):"))
+        top.addWidget(self.b_dp_cmp)
+        v.addLayout(top)
+        bot = QHBoxLayout()
+        bot.addWidget(QLabel("Baseline (all-Q-Plus, R3):"))
         self.b_dp_4cc = QPushButton("Run 4-comp autoclicker")
         self.b_dp_4cc.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.b_dp_4cc.setToolTip(
             "Drive a 4-computer Q-Plus run with NO network log: clicks the "
             "cycle button whenever the screen settles (idle-detection). Set "
             "Q-Plus to all-Computer + load the SAME deck first; calibrate the "
-            "watch region once (Calibrate ▸ region). This is the optional R3 "
-            "baseline that splits the result into N/S-edge vs E/W-edge.")
-        dpbot.addWidget(self.b_dp_4cc)
+            "watch region once. Optional R3 baseline that splits the result "
+            "into N/S-edge vs E/W-edge.")
+        bot.addWidget(self.b_dp_4cc)
         self.b_dp_savebase = QPushButton("Export .qss → baseline")
         self.b_dp_savebase.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.b_dp_savebase.setToolTip(
             "After the 4-computer run, Export the .qss, then click this to "
-            "stash it as the baseline. ‘Compare rooms’ then also prints the "
-            "N/S-side and E/W-side decomposition.")
-        dpbot.addWidget(self.b_dp_savebase)
-        dpbot.addStretch(1)
-        dpv.addLayout(dpbot)
-        self.b_dp_4cc.clicked.connect(self._dp_run_4computer)
-        self.b_dp_savebase.clicked.connect(self._dp_save_baseline)
+            "stash it as the baseline.")
+        bot.addWidget(self.b_dp_savebase)
+        bot.addStretch(1)
+        v.addLayout(bot)
         self.lbl_dp = QLabel(
             "Validate biq ahead in all 4 cases: {both SAYC, both Precision} × "
             "{random, slam-eligible}.  Set systems (1), pick a side, run the "
             "deck; repeat with the other side on the SAME deck; Compare.")
         self.lbl_dp.setWordWrap(True)
         self.lbl_dp.setStyleSheet("color:#555;")
-        dpv.addWidget(self.lbl_dp)
-        self.dp_side.currentIndexChanged.connect(self._on_dp_side_changed)
-        self.b_dp_save.clicked.connect(self._dp_save_room)
-        self.b_dp_cmp.clicked.connect(self._dp_compare)
-        root.addWidget(dp_box)
+        v.addWidget(self.lbl_dp)
+        return w
 
-        # ===== 3 ▏ Startup procedure (Step / Autopilot) =====
-        steps_box = QGroupBox("3 ▏ Startup procedure — Step (one move) or "
-                              "Autopilot")
-        sbx = QVBoxLayout(steps_box)
-        self.step_list = QListWidget()
-        self.step_list.setFixedHeight(168)
-        self.step_list.setFont(QFont("monospace"))
-        self.step_list.setToolTip(
-            "Each step = one series of clicks. Step runs the next and stops "
-            "so you can watch the log and fix anything out of order; "
-            "Autopilot runs the rest. A failed step is retried by the next "
-            "Step. Reset moves the pointer back (doesn't undo Q-Plus state).")
-        self._steps = self._build_steps()
-        for i, (_key, label, _fn) in enumerate(self._steps):
-            QListWidgetItem(f"  •  {i + 1}. {label}", self.step_list)
-        sbx.addWidget(self.step_list)
-        sbtn = QHBoxLayout()
-        self.b_step = QPushButton("Step ▷")
-        self.b_step.setStyleSheet("font-weight:bold; padding:4px 10px;")
-        self.b_step.setToolTip("Run the next startup step, then stop and wait.")
-        self.b_auto = QPushButton("Autopilot ▶")
-        self.b_auto.setCheckable(True)
-        self.b_auto.setToolTip("Run all remaining steps back-to-back "
-                               "(asks first).")
-        self.b_steps_reset = QPushButton("⏮ Reset steps")
-        self.b_auto.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.b_steps_reset.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        for b in (self.b_step, self.b_auto, self.b_steps_reset):
-            sbtn.addWidget(b)
-        sbtn.addStretch(1)
-        sbx.addLayout(sbtn)
-        root.addWidget(steps_box)
+    def _build_mode_nopeek(self):
+        w = QWidget(); v = QVBoxLayout(w); v.setContentsMargins(0, 0, 0, 0)
+        la = QLabel(
+            "CARDPLAY-only head-to-head on FORCED contracts (no bidding) — "
+            "measures the no-peek engine vs Q-Plus. Generate the PBN, calibrate "
+            "the cardplay clicker, then run; or run the all-Q-Plus baseline.")
+        la.setWordWrap(True); la.setStyleSheet("color:#555;")
+        v.addWidget(la)
+        b = QPushButton("Open no-peek / forced-contract setup…")
+        b.setToolTip("Generate forced PBN, calibrate clicker, run biq vs Q-Plus "
+                     "and the all-Q-Plus baseline (①②③④).")
+        b.clicked.connect(self.show_nopeek_dialog)
+        v.addWidget(b)
+        return w
 
-        # ===== 4 ▏ Run / export / exit =====
-        act_box = QGroupBox("4 ▏ Run / export / exit")
-        actl = QHBoxLayout(act_box)
-        self.b_full = QPushButton("▶ Run full session")
-        self.b_full.setToolTip(
-            "Launch Q-Plus, start biq, deal, run the autoclicker and "
-            "aggregate — all hands-off (no stepping). Sessions>1 loops, "
-            "killing wine between. Don't touch the mouse while it runs.")
-        self.b_export = QPushButton("Export .qss")
-        self.b_export.setToolTip(
-            "View ▸ Scoring Table ▸ Save and send ▸ OK in Q-Plus, then "
-            "aggregate from the new .qss.")
-        self.b_killwine = QPushButton("⏻ Exit Q-Plus (kill wine)")
-        self.b_killwine.setToolTip(
-            "Force-quit Q-Plus + all wine; clears the :5555 socket and the "
-            "64-board cap. Export the .qss FIRST.")
-        self.b_stop = QPushButton("Stop all")
-        self.b_stop.setToolTip("Stop biq + the autoclicker (Q-Plus stays up).")
-        for b in (self.b_full, self.b_export, self.b_killwine, self.b_stop):
-            actl.addWidget(b)
-        actl.addStretch(1)
-        self.b_stop.setEnabled(False)
-        root.addWidget(act_box)
-
-        # ===== status + hint + progress + result + log =====
-        mid = QHBoxLayout()
-        self.dots = {n: Dot(n) for n in ("server", "biq", "clicker")}
-        for d in self.dots.values():
-            mid.addWidget(d)
-        mid.addStretch(1)
-        root.addLayout(mid)
-
-        self.hint = QLabel("Set systems (1), pick A/B mode (2), Step through "
-                           "the startup (3), export when done (4). Config & "
-                           "Calibrate are in the menu bar.")
-        self.hint.setWordWrap(True)
-        self.hint.setStyleSheet("color:#555;")
-        root.addWidget(self.hint)
-
-        self.bar = QProgressBar()
-        self.bar.setRange(0, 50)
-        self.bar.setFormat("Deal %v / %m")
-        root.addWidget(self.bar)
-        root.addStretch(1)            # keep the controls top-packed
-
-        # ===== RIGHT column: live deal names + result + log =====
-        dealsbox = QGroupBox("Deals dealt  (name · dealer/vul)")
-        dv = QVBoxLayout(dealsbox)
-        self.deals_list = QListWidget()
-        self.deals_list.setFont(QFont("monospace"))
-        self.deals_list.setToolTip(
-            "Each deal's NAME as Q-Plus deals it. 'SLAM-001' etc. = your "
-            "loaded Own-deals deck; '4210-NN' = Q-Plus's own seed. Lets you "
-            "see at a glance which deal source is actually live.")
-        dv.addWidget(self.deals_list)
-        rightcol.addWidget(dealsbox, 2)
-
-        res = QGroupBox("Result — teams IMP vs Q-Plus (live report_score)")
-        rl = QVBoxLayout(res)
-        self.result = QPlainTextEdit(); self.result.setReadOnly(True)
-        self.result.setMaximumBlockCount(2000)
-        self.result.setFont(QFont("monospace"))
-        self.result.setFixedHeight(110)
-        rl.addWidget(self.result)
-        rightcol.addWidget(res)
-
-        logbox = QGroupBox("Log (biq + autoclicker + panel)")
-        ll = QVBoxLayout(logbox)
-        self.log = QPlainTextEdit(); self.log.setReadOnly(True)
-        self.log.setMaximumBlockCount(4000)
-        self.log.setFont(QFont("monospace"))
-        ll.addWidget(self.log)
-        rightcol.addWidget(logbox, 3)
-
-        # ----- connections (main-screen widgets) -----
-        self.ab_combo.currentIndexChanged.connect(self._on_ab_mode_changed)
-        self.b_clearref.clicked.connect(self._clear_ab_ref)
-        self.b_step.clicked.connect(self._on_step_clicked)
-        self.b_auto.toggled.connect(self._on_autopilot_toggled)
-        self.b_steps_reset.clicked.connect(self._steps_reset)
-        self.b_full.clicked.connect(self.run_full_session)
-        self.b_export.clicked.connect(self._export_and_aggregate)
-        self.b_killwine.clicked.connect(
-            lambda: self.kill_all_wine(confirm=True))
-        self.b_stop.clicked.connect(self.stop_all)
-        self._update_bidder_indicator()
-        self._refresh_ab_ref_label()
+    def _on_mode_changed(self, idx):
+        self.mode_stack.setCurrentIndex(idx)
+        if idx == 0:        # Whole-system
+            self._whole_system = True
+            self._nopeek_pbn = None
+            self.hint.setText("Whole-system: biq bids + plays no-peek. Load a "
+                              "DEAL-ONLY deck (Read=AUTO). Press ▶ Start "
+                              "(or Step ▷).")
+        elif idx == 1:      # A/B
+            self.hint.setText("A/B: pick Run A then Run B on the SAME deals "
+                              "(bidder swaps; deal-set guarded).")
+        elif idx == 2:      # Double-pair
+            self.hint.setText("Double-pair: run the deck with biq N/S, then "
+                              "E/W; Compare rooms → IMP. Needs biq+biq.")
+        else:               # No-peek cardplay
+            self.hint.setText("No-peek cardplay: open the setup to generate the "
+                              "forced-contract PBN and calibrate.")
 
     def _build_config_dialog(self):
-        """Run settings + options + advanced/manual controls, in a dialog
-        opened from the Config menu. Widgets stay as attributes so the run
-        code keeps reading self.deals.value(), self.pair.isChecked(), etc."""
+        """Advanced, infrequently-touched knobs + the manual startup steps,
+        opened from the Setup menu. The per-run essentials (deals, seat,
+        samples, biq+biq, auto-exit, systems) now live in the main Configure
+        group; this dialog keeps only the advanced items. Widgets stay as
+        attributes so the run code keeps reading self.idle.value(), etc."""
         self.config_dialog = QDialog(self)
-        self.config_dialog.setWindowTitle("Config — run settings & options")
+        self.config_dialog.setWindowTitle("Advanced settings")
         dl = QVBoxLayout(self.config_dialog)
 
-        cfg = QGroupBox("Run configuration")
+        cfg = QGroupBox("Unattended-run knobs")
         g = QGridLayout(cfg)
-        self.deals = QSpinBox(); self.deals.setRange(1, 1000)
-        self.deals.setValue(64)
-        self.seat = QComboBox(); self.seat.addItems(["S", "N", "E", "W"])
-        self.samples = QSpinBox(); self.samples.setRange(5, 300)
-        self.samples.setValue(120)   # 120 ≈ deterministic finesses (40 misplays ~27%)
         self.idle = QSpinBox(); self.idle.setRange(3, 60); self.idle.setValue(10)
+        self.idle.setToolTip("Idle backstop seconds before the autoclicker "
+                             "fires a fallback click.")
         self.reset_every = QSpinBox(); self.reset_every.setRange(0, 64)
         self.reset_every.setValue(0)
         self.reset_every.setToolTip(
@@ -919,10 +1021,9 @@ class LiveMatchWidget(QWidget):
         self.sessions.setValue(1)
         self.sessions.setToolTip(
             "Back-to-back self-contained sessions for hands-off runs; kills "
-            "wine between each. Use with ▶ Run full session.")
+            "wine between each. Use with ▶ Start.")
         for col, (lab, w) in enumerate([
-                ("Deals", self.deals), ("biq seat", self.seat),
-                ("MC samples", self.samples), ("Idle backstop (s)", self.idle),
+                ("Idle backstop (s)", self.idle),
                 ("Reset every", self.reset_every),
                 ("Sessions", self.sessions)]):
             g.addWidget(QLabel(lab), 0, col)
@@ -931,34 +1032,10 @@ class LiveMatchWidget(QWidget):
 
         opt = QGroupBox("Options")
         ov = QVBoxLayout(opt)
-        self.pair = QCheckBox("biq+biq (N+S Extern)")
-        self.pair.setChecked(True)
-        self.pair.setToolTip(
-            "Run two biq clients as partners (N+S). Set Q-Plus to N=Extern, "
-            "S=Extern, E/W=Computer.")
         self.auto = QCheckBox("Auto-run (deal + click when biq joins)")
         self.auto.setChecked(True)
-        self.exit_auto = QCheckBox(
-            "Exit automatically (auto-export + kill wine at end)")
-        self.exit_auto.setChecked(False)
-        self.exit_auto.setToolTip(
-            "OFF (default): the run ends with Q-Plus running; you Export then "
-            "Exit by hand. ON: fully hands-off — auto-export, aggregate, then "
-            "kill wine.")
-        for w in (self.pair, self.auto, self.exit_auto):
-            ov.addWidget(w)
+        ov.addWidget(self.auto)
         dl.addWidget(opt)
-        self.pair.toggled.connect(lambda on: self.seat.setEnabled(not on))
-
-        util = QGroupBox("Utilities")
-        uv = QHBoxLayout(util)
-        self.b_launch = QPushButton("Launch Q-Plus server")
-        self.b_reset = QPushButton("New run (reset logs)")
-        self.b_agg = QPushButton("Aggregate (.qss)")
-        for b in (self.b_launch, self.b_reset, self.b_agg):
-            uv.addWidget(b)
-        uv.addStretch(1)
-        dl.addWidget(util)
 
         adv = QGroupBox("Manual startup steps (advanced — the stepper does "
                         "these)")
@@ -978,9 +1055,6 @@ class LiveMatchWidget(QWidget):
         row.addStretch(1); row.addWidget(close)
         dl.addLayout(row)
 
-        self.b_launch.clicked.connect(lambda: self.launch_qplus())
-        self.b_reset.clicked.connect(self.new_run)
-        self.b_agg.clicked.connect(self.aggregate_qss)
         self.b_start.clicked.connect(self.manual_start)
         self.b_deal.clicked.connect(self.deal_first_board)
         self.b_run.clicked.connect(self.start_clicker)
@@ -1007,9 +1081,16 @@ class LiveMatchWidget(QWidget):
         kind.addItems(["slam-eligible", "definite-slam", "grand-slam",
                        "random"])
         cnt = QSpinBox(); cnt.setRange(1, 128); cnt.setValue(64)
+        seed = QSpinBox(); seed.setRange(1, 9999); seed.setValue(1)
         row.addWidget(QLabel("Kind:")); row.addWidget(kind, 1)
         row.addWidget(QLabel("Count:")); row.addWidget(cnt)
+        row.addWidget(QLabel("Seed:")); row.addWidget(seed)
         v.addLayout(row)
+        note = QLabel(
+            "The seed is baked into the filename (e.g. RNDS1.BDE) — pick the "
+            "SAME file for Run A and Run B so both draw identical deals.")
+        note.setWordWrap(True); note.setStyleSheet("color:#666;")
+        v.addWidget(note)
         row2 = QHBoxLayout()
         gen = QPushButton("Generate")
         gen.setStyleSheet("font-weight:bold;")
@@ -1019,19 +1100,252 @@ class LiveMatchWidget(QWidget):
 
         def do_gen():
             self._deck = self._mk_proc("deck")
+            code = {"slam-eligible": "SLE", "definite-slam": "SLD",
+                    "grand-slam": "SLG", "random": "RND"}[kind.currentText()]
+            fname = f"{code}S{seed.value()}.BDE"
             self._deck.setArguments(
                 ["-u", "tools/gen_test_deck.py", "--kind", kind.currentText(),
-                 "--count", str(cnt.value()), "--seed", "1"])
+                 "--count", str(cnt.value()), "--seed", str(seed.value())])
             self._deck.finished.connect(
-                lambda *_a: self._append("[deck] done — load the .BDE in "
-                                         "Q-Plus via File ▸ Open Own deals"))
+                lambda *_a: self._append(
+                    f"[deck] done — load {fname} in Q-Plus via File ▸ Open "
+                    f"Own deals (pick the SAME file for Run A and Run B)"))
             self._deck.start()
             self._append(f"[deck] generating {cnt.value()} "
-                         f"{kind.currentText()} deals (DD-filtered, may take a "
-                         "few seconds)…")
+                         f"{kind.currentText()} deals -> {fname} (DD-filtered, "
+                         "may take a few seconds)…")
         gen.clicked.connect(do_gen)
         close.clicked.connect(dlg.hide)
         dlg.show()
+
+    def show_nopeek_dialog(self):
+        """No-peek vs Q-Plus CARDPLAY-only head-to-head, end to end:
+        generate a forced-contract PBN, flip biq's clients to the no-peek
+        engine, and drive the cardplay clicker — so the whole workflow is one
+        place and the PBN biq plays is guaranteed to match Q-Plus's."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle("No-peek cardplay vs Q-Plus")
+        v = QVBoxLayout(dlg)
+
+        def _lab(txt, grey=False):
+            la = QLabel(txt); la.setWordWrap(True)
+            if grey:
+                la.setStyleSheet("color:#666;")
+            v.addWidget(la)
+            return la
+
+        _lab("Head-to-head CARDPLAY vs Q-Plus on FORCED contracts (no bidding) "
+             "— measures the no-peek engine against a real opponent, not biq's "
+             "own PIMC. biq plays its seats with the no-peek engine.")
+        row = QHBoxLayout()
+        deals = QSpinBox(); deals.setRange(1, 64); deals.setValue(64)
+        seed = QSpinBox(); seed.setRange(1, 9999); seed.setValue(5)
+        row.addWidget(QLabel("Deals:")); row.addWidget(deals)
+        row.addWidget(QLabel("Seed:")); row.addWidget(seed)
+        v.addLayout(row)
+        status = QLabel("no-peek mode: OFF")
+        status.setStyleSheet("font-weight:bold; color:#a00;")
+        if getattr(self, "_whole_system", False):
+            status.setText("WHOLE-SYSTEM mode: ON (biq bids + no-peek play — "
+                           "load deck Read=AUTO)")
+            status.setStyleSheet("font-weight:bold; color:#080;")
+        elif getattr(self, "_nopeek_pbn", None):
+            status.setText(f"no-peek mode: ON ({Path(self._nopeek_pbn).name})")
+            status.setStyleSheet("font-weight:bold; color:#080;")
+        v.addWidget(status)
+
+        gen = QPushButton("① Generate PBN + enable no-peek")
+        gen.setStyleSheet("font-weight:bold;")
+        cal = QPushButton("② Calibrate clicker buttons…")
+        cal_a = QPushButton("②b Calibrate Autoplay (for baseline)…")
+        run = QPushButton("③ Launch cardplay clicker (biq run)")
+        off = QPushButton("Disable no-peek mode (back to MC+DDS)")
+        for b in (gen, cal, cal_a, run, off):
+            v.addWidget(b)
+        brow = QHBoxLayout()
+        base = QPushButton("④ Run baseline (all-Q-Plus)")
+        base.setStyleSheet("font-weight:bold;")
+        dtime = QSpinBox(); dtime.setRange(5, 180); dtime.setValue(35)
+        brow.addWidget(base, 1)
+        brow.addWidget(QLabel("deal-time(s):")); brow.addWidget(dtime)
+        v.addLayout(brow)
+        _lab("BIQ RUN (③): Own deals ▸ Use…, pick BIQ_NOPEEK.PBN, Read=Bids, "
+             "start a Q-Plus-vs-biq CARD PLAY game; enable no-peek BEFORE "
+             "(re)starting the biq clients. ②: hover 'Play only' then the "
+             "lower-left button each countdown.\n"
+             "BASELINE (④): the SAME PBN as a LOCAL all-Computer game (Read="
+             "Bids, no biq) at the SAME Level — gives Q-Plus's tricks on the "
+             "forced contracts. Needs ②b (Autoplay) calibrated; advances by "
+             "deal-time, so set it bigger than the slowest deal. Save the match "
+             "→ compare the two .qss for the clean no-peek-vs-Q-Plus number.",
+             grey=True)
+        _lab("— or —", grey=True)
+        ws = QPushButton("◆ Enable WHOLE-SYSTEM mode (biq BIDS + no-peek play)")
+        ws.setStyleSheet("font-weight:bold; color:#005;")
+        v.addWidget(ws)
+        _lab("WHOLE-SYSTEM (bidding + cardplay): no forced contract. Load a "
+             "DEAL-ONLY deck (RND_S* / SLAM_S*) with Read=AUTO so Q-Plus bids; "
+             "biq bids too and plays no-peek (--nopeek, NO --pbn). Click this, "
+             "then go through the normal 8-step startup procedure as usual "
+             "(start biq AFTER enabling, so the clients pick up the mode). "
+             "Save the .qss per run.", grey=True)
+        close = QPushButton("Close")
+        v.addWidget(close)
+
+        def _set_status(text, ok):
+            status.setText(text)
+            status.setStyleSheet(
+                "font-weight:bold; color:%s;" % ("#080" if ok else "#a00"))
+
+        def do_gen():
+            IMPORTED_DEALS_DIR.mkdir(parents=True, exist_ok=True)
+            self._pbn_proc = self._mk_proc("nopeek")
+            self._pbn_proc.setArguments(
+                ["-u", "tools/gen_forced_pbn.py", "--deals",
+                 str(deals.value()), "--seed", str(seed.value()),
+                 "--out", str(NOPEEK_PBN)])
+
+            def done(*_a):
+                self._nopeek_pbn = NOPEEK_PBN
+                self._whole_system = False        # cardplay-only excludes it
+                status.setText(f"no-peek mode: ON ({NOPEEK_PBN.name}, "
+                               f"{deals.value()} deals)")
+                status.setStyleSheet("font-weight:bold; color:#080;")
+                self._append(
+                    f"[nopeek] PBN ready: {NOPEEK_PBN}. biq clients will now "
+                    f"play NO-PEEK. Load it in Q-Plus (Read=Bids) and start a "
+                    f"CARD PLAY game.")
+            self._pbn_proc.finished.connect(done)
+            self._pbn_proc.start()
+            self._append(f"[nopeek] generating {deals.value()}-deal "
+                         f"forced-contract PBN (seed {seed.value()})…")
+
+        def do_cal():
+            self._clk = self._mk_proc("nopeek")
+            self._clk.setArguments(
+                ["-u", "tools/qplus_cardplay_clicker.py", "--recalibrate"])
+            self._clk.start()
+            self._append("[nopeek] CALIBRATE — hover 'Play only' (middle) then "
+                         "the lower-left button as each 6s countdown ends.")
+
+        def do_cal_auto():
+            self._clk = self._mk_proc("nopeek")
+            self._clk.setArguments(
+                ["-u", "tools/qplus_cardplay_clicker.py",
+                 "--recalibrate-autoplay"])
+            self._clk.start()
+            self._append("[nopeek] CALIBRATE AUTOPLAY — start a deal playing "
+                         "(Play only → Start play) so the Autoplay button shows, "
+                         "then hover it as the countdown ends.")
+
+        def do_baseline():
+            self._clk = self._mk_proc("nopeek")
+            self._clk.setArguments(
+                ["-u", "tools/qplus_cardplay_clicker.py", "--no-log",
+                 "--deals", str(deals.value()),
+                 "--deal-time", str(dtime.value())])
+            self._clk.start()
+            self._append(f"[nopeek] BASELINE (all-Q-Plus) running {deals.value()}"
+                         f" deals, deal-time {dtime.value()}s — set up the LOCAL "
+                         f"all-Computer game first (deal 1 at 'Play only'). "
+                         f"Hands-off; Save match when done.")
+
+        def do_run():
+            if not BIQ_S_LOG.exists():
+                self._append("[nopeek] WARN: no biq South log yet — start the "
+                             "biq clients (no-peek mode ON) first.")
+            self._clk = self._mk_proc("nopeek")
+            self._clk.setArguments(
+                ["-u", "tools/qplus_cardplay_clicker.py", "--watch",
+                 str(BIQ_S_LOG), "--deals", str(deals.value())])
+            self._clk.start()
+            self._append(f"[nopeek] cardplay clicker running for "
+                         f"{deals.value()} deals — hands-off (don't touch the "
+                         f"mouse).")
+
+        def do_off():
+            self._nopeek_pbn = None
+            self._whole_system = False
+            _set_status("no-peek mode: OFF", ok=False)
+            self._append("[nopeek] no-peek mode OFF — biq clients use MC+DDS.")
+
+        def do_whole():
+            # MODE TOGGLE ONLY — does not start anything. biq clients launched
+            # after this (via the normal startup steps) get --nopeek and NO
+            # --pbn, so biq bids and plays no-peek; no contract is forced.
+            self._whole_system = True
+            self._nopeek_pbn = None               # suppress forced-contract PBN
+            _set_status("WHOLE-SYSTEM mode: ON (biq bids + no-peek play — "
+                        "load deck Read=AUTO)", ok=True)
+            self._append(
+                "[whole-system] ON — biq clients will BID and play no-peek "
+                "(--nopeek, no --pbn). Load a DEAL-ONLY deck (RND_S*/SLAM_S*) "
+                "in Q-Plus with Read=AUTO, then click through the normal 8-step "
+                "startup procedure. Start biq AFTER enabling this.")
+
+        gen.clicked.connect(do_gen)
+        cal.clicked.connect(do_cal)
+        cal_a.clicked.connect(do_cal_auto)
+        run.clicked.connect(do_run)
+        base.clicked.connect(do_baseline)
+        off.clicked.connect(do_off)
+        ws.clicked.connect(do_whole)
+        close.clicked.connect(dlg.hide)
+        dlg.show()
+
+    def _ab_refs(self):
+        """(BASE_REF, CAND_REF) from ab_bidder.sh's defaults."""
+        base, cand = "f50a1ce", "p3cand"
+        try:
+            txt = (BIQ_ROOT / "tools/ab_bidder.sh").read_text()
+            mb = re.search(r'BASE_REF="\$\{BASE_REF:-([^}]+)\}"', txt)
+            mc = re.search(r'CAND_REF="\$\{CAND_REF:-([^}]+)\}"', txt)
+            if mb:
+                base = mb.group(1)
+            if mc:
+                cand = mc.group(1)
+        except OSError:
+            pass
+        return base, cand
+
+    def _ref_bidder_hash(self, ref):
+        """The biq-client fingerprint (sha1[:10] of native_bidder.py) for a git
+        ref — so we can require a run to have used that exact engine."""
+        import hashlib
+        try:
+            rel = subprocess.run(
+                ["git", "ls-files", "--full-name", "backend/native_bidder.py"],
+                cwd=str(BIQ_ROOT), capture_output=True, text=True,
+                timeout=5).stdout.strip()
+            out = subprocess.run(["git", "show", f"{ref}:{rel}"],
+                                 cwd=str(BIQ_ROOT), capture_output=True,
+                                 timeout=5)
+            if out.returncode == 0 and out.stdout:
+                return hashlib.sha1(out.stdout).hexdigest()[:10]
+        except (OSError, subprocess.SubprocessError):
+            pass
+        return None
+
+    def validate_last_run(self):
+        """Run tools/run_preflight.py on the newest .qss + biq logs and print
+        PASS/FAIL/VERDICT into the panel log. Catches the rotation / no-closed-
+        room / random-systems oops AND — keyed to the A/B mode — the EXACT
+        engine: Run A must have used the baseline bidder, Run B the candidate."""
+        args = ["-u", "tools/run_preflight.py"]
+        base, cand = self._ab_refs()
+        expect, label = None, ""
+        if self._ab_mode == "A":
+            expect, label = self._ref_bidder_hash(base), " (baseline)"
+        elif self._ab_mode == "B":
+            expect, label = self._ref_bidder_hash(cand), " (candidate)"
+        if expect:
+            args += ["--expect-bidder", expect]
+        self._append("[preflight] validating newest run against the locked "
+                     "rig (deck · Closed Room · fixed system · pair guard"
+                     + (f" · engine=={expect}{label}" if expect else "") + ")…")
+        self._preflight = self._mk_proc("preflight")
+        self._preflight.setArguments(args)
+        self._preflight.start()
 
     def _append(self, text):
         text = text.rstrip()
@@ -1288,14 +1602,68 @@ class LiveMatchWidget(QWidget):
             lambda p=p, tag=tag: self._on_output(p, tag))
         return p
 
+    def _arm_biq_watchdog(self, proc, args, slot):
+        """Auto-restart a biq client that DIES mid-run, so a single crash
+        (e.g. a libdds segfault the in-process fork-wrapper can't catch
+        everywhere) doesn't wedge the whole match. `slot` ∈ {'biq','biq2'}."""
+        proc._wd = {"args": list(args), "slot": slot, "n": 0,
+                    "t0": time.time()}
+        proc.finished.connect(
+            lambda code, status, p=proc: self._on_biq_finished(p, code, status))
+
+    def _on_biq_finished(self, proc, code, status):
+        wd = getattr(proc, "_wd", None)
+        if wd is None or not getattr(self, "_biq_should_run", False):
+            return                                  # intentional stop
+        crashed = (status == QProcess.ExitStatus.CrashExit) or code != 0
+        if not crashed:
+            return
+        alive = time.time() - wd["t0"]
+        if wd["n"] >= 6 or alive < 2.0:
+            self._append(f"[watchdog] {wd['slot']} died (code {code}, alive "
+                         f"{alive:.0f}s) and won't auto-restart — Stop all "
+                         f"and re-run.")
+            return
+        wd["n"] += 1
+        self._append(f"[watchdog] {wd['slot']} crashed (code {code}); "
+                     f"restarting (attempt {wd['n']}) to keep the match alive.")
+        QTimer.singleShot(1500, lambda: self._relaunch_biq(wd))
+
+    def _relaunch_biq(self, wd):
+        if not getattr(self, "_biq_should_run", False):
+            return
+        new = self._mk_proc(wd["slot"])
+        new.setArguments(wd["args"])
+        self._arm_biq_watchdog(new, wd["args"], wd["slot"])
+        new._wd["n"] = wd["n"]               # carry the relaunch count forward
+        setattr(self, wd["slot"], new)
+        new.start()
+
     def _biq_args(self, seat, port, log_path):
         # biq always follows Q-Plus's N/S system: in 'auto' it matches
         # whatever Q-Plus is configured for; in sequential/random/fixed the
         # clicker sets Q-Plus's N/S and biq follows it. So --auto-system always.
-        return ["tools/biq_qnet_client.py", "--host", "127.0.0.1",
+        args = ["tools/biq_qnet_client.py", "--host", "127.0.0.1",
                 "--port", str(port), "--seat", seat,
                 "--num-samples", str(self.samples.value()),
                 "--log", str(log_path), "--auto-system"]
+        # No-peek cardplay + forced-contract PBN. Enabled from the
+        # "No-peek cardplay…" dialog (sets self._nopeek_pbn) or via env vars
+        # (BIQ_NOPEEK=1, BIQ_FORCED_PBN=<path>). In this mode biq plays cards
+        # with the no-peek engine and recovers contracts when Q-Plus skips
+        # bidding (cardplay-only games).
+        # WHOLE-SYSTEM mode: biq bids AND plays no-peek — --nopeek with NO --pbn,
+        # so biq recovers each contract from the live auction (deck loaded
+        # Read=Auto). Forced-contract PBN is deliberately suppressed here.
+        whole = getattr(self, "_whole_system", False)
+        forced = None if whole else (getattr(self, "_nopeek_pbn", None) or
+                                     os.environ.get("BIQ_FORCED_PBN"))
+        if whole or getattr(self, "_nopeek_pbn", None) \
+                or os.environ.get("BIQ_NOPEEK"):
+            args.append("--nopeek")
+        if forced:
+            args += ["--pbn", str(forced)]
+        return args
 
     def _pair_seats(self):
         """Which side biq sits on for a biq+biq run — the double-pair 'room'.
@@ -1331,6 +1699,14 @@ class LiveMatchWidget(QWidget):
         self._append(f"[dp] Room {ps['room']}: biq {ps['s1']}/{ps['s2']}. "
                      f"Set Q-Plus Config ▸ Players to {ps['extern']}, then run "
                      f"the SAME deck as the other room.")
+        if ps["room"] == 2:
+            # The temp human seat that lets Q-Plus start the server flips from
+            # East (Room 1) to South (Room 2). Spell it out — this was a
+            # repeated manual fixup.
+            self._append("[dp] Room 2 BEFORE ‘Start bridge server’: set "
+                         "E=Computer and S=Human (one local human is required "
+                         "to start; N/W=Computer). biq joins E & W → Extern. "
+                         "Step 6 then resets S=Computer automatically.")
 
     def _dp_save_room(self):
         """Copy the current side's biq log into the Room-1/Room-2 slot."""
@@ -1407,10 +1783,31 @@ class LiveMatchWidget(QWidget):
         Local-bridge-server dialog until :5555 listens. Calls on_ready()
         once the server is up (immediately if it already was)."""
         if _server_listening():
-            self._append("[panel] :5555 already listening — server up")
-            if on_ready:
-                on_ready()
-            return
+            if _qplus_running():
+                self._append("[panel] :5555 already listening — Q-Plus "
+                             "server up")
+                if on_ready:
+                    on_ready()
+                return
+            # :5555 is held but NO QBRIDGE process exists — a stale biq
+            # listener (server/client/proxy) left over from a prior run.
+            # This used to make us falsely report "server up" and SKIP the
+            # launch, so the Q-Plus window never appeared. Clear our own
+            # known leftovers, then fall through and launch for real.
+            self._append("[panel] :5555 held but no Q-Plus running — "
+                         "clearing stale biq listener (qnet server/client/"
+                         "proxy) before launch…")
+            subprocess.run(["pkill", "-9", "-f", "biq_qnet|qnet_proxy"],
+                           capture_output=True)
+            time.sleep(1.0)
+            if _server_listening():
+                QMessageBox.warning(
+                    self, "Port 5555 busy",
+                    "Port 5555 is held by something other than Q-Plus and I "
+                    "couldn't clear it automatically. Free it (e.g. via ⏻ "
+                    "Exit Q-Plus / kill wine, or kill the process on 5555) "
+                    "and try Launch again.")
+                return
         env = dict(os.environ, WINE_BIN_SERVER="/usr/bin/wine")
         if _qplus_running():
             # already loading (e.g. stuck behind the splash) — don't spawn a
@@ -1866,13 +2263,20 @@ class LiveMatchWidget(QWidget):
     def _step_east(self):
         ps = self._pair_seats() if self.pair.isChecked() else None
         if ps and ps["room"] == 2:
-            # Double-pair Room 2: biq sits E/W, so the Extern/Computer config
-            # is INVERTED (N/S=Computer, E/W=Extern). The calibrated
-            # East=Computer click is wrong here — set the four seats by hand.
-            self._step_done(True,
-                "Room 2 (biq E/W): SET BY HAND in Config ▸ Players — "
-                "N=Computer, S=Computer, E=Extern, W=Extern — then Step to "
-                "‘Deal board 1’. (The auto East-reset is N/S-room only.)")
+            # Double-pair Room 2: biq sits E/W (N/S=Computer, E/W=Extern). The
+            # temp human seat was SOUTH (one local human is needed to start the
+            # server), so the reset mirrors Room 1 but on South, not East.
+            if self.set_south_computer():
+                self._step_done(True,
+                    "Room 2 (biq E/W): South = Computer click sent. Verify all "
+                    "four seats in Config ▸ Players (N=Computer, S=Computer, "
+                    "E=Extern, W=Extern), then Step to ‘Deal board 1’.")
+            else:
+                self._step_done(True,
+                    "Room 2 (biq E/W): SET BY HAND in Config ▸ Players — "
+                    "S=Computer (N=Computer, E=Extern, W=Extern) — then Step "
+                    "to ‘Deal board 1’. (Calibrate ‘South = Computer’ to "
+                    "automate this, like Room 1’s East reset.)")
             return
         self.set_east_computer()
         note = "East = Computer click sequence sent"
@@ -1969,26 +2373,30 @@ class LiveMatchWidget(QWidget):
 
     def _start_biq(self):
         runs = BIQ_ROOT / "tools/runs"
+        self._biq_should_run = True       # arm the crash-watchdog
         if self.pair.isChecked():
             # biq+biq partnership: BOTH clients connect DIRECT to :5555
             # (no proxy) so each sees the server Stop/Start and the reset
             # relaunch rejoins cleanly. The autoclicker watches the first
             # seat's log. Side (N/S Room 1 vs E/W Room 2) per _pair_seats().
             ps = self._pair_seats()
+            a1 = self._biq_args(ps["s1"], SERVER_PORT, ps["log1"]) + ["--pair"]
+            a2 = self._biq_args(ps["s2"], SERVER_PORT, ps["log2"]) + ["--pair"]
             self.biq = self._mk_proc("biq")
-            self.biq.setArguments(
-                self._biq_args(ps["s1"], SERVER_PORT, ps["log1"]) + ["--pair"])
+            self.biq.setArguments(a1)
+            self._arm_biq_watchdog(self.biq, a1, "biq")
             self.biq.start()
             self.biq2 = self._mk_proc("biq")
-            self.biq2.setArguments(
-                self._biq_args(ps["s2"], SERVER_PORT, ps["log2"]) + ["--pair"])
+            self.biq2.setArguments(a2)
+            self._arm_biq_watchdog(self.biq2, a2, "biq2")
             self.biq2.start()
             who = f"biq+biq Room {ps['room']} ({ps['s1']}/{ps['s2']}, direct on :5555)"
             extra = f" — server needs {ps['extern']}"
         else:
+            a1 = self._biq_args(self.seat.currentText(), SERVER_PORT, BIQ_LOG)
             self.biq = self._mk_proc("biq")
-            self.biq.setArguments(
-                self._biq_args(self.seat.currentText(), SERVER_PORT, BIQ_LOG))
+            self.biq.setArguments(a1)
+            self._arm_biq_watchdog(self.biq, a1, "biq")
             self.biq.start()
             who = f"biq as {self.seat.currentText()}"
             extra = ""
@@ -2079,6 +2487,22 @@ class LiveMatchWidget(QWidget):
         for p in pts:
             _click_xy(*p)
             time.sleep(0.6)
+
+    def set_south_computer(self) -> bool:
+        """Room 2 (biq E/W) mirror of set_east_computer: resets the temporary
+        human South seat back to Computer after biq connects. Returns True if
+        the click sequence was sent, False if not calibrated (caller falls
+        back to a by-hand prompt)."""
+        keys = ["cfg_menu", "players_item", "south_computer", "players_ok"]
+        pts = [_load_server_btn(k) for k in keys]
+        if not all(pts):
+            return False
+        self._append("[panel] resetting South = Computer "
+                     "(Configuration ▸ Players ▸ OK)…")
+        for p in pts:
+            _click_xy(*p)
+            time.sleep(0.6)
+        return True
 
     def _reset_calibration_missing(self, trans_path):
         """Return a list of calibration targets still missing for an
@@ -2198,6 +2622,8 @@ class LiveMatchWidget(QWidget):
     def stop_all(self, silent=False, halt_steps=True):
         # a manual/forced stop must NOT trigger the auto export-on-exit
         self._await_session_end = False
+        # tell the crash-watchdog this is intentional — don't auto-restart
+        self._biq_should_run = False
         # A user/forced stop halts the stepper too: pending async polls check
         # _step_running and bail. (We don't reset the pointer, so you can
         # resume from where you were.) halt_steps=False is for the internal
@@ -2212,15 +2638,19 @@ class LiveMatchWidget(QWidget):
                 self._refresh_step_list()
                 self._update_step_buttons()
         for p in (self.clicker, self._oneshot, self.biq, self.biq2,
-                  self.proxy):
+                  self.proxy, getattr(self, "_clk", None),
+                  getattr(self, "_pbn_proc", None)):
             if p and p.state() != QProcess.ProcessState.NotRunning:
                 p.terminate()
                 if not p.waitForFinished(1500):
                     p.kill()
         # also kill any DETACHED biq the autoclicker relaunched during a
-        # reset (bracketed pattern → never matches this process).
+        # reset, and the cardplay clicker (which moves the mouse) — bracketed
+        # patterns so they never match this process.
         subprocess.run(["pkill", "-f", "biq[_]qnet_client"])
+        subprocess.run(["pkill", "-f", "qplus[_]cardplay_clicker"])
         self.clicker = self._oneshot = self.biq = self.biq2 = self.proxy = None
+        self._clk = self._pbn_proc = None
         self._match_started = False
         self.b_start.setEnabled(True)
         self.b_run.setEnabled(False)
@@ -2343,23 +2773,39 @@ class LiveMatchWidget(QWidget):
         write a fresh .qss. biq's client log under-counts report_score (the
         score message doesn't always reach the client), so the .qss is the
         authoritative source. Skips (with a note) if not calibrated."""
-        keys = ["view_menu", "view_scoring_table", "save_and_send", "save_ok"]
-        vm, vst, ss, ok = (_load_server_btn(k) for k in keys)
-        if not all((vm, vst, ss, ok)):
-            miss = [k for k, p in zip(keys, (vm, vst, ss, ok)) if not p]
+        ss, ok = _load_server_btn("save_and_send"), _load_server_btn("save_ok")
+        me = _load_server_btn("match_end")
+        if not (ss and ok):
+            miss = [k for k, p in (("save_and_send", ss), ("save_ok", ok))
+                    if not p]
             self._append("[panel] score-sheet export skipped — not "
                          "calibrated: " + ", ".join(miss)
                          + " (Calibrate / edit captures…).")
             return False
-        self._append("[panel] exporting score sheet "
-                     "(View ▸ Scoring Table ▸ Save and send ▸ OK)…")
-        # View → Scoring Table as ONE atomic chained action (the menu closes
-        # the instant the mouse pauses), then wait for the table window and
-        # the save/confirm dialog before their clicks. Log each step so a
-        # missed click is diagnosable from panel.log afterwards.
-        _menu_pick(vm, vst)
-        self._append(f"[panel]   View {vm} → Scoring Table {vst} (atomic)")
-        time.sleep(2.0)          # scoring-table window opens
+        # Preferred path: after the last board Q-Plus pops the modal "Match
+        # End" dialog, which BLOCKS the View menu (so the old View ▸ Scoring
+        # Table clicks miss). Its ‘View the scoring table’ button dismisses
+        # the dialog AND opens the scoring table in one click — so when
+        # match_end is calibrated we click it and SKIP the View-menu nav.
+        if me is not None:
+            self._append("[panel] dismissing Match End dialog via ‘View the "
+                         "scoring table’ → scoring table opens…")
+            _click_xy(*me)
+            self._append(f"[panel]   Match End ▸ View scoring table {me}")
+            time.sleep(2.0)
+        else:
+            vm, vst = (_load_server_btn(k) for k in
+                       ("view_menu", "view_scoring_table"))
+            if not (vm and vst):
+                self._append("[panel] score-sheet export skipped — calibrate "
+                             "‘match_end’ (preferred) OR view_menu + "
+                             "view_scoring_table.")
+                return False
+            self._append("[panel] exporting score sheet (View ▸ Scoring "
+                         "Table ▸ Save and send ▸ OK)…")
+            _menu_pick(vm, vst)
+            self._append(f"[panel]   View {vm} → Scoring Table {vst} (atomic)")
+            time.sleep(2.0)
         _click_xy(*ss)
         self._append(f"[panel]   Save and send {ss}")
         time.sleep(1.5)          # save / confirm dialog
@@ -2517,21 +2963,30 @@ class ControlPanel(QMainWindow):
 
     def _build_menu(self):
         mb = self.menuBar()
-        cfg_menu = mb.addMenu("⚙ Config")
-        cfg_menu.addAction("Run settings & options…").triggered.connect(
-            self.live.show_config_dialog)
-        cfg_menu.addAction("Generate test deck (BDE)…").triggered.connect(
-            self.live.show_deck_dialog)
-        cal_menu = mb.addMenu("🎯 Calibrate")
-        cal_menu.addAction("Calibration manager…").triggered.connect(
+        setup = mb.addMenu("🔧 Setup")
+        setup.addAction("Launch Q-Plus server").triggered.connect(
+            lambda: self.live.launch_qplus())
+        setup.addAction("New run (reset logs)").triggered.connect(
+            self.live.new_run)
+        setup.addSeparator()
+        setup.addAction("Calibration manager…").triggered.connect(
             self.live.open_calibrate)
-        cal_menu.addSeparator()
-        cal_menu.addAction("Show points — Server buttons").triggered.connect(
+        setup.addAction("Show points — Server buttons").triggered.connect(
             lambda: self.live.show_calibration_overlay("server"))
-        cal_menu.addAction("Show points — System dialog").triggered.connect(
+        setup.addAction("Show points — System dialog").triggered.connect(
             lambda: self.live.show_calibration_overlay("systems"))
-        cal_menu.addAction("Show points — Match Control").triggered.connect(
+        setup.addAction("Show points — Match Control").triggered.connect(
             lambda: self.live.show_calibration_overlay("transition"))
+        setup.addSeparator()
+        setup.addAction("Advanced settings…").triggered.connect(
+            self.live.show_config_dialog)
+        tools = mb.addMenu("🧰 Tools")
+        tools.addAction("🃏 Generate deck…").triggered.connect(
+            self.live.show_deck_dialog)
+        tools.addAction("🛡 No-peek cardplay…").triggered.connect(
+            self.live.show_nopeek_dialog)
+        tools.addAction("✓ Validate run").triggered.connect(
+            self.live.validate_last_run)
         help_menu = mb.addMenu("&Help")
         act = help_menu.addAction("Button &reference…")
         act.triggered.connect(self._show_help)

@@ -343,8 +343,8 @@ def build_bdl_snapshot(board: BoardState,
 class GameLogger:
     """Logs completed bridge hands in BDL format."""
 
-    def __init__(self, log_dir: str = None, ns_system: str = "BEN-NN",
-                 ew_system: str = "BEN-NN"):
+    def __init__(self, log_dir: str = None, ns_system: str = "biq",
+                 ew_system: str = "biq"):
         """Initialize the logger.
 
         Args:

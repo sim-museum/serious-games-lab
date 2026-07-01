@@ -1,5 +1,85 @@
 # biq — Claude Code project notes
 
+## STATUS — slam bidding + harness cleanup (2026-06-14)
+
+Shipped on branch **24.04** and merged to **main** (merge `a01ef7a`). Run the app
+with `./run.sh` (just fixed: it now uses the venv python directly — bare `python`
+isn't always on PATH). Default seating is human-South + biq N/E/W; config uses the
+`native` bidder (N/S Precision90M, E/W SAYC) + no-peek cardplay — i.e. all the
+latest engine, no setup needed.
+
+**Slam bidding — five safe fixes (all in `backend/native_bidder.py`).** Each gated
+so 256-512-deal random regressions hold ZERO NEW phantoms (the hard rule; any
+blind HCP bump over-fires — measured repeatedly):
+- Jacoby 2NT responder continuation: place the contract in the agreed major,
+  never raise opener's shortness reply (was `1S-2NT-3H-4H`, a 4-card heart fit).
+- Killed phantom 7-level grands: the 5NT king-ask now needs ALL 5 keycards (was
+  ≥4 = off a key); plus a hard total-keycards-=-5 clamp in `_asker_after_rkc`.
+- Opener Jacoby-2NT reply only fires on a DIRECT 2NT (not a natural 2NT after a
+  2/1) — stopped opener bidding 3-of-shortness in a VOID suit.
+- Strong balanced responder (19+) bids 4NT quant instead of parking in 3NT.
+- Don't pass opener's jump-rebid (1X-1Y-3X) with game values — drive to game / RKC.
+Measured live: slam-deck OVERBID bucket −91→−39, ZERO phantom grands / wrong-strain
+in the latest run (M2026-06-14-O, −2.91/bd — best slam-deck number yet). Remaining
+frontier = the MISSED-SLAM bucket (NT/minor/distributional slams biq stops short
+of); needs control-showing, NOT HCP gates — a crude attempt re-adds phantoms, so
+DEFERRED. Also fixed a pre-existing `_opener_rebid` crash (`KeyError None` when
+reopening a takeout double, `opp_suit` is None). A ~0.4% baseline phantom-slam rate
+on wide random sampling is pre-existing + still open.
+
+**Test-harness GUI simplified** (`tools/qplus_control_panel.py`): four groups
+(1 Configure · 2 Mode · 3 Run · 4 Result); a single **Mode** dropdown
+{Whole-system, A/B, Double-pair, No-peek} replaces the four scattered boxes / the
+no-peek pop-up; one **▶ Start** path (+ the Step/Autopilot debugger); calibration +
+utilities moved to Setup/Tools menus. The manual-startup trio + advanced knobs are
+gated by the run flow, so they stay (Setup ▸ Advanced settings). Embedded
+LiveMatchWidget tab in `qplus_mixed_corpus.py` unaffected.
+
+**UML docs** under `docs/uml/` (app flows) and `docs/uml/harness/` (test harness) —
+PlantUML + PNGs, READMEs with `file:line` anchors. The harness diagrams include a
+colour-coded cleanup map and the proposed layout that's now implemented.
+
+**Validation/measurement reminders.** `tools/run_preflight.py` grades a run vs the
+locked rig → INVALID / VALID-with-warnings / VALID; the common "VALID with
+warnings" is just the deck-source WARN (deal-number labels, an A/B-pair concern).
+Slam-bidding changes: validate offline with `tools/slam_bidding_eval.py` + a
+random-deal phantom sweep BEFORE trusting; the live truth is a whole-system run
+through `tools/whole_system_analyze.py`. NB pre-existing uncommitted WIP in the
+tree (`bidding_systems.py`, `table_view.py`, a `probes.pbn` deletion, …) is NOT
+mine and was left untouched.
+
+## STATUS — no-peek cardplay engine (2026-06-12)
+
+biq's no-peek cardplay (`backend/nopeek.py`) is now an **alpha-mu** engine: DDS
+on belief-sampled hidden layouts + a CONSISTENT line across indistinguishable
+samples — strong like PIMC but with **no strategy-fusion tells** (the user's
+requirement: "DDS on representative samples is fine; the tells are what they'd
+scoff at"). Live-viable: per-decision time budget ≤5s/card; the Q-NET client
+forks every card so a libdds crash can't wedge a match.
+
+**Measured LIVE vs Q-Plus 17.1** (forced-contract rig, 61 paired boards,
+`nopeek_qss_compare`): from a per-seat engine 1.5–1.8 tr/board behind, now
+**declarer ≈−0.6, defence −0.56 tr/board** — and legible.
+
+Shipped this arc (all A/B-gated with the SEEDED `tools/nopeek_eval.py --rng`):
+- Alpha-mu declarer (1.484→~1.06 vs DD) and defence (1.219→~0.80, edges PIMC).
+- **Defensive signalling** (`backend/signals.py`): standard attitude/count/
+  suit-pref among trick-equivalent cards; emitted via the alpha-mu `tiebreak`.
+- **Reliable signaller**: `AlphaMu.signal_margin` (default 0.15) so biq plays the
+  convention card among near-equal spots — trick-neutral-to-positive.
+- Interior-sequence opening-lead fix (KJTx/AJTx/AT9x → J/J/T, was the bottom).
+
+Measured + SHELVED (default-off, documented negatives): defence rollout
+(`defender_search`), rollout-leaf alpha-mu, hard-filter signal-READING
+(`signal_read`; biq isn't a reliable enough signaller for hard filters in
+self-play). Env knobs: `BIQ_AMU_WORLDS/DEPTH/BUDGET/DEFENSE`, `BIQ_DEF_ROLLOUT`,
+`BIQ_DEF_ROLLOUT_LEAF`, `BIQ_READ_SIGNALS`, `BIQ_SIGNAL_MARGIN`.
+
+DEFERRED (user's signal-reading design): convention config setting, end-of-hand
+mis-signal admonition bar, auto-disable counter (`signal_read.mis_signals` is
+built + tested). See memory `plan_biq_singledummy_engine`,
+`project_biq_defensive_signalling`.
+
 ## Cardplay engine — DO NOT confuse with BEN
 
 biq is **NN-free**. Bidding goes through `native_bidder.NativeBiddingEngine`
@@ -141,6 +221,88 @@ biq's plays. Useful for genuine competitive testing.
 
 **Effort**: 2-3 days RE + ~500 lines of protocol client.
 **Status**: TO BUILD THIRD.
+
+## biq as Q-NET SERVER, Q-Plus as client (DEFERRED 2026-06-06)
+
+The mirror of Plan 3: make **biq host** a live match that a **Q-Plus
+client** joins over Q-NET, rendered in biq's GUI. Paused mid-build; this
+section captures the design, what's done, and what's left so it can be
+resumed cleanly.
+
+### Critical gotcha — two DIFFERENT server protocols
+
+biq's GUI **"Network → Start bridge server"** (`network/server.py`,
+`client.py`, the lobby dialog) speaks biq's **NATIVE protocol: JSON
+objects, newline-delimited** (`network/protocol.py`). It is for **biq↔biq**
+play only (one biq client per seat). **Q-Plus CANNOT join it** — Q-Plus
+speaks Q-NET (plain-text bracketed tokens, `"cmd" [arg]...`). A Q-Plus
+client connects the TCP socket ("Connected to server") but its `join_game`
+handshake is unintelligible to biq's JSON server, so the seat stays "not
+conn." and Join does nothing. Confirmed live 2026-06-06. **Keep the two
+paths separate: biq-native lobby stays for biq↔biq; the Q-NET host path is
+additive and must never break it.**
+
+### Architecture chosen (and why)
+
+Do NOT marry Q-NET into the event-driven `NetworkGameController` (high
+risk, untestable without live Q-Plus). Instead **wrap the proven
+`tools/biq_qnet_server.py` `BiqServer` (synchronous Q-NET match loop) in a
+`QThread`**; its callbacks emit Qt signals that drive the GUI table +
+status strip live. biq↔biq native server and the `biq_qnet_server` CLI are
+both untouched. Validate via the biq-client↔biq-server loopback
+(`biq_qnet_client` stands in for Q-Plus — same wire format).
+
+### Status
+
+- **DONE — `BiqServer` callbacks** (committed-pending). `__init__` takes
+  `callbacks={}` (no-ops by default → CLI unchanged); `_emit()` fires
+  `status`/`deal`/`bid`/`contract`/`card`/`board_done`; `stop()` for
+  thread shutdown. Verified: constructs + emits.
+- **TO BUILD — `QNetServerThread`**: QThread running
+  `accept()`/`handshake()`/`run_match()`, callbacks → queued Qt signals.
+- **TO BUILD — GUI action + handlers**: a menu action ("Start Q-NET server
+  (Q-Plus client)…"), handlers that render deal/auction/contract/running
+  score, East shown as 🖧 Network (reuse `table_view.set_seat_types` +
+  the new status strip).
+
+### The THREE setups and their MEASUREMENT value (decision context)
+
+Measurement quality tracks how FEW seats are biq (less biq-vs-biq
+cancellation — see the cardplay-benchmarking section above):
+
+1. **biq host + 1 Q-Plus client** — biq plays 3 seats (N/S/W), Q-Plus 1
+   (E). Closed room = all-biq, double-dummy. **Poor measurement**: biq is
+   3/4 → cancellation dominates; baseline re-bids + is DD (muddy). Value is
+   only as a **protocol/GUI proof + demo**. This is the in-progress build.
+2. **Q-Plus host + 1 biq client** (the PROVEN `biq_qnet_client` runs) — biq
+   1 seat (E), Q-Plus 3 + its own all-Q-Plus real-play closed room. **Clean
+   single-seat** biq-vs-Q-Plus (no cancellation, biq is 1/4). Caveat: biq's
+   partner is a Q-Plus bot, so limited bidding signal; mind the deal-
+   rotation trap (use a fixed BDE deck).
+3. **biq host + Q-Plus E/W pair** (multi-client, TO BUILD) — biq N/S pair
+   vs Q-Plus E/W pair (2 bots). All-biq closed room (N/S held biq) isolates
+   the WHOLE E/W pair → **best measurement** (full external pair, no
+   cancellation). Needs: multi-client `BiqServer` (seat→conn map + per-seat
+   routing; currently 1 client) and EITHER two Q-Plus client instances
+   (one joins E, one W) OR one client driving both. For a clean pair number
+   upgrade the closed room from all-biq-DD to real biq E/W play, or use the
+   double-pair swap (`tools/double_pair_compare.py`).
+
+### Open Q-Plus-side unknowns (verify live before Setup 3)
+
+- Will a Q-Plus **client** auto-play a **Computer bot** at its joined seat,
+  or insist on a human there? (In proven runs biq was the bot; Q-Plus-
+  client-as-bot is unconfirmed.)
+- Can **two Q-Plus client instances** connect to one server (for the E/W
+  pair)? If either fails, the pair comparison stays on Setup 2 (Q-Plus as
+  server).
+
+### Resume order
+
+Finish Setup 1 (QThread + GUI handlers) as the plumbing/demo proof → quick
+live Q-Plus-client-as-bot check → if it passes, build multi-client for
+Setup 3 (the real measurement target). See memory
+[[project_biq_qnet_server]] and [[project_biq_validation_plan]].
 
 ## Related memory
 

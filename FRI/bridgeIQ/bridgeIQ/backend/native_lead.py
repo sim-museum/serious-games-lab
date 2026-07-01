@@ -168,14 +168,16 @@ def _pick_card_from_suit(cards: List[Card], is_trump_contract: bool,
         return cards[0]
     if token.startswith("JT"):
         return cards[0]
-    # Interior sequence: KQT9, KJT, AJT etc. Common rule: top of
-    # internal touching honors.
+    # Interior sequence: lead the TOP of the internal touching honours
+    # (the high card sits detached above the run). KJTx → J, AJTx → J,
+    # AT9x → T — i.e. cards[1], the second card. (Leading cards[2], the
+    # bottom of the touching pair, is a textbook error a good player spots.)
     if token.startswith("KJT"):
-        return cards[2]  # the T (third card) — top of interior sequence
+        return cards[1]  # the J — top of the JT interior sequence
     if token.startswith("AJT"):
-        return cards[2]
+        return cards[1]  # the J
     if token.startswith("AT9"):
-        return cards[2]
+        return cards[1]  # the T
 
     # Top of nothing — long suit of small cards (no honor higher
     # than T).

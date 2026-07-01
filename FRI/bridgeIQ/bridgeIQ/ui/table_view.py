@@ -10,31 +10,42 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QTimer, QRect, QPoint
 from PyQt6.QtGui import (
     QFont, QColor, QPalette, QPainter, QBrush, QPen, QPolygon, QFontMetrics,
-    QPixmap, QImage
+    QPixmap, QImage, QRadialGradient
 )
 import os
 
 from backend.models import (
-    BoardState, Card, Hand, Seat, Suit, Trick, Vulnerability, Contract, Rank
+    BoardState, Card, Hand, Seat, Suit, Trick, Vulnerability, Contract, Rank,
+    PlayerType
 )
 from typing import Optional, List, Dict
 
 
-# BridgeIQ color scheme
+# BridgeIQ color scheme — matched to pokerIQ for a consistent look across the
+# two games: near-black background, muted dark-green felt with a brown rail,
+# gold accents, light "ink" text. (pokerIQ palette: bg #0c1117, felt #15543a,
+# gold #d9b25b, ink #eef3f7, card-red #d23b3b, accent #58a6ff.)
 COLORS = {
-    'background': '#1a3a5c',
-    'table_green': '#2d9c40',
-    'panel_teal': '#4a7c8a',
-    'card_back': '#1a2a4a',
-    'card_border': '#c0a050',
-    'card_face': '#ffffff',
-    'text_white': '#ffffff',
-    'text_black': '#000000',
-    'vuln_red': '#cc0000',
-    'highlight': '#ffff88',
-    'button_bg': '#6090a0',
-    'button_text': '#ffffff',
-    'selectable_border': '#ff0000',
+    'background': '#0c1117',     # pokerIQ --bg (near-black)
+    'table_green': '#15543a',    # pokerIQ --felt (muted dark green)
+    'felt_hi': '#1d7a52',        # brighter felt centre (radial-gradient glow)
+    'felt_rail': '#4a3420',      # pokerIQ --rail (warm brown table edge)
+    'panel_teal': '#0d141c',     # pokerIQ panel background
+    'card_back': '#5e1414',      # pokerIQ card-back red
+    'card_border': '#d9b25b',    # pokerIQ --gold
+    'card_face': '#f6f7f9',      # pokerIQ card face
+    'text_white': '#eef3f7',     # pokerIQ --ink
+    'text_muted': '#9aa7b4',     # pokerIQ --muted
+    'text_black': '#1a1f29',     # pokerIQ --card-dark (text on light)
+    'gold': '#d9b25b',           # pokerIQ --gold accent
+    'accent': '#58a6ff',         # pokerIQ --accent (hero/turn blue)
+    'pos': '#3fb950',            # pokerIQ --pos
+    'vuln_red': '#f85149',       # pokerIQ --neg
+    'highlight': '#d9b25b',      # pokerIQ gold (turn glow)
+    'button_bg': '#2b3a4d',      # pokerIQ summary-button
+    'button_text': '#eef3f7',
+    'selectable_border': '#d9b25b',  # gold = your turn (pokerIQ feel)
+    'line': '#2c4a3a',           # subtle warm green-grey panel border
 }
 
 # Card dimensions - sized to fill 1920x1080 screen.
@@ -56,6 +67,10 @@ class CardWidget(QWidget):
     """Playing card widget using traditional card images from tmcgui deck."""
 
     card_clicked = pyqtSignal(object)
+    # Fires on ANY left-click of a face-up card, regardless of `selectable`
+    # (card_clicked is gated by selectable because it drives actual play).
+    # Used by the trick area to offer a why-this-card explanation popup.
+    card_pressed = pyqtSignal(object)
 
     SUIT_SYMBOLS = {
         Suit.SPADES: '♠',
@@ -285,8 +300,12 @@ class CardWidget(QWidget):
         self.update()
 
     def mousePressEvent(self, event):
-        if self.card and self.selectable and event.button() == Qt.MouseButton.LeftButton:
-            self.card_clicked.emit(self.card)
+        if self.card and event.button() == Qt.MouseButton.LeftButton:
+            # Always announce the press (for explanation), then the
+            # selectable-gated click that drives actual card play.
+            self.card_pressed.emit(self.card)
+            if self.selectable:
+                self.card_clicked.emit(self.card)
 
     def enterEvent(self, event):
         """Highlight card when mouse enters if selectable"""
@@ -419,17 +438,17 @@ class FannedHandWidget(QWidget):
     def _update_label(self):
         if self.is_dummy:
             text = f"{self.seat.to_char()} / Dummy"
-            style = "background-color: #ff6688; color: black; padding: 3px 10px; border-radius: 4px;"
+            style = "background-color: #14202c; color: #3fb950; padding: 3px 10px; border-radius: 4px;"
         elif self.is_declarer:
             text = f"{self.seat.to_char()} / Declarer"
-            style = "background-color: #ff6688; color: black; padding: 3px 10px; border-radius: 4px;"
+            style = "background-color: #14202c; color: #d9b25b; padding: 3px 10px; border-radius: 4px;"
         elif self.is_human:
             # Show HUMAN label for human player
             text = f"{self.seat.to_char()}: HUMAN"
-            style = "background-color: #88ccff; color: black; padding: 3px 10px; border-radius: 4px;"
+            style = "background-color: #14202c; color: #58a6ff; padding: 3px 10px; border-radius: 4px;"
         else:
-            text = f"{self.seat.to_char()}: BEN"
-            style = "background-color: #d0d0e0; color: black; padding: 3px 10px; border-radius: 4px;"
+            text = f"{self.seat.to_char()}: biq"
+            style = "background-color: #14202c; color: #eef3f7; padding: 3px 10px; border-radius: 4px;"
         self.label.setText(text)
         self.label.setStyleSheet(f"QLabel {{ {style} }}")
 
@@ -599,25 +618,47 @@ class FannedHandWidget(QWidget):
 
 
 class TrickAreaWidget(QFrame):
-    """Green table center with played cards at fixed compass positions"""
+    """Green table center with played cards at compass positions.
 
-    # Trick area — green box plus an outer band where the compass
-    # arrows sit. The widget covers the OUTER rect (green + arrow
-    # band); the green rounded rectangle is painted as an inset rect
-    # inside paintEvent, leaving the band as transparent so the
-    # arrows visually sit outside the green box.
-    OUTER_MARGIN = 48        # space around the green box for arrows
-    GREEN_WIDTH  = 460
-    GREEN_HEIGHT = 400
-    AREA_WIDTH   = GREEN_WIDTH  + 2 * OUTER_MARGIN
-    AREA_HEIGHT  = GREEN_HEIGHT + 2 * OUTER_MARGIN
+    The whole thing — green box, played cards, arrows — SCALES to the
+    size the layout gives the widget, so on a tall window the cards are
+    large and on a cramped 1080 they shrink to fit instead of being
+    clipped. Geometry is recomputed in resizeEvent against a fixed
+    DESIGN size (the look at scale 1.0); a min-scale floor keeps the
+    bidding overlay readable and stops it collapsing to nothing.
+    """
 
-    TRICK_CARD_WIDTH = 130
-    TRICK_CARD_HEIGHT = 182
+    # Design (scale = 1.0) geometry. The widget covers the OUTER rect
+    # (green + arrow band); the green rounded rect is painted inset so
+    # the band stays transparent and the arrows sit outside the green.
+    DESIGN_BAND   = 44        # arrow band around the green box
+    DESIGN_GREEN_W = 460
+    DESIGN_GREEN_H = 360
+    DESIGN_CARD_W = 130
+    DESIGN_CARD_H = 182
+    DESIGN_CARD_INSET = 18    # gap between a played card and the green border
+    DESIGN_CHEVRON = 40
+    DESIGN_ARROW_GAP = 4
+    AREA_WIDTH  = DESIGN_GREEN_W + 2 * DESIGN_BAND
+    AREA_HEIGHT = DESIGN_GREEN_H + 2 * DESIGN_BAND
+    MIN_SCALE = 0.74         # floor — keeps the green ≥ the bidding overlay
+    MAX_SCALE = 1.0          # never grow the cards past the design size
+    BID_W, BID_H = 320, 260  # bidding overlay (fixed; centred in the green)
+
+    # Emitted (seat, card) when a played card is clicked while the
+    # "explain biq's actions" mode is on.
+    card_explain_requested = pyqtSignal(object, object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(self.AREA_WIDTH, self.AREA_HEIGHT)
+        self._explain_enabled = False
+        self.setMinimumSize(round(self.AREA_WIDTH * self.MIN_SCALE),
+                            round(self.AREA_HEIGHT * self.MIN_SCALE))
+        # Take the vertical space the layout offers (so a taller window
+        # gives bigger cards); keep a preferred width so the side columns
+        # aren't squeezed.
+        self.setSizePolicy(QSizePolicy.Policy.Preferred,
+                           QSizePolicy.Policy.Expanding)
         # Transparent background — the green box is rendered in
         # paintEvent inside an inset rect so the outer band where
         # the compass arrows live shows the page colour behind it.
@@ -630,82 +671,121 @@ class TrickAreaWidget(QFrame):
         self.auction = []
         self.dealer = Seat.NORTH
         self.bidding_status = ""
-
+        self._green_rect = QRect(self.DESIGN_BAND, self.DESIGN_BAND,
+                                 self.DESIGN_GREEN_W, self.DESIGN_GREEN_H)
         self._setup_ui()
 
-    def paintEvent(self, event):
-        """Paint the green box as an inset rounded rectangle.
+    def sizeHint(self) -> QSize:
+        return QSize(self.AREA_WIDTH, self.AREA_HEIGHT)
 
-        The widget's overall size includes a transparent outer band
-        for the compass arrows; the green table itself only covers
-        the inset rect.
-        """
+    def _scale(self) -> float:
+        s = min(self.width() / self.AREA_WIDTH,
+                self.height() / self.AREA_HEIGHT)
+        return max(self.MIN_SCALE, min(self.MAX_SCALE, s))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._relayout()
+
+    def _relayout(self):
+        """Recompute the green box + every child's geometry for the
+        current widget size."""
+        s = self._scale()
+        band = self.DESIGN_BAND * s
+        gw, gh = self.DESIGN_GREEN_W * s, self.DESIGN_GREEN_H * s
+        area_w, area_h = gw + 2 * band, gh + 2 * band
+        ox = (self.width() - area_w) / 2.0
+        oy = (self.height() - area_h) / 2.0
+        green = QRect(round(ox + band), round(oy + band), round(gw), round(gh))
+        self._green_rect = green
+        cx, cy = green.center().x(), green.center().y()
+        cw, ch = self.DESIGN_CARD_W * s, self.DESIGN_CARD_H * s
+        inset = self.DESIGN_CARD_INSET * s
+
+        card_geom = {
+            Seat.NORTH: (cx - cw / 2, green.top() + inset),
+            Seat.SOUTH: (cx - cw / 2, green.bottom() - inset - ch),
+            Seat.WEST:  (green.left() + inset, cy - ch / 2),
+            Seat.EAST:  (green.right() - inset - cw, cy - ch / 2),
+        }
+        for seat, (x, y) in card_geom.items():
+            w = self.card_widgets.get(seat)
+            if w is not None:
+                w.setFixedSize(round(cw), round(ch))
+                w.move(round(x), round(y))
+
+        chev = self.DESIGN_CHEVRON * s
+        gap = self.DESIGN_ARROW_GAP * s
+        arrow_geom = {
+            'N': (cx - chev / 2, green.top() - gap - chev),
+            'S': (cx - chev / 2, green.bottom() + gap),
+            'W': (green.left() - gap - chev, cy - chev / 2),
+            'E': (green.right() + gap, cy - chev / 2),
+        }
+        for d, (x, y) in arrow_geom.items():
+            a = getattr(self, "arrows", {}).get(d)
+            if a is not None:
+                a.setFixedSize(round(chev), round(chev))
+                a.move(round(x), round(y))
+
+        if getattr(self, "bidding_widget", None) is not None:
+            self.bidding_widget.move(cx - self.BID_W // 2, cy - self.BID_H // 2)
+
+    def paintEvent(self, event):
+        """Paint the green box as an inset rounded rectangle, sized and
+        centred for the current scale (computed in _relayout)."""
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        m = self.OUTER_MARGIN
-        inset = QRect(m, m, self.GREEN_WIDTH, self.GREEN_HEIGHT)
-        painter.setPen(QPen(QColor("#1a5c30"), 4))
-        painter.setBrush(QBrush(QColor(COLORS['table_green'])))
-        painter.drawRoundedRect(inset, 12, 12)
+        # Brown rail + a radial-gradient felt (brighter at centre) for the
+        # warm pokerIQ table glow instead of a flat green.
+        g = self._green_rect
+        grad = QRadialGradient(float(g.center().x()), float(g.center().y()),
+                               float(max(g.width(), g.height())) / 1.4)
+        grad.setColorAt(0.0, QColor(COLORS['felt_hi']))
+        grad.setColorAt(1.0, QColor(COLORS['table_green']))
+        painter.setPen(QPen(QColor(COLORS['felt_rail']), 7))   # brown rail (pokerIQ)
+        painter.setBrush(QBrush(grad))
+        painter.drawRoundedRect(g, 14, 14)
 
     def _setup_ui(self):
-        # Absolute positioning. Coordinates are relative to the
-        # widget origin (which is the outer-band top-left); the
-        # green box sits at (OUTER_MARGIN, OUTER_MARGIN).
-        m = self.OUTER_MARGIN
-        gw, gh = self.GREEN_WIDTH, self.GREEN_HEIGHT
-        tcw, tch = self.TRICK_CARD_WIDTH, self.TRICK_CARD_HEIGHT
-
-        # Geometric centre of the green box (in widget coordinates).
-        center_x, center_y = m + gw // 2, m + gh // 2
-        chevron_size = 40
-        # Gap between the played card and the green-box border.
-        card_inset = 22
-
-        positions = {
-            Seat.NORTH: (center_x - tcw // 2, m + card_inset),
-            Seat.SOUTH: (center_x - tcw // 2, m + gh - card_inset - tch),
-            Seat.WEST:  (m + card_inset, center_y - tch // 2),
-            Seat.EAST:  (m + gw - card_inset - tcw, center_y - tch // 2),
-        }
-
-        # Create card widgets with fixed positions
+        # Create the child widgets; their geometry is set by _relayout
+        # (called on every resize), so positions here are placeholders.
         for seat in Seat:
             cw_widget = CardWidget(parent=self)
-            cw_widget.setFixedSize(tcw, tch)
             cw_widget.setVisible(False)
-            cw_widget.move(positions[seat][0], positions[seat][1])
+            cw_widget.card_pressed.connect(
+                lambda _c, s=seat: self._on_played_card_pressed(s))
             self.card_widgets[seat] = cw_widget
 
-        # Direction arrows live in the OUTER band, just outside the
-        # green box. The triangle's flat side hugs the green border;
-        # the apex points outward.
-        arrow_gap = 4   # space between green border and arrow's flat side
-        arrow_positions = {
-            'N': (center_x - chevron_size // 2,
-                  m - arrow_gap - chevron_size),
-            'S': (center_x - chevron_size // 2,
-                  m + gh + arrow_gap),
-            'W': (m - arrow_gap - chevron_size,
-                  center_y - chevron_size // 2),
-            'E': (m + gw + arrow_gap,
-                  center_y - chevron_size // 2),
-        }
         # Keep references keyed by direction so set_vulnerability can
         # repaint the matching pair (NS or EW) pink.
         self.arrows: Dict[str, DirectionArrow] = {}
-        for d, pos in arrow_positions.items():
-            arrow = DirectionArrow(d, self)
-            arrow.setFixedSize(chevron_size, chevron_size)
-            arrow.move(pos[0], pos[1])
-            self.arrows[d] = arrow
+        for d in ('N', 'S', 'W', 'E'):
+            self.arrows[d] = DirectionArrow(d, self)
 
-        # Bidding table overlay — centred on the green box.
+        # Bidding table overlay — fixed size, centred on the green box.
         self.bidding_widget = BiddingTableWidget(self)
-        bw, bh = 320, 260
-        self.bidding_widget.move(center_x - bw // 2, center_y - bh // 2)
-        self.bidding_widget.setFixedSize(bw, bh)
+        self.bidding_widget.setFixedSize(self.BID_W, self.BID_H)
+
+        self._relayout()
+
+    def set_explain_enabled(self, on: bool):
+        """Toggle click-to-explain on played cards (and the centre bidding
+        overlay's bid cells), updating cursors for feedback."""
+        self._explain_enabled = bool(on)
+        cursor = (Qt.CursorShape.PointingHandCursor if on
+                  else Qt.CursorShape.ArrowCursor)
+        for cw in self.card_widgets.values():
+            cw.setCursor(cursor)
+        self.bidding_widget.set_explain_enabled(on)
+
+    def _on_played_card_pressed(self, seat: Seat):
+        if not self._explain_enabled:
+            return
+        card = self.played_cards.get(seat)
+        if card is not None:
+            self.card_explain_requested.emit(seat, card)
 
     def set_show_bidding(self, show: bool):
         self.show_bidding = show
@@ -829,6 +909,11 @@ class BiddingTableWidget(QFrame):
     N/E/S/W version we started with).
     """
 
+    # Emitted (seat, bid) when the user clicks a bid cell while the
+    # "explain biq's actions" mode is on. MainWindow decides whether to
+    # actually pop the explanation (it knows who made the bid).
+    bid_clicked = pyqtSignal(object, object)
+
     # Cell sizing kept here so set_auction can reproduce it without
     # the magic numbers drifting between the header row and the body.
     _CELL_W = 70
@@ -843,7 +928,28 @@ class BiddingTableWidget(QFrame):
             " border-radius: 6px; }"
         )
         self.setMinimumSize(260, 180)
+        # Click-to-explain support: filled in by set_auction, toggled by
+        # set_explain_enabled (off by default — matches the preference).
+        self._explain_enabled = False
+        self._bid_cells = []
         self._setup_ui()
+
+    def set_explain_enabled(self, on: bool):
+        """Enable/disable click-to-explain on bid cells (cursor + clicks)."""
+        self._explain_enabled = bool(on)
+        for cell in self._bid_cells:
+            cell.setCursor(Qt.CursorShape.PointingHandCursor if on
+                           else Qt.CursorShape.ArrowCursor)
+
+    def eventFilter(self, obj, event):
+        from PyQt6.QtCore import QEvent
+        if (self._explain_enabled
+                and event.type() == QEvent.Type.MouseButtonPress
+                and event.button() == Qt.MouseButton.LeftButton
+                and getattr(obj, "_biq_bid", None) is not None):
+            self.bid_clicked.emit(obj._biq_seat, obj._biq_bid)
+            return True
+        return super().eventFilter(obj, event)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -934,6 +1040,7 @@ class BiddingTableWidget(QFrame):
 
         # Clear body.
         self._clear_layout(self.bids_layout)
+        self._bid_cells = []
 
         # Build rows of four cells. Position 0 in each row is dealer's
         # seat — bids feed in dealer-first order.
@@ -945,7 +1052,7 @@ class BiddingTableWidget(QFrame):
             current_row = QHBoxLayout()
             current_row.setSpacing(2)
 
-        for bid in auction:
+        for i, bid in enumerate(auction):
             if col == 0:
                 _new_row()
             if getattr(bid, 'is_pass', False):
@@ -960,6 +1067,15 @@ class BiddingTableWidget(QFrame):
             else:
                 text = bid.symbol() if hasattr(bid, 'symbol') else str(bid)
                 cell = self._make_cell(text, kind='bid')
+            # Tag each real bid cell with its seat + bid so a click can be
+            # routed to the explanation popup. Bids feed dealer-first, so
+            # seat i = dealer + i (mod 4).
+            cell._biq_seat = Seat((dealer.value + i) % 4)
+            cell._biq_bid = bid
+            cell.installEventFilter(self)
+            if self._explain_enabled:
+                cell.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._bid_cells.append(cell)
             current_row.addWidget(cell)
             col += 1
             if col >= 4:
@@ -994,7 +1110,7 @@ class InfoPanel(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setStyleSheet(f"""
-            QFrame {{ background-color: {COLORS['panel_teal']}; border: 1px solid #2a5c6a; border-radius: 4px; }}
+            QFrame {{ background-color: {COLORS['panel_teal']}; border: 1px solid #243447; border-radius: 4px; }}
             QLabel {{ color: {COLORS['text_white']}; }}
         """)
 
@@ -1134,6 +1250,10 @@ class TableView(QWidget):
     """Main table view for 1920x1080"""
 
     card_played = pyqtSignal(object, object)
+    # Re-exposed from the inner trick area / bidding overlay so MainWindow
+    # can offer the "explain biq's action" popup.
+    explain_bid_requested = pyqtSignal(object, object)    # (seat, bid)
+    explain_card_requested = pyqtSignal(object, object)   # (seat, card)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1147,6 +1267,15 @@ class TableView(QWidget):
         # network mode so a guest at East/N/W sees their own hand at the
         # bottom of the screen.
         self._local_seat: Seat = Seat.SOUTH
+        # Per-seat player type, so the seat labels can show a Q-Plus-style
+        # icon (👤 local human / 🖥 local Computer / 🖧 networked Extern).
+        # main_window pushes the real map via set_seat_types() whenever the
+        # network player config changes; default is single-player (South
+        # human, rest Computer).
+        self._seat_types: Dict[Seat, PlayerType] = {
+            s: (PlayerType.HUMAN if s == Seat.SOUTH else PlayerType.COMPUTER)
+            for s in Seat
+        }
         self._rotation_quarters: int = 0  # number of 90° steps applied
         self.is_play_phase = False
         # True once dummy is visible. setup_declarer_play() flips this
@@ -1155,7 +1284,12 @@ class TableView(QWidget):
         # reveal_dummy() after the opening lead is played.
         self.dummy_revealed = True
 
-        self.setStyleSheet(f"background-color: {COLORS['background']};")
+        # Warm radial-gradient backdrop (pokerIQ felt glow) instead of a flat
+        # near-black fill, for a consistent look with pokerIQ.
+        self.setStyleSheet(
+            "TableView { background: qradialgradient(cx:0.5, cy:0.32,"
+            " radius:1.1, fx:0.5, fy:0.32, stop:0 #16242e,"
+            f" stop:0.75 {COLORS['background']}); }}")
         self._setup_ui()
 
     def _display_seat(self, logical_seat: Seat) -> Seat:
@@ -1185,11 +1319,13 @@ class TableView(QWidget):
         north_row.setContentsMargins(0, 0, 0, 0)
 
         # North label
-        self.north_label = QLabel("N: BEN")
+        self.north_label = QLabel("N: biq")
         self.north_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
-        self.north_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 2px 8px; border-radius: 3px; }")
+        self.north_label.setStyleSheet("QLabel { background-color: #14202c; color: #eef3f7; padding: 2px 8px; border:1px solid #3fb950; border-radius: 4px; }")
         self.north_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.north_label.setFixedWidth(140)
+        # 180 fits the longest label, "S: Declarer (you)" / "N: Dummy (you)";
+        # 140 clipped them to "Declarer (you" with the leading char cut off.
+        self.north_label.setFixedWidth(180)
 
         # North hand
         self.hand_widgets[Seat.NORTH].set_player_info(is_human=False)
@@ -1241,18 +1377,22 @@ class TableView(QWidget):
         # the upper-left of the screen instead of the middle.
         middle_layout = QHBoxLayout()
         middle_layout.setSpacing(10)
+        # Kept so the bid-info panel overlay can shift JUST this row (W/felt/E)
+        # right of itself, without moving the bottom hand (which would push the
+        # rightmost suit off-screen). See set_left_inset.
+        self._middle_layout = middle_layout
 
         # West column
         self.west_column = QWidget()
         west_vbox = QVBoxLayout(self.west_column)
         west_vbox.setContentsMargins(0, 0, 0, 0)
-        self.west_label = QLabel("W: BEN")
+        self.west_label = QLabel("W: biq")
         self.west_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
         # 160 px easily fits "W: Declarer" / "E: Dummy" with the 8-px
         # horizontal padding. Was 70, which clipped both Declarer and
         # Dummy down to "D".
-        self.west_label.setMinimumWidth(160)
-        self.west_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
+        self.west_label.setMinimumWidth(180)
+        self.west_label.setStyleSheet("QLabel { background-color: #14202c; color: #eef3f7; padding: 3px 8px; border:1px solid #3fb950; border-radius: 4px; }")
         self.west_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         west_vbox.addStretch()
         # Q-Plus visual: W label floats next to the LEFT edge of the
@@ -1289,31 +1429,41 @@ class TableView(QWidget):
         # natural width and doesn't stretch asymmetrically; the side
         # columns absorb extra horizontal space equally (stretch=1 each).
         trick_container_widget = QWidget()
+        # Expand vertically so the extra height a tall window gives the
+        # middle row reaches the (Expanding) trick area inside.
+        trick_container_widget.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                             QSizePolicy.Policy.Expanding)
         trick_container = QVBoxLayout(trick_container_widget)
         trick_container.setContentsMargins(0, 0, 0, 0)
         # Asymmetric stretches so the felt floats UP within
         # middle_layout — leaves a clear gap below the felt before
         # the S label/cards, keeping the bottom of the green table
         # from being visually crowded by the S fan.
-        trick_container.addStretch(1)
+        # The trick area now scales to the height it's given, so let it
+        # FILL the middle column vertically (no centering stretches) and
+        # just centre it horizontally. A taller window → a taller middle
+        # → bigger cards; a cramped one → the felt shrinks to fit.
         trick_h_wrapper = QHBoxLayout()
         trick_h_wrapper.addStretch()
         self.trick_area = TrickAreaWidget()
+        self.trick_area.card_explain_requested.connect(
+            self.explain_card_requested)
+        self.trick_area.bidding_widget.bid_clicked.connect(
+            self.explain_bid_requested)
         trick_h_wrapper.addWidget(self.trick_area)
         trick_h_wrapper.addStretch()
-        trick_container.addLayout(trick_h_wrapper)
-        trick_container.addStretch(3)
+        trick_container.addLayout(trick_h_wrapper, stretch=1)
         middle_layout.addWidget(trick_container_widget, stretch=0)
 
         # East column
         self.east_column = QWidget()
         east_vbox = QVBoxLayout(self.east_column)
         east_vbox.setContentsMargins(0, 0, 0, 0)
-        self.east_label = QLabel("E: BEN")
+        self.east_label = QLabel("E: biq")
         self.east_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
         # See west_label note — 160 fits "Declarer" / "Dummy" cleanly.
-        self.east_label.setMinimumWidth(160)
-        self.east_label.setStyleSheet("QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }")
+        self.east_label.setMinimumWidth(180)
+        self.east_label.setStyleSheet("QLabel { background-color: #14202c; color: #eef3f7; padding: 3px 8px; border:1px solid #3fb950; border-radius: 4px; }")
         self.east_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         east_vbox.addStretch()
         # Mirror of the W layout — label inside a horizontal sub-row,
@@ -1358,9 +1508,9 @@ class TableView(QWidget):
 
         self.south_label = QLabel("S: HUMAN")
         self.south_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
-        self.south_label.setStyleSheet("QLabel { background-color: #88ccff; color: black; padding: 2px 8px; border-radius: 3px; }")
+        self.south_label.setStyleSheet("QLabel { background-color: #14202c; color: #58a6ff; padding: 2px 8px; border:1px solid #58a6ff; border-radius: 4px; }")
         self.south_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.south_label.setFixedWidth(140)
+        self.south_label.setFixedWidth(180)  # fit "S: Declarer (you)"
 
         self.hand_widgets[Seat.SOUTH].set_player_info(is_human=True)
 
@@ -1375,11 +1525,11 @@ class TableView(QWidget):
         south_label_row.addStretch()
         layout.addLayout(south_label_row)
 
-        # Push the south hand fan lower in the empty space between
-        # the green table and the bottom bar — the previous layout
-        # parked it directly under the label with a large unused
-        # gap above the contract / tricks panels.
-        layout.addStretch(1)
+        # A small fixed gap below the label. The trick area (middle row)
+        # is now the only EXPANDING region, so it claims all spare height
+        # and scales up on a taller window; an expanding stretch here
+        # would instead swallow that height and starve the felt.
+        layout.addSpacing(16)
 
         # Hand row — the 13-card fan, centered.
         south_row = QHBoxLayout()
@@ -1426,6 +1576,10 @@ class TableView(QWidget):
         # Hide tricks panel during bidding
         self.tricks_panel.setVisible(False)
 
+    def set_explain_enabled(self, on: bool):
+        """Enable/disable the click-to-explain affordance on bids + cards."""
+        self.trick_area.set_explain_enabled(on)
+
     def set_local_seat(self, seat: Seat):
         """Rotate the table so the given seat is at the bottom (South widget).
 
@@ -1460,13 +1614,62 @@ class TableView(QWidget):
         # setup_declarer_play and set_board so we don't override them here).
         self._refresh_seat_labels()
 
+    # Icon + display name + background per player type, Q-Plus style. The
+    # local human's own seat reads "You"; networked seats get the 🖧 glyph
+    # and a distinct tint so it's obvious at a glance who is remote.
+    _TYPE_ICON = {
+        PlayerType.HUMAN: "👤",
+        PlayerType.COMPUTER: "🖥",
+        PlayerType.EXTERNAL: "🖧",
+    }
+    # Seat-label TEXT colours on a dark chip (pokerIQ tones).
+    _TYPE_BG = {
+        PlayerType.HUMAN: "#58a6ff",     # local user — accent blue
+        PlayerType.COMPUTER: "#eef3f7",  # local AI — ink
+        PlayerType.EXTERNAL: "#3fb950",  # networked — green
+    }
+
+    def set_left_inset(self, px: int):
+        """Shift ONLY the middle play row (W | felt | E) right by `px`, used
+        while the bid-info panel overlay covers the top-left so the West label
+        isn't clipped. The bottom hand row is untouched (insetting the whole
+        table pushed the rightmost suit off-screen)."""
+        lay = getattr(self, '_middle_layout', None)
+        if lay is None:
+            return
+        m = lay.contentsMargins()
+        lay.setContentsMargins(max(0, int(px)), m.top(), m.right(), m.bottom())
+
+    def set_seat_types(self, mapping: Dict[Seat, PlayerType]):
+        """Push the real per-seat player types (from the game controller /
+        network controller). Repaints the seat labels with the right icons."""
+        for s in Seat:
+            if s in mapping and mapping[s] is not None:
+                self._seat_types[s] = mapping[s]
+        self._refresh_seat_labels()
+
+    def _seat_label_markup(self, logical: Seat):
+        """(text, stylesheet) for a seat label: '<char>: <icon> <who>'."""
+        char = {Seat.NORTH: 'N', Seat.EAST: 'E',
+                Seat.SOUTH: 'S', Seat.WEST: 'W'}[logical]
+        ptype = self._seat_types.get(logical, PlayerType.COMPUTER)
+        icon = self._TYPE_ICON.get(ptype, "🖥")
+        if logical == self._local_seat and ptype == PlayerType.HUMAN:
+            who = "You"
+        else:
+            who = {PlayerType.HUMAN: "Human",
+                   PlayerType.COMPUTER: "Computer",
+                   PlayerType.EXTERNAL: "Network"}.get(ptype, "Computer")
+        fg = self._TYPE_BG.get(ptype, "#eef3f7")
+        style = (f"QLabel {{ background-color: #14202c; color: {fg}; "
+                 f"padding: 2px 8px; border-radius: 3px; }}")
+        return f"{char}: {icon} {who}", style
+
     def _refresh_seat_labels(self):
-        """Set the four position labels to identify the logical seat in each
-        physical position. Called whenever rotation changes; downstream
-        helpers (setup_declarer_play, set_board) are free to overwrite with
-        role info ("Dummy", "Declarer", etc.) afterwards."""
-        char_names = {Seat.NORTH: 'N', Seat.EAST: 'E',
-                      Seat.SOUTH: 'S', Seat.WEST: 'W'}
+        """Set the four position labels to identify the logical seat (and its
+        player type) in each physical position. Called whenever rotation or
+        the player-type map changes; downstream helpers (setup_declarer_play,
+        set_board) are free to overwrite with role info afterwards."""
         labels = {
             Seat.NORTH: self.north_label,
             Seat.EAST: self.east_label,
@@ -1475,18 +1678,9 @@ class TableView(QWidget):
         }
         for physical_seat, label in labels.items():
             logical = self._logical_seat(physical_seat)
-            if logical == self._local_seat:
-                label.setText(f"{char_names[logical]}: HUMAN")
-                label.setStyleSheet(
-                    "QLabel { background-color: #88ccff; color: black; "
-                    "padding: 2px 8px; border-radius: 3px; }"
-                )
-            else:
-                label.setText(f"{char_names[logical]}: BEN")
-                label.setStyleSheet(
-                    "QLabel { background-color: #d0d0e0; color: black; "
-                    "padding: 2px 8px; border-radius: 3px; }"
-                )
+            text, style = self._seat_label_markup(logical)
+            label.setText(text)
+            label.setStyleSheet(style)
 
     def _on_card_selected(self, seat: Seat, card: Card):
         self.card_played.emit(seat, card)
@@ -1533,6 +1727,10 @@ class TableView(QWidget):
         self.trick_area.clear_trick()
         self.trick_area.set_show_bidding(True)
         self.trick_area.set_auction([], board.dealer)
+        # Clear any leftover "bidding finished" status from the previous
+        # deal — otherwise the next board opens with the auction-complete
+        # message showing before a single bid has been made.
+        self.trick_area.set_bidding_status("")
         self.tricks_label.setText("0 : 0")
         self.contract_label.setText("")
 
@@ -1627,10 +1825,10 @@ class TableView(QWidget):
             Seat.WEST: self.west_label,
         }
         styles = {
-            'declarer': "QLabel { background-color: #88ff88; color: black; padding: 3px 8px; border-radius: 3px; }",
-            'dummy':    "QLabel { background-color: #ff6688; color: black; padding: 3px 8px; border-radius: 3px; }",
-            'human':    "QLabel { background-color: #88ccff; color: black; padding: 2px 8px; border-radius: 3px; }",
-            'ai':       "QLabel { background-color: #d0d0e0; color: black; padding: 3px 8px; border-radius: 3px; }",
+            'declarer': "QLabel { background-color: #14202c; color: #d9b25b; padding: 3px 8px; border-radius: 3px; }",
+            'dummy':    "QLabel { background-color: #14202c; color: #3fb950; padding: 3px 8px; border-radius: 3px; }",
+            'human':    "QLabel { background-color: #14202c; color: #58a6ff; padding: 2px 8px; border-radius: 3px; }",
+            'ai':       "QLabel { background-color: #14202c; color: #eef3f7; padding: 3px 8px; border-radius: 3px; }",
         }
         for physical_seat, label in labels.items():
             logical = self._logical_seat(physical_seat)
@@ -1651,7 +1849,7 @@ class TableView(QWidget):
                 label.setText(f"{char}: HUMAN")
                 label.setStyleSheet(styles['human'])
             else:
-                label.setText(f"{char}: BEN")
+                label.setText(f"{char}: biq")
                 label.setStyleSheet(styles['ai'])
 
         self.contract_label.setText(f"{contract.declarer.to_char()} {contract.to_str()}")
@@ -1699,6 +1897,27 @@ class TableView(QWidget):
             dummy_widget.setVisible(True)
         # Re-balance side columns now that the dummy widget is sized.
         self._balance_side_columns()
+
+    def face_up_seats(self) -> set:
+        """Logical seats whose hand is currently shown face-up.
+
+        Used by the instrumented (teaching) view to decide which hands
+        it may render as exact cards vs. inference only. Reads the live
+        widget state so it tracks dummy reveal, Show All, the local
+        seat, and network reveals without separate bookkeeping.
+        """
+        out = set()
+        for logical in Seat:
+            try:
+                w = self.hand_widgets[self._display_seat(logical)]
+                # `not isHidden()` (the widget's own flag), NOT isVisible():
+                # when the instrumented view is shown the table_view page is
+                # hidden, which would make isVisible() False for every hand.
+                if (not w.isHidden()) and getattr(w, "face_up", False):
+                    out.add(logical)
+            except (KeyError, AttributeError):
+                continue
+        return out
 
     def set_hand_visible(self, seat: Seat, visible: bool):
         # Re-balance side columns when an E or W hand toggles, so
@@ -1750,20 +1969,27 @@ class TableView(QWidget):
         """
         if not original_hands:
             return
-        # 1) Re-spread every seat's original 13-card hand face up so
-        #    the user can see all of them at once. Both opponents'
-        #    panels are unhidden — by design, end-of-hand shows the
-        #    whole table.
+        # 1) Set every seat's original 13-card hand face up, but only
+        #    REVEAL the declaring side (declarer + dummy) — those were
+        #    already on screen during play. The defenders are populated
+        #    (face up) yet left hidden so the table doesn't get crammed
+        #    with two extra hands that run off-screen; View ▸ Open All
+        #    Hands (F2) reveals them on demand. A defender the user
+        #    already revealed (F2 mid-play) stays revealed.
+        declaring = {s for s in (self.declarer, self.dummy) if s is not None}
         for physical_seat, widget in self.hand_widgets.items():
-            try:
-                widget.setVisible(True)
-            except Exception:
-                pass
             logical = self._logical_seat(physical_seat)
             hand = original_hands.get(logical)
             if hand is None:
                 continue
             widget.set_hand(hand, face_up=True)
+            # Reveal declarer + dummy (or everything if we can't tell
+            # which side declared — never leave the table blank).
+            if not declaring or logical in declaring:
+                try:
+                    widget.setVisible(True)
+                except Exception:
+                    pass
             widget.set_selectable(False)
 
         # 2) Compute the winning card per trick and apply the flag.

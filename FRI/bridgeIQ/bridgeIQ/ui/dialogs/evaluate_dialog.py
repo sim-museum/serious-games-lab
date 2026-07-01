@@ -4,7 +4,7 @@ Evaluate dialog - asks which player to query about which hand.
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
-    QPushButton, QRadioButton, QButtonGroup, QGroupBox, QFrame
+    QPushButton, QRadioButton, QButtonGroup, QGroupBox, QFrame, QCheckBox
 )
 from PyQt6.QtCore import Qt
 from .dialog_style import apply_dialog_style
@@ -30,6 +30,10 @@ class EvaluateDialog(QDialog):
         self.ask_who = None
         self.about_whom = None
         self.own_hand = False
+        # Q-Plus result-type options (card play).
+        self.want_conventional = False
+        self.want_tricks_hidden = False
+        self.want_tricks_open = False
 
         self._setup_ui()
 
@@ -87,6 +91,20 @@ class EvaluateDialog(QDialog):
 
         layout.addWidget(grid_frame)
 
+        # Q-Plus result-type options (used during card play). Leaving all
+        # unchecked falls back to biq's hand point-count evaluation.
+        result_group = QGroupBox("During play, show (instead of point count)")
+        result_layout = QVBoxLayout(result_group)
+        self.chk_conventional = QCheckBox("Conventional meaning of cards")
+        self.chk_tricks_hidden = QCheckBox(
+            "Expected tricks (hidden hands — legal knowledge)")
+        self.chk_tricks_open = QCheckBox(
+            "Expected tricks (open hands — double dummy)")
+        for c in (self.chk_conventional, self.chk_tricks_hidden,
+                  self.chk_tricks_open):
+            result_layout.addWidget(c)
+        layout.addWidget(result_group)
+
         # Buttons
         button_layout = QHBoxLayout()
 
@@ -121,12 +139,25 @@ class EvaluateDialog(QDialog):
                 return True
         return False
 
+    def _capture_result_modes(self):
+        self.want_conventional = self.chk_conventional.isChecked()
+        self.want_tricks_hidden = self.chk_tricks_hidden.isChecked()
+        self.want_tricks_open = self.chk_tricks_open.isChecked()
+
+    def _any_result_mode(self):
+        return (self.chk_conventional.isChecked()
+                or self.chk_tricks_hidden.isChecked()
+                or self.chk_tricks_open.isChecked())
+
     def _on_ok(self):
-        if self._get_selected():
+        self._capture_result_modes()
+        # A result-mode checkbox alone (no seat picked) is a valid request.
+        if self._get_selected() or self._any_result_mode():
             self.own_hand = False
             self.accept()
 
     def _on_own_hand(self):
+        self._capture_result_modes()
         self.own_hand = True
         self.accept()
 

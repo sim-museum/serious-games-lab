@@ -1,0 +1,46 @@
+@startuml overview_state
+title bridgeIQ — App Overview: how the two main flows are entered
+
+skinparam shadowing false
+skinparam state {
+  BackgroundColor #FDFDFD
+  BorderColor #444
+  ArrowColor #444
+}
+
+[*] --> Idle : app launch (opening screen)
+
+state Idle {
+  Idle : Pre-deal configuration (Config menu)
+  Idle : • Player type per seat — HUMAN / COMPUTER / NETWORK   (player_config)
+  Idle : • Bidding system per seat — SAYC / 2-1 / Acol / French / Precision
+  Idle : • Bidding engine — native_bidder | BEN     • Card engine — no-peek | MC | DD
+}
+
+state "WHOLE GAME\n(deal -> bid -> play -> score)" as WholeGame #E8F4FF
+state "CARD-PLAY ONLY\n(contract set -> play -> score)" as CardPlay #FFF3E0
+
+Idle --> WholeGame : First Deal / Next Deal\n_on_new_deal() : phase='bidding'
+Idle --> CardPlay  : MiniBridge mode\n_maybe_run_minibridge_rounds() : set_contract_direct()
+Idle --> CardPlay  : Repeat Deal — "keep contract,\nskip auction"  : set_contract_direct(preserved)
+
+WholeGame --> Idle : Next Deal / quit
+CardPlay  --> Idle : Next Deal / quit
+
+note right of WholeGame
+  Variations (same phase machine):
+  • Local AI table (all COMPUTER)
+  • Human South vs AI (default)
+  • One-player hand entry
+  • Network biq<->biq (NETWORK seats)
+  • A/B-off vs whole-system test run
+  See 01/02 diagrams.
+end note
+
+note right of CardPlay
+  Variations:
+  • MiniBridge (points + contract dialogs)
+  • Repeat Deal keeping prior contract
+  See 03/04 diagrams.
+end note
+@enduml

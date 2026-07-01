@@ -282,8 +282,8 @@ create_venv "$REPO_ROOT/FRI/mathQuiz" -r "$REPO_ROOT/FRI/mathQuiz/requirements.t
 # FRI/dual_nback - dual n-back trainer (PyQt6 + pyttsx3)
 create_venv "$REPO_ROOT/FRI/dual_nback" -r "$REPO_ROOT/FRI/dual_nback/requirements.txt"
 
-# FRI/bridgeIQ - bridge game (PyQt6 + colorama; native bidder/lead, no TensorFlow)
-create_venv "$REPO_ROOT/FRI/bridgeIQ" PyQt6 colorama
+# FRI/bridgeIQ - bridge game (PyQt6 + colorama + numpy; native bidder/lead, no TensorFlow)
+create_venv "$REPO_ROOT/FRI/bridgeIQ" PyQt6 colorama numpy
 
 # WED/openingRepertoire - chess opening trainer (PyQt6 + python-chess)
 create_venv "$REPO_ROOT/WED/openingRepertoire" -r "$REPO_ROOT/WED/openingRepertoire/requirements.txt"

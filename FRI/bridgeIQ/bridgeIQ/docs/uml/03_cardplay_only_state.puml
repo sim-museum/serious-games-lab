@@ -1,0 +1,46 @@
+@startuml cardplay_only_state
+title bridgeIQ — Card-Play-Only Flow (State machine)
+
+skinparam shadowing false
+skinparam state {
+  BackgroundColor #FDFDFD
+  BorderColor #444
+  ArrowColor #444
+}
+
+[*] --> Idle : app launch / between deals
+
+state Idle : a board exists (hands dealt), but auction is skipped
+
+state ContractEntry <<choice>>
+Idle --> ContractEntry : choose how to set the contract
+
+ContractEntry --> SetContract : MiniBridge\n_maybe_run_minibridge_rounds()\nPoints dialog + Contract dialog\n(declarer resolved by HP)
+ContractEntry --> SetContract : Repeat Deal — keep prior contract\n_on_repeat_deal() (skip auction)
+
+state SetContract : controller.set_contract_direct(contract)
+SetContract : • synthesize board.auction = [single Bid]
+SetContract : • set declarer / dummy / opening_leader
+SetContract : • phase='play', seat=opening_leader
+
+SetContract --> Play
+
+state Play {
+  [*] --> OpeningLead
+  OpeningLead --> InTrick : 1st card played\n_maybe_reveal_dummy_after_lead()
+  InTrick --> InTrick : next card; seat=next\nCOMPUTER: request_card() -> _on_engine_card()\nHUMAN: table click -> _on_card_played()
+  InTrick --> WaitingNext : trick complete (4 cards)\nphase='waiting_next'
+  WaitingNext --> InTrick : "Next Card"\nadvance_to_next_trick(); phase='play'
+}
+note right of Play
+  Identical play machine to the Whole Game flow
+  (same _advance_play / play_card / no-peek engine).
+  Only difference: there was no Bidding phase.
+end note
+
+Play --> Finished : 13 tricks played\n_review_human_signals(); phase='finished'
+
+state Finished : _show_result() — score + end-of-hand view
+Finished --> Idle : Next Deal / Repeat
+Finished --> [*]  : quit
+@enduml

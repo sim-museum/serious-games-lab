@@ -1,0 +1,46 @@
+@startuml cleanup_map
+title Control Panel — Control Inventory & Cleanup Recommendation
+
+skinparam shadowing false
+legend top right
+  |<#E8FFE8> | KEEP — used every run |
+  |<#FFF3CC> | CONSOLIDATE — duplicate / occasional |
+  |<#FADBD8> | DEMOTE — one-time setup or legacy |
+endlegend
+
+rectangle "RUN CONFIG (Config dialog)\ndeals / seat / samples / idle\nsessions / pair(biq+biq) / auto / exit_auto" as CFG #E8FFE8
+
+package "START a run — pick ONE" {
+  rectangle "Startup Procedure (8-step)\nStep ▷ / Autopilot ▶ / Reset" as S_STEP #E8FFE8
+  rectangle "▶ Run full session\n(hands-off)" as S_FULL #E8FFE8
+  rectangle "Manual startup steps\n1▸server+biq / 2▸deal / 3▸clicker" as S_MAN #FFF3CC
+}
+note bottom of S_MAN
+  REDUNDANT with the 8-step stepper
+  (code comment: "the stepper does these").
+  Drop, or hide behind an "Advanced" expander.
+end note
+
+package "MODES" {
+  rectangle "Bidding Systems\nN/S + E/W + reproducible-random" as M_SYS #E8FFE8
+  rectangle "A/B Test\nOff / Run A / Run B + clear ref" as M_AB #E8FFE8
+  rectangle "Double-Pair Validation\nside / save room / compare / 4-comp / baseline" as M_DP #FFF3CC
+  rectangle "No-Peek sub-dialog\n①gen ②cal ②b cal ③run ④baseline ◆whole-system" as M_NP #FFF3CC
+}
+note bottom of M_NP
+  ②/②b are ONE-TIME calibration -> move to Setup.
+  Collapse No-peek vs WHOLE-SYSTEM into a single
+  Mode dropdown next to A/B and Double-Pair
+  (these are run MODES, not separate dialogs).
+end note
+
+rectangle "RUN / EXPORT / EXIT\nExport .qss / Stop all / ⏻ Kill wine" as RUNX #E8FFE8
+rectangle "STATUS / OUTPUT\n● server ● biq ● clicker + progress\ndeals list / result / log" as STATUS #E8FFE8
+rectangle "SETUP — one-time (demote out of main view)\nCalibrate server buttons / clicker / autoplay\nLaunch Q-Plus / New run (reset logs) / Aggregate" as SETUP #FADBD8
+
+CFG -[hidden]down-> S_STEP
+S_FULL -[hidden]down-> M_SYS
+M_DP -[hidden]down-> RUNX
+RUNX -[hidden]down-> STATUS
+STATUS -[hidden]down-> SETUP
+@enduml

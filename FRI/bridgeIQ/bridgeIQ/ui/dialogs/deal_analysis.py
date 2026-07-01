@@ -288,7 +288,7 @@ class DealAnalysisDialog(QDialog):
         progress.setWindowTitle("Deal Analysis")
         progress.setFixedSize(420, 110)
         p_layout = QVBoxLayout(progress)
-        p_label = QLabel("Claude Opus 4.7 is grading your actions…")
+        p_label = QLabel("Claude is grading your actions…")
         p_label.setFont(QFont("Arial", 12))
         p_layout.addWidget(p_label)
         p_bar = QProgressBar()
@@ -303,9 +303,9 @@ class DealAnalysisDialog(QDialog):
             try:
                 r = subprocess.run(
                     ['claude', '-p',
-                     '--model', 'claude-opus-4-7',
+                     '--model', 'claude-opus-4-8',
                      '--max-turns', '1', prompt],
-                    capture_output=True, text=True, timeout=240,
+                    capture_output=True, text=True, timeout=600,
                 )
                 if r.returncode == 0 and (r.stdout or '').strip():
                     result['text'] = r.stdout.strip()
