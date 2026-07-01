@@ -423,14 +423,16 @@ class ReviewDialog(QDialog):
         """Restore the table to its post-hand view when the dialog closes.
 
         While the dialog is open we mutate the live table_view to mirror
-        the review position; on close we put it back into end-of-hand
-        view (all 13 cards face up, winner outlines) so the user sees
-        the same picture they had before opening the review.
+        the review position; on close we put it back the way it was before
+        the review opened. A completed deal leaves the table blank (four
+        full 13-card hands overflow the screen), so re-seed the end-of-hand
+        snapshot for F2 / Open All Hands, then hide everything again.
         """
         if self.table_view is not None and self.original_hands:
             try:
                 self.table_view.show_end_of_hand_view(
                     self.original_hands, self.tricks)
+                self.table_view.hide_all_hands()
             except Exception:
                 pass
         super().closeEvent(event)

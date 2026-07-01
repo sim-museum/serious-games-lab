@@ -628,21 +628,16 @@ class TrickAreaWidget(QFrame):
     bidding overlay readable and stops it collapsing to nothing.
     """
 
-    # Design (scale = 1.0) geometry. The widget covers the OUTER rect
-    # (green + arrow band); the green rounded rect is painted inset so
-    # the band stays transparent and the arrows sit outside the green.
+    # Reference geometry for the widget's minimum size / size hint. The played
+    # cards themselves are laid out in _relayout at the hand-card size (see the
+    # CROSS_* fractions) so every card on the table matches; these only bound
+    # how small the trick area may shrink.
     DESIGN_BAND   = 44        # arrow band around the green box
     DESIGN_GREEN_W = 460
     DESIGN_GREEN_H = 360
-    DESIGN_CARD_W = 130
-    DESIGN_CARD_H = 182
-    DESIGN_CARD_INSET = 18    # gap between a played card and the green border
-    DESIGN_CHEVRON = 40
-    DESIGN_ARROW_GAP = 4
     AREA_WIDTH  = DESIGN_GREEN_W + 2 * DESIGN_BAND
     AREA_HEIGHT = DESIGN_GREEN_H + 2 * DESIGN_BAND
     MIN_SCALE = 0.74         # floor — keeps the green ≥ the bidding overlay
-    MAX_SCALE = 1.0          # never grow the cards past the design size
     BID_W, BID_H = 320, 260  # bidding overlay (fixed; centred in the green)
 
     # Emitted (seat, card) when a played card is clicked while the
@@ -678,58 +673,86 @@ class TrickAreaWidget(QFrame):
     def sizeHint(self) -> QSize:
         return QSize(self.AREA_WIDTH, self.AREA_HEIGHT)
 
-    def _scale(self) -> float:
-        s = min(self.width() / self.AREA_WIDTH,
-                self.height() / self.AREA_HEIGHT)
-        return max(self.MIN_SCALE, min(self.MAX_SCALE, s))
-
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._relayout()
 
+    # Played-trick cards are laid out as a centred, overlapping cross (the
+    # traditional bridge presentation) at the SAME size as the hand cards, so
+    # every card on screen matches. These fractions set how far each card's
+    # centre sits from the middle — i.e. how much the four cards overlap.
+    CROSS_H_OFF_F = 0.56      # W/E horizontal offset as a fraction of card width
+    CROSS_V_OFF_F = 0.30      # N/S vertical offset as a fraction of card height
+    ARROW_CHEVRON = 22        # compass marker size (px)
+
     def _relayout(self):
-        """Recompute the green box + every child's geometry for the
-        current widget size."""
-        s = self._scale()
-        band = self.DESIGN_BAND * s
-        gw, gh = self.DESIGN_GREEN_W * s, self.DESIGN_GREEN_H * s
-        area_w, area_h = gw + 2 * band, gh + 2 * band
-        ox = (self.width() - area_w) / 2.0
-        oy = (self.height() - area_h) / 2.0
-        green = QRect(round(ox + band), round(oy + band), round(gw), round(gh))
-        self._green_rect = green
-        cx, cy = green.center().x(), green.center().y()
-        cw, ch = self.DESIGN_CARD_W * s, self.DESIGN_CARD_H * s
-        inset = self.DESIGN_CARD_INSET * s
+        """Recompute the green box + every child's geometry for the current
+        widget size. Trick cards render at the hand-card size (CARD_WIDTH ×
+        CARD_HEIGHT) so all cards match; they overlap in a centred cross and
+        only shrink if a very short window can't hold a full-size cross."""
+        W, H = self.width(), self.height()
+        cx, cy = W / 2.0, H / 2.0
+
+        # Full-size cross footprint (before any fit-shrink), plus a small pad
+        # and room for the compass arrows around the felt.
+        chev0 = self.ARROW_CHEVRON
+        pad = chev0 + 6
+        full_w = CARD_WIDTH * (1 + 2 * self.CROSS_H_OFF_F)
+        full_h = CARD_HEIGHT * (1 + 2 * self.CROSS_V_OFF_F)
+        # Shrink only when the widget genuinely can't fit full-size cards; at
+        # 1080p+ this stays 1.0, so trick cards equal the hands exactly.
+        fit = min(1.0, (W - 2 * pad) / full_w, (H - 2 * pad) / full_h)
+        scale = max(0.5, fit)
+
+        cw, ch = round(CARD_WIDTH * scale), round(CARD_HEIGHT * scale)
+        h_off = round(cw * self.CROSS_H_OFF_F)
+        v_off = round(ch * self.CROSS_V_OFF_F)
 
         card_geom = {
-            Seat.NORTH: (cx - cw / 2, green.top() + inset),
-            Seat.SOUTH: (cx - cw / 2, green.bottom() - inset - ch),
-            Seat.WEST:  (green.left() + inset, cy - ch / 2),
-            Seat.EAST:  (green.right() - inset - cw, cy - ch / 2),
+            Seat.NORTH: (cx - cw / 2, cy - v_off - ch / 2),
+            Seat.SOUTH: (cx - cw / 2, cy + v_off - ch / 2),
+            Seat.WEST:  (cx - h_off - cw / 2, cy - ch / 2),
+            Seat.EAST:  (cx + h_off - cw / 2, cy - ch / 2),
         }
-        for seat, (x, y) in card_geom.items():
+        # Stack order (back → front): W, N, E, S. This keeps every card's
+        # top-left corner (its rank/suit index) clear — S and E are raised above
+        # N so their indices, which fall under N's centred card, stay visible.
+        for seat in (Seat.WEST, Seat.NORTH, Seat.EAST, Seat.SOUTH):
+            x, y = card_geom[seat]
             w = self.card_widgets.get(seat)
             if w is not None:
-                w.setFixedSize(round(cw), round(ch))
+                w.setFixedSize(cw, ch)
                 w.move(round(x), round(y))
+                w.raise_()
 
-        chev = self.DESIGN_CHEVRON * s
-        gap = self.DESIGN_ARROW_GAP * s
+        # Green felt wraps the cross with a small margin, clamped so the arrows
+        # still fit inside the widget.
+        cross_w = cw + 2 * h_off
+        cross_h = ch + 2 * v_off
+        gm = round(14 * scale)
+        chev = round(self.ARROW_CHEVRON * scale)
+        gw = min(W - 2 * (chev + 4), cross_w + 2 * gm)
+        gh = min(H - 2 * (chev + 4), cross_h + 2 * gm)
+        green = QRect(round(cx - gw / 2), round(cy - gh / 2),
+                      round(gw), round(gh))
+        self._green_rect = green
+
         arrow_geom = {
-            'N': (cx - chev / 2, green.top() - gap - chev),
-            'S': (cx - chev / 2, green.bottom() + gap),
-            'W': (green.left() - gap - chev, cy - chev / 2),
-            'E': (green.right() + gap, cy - chev / 2),
+            'N': (cx - chev / 2, green.top() - chev - 2),
+            'S': (cx - chev / 2, green.bottom() + 2),
+            'W': (green.left() - chev - 2, cy - chev / 2),
+            'E': (green.right() + 2, cy - chev / 2),
         }
         for d, (x, y) in arrow_geom.items():
             a = getattr(self, "arrows", {}).get(d)
             if a is not None:
-                a.setFixedSize(round(chev), round(chev))
+                a.setFixedSize(chev, chev)
                 a.move(round(x), round(y))
+                a.raise_()
 
         if getattr(self, "bidding_widget", None) is not None:
-            self.bidding_widget.move(cx - self.BID_W // 2, cy - self.BID_H // 2)
+            self.bidding_widget.move(round(cx - self.BID_W / 2),
+                                     round(cy - self.BID_H / 2))
 
     def paintEvent(self, event):
         """Paint the green box as an inset rounded rectangle, sized and
@@ -1928,12 +1951,39 @@ class TableView(QWidget):
             if ds in (Seat.EAST, Seat.WEST):
                 self._balance_side_columns()
             if visible:
-                self.hand_widgets[ds].set_hand(self.board.hands[seat], face_up=True)
+                # After the 13th trick board.hands[seat] is empty; fall back
+                # to the end-of-hand snapshot so revealing a hand post-play
+                # shows its original 13 cards rather than a blank widget. On a
+                # claim the live hand still holds the unplayed cards, so it
+                # wins.
+                hand = self.board.hands[seat]
+                if not getattr(hand, "cards", None):
+                    snap = getattr(self, "_eoh_hands", None)
+                    if snap and snap.get(seat) is not None:
+                        hand = snap[seat]
+                self.hand_widgets[ds].set_hand(hand, face_up=True)
                 # Showing dummy via the network reveal path also flips
                 # the deferred-reveal flag so subsequent reveal_dummy()
                 # calls become no-ops.
                 if seat == self.dummy:
                     self.dummy_revealed = True
+
+    def hide_all_hands(self):
+        """Blank the table: hide every hand widget and clear the centre.
+
+        Used once a deal is complete (13th trick or a claim) — four full
+        13-card hands overflow the window and get cut off, so the table is
+        left empty. The widgets keep whatever cards were last set on them
+        (the end-of-hand snapshot), so F2 / Open All Hands can re-reveal
+        them on demand.
+        """
+        for widget in self.hand_widgets.values():
+            try:
+                widget.setVisible(False)
+            except Exception:
+                pass
+        self._balance_side_columns()
+        self.clear_trick()
 
     def set_hand_selectable(self, seat: Seat, selectable: bool, lead_suit: Optional[Suit] = None):
         ds = self._display_seat(seat)
@@ -1969,6 +2019,10 @@ class TableView(QWidget):
         """
         if not original_hands:
             return
+        # Remember the original layout so a later reveal (F2 / Open All
+        # Hands) can show the full 13-card hands even after the 13th trick
+        # has emptied board.hands.
+        self._eoh_hands = dict(original_hands)
         # 1) Set every seat's original 13-card hand face up, but only
         #    REVEAL the declaring side (declarer + dummy) — those were
         #    already on screen during play. The defenders are populated
@@ -2023,6 +2077,7 @@ class TableView(QWidget):
     def clear_end_of_hand_view(self):
         """Strip the post-play winner outlines. Called when a new
         hand is dealt so the next hand starts fresh."""
+        self._eoh_hands = None
         for widget in self.hand_widgets.values():
             try:
                 widget.clear_trick_winners()

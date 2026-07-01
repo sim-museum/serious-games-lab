@@ -112,9 +112,17 @@ class EngineWorker(QThread):
                 if getattr(prefs, 'use_nopeek_play', True):
                     from backend import nopeek
                     from backend.engine import EngineResponse
-                    card = nopeek.decide(self.board, self.seat, self.trick_cards)
-                    self.card_ready.emit(EngineResponse(action=card,
-                                                        who="no-peek"))
+                    # Pass an explain sink so nopeek records WHY it chose this
+                    # card (technique + one-line reason) for the click-to-explain
+                    # popup. This is the single real decision, not a rollout, so
+                    # building the reason string costs nothing measurable.
+                    explain = {}
+                    card = nopeek.decide(self.board, self.seat, self.trick_cards,
+                                         explain=explain)
+                    self.card_ready.emit(EngineResponse(
+                        action=card, who="no-peek",
+                        reason=explain.get("reason", ""),
+                        reason_tag=explain.get("tag", "")))
                     return
                 # Check if this is the opening lead (first card of play phase)
                 # Opening lead: no tricks completed yet and current trick is empty
@@ -2094,6 +2102,32 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.status_label.setText(f"Could not explain bid: {e}")
 
+    def _biq_reason_store(self):
+        """The per-deal card→reason map, auto-reset when the board changes.
+
+        Keyed off board_number so a stale reason from a previous deal can never
+        surface — no matter which deal-setup path installed the new board."""
+        bn = getattr(getattr(self.controller, "board", None), "board_number", None)
+        if (getattr(self, "_biq_reasons_board", object()) != bn
+                or not hasattr(self, "_biq_card_reasons")):
+            self._biq_card_reasons = {}
+            self._biq_reasons_board = bn
+        return self._biq_card_reasons
+
+    def _record_biq_card_reason(self, card, response):
+        """Stash biq's stored reason for a card it just played, keyed by the
+        card's unique code52 (each card is played once per deal)."""
+        if card is None:
+            return
+        reason = getattr(response, "reason", "") or ""
+        if not reason:
+            return
+        try:
+            self._biq_reason_store()[card.code52()] = (
+                reason, getattr(response, "reason_tag", "") or "")
+        except Exception:
+            pass
+
     def _on_explain_card(self, seat: Seat, card):
         """Pop the why-popup for a clicked played card."""
         if not self._seat_is_biq(seat):
@@ -2122,10 +2156,15 @@ class MainWindow(QMainWindow):
             before = list(trick.cards[:found_pos])
             is_opening_lead = (t_i == 0 and found_pos == 0)
             who = self._current_play_engine_label()
+            # Prefer biq's ACTUAL stored reason for this exact card (captured
+            # when biq played it); fall back to the public-info reconstruction.
+            stored = self._biq_reason_store().get(card.code52())
+            engine_reason, engine_tag = stored if stored else ("", "")
             ex = explain.explain_card(
                 card, seat, before, trick.leader,
                 getattr(board, "contract", None), is_opening_lead,
-                engine_who=who)
+                engine_who=who, engine_reason=engine_reason,
+                engine_tag=engine_tag)
             self._show_explanation(ex)
         except Exception as e:
             self.status_label.setText(f"Could not explain card: {e}")
@@ -2312,9 +2351,6 @@ class MainWindow(QMainWindow):
                 self.autoplay_btn.setChecked(False)
         except Exception:
             pass
-        # Fresh hand — the previous deal's claim shouldn't blank this table.
-        self._eoh_clear_all_hands = False
-
         # Book note — if this deal carries the textbook's play commentary
         # (a practice-deck hand), load it so it can be shown during play.
         note = (getattr(board, '_commentary', '') or '').strip()
@@ -8427,8 +8463,6 @@ For more information, see the README file."""
         # bookkeeping; use the same path the user takes for the
         # final trick.
         self.controller.current_phase = 'finished'
-        # A claim leaves cards unplayed — clear the table (see _on_claim).
-        self._eoh_clear_all_hands = True
         self.table_view.update_tricks(
             board.declarer_tricks, board.defense_tricks)
         self.status_label.setText(
@@ -8786,19 +8820,19 @@ For more information, see the README file."""
             pass
         try:
             if self.original_hands:
+                # Populate every hand with its original 13 cards (and paint
+                # the trick-winner outlines) so View ▸ Open All Hands / F2
+                # and the Review dialog can reveal them on demand.
                 self.table_view.show_end_of_hand_view(
                     self.original_hands,
                     list(board.tricks) if board.tricks else [],
                 )
-            # After a claim, clear the table — the hands are populated
-            # face-up (so View ▸ Open All Hands can show them) but hidden,
-            # since the unplayed cards weren't played and four full hands
-            # overflow the table.
-            if getattr(self, '_eoh_clear_all_hands', False):
-                for seat in Seat:
-                    self.table_view.set_hand_visible(seat, False)
-                self.table_view.clear_trick()
-            self._eoh_clear_all_hands = False
+            # Play is over — whether by the 13th trick or a claim. Four full
+            # 13-card hands overflow the table and get cut off, and a claim's
+            # unplayed cards were never actually played, so clear ALL cards
+            # from the screen once the deal completes. The hands stay
+            # populated above; F2 / Open All Hands reveals them on demand.
+            self.table_view.hide_all_hands()
         except Exception as ex:
             print(f"end-of-hand view failed: {ex!r}", flush=True)
 
@@ -9932,6 +9966,11 @@ For more information, see the README file."""
         card = response.action
         seat = self.controller.current_seat
 
+        # Remember biq's actual reason for THIS card so a later click on it
+        # shows biq's real rationale (not a reconstruction). Keyed by the
+        # card's unique 0-51 code — each card is played exactly once per deal.
+        self._record_biq_card_reason(card, response)
+
         # Check if this is the opening lead (first card of play)
         is_opening_lead = (len(self.controller.board.tricks) == 0 and
                           (not self.controller.board.current_trick or
@@ -10354,11 +10393,6 @@ For more information, see the README file."""
         board.declarer_tricks = final_declarer
         board.defense_tricks = final_defense
         self.controller.current_phase = 'finished'
-        # A claim ends play with cards still in hand. The post-mortem can't
-        # lay out four full hands without overflowing, and the unplayed
-        # cards weren't actually played — so clear the table after a claim.
-        # The hands stay populated (View ▸ Open All Hands / F2 shows them).
-        self._eoh_clear_all_hands = True
         try:
             self.table_view.update_tricks(final_declarer, final_defense)
         except Exception:

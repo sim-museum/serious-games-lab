@@ -59,6 +59,12 @@ class EngineResponse:
     # so a learner can see the reasoning the engine used.
     # One string per seat that has any inference.
     auction_inferences: Optional[List[str]] = None
+    # Why the engine chose `action` (this play), and a short technique
+    # label for it. Populated for card plays so the UI's click-to-explain
+    # popup can show biq's ACTUAL reasoning instead of reconstructing one
+    # from public information. Empty when the engine has no stored reason.
+    reason: str = ""
+    reason_tag: str = ""
 
 
 class BridgeEngine:
@@ -242,10 +248,16 @@ class BridgeEngine:
                 leader=leader,
                 vulnerability=board.vulnerability,
             )
+            reason = " ".join(
+                r for r in (getattr(decision, "suit_choice_reason", ""),
+                            getattr(decision, "card_choice_reason", ""))
+                if r).strip()
             return EngineResponse(
                 action=decision.card,
                 who="native-lead",
                 candidates=[CardCandidate(card=decision.card, score=1.0)],
+                reason=reason or "Opening lead from the standard lead tables.",
+                reason_tag="Opening lead",
             )
         except Exception as e:
             if self.verbose:
@@ -302,7 +314,11 @@ class BridgeEngine:
             if planned is not None and any(
                     c.suit == planned.suit and c.rank == planned.rank
                     for c in legal_cards):
-                return EngineResponse(action=planned, who="Fallback-Planner")
+                return EngineResponse(
+                    action=planned, who="Fallback-Planner",
+                    reason="Following the strategic card-play plan for this "
+                           "deal (the double-dummy solve was unavailable here).",
+                    reason_tag="Card-play plan")
         is_discard = (lead_suit is not None
                       and not any(c.suit == lead_suit for c in legal_cards))
         if is_discard and board.contract is not None:
@@ -313,8 +329,15 @@ class BridgeEngine:
                 board.contract.declarer)
             # Pick lowest safe-discard rank (Rank.TWO has highest .value).
             pick = max(safe, key=lambda c: (c.rank.value, c.suit.value))
-            return EngineResponse(action=pick, who="Fallback")
-        return EngineResponse(action=legal_cards[0], who="Fallback")
+            return EngineResponse(
+                action=pick, who="Fallback",
+                reason="Void in the led suit — discarding the lowest safe card, "
+                       "keeping our winners and guards.",
+                reason_tag="Discard")
+        return EngineResponse(
+            action=legal_cards[0], who="Fallback",
+            reason="Following suit with a low card.",
+            reason_tag="Follow suit")
 
     def analyze_double_dummy(self, board: BoardState) -> Dict[str, Dict[str, int]]:
         """
@@ -556,7 +579,9 @@ class BridgeEngine:
                 if len(legal_cards) <= 1:
                     return EngineResponse(
                         action=legal_cards[0] if legal_cards else None,
-                        who="MC-Forced"
+                        who="MC-Forced",
+                        reason="Only one legal card to play.",
+                        reason_tag="Forced",
                     )
 
                 # Strategic-plan override (Phase 1): textbook bridge
@@ -574,8 +599,15 @@ class BridgeEngine:
                     if any(c.suit == planned.suit
                            and c.rank == planned.rank
                            for c in legal_cards):
-                        return EngineResponse(action=planned,
-                                              who="MC-Planner")
+                        return EngineResponse(
+                            action=planned,
+                            who="MC-Planner",
+                            reason="Following the strategic card-play plan for "
+                                   "this deal (e.g. drawing trumps) — textbook "
+                                   "knowledge the double-dummy score can't see "
+                                   "at the single-card level.",
+                            reason_tag="Card-play plan",
+                        )
 
                 # Collect known information
                 # - Our hand
@@ -1038,11 +1070,23 @@ class BridgeEngine:
                         inferences = None
                 except Exception:
                     pass
+                best_avg = legal_results.get(best_card52)
+                reason = (
+                    "Monte-Carlo + double-dummy: generated random layouts "
+                    "consistent with the bidding and the cards played, solved "
+                    "each double-dummy, and picked the card with the highest "
+                    "average trick count")
+                if best_avg is not None:
+                    reason += f" ({best_avg:.2f} expected tricks)."
+                else:
+                    reason += "."
                 return EngineResponse(
                     action=best_card,
                     candidates=candidates,
                     who="MC",
                     auction_inferences=inferences,
+                    reason=reason,
+                    reason_tag="Monte-Carlo + DDS",
                 )
 
             except Exception as e:
