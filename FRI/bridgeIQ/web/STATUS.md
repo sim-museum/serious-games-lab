@@ -69,6 +69,13 @@ copy the PyQt layout:
   current trick, count, coaching) toggled by the Instrumented button.
 - Default systems set to **SAYC / SAYC** to match the desktop default.
 
+## SVG court deck (2026-06-30)
+J/Q/K now render as **procedurally-drawn SVG court figures** (crown + robe + scepter
+for K/Q, feathered cap for J), suit-coloured and **point-symmetric like a real card** —
+self-contained, no external image assets (~1 KB of generated SVG per court). Number
+cards keep their pip layouts; aces a single centre pip. `deck-preview.html` (local,
+not committed) renders all 52 for inspection.
+
 ## Visual fidelity pass (2026-06-30) — match the PyQt screens
 - **Cards fixed**: the dummy/around-table hands were rendering as tiny, fully
   overlapped (invisible) cards. They are now **large, opaque, suit-grouped** like the

@@ -164,10 +164,8 @@ button{font-family:inherit;color:inherit}
 .pcard .pips{position:absolute;inset:14% 16%}
 .pcard .pip{position:absolute;transform:translate(-50%,-50%);font-weight:700}
 .pcard.lg .pip{font-size:18px}.pcard.md .pip{font-size:12px}
-.pcard .court{position:absolute;inset:18% 12%;display:flex;align-items:center;justify-content:center;
-  border:1px solid #d9d4c6;border-radius:4px;background:linear-gradient(135deg,#fbf7ec,#f0e8d2)}
-.pcard .court .big{font-weight:800}
-.pcard.lg .court .big{font-size:40px}.pcard.md .court .big{font-size:24px}
+.pcard .court{position:absolute;inset:11% 8% 9%}
+.pcard .court svg{width:100%;height:100%;display:block}
 .pcard.back{background:repeating-linear-gradient(45deg,#27408b 0 6px,#1c3270 6px 12px);border-color:#16264f}
 .pcard.back .idx,.pcard.back .pips,.pcard.back .court{display:none}
 .pcard.playable{cursor:pointer}
@@ -2229,6 +2227,29 @@ const UI=(function(){
     }
     return [];
   }
+  const SUIT_HEX=['#15171c','#c8102e','#1457d6','#17812f'];
+  // Compact procedural SVG court figure (K/Q/J), point-symmetric like a real card.
+  function courtSvg(su,rank){
+    const col=SUIT_HEX[su], gold='#c9a227', skin='#f2dcbb', dk='#26221c', sym=SUIT_SYM[su];
+    const crown = rank===3
+      ? `<path d="M40,31 L40,24 L44,27 L48,21 L52,26 L56,21 L60,27 L60,31 Z" fill="${col}" stroke="${dk}" stroke-width="0.8"/>
+         <path d="M58,25 q7,-6 10,0" fill="none" stroke="${gold}" stroke-width="1.5" stroke-linecap="round"/>`
+      : `<path d="M39,31 L39,23 L43,27 L46,20 L50,26 L54,20 L57,27 L61,23 L61,31 Z" fill="${gold}" stroke="${dk}" stroke-width="0.8"/>
+         <circle cx="46" cy="22" r="1.1" fill="${col}"/><circle cx="50" cy="21" r="1.1" fill="${col}"/><circle cx="54" cy="22" r="1.1" fill="${col}"/>`;
+    const fig=`
+      <path d="M33,72 L36,52 Q50,43 64,52 L67,72 Z" fill="${col}" stroke="${dk}" stroke-width="0.8"/>
+      <path d="M42,50 L50,61 L58,50 L54,56 L50,65 L46,56 Z" fill="${gold}"/>
+      <rect x="47.5" y="53" width="5" height="19" rx="1" fill="${gold}" opacity="0.85"/>
+      <circle cx="50" cy="40" r="8.4" fill="${skin}" stroke="${dk}" stroke-width="0.8"/>
+      <path d="M43,41 q7,6 14,0" fill="none" stroke="${dk}" stroke-width="0.7"/>
+      <circle cx="46.6" cy="39" r="0.9" fill="${dk}"/><circle cx="53.4" cy="39" r="0.9" fill="${dk}"/>
+      ${crown}
+      <text x="50" y="60.5" font-size="7" text-anchor="middle" fill="${col}" font-weight="bold">${sym}</text>`;
+    return `<svg viewBox="0 0 100 140" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="7" y="7" width="86" height="126" rx="7" fill="#fbf6ea" stroke="${col}" stroke-width="1" opacity="0.55"/>
+      <line x1="9" y1="70" x2="91" y2="70" stroke="${col}" stroke-width="0.5" opacity="0.35"/>
+      <g>${fig}</g><g transform="rotate(180 50 70)">${fig}</g></svg>`;
+  }
   function cardEl(card,opts={}){
     const su=cSuit(card),r=cRank(card);
     const size=opts.size||'lg';
@@ -2240,9 +2261,8 @@ const UI=(function(){
       const idx=`<div class="${sc} su">${sym}</div>`;
       e.appendChild(el('div',{class:'idx tl '+sc,html:rs+`<span class="su">${sym}</span>`}));
       e.appendChild(el('div',{class:'idx br '+sc,html:rs+`<span class="su">${sym}</span>`}));
-      if(r<=3&&r>=1){ // court K Q J
-        e.appendChild(el('div',{class:'court'},[el('div',{class:'big '+sc,text:rs})]));
-        const co=e.querySelector('.court');co.appendChild(el('div',{class:sc,style:'position:absolute;bottom:4px;right:5px;font-size:.9em',text:sym}));
+      if(r<=3&&r>=1){ // court K Q J — SVG figure
+        const wrap=el('div',{class:'court'});wrap.innerHTML=courtSvg(su,r);e.appendChild(wrap);
       } else {
         const v=rankValue(r);const pips=el('div',{class:'pips'});
         for(const [x,y] of pipLayout(v)){pips.appendChild(el('div',{class:'pip '+sc,style:`left:${x*100}%;top:${y*100}%`,text:sym}));}
