@@ -69,6 +69,19 @@ copy the PyQt layout:
   current trick, count, coaching) toggled by the Instrumented button.
 - Default systems set to **SAYC / SAYC** to match the desktop default.
 
+## Bellot card deck, 4-colour, PyQt sizing (2026-06-30)
+- Embedded the authentic **SVG-cards 4.0** deck — © 2005 David Bellot, © 2016–17
+  Huub de Beer, **GNU LGPL 2.1+** (github.com/htdebeer/SVG-cards). The full deck is
+  inlined once as hidden `<defs>` (its licence notice preserved in the file); every
+  card renders as `<use href="#spade_king">`. Procedural cards remain as a fallback.
+  This takes the single file to ~1.1 MB (still self-contained, no external assets).
+- **4-colour recolour** to match the desktop: diamonds → **blue**, clubs → **green**
+  (hearts red, spades black). Done by editing only the `#diamond`/`#club` pip symbols
+  and the diamond/club card groups — hearts, spades and the shared court figures are
+  untouched. (LGPL permits modification; notice kept.)
+- **Card size** raised to 118×170 px to match the PyQt hand cards; North + South
+  hands render large, the sides medium.
+
 ## Cardplay view + professional courts (2026-06-30)
 - **Bidding↔play layout switch** (was broken — the cardplay screen still showed the
   bidding UI). During **play/finished** the left info panel, the bidding box and the
