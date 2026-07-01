@@ -69,6 +69,17 @@ copy the PyQt layout:
   current trick, count, coaching) toggled by the Instrumented button.
 - Default systems set to **SAYC / SAYC** to match the desktop default.
 
+## Cardplay view + professional courts (2026-06-30)
+- **Bidding↔play layout switch** (was broken — the cardplay screen still showed the
+  bidding UI). During **play/finished** the left info panel, the bidding box and the
+  centre auction grid are hidden; the felt table expands and the **current trick is
+  drawn as large cards in the centre** (positioned by seat), with the four hands
+  around the table and seat labels hugging the table edges — matching the desktop
+  cardplay screen. Bidding keeps the panel + auction grid + bidding box.
+- **Professional court cards**: replaced the cartoonish faces with a clean **heraldic
+  design** — a differentiated crown (King = cross, Queen = pearls, Jack = fleur-de-lis),
+  a large serif rank index and the suit pip, point-symmetric, framed. No faces.
+
 ## SVG court deck (2026-06-30)
 J/Q/K now render as **procedurally-drawn SVG court figures** (crown + robe + scepter
 for K/Q, feathered cap for J), suit-coloured and **point-symmetric like a real card** —
