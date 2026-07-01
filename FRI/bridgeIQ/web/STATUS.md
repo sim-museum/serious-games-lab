@@ -69,6 +69,24 @@ copy the PyQt layout:
   current trick, count, coaching) toggled by the Instrumented button.
 - Default systems set to **SAYC / SAYC** to match the desktop default.
 
+## Play/hint/dialog fixes (2026-06-30)
+- **Play the declaring side**: when your side wins the contract you now play (and see)
+  **both** the declarer and dummy hands — no more sitting idle as dummy with the
+  partner's hand hidden. Defenders still see their own hand + dummy only.
+- **Trick cards on the felt**: the current trick is now clustered in the centre of
+  the table (centre-anchored transforms) so all four cards stay on the green; the play
+  table was also enlarged.
+- **Auction & Played Tricks** dialog rebuilt: tall (fills the screen), **colour-coded**
+  (♠ black · ♥ red · ♦ blue · ♣ green), larger, with the **auction in a real 4-column
+  N/E/S/W grid** (not one smushed line) and the winner colour-keyed by side.
+- **Hint** now opens straight to the full analysis (coaching note + suggestion +
+  deeper analysis) — no more click-through. The dead footer button is gone.
+- **"Ask Claude for deeper advice" now works**: it calls the Anthropic Messages API
+  directly from the browser (`anthropic-dangerous-direct-browser-access`), using the
+  user's own API key (entered once, stored only in `localStorage`), and shows Claude's
+  advice on the current bid/card. Model configurable via `CONFIG.claudeModel`
+  (default `claude-sonnet-4-6`). Falls back to a clear message on key/CORS errors.
+
 ## Bellot card deck, 4-colour, PyQt sizing (2026-06-30)
 - Embedded the authentic **SVG-cards 4.0** deck — © 2005 David Bellot, © 2016–17
   Huub de Beer, **GNU LGPL 2.1+** (github.com/htdebeer/SVG-cards). The full deck is

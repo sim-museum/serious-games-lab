@@ -100,13 +100,13 @@ button{font-family:inherit;color:inherit}
 /* ---- layout switch: bidding vs cardplay ---- */
 .phase-play #leftpanel,.phase-finished #leftpanel,.phase-play #rightcol,.phase-finished #rightcol{display:none}
 .phase-play #auctionbox,.phase-finished #auctionbox{display:none}
-.phase-play #table,.phase-finished #table{width:min(42vh,420px)}
-/* current-trick cards on the felt */
-.trickcard{position:absolute;z-index:9;box-shadow:0 3px 8px rgba(0,0,0,.55)}
-.trickcard.t-n{top:11%;left:50%;transform:translateX(-50%)}
-.trickcard.t-s{bottom:11%;left:50%;transform:translateX(-50%)}
-.trickcard.t-e{right:15%;top:50%;transform:translateY(-50%)}
-.trickcard.t-w{left:15%;top:50%;transform:translateY(-50%)}
+.phase-play #table,.phase-finished #table{width:min(52vh,520px)}
+/* current-trick cards clustered in the centre of the felt (all four on green) */
+.trickcard{position:absolute;top:50%;left:50%;z-index:9;box-shadow:0 3px 8px rgba(0,0,0,.55)}
+.trickcard.t-n{transform:translate(-50%,-104%)}
+.trickcard.t-s{transform:translate(-50%,4%)}
+.trickcard.t-e{transform:translate(24%,-50%)}
+.trickcard.t-w{transform:translate(-124%,-50%)}
 .trickcard.twin{box-shadow:0 0 0 3px var(--gold),0 0 16px var(--gold)}
 
 /* dealer/vul box */
@@ -229,6 +229,22 @@ button{font-family:inherit;color:inherit}
 .dialog .dhead .x:hover{color:#000}
 .dialog .dbody{padding:14px;overflow:auto;background:#f7f6f1}
 .dialog .dfoot{padding:9px 14px;border-top:1px solid #b9b4a6;display:flex;justify-content:flex-end;gap:8px;background:#e6e3da}
+/* tall auction+tricks dialog */
+.dialog.tall{height:92vh;width:640px}
+.dialog.tall .dbody{display:flex;flex-direction:column;padding:12px 16px}
+.at-wrap{display:flex;flex-direction:column;height:100%;gap:2px}
+.at-h{font-weight:800;color:#16335f;font-size:16px;margin:2px 0 6px}
+.at-tbl{border-collapse:collapse;width:100%;font-size:17px;background:#fff}
+.at-tbl th{background:#e9e6dd;border:1px solid #b6b0a2;padding:6px 4px;font-weight:700;color:#333;font-size:14px}
+.at-tbl td{border:1px solid #cfcabb;padding:5px 4px;text-align:center;font-size:17px}
+.at-tbl.tricks{flex:1 1 auto;height:100%}
+.at-tbl.tricks .led{background:#fff5d6}
+/* Claude hint styling */
+.hint-claude{margin-top:12px;border-top:1px solid #cfcabb;padding-top:10px}
+.claude-resp{background:#f4f8ff;border:1px solid #b9c6e0;border-radius:6px;padding:10px;font-size:13.5px;line-height:1.55;white-space:pre-wrap}
+.claude-resp b{color:#16335f}
+.hint-claude .btn.busy{opacity:.6;pointer-events:none}
+.keylink{color:#2f6fd0;cursor:pointer;text-decoration:underline;font-size:12px}
 .frow{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
 .frow label{min-width:120px;color:#444;font-size:13px}
 select,input[type=text],input[type=number]{background:#fff;border:1px solid #999;color:#1a1a1a;border-radius:4px;padding:4px 7px;font-size:13px;font-family:inherit}
@@ -1899,6 +1915,7 @@ const CONFIG={
   cardingNS:'standard', cardingEW:'standard',
   strength:'mc',          // 'dd' | 'mc' | 'rule'
   mcSamples:14,           // Monte-Carlo sampled layouts per early/mid card decision
+  claudeModel:'claude-sonnet-4-6', // model for the "Ask Claude" hint feature
   mode:'4player',         // '4player' | '1player' | 'allcomputer' | 'minibridge'
   onePlayerSeat:2,
   scoring:'Teams',        // Teams | Pairs | Rubber | Chicago
@@ -2195,22 +2212,32 @@ const UI=(function(){
     const h=CONFIG.playerTypes.indexOf('human');
     return h>=0?h:So;
   }
+  // Does the human's side own the contract? If so the human plays the whole
+  // declaring side (declarer + dummy) and sees both hands — the usual
+  // single-player convention, so you're never stuck idle as "dummy".
+  function declaringSideHuman(){
+    const b=Game.board;if(!b||b.declarer==null)return false;
+    return CONFIG.playerTypes[b.declarer]==='human'||CONFIG.playerTypes[b.dummy]==='human';
+  }
   function handVisible(seat){
     const b=Game.board;if(!b)return false;
     if(CONFIG.showAllHands)return true;
     if(CONFIG.mode==='allcomputer')return true;
     if(b.phase==='finished'||b.phase==='passedout')return true;
     if(seat===viewerSeat())return true;
-    if((b.phase==='play')&&seat===b.dummy&&b.dummyExposed)return true;
+    if(b.phase==='play'){
+      if(seat===b.dummy&&b.dummyExposed)return true;               // dummy face-up for all
+      if(declaringSideHuman()&&(seat===b.declarer||seat===b.dummy))return true; // your side declares
+    }
     return false;
   }
   function humanActsFor(seat){
     const b=Game.board;if(!b)return false;
     if(b.phase==='bidding')return CONFIG.playerTypes[Game.currentBidder()]==='human'&&seat===Game.currentBidder();
     if(b.phase==='play'){
-      if(b.turn==null)return false;
-      if(CONFIG.playerTypes[seat]==='human'&&seat===b.turn)return true;
-      if(seat===b.turn&&seat===b.dummy&&CONFIG.playerTypes[b.declarer]==='human')return true;
+      if(b.turn==null||seat!==b.turn)return false;
+      if(CONFIG.playerTypes[seat]==='human')return true;
+      if(declaringSideHuman()&&(seat===b.declarer||seat===b.dummy))return true; // human plays both declaring hands
       return false;
     }
     return false;
@@ -2218,10 +2245,7 @@ const UI=(function(){
   function anyHumanToAct(){
     const b=Game.board;if(!b)return false;
     if(b.phase==='bidding')return CONFIG.playerTypes[Game.currentBidder()]==='human';
-    if(b.phase==='play'&&b.turn!=null){
-      if(CONFIG.playerTypes[b.turn]==='human')return true;
-      if(b.turn===b.dummy&&CONFIG.playerTypes[b.declarer]==='human')return true;
-    }
+    if(b.phase==='play'&&b.turn!=null)return humanActsFor(b.turn);
     return false;
   }
 
@@ -3040,35 +3064,88 @@ const Dialogs=(function(){
   // -- hint / claim --
   A('hint',()=>{
     const b=Game.board;if(!b)return;
-    let title,note,suggest,deep;
+    let title,note,suggest,deep,claudePrompt;
     if(b.phase==='bidding'){const seat=Game.currentBidder();
       const r=Bidding.decideBid(b.hands[seat],{dealer:b.dealer,vul:b.vul,seat,bids:b.auction.map(x=>({bid:x.bid,why:x.why}))},systemForSeat(seat));
       title='Hint — bidding';note=r.bid.why||'Describe your hand and find the fit.';suggest='bid '+bidSym(r.bid);
-      const e=r.eval;deep=()=>`Your hand: <b>${e.hcp} HCP</b>, shape ${e.dist.join('-')}, ${e.losers} losers, ${e.controls} controls. `+
+      const e=r.eval;deep=`Your hand: <b>${e.hcp} HCP</b>, shape ${e.dist.join('-')}, ${e.losers} losers, ${e.controls} controls, ${e.quickTricks} quick tricks. `+
         `The recommended call <b>${bidSym(r.bid)}</b> is chosen because: ${r.bid.why}. `+
         (b.auction.length?'In the current auction, alternatives were ruled out as illegal or weaker.':'This is the opening that best describes the hand under '+Bidding.getSystem(systemForSeat(seat)).name+'.');
+      claudePrompt=buildClaudePrompt(b,seat,'bid',r);
     } else if(b.phase==='play'&&b.turn!=null){
       const seat=b.turn;const ctx=Game.buildPlayCtx(seat);const r=Cardplay.chooseCard(ctx);
       title='Hint — card play';note=playLeadNote(b,seat);suggest='play '+cSym(r.card);
-      deep=()=>{
-        const e2=Game.buildPlayCtx(seat);const mc=Cardplay.mcChooseCard?null:null;
-        return `<b>${cSym(r.card)}</b> — ${r.why}.<br>`+
+      deep=`<b>${cSym(r.card)}</b> — ${r.why}.<br>`+
           (r.mc?'Monte-Carlo dealt the unseen cards many ways and this card averaged the most tricks across those layouts.':
            r.dd?'The endgame is small enough to solve exactly: this card is double-dummy optimal.':
-           'Rule-based: '+r.why+'.')+
+           'Rule-based heuristic: '+r.why+'.')+
           `<br>Contract ${b.contract.level}${b.contract.suit===NT?'NT':SUIT_SYM[b.contract.suit]} by ${SEAT_NAME[b.contract.declarer]}; you have taken ${seatIsNS(seat)?b.nsTricks:b.ewTricks} on your side so far.`;
-      };
+      claudePrompt=buildClaudePrompt(b,seat,'play',r);
     } else return;
     const body=el('div');
     body.appendChild(el('div',{class:'hint-note'},[el('b',{text:'Coaching note'}),el('div',{text:note})]));
     body.appendChild(el('div',{class:'hint-sug',html:'▶ biq suggests: <b>'+suggest+'</b>'}));
-    const deepBox=el('div',{class:'hint-deep',style:'display:none'});
-    body.appendChild(deepBox);
-    modal({title,body,width:520,footer:[
-      {label:'Ask Claude for deeper advice',fn:()=>{deepBox.style.display='block';deepBox.innerHTML='<b>Deeper analysis</b><br>'+deep();}},
-      {label:'Close',primary:true},
-    ]});
+    body.appendChild(el('div',{class:'hint-deep',html:'<b>Deeper analysis</b><br>'+deep}));
+    const claudeBox=el('div',{class:'hint-claude'});
+    const askBtn=el('button',{class:'btn primary',text:'Ask Claude for deeper advice'});
+    askBtn.addEventListener('click',()=>askClaude(claudePrompt,claudeBox,askBtn));
+    claudeBox.appendChild(askBtn);
+    body.appendChild(claudeBox);
+    modal({title,body,width:560,footer:[{label:'Close',primary:true}]});
   });
+  // ---- live Claude advice (uses the user's Anthropic API key, stored locally) ----
+  function buildClaudePrompt(b,seat,kind,r){
+    const hands=[N,E,So,W].map(s=>`  ${SEAT_CHARS[s]}: ${handToPbn(b.original[s])}`).join('\n');
+    const auction=b.auction.map(x=>SEAT_CHARS[x.seat]+' '+bidCellMini(x.bid)).join(', ')||'(none yet)';
+    let ctx=`You are an expert bridge teacher. Be concise and practical (a short paragraph).\n\n`+
+      `Board ${b.boardNumber}. Dealer ${SEAT_NAME[b.dealer]}. Vulnerable: ${b.vul}.\n`+
+      `All four hands (PBN ♠.♥.♦.♣):\n${hands}\n\nAuction so far: ${auction}\n`;
+    if(kind==='bid'){
+      ctx+=`\nIt is ${SEAT_NAME[seat]} to call, playing ${Bidding.getSystem(systemForSeat(seat)).name}. `+
+        `The built-in engine suggests ${bidSym(r.bid)}. What is the best call and why? If the engine is wrong, say so.`;
+    } else {
+      const c=b.contract;const cs=c.level+(c.suit===NT?'NT':SUIT_CHARS[c.suit])+(c.doubled?'X':'');
+      const trick=(b.trick||[]).map(t=>SEAT_CHARS[t.seat]+':'+cSym(t.card)).join(' ')||'(you are on lead)';
+      const legal=Cardplay.legalCards(b.hands[seat],b.trick.length?cSuit(b.trick[0].card):-1).map(cSym).join(' ');
+      ctx+=`\nContract: ${cs} by ${SEAT_NAME[c.declarer]}. Tricks won: declarer ${seatIsNS(c.declarer)?b.nsTricks:b.ewTricks}, defence ${seatIsNS(c.declarer)?b.ewTricks:b.nsTricks}. `+
+        `Current trick: ${trick}. It is ${SEAT_NAME[seat]} to play. Legal cards: ${legal}. `+
+        `The engine suggests ${cSym(r.card)}. What is the best card and why (name a specific card)?`;
+    }
+    return ctx;
+  }
+  function mdLite(t){return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\n/g,'<br>');}
+  function askClaude(prompt,box,btn){
+    const key=lsGet('biq-anthropic-key');
+    if(!key){
+      box.innerHTML='';
+      box.appendChild(el('div',{class:'hint',html:'Enter your <b>Anthropic API key</b> for live advice from Claude. It is stored only in this browser (localStorage) and sent directly to api.anthropic.com — never to anyone else.'}));
+      const inp=el('input',{type:'password',placeholder:'sk-ant-…',style:'width:300px'});
+      const row=el('div',{class:'frow',style:'margin-top:8px'},[el('label',{text:'API key'}),inp]);
+      box.appendChild(row);
+      box.appendChild(el('button',{class:'btn primary',text:'Save & Ask Claude',onclick:()=>{const k=inp.value.trim();if(!k)return;lsSet('biq-anthropic-key',k);askClaude(prompt,box,null);}}));
+      return;
+    }
+    if(btn)btn.classList.add('busy');
+    box.innerHTML='<div class="hint">Claude is thinking…</div>';
+    fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+      headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:CONFIG.claudeModel||'claude-sonnet-4-6',max_tokens:700,messages:[{role:'user',content:prompt}]})})
+      .then(r=>r.json()).then(d=>{
+        if(d.error){box.innerHTML='';box.appendChild(el('div',{class:'claude-resp',style:'color:#b5483c',html:'Claude API error: '+(d.error.message||JSON.stringify(d.error))}));appendKeyLink(box,prompt);return;}
+        const text=(d.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('\n');
+        box.innerHTML='';box.appendChild(el('div',{class:'claude-resp',html:'<b>Claude:</b><br>'+mdLite(text)}));
+        appendKeyLink(box,prompt);
+      }).catch(e=>{box.innerHTML='';
+        box.appendChild(el('div',{class:'claude-resp',style:'color:#b5483c',html:'Request failed: '+e.message+'.<br>If you opened this file with file://, the browser may block the request (CORS); serving it over http, or checking your key, usually fixes it.'}));
+        appendKeyLink(box,prompt);});
+  }
+  function appendKeyLink(box,prompt){
+    const bar=el('div',{style:'margin-top:8px;display:flex;gap:14px'});
+    bar.appendChild(el('span',{class:'keylink',text:'Ask again',onclick:()=>askClaude(prompt,box,null)}));
+    bar.appendChild(el('span',{class:'keylink',text:'Change API key',onclick:()=>{lsSet('biq-anthropic-key','');askClaude(prompt,box,null);}}));
+    box.appendChild(bar);
+  }
   function playLeadNote(b,seat){
     if(b.trick.length===0){
       if(seat===b.openingLeader&&b.tricksPlayed.length===0)return 'Opening lead: top of a sequence, 4th-best from length, or your partner\'s suit; avoid leading away from honours into the unknown.';
@@ -3506,19 +3583,42 @@ const Dialogs=(function(){
   }
 
   // -- auction & tricks / replay --
+  const SC4=['#15171c','#c8102e','#1457d6','#17812f']; // spade heart diamond club
+  function colCardHtml(card){const su=cSuit(card),r=cRank(card);const rc=RANK_CHARS[r]==='T'?'10':RANK_CHARS[r];
+    return `<span style="color:${SC4[su]};font-weight:700">${rc}${SUIT_SYM[su]}</span>`;}
+  function colBidHtml(bid){
+    if(bid.kind==='P')return '<span style="color:#17812f">Pass</span>';
+    if(bid.kind==='X')return '<b>Dbl</b>'; if(bid.kind==='XX')return '<b>Rdbl</b>';
+    return `<span style="font-weight:800">${bid.level}<span style="color:${bid.suit===NT?'#8a6d1f':SC4[bid.suit]}">${bid.suit===NT?'NT':SUIT_SYM[bid.suit]}</span></span>`;}
   A('auctionTricks',()=>{
     const b=Game.board;if(!b){info('Auction & Tricks','<p class="hint">No deal.</p>');return;}
-    const body=el('div');
-    body.appendChild(el('h4',{text:'Auction',style:'margin:0 0 6px'}));
-    body.appendChild(el('div',{html:b.auction.map(x=>SEAT_CHARS[x.seat]+':'+bidCellMini(x.bid)).join('  ')||'<span class="hint">none</span>'}));
-    if(b.tricksPlayed.length){
-      body.appendChild(el('h4',{text:'Tricks',style:'margin:12px 0 6px'}));
-      const tbl=el('table',{class:'grid'});tbl.appendChild(el('tr',{},['#','N','E','S','W','Won'].map(h=>el('th',{text:h}))));
-      b.tricksPlayed.forEach((t,i)=>{if(t.claimed)return;const byseat={};t.cards.forEach(c=>byseat[c.seat]=cSym(c.card));
-        tbl.appendChild(el('tr',{},[el('td',{text:i+1}),...[N,E,So,W].map(s=>el('td',{html:byseat[s]||'',style:s===t.leader?'font-weight:700':''})),el('td',{text:SEAT_CHARS[t.winner]})]));});
-      body.appendChild(tbl);
-    }
-    modal({title:'Auction and Played Tricks',body,width:560,footer:[{label:'Close',primary:true}]});
+    const body=el('div',{class:'at-wrap'});
+    // ---- auction as a 4-column grid ----
+    body.appendChild(el('div',{class:'at-h',text:'Auction'}));
+    const at=el('table',{class:'at-tbl'});
+    at.appendChild(el('tr',{},[N,E,So,W].map(s=>el('th',{text:SEAT_NAME[s]}))));
+    let cells=[];for(let i=0;i<b.dealer;i++)cells.push(null);
+    for(const x of b.auction)cells.push(x);
+    let tr=el('tr');
+    cells.forEach((x,i)=>{if(i>0&&i%4===0){at.appendChild(tr);tr=el('tr');}
+      tr.appendChild(el('td',{html:x?colBidHtml(x.bid):''}));});
+    while(tr.children.length<4)tr.appendChild(el('td',{text:''}));
+    at.appendChild(tr);body.appendChild(at);
+    // ---- played tricks ----
+    body.appendChild(el('div',{class:'at-h',style:'margin-top:12px',text:'Played tricks'}));
+    const tt=el('table',{class:'at-tbl tricks'});
+    tt.appendChild(el('tr',{},['#',SEAT_NAME[N],SEAT_NAME[E],SEAT_NAME[So],SEAT_NAME[W],'Won'].map(h=>el('th',{text:h}))));
+    const real=b.tricksPlayed.filter(t=>!t.claimed);
+    if(!real.length)tt.appendChild(el('tr',{},[el('td',{colspan:6,html:'<span class="hint">No cards played yet.</span>'})]));
+    real.forEach((t,i)=>{const byseat={};t.cards.forEach(c=>byseat[c.seat]=c.card);
+      const rowCells=[el('td',{text:i+1,style:'color:#888'})];
+      for(const s of [N,E,So,W]){const c=byseat[s];
+        rowCells.push(el('td',{class:s===t.leader?'led':'',html:c!=null?colCardHtml(c):''}));}
+      rowCells.push(el('td',{html:`<b style="color:${seatIsNS(t.winner)?'#1457d6':'#c8102e'}">${SEAT_CHARS[t.winner]}</b>`}));
+      tt.appendChild(el('tr',{},rowCells));});
+    body.appendChild(tt);
+    const m=modal({title:'Auction and Played Tricks',body,width:640,footer:[{label:'Close',primary:true}]});
+    m.dlg.classList.add('tall');
   });
   A('handLog',()=>{
     const b=Game.board;if(!b){info('Hand Log','<p class="hint">No deal.</p>');return;}
