@@ -1753,13 +1753,26 @@ class MainWindow(QMainWindow):
     def _on_closed_room_button(self):
         """Play-toolbar 'Closed room' button — available on every hand.
 
-        When a closed-room match is already running (four biq bots playing
-        this deal in parallel) we open the open-vs-closed comparison for the
-        boards played so far. Otherwise we start closed-room play for the
-        current deal — the same entry point as the opening-screen button.
+        With a closed-room match already running (four biq bots playing each
+        deal in parallel):
+          • once the current deal is finished, clicking Closed room deals the
+            NEXT comparison board — the human plays the open room while the
+            four bots play the SAME deal in the closed room. (The score table
+            stays reachable from the end-of-hand dialog's "View other table"
+            button and Deal ▸ Teams score.)
+          • mid-deal, it opens the open-vs-closed comparison for the boards
+            played so far.
+        Otherwise it starts closed-room play for the current deal — the same
+        entry point as the opening-screen button.
         """
         if self.teams_match is not None and self.match_controller is not None:
-            self._on_view_teams_score()
+            if self.controller.current_phase == 'finished':
+                # Deal is over — advance to a fresh comparison board (this
+                # blanks the finished deal's cards and starts the closed room
+                # on the new deal), rather than popping the score table.
+                self._on_next_deal()
+            else:
+                self._on_view_teams_score()
         else:
             self._on_closed_room_start()
 
@@ -8827,14 +8840,19 @@ For more information, see the README file."""
                     self.original_hands,
                     list(board.tricks) if board.tricks else [],
                 )
-            # Play is over — whether by the 13th trick or a claim. Four full
-            # 13-card hands overflow the table and get cut off, and a claim's
-            # unplayed cards were never actually played, so clear ALL cards
-            # from the screen once the deal completes. The hands stay
-            # populated above; F2 / Open All Hands reveals them on demand.
-            self.table_view.hide_all_hands()
         except Exception as ex:
             print(f"end-of-hand view failed: {ex!r}", flush=True)
+        # Play is over — whether by the 13th trick or a claim. Four full
+        # 13-card hands overflow the table and get cut off, and a claim's
+        # unplayed cards were never actually played, so clear ALL cards from
+        # the screen once the deal completes. The hands stay populated above;
+        # F2 / Open All Hands reveals them on demand. Blank UNCONDITIONALLY —
+        # in its own try — so a failure while populating the post-mortem
+        # snapshot above can never strand the last cards on the felt.
+        try:
+            self.table_view.hide_all_hands()
+        except Exception as ex:
+            print(f"hide_all_hands failed: {ex!r}", flush=True)
 
         if board.is_passed_out():
             self.status_label.setText("Passed out")
