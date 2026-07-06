@@ -1,0 +1,52 @@
+Note on release:
+
+- (Update "KATA_URL*" and "KATA_MODEL_URL" in build_with/Makefile. Remove build_with/bin.)
+- Update README.md ("Major changes" etc.) and build_with/release.md.
+- Update "version" in package.json and "RELEASE" in Makefile.
+- Do "make win" (to force rebuilding) and "make zip".
+- Rename, test, and upload tmpLizGoban-*.zip.
+
+Note on design:
+
+We try to avoid confirmation dialogs for any actions and enable "undo"
+of them instead.  UI is kept modeless as far as possible.  See "humane
+interface" for these points
+(https://en.wikipedia.org/wiki/The_Humane_Interface).
+
+Preferences are also kept as small as possible because they make
+user-support difficult.  They also cause bugs that appear only in
+specific preferences and such bugs are often overlooked by the
+developers.
+
+Note on implementation:
+
+Leelaz is wrapped as if it is a stateless analyzer for convenience.
+The wrapped leelaz receives the history of moves from the beginning to
+the current board state for every analysis.  Only the difference from
+the previous call is sent to leelaz internally for efficiency.
+
+Handicap stones are treated as usual moves internally and the move
+number is shifted only on the display.  We dare to do this from the
+experience of repeated bugs on handicap games in Lizzie.
+
+src/package.json exists only for backward compatibility to enable "npx
+electron src".
+
+Note on confusing names (for historical reason):
+
+is_black - used in game history like {move: "D4", is_black: true, ...}
+black - used in stones (2D array) like {stone: true, black: true, ...}
+
+endstate - 2D array (positive = black)
+ownership - 1D array (positive = black)
+
+move_count - handicap stones are also counted.
+(First move = 1 in a normal game, 5 in a 4-handicap game.)
+
+Note on strategies:
+
+To add a new strategy for "match vs. AI", modify the following parts.
+
+- `<select id="weaken" ...>` in `index.html`
+- `set_match_param(...)` in `main.js`
+- `get_move_etc(...)` in `weak_move.js`

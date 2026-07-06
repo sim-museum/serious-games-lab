@@ -1,0 +1,30 @@
+
+---
+45,191,731 games     9.084 secs  4,974,871 games/sec
+
+Board: 5c Th Qc
+Dead:  
+
+	equity 	win 	tie 	      pots won 	pots tied	
+Hand 0: 	86.216%  	86.11% 	00.10% 	      38916084 	    46989.00   { AcAh }
+Hand 1: 	13.784%  	13.68% 	00.10% 	       6182174 	    46989.00   { random }
+
+
+---
+
+
+
+---
+11,203,217 games     2.806 secs  3,992,593 games/sec
+
+Board: 
+Dead:  
+
+	equity 	win 	tie 	      pots won 	pots tied	
+Hand 0: 	85.217%  	84.95% 	00.27% 	       9516865 	    30514.00   { AcAd }
+Hand 1: 	14.783%  	14.51% 	00.27% 	       1625716 	    30514.50   { random }
+
+
+---
+
+

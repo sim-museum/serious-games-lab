@@ -1,0 +1,444 @@
+{
+  "pokerIQ_save_version": 1,
+  "saved_at": "2026-06-07T19:18:26",
+  "players": [
+    {
+      "name": "Hero (You)",
+      "style": "human",
+      "stack": 210,
+      "hand": [
+        "3c",
+        "3s"
+      ],
+      "active": true,
+      "bet_in_round": 28,
+      "actions_this_round": 1,
+      "total_invested": 53
+    },
+    {
+      "name": "Loose Bruce",
+      "style": "loose",
+      "stack": 290,
+      "hand": [
+        "Td",
+        "4s"
+      ],
+      "active": false,
+      "bet_in_round": 0,
+      "actions_this_round": 0,
+      "total_invested": 0
+    },
+    {
+      "name": "Aggro Angela",
+      "style": "aggressive",
+      "stack": 112,
+      "hand": [
+        "8d",
+        "Th"
+      ],
+      "active": false,
+      "bet_in_round": 0,
+      "actions_this_round": 2,
+      "total_invested": 25
+    },
+    {
+      "name": "Fluid Fiona",
+      "style": "tom",
+      "stack": 188,
+      "hand": [
+        "Ac",
+        "8s"
+      ],
+      "active": false,
+      "bet_in_round": 0,
+      "actions_this_round": 0,
+      "total_invested": 6
+    },
+    {
+      "name": "Sharkey Steve",
+      "style": "shark",
+      "stack": 200,
+      "hand": [
+        "Js",
+        "7s"
+      ],
+      "active": false,
+      "bet_in_round": 0,
+      "actions_this_round": 0,
+      "total_invested": 0
+    },
+    {
+      "name": "Tight Tim",
+      "style": "tight",
+      "stack": 200,
+      "hand": [
+        "5d",
+        "Ts"
+      ],
+      "active": false,
+      "bet_in_round": 0,
+      "actions_this_round": 0,
+      "total_invested": 0
+    }
+  ],
+  "board": [
+    "7d",
+    "Kd",
+    "5c",
+    "9c",
+    "4h"
+  ],
+  "pot": 84,
+  "dealer_idx": 2,
+  "current_bet": 28,
+  "street_idx": 3,
+  "current_player_idx": 3,
+  "last_raiser": 0,
+  "last_raise_size": 28,
+  "raises_this_round": 1,
+  "hand_number": 2,
+  "blind_level": 0,
+  "at_showdown": false,
+  "action_log": [
+    "--- River ---",
+    "Aggro Angela: Checks",
+    "Hero (You): Raises to $28",
+    "Aggro Angela: Folds",
+    "Hero (You) wins $31!"
+  ],
+  "action_history": [
+    "=== NEW HAND ===",
+    "Aggro Angela posts $1",
+    "Fluid Fiona posts $2",
+    "Sharkey Steve: Folds",
+    "Tight Tim: Folds",
+    "Hero (You): Calls $2",
+    "Loose Bruce: Folds",
+    "Aggro Angela: Raises to $6",
+    "Fluid Fiona: Calls $4",
+    "Hero (You): Calls $4",
+    "--- Flop ---",
+    "Aggro Angela: Raises to $10",
+    "Fluid Fiona: Folds",
+    "Hero (You): Calls $10",
+    "--- Turn ---",
+    "Aggro Angela: Checks",
+    "Hero (You): Raises to $9",
+    "Aggro Angela: Calls $9",
+    "--- River ---",
+    "Aggro Angela: Checks",
+    "Hero (You): Raises to $28",
+    "Aggro Angela: Folds",
+    "Hero (You) wins $31!"
+  ],
+  "starting_stacks": {
+    "Hero (You)": 179,
+    "Loose Bruce": 290,
+    "Aggro Angela": 137,
+    "Fluid Fiona": 194,
+    "Sharkey Steve": 200,
+    "Tight Tim": 200
+  },
+  "hand_history": {
+    "hero_cards": [
+      "3c",
+      "3s"
+    ],
+    "hero_actions": [
+      [
+        "Preflop",
+        "c",
+        "called $2 on Preflop"
+      ],
+      [
+        "Preflop",
+        "c",
+        "called $4 on Preflop"
+      ],
+      [
+        "Flop",
+        "c",
+        "called $10 on Flop"
+      ],
+      [
+        "Turn",
+        "r",
+        "raised to $9 on Turn"
+      ],
+      [
+        "River",
+        "r",
+        "raised to $28 on River"
+      ]
+    ],
+    "street_equities": {
+      "Flop": {
+        "Hero (You)": 0.546
+      },
+      "Turn": {
+        "Hero (You)": 0.684
+      },
+      "River": {
+        "Hero (You)": 1.0
+      }
+    },
+    "key_events": [],
+    "board_by_street": {
+      "Preflop": [],
+      "Flop": [
+        "7d",
+        "Kd",
+        "5c"
+      ],
+      "Turn": [
+        "7d",
+        "Kd",
+        "5c",
+        "9c"
+      ],
+      "River": [
+        "7d",
+        "Kd",
+        "5c",
+        "9c",
+        "4h"
+      ]
+    },
+    "villain_info": {},
+    "street_stats": {
+      "Preflop": [
+        [
+          "Hero (You)",
+          0.3973333333333333,
+          0.3375,
+          0.0,
+          true,
+          true
+        ],
+        [
+          "Loose Bruce",
+          0.0,
+          0.175,
+          0.25,
+          false,
+          false
+        ],
+        [
+          "Aggro Angela",
+          0.23433333333333334,
+          0.3525,
+          0.0,
+          true,
+          false
+        ],
+        [
+          "Fluid Fiona",
+          0.3683333333333333,
+          0.405,
+          0.0,
+          true,
+          false
+        ],
+        [
+          "Sharkey Steve",
+          0.0,
+          0.28,
+          0.25,
+          false,
+          false
+        ],
+        [
+          "Tight Tim",
+          0.0,
+          0.205,
+          0.25,
+          false,
+          false
+        ]
+      ],
+      "Flop": [
+        [
+          "Hero (You)",
+          0.641,
+          0.43875,
+          0.0,
+          true,
+          true
+        ],
+        [
+          "Loose Bruce",
+          0.0,
+          0.165,
+          0.20833333333333334,
+          false,
+          false
+        ],
+        [
+          "Aggro Angela",
+          0.359,
+          0.4,
+          0.0,
+          true,
+          false
+        ],
+        [
+          "Fluid Fiona",
+          0.0,
+          0.25,
+          0.20833333333333334,
+          false,
+          false
+        ],
+        [
+          "Sharkey Steve",
+          0.0,
+          0.49375,
+          0.20833333333333334,
+          false,
+          false
+        ],
+        [
+          "Tight Tim",
+          0.0,
+          0.38375,
+          0.20833333333333334,
+          false,
+          false
+        ]
+      ],
+      "Turn": [
+        [
+          "Hero (You)",
+          0.66,
+          0.4275,
+          0.0,
+          true,
+          true
+        ],
+        [
+          "Loose Bruce",
+          0.0,
+          0.04375,
+          0.13846153846153847,
+          false,
+          false
+        ],
+        [
+          "Aggro Angela",
+          0.34,
+          0.34625,
+          0.0,
+          true,
+          false
+        ],
+        [
+          "Fluid Fiona",
+          0.0,
+          0.26,
+          0.13846153846153847,
+          false,
+          false
+        ],
+        [
+          "Sharkey Steve",
+          0.0,
+          0.3475,
+          0.13846153846153847,
+          false,
+          false
+        ],
+        [
+          "Tight Tim",
+          0.0,
+          0.3325,
+          0.13846153846153847,
+          false,
+          false
+        ]
+      ],
+      "River": [
+        [
+          "Hero (You)",
+          1.0,
+          0.3925,
+          0.0,
+          true,
+          true
+        ],
+        [
+          "Loose Bruce",
+          0.0,
+          0.4625,
+          0.25,
+          false,
+          false
+        ],
+        [
+          "Aggro Angela",
+          0.0,
+          0.1025,
+          0.25,
+          false,
+          false
+        ],
+        [
+          "Fluid Fiona",
+          0.0,
+          0.31,
+          0.25,
+          false,
+          false
+        ],
+        [
+          "Sharkey Steve",
+          0.0,
+          0.625,
+          0.25,
+          false,
+          false
+        ],
+        [
+          "Tight Tim",
+          0.0,
+          0.55,
+          0.25,
+          false,
+          false
+        ]
+      ]
+    },
+    "street_actions": {
+      "Preflop": [
+        "Sharkey Steve: Folds",
+        "Tight Tim: Folds",
+        "Hero (You): Calls $2",
+        "Loose Bruce: Folds",
+        "Aggro Angela: Raises to $5",
+        "Fluid Fiona: Calls $4",
+        "Hero (You): Calls $4"
+      ],
+      "Flop": [
+        "Aggro Angela: Raises to $10",
+        "Fluid Fiona: Folds",
+        "Hero (You): Calls $10"
+      ],
+      "Turn": [
+        "Aggro Angela: Checks",
+        "Hero (You): Raises to $9",
+        "Aggro Angela: Calls $9"
+      ],
+      "River": [
+        "Aggro Angela: Checks",
+        "Hero (You): Raises to $28",
+        "Aggro Angela: Folds"
+      ]
+    },
+    "pot_by_street": {
+      "Preflop": 18,
+      "Flop": 38,
+      "Turn": 56,
+      "River": 84
+    },
+    "hero_hand_name": "pocket Threes"
+  }
+}
