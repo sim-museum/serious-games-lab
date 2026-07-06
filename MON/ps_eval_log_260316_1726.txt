@@ -1,0 +1,12 @@
+Script started on 2026-03-16 17:26:52-07:00 [COMMAND="bash --norc --noprofile -i" TERM="xterm-256color" TTY="/dev/pts/0" COLUMNS="80" LINES="24"]
+[?2004hbash-5.2$ ./ps-eval 9s9d Qh6c
+[?2004lThe hand 9s9d has 71.2409 % equity (1217039 2822.5 0 0)
+The hand Qh6c has 28.7591 % equity (489620 2822.5 0 0)
+[?2004hbash-5.2$ ./ps-eval 9s9d Qh6c 7s[K[K[K 7s3c
+[?2004lThe hand 9s9d has 61.6009 % equity (842995 1401.9999999999604 0 0)
+The hand Qh6c has 27.1215 % equity (370367 1401.9999999999604 0 0)
+The hand 7s3c has 11.2776 % equity (153186 1401.9999999999604 0 0)
+[?2004hbash-5.2$ exit
+[?2004lexit
+
+Script done on 2026-03-16 18:45:21-07:00 [COMMAND_EXIT_CODE="0"]
