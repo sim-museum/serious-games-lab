@@ -788,9 +788,21 @@ const GRADE_NURB  = ColourGrade((0.42,0.48,0.56),(0.66,0.68,0.70),1.0, (0.92,0.9
 # procedural clouds and still read as "blue sky" (Monza).  Grey gaps + white cloud texture = a flat
 # overcast deck at any camera position.
 const GRADE_OVERCAST = ColourGrade((0.66,0.67,0.69),(0.76,0.765,0.77),1.0, (1.0,1.0,0.98),(0.88,0.89,0.92),1.12, (1.10,1.10,1.10))
+# E58 (graphics QA vs the GPL gold-standard USB shots, 2026-07-05): the GPL gold standard for
+# Monza / Spa / Watkins / Zandvoort is BRIGHT BLUE DAYLIGHT, not the flat grey GRADE_OVERCAST the
+# earlier seam-avoidance pass fell back to.  The seam it was avoiding (blue skydome walling against
+# the overcast horizon ring) is gone now that build_horizon crops the ring to a thin low hill-band —
+# verified in scenery_snap.jl across all 4 blue tracks: the ring's autumn/green forest band blends
+# cleanly into the blue sky at every camera pitch.  So restore the PO's own per-track sunny grades.
+# Nürburgring stays STORMY (its gold standard genuinely is).  JM_GRADE=<NAME> overrides for A/B tests.
+const GRADE_BYTRACK = Dict("nurburgring"=>GRADE_NURB, "monza"=>GRADE_MONZA, "spa"=>GRADE_SPA,
+                           "watglen"=>GRADE_WATK, "zandvoort"=>GRADE_ZAND)
+const GRADE_TAB = Dict("OVERCAST"=>GRADE_OVERCAST, "NURB"=>GRADE_NURB, "MONZA"=>GRADE_MONZA,
+                       "SPA"=>GRADE_SPA, "WATK"=>GRADE_WATK, "ZAND"=>GRADE_ZAND,
+                       "SUNNY"=>GRADE_SUNNY, "GPL"=>GRADE_GPL, "SKIDPAD"=>GRADE_SKIDPAD)
 const GRADE = SKIDPAD ? GRADE_SKIDPAD :
-              TRACKSEL == "nurburgring" ? GRADE_NURB :   # Nürburgring gold standard is genuinely STORMY overcast (moodier grey)
-              GRADE_OVERCAST
+              haskey(ENV, "JM_GRADE") ? get(GRADE_TAB, uppercase(ENV["JM_GRADE"]), GRADE_OVERCAST) :
+              get(GRADE_BYTRACK, TRACKSEL, GRADE_OVERCAST)
 const ENG = EngineAudio.build_lotus(gamedata = GD)   # GPL Ford DFV V8, RPM-pitched; START is deferred to just before the game loop (below)
 print("loading textures… "); flush(stdout)
 const TEXIDX = Render.gpl_texture_index(ZD)
@@ -863,11 +875,16 @@ let objnames=Set{String}()
     # Nudge any too-close pitbldg OUTWARD (away from the nearest centreline point) so the overhang
     # clears the road.  Per-track + named so no other scenery moves; the collision was already removed
     # by the E31 on_road SOLIDS filter.  Tunable / disable via JM_PITBLDG_PUSH (metres, 0 = off).
-    let push = parse(Float64, get(ENV, "JM_PITBLDG_PUSH", TRACKSEL=="watkinsglen" ? "5.0" : "0.0"))
-        if push > 0.0 && !isempty(ALIGNED)
+    let pitpush = parse(Float64, get(ENV, "JM_PITBLDG_PUSH", TRACKSEL=="watglen" ? "5.0" : "0.0")),   # E58 fix: the track id is "watglen", not "watkinsglen" — so this 5 m S/F pit-building nudge NEVER fired; the balcony/scaffold overhang stayed in the road
+        boxpush = parse(Float64, get(ENV, "JM_STARTBOX_PUSH", TRACKSEL=="watglen" ? "6.0" : "0.0"))
+        # E58 (PO): the Watkins DUNLOP start/finish gantry (`startbox`, a perpendicular span at the S/F,
+        # relyaw≈82°) has its origin only ~5 m right of the racing line, so a leg protrudes into the road.
+        # Push it OUTWARD (away from the line) so the whole span clears the track edge.  Per-name distance.
+        pushof(nm) = nm=="pitbldg" ? pitpush : nm=="startbox" ? boxpush : 0.0
+        if (pitpush > 0.0 || boxpush > 0.0) && !isempty(ALIGNED)
             nearest(ix,iy) = (bd=Inf; bj=1; for (j,p) in enumerate(ALIGNED); d=(p[1]-ix)^2+(p[2]-iy)^2; d<bd && (bd=d; bj=j); end; ALIGNED[bj])
             insts = map(insts) do i
-                i.name != "pitbldg" && return i
+                push = pushof(i.name); push <= 0.0 && return i
                 lx,ly = nearest(i.x, i.y); dx=i.x-lx; dy=i.y-ly; d=hypot(dx,dy)
                 (d < 1e-3 || d > 18.0) && return i      # only nudge the close copy at the S/F, push outward along the normal
                 GPLTrack.ObjInst(i.name, i.x+dx/d*push, i.y+dy/d*push, i.z, i.yaw, i.scale)
@@ -880,6 +897,14 @@ let objnames=Set{String}()
     # "smear" (the famous Watkins pit-straight artifact).  Force these down the BILLBOARD path
     # (clean 0-1 UVs + alpha-keyed cutout, always camera-facing) like Zandvoort's trees.
     treeish(nm) = startswith(nm,"tree") || startswith(nm,"newt")
+    # E58 (PO): the Watkins DUNLOP start/finish gantry (`startbox`) bundles a staircase/tower
+    # (sfbox01/02/03) + hay bales (hay01/hay02) that reach TOWARD the racing line (object-space z→4.6,
+    # while the λ frame + banner stay back at z≤1.6).  In-game they read as "a 2nd lambda + a dark hay
+    # bale protruding into the road"; the GPL gold standard shows a single-λ gantry off the road.  Strip
+    # those roadward parts from THIS object only (per-name, scoped) — keep the λ frame + DUNLOP banner +
+    # marshals.  Toggle/extend via JM_STARTBOX_KEEP=1 (keep everything).
+    obj_extra_excl(nm) = (nm=="startbox" && !haskey(ENV,"JM_STARTBOX_KEEP")) ?
+        ("sfbox01","sfbox02","sfbox03","hay01","hay02") : ()
     objmesh=Dict{String,Any}(); ymn=Dict{String,Float32}(); ymx=Dict{String,Float32}(); bbinfo=Dict{String,Any}()
     for inst in insts
         (haskey(objmesh, inst.name) || haskey(bbinfo, inst.name)) && continue
@@ -892,7 +917,7 @@ let objnames=Set{String}()
                 for s in strs; bb = Render.build_billboard(s, TEXIDX); bb !== nothing && break; end
                 bbinfo[inst.name] = bb===nothing ? nothing : (bb[1], bb[2], bb[3], h, wid)
             else
-                parts = Render.extract_gpl_car(p; track=true, mirror=true, exclude=CROWD_TEX)  # strip painted-on crowds
+                parts = Render.extract_gpl_car(p; track=true, mirror=true, exclude=(CROWD_TEX..., obj_extra_excl(inst.name)...))  # strip painted-on crowds + per-object roadward parts (E58 startbox)
                 if isempty(parts); objmesh[inst.name]=nothing    # was an all-crowd object → drop (NOT a billboard)
                 else
                     lo=Inf32; hi=-Inf32; for pp in parts, k in 2:11:length(pp.verts); v=pp.verts[k]; lo=min(lo,v); hi=max(hi,v); end
