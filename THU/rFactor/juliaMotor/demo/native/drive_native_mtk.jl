@@ -489,10 +489,13 @@ function gpl_scenery(ztrk, datpack, ribbon)
     (hat, [Render.TrackPart(v, tex, (0.5f0,0.5f0,0.5f0)) for (tex,v) in groups])
 end
 
-# ---- load physics + geometry: the GPL Zandvoort track + Vanwall-calibrated physics ----
+# ---- load geometry + physics: GPL track/car assets; handling = the MTK Lotus 49 (DriveRT) ----
 const GD = default_gamedata()
 const VEH = load_vehicle(joinpath(GD,"Vehicles","F158","Vanwall","Teams","LewisEvans","LewisEvans.veh"))
-const MODEL = VehicleModel(VEH)              # physics (Lotus-49 calibration is the future goal)
+const MODEL = VehicleModel(VEH)              # NOT the driving physics: handling is the MTK Lotus 49
+                                             # (DriveRT, fitted to iRacing lotus49 .ibt). MODEL only fills
+                                             # DriveCar's `model` field, which this path never reads —
+                                             # see demo/native/CLAUDE.md. Vestigial; keeps the .veh load alive.
 const GPLBASE = normpath(joinpath(@__DIR__,"..","..","..","..","WP","drive_c","Sierra","GPL","tracks"))
 # TRACKSEL → GPL track folder (all share the .3do/.trk/.mip/.dat pipeline)
 const GPLNAME = get(Dict("nurburgring"=>"nurburg", "zandvoort"=>"zandvort",

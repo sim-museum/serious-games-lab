@@ -14,17 +14,34 @@ python3 juliaRacer.py                                  # PyQt6 front-end: launch
 julia -t 2 --project=. drive_native.jl          # opens a GLFW window on your display
 JM_SMOKE=1 julia -t 2 --project=. drive_native.jl   # headless self-test → dumps /tmp/zand_hud.ppm and exits
 ```
-### It still needs a little rFactor data (2026-07-20)
-Everything you *see* is GPL — the track (`WP/drive_c/Sierra/GPL/tracks/<track>`) and the Lotus 49
-body/gauges/windscreen/mirrors (`.../cars/cars67/lotus`). But two things still resolve through the
-**rFactor** GameData root (`RFactorData.default_gamedata()`, overridable with `RFACTOR_GAMEDATA`):
-- `drive_native_mtk.jl:494` — `Vehicles/F158/Vanwall/Teams/LewisEvans/LewisEvans.veh` → the **physics
-  parameters** (`VehicleModel`). The Lotus-49 calibration is still a TODO, so the car is *rendered* as
-  a Lotus 49 but *handles* like a '58 Vanwall.
-- `drive_native_mtk.jl:806` — `EngineAudio.build_lotus(gamedata = GD)` → **engine audio**.
+### The one remaining rFactor dependency is VESTIGIAL (2026-07-20)
+julia racer is a **GPL sim using GPL data**: the track (`WP/drive_c/Sierra/GPL/tracks/<track>`), the
+Lotus 49 body/gauges/windscreen/mirrors (`.../cars/cars67/lotus`), and the engine sound
+(`.../GPL/sound/66fordV8.wav`). The **handling is the ModelingToolkit (acausal/Modelica-style) Lotus 49
+model** in `JuliaMotorMTK/src/drive_rt.jl`, fitted against **iRacing Lotus 49 Nürburgring `.ibt`
+telemetry** (`JuliaMotorMTK/fit/`: `fit_engine.jl`, `fit_brush_long.jl`, `fit_skidpad.jl`,
+`validate_brush.jl`, `compare_lap.jl`). Its constants are Lotus 49 — `GEARS = [2.23,1.72,1.32,1.09,
+0.916]`, `FINAL = 4.11`, brush tyre μ≈1.4 — and `DriveRT.build_car()` takes **no vehicle argument**.
 
-**rFactor does not need to be installed.** Build a symlink-only GameData tree from the mod media and
-point `RFACTOR_GAMEDATA` at it:
+So the rFactor `.veh` load at `drive_native_mtk.jl:494` feeds **nothing that affects driving**. Traced:
+- `VehicleModel(VEH)` → `MODEL` → `DriveCar(MODEL, TRKSURF)` at `:551`. Of `CAR`, the sim uses only
+  `spawn(CAR)` (a pose on the racing ribbon) and `CAR.max_steer` — and `max_steer` is `DriveCar`'s
+  **constructor default 0.35**, not read from the `.veh`; `DriveRT` applies its own `MAXSTEER = 0.30`
+  anyway.
+- `DriveCar.model` is read in exactly one place, `JuliaMotor.step!` (`JuliaMotor/src/drive.jl:178`) —
+  the old bicycle-model path. **`drive_native_mtk.jl` never calls `step!`**; it steps
+  `DriveRT.step_car!`. The field is dead weight on this path.
+- `:806` `EngineAudio.build_lotus(gamedata = GD)` — `build_lotus(; gpl_engine = GPL_ENGINE_WAV,
+  kwargs...)` swallows `gamedata` into `kwargs` and **ignores it**; it loads the GPL wav.
+
+The `.veh` exists only to satisfy `DriveCar`'s `model::VehicleModel` struct field. It is therefore a
+**structural dependency, not a physics source** — but it is still *load-bearing at startup*: without it
+you get `SystemError: opening file ".../rFactor/GameData/Vehicles/F158/.../LewisEvans.veh"` and the sim
+dies before the window opens. (The stale comment on `:495` saying "Lotus-49 calibration is the future
+goal" predates the MTK work and is wrong; corrected in place.)
+
+**Until that field is made optional, rFactor data is needed to start — but rFactor need NOT be
+installed.** Build a symlink-only GameData tree from the mod media and point `RFACTOR_GAMEDATA` at it:
 ```
 GD=~/sgl-julia-racer/rfactor-gamedata; mkdir -p $GD/Locations
 M="~/sgl/THU/rFactor/INSTALL/F1 1958 by ORM - v4.35 COMPLETE/F1 1958 by ORM - v4.35 COMPLETE/Gamedata"
