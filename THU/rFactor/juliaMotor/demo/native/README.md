@@ -8,7 +8,7 @@ native window and a hand-written GL pipeline that can grow toward textures,
 materials, shadows and post-processing.
 
 ```sh
-cd /home/g/sgl/THU/rFactor/juliaMotor/demo/native
+cd ~/sgl/THU/rFactor/juliaMotor/demo/native
 julia -t 2 --project=. drive_native.jl   # -t 2 runs the engine-audio thread
 ```
 

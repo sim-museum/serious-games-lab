@@ -1,6 +1,6 @@
 # Measure the car's PEAK lateral grip (g): hold speed, slowly ramp steering to the limit,
 # track max |ay|. iRacing skidpad .ibt = 1.40 g. Tune tyre μ to match.
-include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/drive_rt.jl"); using .DriveRT
+include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt.jl"))); using .DriveRT
 
 function main()
     c = build_car(v0 = 0.0)

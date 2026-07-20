@@ -13,7 +13,7 @@ const TERRAIN = TriangleHAT(DIR); const CAR = DriveCar(MODEL, AIW; terrain=TERRA
 const TRACK = Render.extract_track(DIR)
 
 # ---- GPL Lotus 49 ----
-const LOTDIR = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/cars/cars67/lotus"
+const LOTDIR = normpath(joinpath(@__DIR__,"..","..","..","..","WP","drive_c","Sierra","GPL","cars","cars67","lotus"))
 const GPLTEX = Render.gpl_texture_index(LOTDIR)
 const LOTBODY = Render.extract_gpl_car(joinpath(LOTDIR,"lotus.3do"); exclude=("ltraymap","lshad","lohand","lotarms",Render.STEER_TEX...))  # no hands
 # wheels: KEEP untextured tris (the black tyre body) — only the body drops "".

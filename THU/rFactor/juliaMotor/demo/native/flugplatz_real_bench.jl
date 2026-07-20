@@ -8,12 +8,12 @@
 #   IR_FILE="…/lotus49_nurburgring … .ibt"  to pick a different iRacing run.
 
 using Printf, Dates
-include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/ibt.jl"); using .IBT
-include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/drive_rt3d.jl"); using .DriveRT3D
+include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","ibt.jl"))); using .IBT
+include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt3d.jl"))); using .DriveRT3D
 const G = 9.80665
 
 IRF = get(ENV, "IR_FILE",
-    "/home/g/sgl/THU/rFactor/juliaMotor/data/iracing/2026-06-24/lotus49_nurburgring nordschleife 2026-06-24 15-59-43.ibt")
+    normpath(joinpath(@__DIR__,"..","..","data","iracing","2026-06-24","lotus49_nurburgring nordschleife 2026-06-24 15-59-43.ibt")))
 ir = ibt_open(IRF)
 dt_ir = 1.0/ir.tickRate
 spd = channel(ir, "Speed"); alt = channel(ir, "Alt"); vacc = channel(ir, "VertAccel")
@@ -117,8 +117,8 @@ println("\n  ─────────────── Flugplatz on the REAL
         "JM 3-D", airtime, vtake*3.6, minaz, maxaz, samples[li]["Speed"]*3.6 - samples[ai]["Speed"]*3.6)
 
 try
-    tmpl = ibt_open("/home/g/sgl/THU/rFactor/juliaMotor/data/iracing/lotus49_nurburgring nordschleife 2026-06-14 11-11-37.ibt")
+    tmpl = ibt_open(normpath(joinpath(@__DIR__,"..","..","data","iracing","lotus49_nurburgring nordschleife 2026-06-14 11-11-37.ibt")))
     ts = Dates.format(Dates.now(), "yyyy-mm-dd HH-MM-SS")
-    out = "/home/g/sgl/THU/rFactor/juliaMotor/data/juliaracer/lotus49_nurburgring nordschleife $(ts).ibt"
+    out = normpath(joinpath(@__DIR__,"..","..","data","juliaracer","lotus49_nurburgring nordschleife $(ts).ibt"))
     write_ibt(out, tmpl, samples); println("\n  wrote JM .ibt: ", basename(out), "  (", length(samples), " ticks)")
 catch e; println("\n  .ibt write failed: ", e); end

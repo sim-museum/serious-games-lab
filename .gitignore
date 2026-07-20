@@ -180,3 +180,6 @@ SAT/republic/game/
 SAT/freeFalconSource/screenshot_*
 SAT/freeFalconSource/test_flight.log*
 SAT/freeFalconSource/test_shots/
+
+# Symlink-only rFactor GameData tree built from mod media (see demo/native/CLAUDE.md)
+rfactor-gamedata/

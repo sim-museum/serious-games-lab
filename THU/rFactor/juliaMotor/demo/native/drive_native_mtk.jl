@@ -6,9 +6,9 @@
 # render.jl.
 using GLFW, ModernGL, LinearAlgebra, Dates, Serialization
 using JuliaMotor, RFactorData
-include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/drive_rt.jl"); using .DriveRT  # MTK physics (planar)
-include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/drive_rt3d.jl"); using .DriveRT3D  # full-3D physics (JM_3D=1)
-include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/ibt.jl"); using .IBT           # iRacing .ibt telemetry writer
+include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt.jl"))); using .DriveRT  # MTK physics (planar)
+include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt3d.jl"))); using .DriveRT3D  # full-3D physics (JM_3D=1)
+include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","ibt.jl"))); using .IBT           # iRacing .ibt telemetry writer
 include("render.jl"); using .Render
 include("gpltrack.jl"); using .GPLTrack
 include("audio.jl"); using .EngineAudio
@@ -224,7 +224,7 @@ const FUEL_MARGIN = max(0, tryparse(Int, get(ENV,"JM_FUEL_MARGIN","10")) |> x-> 
 # reads it) and fill the channels juliaMotor produces.
 const IBTREC = !haskey(ENV, "JM_NOIBT")          # .ibt telemetry ON by default (set JM_NOIBT to disable)
 const REPLAY_FILE = get(ENV, "JM_REPLAY", "")    # E18: if set, PLAY BACK this .jmr recording instead of driving
-const IBTDIR = "/home/g/sgl/THU/rFactor/juliaMotor/data/iracing"
+const IBTDIR = normpath(joinpath(@__DIR__,"..","..","data","iracing"))
 const IBTNAME = NURB ? "nurburgring nordschleife" : SKIDPAD ? "skidpad" : "zandvoort"
 const IBTTMPL = NURB ? joinpath(IBTDIR, "lotus49_nurburgring nordschleife 2026-06-14 11-11-37.ibt") :
                 SKIDPAD ? joinpath(IBTDIR, "lotus49_skidpad 2026-06-14 10-49-07.ibt") :
@@ -493,7 +493,7 @@ end
 const GD = default_gamedata()
 const VEH = load_vehicle(joinpath(GD,"Vehicles","F158","Vanwall","Teams","LewisEvans","LewisEvans.veh"))
 const MODEL = VehicleModel(VEH)              # physics (Lotus-49 calibration is the future goal)
-const GPLBASE = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/tracks"
+const GPLBASE = normpath(joinpath(@__DIR__,"..","..","..","..","WP","drive_c","Sierra","GPL","tracks"))
 # TRACKSEL → GPL track folder (all share the .3do/.trk/.mip/.dat pipeline)
 const GPLNAME = get(Dict("nurburgring"=>"nurburg", "zandvoort"=>"zandvort",
                          "watglen"=>"watglen", "monza"=>"monza", "spa"=>"spa67"),   # PO: the regular Monza road course (not the broken monza10k banked combined circuit)
@@ -602,7 +602,7 @@ if haskey(ENV, "JM_BOUNDARY_TEST") && !SKIDPAD
     boundary_audit(); exit(0)
 end
 # ---- GPL Lotus 49 (replaces the rFactor Vanwall; the authentic GPL-pivot car) ----
-const LOTDIR = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/cars/cars67/lotus"
+const LOTDIR = normpath(joinpath(@__DIR__,"..","..","..","..","WP","drive_c","Sierra","GPL","cars","cars67","lotus"))
 const GPLTEX = Render.gpl_texture_index(LOTDIR)
 const LOT3DO = joinpath(LOTDIR,"lotus.3do")
 # GPL-fidelity cockpit: KEEP windlot (the tan leather scuttle — the defining GPL cockpit
@@ -1148,7 +1148,7 @@ println(count(it->it.tex!=0, trackItems), "/", length(trackItems), " track + ",
 # floor (the Lotus body underside) and reusing the Lotus wheel geometry with each
 # car's own wheel meshes ('67 cars are dimensionally near-identical).  The player
 # is always the Lotus 49. ----
-const AIBASE = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/cars/cars67"
+const AIBASE = normpath(joinpath(@__DIR__,"..","..","..","..","WP","drive_c","Sierra","GPL","cars","cars67"))
 const BODY_FLOOR = Render.parts_bbox(CARP).ymin + BODY_OFF[2]   # world-Y the body underside reaches
 aiwheels(lf,rf,lr,rr) = Tuple{Float32,Float32,Bool,Float32,String}[
     ( 1.05f0, 0.62f0, true,  0.31f0, lf), ( 1.05f0, -0.62f0, true,  0.31f0, rf),

@@ -15,10 +15,10 @@ using Printf, Dates, LinearAlgebra
 using JuliaMotor
 include("gpl3do.jl");  using .GPL3DO
 include("gpltrack.jl"); using .GPLTrack
-include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/drive_rt3d.jl"); using .DriveRT3D
-include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/ibt.jl"); using .IBT
+include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt3d.jl"))); using .DriveRT3D
+include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","ibt.jl"))); using .IBT
 
-const ZD = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/tracks/nurburg"
+const ZD = normpath(joinpath(@__DIR__,"..","..","..","..","WP","drive_c","Sierra","GPL","tracks","nurburg"))
 const G = 9.80665
 
 # --- align the .trk centreline onto the road HAT (same logic as the app) ---
@@ -146,9 +146,9 @@ println("  iRacing gold:  0.42–0.53 s   213–221 km/h        −0.10 g       
 
 # --- write the best run's .ibt (iRacing nurburgring template) ---
 try
-    tmpl = ibt_open("/home/g/sgl/THU/rFactor/juliaMotor/data/iracing/lotus49_nurburgring nordschleife 2026-06-14 11-11-37.ibt")
+    tmpl = ibt_open(normpath(joinpath(@__DIR__,"..","..","data","iracing","lotus49_nurburgring nordschleife 2026-06-14 11-11-37.ibt")))
     ts = Dates.format(Dates.now(), "yyyy-mm-dd HH-MM-SS")
-    out = "/home/g/sgl/THU/rFactor/juliaMotor/data/juliaracer/lotus49_nurburgring nordschleife $(ts).ibt"
+    out = normpath(joinpath(@__DIR__,"..","..","data","juliaracer","lotus49_nurburgring nordschleife $(ts).ibt"))
     write_ibt(out, tmpl, B.r.samples)
     println("\n  wrote best-run .ibt: ", basename(out), "  (", length(B.r.samples), " ticks)")
 catch e; println("\n  .ibt write failed: ", e); end

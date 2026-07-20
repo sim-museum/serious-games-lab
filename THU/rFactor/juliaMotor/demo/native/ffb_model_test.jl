@@ -2,7 +2,7 @@
 # angles at speed, so the car corners instead of spinning). Want: force builds through
 # turn-in, plateaus BELOW max (headroom so it can still "get stronger"), then lightens
 # past the grip limit — but never goes fully dead (mechanical-trail floor).
-include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/drive_rt.jl"); using .DriveRT
+include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt.jl"))); using .DriveRT
 
 const A_F    = 1.314
 const DELTA  = 0.30

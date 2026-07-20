@@ -16,7 +16,7 @@ Before/after review images: `/home/g/juliaMotor_graphics_review/` (per-track `*_
   height), `JM_DROPTEST=<names>` (drop objects), `JM_GRADE=<NAME>` (grade A/B).
 - Wrote `scenery_snap.jl` — a fast NO-physics track+sky+horizon snapshot harness (~40 s vs
   ~5-6 min for a full drive_native_mtk render) for rapid sky/grade iteration.
-- `RFACTOR_GAMEDATA=/home/g/sgl/THU/rFactor/WP/drive_c/Program Files/rFactor/GameData` is
+- `RFACTOR_GAMEDATA=~/sgl/THU/rFactor/WP/drive_c/Program Files/rFactor/GameData` is
   required (the pre-calibrated Vanwall physics model loads from the rFactor GameData).
 
 ## Fixes (all on `julia-racer`, commit c66cbcf)
@@ -66,5 +66,5 @@ so it never fired. Fixed.
 
 ## Not done
 - Did NOT rebuild/commit `jlracer.so` (gitignored; the fresh sysimage build loaded flaky here).
-- Isolated worktree at `/home/g/sgl-jr` left in place (has a `jlracer.so`); remove with
-  `git worktree remove /home/g/sgl-jr` if unwanted.
+- Isolated worktree at `~/sgl-julia-racer-jr` left in place (has a `jlracer.so`); remove with
+  `git worktree remove ~/sgl-julia-racer-jr` if unwanted.

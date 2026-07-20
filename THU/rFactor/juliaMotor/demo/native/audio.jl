@@ -47,7 +47,7 @@ const SAMPLES = (("idle1e.WAV",1600.0), ("v4g.wav",2700.0), ("l4f.wav",4500.0),
 # GPL's own Lotus 49 engine: the Ford Cosworth DFV V8 loop, pitch-shifted by RPM
 # (GPL plays one steady loop across the whole rev range).  Measured firing pitch
 # of the loop ≈ 347 Hz ⇒ ~5200 rpm (V8 4th order).
-const GPL_ENGINE_WAV = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/sound/66fordV8.wav"
+const GPL_ENGINE_WAV = normpath(joinpath(@__DIR__,"..","..","..","..","WP","drive_c","Sierra","GPL","sound","66fordV8.wav"))
 const GPL_ENGINE_RPM = 5200.0
 
 "Linear-resample mono Float32 audio from `sr` to 44.1 kHz (so playback pitch math is clean)."

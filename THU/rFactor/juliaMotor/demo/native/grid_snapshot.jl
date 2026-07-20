@@ -2,7 +2,7 @@
 # GPL cars, auto-levelled onto a common floor).  No track/physics: just the cars.
 using GLFW, ModernGL, LinearAlgebra
 include("render.jl"); using .Render
-const BASE = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/cars/cars67"
+const BASE = normpath(joinpath(@__DIR__,"..","..","..","..","WP","drive_c","Sierra","GPL","cars","cars67"))
 aiw(lf,rf,lr,rr) = Tuple{Float32,Float32,Bool,Float32,String}[
     ( 1.05f0, 0.62f0, true,  0.31f0, lf), ( 1.05f0, -0.62f0, true,  0.31f0, rf),
     (-1.15f0, 0.66f0, false, 0.34f0, lr), (-1.15f0, -0.66f0, false, 0.34f0, rr)]

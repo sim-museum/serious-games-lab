@@ -14,6 +14,29 @@ python3 juliaRacer.py                                  # PyQt6 front-end: launch
 julia -t 2 --project=. drive_native.jl          # opens a GLFW window on your display
 JM_SMOKE=1 julia -t 2 --project=. drive_native.jl   # headless self-test → dumps /tmp/zand_hud.ppm and exits
 ```
+### It still needs a little rFactor data (2026-07-20)
+Everything you *see* is GPL — the track (`WP/drive_c/Sierra/GPL/tracks/<track>`) and the Lotus 49
+body/gauges/windscreen/mirrors (`.../cars/cars67/lotus`). But two things still resolve through the
+**rFactor** GameData root (`RFactorData.default_gamedata()`, overridable with `RFACTOR_GAMEDATA`):
+- `drive_native_mtk.jl:494` — `Vehicles/F158/Vanwall/Teams/LewisEvans/LewisEvans.veh` → the **physics
+  parameters** (`VehicleModel`). The Lotus-49 calibration is still a TODO, so the car is *rendered* as
+  a Lotus 49 but *handles* like a '58 Vanwall.
+- `drive_native_mtk.jl:806` — `EngineAudio.build_lotus(gamedata = GD)` → **engine audio**.
+
+**rFactor does not need to be installed.** Build a symlink-only GameData tree from the mod media and
+point `RFACTOR_GAMEDATA` at it:
+```
+GD=~/sgl-julia-racer/rfactor-gamedata; mkdir -p $GD/Locations
+M="~/sgl/THU/rFactor/INSTALL/F1 1958 by ORM - v4.35 COMPLETE/F1 1958 by ORM - v4.35 COMPLETE/Gamedata"
+for d in Helmets Scripts Sounds Talent Vehicles; do ln -sfn "$M/$d" $GD/$d; done
+ln -sfn ~/sgl/THU/rFactor/INSTALL/newTracks/2/Zandvoort67 $GD/Locations/Zandvoort67
+export RFACTOR_GAMEDATA=$GD          # juliaRacer.py passes its environment to the sim
+```
+Without it you get `SystemError: opening file ".../rFactor/GameData/Vehicles/F158/.../LewisEvans.veh"`.
+
+**tmdrv on this box** lives at `~/sgl/THU/INSTALL/tmdrv-master/` (the `/home/g/src/tmdrv` path below is
+the original author's machine).
+
 First load is ~2–3 min: ~40–80 s is one-time Julia/MTK/render JIT (track-independent),
 the rest is the per-track GPL parse (extract ~70 objects, decode MIP textures, build the
 HAT). **To cut the JIT:** `julia build_sysimage.jl` once (~20–40 min) writes `jlracer.so`;

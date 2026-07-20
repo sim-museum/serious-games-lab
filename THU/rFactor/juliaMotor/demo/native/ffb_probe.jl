@@ -2,7 +2,7 @@
 # (B) drive the physics to measure the sign of front-axle lateral force vs steer,
 # so the in-game FFB resists the turn (self-centering) instead of assisting it.
 include(joinpath(@__DIR__, "ffb.jl")); using .FFB
-include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/drive_rt.jl"); using .DriveRT
+include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt.jl"))); using .DriveRT
 
 println("── A: FFB writer test (hold the wheel; gentle pulls) ──")
 d = open_ffb()

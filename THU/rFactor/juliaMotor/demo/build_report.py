@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build a self-contained HTML demo report from the exported juliaMotor data."""
-import csv, json
+import csv, json, os
 
 def readcsv(path):
     with open(path) as f:
@@ -151,7 +151,7 @@ plot('tire',[{pts:D.tire,color:'#c0a6f0'}],'slip angle (deg)','Fy/Fz');
 </script></body></html>"""
 
 out = HTML.replace('__DATA__', json.dumps(data, separators=(',',':')))
-with open('/home/g/sgl/THU/rFactor/juliaMotor/demo/zandvoort_lap.html','w') as f:
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),'zandvoort_lap.html'),'w') as f:
     f.write(out)
 print("wrote demo/zandvoort_lap.html", len(out), "bytes")
 print("track triangles:", len(track), " sim frames:", len(simline), " replay pts:", len(replay))

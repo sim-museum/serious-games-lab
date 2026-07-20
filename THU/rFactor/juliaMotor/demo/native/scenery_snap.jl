@@ -18,7 +18,7 @@ include("render.jl"); using .Render
 include("gpltrack.jl"); using .GPLTrack
 
 const TRACKSEL = lowercase(get(ENV, "TRACK", "zandvoort"))
-const GPLBASE  = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/tracks"
+const GPLBASE  = normpath(joinpath(@__DIR__,"..","..","..","..","WP","drive_c","Sierra","GPL","tracks"))
 const GPLNAME  = get(Dict("nurburgring"=>"nurburg","zandvoort"=>"zandvort",
                           "watglen"=>"watglen","monza"=>"monza","spa"=>"spa67"), TRACKSEL, "zandvort")
 const ZD   = joinpath(GPLBASE, GPLNAME)

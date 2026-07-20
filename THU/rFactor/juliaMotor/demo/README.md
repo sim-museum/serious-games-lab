@@ -12,7 +12,7 @@ does *not* need the open limit-handling autonomous driver, because the human is
 the control loop.
 
 ```sh
-cd /home/g/sgl/THU/rFactor/juliaMotor/demo
+cd ~/sgl/THU/rFactor/juliaMotor/demo
 julia --project=../JuliaMotor drive_server.jl 8090   # serves http://127.0.0.1:8090/
 # then open that URL in a browser and drive.
 ```
@@ -76,14 +76,14 @@ from rFactor's `.gmt`/`.mas` files (road / grass / gravel coloured), with a
 live speed / gear / throttle-brake HUD.
 
 ```sh
-xdg-open /home/g/sgl/THU/rFactor/juliaMotor/demo/zandvoort_lap.mp4
+xdg-open ~/sgl/THU/rFactor/juliaMotor/demo/zandvoort_lap.mp4
 ```
 
 **Interactive report** — `zandvoort_lap.html`, self-contained (no internet,
 no dependencies): animated lap + the physics-vs-telemetry validation plots.
 
 ```sh
-xdg-open /home/g/sgl/THU/rFactor/juliaMotor/demo/zandvoort_lap.html
+xdg-open ~/sgl/THU/rFactor/juliaMotor/demo/zandvoort_lap.html
 ```
 
 What it shows, all from the rFactor install + your driven telemetry:

@@ -1,7 +1,7 @@
 # Why does the car hold a constant low velocity after a spin instead of stopping?
 # Test BOTH clutch states over a long coast to separate idle-creep from a rolling-resistance
 # low-speed deadzone (tanh(u/0.4) → 0 as u→0 leaves the last bit of speed undamped).
-include("/home/g/sgl/THU/rFactor/juliaMotor/JuliaMotorMTK/src/drive_rt.jl"); using .DriveRT
+include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt.jl"))); using .DriveRT
 
 function trial(label, clutch)
     c = build_car(v0 = 0.0)

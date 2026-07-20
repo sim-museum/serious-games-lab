@@ -1,7 +1,7 @@
 using GLFW, ModernGL, LinearAlgebra
 using RFactorData
 include("render.jl"); using .Render
-RF="/home/g/sgl/THU/rFactor/WP/drive_c/Program Files/rFactor"
+RF=normpath(joinpath(@__DIR__,"..","..","..","WP","drive_c","Program Files","rFactor"))
 u32(b,o)=reinterpret(UInt32,view(b,o+1:o+4))[1]
 f32(b,o)=reinterpret(Float32,view(b,o+1:o+4))[1]
 mas=read_mas(joinpath(RF,"GameData","Vehicles","F158","Vanwall","Vanwall VW58.mas"))

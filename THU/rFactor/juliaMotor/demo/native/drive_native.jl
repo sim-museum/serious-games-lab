@@ -15,7 +15,7 @@ const JOYMAP = JoyCfg.loadmap(joinpath(@__DIR__, "joystick.conf"))   # from cali
 const GD = default_gamedata()
 const VEH = load_vehicle(joinpath(GD,"Vehicles","F158","Vanwall","Teams","LewisEvans","LewisEvans.veh"))
 const MODEL = VehicleModel(VEH)              # physics (Lotus-49 calibration is the future goal)
-const ZD = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/tracks/zandvort"
+const ZD = normpath(joinpath(@__DIR__,"..","..","..","..","WP","drive_c","Sierra","GPL","tracks","zandvort"))
 const ZTRK = joinpath(ZD, "zandvort.3do")
 print("loading GPL track… "); flush(stdout)
 const TRACKMESH = Render.GPL3DO.parse_3do(ZTRK)
@@ -26,7 +26,7 @@ println(TERRAIN, "  ", TRKSURF)
 print("extracting geometry… "); flush(stdout)
 const TRACK = Render.extract_gpl_car(ZTRK; track=true, mirror=true, exclude=("ltraymap","lshad","wiref_s"))   # GPL Zandvoort (no wire fences)
 # ---- GPL Lotus 49 (replaces the rFactor Vanwall; the authentic GPL-pivot car) ----
-const LOTDIR = "/home/g/sgl/THU/WP/drive_c/Sierra/GPL/cars/cars67/lotus"
+const LOTDIR = normpath(joinpath(@__DIR__,"..","..","..","..","WP","drive_c","Sierra","GPL","cars","cars67","lotus"))
 const GPLTEX = Render.gpl_texture_index(LOTDIR)
 const LOT3DO = joinpath(LOTDIR,"lotus.3do")
 const CARP   = Render.extract_gpl_car(LOT3DO; exclude=("ltraymap","lshad","lohand","lotarms","lotmirt","windlot",Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0)  # no hands/dup-mirror/teal front-susp/tan scuttle "rug"; drop tan floor; clip splayed rear
