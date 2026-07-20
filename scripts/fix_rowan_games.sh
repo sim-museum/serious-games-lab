@@ -8,7 +8,7 @@
 #   - DirectDraw renderer = opengl
 #   - FBO offscreen rendering
 #   - GDI surface type
-#   - mfc42 via winetricks
+#   - mfc42 (via scripts/install_mfc42.sh)
 #   - Disable window decorations
 #
 # Usage: fix_rowan_games.sh [game_name]
@@ -84,13 +84,11 @@ fix_wine_prefix() {
     echo "  Disabling window decorations..."
     wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver" /v "Decorated" /t REG_SZ /d "N" /f 2>/dev/null || true
 
-    # Install mfc42 via winetricks
-    echo "  Installing mfc42 via winetricks..."
-    if command -v winetricks &>/dev/null; then
-        winetricks -q mfc42 2>/dev/null || echo "    Warning: mfc42 installation may have failed"
-    else
-        echo "    Warning: winetricks not found. Install with: sudo apt install winetricks"
-    fi
+    # Install mfc42. Not a bare `winetricks mfc42` — that step is fragile on a
+    # fresh prefix; see scripts/install_mfc42.sh for the why.
+    echo "  Installing mfc42..."
+    "$SCRIPT_DIR/install_mfc42.sh" "$prefix" \
+        || echo "    Warning: mfc42 installation failed"
 
     echo "  Fixes applied for $game_name."
     echo ""
