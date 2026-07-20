@@ -7,7 +7,13 @@
 #    Once the installation is complete, it applies necessary patches and launches the game.
 
 #!/bin/bash
-cd "$(dirname "${BASH_SOURCE[0]}")"
+# Resolve to an absolute path BEFORE cd'ing. ${BASH_SOURCE[0]} is whatever
+# path the caller used, so re-deriving it after the cd resolves against the
+# new working directory — which broke `source .../launcher/lib/...` below
+# when the launcher invoked this script by a relative path.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$SCRIPT_DIR"
 
 # Set up Wine runner environment
 setup_wine_runner() {
@@ -47,7 +53,7 @@ export BoB_INSTALL="$PWD/INSTALL"
 if [ -f "$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain/bob.exe" ]; then
     # Defend against stale wineserver shm state (e.g. post-failed-boot) that
     # causes non-deterministic null-deref crashes on 3D entry.
-    source "$(dirname "${BASH_SOURCE[0]}")/../../launcher/lib/clean_wineserver.sh"
+    source "$REPO_ROOT/launcher/lib/clean_wineserver.sh"
     clean_wineserver
 
     # Disable winegstreamer to prevent crash on video playback
