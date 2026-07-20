@@ -180,3 +180,9 @@ SAT/republic/game/
 SAT/freeFalconSource/screenshot_*
 SAT/freeFalconSource/test_flight.log*
 SAT/freeFalconSource/test_shots/
+
+# Vendored redistributable — Visual C++ 6 SP4 runtime (mfc42), needed by the
+# Rowan-engine games (Mig Alley, Flying Corps). 1.8 MB self-extracting cab,
+# checksum-pinned; vendored so a fresh install works with no network and no
+# dependency on Microsoft's download host staying up. See vendor/vcrun6/README.md.
+!vendor/vcrun6/VC6RedistSetup_deu.exe

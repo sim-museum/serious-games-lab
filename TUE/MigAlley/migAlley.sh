@@ -348,44 +348,13 @@ fi
 
 # Install prerequisites — mfc42 is required for the Rowan engine's ActiveX
 # OCX controls (rstatic, rbutton, etc). Without it the game crashes ~1s
-# after launch. We install in two passes:
-#   1. Fast path: if the winetricks cache from a previous run has the inner
-#      vcredist.exe, cabextract mfc42 directly. This avoids both winetricks
-#      itself (which fails on wine 4.11 fresh prefixes — see (2)) and the
-#      VC6RedistSetup.exe wine-launch step (which needs DISPLAY).
-#   2. Fallback: full winetricks -q mfc42. wine 4.11's `wineboot --init`
-#      doesn't always create %AppData% or HKCU\Volatile Environment\APPDATA,
-#      so we pre-create the dir and pre-set the registry value before
-#      calling winetricks.
+# after launch (black screen flash, then back to shell).
+#
+# Shared with scripts/fix_rowan_games.sh and the f4doghouse installer; see
+# scripts/install_mfc42.sh for why this does not just call `winetricks mfc42`.
 clear
 echo "Installing prerequisites (mfc42)..."
-
-VCREDIST_CACHE="$HOME/.cache/winetricks/vcrun6/vcredist.exe"
-if [[ -f "$VCREDIST_CACHE" ]]; then
-    echo "  Using cached vcredist.exe → cabextract mfc42*.dll into system32"
-    cabextract -q "$VCREDIST_CACHE" \
-        -d "$WINEPREFIX/drive_c/windows/system32" \
-        -F 'mfc42*.dll' 2>/dev/null || true
-fi
-
-if [[ ! -f "$WINEPREFIX/drive_c/windows/system32/mfc42.dll" ]]; then
-    echo "  No cached vcredist; falling back to winetricks."
-    mkdir -p "$WINEPREFIX/drive_c/users/$USER/AppData/Roaming"
-    wine reg add "HKEY_CURRENT_USER\\Volatile Environment" /v APPDATA /t REG_SZ \
-        /d "C:\\users\\$USER\\AppData\\Roaming" /f &>/dev/null || true
-    wineserver -k 2>/dev/null || true
-    sleep 1
-    winetricks -q mfc42 || true
-fi
-
-if [[ ! -f "$WINEPREFIX/drive_c/windows/system32/mfc42.dll" ]]; then
-    echo "ERROR: mfc42.dll was not installed into $WINEPREFIX/drive_c/windows/system32/."
-    echo "       The Rowan engine's OCX controls need mfc42 — without it, the game"
-    echo "       crashes ~1s after launch (black screen flash, then back to shell)."
-    echo ""
-    echo "       Tried two install paths (cabextract from cache, then winetricks)."
-    echo "       Diagnose by running winetricks manually:"
-    echo "         WINEPREFIX=\"$WINEPREFIX\" winetricks mfc42"
+if ! "$(cd ../.. && pwd)/scripts/install_mfc42.sh" "$WINEPREFIX"; then
     echo "       Current DISPLAY=${DISPLAY:-(unset)}"
     exit 1
 fi
