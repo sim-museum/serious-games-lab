@@ -10,18 +10,55 @@
 #!/bin/bash
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-# Set up Wine runner environment
+# Set up Wine runner environment.
+#
+# This script deliberately uses two runners — GE-Proton for the InstallShield
+# installers, 5.7 for running the game — and switching between them needs care
+# on two counts, both of which silently broke the whole install:
+#
+#   1. A prefix can only be served by ONE wine build at a time. If a wineserver
+#      from the previous runner is still up, every call under the new runner
+#      dies instantly with "wine client error: write: Bad file descriptor".
+#      Since the installer calls below discard all output, the script then ran
+#      to completion having installed nothing — the reported "falls through".
+#      So: shut the old wineserver down before switching.
+#
+#   2. LD_LIBRARY_PATH / WINEDLLPATH used to be appended to, so after a switch
+#      both wine builds' libraries were on the path at once. Drop the previous
+#      runner's entries instead of stacking them.
+# Seed from whatever the launcher already set up (it exports WINE), otherwise
+# the first switch would not know there is a foreign wineserver to retire —
+# which is precisely the case that broke: launcher picks 5.7, we switch to
+# GE-Proton, 5.7's server is still holding the prefix.
+_SGL_RUNNER_DIR=""
+if [[ -n "${WINE:-}" && -x "${WINE:-}" ]]; then
+    _SGL_RUNNER_DIR="$(cd "$(dirname "$WINE")/.." && pwd)"
+fi
 setup_wine_runner() {
     local runner_name="$1"
     local runner_dir="$HOME/.local/share/lutris/runners/wine/$runner_name"
-    if [[ -d "$runner_dir" && -x "$runner_dir/bin/wine" ]]; then
-        export PATH="$runner_dir/bin:$PATH"
-        export WINE="$runner_dir/bin/wine"
-        export WINELOADER="$runner_dir/bin/wine"
-        export WINESERVER="$runner_dir/bin/wineserver"
-        export LD_LIBRARY_PATH="$runner_dir/lib64:$runner_dir/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-        export WINEDLLPATH="$runner_dir/lib64/wine/x86_64-unix:$runner_dir/lib/wine/i386-unix${WINEDLLPATH:+:$WINEDLLPATH}"
+    [[ -d "$runner_dir" && -x "$runner_dir/bin/wine" ]] || return 0
+    [[ "$runner_dir" == "$_SGL_RUNNER_DIR" ]] && return 0
+
+    if [[ -n "$_SGL_RUNNER_DIR" ]]; then
+        # Switching runners: retire the old server, then strip its paths.
+        if [[ -n "${WINEPREFIX:-}" && -d "${WINEPREFIX:-}" ]]; then
+            "$_SGL_RUNNER_DIR/bin/wineserver" -k 2>/dev/null || true
+            sleep 1
+        fi
+        local old="$_SGL_RUNNER_DIR"
+        PATH=$(echo "$PATH" | tr ':' '\n' | grep -vF "$old/" | paste -sd:)
+        LD_LIBRARY_PATH=$(echo "${LD_LIBRARY_PATH:-}" | tr ':' '\n' | grep -vF "$old/" | paste -sd:)
+        WINEDLLPATH=$(echo "${WINEDLLPATH:-}" | tr ':' '\n' | grep -vF "$old/" | paste -sd:)
     fi
+
+    export PATH="$runner_dir/bin:$PATH"
+    export WINE="$runner_dir/bin/wine"
+    export WINELOADER="$runner_dir/bin/wine"
+    export WINESERVER="$runner_dir/bin/wineserver"
+    export LD_LIBRARY_PATH="$runner_dir/lib64:$runner_dir/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export WINEDLLPATH="$runner_dir/lib64/wine/x86_64-unix:$runner_dir/lib/wine/i386-unix${WINEDLLPATH:+:$WINEDLLPATH}"
+    _SGL_RUNNER_DIR="$runner_dir"
 }
 
 # GE-Proton for InstallShield installers, 5.7 for running (GUI apps need X11 driver)
@@ -396,6 +433,11 @@ cd "$WINEPREFIX/.."
 ./randomizeDrivers.sh
 
 # Run GEM+
+# Switch back to the game runner. On a fresh-install run we are still on
+# RUNNER_INSTALL (GE-Proton, chosen for InstallShield); GUI apps want the 5.7
+# X11 driver. setup_wine_runner retires the installer's wineserver first — two
+# wine builds cannot serve one prefix.
+setup_wine_runner "$RUNNER_GAME"
 echo ""; echo "Running GEM+ ..."; echo ""
 echo "If the display isn't right, try different rasterizer choices (D3D, OpenGL) on the initial GEM+ screen"
 echo ""
