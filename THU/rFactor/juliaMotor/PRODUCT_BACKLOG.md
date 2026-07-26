@@ -652,3 +652,21 @@ Bounded controller fixes for the Nürburgring physics-AI stuck/launch loop, all 
 - **Sound cut T1→S/F ⏳** — likely first-lap JIT starving the audio thread (recovers at lap end); awaiting
   PO confirm whether it recurs on lap 2+ (if so → a per-section render hitch to chase).
 - **No carbonized objects ✅** (E57 grade) — PO confirmed "nice improvement".
+
+### E59 — GPL-under-Wine screen parity, per track (PO-added 2026-07-25)
+**PO directive:** match the native Julia Racer screens to the gold-standard screenshots of
+**GPL (MS Windows) running under Wine**, now located under the project name on the
+`BEA6-BBCE` drive: `/run/media/admin/BEA6-BBCE/julia racer/` — per-track folders:
+`zandervoort/` (43 shots incl. the 02:5x cockpit series), `watkins glenn/` (4),
+`nurburgring/` (3). This supersedes the old `84AF-CC77` ref location as the canonical
+gold set. Builds on E17/E22/E58 (per-track grades) but the acceptance is now a
+side-by-side native-vs-gold comparison per screen/view, not a grade eyeball.
+- **E59.1** Inventory: map every gold shot to a view (track, cockpit/chase/TV, landmark,
+  approx lapdist) + the JM repro recipe (JM_START_S / camera / offscreen snapshot env);
+  parity table committed next to this backlog.
+- **E59.2** Zandvoort parity (richest gold set, 43 shots): iterate offscreen snapshots vs
+  gold until layout/geometry/colour/scenery agree within stated tolerance; deviations
+  fixed or PO-waived, each logged in the parity table.
+- **E59.3** Watkins Glen + Nürburgring parity (4 + 3 shots) — same method.
+- **E59.4 ⚠ PO input:** Monza and Spa have **no gold folders** on BEA6-BBCE yet — request
+  gold captures (or confirm the old 84AF-CC77 refs remain canonical for those two).
