@@ -658,9 +658,13 @@ Bounded controller fixes for the Nürburgring physics-AI stuck/launch loop, all 
 **GPL (MS Windows) running under Wine**, now located under the project name on the
 `BEA6-BBCE` drive: `/run/media/admin/BEA6-BBCE/julia racer/` — per-track folders:
 `zandervoort/` (43 shots incl. the 02:5x cockpit series), `watkins glenn/` (4),
-`nurburgring/` (3). This supersedes the old `84AF-CC77` ref location as the canonical
-gold set. Builds on E17/E22/E58 (per-track grades) but the acceptance is now a
-side-by-side native-vs-gold comparison per screen/view, not a grade eyeball.
+`nurburgring/` (3). **PO clarification 2026-07-25:** BOTH drives are gold sources —
+BEA6-BBCE does not replace the older `84AF-CC77` USB (per-track ref folders incl. the
+only Monza + Spa golds); its folders stand until/unless BEA6-BBCE grows those tracks.
+NB the BEA6-BBCE `zandervoort` 02:5x cockpit series appears to be the same shots
+previously cited from 84AF-CC77 — cross-reference, don't double-count. Builds on
+E17/E22/E58 (per-track grades) but the acceptance is now a side-by-side native-vs-gold
+comparison per screen/view, not a grade eyeball.
 - **E59.1** Inventory: map every gold shot to a view (track, cockpit/chase/TV, landmark,
   approx lapdist) + the JM repro recipe (JM_START_S / camera / offscreen snapshot env);
   parity table committed next to this backlog.
@@ -668,5 +672,48 @@ side-by-side native-vs-gold comparison per screen/view, not a grade eyeball.
   gold until layout/geometry/colour/scenery agree within stated tolerance; deviations
   fixed or PO-waived, each logged in the parity table.
 - **E59.3** Watkins Glen + Nürburgring parity (4 + 3 shots) — same method.
-- **E59.4 ⚠ PO input:** Monza and Spa have **no gold folders** on BEA6-BBCE yet — request
-  gold captures (or confirm the old 84AF-CC77 refs remain canonical for those two).
+- **E59.4 ⚠ PO input:** Monza/Spa golds live on **84AF-CC77** — **PO to re-attach that
+  drive** (not attached this sprint; `/run/media/*/84AF-CC77` checked) so the same parity
+  method can run on its `monza/` + `spa/` folders; no new GPL captures needed unless the PO
+  prefers refreshing them onto BEA6-BBCE.
+
+### E59 sprint log (2026-07-25, autonomous — E59.1 ✅, E59.2 ◑ major fixes landed, E59.3 ◑)
+- **Method/tooling:** `JM_SHOTS="s:view:name;…"` multi-shot smoke added to
+  `drive_native_mtk.jl` — one launched session teleports + photographs any number of
+  lap points/views (21 Zandvoort shots ≈ 1 launch; the old single-shot `JM_DUMP` path
+  is unchanged). `JM_SHOTS_DIR`/`JM_SHOT_SETTLE` tune it; `place_at_s!` now shared
+  with `JM_START_S`.
+- **E59.1 ✅ inventory:** all 50 gold shots classified (43 Zandvoort — ALL cockpit,
+  one continuous lap, flat OVERCAST sky; 4 Watkins — 2 cockpit + 2 chase, hazy blue;
+  3 Nürburgring — cockpit at the S/F complex, stormy grey). Parity tables + native
+  repro recipes + committed side-by-side composites: `SCREEN_PARITY.md`, `parity/`.
+- **E59.2 Zandvoort (fixed):** sky regraded to `GRADE_OVERCAST` (all 43 golds are
+  overcast — restores the PO's E27 decision that E58 had overridden; `JM_GRADE=ZAND`
+  A/Bs the blue); dash de-washed to matte black w/ legible dials (`JM_DASH_B/A`);
+  footwell "checkerboard" of untextured tub facets capped to a dark interior
+  (render.jl, driver hidden per E36 exposes them); tyres lifted from solid-black
+  silhouettes to shaded dark-grey (`JM_TYRE_ALB`; tread texture impossible —
+  `lotwlf.3do` is untextured). All verified by offscreen re-capture.
+- **E59.2 Zandvoort (open/waived):** mirrored sign text (VREDESTEIN/DUNLOP — dedup
+  can keep the away-facing decal; needs track-aware face selection) · crowd-MIP smear
+  (E46 residual) · chase-view rear bodywork noise · cyan slab by the pits =
+  **authentic GPL asset** (restzxc `hill.mip` avg RGB 61,119,129 teal pond — no fix)
+  · waived per prior PO decisions: no driver hands (E36), plexiglass arcs (E21),
+  no fence crowds, lap-time HUD (E13).
+- **E59.3 ◑:** Watkins — sky/gantry/hay parity good, brown-vs-green terrain + chase
+  body fidelity logged open. Nürburgring — storm grade + pit complex match gold;
+  minor floating quad at the scoreboard logged.
+- **DoD:** JM_SMOKE clean (race + AI), `test_brush_slip` + `test_vehicle_driven`
+  green (pre-existing `test_corner_tyre:44` legacy-MF failure unchanged), every
+  visible change verified by offscreen snapshot.
+- **Sprint close (2026-07-26):** DoD gates run and green — Zandvoort `JM_SMOKE`
+  race + 5-AI exit 0 (overcast regrade + AI grid in frame); `test_brush_slip` ✅,
+  `test_vehicle_driven` ✅; `test_corner_tyre` fails only at the documented `:44`
+  legacy-MF line (pre-existing, non-blocking). Cyan-slab D11 closed as authentic
+  GPL asset in the parity table. 84AF-CC77 still not attached
+  (`/run/media/*/84AF-CC77` empty) → **E59.4 remains open on the PO**. Sprint
+  scope E59.1 ✅ / E59.2 ✅ (D6, D10, D12 tracked open; D8/D9/D13/D14 waived) /
+  E59.3 ✅ verdicts logged (Watkins W2/W3, Nürburgring N2 open) / E59.4 blocked
+  on the drive. Note: smoke prints an `.ibt export failed` warning (missing
+  `data/iracing/` telemetry template) — pre-existing, unrelated to the parity
+  diffs; exit still 0.
