@@ -928,6 +928,14 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
             # cockpit_clean + a >0.2 grey so the DEFAULT dark tub is unchanged (no regression); only an
             # explicit silver JM_TUB_GREY recolours the tub.
             c = (cockpit_clean && t.tex=="" && grey[1] > 0.2f0) ? grey : (tint === nothing ? t.col : tint)   # GPL flat-shade colour (or override)
+            # E59 cockpit parity: GPL fills the lower cockpit with the DRIVER figure; we hide it (PO E36),
+            # exposing untextured tub tris whose baked colours include bright white/cream panels — they read
+            # as a black/white "checkerboard" in the footwell (gold shows a dark interior + dark-green tub
+            # rim).  Cap the brightness of untextured cockpit tris so the interior fades to dark downward
+            # (green tub stays visible, just gold-standard dark BRG instead of neon).
+            if cockpit_clean && t.tex=="" && !(grey[1] > 0.2f0)
+                c = (min(c[1],0.30f0), min(c[2],0.38f0), min(c[3],0.30f0))
+            end
             append!(v, (p[1],p[3],p[2]*mz, n[1],n[3],n[2]*mz, c[1],c[2],c[3], uflip ? 1f0-uv[1] : uv[1], vflip ? 1f0-uv[2] : uv[2]))
         end
     end

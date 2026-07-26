@@ -696,6 +696,18 @@ const W, H = 1440, 810
 const OBJ_CULL2 = 2200f0^2      # mesh objects (buildings/grandstands/trees) — keep distant landmarks
 const BB_CULL2  = 1300f0^2      # billboards (tree/shrub/crowd sprites) — far ones add little
 const SMOKE = haskey(ENV, "JM_SMOKE")     # headless self-test: hidden window, auto-exit
+# E59 multi-shot smoke: JM_SHOTS="s:view:name;s:view:name;…" photographs MANY points of the lap in ONE
+# session (Julia startup is ~2 min/track — the relaunch, not the render, is the expensive part).
+# s = metres along the centreline, view = 0 cockpit / 1 chase, name = output basename.  Each frame lands
+# in JM_SHOTS_DIR (default /tmp) as <name>.ppm; after each teleport the render runs JM_SHOT_SETTLE frames
+# so the physics/camera/HUD smoothing settle before the dump (38 = the classic single-smoke warmup).
+struct SmokeShot; s::Float64; view::Int; name::String; end
+const SHOTS = [let f = split(String(spec), ":")
+                   SmokeShot(parse(Float64, f[1]), length(f) >= 2 ? parse(Int, f[2]) : 0,
+                             length(f) >= 3 ? String(f[3]) : "shot$(i)")
+               end for (i, spec) in enumerate(filter(!isempty, split(get(ENV, "JM_SHOTS", ""), ";")))]
+const SHOTS_DIR   = get(ENV, "JM_SHOTS_DIR", "/tmp")
+const SHOT_SETTLE = parse(Int, get(ENV, "JM_SHOT_SETTLE", "38"))
 const CAR3D = !haskey(ENV, "JM_2D")       # full-3D vehicle (heave/pitch/roll + jumps) is the DEFAULT; JM_2D forces the planar model
 # physics dispatch — Car3D is field/method-compatible with DriveRT.Car (superset)
 build_carX(; kw...)        = CAR3D ? DriveRT3D.build_car3d(; kw...) : DriveRT.build_car(; kw...)
@@ -798,8 +810,12 @@ const GRADE_OVERCAST = ColourGrade((0.66,0.67,0.69),(0.76,0.765,0.77),1.0, (1.0,
 # verified in scenery_snap.jl across all 4 blue tracks: the ring's autumn/green forest band blends
 # cleanly into the blue sky at every camera pitch.  So restore the PO's own per-track sunny grades.
 # Nürburgring stays STORMY (its gold standard genuinely is).  JM_GRADE=<NAME> overrides for A/B tests.
+# E59 (2026-07-25, canonical gold on BEA6-BBCE): ALL 43 Zandvoort GPL-under-Wine gold shots show a
+# FLAT OVERCAST pale-grey sky — not blue.  This also restores the PO's E27 decision ("one overcast
+# grade") that E58 had overridden for Zandvoort.  Watkins stays hazy blue and Nürburgring stormy —
+# their gold folders agree.  JM_GRADE=ZAND still A/Bs the old blue look.
 const GRADE_BYTRACK = Dict("nurburgring"=>GRADE_NURB, "monza"=>GRADE_MONZA, "spa"=>GRADE_SPA,
-                           "watglen"=>GRADE_WATK, "zandvoort"=>GRADE_ZAND)
+                           "watglen"=>GRADE_WATK, "zandvoort"=>GRADE_OVERCAST)
 const GRADE_TAB = Dict("OVERCAST"=>GRADE_OVERCAST, "NURB"=>GRADE_NURB, "MONZA"=>GRADE_MONZA,
                        "SPA"=>GRADE_SPA, "WATK"=>GRADE_WATK, "ZAND"=>GRADE_ZAND,
                        "SUNNY"=>GRADE_SUNNY, "GPL"=>GRADE_GPL, "SKIDPAD"=>GRADE_SKIDPAD)
@@ -1139,8 +1155,12 @@ mirrorItems = Render.build_gpl(MIRRORP, GPLTEX)    # rear-view mirrors (re-place
 fsuspItems  = Render.build_gpl(FSUSPP, GPLTEX)     # front suspension wishbones (visible through the screen)
 driverItems = Render.build_gpl(DRIVERP, GPLTEX)    # driver figure — drawn only in chase view (E36)
 # four Lotus wheels — keep the untextured black tyre body (only the car body drops "")
+# E59 parity: 0.12 albedo rendered the tyres as SOLID BLACK silhouettes from the cockpit (no texture in
+# lotwlf.3do to carry detail).  The GPL gold cockpit shows dark-grey tyres whose curvature SHADES —
+# lift the flat albedo so the smooth-normal cylinder shading reads while staying tyre-dark.  JM_TYRE_ALB.
+const TYRE_ALB = parse(Float32, get(ENV,"JM_TYRE_ALB","0.26"))
 load_wheel(nm) = Render.build_gpl(Render.extract_gpl_car(joinpath(LOTDIR,nm*".3do");
-                    exclude=("ltraymap","lshad"), tint=(0.12f0,0.12f0,0.13f0)), GPLTEX)  # force dark tyre
+                    exclude=("ltraymap","lshad"), tint=(TYRE_ALB,TYRE_ALB,TYRE_ALB+0.02f0)), GPLTEX)
 const WHEELITEMS = Dict(nm => load_wheel(nm) for nm in ("lotwlf","lotwrf","lotwlr","lotwrr"))
 swItems = Render.build_gpl(SWPARTS, GPLTEX)        # steering wheel (rotated with steer)
 println(count(it->it.tex!=0, trackItems), "/", length(trackItems), " track + ",
@@ -1362,13 +1382,21 @@ function main()
     # game loop starts — lets a SMOKE render photograph ANY point on the lap (scenery QA: the Watkins
     # balcony, the Nürburgring carbonized stretch, …), not just the start/finish line.  Re-anchors the
     # vertical state to the terrain there so the car doesn't slam/diverge on a big-elevation track.
-    if CLINE !== nothing && CAR3D && haskey(ENV, "JM_START_S")
-        s0 = clamp(parse(Float64, ENV["JM_START_S"]), 0.0, CLINE.total)
+    # Teleport the standing car to s metres along the centreline + re-anchor the vertical state to the
+    # terrain there (no slam/divergence on big-elevation tracks).  Shared by JM_START_S and JM_SHOTS.
+    place_at_s! = function (s0raw::Float64)
+        (CLINE === nothing || !CAR3D) && return nothing
+        s0 = clamp(s0raw, 0.0, CLINE.total)
         p  = RaceAI.pose_at(CLINE, s0, 0.0)                 # (x, y, z, θ) on the racing line
         DriveRT3D.place3d!(cs, p[1], p[3], p[4]; v = 0.0)
         cs.s_vreset(cs.integ, zeros(14))                    # zero the vertical subsystem (no spawn bounce)
         h = groundz(p[1], p[3]; acquire=true); isfinite(h) && (cs.zref = Float64(h))
         cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
+        p
+    end
+    if CLINE !== nothing && CAR3D && haskey(ENV, "JM_START_S")
+        s0 = clamp(parse(Float64, ENV["JM_START_S"]), 0.0, CLINE.total)
+        p  = place_at_s!(s0)
         println("  JM_START_S: car placed at s=", round(Int, s0), " m on the centreline (x=",
                 round(Int, p[1]), " z=", round(Int, p[3]), ")")
         if get(ENV,"JM_OBJDIAG","")!="" && isdefined(Main,:OBJINSTS)
@@ -1727,10 +1755,19 @@ function main()
     EngineAudio.start(ENG)   # start audio NOW (after the long track load) — starting it mid-load
                              # let the stream underflow on big tracks (Nürburgring) and go silent
     SMOKE || GLFW.ShowWindow(win)   # reveal the window now that loading is done (avoids the WM "Not Responding")
+    # E59 multi-shot smoke state: current shot, the frame it was placed on, all-done flag.
+    shot_idx = Ref(0); shot_t0 = Ref(0); shots_done = Ref(isempty(SHOTS))
+    if SMOKE && !isempty(SHOTS)
+        shot_idx[] = 1; shot_t0[] = 0
+        CTL.view = SHOTS[1].view
+        place_at_s!(SHOTS[1].s)
+        println("  JM_SHOTS: ", length(SHOTS), " shots → ", SHOTS_DIR); flush(stdout)
+    end
     while !GLFW.WindowShouldClose(win)
         GLFW.PollEvents()
         key(GLFW.KEY_ESCAPE) && break
-        SMOKE && frames >= 40 && break
+        SMOKE && isempty(SHOTS) && frames >= 40 && break
+        SMOKE && shots_done[] && !isempty(SHOTS) && break
         now = time(); dt = clamp(now-last, 0.0, 0.05); last = now
         inp, rst, recover = read_input()
         if REPLAY                                   # E18 PLAYBACK: VCR + set poses from the recording, skip the sim
@@ -2339,18 +2376,24 @@ function main()
         # gauge cluster (real GPL dash7A dial faces): the dash sits BELOW the scuttle/black panels in the
         # mesh, so it's occluded from the driver's eye → draw it depth-test-OFF so the dials read on the
         # dash, near-unlit (bright + ambfill) so the faces are legible.  Only matters in the cockpit view.
+        # E59 parity: bright 1.6/ambfill 0.95 over-exposed the dash — the GPL gold cockpit has a MATTE
+        # BLACK dash with crisp white-on-black dials; ours read as a washed-out silver plank.  Near-unlit
+        # but at unity brightness keeps the dials legible AND the panel black.  JM_DASH_B/JM_DASH_A tune.
+        dash_b = parse(Float64, get(ENV,"JM_DASH_B","1.0")); dash_a = parse(Float64, get(ENV,"JM_DASH_A","0.60"))
         if CTL.view == 0
             glDisable(GL_DEPTH_TEST)
-            for it in gaugeItems; Render.draw(prog, it, vp, bodyModel*GAUGEFLIP; bright=1.6, spec=0.0, ambfill=0.95); end
+            for it in gaugeItems; Render.draw(prog, it, vp, bodyModel*GAUGEFLIP; bright=dash_b, spec=0.0, ambfill=dash_a); end
             glEnable(GL_DEPTH_TEST)
         else
-            for it in gaugeItems; Render.draw(prog, it, vp, bodyModel*GAUGEFLIP; bright=1.5, spec=0.0, ambfill=0.95); end
+            for it in gaugeItems; Render.draw(prog, it, vp, bodyModel*GAUGEFLIP; bright=dash_b, spec=0.0, ambfill=dash_a); end
         end
         for (p, cm) in zip(ai_poses, AICHASSIS)                 # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper)
             for it in cm.body; Render.draw(prog, it, vp, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end
             for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp, aiWheel(p,wx,wz,r)); end
         end
-        for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, vp, wheelmat(wx,wz,steer,r)); end
+        # E59 parity: default lighting rendered the tyres as solid BLACK silhouettes from the cockpit —
+        # the GPL gold cockpit shows readable dark-grey tread + sidewall.  Lift the fill (not the sun).
+        for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, vp, wheelmat(wx,wz,steer,r); bright=1.0, ambfill=0.75); end
         # front suspension wishbones — ahead of the cockpit, visible through the plexiglass (PO gold standard)
         for it in fsuspItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.15, ambfill=0.5); end
         # rear-view mirrors — re-placed onto the cowl/plexiglass, faces tilted toward the eye (GPL look).
@@ -2375,10 +2418,24 @@ function main()
             Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, 9500.0, inp.throttle, inp.brake, inp.clutch, tc_hud;
                                lastlap=(SMOKE ? 94.3 : last_lap), bestlap=(SMOKE ? 92.1 : best_lap), manual=!CTL.auto), W, H)
         GLFW.SwapBuffers(win)
-        if SMOKE && frames == 38                   # headless self-test: dump one frame
+        if SMOKE && frames == 38 && isempty(SHOTS)  # headless self-test: dump one frame
             buf=Vector{UInt8}(undef,W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,buf)
             open(get(ENV,"JM_DUMP","/tmp/zand_hud.ppm"),"w") do io; write(io,"P6\n$W $H\n255\n")
                 for y in H:-1:1, x in 1:W; o=((y-1)*W+(x-1))*3; write(io,buf[o+1],buf[o+2],buf[o+3]); end; end
+        end
+        # E59 multi-shot: dump the settled frame for the current shot, then teleport to the next.
+        if SMOKE && !isempty(SHOTS) && !shots_done[] && frames - shot_t0[] == SHOT_SETTLE
+            sh = SHOTS[shot_idx[]]
+            buf=Vector{UInt8}(undef,W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,buf)
+            open(joinpath(SHOTS_DIR, sh.name * ".ppm"),"w") do io; write(io,"P6\n$W $H\n255\n")
+                for y in H:-1:1, x in 1:W; o=((y-1)*W+(x-1))*3; write(io,buf[o+1],buf[o+2],buf[o+3]); end; end
+            println("  JM_SHOTS: dumped ", sh.name, " (", shot_idx[], "/", length(SHOTS), ")"); flush(stdout)
+            if shot_idx[] < length(SHOTS)
+                shot_idx[] += 1; shot_t0[] = frames + 1
+                nxt = SHOTS[shot_idx[]]; CTL.view = nxt.view; place_at_s!(nxt.s)
+            else
+                shots_done[] = true
+            end
         end
 
         frames += 1
