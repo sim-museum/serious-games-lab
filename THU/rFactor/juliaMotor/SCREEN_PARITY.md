@@ -251,3 +251,22 @@ colourful **autumn forest** lining the track, brown-green late-autumn verges.
 
 Sky + verge verified by A/B re-capture (old-blue vs new-hazy) and a shipping-config confirm
 session; composites `parity/watglen/video_*`.
+
+### E61 Nürburgring — video gold vs native (native lap 22 780 m)
+**Weather correction — the biggest finding of this sprint.** The 3 E59 GPLMotecAdd stills
+(all at the S/F) implied "heavy stormy dark-grey overcast", and `GRADE_NURB` rendered the
+WHOLE 22.7 km Nordschleife dark, brown and desaturated (cloud=1.0 deck, sat 0.88). The
+260802 gold VIDEO (full 15-min lap) shows the opposite for 99 % of the lap: a bright
+**PARTLY-CLOUDY** day — dramatic grey cloud over the S/F pit complex, opening to **blue sky
++ white cumulus over LUSH GREEN forest** across the whole Nordschleife. Sampled gold zenith
+≈(0.53,0.59,0.67) (blue-dominant), forest vivid green.
+| id | deviation (native vs gold) | verdict |
+|---|---|---|
+| NB1 | Whole lap rendered dark/stormy + brown; gold Nordschleife is bright blue-sky + green forest | **fixed** — `GRADE_NURB` re-graded bright: sat 0.88→1.10 (re-greens the forest/verges), cloud 1.0→0.70 + bluer zenith (blue shows through the cumulus), warm sun, ring un-darkened (0.90→1.02). `JM_GRADE=NURBOLD` A/Bs the old storm |
+| NB2 | S/F pit complex: gold there is genuinely dramatic/dark-cloudy, new grade renders it bright-ish | ◑ accepted compromise — one static grade can't be both stormy-at-S/F and blue-on-the-lap; weighted to the lap (where the driving is). The S/F boards/grandstand/scoreboard/crowd all still render (N1 objects hold) |
+| NB3 | Verge/bank grass still reads part-khaki-brown on some sections | ◑ terrain-mesh texture limit (as Watkins WG3-grass); sat lift greened it materially but not fully |
+| NB4 | Chase rear bodywork skeletal | open — Zandvoort D12 class (gold chase also shows exposed engine, so narrower than it reads) |
+| — | S/F floating quad (E59 N2), driver hands, textured tyres | open(minor) / waived |
+
+Before/after native A/B + gold matches verified by re-capture (`nurb`→`nurb_v2`); composites
+`parity/nurburgring/video_*`.

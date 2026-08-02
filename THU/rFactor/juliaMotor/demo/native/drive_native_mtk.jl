@@ -819,7 +819,14 @@ const GRADE_MONZA = ColourGrade((0.31,0.51,0.80),(0.85,0.90,0.96),0.34, (1.07,1.
 # Keep the warm ringtint so the horizon autumn-forest band stays coloured.  JM_GRADE=WATK A/Bs the old blue.
 const GRADE_WATK  = ColourGrade((0.60,0.66,0.74),(0.80,0.82,0.84),0.28, (1.08,1.02,0.90),(0.82,0.85,0.90),1.12, (1.24,1.15,1.03))
 const GRADE_WATK_OLD = ColourGrade((0.28,0.48,0.80),(0.82,0.87,0.93),0.40, (1.10,1.02,0.86),(0.74,0.82,0.96),1.26, (1.21,1.16,1.06))
-const GRADE_NURB  = ColourGrade((0.42,0.48,0.56),(0.66,0.68,0.70),1.0, (0.92,0.92,0.95),(0.72,0.74,0.80),0.88, (0.90,0.91,0.96))
+# E61 (260802 gold VIDEO, full 15-min Nordschleife lap): the video is NOT the uniform dark storm the 3
+# GPLMotecAdd stills implied — it is a bright PARTLY-CLOUDY day (dramatic grey cloud over the S/F pit
+# complex, opening to blue sky + white cumulus out on the lap) over LUSH GREEN forest.  The old storm
+# grade (cloud=1.0 deck, sat 0.88 desaturated, darkened ring) rendered the whole Nordschleife brown/grey.
+# Re-green it: sat 0.88→1.10, let blue through (cloud 1.0→0.70, bluer zenith), warm the sun, stop
+# darkening the horizon ring so the green forest backdrop reads green.  JM_GRADE=NURBOLD A/Bs the storm.
+const GRADE_NURB  = ColourGrade((0.38,0.48,0.62),(0.72,0.76,0.80),0.70, (1.02,1.00,0.92),(0.74,0.80,0.90),1.10, (1.02,1.05,1.00))
+const GRADE_NURB_OLD = ColourGrade((0.42,0.48,0.56),(0.66,0.68,0.70),1.0, (0.92,0.92,0.95),(0.72,0.74,0.80),0.88, (0.90,0.91,0.96))
 # PO (2026-06-28): REMOVE the blue sky from ALL tracks — the procedural blue skydome seamed against
 # the GPL overcast horizon ring (overcast lower sky vs blue upper sky).  One even OVERCAST grade whose
 # skydome grey MATCHES the GPL horizon-ring grey → no seam.  Bright ambsky + high sat keep the trackside
@@ -849,7 +856,8 @@ const GRADE_ZANDOVER = ColourGrade(GRADE_OVERCAST.zenith, GRADE_OVERCAST.horizon
 const GRADE_BYTRACK = Dict("nurburgring"=>GRADE_NURB, "monza"=>GRADE_MONZA, "spa"=>GRADE_SPA,
                            "watglen"=>GRADE_WATK, "zandvoort"=>GRADE_ZANDOVER)
 const GRADE_TAB = Dict("OVERCAST"=>GRADE_OVERCAST, "NURB"=>GRADE_NURB, "MONZA"=>GRADE_MONZA,
-                       "SPA"=>GRADE_SPA, "WATK"=>GRADE_WATK, "WATKOLD"=>GRADE_WATK_OLD, "ZAND"=>GRADE_ZAND,
+                       "SPA"=>GRADE_SPA, "WATK"=>GRADE_WATK, "WATKOLD"=>GRADE_WATK_OLD,
+                       "NURBOLD"=>GRADE_NURB_OLD, "ZAND"=>GRADE_ZAND,
                        "SUNNY"=>GRADE_SUNNY, "GPL"=>GRADE_GPL, "SKIDPAD"=>GRADE_SKIDPAD)
 const GRADE = SKIDPAD ? GRADE_SKIDPAD :
               haskey(ENV, "JM_GRADE") ? get(GRADE_TAB, uppercase(ENV["JM_GRADE"]), GRADE_OVERCAST) :
