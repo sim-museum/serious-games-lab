@@ -717,3 +717,30 @@ comparison per screen/view, not a grade eyeball.
   on the drive. Note: smoke prints an `.ibt export failed` warning (missing
   `data/iracing/` telemetry template) — pre-existing, unrelated to the parity
   diffs; exit still 0.
+
+### E60 — Zandvoort gold-video parity (PO-directed 2026-08-01: "gold-standard-accurate
+### Zandvoort the user can race in julia racer")
+New gold: `/home/admin/gold standard/julia racer/zandervoort/` — the 43 stills PLUS two
+260801 full-lap 1080p60 VIDEOS of GPL-under-Wine (cockpit + nintendo/chase — the first
+Zandvoort chase gold). GPL utilities under `.../julia racer/gpl utilities/`. Full method
++ per-deviation verdicts: `SCREEN_PARITY.md` § E60.
+- **Fixed (all verified by offscreen re-capture):** V1 sky flattened to the videos'
+  featureless pale-grey overcast (`GRADE_ZANDOVER`, cloud 0.18, `JM_CLOUD`); V2 tyres
+  to near-black rubber (`JM_TYRE_ALB` 0.17); V3 cockpit-cowl checkerboard harmonized
+  to smooth BRG + dark pad (`JM_COWL_HARM`); V4 chase camera to GPL's low/close
+  nintendo framing (4.6 m/1.35 m, `JM_CHASE_D/H/LY`); V5 chase driver completed —
+  helmet mesh `helmeg.3do` extracted + retextured to Clark-blue `clahelm`, lid/arms
+  moved into the driver set (closes the "skeletal car" read of E59 D12 together with
+  V2; W3 on Watkins should re-verdict next Watkins pass).
+- **D6 root cause found, still open:** Tarzan board wall = `chmp4-1.3do`, ONE mesh,
+  4 boards on the `bilbrd01` sheet with per-face winding inconsistent within the
+  object → no global two-sided/culled config can read all boards correctly (A/B
+  matrix in the drive_native_mtk.jl comment; JM_OBJ_DEDUP/JM_OBJ_CULL/JM_OBJ_FF
+  keep the experiments one env var away). Next step: per-face track-aware face
+  selection at scenery build (instance transform × centreline normal test).
+- **New open (logged in parity table):** V7 floating crowd billboards s≈1100;
+  V8 white tower-ish object near Gerlach s≈700; V9 LOTUS hub badge upside-down;
+  V10 roadside people billboards over-blue (CROWD_TINT is stand-objects-only).
+- **Sprint close (2026-08-01):** 5 capture iterations (`native_fix1..5`), final
+  full-lap 46-shot session `native_final`; composites `parity/zandvoort/video_*.jpg`;
+  JM_SMOKE clean (exit 0, known benign `.ibt export` warning).

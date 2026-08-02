@@ -893,13 +893,25 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
     # decal wins over a blank backing (keeps the sign legible).  The shader renders the
     # surviving face two-sided (uBackFlip un-mirrors the back).  On for track + objects.
     if dedup === nothing; dedup = track; end
-    if dedup
+    if dedup !== false
+        # E60 (D6): `dedup === :orient` keeps coincident OPPOSITE-facing pairs (a double-sided sign's
+        # front + back decals — each reads correctly from its own side under back-face culling, exactly
+        # as GPL renders them) and only collapses SAME-facing stacks (decal over backing).  The plain
+        # `true` mode keeps the old collapse-everything behaviour for the track mesh (drawn two-sided).
+        nkey(t) = begin
+            e1 = (t.p[2][1]-t.p[1][1], t.p[2][2]-t.p[1][2], t.p[2][3]-t.p[1][3])
+            e2 = (t.p[3][1]-t.p[1][1], t.p[3][2]-t.p[1][2], t.p[3][3]-t.p[1][3])
+            n  = (e1[2]*e2[3]-e1[3]*e2[2], e1[3]*e2[1]-e1[1]*e2[3], e1[1]*e2[2]-e1[2]*e2[1])
+            a  = abs.(n); i = a[1] >= a[2] ? (a[1] >= a[3] ? 1 : 3) : (a[2] >= a[3] ? 2 : 3)
+            i * (n[i] < 0 ? -1 : 1)                    # dominant normal axis + sign
+        end
         ckey(t) = (round(Int,(t.p[1][1]+t.p[2][1]+t.p[3][1])/3*64),
                    round(Int,(t.p[1][2]+t.p[2][2]+t.p[3][2])/3*64),
                    round(Int,(t.p[1][3]+t.p[2][3]+t.p[3][3])/3*64),
-                   round(Int, triarea(t.p)*1f5))
+                   round(Int, triarea(t.p)*1f5),
+                   dedup === :orient ? nkey(t) : 0)
         sort!(kept, by = t -> (t.tex == "" ? 1 : 0))   # stable: textured tris seen first
-        seen = Set{NTuple{4,Int}}()
+        seen = Set{NTuple{5,Int}}()
         kept = filter(kept) do t
             k = ckey(t)
             (k in seen) ? false : (push!(seen, k); true)
@@ -934,7 +946,17 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
             # rim).  Cap the brightness of untextured cockpit tris so the interior fades to dark downward
             # (green tub stays visible, just gold-standard dark BRG instead of neon).
             if cockpit_clean && t.tex=="" && !(grey[1] > 0.2f0)
-                c = (min(c[1],0.30f0), min(c[2],0.38f0), min(c[3],0.30f0))
+                # E60 (260801 cockpit gold video): the brightness CAP still left a black/green/grey
+                # per-tri CHECKERBOARD on the cowl — GPL's baked colours expect its own shading.  The
+                # gold cowl is ONE smooth dark BRG with a dark pad ahead: harmonize untextured cockpit
+                # tris to two colours (green-dominant → BRG, else → dark tub).  JM_COWL_HARM=0 restores
+                # the capped baked colours.
+                if get(ENV,"JM_COWL_HARM","1") != "0"
+                    c = (c[2] > c[1]+0.04f0 && c[2] > c[3]+0.04f0) ? (0.07f0,0.24f0,0.12f0) :
+                                                                     (0.10f0,0.105f0,0.115f0)
+                else
+                    c = (min(c[1],0.30f0), min(c[2],0.38f0), min(c[3],0.30f0))
+                end
             end
             append!(v, (p[1],p[3],p[2]*mz, n[1],n[3],n[2]*mz, c[1],c[2],c[3], uflip ? 1f0-uv[1] : uv[1], vflip ? 1f0-uv[2] : uv[2]))
         end

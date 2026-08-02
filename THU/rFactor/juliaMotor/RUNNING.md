@@ -21,15 +21,19 @@ Requires a healthy GL display session.
 | Session status docs | `STATUS.md`, `STATUS_2026-07-06_graphics-E58.md` |
 | History | `git log --oneline` on `julia-racer` |
 
-Gold standards (BOTH canonical): `/run/media/admin/BEA6-BBCE/julia racer/`
-(zandervoort 43 / watkins glenn 4 / nurburgring 3) AND the older `84AF-CC77` USB
-(sole source of Monza/Spa golds — **currently unplugged; re-attach to unblock
-E59.4**). The BEA6-BBCE zandervoort 02:5x cockpit series duplicates shots
-previously cited from 84AF-CC77.
+Gold standards: **Zandvoort now lives LOCALLY** at
+`/home/admin/gold standard/julia racer/zandervoort/` — the 43 stills + the two
+260801 full-lap 1080p60 videos (cockpit + nintendo/chase; see SCREEN_PARITY § E60).
+GPL utilities: `/home/admin/gold standard/julia racer/gpl utilities/`. The USB
+sources remain historical co-canon: BEA6-BBCE (watkins glenn 4 / nurburgring 3)
+and 84AF-CC77 (sole Monza/Spa source — re-attach to unblock E59.4).
 
-## Current state (2026-07-26)
+## Current state (2026-08-01)
 
+- E60 closed: Zandvoort parity vs the 260801 gold lap videos — sky/tyres/cowl/
+  chase-cam/chase-driver fixed (verified by re-capture); D6 root-caused
+  (chmp4-1.3do per-face winding) but still open; V7–V10 newly logged.
+  Composites: `parity/zandvoort/video_*.jpg`.
 - E59 round 1 closed (`23e11e1`/`d784d19`): 50-gold inventory, Zandvoort fixes
-  (overcast regrade, matte dash, footwell, tyres), D6/D10/D12 open.
-- Round 2 (Watkins/Nürburgring parity) was lost to a session limit before any
-  tree changes; sprints paused pending PO re-expansion of scope.
+  (overcast regrade, matte dash, footwell, tyres), D10 open; D12 largely closed
+  by E60 V2+V5 (re-verdict Watkins W3 next Watkins pass).

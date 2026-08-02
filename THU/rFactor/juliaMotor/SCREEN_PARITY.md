@@ -145,3 +145,35 @@ Monza and Spa golds live on the **84AF-CC77** drive (co-canonical per the PO, bu
 attached this sprint — `lsblk` shows only BEA6-BBCE). **Ask:** re-attach 84AF-CC77 so
 E59 can run the same parity method on its `monza/` + `spa/` folders; no new GPL captures
 needed unless the PO prefers refreshing them onto BEA6-BBCE.
+
+## E60 — Zandvoort parity round 2 vs the 260801 gold LAP VIDEOS (2026-08-01)
+
+**New gold source (LOCAL — supersedes the USB copies for Zandvoort):**
+`/home/admin/gold standard/julia racer/zandervoort/` — the 43 screenshots PLUS two new
+full-lap videos of GPL-under-Wine (1080p60): `260801_zandervoort_cockpit.mp4` (3:01,
+standing lap t≈6→146 s + partial lap 2) and `260801_zandervoort_nintendo.mp4` (2:24,
+same lap in GPL's chase view — the FIRST Zandvoort chase gold; nintendo ≈ cockpit
+timeline −3 s).  GPL utilities (WinMIP/123do/LytViewer/GPL_Tel) at
+`/home/admin/gold standard/julia racer/gpl utilities/`.
+
+Method: 1 fps frame extraction (gstreamer/avdec_h264 — no ffmpeg on this box),
+landmark-mapped to the E59.2 s-map; one 46-shot `JM_SHOTS` session (37 cockpit +
+9 chase) per iteration; 5 fix iterations captured.
+
+### Verdicts (video gold vs native, fix session E60)
+| id | deviation | verdict |
+|---|---|---|
+| V1 | Sky: cloud=1.0 procedural deck read as heavy cumulus; ALL video frames show near-featureless pale grey | **fixed** — `GRADE_ZANDOVER` (overcast, cloud=0.18; `JM_CLOUD` A/Bs) |
+| V2 | Tyres read light-grey ALLOY (0.26 albedo); gold = near-black rubber in both views | **fixed** — `JM_TYRE_ALB` default 0.17 |
+| V3 | Cockpit cowl = black/green/grey per-tri CHECKERBOARD (E59 D4 cap left baked colours); gold = one smooth dark-BRG cowl + dark pad | **fixed** — untextured cockpit tris harmonized to 2 colours (`JM_COWL_HARM=0` reverts) |
+| V4 | Chase cam 9 m back/3.2 m up = TV crane shot; nintendo gold sits LOW+CLOSE | **fixed** — 4.6 m/1.35 m (`JM_CHASE_D/H/LY`) |
+| V5 | Chase driver read absent → car skeletal (E59 D12): torso-only DRIVERP, no helmet | **fixed** — +lid/arms in DRIVER_TEX; helmeg.3do extracted, retextured helblack→clahelm (Clark blue), placed at neck top (`JM_HELM_X/Y`) |
+| V6 | D6 mirrored/blank signage (VREDESTEIN, DUNLOP pit boards, MARTINI, blue CALTEX) | **open — root cause found**: Tarzan wall = `chmp4-1.3do`, one combo mesh (bilbrd01 ad sheet) with per-face winding inconsistent INSIDE the object; A/B matrix in code comment (JM_OBJ_DEDUP/JM_OBJ_CULL/JM_OBJ_FF); needs per-face track-aware selection at scenery build |
+| V7 | Floating crowd billboards above the dune ridge at s≈1100 | open (E4 placement class) |
+| V8 | White tower-like object near Gerlach s≈700 (gold: first-aid tent area) — suspected mis-oriented placement | open (E4 placement class) |
+| V9 | LOTUS hub badge text upside-down (cockpit) | open (minor) |
+| V10 | Roadside standing-crowd billboards render blue (CROWD_TINT covers stand objects only) | open (D10 class) |
+| — | D8 crowds / D9 plexiglass / D13 hands / D14 HUD | waived (unchanged PO decisions) |
+
+Chase framing, driver figure, sky, tyres, cowl verified by re-capture (sessions
+`native_fix1..5`, final `native_final`); composites in `parity/zandvoort/` (`video_*`).

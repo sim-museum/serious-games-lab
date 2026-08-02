@@ -637,7 +637,15 @@ const _EXTRA_EXC = Tuple(split(get(ENV,"JM_EXTRA_EXCLUDE",""), ",", keepempty=fa
 # E36: the "black band" below the wheel was the DRIVER FIGURE's own torso/lap — from the cockpit eye
 # (inside the driver) his body filled the lower view, occluding the green tub + LOTUS hub badge.  Pull
 # the driver body OUT of CARP and draw it only in CHASE view (driverItems below) so the cockpit is clear.
-const DRIVER_TEX = ("driver5","lotbody","lotsho","knees","neck")
+# E60 (nintendo gold video): the chase gold shows the BLUE HELMET + upper arms prominently — without
+# "lid" (helmet shell) + "arms" (upper arms) the chase driver read as absent and the car skeletal (D12).
+const DRIVER_TEX = ("driver5","lotbody","lotsho","knees","neck","lid","arms")
+# E60: the HELMET is a separate head-pivot mesh (helmeg.3do, modeled around its own origin) that GPL
+# places at the head position with the per-driver helmet skin — the chase gold shows Clark's blue
+# clahelm.  Retexture helblack→clahelm and place it at the neck top (JM_HELM_X/Y tune).
+const HELM_OFF = (parse(Float32,get(ENV,"JM_HELM_X","0.14")), parse(Float32,get(ENV,"JM_HELM_Y","0.34")), 0f0)
+const HELMP = [Render.TrackPart(p.verts, p.tex=="helblack" ? "clahelm" : p.tex, p.col)
+               for p in Render.extract_gpl_car(joinpath(LOTDIR,"helmeg.3do"); maxlat=0.95f0)]
 const CARP   = Render.extract_gpl_car(LOT3DO; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # driver body + gauge + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0
 const DRIVERP = Render.extract_gpl_car(LOT3DO; only=DRIVER_TEX, maxlat=0.95f0)   # the driver figure — drawn only in CHASE view (occludes the cockpit from the in-car eye)
 const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (dial faces in the texture's lower-V region; keep default vflip)
@@ -693,6 +701,11 @@ const W, H = 1440, 810
 # per frame so the big layouts (Spa ~5.7k instances, Monza, Nürburgring) keep their FPS.
 # Sized larger than small circuits (Zandvoort ~1.3 km) so those cull nothing — visible only
 # on the big valleys where the far half-track would otherwise be drawn every frame.
+# E60 (D6 mirrored signs): draw trackside OBJECTS back-face-culled like GPL does, with dedup=:orient
+# keeping both decals of double-sided signs.  JM_OBJ_CULL=0 restores the two-sided+flip path;
+# JM_OBJ_FF flips the winding convention if the culled world renders inside-out (mirror remap parity).
+const OBJ_CULLFACE = get(ENV,"JM_OBJ_CULL","0") != "0"
+const OBJ_FF_CW    = get(ENV,"JM_OBJ_FF","cw") == "cw"
 const OBJ_CULL2 = 2200f0^2      # mesh objects (buildings/grandstands/trees) — keep distant landmarks
 const BB_CULL2  = 1300f0^2      # billboards (tree/shrub/crowd sprites) — far ones add little
 const SMOKE = haskey(ENV, "JM_SMOKE")     # headless self-test: hidden window, auto-exit
@@ -814,8 +827,15 @@ const GRADE_OVERCAST = ColourGrade((0.66,0.67,0.69),(0.76,0.765,0.77),1.0, (1.0,
 # FLAT OVERCAST pale-grey sky — not blue.  This also restores the PO's E27 decision ("one overcast
 # grade") that E58 had overridden for Zandvoort.  Watkins stays hazy blue and Nürburgring stormy —
 # their gold folders agree.  JM_GRADE=ZAND still A/Bs the old blue look.
+# E60 (260801 gold VIDEOS, both full laps): the Zandvoort sky is a near-FEATURELESS pale grey — the
+# cloud=1.0 procedural deck read as heavy cumulus streaks in every frame and brightened the zenith.
+# Zandvoort gets a faint-cloud overcast; JM_CLOUD overrides the coverage for A/B.
+const ZAND_CLOUD = parse(Float32, get(ENV,"JM_CLOUD","0.18"))
+const GRADE_ZANDOVER = ColourGrade(GRADE_OVERCAST.zenith, GRADE_OVERCAST.horizon, ZAND_CLOUD,
+                                   GRADE_OVERCAST.suncol, GRADE_OVERCAST.ambsky, GRADE_OVERCAST.sat,
+                                   GRADE_OVERCAST.ringtint)
 const GRADE_BYTRACK = Dict("nurburgring"=>GRADE_NURB, "monza"=>GRADE_MONZA, "spa"=>GRADE_SPA,
-                           "watglen"=>GRADE_WATK, "zandvoort"=>GRADE_OVERCAST)
+                           "watglen"=>GRADE_WATK, "zandvoort"=>GRADE_ZANDOVER)
 const GRADE_TAB = Dict("OVERCAST"=>GRADE_OVERCAST, "NURB"=>GRADE_NURB, "MONZA"=>GRADE_MONZA,
                        "SPA"=>GRADE_SPA, "WATK"=>GRADE_WATK, "ZAND"=>GRADE_ZAND,
                        "SUNNY"=>GRADE_SUNNY, "GPL"=>GRADE_GPL, "SKIDPAD"=>GRADE_SKIDPAD)
@@ -936,7 +956,17 @@ let objnames=Set{String}()
                 for s in strs; bb = Render.build_billboard(s, TEXIDX); bb !== nothing && break; end
                 bbinfo[inst.name] = bb===nothing ? nothing : (bb[1], bb[2], bb[3], h, wid)
             else
-                parts = Render.extract_gpl_car(p; track=true, mirror=true, exclude=(CROWD_TEX..., obj_extra_excl(inst.name)...))  # strip painted-on crowds + per-object roadward parts (E58 startbox)
+                # E60 (D6) A/B matrix, tested vs the 260801 gold videos — no config wins outright:
+                #   old collapse + two-sided + backflip (DEFAULT): VREDESTEIN/DUNLOP-pit mirrored,
+                #     MARTINI blank, roofs solid;
+                #   JM_OBJ_DEDUP=orient + JM_OBJ_CULL=1 + JM_OBJ_FF=ccw: VREDESTEIN+DUNLOP correct,
+                #     MARTINI still blank, S/F grandstand roof gets culling holes;
+                #   orient + two-sided (no cull): coincident pairs z-fight (mangled text) — worst.
+                # Root cause found: the Tarzan wall is chmp4-1.3do — ONE combo mesh, four boards on
+                # the bilbrd01 ad sheet, with per-face winding INCONSISTENT inside the object (Castrol
+                # correct while MARTINI flips in every config).  Full closure needs per-face
+                # track-aware face selection at scenery-build time (instance transform × centreline).
+                parts = Render.extract_gpl_car(p; track=true, mirror=true, dedup=(get(ENV,"JM_OBJ_DEDUP","old")=="orient" ? :orient : true), exclude=(CROWD_TEX..., obj_extra_excl(inst.name)...))  # strip painted-on crowds + per-object roadward parts (E58 startbox)
                 if isempty(parts); objmesh[inst.name]=nothing    # was an all-crowd object → drop (NOT a billboard)
                 else
                     lo=Inf32; hi=-Inf32; for pp in parts, k in 2:11:length(pp.verts); v=pp.verts[k]; lo=min(lo,v); hi=max(hi,v); end
@@ -1154,11 +1184,15 @@ windItems  = Render.build_gpl(WINDP, GPLTEX)       # plexiglass windscreen (draw
 mirrorItems = Render.build_gpl(MIRRORP, GPLTEX)    # rear-view mirrors (re-placed on the cowl, MIRRORMAT)
 fsuspItems  = Render.build_gpl(FSUSPP, GPLTEX)     # front suspension wishbones (visible through the screen)
 driverItems = Render.build_gpl(DRIVERP, GPLTEX)    # driver figure — drawn only in chase view (E36)
+helmItems   = Render.build_gpl(HELMP, GPLTEX)      # Clark-blue helmet at the head pivot (chase view, E60)
 # four Lotus wheels — keep the untextured black tyre body (only the car body drops "")
 # E59 parity: 0.12 albedo rendered the tyres as SOLID BLACK silhouettes from the cockpit (no texture in
 # lotwlf.3do to carry detail).  The GPL gold cockpit shows dark-grey tyres whose curvature SHADES —
 # lift the flat albedo so the smooth-normal cylinder shading reads while staying tyre-dark.  JM_TYRE_ALB.
-const TYRE_ALB = parse(Float32, get(ENV,"JM_TYRE_ALB","0.26"))
+# E60 (260801 gold videos): 0.26 read as light-grey ALLOY, not rubber — both gold videos show
+# near-black treaded tyres (~0.16 screen).  0.17 + the ambfill-lifted wheel draw keeps the cylinder
+# shading while reading as dark rubber in both cockpit and chase.
+const TYRE_ALB = parse(Float32, get(ENV,"JM_TYRE_ALB","0.17"))
 load_wheel(nm) = Render.build_gpl(Render.extract_gpl_car(joinpath(LOTDIR,nm*".3do");
                     exclude=("ltraymap","lshad"), tint=(TYRE_ALB,TYRE_ALB,TYRE_ALB+0.02f0)), GPLTEX)
 const WHEELITEMS = Dict(nm => load_wheel(nm) for nm in ("lotwlf","lotwrf","lotwlr","lotwrr"))
@@ -1264,10 +1298,15 @@ function terrain_roll(cs)
 end
 
 # ---- camera (pitch/roll = total body orientation, applied to the cockpit view only) ----
+const CHASE_D  = parse(Float32, get(ENV,"JM_CHASE_D","4.6"))    # metres behind the car
+const CHASE_H  = parse(Float32, get(ENV,"JM_CHASE_H","1.35"))   # metres above the car origin
+const CHASE_LY = parse(Float32, get(ENV,"JM_CHASE_LY","0.80"))  # look-at height 2 m ahead
 function camera(cs, pitch=0.0, roll=0.0)
     wx,wy,wz = cs.x, cs.y, -cs.z; fx,fz = cos(cs.θ), -sin(cs.θ)   # render world un-mirrors physics z
     if CTL.view == 1                                  # chase — level horizon, so you SEE the body pitch/roll
-        eye=[wx-fx*9, wy+3.2, wz-fz*9]; ctr=[wx+fx*3, wy+0.6, wz+fz*3]
+        # E60 (260801 nintendo gold video): GPL's chase cam sits LOW and CLOSE — the car fills the lower
+        # frame, horizon mid-frame.  The old 9 m/3.2 m read as a high TV crane shot.  JM_CHASE_* A/Bs.
+        eye=[wx-fx*CHASE_D, wy+CHASE_H, wz-fz*CHASE_D]; ctr=[wx+fx*2, wy+CHASE_LY, wz+fz*2]
         return PROJ * Render.lookat(Float32.(eye), Float32.(ctr), Float32[0,1,0]), Float32.(eye)
     end
     # COCKPIT: the camera takes yaw from the chassis and pitch/roll from the LOW-PASS head tilt (E53,
@@ -2337,6 +2376,10 @@ function main()
                                   fogcol=GRADE.horizon, suncol=GRADE.suncol, ambsky=GRADE.ambsky, sat=GRADE.sat)
         Render.bind_shadow(prog, shadowtex, lightVP)
         HORIZON_RING === nothing || Render.draw_horizon(prog, HORIZON_RING, vp, eye; tint=GRADE.ringtint)   # GPL horizon ring backdrop
+        # E60 (D6, 260801 gold video): TRACK-mesh signs (VREDESTEIN at Tarzan …) drew with uBackFlip=0, so
+        # when the coplanar dedup keeps the away-facing decal the text renders MIRRORED.  Objects already
+        # un-mirror back faces; give the track mesh the same treatment (road/kerb back faces are unseen).
+        glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 1)
         for (ti, it) in enumerate(trackItems)                        # ambfill lifts shadowed walls/fences out of the "carbonized" black under the flat overcast light
             if MONZA                                                 # E57: per-surface grade — its asphalt MIP is over-bright, its barriers carbonized
                 cat = TRACKCAT[ti]
@@ -2347,8 +2390,16 @@ function main()
                 Render.draw(prog, it, vp, Render.ident(); bright=0.72, ambfill=0.34)
             end
         end
-        glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 1)   # un-mirror far-side sign backs (objects only)
-        for (items,mat,grz,opos,onm) in OBJECTS                   # trackside objects (trees graze-fade)
+        if OBJ_CULLFACE                                           # E60: GPL culls single-sided faces —
+            # double-sided signs keep both decals (dedup=:orient), each visible only from its own side.
+            # NEVER touch glFrontFace: the two-sided-Lambert shader keys off gl_FrontFacing globally
+            # (flipping the convention darkened the whole world) — pick the culled SIDE instead.
+            # GPL is D3D-era (CW front); after the winding-preserving remap those faces are GL "back",
+            # so cull GL_FRONT to keep them.  JM_OBJ_FF=ccw culls GL_BACK if a track's data disagrees.
+            glEnable(GL_CULL_FACE); glCullFace(OBJ_FF_CW ? GL_FRONT : GL_BACK)
+            glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
+        end
+        for (items,mat,grz,opos,onm) in OBJECTS                   # trackside objects (trees graze-fade; uBackFlip stays 1 when un-culled)
             (eye[1]-opos[1])^2+(eye[2]-opos[2])^2+(eye[3]-opos[3])^2 > OBJ_CULL2 && continue   # distance cull
             ob, oa = 1.05, 0.55                                    # default object grade (grandstands/buildings)
             if MONZA                                               # E57: tone the combined-circuit paved/banking object surfaces
@@ -2362,6 +2413,7 @@ function main()
             (eye[1]-pos[1])^2+(eye[2]-pos[2])^2+(eye[3]-pos[3])^2 > BB_CULL2 && continue
             Render.draw(prog, it, vp, Render.translate(Float32[pos[1],pos[2],pos[3]])*Render.roty(yaw)*Render.scalexyz(w,h,1f0); bright=1.3, ambfill=0.8)
         end
+        OBJ_CULLFACE && glDisable(GL_CULL_FACE)
         glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
         for (it,pos,w,h) in BILLBOARDS                            # trees/sprites
             (eye[1]-pos[1])^2+(eye[2]-pos[2])^2+(eye[3]-pos[3])^2 > BB_CULL2 && continue       # distance cull
@@ -2372,6 +2424,8 @@ function main()
         for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly) so it stops reading as a hard black "plywood" notch
         if CTL.view != 0   # the driver figure occludes the cockpit from the in-car eye (E36 black band) → chase only
             for it in driverItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.10, ambfill=0.55); end
+            helmModel = bodyModel * Render.translate(Float32[HELM_OFF[1],HELM_OFF[2],HELM_OFF[3]])
+            for it in helmItems; Render.draw(prog, it, vp, helmModel; bright=1.2, spec=0.12, ambfill=0.60); end
         end
         # gauge cluster (real GPL dash7A dial faces): the dash sits BELOW the scuttle/black panels in the
         # mesh, so it's occluded from the driver's eye → draw it depth-test-OFF so the dials read on the
