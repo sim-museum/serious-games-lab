@@ -812,7 +812,13 @@ const GRADE_ZAND  = ColourGrade((0.24,0.46,0.80),(0.74,0.83,0.92),0.45, (1.07,1.
 #         keep the full cloud deck but cool + darken it rather than the blue-sky look.
 const GRADE_SPA   = ColourGrade((0.22,0.45,0.82),(0.72,0.82,0.93),0.50, (1.07,1.0,0.85),(0.70,0.80,0.98),1.34, (1.10,1.13,1.05))
 const GRADE_MONZA = ColourGrade((0.31,0.51,0.80),(0.85,0.90,0.96),0.34, (1.07,1.02,0.90),(0.74,0.83,0.97),1.18, (1.17,1.15,1.11))
-const GRADE_WATK  = ColourGrade((0.28,0.48,0.80),(0.82,0.87,0.93),0.40, (1.10,1.02,0.86),(0.74,0.82,0.96),1.26, (1.21,1.16,1.06))
+# E61 (260802 gold VIDEOS): the Watkins gold sky is a HAZY PALE grey-blue, not the saturated blue+puffy
+# cloud the E22/E58 grade drew.  Sampled gold zenith≈(0.70,0.75,0.81), horizon≈(0.79,0.81,0.83) — pale,
+# near-neutral, only faintly cool.  Raise zenith toward that pale value + cut its blue dominance, thin the
+# cloud deck (haze not cumulus), and drop sat 1.26→1.12 (the old sat made the autumn verge garish yellow).
+# Keep the warm ringtint so the horizon autumn-forest band stays coloured.  JM_GRADE=WATK A/Bs the old blue.
+const GRADE_WATK  = ColourGrade((0.60,0.66,0.74),(0.80,0.82,0.84),0.28, (1.08,1.02,0.90),(0.82,0.85,0.90),1.12, (1.24,1.15,1.03))
+const GRADE_WATK_OLD = ColourGrade((0.28,0.48,0.80),(0.82,0.87,0.93),0.40, (1.10,1.02,0.86),(0.74,0.82,0.96),1.26, (1.21,1.16,1.06))
 const GRADE_NURB  = ColourGrade((0.42,0.48,0.56),(0.66,0.68,0.70),1.0, (0.92,0.92,0.95),(0.72,0.74,0.80),0.88, (0.90,0.91,0.96))
 # PO (2026-06-28): REMOVE the blue sky from ALL tracks — the procedural blue skydome seamed against
 # the GPL overcast horizon ring (overcast lower sky vs blue upper sky).  One even OVERCAST grade whose
@@ -843,7 +849,7 @@ const GRADE_ZANDOVER = ColourGrade(GRADE_OVERCAST.zenith, GRADE_OVERCAST.horizon
 const GRADE_BYTRACK = Dict("nurburgring"=>GRADE_NURB, "monza"=>GRADE_MONZA, "spa"=>GRADE_SPA,
                            "watglen"=>GRADE_WATK, "zandvoort"=>GRADE_ZANDOVER)
 const GRADE_TAB = Dict("OVERCAST"=>GRADE_OVERCAST, "NURB"=>GRADE_NURB, "MONZA"=>GRADE_MONZA,
-                       "SPA"=>GRADE_SPA, "WATK"=>GRADE_WATK, "ZAND"=>GRADE_ZAND,
+                       "SPA"=>GRADE_SPA, "WATK"=>GRADE_WATK, "WATKOLD"=>GRADE_WATK_OLD, "ZAND"=>GRADE_ZAND,
                        "SUNNY"=>GRADE_SUNNY, "GPL"=>GRADE_GPL, "SKIDPAD"=>GRADE_SKIDPAD)
 const GRADE = SKIDPAD ? GRADE_SKIDPAD :
               haskey(ENV, "JM_GRADE") ? get(GRADE_TAB, uppercase(ENV["JM_GRADE"]), GRADE_OVERCAST) :
@@ -1412,6 +1418,7 @@ function main()
     # robust projection wrap instead of the ribbon lapdist (the ribbon has a seam at S/F that
     # broke the wrap → laps never counted → no finish).  AILINE = CLINE when there's a field.
     CLINE  = !SKIDPAD ? RaceAI.build_line(ALIGNED, groundz) : nothing
+    CLINE !== nothing && println("  CLINE: centreline length = ", round(Int, CLINE.total), " m  (", TRACKSEL, ")")
     if CLINE !== nothing && haskey(ENV,"JM_LATDIAG")   # diagnose grass-threshold false-fire at the start
         pl = RaceAI.project(CLINE, cs.x, cs.z); ph = JuliaMotor.hat(TRKSURF, cs.x, cs.z)
         println("  LATDIAG spawn: CLINE lat=", round(pl[2],digits=2), "  TRKSURF found=", ph.found,

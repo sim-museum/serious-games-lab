@@ -64,6 +64,11 @@ pit straight second pass). Grouped by lap section; representative shots listed:
 | B8 Bos Uit → pit straight | 02-55-59 (Caltex flag, gantry ahead, MOLYKOTE in mirror), 02-56-02/05/07/09/11/12/13/15 (grandstand + CALTEX/DUNLOP hoardings L, PAM tower "DUNLOP BANDEN / CALTEX HAVOLINE MOTOROIL" R, fire truck, medical van, hay bales, S/F stripes, pit wall MOLYKOTE/VREDESTEIN/BARDAHL/CASTROL) | S/F complex | s≈3900–lap, 0–150 |
 
 ### Watkins Glen (`watkins glenn/`, 4 shots)
+> **Location changed 2026-08-02.** These 4 shots were merged into
+> `/home/admin/gold standard/julia racer/watkinsGlenn/` (88 items) along with the 82 in-sim
+> screenshots and the two 260802 lap videos. The `watkins glenn/` directory no longer exists
+> locally; the filenames below are unchanged.
+
 Sky: clear hazy pale blue, autumn (orange/green) forest horizon — matches the E58 Watkins grade.
 | shot | view | content / landmark | native repro (TRACK=watglen) |
 |---|---|---|---|
@@ -146,6 +151,36 @@ attached this sprint — `lsblk` shows only BEA6-BBCE). **Ask:** re-attach 84AF-
 E59 can run the same parity method on its `monza/` + `spa/` folders; no new GPL captures
 needed unless the PO prefers refreshing them onto BEA6-BBCE.
 
+### RESOLVED for Monza, still blocked for Spa (2026-08-02)
+84AF-CC77 was re-attached and its lap videos copied **locally** (byte-verified, stick since
+removed). `/home/admin/gold standard/julia racer/` now holds 260802 cockpit+nintendo pairs
+for **watkinsGlenn, nurburgring and monza**, alongside the 260801 Zandvoort pair — full
+index in that directory's `README.md`. No USB is needed to run parity any more.
+
+* **Monza — unblocked.** 79 stills + `260802_monza_cockpit.mp4` (2:53) and
+  `260802_monza_nintendo.mp4` (2:53).
+* **Spa — unblocked.** 48 stills + `260802_spa_cockpit.mp4` (6:28) and
+  `260802_spa_nintendo.mp4` (5:57), found in `260802/` on stick **BEA6-BBCE**.
+* **Nürburgring — complete, both views.** `260802_nurburgring_cockpit.mp4` (15:09) and
+  `260802_nurburgring_nintendo.mp4` (15:04, full Nordschleife).
+
+**E59.4 is fully closed. All five circuits now have cockpit + nintendo lap gold locally,
+and no USB is required for parity work.**
+
+Two corrections to what this document said earlier today, both from concluding too early:
+* "Spa needs a fresh GPL capture" — wrong. Both Spa laps existed on the other stick.
+* "Nürburgring chase view: recoverable only as a ~6 min partial" — wrong. The truncated
+  737 MB copy on 84AF-CC77 was not the only copy; BEA6-BBCE held the complete 1.9 GB
+  recording. The 6-min reconstruction built from the truncated file is superseded and its
+  leftovers in `nurburgring/` (`*.BROKEN-no-moov.mp4`, `*.PARTIAL-recovered-6min.mp4`) can
+  be deleted. `rebuild_moov.py` is retained — it will rebuild any future interrupted capture.
+
+The general lesson: **check every device before declaring an asset missing or unrecoverable.**
+Two sticks held overlapping, non-identical copies of the same session.
+
+Also 2026-08-02: `watkins glenn` (4 desktop screenshots) was merged into `watkinsGlenn`
+(now 88 items) — one directory per circuit. References to `watkins glenn` are stale.
+
 ## E60 — Zandvoort parity round 2 vs the 260801 gold LAP VIDEOS (2026-08-01)
 
 **New gold source (LOCAL — supersedes the USB copies for Zandvoort):**
@@ -177,3 +212,42 @@ landmark-mapped to the E59.2 s-map; one 46-shot `JM_SHOTS` session (37 cockpit +
 
 Chase framing, driver figure, sky, tyres, cowl verified by re-capture (sessions
 `native_fix1..5`, final `native_final`); composites in `parity/zandvoort/` (`video_*`).
+
+## E61 — gold-VIDEO parity across ALL FIVE circuits (2026-08-02)
+
+**PO directive:** update the graphics on all five juliaMotor tracks against the local gold
+lap videos (cockpit + nintendo for every circuit, `~/gold standard/julia racer/<track>/`).
+Extends the E60 Zandvoort method to Watkins Glen, Nürburgring, Monza and Spa — the first
+time those four have been judged against their gold *videos* (E59/E22 used stills only).
+
+**Method (per track, one display-locked `gl-lock` session each):**
+1. Extract gold frames at 1 fps with GStreamer `decodebin` (the README's `h264parse` is
+   NOT installed on this box — `filesrc ! decodebin ! videoconvert ! videorate !
+   video/x-raw,framerate=1/1 ! jpegenc ! multifilesink`).
+2. The golds are **full-desktop Wine captures** — the GPL viewport is a sub-rectangle with
+   the GPLMotecAdd timing bar on top, a telemetry bar below, and the magenta Ubuntu
+   wallpaper beside it. Crop to the 3-D viewport `(0,135,1280,950)` before comparing
+   (window is at screen-left x∈[0,1280] for every recording; verified per track).
+3. Native capture: `JM_SHOTS="s:view:name;…"` through `gl-lock` (`render.sh`), landmark-
+   mapped by eye. Each launch now prints `CLINE: centreline length = N m` (added this
+   sprint) so shots can be spread across the real lap without a separate probe.
+4. Side-by-side composites (PIL — no ImageMagick on this box) → verdict → grade/render fix
+   → re-capture → commit. Composites under `parity/<track>/`.
+
+Native centrelines measured this sprint: Zandvoort 4181 m, Watkins Glen 3753 m
+(Nürburgring/Monza/Spa filled in below as each is captured).
+
+### E61 Watkins Glen — video gold vs native
+Gold sky: **hazy pale grey-blue** (sampled zenith≈(0.70,0.75,0.81), horizon≈(0.79,0.81,0.83)),
+colourful **autumn forest** lining the track, brown-green late-autumn verges.
+| id | deviation (native vs gold) | verdict |
+|---|---|---|
+| WG1 | Sky rendered a SATURATED blue + puffy cumulus (E22/E58 grade); gold is hazy pale grey-blue | **fixed** — `GRADE_WATK` retuned: zenith (0.28,0.48,0.80)→(0.60,0.66,0.74), cloud 0.40→0.28, horizon paled/neutralised (`JM_GRADE=WATKOLD` A/Bs the old blue) |
+| WG2 | Verge grass rendered a garish saturated YELLOW; gold verge is muted green-brown | **fixed** — same grade: sat 1.26→1.12; verge now olive-green-brown |
+| WG3 | Roadside AUTUMN FOREST missing — the horizon is a low blurry brown smear-band; gold has tall colourful trees lining the track | **open** — the Watkins backdrop is a single panoramic strip (`horiz0`) drawn as a thin band; the tall close trees are GPL scenery objects the port doesn't stand up. Raising the strip band (`JM_STRIP_HI`) only enlarges the smear, doesn't recreate the forest. Deeper scenery-object work; = the long-standing W2. Warm `ringtint` kept so what IS there stays autumn-coloured |
+| WG4 | Chase view: rear bodywork skeletal (exposed engine/arms, wheels read detached) | **open** — same body-LOD gap as Zandvoort D12 / W3. NB the gold nintendo view legitimately shows a lot of exposed engine/suspension, so the gap is narrower than it first reads |
+| WG5 | S/F crowd renders as blue/yellow pixel smear at the fence base | ◑ E46 crowd-MIP class (cross-track) |
+| — | driver hands / textured tyres / lap HUD | waived (as Zandvoort) |
+
+Sky + verge verified by A/B re-capture (old-blue vs new-hazy) and a shipping-config confirm
+session; composites `parity/watglen/video_*`.
