@@ -490,7 +490,13 @@ function gpl_scenery(ztrk, datpack, ribbon)
 end
 
 # ---- load geometry + physics: GPL track/car assets; handling = the MTK Lotus 49 (DriveRT) ----
-const GD = default_gamedata()
+# The .veh load is vestigial-but-load-bearing (see CLAUDE.md): without a resolvable GameData the sim
+# dies at startup.  default_gamedata()'s wine-prefix fallback doesn't exist on this box, so when
+# RFACTOR_GAMEDATA is unset prefer the repo's symlink-only `rfactor-gamedata` tree (built from the
+# mod media; juliaRacer.py launches don't set the env var).
+const _REPO_GD = normpath(joinpath(@__DIR__,"..","..","..","..","..","rfactor-gamedata"))
+const GD = haskey(ENV,"RFACTOR_GAMEDATA") ? ENV["RFACTOR_GAMEDATA"] :
+           isdir(_REPO_GD)                ? _REPO_GD : default_gamedata()
 const VEH = load_vehicle(joinpath(GD,"Vehicles","F158","Vanwall","Teams","LewisEvans","LewisEvans.veh"))
 const MODEL = VehicleModel(VEH)              # NOT the driving physics: handling is the MTK Lotus 49
                                              # (DriveRT, fitted to iRacing lotus49 .ibt). MODEL only fills
