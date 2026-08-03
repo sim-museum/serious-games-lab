@@ -811,7 +811,12 @@ const GRADE_ZAND  = ColourGrade((0.24,0.46,0.80),(0.74,0.83,0.92),0.45, (1.07,1.
 # NURB  — genuinely STORMY OVERCAST in the gold standard (heavy grey cloud, moody, desaturated);
 #         keep the full cloud deck but cool + darken it rather than the blue-sky look.
 const GRADE_SPA   = ColourGrade((0.22,0.45,0.82),(0.72,0.82,0.93),0.50, (1.07,1.0,0.85),(0.70,0.80,0.98),1.34, (1.10,1.13,1.05))
-const GRADE_MONZA = ColourGrade((0.31,0.51,0.80),(0.85,0.90,0.96),0.34, (1.07,1.02,0.90),(0.74,0.83,0.97),1.18, (1.17,1.15,1.11))
+# E61 (260802 gold VIDEO): the Monza gold sky is a HAZY PALE blue (sampled zenith≈(0.58,0.69,0.75)),
+# not the deeper blue the E22/E58 grade renders (native zenith read (0.52,0.65,0.86) — blue too dominant).
+# Pale the zenith + lift a little more cumulus to match; forest green (sat) already reads right.
+# JM_GRADE=MONZAOLD A/Bs the old bluer sky.  (The banking/barrier SLABS are geometry — E52, still open.)
+const GRADE_MONZA = ColourGrade((0.40,0.57,0.68),(0.86,0.89,0.92),0.42, (1.07,1.02,0.90),(0.74,0.83,0.95),1.16, (1.17,1.15,1.11))
+const GRADE_MONZA_OLD = ColourGrade((0.31,0.51,0.80),(0.85,0.90,0.96),0.34, (1.07,1.02,0.90),(0.74,0.83,0.97),1.18, (1.17,1.15,1.11))
 # E61 (260802 gold VIDEOS): the Watkins gold sky is a HAZY PALE grey-blue, not the saturated blue+puffy
 # cloud the E22/E58 grade drew.  Sampled gold zenith≈(0.70,0.75,0.81), horizon≈(0.79,0.81,0.83) — pale,
 # near-neutral, only faintly cool.  Raise zenith toward that pale value + cut its blue dominance, thin the
@@ -857,7 +862,7 @@ const GRADE_BYTRACK = Dict("nurburgring"=>GRADE_NURB, "monza"=>GRADE_MONZA, "spa
                            "watglen"=>GRADE_WATK, "zandvoort"=>GRADE_ZANDOVER)
 const GRADE_TAB = Dict("OVERCAST"=>GRADE_OVERCAST, "NURB"=>GRADE_NURB, "MONZA"=>GRADE_MONZA,
                        "SPA"=>GRADE_SPA, "WATK"=>GRADE_WATK, "WATKOLD"=>GRADE_WATK_OLD,
-                       "NURBOLD"=>GRADE_NURB_OLD, "ZAND"=>GRADE_ZAND,
+                       "NURBOLD"=>GRADE_NURB_OLD, "MONZAOLD"=>GRADE_MONZA_OLD, "ZAND"=>GRADE_ZAND,
                        "SUNNY"=>GRADE_SUNNY, "GPL"=>GRADE_GPL, "SKIDPAD"=>GRADE_SKIDPAD)
 const GRADE = SKIDPAD ? GRADE_SKIDPAD :
               haskey(ENV, "JM_GRADE") ? get(GRADE_TAB, uppercase(ENV["JM_GRADE"]), GRADE_OVERCAST) :

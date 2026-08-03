@@ -270,3 +270,17 @@ WHOLE 22.7 km Nordschleife dark, brown and desaturated (cloud=1.0 deck, sat 0.88
 
 Before/after native A/B + gold matches verified by re-capture (`nurb`→`nurb_v2`); composites
 `parity/nurburgring/video_*`.
+
+### E61 Monza — video gold vs native (native lap 5 744 m)
+Gold: a bright sunny day — **hazy pale blue sky + white cumulus over lush GREEN forest** (the
+Monza park), grey asphalt, clean signage (OLEOBLITZ/BOSCH/LANCIA/AMOCO/TOTAL/STP/Shell).
+Monza's grade was already close (E22/E57); the deviations are smaller than the other tracks'.
+| id | deviation (native vs gold) | verdict |
+|---|---|---|
+| MZ1 | Sky too blue-saturated (native zenith (0.52,0.65,0.86) vs gold hazy (0.58,0.69,0.75)) | **fixed** — `GRADE_MONZA` zenith paled (0.31,0.51,0.80)→(0.40,0.57,0.68), cloud 0.34→0.42; native re-sampled (0.59,0.70,0.77) ≈ gold. `JM_GRADE=MONZAOLD` A/Bs |
+| MZ2 | Forest green + road legibility | ✅ E57/E22 hold — native forest reads green, road grey (not the old "snow"), signage crisp |
+| MZ3 | A dark angled barrier SLAB stands at the S/F right; grey wall slabs mid-lap | **open** — the sopraelevata banking + some Monza barriers render as flat slabs. `MZ_BANK_B/DARK_B` tone the brightness but the SHAPE is geometry = the deferred **E52** banking-mesh issue |
+| MZ4 | Pit garages far-right read washed white/blue | ◑ E57 legibility residual (structure brightness); minor |
+| MZ5 | Chase rear bodywork skeletal | open — D12 class |
+
+Sky nudge verified by A/B + gold match (`monza`→`monza_v2`); composites `parity/monza/video_*`.
