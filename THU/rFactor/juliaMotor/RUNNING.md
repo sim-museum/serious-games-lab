@@ -21,15 +21,37 @@ Requires a healthy GL display session.
 | Session status docs | `STATUS.md`, `STATUS_2026-07-06_graphics-E58.md` |
 | History | `git log --oneline` on `julia-racer` |
 
-Gold standards: **Zandvoort now lives LOCALLY** at
-`/home/admin/gold standard/julia racer/zandervoort/` — the 43 stills + the two
-260801 full-lap 1080p60 videos (cockpit + nintendo/chase; see SCREEN_PARITY § E60).
-GPL utilities: `/home/admin/gold standard/julia racer/gpl utilities/`. The USB
-sources remain historical co-canon: BEA6-BBCE (watkins glenn 4 / nurburgring 3)
-and 84AF-CC77 (sole Monza/Spa source — re-attach to unblock E59.4).
+Gold standards: **all lap videos now live LOCALLY** under
+`/home/admin/gold standard/julia racer/` — index in that directory's `README.md`.
+As of 2026-08-02 the USB sticks are no longer needed: the 260802 cockpit+nintendo
+lap videos for **watkinsGlenn, nurburgring and monza** were copied off 84AF-CC77
+(byte-verified), joining the 260801 Zandvoort pair. **E59.4 is unblocked for Monza**
+without re-attaching anything.
 
-## Current state (2026-08-01)
+**All five circuits have cockpit + nintendo lap gold locally — E59.4 fully closed.** A
+`260802/` folder on the second stick (**BEA6-BBCE**) supplied the last pieces: both Spa laps
+(6:28 / 5:57) and the **complete** 15:04 Nürburgring nintendo lap.
 
+Housekeeping in `nurburgring/`: the truncated copy from the other stick and the 6-min
+reconstruction built from it are both superseded by the complete recording and can be
+deleted (`*.BROKEN-no-moov.mp4`, `*.PARTIAL-recovered-6min.mp4`, ~1.4 GB). Keep
+`rebuild_moov.py` — GPL captures here are video-only H.264 with 4-byte-length-prefixed
+NALs, so it will rebuild any future interrupted recording given a healthy reference.
+
+`watkins glenn` and `watkinsGlenn` were two directories for the same circuit; merged
+2026-08-02 into **`watkinsGlenn`** (88 items). Any reference to `watkins glenn` is stale.
+GPL utilities: `/home/admin/gold standard/julia racer/gpl utilities/`.
+
+## Current state (2026-08-02)
+
+- E61 closed (`SCREEN_PARITY.md` § E61): ALL FIVE circuits graded against their gold LAP
+  VIDEOS in one session. Per-track grade fixes in `drive_native_mtk.jl` (LIVE at next
+  launch, no sysimage rebuild): Watkins sky→hazy pale + verge de-yellowed; **Nürburgring
+  re-greened** (the video is a bright partly-cloudy GREEN day, not the storm the 3 stills
+  implied); Monza + Spa skies paled from over-blue to gold's hazy blue; Zandvoort (E60)
+  re-verified, no regression. `JM_GRADE=<TRACK>OLD` A/Bs each prior grade. Composites
+  `parity/<track>/video_*`. Open (deeper, logged): skeletal chase body (D12), crowd smear
+  (E46), Watkins roadside forest (WG3), Monza banking slabs (E52).
 - E60 closed: Zandvoort parity vs the 260801 gold lap videos — sky/tyres/cowl/
   chase-cam/chase-driver fixed (verified by re-capture); D6 root-caused
   (chmp4-1.3do per-face winding) but still open; V7–V10 newly logged.
