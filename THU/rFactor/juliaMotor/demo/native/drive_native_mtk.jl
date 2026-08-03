@@ -653,6 +653,11 @@ const HELM_OFF = (parse(Float32,get(ENV,"JM_HELM_X","0.14")), parse(Float32,get(
 const HELMP = [Render.TrackPart(p.verts, p.tex=="helblack" ? "clahelm" : p.tex, p.col)
                for p in Render.extract_gpl_car(joinpath(LOTDIR,"helmeg.3do"); maxlat=0.95f0)]
 const CARP   = Render.extract_gpl_car(LOT3DO; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=0.85f0, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # driver body + gauge + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0
+# E61 (D12/V5 chase body): raising the CARP maxlat clip (0.85) to include "wide bodywork" for the chase
+# view was TRIED and REVERTED — the parts beyond 0.85 lateral are the splayed-rear CHROME garbage the clip
+# deliberately removes (they render as giant silver spider-legs to the ground), not real bodywork.  The
+# Lotus 49 is a skinny open-wheeler; CARP is the correct body.  The residual chase gap (wheels read a bit
+# detached from the hubless tub) is a per-part 3do fix, still logged open (D12).
 const DRIVERP = Render.extract_gpl_car(LOT3DO; only=DRIVER_TEX, maxlat=0.95f0)   # the driver figure — drawn only in CHASE view (occludes the cockpit from the in-car eye)
 const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (dial faces in the texture's lower-V region; keep default vflip)
 const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0)  # the plexiglass windscreen — drawn LAST, faintly visible glass, so the suspension shows through (GPL gold standard)
@@ -681,6 +686,11 @@ const MIRROR_TILT = deg2rad(parse(Float32, get(ENV,"JM_MIRROR_TILT","-25")))   #
 const MIRROR_SCALE = parse(Float32, get(ENV,"JM_MIRROR_SCALE","0.5"))    # disc SIZE (round-mirror size)
 const MIRROR_SPREAD = parse(Float32, get(ENV,"JM_MIRROR_SPREAD","1.7"))   # lateral separation multiplier — push the pair out to the screen edges
 const WIND_ALPHA   = parse(Float32, get(ENV,"JM_WIND_ALPHA","1.0"))      # PO: windlot = the tan LEATHER SCUTTLE (the defining GPL cockpit element). The earlier OFF default came from drawing it TRANSLUCENT (read as an angled "plywood board"); drawn OPAQUE (1.0) it is the GPL scuttle sweeping up to the cowl on both sides. JM_WIND_ALPHA<1 makes it glassy again.
+# E61 (gold cockpit videos): windlot was drawn bright=0.82/ambfill=0.72 → the lit scuttle wedge reached
+# ~0.56 albedo, a glaring olive-GOLD; the gold cockpit scuttle is a MUTED ~0.39 olive-grey.  Dim it
+# (bright 0.82→0.60, ambfill 0.72→0.55) so it reads as gold's matte tan, not a bright plank.  JM_WIND_B/A tune.
+const WIND_B = parse(Float32, get(ENV,"JM_WIND_B","0.60"))
+const WIND_A = parse(Float32, get(ENV,"JM_WIND_A","0.55"))
 const MIRRORMAT = Render.translate(Float32[MIRROR_DX,MIRROR_DY,0]) *
                   Render.translate(MCEN) * Render.rotz(MIRROR_TILT) * Render.scalexyz(MIRROR_SCALE,MIRROR_SCALE,MIRROR_SCALE*MIRROR_SPREAD) * Render.translate(-MCEN)
 println(length(TRACK), " track parts + ", length(CARP), " Lotus body parts")
@@ -2495,7 +2505,7 @@ function main()
             glDepthMask(GL_FALSE)
             # PO: flatter, dimmer lighting so the leather scuttle reads as smooth matte tan — not stark
             # cream "plywood" wedges clashing with the dark footwell notch the (omitted) driver would fill.
-            for it in windItems; Render.draw(prog, it, vp, bodyModel; bright=0.82, spec=0.02, ambfill=0.72, alpha=WIND_ALPHA); end
+            for it in windItems; Render.draw(prog, it, vp, bodyModel; bright=WIND_B, spec=0.02, ambfill=WIND_A, alpha=WIND_ALPHA); end
             glDepthMask(GL_TRUE)
         end
         α_tc = clamp(dt/0.10, 0.0, 1.0)              # smooth the traction-circle display (coarse-mesh Fz spikes → no flicker)
