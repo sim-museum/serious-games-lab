@@ -284,3 +284,32 @@ Monza's grade was already close (E22/E57); the deviations are smaller than the o
 | MZ5 | Chase rear bodywork skeletal | open — D12 class |
 
 Sky nudge verified by A/B + gold match (`monza`→`monza_v2`); composites `parity/monza/video_*`.
+
+### E61 Spa — video gold vs native (native lap 14 099 m)
+Gold: a bright sunny day — **hazy pale blue sky + white cumulus over lush GREEN Ardennes**
+forest/fields, yellow road edge-line, stone walls, village houses. `GRADE_SPA` (E22) was
+built for this; only the sky needed the same paling as Monza.
+| id | deviation (native vs gold) | verdict |
+|---|---|---|
+| SP1 | Sky too deep/saturated blue (native zenith (0.48,0.63,0.88) vs gold hazy (0.64,0.72,0.80)) | **fixed** — `GRADE_SPA` zenith paled (0.22,0.45,0.82)→(0.40,0.56,0.70), horizon paled; native re-sampled (0.60,0.71,0.80) ≈ gold. `JM_GRADE=SPAOLD` A/Bs |
+| SP2 | Green forest/fields, yellow line, stone walls, village, signage (BP/MARTINI/Gulf/Shell) | ✅ E22 holds — native renders lush green + the roadside furniture; sat 1.34 matches gold's vivid green |
+| SP3 | Chase rear bodywork skeletal | open — D12 class |
+| — | driver hands / textured tyres | waived |
+
+Sky nudge verified by A/B + gold match (`spa`→`spa_v2`); composites `parity/spa/video_*`.
+
+## E61 close (2026-08-02)
+All five circuits judged against their gold LAP VIDEOS this session (sequential, single
+session, every capture through `gl-lock` as `julia-racer`). Net graphics changes, all in
+`drive_native_mtk.jl` per-track grades (LIVE at next launch — no `jlracer.so` rebuild):
+* **Watkins** — sky vivid-blue → hazy pale grey-blue; verge de-yellowed (WG1/WG2).
+* **Nürburgring** — the big one: the video is a bright partly-cloudy GREEN day, not the storm
+  the 3 stills implied; whole-lap re-green (NB1).
+* **Monza** — sky over-blue → hazy pale (MZ1).
+* **Spa** — sky over-blue → hazy pale (SP1).
+* **Zandvoort** — E60 state re-verified against the videos, no regression.
+Each track keeps a `<TRACK>OLD` entry in `GRADE_TAB` so `JM_GRADE=WATKOLD|NURBOLD|MONZAOLD|SPAOLD`
+A/Bs the prior grade. Common open items across tracks (deeper, logged not fixed): the
+skeletal chase-view car body (D12), the crowd-MIP smear (E46), Watkins' missing tall roadside
+forest (WG3), Monza's banking/barrier slabs (E52/MZ3). Method + per-track verdicts above;
+composites under `parity/<track>/video_*`.
