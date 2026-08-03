@@ -354,6 +354,18 @@ fixes; S2–S6 = per-track object passes; E64 (later) = cockpit/chase.
 | E41 | Spa storefronts reported ~90° perpendicular | ◑ NOT reproduced at the S/F/pit-exit (garages read ~parallel; objdiag near-road hits are `epolsp3` fence poles at expected angles). If real it's a specific mid-lap spot — needs the gold landmark |
 
 **Crowds now render on all tracks** (global `standcrowd`/`drop` change; verified Zandvoort+Spa).
-Remaining object work (per-track, S2–S6): blank-signage backs, specific floating objects
-(V8 tower, N2 quad), Monza tree-curtain/banking, Nürburgring right-side carbonized (E44),
-Watkins missing roadside forest (WG3, asset-limited).
+
+### S2–S6 — per-track object survey (all 5 tracks captured vs gold)
+| track | state after E63 |
+|---|---|
+| Zandvoort | signage reads correct (Castrol/VREDESTEIN/CALTEX — D6 uBackFlip holds); crowds restored+warm; residual: a few blank far-side board BACKS (minor), V8/E45 floaters (minor) |
+| Spa | crowds (`p_s*`) render; sky hazy-blue; **E41 90°-storefronts NOT reproduced** at S/F/pit (garages ~parallel) |
+| Nürburgring | **E44 right-side carbonized RESOLVED** (both sides well-lit); crowds both sides; sky bright partly-cloudy; residual N2 floating quad (minor) |
+| Monza | tree-curtain gone; signage/crowds/sky good; **MZ3 dark 'banking' slab FIXED** (`4b34143`) — it was a wide forest STRIP seen EDGE-ON, not banking geometry; `STATICTREES` draw never passed `graze` despite the comment → added `graze=true` so edge-on strips fade, face-on tree-lines stay |
+| Watkins | crowds render; sky hazy pale (E61); **WG3 tall roadside autumn forest still missing — confirmed asset-limited**: `JM_DROP_FOREST=0` enables 20 panels but they're distant panoramic STRIPS, not the tall CLOSE trees GPL places as scenery objects; at s=300 native stays barren while gold f_0025 shows dense autumn forest both sides. Needs tree-OBJECT placement (deep), not a toggle |
+
+**E63 object sprint — achievable scope delivered.** Big win: crowds restored + colour-matched
+across every track (the dominant object gap). Plus MZ3 slab fixed, E44/tree-curtain/E41 found
+already-resolved/not-reproduced. Remaining are asset-deep (Watkins WG3 forest; the D12 chase
+body) or minor (blank board backs, N2 quad). Commits: `ebda286` `45d393d` `4b34143` (+docs).
+Next phase per PO priority: **E64 cockpit/chase** (mirror RTT, hands refit, chase body).
