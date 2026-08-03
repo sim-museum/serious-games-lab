@@ -313,3 +313,28 @@ A/Bs the prior grade. Common open items across tracks (deeper, logged not fixed)
 skeletal chase-view car body (D12), the crowd-MIP smear (E46), Watkins' missing tall roadside
 forest (WG3), Monza's banking/barrier slabs (E52/MZ3). Method + per-track verdicts above;
 composites under `parity/<track>/video_*`.
+
+## E62 — object + cockpit + chase parity (NOT just grades), depth-first (2026-08-02, ongoing)
+**Scope correction (PO):** E61 matched only the per-track colour GRADES. It did NOT match
+trackside-object location/orientation/colour, nor cockpit/chase GEOMETRY — those were logged
+open/waived. E62 is the real object+cockpit+chase pass, done **depth-first: nail Zandvoort
+fully, then replicate**. PO put crowds + driver hands back IN scope (overriding the earlier
+D8/D13 waivers — the gold videos show both). PO also wants real mirror reflections (RTT).
+
+### Zandvoort (in progress)
+Fresh captures (`native/zand` shots, cockpit+chase, gl-lock as julia-racer) vs the 260801
+gold videos confirmed the real gaps and produced these outcomes:
+| id | item | verdict |
+|---|---|---|
+| Z-CK1 | Scuttle (windlot) glary olive-GOLD; gold is muted matte tan | **fixed** — `WIND_B/A` 0.60/0.55 → 0.45/0.45 (verified vs gold cockpit) |
+| Z-CK2 | Gauge dials dim/dark; gold crisp white-on-black | **fixed** — `JM_DASH_B/A` 1.0/0.60 → 1.2/0.9 (dial faces legible) |
+| Z-CH1 | Front wheels splayed outboard of the tub in chase | **improved** — `WTRACK_F` 0.90 → 0.78 (~real 1.52 m track); tucks them in |
+| D12 | Chase car SKELETAL (wheels detached, engine exposed) | **root-caused, asset-LOD-limited** — beyond-0.85 lateral is real rear suspension/exhausts MIXED with GPL-hidden-LOD garbage that sprawls as "chrome spider-legs"; a parser drop-by-hide-marker (offset>5 m) was tried+reverted (cut the car 2253→387 tris — this model routes real body through large-offset positioners posmat clamps to origin). Needs GPL's real per-LOD selection. `front1/front3` cyan placeholders now excluded; `JM_CARP_MAXLAT` A/B knob added (default 0.85) |
+| Z-CK3 | Mirrors are dark discs; gold shows live reflections | **open — RTT feature** (renderer has FBO infra `make_scene_fbo`; needs a rear-view scene pass, ~invasive hot-loop refactor + GPU doubling; scoped, not yet built) |
+| Z-CK4 | No gloved hands on wheel; gold has them | **open — mesh refit** (`JM_HANDS=1` still yields giant silver arms; the static arm mesh must be re-fitted to the re-placed wheel/eye) |
+| Z-OBJ | Crowd/signage/floating-object parity (V6-V10, E46) | **not yet worked** this pass |
+
+Committed: `2f6a744` (scuttle + tuck + D12 root-cause), `bd427f3` (gauges). Composite
+`scratchpad cmp_zand_cockpit`. **Zandvoort is NOT yet "fully nailed"** — mirrors (RTT), hands,
+crowd/signage objects, and the asset-limited chase body remain. Watkins/Nürburgring/Monza/Spa
+object+cockpit+chase parity **not started**. This is a multi-session program.
