@@ -917,12 +917,14 @@ monza_obj_grade(nm) =
 # A per-draw colour multiply warms + de-blues the grandstand/crowd objects toward varied skin/clothing
 # tones (it can't fix the texture's horizontal SMEAR, which is UV/geometry — that needs a re-map).
 # Cross-track by name pattern; default tint warms red/green a touch and cuts blue ~22 %.  Tunable.
-const CROWD_TINT = (parse(Float32, get(ENV,"JM_CROWD_TR","1.12")),
-                    parse(Float32, get(ENV,"JM_CROWD_TG","1.04")),
-                    parse(Float32, get(ENV,"JM_CROWD_TB","0.78")))
+const CROWD_TINT = (parse(Float32, get(ENV,"JM_CROWD_TR","1.16")),
+                    parse(Float32, get(ENV,"JM_CROWD_TG","1.02")),
+                    parse(Float32, get(ENV,"JM_CROWD_TB","0.66")))   # E63: the restored fence-crowd rows read garish BLUE at 0.78; 0.66 warms them to gold's tan/khaki varied tones
 is_crowd_obj(nm) = occursin("stand", nm) || occursin("tribun", nm) || occursin("crowd", nm) ||
                    occursin("spect", nm) || startswith(nm,"grnd") || startswith(nm,"pplrow") ||
-                   startswith(nm,"peprow") || startswith(nm,"plrow") || startswith(nm,"pitpe")
+                   startswith(nm,"peprow") || startswith(nm,"plrow") || startswith(nm,"pitpe") ||
+                   startswith(nm,"ppl") || startswith(nm,"people") || startswith(nm,"pelf") ||
+                   startswith(nm,"p_s")   # E63: the newly-restored fence crowd ROWS get the same warm de-blue tint
 # GPL sky dome: the 12-panel horizon ring (horiz0..11), camera-centred backdrop.
 const HORIZON_RING = if !SKIDPAD
     Render.build_horizon(TEXIDX)
