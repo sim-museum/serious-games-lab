@@ -1069,8 +1069,16 @@ let objnames=Set{String}()
     end
     # crowd policy = STANDS ONLY: keep seated grandstand / pit-wall crowds (these read as
     # populated stands, matching the GPL screenshots), drop loose roadside people.
+    # E63 (PO: the gold videos show DENSE crowds lining every fence/bank — put them BACK; the earlier
+    # D8 "remove spectators" is superseded).  Keep the standing crowd ROWS as populated crowd: Zandvoort
+    # ppl_l*/ppl_m*/ppl_s*, Spa p_s*/people*/pelf*, plus generic crowd/spect.  The onroad_crowd filter
+    # below still drops any row that projects onto the paved surface (E40 people-in-the-road), and single
+    # loose figures (marshals/photographers: flagger/rescu/photo/fotograf/pform/named) stay dropped in drop().
     standcrowd(nm) = startswith(nm,"grndpe") || startswith(nm,"pitpeo") || startswith(nm,"pitppl") ||
-                     startswith(nm,"pplrow") || startswith(nm,"peprow") || startswith(nm,"plrow")
+                     startswith(nm,"pplrow") || startswith(nm,"peprow") || startswith(nm,"plrow") ||
+                     startswith(nm,"ppl") || startswith(nm,"people") || startswith(nm,"pelf") ||
+                     startswith(nm,"p_s") || startswith(nm,"spect") || startswith(nm,"crowd") ||
+                     startswith(nm,"grndp")
     # drop: ground-cover planes (grass/herbe/infield), white "fuel-tank" tents, infield/backdrop
     # tree smears, and LOOSE people only — marshals, photographers, rescue crews, lone figures,
     # and standing roadside spectators (Spa people*/pelf*).  Seated stand crowds are kept above.
