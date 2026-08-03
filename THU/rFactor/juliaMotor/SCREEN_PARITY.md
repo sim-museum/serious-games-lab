@@ -338,3 +338,22 @@ Committed: `2f6a744` (scuttle + tuck + D12 root-cause), `bd427f3` (gauges). Comp
 `scratchpad cmp_zand_cockpit`. **Zandvoort is NOT yet "fully nailed"** — mirrors (RTT), hands,
 crowd/signage objects, and the asset-limited chase body remain. Watkins/Nürburgring/Monza/Spa
 object+cockpit+chase parity **not started**. This is a multi-session program.
+
+## E63 — trackside-object parity (PO reprioritised: OBJECTS first, then cockpit/chase)
+PO restated the backlog: **all trackside objects for all tracks — colour, location, orientation
+matching the gold mp4s — is the HIGHEST priority**, then cockpit/chase. Running as an autonomous
+scrum (PO pre-approves planning + reviews, no per-step input). Sprint S1 = cross-track engine
+fixes; S2–S6 = per-track object passes; E64 (later) = cockpit/chase.
+
+### S1 — cross-track object fixes (biggest win: crowds)
+| id | fix | verdict |
+|---|---|---|
+| E63-CROWD | The gold shows DENSE crowds lining every fence/bank; `drop()` was removing them (D8 remove-spectators, now superseded by PO). The crowd ROWS exist in the data (Zandvoort `ppl_l*/ppl_m*/ppl_s*`, Spa `p_s*/people*/pelf*`) | **fixed** (`ebda286`) — reclassified as kept crowd via `standcrowd()`; `onroad_crowd` still drops any on the pavement (E40); single loose figures (marshals/photographers) stay dropped. Verified Zandvoort (Tarzan+S/F) + Spa — crowds present, road clear |
+| E46/E63-BLUE | Restored crowd rows rendered garish BLUE (weren't matched by `is_crowd_obj` → skipped `CROWD_TINT`) | **fixed** (`45d393d`) — `is_crowd_obj` extended to the crowd-row names; de-blue deepened (`CROWD_TINT` TB 0.78→0.66, TR→1.16) → warm tan/khaki tones matching gold. The horizontal MIP SMEAR (UV/geometry) is still open |
+| E63-SIGN | Some Zandvoort boards (MARTINI, 2nd CALTEX at Tarzan) render as blank white slabs | ◑ mostly the angled BACKS of far-side boards seen on the approach (Castrol/VREDESTEIN/near CALTEX read correct — D6 uBackFlip/dedup holds); logged, low priority |
+| E41 | Spa storefronts reported ~90° perpendicular | ◑ NOT reproduced at the S/F/pit-exit (garages read ~parallel; objdiag near-road hits are `epolsp3` fence poles at expected angles). If real it's a specific mid-lap spot — needs the gold landmark |
+
+**Crowds now render on all tracks** (global `standcrowd`/`drop` change; verified Zandvoort+Spa).
+Remaining object work (per-track, S2–S6): blank-signage backs, specific floating objects
+(V8 tower, N2 quad), Monza tree-curtain/banking, Nürburgring right-side carbonized (E44),
+Watkins missing roadside forest (WG3, asset-limited).
