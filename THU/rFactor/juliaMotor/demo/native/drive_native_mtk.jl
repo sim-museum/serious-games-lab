@@ -2483,7 +2483,7 @@ function main()
         # E59 parity: bright 1.6/ambfill 0.95 over-exposed the dash — the GPL gold cockpit has a MATTE
         # BLACK dash with crisp white-on-black dials; ours read as a washed-out silver plank.  Near-unlit
         # but at unity brightness keeps the dials legible AND the panel black.  JM_DASH_B/JM_DASH_A tune.
-        dash_b = parse(Float64, get(ENV,"JM_DASH_B","1.0")); dash_a = parse(Float64, get(ENV,"JM_DASH_A","0.60"))
+        dash_b = parse(Float64, get(ENV,"JM_DASH_B","1.2")); dash_a = parse(Float64, get(ENV,"JM_DASH_A","0.9"))   # E62: gold cockpit dials read crisp white-on-black; 1.0/0.60 left ours dim — lift fill so the dial faces/markings are legible
         if CTL.view == 0
             glDisable(GL_DEPTH_TEST)
             for it in gaugeItems; Render.draw(prog, it, vp, bodyModel*GAUGEFLIP; bright=dash_b, spec=0.0, ambfill=dash_a); end
