@@ -2471,7 +2471,7 @@ function main()
         end
         for (it,pos,w,h,yaw) in STATICTREES                      # wide forest-edge panels (authored yaw, graze-fade)
             (eye[1]-pos[1])^2+(eye[2]-pos[2])^2+(eye[3]-pos[3])^2 > BB_CULL2 && continue
-            Render.draw(prog, it, vp, Render.translate(Float32[pos[1],pos[2],pos[3]])*Render.roty(yaw)*Render.scalexyz(w,h,1f0); bright=1.3, ambfill=0.8)
+            Render.draw(prog, it, vp, Render.translate(Float32[pos[1],pos[2],pos[3]])*Render.roty(yaw)*Render.scalexyz(w,h,1f0); bright=1.3, ambfill=0.8, graze=true)   # E63/MZ3: the comment always claimed graze-fade but the call never passed it → a wide Monza forest strip seen EDGE-ON rendered as a dark triangular SLAB at the S/F. graze=true fades edge-on quads (uGraze) so the strip shows face-on as a tree-line and vanishes edge-on
         end
         OBJ_CULLFACE && glDisable(GL_CULL_FACE)
         glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
