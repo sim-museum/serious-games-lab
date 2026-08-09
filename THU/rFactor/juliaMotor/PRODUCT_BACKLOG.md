@@ -820,3 +820,11 @@ then cross-track replication. Sprint log lives in `SCREEN_PARITY.md` §E64.
   board seen from its unpainted back — authentic asset, waive candidate.
 - **E64 EPIC CLOSED (S1–S11).** Remaining polish → general backlog: D12 fold fine-tune,
   mirror tyre-vs-tail micro-read, V8/board-back waives, E46 crowd smear, E52 banking.
+
+### E65 — Monza banking & Lesmos scenery (opened 2026-08-09)
+- **S1 ✅ 7/8 "The phantom canopy"** — E52 re-scoped by capture-vs-gold: the worst "banking
+  slab" reads are Lesmos forest STRIPS whose placement crosses the road; span-test added
+  (29 crossers dropped, tree lines kept) → s=2100 matches gold's open sky.
+  `parity/monza_e65_canopy_ab.jpg`. Open: E65-2 (re-derive the 29 strips' true Euler —
+  they may be gold's flanking forest mis-rotated), s=1500 thin far strip, dark-sail
+  artifact near the pits, true banking-deck geometry read (the original E52 core).

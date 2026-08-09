@@ -623,3 +623,24 @@ Watkins + the Ring (S6/S9), articulated rear suspension via the positioner chain
 Ring tree-row texture fix (S11).  Remaining polish moved to the general backlog: D12
 fold fine-tune at other camera angles, mirror tyre-vs-tail micro-read, V8/board-back
 waives, crowd-MIP smear (E46), Monza banking geometry (E52).
+
+## E65 — Monza banking & Lesmos scenery (E52/MZ-family). S1 (2026-08-09): THE PHANTOM CANOPY ✅ 7/8
+Fresh captures at s=1500/1700/2100 vs gold cockpit frames at the same lap fractions
+re-scoped E52: much of what read as "banking slabs" is the **Lesmos-area forest strips**.
+At s≈2100 the gold (t=35 s) shows OPEN SKY with low flanking forest; native had a huge
+blurry CANOPY overhead + mossy stretched walls — `trees14` et al., 21×84–203 m static
+panels whose authored placement CROSSES the road corridor.
+- **Fix:** wide static panels are now span-tested against the ribbon (samples along the
+  strip's axis; opposite-sign laterals near the road = a true crossing → dropped, logged).
+  29 Lesmos-area crossers drop on Monza; the roadside tree lines and pit-straight scenery
+  stay.  First cut (corridor-entry test) over-fired at 33/53 — recorded as method note:
+  around a CURVING corridor, entry≠crossing.
+- **Verified** (`parity/monza_e65_canopy_ab.jpg`): s=2100 canopy GONE (gold's open sky);
+  s=1500 slab reduced to a thin far strip; s=100 pits intact.
+- **Residuals logged:** the thin far strip at s=1500; a pre-existing dark-sail artifact
+  near the pits (also in S9's survey shots); and E65-2 — the 29 dropped strips may be
+  GPL's flanking forest mis-rotated by a non-yaw placement Euler (the gpl_scenery yaw
+  gotcha family): re-deriving their true orientation could restore gold's forest walls
+  rather than dropping them.  Sign experiments showed the crossing verdicts are
+  axis-sign-independent, so the mis-rotation hypothesis is live.
+- DoD: Monza race+5-AI smoke, Zandvoort smoke, brush + driven green (gate log).

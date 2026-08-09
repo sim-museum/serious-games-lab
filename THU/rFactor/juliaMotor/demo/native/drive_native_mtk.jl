@@ -1231,7 +1231,29 @@ let objnames=Set{String}()
             # baked into the GPL horizon ring AND can only render as a near-field "wall" (face-on) or
             # an edge-on smear — the famous Watkins pit-straight artifact.  Drop them by default and
             # let the horizon ring carry the tree-line (JM_DROP_FOREST=0 → keep as static panels).
-            DROP_FOREST || push!(STATICTREES, (item, (Float32(i.x), gz, Float32(-i.y)), Float32(w), Float32(h), Float32(-i.yaw)))
+            # E65 S1: a kept panel must not CROSS the road corridor — Monza's trees14 (21×84 m) runs
+            # its span over the Lesmos approach and canopies the cockpit where the gold shows open
+            # sky.  The E31 centre test can't see it (the strip's CENTRE is 25 m off-road), so sample
+            # along the strip's authored axis and drop any panel with a sample on the corridor.
+            # A mere corridor-entry test over-fires (first cut dropped 33/53 Monza panels —
+            # roadside strips along CURVES graze the corridor at their ends).  A true offender
+            # CROSSES the road: samples on BOTH sides of the centreline while near it.
+            spans_road = false
+            if !DROP_FOREST
+                # axis sign: the render model is roty(−yaw) in a frame with z = −gpl_y, so the
+                # strip's long axis in GPL (x, y) is (cos yaw, −sin yaw) — the +sin first cut
+                # sampled a REFLECTED line and flagged parallel roadside strips as crossings.
+                sx, sy = cos(Float64(i.yaw)), -sin(Float64(i.yaw))
+                sawpos = false; sawneg = false
+                for f in -0.5:0.0625:0.5
+                    hr = JuliaMotor.hat(TRKSURF, Float64(i.x + sx*f*w), Float64(i.y + sy*f*w))
+                    (hr.found && abs(hr.lateral) < ROAD_HALFW) || continue
+                    hr.lateral >= 0 ? (sawpos = true) : (sawneg = true)
+                    if sawpos && sawneg; spans_road = true; break; end
+                end
+                spans_road && println("  E65: forest panel ", i.name, " (", round(Int,h), "×", round(Int,w), " m) CROSSES the road — dropped")
+            end
+            (DROP_FOREST || spans_road) || push!(STATICTREES, (item, (Float32(i.x), gz, Float32(-i.y)), Float32(w), Float32(h), Float32(-i.yaw)))
         else
             push!(BILLBOARDS, (item, (Float32(i.x), gz, Float32(-i.y)), Float32(w), Float32(h)))
         end
