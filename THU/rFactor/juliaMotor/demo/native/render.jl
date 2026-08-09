@@ -854,6 +854,15 @@ function tex_rgba(idx::GPLTex, name::AbstractString)
                 try; return endswith(lowercase(pp),".srb") ? GPLMip.decode_srb_bytes(read(pp)) : GPLMip.decode_mip(pp); catch; end
             end
         end
+        # E64 S11: ALSO prefix-match entries inside the track .dat archive — the Ring's landmass
+        # sections reference `trowgl`, shipped only as `trowglr.mip` INSIDE nurburg.dat; the
+        # disk-path loop above can never see it, and the 21 affected sections drew their tree-row
+        # quads as flat lime plates (the s≈17000 "green panels").
+        for (k,v) in idx.dat
+            if startswith(k, key) && (endswith(k,".mip") || endswith(k,".srb"))
+                try; return (endswith(k,".srb") ? GPLMip.decode_srb_bytes : GPLMip.decode_mip_bytes)(v); catch; end
+            end
+        end
     end
     nothing
 end

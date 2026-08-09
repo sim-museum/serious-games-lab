@@ -813,5 +813,10 @@ then cross-track replication. Sprint log lives in `SCREEN_PARITY.md` §E64.
   view. Discs now road-dominated, tail at the inner edge = gold's composition
   (`parity/mirrors_e64_percam_ab.jpg`). Hands at speed already match (S2). Knobs:
   `JM_MIRCAM_*`, `JM_MIRROR_{DROP,YAWOUT,FOV}`.
-- Open: D12 polish (fold fine-tune at other camera angles); N2-family scenery quads at
-  Ring s≈17000; mirror micro-polish (tyre-vs-tail read at the inner edge).
+- **S11 ✅ (2026-08-09) "Nothing floats"** — the Ring's lime plates were 21 landmass
+  sections whose `trowgl` texture ships only INSIDE nurburg.dat; the tex prefix-fallback
+  now reads archive entries too (regression-safe) → textured tree rows
+  (`parity/nurburgring_trowgl_ab.jpg`). Zandvoort V8 re-classified: the `cok` Coca-Cola
+  board seen from its unpainted back — authentic asset, waive candidate.
+- **E64 EPIC CLOSED (S1–S11).** Remaining polish → general backlog: D12 fold fine-tune,
+  mirror tyre-vs-tail micro-read, V8/board-back waives, E46 crowd smear, E52 banking.

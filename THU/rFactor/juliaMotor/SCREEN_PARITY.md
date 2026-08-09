@@ -601,3 +601,25 @@ pitch, because each real mirror sees backward-OUTWARD from its cowl position.
   in gold — tune-by-eye territory, knobs shipped.
 - Hands at speed: gold frames show the same 10-and-2 gold layout S2 shipped — no delta.
 - DoD: race+5-AI smoke, brush + driven green.
+
+### E64 S11 (2026-08-09): "Nothing floats" — the Ring's lime plates ✅ (+ V8 verdict)
+The green panels at Ring s≈17000 (spotted in S9's captures): `JM_SPOT` showed **no placed
+object within 120 m** — they are landmass-section geometry from `nurburg.dat`.  Forensics:
+**21 sections reference texture `trowgl`, shipped only as `trowglr.mip` INSIDE the .dat
+archive** — `tex_rgba`'s prefix fallback scanned disk paths only, so the tree-row quads of
+Schwedenkreuz/Brünnchen/Karussell/Hohe Acht/… drew as flat lime plates.  Fix: the prefix
+fallback now also matches archive entries (regression-safe — it only fires where lookups
+previously FAILED).  Track parts textured 237→240/242; the plates are textured tree rows
+blending with the forest (`parity/nurburgring_trowgl_ab.jpg`).
+**V8 re-classified, not a floater:** the "white tower near Gerlach" is `cok` — the
+12×5×6 m Coca-Cola board (texture resolves; the same board gold's right mirror shows at
+t=40 s) seen from BEHIND: the white face is the board's unpainted back.  D6-family
+authentic-asset read → downgraded to minor (waive candidate), like the cyan-slab D11.
+
+**E64 EPIC CLOSE-OUT (S1–S11, 2026-08-08/09).**  Cockpit/chase parity delivered: live
+per-disc mirrors (S1/S10), gold-layout hands (S2), 5-track generalization (S3), chase
+de-spider + parser-wide LOD correctness (S4), Watkins forest (S5), placement oracle for
+Watkins + the Ring (S6/S9), articulated rear suspension via the positioner chain (S7/S8),
+Ring tree-row texture fix (S11).  Remaining polish moved to the general backlog: D12
+fold fine-tune at other camera angles, mirror tyre-vs-tail micro-read, V8/board-back
+waives, crowd-MIP smear (E46), Monza banking geometry (E52).
