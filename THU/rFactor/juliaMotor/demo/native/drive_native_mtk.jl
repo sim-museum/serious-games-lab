@@ -726,6 +726,14 @@ const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0) 
 const FSUSPP = Render.extract_gpl_car(LOT3DO; only=("lsusp1",), maxlat=1.3f0, exclude_groups=(6600,3560,27288,39792))   # E64 S4: group 6600 carries 1.65m-edge lsusp1 garbage 2m ahead of the car
 const MIRRORP = Render.extract_gpl_car(LOT3DO; only=MIRROR_DRAW, maxlat=0.95f0)  # rear-view mirrors — clean disc, re-placed on the cowl (see MIRRORMAT)
 const HANDP  = Render.extract_gpl_car(LOT3DO; only=("lohand",),  maxlat=0.95f0)  # E64 S2: gloved hands on the rim — ride the wheel rotation
+# E64 S7 (D12 residual): the runtime-hidden HIGH-DETAIL rear-suspension assemblies (groups
+# 27288/39792 — the S4 exclusions).  S4 mis-read their raw GPL coords as displaced (raw y is
+# LATERAL, not up): they are near-correctly authored left/right halves — arms/driveshafts/
+# shocks/discs around the rear axle — but ~25% too wide/long (a positioner-scale mis-read:
+# shocks reach lateral 1.06 vs the 0.85 wheel face = S4's spear tips through the tyres).
+# Drawn separately in the chase view with a tunable corrective scale about the rear axle.
+const RSUSPP_A = Render.extract_gpl_car(LOT3DO; include_groups=(27288,), exclude=("ltraymap","lshad"))   # one side each —
+const RSUSPP_B = Render.extract_gpl_car(LOT3DO; include_groups=(39792,), exclude=("ltraymap","lshad"))   # the halves carry a residual ±roll our posmat mis-composes
 const ARMP   = Render.extract_gpl_car(LOT3DO; only=("lotarms",), maxlat=0.95f0)  # forearms/upper arms — static (their wheel-side ends are what the eye sees)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read
 # upside-down.  Mirror the gauge in height about its own centre so the dial face turns up toward the eye.
@@ -1364,6 +1372,31 @@ const WHEELITEMS = Dict(nm => load_wheel(nm) for nm in ("lotwlf","lotwrf","lotwl
 swItems = Render.build_gpl(SWPARTS, GPLTEX)        # steering wheel (rotated with steer)
 handItems = Render.build_gpl(HANDP, GPLTEX)        # E64 S2: gloved hands (cockpit view, rotate with the wheel)
 armItems  = Render.build_gpl(ARMP, GPLTEX)         # E64 S2: forearms (cockpit view, static)
+rsuspItemsA = Render.build_gpl(RSUSPP_A, GPLTEX)   # E64 S7: high-detail rear suspension halves (chase view)
+rsuspItemsB = Render.build_gpl(RSUSPP_B, GPLTEX)
+# Corrective transform per side: iteration 1 (scale-only) showed each half splayed up-and-out like a
+# ~50° wing — the halves carry a residual ROLL our posmat Euler composition mis-reads.  Fold each
+# down about the car's X axis through a pivot near its inner attachment (JM_RS_Y0/Z0), mirrored
+# per side, plus the axle-anchored scale that pulls the over-reach in.  JM_RS_* iterate from captures.
+rsfix(side) = begin      # side = +1 (z>0 half) / −1
+    ax, ay = -1.05f0, 0.31f0
+    sx = parse(Float32, get(ENV,"JM_RS_SX","0.80")); sy = parse(Float32, get(ENV,"JM_RS_SY","0.80")); sz = parse(Float32, get(ENV,"JM_RS_SZ","0.80"))
+    dx, dy = parse(Float32, get(ENV,"JM_RS_DX","0.0")), parse(Float32, get(ENV,"JM_RS_DY","0.0"))
+    y0, z0 = parse(Float32, get(ENV,"JM_RS_Y0","0.35")), parse(Float32, get(ENV,"JM_RS_Z0","0.35"))
+    roll   = deg2rad(parse(Float32, get(ENV,"JM_RS_ROLL","50")))
+    Render.translate(Float32[dx, dy, 0]) *
+        Render.translate(Float32[ax, ay, 0]) * Render.scalexyz(sx, sy, sz) * Render.translate(Float32[-ax, -ay, 0]) *
+        Render.translate(Float32[0, y0, side*z0]) * Render.rotx(Float32(-side*roll)) * Render.translate(Float32[0, -y0, -side*z0])
+end
+# which extracted group is which side is settled empirically: JM_RS_SWAP=1 flips the pairing
+const RS_SWAP = get(ENV,"JM_RS_SWAP","0") != "0"
+const RSFIX_A = rsfix(RS_SWAP ? -1 : 1)
+const RSFIX_B = rsfix(RS_SWAP ? 1 : -1)
+# DEFAULT OFF (E64 S7 closed PARTIAL): three capture iterations (scale-only → ±50° roll → ±25°)
+# show the halves' residual mis-rotation is NOT a pure X-roll — empirical folding is the wrong
+# method.  Next pass: dump the actual positioner chain (type/d/rot/s per node) on the path to
+# groups 27288/39792 and compose the real transform instead of guessing angles.
+const RSUSP_ON = get(ENV,"JM_RSUSP","0") != "0"
 # E64 S2: the raw fists sit at 3-and-9 on the rim; the gold cockpit video grips at 10-AND-2 —
 # opposite per-hand rotations about the wheel axis, so split the two fists by z sign (rig +z =
 # car's left) and give each its own grip rotation (JM_HAND_GRIP degrees, left +, right −).
@@ -2670,6 +2703,10 @@ function main()
         # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
         for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly) so it stops reading as a hard black "plywood" notch
         if CTL.view != 0   # the driver figure occludes the cockpit from the in-car eye (E36 black band) → chase only
+            if RSUSP_ON    # E64 S7: high-detail rear suspension (gold nintendo shows the full articulated rear end)
+                for it in rsuspItemsA; Render.draw(prog, it, vp, bodyModel*RSFIX_A; bright=1.15, spec=0.25, ambfill=0.55); end
+                for it in rsuspItemsB; Render.draw(prog, it, vp, bodyModel*RSFIX_B; bright=1.15, spec=0.25, ambfill=0.55); end
+            end
             for it in driverItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.10, ambfill=0.55); end
             helmModel = bodyModel * Render.translate(Float32[HELM_OFF[1],HELM_OFF[2],HELM_OFF[3]])
             for it in helmItems; Render.draw(prog, it, vp, helmModel; bright=1.2, spec=0.12, ambfill=0.60); end

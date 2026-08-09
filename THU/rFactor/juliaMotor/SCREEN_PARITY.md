@@ -520,3 +520,26 @@ centreline against the ribbon BUILT FROM that same centreline — self-referenti
   per-track is follow-up work: recognise each track's road textures, then capture-verify.
 - Gates: Watkins re-verified on the gated build (car on tarmac, pass-4 convergence);
   Zandvoort stats confirmed back to the old baseline; race+5-AI smoke + brush/driven green.
+
+### E64 S7 (2026-08-08): the articulated rear end (D12 residual) — ◑ PARTIAL, shipped OFF
+The gold nintendo chase **clearly shows the full articulated rear end** (arms, driveshafts,
+shocks, discs between the rear tyres — reference frames extracted from the 260801 video),
+so the D12 residual is real parity work, not cosmetic-null.  What the sprint established:
+- **S4's "displaced assemblies" reading was axis-confused** — GPL raw is X-fwd/Y-LATERAL/
+  Z-up, so groups 27288/39792 are the LEFT/RIGHT high-detail rear-suspension halves,
+  near-correctly authored around the rear axle (arms/axlelot/lshok/lbrdisc/lsusp2-7 per
+  side); their over-reach (shocks to lateral 1.06 vs the 0.85 wheel face) is why fragments
+  read as spears when drawn via DRIVERP.  The S4 exclusions remain correct for
+  CARP/DRIVERP (they stop the garbage); the halves need their OWN correct transform.
+- **Harness landed** (all committed, default OFF): `include_groups` extractor option,
+  per-side extraction + draw in chase view, corrective-transform knob set
+  (`JM_RSUSP`, `JM_RS_{SX,SY,SZ,DX,DY,Y0,Z0,ROLL,SWAP}`), gold reference frames.
+- **Three capture iterations bounded the problem** (scale-only → wings up ~50°; ±50° roll
+  → folded under; ±25° → fans trailing backward): the residual mis-rotation is **NOT a
+  pure X-roll** — empirical angle-guessing is the wrong method and was time-boxed out.
+- **Prescribed next method:** dump the actual POSITIONER CHAIN (node type, translation,
+  Euler triple, scale, per node) on the path to groups 27288/39792 and compose the real
+  transform — the same stop-guessing-measure-instead move that solved ARMFIX and the
+  0x11 LOD switch.
+- Shipped `JM_RSUSP` default **0**: the chase view is byte-plausibly the S4 de-spidered
+  state; race+5-AI smoke green.  D12 residual stays OPEN with the harness ready.

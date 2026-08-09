@@ -787,6 +787,13 @@ then cross-track replication. Sprint log lives in `SCREEN_PARITY.md` §E64.
   aligns at 54% (ROAD_TEX under-recognises its textures) — per-track extension is
   follow-up, each needing texture work + capture verification. `JM_ROADHAT=1` experiments.
   `parity/watkins_wg4_placement_ab.jpg`.
-- Open: per-track ROADHAT extension (Zandvoort/Nürburgring/Spa road-texture recognition +
-  capture verification); D12 residual (articulated rear suspension detail); mirror + hands
-  polish A/B vs gold video at speed.
+- **S7 ◑ (2026-08-08) "The articulated rear end" (D12 residual) — PARTIAL, shipped OFF.**
+  Gold nintendo PROVES the articulated rear end is real parity work. S4's reading was
+  axis-confused (GPL raw y = LATERAL): groups 27288/39792 are the left/right high-detail
+  suspension halves, near-correctly authored but over-reaching (the spear tips). Harness
+  landed default-off (`include_groups` extractor, per-side draw + `JM_RS_*` knobs, gold
+  frames); 3 capture iterations bounded the residual mis-rotation as NOT a pure roll —
+  next pass must dump the actual positioner chain and compose the real transform.
+- Open: D12 residual (positioner-chain dump → real transform; harness ready); per-track
+  ROADHAT extension (Zandvoort/Nürburgring/Spa road-texture recognition + capture
+  verification); mirror + hands polish A/B vs gold video at speed.
