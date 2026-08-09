@@ -851,3 +851,17 @@ blanket cull is provably wrong (reverted; rails-only stands, restoration verifie
 byte-identical).  The veil joins the **per-face road-facing selection** implementation —
 now carrying THREE customers: the D6 sign boards, the white shrubs, and this veil.
 DoD: Watkins capture, race+5-AI smoke, brush + driven green.
+
+
+## E68 S12 (2026-08-09): SPA STANDS + YELLOW TREES — ◑ prepared; GL runs stood down
+Census done (committed knowledge): Spa places **9 121** objects — its forest is **1 238
+individual `stree*` sprites** + 17 strips; exactly 1 grandstand.  Two ready-to-run probes
+were killed twice by box contention (the fleet's other sessions or the PO's own use), so
+this sprint banks PREPARED rather than guessed:
+- **Missing stands before La Source (s≈13 850):** run `JM_START_S=13850 JM_OBJDIAG=1
+  JM_SPOT_RAD=250` — if `stree*`/stand instances exist there but list as dropped/off-HAT,
+  restore them; if absent from the data, it is an asset gap (waive candidate with gold).
+- **Yellow trees:** A/B `JM_GRADE=SPAOLD` at the same spot — if the yellow follows the
+  grade, the fix is the billboard draw's sat/suncol interaction (bright 1.55 × sat 1.34);
+  if it stays, the sprite art itself is autumn-coloured (asset, waive candidate).
+Resume with those two commands when the display is quiet.
