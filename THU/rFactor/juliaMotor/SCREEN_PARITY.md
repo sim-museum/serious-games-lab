@@ -813,3 +813,15 @@ line vanished.  The rule is now MESH-PATH-ONLY; billboard crowds drop only when 
 ON the road.  Re-verified at four sites (`parity/e68_crowdrule_4site.jpg`): Eau Rouge's
 line BACK, every Zandvoort/Watkins perpendicular offender still gone.
 DoD: Spa race+5-AI smoke, brush + driven green.
+
+
+## E68 S9 (2026-08-09): THE RING'S FLOATING DARK BLOCK ✅ — sections cull single-sided
+PO: "a block of spectators intrudes into the track between the Karussell and the back
+straight."  Located by sweep at s≈18400: a dark angular slab hovering at the crest — a
+landmass SECTION's edge-skirt, visible because we drew scenery two-sided while GPL culls
+single-sided.  Two-step fix: (1) down-facing section faces beside the corridor skipped at
+build (partial); (2) **the landmass-section range of trackItems now draws with backface
+cull** (`SEC_FROM` marker; winding per OBJ_FF_CW; cull off before the objects pass).
+Verified: slab GONE at s=18400, the Adenau-bridge underside intact at s=5150, mid-lap
+hillsides intact at s=11400 (`parity/nurburgring_e68_skirt_ab.jpg`).
+DoD: Ring race+5-AI smoke, brush + driven green.

@@ -516,6 +516,16 @@ function gpl_scenery(ztrk, datpack, ribbon)
             vx=w[3][1]-w[1][1]; vy=w[3][2]-w[1][2]; vz=w[3][3]-w[1][3]
             nz=ux*vy-uy*vx; nl=sqrt((uy*vz-uz*vy)^2+(uz*vx-ux*vz)^2+nz^2)
             (nl > 1f-6 && abs(nz)/nl > 0.4f0) && push!(hat, Render.GPL3DO.Tri(w, nn, tr.uv, tr.tex, tr.col))
+            # E68 S9 (PO/Ring ~s18400): a section's UNLIT UNDERSIDE hovered beside the crest as a
+            # dark angular slab — we render scenery two-sided, GPL's single-sided cull hides these.
+            # Skip strongly DOWN-facing faces that sit ABOVE road level BESIDE the corridor
+            # (5–30 m out); faces directly OVER the road stay (bridge undersides must render).
+            if nl > 1f-6 && nz/nl < -0.5f0
+                hrz = JuliaMotor.hat(ribbon, cgx, cgy)
+                if hrz.found && 5.0 < abs(hrz.lateral) < 30.0 && cgz > hrz.height + 3.0
+                    continue
+                end
+            end
             v=get!(groups, tr.tex, Float32[])
             for i in 1:3
                 q=w[i]; n=nn[i]; uv=tr.uv[i]
@@ -621,7 +631,9 @@ else
     const CAR = DriveCar(MODEL, TRKSURF; terrain=TERRAIN)    # racing ribbon from the .trk centreline
     println(TERRAIN, "  ", TRKSURF)
     tstamp("geometry extraction begins"); print("extracting geometry… "); flush(stdout)
-    const TRACK = [Render.extract_gpl_car(ZTRK; track=true, mirror=true, exclude=("ltraymap","lshad","wiref_s")); SECPARTS]
+    const TRACKMAIN = Render.extract_gpl_car(ZTRK; track=true, mirror=true, exclude=("ltraymap","lshad","wiref_s"))
+    const TRACK = [TRACKMAIN; SECPARTS]
+    const SEC_FROM = length(TRACKMAIN) + 1        # E68 S9b: trackItems[SEC_FROM:end] = landmass sections
 end
 # ---- E7 boundary audit (JM_BOUNDARY_TEST): confirm the terrain HAT BOUNDS the world ----
 # The game holds the car at the last in-world spot whenever it steps off the HAT, so the
@@ -2719,7 +2731,11 @@ function main()
             # when the coplanar dedup keeps the away-facing decal the text renders MIRRORED.  Objects already
             # un-mirror back faces; give the track mesh the same treatment (road/kerb back faces are unseen).
             glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 1)
+            secfrom = (@isdefined SEC_FROM) ? SEC_FROM : typemax(Int)
             for (ti, it) in enumerate(trackItems)                        # ambfill lifts shadowed walls/fences out of the "carbonized" black under the flat overcast light
+                # E68 S9b: landmass SECTIONS draw single-sided like GPL — culls the dark edge-skirt
+                # slabs (Ring s≈18400) that our two-sided draw exposed.  Winding per OBJ_FF_CW.
+                if ti == secfrom; glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK); end
                 if MONZA                                                 # E57: per-surface grade — its asphalt MIP is over-bright, its barriers carbonized
                     cat = TRACKCAT[ti]
                     b, a = cat === :road ? (MZ_ROAD_B, MZ_ROAD_A) : cat === :dark ? (MZ_DARK_B, MZ_DARK_A) :
@@ -2729,6 +2745,7 @@ function main()
                     Render.draw(prog, it, vp_, Render.ident(); bright=0.72, ambfill=0.34)
                 end
             end
+            (@isdefined SEC_FROM) && length(trackItems) >= SEC_FROM && glDisable(GL_CULL_FACE)   # E68 S9b: section cull off before objects
             if OBJ_CULLFACE                                           # E60: GPL culls single-sided faces —
                 # double-sided signs keep both decals (dedup=:orient), each visible only from its own side.
                 # NEVER touch glFrontFace: the two-sided-Lambert shader keys off gl_FrontFacing globally
