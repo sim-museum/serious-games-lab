@@ -800,6 +800,12 @@ then cross-track replication. Sprint log lives in `SCREEN_PARITY.md` §E64.
   need a 90° fold about the hub line (S7 pivoted mid-driveshaft — its whole confusion).
   Baked: hub-pivot fold, scale 1.0, `JM_RSUSP` default ON. **D12 → CLOSE-minus** (visible
   delta vs gold modest from the low chase cam; structure present for other angles).
-- Open: per-track ROADHAT extension (Zandvoort/Nürburgring/Spa road-texture recognition +
-  capture verification); mirror + hands polish A/B vs gold video at speed; D12 polish
-  (fold fine-tune vs gold at other camera angles).
+- **S9 ✅ (2026-08-09) "Does anyone else stand on the grass?"** — evidence-first survey
+  (16 captures, 4 tracks × 4 positions): Zandvoort/Monza/Spa CLEAR (their ROADHAT
+  extension closes as no-defect); **Nürburgring was a real offender** (s=17000 in the
+  catch-fencing = the old lap-end-drift note). `ROAD_TEX` extended with the Ring's road
+  vocabulary (atog*/a_l_g* edge strips + the Karussell's Concrete) → oracle converges
+  (mean 2.41→0.04 m over 4 passes), all positions on tarmac; **NURB joins WATGLEN in the
+  ROADHAT default**. `parity/nurburgring_wg4_oracle_ab.jpg`.
+- Open: mirror + hands polish A/B vs gold video at speed; D12 polish (fold fine-tune at
+  other camera angles); N2-family scenery quads at Ring s≈17000.

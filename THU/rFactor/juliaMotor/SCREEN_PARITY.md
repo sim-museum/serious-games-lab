@@ -564,3 +564,23 @@ the file itself** (±0.772 = the rear track ✓, scale exactly 1.0).
   delta vs gold is modest; the structure is there for higher cameras/replay angles.
 - **D12 → CLOSE-minus.**  DoD: default-config captures clean, race+5-AI smoke,
   brush + driven tests green.
+
+### E64 S9 (2026-08-09): "Does anyone else stand on the grass?" ✅ — Ring fixed, rest cleared
+The S6 follow-up executed as an EVIDENCE-FIRST survey: 16 chase captures (4 positions ×
+Zandvoort/Monza/Spa/Nürburgring, default config) asked whether WG4-class off-tarmac
+placement exists beyond Watkins before extending the road oracle anywhere.
+- **Zandvoort / Monza / Spa: CLEAR** — on tarmac at every sampled position (Zandvoort
+  s=2100 hugs the edge, which is the PO-approved GPL-groove trait, not a defect).  The
+  per-track ROADHAT extension for these closes as **no-defect — evidence, not caution**:
+  their oracles stay off because nothing is wrong, and S6's stat-based worry about
+  moving their lines is moot.
+- **Nürburgring: REAL offender** — s=5700 half on the verge, and at s=17000 the car sat
+  in the CATCH-FENCING (the long-known "centreline drift near lap-end" note, now with a
+  face).  Root cause of the 54% road-only alignment: `ROAD_TEX` missed the Ring's road
+  vocabulary — `atog*`/`a_l_g*` (asphalt-to-grass edge strips) and `Concrete` (the
+  Karussell!).  Recognised (33 090 road tris), the oracle CONVERGES: recentre mean
+  2.41 → 1.27 → 0.26 → **0.04 m** over 4 passes, and all four positions land on tarmac —
+  including s=17000 out of the fencing.  **NURB joins WATGLEN in the ROADHAT default.**
+  (`parity/nurburgring_wg4_oracle_ab.jpg`; the green plates at s=17000 are the known
+  N2-family scenery quads, separate item.)
+- DoD: Ring smoke default-config, Zandvoort race+5-AI smoke, brush + driven green.

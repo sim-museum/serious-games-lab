@@ -97,7 +97,12 @@ const ROAD_PRED = MONZA ? (lt -> occursin("asp", lt) || startswith(lt,"groove") 
 # aprons stay out.  If a track's mesh yields too few road tris (unknown naming), fall back to the full
 # terrain HAT — behaviour unchanged there.
 const ROAD_TEX = lt -> occursin("asp", lt) || startswith(lt,"groove") || startswith(lt,"curb") ||
-                       startswith(lt,"kerb") || lt in ("sline","sgrid","start")
+                       startswith(lt,"kerb") || lt in ("sline","sgrid","start") ||
+                       # E64 S9 (Nürburgring): atog*/a_l_g* = asphalt-to-grass transition strips lining
+                       # the road edge; Concrete = the Karussell banking.  Without them the road oracle
+                       # recognised only 54% of the line's surface and the alignment optimised against
+                       # a partial road.  (Names are Ring-specific; no collisions on the other tracks.)
+                       startswith(lt,"atog") || startswith(lt,"a_l_g") || lt == "concrete"
 
 # ---- session mode + race config (GPL-style: Practice / Training / Race) ----
 const MODE      = lowercase(get(ENV, "JM_MODE", "practice"))   # practice | training | race
@@ -573,7 +578,10 @@ else
     # blanket switch.  JM_ROADHAT=1 forces it on for experiments.
     const ROADHAT = let rp = ROAD_TEX
         nroad = count(t -> rp(lowercase(t.tex)), TRACKMESH0.tris)
-        if (WATGLEN || get(ENV,"JM_ROADHAT","0") != "0") && nroad >= 200
+        # E64 S9: NURB joins WATGLEN — with atog*/a_l_g*/concrete recognised its oracle converges
+        # (recentre mean 2.41→0.04 m over 4 passes) and all four survey positions land on tarmac,
+        # including the old lap-end drift at s=17000 (car was in the catch-fencing).
+        if (WATGLEN || NURB || get(ENV,"JM_ROADHAT","0") != "0") && nroad >= 200
             h = GPLTrack.build_hat(TRACKMESH0; exclude=HAT_EXCLUDE, exclude_pred=(lt -> !rp(lt)), drop_overpass=MONZA, road_pred=ROAD_PRED)
             println("  road-only HAT: ", nroad, " road tris (align/recentre oracle)"); h
         else
