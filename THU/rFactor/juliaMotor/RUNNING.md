@@ -44,13 +44,16 @@ GPL utilities: `/home/admin/gold standard/julia racer/gpl utilities/`.
 
 ## Current state (2026-08-08)
 
-- **E64 S1 closed — LIVE MIRRORS.** The cockpit mirror discs now show a real rear-view
-  render (384×192 RTT, X-mirrored, per-disc half view, round-masked glass quads derived
-  from the mirror mesh itself). `JM_MIRROR_RTT=0` restores the old silver discs;
-  `JM_MIRROR_FOV` tunes it. World draw factored into one `drawworld` closure shared by
-  main + mirror passes (chase view re-verified clean). Z-CK3 → FIXED in
+- **E64 S1–S3 closed.** S1 LIVE MIRRORS: the cockpit discs show a real rear-view render
+  (384×192 RTT, X-mirrored, per-disc half view, round-masked glass quads derived from the
+  mirror mesh itself; `JM_MIRROR_RTT=0` restores silver discs, `JM_MIRROR_FOV` tunes);
+  world draw factored into one `drawworld` closure shared by main + mirror passes.
+  S2 HANDS: gold-layout gloved fists at 10-and-2 riding the wheel (`JM_HAND_GRIP`) +
+  sleeves via the `ARMFIX` wrist-pivot correction of the positioner-orphaned `lotarms`
+  (`JM_ARM_*` knobs; `JM_HANDS` defaults ON). S3: both verified to GENERALIZE on all
+  5 circuits (`parity/cockpit_e64_mirror_sweep.jpg`). Z-CK3 + Z-CK4 → FIXED in
   `SCREEN_PARITY.md`; session doc `STATUS_2026-08-08_graphics-E64-S1.md`. E64 remaining:
-  hands refit (Z-CK4), chase-body LOD (D12), mirror polish vs gold video at speed.
+  chase-body LOD (D12, asset-deep), mirror/hands polish vs gold video at speed.
 
 ## Earlier (2026-08-02)
 
