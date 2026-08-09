@@ -42,7 +42,18 @@ NALs, so it will rebuild any future interrupted recording given a healthy refere
 2026-08-02 into **`watkinsGlenn`** (88 items). Any reference to `watkins glenn` is stale.
 GPL utilities: `/home/admin/gold standard/julia racer/gpl utilities/`.
 
-## Current state (2026-08-08)
+## Current state (2026-08-09 — 18 sprints, three epics)
+
+- **E64 CLOSED (S1–S11):** live per-disc mirrors (RTT, gold-composition), gold-layout
+  hands, chase de-spidered + articulated rear suspension (positioner-chain-derived),
+  parser-wide 0x11 LOD correctness, Watkins forest + placement oracle (Watkins + Ring),
+  Ring tree-row textures. **E65 CLOSED (S1–S5):** Monza/Watkins tree strips render as
+  their REAL folded meshes — phantom canopy/slabs gone, E52 underpass reads as a bridge,
+  Watkins pit straight stays clean. **E46 CLOSED:** crowd smear was LINEAR magnification;
+  NEAREST crowd mag = gold's pixel-people. PO decision queue + re-drive requests:
+  `PRODUCT_BACKLOG.md` tail. Composites: `parity/*_ab.jpg`.
+
+## Earlier (2026-08-08)
 
 - **E64 EPIC CLOSED (S1–S11, 2026-08-08/09).** Cockpit/chase parity delivered end to end:
   live per-disc mirrors (S1/S10), gold-layout hands (S2), 5-track generalization (S3),

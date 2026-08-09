@@ -829,3 +829,23 @@ then cross-track replication. Sprint log lives in `SCREEN_PARITY.md` §E64.
   canopy, slabs, Watkins forest density, the E52 underpass read AND (verified in E66 S1)
   the pit dark-sail. Remaining minors: E46 crowd smear, waive candidates (V8/board-backs,
   D11), D12 fold polish, mirror micro-read.
+
+
+## PO DECISION QUEUE (consolidated 2026-08-09 — nothing blocks the scrum loop)
+1. **Waive V8** — the "white tower near Gerlach" is the `cok` Coca-Cola board's unpainted
+   BACK (authentic GPL asset; its face shows correctly in the mirrors). Evidence: E64 S11.
+2. **Waive the D6-family blank board-backs** (MARTINI/2nd CALTEX at Tarzan) — same
+   authentic-asset class as V8/D11 (cyan slab, already waived-as-authentic E59).
+3. **Re-drive requests** (felt, not headless-verifiable): the E64 cockpit at speed — live
+   per-disc mirrors + hands riding the wheel; Monza/Watkins with the real forest meshes
+   (E65); the Ring line now ON the road everywhere (S9), incl. the Karussell approach.
+4. **D12 fold fine-tune** — the articulated rear suspension ships at the chain-derived
+   hub fold; if any angle reads off while driving, `JM_RS_*` knobs A/B live.
+
+## Sprint-loop state (2026-08-09, after 18 closed sprints)
+Deep backlog EXHAUSTED: E64 (cockpit/chase, S1–S11) and E65 (Monza/Watkins scenery,
+S1–S5) epics closed; E46 crowd smear closed (filter, not art); WG3/WG4 closed; D12
+CLOSE-minus; Ring placement + tree-row textures fixed. Remaining items are the PO queue
+above + micro-polish only. Next sprint candidates when the loop continues: polish from
+PO re-drive feedback, or the next PO directive.
+EOF
