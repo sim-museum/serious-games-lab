@@ -741,3 +741,19 @@ has no edge-on smear to hide; `JM_GRAZE_MESH=1` restores the fade for A/B).  Ver
 s=1500 solid at BOTH cockpit and chase angles (the pre-fix reference shows the half-faded
 left wall), s=2100 + pits clean, Watkins pit straight regression-clean.
 `parity/monza_e68_grazefix_ab.jpg`.  DoD: Monza race+5-AI smoke, brush + driven green.
+
+## E68 S3 (2026-08-09): THE MOVING HIGHLIGHT — ◑ investigation banked, artifact MAPPED
+PO: "white highlight in the track moving ~5 car lengths ahead" (Monza strong, Ring faint).
+Two hypotheses tested and one measurement lesson:
+- Shadow-box edge fade and the macro tiling break-up both "refuted" by luma profiles that
+  turned out to be CONTAMINATED (the sampled band crossed the car's silver suspension and
+  the pale horizon strip, not road) — ⭐ profile the artifact, not the frame.
+- The decisive probe: a MOTION PAIR (s=1500 vs 1510) → screen-space static mask.  The
+  road texture scrolls; a **camera/car-anchored sheen oval around and ahead of the car**
+  stays (static fraction 0.41 at its core; `parity/monza_e68_sheen_staticmask.jpg`) —
+  the PO's highlight, now precisely mapped.
+- Landed: `JM_MACRO` A/B knob; shadow fade band softened 0.40→0.28 (harmless, kept);
+  light-box size reverted (no measured benefit).  **Prescribed next:** a JM_DEBUG_SHADE
+  false-colour mode rendering the diff/shadow/fog terms directly — one capture then
+  attributes the sheen to its term instead of guessing.  DoD: prior gates stand (shader
+  A/B is default-off; fade softening is sub-perceptual — race smoke green in S2's run).

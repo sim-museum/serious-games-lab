@@ -309,6 +309,7 @@ uniform float uSat;       // output saturation multiplier (>1 = punchier sunny c
 uniform vec3 uSkyTint;    // GPL horizon-ring multiply (warm/brighten the overcast band toward sunny)
 uniform vec3 uTint;       // per-draw colour multiply (default white = no-op; e.g. de-blue the crowd MIP)
 uniform int uMirrorGlass; // 1 for the cockpit mirror glass quads → unlit round-masked RTT sample (E64)
+uniform int uMacro;       // 1 = macro tiling break-up on (default; JM_MACRO=0 disables — E68 S3 A/B)
 float shadow(vec3 N){
   vec3 lp = vLS.xyz/vLS.w*0.5+0.5;
   if(lp.z>1.0 || lp.x<0.0||lp.x>1.0||lp.y<0.0||lp.y>1.0) return 1.0;
@@ -356,8 +357,8 @@ void main(){
   vec3 grd=vec3(0.34,0.36,0.26);                             // ground-bounce fill (warm)
   vec3 amb=mix(grd,uAmbSky,0.5+0.5*N.y)*0.46;                // sky-fill: uAmbSky tints the up-facing fill (cool=sunny shadows)
   vec3 base = t.rgb * uTint;                                 // per-draw colour multiply (default white)
-  if(uHasTex==1 && max(abs(vUV.x),abs(vUV.y)) > 3.0)   // tiling surface: gently break up the repeat
-    base *= mix(vec3(1.0), texture(uTex, vUV*0.07).rgb * 1.7, 0.45);   // softer → no harsh light/dark patches
+  if(uHasTex==1 && uMacro==1 && max(abs(vUV.x),abs(vUV.y)) > 3.0)   // tiling surface: gently break up the repeat
+    base *= mix(vec3(1.0), texture(uTex, vUV*0.07).rgb * 1.7, 0.45);   // softer → no harsh light/dark patches (E68 S3: uMacro gates the A/B — suspect for the near-field bright pool)
   vec3 lit = pow(base*(amb+0.5*uAmbFill+diff*1.15*uSunCol)*uBright, vec3(0.94));   // stronger sun (0.95→1.15), tinted by uSunCol; gamma→neutral (0.85→0.94) ⇒ GPL contrast
   lit += uAmbFill*vec3(0.13,0.135,0.125);   // ADDITIVE fill: lifts pure-black cockpit parts
                                             // (tub/dash) to a visible dark grey, as GPL pre-lights them
@@ -537,7 +538,7 @@ function make_shadow_fbo(size=SHADOW_SIZE)
 end
 """Light view-projection: an orthographic box from the sun direction, centred on
 `center` (the car), so the shadow map tracks the action."""
-function light_vp(center, lightdir; R=100.0, depth=400.0)   # E68 S3: larger box pushes the fade edge further from the car (2048px/200m = 10 cm/texel, still crisp)
+function light_vp(center, lightdir; R=70.0, depth=400.0)
     L=normalize(Float64.(lightdir)); eye=Float64.(center) .+ L.*(depth/2)
     up = abs(L[2])>0.99 ? [0.0,0.0,1.0] : [0.0,1.0,0.0]
     ortho(-R,R,-R,R,1.0,depth) * lookat(eye, Float64.(center), up)
@@ -577,6 +578,7 @@ function set_scene_uniforms(prog, campos; fognear=300f0, fogfar=2400f0,
     glUniform1f(glGetUniformLocation(prog,"uFogFar"),Float32(fogfar))
     glUniform3f(glGetUniformLocation(prog,"uTint"),1f0,1f0,1f0)   # frame default white (draws that bypass draw(), e.g. the horizon ring)
     glUniform1i(glGetUniformLocation(prog,"uMirrorGlass"),0)      # frame default off (same bypass-draw safety)
+    glUniform1i(glGetUniformLocation(prog,"uMacro"), get(ENV,"JM_MACRO","1")=="0" ? 0 : 1)   # E68 S3 A/B
 end
 
 # ---- 2D HUD: flat-coloured quads in pixel space (7-segment digits + bars), no
