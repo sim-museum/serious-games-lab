@@ -423,3 +423,19 @@ sweeping from the lower frame corners; we showed nothing (JM_HANDS defaulted OFF
   10-and-2.  Residual: the mesh is chunky/faceted with a marbled weave (the asset itself;
   same class as D12) — logged as polish, not a blocker.
 - DoD: race+5-AI smoke exit 0, `test_brush_slip` ✓, `test_vehicle_driven` ✓ (run post-edit).
+
+### E64 S3 (2026-08-08): the cockpit GENERALIZES — 5-track mirror+hands sweep ✅
+S1/S2 were verified depth-first on Zandvoort; the mirror pass exercises per-track world
+branches (Monza's per-surface `TRACKCAT` grades, `STATICTREES`, per-track skies), so S3
+swept a cockpit capture on the other four circuits (`ck_<track>` shots, each run its own
+`gl-lock` hold so the neighbours could interleave).  **All four PASS:**
+| track | mirror content (both discs live) | hands |
+|---|---|---|
+| Nürburgring | bright partly-cloudy sky (E61 re-green grade), pit boxes behind | ✓ identical |
+| Watkins | hazy pale sky, the KENDALL/DUNLOP gantry structure behind at s=600 | ✓ |
+| Monza | hazy-pale sky, grey (not blinding) road behind — the E57 per-surface grade holds in the mirror pass | ✓ |
+| Spa | dense green tree-line + crowd rows behind, hazy-blue sky | ✓ |
+Composite: `parity/cockpit_e64_mirror_sweep.jpg`.  Per-track content + grade in the glass
+proves the mirror pass runs the full per-track world path, not a cached/generic scene.
+No code changed in S3 — a pure verification sprint.  E64 remaining: D12 chase LOD
+(asset-deep), mirror/hands polish vs gold video at speed.

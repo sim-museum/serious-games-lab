@@ -758,4 +758,8 @@ then cross-track replication. Sprint log lives in `SCREEN_PARITY.md` §E64.
   silver arms") → `ARMFIX` wrist-pivot mirror + squash/tuck; fists split by z sign and
   rotated to gold's 10-and-2 (`JM_HAND_GRIP`); JM_HANDS now defaults ON. Residual: chunky
   GPL-era mesh/weave (asset-limited, logged as polish). Details `SCREEN_PARITY.md` §E64 S2.
+- **S3 ✅ (2026-08-08) "The cockpit generalizes"** — verification sprint: cockpit capture on
+  the other 4 circuits; mirrors show each track's OWN rear world under its own grade (Monza
+  per-surface grade holds in the mirror pass), hands identical. 5/5 tracks pass.
+  Composite `parity/cockpit_e64_mirror_sweep.jpg`; details `SCREEN_PARITY.md` §E64 S3.
 - Open: D12 chase LOD (asset-deep); mirror + hands polish A/B vs gold video at speed.
