@@ -1187,6 +1187,18 @@ let objnames=Set{String}()
     # by Eau Rouge (and on the start straight) projected to |lat| < ROAD_HALFW = a "line of people
     # standing in the road".  Drop crowd that lands on the road; the grandstands (set further back) stay.
     onroad_crowd(i) = standcrowd(i.name) && on_road(i.x, i.y, ROAD_HALFW)
+    # E68 S8 (PO: Spa "oversized buildings right on the track — you drive through them").
+    # lasad1's centroid sits 0.6 m from the road centre at s=13641.  A BUILDING centred on
+    # the corridor cannot be right; drop building-family meshes with |lat| < 4 m (logged).
+    bldgish(nm) = startswith(nm,"lasad") || startswith(nm,"chut") || startswith(nm,"haus") ||
+                  startswith(nm,"house") || startswith(nm,"ferme") || startswith(nm,"bldg") ||
+                  startswith(nm,"hotel") || startswith(nm,"bld")
+    onroad_bldg(i) = bldgish(lowercase(i.name)) && begin
+        hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
+        hit = hr.found && abs(hr.lateral) < 4.0
+        hit && println("  E68: building ", i.name, " centred ON the road (lat=", round(hr.lateral,digits=1), " m, s=", round(Int,hr.lapdist), ") — dropped")
+        hit
+    end
     # E68 S1 (PO re-drive): "every perpendicular block of spectators was floating in air or on
     # the track."  JM_CROWDDIAG confirms: Zandvoort keeps 97 crowd rows of which a dozen+ sit
     # PERPENDICULAR (relyaw ≈ ±90°) within ~18 m of the road at exactly the PO's spots (Tarzan
@@ -1208,10 +1220,11 @@ let objnames=Set{String}()
     graze_mesh = get(ENV,"JM_GRAZE_MESH","0") != "0"
     global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw + objyawfix(i.name))), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), ploz(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
-                          !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
+                          !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
     # E15: SOLID trackside objects the car can hit — (physics x, z, collision radius m).  Buildings,
     # barriers/hedges (haybales = Zandvoort `haie`), towers, parked vehicles.  NOT trees/signs/people.
-    solidR(nm) = startswith(nm,"hut")||startswith(nm,"pitbldg")||startswith(nm,"hotel")||startswith(nm,"bigbosch")||nm=="mega2"||startswith(nm,"longtent") ? 5.0 :
+    solidR(nm) = startswith(nm,"hut")||startswith(nm,"pitbldg")||startswith(nm,"hotel")||startswith(nm,"bigbosch")||nm=="mega2"||startswith(nm,"longtent")||
+                 startswith(nm,"chut")||startswith(nm,"lasad")||startswith(nm,"haus")||startswith(nm,"house")||startswith(nm,"ferme") ? 5.0 :   # E68 S8: Spa houses are solid (no drive-through)
                  startswith(nm,"gstand")||startswith(nm,"grand")||startswith(nm,"tribun")||startswith(nm,"camstnd")||startswith(nm,"mgrand") ? 6.0 :   # PO: grandstands are SOLID (no driving through the stands)
                  startswith(nm,"tower")||startswith(nm,"megafon") ? 2.0 :
                  startswith(nm,"haie")||startswith(nm,"bush")||startswith(nm,"shrub")||startswith(nm,"hedge")||startswith(nm,"haystk") ? 1.5 :   # hay rows + trackside bushes/hedges (PO: more objects hittable when you run wide — soft, you plough through with a penalty).  SMALL radius so they don't clip the racing groove
@@ -1249,7 +1262,7 @@ let objnames=Set{String}()
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     for i in insts
-        bb = get(bbinfo, i.name, nothing); (bb === nothing || drop(i.name) || perp_crowd(i)) && continue   # E68 S1: no perpendicular near-road crowd rows
+        bb = get(bbinfo, i.name, nothing); (bb === nothing || drop(i.name) || (standcrowd(i.name) && on_road(i.x, i.y, ROAD_HALFW+1.0))) && continue   # E68 S8b: billboard crowds drop only when ON the road (perp test is mesh-path-only — camera-facing sprites have no rendered yaw)
         onground(i) || continue
         on_road(i.x, i.y, ROAD_HALFW) && continue   # E31: drop sprites planted ON the road (the Monza tree "curtain" across the track)
         gz = ploz(i)
@@ -1307,7 +1320,7 @@ let objnames=Set{String}()
     global OBJINSTS = [begin
         ismesh = get(objmesh,i.name,nothing) !== nothing; isbb = get(bbinfo,i.name,nothing) !== nothing; og = onground(i)
         kmesh  = ismesh && !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && og
-        kbb    = isbb   && !drop(i.name) && !perp_crowd(i) && og && !on_road(i.x, i.y, ROAD_HALFW)
+        kbb    = isbb   && !drop(i.name) && !(standcrowd(i.name) && on_road(i.x, i.y, ROAD_HALFW+1.0)) && og && !on_road(i.x, i.y, ROAD_HALFW)   # E68 S8b: billboard crowds are camera-facing (yaw meaningless) — drop only when ON the road; perp_crowd wiped Spa's Eau Rouge line
         issolid = solidR(lowercase(i.name)) > 0.0 && og && !on_road(i.x, i.y, SOLID_EXCL_HW)
         (i.name, Float32(i.x), Float32(i.y), ploz(i), kmesh ? :mesh : kbb ? :bb : :dropped, issolid)
     end for i in insts]

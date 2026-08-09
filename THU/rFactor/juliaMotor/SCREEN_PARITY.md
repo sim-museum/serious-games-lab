@@ -797,3 +797,19 @@ the upper cowl rim and CHARCOAL below the dash.  Fix: height-split the harmonize
 = up; faces topping out below `JM_FOOTWELL_Z`=0.22 go dark-tub).  Verified
 (`parity/e68_footwell_ab.jpg`): footwell charcoal like gold, cowl BRG preserved.
 DoD: race+5-AI smoke, brush + driven green.
+
+
+## E68 S8 (2026-08-09): DRIVE-THROUGH BUILDINGS (Spa) ✅ + the crowd-rule correction
+PO: "oversized buildings right on the track — you drive through them and see the inside."
+The near-road inventory named them: **lasad1** (stone farmhouse, centroid 0.6 m from the
+road centre at s=13641 — exactly the PO's "minute before the hairpin") and **chut**
+(s=8439, lat 2.7).  Fixes: building-family meshes with centroid |lat| < 4 m are dropped
+(logged: both fired); the hut/house family joins `solidR` (solids 705→771) so kept houses
+cannot be driven through.  `parity/spa_e68_lasad_ab.jpg`.
+**Honest S1 correction, caught by the billboard COUNT (5220→4135):** `perp_crowd` was
+also culling ~1 000 Spa roadside spectator SPRITES — camera-facing billboards whose
+authored yaw never renders; dropping them by yaw was arbitrary, and Eau Rouge's spectator
+line vanished.  The rule is now MESH-PATH-ONLY; billboard crowds drop only when actually
+ON the road.  Re-verified at four sites (`parity/e68_crowdrule_4site.jpg`): Eau Rouge's
+line BACK, every Zandvoort/Watkins perpendicular offender still gone.
+DoD: Spa race+5-AI smoke, brush + driven green.
