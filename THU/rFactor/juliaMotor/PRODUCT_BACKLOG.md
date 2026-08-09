@@ -849,3 +849,12 @@ CLOSE-minus; Ring placement + tree-row textures fixed. Remaining items are the P
 above + micro-polish only. Next sprint candidates when the loop continues: polish from
 PO re-drive feedback, or the next PO directive.
 EOF
+### E67 — launch time (opened 2026-08-09)
+- **S1 ◑ PARTIAL "The two-minute launch"** — measured (JM_TIMING stamps, verified twice):
+  Zandvoort ≈2:45 = 19 s pkg/JIT head + 5 s track parse + 6.5 s extraction + **37 s texture
+  decode** + **97 s mtkcompile**. Landed: phase stopwatch; decoded-RGBA texture cache
+  (`~/.cache/juliamotor/tex`, **opt-in `JM_TEXCACHE=1`** until its cold/warm A/B runs — the
+  box was contended with FF/BoB timing gates at close, and background jobs were being
+  cleared). Deferred to a quiet window: the A/B (then flip the default), and the one-time
+  `jlracer.so` sysimage build (**run UNLOCKED at nice-19 per the new CONCURRENCY rule** —
+  a 40-min gl-lock hold was killed mid-build; lesson recorded in CONCURRENCY.md + memory).

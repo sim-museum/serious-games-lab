@@ -5,6 +5,10 @@
 # first step toward an rF1-fidelity self-contained app; the rendering core is
 # render.jl.
 using GLFW, ModernGL, LinearAlgebra, Dates, Serialization
+
+# E67 S1: launch-phase stopwatch — JM_TIMING=1 prints cumulative seconds at each load phase
+const _T0 = time()
+tstamp(lbl) = get(ENV,"JM_TIMING","0") != "0" && println("[t+", round(time()-_T0, digits=1), "s] ", lbl)
 using JuliaMotor, RFactorData
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt.jl"))); using .DriveRT  # MTK physics (planar)
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt3d.jl"))); using .DriveRT3D  # full-3D physics (JM_3D=1)
@@ -563,7 +567,7 @@ if SKIDPAD
     const TRACK = skidpad_parts()
     println("flat pad + 20 measurement circles, diameters 10-200 m")
 else
-    print("loading GPL ", GPLNAME, "… "); flush(stdout)
+    tstamp("track parse begins"); print("loading GPL ", GPLNAME, "… "); flush(stdout)
     const TRACKMESH0 = Render.GPL3DO.parse_3do(ZTRK)
     # Align the racing line against the ROAD-only HAT (precise — scenery terrain in the
     # full HAT would let the line drift onto the grass verge); the road ribbon then doubles
@@ -616,7 +620,7 @@ else
     const LAPLEN = maximum(TRKSURF.lapdist)              # lap length [m], for start/finish wrap detection
     const CAR = DriveCar(MODEL, TRKSURF; terrain=TERRAIN)    # racing ribbon from the .trk centreline
     println(TERRAIN, "  ", TRKSURF)
-    print("extracting geometry… "); flush(stdout)
+    tstamp("geometry extraction begins"); print("extracting geometry… "); flush(stdout)
     const TRACK = [Render.extract_gpl_car(ZTRK; track=true, mirror=true, exclude=("ltraymap","lshad","wiref_s")); SECPARTS]
 end
 # ---- E7 boundary audit (JM_BOUNDARY_TEST): confirm the terrain HAT BOUNDS the world ----
@@ -963,7 +967,7 @@ const GRADE = SKIDPAD ? GRADE_SKIDPAD :
               haskey(ENV, "JM_GRADE") ? get(GRADE_TAB, uppercase(ENV["JM_GRADE"]), GRADE_OVERCAST) :
               get(GRADE_BYTRACK, TRACKSEL, GRADE_OVERCAST)
 const ENG = EngineAudio.build_lotus(gamedata = GD)   # GPL Ford DFV V8, RPM-pitched; START is deferred to just before the game loop (below)
-print("loading textures… "); flush(stdout)
+tstamp("texture load begins"); print("loading textures… "); flush(stdout)
 const TEXIDX = Render.gpl_texture_index(ZD)
 trackItems = Render.build_gpl(TRACK, TEXIDX)
 # E57: build_gpl is 1:1 with TRACK, but Items drop the texture NAME (GPL parts all carry the same
@@ -1705,7 +1709,9 @@ function main()
         end
         atan(ALIGNED[j][2]-ALIGNED[base][2], ALIGNED[j][1]-ALIGNED[base][1])
     end
+    tstamp("physics build (mtkcompile) begins")
     cs = build_carX(x0=cs0.x, z0=cs0.z, θ0=θ0spawn, v0=0.0, y0=y0spawn)   # MTK car — standing start (planar or full-3D)
+    tstamp("physics build done — game loop imminent")
     # ---- AI opponents (race field): rail-followers on the centreline ----
     # CLINE = the centreline, built ALWAYS (off-skidpad) so the PLAYER's lap counting can use a
     # robust projection wrap instead of the ribbon lapdist (the ribbon has a seam at S/F that

@@ -829,6 +829,7 @@ end
 struct GPLTex
     paths::Dict{String,String}            # name(.ext stripped) → loose file path
     dat::Dict{String,Vector{UInt8}}       # lowercase "name.ext" → bytes (from .dat)
+    cachedir::String                      # E67: per-source-dir decoded-RGBA cache ("" = off)
 end
 
 """Index a GPL folder's textures: loose .mip/.srb + every .dat archive's .mip/.srb."""
@@ -841,12 +842,32 @@ function gpl_texture_index(dir)
             try; merge!(dat, GPLDat.parse_dat(f)); catch; end
         end
     end
-    GPLTex(paths, dat)
+    # E67 S1: decoded-texture cache — the MIP/SRB software decode was 37 s of the Zandvoort
+    # launch.  GPL assets are immutable, so cache decoded RGBA per source dir (JM_TEXCACHE=0
+    # disables; delete ~/.cache/juliamotor/tex after decoder changes).
+    cd = get(ENV,"JM_TEXCACHE","0") == "0" ? "" :   # default OFF until the deferred cold/warm A/B verifies (box contended at S1 close)
+         joinpath(homedir(), ".cache", "juliamotor", "tex", string(hash(abspath(dir)), base=16))
+    cd != "" && (try; mkpath(cd); catch; cd = ""; end)
+    GPLTex(paths, dat, cd)
 end
 
-"""Resolve a texture name → (w,h,rgba) from the provider, or `nothing`."""
+"""Resolve a texture name → (w,h,rgba) from the provider, or `nothing`.  E67: raw-blob cache."""
 function tex_rgba(idx::GPLTex, name::AbstractString)
     key=lowercase(name)
+    cf = idx.cachedir == "" ? "" : joinpath(idx.cachedir, key*".rgba")
+    if cf != "" && isfile(cf)
+        try
+            io = open(cf); w = Int(read(io, Int32)); h = Int(read(io, Int32)); rgba = read(io); close(io)
+            length(rgba) == 4*w*h && return (w, h, rgba)
+        catch; end
+    end
+    r = _tex_rgba_decode(idx, key)
+    if r !== nothing && cf != ""
+        try; open(cf,"w") do io; write(io, Int32(r[1]), Int32(r[2]), r[3]); end; catch; end
+    end
+    return r
+end
+function _tex_rgba_decode(idx::GPLTex, key::AbstractString)
     p = get(idx.paths, key, "")
     if p != ""
         try
