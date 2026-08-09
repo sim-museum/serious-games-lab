@@ -584,3 +584,20 @@ placement exists beyond Watkins before extending the road oracle anywhere.
   (`parity/nurburgring_wg4_oracle_ab.jpg`; the green plates at s=17000 are the known
   N2-family scenery quads, separate item.)
 - DoD: Ring smoke default-config, Zandvoort race+5-AI smoke, brush + driven green.
+
+### E64 S10 (2026-08-09): MIRRORS AT SPEED — per-disc cameras ✅
+The S1 residual ("image slightly dominated by own tail") judged against gold cockpit
+frames at speed: gold's discs are ROAD-dominated with the rear tyre at the INNER edge and
+mirrored signage; ours were tail-centred with sky above.  A tilt A/B (−0.45/−0.8) proved
+a single eye-centred rear camera can never match — the tail fills frame centre at any
+pitch, because each real mirror sees backward-OUTWARD from its cowl position.
+- **Fix: one camera per disc** at the mirror's own position (`JM_MIRCAM_X/Y/Z`, z
+  mirrored), rendered into per-half FBO viewports (same pixel cost; the glass quads'
+  half-split UVs unchanged), with outward yaw (`JM_MIRROR_YAWOUT` 0.5) and a mild down
+  component (`JM_MIRROR_DROP` −0.2); per-half square aspect in `PROJ_MIRROR`.
+- **Verified vs gold t=40 s** (`parity/mirrors_e64_percam_ab.jpg`): tail now at the inner
+  edge only, road/scenery dominating both discs — gold's composition.  Residual: gold
+  reads the rear TYRE specifically where we read tail bodywork; horizon a touch higher
+  in gold — tune-by-eye territory, knobs shipped.
+- Hands at speed: gold frames show the same 10-and-2 gold layout S2 shipped — no delta.
+- DoD: race+5-AI smoke, brush + driven green.

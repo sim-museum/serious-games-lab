@@ -807,5 +807,11 @@ then cross-track replication. Sprint log lives in `SCREEN_PARITY.md` §E64.
   vocabulary (atog*/a_l_g* edge strips + the Karussell's Concrete) → oracle converges
   (mean 2.41→0.04 m over 4 passes), all positions on tarmac; **NURB joins WATGLEN in the
   ROADHAT default**. `parity/nurburgring_wg4_oracle_ab.jpg`.
-- Open: mirror + hands polish A/B vs gold video at speed; D12 polish (fold fine-tune at
-  other camera angles); N2-family scenery quads at Ring s≈17000.
+- **S10 ✅ (2026-08-09) "Mirrors at speed"** — the tail-dominated mirror residual closed
+  with PER-DISC CAMERAS at the cowl positions (per-half FBO viewports, same pixel cost):
+  tilt A/Bs proved an eye-centred rear camera can never match gold's backward-outward
+  view. Discs now road-dominated, tail at the inner edge = gold's composition
+  (`parity/mirrors_e64_percam_ab.jpg`). Hands at speed already match (S2). Knobs:
+  `JM_MIRCAM_*`, `JM_MIRROR_{DROP,YAWOUT,FOV}`.
+- Open: D12 polish (fold fine-tune at other camera angles); N2-family scenery quads at
+  Ring s≈17000; mirror micro-polish (tyre-vs-tail read at the inner edge).

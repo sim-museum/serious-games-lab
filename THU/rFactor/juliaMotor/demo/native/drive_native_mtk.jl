@@ -1572,15 +1572,23 @@ end
 # left-right flipped relative to a rear-facing camera).  One wide view feeds both discs
 # (left disc samples the left half).  NB the X flip reverses triangle winding, so the
 # object-pass face cull swaps its culled side in the mirror pass (drawworld flip arg).
+# E64 S10 (gold cockpit video at speed): the gold mirrors are ROAD-dominated — the rear tyre
+# sits at the INNER edge and the tail bodywork is mostly out of frame, because each real mirror
+# sees backward-OUTWARD from its cowl position.  A single eye-centred rear camera can never match
+# that (the tail fills frame centre at any tilt — verified by the −0.45/−0.8 drop A/B), so each
+# disc now gets its OWN camera at the mirror's position (per-half FBO viewports; same pixel cost).
+# Aspect is per-half (square).  JM_MIRCAM_X/Y/Z = camera rig position (z mirrored per side),
+# JM_MIRROR_YAWOUT = outward look component, JM_MIRROR_DROP = downward look component.
 const PROJ_MIRROR = Render.scalexyz(-1f0,1f0,1f0) *
-                    Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_MIRROR_FOV","78"))), Float32(MIRW)/Float32(MIRH), 0.35f0, 3000f0)
-function mirror_camera(cs, pitch=0.0, roll=0.0)
+                    Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_MIRROR_FOV","78"))), Float32(MIRW÷2)/Float32(MIRH), 0.35f0, 3000f0)
+function mirror_camera(cs, pitch=0.0, roll=0.0, side=1)
     wx,wy,wz = cs.x, cs.y, -cs.z
     R = Render.roty(Float32(cs.θ)) * Render.rotz(Float32(pitch)) * Render.rotx(Float32(roll))
     R3(a,b,c) = (w = R * Float32[a,b,c,0f0]; Float32[w[1],w[2],w[3]])
-    ex,ey = parse(Float32,get(ENV,"JM_EYE_X","0.46")), parse(Float32,get(ENV,"JM_EYE_Y","0.40"))
-    eye = Float32[wx,wy,wz] + R3(BODY_OFF[1]+ex, BODY_OFF[2]+ey, 0f0)
-    ctr = eye + R3(-4f0, 0.35f0, 0f0)      # backward + a touch up (the discs are tilted up toward the eye)
+    mx = parse(Float32,get(ENV,"JM_MIRCAM_X","0.55")); my = parse(Float32,get(ENV,"JM_MIRCAM_Y","0.33")); mz = parse(Float32,get(ENV,"JM_MIRCAM_Z","0.31"))
+    eye = Float32[wx,wy,wz] + R3(BODY_OFF[1]+mx, BODY_OFF[2]+my, side*mz)
+    drop = parse(Float32, get(ENV,"JM_MIRROR_DROP","-0.2")); yawout = parse(Float32, get(ENV,"JM_MIRROR_YAWOUT","0.5"))
+    ctr = eye + R3(-4f0, drop, side*yawout)
     PROJ_MIRROR * Render.lookat(eye, ctr, R3(0f0,1f0,0f0)), eye
 end
 
@@ -2687,15 +2695,21 @@ function main()
             glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE); glDepthFunc(GL_GEQUAL); glClearDepth(0.0)   # same reversed-Z as the main pass
             glBindFramebuffer(GL_FRAMEBUFFER, mirfbo); glViewport(0,0,MIRW,MIRH)
             glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
-            mvp, meye = mirror_camera(cs, cam_pitch, cam_roll)
-            Render.draw_sky(skyprog, skyvao, inv(mvp), meye, LIGHTDIR;
-                            cloud = GRADE.cloud, zenith = GRADE.zenith, horizon = GRADE.horizon)
-            Render.set_scene_uniforms(prog, meye; fognear=400f0, fogfar=2800f0,
-                                      fogcol=GRADE.horizon, suncol=GRADE.suncol, ambsky=GRADE.ambsky, sat=GRADE.sat)
-            Render.bind_shadow(prog, shadowtex, lightVP)
-            drawworld(mvp, meye, true)
-            for it in carItems; Render.draw(prog, it, mvp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # your own tail in the glass
-            for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, mvp, wheelmat(wx,wz,steer,r); bright=1.0, ambfill=0.75); end
+            # E64 S10: one camera PER DISC at the mirror's own cowl position (left half of the FBO =
+            # left/z+ mirror), so each glass sees backward-outward like the gold — tail at the inner
+            # edge only, road dominating.  The glass quads' per-half UV split is unchanged.
+            for (x0, side) in ((0, 1), (MIRW÷2, -1))
+                glViewport(x0, 0, MIRW÷2, MIRH)
+                mvp, meye = mirror_camera(cs, cam_pitch, cam_roll, side)
+                Render.draw_sky(skyprog, skyvao, inv(mvp), meye, LIGHTDIR;
+                                cloud = GRADE.cloud, zenith = GRADE.zenith, horizon = GRADE.horizon)
+                Render.set_scene_uniforms(prog, meye; fognear=400f0, fogfar=2800f0,
+                                          fogcol=GRADE.horizon, suncol=GRADE.suncol, ambsky=GRADE.ambsky, sat=GRADE.sat)
+                Render.bind_shadow(prog, shadowtex, lightVP)
+                drawworld(mvp, meye, true)
+                for it in carItems; Render.draw(prog, it, mvp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # your own tail at the inner edge
+                for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, mvp, wheelmat(wx,wz,steer,r); bright=1.0, ambfill=0.75); end
+            end
             glBindFramebuffer(GL_FRAMEBUFFER, 0)
         end
         # ---- main pass (reversed-Z: [0,1] clip, near→1/far→0, GEQUAL, clear 0) ----
