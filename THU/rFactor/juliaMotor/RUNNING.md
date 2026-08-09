@@ -44,6 +44,14 @@ GPL utilities: `/home/admin/gold standard/julia racer/gpl utilities/`.
 
 ## Current state (2026-08-08)
 
+- **E64 EPIC CLOSED (S1–S11, 2026-08-08/09).** Cockpit/chase parity delivered end to end:
+  live per-disc mirrors (S1/S10), gold-layout hands (S2), 5-track generalization (S3),
+  chase de-spider + parser-wide 0x11 LOD correctness (S4), Watkins forest restored (S5),
+  road-only placement oracle for Watkins + the Ring (S6/S9 — car on tarmac everywhere
+  surveyed), articulated rear suspension via the positioner-chain dump (S7/S8), Ring
+  tree-row texture fix + V8 re-classified authentic (S11). Composites under `parity/`;
+  sprint log `SCREEN_PARITY.md` §E64. Remaining polish on the general backlog.
+
 - **E64 S5+S6 closed (later same day) — WATKINS.** S5: WG3 "asset-limited" OVERTURNED —
   the gold's roadside autumn forest ships with the track; every tree class was dropped by
   pre-graze-fade rules; WATGLEN now keeps them as static graze-faded panels (0→30 panels,
