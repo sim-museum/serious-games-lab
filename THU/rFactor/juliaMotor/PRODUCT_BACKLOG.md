@@ -858,3 +858,27 @@ EOF
   cleared). Deferred to a quiet window: the A/B (then flip the default), and the one-time
   `jlracer.so` sysimage build (**run UNLOCKED at nice-19 per the new CONCURRENCY rule** —
   a 40-min gl-lock hold was killed mid-build; lesson recorded in CONCURRENCY.md + memory).
+
+## E68 — PO drive-feedback round (2026-08-09 re-drive of all 5 tracks; "drivable and a
+## huge improvement" overall). Items verbatim-derived, prioritised by PO emphasis:
+- **E68-CROWD (Zandvoort + Watkins + Ring)**: perpendicular spectator rows FLOAT above or
+  sit ON the track — "every perpendicular block I saw" (Zandvoort several places; Watkins
+  at the big bend; a block intruding between the Karussell and the back straight). → S1.
+- **E68-M1 (Monza)**: translucent haze planes fade whole forests out/in with view angle;
+  light/dark sheets appear over objects — suspect: uGraze applied to the REAL tree meshes
+  (designed for flat panels). No misplaced crowds on Monza ✓.
+- **E68-Z4**: Zandvoort signs mostly ILLEGIBLE vs the Ring's now-perfect signs — translate
+  the Ring's success (its signs are .dat scenery meshes; Zandvoort's are D6-dedup decals).
+- **E68-HILITE (Monza strong, Ring faint)**: white highlight in the road moving ~5 car
+  lengths ahead of the car — suspect the shadow-map box edge fade ("light carpet").
+- **E68-Z2**: shrubs near the Zandvoort bridge render WHITE (trowgl-family unresolved
+  texture?). **E68-Z3**: the left grandstand before S/F juts into the track. **E68-Z5**:
+  residual z-fighting T2R before the stands straight. **E68-W7**: guardrail z-fighting
+  throughout Watkins. **E68-W1**: semi-transparent veil left after Watkins S/F.
+- **E68-W3**: sleeves don't connect to gloves (S2 junction residual). **E68-W4**: bottom
+  half of the dash occluded by a green block in cockpit. **E68-W5**: nintendo view shows
+  no axles connecting wheels to chassis (D12 residual, now PO-visible).
+- **E68-S1**: Spa Burnenville banner = jaggy polygons. **E68-S2**: Spa oversized buildings
+  ON the track (drive through, see inside — E41 now REPRODUCED with a location). **E68-S3**:
+  Spa trees yellow that should be green. **E68-S4**: missing tree stands on the right
+  ~1 min before the hairpin (La Source) — the track start visible across the gap.
