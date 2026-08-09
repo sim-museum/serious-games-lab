@@ -825,6 +825,7 @@ then cross-track replication. Sprint log lives in `SCREEN_PARITY.md` §E64.
 - **S1 ✅ 7/8 "The phantom canopy"** — E52 re-scoped by capture-vs-gold: the worst "banking
   slab" reads are Lesmos forest STRIPS whose placement crosses the road; span-test added
   (29 crossers dropped, tree lines kept) → s=2100 matches gold's open sky.
-  `parity/monza_e65_canopy_ab.jpg`. Open: E65-2 (re-derive the 29 strips' true Euler —
-  they may be gold's flanking forest mis-rotated), s=1500 thin far strip, dark-sail
-  artifact near the pits, true banking-deck geometry read (the original E52 core).
+  `parity/monza_e65_canopy_ab.jpg`. E65 CLOSED S1–S5 (see SCREEN_PARITY §E65): real-mesh strips fixed the
+  canopy, slabs, Watkins forest density, the E52 underpass read AND (verified in E66 S1)
+  the pit dark-sail. Remaining minors: E46 crowd smear, waive candidates (V8/board-backs,
+  D11), D12 fold polish, mirror micro-read.

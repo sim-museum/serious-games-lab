@@ -698,3 +698,12 @@ The folded-panorama flattening was a Monza+Watkins-only phenomenon, now fully fi
 (S2), Monza real meshes + the E52 underpass read fixed (S3), Watkins real meshes + WG3
 fully closed (S4), fleet cleared by evidence (S5).  Remaining minors on the general
 backlog: Monza pit dark-sail artifact, E46 crowd smear, waive candidates.
+
+## E66 S1 (2026-08-09): "The dark sail" ✅ — already fixed by E65 S3, verified
+The grey triangular wedge over the Monza paddock (in every pit-straight capture since the
+S9 survey): three fresh vantages (s=60 cockpit + chase, s=100 comparison) show it GONE in
+every post-mesh capture, while the S9 pre-mesh shot shows it clearly — it was another
+flattened-strip artifact (a synthesized quad standing as a wedge), resolved as a side
+effect of E65 S3's real-mesh conversion.  Closed by verification, no code.  The pale
+band at the horizon behind the grandstands is the banking deck at distance (authentic
+combined-circuit geometry, correctly grey per E57).
