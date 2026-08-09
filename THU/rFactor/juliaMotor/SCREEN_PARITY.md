@@ -825,3 +825,17 @@ cull** (`SEC_FROM` marker; winding per OBJ_FF_CW; cull off before the objects pa
 Verified: slab GONE at s=18400, the Adenau-bridge underside intact at s=5150, mid-lap
 hillsides intact at s=11400 (`parity/nurburgring_e68_skirt_ab.jpg`).
 DoD: Ring race+5-AI smoke, brush + driven green.
+
+
+## E68 S10 (2026-08-09): THE FIGHTING GUARDRAILS ✅ (motion confirm = next PO drive)
+PO: "lots of z-fighting on guardrails throughout" (Watkins; residuals Ring/Zandvoort T2R).
+Two-step, honestly recorded: (1) a raw-mesh probe found 13%/10% exact coplanar duplicate
+Armco/fence tris — but the dedup pass built for them dropped just ONE post-extraction
+(the extract already collapses exact pairs; the pass stays as a cheap guard).  (2) The
+real mechanism is S9's: rails are modeled as OFFSET front+back faces GPL culls
+single-sided, and our two-sided draw let the back poke through at grazing angles.
+**Rail-family track parts now draw single-sided** (`TRACK_RAILCULL`, winding per
+OBJ_FF_CW; sign parts keep both faces so D6 handling is untouched).  Verified at four
+vantages — rails/fences all present, none culled from the road side
+(`parity/e68_railcull_4site.jpg`); shimmer is motion-visible, so final confirmation
+belongs to the PO's next drive.  DoD: Watkins race+5-AI smoke, brush + driven green.

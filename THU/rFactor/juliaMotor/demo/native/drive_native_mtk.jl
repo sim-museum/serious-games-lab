@@ -631,9 +631,38 @@ else
     const CAR = DriveCar(MODEL, TRKSURF; terrain=TERRAIN)    # racing ribbon from the .trk centreline
     println(TERRAIN, "  ", TRKSURF)
     tstamp("geometry extraction begins"); print("extracting geometry… "); flush(stdout)
-    const TRACKMAIN = Render.extract_gpl_car(ZTRK; track=true, mirror=true, exclude=("ltraymap","lshad","wiref_s"))
+    const TRACKMAIN0 = Render.extract_gpl_car(ZTRK; track=true, mirror=true, exclude=("ltraymap","lshad","wiref_s"))
+    # E68 S10 (PO: "lots of z-fighting on guardrails throughout" Watkins + residuals elsewhere):
+    # 13% of Watkins Armco tris and 10% of its fence tris are EXACT coplanar duplicates that the
+    # track path never collapsed.  Dedup rail/fence-family parts by quantized centroid+area
+    # (first face wins — identical geometry, so either is fine).  JM_RAIL_DEDUP=0 restores.
+    railfam(tx) = (lt = lowercase(tx); startswith(lt,"armco") || startswith(lt,"fenc") || startswith(lt,"stfce") ||
+                   startswith(lt,"sarmc") || startswith(lt,"yarmc") || startswith(lt,"gd_rail") || startswith(lt,"rail"))
+    const TRACKMAIN = get(ENV,"JM_RAIL_DEDUP","1") == "0" ? TRACKMAIN0 : begin
+        ndrop = Ref(0)
+        out = map(TRACKMAIN0) do part
+            railfam(part.tex) || return part
+            v = part.verts; keep = Float32[]; seen = Set{NTuple{4,Int}}()
+            for t in 1:33:length(v)-32
+                cx=(v[t]+v[t+11]+v[t+22])/3; cy=(v[t+1]+v[t+12]+v[t+23])/3; cz=(v[t+2]+v[t+13]+v[t+24])/3
+                ux=v[t+11]-v[t]; uy=v[t+12]-v[t+1]; uz=v[t+13]-v[t+2]
+                wx=v[t+22]-v[t]; wy=v[t+23]-v[t+1]; wz=v[t+24]-v[t+2]
+                a=0.5*sqrt((uy*wz-uz*wy)^2+(uz*wx-ux*wz)^2+(ux*wy-uy*wx)^2)
+                k=(round(Int,cx*50), round(Int,cy*50), round(Int,cz*50), round(Int,a*100))
+                if k in seen; ndrop[] += 1; else; push!(seen,k); append!(keep, @view v[t:t+32]); end
+            end
+            Render.TrackPart(keep, part.tex, part.col)
+        end
+        ndrop[] > 0 && println("  E68 S10: rail/fence dedup dropped ", ndrop[], " coplanar-duplicate tris")
+        out
+    end
     const TRACK = [TRACKMAIN; SECPARTS]
     const SEC_FROM = length(TRACKMAIN) + 1        # E68 S9b: trackItems[SEC_FROM:end] = landmass sections
+    # E68 S10b: rails/fences are modeled as OFFSET front+back faces; GPL culls the back single-
+    # sided, we drew both → grazing-angle poke-through = the PO's "z-fighting on guardrails
+    # throughout".  (Exact-duplicate dedup was a near-no-op: extraction already collapses those.)
+    # Per-part single-sided rendering for the rail family only — sign parts keep both faces (D6).
+    const TRACK_RAILCULL = Bool[railfam(p.tex) for p in TRACK]
 end
 # ---- E7 boundary audit (JM_BOUNDARY_TEST): confirm the terrain HAT BOUNDS the world ----
 # The game holds the car at the last in-world spot whenever it steps off the HAT, so the
@@ -2735,7 +2764,12 @@ function main()
             for (ti, it) in enumerate(trackItems)                        # ambfill lifts shadowed walls/fences out of the "carbonized" black under the flat overcast light
                 # E68 S9b: landmass SECTIONS draw single-sided like GPL — culls the dark edge-skirt
                 # slabs (Ring s≈18400) that our two-sided draw exposed.  Winding per OBJ_FF_CW.
-                if ti == secfrom; glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK); end
+                # E68 S10b: rail-family parts also draw single-sided (guardrail shimmer).
+                if ti == secfrom; glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK)
+                elseif ti < secfrom && (@isdefined TRACK_RAILCULL) && ti <= length(TRACK_RAILCULL)
+                    if TRACK_RAILCULL[ti]; glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK)
+                    else; glDisable(GL_CULL_FACE); end
+                end
                 if MONZA                                                 # E57: per-surface grade — its asphalt MIP is over-bright, its barriers carbonized
                     cat = TRACKCAT[ti]
                     b, a = cat === :road ? (MZ_ROAD_B, MZ_ROAD_A) : cat === :dark ? (MZ_DARK_B, MZ_DARK_A) :
