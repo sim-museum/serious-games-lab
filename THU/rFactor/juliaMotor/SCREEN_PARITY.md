@@ -770,3 +770,9 @@ no global cull/dedup config wins).  **Prescription (E60's, now scheduled): per-I
 road-facing face selection** — at OBJECTS build, keep the coplanar face whose normal
 (instance transform applied) points toward the centreline; needs a per-instance mesh
 variant cache.  E68-Z2 white shrubs join this item (same mechanism suspected).
+
+## E68 S5 (2026-08-09): THE SLEEVE-GLOVE JUNCTION ✅
+PO: "cockpit view sleeves don't connect to gloves."  Knob-only re-tune of the S2 ARMFIX:
+`JM_ARM_SY` 0.55→0.62 (less squash = longer sleeves) + `JM_ARM_DX` −0.05→−0.02 (forward
+nudge) — the sleeve tips now meet the glove bases (`parity/e68_sleeve_junction_ab.jpg`).
+Baked as defaults.  DoD: race+5-AI smoke, brush + driven green.

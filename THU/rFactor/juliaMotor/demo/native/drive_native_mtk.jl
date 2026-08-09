@@ -1494,9 +1494,9 @@ const ARMS = get(ENV,"JM_ARMS","1") != "0"
 # land at lap height, z untouched (the wide ±0.37 elbows match gold's frame-edge sleeves).
 const ARMFIX = begin
     px, py = parse(Float32, get(ENV,"JM_ARM_X0","0.74")), parse(Float32, get(ENV,"JM_ARM_Y0","0.26"))
-    sy     = parse(Float32, get(ENV,"JM_ARM_SY","0.55"))
+    sy     = parse(Float32, get(ENV,"JM_ARM_SY","0.62"))   # E68 S5: sleeves reach the gloves (PO: "sleeves don't connect")
     sz     = parse(Float32, get(ENV,"JM_ARM_SZ","0.55"))   # tuck the ±0.37 elbows toward the body sides
-    dx, dy = parse(Float32, get(ENV,"JM_ARM_DX","-0.05")), parse(Float32, get(ENV,"JM_ARM_DY","-0.06"))   # capture-tuned (fix4): elbows low in the frame corners, sleeve tips at the gloves
+    dx, dy = parse(Float32, get(ENV,"JM_ARM_DX","-0.02")), parse(Float32, get(ENV,"JM_ARM_DY","-0.06"))   # E68 S5 re-tune: junction closed (was fix4 -0.05)
     Render.translate(Float32[dx, dy, 0]) *
         Render.translate(Float32[px, py, 0]) * Render.scalexyz(-1f0, -sy, sz) * Render.translate(Float32[-px, -py, 0])
 end
