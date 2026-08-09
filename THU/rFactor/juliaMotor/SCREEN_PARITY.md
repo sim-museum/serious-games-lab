@@ -662,3 +662,19 @@ diagonal across the fold.**
   (multi-segment folded strip, as GPL draws it) instead of a synthesized flat quad — that
   renders the fold correctly AND makes the crossing test moot for correctly-shaped strips.
 - DoD: Monza + Watkins captures, race+5-AI smoke, brush + driven green.
+
+### E65 S3 (2026-08-09): RENDER THE FOLD ✅ — Monza's forest is real geometry now
+E65-3 executed: the `treeish()` rule FORCED every tree strip onto the synthesized-flat-quad
+path even when `extract_gpl_car` returned real geometry — the E22-era anti-wall move,
+written before graze-fade existed.  On MONZA, tree strips with real geometry now take the
+MESH path (`JM_FLATTREES=1` restores the panels; other tracks unchanged this sprint).
+- **Verified vs gold (`parity/monza_e65_foldedmesh_ab.jpg`):** s=2100 now shows dense
+  forest walls framing an open corridor with a slight canopy overhang — remarkably close
+  to the gold frame; s=1500's slabs became continuous tree lines; the s=3300 underpass
+  reads as a proper bridge deck (the original E52 core read, fixed); pit straight intact.
+  114 objects + 19 billboards + 1 remaining forest panel (was ~53 + 29 flattened strips).
+- The S1 span-test now guards only genuinely-flat panels (the mesh path bypasses it); the
+  S2 folded-panorama finding explained WHY no flat-quad treatment could ever work.
+- **Follow-up:** extend the real-mesh treatment to WATKINS (its "distant strips, not tall
+  close trees" note is plausibly the same flattening artifact) with its own gold check.
+- DoD: Monza race+5-AI smoke, Zandvoort smoke, brush + driven green.

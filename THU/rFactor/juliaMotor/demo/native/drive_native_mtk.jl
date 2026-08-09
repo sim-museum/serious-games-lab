@@ -1073,7 +1073,13 @@ let objnames=Set{String}()
         if p == ""; objmesh[inst.name]=nothing; continue; end
         try
             full = Render.extract_gpl_car(p; track=true, mirror=true)   # un-stripped: decides stub vs geometry
-            if isempty(full) || treeish(inst.name)         # a billboard stub (tree/sprite) — or a tree panel forced to one
+            # E65 S3: the treeish() force flattened every tree strip to a synthesized quad even when
+            # the .3do carries REAL geometry — the E22-era anti-wall move, pre-graze-fade.  Monza's
+            # strips are FOLDED PANORAMAS (S2 finding) that only render correctly as their real
+            # multi-segment mesh, so on MONZA a tree strip with real geometry takes the MESH path
+            # (graze-fade applies via istree(); JM_FLATTREES=1 restores the flat panels).
+            force_flat = treeish(inst.name) && !(MONZA && get(ENV,"JM_FLATTREES","0") == "0")
+            if isempty(full) || force_flat                 # a billboard stub (tree/sprite) — or a tree panel forced to one
                 h, wid, strs, aax = Render.billboard_stub(p); bb=nothing
                 for s in strs; bb = Render.build_billboard(s, TEXIDX); bb !== nothing && break; end
                 bbinfo[inst.name] = bb===nothing ? nothing : (bb[1], bb[2], bb[3], h, wid, aax)   # E65 S2: + authored axis angle
