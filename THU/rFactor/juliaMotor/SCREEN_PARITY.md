@@ -678,3 +678,13 @@ MESH path (`JM_FLATTREES=1` restores the panels; other tracks unchanged this spr
 - **Follow-up:** extend the real-mesh treatment to WATKINS (its "distant strips, not tall
   close trees" note is plausibly the same flattening artifact) with its own gold check.
 - DoD: Monza race+5-AI smoke, Zandvoort smoke, brush + driven green.
+
+### E65 S4 (2026-08-09): WATKINS GETS ITS TREES BACK ✅ — real meshes, E22 site clean
+WATGLEN joins the real-mesh path (`JM_FLATTREES=1` restores panels).  Verified
+(`parity/watkins_e65_foldedmesh_ab.jpg`): s=1200 rich close autumn trees BOTH sides
+(vs the S5-era distant flat strips); s=300 forested where E63 recorded "barren";
+**the pit straight — the original E22 wall/smear site — stays clean** (KENDALL banner,
+infield forest, no artifacts): the mesh path + graze-fade holds where the flat panels
+never could.  118 objects, 0 flattened panels remaining.  WG3's residual ("distant
+strips, not tall close trees") was indeed the flattening artifact, now closed.
+DoD: Watkins race+5-AI smoke, brush + driven green.

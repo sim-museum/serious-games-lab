@@ -1078,7 +1078,7 @@ let objnames=Set{String}()
             # strips are FOLDED PANORAMAS (S2 finding) that only render correctly as their real
             # multi-segment mesh, so on MONZA a tree strip with real geometry takes the MESH path
             # (graze-fade applies via istree(); JM_FLATTREES=1 restores the flat panels).
-            force_flat = treeish(inst.name) && !(MONZA && get(ENV,"JM_FLATTREES","0") == "0")
+            force_flat = treeish(inst.name) && !((MONZA || WATGLEN) && get(ENV,"JM_FLATTREES","0") == "0")   # E65 S4: Watkins joins — same folded-panorama family
             if isempty(full) || force_flat                 # a billboard stub (tree/sprite) — or a tree panel forced to one
                 h, wid, strs, aax = Render.billboard_stub(p); bb=nothing
                 for s in strs; bb = Render.build_billboard(s, TEXIDX); bb !== nothing && break; end
