@@ -688,3 +688,13 @@ infield forest, no artifacts): the mesh path + graze-fade holds where the flat p
 never could.  118 objects, 0 flattened panels remaining.  WG3's residual ("distant
 strips, not tall close trees") was indeed the flattening artifact, now closed.
 DoD: Watkins race+5-AI smoke, brush + driven green.
+
+### E65 S5 (2026-08-09): THE REST OF THE FLEET ✅ — cleared by probe; EPIC CLOSED
+`JM_MESHTREES=1` forced the real-mesh path on Zandvoort + Spa: object counts and captures
+BYTE-MATCH their baselines — their `tree*` stubs are true billboards (empty extractions),
+so the force never fires; Nürburgring's trees already travel the .dat scenery mesh path.
+The folded-panorama flattening was a Monza+Watkins-only phenomenon, now fully fixed.
+**E65 EPIC CLOSED (S1–S5):** phantom canopy dropped (S1), folded-panorama root cause
+(S2), Monza real meshes + the E52 underpass read fixed (S3), Watkins real meshes + WG3
+fully closed (S4), fleet cleared by evidence (S5).  Remaining minors on the general
+backlog: Monza pit dark-sail artifact, E46 crowd smear, waive candidates.
