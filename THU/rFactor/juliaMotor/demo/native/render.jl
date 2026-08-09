@@ -308,6 +308,7 @@ uniform vec3 uAmbSky;     // up-facing sky-fill colour (cool blue on the sunny g
 uniform float uSat;       // output saturation multiplier (>1 = punchier sunny colours; 1 = neutral)
 uniform vec3 uSkyTint;    // GPL horizon-ring multiply (warm/brighten the overcast band toward sunny)
 uniform vec3 uTint;       // per-draw colour multiply (default white = no-op; e.g. de-blue the crowd MIP)
+uniform int uMirrorGlass; // 1 for the cockpit mirror glass quads → unlit round-masked RTT sample (E64)
 float shadow(vec3 N){
   vec3 lp = vLS.xyz/vLS.w*0.5+0.5;
   if(lp.z>1.0 || lp.x<0.0||lp.x>1.0||lp.y<0.0||lp.y>1.0) return 1.0;
@@ -340,6 +341,11 @@ void main(){
     } else if(t.a < 0.04) discard;              // blended/opaque: plain soft alpha-to-coverage
   }
   if(uSky==1){ o=vec4(t.rgb*uSkyTint, 1.0); return; }     // horizon ring: unlit, unfogged backdrop (tinted/brightened per grade)
+  if(uMirrorGlass==1){                                    // E64 live mirror glass: round-masked rear-view RTT sample, unlit
+    vec2 d=vC.xy-vec2(0.5);                               // vC.xy = disc-local 0..1 coords (colour attr repurposed by the glass quad)
+    if(dot(d,d)>0.25) discard;                            // round glass on a round disc
+    o=vec4(t.rgb*uTint, 1.0); return;
+  }
   vec3 N = dot(vN,vN) > 1e-6 ? normalize(vN) : vec3(0.0,1.0,0.0);  // guard zero/degenerate normals
   if(!gl_FrontFacing) N=-N;
   float diff=max(dot(N,normalize(uLightDir)),0.0)*shadow(N);
@@ -474,6 +480,22 @@ function make_scene_fbo(w, h; samples=4)
     glBindFramebuffer(GL_FRAMEBUFFER, 0)
     (ms[], rf[], rt[])
 end
+# E64: offscreen rear-view target for the cockpit mirrors — single-sample RGBA8 colour
+# TEXTURE (sampled by the mirror glass quads) + 32F depth (the mirror pass runs the same
+# reversed-Z conventions as the main pass, so it needs the same depth precision).
+function make_mirror_fbo(w, h)
+    fbo=Ref{GLuint}(); glGenFramebuffers(1,fbo); glBindFramebuffer(GL_FRAMEBUFFER, fbo[])
+    tex=Ref{GLuint}(); glGenTextures(1,tex); glBindTexture(GL_TEXTURE_2D, tex[])
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,w,h,0,GL_RGBA,GL_UNSIGNED_BYTE,C_NULL)
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR)
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE)
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex[], 0)
+    d=Ref{GLuint}(); glGenRenderbuffers(1,d); glBindRenderbuffer(GL_RENDERBUFFER, d[])
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, w, h)
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, d[])
+    glBindFramebuffer(GL_FRAMEBUFFER, 0)
+    (fbo[], tex[])
+end
 # resolve the multisampled scene into the single-sample texture, then FXAA to screen
 function resolve_and_fxaa(fxaaprog, vao, msfbo, resolvefbo, resolvetex, w, h)
     glBindFramebuffer(GL_READ_FRAMEBUFFER, msfbo); glBindFramebuffer(GL_DRAW_FRAMEBUFFER, resolvefbo)
@@ -550,6 +572,7 @@ function set_scene_uniforms(prog, campos; fognear=300f0, fogfar=2400f0,
     glUniform1f(glGetUniformLocation(prog,"uFogNear"),Float32(fognear))
     glUniform1f(glGetUniformLocation(prog,"uFogFar"),Float32(fogfar))
     glUniform3f(glGetUniformLocation(prog,"uTint"),1f0,1f0,1f0)   # frame default white (draws that bypass draw(), e.g. the horizon ring)
+    glUniform1i(glGetUniformLocation(prog,"uMirrorGlass"),0)      # frame default off (same bypass-draw safety)
 end
 
 # ---- 2D HUD: flat-coloured quads in pixel space (7-segment digits + bars), no
@@ -1242,9 +1265,10 @@ function build_track(parts, texidx)
     items
 end
 setmat(prog,name,M)=glUniformMatrix4fv(glGetUniformLocation(prog,name),1,GL_FALSE,M)
-function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0, graze::Bool=false, alpha::Real=1.0, tint=(1f0,1f0,1f0))
+function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0, graze::Bool=false, alpha::Real=1.0, tint=(1f0,1f0,1f0), mirrorglass::Bool=false)
     setmat(prog,"uVP",vp); setmat(prog,"uModel",model)
     glUniform3f(glGetUniformLocation(prog,"uTint"), Float32(tint[1]), Float32(tint[2]), Float32(tint[3]))   # per-draw colour multiply (default white = no-op)
+    glUniform1i(glGetUniformLocation(prog,"uMirrorGlass"), mirrorglass ? 1 : 0)   # E64: live mirror glass quad
     glUniform1f(glGetUniformLocation(prog,"uBright"), Float32(bright))
     glUniform1f(glGetUniformLocation(prog,"uSpec"), Float32(spec))
     glUniform1f(glGetUniformLocation(prog,"uAlpha"), Float32(alpha))

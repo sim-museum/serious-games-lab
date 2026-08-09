@@ -330,7 +330,7 @@ gold videos confirmed the real gaps and produced these outcomes:
 | Z-CK2 | Gauge dials dim/dark; gold crisp white-on-black | **fixed** — `JM_DASH_B/A` 1.0/0.60 → 1.2/0.9 (dial faces legible) |
 | Z-CH1 | Front wheels splayed outboard of the tub in chase | **improved** — `WTRACK_F` 0.90 → 0.78 (~real 1.52 m track); tucks them in |
 | D12 | Chase car SKELETAL (wheels detached, engine exposed) | **root-caused, asset-LOD-limited** — beyond-0.85 lateral is real rear suspension/exhausts MIXED with GPL-hidden-LOD garbage that sprawls as "chrome spider-legs"; a parser drop-by-hide-marker (offset>5 m) was tried+reverted (cut the car 2253→387 tris — this model routes real body through large-offset positioners posmat clamps to origin). Needs GPL's real per-LOD selection. `front1/front3` cyan placeholders now excluded; `JM_CARP_MAXLAT` A/B knob added (default 0.85) |
-| Z-CK3 | Mirrors are dark discs; gold shows live reflections | **open — RTT feature** (renderer has FBO infra `make_scene_fbo`; needs a rear-view scene pass, ~invasive hot-loop refactor + GPU doubling; scoped, not yet built) |
+| Z-CK3 | Mirrors are dark discs; gold shows live reflections | **FIXED — E64 S1 (2026-08-08): LIVE mirror RTT.** See §E64 below |
 | Z-CK4 | No gloved hands on wheel; gold has them | **open — mesh refit** (`JM_HANDS=1` still yields giant silver arms; the static arm mesh must be re-fitted to the re-placed wheel/eye) |
 | Z-OBJ | Crowd/signage/floating-object parity (V6-V10, E46) | **not yet worked** this pass |
 
@@ -369,3 +369,31 @@ across every track (the dominant object gap). Plus MZ3 slab fixed, E44/tree-curt
 already-resolved/not-reproduced. Remaining are asset-deep (Watkins WG3 forest; the D12 chase
 body) or minor (blank board backs, N2 quad). Commits: `ebda286` `45d393d` `4b34143` (+docs).
 Next phase per PO priority: **E64 cockpit/chase** (mirror RTT, hands refit, chase body).
+
+## E64 — cockpit/chase parity. S1 (2026-08-08): LIVE MIRRORS (RTT) ✅
+The PO-requested real mirror reflections (Z-CK3, open since E19's "dark discs"). Every
+frame in the cockpit view, the world is rendered a second time from the driver's eye
+looking BACKWARD into a small 384×192 FBO (`make_mirror_fbo`), **X-mirrored in clip
+space** like a real mirror (`PROJ_MIRROR = scalexyz(-1,1,1)·perspective_revz`, same
+reversed-Z as the main pass); a round-masked GLASS QUAD on each disc (`uMirrorGlass`
+shader path, disc-local coords in the colour attr) samples its half of that view — left
+disc ← left half. The quads are built at load from the MIRRORP mesh itself (per-disc bbox,
+thinnest axis = glass normal, nudged 4 mm toward the eye) so they land exactly on the
+discs with no hand-placed geometry.
+- **Enabler refactor:** the world draw (horizon/track/objects/forest panels/billboards/AI)
+  is now one closure `drawworld(vp, eye, flip)` shared by the main + mirror passes — the
+  `flip` arg swaps the object-pass culled side because the clip-space X flip reverses
+  winding. Chase capture byte-plausibly unchanged (re-verified this sprint).
+- **What the glass shows:** live rear world incl. the car's own tail + wheels, per-track
+  grade/sky/fog/shadows (same uniforms both passes); content verified to CHANGE with lap
+  position (s=600 pit complex vs s=1500 dune bank behind — proves live, not baked).
+- **Cost/gating:** the pass runs only in cockpit view, at 384×192 (vertex-bound; no
+  measurable frame cost seen in smoke). `JM_MIRROR_RTT=0` restores the old silver discs;
+  `JM_MIRROR_FOV` (78°) tunes the rear view.
+- **Verified:** cockpit captures `scratchpad/mirror_rtt/mir_s600·s1500` (both discs live,
+  round-masked, horizon level, seen through the plexiglass tint as in gold); chase
+  regression shot clean; DoD — Zandvoort `JM_SMOKE` race+5-AI exit 0, `test_brush_slip` ✓,
+  `test_vehicle_driven` ✓ (`test_corner_tyre:44` legacy-MF failure pre-existing, unchanged).
+- **Still open in E64:** driver-hands mesh refit (Z-CK4), chase-body LOD (D12,
+  asset-limited); minor mirror polish (image slightly dominated by own tail — GPL-authentic
+  but worth an A/B against the gold cockpit video at speed next pass).

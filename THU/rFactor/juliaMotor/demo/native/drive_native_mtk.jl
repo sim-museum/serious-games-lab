@@ -1241,6 +1241,52 @@ carItems   = Render.build_gpl(CARP, GPLTEX)        # Lotus body, GPL .mip textur
 gaugeItems = Render.build_gpl(GAUGEP, GPLTEX)      # gauge cluster (drawn near-unlit so it reads)
 windItems  = Render.build_gpl(WINDP, GPLTEX)       # plexiglass windscreen (drawn last, transparent)
 mirrorItems = Render.build_gpl(MIRRORP, GPLTEX)    # rear-view mirrors (re-placed on the cowl, MIRRORMAT)
+# ---- E64: LIVE mirrors — a small rear-view RTT + a glass quad on each disc ----------------
+# One wide rear view is rendered per frame into a MIRW×MIRH FBO (X-mirrored in clip space,
+# like a real mirror); the LEFT disc samples the left half, the RIGHT disc the right half.
+# Each glass quad is built in the SAME raw-mesh frame as MIRRORP (drawn with
+# bodyModel*MIRRORMAT) so it lands exactly on its disc: per-disc bbox (the discs sit at raw
+# z ≈ ∓0.36) → thinnest bbox axis = the glass normal, quad spans the two in-plane axes,
+# nudged 4 mm along the normal toward the eye so it sits ON the glass, not in it.  vC.xy
+# carries disc-local 0..1 coords for the round mask (uMirrorGlass in the FS).
+const MIRROR_RTT = get(ENV,"JM_MIRROR_RTT","1") != "0"    # JM_MIRROR_RTT=0 → old static silver discs
+const MIRW, MIRH = 384, 192
+(mirfbo, mirtex) = MIRROR_RTT ? Render.make_mirror_fbo(MIRW, MIRH) : (GLuint(0), GLuint(0))
+const MIRROR_GLASS_FRAC = 0.88f0                          # glass diameter as a fraction of the disc (keeps the rim)
+function mirror_glass_quads(parts, tex)
+    items = Render.Item[]
+    for side in (-1, 1)
+        xmn=ymn=zmn=Inf32; xmx=ymx=zmx=-Inf32
+        for p in parts
+            v = p.verts
+            for i in 1:11:length(v)-10
+                sign(v[i+2]) == side || continue
+                xmn=min(xmn,v[i]); xmx=max(xmx,v[i]); ymn=min(ymn,v[i+1]); ymx=max(ymx,v[i+1]); zmn=min(zmn,v[i+2]); zmx=max(zmx,v[i+2])
+            end
+        end
+        isfinite(xmn) || continue
+        c  = Float32[(xmn+xmx)/2, (ymn+ymx)/2, (zmn+zmx)/2]
+        e  = Float32[xmx-xmn, ymx-ymn, zmx-zmn]
+        na = argmin(e)                                     # thinnest bbox axis = glass normal
+        ua, va = na==1 ? (3,2) : na==2 ? (3,1) : (1,2)     # in-plane axes (u = lateral-ish, v = up-ish)
+        eyerig = Float32[0.46, 0.40, 0]                    # driver eye in the rig frame (JM_EYE_* defaults)
+        ns = Float32(sign(eyerig[na] - c[na])); ns == 0 && (ns = -1f0)   # face the glass toward the eye
+        hu = e[ua]/2 * MIRROR_GLASS_FRAC; hv = e[va]/2 * MIRROR_GLASS_FRAC
+        nrm = Float32[0,0,0]; nrm[na] = ns
+        u0, u1 = side < 0 ? (0f0, 0.5f0) : (0.5f0, 1f0)    # left disc ← left half of the rear view
+        q = Float32[]
+        corner(mu, mv) = begin
+            p = copy(c); p[na] += ns*(e[na]/2 + 0.004f0)
+            p[ua] += (mu-0.5f0)*2hu*ns; p[va] += (mv-0.5f0)*2hv   # ns also flips u so the image reads upright from the viewing side
+            append!(q, p); append!(q, nrm); push!(q, mu, mv, 0f0, u0+(u1-u0)*mu, mv)
+        end
+        for (mu,mv) in ((0f0,0f0),(1f0,0f0),(1f0,1f0), (0f0,0f0),(1f0,1f0),(0f0,1f0)); corner(mu,mv); end
+        vao, n = Render.upload(q)
+        push!(items, Render.Item(vao, n, tex, (1f0,1f0,1f0)))
+    end
+    items
+end
+mirGlassItems = MIRROR_RTT ? mirror_glass_quads(MIRRORP, mirtex) : Render.Item[]
 fsuspItems  = Render.build_gpl(FSUSPP, GPLTEX)     # front suspension wishbones (visible through the screen)
 driverItems = Render.build_gpl(DRIVERP, GPLTEX)    # driver figure — drawn only in chase view (E36)
 helmItems   = Render.build_gpl(HELMP, GPLTEX)      # Clark-blue helmet at the head pivot (chase view, E60)
@@ -1380,6 +1426,23 @@ function camera(cs, pitch=0.0, roll=0.0)
     ctr = eye + R3(4f0, -drop, 0f0)                                       # look forward + a slight downward drop
     up  = R3(0f0, 1f0, 0f0)                                               # camera up = the body's up (= surface normal)
     PROJ_COCKPIT * Render.lookat(eye, ctr, up), eye                       # WIDE FOV cockpit (GPL look)
+end
+
+# ---- E64: rear-view camera for the mirror RTT — same eye as the cockpit camera, looking
+# BACKWARD, X-mirrored in clip space like a real mirror (a mirror shows the rear world
+# left-right flipped relative to a rear-facing camera).  One wide view feeds both discs
+# (left disc samples the left half).  NB the X flip reverses triangle winding, so the
+# object-pass face cull swaps its culled side in the mirror pass (drawworld flip arg).
+const PROJ_MIRROR = Render.scalexyz(-1f0,1f0,1f0) *
+                    Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_MIRROR_FOV","78"))), Float32(MIRW)/Float32(MIRH), 0.35f0, 3000f0)
+function mirror_camera(cs, pitch=0.0, roll=0.0)
+    wx,wy,wz = cs.x, cs.y, -cs.z
+    R = Render.roty(Float32(cs.θ)) * Render.rotz(Float32(pitch)) * Render.rotx(Float32(roll))
+    R3(a,b,c) = (w = R * Float32[a,b,c,0f0]; Float32[w[1],w[2],w[3]])
+    ex,ey = parse(Float32,get(ENV,"JM_EYE_X","0.46")), parse(Float32,get(ENV,"JM_EYE_Y","0.40"))
+    eye = Float32[wx,wy,wz] + R3(BODY_OFF[1]+ex, BODY_OFF[2]+ey, 0f0)
+    ctr = eye + R3(-4f0, 0.35f0, 0f0)      # backward + a touch up (the discs are tilted up toward the eye)
+    PROJ_MIRROR * Render.lookat(eye, ctr, R3(0f0,1f0,0f0)), eye
 end
 
 # ---- E25: replay cinematic cameras — GPL-style angles for the multi-cam replay viewer ----
@@ -2426,6 +2489,76 @@ function main()
                 for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw_depth(dp, it, aiWheel(p,wx,wz,r)); end
             end
         end
+        # ---- shared world draw: everything both the main pass and the E64 mirror pass see.
+        # flip=true = the X-mirrored rear view: the clip-space flip reverses winding, so the
+        # object-pass face cull swaps its culled side (same faces kept, opposite GL name).
+        drawworld = function(vp_, eye_, flip::Bool)
+            HORIZON_RING === nothing || Render.draw_horizon(prog, HORIZON_RING, vp_, eye_; tint=GRADE.ringtint)   # GPL horizon ring backdrop
+            # E60 (D6, 260801 gold video): TRACK-mesh signs (VREDESTEIN at Tarzan …) drew with uBackFlip=0, so
+            # when the coplanar dedup keeps the away-facing decal the text renders MIRRORED.  Objects already
+            # un-mirror back faces; give the track mesh the same treatment (road/kerb back faces are unseen).
+            glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 1)
+            for (ti, it) in enumerate(trackItems)                        # ambfill lifts shadowed walls/fences out of the "carbonized" black under the flat overcast light
+                if MONZA                                                 # E57: per-surface grade — its asphalt MIP is over-bright, its barriers carbonized
+                    cat = TRACKCAT[ti]
+                    b, a = cat === :road ? (MZ_ROAD_B, MZ_ROAD_A) : cat === :dark ? (MZ_DARK_B, MZ_DARK_A) :
+                           cat === :bank ? (MZ_BANK_B, MZ_BANK_A) : (MZ_OTHER_B, MZ_OTHER_A)
+                    Render.draw(prog, it, vp_, Render.ident(); bright=b, ambfill=a)
+                else
+                    Render.draw(prog, it, vp_, Render.ident(); bright=0.72, ambfill=0.34)
+                end
+            end
+            if OBJ_CULLFACE                                           # E60: GPL culls single-sided faces —
+                # double-sided signs keep both decals (dedup=:orient), each visible only from its own side.
+                # NEVER touch glFrontFace: the two-sided-Lambert shader keys off gl_FrontFacing globally
+                # (flipping the convention darkened the whole world) — pick the culled SIDE instead.
+                # GPL is D3D-era (CW front); after the winding-preserving remap those faces are GL "back",
+                # so cull GL_FRONT to keep them.  JM_OBJ_FF=ccw culls GL_BACK if a track's data disagrees.
+                glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK)
+                glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
+            end
+            for (items,mat,grz,opos,onm) in OBJECTS                   # trackside objects (trees graze-fade; uBackFlip stays 1 when un-culled)
+                (eye_[1]-opos[1])^2+(eye_[2]-opos[2])^2+(eye_[3]-opos[3])^2 > OBJ_CULL2 && continue   # distance cull
+                ob, oa = 1.05, 0.55                                    # default object grade (grandstands/buildings)
+                if MONZA                                               # E57: tone the combined-circuit paved/banking object surfaces
+                    g = monza_obj_grade(onm)
+                    g === :road && ((ob, oa) = (MZ_ROAD_B, MZ_ROAD_A)); g === :bank && ((ob, oa) = (MZ_BANK_B, MZ_BANK_A))
+                end
+                otint = is_crowd_obj(onm) ? CROWD_TINT : (1f0,1f0,1f0)   # E46: warm/de-blue the over-blue grandstand crowd MIP
+                for it in items; Render.draw(prog, it, vp_, mat; bright=ob, ambfill=oa, graze=grz, tint=otint); end   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
+            end
+            for (it,pos,w,h,yaw) in STATICTREES                      # wide forest-edge panels (authored yaw, graze-fade)
+                (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > BB_CULL2 && continue
+                Render.draw(prog, it, vp_, Render.translate(Float32[pos[1],pos[2],pos[3]])*Render.roty(yaw)*Render.scalexyz(w,h,1f0); bright=1.3, ambfill=0.8, graze=true)   # E63/MZ3: the comment always claimed graze-fade but the call never passed it → a wide Monza forest strip seen EDGE-ON rendered as a dark triangular SLAB at the S/F. graze=true fades edge-on quads (uGraze) so the strip shows face-on as a tree-line and vanishes edge-on
+            end
+            OBJ_CULLFACE && glDisable(GL_CULL_FACE)
+            glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
+            for (it,pos,w,h) in BILLBOARDS                            # trees/sprites
+                (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > BB_CULL2 && continue       # distance cull
+                Render.draw(prog, it, vp_, Render.billboard_model(pos,w,h,eye_); bright=1.55, ambfill=0.85)  # sprites read near-unlit (colorful signs, not "burned")
+            end
+            for (p, cm) in zip(ai_poses, AICHASSIS)                 # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper)
+                for it in cm.body; Render.draw(prog, it, vp_, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end
+                for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp_, aiWheel(p,wx,wz,r)); end
+            end
+        end
+        # ---- E64 mirror pass: the rear view into the mirror RTT (cockpit view only) ----
+        mirror_live = MIRROR_RTT && CTL.view == 0 && !REPLAY
+        if mirror_live
+            glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE); glDepthFunc(GL_GEQUAL); glClearDepth(0.0)   # same reversed-Z as the main pass
+            glBindFramebuffer(GL_FRAMEBUFFER, mirfbo); glViewport(0,0,MIRW,MIRH)
+            glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
+            mvp, meye = mirror_camera(cs, cam_pitch, cam_roll)
+            Render.draw_sky(skyprog, skyvao, inv(mvp), meye, LIGHTDIR;
+                            cloud = GRADE.cloud, zenith = GRADE.zenith, horizon = GRADE.horizon)
+            Render.set_scene_uniforms(prog, meye; fognear=400f0, fogfar=2800f0,
+                                      fogcol=GRADE.horizon, suncol=GRADE.suncol, ambsky=GRADE.ambsky, sat=GRADE.sat)
+            Render.bind_shadow(prog, shadowtex, lightVP)
+            drawworld(mvp, meye, true)
+            for it in carItems; Render.draw(prog, it, mvp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # your own tail in the glass
+            for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, mvp, wheelmat(wx,wz,steer,r); bright=1.0, ambfill=0.75); end
+            glBindFramebuffer(GL_FRAMEBUFFER, 0)
+        end
         # ---- main pass (reversed-Z: [0,1] clip, near→1/far→0, GEQUAL, clear 0) ----
         glViewport(0,0,W,H)
         glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE); glDepthFunc(GL_GEQUAL); glClearDepth(0.0)
@@ -2435,50 +2568,7 @@ function main()
         Render.set_scene_uniforms(prog, eye; fognear=400f0, fogfar=2800f0,
                                   fogcol=GRADE.horizon, suncol=GRADE.suncol, ambsky=GRADE.ambsky, sat=GRADE.sat)
         Render.bind_shadow(prog, shadowtex, lightVP)
-        HORIZON_RING === nothing || Render.draw_horizon(prog, HORIZON_RING, vp, eye; tint=GRADE.ringtint)   # GPL horizon ring backdrop
-        # E60 (D6, 260801 gold video): TRACK-mesh signs (VREDESTEIN at Tarzan …) drew with uBackFlip=0, so
-        # when the coplanar dedup keeps the away-facing decal the text renders MIRRORED.  Objects already
-        # un-mirror back faces; give the track mesh the same treatment (road/kerb back faces are unseen).
-        glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 1)
-        for (ti, it) in enumerate(trackItems)                        # ambfill lifts shadowed walls/fences out of the "carbonized" black under the flat overcast light
-            if MONZA                                                 # E57: per-surface grade — its asphalt MIP is over-bright, its barriers carbonized
-                cat = TRACKCAT[ti]
-                b, a = cat === :road ? (MZ_ROAD_B, MZ_ROAD_A) : cat === :dark ? (MZ_DARK_B, MZ_DARK_A) :
-                       cat === :bank ? (MZ_BANK_B, MZ_BANK_A) : (MZ_OTHER_B, MZ_OTHER_A)
-                Render.draw(prog, it, vp, Render.ident(); bright=b, ambfill=a)
-            else
-                Render.draw(prog, it, vp, Render.ident(); bright=0.72, ambfill=0.34)
-            end
-        end
-        if OBJ_CULLFACE                                           # E60: GPL culls single-sided faces —
-            # double-sided signs keep both decals (dedup=:orient), each visible only from its own side.
-            # NEVER touch glFrontFace: the two-sided-Lambert shader keys off gl_FrontFacing globally
-            # (flipping the convention darkened the whole world) — pick the culled SIDE instead.
-            # GPL is D3D-era (CW front); after the winding-preserving remap those faces are GL "back",
-            # so cull GL_FRONT to keep them.  JM_OBJ_FF=ccw culls GL_BACK if a track's data disagrees.
-            glEnable(GL_CULL_FACE); glCullFace(OBJ_FF_CW ? GL_FRONT : GL_BACK)
-            glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
-        end
-        for (items,mat,grz,opos,onm) in OBJECTS                   # trackside objects (trees graze-fade; uBackFlip stays 1 when un-culled)
-            (eye[1]-opos[1])^2+(eye[2]-opos[2])^2+(eye[3]-opos[3])^2 > OBJ_CULL2 && continue   # distance cull
-            ob, oa = 1.05, 0.55                                    # default object grade (grandstands/buildings)
-            if MONZA                                               # E57: tone the combined-circuit paved/banking object surfaces
-                g = monza_obj_grade(onm)
-                g === :road && ((ob, oa) = (MZ_ROAD_B, MZ_ROAD_A)); g === :bank && ((ob, oa) = (MZ_BANK_B, MZ_BANK_A))
-            end
-            otint = is_crowd_obj(onm) ? CROWD_TINT : (1f0,1f0,1f0)   # E46: warm/de-blue the over-blue grandstand crowd MIP
-            for it in items; Render.draw(prog, it, vp, mat; bright=ob, ambfill=oa, graze=grz, tint=otint); end   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
-        end
-        for (it,pos,w,h,yaw) in STATICTREES                      # wide forest-edge panels (authored yaw, graze-fade)
-            (eye[1]-pos[1])^2+(eye[2]-pos[2])^2+(eye[3]-pos[3])^2 > BB_CULL2 && continue
-            Render.draw(prog, it, vp, Render.translate(Float32[pos[1],pos[2],pos[3]])*Render.roty(yaw)*Render.scalexyz(w,h,1f0); bright=1.3, ambfill=0.8, graze=true)   # E63/MZ3: the comment always claimed graze-fade but the call never passed it → a wide Monza forest strip seen EDGE-ON rendered as a dark triangular SLAB at the S/F. graze=true fades edge-on quads (uGraze) so the strip shows face-on as a tree-line and vanishes edge-on
-        end
-        OBJ_CULLFACE && glDisable(GL_CULL_FACE)
-        glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
-        for (it,pos,w,h) in BILLBOARDS                            # trees/sprites
-            (eye[1]-pos[1])^2+(eye[2]-pos[2])^2+(eye[3]-pos[3])^2 > BB_CULL2 && continue       # distance cull
-            Render.draw(prog, it, vp, Render.billboard_model(pos,w,h,eye); bright=1.55, ambfill=0.85)  # sprites read near-unlit (colorful signs, not "burned")
-        end
+        drawworld(vp, eye, false)
         # ambfill lifts the self-shadowed cockpit interior out of black (GPL pre-lights it
         # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
         for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly) so it stops reading as a hard black "plywood" notch
@@ -2501,18 +2591,19 @@ function main()
         else
             for it in gaugeItems; Render.draw(prog, it, vp, bodyModel*GAUGEFLIP; bright=dash_b, spec=0.0, ambfill=dash_a); end
         end
-        for (p, cm) in zip(ai_poses, AICHASSIS)                 # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper)
-            for it in cm.body; Render.draw(prog, it, vp, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end
-            for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp, aiWheel(p,wx,wz,r)); end
-        end
+        # (AI grid drawn in drawworld — shared with the E64 mirror pass)
         # E59 parity: default lighting rendered the tyres as solid BLACK silhouettes from the cockpit —
         # the GPL gold cockpit shows readable dark-grey tread + sidewall.  Lift the fill (not the sun).
         for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, vp, wheelmat(wx,wz,steer,r); bright=1.0, ambfill=0.75); end
         # front suspension wishbones — ahead of the cockpit, visible through the plexiglass (PO gold standard)
         for it in fsuspItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.15, ambfill=0.5); end
         # rear-view mirrors — re-placed onto the cowl/plexiglass, faces tilted toward the eye (GPL look).
-        # No render-to-texture, so the glass reads as a dark tinted disc rather than a live reflection.
-        for it in mirrorItems; Render.draw(prog, it, vp, bodyModel*MIRRORMAT; bright=1.25, spec=0.30, ambfill=0.75); end   # pale silver disc (no RTT) — reads as a mirror, not a black hole
+        # E64: with the RTT live, the silver disc is just the RIM/backing — the glass quad on top
+        # carries the actual rear view (round-masked sample of the mirror FBO, uMirrorGlass).
+        for it in mirrorItems; Render.draw(prog, it, vp, bodyModel*MIRRORMAT; bright=1.25, spec=0.30, ambfill=0.75); end   # disc/rim (and the whole mirror when JM_MIRROR_RTT=0)
+        if mirror_live
+            for it in mirGlassItems; Render.draw(prog, it, vp, bodyModel*MIRRORMAT; mirrorglass=true); end   # live glass
+        end
         # steering wheel — spin about its column axis with steering input
         swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5)) * Render.translate(-SWCENTER)
         for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2, ambfill=0.34); end

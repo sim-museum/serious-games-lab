@@ -42,7 +42,17 @@ NALs, so it will rebuild any future interrupted recording given a healthy refere
 2026-08-02 into **`watkinsGlenn`** (88 items). Any reference to `watkins glenn` is stale.
 GPL utilities: `/home/admin/gold standard/julia racer/gpl utilities/`.
 
-## Current state (2026-08-02)
+## Current state (2026-08-08)
+
+- **E64 S1 closed — LIVE MIRRORS.** The cockpit mirror discs now show a real rear-view
+  render (384×192 RTT, X-mirrored, per-disc half view, round-masked glass quads derived
+  from the mirror mesh itself). `JM_MIRROR_RTT=0` restores the old silver discs;
+  `JM_MIRROR_FOV` tunes it. World draw factored into one `drawworld` closure shared by
+  main + mirror passes (chase view re-verified clean). Z-CK3 → FIXED in
+  `SCREEN_PARITY.md`; session doc `STATUS_2026-08-08_graphics-E64-S1.md`. E64 remaining:
+  hands refit (Z-CK4), chase-body LOD (D12), mirror polish vs gold video at speed.
+
+## Earlier (2026-08-02)
 
 - E61 closed (`SCREEN_PARITY.md` § E61): ALL FIVE circuits graded against their gold LAP
   VIDEOS in one session. Per-track grade fixes in `drive_native_mtk.jl` (LIVE at next
