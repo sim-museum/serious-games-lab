@@ -776,5 +776,17 @@ then cross-track replication. Sprint log lives in `SCREEN_PARITY.md` §E64.
   straight verified still smear-free. `parity/watkins_wg3_forest_ab.jpg`. New: **WG4** —
   `place_at_s!` puts the car on the GRASS at Watkins s=300/1200 (mis-vantage also caused
   E63's wrong "barren" verdict); reconcile with E54's JM_SWEEP pass. `JM_KEEPTEST` diag added.
-- Open: WG4 (Watkins place_at_s! off-road); D12 residual (articulated rear suspension
-  detail); mirror + hands polish A/B vs gold video at speed.
+- **S6 ✅ (2026-08-08) "The road-only HAT that never was" (WG4)** — root cause of the
+  stranded car: the "ROAD-only HAT" comment was a lie (build_hat keeps ALL terrain;
+  road_pred only feeds Monza's overpass logic), so align/recentre measured grass as road
+  and "100% on terrain" while the line ran the verge; the E54 sweep never caught it
+  because its false-grass check is self-referential (centreline vs the ribbon built from
+  it). Fixed for WATGLEN with a true road-texture HAT + off-road rescue + multi-pass
+  recentre (4.0→1.0 m convergence, alignment refined ~18 m). **Gated to Watkins**: under
+  the road oracle Zandvoort's PO-verified line would silently move 2.19 m and Nürburgring
+  aligns at 54% (ROAD_TEX under-recognises its textures) — per-track extension is
+  follow-up, each needing texture work + capture verification. `JM_ROADHAT=1` experiments.
+  `parity/watkins_wg4_placement_ab.jpg`.
+- Open: per-track ROADHAT extension (Zandvoort/Nürburgring/Spa road-texture recognition +
+  capture verification); D12 residual (articulated rear suspension detail); mirror + hands
+  polish A/B vs gold video at speed.

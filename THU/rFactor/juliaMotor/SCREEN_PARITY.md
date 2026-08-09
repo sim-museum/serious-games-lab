@@ -488,3 +488,35 @@ Wrong on both counts, established by forensics + capture:
   false-grass" result needs reconciling with it.  Diagnostic added: `JM_KEEPTEST`
   (force-keep name prefixes past every drop rule — the mirror of `JM_DROPTEST`).
 - DoD: race+5-AI smoke exit 0, brush + driven tests green (run post-edit).
+
+### E64 S6 (2026-08-08): WG4 — the road-only HAT that never was ✅
+WG4 (S5's find: `place_at_s!` strands the car on the grass at Watkins s=300/1200) is fixed,
+and the root cause is a doc-vs-code lie of the MA-S66 family: **the comment at the TERRAIN0
+build claimed a "ROAD-only HAT", but `build_hat` keeps ALL horizontal terrain** — its
+`road_pred` only informs Monza's overpass logic.  Consequences: `align_centreline` printed
+"100% on terrain" while the line ran on grass (it was measuring grass as road);
+`recentre_on_road` measured GRASS APRON edges as road edges; and its skip-if-off-road guard
+made stranded sections unfixable by design (a point on the grass never recentred).  The E54
+JM_SWEEP "no false-grass" pass never contradicted any of this because it tests the
+centreline against the ribbon BUILT FROM that same centreline — self-referential.
+- **Fix:** a true `ROADHAT` (road/kerb/paint textures only — `ROAD_TEX`: asp*/groove/curb/
+  kerb/sline/sgrid/start; <200 recognised road tris → fall back to full terrain, behaviour
+  unchanged) now drives `align_centreline` + `recentre_on_road`; physics keeps the full
+  terrain (grass stays drivable).  `recentre_on_road` gains an off-road RESCUE branch
+  (scan both ways for the road, step toward it, capped) + multi-pass convergence
+  (Watkins: pass 1 max 4.0 m → pass 4 max 1.0 m; the road-only oracle also refined the
+  global alignment by ~18 m in x).
+- **Verified** (`parity/watkins_wg4_placement_ab.jpg`): car ON TARMAC at s=5 (KENDALL
+  banner), s=300 (now framing gold f_0025's straight correctly), s=1200 (forest stretch).
+- **Scope decision — the road-only oracle is GATED TO WATGLEN.**  The cross-track gate
+  (all four other circuits smoked under it, exits 0) showed the stats moving in ways that
+  need their own verification: Zandvoort's line shifted pass-1 mean **2.19 m** (its old
+  PO-verified recentre moved 0.12 m — a silent 2 m move of the racing line the AI drives
+  and every parity capture frames), and Nürburgring aligned at only **54%** on road-only
+  (= `ROAD_TEX` under-recognises its road textures; the grid-search translation then
+  optimises against a partial road).  Blanket-switching verified tracks on those numbers
+  would be the S9-family mistake.  Non-Watkins tracks keep their verified full-terrain
+  single-pass behaviour (`JM_ROADHAT=1` forces the oracle on for experiments); extending
+  per-track is follow-up work: recognise each track's road textures, then capture-verify.
+- Gates: Watkins re-verified on the gated build (car on tarmac, pass-4 convergence);
+  Zandvoort stats confirmed back to the old baseline; race+5-AI smoke + brush/driven green.

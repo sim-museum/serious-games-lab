@@ -88,6 +88,16 @@ println("  → track: ", uppercasefirst(TRACKSEL))
 const HAT_EXCLUDE = Set{String}()
 const HAT_EXCLUDE_PRED = nothing
 const ROAD_PRED = MONZA ? (lt -> occursin("asp", lt) || startswith(lt,"groove") || startswith(lt,"kerb")) : nothing
+# E64 S6 (WG4): a GENERAL road-texture classifier for the racing-surface HAT.  The old comment at the
+# TERRAIN0 build claimed a "ROAD-only HAT" but build_hat keeps ALL horizontal terrain (road_pred only
+# informs Monza's overpass logic) — so the centreline align + recentre midpoint scans measured GRASS
+# APRONS as road, which is exactly why the Watkins line strands ~10 m onto the grass at s≈300 (WG4)
+# while printing "100% on terrain".  GPL road/paint textures across the shipped tracks: asp*/Asphalt,
+# groove, curb/kerb, and the start-line paint (sline/sgrid/start).  Grass/bank*/edge*/sideroad/pit
+# aprons stay out.  If a track's mesh yields too few road tris (unknown naming), fall back to the full
+# terrain HAT — behaviour unchanged there.
+const ROAD_TEX = lt -> occursin("asp", lt) || startswith(lt,"groove") || startswith(lt,"curb") ||
+                       startswith(lt,"kerb") || lt in ("sline","sgrid","start")
 
 # ---- session mode + race config (GPL-style: Practice / Training / Race) ----
 const MODE      = lowercase(get(ENV, "JM_MODE", "practice"))   # practice | training | race
@@ -366,25 +376,43 @@ end
 # VISIBLE road: scan left + right along the lateral normal to the road-mesh edges (the road-only HAT) and
 # move the point toward the MIDPOINT (a damped, clamped, smoothed fraction so a one-sided pit-lane/apron
 # can't drag it and the line stays continuous).  JM_NO_RECENTRE=1 restores the raw .trk line.
-function recentre_on_road(cl, hat; reach = 14.0, step = 0.5, frac = 1.0, cap = 4.0)
+function recentre_on_road(cl, hat; reach = 14.0, step = 0.5, frac = 1.0, cap = 4.0, passes = 1)
     n = length(cl)
     on(x, z) = JuliaMotor.hat3d(hat, x, z; ref = Inf)[3]
-    nrm(i) = (q = cl[mod(i, n)+1]; r = cl[mod(i-2, n)+1]; tx = q[1]-r[1]; ty = q[2]-r[2];
-              tl = hypot(tx, ty); tl < 1e-6 ? (0.0, 0.0) : (-ty/tl, tx/tl))   # left-hand normal
-    raw = zeros(n)
-    for i in 1:n
-        p = cl[i]; (nx, ny) = nrm(i)
-        (nx == 0.0 && ny == 0.0 || !on(p[1], p[2])) && continue        # only recentre points already on road
-        hi = 0.0; while hi < reach && on(p[1]+nx*(hi+step), p[2]+ny*(hi+step)); hi += step; end
-        lo = 0.0; while lo < reach && on(p[1]-nx*(lo+step), p[2]-ny*(lo+step)); lo += step; end
-        raw[i] = clamp(frac*(hi - lo)/2, -cap, cap)                    # +→ shift LEFT toward the midpoint
+    for pass in 1:passes
+        nrm(i) = (q = cl[mod(i, n)+1]; r = cl[mod(i-2, n)+1]; tx = q[1]-r[1]; ty = q[2]-r[2];
+                  tl = hypot(tx, ty); tl < 1e-6 ? (0.0, 0.0) : (-ty/tl, tx/tl))   # left-hand normal
+        raw = zeros(n)
+        for i in 1:n
+            p = cl[i]; (nx, ny) = nrm(i)
+            (nx == 0.0 && ny == 0.0) && continue
+            if on(p[1], p[2])                                              # on road: move toward the edge midpoint
+                hi = 0.0; while hi < reach && on(p[1]+nx*(hi+step), p[2]+ny*(hi+step)); hi += step; end
+                lo = 0.0; while lo < reach && on(p[1]-nx*(lo+step), p[2]-ny*(lo+step)); lo += step; end
+                raw[i] = clamp(frac*(hi - lo)/2, -cap, cap)                # +→ shift LEFT toward the midpoint
+            else
+                # E64 S6 (WG4): a point OFF the road used to be skipped — with a true road-only HAT the
+                # stranded sections (Watkins s≈300: the raw .trk ~10 m onto the grass) must be RESCUED:
+                # scan both ways along the normal for the road, and step toward the nearest road sample
+                # (capped like everything else; multiple passes walk it home).
+                hit = 0.0
+                for d in step:step:reach
+                    if     on(p[1]+nx*d, p[2]+ny*d); hit =  d; break
+                    elseif on(p[1]-nx*d, p[2]-ny*d); hit = -d; break
+                    end
+                end
+                raw[i] = clamp(hit, -cap, cap)
+            end
+        end
+        sm = zeros(n); W = 3                                               # box-smooth (discrete edge sampling is jittery)
+        for i in 1:n; a = 0.0; for d in -W:W; a += raw[mod(i-1+d, n)+1]; end; sm[i] = a/(2W+1); end
+        cl = [(p = cl[i]; (nx, ny) = nrm(i); (p[1]+nx*sm[i], p[2]+ny*sm[i])) for i in 1:n]
+        println("centreline re-centred on the visible road (pass ", pass, "/", passes, "): max shift ",
+                round(maximum(abs, sm), digits=1), " m, mean ", round(sum(abs, sm)/n, digits=2),
+                " m, at-start ", round(sm[1], digits=2), " m")
+        maximum(abs, sm) < 0.3 && break                                    # converged
     end
-    sm = zeros(n); W = 3                                               # box-smooth (discrete edge sampling is jittery)
-    for i in 1:n; a = 0.0; for d in -W:W; a += raw[mod(i-1+d, n)+1]; end; sm[i] = a/(2W+1); end
-    out = [(p = cl[i]; (nx, ny) = nrm(i); (p[1]+nx*sm[i], p[2]+ny*sm[i])) for i in 1:n]
-    println("centreline re-centred on the visible road: max shift ", round(maximum(abs, sm), digits=1),
-            " m, mean ", round(sum(abs, sm)/n, digits=2), " m, at-start ", round(sm[1], digits=2), " m")
-    out
+    cl
 end
 
 # GPL scenery placement: load the .dat sub-object meshes the main .3do places via its
@@ -536,11 +564,31 @@ else
     # full HAT would let the line drift onto the grass verge); the road ribbon then doubles
     # as the corridor filter for scenery placement.
     const TERRAIN0 = GPLTrack.build_hat(TRACKMESH0; exclude=HAT_EXCLUDE, exclude_pred=HAT_EXCLUDE_PRED, drop_overpass=MONZA, road_pred=ROAD_PRED)
-    const ALIGNED  = let a = align_centreline(GPLTrack.trk_centreline(track_file(GPLNAME, ".trk")), TERRAIN0)
+    # E64 S6 (WG4): the TRUE road-only HAT — road/kerb/paint textures only — for centreline work.
+    # Physics keeps the full TERRAIN0 (grass must stay drivable).  GATED TO WATGLEN, where it is
+    # capture-verified (car on tarmac at s=5/300/1200): the cross-track gate showed the other
+    # circuits' lines MOVE under the road-only oracle (Zandvoort pass-1 mean 2.19 m vs the old
+    # PO-verified 0.12 m; Nürburgring aligns at only 54% = its road textures are under-recognised
+    # by ROAD_TEX) — extending them needs per-track texture work + capture verification, not a
+    # blanket switch.  JM_ROADHAT=1 forces it on for experiments.
+    const ROADHAT = let rp = ROAD_TEX
+        nroad = count(t -> rp(lowercase(t.tex)), TRACKMESH0.tris)
+        if (WATGLEN || get(ENV,"JM_ROADHAT","0") != "0") && nroad >= 200
+            h = GPLTrack.build_hat(TRACKMESH0; exclude=HAT_EXCLUDE, exclude_pred=(lt -> !rp(lt)), drop_overpass=MONZA, road_pred=ROAD_PRED)
+            println("  road-only HAT: ", nroad, " road tris (align/recentre oracle)"); h
+        else
+            println("  road-only HAT: off for this track (", nroad, " road tris recognised) — full-terrain oracle as before")
+            TERRAIN0
+        end
+    end
+    const ALIGNED  = let a = align_centreline(GPLTrack.trk_centreline(track_file(GPLNAME, ".trk")), ROADHAT)
         # D4: pull lane-0 to the road's geometric centre (Zandvoort).  SKIP on Monza — its wide pit
         # straight + pit lane skew the "midpoint" so the recentre over-shifts the racing line toward the
         # pit wall (4 m, capped); the raw GPL .trk line is the correct groove there.
-        (haskey(ENV, "JM_NO_RECENTRE") || MONZA) ? a : recentre_on_road(a, TERRAIN0)
+        # E64 S6: on WATGLEN, recentre against the ROAD-only HAT (was: full terrain incl. grass
+        # aprons) with multi-pass so a line stranded ~10 m off (s≈300, WG4) walks home 4 m per
+        # pass; other tracks keep their verified single-pass full-terrain behaviour.
+        (haskey(ENV, "JM_NO_RECENTRE") || MONZA) ? a : recentre_on_road(a, ROADHAT; passes = (ROADHAT === TERRAIN0 ? 1 : 4))
     end
     const RIBBON0  = GPLTrack.build_surface(ALIGNED, TERRAIN0)
     # GPL Nürburgring places its landmass/scenery as .dat sub-objects via 0x0E nodes;
