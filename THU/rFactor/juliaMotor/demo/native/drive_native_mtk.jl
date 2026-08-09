@@ -1187,9 +1187,23 @@ let objnames=Set{String}()
     # by Eau Rouge (and on the start straight) projected to |lat| < ROAD_HALFW = a "line of people
     # standing in the road".  Drop crowd that lands on the road; the grandstands (set further back) stay.
     onroad_crowd(i) = standcrowd(i.name) && on_road(i.x, i.y, ROAD_HALFW)
+    # E68 S1 (PO re-drive): "every perpendicular block of spectators was floating in air or on
+    # the track."  JM_CROWDDIAG confirms: Zandvoort keeps 97 crowd rows of which a dozen+ sit
+    # PERPENDICULAR (relyaw ≈ ±90°) within ~18 m of the road at exactly the PO's spots (Tarzan
+    # ~130–520, east loop ~3100, Bos Uit ~3950–4035; Watkins big bend ~1492).  A perpendicular
+    # row near the road can only be GPL cross-placement garbage — real fence crowds run PARALLEL.
+    perp_crowd(i) = standcrowd(i.name) && begin
+        hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
+        if hr.found && abs(hr.lateral) < ROAD_HALFW + 12.0
+            ry = abs(rad2deg(rem2pi(Float64(i.yaw) - atan(-hr.perp[2], hr.perp[1]), RoundNearest)))
+            60.0 <= ry <= 120.0
+        else
+            false
+        end
+    end
     global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw + objyawfix(i.name))), istree(i.name), (Float32(i.x), ploz(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
-                          !drop(i.name) && !onroad_crowd(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
+                          !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
     # E15: SOLID trackside objects the car can hit — (physics x, z, collision radius m).  Buildings,
     # barriers/hedges (haybales = Zandvoort `haie`), towers, parked vehicles.  NOT trees/signs/people.
     solidR(nm) = startswith(nm,"hut")||startswith(nm,"pitbldg")||startswith(nm,"hotel")||startswith(nm,"bigbosch")||nm=="mega2"||startswith(nm,"longtent") ? 5.0 :
@@ -1230,7 +1244,7 @@ let objnames=Set{String}()
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     for i in insts
-        bb = get(bbinfo, i.name, nothing); (bb === nothing || drop(i.name)) && continue
+        bb = get(bbinfo, i.name, nothing); (bb === nothing || drop(i.name) || perp_crowd(i)) && continue   # E68 S1: no perpendicular near-road crowd rows
         onground(i) || continue
         on_road(i.x, i.y, ROAD_HALFW) && continue   # E31: drop sprites planted ON the road (the Monza tree "curtain" across the track)
         gz = ploz(i)
@@ -1287,8 +1301,8 @@ let objnames=Set{String}()
     # JM_SWEEP / JM_SPOT projections onto TRKSURF/CLINE match the on_road classifier exactly.
     global OBJINSTS = [begin
         ismesh = get(objmesh,i.name,nothing) !== nothing; isbb = get(bbinfo,i.name,nothing) !== nothing; og = onground(i)
-        kmesh  = ismesh && !drop(i.name) && !onroad_crowd(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && og
-        kbb    = isbb   && !drop(i.name) && og && !on_road(i.x, i.y, ROAD_HALFW)
+        kmesh  = ismesh && !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && og
+        kbb    = isbb   && !drop(i.name) && !perp_crowd(i) && og && !on_road(i.x, i.y, ROAD_HALFW)
         issolid = solidR(lowercase(i.name)) > 0.0 && og && !on_road(i.x, i.y, SOLID_EXCL_HW)
         (i.name, Float32(i.x), Float32(i.y), ploz(i), kmesh ? :mesh : kbb ? :bb : :dropped, issolid)
     end for i in insts]

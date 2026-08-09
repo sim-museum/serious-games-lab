@@ -719,3 +719,15 @@ mipmapped LINEAR path so nothing shimmers at distance).  Verified
 (`parity/zandvoort_e46_crowd_ab.jpg`): distinct individuals in the stands, era-correct,
 matching gold's read.  With E63's de-blue tint, **E46 is fully CLOSED** (colour + smear).
 DoD: race+5-AI smoke, brush + driven green.
+
+## E68 S1 (2026-08-09): THE PERPENDICULAR SPECTATORS ✅
+PO re-drive: "every perpendicular block of spectators was floating in air or on the
+track" (Zandvoort several places; Watkins big bend).  JM_CROWDDIAG confirmed a dozen+
+kept rows PERPENDICULAR (relyaw ≈ ±90°) within ~18 m of the road at exactly the reported
+lapdists (Tarzan ~130–520, east loop ~3100, Bos Uit ~3950–4035; Watkins ~1492).  New
+`perp_crowd()` guard: a crowd row within ROAD_HALFW+12 m whose yaw is 60–120° off the
+road tangent is GPL cross-placement garbage (real fence crowds run parallel) — dropped
+from every keep path (mesh, billboard, instance table).  Verified at all four PO spots
+(`parity/e68_perp_crowds_after.jpg`): tarmac clear, parallel rows intact on the grass.
+The Ring's Karussell block is a DIFFERENT mechanism (no crowd rows there — landmass
+scenery; separate E68 item).  DoD: race+5-AI smoke, brush + driven green.
