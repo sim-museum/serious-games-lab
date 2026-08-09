@@ -776,3 +776,14 @@ PO: "cockpit view sleeves don't connect to gloves."  Knob-only re-tune of the S2
 `JM_ARM_SY` 0.55→0.62 (less squash = longer sleeves) + `JM_ARM_DX` −0.05→−0.02 (forward
 nudge) — the sleeve tips now meet the glove bases (`parity/e68_sleeve_junction_ab.jpg`).
 Baked as defaults.  DoD: race+5-AI smoke, brush + driven green.
+
+## E68 S6 (2026-08-09): THE GREEN DASH BLOCK — ◑ diagnosed, fix prescribed
+PO: "bottom half of dashboard is occluded by green block."  Three-way A/B
+(`parity/e68_greenblock_abc.jpg`): the gold's lower cockpit is DARK CHARCOAL with the
+gear lever; ours floods flat BRG green; `JM_KEEP_LOTBLACK=1` changes nothing (refuted —
+the black band isn't the missing cover).  The block is the TUB INTERIOR's body-colour
+green faces, which the E36-era pass kept as a win ("green BRG tub ≈ gold") against
+STILLS whose interior read differently than the videos'.  **Prescribed:** probe the CARP
+faces in the footwell region (x 0.2–0.7, y<0.3) for their colour/texture identity, then
+darken INTERIOR-only faces toward gold's charcoal (exterior body must stay green — the
+discriminator is the face normal pointing INTO the cockpit).
