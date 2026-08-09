@@ -320,7 +320,11 @@ float shadow(vec3 N){
   // fade shadowing to fully-lit before the shadow-map box edge, so the box boundary
   // (which tracks the car) isn't a visible "light carpet" sweeping the ground
   vec2 e = abs(lp.xy - 0.5);
-  return mix(s, 1.0, smoothstep(0.40, 0.5, max(e.x, e.y)));
+  // E68 S3 (PO: "white highlight in the track moving ~5 car lengths ahead of the car"):
+  // the 0.40→0.5 fade band was narrow enough to read as a bright carpet sweeping the road
+  // (measured +38 luma at Monza s=1500).  Fade over 0.28→0.5 = the same endpoint with less
+  // than half the gradient, imperceptible on tarmac.
+  return mix(s, 1.0, smoothstep(0.28, 0.5, max(e.x, e.y)));
 }
 void main(){
   vec2 uv = (uBackFlip==1 && !gl_FrontFacing) ? vec2(1.0-vUV.x, vUV.y) : vUV;  // un-mirror back-facing sign text
@@ -533,7 +537,7 @@ function make_shadow_fbo(size=SHADOW_SIZE)
 end
 """Light view-projection: an orthographic box from the sun direction, centred on
 `center` (the car), so the shadow map tracks the action."""
-function light_vp(center, lightdir; R=70.0, depth=400.0)
+function light_vp(center, lightdir; R=100.0, depth=400.0)   # E68 S3: larger box pushes the fade edge further from the car (2048px/200m = 10 cm/texel, still crisp)
     L=normalize(Float64.(lightdir)); eye=Float64.(center) .+ L.*(depth/2)
     up = abs(L[2])>0.99 ? [0.0,0.0,1.0] : [0.0,1.0,0.0]
     ortho(-R,R,-R,R,1.0,depth) * lookat(eye, Float64.(center), up)
