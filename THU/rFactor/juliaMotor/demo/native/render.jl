@@ -806,6 +806,18 @@ function upload_rgba(w, h, rgba)
     aniso[]>1 && glTexParameterf(GL_TEXTURE_2D,GLenum(0x84FE),min(aniso[],16f0))
     tex[]
 end
+# E46 (crowd smear, settled 2026-08-09): the stand-crowd MIPs are tiny one-row images
+# (lcrowd3/4 256×32) magnified to ~12 cm/texel on the stands — GPL's D3D-era POINT sampling
+# reads them as crisp pixel people (what the gold shows); our LINEAR magnification washes
+# them into the famous watercolor smear.  NEAREST magnification for crowd-family textures
+# reproduces the gold's read; minification keeps the mipmapped LINEAR path (no distant
+# shimmer).  Called by the build caches when the texture NAME is crowd-family.
+is_crowd_texname(k) = occursin("crowd", k) || occursin("crwd", k) || occursin("sidecrd", k)
+function mag_nearest(tid::GLuint)
+    tid == 0 && return
+    glBindTexture(GL_TEXTURE_2D, tid)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+end
 function load_mip(path)
     w,h,rgba = GPLMip.decode_mip(path); upload_rgba(w,h,rgba)
 end
@@ -1039,7 +1051,9 @@ function build_gpl(parts, idx::GPLTex)
             key=lowercase(p.tex)
             tid = get!(cache,key) do
                 r = tex_rgba(idx, key)
-                r === nothing ? GLuint(0) : upload_rgba(r[1], r[2], r[3])
+                t = r === nothing ? GLuint(0) : upload_rgba(r[1], r[2], r[3])
+                is_crowd_texname(key) && mag_nearest(t)   # E46: gold's point-sampled crowd read
+                t
             end
         end
         push!(items, Item(vao,n,tid,p.col))

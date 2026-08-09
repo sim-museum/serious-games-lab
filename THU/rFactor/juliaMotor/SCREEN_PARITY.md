@@ -707,3 +707,15 @@ flattened-strip artifact (a synthesized quad standing as a wedge), resolved as a
 effect of E65 S3's real-mesh conversion.  Closed by verification, no code.  The pale
 band at the horizon behind the grandstands is the banking deck at distance (authentic
 combined-circuit geometry, correctly grey per E57).
+
+## E66 S2 (2026-08-09): THE CROWD SMEAR (E46) ✅ — it was the FILTER, not the art
+The last deep parity item, open since 2026-06-29.  Forensics: the stand-crowd MIPs are
+tiny one-row images (lcrowd3/4 256×32, dozens of individual figures) whose authored UVs
+map one width per ~31 m stand segment — identical in GPL.  The difference from gold:
+GPL's D3D-era POINT sampling reads them as crisp pixel-people; our LINEAR magnification
+washed the same texels into the watercolor smear.  **Fix: NEAREST magnification for
+crowd-family textures** (`is_crowd_texname` in the build caches; minification keeps the
+mipmapped LINEAR path so nothing shimmers at distance).  Verified
+(`parity/zandvoort_e46_crowd_ab.jpg`): distinct individuals in the stands, era-correct,
+matching gold's read.  With E63's de-blue tint, **E46 is fully CLOSED** (colour + smear).
+DoD: race+5-AI smoke, brush + driven green.
