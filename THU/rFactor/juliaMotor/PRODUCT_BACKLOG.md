@@ -744,3 +744,13 @@ Zandvoort chase gold). GPL utilities under `.../julia racer/gpl utilities/`. Ful
 - **Sprint close (2026-08-01):** 5 capture iterations (`native_fix1..5`), final
   full-lap 46-shot session `native_final`; composites `parity/zandvoort/video_*.jpg`;
   JM_SMOKE clean (exit 0, known benign `.ibt export` warning).
+
+### E64 — cockpit/chase parity (PO priority after E63 objects; ongoing)
+Scope: mirror RTT (PO-explicit) · driver-hands refit (Z-CK4) · chase-body LOD (D12) ·
+then cross-track replication. Sprint log lives in `SCREEN_PARITY.md` §E64.
+- **S1 ✅ (2026-08-08, `7c1729b`) "Mirrors show the road behind" — LIVE mirror RTT**, 8/8,
+  goal met: rear view rendered per frame into a 384×192 FBO (X-mirrored, reversed-Z),
+  round-masked glass quads derived from the mirror mesh sample per-disc halves; world draw
+  factored into a shared `drawworld` closure (chase re-verified). `JM_MIRROR_RTT`/`JM_MIRROR_FOV`.
+  DoD: race+5AI smoke exit 0, brush/driven tests green. Z-CK3 → FIXED.
+- Open: Z-CK4 hands refit; D12 chase LOD (asset-deep); mirror polish A/B vs gold video at speed.
