@@ -8,6 +8,9 @@ using LinearAlgebra
 
 export Mesh3DO, parse_3do, gpl_placements
 
+# E64 S4: walk every LOD child (the pre-fix behaviour) instead of only the highest-detail one
+const LOD_ALL = get(ENV,"JM_LOD_ALL","0") != "0"
+
 # positioner local matrix: Translate(d) * Rot(m, GPL Euler about X,Y,Z) * Scale(s).
 # Places a sub-object (hands, wheel, mirrors, suspension) relative to its parent.
 function posmat(d, m, s)
@@ -167,11 +170,23 @@ function parse_3do(path::AbstractString)
             walk(Int(i32(b, p + 8*4)), curtex, depth+1, M * posmat(d, mm, s), off)
         elseif typ == 0x19                          # bounding cuboid: 8 vert#, then child
             walk(Int(i32(b, p + 9*4)), curtex, depth+1, M, grp)
-        elseif typ == 0x11                          # 11,int,int,int,count,(float,childoff)*
+        elseif typ == 0x11                          # LOD/distance list: 11,int,int,int,count,(dist,childoff)*
+            # E64 S4 (D12): lotus.3do has 47 of these with DESCENDING range thresholds (4.0/2.5/0.0)
+            # — GPL picks ONE child by camera distance.  Walking all of them rendered every LOD at
+            # once, and the far-LOD crudes (clamped back by the posmat hide-translation guard) are
+            # the chase car's "chrome spider-legs".  Distinct thresholds ⇒ real LOD switch: keep
+            # only the min-threshold (closest-range, highest-detail) child.  All-equal thresholds
+            # (e.g. six 0.0s) ⇒ a plain list-group: keep walking every child.  JM_LOD_ALL=1 A/Bs.
             cnt = Int(u32(b, p+16))
             if 0 < cnt <= 4096
-                for k in 1:cnt
+                ds = [f32(b, p + 20 + (k-1)*8) for k in 1:cnt]
+                if !LOD_ALL && length(unique(ds)) > 1
+                    k = argmin(ds)
                     walk(Int(i32(b, p + 20 + (k-1)*8 + 4)), curtex, depth+1, M, grp)
+                else
+                    for k in 1:cnt
+                        walk(Int(i32(b, p + 20 + (k-1)*8 + 4)), curtex, depth+1, M, grp)
+                    end
                 end
             end
         # ---- polygon leaves ----  (rv/ru read count-bounded vert# / UV arrays)

@@ -762,4 +762,12 @@ then cross-track replication. Sprint log lives in `SCREEN_PARITY.md` §E64.
   the other 4 circuits; mirrors show each track's OWN rear world under its own grade (Monza
   per-surface grade holds in the mirror pass), hands identical. 5/5 tracks pass.
   Composite `parity/cockpit_e64_mirror_sweep.jpg`; details `SCREEN_PARITY.md` §E64 S3.
-- Open: D12 chase LOD (asset-deep); mirror + hands polish A/B vs gold video at speed.
+- **S4 ✅ (2026-08-08) "De-spider the chase car" (D12)** — spider-legs ELIMINATED: PRIM
+  node 0x11 identified as GPL's LOD/distance switch (we drew every LOD at once; now
+  highest-detail only, `JM_LOD_ALL` A/Bs) + displaced runtime-hidden assemblies (groups
+  27288/39792, suspension+driver textures at y 0.42…1.16/−1.12…−0.42) excluded from
+  CARP/DRIVERP/FSUSPP — the DRIVERP share (pale "arms" weave) was the visible spears.
+  Before/after `parity/chase_e64_despider_ab.jpg`; cockpit + Monza re-verified; DoD green.
+  D12 residual rescoped: rear-suspension DETAIL (positioner articulation) stays open.
+- Open: D12 residual (articulated rear suspension detail); mirror + hands polish A/B vs
+  gold video at speed.

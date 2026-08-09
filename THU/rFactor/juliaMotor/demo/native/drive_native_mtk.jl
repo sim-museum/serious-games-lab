@@ -668,13 +668,13 @@ const HELMP = [Render.TrackPart(p.verts, p.tex=="helblack" ? "clahelm" : p.tex, 
 # unconditionally (pure garbage).  JM_CARP_MAXLAT stays an A/B knob; DEFAULT 0.85 = the coherent clip.
 const _GARBAGE_EXC = ("front1","front3")
 const CARP_MAXLAT  = parse(Float32, get(ENV,"JM_CARP_MAXLAT","0.85"))   # 0.85 = skinny clip (garbage-free); >1.0 exposes the GPL-hidden spider-leg suspension — see note above
-const CARP   = Render.extract_gpl_car(LOT3DO; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...), exclude_groups=(6600,3560), cockpit_clean=true, maxlat=CARP_MAXLAT, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # driver body + gauge + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0
-const DRIVERP = Render.extract_gpl_car(LOT3DO; only=DRIVER_TEX, maxlat=0.95f0)   # the driver figure — drawn only in CHASE view (occludes the cockpit from the in-car eye)
+const CARP   = Render.extract_gpl_car(LOT3DO; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...), exclude_groups=(6600,3560,27288,39792), cockpit_clean=true, maxlat=CARP_MAXLAT, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # driver body + gauge + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0.  E64 S4 (D12): groups 27288/39792 are WHOLE DISPLACED ASSEMBLIES (suspension+exhaust+driver textures at y 0.42…1.16 / −1.12…−0.42, mirror copies) — GPL runtime-hidden branches our positioner walk mis-places; they were the chase view's "chrome spider-legs" through the rear tyres
+const DRIVERP = Render.extract_gpl_car(LOT3DO; only=DRIVER_TEX, maxlat=0.95f0, exclude_groups=(6600,3560,27288,39792))   # the driver figure — drawn only in CHASE view (occludes the cockpit from the in-car eye).  E64 S4: the displaced assemblies 27288/39792 carry lid/arms-textured tris too — without the group filter they drew as the chase view's remaining "spears"
 const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (dial faces in the texture's lower-V region; keep default vflip)
 const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0)  # the plexiglass windscreen — drawn LAST, faintly visible glass, so the suspension shows through (GPL gold standard)
 # FRONT SUSPENSION (lsusp1 = the front rocker/wishbone, only in the front groups 6600/3560 — so no
 # double-draw with CARP) — drawn with the body so the wishbones show ahead through the plexiglass (PO).
-const FSUSPP = Render.extract_gpl_car(LOT3DO; only=("lsusp1",), maxlat=1.3f0)
+const FSUSPP = Render.extract_gpl_car(LOT3DO; only=("lsusp1",), maxlat=1.3f0, exclude_groups=(6600,3560,27288,39792))   # E64 S4: group 6600 carries 1.65m-edge lsusp1 garbage 2m ahead of the car
 const MIRRORP = Render.extract_gpl_car(LOT3DO; only=MIRROR_DRAW, maxlat=0.95f0)  # rear-view mirrors — clean disc, re-placed on the cowl (see MIRRORMAT)
 const HANDP  = Render.extract_gpl_car(LOT3DO; only=("lohand",),  maxlat=0.95f0)  # E64 S2: gloved hands on the rim — ride the wheel rotation
 const ARMP   = Render.extract_gpl_car(LOT3DO; only=("lotarms",), maxlat=0.95f0)  # forearms/upper arms — static (their wheel-side ends are what the eye sees)

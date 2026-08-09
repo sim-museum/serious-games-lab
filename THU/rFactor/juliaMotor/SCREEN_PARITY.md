@@ -439,3 +439,28 @@ Composite: `parity/cockpit_e64_mirror_sweep.jpg`.  Per-track content + grade in 
 proves the mirror pass runs the full per-track world path, not a cached/generic scene.
 No code changed in S3 — a pure verification sprint.  E64 remaining: D12 chase LOD
 (asset-deep), mirror/hands polish vs gold video at speed.
+
+### E64 S4 (2026-08-08): DE-SPIDER THE CHASE CAR (D12) ✅ — spider-legs eliminated
+D12 ("chase car SKELETAL — chrome spider-legs") had been closed as asset-LOD-limited in
+E62.  S4 reopened it with mesh forensics and eliminated the garbage in three findings:
+1. **PRIM node 0x11 is GPL's LOD/distance switch** — `lotus.3do` has 47, with descending
+   range thresholds (4.0 / 2.5 / 0.0); the walker rendered EVERY child = every LOD at
+   once.  Now: distinct thresholds ⇒ keep only the min-threshold (highest-detail) child;
+   all-equal thresholds ⇒ plain list-group, keep all.  `JM_LOD_ALL=1` A/Bs.  2253→2148
+   tris; every `.3do` parse benefits (cars, wheels, scenery).
+2. **Groups 27288/39792 are whole displaced assemblies** — suspension+exhaust+DRIVER
+   textures at y 0.42…1.16 (above the body) and −1.12…−0.42 (underground), mirror copies:
+   GPL runtime-hidden branches our positioner walk mis-places.  Their CARP share drew the
+   wheel-face blades; their **DRIVERP share (lid/arms tris, chase-only, previously
+   group-unfiltered) drew the remaining spears** — the pale weave "arms" texture is why
+   the spears looked chrome/silver.  Excluded from CARP, DRIVERP and FSUSPP (which also
+   inherited 1.65 m lsusp1 garbage 2 m ahead via group 6600).
+3. **Wheel meshes and the tail exhausts are clean** — probes confirmed nothing else in
+   `lotus.3do` reaches beyond the body envelope; group 116576's long tris are the real
+   tub/body panels (kept).
+**Verdict** (`parity/chase_e64_despider_ab.jpg`, before/after at s=600): rear tyres clean,
+no blades, no spears; exhausts, rollbar, engine detail and helmet intact; cockpit view
+unaffected (hands/mirrors/dash/front-tyres re-verified).  Honest scope: this REMOVES
+mis-placed geometry rather than restoring GPL's articulated suspension — the chase rear
+shows less suspension detail than gold; that residual stays D12-open as a
+positioner-articulation effort.  Monza spot-check post-LOD-fix clean (fragile track).
