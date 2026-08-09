@@ -638,6 +638,10 @@ else
     # (first face wins — identical geometry, so either is fine).  JM_RAIL_DEDUP=0 restores.
     railfam(tx) = (lt = lowercase(tx); startswith(lt,"armco") || startswith(lt,"fenc") || startswith(lt,"stfce") ||
                    startswith(lt,"sarmc") || startswith(lt,"yarmc") || startswith(lt,"gd_rail") || startswith(lt,"rail"))
+    # E68 S11 verdict: terrain sheets must NOT join the blanket cull — winding varies per sheet
+    # (culling ate the s=2500 embankment + Zandvoort dune faces while fixing one veil of two).
+    # The Watkins veil (giant Grass sheet BACKS over the road) needs PER-FACE road-facing
+    # selection — the same implementation the D6 sign boards await.  Reverted to rails-only.
     const TRACKMAIN = get(ENV,"JM_RAIL_DEDUP","1") == "0" ? TRACKMAIN0 : begin
         ndrop = Ref(0)
         out = map(TRACKMAIN0) do part

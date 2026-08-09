@@ -839,3 +839,15 @@ OBJ_FF_CW; sign parts keep both faces so D6 handling is untouched).  Verified at
 vantages — rails/fences all present, none culled from the road side
 (`parity/e68_railcull_4site.jpg`); shimmer is motion-visible, so final confirmation
 belongs to the PO's next drive.  DoD: Watkins race+5-AI smoke, brush + driven green.
+
+
+## E68 S11 (2026-08-09): THE WATKINS VEIL — ◑ identified; blanket cull disproven
+PO: "semi-transparent veil on left just past the start-finish line."  Reproduced at
+s=60–180: a giant dark-olive canopy — the unlit BACKS of 4 giant Grass-textured hillside
+sheets (8 m+ tall × 60 m+ wide, found by geometry probe).  Extending the single-sided cull
+to terrain families fixed one veil of two and REGRESSED two sites (the s=2500 embankment
+lost faces; Zandvoort dunes damaged) — terrain-sheet winding varies per sheet, so a
+blanket cull is provably wrong (reverted; rails-only stands, restoration verified
+byte-identical).  The veil joins the **per-face road-facing selection** implementation —
+now carrying THREE customers: the D6 sign boards, the white shrubs, and this veil.
+DoD: Watkins capture, race+5-AI smoke, brush + driven green.
