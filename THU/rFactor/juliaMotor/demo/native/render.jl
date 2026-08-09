@@ -1075,13 +1075,27 @@ function billboard_stub(path)
     hext = nv>1 ? max(xmx-xmn, ymx-ymn) : 0f0
     height = zext > 0.5f0 ? zext : 2.5f0          # no height marker → human/marshal default
     width  = hext > 0.5f0 ? hext : 0f0             # 0 → derive from texture aspect
+    # E65 S2: the stub's AUTHORED HORIZONTAL AXIS.  Monza's trees01-23 strips are all placed with
+    # rot=(0,0,0) — their orientation lives in the VERTICES, which this reader used to discard, so
+    # every strip rendered yaw-0 and whole families crossed the road wherever it bends.  The axis =
+    # the farthest horizontal vertex pair; aax is its GPL-frame angle (0 when degenerate).
+    aax = 0f0
+    if nv > 1 && hext > 0.5f0
+        best = 0f0; bi = 0; bj = 0
+        for k in 0:nv-1, l in k+1:nv-1
+            dx = f32(xyz+l*16+4) - f32(xyz+k*16+4); dy = f32(xyz+l*16+8) - f32(xyz+k*16+8)
+            d2 = dx*dx + dy*dy
+            d2 > best && (best = d2; bi = k; bj = l)
+        end
+        aax = Float32(atan(f32(xyz+bj*16+8) - f32(xyz+bi*16+8), f32(xyz+bj*16+4) - f32(xyz+bi*16+4)))
+    end
     strs=String[]; cur=UInt8[]
     for i in strn:strn+strnsz-1
         c=b[i+1]; c==0xFF && break
         c==0x00 ? (push!(strs,String(copy(cur))); empty!(cur)) : push!(cur,c)
     end
     !isempty(cur) && push!(strs,String(copy(cur)))
-    (height, width, strs)
+    (height, width, strs, aax)
 end
 
 """Build a camera-facing billboard Item for a texture name → (Item, texW, texH) or

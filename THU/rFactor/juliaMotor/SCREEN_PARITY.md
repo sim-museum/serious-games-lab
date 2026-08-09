@@ -644,3 +644,21 @@ panels whose authored placement CROSSES the road corridor.
   rather than dropping them.  Sign experiments showed the crossing verdicts are
   axis-sign-independent, so the mis-rotation hypothesis is live.
 - DoD: Monza race+5-AI smoke, Zandvoort smoke, brush + driven green (gate log).
+
+### E65 S2 (2026-08-09): "Un-flatten the forest" — ◑ PARTIAL, folded-panorama finding
+E65-2's hypothesis tested and DISPROVED in its original form: the placement Euler dump
+shows ALL strips place at rot=(0,0,0) — there is no hidden rotation.  The orientation
+lives in each stub's VERTEX data, which `billboard_stub` discarded (height/width only), so
+every strip rendered yaw-0 — the true root cause of both the crossers AND the S1 drops.
+The authored-axis experiment (farthest horizontal vertex pair → panel yaw) un-crossed
+8 of 29 Monza strips and put a gold-like flanking forest on the Lesmos left — but broke
+others and REGRESSED Watkins (yellow canopy), because **these strips are FOLDED
+PANORAMAS: no single flat-quad yaw can represent them; the farthest-pair axis is a
+diagonal across the fold.**
+- Shipped: aax measured + plumbed but OFF by default (`JM_AAX=1` experiments); default
+  behaviour byte-plausibly = the S1 verified state (Monza 4.5% run-to-run diff; Watkins
+  clean re-verified).  The span-test drops stay.
+- **E65-3 prescribed:** build each wide strip's item from the stub's REAL vertex geometry
+  (multi-segment folded strip, as GPL draws it) instead of a synthesized flat quad — that
+  renders the fold correctly AND makes the crossing test moot for correctly-shaped strips.
+- DoD: Monza + Watkins captures, race+5-AI smoke, brush + driven green.

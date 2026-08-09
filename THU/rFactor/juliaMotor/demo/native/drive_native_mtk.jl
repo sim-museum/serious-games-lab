@@ -1074,9 +1074,9 @@ let objnames=Set{String}()
         try
             full = Render.extract_gpl_car(p; track=true, mirror=true)   # un-stripped: decides stub vs geometry
             if isempty(full) || treeish(inst.name)         # a billboard stub (tree/sprite) — or a tree panel forced to one
-                h, wid, strs = Render.billboard_stub(p); bb=nothing
+                h, wid, strs, aax = Render.billboard_stub(p); bb=nothing
                 for s in strs; bb = Render.build_billboard(s, TEXIDX); bb !== nothing && break; end
-                bbinfo[inst.name] = bb===nothing ? nothing : (bb[1], bb[2], bb[3], h, wid)
+                bbinfo[inst.name] = bb===nothing ? nothing : (bb[1], bb[2], bb[3], h, wid, aax)   # E65 S2: + authored axis angle
             else
                 # E60 (D6) A/B matrix, tested vs the 260801 gold videos — no config wins outright:
                 #   old collapse + two-sided + backflip (DEFAULT): VREDESTEIN/DUNLOP-pit mirrored,
@@ -1224,8 +1224,15 @@ let objnames=Set{String}()
         onground(i) || continue
         on_road(i.x, i.y, ROAD_HALFW) && continue   # E31: drop sprites planted ON the road (the Monza tree "curtain" across the track)
         gz = ploz(i)
-        item, tw, th, h, wid = bb
+        item, tw, th, h, wid, aax = bb
         w = wid > 0f0 ? wid : h*tw/max(th,1f0)
+        # E65 S2 verdict: the authored-axis experiment (farthest vertex pair → panel yaw) moved some
+        # strips right (Lesmos left flank ≈ gold) but broke others incl. a Watkins canopy REGRESSION —
+        # these strips are FOLDED PANORAMAS, so no single flat-quad yaw can represent them; the
+        # farthest-pair axis is a diagonal across the fold.  Proper fix (E65-3, logged): build the
+        # strip item from the stub's REAL vertex geometry (multi-segment), as GPL draws it.
+        # Until then aax is measurement-only (JM_AAX=1 experiments); shipped behaviour = S1.
+        eyaw = Float64(i.yaw) + (get(ENV,"JM_AAX","0") != "0" ? Float64(aax) : 0.0)
         if w > WIDE_PANEL
             # WIDE panoramic forest strip (80–380 m).  These duplicate the distant forest already
             # baked into the GPL horizon ring AND can only render as a near-field "wall" (face-on) or
@@ -1240,10 +1247,9 @@ let objnames=Set{String}()
             # CROSSES the road: samples on BOTH sides of the centreline while near it.
             spans_road = false
             if !DROP_FOREST
-                # axis sign: the render model is roty(−yaw) in a frame with z = −gpl_y, so the
-                # strip's long axis in GPL (x, y) is (cos yaw, −sin yaw) — the +sin first cut
-                # sampled a REFLECTED line and flagged parallel roadside strips as crossings.
-                sx, sy = cos(Float64(i.yaw)), -sin(Float64(i.yaw))
+                # E65 S2: sample along the strip's EFFECTIVE axis (authored mesh axis + placement
+                # yaw) — measured directly in the GPL frame, no render-convention gymnastics.
+                sx, sy = cos(eyaw), sin(eyaw)
                 sawpos = false; sawneg = false
                 for f in -0.5:0.0625:0.5
                     hr = JuliaMotor.hat(TRKSURF, Float64(i.x + sx*f*w), Float64(i.y + sy*f*w))
@@ -1253,7 +1259,9 @@ let objnames=Set{String}()
                 end
                 spans_road && println("  E65: forest panel ", i.name, " (", round(Int,h), "×", round(Int,w), " m) CROSSES the road — dropped")
             end
-            (DROP_FOREST || spans_road) || push!(STATICTREES, (item, (Float32(i.x), gz, Float32(-i.y)), Float32(w), Float32(h), Float32(-i.yaw)))
+            # render yaw: the panel's local x-axis under roty(ψ) maps to GPL (cos ψ, −sin ψ), so
+            # ψ = −eyaw reproduces the measured axis (old code: −i.yaw, i.e. aax silently 0).
+            (DROP_FOREST || spans_road) || push!(STATICTREES, (item, (Float32(i.x), gz, Float32(-i.y)), Float32(w), Float32(h), Float32(-eyaw)))
         else
             push!(BILLBOARDS, (item, (Float32(i.x), gz, Float32(-i.y)), Float32(w), Float32(h)))
         end
