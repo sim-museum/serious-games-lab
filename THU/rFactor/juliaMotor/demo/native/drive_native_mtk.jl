@@ -1374,16 +1374,19 @@ handItems = Render.build_gpl(HANDP, GPLTEX)        # E64 S2: gloved hands (cockp
 armItems  = Render.build_gpl(ARMP, GPLTEX)         # E64 S2: forearms (cockpit view, static)
 rsuspItemsA = Render.build_gpl(RSUSPP_A, GPLTEX)   # E64 S7: high-detail rear suspension halves (chase view)
 rsuspItemsB = Render.build_gpl(RSUSPP_B, GPLTEX)
-# Corrective transform per side: iteration 1 (scale-only) showed each half splayed up-and-out like a
-# ~50° wing — the halves carry a residual ROLL our posmat Euler composition mis-reads.  Fold each
-# down about the car's X axis through a pivot near its inner attachment (JM_RS_Y0/Z0), mirrored
-# per side, plus the axle-anchored scale that pulls the over-reach in.  JM_RS_* iterate from captures.
+# Corrective transform per side (E64 S8, settled by the POSITIONER-CHAIN DUMP): the chain to each
+# half is [park d=(0,20,0) → clamped 0] · [LOD selectors] · [hub placement d=(−0.893, ±0.772, 0.02),
+# yaw 2°, s=1.0] — so scale IS 1.0 and the hub translations are honoured; what remains is that the
+# assemblies are AUTHORED in a flat horizontal pose (identity capture: wings splayed flat outward)
+# and must fold ~90° about the HUB LINE (z=±0.772 — S7's 0.35 pivot was mid-driveshaft, hence the
+# under-fold/backward-fan artifacts).  50° vs 90° A/B'd near-identical from the chase (tyres +
+# gearbox occlude); 90° kept as the geometrically-motivated flat→vertical value.  JM_RS_* A/B.
 rsfix(side) = begin      # side = +1 (z>0 half) / −1
     ax, ay = -1.05f0, 0.31f0
-    sx = parse(Float32, get(ENV,"JM_RS_SX","0.80")); sy = parse(Float32, get(ENV,"JM_RS_SY","0.80")); sz = parse(Float32, get(ENV,"JM_RS_SZ","0.80"))
+    sx = parse(Float32, get(ENV,"JM_RS_SX","1.0")); sy = parse(Float32, get(ENV,"JM_RS_SY","1.0")); sz = parse(Float32, get(ENV,"JM_RS_SZ","1.0"))
     dx, dy = parse(Float32, get(ENV,"JM_RS_DX","0.0")), parse(Float32, get(ENV,"JM_RS_DY","0.0"))
-    y0, z0 = parse(Float32, get(ENV,"JM_RS_Y0","0.35")), parse(Float32, get(ENV,"JM_RS_Z0","0.35"))
-    roll   = deg2rad(parse(Float32, get(ENV,"JM_RS_ROLL","50")))
+    y0, z0 = parse(Float32, get(ENV,"JM_RS_Y0","0.02")), parse(Float32, get(ENV,"JM_RS_Z0","0.772"))
+    roll   = deg2rad(parse(Float32, get(ENV,"JM_RS_ROLL","90")))
     Render.translate(Float32[dx, dy, 0]) *
         Render.translate(Float32[ax, ay, 0]) * Render.scalexyz(sx, sy, sz) * Render.translate(Float32[-ax, -ay, 0]) *
         Render.translate(Float32[0, y0, side*z0]) * Render.rotx(Float32(-side*roll)) * Render.translate(Float32[0, -y0, -side*z0])
@@ -1392,11 +1395,9 @@ end
 const RS_SWAP = get(ENV,"JM_RS_SWAP","0") != "0"
 const RSFIX_A = rsfix(RS_SWAP ? -1 : 1)
 const RSFIX_B = rsfix(RS_SWAP ? 1 : -1)
-# DEFAULT OFF (E64 S7 closed PARTIAL): three capture iterations (scale-only → ±50° roll → ±25°)
-# show the halves' residual mis-rotation is NOT a pure X-roll — empirical folding is the wrong
-# method.  Next pass: dump the actual positioner chain (type/d/rot/s per node) on the path to
-# groups 27288/39792 and compose the real transform instead of guessing angles.
-const RSUSP_ON = get(ENV,"JM_RSUSP","0") != "0"
+# E64 S8: ON by default — the positioner-chain dump settled the transform (hub-line fold; see
+# rsfix above); the gold nintendo chase shows this articulated rear end, so it ships.
+const RSUSP_ON = get(ENV,"JM_RSUSP","1") != "0"
 # E64 S2: the raw fists sit at 3-and-9 on the rim; the gold cockpit video grips at 10-AND-2 —
 # opposite per-hand rotations about the wheel axis, so split the two fists by z sign (rig +z =
 # car's left) and give each its own grip rotation (JM_HAND_GRIP degrees, left +, right −).

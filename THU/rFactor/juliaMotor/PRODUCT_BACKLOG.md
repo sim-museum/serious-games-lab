@@ -794,6 +794,12 @@ then cross-track replication. Sprint log lives in `SCREEN_PARITY.md` §E64.
   landed default-off (`include_groups` extractor, per-side draw + `JM_RS_*` knobs, gold
   frames); 3 capture iterations bounded the residual mis-rotation as NOT a pure roll —
   next pass must dump the actual positioner chain and compose the real transform.
-- Open: D12 residual (positioner-chain dump → real transform; harness ready); per-track
-  ROADHAT extension (Zandvoort/Nürburgring/Spa road-texture recognition + capture
-  verification); mirror + hands polish A/B vs gold video at speed.
+- **S8 ✅ (2026-08-09) "Read the positioner chain" (D12) — rear suspension SHIPPED ON.**
+  The chain dump settled it: the file itself places each half AT ITS HUB (d=±0.772 =
+  rear track, s=1.0) behind a clamped park-translation; the halves are authored FLAT and
+  need a 90° fold about the hub line (S7 pivoted mid-driveshaft — its whole confusion).
+  Baked: hub-pivot fold, scale 1.0, `JM_RSUSP` default ON. **D12 → CLOSE-minus** (visible
+  delta vs gold modest from the low chase cam; structure present for other angles).
+- Open: per-track ROADHAT extension (Zandvoort/Nürburgring/Spa road-texture recognition +
+  capture verification); mirror + hands polish A/B vs gold video at speed; D12 polish
+  (fold fine-tune vs gold at other camera angles).

@@ -543,3 +543,24 @@ so the D12 residual is real parity work, not cosmetic-null.  What the sprint est
   0x11 LOD switch.
 - Shipped `JM_RSUSP` default **0**: the chase view is byte-plausibly the S4 de-spidered
   state; race+5-AI smoke green.  D12 residual stays OPEN with the harness ready.
+
+### E64 S8 (2026-08-09): READ THE POSITIONER CHAIN — D12 rear suspension SHIPPED ✅
+S7's prescription executed: a standalone probe dumped the full node chain to groups
+27288/39792.  It reads:
+`[POS d=(0,20,0) — the PARK translation, clamped→0 by posmat (correctly un-parking the
+whole high-detail branch, main body included)] · [LOD selectors] · [POS type 0x16
+d=(−0.893, ±0.772, 0.02), yaw 2°, s=1.0]` — **the halves are placed AT THE REAR HUBS by
+the file itself** (±0.772 = the rear track ✓, scale exactly 1.0).
+- So S7's residual was never scale or a mid-assembly roll: the assemblies are **authored
+  in a flat horizontal pose** (identity capture: wings splayed flat outward at wheel
+  height) and need a ~90° fold about the **HUB LINE z=±0.772** — S7 folded about
+  z=0.35 (mid-driveshaft), hence its under-fold/backward-fan artifacts.
+- Hub-pivot fold verified by capture: 50° and 90° both tuck the assemblies correctly
+  inside the wheels (near-identical from the chase — tyres/gearbox occlude); **90° kept**
+  as the geometrically-motivated flat→vertical value.  Scale reset to the chain's 1.0.
+- **Shipped ON by default** (`JM_RSUSP=0` hides; `JM_RS_*` A/B): the chase rear end now
+  carries the articulated suspension mass the gold nintendo shows.  Honest residual:
+  from the low chase camera most detail hides behind the tyres/gearbox — the visible
+  delta vs gold is modest; the structure is there for higher cameras/replay angles.
+- **D12 → CLOSE-minus.**  DoD: default-config captures clean, race+5-AI smoke,
+  brush + driven tests green.
