@@ -882,3 +882,17 @@ EOF
   ON the track (drive through, see inside — E41 now REPRODUCED with a location). **E68-S3**:
   Spa trees yellow that should be green. **E68-S4**: missing tree stands on the right
   ~1 min before the hairpin (La Source) — the track start visible across the gap.
+
+
+### E68 IMPLEMENTATION SPEC — per-face road-facing selection (three customers)
+Customers: D6 blank sign boards (Zandvoort at scale), the white shrubs (E68-Z2), the
+Watkins veil (giant Grass sheet backs).  Design, settled by this epic's evidence:
+1. At the OBJECTS/track build, for instances of affected families (sign boards, shrub
+   sheets, veil-class Grass mega-sheets), compute per FACE the world normal under the
+   instance transform and the direction to the nearest ribbon point (JuliaMotor.hat perp).
+2. Keep the face of each coplanar/offset pair whose normal · (toward-road) > 0; drop the
+   other.  Per-instance mesh variants cached by (mesh, facing-sign) — two variants max.
+3. Blanket single-sided culls are DISPROVEN for terrain (S11 regressions) and unavailable
+   for signs (D6 needs the right face, not one arbitrary face) — per-face selection is the
+   only correct mechanism.  Rails/sections keep their shipped whole-part culls.
+4. Verify each customer at its known site: Tarzan boards s=380, bridge shrubs, veil s=60–180.
