@@ -787,3 +787,13 @@ STILLS whose interior read differently than the videos'.  **Prescribed:** probe 
 faces in the footwell region (x 0.2–0.7, y<0.3) for their colour/texture identity, then
 darken INTERIOR-only faces toward gold's charcoal (exterior body must stay green — the
 discriminator is the face normal pointing INTO the cockpit).
+
+
+## E68 S7 (2026-08-09): DARKEN THE FOOTWELL ✅ — the green block is gone
+The S6 prescription executed: the footwell probe found 142 untextured tris whose baked
+dark-green colour the `JM_COWL_HARM` harmonizer painted BRIGHT BRG — it painted every
+green-dominant untextured face the same, cowl AND footwell, while the gold is BRG only on
+the upper cowl rim and CHARCOAL below the dash.  Fix: height-split the harmonizer (GPL z
+= up; faces topping out below `JM_FOOTWELL_Z`=0.22 go dark-tub).  Verified
+(`parity/e68_footwell_ab.jpg`): footwell charcoal like gold, cowl BRG preserved.
+DoD: race+5-AI smoke, brush + driven green.

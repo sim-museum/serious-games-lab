@@ -1024,8 +1024,14 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
                 # tris to two colours (green-dominant → BRG, else → dark tub).  JM_COWL_HARM=0 restores
                 # the capped baked colours.
                 if get(ENV,"JM_COWL_HARM","1") != "0"
-                    c = (c[2] > c[1]+0.04f0 && c[2] > c[3]+0.04f0) ? (0.07f0,0.24f0,0.12f0) :
-                                                                     (0.10f0,0.105f0,0.115f0)
+                    # E68 S7 (PO: "bottom half of dashboard occluded by green block"): the harmonizer
+                    # painted EVERY green-dominant untextured face BRG — cowl AND footwell.  The gold
+                    # cockpit is BRG only on the upper cowl rim; below the dash it is CHARCOAL.  Split
+                    # by height (GPL z = UP): faces topping out below JM_FOOTWELL_Z go dark-tub.
+                    zmx = max(t.p[1][3], t.p[2][3], t.p[3][3])
+                    fw  = parse(Float32, get(ENV,"JM_FOOTWELL_Z","0.22"))
+                    c = (c[2] > c[1]+0.04f0 && c[2] > c[3]+0.04f0 && zmx >= fw) ? (0.07f0,0.24f0,0.12f0) :
+                                                                                  (0.10f0,0.105f0,0.115f0)
                 else
                     c = (min(c[1],0.30f0), min(c[2],0.38f0), min(c[3],0.30f0))
                 end
