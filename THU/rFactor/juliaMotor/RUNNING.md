@@ -51,9 +51,13 @@ GPL utilities: `/home/admin/gold standard/julia racer/gpl utilities/`.
   S2 HANDS: gold-layout gloved fists at 10-and-2 riding the wheel (`JM_HAND_GRIP`) +
   sleeves via the `ARMFIX` wrist-pivot correction of the positioner-orphaned `lotarms`
   (`JM_ARM_*` knobs; `JM_HANDS` defaults ON). S3: both verified to GENERALIZE on all
-  5 circuits (`parity/cockpit_e64_mirror_sweep.jpg`). Z-CK3 + Z-CK4 → FIXED in
-  `SCREEN_PARITY.md`; session doc `STATUS_2026-08-08_graphics-E64-S1.md`. E64 remaining:
-  chase-body LOD (D12, asset-deep), mirror/hands polish vs gold video at speed.
+  5 circuits (`parity/cockpit_e64_mirror_sweep.jpg`). S4 DE-SPIDER: PRIM node 0x11 is
+  GPL's LOD switch (now highest-detail only, `JM_LOD_ALL` A/Bs) + the displaced
+  runtime-hidden assemblies (groups 27288/39792) excluded from CARP/DRIVERP/FSUSPP —
+  the chase car's blades + spears are GONE (`parity/chase_e64_despider_ab.jpg`).
+  Z-CK3 + Z-CK4 + D12(spider-legs) → FIXED in `SCREEN_PARITY.md`; session doc
+  `STATUS_2026-08-08_graphics-E64-S1.md`. E64 remaining: D12 residual (articulated
+  rear-suspension detail), mirror/hands polish vs gold video at speed.
 
 ## Earlier (2026-08-02)
 
