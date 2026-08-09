@@ -1201,7 +1201,12 @@ let objnames=Set{String}()
             false
         end
     end
-    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw + objyawfix(i.name))), istree(i.name), (Float32(i.x), ploz(i), Float32(-i.y)), lowercase(i.name))
+    # E68 S2 (PO: Monza "haze planes make the forest absent, then fade into view"): uGraze was
+    # built to fade FLAT panels seen edge-on; on the E65 real folded tree MESHES it fades whole
+    # forest walls with view angle.  Mesh-path trees (MONZA/WATGLEN) draw un-grazed — a folded
+    # strip has no edge-on smear to hide.  JM_GRAZE_MESH=1 restores the old fade for A/B.
+    graze_mesh = get(ENV,"JM_GRAZE_MESH","0") != "0"
+    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw + objyawfix(i.name))), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), ploz(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
                           !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
     # E15: SOLID trackside objects the car can hit — (physics x, z, collision radius m).  Buildings,

@@ -731,3 +731,13 @@ from every keep path (mesh, billboard, instance table).  Verified at all four PO
 (`parity/e68_perp_crowds_after.jpg`): tarmac clear, parallel rows intact on the grass.
 The Ring's Karussell block is a DIFFERENT mechanism (no crowd rows there — landmass
 scenery; separate E68 item).  DoD: race+5-AI smoke, brush + driven green.
+
+## E68 S2 (2026-08-09): THE FADING FORESTS (Monza) ✅
+PO: "planes of haze cause forest to be absent, then fade into view; translucent sheets
+appear and disappear over trackside objects."  Root cause: `uGraze` — the edge-on alpha
+fade built for FLAT panels — fired on the E65 real folded tree MESHES, fading whole forest
+walls with view angle.  Mesh-path trees (MONZA/WATGLEN) now draw un-grazed (a folded strip
+has no edge-on smear to hide; `JM_GRAZE_MESH=1` restores the fade for A/B).  Verified:
+s=1500 solid at BOTH cockpit and chase angles (the pre-fix reference shows the half-faded
+left wall), s=2100 + pits clean, Watkins pit straight regression-clean.
+`parity/monza_e68_grazefix_ab.jpg`.  DoD: Monza race+5-AI smoke, brush + driven green.
