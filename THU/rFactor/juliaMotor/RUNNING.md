@@ -44,6 +44,16 @@ GPL utilities: `/home/admin/gold standard/julia racer/gpl utilities/`.
 
 ## Current state (2026-08-08)
 
+- **E64 S5+S6 closed (later same day) — WATKINS.** S5: WG3 "asset-limited" OVERTURNED —
+  the gold's roadside autumn forest ships with the track; every tree class was dropped by
+  pre-graze-fade rules; WATGLEN now keeps them as static graze-faded panels (0→30 panels,
+  pit straight still smear-free). S6: WG4 — the "road-only HAT" never existed (build_hat
+  keeps all terrain); a true road-texture HAT + off-road rescue + multi-pass recentre puts
+  the Watkins line back on the tarmac (verified s=5/300/1200), GATED to Watkins after the
+  cross-track gate showed other tracks' verified lines would silently move. Follow-up:
+  per-track ROADHAT extension. `parity/watkins_wg3_forest_ab.jpg`,
+  `parity/watkins_wg4_placement_ab.jpg`.
+
 - **E64 S1–S3 closed.** S1 LIVE MIRRORS: the cockpit discs show a real rear-view render
   (384×192 RTT, X-mirrored, per-disc half view, round-masked glass quads derived from the
   mirror mesh itself; `JM_MIRROR_RTT=0` restores silver discs, `JM_MIRROR_FOV` tunes);
