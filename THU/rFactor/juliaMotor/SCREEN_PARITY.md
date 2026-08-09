@@ -757,3 +757,16 @@ Two hypotheses tested and one measurement lesson:
   false-colour mode rendering the diff/shadow/fog terms directly — one capture then
   attributes the sheen to its term instead of guessing.  DoD: prior gates stand (shader
   A/B is default-off; fade softening is sub-perceptual — race smoke green in S2's run).
+
+## E68 S4 (2026-08-09): READ THE SIGNS (Zandvoort) — ◑ inventoried + reclassified
+PO: "every sign at the Ring is legible; only a few at Zandvoort are."  The inventory
+captures (s=150/250/380/4100, `parity/zandvoort_e68_signs_inventory.jpg`) RECLASSIFY the
+problem: Zandvoort's boards aren't blurry — they render as **BLANK WHITE SLABS** (both
+big boards at Tarzan s=380, the board row at s=150) = the D6 per-face-winding defect AT
+SCALE, the same family as the white shrubs by the bridge (E68-Z2) and the cok board back.
+The Ring's signs are legible because its boards are .dat landmass MESHES with consistent
+winding; Zandvoort's chmp4-family sheets carry inconsistent per-face winding (E60 matrix:
+no global cull/dedup config wins).  **Prescription (E60's, now scheduled): per-INSTANCE
+road-facing face selection** — at OBJECTS build, keep the coplanar face whose normal
+(instance transform applied) points toward the centreline; needs a per-instance mesh
+variant cache.  E68-Z2 white shrubs join this item (same mechanism suspected).
