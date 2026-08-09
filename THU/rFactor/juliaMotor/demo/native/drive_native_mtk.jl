@@ -63,6 +63,7 @@ const TRACKSEL = choose_track()
 const SKIDPAD  = TRACKSEL == "skidpad"
 const NURB     = TRACKSEL == "nurburgring"
 const MONZA    = TRACKSEL == "monza"
+const WATGLEN  = TRACKSEL == "watglen"
 # E57: Monza-only per-surface brightness — its `asphalt` MIP is over-bright (the road renders near-white,
 # washing the scene to "snow") while the barriers/armco render carbonized-black under the flat overcast.
 # The default track bright/ambfill (0.72/0.34) is fine on the other 4 GPL tracks, so this is gated to Monza.
@@ -1091,12 +1092,14 @@ let objnames=Set{String}()
     # tree smears, and LOOSE people only — marshals, photographers, rescue crews, lone figures,
     # and standing roadside spectators (Spa people*/pelf*).  Seated stand crowds are kept above.
     _droptest = split(get(ENV,"JM_DROPTEST",""), ',', keepempty=false)   # diagnostic: drop comma-listed name PREFIXES
-    drop(nm) = (!isempty(_droptest) && any(p->startswith(nm,p), _droptest)) || (!standcrowd(nm) && (
+    _keeptest = split(get(ENV,"JM_KEEPTEST",""), ',', keepempty=false)   # diagnostic: FORCE-KEEP comma-listed name prefixes past every drop rule (WG3 forensics)
+    drop(nm) = (!isempty(_keeptest) && any(p->startswith(nm,p), _keeptest)) ? false :
+               (!isempty(_droptest) && any(p->startswith(nm,p), _droptest)) || (!standcrowd(nm) && (
                (startswith(nm,"grass") && !KEEP_GRASS) || (startswith(nm,"herbe") && !KEEP_GRASS) || nm == "infield" ||
                nm == "hotels" ||                                             # E45: Zandvoort backdrop building cluster — a 310 m garbage bbox that never grounds → floats in the sky above the grandstand; the horizon ring + dunes carry the backdrop without it
                startswith(nm,"tent") || startswith(nm,"single") ||
-               startswith(nm,"intree") ||                                    # INFIELD tree lines (100s of m wide) → distant central "smear"
-               startswith(nm,"treesrb") || startswith(nm,"treefill") ||      # forest-BACKDROP / gap-fill quads → streaky "painted tree" smear (Watkins pit-straight)
+               (startswith(nm,"intree") && !WATGLEN) ||                      # INFIELD tree lines (100s of m wide) → distant central "smear".  WG3 (E64 S5): on WATKINS these + treefill/treesrb ARE the gold's close roadside autumn forest — the smear objection predates graze-fade (MZ3), which fixed it; kept there now
+               ((startswith(nm,"treesrb") || startswith(nm,"treefill")) && !WATGLEN) ||  # forest-BACKDROP / gap-fill quads → streaky "painted tree" smear (non-Watkins; see WG3 note above)
                startswith(nm,"trbk") || startswith(nm,"brbk") ||             # Monza underpass tree/bush BANKS (trbk1-8/brbk1-3 at lapdist ~3100-3440, lat ~5 m) — MESH foliage that bypasses the sprite on-road filter and renders as dark vertical smears ACROSS the road (PO round 4: "7 stands of trees across the track near the underpass")
                startswith(nm,"tuntbk") ||                                    # tunnel-edge tree bank (same dark-smear foliage by the underpass)
                startswith(nm,"ppl") || startswith(nm,"people") || startswith(nm,"pelf") ||  # loose standing spectators
@@ -1146,7 +1149,10 @@ let objnames=Set{String}()
     # 100-160 m strips) is what fills the void around the road; its horizon ring doesn't carry trees the way
     # Watkins' does.  Drawn as STATIC authored-yaw backdrop panels (graze-fade), they line the circuit without
     # the camera-faced "wall".  Other tracks keep the default (drop, let the horizon ring carry the tree-line).
-    DROP_FOREST = get(ENV,"JM_DROP_FOREST", MONZA ? "0" : "1")!="0"
+    # WG3 (E64 S5): WATKINS joins Monza — its tree3-18 strips (19-39 m tall × 78-380 m wide) ARE
+    # the gold's dense roadside autumn forest; as static authored-yaw graze-faded panels (MZ3)
+    # they line the circuit without the old camera-faced "wall" / edge-on smear.
+    DROP_FOREST = get(ENV,"JM_DROP_FOREST", (MONZA || WATGLEN) ? "0" : "1")!="0"
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     for i in insts

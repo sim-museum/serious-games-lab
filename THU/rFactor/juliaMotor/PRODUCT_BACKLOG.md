@@ -769,5 +769,12 @@ then cross-track replication. Sprint log lives in `SCREEN_PARITY.md` §E64.
   CARP/DRIVERP/FSUSPP — the DRIVERP share (pale "arms" weave) was the visible spears.
   Before/after `parity/chase_e64_despider_ab.jpg`; cockpit + Monza re-verified; DoD green.
   D12 residual rescoped: rear-suspension DETAIL (positioner articulation) stays open.
-- Open: D12 residual (articulated rear suspension detail); mirror + hands polish A/B vs
-  gold video at speed.
+- **S5 ✅ (2026-08-08) "The Watkins forest" (WG3)** — "asset-limited" OVERTURNED: the gold's
+  dense roadside autumn forest ships with the track (tree3-18 strips + treefill + intree +
+  treesrb) and every class was dropped by pre-graze-fade rules. WATGLEN now joins Monza's
+  keep-as-static-graze-faded-panels default (0→30 forest panels + 13 billboards); pit
+  straight verified still smear-free. `parity/watkins_wg3_forest_ab.jpg`. New: **WG4** —
+  `place_at_s!` puts the car on the GRASS at Watkins s=300/1200 (mis-vantage also caused
+  E63's wrong "barren" verdict); reconcile with E54's JM_SWEEP pass. `JM_KEEPTEST` diag added.
+- Open: WG4 (Watkins place_at_s! off-road); D12 residual (articulated rear suspension
+  detail); mirror + hands polish A/B vs gold video at speed.

@@ -464,3 +464,27 @@ unaffected (hands/mirrors/dash/front-tyres re-verified).  Honest scope: this REM
 mis-placed geometry rather than restoring GPL's articulated suspension — the chase rear
 shows less suspension detail than gold; that residual stays D12-open as a
 positioner-articulation effort.  Monza spot-check post-LOD-fix clean (fragile track).
+
+### E64 S5 (2026-08-08): THE WATKINS FOREST (WG3) ✅ — "asset-limited" overturned
+E63 closed WG3 as asset-limited ("native stays barren; needs tree-OBJECT placement").
+Wrong on both counts, established by forensics + capture:
+- **The forest ships with the track and we were dropping ALL of it.**  `watglen.3do`
+  places `tree3–18` (19–39 m tall × 78–380 m wide strips), `treefill×10`, `intree1/1a`
+  and `treesrb×13` — every class was eliminated by pre-graze-fade drop rules
+  (`DROP_FOREST=1` default + unconditional `treefill`/`intree`/`treesrb` drops written
+  for the old camera-faced-wall / edge-on-smear artifacts, E22 era).
+- **Graze-fade (MZ3) already solved those artifacts** — Monza has run the same strips as
+  static authored-yaw panels since E63.  Fix: `WATGLEN` joins Monza's `DROP_FOREST=0`
+  default and the three unconditional drops are gated `!WATGLEN`.  Watkins now keeps
+  72 objects + 13 billboards + **30 forest panels** (was 0).
+- **Verified at defaults** (`parity/watkins_wg3_forest_ab.jpg`): the s=1200 stretch has
+  tall autumn/pine forest lining the roadside like the gold; the PIT STRAIGHT — the
+  historical smear location — stays clean (KENDALL/DUNLOP gantry, no wall, no smear).
+- **E63's verdict was also made from the wrong vantage:** its "barren at s=300"
+  comparison against gold t=25 s paired different corners (gold t=25 s ≈ s 900–1100 at
+  lap pace), and **`place_at_s!` puts the car on the GRASS at Watkins s=300 and s=1200**
+  (visible in the chase captures) — the road is metres away.  Logged as **WG4** (new):
+  affects JM_SHOTS vantages and possibly SHIFT-R recovery; the E54 JM_SWEEP "no
+  false-grass" result needs reconciling with it.  Diagnostic added: `JM_KEEPTEST`
+  (force-keep name prefixes past every drop rule — the mirror of `JM_DROPTEST`).
+- DoD: race+5-AI smoke exit 0, brush + driven tests green (run post-edit).
