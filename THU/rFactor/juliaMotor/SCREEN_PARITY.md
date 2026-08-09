@@ -397,3 +397,29 @@ discs with no hand-placed geometry.
 - **Still open in E64:** driver-hands mesh refit (Z-CK4), chase-body LOD (D12,
   asset-limited); minor mirror polish (image slightly dominated by own tail — GPL-authentic
   but worth an A/B against the gold cockpit video at speed next pass).
+
+### E64 S2 (2026-08-08): HANDS ON THE WHEEL (Z-CK4) ✅ — gold-layout gloved hands + sleeves
+The gold cockpit video shows white-gloved fists gripping at **10-and-2** with white sleeves
+sweeping from the lower frame corners; we showed nothing (JM_HANDS defaulted OFF after the
+"giant silver arms").  Root causes found and fixed:
+- **The textures were never the problem** — `lohand.mip` (4 glove views) and `lotarms.mip`
+  (pale sleeve weave) ship with the car and decode fine.
+- **`lotarms` is authored in a positioner-local frame** (the D12 posmat-clamp family):
+  raw, each arm runs from its wrist UP-AND-FORWARD (x→1.01, y→0.52 — forward of the wheel,
+  above the eye), which is what read as "giant silver arms in the sky".  Verified by vertex
+  scatter (sprint scratchpad `proj_xy/zy`).  **Fix:** `ARMFIX` — 180° rotation in the x-y
+  plane about the wrist point (mirror x about 0.74, y about 0.26) so the arms sweep
+  DOWN-AND-BACK to the driver, y-squash 0.55 → elbows at lap height, z-tuck 0.55 →
+  elbows at the body sides, capture-tuned nudge (dx −0.05, dy −0.06).  All knobs:
+  `JM_ARM_{X0,Y0,SY,SZ,DX,DY}`, `JM_ARMS=0` = hands only.
+- **The fists sat at 3-and-9** (raw mesh) vs gold's 10-and-2 — opposite per-hand rotations,
+  impossible with one transform, so the two fists are SPLIT by z sign at build
+  (`split_fists`) and each gets its own grip rotation about the wheel axis
+  (`JM_HAND_GRIP`=30°; hands ride the wheel rotation, arms static — GPL articulation).
+- **Extraction moved out of CARP** (`HANDP`/`ARMP` like DRIVERP) — always excluded from the
+  body; `JM_HANDS` now defaults **ON** (0 hides).
+- **Verdict vs gold** (captures `hands_fix3/fix4` vs `gold_hands_zoom`): layout parity —
+  sleeves from the lower corners over the lower rim (gold does this too) to gloved fists at
+  10-and-2.  Residual: the mesh is chunky/faceted with a marbled weave (the asset itself;
+  same class as D12) — logged as polish, not a blocker.
+- DoD: race+5-AI smoke exit 0, `test_brush_slip` ✓, `test_vehicle_driven` ✓ (run post-edit).

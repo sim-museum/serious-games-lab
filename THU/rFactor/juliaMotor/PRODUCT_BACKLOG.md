@@ -753,4 +753,9 @@ then cross-track replication. Sprint log lives in `SCREEN_PARITY.md` §E64.
   round-masked glass quads derived from the mirror mesh sample per-disc halves; world draw
   factored into a shared `drawworld` closure (chase re-verified). `JM_MIRROR_RTT`/`JM_MIRROR_FOV`.
   DoD: race+5AI smoke exit 0, brush/driven tests green. Z-CK3 → FIXED.
-- Open: Z-CK4 hands refit; D12 chase LOD (asset-deep); mirror polish A/B vs gold video at speed.
+- **S2 ✅ (2026-08-08) "Hands on the wheel" (Z-CK4)** — gold-layout gloved hands + sleeves:
+  lotarms was positioner-orphaned (D12 family; raw it ran up-and-forward = the old "giant
+  silver arms") → `ARMFIX` wrist-pivot mirror + squash/tuck; fists split by z sign and
+  rotated to gold's 10-and-2 (`JM_HAND_GRIP`); JM_HANDS now defaults ON. Residual: chunky
+  GPL-era mesh/weave (asset-limited, logged as polish). Details `SCREEN_PARITY.md` §E64 S2.
+- Open: D12 chase LOD (asset-deep); mirror + hands polish A/B vs gold video at speed.

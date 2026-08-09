@@ -631,9 +631,13 @@ const MIRROR_TEX  = ("mirror","lotmirt","lrm","lrimext","lotubase","lotubas2")  
 const MIRROR_DRAW = ("mirror","lrm")                                             # actually drawn (glass disc only — the chrome rim "lrimext" sat in front of the glass and read as a torpedo TUBE, so it's dropped)
 const TUB_GREY = parse(Float32, get(ENV,"JM_TUB_GREY","0.11"))   # untextured cockpit-tub shade (raise to lift the dark coaming "black band" toward the GPL aluminium tub)
 # GPL gold standard shows the gloved hands/forearms filling the lower cockpit (where we otherwise
-# see a black band).  JM_HANDS=1 keeps lohand+lotarms in the body (drawn at the centred wheel).
-const HANDS = get(ENV,"JM_HANDS","0") != "0"   # default OFF: the static GPL arm mesh doesn't match our re-placed wheel/eye → giant silver arms in the sky
-const _HAND_EXC = HANDS ? ("ltraymap","lshad","dash7a","windlot") : ("ltraymap","lshad","lohand","lotarms","dash7a","windlot")
+# see a black band).  E64 S2 (Z-CK4): the old JM_HANDS=1 kept lohand+lotarms inside CARP, where the
+# body extraction (grey-tint + group handling) turned them into "giant silver arms" — but the RAW
+# mesh sits exactly at the wheel (lohand x 0.68–0.80 vs rim x 0.74–0.76, SWCENTER x 0.75).  So they
+# are now ALWAYS excluded from CARP and extracted separately like DRIVERP (textures lohand.mip /
+# lotarms.mip ship with the car); the hands ride the wheel rotation, the forearms draw static.
+const HANDS = get(ENV,"JM_HANDS","1") != "0"   # default ON to match gold; JM_HANDS=0 hides them
+const _HAND_EXC = ("ltraymap","lshad","lohand","lotarms","dash7a","windlot")
 # E36 black band: `lotblack` is the matte-black cockpit surround/dash that fills the lower view as a
 # full-width band — the angular black "plywood" facets the PO flagged.  DROPPED by default now that the
 # tan windlot scuttle (WIND_ALPHA=1) covers that area like the GPL gold standard; JM_KEEP_LOTBLACK=1
@@ -672,6 +676,8 @@ const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0) 
 # double-draw with CARP) — drawn with the body so the wishbones show ahead through the plexiglass (PO).
 const FSUSPP = Render.extract_gpl_car(LOT3DO; only=("lsusp1",), maxlat=1.3f0)
 const MIRRORP = Render.extract_gpl_car(LOT3DO; only=MIRROR_DRAW, maxlat=0.95f0)  # rear-view mirrors — clean disc, re-placed on the cowl (see MIRRORMAT)
+const HANDP  = Render.extract_gpl_car(LOT3DO; only=("lohand",),  maxlat=0.95f0)  # E64 S2: gloved hands on the rim — ride the wheel rotation
+const ARMP   = Render.extract_gpl_car(LOT3DO; only=("lotarms",), maxlat=0.95f0)  # forearms/upper arms — static (their wheel-side ends are what the eye sees)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read
 # upside-down.  Mirror the gauge in height about its own centre so the dial face turns up toward the eye.
 const GCY = (b = Render.parts_bbox(GAUGEP); Float32((b.ymin + b.ymax)/2))
@@ -1302,6 +1308,43 @@ load_wheel(nm) = Render.build_gpl(Render.extract_gpl_car(joinpath(LOTDIR,nm*".3d
                     exclude=("ltraymap","lshad"), tint=(TYRE_ALB,TYRE_ALB,TYRE_ALB+0.02f0)), GPLTEX)
 const WHEELITEMS = Dict(nm => load_wheel(nm) for nm in ("lotwlf","lotwrf","lotwlr","lotwrr"))
 swItems = Render.build_gpl(SWPARTS, GPLTEX)        # steering wheel (rotated with steer)
+handItems = Render.build_gpl(HANDP, GPLTEX)        # E64 S2: gloved hands (cockpit view, rotate with the wheel)
+armItems  = Render.build_gpl(ARMP, GPLTEX)         # E64 S2: forearms (cockpit view, static)
+# E64 S2: the raw fists sit at 3-and-9 on the rim; the gold cockpit video grips at 10-AND-2 —
+# opposite per-hand rotations about the wheel axis, so split the two fists by z sign (rig +z =
+# car's left) and give each its own grip rotation (JM_HAND_GRIP degrees, left +, right −).
+function split_fists(parts, tex)
+    L=Float32[]; R=Float32[]
+    for p in parts
+        v = p.verts
+        for t in 1:33:length(v)-32                     # one triangle = 3 verts × 11 floats
+            zm = (v[t+2]+v[t+13]+v[t+24])/3
+            append!(zm > 0 ? L : R, @view v[t:t+32])
+        end
+    end
+    [Render.Item(Render.upload(a)..., tex, (1f0,1f0,1f0)) for a in (L, R)]
+end
+handLR = isempty(handItems) ? Render.Item[] : split_fists(HANDP, handItems[1].tex)
+const HAND_GRIP = deg2rad(parse(Float32, get(ENV,"JM_HAND_GRIP","30")))
+gripmat(sgn) = Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(sgn*HAND_GRIP)) * Render.translate(-SWCENTER)
+# E64 S2: corrective transform for the positioner-orphaned lotarms mesh (see the draw site).
+# JM_ARM_* iterate it from captures without a code edit: FLIP = 180° yaw about the wheel-plane
+# pivot (sweeps the arms BACK toward the driver), SY squashes them below the eye about Y0,
+# DX/DY nudge.  JM_ARMS=0 drops the arms entirely (hands only).
+const ARMS = get(ENV,"JM_ARMS","1") != "0"
+# Vertex scatter (proj_xy/zy in the sprint scratchpad): each arm runs from its wrist (at the
+# hand, x≈0.74 y≈0.26) UP-AND-FORWARD to x 1.01 / y 0.52 — inverted from reality, where the
+# forearm drops DOWN-AND-BACK to an elbow at the cockpit side.  So: 180° rotation in the x-y
+# plane about the wrist point (mirror x about X0, y about Y0) with a y-squash so the far ends
+# land at lap height, z untouched (the wide ±0.37 elbows match gold's frame-edge sleeves).
+const ARMFIX = begin
+    px, py = parse(Float32, get(ENV,"JM_ARM_X0","0.74")), parse(Float32, get(ENV,"JM_ARM_Y0","0.26"))
+    sy     = parse(Float32, get(ENV,"JM_ARM_SY","0.55"))
+    sz     = parse(Float32, get(ENV,"JM_ARM_SZ","0.55"))   # tuck the ±0.37 elbows toward the body sides
+    dx, dy = parse(Float32, get(ENV,"JM_ARM_DX","-0.05")), parse(Float32, get(ENV,"JM_ARM_DY","-0.06"))   # capture-tuned (fix4): elbows low in the frame corners, sleeve tips at the gloves
+    Render.translate(Float32[dx, dy, 0]) *
+        Render.translate(Float32[px, py, 0]) * Render.scalexyz(-1f0, -sy, sz) * Render.translate(Float32[-px, -py, 0])
+end
 println(count(it->it.tex!=0, trackItems), "/", length(trackItems), " track + ",
         count(it->it.tex!=0, carItems), "/", length(carItems), " Lotus parts textured")
 
@@ -2607,6 +2650,22 @@ function main()
         # steering wheel — spin about its column axis with steering input
         swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5)) * Render.translate(-SWCENTER)
         for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2, ambfill=0.34); end
+        # E64 S2 (Z-CK4): gloved hands + forearms, cockpit view only (the chase driver figure has its
+        # own DRIVER_TEX arms).  Hands turn with the wheel, forearms stay put — GPL-era articulation.
+        # The lotarms mesh is authored in a positioner-local frame (D12 posmat-clamp family): raw it
+        # sits FORWARD of the wheel (x 0.68…1.01) and too high (y→0.52) → the old "giant silver arms".
+        # ARMFIX mirrors it back through the wheel plane toward the driver + squashes it under the eye.
+        if HANDS && CTL.view == 0
+            if ARMS
+                for it in armItems;  Render.draw(prog, it, vp, bodyModel*ARMFIX; bright=1.15, spec=0.05, ambfill=0.60); end
+            end
+            if length(handLR) == 2                      # left fist +grip, right fist −grip → gold's 10-and-2
+                Render.draw(prog, handLR[1], vp, swModel*gripmat(+1); bright=1.15, spec=0.05, ambfill=0.60)
+                Render.draw(prog, handLR[2], vp, swModel*gripmat(-1); bright=1.15, spec=0.05, ambfill=0.60)
+            else
+                for it in handItems; Render.draw(prog, it, vp, swModel; bright=1.15, spec=0.05, ambfill=0.60); end
+            end
+        end
         # plexiglass WINDSCREEN — drawn LAST, FAINTLY VISIBLE glass (PO: it had vanished at 0.16), depth-write
         # OFF so the front suspension + track read through it (GPL gold standard) but the screen still reads as
         # a tinted curved plexiglass, not a bright opaque gold rim.  JM_WIND_ALPHA tunes it.
