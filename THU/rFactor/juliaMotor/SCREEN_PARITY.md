@@ -865,3 +865,15 @@ this sprint banks PREPARED rather than guessed:
   grade, the fix is the billboard draw's sat/suncol interaction (bright 1.55 × sat 1.34);
   if it stays, the sprite art itself is autumn-coloured (asset, waive candidate).
 Resume with those two commands when the display is quiet.
+
+
+### E68 S12 close (2026-08-09): probes ran — yellow trees EXONERATE the grade
+- **Yellow trees:** the `JM_GRADE=SPAOLD` A/B is decisive — the yellow-green clusters are
+  IDENTICAL under both grades (`parity/spa_e68_yellowtrees_ab.jpg`), so the colour pipeline
+  is exonerated: the stree sprite art itself is autumn-coloured.  **Authentic GPL asset →
+  waive candidate** (joins V8/D11/board-backs in the PO queue).
+- **Missing stands (s≈13 850):** `stree1/3/4/6` billboards are KEPT within 26–34 m and the
+  mid-distance shows the stand/board structures — content renders here.  The PO's specific
+  gap ("see the track start across the fields") needs one more pointer: on the next drive,
+  note the lap-timer second when the gap is ahead, and the capture recipe pins it.
+No code changed — investigation close; prior gates stand.
