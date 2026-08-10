@@ -877,3 +877,13 @@ Resume with those two commands when the display is quiet.
   gap ("see the track start across the fields") needs one more pointer: on the next drive,
   note the lap-timer second when the gap is ahead, and the capture recipe pins it.
 No code changed — investigation close; prior gates stand.
+
+
+### E68 S13 (2026-08-09): Z3 — the S/F grandstand jut, classified
+PO: "the grandstand just before the start-finish line on the left juts out into the
+track."  Diagnosis: no placed instance within 120 m — the stand is TRACK-MESH authored
+geometry; its base skirt meets the tarmac edge where the gold (B8 series, 02-56-12) shows
+a fence/verge gap between stand and track.  Options, PO to pick: (a) WAIVE as authored
+GPL geometry read from our slightly-different line; (b) a verge/fence investigation
+(does gold's separating fence exist in our data but drop?).  Captures banked
+(`e68s13_*` in the sprint scratchpad).  No code changed.
