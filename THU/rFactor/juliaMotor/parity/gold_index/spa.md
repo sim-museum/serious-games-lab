@@ -59,3 +59,49 @@ scale is likely wrong as well as position; both need checking against 318–320 
 - Colour findings are deliberately absent from this pass. Per method step 4 and this project's own
   history (yellow Spa trees, E68-S3, may be authentic autumn sprites), decode the source texture
   before calling any colour wrong.
+
+---
+
+## E71-S2 — native sweep + gold pairing (2026-08-26)
+
+Native capture: one session, chase view, `s` = 0…14000 (17 shots).
+**Spa centreline = 14,099 m**, so gold time ↔ lapdist maps as `t = s/14099 × 357`.
+Composites: `spa_lap_native.jpg` (native lap), `spa_s12000_house_in_road.jpg` (the defect),
+`spa_s8000_s12500_ab.jpg`.
+
+### ⭐ E68-S2 REPRODUCED with an exact location — s = 12000
+
+| | |
+|---|---|
+| **gold** (t = 303.9 s) | open road descending through trees, guardrail on the left, **no building anywhere near the road** |
+| **native** (s = 12000) | **a large grey two-storey house standing directly across the racing surface**; the car drives into it |
+
+The gold has no building at this point of the lap at all, so this is not a house nudged too close to
+the road — it is an object at a location where gold has none. That distinction matters for the fix:
+**this is not "move it back off the verge"**, and a fix that only offsets it sideways would leave a
+house in a stretch of countryside that gold shows as empty.
+
+### s = 8000 — a DIFFERENT problem, do not batch it with the above
+
+| | |
+|---|---|
+| **gold** (t = 202.6 s) | a real village: red-brick buildings on the LEFT behind a kerb and pavement, spectators on the pavement, road clear and wide |
+| **native** (s = 8000) | the same red-brick building family, but looming immediately at the car's left shoulder; the road reads narrower and the building sits at or over the edge |
+
+⚠️ **Gold DOES have buildings here.** So s=8000 is a placement/scale/road-width question, not a
+stray object, and it needs a different fix from s=12000. Batching them as "the Spa buildings on the
+track" would produce one wrong fix for one of them.
+
+### Correction to this document's own first pass
+
+The first read of the native contact sheet put the house-in-road at s=12500. That was a
+miscount of the sheet's columns; the A/B pairing at s=12500 showed open road in BOTH, which is
+what caught it. The site is **s = 12000**. Recorded because an off-by-one in a landmark map
+propagates into every fix that cites it.
+
+### Still not established
+
+- The exact extent of the s=12000 house (which instance, which `.dat`/OBJECTS entry) — needs a
+  finer sweep around 11800–12200 and an object census at that location.
+- Whether s=8000 is the building being wrong or the ribbon being wrong.
+- Nothing about colour yet, by design.
