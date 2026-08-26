@@ -618,6 +618,22 @@ function gpl_scenery(ztrk, datpack, ribbon)
             println("   -- of ", total_missing, " failed placements, ", found_ci,
                     " WOULD resolve with a case-insensitive archive lookup --")
         end
+        # E76-S7: are the Ring's CROWD objects placed at all? S6 concluded "essentially no crowd
+        # objects" from a search that returned only grand116 — but that pattern was never validated.
+        # Validated since: on Zandvoort `ppl_*` returns exactly the names its census found, while the
+        # Ring uses different naming entirely (people*, pplrow01, PPLv). So report every PLACED name
+        # matching a crowd pattern, with whether its mesh loaded. JM_SCENEFIND=people|ppl|crowd|grand
+        if get(ENV,"JM_SCENEFIND","") != ""
+            pat = Regex(get(ENV,"JM_SCENEFIND",""), "i")
+            hits = sort([(nm,c) for (nm,c) in scene_names if occursin(pat, nm)], by=x->-x[2])
+            println("   -- PLACED names matching /", get(ENV,"JM_SCENEFIND",""), "/i: ", length(hits), " --")
+            for (nm,c) in hits[1:min(end,20)]
+                mm = getmesh(nm)
+                st = mm === nothing ? "NO MESH" : (isempty(mm) ? "EMPTY (billboard)" : string(length(mm), " tris"))
+                println("      ", rpad(nm,16), rpad(c,6), "placements   ", st)
+            end
+            isempty(hits) && println("      (none placed)")
+        end
         miss = sort([(nm,c) for (nm,c) in scene_names if getmesh(nm)===nothing || isempty(getmesh(nm))], by=x->-x[2])
         if !isempty(miss)
             println("   -- most-placed names with NO MESH (top 15) --")

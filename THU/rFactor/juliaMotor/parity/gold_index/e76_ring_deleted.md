@@ -272,3 +272,54 @@ re-tested with a pattern validated against a track known to have them before it 
 2. **Crowds: separate and unscoped** — find how gold draws the Nordschleife's spectator banks, using
    a search pattern first validated on a track whose crowds are known.
 3. The 366 placements with no archive entry remain a third, smaller thread.
+
+---
+
+## S7 — ⚠️ TWO corrections to S6, and the crowds turn out to be a billboard problem too
+
+### Correction 1: the search pattern was wrong, exactly as flagged
+
+S6 concluded *"the Ring has essentially no crowd objects"* from a search returning only `grand116`,
+and flagged that the pattern was unvalidated. Validating it changed the answer:
+
+- **Control (Zandvoort):** `ppl_*` returns `ppl_l1…l5, ppl_m1, ppl_s1…s4` — exactly the names its
+  census found. **Pattern works.**
+- **Ring, same pattern:** nothing.
+- **Ring, broader:** `people`, `peopledk`, `peoplefl`, `peoplelt`, `pplrow01`, `PPLv` — **the Ring
+  has crowd objects**, under different naming.
+
+The unvalidated null was wrong. Validating it against a track known to have the thing is what caught
+it — and that check took one command.
+
+### Correction 2: they are not failing. They load.
+
+Placed crowd objects on the Ring, with load status:
+
+| object | placements | geometry |
+|---|---|---|
+| `peoplefl` | 16 | **6 tris** — loads |
+| `peoplelt` | 15 | **6 tris** — loads |
+| `people` | 5 | 10 tris — loads |
+| `peopledk` | 2 | 10 tris — loads |
+| `grand116` | 1 | 76 tris — loads |
+
+**39 crowd placements across 22.7 km, every one loading successfully.** So S6's other conclusion —
+that the billboard fix "will not restore the crowds" — is also wrong, but for a reason neither of us
+would have guessed: the crowds were never in the failing set because **they never failed**.
+
+### What this actually means
+
+A **6-triangle** crowd object is two quads. That is a *billboard* — a camera-facing sprite carrying a
+crowd-row texture, which GPL draws as a wall of spectators and this loader draws as six flat
+triangles lying wherever their authored orientation puts them. Same defect as the vegetation, one
+step further along: those objects fail to parse to geometry, these parse to geometry that is
+meaningless without billboard treatment.
+
+**So the billboard fix (S5) plausibly addresses the crowds as well** — not by restoring missing
+objects, but by drawing the present ones correctly. That is a materially better outcome than S6's
+scoping suggested.
+
+⚠️ Still unverified: whether 39 placements at proper billboard scale would look like gold's crowd
+banks, or whether gold draws additional crowds from the terrain textures. **Do not promise the PO a
+full restoration on the strength of this** — the honest claim is that the crowds are present,
+loading, and almost certainly rendered wrong.
