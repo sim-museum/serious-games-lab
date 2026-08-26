@@ -485,7 +485,30 @@ function gpl_scenery(ztrk, datpack, ribbon)
     for (nm,t) in pls
         startswith(nm,"treesrb") && continue        # forest-BACKDROP "paintings" (streea/b/c) — render as a streaky smear
         mesh=getmesh(nm); (mesh===nothing || isempty(mesh)) && continue
-        issprite(nm,mesh) && (nskip+=1; continue)   # flat horizontal sprite stub
+        if issprite(nm,mesh)
+            nskip+=1
+            # E76-S1 (PO: "many of the buildings and crowds shortly after S/F were simply removed"):
+            # name what this skip drops and where it sits. The test is height < 0.5 m AND footprint
+            # < 6 m — intended for degenerate stubs, but a crowd row or building authored as a low
+            # placeholder would match it too, and 37 objects are dropped on the Ring. Report each
+            # one's extent and lapdist so the PO's missing objects can be identified rather than
+            # guessed at. JM_SPRITESKIP=1.
+            if get(ENV,"JM_SPRITESKIP","") != ""
+                lo3=Inf;hi3=-Inf;loh=Inf;hih=-Inf; cx=0.0; cy=0.0; np=0
+                for tr in mesh, q in tr.p
+                    lo3=min(lo3,q[3]);hi3=max(hi3,q[3]);loh=min(loh,q[1],q[2]);hih=max(hih,q[1],q[2])
+                end
+                M=placemat(t)
+                px = M[1,4]; py = M[2,4]
+                hr = JuliaMotor.hat(ribbon, Float32(px), Float32(py))
+                println("   [spriteskip] ", rpad(nm,16),
+                        "h=", rpad(round(hi3-lo3,digits=2),7),
+                        "w=", rpad(round(hih-loh,digits=2),7),
+                        hr.found ? string("lapdist=", rpad(round(hr.lapdist,digits=0),9),
+                                          "lat=", round(hr.lateral,digits=1)) : "off-ribbon")
+            end
+            continue
+        end
         M=placemat(t)
         ap(q)=(Float32(M[1,1]*q[1]+M[1,2]*q[2]+M[1,3]*q[3]+M[1,4]),
                Float32(M[2,1]*q[1]+M[2,2]*q[2]+M[2,3]*q[3]+M[2,4]),
