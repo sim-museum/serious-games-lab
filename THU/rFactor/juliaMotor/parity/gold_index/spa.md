@@ -209,3 +209,57 @@ the road" work the PO asked for.
 
 `house43` + `100la` at lapdist 12010 remain confirmed defects — gold has no building at that point
 of the lap at all.
+
+---
+
+## E71-S5 — PO: "spa houses on the road are often also scaled up" (2026-08-26)
+
+PO observation, and it matters because it may collapse two defects into one: **an oversized
+building's FOOTPRINT spills onto the road even when its origin is correctly off it.** If that is
+what is happening, "move the houses" is the wrong fix and "size the houses" is the right one.
+
+### Hypothesis 1 — per-instance scale is parsed but never applied. **REFUTED.**
+
+The OBJECTS transform is `translate * roty` with **no scale term**, while `ObjInst` carries a
+`scale` field parsed from the `.3do` positioner. That looked decisive. Measured instead of assumed:
+
+```
+E71-S5 instance scale: n=9086  min=1.0  max=1.0  mean=1.0  non-unity=0 (0.0%)
+   buildings only: n=275  min=1.0  max=1.0  mean=1.0
+     house43/house29/house26/house4/bu5 — all exactly 1.0
+```
+
+**Every instance at Spa authors scale 1.0**, so the missing term changes nothing here. Hypothesis
+dead. (Worth keeping the diagnostic: a track that DOES author non-unity scale would render wrong
+and silently.)
+
+### Hypothesis 2 — the MESHES themselves are oversized. **SUPPORTED, not yet confirmed.**
+
+Kept-geometry heights, from the same census:
+
+| object | height |
+|---|---|
+| `house46` | **16.3 m** |
+| `house40` | **13.5 m** |
+| `house25` | **12.0 m** |
+| `eauhotel` | **21.0 m** |
+
+A two-storey Belgian village cottage of the period reaches roughly **7–9 m** to the ridge; a modest
+roadside hotel is not 21 m. These read **~1.5–2× oversized**, which matches the PO's report and would
+explain footprints reaching the asphalt from origins 6–8 m away.
+
+⚠️ **Not yet confirmed**, and the distinction is the whole fix:
+- these are heights of the JM mesh as loaded — they have NOT been compared against the same object
+  measured in the gold video;
+- "a cottage should be 7–9 m" is domain knowledge, not a measurement of THIS gold;
+- if the oversizing were a global unit-conversion error it would inflate the whole world, road
+  included, and the road would then also be too wide — which is checkable and has not been checked.
+
+### Next
+
+1. Measure the same building in gold and native using the Lotus 49 as a ruler (≈3.8 m long,
+   ≈1.0 m to the roll hoop) — the car appears in both, so it is a scale reference immune to
+   perspective differences between the two captures.
+2. Measure the JM road width against gold the same way. If the road is right and the houses are
+   wrong, it is an object-mesh unit error; if both are inflated, it is global.
+3. Only then choose: rescale the meshes, or move the instances. **Do not do both blind.**

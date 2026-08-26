@@ -1381,6 +1381,31 @@ let objnames=Set{String}()
         flush(stdout)
     end
     if get(ENV,"JM_OBJDIAG","")!=""
+        # E71-S5: is GPL's PER-INSTANCE SCALE being honoured?  The PO reports that the Spa houses
+        # standing on the road are "often also scaled up compared to gold standard", and the OBJECTS
+        # transform built below is translate * roty with NO scale term, while ObjInst carries a
+        # `scale` field parsed from the .3do positioner (gpltrack.jl, word [10]).  If GPL authors
+        # scale != 1 for these instances, every one of them renders at the wrong size — and an
+        # oversized building's FOOTPRINT spills onto the road even when its origin is correctly off
+        # it, which would make "too big" and "on the road" the same defect rather than two.
+        let sc = [i.scale for i in insts]
+            nz = count(x -> !(0.999 <= x <= 1.001), sc)
+            println("== E71-S5 instance scale: n=", length(sc), "  min=", round(minimum(sc),digits=3),
+                    "  max=", round(maximum(sc),digits=3), "  mean=", round(sum(sc)/length(sc),digits=3),
+                    "  non-unity=", nz, " (", round(100nz/length(sc),digits=1), "%)")
+            hs = [(i.name, i.scale) for i in insts if occursin(r"^(house|bu\d|casa)", i.name)]
+            if !isempty(hs)
+                hv = [x[2] for x in hs]
+                println("   buildings only: n=", length(hs), "  min=", round(minimum(hv),digits=3),
+                        "  max=", round(maximum(hv),digits=3), "  mean=", round(sum(hv)/length(hv),digits=3))
+                for nm in ("house43","house29","house26","house4","bu5")
+                    v = [x[2] for x in hs if x[1]==nm]
+                    isempty(v) || println("     ", rpad(nm,10), "n=", rpad(length(v),5),
+                                          "scale ", round(minimum(v),digits=3), " … ", round(maximum(v),digits=3))
+                end
+            end
+            flush(stdout)
+        end
         kn = unique([i.name for i in insts if get(objmesh,i.name,nothing)!==nothing && !drop(i.name) && onground(i)])
         tall = sort([(nm, get(ymx,nm,0f0)-get(ymn,nm,0f0)) for nm in kn], by=x->-x[2])
         println("== JM_OBJDIAG tallest kept geometry objects =="); for (nm,h) in tall[1:min(end,25)]; println("   ", rpad(nm,16), round(h,digits=1), " m"); end
