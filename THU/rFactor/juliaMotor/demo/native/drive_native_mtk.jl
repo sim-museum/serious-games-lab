@@ -1811,6 +1811,32 @@ const RSUSP_ON = get(ENV,"JM_RSUSP","1") != "0"
 # Gold's wishbones/driveshafts run INBOARD from the hub (z≈0.772) to the gearbox (z≈0.2), so they
 # should survive CARP_MAXLAT=0.85. List every texture in the UNFILTERED model with its extent, and
 # mark what each exclusion list drops, so the missing linkage can be found by name rather than guess.
+if get(ENV,"JM_CARGROUPS","") != ""
+    # E75-S6: WHICH excluded group holds gold's rear linkage? E75-S5 named the missing parts
+    # (lshok, lsusp5/7, lsusp1, lbrdisc, frontlot — all present in the .3do, none excluded by name)
+    # and refuted CARP_MAXLAT as the cause, leaving exclude_groups=(6600,3560,27288,39792) by
+    # elimination. Extract each excluded group ALONE and list what it carries: that says whether the
+    # exclusions are removing geometry gold displays, and which exclusion to re-examine.
+    for g in (6600, 3560, 27288, 39792)
+        parts = Render.extract_gpl_car(LOT3DO; include_groups=(g,))
+        tot = 0
+        rows = []
+        for pp in parts
+            n = length(pp.verts) ÷ 11
+            zmn=Inf32; zmx=-Inf32
+            for i in 1:11:length(pp.verts)-10
+                z=pp.verts[i+2]; zmn=min(zmn,z); zmx=max(zmx,z)
+            end
+            push!(rows, (pp.tex, n, zmn, zmx)); tot += n
+        end
+        println("== JM_CARGROUPS group ", g, ": ", length(rows), " parts, ", tot, " tris ==")
+        for (tex,n,zmn,zmx) in sort(rows, by=r->-r[2])[1:min(end,10)]
+            mark = tex in ("lshok","lsusp5","lsusp7","lsusp1","lbrdisc","frontlot") ? "   <<< MISSING FROM CARP" : ""
+            println("     ", rpad(tex,14), rpad(n,7), rpad(string(round(zmn,digits=2),"…",round(zmx,digits=2)),18), mark)
+        end
+    end
+    flush(stdout)
+end
 if get(ENV,"JM_CARPARTS","") != ""
     allp = Render.extract_gpl_car(LOT3DO)      # no exclusions, no group filter, no maxlat
     kept = Set{String}()

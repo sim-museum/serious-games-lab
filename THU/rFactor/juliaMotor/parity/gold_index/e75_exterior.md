@@ -208,3 +208,46 @@ suspension sits in 27288/39792, the exclusion is removing geometry gold displays
 include those groups with a corrected transform rather than to drop them. If it sits in 6600/3560,
 those exclusions were justified by different evidence (E64-S4's "1.65 m-edge garbage 2 m ahead of
 the car") and need re-examining on their own terms.
+
+---
+
+## E75-S6 — ⭐ the FRONT suspension is drawn NOWHERE, and the reason is self-defeating
+
+Extracted each excluded group alone (`JM_CARGROUPS=1`):
+
+| group | side | carries |
+|---|---|---|
+| **6600 / 3560** | front R / L | **`frontlot` (120 tris each), `lsusp1` (18 each)** — the FRONT suspension |
+| **27288 / 39792** | rear L / R | `axlelot` 87, `lbrdisc` 60, `lsusp5` 24, `lsusp7` 24, `lshok` 24, `lsusp2` 24, `lid`, `pipe3` — the REAR end |
+
+### The front suspension asks for geometry it also excludes
+
+```julia
+const FSUSPP = Render.extract_gpl_car(LOT3DO; only=("lsusp1",), maxlat=1.3f0,
+                                      exclude_groups=(6600,3560,27288,39792))
+```
+
+`FSUSPP` wants **only** `lsusp1` — and excludes **every group that contains it**. The unfiltered
+census puts all 36 `lsusp1` triangles in 6600+3560 (18 + 18). **So `FSUSPP` is empty and the front
+suspension is drawn nowhere at all.** Same for `frontlot`: all 342 triangles live in the four
+excluded groups, so none of it is ever drawn either.
+
+The exclusion was added for a real reason — E64-S4 found *"group 6600 carries 1.65 m-edge lsusp1
+garbage 2 m ahead of the car"* — but it was applied to the extractor whose entire purpose is to draw
+that part. The guard outlived its bug and took the feature with it.
+
+### So E75 splits cleanly into two different defects
+
+| | geometry | why it is invisible | fix |
+|---|---|---|---|
+| **FRONT** | `lsusp1`, `frontlot` in 6600/3560 | `FSUSPP` excludes the only groups holding its own texture → empty | drop 6600/3560 from `FSUSPP`'s exclusion and re-clip the garbage by extent, not by group |
+| **REAR** | `lshok`, `lbrdisc`, `lsusp5/7` in 27288/39792 | re-included as `RSUSPP_A/B` but folded onto the hub where the tyre hides it (E75-S4: no angle works) | needs the transform question settled separately |
+
+The front case is the tractable one and is testable in a single run.
+
+### Note on how long this took to see
+
+Five sprints, four refuted hypotheses (wheels-too-wide, fold-pivot, fold-angle, maxlat). Every one
+assumed the geometry was reaching the renderer and something downstream was mishandling it. The
+actual answer — *most of it never reaches the renderer at all* — only became visible once the model
+was enumerated instead of reasoned about. The census took one run.
