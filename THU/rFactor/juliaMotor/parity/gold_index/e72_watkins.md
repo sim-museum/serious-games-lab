@@ -81,3 +81,41 @@ remedy is not firing.
 ⚠️ I have **not** independently verified the 13% figure — it is quoted from the code comment. The
 next step is to count Watkins' `railfam` triangles and its actual coplanar-duplicate pairs directly,
 which settles whether the claim or the key is wrong.
+
+---
+
+## E72-S3 — the dedup is not broken; the 13% premise does not reproduce
+
+Counted directly (`JM_RAILDIAG=1`), reporting per-part and global duplicates side by side so
+"wrong key" and "wrong scope" could be told apart:
+
+| track | rail/fence parts | triangles | dup (per-part) | dup (global) |
+|---|---|---|---|---|
+| **Watkins** | 2 | **2,436** | **1** (0.0%) | **1** (0.0%) |
+| Spa | 4 | 580 | 4 (0.7%) | 4 (0.7%) |
+
+**Both counts are identical**, so the per-part `seen` set is not hiding cross-part duplicates — my
+hypothesis going in. And there is **no 13%**: one duplicate in 2,436 triangles.
+
+So E68-S10's dedup is doing exactly what it can, and the claim that motivated it —
+*"13% of Watkins Armco tris and 10% of its fence tris are EXACT coplanar duplicates"* — **does not
+reproduce against the mesh the dedup actually sees**.
+
+### Leading explanation, not yet confirmed
+
+`TRACKMAIN0` is produced by `extract_gpl_car(...; track=true)`, which **already contains a
+coplanar-panel dedup** for GPL's double-sided signs/awnings/walls. If that stage removes the
+duplicates first, the rail dedup downstream finds nothing left — the 13% would have been real when
+measured on raw `.3do` data and is stale by the time this code runs. That makes the rail dedup
+**redundant rather than broken**, which is a different conclusion from "the fix is not firing" that
+E72-S2 recorded.
+
+### Consequence for E68-W7 (the PO's guardrail z-fighting)
+
+If there are no duplicate faces left, **duplicate removal cannot be the cure**. The z-fighting the
+PO sees must come from something else — near-coplanar but non-identical faces (offset by
+millimetres, which the 2 cm centroid quantisation would merge but the extractor's exact test would
+not), or depth-buffer precision at distance. Those need different work, and W7 should be re-scoped
+before more dedup effort goes into it.
+
+⚠️ Confirming this means counting duplicates in the RAW parse rather than in `TRACKMAIN0`. Not done.

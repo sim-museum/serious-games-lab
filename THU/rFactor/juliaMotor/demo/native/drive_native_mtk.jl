@@ -698,6 +698,43 @@ else
     # (culling ate the s=2500 embankment + Zandvoort dune faces while fixing one veil of two).
     # The Watkins veil (giant Grass sheet BACKS over the road) needs PER-FACE road-facing
     # selection — the same implementation the D6 sign boards await.  Reverted to rails-only.
+    # E72-S3: the E68-S10 dedup drops ONE triangle at Watkins where its own justification claimed
+    # "13% of Watkins Armco tris ... are EXACT coplanar duplicates". Count it properly before
+    # believing either number. The `seen` set below is PER-PART, so duplicates living in DIFFERENT
+    # parts cannot be caught — this reports per-part and GLOBAL duplicate counts side by side, which
+    # separates "the key is wrong" from "the scope is wrong".
+    if get(ENV,"JM_RAILDIAG","") != ""
+        key(v,t) = begin
+            cx=(v[t]+v[t+11]+v[t+22])/3; cy=(v[t+1]+v[t+12]+v[t+23])/3; cz=(v[t+2]+v[t+13]+v[t+24])/3
+            ux=v[t+11]-v[t]; uy=v[t+12]-v[t+1]; uz=v[t+13]-v[t+2]
+            wx=v[t+22]-v[t]; wy=v[t+23]-v[t+1]; wz=v[t+24]-v[t+2]
+            a=0.5*sqrt((uy*wz-uz*wy)^2+(uz*wx-ux*wz)^2+(ux*wy-uy*wx)^2)
+            (round(Int,cx*50), round(Int,cy*50), round(Int,cz*50), round(Int,a*100))
+        end
+        # `local` for every accumulator — top-level soft scope again. E70-S2 documented this exact
+        # trap one sprint ago and I reproduced it here within the hour: a bare `n += 1` inside a
+        # top-level loop binds a new local and throws. Writing the lesson down did not stop me
+        # repeating it; declaring the scope explicitly does.
+        local tot=0; local perpart=0; local gdup=0; local nparts=0
+        glob=Set{NTuple{4,Int}}()
+        for part in TRACKMAIN0
+            railfam(part.tex) || continue
+            nparts += 1
+            v=part.verts; seen=Set{NTuple{4,Int}}()
+            for t in 1:33:length(v)-32
+                tot += 1; k=key(v,t)
+                k in seen ? (perpart += 1) : push!(seen,k)
+                k in glob  ? (gdup   += 1) : push!(glob,k)
+            end
+        end
+        println("== JM_RAILDIAG rail/fence triangles ==")
+        println("   parts=", nparts, "  triangles=", tot)
+        println("   duplicates found PER-PART (what the shipped dedup can see): ", perpart,
+                tot>0 ? string("  (", round(100perpart/tot,digits=1), "%)") : "")
+        println("   duplicates found GLOBALLY (across parts too):               ", gdup,
+                tot>0 ? string("  (", round(100gdup/tot,digits=1), "%)") : "")
+        flush(stdout)
+    end
     const TRACKMAIN = get(ENV,"JM_RAIL_DEDUP","1") == "0" ? TRACKMAIN0 : begin
         ndrop = Ref(0)
         out = map(TRACKMAIN0) do part
