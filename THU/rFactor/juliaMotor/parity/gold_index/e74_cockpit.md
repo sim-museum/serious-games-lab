@@ -67,3 +67,42 @@ Composites: `e74_badge_fix_steps.jpg` (gold | before | V-only), `e74_badge_fixed
 **Scope note:** this fixes the badge alone. D2 (washed-out gauge faces), D3 (oversized wheel,
 fragmented spokes) and D4 (camera/FOV) are untouched, and D4 should still be settled before
 judging D3's scale.
+
+---
+
+## E74-S3 — D2: brightness is NOT the cause; the gauges are MINIFIED
+
+Swept the dash lighting against gold (`e74_dash_sweep.jpg`): shipped `1.2/0.9`, `0.9/0.45`,
+`0.7/0.2`.
+
+**Refuted.** Darkening does not make the dials legible — at every setting they remain the same pale
+circular outlines with a faint grid where numerals should be. The E62 note that raised these values
+("1.0/0.60 left ours dim — lift fill so the dial faces are legible") was treating a symptom that
+brightness cannot reach.
+
+### What the comparison actually shows
+
+Gold's cockpit puts a **large, dominant tachometer** just above the wheel hub — white face, black
+bezel, red needle, numerals readable. Native's dials are **small and set far back**, behind a wheel
+that fills the frame.
+
+So the likely cause of "melted" is **minification**: the gauge cluster is drawn small enough that
+its dial-face texture collapses into a mip-blurred smear. That is consistent with everything seen —
+the faces are *present* (the circular rims and a grid of markings resolve), just too few pixels
+across to read.
+
+**This folds D2 into D4.** The camera/FOV difference is not merely magnifying a separate gauge
+problem; it may *be* the gauge problem. E74-S1 already warned that D4 should be settled before
+judging D2 and D3 — that ordering now looks essential rather than cautious.
+
+### Incidental confirmation
+
+The **badge fix from E74-S2 is visibly holding** in all three arms: `LOTUS` reads left-to-right
+under an upright leaf. A fix from an earlier sprint surviving unrelated later runs is worth noting.
+
+### Next
+
+Test minification directly: grow the gauge cluster (or bring it toward the eye) and see whether the
+numerals resolve. If they do, D2 is not a texture or lighting defect at all and the fix is
+positional. `JM_GAUGE_X`/`JM_GAUGE_Y` exist for position; there is **no scale knob**, so one may
+need adding to test it.
