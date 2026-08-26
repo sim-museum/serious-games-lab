@@ -576,6 +576,25 @@ function gpl_scenery(ztrk, datpack, ribbon)
         println("   dropped: sprite stub ", nskip)
         println("   reached the renderer ", n_kept - nskip)
         println("   distinct object names: ", length(scene_names))
+        # E76-S4: is this a LOOKUP failure rather than missing content? getmesh does
+        #   get(datpack, lowercase(nm*".3do"))
+        # and `strings nurburg.dat` shows BOTH "strauch" and "STRAUCH" — a mixed-case archive. If the
+        # keys keep their original case, a lowercase lookup finds only the already-lowercase ones,
+        # which would explain 841 loading and 2231 not. Test it directly: for every name that failed,
+        # try a case-INSENSITIVE match against the archive keys.
+        let keys_ci = Dict(lowercase(k) => k for k in keys(datpack))
+            nlower = count(k -> k == lowercase(k), keys(datpack))
+            println("   -- archive keys: ", length(datpack), " total, ", nlower, " already lowercase, ",
+                    length(datpack)-nlower, " mixed/upper --")
+            found_ci = 0; total_missing = 0
+            for (nm,c) in scene_names
+                (getmesh(nm)===nothing || isempty(getmesh(nm))) || continue
+                total_missing += c
+                haskey(keys_ci, lowercase(nm*".3do")) && (found_ci += c)
+            end
+            println("   -- of ", total_missing, " failed placements, ", found_ci,
+                    " WOULD resolve with a case-insensitive archive lookup --")
+        end
         miss = sort([(nm,c) for (nm,c) in scene_names if getmesh(nm)===nothing || isempty(getmesh(nm))], by=x->-x[2])
         if !isempty(miss)
             println("   -- most-placed names with NO MESH (top 15) --")

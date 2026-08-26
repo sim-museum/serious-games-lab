@@ -132,3 +132,53 @@ fails" story will not fit — the resolution needs measuring, not assuming.
 ⚠️ Also unverified: whether the missing names include the *buildings and crowds* the PO described.
 The top of the list is vegetation and marshals; 595 distinct names were offered and only the top 15
 are shown. Tabulate the whole missing set by name before claiming what content is absent.
+
+---
+
+## S4 — ⭐ the objects ARE in the archive. The `.3do` PARSER fails on them.
+
+Two hypotheses tested this sprint, both mine, one refuted and one replaced by something better.
+
+**Hypothesis: the content is missing from the install.** Refuted. `strings nurburg.dat` finds 137
+matches for `strauch* / stree* / flagger / bush`, in both cases. The objects are there.
+
+**Hypothesis: filename case — a lowercase lookup against a mixed-case archive.** Also refuted, and
+by the cleanest possible measurement:
+
+```
+archive keys: 858 total, 858 already lowercase, 0 mixed/upper
+of 2231 failed placements, 1865 WOULD resolve with a case-insensitive archive lookup
+```
+
+Since every key is already lowercase, a case-insensitive lookup is **identical** to the current one.
+So that second line does not mean what it first appears to: it means **1,865 of the failed
+placements have their object present in the archive under exactly the key `getmesh` asks for.**
+
+### What that leaves
+
+`getmesh` is:
+
+```julia
+v = get(datpack, lowercase(nm*".3do"), nothing); v === nothing && return nothing
+write(tp, v)
+m = try Render.GPL3DO.parse_3do(tp) catch; nothing end
+m === nothing ? nothing : dedup_scenery(m.tris)
+```
+
+The key lookup succeeds for 1,865 of them, so they must be failing at **`parse_3do` throwing**, or
+at `dedup_scenery` returning empty. **The Nürburgring's scenery is not missing and not filtered —
+it is unparseable by this loader.**
+
+The remaining **366** failed placements (2231 − 1865) genuinely have no archive entry and are a
+separate, smaller problem.
+
+### Next — narrow and high-value
+
+Instrument the `catch` in `getmesh`: record the exception per object name. One run says whether it is
+a single parser limitation hitting 1,865 placements (likely, given `strauch6` alone accounts for
+372) or a scatter of unrelated failures. If it is one bug, fixing it restores the bulk of the Ring's
+trackside content in a single change — the largest single content win available on this project.
+
+⚠️ Note the pattern in this item: three sprints, three of my own hypotheses discarded (sprite stubs,
+missing content, filename case). Each was refuted by measuring the thing itself rather than
+reasoning from the symptom — and each refutation narrowed the search rather than restarting it.
