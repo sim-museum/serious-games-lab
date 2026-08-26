@@ -1369,6 +1369,51 @@ let objnames=Set{String}()
         issolid = solidR(lowercase(i.name)) > 0.0 && og && !on_road(i.x, i.y, SOLID_EXCL_HW)
         (i.name, Float32(i.x), Float32(i.y), ploz(i), kmesh ? :mesh : kbb ? :bb : :dropped, issolid)
     end for i in insts]
+    if get(ENV,"JM_ROADWIDTH","")!=""
+        # E71-S7: measure the RENDERED road width in METRES, from the mesh — not from pixels.
+        # E71-S6 measured gold's Spa road at ~11 m using the Lotus as a ruler, but could not measure
+        # the native one: at the car's row the road leaves the frame, and the two chase cameras sit at
+        # different distances so ratios from different rows are not comparable. Geometry has neither
+        # problem. For each sample lapdist, take every ROAD_TEX triangle vertex whose projection lands
+        # within ±HALF a bucket of it and report the lateral min/max — that IS the asphalt edge.
+        # Two open questions fall out at once: does the visual road match gold's 11 m, and where does
+        # the real edge sit for re-filtering the 372-object candidate list (E71-S3/S4).
+        step = parse(Float64, get(ENV,"JM_ROADWIDTH_STEP","500"))
+        halfb = parse(Float64, get(ENV,"JM_ROADWIDTH_BUCKET","3.0"))
+        buckets = Dict{Int,Vector{Float64}}()
+        nrt = 0
+        for t in TRACKMESH.tris
+            ROAD_TEX(lowercase(t.tex)) || continue
+            nrt += 1
+            for vi in 1:3
+                x = Float64(t.p[vi][1]); y = Float64(t.p[vi][2])
+                hr = JuliaMotor.hat(TRKSURF, x, y)
+                hr.found || continue
+                b = round(Int, hr.lapdist / step)
+                r = hr.lapdist - b*step
+                abs(r) <= halfb || continue
+                push!(get!(buckets, b, Float64[]), hr.lateral)
+            end
+        end
+        println("== E71-S7 rendered road width from the mesh (ROAD_TEX tris=", nrt,
+                ", bucket ±", halfb, " m, step ", step, " m) ==")
+        println("   lapdist    lat_min   lat_max    WIDTH    n")
+        tot = Float64[]
+        for b in sort(collect(keys(buckets)))
+            v = buckets[b]; length(v) >= 6 || continue
+            lo, hi = minimum(v), maximum(v)
+            push!(tot, hi-lo)
+            println("   ", rpad(b*step,10), rpad(round(lo,digits=1),10), rpad(round(hi,digits=1),10),
+                    rpad(round(hi-lo,digits=1),9), length(v))
+        end
+        if !isempty(tot)
+            st = sort(tot)
+            println("   --> median width ", round(st[cld(end,2)],digits=1), " m   min ",
+                    round(minimum(tot),digits=1), "   max ", round(maximum(tot),digits=1),
+                    "   (gold Spa measured ~11 m, E71-S6)")
+        end
+        flush(stdout)
+    end
     if get(ENV,"JM_TEXDIAG","")!=""
         # track-mesh textures by HEIGHT band — to spot the Monza banking surface (a large mesh high
         # above the road) so it can be excluded from the collision HAT (E52: road passes under it).

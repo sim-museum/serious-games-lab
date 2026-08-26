@@ -305,3 +305,53 @@ Measure the rendered road width in **metres from the track mesh**: at a given la
 lateral extent of road-textured triangles (`ROAD_PRED` already identifies them). That is exact,
 camera-independent, and answers both open questions at once — whether the visual road matches gold's
 11 m, and where the true asphalt edge is for re-filtering the object census.
+
+---
+
+## E71-S7 — the rendered road measures 8.2 m, and it corrects E71-S6 (2026-08-26)
+
+Measured from the mesh (`JM_ROADWIDTH=1`), not from pixels: every `ROAD_TEX` triangle vertex
+projected through `JuliaMotor.hat`, bucketed by lapdist, lateral min/max per bucket.
+
+```
+ROAD_TEX tris = 9658
+median width 8.2 m   min 8.1   max 33.2 (S/F apron)
+```
+
+Remarkably uniform — most buckets are **exactly 8.2 m**, so the asphalt half-width is **≈4.1 m**.
+
+### ⚠️ This corrects E71-S6's "gold road ≈ 11 m"
+
+That figure came from 5.52 car-widths × an **assumed 2.0 m** car width. The assumption was doing the
+work, and it was not measured. A GPL Lotus 49 with a 1.48 m rear track renders closer to **1.5 m**
+across the tyres, which gives 5.52 × 1.5 = **8.3 m** — agreeing with the mesh's 8.2 m almost exactly.
+
+**So the road is probably NOT too narrow, and the two oracles most likely agree.** The honest
+statement is that the pixel method could not settle the road width, because its answer swings from
+8.3 m to 11 m on an unmeasured input. The mesh measurement is absolute and does not.
+
+### What survives, restated without the assumption
+
+`ROAD_HALFW = 9.0 m` against an asphalt half-width of **≈4.1 m** — the classifier's corridor is
+**≈2.2×** the real asphalt. That is now grounded in an absolute measurement rather than a car-width
+guess, and it is the strongest form of the E71-S4 finding: the 372-object candidate list flags
+everything out to 9 m when the road edge is at ~4.1 m.
+
+### ⭐ And the pieces now fit together
+
+- asphalt edge at **≈4.1 m**
+- `house43` origin at **−6.0 m** — i.e. genuinely 1.9 m OFF the asphalt
+- yet the photograph shows it **standing in the road**
+
+Those are only consistent if the building's FOOTPRINT reaches inward past its origin — which is
+exactly the PO's "the houses are also scaled up" and exactly E71-S4's "centroid is the wrong
+measurement". Three independent observations converge on one defect: **oversized building meshes
+whose footprints cross a correctly-placed origin onto the road.**
+
+If that holds, the fix is to size the meshes, NOT to move the instances — and moving them would
+scatter correctly-placed buildings while leaving them too big.
+
+### Next
+
+Compute per-instance footprints (mesh AABB under the instance transform) and rank by penetration
+past the 4.1 m edge. That both tests the synthesis above and produces the actionable list.
