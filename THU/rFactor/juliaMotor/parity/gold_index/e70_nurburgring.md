@@ -40,3 +40,41 @@ Locate the **Karussell** by its own material — the code notes `Concrete = the 
 (the E64-S9 road-texture work). Find the lapdist range of the concrete-textured road triangles, then
 sweep densely (every 50–100 m) from there to the following straight. That turns "somewhere between
 the Karussell and the back straight" into a bounded search, which at 1.9 km sampling it is not.
+
+---
+
+## E70-S2 — the censuses were unreachable here; relocated, and the Ring measures CLEAN
+
+### Why E70 had no instrumentation at all
+
+Every census built during E71–E73 (`JM_ROADWIDTH`, `JM_ROADTEX_CENSUS`, `JM_SPOTMESH`,
+`JM_LINEONROAD`, `JM_FOOTPRINT`, plus the pre-existing `JM_CROWDDIAG`/`JM_OBJDIAG`) sat **inside the
+GPL objects-building block**, after `OBJINSTS`. The Ring never enters that block — its scenery loads
+by a different path. Proof: the census header printed on Monza and **not once** on the Ring.
+
+E70-S1 read that silence as "no crowd rows near the road". It was an instrument that was never
+connected — the same failure this project has now logged four times, and the second time on this
+very track.
+
+**Fix:** anything needing only `TRACKMESH` + `TRKSURF` now runs **before** the GPL/rFactor split,
+right after `println(TERRAIN, "  ", TRKSURF)`, which every track reaches.
+
+### ⭐ First real measurement on the Nordschleife: the centreline is clean
+
+```
+46 buckets: 0 with no road, 0 with the line >3 m off the road, 46 healthy
+```
+
+Across **22.7 km** the racing line never leaves the road and there are no road gaps — in contrast
+with Monza, which has both. Regression control on Monza after the move: `s=500` 8.2 m off,
+`s=2000` 3.1 m off, `s=4500` a gap — the known findings reproduce.
+
+### ⚠️ A bug that only fires when there is something to report
+
+The relocation put the census at **top level**, where Julia's soft scope makes a bare `bad += 1`
+inside the loop bind a *new local* — `UndefVarError`. Monza hit it on its first bad bucket and
+crashed; the Ring, having no bad buckets, **ran to completion and printed a clean summary**.
+
+So the failure mode was: *the broken track crashes, the clean track passes.* Had the Ring been the
+only track tested, the census would have looked healthy while being incapable of reporting a single
+defect. Fixed with explicit `local`, and both tracks re-run.
