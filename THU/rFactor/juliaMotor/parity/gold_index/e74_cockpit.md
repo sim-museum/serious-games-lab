@@ -41,3 +41,29 @@ scale** — otherwise a correct wheel could be "fixed" to compensate for a camer
 
 Prior known items to fold in: E68-W4 (bottom half of the dash occluded by a green block) and
 E68-W3 (sleeves not meeting gloves); the driverless footwell and tub-side gap recorded in STATUS.md.
+
+---
+
+## E74-S2 — ✅ D1 FIXED: the Lotus badge is upright and legible
+
+**First actual repair in this batch** (everything before it was diagnosis).
+
+Cause: `extract_gpl_steering` (render.jl:1059) V-flipped the UVs of **every** steering texture
+alike — `append!(v, (…, uv[1], 1f0-uv[2]))`. That is harmless for `sterlot`, the plain red wheel
+face, which has no readable orientation. Only `lsterlog`, the badge, exposes it.
+
+Fixing it took **two** steps, and the intermediate result is the interesting part:
+
+1. **Un-flip V for the badge only.** The leaf came upright, matching gold — but the lettering was
+   still mirrored left-to-right. So the badge was transposed in *both* axes, not one. Had I stopped
+   at the first improvement, the leaf would have looked right and the word would still have been
+   wrong: a half-fix that photographs well.
+2. **Flip U as well.** Badge now reads `LOTUS` left-to-right under an upright leaf — matches gold.
+
+`JM_BADGE_VFLIP=1` restores the old behaviour for A/B.
+
+Composites: `e74_badge_fix_steps.jpg` (gold | before | V-only), `e74_badge_fixed.jpg` (gold | fixed).
+
+**Scope note:** this fixes the badge alone. D2 (washed-out gauge faces), D3 (oversized wheel,
+fragmented spokes) and D4 (camera/FOV) are untouched, and D4 should still be settled before
+judging D3's scale.

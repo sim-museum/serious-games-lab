@@ -1056,7 +1056,17 @@ function extract_gpl_steering(path3do)
         v = get!(groups, t.tex, Float32[])
         for i in 1:3
             p=t.p[i]; nn=t.n[i]; uv=t.uv[i]
-            append!(v, (p[1],p[3],p[2], nn[1],nn[3],nn[2], 0.7f0,0.72f0,0.74f0, uv[1], 1f0-uv[2]))
+            # E74-S2: the Lotus BADGE renders upside-down against the gold cockpit (leaf pointing
+            # down, "LOTUS" inverted). This loop V-flips every steering texture alike — harmless for
+            # `sterlot`, the plain red wheel face, which has no readable orientation, which is why
+            # only the badge exposes it. Flip the face, not the logo.
+            # JM_BADGE_VFLIP=1 restores the old behaviour for A/B.
+            # Un-flipping V alone put the leaf upright (matching gold) but left the lettering
+            # mirrored left-to-right, so the badge is transposed in BOTH axes, not one: flip U too.
+            badge = (t.tex == "lsterlog" && !haskey(ENV,"JM_BADGE_VFLIP"))
+            uf = badge ? 1f0-uv[1] : uv[1]
+            vf = badge ? uv[2]     : 1f0-uv[2]
+            append!(v, (p[1],p[3],p[2], nn[1],nn[3],nn[2], 0.7f0,0.72f0,0.74f0, uf, vf))
             cx+=p[1]; cy+=p[3]; cz+=p[2]; nx+=nn[1]; ny+=nn[3]; nz+=nn[2]; n+=1
         end
     end
