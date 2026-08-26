@@ -11,7 +11,7 @@ behind, so the rotation starts elsewhere and returns to it last.
 |---|---|---|---|
 | E71 | **Spa** | 10 (S1–S10) | characterised: `house43` @12010 to move; 26 buildings classified by extent; census built |
 | E74 | **Cockpit** (the "Dali dials") | 1 (S1) | D1 badge rotated 180° (actionable); D2 gauges washed out; D3 wheel oversized; D4 FOV — see e74_cockpit.md |
-| E75 | **Exterior Lotus 49** (missing axles) | 0 | |
+| E75 | **Exterior Lotus 49** (missing axles) | 1 (S1) | D1 no suspension geometry — wheels detached (PO confirmed); D2 track wide (already tuned, do not re-tune); D3 exhausts splayed; grey tyres = known asset gap — see e75_exterior.md |
 | E69 | **Zandvoort** | 0 | |
 | E70 | **Nürburgring** | 0 | |
 | E72 | **Watkins Glen** | 0 | |
