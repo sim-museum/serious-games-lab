@@ -1117,6 +1117,7 @@ let objnames=Set{String}()
         ("sfbox01","sfbox02","sfbox03","hay01","hay02") : ()
     objmesh=Dict{String,Any}(); ymn=Dict{String,Float32}(); ymx=Dict{String,Float32}(); bbinfo=Dict{String,Any}()
     lxmn=Dict{String,Float32}(); lxmx=Dict{String,Float32}(); lzmn=Dict{String,Float32}(); lzmx=Dict{String,Float32}()   # E71-S8 local horizontal AABB
+    lverts=Dict{String,Vector{Tuple{Float32,Float32}}}()   # E71-S9 decimated local (x,z) footprint points
     for inst in insts
         (haskey(objmesh, inst.name) || haskey(bbinfo, inst.name)) && continue
         p = objpath(inst.name)
@@ -1160,6 +1161,17 @@ let objnames=Set{String}()
                         xl=min(xl,vx); xh=max(xh,vx); zl=min(zl,vz); zh=max(zh,vz)
                     end
                     lxmn[inst.name]=xl; lxmx[inst.name]=xh; lzmn[inst.name]=zl; lzmx[inst.name]=zh
+                    # E71-S9: the AABB SATURATES — GPL .3do objects are composite (several buildings,
+                    # a ground plane, a whole block in one file), so a box around all of it spans the
+                    # road wherever the building actually stands, and every instance scored the same
+                    # full-road-width penetration (E71-S8). Keep a DECIMATED VERTEX LIST instead: the
+                    # true horizontal points, so the lateral min/max is the mesh's, not its bounding
+                    # box's. Every ~13th vertex is ample for a footprint and stays cheap.
+                    vs = Tuple{Float32,Float32}[]
+                    for pp in parts, k in 1:(11*13):length(pp.verts)-2
+                        push!(vs, (pp.verts[k], pp.verts[k+2]))
+                    end
+                    lverts[inst.name] = vs
                     objmesh[inst.name] = Render.build_gpl(parts, TEXIDX)
                 end
             end
@@ -1390,13 +1402,13 @@ let objnames=Set{String}()
         edge = parse(Float64, get(ENV,"JM_ASPHALT_HALFW","4.1"))
         rows = NTuple{6,Any}[]
         for i in insts
-            haskey(lxmn, i.name) || continue
+            haskey(lverts, i.name) || continue
             drop(i.name) && continue
+            isempty(lverts[i.name]) && continue
             th = -Float64(i.yaw) + Float64(objyawfix(i.name))
             c, sn = cos(th), sin(th)
             lats = Float64[]
-            for (lx, lz) in ((lxmn[i.name],lzmn[i.name]),(lxmx[i.name],lzmn[i.name]),
-                             (lxmn[i.name],lzmx[i.name]),(lxmx[i.name],lzmx[i.name]))
+            for (lx, lz) in lverts[i.name]
                 rx =  lx*c + lz*sn
                 rz = -lx*sn + lz*c
                 hr = JuliaMotor.hat(TRKSURF, Float64(i.x) + rx, Float64(i.y) - rz)
@@ -1404,16 +1416,23 @@ let objnames=Set{String}()
             end
             isempty(lats) && continue
             lo, hi = minimum(lats), maximum(lats)
-            # penetration = how far the footprint reaches PAST the asphalt edge toward the centre
-            pen = max(0.0, min(edge, hi) - max(-edge, lo))
+            # E71-S9b: penetration = how close the NEAREST vertex gets to the centreline, NOT the
+            # lateral SPAN intersected with the road. The span metric conflated laterals measured at
+            # DIFFERENT lapdists: a 16 m-wide building beside a curve has one corner projecting at
+            # lapdist X and another at Y, and min/max across them describes no real geometry — which
+            # is why it still saturated at exactly the full road width for every instance after the
+            # AABB fix. A vertex is on the asphalt iff |lateral| < edge, so the honest measure is
+            # edge − min|lateral|.
+            near = minimum(abs.(lats))
+            pen = max(0.0, edge - near)
             hr0 = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
-            pen > 0.05 && push!(rows, (i.name, round(lo,digits=1), round(hi,digits=1), round(pen,digits=1),
+            pen > 0.05 && push!(rows, (i.name, round(near,digits=1), round(hi,digits=1), round(pen,digits=1),
                                        hr0.found ? round(hr0.lapdist,digits=0) : -1.0,
                                        hr0.found ? round(hr0.lateral,digits=1) : 999.0))
         end
         sort!(rows, by=x->-x[4])
         println("== E71-S8 footprints crossing the asphalt (edge ±", edge, " m) — ", length(rows), " instances ==")
-        println("   name            lat_lo  lat_hi   PENETRATION  lapdist   origin_lat")
+        println("   name            near|lat|  lat_hi   PENETRATION  lapdist   origin_lat")
         for r in rows[1:min(end,30)]
             println("   ", rpad(r[1],16), rpad(r[2],8), rpad(r[3],8), rpad(r[4],13), rpad(r[5],10), r[6])
         end

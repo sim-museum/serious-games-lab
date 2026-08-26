@@ -395,3 +395,48 @@ Retain a DECIMATED VERTEX LIST per object (say every 20th vertex) instead of the
 those, and take the true lateral min/max. That is accurate for composite meshes, cheap in memory,
 and turns the metric back into something that can rank. The diagnostic scaffolding
 (`JM_FOOTPRINT`, `JM_ASPHALT_HALFW`) stays as-is — only the extent source changes.
+
+---
+
+## E71-S9 — the metric works, and it CONFIRMS the S7 synthesis (2026-08-26)
+
+Two fixes were needed, not one.
+
+**S9a — decimated vertex list instead of the AABB.** GPL `.3do` objects are composite, so a box
+around the whole file spans the road wherever the building stands (E71-S8). Keeping every ~13th real
+vertex dropped the flagged set 438 → 198 and tightened the spans — but it still saturated.
+
+**S9b — the metric itself was wrong.** I was taking the lateral SPAN (min…max) and intersecting it
+with the road band. Those laterals are measured at **different lapdists**: a 16 m building beside a
+curve has one corner projecting at lapdist X and another at Y, so min/max across them describes no
+real geometry. A vertex is on the asphalt iff `|lateral| < edge`, so the honest measure is
+**`edge − min|lateral|`** — how close the mesh actually gets to the centreline.
+
+### ⭐ Result: the photographed cases are reproduced by geometry
+
+| object | lapdist | origin_lat | nearest vertex | penetration |
+|---|---|---|---|---|
+| `house43` | 12010 | **−6.0 m** (off the asphalt) | **≈0.3 m** | 3.8 m |
+| `house29` | 8010 | **+8.1 m** (well off) | **≈0.1 m** | 4.0 m |
+| `house41` | 11663 | −9.4 m | **0.0 m** | 4.1 m |
+
+**`house43`'s origin is 6.0 m from the centreline — clear of the 4.1 m asphalt — while its mesh
+reaches to within 0.3 m of the centreline.** That is the S7 synthesis confirmed by an independent
+measurement, and it matches the E71-S2 photograph of a house standing squarely across the road.
+`house29` reproduces the s=8000 photograph the same way.
+
+**26 building instances** penetrate the asphalt on this measure.
+
+⚠️ **Caveat, not yet resolved:** the top of the list is dominated by `armcow3`/`armco1` barrier runs
+reporting `near|lat| = 0.0`. An armco following the road at ~6 m should never have a vertex on the
+centreline. These are LONG objects whose vertices span hundreds of metres of track, and the
+projection can wrap near tight curves — so they are probably false positives of the same
+lapdist-conflation family, one level down. **The building rows are corroborated by photographs; the
+barrier rows are not, and should not be actioned until they are.**
+
+### Where E71 now stands
+
+The defect is characterised: **oversized/oversprawling building meshes whose correctly-placed
+origins sit off the asphalt while their geometry crosses it.** Moving instances would be the wrong
+fix. The candidate list is real but needs the barrier-class false positives filtered before it
+drives any edit.
