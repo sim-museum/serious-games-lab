@@ -15,7 +15,7 @@ behind, so the rotation starts elsewhere and returns to it last.
 | E69 | **Zandvoort** | 1 (S1) | on-track crowds NOT reproduced (2/96 rows near road, 11 shots clean); sky grade CORRECT; kerbs/crowd-density/road-tone candidates — see e69_zandvoort.md |
 | E70 | **Nürburgring** | 1 (S1) | STRUCTURAL: Ring scenery is track-mesh, not instances — E71 censuses produce NOTHING here; PO block not reproduced but 1.9 km sampling is no coverage — see e70_nurburgring.md |
 | E72 | **Watkins Glen** | 1 (S1) | both censuses CLEAN (nearest crowd 13.2 m, 0 footprints crossing); PO crowd block not reproduced; ⚠️ road-width instrument unreliable here (3.7 m is an artefact) — see e72_watkins.md |
-| E73 | **Monza** | 1 (S1) | 0 crowd rows (confirms E68); 23 objects cross asphalt (braking markers + tree strips, NO buildings); white washed-out regions at s=0/500 = likely E68-M1 — see e73_monza.md |
+| E73 | **Monza** | 2 (S1–S2) | 0 crowd rows (confirms E68); 23 objects cross asphalt (braking markers + tree strips, NO buildings); S2: ⭐ NO ROAD for s≈350–650 (visual + width census agree, bucket 500 absent); s=4500 likely same; lead = Monza banking mesh above the road (E52) — see e73_monza.md |
 
 **Rotation order:** E74 → E75 → E69 → E70 → E72 → E73 → (E71) → repeat.
 
