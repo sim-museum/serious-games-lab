@@ -780,7 +780,27 @@ const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)  
 const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0)  # the plexiglass windscreen — drawn LAST, faintly visible glass, so the suspension shows through (GPL gold standard)
 # FRONT SUSPENSION (lsusp1 = the front rocker/wishbone, only in the front groups 6600/3560 — so no
 # double-draw with CARP) — drawn with the body so the wishbones show ahead through the plexiglass (PO).
-const FSUSPP = Render.extract_gpl_car(LOT3DO; only=("lsusp1",), maxlat=1.3f0, exclude_groups=(6600,3560,27288,39792))   # E64 S4: group 6600 carries 1.65m-edge lsusp1 garbage 2m ahead of the car
+# E75-S7 FIX: this used to read `only=("lsusp1",) … exclude_groups=(6600,3560,27288,39792)` — it
+# asked for lsusp1 while excluding EVERY GROUP THAT CONTAINS IT (all 36 tris are in 6600+3560), so
+# FSUSPP was empty and the front suspension was drawn NOWHERE (E75-S6). The exclusion was added for a
+# real reason — E64-S4's "group 6600 carries 1.65 m-edge lsusp1 garbage 2 m ahead of the car" — but
+# aimed at the group rather than the garbage, and took the feature with it.
+# Clip the garbage by EXTENT instead: maxedge=1.0 drops the 1.65 m-edge tris and keeps the wishbones
+# (a Lotus 49 front wishbone is well under 1 m). JM_FSUSP_OLD=1 restores the empty-FSUSPP behaviour.
+const FSUSPP = haskey(ENV,"JM_FSUSP_OLD") ?
+    Render.extract_gpl_car(LOT3DO; only=("lsusp1",), maxlat=1.3f0, exclude_groups=(6600,3560,27288,39792)) :
+    Render.extract_gpl_car(LOT3DO; only=("lsusp1","frontlot"), maxlat=1.3f0,
+                           maxedge=parse(Float32,get(ENV,"JM_FSUSP_MAXEDGE","1.5")))
+# Two corrections to the first attempt at this fix, both found by counting instead of eyeballing:
+#   (a) maxedge=1.0 dropped ALL of lsusp1 — measured survival 0 / 0 / 4 / 12 / 12 tris at
+#       0.5 / 1.0 / 1.5 / 2.0 / Inf. The real wishbone strips have >1 m edges, so a 1.0 clip is not
+#       "conservative", it is total. 1.5 keeps 4 and still drops E64-S4's 1.65 m garbage.
+#   (b) `only=("lsusp1",)` was too narrow: `frontlot` (94–114 tris) is the bulk of the front end and
+#       was ALSO drawn nowhere — same self-defeating exclusion, never noticed because the search was
+#       for "suspension" by name.
+# ⚠️ maxedge is a blunt instrument here: lsusp1's real geometry and its garbage BOTH have long
+# edges, so this separates them only approximately. The precise clip is longitudinal (the garbage
+# sits ~2 m ahead of the car) and wants a new extractor parameter — noted, not yet built.
 const MIRRORP = Render.extract_gpl_car(LOT3DO; only=MIRROR_DRAW, maxlat=0.95f0)  # rear-view mirrors — clean disc, re-placed on the cowl (see MIRRORMAT)
 const HANDP  = Render.extract_gpl_car(LOT3DO; only=("lohand",),  maxlat=0.95f0)  # E64 S2: gloved hands on the rim — ride the wheel rotation
 # E64 S7 (D12 residual): the runtime-hidden HIGH-DETAIL rear-suspension assemblies (groups
@@ -1811,6 +1831,22 @@ const RSUSP_ON = get(ENV,"JM_RSUSP","1") != "0"
 # Gold's wishbones/driveshafts run INBOARD from the hub (z≈0.772) to the gearbox (z≈0.2), so they
 # should survive CARP_MAXLAT=0.85. List every texture in the UNFILTERED model with its extent, and
 # mark what each exclusion list drops, so the missing linkage can be found by name rather than guess.
+if get(ENV,"JM_FSUSP_DIAG","") != ""
+    # E75-S7: is FSUSPP actually non-empty after the fix? The A/B changed 0 pixels in BOTH views,
+    # which means either the parts are still absent or they are invisible — different problems.
+    # Count the triangles that survive at several maxedge values so the clip can be seen working.
+    for me in (0.5f0, 1.0f0, 1.5f0, 2.0f0, Inf32)
+        pp = Render.extract_gpl_car(LOT3DO; only=("lsusp1",), maxlat=1.3f0, maxedge=me)
+        n = sum(length(x.verts) ÷ 11 for x in pp; init=0) ÷ 3
+        println("   FSUSPP maxedge=", me, "  -> ", length(pp), " parts, ", n, " tris")
+    end
+    for me in (1.0f0, Inf32)
+        pp = Render.extract_gpl_car(LOT3DO; only=("frontlot",), maxlat=1.3f0, maxedge=me)
+        n = sum(length(x.verts) ÷ 11 for x in pp; init=0) ÷ 3
+        println("   frontlot maxedge=", me, " -> ", length(pp), " parts, ", n, " tris")
+    end
+    flush(stdout)
+end
 if get(ENV,"JM_CARGROUPS","") != ""
     # E75-S6: WHICH excluded group holds gold's rear linkage? E75-S5 named the missing parts
     # (lshok, lsusp5/7, lsusp1, lbrdisc, frontlot — all present in the .3do, none excluded by name)

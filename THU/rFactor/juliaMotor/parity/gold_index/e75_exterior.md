@@ -251,3 +251,36 @@ Five sprints, four refuted hypotheses (wheels-too-wide, fold-pivot, fold-angle, 
 assumed the geometry was reaching the renderer and something downstream was mishandling it. The
 actual answer — *most of it never reaches the renderer at all* — only became visible once the model
 was enumerated instead of reasoned about. The census took one run.
+
+---
+
+## E75-S7 — ✅ front-end geometry now renders (partial fix), after two self-corrections
+
+**Change:** `FSUSPP` no longer excludes the groups containing its own geometry. It clips the known
+garbage by **extent** instead: `only=("lsusp1","frontlot"), maxedge=1.5`.
+`maxedge` now applies to car meshes as well as track meshes (it was track-only; default `Inf`, so no
+existing call changes). `JM_FSUSP_OLD=1` restores the empty-FSUSPP behaviour.
+
+**Result:** 7,397 pixels change in the cockpit view (`e75_fsusp_fix.jpg`) — front-end structure
+appears at both front corners where none was drawn before.
+
+### Two corrections along the way, both from counting rather than looking
+
+1. **My first clip was `maxedge=1.0`, which dropped ALL of `lsusp1`.** Measured survival:
+   `0.5 → 0 tris, 1.0 → 0, 1.5 → 4, 2.0 → 12, Inf → 12`. The real wishbone strips have >1 m edges,
+   so a 1.0 m clip is not "conservative", it is total. The A/B changed **0 pixels in both views**
+   and I nearly recorded that as "the fix does nothing".
+2. **`only=("lsusp1",)` was too narrow.** `frontlot` — 94–114 tris, the bulk of the front end — was
+   *also* drawn nowhere, hit by the same self-defeating exclusion. It was missed because the search
+   was for parts named like "suspension".
+
+### ⚠️ Honest limits of this fix
+
+- **`maxedge` is a blunt instrument here.** `lsusp1`'s real geometry and its garbage BOTH have long
+  edges, so 1.5 separates them only approximately: 4 of 12 triangles survive, and whether the 8
+  dropped are all garbage is **unverified**. The precise clip is longitudinal — E64-S4 located the
+  garbage ~2 m ahead of the car — and wants a new extractor parameter that does not exist yet.
+- **Not yet compared against gold.** The geometry renders; whether it *matches* the gold cockpit's
+  front end is a separate check and has not been done.
+- The REAR half of E75 (`lshok`, `lbrdisc`, `lsusp5/7` in groups 27288/39792, folded onto the hub)
+  is untouched by this.

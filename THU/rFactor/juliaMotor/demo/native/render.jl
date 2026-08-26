@@ -951,7 +951,12 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
         !(isfinite(L) && isfinite(A) && cmax(t) < 5f4) ? false :       # drop garbage/huge stray verts (e.g. monza10k ~1e6-unit coords)
         (cockpit_clean && t.tex=="" && yellowish(t.col)) || overlat(t) ? false :
         track ? (!(t.tex in exclude) && A >= 1f-7 && L <= maxedge) :   # track: huge legit polys (objects pass maxedge to drop stray giant polys)
-                (!(t.tex in exclude) && !istray(t.tex) && !(t.tex=="" && traygreen(t.col)) && L <= 2.0f0 && A >= 1f-7 && !(A > 0 && L/(2A/L) > 200f0))
+                # E75-S7: honour `maxedge` on CAR meshes too (it was track-only), so a caller can
+                # clip stray oversized geometry by EXTENT instead of excluding a whole group. The
+                # front suspension needed exactly that: its group also holds 1.65 m-edge garbage, and
+                # excluding the group removed the suspension with it (E75-S6). Default stays Inf, so
+                # every existing call keeps the historic 2.0 m limit unchanged.
+                (!(t.tex in exclude) && !istray(t.tex) && !(t.tex=="" && traygreen(t.col)) && L <= min(2.0f0, maxedge) && A >= 1f-7 && !(A > 0 && L/(2A/L) > 200f0))
     end
     kept = [m.tris[i] for i in eachindex(m.tris) if keep(m.tris[i]) && !(m.groups[i] in exclude_groups) &&
             (isempty(include_groups) || m.groups[i] in include_groups)]   # E64 S7: include_groups = keep ONLY these placing-node groups
