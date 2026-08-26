@@ -81,3 +81,54 @@ count what the loader is offered versus what it keeps.
 
 ⚠️ S1's candidates (`treesrb*` prefix skip, the down-facing cull) remain worth checking, but they
 cannot plausibly account for a 5,000-object shortfall.
+
+---
+
+## S3 — ⭐ ROOT CAUSE: 72% of the Ring's scenery has no loadable mesh
+
+Counted what the loader is offered versus what it keeps (`JM_SCENEDIAG=1`):
+
+```
+offered              3109
+dropped: treesrb*       0
+dropped: NO MESH     2231   <-- the placement exists, the object cannot be loaded
+dropped: sprite stub   37
+reached the renderer  841
+distinct object names 595
+```
+
+**2,231 of 3,109 placements — 72% — are dropped because `getmesh(nm)` returns nothing.** The
+placements are all there in the track data; the objects they refer to fail to load.
+
+Most-placed missing names:
+
+| name | placements | |
+|---|---|---|
+| `strauch6` | **372** | *Strauch* = shrub |
+| `strauch4` | 163 | |
+| `strauchy` | 96 | |
+| `stree11` | 84 | tree |
+| `strauch7` | 65 | |
+| `FAKE` | 65 | |
+| `stree1` | 60 | |
+| `flagger` | **49** | marshals / flag crew |
+| `BUSH` | 43 | |
+
+### This settles the shape of E76
+
+It is **not** a filter deleting objects, and not the sprite-stub skip (S1 already refuted that). The
+Ring's trackside furniture is simply **never loaded** — which is exactly why its scenery totals
+184 groups where Spa gets 1,679 objects + 5,132 billboards at a fifth the length, and why gold's
+first kilometre is full while native's is bare.
+
+### Next — and it is a narrow question
+
+Why does `getmesh` fail for these names? The leading suspect is the same class this project has hit
+before: **filename case**. GPL ships mixed-case names and Linux is case-sensitive; the `.dat` loader
+already carries a `find_ci` helper written for exactly that reason. Note the missing list contains
+both lower-case (`strauch6`) and UPPER-case (`FAKE`, `BUSH`) names, so a simple "everything upper
+fails" story will not fit — the resolution needs measuring, not assuming.
+
+⚠️ Also unverified: whether the missing names include the *buildings and crowds* the PO described.
+The top of the list is vegetation and marshals; 595 distinct names were offered and only the top 15
+are shown. Tabulate the whole missing set by name before claiming what content is absent.

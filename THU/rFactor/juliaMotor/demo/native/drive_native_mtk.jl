@@ -482,9 +482,19 @@ function gpl_scenery(ztrk, datpack, ribbon)
         (hi3-lo3) < 0.5 && (hih-loh) < 6.0
     end
     hat=Render.GPL3DO.Tri[]; groups=Dict{String,Vector{Float32}}(); nskip=0
+    # E76-S3: is the Ring's scenery even being LOADED? Its whole load is "184 groups / 4065 tris"
+    # where Spa gets 1679 objects + 5132 billboards at a fifth the length (E76-S2), and gold's first
+    # kilometre is lined with crowds and hoardings that native simply does not have. Before hunting
+    # filters, count what this loop is OFFERED versus what each rule removes. JM_SCENEDIAG=1.
+    local n_offered=0; local n_treesrb=0; local n_nomesh=0; local n_kept=0
+    scene_names=Dict{String,Int}()
     for (nm,t) in pls
-        startswith(nm,"treesrb") && continue        # forest-BACKDROP "paintings" (streea/b/c) — render as a streaky smear
-        mesh=getmesh(nm); (mesh===nothing || isempty(mesh)) && continue
+        n_offered += 1
+        scene_names[nm] = get(scene_names,nm,0) + 1
+        if startswith(nm,"treesrb"); n_treesrb += 1; continue; end   # forest-BACKDROP "paintings"
+        mesh=getmesh(nm)
+        if (mesh===nothing || isempty(mesh)); n_nomesh += 1; continue; end
+        n_kept += 1
         if issprite(nm,mesh)
             nskip+=1
             # E76-S1 (PO: "many of the buildings and crowds shortly after S/F were simply removed"):
@@ -557,6 +567,22 @@ function gpl_scenery(ztrk, datpack, ribbon)
         end
     end
     nskip > 0 && print("(skipped ", nskip, " flat sprite stubs) ")
+    if get(ENV,"JM_SCENEDIAG","") != ""
+        println()
+        println("== JM_SCENEDIAG scenery placements offered to the loader ==")
+        println("   offered              ", n_offered)
+        println("   dropped: treesrb*    ", n_treesrb)
+        println("   dropped: NO MESH     ", n_nomesh, "   <-- placement exists but its object could not be loaded")
+        println("   dropped: sprite stub ", nskip)
+        println("   reached the renderer ", n_kept - nskip)
+        println("   distinct object names: ", length(scene_names))
+        miss = sort([(nm,c) for (nm,c) in scene_names if getmesh(nm)===nothing || isempty(getmesh(nm))], by=x->-x[2])
+        if !isempty(miss)
+            println("   -- most-placed names with NO MESH (top 15) --")
+            for (nm,c) in miss[1:min(end,15)]; println("      ", rpad(nm,18), c, " placements"); end
+        end
+        flush(stdout)
+    end
     (hat, [Render.TrackPart(v, tex, (0.5f0,0.5f0,0.5f0)) for (tex,v) in groups])
 end
 
