@@ -106,3 +106,39 @@ Test minification directly: grow the gauge cluster (or bring it toward the eye) 
 numerals resolve. If they do, D2 is not a texture or lighting defect at all and the fix is
 positional. `JM_GAUGE_X`/`JM_GAUGE_Y` exist for position; there is **no scale knob**, so one may
 need adding to test it.
+
+---
+
+## E74-S4 — the minification test FAILED to isolate, and revealed a positional error instead
+
+Added `JM_GAUGE_S` (default 1.0, shipped look untouched) and swept 1.0 / 1.8 / 2.6.
+
+**The test does not work.** Growing the cluster makes the dials *disappear*, not enlarge: at 1.8 they
+are mostly gone, at 2.6 entirely. The scale is applied about the cluster's own centre inside
+`GAUGEFLIP`, so it **displaces** the dials as well as magnifying them — they move out of the visible
+window behind the wheel. Magnification and movement are confounded, so **the minification hypothesis
+from E74-S3 is neither confirmed nor refuted.** The knob stays (default 1.0) but a proper test needs
+scale about the *eye direction*, or scale plus a compensating translation.
+
+### What the sweep did show: the cluster is in the wrong PLACE
+
+Comparing scale 1.0 with gold:
+
+- **Gold:** the tachometer sits **directly above the wheel hub**, centred on the driver's eye line,
+  large and unobstructed.
+- **Native:** the dials sit **up and to the LEFT**, partly cut off at the frame edge, with the wheel
+  rim across them.
+
+So the cluster is offset from where gold puts it. That is a different defect from "too small", and it
+may account for much of the "melted" impression on its own — a dial half-hidden behind a spoke and
+clipped at the edge reads as a smear regardless of its texture.
+
+`JM_GAUGE_X` (−0.04) and `JM_GAUGE_Y` (+0.16) already exist to position it, and their comment says
+they were set to lift the mesh-low dash "onto the cowl". **Nobody appears to have checked the lateral
+placement against gold.**
+
+### Next
+
+Sweep `JM_GAUGE_X` against gold's dial position — cheap, existing knob, no new code. Only once the
+cluster is where gold puts it does the "are the faces legible" question become answerable, because
+until then legibility is confounded by occlusion and clipping.

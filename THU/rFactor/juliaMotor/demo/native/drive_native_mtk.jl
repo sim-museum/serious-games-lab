@@ -1019,7 +1019,14 @@ const GCY = (b = Render.parts_bbox(GAUGEP); Float32((b.ymin + b.ymax)/2))
 # modelled LOW, so lift it (JM_GAUGE_Y) and nudge it back toward the eye (JM_GAUGE_X) onto the cowl.
 const GAUGE_DY = parse(Float32, get(ENV,"JM_GAUGE_Y","0.16"))
 const GAUGE_DX = parse(Float32, get(ENV,"JM_GAUGE_X","-0.04"))
-const GAUGEFLIP = Render.translate(Float32[GAUGE_DX,GCY+GAUGE_DY,0]) * Render.scalexyz(1f0,-1f0,1f0) * Render.translate(Float32[0,-GCY,0])
+# E74-S4: a SCALE knob for the gauge cluster. E74-S3 refuted brightness as the cause of the PO's
+# "Salvador Dali dials" and found the cluster is drawn far smaller than gold's — gold puts a large
+# dominant tachometer above the wheel hub, ours sits small and far back — so the dial-face texture is
+# minified into a mip-blurred smear. This tests that directly: if growing the cluster makes the
+# numerals resolve, the defect is positional/scale, not texture or lighting. JM_GAUGE_S (default 1.0
+# = unchanged, so the shipped look is untouched until the sweep says what is right).
+const GAUGE_S = parse(Float32, get(ENV,"JM_GAUGE_S","1.0"))
+const GAUGEFLIP = Render.translate(Float32[GAUGE_DX,GCY+GAUGE_DY,0]) * Render.scalexyz(GAUGE_S,-GAUGE_S,GAUGE_S) * Render.translate(Float32[0,-GCY,0])
 const SWPARTS, SWCENTER, SWAXIS = Render.extract_gpl_steering(LOT3DO)   # steering wheel + pivot
 # Mirrors: GPL gold standard = two round discs LOW at the screen edges (level with the front-tyre
 # tops), on outward stalks — NOT high near the wheel.  Mesh frame: x=fwd, y=up, z=lateral (the two
