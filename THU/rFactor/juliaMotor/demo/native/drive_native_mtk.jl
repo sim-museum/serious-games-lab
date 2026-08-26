@@ -1436,6 +1436,23 @@ let objnames=Set{String}()
         for r in rows[1:min(end,30)]
             println("   ", rpad(r[1],16), rpad(r[2],8), rpad(r[3],8), rpad(r[4],13), rpad(r[5],10), r[6])
         end
+        # E71-S10: is a flagged building an OVERSIZED SINGLE house, or a COMPOSITE .3do whose second
+        # building happens to sit near the road? Both put a mesh vertex on the asphalt from an origin
+        # 6 m away, and they need opposite fixes: rescale the mesh vs. re-anchor/split the object.
+        # The local AABB answers it — a cottage is ~10 m across; 40 m means the file holds a block.
+        println("   -- local mesh extents of the flagged buildings (w x d x h, m) --")
+        seenb = Set{String}()
+        for r in rows
+            occursin(r"^(house|bu\d|casa|clhouse|eauhotel|ho\d)", r[1]) || continue
+            r[1] in seenb && continue; push!(seenb, r[1])
+            haskey(lxmn,r[1]) || continue
+            w = lxmx[r[1]]-lxmn[r[1]]; d = lzmx[r[1]]-lzmn[r[1]]; h = get(ymx,r[1],0f0)-get(ymn,r[1],0f0)
+            npts = haskey(lverts,r[1]) ? length(lverts[r[1]]) : 0
+            println("      ", rpad(r[1],12), rpad(round(w,digits=1),8), "x ", rpad(round(d,digits=1),8),
+                    "x ", rpad(round(h,digits=1),7), "  pts=", npts,
+                    (w>25 || d>25) ? "   <-- COMPOSITE (too big for one building)" : "")
+            length(seenb) > 14 && break
+        end
         bl = filter(r -> occursin(r"^(house|bu\d|casa|clhouse|eauhotel)", r[1]), rows)
         println("   -- of which BUILDINGS: ", length(bl))
         for r in bl[1:min(end,15)]

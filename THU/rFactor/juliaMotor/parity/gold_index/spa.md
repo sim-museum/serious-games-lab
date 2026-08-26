@@ -440,3 +440,52 @@ The defect is characterised: **oversized/oversprawling building meshes whose cor
 origins sit off the asphalt while their geometry crosses it.** Moving instances would be the wrong
 fix. The candidate list is real but needs the barrier-class false positives filtered before it
 drives any edit.
+
+---
+
+## E71-S10 — ⚠️ RETRACTION: "the fix is to size the meshes, not move the instances" was WRONG
+
+Measured the local mesh extents of every flagged building. The population is **mixed**, and the
+single most important row refutes the S7/S9 synthesis:
+
+| object | w × d × h (m) | reading |
+|---|---|---|
+| **`house43`** | **4.4 × 14.4 × 7.2** | **CORRECTLY SIZED.** 7.2 m to the ridge is exactly a two-storey cottage — the figure S5 predicted. Not oversized at all. |
+| `house29` | 8.1 × 17.4 × 8.8 | normal |
+| `house4` | 13.7 × 10.7 × 8.1 | normal |
+| `house46` | 13.4 × 22.2 × 16.3 | genuinely tall — oversized or composite |
+| `house1b` | 17.5 × 30.0 × 8.9 | **composite** |
+| `house9` | 56.9 × 33.6 × 11.7 | **composite** |
+| `eauhotel` | 74.3 × 109.8 × 21.0 | **composite** — a whole block, not a hotel |
+
+### What this means for the house actually photographed in the road
+
+`house43` is a **correctly-sized 4.4 × 14.4 m cottage** whose origin sits 6.0 m from the centreline
+with its long axis at **relyaw +53°** to the road. A 14 m building skewed 53° across a 4.1 m
+half-width road reaches the centreline from 6 m out — no oversizing required. And gold has **no
+building at that lapdist at all** (E71-S2).
+
+**So for `house43` the fix is exactly what the PO originally said: MOVE IT.** My S7 conclusion —
+"the fix is to size the meshes, NOT to move the instances" — was wrong, and I stated it to the PO
+with more confidence than the evidence carried.
+
+### How the error happened, because it is instructive
+
+S5 measured object HEIGHTS (`house46` 16.3 m, `house40` 13.5 m, `eauhotel` 21.0 m), found them too
+tall for cottages, and generalised to "the houses are oversized". Two of those three turn out to be
+**composite objects** — `eauhotel` is a 74 × 110 m block whose 21 m height is the tallest thing in
+the file, not a hotel. The height statistic was real; the population it was computed over was not
+what I thought it was. S7 then built a synthesis on it, and S9's confirmation confirmed only the
+GEOMETRY (mesh reaches the road from an origin that does not), which is true under either
+explanation and so could not discriminate.
+
+### The corrected picture — there is no single fix
+
+| class | example | fix |
+|---|---|---|
+| correctly sized, misplaced | `house43` @ 12010 | **move/remove** — gold has nothing there |
+| composite `.3do` | `eauhotel`, `house9`, `house1b` | re-anchor or split; a whole block placed by one origin |
+| genuinely oversized | `house46` (16.3 m) | rescale — **still unconfirmed against gold** |
+
+Each flagged building needs classifying before it is touched. The census now supports that: extents
+are printed alongside penetration.
