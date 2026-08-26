@@ -263,3 +263,45 @@ explain footprints reaching the asphalt from origins 6–8 m away.
 2. Measure the JM road width against gold the same way. If the road is right and the houses are
    wrong, it is an object-mesh unit error; if both are inflated, it is global.
 3. Only then choose: rescale the meshes, or move the instances. **Do not do both blind.**
+
+---
+
+## E71-S6 — the Lotus as a ruler: one good number, one failed measurement (2026-08-26)
+
+### Gold, measured
+
+At t=316.5 s (open road, car centred), on the row through the car:
+
+```
+road span 767 px   car 139 px   ->  road = 5.52 car-widths
+```
+
+A Lotus 49 is ≈2.0 m across the tyres, so **gold's Spa road is ≈11 m wide** there. That is right for
+the period circuit (a two-lane Belgian main road), and it is a MEASUREMENT of this gold rather than
+domain knowledge.
+
+### Native, NOT measured — and why
+
+The same method fails on the native frame: at the car's row the road runs off the right edge of the
+image, so there is no right-hand edge to measure. The two chase cameras also sit at different
+distances (gold's car is 139 px wide, native's ≈400 px in a similar-width frame), so ratios taken at
+different rows are not comparable. **No native road width is claimed.**
+
+### What the gold number nevertheless establishes
+
+`ROAD_HALFW = 9.0 m` — the corridor the on-road classifier uses, and the basis of the 372-object
+candidate list — implies an **18 m** road. Gold measures **≈11 m**. So the classifier's corridor is
+roughly **1.7× the real road**, which independently confirms the E71-S4 conclusion that the
+candidate list is far too permissive, and quantifies it: objects out to ~9 m are being flagged when
+the asphalt edge is nearer ~5.5 m.
+
+⚠️ This does NOT show the rendered road is too wide. `ROAD_HALFW` is a physics corridor chosen for
+robustness (E30), deliberately wider than the asphalt. It is the CLASSIFIER that is mis-sized for
+this purpose, not necessarily the track.
+
+### Next — stop using pixels
+
+Measure the rendered road width in **metres from the track mesh**: at a given lapdist, take the
+lateral extent of road-textured triangles (`ROAD_PRED` already identifies them). That is exact,
+camera-independent, and answers both open questions at once — whether the visual road matches gold's
+11 m, and where the true asphalt edge is for re-filtering the object census.
