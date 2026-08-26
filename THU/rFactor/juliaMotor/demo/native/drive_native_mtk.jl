@@ -466,8 +466,31 @@ function gpl_scenery(ztrk, datpack, ribbon)
     getmesh(nm)=get!(cache, lowercase(nm)) do
         v=get(datpack, lowercase(nm*".3do"), nothing); v===nothing && return nothing
         tp=joinpath(tmp,"jm_nb_"*lowercase(nm)*".3do"); isfile(tp)||write(tp,v)
-        m = try Render.GPL3DO.parse_3do(tp) catch; nothing end
-        m===nothing ? nothing : dedup_scenery(m.tris)
+        # E76-S5: this catch swallows the reason. 1865 of the Ring's 2231 failed placements have
+        # their object present in the archive under exactly this key (E76-S4), so they fail HERE —
+        # and the error that would say why is discarded. Record it: one run then says whether this
+        # is a single parser limitation hitting most of the Ring's scenery, or scattered faults.
+        # JM_MESHERR=1 prints the first occurrence per object name.
+        m = try
+                Render.GPL3DO.parse_3do(tp)
+            catch e
+                if get(ENV,"JM_MESHERR","") != ""
+                    println("   [mesherr] ", rpad(nm,16), " bytes=", rpad(length(v),9),
+                            typeof(e), " :: ", first(split(sprint(showerror, e), "\n")))
+                    flush(stdout)
+                end
+                nothing
+            end
+        if m === nothing
+            nothing
+        else
+            d = dedup_scenery(m.tris)
+            if (d === nothing || isempty(d)) && get(ENV,"JM_MESHERR","") != ""
+                println("   [mesherr] ", rpad(nm,16), " parsed OK but EMPTY after dedup (",
+                        length(m.tris), " raw tris)"); flush(stdout)
+            end
+            d
+        end
     end
     # Flat HORIZONTAL sprite stubs (UP-extent ≈ 0, small): GPL draws these camera-facing,
     # but rendering the raw quad as geometry lays them flat on the ground = the "horizontal

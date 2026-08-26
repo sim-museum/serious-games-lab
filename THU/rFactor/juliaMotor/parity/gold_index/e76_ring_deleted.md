@@ -182,3 +182,53 @@ trackside content in a single change — the largest single content win availabl
 ⚠️ Note the pattern in this item: three sprints, three of my own hypotheses discarded (sprite stubs,
 missing content, filename case). Each was refuted by measuring the thing itself rather than
 reasoning from the symptom — and each refutation narrowed the search rather than restarting it.
+
+---
+
+## S5 — ⭐⭐ ROOT CAUSE CONFIRMED: the Ring's scenery path has no BILLBOARD support
+
+Instrumented the swallowed `catch`. **Not one object throws.** All 50 failing names report the same
+thing:
+
+```
+[mesherr] BUSH       parsed OK but EMPTY after dedup (0 raw tris)
+[mesherr] strauch6   parsed OK but EMPTY after dedup (0 raw tris)
+[mesherr] flagger    parsed OK but EMPTY after dedup (0 raw tris)
+[mesherr] deadtree   parsed OK but EMPTY after dedup (0 raw tris)
+[mesherr] stree9     parsed OK but EMPTY after dedup (0 raw tris)
+```
+
+`parse_3do` **succeeds and returns zero triangles**. These objects carry no triangle geometry at all.
+
+### Why: they are camera-facing BILLBOARDS, and this loader only understands triangles
+
+Look at the names — `BUSH`, `strauch*` (shrub), `stree*` (tree), `deadtree`, `flagger` (marshals),
+`FAKE`. These are exactly the class GPL draws as **camera-facing sprites**, not meshes. The other
+four tracks handle them: Spa loads `1679 trackside objects + **5132 billboards**`. The Ring's
+scenery path (E70-S2: a different loader entirely) produces `184 groups` and **no billboards at
+all** — because it has no billboard branch.
+
+So the chain is complete:
+
+| step | evidence |
+|---|---|
+| PO: buildings/crowds missing after S/F | reproduced side-by-side (S2) |
+| 2231 of 3109 placements dropped | census (S3) |
+| 1865 of those have their object in the archive | key test (S4) |
+| every one parses to **0 triangles** | this sprint |
+| they are sprite/billboard objects; the Ring's loader has no billboard path | names + the Spa comparison |
+
+**This is not a filter, a case bug, missing content, or a parser fault.** It is a missing feature in
+the Ring-specific scenery loader.
+
+### What the fix is
+
+Give the Ring's scenery path the billboard handling the GPL object path already has — the same
+`bbinfo` / camera-facing quad treatment that produces Spa's 5,132 billboards. That single addition
+should restore the vegetation, marshals and crowd rows across the **whole** Nordschleife, not just
+the PO's stretch after S/F.
+
+⚠️ Scope check before building it: **50 distinct names / 1,865 placements** are billboard-class. The
+remaining 366 failed placements have no archive entry and are unrelated. And whether the PO's
+*buildings* (as distinct from crowds and vegetation) are in the 50 has **not** been verified — the
+names visible are vegetation and marshals.
