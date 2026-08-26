@@ -125,3 +125,39 @@ the arms end up on the wheel instead of reaching across to the chassis.
 question is whether any setting puts articulated linkage in the wheel-to-tub gap as gold has it. If
 none does, the assemblies are being folded when they should be translated, and the fold itself is
 the defect.
+
+---
+
+## E75-S4 — no fold setting works. The fold is not the tunable; the SOURCE geometry is wrong.
+
+Swept `JM_RS_ROLL` and photographed each (`e75_roll_sweep.jpg`):
+
+| setting | result |
+|---|---|
+| **0° (unfolded)** | the assemblies spray outward as flat **spears past the wheels** — this is the original E64-S4 "chrome spider-legs" artefact, reproduced |
+| **45°** | nothing visible — indistinguishable from RSUSP off |
+| **90° (shipped)** | nothing visible — indistinguishable from RSUSP off |
+| RSUSP off | baseline |
+
+**No setting produces gold's articulated rear end.** The choice is between an obvious artefact and
+an invisible one; there is no angle in between that yields linkage spanning the wheel-to-tub gap.
+So E75-S3's "the fold pivot may be wrong" is answered: the fold is not a tuning problem.
+
+### The likely reason, and it reframes the whole item
+
+The code calls these assemblies *"the runtime-hidden HIGH-DETAIL rear-suspension assemblies"* and
+*"GPL runtime-hidden branches"*. If GPL hides them at runtime, then **the suspension visible in the
+gold video is not this geometry at all** — gold must be drawing a different, always-visible set,
+and JM has been trying to rehabilitate the wrong branch since E64-S4.
+
+That would explain everything observed: why the assemblies are authored in a pose no fold makes
+sense of, why 45° and 90° are indistinguishable from off, and why the one setting that shows them
+(0°) produces spears no shipped game ever displayed.
+
+### Next — and it is a different question from the last three sprints
+
+Stop tuning the transform. Instead enumerate what the Lotus `.3do` actually contains: every group
+and texture, which are excluded by `_LOTBLACK_EXC` / `_EXTRA_EXC` / `_GARBAGE_EXC` /
+`exclude_groups`, and which carry wishbone/driveshaft-like geometry near the rear axle at
+lateral < 0.8 m. **Gold's linkage has to be in there somewhere; the question is which exclusion is
+eating it.**
