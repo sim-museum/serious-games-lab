@@ -92,3 +92,52 @@ a large mesh above the road** that had to be excluded from the collision HAT bec
 passes under it" — a car passing beneath the banking would see exactly this: its underside filling
 the frame while the real road is hidden. If so the fix is a render-side exclusion mirroring the HAT
 one, not new geometry.
+
+---
+
+## E73-S3 — the banking hypothesis is REFUTED; the CENTRELINE leaves the road
+
+Added `JM_SPOTMESH=<lapdist>` — lists every track-mesh triangle near a lapdist with its texture,
+height and lateral range. Run at the defect (s=500) and at a healthy control (s=1000):
+
+**s = 500 ±40 m, |lat| < 30 m — 43 triangles total**
+
+| texture | tris | z range | lateral range | road? |
+|---|---|---|---|---|
+| `wiref_s` | 16 | 2.6–2.9 | +5.3 … +22.4 | |
+| `grass` | 15 | 2.6–2.9 | +3.8 … +21.3 | |
+| `asphalt` | 4 | 2.6–2.9 | **+11.1 … +15.4** | ROAD |
+| `aspgrsr` | 4 | 2.6–2.9 | **+7.2 … +8.2** | ROAD |
+| `aspgrs` | 4 | 2.6–2.9 | **+18.2 … +19.2** | ROAD |
+
+**s = 1000 (control) — 230 triangles**, with `asphalt` spanning **−29.2 … +8.4** and `concrete`
+**−1.5 … +1.5**: road across the centreline, as it should be.
+
+### Two conclusions
+
+**1. The banking hypothesis is dead.** Every mesh at s=500 sits at z = 2.6–2.9 m — a single low
+band, nothing overhead. There is no large mesh above the road here, so the pale sheet is not a
+banking underside. My E73-S2 lead was wrong.
+
+**2. The real defect is worse: the CENTRELINE IS OFF THE ROAD.** At s=500 every road-textured
+triangle lies at lateral **+7.2 to +19.2 m** — none anywhere near lat 0, where the car is placed.
+The road exists; the centreline has wandered ~7–19 m to the side of it. And with only 43 triangles
+in an 80 × 60 m patch, the ground under the centreline is essentially **unmodelled**, which is why
+the frame shows a featureless pale sheet rather than grass.
+
+So this is not a rendering defect at all. It is a **centreline/alignment defect**, in the same
+family as the recorded WG4 finding that "the Watkins line strands ~10 m onto the grass at s≈300".
+Monza's own load log runs an align + recentre pass; it evidently fails through this section.
+
+### Why this matters more than it looked
+
+A car driven through s≈350–650 is off the circuit, on unmodelled ground, with the real road several
+car-widths to one side. That affects the racing line, lap distance and any physics that depends on
+being on the surface — not just the picture.
+
+### Next
+
+Inspect the Monza centreline alignment through s=300–700 against the road ribbon: the recentre pass
+reports `max shift` per iteration, so the question is whether it failed to converge here or
+converged onto the wrong strip. `s=4500` (also a missing width bucket) should be checked the same
+way, as should Watkins' known s≈300.

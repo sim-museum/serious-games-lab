@@ -1460,6 +1460,43 @@ let objnames=Set{String}()
         end
         flush(stdout)
     end
+    if get(ENV,"JM_SPOTMESH","")!=""
+        # E73-S3: name whatever is covering the road. E73-S2 found a ~300 m stretch of Monza
+        # (s≈350–650) with NO road surface — the car floats over a pale sheet — confirmed
+        # independently by the width census having no bucket at s=500. The leading hypothesis is
+        # E52's note that Monza's BANKING is a large mesh ABOVE the road, excluded from the collision
+        # HAT because "the road passes under it": a car beneath it would see its underside fill the
+        # frame. Test it by listing every track-mesh triangle near a lapdist with its texture and
+        # HEIGHT — banking overhead shows up as a distinct high band, missing road as an absence.
+        # JM_SPOTMESH="500,1500" (comma-separated lapdists).
+        for tok in split(get(ENV,"JM_SPOTMESH",""), ",")
+            isempty(strip(tok)) && continue
+            want = parse(Float64, strip(tok))
+            acc = Dict{String,Vector{Float64}}(); lats = Dict{String,Vector{Float64}}()
+            for t in TRACKMESH.tris
+                cx = (Float64(t.p[1][1])+Float64(t.p[2][1])+Float64(t.p[3][1]))/3
+                cy = (Float64(t.p[1][2])+Float64(t.p[2][2])+Float64(t.p[3][2]))/3
+                cz = (Float64(t.p[1][3])+Float64(t.p[2][3])+Float64(t.p[3][3]))/3
+                hr = JuliaMotor.hat(TRKSURF, cx, cy)
+                (hr.found && abs(hr.lapdist - want) < 40.0 && abs(hr.lateral) < 30.0) || continue
+                lt = lowercase(t.tex); lt = lt=="" ? "<none>" : lt
+                push!(get!(acc, lt, Float64[]), cz)
+                push!(get!(lats, lt, Float64[]), hr.lateral)
+            end
+            println("== JM_SPOTMESH lapdist ", want, " ±40 m, |lat|<30 m — meshes present ==")
+            println("   texture          tris   z_min    z_mean   z_max    lat range        road?")
+            if isempty(acc); println("   (nothing found)"); end
+            for (lt,zs) in sort(collect(acc), by=x->-length(x[2]))
+                ls = lats[lt]
+                println("   ", rpad(lt,16), rpad(length(zs),7),
+                        rpad(round(minimum(zs),digits=1),9), rpad(round(sum(zs)/length(zs),digits=1),9),
+                        rpad(round(maximum(zs),digits=1),9),
+                        rpad(string(round(minimum(ls),digits=1),"..",round(maximum(ls),digits=1)),17),
+                        ROAD_TEX(lt) ? "ROAD" : "")
+            end
+            flush(stdout)
+        end
+    end
     if get(ENV,"JM_ROADTEX_CENSUS","")!=""
         # First-pass finding (E70/E72/E73): ROAD_TEX recognises Spa's road (9658 tris, uniform
         # 8.2 m) but only a quarter of Watkins' and Monza's, so JM_ROADWIDTH returns nonsense there
