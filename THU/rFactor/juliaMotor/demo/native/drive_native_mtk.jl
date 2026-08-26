@@ -1460,6 +1460,50 @@ let objnames=Set{String}()
         end
         flush(stdout)
     end
+    if get(ENV,"JM_LINEONROAD","")!=""
+        # E73-S4: map where the CENTRELINE leaves the road, lap-wide. E73-S3 found Monza's line
+        # 7–19 m off the asphalt at s≈500 — the car is placed on unmodelled ground while the real
+        # road runs to one side. The width census cannot show this: its lat_min/lat_max span
+        # includes aprons and paddock, so its midpoint is not the road centre.
+        # The robust question is BINARY: at this lapdist, is there any road-textured triangle AT
+        # lateral 0? Report the nearest road triangle to the centreline per bucket; anything above a
+        # car's half-width means the line is off the running surface there.
+        step = parse(Float64, get(ENV,"JM_LINEONROAD_STEP","250"))
+        halfb = parse(Float64, get(ENV,"JM_LINEONROAD_BUCKET","20"))
+        near = Dict{Int,Float64}(); cnt = Dict{Int,Int}()
+        for t in TRACKMESH.tris
+            ROAD_TEX(lowercase(t.tex)) || continue
+            cx = (Float64(t.p[1][1])+Float64(t.p[2][1])+Float64(t.p[3][1]))/3
+            cy = (Float64(t.p[1][2])+Float64(t.p[2][2])+Float64(t.p[3][2]))/3
+            hr = JuliaMotor.hat(TRKSURF, cx, cy)
+            hr.found || continue
+            b = round(Int, hr.lapdist/step)
+            abs(hr.lapdist - b*step) <= halfb || continue
+            a = abs(hr.lateral)
+            near[b] = min(get(near, b, Inf), a)
+            cnt[b] = get(cnt, b, 0) + 1
+        end
+        # NB CLINE is not defined this early in the load — derive the lap extent from the buckets
+        # themselves. (The first version used CLINE.total and every run died with UndefVarError,
+        # which printed NO census output at all: a silent-looking "clean" result that was really a
+        # crash. Checked the exit status rather than the absence of findings.)
+        total = isempty(near) ? 0 : maximum(keys(near))
+        bad = 0; gap = 0
+        println("== JM_LINEONROAD: nearest ROAD triangle to the centreline, per ", step, " m ==")
+        for b in 0:total
+            if !haskey(near, b)
+                println("   s=", rpad(b*step,8), "NO ROAD TRIANGLES within ±", halfb, " m  *** GAP ***")
+                gap += 1
+            elseif near[b] > 3.0
+                println("   s=", rpad(b*step,8), "nearest road is ", round(near[b],digits=1),
+                        " m off the line   (", cnt[b], " tris)  *** LINE OFF ROAD ***")
+                bad += 1
+            end
+        end
+        println("   --> ", total+1, " buckets: ", gap, " with no road, ", bad,
+                " with the line >3 m off the road, ", total+1-gap-bad, " healthy")
+        flush(stdout)
+    end
     if get(ENV,"JM_SPOTMESH","")!=""
         # E73-S3: name whatever is covering the road. E73-S2 found a ~300 m stretch of Monza
         # (s≈350–650) with NO road surface — the car floats over a pale sheet — confirmed
