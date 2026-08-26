@@ -41,3 +41,43 @@ different code from the other four tracks. Candidates, in order of cheapness:
 
 (3) is the one that answers the PO's question directly rather than by elimination, and it needs no
 new instrument.
+
+---
+
+## S2 — ✅ REPRODUCED. The PO is right, and the gap is severe.
+
+Gold (`260802_nurburgring_nintendo.mp4`, t = 10–60 s) against native (s = 200–1200) —
+`e76_ring_sf_ab.jpg`:
+
+| | gold | native |
+|---|---|---|
+| t=10 / s=200 | crowds packed on the left, hoardings right | a small crowd bank, some yellow barriers |
+| t=20 / s=400 | **colourful advertising hoardings lining BOTH sides** | bare — fence, guardrail, empty grass |
+| t=30 / s=600 | large grandstand + crowd left, hoardings | bare — grass, distant fence |
+| t=40 / s=800 | **massive crowd banks BOTH sides**, hundreds of spectators | bare — dark hill, guardrail |
+| t=50 / s=1000 | hoardings and crowds | bare — grass, fence |
+| t=60 / s=1200 | trackside boards, buildings | bare — road, fence, trees |
+
+**Gold's first kilometre is lined with dense crowds and advertising hoardings. Native has almost
+nothing past s≈200.** This is exactly the PO's *"many of the buildings and crowds there were simply
+removed"*, and it is not subtle.
+
+## The likely scale of the problem
+
+The Ring's whole scenery load is:
+
+```
+scenery… 184 groups / 4065 tris
+```
+
+For comparison, **Spa** loads `1679 trackside objects + 5132 billboards + 771 solid`. The Ring — at
+**5× the length** — gets 184 groups. That is not a filter removing a few objects; it suggests the
+Ring's scenery source is being read only in small part, or that most of its content never enters the
+loader at all.
+
+So the question is no longer *"which filter deletes them"* but **"is the Ring's scenery even being
+loaded?"** — which is a different investigation from the three candidates listed in S1, and cheaper:
+count what the loader is offered versus what it keeps.
+
+⚠️ S1's candidates (`treesrb*` prefix skip, the down-facing cull) remain worth checking, but they
+cannot plausibly account for a 5,000-object shortfall.
