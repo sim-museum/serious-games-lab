@@ -1805,6 +1805,26 @@ const RSFIX_B = rsfix(RS_SWAP ? 1 : -1)
 # E64 S8: ON by default — the positioner-chain dump settled the transform (hub-line fold; see
 # rsfix above); the gold nintendo chase shows this articulated rear end, so it ships.
 const RSUSP_ON = get(ENV,"JM_RSUSP","1") != "0"
+# E75-S3: the wheels are placed from a PHYSICS constant (WTRACK_F/R) while the body and suspension
+# come from the GPL mesh at its own scale. E75-S2 showed narrowing the drawn track ~18% makes the car
+# read as a connected assembly, so the two disagree — but "~18%" came from eyeballing a probe. Print
+# both numbers so the disagreement is exact and it is clear WHICH side is wrong.
+# In the render frame the car's lateral axis is z (extract remaps p[1],p[3],p[2]).
+if get(ENV,"JM_WHEELFIT","") != ""
+    ba = Render.parts_bbox(RSUSPP_A); bb = Render.parts_bbox(RSUSPP_B)
+    bc = Render.parts_bbox(CARP)
+    outb = max(abs(ba.zmin), abs(ba.zmax), abs(bb.zmin), abs(bb.zmax))
+    println("== JM_WHEELFIT: drawn wheel placement vs the mesh the suspension is authored at ==")
+    println("   rear-susp mesh lateral  A: ", round(ba.zmin,digits=3), " … ", round(ba.zmax,digits=3),
+            "   B: ", round(bb.zmin,digits=3), " … ", round(bb.zmax,digits=3))
+    println("   outermost suspension point   |z| = ", round(outb,digits=3), " m")
+    println("   car body (CARP) lateral       ", round(bc.zmin,digits=3), " … ", round(bc.zmax,digits=3))
+    println("   wheels drawn at half-track    front ", WTRACK_F, "   rear ", WTRACK_R, " m")
+    println("   REAR gap wheel-centre − suspension outermost = ",
+            round(WTRACK_R - outb, digits=3), " m")
+    println("   (a positive gap is empty space the linkage cannot span — the visual 'detached wheels')")
+    flush(stdout)
+end
 # E64 S2: the raw fists sit at 3-and-9 on the rim; the gold cockpit video grips at 10-AND-2 —
 # opposite per-hand rotations about the wheel axis, so split the two fists by z sign (rig +z =
 # car's left) and give each its own grip rotation (JM_HAND_GRIP degrees, left +, right −).

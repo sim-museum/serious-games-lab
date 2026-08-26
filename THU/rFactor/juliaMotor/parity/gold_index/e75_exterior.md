@@ -82,3 +82,46 @@ so the picture and the physics stop being independent claims.
 Measure the lateral position of the suspension mesh's outboard ends (the hub faces in `RSUSPP_A/B`)
 and compare with the wheel centres at `WTRACK_R`. That converts "roughly 18%" into the exact
 disagreement and says which of the two is wrong.
+
+---
+
+## E75-S3 — ⚠️ the "wheels ~18% too wide" hypothesis is REFUTED
+
+Measured (`JM_WHEELFIT=1`):
+
+```
+rear-susp mesh lateral   A: -1.117 … -0.422    B: 0.422 … 1.159
+car body (CARP) lateral      -0.442 … 0.442
+wheels drawn at half-track   front 0.78   rear 0.74 m
+```
+
+and the positioner chain (already dumped in E64-S8, quoted in `rsfix`) places the **hub at
+z = ±0.772 with scale 1.0**.
+
+**So the wheels (0.74) and the suspension's own hub line (0.772) agree to 3 cm.** There is no ~18%
+disagreement, and E75-S2's diagnosis was wrong. The narrowing probe that "looked better" was moving
+the wheels *inboard of the hubs* — it improved the picture by breaking the alignment, which is
+exactly the kind of result that flatters a wrong theory.
+
+### What the measurement actually shows
+
+The raw assemblies reach lateral **1.159 m**, well beyond the hub — because they are **authored flat
+and horizontal** and `rsfix` folds them ~90° about the hub line (`JM_RS_ROLL`, default 90°). After
+the fold, geometry that reached outboard points up/down *at the hub* — i.e. exactly where the tyre
+is. That is why the highlight map in E75-S2 showed the linkage inside the tyre volume: it is folded
+onto the wheel, by design.
+
+The existing comment even records the symptom without naming it: *"50° vs 90° A/B'd near-identical
+from the chase (tyres + gearbox occlude)"*. The authors observed the occlusion and read it as "the
+angle doesn't matter", rather than as "whatever we do here is hidden".
+
+### New hypothesis, and it is testable
+
+Gold shows the linkage spanning **inboard** — hub → gearbox, visible in the gap between wheel and
+tub. Native folds it **at** the hub, where the tyre hides it. If the fold pivot or axis is wrong,
+the arms end up on the wheel instead of reaching across to the chassis.
+
+**Next test:** sweep `JM_RS_ROLL` (0/45/90) and `JM_RS_Z0` (the fold pivot) and photograph each. The
+question is whether any setting puts articulated linkage in the wheel-to-tub gap as gold has it. If
+none does, the assemblies are being folded when they should be translated, and the fold itself is
+the defect.
