@@ -158,3 +158,54 @@ a CANDIDATE LIST, not a defect list.
 2. Spot-photograph the |lat| 6–9 band at a few lapdists to calibrate where the verge begins.
 3. Only then decide per instance: move, delete, or leave. `house43` + `100la` at 12010 can be
    actioned now — gold has no building there at all.
+
+---
+
+## E71-S4 — the census criterion is WRONG, and the photographs prove it (2026-08-26)
+
+Photographed the 6–9 m band directly (`spa_band_calibration.jpg`), with `house43` as a
+known-on-road control.
+
+| object | lat (m) | lapdist | what the photograph shows |
+|---|---|---|---|
+| `house43` | −6.0 | 12010 | **ON the road** (control, proven E71-S2) |
+| `house29` | +8.1 | 8010 | wall immediately at the car's shoulder — **on/at the edge** |
+| `house26` | −7.2 | 6874 | brick wall with garage door immediately alongside — **on/at the edge** |
+| `house4` | −8.8 | 2758 | stone wall filling half the frame alongside — **on/at the edge** |
+| `house46` | −7.0 | 5174 | narrow village street, buildings both sides at the kerb — **plausibly correct** |
+| `house28` | −8.0 | 7078 | **OFF** — road clear, farm buildings distant |
+| `bu5` | +6.3 | 13351 | **OFF** — village sits well off to the right, road clear |
+
+### ⭐ Centroid lateral distance does not predict whether an object is on the road
+
+`bu5` at **+6.3 m is clearly OFF**; `house43` at **−6.0 m is ON**. `house28` at −8.0 is OFF while
+`house29` at +8.1 is hard against the car. The ordering by |lat| is simply not the ordering by
+"is it in the way".
+
+Two reasons, both structural:
+1. **The measurement is the instance ORIGIN, not the mesh extent.** A large building whose origin
+   is 8 m off can have its wall at 2 m. This project already knew this — the code comment that
+   introduced `OBJINSTS` says exactly that ("centroid >13 m off-centreline but the mesh spans the
+   road") — and the census I ran in E71-S3 nonetheless sorts by centroid.
+2. **Road width varies along the lap.** A single `ROAD_HALFW` cannot be right everywhere, and 9.0 m
+   was chosen for PHYSICS robustness (E30: stop centreline wobble reading as "off track"), not to
+   describe the asphalt.
+
+### Consequence for E71
+
+**The 372-object candidate list from E71-S3 cannot be used as-is**, and any bulk action driven by
+|lat| would move correctly-placed scenery while missing genuine offenders. What is needed is a
+census keyed on **mesh extent vs the actual road edge**:
+
+- compute each instance's world-space footprint (its mesh AABB under the instance transform);
+- compare the NEAREST footprint corner to the ribbon edge at that lapdist, not the origin to the
+  centreline;
+- rank by penetration depth into the surface.
+
+That is a real change to the diagnostic, and it is the honest prerequisite for the "move objects off
+the road" work the PO asked for.
+
+### Unchanged and still actionable
+
+`house43` + `100la` at lapdist 12010 remain confirmed defects — gold has no building at that point
+of the lap at all.
