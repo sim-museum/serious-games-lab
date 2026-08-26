@@ -232,3 +232,43 @@ the PO's stretch after S/F.
 remaining 366 failed placements have no archive entry and are unrelated. And whether the PO's
 *buildings* (as distinct from crowds and vegetation) are in the 50 has **not** been verified — the
 names visible are vegetation and marshals.
+
+---
+
+## S6 — scoping the fix: it restores VEGETATION, not the crowds
+
+All 50 billboard-class names, by kind:
+
+| kind | names | count |
+|---|---|---|
+| shrubs | `strauch`, `strauch1/2/4/5/6/7/8/9`, `straucha/b/x/y`, `busch01/02`, `BUSH`, `bush2` | **17** |
+| trees | `stree1–12/15/15k`, `STREE2`, `baum01`, `Baum20`, `Tanne1/3`, `TROWTREE`, `XK_TREE3`, `deadtree`, `DEADTR_2/3` | **~23** |
+| marshals | `flagger` | 1 |
+| unidentified | `A1`, `A2`, `A3`, `FAKE`, `GIN_B`, `ogrnd2`, `t60`, `t60b`, `wehr-l4` | 9 |
+
+**There is not one crowd or grandstand name in the set.** So the billboard fix (S5) will restore the
+Ring's vegetation and its marshals — a large visual change — but **will not restore the crowds the
+PO reported**.
+
+### Where the crowds are, or are not
+
+The Ring's archive contains essentially **no crowd objects**: a search for
+`ppl*/crowd*/spec*/zusch*/tribun*/grand*/stand*.3do` in `nurburg.dat` returns exactly **one** name,
+`grand116.3do`. Gold's first kilometre shows crowd banks of hundreds of spectators on both sides.
+
+So the crowds are either baked into the track mesh / terrain textures, or supplied by a mechanism
+this loader does not read at all. **That is a separate investigation from the billboard fix**, and
+the PO should know that fixing S5 will visibly improve the Ring without closing their report.
+
+⚠️ The comparison search on Spa returned nothing for the same pattern, so Spa's crowd rows
+(`ppl_m1`, `ppl_l3` — seen in the Zandvoort/Spa censuses) are evidently named or stored differently.
+**My search pattern is therefore not proven adequate**, and "the Ring has no crowd objects" should be
+re-tested with a pattern validated against a track known to have them before it is relied on.
+
+### Revised plan for E76
+
+1. **Billboard support in the Ring's scenery loader** (S5) — restores ~1,865 placements of
+   vegetation + marshals. Large, well-understood, independent.
+2. **Crowds: separate and unscoped** — find how gold draws the Nordschleife's spectator banks, using
+   a search pattern first validated on a track whose crowds are known.
+3. The 366 placements with no archive entry remain a third, smaller thread.
