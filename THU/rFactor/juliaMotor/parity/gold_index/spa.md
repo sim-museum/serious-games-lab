@@ -355,3 +355,43 @@ scatter correctly-placed buildings while leaving them too big.
 
 Compute per-instance footprints (mesh AABB under the instance transform) and rank by penetration
 past the 4.1 m edge. That both tests the synthesis above and produces the actionable list.
+
+---
+
+## E71-S8 — the footprint metric SATURATES; whole-object AABBs are unusable (2026-08-26)
+
+Implemented the E71-S7 plan: store each object's local horizontal AABB, transform its corners by the
+instance's own `roty`+translate, project through `hat`, and rank by how far the footprint reaches
+past the ±4.1 m asphalt edge.
+
+**It does not discriminate.** 438 instances flagged and **every single one reports penetration
+= 8.2 m** — exactly the full road width. `min(edge,hi) − max(−edge,lo)` saturates because the
+footprints are enormous:
+
+| instance | lateral span of AABB |
+|---|---|
+| `eauhotel` | −62.4 … +5.9 m (**68 m wide**) |
+| `house9` | −17.3 … +44.6 m (**62 m**) |
+| `house43` | saturated, pen = 8.2 |
+
+A village cottage is not 60 m across. **The AABB is being taken over the WHOLE `.3do`**, and GPL
+scenery objects are composite — one file can carry several buildings, a ground plane, or a whole
+block. A single box around all of that spans the road no matter where the building actually is.
+
+Seventeen instances also report `lapdist = −1, origin_lat = 999` (origin not on the HAT) while their
+corners project onto the road — which is the same symptom seen from the other side, and would have
+been read as "objects reaching in from off-track" if the saturation had not given it away first.
+
+### What this costs and what it saves
+
+The ranked list this sprint set out to produce **does not exist**, and a "438 objects penetrate the
+asphalt" headline would have been false — it is an artefact of the metric, not a property of Spa.
+Noticing that every value was identical is what caught it; a list sorted by a saturated key looks
+perfectly plausible.
+
+### Next — the fix is small and known
+
+Retain a DECIMATED VERTEX LIST per object (say every 20th vertex) instead of the AABB, transform
+those, and take the true lateral min/max. That is accurate for composite meshes, cheap in memory,
+and turns the metric back into something that can rank. The diagnostic scaffolding
+(`JM_FOOTPRINT`, `JM_ASPHALT_HALFW`) stays as-is — only the extent source changes.

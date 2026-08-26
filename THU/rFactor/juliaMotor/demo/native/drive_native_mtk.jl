@@ -1116,6 +1116,7 @@ let objnames=Set{String}()
     obj_extra_excl(nm) = (nm=="startbox" && !haskey(ENV,"JM_STARTBOX_KEEP")) ?
         ("sfbox01","sfbox02","sfbox03","hay01","hay02") : ()
     objmesh=Dict{String,Any}(); ymn=Dict{String,Float32}(); ymx=Dict{String,Float32}(); bbinfo=Dict{String,Any}()
+    lxmn=Dict{String,Float32}(); lxmx=Dict{String,Float32}(); lzmn=Dict{String,Float32}(); lzmx=Dict{String,Float32}()   # E71-S8 local horizontal AABB
     for inst in insts
         (haskey(objmesh, inst.name) || haskey(bbinfo, inst.name)) && continue
         p = objpath(inst.name)
@@ -1148,6 +1149,17 @@ let objnames=Set{String}()
                 else
                     lo=Inf32; hi=-Inf32; for pp in parts, k in 2:11:length(pp.verts); v=pp.verts[k]; lo=min(lo,v); hi=max(hi,v); end
                     ymn[inst.name]=lo; ymx[inst.name]=hi
+                    # E71-S8: HORIZONTAL extent too. E71-S7 showed the asphalt half-width is ~4.1 m
+                    # while house43's ORIGIN sits at -6.0 m and yet photographs standing in the road —
+                    # only possible if the mesh reaches inward past its origin. Ranking by origin
+                    # (E71-S3) therefore cannot find the real offenders. Keep the local x/z bounds so
+                    # a footprint can be transformed per instance.
+                    xl=Inf32; xh=-Inf32; zl=Inf32; zh=-Inf32
+                    for pp in parts, k in 1:11:length(pp.verts)-2
+                        vx=pp.verts[k]; vz=pp.verts[k+2]
+                        xl=min(xl,vx); xh=max(xh,vx); zl=min(zl,vz); zh=max(zh,vz)
+                    end
+                    lxmn[inst.name]=xl; lxmx[inst.name]=xh; lzmn[inst.name]=zl; lzmx[inst.name]=zh
                     objmesh[inst.name] = Render.build_gpl(parts, TEXIDX)
                 end
             end
@@ -1369,6 +1381,49 @@ let objnames=Set{String}()
         issolid = solidR(lowercase(i.name)) > 0.0 && og && !on_road(i.x, i.y, SOLID_EXCL_HW)
         (i.name, Float32(i.x), Float32(i.y), ploz(i), kmesh ? :mesh : kbb ? :bb : :dropped, issolid)
     end for i in insts]
+    if get(ENV,"JM_FOOTPRINT","")!=""
+        # E71-S8: rank objects by how far their FOOTPRINT penetrates the asphalt, not by how far
+        # their ORIGIN sits from the centreline. E71-S4 showed the origin ordering is not the
+        # "is it in the way" ordering (bu5 at +6.3 m is off the road, house43 at -6.0 m is on it),
+        # and E71-S7 put the asphalt edge at ~4.1 m. Transform each instance's local AABB corners by
+        # its own roty+translate, project through hat, and report the lateral span.
+        edge = parse(Float64, get(ENV,"JM_ASPHALT_HALFW","4.1"))
+        rows = NTuple{6,Any}[]
+        for i in insts
+            haskey(lxmn, i.name) || continue
+            drop(i.name) && continue
+            th = -Float64(i.yaw) + Float64(objyawfix(i.name))
+            c, sn = cos(th), sin(th)
+            lats = Float64[]
+            for (lx, lz) in ((lxmn[i.name],lzmn[i.name]),(lxmx[i.name],lzmn[i.name]),
+                             (lxmn[i.name],lzmx[i.name]),(lxmx[i.name],lzmx[i.name]))
+                rx =  lx*c + lz*sn
+                rz = -lx*sn + lz*c
+                hr = JuliaMotor.hat(TRKSURF, Float64(i.x) + rx, Float64(i.y) - rz)
+                hr.found && push!(lats, hr.lateral)
+            end
+            isempty(lats) && continue
+            lo, hi = minimum(lats), maximum(lats)
+            # penetration = how far the footprint reaches PAST the asphalt edge toward the centre
+            pen = max(0.0, min(edge, hi) - max(-edge, lo))
+            hr0 = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
+            pen > 0.05 && push!(rows, (i.name, round(lo,digits=1), round(hi,digits=1), round(pen,digits=1),
+                                       hr0.found ? round(hr0.lapdist,digits=0) : -1.0,
+                                       hr0.found ? round(hr0.lateral,digits=1) : 999.0))
+        end
+        sort!(rows, by=x->-x[4])
+        println("== E71-S8 footprints crossing the asphalt (edge ±", edge, " m) — ", length(rows), " instances ==")
+        println("   name            lat_lo  lat_hi   PENETRATION  lapdist   origin_lat")
+        for r in rows[1:min(end,30)]
+            println("   ", rpad(r[1],16), rpad(r[2],8), rpad(r[3],8), rpad(r[4],13), rpad(r[5],10), r[6])
+        end
+        bl = filter(r -> occursin(r"^(house|bu\d|casa|clhouse|eauhotel)", r[1]), rows)
+        println("   -- of which BUILDINGS: ", length(bl))
+        for r in bl[1:min(end,15)]
+            println("      ", rpad(r[1],16), "pen=", rpad(r[4],7), "lapdist=", rpad(r[5],10), "origin_lat=", r[6])
+        end
+        flush(stdout)
+    end
     if get(ENV,"JM_ROADWIDTH","")!=""
         # E71-S7: measure the RENDERED road width in METRES, from the mesh — not from pixels.
         # E71-S6 measured gold's Spa road at ~11 m using the Lotus as a ruler, but could not measure
