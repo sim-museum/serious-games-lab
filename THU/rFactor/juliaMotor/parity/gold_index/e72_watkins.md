@@ -40,3 +40,44 @@ since it is conservative against 10.9 m, the "0 crossing" result survives either
 Fix `ROAD_TEX` coverage for Watkins (which texture names does its asphalt use?) before any
 width-dependent verdict on this track. Then use the 617 s race video for a dense landmark map — it
 is the best oracle in the whole gold set and is currently unused.
+
+---
+
+## E72-S2 — clean on every census at the CORRECTED geometry; but the guardrail dedup does nothing
+
+Re-ran with Watkins' own asphalt edge (**5.05 m**, from the fixed road-width instrument) instead of
+the 4.1 m borrowed from Spa, and with the censuses now reachable on every track (E70-S2):
+
+| census | result |
+|---|---|
+| centreline alignment | **16 buckets, all healthy** — no gaps, line never >3 m off the road |
+| object footprints (edge ±5.05 m) | **0 instances**, 0 buildings |
+| crowd rows | nearest **13.2 m** from the centreline |
+
+Watkins Glen is the cleanest of the five tracks measured. The PO's *"crowd block at the big bend"*
+does not reproduce on any instrument — and unlike the Ring, these instruments are demonstrably
+connected here (113 objects and 13 billboards enumerated).
+
+⚠️ Still not "closed": 11 shots over 3,750 m, and the PO saw it while driving. The **617 s race
+video** remains the densest unused oracle in the gold set.
+
+## ⚠️ E68-W7 (guardrail z-fighting): the fix that was supposed to solve it drops ONE triangle
+
+The load line reads:
+
+```
+E68 S10: rail/fence dedup dropped 1 coplanar-duplicate tris
+```
+
+But E68-S10's own justification was *"13% of Watkins Armco tris and 10% of its fence tris are EXACT
+coplanar duplicates that the track path never collapsed"*. Thirteen percent should be dozens to
+hundreds of triangles, not **one**. Spa, which was not the motivating case, drops 4.
+
+So either the dedup's quantized centroid+area key is not matching the duplicates it was written for,
+or the 13% measurement referred to something the key does not capture. **Those need different
+fixes**, and the guardrail z-fighting the PO reported is very likely still present because the
+remedy is not firing.
+
+⚠️ I have **not** independently verified the 13% figure — it is quoted from the code comment. The
+next step is to count Watkins' `railfam` triangles and its actual coplanar-duplicate pairs directly,
+which settles whether the claim or the key is wrong.
