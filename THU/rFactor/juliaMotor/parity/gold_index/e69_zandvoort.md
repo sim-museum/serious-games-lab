@@ -46,3 +46,44 @@ tone judgements from unmatched frames are exactly what step 4 of the method warn
 
 The cyan block at s≈4000 is GPL's own teal pond texture, classified as an authentic-asset surprise
 in QA_METHOD_GOLD_PARITY.md.
+
+---
+
+## E69-S2 — ⚠️ CORRECTION: the PO's on-track spectators ARE reproduced
+
+E69-S1 concluded the crowd report *"does not reproduce"*, on the strength of `JM_CROWDDIAG` finding
+only 2 of 96 rows within 6 m of the centreline. **That census measures instance ORIGINS.** Running
+the extent-based footprint census (E71-S9) instead:
+
+| object | lapdist | origin lat | **nearest vertex** |
+|---|---|---|---|
+| `ppl_m1` | 3851 | −5.5 m | **0.2 m** |
+| `ppl_l3` | 3256 | **+12.3 m** | **0.8 m** |
+
+**Two spectator rows have geometry reaching the centreline from origins 5.5 and 12.3 m away.** The
+PO reported *"perpendicular spectator rows float above or sit ON the track — Zandvoort several
+places"*, and that is exactly what this is.
+
+This is the E71-S4 lesson repeating on a different object class: **centroid distance is not the
+"is it in the way" ordering**, and `JM_CROWDDIAG` — which predates that finding — still sorts by
+origin. A row whose origin is 12 m out looks perfectly innocent by that measure while its mesh lies
+across the racing line.
+
+**So E69-S1's negative was an artefact of the instrument, not a fact about the track**, and the
+sweep photographs that appeared to corroborate it simply did not sample s≈3256 or s≈3851.
+
+## Also found: a bank of bushes ON the racing surface
+
+`bushes01/02/03/04` × ~12 instances cluster at **lapdist 2309–2405**, reaching `near|lat|` of
+**0.1–1.4 m** — i.e. onto the road. Origins sit at 1.8–5.8 m. Same shape as the spectators: modest
+origin offset, mesh across the line.
+
+## Other measurements this sprint
+
+- **Road width 9.2 m** (asphalt edge ≈4.6 m) — Zandvoort's own figure; the footprint run above used
+  the borrowed 4.1 m, so it is **conservative** and a re-run at 4.6 m will flag more.
+- **Centreline alignment: 16 of 17 buckets healthy.** The single flagged bucket (s=250, 4.6 m, 52
+  tris) sits right at the asphalt half-width and is very likely the centroid artefact recorded in
+  `centreline_on_road.md`, not a real defect.
+- **Rail/fence triangles: 8 in total, 0 duplicates.** Zandvoort barely uses the `railfam` textures,
+  so the guardrail dedup is irrelevant here.
