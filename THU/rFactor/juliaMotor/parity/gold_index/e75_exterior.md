@@ -42,3 +42,43 @@ a new finding; it is not part of E75's fixable scope.
 
 D1 first, and alone if necessary. It is the PO's actual report, it is unambiguous against gold, and
 D2's severity cannot be judged until wheels are visually connected to the car.
+
+---
+
+## E75-S2 — ⚠️ D1 RESTATED: the suspension DOES draw. The wheels are in the wrong place.
+
+### Correction to E75-S1
+
+I wrote *"no linkage geometry of any kind between hub and tub"*. **That is wrong.** The rear
+suspension is extracted (`RSUSPP_A/B` from groups 27288/39792), is drawn in chase view, and is ON by
+default. Toggling `JM_RSUSP` changes **3,250 pixels** — so it renders. What it does not do is
+*read* as suspension: the highlight map (`e75_susp_draws.jpg`) shows it sitting **inside and behind
+the tyre volume**, not spanning hub to gearbox as gold's does.
+
+I inferred absence from appearance, on one frame, without toggling the switch that would have told
+me. The switch cost one run.
+
+### What the evidence now points at: the wheels and the body mesh disagree on width
+
+Gold tucks the wheels close to the tub with the linkage visibly spanning the gap. Native places them
+far outboard, and the linkage — authored at GPL's scale — cannot reach across.
+
+Test (`e75_track_ab.jpg`): narrowing the drawn track from the shipped `0.78/0.74` to `0.64/0.60`
+tucks the wheels in and the car immediately reads as a coherent assembly, much closer to gold.
+
+⚠️ **That is a diagnosis, NOT the fix.** `JM_TRACK_F/R` is also the **physics** half-track, and
+0.78 was set deliberately to match the real Lotus 49's ~1.52 m. Narrowing it to 0.60 would give a
+1.20 m track and falsify the handling — buying a picture with a lie. E75-S1 warned against re-tuning
+this number and that warning stands; the test above is a probe, not a proposal.
+
+The real defect is that **wheel placement comes from a physics constant while the body and
+suspension come from the GPL mesh at its own scale**, and the two disagree by roughly 18%. That is
+the "two code paths disagreeing about one fact" shape. The fix is to reconcile them — place the
+drawn wheels from the mesh's own hub positions (or scale the imported body to the physics track) —
+so the picture and the physics stop being independent claims.
+
+### Next
+
+Measure the lateral position of the suspension mesh's outboard ends (the hub faces in `RSUSPP_A/B`)
+and compare with the wheel centres at `WTRACK_R`. That converts "roughly 18%" into the exact
+disagreement and says which of the two is wrong.
