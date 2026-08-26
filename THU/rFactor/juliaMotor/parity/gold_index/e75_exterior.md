@@ -161,3 +161,50 @@ and texture, which are excluded by `_LOTBLACK_EXC` / `_EXTRA_EXC` / `_GARBAGE_EX
 `exclude_groups`, and which carry wishbone/driveshaft-like geometry near the rear axle at
 lateral < 0.8 m. **Gold's linkage has to be in there somewhere; the question is which exclusion is
 eating it.**
+
+---
+
+## E75-S5 — the missing parts are NAMED; `maxlat` is not what drops them
+
+Enumerated the Lotus `.3do` unfiltered (`JM_CARPARTS=1`). The suspension parts gold shows are all
+present in the file and all **absent from the drawn car**, and — importantly — **none is excluded by
+name**:
+
+| texture | tris | lateral z | in CARP? | excluded by name? |
+|---|---|---|---|---|
+| `lshok` (shocks) | 48 | −1.06 … 1.06 | **NO** | no |
+| `lsusp5` | 48 | −1.12 … 1.12 | **NO** | no |
+| `lsusp7` | 48 | −1.01 … 1.01 | **NO** | no |
+| `lsusp1` | 36 | −1.13 … 1.13 | **NO** | no |
+| `lbrdisc` (brake discs) | 120 | −0.61 … 0.61 | **NO** | no |
+| `frontlot` | 342 | −1.2 … 1.2 | **NO** | no |
+| `axlelot` (axles) | 228 | −0.86 … 0.86 | yes | — |
+| `lsusp2` | 60 | −1.02 … 1.02 | yes | — |
+
+Since their lateral extent (±1.0–1.13) exceeds `CARP_MAXLAT = 0.85`, the obvious hypothesis was that
+the skinny clip eats them.
+
+**Refuted.** `JM_CARP_MAXLAT=1.2` produces a frame **indistinguishable from the shipped one**
+(`e75_maxlat_ab.jpg`) — no new linkage, and no spider-legs either. So `maxlat` is not what removes
+them. *(Fourth hypothesis refuted on this item; the previous three were wheels-too-wide, fold-pivot,
+and fold-angle.)*
+
+### What remains
+
+By elimination the parts are dropped by **`exclude_groups=(6600, 3560, 27288, 39792)`** — the group
+filter overrides `maxlat` entirely. And those are exactly the groups E75-S4 identified as GPL's
+"runtime-hidden branches".
+
+That closes the loop on this item's real question, and it is a single decidable one:
+
+> Are `lshok`/`lsusp5`/`lsusp7`/`lbrdisc` **inside** the excluded groups — and if so, is gold
+> drawing them (meaning the exclusion is the defect and the earlier "spider legs" were a transform
+> bug), or does gold draw a different copy that JM never reaches?
+
+### Next
+
+Report each part's **group id** alongside its texture — one line added to the census. If the missing
+suspension sits in 27288/39792, the exclusion is removing geometry gold displays, and the fix is to
+include those groups with a corrected transform rather than to drop them. If it sits in 6600/3560,
+those exclusions were justified by different evidence (E64-S4's "1.65 m-edge garbage 2 m ahead of
+the car") and need re-examining on their own terms.

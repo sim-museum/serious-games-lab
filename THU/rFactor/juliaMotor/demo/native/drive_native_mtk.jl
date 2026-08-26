@@ -1805,6 +1805,39 @@ const RSFIX_B = rsfix(RS_SWAP ? 1 : -1)
 # E64 S8: ON by default — the positioner-chain dump settled the transform (hub-line fold; see
 # rsfix above); the gold nintendo chase shows this articulated rear end, so it ships.
 const RSUSP_ON = get(ENV,"JM_RSUSP","1") != "0"
+# E75-S5: what does the Lotus .3do actually CONTAIN, and which exclusion eats gold's rear linkage?
+# Four sprints of transform-tuning are closed (E75-S4: no fold angle works), and the code's own
+# words — "runtime-hidden branches" — suggest JM has been rehabilitating geometry GPL never draws.
+# Gold's wishbones/driveshafts run INBOARD from the hub (z≈0.772) to the gearbox (z≈0.2), so they
+# should survive CARP_MAXLAT=0.85. List every texture in the UNFILTERED model with its extent, and
+# mark what each exclusion list drops, so the missing linkage can be found by name rather than guess.
+if get(ENV,"JM_CARPARTS","") != ""
+    allp = Render.extract_gpl_car(LOT3DO)      # no exclusions, no group filter, no maxlat
+    kept = Set{String}()
+    for pp in CARP; push!(kept, pp.tex); end
+    excl = Set{String}((_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,
+                        DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...))
+    println("== JM_CARPARTS: Lotus 49 .3do contents (unfiltered) ==")
+    println("   texture       tris   lateral z          height y           in CARP?  excluded by name?")
+    rows = []
+    for pp in allp
+        v = pp.verts; n = length(v) ÷ 11
+        zmn=Inf32; zmx=-Inf32; ymn=Inf32; ymx=-Inf32
+        for i in 1:11:length(v)-10
+            y=v[i+1]; z=v[i+2]
+            ymn=min(ymn,y); ymx=max(ymx,y); zmn=min(zmn,z); zmx=max(zmx,z)
+        end
+        push!(rows, (pp.tex, n, zmn, zmx, ymn, ymx))
+    end
+    for (tex,n,zmn,zmx,ymn,ymx) in sort(rows, by=r->-r[2])
+        println("   ", rpad(tex,14), rpad(n,7),
+                rpad(string(round(zmn,digits=2),"…",round(zmx,digits=2)),19),
+                rpad(string(round(ymn,digits=2),"…",round(ymx,digits=2)),19),
+                rpad(tex in kept ? "yes" : "NO", 10),
+                tex in excl ? "EXCLUDED" : "")
+    end
+    flush(stdout)
+end
 # E75-S3: the wheels are placed from a PHYSICS constant (WTRACK_F/R) while the body and suspension
 # come from the GPL mesh at its own scale. E75-S2 showed narrowing the drawn track ~18% makes the car
 # read as a connected assembly, so the two disagree — but "~18%" came from eyeballing a probe. Print
