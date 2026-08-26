@@ -1460,6 +1460,39 @@ let objnames=Set{String}()
         end
         flush(stdout)
     end
+    if get(ENV,"JM_ROADTEX_CENSUS","")!=""
+        # First-pass finding (E70/E72/E73): ROAD_TEX recognises Spa's road (9658 tris, uniform
+        # 8.2 m) but only a quarter of Watkins' and Monza's, so JM_ROADWIDTH returns nonsense there
+        # (medians of 3.7 m and 0.6 m against healthy buckets of 10.9 m and 13.1 m) and every
+        # width-dependent verdict on those tracks is unsupported. ROAD_TEX is a NAME list, tuned for
+        # GPL and Ring naming; the fix is to learn the names each track actually uses rather than
+        # guess more prefixes. Tally the textures of triangles lying within |lat| < 5 m of the
+        # centreline — whatever surfaces the car drives on IS the road, whatever it is called.
+        near = Dict{String,Int}(); far = Dict{String,Int}()
+        for t in TRACKMESH.tris
+            cx = (Float64(t.p[1][1])+Float64(t.p[2][1])+Float64(t.p[3][1]))/3
+            cy = (Float64(t.p[1][2])+Float64(t.p[2][2])+Float64(t.p[3][2]))/3
+            hr = JuliaMotor.hat(TRKSURF, cx, cy)
+            hr.found || continue
+            lt = lowercase(t.tex)
+            if abs(hr.lateral) < 5.0
+                near[lt] = get(near,lt,0) + 1
+            elseif abs(hr.lateral) < 25.0
+                far[lt] = get(far,lt,0) + 1
+            end
+        end
+        println("== ROAD_TEX census: textures of tris within |lat| < 5 m of the centreline ==")
+        println("   (recognised? = does the current ROAD_TEX classifier accept the name)")
+        for (lt,n) in sort(collect(near), by=x->-x[2])[1:min(end,18)]
+            println("   ", rpad(lt=="" ? "<none>" : lt, 16), rpad(n,7),
+                    ROAD_TEX(lt) ? "recognised" : "*** MISSED ***",
+                    "   (off-road count ", get(far,lt,0), ")")
+        end
+        tot = sum(values(near)); rec = sum(n for (lt,n) in near if ROAD_TEX(lt); init=0)
+        println("   --> ", rec, "/", tot, " near-centreline tris recognised (",
+                tot>0 ? round(100rec/tot,digits=1) : 0.0, "%)")
+        flush(stdout)
+    end
     if get(ENV,"JM_ROADWIDTH","")!=""
         # E71-S7: measure the RENDERED road width in METRES, from the mesh — not from pixels.
         # E71-S6 measured gold's Spa road at ~11 m using the Lotus as a ruler, but could not measure
@@ -1470,7 +1503,14 @@ let objnames=Set{String}()
         # Two open questions fall out at once: does the visual road match gold's 11 m, and where does
         # the real edge sit for re-filtering the 372-object candidate list (E71-S3/S4).
         step = parse(Float64, get(ENV,"JM_ROADWIDTH_STEP","500"))
-        halfb = parse(Float64, get(ENV,"JM_ROADWIDTH_BUCKET","3.0"))
+        # Default 12.0, not 3.0. At ±3 m a bucket catches only a thin slice of the ribbon, and on
+        # tracks whose road carries a NARROW `groove` racing-line strip a bucket can end up holding
+        # groove vertices ONLY — so the "width" measured is the groove's, not the road's. That is why
+        # Monza reported a 0.6 m median and Watkins 3.7 m while Spa (denser road mesh) reported a
+        # sound 8.2 m. Widening the bucket fixed all three at once: Monza 0.6 -> 11.6 m, Watkins
+        # 3.7 -> 10.1 m, Spa 8.2 -> 8.5 m (i.e. Spa barely moves, which is the check that the change
+        # is a coverage fix and not a thumb on the scale).
+        halfb = parse(Float64, get(ENV,"JM_ROADWIDTH_BUCKET","12.0"))
         buckets = Dict{Int,Vector{Float64}}()
         nrt = 0
         for t in TRACKMESH.tris

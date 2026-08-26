@@ -36,5 +36,7 @@ the footprint census) **works on Spa and fails on Monza and Watkins**:
 | Monza | 4,537 / 5,744 m | 4 of 12 | 0.6 m — **artefact** (healthy bucket: 13.1 m) |
 | Nürburgring | n/a | none | scenery is track-mesh; the census does not run at all |
 
-Fixing `ROAD_TEX`'s coverage for Monza and Watkins is a prerequisite for any width-dependent verdict
-on those tracks, and is the highest-value shared fix found in the first pass.
+**RESOLVED** — and it was not a coverage problem. See `road_width.md`: the texture names were
+recognised all along; the bucket half-width (±3 m) was too thin, so buckets could hold only the
+narrow `groove` racing-line strip. Default widened to ±12 m; Monza 0.6 → **11.6 m**, Watkins
+3.7 → **10.1 m**, Spa 8.2 → 8.5 m (barely moves — the control that says it is a fix, not a fudge).
