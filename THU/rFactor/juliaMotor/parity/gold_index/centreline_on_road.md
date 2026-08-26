@@ -40,3 +40,20 @@ It referenced `CLINE`, which is not defined that early in the load, so every run
 `UndefVarError` and printed **no census output at all** — indistinguishable from a clean result. The
 exit status was what gave it away. Third instance this week of an empty diagnostic that was a
 failure, not a pass.
+
+---
+
+## Extent-based on-road census, each track at ITS OWN measured edge
+
+Prompted by E69-S2: two of three "not reproduced" verdicts were overturned once the census measured
+mesh EXTENT rather than instance ORIGIN, so every track was re-run at its own asphalt edge.
+
+| track | edge | instances crossing | buildings | dominant classes |
+|---|---|---|---|---|
+| **Spa** | 4.25 m | 366 | 26 | houses, armco (armco rows suspect — see E71-S9) |
+| **Zandvoort** | **4.6 m** | **57** | 0 | `bushes01–04` @ 2309–2405; **`ppl_m1` @3851, `ppl_l3` @3256 — spectator rows on the line** |
+| **Monza** | **5.8 m** | **32** | 0 | `brmk100–400r` braking boards @630–870; `trees24/25/68/69/70/73` strips |
+| **Watkins Glen** | 5.05 m | **0** | 0 | — genuinely clean |
+| Nürburgring | — | **census cannot run** | — | scenery bypasses the object pipeline (E70-S2) |
+
+Watkins is the only track that is clean, and the Ring is the only one that cannot be measured at all.

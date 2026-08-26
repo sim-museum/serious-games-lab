@@ -988,3 +988,28 @@ side-by-side composites at named landmarks; zero objects intersecting the racing
 remaining deviation either fixed or explicitly classified (authentic asset / asset-capability gap
 / waived prior-owner decision) with the evidence that classified it. No regressions in
 `JuliaMotorMTK` tests; `JM_SMOKE` clean.
+
+### E76 (PO 2026-08-26) — restore the deleted objects just after the Nürburgring start/finish
+
+PO: *"restore deleted objects shortly after start-finish line at nurburgring — many of the buildings
+and crowds there were simply removed."*
+
+⭐ **Immediate lead, from E70-S2's load trace.** The Ring's scenery line reads:
+
+```
+scenery… (skipped 37 flat sprite stubs) 184 groups / 4065 tris
+```
+
+**37 objects are being SKIPPED at load**, and "flat sprite stubs" is exactly what a crowd row or a
+billboard-style building would be classified as. That is a strong candidate for the PO's missing
+objects and it is checkable in one run: report what those 37 are, and where they sit along the lap.
+If they cluster just after S/F, this item is solved by the census that names them.
+
+**Second candidate, if the first does not account for it:** the Ring's scenery loads by a path that
+bypasses the GPL object pipeline entirely (E70-S2), so its objects never pass through the
+instance-placement, drop() and on-road filters the other four tracks use. Anything dropped on this
+track is dropped by different code, and none of the E71–E73 censuses can see it.
+
+⚠️ Note for whoever picks this up: **do not use `JM_CROWDDIAG` or `JM_OBJDIAG` here** — they read
+`insts`, which is empty on the Ring, and will report "nothing" regardless of the truth (E70-S1 made
+exactly that mistake). Use the mesh-based censuses, which E70-S2 relocated so they run on this track.
