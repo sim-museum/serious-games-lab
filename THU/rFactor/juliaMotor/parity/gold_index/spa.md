@@ -105,3 +105,56 @@ propagates into every fix that cites it.
   finer sweep around 11800–12200 and an object census at that location.
 - Whether s=8000 is the building being wrong or the ribbon being wrong.
 - Nothing about colour yet, by design.
+
+---
+
+## E71-S3 — the offender is NAMED, and the problem is bigger than one house (2026-08-26)
+
+Ran the existing `JM_OBJDIAG` census (built for the earlier support-in-road defect — reused rather
+than rebuilt) against Spa.
+
+### The s=12000 house is `house43`
+
+```
+house43   lat = -6.0 m   lapdist = 12010.0   relyaw = +53°
+100la     lat = -5.5 m   lapdist = 12006.0   relyaw = +53°
+```
+
+So the object to move is **`house43`**, and a **`100la`** distance-marker board is misplaced with it
+at the same spot — the "100" sign visible in the native frame. They move together.
+
+### ⚠️ It is NOT one house. 372 objects sit inside the road corridor.
+
+| | count |
+|---|---|
+| objects with \|lat\| < 13 m (corridor) | 611 |
+| objects with \|lat\| < 9 m (ROAD_HALFW) | **372** |
+| of those, building instances | **28** (`house4/25/26/28/29/43/46/47/48`, `bu4/bu5/bu5s`) |
+| most common single offender | `epolsp3` (telegraph pole) — **132 instances** |
+
+Buildings inside the corridor, by lapdist: 1331, 2758(×4), 3903, 3927, 3951, 5174, 5316, 5675,
+6874, 6886(×3), 7078(×3), 8010, **12010**, 13351, 13382, 13393, 13402, 13429, 13451, 13475, 13502.
+
+**`house29` at lapdist 8010** is the s=8000 site from E71-S2 — so that one is now named too.
+
+### ⚠️ Do NOT read "|lat| < 9" as "on the asphalt"
+
+`ROAD_HALFW = 9.0 m` is the CLASSIFIER's corridor, which includes verges; 1967 Spa's asphalt is
+much narrower than 18 m. What is established:
+
+- **`house43` at lat −6.0 is visually ON the asphalt** — the E71-S2 photograph proves it, and that
+  in turn puts the visual half-width at ≥ 6 m there.
+- Objects at |lat| ≲ 6 are therefore almost certainly on the racing surface.
+- Objects at |lat| 6–9 are **unconfirmed** and may be legitimately on the verge, where gold puts
+  houses and spectators.
+
+Treating all 372 as defects would mass-move scenery that gold shows correctly placed. The census is
+a CANDIDATE LIST, not a defect list.
+
+### Next
+
+1. Establish the real asphalt half-width per section (from the ribbon/`.trk`), and re-filter the
+   census against THAT rather than against ROAD_HALFW.
+2. Spot-photograph the |lat| 6–9 band at a few lapdists to calibrate where the verge begins.
+3. Only then decide per instance: move, delete, or leave. `house43` + `100la` at 12010 can be
+   actioned now — gold has no building there at all.
