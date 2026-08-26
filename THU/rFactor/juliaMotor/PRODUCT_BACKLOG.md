@@ -896,3 +896,95 @@ Watkins veil (giant Grass sheet backs).  Design, settled by this epic's evidence
    for signs (D6 needs the right face, not one arbitrary face) — per-face selection is the
    only correct mechanism.  Rails/sections keep their shipped whole-part culls.
 4. Verify each customer at its known site: Tarzan boards s=380, bridge shrubs, veil s=60–180.
+
+---
+
+## PO batch 2026-08-26 — gold-VIDEO parity per track, cockpit, and external car
+
+**New oracle type.** Every gold source used so far has been a still. These seven items are
+anchored on **video** — two per track, one cockpit and one "nintendo" (chase) — which is a
+strictly better oracle for the thing the PO is reporting: an object in the wrong PLACE is only
+visible if you can see it from more than one angle and while moving past it. A still can hide a
+house standing in the road; a lap cannot.
+
+**Gold set** (`/home/admin/gold standard/julia racer/<track>/`, all 1920x1080):
+
+| track | cockpit | nintendo | notes |
+|---|---|---|---|
+| zandervoort | `260801_zandervoort_cockpit.mp4` (181 s) | `260801_zandervoort_nintendo.mp4` (144 s) | |
+| nurburgring | `260802_nurburgring_cockpit.mp4` (909 s) | `260802_nurburgring_nintendo.mp4` (904 s) | full Nordschleife lap, ~15 min |
+| spa | `260802_spa_cockpit.mp4` (388 s) | `260802_spa_nintendo.mp4` (357 s) | |
+| watkinsGlenn | `260802_watkinsGlen_cockpit.mp4` (112 s) | `260802_watkinsGlen_nintendo.mp4` (118 s) | plus `260823_gpl_watkin_glen_race_gold.mp4` (617 s), a full race |
+| monza | `260802_monza_cockpit.mp4` (173 s) | `260802_monza_nintendo.mp4` (173 s) | |
+
+**Method (applies to E69–E73; follows QA_METHOD_GOLD_PARITY.md).**
+1. **Inventory the video as data before rendering anything** (method step 1). Extract frames at a
+   fixed cadence, and build a **time → lapdist → landmark** map for each track so every finding
+   gets a repro recipe (`s`, view) instead of "somewhere after the hairpin". Commit the map; it
+   turns reruns into regression checks.
+2. Capture the matching native frames with `JM_SHOTS` at those `s` values in ONE session per track
+   (method step 2), both views.
+3. **Triage every deviation into the four classes** (method step 4) before fixing: renderer bug /
+   authentic-asset surprise / asset-capability gap / prior-owner decision. ⚠️ This project has
+   already twice "fixed" toward the wrong oracle — the yellow Spa trees (E68-S3) turned out to be
+   authentic autumn sprites, and an autonomous pass once graded the Zandvoort sky toward a
+   superseded gold set. **Decode the source asset before calling a colour wrong.**
+4. Commit side-by-side composites (gold left, native right) next to a per-track parity table.
+
+**Priority order inside each track item, per the PO:** (a) objects standing ON the racing
+surface — these break the game, not just the look; (b) object placement generally; (c) colour.
+
+- **E69 Zandvoort — gold-video parity.** Match the JM track to the two gold videos. On-road
+  objects first: the PO reports perpendicular spectator rows floating above or sitting on the
+  track in several places. Then placement and colour throughout.
+  *Absorbs:* E68-CROWD (Zandvoort part), E68-Z2 (white shrubs), E68-Z3 (left grandstand before
+  S/F juts into the track — S13 classified this as track-mesh authored geometry, so re-decide it
+  against the video), E68-Z4 (illegible signs), E68-Z5 (z-fighting T2R).
+
+- **E70 Nürburgring — gold-video parity.** Match to the two gold videos. On-road objects first:
+  the PO reports a spectator block intruding between the Karussell and the back straight. Then
+  placement and colour throughout. ⚠️ 909 s of gold at ~22 km — the landmark map matters more
+  here than anywhere else; do not sample this track by eye.
+  *Absorbs:* E68-CROWD (Ring part), E68-HILITE (Ring, faint).
+
+- **E71 Spa — gold-video parity.** Match to the two gold videos. On-road objects first: **the
+  oversized buildings standing ON the track** — you can drive through them and see inside
+  (E68-S2, reproduced with a location). Move them where the gold video puts them. Then placement
+  and colour throughout.
+  *Absorbs:* E68-S1 (Burnenville banner jaggy), E68-S2, E68-S3 (yellow trees — **check the source
+  texture before treating this as a colour bug**; S12 evidence says they may be authentic), E68-S4
+  (missing tree stand before La Source).
+
+- **E72 Watkins Glen — gold-video parity.** Match to the two gold videos; the extra 617 s race
+  video is a third oracle and covers traffic and more of the lap. On-road objects first: the PO
+  reports a crowd block at the big bend. Then placement and colour throughout.
+  *Absorbs:* E68-CROWD (Watkins part), E68-W1 (semi-transparent veil after S/F), E68-W7
+  (guardrail z-fighting).
+
+- **E73 Monza — gold-video parity.** Match to the two gold videos. No misplaced crowds were seen
+  on Monza in the earlier pass, so this item is expected to be dominated by (b) placement and
+  (c) colour rather than on-road objects — **which is a prediction, and the video may refute it.**
+  *Absorbs:* E68-M1 (translucent haze planes fading forests with view angle), E68-HILITE (Monza,
+  strong).
+
+- **E74 Cockpit instrument panel — gold parity.** PO: *"the dials in the cockpit look like a
+  Salvador Dali painting."* The instruments are distorted/melted rather than merely misplaced, so
+  suspect the dial geometry or its UV/projection, not the dash layout. Correct the whole cockpit
+  view against the gold cockpit videos — all five are cockpit-view laps, so this item has five
+  independent oracles and every track's video is evidence for it.
+  *Absorbs:* E68-W4 (bottom half of the dash occluded by a green block), E68-W3 (sleeves don't
+  meet gloves). *Related, already known:* the driverless footwell and the tub-side/gear-lever gap
+  recorded in STATUS.md.
+
+- **E75 External Lotus 49 — gold parity.** Correct the external/chase ("nintendo") views of the
+  car against the gold nintendo videos. PO's named example: **the JM nintendo view has no axles
+  connecting the wheels to the chassis** (E68-W5, now PO-visible). Check the whole external
+  silhouette while the car is moving — suspension travel, wheel attachment, body proportions —
+  not just the static shape.
+  *Absorbs:* E68-W5.
+
+**Definition of Done for E69–E75.** Per-track (or per-view) parity table committed with
+side-by-side composites at named landmarks; zero objects intersecting the racing surface; each
+remaining deviation either fixed or explicitly classified (authentic asset / asset-capability gap
+/ waived prior-owner decision) with the evidence that classified it. No regressions in
+`JuliaMotorMTK` tests; `JM_SMOKE` clean.
