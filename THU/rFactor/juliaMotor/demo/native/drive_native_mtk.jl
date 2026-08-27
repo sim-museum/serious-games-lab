@@ -521,6 +521,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
     end
     hat=Render.GPL3DO.Tri[]; groups=Dict{String,Vector{Float32}}(); nskip=0
     ndrop_edge = Ref(0); ndrop_road = Ref(0); nkeep_t = Ref(0)   # E76-S10 per-object drop census
+    scene_at = Tuple{String,Float64,Float64,Int}[]                # E70-S5: what stands near a lapdist
     # E76-S3: is the Ring's scenery even being LOADED? Its whole load is "184 groups / 4065 tris"
     # where Spa gets 1679 objects + 5132 billboards at a fifth the length (E76-S2), and gold's first
     # kilometre is lined with crowds and hoardings that native simply does not have. Before hunting
@@ -584,6 +585,16 @@ function gpl_scenery(ztrk, datpack, ribbon)
             continue
         end
         M=placemat(t)
+        # E70-S5: what scenery actually stands near a given lapdist? The PO's E76 asks for "buildings
+        # and crowds shortly after the start-finish line"; the crowds are done (E76-S10) and the
+        # buildings were never checked. The Ring bypasses the object pipeline, so JM_OBJFIND cannot
+        # see it — this is the scenery-side equivalent. JM_SCENE_AT="lapdist" (±250 m).
+        if get(ENV,"JM_SCENE_AT","") != ""
+            _hr = JuliaMotor.hat(ribbon, Float64(M[1,4]), Float64(M[2,4]))
+            if _hr.found && abs(_hr.lapdist - parse(Float64, ENV["JM_SCENE_AT"])) < 250.0
+                push!(scene_at, (nm, _hr.lapdist, _hr.lateral, length(mesh)))
+            end
+        end
         ap(q)=(Float32(M[1,1]*q[1]+M[1,2]*q[2]+M[1,3]*q[3]+M[1,4]),
                Float32(M[2,1]*q[1]+M[2,2]*q[2]+M[2,3]*q[3]+M[2,4]),
                Float32(M[3,1]*q[1]+M[3,2]*q[2]+M[3,3]*q[3]+M[3,4]))
@@ -700,6 +711,15 @@ function gpl_scenery(ztrk, datpack, ribbon)
         if !isempty(miss)
             println("   -- most-placed names with NO MESH (top 15) --")
             for (nm,c) in miss[1:min(end,15)]; println("      ", rpad(nm,18), c, " placements"); end
+        end
+        flush(stdout)
+    end
+    if get(ENV,"JM_SCENE_AT","") != ""
+        sort!(scene_at, by=x->abs(x[3]))
+        println("== JM_SCENE_AT ", ENV["JM_SCENE_AT"], " ±250 m: ", length(scene_at), " scenery objects rendered ==")
+        println("   name            lapdist   lateral   tris")
+        for r in scene_at[1:min(end,22)]
+            println("   ", rpad(r[1],15), rpad(round(Int,r[2]),10), rpad(round(r[3],digits=1),10), r[4])
         end
         flush(stdout)
     end
@@ -2374,17 +2394,6 @@ let objnames=Set{String}()
             flush(stdout)
         end
     end
-    if get(ENV,"JM_TEXDIAG","")!=""
-        # track-mesh textures by HEIGHT band — to spot the Monza banking surface (a large mesh high
-        # above the road) so it can be excluded from the collision HAT (E52: road passes under it).
-        th = Dict{String,Vector{Float32}}()
-        for t in TRACKMESH.tris, vi in 1:3; push!(get!(th,t.tex,Float32[]), Float32(t.p[vi][3])); end
-        rows = [(tex, length(zs)÷3, minimum(zs), sum(zs)/length(zs), maximum(zs)) for (tex,zs) in th]
-        sort!(rows, by=r->-r[4])
-        println("== JM_TEXDIAG track-mesh textures by mean height (tex  ntri  zmin  zmean  zmax) ==")
-        for (tex,n,zmn,zmu,zmx) in rows; println("   ", rpad(tex=="" ? "<none>" : tex,14), rpad(n,7), " zmin=", rpad(round(zmn,digits=1),8), "zmean=", rpad(round(zmu,digits=1),8), "zmax=", round(zmx,digits=1)); end
-        flush(stdout)
-    end
     if get(ENV,"JM_OBJFIND","") != ""
         # E72-S4: does a named object EXIST in the placement list, and what happened to it?
         # Watkins' archive holds pit.3do / tower1.3do yet no pit building renders, and JM_OBJDIAG's
@@ -2502,8 +2511,26 @@ let objnames=Set{String}()
         println("   (", length(cr), " crowd rows kept)"); flush(stdout)
     end
 end
+
 println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards + ", length(STATICTREES), " forest panels + ", length(SOLIDS), " solid (collidable)"); flush(stdout)
 end
+
+
+# E70-S5: JM_TEXDIAG lived inside the GPL-object branch too, so it never ran on the Ring —
+# the same trap E70/E75-S9 hoisted three road censuses out of. Moved to top level.
+
+if get(ENV,"JM_TEXDIAG","")!=""
+    # track-mesh textures by HEIGHT band — to spot the Monza banking surface (a large mesh high
+    # above the road) so it can be excluded from the collision HAT (E52: road passes under it).
+    th = Dict{String,Vector{Float32}}()
+    for t in TRACKMESH.tris, vi in 1:3; push!(get!(th,t.tex,Float32[]), Float32(t.p[vi][3])); end
+    rows = [(tex, length(zs)÷3, minimum(zs), sum(zs)/length(zs), maximum(zs)) for (tex,zs) in th]
+    sort!(rows, by=r->-r[4])
+    println("== JM_TEXDIAG track-mesh textures by mean height (tex  ntri  zmin  zmean  zmax) ==")
+    for (tex,n,zmn,zmu,zmx) in rows; println("   ", rpad(tex=="" ? "<none>" : tex,14), rpad(n,7), " zmin=", rpad(round(zmn,digits=1),8), "zmean=", rpad(round(zmu,digits=1),8), "zmax=", round(zmx,digits=1)); end
+    flush(stdout)
+end
+
 carItems   = Render.build_gpl(CARP, GPLTEX)        # Lotus body, GPL .mip textures
 gaugeItems = Render.build_gpl(GAUGEP, GPLTEX)      # gauge cluster (drawn near-unlit so it reads)
 windItems  = Render.build_gpl(WINDP, GPLTEX)       # plexiglass windscreen (drawn last, transparent)

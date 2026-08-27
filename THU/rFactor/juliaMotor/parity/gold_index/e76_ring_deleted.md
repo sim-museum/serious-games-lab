@@ -533,3 +533,60 @@ ship neither fake rather than claim the item was right.
 crowds there were simply removed."* The **crowds are restored** (`ogrnd2` at s=463, `ogrnd11` at
 s=774), along with E76-S8's 1773 vegetation and marshal billboards. **Buildings have not been
 separately verified** and remain open.
+
+---
+
+## E70-S5 / E76-S11 — the S/F grandstand IS there; my query window did not wrap the lap
+
+E76-S10 closed the **crowds** half of the PO's item and left the **buildings** half unverified. S5
+verifies it, and finds three separate things.
+
+### 1. ⚠️ My own query excluded the answer
+
+`JM_SCENE_AT=400` (new) listed only **15 scenery objects within ±250 m** of the start/finish — 12 crowd
+rows, one small house, `land1` and the terrace — which looked like damning confirmation that the
+buildings are gone.
+
+**It was wrong.** `grand116`, the grandstand, is placed at **lapdist 22753** on a **22766 m** lap —
+i.e. **13 m before the start/finish line**. A ±250 m window around s=400 does not **wrap** past s=0, so
+it silently excluded the very object being looked for. Same class as E69-S9's truncated `JM_OBJFIND`
+listing: a query whose scope quietly omits the answer reads exactly like an absence.
+
+### 2. ⚠️ The grandstand is being partly eaten
+
+```
+[scenedrop] grand116: mesh has 76 tris; placed at lapdist 22753 lat 30.4
+[scenedrop] grand116: dropped 16 by the stretched-edge rule, 0 by the road-corridor rule
+```
+
+**16 of 76 triangles (21 %) are discarded** by the "stretched garbage" heuristic (`emax > 70 &&
+emax > 10×emin`) — the rule written for vertices parsed at junk coordinates. A grandstand is long and
+low, so its roof and terrace spans are legitimately stretched. `ogrnd2` lost none to this rule; the
+grandstand loses a fifth.
+
+### 3. What is genuinely present, and what is not
+
+| gold shows at S/F | native |
+|---|---|
+| long roofed grandstand, packed | `grand116` — **present**, 76 tris, 21 % eaten |
+| **Continental timing tower** | `tower2` is at **lapdist 1494**, not S/F — **no tower at the line** |
+| continuous wall of hoardings (BARDAHL, BOSCH, CASTROL, MARTINI, COCA-COLA…) | 13 Bosch signs + 14 others, **2 triangles each** |
+| dense crowds both sides | ✅ restored, E76-S8/S10 |
+
+The archive **does** hold `grand116.3do`, `tower2.3do`, `bosch*.3do` and `h-tower.mip` — so this was
+never missing content, it is sparse placement plus a filter eating part of what is placed.
+
+### 4. The 37 skipped stubs are the Nordschleife's CORNER-NAME boards
+
+`JM_SPRITESKIP` names them: `s_hatz` (Hatzenbach), `s_aden` (Adenau), `s_fuch` (Fuchsröhre), `s_metz`
+(Metzgesfeld), `s_berg` (Bergwerk), `s_kess` (Kesselchen)… all **h = 0.0, w = 0.1** — degenerate, so
+they cannot render as meshes. These are iconic track furniture and are **restorable via the billboard
+path E76-S8 already built** for the vegetation stubs. A named, scoped next step.
+
+### 5. `JM_TEXDIAG` was also unreachable on the Ring — the third instance
+
+It sat inside the GPL-object branch, like the three road censuses hoisted in E75-S9. **My first attempt
+to hoist it landed before the branch's real close and left it just as unreachable** — and produced no
+output, which I nearly read as "no signage in the mesh". Now genuinely at top level: the Ring's track
+mesh carries **87 textures and essentially no signage** (one `boschb`, 14 tris), confirming the
+hoardings are scenery objects rather than baked mesh.
