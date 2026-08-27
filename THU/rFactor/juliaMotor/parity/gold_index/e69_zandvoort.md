@@ -246,3 +246,78 @@ testing one track five times.
 | Zandvoort | 6 |
 | Spa | 1 |
 | Monza, Watkins (watglen, 3750 m), Nürburgring | 0 |
+
+---
+
+## E69-S6 — Zandvoort's classifier is SOUND; and the new verdict tool immediately caught me about to repeat a mistake
+
+After E71-S13 fixed Spa's road classifier, Zandvoort had the lowest recognition of the measured tracks
+(73.6 %) and looked like the next defect. **It is not one.**
+
+### Zandvoort: 73.6 % is correct
+
+Everything unrecognised near the centreline is genuinely not road:
+
+| texture | on-road | off-road |
+|---|---|---|
+| `grass` | 529 | **3178** |
+| `sand`, `sand2`, `sand2a` | 685 | 1283 — the dune run-offs |
+| `wiref_s` | 46 | **2708** — fence |
+| `wall_*`, `armco_s`, `hayba_e` | ~80 | ~120 — barriers |
+
+The road here really is `groove` + `asphalt` + `curb` + `sgrid`, all recognised. **The recognition
+PERCENTAGE is not a quality metric** — Spa scored 43.9 % and was badly wrong; Zandvoort scores 73.6 %
+and is right. What matters is whether any *missed* texture is predominantly on the racing surface.
+
+### Shipped: the census now returns a verdict, not a table to eyeball
+
+It flags every missed texture with ≥65 % of its instances on-road, and reports **where each one lives**
+— lapdist range, nearest and median |lateral|.
+
+| track | recognition | verdict |
+|---|---|---|
+| Zandvoort | 73.6 % | **none — sound** |
+| Monza | 86.2 % | **none — sound** |
+| Watkins | 86.1 % | **none — sound** |
+| Spa | 77.7 % | 4 flagged — see below |
+| Nürburgring | — | **not measured**; load + census exceeds the run window |
+
+### ⭐ The tool's first act was to stop a confirmation trap
+
+On Spa it flagged four textures at 65–96 % on-road (`haudrtr1` 96.4 %, `brndrtr3` 88.2 %, `stvdrtr9`
+69.3 %, `maldrtr6` 65.3 %) — which on the S13 rule would have been added as road. The location check
+says otherwise:
+
+```
+stvdrtr9  nearest |lat| 3.4   median 4.8      maldrtr6  nearest 4.2   median 4.8
+haudrtr1  nearest |lat| 4.5   median 4.9      brndrtr3  nearest 4.0   median 4.4
+```
+
+They sit **at the road edge**. Spa's half-width is ~4.4 m, so the census's fixed 5 m "on-road" window
+is *wider than the road itself* — and any edge strip therefore scores highly. The percentages are an
+artifact of the threshold, not evidence of road. **Not added.**
+
+Adding them would have widened measured Spa toward the unverified "gold ~11 m" figure — i.e. the change
+would have appeared to confirm a target that E71-S13 had just established is unverified. That is
+exactly the shape of a confirmation trap, and the only thing that stopped it was asking *where* the
+triangles are rather than *how many* are inside a threshold.
+
+### ⚠️ The same doubt applies to my own S13 additions — stated plainly
+
+| texture | median \|lat\| | |
+|---|---|---|
+| `groove` | 1.9 m | racing line |
+| `asphr` / `asph` | 1.4 / 3.3 | asphalt |
+| `griline` | 2.6 | grid markings |
+| **`borcem` / `borcem_k`** | **4.4 / 4.3** | **the same band as the four just rejected** |
+| `asfa` | 4.8 | same band |
+| `bordo` (rejected) | 6.2 | outside |
+
+**Lateral position cannot separate `borcem` from `haudrtr1` — both are edge strips.** The split rests
+entirely on a semantic reading: `borcem` = *bordure ciment*, a PAVED cement edging, versus `drt` =
+DIRT, a loose verge. That is a judgement, not a measurement, and it is recorded here as one.
+
+**Consequence for every future width claim on Spa:** the honest quotation is **8.0 m of asphalt plus
+~0.4 m of cement edging per side = 8.8 m paved**. A width figure for Spa is meaningless unless it says
+which of the two it means — and the 0.8 m between them is precisely the difference the S13 addition
+made.

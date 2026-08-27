@@ -2111,6 +2111,69 @@ let objnames=Set{String}()
                 isempty(loc) && println("        (NO triangles at all within 12 m of the centreline)")
             end
         end
+        # E69-S6: the recognition PERCENTAGE is not a quality metric. Zandvoort scores 73.6% and is
+        # fine — everything it misses is grass, dune sand, fence and armco, all correctly excluded —
+        # while Spa scored 43.9% and was badly wrong, because what it missed (`borcem`, 5431 on-road
+        # vs 1029 off) was genuinely road. What matters is whether any MISSED texture is
+        # predominantly ON the racing surface. Say so directly instead of leaving it to be eyeballed.
+        suspect = [(nm, c, get(far,nm,0)) for (nm,c) in near
+                   if !ROAD_TEX(nm) && c >= 60 && c/(c + get(far,nm,0) + 1e-9) >= 0.65]
+        sort!(suspect, by=x->-x[2])
+        println("== E69-S6 VERDICT: missed textures that are mostly ON the racing surface ==")
+        if isempty(suspect)
+            println("   none — every unrecognised surface here is predominantly off-road (grass /")
+            println("   sand / fence / barrier). The classifier is sound for this track regardless")
+            println("   of the headline percentage.")
+        else
+            println("   ⚠️ these look like ROAD and are being excluded:")
+            # E69-S6b: a texture can read "on-road" for the WRONG reason — if the centreline strays
+            # onto the verge at that corner, verge triangles project to small |lateral|. Report WHERE
+            # each suspect lives and how close to the centreline it actually gets, so a location check
+            # is possible before anything is added to the classifier.
+            for (nm,on,off) in suspect
+                sd = Float64[]; lt2 = Float64[]
+                for t in TRACKMESH.tris
+                    lowercase(t.tex) == nm || continue
+                    cx = (Float64(t.p[1][1])+Float64(t.p[2][1])+Float64(t.p[3][1]))/3
+                    cy = (Float64(t.p[1][2])+Float64(t.p[2][2])+Float64(t.p[3][2]))/3
+                    hr = JuliaMotor.hat(TRKSURF, cx, cy); hr.found || continue
+                    push!(sd, hr.lapdist); push!(lt2, abs(hr.lateral))
+                end
+                loc = isempty(sd) ? "?" : string(round(Int,minimum(sd)), "–", round(Int,maximum(sd)), " m")
+                nearest = isempty(lt2) ? NaN : minimum(lt2)
+                med = isempty(lt2) ? NaN : sort(lt2)[cld(length(lt2),2)]
+                println("      ", rpad(nm,14), "on ", rpad(on,6), "off ", rpad(off,6),
+                        rpad(string(round(100*on/(on+off), digits=1),"%"),8),
+                        " lapdist ", rpad(loc,16),
+                        " nearest |lat| ", rpad(round(nearest,digits=1),6),
+                        " median |lat| ", round(med,digits=1))
+            end
+        end
+        # E69-S6c: the same location check applied to textures the classifier ACCEPTS — including the
+        # four E71-S13 added. If an accepted texture also sits at the road EDGE, it was added for the
+        # same bad reason the suspects above were rejected for.
+        if get(ENV,"JM_TEXLAT","") != ""
+            println("== JM_TEXLAT: where the ACCEPTED road textures actually sit ==")
+            for nm in split(ENV["JM_TEXLAT"], ",")
+                lt3 = Float64[]
+                for t in TRACKMESH.tris
+                    lowercase(t.tex) == lowercase(nm) || continue
+                    cx = (Float64(t.p[1][1])+Float64(t.p[2][1])+Float64(t.p[3][1]))/3
+                    cy = (Float64(t.p[1][2])+Float64(t.p[2][2])+Float64(t.p[3][2]))/3
+                    hr = JuliaMotor.hat(TRKSURF, cx, cy)
+                    hr.found && abs(hr.lateral) < 25.0 && push!(lt3, abs(hr.lateral))
+                end
+                if isempty(lt3)
+                    println("   ", rpad(nm,12), "(none)")
+                else
+                    sort!(lt3)
+                    println("   ", rpad(nm,12), "n=", rpad(length(lt3),7),
+                            "median |lat| ", rpad(round(lt3[cld(end,2)],digits=1),7),
+                            "p25 ", rpad(round(lt3[max(1,cld(end,4))],digits=1),7),
+                            ROAD_TEX(lowercase(nm)) ? "ACCEPTED" : "rejected")
+                end
+            end
+        end
         println("== ROAD_TEX census: textures of tris within |lat| < 5 m of the centreline ==")
         println("   (recognised? = does the current ROAD_TEX classifier accept the name)")
         for (lt,n) in sort(collect(near), by=x->-x[2])[1:min(end,18)]
