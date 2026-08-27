@@ -1041,6 +1041,47 @@ const FSUSPP = haskey(ENV,"JM_FSUSP_OLD") ?
 # ⚠️ maxedge is a blunt instrument here: lsusp1's real geometry and its garbage BOTH have long
 # edges, so this separates them only approximately. The precise clip is longitudinal (the garbage
 # sits ~2 m ahead of the car) and wants a new extractor parameter — noted, not yet built.
+# E75-S8: the REAR suspension, drawn the way the FRONT one now is. E75-S4 showed no fold angle
+# works for RSUSPP_A/B (0 deg = spears past the wheels, 45/90 = invisible), and E75-S7 fixed the
+# front by taking the parts DIRECTLY with an extent clip instead of excluding their group and then
+# re-placing them with a corrective transform. Same treatment here: pull lshok/lsusp5/lsusp7/lbrdisc
+# by texture, clip oversized tris by edge length, and draw them with NO fold — if the parts are
+# authored in place, the fold was never needed and is what made them invisible.
+# VERDICT (E75-S8): this does NOT work — the raw parts are UNFOLDED flat strips, so drawing them in
+# place lays panels under the car. Default OFF (JM_RSUSP2=1 to re-enable for study). Kept because the
+# measurement it enabled is what identified the unfolded-strip authoring; JM_RSUSP2_MAXEDGE tunes the clip.
+const RSUSPP2 = Render.extract_gpl_car(LOT3DO; only=("lshok","lsusp5","lsusp7","lbrdisc"),
+                                       maxlat=1.3f0,
+                                       maxedge=parse(Float32,get(ENV,"JM_RSUSP2_MAXEDGE","1.5")))
+if get(ENV,"JM_RSUSP2_DIAG","") != ""
+    # E75-S8: the per-texture table (JM_CARPARTS) says these parts are compact, yet they render as
+    # spears. Print the bbox of EXACTLY what is drawn, per part, so the two cannot disagree silently.
+    println("== JM_RSUSP2_DIAG: the parts RSUSPP2 actually hands to the renderer ==")
+    println("   tex           tris   longitudinal x     lateral z          height y           longest edge")
+    for pp in RSUSPP2
+        v = pp.verts; n = length(v) ÷ 11
+        ex = [Inf32,-Inf32,Inf32,-Inf32,Inf32,-Inf32]
+        for i in 1:11:length(v)-10
+            ex[1]=min(ex[1],v[i]);   ex[2]=max(ex[2],v[i])
+            ex[3]=min(ex[3],v[i+2]); ex[4]=max(ex[4],v[i+2])
+            ex[5]=min(ex[5],v[i+1]); ex[6]=max(ex[6],v[i+1])
+        end
+        # longest triangle edge, in the same units
+        le = 0f0
+        for t in 1:33:length(v)-32
+            a=(v[t],v[t+1],v[t+2]); b=(v[t+11],v[t+12],v[t+13]); c=(v[t+22],v[t+23],v[t+24])
+            for (u,w) in ((a,b),(b,c),(c,a))
+                le = max(le, sqrt((u[1]-w[1])^2+(u[2]-w[2])^2+(u[3]-w[3])^2))
+            end
+        end
+        println("   ", rpad(pp.tex,14), rpad(n,7),
+                rpad(string(round(ex[1],digits=2),"…",round(ex[2],digits=2)),19),
+                rpad(string(round(ex[3],digits=2),"…",round(ex[4],digits=2)),19),
+                rpad(string(round(ex[5],digits=2),"…",round(ex[6],digits=2)),19),
+                round(le,digits=2))
+    end
+    flush(stdout)
+end
 const MIRRORP = Render.extract_gpl_car(LOT3DO; only=MIRROR_DRAW, maxlat=0.95f0)  # rear-view mirrors — clean disc, re-placed on the cowl (see MIRRORMAT)
 const HANDP  = Render.extract_gpl_car(LOT3DO; only=("lohand",),  maxlat=0.95f0)  # E64 S2: gloved hands on the rim — ride the wheel rotation
 # E64 S7 (D12 residual): the runtime-hidden HIGH-DETAIL rear-suspension assemblies (groups
@@ -2070,6 +2111,7 @@ const WHEELITEMS = Dict(nm => load_wheel(nm) for nm in ("lotwlf","lotwrf","lotwl
 swItems = Render.build_gpl(SWPARTS, GPLTEX)        # steering wheel (rotated with steer)
 handItems = Render.build_gpl(HANDP, GPLTEX)        # E64 S2: gloved hands (cockpit view, rotate with the wheel)
 armItems  = Render.build_gpl(ARMP, GPLTEX)         # E64 S2: forearms (cockpit view, static)
+rsusp2Items = Render.build_gpl(RSUSPP2, GPLTEX)     # E75-S8: rear suspension taken directly, no fold
 rsuspItemsA = Render.build_gpl(RSUSPP_A, GPLTEX)   # E64 S7: high-detail rear suspension halves (chase view)
 rsuspItemsB = Render.build_gpl(RSUSPP_B, GPLTEX)
 # Corrective transform per side (E64 S8, settled by the POSITIONER-CHAIN DUMP): the chain to each
@@ -2151,19 +2193,21 @@ if get(ENV,"JM_CARPARTS","") != ""
     excl = Set{String}((_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,
                         DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...))
     println("== JM_CARPARTS: Lotus 49 .3do contents (unfiltered) ==")
-    println("   texture       tris   lateral z          height y           in CARP?  excluded by name?")
+    println("   texture       tris   longitudinal x     lateral z          height y           in CARP?  excluded by name?")
     rows = []
     for pp in allp
         v = pp.verts; n = length(v) ÷ 11
-        zmn=Inf32; zmx=-Inf32; ymn=Inf32; ymx=-Inf32
+        zmn=Inf32; zmx=-Inf32; ymn=Inf32; ymx=-Inf32; xmn=Inf32; xmx=-Inf32
         for i in 1:11:length(v)-10
-            y=v[i+1]; z=v[i+2]
+            x=v[i]; y=v[i+1]; z=v[i+2]
+            xmn=min(xmn,x); xmx=max(xmx,x)
             ymn=min(ymn,y); ymx=max(ymx,y); zmn=min(zmn,z); zmx=max(zmx,z)
         end
-        push!(rows, (pp.tex, n, zmn, zmx, ymn, ymx))
+        push!(rows, (pp.tex, n, zmn, zmx, ymn, ymx, xmn, xmx))
     end
-    for (tex,n,zmn,zmx,ymn,ymx) in sort(rows, by=r->-r[2])
+    for (tex,n,zmn,zmx,ymn,ymx,xmn,xmx) in sort(rows, by=r->-r[2])
         println("   ", rpad(tex,14), rpad(n,7),
+                rpad(string(round(xmn,digits=2),"…",round(xmx,digits=2)),19),
                 rpad(string(round(zmn,digits=2),"…",round(zmx,digits=2)),19),
                 rpad(string(round(ymn,digits=2),"…",round(ymx,digits=2)),19),
                 rpad(tex in kept ? "yes" : "NO", 10),
@@ -3523,6 +3567,9 @@ function main()
         # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
         for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly) so it stops reading as a hard black "plywood" notch
         if CTL.view != 0   # the driver figure occludes the cockpit from the in-car eye (E36 black band) → chase only
+            if get(ENV,"JM_RSUSP2","0") == "1"   # E75-S8: OFF by default — raw parts are unfolded strips, see e75_exterior.md
+                for it in rsusp2Items; Render.draw(prog, it, vp, bodyModel; bright=1.15, spec=0.25, ambfill=0.55); end
+            end
             if RSUSP_ON    # E64 S7: high-detail rear suspension (gold nintendo shows the full articulated rear end)
                 for it in rsuspItemsA; Render.draw(prog, it, vp, bodyModel*RSFIX_A; bright=1.15, spec=0.25, ambfill=0.55); end
                 for it in rsuspItemsB; Render.draw(prog, it, vp, bodyModel*RSFIX_B; bright=1.15, spec=0.25, ambfill=0.55); end

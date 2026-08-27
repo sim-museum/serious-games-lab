@@ -284,3 +284,75 @@ appears at both front corners where none was drawn before.
   front end is a separate check and has not been done.
 - The REAR half of E75 (`lshok`, `lbrdisc`, `lsusp5/7` in groups 27288/39792, folded onto the hub)
   is untouched by this.
+
+---
+
+## E75-S8 — the rear suspension parts are authored UNFOLDED. One fold angle can never work.
+
+E75-S7 fixed the FRONT end by taking its parts directly (`only=`, extent clip) instead of excluding
+their group and re-placing them with a corrective transform. S8 applied the same recipe to the rear
+(`lshok`, `lsusp5`, `lsusp7`, `lbrdisc`, no fold) — and it fails, for a reason worth having.
+
+### What the pictures showed, and why that reading was wrong
+
+Drawn raw, the rear parts appear as trusses and rods spreading outward past the wheels and down to
+the road — visually identical to E75-S4's 0° fold failure. I read that as spear triangles surviving
+a too-loose clip, and swept `JM_RSUSP2_MAXEDGE` 1.50 → 0.50 → 0.35:
+
+| maxedge | pixels at the car | far tail | max radius |
+|---|---|---|---|
+| 1.50 | 8815 | 452 | 866 px |
+| 0.50 | 1610 | 300 | 866 px |
+| 0.35 |  896 | 300 | 866 px |
+
+**The clip destroys the car geometry and leaves the tail untouched** — and a tail invariant to an edge
+clip is not made of long edges. The spear reading was wrong. (The tail turned out to be capture
+flicker in the treeline; see the noise-floor note below.)
+
+### The measurement that settles it
+
+`JM_RSUSP2_DIAG` prints the bbox and longest edge of exactly what is handed to the renderer:
+
+```
+   tex           tris   longitudinal x     lateral z          height y        longest edge
+   lbrdisc       120    -1.04…-0.73        -0.61…0.61         -0.12…0.18      0.43
+   lsusp7         48    -1.66…-0.77        -1.01…1.01         -0.08…-0.05     1.00
+   lshok          48    -1.74…-0.75        -1.06…1.06         -0.10…0.21      1.14
+   lsusp5         48    -1.09…-0.77        -1.12…1.12         -0.07…0.23      0.72
+```
+
+Every part is compact, at the rear (x negative), at hub height, within the track width. **No edge
+exceeds 1.14 m — nothing here can reach the road.** The parts render precisely where the mesh puts
+them. The mesh is what is wrong.
+
+⭐ **Look at `lsusp7`: y spans 0.03 m while z spans 2.02 m.** A flat sheet, three centimetres thick,
+as wide as the whole car. `lsusp5` is the same shape. Real wishbones and shocks are nothing like
+this — **these parts are stored UNFOLDED**, flat strips meant to be articulated into position at
+load. That is what `rsfix`/the fold was always for.
+
+### Why E75-S4 could not have succeeded
+
+E75-S4 swept fold angles and found 0° spears while 45°/90° vanish, and concluded "no angle works".
+The truer statement: **four parts with four different pivots cannot be articulated by one global
+angle.** S4 was not searching a badly-chosen parameter; it was searching a parameter that cannot
+express the answer. A correct fix folds each part about its own hinge — which means recovering the
+hinge, not tuning a number.
+
+`JM_RSUSP2` is therefore **default OFF** (it lays panels under the car). The code and the diagnostic
+stay: the measurement is what identified the authoring, and the next attempt needs it.
+
+### ⚠️ Cross-cutting: this capture harness has a ~0.4% noise floor
+
+The A/B started as "1.02% of the frame changed". A null control — **two runs with identical
+settings** — differs by **0.30%**, and a three-baseline mask marks **0.38%** of pixels as unstable,
+concentrated in treeline/sky alpha edges. So:
+
+- **Any A/B result under ~1% of frame is at or near the noise floor** and means nothing without a
+  null control. Several earlier findings this run were far above it (E73-S6's 14.6%) and are safe,
+  but the threshold had never been measured.
+- **Diff bounding boxes are worthless without denoising** — the raw bbox here was the entire frame.
+- A three-baseline mask is still too weak for sparse flicker: 39% of the surviving "tail" was not
+  reproducible between arms.
+
+**Every future pixel A/B on this project runs a null control first.** Cheap, and it converts a
+percentage from a rumour into a measurement.
