@@ -356,3 +356,77 @@ concentrated in treeline/sky alpha edges. So:
 
 **Every future pixel A/B on this project runs a null control first.** Cheap, and it converts a
 percentage from a rumour into a measurement.
+
+---
+
+## E75-S9 — ⚠️ RETRACTION of S8's "authored unfolded"; and the Ring gap was never a timeout
+
+### 1. The rear suspension is NOT stored unfolded
+
+E75-S8 concluded the rear parts are "flat strips meant to be articulated at load", from this:
+
+```
+lsusp7   x -1.66…-0.77   z -1.01…1.01   y -0.08…-0.05     → 0.03 m thick, 2.02 m wide
+```
+
+**That is two parts, one per side, measured as one.** S8 selected by TEXTURE, which gathers the left
+and right instances into a single bounding box — so the z-span is the whole car's width and the
+y-span is the union of two thin objects. Extracted **by group** the same parts are ordinary 3-D
+geometry:
+
+| part | size (x×y×z) | |
+|---|---|---|
+| `axlelot` | 1.04 × 0.30 × 0.44 | the axle |
+| `lshok` | 0.99 × 0.31 × 0.57 | **3-D**, not a strip |
+| `lsusp5` | 0.32 × 0.30 × 0.69 | **3-D** |
+| `lsusp7` | 0.89 × 0.03 × 0.48 | flat — but one brace, 0.89 m, not 2.02 |
+| `lbrdisc` | 0.31 × 0.31 × 0.03 | flat, and correctly so — it is a brake **disc** |
+
+So the "unfolded strip" theory is dead, and with it S8's claim that four parts need four hinges.
+
+### 2. But the render still contradicts the geometry — stated, not explained
+
+`JM_RS_ROLL=0` (identity, no fold) still spears the rear end well past the wheels, exactly as
+E75-S4 found. Yet:
+
+- **all 17 parts** in each rear group are ≤ 1.04 m in every axis (sorted by SIZE, not triangle count —
+  the old top-10-by-count listing hid nothing large, but neither did the full list);
+- the drawn mesh spans **|z| ≤ 1.16 m** against wheels drawn at 0.74 m half-track.
+
+Nothing here can reach metres past the wheels, and yet the picture does. **I have not resolved that
+conflict**, and the shipped 90° fold "works" only by rotating the parts out of sight. The next step is
+to measure the post-transform vertex extent of what is actually submitted to the draw call, rather
+than of what the extractor returns.
+
+### 3. ⭐ The Nürburgring census gap was NOT a timeout — I said so twice, wrongly
+
+E71-S13 and E69-S6 both recorded the Ring as *"not measured — load + census exceeds the run window"*.
+Both were wrong. The three road censuses lived **inside the GPL-object branch** (`if SKIDPAD || NURB …
+else <censuses> end`), so on the Nürburgring they never executed at all. The run exited **cleanly with
+no output**, and I read that absence as a timeout instead of as an unreachable block — twice, without
+checking the exit code against the hypothesis.
+
+**E70-S2 had already found and fixed this exact class** for the on-road censuses ("censuses were
+UNREACHABLE here (inside the GPL objects block) — relocated so they run on every track"). These three
+were missed by that sweep. A known trap, re-encountered, and misdiagnosed twice as a resource limit.
+
+Hoisted to top level — and each wrapped in its own `let`, because at top level their loop variables
+(`px`, `py`, `b`, `nrt`) **shadow existing globals**, which silently produced **zero stations**. That
+was caught only because Monza's known 24/24 became 0/0: a regression check against a previously
+measured value, not a fresh number that would have looked plausible.
+
+### 4. Result — every track now reports, and the Ring is the best of them
+
+| track | recognition | verdict | coverage width |
+|---|---|---|---|
+| **Nürburgring** | **88.2 %** | sound (`shrub_s`, `armco_s` — both median \|lat\| 4.9 m, the edge-band artifact) | **9.5 m, 23/23 stations** |
+| Monza | 86.2 % | sound | 12.2 m, 24/24 |
+| Watkins | 86.1 % | sound | 11.2 m |
+| Spa | 77.7 % | 4 edge-band suspects, rejected | 8.8 m, 57/57 |
+| Zandvoort | 73.6 % | sound | — |
+
+⭐ The Ring's 9.5 m is **remarkably uniform** — 20 of 23 stations read exactly 9.5 m — and it
+independently corroborates E76-S8: that sprint chose a **5.0 m** half-width for the Ring's on-road
+sprite cull from the sprite lateral distribution alone, and half of the measured road is **4.75 m**.
+Two unrelated measurements, one derived from vegetation placement and one from road triangles,
+agreeing to a quarter of a metre.
