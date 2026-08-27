@@ -487,3 +487,54 @@ much narrower target than "the cockpit view is wrong", and it is where the next 
 
 No constants shipped. Two candidate levers were tested and **both were eliminated by measurement**,
 which is the useful result — E74-S7 shipped a constant without doing that and it had to be walked back.
+
+---
+
+## E74-S12 — ⚠️ the cockpit-fraction figures included SKY; corrected, and the conclusion survives
+
+E72-S10 reported "native's cockpit occupies **49.4 %** of frame against gold's **38.0 %** — it blocks
+30 % more of the driver's view", and E74-S11 fitted camera parameters against that metric. Dumping the
+mask shows it is **contaminated**.
+
+### What went wrong
+
+The cockpit is segmented as **pixels that barely change between three points on the lap**. The
+**sky barely changes either** — so the mask swallowed the sky and connected through it to the
+cockpit. The figure measured *static pixels*, not *cockpit*.
+
+⚠️ **And the contamination is not symmetric in principle:** gold's Monza sky has moving cloud, native's
+is near-static, so gold would lose less of its sky to the "changes between frames" test than native
+does. A metric whose bias differs between the two arms is exactly the kind that produces a confident
+wrong answer.
+
+### Corrected
+
+With sky excluded before the connected-component step:
+
+| | with sky (as reported) | **sky excluded** |
+|---|---|---|
+| gold | 38.0 % | **29.8 %** |
+| native | 49.4 % | **40.8 %** |
+| native ÷ gold | 1.30 | **1.37** |
+
+**The conclusion survives** — native's cockpit occupies ~37 % more of the frame than gold's — but the
+absolute numbers were each inflated by ~9 points, and I quoted them twice as though they were the
+cockpit. The ratio is what carries the finding; the percentages should not be repeated.
+
+### ⭐ A better measurement falls out: the cowl top edge
+
+Sampling the topmost cockpit pixel across the central half of the wheel's width — a **large, high-contrast
+feature**, unlike the dial centroid that E74-S10 could not make stable:
+
+| | cowl top above hub |
+|---|---|
+| **gold** | **1.35 wheel-radii** |
+| **native** | **2.15 wheel-radii** |
+
+**Native's cowl sits 0.80 wheel-radii too high.** That is an independent confirmation of E74-S10's dial
+finding (cluster 1.8 radii too high) from a different feature, and it localises the defect: **the whole
+cowl/dash assembly is raised**, carrying the dials with it — not the dials alone, which is what
+`JM_GAUGE_Y` moves.
+
+That explains why E74-S7's gauge offset could make the dials legible without making them *right*: it
+was moving one part of an assembly that is displaced as a whole.
