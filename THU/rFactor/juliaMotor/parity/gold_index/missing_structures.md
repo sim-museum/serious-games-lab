@@ -6,14 +6,14 @@ track's start/finish. Composite: `sf_all_tracks.jpg`.
 | track | gold at S/F | native | verdict |
 |---|---|---|---|
 | **Nürburgring** | crowds + hoardings for the first km | bare past s≈200 | ⭐ **severe** (E76) |
-| **Zandvoort** | grandstands, pits, **Dunlop bridge**, packed crowds | bare grass, empty road | ⭐ **severe** (E69-S3) |
+| ~~Zandvoort~~ | grandstands, pits, Dunlop bridge, crowds | **native s=0 matches gold — NOT affected** | ❌ **RETRACTED (E69-S4): the comparison used a mis-mapped lapdist 330 m before the straight** |
 | **Watkins Glen** | Kendall banner + **large multi-storey pit/timing building with people on its balconies** | banner present, **building absent — bare grass** | ⭐ **structure missing** |
 | **Spa** | pit wall with Shell/BP signage, timing board, spectators, bridge | green hoardings, tents, flags — **populated but arranged differently** | ◑ differs, not empty |
 | **Monza** | pit wall, dark grandstand, hoardings | AUTODROMO building, hoardings, crowds — **populated** | ◑ differs, not empty |
 
 ## What this establishes
 
-**Three of five tracks are missing trackside structures at their most prominent location.** The PO
+**TWO of five tracks are missing trackside structures** (revised from three — see the Zandvoort retraction in `e69_zandvoort.md`). The PO
 reported it on one; it is on at least three. Watkins is the sharpest single case — its banner draws
 while the building behind it does not, at the same location, which rules out "the whole area is
 unloaded" and points at per-object failure.

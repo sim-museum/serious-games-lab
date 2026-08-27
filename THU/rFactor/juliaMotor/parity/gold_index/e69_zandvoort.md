@@ -131,3 +131,39 @@ E76 should be **widened beyond the Nürburgring**: *"objects deleted"* now has a
 instance on Zandvoort's main straight. And the billboard-rendering defect now has two tracks'
 evidence with **opposite symptoms** — absent on the Ring, oversized-and-flat here — which is a
 strong hint they share one cause in how sprite objects are treated.
+
+---
+
+## E69-S4 — ⚠️ RETRACTION: Zandvoort's main straight is NOT empty. I compared the wrong point.
+
+E69-S3 reported *"s=3851: gold has grandstands, pits, Dunlop bridge and packed crowds; native has
+bare grass"* and concluded the PO's E76 defect had a second instance on Zandvoort. **That is wrong.**
+
+`JM_OBJFIND` shows Zandvoort places `tower` at **lapdist 12** and `pitbldg` at **lapdist 89** — both
+at start/finish, both kept as meshes. So the buildings are there. Photographing native **s=0**
+(`e69_mapcheck.jpg`) shows a **packed grandstand, Dunlop hoardings, Caltex/Havoline signage and
+spectators lining both sides** — a close match for gold.
+
+**The error was mine, in the lapdist mapping.** I converted gold video time to lapdist linearly
+(`s = t/144 × 4181`), which put t=132.6 s at s=3851. But the gold car accelerates and brakes, and the
+video's start is not the lap's start — so near the end of the lap that mapping drifts by hundreds of
+metres. s=3851 is **330 m before** the straight, out in the dunes, where gold's *own* footage would
+also show empty dunes.
+
+### Consequences
+
+1. **Zandvoort has no missing-structures defect.** The cross-track table in `missing_structures.md`
+   must drop it: the count is **two of five affected (Nürburgring, Watkins), not three**.
+2. **Every finding derived from a linear time→lapdist map is suspect**, and several exist. The Spa
+   pairings (E71-S2) used the same method — though there the objects were confirmed independently by
+   the object census, which does not depend on the mapping.
+3. **E76 (Nürburgring) survives**, because its evidence is not the video pairing: the scenery census
+   found 2,231 of 3,109 placements dropped and 50 objects parsing to zero triangles. That is
+   mapping-independent.
+
+### The lesson worth keeping
+
+A video-to-lapdist map is only trustworthy where speed is roughly constant and the start is pinned.
+**Pairings should be anchored on landmarks, not arithmetic** — which is exactly what
+QA_METHOD_GOLD_PARITY.md step 3 already says ("landmark-map the lap by sweep, then pin gold↔native
+pairs"), and which I did not do.
