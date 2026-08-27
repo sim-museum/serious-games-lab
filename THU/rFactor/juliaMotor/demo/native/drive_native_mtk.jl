@@ -1026,7 +1026,13 @@ const GAUGE_DX = parse(Float32, get(ENV,"JM_GAUGE_X","-0.04"))
 # numerals resolve, the defect is positional/scale, not texture or lighting. JM_GAUGE_S (default 1.0
 # = unchanged, so the shipped look is untouched until the sweep says what is right).
 const GAUGE_S = parse(Float32, get(ENV,"JM_GAUGE_S","1.0"))
-const GAUGEFLIP = Render.translate(Float32[GAUGE_DX,GCY+GAUGE_DY,0]) * Render.scalexyz(GAUGE_S,-GAUGE_S,GAUGE_S) * Render.translate(Float32[0,-GCY,0])
+# E74-S5: there is no LATERAL knob. JM_GAUGE_X is longitudinal ("nudge it back toward the eye" per
+# its own comment) and JM_GAUGE_Y is height; the third component has always been a hard 0. But
+# E74-S4's sweep showed the cluster sitting up-and-LEFT of where gold puts it — gold centres the
+# tachometer directly above the wheel hub — so the axis that needs testing is the one nobody could
+# adjust. JM_GAUGE_Z (default 0.0 = shipped behaviour unchanged).
+const GAUGE_DZ = parse(Float32, get(ENV,"JM_GAUGE_Z","0.0"))
+const GAUGEFLIP = Render.translate(Float32[GAUGE_DX,GCY+GAUGE_DY,GAUGE_DZ]) * Render.scalexyz(GAUGE_S,-GAUGE_S,GAUGE_S) * Render.translate(Float32[0,-GCY,0])
 const SWPARTS, SWCENTER, SWAXIS = Render.extract_gpl_steering(LOT3DO)   # steering wheel + pivot
 # Mirrors: GPL gold standard = two round discs LOW at the screen edges (level with the front-tyre
 # tops), on outward stalks — NOT high near the wheel.  Mesh frame: x=fwd, y=up, z=lateral (the two

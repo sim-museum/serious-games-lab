@@ -142,3 +142,39 @@ placement against gold.**
 Sweep `JM_GAUGE_X` against gold's dial position — cheap, existing knob, no new code. Only once the
 cluster is where gold puts it does the "are the faces legible" question become answerable, because
 until then legibility is confounded by occlusion and clipping.
+
+---
+
+## E74-S5 — the missing axis: added `JM_GAUGE_Z`, and the fix needs TWO axes not one
+
+There was no lateral control at all. `JM_GAUGE_X` is longitudinal (its own comment: *"nudge it back
+toward the eye"*), `JM_GAUGE_Y` is height, and the third component was a hard `0`. **The axis E74-S4
+identified as wrong was the one nobody could adjust** — which is a good reason it stayed wrong.
+
+Added `JM_GAUGE_Z` (default 0.0, shipped behaviour unchanged) and swept 0.0 / 0.10 / 0.20
+(`e74_gauge_z.jpg`):
+
+| z | result |
+|---|---|
+| 0.00 | dials far left, partly clipped at the frame edge |
+| 0.10 | dials nearer centre, **markedly more visible — dial faces and markings resolve** |
+| 0.20 | dials centred but now **behind the wheel spokes and rim** |
+
+### What this establishes
+
+1. **Occlusion and clipping are a large part of the "melted" impression.** At z=0.10 the faces
+   resolve visibly better with no change to texture, lighting or scale — supporting E74-S4's reading
+   over E74-S3's minification theory, though not settling it.
+2. **One axis is not enough.** Gold puts the tachometer **above the wheel rim**, clear of the spokes.
+   Native's cluster sits at rim height, so moving it inboard just trades a clipped dial for an
+   occluded one. The cluster needs to go **right AND up** together.
+
+### Next
+
+Sweep `JM_GAUGE_Z` × `JM_GAUGE_Y` as a small grid against gold, and pick the pair that puts the dial
+above the rim and centred on the hub as gold has it. Both knobs now exist, so this is a photograph
+exercise with no new code.
+
+⚠️ Default unchanged pending that sweep. A knob that improves one frame is not yet a value worth
+shipping — and this cockpit already carries one setting (the E62 brightness lift) that was chosen to
+fix a symptom whose real cause was elsewhere.
