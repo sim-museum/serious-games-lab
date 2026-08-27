@@ -608,6 +608,23 @@ function gpl_scenery(ztrk, datpack, ribbon)
                     hr0.found ? string("lapdist ", round(Int,hr0.lapdist), " lat ", round(hr0.lateral,digits=1)) : "OFF-RIBBON",
                     "  origin z=", round(M0[3,4],digits=1))
         end
+        # E70-S6: the object's own robust centre and extent (median-based, so a single junk vertex
+        # cannot inflate it) — the reference the junk test is measured against.
+        local ocx=0f0; local ocy=0f0; local ocz=0f0; local objext=1f0
+        begin
+            xs=Float32[]; ys=Float32[]; zs=Float32[]
+            for tr in mesh, q in tr.p
+                pw = ap(q); push!(xs,pw[1]); push!(ys,pw[2]); push!(zs,pw[3])
+            end
+            if !isempty(xs)
+                sort!(xs); sort!(ys); sort!(zs)
+                md(v) = v[cld(length(v),2)]
+                ocx, ocy, ocz = md(xs), md(ys), md(zs)
+                q95(v) = v[max(1,min(length(v), ceil(Int,0.95*length(v))))]
+                q05(v) = v[max(1,min(length(v), ceil(Int,0.05*length(v))))]
+                objext = max(q95(xs)-q05(xs), q95(ys)-q05(ys), q95(zs)-q05(zs), 1f0) / 2
+            end
+        end
         for tr in mesh
             w=(ap(tr.p[1]),ap(tr.p[2]),ap(tr.p[3])); nn=(rn(tr.n[1]),rn(tr.n[2]),rn(tr.n[3]))
             # DROP stray garbage geometry: a tri with a huge or wildly-stretched edge is a
@@ -621,7 +638,23 @@ function gpl_scenery(ztrk, datpack, ribbon)
             # vertices parsed at junk coordinates, but a CROWD TERRACE is legitimately long and thin —
             # ogrnd2's panels reach 108 m wide and 2 m tall, so emax > 70 && emax > 10*emin describes
             # them exactly. JM_SCENEDROP=<name substring> reports the drops for one object.
-            if (emax > 150f0 || (emax > 70f0 && emax > 10f0*emin))
+            # E70-S6: the absolute rule mistakes LEGITIMATE long spans for junk. It was written for
+            # vertices parsed at nonsense coordinates, and those are OUTLIERS relative to the object's
+            # own extent — whereas a grandstand's roof beam is long *and* inside its own bbox. Judge
+            # each triangle against the object it belongs to: a vertex far outside the object's own
+            # 95th-percentile extent is junk; a long edge wholly within it is architecture.
+            # E76-S11 measured the cost of getting this wrong: grand116, the Ring's start/finish
+            # grandstand, loses 16 of its 76 triangles (21%). JM_EDGE_ABS=1 restores the old rule.
+            _junk = if get(ENV,"JM_EDGE_ABS","0") != "0"
+                (emax > 150f0 || (emax > 70f0 && emax > 10f0*emin))
+            else
+                # objext = the object's own robust half-extent, computed once per mesh below
+                far = max(abs(w[1][1]-ocx), abs(w[2][1]-ocx), abs(w[3][1]-ocx),
+                          abs(w[1][2]-ocy), abs(w[2][2]-ocy), abs(w[3][2]-ocy),
+                          abs(w[1][3]-ocz), abs(w[2][3]-ocz), abs(w[3][3]-ocz))
+                (far > 3f0*objext + 20f0) || emax > 400f0
+            end
+            if _junk
                 if get(ENV,"JM_SCENEDROP","") != "" && occursin(lowercase(ENV["JM_SCENEDROP"]), lowercase(nm))
                     ndrop_edge[] = ndrop_edge[] + 1
                 end

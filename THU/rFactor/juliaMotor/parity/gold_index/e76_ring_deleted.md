@@ -590,3 +590,51 @@ to hoist it landed before the branch's real close and left it just as unreachabl
 output, which I nearly read as "no signage in the mesh". Now genuinely at top level: the Ring's track
 mesh carries **87 textures and essentially no signage** (one `boschb`, 14 tris), confirming the
 hoardings are scenery objects rather than baked mesh.
+
+---
+
+## E70-S6 — ✅ SHIPPED: the junk filter is now object-relative. +745 triangles, and the S/F gantry is back.
+
+E76-S11 found the Ring's start/finish grandstand losing **16 of its 76 triangles** to the
+"stretched garbage" rule. S6 fixes the rule.
+
+### Why the old rule was wrong in principle
+
+```julia
+emax > 150 || (emax > 70 && emax > 10*emin)     # absolute thresholds
+```
+
+It was written to kill triangles built from **vertices parsed at junk coordinates** — the "giant
+jagged Star Destroyer shapes floating off in the sky". But it tests the triangle in *absolute* metres,
+so it cannot tell a nonsense vertex from a **legitimately long span**. A grandstand roof beam and a
+misparsed vertex both make a long thin triangle.
+
+⭐ The distinguishing property is not length, it is **being an outlier relative to the object's own
+extent**. A junk vertex lands far outside its object's bbox; a roof beam lies inside it. So the test is
+now: a vertex more than 3× the object's own robust half-extent (+20 m) from its median centre is junk;
+a long edge wholly within the object is architecture. The extent is median/percentile-based, so a
+single junk vertex cannot inflate the very reference used to detect it. `JM_EDGE_ABS=1` restores the
+old rule.
+
+### Result
+
+| | old (absolute) | new (object-relative) |
+|---|---|---|
+| `grand116` triangles dropped | **16 of 76** | **0** |
+| Ring scenery | 185 groups / 4116 tris | **201 groups / 4861 tris** |
+
+**+745 triangles and 16 more scenery groups** — and the visible win is the **start/finish gantry**, the
+overhead structure spanning the track, absent before and present now. Its long low spans are exactly
+what the absolute rule mistook for junk.
+
+### Verified against the thing the old rule existed to prevent
+
+Junk geometry does **not** return: captures at s=6000, 13000 and 18000 are indistinguishable between
+the two rules. And `gpl_scenery` is Nürburgring-only, so no other track is touched by this change.
+
+### Observation for later
+
+The start/finish view is richer than E76-S11 implied — Continental hoardings, pit buildings and flags
+are all present just before the line; my earlier captures at s=400 were simply past them. Two smaller
+defects are visible there and are **not** addressed here: the gantry's lettering renders **mirrored**,
+and roadside vegetation at s=13000/18000 shows a **cyan/turquoise cast** in both arms.
