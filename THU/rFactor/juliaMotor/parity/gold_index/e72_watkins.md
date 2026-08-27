@@ -119,3 +119,39 @@ not), or depth-buffer precision at distance. Those need different work, and W7 s
 before more dedup effort goes into it.
 
 ⚠️ Confirming this means counting duplicates in the RAW parse rather than in `TRACKMAIN0`. Not done.
+
+---
+
+## E72-S5 — the pit structures are placed, kept, and NOT VISIBLE at their own lapdists
+
+Photographed Watkins at each structure's recorded position (`e72_pit_sites.jpg`):
+
+| shot | expected there | what is there |
+|---|---|---|
+| s=3550 | `pitfill2` (lat −28.7) | bare road, grass, distant treeline |
+| s=3650 | `newpit` (lat −41.9) | bare road, guardrail, treeline |
+| s=3720 | approach to S/F | Kendall banner, a distant structure on the far horizon |
+| s=578 | `tower1` (lat −26.9) | trees left, fence right — **no tower** |
+
+**Every one is absent from the frame.** They are placed (E72-S4 confirmed fate=mesh, no filter drops
+them) yet nothing renders where they should be.
+
+### Two candidate explanations, and the lateral offset does not fully cover it
+
+1. **Too far to one side to enter a forward-facing view.** At 28–42 m lateral and the car's own
+   lapdist, an object sits nearly abeam the camera — outside a ~60° forward FOV. This explains
+   `newpit` at 42 m plausibly.
+2. **But `tower1` at 26.9 m should clip the frame edge**, and does not. A tower is tall; at 27 m it
+   should be visible above the verge even when abeam. Its absence is not explained by lateral offset
+   alone.
+
+### Next — check the vertical, which nothing has looked at
+
+`OBJINSTS` carries each instance's base height (`ploz`). If these structures are placed **below the
+terrain** they would be invisible regardless of lateral distance, and the E70-S2 note about objects
+being snapped to "OUR terrain (the HAT) instead of their authored GPL height" is a plausible
+mechanism — a snap that fails or lands wrong buries the object.
+
+That is one diagnostic line away: report base height against `groundz(x,y)` for these four instances.
+**Until then "the pit building is misplaced laterally" remains a hypothesis, not a finding** — E72-S4
+already had to retract one confident claim about these objects.
