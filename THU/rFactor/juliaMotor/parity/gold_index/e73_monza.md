@@ -497,3 +497,61 @@ Three sprints said "the nearest march is wrong on Monza". The authored-z evidenc
 and the one gold check that supported the gate was not location-matched. The next sprint must pin a
 gold frame to s=1873 (`trees18`, the largest mover) by landmark and settle it — **not** by another
 percentage.
+
+---
+
+## E73-S12 — ✅ GATE LIFTED. The "canopy over the road" is perspective, not intrusion.
+
+Four sprints argued about whether Monza's tree strips are too high, using pixel percentages and
+unmatched gold frames. S12 asks the question the PO actually posed — *"objects that are on the actual
+road"* — which is **geometry, and needs no gold at all**.
+
+### The test
+
+`JM_OVERHANG` (new) transforms each instance's footprint by the same model matrix the renderer uses,
+projects every point onto the racing ribbon, and counts those landing inside the road corridor.
+
+Across **73 Monza tree strips**:
+
+| result | count |
+|---|---|
+| **zero footprint points over the road** | **71** |
+| 1 point over | 1 (`trees24`, nearest \|lat\| 5.1 m) |
+| 5 points over | 1 (`trees23`, nearest \|lat\| 3.4 m) |
+
+Nearest laterals across the set run **7–25 m**. `trees18` — the largest mover, and the object I
+described as "a dark canopy overhanging the road" — has **0 points inside the corridor and a nearest
+approach of 10.3 m**.
+
+⭐ **The canopy is perspective.** A 30 m treeline 10 m to the side of a car, seen through a wide FOV,
+looms over the frame without being over the road. Four sprints of pixel diffs could not distinguish
+"looks like it overhangs" from "overhangs", because a pixel percentage cannot answer a geometric
+question.
+
+### Gate lifted
+
+E72-S8 gated the `edgez` fix to Watkins+Spa because Monza appeared to regress. That gate is now
+removed, on two independent lines:
+
+- **E73-S11**: the nearest-centreline march reproduces each object's **own authored z** to within
+  0.1 m for all nine movers, while the centroid march buries them ~5 m.
+- **E73-S12**: 71 of 73 strips have no road intrusion whatever.
+
+E73-S9's contrary gold check was withdrawn in S11 for not pinning location. `JM_EDGEZ_CENTROID=1`
+restores the old target.
+
+**No regression:** Spa 1686 objects + 5167 billboards and Watkins 113 + 13 are unchanged with the gate
+removed — expected, since S11's ring sampling already made the march target nearly irrelevant.
+
+### Two real intruders, for the PO's actual item
+
+`trees23` (5 footprint points inside the corridor, nearest 3.4 m) and `trees24` (1 point, 5.1 m), both
+with their base 0.3 m above the road surface. Small, but these are genuinely *on* the asphalt and are
+exactly what E73's on-road item is for. Logged for action.
+
+### The method lesson
+
+Three sprints tried to settle this with gold video and failed each time — twice by comparing unmatched
+locations. **The question was never a video question.** "Is this object on the road" is answerable from
+the mesh, the placement and the ribbon, with no oracle, no landmark matching and no noise floor. When a
+parity question can be posed geometrically, it should be.

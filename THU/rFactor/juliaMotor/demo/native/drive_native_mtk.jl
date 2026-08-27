@@ -1750,7 +1750,16 @@ let objnames=Set{String}()
         # kept out until Monza's case is understood. Gating by track is a holding measure, not the
         # end state.
         local tx = TRKCX; local ty = TRKCY
-        if (WATGLEN || SPA || haskey(ENV, "JM_EDGEZ_NEAREST")) && !haskey(ENV, "JM_EDGEZ_CENTROID")
+        # E73-S12: GATE LIFTED. It was imposed in E72-S8 because Monza appeared to gain an
+        # overhanging canopy. Two lines of evidence retire that:
+        #   • E73-S11 — the nearest-centreline march reproduces each object's OWN AUTHORED z to
+        #     within 0.1 m for all nine movers, while the centroid march buries them ~5 m; and
+        #   • E73-S12 — a direct geometric test (JM_OVERHANG) finds 71 of 73 Monza tree strips with
+        #     ZERO footprint points inside the road corridor, nearest laterals 7–25 m. The "canopy
+        #     over the road" is perspective, not intrusion, by the PO's own criterion.
+        # E73-S9's contrary gold check was withdrawn in S11 for not pinning location.
+        # JM_EDGEZ_CENTROID=1 restores the old target.
+        if !haskey(ENV, "JM_EDGEZ_CENTROID")
             bd = Inf
             for p in ALIGNED
                 dd = (p[1]-x)^2 + (p[2]-y)^2
@@ -1990,6 +1999,51 @@ let objnames=Set{String}()
     # an elevated layer, the object is grounded on that instead of the terrain beneath it. Enumerate
     # the surfaces at the march's first hit by lowering `ref` step by step — the HAT API allows it.
     # JM_EDGEZ_TRACE=<name substring>
+    if get(ENV,"JM_OVERHANG","") != ""
+        # E73-S12: does an object actually INTRUDE over the racing surface? That is the PO's criterion
+        # ("objects that are on the actual road"), and unlike a treeline's apparent height it can be
+        # answered from geometry alone — no gold frame, no landmark matching, no percentage. For each
+        # matching instance, transform its mesh by the SAME model matrix the renderer uses and count
+        # vertices whose projection lands within the road corridor, reporting how high above the road
+        # surface they sit. JM_OVERHANG=<name substring>
+        pat = lowercase(ENV["JM_OVERHANG"])
+        halfw = parse(Float64, get(ENV,"JM_OVERHANG_HALFW","6.0"))
+        # a silent block cannot be distinguished from a block that never ran — say what was searched
+        println("== JM_OVERHANG: /", pat, "/ over ", length(insts), " instances, corridor ±", halfw, " m ==")
+        for i in insts
+            occursin(pat, lowercase(i.name)) || continue
+            vs = get(lverts, i.name, nothing)
+            if vs === nothing || isempty(vs)
+                println("   [overhang] ", rpad(i.name,10), " NO FOOTPRINT — this instance did not take",
+                        " the mesh path (billboard/panel), so it has no lverts entry.",
+                        "  mesh? ", get(objmesh,i.name,nothing) !== nothing,
+                        "  bb? ", get(bbinfo,i.name,nothing) !== nothing)
+                continue
+            end
+            th = -Float64(i.yaw) + Float64(objyawfix(i.name)); c, sn = cos(th), sin(th)
+            base = Float64(plozfp(i))
+            nover = 0; ntot = 0; minlat = Inf; hi = -Inf
+            for (lx, lz) in vs
+                rx =  lx*c + lz*sn; rz = -lx*sn + lz*c
+                px = Float64(i.x) + rx; py = Float64(i.y) - rz
+                hr = JuliaMotor.hat(TRKSURF, px, py)
+                hr.found || continue
+                ntot += 1
+                minlat = min(minlat, abs(hr.lateral))
+                if abs(hr.lateral) < halfw
+                    nover += 1
+                    hi = max(hi, base - Float64(hr.height))
+                end
+            end
+            ntot == 0 && continue
+            println("   [overhang] ", rpad(i.name,10),
+                    " footprint pts ", rpad(ntot,5),
+                    " over road(<", halfw, "m): ", rpad(nover,5),
+                    " nearest |lat| ", rpad(round(minlat,digits=1),7),
+                    nover > 0 ? string(" base sits ", round(hi,digits=1), " m above road") : "")
+        end
+        flush(stdout)
+    end
     if get(ENV,"JM_EDGEZ_RANK","") != ""
         # E73-S10b: which OFF-HAT objects still move between the two march targets, after the
         # lowest-surface fix? Rank by |Δheight| so the remaining offenders are named rather than
