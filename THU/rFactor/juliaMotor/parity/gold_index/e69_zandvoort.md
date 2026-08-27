@@ -167,3 +167,82 @@ A video-to-lapdist map is only trustworthy where speed is roughly constant and t
 **Pairings should be anchored on landmarks, not arithmetic** — which is exactly what
 QA_METHOD_GOLD_PARITY.md step 3 already says ("landmark-map the lap by sweep, then pin gold↔native
 pairs"), and which I did not do.
+
+---
+
+## E69-S5 — ✅ the on-road filters all tested the ORIGIN. Footprint test ships; the spectator wall is gone.
+
+The PO's standing instruction is *"move any objects (lines of people, houses) that are on the actual
+road to the places they belong"*. E69-S3 reported `ppl_l3` as a wall across the left and attributed
+it to *"a billboard drawn flat"*. **That attribution was wrong** — `JM_OBJDIAG` lists only 5
+billboards on Zandvoort (`haie001`, `tree2`, `tree1`, `pine1`, `pine3`, all 2.5 m), no crowds. The
+crowd rows are MESH objects.
+
+### The real defect
+
+Every existing on-road filter — `onroad_crowd`, `perp_crowd`, `onroad_bldg` — projects the object's
+**origin**. `JM_FOOTPRINT` finds **45 instances whose geometry crosses the asphalt**:
+
+| object | nearest \|lat\| | lapdist | ORIGIN lat |
+|---|---|---|---|
+| `ppl_m1` | **0.2 m** | 3851 | −5.5 m |
+| `ppl_l3` | **0.8 m** | 3256 | **12.3 m** |
+| `bushes01` ×many | 0.1–1.1 m | 2309–2416 | ~2.0 m |
+| `ppl_l5` | 2.3 m | 818 | 9.8 m |
+
+⭐ `ppl_l3` reaches **0.8 m from the centreline from an origin 12.3 m away**. No origin-based test can
+ever catch that — which is the third time this run a single-point measure has failed on an extended
+object (E71-S8 footprint-vs-origin, E73-S7 single-point grounding).
+
+### What shipped
+
+`onroad_fp(i)` — the nearest transformed footprint vertex, the same measure `JM_FOOTPRINT` reports —
+scoped to **vegetation and crowd families**, where the evidence is. Buildings keep their origin rule
+and overhead spans are untouched (a bridge across the road is authored, not a defect). `JM_ONROAD_FP=0`
+reverts.
+
+**Result at s=3250: the wall of spectators across the track is gone**, replaced by a crowd line
+beside the road — null control 0.16 %, change 14.44 %, and visually unambiguous.
+
+### ⚠️ Two things I could not show, stated plainly
+
+1. **The bush thicket has no visual evidence.** 41 instances hit the filter but only **6** survive the
+   other filters to be removed. At s=2380/2590 the frames are visually identical apart from car
+   position.
+2. **My "grass bank engulfing the car" reading was wrong.** That mass is Zandvoort's **dune terrain** —
+   the circuit runs through dunes — not a misplaced object. Retracted.
+
+### ⚠️⚠️ The null control varies from 0.16 % to 55 % ON THE SAME TRACK
+
+E75-S8 established this harness has a ~0.4 % noise floor. Zandvoort shows that figure is **not a
+constant**:
+
+| viewpoint | null control | treatment | verdict |
+|---|---|---|---|
+| s=2380 | **55.09 %** | 57.65 % | **no evidence whatsoever** |
+| s=2590 | 4.87 % | 58.04 % | looked real; frames are visually IDENTICAL — jitter |
+| s=3250 | 0.16 % | 14.44 % | real, confirmed by eye |
+
+The auto-drive reaches a given lapdist at a slightly different position each run; where the frame is
+filled by near-field geometry (a dune two metres from the camera) a centimetre of car movement
+repaints most of the screen. **The jitter magnitude itself varies between runs**, so even a measured
+null at one viewpoint does not license the number at that viewpoint — s=2590's 4.87 % null would have
+"confirmed" a 58 % change that is not there.
+
+**Rule: a pixel A/B is only admissible where the null control is small AND the change is visible.**
+Number and picture must agree, or neither counts.
+
+### ⚠️ An invalid TRACK name silently loads a FALLBACK
+
+`TRACK=watkinsglen` ran to completion reporting "track: Watkinsglen" — and a **4181 m centreline,
+which is Zandvoort's**. Its object counts matched Zandvoort exactly (215/39/296). The real name is
+`watglen` (3750 m). A regression suite that used the wrong name would have "passed" every track while
+testing one track five times.
+
+### Cross-track effect (real names, all verified by centreline length)
+
+| track | objects removed |
+|---|---|
+| Zandvoort | 6 |
+| Spa | 1 |
+| Monza, Watkins (watglen, 3750 m), Nürburgring | 0 |

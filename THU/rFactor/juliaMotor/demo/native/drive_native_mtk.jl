@@ -1799,6 +1799,42 @@ let objnames=Set{String}()
             false
         end
     end
+    # E69-S5 (PO: "move any objects that are on the actual road to the places they belong"):
+    # every on-road filter above tests the object's ORIGIN — onroad_crowd, perp_crowd and
+    # onroad_bldg all project (i.x, i.y). E71-S8 already showed that ordering is not the "is it in
+    # the way" ordering, and Zandvoort proves it costs real defects: JM_FOOTPRINT finds 45 instances
+    # whose GEOMETRY crosses the asphalt, led by a bushes01-04 thicket at s≈2310-2700 reaching to
+    # 0.1 m of the centreline, and by ppl_l3 (@3256) and ppl_m1 (@3851) reaching 0.8 m and 0.2 m
+    # from ORIGINS 12.3 m and 5.5 m out — origins no origin-based test can catch. Captures confirm
+    # both: a grass bank engulfing the car's left flank at s=2300-2590, and a wall of spectators
+    # across the track at s=3250.
+    # So test the FOOTPRINT: the nearest transformed vertex, the same measure JM_FOOTPRINT reports.
+    # Scoped to VEGETATION and CROWDS — the families the evidence covers. Buildings keep their own
+    # (origin) rule for now and bridges//overhead structures are untouched, since a span across the
+    # road is authored, not a defect. JM_ONROAD_FP=0 reverts.
+    onroad_fp_edge = parse(Float64, get(ENV,"JM_ASPHALT_HALFW","4.1"))
+    vegcrowd(nm) = startswith(nm,"bush") || startswith(nm,"shrub") || startswith(nm,"strauch") ||
+                   startswith(nm,"hedge") || startswith(nm,"haie") || standcrowd(nm) ||
+                   startswith(nm,"ppl") || startswith(nm,"people") || startswith(nm,"pplrow")
+    onroad_fp(i) = get(ENV,"JM_ONROAD_FP","1") != "0" && vegcrowd(lowercase(i.name)) && begin
+        vs = get(lverts, i.name, nothing)
+        if vs === nothing || isempty(vs)
+            false
+        else
+            th = -Float64(i.yaw) + Float64(objyawfix(i.name)); c, sn = cos(th), sin(th)
+            near = Inf
+            for (lx, lz) in vs
+                rx =  lx*c + lz*sn; rz = -lx*sn + lz*c
+                hr = JuliaMotor.hat(TRKSURF, Float64(i.x) + rx, Float64(i.y) - rz)
+                hr.found && (near = min(near, abs(hr.lateral)))
+            end
+            hit = near < onroad_fp_edge
+            hit && get(ENV,"JM_ONROAD_FP_DIAG","") != "" &&
+                println("  E69-S5: ", i.name, " footprint reaches ", round(near,digits=1),
+                        " m of the centreline — dropped")
+            hit
+        end
+    end
     # E68 S2 (PO: Monza "haze planes make the forest absent, then fade into view"): uGraze was
     # built to fade FLAT panels seen edge-on; on the E65 real folded tree MESHES it fades whole
     # forest walls with view angle.  Mesh-path trees (MONZA/WATGLEN) draw un-grazed — a folded
@@ -1806,7 +1842,7 @@ let objnames=Set{String}()
     graze_mesh = get(ENV,"JM_GRAZE_MESH","0") != "0"
     global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw + objyawfix(i.name))), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), ploz(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
-                          !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
+                          !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
     # E15: SOLID trackside objects the car can hit — (physics x, z, collision radius m).  Buildings,
     # barriers/hedges (haybales = Zandvoort `haie`), towers, parked vehicles.  NOT trees/signs/people.
     solidR(nm) = startswith(nm,"hut")||startswith(nm,"pitbldg")||startswith(nm,"hotel")||startswith(nm,"bigbosch")||nm=="mega2"||startswith(nm,"longtent")||
