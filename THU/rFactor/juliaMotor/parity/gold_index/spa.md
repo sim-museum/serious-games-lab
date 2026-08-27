@@ -489,3 +489,70 @@ explanation and so could not discriminate.
 
 Each flagged building needs classifying before it is touched. The census now supports that: extents
 are printed alongside penetration.
+
+---
+
+## E71-S13 — ⚠️ CORRECTION to E73-S8, and the Spa road classifier fixed (43.9 % → 77.7 %)
+
+E73-S8 logged a finding here: *"BOTH instruments now agree native Spa's road is 8.0–8.3 m while
+E71-S6 measured gold Spa at ~11 m… two independent methods agreeing makes this a track defect rather
+than an artifact."* **That inference was wrong, and the reason is worth more than the number.**
+
+### ⭐ Two methods agreeing does not validate an input they share
+
+The vertex census and the coverage census differ only in **how they sample geometry**. They both
+select which triangles count as road with the *same* predicate, `ROAD_TEX`. So their agreement on Spa
+confirmed the sampling fix and said **nothing whatever** about the selection — and the selection is
+where the error was:
+
+```
+Spa, textures within |lat| < 5 m of the centreline:  8453/19249 recognised = 43.9 %
+```
+
+Worse, what it *did* recognise was dominated by **`groove` — the narrow racing-line strip** (80 of 160
+road triangles at s=1000, 50 of 100 at s=5000, 43 of 102 at s=10000). **Every width ever measured at
+Spa was substantially the groove's width, not the road's.** The code's own comment claiming
+"ROAD_TEX recognises Spa's road (9658 tris, uniform 8.2 m)" was mistaken.
+
+This is the same lesson as E74-S9 in a new disguise. There, a mask was verified for what it *included*
+and not for what it *added*. Here, an instrument was verified against another instrument **sharing its
+blind spot**. A positive control only controls for what the two arms do not share.
+
+### The fix, by the census's own rule
+
+The census exists to answer this ("whatever surfaces the car drives on IS the road"), so the split of
+each texture inside vs outside |lat| < 5 m decides it:
+
+| texture | on-road | off-road | verdict |
+|---|---|---|---|
+| `borcem` | **5431** | 1029 | **road** — the concrete edge strip, drivable at old Spa |
+| `borcem_k` | **723** | 17 | **road** |
+| `griline` | **196** | 0 | **road** — grid markings |
+| `asfa` | 169 | 149 | **road** — asphalt, spelled without the "asp" the predicate tests for |
+| `bordo` | 184 | **3374** | barrier — excluded |
+| `barr` | 290 | **3656** | barrier — excluded |
+| `armco_s` | 165 | **713** | barrier — excluded |
+| `lecdrtl2` etc. | 168 | 356 | genuinely mixed — **left open**, needs its own verdict |
+
+| track | recognition | coverage width |
+|---|---|---|
+| **Spa** | 43.9 % → **77.7 %** | 8.0 → **8.8 m** |
+| Monza | 86.2 % (unchanged) | 12.2 m (unchanged) — the no-regression check |
+| Watkins | 86.1 % | — |
+| Zandvoort | 73.6 % | — |
+| Nürburgring | **not measured** — load + census exceeds the run window; additions are Spa-specific names, so regression is unlikely but **unverified** |
+
+### What I could NOT do, stated plainly
+
+I tried to measure gold's Spa road width from the video and **failed with four successive detectors**:
+grass-edge scanning from the centre (the car's **British racing green livery** reads as grass); a
+car-width ruler (the row landed on the nose, measuring the body between the front wheels); a full-extent
+car ruler (road shadow counted as car); and a road-width-versus-row slope fit (rms 124–166 px — noise).
+
+So **no gold video width was produced**, and the *"gold Spa ~11 m"* figure from E71-S6 remains a single
+unreproduced measurement. It is now flagged as unverified in the census output, where it had been
+printing as if it were a target.
+
+⭐ **The strongest argument is that the question may be ill-posed:** gold and native render **the same
+GPL track mesh**. A real width difference between them is impossible unless the two classify road
+triangles differently — which is precisely the bug found here, on our side.

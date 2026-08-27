@@ -107,7 +107,21 @@ const ROAD_TEX = lt -> occursin("asp", lt) || startswith(lt,"groove") || startsw
                        # the road edge; Concrete = the Karussell banking.  Without them the road oracle
                        # recognised only 54% of the line's surface and the alignment optimised against
                        # a partial road.  (Names are Ring-specific; no collisions on the other tracks.)
-                       startswith(lt,"atog") || startswith(lt,"a_l_g") || lt == "concrete"
+                       startswith(lt,"atog") || startswith(lt,"a_l_g") || lt == "concrete" ||
+                       # E71-S13 (Spa): the classifier recognised only 43.9% of Spa's near-centreline
+                       # surface, and what it DID recognise was dominated by `groove` — the narrow
+                       # racing-line strip. So every width measured at Spa was really the groove's.
+                       # Added by the census's own rule ("whatever the car drives on IS the road"),
+                       # using the on-road/off-road split of each name within |lat| < 5 m:
+                       #   borcem   5431 on /1029 off  — the concrete edge strip, road at old Spa
+                       #   borcem_k  723 on /  17 off
+                       #   griline   196 on /   0 off  — grid markings
+                       #   asfa      169 on / 149 off  — asphalt, spelled without the "asp" this
+                       #                                 predicate tests for
+                       # NOT added: bordo (184/3374), barr (290/3656), armco_s (165/713) — barriers,
+                       # overwhelmingly off-road; and the *drt* per-corner names, which are genuinely
+                       # mixed (e.g. lecdrtl2 168 on / 356 off) and need their own verdict.
+                       startswith(lt,"borcem") || lt == "asfa" || lt == "griline"
 
 # ---- session mode + race config (GPL-style: Practice / Training / Race) ----
 const MODE      = lowercase(get(ENV, "JM_MODE", "practice"))   # practice | training | race
@@ -2161,7 +2175,7 @@ let objnames=Set{String}()
             st = sort(tot)
             println("   --> median width ", round(st[cld(end,2)],digits=1), " m   min ",
                     round(minimum(tot),digits=1), "   max ", round(maximum(tot),digits=1),
-                    "   (gold Spa measured ~11 m, E71-S6)")
+                    "   (⚠️ the old 'gold Spa ~11 m' reference is UNVERIFIED — E71-S13)")
         end
         flush(stdout)
     end
