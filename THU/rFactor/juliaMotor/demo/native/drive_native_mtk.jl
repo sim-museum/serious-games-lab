@@ -1017,7 +1017,12 @@ const ARMP   = Render.extract_gpl_car(LOT3DO; only=("lotarms",), maxlat=0.95f0) 
 const GCY = (b = Render.parts_bbox(GAUGEP); Float32((b.ymin + b.ymax)/2))
 # GPL puts the gauge binnacle UP, just above the wheel hub (gauges read above the badge); dash7a is
 # modelled LOW, so lift it (JM_GAUGE_Y) and nudge it back toward the eye (JM_GAUGE_X) onto the cowl.
-const GAUGE_DY = parse(Float32, get(ENV,"JM_GAUGE_Y","0.16"))
+# E74-S7 SHIPPED: 0.16 -> 0.28. At 0.16 the cluster sat at wheel-rim height and was occluded by the
+# spokes and clipped at the frame edge, which is what the PO saw as "dials like a Salvador Dali
+# painting". Verified at Spa s=500/8000/12500 and Zandvoort s=1000: at 0.28 (with JM_GAUGE_Z=0.10)
+# the cluster sits ABOVE the rim with dial faces and markings legible, matching gold's arrangement
+# of a tachometer above the hub. JM_GAUGE_Y=0.16 JM_GAUGE_Z=0.0 restores the old placement.
+const GAUGE_DY = parse(Float32, get(ENV,"JM_GAUGE_Y","0.28"))
 const GAUGE_DX = parse(Float32, get(ENV,"JM_GAUGE_X","-0.04"))
 # E74-S4: a SCALE knob for the gauge cluster. E74-S3 refuted brightness as the cause of the PO's
 # "Salvador Dali dials" and found the cluster is drawn far smaller than gold's — gold puts a large
@@ -1031,7 +1036,7 @@ const GAUGE_S = parse(Float32, get(ENV,"JM_GAUGE_S","1.0"))
 # E74-S4's sweep showed the cluster sitting up-and-LEFT of where gold puts it — gold centres the
 # tachometer directly above the wheel hub — so the axis that needs testing is the one nobody could
 # adjust. JM_GAUGE_Z (default 0.0 = shipped behaviour unchanged).
-const GAUGE_DZ = parse(Float32, get(ENV,"JM_GAUGE_Z","0.0"))
+const GAUGE_DZ = parse(Float32, get(ENV,"JM_GAUGE_Z","0.10"))   # E74-S7 SHIPPED (was 0.0 — see GAUGE_DY)
 const GAUGEFLIP = Render.translate(Float32[GAUGE_DX,GCY+GAUGE_DY,GAUGE_DZ]) * Render.scalexyz(GAUGE_S,-GAUGE_S,GAUGE_S) * Render.translate(Float32[0,-GCY,0])
 const SWPARTS, SWCENTER, SWAXIS = Render.extract_gpl_steering(LOT3DO)   # steering wheel + pivot
 # Mirrors: GPL gold standard = two round discs LOW at the screen edges (level with the front-tyre

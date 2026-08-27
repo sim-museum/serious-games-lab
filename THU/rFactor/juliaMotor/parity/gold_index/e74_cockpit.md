@@ -215,3 +215,35 @@ by the spokes — which reads as melted no matter how good the texture is. Three
 
 Re-shoot z=0.10/y=0.28 at two more lapdists and in a second cockpit context; if it holds, flip the
 defaults and re-check the dial SIZE against gold as a separate question.
+
+---
+
+## E74-S7 — ✅ SHIPPED: gauge placement corrected (`JM_GAUGE_Y` 0.16 → 0.28, `JM_GAUGE_Z` 0.0 → 0.10)
+
+Verified before flipping the defaults, at **four viewpoints across two tracks** —
+Spa s=500 / 8000 / 12500 and Zandvoort s=1000 (`e74_gauge_verify.jpg`). In every one the cluster
+sits above the wheel rim with a row of dial faces and their markings legible. The placement is a
+car-space transform, so track-independence was expected; confirming it cost one extra run and would
+have caught the opposite.
+
+`JM_GAUGE_Y=0.16 JM_GAUGE_Z=0.0` restores the previous placement.
+
+**Third fix shipped in this batch**, after the badge orientation (E74-S2) and the front-end geometry
+(E75-S7).
+
+### What is fixed and what is not
+
+**Fixed:** the dials are no longer clipped at the frame edge or cut through by the spokes. The
+PO's "Salvador Dali" description was, in large part, a description of *occlusion* — and no amount of
+texture or lighting work would have addressed it.
+
+**Not fixed — and deliberately left open:**
+- **Dial size.** Gold's tachometer is still visibly larger relative to the wheel than ours. This is
+  E74-S3's minification question, and `JM_GAUGE_S` cannot test it cleanly because scaling also
+  displaces (E74-S4). It needs scale-about-the-eye, or scale plus compensating translation.
+- **D3 (wheel oversized, spokes fragmented)** and **D4 (camera/FOV)** are untouched. D4 in particular
+  may still be shifting everything; the gauge fix compensates for its effect on one part only.
+
+⚠️ Which means this fix carries the same risk as the E62 brightness lift it partly supersedes: **a
+constant tuned to make one thing look right while an underlying geometry error remains.** Recorded
+here so that when D4 is settled, this value is re-derived rather than inherited.
