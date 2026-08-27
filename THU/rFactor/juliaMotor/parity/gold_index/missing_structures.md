@@ -39,3 +39,45 @@ Run the E76-S3 scenery census (`JM_SCENEDIAG`) on **Watkins and Zandvoort**. It 
 2231-of-3109 dropped on the Ring; if those two show comparable drop rates, the tracks share a
 mechanism. If they show none, the missing structures have a different cause and E76 must stay
 Ring-specific.
+
+---
+
+## Follow-up: object counts, and Watkins' pit building
+
+### Density does NOT explain it
+
+| track | lap | trackside objects | billboards | objects/km | billboards/km |
+|---|---|---|---|---|---|
+| **Spa** | 14.1 km | 1679 | **5132** | 119 | **364** |
+| Zandvoort | 4.2 km | 221 | 39 | 53 | 9.3 |
+| Watkins | 3.75 km | 113 | 13 | 30 | 3.5 |
+| Monza | 5.7 km | 114 | 19 | 20 | 3.3 |
+
+**Spa is an extreme outlier — 364 billboards/km against 3–9 elsewhere.** But density does not explain
+the missing structures: **Monza is the sparsest track of all (20 objects/km) and its pit area looks
+populated**, while Watkins at 30/km is missing its building. So this is about *specific objects*, not
+how many there are.
+
+### Watkins: the pit building exists in the archive and is not in the render
+
+- The archive contains **`pit.3do`, `pitfill2.3do`, `pitgrnd1.3do`, `tower1.3do`**.
+- `JM_OBJDIAG`'s tallest-25 and highest-placed-22 lists contain **no `pit`, `tower` or `timing`
+  entry** — they are dominated by trees (27–39 m).
+- **Grandstands ARE placed**: `grand` (y=33.5), `grndpe1l` / `grndpeo1` (y≈38.2). So the track is not
+  wholesale missing structures — the pit building specifically is absent from the render.
+
+⚠️ **Not proven absent.** Both diagnostic lists are truncated (top 25 / top 22), so a shorter `pit`
+object could be placed and simply not shown. Confirming needs a full dump of placed names for the
+GPL pipeline — the equivalent of `JM_SCENEFIND`, which currently exists only on the Ring's path.
+
+### Incidental observation worth its own check
+
+Watkins' trees measure **27–39 m tall**. That is 90–130 feet — plausible for mature American
+hardwoods, but it is the same shape as the Spa "oversized houses" question (E71-S5/S10), and nobody
+has measured Watkins' vegetation against gold. Logged, not claimed.
+
+### Next
+
+Add a placed-name search to the GPL object pipeline (mirroring `JM_SCENEFIND`) and ask directly
+whether `pit`/`tower1` are placed at Watkins. That distinguishes **"not placed in the track data"**
+from **"placed and dropped by a filter"** — which need entirely different fixes.
