@@ -267,3 +267,63 @@ E71-S9 finding that a single centroid cannot describe a long object's relationsh
 
 **Twice now on this project a long strip object has broken a per-object measurement.** That is a
 pattern worth naming rather than fixing twice.
+
+---
+
+## E73-S8 — ✅ the road gaps are CLOSED; the remaining "missing road" was the INSTRUMENT
+
+Two questions were open on Monza: do the road gaps E73-S4 predicted at s≈2750 and s≈4500 survive the
+S5 centreline fix, and why does the width census still report absurd numbers here.
+
+### 1. The gaps are gone
+
+`JM_LINEONROAD` post-fix: **24/24 buckets healthy — 0 with no road, 0 with the line >3 m off it.**
+Captures at s=500, 1500, 4500 and 5500 (`mz_gaps.png`) show the car on clean asphalt at every one.
+E73-S2's *"NO ROAD for s≈350–650"* and S4's predicted s=4500 gap are both **closed by the S5
+centreline fix**, as S5 hoped but could not yet show.
+
+### 2. ⭐ The width census was measuring vertices, not road
+
+`JM_ROADWIDTH` still reported nothing at all at s=500 and s=4500, **0.6 m** at s=5500, and 3.8 m at
+three other stations — against captures showing perfectly good road. The cause is in the census:
+
+```julia
+b = round(Int, hr.lapdist / step)
+r = hr.lapdist - b*step
+abs(r) <= halfb || continue          # ±12 m LONGITUDINAL slice — not a lateral bucket
+```
+
+It takes the lateral spread of road **VERTICES** falling in a 24 m slice at each station. Monza's
+straights are meshed with very large triangles, so such a slice can contain **no road vertices at
+all** — the bucket then vanishes — or only two from the narrow `groove` racing-line strip, giving
+0.6 m. **Spa's road mesh is dense enough that vertices land in every slice, so Spa's number came out
+right for the wrong reason** — and that is exactly why the defect survived: the one track with a
+trustworthy oracle was the one track the instrument happened to handle.
+
+A localised texture census (`JM_ROADTEX_AT`) confirmed the road is *classified* correctly at each
+suspect station — 42, 148, 29 and 78 recognised road triangles at s=500/1500/4500/5500 — so this was
+never a `ROAD_TEX` naming problem either.
+
+### 3. Shipped: `JM_ROADWIDTH2`, width by COVERAGE
+
+March laterally across the centreline in 0.25 m steps and ask, for each offset, whether any road
+**triangle covers that point**. Triangle size then cannot matter.
+
+| track | old (vertex) | new (coverage) | stations |
+|---|---|---|---|
+| **Monza** | median 11.3, **min 0.6**, buckets 500/4500 **missing** | **median 12.2**, min 11.0 | **24/24** |
+| **Spa** | median 8.3, min 8.2, max 59.8 | **median 8.0**, min 7.8, max 12.5 | 57/57 |
+| **Watkins** | median 10.1, min 3.7 | **median 11.2**, min 1.8 | 16/16 |
+
+⭐ **Spa is the positive control and it passes**: on the dense mesh the two methods agree (8.3 vs
+8.0 m). The coverage method changes the answer only where the old one was broken — which is the check
+that this is a fix and not a thumb on the scale. Its maxima are also sane (12.5 m vs the old 59.8 m).
+
+`JM_ROADWIDTH` now prints a warning naming its own limitation and pointing at the coverage census.
+
+### ⚠️ A real finding falls out of this: native Spa may be ~27 % too narrow
+
+**Both** instruments now agree that native Spa's road is **8.0–8.3 m**, while E71-S6 measured gold Spa
+at **~11 m**. Two independent methods agreeing makes this a track defect rather than an artifact —
+but the gold figure is a single earlier measurement and should be re-derived from the gold video
+before anything is widened. Logged to **E71**, not acted on here.

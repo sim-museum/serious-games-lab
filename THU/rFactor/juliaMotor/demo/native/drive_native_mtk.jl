@@ -2071,6 +2071,32 @@ let objnames=Set{String}()
                 far[lt] = get(far,lt,0) + 1
             end
         end
+        # E73-S8: the same tally, but LOCALISED. The global census says 86% of Monza's
+        # near-centreline tris are recognised, yet JM_ROADWIDTH still reports 0.6 m at s=5500 and
+        # nothing at all at s=500/4500 — so the misses are not spread evenly, they are concentrated
+        # where the surface changes (pit straight, start grid). Name the textures actually present at
+        # the suspect lapdists rather than reasoning from a lap-wide percentage.
+        # JM_ROADTEX_AT="500,4500,5500"
+        if get(ENV,"JM_ROADTEX_AT","") != ""
+            want = [parse(Float64,x) for x in split(ENV["JM_ROADTEX_AT"], ",")]
+            for w in want
+                loc = Dict{String,Int}(); nrec = 0; ntot = 0
+                for t in TRACKMESH.tris
+                    cx = (Float64(t.p[1][1])+Float64(t.p[2][1])+Float64(t.p[3][1]))/3
+                    cy = (Float64(t.p[1][2])+Float64(t.p[2][2])+Float64(t.p[3][2]))/3
+                    hr = JuliaMotor.hat(TRKSURF, cx, cy)
+                    (hr.found && abs(hr.lapdist - w) < 125.0 && abs(hr.lateral) < 12.0) || continue
+                    lt = lowercase(t.tex); loc[lt] = get(loc,lt,0)+1
+                    ntot += 1; ROAD_TEX(lt) && (nrec += 1)
+                end
+                println("   -- lapdist ", round(Int,w), " ±125 m, |lat|<12 m: ", ntot, " tris, ",
+                        nrec, " recognised as road --")
+                for (nm,c) in sort(collect(loc), by=x->-x[2])[1:min(end,8)]
+                    println("        ", rpad(nm,14), rpad(c,6), ROAD_TEX(nm) ? "road" : "*** not road ***")
+                end
+                isempty(loc) && println("        (NO triangles at all within 12 m of the centreline)")
+            end
+        end
         println("== ROAD_TEX census: textures of tris within |lat| < 5 m of the centreline ==")
         println("   (recognised? = does the current ROAD_TEX classifier accept the name)")
         for (lt,n) in sort(collect(near), by=x->-x[2])[1:min(end,18)]
@@ -2116,6 +2142,10 @@ let objnames=Set{String}()
                 push!(get!(buckets, b, Float64[]), hr.lateral)
             end
         end
+        println("   ⚠️ E73-S8: this census samples road VERTICES inside a ±", halfb,
+                " m LONGITUDINAL slice, so on a coarsely-meshed track (Monza, Watkins) a station can")
+        println("      hold no vertices at all, or only the narrow `groove` strip's. Use JM_ROADWIDTH2")
+        println("      (coverage) for any width verdict; this one is kept only to reproduce old numbers.")
         println("== E71-S7 rendered road width from the mesh (ROAD_TEX tris=", nrt,
                 ", bucket ±", halfb, " m, step ", step, " m) ==")
         println("   lapdist    lat_min   lat_max    WIDTH    n")
@@ -2132,6 +2162,90 @@ let objnames=Set{String}()
             println("   --> median width ", round(st[cld(end,2)],digits=1), " m   min ",
                     round(minimum(tot),digits=1), "   max ", round(maximum(tot),digits=1),
                     "   (gold Spa measured ~11 m, E71-S6)")
+        end
+        flush(stdout)
+    end
+    if get(ENV,"JM_ROADWIDTH2","")!=""
+        # E73-S8: JM_ROADWIDTH measures the lateral spread of road VERTICES inside a ±12 m
+        # LONGITUDINAL slice at each station. That is why it returns nonsense on Monza and Watkins
+        # and looked fine on Spa: it samples vertices, not surface. Monza's straights are meshed with
+        # very large triangles, so a 24 m slice can contain NO road vertices at all (buckets 500 and
+        # 4500 simply vanish) or only two from the narrow `groove` strip (0.6 m at s=5500) — while
+        # the captures show perfectly good asphalt at every one of those stations. Spa's road mesh is
+        # dense, so its vertices happen to land in every slice and the number came out right for the
+        # wrong reason.
+        # Measure COVERAGE instead: march laterally across the centreline and ask, for each offset,
+        # whether any road TRIANGLE covers that point. Triangle size then cannot matter.
+        stepS = parse(Float64, get(ENV,"JM_ROADWIDTH2_STEP","250.0"))
+        maxlat = parse(Float64, get(ENV,"JM_ROADWIDTH2_MAXLAT","22.0"))
+        dlat  = 0.25
+        rt = [t for t in TRACKMESH.tris if ROAD_TEX(lowercase(t.tex))]
+        # bucket road tris by centroid lapdist so each station tests only nearby ones
+        cls = Dict{Int,Vector{Any}}()
+        for t in rt
+            cx = (Float64(t.p[1][1])+Float64(t.p[2][1])+Float64(t.p[3][1]))/3
+            cy = (Float64(t.p[1][2])+Float64(t.p[2][2])+Float64(t.p[3][2]))/3
+            hr = JuliaMotor.hat(TRKSURF, cx, cy); hr.found || continue
+            push!(get!(cls, round(Int, hr.lapdist/100.0), Any[]), t)
+        end
+        intri(px,py,t) = begin
+            ax,ay = Float64(t.p[1][1]), Float64(t.p[1][2])
+            bx,by = Float64(t.p[2][1]), Float64(t.p[2][2])
+            cx2,cy2 = Float64(t.p[3][1]), Float64(t.p[3][2])
+            d = (by-cy2)*(ax-cx2) + (cx2-bx)*(ay-cy2)
+            abs(d) < 1e-12 && return false
+            l1 = ((by-cy2)*(px-cx2) + (cx2-bx)*(py-cy2))/d
+            l2 = ((cy2-ay)*(px-cx2) + (ax-cx2)*(py-cy2))/d
+            l3 = 1.0 - l1 - l2
+            l1 >= -1e-9 && l2 >= -1e-9 && l3 >= -1e-9
+        end
+        println("== E73-S8 road width by COVERAGE (road tris=", length(rt), ", step ", stepS, " m) ==")
+        println("   lapdist   left    right   WIDTH   gaps")
+        widths = Float64[]
+        nst = max(1, floor(Int, LAPLEN/stepS))
+        for k in 0:nst
+            sdist = k*stepS
+            # centreline point + perpendicular at this lapdist, from the aligned polyline
+            bi = argmin([abs(TRKSURF.lapdist[i] - sdist) for i in 1:length(TRKSURF.lapdist)])
+            p0 = ALIGNED[min(bi, length(ALIGNED))]
+            p1 = ALIGNED[min(bi+1, length(ALIGNED))]
+            tx, ty = Float64(p1[1]-p0[1]), Float64(p1[2]-p0[2])
+            L = hypot(tx,ty); L < 1e-6 && continue
+            nx, ny = -ty/L, tx/L
+            cand = Any[]
+            for kk in (round(Int,sdist/100.0)-1):(round(Int,sdist/100.0)+1)
+                haskey(cls,kk) && append!(cand, cls[kk])
+            end
+            isempty(cand) && continue
+            cov = Bool[]
+            lats = collect(-maxlat:dlat:maxlat)
+            for lt in lats
+                px = Float64(p0[1]) + nx*lt; py = Float64(p0[2]) + ny*lt
+                hit = false
+                for t in cand; if intri(px,py,t); hit = true; break; end; end
+                push!(cov, hit)
+            end
+            any(cov) || continue
+            # the contiguous covered run containing the centreline (or the widest run)
+            i0 = findfirst(x->x, cov); i1 = findlast(x->x, cov)
+            mid = cld(length(cov),2)
+            lo, hi = mid, mid
+            if cov[mid]
+                while lo > 1 && cov[lo-1]; lo -= 1; end
+                while hi < length(cov) && cov[hi+1]; hi += 1; end
+            else
+                lo, hi = i0, i1
+            end
+            w = (hi-lo)*dlat
+            ngap = count(i -> !cov[i] && cov[i-1], 2:length(cov))
+            push!(widths, w)
+            println("   ", rpad(round(Int,sdist),9), rpad(round(lats[lo],digits=1),8),
+                    rpad(round(lats[hi],digits=1),8), rpad(round(w,digits=1),8), ngap)
+        end
+        if !isempty(widths)
+            st = sort(widths)
+            println("   --> median ", round(st[cld(end,2)],digits=1), " m   min ", round(minimum(widths),digits=1),
+                    "   max ", round(maximum(widths),digits=1), "   stations ", length(widths), "/", nst+1)
         end
         flush(stdout)
     end
