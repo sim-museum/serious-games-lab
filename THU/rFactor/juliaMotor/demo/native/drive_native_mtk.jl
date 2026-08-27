@@ -1367,10 +1367,15 @@ const GRADE_TAB = Dict("OVERCAST"=>GRADE_OVERCAST, "NURB"=>GRADE_NURB, "MONZA"=>
                        "NURBOLD"=>GRADE_NURB_OLD, "MONZAOLD"=>GRADE_MONZA_OLD,
                        "SPAOLD"=>GRADE_SPA_OLD, "ZAND"=>GRADE_ZAND,
                        "SUNNY"=>GRADE_SUNNY, "GPL"=>GRADE_GPL, "SKIDPAD"=>GRADE_SKIDPAD)
-const GRADE = SKIDPAD ? GRADE_SKIDPAD :
+# E75-S10: the grade's saturation boost is global, so it is a candidate for the car's paint reading
+# 43% more saturated than gold's while its hue is correct. JM_SAT overrides it for A/B.
+const GRADE0 = SKIDPAD ? GRADE_SKIDPAD :
               haskey(ENV, "JM_GRADE") ? get(GRADE_TAB, uppercase(ENV["JM_GRADE"]), GRADE_OVERCAST) :
               get(GRADE_BYTRACK, TRACKSEL, GRADE_OVERCAST)
 const ENG = EngineAudio.build_lotus(gamedata = GD)   # GPL Ford DFV V8, RPM-pitched; START is deferred to just before the game loop (below)
+const GRADE = haskey(ENV,"JM_SAT") ?
+    ColourGrade(GRADE0.zenith, GRADE0.horizon, GRADE0.cloud, GRADE0.suncol, GRADE0.ambsky,
+                parse(Float32, ENV["JM_SAT"]), GRADE0.ringtint) : GRADE0
 tstamp("texture load begins"); print("loading textures… "); flush(stdout)
 const TEXIDX = Render.gpl_texture_index(ZD)
 const TRACK_BRIGHT = parse(Float32, get(ENV,"JM_TRACK_BRIGHT","0.72"))

@@ -430,3 +430,57 @@ independently corroborates E76-S8: that sprint chose a **5.0 m** half-width for 
 sprite cull from the sprite lateral distribution alone, and half of the measured road is **4.75 m**.
 Two unrelated measurements, one derived from vegetation placement and one from road triangles,
 agreeing to a quarter of a metre.
+
+---
+
+## E75-S10 — the Lotus paint: hue is RIGHT, but it renders too dark and over-saturated
+
+The PO's E75 asks for *"correct external lotus 49 views per the gold standard"*, and colour is half of
+that. Unlike track surfaces, **the car is the same object everywhere**, so its paint can be compared
+without pinning location — the trap that invalidated E69-S4 and E69-S7's grass measurement.
+
+### The measurement
+
+Body green, median over the car's engine cover:
+
+| | frames | body green | span (max−min) |
+|---|---|---|---|
+| **gold** (Spa + Monza + Watkins nintendo) | 6 | **(52, 82, 63)** | **30** |
+| native (Spa, dappled shade) | 3 | (36, 79, 48) | 43 |
+| native (Monza, open sunlight) | 3 | (37, 76, 49) | 39 |
+
+⭐ **The hue is correct.** British racing green's characteristic blue-green cast shows as B above R by
+11 in gold and 12 in native. What differs is *tone*: native is **~17 % darker** and **~35 % more
+saturated**.
+
+### Three explanations eliminated
+
+1. **Contamination.** The first pass used a box that swallowed roadside grass — native's "green" counts
+   were 5–15 k against gold's 400–1300, and the medians were dune-coloured. Tightened to the engine
+   cover and **verified by dumping the mask over the frame**: magenta sits exactly on the bodywork.
+2. **Shadow / lighting conditions.** The Spa captures sit under dappled tree shadow, an obvious
+   confound. Re-measured on Monza's open sunlit straight: **(37, 76, 49) vs (36, 79, 48)** — the same.
+   Location and lighting do not explain it.
+3. **The saturation grade.** `JM_SAT` 1.12 → 1.00 moves the span only 38 → 35, about 3 of the ~13
+   excess. Not the cause.
+
+### Where it must come from
+
+`JM_TEXCOLOR` shows the source textures are **less** saturated than our render, not more:
+
+| texture | mean RGB | span |
+|---|---|---|
+| `vlot67e` | (63, 85, 71) | 22 |
+| `vlot67a` | (77, 90, 72) | 18 |
+| `vlot67d` | (35, 50, 40) | 15 |
+| `vlot67b` | (97, 109, 80) | 29 |
+
+So **our shading adds saturation**: a texture at span 22 renders at 39–43, where gold renders the same
+texture at 30. Gold expands it too — just half as much. The car draws with `bright=1.2, ambfill=0.78`,
+which should *lighten* it, so the remaining candidate is the **contrast shape** of the lighting model —
+the `pow(lit, 0.94)` gamma and the sun-to-ambient ratio, which together stretch dark channels away
+from the light one.
+
+Not tuned here. E69-S8's white balance earned its place by surviving three eliminations and
+cross-validating on tracks it was not fitted to; this one has had three eliminations but no candidate
+confirmed yet, and a brightness constant applied now would be exactly the E74-S7 mistake.
