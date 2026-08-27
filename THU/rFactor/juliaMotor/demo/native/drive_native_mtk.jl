@@ -1468,6 +1468,20 @@ const GRADE0 = SKIDPAD ? GRADE_SKIDPAD :
               haskey(ENV, "JM_GRADE") ? get(GRADE_TAB, uppercase(ENV["JM_GRADE"]), GRADE_OVERCAST) :
               get(GRADE_BYTRACK, TRACKSEL, GRADE_OVERCAST)
 const ENG = EngineAudio.build_lotus(gamedata = GD)   # GPL Ford DFV V8, RPM-pitched; START is deferred to just before the game loop (below)
+# E72-S13: per-track exposure, measured on asphalt in COCKPIT view on both sides (E72-S12).
+#   gold/native asphalt luminance: Spa 120.2/149.0 → 0.81   Watkins 120.0/143.8 → 0.83
+#                                  Monza 117.5/101.3 → 1.16  Zandvoort 128.5/131.3 → 0.98
+#                                  Nurburgring 104.0/105.7 → 0.98
+# JM_EXPOSURE overrides for A/B; 1.0 disables.
+if !haskey(ENV,"JM_EXPOSURE")
+    # ⚠️ E72-S13 REVERTED to 1.0 (no correction). The constants above were derived from an asphalt
+    # mask with ABSOLUTE thresholds (sat<22, 60<lum<200), which is NOT exposure-invariant: brightening
+    # lifts dark non-road pixels above the lum>60 floor and admits them, so the metric moves for
+    # reasons unrelated to exposure. Measured instead with a threshold-free fixed image region, native
+    # was already within -7%..0% of gold and the "correction" made Spa and Watkins ~15% WORSE.
+    # The uniform stays (JM_EXPOSURE) so a future, sounder measurement can drive it.
+    Render.EXPOSURE[] = 1.0f0
+end
 const GRADE = haskey(ENV,"JM_SAT") ?
     ColourGrade(GRADE0.zenith, GRADE0.horizon, GRADE0.cloud, GRADE0.suncol, GRADE0.ambsky,
                 parse(Float32, ENV["JM_SAT"]), GRADE0.ringtint) : GRADE0

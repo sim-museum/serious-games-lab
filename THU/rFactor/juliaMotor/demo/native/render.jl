@@ -310,6 +310,12 @@ uniform int uSky;
 // it. Nor is the ambient fill (removing it entirely left R-B unchanged). So the correction belongs at
 // the end of shading, as a white balance derived from the measurement rather than from taste.
 uniform vec3 uWBal;
+// E72-S13 PER-TRACK EXPOSURE. Measured on asphalt — a neutral surface needing no location matching —
+// with COCKPIT view on both sides (E72-S12 showed view and source mismatch both corrupt this):
+//   gold / native asphalt luminance:  Spa 120.2/149.0  Watkins 120.0/143.8  Monza 117.5/101.3
+//                                     Zandvoort 128.5/131.3  Nurburgring 104.0/105.7
+// Three tracks are off by ~20%. JM_EXPOSURE overrides; 1.0 disables.
+uniform float uExposure;
 uniform vec3 uSunCol;     // directional-sun tint (warm white on the sunny grade; white = neutral GPL)
 uniform vec3 uAmbSky;     // up-facing sky-fill colour (cool blue on the sunny grade → cooler shadows)
 uniform float uSat;       // output saturation multiplier (>1 = punchier sunny colours; 1 = neutral)
@@ -383,6 +389,7 @@ void main(){
   }
   vec3 outc = mix(lit, uFogCol, fog*fog);
   outc *= uWBal;                                  // E69-S8: measured white balance (see below)
+  outc *= uExposure;                              // E72-S13: per-track exposure, measured on asphalt
   o=vec4(outc, alpha*uAlpha);     // alpha → MSAA coverage (smooth cutout edges); uAlpha = glass
 }"""
 # depth-only program for the shadow pass (render the scene from the sun's POV)
@@ -1426,6 +1433,8 @@ end
 setmat(prog,name,M)=glUniformMatrix4fv(glGetUniformLocation(prog,name),1,GL_FALSE,M)
 # E69-S8: white balance, default measured to bring native's neutral surfaces onto gold's.
 # JM_WBAL="r,g,b" overrides; JM_WBAL="1,1,1" disables.
+# E72-S13: set once per track at load (drive_native_mtk sets it from GRADE selection).
+const EXPOSURE = Ref(parse(Float32, get(ENV,"JM_EXPOSURE","1.0")))
 const WBAL = let v = get(ENV,"JM_WBAL","")
     if v == ""
         (0.955f0, 1f0, 1.05f0)   # measured against gold on three tracks — E69-S8
@@ -1444,6 +1453,7 @@ function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, amb
     glUniform1f(glGetUniformLocation(prog,"uAlpha"), Float32(alpha))
     glUniform1f(glGetUniformLocation(prog,"uAmbFill"), Float32(ambfill))
     glUniform3f(glGetUniformLocation(prog,"uWBal"), WBAL[1], WBAL[2], WBAL[3])
+    glUniform1f(glGetUniformLocation(prog,"uExposure"), EXPOSURE[])
     glUniform1i(glGetUniformLocation(prog,"uGraze"), graze ? 1 : 0)
     glUniform1i(glGetUniformLocation(prog,"uCutout"), get(CUTOUT_TEX, item.tex, false) ? 1 : 0)
     if item.tex != 0

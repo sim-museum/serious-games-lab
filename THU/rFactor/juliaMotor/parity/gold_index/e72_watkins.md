@@ -428,3 +428,61 @@ Both of E69-S11's headline numbers change: the Ring **+35 % → +2 %** (fine), a
   exactly the kind of thing the PO's *"correct… colour throughout"* covers.
 - **Watkins specifically** is otherwise clean — every census, the on-road count (2 marginal), and the
   content check (E72-S10). Its exposure is now its one measured parity gap.
+
+---
+
+## E72-S13 — ⚠️ I shipped a per-track exposure correction, then found the metric that motivated it is invalid. REVERTED.
+
+E72-S12's table said Spa renders **+24 %** brighter than gold, Watkins **+20 %**, Monza **−14 %**. S13
+built the correction, shipped it, and then destroyed both the correction and the table.
+
+### The loop, and where it broke
+
+A per-track exposure multiplier was derived from those numbers and applied after the tone curve.
+First pass looked like a clean success — every error roughly halved:
+
+| track | before | after pass 1 |
+|---|---|---|
+| Spa | +24 % | **+7 %** |
+| Watkins | +20 % | **+5 %** |
+| Monza | −14 % | **−7 %** |
+
+A second pass, re-derived as `old × (gold/measured)`, then produced an **impossible** result:
+**Monza went from −7 % to −41 % while its multiplier increased from 1.16 to 1.247.** A larger
+multiplier cannot darken a scene — and the frame's overall mean luminance confirmed it had in fact got
+*brighter* (123.3 → 128.6).
+
+### ⭐ The metric was measuring its own threshold
+
+The asphalt mask is `sat < 22 && 60 < lum < 200`. Those are **absolute** cuts, so it is **not
+exposure-invariant**: brightening lifts dark non-road pixels *above* the `lum > 60` floor and admits
+them. Monza's mask grew from ~250 000 to ~380 000 pixels while its median fell 40 points.
+
+**A metric whose population changes with the quantity being measured cannot close a loop** — and it
+cannot compare two renderings of different brightness either, which is what the original gold-vs-native
+table did.
+
+### Re-measured without thresholds
+
+Using a fixed image region and no colour cuts at all:
+
+| track | gold | native as shipped | after pass 1 | after pass 2 |
+|---|---|---|---|---|
+| Spa | 53.7 | **50.3 (−6 %)** | 45.7 (−15 %) | 42.7 (−20 %) |
+| Watkins | 53.7 | **53.5 (−0 %)** | 44.7 (−17 %) | 42.7 (−20 %) |
+| Monza | 54.0 | **50.0 (−7 %)** | 58.0 (+7 %) | 62.7 (+16 %) |
+
+**Native's exposure was already within −7 %…0 % of gold, and my "correction" made Spa and Watkins about
+15 % worse.** Reverted to 1.0; verified back at +6 % / −7 %.
+
+### What this costs and what it buys
+
+- ⚠️ **E72-S12's exposure table is withdrawn.** +24/+20/−14 came from the biased metric. There is no
+  measured per-track exposure defect.
+- The `uExposure` uniform stays behind `JM_EXPOSURE`, unused, so a sounder measurement can drive it.
+- Both metrics have limits — the threshold-free box samples a car-fixed region rather than the road —
+  so the honest claim is only "no exposure error large enough for either probe to agree on".
+
+**The tell was the impossible result.** Had pass 2 merely looked mediocre instead of self-contradictory,
+I would have shipped a regression on three tracks and filed it as an improvement. Building the
+correction is what exposed the flaw in the measurement that motivated it.
