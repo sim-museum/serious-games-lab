@@ -140,12 +140,17 @@ function parse_3do(path::AbstractString)
     # while still allowing a node to be reached under different positioner transforms.
     I4 = Matrix{Float64}(I,4,4)
     visited = Set{Int}()
+    # E70-S4: when an object parses to ZERO triangles the walker gives no reason — E76-S5 lost a
+    # sprint to exactly that silence. Tally every node type reached, so "0 tris" can be answered with
+    # "the tree contains only types X and Y, and we handle neither". JM_PRIMDIAG=<name substring>.
+    PRIMTALLY = Dict{UInt32,Int}()
     function walk(off::Int, curtex::String, depth::Int, M, grp::Int)
         (off < 0 || off in visited || depth > 220) && return
         push!(visited, off)
         p = prim_off + off
         p + 4 > length(b) && return
         typ = u32(b, p)
+        PRIMTALLY[typ] = get(PRIMTALLY, typ, 0) + 1
         if typ == 0x04                              # group: 4, count, child*
             cnt = Int(u32(b, p+4))
             for k in 1:cnt
@@ -178,11 +183,28 @@ function parse_3do(path::AbstractString)
             # only the min-threshold (closest-range, highest-detail) child.  All-equal thresholds
             # (e.g. six 0.0s) ⇒ a plain list-group: keep walking every child.  JM_LOD_ALL=1 A/Bs.
             cnt = Int(u32(b, p+16))
+            if get(ENV,"JM_PRIMDIAG","") != "" && occursin(lowercase(ENV["JM_PRIMDIAG"]), lowercase(basename(path)))
+                println("     [LOD node] count = ", cnt, "  (walked only when 0 < count <= 4096)")
+                for kk in 1:min(cnt,6)
+                    println("        child ", kk, ": dist ", f32(b, p + 20 + (kk-1)*8),
+                            " off ", i32(b, p + 20 + (kk-1)*8 + 4))
+                end
+            end
             if 0 < cnt <= 4096
                 ds = [f32(b, p + 20 + (k-1)*8) for k in 1:cnt]
-                if !LOD_ALL && length(unique(ds)) > 1
-                    k = argmin(ds)
-                    walk(Int(i32(b, p + 20 + (k-1)*8 + 4)), curtex, depth+1, M, grp)
+                offs = [Int(i32(b, p + 20 + (k-1)*8 + 4)) for k in 1:cnt]
+                # E70-S4: only consider children that EXIST. GPL pads its LOD lists with NULL
+                # entries (offset -1) carrying sentinel distances, and argmin over the raw distance
+                # array happily selects one of those. ogrnd2 — the Nürburgring's start/finish crowd
+                # terrace, and the PO's actual E76 complaint — has
+                #     dist 4.0e7 off -1 | dist 7.0e6 off 6384 | dist 0.0 off -1 | dist -6000.0 off -1
+                # so argmin picked the -6000.0 sentinel, walked offset -1, and returned 0 triangles
+                # from an object that plainly has geometry. Choose the nearest-range child WITH a
+                # real offset. JM_LOD_ALL=1 still walks everything.
+                live = get(ENV,"JM_LOD_NULLS","0") != "0" ? collect(1:cnt) : [k for k in 1:cnt if offs[k] >= 0]
+                if !LOD_ALL && length(unique(ds)) > 1 && !isempty(live)
+                    k = live[argmin([ds[k] for k in live])]
+                    walk(offs[k], curtex, depth+1, M, grp)
                 else
                     for k in 1:cnt
                         walk(Int(i32(b, p + 20 + (k-1)*8 + 4)), curtex, depth+1, M, grp)
@@ -216,6 +238,17 @@ function parse_3do(path::AbstractString)
 
     root = Int(u32(b, prim_off))                    # first 4 bytes of PRIM data = root offset
     walk(root, "", 0, I4, 0)
+    if get(ENV,"JM_PRIMDIAG","") != "" && occursin(lowercase(ENV["JM_PRIMDIAG"]), lowercase(basename(path)))
+        handled = Set{UInt32}([0x04,0x05,0x06,0x07,0x08,0x09,0x0A,0x0B,0x0D,0x13,0x16,0x19,0x11,
+                               0x81B,0x81C,0x81D,0x81E,0x81F,0x820,0x821,0x822])
+        println("  [primdiag] ", basename(path), ": ", length(tris), " tris from ",
+                sum(values(PRIMTALLY)), " nodes")
+        for (t,c) in sort(collect(PRIMTALLY), by=x->-x[2])
+            println("     type 0x", string(t, base=16, pad=3), "  x", rpad(c,6),
+                    t in handled ? "handled" : "*** NOT HANDLED ***")
+        end
+        flush(stdout)
+    end
     Mesh3DO(tris, sort(collect(used_tex)), groups)
 end
 

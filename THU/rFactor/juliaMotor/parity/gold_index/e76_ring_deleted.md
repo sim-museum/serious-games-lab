@@ -402,3 +402,77 @@ study). Shipping a wall or a sky-crowd to claim the PO's item would be worse tha
 
 **1773 placements** of shrubs, trees and marshals restored across a 22.7 km lap that previously
 loaded 184 scenery groups and zero billboards.
+
+---
+
+## E70-S4 / E76-S9 — ⭐ ROOT CAUSE: the LOD selector picks NULL children
+
+E76-S8 left the PO's actual complaint open: `ogrnd2`, the Nürburgring's start/finish crowd terrace, is
+209 × 25 m, carries the `Grndpp1` ("ground people") sheet, and parses to **zero triangles** — so it
+could only be faked as a sprite, which produced either a wall of giants or a sky-crowd. S9 finds why.
+
+### First hypothesis: triangulate the raw vertices — REFUTED before implementation
+
+`ogrnd2` has **178 vertices** and its first groups looked like clean vertical quads (v0,v1 at z=2;
+v2,v3 at z=0, x/y matching). Tempting: emit two triangles per group of four. **Checked first, and it
+does not hold** — only **4 of 44** groups conform, and panel widths include zeros. The vertex order is
+not face order, so any triangulation built on it would have been invented geometry.
+
+### The instrument, and what it found
+
+`JM_PRIMDIAG` (new) tallies every PRIM node type the walker reaches and flags the unhandled ones. It
+exists because E76-S5 lost a sprint to a `catch` that swallowed its reason; "0 triangles" should never
+again be a silent result. For `ogrnd2`:
+
+```
+[primdiag] ogrnd2.3do: 0 tris from 1 nodes
+   type 0x011  x1   handled
+```
+
+**One node, and the walk stops.** Type `0x11` is the LOD/distance list. Printing its children:
+
+```
+child 1: dist 4.0e7    off -1      (null)
+child 2: dist 7.0e6    off 6384    ← the only real geometry
+child 3: dist 0.0      off -1      (null)
+child 4: dist -6000.0  off -1      (null)
+```
+
+⭐ **GPL pads its LOD lists with NULL entries carrying sentinel distances, and `argmin` over the raw
+distance array selects one of them.** The minimum is −6000.0, whose offset is **−1**; the walker
+follows a null child and returns nothing — from an object that plainly has geometry.
+
+E64-S4 introduced the argmin to pick the closest-range child, and it is right to do so. It simply
+never asked whether the child it picked **exists**.
+
+### Fix and measured effect
+
+Choose the nearest-range child **with a real offset**. `JM_LOD_NULLS=1` restores the old behaviour.
+
+| | before | after |
+|---|---|---|
+| `ogrnd2` | **0 tris** | **156 tris from 160 nodes** |
+| Ring scenery | 184 groups / 4065 tris | 185 groups / 4116 tris |
+| Ring sprite path | 1 wide panel faked | **0** — it is geometry now |
+
+### ⚠️ Cross-track effect: measured by CONTROLLED A/B, after I first got it wrong
+
+My first cross-track comparison used counts recorded **earlier in the session**, before several other
+changes, and appeared to show Spa losing 8 objects — which this fix cannot do, since it only ever adds
+candidates. Running both arms in the same build settles it:
+
+| track | old | fixed |
+|---|---|---|
+| **Spa** | 1686 objects + 5167 bb | **identical** — unaffected |
+| **Monza** | 114 objects, 1 forest panel | **118 objects, 0 forest panels** |
+| Watkins | 113 objects | unchanged |
+
+So the fix is real but **narrow**: the Ring's terrace, and 4 Monza objects plus one wide strip that
+becomes true geometry instead of a faked panel. **A stale baseline is not a control** — the A/B cost
+two runs and corrected a claim I would otherwise have published.
+
+### The PO's item is advanced, not closed
+
+Only **51 of ogrnd2's 156 triangles** survive the scenery filters (edge-length, road-corridor, dedup),
+and the terrace is still not visible at s=400. The object is no longer fake, which was the blocker;
+what remains is finding which filter is eating it.
