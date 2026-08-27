@@ -538,3 +538,46 @@ cowl/dash assembly is raised**, carrying the dials with it — not the dials alo
 
 That explains why E74-S7's gauge offset could make the dials legible without making them *right*: it
 was moving one part of an assembly that is displaced as a whole.
+
+---
+
+## E74-S13 — the camera is exonerated a third time, now by controlled sweep
+
+E74-S12 inferred that "the whole cowl/dash assembly is raised" from two static measurements. S13 tests
+it directly: sweep the eye height and watch the **cowl-top-above-hub** ratio, which E74-S12 established
+as the stable feature.
+
+| `JM_EYE_Y` | cowl top (wheel-radii above hub) | cockpit % of frame |
+|---|---|---|
+| 0.40 (shipped) | **2.15** | 40.8 % |
+| 0.44 | **2.14** | 37.0 % |
+| 0.46 | **2.17** | 35.5 % |
+| 0.48 | 0.26 | 34.3 % |
+| 0.50 | 0.18 | 33.6 % |
+| 0.52 | 0.29 | 34.0 % |
+| **gold** | **1.35** | **29.8 %** |
+
+### ⭐ Two things follow
+
+1. **The ratio is insensitive to eye height** — 2.15 → 2.17 across a 6 cm rise. Both the cowl and the
+   hub are car-fixed, so moving the eye barely changes their relationship; it changes only how much of
+   the frame the body fills.
+2. **The metric is bimodal.** At 0.48 the eye clears the cowl, the cowl stops being the topmost
+   cockpit feature, and the measurement discontinuously becomes the dash instead (~0.2). There is **no
+   eye height at which native reads 1.35** — gold's value sits *between* native's two modes.
+
+So the camera cannot produce gold's cockpit, and this is the **third independent exoneration**: E74-S9
+(wheel correctly sized and foreshortened), E74-S11 (no FOV satisfies both wheel size and cockpit
+fraction), and now a direct sweep against the stable metric.
+
+### Why nothing was shipped
+
+`JM_EYE_Y=0.48` gives the lowest cockpit fraction (34.3 % against gold's 29.8 %) and would look like an
+improvement. **It is the wrong topology**: at 0.48 the driver sees *over* the cowl, whereas gold's cowl
+is still the topmost feature at 1.35 radii. Matching a summary statistic while inverting the
+arrangement of the scene is precisely the E74-S7 error — a constant that makes one number better while
+the geometry stays wrong.
+
+The remaining work is on the cowl geometry: it must come **down by ~0.8 wheel-radii relative to the
+hub** while remaining the topmost feature. That is a model-space change, and E74 now has three
+independent measurements agreeing on it.
