@@ -556,3 +556,67 @@ printing as if it were a target.
 ⭐ **The strongest argument is that the question may be ill-posed:** gold and native render **the same
 GPL track mesh**. A real width difference between them is impossible unless the two classify road
 triangles differently — which is precisely the bug found here, on our side.
+
+---
+
+## E71-S15 / E69-S12 — ✅ the PO's houses-on-the-road are found and filtered, by RENDER FATE
+
+The cross-track on-road census (E71-S14) reported **698 intruding instances at Spa** — alarming and
+unactionable, because it counted every *placed* instance including those the filters already remove.
+S15 adds the render fate, which turns it into a decision-ready list.
+
+### Intruders that ACTUALLY RENDER
+
+| track | placed & intruding | **actually render** |
+|---|---|---|
+| **Spa** | 698 | **129** |
+| Monza | 17 | 9 |
+| Zandvoort | 95 | **5** |
+| Watkins | 2 | 1 |
+
+⭐ And Spa's rendering intruders are exactly what the PO described — **houses**:
+
+| object | pts over road | nearest \|lat\| | lapdist |
+|---|---|---|---|
+| `house41` | 21 | **0.1 m** | 11674 |
+| `ho18` ×4 | 4 | 0.2 m | 3858 |
+| `house13` | 8 | 0.3 m | 3345 |
+| `house1b` | 11 | 0.6 m | 2582 |
+| `house35` | 17 | 0.6 m | 9017 |
+| **`house43`** | **27** | 0.8 m | 12021 |
+| `house4` ×2 | 15 | 0.8 m | 2757 |
+
+`house43` is the object E71 spent several sprints locating by hand; the census finds it and eight more
+in one run, ranked.
+
+### Why they survived: the footprint rule excluded buildings
+
+E69-S5 shipped the footprint on-road test scoped to **vegetation and crowds**, leaving buildings on the
+**origin** rule — and `house43`'s origin sits 6.0 m from the centreline (E71-S7), so no origin test can
+ever catch it. Extending the footprint test to buildings (`JM_ONROAD_FP_BLDG=0` reverts):
+
+| | objects | rendering intruders |
+|---|---|---|
+| before | 1686 | 129 |
+| **after** | **1665** | **108** |
+
+**21 buildings removed**, and the visible result is decisive: at s≈11990 a house stood **in the middle
+of the racing surface**, directly ahead of the car. It is gone, and the road is clear.
+
+### ⚠️ Not finished — 108 still render
+
+`ho18` (4 points over the road at **0.2 m**) survives because the name does not match the `bldgish`
+pattern. The remaining 108 are other families — barriers (`armcow3` at 0.0 m), walls, and unmatched
+building names. The mechanism is right and the **name list is incomplete**; the census now names each
+survivor, so closing the rest is enumeration rather than investigation.
+
+### Other tracks are essentially clean
+
+- **Monza** — 9 render, of which `bar01` (12 points, 2.7 m) and `trees23` (5 points, 3.4 m) are genuine;
+  the rest are pit wall and marginal 1-point grazes.
+- **Zandvoort** — 5 render, of which **three are `sign050/100/150`**: distance-marker boards, which
+  belong beside the road. Only a crowd row at 4.2 m and one bank-side bush are arguable.
+- **Watkins** — 1, marginal at 5.4 m.
+
+So the PO's on-road complaint is overwhelmingly a **Spa** problem, exactly as stated, and it is now
+measured, ranked, and partly fixed.

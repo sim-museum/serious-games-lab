@@ -2001,9 +2001,17 @@ let objnames=Set{String}()
     # (origin) rule for now and bridges//overhead structures are untouched, since a span across the
     # road is authored, not a defect. JM_ONROAD_FP=0 reverts.
     onroad_fp_edge = parse(Float64, get(ENV,"JM_ASPHALT_HALFW","4.1"))
+    # E69-S12: BUILDINGS join the footprint test. E69-S5 scoped it to vegetation and crowds and left
+    # buildings on the ORIGIN rule (onroad_bldg) "for now" — and the on-road census shows what that
+    # costs: at Spa 129 intruding instances actually RENDER, dominated by houses reaching 0.1–0.8 m of
+    # the centreline (house41 21 points over the road, house43 27, house35 17, house4 15). house43's
+    # origin sits 6.0 m out (E71-S7), so an origin test can never catch it. This is the PO's headline
+    # Spa complaint — "houses in the case of the spa track that are on the actual road".
+    # JM_ONROAD_FP_BLDG=0 restores the vegetation/crowd-only scope.
     vegcrowd(nm) = startswith(nm,"bush") || startswith(nm,"shrub") || startswith(nm,"strauch") ||
                    startswith(nm,"hedge") || startswith(nm,"haie") || standcrowd(nm) ||
-                   startswith(nm,"ppl") || startswith(nm,"people") || startswith(nm,"pplrow")
+                   startswith(nm,"ppl") || startswith(nm,"people") || startswith(nm,"pplrow") ||
+                   (get(ENV,"JM_ONROAD_FP_BLDG","1") != "0" && bldgish(nm))
     onroad_fp(i) = get(ENV,"JM_ONROAD_FP","1") != "0" && vegcrowd(lowercase(i.name)) && begin
         vs = get(lverts, i.name, nothing)
         if vs === nothing || isempty(vs)
@@ -2079,7 +2087,7 @@ let objnames=Set{String}()
         halfw = parse(Float64, get(ENV,"JM_OVERHANG_HALFW","6.0"))
         # a silent block cannot be distinguished from a block that never ran — say what was searched
         println("== JM_OVERHANG: /", pat, "/ over ", length(insts), " instances, corridor ±", halfw, " m ==")
-        nointr = 0; nofp = 0; hits = Tuple{String,Int,Float64,Float64,Float64}[]
+        nointr = 0; nofp = 0; hits = Tuple{String,Int,Float64,Float64,Float64,Bool}[]
         for i in insts
             (pat == "1" || occursin(pat, lowercase(i.name))) || continue
             vs = get(lverts, i.name, nothing)
@@ -2105,7 +2113,13 @@ let objnames=Set{String}()
             end
             ntot == 0 && continue
             if nover > 0
-                push!(hits, (i.name, nover, minlat, hi, hr_lap(i)))
+                # E69-S12: an intrusion only matters if the object actually RENDERS. The census walks
+                # every PLACED instance, including ones the on-road filters already remove, so the raw
+                # count is an upper bound. Apply the same keep-test the OBJECTS comprehension uses.
+                kept = get(objmesh,i.name,nothing) !== nothing && !drop(i.name) &&
+                       !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) &&
+                       (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)
+                push!(hits, (i.name, nover, minlat, hi, hr_lap(i), kept))
             else
                 nointr += 1
             end
@@ -2117,11 +2131,12 @@ let objnames=Set{String}()
                     nover > 0 ? string(" base sits ", round(hi,digits=1), " m above road") : "")
         end
         if pat == "1"
-            sort!(hits, by=h->h[3])
-            println("   ", nointr, " instances clear of the road, ", length(hits), " INTRUDING, ",
-                    nofp, " without a mesh footprint (billboard/panel path — not tested)")
+            sort!(hits, by=h->(!h[6], h[3]))   # E69-S12: rendering intruders first — they are the actionable ones
+            nkept = count(h->h[6], hits)
+            println("   ", nointr, " instances clear of the road, ", length(hits), " intruding of which ",
+                    nkept, " ACTUALLY RENDER, ", nofp, " without a mesh footprint (not tested)")
             for h in hits[1:min(end,14)]
-                println("      ", rpad(h[1],12), "pts over road ", rpad(h[2],5),
+                println("      ", h[6] ? "RENDERS " : "dropped ", rpad(h[1],12), "pts over road ", rpad(h[2],5),
                         " nearest |lat| ", rpad(round(h[3],digits=1),7),
                         " base ", rpad(round(h[4],digits=1),7), " m above road   lapdist ", round(Int,h[5]))
             end
