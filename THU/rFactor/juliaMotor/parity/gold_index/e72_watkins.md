@@ -336,3 +336,50 @@ Three mechanisms, three eliminations, and four guardrail captures showing clean 
 test mechanisms blind is now the wrong move. **W7 should go back to the PO for a pointer** — which
 corner, which lap, and ideally a still — or be re-derived from the gold-vs-native video at a named
 location. Recorded as blocked on the PO rather than left open as if work remained.
+
+---
+
+## E72-S10 — Watkins' crowds are present and DO render; the cockpit view was hiding them
+
+Gold's Watkins cockpit video shows dense spectator rows at several points. Four native cockpit captures
+showed **none**, which looked like a missing-content defect of the E76 kind.
+
+### It is not. Three instrument errors, then the answer
+
+1. **`JM_OBJFIND` returned a confident false negative.** Searching
+   `"ppl,crowd,people,spec,stand,grand,tribun"` reported *"0 placed instances — not in this track's
+   placement list at all"*. The pattern is a **regex**, and its own comment documents pipe separation
+   (`pit|tower|grand`); commas made a literal that could never match. **My error, not the tool's** — but
+   a pattern that cannot match is indistinguishable from an absent object, and the tool stated the
+   strong form. Commas are now accepted as alternation, and the null now says so and advises checking
+   a name known to be placed first.
+2. **The crowd family is named `grndpe*`** ("ground people") — the same family as the Ring's `ogrnd2`.
+   Searching for it finds **52 placed instances**, at lapdists 51, 135, 229, 236, 253, 558, 587, 1041,
+   1094, 1124…, nearly all `fate=mesh`. One is `fate=dropped` at lat 13.2 m — which is precisely the
+   "nearest crowd 13.2 m" figure E72-S2 recorded.
+3. **Capturing at those lapdists in COCKPIT view still showed nothing** — and that was the real clue.
+
+### ⭐ The chase view settles it
+
+The same lapdists in chase view show **a populated grandstand at s=253 and crowd rows along the right
+at s=1094**. The crowds render correctly. What hid them is native's own cockpit.
+
+Using E74-S10's temporal-invariance segmentation (cockpit = pixels static across three points on the
+lap, largest component touching the bottom edge):
+
+| | cockpit occupies |
+|---|---|
+| **gold** | **38.0 %** of frame |
+| **native** | **49.4 %** of frame |
+
+⭐ **Native's cockpit blocks about 30 % more of the driver's view than gold's.** That is no longer just
+a cosmetic complaint about dial placement — it **hides trackside content that is present and correct**,
+and it degrades every parity judgement made from the cockpit view.
+
+### Cross-item consequence
+
+E74's D4 (cockpit obstruction) and E74-S10's finding that the dial cluster sits ~1.8 wheel-radii too
+high are the same defect seen from two directions, and this sprint shows it has a cost beyond the
+dials: **content parity assessed from the cockpit view will under-report what the track actually
+has.** Any future "X is missing" claim from a cockpit capture must be re-checked in chase view before
+it is believed — as this one had to be.

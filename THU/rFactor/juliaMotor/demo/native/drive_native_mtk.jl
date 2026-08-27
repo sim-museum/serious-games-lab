@@ -2150,11 +2150,11 @@ let objnames=Set{String}()
         # every instance with the fate the render filters gave it -- search that directly. It
         # distinguishes "never placed in the track data" from "placed and dropped", which need
         # entirely different fixes. JM_OBJFIND=pit|tower|grand
-        let pat = Regex(get(ENV,"JM_OBJFIND",""), "i")
+        let pat = Regex(replace(get(ENV,"JM_OBJFIND",""), "," => "|"), "i")
             hits = [i for i in OBJINSTS if occursin(pat, String(i[1]))]
             println("== JM_OBJFIND /", get(ENV,"JM_OBJFIND",""), "/i -- ", length(hits), " placed instances ==")
             if isempty(hits)
-                println("   (none placed -- not in this track's placement list at all)")
+                println("(none matched -- either not placed, OR the PATTERN did not match: it is a REGEX, so use pit|tower|grand. E72-S10: commas are now accepted as alternation, but a pattern that cannot match is indistinguishable from an absent object -- check a name you KNOW is placed before trusting a null.)")
             else
                 for h in hits[1:min(end,20)]
                     hr = JuliaMotor.hat(TRKSURF, Float64(h[2]), Float64(h[3]))
