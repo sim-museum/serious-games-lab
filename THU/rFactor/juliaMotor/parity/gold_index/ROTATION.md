@@ -41,3 +41,11 @@ the footprint census) **works on Spa and fails on Monza and Watkins**:
 recognised all along; the bucket half-width (±3 m) was too thin, so buckets could hold only the
 narrow `groove` racing-line strip. Default widened to ±12 m; Monza 0.6 → **11.6 m**, Watkins
 3.7 → **10.1 m**, Spa 8.2 → 8.5 m (barely moves — the control that says it is a fix, not a fudge).
+
+
+## Cross-track: missing trackside structures (2026-08-26)
+
+The PO's E76 (Nürburgring objects deleted) is **not Ring-specific**. Checked every track's S/F:
+Nürburgring **severe**, Zandvoort **severe**, Watkins **pit building absent**, Spa and Monza
+populated. Three of five affected. See `missing_structures.md` — next step is running the scenery
+census on Watkins and Zandvoort to see whether they share the Ring's drop mechanism.
