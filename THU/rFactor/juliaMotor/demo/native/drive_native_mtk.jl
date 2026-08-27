@@ -1853,8 +1853,42 @@ let objnames=Set{String}()
     # built to fade FLAT panels seen edge-on; on the E65 real folded tree MESHES it fades whole
     # forest walls with view angle.  Mesh-path trees (MONZA/WATGLEN) draw un-grazed — a folded
     # strip has no edge-on smear to hide.  JM_GRAZE_MESH=1 restores the old fade for A/B.
+    # E73-S9: FOOTPRINT grounding. E73-S7 traced the Monza edgez regression to single-point
+    # grounding: `ploz` samples the terrain at the object's ORIGIN and applies that one height to the
+    # whole object, so a 19 m forest strip whose origin sits over high ground is lifted bodily and
+    # its far end overhangs the road as a canopy. The same shape of error has now appeared three
+    # times (E71-S8 origin-vs-footprint, E73-S7 grounding, E69-S5 on-road test), always because a
+    # single point was asked to describe an extended object.
+    # Sample the ground across the object's own FOOTPRINT and take a low quantile, so no part of a
+    # long object hovers. JM_FPGROUND=1 enables; JM_FPGROUND_Q sets the quantile (0 = lowest point,
+    # 0.5 = median). Default quantile 0.15 — near the low end without chasing a single outlier.
+    FPGROUND = get(ENV,"JM_FPGROUND","0") != "0"
+    FPQ      = parse(Float64, get(ENV,"JM_FPGROUND_Q","0.15"))
+    plozfp(i) = begin
+        base = ploz(i)
+        vs = get(lverts, i.name, nothing)
+        (!FPGROUND || vs === nothing || isempty(vs)) && return base
+        th = -Float64(i.yaw) + Float64(objyawfix(i.name)); c, sn = cos(th), sin(th)
+        zs = Float32[]
+        for (lx, lz) in vs
+            rx =  lx*c + lz*sn; rz = -lx*sn + lz*c
+            px = Float32(i.x) + Float32(rx); py = Float32(i.y) - Float32(rz)
+            # E73-S9b: sample the FULL grounding function, not just groundz. First attempt sampled
+            # groundz alone — which returns "off the HAT" for precisely the objects edgez exists to
+            # place, so every sample failed, plozfp fell back to the origin height, and the arm was
+            # byte-identical to no fix at all (C vs B = 0.74% / 0.02%, at the noise floor). The A/B
+            # caught it only because a fix that changes nothing is as suspicious as one that changes
+            # everything.
+            gz = groundz(px, py)
+            gz <= -900f0 && (gz = edgez(px, py))
+            gz > -900f0 && push!(zs, gz)
+        end
+        length(zs) < 3 && return base
+        sort!(zs)
+        zs[max(1, min(length(zs), ceil(Int, FPQ*length(zs))))]
+    end
     graze_mesh = get(ENV,"JM_GRAZE_MESH","0") != "0"
-    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, ploz(i), -i.y]) * Render.roty(Float32(-i.yaw + objyawfix(i.name))), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), ploz(i), Float32(-i.y)), lowercase(i.name))
+    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(-i.yaw + objyawfix(i.name))), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
                           !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
     # E15: SOLID trackside objects the car can hit — (physics x, z, collision radius m).  Buildings,

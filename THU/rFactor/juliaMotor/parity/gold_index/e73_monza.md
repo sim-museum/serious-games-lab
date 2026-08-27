@@ -327,3 +327,58 @@ that this is a fix and not a thumb on the scale. Its maxima are also sane (12.5 
 at **~11 m**. Two independent methods agreeing makes this a track defect rather than an artifact —
 but the gold figure is a single earlier measurement and should be re-derived from the gold video
 before anything is widened. Logged to **E71**, not acted on here.
+
+---
+
+## E73-S9 — footprint grounding built; it does NOT fix the regression, and gold confirms the gate is right
+
+E73-S7 concluded the Monza `edgez` regression came from **single-point grounding**: `ploz` samples the
+terrain at an object's ORIGIN and applies that one height to the whole object, so a long forest strip
+gets lifted bodily. S9 built the fix that theory implies and tested it.
+
+### The fix: `JM_FPGROUND`
+
+Sample the terrain across the object's own **footprint** (the decimated local vertex list already used
+by `JM_FOOTPRINT`) and take a low quantile, so no part of a long object hovers.
+
+**First implementation silently did nothing.** It sampled `groundz` only — which returns "off the HAT"
+for precisely the objects `edgez` exists to place — so every sample failed, `plozfp` fell back to the
+origin height, and the arm was effectively identical to no fix:
+
+```
+s=3000   NULL 0.43%   regression 14.81%   with "fix" 14.57%   fix-vs-regression 0.74%
+```
+
+Caught only because **a fix that changes nothing is as suspicious as one that changes everything**.
+Corrected to sample the full grounding path (`groundz`, falling back to `edgez`), it engages properly —
+16.20 % different from the regression arm at s=3000.
+
+### ⚠️ But it does not fix the regression
+
+| viewpoint | null | regression (B vs A) | with footprint grounding (D vs A) |
+|---|---|---|---|
+| s=3000 | 0.43 % | 14.81 % | **19.49 %** |
+| s=1042 | 0.14 % | 11.23 % | 10.01 % |
+
+And the picture is unambiguous: the dark canopy overhanging the road is **still there**. Footprint
+grounding changes the scene but does not remove the defect.
+
+⭐ **So E73-S7's diagnosis is refuted.** Single-point grounding is a real weakness — it is the same
+shape of error as E71-S8 and E69-S5, and the capability is worth having — but it is **not the cause of
+this regression**. Three sprints have now proposed a mechanism for this canopy (S6 banking, S7
+single-point grounding) and both have been eliminated by building them and measuring.
+
+### ⭐ Gold decides the direction, and the gate is correct
+
+Before writing this off I checked whether the "regression" might be **buried forest emerging** — Monza
+sits in a park, so dense trees are plausible, and an object at 6.3 m could be under the terrain while
+9.1 m brings it into view. That would have made the baseline the defect.
+
+**Gold refutes it.** The gold Monza cockpit video shows a treeline of *moderate height with open sky
+above it*, closely matching the **baseline**; the nearest-march arm's canopy overhanging the road
+matches nothing in gold. The gate stays — now justified by the oracle rather than by a pixel
+percentage.
+
+`JM_FPGROUND` ships **default OFF**: it is unproven, and it changes 10–19 % of the frame. It is kept
+because the origin-vs-footprint weakness is real and this is the machinery to address it when a case
+is found that it actually fixes.
