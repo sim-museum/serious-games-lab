@@ -777,6 +777,7 @@ function load_dds(b)
     end
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_REPEAT); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_REPEAT)
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR)
+    set_anisotropy()
     aniso=Ref{Float32}(0f0); glGetFloatv(GLenum(0x84FF), aniso)
     aniso[]>1 && glTexParameterf(GL_TEXTURE_2D, GLenum(0x84FE), min(aniso[],16f0))
     tex[]
@@ -807,6 +808,7 @@ function upload_rgba(w, h, rgba)
     glGenerateMipmap(GL_TEXTURE_2D)
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_REPEAT); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_REPEAT)
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR)
+    set_anisotropy()
     glTexParameterf(GL_TEXTURE_2D, GLenum(0x8501), 0f0)   # GL_TEXTURE_LOD_BIAS: neutral (any sharpen shimmers GPL sign text at distance)
     aniso=Ref{Float32}(0f0); glGetFloatv(GLenum(0x84FF),aniso)
     aniso[]>1 && glTexParameterf(GL_TEXTURE_2D,GLenum(0x84FE),min(aniso[],16f0))
@@ -1163,6 +1165,42 @@ end
 """Build a camera-facing billboard Item for a texture name → (Item, texW, texH) or
 nothing.  Unit quad: x∈[-0.5,0.5], y∈[0,1] (stands on the ground), z=0.  Normal points
 UP so the sprite is lit bright (not darkened by a facing-the-camera Lambert term)."""
+# E72-S9 (E68-W7, the PO's guardrail "z-fighting"): both surviving mechanisms for that report are
+# eliminated — coincident faces (1 duplicate in 2436 rail tris at 2 cm binning, E72-S3) and depth
+# precision (reversed-Z + 32F depth landed 2026-06-17, nearly two months BEFORE the 2026-08-09
+# report). What remains for long thin roadside geometry seen at a grazing angle is TEXTURE
+# ALIASING, which strobes frame to frame and reads exactly like z-fighting. Trilinear alone cannot
+# fix it: a guardrail's footprint in texture space is extremely anisotropic, so an isotropic mip
+# choice is either blurred or aliased, never right. Anisotropic filtering is the standard cure and
+# was simply never enabled here. JM_ANISO=1 disables (0/1 = off), default 16.
+const ANISO = parse(Float32, get(ENV,"JM_ANISO","16"))
+const GL_TEXTURE_MAX_ANISOTROPY_EXT = 0x84FE
+const ANISO_REPORTED = Ref(false)
+function set_anisotropy()
+    ANISO > 1f0 || return
+    # Do NOT swallow the outcome: E76-S5 lost a whole sprint to a `catch` that hid why meshes were
+    # missing. Set it, then READ IT BACK, and say once what the driver actually accepted.
+    err = false
+    try
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, ANISO)
+    catch e
+        err = true
+        ANISO_REPORTED[] || println("  [aniso] glTexParameterf THREW: ", typeof(e))
+    end
+    if !ANISO_REPORTED[]
+        ANISO_REPORTED[] = true
+        got = Float32[0f0]; mx = Float32[0f0]
+        try
+            glGetTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, got)
+            glGetFloatv(0x84FF, mx)          # GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT
+        catch
+        end
+        println("  [aniso] requested ", ANISO, " → texture reports ", got[1],
+                "   (driver maximum ", mx[1], ")", err ? "  [SET FAILED]" : "")
+        flush(stdout)
+    end
+end
+
 function build_billboard(texname, idx::GPLTex)
     r = tex_rgba(idx, texname); r === nothing && return nothing
     tid = upload_rgba(r[1], r[2], r[3])

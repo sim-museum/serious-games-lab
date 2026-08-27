@@ -272,3 +272,67 @@ E72-S7 shipped this default-on having checked **one** other track, and flagged t
 outstanding. Two of the three were fine; the third was not. **The flag was the useful part** — had it
 been recorded as "verified" rather than "one track checked, three outstanding", the Monza canopy
 would have shipped and been found by the PO instead.
+
+---
+
+## E72-S9 — E68-W7 (guardrail "z-fighting"): all three candidate mechanisms are now eliminated
+
+W7 has been carried since 2026-08-09 with "re-scope away from dedup" as its next step. S9 takes the
+three mechanisms that could produce it and eliminates each on evidence.
+
+### 1. Coincident faces — refuted (E72-S3, re-confirmed)
+
+`JM_RAILDIAG` bins rail triangles by centroid at **2 cm** and by area, and finds **1 duplicate in
+2436**. Two rails stacked within 2 cm do not exist, so duplicate removal was never the cure — which
+is what S3 concluded and why W7 needed re-scoping.
+
+### 2. Depth precision — already mitigated BEFORE the report
+
+The renderer uses **reversed-Z** (`perspective_revz`, near→1/far→0) with `glClipControl(ZERO_TO_ONE)`,
+`glDepthFunc(GEQUAL)`, `glClearDepth(0)` and a **`GL_DEPTH_COMPONENT32F`** buffer — verified present in
+the shipping driver's main pass, not just in the older `drive_native.jl`. Its commit message reads
+*"the complete cure for distant z-fight strobe"*.
+
+⭐ **That landed 2026-06-17. The PO's report is 2026-08-09** — nearly two months later. So the fix was
+already active when the artifact was seen, and depth precision cannot be the explanation either.
+Checking the dates was worth more than any further experiment on this hypothesis.
+
+### 3. Texture aliasing — enabled, verified active, and it changes nothing measurable
+
+For long thin roadside geometry at a grazing angle, trilinear filtering cannot win: the footprint in
+texture space is extremely anisotropic, so an isotropic mip choice is either blurred or aliased. That
+strobes frame to frame and reads exactly like z-fighting. **Anisotropic filtering had never been
+enabled here at all** — so it was a real gap regardless of W7.
+
+Enabled (`JM_ANISO`, default 16) and **read back rather than assumed**:
+
+```
+[aniso] requested 16.0 → texture reports 16.0   (driver maximum 16.0)
+```
+
+The set succeeds at the driver's maximum. But the image barely moves:
+
+| region | aniso off | aniso 16 | change |
+|---|---|---|---|
+| far road (most grazing) | 2.872 | 2.889 | **+0.6 %** |
+| mid road | 1.796 | 1.770 | −1.5 % |
+| near road | 2.232 | 2.231 | −0.0 % |
+
+Guardrail viewpoints changed **0.18 % / 0.26 %** of pixels — at the noise floor. The likely reason is
+that **GPL's source textures are tiny** (64–128 px), so there is very little detail for anisotropy to
+recover; the mip chain is already near-flat.
+
+**Shipped anyway**, because it is a standard filtering mode, verified active, costs nothing measurable,
+and is correct for grazing-angle surfaces in general. Its benefit here is **unmeasured**, and that is
+stated rather than implied — `JM_ANISO=1` disables it.
+
+Note the readback exists because of E76-S5: a `catch` that swallowed its reason cost a whole sprint
+there. Here the same shape of code would have let "no effect" mean either "no benefit" or "the call
+silently failed", and those need opposite responses.
+
+### ⚠️ Consequence: W7 needs the PO, not another mechanism
+
+Three mechanisms, three eliminations, and four guardrail captures showing clean rails. Continuing to
+test mechanisms blind is now the wrong move. **W7 should go back to the PO for a pointer** — which
+corner, which lap, and ideally a still — or be re-derived from the gold-vs-native video at a named
+location. Recorded as blocked on the PO rather than left open as if work remained.
