@@ -493,7 +493,30 @@ original justification.
 
 ---
 
-## E69-S11 (cross-track) — exposure measured on a neutral reference; the Ring is 35 % too bright
+## ⚠️ E69-S11 — WITHDRAWN TWICE. Do not act on the numbers below.
+
+> **E72-S12** withdrew this section: the gold frames were **nintendo** views and the native frames
+> **chase** views, so the table compared two different sources *and* two different camera positions.
+> Redone with matched views, the Ring's headline **+35 % became +2 %**.
+>
+> **E72-S13** then withdrew E72-S12's replacement table as well. The asphalt mask
+> (`sat<22 && 60<lum<200`) is **not exposure-invariant**: applying a larger multiplier moved Monza
+> from −7 % to −41 %, which a valid metric cannot do. There is currently **no trusted per-track
+> exposure figure**, and `GRADE_NURB` must not be changed on this evidence.
+>
+> Both retractions were recorded in `e72_watkins.md` and neither reached this file, so the section
+> below sat here for three sprints reading as live, actionable guidance — with a named next step
+> ("correcting `GRADE_NURB` downward is a single per-track change") and a dependent one
+> ("E70-S7's billboard cyan should be re-examined **after** it"). The rotation returns to this
+> document by track, not by topic, so a cross-track retraction filed under Watkins was never going
+> to be seen by whoever picked Zandvoort up next. **A retraction has to land in every document that
+> states the claim.**
+>
+> The text is kept, struck through in effect, because the *method* discussion at the end (n = 1 is
+> not a measurement; the foliage÷asphalt ratio is not a cross-track constant) remains sound and is
+> what makes the failure legible.
+
+## ~~E69-S11 (cross-track) — exposure measured on a neutral reference; the Ring is 35 % too bright~~
 
 E70-S7 read native's Ring foliage as "markedly brighter and bluer" than gold's and offered two
 explanations. S11 tests them with a measure that needs no location matching: **asphalt is grey

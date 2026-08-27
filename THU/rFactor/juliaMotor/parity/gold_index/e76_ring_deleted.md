@@ -729,3 +729,12 @@ Two distinct problems, and separating them is the value here:
 a constant tuned to make one thing look right while an underlying error remains costs more than it
 saves. The next sprint should measure the Ring's overall exposure against gold first, then re-examine
 the billboards against a corrected baseline.
+
+> **E69-S16 note — that measurement has since been made, and (2) did not survive it.** E72-S12
+> compared matched views and found the Ring's exposure **+2 %**, not the +35 % E69-S11 reported from
+> mismatched sources; E72-S13 then withdrew even the replacement table as resting on a metric that is
+> not exposure-invariant. So there is no measured scene-wide Ring exposure error to explain the blue
+> cast, and `GRADE_NURB` should not be touched on this evidence. **The billboard cyan (1) is now the
+> whole of the open question**, and the "corrected baseline" this paragraph waits for does not exist
+> and is not needed. Recorded here so the next reader does not re-run a measurement that has already
+> been made twice and retracted twice.

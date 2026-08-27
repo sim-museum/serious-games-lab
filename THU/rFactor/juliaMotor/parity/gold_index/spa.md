@@ -675,6 +675,30 @@ survivor, so closing the rest is enumeration rather than investigation.
 > plausible. The general mechanism is real and worth having; the specific object it was argued from
 > was the wrong example.
 
+> ### E69-S16: the footprint change checked on the other tracks
+>
+> E71-S16 shipped a change to `lverts` and measured it on **Spa only**. Run on the others:
+>
+> | track | intruders before | after | on the asphalt (<4.1 m) |
+> |---|---|---|---|
+> | Spa | 108 | **105** | 18 |
+> | Monza | 9 | **8** | 4 — `bar`×2 (2.7 m), `trees`×2 (3.4 m) |
+> | Zandvoort | 5 | **5** | 3 — `sign050/100/150` (3.1 m) |
+>
+> **No track gained an intruder**; Monza lost one more false positive. Zandvoort is unchanged and
+> still reports the same three families recorded earlier (`sign`, `bushes`, `ppl_l`), so the change
+> is inert where nothing bundles ground faces — which is the behaviour a footprint fix should have.
+>
+> The corridor correction also applies across tracks: of Monza's 8 only 4 are within the filter's
+> 4.1 m, and of Zandvoort's 5 only 3. **Watkins Glen was not run** — its recorded count is 1,
+> marginal at 5.4 m, i.e. outside 4.1 m either way, so it is the least informative and was skipped
+> rather than measured. Saying so because an unrun track and a clean one look identical in a table.
+>
+> ⚠️ One thing this surfaces rather than settles: Zandvoort's three distance-marker signs sit at
+> **3.1 m**, inside the 4.1 m asphalt half-width, while the record calls them boards that "belong
+> beside the road". Both cannot be right. `JM_ASPHALT_HALFW` was calibrated on **Spa** (E71-S7) and
+> is applied to every track; Zandvoort's road may simply be narrower. Not investigated here.
+
 ### Other tracks are essentially clean
 
 - **Monza** — 9 render, of which `bar01` (12 points, 2.7 m) and `trees23` (5 points, 3.4 m) are genuine;
