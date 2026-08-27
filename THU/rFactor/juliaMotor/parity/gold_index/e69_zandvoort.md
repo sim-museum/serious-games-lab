@@ -433,3 +433,60 @@ remained, and said so at the time — correctly, as E74-S8 later showed. This co
 kind: it is **measured against the oracle on three tracks, cross-validated on tracks it was not fitted
 to, and applied after both competing explanations (ambient fill, texture decode) were eliminated by
 experiment.** That is the difference between a white balance and a fudge factor.
+
+---
+
+## E69-S9 — 41 % of Zandvoort's crowd rows are dropped; restoring them changes almost nothing
+
+Applying E72-S10's lesson (check content in chase view, and find where objects *are* before judging),
+Zandvoort places **97 crowd instances** — and **40 of them (41 %) are dropped**. That looked like
+over-filtering of exactly the content the PO asks for.
+
+### Attribution: not my filter
+
+`JM_ONROAD_FP` 1 → 0 leaves the tally **identical** (mesh=57, dropped=40). E69-S5's footprint filter
+accounts for **none** of the crowd drops; they are all `perp_crowd` (E68-S1), which removes rows whose
+yaw sits 60–120° from the track perpendicular as *"GPL cross-placement garbage — real fence crowds run
+PARALLEL"*.
+
+### ⚠️ The instrument nearly produced a false headline
+
+`JM_OBJFIND` caps its listing at 20 rows. From those 20, 11 were dropped — **55 %**, which extrapolated
+to a much worse picture than the truth (41 %). A truncated sample cannot measure a rate. The tool now
+prints **all matches by fate** regardless of the listing cap.
+
+### The orientation histogram is bimodal — and cannot by itself say which family is wrong
+
+`JM_PERPDIAG` (new), relative yaw of all 96 crowd rows:
+
+```
+0-15°   13 ####    75-90°   14 #####   150-165°  7 ###
+15-30°   3 #       90-105°  13 ####    165-180° 11 ####
+30-45°   5 ##     105-120°   7 ##
+45-60°   8 ###    120-135°   5 ##
+```
+
+Two orthogonal families, and the 60–120° window removes one of them (38 rows). **Whether that family
+is the garbage depends on whether `yaw` denotes the row's long axis or its facing normal**, and the
+histogram cannot distinguish those. I did not guess — a row facing the track and a row lying along the
+track differ by exactly 90°, so the wrong reading would have had me deleting the real crowds and
+keeping the debris.
+
+### Settled by looking, not by reasoning
+
+`JM_NO_PERP=1` (new) restores every dropped row. Captured at three viewpoints where dropped and kept
+rows sit within 40 m of each other:
+
+| viewpoint | frame changed by restoring 40 rows |
+|---|---|
+| s=1470 | 0.24 % |
+| s=1500 | 0.16 % |
+| s=3250 | 0.15 % |
+
+At or below the noise floor — and in **both** arms the crowd rows render correctly, running parallel
+along the track. So the kept family is the parallel one, E68-S1's filter is doing what it claimed, and
+**the 41 % headline is not a defect on this evidence.**
+
+A negative result, but a load-bearing one: it clears a filter that removes nearly half of one content
+class the PO explicitly asked about, and it does so by measurement rather than by trusting the
+original justification.

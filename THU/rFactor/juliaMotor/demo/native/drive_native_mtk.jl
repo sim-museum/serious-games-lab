@@ -1838,7 +1838,31 @@ let objnames=Set{String}()
     # PERPENDICULAR (relyaw ≈ ±90°) within ~18 m of the road at exactly the PO's spots (Tarzan
     # ~130–520, east loop ~3100, Bos Uit ~3950–4035; Watkins big bend ~1492).  A perpendicular
     # row near the road can only be GPL cross-placement garbage — real fence crowds run PARALLEL.
-    perp_crowd(i) = standcrowd(i.name) && begin
+    # E69-S9: perp_crowd drops 40 of Zandvoort's 97 crowd instances (41%). E68-S1 justified it as
+    # "a perpendicular row near the road can only be GPL cross-placement garbage - real fence crowds
+    # run PARALLEL". That is sound IF our yaw convention matches the data's: if it is off by 90 deg we
+    # would be deleting the parallel rows and keeping the garbage. Print the relative-yaw histogram so
+    # the convention is checked rather than assumed. JM_PERPDIAG=1.
+    if get(ENV,"JM_PERPDIAG","") != ""
+        rys = Float64[]
+        for i in insts
+            standcrowd(i.name) || continue
+            hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
+            hr.found || continue
+            push!(rys, abs(rad2deg(rem2pi(Float64(i.yaw) - atan(-hr.perp[2], hr.perp[1]), RoundNearest))))
+        end
+        if !isempty(rys)
+            println("== JM_PERPDIAG: crowd row yaw RELATIVE to the track perpendicular (", length(rys), " rows) ==")
+            println("   0deg = row runs ALONG the perpendicular (crosses the track) ; 90deg = row runs PARALLEL to the track")
+            for lo in 0:15:165
+                c = count(r -> lo <= r < lo+15, rys)
+                println("   ", rpad(string(lo,"-",lo+15,"deg"), 12), rpad(c,6), "#"^min(60, c))
+            end
+            println("   dropped by the 60-120deg window: ", count(r -> 60.0 <= r <= 120.0, rys))
+        end
+        flush(stdout)
+    end
+    perp_crowd(i) = get(ENV,"JM_NO_PERP","0") == "0" && standcrowd(i.name) && begin
         hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
         if hr.found && abs(hr.lateral) < ROAD_HALFW + 12.0
             ry = abs(rad2deg(rem2pi(Float64(i.yaw) - atan(-hr.perp[2], hr.perp[1]), RoundNearest)))
@@ -2150,7 +2174,7 @@ let objnames=Set{String}()
         # every instance with the fate the render filters gave it -- search that directly. It
         # distinguishes "never placed in the track data" from "placed and dropped", which need
         # entirely different fixes. JM_OBJFIND=pit|tower|grand
-        let pat = Regex(replace(get(ENV,"JM_OBJFIND",""), "," => "|"), "i")
+        let pat = _ofre = Regex(replace(get(ENV,"JM_OBJFIND",""), "," => "|"), "i")
             hits = [i for i in OBJINSTS if occursin(pat, String(i[1]))]
             println("== JM_OBJFIND /", get(ENV,"JM_OBJFIND",""), "/i -- ", length(hits), " placed instances ==")
             if isempty(hits)
@@ -2176,6 +2200,15 @@ let objnames=Set{String}()
                 length(hits) > 20 && println("   ... ", length(hits)-20, " more")
             end
             flush(stdout)
+        end
+        # E69-S9: the listing is capped, so a truncated sample cannot be used to judge how much is
+        # being dropped. Summarise EVERY match by fate.
+        let tot = Dict{Symbol,Int}()
+            for oi in OBJINSTS
+                occursin(_ofre, oi[1]) || continue
+                tot[oi[5]] = get(tot, oi[5], 0) + 1
+            end
+            println("   -- all matches by fate: ", join(["$(k)=$(v)" for (k,v) in sort(collect(tot), by=x->-x[2])], "  "))
         end
     end
     if get(ENV,"JM_OBJDIAG","")!=""
