@@ -1831,6 +1831,30 @@ let objnames=Set{String}()
         for (tex,n,zmn,zmu,zmx) in rows; println("   ", rpad(tex=="" ? "<none>" : tex,14), rpad(n,7), " zmin=", rpad(round(zmn,digits=1),8), "zmean=", rpad(round(zmu,digits=1),8), "zmax=", round(zmx,digits=1)); end
         flush(stdout)
     end
+    if get(ENV,"JM_OBJFIND","") != ""
+        # E72-S4: does a named object EXIST in the placement list, and what happened to it?
+        # Watkins' archive holds pit.3do / tower1.3do yet no pit building renders, and JM_OBJDIAG's
+        # lists are truncated (top 25 / top 22) so absence from them proves nothing. OBJINSTS carries
+        # every instance with the fate the render filters gave it -- search that directly. It
+        # distinguishes "never placed in the track data" from "placed and dropped", which need
+        # entirely different fixes. JM_OBJFIND=pit|tower|grand
+        let pat = Regex(get(ENV,"JM_OBJFIND",""), "i")
+            hits = [i for i in OBJINSTS if occursin(pat, String(i[1]))]
+            println("== JM_OBJFIND /", get(ENV,"JM_OBJFIND",""), "/i -- ", length(hits), " placed instances ==")
+            if isempty(hits)
+                println("   (none placed -- not in this track's placement list at all)")
+            else
+                for h in hits[1:min(end,20)]
+                    hr = JuliaMotor.hat(TRKSURF, Float64(h[2]), Float64(h[3]))
+                    println("   ", rpad(h[1],14), "fate=", rpad(String(h[5]),9), "solid=", rpad(h[6],7),
+                            hr.found ? string("lapdist=", rpad(round(hr.lapdist,digits=0),9),
+                                              "lat=", round(hr.lateral,digits=1)) : "off-ribbon")
+                end
+                length(hits) > 20 && println("   ... ", length(hits)-20, " more")
+            end
+            flush(stdout)
+        end
+    end
     if get(ENV,"JM_OBJDIAG","")!=""
         # E71-S5: is GPL's PER-INSTANCE SCALE being honoured?  The PO reports that the Spa houses
         # standing on the road are "often also scaled up compared to gold standard", and the OBJECTS

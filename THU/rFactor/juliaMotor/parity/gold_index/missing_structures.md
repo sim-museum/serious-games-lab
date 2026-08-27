@@ -81,3 +81,50 @@ has measured Watkins' vegetation against gold. Logged, not claimed.
 Add a placed-name search to the GPL object pipeline (mirroring `JM_SCENEFIND`) and ask directly
 whether `pit`/`tower1` are placed at Watkins. That distinguishes **"not placed in the track data"**
 from **"placed and dropped by a filter"** — which need entirely different fixes.
+
+---
+
+## E72-S4 — ⚠️ CORRECTION: Watkins' pit building is NOT missing. It is placed 28–42 m off the track.
+
+Added a placed-name search to the GPL pipeline (`JM_OBJFIND`), reading `OBJINSTS` — every instance
+with the fate the render filters gave it. Result:
+
+| object | fate | lapdist | lateral |
+|---|---|---|---|
+| `newpit` | **mesh (kept)** | 3651 | **−41.9 m** |
+| `tower1` | **mesh (kept)** | 578 | **−26.9 m** |
+| `pitfill2` | mesh (kept) | 3551 | −28.7 m |
+| `pitgrnd1` | mesh (kept) | 3604 | −32.4 m |
+| `grand`, `grandl` ×3 | mesh (kept) | — | off-ribbon |
+
+**Every pit structure is placed and kept.** None is dropped by any filter. So the earlier verdict —
+*"the building is absent from the render"* — was wrong, and it was wrong for a reason worth naming:
+it rested on **absence from two truncated diagnostic lists** (tallest 25, highest 22). Absence from a
+top-N list is not absence.
+
+### What is actually wrong
+
+They sit **28 to 42 metres from the centreline**, all on the same side. Gold shows the Watkins pit
+and timing building **immediately beside the track**, close enough to read the people on its
+balconies. At 28–42 m it is far back across the grass — which is exactly what the native S/F frame
+shows.
+
+Also note `tower1` sits at **lapdist 578**, nowhere near start/finish, while gold's tower is at the
+pit straight.
+
+So this is a **placement** defect, not a loading one — and it therefore has nothing to do with the
+Ring's billboard problem, despite both presenting as "the buildings are gone". **Two tracks, two
+different causes, one symptom.**
+
+### ⚠️ What is not yet established
+
+- Whether −28 to −42 m is *wrong* or merely *further than gold's camera makes it look*. The lateral
+  sign convention has not been checked, so "on the wrong side" is possible and untested.
+- Whether Zandvoort's empty main straight is this same placement class or the Ring's loading class.
+  **It has not been checked, and the two need different fixes.**
+
+### Next
+
+Run `JM_OBJFIND` on Zandvoort for its grandstand/pit names. That splits the three affected tracks
+into "placement" and "loading" groups, which is the fork the whole cross-track investigation now
+turns on.
