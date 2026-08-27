@@ -511,13 +511,38 @@ function gpl_scenery(ztrk, datpack, ribbon)
     # kilometre is lined with crowds and hoardings that native simply does not have. Before hunting
     # filters, count what this loop is OFFERED versus what each rule removes. JM_SCENEDIAG=1.
     local n_offered=0; local n_treesrb=0; local n_nomesh=0; local n_kept=0
+    sprites = NamedTuple[]                                   # E76-S8: billboard-stub placements
     scene_names=Dict{String,Int}()
     for (nm,t) in pls
         n_offered += 1
         scene_names[nm] = get(scene_names,nm,0) + 1
         if startswith(nm,"treesrb"); n_treesrb += 1; continue; end   # forest-BACKDROP "paintings"
         mesh=getmesh(nm)
-        if (mesh===nothing || isempty(mesh)); n_nomesh += 1; continue; end
+        if (mesh===nothing || isempty(mesh))
+            n_nomesh += 1
+            # E76-S8: THE RING'S MISSING BILLBOARDS. E76-S5 instrumented this drop; the answer (S8)
+            # is that all 50 distinct failing objects PARSE FINE and carry 0 triangles — bush,
+            # strauch*/stree* (shrubs), deadtree, flagger (marshals). They are billboard STUBS: GPL
+            # draws them as camera-facing sprites from a texture, with no geometry to parse. The GPL
+            # object pipeline (Spa/Zandvoort/Watkins/Monza) has exactly that path — `isempty(full)`
+            # → billboard_stub → build_billboard. This Ring-specific loader never had one, so every
+            # such placement was silently dropped. That is why the Ring loads "184 groups" while Spa
+            # gets 1679 objects + 5132 billboards at a fifth the length.
+            # Record the placement here; the sprite ITEMS are built later, once TEXIDX exists.
+            tp = joinpath(tmp, "jm_nb_"*lowercase(nm)*".3do")
+            if isfile(tp)
+                try
+                    hh, ww, strs, aax = Render.billboard_stub(tp)
+                    M = placemat(t)
+                    sc = t[7] <= 0 ? 1.0 : t[7]
+                    push!(sprites, (name=nm, x=Float32(M[1,4]), y=Float32(M[2,4]), z=Float32(M[3,4]),
+                                    h=Float32(hh*sc), w=Float32(ww*sc), texs=strs,
+                                    yaw=Float32(t[4]), aax=Float32(aax)))   # for the static-panel path
+                catch
+                end
+            end
+            continue
+        end
         n_kept += 1
         if issprite(nm,mesh)
             nskip+=1
@@ -642,7 +667,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
         end
         flush(stdout)
     end
-    (hat, [Render.TrackPart(v, tex, (0.5f0,0.5f0,0.5f0)) for (tex,v) in groups])
+    (hat, [Render.TrackPart(v, tex, (0.5f0,0.5f0,0.5f0)) for (tex,v) in groups], sprites)
 end
 
 # ---- load geometry + physics: GPL track/car assets; handling = the MTK Lotus 49 (DriveRT) ----
@@ -746,12 +771,13 @@ else
     const RIBBON0  = GPLTrack.build_surface(ALIGNED, TERRAIN0)
     # GPL Nürburgring places its landmass/scenery as .dat sub-objects via 0x0E nodes;
     # load + place them so the road isn't floating over a void (Zandvoort has none).
-    SECTRI = Render.GPL3DO.Tri[]; SECPARTS = Render.TrackPart[]
+    SECTRI = Render.GPL3DO.Tri[]; SECPARTS = Render.TrackPart[]; RINGSPRITES = NamedTuple[]
     if NURB && isfile(joinpath(ZD, "nurburg.dat"))
         print("scenery… "); flush(stdout)
         dp = Render.GPLDat.parse_dat(joinpath(ZD, "nurburg.dat"))
-        SECTRI, SECPARTS = gpl_scenery(ZTRK, dp, RIBBON0)
-        print(length(SECPARTS), " groups / ", length(SECTRI), " tris… ")
+        SECTRI, SECPARTS, RINGSPRITES = gpl_scenery(ZTRK, dp, RIBBON0)
+        print(length(SECPARTS), " groups / ", length(SECTRI), " tris / ",
+              length(RINGSPRITES), " sprites… ")
     end
     const TRACKMESH = isempty(SECTRI) ? TRACKMESH0 :
         Render.GPL3DO.Mesh3DO([TRACKMESH0.tris; SECTRI], TRACKMESH0.textures,
@@ -1385,6 +1411,156 @@ if SKIDPAD || NURB
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]   # no collidable trackside objects on skidpad / Nürburgring (scenery baked in) — without this solid_hit()/solid_contact() throws UndefVarError on the first collision check
     global OBJINSTS = Tuple{String,Float32,Float32,Float32,Symbol,Bool}[]   # no placed objects here, but JM_SWEEP/JM_SPOT still need it defined to run the HAT/molasses checks
+    # E76-S8: THE RING'S MISSING BILLBOARDS.  The Ring does not use the GPL object pipeline below —
+    # it loads scenery through its own gpl_scenery(), which had no billboard path at all, so every
+    # placement whose .3do carries no geometry was silently dropped.  E76-S5 instrumented the drop
+    # and S8 read the answer: all 50 distinct failing objects PARSE FINE with 0 triangles — bush,
+    # strauch*/stree* (shrubs), deadtree, and flagger (marshals).  They are billboard STUBS, drawn
+    # by GPL as camera-facing sprites from a texture.  That is 1865 placements, and it is why the
+    # Ring loads "184 groups" while Spa gets 1679 objects + 5132 billboards at a FIFTH the length.
+    # Build them here with the same construction the object pipeline uses.  JM_RING_BB=0 reverts.
+    if !isempty(RINGSPRITES) && get(ENV,"JM_RING_BB","1") != "0"
+        RING_BB_HALFW = parse(Float64, get(ENV,"JM_RING_BB_HALFW","5.0"))
+        BB_MARKER_TEX = Set(["collision", "fake", "shadow", "lshad"])   # hull / placeholder markers, never artwork
+        RING_BB_WIDE  = parse(Float32, get(ENV,"JM_WIDE_PANEL","30"))   # same constant the object pipeline uses
+        local nbb=0; local notex=0; local onrd=0; local nwide=0
+        bbcache = Dict{String,Any}()
+        for sp in RINGSPRITES
+            # The on-road drop uses a RING-SPECIFIC half-width, measured rather than inherited.
+            # ROAD_HALFW is 9.0 m — a deliberately generous corridor tuned so the centreline-
+            # projection wobble through Watkins' esses doesn't read as "on grass". Applied here it
+            # dropped 847 of 1825 stubs. The lateral distribution (JM_RING_BB_DIAG) says why that is
+            # wrong: only 3 stubs sit within 3 m of the centreline and 6 within 4 m — the authors
+            # planted nothing on the racing surface — while the foliage band starts at p5 = 5.5 m and
+            # is dense by 7 m. A 9 m corridor is therefore not deleting objects "on the road", it is
+            # deleting the roadside treeline of a forest circuit ~8-9 m WIDE. 5.0 m drops 30 (1.6%),
+            # the ones genuinely over the asphalt, and keeps the verge. JM_RING_BB_HALFW overrides.
+            hr = JuliaMotor.hat(TRKSURF, Float64(sp.x), Float64(sp.y))
+            if hr.found && abs(hr.lateral) < RING_BB_HALFW; onrd += 1; continue; end
+            # E76-S8c: take the first texture that BUILDS, but never a non-visual marker. The tall
+            # stub families list their textures as e.g. "collision | stree8": `collision` is the
+            # collision-hull marker, and it resolves in the index, so a naive first-match binds every
+            # 14-24 m tree to it — which is what rendered the restored sprites as giants. `FAKE` is
+            # the same idea (an invisible placeholder); a stub with nothing but markers is dropped.
+            bb = get!(bbcache, lowercase(sp.name)) do
+                r = nothing
+                for tn in sp.texs
+                    lowercase(strip(tn)) in BB_MARKER_TEX && continue
+                    r = Render.build_billboard(tn, TEXIDX)
+                    r !== nothing && break
+                end
+                r
+            end
+            if bb === nothing; notex += 1; continue; end
+            item, tw, th = bb
+            w = sp.w > 0f0 ? sp.w : sp.h*tw/max(th,1f0)
+            # E76-S8d: a camera-facing quad is only meaningful for a NARROW sprite. `ogrnd2` is one
+            # placement 209.3 m wide and 25.1 m tall on the Grndpp1 ("ground people") sheet — swung
+            # to face the eye it becomes the giant crowd WALL towering over the fence, which is what
+            # the first capture showed. This is the same failure the object pipeline already names:
+            # panels wider than JM_WIDE_PANEL are never camera-faced, and on every track except
+            # Monza/Watkins its default is to drop them and let the horizon ring carry the backdrop.
+            # Apply that rule here rather than invent a second one. (The Ring's REAL crowds are
+            # people*/pplrow01, which carry geometry and come through the mesh path — E76-S7.)
+            if w > RING_BB_WIDE
+                # Not a sprite — but not rubbish either. ogrnd2 IS the start/finish crowd terrace
+                # (Grndpp1 = "ground people"), and dropping it leaves the PO's complaint unfixed:
+                # with it gone the billboards change 0.48% of the frame against a 0.24% null at S/F,
+                # i.e. nothing. Draw it the way the object pipeline draws wide strips — a STATIC
+                # panel at its authored yaw, not swung to face the eye. Same construction, same
+                # graze-fade, no wall. JM_RING_WIDE_DROP=1 reverts to dropping them.
+                if get(ENV,"JM_RING_WIDE_DROP","1") != "0"; nwide += 1; continue; end   # DEFAULT: drop — the static panel floats above the skyline (E76-S8e)
+                push!(STATICTREES, (item, (sp.x, sp.z, -sp.y), Float32(w), Float32(sp.h),
+                                    Float32(-(sp.yaw + sp.aax))))
+                nwide += 1
+                continue
+            end
+            push!(BILLBOARDS, (item, (sp.x, sp.z, -sp.y), Float32(w), Float32(sp.h)))
+            nbb += 1
+        end
+        if get(ENV,"JM_RING_BB_DIAG","") != ""
+            # Is a 9 m half-corridor right for a forest track ~8-9 m WIDE? Print the lateral
+            # distribution of the stubs so the threshold is measured, not assumed.
+            lats = Float64[]
+            for sp in RINGSPRITES
+                hr = JuliaMotor.hat(TRKSURF, Float64(sp.x), Float64(sp.y))
+                hr.found && push!(lats, abs(hr.lateral))
+            end
+            sort!(lats)
+            println("  == JM_RING_BB_DIAG: |lateral| of the ", length(lats), " on-ribbon stubs ==")
+            for q in (0.05,0.1,0.25,0.5,0.75,0.9)
+                println("     p", rpad(round(Int,100q),3), " = ", round(lats[max(1,ceil(Int,q*length(lats)))],digits=1), " m")
+            end
+            for edge in (3.0,4.0,5.0,6.0,7.0,9.0,12.0)
+                println("     |lat| < ", rpad(edge,5), " → ", count(<(edge), lats), " dropped")
+            end
+            # E76-S8b: the restored sprites render as GIANTS floating at fence height. Height comes
+            # from billboard_stub (mesh z-extent, else a 2.5 m human default) times the placement
+            # scale; the base is the authored z. Report both against the ground the renderer uses,
+            # so "too big" and "too high" are separated instead of guessed at.
+            hs = Float64[]; dz = Float64[]
+            for sp in RINGSPRITES
+                push!(hs, Float64(sp.h))
+                gh = JuliaMotor.hat3d(TERRAIN, Float64(sp.x), Float64(sp.y); ref=Inf)   # groundz is defined later
+                gh[3] && push!(dz, Float64(sp.z) - Float64(gh[1]))
+            end
+            sort!(hs); sort!(dz)
+            q(v,f) = v[max(1,ceil(Int,f*length(v)))]
+            println("     sprite HEIGHT  m : p10=", round(q(hs,0.1),digits=1), " p50=", round(q(hs,0.5),digits=1),
+                    " p90=", round(q(hs,0.9),digits=1), " max=", round(hs[end],digits=1))
+            println("     base ABOVE ground: p10=", round(q(dz,0.1),digits=1), " p50=", round(q(dz,0.5),digits=1),
+                    " p90=", round(q(dz,0.9),digits=1), " max=", round(dz[end],digits=1), "   (n=", length(dz), ")")
+            # per-name, for the biggest families
+            cnt = Dict{String,Int}(); hmax = Dict{String,Float64}()
+            for sp in RINGSPRITES
+                cnt[sp.name] = get(cnt,sp.name,0)+1
+                hmax[sp.name] = max(get(hmax,sp.name,0.0), Float64(sp.h))
+            end
+            tex1 = Dict{String,String}(); wmax = Dict{String,Float64}()
+            for sp in RINGSPRITES
+                tex1[sp.name] = isempty(sp.texs) ? "(none)" : first(sp.texs)
+                wmax[sp.name] = max(get(wmax,sp.name,0.0), Float64(sp.w))
+            end
+            println("     -- most-placed stub families (name, count, height, width, 1st texture) --")
+            for (nm,c) in sort(collect(cnt), by=x->-x[2])[1:min(end,12)]
+                println("        ", rpad(nm,14), rpad(c,6), rpad(string(round(hmax[nm],digits=1),"m"),8),
+                        rpad(string(round(wmax[nm],digits=1),"m"),8), tex1[nm])
+            end
+            seenn = Set{String}()
+            println("     -- ALL texture strings for the tall stubs --")
+            for sp in RINGSPRITES
+                (sp.h > 10 && !(sp.name in seenn)) || continue
+                push!(seenn, sp.name)
+                println("        ", rpad(sp.name,12), " → ", join(sp.texs, " | "))
+                length(seenn) >= 8 && break
+            end
+            println("     -- families whose texture looks like PEOPLE/CROWD --")
+            shown = Set{String}()
+            for sp in RINGSPRITES
+                tx = isempty(sp.texs) ? "" : lowercase(join(sp.texs," "))
+                (occursin("pp",tx) || occursin("people",tx) || occursin("zusch",tx) ||
+                 occursin("crowd",tx) || occursin("flag",tx) || occursin("mann",tx)) || continue
+                sp.name in shown && continue; push!(shown, sp.name)
+                println("        ", rpad(sp.name,12), rpad(string(round(sp.h,digits=1),"m"),8),
+                        rpad(string("w=",round(sp.w,digits=1)),9), rpad(cnt[sp.name],5), join(sp.texs," | "))
+            end
+            println("     -- every family taller than 8 m --")
+            shown2 = Set{String}()
+            for (nm,h) in sort(collect(hmax), by=x->-x[2])
+                h > 8 || break
+                nm in shown2 && continue; push!(shown2, nm)
+                println("        ", rpad(nm,12), rpad(string(round(h,digits=1),"m"),8), rpad(cnt[nm],5), tex1[nm])
+            end
+            println("     -- TALLEST families (these are what render as giants) --")
+            for (nm,h) in sort(collect(hmax), by=x->-x[2])[1:min(end,12)]
+                println("        ", rpad(nm,14), rpad(string(round(h,digits=1),"m"),8),
+                        rpad(cnt[nm],6), tex1[nm])
+            end
+        end
+        println("  E76-S8 Ring billboards: ", nbb, " placed, ", notex, " no texture, ", onrd,
+                " on-road, ", nwide, " wide → static panels")
+        flush(stdout)
+    end
 else
 const DATPACK = TRACKDAT     # trackside objects come from the track's own .dat (generic across tracks)
 const TMPOBJ = mktempdir()

@@ -323,3 +323,82 @@ scoping suggested.
 banks, or whether gold draws additional crowds from the terrain textures. **Do not promise the PO a
 full restoration on the strength of this** — the honest claim is that the crowds are present,
 loading, and almost certainly rendered wrong.
+
+---
+
+## E76-S8 — ✅ THE RING'S BILLBOARD PATH SHIPS (1773 placements restored) + the S/F crowd is a separate object
+
+E76-S5 identified the cause and named the fix: the Ring's own `gpl_scenery()` loader has no billboard
+path, so every placement whose `.3do` carries no geometry was dropped. S8 collected the evidence and
+implemented it.
+
+### The evidence (JM_MESHERR on the Ring)
+
+All **50** distinct failing object names report the *same* thing — **parsed OK, 0 raw triangles**:
+`BUSH`, `strauch*`/`stree*` (shrubs and trees), `deadtree`, `flagger` (marshals), `FAKE`. Not a
+parser fault, not scattered corruption, not missing archive entries: they are **billboard stubs**,
+which GPL draws as camera-facing sprites from a texture and which carry no faces by design. The
+count matches E76-S4 exactly: **1865 placements**.
+
+### What shipped
+
+`gpl_scenery()` now returns sprite placements alongside its triangles, and the Nürburgring branch
+builds them with the same construction the GPL object pipeline uses. **1773 placed, every one
+finding its texture.** Three rules were needed, each measured rather than assumed:
+
+**1. The on-road cull is Ring-specific (`JM_RING_BB_HALFW`, 5.0 m).** The shared `ROAD_HALFW` is
+9.0 m — deliberately generous so centreline wobble through Watkins' esses doesn't read as "on
+grass". Applied here it dropped **847 of 1825** stubs. The lateral distribution says why that is
+wrong:
+
+| percentile | \|lateral\| | | cutoff | dropped |
+|---|---|---|---|---|
+| p5 | 5.5 m | | < 3 m | 3 |
+| p25 | 7.1 m | | < 4 m | 6 |
+| p50 | 9.5 m | | < 5 m | **30** |
+| p90 | 20.3 m | | < 9 m | 847 |
+
+Only **3** stubs sit within 3 m of the centreline — the authors planted nothing on the racing
+surface. The foliage band *starts* at p5 = 5.5 m. A 9 m corridor on a forest circuit **~8–9 m wide**
+does not delete objects "on the road", it deletes the treeline. 5.0 m drops the 30 genuinely over
+the asphalt.
+
+**2. Never bind a sprite to a collision-hull texture.** The tall families list their textures as
+`collision | stree8`. `collision` *resolves in the texture index*, so a naive first-match bound every
+14–24 m tree to it — which is what rendered the first capture as giants. Markers (`collision`,
+`fake`, `shadow`, `lshad`) are skipped; a stub with nothing else is dropped (61, all `FAKE`).
+
+**3. A camera-facing quad is only meaningful for a NARROW sprite** — the `JM_WIDE_PANEL` rule the
+object pipeline already applies.
+
+### ⚠️ The PO's actual complaint is NOT yet fixed, and the honest measurement says so
+
+The PO reported crowds and buildings missing **shortly after the start/finish line**. With the wide
+panel dropped, the restored billboards change **0.48 % of the frame against a 0.24 % null control at
+S/F — i.e. nothing.** The vegetation came back; the crowds did not.
+
+⭐ The S/F crowd is **one object**: `ogrnd2`, a single placement **209.3 m wide × 25.1 m tall** on the
+`Grndpp1` ("ground people") sheet. It is the grandstand crowd terrace. Both flat-quad paths fail it:
+
+- **camera-facing** → swung to face the eye it becomes a 209 m **wall of giant spectators** towering
+  over the fence (the first capture);
+- **static authored-yaw panel** → it renders **floating above the skyline**.
+
+Neither is a tuning problem. A 209 × 25 m terrace is not a billboard in any orientation. Its `.3do`
+carries **vertices with no faces**, so the real fix is to **triangulate the stub's own SZYX vertex
+list into geometry** rather than substitute a quad — the same conclusion E65 reached for Monza's
+folded panoramas ("build the strip from the stub's REAL vertex geometry, as GPL draws it"). That is
+now the top E76 item, and it is a *content* fix worth more than any number of shrubs.
+
+Default is therefore to **drop** the wide panel (`JM_RING_WIDE_DROP=0` re-enables the static path for
+study). Shipping a wall or a sky-crowd to claim the PO's item would be worse than shipping neither.
+
+### Result
+
+| viewpoint | null control | scenery adds |
+|---|---|---|
+| s ≈ 400 (just after S/F) | 0.24 % | 0.48 % — vegetation only, crowds still absent |
+| s ≈ 900 | 0.06 % | 1.95 % |
+
+**1773 placements** of shrubs, trees and marshals restored across a 22.7 km lap that previously
+loaded 184 scenery groups and zero billboards.
