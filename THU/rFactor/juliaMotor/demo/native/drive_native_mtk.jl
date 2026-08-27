@@ -1780,6 +1780,24 @@ let objnames=Set{String}()
             end
             Float32(r)
         end
+        # E73-S11: a single ray is direction-BIASED. E73-S10 ranked 9 of 40 Monza off-HAT objects as
+        # moving >1 m purely because the nearest-centreline and lap-centroid rays reach different
+        # ground — for an object the HAT does not cover, "the ground height" is not defined and one
+        # ray is just a guess that happens to point somewhere. Sample a RING of directions at growing
+        # radius and take the LOWEST hit at the first radius that finds any: no direction is
+        # privileged, and a backdrop object cannot be perched on whatever a single ray struck.
+        # JM_EDGEZ_RAY=1 restores the single-ray march.
+        if get(ENV,"JM_EDGEZ_RAY","0") == "0"
+            for rad in 8f0:8f0:Float32(min(d, 400.0))
+                best = Inf32
+                for k in 0:11
+                    th = Float32(2pi*k/12)
+                    g = lowest(x + cos(th)*rad, y + sin(th)*rad)
+                    g > -900f0 && g < best && (best = g)
+                end
+                best < Inf32 && return best
+            end
+        end
         ux = dx/d; uy = dy/d; s = 0f0
         while s < d
             gz = lowest(x + ux*s, y + uy*s); gz > -900f0 && return gz
@@ -1976,7 +1994,7 @@ let objnames=Set{String}()
         # E73-S10b: which OFF-HAT objects still move between the two march targets, after the
         # lowest-surface fix? Rank by |Δheight| so the remaining offenders are named rather than
         # hunted one at a time.
-        rows = Tuple{String,Float64,Float64,Float64,Float64}[]
+        rows = Tuple{String,Float64,Float64,Float64,Float64,Float64}[]
         for i in insts
             groundz(i.x, i.y) > -900f0 && continue
             bd = Inf; tx = TRKCX; ty = TRKCY
@@ -2006,14 +2024,18 @@ let objnames=Set{String}()
             end
             (isnan(hs[1]) || isnan(hs[2])) && continue
             hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
-            push!(rows, (i.name, hs[1], hs[2], hs[1]-hs[2], hr.found ? hr.lapdist : -1.0))
+            push!(rows, (i.name, hs[1], hs[2], hs[1]-hs[2], hr.found ? hr.lapdist : -1.0, Float64(i.z)))
         end
         sort!(rows, by=r->-abs(r[4]))
         println("== JM_EDGEZ_RANK: off-HAT objects by |nearest-march − centroid-march| height ==")
-        println("   name          nearest   centroid   delta    lapdist")
+        # E73-S11: also print the object's OWN AUTHORED z. edgez exists to rescue objects the HAT
+        # does not reach and whose authored height is wrong (Watkins' pit buildings sat 29 m
+        # underground). If an object's authored z already matches the low march, marching it upward is
+        # not a rescue — it is damage.
+        println("   name          nearest   centroid   delta    authored-z   lapdist")
         for r in rows[1:min(end,12)]
             println("   ", rpad(r[1],13), rpad(round(r[2],digits=1),10), rpad(round(r[3],digits=1),11),
-                    rpad(round(r[4],digits=1),9), round(Int,r[5]))
+                    rpad(round(r[4],digits=1),9), rpad(round(r[6],digits=1),13), round(Int,r[5]))
         end
         println("   (", count(r->abs(r[4])>1.0, rows), " of ", length(rows), " off-HAT objects move >1 m)")
         flush(stdout)

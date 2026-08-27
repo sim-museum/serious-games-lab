@@ -446,3 +446,54 @@ Gate stays — s=3000 is still wrong. But after three sprints of dead ends the p
 one mechanism found and fixed, the residual measured, ranked and attributed to a different cause.
 Verified harmless where `edgez` actually ships: Watkins changes **0.19–0.36 %** of frame, so E72-S7's
 restored pit complex is untouched.
+
+---
+
+## E73-S11 — ⚠️ the "regression" reproduces the AUTHORED heights, and S9's gold refutation was unsound
+
+S10 found one mechanism (overlapping surfaces, `ref=Inf`) and left 9 objects still moving between
+march targets. S11 asked which march is *right* by printing each object's own **authored z**:
+
+| object | nearest march | centroid march | **authored z** | lapdist |
+|---|---|---|---|---|
+| `trees18` | 7.4 | 2.0 | **7.5** | 1873 |
+| `trees19` | 6.7 | 3.2 | **6.7** | 2077 |
+| `trees69` | 3.9 | 1.3 | **3.9** | 704 |
+| `trees73a/b` | 3.1 | 1.1 | **3.1** | 573 |
+| `trees21` | 5.0 | 3.8 | **5.0** | 2438 |
+| `front07` | −2.2 | −0.3 | **−2.1** | 5297 |
+| `trees60` | −1.8 | −0.5 | **−1.8** | 4380 |
+
+⭐ **The nearest-centreline march reproduces the authored height to within 0.1 m for every one of the
+nine movers. The centroid march sits metres below it.** These objects are not being lifted by the
+"regression" — they are being restored to where the track author put them, and the baseline has been
+dropping them ~5 m into the ground.
+
+### ⚠️ Which means E73-S9's gold check cannot stand
+
+S9 concluded *"gold refutes it: the gold Monza cockpit video shows a treeline of moderate height with
+open sky above, closely matching the baseline"*. **That comparison did not pin location.** It set a
+gold frame taken at an arbitrary point in the video against native at s=3000 — the exact
+time-versus-lapdist error that E69-S4 retracted a finding for, and that E69-S7 hit again with grass.
+A treeline looks different at different places on a lap; matching "a treeline" to "a treeline" proves
+nothing.
+
+So S9's refutation is **withdrawn**, and with it the justification for the gate. I am **not** flipping
+the gate on that basis — an unsound refutation does not make the opposite true. It needs a
+**landmark-matched** gold frame at the specific location, which is what the method doc has prescribed
+since the start and what I keep failing to do.
+
+### What did ship
+
+- **Lowest-surface grounding** (S10): correct on its own evidence, `trees03`'s regression 11.23 % → 1.49 %.
+- **Ring sampling**: `edgez` now samples 12 directions at growing radius and takes the lowest hit,
+  instead of one direction-biased ray. It makes the march target **irrelevant** — gated and ungated
+  Monza now differ by 1.00 % / 0.02 % against a 0.43 % null — so the gate is already close to moot in
+  practice. `JM_EDGEZ_RAY=1` restores the single ray.
+
+### The honest state
+
+Three sprints said "the nearest march is wrong on Monza". The authored-z evidence says the opposite,
+and the one gold check that supported the gate was not location-matched. The next sprint must pin a
+gold frame to s=1873 (`trees18`, the largest mover) by landmark and settle it — **not** by another
+percentage.
