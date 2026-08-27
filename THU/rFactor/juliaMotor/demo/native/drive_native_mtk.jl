@@ -1300,6 +1300,11 @@ const W, H = 1440, 810
 const OBJ_CULLFACE = get(ENV,"JM_OBJ_CULL","0") != "0"
 const OBJ_FF_CW    = get(ENV,"JM_OBJ_FF","cw") == "cw"
 const OBJ_CULL2 = 2200f0^2      # mesh objects (buildings/grandstands/trees) — keep distant landmarks
+# E70-S7: the restored billboards render vegetation CYAN (3.42% of frame vs 0.01% with them off).
+# Several Ring bush textures are blue-green at source (hgbush 20,69,56; bush 39,80,70; kwbush6
+# 30,67,62 — blue well above red), and drawing them at bright=1.55 pushes them past cyan.
+const BB_BRIGHT = parse(Float32, get(ENV,"JM_BB_BRIGHT","1.55"))
+const BB_AMB    = parse(Float32, get(ENV,"JM_BB_AMB","0.85"))
 const BB_CULL2  = 1300f0^2      # billboards (tree/shrub/crowd sprites) — far ones add little
 const SMOKE = haskey(ENV, "JM_SMOKE")     # headless self-test: hidden window, auto-exit
 # E59 multi-shot smoke: JM_SHOTS="s:view:name;s:view:name;…" photographs MANY points of the lap in ONE
@@ -4378,7 +4383,7 @@ function main()
             glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
             for (it,pos,w,h) in BILLBOARDS                            # trees/sprites
                 (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > BB_CULL2 && continue       # distance cull
-                Render.draw(prog, it, vp_, Render.billboard_model(pos,w,h,eye_); bright=1.55, ambfill=0.85)  # sprites read near-unlit (colorful signs, not "burned")
+                Render.draw(prog, it, vp_, Render.billboard_model(pos,w,h,eye_); bright=BB_BRIGHT, ambfill=BB_AMB)  # E70-S7: tunable — 1.55 pushes already blue-green bush textures to cyan
             end
             for (p, cm) in zip(ai_poses, AICHASSIS)                 # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper)
                 for it in cm.body; Render.draw(prog, it, vp_, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end

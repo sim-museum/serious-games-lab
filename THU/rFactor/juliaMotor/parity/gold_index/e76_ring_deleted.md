@@ -638,3 +638,59 @@ The start/finish view is richer than E76-S11 implied — Continental hoardings, 
 are all present just before the line; my earlier captures at s=400 were simply past them. Two smaller
 defects are visible there and are **not** addressed here: the gantry's lettering renders **mirrored**,
 and roadside vegetation at s=13000/18000 shows a **cyan/turquoise cast** in both arms.
+
+---
+
+## E70-S7 — ⚠️ a defect in my OWN shipped work: the restored billboards render CYAN
+
+E70-S6 noted "roadside vegetation shows a cyan/turquoise cast" as an aside. It is not an aside — it is
+a regression introduced by **E76-S8's billboard restoration**, and it should be recorded as such.
+
+| arm | cyan pixels (frame %) |
+|---|---|
+| billboards ON (**shipped**) | **3.42 %** |
+| billboards OFF | **0.01 %** |
+| gold (3 nintendo frames) | **0.00 – 1.00 %** |
+
+The 1773 sprites I restored bring back content that was genuinely missing — and paint a slice of the
+frame a colour gold does not have.
+
+### Two causes eliminated, including one of mine
+
+| candidate | test | result |
+|---|---|---|
+| billboard over-brightening (`bright=1.55`) | `JM_BB_BRIGHT=1.0` | 3.42 % → **2.99 %** — minor |
+| my E69-S8 **white balance** | `JM_WBAL=1,1,1` | 3.42 % → **3.19 %** — minor |
+
+Neither explains it. Knobs kept (`JM_BB_BRIGHT`, `JM_BB_AMB`).
+
+### The textures really are blue-green
+
+`JM_TEXCOLOR` on the Ring's bush sheets:
+
+| texture | mean RGB | R−B |
+|---|---|---|
+| `hgbush` | (20, 69, 56) | **−36** |
+| `bush` | (39, 80, 70) | −31 |
+| `kwbush6` | (30, 67, 62) | −31 |
+| `strauch1` | (60, 72, 39) | +21 |
+| `stree8` | (41, 54, 34) | +6 |
+
+So one family of bush textures is authored blue-green and another olive. We render both faithfully;
+gold evidently renders the blue-green family **darker**, where it reads as deep green rather than cyan.
+
+### ⭐ And a larger, separate finding
+
+Native's foliage median is **(137, 156, 179)** against gold's **(56,75,47)…(111,128,135)** — we are
+markedly **brighter and bluer**. Crucially that median is **identical with billboards on and off**
+(137 vs 138), so it is **not** the billboards: it is a scene-wide difference on this track.
+
+Two distinct problems, and separating them is the value here:
+1. **billboard cyan** — small area, caused by bright rendering of blue-green sheets, ~3 % of frame;
+2. **scene-wide foliage brightness/blueness on the Ring** — larger, unrelated to the billboards, and
+   plausibly the `GRADE_NURB` "stormy" grade being lighter than gold's actual weather.
+
+⚠️ Not fixed. Darkening the billboards to hide (1) would also mask (2), and E74-S7 already taught that
+a constant tuned to make one thing look right while an underlying error remains costs more than it
+saves. The next sprint should measure the Ring's overall exposure against gold first, then re-examine
+the billboards against a corrected baseline.
