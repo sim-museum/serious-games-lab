@@ -702,7 +702,13 @@ else
         # E64 S9: NURB joins WATGLEN — with atog*/a_l_g*/concrete recognised its oracle converges
         # (recentre mean 2.41→0.04 m over 4 passes) and all four survey positions land on tarmac,
         # including the old lap-end drift at s=17000 (car was in the catch-fencing).
-        if (WATGLEN || NURB || get(ENV,"JM_ROADHAT","0") != "0") && nroad >= 200
+        # E73-S5: MONZA joins WATGLEN and NURB. Its centreline strayed 8.2 m off the road at s=500
+        # (car floating over unmodelled ground for ~300 m) with road gaps at s=2750/4500. Measured:
+        # the road-only oracle ALONE changes nothing (Monza was also excluded from re-centring), and
+        # re-centring alone against the full-terrain oracle fixes only part of it (20/24 healthy,
+        # gaps remain). Together they give 24/24 healthy, and the car photographs on asphalt at all
+        # three previously-broken sites (near-white in frame: 93.5% -> 0.7%).
+        if (WATGLEN || NURB || MONZA || get(ENV,"JM_ROADHAT","0") != "0") && nroad >= 200
             h = GPLTrack.build_hat(TRACKMESH0; exclude=HAT_EXCLUDE, exclude_pred=(lt -> !rp(lt)), drop_overpass=MONZA, road_pred=ROAD_PRED)
             println("  road-only HAT: ", nroad, " road tris (align/recentre oracle)"); h
         else
@@ -717,7 +723,16 @@ else
         # E64 S6: on WATGLEN, recentre against the ROAD-only HAT (was: full terrain incl. grass
         # aprons) with multi-pass so a line stranded ~10 m off (s≈300, WG4) walks home 4 m per
         # pass; other tracks keep their verified single-pass full-terrain behaviour.
-        (haskey(ENV, "JM_NO_RECENTRE") || MONZA) ? a : recentre_on_road(a, ROADHAT; passes = (ROADHAT === TERRAIN0 ? 1 : 4))
+        # E73-S5: MONZA is excluded from re-centring outright, which is why its centreline strays
+        # 8.2 m off the road at s=500 and shows road gaps at s=2750/4500 (E73-S3/S4) — the raw .trk
+        # line is used uncorrected. Enabling the road-only oracle changed nothing precisely because
+        # this step never runs. JM_FORCE_RECENTRE=1 lifts the exclusion so the effect can be measured
+        # before deciding whether the exclusion is still justified.
+        # E73-S5: the `|| MONZA` exclusion is REMOVED. It carried no comment explaining itself, and
+        # with it in place Monza's raw .trk line ran off the circuit for ~300 m. JM_NO_RECENTRE=1
+        # restores the raw line for every track, which is the revert path.
+        haskey(ENV, "JM_NO_RECENTRE") ? a :
+            recentre_on_road(a, ROADHAT; passes = (ROADHAT === TERRAIN0 ? 1 : 4))
     end
     const RIBBON0  = GPLTrack.build_surface(ALIGNED, TERRAIN0)
     # GPL Nürburgring places its landmass/scenery as .dat sub-objects via 0x0E nodes;

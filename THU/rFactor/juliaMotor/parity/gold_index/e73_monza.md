@@ -141,3 +141,46 @@ Inspect the Monza centreline alignment through s=300–700 against the road ribb
 reports `max shift` per iteration, so the question is whether it failed to converge here or
 converged onto the wrong strip. `s=4500` (also a missing width bucket) should be checked the same
 way, as should Watkins' known s≈300.
+
+---
+
+## E73-S5 — ✅ FIX SHIPPED: Monza's centreline no longer leaves the circuit
+
+E73-S3 found the car placed on unmodelled ground for ~300 m (s≈350–650) with the road 7–19 m to one
+side; E73-S4 added gaps at s=2750 and s=4500. Cause found and fixed.
+
+### The cause was two settings, and neither alone was enough
+
+| configuration | result |
+|---|---|
+| shipped | 2 gaps, 3 strays, **19/24 healthy** |
+| road-only oracle ON alone | **identical** — because Monza was *also* excluded from re-centring, so the oracle had nothing to feed |
+| re-centring ON alone (full-terrain oracle, 1 pass) | partial — s=500 improves 8.2→5.4 m, **gaps remain**, 20/24 |
+| **both** | ⭐ **24/24 healthy, no gaps, no strays** |
+
+Line 720 read `(haskey(ENV,"JM_NO_RECENTRE") || MONZA) ? a : recentre_on_road(...)` — **Monza was
+hard-excluded from centreline re-centring, with no comment explaining why.** That is why enabling the
+better oracle changed nothing: the step that would have used it never ran.
+
+### Verified
+
+- Census with defaults, no env overrides: **24 buckets, 0 gaps, 0 strays**.
+- Photographs at all three previously-broken sites show the car **on asphalt** with verges, trees and
+  trackside signage. Near-white fraction of the lower frame at s=500: **93.5% → 0.7%**
+  (`e73_monza_fix.jpg`).
+
+### ⚠️ Risks recorded rather than buried
+
+1. **This changes the racing line**, and therefore lap distance, the AI reference line and anything
+   physics-dependent. It is not a cosmetic fix.
+2. **The start position moves 2.43 m** (`at-start 2.43 m` in the final pass). Grid placement should be
+   checked.
+3. **The original exclusion's reason is unknown** — it carried no comment. The likely motive is the
+   combined/banked Monza layout (the code elsewhere notes "the broken monza10k banked combined
+   circuit" and passes `drop_overpass=MONZA`), and this build uses the road course, so the reason is
+   probably stale. **Probably is not certainly**, and if a banking-related regression appears, this
+   is the first change to suspect.
+
+`JM_NO_RECENTRE=1` restores the raw `.trk` line on every track.
+
+**Fourth fix shipped in this batch**, after the badge, the front-end geometry and the gauge placement.
