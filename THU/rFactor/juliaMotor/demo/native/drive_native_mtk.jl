@@ -1157,8 +1157,13 @@ const HANDP  = Render.extract_gpl_car(LOT3DO; only=("lohand",),  maxlat=0.95f0) 
 # shocks/discs around the rear axle — but ~25% too wide/long (a positioner-scale mis-read:
 # shocks reach lateral 1.06 vs the 0.85 wheel face = S4's spear tips through the tyres).
 # Drawn separately in the chase view with a tunable corrective scale about the rear axle.
-const RSUSPP_A = Render.extract_gpl_car(LOT3DO; include_groups=(27288,), exclude=("ltraymap","lshad"))   # one side each —
-const RSUSPP_B = Render.extract_gpl_car(LOT3DO; include_groups=(39792,), exclude=("ltraymap","lshad"))   # the halves carry a residual ±roll our posmat mis-composes
+# E75-S12: the flat braces (lsusp2 0.76×0.03×0.50, lsusp7 0.89×0.03×0.48) render as broad specular
+# PLATES where gold shows slender wishbones. JM_RS_FLAT=1 keeps them for A/B.
+# VERDICT (E75-S12): excluding them changes the render almost not at all, so the broad chrome panels
+# are NOT the flat braces. Default keeps them; JM_RS_NOFLAT=1 drops them for further A/B.
+const _RSEXC = get(ENV,"JM_RS_NOFLAT","0") != "0" ? ("ltraymap","lshad","lsusp2","lsusp7") : ("ltraymap","lshad")
+const RSUSPP_A = Render.extract_gpl_car(LOT3DO; include_groups=(27288,), exclude=_RSEXC)   # one side each —
+const RSUSPP_B = Render.extract_gpl_car(LOT3DO; include_groups=(39792,), exclude=_RSEXC)   # the halves carry a residual ±roll our posmat mis-composes
 const ARMP   = Render.extract_gpl_car(LOT3DO; only=("lotarms",), maxlat=0.95f0)  # forearms/upper arms — static (their wheel-side ends are what the eye sees)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read
 # upside-down.  Mirror the gauge in height about its own centre so the dial face turns up toward the eye.
@@ -2607,6 +2612,45 @@ if get(ENV,"JM_FSUSP_DIAG","") != ""
         pp = Render.extract_gpl_car(LOT3DO; only=("frontlot",), maxlat=1.3f0, maxedge=me)
         n = sum(length(x.verts) ÷ 11 for x in pp; init=0) ÷ 3
         println("   frontlot maxedge=", me, " -> ", length(pp), " parts, ", n, " tris")
+    end
+    flush(stdout)
+end
+if get(ENV,"JM_RSUSP_WORLD","") != ""
+    # E75-S12: E75-S9 left a contradiction — every part in the rear groups measures <= 1.04 m, yet
+    # drawing them at identity renders spears reaching metres past the wheels. bodyModel is a rigid
+    # transform and cannot stretch anything, so if the geometry is compact BEFORE and AFTER RSFIX the
+    # spears cannot come from this geometry at all, and S9 misattributed them.
+    bb(parts) = begin
+        lo = [Inf32,Inf32,Inf32]; hi = [-Inf32,-Inf32,-Inf32]
+        for pp in parts, i in 1:11:length(pp.verts)-10
+            for k in 1:3
+                v = pp.verts[i+k-1]
+                v < lo[k] && (lo[k] = v); v > hi[k] && (hi[k] = v)
+            end
+        end
+        (lo, hi)
+    end
+    xf(parts, M) = [begin
+        v = copy(pp.verts)
+        for i in 1:11:length(v)-10
+            x,y,z = v[i],v[i+1],v[i+2]
+            v[i]   = M[1,1]*x + M[1,2]*y + M[1,3]*z + M[1,4]
+            v[i+1] = M[2,1]*x + M[2,2]*y + M[2,3]*z + M[2,4]
+            v[i+2] = M[3,1]*x + M[3,2]*y + M[3,3]*z + M[3,4]
+        end
+        (verts=v, tex=pp.tex)
+    end for pp in parts]
+    for (nm, parts, M) in (("RSUSPP_A raw", RSUSPP_A, nothing),
+                           ("RSUSPP_A × RSFIX_A", RSUSPP_A, RSFIX_A),
+                           ("RSUSPP_B raw", RSUSPP_B, nothing),
+                           ("RSUSPP_B × RSFIX_B", RSUSPP_B, RSFIX_B))
+        pl = M === nothing ? parts : xf(parts, M)
+        lo, hi = bb(pl)
+        println("   [rsusp] ", rpad(nm,22),
+                " x ", rpad(string(round(lo[1],digits=2),"…",round(hi[1],digits=2)),16),
+                " y ", rpad(string(round(lo[2],digits=2),"…",round(hi[2],digits=2)),16),
+                " z ", rpad(string(round(lo[3],digits=2),"…",round(hi[3],digits=2)),16),
+                " span ", round(max(hi[1]-lo[1], hi[2]-lo[2], hi[3]-lo[3]), digits=2), " m")
     end
     flush(stdout)
 end

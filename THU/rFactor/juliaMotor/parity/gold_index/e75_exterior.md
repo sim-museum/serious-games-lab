@@ -484,3 +484,52 @@ from the light one.
 Not tuned here. E69-S8's white balance earned its place by surviving three eliminations and
 cross-validating on tracks it was not fitted to; this one has had three eliminations but no candidate
 confirmed yet, and a brightness constant applied now would be exactly the E74-S7 mistake.
+
+---
+
+## E75-S12 — ⭐ the shipped rear-suspension transform buries it 1.2–1.9 m UNDERGROUND
+
+E75-S4 concluded "no fold angle works — 0° spears past the wheels, 45/90° invisible", and E75-S8/S9
+argued about unfolded strips and spear triangles. S12 measures what the transform actually does.
+
+### The measurement (`JM_RSUSP_WORLD`)
+
+Bounding box of the rear-suspension parts before and after `RSFIX`, in car space. `bodyModel` is rigid
+and cannot stretch anything, so this is the whole story:
+
+| | x | y | z | span |
+|---|---|---|---|---|
+| `RSUSPP_A` raw | −2.50…−0.73 | **−0.15…0.25** | −1.12…−0.42 | 1.77 m |
+| `RSUSPP_A` × `RSFIX_A` (**shipped, roll=90**) | −2.50…−0.73 | **−1.87…−1.17** | 0.54…0.94 | 1.77 m |
+| `RSUSPP_A` × `RSFIX_A` (roll=0) | −2.50…−0.73 | −0.15…0.25 | −1.12…−0.42 | 1.77 m |
+
+⭐ **The shipped transform moves the rear suspension to 1.2–1.9 m BELOW the car's origin — underground.**
+That is why E75-S4 found 45°/90° "invisible": not occlusion, **burial**. Eight sprints described the
+symptom; the cause is one line of the transform.
+
+### Two of my own readings retired
+
+- **"Spears past the wheels" (E75-S4, repeated in S9) is wrong.** The span is **1.77 m at every roll
+  angle** — nothing is stretched — and 97.5 % of the pixels the rear-suspension draw adds lie within
+  ±30 % of frame width of centre. The far tail is 0.07 % of frame: noise I failed to denoise, exactly
+  the mistake E75-S8 established a rule against and I made again.
+- **"Authored unfolded" (E75-S8) was already retired in S9**; S12 confirms the parts are ordinary
+  compact geometry sitting at hub height once the burial is undone.
+
+### But roll=0 still does not match gold
+
+Gold's Lotus shows **slender wishbones and radius arms contained within the wheel track**. Native at
+roll=0 shows **broad specular chrome PANELS** extending toward the wheels. So the fold angle was never
+the real question — the parts are in roughly the right place and the wrong *shape*.
+
+**One hypothesis tested and eliminated:** the flat braces `lsusp2` (0.76 × 0.03 × 0.50) and `lsusp7`
+(0.89 × 0.03 × 0.48) are thin enough to render as plates under `spec=0.25`. Excluding both changes the
+render **almost not at all**, so they are not the panels. Default restored to keeping them
+(`JM_RS_NOFLAT=1` drops them for further A/B) — an unjustified exclusion is worse than none.
+
+### Where this leaves E75
+
+The framing changes from *"find the right fold angle"* (eight sprints, no progress) to *"the transform
+buries the assembly, and some rear-group part renders as a broad panel"*. The next step is mechanical:
+draw the rear group **one part at a time** and identify which produces the panels — `axlelot`, `lid`,
+`top` and `rear` are the untested candidates.
