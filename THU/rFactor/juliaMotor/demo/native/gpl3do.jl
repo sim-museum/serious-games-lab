@@ -202,8 +202,13 @@ function parse_3do(path::AbstractString)
                 # from an object that plainly has geometry. Choose the nearest-range child WITH a
                 # real offset. JM_LOD_ALL=1 still walks everything.
                 live = get(ENV,"JM_LOD_NULLS","0") != "0" ? collect(1:cnt) : [k for k in 1:cnt if offs[k] >= 0]
+                # E75-S14: which end of the threshold list is the HIGH-DETAIL child? E64-S4 assumed the
+                # smallest threshold is the closest-range/finest one. If GPL's convention is the
+                # reverse, we have been drawing the CRUDEST rear end at all times - which would explain
+                # gold's slender wishbones against our broad chrome bodies. JM_LOD_PICK=max tests it.
+                _lodmax = get(ENV,"JM_LOD_PICK","min") == "max"
                 if !LOD_ALL && length(unique(ds)) > 1 && !isempty(live)
-                    k = live[argmin([ds[k] for k in live])]
+                    k = live[_lodmax ? argmax([ds[k] for k in live]) : argmin([ds[k] for k in live])]
                     walk(offs[k], curtex, depth+1, M, grp)
                 else
                     for k in 1:cnt

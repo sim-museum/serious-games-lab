@@ -583,3 +583,54 @@ So the remaining question is not size, placement or material but **which parts g
 level of detail** — quite possibly a LOD question, given E70-S4 found the LOD selector following null
 children elsewhere in this same model. That is the next thread, and it is a different kind of question
 from the one E75 has been asking for thirteen sprints.
+
+---
+
+## E75-S14 — the panels ARE the suspension, the LOD choice is right, and the assembly sits OUTSIDE the wheels
+
+### A regression check I owed and had not done
+
+E70-S4 changed LOD child selection (skip null children) and I verified it against **track** object
+counts only. The Lotus is the same `.3do` machinery. Checked now: with the fix on and off, the car is
+**identical** — 12 Lotus body parts, `RSUSPP_A/B` bboxes unchanged to 2 decimal places. **No car
+regression from E70-S4.**
+
+### The LOD selection is correct
+
+E64-S4 assumed the smallest range threshold is the closest-range, highest-detail child. `JM_LOD_PICK=max`
+(new) tests the opposite: it yields **2 Lotus body parts instead of 12** and an **empty** rear
+suspension. Minimum is right; hypothesis eliminated.
+
+### The panels are the suspension — confirmed by removal, not by eye
+
+Given how often a visual reading has misled me here (spears twice, canopy, "missing" crowds), I tested
+it by removal rather than inspection:
+
+| arm | result |
+|---|---|
+| `JM_RSUSP=0` (suspension off) | **no panels** — clean rear end |
+| roll=0 | **panels present** |
+| roll=90 (shipped) | no panels — buried (S12) |
+
+So the broad chrome structures are genuinely the rear-suspension geometry.
+
+### ⭐ And the measurement now agrees with the picture
+
+The assembly reaches **|z| = 1.16 m**. The drawn rear tyre is centred at 0.74 m (half-track) and is
+~0.3 m wide, so its outer face sits at ≈0.89 m. **The suspension therefore protrudes ~0.27 m beyond
+the outside of the wheel** — which is exactly what the render shows, and exactly what gold does not:
+gold's wishbones and radius arms run *inside* the wheel track.
+
+For scale, |z| = 1.16 m implies a **2.3 m track**, against a real Lotus 49's ~1.5 m. So the outermost
+rear parts are ~0.4 m further out than the car's own hub line (0.772 m, E75-S3).
+
+### Where E75 stands after fourteen sprints
+
+Established: the shipped transform **buries** the assembly (S12); the parts are compact and correctly
+extracted (S9, S13); size, flat braces, specular and LOD are all **eliminated** as causes; and the
+assembly **protrudes outside the wheels** where gold keeps it inside.
+
+The open question is now specific: **which rear parts legitimately extend to 1.16 m, and should they be
+there at all?** `lid` (0.95 m) and `axlelot` (1.04 m) are a gearbox cover and axle housing — plausibly
+internal parts that gold never shows at this scale. That is a content question about the part list, not
+a transform, a material, or a level of detail, and it is the first time this item has had one.
