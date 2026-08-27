@@ -634,3 +634,70 @@ The open question is now specific: **which rear parts legitimately extend to 1.1
 there at all?** `lid` (0.95 m) and `axlelot` (1.04 m) are a gearbox cover and axle housing — plausibly
 internal parts that gold never shows at this scale. That is a content question about the part list, not
 a transform, a material, or a level of detail, and it is the first time this item has had one.
+
+---
+
+## E75-S15: it is not a content question. The FRONT does the same thing.
+
+The enumeration S14 asked for, taken straight from the `.3do` with no run and no capture — all 17 parts
+of group 27288, per side, sorted by outer lateral bound:
+
+| | outer | inner | | | outer | inner |
+|---|---|---|---|---|---|---|
+| `lsusp5` | 1.117 | 0.43 | | `lid` | 1.006 | 0.44 |
+| `arms` | 1.113 | 0.44 | | `lsusp7` | 1.006 | 0.53 |
+| `top` | 1.113 | 0.44 | | `lexhsup` | 1.006 | 0.84 |
+| `pipe3` | 1.099 | 0.99 | | *(untextured)* | 0.913 | 0.43 |
+| `lshok` | 1.062 | 0.49 | | `axlelot` | 0.860 | 0.42 |
+| `lsusp4` | 1.061 | 0.84 | | `lbrdisc` | 0.610 | 0.58 |
+| `lsusp3` | 1.030 | 0.43 | | `frontlot` | 0.603 | 0.54 |
+| `lsusp2` | 1.023 | 0.52 | | `lsusp6` | 0.542 | 0.52 |
+| `rear` | 1.023 | 0.53 | | | | |
+
+**14 of 17 parts sit outboard of the hub line (0.772 m)** — not one or two. `lid` and `axlelot`, the
+two S14 nominated, are not even the worst: `axlelot` at 0.860 is among the *innermost* of the
+offenders. Picking a couple of suspicious names out of a list where four-fifths of the entries are
+equally suspicious would have removed some geometry and left the assembly still protruding.
+
+### The measurement that decides it
+
+The FRONT assembly — the one **E75-S7 shipped**, with "gold comparison pending" — reaches
+**|z| = 1.121** via `lsusp1` (0.590 … 1.130 per side). The rear's worst is **1.117**.
+
+**The two assemblies share an outer bound to within 13 mm.** A content error in the rear part list
+cannot explain the front landing on the same number from a different set of parts. One systematic
+placement does.
+
+Their *spans* are unremarkable — 0.54 m front, 0.69 m rear, about right for a suspension link
+reaching from a chassis pickup to an upright. It is where those spans sit that is wrong: they start
+at 0.43–0.59 (a rear inner pickup belongs nearer 0.15) and end 0.25–0.35 m outboard of the hub.
+**The geometry is the right size in the wrong place**, front and rear alike.
+
+### Corroboration: the parts are near-planar, as unfolded strips would be
+
+Vertical extents over the whole car, per texture:
+
+| `lsusp2` | `lsusp1` | `lsusp5` | `lshok` | `lid` | `axlelot` |
+|---|---|---|---|---|---|
+| **0.07 m** | 0.16 m | 0.30 m | 0.31 m | 0.31 m | 0.40 m |
+
+A real shock absorber is ~0.3 m tall and an upright ~0.4 m; `lsusp2` at **7 cm** is a sheet. This is
+the unfolded-strip authoring E75-S4 already identified from the fold experiments, now visible
+directly in the vertex data, and it is why "which parts belong" was never going to be the question.
+
+### One reading corrected in passing
+
+E64-S4 describes `lsusp1` as "garbage 2 m ahead of the car", and its raw x range is 1.54 … 3.19.
+But `frontlot`, the front bodywork, runs to **x = 3.09**, and the whole car spans −2.52 … 3.19 — so
+x ≈ 3.1 *is* the nose. `lsusp1` sits inside the front section, not ahead of it; the "2 m ahead" was
+measured against a different origin. That matters because `JM_FSUSP_MAXEDGE` was tuned to clip by
+edge length on the belief that it was separating near-car geometry from distant garbage, and all 12
+`lsusp1` triangles occupy the same place.
+
+### Next step
+
+Test one lateral correction against both assemblies at once, rather than editing either part list:
+a single inboard shift of ~0.30 m puts the front at 0.29 … 0.83 and the rear at 0.13 … 0.82 — inner
+pickups near the gearbox, outer ends just inside the 0.89 m wheel face, which is where gold keeps
+them. If one number fixes both ends of the car, the placement reading is confirmed; if it fixes one
+and breaks the other, it is refuted, and that is worth knowing before any part is deleted.
