@@ -1886,9 +1886,20 @@ let objnames=Set{String}()
             else
                 for h in hits[1:min(end,20)]
                     hr = JuliaMotor.hat(TRKSURF, Float64(h[2]), Float64(h[3]))
+                    # E72-S6: report the VERTICAL too. Watkins' pit structures are placed, kept, and
+                    # invisible at their own lapdists (E72-S5), and lateral offset does not explain
+                    # tower1 at 26.9 m. Objects here are SNAPPED to our terrain rather than their
+                    # authored GPL height, so a snap that lands wrong buries them — which would make
+                    # them invisible whatever their lateral position. base − ground says so directly.
+                    gz = groundz(h[2], h[3])
+                    dz = gz > -900f0 ? round(Float64(h[4]) - Float64(gz), digits=1) : NaN
                     println("   ", rpad(h[1],14), "fate=", rpad(String(h[5]),9), "solid=", rpad(h[6],7),
                             hr.found ? string("lapdist=", rpad(round(hr.lapdist,digits=0),9),
-                                              "lat=", round(hr.lateral,digits=1)) : "off-ribbon")
+                                              "lat=", rpad(round(hr.lateral,digits=1),8)) : rpad("off-ribbon",19),
+                            "base=", rpad(round(Float64(h[4]),digits=1),8),
+                            gz > -900f0 ? string("ground=", rpad(round(Float64(gz),digits=1),8),
+                                                 "Δ=", dz, dz < -1.0 ? "  *** BURIED ***" : "")
+                                        : "OFF-HAT")
                 end
                 length(hits) > 20 && println("   ... ", length(hits)-20, " more")
             end

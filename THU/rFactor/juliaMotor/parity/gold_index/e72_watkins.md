@@ -155,3 +155,46 @@ mechanism — a snap that fails or lands wrong buries the object.
 That is one diagnostic line away: report base height against `groundz(x,y)` for these four instances.
 **Until then "the pit building is misplaced laterally" remains a hypothesis, not a finding** — E72-S4
 already had to retract one confident claim about these objects.
+
+---
+
+## E72-S6 — ⭐ ROOT CAUSE: the pit buildings are OFF-HAT and sunk to `trkzlo` — buried ~29 m
+
+Reported each instance's base height against the terrain under it:
+
+| object | lapdist | lat | base | ground | verdict |
+|---|---|---|---|---|---|
+| `tower1` | 578 | −26.9 | 20.6 | 20.6 | **Δ=0 — correctly snapped, on the ground** |
+| `newpit` | 3651 | −41.9 | **−8.7** | — | **OFF-HAT** |
+| `pitfill2` | 3551 | −28.7 | **−8.7** | — | **OFF-HAT** |
+| `pitgrnd1` | 3604 | −32.4 | **−8.7** | — | **OFF-HAT** |
+| `grand` ×1 | — | — | 33.5 | 33.5 | Δ=0 — fine |
+| `grand`, `grandl` | — | — | 11.5 / 0.7 | — | OFF-HAT |
+
+**−8.7 m is Watkins' `trkzlo`** — the lowest elevation on the track (`JM_OBJDIAG` reports
+`trkzlo=-8.7 trkzhi=40.7`). Objects that fall outside the terrain HAT get that value as a fallback.
+The terrain around the pits sits near **20 m**, so these buildings are placed roughly **29 metres
+underground**. That is why they are invisible, and it is nothing to do with their lateral offset.
+
+### The mechanism
+
+Objects are **snapped to our terrain rather than their authored GPL height** — a deliberate fix for
+floaters, since GPL placed scenery on dune terrain this port does not reproduce. But when a point
+lies **outside** the HAT, `groundz` returns a sentinel and the code falls back to `trkzlo`. For an
+object 28–42 m off the road — beyond the modelled terrain — the fallback is catastrophic: it drops
+the object to the circuit's lowest point.
+
+**A guard against floating objects is burying them instead.** `tower1` at 26.9 m is inside the HAT
+and lands perfectly; `pitfill2` at 28.7 m is outside it and sinks. **The failure boundary is roughly
+27–29 m of lateral offset**, i.e. the edge of the terrain mesh.
+
+### What the fix should be
+
+An off-HAT object should **keep its authored GPL height**, not take `trkzlo`. The snap exists to
+correct heights where the terrain is known; where it is unknown there is nothing to correct toward,
+and the authored value is the best estimate available.
+
+⚠️ Before changing it: this fallback is presumably load-bearing somewhere (it was chosen over
+"leave it floating"), and other off-HAT objects — `tree8`, `treesrb1`, `tree6/7`, `grandl` — are
+currently sunk by the same path. Fixing it will make **all** of them reappear at their authored
+heights, which is a large visual change and needs photographing, not just reasoning.
