@@ -1162,8 +1162,13 @@ const HANDP  = Render.extract_gpl_car(LOT3DO; only=("lohand",),  maxlat=0.95f0) 
 # VERDICT (E75-S12): excluding them changes the render almost not at all, so the broad chrome panels
 # are NOT the flat braces. Default keeps them; JM_RS_NOFLAT=1 drops them for further A/B.
 const _RSEXC = get(ENV,"JM_RS_NOFLAT","0") != "0" ? ("ltraymap","lshad","lsusp2","lsusp7") : ("ltraymap","lshad")
-const RSUSPP_A = Render.extract_gpl_car(LOT3DO; include_groups=(27288,), exclude=_RSEXC)   # one side each —
-const RSUSPP_B = Render.extract_gpl_car(LOT3DO; include_groups=(39792,), exclude=_RSEXC)   # the halves carry a residual ±roll our posmat mis-composes
+# E75-S13: draw the rear group ONE PART AT A TIME to find which renders as the broad chrome panel.
+# JM_RS_ONLY=<texture> restricts the rear suspension to that texture alone.
+const _RSONLY = get(ENV,"JM_RS_ONLY","")
+const RSUSPP_A = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(27288,), exclude=_RSEXC) :
+                                 Render.extract_gpl_car(LOT3DO; include_groups=(27288,), only=(_RSONLY,))   # one side each —
+const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(39792,), exclude=_RSEXC) :
+                                 Render.extract_gpl_car(LOT3DO; include_groups=(39792,), only=(_RSONLY,))   # the halves carry a residual ±roll our posmat mis-composes
 const ARMP   = Render.extract_gpl_car(LOT3DO; only=("lotarms",), maxlat=0.95f0)  # forearms/upper arms — static (their wheel-side ends are what the eye sees)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read
 # upside-down.  Mirror the gauge in height about its own centre so the dial face turns up toward the eye.
@@ -2592,6 +2597,9 @@ const RSFIX_A = rsfix(RS_SWAP ? -1 : 1)
 const RSFIX_B = rsfix(RS_SWAP ? 1 : -1)
 # E64 S8: ON by default — the positioner-chain dump settled the transform (hub-line fold; see
 # rsfix above); the gold nintendo chase shows this articulated rear end, so it ships.
+# E75-S13: the rear parts are all <= 1.04 m and correctly placed, so the broad chrome "panels" cannot
+# be oversized geometry — they must be shading. spec=0.25 on near-flat faces reads as a mirror plate.
+const RS_SPEC = parse(Float32, get(ENV,"JM_RS_SPEC","0.25"))
 const RSUSP_ON = get(ENV,"JM_RSUSP","1") != "0"
 # E75-S5: what does the Lotus .3do actually CONTAIN, and which exclusion eats gold's rear linkage?
 # Four sprints of transform-tuning are closed (E75-S4: no fold angle works), and the code's own
@@ -4355,11 +4363,11 @@ function main()
         for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly) so it stops reading as a hard black "plywood" notch
         if CTL.view != 0   # the driver figure occludes the cockpit from the in-car eye (E36 black band) → chase only
             if get(ENV,"JM_RSUSP2","0") == "1"   # E75-S8: OFF by default — raw parts are unfolded strips, see e75_exterior.md
-                for it in rsusp2Items; Render.draw(prog, it, vp, bodyModel; bright=1.15, spec=0.25, ambfill=0.55); end
+                for it in rsusp2Items; Render.draw(prog, it, vp, bodyModel; bright=1.15, spec=RS_SPEC, ambfill=0.55); end
             end
             if RSUSP_ON    # E64 S7: high-detail rear suspension (gold nintendo shows the full articulated rear end)
-                for it in rsuspItemsA; Render.draw(prog, it, vp, bodyModel*RSFIX_A; bright=1.15, spec=0.25, ambfill=0.55); end
-                for it in rsuspItemsB; Render.draw(prog, it, vp, bodyModel*RSFIX_B; bright=1.15, spec=0.25, ambfill=0.55); end
+                for it in rsuspItemsA; Render.draw(prog, it, vp, bodyModel*RSFIX_A; bright=1.15, spec=RS_SPEC, ambfill=0.55); end
+                for it in rsuspItemsB; Render.draw(prog, it, vp, bodyModel*RSFIX_B; bright=1.15, spec=RS_SPEC, ambfill=0.55); end
             end
             for it in driverItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.10, ambfill=0.55); end
             helmModel = bodyModel * Render.translate(Float32[HELM_OFF[1],HELM_OFF[2],HELM_OFF[3]])

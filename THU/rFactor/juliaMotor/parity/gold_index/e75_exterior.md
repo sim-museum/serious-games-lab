@@ -533,3 +533,53 @@ The framing changes from *"find the right fold angle"* (eight sprints, no progre
 buries the assembly, and some rear-group part renders as a broad panel"*. The next step is mechanical:
 draw the rear group **one part at a time** and identify which produces the panels — `axlelot`, `lid`,
 `top` and `rear` are the untested candidates.
+
+---
+
+## E75-S13 — three more causes eliminated; and a 25 % null control in chase view
+
+S12 re-framed E75 to "some rear-group part renders as a broad panel". S13 tries to name it.
+
+### ⚠️ The part-by-part pixel comparison is not viable on this harness
+
+Restricting the rear suspension to one part at a time (`JM_RS_ONLY`, new) and diffing against the
+buried-suspension baseline gave **24.7 % and 25.5 % of frame** for `axlelot` and `lid` — against the
+**2.78 %** the entire rear suspension contributes. Impossible, and the reason is familiar: **in chase
+view the car fills much of the frame, and two runs do not reproduce its position**, so the null control
+here is ~25 %, not the ~0.4 % measured for static cockpit captures.
+
+E69-S5 established that a pixel A/B needs a small null *and* a visible change. **In chase view the null
+is an order of magnitude larger than the signal**, so no amount of care makes this particular
+comparison work. Geometry, not pixels, has to answer it.
+
+### The geometry says the extraction is right
+
+`JM_RSUSP_WORLD` with `JM_RS_ONLY`:
+
+| part | x | y | z | span |
+|---|---|---|---|---|
+| `axlelot` | −1.80…−0.77 | −0.08…0.23 | ∓0.42…0.86 | **1.04 m** |
+| `lid` | −1.73…−0.78 | −0.08…0.23 | ∓0.44…1.01 | **0.95 m** |
+
+Correct sides, hub height, compact. `only=` and `include_groups` compose correctly — worth knowing,
+since E75-S8's failure came from `only=` used *without* a group and silently merging both sides.
+
+### Causes eliminated this sprint
+
+| candidate | test | verdict |
+|---|---|---|
+| oversized geometry | bbox of every rear part | **eliminated** — all ≤ 1.04 m (S9, S12, S13) |
+| flat braces as plates | exclude `lsusp2`/`lsusp7` | **eliminated** — render barely changes (S12) |
+| specular sheen | `JM_RS_SPEC` 0.25 → 0 | **eliminated** — render barely changes |
+
+### What is left
+
+The parts are ~1 m, correctly placed, and not a shading artifact — so the "broad chrome panels" simply
+**are** those parts at chase-camera scale. `lid` and `axlelot` are a gearbox cover and an axle housing:
+solid bodies. Gold's rear end shows **slender wishbones and radius arms** and no such covers at this
+size.
+
+So the remaining question is not size, placement or material but **which parts gold draws, and at what
+level of detail** — quite possibly a LOD question, given E70-S4 found the LOD selector following null
+children elsewhere in this same model. That is the next thread, and it is a different kind of question
+from the one E75 has been asking for thirteen sprints.
