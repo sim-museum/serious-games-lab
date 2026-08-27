@@ -1718,6 +1718,13 @@ objpath(nm) = (p=joinpath(ZD, nm*".3do"); isfile(p) ? p :
 # longer strip their painted-on people textures — only the GPL shadow/tray artifacts go.
 # (Loose roadside people are dropped by name in drop() below, not by texture.)
 const CROWD_TEX = ("ltraymap","lshad")
+# E71-S16: a `collision` texture EXCLUSION was tried here and REVERTED, recorded so it is not
+# retried. 94 of Spa's 502 objects (19%) list a texture named `collision` in their string table and
+# there is no collision.mip in the archive -- it is GPL's marker for an invisible hull, so feeding
+# it to the footprint test looked like an obvious cause of false on-road hits. Excluding it changed
+# the census by exactly 0 (108 -> 108), and the reason is that NO TRIANGLE REFERENCES IT: parsing
+# ho18/armcow3/epolsp3 per face gives only real textures (Saeule, Ziegel, dach, armcow_s, polewbr1).
+# The name is an unused string-table entry. Nothing to exclude, so no exclusion.
 let objnames=Set{String}()
     for f in readdir(ZD); endswith(lowercase(f),".3do") && push!(objnames, lowercase(replace(f,r"\.3do$"i=>""))); end
     for k in keys(DATPACK); endswith(k,".3do") && push!(objnames, replace(k,r"\.3do$"=>"")); end
@@ -1809,9 +1816,34 @@ let objnames=Set{String}()
                     # full-road-width penetration (E71-S8). Keep a DECIMATED VERTEX LIST instead: the
                     # true horizontal points, so the lateral min/max is the mesh's, not its bounding
                     # box's. Every ~13th vertex is ample for a footprint and stays cheap.
+                    # E71-S16: the footprint must be the BUILT object, not the ground it is
+                    # standing on. Several GPL scenery objects bundle their own apron -- eauhotel
+                    # carries 17 grass/asphalt/tree triangles spanning 120.1 m around 1018 building
+                    # triangles spanning 45.9 m, so 62% of its horizontal extent is lawn. The
+                    # footprint test then reports the hotel "1.9 m from the centreline" when it is
+                    # the lawn that reaches the road, and dropping the object on that basis would
+                    # delete an Eau Rouge landmark because of its garden. ho18 is the contrast: no
+                    # ground faces at all, and genuinely 0.2 m off the centreline.
+                    # JM_FP_KEEP_GROUND=1 restores the old all-faces footprint.
+                    fpground(t) = (l = lowercase(t);
+                                   startswith(l,"grass") || startswith(l,"asph") ||
+                                   startswith(l,"terr")  || startswith(l,"for_") ||
+                                   startswith(l,"tre"))
+                    fpkeep = get(ENV,"JM_FP_KEEP_GROUND","0") != "0"
                     vs = Tuple{Float32,Float32}[]
-                    for pp in parts, k in 1:(11*13):length(pp.verts)-2
-                        push!(vs, (pp.verts[k], pp.verts[k+2]))
+                    for pp in parts
+                        (fpkeep || !fpground(pp.tex)) || continue
+                        for k in 1:(11*13):length(pp.verts)-2
+                            push!(vs, (pp.verts[k], pp.verts[k+2]))
+                        end
+                    end
+                    # an object made ENTIRELY of ground faces has no built footprint; fall back to
+                    # all faces rather than silently giving it an empty one (an empty lverts reads
+                    # as "no footprint" and would exempt it from the test altogether).
+                    if isempty(vs)
+                        for pp in parts, k in 1:(11*13):length(pp.verts)-2
+                            push!(vs, (pp.verts[k], pp.verts[k+2]))
+                        end
                     end
                     lverts[inst.name] = vs
                     objmesh[inst.name] = Render.build_gpl(parts, TEXIDX)
@@ -2166,13 +2198,42 @@ let objnames=Set{String}()
             nkept = count(h->h[6], hits)
             println("   ", nointr, " instances clear of the road, ", length(hits), " intruding of which ",
                     nkept, " ACTUALLY RENDER, ", nofp, " without a mesh footprint (not tested)")
-            for h in hits[1:min(end,14)]
+            # E71-S16: the list was capped at 14 while the count being quoted was 108, so the
+            # remaining 94 were never once printed and "closing the rest is enumeration" could not
+            # actually be done from this output. JM_OVERHANG_TOP=<n> (default 14, "all" for all).
+            _topspec = get(ENV,"JM_OVERHANG_TOP","14")
+            _top = _topspec == "all" ? length(hits) : parse(Int,_topspec)
+            for h in hits[1:min(end,_top)]
                 println("      ", h[6] ? "RENDERS " : "dropped ", rpad(h[1],12), "pts over road ", rpad(h[2],5),
                         " nearest |lat| ", rpad(round(h[3],digits=1),7),
                         " base ", rpad(round(h[4],digits=1),7), " m above road   lapdist ", round(Int,h[5]))
             end
+            # A per-FAMILY roll-up of the ones that render. Individual rows say where; the family
+            # is what a filter rule can actually be written against, and it is the family counts
+            # that say whether the remainder is one more name pattern or a long tail of singletons.
+            fam = Dict{String,Vector{Tuple{Float64,Float64}}}()
+            for h in hits
+                h[6] || continue
+                k = rstrip(h[1], ['0','1','2','3','4','5','6','7','8','9'])
+                push!(get!(fam, k, Tuple{Float64,Float64}[]), (h[3], h[4]))
+            end
+            if !isempty(fam)
+                println("   -- rendering intruders by family (", length(fam), " families, ", nkept, " instances) --")
+                for k in sort!(collect(keys(fam)), by=k->(-length(fam[k]), k))
+                    v = fam[k]
+                    println("      ", rpad(k,14), rpad(length(v),5),
+                            " nearest |lat| ", rpad(round(minimum(first.(v)),digits=1),7),
+                            " base above road ", round(minimum(last.(v)),digits=1), " … ",
+                            round(maximum(last.(v)),digits=1), " m")
+                end
+            end
         end
         flush(stdout)
+        # E71-S16: JM_OVERHANG_EXIT=1 stops here. The census is a headless geometry question, but
+        # reaching it costs the full texture + object load, and the only harness that ran past it
+        # (JM_SWEEP) then walks the whole centreline and opens the game loop as well -- a 900 s
+        # wrapper timeout killed the first attempt before a single census line was printed.
+        get(ENV,"JM_OVERHANG_EXIT","") != "" && exit(0)
     end
     if get(ENV,"JM_EDGEZ_RANK","") != ""
         # E73-S10b: which OFF-HAT objects still move between the two march targets, after the

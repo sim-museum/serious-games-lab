@@ -610,6 +610,71 @@ pattern. The remaining 108 are other families — barriers (`armcow3` at 0.0 m),
 building names. The mechanism is right and the **name list is incomplete**; the census now names each
 survivor, so closing the rest is enumeration rather than investigation.
 
+> ## E71-S16: the 108 is not 108 objects on the road — it is 18
+>
+> **The census and the filter were never measuring the same corridor.** `JM_OVERHANG_HALFW` defaults
+> to **±6.0 m**; the filter's asphalt half-width (`JM_ASPHALT_HALFW`) is **4.1 m**. So "108 rendering
+> intruders" counts everything out to 6 m, which is 46% wider than the surface the filter defends,
+> and most of the 108 are *beside* the road, which is where trackside furniture belongs:
+>
+> | within | of the centreline | count |
+> |---|---|---|
+> | 4.1 m | the filter's own asphalt half-width | **18** |
+> | 5.0 m | | 45 |
+> | 6.0 m | the census corridus | 100 |
+>
+> The remaining work was overstated by about 6×. Nothing was wrong with either number; they were
+> quoted as if they answered the same question.
+>
+> **And "closing the rest is enumeration" could not be done from this output at all** — the census
+> printed `hits[1:min(end,14)]`, so 94 of the 108 had never once been shown. `JM_OVERHANG_TOP=<n>|all`
+> now prints them, with a per-family roll-up (41 families).
+>
+> ### The 18 that are actually on the asphalt, identified by TEXTURE
+>
+> Names are not evidence — the same session mistook the Ring's corner markers for signage by
+> reading names (E76-S11). These are read from each object's texture table:
+>
+> | what | instances | how it is known |
+> |---|---|---|
+> | **buildings** — `ho18`×4 (0.2 m), `ho16` (1.4 m), `eauhotel` (1.9 m) | 6 | `dach`, `dachun`, `Ziegel` (brick), `Saeule`, `doors1`, `door2`, `wallri`/`wallef` |
+> | **parked road & service vehicles** — `opelrk`×2, `simcao`, `prinzb`, `vailpol`, `lancia`, `firebt1` | 8 | every one carries `RUOTAB`, `TRKTYRE`, `TRKUNDE`, `TRKSHA` — wheel, tyre, underside, shadow |
+> | **grandstand** — `gstands` (1.7 m, 214 m long) | 1 | `gs_*`, `peo1`…`peo6`, `gs_crowd` |
+> | **flat panels / posts** — `sanit3` (4 verts), `epolsp3` (6 verts) | 3 | `SANIT3`; `polewbr1` |
+>
+> So the residue is not "more building names". It is **eight parked vehicles**, which need a decision
+> the name list cannot make: authored roadside dressing, or a yaw error swinging a long vehicle across
+> the road. `firebt1` puts 125 footprint points inside the corridor — that is a lot of truck.
+>
+> ### A hypothesis raised, tested, and refuted — recorded so it is not retried
+>
+> 94 of Spa's 502 objects (19%) list a texture named **`collision`**, and there is **no
+> `collision.mip` anywhere in the archive** — it is GPL's marker for an invisible hull, not an image.
+> The armco barriers carry one, and a barrier's hull reaching the road is exactly what "`armcow3` at
+> 0.0 m" would look like. Feeding invisible hulls to a footprint test is a compelling defect.
+>
+> Excluding it changed the census by **exactly 0** (108 → 108). The reason, found by parsing per
+> face: **no triangle references it.** `ho18`'s 44 tris are `Saeule`/`leside`/`Ziegel`/`dach`/…,
+> `armcow3`'s 18 are `armcow_s`/`armcw_ss`, `epolsp3`'s 6 are `polewbr1`. The name is an unused
+> string-table entry. The exclusion was reverted; a no-op knob is worse than none, because the next
+> reader would take it for a handled case.
+>
+> ### One real fix: a footprint is the OBJECT, not the ground it stands on
+>
+> Some GPL objects bundle their own apron. `eauhotel` carries 17 grass/asphalt/tree triangles
+> spanning **120.1 m** around 1018 building triangles spanning **45.9 m** — 62% of its horizontal
+> extent is lawn. `lverts` now samples non-ground faces only (`JM_FP_KEEP_GROUND=1` reverts).
+>
+> Measured: **108 → 105** intruders, 1801 → 1803 clear, and **no object newly on the asphalt**.
+> `burwal1`, `burwal2` and `malmedy` left the list — three false positives that were their own
+> ground planes.
+>
+> **But the claim that motivated it does not survive its own test.** `eauhotel`'s nearest lateral is
+> **1.9 m before and 1.9 m after** — only its point *count* fell, 5 → 4. Its lawn was never what put
+> it on the road; the hotel's own walls reach that far, which for a building at Eau Rouge is
+> plausible. The general mechanism is real and worth having; the specific object it was argued from
+> was the wrong example.
+
 ### Other tracks are essentially clean
 
 - **Monza** — 9 render, of which `bar01` (12 points, 2.7 m) and `trees23` (5 points, 3.4 m) are genuine;
