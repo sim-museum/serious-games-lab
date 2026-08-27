@@ -490,3 +490,47 @@ along the track. So the kept family is the parallel one, E68-S1's filter is doin
 A negative result, but a load-bearing one: it clears a filter that removes nearly half of one content
 class the PO explicitly asked about, and it does so by measurement rather than by trusting the
 original justification.
+
+---
+
+## E69-S11 (cross-track) — exposure measured on a neutral reference; the Ring is 35 % too bright
+
+E70-S7 read native's Ring foliage as "markedly brighter and bluer" than gold's and offered two
+explanations. S11 tests them with a measure that needs no location matching: **asphalt is grey
+everywhere**, so its luminance is a per-track exposure reference, and **foliage ÷ asphalt** cancels
+exposure to show whether vegetation is *disproportionately* lit.
+
+| track | gold asphalt | native asphalt | native vs gold | foliage÷asphalt gold → native |
+|---|---|---|---|---|
+| **Nürburgring** | **76.3** | **103.3** | **+35 %** | 1.91 → **1.54** |
+| Monza | 117.5 | 101.3 | −14 % | 0.93 → 1.70 |
+| Zandvoort | 128.5 | 131.3 | +2 % | 0.44 → 0.63 |
+| Spa | 154.0 | — | — | 1.19 → — |
+| Watkins | — | 143.8 | — | — → 0.55 |
+
+### ⭐ This corrects E70-S7
+
+That sprint said native's Ring foliage is brighter than gold's. **Relative to the road it is darker** —
+1.54 against gold's 1.91. What is actually true is simpler and more useful: **our Nürburgring renders
+35 % brighter overall than gold's**, and the foliage difference is a consequence of the scene exposure,
+not of how vegetation is lit.
+
+So of E70-S7's two hypotheses, the second is confirmed (`GRADE_NURB` is lighter than gold's weather)
+and the first — vegetation specifically over-lit — is **refuted by its own data**. Gold's Ring is
+genuinely stormy; ours is a bright overcast.
+
+### ⚠️ Two limits
+
+1. **Native Ring n = 1.** One frame is not an exposure measurement. The gold side has three. Before
+   acting on the +35 %, native needs several frames at varied points.
+2. **The foliage÷asphalt ratio varies enormously between tracks in gold itself** (0.44 at Zandvoort to
+   1.91 at the Ring), because it depends on how much sky-lit distant canopy is in shot. It is useful
+   *within* a track, gold vs native, and **not** as a cross-track constant.
+
+### What this makes actionable
+
+The Ring is the one track with a large, one-directional exposure error, and it is measured on a neutral
+surface rather than inferred from foliage. Correcting `GRADE_NURB` downward is a **single per-track
+change** testable against the same asphalt reference — and E70-S7's billboard cyan should be
+re-examined **after** it, since 35 % of excess brightness is more than enough to push a blue-green
+sheet into cyan.
