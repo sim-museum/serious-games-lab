@@ -1477,8 +1477,15 @@ let objnames=Set{String}()
         # buried newpit/pitfill2/pitgrnd1 ~29 m underground (E72-S6) while tower1, just inside the
         # HAT at 26.9 m, landed correctly. Aiming at the nearest ribbon point is right from either
         # side. JM_EDGEZ_CENTROID=1 restores the old target for A/B.
+        # ⚠️ GATED to WATGLEN and SPA. The nearest-centreline target is right in principle, but the
+        # cross-track check found a REGRESSION on Monza: at s=3000 a large tree/forest object is
+        # raised into the sky and overhangs the road as a dark canopy (14.6% of the frame changed;
+        # e72_monza_regression.jpg). Watkins gains its pit complex, Spa gains a buried structure,
+        # Zandvoort is unaffected — so the win is kept where it is verified and the regression is
+        # kept out until Monza's case is understood. Gating by track is a holding measure, not the
+        # end state.
         local tx = TRKCX; local ty = TRKCY
-        if !haskey(ENV, "JM_EDGEZ_CENTROID")
+        if (WATGLEN || SPA) && !haskey(ENV, "JM_EDGEZ_CENTROID")
             bd = Inf
             for p in ALIGNED
                 dd = (p[1]-x)^2 + (p[2]-y)^2

@@ -240,3 +240,35 @@ S/F (minor height adjustments), 0.16% at s=1600. **No object lost, none left flo
 revertable with one env var; a sweep on those three is the outstanding verification.
 
 **Sixth fix shipped in this batch.**
+
+---
+
+## E72-S8 — the cross-track check found a REGRESSION; the fix is now gated
+
+Completing the verification E72-S7 left outstanding:
+
+| track | pixels changed | verdict |
+|---|---|---|
+| Zandvoort | 2.5% @ S/F, 0.16% @ s=1600 | ✅ no loss, minor height adjustments |
+| **Spa** | 1.17% @ S/F, 0.05% @ s=8000 | ✅ **gains a structure** at S/F that was previously buried |
+| **Monza** | 1.0% @ S/F, **14.6% @ s=3000** | ❌ **REGRESSION** — a large tree/forest object is raised into the sky and overhangs the road as a dark canopy |
+
+The Nürburgring is unaffected: its scenery uses a different loader that never calls `edgez`.
+
+### Action: gate rather than revert
+
+The fix is now applied on **Watkins and Spa only** — the two tracks where it is verified to help —
+and excluded on Monza. Zandvoort neither gains nor loses, so it is left out too.
+
+**Gating by track name is a holding measure, not a design.** The right end state is to understand why
+Monza's object rises: the nearest-centreline march is correct in principle, so something else — a
+very distant object, an unusually large mesh, or a march that terminates at an atypical height — is
+producing the lift there. Until that is understood, the gate keeps two verified wins without shipping
+a visible defect.
+
+### Worth noting about the process
+
+E72-S7 shipped this default-on having checked **one** other track, and flagged the remaining three as
+outstanding. Two of the three were fine; the third was not. **The flag was the useful part** — had it
+been recorded as "verified" rather than "one track checked, three outstanding", the Monza canopy
+would have shipped and been found by the PO instead.
