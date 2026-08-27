@@ -382,3 +382,67 @@ percentage.
 `JM_FPGROUND` ships **default OFF**: it is unproven, and it changes 10–19 % of the frame. It is kept
 because the origin-vs-footprint weakness is real and this is the machinery to address it when a case
 is found that it actually fixes.
+
+---
+
+## E73-S10 — ⭐ the mechanism found at last: overlapping HAT surfaces and `ref=Inf`
+
+Three sprints have proposed a mechanism for the Monza grounding regression and two were eliminated by
+building them (S6 banking, S7/S9 single-point grounding). S10 tests the one thing never examined: how
+`groundz` chooses among **overlapping** terrain surfaces.
+
+### The trace
+
+`JM_EDGEZ_TRACE` (new) replays both march targets for a named object and enumerates every HAT surface
+at the march's first hit — the HAT API allows this by lowering `ref` step by step:
+
+```
+[edgez] trees03  nearest-centreline  march 8m → h=9.1   surfaces at hit: 9.1, 6.3
+[edgez] trees03  lap-centroid        march 8m → h=6.3   surfaces at hit: 6.3
+```
+
+⭐ **The two marches hit different spots 8 m out, and only the nearest-centreline one lands where a
+second surface lies 2.8 m above the ground.** `groundz` queries with `ref=Inf`, which returns the
+**topmost** layer — so the forest strip was grounded on the upper surface. That is the 2.8 m lift, and
+the canopy that has gated this fix since E72-S8.
+
+`ref=Inf` is *right* for placing a car (it drives on the top surface) and *wrong* for grounding a
+distant backdrop object, which belongs on the ground. The bug was a correct default applied in the
+wrong context.
+
+### Fixed, and measured
+
+`edgez` now takes the **lowest** surface at its hit (`JM_EDGEZ_TOP=1` restores the old behaviour):
+
+| viewpoint | null | old regression | with lowest-surface |
+|---|---|---|---|
+| **s=1042** (`trees03`'s own location) | 0.14 % | 11.23 % | **1.49 %** |
+| s=3000 | 0.43 % | 14.81 % | 15.99 % |
+
+**At the offending object's own location the regression is essentially gone.** s=3000 is unchanged —
+it is a *different* object, which three sprints of reasoning about "the Monza canopy" as one thing had
+obscured.
+
+### The residual, now named instead of mysterious
+
+`JM_EDGEZ_RANK` (new) ranks every off-HAT object by how much the two march targets disagree:
+
+| object | nearest | centroid | Δ | lapdist |
+|---|---|---|---|---|
+| `trees18` | 7.4 | 2.0 | **+5.5** | 1873 |
+| `trees19` | 6.7 | 3.2 | +3.4 | 2077 |
+| `trees69` | 3.9 | 1.3 | +2.7 | 704 |
+| `trees73a/b` | 3.1 | 1.1 | +2.0 | 573 |
+
+**9 of 40 off-HAT objects still move more than a metre.** These are not overlapping-surface cases — the
+two marches simply reach genuinely different ground in different directions. For an object the HAT does
+not cover, "the ground height" is not defined; both marches are estimates. The principled next step is
+to sample **several directions and take the lowest**, rather than trusting whichever way one ray
+happened to point.
+
+### Status
+
+Gate stays — s=3000 is still wrong. But after three sprints of dead ends the problem is **decomposed**:
+one mechanism found and fixed, the residual measured, ranked and attributed to a different cause.
+Verified harmless where `edgez` actually ships: Watkins changes **0.19–0.36 %** of frame, so E72-S7's
+restored pit complex is untouched.

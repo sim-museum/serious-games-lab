@@ -1759,9 +1759,30 @@ let objnames=Set{String}()
         end
         dx = tx - x; dy = ty - y; d = hypot(dx, dy)
         d < 1f-3 && return trkzlo
+        # E73-S10: take the LOWEST surface at the hit, not the highest. groundz queries the HAT with
+        # ref=Inf, which returns the topmost layer where surfaces overlap. That is right for placing a
+        # car (it drives on the top) and wrong for grounding a distant backdrop object, which belongs
+        # on the ground. It is the mechanism behind the Monza regression, traced at trees03:
+        #   nearest-centreline march, 8 m → h=9.1, surfaces at hit: 9.1, 6.3   ← grounded on the upper
+        #   lap-centroid march,       8 m → h=6.3, surfaces at hit: 6.3
+        # i.e. the two marches hit different spots and only one of them has an elevated layer; the
+        # 2.8 m lift raised a long forest strip into the canopy that has gated this fix since E72-S8.
+        # JM_EDGEZ_TOP=1 restores the old topmost-surface behaviour.
+        lowest(px, py) = begin
+            g = groundz(px, py)
+            g <= -900f0 && return g
+            get(ENV,"JM_EDGEZ_TOP","0") != "0" && return g
+            r = Float64(g)
+            for _ in 1:8
+                h = JuliaMotor.hat3d(TERRAIN, Float64(px), Float64(py); ref = r - 0.6)
+                h[3] || break
+                r = h[1]
+            end
+            Float32(r)
+        end
         ux = dx/d; uy = dy/d; s = 0f0
         while s < d
-            gz = groundz(x + ux*s, y + uy*s); gz > -900f0 && return gz
+            gz = lowest(x + ux*s, y + uy*s); gz > -900f0 && return gz
             s += 8f0
         end
         trkzlo
@@ -1944,6 +1965,101 @@ let objnames=Set{String}()
         length(zs) < 3 && return base
         sort!(zs)
         zs[max(1, min(length(zs), ceil(Int, FPQ*length(zs))))]
+    end
+    # E73-S10: two mechanisms for the Monza canopy have been eliminated (S6 banking, S7/S9
+    # single-point grounding). A third has never been tested: groundz queries the HAT with ref=Inf,
+    # which returns the HIGHEST surface where layers overlap. If the edgez march's first hit lands on
+    # an elevated layer, the object is grounded on that instead of the terrain beneath it. Enumerate
+    # the surfaces at the march's first hit by lowering `ref` step by step — the HAT API allows it.
+    # JM_EDGEZ_TRACE=<name substring>
+    if get(ENV,"JM_EDGEZ_RANK","") != ""
+        # E73-S10b: which OFF-HAT objects still move between the two march targets, after the
+        # lowest-surface fix? Rank by |Δheight| so the remaining offenders are named rather than
+        # hunted one at a time.
+        rows = Tuple{String,Float64,Float64,Float64,Float64}[]
+        for i in insts
+            groundz(i.x, i.y) > -900f0 && continue
+            bd = Inf; tx = TRKCX; ty = TRKCY
+            for p2 in ALIGNED
+                dd = (p2[1]-i.x)^2 + (p2[2]-i.y)^2
+                dd < bd && (bd = dd; tx = p2[1]; ty = p2[2])
+            end
+            hs = Float64[]
+            for (gx, gy) in ((tx, ty), (TRKCX, TRKCY))
+                dx = gx - i.x; dy = gy - i.y; d = hypot(dx,dy)
+                if d < 1e-3; push!(hs, NaN); continue; end
+                ux = dx/d; uy = dy/d; sd = 0.0; got = NaN
+                while sd < d
+                    g = groundz(Float32(i.x+ux*sd), Float32(i.y+uy*sd))
+                    if g > -900f0
+                        r = Float64(g)
+                        for _ in 1:8
+                            h = JuliaMotor.hat3d(TERRAIN, Float64(i.x+ux*sd), Float64(i.y+uy*sd); ref=r-0.6)
+                            h[3] || break
+                            r = h[1]
+                        end
+                        got = r; break
+                    end
+                    sd += 8.0
+                end
+                push!(hs, got)
+            end
+            (isnan(hs[1]) || isnan(hs[2])) && continue
+            hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
+            push!(rows, (i.name, hs[1], hs[2], hs[1]-hs[2], hr.found ? hr.lapdist : -1.0))
+        end
+        sort!(rows, by=r->-abs(r[4]))
+        println("== JM_EDGEZ_RANK: off-HAT objects by |nearest-march − centroid-march| height ==")
+        println("   name          nearest   centroid   delta    lapdist")
+        for r in rows[1:min(end,12)]
+            println("   ", rpad(r[1],13), rpad(round(r[2],digits=1),10), rpad(round(r[3],digits=1),11),
+                    rpad(round(r[4],digits=1),9), round(Int,r[5]))
+        end
+        println("   (", count(r->abs(r[4])>1.0, rows), " of ", length(rows), " off-HAT objects move >1 m)")
+        flush(stdout)
+    end
+    if get(ENV,"JM_EDGEZ_TRACE","") != ""
+        pat = lowercase(ENV["JM_EDGEZ_TRACE"])
+        shown = 0
+        for i in insts
+            occursin(pat, lowercase(i.name)) || continue
+            shown >= 4 && break
+            gz0 = groundz(i.x, i.y)
+            gz0 > -900f0 && continue                    # on-HAT: edgez is not used
+            shown += 1
+            # replay the march and report the first hit
+            bd = Inf; tx = TRKCX; ty = TRKCY
+            for p2 in ALIGNED
+                dd = (p2[1]-i.x)^2 + (p2[2]-i.y)^2
+                dd < bd && (bd = dd; tx = p2[1]; ty = p2[2])
+            end
+            for (lbl, gx, gy) in (("nearest-centreline", tx, ty), ("lap-centroid", TRKCX, TRKCY))
+                dx = gx - i.x; dy = gy - i.y; d = hypot(dx,dy)
+                d < 1e-3 && continue
+                ux = dx/d; uy = dy/d; sdist = 0.0; hitx = NaN; hity = NaN; hz = -999f0
+                while sdist < d
+                    px = Float32(i.x + ux*sdist); py = Float32(i.y + uy*sdist)
+                    g = groundz(px, py)
+                    if g > -900f0; hitx=px; hity=py; hz=g; break; end
+                    sdist += 8.0
+                end
+                if hz > -900f0
+                    # enumerate overlapping surfaces at the hit
+                    hs = Float64[]; r = Inf
+                    for _ in 1:6
+                        h = JuliaMotor.hat3d(TERRAIN, Float64(hitx), Float64(hity); ref=r)
+                        h[3] || break
+                        push!(hs, h[1]); r = h[1] - 0.6
+                    end
+                    println("   [edgez] ", rpad(i.name,10), rpad(lbl,20),
+                            "march ", rpad(round(Int,sdist),5), "m → h=", rpad(round(hz,digits=1),7),
+                            " surfaces at hit: ", join(round.(hs,digits=1), ", "))
+                else
+                    println("   [edgez] ", rpad(i.name,10), rpad(lbl,20), "march found NO HAT in ", round(Int,d), " m")
+                end
+            end
+        end
+        flush(stdout)
     end
     graze_mesh = get(ENV,"JM_GRAZE_MESH","0") != "0"
     global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(-i.yaw + objyawfix(i.name))), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
