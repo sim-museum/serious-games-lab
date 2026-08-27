@@ -379,3 +379,61 @@ everything the mask covers a wheel."** The ellipse fit is robust precisely becau
 **Nothing was shipped from S8** — its camera constants were withheld because the fit metric returned an
 impossible negative value. That caution is the only reason this retraction costs a document edit
 rather than a regression.
+
+---
+
+## E74-S10 — the dial-cluster measurement, unblocked: gold 0.14 radii, native 1.95
+
+E74-S9 left this measurement blocked: *"no colour threshold alone separates cockpit from sky here"* —
+two attempts had been contaminated by bright cloud beside dark trees, both returning gold ≈ native
+(1.60 vs 1.72), which the captures plainly contradicted.
+
+### ⭐ The unblock: segment the cockpit by TEMPORAL INVARIANCE, not colour
+
+The cockpit is **car-fixed**; the world is not. Take three frames from different points on the lap and
+the pixels that barely change *are* the cockpit. No colour assumption at all:
+
+- gold (Monza cockpit video, t = 22 / 48 / 74 s) → 38.0 % of frame static
+- native (Monza, s = 200 / 1200 / 5500) → 49.4 % static
+
+Static treeline survives that test too, so take the **largest connected component touching the bottom
+edge** — the cockpit is one connected body reaching the frame edge; distant scenery is not.
+
+### The measurement
+
+Dial bezels = bright, near-neutral, with a dark dial face within ~14 px, **inside the cockpit
+component**, above the hub and within 1.2 wheel-radii horizontally (which excludes the mirror rims —
+they were dragging the first attempt's centroid down to −0.02).
+
+| | dial cluster above hub |
+|---|---|
+| **gold** | **0.14 wheel-radii** |
+| **native** | **1.95 wheel-radii** |
+
+⭐ **Native's dial cluster sits about 1.8 wheel-radii too high.** Gold's dials nestle just above the
+hub — read *through the top arc of the wheel*, as E74-S9 described. This is the first number for a
+defect that has been qualitative since E74-S1's "Dali dials".
+
+**It also confirms E74-S8's warning with data:** E74-S7 shipped `JM_GAUGE_Y` 0.16 → **0.28**, moving the
+dials **up** — directly away from gold. The fix made them legible by escaping occlusion, and in doing
+so moved them further from where gold puts them.
+
+### ⚠️ No constant re-derived — the metric will not support a fit
+
+Sweeping the gauge offset does not give a monotonic response:
+
+| `JM_GAUGE_Y` | dials above hub | bezel px |
+|---|---|---|
+| 0.28 (shipped) | 2.03 | 3888 |
+| 0.14 | **1.46** | 1513 |
+| 0.00 | 1.92 | 2398 |
+
+Bezel counts swing between 1513 and 3888, because moving the cluster changes **what is occluded** — at
+each offset the mask sees a different subset of bezel, and the centroid moves for reasons unrelated to
+the cluster's true position. Fitting a constant to that would produce a number that satisfies the
+metric rather than the geometry.
+
+So: **the direction is established and the magnitude is not.** The dials must come down substantially;
+by how much needs a stable estimator — most likely fitting the tachometer's own circle (the same
+ellipse-fit trick that made the rim measurement sound in E74-S9) rather than a centroid over a
+bezel mask whose visible extent changes with the thing being measured.
