@@ -583,6 +583,41 @@ never missing content, it is sparse placement plus a filter eating part of what 
 they cannot render as meshes. These are iconic track furniture and are **restorable via the billboard
 path E76-S8 already built** for the vegetation stubs. A named, scoped next step.
 
+> ## ⚠️ E76-S11: THE ABOVE IS WITHDRAWN. There is nothing to restore.
+>
+> The corner names were right; the conclusion drawn from them was not. Opening the files settles it:
+>
+> ```
+>   s_hatz.3do   328 bytes   4 verts   string table: ['nothing']
+>   verts: (0.000,0.000,1.000) (0.100,0.000,1.000) (0.100,0.100,1.000) (0.000,0.100,1.000)
+> ```
+>
+> A **10 cm × 10 cm horizontal square, one metre up, with the texture named `nothing`** — GPL's own
+> word for *no texture*. **26 of the files are byte-identical** (same md5); only the archive key
+> differs. There is no art in them, and no texture named after any of them exists in the archive
+> either, so no name-based lookup could supply one. GPL does not draw these and neither should JM:
+> they are position MARKERS placed at each named corner — which is exactly why they carry corner
+> names, the observation that made them look like signage in the first place.
+>
+> `billboard_stub` confirms it from the other side, and its answer is instructive: `h=2.5 w=0.0
+> tex=nothing`. The 2.5 is its **human/marshal default for a stub with no height marker**, and the
+> 0.0 means "derive the width from the texture" — of which there is none. Routing these through the
+> billboard path would therefore have produced **37 untextured 2.5 m rectangles standing beside the
+> track**, generated entirely from fallback constants. That would have looked like progress in the
+> triangle count and like a new defect on screen.
+>
+> **The `issprite` filter is behaving correctly here and should be left alone.** E76's remaining
+> sparseness is the hoardings and the timing tower (§3), which are real objects with real art —
+> not these.
+>
+> *The reasoning that failed:* the names were checked, the file contents were not. "Hatzenbach,
+> Adenau, Fuchsröhre" is a compelling list, and h=0.0/w=0.1 was read as *the mesh is broken* when it
+> equally means *the object is not a mesh*. One `head -c 328` would have separated those readings
+> at any point.
+>
+> `JM_SPRITESKIP` now also prints what the billboard path would recover for each stub, so the same
+> question cannot be answered from the name list again.
+
 ### 5. `JM_TEXDIAG` was also unreachable on the Ring — the third instance
 
 It sat inside the GPL-object branch, like the three road censuses hoisted in E75-S9. **My first attempt

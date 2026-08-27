@@ -576,11 +576,28 @@ function gpl_scenery(ztrk, datpack, ribbon)
                 M=placemat(t)
                 px = M[1,4]; py = M[2,4]
                 hr = JuliaMotor.hat(ribbon, Float32(px), Float32(py))
+                # E76-S11: also report what the BILLBOARD path would recover for this stub.
+                # The h/w printed above are the MESH extents, and for a degenerate stub they are
+                # 0.0/0.1 by construction — they say the mesh is unusable, not that the object is.
+                # billboard_stub reads the .3do's own vertex table and texture strings, which is a
+                # different question and the one that decides whether these are restorable.
+                bbs = "no .3do"
+                tpq = joinpath(tmp, "jm_nb_"*lowercase(nm)*".3do")
+                if isfile(tpq)
+                    try
+                        bh, bw, bstrs, _ = Render.billboard_stub(tpq)
+                        bbs = string("bb h=", round(bh,digits=2), " w=", round(bw,digits=2),
+                                     " tex=", isempty(bstrs) ? "NONE" : join(bstrs,","))
+                    catch e
+                        bbs = "billboard_stub THREW: " * string(e)
+                    end
+                end
                 println("   [spriteskip] ", rpad(nm,16),
                         "h=", rpad(round(hi3-lo3,digits=2),7),
                         "w=", rpad(round(hih-loh,digits=2),7),
                         hr.found ? string("lapdist=", rpad(round(hr.lapdist,digits=0),9),
-                                          "lat=", round(hr.lateral,digits=1)) : "off-ribbon")
+                                          "lat=", rpad(round(hr.lateral,digits=1),7)) : "off-ribbon  ",
+                        bbs)
             end
             continue
         end
@@ -2599,7 +2616,9 @@ if get(ENV,"JM_TEXDIAG","")!=""
 end
 
 carItems   = Render.build_gpl(CARP, GPLTEX)        # Lotus body, GPL .mip textures
-gaugeItems = Render.build_gpl(GAUGEP, GPLTEX)      # gauge cluster (drawn near-unlit so it reads)
+# PO 2026-08-27: "remove the cockpit gauge panel, hands and sleeves". JM_GAUGE=0 hides the cluster
+# (hands + sleeves are JM_HANDS=0, which already existed).
+gaugeItems = get(ENV,"JM_GAUGE","1") == "0" ? Render.Item[] : Render.build_gpl(GAUGEP, GPLTEX)
 windItems  = Render.build_gpl(WINDP, GPLTEX)       # plexiglass windscreen (drawn last, transparent)
 mirrorItems = Render.build_gpl(MIRRORP, GPLTEX)    # rear-view mirrors (re-placed on the cowl, MIRRORMAT)
 # ---- E64: LIVE mirrors — a small rear-view RTT + a glass quad on each disc ----------------
@@ -2930,9 +2949,20 @@ mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM:
 # release the clutch too low and it crawls/bogs, just like the real thing).  ZAND_SHIFT=manual forces it.
 const CTL = Ctl(false,false,false,false,false,false, parse(Int, get(ENV,"JM_VIEW","1")), get(ENV,"ZAND_SHIFT","auto") != "manual")   # view 1=chase 0=cockpit; AUTO gearbox by default (G toggles)
 key(k) = GLFW.GetKey(win, k) == GLFW.PRESS
+const JOYREPORT = Ref(false)
+const JOYTRACE_T = Ref(-1.0)
 function read_input()
     thr=brk=str=clu=0.0; up=dn=false
     js = GLFW.GetJoystickAxes(GLFW.JOYSTICK_1)
+    if !JOYREPORT[] && js !== nothing && !isempty(js)
+        JOYREPORT[] = true
+        println("  [joy] ", length(js), " axes raw = ", join(round.(js, digits=2), ", "))
+        _bs = GLFW.GetJoystickButtons(GLFW.JOYSTICK_1)
+        println("        buttons = ", _bs === nothing ? "none" : string(length(_bs)),
+                "   shift-up btn ", JOYMAP.up_btn, ", shift-down btn ", JOYMAP.dn_btn,
+                "   clutch axis ", JOYMAP.clutch.axis)
+        flush(stdout)
+    end
     if js !== nothing && !isempty(js)
         bs = GLFW.GetJoystickButtons(GLFW.JOYSTICK_1)
         str, thr, brk, clu, up, dn = JoyCfg.apply(JOYMAP, js, bs)   # configurable mapping (calibrate.jl)
@@ -2944,8 +2974,20 @@ function read_input()
     ku=key(GLFW.KEY_E); kd=key(GLFW.KEY_Q)
     upE = (ku && !CTL.prevUp) || (up && !CTL.prevUp); dnE = (kd && !CTL.prevDn) || (dn && !CTL.prevDn)
     CTL.prevUp = ku||up; CTL.prevDn = kd||dn
-    # realistic clutch: in MANUAL mode a shift only engages with the clutch pressed
-    (!CTL.auto && (upE || dnE) && clu < 0.4) && (upE = false; dnE = false)
+    # PO 2026-08-27b: "manual gear shift doesn't work anymore; stuck in 1st, joystick click to shift
+    # up does nothing". The realism gate below required the CLUTCH AXIS >= 0.4 to complete a manual
+    # shift — and that axis is the X3D slider, the same lever whose "clutch out" position is required
+    # for the car to drive at all. One lever cannot satisfy both, so whichever end it sits at, either
+    # drive or shifting is dead. (Moving it to fix the throttle is what broke shifting.)
+    # A shift button should shift. The clutch requirement is now OPT-IN: JM_CLUTCH_REQ=1 restores it,
+    # and holding C still declutches for feel. MANUAL shifting works from the stick or E/Q regardless.
+    # PO 2026-08-27b/c: I made this opt-in believing the clutch axis was blocking drive. It was not
+    # (the raw axes show clutch = 0), and the PO then confirmed "I had forgotten to use the clutch —
+    # when I use it, manual seems to work". So the original behaviour was right and the change was
+    # unnecessary: RESTORED to required-by-default. JM_CLUTCH_REQ=0 drops the requirement.
+    if get(ENV,"JM_CLUTCH_REQ","1") != "0"
+        (!CTL.auto && (upE || dnE) && clu < 0.4) && (upE = false; dnE = false)
+    end
     kv = key(GLFW.KEY_V); (kv && !CTL.prevV) && (CTL.view = 1-CTL.view); CTL.prevV = kv
     kg = key(GLFW.KEY_G); (kg && !CTL.prevG) && (CTL.auto = !CTL.auto); CTL.prevG = kg
     km = key(GLFW.KEY_M); (km && !CTL.prevM) && (ENG.master[] = ENG.master[]>0 ? 0.0 : 0.7); CTL.prevM = km
@@ -2955,6 +2997,16 @@ function read_input()
     rkey  = key(GLFW.KEY_R); shift = key(GLFW.KEY_LEFT_SHIFT) || key(GLFW.KEY_RIGHT_SHIFT)
     recover = rkey && shift && !CTL.prevRec; CTL.prevRec = rkey && shift
     rst = (rkey && !shift) || recover
+    # PO 2026-08-27: "pressing forward on the joystick causes the car to drift backward or stay
+    # still; W has no effect" — with brake and steering working. Cause: the X3D SLIDER (axis 4) is
+    # mapped to the CLUTCH, so a slider parked at the engaged end holds the clutch fully in. The
+    # engine revs (1953 rpm on the title bar) and no drive reaches the wheels, which is exactly what
+    # was seen. AUTO gearbox advertises an auto-clutch, so in AUTO the stick's clutch axis is now
+    # ignored; the C key still works for a deliberate clutch. JM_JOYCLUTCH=1 restores the old
+    # behaviour, and MANUAL mode is unchanged.
+    if CTL.auto && get(ENV,"JM_JOYCLUTCH","0") == "0"
+        clu = key(GLFW.KEY_C) ? 1.0 : 0.0
+    end
     (DriveInput(throttle=clamp(thr,0,1), brake=clamp(brk,0,1), steer=clamp(str,-1,1),
                 clutch=clu, shift_up=upE, shift_down=dnE, autoshift=CTL.auto), rst, recover)
 end
@@ -3856,6 +3908,19 @@ function main()
             fuel[] = max(0.0, fuel[] - FUEL_LPK * cs.v * (dt > 1e-4 ? dt : 1/60) / 1000)
             fuel[] <= 0 && (inp = DriveInput(throttle=0.0, brake=inp.brake, steer=inp.steer,
                             clutch=inp.clutch, shift_up=inp.shift_up, shift_down=inp.shift_down, autoshift=inp.autoshift))
+        end
+        # PO 2026-08-27c: throttle still does nothing from stick OR W, while brake and steering work.
+        # My clutch diagnosis was wrong (the raw axes show clutch = 0). Stop reasoning from the code
+        # and print what the car is actually being asked to do, once a second. JM_JOYTRACE=1.
+        if get(ENV,"JM_JOYTRACE","") != "" && cs.t - JOYTRACE_T[] >= 1.0
+            JOYTRACE_T[] = cs.t
+            _js = GLFW.GetJoystickAxes(GLFW.JOYSTICK_1)
+            println("  [trace] thr=", round(inp.throttle,digits=2), " brk=", round(inp.brake,digits=2),
+                    " clu=", round(inp.clutch,digits=2), " steer=", round(inp.steer,digits=2),
+                    " | gear=", cs.gear, " rpm=", round(Int,cs.rpm), " v=", round(cs.v*3.6,digits=1), "km/h",
+                    " | raw=", _js === nothing ? "nil" : join(round.(_js,digits=2), ","),
+                    " | auto=", CTL.auto, " race_go=", race_go[])
+            flush(stdout)
         end
         rst && FUEL_ON && (fuel[] = burn_lap * fuel_laps)        # respawn refuels
         if recover && CLINE !== nothing && CAR3D

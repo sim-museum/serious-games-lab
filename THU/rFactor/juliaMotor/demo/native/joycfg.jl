@@ -42,8 +42,13 @@ function apply(m::JoyMap, js, bs)
     s = clamp(1.0 - 2.0 * _norm(m.steer, js), -1.0, 1.0)   # a=full-left→+1, b=full-right→-1
     # NO steering deadzone — the wheel must be continuous right through center (a dead
     # band makes it unresponsive near center). Throttle/brake keep theirs (creep).
-    thr = clamp(_norm(m.throttle, js), 0.0, 1.0); thr < m.deadzone && (thr = 0.0)
-    brk = clamp(_norm(m.brake,    js), 0.0, 1.0); brk < m.deadzone && (brk = 0.0)
+    # PO 2026-08-27: "let off the throttle and the car stops very quickly, even if I don't use
+    # brakes". The trace shows brk=0.07–0.11 throughout those coasts: throttle and brake share axis 2
+    # (push/pull) and the configured deadzone is only 0.06, so a stick resting slightly back applies a
+    # continuous light brake. JM_DEADZONE overrides the configured value.
+    dz = (v = tryparse(Float64, get(ENV,"JM_DEADZONE","")); v === nothing ? m.deadzone : v)
+    thr = clamp(_norm(m.throttle, js), 0.0, 1.0); thr < dz && (thr = 0.0)
+    brk = clamp(_norm(m.brake,    js), 0.0, 1.0); brk < dz && (brk = 0.0)
     btn(i) = (bs !== nothing && i >= 1 && length(bs) >= i && bs[i] != 0)
     clu = m.clutch.axis >= 1 ? clamp(_norm(m.clutch, js), 0.0, 1.0) : (btn(m.clutch_btn) ? 1.0 : 0.0)
     (s, thr, brk, clu, btn(m.up_btn), btn(m.dn_btn))

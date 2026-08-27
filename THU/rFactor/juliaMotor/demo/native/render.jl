@@ -711,6 +711,12 @@ function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,clu=0.0,tc=nothing; lastlap
     hquad!(v, W-100, H-164, 12, 12, manual ? amber : green)    # shift-mode dot: green=auto amber=manual
     # HUD decluttered (PO, E13): pedal bar charts, the hand-drawn RPM dial, and the per-wheel traction
     # circles are REMOVED so the real GPL dash reads clean.  Keep speed, gear, and the lap times only.
+    # PO 2026-08-27: "add an RPM digital readout, I don't see an RPM display".  The analogue tacho
+    # lives on the gauge cluster, which the PO asked to remove — so the rev counter went with it.
+    # Digital rpm sits above the speed, amber past 80% of the limit and red past 95%.
+    let rc = rpm >= 0.95*revlim ? red : rpm >= 0.80*revlim ? amber : white
+        hnumber!(v, 40, H-176, 26, 48, 7, round(Int, rpm), rc)
+    end
     lastlap > 0 && htime!(v, 40, 28, lastlap, white)           # last lap (white, top-left)
     bestlap > 0 && htime!(v, 40, 74, bestlap, green)           # best lap (green, below)
     v
@@ -886,6 +892,43 @@ function tex_rgba(idx::GPLTex, name::AbstractString)
         catch; end
     end
     r = _tex_rgba_decode(idx, key)
+    # E70-S8: ALPHA BLEED. GPL cutout sheets keep an RGB value under alpha=0, and on several bushes it
+    # is BRIGHTER and more saturated than the visible pixels — hgbush opaque (20,69,56) vs transparent
+    # (39,111,95); s_bush01 (47,81,59) vs (96,121,108); strauchx (50,52,29) vs (57,106,24). With
+    # mipmapping and linear filtering that colour bleeds into every edge, and a bush is nearly all
+    # edge, so the foliage reads NEON (PO 2026-08-27). Brightness, white balance and scene exposure
+    # were each eliminated as causes (E70-S7, E69-S11, E72-S12); this is the remaining mechanism.
+    # Fix: push opaque colour outward into the transparent texels before upload, so there is no alien
+    # colour left to blend. Alpha is untouched, so the cutout shape is unchanged. JM_NO_ALPHABLEED=1
+    # disables for A/B.
+    if r !== nothing && get(ENV,"JM_NO_ALPHABLEED","0") == "0"
+        w, h, rgba = r
+        if w > 0 && h > 0 && length(rgba) >= 4*w*h
+            idxof(x,y) = 4*((y-1)*w + (x-1)) + 1
+            for _pass in 1:4
+                changed = false
+                for y in 1:h, x in 1:w
+                    i = idxof(x,y)
+                    rgba[i+3] >= 0x80 && continue          # already opaque
+                    sr=0; sg=0; sb=0; n=0
+                    for dy in -1:1, dx in -1:1
+                        (dx==0 && dy==0) && continue
+                        xx=x+dx; yy=y+dy
+                        (xx<1 || yy<1 || xx>w || yy>h) && continue
+                        j = idxof(xx,yy)
+                        rgba[j+3] < 0x80 && continue
+                        sr += Int(rgba[j]); sg += Int(rgba[j+1]); sb += Int(rgba[j+2]); n += 1
+                    end
+                    if n > 0
+                        rgba[i]   = UInt8(sr ÷ n); rgba[i+1] = UInt8(sg ÷ n); rgba[i+2] = UInt8(sb ÷ n)
+                        rgba[i+3] = 0x01           # still transparent, but now carries neighbour colour
+                        changed = true
+                    end
+                end
+                changed || break
+            end
+        end
+    end
     # E69-S8: is the warm cast already IN the decoded texture, or added by our shading? Gold's
     # asphalt measures R-B of -2.5..-5.3 while native's renders at +7.8..+12.7 (E69-S7), and the
     # ambient fill was eliminated as the cause. Report the DECODED texture's own mean R-B, before any
@@ -902,11 +945,23 @@ function tex_rgba(idx::GPLTex, name::AbstractString)
                     rgba[i+3] < 0x80 && continue        # skip transparent texels
                     sr += Int(rgba[i]); sg += Int(rgba[i+1]); sb += Int(rgba[i+2]); na += 1
                 end
+                # E70-S8: also report what the TRANSPARENT texels carry. GPL cutout sheets keep an RGB
+                # value under alpha=0, often a colour key; with mipmapping and linear filtering that
+                # colour bleeds into every visible edge, and on a bush — which is nearly all edge —
+                # it can dominate. That would explain neon foliage while brightness, white balance
+                # and scene exposure all measured innocent (E70-S7, E69-S11, E72-S12).
+                tr=0; tg=0; tb=0; nt=0
+                for i in 1:4:length(rgba)-3
+                    rgba[i+3] >= 0x80 && continue
+                    tr += Int(rgba[i]); tg += Int(rgba[i+1]); tb += Int(rgba[i+2]); nt += 1
+                end
                 if na > 0
                     mr, mg, mb = sr/na, sg/na, sb/na
+                    tstr = nt > 0 ? string("   TRANSPARENT (", round(Int,tr/nt), ",", round(Int,tg/nt),
+                                           ",", round(Int,tb/nt), ") n=", nt) : "   (no transparent texels)"
                     println("  [texcolor] ", rpad(key,14), rpad(string(w,"x",h),10),
-                            "mean RGB (", round(Int,mr), ",", round(Int,mg), ",", round(Int,mb),
-                            ")   R-B = ", round(mr-mb, digits=1))
+                            "opaque (", round(Int,mr), ",", round(Int,mg), ",", round(Int,mb),
+                            ")   R-B = ", rpad(round(mr-mb, digits=1),7), tstr)
                     flush(stdout)
                 end
             end
