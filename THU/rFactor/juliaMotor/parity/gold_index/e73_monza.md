@@ -184,3 +184,42 @@ better oracle changed nothing: the step that would have used it never ran.
 `JM_NO_RECENTRE=1` restores the raw `.trk` line on every track.
 
 **Fourth fix shipped in this batch**, after the badge, the front-end geometry and the gauge placement.
+
+---
+
+## E73-S6 — why the height fix regresses on Monza: the march probably hits the BANKING
+
+The E72-S7 grounding fix (march to the nearest centreline point rather than the lap centroid) helps
+Watkins and Spa but raises a forest strip on Monza (E72-S8). Traced to a single object:
+
+```
+trees03   lapdist 1042   lat 13.1   OFF-HAT
+   centroid march -> base 6.3
+   nearest  march -> base 9.1     (+2.8 m)
+```
+
+`trees03` is a long forest strip — the same class as `trees24`, which the footprint census showed
+spanning lateral 0.3…19.2 m. Lifting a strip of that size by 2.8 m is enough to make it overhang the
+road as the dark canopy seen at s=3000, even though the object's own origin is at lapdist 1042.
+
+### The likely mechanism
+
+`edgez` returns the height of the **first HAT sample** along the march. **Monza has banking geometry
+that sits ABOVE the road** — the code already special-cases it, passing `drop_overpass=MONZA` when
+building the collision HAT precisely because "the road passes under it" (E52).
+
+If the HAT used by `edgez` still contains that banking, a march aimed at the nearest centreline point
+can strike the **banking surface** before reaching ground level and return its height — roughly the
+2.8 m lift observed. The old centroid-aimed march pointed elsewhere and happened to miss it.
+
+**That would make this a Monza-specific interaction, not a flaw in the nearest-centreline idea** —
+consistent with the fix being correct on the three tracks without banking.
+
+### Next
+
+Check whether the HAT `edgez` marches over is the overpass-dropped one. If not, use the same
+`drop_overpass` treatment for grounding as for collision, then re-test Monza and lift the gate. That
+would let the fix ship on all four GPL tracks instead of two.
+
+⚠️ **Not verified.** The banking explanation fits the numbers and the code's own history, but no
+measurement yet confirms the march is striking it. The gate stays until one does.

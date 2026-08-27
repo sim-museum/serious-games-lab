@@ -1485,7 +1485,7 @@ let objnames=Set{String}()
         # kept out until Monza's case is understood. Gating by track is a holding measure, not the
         # end state.
         local tx = TRKCX; local ty = TRKCY
-        if (WATGLEN || SPA) && !haskey(ENV, "JM_EDGEZ_CENTROID")
+        if (WATGLEN || SPA || haskey(ENV, "JM_EDGEZ_NEAREST")) && !haskey(ENV, "JM_EDGEZ_CENTROID")
             bd = Inf
             for p in ALIGNED
                 dd = (p[1]-x)^2 + (p[2]-y)^2
