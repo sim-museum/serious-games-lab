@@ -437,3 +437,53 @@ So: **the direction is established and the magnitude is not.** The dials must co
 by how much needs a stable estimator — most likely fitting the tachometer's own circle (the same
 ellipse-fit trick that made the rim measurement sound in E74-S9) rather than a centroid over a
 bezel mask whose visible extent changes with the thing being measured.
+
+---
+
+## E74-S11 — the obstruction is GEOMETRY, not the camera: no FOV can satisfy both measurements
+
+E72-S10 measured the cost of D4: native's cockpit occupies **49.4 %** of the frame against gold's
+**38.0 %**, hiding trackside content that is present and correct. S11 asks whether a camera parameter
+can close that, using the cockpit-fraction metric — which, unlike E74-S10's dial centroid, is **stable**,
+because it measures a large area rather than a small feature whose visibility changes with the thing
+being measured.
+
+### Eye height bottoms out short of gold
+
+| `JM_EYE_Y` | cockpit fraction |
+|---|---|
+| 0.40 (shipped) | 49.4 % |
+| 0.48 | **45.4 %** |
+| 0.56 | 46.1 % |
+
+It improves to 45.4 % and then turns back up — **it cannot reach 38 %**.
+
+### ⭐ And FOV moves the two measurements the SAME way, when they need to move oppositely
+
+| | wheel width (frame fraction) | cockpit fraction |
+|---|---|---|
+| **gold** | **0.298** | **38.0 %** |
+| native, `JM_FOV=80` | 0.256 | 49.4 % |
+| native, `JM_FOV=92` | 0.211 | **51.0 %** |
+
+Widening the FOV shrinks the wheel *and enlarges* the cockpit fraction — the latter because a wider
+view captures more of the car's flanks. Gold needs a **bigger wheel and a smaller cockpit at the same
+time**, and FOV cannot deliver that in any direction. Narrowing FOV would grow the wheel toward gold's
+0.298 while making the obstruction worse still.
+
+**So the camera is not the lever.** Expressed dimensionlessly — cockpit fraction per unit wheel width —
+gold is 38.0/0.298 = **128**, native is 49.4/0.256 = **193**. **Relative to the steering wheel, our
+cockpit body covers about 50 % more of the view than gold's.**
+
+### What this leaves
+
+The obstruction is in the **cockpit geometry's placement or scale**, which agrees with E74-S10 from an
+independent direction: the dial cluster sits ~1.8 wheel-radii too high, i.e. the dash is displaced
+upward — exactly the way to cover more of the view while leaving the wheel's apparent size alone.
+
+Combined with E74-S9 (the wheel is correctly sized and correctly foreshortened) the picture is now
+consistent: **the wheel is right, the camera is right, and the dash above it is wrong.** That is a
+much narrower target than "the cockpit view is wrong", and it is where the next sprint should cut.
+
+No constants shipped. Two candidate levers were tested and **both were eliminated by measurement**,
+which is the useful result — E74-S7 shipped a constant without doing that and it had to be walked back.
