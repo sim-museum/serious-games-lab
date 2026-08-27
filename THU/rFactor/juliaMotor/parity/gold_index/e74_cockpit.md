@@ -178,3 +178,40 @@ exercise with no new code.
 ⚠️ Default unchanged pending that sweep. A knob that improves one frame is not yet a value worth
 shipping — and this cockpit already carries one setting (the E62 brightness lift) that was chosen to
 fix a symptom whose real cause was elsewhere.
+
+---
+
+## E74-S6 — the two-axis sweep lands it: `JM_GAUGE_Z=0.10 JM_GAUGE_Y=0.28`
+
+| setting | result |
+|---|---|
+| z=0.10, y=0.16 (shipped height) | dials hidden behind the wheel rim and scuttle |
+| **z=0.10, y=0.28** | ⭐ **cluster sits ABOVE the rim, several dial faces and their markings clearly visible** — the gold arrangement |
+| z=0.12, y=0.38 | too high; cluster leaves the visible dash |
+
+Gold puts a large tachometer above the wheel hub with smaller gauges either side. At **z=0.10,
+y=0.28** the native cockpit shows exactly that arrangement for the first time: a row of readable
+dials above the rim rather than a pale smear at the frame edge.
+
+### What this means for the PO's report
+
+The *"dials look like a Salvador Dali painting"* is, to a large degree, **a placement defect**. The
+cluster was sitting at rim height and to one side, so it was clipped at the frame edge and occluded
+by the spokes — which reads as melted no matter how good the texture is. Three earlier candidates
+(texture binding, mip/LOD, dash lighting) are not needed to explain it.
+
+### ⚠️ NOT shipped as the default yet, and why
+
+1. **One viewpoint, one track.** Tested at Spa s=3000 only. A cockpit placement must hold at other
+   lapdists and on other cars/tracks before it becomes the default.
+2. **Size is still unverified.** Gold's tachometer is visibly larger relative to the wheel than
+   ours even at the corrected position. That may be the E74-S3 minification question resurfacing —
+   and `JM_GAUGE_S` cannot test it cleanly (E74-S4: scaling displaces).
+3. This cockpit already carries one setting chosen to fix a symptom whose cause lay elsewhere
+   (the E62 brightness lift). **Adding a second tuned constant before the geometry is understood is
+   how that happened.**
+
+### Next
+
+Re-shoot z=0.10/y=0.28 at two more lapdists and in a second cockpit context; if it holds, flip the
+defaults and re-check the dial SIZE against gold as a separate question.
