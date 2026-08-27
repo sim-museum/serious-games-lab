@@ -68,6 +68,7 @@ const SKIDPAD  = TRACKSEL == "skidpad"
 const NURB     = TRACKSEL == "nurburgring"
 const MONZA    = TRACKSEL == "monza"
 const WATGLEN  = TRACKSEL == "watglen"
+const SPA      = TRACKSEL == "spa"      # E71-S12: needs the road-only centreline oracle (see ROADHAT)
 # E57: Monza-only per-surface brightness — its `asphalt` MIP is over-bright (the road renders near-white,
 # washing the scene to "snow") while the barriers/armco render carbonized-black under the flat overcast.
 # The default track bright/ambfill (0.72/0.34) is fine on the other 4 GPL tracks, so this is gated to Monza.
@@ -708,7 +709,15 @@ else
         # re-centring alone against the full-terrain oracle fixes only part of it (20/24 healthy,
         # gaps remain). Together they give 24/24 healthy, and the car photographs on asphalt at all
         # three previously-broken sites (near-white in frame: 93.5% -> 0.7%).
-        if (WATGLEN || NURB || MONZA || get(ENV,"JM_ROADHAT","0") != "0") && nroad >= 200
+        # E71-S12: SPA joins them. Under the CORRECTED census (coverage of lat 0, not centroid
+        # distance) Spa's shipped line has three buckets where no road triangle covers the centreline
+        # — s=0, s=750, s=10000 — and the oracle takes it to 57/57. Confirmed independently of the
+        # census, which is the standard E73-S5 set: photographed at s=750 and s=10000, the shipped
+        # line has the car riding the grass verge (grass under the car 29.6% and 19.8% of the lower
+        # frame); with the oracle it is centred on tarmac (0.6% and 0.1%).
+        # ZANDVOORT deliberately NOT included: under the corrected census its shipped line is already
+        # 17/17 clean, so it needs no change — which also preserves the line the PO verified.
+        if (WATGLEN || NURB || MONZA || SPA || get(ENV,"JM_ROADHAT","0") != "0") && nroad >= 200
             h = GPLTrack.build_hat(TRACKMESH0; exclude=HAT_EXCLUDE, exclude_pred=(lt -> !rp(lt)), drop_overpass=MONZA, road_pred=ROAD_PRED)
             println("  road-only HAT: ", nroad, " road tris (align/recentre oracle)"); h
         else
@@ -768,7 +777,14 @@ else
         # car's half-width means the line is off the running surface there.
         step = parse(Float64, get(ENV,"JM_LINEONROAD_STEP","250"))
         halfb = parse(Float64, get(ENV,"JM_LINEONROAD_BUCKET","20"))
-        near = Dict{Int,Float64}(); cnt = Dict{Int,Int}()
+        # COVERAGE, not centroid distance. The centroid form flagged rows at 3-5 m that are almost
+        # certainly fine — a large road triangle centred 4 m off the line still covers it — and Spa's
+        # s=0 pit straight, where the grid demonstrably sits on tarmac, was among them. Two decisions
+        # now hang on this metric (whether to enable the road-only oracle on Spa and Zandvoort), so
+        # measure the thing that matters: does any road triangle's own vertices STRADDLE lateral 0?
+        # `near` keeps the centroid figure too, so the two readings can be compared rather than one
+        # silently replacing the other.
+        near = Dict{Int,Float64}(); cnt = Dict{Int,Int}(); covers = Dict{Int,Bool}()
         for t in TRACKMESH.tris
             ROAD_TEX(lowercase(t.tex)) || continue
             cx = (Float64(t.p[1][1])+Float64(t.p[2][1])+Float64(t.p[3][1]))/3
@@ -780,6 +796,15 @@ else
             a = abs(hr.lateral)
             near[b] = min(get(near, b, Inf), a)
             cnt[b] = get(cnt, b, 0) + 1
+            if !get(covers, b, false)
+                lo = Inf; hi = -Inf
+                for vi in 1:3
+                    hv = JuliaMotor.hat(TRKSURF, Float64(t.p[vi][1]), Float64(t.p[vi][2]))
+                    hv.found || continue
+                    lo = min(lo, hv.lateral); hi = max(hi, hv.lateral)
+                end
+                (isfinite(lo) && lo <= 0.0 <= hi) && (covers[b] = true)
+            end
         end
         # NB CLINE is not defined this early in the load — derive the lap extent from the buckets
         # themselves. (The first version used CLINE.total and every run died with UndefVarError,
@@ -798,9 +823,9 @@ else
             if !haskey(near, b)
                 println("   s=", rpad(b*step,8), "NO ROAD TRIANGLES within ±", halfb, " m  *** GAP ***")
                 gap += 1
-            elseif near[b] > 3.0
-                println("   s=", rpad(b*step,8), "nearest road is ", round(near[b],digits=1),
-                        " m off the line   (", cnt[b], " tris)  *** LINE OFF ROAD ***")
+            elseif !get(covers, b, false) && near[b] > 3.0
+                println("   s=", rpad(b*step,8), "no road triangle COVERS the line; nearest centroid ",
+                        round(near[b],digits=1), " m off   (", cnt[b], " tris)  *** LINE OFF ROAD ***")
                 bad += 1
             end
         end

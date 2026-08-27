@@ -98,3 +98,48 @@ Either (a) fix the census to test triangle **coverage** of lat 0 rather than cen
 work already named in this document — and re-run; or (b) photograph Spa at its five flagged lapdists
 before and after, and show the after is genuinely better on the road. **Until one of those, the
 current lines stay.**
+
+---
+
+## Census CORRECTED to coverage — and it changed both pending decisions
+
+Replaced "how far is the nearest road triangle's **centroid**" with "does any road triangle's own
+vertices **straddle lateral 0**". Both readings are kept so they can be compared.
+
+| track | centroid metric (old) | **coverage metric (correct)** |
+|---|---|---|
+| Spa | 5 strays, 52/57 | **3 strays, 54/57** |
+| Zandvoort | 1 stray, 16/17 | **0 strays, 17/17** |
+
+**Two of Spa's five and all of Zandvoort's were centroid artefacts**, exactly as this document
+predicted. The metric was flagged as unreliable in the 3–5 m band and it was.
+
+### Decision 1 — Zandvoort: NO CHANGE, and that is now positively established
+
+Its shipped line is **already clean** on the honest metric. The road-only oracle is unnecessary
+there, which also preserves the line the PO verified. Had the census not been fixed, the oracle would
+have been enabled to "fix" a track that was never broken.
+
+### Decision 2 — Spa: ✅ SHIPPED
+
+Three buckets (s=0, 750, 10000) where **no road triangle covers the centreline**; the oracle takes
+Spa to 57/57. Confirmed independently of the census, the standard set in E73-S5:
+
+| site | shipped: grass under the car | with oracle |
+|---|---|---|
+| s=750 | **29.6%** | 0.6% |
+| s=10000 | **19.8%** | 0.1% |
+
+Photographs show the car **riding the grass verge** at both, centred on tarmac afterwards
+(`e71_spa_line_fix.jpg`). This is the very symptom the code's own D4 comment describes — *"lane-0
+sits at the road edge, half on the grass"* — present on Spa and unnoticed.
+
+`JM_NO_RECENTRE=1` restores the raw line; `SPA` is now in the ROADHAT gate alongside WATGLEN, NURB
+and MONZA. **Zandvoort remains deliberately excluded.**
+
+### The wider point
+
+The previous sprint declined to ship this on the grounds that the metric was untrustworthy in the
+band it was "fixing". Fixing the metric first turned one guess into two well-founded and *opposite*
+decisions — ship for Spa, leave Zandvoort alone. Shipping on the original census would have got
+Zandvoort wrong.
