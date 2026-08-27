@@ -223,3 +223,47 @@ would let the fix ship on all four GPL tracks instead of two.
 
 ⚠️ **Not verified.** The banking explanation fits the numbers and the code's own history, but no
 measurement yet confirms the march is striking it. The gate stays until one does.
+
+---
+
+## E73-S7 — ⚠️ the banking hypothesis is REFUTED; the real issue is single-point grounding
+
+E73-S6 proposed that Monza's grounding regression came from the march striking the banking, which
+sits above the road. **Checked, and it is wrong:**
+
+```julia
+const TERRAIN0 = GPLTrack.build_hat(TRACKMESH0; …, drop_overpass=MONZA, …)
+const TERRAIN  = isempty(SECTRI) ? TERRAIN0 : GPLTrack.build_hat(TRACKMESH; …, drop_overpass=MONZA, …)
+```
+
+**Both terrain builds already drop the overpass**, and `groundz` reads `TERRAIN`. The banking is not
+in the surface the march walks over. The hypothesis fitted the numbers and the code's own history and
+was still false — which is why it was recorded as unverified rather than acted on.
+
+### What is left, and it is more structural
+
+Two things remain in play, and the second matters more:
+
+1. **`groundz` calls `hat3d(TERRAIN, x, y; ref=Inf)`.** With `ref=Inf` an overlapping-surface query
+   returns the **highest** surface at that point. The two marches cross different ground, so they can
+   legitimately land on different heights — 9.1 m (probably the road/verge level near lapdist 1042)
+   versus 6.3 m from wherever the centroid path happened to strike.
+
+2. ⭐ **An object is grounded at a SINGLE point.** `trees03` is a long forest strip — its sibling
+   `trees24` spans 19 m laterally in the footprint census. Grounding a strip of that length by one
+   sample means that wherever the terrain varies along it, the far end is wrong by the difference.
+   **Raising the sample point by 2.8 m lifts the entire strip**, including the parts over lower
+   ground, which is exactly the overhanging canopy.
+
+So the nearest-centreline march may well be returning the *better* height for the object's origin,
+and still produce a worse picture, because the object is not a point.
+
+### Consequence for the gate
+
+The gate on Watkins+Spa stays, but the reasoning changes: this is not "Monza is special", it is
+**"single-point grounding is inadequate for long strip objects, and Monza has more of them"**. A
+proper fix grounds strips at several points along their length, or per-vertex — the same shape as the
+E71-S9 finding that a single centroid cannot describe a long object's relationship to the road.
+
+**Twice now on this project a long strip object has broken a per-object measurement.** That is a
+pattern worth naming rather than fixing twice.
