@@ -383,3 +383,48 @@ high are the same defect seen from two directions, and this sprint shows it has 
 dials: **content parity assessed from the cockpit view will under-report what the track actually
 has.** Any future "X is missing" claim from a cockpit capture must be re-checked in chase view before
 it is believed — as this one had to be.
+
+---
+
+## E72-S12 (cross-track) — the exposure table, redone with MATCHED views. E69-S11 is withdrawn.
+
+E69-S11 measured exposure on asphalt (a neutral reference needing no location matching) and reported
+**"the Nürburgring is 35 % too bright"**. S12 fills in the missing tracks and, in doing so, destroys
+that finding.
+
+### ⚠️ A gold frame is only a reference for the video it came from
+
+E69-S11 compared gold **nintendo** frames (asphalt luminance **76.3**) against a native **chase**
+frame. But gold's own Nürburgring **cockpit** video measures **104.0** on the same surface — the two
+gold videos of the same track were shot in **different conditions**. The "+35 %" was a difference
+between two gold videos, not between gold and native.
+
+**This is a new failure mode.** The earlier ones were location mismatch (E69-S4, E69-S7, E73-S9) and
+view mismatch. This is **source mismatch**: two gold recordings of the same track, at the same place,
+disagree with each other. A gold frame is a valid reference only for **the view and the video it came
+from**.
+
+### The corrected table — cockpit view on both sides
+
+| track | gold asphalt lum | native asphalt lum | native vs gold |
+|---|---|---|---|
+| **Spa** | 120.2 | 149.0 | **+24 %** |
+| **Watkins** | 120.0 | 143.8 | **+20 %** |
+| Nürburgring | 104.0 | 105.7 | **+2 %** |
+| Zandvoort | 128.5 | 131.3 | +2 % |
+| **Monza** | 117.5 | 101.3 | **−14 %** |
+
+Both of E69-S11's headline numbers change: the Ring **+35 % → +2 %** (fine), and Spa **+53 % → +24 %**
+(the +53 % also came from a chase-vs-cockpit mismatch).
+
+### What survives, and what it costs
+
+- **Withdrawn:** "the Nürburgring is 35 % too bright" and, with it, E70-S7's hypothesis (2) that
+  `GRADE_NURB` explains the billboard cyan. **The Ring's exposure is correct.** The cyan therefore has
+  *no* remaining explanation — brightness, white balance and now scene exposure are all eliminated.
+- **Stands:** the per-track exposure spread is real and one-directional per track. **Spa (+24 %) and
+  Watkins (+20 %) render brighter than gold; Monza renders 14 % darker.** Three tracks are off by
+  ~20 % in luminance on a neutral surface, which is a concrete, per-track, testable colour defect and
+  exactly the kind of thing the PO's *"correct… colour throughout"* covers.
+- **Watkins specifically** is otherwise clean — every census, the on-road count (2 marginal), and the
+  content check (E72-S10). Its exposure is now its one measured parity gap.
