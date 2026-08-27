@@ -57,3 +57,44 @@ mesh EXTENT rather than instance ORIGIN, so every track was re-run at its own as
 | Nürburgring | — | **census cannot run** | — | scenery bypasses the object pipeline (E70-S2) |
 
 Watkins is the only track that is clean, and the Ring is the only one that cannot be measured at all.
+
+---
+
+## The road-only oracle makes every track's census perfect — and that is NOT sufficient to ship it
+
+After E73-S5 fixed Monza by enabling the road-only oracle plus re-centring, the same was tested on
+the two remaining tracks:
+
+| track | oracle OFF (shipped) | oracle ON |
+|---|---|---|
+| **Spa** | 52/57 healthy, 5 strays | **57/57** |
+| **Zandvoort** | 16/17 healthy, 1 stray | **17/17** |
+
+Every track would then have a clean centreline. **It is still not being shipped for these two.**
+
+### Why not — two reasons, both about the evidence rather than the result
+
+**1. The census is being optimised in exactly the band where I already know it is unreliable.**
+`centreline_on_road.md` records that this test measures triangle **centroids**, so rows reporting
+3–5 m are *suspect* — a large road triangle centred 4 m off the line can still cover it. Spa's five
+"strays" are all in that band, including **s=0 on the pit straight where the grid manifestly sits on
+the road.** The oracle "fixes" precisely those rows. Improving a metric at the point where the metric
+is known to lie is not evidence of improving the track.
+
+**2. Zandvoort's current line was PO-verified.** The code records the previous check as
+"pass-1 mean 0.12 m", against **2.19 m** under the oracle. That is a real change to a line a human
+signed off on.
+
+### Why Monza was different, and why shipping it was justified
+
+Monza had evidence **independent of the census**: two outright road GAPS, and a photograph of the car
+floating over unmodelled ground with the white-sheet fraction at 93.5%. The census agreed, but the
+case did not rest on it. Spa and Zandvoort have neither gaps nor a photograph — only marginal rows in
+the untrustworthy band.
+
+### What would justify shipping it
+
+Either (a) fix the census to test triangle **coverage** of lat 0 rather than centroid distance — the
+work already named in this document — and re-run; or (b) photograph Spa at its five flagged lapdists
+before and after, and show the after is genuinely better on the road. **Until one of those, the
+current lines stay.**
