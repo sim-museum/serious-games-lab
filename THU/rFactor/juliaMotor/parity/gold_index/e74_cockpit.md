@@ -318,3 +318,64 @@ then solve (`EYE_X`,`EYE_Y`) against both targets, then re-derive the gauge offs
 Sampled rim pixels: **gold (130, 42, 33)** vs **native (105, 59, 47)**. Native's red is both darker and
 much less saturated — R−G of **46** against gold's **88**. That is why the first detector, tuned on
 gold, found almost nothing on native.
+
+---
+
+## E74-S9 — ⚠️⚠️ RETRACTION: E74-S8's headline finding was an artifact. The wheel is NOT wrong.
+
+E74-S8 reported that native renders the steering wheel **at half gold's size and face-on** where gold
+sees it foreshortened, and named the cockpit eye point as the cause. **That is wrong, and the cause is
+instructive.**
+
+S8's width came from percentiles over red pixels in a central zone. In **gold the driver's overalls
+carry RED SLEEVE STRIPES** that run diagonally to the bottom corners; in native the driver's arms are
+white-grey. So the 2nd/98th percentile in gold landed on the *sleeves*, not the wheel — inflating
+gold's "rim" from ~382 px to 716 px. Native had no such stripes, so its measurement was honest. **The
+comparison measured a costume difference and reported it as a camera defect.**
+
+I did render and inspect that mask. The rim was traced correctly, and I wrote "both masks trace their
+wheel rims well" — while the sleeve bands were plainly visible in the same image. **Checking that the
+target is detected is not the same as checking that nothing else is.** A mask can be right about what
+it includes and still be wrong about what it adds.
+
+### The sound instrument (`parity/tools/rimfit.py`, kept)
+
+Anchor on the **Lotus badge** (found reliably in both), cast rays outward at 3° intervals, take the
+outermost red pixel per ray, reject radius outliers, and least-squares fit an axis-aligned ellipse.
+Sleeves and kerbs cannot move it because they are not radius-consistent about the hub. Verified by
+dumping the ray endpoints over each frame — they sit on the rim in both.
+
+| | gold | native (shipped) |
+|---|---|---|
+| wheel width | **0.298** of frame width | **0.264** |
+| ellipse b/a | **1.020** | **1.069** |
+
+The wheel is within **13 %** of gold, which is what the aspect difference (1.576 vs 1.778 → 1.128)
+predicts, and both wheels are essentially circular in the image. **S8's "half size" and "face-on vs
+foreshortened" are both refuted.** So is its conclusion that the eye is too far back — that rested
+entirely on the inflated width.
+
+### What survives from S8, and what does not
+
+- ❌ **Refuted:** wheel half-size; wheel face-on vs foreshortened; eye-to-wheel distance wrong;
+  the specific claim that gold's driver "looks down on the wheel".
+- ✅ **Still true:** `JM_EYE_Y` 0.50 visibly opens up the road much as gold shows it, and native's dash
+  slab does sit high and block the centre of the view where gold's cowl does not — that is visible in
+  the captures and does not depend on the wheel measurement.
+- ✅ **Still true:** the rim colour differs — gold (130, 42, 33), native (105, 59, 47), R−G of 88 vs 46.
+- ⚠️ **Unresolved:** the dial-cluster height above the hub. Two attempts were contaminated by **sky**:
+  a bright neutral cloud beside dark trees passes both a "bright bezel" test and a "dark face nearby"
+  test. Both returned gold ≈ native (1.60 vs 1.72 radii), which is not credible given the captures.
+  The next attempt must restrict to the cockpit's **connected component** rather than a box in wheel
+  radii — no threshold on colour alone can separate cockpit from sky here.
+
+### The lesson, stated for the next time
+
+E74-S8 was careful in every respect except one: it verified the detector found its target and not that
+the target was all it found. **The correct check is not "does the mask cover the wheel" but "is
+everything the mask covers a wheel."** The ellipse fit is robust precisely because it tests a
+*structural* property (radius consistency about a known centre) rather than a *colour* property.
+
+**Nothing was shipped from S8** — its camera constants were withheld because the fit metric returned an
+impossible negative value. That caution is the only reason this retraction costs a document edit
+rather than a regression.
