@@ -476,3 +476,60 @@ two runs and corrected a claim I would otherwise have published.
 Only **51 of ogrnd2's 156 triangles** survive the scenery filters (edge-length, road-corridor, dedup),
 and the terrace is still not visible at s=400. The object is no longer fake, which was the blocker;
 what remains is finding which filter is eating it.
+
+---
+
+## E76-S10 — ✅ THE PO'S CROWDS ARE BACK, as real geometry
+
+E70-S4 fixed the LOD null-child selection and left one question: 156 triangles now parse, but the
+terrace was not visible at s=400.
+
+### It was never being filtered — I was looking in the wrong place
+
+`JM_SCENEDROP` (new) counts, per object, what each scenery filter removes:
+
+```
+[scenedrop] ogrnd2: mesh has 156 tris; placed at lapdist 463 lat 48.4  origin z=611.5
+[scenedrop] ogrnd: dropped 0 by the stretched-edge rule, 0 by the road-corridor rule
+```
+
+**Nothing is dropped.** Two corrections to E70-S4's closing note:
+
+1. The "51 of 156 triangles survived" claim was wrong. The Ring's `scenery… N tris` figure is the
+   **collision HAT** count, not the render set — the render geometry goes into *groups*, which went
+   184 → 185. All 156 triangles are in the scene.
+2. The terrace sits at **lapdist 463, lateral 48.4 m**. A capture at s=400 looking forward simply does
+   not frame an object 48 m to the side. **The object was fine; the viewpoint was wrong.**
+
+### Verified where it actually is
+
+A/B at the terrace's own lapdist, old LOD selection vs fixed (Ring null control 0.00–0.33 %):
+
+| viewpoint | frame changed |
+|---|---|
+| s=380 | 0.91 % |
+| **s=463** (the terrace) | **0.50 %** |
+| s=774 (`ogrnd11`, 60 tris) | 0.47 % |
+
+Small percentages, because a terrace 48 m away is small on screen — but the picture is unambiguous:
+**a bank of spectator figures now stands beyond the fence**, at credible scale and position, where
+before there was bare hillside.
+
+Compare the three attempts at this one object:
+
+| attempt | result |
+|---|---|
+| camera-facing sprite (E76-S8) | 209 m **wall of giant spectators** over the fence |
+| static authored-yaw panel (E76-S8) | crowd **floating above the skyline** |
+| **real geometry (E70-S4 LOD fix)** | **a crowd terrace on the bank, correctly scaled** |
+
+The first two were attempts to fake an object that only looked empty because our LOD walker followed a
+null child. **The fix was never a rendering choice — it was a parsing bug**, and E76-S8's instinct to
+ship neither fake rather than claim the item was right.
+
+### Status of the PO's item
+
+*"Restore deleted objects shortly after start-finish line at nurburgring — many of the buildings and
+crowds there were simply removed."* The **crowds are restored** (`ogrnd2` at s=463, `ogrnd11` at
+s=774), along with E76-S8's 1773 vegetation and marshal billboards. **Buildings have not been
+separately verified** and remain open.

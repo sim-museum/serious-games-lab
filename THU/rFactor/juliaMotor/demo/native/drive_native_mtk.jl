@@ -520,6 +520,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
         (hi3-lo3) < 0.5 && (hih-loh) < 6.0
     end
     hat=Render.GPL3DO.Tri[]; groups=Dict{String,Vector{Float32}}(); nskip=0
+    ndrop_edge = Ref(0); ndrop_road = Ref(0); nkeep_t = Ref(0)   # E76-S10 per-object drop census
     # E76-S3: is the Ring's scenery even being LOADED? Its whole load is "184 groups / 4065 tris"
     # where Spa gets 1679 objects + 5132 billboards at a fifth the length (E76-S2), and gold's first
     # kilometre is lined with crowds and hoardings that native simply does not have. Before hunting
@@ -589,6 +590,13 @@ function gpl_scenery(ztrk, datpack, ribbon)
         rn(n)=(Float32(M[1,1]*n[1]+M[1,2]*n[2]+M[1,3]*n[3]),
                Float32(M[2,1]*n[1]+M[2,2]*n[2]+M[2,3]*n[3]),
                Float32(M[3,1]*n[1]+M[3,2]*n[2]+M[3,3]*n[3]))
+        if get(ENV,"JM_SCENEDROP","") != "" && occursin(lowercase(ENV["JM_SCENEDROP"]), lowercase(nm))
+            M0 = placemat(t)
+            hr0 = JuliaMotor.hat(ribbon, Float64(M0[1,4]), Float64(M0[2,4]))
+            println("   [scenedrop] ", nm, ": mesh has ", length(mesh), " tris; placed at ",
+                    hr0.found ? string("lapdist ", round(Int,hr0.lapdist), " lat ", round(hr0.lateral,digits=1)) : "OFF-RIBBON",
+                    "  origin z=", round(M0[3,4],digits=1))
+        end
         for tr in mesh
             w=(ap(tr.p[1]),ap(tr.p[2]),ap(tr.p[3])); nn=(rn(tr.n[1]),rn(tr.n[2]),rn(tr.n[3]))
             # DROP stray garbage geometry: a tri with a huge or wildly-stretched edge is a
@@ -598,13 +606,27 @@ function gpl_scenery(ztrk, datpack, ribbon)
             e2=hypot(w[3][1]-w[2][1],w[3][2]-w[2][2],w[3][3]-w[2][3])
             e3=hypot(w[1][1]-w[3][1],w[1][2]-w[3][2],w[1][3]-w[3][3])
             emax=max(e1,e2,e3); emin=min(e1,e2,e3)
-            (emax > 150f0 || (emax > 70f0 && emax > 10f0*emin)) && continue
+            # E76-S10: name what this drops, per object. The "stretched garbage" rule was written for
+            # vertices parsed at junk coordinates, but a CROWD TERRACE is legitimately long and thin —
+            # ogrnd2's panels reach 108 m wide and 2 m tall, so emax > 70 && emax > 10*emin describes
+            # them exactly. JM_SCENEDROP=<name substring> reports the drops for one object.
+            if (emax > 150f0 || (emax > 70f0 && emax > 10f0*emin))
+                if get(ENV,"JM_SCENEDROP","") != "" && occursin(lowercase(ENV["JM_SCENEDROP"]), lowercase(nm))
+                    ndrop_edge[] = ndrop_edge[] + 1
+                end
+                continue
+            end
             # DROP scenery that intrudes into the road corridor (mis-placed/tilted objects
             # poking through the track) — render AND collision.  GPL world (gx,gy,gz=up);
             # the racing ribbon is queried in (gx,gy), road height is hr.height.
             cgx=(w[1][1]+w[2][1]+w[3][1])/3; cgy=(w[1][2]+w[2][2]+w[3][2])/3; cgz=(w[1][3]+w[2][3]+w[3][3])/3
             hr = JuliaMotor.hat(ribbon, cgx, cgy)
-            (hr.found && abs(hr.lateral) < 5.0 && abs(cgz - hr.height) < 3.0) && continue
+            if (hr.found && abs(hr.lateral) < 5.0 && abs(cgz - hr.height) < 3.0)
+                if get(ENV,"JM_SCENEDROP","") != "" && occursin(lowercase(ENV["JM_SCENEDROP"]), lowercase(nm))
+                    ndrop_road[] = ndrop_road[] + 1
+                end
+                continue
+            end
             # COLLISION: only near-HORIZONTAL scenery (ground/banks) goes in the HAT — never
             # walls/buildings/bridges/signs, or the car climbs them.  GPL z is up, so a ground
             # tri's geometric normal is z-dominant; a vertical structure's is not.
@@ -679,6 +701,11 @@ function gpl_scenery(ztrk, datpack, ribbon)
             println("   -- most-placed names with NO MESH (top 15) --")
             for (nm,c) in miss[1:min(end,15)]; println("      ", rpad(nm,18), c, " placements"); end
         end
+        flush(stdout)
+    end
+    if get(ENV,"JM_SCENEDROP","") != ""
+        println("   [scenedrop] ", ENV["JM_SCENEDROP"], ": dropped ", ndrop_edge[],
+                " by the stretched-edge rule, ", ndrop_road[], " by the road-corridor rule")
         flush(stdout)
     end
     (hat, [Render.TrackPart(v, tex, (0.5f0,0.5f0,0.5f0)) for (tex,v) in groups], sprites)
