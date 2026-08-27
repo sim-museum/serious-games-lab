@@ -321,3 +321,59 @@ DIRT, a loose verge. That is a judgement, not a measurement, and it is recorded 
 ~0.4 m of cement edging per side = 8.8 m paved**. A width figure for Spa is meaningless unless it says
 which of the two it means — and the 0.8 m between them is precisely the difference the S13 addition
 made.
+
+---
+
+## E69-S7 — ⭐ a real cross-track COLOUR defect: native's neutral surfaces are warm where gold's are cool
+
+The PO's brief asks for *"correct object placement and color throughout"*, and colour has had far less
+attention than placement. S7 measures it.
+
+### ⚠️ First attempt was invalid — the same trap as E69-S4
+
+Classifying pixels into sky / grass / sand / asphalt and comparing medians gave a dramatic result:
+grass gold (29, 93, 69) vs native (93, 109, 60) — native's grass apparently far too red. **That
+comparison is worthless.** Putting the two frames side by side shows they are at *different places*:
+gold's frame has a **green verge**, native's a **khaki dune bank**. The classifier compared marram
+grass against grass and called the difference a rendering error.
+
+Zandvoort is a dune circuit with both surfaces, so "grass" is not one population here. Same lesson as
+E69-S4: **a comparison that does not pin location measures the location, not the renderer.**
+
+### What survives: asphalt, which is asphalt everywhere
+
+Asphalt's neutrality is location-independent — a road is grey wherever you stand. Measured as R−B
+(0 = neutral, + = warm/yellow, − = cool/blue):
+
+| | frames | asphalt median | R−B per frame | mean |
+|---|---|---|---|---|
+| **gold** Monza | 4 | (118, 119, 123) | −8, −10, 0, 7 | **−2.8** |
+| **gold** Spa | 6 | (125, 124, 129) | −6, −6, −7, −7, −3, −3 | **−5.3** |
+| **gold** Zandvoort | 4 | (128, 127, 131) | −2, −4, −3, −1 | **−2.5** |
+| **native** Zandvoort | 4 | (134, 135, 124) | 9, 10, 9, 10 | **+9.5** |
+| **native** Monza | 3 | (106, 105, 93) | 15, 10, 13 | **+12.7** |
+| **native** Watkins | 4 | (127, 129, 120) | 8, 9, 6, 8 | **+7.8** |
+
+⭐ **Gold's asphalt leans slightly COOL on all three tracks; native's leans WARM on all three** — a
+consistent swing of roughly **13 units**, with native's per-frame spread far tighter than gold's. This
+is systematic, cross-track, and independent of viewpoint, so it is a genuine rendering defect and not
+a sampling artifact. It will be tinting *every* neutral surface in the game.
+
+### One candidate eliminated
+
+The shader adds a **non-neutral additive fill**: `lit += uAmbFill*vec3(0.13, 0.135, 0.125)` — blue
+lowest, so warm by construction, and the track draws with `ambfill=0.34`. An obvious suspect.
+
+**Measured, not assumed:** `JM_TRACK_AMB` 0.34 → 0.00 leaves asphalt R−B at **8–10**, unchanged.
+The ambient fill is **not** the cause. (Knobs `JM_TRACK_BRIGHT` / `JM_TRACK_AMB` added for this test
+and kept.)
+
+### Remaining candidates, in order
+
+1. **`sat` = 1.12** in the overcast grade — a saturation boost amplifies whatever cast exists rather
+   than creating one, but it would scale a small bias into a visible one.
+2. **`suncol`** — Zandvoort's is (1.0, 1.0, 0.98), only 2 % warm, so it cannot explain +9.5 alone;
+   but Monza's grade is warmer and Monza measures the warmest (+12.7), which is suggestive.
+3. **The texture load path** — if GPL's textures arrive with a warm bias, everything downstream
+   inherits it. This is testable directly by sampling a loaded asphalt texture before shading, and is
+   the cleanest next measurement because it separates "our lighting" from "our texture decode".

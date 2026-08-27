@@ -1373,6 +1373,8 @@ const GRADE = SKIDPAD ? GRADE_SKIDPAD :
 const ENG = EngineAudio.build_lotus(gamedata = GD)   # GPL Ford DFV V8, RPM-pitched; START is deferred to just before the game loop (below)
 tstamp("texture load begins"); print("loading textures… "); flush(stdout)
 const TEXIDX = Render.gpl_texture_index(ZD)
+const TRACK_BRIGHT = parse(Float32, get(ENV,"JM_TRACK_BRIGHT","0.72"))
+const TRACK_AMB    = parse(Float32, get(ENV,"JM_TRACK_AMB","0.34"))
 trackItems = Render.build_gpl(TRACK, TEXIDX)
 # E57: build_gpl is 1:1 with TRACK, but Items drop the texture NAME (GPL parts all carry the same
 # fallback grey col) — so classify each track surface HERE from its TrackPart.tex name for the per-
@@ -3957,7 +3959,10 @@ function main()
                            cat === :bank ? (MZ_BANK_B, MZ_BANK_A) : (MZ_OTHER_B, MZ_OTHER_A)
                     Render.draw(prog, it, vp_, Render.ident(); bright=b, ambfill=a)
                 else
-                    Render.draw(prog, it, vp_, Render.ident(); bright=0.72, ambfill=0.34)
+                    # E69-S7: make the track-draw lighting tunable so the warm cast measured against
+                    # gold (asphalt R-B: gold -2.5..-5.3, native +7.8..+12.7 across three tracks
+                    # each) can be attributed rather than guessed at.
+                    Render.draw(prog, it, vp_, Render.ident(); bright=TRACK_BRIGHT, ambfill=TRACK_AMB)
                 end
             end
             (@isdefined SEC_FROM) && length(trackItems) >= SEC_FROM && glDisable(GL_CULL_FACE)   # E68 S9b: section cull off before objects
