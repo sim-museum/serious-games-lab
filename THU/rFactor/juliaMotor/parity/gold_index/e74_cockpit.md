@@ -247,3 +247,74 @@ texture or lighting work would have addressed it.
 ⚠️ Which means this fix carries the same risk as the E62 brightness lift it partly supersedes: **a
 constant tuned to make one thing look right while an underlying geometry error remains.** Recorded
 here so that when D4 is settled, this value is re-derived rather than inherited.
+
+---
+
+## E74-S8 — ⭐ D4 MEASURED: the cockpit eye point is wrong, and the shipped gauge constants sit downstream of it
+
+E74-S7 shipped `JM_GAUGE_Y` 0.16→0.28 with an explicit warning: *"a constant tuned to make one thing
+look right while an underlying geometry error remains… when D4 is settled, this value is re-derived
+rather than inherited."* S8 settles enough of D4 to say that warning was justified.
+
+### Method
+
+Extracted the gold Monza cockpit video (`260802_monza_cockpit.mp4`, 1920×1080/60), located the game
+viewport inside the wine desktop (x 0–1279, scene rows 143–954 → **1280×812**), and captured native
+Monza cockpit (view **0**, not view 1) at the same straight. Two car-space measurements were used
+because they are **independent of FOV and frame size**:
+
+- **wheel size** = red rim width as a fraction of frame width;
+- **foreshortening** = hub (Lotus badge) drop below rim top, in rim widths. A wheel seen face-on gives
+  ≈0.5; one seen from above is squashed below that.
+
+Both detectors were **rendered as masks and checked by eye** before any number was used — the first
+two attempts were contaminated (gold's "rim" spanned the full frame width, catching red kerbs and the
+driver's striped sleeves; native's "badge" landed on the tan bodywork at x=1380).
+
+### Result
+
+| | gold | native (shipped) |
+|---|---|---|
+| wheel rim width | **0.559** of frame width | **0.273** |
+| hub drop below rim top | **0.254** rim widths | **0.473** |
+
+⭐ **Native renders the steering wheel almost perfectly face-on and at half gold's apparent size.**
+Gold's driver sits high and *looks down* on a foreshortened wheel, seeing the road over the cowl.
+Native's eye is low and far back: the wheel reads as a flat circle and **the dash slab blocks the
+centre of the view**, floating high with a gap between it and the wheel.
+
+### The knobs, and what each does
+
+| knob | effect (measured) |
+|---|---|
+| `JM_EYE_Y` (0.40) | 0.50 drops the cockpit in frame and **opens up the road much as gold shows it**; 0.58/0.66 overshoot. Does **not** change wheel size (0.273→0.271). |
+| `JM_EYE_X` (0.46) | Drives apparent wheel size hard: 0.20→**0.149**, 0.46→**0.273**, 0.70→**eye past the wheel entirely** (dash and wheel vanish). |
+
+So the size error is **eye-to-wheel distance, not FOV** — a pure FOV error would shrink the world
+equally, and the world does not move with `JM_EYE_X`. Gold's 0.559 lies between `EYE_X` 0.46 and 0.70.
+(Aspect differs — gold 1.576, native 1.778 — which accounts for ~13 % horizontally, not a factor of 2.)
+
+### ⚠️ Consequence for what is already shipped
+
+**The E74-S7 gauge constants were fitted against a camera that is itself wrong.** Gold puts the dial
+cluster *below* the rim top — you read the dials **through the top arc of the wheel**. Native now puts
+them *above* the rim top, floating clear of it. The S7 fix made the dials legible by moving them
+**away from gold's placement**, compensating for the low eye. When the camera is corrected,
+`JM_GAUGE_Y`/`JM_GAUGE_Z` must be **re-derived from zero, not adjusted**.
+
+### ⚠️ No camera constants shipped — the fit instrument is not sound
+
+A 2-D probe of (`EYE_X`,`EYE_Y`) returned **foreshortening = −0.287** at (0.55, 0.44): the hub *above*
+the rim top, which is geometrically impossible. The rim-top percentile picks up other red pixels
+(sleeves, a lower rim arc) once the pose changes, so the metric is only valid for the two frames whose
+masks were verified. **Fitting two camera constants on a metric that returns impossible values would
+produce another tuned-to-look-right number — the exact failure this sprint exists to stop.**
+
+Next: a rim detector robust across poses (fit an ellipse to the rim annulus rather than take extremes),
+then solve (`EYE_X`,`EYE_Y`) against both targets, then re-derive the gauge offsets.
+
+### Bonus finding — the wheel's colour is wrong too (PO: *"correct object placement and color throughout"*)
+
+Sampled rim pixels: **gold (130, 42, 33)** vs **native (105, 59, 47)**. Native's red is both darker and
+much less saturated — R−G of **46** against gold's **88**. That is why the first detector, tuned on
+gold, found almost nothing on native.
