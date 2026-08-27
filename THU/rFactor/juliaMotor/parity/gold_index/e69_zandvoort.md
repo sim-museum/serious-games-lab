@@ -87,3 +87,47 @@ origin offset, mesh across the line.
   `centreline_on_road.md`, not a real defect.
 - **Rail/fence triangles: 8 in total, 0 duplicates.** Zandvoort barely uses the `railfam` textures,
   so the guardrail dedup is irrelevant here.
+
+---
+
+## E69-S3 — gold pairing at the three flagged sites: one render bug, one MISSING-CONTENT hole
+
+Paired each on-track object from E69-S2 against gold at the same lap fraction
+(`e69_zand_ab.jpg`).
+
+### s=3256 — `ppl_l3`: a crowd row rendered as a WALL
+
+- **gold:** a line of spectators standing on the **right verge**, behind a low barrier. Road clear.
+- **native:** a **huge yellow-green crowd texture filling the entire left of the frame** and
+  overhanging the road edge.
+
+The census said this row's mesh reaches 0.8 m from the centreline from an origin 12.3 m out. This is
+what that looks like: not a small object nudged onto the track, but a **billboard drawn at the wrong
+scale and orientation** — flat geometry where GPL draws a camera-facing sprite. **Same family as the
+Nürburgring's billboard defect (E76-S5/S7)**, one step further along: the Ring's don't draw at all,
+Zandvoort's draw wrongly.
+
+### ⭐ s=3851 — the main straight: gold is full, native is EMPTY
+
+- **gold:** grandstands, pit buildings, the **Dunlop bridge**, advertising, packed crowds — the
+  busiest scene on the lap.
+- **native:** **bare grass and an empty road.** No grandstand, no pits, no bridge, no crowds.
+
+**This is the same defect the PO reported on the Nürburgring, on a second track.** Zandvoort's main
+straight is missing its buildings and crowds entirely. It was not caught earlier because the E69-S1
+sweep sampled s=3600 and s=4000 and stepped over it, and because the crowd census (origin-based)
+could not see it.
+
+### s=2350 — `bushes01–04`: no defect visible
+
+Gold shows a clean road through the dunes with a hedge line; native likewise. The flagged bushes are
+not visibly on the racing surface here. The census flags them at 0.1–1.4 m, so either they are
+low/thin enough not to read, or this is a footprint false positive of the kind E71-S9 warned about
+for long objects.
+
+### Consequence
+
+E76 should be **widened beyond the Nürburgring**: *"objects deleted"* now has a confirmed second
+instance on Zandvoort's main straight. And the billboard-rendering defect now has two tracks'
+evidence with **opposite symptoms** — absent on the Ring, oversized-and-flat here — which is a
+strong hint they share one cause in how sprite objects are treated.
