@@ -1999,6 +1999,7 @@ let objnames=Set{String}()
     # an elevated layer, the object is grounded on that instead of the terrain beneath it. Enumerate
     # the surfaces at the march's first hit by lowering `ref` step by step — the HAT API allows it.
     # JM_EDGEZ_TRACE=<name substring>
+    hr_lap(i) = (h = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y)); h.found ? h.lapdist : -1.0)
     if get(ENV,"JM_OVERHANG","") != ""
         # E73-S12: does an object actually INTRUDE over the racing surface? That is the PO's criterion
         # ("objects that are on the actual road"), and unlike a treeline's apparent height it can be
@@ -2010,14 +2011,13 @@ let objnames=Set{String}()
         halfw = parse(Float64, get(ENV,"JM_OVERHANG_HALFW","6.0"))
         # a silent block cannot be distinguished from a block that never ran — say what was searched
         println("== JM_OVERHANG: /", pat, "/ over ", length(insts), " instances, corridor ±", halfw, " m ==")
+        nointr = 0; nofp = 0; hits = Tuple{String,Int,Float64,Float64,Float64}[]
         for i in insts
-            occursin(pat, lowercase(i.name)) || continue
+            (pat == "1" || occursin(pat, lowercase(i.name))) || continue
             vs = get(lverts, i.name, nothing)
             if vs === nothing || isempty(vs)
-                println("   [overhang] ", rpad(i.name,10), " NO FOOTPRINT — this instance did not take",
-                        " the mesh path (billboard/panel), so it has no lverts entry.",
-                        "  mesh? ", get(objmesh,i.name,nothing) !== nothing,
-                        "  bb? ", get(bbinfo,i.name,nothing) !== nothing)
+                nofp += 1
+                pat == "1" || println("   [overhang] ", rpad(i.name,10), " NO FOOTPRINT (billboard/panel path)")
                 continue
             end
             th = -Float64(i.yaw) + Float64(objyawfix(i.name)); c, sn = cos(th), sin(th)
@@ -2036,11 +2036,27 @@ let objnames=Set{String}()
                 end
             end
             ntot == 0 && continue
+            if nover > 0
+                push!(hits, (i.name, nover, minlat, hi, hr_lap(i)))
+            else
+                nointr += 1
+            end
+            pat == "1" && continue
             println("   [overhang] ", rpad(i.name,10),
                     " footprint pts ", rpad(ntot,5),
                     " over road(<", halfw, "m): ", rpad(nover,5),
                     " nearest |lat| ", rpad(round(minlat,digits=1),7),
                     nover > 0 ? string(" base sits ", round(hi,digits=1), " m above road") : "")
+        end
+        if pat == "1"
+            sort!(hits, by=h->h[3])
+            println("   ", nointr, " instances clear of the road, ", length(hits), " INTRUDING, ",
+                    nofp, " without a mesh footprint (billboard/panel path — not tested)")
+            for h in hits[1:min(end,14)]
+                println("      ", rpad(h[1],12), "pts over road ", rpad(h[2],5),
+                        " nearest |lat| ", rpad(round(h[3],digits=1),7),
+                        " base ", rpad(round(h[4],digits=1),7), " m above road   lapdist ", round(Int,h[5]))
+            end
         end
         flush(stdout)
     end

@@ -128,3 +128,54 @@ different causes, one symptom.**
 Run `JM_OBJFIND` on Zandvoort for its grandstand/pit names. That splits the three affected tracks
 into "placement" and "loading" groups, which is the fork the whole cross-track investigation now
 turns on.
+
+---
+
+## Cross-track ON-ROAD CENSUS (E71-S14 / E69-S10 / E72-S11 / E73-S13, 2026-08-27)
+
+E73-S12 built `JM_OVERHANG` to answer the PO's criterion — *"objects that are on the actual road"* —
+from geometry rather than from video. `JM_OVERHANG=1` now runs it over **every** placed instance on a
+track. This is the first lap-wide, all-object answer to that question.
+
+| track | clear of road | **INTRUDING** | no mesh footprint (untested) |
+|---|---|---|---|
+| **Spa** | 1801 | **698** | 6422 |
+| **Zandvoort** | 375 | **95** | 378 |
+| **Monza** | 120 | **17** | 37 |
+| **Watkins** | 104 | **2** | 21 |
+| Nürburgring | — | not run (load time) | — |
+
+### ⭐ Spa: the PO's own example, enumerated
+
+| object | pts over road | nearest \|lat\| | base vs road | lapdist |
+|---|---|---|---|---|
+| `armcow3` | 3 | **0.0 m** | +0.7 | 1984 |
+| **`house41`** | **21** | **0.1 m** | −0.3 | 11674 |
+| `ho18` | 4 | 0.2 m | +0.4 | 3858 |
+
+The PO wrote *"move any objects (lines of people, houses in the case of the spa track) that are on the
+actual road"*. `house41` puts **21 footprint points inside the road corridor, reaching 0.1 m of the
+centreline**. E71 had previously identified `house43` at lapdist 12010 by hand; the census finds the
+whole family without guessing.
+
+### Zandvoort and Monza
+
+Zandvoort's worst are `bushes01` (nearest **0.1 m**, base 0.5 m above the road), `herbe1/2` (grass) and
+`ppl_m1` (a crowd row at **0.2 m**) — the same families E69-S5's footprint filter targets.
+
+Monza's 17 are led by `trbk1`–`trbk7` at lat 0.4–1.3 m with base ≈ 0 m. **Those are braking markers,
+and they belong on the road.** A raw intrusion count is therefore *not* a defect count.
+
+### ⚠️ Two limits, stated so the numbers are not over-read
+
+1. **The census measures PLACEMENT, not render fate.** It walks every placed instance, including those
+   the on-road filters already drop — so the intruding counts are an upper bound on what actually
+   reaches the screen. Zandvoort's 95 substantially overlaps the 41 instances E69-S5's filter already
+   catches.
+2. **Road furniture is indistinguishable from intrusion by geometry alone.** Braking markers, grid
+   lines and kerb objects are *supposed* to be on the road. Making this actionable needs a
+   furniture allow-list — the same "whatever the car drives on IS the road" reasoning the texture
+   census uses.
+
+**Watkins is genuinely clean** (2 instances, both ≥5.1 m — i.e. at the corridor edge), which agrees
+with every earlier Watkins census and with E72-S10's finding that its content is correct.
