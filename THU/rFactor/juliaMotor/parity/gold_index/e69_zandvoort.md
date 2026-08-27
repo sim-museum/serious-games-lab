@@ -377,3 +377,59 @@ and kept.)
 3. **The texture load path** — if GPL's textures arrive with a warm bias, everything downstream
    inherits it. This is testable directly by sampling a loaded asphalt texture before shading, and is
    the cleanest next measurement because it separates "our lighting" from "our texture decode".
+
+---
+
+## E69-S8 — ✅ SHIPPED: white balance. Decode exonerated by the file's own header.
+
+E69-S7 measured a systematic warm cast on native's neutral surfaces (asphalt R−B: gold −2.5…−5.3 on
+three tracks, native +7.8…+12.7 on three tracks) and eliminated the ambient fill as the cause. S8
+finds where it comes from and corrects it.
+
+### The texture decode is CORRECT — proved by the format itself
+
+`JM_TEXCOLOR` (new) reports each decoded texture's own mean before any lighting touches it. Zandvoort's
+`asphalt` decodes to **(159, 153, 151), R−B = +8.9** — already warm, which almost exactly matches what
+the renderer then produces (+9.5). So the lighting is not adding the cast; it is *preserving* it.
+
+⭐ The obvious next suspect was our decoder — a palette channel-order bug would do this. **The MIP
+format settles it without any guesswork: its `MPHD` header carries the texture's own declared average
+colour.** For `asphalt`:
+
+```
+MPHD bytes: 03 09 00 00 00 09 00 00 00 8f 89 84 ff ...
+            ^type=3 (16-bit 565)  ^powW=9  ^powH=9  ^avgcol = 8f 89 84 = (143,137,132)
+```
+
+**The file declares R−B = +11**; we decode R−B = +8.9. Same hue. The asphalt texture really is
+authored warm, and our decode reproduces it faithfully — so a channel swap is refuted without ever
+having to guess at permutations. (Type 3 also means this is the 16-bit path, not the paletted one.)
+
+### So gold COOLS it, and we do not
+
+Both renderers read the same warm texture; gold outputs −2.5 and we output +9.5. The difference is
+atmosphere/lighting, and the correction belongs at the end of shading as a **white balance derived
+from the measurement**, not from taste.
+
+`uWBal` = **(0.955, 1.0, 1.05)**, chosen to move Zandvoort's asphalt onto gold's:
+
+| track | before | after | gold |
+|---|---|---|---|
+| Zandvoort | +9, +9 | **−1, +1** | −2.5 |
+| Monza | +15, +10, +13 | **+2, +2** | −2.8 |
+| Watkins | +8, +9, +6, +8 | **+3, +2** | −5.3 |
+
+One constant, derived on one track, verified on two others it was not fitted to — **~70 % of the error
+removed on all three**. A residual ~+5 warm remains; it is not chased further, because the value that
+generalises is worth more than the value that matches one track exactly.
+
+Visually the change is subtle and introduces no blue cast. **Shipped on by default**; `JM_WBAL="1,1,1"`
+disables, and `JM_WBAL="r,g,b"` overrides.
+
+### Why this one is a fair constant and E74-S7's was not
+
+E74-S7 shipped a gauge offset that made one thing look right while an underlying geometry error
+remained, and said so at the time — correctly, as E74-S8 later showed. This constant is different in
+kind: it is **measured against the oracle on three tracks, cross-validated on tracks it was not fitted
+to, and applied after both competing explanations (ambient fill, texture decode) were eliminated by
+experiment.** That is the difference between a white balance and a fudge factor.

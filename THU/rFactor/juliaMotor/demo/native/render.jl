@@ -303,6 +303,13 @@ uniform float uAlpha;     // per-draw opacity multiplier (1 = opaque; <1 = glass
 uniform int uCutout;      // 1 for chain-link/foliage cutouts → sharpen alpha edge (kill shimmer)
 uniform int uGraze;       // 1 for GPL tree-LINE meshes → fade faces viewed edge-on (kills the end-on "smear")
 uniform int uSky;
+// E69-S8 WHITE BALANCE. Gold renders neutral surfaces slightly COOL (asphalt R-B -2.5..-5.3 across
+// Monza/Spa/Zandvoort) while native renders them WARM (+7.8..+12.7 across Zandvoort/Monza/Watkins).
+// Decode is NOT the cause: the .mip header's own declared average colour for asphalt is (143,137,132),
+// R-B +11, and our decode reproduces that hue — the texture really is authored warm, and gold cools
+// it. Nor is the ambient fill (removing it entirely left R-B unchanged). So the correction belongs at
+// the end of shading, as a white balance derived from the measurement rather than from taste.
+uniform vec3 uWBal;
 uniform vec3 uSunCol;     // directional-sun tint (warm white on the sunny grade; white = neutral GPL)
 uniform vec3 uAmbSky;     // up-facing sky-fill colour (cool blue on the sunny grade → cooler shadows)
 uniform float uSat;       // output saturation multiplier (>1 = punchier sunny colours; 1 = neutral)
@@ -374,7 +381,9 @@ void main(){
     float g = abs(dot(N, normalize(uCamPos - vWorld)));   // 0 = edge-on, 1 = face-on
     alpha *= smoothstep(0.05, 0.32, g);
   }
-  o=vec4(mix(lit, uFogCol, fog*fog), alpha*uAlpha);     // alpha → MSAA coverage (smooth cutout edges); uAlpha = glass
+  vec3 outc = mix(lit, uFogCol, fog*fog);
+  outc *= uWBal;                                  // E69-S8: measured white balance (see below)
+  o=vec4(outc, alpha*uAlpha);     // alpha → MSAA coverage (smooth cutout edges); uAlpha = glass
 }"""
 # depth-only program for the shadow pass (render the scene from the sun's POV)
 const DEPTH_VS = """
@@ -870,6 +879,32 @@ function tex_rgba(idx::GPLTex, name::AbstractString)
         catch; end
     end
     r = _tex_rgba_decode(idx, key)
+    # E69-S8: is the warm cast already IN the decoded texture, or added by our shading? Gold's
+    # asphalt measures R-B of -2.5..-5.3 while native's renders at +7.8..+12.7 (E69-S7), and the
+    # ambient fill was eliminated as the cause. Report the DECODED texture's own mean R-B, before any
+    # lighting touches it — that separates "our texture decode" from "our lighting" in one step.
+    # JM_TEXCOLOR=1 reports every texture; JM_TEXCOLOR=<substr> only matching names.
+    if r !== nothing && get(ENV,"JM_TEXCOLOR","") != ""
+        want = ENV["JM_TEXCOLOR"]
+        if want == "1" || occursin(lowercase(want), key)
+            w,h,rgba = r
+            n = w*h
+            if n > 0
+                sr=0; sg=0; sb=0; na=0
+                for i in 1:4:length(rgba)-3
+                    rgba[i+3] < 0x80 && continue        # skip transparent texels
+                    sr += Int(rgba[i]); sg += Int(rgba[i+1]); sb += Int(rgba[i+2]); na += 1
+                end
+                if na > 0
+                    mr, mg, mb = sr/na, sg/na, sb/na
+                    println("  [texcolor] ", rpad(key,14), rpad(string(w,"x",h),10),
+                            "mean RGB (", round(Int,mr), ",", round(Int,mg), ",", round(Int,mb),
+                            ")   R-B = ", round(mr-mb, digits=1))
+                    flush(stdout)
+                end
+            end
+        end
+    end
     if r !== nothing && cf != ""
         try; open(cf,"w") do io; write(io, Int32(r[1]), Int32(r[2]), r[3]); end; catch; end
     end
@@ -1389,6 +1424,17 @@ function build_track(parts, texidx)
     items
 end
 setmat(prog,name,M)=glUniformMatrix4fv(glGetUniformLocation(prog,name),1,GL_FALSE,M)
+# E69-S8: white balance, default measured to bring native's neutral surfaces onto gold's.
+# JM_WBAL="r,g,b" overrides; JM_WBAL="1,1,1" disables.
+const WBAL = let v = get(ENV,"JM_WBAL","")
+    if v == ""
+        (0.955f0, 1f0, 1.05f0)   # measured against gold on three tracks — E69-S8
+    else
+        p = parse.(Float32, split(v, ","))
+        length(p) == 3 ? (p[1],p[2],p[3]) : (1f0,1f0,1f0)
+    end
+end
+
 function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0, graze::Bool=false, alpha::Real=1.0, tint=(1f0,1f0,1f0), mirrorglass::Bool=false)
     setmat(prog,"uVP",vp); setmat(prog,"uModel",model)
     glUniform3f(glGetUniformLocation(prog,"uTint"), Float32(tint[1]), Float32(tint[2]), Float32(tint[3]))   # per-draw colour multiply (default white = no-op)
@@ -1397,6 +1443,7 @@ function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, amb
     glUniform1f(glGetUniformLocation(prog,"uSpec"), Float32(spec))
     glUniform1f(glGetUniformLocation(prog,"uAlpha"), Float32(alpha))
     glUniform1f(glGetUniformLocation(prog,"uAmbFill"), Float32(ambfill))
+    glUniform3f(glGetUniformLocation(prog,"uWBal"), WBAL[1], WBAL[2], WBAL[3])
     glUniform1i(glGetUniformLocation(prog,"uGraze"), graze ? 1 : 0)
     glUniform1i(glGetUniformLocation(prog,"uCutout"), get(CUTOUT_TEX, item.tex, false) ? 1 : 0)
     if item.tex != 0
