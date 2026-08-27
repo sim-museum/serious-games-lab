@@ -621,7 +621,7 @@ survivor, so closing the rest is enumeration rather than investigation.
 > |---|---|---|
 > | 4.1 m | the filter's own asphalt half-width | **18** |
 > | 5.0 m | | 45 |
-> | 6.0 m | the census corridus | 100 |
+> | 6.0 m | the census corridor | 100 |
 >
 > The remaining work was overstated by about 6×. Nothing was wrong with either number; they were
 > quoted as if they answered the same question.
