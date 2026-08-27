@@ -198,3 +198,45 @@ and the authored value is the best estimate available.
 "leave it floating"), and other off-HAT objects — `tree8`, `treesrb1`, `tree6/7`, `grandl` — are
 currently sunk by the same path. Fixing it will make **all** of them reappear at their authored
 heights, which is a large visual change and needs photographing, not just reasoning.
+
+---
+
+## E72-S7 — ✅ FIX SHIPPED: Watkins' pit buildings and grandstands are restored
+
+**The bug was the march TARGET.** `edgez` grounds an off-terrain object by marching from it toward
+the **lap's geometric centre** until it finds terrain. That works for objects *outside* the loop. For
+anything *inside* it — Watkins' pit complex, 29 m off the road — the direction points **away** from
+the track, deeper into unmodelled infield, so the march finds nothing and falls back to `trkzlo`.
+That is how three buildings ended up ~29 m underground while `tower1`, just inside the terrain at
+26.9 m, landed perfectly.
+
+**Fix:** march toward the **nearest centreline point** instead. Correct from either side of the
+circuit. `JM_EDGEZ_CENTROID=1` restores the old target.
+
+### Result — measured and photographed
+
+| object | before | after |
+|---|---|---|
+| `newpit` | −8.7 (buried) | **3.9** |
+| `pitfill2` | −8.7 | **7.2** |
+| `pitgrnd1` | −8.7 | **6.2** |
+
+Photographs (`e72_pit_restored.jpg`) show, appearing where there was bare grass:
+- **s=3600** — the blue/white **Dunlop Tires grandstand with crowds**
+- **s=3700** — the **multi-storey pit/timing building**, which is exactly what gold shows at S/F
+- **s=0** — trackside crowds and a **Total Performance** hoarding
+
+This closes the "Watkins pit building missing" thread from `missing_structures.md`, which began as
+*"the building is absent"*, was corrected to *"placed but invisible"*, then to *"buried"*, and is now
+fixed.
+
+### Cross-track regression check — done, not assumed
+
+This changes every off-terrain object on every track, so Zandvoort was photographed before and
+after: **grandstand, Dunlop hoardings and crowds all present in both**, 2.5% of pixels changed at
+S/F (minor height adjustments), 0.16% at s=1600. **No object lost, none left floating.**
+
+⚠️ Spa, Monza and the Nürburgring have **not** been re-photographed. The change is default-on and
+revertable with one env var; a sweep on those three is the outstanding verification.
+
+**Sixth fix shipped in this batch.**

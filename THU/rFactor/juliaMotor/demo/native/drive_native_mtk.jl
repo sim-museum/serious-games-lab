@@ -1470,7 +1470,22 @@ let objnames=Set{String}()
     # the object at that terrain-EDGE height — so far grandstands/buildings rest on the ground at the
     # horizon instead of hovering above it.  Fall back to the track's low point if the march finds nothing.
     function edgez(x, y)
-        dx = TRKCX - x; dy = TRKCY - y; d = hypot(dx, dy)
+        # E72-S7: march toward the NEAREST CENTRELINE POINT, not the lap's geometric centre.
+        # Marching to the centroid works only for objects OUTSIDE the loop; for anything on the
+        # INSIDE — Watkins' pit buildings, 29 m off the road — the direction points away from the
+        # track, deeper into unmodelled infield, so the march finds no HAT and returns trkzlo. That
+        # buried newpit/pitfill2/pitgrnd1 ~29 m underground (E72-S6) while tower1, just inside the
+        # HAT at 26.9 m, landed correctly. Aiming at the nearest ribbon point is right from either
+        # side. JM_EDGEZ_CENTROID=1 restores the old target for A/B.
+        local tx = TRKCX; local ty = TRKCY
+        if !haskey(ENV, "JM_EDGEZ_CENTROID")
+            bd = Inf
+            for p in ALIGNED
+                dd = (p[1]-x)^2 + (p[2]-y)^2
+                dd < bd && (bd = dd; tx = p[1]; ty = p[2])
+            end
+        end
+        dx = tx - x; dy = ty - y; d = hypot(dx, dy)
         d < 1f-3 && return trkzlo
         ux = dx/d; uy = dy/d; s = 0f0
         while s < d

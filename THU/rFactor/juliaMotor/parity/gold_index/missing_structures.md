@@ -7,7 +7,7 @@ track's start/finish. Composite: `sf_all_tracks.jpg`.
 |---|---|---|---|
 | **Nürburgring** | crowds + hoardings for the first km | bare past s≈200 | ⭐ **severe** (E76) |
 | ~~Zandvoort~~ | grandstands, pits, Dunlop bridge, crowds | **native s=0 matches gold — NOT affected** | ❌ **RETRACTED (E69-S4): the comparison used a mis-mapped lapdist 330 m before the straight** |
-| **Watkins Glen** | Kendall banner + **large multi-storey pit/timing building with people on its balconies** | banner present, **building absent — bare grass** | ⭐ **structure missing** |
+| **Watkins Glen** | Kendall banner + large multi-storey pit/timing building | ✅ **FIXED (E72-S7)** — buildings were buried ~29 m by the `edgez` march target; now restored | ✅ |
 | **Spa** | pit wall with Shell/BP signage, timing board, spectators, bridge | green hoardings, tents, flags — **populated but arranged differently** | ◑ differs, not empty |
 | **Monza** | pit wall, dark grandstand, hoardings | AUTODROMO building, hoardings, crowds — **populated** | ◑ differs, not empty |
 
