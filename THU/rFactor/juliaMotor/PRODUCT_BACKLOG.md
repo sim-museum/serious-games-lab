@@ -1013,3 +1013,53 @@ track is dropped by different code, and none of the E71–E73 censuses can see i
 ⚠️ Note for whoever picks this up: **do not use `JM_CROWDDIAG` or `JM_OBJDIAG` here** — they read
 `insts`, which is empty on the Ring, and will report "nothing" regardless of the truth (E70-S1 made
 exactly that mistake). Use the mesh-based censuses, which E70-S2 relocated so they run on this track.
+
+### E77 (PO 2026-08-27) — the Nürburgring bridge underpasses launch the car
+
+PO, driving the Ring: *"when I went under the bridge at the ring the car went skittering up an
+embankment, even though I was on the road"*, and on a second run confirming it: *"when I try to go
+under the bridge at the ring, the car levitates and bounces"*.
+
+**Located objectively.** `JM_SWEEP=10` walks the racing line and reports every height
+discontinuity in the collision surface. Over the whole 22.76 km lap there are **8 anomalies and
+2268 clean stations**, and the 8 fall in exactly two places:
+
+| lapdist | Δh | |
+|---|---|---|
+| 21540 | **+5.8 m** | first underpass |
+| 21550 | −5.1 m | |
+| 22250 | **+13.3 m** | second underpass — Döttinger Höhe, before the finish |
+| 22260 | +5.0 m | |
+| 22270 | +5.2 m | |
+| 22280 | +6.9 m | |
+| 22290 | +9.9 m | |
+| 22300 | **−35.3 m** | |
+
+At the second one the collision surface **steps up ~13 m over 50 m, then falls 35 m**. The car
+climbs the step and is thrown off the end — which is what "levitates and bounces" is. Both sit on
+the racing LINE, not off it, so no driver error is involved.
+
+**Cause:** the bridge DECK is in the collision HAT, so the car is given the deck's height instead of
+the road's while passing beneath it.
+
+⚠️ **`drop_overpass` is NOT the fix and must not simply be switched on here.** It drops any triangle
+with another surface below it, and its own docstring says *"do NOT enable on tracks with real
+drive-over bridges (Nürburgring)"* — the Ring has bridges you genuinely drive over, and dropping
+them would replace this defect with a worse one. The fix has to be narrow: identify the surfaces at
+these two lapdists and exclude only those from collision.
+
+⚠️ **A prior analysis of this said the deck was NOT in the collision mesh, and was wrong.** It
+searched the parsed `nurburg.3do` for triangles with another surface >2.5 m directly beneath their
+centroid and found only 4, all `log_s` over `grass`. `JM_SWEEP` disagrees because it measures *the
+surface the physics actually hands the car along the line*, not what the mesh is thought to contain.
+Prefer the sweep here; a mesh-structure argument already produced one confident wrong answer.
+
+**Next step:** probe the HAT at s≈21540–21550 and s≈22250–22300, name the textures of the triangles
+being returned, and exclude those from the collision HAT (`HAT_EXCLUDE` / `HAT_EXCLUDE_PRED`) while
+leaving the drive-over bridges intact. Re-run `JM_SWEEP=10`; the correct result is 0 anomalies.
+
+*Also observed on the same drives, not yet triaged:* odd buildings and part-buildings around the
+Ring; a grandstand facing the wrong way near the Watkins start line; lines of people across the
+track at Zandvoort (`ppl_l3` @1016, `ppl_s2` @1345, `ppl_m1` @3851, `bushes01–04` @2309–2376, all
+already dropped by the MESH filter, so they are reaching the screen via the BILLBOARD path, which
+has no on-road filter); transparent openings in the Monza scenery just after the start line.
