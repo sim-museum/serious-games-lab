@@ -1357,11 +1357,50 @@ by ten seconds, are both wrong.
 `/home/admin/sgl/THU/INSTALL/replay/`. There are also per-track `fs_*` and `LOR_*` replays (hotlaps
 and race stints) which carry richer line data than the filename does.
 
-**Suggested sprint split** (each ~8 pts, and the first two are worth having on their own):
+### 2026-08-28 — S1 MEASURED: this is NOT a greenfield, and the sprint plan below was wrong
 
-1. **Lap timing + race state.** 3-lap counting, per-lap and best-lap per car, start/finish
-   detection, a results table at the end. Works with ZERO opponents first — a timed 3-lap solo run
-   is independently useful and is the harness everything else is measured in.
+⚠️ **I wrote the sprint split below assuming nothing existed. That assumption is false** and the
+plan is corrected here rather than followed. Already present and working: `JM_MODE=race`,
+`RACE_LAPS`, per-car lap counting (`car.lap += 1` on the start/finish wrap, `ai.jl:194/246`),
+player lap counting (`cs.laps`), race-finish detection with a standings dump
+(`drive_native_mtk.jl:4483`), fuel sized to race distance, a lap-time display, and a full `RaceAI`
+multi-rail field with collision resolution and tailgating. **Building "lap timing" now would build
+a second timing system beside the working one.**
+
+**A 5-car race already grids and paces at all three target tracks.** Measured, one run each:
+
+```
+═══ GRID ═══   P1 Ferrari  P2 Brabham  P3 BRM  P4 Eagle  P5 You
+→ AI pace spread (power/weight, gridded fastest-first): Ferrari 99%, Brabham 96%, BRM 97%, Eagle 100%
+```
+
+| track | CLINE | rail natural | target (`REF_LAP`) | **scale** | gold `.rpy` fastest |
+|---|---|---|---|---|---|
+| watglen | 3750 m | 96.4 s | 66.9 s | **1.44×** | 63.268 (Lotus) |
+| zandvoort | 4181 m | 117.1 s | 86.8 s | **1.35×** | 82.657 (Lotus) |
+| monza | 5760 m | 140.2 s | 90.2 s | **1.55×** | 86.490 (Lotus) |
+
+**Two findings, and they change the order of work:**
+
+1. **The field's pace rests on a large, track-varying fudge.** The rail follower's own natural lap
+   is **35–55 % slower** than the pace it is commanded to run, and the gap differs per track. So
+   `AI_SCALE` is absorbing a *modelling shortfall*, not expressing a driver-skill percentage.
+2. **Re-anchoring to the `.rpy` times makes that WORSE, not better.** The gold replays are 4–6 %
+   *quicker* than the current GPLrank `REF_LAP`, so adopting them (which is what the PO asked for)
+   pushes the multiplier further from what the rail geometry naturally produces. ⭐ **Therefore:
+   fix the rail's natural pace FIRST, then anchor it to the `.rpy` times.** Anchoring first buries
+   a bigger modelling error under a bigger multiplier, and the per-chassis spread the PO wants
+   (Lotus 1:22.657 → BRM 1:24.542, a ~2 % band) would then be a detail riding on a 55 % correction.
+
+⚠️ **The per-chassis spread is currently derived from POWER/WEIGHT** (99/96/97/100 %), not from the
+replays. Replacing that with the measured `.rpy` per-car table is the PO's stated intent and is
+where the field's character comes from.
+
+**Corrected sprint split:**
+
+1. ~~Lap timing + race state~~ — **ALREADY EXISTS.** Instead: **why is the rail's natural lap 35–55 %
+   slow?** `RaceAI.natural_laptime` is a deterministic, display-free oracle — use it. State the
+   expected figure before each run.
 2. **Racing line extraction from the `.rpy` files.** Decode enough of the format to recover a
    position-vs-time line for one car at one track; validate by checking the lap time it implies
    matches the filename to within a few hundredths. **State the expected number BEFORE running it.**
