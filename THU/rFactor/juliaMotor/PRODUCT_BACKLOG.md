@@ -1430,7 +1430,56 @@ where the AI should be `vmax`-limited and plainly is not. So the car is being he
 centreline: Monza's load needs **four** re-centring passes (`max shift 4.0 m, mean 3.13 m` on
 pass 1), and `vtarget = √(amax/κ)` punishes every spurious wiggle.
 
-**S3 (next): measure the κ / `vtarget` profile, don't tune it.** Report the distribution of
+### 2026-08-28 — S3: the line is CLEAN. A handful of impossible KINKS cost the lap.
+
+Both S3 hypotheses refuted, and both my numeric predictions with them. Predicted median `vtarget`
+40–50 m/s and < 10 % of the lap at `vmax`; **measured 74.0 m/s (= `vmax`) and 84.2 %.**
+
+| | measured | I predicted |
+|---|---|---|
+| median κ | **0.00046 /m → radius 2171 m** | "noisy line" |
+| median `vtarget` (local κ) | **74.0 = `vmax`** | 40–50 m/s |
+| lap at `vmax` (local) | **84.2 %** | < 10 % |
+| median cost of the 150 m horizon rule | **0.0 m/s** | "the horizon rule is too blunt" |
+
+**The centreline is clean and the horizon rule is free at the median.** The damage is entirely in
+the TAIL:
+
+| radius | samples | % of lap | `vtarget` there |
+|---|---|---|---|
+| < 80 m | 33/600 | 5.5 % | 29.7 m/s |
+| < 40 m | 8/600 | 1.3 % | 21.0 m/s |
+| < 20 m | 4/600 | 0.7 % | 14.8 m/s |
+| **< 10 m** | 2/600 | 0.3 % | **12.0 = `vmin`** |
+
+`max κ = 0.32 /m` is a **3.1 m radius**. No circuit has that — Monaco's Loews, the tightest corner
+in F1, is ~12 m. And the spikes are **CLUSTERED, not scattered**:
+
+```
+s=2314 r=3.1 m   s=2477 r=11.8 m   s=2246 r=29.5 m   s=2141 r=35.8 m   s=2208 r=39.6 m
+s= 950 r=6.7 m   s= 960 r=17.1 m                                       s=4944 r=38.8 m
+```
+
+**Five of the eight worst lie in one 336 m stretch (s≈2141–2477); two more at s≈950.** Two bad
+regions in 5760 m — a localised construction defect, not general noise.
+
+**Why that costs 55 %:** each spike pins `vtarget` to `vmin`, and recovering to 74 m/s at the
+9 m/s² acceleration cap takes ~7 s and ~300 m — with the 150 m forward-max poisoning the approach
+too (that is why `p10` falls 37.5 → 18.0 while the median does not move). Five clusters × ~300 m ≈
+1.5 km of a 5.76 km lap compromised. Right order to explain the shortfall.
+
+⚠️ **DO NOT FIX THIS BY SMOOTHING THE WHOLE LINE.** That would round off Lesmo, Ascari and the
+Parabolica — trading a measured defect for an unmeasured one. The repair must be surgical.
+
+**S4 hypothesis, to be tested not assumed:** the RE-CENTRING pass creates the kinks. Monza needs
+**four** passes (`pass 1: max shift 4.0 m, mean 3.13 m`; `pass 4: max shift 4.0 m, mean 0.42 m,
+at-start 2.43 m`) and it moves points LATERALLY — adjacent points shifted in opposite directions
+produce exactly this signature: a near-zero radius between two otherwise sane points.
+**Test:** re-measure the κ tail with re-centring disabled. If the spikes vanish, the re-centring
+pass is the defect; if they survive, they are in the source geometry and the fix is a kink filter
+in `build_line`. **State the expected spike count before running.**
+
+**Superseded:** measure the κ / `vtarget` profile, don't tune it. Report the distribution of
 `vtarget` around each lap and the fraction of the lap below, say, 50 m/s. If Monza's median
 `vtarget` is ~45 m/s where the circuit should be ~75, the CENTRELINE is the defect and no amount of
 `amax` will fix it. **State the expected median before running.**

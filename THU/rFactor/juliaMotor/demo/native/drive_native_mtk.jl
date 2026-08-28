@@ -4010,6 +4010,59 @@ function main()
         println("    vmax=90 + amax=14            : ", round(t_both, digits=1), " s   (",
                 round(100*(base-t_both)/base, digits=1), " % faster)")
         println("  target (REF_LAP) = ", round(AI_REFLAP, digits=1), " s;  gold .rpy fastest is quicker still")
+        # E84-S3: SEPARATE the two candidate causes. _vtarget takes the MAXIMUM curvature over a
+        # look-ahead horizon (v*2.2 m, ~150 m at speed) with NO distance weighting -- a corner 150 m
+        # away limits you exactly as much as one you are in.  So a low vtarget can mean either
+        #   (a) the CENTRELINE is noisy      -> local kappa is high everywhere, or
+        #   (b) the HORIZON RULE is too blunt -> local kappa is fine, the horizon max is not.
+        # Reporting both tells them apart.  Predicted before running: median vtarget 40-50 m/s,
+        # < 10 % of the lap at vmax.
+        let n = 600, amax = 11.0, vmax = 74.0
+            ks = Float64[]; vloc = Float64[]; vhor = Float64[]
+            for i in 0:n-1
+                sdist = AILINE.total * i / n
+                kloc = max(AILINE.κ[RaceAI._locate(AILINE, sdist)[1]], 1e-4)
+                push!(ks, kloc); push!(vloc, clamp(sqrt(amax/kloc), 12.0, vmax))
+                kh = kloc; off = 5.0
+                while off <= 150.0                      # the horizon a car at ~68 m/s would use
+                    kh = max(kh, AILINE.κ[RaceAI._locate(AILINE, sdist+off)[1]]); off += 6.0
+                end
+                push!(vhor, clamp(sqrt(amax/kh), 12.0, vmax))
+            end
+            q(v,p) = sort(v)[clamp(round(Int, p*length(v)), 1, length(v))]
+            println("\n  ---- kappa / vtarget profile (", n, " samples round the lap) ----")
+            println("    kappa  1/m : p10 ", round(q(ks,0.10),digits=5), "  p50 ", round(q(ks,0.50),digits=5),
+                    "  p90 ", round(q(ks,0.90),digits=5), "  max ", round(maximum(ks),digits=5))
+            println("    radius   m : p10 ", round(Int,1/q(ks,0.90)), "  p50 ", round(Int,1/q(ks,0.50)),
+                    "  p90 ", round(Int,1/q(ks,0.10)), "   (p10 radius = the TIGHTEST decile)")
+            println("    vtarget LOCAL  kappa only : p10 ", round(q(vloc,0.10),digits=1),
+                    "  p50 ", round(q(vloc,0.50),digits=1), "  p90 ", round(q(vloc,0.90),digits=1),
+                    "   at vmax: ", round(100*count(>=(vmax-0.1), vloc)/n, digits=1), " %")
+            println("    vtarget HORIZON max (150m): p10 ", round(q(vhor,0.10),digits=1),
+                    "  p50 ", round(q(vhor,0.50),digits=1), "  p90 ", round(q(vhor,0.90),digits=1),
+                    "   at vmax: ", round(100*count(>=(vmax-0.1), vhor)/n, digits=1), " %")
+            println("    => median speed cost of the horizon rule: ",
+                    round(q(vloc,0.50)-q(vhor,0.50), digits=1), " m/s")
+            println("    (a clean 1967 Monza line should be near-straight over most of the lap:",
+                    " median radius >> 500 m, median vtarget at vmax)")
+            # E84-S3b: the MEDIAN is healthy, so the damage is in the TAIL. Count physically
+            # impossible corners: no 1967 GP circuit has a radius under ~40 m (Monaco's Loews is
+            # ~12 m and is the tightest corner in F1 anywhere). Anything below that is a defect in
+            # the line, and because _vtarget takes a 150 m forward MAX, one spike poisons the
+            # 150 m before it as well.
+            for rlim in (80.0, 40.0, 20.0, 10.0)
+                klim = 1/rlim; c = count(>=(klim), ks)
+                println("    radius < ", lpad(round(Int,rlim),3), " m: ", lpad(c,4), " / ", n,
+                        " samples (", lpad(round(100*c/n, digits=1),5), " %)  -> vtarget ",
+                        round(clamp(sqrt(11.0/klim),12.0,74.0), digits=1), " m/s")
+            end
+            worst = sortperm(ks, rev=true)[1:min(8,length(ks))]
+            println("    worst spikes (lap distance m -> radius m):")
+            for w in worst
+                println("      s=", lpad(round(Int, AILINE.total*(w-1)/n),5), "  r=",
+                        round(1/ks[w], digits=1), " m")
+            end
+        end
         exit(0)
     end
     AI_TGT   = AI_REFLAP * 100.0 / AI_PCT
