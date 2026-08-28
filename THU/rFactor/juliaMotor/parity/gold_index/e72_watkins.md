@@ -486,3 +486,41 @@ Using a fixed image region and no colour cuts at all:
 **The tell was the impossible result.** Had pass 2 merely looked mediocre instead of self-contradictory,
 I would have shipped a regression on three tracks and filed it as an improvement. Building the
 correction is what exposed the flaw in the measurement that motivated it.
+
+---
+
+## E72-S14 — Watkins run at last, and the cross-track table corrected
+
+E69-S16 checked a footprint change on Spa, Monza and Zandvoort and said plainly that **Watkins was
+not run**, on the grounds that its single recorded intruder sat at 5.4 m and was therefore outside
+the 4.1 m threshold either way. Run now:
+
+```
+102 instances clear of the road, 2 intruding of which 1 ACTUALLY RENDER
+   grndpe1l   nearest |lat| 5.4   base -0.1 m
+```
+
+Watkins' measured half-width is **5.05 m** (`road_width.md`), so 5.4 m is off the racing surface.
+**Watkins Glen has zero objects on its asphalt** — the cleanest of the four, confirmed rather than
+assumed.
+
+### Every track against its OWN half-width
+
+The census corridor is ±6.0 m and `JM_ASPHALT_HALFW` is a single global at 4.1 m — Spa's number.
+Neither is any given track's asphalt. Scoring each track against its own measured width:
+
+| track | half-width | census ±6 m | **on its own asphalt** | previously reported |
+|---|---|---|---|---|
+| Spa | 4.25 | 105 | **25** | 18 |
+| Zandvoort | 4.90 | 5 | **4** | 3 |
+| Monza | 5.80 | 8 | **7** | 4 |
+| Watkins Glen | 5.05 | 1 | **0** | not run |
+
+**Every earlier figure was too low, and all in the same direction**, because E71-S16 and E69-S16
+scored every track with Spa's 4.1 m. Monza is the worst affected — 4 becomes 7, nearly double —
+which follows from it having the widest road (5.8 m) and therefore the largest undefended band.
+Spa gains 7 (shrubs between 4.10 and 4.25).
+
+The corrected total on real racing surface is **36**, not the 25 those two sprints implied. The
+error was systematic rather than random, which is the kind that survives review: each individual
+number was computed correctly, from a constant that was correct for exactly one of the four tracks.
