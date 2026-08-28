@@ -1063,3 +1063,81 @@ Ring; a grandstand facing the wrong way near the Watkins start line; lines of pe
 track at Zandvoort (`ppl_l3` @1016, `ppl_s2` @1345, `ppl_m1` @3851, `bushes01–04` @2309–2376, all
 already dropped by the MESH filter, so they are reaching the screen via the BILLBOARD path, which
 has no on-road filter); transparent openings in the Monza scenery just after the start line.
+
+### E77-F — FIX the Nürburgring bridge underpasses (the work item for E77)
+
+E77 above locates and characterises the defect; this is the item to **fix** it. Done when
+`JM_SWEEP=10` on the Ring reports **0 anomalies** (it currently reports 8, all at the two
+underpasses), and the PO can drive under both bridges without the car climbing or being launched.
+Constraint restated because it is the trap: the drive-OVER bridges must still be solid, so
+`drop_overpass` cannot be enabled wholesale — exclude only the two decks involved.
+
+### E78 (PO 2026-08-27) — improve all 5 tracks: gold videos vs the 2026-08-27 JM drives
+
+The PO drove all five tracks on 2026-08-27 and recorded each one. Compare those against the gold
+standard videos and fix what the comparison shows, per track.
+
+| track | JM drive (2026-08-27) | gold |
+|---|---|---|
+| Nürburgring | `/home/admin/Videos/260827_nurburgring.mp4` | `gold standard/julia racer/nurburgring/` (2) |
+| Spa | `/home/admin/Videos/260827_spa.mp4` | `gold standard/julia racer/spa/` (2) |
+| Monza | `/home/admin/Videos/260827_monza.mp4` | `gold standard/julia racer/monza/` (2) |
+| Watkins Glen | `/home/admin/Videos/260827_watkinsGlen.mp4` | `gold standard/julia racer/watkinsGlenn/` (3) |
+| Zandvoort | `/home/admin/Videos/260827_zandervoort.mp4` | `gold standard/julia racer/zandervoort/` (2) |
+
+These are the first JM videos shot after a full day of scenery/collision work, so they are the
+current baseline. Named defects already called out by the PO while driving, to be covered here:
+odd buildings and part-buildings at the Ring; a grandstand near the Watkins start line **pointed
+the wrong way**; transparent openings in the Monza scenery just after the start line ("the worst
+graphics glitch"); "many small graphics glitches" on several tracks.
+
+⚠️ Method: match the LANDMARK and the VIEW before comparing anything. Gold has cockpit and nintendo
+cuts per track, and this project has already withdrawn one cross-track exposure table (E69-S11 →
+E72-S12) for comparing a gold nintendo frame against a native chase frame.
+
+### E79 (PO 2026-08-27) — audit every row-of-people object on all 5 tracks
+
+Two questions per crowd-row instance, on every track:
+
+1. **Does it cross or intrude into the road?** The PO saw lines of people across the track at
+   Zandvoort in three places, and at Spa/Watkins as well.
+2. **Is it placed non-physically?** e.g. a row perched on a hill crest with the people at each end
+   of the line **floating in mid-air**. Zandvoort "has quite a few of these."
+
+⚠️ (1) is NOT already covered by the existing on-road filters, and the reason matters: at Zandvoort
+the three rows the PO actually saw — `ppl_l3` @1016, `ppl_s2` @1345, `ppl_m1` @3851 — are all
+already reported as **dropped** by the mesh footprint filter, yet they are on screen. So they are
+reaching the renderer through the **billboard path**, which has no on-road filter at all. Auditing
+the mesh path again will find nothing. Start at the billboard build.
+
+(2) is a new class this project has never measured: a crowd row is grounded from a single point, so
+on sloping ground the ends lift off or sink in. The PO also saw this as people "almost submerged in
+the track" on the Zandvoort climb. A per-END ground check (both ends + midpoint against the HAT)
+would quantify it.
+
+### E80 (PO 2026-08-27) — frame rate: 10 fps at Spa is not acceptable
+
+PO: *"frame rate was low (10 frames/sec or so) in cockpit view, better in nintendo view"*, and
+separately *"there's no excuse for 10 frames/sec on a PC with a 6 GB nvidia graphics card"*.
+
+The cockpit/chase asymmetry is the clue: the same scene renders acceptably from the chase camera
+and badly from the cockpit, with the gauge panel and hands already OFF (`JM_GAUGE=0 JM_HANDS=0`).
+So the cost is not the cockpit art itself. Profile before changing anything — per-phase timing
+already exists (`JM_TIMING`), and the scenery/billboard draw counts are instrumented.
+
+Done when Spa holds a stable frame rate in cockpit view on the PO's hardware, with the figure
+measured and recorded rather than judged by feel.
+
+### E81 (PO 2026-08-27) — floating and misplaced billboards and buildings at the Nürburgring
+
+PO: *"lots of odd buildings and parts of buildings"* at the Ring, and *"check the floating or
+misplaced billboards and buildings at nurburgring, of which there are many."*
+
+⚠️ The Ring does NOT go through the instance/object pipeline the other four tracks use — its
+scenery is loaded by the Ring-specific `gpl_scenery()` path (E70/E76). `JM_CROWDDIAG` and
+`JM_OBJDIAG` read `insts`, which is EMPTY here, and will report "nothing" regardless of the truth —
+E70-S1 made exactly that mistake. Use the mesh-based censuses and the billboard-stub path
+(E76-S8), which is where the Ring's sprites actually come from.
+
+Overlaps E78 for the Ring video; keep this one for the *placement* defects (floating, part-buildings,
+wrong ground height) and E78 for the gold-vs-JM appearance comparison.
