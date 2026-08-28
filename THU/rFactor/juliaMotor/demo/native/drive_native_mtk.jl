@@ -924,6 +924,7 @@ else
         # with it in place Monza's raw .trk line ran off the circuit for ~300 m. JM_NO_RECENTRE=1
         # restores the raw line for every track, which is the revert path.
         haskey(ENV, "JM_NO_RECENTRE") ? a :
+            haskey(ENV,"JM_NORECENTRE") ? (println("  re-centring SKIPPED (JM_NORECENTRE) — E84-S4 A/B"); a) :
             recentre_on_road(a, ROADHAT; passes = (ROADHAT === TERRAIN0 ? 1 : 4))
     end
     const RIBBON0  = GPLTrack.build_surface(ALIGNED, TERRAIN0)

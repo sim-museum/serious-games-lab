@@ -1479,6 +1479,34 @@ produce exactly this signature: a near-zero radius between two otherwise sane po
 pass is the defect; if they survive, they are in the source geometry and the fix is a kink filter
 in `build_line`. **State the expected spike count before running.**
 
+### 2026-08-28 — S4: CONFIRMED — the re-centring pass creates the kinks
+
+A/B on Monza, `JM_NORECENTRE=1` (new) vs the default 4 passes:
+
+| | with re-centring | without |
+|---|---|---|
+| max κ | **0.32156 → r = 3.1 m** | **0.03403 → r = 29.4 m** |
+| radius < 20 m | 4 / 600 | **0** |
+| radius < 10 m | 2 / 600 | **0** |
+| median κ | 0.00046 | 0.00015 |
+
+**Every physically impossible corner disappears when re-centring is skipped.** The S3 hypothesis
+was right.
+
+⚠️ **My S4 pre-run prediction was WRONG and worth recording.** Reading `recentre_on_road` I argued
+the spikes would SURVIVE, because the pass box-smooths its shift array (`W=3`) and a smoothed shift
+"cannot" produce an isolated kink. That reasoning is incomplete: **the smooth averages the shift
+MAGNITUDES, while `nrm(i)` computes each point's DIRECTION independently from its own neighbours.**
+Smoothed magnitudes applied along divergent normals still kink — and the `tl < 1e-6` guard leaves a
+point unmoved while its neighbours move, which is exactly a one-point spike.
+
+🔒 **The fix is NOT to disable re-centring.** It exists for a measured reason (E64-S6: Watkins'
+raw `.trk` line runs ~10 m onto the grass and must be walked back), and without it the line is
+mis-placed even though it is smooth. **Fix the kink, keep the pass:** clamp per-point shift
+*relative to its neighbours* (limit the second difference, not just the magnitude), and skip or
+interpolate points whose normal is degenerate. Then re-measure BOTH the κ tail and the at-start
+offset — a smoother line that sits off the road is not an improvement.
+
 **Superseded:** measure the κ / `vtarget` profile, don't tune it. Report the distribution of
 `vtarget` around each lap and the fraction of the lap below, say, 50 m/s. If Monza's median
 `vtarget` is ~45 m/s where the circuit should be ~75, the CENTRELINE is the defect and no amount of
