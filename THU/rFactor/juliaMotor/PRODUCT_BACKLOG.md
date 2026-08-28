@@ -1309,3 +1309,71 @@ landmark and view, and fix what that shows.
   frame (+35% became +2% on matched views), and E72-S12's own replacement table was withdrawn by
   E72-S13 because the asphalt mask it used is not exposure-invariant. **There is no trusted
   per-track exposure figure**, and `GRADE_*` must not be changed on that evidence.
+
+
+---
+
+### E84 (PO 2026-08-28) — EPIC: a 5-car, 3-lap race at Watkins Glen, Zandvoort and Monza
+
+PO: *"make 5 car race work at watkins glenn, zandervoort and monza. Keep track of lap times for 3
+lap race. Use slot car opponent physics as in GPL. Look at sgl THU gpl .rpy files of races to
+calibrate opponent cars"*.
+
+**Scope.** A 5-car field (the player plus four opponents — say so if that reading is wrong) racing
+three timed laps on the three named tracks. The Ring and Spa are explicitly NOT in scope for this
+epic; they are the two tracks with open geometry/frame-rate items (E80, E81), and adding racing on
+top of those would confound both.
+
+**Opponent physics: slot-car, as GPL does it.** GPL's AI does not drive the full vehicle model —
+opponents follow a fixed racing line at a commanded speed, with the line and speed profile doing
+the work that grip and load transfer do for the player. That is the model to implement here, and it
+is a deliberate simplification, not a shortcut to be upgraded later: it is cheap enough that four
+opponents cost far less than four instances of `CAR3D`, which matters directly given E80 (the base
+renderer still costs ~65 ms/frame in BOTH views, so there is no headroom to spend).
+
+⚠️ **This does NOT weaken the PO's physics directive.** *"The car physics should be determined
+entirely by the iracing ibt data, there should be no modifiable parameters"* governs the PLAYER's
+car. Opponents are not the player's car and are not simulated from the ibt data; keep the two
+completely separate so no opponent tuning knob can ever reach `CAR3D`, `vehicle_3d.jl` or
+`powertrain.jl`. If implementing this needs a knob, it lives in the opponent module and nowhere
+else.
+
+**Calibration oracle — the GPL replays.** `/home/admin/sgl/THU/INSTALL/replay/` holds 348 `.rpy`
+files, and all three target tracks carry a COMPLETE `67F1_Rob_Fle_<track>_<car>_<laptime>.rpy` set
+across all seven 1967 chassis. The lap time is in the filename, so the reference field spread is
+readable without decoding anything:
+
+| | Lotus | Eagle | Ferrari | Brabham | Cooper | Honda | BRM | spread |
+|---|---|---|---|---|---|---|---|---|
+| **watglen** | 1:03.268 | 1:03.618 | 1:03.796 | 1:04.174 | 1:04.640 | 1:04.660 | 1:04.815 | **1.55 s** |
+| **zandvort** | 1:22.657 | 1:22.924 | 1:23.169 | 1:23.282 | 1:23.929 | 1:24.384 | 1:24.542 | **1.89 s** |
+| **monza** | 1:26.490 | 1:26.545 | 1:27.486 | 1:27.923 | 1:28.905 | 1:27.920 | 1:28.654 | **2.42 s** |
+
+That spread — not quite two seconds over a lap, tightening at the shorter track — is what a credible
+field looks like, and it is the acceptance target. Opponents that finish nose-to-tail, or strung out
+by ten seconds, are both wrong.
+
+🔒 **The `.rpy` files are IRREPLACEABLE and READ-ONLY.** Copy before parsing; never write into
+`/home/admin/sgl/THU/INSTALL/replay/`. There are also per-track `fs_*` and `LOR_*` replays (hotlaps
+and race stints) which carry richer line data than the filename does.
+
+**Suggested sprint split** (each ~8 pts, and the first two are worth having on their own):
+
+1. **Lap timing + race state.** 3-lap counting, per-lap and best-lap per car, start/finish
+   detection, a results table at the end. Works with ZERO opponents first — a timed 3-lap solo run
+   is independently useful and is the harness everything else is measured in.
+2. **Racing line extraction from the `.rpy` files.** Decode enough of the format to recover a
+   position-vs-time line for one car at one track; validate by checking the lap time it implies
+   matches the filename to within a few hundredths. **State the expected number BEFORE running it.**
+3. **One slot-car opponent** driving that line, drawn with the existing car mesh, with collision
+   against the player left OUT of this sprint.
+4. **Four opponents, per-car pace offsets** calibrated to the table above, at all three tracks.
+5. **Racing behaviour** — grid start, and whatever the videos show is missing.
+
+**Done when** a 3-lap race at each of the three tracks runs start to finish with five cars, lap
+times are recorded per car, and the finishing spread is within the shape of the table above — with
+the measured numbers written into this item, not judged by feel.
+
+⚠️ **Measure the frame cost with four opponents on screen before declaring any sprint done.** E80 is
+open precisely because the base frame is already ~65 ms; four more cars is exactly the kind of
+change that quietly turns 15 fps into 8 and gets attributed to something else later.
