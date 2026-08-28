@@ -1184,3 +1184,30 @@ frame; the constant follows from it.
 
 Gold references: `gold standard/julia racer/<track>/*_nintendo.mp4` (all five tracks) plus the
 PO's 2026-08-27 drives in `/home/admin/Videos/` for the current state.
+
+### E83 (PO 2026-08-28) — neon tree/shrub colouration
+
+PO: *"fix neon tree/shrub coloration - compare today's videos to gold standard videos"*. First
+reported on 2026-08-27 while driving the Ring — *"trees and shrubs have neon colors"* — and still
+present.
+
+Compare `/home/admin/Videos/260827_*.mp4` (all five tracks, 2026-08-27) against
+`gold standard/julia racer/<track>/`. Judge it on the vegetation's colour against gold at a matched
+landmark and view, and fix what that shows.
+
+⚠️ Two live leads and one dead end, so this does not start from scratch:
+
+- **The billboard/sprite path is the suspect, not the mesh trees.** E70-S7 and E76 saw the same
+  cast on the Ring's billboard vegetation, and measured that the scene-wide median is *identical*
+  with billboards on and off (137 vs 138) — so whatever is wrong is in how the SPRITES are
+  coloured, not a global grade.
+- **Alpha handling is a known contributor.** Colour-keyed sprites pull the key colour into their
+  edges unless filtered as 1-bit masked; an alpha-bleed pass was added for exactly this class of
+  fringing. Check whether the vegetation sheets are taking the smooth-alpha path (LINEAR) when they
+  should be masked (NEAREST), which tints edges toward the key.
+- ⚠️ **DEAD END — do not "fix" this by darkening.** The obvious move is a per-track exposure or
+  grade correction, and it has been tried and withdrawn TWICE: E69-S11 ("the Ring is 35% too
+  bright") was withdrawn by E72-S12 for comparing a gold *nintendo* frame against a native *chase*
+  frame (+35% became +2% on matched views), and E72-S12's own replacement table was withdrawn by
+  E72-S13 because the asphalt mask it used is not exposure-invariant. **There is no trusted
+  per-track exposure figure**, and `GRADE_*` must not be changed on that evidence.
