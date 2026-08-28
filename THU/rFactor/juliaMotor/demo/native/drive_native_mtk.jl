@@ -2681,19 +2681,37 @@ let objnames=Set{String}()
                 end
             end
         end
-        undrawn = Tuple{String,Float64,Float64}[]; anchor = Dict{String,Int}()
+        # EXEMPT CLASSES -- rendered as TRACK GEOMETRY, not as placed objects, so they are absent
+        # from OBJECTS by design and are NOT invisible. The E87 spec allowed for exactly this
+        # ("either renders, or is on an explicit exempt list"); the first two runs measured which
+        # classes need to be on it. Rails/fences are extracted with the track mesh (see the
+        # "rail/fence dedup" line during geometry extraction), and bushrow* likewise.
+        # ⚠️ KEEP THIS LIST SHORT AND JUSTIFIED. Every entry is a hole in the gate: an exempt class
+        # could go genuinely invisible and this would not notice. It exists so the gate can be
+        # TRUSTED on the classes it does cover -- buildings above all, which is the class that
+        # actually caught the PO at Masta -- not so the number can be made to look good.
+        exempt(n) = startswith(n,"armco") || startswith(n,"fence") || startswith(n,"rail") ||
+                    startswith(n,"barrier") || startswith(n,"wall") || startswith(n,"bushrow") ||
+                    startswith(n,"haie")
+        undrawn = Tuple{String,Float64,Float64}[]; anchor = Dict{String,Int}(); exempted = Dict{String,Int}()
         for b in bad
             n = lowercase(nameat(b[1], b[2])); n = isempty(n) ? "(unnamed)" : n
-            if n in drawnames; anchor[n] = get(anchor,n,0)+1
+            if exempt(n);      exempted[n] = get(exempted,n,0)+1
+            elseif n in drawnames; anchor[n] = get(anchor,n,0)+1
             else push!(undrawn, (n, b[1], b[2])); end
         end
         println("== JM_SOLIDGATE ", TRACKSEL, ": ", length(SOLIDS), " solids, ", length(drawn),
                 " drawn cells -> ", length(undrawn), " UNDRAWN-BUT-SOLID (",
-                length(bad) - length(undrawn), " position-anchor mismatches, not failures)")
+                length(anchor), " anchor classes / ", sum(values(anchor); init=0), " objs, ",
+                sum(values(exempted); init=0), " track-geometry exempt)")
         if !isempty(undrawn)
             cnt = Dict{String,Int}()
             for (n,_,_) in undrawn; cnt[n] = get(cnt,n,0)+1; end
             for (n,c) in sort(collect(cnt)); println("     INVISIBLE: ", n, " ×", c); end
+        end
+        if !isempty(exempted)
+            println("     (exempt: rendered as TRACK GEOMETRY, not placed objects -- gate does not cover these:)")
+            for (n,c) in sort(collect(exempted)); println("       ", n, " ×", c); end
         end
         if !isempty(anchor)
             println("     (anchor-mismatch classes, drawn elsewhere -- gate blind spot, NOT a defect:)")

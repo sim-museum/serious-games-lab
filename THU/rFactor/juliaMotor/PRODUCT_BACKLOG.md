@@ -1701,10 +1701,25 @@ control.
 ✅ **Already established by the failed run: NO HOUSES are invisible at HEAD**, so the E86/E71-S18
 fix holds for the class that actually caught the PO.
 
-⬜ **Not finished.** Still to measure: **0 UNDRAWN at HEAD**, and — the arm that matters —
-**27 at Spa under `JM_SOLID_KEEP_HIDDEN=1`, naming the houses.** If the control arm does not
-reproduce 27, the gate cannot detect the regression it was written for and goes back on the bench
-rather than into the suite. Then extend to all five tracks.
+✅ **BOTH ARMS MEASURED AT SPA — the gate detects the regression it was written for.**
+
+| arm | solids | **UNDRAWN** | exempt | anchor |
+|---|---|---|---|---|
+| **HEAD** | 808 | **0** | 125 | 2 cls |
+| **`JM_SOLID_KEEP_HIDDEN=1`** | 835 | **20** | 130 | 4 cls |
+
+The 20 are **exactly the houses** — and include **`house25 ×3`**, the object the E71-S18 comment
+named at **lapdist 6899 = Masta**, carrying an invisible 5 m collision disc. The gate names the
+object the PO actually hit.
+
+⚠️ **I predicted 27 and the answer is 20 — the gate is MORE discriminating than my prediction.**
+The 27 was the raw solid-count delta from the E86 bisect. The gate splits it correctly:
+**20 genuinely invisible houses + 5 `bushrow*` (exempt, track geometry) + 2 `shrub*` (anchor,
+drawn elsewhere) = 27.** A count of solids that disappeared is not the same quantity as a count of
+objects that were invisible, and conflating them would have overstated the defect by a third.
+
+⬜ **Remaining: extend to the other four tracks**, and treat the ANCHOR bucket as a real blind spot
+to shrink (a position-match failure, not a render-path fact).
 
 ⚠️ Each Spa arm costs ~20 min (14.1 km lap, 92 548 HAT triangles), so the pair is ~40 min — budget
 for it, and do not run two arms concurrently against `gl-lock` (they queue and the second times out).
