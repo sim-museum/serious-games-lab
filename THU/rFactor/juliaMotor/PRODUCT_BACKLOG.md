@@ -1377,3 +1377,61 @@ the measured numbers written into this item, not judged by feel.
 ⚠️ **Measure the frame cost with four opponents on screen before declaring any sprint done.** E80 is
 open precisely because the base frame is already ~65 ms; four more cars is exactly the kind of
 change that quietly turns 15 fps into 8 and gets attributed to something else later.
+
+
+---
+
+### E85 (PO 2026-08-28) — EPIC: multiplayer, the way GPL did it
+
+PO: *"get multiplayer working"* + *"julia multiplayer should be like GPL multiplayer"*.
+
+**What "like GPL" means, concretely.** GPL's multiplayer is peer-to-peer and deliberately thin:
+every client simulates **only its own car** and broadcasts that car's state; remote cars are
+received poses, dead-reckoned between packets. Nobody simulates anybody else's physics. A host
+advertises a session (track, session type, laps); clients join and appear on the grid. Sessions run
+the GPL ladder — **Practice → Qualify → Warmup → Race** — with a chat channel throughout. It was
+famous for staying playable over a dial-up modem, which is a direct consequence of that design: the
+per-car packet is tiny and sent at a low, fixed rate.
+
+**Why that design fits this codebase almost exactly:**
+
+- **Remote cars are already a solved rendering problem.** The AI field (`AICARS` / `AICHASSIS`,
+  `ai.jl`) is a set of non-player cars drawn with real chassis meshes, placed by
+  `RaceAI.pose_at`, and already collided against the player. **A remote human is an AI slot whose
+  pose comes off the wire instead of off the rail.** Do not build a second car-drawing path.
+- **The wire format already exists in another guise.** The `.jmr` replay records per-car poses per
+  frame and plays them back (`JM_REPLAY`, and `N_AI` is taken from the recording so every recorded
+  car gets a chassis). A replay IS a single-player recording of exactly the packet stream
+  multiplayer needs. Mirror it rather than inventing a format.
+- **There is a networking precedent in-tree:** `demo/drive_server.jl` serves live driving to a
+  browser over **pure Julia stdlib `Sockets`**, no web framework. Same dependency budget.
+
+🔒 **THE PHYSICS DIRECTIVE IS NOT WEAKENED.** *"The car physics should be determined entirely by
+the iracing ibt data, there should be no modifiable parameters"* governs **the local player's car**,
+and multiplayer must not become a back door around it. A remote car is a **received pose**. It is
+never re-simulated locally, never given a tuning knob, and nothing in the netcode may reach
+`CAR3D`, `vehicle_3d.jl` or `powertrain.jl`. Dead reckoning between packets is interpolation of a
+received trajectory, not a physics model — keep it in the network module and say so in the code.
+
+**Suggested sprint split** (each ~8 pts; the first two stand on their own):
+
+1. **Two processes, one car each, same track — poses on the wire.** UDP, host + one client, fixed
+   low tick rate. Success = each sees the other's car in the right place at the right time. No
+   session logic, no lobby, no racing.
+2. **Dead reckoning + jitter.** Extrapolate between packets; measure position error at a realistic
+   packet rate and **write the number down**. State the expected error BEFORE measuring it.
+3. **The session ladder** — Practice → Qualify → Warmup → Race, host-advertised, with the existing
+   `JM_MODE` mapped onto it.
+4. **Grid + results for N humans**, reusing E84's lap timing and standings.
+5. **Chat**, and a join/leave that does not disturb a running session.
+
+**Done when** two machines (or two processes) can run a 3-lap race together on the same track, each
+driving its own car, with both cars in plausible positions throughout and a shared results table at
+the end — **with the measured position error and packet rate recorded in this item**, not judged by
+feel.
+
+⚠️ **Order matters: E84 first.** Multiplayer reuses E84's remote-car slots, lap timing and
+standings. Building it first means building those twice.
+
+⚠️ **Measure the frame cost.** E80 has the base frame at ~65 ms with no headroom, and a network
+thread that blocks the render loop will read as "multiplayer is slow" when it is the renderer.
