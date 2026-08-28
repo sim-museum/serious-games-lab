@@ -1115,6 +1115,23 @@ on sloping ground the ends lift off or sink in. The PO also saw this as people "
 the track" on the Zandvoort climb. A per-END ground check (both ends + midpoint against the HAT)
 would quantify it.
 
+**PO 2026-08-28 — the disposition is REMOVAL, not repair.** *"remove line-of-people objects if
+there's any chance they could be in the road or partially hanging in air; these objects don't add
+much and detract a lot if misplaced. remove all line of people objects from zandervoort."*
+
+So the rule for this item is now:
+- **Zandvoort: remove ALL line-of-people objects**, unconditionally. No audit needed there — just
+  take them out.
+- **Other four tracks: remove any that COULD be in the road or partially in the air.** The test is
+  deliberately generous, not marginal: if an instance might intrude or float, it goes. The PO's
+  reasoning is a cost/benefit judgement about the asset class, and it is theirs to make — a correct
+  crowd row adds little, a misplaced one is very visible.
+
+This replaces "measure, then decide per instance" with "measure only to find them, then delete".
+It also removes the need to fix the billboard-path on-road filter *for this asset class* — though
+that filter gap is still real for everything else that goes through it, so do not close it on the
+strength of this item.
+
 ### E80 (PO 2026-08-27) — frame rate: 10 fps at Spa is not acceptable
 
 PO: *"frame rate was low (10 frames/sec or so) in cockpit view, better in nintendo view"*, and
@@ -1141,3 +1158,29 @@ E70-S1 made exactly that mistake. Use the mesh-based censuses and the billboard-
 
 Overlaps E78 for the Ring video; keep this one for the *placement* defects (floating, part-buildings,
 wrong ground height) and E78 for the gold-vs-JM appearance comparison.
+
+### E82 (PO 2026-08-28) — the external (nintendo) car view is still wrong; no axles
+
+PO: *"fix the car external view - e.g. it still has no axles in nintendo view; compare to gold
+standard pictures and videos"*.
+
+**E75 has had 16 sprints on this and the PO still sees no axles**, which is the plainest possible
+statement that the epic has not delivered its headline defect. E82 is the item to finish it, judged
+by the PO's own criterion — the external view compared against the gold pictures and videos — not
+by internal geometry measurements.
+
+What E75 established that is worth keeping:
+- The suspension parts are present, extracted correctly, and DO draw (S2/S9/S13).
+- Size, flat braces, specular and LOD were each eliminated as the cause.
+- S15/S16: front and rear assemblies share an outer bound to within 13 mm (1.121 / 1.117 m) and
+  both sit 0.25–0.35 m outboard of the hub line, so it is ONE systematic placement error, not a
+  content problem. A single 0.30 m inboard shift (`JM_SUSP_INBOARD`) puts both inside the wheel
+  face — verified geometrically and in a chase capture, and shipped OFF pending a gold comparison.
+
+⚠️ What E75 never did, and E82 must: **compare against gold**. Every S15/S16 number was fitted to
+the car's own hub line and wheel face, not to a gold frame. That is why "the arithmetic works" and
+"the PO still sees no axles" can both be true. Start with a matched-landmark, matched-view gold
+frame; the constant follows from it.
+
+Gold references: `gold standard/julia racer/<track>/*_nintendo.mp4` (all five tracks) plus the
+PO's 2026-08-27 drives in `/home/admin/Videos/` for the current state.
