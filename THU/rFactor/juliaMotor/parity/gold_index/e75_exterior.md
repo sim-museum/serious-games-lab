@@ -701,3 +701,43 @@ a single inboard shift of ~0.30 m puts the front at 0.29 … 0.83 and the rear a
 pickups near the gearbox, outer ends just inside the 0.89 m wheel face, which is where gold keeps
 them. If one number fixes both ends of the car, the placement reading is confirmed; if it fixes one
 and breaks the other, it is refuted, and that is worth knowing before any part is deleted.
+
+---
+
+## E75-S16: one number, both ends — the arithmetic lands exactly where S15 predicted
+
+S15 named the test: *"a single inboard shift of ~0.30 m puts the front at 0.29 … 0.83 and the rear
+at 0.13 … 0.82 … If one number fixes both ends of the car, the placement reading is confirmed."*
+`JM_SUSP_INBOARD=<metres>` applies it, sign-aware and never through the centreline. Measured:
+
+| assembly | before | after | hub line 0.772, wheel face 0.89 |
+|---|---|---|---|
+| `FSUSPP` | 0.538 … **1.121** | 0.238 … **0.821** | outer end now inside the wheel |
+| `RSUSPP_A` | 0.422 … **1.117** | 0.122 … **0.817** | inner end near the gearbox |
+| `RSUSPP_B` | 0.422 … **1.159** | 0.122 … **0.859** | |
+
+**One constant, applied blind to both ends, brings both inside the wheel face.** That is what S15
+said would confirm the reading, and it does — front and rear were wrong by the same amount because
+they were wrong for the same reason.
+
+![before/after](e75_inboard_ab.png)
+
+Chase view at Monza s=500 (top shipped, bottom `JM_SUSP_INBOARD=0.30`): the chrome shock/damper
+units move off the inner faces of the rear tyres and cluster inboard toward the gearbox, with clean
+gaps to the wheels. That is the direction gold runs them.
+
+### ⚠️ Shipped OFF, and here is what is still missing
+
+1. **No gold comparison.** "Looks more plausible" is not parity. The claim proven here is
+   *geometric* — the assembly no longer protrudes past the wheels — not that 0.30 is gold's number.
+   0.30 came from S15's arithmetic, and any value in roughly 0.25–0.35 would also clear the wheel.
+2. **The A/B is not perfectly controlled.** The two runs differ by ~1% of pixels spread over the
+   whole frame, not just the car, so the camera/physics did not settle identically. The suspension
+   change is far larger than that noise and is unmistakable in the crop, but a pixel diff cannot
+   carry the argument and is not used to.
+3. So the default stays **0.0**. A visible default flipped on geometry alone is exactly what went
+   wrong in the sister MiG Alley port today (its maximise default passed every gate it was measured
+   against and broke a gate nobody had run).
+
+**Next:** a matched gold frame at the same landmark, and fit the constant to it rather than to the
+wheel face.

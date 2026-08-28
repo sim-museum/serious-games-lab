@@ -2728,7 +2728,51 @@ function mirror_glass_quads(parts, tex)
     items
 end
 mirGlassItems = MIRROR_RTT ? mirror_glass_quads(MIRRORP, mirtex) : Render.Item[]
-fsuspItems  = Render.build_gpl(FSUSPP, GPLTEX)     # front suspension wishbones (visible through the screen)
+# E75-S16: ONE lateral correction, tested against BOTH ends of the car at once.
+# E75-S15 established that this is a placement problem, not a content one: 14 of 17 rear parts sit
+# outboard of the hub line (0.772 m), and the FRONT assembly -- different parts entirely -- reaches
+# the same outer bound to within 13 mm (1.121 vs 1.117). Two assemblies landing on the same wrong
+# number is one systematic placement, so the honest test is one number applied to both, not a part
+# list edited per end.
+# Shift each vertex TOWARD the centreline by JM_SUSP_INBOARD metres, sign-aware, never past zero.
+# Predicted by S15: front 0.59..1.13 -> 0.29..0.83, rear 0.43..1.12 -> 0.13..0.82 -- inner pickups
+# near the gearbox, outer ends just inside the 0.89 m wheel face, which is where gold keeps them.
+# Default 0.0 = OFF, so this ships inert until the picture agrees with the arithmetic.
+const SUSP_INBOARD = parse(Float32, get(ENV,"JM_SUSP_INBOARD","0.0"))
+function susp_inboard(parts)
+    SUSP_INBOARD == 0f0 && return parts
+    out = Render.TrackPart[]
+    for pp in parts
+        v = copy(pp.verts)
+        for k in 1:11:length(v)-2
+            z = v[k+2]
+            # move toward 0 by the shift, but never through it (a part straddling the centreline
+            # would otherwise fold inside out, which reads as "the fix made it worse" rather than
+            # "the fix was applied to the wrong thing")
+            v[k+2] = z > 0 ? max(z - SUSP_INBOARD, 0f0) : min(z + SUSP_INBOARD, 0f0)
+        end
+        push!(out, Render.TrackPart(v, pp.tex, pp.col))
+    end
+    out
+end
+if get(ENV,"JM_SUSP_INBOARD_DIAG","") != ""
+    for (nm, ps) in (("FSUSPP", FSUSPP), ("RSUSPP_A", RSUSPP_A), ("RSUSPP_B", RSUSPP_B))
+        for (tag, q) in ((" before", ps), (" after ", susp_inboard(ps)))
+            lo = Inf32; hi = -Inf32
+            for pp in q, k in 1:11:length(pp.verts)-2
+                z = abs(pp.verts[k+2]); lo = min(lo, z); hi = max(hi, z)
+            end
+            println("   [inboard] ", rpad(nm,10), tag, "  |z| ", round(lo,digits=3), " … ", round(hi,digits=3))
+        end
+    end
+    # Exit HERE. The car parts are built at ~line 2770, well after JM_BOUNDARY_TEST's exit (1077)
+    # and JM_OVERHANG_EXIT's (~2200), so neither of the existing headless exits can reach this --
+    # the first run printed nothing at all for exactly that reason. A diagnostic that cannot be
+    # reached by any harness is a diagnostic that will be read as "no output means no problem".
+    flush(stdout); exit(0)
+end
+
+fsuspItems  = Render.build_gpl(susp_inboard(FSUSPP), GPLTEX)     # front suspension wishbones (visible through the screen)
 driverItems = Render.build_gpl(DRIVERP, GPLTEX)    # driver figure — drawn only in chase view (E36)
 helmItems   = Render.build_gpl(HELMP, GPLTEX)      # Clark-blue helmet at the head pivot (chase view, E60)
 # four Lotus wheels — keep the untextured black tyre body (only the car body drops "")
@@ -2746,8 +2790,8 @@ swItems = Render.build_gpl(SWPARTS, GPLTEX)        # steering wheel (rotated wit
 handItems = Render.build_gpl(HANDP, GPLTEX)        # E64 S2: gloved hands (cockpit view, rotate with the wheel)
 armItems  = Render.build_gpl(ARMP, GPLTEX)         # E64 S2: forearms (cockpit view, static)
 rsusp2Items = Render.build_gpl(RSUSPP2, GPLTEX)     # E75-S8: rear suspension taken directly, no fold
-rsuspItemsA = Render.build_gpl(RSUSPP_A, GPLTEX)   # E64 S7: high-detail rear suspension halves (chase view)
-rsuspItemsB = Render.build_gpl(RSUSPP_B, GPLTEX)
+rsuspItemsA = Render.build_gpl(susp_inboard(RSUSPP_A), GPLTEX)   # E64 S7: high-detail rear suspension halves (chase view)
+rsuspItemsB = Render.build_gpl(susp_inboard(RSUSPP_B), GPLTEX)
 # Corrective transform per side (E64 S8, settled by the POSITIONER-CHAIN DUMP): the chain to each
 # half is [park d=(0,20,0) → clamped 0] · [LOD selectors] · [hub placement d=(−0.893, ±0.772, 0.02),
 # yaw 2°, s=1.0] — so scale IS 1.0 and the hub translations are honoured; what remains is that the
