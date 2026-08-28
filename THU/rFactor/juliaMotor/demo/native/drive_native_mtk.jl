@@ -1672,6 +1672,74 @@ if SKIDPAD || NURB
             push!(BILLBOARDS, (item, (sp.x, sp.z, -sp.y), Float32(w), Float32(sp.h)))
             nbb += 1
         end
+        # E81 (PO 2026-08-27/28): "lots of odd buildings and parts of buildings" at the Ring, and
+        # "check the floating or misplaced billboards and buildings at nurburgring, of which there
+        # are many". The Ring's sprites are placed at their AUTHORED height (sp.z) and never
+        # grounded against the terrain, so any placement whose height disagrees with the ground
+        # floats above it or sinks into it. Measure the disagreement for every sprite.
+        # JM_FLOATDIAG=1 (add JM_FLOATDIAG_N=<n> to list more than the worst 20).
+        if get(ENV,"JM_FLOATDIAG","") != ""
+            gaps = Tuple{Float64,String,Float64,Float64}[]
+            for sp in RINGSPRITES
+                # ⚠️ ref = the sprite's own base + 2 m, NOT Inf. hat3d returns the topmost surface
+                # at or below `ref`, so ref=Inf measures to whatever is HIGHEST over that spot --
+                # a tree canopy, a building roof -- rather than to the ground the sprite stands on.
+                # The first run did exactly that and reported gaps of +/-290 m, which is a measure
+                # of the scenery above the sprite, not of the sprite's placement. Same `ref`
+                # subtlety that decided the bridge-underpass fix (E77-F).
+                # +sp.y, not -sp.y. build_hat maps GPL (x,y,z) -> (x, z_up, y), so the HAT's second
+                # horizontal axis is +GPL y; the RENDERER negates it (render z = -gy). Querying the
+                # terrain in the render frame samples a mirrored point on a track that spans 300 m
+                # of elevation, which is what produced a "median gap of 137 m". Both frames are
+                # correct; the probe was using the wrong one.
+                gh = JuliaMotor.hat3d(TERRAIN, Float64(sp.x), Float64(sp.y); ref=Float64(sp.z)+2.0)
+                gh[3] || continue
+                push!(gaps, (Float64(sp.z) - gh[1], String(sp.name), Float64(sp.z), gh[1]))
+            end
+            # ⚠️ POSITIVE CONTROL for the coordinate mapping, before any gap is believed. The first
+            # run of this reported 411 of 413 sprites off the ground by up to +/-290 m, with bases
+            # AND grounds both clustering at ~330 and ~620 -- a swap, not a placement defect. Print
+            # the raw field ranges: on the Ring the terrain is ~560-680 m, so whichever field spans
+            # that IS the height, and the other two are the horizontal pair.
+            let xs=[Float64(sp.x) for sp in RINGSPRITES], ys=[Float64(sp.y) for sp in RINGSPRITES],
+                zs=[Float64(sp.z) for sp in RINGSPRITES]
+                println("   [ctrl] sp.x ", round(minimum(xs)), "..", round(maximum(xs)),
+                        "   sp.y ", round(minimum(ys)), "..", round(maximum(ys)),
+                        "   sp.z ", round(minimum(zs)), "..", round(maximum(zs)))
+                # Which horizontal mapping is right? Sample with BOTH signs of the z-coordinate and
+                # report the median |gap| for each. The correct mapping puts sprites ON the ground,
+                # so it is the one with the small median; a mirrored sample sends them to an
+                # unrelated part of a track that spans 300 m of elevation, which is what a 290 m
+                # gap actually measures.
+                for (lbl, zf) in (("-sp.y", -1.0), ("+sp.y", +1.0))
+                    gs = Float64[]
+                    for sp in RINGSPRITES
+                        g = JuliaMotor.hat3d(TERRAIN, Float64(sp.x), zf*Float64(sp.y); ref=Float64(sp.z)+2.0)
+                        g[3] && push!(gs, abs(Float64(sp.z) - g[1]))
+                    end
+                    isempty(gs) && continue
+                    sort!(gs)
+                    println("   [ctrl] z=", lbl, ": ", length(gs), " hits, median |gap| ",
+                            round(gs[cld(length(gs),2)],digits=1), " m, 90th ",
+                            round(gs[cld(9*length(gs),10)],digits=1), " m")
+                end
+            end
+            if !isempty(gaps)
+                sort!(gaps, by=g->-abs(g[1]))
+                nfloat = count(g -> g[1] >  0.5, gaps)
+                nsunk  = count(g -> g[1] < -0.5, gaps)
+                println("== JM_FLOATDIAG: ", length(gaps), " Ring sprites grounded against the terrain ==")
+                println("   floating >0.5 m above: ", nfloat, "   sunk >0.5 m below: ", nsunk,
+                        "   within +/-0.5 m: ", length(gaps)-nfloat-nsunk)
+                nlist = parse(Int, get(ENV,"JM_FLOATDIAG_N","20"))
+                for g in gaps[1:min(end,nlist)]
+                    println("   ", rpad(g[2],14), " base=", rpad(round(g[3],digits=1),9),
+                            " ground=", rpad(round(g[4],digits=1),9),
+                            " gap=", g[1] > 0 ? "+" : "", round(g[1],digits=1), " m")
+                end
+            end
+            flush(stdout)
+        end
         if get(ENV,"JM_RING_BB_DIAG","") != ""
             # Is a 9 m half-corridor right for a forest track ~8-9 m WIDE? Print the lateral
             # distribution of the stubs so the threshold is measured, not assumed.

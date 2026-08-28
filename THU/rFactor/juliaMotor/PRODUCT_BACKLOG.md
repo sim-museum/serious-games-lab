@@ -1209,6 +1209,33 @@ E70-S1 made exactly that mistake. Use the mesh-based censuses and the billboard-
 Overlaps E78 for the Ring video; keep this one for the *placement* defects (floating, part-buildings,
 wrong ground height) and E78 for the gold-vs-JM appearance comparison.
 
+### ⚠️ 2026-08-28 — measured: the Ring's SPRITES are NOT floating. Look elsewhere.
+
+`JM_FLOATDIAG` grounds every Ring sprite against the terrain beneath it:
+
+**1777 of 1863 sprites, median gap 0.0 m, 90th percentile 1.1 m.**
+
+So sprite height is not the defect, and "floating billboards" should not be the starting hypothesis.
+The PO's report ("lots of odd buildings and parts of buildings", "floating or misplaced") is real,
+but it is about something else — candidates, in order: the **mesh** scenery groups rather than the
+sprite path; **part**-buildings from LOD/clipping (E70-S4's null-child LOD fix touched exactly this);
+and objects that are correctly grounded but wrongly *placed* horizontally.
+
+⚠️ **This measurement needed three corrections before it could be believed, and every uncorrected
+version produced a confident, wrong, alarming number:**
+
+1. `ref=Inf` measured to the topmost surface over each sprite — a tree canopy or a roof — instead
+   of the ground. Reported "411 of 413 off the ground by up to ±290 m".
+2. Sampling in the RENDER frame (`-sp.y`) instead of the physics frame (`+sp.y`). `build_hat` maps
+   GPL `(x,y,z)` to `(x, z_up, y)`, so the HAT's second horizontal axis is `+gy` while the renderer
+   uses `-gy`. On a track spanning 300 m of elevation a mirrored sample yields a *plausible* height
+   for the wrong place: median gap 137 m, and only 256 of 1863 sprites even got a hit.
+3. Only after both: 1777 hits and a median of 0.0 m.
+
+The tell each time was the same — a number too large to be a placement error. **A 290 m "float" on a
+track 300 m tall is a coordinate bug, not scenery.** Whoever picks E81 up should ground their
+instrument against a known-good position before trusting any gap it reports.
+
 ### E82 (PO 2026-08-28) — the external (nintendo) car view is still wrong; no axles
 
 PO: *"fix the car external view - e.g. it still has no axles in nintendo view; compare to gold
