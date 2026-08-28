@@ -90,7 +90,25 @@ println("  → track: ", uppercasefirst(TRACKSEL))
 # where a ROAD-asphalt surface lies beneath it (the underpass), so the drivable banking OVAL (deck over
 # GRASS) is untouched.  The road + banking SHARE the sNN[bl]N section textures, so this can't be done by
 # name.  ROAD_PRED classifies the lower surface; HAT_EXCLUDE stays empty (no blanket texture drop).
-const HAT_EXCLUDE = Set{String}()
+# E77-F (PO 2026-08-27/28): "when I try to go under the bridge at the ring, the car levitates and
+# bounces". JM_SWEEP=10 found 8 height discontinuities in 22.76 km, all at two underpasses, and
+# JM_BRIDGEPROBE named what sits over the racing line there:
+#
+#   s=21540   road 588.22   br_under 593.59   (+5.4 m)   <- the bridge UNDERSIDE
+#   s=22250   road 603.32   villone  615.77   (+12.5 m)  <- a building passing over the line
+#   s=22300   road 607.42   villone  655.31   (+48 m)
+#
+# Neither is ever a driving surface: `br_under` is the underside of a bridge you pass BENEATH, and
+# `villone` is a building. They reach the car because hat3d returns the topmost surface at or below
+# `ref` (= car y + 2 m) — so while the car is planted the road wins, but the moment it goes light
+# over a crest (and both underpasses are on rising ground) `ref` climbs past the underside, the HAT
+# hands back the bridge, and the car is snapped up onto it and dropped off the end.
+#
+# ⚠️ This is NOT `drop_overpass`. That drops any triangle with another surface below it, and its own
+# docstring forbids it here because the Ring has bridges you genuinely drive OVER. Excluding two
+# named textures leaves those intact. JM_HAT_KEEP_BRIDGE=1 restores the old behaviour for A/B.
+const HAT_EXCLUDE = get(ENV,"JM_HAT_KEEP_BRIDGE","0") != "0" ? Set{String}() :
+                    Set{String}(["br_under", "villone"])
 const HAT_EXCLUDE_PRED = nothing
 const ROAD_PRED = MONZA ? (lt -> occursin("asp", lt) || startswith(lt,"groove") || startswith(lt,"kerb")) : nothing
 # E64 S6 (WG4): a GENERAL road-texture classifier for the racing-surface HAT.  The old comment at the
@@ -257,13 +275,41 @@ const FUEL_MARGIN = max(0, tryparse(Int, get(ENV,"JM_FUEL_MARGIN","10")) |> x-> 
 # model.  We reuse a real iRacing .ibt of the matching car/track as the header+var-
 # table+YAML template (so the file is byte-identical in structure / any iRacing tool
 # reads it) and fill the channels juliaMotor produces.
-const IBTREC = !haskey(ENV, "JM_NOIBT")          # .ibt telemetry ON by default (set JM_NOIBT to disable)
+const IBTREC0 = !haskey(ENV, "JM_NOIBT")         # .ibt telemetry ON by default (set JM_NOIBT to disable)
 const REPLAY_FILE = get(ENV, "JM_REPLAY", "")    # E18: if set, PLAY BACK this .jmr recording instead of driving
-const IBTDIR = normpath(joinpath(@__DIR__,"..","..","data","iracing"))
+# The repo's data/iracing/ holds only the parse/profile scripts — the reference .ibt captures live
+# in the gold-standard store, which is why every session ended with ".ibt export failed ... (2)".
+# Look there first, so the iRacing reference is actually reachable (PO 2026-08-27: the physics is to
+# be determined by this data). JM_IBTDIR overrides the location, not the physics.
+const IBTDIR = let repo = normpath(joinpath(@__DIR__,"..","..","data","iracing")),
+                   gold = "/home/admin/gold standard/julia racer"
+    d = get(ENV, "JM_IBTDIR", "")
+    !isempty(d) ? d : (isdir(gold) && !isempty(filter(f->endswith(lowercase(f),".ibt"), readdir(gold))) ? gold : repo)
+end
 const IBTNAME = NURB ? "nurburgring nordschleife" : SKIDPAD ? "skidpad" : "zandvoort"
-const IBTTMPL = NURB ? joinpath(IBTDIR, "lotus49_nurburgring nordschleife 2026-06-14 11-11-37.ibt") :
-                SKIDPAD ? joinpath(IBTDIR, "lotus49_skidpad 2026-06-14 10-49-07.ibt") :
-                joinpath(IBTDIR, "lotus49_nurburgring nordschleife 2026-06-14 11-11-37.ibt")  # zandvoort: borrow layout
+# Pick the reference capture by PREFIX, not by an exact dated filename. The hardcoded
+# "2026-06-14 11-11-37" names do not exist anywhere on this machine — the real captures are dated
+# 2026-06-24 — so the lookup could never succeed and every session ended with a SystemError. A
+# reference set that is addressed by an exact timestamp breaks the moment it is re-captured, which
+# is the opposite of what a reference is for.
+const IBTTMPL = let want = (SKIDPAD ? "lotus49_skidpad" : "lotus49_nurburgring"),
+                    cands = isdir(IBTDIR) ? sort(filter(f -> startswith(lowercase(f), want) &&
+                                                             endswith(lowercase(f), ".ibt"),
+                                                        readdir(IBTDIR))) : String[]
+    isempty(cands) ? joinpath(IBTDIR, want * " (none found).ibt") : joinpath(IBTDIR, cands[1])
+end   # zandvoort/spa/monza/watkins borrow the Nordschleife layout (channel set is the same)
+# PO 2026-08-27 (found by a real drive): every session ended with
+#   .ibt export failed: SystemError("opening file .../lotus49_... .ibt", 2, nothing)
+# That is not a path bug -- data/iracing/ holds only parse_ibt.py and profile_ibt.py, so the
+# TEMPLATE the writer copies its table+YAML layout from is not in this checkout at all. The export
+# could never have worked here, and it announced that with a raw SystemError at every quit, which
+# reads like something broke during the drive rather than a feature that was never available.
+# Check once, at startup, and say it plainly.
+const IBTREC = IBTREC0 && isfile(IBTTMPL)
+if IBTREC0 && !IBTREC
+    println("  (.ibt telemetry off: the iRacing template is not in this checkout — ",
+            basename(IBTTMPL), ". The plain-text telemetry below is unaffected.)")
+end
 
 # Procedural skidpad / centripetal pad: flat asphalt + concentric measurement
 # circles, diameters 10..200 m (radii 5..100 m).  Returns Render.TrackParts
@@ -1735,7 +1781,13 @@ let objnames=Set{String}()
     # clears the road.  Per-track + named so no other scenery moves; the collision was already removed
     # by the E31 on_road SOLIDS filter.  Tunable / disable via JM_PITBLDG_PUSH (metres, 0 = off).
     let pitpush = parse(Float64, get(ENV, "JM_PITBLDG_PUSH", TRACKSEL=="watglen" ? "5.0" : "0.0")),   # E58 fix: the track id is "watglen", not "watkinsglen" — so this 5 m S/F pit-building nudge NEVER fired; the balcony/scaffold overhang stayed in the road
-        boxpush = parse(Float64, get(ENV, "JM_STARTBOX_PUSH", TRACKSEL=="watglen" ? "6.0" : "0.0"))
+        # PO 2026-08-27: "restore the gantry to the start line". E58 pushed it 6 m OUTWARD because a
+        # leg protruded into the road — but the DUNLOP bridge at Watkins SPANS the track at the line,
+        # so moving it off the line trades one wrong picture for another. The roadward staircase/tower
+        # and hay are already stripped separately (obj_extra_excl), which was the other half of E58 and
+        # is the half that removes the actual obstruction. Default the push OFF and let the gantry sit
+        # where it belongs; JM_STARTBOX_PUSH=6 restores E58's placement if a leg turns out to be in the way.
+        boxpush = parse(Float64, get(ENV, "JM_STARTBOX_PUSH", "0.0"))
         # E58 (PO): the Watkins DUNLOP start/finish gantry (`startbox`, a perpendicular span at the S/F,
         # relyaw≈82°) has its origin only ~5 m right of the racing line, so a leg protrudes into the road.
         # Push it OUTWARD (away from the line) so the whole span clears the track edge.  Per-name distance.
@@ -2150,7 +2202,7 @@ let objnames=Set{String}()
         halfw = parse(Float64, get(ENV,"JM_OVERHANG_HALFW","6.0"))
         # a silent block cannot be distinguished from a block that never ran — say what was searched
         println("== JM_OVERHANG: /", pat, "/ over ", length(insts), " instances, corridor ±", halfw, " m ==")
-        nointr = 0; nofp = 0; hits = Tuple{String,Int,Float64,Float64,Float64,Bool}[]
+        nointr = 0; nofp = 0; hits = Tuple{String,Int,Float64,Float64,Float64,Bool,Float64,Float64}[]
         for i in insts
             (pat == "1" || occursin(pat, lowercase(i.name))) || continue
             vs = get(lverts, i.name, nothing)
@@ -2182,7 +2234,20 @@ let objnames=Set{String}()
                 kept = get(objmesh,i.name,nothing) !== nothing && !drop(i.name) &&
                        !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) &&
                        (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)
-                push!(hits, (i.name, nover, minlat, hi, hr_lap(i), kept))
+                # E71-S17: an intruder's ORIGIN lateral and its yaw RELATIVE TO THE ROAD. The
+                # census has only ever reported how close the footprint gets, which cannot separate
+                # "authored beside the road" from "placed beside the road and turned across it".
+                # A 4.5 m car parked parallel with its origin 5 m out reaches ~4.1 m; the same car
+                # turned 90 degrees reaches ~2.5 m. Same object, same origin, very different
+                # verdict -- and the project already draws this distinction for crowds
+                # (perp_crowd, "a perpendicular row near the road can only be GPL cross-placement
+                # garbage - real fence crowds run PARALLEL"). Nothing applied it to anything else.
+                _ho = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
+                _olat = _ho.found ? _ho.lateral : NaN
+                _ry = _ho.found ?
+                      abs(rad2deg(rem2pi(Float64(i.yaw) - atan(-_ho.perp[2], _ho.perp[1]), RoundNearest))) : NaN
+                _ry = isnan(_ry) ? _ry : (_ry > 90 ? 180 - _ry : _ry)   # fold to 0..90: 0 = parallel
+                push!(hits, (i.name, nover, minlat, hi, hr_lap(i), kept, _olat, _ry))
             else
                 nointr += 1
             end
@@ -2206,7 +2271,9 @@ let objnames=Set{String}()
             for h in hits[1:min(end,_top)]
                 println("      ", h[6] ? "RENDERS " : "dropped ", rpad(h[1],12), "pts over road ", rpad(h[2],5),
                         " nearest |lat| ", rpad(round(h[3],digits=1),7),
-                        " base ", rpad(round(h[4],digits=1),7), " m above road   lapdist ", round(Int,h[5]))
+                        " origin |lat| ", rpad(isnan(h[7]) ? "?" : string(round(abs(h[7]),digits=1)),7),
+                        " yaw-vs-road ", rpad(isnan(h[8]) ? "?" : string(round(Int,h[8])), 4),
+                        " base ", rpad(round(h[4],digits=1),7), " m   lapdist ", round(Int,h[5]))
             end
             # A per-FAMILY roll-up of the ones that render. Individual rows say where; the family
             # is what a filter rule can actually be written against, and it is the family counts
@@ -2346,11 +2413,33 @@ let objnames=Set{String}()
         nml = lowercase(i.name)
         r = solidR(nml); (r <= 0.0 || !onground(i)) && continue
         on_road(i.x, i.y, SOLID_EXCL_HW) && continue   # E31: don't make a collidable wall ON the road (the trapping hedge-box) — but DO keep edge barriers/haybales solid (PO)
+        # E71-S18 (PO 2026-08-27, Spa: "just driving along and suddenly I'm levitating and bouncing
+        # like a ball"). Telemetry pinned it: at lapdist 6896 the car's speed doubled in one 0.2 s
+        # tick (66 -> 131 km/h), lapdist ran BACKWARDS, and it flew 34 m sideways in 1.2 s. That is
+        # a bump3d! collision impulse, not terrain — and there was nothing on screen to hit.
+        #
+        # THE RENDER FILTER AND THE COLLISION FILTER DISAGREED, AND THE DISAGREEMENT WAS INVISIBLE
+        # BY CONSTRUCTION. `house25` sits at lapdist 6899 with its FOOTPRINT reaching 1.6 m of the
+        # centreline. The renderer drops it (onroad_fp, a footprint test, E69-S5/E71-S16), so the
+        # road looks clear. This loop tested only the ORIGIN (`on_road(i.x, i.y, ...)`) — the same
+        # origin-vs-footprint mistake the render path was fixed for and this one never was — so the
+        # origin sat off-road, the object stayed solid, and `house` carries a 5.0 m radius. An
+        # invisible 5 m collision disc across the racing line.
+        #
+        # The invariant: IF IT IS NOT DRAWN, IT MUST NOT BE SOLID. Anything the render path removes
+        # for being on the road is removed here too, by the same predicates rather than by a
+        # parallel test that can drift out of agreement again.
+        # JM_SOLID_KEEP_HIDDEN=1 restores the old behaviour for A/B.
+        if get(ENV,"JM_SOLID_KEEP_HIDDEN","0") == "0"
+            (onroad_fp(i) || onroad_bldg(i) || onroad_crowd(i) || perp_crowd(i)) && continue
+        end
         push!(SOLIDS, (Float64(i.x), Float64(i.y), r, solidkind(nml)))   # E56: tag wall vs hedge/hay for the contact law
     end
     if get(ENV,"JM_SOLIDDIAG","")!=""
         nm_solid = sort([(i.name, solidkind(lowercase(i.name))) for i in insts
-                         if solidR(lowercase(i.name)) > 0.0 && onground(i) && !on_road(i.x, i.y, SOLID_EXCL_HW)], by=x->x[1])
+                         if solidR(lowercase(i.name)) > 0.0 && onground(i) && !on_road(i.x, i.y, SOLID_EXCL_HW) &&
+                            (get(ENV,"JM_SOLID_KEEP_HIDDEN","0") != "0" ||
+                             !(onroad_fp(i) || onroad_bldg(i) || onroad_crowd(i) || perp_crowd(i)))], by=x->x[1])
         cnt = Dict{String,Int}(); for (n,_) in nm_solid; cnt[n]=get(cnt,n,0)+1; end
         println("== JM_SOLIDDIAG ", length(SOLIDS), " solids: ", join(["$(n)×$(c)" for (n,c) in sort(collect(cnt))], ", "))
     end
@@ -3048,11 +3137,11 @@ const PROJ = Render.perspective_revz(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0
 const PROJ_COCKPIT = Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_FOV","80"))), Float32(W/H), 0.20f0, 3000f0)
 
 # ---- input: edge-detected shift, view + auto-gearbox toggle ----
-mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; prevRec::Bool; view::Int; auto::Bool; end
+mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; prevRec::Bool; view::Int; auto::Bool; cluWarned::Bool; end
 # shift mode: AUTO by default (auto-clutch + auto-shift) — press throttle and GO, the car never bogs
 # on the line or out of a slow corner.  Press G in-app for MANUAL (work the clutch on C, shift E/Q —
 # release the clutch too low and it crawls/bogs, just like the real thing).  ZAND_SHIFT=manual forces it.
-const CTL = Ctl(false,false,false,false,false,false, parse(Int, get(ENV,"JM_VIEW","1")), get(ENV,"ZAND_SHIFT","auto") != "manual")   # view 1=chase 0=cockpit; AUTO gearbox by default (G toggles)
+const CTL = Ctl(false,false,false,false,false,false, parse(Int, get(ENV,"JM_VIEW","1")), get(ENV,"ZAND_SHIFT","auto") != "manual", false)   # view 1=chase 0=cockpit; AUTO gearbox by default (G toggles)
 key(k) = GLFW.GetKey(win, k) == GLFW.PRESS
 const JOYREPORT = Ref(false)
 const JOYTRACE_T = Ref(-1.0)
@@ -3109,8 +3198,26 @@ function read_input()
     # was seen. AUTO gearbox advertises an auto-clutch, so in AUTO the stick's clutch axis is now
     # ignored; the C key still works for a deliberate clutch. JM_JOYCLUTCH=1 restores the old
     # behaviour, and MANUAL mode is unchanged.
-    if CTL.auto && get(ENV,"JM_JOYCLUTCH","0") == "0"
-        clu = key(GLFW.KEY_C) ? 1.0 : 0.0
+    # PO 2026-08-27, later the same day: "I like the clutch attached to a slider - that way I can
+    # ride the clutch. The clutch should be an axis."
+    #
+    # The AUTO override that used to sit here is REMOVED. It zeroed the clutch axis whenever the
+    # gearbox was in AUTO, which meant pressing G — a GEARBOX control — silently threw the driver's
+    # clutch away. The PO's telemetry caught it exactly: clutch 1.00 while stationary, then 0.00 in
+    # the same tick as the first throttle, and the car pulled away with the clutch held in.
+    #
+    # It was added this morning to explain "pressing forward on the joystick does nothing": the X3D
+    # slider had been left at the clutch-IN end, so the car correctly refused to drive. That is a
+    # PARKED CONTROL, not a broken axis, and the right answer is to say so rather than to disable
+    # the axis — disabling it fixed the symptom by removing the feature the PO actually wants.
+    # So: the axis is always honoured, in both modes, and the car warns ONCE if the clutch is held
+    # in at a standstill with throttle applied, which is the state that looks like "it won't move".
+    if clu > 0.9 && thr > 0.2 && !CTL.cluWarned
+        CTL.cluWarned = true
+        println("  [clutch] held IN (", round(clu,digits=2), ") with throttle — the engine will rev ",
+                "but the car will not move. If you are not holding it, the slider (axis 4) is parked ",
+                "at the clutch-in end; move it to the other end to release.")
+        flush(stdout)
     end
     (DriveInput(throttle=clamp(thr,0,1), brake=clamp(brk,0,1), steer=clamp(str,-1,1),
                 clutch=clu, shift_up=upE, shift_down=dnE, autoshift=CTL.auto), rst, recover)
@@ -3644,6 +3751,48 @@ function main()
     # car ON the racing line — on-road mesh/billboard obstructions, HAT walls/cliffs/holes, and
     # "false-grass" spots (the centreline projecting off the .trk racing surface ⇒ a grass-penalty
     # MOLASSES even though the car is on the road).  Headless, no game loop.  JM_SWEEP=<step m> (or 1).
+    # E77-F: name the surfaces stacked over the racing line at given lapdists. JM_SWEEP reports THAT
+    # the collision height jumps (Ring: +13.3 m at s=22250 then -35.3 m at 22300); this reports WHAT
+    # is there, by walking the raw track mesh and listing every triangle whose XZ projection contains
+    # the centreline point, with its height and texture. That is what a targeted collision exclusion
+    # needs -- `drop_overpass` cannot be used here, because the Ring has bridges you genuinely drive
+    # OVER and it would drop those too. JM_BRIDGEPROBE="21540,22250,22300"
+    if CLINE !== nothing && get(ENV,"JM_BRIDGEPROBE","") != ""
+        println("== JM_BRIDGEPROBE: surfaces over the racing line ==")
+        for tok in split(get(ENV,"JM_BRIDGEPROBE",""), ",")
+            sv = tryparse(Float64, strip(String(tok))); sv === nothing && continue
+            pz = RaceAI.pose_at(CLINE, sv, 0.0); qx = Float64(pz[1]); qz = Float64(pz[3])
+            hits = Tuple{Float64,String}[]
+            # ⚠️ TRACKMESH, not TRACKMESH0. On the Ring the scenery is MERGED into the collision
+            # mesh (TRACKMESH = TRACKMESH0.tris ++ SECTRI) and TERRAIN is built from that. Probing
+            # the raw track mesh reported "only asphalt and groove, no stacked surface" at every
+            # underpass — a clean null that simply looked at the wrong mesh, and the same mistake
+            # that made an earlier analysis conclude the deck was not in collision at all.
+            for t in TRACKMESH.tris
+                ax,az = Float64(t.p[1][1]), Float64(t.p[1][2])
+                bx,bz = Float64(t.p[2][1]), Float64(t.p[2][2])
+                cx,cz = Float64(t.p[3][1]), Float64(t.p[3][2])
+                d = (bz-cz)*(ax-cx) + (cx-bx)*(az-cz); abs(d) < 1e-9 && continue
+                wa = ((bz-cz)*(qx-cx) + (cx-bx)*(qz-cz))/d
+                wb = ((cz-az)*(qx-cx) + (ax-cx)*(qz-cz))/d
+                wc = 1 - wa - wb
+                (wa >= -0.02 && wb >= -0.02 && wc >= -0.02) || continue
+                h = wa*Float64(t.p[1][3]) + wb*Float64(t.p[2][3]) + wc*Float64(t.p[3][3])
+                push!(hits, (h, lowercase(t.tex)))
+            end
+            sort!(hits, by=first)
+            print("   s=", round(Int,sv), " at (", round(qx,digits=1), ",", round(qz,digits=1), "): ")
+            if isempty(hits)
+                println("NO surface (hole)")
+            else
+                println(length(hits), " surfaces, low..high:")
+                for (h,tx) in hits
+                    println("      h=", rpad(round(h,digits=2),9), " tex=", tx)
+                end
+            end
+        end
+        flush(stdout); exit(0)
+    end
     if CLINE !== nothing && haskey(ENV,"JM_SWEEP") && isdefined(Main,:OBJINSTS)
         olat(ox,oz) = (hr = JuliaMotor.hat(TRKSURF, Float64(ox), Float64(oz)); hr.found ? round(hr.lateral,digits=1) : 999.0)
         step = (v = tryparse(Float64, get(ENV,"JM_SWEEP","")); v === nothing || v < 1 ? 15.0 : v)
@@ -3927,13 +4076,17 @@ function main()
     end
     REPLAY && println("  ▶ REPLAY: $(basename(REPLAY_FILE)) — $(repd.nframes) frames, $(round(rep_dur,digits=1))s, $(repd.ncar) cars\n" *
         "  SPACE play/pause · ←/→ seek · ↑/↓ speed · V switch ANGLE (cockpit/chase/TV/F10/nose/RR-susp) · C switch CAR · Esc quit")
-    telem = SMOKE ? nothing : open("zand_racer_$(round(Int,time())).txt", "w")
+    # PO 2026-08-27: this was hardcoded "zand_racer_" with a "@ Zandvoort" header on EVERY track,
+    # so the Nurburgring run just recorded landed as zand_racer_*.txt claiming to be Zandvoort.
+    # Telemetry that misnames its own track is worse than none: it is wrong in a file that outlives
+    # the session and looks authoritative.
+    telem = SMOKE ? nothing : open("$(TRACKSEL)_racer_$(round(Int,time())).txt", "w")
     telem !== nothing && write(telem,
-        "# zand_racer telemetry — Lotus 49 @ Zandvoort\n# t\tlap\tlapdist\tkmh\tthr\tbrk\tsteer\tclu\tgear\trpm\tx\tz\tlat\talong\tontrack\n")
+        "# $(TRACKSEL)_racer telemetry — Lotus 49 @ $(TRACKSEL)\n# t\tlap\tlapdist\tkmh\tthr\tbrk\tsteer\tclu\tgear\trpm\tx\tz\tlat\talong\tontrack\n")
     println("\n  Drive:  W/S gas·brake   A/D steer   E/Q shift   C clutch   R respawn   ⇧R recover-to-track   V view   G auto⇄manual   M mute   Esc quit"); flush(stdout)
     println("  AUTO gearbox by default — just press the throttle and go (no clutch needed).  Press G for")
     println("  MANUAL: hold the clutch (C / stick button) to shift E/Q (release it too low and it bogs).")
-    println("  Lap times top-left: white = last, green = best.  Telemetry → ./zand_racer_*.txt")
+    println("  Lap times top-left: white = last, green = best.  Telemetry → ./$(TRACKSEL)_racer_*.txt")
     println("  (Logitech joystick works natively — push=throttle, pull=brake, roll=steer)\n")
     EngineAudio.start(ENG)   # start audio NOW (after the long track load) — starting it mid-load
                              # let the stream underflow on big tracks (Nürburgring) and go silent

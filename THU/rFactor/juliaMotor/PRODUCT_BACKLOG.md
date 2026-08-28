@@ -1064,13 +1064,45 @@ track at Zandvoort (`ppl_l3` @1016, `ppl_s2` @1345, `ppl_m1` @3851, `bushes01–
 already dropped by the MESH filter, so they are reaching the screen via the BILLBOARD path, which
 has no on-road filter); transparent openings in the Monza scenery just after the start line.
 
-### E77-F — FIX the Nürburgring bridge underpasses (the work item for E77)
+### E77-F — ✅ DONE (2026-08-28). The Nürburgring bridge underpasses no longer launch the car
+
+**`JM_SWEEP=10`: 8 anomalies → 0, 2276 stations clean.** That was the stated done-criterion.
+
+`JM_BRIDGEPROBE` (new) named what sat over the racing line, by listing every triangle whose XZ
+projection contains the centreline point, with its height and texture:
+
+| lapdist | road | over it | |
+|---|---|---|---|
+| 21540 | 588.22 | **`br_under`** 593.59 | +5.4 m — the bridge UNDERSIDE |
+| 22250 | 603.32 | **`villone`** 615.77 | +12.5 m — a building over the line |
+| 22300 | 607.42 | `villone` 655.31 | +48 m |
+
+Both added to `HAT_EXCLUDE` — collision only. The bridge is still **rendered**; it is simply no
+longer a surface you can land on. `JM_HAT_KEEP_BRIDGE=1` reverts.
+
+**Why it only bit at the bridges:** `hat3d` returns the topmost surface at or below `ref` (= car
+y + 2 m). Planted on the road the road wins; the instant the car goes light over a crest — and both
+underpasses are on rising ground — `ref` climbs past the underside, the HAT hands back the bridge,
+and the car is snapped up onto it and dropped off the far end. That is the "levitates and bounces".
+
+**Two wrong answers on the way, both from probing the wrong mesh.** An early analysis searched the
+parsed `nurburg.3do` for stacked triangles, found 4 (`log_s` over `grass`), and concluded the deck
+was not in collision. The first version of `JM_BRIDGEPROBE` did the same thing and reported "only
+asphalt and groove" at every underpass. Both walked **`TRACKMESH0`**, the raw track mesh — but on
+the Ring the scenery is MERGED into the collision mesh (`TRACKMESH = TRACKMESH0.tris ++ SECTRI`) and
+`TERRAIN` is built from that. Probing the merged mesh found the two surfaces immediately. ⚠️ On this
+track, any collision question must be asked of `TRACKMESH`, never `TRACKMESH0`.
+
+Verified: sweep 0/2276, boundary audit still PASS (world sealed, 0 on-line holes), bridge still drawn.
+
+<details><summary>original item</summary>
 
 E77 above locates and characterises the defect; this is the item to **fix** it. Done when
 `JM_SWEEP=10` on the Ring reports **0 anomalies** (it currently reports 8, all at the two
 underpasses), and the PO can drive under both bridges without the car climbing or being launched.
 Constraint restated because it is the trap: the drive-OVER bridges must still be solid, so
 `drop_overpass` cannot be enabled wholesale — exclude only the two decks involved.
+</details>
 
 ### E78 (PO 2026-08-27) — improve all 5 tracks: gold videos vs the 2026-08-27 JM drives
 

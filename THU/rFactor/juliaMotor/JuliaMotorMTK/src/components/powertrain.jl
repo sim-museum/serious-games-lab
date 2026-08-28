@@ -18,8 +18,31 @@ using ModelingToolkit: t_nounits as t, D_nounits as D
 # 409 N·m at ~8200 rpm, matching WOT straight-line accel across 4400–7100 rpm
 # (rpm_peak pinned to the DFV-realistic range since clean accel data only reveals
 # the rising part).  Smooth in rpm & throttle.  ±~20% absolute (CdA/η/Rw/inertia).
+# PO 2026-08-27, after driving Monza: "I never needed to use the brakes ever, which is not right",
+# and "if I put the clutch in I should be coasting, but in fact I'm decelerating a lot".
+#
+# ⚠️ A DEFAULT CHANGE WAS PREPARED HERE AND REVERTED. The first pass measured the PO's coast-downs
+# WITHOUT separating clutch-in from clutch-out, attributed the whole deceleration to the engine,
+# and concluded eb was ~1.5x too high. Splitting by the clutch column — which the telemetry has
+# had all along — says otherwise:
+#
+#   clutch IN  (engage=0, Tcl=0, so NO engine braking)   130 km/h  1.24 m/s^2   (model: 1.30)
+#                                                          96 km/h  1.06 m/s^2   (model: 0.83)
+#   clutch OUT (in gear)                          5th, 161 km/h  2.56  -> engine ~0.7
+#                                                 4th, 126 km/h  2.86  -> engine ~1.6
+#
+# So engine braking is 0.7-1.6 m/s^2 (0.07-0.16 g), which is normal, and what actually dominates a
+# clutch-in coast is AERO DRAG. That is calibrated, not arbitrary: CdA=0.9 needs ~420 hp to hold
+# 300 km/h, which is a DFV at 1967 Monza. Lowering eb would have made the car wrong in order to
+# make one complaint go away.
+# PO 2026-08-27: "the car physics should be determined entirely by the iracing ibt data, there
+# should be no modifiable parameters." JM_ENGBRAKE is REMOVED for that reason. The value must come
+# from the reference, not from a knob — JuliaMotorMTK/tools/engbrake_probe.jl exists to measure
+# exactly this against a real iRacing coast-down.
+const ENGBRAKE = 0.012
+
 function engine_torque(rpm, throttle; Tpeak = 409.0, rpm_peak = 8211.0,
-                       spread = 6000.0, redline = 9500.0, eb = 0.012, Tmin_frac = 0.2)
+                       spread = 6000.0, redline = 9500.0, eb = ENGBRAKE, Tmin_frac = 0.2)
     wot = Tpeak * max(Tmin_frac, 1 - ((rpm - rpm_peak)/spread)^2)   # WOT torque
     cut = 0.5*(1 - tanh((rpm - redline)/200.0))                     # smooth redline fuel cut
     throttle*wot*cut - (1 - throttle)*eb*rpm                        # blend WOT ↔ engine braking

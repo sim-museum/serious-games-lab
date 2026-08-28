@@ -149,7 +149,15 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
         up && c.gear < 5 && (c.gear += 1; c.s_gr(c.integ, gearratio(c.gear)))
         dn && c.gear > 0 && (c.gear -= 1; c.s_gr(c.integ, gearratio(c.gear)))
     else
-        c.gear == 0 && (c.gear = 1; c.s_gr(c.integ, GEARS[1]))
+        # AUTO engages out of neutral — for a STANDING START, which is what this is for. It used
+        # to engage 1st at ANY speed, which is reachable: select neutral in MANUAL, press G to hand
+        # control to AUTO at 200 km/h, and the next step slams into 1st, spinning the engine up and
+        # dumping a large negative torque into the rear wheels. Pick a gear the speed can accept.
+        if c.gear == 0
+            g = 1
+            while g < 5 && abs(c.v) > 0.9 * (9500.0*2π/60) / (GEARS[g]*FINAL) * RW_R; g += 1; end
+            c.gear = g; c.s_gr(c.integ, GEARS[g])
+        end
         held = abs(c.v) < 1.0 && throttle < 0.05
         ae = held ? 0.0 : clamp((c.rpm - 1400.0)/1000.0, 0, 1) * clamp(max(2*throttle, c.v/2), 0, 1)
         c.s_clu(c.integ, clamp(1.0 - ae, 0, 1))
@@ -301,7 +309,17 @@ function contain3d!(c::Car3D, xnew, znew; vdamp = 0.45, settle = false, groundz 
 end
 
 function respawn3d!(c::Car3D; groundz = nothing)
-    reinit!(c.integ); c.gear = 1; c.s_gr(c.integ, GEARS[1])
+    # PO 2026-08-27: "at the beginning, with car stationary at the start line, 1st gear engages
+    # even when the clutch has disengaged the engine". Spawn in NEUTRAL and let each mode decide:
+    # AUTO engages on its next step (above), MANUAL leaves the choice to the driver.
+    # JM_SPAWN_IN_GEAR=1 restores the old always-1st behaviour.
+    #
+    # ⚠️ THIS IS THE FILE THAT MATTERS. The same two fixes were first written into drive_rt.jl and
+    # had NO EFFECT, because CAR3D (this 3-D model) is the default and drive_rt.jl is the planar
+    # fallback. The PO's next telemetry still read `gear=1` at t=0 and that is how it was caught.
+    # Two physics models, the same function names in both: check which one the sim actually runs.
+    g0 = get(ENV,"JM_SPAWN_IN_GEAR","0") != "0" ? 1 : 0
+    reinit!(c.integ); c.gear = g0; c.s_gr(c.integ, gearratio(g0))
     c.s_vreset(c.integ, zeros(14))                 # zero the vertical subsystem → spawn settled (no "superball" bounce)
     a = c.getall(c.integ); c.x = a[1]; c.z = a[2]; c.θ = a[3]; c.v = a[4]; c.rpm = a[6]
     c.heave = 0.0; c.pitch = 0.0; c.roll = 0.0; c.vacc = 9.80665

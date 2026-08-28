@@ -126,7 +126,22 @@ function step_car!(c::Car, throttle, brake, steer, dt;
         up && c.gear < 5 && (c.gear += 1; c.s_gr(c.integ, gearratio(c.gear)))   # N→1→…→5
         dn && c.gear > 0 && (c.gear -= 1; c.s_gr(c.integ, gearratio(c.gear)))   # …→1→N
     else                                             # auto-clutch (slip in/out on throttle+motion)
-        c.gear == 0 && (c.gear = 1; c.s_gr(c.integ, GEARS[1]))   # AUTO auto-engages 1st out of neutral
+        # AUTO auto-engages out of neutral — for a STANDING START, which is what this is for.
+        # It used to engage 1st at ANY speed, and that is reachable: select neutral in MANUAL, then
+        # press G to hand control back to AUTO at 200 km/h, and the next physics step slams into
+        # 1st. The clutch then tries to spin the engine to the moon and dumps a large negative
+        # torque into the rear wheels — a violent, unasked-for deceleration.
+        # (This was NOT what the PO hit on 2026-08-27: their telemetry shows no neutral above
+        #  20 km/h, and the "neutral applies the brakes" feel was a 5->4->3 downshift at 139 km/h.
+        #  Fixed anyway, because the path is real and the failure is nasty.)
+        # Pick a gear the current speed can actually accept, rather than always 1st.
+        if c.gear == 0
+            # Highest gear whose redline the current speed does not already exceed. Derived from
+            # the driveline rather than a table, so it cannot fall out of step with GEARS/FINAL/RW_R.
+            g = 1
+            while g < 5 && abs(c.v) > 0.9 * (9500.0*2π/60) / (GEARS[g]*FINAL) * RW_R; g += 1; end
+            c.gear = g; c.s_gr(c.integ, GEARS[g])
+        end
         ae = held ? 0.0 : clamp((c.rpm - 1400.0)/1000.0, 0, 1) * clamp(max(2*throttle, c.v/2), 0, 1)
         c.s_clu(c.integ, clamp(1.0 - ae, 0, 1))
     end
@@ -195,7 +210,17 @@ end
 
 "Reset the car to its spawn position/state (R key)."
 function respawn!(c::Car)
-    reinit!(c.integ); c.gear = 1; c.s_gr(c.integ, GEARS[1])
+    # PO 2026-08-27: "at the beginning, with car stationary at the start line, 1st gear engages
+    # even when the clutch has disengaged the engine". It did: this forced gear 1 at every spawn
+    # and respawn, with the clutch released, so a MANUAL driver arrived at the line already in gear
+    # and holding the clutch changed nothing about the gear indicator.
+    # Spawn in NEUTRAL instead and let each mode do its own thing: AUTO engages a gear on its next
+    # step (step_car!'s out-of-neutral rule, which exists for exactly this standing start), while
+    # MANUAL leaves the choice to the driver — clutch in, select 1st, pull away. One line, and it
+    # removes a special case rather than adding one.
+    # JM_SPAWN_IN_GEAR=1 restores the old always-1st behaviour.
+    g0 = get(ENV,"JM_SPAWN_IN_GEAR","0") != "0" ? 1 : 0
+    reinit!(c.integ); c.gear = g0; c.s_gr(c.integ, gearratio(g0))
     a = c.getall(c.integ); c.x = a[1]; c.z = a[2]; c.θ = a[3]; c.v = a[4]; c.rpm = a[6]
     c
 end

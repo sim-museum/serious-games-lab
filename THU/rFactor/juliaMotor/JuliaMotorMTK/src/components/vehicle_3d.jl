@@ -29,7 +29,15 @@ function DrivenVehicle3D(; name,
         m = 617.0, Izz = 890.0, Ixx = 120.0, Iyy = 850.0,
         a = 1.314, b = 1.096, tf = 1.50, tr = 1.50, h = 0.30, front_frac = 0.455,
         Rw_f = 0.30, Rw_r = 0.33, Iw = 1.0, η = 0.9, final = 4.11,
-        bias = 0.535, Tbrake_max = 4200.0, CdA = 0.9, ρair = 1.10, g = 9.80665,
+        # PO 2026-08-27: "the car physics should be determined entirely by the iracing ibt data,
+        # there should be no modifiable parameters." JM_BRAKE_MAX / JM_BRAKE_BIAS were added here
+        # earlier the same day and are REMOVED again: a tuning knob is precisely the thing that lets
+        # the model drift away from the reference instead of being pinned to it.
+        # These two are therefore constants, and the open question is not what they should be tuned
+        # to but what the iRacing telemetry SAYS they are — see BENCHMARK_2026-06-24.md and
+        # JuliaMotorMTK/tools/ibt_compare.jl.
+        bias = 0.535, Tbrake_max = 4200.0,
+        CdA = 0.9, ρair = 1.10, g = 9.80665,
         throttle0 = 0.0, brake0 = 0.0, steer0 = 0.0, gear0 = 1.72, brush = false,
         # PO: ct (tyre vertical DAMPING) was 300 ≈ 8% of critical for the unsprung mass → the car
         # "superball-bounced" on landing off a crest.  Raised to ~27% of critical so a jump landing is
