@@ -2632,6 +2632,76 @@ let objnames=Set{String}()
     # harness sees exactly what is actually rendered / collidable (not the raw instance list).
     # NB store world-z in the PHYSICS / HAT / .trk frame (= GPL y, NOT the render frame's −y) so the
     # JM_SWEEP / JM_SPOT projections onto TRKSURF/CLINE match the on_road classifier exactly.
+    # ---- E87 GATE: a collidable object must never be INVISIBLE -------------------------------
+    # The class behind the PO's Spa levitate (E86/E71-S18) and the Ring underpasses: the RENDER
+    # filter and the COLLISION filter drift apart, and the result is undetectable by looking — the
+    # only way to find an invisible wall is to drive into it. It has now happened three times.
+    #
+    # ⚠️ THIS DELIBERATELY DOES NOT RE-TEST onroad_fp/onroad_bldg/... . Re-running the same
+    # predicates the fix uses would pass BY CONSTRUCTION and could never catch the NEXT filter
+    # someone adds without updating SOLIDS. Instead it compares the two FINAL SETS: every SOLID
+    # must coincide with something actually submitted for RENDER (a mesh in OBJECTS or a sprite in
+    # BILLBOARDS). Predicate-independent, or it is not a gate.
+    #
+    # Negative control, and it is measured: JM_SOLID_KEEP_HIDDEN=1 restores the pre-fix behaviour
+    # and MUST make this report violations (27 at Spa). A gate that cannot fail proves nothing.
+    if get(ENV,"JM_SOLIDGATE","") != ""
+        q(v) = round(Int, v / 0.5)                       # 0.5 m quantisation: same object, same cell
+        drawn = Set{Tuple{Int,Int}}()
+        for o in OBJECTS;    p4 = o[4]; push!(drawn, (q(p4[1]), q(-p4[3]))); end
+        for b in BILLBOARDS; pb = b[2]; push!(drawn, (q(pb[1]), q(-pb[3]))); end
+        bad = Tuple{Float64,Float64,Float64,Symbol}[]
+        for sd in SOLIDS
+            (q(sd[1]), q(sd[2])) in drawn || push!(bad, sd)
+        end
+        # name the offenders by nearest instance, for a report that says WHAT is invisible
+        nameat(x, z) = begin
+            best = ""; bd = 4.0
+            for i in insts
+                d = hypot(Float64(i.x) - x, Float64(i.y) - z)
+                d < bd && (bd = d; best = i.name)
+            end
+            best
+        end
+        # ⚠️ A POSITION MISS IS NOT PROOF OF INVISIBILITY. The first run of this gate reported 139
+        # "violations" at Spa and every one was an armco barrier or a bush -- NOT the houses the
+        # fix was about. Those classes reach the screen by a render path this gate does not model
+        # (track parts / differently-anchored sprites), so a position-only test calls them
+        # invisible when they are plainly on screen. Splitting by NAME separates the two cases:
+        #   UNDRAWN  the name appears NOWHERE in the drawn sets -> genuinely not rendered (real)
+        #   ANCHOR   the name IS drawn elsewhere -> our position match is wrong, not the object
+        # Only UNDRAWN fails the gate. Reporting ANCHOR loudly keeps the blind spot visible
+        # instead of hiding it behind a lowered threshold.
+        drawnames = Set{String}()
+        for o in OBJECTS;    push!(drawnames, String(o[5])); end
+        for i in insts
+            for b in BILLBOARDS
+                if abs(Float64(b[2][1]) - Float64(i.x)) < 0.5 && abs(-Float64(b[2][3]) - Float64(i.y)) < 0.5
+                    push!(drawnames, lowercase(i.name)); break
+                end
+            end
+        end
+        undrawn = Tuple{String,Float64,Float64}[]; anchor = Dict{String,Int}()
+        for b in bad
+            n = lowercase(nameat(b[1], b[2])); n = isempty(n) ? "(unnamed)" : n
+            if n in drawnames; anchor[n] = get(anchor,n,0)+1
+            else push!(undrawn, (n, b[1], b[2])); end
+        end
+        println("== JM_SOLIDGATE ", TRACKSEL, ": ", length(SOLIDS), " solids, ", length(drawn),
+                " drawn cells -> ", length(undrawn), " UNDRAWN-BUT-SOLID (",
+                length(bad) - length(undrawn), " position-anchor mismatches, not failures)")
+        if !isempty(undrawn)
+            cnt = Dict{String,Int}()
+            for (n,_,_) in undrawn; cnt[n] = get(cnt,n,0)+1; end
+            for (n,c) in sort(collect(cnt)); println("     INVISIBLE: ", n, " ×", c); end
+        end
+        if !isempty(anchor)
+            println("     (anchor-mismatch classes, drawn elsewhere -- gate blind spot, NOT a defect:)")
+            for (n,c) in sort(collect(anchor)); println("       ", n, " ×", c); end
+        end
+        get(ENV,"JM_SOLIDGATE_EXIT","") != "" && exit(isempty(undrawn) ? 0 : 1)
+    end
+
     global OBJINSTS = [begin
         ismesh = get(objmesh,i.name,nothing) !== nothing; isbb = get(bbinfo,i.name,nothing) !== nothing; og = onground(i)
         kmesh  = ismesh && !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && og

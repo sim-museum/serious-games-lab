@@ -1668,3 +1668,43 @@ RENDER.** Predicate-independent, or it is not a gate.
 
 **Done when** it runs on all five tracks, reports 0 at HEAD, and reports 27 at Spa under
 `JM_SOLID_KEEP_HIDDEN=1`.
+
+### 2026-08-28 — IMPLEMENTED as `JM_SOLIDGATE=1` (+ `JM_SOLIDGATE_EXIT=1`), and the first run REFUTED my design
+
+Built as specified — **predicate-independent**: it compares the two FINAL sets, asserting every
+entry in `SOLIDS` coincides (0.5 m quantised) with something actually submitted for render
+(`OBJECTS` mesh or `BILLBOARDS` sprite). It does **not** re-run `onroad_fp`/`onroad_bldg`/…, which
+would pass by construction and never catch the next filter added without updating `SOLIDS`.
+
+⚠️ **First run at Spa reported 139 "violations" — and every one was a FALSE POSITIVE.**
+
+```
+armco1×17  armco1s×15  armco2s×3  armco3×1  armcow1×19  armcow2×8  armcow3×22
+armcow4×2  bush×5  bush2×9  bushrow5×38
+```
+
+**Not one house.** Armco barriers and bushes are plainly on screen when you drive Spa, so a
+position-only match is the wrong test for classes that reach the display by another path (track
+parts, or differently-anchored sprites). ⭐ **A position miss is not proof of invisibility.**
+
+**Refined, by splitting on NAME rather than by lowering a threshold:**
+
+| bucket | meaning | verdict |
+|---|---|---|
+| **UNDRAWN** | the name appears **nowhere** in the drawn sets | genuinely invisible → **FAILS** |
+| **ANCHOR** | the name **is** drawn elsewhere | our position match is wrong, not the object → **reported as a gate BLIND SPOT, not a failure** |
+
+Printing the ANCHOR bucket loudly is deliberate. Suppressing it would leave a green gate hiding a
+known blind spot — the shape that let `maximized_nav` (sister port, same day) pass its own negative
+control.
+
+✅ **Already established by the failed run: NO HOUSES are invisible at HEAD**, so the E86/E71-S18
+fix holds for the class that actually caught the PO.
+
+⬜ **Not finished.** Still to measure: **0 UNDRAWN at HEAD**, and — the arm that matters —
+**27 at Spa under `JM_SOLID_KEEP_HIDDEN=1`, naming the houses.** If the control arm does not
+reproduce 27, the gate cannot detect the regression it was written for and goes back on the bench
+rather than into the suite. Then extend to all five tracks.
+
+⚠️ Each Spa arm costs ~20 min (14.1 km lap, 92 548 HAT triangles), so the pair is ~40 min — budget
+for it, and do not run two arms concurrently against `gl-lock` (they queue and the second times out).
