@@ -1398,9 +1398,42 @@ where the field's character comes from.
 
 **Corrected sprint split:**
 
-1. ~~Lap timing + race state~~ — **ALREADY EXISTS.** Instead: **why is the rail's natural lap 35–55 %
-   slow?** `RaceAI.natural_laptime` is a deterministic, display-free oracle — use it. State the
-   expected figure before each run.
+1. ~~Lap timing + race state~~ — **ALREADY EXISTS.** ✅ **S2 DONE: the speed caps are REFUTED as the
+   cause.** See below.
+
+### 2026-08-28 — S2: the pace shortfall is NOT the speed caps. Prediction refuted.
+
+`JM_PACEDIAG` (new) sweeps `RaceAI.natural_laptime` — deterministic, no render loop, exits during
+load. `natural_laptime` now forwards `amax`/`vmax` (defaults unchanged, so no caller moves).
+
+**Stated before the run:** *"if `vmax` dominates, Monza improves ≥ 10 % and Zandvoort ≤ 5 %."*
+
+| change | **monza** (target 90.2 s) | **zandvoort** (target 86.8 s) |
+|---|---|---|
+| baseline `amax=11, vmax=74` | 140.2 s | 117.1 s |
+| `vmax` 74 → 100 (**+35 %**) | 135.6 s (**3.3 %**) | 115.9 s (**1.1 %**) |
+| `amax` 11 → 18 (**+64 %**) | 126.2 s (10.0 %) | 99.2 s (15.3 %) |
+| both (90 / 14) | 127.9 s (8.8 %) | 106.9 s (8.7 %) |
+
+❌ **The Monza half of my prediction was WRONG — 2.7 %, not ≥ 10 %. `vmax` is not the limiter.**
+A 35 % raise in top speed buys 1–3 %, which means **the car almost never reaches `vmax`**. Good
+that this was a stated number: "raise vmax" would have shipped a 3 % gain as progress.
+
+`amax` matters more, and more at the twisty track (15.3 % vs 10.0 %) exactly as cornering should —
+but it is **not sufficient either**. At an unrealistic **1.8 g**, Monza is still **126 s against a
+90 s target (40 % slow)** while Zandvoort reaches 99 s (14 % slow).
+
+⭐ **The residual is TRACK-DEPENDENT, and that is the lead.** At identical `amax`, Zandvoort lands
+within 14 % while Monza stays 40 % off — and **Monza is the FAST circuit**, mostly full throttle,
+where the AI should be `vmax`-limited and plainly is not. So the car is being held below 74 m/s by
+**curvature** almost everywhere on a track that has very little. Suspect an inflated κ from a noisy
+centreline: Monza's load needs **four** re-centring passes (`max shift 4.0 m, mean 3.13 m` on
+pass 1), and `vtarget = √(amax/κ)` punishes every spurious wiggle.
+
+**S3 (next): measure the κ / `vtarget` profile, don't tune it.** Report the distribution of
+`vtarget` around each lap and the fraction of the lap below, say, 50 m/s. If Monza's median
+`vtarget` is ~45 m/s where the circuit should be ~75, the CENTRELINE is the defect and no amount of
+`amax` will fix it. **State the expected median before running.**
 2. **Racing line extraction from the `.rpy` files.** Decode enough of the format to recover a
    position-vs-time line for one car at one track; validate by checking the lap time it implies
    matches the filename to within a few hundredths. **State the expected number BEFORE running it.**

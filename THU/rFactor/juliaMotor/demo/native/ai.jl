@@ -410,11 +410,14 @@ end
 time (s).  Used to calibrate the pace: knowing the natural lap time at scale 1.0,
 the app picks the scale that makes a clean lap hit the GPL reference laptime ×
 (100/pct).  Robust to a non-closing line (caps at ~2× the straight-line estimate)."""
-function natural_laptime(line::AILine; scale = 1.0, dt = 1/60)
+function natural_laptime(line::AILine; scale = 1.0, dt = 1/60,
+                        amax = 11.0, vmax = 74.0, vmin = 12.0)
+    # E84-S2: amax/vmax forwarded so the pace anchor can be SWEPT (JM_PACEDIAG) instead of
+    # guessed at.  Defaults are step!'s own, so every existing caller is unchanged.
     car = AICar(0.0, 25.0, 0, 0.0)
     t = 0.0; tmax = 4.0 * line.total / 10.0 + 30.0    # generous cap (≥ lap at ~10 m/s)
     while car.lap < 1 && t < tmax
-        step!(car, line, dt; scale = scale)
+        step!(car, line, dt; scale = scale, amax = amax, vmax = vmax, vmin = vmin)
         t += dt
     end
     t

@@ -3985,6 +3985,33 @@ function main()
     # E11: pace the field.  Target laptime = refLap × (100/pct); the speed scale that
     # hits it = naturalLap / targetLap (lap time ∝ 1/speed).  Clamped to a sane band.
     AI_T0    = AILINE === nothing ? 0.0 : RaceAI.natural_laptime(AILINE)
+    # E84-S2 (JM_PACEDIAG): WHY is the rail 35-55 % slower than the pace it is told to run?
+    # AI_SCALE is absorbing that gap (watglen 1.44, zandvoort 1.35, monza 1.55), so it is a
+    # modelling shortfall wearing a multiplier, not a driver-skill percentage.  step!'s defaults
+    # are amax=11.0, vmax=74.0 (= 266 km/h) -- below 1967 GP top speed, and MOST binding at the
+    # fastest circuit, which is exactly where the scale is worst.  Sweep vmax and see.
+    # Prediction, stated before the first run: if vmax dominates, Monza improves >= 10 % and
+    # Zandvoort <= 5 %.  Runs during load and exits -- no render loop.
+    if AILINE !== nothing && haskey(ENV, "JM_PACEDIAG")
+        println("\n==== JM_PACEDIAG  $(TRACKSEL)  (lap $(round(AILINE.total, digits=0)) m) ====")
+        base = RaceAI.natural_laptime(AILINE)
+        println("  default (amax=11.0, vmax=74.0):  ", round(base, digits=1), " s")
+        for vm in (74.0, 80.0, 85.0, 90.0, 100.0)
+            t = RaceAI.natural_laptime(AILINE; vmax = vm)
+            println("    vmax=", lpad(round(Int,vm),3), " m/s (", lpad(round(Int,vm*3.6),3), " km/h): ",
+                    lpad(round(t, digits=1), 6), " s   (", lpad(round(100*(base-t)/base, digits=1), 5), " % faster)")
+        end
+        for am in (11.0, 14.0, 18.0)
+            t = RaceAI.natural_laptime(AILINE; amax = am)
+            println("    amax=", lpad(round(Int,am),3), " m/s2            : ",
+                    lpad(round(t, digits=1), 6), " s   (", lpad(round(100*(base-t)/base, digits=1), 5), " % faster)")
+        end
+        t_both = RaceAI.natural_laptime(AILINE; vmax = 90.0, amax = 14.0)
+        println("    vmax=90 + amax=14            : ", round(t_both, digits=1), " s   (",
+                round(100*(base-t_both)/base, digits=1), " % faster)")
+        println("  target (REF_LAP) = ", round(AI_REFLAP, digits=1), " s;  gold .rpy fastest is quicker still")
+        exit(0)
+    end
     AI_TGT   = AI_REFLAP * 100.0 / AI_PCT
     AI_SCALE = AILINE === nothing ? 1.0 : clamp(AI_T0 / max(AI_TGT, 1.0), 0.4, 2.2)
     if AILINE !== nothing
