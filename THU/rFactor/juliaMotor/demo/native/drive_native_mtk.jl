@@ -68,6 +68,7 @@ const SKIDPAD  = TRACKSEL == "skidpad"
 const NURB     = TRACKSEL == "nurburgring"
 const MONZA    = TRACKSEL == "monza"
 const WATGLEN  = TRACKSEL == "watglen"
+const ZANDV    = TRACKSEL == "zandvoort"
 const SPA      = TRACKSEL == "spa"      # E71-S12: needs the road-only centreline oracle (see ROADHAT)
 # E57: Monza-only per-surface brightness — its `asphalt` MIP is over-bright (the road renders near-white,
 # washing the scene to "snow") while the barriers/armco render carbonized-black under the flat overcast.
@@ -2032,7 +2033,18 @@ let objnames=Set{String}()
     # and standing roadside spectators (Spa people*/pelf*).  Seated stand crowds are kept above.
     _droptest = split(get(ENV,"JM_DROPTEST",""), ',', keepempty=false)   # diagnostic: drop comma-listed name PREFIXES
     _keeptest = split(get(ENV,"JM_KEEPTEST",""), ',', keepempty=false)   # diagnostic: FORCE-KEEP comma-listed name prefixes past every drop rule (WG3 forensics)
+    # E79 (PO 2026-08-28): "remove line-of-people objects if there's any chance they could be in the
+    # road or partially hanging in air; these objects don't add much and detract a lot if misplaced.
+    # remove all line of people objects from zandervoort."
+    # Zandvoort is unconditional, so it is a NAME rule and lands here — which also means it applies
+    # to BOTH paths, the mesh objects and the billboard sprites, since this loop's guard calls
+    # drop(i.name) too. That matters: the three rows the PO actually saw were already reported
+    # "dropped" by the mesh footprint filter and were on screen anyway, because they arrive as
+    # sprites. A name rule cannot be bypassed that way.
+    # JM_KEEP_CROWDROWS=1 restores them.
+    _dropcrowdrows = ZANDV && get(ENV,"JM_KEEP_CROWDROWS","0") == "0"
     drop(nm) = (!isempty(_keeptest) && any(p->startswith(nm,p), _keeptest)) ? false :
+               (_dropcrowdrows && standcrowd(nm)) ||
                (!isempty(_droptest) && any(p->startswith(nm,p), _droptest)) || (!standcrowd(nm) && (
                (startswith(nm,"grass") && !KEEP_GRASS) || (startswith(nm,"herbe") && !KEEP_GRASS) || nm == "infield" ||
                nm == "hotels" ||                                             # E45: Zandvoort backdrop building cluster — a 310 m garbage bbox that never grounds → floats in the sky above the grandstand; the horizon ring + dunes carry the backdrop without it
@@ -2462,7 +2474,39 @@ let objnames=Set{String}()
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     for i in insts
-        bb = get(bbinfo, i.name, nothing); (bb === nothing || drop(i.name) || (standcrowd(i.name) && on_road(i.x, i.y, ROAD_HALFW+1.0))) && continue   # E68 S8b: billboard crowds drop only when ON the road (perp test is mesh-path-only — camera-facing sprites have no rendered yaw)
+        bb = get(bbinfo, i.name, nothing); (bb === nothing || drop(i.name)) && continue
+        # E79: a crowd ROW is metres wide, so testing its ORIGIN answers the wrong question — the
+        # same origin-vs-footprint mistake the mesh path was fixed for (E69-S5) and this one never
+        # was. A sprite of width w centred on the origin reaches w/2 either side, so admit it only
+        # if the WHOLE row clears the road, with a margin. The PO's instruction is deliberately
+        # generous ("if there's any chance"), so this errs toward removal.
+        if standcrowd(i.name)
+            _w = 0.0
+            let b = get(bbinfo, i.name, nothing)
+                b !== nothing && (_w = Float64(b[5]) > 0 ? Float64(b[5]) : 0.0)
+            end
+            _hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
+            # ⚠️ Project the row's extent onto the ROAD NORMAL, not straight off the lateral.
+            # A crowd row runs ALONG the track, so its width lies parallel to the road and
+            # contributes almost nothing across it. The first version subtracted w/2 unconditionally
+            # and dropped 700 rows at Spa -- a 40 m row sitting 25 m away scored as 5 m from the
+            # centreline. That would have stripped the crowds and recreated the PO's own "objects
+            # were simply removed" complaint from the Ring, i.e. traded one visible defect for the
+            # other one they had already reported.
+            _reach = 0.0
+            if _hr.found
+                _ry = Float64(i.yaw) - atan(-_hr.perp[2], _hr.perp[1])
+                _reach = (_w/2) * abs(sin(_ry))      # 0 when parallel, w/2 when across the road
+            end
+            if _hr.found && abs(_hr.lateral) - _reach < ROAD_HALFW + 1.5
+                get(ENV,"JM_CROWDROW_DIAG","") != "" &&
+                    println("  E79: crowd row ", i.name, " reaches ", round(abs(_hr.lateral)-_reach, digits=1),
+                            " m of the centreline (origin ", round(abs(_hr.lateral),digits=1),
+                            ", width ", round(_w,digits=1), ", across-road reach ",
+                            round(_reach,digits=1), ") — dropped")
+                continue
+            end
+        end
         onground(i) || continue
         on_road(i.x, i.y, ROAD_HALFW) && continue   # E31: drop sprites planted ON the road (the Monza tree "curtain" across the track)
         gz = ploz(i)

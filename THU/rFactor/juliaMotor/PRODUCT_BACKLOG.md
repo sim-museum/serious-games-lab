@@ -1147,6 +1147,24 @@ on sloping ground the ends lift off or sink in. The PO also saw this as people "
 the track" on the Zandvoort climb. A per-END ground check (both ends + midpoint against the HAT)
 would quantify it.
 
+### ✅ IMPLEMENTED 2026-08-28
+
+- **Zandvoort: every crowd row removed**, as a NAME rule in `drop()`. That placement matters — the
+  same guard runs on the billboard loop, so it cannot be bypassed the way the mesh footprint filter
+  was. (The three rows the PO saw were already reported "dropped" by that filter and were on screen
+  regardless, because they arrive as sprites.) `JM_KEEP_CROWDROWS=1` restores them.
+- **Other tracks: a crowd row is admitted only if the WHOLE row clears the road** — the billboard
+  test was origin-only, the same origin-vs-footprint mistake the mesh path was fixed for in E69-S5.
+  Spa: **6 rows removed** (3 `people*`, 3 `p_s*`), 5.8–8.7 m from the centreline.
+
+⚠️ **The first version of that test removed 700 rows at Spa** and would have shipped had the count
+not looked absurd. It subtracted half the row's width straight off the lateral distance — but a
+crowd row runs ALONG the track, so its width lies parallel to the road and contributes almost
+nothing across it. A 40 m row sitting 25 m away scored as 5 m from the centreline. Projecting the
+extent onto the road NORMAL (`(w/2)·|sin(row yaw − road yaw)|`, ~0 when parallel) gives 6.
+**Stripping Spa's crowds would have recreated the PO's own "objects were simply removed" complaint
+from the Ring** — one reported defect traded for another.
+
 **PO 2026-08-28 — the disposition is REMOVAL, not repair.** *"remove line-of-people objects if
 there's any chance they could be in the road or partially hanging in air; these objects don't add
 much and detract a lot if misplaced. remove all line of people objects from zandervoort."*
