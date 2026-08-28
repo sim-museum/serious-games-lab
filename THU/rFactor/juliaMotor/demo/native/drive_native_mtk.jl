@@ -1383,6 +1383,8 @@ const SHOTS = [let f = split(String(spec), ":")
                end for (i, spec) in enumerate(filter(!isempty, split(get(ENV, "JM_SHOTS", ""), ";")))]
 const SHOTS_DIR   = get(ENV, "JM_SHOTS_DIR", "/tmp")
 const SHOT_SETTLE = parse(Int, get(ENV, "JM_SHOT_SETTLE", "38"))
+const FPSDIAG = parse(Int, get(ENV, "JM_FPSDIAG", "0"))   # E80: frame-time report, per view
+const FPS_T0 = Ref(0.0); const FPS_ACC = Ref(0.0); const FPS_N = Ref(0)
 const CAR3D = !haskey(ENV, "JM_2D")       # full-3D vehicle (heave/pitch/roll + jumps) is the DEFAULT; JM_2D forces the planar model
 # physics dispatch — Car3D is field/method-compatible with DriveRT.Car (superset)
 build_carX(; kw...)        = CAR3D ? DriveRT3D.build_car3d(; kw...) : DriveRT.build_car(; kw...)
@@ -2894,6 +2896,7 @@ mirrorItems = Render.build_gpl(MIRRORP, GPLTEX)    # rear-view mirrors (re-place
 const MIRROR_RTT = get(ENV,"JM_MIRROR_RTT","1") != "0"    # JM_MIRROR_RTT=0 → old static silver discs
 const MIRW, MIRH = 384, 192
 (mirfbo, mirtex) = MIRROR_RTT ? Render.make_mirror_fbo(MIRW, MIRH) : (GLuint(0), GLuint(0))
+const MIRROR_EVERY = parse(Int, get(ENV,"JM_MIRROR_EVERY","3"))   # E80: mirror RTT refresh interval
 const MIRROR_GLASS_FRAC = 0.88f0                          # glass diameter as a fraction of the disc (keeps the rim)
 function mirror_glass_quads(parts, tex)
     items = Render.Item[]
@@ -4855,7 +4858,18 @@ function main()
             end
         end
         # ---- E64 mirror pass: the rear view into the mirror RTT (cockpit view only) ----
-        mirror_live = MIRROR_RTT && CTL.view == 0 && !REPLAY
+        # E80 (PO 2026-08-27: "10 frames/sec in cockpit view, better in nintendo view"). MEASURED at
+        # Spa, same spot, same settle:
+        #     mirrors ON   cockpit 6.7-7.0 fps (144-149 ms)   chase 11.4-20.3 fps
+        #     mirrors OFF  cockpit 14.9-16.4 fps (61-67 ms)   chase 13.5-16.0 fps (unchanged)
+        # So this second render pass costs ~80 ms/frame and IS the whole cockpit/chase asymmetry --
+        # chase never runs it. It re-renders the scene into a 384x192 texture EVERY frame.
+        # Two round mirrors that small do not need a fresh image 60 times a second, so refresh them
+        # every Nth frame instead. The car's own motion between updates is what a real mirror at
+        # this size would blur away anyway. JM_MIRROR_EVERY=1 restores per-frame; =0 uses
+        # JM_MIRROR_RTT=0's static discs.
+        mirror_live = MIRROR_RTT && CTL.view == 0 && !REPLAY &&
+                      (MIRROR_EVERY <= 1 || (frames % MIRROR_EVERY) == 0)
         if mirror_live
             glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE); glDepthFunc(GL_GEQUAL); glClearDepth(0.0)   # same reversed-Z as the main pass
             glBindFramebuffer(GL_FRAMEBUFFER, mirfbo); glViewport(0,0,MIRW,MIRH)
@@ -4963,6 +4977,24 @@ function main()
         Render.hud_draw(hudprog, hudvao, hudvbo,
             Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, 9500.0, inp.throttle, inp.brake, inp.clutch, tc_hud;
                                lastlap=(SMOKE ? 94.3 : last_lap), bestlap=(SMOKE ? 92.1 : best_lap), manual=!CTL.auto), W, H)
+        # E80 (PO 2026-08-27): "frame rate was low (10 frames/sec or so) in cockpit view, better in
+        # nintendo view ... no excuse for 10 frames/sec on a PC with a 6 GB nvidia graphics card".
+        # Report the frame time per VIEW, because the cockpit/chase asymmetry is the whole clue:
+        # the same scene from two cameras, so anything that costs the same in both is not the cause.
+        # JM_FPSDIAG=<n> prints every n frames (default 120).
+        if FPSDIAG > 0
+            _now = time()
+            if FPS_T0[] > 0
+                FPS_ACC[] += _now - FPS_T0[]; FPS_N[] += 1
+                if FPS_N[] >= FPSDIAG
+                    _ms = 1000*FPS_ACC[]/FPS_N[]
+                    println("  [fps] view=", CTL.view == 0 ? "cockpit" : "chase  ",
+                            "  ", round(1000/_ms, digits=1), " fps  (", round(_ms, digits=1), " ms/frame)")
+                    flush(stdout); FPS_ACC[] = 0.0; FPS_N[] = 0
+                end
+            end
+            FPS_T0[] = _now
+        end
         GLFW.SwapBuffers(win)
         if SMOKE && frames == 38 && isempty(SHOTS)  # headless self-test: dump one frame
             buf=Vector{UInt8}(undef,W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,buf)

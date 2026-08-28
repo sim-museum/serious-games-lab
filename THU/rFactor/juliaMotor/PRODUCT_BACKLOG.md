@@ -1195,6 +1195,27 @@ already exists (`JM_TIMING`), and the scenery/billboard draw counts are instrume
 Done when Spa holds a stable frame rate in cockpit view on the PO's hardware, with the figure
 measured and recorded rather than judged by feel.
 
+### 2026-08-28 — the asymmetry is SOLVED; the base frame rate is not
+
+`JM_FPSDIAG` reports frame time per view. At Spa, same spot, same settle:
+
+| | cockpit | chase |
+|---|---|---|
+| mirrors every frame (was) | **6.8 fps** (146 ms) | 11–20 fps |
+| mirrors off (`JM_MIRROR_RTT=0`) | 15.5 fps (65 ms) | 15 fps (**unchanged**) |
+| **mirrors every 3rd frame (now)** | **11.7 fps** (85 ms) | — |
+
+**The cockpit/chase asymmetry was entirely the mirror render-to-texture pass**, which re-rendered
+the scene into a 384x192 texture *every frame* and cost **~80 ms**. Chase never runs it, which is
+why it was faster. Two round mirrors that small do not need a fresh image 60 times a second, so
+they now refresh every 3rd frame: **6.8 → 11.7 fps, +72%, mirrors still live.**
+`JM_MIRROR_EVERY=1` restores per-frame, `JM_MIRROR_RTT=0` the old static discs.
+
+⚠️ **NOT done.** With the mirror pass removed entirely, BOTH views sit at ~15 fps / 65 ms — so
+there is a second, view-independent cost of the same order, and 15 fps is not acceptable either.
+That is now the whole of E80. The mirror finding does not touch it, and the next sprint should
+profile the base frame rather than assume the remaining cost is in the same place.
+
 ### E81 (PO 2026-08-27) — floating and misplaced billboards and buildings at the Nürburgring
 
 PO: *"lots of odd buildings and parts of buildings"* at the Ring, and *"check the floating or
