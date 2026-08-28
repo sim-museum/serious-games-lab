@@ -1584,3 +1584,72 @@ standings. Building it first means building those twice.
 
 ⚠️ **Measure the frame cost.** E80 has the base frame at ~65 ms with no headroom, and a network
 thread that blocks the render loop will read as "multiplayer is slow" when it is the renderer.
+
+
+---
+
+### E86 (PO 2026-08-28) — REGRESSION BISECTED: Spa's levitate/bounce was 20 INVISIBLE houses
+
+PO: *"in my previous spa test drive (before the drive yesterday) spa was drivable all the way
+through, there was no levitate/bounce effect at the masta kink. This is a defect introduced since
+my last prior test drive"*.
+
+✅ **BISECTED, and ALREADY FIXED at HEAD** — but by accident, in a commit that did not know it was
+fixing this.
+
+**Measured.** `JM_SOLIDDIAG` at Spa, HEAD vs `JM_SOLID_KEEP_HIDDEN=1` (which restores the pre-fix
+behaviour):
+
+| | collidable solids at Spa |
+|---|---|
+| HEAD (fix active) | **808** |
+| pre-fix (= the PO's drive) | **835** |
+
+**27 objects were COLLIDABLE BUT INVISIBLE**, and 20 of them are houses:
+
+```
+house4×4  house25×3  house13  house1b  house21  house282  house29  house33
+house35   house40    house41  house43  house47  house48            (= 20 houses)
+bushrow2×2  bushrow3×2  bushrow5  shrub2  shrub4  chut              (= 7 others)
+```
+
+**Mechanism, and why it was drivable BEFORE:**
+
+1. `271267f` (2026-08-27 11:46, **before** the PO's 21:56 drive) filtered these houses out of the
+   **RENDER** — *"the PO's houses-on-the-road, found and filtered by RENDER FATE"*.
+2. `SOLIDS` was built **independently of those render predicates**, so the filtered houses stayed
+   **collidable while invisible**.
+3. Before that commit the houses were VISIBLE — the PO could see and steer around them. After it
+   they became invisible walls. Hence "drivable all the way through" → "suddenly I'm levitating".
+
+⭐ **This unifies BOTH of the PO's Spa reports.** The "invisible-house collision" and the
+"levitating and bouncing like a ball" are **one defect**, not two.
+
+⚠️ **It was closed by `afe6ae3` (E77-F, 2026-08-28 01:18) — three hours AFTER the drive, while
+working on the RING.** That commit made the `SOLIDS` loop honour `onroad_fp`/`onroad_bldg`/
+`onroad_crowd`/`perp_crowd`, which is exactly this divergence. It was recorded as a Ring bridge fix
+and nobody noticed it also repaired a Spa regression. **Needs a PO re-drive to confirm by feel — but
+the PO would be confirming a fix, not hunting a bug.**
+
+---
+
+### E87 — GATE: a collidable object must never be invisible
+
+**The class, not the instance.** E86 is the third time render and collision have silently diverged
+(Spa houses ×2 — the PO hit them twice — and the Ring bridge underpasses). **Nothing checks it**, and
+the defect is undetectable by looking: the only way to find an invisible wall is to drive into it.
+
+**The invariant:** every entry in `SOLIDS` either renders, or is on an explicit exempt list.
+
+**Why this is cheap and worth doing now:** it is headless, it is per-track, and **the negative
+control already exists and is measured** — `JM_SOLID_KEEP_HIDDEN=1` reintroduces exactly 27
+violations at Spa, so the gate can be proven to fail before it is trusted to pass. (Compare
+`maximized_nav` in the sister port, which passed its own negative control and had to be rewritten.)
+
+⚠️ **Do NOT implement it by re-testing the same predicates the fix uses** (`onroad_fp` &c). That
+would be circular — it would pass by construction and could never catch the NEXT filter someone adds
+without updating `SOLIDS`. **Cross-check `SOLIDS` against the objects actually submitted for
+RENDER.** Predicate-independent, or it is not a gate.
+
+**Done when** it runs on all five tracks, reports 0 at HEAD, and reports 27 at Spa under
+`JM_SOLID_KEEP_HIDDEN=1`.
