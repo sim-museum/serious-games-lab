@@ -1625,11 +1625,26 @@ bushrow2×2  bushrow3×2  bushrow5  shrub2  shrub4  chut              (= 7 other
 ⭐ **This unifies BOTH of the PO's Spa reports.** The "invisible-house collision" and the
 "levitating and bouncing like a ball" are **one defect**, not two.
 
-⚠️ **It was closed by `afe6ae3` (E77-F, 2026-08-28 01:18) — three hours AFTER the drive, while
-working on the RING.** That commit made the `SOLIDS` loop honour `onroad_fp`/`onroad_bldg`/
-`onroad_crowd`/`perp_crowd`, which is exactly this divergence. It was recorded as a Ring bridge fix
-and nobody noticed it also repaired a Spa regression. **Needs a PO re-drive to confirm by feel — but
-the PO would be confirming a fix, not hunting a bug.**
+⚠️ **CORRECTION (same sprint): it was NOT fixed by accident.** My first write-up said `afe6ae3`
+repaired this without noticing. Reading the code it shipped refutes that — `afe6ae3` contains a long
+comment labelled **E71-S18** carrying the PO's own telemetry:
+
+> *"at lapdist 6896 the car's speed doubled in one 0.2 s tick (66 → 131 km/h), lapdist ran BACKWARDS,
+> and it flew 34 m sideways in 1.2 s … `house25` sits at lapdist 6899 with its FOOTPRINT reaching
+> 1.6 m of the centreline. The renderer drops it (`onroad_fp`) so the road looks clear … an
+> invisible 5 m collision disc across the racing line."*
+
+So the Spa levitate was **diagnosed deliberately and fixed on purpose**, down to the exact object
+(`house25`) and lap distance (6899 ≈ Masta). ⭐ **What actually failed was the COMMIT MESSAGE.** It
+is headlined *"E77-F: the Ring bridge underpasses no longer launch the car"* — so the record showed
+a Ring fix, the Spa regression looked untouched, and the PO reasonably reported it as still open.
+**Two unrelated defects fixed under one headline is how a closed item reads as open.**
+
+**E86's own contribution is the MEASUREMENT, not the diagnosis:** the bisect confirms no OTHER cause
+in the window, and quantifies the blast radius — **27 objects, 835 → 808**, with all 27 named. The
+code comment identified one house; the count shows there were twenty.
+
+**Needs a PO re-drive to confirm by feel — the PO would be confirming a fix, not hunting a bug.**
 
 ---
 
