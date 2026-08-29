@@ -1424,6 +1424,8 @@ const SHOTS = [let f = split(String(spec), ":")
 const SHOTS_DIR   = get(ENV, "JM_SHOTS_DIR", "/tmp")
 const SHOT_SETTLE = parse(Int, get(ENV, "JM_SHOT_SETTLE", "38"))
 const FPSDIAG = parse(Int, get(ENV, "JM_FPSDIAG", "0"))   # E80: frame-time report, per view
+const FRAMEPROF = parse(Int, get(ENV, "JM_FRAMEPROF", "0"))  # E80: per-PHASE frame profiler
+const PROF_WORLD = Ref(0.0); const PROF_HUD = Ref(0.0); const PROF_N = Ref(0); const PROF_TOT = Ref(0.0)
 const FPS_T0 = Ref(0.0); const FPS_ACC = Ref(0.0); const FPS_N = Ref(0)
 const CAR3D = !haskey(ENV, "JM_2D")       # full-3D vehicle (heave/pitch/roll + jumps) is the DEFAULT; JM_2D forces the planar model
 # physics dispatch — Car3D is field/method-compatible with DriveRT.Car (superset)
@@ -5223,7 +5225,14 @@ function main()
         Render.set_scene_uniforms(prog, eye; fognear=400f0, fogfar=2800f0,
                                   fogcol=GRADE.horizon, suncol=GRADE.suncol, ambsky=GRADE.ambsky, sat=GRADE.sat)
         Render.bind_shadow(prog, shadowtex, lightVP)
+        # E80: per-phase FRAME profiler. The entry pointed at JM_TIMING, which is a LAUNCH-phase
+        # stopwatch ("cumulative seconds at each load phase") -- it profiles loading, not frames, and
+        # JM_FPSDIAG times the whole frame as one number. So nothing could say where the ~65 ms goes.
+        # JM_FRAMEPROF=<n> prints the split every n frames. Buckets are cheap wall-clock reads around
+        # phases that already exist; no restructuring.
+        _t_world = time()
         drawworld(vp, eye, false)
+        FRAMEPROF > 0 && (PROF_WORLD[] += time() - _t_world)
         # ambfill lifts the self-shadowed cockpit interior out of black (GPL pre-lights it
         # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
         for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly) so it stops reading as a hard black "plywood" notch
@@ -5297,6 +5306,7 @@ function main()
         end
         α_tc = clamp(dt/0.10, 0.0, 1.0)              # smooth the traction-circle display (coarse-mesh Fz spikes → no flicker)
         tc_hud = ntuple(i -> ntuple(j -> tc_hud[i][j] + (cs.tc[i][j]-tc_hud[i][j])*α_tc, 3), 4)
+        _t_hud = time()
         Render.hud_draw(hudprog, hudvao, hudvbo,
             Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, 9500.0, inp.throttle, inp.brake, inp.clutch, tc_hud;
                                lastlap=(SMOKE ? 94.3 : last_lap), bestlap=(SMOKE ? 92.1 : best_lap), manual=!CTL.auto), W, H)
@@ -5305,10 +5315,28 @@ function main()
         # Report the frame time per VIEW, because the cockpit/chase asymmetry is the whole clue:
         # the same scene from two cameras, so anything that costs the same in both is not the cause.
         # JM_FPSDIAG=<n> prints every n frames (default 120).
+        FRAMEPROF > 0 && (PROF_HUD[] += time() - _t_hud)
+        if FRAMEPROF > 0
+            PROF_N[] += 1
+            if PROF_N[] >= FRAMEPROF
+                nn = PROF_N[]
+                # PROF_TOT is filled by the FPSDIAG accumulator below when it is also on; when it is
+                # not, report the phases alone rather than a percentage of an unknown whole. A split
+                # that silently divides by a total nobody measured is the kind of confident-wrong
+                # number this project keeps booking.
+                tot = PROF_TOT[] > 0 ? PROF_TOT[]/nn*1000 : NaN
+                println("  [frameprof] ", nn, " frames:  world ", round(1000*PROF_WORLD[]/nn, digits=2),
+                        " ms   hud ", round(1000*PROF_HUD[]/nn, digits=2), " ms",
+                        isnan(tot) ? "   (total not measured -- set JM_FPSDIAG too)" :
+                                     "   of " * string(round(tot, digits=2)) * " ms total")
+                flush(stdout)
+                PROF_WORLD[] = 0.0; PROF_HUD[] = 0.0; PROF_N[] = 0; PROF_TOT[] = 0.0
+            end
+        end
         if FPSDIAG > 0
             _now = time()
             if FPS_T0[] > 0
-                FPS_ACC[] += _now - FPS_T0[]; FPS_N[] += 1
+                FPS_ACC[] += _now - FPS_T0[]; FPS_N[] += 1; FRAMEPROF > 0 && (PROF_TOT[] += _now - FPS_T0[])
                 if FPS_N[] >= FPSDIAG
                     _ms = 1000*FPS_ACC[]/FPS_N[]
                     println("  [fps] view=", CTL.view == 0 ? "cockpit" : "chase  ",
