@@ -2381,7 +2381,33 @@ that was not the whole cause or the deadzone is still too small for their stick.
    **So "fixing" `Crr` would have done nothing while looking like a fix**, and it is struck from the
    suspect list on arithmetic rather than opinion.
 
-   ⭐ **THAT PROMOTES ENGINE BRAKING TO PRIME PHYSICAL SUSPECT.** If `brk == 0` and the car still
+   ⭐ **MEASURED IN THE MODEL (2026-08-29) — THE DRIVELINE IS THE SOURCE, AND IT DOMINATES AT LOW
+   SPEED.** `build_car3d` + `step_car3d!` coasted headless with `throttle=0, brake=0` for 2 s:
+
+   | speed | aero+rolling (calculated) | **measured coast** | driveline contribution |
+   |---|---|---|---|
+   | 100 km/h | 0.089 g | **0.302 g** | **+0.213 g — 3.4× the aero figure** |
+   | 200 km/h | 0.278 g | **0.377 g** | +0.099 g |
+   | 280 km/h | 0.521 g | **0.622 g** | +0.101 g |
+
+   At 100 km/h the car sheds **21 km/h in two seconds** with no brake applied. The PO's *"applying
+   the brakes is never necessary"* is consistent with that: 0.3 g on lift-off does most of the work
+   for any corner that does not need heavy braking. Note the driveline term is roughly CONSTANT in
+   absolute terms (~0.1 g) but its RELATIVE share explodes at low speed, where aero has faded —
+   which is exactly where a driver notices "it brakes itself".
+
+   ⛔ **AND THE CONSTANTS THAT PRODUCE IT ARE NOT `.ibt`-DERIVED.** `c_c = 60.0` (clutch damping),
+   `T_cap = 500.0`, `Ie = 0.18`, `k_idle = 0.5`, `idle_rpm = 2000.0` are all hardcoded defaults in
+   `vehicle_3d.jl`. Under the PO's standing constraint — *"the car physics should be determined
+   entirely by the iracing ibt data, there should be no modifiable parameters"* — these are the
+   defect, whatever their value.
+
+   **Next: compare this coast curve against the `.ibt` gold for the same car and speeds.** The `.ibt`
+   records real coast-downs, so the comparison is direct and needs no judgement about feel. ⚠️ **Do
+   not simply reduce `c_c` until it feels right** — that would replace one unjustified constant with
+   another, and the constraint is about PROVENANCE, not magnitude.
+
+   ⭐ **(SUPERSEDED REASONING, KEPT:) THAT PROMOTES ENGINE BRAKING TO PRIME PHYSICAL SUSPECT.** If `brk == 0` and the car still
    decelerates like ABS, the only remaining path is the driveline: at zero throttle with the clutch
    engaged in a low gear, engine drag reaches the wheels through `c_c` / `T_cap` / `Ie` and the
    `engine_torque(rpm, 0)` curve. **Measure the coast decel in the sim with `brk` pinned to 0 and
