@@ -2219,8 +2219,11 @@ case or suffix from what `solid_exempt` matches.
 * **(c) eliminated by reading the call site**, as warned: `nml = lowercase(i.name)` (line 2543) and
   `solid_exempt(nml)` (2595). The name IS lowercased, so `FENCE_S`/`Wall_e` match fine.
 * **the radius table is not the block either**: `solidR` gives `armco`/`barrier`/`fence`/`wall` a
-  1.2 m radius. (⚠️ but **`rail` is NOT in `solidR`** — Monza ships `rail`/`RAIL` objects that can
-  never become solid whatever else is fixed. Small, separate, real.)
+  1.2 m radius. (⚠️ I also claimed **`rail` is NOT in `solidR`** and called it "small, separate,
+  real". **It is not real** — checked across monza/watglen/zandvort/spa67/nurburg, both the packed
+  archives and the loose files: **zero `rail*.3do` objects exist on any of them**. `rail`/`RAIL` in
+  the data is a TEXTURE name, like `armco_s`. Nothing to make solid, so nothing to fix. Retracted
+  rather than left as a phantom to-do.)
 * **the road-exclusion is not the block**: `SOLID_EXCL_HW` is 4.0 m against `ROAD_HALFW` 9.0 m, so
   barriers at the road edge are not excluded by E31's rule.
 * **(a) SUPPORTED — the geometry is never LOADED.** `objnames` (line 1885) is built from the `.3do`
