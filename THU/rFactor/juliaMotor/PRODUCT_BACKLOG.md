@@ -1577,6 +1577,22 @@ offset — a smoother line that sits off the road is not an improvement.
    numbers before running** — the PO's report is "dart, lunge ahead, fall back", so the quantity
    that should separate ours from GPL's is gap variance per lap, not average pace.
 
+   ◐ **`RPTP` probe (2026-08-29), demo file.** Payload `0xa54..0x12e988` = **1,236,788 bytes, 99.8%
+   of the file** — the tape is essentially the whole replay. Its head carries a small `u16` table
+   (`9,24,9,12,12,12,12,12,12,12,12,12,14,8`) that looks like a per-entry size map, twelve of them
+   matching the twelve `DRNT` entries. Body is regular fixed-width records whose trailing 8 bytes
+   read as two plausible `float32`s (~33.4 and ~8.5, drifting smoothly record to record).
+
+   ⚠️ **`LPRO` is only 12 bytes = 3 entries, so this replay is ONE LAP** (consistent with the name).
+   That is enough to measure car-to-car behaviour WITHIN a lap — closing rates, station-keeping,
+   lateral darting — but it CANNOT give lap-to-lap gap variance. If lap-to-lap is wanted, a
+   different multi-car file is needed, and the only other AI-roster candidates must be identified by
+   `DRNT` names first (the `67F1_Rob_Fle_*` multi-car files are human league races, see above).
+
+   ⚠️ Do not assume the two `float32`s are world X/Y until a decode is validated — the check that
+   settles it is the same one that worked for `LPRO`: reconstruct a lap and compare the implied lap
+   time / track extent against a known value, and **state the expected number first**.
+
    ⚠️ The track-name field is NOT at a fixed offset from `DHPR` — reading `+0x10` yields "ami",
    "ort", "vort" (truncated `kyalami`, `mosport`, `zandvort`), so something variable-length precedes
    it. Fix that before trusting any per-track grouping.
