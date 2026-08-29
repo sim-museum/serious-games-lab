@@ -1246,6 +1246,28 @@ loading textures…                  <- still running 800+ s later
 every automated measurement of the PO's worst-performing track — E88's Spa census died the same way
 at 300 s — and is a defect in its own right.
 
+⭐ **AND SPA'S ARCHIVE IS 150× WATKINS' (2026-08-29, measured on disk):**
+
+| track | archive | directory total | loose `.mip` |
+|---|---|---|---|
+| **spa67** | **`spa67.dat` 785.7 MB** | **797 MB** | 0 |
+| monza | `monza.DAT` 29.8 MB | 45 MB | 86 |
+| zandvort | `zandvort.dat` 5.7 MB | 86 MB | 178 |
+| watglen | `watglen.dat` 5.1 MB | 33 MB | 100 |
+
+**Spa ships a 786 MB packed archive and nothing loose**, and `gpl_texture_index(ZD)` / `parse_dat`
+work over it. A 13-minute "texture load" against a 786 MB archive is a very different problem from a
+13-minute load against a 5 MB one, and it reframes the whole item: **this may not be a port defect at
+all** — it may be a heavyweight community Spa (high-resolution texture pack) rather than stock GPL.
+
+⚠️ **BUT DO NOT CLOSE E80 ON THIS.** It is a strong correlation and no more: the PO's complaint is
+FRAME RATE in the cockpit, and archive size explains LOADING. Establishing that a big archive loads
+slowly says nothing about why the frame takes 65 ms once loaded. Both may follow from one cause
+(more/larger textures resident) — or the load may be an inefficient parse of a big file while the
+frame cost lies elsewhere entirely. **The split timestamps around `gpl_texture_index` vs
+`build_gpl` are still the next measurement**, and the frame profiler still needs to run on a track
+it can actually reach.
+
 ⚠️ **DO NOT ASSUME IT SHARES A ROOT CAUSE WITH THE FRAME RATE.** A slow one-off upload and a slow
 per-frame draw are different failures, and "Spa has too many textures, hence both" would explain
 both without evidence for either. **Profile the texture-load loop itself** — count, total bytes,

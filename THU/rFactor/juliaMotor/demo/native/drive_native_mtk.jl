@@ -1595,9 +1595,12 @@ const GRADE = haskey(ENV,"JM_SAT") ?
                 parse(Float32, ENV["JM_SAT"]), GRADE0.ringtint) : GRADE0
 tstamp("texture load begins"); print("loading textures… "); flush(stdout)
 const TEXIDX = Render.gpl_texture_index(ZD)
+tstamp("  texture INDEX built")   # E80: split the "texture load" phase -- at Spa it runs >13 min and
+                                  # a 900 s run never reaches the frame loop, so which HALF matters.
 const TRACK_BRIGHT = parse(Float32, get(ENV,"JM_TRACK_BRIGHT","0.72"))
 const TRACK_AMB    = parse(Float32, get(ENV,"JM_TRACK_AMB","0.34"))
 trackItems = Render.build_gpl(TRACK, TEXIDX)
+tstamp("  build_gpl done (GL uploads)")   # E80
 # E57: build_gpl is 1:1 with TRACK, but Items drop the texture NAME (GPL parts all carry the same
 # fallback grey col) — so classify each track surface HERE from its TrackPart.tex name for the per-
 # surface render grade below.  GPL Monza names: road = trrow*/asp* (the over-bright asphalt MIP),
