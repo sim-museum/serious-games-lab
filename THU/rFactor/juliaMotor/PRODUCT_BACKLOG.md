@@ -1556,10 +1556,26 @@ offset — a smoother line that sits off the road is not an improvement.
      The demo file names its own car count and the chunk count agrees (12 = 11 cars + player) —
      independent corroboration that `DRNT` counting is sound.
 
-   ⭐ **This is the E89 calibration data.** `Demo lap with 11 cars` is an explicit demonstration
-   replay, and the 11-driver Monza file is at the very track where the PO saw the june-bug
-   behaviour. Extract per-car position-vs-time from `RPTP` and measure what GPL opponents actually
-   do: gap variance lap to lap, closing rates, whether they hold station.
+   ⭐ **E89 CALIBRATION SOURCE IDENTIFIED — and the two multi-car sets are NOT the same thing.**
+   Reading the `DRNT` payloads gives the driver names, which settles what each file records:
+
+   * **`Demo lap with 11 cars Look and learn.rpy` (WATKINS) is GPL's own AI.** Its 12 entries are
+     `Demo Driver` plus the historical 1967 grid — Clark, Brabham, Parkes, Irwin, McLaren, Surtees,
+     Ickx, Hill, Ginther, Bandini, Bonnier. That is GPL's built-in AI roster, so this is a recording
+     of **the AI itself**, at one of the PO's three tracks. **This is the reference for E89.**
+   * **The 11-driver Monza file is a HUMAN online league race** — `UKGPL8`, `60fps`, and real
+     entrants (Dean Logan, Fulvio Policardi, Andreas Gebhardt, Bob Whitwell, Robert Fleurke …).
+     Useful as a picture of good racecraft, but it is **not** GPL AI, and calibrating "make the AI
+     behave like GPL" against human drivers would be answering a different question. Same for the
+     other `67F1_Rob_Fle_*` multi-car files.
+
+   The PO's ask is *"Make AI cars behave as they do in GPL"* — so the demo replay is the oracle and
+   the league races are, at most, a sanity check.
+
+   Extract per-car position-vs-time from `RPTP` for the demo file and measure what the AI actually
+   does: gap variance lap to lap, closing rates, whether cars hold station. **State the expected
+   numbers before running** — the PO's report is "dart, lunge ahead, fall back", so the quantity
+   that should separate ours from GPL's is gap variance per lap, not average pace.
 
    ⚠️ The track-name field is NOT at a fixed offset from `DHPR` — reading `+0x10` yields "ami",
    "ort", "vort" (truncated `kyalami`, `mosport`, `zandvort`), so something variable-length precedes
