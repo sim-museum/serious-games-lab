@@ -2320,3 +2320,54 @@ performed as written.
 **Do not fix by adding the flags.** Find out what happened to each first: renamed, removed, or never
 wired. Only the third case is a defect; the first two are documentation rot, and inventing a flag to
 match a stale note would manufacture the feature's appearance without its substance.
+
+### E91 (PO 2026-08-29) — 🔴 "Tesla brakes": lifting off the throttle decelerates the car like ABS
+
+PO: *"Lifting completely off the throttle causes powerful antilock brakes to apply, quickly and
+smoothly decelerating the car, such that applying the brakes (pulling back on the 3Dx joystick) is
+never necessary. You retorted that I'm driving too slowly to make braking necessary - perhaps, but I
+don't think so. Note that the iracing .ibt telemetry is the gold standard, tested with the
+thrustmaster TX, not a mere joystick, so the physics model is correct, and should not be adjusted."*
+
+⛔ **THE STANDING CONSTRAINT APPLIES AND IS NOT NEGOTIABLE HERE.** *"The car physics should be
+determined entirely by the iracing ibt data, there should be no modifiable parameters."* So this is
+**not** to be fixed by tuning a deceleration until it feels right. Either the coast deceleration is
+faithfully what the `.ibt` model produces — in which case the fault is elsewhere — or it is coming
+from something that is **not** in the `.ibt`, which is the defect.
+
+⚠️ **AND MY EARLIER RESPONSE WAS NOT A DIAGNOSIS.** "You're driving too slowly to need the brakes" is
+an explanation of the PO's EXPERIENCE, not a measurement of the CAR, and the PO has now rejected it
+twice. It must not be offered again in place of a number.
+
+⚠️ **THIS IS A RECURRENCE, NOT A NEW REPORT.** `joycfg.jl:45` already records: *"PO 2026-08-27: 'let
+off the throttle and the car stops very quickly, even if I don't use brakes'. The trace shows
+brk=0.07–0.11 throughout those coasts: throttle and brake share axis 2 (push/pull) and the
+configured deadzone is only 0.06, so a stick resting slightly back applies a continuous light
+brake."* A deadzone was applied and `JM_DEADZONE` added. **The PO is reporting it again**, so either
+that was not the whole cause or the deadzone is still too small for their stick.
+
+**MEASURE FIRST, IN THIS ORDER — the two causes need opposite fixes:**
+
+1. **Is the brake actually being applied?** Log `inp.brake` through a full coast-down (the telemetry
+   line at `drive_native_mtk.jl:4878` already writes `brk` per frame). **If `brk > 0` the input path
+   is still the cause** — the shared push/pull axis is resting into brake territory — and the fix is
+   in `joycfg.jl`, not the physics. **State the expected value first:** after the 2026-08-27 fix it
+   should be exactly 0.0 on a released stick.
+2. **If `brk == 0.0` throughout and the car still decelerates hard**, the deceleration is in the
+   model — and the question becomes whether it is `.ibt`-derived. ⭐ **Three HARDCODED constants in
+   `JuliaMotorMTK/src/components/vehicle_3d.jl` are not from any `.ibt`:**
+
+   | line | term | value | note |
+   |---|---|---|---|
+   | 72 | rolling resistance | `rr = 0.026*m*g*tanh(u/0.12)` | **Crr = 0.026** is roughly double a realistic tarmac figure (~0.012–0.015) |
+   | 56 | clutch damping | `c_c = 60.0` | drives engine braking through the driveline at zero throttle |
+   | 56 | torque cap | `T_cap = 500.0` | ditto |
+
+   These are exactly the "modifiable parameters" the PO's standing constraint rules out. **The fix is
+   to derive them from the `.ibt` or to record why they cannot be — not to retune them by feel.**
+
+**Done when** a coast-down from a stated speed is logged with `brk` proven 0, the deceleration curve
+is compared against the `.ibt` gold for the same car and speed, and any term not traceable to the
+`.ibt` is either sourced from it or documented as an explicit, justified exception.
+
+**Points:** 8
