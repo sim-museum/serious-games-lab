@@ -1216,6 +1216,42 @@ there is a second, view-independent cost of the same order, and 15 fps is not ac
 That is now the whole of E80. The mirror finding does not touch it, and the next sprint should
 profile the base frame rather than assume the remaining cost is in the same place.
 
+◐ **BUILT AND VALIDATED (2026-08-29): `JM_FRAMEPROF=<n>`** — buckets around `drawworld` (scenery)
+and the HUD, printed beside `[fps]`. Validated at **Watkins, chase view**:
+
+```
+[frameprof] 120 frames:  world 3.44 ms   hud 0.07 ms   of 16.77 ms total
+[fps] view=chase  60.4 fps  (16.5 ms/frame)
+```
+
+**Watkins is not slow — it is vsync-capped**, scenery costing 3.4 ms with ~13 ms of the frame spent
+waiting. The instrument reads sensibly, so the E80 problem is track-specific.
+
+⚠️ **The profiler covers TWO phases, not all of them.** At Watkins the unaccounted time is vsync
+wait; at Spa it could be the shadow pass, the mirror RTT, the cockpit draw or a stall.
+**`total − world − hud` is UNMEASURED, not "scenery-adjacent".**
+
+⭐ **SPA CANNOT BE PROFILED AT ALL: ITS TEXTURE LOAD RUNS PAST 13 MINUTES.** A 900 s run timed out
+**still printing "loading textures"** — the frame loop is never reached. `JM_TIMING` (the
+launch-phase stopwatch, which is the right tool for THIS even though this entry once wrongly cited
+it for frames) gives the split:
+
+```
+[t+25.8s] geometry extraction begins
+[t+33.8s] texture load begins
+loading textures…                  <- still running 800+ s later
+```
+
+**Everything except textures costs 34 s; the texture load alone exceeds 13 minutes.** That blocks
+every automated measurement of the PO's worst-performing track — E88's Spa census died the same way
+at 300 s — and is a defect in its own right.
+
+⚠️ **DO NOT ASSUME IT SHARES A ROOT CAUSE WITH THE FRAME RATE.** A slow one-off upload and a slow
+per-frame draw are different failures, and "Spa has too many textures, hence both" would explain
+both without evidence for either. **Profile the texture-load loop itself** — count, total bytes,
+time per upload — before connecting them.
+
+
 ⛔ **THE INSTRUMENT THIS ENTRY NAMES DOES NOT MEASURE FRAMES (2026-08-29).** It says *"per-phase
 timing already exists (`JM_TIMING`)"*. `JM_TIMING` is a **launch-phase stopwatch** — its own
 definition, line 9-11: *"prints cumulative seconds at each load phase"*, `tstamp(lbl)`. It profiles
