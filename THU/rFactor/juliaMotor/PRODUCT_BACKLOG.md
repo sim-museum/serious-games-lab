@@ -2184,7 +2184,7 @@ smoothness and lane discipline**, not just lap time. 🔒 **READ-ONLY — copy b
 its lane-switch rate is within the range measured from the `.rpy` replays, and the PO's re-drive
 confirms it — **with the numbers recorded here, not judged by feel.**
 
-### E90 (2026-08-29) — 🔴 Monza and Watkins have almost NO collidable barriers
+### E90 (2026-08-29) — ⚠️ Monza and Watkins have almost no collidable barrier OBJECTS (largely explained — see the correction below)
 
 Found while running E87 on the PO's three tracks. The gate passes at both — and the pass is the
 symptom:
@@ -2240,5 +2240,33 @@ case or suffix from what `solid_exempt` matches.
 produces for each track and grep them for `armco`/`fence`/`wall`. **State the expected count first.**
 If they are absent, this is an ARCHIVE EXTRACTION gap, not a collision-rule gap — and the fix is in
 the loader, nowhere near `SOLIDS`.
+
+⛔ **MEASURED, AND IT REVERSES THE HYPOTHESIS ABOVE (2026-08-29).** `parse_dat` on each archive:
+
+| track | entries | `.3do` | barrier `.3do` |
+|---|---|---|---|
+| Monza | 701 | 149 | **3** — `pitwall.3do`, `pitwall1.3do`, `pitwall2.3do` |
+| Watkins | 246 | 68 | **1** — `fence.3do` |
+| Zandvoort | 316 | 76 | **0** |
+
+**Zandvoort's archive contains NO barrier geometry at all** — its 269 solids come from the LOOSE
+`.3do` files on disk (`armcopit.3do` …). And Monza's archive has no `armco.3do` whatever: its only
+barrier objects are three pit walls.
+
+**So there is no extraction gap, and probably no defect of the kind this item was filed for.** The
+`armco_s` / `FENCE_S` / `Wall_e` strings that prompted E90 are **`.mip` TEXTURE names, not objects** —
+at Monza and Watkins the armco is part of the BAKED TRACK GEOMETRY, and Zandvoort is the unusual
+track that ships it as placeable objects. `SOLIDS` = 2 and 5 is then the correct count of discrete
+collidable props, not evidence of missing barriers.
+
+⚠️ **The original worry is NOT thereby answered, only relocated.** "Can the car drive through the
+armco at Monza?" is still open — it now depends on whether the baked barrier geometry is collidable
+through the track-surface path, which `SOLIDS` never covered. **That is the question to test, and it
+needs a DRIVE, not a census:** put the car into the armco at a known lapdist and see whether it is
+stopped. **State the expected outcome first.**
+
+_Lesson recorded rather than quietly deleted: the loose-`.3do` count supported this item's original
+hypothesis and the archive contents refuted it. One measurement agreeing is not the same as the
+right measurement._
 
 **Points:** 8
