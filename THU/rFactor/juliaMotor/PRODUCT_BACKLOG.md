@@ -2004,6 +2004,34 @@ both visible**: a single "0 undrawn" read as success while the barriers silently
 meshless ones stay solid and keep being REPORTED (an honest non-zero), because at that point in the
 load the code cannot tell a billboard from nothing at all.
 
+### E87 — RUN ON THE PO'S THREE TRACKS (2026-08-29, requested in 6b8cd00)
+
+| track | solids | drawn cells | UNDRAWN-BUT-SOLID | verdict |
+|---|---|---|---|---|
+| Nürburgring | — | — | — | **did not run** (no gate line; load exceeded the poll window) |
+| Monza | **2** | 137 | 0 | passes |
+| Watkins | **5** | 79 | 0 | passes |
+
+⚠️ **BOTH PASSES ARE UNINFORMATIVE, AND THAT IS THE FINDING.** Zandvoort reported **269** solids when
+this gate found 175 invisible collidables. **2 and 5 are implausibly small for circuits lined with
+armco.** A "0 undrawn-but-solid" verdict drawn from a population of two objects says almost nothing
+about the property the gate exists to check.
+
+⭐ **AND THE LOW COUNT MAY ITSELF BE A DEFECT, BIGGER THAN THE ONE THE GATE LOOKS FOR.**
+`solid_exempt` deliberately keeps `armco`/`fence`/`rail`/`barrier`/`wall` collidable regardless of
+mesh, precisely so barriers cannot be silently de-solidified. If Monza ends up with 2 solids, either
+those objects are named differently there, or the drop rules have removed them — and **a circuit
+whose barriers are not collidable is a car that drives through the armco**. That is a gameplay
+defect, not a gate result.
+
+**Next, and measure before concluding:** dump the NAMES in `SOLIDS` at Monza and Watkins
+(`JM_SOLIDDIAG`), and compare against the instance names present. **State the expected count first**
+— Monza 1967 has continuous armco down both straights, so the honest prior is dozens, not two.
+
+⚠️ The Nürburgring row is "did not run", not "passed": `drive_native_mtk.jl:1648` notes the Ring has
+no collidable trackside objects by design (scenery baked in), so a legitimate 0 is possible there —
+but this run never printed a gate line at all, so nothing was measured. Do not record it as a pass.
+
 ⬜ **E87-S3, the proper close: build `SOLIDS` AFTER `BILLBOARDS`** so all three render paths are
 visible at once and the invariant can be enforced exactly rather than conservatively. Then the 16
 resolve one way or the other.
