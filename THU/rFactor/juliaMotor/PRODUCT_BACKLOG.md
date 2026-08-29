@@ -1828,3 +1828,37 @@ meshless `ftruck`/`rescu*` at Zandvoort are the known open case, pending E87-S3)
 
 ⚠️ Each Spa arm costs ~20 min (14.1 km lap, 92 548 HAT triangles), so the pair is ~40 min — budget
 for it, and do not run two arms concurrently against `gl-lock` (they queue and the second times out).
+
+
+---
+
+### E88 (PO 2026-08-28) — remove ALL line-of-people objects from Watkins Glen
+
+PO: *"remove all lines of people objects from Watkins Glen, several of which are right in the track
+on the back stretch"* — video `/home/admin/Videos/260828_watkins_race.mp4` (recorded during the
+5-car race, 2026-08-28 20:32).
+
+⭐ **CAUSE IS ALREADY IDENTIFIED — E79's removal is ZANDVOORT-ONLY.** `drive_native_mtk.jl:2116`:
+
+```julia
+_dropcrowdrows = ZANDV && get(ENV,"JM_KEEP_CROWDROWS","0") == "0"
+```
+
+The `ZANDV &&` guard means Watkins keeps every `standcrowd` row. E79 removed them at Zandvoort on
+the PO's instruction (*"remove all line of people objects from zandervoort"*) and that guard was
+written literally — so the **general** half of the same instruction (*"remove line-of-people objects
+if there's any chance they could be in the road or partially hanging in air; these objects don't add
+much and detract a lot if misplaced"*) was never applied anywhere else.
+
+**Fix:** drop the `ZANDV &&` guard so `standcrowd` rows are removed on every track (or at minimum
+add `|| WATGLEN`). `JM_KEEP_CROWDROWS=1` already exists as the revert.
+
+⚠️ **Verify with the on-road census, not by eye.** E79's first attempt removed **700** rows at Spa
+because it subtracted half the row width from the lateral distance — but rows run *along* the track,
+not across it. Projecting onto the road normal cut that to 6. Whatever the Watkins number is, state
+it before running and check it against the census.
+
+⚠️ **Do NOT reuse the E79 "billboard crowd" test blindly** — same reason.
+
+**Done when** no `standcrowd` row remains at Watkins, the count removed is recorded here, and the
+other three tracks' counts are recorded too (the guard removal affects all of them).
