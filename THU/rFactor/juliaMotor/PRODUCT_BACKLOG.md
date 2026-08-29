@@ -1702,6 +1702,29 @@ offset — a smoother line that sits off the road is not an improvement.
    settling behaviour first.** ⚠️ Do not smooth `vtarget` to make the symptom go away: that would
    slow the AI through every real corner, which is E84's pace complaint in a different disguise.
 
+   ⭐ **CANDIDATE FOUND IN THE FOLLOWER (`demo/native/ai.jl:192`), sprint limit reached — recorded
+   for the next sprint, NOT yet tested:**
+
+   ```julia
+   car.v += clamp(vt - car.v, -30.0*dt, 9.0*dt)   # brake harder than it accelerates
+   ```
+
+   **-30 m/s² is ≈3 g of braking.** A 1967 F1 car does ~1.1–1.3 g (11–13 m/s²); +9 m/s² acceleration
+   is likewise well above what these cars manage at speed. So the follower can track an
+   (established-correct) spiky `vtarget` almost exactly: hard decelerate into the step, hard
+   accelerate out of it. That is what "lunge ahead, then fall back" describes, and it explains why
+   the symptom survives however the LINE is smoothed — the two centreline fixes both failed because
+   the line was never the problem.
+
+   **Test, with the number stated first:** set the limits to physical values (brake ≈13, accel ≈5)
+   and re-run the E89 step block. **Expected: the `vtarget` step counts DO NOT change at all** (the
+   target is untouched — Monza should still read 12 steps >10 m/s), while the CARS' actual `v`
+   traces stop surging. If the step counts move, the change is not doing what this predicts.
+
+   ⚠️ Also on this line: `rand() < 8.0e-6` per car per step triggers a 2.4 s "mishap" at `vt *= 0.22`.
+   That is deliberate GPL-style racecraft, but it is ALSO a car suddenly dropping back — check
+   whether the PO's "fall back" is partly this before attributing all of it to the rate limits.
+
    ⚠️ The track-name field is NOT at a fixed offset from `DHPR` — reading `+0x10` yields "ami",
    "ort", "vort" (truncated `kyalami`, `mosport`, `zandvort`), so something variable-length precedes
    it. Fix that before trusting any per-track grouping.
