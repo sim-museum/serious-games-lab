@@ -485,6 +485,30 @@ function recentre_on_road(cl, hat; reach = 14.0, step = 0.5, frac = 1.0, cap = 4
         end
         sm = zeros(n); W = 3                                               # box-smooth (discrete edge sampling is jittery)
         for i in 1:n; a = 0.0; for d in -W:W; a += raw[mod(i-1+d, n)+1]; end; sm[i] = a/(2W+1); end
+        # E84-S5 / E89: bound the SECOND DIFFERENCE, not just the magnitude.
+        # `cap` limits how far a point may move; the box-smooth reduces jitter. Neither bounds how
+        # much a point's shift may differ FROM ITS NEIGHBOURS -- and that difference is what a kink
+        # IS. A kinked centreline spikes local curvature, which spikes vtarget, which is what the PO
+        # sees as AI cars that "dart around, lunge ahead, then fall back" (E89): measured 12 steps
+        # >10 m/s per Monza lap in the horizon target, peaking at 53.8 m/s between samples 9.6 m
+        # apart. Clamp each shift to within SECONDDIFF of the mean of its neighbours; iterate a few
+        # times so a run of points relaxes rather than just the worst one.
+        # JM_NO_SHIFTCLAMP=1 reverts, so the gate has a control.
+        if get(ENV, "JM_NO_SHIFTCLAMP", "0") == "0"
+            sd = parse(Float64, get(ENV, "JM_SHIFT_SECONDDIFF", "0.05"))   # metres
+            for _ in 1:8
+                worst = 0.0
+                for i in 1:n
+                    mid = (sm[mod(i-2, n)+1] + sm[mod(i, n)+1]) / 2
+                    d   = sm[i] - mid
+                    if abs(d) > sd
+                        worst = max(worst, abs(d) - sd)
+                        sm[i] = mid + sign(d)*sd
+                    end
+                end
+                worst < 1e-4 && break
+            end
+        end
         cl = [(p = cl[i]; (nx, ny) = nrm(i); (p[1]+nx*sm[i], p[2]+ny*sm[i])) for i in 1:n]
         println("centreline re-centred on the visible road (pass ", pass, "/", passes, "): max shift ",
                 round(maximum(abs, sm), digits=1), " m, mean ", round(sum(abs, sm)/n, digits=2),

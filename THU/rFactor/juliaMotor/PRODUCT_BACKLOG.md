@@ -1636,6 +1636,31 @@ offset — a smoother line that sits off the road is not an improvement.
    from 12 to 0–2 at Monza; the p90 should barely move (it is already 1.2).** Judge it on the count
    of large steps, not the median or the p90.
 
+   ◐ **E84-S5 IMPLEMENTED AND MEASURED — IT DOES NOT MEET ITS OWN TARGET (2026-08-29).** The clamp
+   holds each re-centring shift within `JM_SHIFT_SECONDDIFF` (0.05 m) of its neighbours' mean,
+   iterated to relax runs of bad points; `JM_NO_SHIFTCLAMP=1` reverts.
+
+   | Monza, horizon | p90 | max | steps >10 m/s |
+   |---|---|---|---|
+   | before (E89 baseline) | 1.205 | 53.84 | **12/599** |
+   | with the clamp | 0.993 | 57.11 | **10/599** |
+
+   **Target was 0–2. Got 10.** The clamp is close to ineffective on the thing it was written for, and
+   the `max` even rose slightly. Recorded as a miss rather than reported as an improvement: 12 → 10
+   is within noise of nothing, and calling it progress would bury the real cause.
+
+   ⭐ **BETTER HYPOTHESIS — NODE SPACING, NOT LATERAL KINKS.** `JuliaMotor/src/sim.jl:177` computes
+   `κ[i] = dθ/ds`, already smoothed over ±`ksmooth` nodes. **If `ds` is tiny — two nearly-coincident
+   centreline nodes — κ blows up no matter how smooth the line is laterally**, and `vtarget =
+   sqrt(amax/κ)` collapses for one sample and recovers at the next: exactly a ~50 m/s discontinuity
+   between adjacent samples. A lateral second-difference clamp cannot fix that, which is consistent
+   with what was measured.
+
+   **Test it before fixing anything:** report the distribution of node spacing `ds` around the lap
+   and check whether the κ spikes coincide with the smallest `ds`. **State the expected p01 spacing
+   first** — if the spikes sit on near-zero spacings, the fix is to resample the centreline to a
+   minimum node separation, not to smooth it further.
+
    ⚠️ The track-name field is NOT at a fixed offset from `DHPR` — reading `+0x10` yields "ami",
    "ort", "vort" (truncated `kyalami`, `mosport`, `zandvort`), so something variable-length precedes
    it. Fix that before trusting any per-track grouping.
