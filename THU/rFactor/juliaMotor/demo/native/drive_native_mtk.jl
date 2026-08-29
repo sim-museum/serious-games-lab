@@ -4195,6 +4195,23 @@ function main()
                 push!(vhor, clamp(sqrt(amax/kh), 12.0, vmax))
             end
             q(v,p) = sort(v)[clamp(round(Int, p*length(v)), 1, length(v))]
+            # E89 (PO: AI cars "dart around like june bugs, lunge ahead, then fall back").
+            # PERCENTILES CANNOT SEE THIS. A vtarget that alternates fast/slow every sample has the
+            # same distribution as a perfectly smooth one -- the difference is entirely in the
+            # ORDER. E84 found the pace shortfall comes from centreline kinks created by
+            # re-centring; a kinked line gives an oscillating vtarget, which is what darting IS.
+            # So report the step-to-step change, not the spread.
+            # PREDICTION, stated before the first run: a smooth racing line should give a median
+            # |dv| well under 1 m/s between adjacent samples (~9.7 m apart at Monza). If the kinks
+            # drive the darting, expect median |dv| > 2 m/s and a long tail of >10 m/s jumps.
+            dvl = [abs(vloc[i+1]-vloc[i]) for i in 1:length(vloc)-1]
+            dvh = [abs(vhor[i+1]-vhor[i]) for i in 1:length(vhor)-1]
+            spacing = AILINE.total / n
+            println("\n  ---- E89: vtarget STEP-TO-STEP change (sample spacing ", round(spacing,digits=1), " m) ----")
+            println("    |dv| local  m/s: p50 ", round(q(dvl,0.50),digits=3), "  p90 ", round(q(dvl,0.90),digits=3),
+                    "  max ", round(maximum(dvl),digits=2), "   >10 m/s: ", count(>(10.0), dvl), "/", length(dvl))
+            println("    |dv| horizon m/s: p50 ", round(q(dvh,0.50),digits=3), "  p90 ", round(q(dvh,0.90),digits=3),
+                    "  max ", round(maximum(dvh),digits=2), "   >10 m/s: ", count(>(10.0), dvh), "/", length(dvh))
             println("\n  ---- kappa / vtarget profile (", n, " samples round the lap) ----")
             println("    kappa  1/m : p10 ", round(q(ks,0.10),digits=5), "  p50 ", round(q(ks,0.50),digits=5),
                     "  p90 ", round(q(ks,0.90),digits=5), "  max ", round(maximum(ks),digits=5))

@@ -1608,6 +1608,34 @@ offset — a smoother line that sits off the road is not an improvement.
    shift relative to its NEIGHBOURS — limit the second difference) fixes both items. **State the
    expected oscillation amplitude before running.**
 
+   ⭐ **MEASURED (2026-08-29, `JM_PACEDIAG` + new step-to-step block, `JM_AI=4`, 600 samples/lap):**
+
+   | | median \|dv\| | p90 | max | steps >10 m/s |
+   |---|---|---|---|---|
+   | Monza, local κ | 0.0 | 18.51 | 62.0 | **70/599** |
+   | Monza, horizon (**what the AI actually uses**) | 0.0 | 1.21 | 53.84 | **12/599** |
+   | Watkins, local κ | 0.0 | 16.08 | 57.16 | 78/599 |
+   | Watkins, horizon | 0.0 | 0.26 | 49.14 | 10/599 |
+
+   ⚠️ **THE STATED PREDICTION WAS WRONG IN FORM.** It said "expect median `|dv|` > 2 m/s if the kinks
+   drive the darting". The median is **0.0 on every track and both channels** — because most of a lap
+   sits pinned at the `vmax` clamp, so the median measures THE CLAMP, not the line. A median was the
+   wrong statistic for a signal that lives entirely in the tail. Recorded because the number came out
+   "clean" and could easily have been read as refuting the hypothesis.
+
+   **What the tail says.** The horizon channel is the one `_vtarget` uses, and the look-ahead max
+   smooths the raw curvature hard (p90 18.5 → 1.2 m/s at Monza). But it leaves **12 discontinuities
+   per lap above 10 m/s, peaking at 53.8 m/s** — a target speed that changes by ~190 km/h between two
+   samples 9.6 m apart. A car chasing that target accelerates hard, then brakes hard, a dozen times a
+   lap: **"dart around, lunge ahead, then fall back."** Consistent with the E84 centreline-kink
+   cause, and it is the KINKS the fix must remove — smoothing the target instead would hide the
+   symptom and keep the wrong line.
+
+   **Next (E84-S5):** clamp the per-point centreline shift against its NEIGHBOURS (limit the second
+   difference), then re-run this block. **Expected after the fix: horizon steps >10 m/s per lap goes
+   from 12 to 0–2 at Monza; the p90 should barely move (it is already 1.2).** Judge it on the count
+   of large steps, not the median or the p90.
+
    ⚠️ The track-name field is NOT at a fixed offset from `DHPR` — reading `+0x10` yields "ami",
    "ort", "vort" (truncated `kyalami`, `mosport`, `zandvort`), so something variable-length precedes
    it. Fix that before trusting any per-track grouping.
