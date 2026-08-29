@@ -2624,3 +2624,30 @@ New tool `JuliaMotorMTK/tools/coastdown_probe.jl` reads the 16 `.ibt` sessions o
 
 **NEXT (E91-S3):** remove the elevation term (the `Alt` channel is present) and re-fit; investigate the gear-3 outlier; and test whether a two-term engine model (a constant pumping/friction torque plus an rpm-proportional term) collapses the per-gear spread. Only if `eb` becomes consistent across gears is a value change defensible under the PO's "physics entirely from the ibt" constraint.
 
+### E91-S3 (2026-08-29) — slope removed, and the conclusion is NEGATIVE: **this telemetry cannot determine `ENGBRAKE`. Stop trying.**
+
+Added the gravity term the S2 fit was missing. On a slope `m·dv/dt = -F_drag - m·g·sin θ`, so drag deceleration is `-dv/dt - g·(dAlt/dt)/v`. Uses `dv/dt` from ground speed (central difference, ±3 samples) rather than the `LongAccel` accelerometer, **because the accelerometer itself carries the gravity component being removed** — using it would have subtracted the term from a signal that already contained it.
+
+**The baseline genuinely improved:** rolling **0.108 g → 0.0721 g** (now a plausible race-car figure), residual sd **0.732 → 0.657 m/s²**.
+
+**But the engine estimate did not survive it:**
+
+| | S2 (no slope term) | S3 (slope removed) |
+|---|---|---|
+| implied `eb` median | 0.00341 | **0.00845** |
+| code 0.012 vs median | 352 % | **142 %** |
+| IQR spread | 1.71× | **1.96×** |
+| per-gear spread | 28× | **21×** (g3 0.03305 vs g4 0.00157) |
+
+⭐ **THE DECIDING NUMBER IS R².** Fitting the derived engine torque against rpm:
+* two-term `T = T0 + eb·rpm` → **R² = 0.064**, and `T0 = 109.5`, `eb = −0.0196` — a **NEGATIVE** rpm coefficient, i.e. less braking at higher rpm, which is physically backwards;
+* one-term `T = eb·rpm` (the code's form) → **R² = −0.091**, *worse than predicting the mean*.
+
+**rpm explains essentially none of the variance in the derived engine torque.** That is not "the model form is wrong" — it is "there is no engine signal left in this data after the subtraction". The derived quantity is dominated by residual noise from two much larger terms.
+
+⚠️ **THEREFORE E91-S2'S HEADLINE IS WITHDRAWN AS A NUMBER.** S2 said "the code brakes 3.5× too hard". One modelling correction moved that to 1.42×. **An estimate that swings 2.5× on a single term is not a measurement**, and no value change may rest on it. What survives across S2 and S3 is only the DIRECTION — the code's `eb` sits above the telemetry-implied median in both — and even that rests on an `R² ≈ 0` fit, so it is weak support for the PO's complaint rather than a confirmation of it.
+
+**AVENUE CLOSED, with evidence.** The `PRODUCT_BACKLOG` note at E91 originally asserted "the comparison E91 needs cannot be made from the telemetry on hand". Three sprints have now DEMONSTRATED that rather than asserted it: lap telemetry from a road course cannot separate engine braking from aero and rolling, because a coast segment long enough to fit is never straight, flat and un-steered for long enough.
+
+**WHAT WOULD ACTUALLY SETTLE IT (PO action, ~2 minutes in iRacing):** one straight-line coast-down on a flat runway or the pit straight — get to ~200 km/h, lift fully off throttle, no brake, no steering, and let it roll down to ~60 km/h **twice**: once **in gear, clutch out** and once **clutch in**. The difference between those two curves IS engine braking, with no fitting and no subtraction of guessed terms. Save the `.ibt`. Until then `ENGBRAKE = 0.012` stays as it is: unsourced, but not replaceable by a number that is equally unsourced and merely newer.
+

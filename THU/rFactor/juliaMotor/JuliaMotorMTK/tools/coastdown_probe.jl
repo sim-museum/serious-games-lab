@@ -59,6 +59,7 @@ function analyse(path)
     _, lng  = first_present(f, ["LongAccel"])
     _, stw  = first_present(f, ["SteeringWheelAngle"])
     _, yaw  = first_present(f, ["YawRate"])
+    _, alt  = first_present(f, ["Alt"])
     if any(isnothing, (thr, brk, spd, gr, rpm))
         @printf("  %-52s SKIP: missing channels (thr=%s brk=%s spd=%s gear=%s rpm=%s)\n",
                 basename(path), nthr, nbrk, nspd, ngr, nrpm); return nothing
@@ -92,10 +93,20 @@ function analyse(path)
     inpts  = Tuple{Float64,Float64}[]                    # (v, decel) clutch IN
     outpts = Tuple{Float64,Float64,Float64,Int}[]        # (v, decel, rpm, gear) clutch OUT
     for (a,b) in segs
-        for k in a:(b-1)
+        for k in (a+3):(b-4)
             v0 = spd[k]
-            # prefer the MEASURED longitudinal accelerometer; fall back to differentiating speed
-            dec = lng !== nothing ? -lng[k] : (spd[k] - spd[k+1])/dt
+            # E91-S3: GRAVITY. On a slope, m*dv/dt = -F_drag - m*g*sin(theta), so the DRAG
+            # deceleration is  -dv/dt - g*sin(theta), and sin(theta) = (dAlt/dt)/v. Zandvoort has
+            # real elevation, and S2 left this term in -- a plausible source of the residual
+            # scatter that made eb look inconsistent. Use dv/dt (rate of change of ground speed),
+            # NOT the LongAccel accelerometer, because the accelerometer itself carries the gravity
+            # component we are trying to remove. Central difference over +/-3 samples for noise.
+            dvdt = (spd[k+3] - spd[k-3]) / (6*dt)
+            dec  = -dvdt
+            if alt !== nothing && v0 > 1.0
+                dadt = (alt[k+3] - alt[k-3]) / (6*dt)
+                dec -= G * (dadt / v0)          # remove the slope term
+            end
             (dec <= 0 || dec > 15.0) && continue
             clutch_in = cl !== nothing && cl[k] > 0.5          # 1 = pedal down (disengaged)
             g = Int(round(gr[k]))
@@ -155,6 +166,30 @@ for (v, dec, r, g) in allout
 end
 if length(ebs) < 20
     @printf("INCONCLUSIVE: only %d usable clutch-out points after baseline subtraction.\n", length(ebs)); exit(2)
+end
+# E91-S3: does a TWO-TERM engine model fit where eb*rpm did not?  T_eng = T0 + eb*rpm
+let
+    rows = Tuple{Float64,Float64}[]      # (rpm, T_eng)
+    for (v, dec, r, g) in allout
+        aeng = dec - (A*v^2 + R)
+        (aeng <= 0 || r <= 100) && continue
+        T = aeng * RW_R * M / (GEARS[g] * FINAL * ETA)
+        push!(rows, (r, T))
+    end
+    if length(rows) >= 20
+        X2 = [ ones(length(rows))  [x[1] for x in rows] ]
+        y2 = [ x[2] for x in rows ]
+        c2 = X2 \ y2
+        r2 = y2 .- X2*c2
+        ss = 1 - sum(r2.^2)/sum((y2 .- mean(y2)).^2)
+        @printf("two-term engine fit  T_eng = %.3f + %.6f * rpm   (R^2 = %.3f, n=%d)\n",
+                c2[1], c2[2], ss, length(rows))
+        # one-term for comparison: T = eb*rpm through the origin
+        eb1 = sum([x[1]*x[2] for x in rows]) / sum([x[1]^2 for x in rows])
+        r1 = y2 .- eb1 .* [x[1] for x in rows]
+        ss1 = 1 - sum(r1.^2)/sum((y2 .- mean(y2)).^2)
+        @printf("one-term (code form) T_eng = %.6f * rpm            (R^2 = %.3f)\n\n", eb1, ss1)
+    end
 end
 @printf("engine-braking constant implied by the telemetry (%d points):\n", length(ebs))
 @printf("  median %.5f   mean %.5f   sd %.5f   IQR %.5f..%.5f\n",
