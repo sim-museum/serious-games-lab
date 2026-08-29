@@ -1260,6 +1260,34 @@ work over it. A 13-minute "texture load" against a 786 MB archive is a very diff
 13-minute load against a 5 MB one, and it reframes the whole item: **this may not be a port defect at
 all** — it may be a heavyweight community Spa (high-resolution texture pack) rather than stock GPL.
 
+⭐⭐ **AND THE TEXTURE CACHE THAT WOULD FIX THE LOAD IS DISABLED BY DEFAULT (2026-08-29).**
+Split timestamps put the cost precisely:
+
+```
+[t+34.2s] texture load begins
+[t+35.3s]   texture INDEX built      <- indexing the 786 MB archive: 1.1 s
+loading textures…                    <- build_gpl, still running 800+ s later
+```
+
+**Indexing is 1.1 s. All 13+ minutes are in `build_gpl` — the per-texture decode and GL upload.**
+`tex_rgba` has a complete disk cache for exactly this (`~/.cache/juliamotor/tex/<hash>/<key>.rgba`,
+read at `render.jl:887`, written at `:971`) — and `render.jl:878`:
+
+```julia
+cd = get(ENV,"JM_TEXCACHE","0") == "0" ? "" :   # default OFF until the deferred cold/warm A/B
+```
+
+**`JM_TEXCACHE` defaults to `"0"`, so the cache never activates and no cache directory has ever been
+created** (`~/.cache/juliamotor` does not exist; `~/.cache` is writable, so it is the default, not a
+permissions failure). Every load re-decodes everything, every time. The comment says the default is
+OFF "until the deferred cold/warm A/B" — that A/B is the sprint, and it was deferred long enough for
+the cost to become invisible.
+
+**Test:** run Spa twice with `JM_TEXCACHE=1` and compare `[t+…]` at `build_gpl done`. **State the
+expectation first: the cold run should be unchanged (13+ min) and the warm run dramatically faster.**
+⚠️ The cold run must be allowed to COMPLETE or nothing is cached — every Spa run so far was killed
+by a timeout mid-`build_gpl`, which is also why no partial cache exists to have hinted at this.
+
 ⚠️ **BUT DO NOT CLOSE E80 ON THIS.** It is a strong correlation and no more: the PO's complaint is
 FRAME RATE in the cockpit, and archive size explains LOADING. Establishing that a big archive loads
 slowly says nothing about why the frame takes 65 ms once loaded. Both may follow from one cause
