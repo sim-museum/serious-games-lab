@@ -1793,7 +1793,38 @@ load the code cannot tell a billboard from nothing at all.
 ⬜ **E87-S3, the proper close: build `SOLIDS` AFTER `BILLBOARDS`** so all three render paths are
 visible at once and the invariant can be enforced exactly rather than conservatively. Then the 16
 resolve one way or the other.
-⬜ Still to run: **nurburgring** (22.7 km, slowest).
+⬜ **PO 2026-08-28: RUN THE E87 GATE ON NÜRBURGRING, MONZA AND WATKINS.** Spa and Zandvoort are the
+only tracks measured on BOTH sides of the `SOLIDS` changes. The changes themselves are **NOT
+track-scoped** — the render-mirror filter (E87-S2), the on-road predicates (E77-F/E71-S18), and the
+`powertrain.jl`/`vehicle_3d.jl`/`drive_rt3d.jl` physics edits are all global — so every track is
+affected and three are unverified:
+
+| track | solids before → after | state |
+|---|---|---|
+| spa | 808 → 808 | ✅ measured both sides |
+| zandvoort | 269 → 110 | ✅ measured both sides |
+| **monza** | 2 → **?** | ⚠️ measured only BEFORE the E87-S2 filter |
+| **watglen** | 5 → **?** | ⚠️ measured only BEFORE |
+| **nürburgring** | **?** → **?** | ❌ **NEVER measured** |
+
+⭐ **The Ring is the priority.** It took the E77-F bridge fix (`HAT_EXCLUDE` = `br_under`/`villone`)
+**plus** both global `SOLIDS` changes **plus** the physics edits — the most changed underneath it and
+the least verified, and it is the track where the PO reported underpass levitation. Monza and Watkins
+carry only 2 and 5 solids, so the filter has almost nothing to act on there, but that is a
+prediction, not a measurement.
+
+**Recipe** (each ~10–25 min; the Ring is slowest; **do NOT run two concurrently — they queue on
+`gl-lock` and the second times out**):
+
+```
+TRACK=<t> JM_SOLIDGATE=1 JM_SOLIDGATE_EXIT=1 julia --project=. drive_native_mtk.jl
+```
+
+⚠️ **`JM_SOLIDGATE_EXIT=1` is not optional.** Without it the gate prints and the game continues into
+the render loop, holding the display lock for the full timeout — this cost ~25 min of queue twice.
+
+**Done when** all five tracks report **0 UNDRAWN**, or a non-zero is explained per object (the 16
+meshless `ftruck`/`rescu*` at Zandvoort are the known open case, pending E87-S3).
 
 ⚠️ Each Spa arm costs ~20 min (14.1 km lap, 92 548 HAT triangles), so the pair is ~40 min — budget
 for it, and do not run two arms concurrently against `gl-lock` (they queue and the second times out).
