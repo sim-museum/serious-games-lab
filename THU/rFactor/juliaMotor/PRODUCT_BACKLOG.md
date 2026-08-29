@@ -2604,3 +2604,23 @@ cache written. If it completed, a WARM run is the outstanding measurement.
 
 **NEXT (E91-S2):** stop reusing hand-copied numbers. Extract clutch-in and clutch-out zero-throttle coast-downs directly from the `.ibt` files already on disk (12+ Zandvoort/Nordschleife sessions under `data/juliaracer/`), fit `A·v² + R` over the full speed range rather than 2 points, and report `eb` with its scatter. Only then is a value change defensible under the PO's constraint.
 
+### E91-S2 (2026-08-29) — measured from the `.ibt` directly. **My S1 conclusion was backwards: the code brakes ~3.5× TOO HARD, not too little.**
+
+New tool `JuliaMotorMTK/tools/coastdown_probe.jl` reads the 16 `.ibt` sessions on disk, finds genuine coast segments (`throttle==0 && brake==0`), splits them by the **clutch** channel, fits the clutch-IN points to `a = A·v² + R` by least squares over the full speed range, and solves the model's own `T_eng = eb·rpm` for each clutch-OUT point.
+
+**⚠️ FIRST PASS REFUTED ITSELF, and saying so is the point.** Accepting every `throttle=0, brake=0` sample on a ROAD COURSE let cornering, kerbs and elevation into the fit: baseline residual **5.619 m/s²**, which is LARGER than the 1–3 m/s² effect being measured, with an implausible **0.295 g** rolling term and a **3.76×** IQR spread. A fit whose residual exceeds its signal is not a measurement. Refined to use the MEASURED `LongAccel` channel (no differentiation noise) and to keep only straight-line samples (`|LatAccel| < 2`, `|steering| < 0.1 rad`, `|yaw rate| < 0.05`):
+
+| | first pass | filtered |
+|---|---|---|
+| baseline residual sd | 5.619 m/s² | **0.732** |
+| rolling term | 0.295 g | **0.108 g** |
+| eb IQR spread | 3.76× | **1.71×** |
+
+**RESULT (511 clutch-in points, 54–216 km/h; 87 usable clutch-out points):** implied `eb` **median 0.00341**, IQR 0.00244–0.00417. **The code's 0.012 is 352 % of the telemetry median — the model applies roughly 3.5× the engine braking the reference shows.**
+
+⚠️ **THIS SUPERSEDES E91-S1, WHICH CONCLUDED THE OPPOSITE.** S1 derived 0.0137–0.0183 (code = 66–88 %, "too low") from **four hand-copied numbers and a 2-point fit**. Those four numbers came from lap telemetry with no straight-line filtering, i.e. from the same contaminated population that produced the 5.6 m/s² residual here. The direct measurement replaces them. **S1's "lowering eb would be wrong twice" is withdrawn** — the telemetry now points the same way as the PO's complaint of excessive off-throttle deceleration.
+
+**STILL NOT A LICENCE TO SET eb = 0.0034.** (a) Only **87** usable clutch-out points survive the filters. (b) Per-gear medians disagree — gear 1 0.00341, gear 2 0.00229, **gear 3 0.03119**, gear 4 0.00110 — a 28× spread across gears. (c) IQR spread **1.71×** still exceeds the 1.5× consistency bar, so `eb·rpm` does not fit even filtered: **the model FORM is suspect, not just the constant.** (d) `LongAccel` includes the gravity component on a slope and Zandvoort has real elevation, which is not yet removed — a plausible source of the residual scatter.
+
+**NEXT (E91-S3):** remove the elevation term (the `Alt` channel is present) and re-fit; investigate the gear-3 outlier; and test whether a two-term engine model (a constant pumping/friction torque plus an rpm-proportional term) collapses the per-gear spread. Only if `eb` becomes consistent across gears is a value change defensible under the PO's "physics entirely from the ibt" constraint.
+
