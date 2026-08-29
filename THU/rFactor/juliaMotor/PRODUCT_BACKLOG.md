@@ -1718,8 +1718,42 @@ The 27 was the raw solid-count delta from the E86 bisect. The gate splits it cor
 drawn elsewhere) = 27.** A count of solids that disappeared is not the same quantity as a count of
 objects that were invisible, and conflating them would have overstated the defect by a third.
 
-⬜ **Remaining: extend to the other four tracks**, and treat the ANCHOR bucket as a real blind spot
-to shrink (a position-match failure, not a render-path fact).
+### 2026-08-28 — extended to three more tracks: two clean, ZANDVOORT IS NOT
+
+| track | solids | drawn cells | **UNDRAWN** |
+|---|---|---|---|
+| monza | 2 | 137 | **0** ✅ |
+| watglen | 5 | 126 | **0** ✅ |
+| spa (HEAD) | 808 | 6572 | **0** ✅ |
+| **zandvoort** | **269** | **199** | **175** ⚠️ |
+
+```
+zandvoort: bushes01 ×74   bushes02 ×37   bushes03 ×47   ftruck ×1   hotels ×1
+```
+
+⚠️ **DO NOT DISMISS THIS AS A GATE ARTEFACT, and do NOT blanket-exempt `bushes*`.** The arithmetic
+matches the Spa defect exactly: the load reports **215 trackside objects + 39 billboards = 254
+rendered things against 296 solids**, so Zandvoort genuinely carries more collidable objects than it
+draws. That is the same shape as the 20 invisible houses, at a different scale.
+
+**Two readings, and they need separating by measurement, not by assumption:**
+1. **REAL** — 175 invisible collidable objects at Zandvoort. `bushes*` carry a 1.5 m radius
+   (`solidR`), so each is a small invisible obstacle; `ftruck` and `hotels` are mesh-class names and
+   would be *large* ones.
+2. **GATE BLIND SPOT** — these render as BILLBOARDS and the position match misses them, exactly as
+   `bush`/`bush2` did at Spa (which landed in ANCHOR). But note Zandvoort reports **0 anchor and 0
+   exempt**, so the name-matching found nothing at all for them — a different failure from Spa's.
+
+⭐ **The gate's credibility rests on both halves: it found a real defect at Spa and stayed silent at
+Monza and Watkins.** It does not cry wolf everywhere, so a 175 at Zandvoort deserves investigation
+rather than an exemption.
+
+**Next:** check whether `bushes01` appears in the render sets AT ALL at Zandvoort (name-only, no
+position test). If absent → real invisible collidables, and the PO can be told which. If present →
+the billboard position match is the defect and must be fixed, not exempted. **Start with `ftruck`
+and `hotels`** — two objects, mesh-class names, large radii, easiest to confirm by eye in a capture.
+
+⬜ Still to run: **nurburgring** (22.7 km, slowest).
 
 ⚠️ Each Spa arm costs ~20 min (14.1 km lap, 92 548 HAT triangles), so the pair is ~40 min — budget
 for it, and do not run two arms concurrently against `gl-lock` (they queue and the second times out).
