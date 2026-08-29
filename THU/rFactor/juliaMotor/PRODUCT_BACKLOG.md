@@ -2212,11 +2212,33 @@ never places. **Measure that first, with the expected number stated before the r
 
 **Then find where they are lost.** Candidates in order: (a) `trackside_objects` does not return them
 for these tracks; (b) a `drop()` rule removes them before `SOLIDS` is built; (c) the names differ in
-case or suffix from what `solid_exempt` matches (`FENCE_S`/`Wall_e` are capitalised in the data, and
-`solid_exempt` matches lowercase prefixes — **check the lowercasing actually happens on this path**).
+case or suffix from what `solid_exempt` matches.
 
-⚠️ Candidate (c) is the cheapest to check and the easiest to get wrong by reading: `solid_exempt(nml)`
-is called with `nml`, and whether that is already lowercased must be READ AT THE CALL SITE, not
-assumed from the variable name.
+⭐ **NARROWED, 2026-08-29 — (c) and (b) ELIMINATED, (a) SUPPORTED:**
+
+* **(c) eliminated by reading the call site**, as warned: `nml = lowercase(i.name)` (line 2543) and
+  `solid_exempt(nml)` (2595). The name IS lowercased, so `FENCE_S`/`Wall_e` match fine.
+* **the radius table is not the block either**: `solidR` gives `armco`/`barrier`/`fence`/`wall` a
+  1.2 m radius. (⚠️ but **`rail` is NOT in `solidR`** — Monza ships `rail`/`RAIL` objects that can
+  never become solid whatever else is fixed. Small, separate, real.)
+* **the road-exclusion is not the block**: `SOLID_EXCL_HW` is 4.0 m against `ROAD_HALFW` 9.0 m, so
+  barriers at the road edge are not excluded by E31's rule.
+* **(a) SUPPORTED — the geometry is never LOADED.** `objnames` (line 1885) is built from the `.3do`
+  files present in the track directory plus `DATPACK` keys, so an object only loads if its `.3do`
+  is found. On disk:
+
+  | track | loose `.3do` files | barrier files present |
+  |---|---|---|
+  | Zandvoort (**269 solids**) | 69 | `armcopit.3do`, `armco_s.mip`, `armco_sh.mip`, `armcoend.mip` |
+  | Watkins (**5 solids**) | 28 | only `armco_s.mip` — a TEXTURE, no geometry |
+  | Monza (**2 solids**) | **0** | only `WALL_E.mip`; everything is packed in `monza.DAT` |
+
+  **The one track with loose `.3do` barrier geometry is the one with 269 solids.** The other two
+  depend entirely on `DATPACK` extraction from the packed archive.
+
+**Next: does `DATPACK` yield the barrier `.3do` entries for Monza and Watkins?** Print the keys it
+produces for each track and grep them for `armco`/`fence`/`wall`. **State the expected count first.**
+If they are absent, this is an ARCHIVE EXTRACTION gap, not a collision-rule gap — and the fix is in
+the loader, nowhere near `SOLIDS`.
 
 **Points:** 8
