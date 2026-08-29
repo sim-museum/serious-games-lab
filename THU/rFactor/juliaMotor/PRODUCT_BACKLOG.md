@@ -1945,6 +1945,33 @@ it before running and check it against the census.
 **Done when** no `standcrowd` row remains at Watkins, the count removed is recorded here, and the
 other three tracks' counts are recorded too (the guard removal affects all of them).
 
+☑ **FIXED AND VERIFIED FOR THE REPORTED TRACK (2026-08-29).** Guard is now unconditional
+(`_dropcrowdrows = get(ENV,"JM_KEEP_CROWDROWS","0") == "0"`). Before/after measured on ONE binary
+using `JM_KEEP_CROWDROWS=1` as the "before" arm, each run verifying its own `→ track:` banner:
+
+| track | before | after |
+|---|---|---|
+| watglen | **52** | **0** |
+| zandvoort | 96 | 0 |
+| monza | 0 | 0 |
+| spa | not measured | not measured |
+| nurburgring | not measured | not measured |
+
+Monza has no `standcrowd` placements at all, so the guard change is a no-op there.
+
+⚠️ **Spa and the Nürburgring are NOT measured, and are not being reported as zero.** Both are the
+largest tracks and were still loading textures when the census's 300 s poll killed them
+(`e88_spa_1.log` ends mid-`loading textures…` with `→ track: Spa` already printed, so the run was
+healthy — the window was too short, not the track). Re-run those two with a longer window to close
+this row out.
+
+⚠️ **THE FIRST CENSUS COULD NOT HAVE DETECTED THIS FIX.** `JM_CROWDDIAG` iterated `insts`, the RAW
+placement list built ~270 lines before `drop()` exists, and printed the total as "crowd rows kept".
+It therefore counts rows PLACED and cannot move when a drop rule changes: the first before/after
+read `52 -> 52` and looked exactly like a fix that did nothing. It now reports PLACED and KEPT as
+separate lines. A verification metric that is not downstream of the change under test will confirm
+whatever you already believe.
+
 
 ---
 
