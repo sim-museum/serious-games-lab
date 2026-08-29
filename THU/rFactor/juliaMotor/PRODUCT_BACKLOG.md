@@ -1534,11 +1534,36 @@ offset — a smoother line that sits off the road is not an improvement.
    identifying the interleaved record type; the 57 exact matches say the ms/cumulative reading is
    right.
 
-   ⚠️ **These are HOTLAPS: `RPHD` car count is 1.** They give a per-car pace reference and a racing
-   line, but they say NOTHING about how AI cars behave relative to each other — which is exactly
-   what E89 ("dart like june bugs, lunge ahead, then fall back") is about. A multi-car GPL replay
-   is needed for that, or the behaviour must be derived some other way. Do not calibrate E89 from
-   these files and call it done.
+   ⚠️ **CORRECTION (2026-08-29).** An earlier note here claimed "these are HOTLAPS: `RPHD` car count
+   is 1" on the strength of ONE file and a field at `DHPR+0x18`. Both halves were wrong:
+
+   * **`DHPR+0x18` is not the car count.** It reads `1` for replays that contain 14, 17 and 18
+     driver chunks. It looked corroborated (105/166 files) only because most of the corpus genuinely
+     has one driver, so a field that is always 1 "agrees" by accident. **A candidate field that
+     matches the COMMON case is not thereby identified — check it against the RARE case.**
+   * **The corpus is NOT all hotlaps.** Counting `DRNT` (driver-entry) chunks finds **10 multi-car
+     replays**, the largest carrying a full field:
+
+     | drivers | file |
+     |---|---|
+     | 18 | `67F1_Rob_Fle_zandvort_Ferrari_1m 23.169s.rpy` |
+     | 17 | `67F1_Rob_Fle_mosport_Ferrari_1m 19.559s.rpy` |
+     | 14 | `67F1_Rob_Fle_kyalami_BRM_1m 19.533s.rpy` |
+     | 12 | **`Demo lap with 11 cars Look and learn.rpy`** |
+     | 11 | `67F1_Rob_Fle_monza_Brabham_1m 27.923s.rpy` |
+     |  9 | `67F1_Rob_Fle_zandvort_BRM_1m 24.542s.rpy` |
+
+     The demo file names its own car count and the chunk count agrees (12 = 11 cars + player) —
+     independent corroboration that `DRNT` counting is sound.
+
+   ⭐ **This is the E89 calibration data.** `Demo lap with 11 cars` is an explicit demonstration
+   replay, and the 11-driver Monza file is at the very track where the PO saw the june-bug
+   behaviour. Extract per-car position-vs-time from `RPTP` and measure what GPL opponents actually
+   do: gap variance lap to lap, closing rates, whether they hold station.
+
+   ⚠️ The track-name field is NOT at a fixed offset from `DHPR` — reading `+0x10` yields "ami",
+   "ort", "vort" (truncated `kyalami`, `mosport`, `zandvort`), so something variable-length precedes
+   it. Fix that before trusting any per-track grouping.
 3. **One slot-car opponent** driving that line, drawn with the existing car mesh, with collision
    against the player left OUT of this sprint.
 4. **Four opponents, per-car pace offsets** calibrated to the table above, at all three tracks.
