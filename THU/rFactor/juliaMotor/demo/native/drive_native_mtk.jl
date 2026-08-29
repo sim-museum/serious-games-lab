@@ -493,8 +493,15 @@ function recentre_on_road(cl, hat; reach = 14.0, step = 0.5, frac = 1.0, cap = 4
         # >10 m/s per Monza lap in the horizon target, peaking at 53.8 m/s between samples 9.6 m
         # apart. Clamp each shift to within SECONDDIFF of the mean of its neighbours; iterate a few
         # times so a run of points relaxes rather than just the worst one.
-        # JM_NO_SHIFTCLAMP=1 reverts, so the gate has a control.
-        if get(ENV, "JM_NO_SHIFTCLAMP", "0") == "0"
+        # ⛔ DEFAULT OFF, ON EVIDENCE (2026-08-29). Measured against its own control on one binary:
+        #   Monza   steps>10 m/s 12 -> 10,  p90 1.205 -> 0.993
+        #   Watkins steps>10 m/s 10 -> 11,  p90 0.257 -> 1.159   <-- 4.5x WORSE
+        # The target was 12 -> 0-2. It misses that badly at Monza and REGRESSES Watkins, so it ships
+        # opt-in (JM_SHIFT_CLAMP=1), not on. Kept rather than deleted because the measurement is the
+        # useful part: a lateral second-difference clamp does not remove these kappa spikes, which is
+        # evidence for the node-spacing hypothesis (kappa = dtheta/ds blows up on a tiny ds however
+        # smooth the line is laterally) -- see E84-S5 in PRODUCT_BACKLOG.md.
+        if get(ENV, "JM_SHIFT_CLAMP", "0") == "1"
             sd = parse(Float64, get(ENV, "JM_SHIFT_SECONDDIFF", "0.05"))   # metres
             for _ in 1:8
                 worst = 0.0
@@ -4228,6 +4235,26 @@ function main()
             # PREDICTION, stated before the first run: a smooth racing line should give a median
             # |dv| well under 1 m/s between adjacent samples (~9.7 m apart at Monza). If the kinks
             # drive the darting, expect median |dv| > 2 m/s and a long tail of >10 m/s jumps.
+            # E84-S5 follow-on: is the culprit NODE SPACING rather than lateral kinks?
+            # sim.jl computes kappa = dtheta/ds over +/-ksmooth nodes. A tiny ds -- two nearly
+            # coincident centreline nodes -- blows kappa up however smooth the line is laterally,
+            # collapsing vtarget for ONE sample. The lateral second-difference clamp moved Monza
+            # only 12 -> 10 steps >10 m/s (target was 0-2) and Watkins 10 -> 11, which is what you
+            # would expect if the spikes are not lateral at all.
+            # PREDICTION, stated before the first run: if spacing is the cause, the smallest node
+            # gaps are << the median (p01 under ~0.5 m against a median of several metres), and the
+            # nodes carrying the largest kappa are drawn from those smallest gaps.
+            let P = AILINE.pos, nn = length(AILINE.pos)
+                dss = [hypot(P[mod1(i+1,nn)][1]-P[i][1], P[mod1(i+1,nn)][2]-P[i][2]) for i in 1:nn]
+                qq(v,p) = sort(v)[clamp(round(Int, p*length(v)), 1, length(v))]
+                ordk = sortperm(AILINE.κ, by=abs, rev=true)[1:min(20,nn)]
+                println("\n  ---- E84-S5: centreline NODE SPACING (", nn, " nodes) ----")
+                println("    ds m: p01 ", round(qq(dss,0.01),digits=3), "  p10 ", round(qq(dss,0.10),digits=3),
+                        "  p50 ", round(qq(dss,0.50),digits=3), "  min ", round(minimum(dss),digits=4))
+                println("    ds at the 20 highest-|kappa| nodes: median ",
+                        round(sort([dss[i] for i in ordk])[10], digits=3), " m   min ",
+                        round(minimum(dss[i] for i in ordk), digits=4), " m")
+            end
             dvl = [abs(vloc[i+1]-vloc[i]) for i in 1:length(vloc)-1]
             dvh = [abs(vhor[i+1]-vhor[i]) for i in 1:length(vhor)-1]
             spacing = AILINE.total / n

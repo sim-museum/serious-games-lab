@@ -1645,9 +1645,20 @@ offset — a smoother line that sits off the road is not an improvement.
    | before (E89 baseline) | 1.205 | 53.84 | **12/599** |
    | with the clamp | 0.993 | 57.11 | **10/599** |
 
-   **Target was 0–2. Got 10.** The clamp is close to ineffective on the thing it was written for, and
-   the `max` even rose slightly. Recorded as a miss rather than reported as an improvement: 12 → 10
-   is within noise of nothing, and calling it progress would bury the real cause.
+   Full result, both tracks, each against its own control on one binary:
+
+   | | p90 | steps >10 m/s |
+   |---|---|---|
+   | Monza control | 1.205 | 12 |
+   | Monza clamped | 0.993 | 10 |
+   | Watkins control | **0.257** | 10 |
+   | Watkins clamped | **1.159** | 11 |
+
+   **Target was 0–2 at Monza. Got 10 — and Watkins REGRESSED, its p90 4.5× worse.** ⛔ **The clamp is
+   therefore DEFAULT OFF** (`JM_SHIFT_CLAMP=1` to enable). Kept rather than deleted, because the
+   measurement is the valuable part: it is evidence AGAINST the lateral-kink cause. Recorded as a
+   miss and a regression rather than reported as "12 → 10, an improvement", which is what the Monza
+   column alone would have supported.
 
    ⭐ **BETTER HYPOTHESIS — NODE SPACING, NOT LATERAL KINKS.** `JuliaMotor/src/sim.jl:177` computes
    `κ[i] = dθ/ds`, already smoothed over ±`ksmooth` nodes. **If `ds` is tiny — two nearly-coincident
