@@ -2183,3 +2183,40 @@ smoothness and lane discipline**, not just lap time. 🔒 **READ-ONLY — copy b
 **Done when** a Monza AI car's speed-vs-lap-distance trace has no unexplained collapses to `vmin`,
 its lane-switch rate is within the range measured from the `.rpy` replays, and the PO's re-drive
 confirms it — **with the numbers recorded here, not judged by feel.**
+
+### E90 (2026-08-29) — 🔴 Monza and Watkins have almost NO collidable barriers
+
+Found while running E87 on the PO's three tracks. The gate passes at both — and the pass is the
+symptom:
+
+| track | solids | barrier objects present in the GPL track data |
+|---|---|---|
+| Zandvoort | **269** | `armcoend`, `armcopit`, `armco_s`, `armco_sh`, `wall_e/s/t` |
+| Monza | **2** | `armco_s`, `FENCE_S`, `rail`, `Wall_e`, `Wall_s`, `Wall_t` |
+| Watkins | **5** | `armco_s`, `fence` |
+
+The barrier objects **exist in the data** for all three (read straight out of
+`~/sgl/THU/WP/drive_c/Sierra/GPL/tracks/<t>/`), and `solid_exempt` in
+`drive_native_mtk.jl` deliberately keeps `armco`/`fence`/`rail`/`barrier`/`wall` collidable
+regardless of mesh — precisely so barriers cannot be silently de-solidified. Yet Monza ends up with
+two collidable objects on a circuit with continuous armco down both straights.
+
+**If this is what it looks like, the car drives THROUGH the armco at Monza and Watkins** — a
+gameplay defect, and one that a passing E87 actively conceals, because a "0 undrawn-but-solid"
+verdict over a population of 2 is vacuous.
+
+⚠️ **WHAT IS AND IS NOT ESTABLISHED.** Established: the barrier NAMES exist in the track data, and
+`SOLIDS` ends up at 2/5 versus Zandvoort's 269. NOT established: how many barrier INSTANCES are
+placed on each circuit — name presence is not a placement count, and a track can ship an object it
+never places. **Measure that first, with the expected number stated before the run.**
+
+**Then find where they are lost.** Candidates in order: (a) `trackside_objects` does not return them
+for these tracks; (b) a `drop()` rule removes them before `SOLIDS` is built; (c) the names differ in
+case or suffix from what `solid_exempt` matches (`FENCE_S`/`Wall_e` are capitalised in the data, and
+`solid_exempt` matches lowercase prefixes — **check the lowercasing actually happens on this path**).
+
+⚠️ Candidate (c) is the cheapest to check and the easiest to get wrong by reading: `solid_exempt(nml)`
+is called with `nml`, and whether that is already lowercased must be READ AT THE CALL SITE, not
+assumed from the variable name.
+
+**Points:** 8
