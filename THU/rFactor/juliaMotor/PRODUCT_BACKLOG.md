@@ -1285,6 +1285,16 @@ the cost to become invisible.
 
 **Test:** run Spa twice with `JM_TEXCACHE=1` and compare `[t+…]` at `build_gpl done`. **State the
 expectation first: the cold run should be unchanged (13+ min) and the warm run dramatically faster.**
+◐ **COLD RUN IN PROGRESS (2026-08-29): the cache DOES populate — `~/.cache/juliamotor` reached
+**1.1 GB** for Spa alone while `build_gpl` was still running.** So the mechanism is functional and
+genuinely just switched off; nothing is broken about it.
+
+⚠️ **AND THAT SIZE IS A REAL REASON SOMEONE MIGHT HAVE LEFT IT OFF.** Decoded RGBA is uncompressed:
+Spa's 786 MB archive expands past 1.1 GB of cache, and there are five tracks. **A default that
+silently consumes several GB of `~/.cache` is a decision for the PO, not a performance tweak to
+flip.** Report the final per-track sizes alongside the timing before proposing any default change —
+"it loads faster" is only half the trade.
+
 ⚠️ The cold run must be allowed to COMPLETE or nothing is cached — every Spa run so far was killed
 by a timeout mid-`build_gpl`, which is also why no partial cache exists to have hinted at this.
 
