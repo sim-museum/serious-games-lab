@@ -1674,9 +1674,13 @@ offset — a smoother line that sits off the road is not an improvement.
 
    ⛔ **REFUTED (2026-08-29). Monza, 1925 nodes:**
 
-   | ds p01 | ds p10 | ds p50 | ds min | ds at the 20 highest-\|κ\| nodes |
-   |---|---|---|---|---|
-   | 2.952 m | 3.0 m | 3.0 m | 0.544 m | **median 2.996 m** |
+   | track | nodes | ds p01 | ds p50 | ds min | ds at the 20 highest-\|κ\| nodes |
+   |---|---|---|---|---|---|
+   | Monza | 1925 | 2.952 m | 3.0 m | 0.544 m | median 2.996 m |
+   | Watkins | 1251 | 2.967 m | 3.001 m | **2.873 m** | median 3.001 m, min 2.916 m |
+
+   Watkins is the decisive one: its SMALLEST gap in the whole lap is 2.873 m against a median of
+   3.001 m — there are no small gaps to blame, yet it still shows 10 steps >10 m/s.
 
    The prediction was "p01 under ~0.5 m against a median of several metres, with the high-κ nodes
    drawn from the smallest gaps". Spacing is **uniform at 3.0 m**, and the highest-κ nodes sit at
