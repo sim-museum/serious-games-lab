@@ -3012,9 +3012,16 @@ let objnames=Set{String}()
             push!(cr, (lowercase(i.name), lat, hr.found ? round(hr.lapdist,digits=0) : NaN, ry))
         end
         sort!(cr, by=x->(x[1], isnan(x[2]) ? 1e9 : abs(x[2])))
-        println("== JM_CROWDDIAG kept crowd rows (lat NaN = off the road ribbon = out on the dunes; relyaw ±90 = PERPENDICULAR) ==")
+        println("== JM_CROWDDIAG crowd rows (lat NaN = off the road ribbon = out on the dunes; relyaw ±90 = PERPENDICULAR) ==")
         for (nm,lat,ld,ry) in cr; println("   ", rpad(nm,12), "lat=", rpad(lat,8), " lapdist=", rpad(ld,8), " relyaw=", ry); end
-        println("   (", length(cr), " crowd rows kept)"); flush(stdout)
+        # E88: `insts` is the RAW placement list (built ~line 1857, long before drop() exists), so
+        # the count above is rows PLACED, not rows KEPT -- it cannot move when a drop rule changes.
+        # It was labelled "kept" and read that way: the E88 before/after census came back 52 -> 52
+        # and looked like a fix that did nothing, when it was a measurement that could not respond.
+        # Report both, and say which is which.
+        nkept = count(i -> standcrowd(i.name) && !drop(i.name), insts)
+        println("   (", length(cr), " crowd rows PLACED)")
+        println("   (", nkept, " crowd rows KEPT after drop())"); flush(stdout)
     end
 end
 
