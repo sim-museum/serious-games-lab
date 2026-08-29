@@ -2407,6 +2407,28 @@ that was not the whole cause or the deadzone is still too small for their stick.
    not simply reduce `c_c` until it feels right** — that would replace one unjustified constant with
    another, and the constraint is about PROVENANCE, not magnitude.
 
+   ⛔ **ATTEMPTED — THE AVAILABLE GOLD `.ibt` FILES CONTAIN NO CLEAN COAST-DOWN (2026-08-29).** Both
+   sets in `~/gold standard/julia racer/` were scanned for runs of ≥30 consecutive samples with
+   `Throttle < 2%` **and** `Brake < 2%` (sample rate verified as **60 Hz** from the `SessionTime`
+   channel, not assumed):
+
+   * **Nürburgring** — 2 coast runs, and one of them **ACCELERATES** (61 → 66 km/h over 3.1 s,
+     i.e. −0.047 g). That is the Nordschleife's elevation: gravity contaminates every coast segment,
+     so a deceleration read off this track is drag **plus or minus** an unknown slope term.
+   * **Skidpad** — 13 coast runs, but the circuit is a continuous constant-radius corner, so the
+     numbers are dominated by **cornering scrub**: 0.863 g (64 → 32 km/h in 1.05 s) and 0.625 g
+     (76 → 37 km/h) with the brake at zero. Those are not straight-line drag figures. The quieter
+     ones (0.014 g at 11–15 km/h, 0.054 g at 26 km/h) are at speeds far below where the PO drives.
+
+   **So the comparison E91 needs cannot be made from the telemetry on hand**, and any number taken
+   from it would be drag plus an uncontrolled contaminant. ⚠️ Note both contaminants push in the
+   direction that would make our model look CORRECT — a hard-cornering "coast" at 0.86 g makes 0.302 g
+   look conservative. Concluding "the model matches gold" from this data would be exactly backwards.
+
+   **What would settle it:** one `.ibt` of a straight-line coast-down — lift off in top gear on a
+   flat straight and let it run, no steering, no brake. That single lap answers the question outright,
+   and it is the kind of thing only the PO can record.
+
    ⭐ **(SUPERSEDED REASONING, KEPT:) THAT PROMOTES ENGINE BRAKING TO PRIME PHYSICAL SUSPECT.** If `brk == 0` and the car still
    decelerates like ABS, the only remaining path is the driveline: at zero throttle with the clutch
    engaged in a low gear, engine drag reaches the wheels through `c_c` / `T_cap` / `Ie` and the
