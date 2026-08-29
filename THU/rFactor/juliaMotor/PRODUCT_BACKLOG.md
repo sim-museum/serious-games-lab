@@ -2584,3 +2584,23 @@ cache written. If it completed, a WARM run is the outstanding measurement.
 
 * **3 phantom `JM_*` levers** documented as working opt-ins do not exist (`JM_BRUSH`, `JM_AI_KINEMATIC`, `JM_FFB_DEAD`), and `JM_NO_SHIFTCLAMP` was stale (corrected). ma: 37 named / 0 missing; bob: 103 / 3 (2 false positives).
 * **`grep` silently skips ~46 % of these trees** (ugrep treats any byte >127 as binary and says nothing). Recorded in both `CLAUDE.md` files and to memory. **A zero-result search here is not evidence of absence until repeated with `-a`.**
+
+### E91-S1 (2026-08-29) — the engine-braking constant is still INVENTED, and the earlier split that justified it was arithmetically invalid
+
+**Finding 1 — the knob was removed, the magic number was not.** `JuliaMotorMTK/src/components/powertrain.jl:43` holds `const ENGBRAKE = 0.012`. The comment directly above it quotes the PO's standing constraint — *"the car physics should be determined entirely by the iracing ibt data, there should be no modifiable parameters"* — and records that `JM_ENGBRAKE` was deleted for that reason. **Deleting the env var removed the KNOB but left the VALUE unsourced.** 0.012 is not derived from any `.ibt`; `tools/engbrake_probe.jl` (which the comment names as the thing that would source it) compares downshift rpm SPIKES, not the coast-down decay, so it cannot produce this number either.
+
+**Finding 2 — the measurement that defended 0.012 subtracted baselines taken at the WRONG SPEEDS.** The note at `powertrain.jl:24-38` split the PO's coast-downs as clutch-IN 130 km/h → 1.24 m/s² and 96 km/h → 1.06, versus clutch-OUT 5th @161 km/h → 2.56 and 4th @126 km/h → 2.86, and reported the engine share as **0.7 and 1.6 m/s²**. Those subtractions pair 161 against 130, and 126 against 96. **Aero drag goes as v², so a baseline measured 20–30 % slower is not the baseline at the test speed.** Fitting the two clutch-in points to `a = A·v² + R` (exact, 2 points 2 unknowns: A = 3.04e-4, R = 0.844 m/s²) and evaluating the baseline AT EACH TEST SPEED gives engine shares **1.11 and 1.64 m/s²**, not 0.7 and 1.6.
+
+**Finding 3 — corrected, the implied constant is 0.0137–0.0183 (mean 0.0160), so the code's 0.012 is 66–88 % of it — LOW, not high.** Solving the model's own form `T_eng = eb·rpm` ⇒ `eb = a_eng·Rw·m/(rpm·gear·final·η)`:
+
+| gear | km/h | total | baseline @ that speed | engine | rpm | implied eb |
+|---|---|---|---|---|---|---|
+| 5th | 161 | 2.56 | 1.45 | **1.11** | 4872 | 0.01367 |
+| 4th | 126 | 2.86 | 1.22 | **1.64** | 4537 | 0.01830 |
+
+⚠️ **This does NOT license changing 0.012 to 0.016.** The spread is still **1.34×** across two points whose rpm differ by only 7 %, so `eb·rpm` cannot fit both even after the correction — the残 disagreement is either the model FORM or the input numbers. And the whole derivation rests on **four hand-copied numbers** and a **2-point fit** whose fitted rolling term (R = 0.844 m/s², 0.086 g) is ~4× a plausible race-car Crr, which suggests R is absorbing something that is not rolling resistance.
+
+**Bearing on the PO's complaint:** the PO reports the car decelerating off-throttle *too hard*, like ABS. Corrected, engine braking comes out **higher** than the code models, not lower — so if these numbers hold, the excess the PO feels is **not** the engine-braking term, and lowering it (which was proposed and reverted once already) would be the wrong fix for the second time.
+
+**NEXT (E91-S2):** stop reusing hand-copied numbers. Extract clutch-in and clutch-out zero-throttle coast-downs directly from the `.ibt` files already on disk (12+ Zandvoort/Nordschleife sessions under `data/juliaracer/`), fit `A·v² + R` over the full speed range rather than 2 points, and report `eb` with its scatter. Only then is a value change defensible under the PO's constraint.
+
