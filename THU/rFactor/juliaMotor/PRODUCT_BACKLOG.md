@@ -1514,6 +1514,31 @@ offset — a smoother line that sits off the road is not an improvement.
 2. **Racing line extraction from the `.rpy` files.** Decode enough of the format to recover a
    position-vs-time line for one car at one track; validate by checking the lap time it implies
    matches the filename to within a few hundredths. **State the expected number BEFORE running it.**
+
+   ◐ **FORMAT PARTLY DECODED (2026-08-28).** Corpus: **166** replays in
+   `~/sgl/THU/INSTALL/replay/`, 77 with a lap time in the filename.
+
+   Chunk layout — 4-byte tags stored byte-reversed, `tag + u32 + u32(size)`:
+   `RPLY` (container) → `RPHD` (header: track name, driver, car count) → `CARS` → `DRLS`/`DRNT`
+   (driver entries) → `LPTB` → **`LPRO`** (lap boundaries) → `RPTP` (the bulk tape) → `NVAP`.
+
+   `LPRO` holds a monotonically increasing `u32` series in **MILLISECONDS, cumulative** — lap times
+   are the successive DIFFERENCES, not stored values. (The first guess, that a lap time is stored
+   directly as `86545` ms or `86.545f`, gave **zero** hits in the whole file. Recorded because the
+   wrong guess is what identified the encoding.)
+
+   **Validation, run over the whole corpus:** best lap == filename to <0.05 s in **57 of 77** files.
+   ⚠️ The 20 misses are ALL 0.1–0.6 s **too SLOW, never too fast** — a systematic signature, not
+   noise: the series is not a flat `u32` array (one interleaved record decodes as ASCII `PNPb`), so
+   a naive walk drops the record carrying the true best lap and returns the second best. Finish by
+   identifying the interleaved record type; the 57 exact matches say the ms/cumulative reading is
+   right.
+
+   ⚠️ **These are HOTLAPS: `RPHD` car count is 1.** They give a per-car pace reference and a racing
+   line, but they say NOTHING about how AI cars behave relative to each other — which is exactly
+   what E89 ("dart like june bugs, lunge ahead, then fall back") is about. A multi-car GPL replay
+   is needed for that, or the behaviour must be derived some other way. Do not calibrate E89 from
+   these files and call it done.
 3. **One slot-car opponent** driving that line, drawn with the existing car mesh, with collision
    against the player left OUT of this sprint.
 4. **Four opponents, per-car pace offsets** calibrated to the table above, at all three tracks.

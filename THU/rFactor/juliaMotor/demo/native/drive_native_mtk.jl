@@ -2121,7 +2121,15 @@ let objnames=Set{String}()
     # "dropped" by the mesh footprint filter and were on screen anyway, because they arrive as
     # sprites. A name rule cannot be bypassed that way.
     # JM_KEEP_CROWDROWS=1 restores them.
-    _dropcrowdrows = ZANDV && get(ENV,"JM_KEEP_CROWDROWS","0") == "0"
+    # E88 (PO 2026-08-28): "remove all lines of people objects from Watkins Glen, several of which
+    # are right in the track on the back stretch" -- video 260828_watkins_race.mp4.
+    # The guard used to read `ZANDV &&`. E79 carried out the PO's Zandvoort sentence literally and
+    # left the GENERAL half of the same instruction unapplied everywhere else: "remove line-of-people
+    # objects if there's any chance they could be in the road or partially hanging in air; these
+    # objects don't add much and detract a lot if misplaced." Watkins therefore kept every
+    # standcrowd row, including the ones the PO drove through on the back stretch.
+    # Now unconditional (all tracks). JM_KEEP_CROWDROWS=1 restores them.
+    _dropcrowdrows = get(ENV,"JM_KEEP_CROWDROWS","0") == "0"
     drop(nm) = (!isempty(_keeptest) && any(p->startswith(nm,p), _keeptest)) ? false :
                (_dropcrowdrows && standcrowd(nm)) ||
                (!isempty(_droptest) && any(p->startswith(nm,p), _droptest)) || (!standcrowd(nm) && (
