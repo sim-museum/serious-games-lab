@@ -2296,3 +2296,27 @@ hypothesis and the archive contents refuted it. One measurement agreeing is not 
 right measurement._
 
 **Points:** 8
+
+---
+
+### ⚠️ AUDIT (2026-08-29): three documented env levers in this file DO NOT EXIST
+
+Every `JM_*` name mentioned in this backlog was checked against the source (90 named). Four came
+back absent; one (`JM_NO_SHIFTCLAMP`) was stale and has been corrected. The other three are still
+documented here as working opt-ins and are **not in any `.jl` file**:
+
+| lever | what this backlog claims | reality |
+|---|---|---|
+| `JM_BRUSH` | *"brush tyre WIRED into the car (opt-in `JM_BRUSH`)"*, and a planned task *"make brush default (needs a `JM_BRUSH` test-drive for feel)"* | absent. `BRUSH` appears in 8 `.jl` files, so the MODEL exists — but there is no env switch by that name, so the documented way to turn it on does nothing |
+| `JM_AI_KINEMATIC` | *"robust kinematic fallback kept (`JM_AI_KINEMATIC`)"* | absent. `KINEMATIC` appears in 1 `.jl` file |
+| `JM_FFB_DEAD` | *"deadzone on the front-axle lateral force (`FFB_DEAD`, `JM_FFB_DEAD`, default 0.06 mg/4)"* | absent, and `FFB_DEAD` is absent too — neither name exists |
+
+**Why this matters more than a typo:** each of these tells a reader that a capability is available
+behind a flag. Setting a non-existent env var fails silently and looks exactly like "I enabled it
+and it made no difference" — which is a conclusion about the FEATURE drawn from a fact about the
+FLAG. A planned sprint ("make brush default") is currently gated on a test-drive that cannot be
+performed as written.
+
+**Do not fix by adding the flags.** Find out what happened to each first: renamed, removed, or never
+wired. Only the third case is a defect; the first two are documentation rot, and inventing a flag to
+match a stale note would manufacture the feature's appearance without its substance.
