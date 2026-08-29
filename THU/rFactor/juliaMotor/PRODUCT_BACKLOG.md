@@ -2359,12 +2359,34 @@ that was not the whole cause or the deadzone is still too small for their stick.
 
    | line | term | value | note |
    |---|---|---|---|
-   | 72 | rolling resistance | `rr = 0.026*m*g*tanh(u/0.12)` | **Crr = 0.026** is roughly double a realistic tarmac figure (~0.012–0.015) |
+   | 72 | rolling resistance | `rr = 0.026*m*g*tanh(u/0.12)` | Crr = 0.026, ~double a realistic tarmac figure |
    | 56 | clutch damping | `c_c = 60.0` | drives engine braking through the driveline at zero throttle |
    | 56 | torque cap | `T_cap = 500.0` | ditto |
 
    These are exactly the "modifiable parameters" the PO's standing constraint rules out. **The fix is
    to derive them from the `.ibt` or to record why they cannot be — not to retune them by feel.**
+
+   ⭐ **COMPUTED (2026-08-29) — AERO + ROLLING ARE NOT THE CAUSE, AND `Crr` IS A RED HERRING.**
+   With the model's own constants (`m=617`, `CdA=0.9`, `ρ=1.10`, `Crr=0.026`):
+
+   | speed | drag | rolling | total | coast decel |
+   |---|---|---|---|---|
+   | 100 km/h | 382 N | 157 N | 539 N | **0.089 g** |
+   | 200 km/h | 1528 N | 157 N | 1685 N | **0.278 g** |
+   | 280 km/h | 2994 N | 157 N | 3152 N | **0.521 g** |
+
+   That is an ordinary race-car coast, nowhere near "powerful antilock brakes" (a 1967 F1 car brakes
+   at ~1.1–1.3 g). And **rolling resistance contributes a flat 0.026 g at every speed** — correcting
+   `Crr` to a realistic 0.014 changes the retarding force by **73 N**, which is imperceptible.
+   **So "fixing" `Crr` would have done nothing while looking like a fix**, and it is struck from the
+   suspect list on arithmetic rather than opinion.
+
+   ⭐ **THAT PROMOTES ENGINE BRAKING TO PRIME PHYSICAL SUSPECT.** If `brk == 0` and the car still
+   decelerates like ABS, the only remaining path is the driveline: at zero throttle with the clutch
+   engaged in a low gear, engine drag reaches the wheels through `c_c` / `T_cap` / `Ie` and the
+   `engine_torque(rpm, 0)` curve. **Measure the coast decel in the sim with `brk` pinned to 0 and
+   compare it against the table above** — anything much beyond ~0.3 g at 200 km/h is coming from the
+   driveline, not the air.
 
 **Done when** a coast-down from a stated speed is logged with `brk` proven 0, the deceleration curve
 is compared against the `.ibt` gold for the same car and speed, and any term not traceable to the
