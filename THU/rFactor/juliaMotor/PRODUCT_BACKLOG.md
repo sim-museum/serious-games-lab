@@ -1862,3 +1862,55 @@ it before running and check it against the census.
 
 **Done when** no `standcrowd` row remains at Watkins, the count removed is recorded here, and the
 other three tracks' counts are recorded too (the guard removal affects all of them).
+
+
+---
+
+### E89 (PO 2026-08-28) — AI cars "dart around like june bugs, lunge ahead, then fall back"
+
+PO: *"AI cars at monza dart around like june bugs, lunge ahead, then fall back. Make AI cars behave
+as they do in GPL; look at the .rpy GPL replay files under ~/sgl/THU"* — video
+`/home/admin/Videos/260828_monza_race.mp4` (5-car race, pole start, 10 s head start,
+`JM_AI_REFLAP=138`).
+
+⭐ **THE "LUNGE AHEAD, THEN FALL BACK" IS ALREADY MEASURED — it is E84-S3's curvature spikes.**
+Do not start from scratch. E84-S3 measured Monza's racing line and found **rare but physically
+impossible kinks**: `max κ = 0.32 /m` = a **3.1 m radius**, where no F1 corner is tighter than
+Monaco's ~12 m Loews. `_vtarget = √(amax/κ)` pins the commanded speed to **`vmin` = 12 m/s** at each
+one — and recovering to 74 m/s at the 9 m/s² acceleration cap takes **~7 s and ~300 m**. The 150 m
+forward-max then poisons the approach as well (`p10` vtarget falls 37.5 → 18.0 m/s while the median
+does not move at all).
+
+**A car that accelerates, slams to 12 m/s at an invisible point, then claws back up IS "lunge ahead,
+then fall back."** Monza has **five spike clusters** — `s≈2141–2477` (five of the eight worst inside
+336 m) and `s≈950` — so it happens several times a lap. E84-S4 then confirmed the **re-centring pass
+creates the kinks** (`JM_NORECENTRE=1`: max κ 0.32 → 0.034, radius<20 m count 4 → 0).
+
+⭐ **So E84's fix and this PO report are very likely the SAME DEFECT.** Fix the kinks first and
+re-drive before touching the racecraft — most of the lunging may simply stop.
+
+**The "darting like june bugs" is a SECOND, lateral mechanism.** `ai.jl:228` already carries
+hysteresis added for exactly this, in the author's own words — *"so the AI commit to a pass instead
+of skittering between rails like a water-insect"*. The PO is describing that behaviour anyway, so the
+hysteresis is **insufficient, not absent**. Measure the lane-change RATE (switches per car per lap)
+before changing thresholds.
+
+**Third, smaller: the mishap system.** `ai.jl:220` — `rand() < 8.0e-6` per step gives a car a 2.4 s
+crawl at **0.22× speed** (~1–2 per race across the field), and the launch adds a **45 %** chance of a
+getaway fumble per car. Both are deliberate GPL-style imperfections, but they also read exactly as
+"falls back". Check they are not firing far more often than intended at 60 Hz × 5 cars.
+
+**Calibrate against the `.rpy` files, as the PO asks.** `/home/admin/sgl/THU/INSTALL/replay/` holds a
+complete `67F1_Rob_Fle_monza_<car>_<laptime>.rpy` set for all seven 1967 chassis (Lotus 1:26.490 →
+Cooper 1:28.905, a **2.42 s spread**). Those are real GPL driving: use them for **speed-vs-distance
+smoothness and lane discipline**, not just lap time. 🔒 **READ-ONLY — copy before parsing.**
+
+**Suggested order:**
+1. Fix the E84-S4 kinks (clamp each re-centring shift relative to its neighbours; keep the pass).
+2. **Re-drive Monza and re-report** — quantify what remains before tuning anything.
+3. Measure lane-switch rate per car per lap; compare against a decoded `.rpy` line.
+4. Only then touch hysteresis / mishap rates.
+
+**Done when** a Monza AI car's speed-vs-lap-distance trace has no unexplained collapses to `vmin`,
+its lane-switch rate is within the range measured from the `.rpy` replays, and the PO's re-drive
+confirms it — **with the numbers recorded here, not judged by feel.**

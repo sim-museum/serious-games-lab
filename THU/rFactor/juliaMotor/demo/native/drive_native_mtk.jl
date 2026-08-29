@@ -167,6 +167,14 @@ const AI_REL    = haskey(ENV, "JM_AI_REL") ? clamp(parse(Float64, ENV["JM_AI_REL
 # E12/G2: physics-AI corner-speed limit (lateral m/s² assumed for vtarget=√(amax/κ)).  Lower = the AI
 # brakes earlier / takes corners slower → fewer over-speed-entry spins on the hilly tracks, at some pace.
 const AI_AMAX   = clamp(parse(Float64, get(ENV, "JM_AI_AMAX", "8.0")), 4.0, 14.0)
+# PO 2026-08-28: JM_AI_HEADSTART=<seconds> holds the FIELD on the grid for N seconds after the
+# human launches, so the player gets a clean head start. The AI keep their grid poses until
+# released (the existing "standing on the grid" branch below already draws them stationary), then
+# launch normally -- including the per-car getaway fumbles. 0 = the usual simultaneous start.
+const AI_HEADSTART = max(0.0, parse(Float64, get(ENV, "JM_AI_HEADSTART", "0")))
+# PO 2026-08-28: JM_POLE=1 puts the HUMAN on pole regardless of qualifying. Without a practice lap
+# `grid_order` gives you no time and grids you LAST (correct, and what the PO saw as "P5 of 5").
+const POLE = get(ENV, "JM_POLE", "0") != "0"
 # AI model: KINEMATIC multi-rail field by DEFAULT (RaceAI.step_field! — robust, GPL-authentic,
 # never spins or leaves the rail; the PO's chosen "GPL 3-rail" AI).  The physics-AI path is
 # OPT-IN via JM_AI_PHYSICS, per RACE_AI_NOTES.md ("ship opt-in first; default only after a
@@ -4328,6 +4336,7 @@ function main()
     # the whole field launches together — so you never miss the start by looking away.
     HOLD_START = IS_RACE && N_AI > 0 && !SKIDPAD && !SMOKE
     race_go    = Ref(!HOLD_START)
+    ai_release = Ref(-1.0)          # PO head start: wall time at which the FIELD may launch
     launch_done = Ref(false)     # the initial standing-start getaway is over (car has reached speed once)
     # AI reference qual times: the paced target + a small per-car spread so the grid lines
     # up in chassis order (~0.35 s/slot at 87 s) rather than a dead heat.
@@ -4335,6 +4344,8 @@ function main()
     ROW = 9.0; GRID_LANE = 2.2          # grid row gap (m) + 2-wide lane offset
     function form_grid!(qtime)
         order = RaceAI.grid_order(qtime, ai_quals)        # pole-first entrant ids (0 = player)
+        # PO: force the human to the front, keeping the AI's own pace order behind.
+        POLE && (order = vcat(0, filter(!=(0), order)))
         prank = findfirst(==(0), order)
         for (i, c) in enumerate(AICARS)
             r = findfirst(==(i), order)
@@ -4346,7 +4357,8 @@ function main()
             c.lane = isodd(r) ? GRID_LANE : -GRID_LANE; c.tlane = c.lane
             AI_PHYSICS && (gp = RaceAI.pose_at(AILINE, c.s, c.lane); AIplace!(AIPHYS[i], gp[1], gp[3], gp[4]; v=0.0))
         end
-        println(isfinite(qtime) ? "\n  ═══ GRID (from your practice best) ═══" : "\n  ═══ GRID ═══")
+        println(POLE ? "\n  ═══ GRID (you on POLE — JM_POLE) ═══" :
+                isfinite(qtime) ? "\n  ═══ GRID (from your practice best) ═══" : "\n  ═══ GRID ═══")
         for (p, id) in enumerate(order)
             println("   P$p  ", id==0 ? (isfinite(qtime) ? "You — $(fmt_lap(qtime))" : "You (no practice lap)") : AICHASSIS[id].name)
         end
@@ -4477,6 +4489,9 @@ function main()
         # green light: the field launches the moment you ask for throttle (standing start)
         if HOLD_START && !race_go[] && phase[] == :race && inp.throttle > 0.15
             race_go[] = true; lap_t0 = cs.t          # start the clock at the launch
+            ai_release[] = cs.t + AI_HEADSTART        # PO head start: field held this long
+            AI_HEADSTART > 0 && println("  → HEAD START: you go now, the field launches in ",
+                                        round(AI_HEADSTART, digits=1), " s")
             # PO: the AI must NOT all launch perfectly — some bog / fluff a shift / spin up at the getaway.
             # Each car independently has a chance to fumble (a brief mishap = crawl), varying in severity, so
             # the field doesn't magically sail away in formation; the rest get clean launches.
@@ -4831,7 +4846,8 @@ function main()
             NTuple{6,Float64}[(a[1],a[2],a[3],a[4],0.0,0.0) for a in rep_ai_raw]
         elseif AILINE === nothing || phase[] != :race              # AI hidden until the race starts (after qualifying)
             NTuple{6,Float64}[]
-        elseif !race_go[]                                         # standing on the grid (not yet launched)
+        elseif !race_go[] || (AI_HEADSTART > 0 && ai_release[] >= 0.0 && cs.t < ai_release[])
+            # standing on the grid -- not yet launched, or held by the PO's head start
             AI_PHYSICS ? [(b=aibankP(pc); (pc.x, groundz(pc.x, pc.z), pc.z, pc.θ, b[1], b[2])) for pc in AIPHYS] :
                          [(p=RaceAI.pose_at(AILINE, c.s, c.lane); b=aibankK(p); (p[1],p[2],p[3],p[4],b[1],b[2])) for c in AICARS]
         elseif AI_PHYSICS
