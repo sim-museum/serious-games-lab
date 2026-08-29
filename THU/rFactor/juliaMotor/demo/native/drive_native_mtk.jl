@@ -4244,8 +4244,10 @@ function main()
             # PREDICTION, stated before the first run: if spacing is the cause, the smallest node
             # gaps are << the median (p01 under ~0.5 m against a median of several metres), and the
             # nodes carrying the largest kappa are drawn from those smallest gaps.
-            let P = AILINE.pos, nn = length(AILINE.pos)
-                dss = [hypot(P[mod1(i+1,nn)][1]-P[i][1], P[mod1(i+1,nn)][2]-P[i][2]) for i in 1:nn]
+            # AILine's node coordinates are x/z (y is elevation) -- NOT `pos`, which is FrenetTrack's
+            # field name. The first cut used AILINE.pos and threw FieldError at runtime.
+            let X = AILINE.x, Z = AILINE.z, nn = length(AILINE.x)
+                dss = [hypot(X[mod1(i+1,nn)]-X[i], Z[mod1(i+1,nn)]-Z[i]) for i in 1:nn]
                 qq(v,p) = sort(v)[clamp(round(Int, p*length(v)), 1, length(v))]
                 ordk = sortperm(AILINE.κ, by=abs, rev=true)[1:min(20,nn)]
                 println("\n  ---- E84-S5: centreline NODE SPACING (", nn, " nodes) ----")

@@ -1672,6 +1672,32 @@ offset — a smoother line that sits off the road is not an improvement.
    first** — if the spikes sit on near-zero spacings, the fix is to resample the centreline to a
    minimum node separation, not to smooth it further.
 
+   ⛔ **REFUTED (2026-08-29). Monza, 1925 nodes:**
+
+   | ds p01 | ds p10 | ds p50 | ds min | ds at the 20 highest-\|κ\| nodes |
+   |---|---|---|---|---|
+   | 2.952 m | 3.0 m | 3.0 m | 0.544 m | **median 2.996 m** |
+
+   The prediction was "p01 under ~0.5 m against a median of several metres, with the high-κ nodes
+   drawn from the smallest gaps". Spacing is **uniform at 3.0 m**, and the highest-κ nodes sit at
+   entirely ordinary spacing. **Node spacing is not the cause.**
+
+   ⭐ **SO BOTH CENTRELINE HYPOTHESES ARE DEAD, AND THE DATA READS DIFFERENTLY.** Neither lateral
+   kinks (the second-difference clamp moved Monza 12 → 10 and made Watkins worse) nor node spacing
+   explains the spikes. What is left is that **the spikes are CORRECT**: Monza has ~11 corners and
+   the horizon target shows 12 steps >10 m/s; Watkins has ~11 turns and shows 10. **One large
+   `vtarget` step per braking zone is what a right answer looks like** — a car SHOULD demand a big
+   speed change entering Ascari.
+
+   **That moves E89 from the target to the FOLLOWER.** If `vtarget` is right and the cars still
+   "dart, lunge ahead, then fall back", the defect is in how they TRACK it — acceleration/braking
+   limits, lag, or overshoot in the slot-car follower — not in the line they are given.
+
+   **Next, and measure before changing anything:** log per-car `v` against `vtarget` around a Monza
+   lap and look for overshoot/oscillation in the ERROR, not in the target. **State the expected
+   settling behaviour first.** ⚠️ Do not smooth `vtarget` to make the symptom go away: that would
+   slow the AI through every real corner, which is E84's pace complaint in a different disguise.
+
    ⚠️ The track-name field is NOT at a fixed offset from `DHPR` — reading `+0x10` yields "ami",
    "ort", "vort" (truncated `kyalami`, `mosport`, `zandvort`), so something variable-length precedes
    it. Fix that before trusting any per-track grouping.
