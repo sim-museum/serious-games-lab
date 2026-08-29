@@ -1661,7 +1661,7 @@ offset — a smoother line that sits off the road is not an improvement.
 
    ◐ **E84-S5 IMPLEMENTED AND MEASURED — IT DOES NOT MEET ITS OWN TARGET (2026-08-29).** The clamp
    holds each re-centring shift within `JM_SHIFT_SECONDDIFF` (0.05 m) of its neighbours' mean,
-   iterated to relax runs of bad points; `JM_NO_SHIFTCLAMP=1` reverts.
+   iterated to relax runs of bad points; `JM_SHIFT_CLAMP=1` ENABLES it (it is default OFF).
 
    | Monza, horizon | p90 | max | steps >10 m/s |
    |---|---|---|---|
