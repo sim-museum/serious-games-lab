@@ -1260,7 +1260,29 @@ work over it. A 13-minute "texture load" against a 786 MB archive is a very diff
 13-minute load against a 5 MB one, and it reframes the whole item: **this may not be a port defect at
 all** — it may be a heavyweight community Spa (high-resolution texture pack) rather than stock GPL.
 
-⭐⭐ **AND THE TEXTURE CACHE THAT WOULD FIX THE LOAD IS DISABLED BY DEFAULT (2026-08-29).**
+⛔ **CORRECTION (2026-08-29): "THE TEXTURE LOAD TAKES 13 MINUTES" WAS WRONG.** With the split
+timestamps actually printing, a cold Spa load reads:
+
+```
+[t+ 34.0s] texture load begins
+[t+116.1s]   build_gpl done (GL uploads)      <- 82 s, not 13 minutes
+[t+841.3s] physics build (mtkcompile) begins  <- 725 SECONDS UNACCOUNTED
+[t+936.2s] physics build done — game loop imminent
+```
+
+**`build_gpl` costs 82 s even cold. The missing 725 s is a gap AFTER it.** My earlier runs showed
+`loading textures…` as the last line and I read that as "still loading textures" — but that line is
+just the last thing PRINTED. Nothing between `build_gpl` and the physics build emitted anything, so
+the run had moved on and looked stalled. **Absence of output read as evidence of state**, which is
+the same error this file records against several other measurements.
+
+⭐ **THE REAL COST IS IN THE 2364 LINES BETWEEN THEM** — `build_horizon`, then the `BILLBOARDS` /
+`STATICTREES` construction with `Render.build_billboard(tn, TEXIDX)` per sprite texture, then the
+object and solid passes. That is billboard/object texture work, NOT the track's own textures.
+**Instrument that region before drawing any further conclusion** — it has already produced one wrong
+one. (Physics `mtkcompile` is a further 95 s and is at least honestly labelled.)
+
+⭐⭐ **THE TEXTURE CACHE IS ALSO DISABLED BY DEFAULT (2026-08-29) — still true, still worth having.**
 Split timestamps put the cost precisely:
 
 ```
