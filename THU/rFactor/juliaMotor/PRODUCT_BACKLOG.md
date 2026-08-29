@@ -2559,3 +2559,28 @@ is compared against the `.ibt` gold for the same car and speed, and any term not
 `.ibt` is either sourced from it or documented as an explicit, justified exception.
 
 **Points:** 8
+
+---
+
+### STATUS — where the 2026-08-28/29 session stopped (written at the PO's request)
+
+**In flight when work stopped:** a cold Spa load with `JM_TEXCACHE=1` under `gl-lock` (40-minute
+window). It had reached `[t+936.2s] physics build done — game loop imminent` with 1.1 GB of texture
+cache written. If it completed, a WARM run is the outstanding measurement.
+
+#### julia
+
+| item | state |
+|---|---|
+| **E88** — people in the Watkins track | ☑ **FIXED & VERIFIED.** `watglen 52 → 0` kept crowd rows, `zandvoort 96 → 0`, `monza 0 → 0`. Spa and the Nürburgring are recorded **not measured**, not zero. |
+| **E89** — "june bugs" | Root cause NOT the centreline. Two hypotheses falsified by measurement: the second-difference clamp missed its target (Monza 12→10, Watkins 10→11 — **regressed**, so shipped OFF), and node spacing is uniform (Watkins' smallest gap 2.873 m vs 3.001 median). Live suspect: **`ai.jl:192` rate-limits speed change to −30/+9 m/s², i.e. ~3 g of braking**, which lets the follower track a spiky-but-CORRECT `vtarget`. Test stated: physical limits (≈13/≈5) must leave step counts unchanged while the cars stop surging. |
+| **E80** — frame rate | `JM_FRAMEPROF` built and validated (Watkins: world 3.44 ms, hud 0.07 ms of 16.77 ms, vsync-capped 60 fps — **Watkins is not slow**). Spa: `build_gpl` is **82 s**, physics `mtkcompile` 95 s, and **725 s is unaccounted between them** (billboards/objects/horizon). ⛔ My earlier "the texture load takes 13 minutes" was WRONG — see the correction above. `JM_TEXCACHE` is default-OFF and works (1.1 GB for Spa alone; the disk cost is the PO's call). |
+| **E90** — collidable barriers | Largely retracted: Monza/Watkins armco is BAKED track geometry, not props (their archives hold only `pitwall*`/`fence.3do`), and Zandvoort's 269 solids come from loose `.3do` files. Open question relocated: can the car drive THROUGH the baked armco? That needs a drive, not a census. |
+| **E87** — invisible-collidable gate | Run on the PO's three tracks. Monza 2 solids / 0 undrawn, Watkins 5 / 0, **Nürburgring did not run**. ⚠️ Both passes are uninformative — a 0 verdict over a population of 2 says almost nothing. |
+| **E82** — no axles in the external view | Gold reference frames extracted to `parity/e82_gold/` (Watkins nintendo video, t=20/45/70/95 s). This is the input E75 never had across 16 sprints: every prior number was fitted to our own hub line rather than to gold. |
+| **E91** — "Tesla brakes" | Measured: coast at `throttle=0, brake=0` is **0.302 g at 100 km/h** vs 0.089 g from aero+rolling — the **driveline** adds 0.21 g, and at 100 km/h the car sheds 21 km/h in 2 s. `Crr` eliminated by arithmetic (0.026 g, flat). The constants responsible (`c_c`, `T_cap`, `Ie`, `k_idle`, `idle_rpm`) are **hardcoded, not `.ibt`-derived**, which under the PO's standing constraint is itself the defect. ⛔ **Blocked on the PO:** the gold `.ibt` files contain no clean coast-down (Nürburgring elevation makes one "coast" ACCELERATE; the skidpad is a continuous corner, giving 0.86 g "coasts"). Needs one straight-line coast-down recording. |
+
+#### Cross-project
+
+* **3 phantom `JM_*` levers** documented as working opt-ins do not exist (`JM_BRUSH`, `JM_AI_KINEMATIC`, `JM_FFB_DEAD`), and `JM_NO_SHIFTCLAMP` was stale (corrected). ma: 37 named / 0 missing; bob: 103 / 3 (2 false positives).
+* **`grep` silently skips ~46 % of these trees** (ugrep treats any byte >127 as binary and says nothing). Recorded in both `CLAUDE.md` files and to memory. **A zero-result search here is not evidence of absence until repeated with `-a`.**
