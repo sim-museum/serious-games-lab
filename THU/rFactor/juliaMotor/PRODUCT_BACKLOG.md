@@ -1216,6 +1216,29 @@ there is a second, view-independent cost of the same order, and 15 fps is not ac
 That is now the whole of E80. The mirror finding does not touch it, and the next sprint should
 profile the base frame rather than assume the remaining cost is in the same place.
 
+⛔ **THE INSTRUMENT THIS ENTRY NAMES DOES NOT MEASURE FRAMES (2026-08-29).** It says *"per-phase
+timing already exists (`JM_TIMING`)"*. `JM_TIMING` is a **launch-phase stopwatch** — its own
+definition, line 9-11: *"prints cumulative seconds at each load phase"*, `tstamp(lbl)`. It profiles
+LOADING. Following this entry gets you load timings and no frame breakdown at all.
+
+What exists for frames is `JM_FPSDIAG`, and it times the **whole frame only** — one number, no
+phases. So there is currently **no way to see where the ~65 ms goes**, and the "profile before
+changing anything" instruction cannot be carried out with what is here.
+
+**Build the missing thing first — a per-phase FRAME profiler.** Accumulate elapsed time into named
+buckets around the draw sections that already exist in the loop (sky; scenery/objects; billboards;
+car + suspension + driver + wheels; cockpit/gauges; mirrors; HUD; buffer swap) and print the
+breakdown every N frames beside the existing `[fps]` line.
+
+⚠️ **And check the obvious cheap thing before writing it:** there are only six `JM_NO*` toggles in
+the whole file (`JM_NOFFB`, `JM_NOIBT`, `JM_NO_PERP`, `JM_NOQUAL`, `JM_NO_RECENTRE`, `JM_NOREPLAY`)
+— **none disables scenery, objects or billboards**, so the cost cannot be bisected by switching
+things off with what exists either. That is why the profiler is the sprint, not a shortcut around it.
+
+⚠️ **State the expected split before running it.** At 65 ms with the mirrors gone, a plausible prior
+is that scenery/object draw dominates; if it turns out to be the buffer swap or a stall, the fix is
+in a completely different place and no amount of scenery culling will help.
+
 ### E81 (PO 2026-08-27) — floating and misplaced billboards and buildings at the Nürburgring
 
 PO: *"lots of odd buildings and parts of buildings"* at the Ring, and *"check the floating or
