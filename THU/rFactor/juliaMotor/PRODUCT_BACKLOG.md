@@ -1753,6 +1753,46 @@ position test). If absent → real invisible collidables, and the PO can be told
 the billboard position match is the defect and must be fixed, not exempted. **Start with `ftruck`
 and `hotels`** — two objects, mesh-class names, large radii, easiest to confirm by eye in a capture.
 
+### 2026-08-28 — E87-S2: the Zandvoort finding was REAL. 159 invisible collidables removed.
+
+`SOLIDS` honoured the `onroad_*` predicates (the E71-S18 fix) but **not the render's other three
+conditions**. The `JM_SOLIDGATE_WHY` diagnostic separated the causes per name:
+
+```
+bushes01/02/03  mesh=YES  dropped=no   -> UNDER 1 m, so never rendered (OBJECTS needs >1 m)
+                                          yet solidR gives bush* a 1.5 m collision radius   x158
+hotels          mesh=YES  dropped=YES  -> dropped by the junk filter, still solid (the SPA shape)  x1
+ftruck/rescu*   mesh=no                -> no mesh at all                                     x16
+```
+
+**Result — `SOLIDS` now mirrors the render's own conditions (`drop()`, the >1 m height test) for
+mesh-capable objects:**
+
+| track | solids before → after | undrawn before → after |
+|---|---|---|
+| **zandvoort** | 269 → **110** | 175 → **16** |
+| **spa** | 808 → **808** | 0 → **0** |
+
+⚠️ **TWO REGRESSIONS OF MY OWN, both caught by the gate's OWN reporting, both the same error:**
+
+| I nearly removed | scale | why it looked removable | caught by |
+|---|---|---|---|
+| `armco*` barriers | 125 @ Spa | no object mesh — they are **baked track geometry** | exempt bucket 125 → **0** |
+| `bush`/`bush2` | 14 @ Spa | no object mesh — they are **billboards** (and the PO wants bushes hittable, E15) | anchor bucket 14 → **0** |
+
+⭐ **"Has no object mesh" is NOT "is invisible."** Objects reach the screen three ways — mesh,
+billboard, baked track geometry — and `SOLIDS` can only see the first, because **`BILLBOARDS` is
+built ~75 lines LATER**. Removing collision from something the player can SEE is a quieter and worse
+failure than the invisible walls being fixed. ⭐ **Reporting three buckets separately is what made
+both visible**: a single "0 undrawn" read as success while the barriers silently ceased to exist.
+
+**The filter is therefore deliberately CONSERVATIVE — it judges only mesh-capable objects.** The 16
+meshless ones stay solid and keep being REPORTED (an honest non-zero), because at that point in the
+load the code cannot tell a billboard from nothing at all.
+
+⬜ **E87-S3, the proper close: build `SOLIDS` AFTER `BILLBOARDS`** so all three render paths are
+visible at once and the invariant can be enforced exactly rather than conservatively. Then the 16
+resolve one way or the other.
 ⬜ Still to run: **nurburgring** (22.7 km, slowest).
 
 ⚠️ Each Spa arm costs ~20 min (14.1 km lap, 92 548 HAT triangles), so the pair is ~40 min — budget

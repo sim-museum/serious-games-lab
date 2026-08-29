@@ -2515,6 +2515,40 @@ let objnames=Set{String}()
         # JM_SOLID_KEEP_HIDDEN=1 restores the old behaviour for A/B.
         if get(ENV,"JM_SOLID_KEEP_HIDDEN","0") == "0"
             (onroad_fp(i) || onroad_bldg(i) || onroad_crowd(i) || perp_crowd(i)) && continue
+            # E87-S2 (found BY the gate, at Zandvoort): the on-road predicates above were only
+            # PART of what the render drops. OBJECTS also requires a mesh, survives drop(), and
+            # is TALLER THAN 1 m -- and SOLIDS applied none of those, so:
+            #   bushes01/02/03  x158  mesh=YES, not dropped, but UNDER 1 m -> never rendered,
+            #                         yet solidR gives `bush*` a 1.5 m collision radius.
+            #   hotels          x1    dropped by the junk filter, still solid (the SPA shape).
+            #   ftruck/rescu*         no mesh at all -> cannot render, still solid.
+            # 175 of Zandvoort's 269 solids were invisible. The invariant is the same one E71-S18
+            # wrote for the on-road case -- IF IT IS NOT DRAWN, IT MUST NOT BE SOLID -- so mirror
+            # the render's OWN conditions rather than inventing a parallel test that can drift.
+            # ⚠️ EXEMPT CLASSES ARE VISIBLE BY ANOTHER PATH AND MUST STAY SOLID. The first cut of
+            # this applied the mesh/drop/height tests to EVERYTHING and removed 157 of Spa's 808
+            # solids -- including all 125 `armco*` barriers, which render as TRACK GEOMETRY and so
+            # have no object mesh. That would have made the barriers DRIVE-THROUGH: trading
+            # invisible walls for missing collision, a quieter failure than the one being fixed.
+            # The gate's own exempt list already knew these render elsewhere; honour it here.
+            solid_exempt(n) = startswith(n,"armco") || startswith(n,"fence") || startswith(n,"rail") ||
+                              startswith(n,"barrier") || startswith(n,"wall") || startswith(n,"bushrow") ||
+                              startswith(n,"haie")
+            # ⚠️ ONLY JUDGE OBJECTS THAT COULD HAVE BEEN MESHES. BILLBOARDS is built AFTER this
+            # loop (line ~2569), so a meshless object cannot be checked here -- it may well be a
+            # billboard, i.e. VISIBLE. The first cut removed meshless objects too and took Spa's
+            # `bush`/`bush2` with it: those are billboard-rendered (they showed up in the gate's
+            # ANCHOR bucket, meaning drawn elsewhere), and the PO explicitly wants bushes hittable
+            # ("more objects hittable when you run wide -- soft, you plough through with a
+            # penalty", E15). Removing collision from something the player can SEE is the same
+            # class of error as the armco regression one step earlier.
+            # So: judge only has-mesh objects. Meshless ones stay solid and the gate keeps
+            # REPORTING them -- an honest non-zero rather than a silent removal. Closing that gap
+            # properly means building SOLIDS after BILLBOARDS (E87-S3).
+            if !solid_exempt(nml) && get(objmesh, i.name, nothing) !== nothing
+                drop(i.name) && continue
+                (get(ymx,i.name,0f0) - get(ymn,i.name,0f0)) > 1.0f0 || continue
+            end
         end
         push!(SOLIDS, (Float64(i.x), Float64(i.y), r, solidkind(nml)))   # E56: tag wall vs hedge/hay for the contact law
     end
@@ -2716,6 +2750,25 @@ let objnames=Set{String}()
         if !isempty(anchor)
             println("     (anchor-mismatch classes, drawn elsewhere -- gate blind spot, NOT a defect:)")
             for (n,c) in sort(collect(anchor)); println("       ", n, " ×", c); end
+        end
+        # E87-S2: WHY is each undrawn name undrawn? Three yes/no facts settle it without another
+        # guess. OBJECTS requires `objmesh[name] !== nothing`, so a name with NO MESH can never be
+        # in it and could only ever have been a billboard. `drop(name)` is the render junk filter.
+        # If a name has a mesh AND is not dropped AND is still undrawn, it is genuinely invisible.
+        if !isempty(undrawn) && get(ENV,"JM_SOLIDGATE_WHY","") != ""
+            seen = Set{String}()
+            println("     ---- why undrawn (name: has-mesh / dropped / billboard-name) ----")
+            for (n,_,_) in undrawn
+                n in seen && continue; push!(seen, n)
+                # objmesh is keyed by the ORIGINAL-case name; find one inst that matches
+                orig = ""; for i in insts; lowercase(i.name) == n && (orig = i.name; break); end
+                hasmesh = !isempty(orig) && get(objmesh, orig, nothing) !== nothing
+                dropped = !isempty(orig) && drop(orig)
+                inbb    = n in drawnames
+                println("       ", rpad(n, 12), "  mesh=", hasmesh ? "YES" : "no ",
+                        "  dropped=", dropped ? "YES" : "no ", "  billboard-name=", inbb ? "YES" : "no ",
+                        hasmesh && !dropped ? "   <-- GENUINELY INVISIBLE" : "")
+            end
         end
         get(ENV,"JM_SOLIDGATE_EXIT","") != "" && exit(isempty(undrawn) ? 0 : 1)
     end
