@@ -20,3 +20,8 @@ human_recent.txt
 human_best.txt
 demo/native/human_recent.txt
 demo/native/human_best.txt
+
+# Per-run telemetry dumps written next to the sim (demo/native/<track>_racer_<epoch>.txt).
+# They are RUN ARTEFACTS, not source: 21 of them were swept into the repo by `git add -A`, three
+# of those in a commit whose message was about something else entirely (3a3557f).
+demo/native/*_racer_*.txt
