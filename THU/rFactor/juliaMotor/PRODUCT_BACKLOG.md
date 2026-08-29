@@ -1589,9 +1589,24 @@ offset — a smoother line that sits off the road is not an improvement.
    different multi-car file is needed, and the only other AI-roster candidates must be identified by
    `DRNT` names first (the `67F1_Rob_Fle_*` multi-car files are human league races, see above).
 
-   ⚠️ Do not assume the two `float32`s are world X/Y until a decode is validated — the check that
-   settles it is the same one that worked for `LPRO`: reconstruct a lap and compare the implied lap
-   time / track extent against a known value, and **state the expected number first**.
+   ⛔ **THE TAPE IS NOT A FIXED-STRIDE ARRAY (2026-08-29, measured).** Scanned every record size
+   8..72 at every field offset 0..24 for `float32`, `int32` and `int16` channels that behave like a
+   position (small median step, wide overall spread, few discontinuities). **Zero candidates.**
+   That also retires the earlier note here about "two `float32`s (~33.4 and ~8.5)" — that was
+   pattern-matching on THREE consecutive records, and it does not survive a scan of the whole tape.
+   `RPTP` is therefore delta-coded or bit-packed. Cracking it is its own project, not a step in E89.
+
+   ⭐ **DO NOT BLOCK E89 ON THIS.** The stated goal is *"make AI cars behave as they do in GPL"*,
+   and there is a leading hypothesis already in this backlog that needs no replay at all: **E84
+   records that the AI pace shortfall comes from CENTRELINE KINKS created by re-centring**, not from
+   speed caps. A kinked centreline gives an oscillating `vtarget` — which is exactly "dart around,
+   lunge ahead, then fall back". Same defect, two symptoms.
+
+   **Cheapest discriminating test, and it uses instruments that already exist:** log per-AI-car
+   `vtarget` and lateral offset around a Monza lap (`JM_PACEDIAG`), and look for oscillation
+   correlated with centreline curvature spikes. If the kinks drive it, E84-S5 (clamp the per-point
+   shift relative to its NEIGHBOURS — limit the second difference) fixes both items. **State the
+   expected oscillation amplitude before running.**
 
    ⚠️ The track-name field is NOT at a fixed offset from `DHPR` — reading `+0x10` yields "ami",
    "ort", "vort" (truncated `kyalami`, `mosport`, `zandvort`), so something variable-length precedes
