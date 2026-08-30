@@ -2685,10 +2685,60 @@ let objnames=Set{String}()
                  startswith(nm,"haie")||startswith(nm,"bush")||startswith(nm,"shrub")||startswith(nm,"hedge")||startswith(nm,"haystk") ? 1.5 :   # hay rows + trackside bushes/hedges (PO: more objects hittable when you run wide — soft, you plough through with a penalty).  SMALL radius so they don't clip the racing groove
                  startswith(nm,"armco")||startswith(nm,"barrier")||startswith(nm,"fence")||startswith(nm,"wall") ? 1.2 :
                  startswith(nm,"caravn")||startswith(nm,"vwvan")||startswith(nm,"ftruck")||startswith(nm,"ambul")||nm=="car2"||startswith(nm,"rescu") ? 2.4 : 0.0
+    # E95h (PO 2026-08-29, Monza: "I drove through a lot of objects as if they were not there").
+    # JM_SOLIDDIAG said it plainly: Monza built 2 solids out of 176 instances -- `tower`x2. The
+    # cause is that solidR() above is a hardcoded NAME whitelist grown from Spa/Watkins/Zandvoort,
+    # and Monza shares almost none of those names: its treeline is `trees01..trees73b`, its pit
+    # walls are `pitwall/pitwall1/pitwall2` (which `startswith(nm,"wall")` does NOT match), its
+    # barriers are `bar01..bar06` (which `startswith(nm,"barrier")` does NOT match), and its
+    # grandstands are `front01..09`/`ter01..05`. 138 of 140 distinct names fell through to 0.0.
+    #
+    # Extending the whitelist name-by-name is how it got track-specific in the first place, so
+    # measure the object instead: every mesh already has a local AABB here (lxmn/lxmx/lzmn/lzmx
+    # from E71-S8, ymn/ymx). The one thing that must NOT become solid is a wide flat BACKDROP panel
+    # -- Monza has many (`trbk1..8`, `tuntbk1/2`, `brbk1..3`, and the panoramic `trees*` strips the
+    # billboard path already treats as static backdrop). Those are WIDE and PAPER-THIN, so:
+    #
+    #     r = min(w, d) / 2      <-- min, never max
+    #
+    # A 380 m x 0.2 m forest strip gives r = 0.1 -> rejected. A 4 x 4 m tree gives r = 2.0. A
+    # grandstand 30 x 12 m gives r = 6.0. The shape does the classifying, so this generalises to
+    # every track rather than to the names of one.
+    #
+    # This runs only where the whitelist declined, so no existing radius changes; and the render
+    # -visibility filter below (mesh + drop() + height, plus the on-road predicates) still applies
+    # afterwards, keeping E71-S18's invariant intact: IF IT IS NOT DRAWN, IT MUST NOT BE SOLID.
+    GEOM_RMAX = parse(Float64, get(ENV,"JM_GEOM_RMAX","8.0"))   # above this it is a COMPOSITE .3do
+                                                                # holding a whole block (E71-S10),
+                                                                # not one object: skip, do not drop
+                                                                # a 20 m invisible disc on the map.
+    # PEOPLE ARE NEVER SOLID. The PO's standing rule is that line-of-people objects come OUT if they
+    # could be in the road or hanging in air; giving them collision discs is the opposite of that.
+    person_like(n) = occursin(r"^(flagger|peo|ppl|crowd|grndpe|spect|marshal|pit(ppl|peo))", n)
+    _geomwhy = Dict{String,String}()            # name -> why the shape rule accepted/rejected it
+    function geomR(orig, nm)
+        person_like(nm) && (_geomwhy[nm] = "person"; return 0.0)
+        haskey(lxmn, orig) || (_geomwhy[nm] = "no-mesh"; return 0.0)
+        w = lxmx[orig] - lxmn[orig]; d = lzmx[orig] - lzmn[orig]
+        h = get(ymx, orig, 0f0) - get(ymn, orig, 0f0)
+        dims = "$(round(w,digits=1))x$(round(d,digits=1))x$(round(h,digits=1))"
+        h > 1.0f0 || (_geomwhy[nm] = "flat $dims"; return 0.0)
+        r = Float64(min(w, d)) / 2                 # min: rejects wide/thin backdrop panels
+        r < 0.5      && (_geomwhy[nm] = "thin $dims (backdrop panel)"; return 0.0)
+        r > GEOM_RMAX && (_geomwhy[nm] = "huge $dims (composite .3do)"; return 0.0)
+        _geomwhy[nm] = "SOLID r=$(round(r,digits=1)) $dims"
+        r
+    end
     global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]
+    SOLIDNAMES = String[]                        # parallel to SOLIDS, for the census only
+    _geomn = 0
     for i in insts
         nml = lowercase(i.name)
-        r = solidR(nml); (r <= 0.0 || !onground(i)) && continue
+        r = solidR(nml)
+        if r <= 0.0 && get(ENV,"JM_GEOMSOLID","1") != "0"
+            r = geomR(i.name, nml); r > 0.0 && (_geomn += 1)
+        end
+        (r <= 0.0 || !onground(i)) && continue
         on_road(i.x, i.y, SOLID_EXCL_HW) && continue   # E31: don't make a collidable wall ON the road (the trapping hedge-box) — but DO keep edge barriers/haybales solid (PO)
         # E71-S18 (PO 2026-08-27, Spa: "just driving along and suddenly I'm levitating and bouncing
         # like a ball"). Telemetry pinned it: at lapdist 6896 the car's speed doubled in one 0.2 s
@@ -2744,15 +2794,28 @@ let objnames=Set{String}()
                 (get(ymx,i.name,0f0) - get(ymn,i.name,0f0)) > 1.0f0 || continue
             end
         end
-        push!(SOLIDS, (Float64(i.x), Float64(i.y), r, solidkind(nml)))   # E56: tag wall vs hedge/hay for the contact law
+        push!(SOLIDS, (Float64(i.x), Float64(i.y), r, solidkind(nml)))
+        push!(SOLIDNAMES, nml)   # E56: tag wall vs hedge/hay for the contact law
     end
     if get(ENV,"JM_SOLIDDIAG","")!=""
-        nm_solid = sort([(i.name, solidkind(lowercase(i.name))) for i in insts
-                         if solidR(lowercase(i.name)) > 0.0 && onground(i) && !on_road(i.x, i.y, SOLID_EXCL_HW) &&
-                            (get(ENV,"JM_SOLID_KEEP_HIDDEN","0") != "0" ||
-                             !(onroad_fp(i) || onroad_bldg(i) || onroad_crowd(i) || perp_crowd(i)))], by=x->x[1])
-        cnt = Dict{String,Int}(); for (n,_) in nm_solid; cnt[n]=get(cnt,n,0)+1; end
-        println("== JM_SOLIDDIAG ", length(SOLIDS), " solids: ", join(["$(n)×$(c)" for (n,c) in sort(collect(cnt))], ", "))
+        # E95h: report what is ACTUALLY in SOLIDS. The previous version of this block recomputed
+        # its own list from `solidR(...) > 0.0`, so it could not see the mesh-shape rule and kept
+        # printing "tower×2" while SOLIDS held 14 -- a diagnostic disagreeing with the thing it
+        # describes is worse than none, since it is the instrument used to judge every fix here.
+        cnt = Dict{String,Int}(); for n in SOLIDNAMES; cnt[n]=get(cnt,n,0)+1; end
+        println("== JM_SOLIDDIAG ", length(SOLIDS), " solids (", _geomn, " candidates from the shape rule): ",
+                join(["$(n)×$(c)" for (n,c) in sort(collect(cnt))], ", "))
+        # and why the shape rule turned the others down, grouped by reason
+        rej = Dict{String,Vector{String}}()
+        for (n,why) in _geomwhy
+            startswith(why,"SOLID") && continue
+            k = split(why)[1]; push!(get!(rej, k, String[]), n)
+        end
+        for (k,v) in sort(collect(rej))
+            sort!(v)
+            println("   shape rule rejected ", rpad(k,7), " ×", rpad(length(v),4), " e.g. ", join(v[1:min(end,8)], " "))
+        end
+        flush(stdout)
     end
     # billboards: (Item, render-pos base, width, height) — drawn camera-facing per frame.
     # WIDE panoramic forest strips (GPL Watkins `tree*` 80–380 m across, authored as one big

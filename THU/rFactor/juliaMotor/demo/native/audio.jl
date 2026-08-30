@@ -165,6 +165,35 @@ function start(eng::Engine)
     LAT = parse(Float64, get(ENV, "JM_AUDIO_LATENCY", "0.30"))   # bigger buffer = more headroom for a render hitch (GC, a heavy section) before it underflows
     Threads.@spawn begin
         buf = zeros(Float32, 1024, 2)
+        # E95i (PO 2026-08-29: "sound was coming out of a monitor, not my speakers. My ubuntu sound
+        # settings had no effect on the sound volume. The volume did increase when I reved.")
+        # PortAudioStream(0,2) with no device asks PortAudio for ITS default, which on this box is a
+        # RAW ALSA CARD -- the enumeration lists `HDA NVidia: Sceptre F27 (hw:1,3)`, the monitor's
+        # HDMI audio, right next to `HDA Intel PCH (hw:0,0)`. Opening a card directly bypasses
+        # PipeWire/PulseAudio completely, which is exactly why the engine was audible (it revved
+        # correctly -- the audio path itself was fine) yet Ubuntu's mixer had nothing to control:
+        # the sim was not a stream the sound server could see.
+        #
+        # Open the server's own ALSA plugin (`pulse`, device 13 here) instead. Then the sim appears
+        # as a normal application stream: it follows whatever Ubuntu has set as the default sink,
+        # moves with it if the user changes it, and obeys both the system and per-app volume.
+        # Fall back through `default`/`sysdefault` and finally to PortAudio's choice, so a box
+        # without a sound server still gets audio rather than silence.
+        devpref = let e = get(ENV, "JM_AUDIO_DEV", "")
+            isempty(e) ? ["pulse", "default", "sysdefault"] : [e]
+        end
+        havedev = Set{String}()
+        try; for d in PortAudio.devices(); d.output_bounds.max_channels > 0 && push!(havedev, d.name); end
+        catch; end
+        audiodev = nothing
+        for d in devpref; if d in havedev; audiodev = d; break; end; end
+        if audiodev === nothing
+            @warn "no PulseAudio/PipeWire audio device found — falling back to PortAudio's default; \
+                   the system volume control may not affect the sim" candidates=devpref
+        else
+            println("  [audio] output -> '", audiodev, "' (follows the Ubuntu default sink; JM_AUDIO_DEV overrides)")
+            flush(stdout)
+        end
         openfails = 0; wfails = 0
         # Resilient feeder: a render-loop hitch (first-frame JIT, GC, a heavy trackside section) can
         # starve this thread and xrun the stream.  On a write error we REOPEN and keep going, with a
@@ -175,7 +204,8 @@ function start(eng::Engine)
         while eng.running[]
             local stream
             try
-                stream = PortAudioStream(0,2; samplerate=44100, latency=LAT)
+                stream = audiodev === nothing ? PortAudioStream(0,2; samplerate=44100, latency=LAT) :
+                                                PortAudioStream(audiodev, 0, 2; samplerate=44100, latency=LAT)
                 openfails = 0
             catch e
                 # couldn't open the device THIS attempt.  On PipeWire/PulseAudio the default ALSA
