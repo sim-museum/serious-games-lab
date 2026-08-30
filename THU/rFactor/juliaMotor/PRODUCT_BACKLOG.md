@@ -2723,3 +2723,25 @@ So of ~43 s previously invisible after `build_gpl`, **36.1 s is the trackside ob
 
 ⚠️ **MY SYNTAX CHECK WAS A FALSE NEGATIVE, and this is the reusable lesson.** I verified the 9 inserted timestamps with `Meta.parseall` and it printed **PARSE OK** — then the run died with `ParseError @ :3417`. **`Meta.parseall` does not throw on a syntax error: it returns an `Expr(:error, …)` node inside the toplevel expression, so calling it and not inspecting the result proves nothing.** One stamp had landed INSIDE a multi-line `println(...)` spanning three lines, because the insertion point was chosen from the statement's FIRST line. Now checked by walking the parse tree for `:error`/`:incomplete` nodes, which reports `PARSE CLEAN (0 error nodes)`. **A checker that cannot fail is not a check** — the same shape as this project's recurring instrument problem, in a new place.
 
+#### E80-S2 — PREDICTION STATED BEFORE THE SPA RUN COMPLETED
+
+Recorded in advance so the result can refute it, per the standing rule that a parity/attribution run must state its numbers first.
+
+**Anchors:**
+
+| | HAT triangles | grid | tris/cell | objects | objects-block time |
+|---|---|---|---|---|---|
+| Watkins Glen | 15,662 | 67×53 = 3,551 | 4.41 | 163 objects + 39 billboards + 110 solid | **36.1 s** |
+| Spa | 92,548 | 202×251 = 50,702 | **1.83** | ? | ? |
+
+**Mechanism:** the trackside block issues several `JuliaMotor.hat(TRKSURF, x, y)` terrain queries PER OBJECT INSTANCE (`drive_native_mtk.jl` :2200, :2219, :2235, :2277, :2358). So its cost ≈ objects × queries-per-object × per-query cost.
+
+**Per-query cost should NOT be worse at Spa.** Spa's HAT grid is *finer* relative to its triangle count (1.83 tris/cell vs Watkins' 4.41), so a bucketed lookup does less work per call, not more. **The driver is therefore object COUNT, not terrain size.**
+
+**PREDICTIONS:**
+1. The `trackside objects/billboards/trees` block is the **largest single phase** in Spa's post-`build_gpl` region.
+2. If per-object cost is constant, block time ≈ `36.1 s × (Spa objects / 202)`. For the block alone to account for the recorded **725 s** gap, Spa would need roughly **4,050 object instances** — about **20×** Watkins.
+3. Texture upload (`build_gpl`) stays SMALL — it was 2.8 s at Watkins, and the original "texture load takes 13 minutes" claim is already known to be a misreading of which line printed last.
+
+**Refutation conditions, stated now:** if Spa's object count is far below ~4,000 yet the gap is still ~725 s, per-object cost is NOT constant and the mechanism above is wrong — look for something super-linear in object count, or a phase outside this block. If the block is a minor share of the gap, the prediction fails outright and the remaining phases (mirrors/wheels, track items, AI car models) must be examined instead.
+
