@@ -2962,7 +2962,26 @@ The shift observation **confirms** rather than contradicts this: shifting requir
 
 **So the standstill behaviour is what a manual clutch DOES:** disengaged (down) to let the engine spin up, then released (up) to take up drive. What reads as "the sense reverses once moving" is the same convention with a different requirement at each stage.
 
-⚠️ **BUT I COULD NOT REPRODUCE THE PO'S EXACT REPORT BY READING, AND I AM NOT CLOSING IT ON THAT BASIS.** Specifically unexplained: *why slider-UP at a standstill prevents motion entirely.* There is **no stall model and no idle governor**, and `engine_torque` has a `Tmin_frac = 0.2` floor — so at 0 rpm and full throttle the engine still makes ~82 N·m, which through 1st (2.23 × 4.11 × 0.9 / 0.33 m) is ~2 kN on a 617 kg car. **It should pull away with the clutch engaged.** That it does not is unaccounted for.
+✅ **RESOLVED (2026-08-30) — the physics is exonerated; the anomaly was the axis MAPPING, not the engine.**
+Measured headlessly on the real solver, standstill in 1st, full throttle, 4 s:
+
+| clutch | v after 4 s | distance | rpm |
+|---|---|---|---|
+| 0.0 (engaged) | 10.70 m/s | 23.7 m | 2911 |
+| 0.5 (slipping) | 15.60 m/s | 32.8 m | 4501 |
+| 1.0 (disengaged) | **0.0** | **0.0 m** | **9700** |
+
+**The car DOES pull away with the clutch engaged**, so the concern recorded below — "it should pull away
+with the clutch engaged … that it does not is unaccounted for" — is refuted: no stall model is missing and
+no idle governor is needed. Clutch fully OUT gives precisely the PO's own description of the *correct* case,
+*"applying throttle with slider down just revs the engine, as it should"* — 9700 rpm, zero motion. A slipping
+clutch launching hardest (0.5 beats both extremes) is also right.
+
+So *"slider-UP at a standstill prevents motion entirely"* means slider-UP was mapping to clutch = 1.0 at that
+moment, which is the reversed-sense bug E93 fixed — not a defect in the drivetrain model. Nothing further is
+owed here.
+
+~~⚠️ **BUT I COULD NOT REPRODUCE THE PO'S EXACT REPORT BY READING, AND I AM NOT CLOSING IT ON THAT BASIS.**~~ Specifically unexplained: *why slider-UP at a standstill prevents motion entirely.* There is **no stall model and no idle governor**, and `engine_torque` has a `Tmin_frac = 0.2` floor — so at 0 rpm and full throttle the engine still makes ~82 N·m, which through 1st (2.23 × 4.11 × 0.9 / 0.33 m) is ~2 kN on a 617 kg car. **It should pull away with the clutch engaged.** That it does not is unaccounted for.
 
 **Deliberately NOT "fixed" by inverting the axis.** The mapping is consistent across four independent places, and inverting it would (a) contradict the shift gate, and (b) silently invalidate the E91 coast-down captures, whose whole value is knowing which side of the clutch each run was on.
 
