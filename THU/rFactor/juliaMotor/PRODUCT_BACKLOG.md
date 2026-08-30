@@ -3087,3 +3087,35 @@ This restates E95 as an **absolute**, and the absolute is the point. E95 treated
 **Why this is its own item and not an E95 tweak:** E95 asks "was this hit hard enough to end the race?" and E96 asks "may a collision EVER hand energy back?" The second question has one answer for every impact, so it belongs in the contact law itself rather than behind a wreck latch. The four rounds of E95 parameter changes that did not satisfy the PO are the evidence that a threshold-gated fix cannot close this.
 
 **Open question for the sprint:** whether restitution should be clamped to zero for the car body against ALL `:wall` solids (leaving `:soft` to plough), and what that does to the loose-wheel bounce, which the PO explicitly wants to keep (*"the front wheels should bounce back from the wall"*, E95). **Wheels bouncing and the car never bouncing are not in conflict — they are different bodies — but the code currently derives both from the same contact path.**
+
+### E97 (2026-08-30) — Watkins' trackside object count does not match the historical logs
+
+Measured today, TRACK=watglen:
+
+    66 trackside objects + 13 billboards + 0 forest panels + 22 solid (collidable)
+
+Four logs from the E80/E88/E92 era report, for the SAME track:
+
+    163 trackside objects + 39 billboards + 0 forest panels + 110 solid (collidable)
+
+**Not caused by E95h.** That rule only ever ADDS (`geomR` is consulted solely where the
+whitelist returned 0.0), and the trackside/billboard counts it does not touch at all moved too.
+At Watkins E95h is a clear improvement — the whitelist alone yields ~5 solids on today's 66
+objects, and the shape rule takes it to 22.
+
+**Not the hidden-object filter either.** The obvious suspect was E87-S2 ("IF IT IS NOT DRAWN, IT
+MUST NOT BE SOLID"), which deliberately removed 175 of Zandvoort's 269 solids. Tested with its own
+A/B switch: `JM_SOLID_KEEP_HIDDEN=1` returns **exactly** 66/13/22, byte-identical to the default.
+So the objects are not being filtered out late — they are not there in the first place.
+
+⚠️ **The old logs may not be trustworthy evidence.** `/tmp/e88_zandvoort_0.log` records
+`→ track: Zandvoort` and then prints the identical 163/39/110 triple. Two different circuits
+cannot have the same three counts by chance, so either those runs all loaded the same data
+regardless of the label, or that census line was reporting something other than the loaded track.
+Per the standing rule that a capture must record the state it claims, these logs do not.
+
+**The sprint is therefore to establish which is true before changing anything:** whether ~97
+trackside objects genuinely disappeared from Watkins at some point (scenery the PO would notice
+missing), or whether the historical figure was never Watkins' to begin with. Re-measure from the
+track data itself — the offline census in this session read 63 distinct names straight from
+`watglen.dat` with no GL context, which is an independent instrument and a good starting oracle.
