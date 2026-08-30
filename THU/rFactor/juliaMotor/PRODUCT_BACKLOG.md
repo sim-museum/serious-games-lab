@@ -3217,6 +3217,41 @@ the PO was *"levitated and bounced"*, which is exactly energy that went somewher
 3. Measured, not asserted: instrument total energy (½mv² + ½Iω² + heave/pitch/roll terms) across an
    impact and show the decay curve for both a heavy and a light hit.
 
+**MEASURED (2026-08-30, sprint 1) — the main requirement is ALREADY MET; the exception is half met.**
+Total energy instrumented across an impact on the real solver: translational KE from the body-frame
+`(u,v)`, heave KE from `ż`, heave PE from `z`, plus the yaw rate. Head-on into a wall:
+
+| impact | E before (J) | E after | time to <5% |
+|---|---|---|---|
+| 7 km/h | 12,841 | 0.0 | 0.02 s |
+| 29 km/h | 16,100 | 0.0 | 0.02 s |
+| 108 km/h | 249,096 | 0.0 | 0.03 s |
+| 200 km/h | **916,728** | **0.0** | **0.08 s** |
+
+Zero residual in translation, heave KE, heave PE **and** yaw rate — so the "levitated and bounced"
+energy has nowhere left to hide. E96's contact work carried this case; nothing further is needed for
+a square hit.
+
+**The low-impulse exception, tested with GLANCING contacts** (a head-on stop is correct at any speed —
+you are against a wall — so the exception can only be tested obliquely):
+
+| case | energy kept |
+|---|---|
+| head-on, 108 km/h | 0% ✓ |
+| **glancing, 29 km/h** | **78.4%** ✓ the exception is honoured at low impulse |
+| glancing, 108 km/h, offsets 3.0 / 4.2 / 4.6 / 4.9 m | **5.6%**, *identical at every offset* |
+
+⚠️ **TWO OPEN QUESTIONS, one technical and one for the PO.**
+**(technical)** The 5.6% is *bit-identical across every offset from 3.0 m to 4.9 m against a 5 m
+obstacle* — a barely-clipping graze and a near-square hit produce exactly the same terminal state
+(~25 km/h). Geometry that different should not converge, which suggests the contact is saturating
+somewhere and the obliqueness is not reaching the result. That is worth finding regardless of the
+answer to the next question.
+**(PO)** Whether a high-speed graze *should* keep more energy is a genuine conflict between two of
+the PO's own rules: E95 says *"any off-track collision at all at high speed should total the car"*,
+while E99 says low impulse should not kill energy. A 108 km/h clip is high speed but arguably low
+impulse. **Not guessed here** — it needs the PO to say which rule wins for a fast graze.
+
 ⚠️ **E96's guarantee does not imply this one.** No-rebound is about the *direction* energy may flow
 through a contact; this is about how fast it *leaves the car*. The wreck damping (E95, `−m·2.2·v`)
 acts on translation only.
