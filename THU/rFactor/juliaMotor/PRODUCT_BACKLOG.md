@@ -3171,3 +3171,52 @@ trackside objects genuinely disappeared from Watkins at some point (scenery the 
 missing), or whether the historical figure was never Watkins' to begin with. Re-measure from the
 track data itself — the offline census in this session read 63 distinct names straight from
 `watglen.dat` with no GL context, which is an independent instrument and a good starting oracle.
+
+### E98 (PO 2026-08-30) — a stall in MANUAL must drop straight to AUTO
+
+PO, verbatim: *"if the user stalls out in manual mode, switch to auto mode immediately"*.
+
+**Why it matters:** E93 made MANUAL the honest mode — the clutch is a real axis and you can ride it —
+and the cost of honesty is that you can stall. Being stalled with no way forward is a dead end in a
+driving sim, not a lesson; the PO wants the sim to rescue itself rather than leave the car sitting.
+
+**Acceptance:**
+1. Detect a stall in MANUAL — engine rpm collapsed with the clutch engaged and the car stopped or
+   nearly so. (There is currently **no stall model**: E93's follow-up measured the engine still
+   producing torque at 0 rpm through the `Tmin_frac` floor, and the car pulls away from rest with the
+   clutch in. So "stalled" has to be **defined** before it can be detected — that definition is part
+   of this item, not a prerequisite for it.)
+2. On detection, switch to AUTO **immediately** — no key press, no prompt.
+3. Say so on screen/stdout, the way the G-key mode changes already announce themselves: a mode that
+   changes under you silently is worse than the stall.
+4. Leaving MANUAL must stay always-allowed (E93's rule); this item only adds an automatic exit.
+
+**Open question for the sprint:** whether re-entering MANUAL afterwards should still require the
+clutch-down gate E93 added. Probably yes — the gate exists so you never drop into MANUAL with the
+clutch already engaged, which is the state that stalls you.
+
+### E99 (PO 2026-08-30) — after a collision the car's ENERGY must go to zero quickly
+
+PO, verbatim: *"insure that after a collision with an object, car energy goes to zero quickly. The car
+should quickly LOSE all kenetic and potential energy (exception: if impulse is low total energy may not
+be effected much, or may not go to zero)"*.
+
+**This is the energy-domain statement of E96**, and it is a stronger claim than E96 verified. E96
+proved the car cannot be *pushed back* (no rebound at any speed, ≤0.26 m/s outward, verified on the
+real solver). It did **not** measure what happens to the car's total energy: a car that stops
+translating can still retain energy as heave, pitch, roll or spin — and E95's own wreck report from
+the PO was *"levitated and bounced"*, which is exactly energy that went somewhere other than away.
+
+**Acceptance:**
+1. After a HIGH-impulse collision, total energy — translational **and** rotational **and** the
+   suspension/heave potential — decays to ~zero quickly. "Quickly" needs a number: propose one from
+   measurement, then let the PO judge it at the wheel.
+2. **The low-impulse exception is explicit and must be honoured**: a gentle touch may leave the car's
+   energy largely unchanged. This is NOT "clamp all energy to zero on any contact" — that would make
+   a light scrape feel like hitting a wall, which is the opposite of E15/E96's soft-scenery rule.
+3. Measured, not asserted: instrument total energy (½mv² + ½Iω² + heave/pitch/roll terms) across an
+   impact and show the decay curve for both a heavy and a light hit.
+
+⚠️ **E96's guarantee does not imply this one.** No-rebound is about the *direction* energy may flow
+through a contact; this is about how fast it *leaves the car*. The wreck damping (E95, `−m·2.2·v`)
+acts on translation only.
