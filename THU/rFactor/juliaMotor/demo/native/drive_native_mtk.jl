@@ -1440,6 +1440,8 @@ const PROF_WORLD = Ref(0.0); const PROF_HUD = Ref(0.0); const PROF_N = Ref(0); c
 # Threshold is on the CONTACT FORCE PEAK that solid_contact already returns, not on speed: what
 # wrecks a car is the impulse it takes, and a slow scrape into a hedge must never trigger it.
 const BND_PK = Ref(0.0)   # E95b: last frame's world-edge contact peak (N)
+const BND_NX = Ref(0.0); const BND_NZ = Ref(0.0)   # E95f: world-frame wall normal, pointing INTO the world
+const WHEEL_REST   = parse(Float64, get(ENV, "JM_WHEEL_REST", "0.35"))   # E95f: wheel/wall restitution (<1 = inelastic)
 const WRECK_KMH    = parse(Float64, get(ENV, "JM_WRECK_KMH", "50.0"))    # E95c: any HARD contact above this totals the car
 const WRECK_MS     = WRECK_KMH/3.6
 const WRECKED      = Ref(false)          # latched: a wreck is permanent, that is the point
@@ -1482,8 +1484,20 @@ function detach_hit_wheels!(x, z, θ, v; fence_nx = 0.0, fence_nz = 0.0, fence =
             # how far this corner leads the CG along the outward direction (-fence normal)
             lead = (wx - x)*(-fence_nx) + (wz - z)*(-fence_nz)
             lead <= 0.35 && continue
+            # E95f (PO): "the front wheels should bounce back from the wall (though the wheel/wall
+            # collision shouldn't be entirely elastic)". So this is a proper restitution, not a
+            # fixed kick: split the wheel's velocity into NORMAL and TANGENTIAL parts against the
+            # wall, reverse the normal part scaled by e < 1, and scrub the tangential part. e = 1
+            # would be a perfect bounce and e = 0 would drop it dead at the wall; JM_WHEEL_REST
+            # sets it, defaulting to 0.35 -- a tyre is springy but lossy.
+            vwx = v*cθ; vwz = v*sθ                                  # wheel velocity ≈ the car's at separation
+            vn  = vwx*fence_nx + vwz*fence_nz                        # component along the INWARD normal
+            tgx = vwx - vn*fence_nx; tgz = vwz - vn*fence_nz         # tangential (along the wall)
+            outn = abs(vn)*WHEEL_REST                                # reversed, lossy
             push!(LOOSE_WHEELS, (wx, 0.33, wz,
-                                 v*cθ - fence_nx*3.5, 3.0 + 0.15*abs(v), v*sθ - fence_nz*3.5,
+                                 tgx*0.7 + fence_nx*outn,
+                                 2.5 + 0.10*abs(v),                  # a little vertical hop off the rim
+                                 tgz*0.7 + fence_nz*outn,
                                  0.0, v/max(r, 0.1), nm))
             println("  [WRECK] ", nm, " torn off on the wall at ", round(abs(v)*3.6, digits=0), " km/h")
             flush(stdout)
@@ -4867,11 +4881,9 @@ function main()
                     # that reaches the barrier before the car stops comes off too. Gated on cpk so
                     # the per-corner SOLIDS scan only runs during an actual contact.
                     if WRECKED[] && hitpk > 1.0e3 && abs(cs.v) > 1.0
-                        bn = hypot(BND_FX[], BND_FY[])
                         detach_hit_wheels!(cs.x, cs.z, cs.θ, cs.v;
                                            fence = BND_PK[] > 1.0e4,
-                                           fence_nx = bn > 1e-6 ? BND_FX[]/bn : 0.0,
-                                           fence_nz = bn > 1e-6 ? BND_FY[]/bn : 0.0)
+                                           fence_nx = BND_NX[], fence_nz = BND_NZ[])
                     end
                     cpk > 1.0e3 && (ffb_jolt = clamp(sign(cmz != 0 ? cmz : 1.0) * min(cpk/4.0e4, 1.0), -1.0, 1.0))  # feel the hit (stronger — PO: object kick was too small)
                 end
@@ -4968,6 +4980,11 @@ function main()
                     (bfx, bfy, bmz) = DriveRT3D.contact_force(nl - FENCE_GRACE, nwx, nwz, vn, cs.θ; kind = :wall, dt = gdt)
                     BND_FX[] = bfx; BND_FY[] = bfy; BND_MZ[] = bmz
                     BND_PK[] = hypot(bfx, bfy)   # E95b: the wreck trigger must SEE the world-edge wall
+                    # E95f: keep the WORLD-frame wall normal (points INTO the world). contact_force
+                    # returns BODY-frame forces, and the first cut dotted those against WORLD wheel
+                    # displacements to pick the leading corner -- mixing frames, which is why the
+                    # REAR wheels came off a head-on impact instead of the fronts.
+                    BND_NX[] = nwx; BND_NZ[] = nwz
                     ffb_jolt = clamp(-vn*0.05, -1.0, 1.0)        # FF jolt off the world-edge wall
                     # E95e: containX! teleports the car back to the last in-world point and re-seats
                     # the vertical subsystem -- its own docstring calls the failure mode a
