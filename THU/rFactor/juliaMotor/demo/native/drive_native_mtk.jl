@@ -1610,6 +1610,19 @@ function step_loose_wheels!(dt, gz)
     end
 end
 const CLU_LAST = Ref(-1.0)   # E93: last reported clutch value (JM_TRACE_CLUTCH)
+# E98 (PO 2026-08-30): "if the user stalls out in manual mode, switch to auto mode immediately".
+# There was no stall model and no definition of "stalled", so it was MEASURED before being detected.
+# With the clutch ENGAGED and no throttle, the engine dies and stays dead:
+#     at rest in 1st      rpm 1983 -> 0     (car stationary)
+#     at rest in 3rd      rpm 1965 -> 0
+#     lugging 5th, 2 m/s  rpm 1958 -> 0     (and the car is dragged to a stop)
+# while a legitimate standing start dips to 466 rpm and recovers to 2268. So a floor of 300 rpm
+# separates a dead engine from a hard launch with margin, and the SUSTAIN requirement stops a
+# transient dip from throwing the driver into AUTO mid-launch.
+const CLU_NOW    = Ref(0.0)                                                  # live clutch, every frame
+const STALL_RPM  = parse(Float64, get(ENV, "JM_STALL_RPM",  "300.0"))        # below this the engine is dead
+const STALL_SECS = parse(Float64, get(ENV, "JM_STALL_SECS", "0.5"))          # ...for this long
+const STALL_T    = Ref(0.0)
 const FPS_T0 = Ref(0.0); const FPS_ACC = Ref(0.0); const FPS_N = Ref(0)
 const CAR3D = !haskey(ENV, "JM_2D")       # full-3D vehicle (heave/pitch/roll + jumps) is the DEFAULT; JM_2D forces the planar model
 # physics dispatch — Car3D is field/method-compatible with DriveRT.Car (superset)
@@ -3894,6 +3907,8 @@ function read_input()
     # JM_TRACE_CLUTCH=1 prints the derived clu on every material change; a standstill launch then
     # answers the question from data. Module-level Ref, NOT a CTL field: CTL's fields are fixed and
     # assigning a new one throws.
+    CLU_NOW[] = clu                      # E98: published every frame, unconditionally -- CLU_LAST
+                                         # only moves when JM_TRACE_CLUTCH is on and cannot be used
     if get(ENV,"JM_TRACE_CLUTCH","0") != "0" && abs(clu - CLU_LAST[]) > 0.05
         println("  [clutch] clu=", round(clu, digits=2),
                 "   (0 = ENGAGED / slider up,  1 = DISENGAGED / slider down)   throttle ",
@@ -5066,6 +5081,23 @@ function main()
                     hard_hit = (cclose > WRECK_CLOSE) || (BND_PK[] > 1.0e3)
                     if hard_hit && abs(cs.v) > WRECK_MS
                         wreck!(abs(cs.v))
+                    end
+                    # E98: a stall in MANUAL drops straight to AUTO. Conditions, all required:
+                    # MANUAL, engine below the floor, clutch ENGAGED (an idling engine with the
+                    # clutch OUT is not stalled -- that is the PO's own "applying throttle with
+                    # slider down just revs the engine, as it should"), and NOT wrecked, because a
+                    # wreck decouples the engine deliberately and must not look like a stall.
+                    # Sustained, so a launch dip cannot trigger it.
+                    if !CTL.auto && !WRECKED[] && cs.rpm < STALL_RPM && CLU_NOW[] < 0.4
+                        STALL_T[] += (dt > 1e-4 ? dt : 1/60)
+                        if STALL_T[] >= STALL_SECS
+                            CTL.auto = true; STALL_T[] = 0.0
+                            println("  [gearbox] ENGINE STALLED (", round(Int, cs.rpm),
+                                    " rpm, clutch engaged) -- switched to AUTO")
+                            flush(stdout)
+                        end
+                    else
+                        STALL_T[] = 0.0
                     end
                     # E95: while wrecked AND still moving, keep testing each corner -- a second wheel
                     # that reaches the barrier before the car stops comes off too. Gated on cpk so

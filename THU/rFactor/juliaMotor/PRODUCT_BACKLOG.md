@@ -3176,6 +3176,27 @@ track data itself — the offline census in this session read 63 distinct names 
 
 PO, verbatim: *"if the user stalls out in manual mode, switch to auto mode immediately"*.
 
+✅ **IMPLEMENTED (2026-08-30).** "Stalled" was **measured before it was detected**, since no stall
+model existed. With the clutch engaged and no throttle the engine dies and stays dead — at rest in 1st
+`rpm 1983 → 0`, in 3rd `1965 → 0`, lugging 5th at 2 m/s `1958 → 0` (and the car is dragged to a stop) —
+while a legitimate standing start dips to **466 rpm** and recovers to 2268. So the definition is
+**below 300 rpm, with the clutch engaged, sustained for 0.5 s**, which clears a hard launch by 166 rpm
+and cannot be tripped by a transient dip.
+
+Verified against the false-positive cases, which matter more than the positive ones here:
+
+| situation | min rpm | detector |
+|---|---|---|
+| stall at rest, 1st | 0 | **fires at 0.63 s** |
+| stall lugging 5th at 2 m/s | 0 | **fires at 0.60 s** |
+| standing start, full throttle | 466 | silent ✓ |
+| idling, clutch OUT | 1953 | silent ✓ — the PO's own *"applying throttle with slider down just revs the engine, as it should"* |
+| cruising 5th at 30 m/s | 1958 | silent ✓ |
+
+Announced on switch (`[gearbox] ENGINE STALLED (… rpm, clutch engaged) — switched to AUTO`), because a
+mode that changes under you silently is worse than the stall. **Excluded while WRECKED**: a wreck
+decouples the engine deliberately and must not read as a stall. `JM_STALL_RPM` / `JM_STALL_SECS` re-grade.
+
 **Why it matters:** E93 made MANUAL the honest mode — the clutch is a real axis and you can ride it —
 and the cost of honesty is that you can stall. Being stalled with no way forward is a dead end in a
 driving sim, not a lesson; the PO wants the sim to rescue itself rather than leave the car sitting.
