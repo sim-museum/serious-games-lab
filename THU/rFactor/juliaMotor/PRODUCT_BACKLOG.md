@@ -2924,6 +2924,35 @@ placement phase = 36.5 → 68.7 = **32.2 s**
 
 ### E92-S3 (2026-08-29) — bracket the unaccounted 52 %, and a prediction Spa can refute in one number
 
+⭐ **MEASURED (2026-08-30) — THE PREDICTION IS REFUTED, by 7.7×.**
+
+    [mesh] 491 distinct meshes loaded   extract 0.89 s   build_gpl 627.76 s   total 628.65 s
+
+**Predicted ~3,785 distinct meshes; Spa has 491.** Wrong by a factor of 7.7, and wrong in the same
+way four earlier E80/E92 predictions were: a per-unit figure inferred by dividing a phase time by a
+count I had not measured. The number was committed before the run precisely so it could do this.
+
+**But the timing split is the real result, and it is decisive:**
+
+| | time | share |
+|---|---|---|
+| `extract_gpl_car` | 0.89 s | **0.14 %** |
+| `build_gpl` | **627.76 s** | **99.86 %** |
+
+**`build_gpl` costs 1.28 s per distinct mesh** and accounts for essentially the entire distinct-mesh
+loop — 10½ minutes of Spa's load, for 491 meshes. Extraction, the other half of the pair and the
+obvious suspect for a file-parsing cost, is 0.0018 s per mesh: **700× cheaper**, and utterly
+irrelevant.
+
+This also settles the "~52 % unattributed" question the item was raised for: the unattributed time
+was never spread across the per-instance loops, it is concentrated in one function. Anything that
+wants to make Spa load faster has exactly one place to look, and a 1.28 s per-mesh GL build is a
+very large number to explain.
+
+⚠️ Spa's load exceeds 900 s to reach this point, so a capped run never gets here — the first attempt
+at this measurement timed out before the loop and produced nothing.
+
+
 **Added** a `distinct-mesh LOOP done` stamp so the placement phase splits cleanly into **mesh loop** and **post-mesh per-instance work** (HAT snapping, `lverts` footprint decimation, the `ALIGNED` passes). Verified with the error-node parse walk.
 
 **Watkins, measured:**
