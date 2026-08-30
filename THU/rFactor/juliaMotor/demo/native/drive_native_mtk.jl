@@ -2039,6 +2039,7 @@ let objnames=Set{String}()
                 round(_e92.ext[]+_e92.bld[],digits=2), " s")
         flush(stdout)
     end
+    tstamp("  [E80] .. distinct-mesh LOOP done (post-mesh per-instance work follows)")
     # SNAP every object to OUR terrain (the HAT) instead of its authored GPL height —
     # this kills floaters (GPL placed trees/crowds on dune terrain that ours doesn't match).
     groundz(x,y) = (h=JuliaMotor.hat3d(TERRAIN, Float64(x), Float64(y); ref=Inf); h[3] ? Float32(h[1]) : -999f0)  # -999 = OFF the HAT

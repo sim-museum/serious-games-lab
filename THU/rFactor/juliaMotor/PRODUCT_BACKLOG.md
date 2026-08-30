@@ -2922,3 +2922,26 @@ placement phase = 36.5 → 68.7 = **32.2 s**
 
 **And ~52 % of the phase is still unattributed** — not `hat()` (0.003 %), not file I/O (0.2 %), not `build_gpl` (47 %). The remaining candidates are the per-instance loops AFTER the mesh loop: HAT snapping, the `lverts` footprint decimation, and the `ALIGNED` passes. **E92-S3: bracket those, and get Spa's distinct-mesh count in the same run.**
 
+### E92-S3 (2026-08-29) — bracket the unaccounted 52 %, and a prediction Spa can refute in one number
+
+**Added** a `distinct-mesh LOOP done` stamp so the placement phase splits cleanly into **mesh loop** and **post-mesh per-instance work** (HAT snapping, `lverts` footprint decimation, the `ALIGNED` passes). Verified with the error-node parse walk.
+
+**Watkins, measured:**
+
+| | |
+|---|---|
+| instances / distinct meshes | 202 / 102 = **0.505 meshes per instance** |
+| `build_gpl` | 15.28 s / 102 = **150 ms per mesh** |
+| post-mesh remainder | 16.9 s / 202 = **83.4 ms per instance** |
+
+**PREDICTION for Spa (3888 instances, 891.4 s phase), stated before the run.** If both per-unit costs hold:
+
+* post-mesh work at 83.4 ms/instance → **324 s**
+* leaving **567 s** for `build_gpl` → **~3785 distinct meshes**, i.e. **0.974 meshes per instance**
+
+⚠️ **That number is the test, and it is a demanding one.** Watkins reuses meshes heavily (0.505 — roughly every mesh placed twice). For the arithmetic to close, **Spa would have to reuse almost nothing** (0.974 — nearly every object a unique mesh). **That is a strong claim and it may well be false.** If Spa's distinct-mesh count comes back near Watkins' ratio (~1960 meshes), `build_gpl` supplies only ~294 s and **~600 s is unexplained by either term** — meaning the post-mesh work is NOT linear per instance and is the real story.
+
+**So the outcomes are:** <br>• **~3785 meshes** → everything is linear in the right denominators, and E80's "1.34× super-linear" was a denominator artefact all along — retract it. <br>• **~1960 meshes** → post-mesh per-instance work is super-linear and is where the remaining ~600 s lives; the mesh loop is a side-show. <br>• anything else → both per-unit costs are track-dependent and neither generalises.
+
+**This is the fifth prediction in this epic to be written down before its run.** The four before it (per-billboard cost, HAT density, `.dat` size, and "the briefing was never reached" over in BoB) were all wrong, and each was cheaper to refute than to defend because the number was committed first.
+
