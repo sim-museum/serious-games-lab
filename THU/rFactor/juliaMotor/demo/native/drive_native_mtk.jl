@@ -248,6 +248,7 @@ solidkind(nm) = (startswith(nm,"haie")||startswith(nm,"bush")||startswith(nm,"sh
 # no bumpX! state hack).  Returns the net force/moment + a peak-penetration proxy for the FFB jolt.
 function solid_contact(x, z, θ, v, dt)
     Fx = 0.0; Fy = 0.0; Mz = 0.0; peak = 0.0
+    hardpk = 0.0      # E95c: peak from NON-HEDGE objects only -- a hedge must never total the car
     @inbounds for (ox, oz, r, kind) in SOLIDS
         dx = x - ox; dz = z - oz; d = hypot(dx, dz)
         rr = r + CARHALF
@@ -256,8 +257,9 @@ function solid_contact(x, z, θ, v, dt)
         vn = v*cos(θ)*nx + v*sin(θ)*nz                    # car speed along the outward normal (<0 = into it)
         (fx, fy, mz) = DriveRT3D.contact_force(rr - d, nx, nz, vn, θ; kind = kind, dt = dt)
         Fx += fx; Fy += fy; Mz += mz; peak = max(peak, hypot(fx, fy))
+        kind === :soft || (hardpk = max(hardpk, hypot(fx, fy)))
     end
-    (Fx, Fy, Mz, peak)
+    (Fx, Fy, Mz, peak, hardpk)
 end
 # GPL '67 AI reference laptimes (s) — the "100 %" anchor.  Sourced from GPL AI/hotlap
 # pace per circuit; tunable per car/setup via JM_AI_REFLAP (overrides the table).  At
@@ -1437,7 +1439,9 @@ const PROF_WORLD = Ref(0.0); const PROF_HUD = Ref(0.0); const PROF_N = Ref(0); c
 #
 # Threshold is on the CONTACT FORCE PEAK that solid_contact already returns, not on speed: what
 # wrecks a car is the impulse it takes, and a slow scrape into a hedge must never trigger it.
-const WRECK_PEAK   = parse(Float64, get(ENV, "JM_WRECK_PEAK", "6.0e4"))   # N; below this it is a scrape
+const BND_PK = Ref(0.0)   # E95b: last frame's world-edge contact peak (N)
+const WRECK_KMH    = parse(Float64, get(ENV, "JM_WRECK_KMH", "50.0"))    # E95c: any HARD contact above this totals the car
+const WRECK_MS     = WRECK_KMH/3.6
 const WRECKED      = Ref(false)          # latched: a wreck is permanent, that is the point
 const WRECK_DAMP   = 2.2                 # 1/s extra velocity damping once wrecked (motion bleeds out)
 # Detached wheels: each is (x, y, z, vx, vy, vz, spin, spinrate, name). World frame, metres.
@@ -1460,8 +1464,27 @@ end
 is still moving, so a second corner that reaches the barrier later comes off too — which is what
 happens at higher impact speed, and is exactly what the PO described. Deliberately per-corner: at a
 glancing hit only the corner that touched leaves the car."""
-function detach_hit_wheels!(x, z, θ, v)
+function detach_hit_wheels!(x, z, θ, v; fence_nx = 0.0, fence_nz = 0.0, fence = false)
     cθ, sθ = cos(θ), sin(θ)
+    # E95b: a WORLD-EDGE hit has no SOLIDS near it, so the SOLIDS scan below finds nothing and the
+    # car would be wrecked with all four wheels on. The fence is a wall like any other: take the
+    # corners that are LEADING into it -- one on a glancing hit, two when the car is square on,
+    # which is the PO's "both wheels, if two wheels hit before the car comes to a stop".
+    if fence
+        @inbounds for (bx, by, front, r, nm) in WHEELS
+            is_loose(nm) && continue
+            wx = x + bx*cθ - by*sθ
+            wz = z + bx*sθ + by*cθ
+            # how far this corner leads the CG along the outward direction (-fence normal)
+            lead = (wx - x)*(-fence_nx) + (wz - z)*(-fence_nz)
+            lead <= 0.35 && continue
+            push!(LOOSE_WHEELS, (wx, 0.33, wz,
+                                 v*cθ - fence_nx*3.5, 3.0 + 0.15*abs(v), v*sθ - fence_nz*3.5,
+                                 0.0, v/max(r, 0.1), nm))
+            println("  [WRECK] ", nm, " torn off on the wall at ", round(abs(v)*3.6, digits=0), " km/h")
+            flush(stdout)
+        end
+    end
     @inbounds for (i, (bx, by, front, r, nm)) in enumerate(WHEELS)
         is_loose(nm) && continue
         wx = x + bx*cθ - by*sθ
@@ -4816,19 +4839,35 @@ function main()
             if CAR3D
                 cfx = cfy = cmz = 0.0
                 if !SKIDPAD && !rst
-                    (cfx, cfy, cmz, cpk) = solid_contact(cs.x, cs.z, cs.θ, cs.v, dt > 1e-4 ? dt : 1/60)
+                    (cfx, cfy, cmz, cpk, chard) = solid_contact(cs.x, cs.z, cs.θ, cs.v, dt > 1e-4 ? dt : 1/60)
                     # E95: a hard enough hit ends the race. Triggered on the contact PEAK, not on
                     # speed -- what wrecks a car is the impulse it absorbs, and a slow scrape into a
                     # hedge must never latch it. The impact direction is taken from the net contact
                     # force, which points outward from whatever was hit.
-                    if cpk > WRECK_PEAK && abs(cs.v) > 8.0
+                    # E95b: the first cut watched ONLY solid_contact, so a hit on the WORLD-EDGE
+                    # FENCE -- a separate force (BND_*) -- could never wreck the car. That is what
+                    # the PO hit at 200 km/h, and why nothing fired.
+                    hitpk = max(cpk, BND_PK[])
+                    # E95c (PO 2026-08-29): "any off-track collision at all at high speed should
+                    # total the car ... Sure, if it's a hedge that gets hit it's ok to just bury the
+                    # car in the hedge." So the test is CONTACT-WITH-SOMETHING-HARD + SPEED, not a
+                    # force threshold: a force threshold made totalling depend on how deep the
+                    # penetration got that frame, which is why a 200 km/h hit could slip under it.
+                    # Hedges (:soft) are excluded by construction -- they contribute to cpk but not
+                    # to chard, so you still just bury the car in them.
+                    hard_hit = (chard > 1.0e3) || (BND_PK[] > 1.0e3)
+                    if hard_hit && abs(cs.v) > WRECK_MS
                         wreck!(abs(cs.v))
                     end
                     # E95: while wrecked AND still moving, keep testing each corner -- a second wheel
                     # that reaches the barrier before the car stops comes off too. Gated on cpk so
                     # the per-corner SOLIDS scan only runs during an actual contact.
-                    if WRECKED[] && cpk > 1.0e3 && abs(cs.v) > 1.0
-                        detach_hit_wheels!(cs.x, cs.z, cs.θ, cs.v)
+                    if WRECKED[] && hitpk > 1.0e3 && abs(cs.v) > 1.0
+                        bn = hypot(BND_FX[], BND_FY[])
+                        detach_hit_wheels!(cs.x, cs.z, cs.θ, cs.v;
+                                           fence = BND_PK[] > 1.0e4,
+                                           fence_nx = bn > 1e-6 ? BND_FX[]/bn : 0.0,
+                                           fence_nz = bn > 1e-6 ? BND_FY[]/bn : 0.0)
                     end
                     cpk > 1.0e3 && (ffb_jolt = clamp(sign(cmz != 0 ? cmz : 1.0) * min(cpk/4.0e4, 1.0), -1.0, 1.0))  # feel the hit (stronger — PO: object kick was too small)
                 end
@@ -4894,7 +4933,7 @@ function main()
                 # world edge.  Coast through at the held height; advance the in-world anchor so the
                 # FENCE_GRACE containment never fires across the (~20 m) underpass.
                 LASTGX[] = cs.x; LASTGZ[] = cs.z; OFFDIST[] = 0.0
-                BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0
+                BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0; BND_PK[] = 0.0
             else
                 OFFDIST[] += cs.v * (dt > 1e-4 ? dt : 1/60)
                 # E56: the WORLD EDGE is now a PHYSICAL WALL, not a position snap-back.  nl = the car's
@@ -4913,13 +4952,14 @@ function main()
                     gdt = dt > 1e-4 ? dt : 1/60
                     (bfx, bfy, bmz) = DriveRT3D.contact_force(nl - FENCE_GRACE, nwx, nwz, vn, cs.θ; kind = :wall, dt = gdt)
                     BND_FX[] = bfx; BND_FY[] = bfy; BND_MZ[] = bmz
+                    BND_PK[] = hypot(bfx, bfy)   # E95b: the wreck trigger must SEE the world-edge wall
                     ffb_jolt = clamp(-vn*0.05, -1.0, 1.0)        # FF jolt off the world-edge wall
                     if nl > FENCE_GRACE + FENCE_FAR              # the wall failed to contain → last-resort seal (rare; never in normal play)
                         containX!(cs, LASTGX[], LASTGZ[]; vdamp=0.3, settle=true, groundz=groundz)
-                        BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0; OFFDIST[] = 0.0
+                        BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0; BND_PK[] = 0.0; OFFDIST[] = 0.0
                     end
                 else
-                    BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0
+                    BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0; BND_PK[] = 0.0
                 end
             end
             end

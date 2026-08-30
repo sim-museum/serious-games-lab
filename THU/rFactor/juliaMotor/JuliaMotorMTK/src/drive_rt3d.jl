@@ -346,6 +346,7 @@ object `kind`, return the body-frame `(Fx,Fy,Mz)` to feed `extforce3d!` BEFORE t
 
 The outward force is clamped to a per-frame impulse ≤ m·CONTACT_DVMAX (a penalty contact) so a stiff
 wall held constant over a render frame can't blow the integrator up.  Contact can only PUSH, not pull."""
+const SPRING_DMAX = parse(Float64, get(ENV, "JM_SPRING_DMAX", "0.25"))   # E94b: m of penetration the SPRING may store
 const CONTACT_DVMAX = 8.0                                          # PO round-4: a hit must not FLING the car — cap the per-frame outward Δv (was 16 = "rubber-band sling-back")
 function contact_force(δ, nx, nz, vn, θ; kind = :wall, m = 617.0, dt = 1/60, arm = 1.4)
     δ <= 0.0 && return (0.0, 0.0, 0.0)
@@ -377,8 +378,19 @@ function contact_force(δ, nx, nz, vn, θ; kind = :wall, m = 617.0, dt = 1/60, a
         end
     end
     δeff = max(δ - give, 0.0)                                     # the soft give-zone holds the car with no push-back
+    # E94b (PO 2026-08-29: "hit something at 200 km/h, same behavior as before - elastic collision,
+    # bouncing back and forth"). Softening k alone did NOT fix a big hit, and the reason is here:
+    # the spring force is k·δ, so a deep excursion (metres past the world edge at 200 km/h) drives it
+    # straight into the CONTACT_DVMAX ceiling -- 617·8/dt ≈ 296 kN -- with BOTH the old 4.0e5 and the
+    # new 1.0e5. Saturated is saturated: the two behave identically for exactly the impacts that
+    # matter, which is precisely what the PO observed.
+    # A spring is CONSERVATIVE: whatever k·δ²/2 it stores on the way in, it returns on the way out.
+    # So bound the STORED ENERGY by capping the penetration the SPRING is allowed to see. Past
+    # SPRING_DMAX the spring stops growing and the DAMPER -- which dissipates rather than stores --
+    # does all the remaining work. That is what makes a deep hit inelastic instead of a catapult.
+    δspring = min(δeff, SPRING_DMAX)
     damp = twoSided ? -c*vn : -c*min(vn, 0.0)                    # :wall damps approach only (so it rebounds)
-    Fn = max(k*δeff + damp, 0.0)                                  # along +n (outward); a contact never pulls
+    Fn = max(k*δspring + damp, 0.0)                               # along +n (outward); a contact never pulls
     Fn = min(Fn, m*CONTACT_DVMAX/max(dt, 1e-3))                  # clamp per-frame impulse → solver-stable
     cθ = cos(θ); sθ = sin(θ)
     Fx = Fn*( nx*cθ + nz*sθ);  Fy = Fn*(-nx*sθ + nz*cθ)         # world force → body frame
