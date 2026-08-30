@@ -2870,3 +2870,21 @@ E80 closed with its question answered: the 725 s is **99.7 % object mesh placeme
 * **µs/call similar, calls/instance ~1.34× higher at Spa** → the extra work is more QUERIES per object, not slower ones — look at retry/fallback loops in the placement filters.
 * **`hat()` accounts for a small share of the 891 s either way** → the cost is not in `hat()` at all, and the standing explanation is simply wrong; look at the per-instance filters (`drop`, `onroad_crowd`, `perp_crowd`, `onroad_bldg`, `onroad_fp`), any of which scanning other instances would make the block quadratic.
 
+#### E92-S1 RESULT — **HAT-cell density is REFUTED by four orders of magnitude. `hat()` is not the cost.**
+
+Watkins, counters armed around the placement block only:
+
+```
+[hat] 2127 calls in the placement block  total 0.0 s  0.39 us/call
+```
+
+* placement block: **30.7 s** (t+39.5 → t+70.2)
+* `hat()` total: 2127 × 0.39 µs = **0.83 ms**
+* **`hat()` is 0.003 % of the phase it was supposed to explain.**
+
+**This is the third discriminator, stated before the run:** *"`hat()` accounts for a small share of the phase either way → the cost is not in `hat()` at all, and the standing explanation is simply wrong."* **E80-S4's "HAT density is the standing explanation" is WITHDRAWN**, and it was already suspect on structure (Spa is 6× SPARSER per cell, so density predicted the wrong sign).
+
+⭐ **HOW THE WRONG ANSWER SURVIVED TWO SPRINTS:** it was produced by DIVIDING a phase time by an instance count and attributing the quotient to the most visible thing in the phase. That is the identical error that made the per-billboard estimate **20× too high** in E80-S4 — and I repeated it on the very next question. **A per-unit cost obtained by division is a hypothesis about where the time went, not a measurement of it.** Counting the calls took one sprint and settled it immediately.
+
+**WHERE THE TIME ACTUALLY IS — next question, not yet answered.** The phase is named "object mesh placement" and `hat()` is exonerated, so the remaining work in it is **loading and parsing the object meshes themselves** (`objmesh[i.name]`, read out of the track's `.dat`). Spa's `spa67.dat` is **785.7 MB** against Watkins' far smaller pack, and Spa instantiates 1455 objects to Watkins' 163. **That also offers a natural explanation for the 1.34× "super-linearity" with no non-linearity at all:** distinct MESHES, not instances, drive the loading cost, and the two tracks need not share the same instance-to-distinct-mesh ratio. <br>**E92-S2:** count DISTINCT meshes loaded and time the load, exactly as this sprint counted `hat()` — measure it, do not divide for it.
+
