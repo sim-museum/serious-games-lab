@@ -136,7 +136,39 @@ end
 Surface height, normal, on-track flag, lateral offset and lap distance at
 world position (x, z).  Searches the query cell and its 8 neighbours.
 """
+# E92 (from E80): count and time hat() so per-query cost is MEASURED, not divided out.
+# E80-S4 attributed the trackside block's 1.34x super-linearity to "HAT-cell density", but the
+# structures say the opposite: Watkins is 450 segments over 1813 cells (0.248/cell) while Spa is
+# 1180 over 28880 (0.041/cell) -- Spa is 6x SPARSER, and its TriangleHAT is finer too (1.83 vs
+# 4.41 tris/cell). Density predicts Spa should be FASTER per query. So the standing explanation is
+# probably wrong, and dividing a phase time by an instance count cannot tell the difference --
+# the same mistake that made the billboard estimate 20x too high in E80-S4.
+# JM_HAT_COUNT=1 counts calls; JM_HAT_TIME=1 also accumulates nanoseconds (adds overhead, so it is
+# separate). Report with JuliaMotor.hat_stats().
+const HAT_CALLS = Ref(0)
+const HAT_NS    = Ref(0)
+const HAT_COUNT_ON = Ref(false)
+const HAT_TIME_ON  = Ref(false)
+function hat_stats()
+    c = HAT_CALLS[]; ns = HAT_NS[]
+    (calls = c, total_s = ns/1e9, per_call_us = c == 0 ? 0.0 : ns/1e3/c)
+end
+hat_reset!() = (HAT_CALLS[] = 0; HAT_NS[] = 0; nothing)
+
 function hat(ts::TrackSurface, x::Real, z::Real)
+    if HAT_COUNT_ON[]
+        HAT_CALLS[] += 1
+        if HAT_TIME_ON[]
+            t0 = time_ns()
+            r = _hat_impl(ts, x, z)
+            HAT_NS[] += Int(time_ns() - t0)
+            return r
+        end
+    end
+    return _hat_impl(ts, x, z)
+end
+
+function _hat_impl(ts::TrackSurface, x::Real, z::Real)
     cx = clamp(floor(Int, (x - ts.x0) / ts.cell), 0, ts.nx - 1)
     cz = clamp(floor(Int, (z - ts.z0) / ts.cell), 0, ts.nz - 1)
     n = length(ts.pos)

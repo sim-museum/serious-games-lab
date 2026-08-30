@@ -1873,6 +1873,13 @@ if SKIDPAD || NURB
         flush(stdout)
     end
 else
+if get(ENV,"JM_HAT_COUNT","0") != "0"
+    # E92: arm the hat() counters for exactly this block, so the figure is per-phase and not
+    # contaminated by the physics/render loop that follows.
+    JuliaMotor.HAT_COUNT_ON[] = true
+    JuliaMotor.HAT_TIME_ON[]  = get(ENV,"JM_HAT_TIME","0") != "0"
+    JuliaMotor.hat_reset!()
+end
 tstamp("  [E80] trackside objects + billboards + trees begin")
 const DATPACK = TRACKDAT     # trackside objects come from the track's own .dat (generic across tracks)
 const TMPOBJ = mktempdir()
@@ -3068,6 +3075,14 @@ let objnames=Set{String}()
 end
 
 println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards + ", length(STATICTREES), " forest panels + ", length(SOLIDS), " solid (collidable)"); flush(stdout)
+if get(ENV,"JM_HAT_COUNT","0") != "0"
+    st = JuliaMotor.hat_stats()
+    print("[hat] ", st.calls, " calls in the placement block")
+    get(ENV,"JM_HAT_TIME","0") != "0" && print("  total ", round(st.total_s,digits=2), " s  ",
+                                               round(st.per_call_us,digits=2), " us/call")
+    println(); flush(stdout)
+    JuliaMotor.HAT_COUNT_ON[] = false
+end
 tstamp("  [E80] trackside objects/billboards/trees DONE")
 end
 

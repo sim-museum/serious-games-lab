@@ -2848,3 +2848,25 @@ Spa split (3888 instances), against the predictions committed before the run:
 
 **E80 CLOSES HERE** (4 sprints used). Its original question — *where do the 725 s go* — is answered: **99.7 % of one previously untimed block, which is 80 % of the whole load**, and texture upload, the original suspect, is 80.8 s of 1122.8 s. <br>**Successor item, to be opened fresh:** *object mesh placement costs ~0.23 s per instance and scales 1.34× super-linearly with instance count; is that HAT-cell density?* Test: instrument `hat()` with a call counter and total time inside placement, and compare per-query cost between the two tracks directly instead of inferring it from a division.
 
+### E92 (opened 2026-08-29, successor to E80) — why does object mesh placement cost ~0.23 s per instance, and scale 1.34× super-linearly?
+
+E80 closed with its question answered: the 725 s is **99.7 % object mesh placement**, one block that had carried no timestamps. What it could not answer is why that block costs what it does. E80-S4 named **HAT-cell density** as the standing explanation. **This item exists partly to check that, and the structures already argue against it.**
+
+⚠️ **THE DENSITY HYPOTHESIS LOOKS WRONG BEFORE A SINGLE MEASUREMENT.** `hat()` (`JuliaMotor/src/hat.jl:139`) scans a **3×3 bucket neighbourhood**, so its cost tracks SEGMENTS PER CELL:
+
+| | segments | grid | segments/cell | TriangleHAT tris/cell |
+|---|---|---|---|---|
+| Watkins | 450 | 49×37 = 1,813 | **0.248** | 4.41 |
+| Spa | 1,180 | 152×190 = 28,880 | **0.041** | 1.83 |
+
+**Spa is 6× SPARSER per cell on the TrackSurface and 2.4× sparser on the TriangleHAT.** Density predicts Spa should be FASTER per query — yet placement is **1.34× SLOWER per instance** there. So either the cost is not in `hat()` at all, or it is not density-driven.
+
+**S1 — INSTRUMENT BUILT (`JM_HAT_COUNT=1`, `JM_HAT_TIME=1`).** `hat()` now counts calls and, separately, accumulates nanoseconds; `JuliaMotor.hat_stats()` reports calls, total time and µs/call. The counters are **armed and reset around the placement block only**, so the figure is per-phase and not contaminated by the render loop. Timing is a separate flag because `time_ns()` per call is itself overhead.
+
+⭐ **THE POINT IS TO STOP DIVIDING.** E80-S4's per-billboard cost was obtained by dividing a phase time by a count, and came out **20× wrong** because the phase was almost all fixed overhead. Per-query cost derived the same way would be no better. **Measure the calls; do not infer them.**
+
+**Discriminators, stated before the run:**
+* **calls/instance similar at both tracks, µs/call ~1.34× higher at Spa** → cost IS in `hat()` and something other than cell density drives it (cache behaviour on a 28,880-cell grid, allocation, or bucket-list layout).
+* **µs/call similar, calls/instance ~1.34× higher at Spa** → the extra work is more QUERIES per object, not slower ones — look at retry/fallback loops in the placement filters.
+* **`hat()` accounts for a small share of the 891 s either way** → the cost is not in `hat()` at all, and the standing explanation is simply wrong; look at the per-instance filters (`drop`, `onroad_crowd`, `perp_crowd`, `onroad_bldg`, `onroad_fp`), any of which scanning other instances would make the block quadratic.
+
