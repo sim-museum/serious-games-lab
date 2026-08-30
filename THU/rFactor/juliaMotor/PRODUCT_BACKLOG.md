@@ -2959,6 +2959,29 @@ it would be uploaded N times — an obvious candidate for 1.28 s per mesh. Count
 Uploads track distinct names closely. **The per-mesh cache is doing almost no harm**, and removing it
 in favour of a global one would recover a fraction, not the bulk.
 
+**E92-S5 (2026-08-30) — the cost is the DECODE, and the per-mesh cache matters more than S4 said.**
+Timed `tex_rgba` (CPU decode) separately from `upload_rgba` (the GL call):
+
+| sample | redundant uploads | decode | GL upload |
+|---|---|---|---|
+| 600 | 42 (7%) | 125.67 s (209.5 ms ea) | 2.04 s (3.4 ms ea) |
+| 900 | 157 (17%) | 218.27 s | 2.72 s |
+| **1500** | **402 (27%)** | **368.14 s (245.4 ms ea)** | **4.11 s (2.7 ms ea)** |
+
+**The decode is ~90× the GL upload per texture** (245 ms vs 2.7 ms). `glTexImage2D` is not the
+problem and never was; the cost is CPU-side — finding the `.mip`, unpacking it, expanding to RGBA.
+That makes it *cacheable to disk* and *parallelisable*, neither of which is true of a driver-side
+upload cost, so the fix direction is completely different from what a slow GL call would have needed.
+
+⚠️ **AND THIS CORRECTS E92-S4.** That sprint sampled at 600 uploads, saw 7% redundancy, and concluded
+the per-mesh cache "does almost no harm". **Redundancy GROWS with load progress** — 7% → 17% → 27% —
+because later meshes increasingly reuse textures earlier ones already decoded. At 1500 uploads, 402
+redundant decodes at ~245 ms each is **roughly 98 seconds of pure waste**. A global texture cache is
+therefore worth about 98 s of Spa's load, not the "fraction" S4 claimed. It is still not the whole
+story — the other ~270 s of decode is genuinely first-time work — but it is no longer negligible.
+**Sampling early and generalising is what made S4 wrong**, and the same mistake would have been
+invisible if the counter had only printed once.
+
 **What the same numbers DO say:** ~600–900 texture uploads against 627.76 s of `build_gpl` is
 **roughly one second per texture upload** — and that, not mesh count and not redundancy, is where
 Spa's ten-minute load lives. The next question is the split inside a single upload: `tex_rgba`

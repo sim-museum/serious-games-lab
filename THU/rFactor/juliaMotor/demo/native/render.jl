@@ -1195,7 +1195,8 @@ end
 # function for 491 meshes -- 1.28 s each -- and redundant uploads are the obvious candidate. COUNT
 # before changing: uploads ~= distinct names means the cache is fine and the cost is elsewhere;
 # uploads >> distinct means this is it. JM_TEXSTAT=1.
-const _TEXSTAT = (uploads=Ref(0), lookups=Ref(0), names=Set{String}())
+const _TEXSTAT = (uploads=Ref(0), lookups=Ref(0), names=Set{String}(),
+                  tdec=Ref(0.0), tgl=Ref(0.0))   # E92-S5: decode time vs GL-upload time
 function build_gpl(parts, idx::GPLTex)
     cache=Dict{String,GLuint}(); items=Item[]
     for p in parts
@@ -1204,9 +1205,16 @@ function build_gpl(parts, idx::GPLTex)
             key=lowercase(p.tex)
             _TEXSTAT.lookups[] += 1; push!(_TEXSTAT.names, key)
             tid = get!(cache,key) do
+                # E92-S5: split the ~1 s per texture. tex_rgba DECODES (CPU: find the .mip, unpack,
+                # expand to RGBA) and upload_rgba is the GL call (glTexImage2D + mipmaps). They need
+                # opposite fixes -- a slow decode can be cached to disk or threaded, a slow GL upload
+                # points at format conversion or mipmap generation in the driver -- so guessing
+                # between them would be guessing at the fix too.
                 _TEXSTAT.uploads[] += 1
-                r = tex_rgba(idx, key)
+                _t0 = time(); r = tex_rgba(idx, key); _TEXSTAT.tdec[] += time() - _t0
+                _t1 = time()
                 t = r === nothing ? GLuint(0) : upload_rgba(r[1], r[2], r[3])
+                _TEXSTAT.tgl[] += time() - _t1
                 is_crowd_texname(key) && mag_nearest(t)   # E46: gold's point-sampled crowd read
                 t
             end
@@ -1214,9 +1222,12 @@ function build_gpl(parts, idx::GPLTex)
         push!(items, Item(vao,n,tid,p.col))
     end
     if get(ENV,"JM_TEXSTAT","0") != "0" && _TEXSTAT.uploads[] > 0 && (_TEXSTAT.uploads[] % 100) == 0
-        println("[texstat] uploads=", _TEXSTAT.uploads[], "  lookups=", _TEXSTAT.lookups[],
-                "  distinct names=", length(_TEXSTAT.names),
-                "  redundant=", _TEXSTAT.uploads[] - length(_TEXSTAT.names))
+        println("[texstat] uploads=", _TEXSTAT.uploads[], "  distinct=", length(_TEXSTAT.names),
+                "  redundant=", _TEXSTAT.uploads[] - length(_TEXSTAT.names),
+                "  | decode ", round(_TEXSTAT.tdec[], digits=2), " s (",
+                round(1000*_TEXSTAT.tdec[]/max(_TEXSTAT.uploads[],1), digits=1), " ms ea)",
+                "  GL upload ", round(_TEXSTAT.tgl[], digits=2), " s (",
+                round(1000*_TEXSTAT.tgl[]/max(_TEXSTAT.uploads[],1), digits=1), " ms ea)")
         flush(stdout)
     end
     items
