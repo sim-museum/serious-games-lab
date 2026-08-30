@@ -2898,3 +2898,27 @@ Watkins, counters armed around the placement block only:
 
 **Discriminators, before the run:** <br>• `extract + build ≈ the whole placement phase` → mesh loading IS the cost, and the next question is only which half; <br>• `extract + build ≪ the phase` → the cost is in neither `hat()` nor mesh loading, and the per-instance FILTERS (`drop`, `onroad_crowd`, `perp_crowd`, `onroad_bldg`, `onroad_fp`) are the last candidate — any of them scanning other instances would make the block genuinely quadratic; <br>• distinct-mesh ratio ≈ instance ratio × 1.34 → the super-linearity was a denominator artefact and E80's 1.34× should be retracted outright.
 
+#### E92-S2 RESULT — mesh loading is **half** the phase, and inside it **`build_gpl` is 218× the file cost**. My ".dat size" reasoning was wrong.
+
+Watkins:
+
+```
+[mesh] 102 distinct meshes loaded   extract 0.07 s   build_gpl 15.28 s   total 15.35 s
+```
+
+placement phase = 36.5 → 68.7 = **32.2 s**
+
+| | | share |
+|---|---|---|
+| `extract_gpl_car` (read + parse the `.3do`) | **0.07 s** | 0.2 % |
+| `build_gpl` (build the mesh) | **15.28 s** | **47 %** |
+| **still unaccounted** | **~16.9 s** | **52 %** |
+
+⚠️ **FILE I/O IS NOT THE COST — 0.07 s for all 102 meshes.** E92-S1 closed by pointing at Spa's **785.7 MB** `spa67.dat` as the natural explanation. **That reasoning is withdrawn:** reading and parsing the meshes is 0.2 % of the phase, and pack size cannot matter at that scale. **That is the fourth guess in this epic to die on contact with a counter** (per-billboard 20× wrong, HAT density 10⁴ wrong, "super-linear" possibly a denominator artefact, and now pack size). The pattern is consistent: every one was a plausible story about where time goes, and every one was cheaper to measure than to argue.
+
+**What IS established:** `build_gpl` costs **15.28 s / 102 meshes = 150 ms per distinct mesh**, and it scales with DISTINCT MESHES, not instances — the loop dedups at `:1949`. Watkins: 202 instances → 102 distinct (0.505 meshes/instance).
+
+**The scaling test is now a single number: Spa's distinct-mesh count.** If Spa's meshes-per-instance ratio is HIGHER than 0.505, the "1.34× super-linearity" is explained with no non-linearity at all; if it is LOWER, Spa should be CHEAPER per instance and the effect is genuinely somewhere else.
+
+**And ~52 % of the phase is still unattributed** — not `hat()` (0.003 %), not file I/O (0.2 %), not `build_gpl` (47 %). The remaining candidates are the per-instance loops AFTER the mesh loop: HAT snapping, the `lverts` footprint decimation, and the `ALIGNED` passes. **E92-S3: bracket those, and get Spa's distinct-mesh count in the same run.**
+
