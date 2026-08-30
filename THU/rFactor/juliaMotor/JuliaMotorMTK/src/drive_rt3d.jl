@@ -420,6 +420,26 @@ function contact_force(δ, nx, nz, vn, θ; kind = :wall, m = 617.0, dt = 1/60, a
     # arrived at slowly. Capping the OUTCOME closes that: the push is whatever it takes to reach
     # VN_OUT_MAX and never more, so once the car is oozing out the contact stops pushing entirely.
     Fn = min(Fn, m*max(VN_OUT_MAX - vn, 0.0)/max(dt, 1e-3))
+    # E96-S3: BLEED THE EXIT, do not just stop pushing. With the sign error fixed the contact
+    # correctly stops pushing the moment the car turns around (measured: Fx drops to 0 on the
+    # first retreating frame) -- but the car LEAVES contact carrying whatever the last approach
+    # frame gave it, ~1.7 m/s after a 6.8 m/s hit, and then coasts metres with nothing acting on
+    # it. Restitution ~0.25 instead of >1 is a big improvement and still not what the PO asked
+    # for: "it should damp out and GET STUCK".
+    # So while the car is separating and still inside the object, pull back on it. This is
+    # DISSIPATIVE, never additive: the force opposes the motion, and it is capped at exactly the
+    # impulse that cancels the remaining separation, so it can slow the car to rest but can never
+    # drag it back INTO the barrier. A contact that can only push is what leaves a car skating
+    # away from a wall it just buried itself in.
+    if vn > 0.0 && δeff > 0.0
+        # Exactly the impulse that cancels the remaining separation -- no more, so it can bring the
+        # car to rest but never drag it back INTO the barrier.
+        # A spring-like coefficient (JM_STICK_C, N per m/s) was tried here first and MEASURED to be
+        # inert: results were bit-identical at 6.0e4, 2.0e5 and 6.0e5, because this cap is always
+        # the smaller term. It was removed rather than left in place, since a knob that cannot
+        # change the outcome is a trap for whoever tunes it next.
+        Fn = -m*vn/max(dt, 1e-3)
+    end
     cθ = cos(θ); sθ = sin(θ)
     Fx = Fn*( nx*cθ + nz*sθ);  Fy = Fn*(-nx*sθ + nz*cθ)         # world force → body frame
     rx = (-nx*cθ - nz*sθ)*arm; ry = ( nx*sθ - nz*cθ)*arm        # contact point ≈ CG − n·arm, in body frame
