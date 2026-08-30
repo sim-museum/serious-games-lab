@@ -1443,7 +1443,7 @@ const BND_PK = Ref(0.0)   # E95b: last frame's world-edge contact peak (N)
 const WRECK_KMH    = parse(Float64, get(ENV, "JM_WRECK_KMH", "50.0"))    # E95c: any HARD contact above this totals the car
 const WRECK_MS     = WRECK_KMH/3.6
 const WRECKED      = Ref(false)          # latched: a wreck is permanent, that is the point
-const WRECK_DAMP   = 2.2                 # 1/s extra velocity damping once wrecked (motion bleeds out)
+const WRECK_DAMP   = parse(Float64, get(ENV, "JM_WRECK_DAMP", "6.0"))   # E95e: 1/s; raised from 2.2 -- a totalled car should stop in a car length or two, not coast on
 # Detached wheels: each is (x, y, z, vx, vy, vz, spin, spinrate, name). World frame, metres.
 # E95: 8 Float64s + the wheel's model NAME. Declared NTuple{9,Float64} at first, which threw
 # `Cannot convert String to Float64` on the FIRST detachment and killed the sim mid-wreck --
@@ -4879,6 +4879,17 @@ function main()
                 # E95: once wrecked the car's motion BLEEDS OUT. Fed through the same force port the
                 # collision uses, so the solver integrates it -- not a velocity hack applied after
                 # the step (which is what bumpX! does and why it was replaced in E56).
+                # E95e (PO 2026-08-29: "hit the red wall, bounced back ... levitated and bounced.
+                # There should be no bounce back. The car should come to a stop, not bounce back").
+                # A wrecked car gets NO OUTWARD PUSH AT ALL. Every spring term -- trackside and
+                # world-edge -- is dropped, because a spring is the only thing here that can return
+                # energy, and bounding its stored energy (E94b) still leaves SOME. Zero is the only
+                # value that cannot bounce. What remains is pure dissipation, so the car buries into
+                # whatever it hit and stops there, which is what "totalled" should look like.
+                if WRECKED[]
+                    cfx = 0.0; cfy = 0.0; cmz = 0.0
+                    BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0
+                end
                 wfx = WRECKED[] ? -617.0 * WRECK_DAMP * cs.v : 0.0
                 DriveRT3D.extforce3d!(cs; Fx = cfx + BND_FX[] + wfx, Fy = cfy + BND_FY[], Mz = cmz + BND_MZ[],
                                       CdA_scale = PLAYER_CDA[])
@@ -4958,7 +4969,11 @@ function main()
                     BND_FX[] = bfx; BND_FY[] = bfy; BND_MZ[] = bmz
                     BND_PK[] = hypot(bfx, bfy)   # E95b: the wreck trigger must SEE the world-edge wall
                     ffb_jolt = clamp(-vn*0.05, -1.0, 1.0)        # FF jolt off the world-edge wall
-                    if nl > FENCE_GRACE + FENCE_FAR              # the wall failed to contain → last-resort seal (rare; never in normal play)
+                    # E95e: containX! teleports the car back to the last in-world point and re-seats
+                    # the vertical subsystem -- its own docstring calls the failure mode a
+                    # "superball bounce". On a wrecked car that IS the levitation the PO saw, so
+                    # never snap a wreck back; it is stopping anyway and may stay where it died.
+                    if !WRECKED[] && nl > FENCE_GRACE + FENCE_FAR    # the wall failed to contain → last-resort seal (rare; never in normal play)
                         containX!(cs, LASTGX[], LASTGZ[]; vdamp=0.3, settle=true, groundz=groundz)
                         BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0; BND_PK[] = 0.0; OFFDIST[] = 0.0
                     end
