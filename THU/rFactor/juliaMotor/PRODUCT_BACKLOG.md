@@ -2788,3 +2788,26 @@ With per-sub-phase times at both tracks, per-object and per-billboard costs are 
 
 Watkins run in flight (cheap track first); Spa is the comparison that settles the mix question.
 
+#### E80-S3 RESULT — **the mix hypothesis is REFUTED. The cost is one phase: object mesh PLACEMENT.**
+
+Watkins, sub-phase split (163 objects + 39 billboards + 110 solid):
+
+| sub-phase | duration | share of block |
+|---|---|---|
+| **object mesh placement** (everything before the `OBJECTS` comprehension) | **34.6 s** | **94 %** |
+| `OBJECTS` comprehension | 1.8 s | 5 % |
+| **billboard / tree loop** | **0.1 s** | 0.3 % |
+
+**39 billboards cost 0.1 s — ~2.6 ms each.** Scaled to Spa's 2433 billboards that is **~6 s of its 862.9 s**. **So the billboard/object MIX explains nothing, and E80-S2's suggestion that the super-linear term might be a mix artefact is WITHDRAWN.**
+
+**Where the time actually goes:** the placement phase walks `insts` — ALL instances, objects and billboards and crowd rows alike — issuing the `hat()` terrain queries. So its cost scales with TOTAL instances, not with the object/billboard split:
+
+| | instances | placement-dominated block | per instance |
+|---|---|---|---|
+| Watkins | 202 | 36.7 s | 0.18 s |
+| Spa | 3888 | 862.9 s | 0.22 s |
+
+Linear on total instances predicts `36.7 × (3888/202) = 706 s` against a measured **862.9 s** — **1.22×**. **The mild super-linearity is real and survives the mix being ruled out**, so the remaining candidate is the one originally paired with it: HAT-cell behaviour when a cell is dense (Spa's grid is finer per triangle, but its OBJECTS may cluster near the circuit).
+
+**E80 is now well-posed for the first time:** one phase, one mechanism, ~0.2 s per instance, and a 1.22× residual. That is a different item from the one that began as "texture load takes 13 minutes".
+
