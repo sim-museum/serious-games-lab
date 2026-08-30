@@ -1231,9 +1231,20 @@ a contended machine.** This session has already proved that two MiG Alley gates 
 JuliaRacer smoke tests were running on the same four cores, so a 4× frame-time inflation from
 contention is not hypothetical here. Whatever the cause, the blocker as written is stale.
 
-⚠️ **Scope of this measurement:** freshly loaded sessions, car at the grid. A full field of AI in close
-traffic is a heavier frame and is NOT covered — if the PO sees a low frame rate while racing, that is a
-different measurement and this does not refute it.
+✅ **SCOPE GAP CLOSED (same day): a FULL AI FIELD does not change it.** The measurements above had
+`JM_AI` at its default of **0** — no opponents at all — which I flagged as uncovered. Re-run at Watkins
+with `JM_AI=5` (Ferrari, Brabham, BRM, Eagle, Cooper), sampling the whole run rather than the end:
+
+    10 fps samples:  min 57.7   median 59.9   max 60.4     samples below 30 fps: 0
+    world ms:        min 4.09   median 5.50   max 9.84
+
+**Not one sample dropped below 57.7 fps**, and `world` — which now includes simulating and drawing five
+extra cars — peaks at 9.84 ms in a ~17 ms frame. So the AI field is not a meaningful cost, and E80's
+recorded blocker does not reproduce with opponents either.
+
+⚠️ **Still not covered:** a *collision-heavy* or tightly-packed moment, and the PO's own machine under
+whatever else it is running. If the PO sees a low frame rate while racing, that remains a different
+measurement and this does not refute it.
 
 ⚠️ ~~**NOT done.** With the mirror pass removed entirely, BOTH views sit at ~15 fps / 65 ms — so~~
 there is a second, view-independent cost of the same order, and 15 fps is not acceptable either.
