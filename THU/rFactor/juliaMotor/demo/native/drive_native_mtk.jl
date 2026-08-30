@@ -250,6 +250,29 @@ solidkind(nm) = (startswith(nm,"haie")||startswith(nm,"bush")||startswith(nm,"sh
 # E56: sum the spring-damper CONTACT forces from every SOLID the PLAYER car penetrates into one
 # body-frame (Fx,Fy,Mz) to feed extforce3d! BEFORE the step (the solver integrates the collision —
 # no bumpX! state hack).  Returns the net force/moment + a peak-penetration proxy for the FFB jolt.
+# E96-S2 (2026-08-30): THE CAR'S WORLD VELOCITY, derived from the position delta.
+# `cs.v` is an UNSIGNED SPEED, so `v*cos(θ), v*sin(θ)` cannot represent motion opposite to the
+# heading -- a car being pushed backwards off a wall reads as though it were still driving INTO it.
+# Every contact site here used that form, and it turns a no-rebound clamp into an accelerator:
+# the clamp sizes its impulse to "cancel the approach", the phantom approach grows with each
+# frame of retreat, and the push grows with it. Measured on the real solver (v0 = 30 m/s into a
+# wall): the car stops correctly at v = 0.02 m/s, then v doubles every frame -- 0.05, 0.12, 0.35,
+# 0.87, 1.91, 3.82, 7.65, 15.32, 30.83 -- while x DECREASES, ending 335 m behind the barrier at
+# 57.9 m/s from a 200 km/h hit. That is the PO's "trampoline", and it is a sign error, not a
+# stiffness problem, which is why four rounds of softening springs never touched it.
+# The position delta carries the true direction, costs two subtractions, and needs nothing from
+# the solver internals.
+const WVX = Ref(0.0); const WVZ = Ref(0.0)
+const PRVX = Ref(NaN); const PRVZ = Ref(NaN)
+function update_world_velocity!(x, z, dt)
+    if isfinite(PRVX[]) && dt > 1e-6
+        WVX[] = (x - PRVX[])/dt; WVZ[] = (z - PRVZ[])/dt
+    else
+        WVX[] = 0.0; WVZ[] = 0.0        # first frame: no delta yet, and a guessed one would be worse
+    end
+    PRVX[] = x; PRVZ[] = z
+    (WVX[], WVZ[])
+end
 function solid_contact(x, z, θ, v, dt)
     Fx = 0.0; Fy = 0.0; Mz = 0.0; peak = 0.0
     hardpk = 0.0      # E95c: peak from NON-HEDGE objects only -- a hedge must never total the car
@@ -258,7 +281,10 @@ function solid_contact(x, z, θ, v, dt)
         rr = r + CARHALF
         (d >= rr || d < 1e-3) && continue
         nx = dx/d; nz = dz/d
-        vn = v*cos(θ)*nx + v*sin(θ)*nz                    # car speed along the outward normal (<0 = into it)
+        vn = WVX[]*nx + WVZ[]*nz                          # E96-S2: TRUE world velocity along the outward
+                                                          # normal (<0 = into it). Was v*cos/sin(θ),
+                                                          # which is unsigned and so never reported
+                                                          # retreat -- see update_world_velocity!.
         (fx, fy, mz) = DriveRT3D.contact_force(rr - d, nx, nz, vn, θ; kind = kind, dt = dt)
         Fx += fx; Fy += fy; Mz += mz; peak = max(peak, hypot(fx, fy))
         kind === :soft || (hardpk = max(hardpk, hypot(fx, fy)))
@@ -4977,6 +5003,7 @@ function main()
             if CAR3D
                 cfx = cfy = cmz = 0.0
                 if !SKIDPAD && !rst
+                    update_world_velocity!(cs.x, cs.z, dt > 1e-4 ? dt : 1/60)   # E96-S2: once per frame, before every contact test
                     (cfx, cfy, cmz, cpk, chard) = solid_contact(cs.x, cs.z, cs.θ, cs.v, dt > 1e-4 ? dt : 1/60)
                     # E95: a hard enough hit ends the race. Triggered on the contact PEAK, not on
                     # speed -- what wrecks a car is the impulse it absorbs, and a slow scrape into a
@@ -5108,7 +5135,9 @@ function main()
                 nl < 1e-3 && (nwx = cos(cs.θ+π); nwz = sin(cs.θ+π); nl = 1.0)
                 nwx /= nl; nwz /= nl
                 if nl > FENCE_GRACE
-                    pvx = cs.v*cos(cs.θ); pvz = cs.v*sin(cs.θ)
+                    pvx = WVX[]; pvz = WVZ[]                     # E96-S2: true world velocity, not v*cos/sin(θ)
+                                                                 # -- cs.v is unsigned, so the old form
+                                                                 # read a retreating car as approaching
                     vn = pvx*nwx + pvz*nwz                       # car speed along the INWARD normal (<0 = leaving)
                     gdt = dt > 1e-4 ? dt : 1/60
                     (bfx, bfy, bmz) = DriveRT3D.contact_force(nl - FENCE_GRACE, nwx, nwz, vn, cs.θ; kind = :wall, dt = gdt)
