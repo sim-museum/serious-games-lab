@@ -3402,3 +3402,46 @@ impulse. **Not guessed here** — it needs the PO to say which rule wins for a f
 ⚠️ **E96's guarantee does not imply this one.** No-rebound is about the *direction* energy may flow
 through a contact; this is about how fast it *leaves the car*. The wreck damping (E95, `−m·2.2·v`)
 acts on translation only.
+
+---
+
+## E100 — 🔴 The gearbox is HARDCODED, and it is the wrong car setup for every track but one
+
+**Violates the PO's standing constraint** (2026-08-27, verbatim): *"the car physics should be
+determined entirely by the iracing ibt data, there should be no modifiable parameters."*
+
+`JuliaMotorMTK/src/drive_rt3d.jl:25` carries the transmission as source constants:
+
+```julia
+const GEARS = [2.23, 1.72, 1.32, 1.09, 0.916]
+const FINAL = 4.11
+```
+
+`Setup.setup_params` already extracts `gear_ratios` and `final_drive` from the ibt session
+YAML (`setup.jl:75,84-85`) — the data is parsed, and then not used by the physics.
+
+**Measured across the whole gold-standard ibt store (2026-08-30):**
+
+| capture | gear ratios | final |
+|---|---|---|
+| `lotus49_nurburgring nordschleife` ×6 | `[2.23, 1.72, 1.32, 1.04, 0.846]` | 4.11 |
+| `lotus49_skidpad` ×3 | `[2.23, 1.72, 1.32, 1.09, 0.916]` | 4.11 |
+
+**The ratios are per-session data, not a car constant** — the Lotus 49's gears are adjustable,
+and these two setups genuinely differ. The hardcoded values are the **skidpad** setup, so every
+track is currently driven on short-course gearing: 4th is 4.8% short (1.09 vs 1.04) and 5th is
+8.3% short (0.916 vs 0.846). That is wrong rpm and wrong top speed in exactly the gears a fast
+circuit spends its time in, and it is invisible from inside the sim — the car simply pulls
+slightly wrong, which reads as "the physics feels off" rather than as a bug with an address.
+
+`final_drive` happens to agree at 4.11 in every capture, which is the trap: spot-checking ONE
+of the two numbers would have shown a match and closed the question.
+
+**Fix:** the transmission must come from the loaded session, not from source. Note the wrinkle
+before starting — the sim currently opens an ibt only as a *header template* for export
+(`IBTREC0`, `IBTDIR`), chosen by track name, so there is no "current setup" object yet. Whatever
+supplies it must also decide what happens when no matching ibt exists, and must SAY which
+capture the gearing came from (a run that silently falls back to constants is the bug again).
+
+**Gate it:** assert the live gear ratios equal the ones parsed from the session actually loaded.
+An equality assertion is what makes the constraint enforceable rather than aspirational.
