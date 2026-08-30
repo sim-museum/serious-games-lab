@@ -283,6 +283,7 @@ end
 function solid_contact(x, z, θ, v, dt)
     Fx = 0.0; Fy = 0.0; Mz = 0.0; peak = 0.0
     hardpk = 0.0      # E95c: peak from NON-HEDGE objects only -- a hedge must never total the car
+    closing = 0.0     # E99: peak closing speed along a NON-HEDGE contact normal (m/s)
     @inbounds for (ox, oz, r, kind) in SOLIDS
         dx = x - ox; dz = z - oz; d = hypot(dx, dz)
         rr = r + CARHALF
@@ -295,8 +296,17 @@ function solid_contact(x, z, θ, v, dt)
         (fx, fy, mz) = DriveRT3D.contact_force(rr - d, nx, nz, vn, θ; kind = kind, dt = dt)
         Fx += fx; Fy += fy; Mz += mz; peak = max(peak, hypot(fx, fy))
         kind === :soft || (hardpk = max(hardpk, hypot(fx, fy)))
+        # E99 (PO 2026-08-30: "a graze at speed should scrub you but not end your race"): keep the
+        # CLOSING SPEED ALONG THE NORMAL. It is the physical difference between a graze and a shunt,
+        # and it is the one thing the force cannot tell you -- `hypot(fx,fy)` saturates at
+        # CONTACT_DVMAX (~296 kN) for a 3 cm clip just as it does for a square hit, which is why the
+        # old `chard > 1.0e3` test fired on ANY contact and left the speed gate deciding everything.
+        # Measured: at 108 km/h a 0.03 m graze keeps 84% of the car's energy through the contact and
+        # a 0.64 m clip keeps 23% -- the contact law already scrubs correctly; only the WRECK trigger
+        # could not tell them apart.
+        kind === :soft || (closing = max(closing, -vn))   # vn < 0 is approach; store it positive
     end
-    (Fx, Fy, Mz, peak, hardpk)
+    (Fx, Fy, Mz, peak, hardpk, closing)
 end
 # GPL '67 AI reference laptimes (s) — the "100 %" anchor.  Sourced from GPL AI/hotlap
 # pace per circuit; tunable per car/setup via JM_AI_REFLAP (overrides the table).  At
@@ -1481,6 +1491,23 @@ const BND_NX = Ref(0.0); const BND_NZ = Ref(0.0)   # E95f: world-frame wall norm
 const WHEEL_REST   = parse(Float64, get(ENV, "JM_WHEEL_REST", "0.35"))   # E95f: wheel/wall restitution (<1 = inelastic)
 const WRECK_KMH    = parse(Float64, get(ENV, "JM_WRECK_KMH", "50.0"))    # E95c: any HARD contact above this totals the car
 const WRECK_MS     = WRECK_KMH/3.6
+# E99: closing speed along the contact normal above which a hit ends the race. A graze is oblique,
+# so its normal component stays small however fast the car is travelling; a shunt is nearly head-on.
+# CALIBRATED AGAINST ENERGY, not chosen by feel. Measured at 108 km/h into a 5 m obstacle, varying
+# only the lateral offset, energy retained THROUGH the contact against closing speed:
+#
+#     offset 4.9 m   pen 0.03 m   closing  5.4 m/s   84% kept   <- unmistakably a graze
+#     offset 4.6 m   pen 0.12 m   closing 10.7 m/s   72% kept
+#     ------------------------------------------------ 12.0 m/s threshold
+#     offset 4.2 m   pen 0.34 m   closing 13.8 m/s   59% kept
+#     offset 3.0 m   pen 0.64 m   closing 22.2 m/s   24% kept
+#     head-on        pen 1.16 m   closing 28.4 m/s    0% kept   <- unmistakably a shunt
+#
+# The line is drawn where the car stops keeping most of its energy: above it a contact takes more
+# than 40% and the race is over; below it you are scrubbed and still driving, which is exactly the
+# PO's rule ("a graze at speed should scrub you but not end your race", 2026-08-30).
+# JM_WRECK_CLOSE re-grades it without a rebuild.
+const WRECK_CLOSE  = parse(Float64, get(ENV, "JM_WRECK_CLOSE", "12.0"))
 const WRECKED      = Ref(false)          # latched: a wreck is permanent, that is the point
 const WRECK_FROZEN = Ref(false)          # E95g: the wreck has come to rest and is pinned there
 const WRECK_PX     = Ref(0.0); const WRECK_PZ = Ref(0.0); const WRECK_PT = Ref(0.0)
@@ -5011,7 +5038,7 @@ function main()
                 cfx = cfy = cmz = 0.0
                 if !SKIDPAD && !rst
                     update_world_velocity!(cs, cs.x, cs.z, dt > 1e-4 ? dt : 1/60)   # E96-S2/S6: once per frame, before every contact test
-                    (cfx, cfy, cmz, cpk, chard) = solid_contact(cs.x, cs.z, cs.θ, cs.v, dt > 1e-4 ? dt : 1/60)
+                    (cfx, cfy, cmz, cpk, chard, cclose) = solid_contact(cs.x, cs.z, cs.θ, cs.v, dt > 1e-4 ? dt : 1/60)
                     # E95: a hard enough hit ends the race. Triggered on the contact PEAK, not on
                     # speed -- what wrecks a car is the impulse it absorbs, and a slow scrape into a
                     # hedge must never latch it. The impact direction is taken from the net contact
@@ -5027,7 +5054,16 @@ function main()
                     # penetration got that frame, which is why a 200 km/h hit could slip under it.
                     # Hedges (:soft) are excluded by construction -- they contribute to cpk but not
                     # to chard, so you still just bury the car in them.
-                    hard_hit = (chard > 1.0e3) || (BND_PK[] > 1.0e3)
+                    # E99 (PO 2026-08-30): "a graze at speed should scrub you but not end your race."
+                    # The old test was `chard > 1.0e3 && |v| > WRECK_MS`, and chard saturates at
+                    # ~296 kN for ANY non-hedge contact -- so it never discriminated and the speed
+                    # gate ended the race for a 3 cm clip at 108 km/h just as for a square hit.
+                    # Trigger on the CLOSING SPEED ALONG THE CONTACT NORMAL instead: that is small
+                    # for a graze (the normal is mostly lateral) and near the full speed for a
+                    # square hit, which is exactly the distinction the PO is drawing.
+                    # The fence keeps its own peak test -- driving off the edge of the world is
+                    # never a graze.
+                    hard_hit = (cclose > WRECK_CLOSE) || (BND_PK[] > 1.0e3)
                     if hard_hit && abs(cs.v) > WRECK_MS
                         wreck!(abs(cs.v))
                     end
