@@ -1211,7 +1211,31 @@ why it was faster. Two round mirrors that small do not need a fresh image 60 tim
 they now refresh every 3rd frame: **6.8 → 11.7 fps, +72%, mirrors still live.**
 `JM_MIRROR_EVERY=1` restores per-frame, `JM_MIRROR_RTT=0` the old static discs.
 
-⚠️ **NOT done.** With the mirror pass removed entirely, BOTH views sit at ~15 fps / 65 ms — so
+✅ **DOES NOT REPRODUCE (2026-08-30) — the sim runs at the display refresh.** `JM_FRAMEPROF` +
+`JM_FPSDIAG`, three configurations:
+
+| config | fps | world | hud | frame |
+|---|---|---|---|---|
+| Monza, chase | 58.6–60.2 | 5.8–10.7 ms | 0.06–3.4 ms | 16.6–17.1 ms |
+| Watkins, chase | 58.8 | 7.56 ms | 3.23 ms | 17.0 ms |
+| Watkins, **cockpit** | 57.8 | 2.11 ms | 3.07 ms | 17.3 ms |
+
+**All three sit at ~58–60 fps**, and `world + hud` accounts for only 5–11 ms of a ~17 ms frame — the
+remainder is the vsync wait, i.e. there is real headroom rather than a hidden cost. The claim below
+(*"BOTH views sit at ~15 fps / 65 ms … 15 fps is not acceptable either"*) does not reproduce on either
+track or in either view.
+
+⚠️ **Why it changed is NOT established.** Candidates: the mirror-every-3rd-frame change recorded just
+above; other work since; or — worth taking seriously — **the original measurement having been taken on
+a contended machine.** This session has already proved that two MiG Alley gates failed purely because
+JuliaRacer smoke tests were running on the same four cores, so a 4× frame-time inflation from
+contention is not hypothetical here. Whatever the cause, the blocker as written is stale.
+
+⚠️ **Scope of this measurement:** freshly loaded sessions, car at the grid. A full field of AI in close
+traffic is a heavier frame and is NOT covered — if the PO sees a low frame rate while racing, that is a
+different measurement and this does not refute it.
+
+⚠️ ~~**NOT done.** With the mirror pass removed entirely, BOTH views sit at ~15 fps / 65 ms — so~~
 there is a second, view-independent cost of the same order, and 15 fps is not acceptable either.
 That is now the whole of E80. The mirror finding does not touch it, and the next sprint should
 profile the base frame rather than assume the remaining cost is in the same place.
