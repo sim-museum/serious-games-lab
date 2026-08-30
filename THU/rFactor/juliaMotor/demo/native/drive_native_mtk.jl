@@ -1609,6 +1609,7 @@ monza_surf(t) = (startswith(t,"trrow") || startswith(t,"asp")) ? :road :
                 (startswith(t,"armco") || startswith(t,"yarmc") || startswith(t,"brdgarm") || startswith(t,"brdgfen")) ? :dark :
                 occursin(r"^s\d\d", t) ? :bank :    # the sopraelevata banking segments (s07b2, s12l1, …) — over-bright white slabs
                 :other
+tstamp("  [E80] track categories / crowd tint begins")
 const TRACKCAT = MONZA ? [monza_surf(lowercase(p.tex)) for p in TRACK] : Symbol[]
 # E57: in the COMBINED Monza the paddock + banking + road-course corner sections are placed OBJECTS
 # (not part of trrow01), drawn at full object brightness ⇒ the paddock/connector pavement glares white
@@ -1632,6 +1633,7 @@ is_crowd_obj(nm) = occursin("stand", nm) || occursin("tribun", nm) || occursin("
                    startswith(nm,"ppl") || startswith(nm,"people") || startswith(nm,"pelf") ||
                    startswith(nm,"p_s")   # E63: the newly-restored fence crowd ROWS get the same warm de-blue tint
 # GPL sky dome: the 12-panel horizon ring (horiz0..11), camera-centred backdrop.
+tstamp("  [E80] horizon ring begins")
 const HORIZON_RING = if !SKIDPAD
     Render.build_horizon(TEXIDX)
 else   # skidpad: borrow the Nürburgring (Eifel forest) horizon backdrop for orientation
@@ -1871,6 +1873,7 @@ if SKIDPAD || NURB
         flush(stdout)
     end
 else
+tstamp("  [E80] trackside objects + billboards + trees begin")
 const DATPACK = TRACKDAT     # trackside objects come from the track's own .dat (generic across tracks)
 const TMPOBJ = mktempdir()
 objpath(nm) = (p=joinpath(ZD, nm*".3do"); isfile(p) ? p :
@@ -3062,6 +3065,7 @@ let objnames=Set{String}()
 end
 
 println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards + ", length(STATICTREES), " forest panels + ", length(SOLIDS), " solid (collidable)"); flush(stdout)
+tstamp("  [E80] trackside objects/billboards/trees DONE")
 end
 
 
@@ -3094,6 +3098,7 @@ mirrorItems = Render.build_gpl(MIRRORP, GPLTEX)    # rear-view mirrors (re-place
 # z ≈ ∓0.36) → thinnest bbox axis = the glass normal, quad spans the two in-plane axes,
 # nudged 4 mm along the normal toward the eye so it sits ON the glass, not in it.  vC.xy
 # carries disc-local 0..1 coords for the round mask (uMirrorGlass in the FS).
+tstamp("  [E80] mirrors + wheels begin")
 const MIRROR_RTT = get(ENV,"JM_MIRROR_RTT","1") != "0"    # JM_MIRROR_RTT=0 → old static silver discs
 const MIRW, MIRH = 384, 192
 (mirfbo, mirtex) = MIRROR_RTT ? Render.make_mirror_fbo(MIRW, MIRH) : (GLuint(0), GLuint(0))
@@ -3191,6 +3196,7 @@ const TYRE_ALB = parse(Float32, get(ENV,"JM_TYRE_ALB","0.17"))
 load_wheel(nm) = Render.build_gpl(Render.extract_gpl_car(joinpath(LOTDIR,nm*".3do");
                     exclude=("ltraymap","lshad"), tint=(TYRE_ALB,TYRE_ALB,TYRE_ALB+0.02f0)), GPLTEX)
 const WHEELITEMS = Dict(nm => load_wheel(nm) for nm in ("lotwlf","lotwrf","lotwlr","lotwrr"))
+tstamp("  [E80] wheel models loaded")
 swItems = Render.build_gpl(SWPARTS, GPLTEX)        # steering wheel (rotated with steer)
 handItems = Render.build_gpl(HANDP, GPLTEX)        # E64 S2: gloved hands (cockpit view, rotate with the wheel)
 armItems  = Render.build_gpl(ARMP, GPLTEX)         # E64 S2: forearms (cockpit view, static)
@@ -3408,6 +3414,7 @@ const ARMFIX = begin
         Render.translate(Float32[px, py, 0]) * Render.scalexyz(-1f0, -sy, sz) * Render.translate(Float32[-px, -py, 0])
 end
 println(count(it->it.tex!=0, trackItems), "/", length(trackItems), " track + ",
+tstamp("  [E80] track items counted")
         count(it->it.tex!=0, carItems), "/", length(carItems), " Lotus parts textured")
 
 # ---- E8: the AI grid = the standard GPL '67 chassis (Ferrari/Brabham/BRM/Eagle/
@@ -3439,6 +3446,7 @@ const AICAR_PHYS = [
     (360.0, 600.0),   # Cooper T81         Maserati V12 (heavy)
 ]
 AICARMODELS = Render.GPLCarModel[]
+tstamp("  [E80] AI car models begin")
 if !SKIDPAD && N_AI > 0
     for (nm, dir, body, w) in AISPECS[1:N_AI]
         print("  loading AI car: $nm … "); flush(stdout)
@@ -3448,6 +3456,7 @@ if !SKIDPAD && N_AI > 0
     end
 end
 const PROJ = Render.perspective_revz(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0)  # reversed-Z: near-uniform depth precision → kills distant z-fight (signs on fences)
+tstamp("  [E80] AI car models done / projection")
 # GPL's cockpit uses a WIDE field of view — the mirrors sit at the screen edges and you see lots of road.
 # A separate wide projection for the cockpit view (tunable via JM_FOV) reproduces that immersive look.
 const PROJ_COCKPIT = Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_FOV","80"))), Float32(W/H), 0.20f0, 3000f0)

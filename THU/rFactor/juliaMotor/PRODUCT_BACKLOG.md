@@ -2676,3 +2676,27 @@ Reference: telemetry, clutch OUT, zero throttle, zero brake, straight-line only 
 
 **REGRESSION USE:** re-run `coast_compare.jl` after any physics change. The ratio column is the gate.
 
+### E80-S1 (2026-08-29) — the 725 s was unattributed because **2,364 consecutive lines carried no timestamp**
+
+E80's standing finding is that `build_gpl` accounts for only **82 s** of a ~13-minute Spa load and **725 s is unaccounted**. The reason it stayed unaccounted is now plain: `JM_TIMING` stamps `texture load begins` (:1596), `texture INDEX built` (:1598) and `build_gpl done (GL uploads)` (:1603) — and then **the next stamp is `physics build begins` at :3967**. Everything in between ran untimed.
+
+⚠️ **That is also how the original E80 claim went wrong.** An earlier session read *"loading textures…"* being the LAST PRINTED line as evidence that texture loading was where the time went. It was only evidence of where the last `print` was. **A phase boundary is not a measurement, and the absence of later output says nothing about what is running.**
+
+**ADDED — 9 timestamps across the gap**, at the phase boundaries the code itself already marks with `const`/`println`:
+
+| stamp | what it bounds |
+|---|---|
+| `track categories / crowd tint begins` | :1612 |
+| `horizon ring begins` | :1636 |
+| `trackside objects + billboards + trees begin` | :1876 |
+| `trackside objects/billboards/trees DONE` | :3068 ← **the ~1,200-line prime suspect** |
+| `mirrors + wheels begin` | :3101 |
+| `wheel models loaded` | :3199 |
+| `track items counted` | :3417 |
+| `AI car models begin` | :3449 |
+| `AI car models done / projection` | :3459 |
+
+Syntax verified with `Meta.parseall` before running — inserting statements between top-level `const`s risks landing inside a multi-line expression, and a parse error would have looked like a load failure.
+
+**Status: a timed Watkins load is running.** Watkins first because it is the cheap track; **Spa is where the 725 s was measured**, so the attribution run that actually settles E80 is Spa, and Watkins only proves the stamps fire. No conclusion is drawn until the numbers exist.
+
