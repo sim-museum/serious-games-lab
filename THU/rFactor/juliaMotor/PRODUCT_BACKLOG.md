@@ -2768,3 +2768,23 @@ Spa, `JM_TIMING=1`, full load **1122.8 s** (18.7 min):
 
 **E80's original question is now ANSWERED.** What remains is a different, better-posed one: why the trackside block costs ~0.22 s per instance, and whether the mildly super-linear term is HAT-cell clustering or a billboard/object cost difference — measurable by splitting the block's timer between the object loop and the billboard loop.
 
+### E80-S3 (2026-08-29) — split the 862.9 s block into its three sub-phases
+
+E80's original question is answered (the 725 s is the trackside block, 77 % of a Spa load). The remaining one is sharper: **the block costs ~0.22 s per instance and is mildly SUPER-linear** — Spa's 3888 instances against Watkins' 202 is 19.2×, but the time ratio is 862.9/36.1 = **23.9×**, i.e. **1.24× more than constant per-instance cost predicts**. Two candidate explanations were recorded and neither has been tested:
+* **HAT-cell clustering** — the terrain queries are bucketed by grid cell, and a dense cell degrades a per-cell scan;
+* **billboards costing more than objects** — Spa's mix is **63 % billboards** (2433 of 3888) against Watkins' **19 %** (39 of 202), so a billboard/object cost difference alone could produce a super-linear-looking ratio **with no non-linearity at all**.
+
+**That second possibility matters: the "super-linear" term may be a MIX artefact rather than a scaling law.** Distinguishing them needs the block split by sub-phase, which is what this sprint adds:
+
+| stamp | bounds |
+|---|---|
+| `object mesh placement done; OBJECTS build begins` | :2536 — everything before the `OBJECTS` comprehension |
+| `OBJECTS built; billboard/tree loop begins` | :2634 |
+| `billboard/tree loop done` | :2715 — the `for i in insts` billboard/tree loop |
+
+With per-sub-phase times at both tracks, per-object and per-billboard costs are separable, and the mix hypothesis is testable arithmetically: if Watkins' per-billboard cost × 2433 + per-object cost × 1455 reproduces Spa's 862.9 s, **the mix explains it and there is no non-linearity to chase.**
+
+⚠️ **Insertion verified with the ERROR-NODE walk, not `Meta.parseall` alone** — E80-S1 inserted a stamp inside a three-line `println` and `Meta.parseall` still printed "PARSE OK", because it returns `Expr(:error, …)` rather than throwing. Reports `PARSE CLEAN (0 error nodes)`.
+
+Watkins run in flight (cheap track first); Spa is the comparison that settles the mix question.
+

@@ -2533,6 +2533,7 @@ let objnames=Set{String}()
         end
         flush(stdout)
     end
+    tstamp("  [E80] .. object mesh placement done; OBJECTS build begins")
     graze_mesh = get(ENV,"JM_GRAZE_MESH","0") != "0"
     global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(-i.yaw + objyawfix(i.name))), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
@@ -2631,6 +2632,7 @@ let objnames=Set{String}()
     # the gold's dense roadside autumn forest; as static authored-yaw graze-faded panels (MZ3)
     # they line the circuit without the old camera-faced "wall" / edge-on smear.
     DROP_FOREST = get(ENV,"JM_DROP_FOREST", (MONZA || WATGLEN) ? "0" : "1")!="0"
+    tstamp("  [E80] .. OBJECTS built; billboard/tree loop begins")
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     for i in insts
@@ -2712,6 +2714,7 @@ let objnames=Set{String}()
             push!(BILLBOARDS, (item, (Float32(i.x), gz, Float32(-i.y)), Float32(w), Float32(h)))
         end
     end
+    tstamp("  [E80] .. billboard/tree loop done")
     # Named instance table (name, world-x, world-z, base-y, kind, dropped?) for the JM_START_S
     # spot diagnostic — lets a mid-lap render report exactly which authored objects sit near the
     # car, even when their CENTROID is >13 m off-centreline but the mesh spans the road (E52: the
