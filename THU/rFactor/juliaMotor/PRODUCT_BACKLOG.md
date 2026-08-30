@@ -2996,3 +2996,22 @@ In MANUAL, **any throttle before the car reaches 12 km/h replaces the driver's c
 
 **PROPOSED FIX (not yet applied — it changes driving feel, so it is the PO's call):** gate the assist on what it was built for. Either restrict it to race starts with AI (`!isempty(AICARS) && IS_RACE`), or honour the driver's clutch whenever the slider is meaningfully disengaged (`clu > 0.4`), so riding the clutch always wins over the assist. **`JM_NO_LAUNCH_ASSIST=1` as an immediate opt-out is the smallest honest step.**
 
+#### E93 FIXED (2026-08-29) — PO: *"Make auto easy, I never use it so I don't care. Make manual right. Require that the slider be down before you can enter manual mode."*
+
+**1. MANUAL is now honest — the launch assist is OFF.** The override at `:4664` fired **only** in MANUAL (`!CTL.auto`), so gating it off changes MANUAL and nothing else. **AUTO is untouched** and still launches itself through `step_car3d!`'s auto-clutch, which is exactly what "make auto easy" asks for. `JM_LAUNCH_ASSIST=1` restores the old behaviour for an A/B.
+
+In MANUAL the slider is now the clutch, always — including from a standstill. Riding it out from rest is a real clutch release, which is what the PO asked for on 2026-08-27 (*"I like the clutch attached to a slider — that way I can ride the clutch"*) and what the assist had been quietly removing at the one manoeuvre where it matters most.
+
+**2. Entering MANUAL requires the slider DOWN.** `G` now refuses the AUTO→MANUAL switch while `clu < 0.4` and says why:
+
+```
+[gearbox] staying in AUTO -- put the CLUTCH SLIDER DOWN (disengaged) before switching
+to MANUAL. Slider is at 0.02 (need > 0.4).
+```
+
+Otherwise you would drop into MANUAL with the clutch already **engaged** — the state that leaves a real car stalled, and the same state that made the assist look like a reversed axis. **Leaving MANUAL is always allowed**: a mode you cannot exit is a worse bug than the one being fixed. Both directions now announce the mode, so it is never ambiguous which one you are in.
+
+The default gearbox is AUTO (`ZAND_SHIFT`), so the gate is reached on the normal path; `ZAND_SHIFT=manual` still starts in MANUAL as an explicit opt-in.
+
+⚠️ **STILL OPEN, deliberately separate:** with the clutch ENGAGED at a standstill and throttle applied, **rpm reads 0.0 across all 56 such ticks and the car does not move**, while `vehicle_3d.jl:56` declares `k_idle=0.5, idle_rpm=2000.0`. An idle governor exists and is not holding the engine up. **This fix does not address that** — and with the assist gone, a MANUAL driver who releases the clutch too early at rest will now meet it directly, so it matters more than before, not less.
+

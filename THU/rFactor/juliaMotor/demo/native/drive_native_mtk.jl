@@ -3543,7 +3543,25 @@ function read_input()
         (!CTL.auto && (upE || dnE) && clu < 0.4) && (upE = false; dnE = false)
     end
     kv = key(GLFW.KEY_V); (kv && !CTL.prevV) && (CTL.view = 1-CTL.view); CTL.prevV = kv
-    kg = key(GLFW.KEY_G); (kg && !CTL.prevG) && (CTL.auto = !CTL.auto); CTL.prevG = kg
+    # E93 (PO 2026-08-29): "Make auto easy, I never use it so I don't care. Make manual right.
+    # Require that the slider be down before you can enter manual mode."
+    # Entering MANUAL with the slider UP means the clutch is already ENGAGED, which is how a real
+    # car is left stalled -- and it is also the state that made the launch assist look like a
+    # reversed axis. So refuse the switch and say why. Leaving MANUAL is always allowed: you must
+    # never be trapped in a mode you cannot exit.
+    kg = key(GLFW.KEY_G)
+    if kg && !CTL.prevG
+        if CTL.auto && clu < 0.4
+            println("  [gearbox] staying in AUTO -- put the CLUTCH SLIDER DOWN (disengaged) before ",
+                    "switching to MANUAL. Slider is at ", round(clu, digits=2), " (need > 0.4).")
+            flush(stdout)
+        else
+            CTL.auto = !CTL.auto
+            println("  [gearbox] ", CTL.auto ? "AUTO" : "MANUAL — the clutch slider is yours; no launch assist")
+            flush(stdout)
+        end
+    end
+    CTL.prevG = kg
     km = key(GLFW.KEY_M); (km && !CTL.prevM) && (ENG.master[] = ENG.master[]>0 ? 0.0 : 0.7); CTL.prevM = km
     # R = respawn at the start; SHIFT+R (GPL) = recover onto the centreline at the CURRENT lap position
     # (upright, stopped) so you can rejoin from the grass/a spin without teleporting to the line.  recover
@@ -4661,7 +4679,18 @@ function main()
         # latch was at 9, leaving a 6–9 km/h dead gap where, on the uphill Spa/Nürburgring starts, the
         # clutch returned to manual, the engine fell to idle (~1950 rpm pinned) and the car bogged/oscillated.
         race_go[] && cs.v > 12.0 && (launch_done[] = true)
-        if race_go[] && !rst && !CTL.auto && !launch_done[] && inp.throttle > 0.05
+        # E93 (PO 2026-08-29): "Make manual right." This assist fired ONLY in MANUAL (!CTL.auto) and
+        # replaced the driver's clutch with 0.0 (engaged) plus autoshift=true for every throttle
+        # application below 12 km/h, latching launch_done for the session. That is what made the
+        # slider look reversed at a standing start: the axis was not inverted, it was DISCARDED.
+        # It also contradicted the PO's standing instruction ("I like the clutch attached to a
+        # slider -- that way I can ride the clutch"), removing the axis at the one manoeuvre where
+        # riding the clutch matters most.
+        # AUTO is untouched and still launches itself (step_car3d!'s auto-clutch), which is what the
+        # PO asked for: "make auto easy, I never use it so I don't care".
+        # JM_LAUNCH_ASSIST=1 restores the old behaviour for an A/B.
+        if race_go[] && !rst && !CTL.auto && !launch_done[] && inp.throttle > 0.05 &&
+           get(ENV, "JM_LAUNCH_ASSIST", "0") != "0"
             inp = DriveInput(throttle=inp.throttle, brake=inp.brake, steer=inp.steer,
                              clutch=0.0, shift_up=false, shift_down=false, autoshift=true)
         end
