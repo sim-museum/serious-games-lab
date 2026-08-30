@@ -2811,3 +2811,24 @@ Linear on total instances predicts `36.7 × (3888/202) = 706 s` against a measur
 
 **E80 is now well-posed for the first time:** one phase, one mechanism, ~0.2 s per instance, and a 1.22× residual. That is a different item from the one that began as "texture load takes 13 minutes".
 
+### E80-S4 (2026-08-29) — Spa with the split. **Prediction stated before the run, again.**
+
+From Watkins: placement **34.6 s / 202 instances = 0.1713 s per instance**.
+
+**PREDICTIONS for the Spa split (3888 instances):**
+
+| sub-phase | predicted | basis |
+|---|---|---|
+| object mesh **placement** | **~855 s** (>95 % of the block) | the block measured 862.9 s and the other two sub-phases are small |
+| `OBJECTS` comprehension | 2–15 s | 1.8 s at Watkins, scaled by object count |
+| billboard / tree loop | **~6 s** | 2433 × the 2.6 ms/billboard measured at Watkins |
+
+**And the number that matters:** constant per-instance cost predicts `0.1713 × 3888 = 666 s`; the block measured **862.9 s**, i.e. **0.2219 s per instance = 1.30× Watkins**.
+
+**WHAT EACH OUTCOME WOULD MEAN — written down before seeing it:**
+* **Placement ≈855 s and per-instance ≈1.3× Watkins** → the excess is inside placement, where the `hat()` queries are. Since the query COUNT per instance is fixed by the code, a 1.3× per-instance cost means a 1.3× per-QUERY cost, which is what HAT-cell density predicts (Spa's objects cluster along a 14.1 km circuit; Watkins' along 4.2 km). **HAT density becomes the standing explanation.**
+* **Billboard loop ≫6 s** → the Watkins per-billboard figure does not generalise and the mix question reopens, despite being refuted at Watkins.
+* **Placement ≈666 s with the extra ~200 s elsewhere** → the super-linearity is NOT in placement at all and both current explanations are wrong.
+
+⚠️ **This is E80's 4th sprint, so the item rotates after it regardless of outcome.** The original question — *where do the 725 s go* — is already answered (77 % in one previously untimed block). What remains is a follow-up worth its own item rather than more sprints under a title that no longer describes it.
+
