@@ -557,4 +557,34 @@ function bump3d!(c::Car3D, dvx, dvz, dr, dvy = 0.0, dpp = 0.0, dq = 0.0)
     c
 end
 
+"""
+    stall_step(t, dt; auto, wrecked, rpm, clutch, rpm_floor, secs) -> (t′, fire)
+
+E98: in MANUAL, a stalled engine drops straight to AUTO (PO 2026-08-30).
+
+All four conditions are required, and each is load-bearing:
+  * MANUAL — auto is already the destination, so firing there is meaningless.
+  * rpm below the floor — the engine is actually dead.
+  * clutch ENGAGED (< 0.4) — an idling engine with the clutch OUT is not stalled. That is the
+    PO's own case: "applying throttle with the slider down just revs the engine, as it should".
+    With the clutch riding, a low rpm is the driver's choice, not a failure.
+  * NOT wrecked — a wreck decouples the engine deliberately and must not read as a stall.
+
+Sustained for `secs` so a launch dip cannot trigger it; the timer resets the moment any
+condition lifts. Returns the new accumulator and whether the switch should fire.
+
+S366: extracted from the render loop so it can be gated. It was four booleans and an
+accumulator woven into a 900-line frame body, which meant the only way to test the PO's
+rule was to drive the car and watch — and every condition above is a place to get it
+backwards silently.
+"""
+function stall_step(t::Float64, dt::Float64; auto::Bool, wrecked::Bool, rpm::Float64,
+                    clutch::Float64, rpm_floor::Float64=300.0, secs::Float64=0.5)
+    if !auto && !wrecked && rpm < rpm_floor && clutch < 0.4
+        t += (dt > 1e-4 ? dt : 1/60)
+        return t >= secs ? (0.0, true) : (t, false)
+    end
+    return (0.0, false)
+end
+
 end # module

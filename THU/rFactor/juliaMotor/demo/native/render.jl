@@ -875,8 +875,23 @@ function gpl_texture_index(dir)
     # E67 S1: decoded-texture cache — the MIP/SRB software decode was 37 s of the Zandvoort
     # launch.  GPL assets are immutable, so cache decoded RGBA per source dir (JM_TEXCACHE=0
     # disables; delete ~/.cache/juliamotor/tex after decoder changes).
-    cd = get(ENV,"JM_TEXCACHE","0") == "0" ? "" :   # default OFF until the deferred cold/warm A/B verifies (box contended at S1 close)
-         joinpath(homedir(), ".cache", "juliamotor", "tex", string(hash(abspath(dir)), base=16))
+    # E67 S2: the cache key includes JM_NO_ALPHABLEED. The stored blob is written AFTER the
+    # alpha-bleed pass and the cache read short-circuits BEFORE it, so a single run with the A/B
+    # flag set would persist un-bled textures that every later run then silently reuses -- the
+    # neon-foliage bug back, with no flag set and nothing in the output to say why. A debug flag
+    # that can poison a cache outlives the debugging session. Key on it instead.
+    # E67 S2 (2026-08-30): the deferred A/B is DONE and the cache is now default ON.
+    #   cache OFF          762.4 s / 744.7 s   (two runs, different machine load)
+    #   cache ON, cold     699.7 s             (populating costs nothing like a doubling)
+    #   cache ON, warm       1.5 s / 2.44 s    -> ~300x, for 1995 textures
+    # Speed alone would not justify defaulting it on: a cache returning WRONG pixels has the
+    # right byte count. So both arms also hashed every (name,w,h,rgba) and agree exactly
+    # (76969c30aa12ded0). Caveat kept honestly: the warm reads hit a hot page cache, so a
+    # genuinely cold read of 1.2 GB will cost seconds rather than milliseconds -- still ~100x.
+    # Cost: ~1.2 GB on disk per track dir. JM_TEXCACHE=0 disables.
+    cd = get(ENV,"JM_TEXCACHE","1") == "0" ? "" :
+         joinpath(homedir(), ".cache", "juliamotor", "tex",
+                  string(hash((abspath(dir), get(ENV,"JM_NO_ALPHABLEED","0"))), base=16))
     cd != "" && (try; mkpath(cd); catch; cd = ""; end)
     GPLTex(paths, dat, cd)
 end

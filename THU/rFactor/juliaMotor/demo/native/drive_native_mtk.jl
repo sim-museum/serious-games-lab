@@ -5088,16 +5088,17 @@ function main()
                     # slider down just revs the engine, as it should"), and NOT wrecked, because a
                     # wreck decouples the engine deliberately and must not look like a stall.
                     # Sustained, so a launch dip cannot trigger it.
-                    if !CTL.auto && !WRECKED[] && cs.rpm < STALL_RPM && CLU_NOW[] < 0.4
-                        STALL_T[] += (dt > 1e-4 ? dt : 1/60)
-                        if STALL_T[] >= STALL_SECS
-                            CTL.auto = true; STALL_T[] = 0.0
-                            println("  [gearbox] ENGINE STALLED (", round(Int, cs.rpm),
-                                    " rpm, clutch engaged) -- switched to AUTO")
-                            flush(stdout)
-                        end
-                    else
-                        STALL_T[] = 0.0
+                    # S366: the rule itself now lives in DriveRT3D.stall_step and is gated by
+                    # JuliaMotorMTK/tools/stall_smoke.jl. Keep ONE implementation -- a copy here
+                    # would drift from the one the gate checks, and the gate would still pass.
+                    STALL_T[], _stallfire = DriveRT3D.stall_step(STALL_T[], dt;
+                        auto = CTL.auto, wrecked = WRECKED[], rpm = cs.rpm, clutch = CLU_NOW[],
+                        rpm_floor = STALL_RPM, secs = STALL_SECS)
+                    if _stallfire
+                        CTL.auto = true
+                        println("  [gearbox] ENGINE STALLED (", round(Int, cs.rpm),
+                                " rpm, clutch engaged) -- switched to AUTO")
+                        flush(stdout)
                     end
                     # E95: while wrecked AND still moving, keep testing each corner -- a second wheel
                     # that reaches the barrier before the car stops comes off too. Gated on cpk so

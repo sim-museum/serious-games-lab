@@ -29,7 +29,7 @@ win=GLFW.CreateWindow(W,H,"o"); GLFW.MakeContextCurrent(win)
 glEnable(GL_DEPTH_TEST); glEnable(GL_MULTISAMPLE)
 prog=Render.program(); glUseProgram(prog); glUniform3f(glGetUniformLocation(prog,"uLightDir"),0.4f0,1.0f0,0.25f0)
 const TINT = get(ENV,"JM_TINT","")!=""
-items=Render.build_gpl(parts, TINT ? Render.GPLTex(Dict{String,String}(), Dict{String,Vector{UInt8}}()) : Render.gpl_texture_index(ZD))
+items=Render.build_gpl(parts, TINT ? Render.GPLTex(Dict{String,String}(), Dict{String,Vector{UInt8}}(), "")  # 3rd field = cachedir (E67); "" = off : Render.gpl_texture_index(ZD))
 for (k,pp) in enumerate(parts); println("  part $k  tex=$(pp.tex)"); end
 # bounding box / centre
 allx=Float32[];ally=Float32[];allz=Float32[]
