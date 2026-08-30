@@ -2700,3 +2700,26 @@ Syntax verified with `Meta.parseall` before running — inserting statements bet
 
 **Status: a timed Watkins load is running.** Watkins first because it is the cheap track; **Spa is where the 725 s was measured**, so the attribution run that actually settles E80 is Spa, and Watkins only proves the stamps fire. No conclusion is drawn until the numbers exist.
 
+#### E80-S1 result (Watkins Glen, first attribution) — and a syntax check that lied
+
+**The untimed region IS dominated by one block.** Timed Watkins load:
+
+| t+ | phase |
+|---|---|
+| 18.6 s | track parse begins |
+| 24.3 s | geometry extraction begins |
+| 31.8 s | texture load begins |
+| 34.6 s | `build_gpl` done (GL uploads) — **texture upload is 2.8 s here** |
+| 34.6 s | track categories / crowd tint |
+| 34.6 s | horizon ring |
+| 38.4 s | **trackside objects + billboards + trees BEGIN** |
+| 74.5 s | **… DONE — 36.1 s, the dominant cost** |
+| 76.2 s | mirrors + wheels begin |
+| 77.6 s | wheel models loaded |
+
+So of ~43 s previously invisible after `build_gpl`, **36.1 s is the trackside objects/billboards/trees block** — the ~1,200-line stretch flagged as prime suspect. That is consistent with the earlier note that the Spa time is "unaccounted in billboards/objects", but it is now MEASURED at one track rather than supposed.
+
+⚠️ **This is Watkins, not Spa. E80's 725 s was measured at SPA and is NOT yet attributed.** Watkins' whole load is ~78 s. Nothing here licenses a claim about the 13-minute Spa case; it only shows the instrument works and names the block to watch. Spa is the run that settles it.
+
+⚠️ **MY SYNTAX CHECK WAS A FALSE NEGATIVE, and this is the reusable lesson.** I verified the 9 inserted timestamps with `Meta.parseall` and it printed **PARSE OK** — then the run died with `ParseError @ :3417`. **`Meta.parseall` does not throw on a syntax error: it returns an `Expr(:error, …)` node inside the toplevel expression, so calling it and not inspecting the result proves nothing.** One stamp had landed INSIDE a multi-line `println(...)` spanning three lines, because the insertion point was chosen from the statement's FIRST line. Now checked by walking the parse tree for `:error`/`:incomplete` nodes, which reports `PARSE CLEAN (0 error nodes)`. **A checker that cannot fail is not a check** — the same shape as this project's recurring instrument problem, in a new place.
+

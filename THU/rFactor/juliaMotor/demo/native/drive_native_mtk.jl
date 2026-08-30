@@ -3414,8 +3414,8 @@ const ARMFIX = begin
         Render.translate(Float32[px, py, 0]) * Render.scalexyz(-1f0, -sy, sz) * Render.translate(Float32[-px, -py, 0])
 end
 println(count(it->it.tex!=0, trackItems), "/", length(trackItems), " track + ",
-tstamp("  [E80] track items counted")
         count(it->it.tex!=0, carItems), "/", length(carItems), " Lotus parts textured")
+tstamp("  [E80] track items counted")
 
 # ---- E8: the AI grid = the standard GPL '67 chassis (Ferrari/Brabham/BRM/Eagle/
 # Cooper), each its OWN GPL car, not Lotus copies.  Auto-levelled onto a common
