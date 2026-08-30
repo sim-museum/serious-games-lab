@@ -3057,6 +3057,16 @@ PO: hard impact must (a) damp the car's motion out, (b) **permanently disconnect
 
 **IMPLEMENTED.**
 
+⚠️ **CORRECTION (2026-08-30, measured): the trigger is de facto SPEED-GATED, not impulse-gated.**
+The peak contact force saturates `CONTACT_DVMAX` on *any* wall contact — measured **266 kN at 18 km/h**
+and 296 kN at every speed above it — so `chard > 1.0e3` is trivially true for every non-hedge touch and
+never discriminates. The `|v| > WRECK_MS` gate decides every case on its own. The claim below describes
+the intent, not the behaviour; the two are recorded together rather than the wrong one being deleted.
+The hedge exclusion IS real and does work (`:soft` never contributes to `chard`), so "bury the car in a
+hedge, total it on a wall" holds — it is only the *speed vs impulse* half that is misdescribed.
+**Verified after E96 that the wreck still fires**: no trigger at 18/47 km/h, fires at 54/108/200 km/h,
+i.e. E96's clamps did not break E95.
+
 **Trigger — on IMPULSE, not speed.** `solid_contact` already returns a contact-force peak; the wreck latches at `cpk > JM_WRECK_PEAK` (6.0e4 N) with `|v| > 8 m/s`. **Speed alone would be wrong**: a slow scrape into a hedge at 30 km/h must never end a race, and a heavy hit at 40 km/h should. Hedges (`:soft`) are excluded from wheel loss entirely.
 
 **Engine permanently disconnected.** Once `WRECKED[]` latches, the driver's clutch input is replaced by `1.0` (fully disengaged) for the rest of the session, and shift inputs are dropped. **The latch is never reset — that is the point.**
