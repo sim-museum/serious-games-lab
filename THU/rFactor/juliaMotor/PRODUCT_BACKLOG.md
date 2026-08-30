@@ -3015,3 +3015,39 @@ The default gearbox is AUTO (`ZAND_SHIFT`), so the gate is reached on the normal
 
 ⚠️ **STILL OPEN, deliberately separate:** with the clutch ENGAGED at a standstill and throttle applied, **rpm reads 0.0 across all 56 such ticks and the car does not move**, while `vehicle_3d.jl:56` declares `k_idle=0.5, idle_rpm=2000.0`. An idle governor exists and is not holding the engine up. **This fix does not address that** — and with the assist gone, a MANUAL driver who releases the clutch too early at rest will now meet it directly, so it matters more than before, not less.
 
+### E94 (PO 2026-08-29) — barrier hits must be INELASTIC, not a trampoline
+
+PO: *"when the car hits a barrier at speed it should damp out and get stuck, indicating an inelastic collision that causes damage. Popping off the relevant wheel or wheels, which then roll and bounce away, would be nice (that's what GPL does). When it hits a barrier at speed, the car should not have an elastic collision causing it to trampoline, levitate, etc. as my car just did on the last run."*
+
+#### Part 1 — the trampoline. **FIXED, and the parameters contradicted their own documentation.**
+
+`drive_rt3d.jl` `contact_force`, `:wall` branch:
+
+| | `:soft` (hedge/hay) | `:wall` (barrier) — BEFORE |
+|---|---|---|
+| spring `k` | 8.0e4 | **4.0e5 — 5× STIFFER, the stiffest in the file** |
+| damper `c` | 7.0e4 | 1.5e5 |
+
+**Three statements in the same function disagreed with each other:**
+1. the docstring called `:wall` *"stiff spring + one-sided damper ⇒ **ELASTIC bounce-back**"*;
+2. the inline comment on the very same line called 4.0e5 *"**soft** spring … ⇒ inelastic, no sling"*;
+3. the reasoning comment above it states plainly that a stiff conservative spring *"stores k·δ² on the way in and returns all of it on the way out (the sling), no matter how much damping is layered on top"*.
+
+**(3) is correct, and (1) and (2) were both wrong about the same number.** The wall was documented as inelastic and parameterised as a catapult — hence the PO trampolining.
+
+**Now:** `k = 1.0e5` (soft enough that stored energy is small), `c = 3.0e5` (double the damping, doing the real work), `give = 0.05`. Docstring corrected to match. `JM_ELASTIC_WALL=1` restores the old values for an A/B.
+
+⚠️ **These numbers are a FIRST PASS and need the PO's feel-test, not just a parse check.** The direction is certain — less stored energy, more dissipation — but the exact stiffness that stops creep-through without feeling mushy is a judgement only driving can settle.
+
+⚠️ **`CONTACT_DVMAX = 8.0` m/s per frame is ALSO suspect and deliberately untouched.** It clamps contact to `m·8.0/dt` ≈ **296 kN**, which barely limits anything — a "cap" that permits a 480 m/s² fling is not a cap. Changing it affects every contact in the game, so it wants its own measured pass rather than being bundled into this one.
+
+#### Part 2 — levitation. **NOT addressed.**
+
+`contact_force` returns only in-plane `(Fx, Fy, Mz)`; there is no vertical term, so the car being thrown UPWARD must come from elsewhere — the suspension reacting to a huge in-plane impulse, or `contain3d!`'s reset path (whose own comment mentions a *"superball bounce"* and a *"huge road step on the first frame"*). Softening the spring should reduce it, but **the mechanism is unidentified and I am not claiming this fixes it.**
+
+#### Part 3 — wheels popping off (the GPL behaviour). **NOT implemented.**
+
+A real feature, not a parameter change: detach a wheel above a contact-impulse threshold, hand it its own rigid body with the car's velocity plus the contact impulse, and let it roll/bounce under gravity while the corner it left drags. Wants its own item and its own sprint.
+
+#### Part 4 — damage. **NOT implemented, and nothing currently tracks it.** The PO's "causes damage" implies persistent state (a bent corner, lost grip, a dead engine). No such model exists.
+

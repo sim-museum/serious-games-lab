@@ -337,7 +337,9 @@ Given a penetration `δ` [m, >0] into an object, the world-frame OUTWARD normal 
 the car's velocity component `vn` along +n [m/s; <0 = driving INTO the object], heading `θ`, and the
 object `kind`, return the body-frame `(Fx,Fy,Mz)` to feed `extforce3d!` BEFORE the step.
 
-  :wall  — stiff spring + one-sided damper (resist approach only) ⇒ ELASTIC bounce-back.
+  :wall  — soft spring + STRONG two-sided damper ⇒ INELASTIC: drive in, stop dead, stay put.
+           (E94: this line used to say "stiff spring ... ELASTIC bounce-back", which described
+            neither the code below it nor the behaviour anyone wanted.)
   :soft  — weak spring (with a crush `give` dead-zone) + two-sided viscous damper ⇒ the car drives
            IN, the damper bleeds its speed, and the soft spring barely pushes back ⇒ it gets STUCK
            (a hedge / hay row), yet can't pass clean through (deep penetration past `give` resists).
@@ -357,7 +359,22 @@ function contact_force(δ, nx, nz, vn, θ; kind = :wall, m = 617.0, dt = 1/60, a
     if kind === :soft
         k = 8.0e4; c = 7.0e4; give = 0.3; twoSided = true        # hedge/hay: weak spring, strong damp — crush in, bleed speed, no spring-back
     else
-        k = 4.0e5; c = 1.5e5; give = 0.0; twoSided = true        # barrier/wall: soft spring (gentle release) + strong damper (hard stop) ⇒ inelastic, no sling
+        # E94 (PO 2026-08-29: "when the car hits a barrier at speed it should damp out and get stuck
+        # ... the car should not have an elastic collision causing it to trampoline, levitate").
+        # The numbers here contradicted BOTH comments describing them: the docstring above calls
+        # :wall "stiff spring ⇒ ELASTIC bounce-back", while this line called 4.0e5 a "soft spring
+        # ⇒ inelastic". 4.0e5 is FIVE TIMES the :soft spring (8.0e4) -- the stiffest in the file --
+        # and the comment at the top of this function already names a stiff conservative spring as
+        # exactly what stores k·δ²/2 on the way in and returns all of it as a sling. So the wall was
+        # documented as inelastic and parameterised as a catapult.
+        # Inelastic contact = a spring just stiff enough to stop creep-through, plus a strong
+        # two-sided damper that does the real work of killing approach speed.
+        # JM_ELASTIC_WALL=1 restores the old 4.0e5/1.5e5 for an A/B.
+        if get(ENV, "JM_ELASTIC_WALL", "0") != "0"
+            k = 4.0e5; c = 1.5e5; give = 0.0; twoSided = true
+        else
+            k = 1.0e5; c = 3.0e5; give = 0.05; twoSided = true
+        end
     end
     δeff = max(δ - give, 0.0)                                     # the soft give-zone holds the car with no push-back
     damp = twoSided ? -c*vn : -c*min(vn, 0.0)                    # :wall damps approach only (so it rebounds)
