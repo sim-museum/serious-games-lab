@@ -493,3 +493,26 @@ zandvoort/skidpad/nurburgring/watglen/monza/spa · `JM_MODE`/`JM_LAPS`/`JM_AI`.
 GPL graphics refs: `ref/gpl/` (Watkins Glen batch in `ref/gpl/watkinsGlen/`).
 
 (Older session history: see git log + `PRODUCT_BACKLOG.md`, `BENCHMARK_2026-06-24.md`.)
+
+## 2026-08-30 — runtime smoke after E96-S5/S6, E98, E99
+
+Everything in this batch had been verified by unit and integration tests against the solver, and
+**not once by loading the actual sim**. A runtime fault in the player-vs-AI contact path (E96-S5),
+the solver-velocity accessor (E96-S6), the stall detector (E98) or the closing-speed trigger (E99)
+would not have shown in any of those tests. So: run it.
+
+**Result — clean.** Monza loads, `== JM_SOLIDDIAG 8 solids (6 candidates from the shape rule)`,
+main loop reached (joystick enumerated), **6 min 44 s of continuous running, zero errors** — no
+`ERROR`, no `Stacktrace`, no `UndefVarError`, no `MethodError`.
+
+⚠️ **What this does NOT cover, stated so the green result is not over-read:**
+- **The stall detector never ran.** It is gated on MANUAL, and the sim starts in AUTO — reaching
+  MANUAL needs the G key with the clutch down, i.e. a driver. Its logic is verified against the
+  solver (fires on both stalls at ~0.6 s, silent on a 466 rpm launch, on an idling clutch-out
+  engine and on cruising), but the in-sim wiring is unexercised.
+- **The player-vs-AI contact path never ran.** It needs an actual collision with an AI car.
+- **Nothing was driven.** No barrier was struck, so E96/E99's behaviour on impact remains verified
+  only at the kernel and integration level.
+
+This is a smoke test — it proves the changes do not break loading or the steady-state loop, and
+nothing more.
