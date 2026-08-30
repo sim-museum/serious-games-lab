@@ -1445,6 +1445,8 @@ const WHEEL_REST   = parse(Float64, get(ENV, "JM_WHEEL_REST", "0.35"))   # E95f:
 const WRECK_KMH    = parse(Float64, get(ENV, "JM_WRECK_KMH", "50.0"))    # E95c: any HARD contact above this totals the car
 const WRECK_MS     = WRECK_KMH/3.6
 const WRECKED      = Ref(false)          # latched: a wreck is permanent, that is the point
+const WRECK_FROZEN = Ref(false)          # E95g: the wreck has come to rest and is pinned there
+const WRECK_PX     = Ref(0.0); const WRECK_PZ = Ref(0.0); const WRECK_PT = Ref(0.0)
 const WRECK_DAMP   = parse(Float64, get(ENV, "JM_WRECK_DAMP", "6.0"))   # E95e: 1/s; raised from 2.2 -- a totalled car should stop in a car length or two, not coast on
 # Detached wheels: each is (x, y, z, vx, vy, vz, spin, spinrate, name). World frame, metres.
 # E95: 8 Float64s + the wheel's model NAME. Declared NTuple{9,Float64} at first, which threw
@@ -4905,6 +4907,20 @@ function main()
                 wfx = WRECKED[] ? -617.0 * WRECK_DAMP * cs.v : 0.0
                 DriveRT3D.extforce3d!(cs; Fx = cfx + BND_FX[] + wfx, Fy = cfy + BND_FY[], Mz = cmz + BND_MZ[],
                                       CdA_scale = PLAYER_CDA[])
+                # E95g: a totalled car comes to REST and STAYS there. Once it is down to walking
+                # pace, pin it: the alternative is a dead car creeping, drifting off the HAT and
+                # re-entering the containment/levitation cycle the PO saw. Pinning is honest here in
+                # a way it would never be for a driveable car -- the race is over by definition.
+                if WRECKED[]
+                    if !WRECK_FROZEN[] && abs(cs.v) < 2.0
+                        WRECK_FROZEN[] = true
+                        WRECK_PX[] = cs.x; WRECK_PZ[] = cs.z; WRECK_PT[] = cs.θ
+                        println("  [WRECK] car came to rest"); flush(stdout)
+                    end
+                    if WRECK_FROZEN[]
+                        DriveRT3D.place3d!(cs, WRECK_PX[], WRECK_PZ[], WRECK_PT[]; v=0.0)
+                    end
+                end
                 # E95: the torn-off wheels live in the world now, not on the car.
                 step_loose_wheels!(dt > 1e-4 ? dt : 1/60, (gx, gzz) -> (h = groundz(gx, gzz); h > -900 ? Float64(h) : 0.0))
                 # E56 grass = per-wheel tyre μ: any wheel off the racing surface loses real grip (and
@@ -4986,12 +5002,13 @@ function main()
                     # REAR wheels came off a head-on impact instead of the fronts.
                     BND_NX[] = nwx; BND_NZ[] = nwz
                     ffb_jolt = clamp(-vn*0.05, -1.0, 1.0)        # FF jolt off the world-edge wall
-                    # E95e: containX! teleports the car back to the last in-world point and re-seats
-                    # the vertical subsystem -- its own docstring calls the failure mode a
-                    # "superball bounce". On a wrecked car that IS the levitation the PO saw, so
-                    # never snap a wreck back; it is stopping anyway and may stay where it died.
-                    if !WRECKED[] && nl > FENCE_GRACE + FENCE_FAR    # the wall failed to contain → last-resort seal (rare; never in normal play)
-                        containX!(cs, LASTGX[], LASTGZ[]; vdamp=0.3, settle=true, groundz=groundz)
+                    # E95g: skipping containment entirely for a wreck (E95e) was WRONG -- with no
+                    # push-back AND no seal the car escaped the world, got caught somewhere else and
+                    # was flung back to the start, over and over: the PO's infinite loop. Contain it,
+                    # but with vdamp = 0 so the seal KILLS the velocity instead of returning any of
+                    # it. A wreck is stopping; it must never be handed energy back.
+                    if nl > FENCE_GRACE + FENCE_FAR                  # the wall failed to contain → last-resort seal (rare; never in normal play)
+                        containX!(cs, LASTGX[], LASTGZ[]; vdamp=(WRECKED[] ? 0.0 : 0.3), settle=true, groundz=groundz)
                         BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0; BND_PK[] = 0.0; OFFDIST[] = 0.0
                     end
                 else
