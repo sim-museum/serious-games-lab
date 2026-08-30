@@ -431,14 +431,24 @@ function contact_force(δ, nx, nz, vn, θ; kind = :wall, m = 617.0, dt = 1/60, a
     # impulse that cancels the remaining separation, so it can slow the car to rest but can never
     # drag it back INTO the barrier. A contact that can only push is what leaves a car skating
     # away from a wall it just buried itself in.
-    if vn > 0.0 && δeff > 0.0
+    # E96-S4: bleed across the WHOLE overlap, not just past the give zone. δeff subtracts `give`
+    # (0.05 m for a wall), so the previous condition stopped bleeding while the car was still
+    # inside the object -- it let go during the last 5 cm and the car left carrying whatever it
+    # had. δ > 0 means "still overlapping", which is the honest test for "still in contact".
+    if vn > 0.0 && δ > 0.0
         # Exactly the impulse that cancels the remaining separation -- no more, so it can bring the
         # car to rest but never drag it back INTO the barrier.
         # A spring-like coefficient (JM_STICK_C, N per m/s) was tried here first and MEASURED to be
         # inert: results were bit-identical at 6.0e4, 2.0e5 and 6.0e5, because this cap is always
         # the smaller term. It was removed rather than left in place, since a knob that cannot
         # change the outcome is a trap for whoever tunes it next.
-        Fn = -m*vn/max(dt, 1e-3)
+        # Bleed only the EXCESS above the ooze, never the whole separation. Cancelling all of it
+        # traps the car: with outward velocity zeroed every frame it is overlapping, a driver who
+        # merely brushed a hedge could not reverse out under their own power, and the PO's rule for
+        # soft scenery is "you plough through with a penalty", not "you are welded to it". Leaving
+        # VN_OUT_MAX intact means a car can always creep free at walking pace while anything
+        # faster -- which is what reads as a bounce -- is removed.
+        Fn = -m*max(vn - VN_OUT_MAX, 0.0)/max(dt, 1e-3)
     end
     cθ = cos(θ); sθ = sin(θ)
     Fx = Fn*( nx*cθ + nz*sθ);  Fy = Fn*(-nx*sθ + nz*cθ)         # world force → body frame
