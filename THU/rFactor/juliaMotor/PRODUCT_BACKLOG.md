@@ -2945,3 +2945,28 @@ placement phase = 36.5 → 68.7 = **32.2 s**
 
 **This is the fifth prediction in this epic to be written down before its run.** The four before it (per-billboard cost, HAT density, `.dat` size, and "the briefing was never reached" over in BoB) were all wrong, and each was cheaper to refute than to defend because the number was committed first.
 
+### E93 (PO 2026-08-29) — "starting from stationary in 1st, the clutch is reversed"
+
+PO: *"The slider has to be DOWN to start; slider UP prevents the car from moving. As soon as the car moves in first, the slider sense reverses."* Also: *"I can only shift with the slider at the bottom."*
+
+⚠️ **NOT FIXED, and deliberately so. Every mapping I can check says the sense is CONSTANT:**
+
+| | slider UP | slider DOWN |
+|---|---|---|
+| derived `clu` | ~0 | ~1 |
+| `s_clu()` (drive_rt3d.jl:148) | **ENGAGED** | **DISENGAGED** |
+| shift gate (`clu >= 0.4`) | blocked | **allowed** |
+| `.ibt` export (`1-clu`) | records **1.0** | records 0.0 |
+
+The shift observation **confirms** rather than contradicts this: shifting requires the clutch disengaged, which is the bottom. And the PO's own E91 run A recorded `Clutch=1.0` throughout a slider-up coast, with a dip to 0.0 exactly at the 4→5 shift — both consistent with the table above.
+
+**So the standstill behaviour is what a manual clutch DOES:** disengaged (down) to let the engine spin up, then released (up) to take up drive. What reads as "the sense reverses once moving" is the same convention with a different requirement at each stage.
+
+⚠️ **BUT I COULD NOT REPRODUCE THE PO'S EXACT REPORT BY READING, AND I AM NOT CLOSING IT ON THAT BASIS.** Specifically unexplained: *why slider-UP at a standstill prevents motion entirely.* There is **no stall model and no idle governor**, and `engine_torque` has a `Tmin_frac = 0.2` floor — so at 0 rpm and full throttle the engine still makes ~82 N·m, which through 1st (2.23 × 4.11 × 0.9 / 0.33 m) is ~2 kN on a 617 kg car. **It should pull away with the clutch engaged.** That it does not is unaccounted for.
+
+**Deliberately NOT "fixed" by inverting the axis.** The mapping is consistent across four independent places, and inverting it would (a) contradict the shift gate, and (b) silently invalidate the E91 coast-down captures, whose whole value is knowing which side of the clutch each run was on.
+
+**ADDED: `JM_TRACE_CLUTCH=1`** prints the derived `clu` on every material change (module-level `Ref`, not a `CTL` field — `CTL`'s fields are fixed and assigning a new one throws). **A single standstill launch with it on answers the question from data.**
+
+**PO, the one observation that would settle it:** with `JM_TRACE_CLUTCH=1`, at a standstill in 1st, put the slider UP and apply full throttle. If the trace prints `clu=0.0` and the car still will not move, the defect is in the LAUNCH physics, not the axis sense — and that is a different and more interesting bug than a reversed slider.
+

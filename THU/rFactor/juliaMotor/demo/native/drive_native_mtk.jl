@@ -295,7 +295,12 @@ const IBTDIR = let repo = normpath(joinpath(@__DIR__,"..","..","data","iracing")
     d = get(ENV, "JM_IBTDIR", "")
     !isempty(d) ? d : (isdir(gold) && !isempty(filter(f->endswith(lowercase(f),".ibt"), readdir(gold))) ? gold : repo)
 end
-const IBTNAME = NURB ? "nurburgring nordschleife" : SKIDPAD ? "skidpad" : "zandvoort"
+# E91 (2026-08-29): name the capture after the track it WAS. This fell through to "zandvoort"
+# for monza and watglen, so a Monza run was saved as `lotus49_zandvoort ...ibt` -- a mislabelled
+# capture is worse than no capture, because later analysis cannot tell it apart from the real
+# Zandvoort references it sits beside. (A parity capture must record the state it claims.)
+const IBTNAME = NURB ? "nurburgring nordschleife" : SKIDPAD ? "skidpad" :
+                MONZA ? "monza" : WATGLEN ? "watglen" : "zandvoort"
 # Pick the reference capture by PREFIX, not by an exact dated filename. The hardcoded
 # "2026-06-14 11-11-37" names do not exist anywhere on this machine — the real captures are dated
 # 2026-06-24 — so the lookup could never succeed and every session ended with a SystemError. A
@@ -1426,6 +1431,7 @@ const SHOT_SETTLE = parse(Int, get(ENV, "JM_SHOT_SETTLE", "38"))
 const FPSDIAG = parse(Int, get(ENV, "JM_FPSDIAG", "0"))   # E80: frame-time report, per view
 const FRAMEPROF = parse(Int, get(ENV, "JM_FRAMEPROF", "0"))  # E80: per-PHASE frame profiler
 const PROF_WORLD = Ref(0.0); const PROF_HUD = Ref(0.0); const PROF_N = Ref(0); const PROF_TOT = Ref(0.0)
+const CLU_LAST = Ref(-1.0)   # E93: last reported clutch value (JM_TRACE_CLUTCH)
 const FPS_T0 = Ref(0.0); const FPS_ACC = Ref(0.0); const FPS_N = Ref(0)
 const CAR3D = !haskey(ENV, "JM_2D")       # full-3D vehicle (heave/pitch/roll + jumps) is the DEFAULT; JM_2D forces the planar model
 # physics dispatch — Car3D is field/method-compatible with DriveRT.Car (superset)
@@ -3566,6 +3572,25 @@ function read_input()
     # the axis — disabling it fixed the symptom by removing the feature the PO actually wants.
     # So: the axis is always honoured, in both modes, and the car warns ONCE if the clutch is held
     # in at a standstill with throttle applied, which is the state that looks like "it won't move".
+    # E93 (PO 2026-08-29: "starting from stationary in 1st, the clutch is reversed -- the slider has
+    # to be DOWN to start; slider UP prevents the car from moving. As soon as the car moves in first,
+    # the slider sense reverses."). Every mapping I can check says the sense is CONSTANT:
+    #   slider UP -> clu~0 -> s_clu(0) = ENGAGED;  slider DOWN -> clu~1 = DISENGAGED
+    #   the shift gate below requires clu >= 0.4 (disengaged), which matches "I can only shift with
+    #   the slider at the bottom", and the .ibt export writes 1-clu, so a coast at slider-up records
+    #   Clutch=1.0 (iRacing convention: 1 = pedal released = engaged).
+    # I could NOT reproduce an inversion by reading the code, so rather than "fix" a mapping that is
+    # consistent everywhere -- which would silently invalidate the E91 captures -- make it OBSERVABLE.
+    # JM_TRACE_CLUTCH=1 prints the derived clu on every material change; a standstill launch then
+    # answers the question from data. Module-level Ref, NOT a CTL field: CTL's fields are fixed and
+    # assigning a new one throws.
+    if get(ENV,"JM_TRACE_CLUTCH","0") != "0" && abs(clu - CLU_LAST[]) > 0.05
+        println("  [clutch] clu=", round(clu, digits=2),
+                "   (0 = ENGAGED / slider up,  1 = DISENGAGED / slider down)   throttle ",
+                round(thr, digits=2))
+        flush(stdout)
+        CLU_LAST[] = clu
+    end
     if clu > 0.9 && thr > 0.2 && !CTL.cluWarned
         CTL.cluWarned = true
         println("  [clutch] held IN (", round(clu,digits=2), ") with throttle — the engine will rev ",
