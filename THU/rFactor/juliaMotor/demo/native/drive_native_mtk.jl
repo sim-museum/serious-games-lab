@@ -264,8 +264,15 @@ solidkind(nm) = (startswith(nm,"haie")||startswith(nm,"bush")||startswith(nm,"sh
 # the solver internals.
 const WVX = Ref(0.0); const WVZ = Ref(0.0)
 const PRVX = Ref(NaN); const PRVZ = Ref(NaN)
-function update_world_velocity!(x, z, dt)
-    if isfinite(PRVX[]) && dt > 1e-6
+# E96-S6: take the velocity from the SOLVER, not from a position delta. The delta (E96-S2) has the
+# right direction but lags one frame, and that lag is the leading suspect for the residual push-back
+# E96-S3 could not remove. DriveRT3D.world_velocity rotates the body-frame (u, v) the integrator
+# already carries into the world exactly -- no differencing, no lag, and nothing to keep in sync.
+# The delta remains the fallback for the planar (JM_2D) path, which has no such accessor.
+function update_world_velocity!(cs, x, z, dt)
+    if CAR3D
+        (WVX[], WVZ[]) = DriveRT3D.world_velocity(cs)
+    elseif isfinite(PRVX[]) && dt > 1e-6
         WVX[] = (x - PRVX[])/dt; WVZ[] = (z - PRVZ[])/dt
     else
         WVX[] = 0.0; WVZ[] = 0.0        # first frame: no delta yet, and a guessed one would be worse
@@ -5003,7 +5010,7 @@ function main()
             if CAR3D
                 cfx = cfy = cmz = 0.0
                 if !SKIDPAD && !rst
-                    update_world_velocity!(cs.x, cs.z, dt > 1e-4 ? dt : 1/60)   # E96-S2: once per frame, before every contact test
+                    update_world_velocity!(cs, cs.x, cs.z, dt > 1e-4 ? dt : 1/60)   # E96-S2/S6: once per frame, before every contact test
                     (cfx, cfy, cmz, cpk, chard) = solid_contact(cs.x, cs.z, cs.θ, cs.v, dt > 1e-4 ? dt : 1/60)
                     # E95: a hard enough hit ends the race. Triggered on the contact PEAK, not on
                     # speed -- what wrecks a car is the impulse it absorbs, and a slow scrape into a

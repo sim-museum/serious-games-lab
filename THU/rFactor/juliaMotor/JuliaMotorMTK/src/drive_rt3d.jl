@@ -20,7 +20,7 @@ for f in ("tyre.jl","powertrain.jl","vehicle_3d.jl")
     include(joinpath(HERE, "components", f))
 end
 
-export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, wheelmu3d!
+export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, wheelmu3d!, world_velocity
 
 const GEARS = [2.23, 1.72, 1.32, 1.09, 0.916]
 gearratio(g::Int) = g <= 0 ? 0.0 : GEARS[g]
@@ -500,6 +500,24 @@ end
 const _WSET3D = IdDict()
 const _PPSET3D = IdDict()
 const _QSET3D = IdDict()
+"""
+World-frame velocity `(vx, vz)` of the car, taken EXACTLY from the solver state.
+
+E96-S6: contact code needs the true direction of travel, and `c.v` is an unsigned SPEED -- the
+`v*cos(θ), v*sin(θ)` form cannot express a car moving opposite its own nose, which is what turned
+the no-rebound clamp into an accelerator (E96-S2). E96-S2 worked around that by finite-differencing
+the position, which is correct in direction but lags one frame; that lag is the leading suspect for
+the residual overshoot E96-S3 could not remove.
+
+The solver has carried the answer all along: `u` (longitudinal) and `v` (LATERAL) body-frame
+velocities, which `bump3d!` already rotates into the world exactly this way. No differencing, no
+lag, no extra state to keep in sync.
+"""
+function world_velocity(c::Car3D)
+    a = c.getall(c.integ); θ = a[3]; u = a[4]; v = a[5]
+    (u*cos(θ) - v*sin(θ), u*sin(θ) + v*cos(θ))
+end
+
 """Rigid-body collision impulse (3-D car): world-frame velocity change (dvx,dvz) + yaw-rate dr
 + an optional VERTICAL kick `dvy` (heave velocity `w` → the car JUMPS) + a ROLL-rate kick `dpp`
 (roll velocity → CARTWHEEL when a spinning wheel climbs) + a PITCH-rate kick `dq` (a rear wheel
