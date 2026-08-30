@@ -3051,3 +3051,23 @@ A real feature, not a parameter change: detach a wheel above a contact-impulse t
 
 #### Part 4 — damage. **NOT implemented, and nothing currently tracks it.** The PO's "causes damage" implies persistent state (a bent corner, lost grip, a dead engine). No such model exists.
 
+### E95 (PO 2026-08-29) — **"This is not a game of bumper cars. You hit something hard, your race is over."**
+
+PO: hard impact must (a) damp the car's motion out, (b) **permanently disconnect the engine from the drivetrain**, and (c) detach *"the wheel that hit the barrier — or both wheels, if two wheels hit before the car comes to a stop, something that happens at higher impact speed."*
+
+**IMPLEMENTED.**
+
+**Trigger — on IMPULSE, not speed.** `solid_contact` already returns a contact-force peak; the wreck latches at `cpk > JM_WRECK_PEAK` (6.0e4 N) with `|v| > 8 m/s`. **Speed alone would be wrong**: a slow scrape into a hedge at 30 km/h must never end a race, and a heavy hit at 40 km/h should. Hedges (`:soft`) are excluded from wheel loss entirely.
+
+**Engine permanently disconnected.** Once `WRECKED[]` latches, the driver's clutch input is replaced by `1.0` (fully disengaged) for the rest of the session, and shift inputs are dropped. **The latch is never reset — that is the point.**
+
+**Motion bleeds out.** An extra retarding force `−m·2.2·v` is fed through `extforce3d!`, the **same port the collision uses**, so the solver integrates it. Deliberately not a post-step velocity hack: that is what `bumpX!` did and what E56 replaced.
+
+**Wheels come off PER CORNER, PROGRESSIVELY.** The first cut chose corners up front from the impact normal; the PO's clarification is sharper, so `detach_hit_wheels!` now runs **every frame while wrecked and still moving** and detaches any still-attached wheel whose hub is inside a solid. A glancing hit loses **one** wheel; a heavy one loses a second when that corner reaches the barrier later — which is the PO's *"two wheels hit before the car comes to a stop"* falling out of the geometry rather than being special-cased. Gated on `cpk > 1e3` so the per-corner scan only runs during real contact.
+
+**Detached wheels are world objects**: ballistic with gravity, bouncing at **restitution 0.35** (a tyre does not superball either — the same reasoning as E94), scrubbing 14 % of horizontal speed per bounce, spin bleeding at 25 %/s. They keep the car's momentum plus a kick off the wall. `loosemat()` gives them a world transform instead of `carModel`, and `is_loose(nm)` stops the car drawing a corner that has left it.
+
+⚠️ **NOT YET DRIVEN — loads clean, no runtime errors, but nobody has hit anything.** Everything above is verified only by a clean load and the error-node parse walk. **The thresholds are first guesses**: `JM_WRECK_PEAK` may fire too eagerly or not at all, and only driving into a barrier will tell.
+
+⚠️ **NOT implemented: DAMAGE as persistent state.** The PO's "causes damage" is satisfied here only in the sense that the race is over. There is still no model of a bent corner, lost grip, or a dead engine that a rejoin would have to respect.
+

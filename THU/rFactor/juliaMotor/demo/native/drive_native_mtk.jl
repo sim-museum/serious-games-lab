@@ -1431,6 +1431,77 @@ const SHOT_SETTLE = parse(Int, get(ENV, "JM_SHOT_SETTLE", "38"))
 const FPSDIAG = parse(Int, get(ENV, "JM_FPSDIAG", "0"))   # E80: frame-time report, per view
 const FRAMEPROF = parse(Int, get(ENV, "JM_FRAMEPROF", "0"))  # E80: per-PHASE frame profiler
 const PROF_WORLD = Ref(0.0); const PROF_HUD = Ref(0.0); const PROF_N = Ref(0); const PROF_TOT = Ref(0.0)
+# ---- E95 (PO 2026-08-29): "This is not a game of bumper cars. You hit something hard, your race
+# is over." A hard impact WRECKS the car: the engine is PERMANENTLY disconnected from the
+# drivetrain, the motion damps out, and the wheels nearest the impact come off and roll away.
+#
+# Threshold is on the CONTACT FORCE PEAK that solid_contact already returns, not on speed: what
+# wrecks a car is the impulse it takes, and a slow scrape into a hedge must never trigger it.
+const WRECK_PEAK   = parse(Float64, get(ENV, "JM_WRECK_PEAK", "6.0e4"))   # N; below this it is a scrape
+const WRECKED      = Ref(false)          # latched: a wreck is permanent, that is the point
+const WRECK_DAMP   = 2.2                 # 1/s extra velocity damping once wrecked (motion bleeds out)
+# Detached wheels: each is (x, y, z, vx, vy, vz, spin, spinrate, name). World frame, metres.
+const LOOSE_WHEELS = Vector{NTuple{9,Float64}}()
+is_loose(nm) = any(w -> w[9] == nm, LOOSE_WHEELS)   # E95: a detached corner is not drawn on the car
+const WHEEL_NAMES  = ("lotwlf","lotwrf","lotwlr","lotwrr")
+
+"""E95: latch the wreck — engine PERMANENTLY disconnected. Wheels are NOT chosen here.
+PO 2026-08-29: "detach the wheel that hit the barrier - or both wheels, if two wheels hit before
+the car comes to a stop". So which wheels leave is decided per-wheel, per-frame, by whether that
+CORNER actually contacts something (see detach_hit_wheels!) — not by picking corners up front."""
+function wreck!(v)
+    WRECKED[] && return
+    WRECKED[] = true
+    println("  [WRECK] hard impact at ", round(v*3.6, digits=0), " km/h — engine disconnected, race over")
+    flush(stdout)
+end
+
+"""E95: detach any still-attached wheel whose HUB is inside a solid. Runs every frame while the car
+is still moving, so a second corner that reaches the barrier later comes off too — which is what
+happens at higher impact speed, and is exactly what the PO described. Deliberately per-corner: at a
+glancing hit only the corner that touched leaves the car."""
+function detach_hit_wheels!(x, z, θ, v)
+    cθ, sθ = cos(θ), sin(θ)
+    @inbounds for (i, (bx, by, front, r, nm)) in enumerate(WHEELS)
+        is_loose(nm) && continue
+        wx = x + bx*cθ - by*sθ
+        wz = z + bx*sθ + by*cθ
+        for (ox, oz, orad, kind) in SOLIDS
+            kind === :soft && continue                       # a hedge takes no wheels off
+            dx = wx - ox; dz = wz - oz; d = hypot(dx, dz)
+            d >= orad + 0.35 && continue                      # 0.35 m ~ wheel radius + rim
+            nx = d > 1e-6 ? dx/d : 1.0; nz = d > 1e-6 ? dz/d : 0.0
+            push!(LOOSE_WHEELS, (wx, 0.33, wz,
+                                 v*cθ + nx*3.5,               # keeps the car's momentum plus a kick off the wall
+                                 3.0 + 0.15*abs(v),           # hops off the hub, harder the faster the hit
+                                 v*sθ + nz*3.5,
+                                 0.0, v/max(r, 0.1), nm))
+            println("  [WRECK] ", nm, " torn off at ", round(abs(v)*3.6, digits=0), " km/h")
+            flush(stdout)
+            break
+        end
+    end
+end
+
+"""E95: ballistic + bounce integration for the torn-off wheels. `gz` gives ground height."""
+function step_loose_wheels!(dt, gz)
+    isempty(LOOSE_WHEELS) && return
+    @inbounds for i in eachindex(LOOSE_WHEELS)
+        (x,y,z,vx,vy,vz,sp,sr,nm) = LOOSE_WHEELS[i]
+        vy -= 9.81*dt
+        x += vx*dt; y += vy*dt; z += vz*dt
+        g = gz(x, z) + 0.33                       # wheel radius above the surface
+        if y <= g
+            y = g
+            vy = -vy*0.35                          # inelastic bounce: a tyre does not superball either
+            vx *= 0.86; vz *= 0.86                 # rolling/scrub loss on each contact
+            abs(vy) < 0.4 && (vy = 0.0)
+        end
+        sp += sr*dt
+        sr *= (1.0 - 0.25*dt)                      # spin bleeds off
+        LOOSE_WHEELS[i] = (x,y,z,vx,vy,vz,sp,sr,nm)
+    end
+end
 const CLU_LAST = Ref(-1.0)   # E93: last reported clutch value (JM_TRACE_CLUTCH)
 const FPS_T0 = Ref(0.0); const FPS_ACC = Ref(0.0); const FPS_N = Ref(0)
 const CAR3D = !haskey(ENV, "JM_2D")       # full-3D vehicle (heave/pitch/roll + jumps) is the DEFAULT; JM_2D forces the planar model
@@ -3617,7 +3688,9 @@ function read_input()
         flush(stdout)
     end
     (DriveInput(throttle=clamp(thr,0,1), brake=clamp(brk,0,1), steer=clamp(str,-1,1),
-                clutch=clu, shift_up=upE, shift_down=dnE, autoshift=CTL.auto), rst, recover)
+                clutch=(WRECKED[] ? 1.0 : clu),        # E95: wrecked = engine PERMANENTLY disconnected
+                shift_up=(WRECKED[] ? false : upE), shift_down=(WRECKED[] ? false : dnE),
+                autoshift=(WRECKED[] && false) || CTL.auto), rst, recover)
 end
 
 # ---- terrain pitch: slope under the car from the HAT, sampled fore & aft ----
@@ -4744,11 +4817,30 @@ function main()
                 cfx = cfy = cmz = 0.0
                 if !SKIDPAD && !rst
                     (cfx, cfy, cmz, cpk) = solid_contact(cs.x, cs.z, cs.θ, cs.v, dt > 1e-4 ? dt : 1/60)
+                    # E95: a hard enough hit ends the race. Triggered on the contact PEAK, not on
+                    # speed -- what wrecks a car is the impulse it absorbs, and a slow scrape into a
+                    # hedge must never latch it. The impact direction is taken from the net contact
+                    # force, which points outward from whatever was hit.
+                    if cpk > WRECK_PEAK && abs(cs.v) > 8.0
+                        wreck!(abs(cs.v))
+                    end
+                    # E95: while wrecked AND still moving, keep testing each corner -- a second wheel
+                    # that reaches the barrier before the car stops comes off too. Gated on cpk so
+                    # the per-corner SOLIDS scan only runs during an actual contact.
+                    if WRECKED[] && cpk > 1.0e3 && abs(cs.v) > 1.0
+                        detach_hit_wheels!(cs.x, cs.z, cs.θ, cs.v)
+                    end
                     cpk > 1.0e3 && (ffb_jolt = clamp(sign(cmz != 0 ? cmz : 1.0) * min(cpk/4.0e4, 1.0), -1.0, 1.0))  # feel the hit (stronger — PO: object kick was too small)
                 end
                 # add last frame's world-edge physical-wall force (E56.6) to the trackside contact force
-                DriveRT3D.extforce3d!(cs; Fx = cfx + BND_FX[], Fy = cfy + BND_FY[], Mz = cmz + BND_MZ[],
+                # E95: once wrecked the car's motion BLEEDS OUT. Fed through the same force port the
+                # collision uses, so the solver integrates it -- not a velocity hack applied after
+                # the step (which is what bumpX! does and why it was replaced in E56).
+                wfx = WRECKED[] ? -617.0 * WRECK_DAMP * cs.v : 0.0
+                DriveRT3D.extforce3d!(cs; Fx = cfx + BND_FX[] + wfx, Fy = cfy + BND_FY[], Mz = cmz + BND_MZ[],
                                       CdA_scale = PLAYER_CDA[])
+                # E95: the torn-off wheels live in the world now, not on the car.
+                step_loose_wheels!(dt > 1e-4 ? dt : 1/60, (gx, gzz) -> (h = groundz(gx, gzz); h > -900 ? Float64(h) : 0.0))
                 # E56 grass = per-wheel tyre μ: any wheel off the racing surface loses real grip (and
                 # pulls the car) in the brush model — replaces the bumpX! grass drag/yaw hack (which is
                 # now AI-only).  Only project the 4 wheels when the car is near/over the edge (cheap on-track).
@@ -5017,6 +5109,9 @@ function main()
         # wheels stay UPRIGHT/level (they never get the body lean) — they're not bolted to the chassis.
         wheelmat(wx,wz,steer,r) = carModel * Render.translate(Float32[wx, r, wz]) *
                      (steer ? Render.roty(δ) : Render.ident()) * Render.rotz(Float32(spin))
+        # E95: a torn-off wheel is in the WORLD, not on the car -- so it gets its own transform
+        # rather than carModel's. Render axes are (x, up, -z), matching the trackside placement.
+        loosemat(lx,ly,lz,sp) = Render.translate(Float32[lx, ly, -lz]) * Render.rotz(Float32(sp))
         # advance + place the AI field (rail-followers on the centreline)
         ai_hit = Ref(false); ddt = dt > 1e-4 ? dt : 1/60
         # an AI car's body orientation = its physics pitch (already settles to the fore/aft slope) +
@@ -5205,7 +5300,13 @@ function main()
         Render.shadow_pass(depthprog, shadowfbo, lightVP) do dp
             for it in trackItems; Render.draw_depth(dp, it, Render.ident()); end
             for it in carItems; Render.draw_depth(dp, it, bodyModel); end
-            for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw_depth(dp, it, wheelmat(wx,wz,steer,r)); end
+            for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]
+                is_loose(nm) && continue                                   # E95: this one came off
+                Render.draw_depth(dp, it, wheelmat(wx,wz,steer,r))
+            end
+            for (lx,ly,lz,_,_,_,sp,_,nm) in LOOSE_WHEELS, it in WHEELITEMS[nm]
+                Render.draw_depth(dp, it, loosemat(lx,ly,lz,sp))
+            end
             for (p, cm) in zip(ai_poses, AICHASSIS)            # AI cars cast shadows too
                 for it in cm.body; Render.draw_depth(dp, it, aiBody(p, cm)); end
                 for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw_depth(dp, it, aiWheel(p,wx,wz,r)); end
@@ -5307,7 +5408,13 @@ function main()
                 Render.bind_shadow(prog, shadowtex, lightVP)
                 drawworld(mvp, meye, true)
                 for it in carItems; Render.draw(prog, it, mvp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # your own tail at the inner edge
-                for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, mvp, wheelmat(wx,wz,steer,r); bright=1.0, ambfill=0.75); end
+                for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]
+                    is_loose(nm) && continue
+                    Render.draw(prog, it, mvp, wheelmat(wx,wz,steer,r); bright=1.0, ambfill=0.75)
+                end
+                for (lx,ly,lz,_,_,_,sp,_,nm) in LOOSE_WHEELS, it in WHEELITEMS[nm]
+                    Render.draw(prog, it, mvp, loosemat(lx,ly,lz,sp); bright=1.0, ambfill=0.75)
+                end
             end
             glBindFramebuffer(GL_FRAMEBUFFER, 0)
         end
@@ -5360,7 +5467,13 @@ function main()
         # (AI grid drawn in drawworld — shared with the E64 mirror pass)
         # E59 parity: default lighting rendered the tyres as solid BLACK silhouettes from the cockpit —
         # the GPL gold cockpit shows readable dark-grey tread + sidewall.  Lift the fill (not the sun).
-        for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]; Render.draw(prog, it, vp, wheelmat(wx,wz,steer,r); bright=1.0, ambfill=0.75); end
+        for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]
+            is_loose(nm) && continue
+            Render.draw(prog, it, vp, wheelmat(wx,wz,steer,r); bright=1.0, ambfill=0.75)
+        end
+        for (lx,ly,lz,_,_,_,sp,_,nm) in LOOSE_WHEELS, it in WHEELITEMS[nm]
+            Render.draw(prog, it, vp, loosemat(lx,ly,lz,sp); bright=1.0, ambfill=0.75)
+        end
         # front suspension wishbones — ahead of the cockpit, visible through the plexiglass (PO gold standard)
         for it in fsuspItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.15, ambfill=0.5); end
         # rear-view mirrors — re-placed onto the cowl/plexiglass, faces tilted toward the eye (GPL look).
