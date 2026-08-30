@@ -3071,3 +3071,19 @@ PO: hard impact must (a) damp the car's motion out, (b) **permanently disconnect
 
 ⚠️ **NOT implemented: DAMAGE as persistent state.** The PO's "causes damage" is satisfied here only in the sense that the race is over. There is still no model of a bent corner, lost grip, or a dead engine that a rejoin would have to respect.
 
+
+### E96 (PO 2026-08-30) — **"The car should never bounce back, ever."**
+
+PO, verbatim: *"car should never bounce back, ever. If it hits something, its forward motion should quickly damp to zero. If it hits with enough impact, the wheel or wheels that hit should come off, and the engine should be permanently decoupled from the drive train."*
+
+This restates E95 as an **absolute**, and the absolute is the point. E95 treated bounce-back as a tuning problem — soften `k`, cap the spring penetration, raise the damping — and every one of those rounds still left the PO bouncing. The PO has now removed tuning from the table: **no rebound is acceptable at any speed, off any object.** E95's own trigger is a threshold (`cpk > JM_WRECK_PEAK` AND `|v| > 8 m/s`), so every impact BELOW it still runs the ordinary elastic contact law and can still throw the car back. That gap is E96.
+
+**Acceptance (all four, and the first is not negotiable):**
+1. **No impact at any speed returns the car in the direction it came from.** A sub-threshold tap is allowed to stop the car, scrub it along, or bury it — never to reverse it. This is a property to enforce structurally, not a constant to tune: the contact law should be capable of removing normal velocity but not of restoring it.
+2. Forward motion damps **quickly** to zero after a hit.
+3. Impact above the threshold detaches the wheel(s) that struck — already E95's behaviour, restated here.
+4. Above the threshold the engine is permanently decoupled — already E95's behaviour, restated here.
+
+**Why this is its own item and not an E95 tweak:** E95 asks "was this hit hard enough to end the race?" and E96 asks "may a collision EVER hand energy back?" The second question has one answer for every impact, so it belongs in the contact law itself rather than behind a wreck latch. The four rounds of E95 parameter changes that did not satisfy the PO are the evidence that a threshold-gated fix cannot close this.
+
+**Open question for the sprint:** whether restitution should be clamped to zero for the car body against ALL `:wall` solids (leaving `:soft` to plough), and what that does to the loose-wheel bounce, which the PO explicitly wants to keep (*"the front wheels should bounce back from the wall"*, E95). **Wheels bouncing and the car never bouncing are not in conflict — they are different bodies — but the code currently derives both from the same contact path.**

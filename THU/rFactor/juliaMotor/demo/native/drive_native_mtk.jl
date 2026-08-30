@@ -242,7 +242,11 @@ end
 # E56: object collision CLASS for the all-Modelica PLAYER contact law — hedges/hay rows (Zandvoort
 # `haie`) are soft (drive in, bleed speed, get stuck); everything else (walls/armco/fences/buildings/
 # towers/parked vehicles) is a hard elastic wall (bounce).  The AI still use the kinematic solid_hit.
-solidkind(nm) = (startswith(nm,"haie")||startswith(nm,"bush")||startswith(nm,"shrub")||startswith(nm,"hedge")||startswith(nm,"haystk")) ? :soft : :wall
+# E95h-S2: `hay04` matched none of these and so came back :wall -- a HARD barrier made of
+# hay. The PO's rule for soft scenery is "you plough through with a penalty", so match the
+# bale families by prefix rather than by one exact spelling.
+solidkind(nm) = (startswith(nm,"haie")||startswith(nm,"bush")||startswith(nm,"shrub")||startswith(nm,"hedge")||
+                 startswith(nm,"hay")||startswith(nm,"straw")) ? :soft : :wall
 # E56: sum the spring-damper CONTACT forces from every SOLID the PLAYER car penetrates into one
 # body-frame (Fx,Fy,Mz) to feed extforce3d! BEFORE the step (the solver integrates the collision —
 # no bumpX! state hack).  Returns the net force/moment + a peak-penetration proxy for the FFB jolt.
@@ -2708,6 +2712,8 @@ let objnames=Set{String}()
     # This runs only where the whitelist declined, so no existing radius changes; and the render
     # -visibility filter below (mesh + drop() + height, plus the on-road predicates) still applies
     # afterwards, keeping E71-S18's invariant intact: IF IT IS NOT DRAWN, IT MUST NOT BE SOLID.
+    GEOM_WMAX = parse(Float64, get(ENV,"JM_GEOM_WMAX","40.0"))  # long axis: above this it is a
+                                                                #  backdrop or a composite block
     GEOM_RMAX = parse(Float64, get(ENV,"JM_GEOM_RMAX","8.0"))   # above this it is a COMPOSITE .3do
                                                                 # holding a whole block (E71-S10),
                                                                 # not one object: skip, do not drop
@@ -2715,14 +2721,31 @@ let objnames=Set{String}()
     # PEOPLE ARE NEVER SOLID. The PO's standing rule is that line-of-people objects come OUT if they
     # could be in the road or hanging in air; giving them collision discs is the opposite of that.
     person_like(n) = occursin(r"^(flagger|peo|ppl|crowd|grndpe|spect|marshal|pit(ppl|peo))", n)
+    # E95h-S2: TERRAIN IS NOT AN OBJECT. Watkins' `pitfill2` (14.7 x 15.2 x 2.2) is a ground fill
+    # patch and passed every shape test; Monza has `fillgrnd`/`pitgrnd1`/`ter01..05` of the same
+    # kind. They are the surface the car DRIVES ON, so a collision disc on one is a wall in the
+    # middle of the paddock. These are named by convention across all four tracks, and unlike the
+    # object whitelist this is a small closed set describing terrain, not a per-track vocabulary.
+    ground_like(n) = occursin(r"^(fill|.*fillgrnd|pitgrnd|pitfill|grnd|ground|terr|ter\d)", n)
     _geomwhy = Dict{String,String}()            # name -> why the shape rule accepted/rejected it
     function geomR(orig, nm)
         person_like(nm) && (_geomwhy[nm] = "person"; return 0.0)
+        ground_like(nm) && (_geomwhy[nm] = "terrain"; return 0.0)
         haskey(lxmn, orig) || (_geomwhy[nm] = "no-mesh"; return 0.0)
         w = lxmx[orig] - lxmn[orig]; d = lzmx[orig] - lzmn[orig]
         h = get(ymx, orig, 0f0) - get(ymn, orig, 0f0)
         dims = "$(round(w,digits=1))x$(round(d,digits=1))x$(round(h,digits=1))"
         h > 1.0f0 || (_geomwhy[nm] = "flat $dims"; return 0.0)
+        # E95h-S2: min(w,d) ALONE does not identify a backdrop, which is what the first cut of this
+        # assumed. Verified offline against all four installed tracks: Monza's `trbk3` is 63.8 x 9.6
+        # -- a track backdrop 64 m wide, but 9.6 m DEEP, so min/2 = 4.8 sailed straight through, and
+        # Spa gained 133 names the same way (`fe_sta6` at 83.2 x 13.7). Those are invisible walls,
+        # and with E95g making a wreck permanent an invisible wall now ends the race outright.
+        # A real trackside object is not 40 m across; a backdrop or a composite .3do block is. Gate
+        # on the LONG axis too, so both dimensions have to be plausible for a single object.
+        if max(w, d) > GEOM_WMAX
+            _geomwhy[nm] = "wide $dims (backdrop/composite)"; return 0.0
+        end
         r = Float64(min(w, d)) / 2                 # min: rejects wide/thin backdrop panels
         r < 0.5      && (_geomwhy[nm] = "thin $dims (backdrop panel)"; return 0.0)
         r > GEOM_RMAX && (_geomwhy[nm] = "huge $dims (composite .3do)"; return 0.0)
