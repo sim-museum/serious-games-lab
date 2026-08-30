@@ -1945,12 +1945,16 @@ let objnames=Set{String}()
     objmesh=Dict{String,Any}(); ymn=Dict{String,Float32}(); ymx=Dict{String,Float32}(); bbinfo=Dict{String,Any}()
     lxmn=Dict{String,Float32}(); lxmx=Dict{String,Float32}(); lzmn=Dict{String,Float32}(); lzmx=Dict{String,Float32}()   # E71-S8 local horizontal AABB
     lverts=Dict{String,Vector{Tuple{Float32,Float32}}}()   # E71-S9 decimated local (x,z) footprint points
+    # E92-S2: hat() was refuted at 0.003% of this phase, so measure what is actually left in it --
+    # distinct-mesh loading. Ref accumulators, not plain locals, so the loop body mutates them
+    # regardless of Julia's soft-scope rules. JM_MESH_TIME=1.
+    _e92 = (n=Ref(0), ext=Ref(0.0), bld=Ref(0.0))
     for inst in insts
         (haskey(objmesh, inst.name) || haskey(bbinfo, inst.name)) && continue
         p = objpath(inst.name)
         if p == ""; objmesh[inst.name]=nothing; continue; end
         try
-            full = Render.extract_gpl_car(p; track=true, mirror=true)   # un-stripped: decides stub vs geometry
+            _te = time(); full = Render.extract_gpl_car(p; track=true, mirror=true); _e92.ext[] += time() - _te; _e92.n[] += 1   # un-stripped: decides stub vs geometry
             # E65 S3: the treeish() force flattened every tree strip to a synthesized quad even when
             # the .3do carries REAL geometry — the E22-era anti-wall move, pre-graze-fade.  Monza's
             # strips are FOLDED PANORAMAS (S2 finding) that only render correctly as their real
@@ -2024,10 +2028,16 @@ let objnames=Set{String}()
                         end
                     end
                     lverts[inst.name] = vs
-                    objmesh[inst.name] = Render.build_gpl(parts, TEXIDX)
+                    _tb = time(); objmesh[inst.name] = Render.build_gpl(parts, TEXIDX); _e92.bld[] += time() - _tb
                 end
             end
         catch; objmesh[inst.name]=nothing; end
+    end
+    if get(ENV,"JM_MESH_TIME","0") != "0"
+        println("[mesh] ", _e92.n[], " distinct meshes loaded   extract ",
+                round(_e92.ext[],digits=2), " s   build_gpl ", round(_e92.bld[],digits=2), " s   total ",
+                round(_e92.ext[]+_e92.bld[],digits=2), " s")
+        flush(stdout)
     end
     # SNAP every object to OUR terrain (the HAT) instead of its authored GPL height —
     # this kills floaters (GPL placed trees/crowds on dune terrain that ours doesn't match).
