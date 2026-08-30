@@ -2727,10 +2727,18 @@ let objnames=Set{String}()
     # middle of the paddock. These are named by convention across all four tracks, and unlike the
     # object whitelist this is a small closed set describing terrain, not a per-track vocabulary.
     ground_like(n) = occursin(r"^(fill|.*fillgrnd|pitgrnd|pitfill|grnd|ground|terr|ter\d)", n)
+    # E95h-S2: GPL names its backdrop panels with a `bk` tail -- Monza ships `trbk1..8` (track
+    # backdrop), `brbk1..3` and `tuntbk1/2` (tunnel backdrop). Four of them still cleared the size
+    # gates because they are genuinely chunky (trbk8 is 19.4 x 13.9 x 11.7), and no purely
+    # dimensional test will separate a chunky backdrop from a building. The naming convention is
+    # the only thing that actually knows, and unlike the object whitelist this is one small closed
+    # set describing a RENDER ROLE, not a per-track vocabulary of object names.
+    backdrop_like(n) = occursin(r"bk\d*$", n)
     _geomwhy = Dict{String,String}()            # name -> why the shape rule accepted/rejected it
     function geomR(orig, nm)
         person_like(nm) && (_geomwhy[nm] = "person"; return 0.0)
         ground_like(nm) && (_geomwhy[nm] = "terrain"; return 0.0)
+        backdrop_like(nm) && (_geomwhy[nm] = "backdrop"; return 0.0)
         haskey(lxmn, orig) || (_geomwhy[nm] = "no-mesh"; return 0.0)
         w = lxmx[orig] - lxmn[orig]; d = lzmx[orig] - lzmn[orig]
         h = get(ymx, orig, 0f0) - get(ymn, orig, 0f0)
