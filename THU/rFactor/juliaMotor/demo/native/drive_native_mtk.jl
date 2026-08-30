@@ -2680,6 +2680,30 @@ let objnames=Set{String}()
     global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(-i.yaw + objyawfix(i.name))), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
                           !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
+    # E97 (2026-08-30): watglen loads 66 trackside objects today; four E80/E88/E92-era logs record
+    # 163 for the same track. Rather than argue from old logs -- which are themselves suspect, since
+    # a Zandvoort-labelled one prints the identical 163/39/110 triple -- attribute every removal.
+    # Each instance is charged to the FIRST predicate that rejects it, so the buckets sum to the
+    # instances that did not become OBJECTS and no instance is counted twice. JM_OBJDIAG=1.
+    if get(ENV,"JM_OBJDIAG","") != ""
+        why = Dict{String,Int}(); kept = 0
+        for i in insts
+            r = get(objmesh,i.name,nothing) === nothing ? "no-mesh" :
+                drop(i.name)              ? "drop() junk filter" :
+                onroad_crowd(i)           ? "onroad_crowd" :
+                perp_crowd(i)             ? "perp_crowd" :
+                onroad_bldg(i)            ? "onroad_bldg" :
+                onroad_fp(i)              ? "onroad_fp (footprint on road)" :
+                !((get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0) ? "under 1 m tall" :
+                !onground(i)              ? "not on ground" : ""
+            r == "" ? (kept += 1) : (why[r] = get(why,r,0)+1)
+        end
+        println("== JM_OBJDIAG ", length(insts), " instances -> ", kept, " OBJECTS")
+        for (k,v) in sort(collect(why), by=x->-x[2])
+            println("   removed by ", rpad(k,32), v)
+        end
+        flush(stdout)
+    end
     # E15: SOLID trackside objects the car can hit — (physics x, z, collision radius m).  Buildings,
     # barriers/hedges (haybales = Zandvoort `haie`), towers, parked vehicles.  NOT trees/signs/people.
     solidR(nm) = startswith(nm,"hut")||startswith(nm,"pitbldg")||startswith(nm,"hotel")||startswith(nm,"bigbosch")||nm=="mega2"||startswith(nm,"longtent")||

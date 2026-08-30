@@ -3114,7 +3114,30 @@ cannot have the same three counts by chance, so either those runs all loaded the
 regardless of the label, or that census line was reporting something other than the loaded track.
 Per the standing rule that a capture must record the state it claims, these logs do not.
 
-**The sprint is therefore to establish which is true before changing anything:** whether ~97
+**RESOLVED (2026-08-30, JM_OBJDIAG) — NOTHING WAS LOST; THE OLD LOGS ARE NOT ABOUT THIS DATA.**
+Every removal is now attributed to the first predicate that rejects it, so the buckets sum exactly:
+
+    == JM_OBJDIAG 147 instances -> 66 OBJECTS
+       removed by drop() junk filter    53
+       removed by no-mesh               21
+       removed by under 1 m tall          7        (53+21+7 = 81; 147-81 = 66)
+
+No on-road predicate fires at all. **The decisive number is 147 — the TOTAL instance count is
+smaller than the 163 OBJECTS the old logs claim.** No filter change can yield 163 objects from 147
+instances, so that figure cannot describe this track's data under any settings. Together with the
+Zandvoort-labelled log printing the identical 163/39/110 triple, those logs are not evidence about
+Watkins and should not be cited as a baseline again.
+
+The 53 `drop()` removals are deliberate and individually justified in the filter's own comments
+(grass/herbe, `infield`, Zandvoort's floating `hotels` cluster, non-Watkins `intree`/`treesrb`
+smears, Monza's `trbk`/`brbk` banks). Worth noting that `drop()` already rejects `trbk`/`brbk` by
+name for rendering reasons — independent corroboration of the backdrop-name exclusion E95h-S2 added
+for collision.
+
+⚠️ Closed as **no defect**. The instrument (`JM_OBJDIAG`) stays: the reason this took a sprint is
+that a bare count could not distinguish "objects were lost" from "the baseline was never ours".
+
+~~**The sprint is therefore to establish which is true before changing anything:**~~ whether ~97
 trackside objects genuinely disappeared from Watkins at some point (scenery the PO would notice
 missing), or whether the historical figure was never Watkins' to begin with. Re-measure from the
 track data itself — the offline census in this session read 63 distinct names straight from
