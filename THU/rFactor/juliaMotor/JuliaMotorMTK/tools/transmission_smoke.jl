@@ -1,0 +1,66 @@
+# GATE: E100 -- the gearbox must come from the ibt session, never from source constants.
+#
+# PO 2026-08-27: "the car physics should be determined entirely by the iracing ibt data, there
+# should be no modifiable parameters." This asserts that for the transmission specifically,
+# because it was measurably violated: GEARS/FINAL were constants holding the SKIDPAD setup
+# while every circuit ran the Nordschleife session.
+#
+# Headless -- reads the ibt store and the physics module, no window and no car.
+const S = normpath(joinpath(@__DIR__, "..", "src"))
+include(joinpath(S, "ibt.jl"));       using .IBT
+include(joinpath(S, "setup.jl"));     using .Setup
+include(joinpath(S, "drive_rt3d.jl")); using .DriveRT3D
+
+const STORE = let gold = "/home/admin/gold standard/julia racer",
+                  repo = normpath(joinpath(@__DIR__, "..", "..", "data", "iracing"))
+    isdir(gold) ? gold : repo
+end
+fails = Ref(0)
+function check(name, cond, msg)
+    cond || (fails[] += 1)
+    println("  ", cond ? "PASS" : "FAIL", "  ", rpad(name, 46), msg)
+end
+
+println("E100 transmission-from-ibt gate   (store: ", STORE, ")")
+
+# 1. The defaults must NOT be trusted: prove the module starts on a fallback that SAYS so.
+check("fresh module reports a fallback source", occursin("fallback", DriveRT3D.transmission_source()),
+      DriveRT3D.transmission_source())
+
+# 2. Every capture parses, and the ratios really do differ between sessions -- if they did not,
+#    hardcoding would be harmless and this gate would be pointless. Assert the premise.
+files = sort(filter(f -> endswith(lowercase(f), ".ibt"), readdir(STORE; join = true)))
+check("ibt captures found", !isempty(files), string(length(files), " file(s)"))
+seen = Dict{String,Vector{Float64}}()
+for f in files
+    p = Setup.setup_params(IBT.session_yaml(IBT.ibt_open(f)))
+    seen[basename(f)] = Float64.(p.gear_ratios)
+end
+distinct = unique(values(seen))
+check("gear ratios VARY between sessions", length(distinct) > 1,
+      string(length(distinct), " distinct setups -- hardcoding any one is wrong for the others"))
+
+# 3. Installing a session's gearbox must actually take.
+if !isempty(files)
+    f = first(files)
+    p = Setup.setup_params(IBT.session_yaml(IBT.ibt_open(f)))
+    DriveRT3D.set_transmission!(p.gear_ratios, p.final_drive; source = basename(f))
+    check("live GEARS equal the session's ratios", DriveRT3D.GEARS == Float64.(p.gear_ratios),
+          string(DriveRT3D.GEARS))
+    check("live FINAL equals the session's final",  DriveRT3D.FINAL[] == float(p.final_drive),
+          string(DriveRT3D.FINAL[]))
+    check("source names the capture, not a fallback",
+          DriveRT3D.transmission_source() == basename(f), DriveRT3D.transmission_source())
+end
+
+# 4. Rubbish must be refused rather than silently installed.
+for (name, gears, final) in (("wrong count", [1.0, 2.0], 4.11),
+                             ("non-positive ratio", [2.23, 1.72, 1.32, 1.04, -0.5], 4.11),
+                             ("non-positive final", [2.23, 1.72, 1.32, 1.04, 0.846], 0.0))
+    threw = false
+    try; DriveRT3D.set_transmission!(gears, final); catch; threw = true; end
+    check("rejects $name", threw, threw ? "threw" : "ACCEPTED IT")
+end
+
+println(fails[] == 0 ? "E100 GATE: PASS" : "E100 GATE: FAIL ($(fails[]) check(s))")
+exit(fails[] == 0 ? 0 : 1)

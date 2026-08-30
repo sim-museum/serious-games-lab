@@ -361,6 +361,34 @@ const IBTTMPL = let want = (SKIDPAD ? "lotus49_skidpad" : "lotus49_nurburgring")
                                                         readdir(IBTDIR))) : String[]
     isempty(cands) ? joinpath(IBTDIR, want * " (none found).ibt") : joinpath(IBTDIR, cands[1])
 end   # zandvoort/spa/monza/watkins borrow the Nordschleife layout (channel set is the same)
+
+# ---- E100: the GEARBOX comes from the ibt session, not from source constants ----------------
+# PO 2026-08-27: "the car physics should be determined entirely by the iracing ibt data, there
+# should be no modifiable parameters." drive_rt3d.jl carried GEARS/FINAL as constants while
+# Setup already parsed them out of the session YAML -- read, then ignored. Measured across the
+# gold store: Nurburgring captures run [2.23,1.72,1.32,1.04,0.846], skidpad [.,.,.,1.09,0.916].
+# The constants were the SKIDPAD pair, so every circuit drove on short-course gearing.
+# IBTTMPL already resolves to the right capture (Nordschleife for the circuits, skidpad for the
+# skidpad), so the gearbox simply comes from the file the session is already keyed to.
+# Set BEFORE the car is built (line ~4358): the final drive is an MTK parameter baked in at
+# construction, so a later change would move the ratios and not the drivetrain.
+include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","setup.jl"))); using .Setup
+let
+    if isfile(IBTTMPL)
+        try
+            pp = Setup.setup_params(IBT.session_yaml(IBT.ibt_open(IBTTMPL)))
+            DriveRT3D.set_transmission!(pp.gear_ratios, pp.final_drive; source = basename(IBTTMPL))
+        catch e
+            @warn "E100: could not read the gearbox from $(basename(IBTTMPL)); the built-in \
+                   fallback is the SKIDPAD setup and is wrong for a circuit" e
+        end
+    else
+        @warn "E100: no ibt at $IBTTMPL -- gearbox falls back to built-in constants (SKIDPAD setup)"
+    end
+    # Always SAY where it came from: a silent fallback to constants is the defect itself.
+    println("  gearbox: ", DriveRT3D.GEARS, "  final ", DriveRT3D.FINAL[],
+            "   <- ", DriveRT3D.transmission_source())
+end
 # PO 2026-08-27 (found by a real drive): every session ended with
 #   .ibt export failed: SystemError("opening file .../lotus49_... .ibt", 2, nothing)
 # That is not a path bug -- data/iracing/ holds only parse_ibt.py and profile_ibt.py, so the

@@ -22,9 +22,35 @@ end
 
 export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, wheelmu3d!, world_velocity
 
+# E100: the transmission is SESSION data, not a car constant. The Lotus 49's gears are
+# adjustable and the ibt captures prove it -- Nurburgring runs [2.23,1.72,1.32,1.04,0.846]
+# while the skidpad runs [2.23,1.72,1.32,1.09,0.916]. These defaults are the SKIDPAD setup,
+# so anything that fails to call set_transmission! is driving a fast circuit on short-course
+# gearing (4.8% short in 4th, 8.3% in 5th). Kept only as a last-resort fallback, and
+# transmission_source() exists so a run can SAY which capture it is using -- a silent
+# fallback to constants is the bug the PO's "physics entirely from the ibt data" forbids.
 const GEARS = [2.23, 1.72, 1.32, 1.09, 0.916]
 gearratio(g::Int) = g <= 0 ? 0.0 : GEARS[g]
-const FINAL = 4.11
+const FINAL = Ref(4.11)
+const TRANS_SRC = Ref("built-in fallback (SKIDPAD setup -- NOT from an ibt)")
+
+"""    set_transmission!(gears, final; source) -> nothing
+
+Install the gearbox read from an ibt session. Must be called BEFORE a Car3D is built: the
+final drive is an MTK parameter baked in at construction, so a later change would silently
+apply to the ratios and not to the drivetrain.
+"""
+function set_transmission!(gears::AbstractVector, final::Real; source::AbstractString="unknown")
+    length(gears) == length(GEARS) ||
+        error("set_transmission!: expected $(length(GEARS)) ratios, got $(length(gears))")
+    all(g -> g > 0, gears) || error("set_transmission!: non-positive gear ratio in $gears")
+    final > 0 || error("set_transmission!: non-positive final drive $final")
+    GEARS .= float.(gears); FINAL[] = float(final); TRANS_SRC[] = source
+    nothing
+end
+
+"""Where the live gearbox came from — print this at startup so a fallback cannot hide."""
+transmission_source() = TRANS_SRC[]
 const MAXSTEER = 0.30
 const RW_R = 0.33
 const RH0 = 0.075                                  # static chassis ride height [m] (for the rideHeight channel)
@@ -71,7 +97,7 @@ end
 
 function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
                      brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
-    sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush))   # physics brush by DEFAULT; JM_MAGIC ⇒ Magic-Formula tyre
+    sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush, final = FINAL[]))   # physics brush by DEFAULT; JM_MAGIC ⇒ Magic-Formula tyre
     println(brush ? "  TYRE (3-D): physics-based brush model (default)" : "  TYRE (3-D): Magic-Formula tyre (JM_MAGIC)")
     prob = ODEProblem(sys, [sys.u => v0, sys.ωf => v0/0.30, sys.ωr => v0/RW_R,
                             sys.ωe => 209.4, sys.X => x0, sys.Y => z0, sys.ψ => θ0], (0.0, 1e7))
@@ -105,7 +131,7 @@ end
 """Compile the 3-D car ONCE and build `length(poses)` cars sharing the system (so a field of
 3-D AI doesn't pay N× mtkcompile).  `poses` = Vector of (x0,z0,θ0,v0)."""
 function build_cars3d(poses; brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
-    sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush))
+    sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush, final = FINAL[]))
     s_thr=setp(sys,sys.throttle); s_brk=setp(sys,sys.brake); s_st=setp(sys,sys.δ)
     s_gr=setp(sys,sys.gear); s_clu=setp(sys,sys.clutch); s_we=ModelingToolkit.setu(sys,sys.ωe)
     s_zr=(setp(sys,sys.zrFL),setp(sys,sys.zrFR),setp(sys,sys.zrRL),setp(sys,sys.zrRR))
@@ -155,7 +181,7 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
         # dumping a large negative torque into the rear wheels. Pick a gear the speed can accept.
         if c.gear == 0
             g = 1
-            while g < 5 && abs(c.v) > 0.9 * (9500.0*2π/60) / (GEARS[g]*FINAL) * RW_R; g += 1; end
+            while g < 5 && abs(c.v) > 0.9 * (9500.0*2π/60) / (GEARS[g]*FINAL[]) * RW_R; g += 1; end
             c.gear = g; c.s_gr(c.integ, GEARS[g])
         end
         held = abs(c.v) < 1.0 && throttle < 0.05
@@ -266,7 +292,7 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
         # the whole lap.  Shift up earlier (7000, still in the DFV power band) so it works UP through
         # the gears in normal driving, and downshift more readily (4100, off heavy throttle) so it
         # drops a gear into corners.  Hysteresis gap (7000↔4100) is wide enough that it never hunts.
-        grpm = (a[4]/RW_R)*GEARS[c.gear]*FINAL*60/(2π)
+        grpm = (a[4]/RW_R)*GEARS[c.gear]*FINAL[]*60/(2π)
         # E47: SHORT-SHIFT out of the low gears — the tall 1st/2nd multiply torque so much that holding
         # them to 7000 spins the wheels up ("almost peel out before it shifts").  Up-shift earlier in 1st/2nd
         # (5000/5800) so the launch is clean; keep 7000 for 3rd-5th where wheelspin isn't an issue.
