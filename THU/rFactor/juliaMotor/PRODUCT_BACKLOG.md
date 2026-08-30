@@ -2832,3 +2832,19 @@ From Watkins: placement **34.6 s / 202 instances = 0.1713 s per instance**.
 
 ⚠️ **This is E80's 4th sprint, so the item rotates after it regardless of outcome.** The original question — *where do the 725 s go* — is already answered (77 % in one previously untimed block). What remains is a follow-up worth its own item rather than more sprints under a title that no longer describes it.
 
+#### E80-S4 RESULT — placement confirmed at 99.7 %; **HAT density is the standing explanation. One prediction was 20× wrong.**
+
+Spa split (3888 instances), against the predictions committed before the run:
+
+| sub-phase | predicted | **measured** | |
+|---|---|---|---|
+| object mesh **placement** | ~855 s, >95 % | **891.4 s, 99.7 %** | ✓ |
+| `OBJECTS` comprehension | 2–15 s | 1.9 s | just under |
+| billboard / tree loop | ~6 s | **0.3 s** | ✗ **20× too high** |
+
+**Placement per instance: Watkins 0.1713 s → Spa 891.4/3888 = 0.2293 s = 1.34×.** That is the outcome recorded in advance as *"the excess is inside placement, where the `hat()` queries are… HAT density becomes the standing explanation"*. The query COUNT per instance is fixed by the code, so a 1.34× per-instance cost is a 1.34× per-QUERY cost — consistent with Spa's objects clustering along a 14.1 km circuit against Watkins' 4.2 km.
+
+⚠️ **THE BILLBOARD PREDICTION WAS BADLY WRONG AND THE REASON MATTERS.** I extrapolated 2433 × 2.6 ms/billboard from Watkins (39 billboards in 0.1 s) and predicted ~6 s; the measured cost is **0.3 s — 0.12 ms each, 20× cheaper**. **Watkins' 0.1 s was dominated by fixed loop overhead, not per-billboard work**, so dividing it by 39 measured mostly the overhead. **A per-unit cost derived from a small sample can be almost entirely constant term** — the same shape as reading a rate off two points in E91-S1. The conclusion it fed (billboards are negligible) survives and is now stronger, but the number was fabricated by division.
+
+**E80 CLOSES HERE** (4 sprints used). Its original question — *where do the 725 s go* — is answered: **99.7 % of one previously untimed block, which is 80 % of the whole load**, and texture upload, the original suspect, is 80.8 s of 1122.8 s. <br>**Successor item, to be opened fresh:** *object mesh placement costs ~0.23 s per instance and scales 1.34× super-linearly with instance count; is that HAT-cell density?* Test: instrument `hat()` with a call counter and total time inside placement, and compare per-query cost between the two tracks directly instead of inferring it from a division.
+
