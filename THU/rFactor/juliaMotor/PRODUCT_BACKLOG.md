@@ -2651,3 +2651,28 @@ Added the gravity term the S2 fit was missing. On a slope `m·dv/dt = -F_drag - 
 
 **WHAT WOULD ACTUALLY SETTLE IT (PO action, ~2 minutes in iRacing):** one straight-line coast-down on a flat runway or the pit straight — get to ~200 km/h, lift fully off throttle, no brake, no steering, and let it roll down to ~60 km/h **twice**: once **in gear, clutch out** and once **clutch in**. The difference between those two curves IS engine braking, with no fitting and no subtraction of guessed terms. Save the `.ibt`. Until then `ENGBRAKE = 0.012` stays as it is: unsourced, but not replaceable by a number that is equally unsourced and merely newer.
 
+### E91-S4 (2026-08-29) — ⭐ **THE PO IS RIGHT, MEASURED: the sim decelerates ~1.67× harder off-throttle than the iRacing reference.**
+
+New tool `JuliaMotorMTK/tools/coast_compare.jl`. **The point is what it does NOT do.** S1–S3 tried to derive `ENGBRAKE` by subtracting aero and rolling out of a coast-down, and that failed on its own terms (derived engine torque vs rpm: R² = 0.064, and −0.091 for the code's own form). But the PO's complaint was never about a constant — *"lifting completely off the throttle decelerates the car like ABS"* is a claim about **total off-throttle deceleration**, which is directly observable in BOTH the sim and the reference. Compare those two numbers at matched speed and gear and **no decomposition is needed at all**: no aero fit, no rolling term, no slope correction, nothing to get wrong.
+
+Reference: telemetry, clutch OUT, zero throttle, zero brake, straight-line only (`|LatAccel|<2`, `|steering|<0.1`, `|yaw|<0.05`), slope removed. Sim: `DriveRT.step_car!` coasting at the same speed and gear, clutch engaged, throttle and brake zero.
+
+| gear | km/h | n(ref) | ref m/s² | sim m/s² | sim/ref |
+|---|---|---|---|---|---|
+| 1 | 90 | 58 | 1.639 | 2.832 | **1.73** |
+| 2 | 90 | 31 | 0.856 | 2.087 | **2.44** |
+| 2 | 126 | 61 | 1.220 | 3.030 | **2.48** |
+| 3 | 90 | 22 | 1.251 | 1.565 | **1.25** |
+| 3 | 126 | 108 | 1.195 | 2.315 | **1.94** |
+| 3 | 171 | 254 | 2.191 | 3.414 | **1.56** |
+| 4 | 90 | 31 | 1.233 | 1.304 | **1.06** |
+| 4 | 126 | 86 | 1.217 | 1.958 | **1.61** |
+
+**Median 1.67×, and every one of 8 matched bands is above 1.0.** The PO reported this after driving Monza (*"I never needed to use the brakes ever, which is not right"*) and again on 2026-08-29. **It is confirmed.** An earlier session offered the PO the explanation that they were driving too slowly to need brakes; that explanation is now positively refuted by measurement and must not be repeated.
+
+**WHAT THIS DOES AND DOES NOT SAY.** It says the TOTAL off-throttle deceleration is ~1.67× the reference. It does **not** say which term is responsible — the excess could be engine braking, aero, rolling, or driveline losses, and S1–S3 established that this telemetry cannot apportion it. **So this is an acceptance criterion, not a fix**: any change must drive the median sim/ref ratio in this table toward 1.0, and the table is the test.
+
+⚠️ **AND IT STILL DOES NOT LICENSE EDITING A CONSTANT.** The PO's standing constraint is that the physics come entirely from the `.ibt` with no modifiable parameters. Tuning `ENGBRAKE` (or `CdA`, or `Crr`) until this table reads 1.0 would be exactly the knob-twiddling that constraint forbids — it would fit one table rather than derive a value. The straight-line coast-down capture requested in E91-S3 (in gear and clutch-in, ~200→60 km/h) remains what is needed, and now has a **quantified target**: it must explain a 1.67× excess.
+
+**REGRESSION USE:** re-run `coast_compare.jl` after any physics change. The ratio column is the gate.
+
