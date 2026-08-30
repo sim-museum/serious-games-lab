@@ -347,6 +347,19 @@ object `kind`, return the body-frame `(Fx,Fy,Mz)` to feed `extforce3d!` BEFORE t
 The outward force is clamped to a per-frame impulse ≤ m·CONTACT_DVMAX (a penalty contact) so a stiff
 wall held constant over a render frame can't blow the integrator up.  Contact can only PUSH, not pull."""
 const SPRING_DMAX = parse(Float64, get(ENV, "JM_SPRING_DMAX", "0.25"))   # E94b: m of penetration the SPRING may store
+# E96 (PO 2026-08-30): "car should never bounce back, ever. If it hits something, its forward
+# motion should quickly damp to zero." The PO has removed tuning from the table, and rightly: E94
+# softened k, E94b bounded the stored spring energy, E95 added a wreck latch, and the PO was still
+# bouncing after every one of them. Each of those makes rebound SMALLER; none makes it IMPOSSIBLE,
+# and a threshold-gated wreck cannot help at all below its threshold.
+# So state it as an invariant the contact law cannot violate, at any speed, off any object: a
+# contact may REMOVE approach velocity, but it may never ADD separation velocity beyond a slow
+# ooze. VN_OUT_MAX is that ooze -- enough to ease out of a penetration instead of sticking inside
+# geometry, far too little to read as a bounce (0.25 m/s is 0.9 km/h).
+# This is NOT the loose-wheel restitution: a detached wheel is a different body with its own
+# integrator (JM_WHEEL_REST), so the PO keeps "the front wheels should bounce back from the wall"
+# while the car itself never does.
+const VN_OUT_MAX = parse(Float64, get(ENV, "JM_VN_OUT_MAX", "0.25"))   # m/s of separation a contact may ever grant
 const CONTACT_DVMAX = 8.0                                          # PO round-4: a hit must not FLING the car — cap the per-frame outward Δv (was 16 = "rubber-band sling-back")
 function contact_force(δ, nx, nz, vn, θ; kind = :wall, m = 617.0, dt = 1/60, arm = 1.4)
     δ <= 0.0 && return (0.0, 0.0, 0.0)
@@ -392,6 +405,21 @@ function contact_force(δ, nx, nz, vn, θ; kind = :wall, m = 617.0, dt = 1/60, a
     damp = twoSided ? -c*vn : -c*min(vn, 0.0)                    # :wall damps approach only (so it rebounds)
     Fn = max(k*δspring + damp, 0.0)                               # along +n (outward); a contact never pulls
     Fn = min(Fn, m*CONTACT_DVMAX/max(dt, 1e-3))                  # clamp per-frame impulse → solver-stable
+    # E96: THE NO-REBOUND INVARIANT. Everything above still ends in an outward spring term that
+    # keeps pushing once the car has stopped (at rest vn≈0, so the damper is silent and only k·δ
+    # acts) -- which is the bounce, and no choice of k removes it. Split the impulse budget
+    # explicitly: enough to cancel whatever approach speed there is, plus at most VN_OUT_MAX of
+    # separation. A 200 km/h hit and a 5 km/h nudge then both leave at ≤ 0.25 m/s, so "no bounce"
+    # stops being a function of impact speed. Applies to every solid AND to the world-edge fence,
+    # since both call this kernel.
+    # Bound the RESULT, not the increment. The first cut of this capped the per-frame Δv at
+    # (approach + VN_OUT_MAX), which is correct while the car is still moving INTO the wall
+    # (vn < 0 ⇒ vn_after ≤ VN_OUT_MAX) but leaks once it is moving out: at vn > 0 each further
+    # frame of penetration could add another VN_OUT_MAX, so a deeply buried car would ratchet
+    # itself up to metres per second over a dozen frames -- the very bounce this exists to stop,
+    # arrived at slowly. Capping the OUTCOME closes that: the push is whatever it takes to reach
+    # VN_OUT_MAX and never more, so once the car is oozing out the contact stops pushing entirely.
+    Fn = min(Fn, m*max(VN_OUT_MAX - vn, 0.0)/max(dt, 1e-3))
     cθ = cos(θ); sθ = sin(θ)
     Fx = Fn*( nx*cθ + nz*sθ);  Fy = Fn*(-nx*sθ + nz*cθ)         # world force → body frame
     rx = (-nx*cθ - nz*sθ)*arm; ry = ( nx*sθ - nz*cθ)*arm        # contact point ≈ CG − n·arm, in body frame
