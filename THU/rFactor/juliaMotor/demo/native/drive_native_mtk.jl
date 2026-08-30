@@ -1445,7 +1445,11 @@ const WRECK_MS     = WRECK_KMH/3.6
 const WRECKED      = Ref(false)          # latched: a wreck is permanent, that is the point
 const WRECK_DAMP   = 2.2                 # 1/s extra velocity damping once wrecked (motion bleeds out)
 # Detached wheels: each is (x, y, z, vx, vy, vz, spin, spinrate, name). World frame, metres.
-const LOOSE_WHEELS = Vector{NTuple{9,Float64}}()
+# E95: 8 Float64s + the wheel's model NAME. Declared NTuple{9,Float64} at first, which threw
+# `Cannot convert String to Float64` on the FIRST detachment and killed the sim mid-wreck --
+# the wreck itself had fired correctly at 177 km/h. A container typed against what it holds.
+const LooseWheel = Tuple{Float64,Float64,Float64,Float64,Float64,Float64,Float64,Float64,String}
+const LOOSE_WHEELS = Vector{LooseWheel}()
 is_loose(nm) = any(w -> w[9] == nm, LOOSE_WHEELS)   # E95: a detached corner is not drawn on the car
 const WHEEL_NAMES  = ("lotwlf","lotwrf","lotwlr","lotwrr")
 
