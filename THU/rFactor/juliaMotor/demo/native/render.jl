@@ -1197,8 +1197,19 @@ end
 # uploads >> distinct means this is it. JM_TEXSTAT=1.
 const _TEXSTAT = (uploads=Ref(0), lookups=Ref(0), names=Set{String}(),
                   tdec=Ref(0.0), tgl=Ref(0.0))   # E92-S5: decode time vs GL-upload time
+# E92-S6 (2026-08-30): THE TEXTURE CACHE IS NOW GLOBAL, not per-call.
+# Measured cost of the per-call cache: redundant decodes grow as loading proceeds -- 7% at 600
+# uploads, 17% at 900, 27% at 1500 -- because later meshes increasingly reuse textures earlier ones
+# already decoded. At 1500 uploads that is 402 redundant decodes at ~245 ms each, roughly 98 SECONDS
+# of Spa's load spent re-decoding files already in GPU memory.
+# A GL texture id is valid for the whole context, and nothing here ever deletes one, so a texture
+# decoded for one mesh is directly reusable by every later mesh. Hoisting the Dict to module scope is
+# the whole fix; `get!` semantics are unchanged.
+# (E92-S4 looked at an early sample, saw 7%, and called this negligible. It is not -- and the error
+# was generalising from one reading, not the reading itself.)
+const _TEXCACHE = Dict{String,GLuint}()
 function build_gpl(parts, idx::GPLTex)
-    cache=Dict{String,GLuint}(); items=Item[]
+    cache=_TEXCACHE; items=Item[]
     for p in parts
         vao,n = upload(p.verts); tid=GLuint(0)
         if p.tex != ""

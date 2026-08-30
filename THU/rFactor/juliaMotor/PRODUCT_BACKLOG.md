@@ -2959,6 +2959,28 @@ it would be uploaded N times — an obvious candidate for 1.28 s per mesh. Count
 Uploads track distinct names closely. **The per-mesh cache is doing almost no harm**, and removing it
 in favour of a global one would recover a fraction, not the bulk.
 
+✅ **E92-S6 (2026-08-30) — GLOBAL TEXTURE CACHE SHIPPED. Spa's mesh loop: 627.76 s → 446.73 s.**
+The cache was a local `Dict` created fresh on every `build_gpl` call. A GL texture id is valid for the
+whole context and nothing here ever deletes one, so a texture decoded for one mesh is directly
+reusable by every later mesh — hoisting the Dict to module scope is the entire fix.
+
+    before   uploads=900   distinct=743   redundant=157      build_gpl 627.76 s
+    after    uploads=900   distinct=900   redundant=0        build_gpl 446.73 s
+
+**Redundant decodes eliminated entirely, and the saving is 181 s — nearly double the ~98 s I
+predicted.** The estimate was low because redundancy keeps climbing after the 1500-upload sample it
+was based on; extrapolating from a mid-load reading understated the total, in the same direction as
+E92-S4's error and for the same reason.
+
+Spa still loads all 1455 trackside objects / 2433 billboards / 1265 solids, no errors, smoke suite 5/5.
+
+⚠️ Sharing texture ids across meshes is only safe while nothing deletes a GL texture. Nothing does
+today; if per-mesh texture disposal is ever added, this cache must own the lifetime.
+
+**Remaining:** ~245 s of first-time decode at ~270 ms per texture — genuinely new work, so the next
+lever is making the decode itself cheaper (disk cache of the decoded RGBA, or threading it) rather
+than avoiding repeats.
+
 **E92-S5 (2026-08-30) — the cost is the DECODE, and the per-mesh cache matters more than S4 said.**
 Timed `tex_rgba` (CPU decode) separately from `upload_rgba` (the GL call):
 
