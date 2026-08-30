@@ -1190,13 +1190,21 @@ function extract_gpl_steering(path3do)
 end
 
 """Build textured Items for GPL parts, resolving each texture via the .mip index."""
+# E92-S4 (2026-08-30): IS THE TEXTURE CACHE PER-MESH? `cache` below is created fresh on every call,
+# so a texture shared by N meshes would be decoded and uploaded N times. Spa spends 627.76 s in this
+# function for 491 meshes -- 1.28 s each -- and redundant uploads are the obvious candidate. COUNT
+# before changing: uploads ~= distinct names means the cache is fine and the cost is elsewhere;
+# uploads >> distinct means this is it. JM_TEXSTAT=1.
+const _TEXSTAT = (uploads=Ref(0), lookups=Ref(0), names=Set{String}())
 function build_gpl(parts, idx::GPLTex)
     cache=Dict{String,GLuint}(); items=Item[]
     for p in parts
         vao,n = upload(p.verts); tid=GLuint(0)
         if p.tex != ""
             key=lowercase(p.tex)
+            _TEXSTAT.lookups[] += 1; push!(_TEXSTAT.names, key)
             tid = get!(cache,key) do
+                _TEXSTAT.uploads[] += 1
                 r = tex_rgba(idx, key)
                 t = r === nothing ? GLuint(0) : upload_rgba(r[1], r[2], r[3])
                 is_crowd_texname(key) && mag_nearest(t)   # E46: gold's point-sampled crowd read
@@ -1204,6 +1212,12 @@ function build_gpl(parts, idx::GPLTex)
             end
         end
         push!(items, Item(vao,n,tid,p.col))
+    end
+    if get(ENV,"JM_TEXSTAT","0") != "0" && _TEXSTAT.uploads[] > 0 && (_TEXSTAT.uploads[] % 100) == 0
+        println("[texstat] uploads=", _TEXSTAT.uploads[], "  lookups=", _TEXSTAT.lookups[],
+                "  distinct names=", length(_TEXSTAT.names),
+                "  redundant=", _TEXSTAT.uploads[] - length(_TEXSTAT.names))
+        flush(stdout)
     end
     items
 end

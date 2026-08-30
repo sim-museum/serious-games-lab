@@ -2949,6 +2949,23 @@ was never spread across the per-instance loops, it is concentrated in one functi
 wants to make Spa load faster has exactly one place to look, and a 1.28 s per-mesh GL build is a
 very large number to explain.
 
+**E92-S4 (2026-08-30) — the per-mesh texture cache is NOT the cost. Hypothesis refuted by counting.**
+`build_gpl` creates its `cache` Dict fresh on every call, so a texture shared by N meshes looked like
+it would be uploaded N times — an obvious candidate for 1.28 s per mesh. Counted instead of assumed:
+
+    uploads=600  lookups=601  distinct names=558  redundant=42     (7% redundant)
+    uploads=900  lookups=901  distinct names=743  redundant=157    (17% later, as sharing grows)
+
+Uploads track distinct names closely. **The per-mesh cache is doing almost no harm**, and removing it
+in favour of a global one would recover a fraction, not the bulk.
+
+**What the same numbers DO say:** ~600–900 texture uploads against 627.76 s of `build_gpl` is
+**roughly one second per texture upload** — and that, not mesh count and not redundancy, is where
+Spa's ten-minute load lives. The next question is the split inside a single upload: `tex_rgba`
+(decode) versus `upload_rgba` (the GL call). They have completely different fixes — a slow decode is
+CPU work that could be cached to disk or parallelised, while a slow `glTexImage2D` points at format
+conversion or mipmap generation on the driver side.
+
 ⚠️ Spa's load exceeds 900 s to reach this point, so a capped run never gets here — the first attempt
 at this measurement timed out before the loop and produced nothing.
 
