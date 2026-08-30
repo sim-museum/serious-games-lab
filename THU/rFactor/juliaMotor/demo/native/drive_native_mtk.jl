@@ -5471,7 +5471,16 @@ function main()
                 ptw > 0.0 && (PLAYER_CDA[] = 1.0 - DRAFT_DRAG_CUT * clamp(ptw/TOW_MAX, 0.0, 1.0))
             end
             pm = 560.0; am = 560.0; restn = 0.12; mr = pm*am/(pm+am)   # PO: car-to-car INELASTIC (was 0.45 = bouncy) — a hit shoves + scrubs, doesn't ping-pong
-            pvx = cs.v*cos(cs.θ); pvz = cs.v*sin(cs.θ)
+            # E96-S5: the PLAYER's world velocity, not speed x heading. `cs.v` is UNSIGNED, so a car
+            # being shoved backwards after a clash still read as travelling along its nose -- and the
+            # closing test below (`vrel <= 0.2 && continue`) would then see CLOSING where the cars are
+            # actually separating, and hand out another impulse every frame. That is the same sign
+            # error E96-S2 found in solid_contact and the world fence; this site was missed because
+            # car-to-car contact was not what the PO was reporting at the time.
+            # The AI side keeps v x heading: AI cars are driven along their own nose and are never
+            # shoved backwards by this path (it bounds their response deliberately, R1), so their
+            # speed and heading agree. The player is the body that gets pushed around.
+            pvx = WVX[]; pvz = WVZ[]
             for (k, p) in enumerate(ai_poses)
                 dx = p[1] - cs.x; dz = p[3] - cs.z; d = hypot(dx, dz)
                 (d < 1e-3 || d > CONTACT_D) && continue       # ACTUAL contact only (≈ a car width — no "repel from afar")

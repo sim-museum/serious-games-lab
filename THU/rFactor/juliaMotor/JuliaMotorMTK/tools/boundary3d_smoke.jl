@@ -14,10 +14,15 @@ function run_boundary(v0)
     c = DriveRT3D.build_car3d(; x0 = -40.0, v0 = v0); c.gear = 4; c.s_gr(c.integ, DriveRT3D.GEARS[4])
     dt = 1/60; lastgx = -40.0; lastgz = 0.0
     bfx = bfy = bmz = 0.0                                  # boundary force, applied with 1-frame latency
-    maxover = 0.0; failsafe = 0
+    maxover = 0.0
+    failsafe = 0
+    prvx = NaN; prvz = NaN; wvx = 0.0; wvz = 0.0        # E96-S2: world velocity, by position delta
     for _ in 1:round(Int, 7.0/dt)
         DriveRT3D.extforce3d!(c; Fx = bfx, Fy = bfy, Mz = bmz)   # last frame's wall force
         DriveRT3D.step_car3d!(c, 0.5, 0.0, 0.0, dt; manual = true, groundz = flat)
+        wvx = isfinite(prvx) ? (c.x - prvx)/dt : 0.0
+        wvz = isfinite(prvz) ? (c.z - prvz)/dt : 0.0
+        prvx = c.x; prvz = c.z
         isfinite(c.x) || return (:DIVERGED, NaN, failsafe)
         if c.x <= 0.0                                      # inside the world
             lastgx = c.x; lastgz = c.z; bfx = bfy = bmz = 0.0
@@ -26,7 +31,10 @@ function run_boundary(v0)
             nl < 1e-3 && (nwx = -1.0; nwz = 0.0; nl = 1.0); nwx /= nl; nwz /= nl
             maxover = max(maxover, c.x)
             if nl > FENCE_GRACE
-                vn = c.v*cos(c.θ)*nwx + c.v*sin(c.θ)*nwz
+                # E96-S2: TRUE world velocity from the position delta. c.v is an unsigned SPEED, so
+                # the old `c.v*cos(θ)*nwx + ...` read a car being pushed back INSIDE the world as
+                # still driving OUT of it -- the sim was fixed, this test was not.
+                vn = wvx*nwx + wvz*nwz
                 (bfx, bfy, bmz) = DriveRT3D.contact_force(nl - FENCE_GRACE, nwx, nwz, vn, c.θ; kind=:wall, dt=dt)
                 if nl > FENCE_GRACE + FENCE_FAR; failsafe += 1; end   # would hard-seal in game (escape attempt)
             else
@@ -47,5 +55,5 @@ for v0 in (20.0, 40.0, 60.0)
             held ? "WALL CONTAINS ✓" : "FAIL")
     global ok &= held
 end
-@printf("\n  RESULT: %s\n", ok ? "WORLD-EDGE WALL OK ✓ (physical bounce, no escape, no divergence)" : "FAIL ✗")
+@printf("\n  RESULT: %s\n", ok ? "WORLD-EDGE WALL OK ✓ (contains, no escape, no divergence)" : "FAIL ✗")
 exit(ok ? 0 : 1)
