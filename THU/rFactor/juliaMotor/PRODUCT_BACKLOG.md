@@ -2970,3 +2970,29 @@ The shift observation **confirms** rather than contradicts this: shifting requir
 
 **PO, the one observation that would settle it:** with `JM_TRACE_CLUTCH=1`, at a standstill in 1st, put the slider UP and apply full throttle. If the trace prints `clu=0.0` and the car still will not move, the defect is in the LAUNCH physics, not the axis sense — and that is a different and more interesting bug than a reversed slider.
 
+#### E93 ROOT CAUSE (2026-08-29) — **a LAUNCH ASSIST discards the driver's clutch until 12 km/h**
+
+`drive_native_mtk.jl:4663-4667`:
+
+```julia
+race_go[] && cs.v > 12.0 && (launch_done[] = true)
+if race_go[] && !rst && !CTL.auto && !launch_done[] && inp.throttle > 0.05
+    inp = DriveInput(..., clutch=0.0, ..., autoshift=true)
+end
+```
+
+In MANUAL, **any throttle before the car reaches 12 km/h replaces the driver's clutch with `0.0` (engaged) and forces `autoshift=true`.** `launch_done[]` then latches for the rest of the session.
+
+**That accounts for the PO's report in all three parts, with nothing left over:**
+* *"at the start, applying throttle with slider down moves the car"* → the override replaces the disengaged clutch with an engaged one;
+* *"after that, slider down means engine disconnected"* → the latch fires at 12 km/h and the override stops;
+* *"if I come to a stop, applying throttle with slider down just revs the engine, as it should"* → the latch never resets, so the assist never returns.
+
+**Nothing is reversed.** The axis sense is constant (verified in four places); it is simply **ignored during the first launch**. The PO's phrase *"as soon as the car moves in first, the slider sense reverses"* is precisely the 12 km/h latch.
+
+⚠️ **This directly contradicts the PO's standing instruction**, recorded in this same file at :3560 — *"I like the clutch attached to a slider — that way I can ride the clutch. The clutch should be an axis."* A launch assist that overrides the axis for the one manoeuvre where riding the clutch matters most **removes the feature at exactly the moment it is wanted**. The comment above the block shows it was added for AI race starts on uphill grids (Spa/Nürburgring bogging), which is a real problem — but it is applied unconditionally in MANUAL rather than only where it was needed.
+
+**SEPARATE, STILL UNEXPLAINED:** with the clutch ENGAGED at a standstill and throttle applied, **rpm reads 0.0 across all 56 such ticks and the car never moves** (against 118/213 moving when disengaged). `vehicle_3d.jl:56` declares `k_idle=0.5, idle_rpm=2000.0`, so an idle governor exists and is evidently not holding the engine up. That is a second defect and should not be folded into this one.
+
+**PROPOSED FIX (not yet applied — it changes driving feel, so it is the PO's call):** gate the assist on what it was built for. Either restrict it to race starts with AI (`!isempty(AICARS) && IS_RACE`), or honour the driver's clutch whenever the slider is meaningfully disengaged (`clu > 0.4`), so riding the clutch always wins over the assist. **`JM_NO_LAUNCH_ASSIST=1` as an immediate opt-out is the smallest honest step.**
+
