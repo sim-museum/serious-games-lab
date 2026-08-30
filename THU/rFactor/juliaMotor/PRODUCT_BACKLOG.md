@@ -2745,3 +2745,26 @@ Recorded in advance so the result can refute it, per the standing rule that a pa
 
 **Refutation conditions, stated now:** if Spa's object count is far below ~4,000 yet the gap is still ~725 s, per-object cost is NOT constant and the mechanism above is wrong — look for something super-linear in object count, or a phase outside this block. If the block is a minor share of the gap, the prediction fails outright and the remaining phases (mirrors/wheels, track items, AI car models) must be examined instead.
 
+#### E80-S2 RESULT — **the 725 s is the trackside-objects block. Prediction confirmed, with one caveat I got wrong.**
+
+Spa, `JM_TIMING=1`, full load **1122.8 s** (18.7 min):
+
+| t+ | phase | duration |
+|---|---|---|
+| 34.6 s | texture load begins | |
+| 115.4 s | `build_gpl` done (GL uploads) | **80.8 s** |
+| 123.5 s | trackside objects + billboards + trees BEGIN | |
+| 986.4 s | … DONE | ⭐ **862.9 s** |
+| 989.5 s | mirrors + wheels loaded | 3.1 s |
+| 994.4 s | track items + AI car models | 4.9 s |
+| 1027.6 s | physics build begins | |
+| 1122.8 s | physics build done | 95.2 s |
+
+**Prediction 1 — CONFIRMED.** The trackside block is by far the largest phase: **862.9 s of 1122.8 s (77 %)**. Every other post-`build_gpl` phase together is **8 s**.
+
+**Prediction 2 — MECHANISM CONFIRMED, MAGNITUDE SLIGHTLY UNDER.** Spa carries **1455 objects + 2433 billboards = 3888 instances** against Watkins' 202 — a ratio of **19.2×**, and I predicted ~4,050 would be needed. Constant per-object cost predicts `36.1 s × 19.25 = 694.9 s`; the measured **862.9 s is 1.24× that**. **So object count is indeed the driver, but the cost is mildly SUPER-LINEAR** — my "constant per-object cost" assumption was not quite right, and the residual 24 % is unexplained. Candidates: the HAT queries are bucketed by grid cell and Spa's objects may cluster (a per-cell list scan is not O(1) when a cell is dense), or billboards cost more than objects and Spa's mix is billboard-heavy (63 % vs Watkins' 19 %).
+
+**Prediction 3 — CONFIRMED, and it finally kills the original claim with a number.** Texture upload at Spa is **80.8 s**, 7 % of the load — not 13 minutes. E80 began as *"texture load takes 13 minutes"*, which was an earlier session reading `loading textures…` as the LAST PRINTED LINE and inferring where the time went. **The whole 13 minutes was, to 77 %, one untimed block 2,000 lines further down.**
+
+**E80's original question is now ANSWERED.** What remains is a different, better-posed one: why the trackside block costs ~0.22 s per instance, and whether the mildly super-linear term is HAT-cell clustering or a billboard/object cost difference — measurable by splitting the block's timer between the object loop and the billboard loop.
+
