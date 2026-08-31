@@ -183,3 +183,7 @@ SAT/freeFalconSource/test_shots/
 
 # Symlink-only rFactor GameData tree built from mod media (see demo/native/CLAUDE.md)
 rfactor-gamedata/
+
+# Per-run telemetry the driving app writes into its own directory (<track>_racer_<epoch>.txt).
+# Generated output, one file per launch -- these accumulated from gate/launch runs and are not source.
+THU/rFactor/juliaMotor/*_racer_*.txt
