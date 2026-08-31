@@ -75,6 +75,30 @@ function set_mass!(m::Real, front_frac::Real; source::AbstractString="unknown")
     nothing
 end
 
+"""
+    wrecks(closing, bnd_peak, speed; close_ms, bnd_peak_max, vmin_ms) -> Bool
+
+E95/E99: does this contact end the race?  PO 2026-08-30: *"a graze at speed should scrub you
+but not end your race."*
+
+Two independent ways to be a hard hit — a high CLOSING speed into a solid, or a large boundary
+penetration peak (the fence/wall case, where the contact is spread over frames and the closing
+speed alone under-reads it) — and then a speed gate, so a slow shunt in the pits never totals
+the car however square it is.
+
+Closing speed, not peak force: force saturates at ~296 kN for any real contact, so it cannot
+tell a graze from a square hit. That was measured, and it is why this takes `closing`.
+
+S371: extracted because the gate had its OWN copy of this rule and the two had already drifted —
+the copy was missing the boundary branch entirely and hardcoded a threshold the sim exposes as
+tunable. A gate asserting its own reimplementation tests nothing about the sim.
+"""
+function wrecks(closing::Real, bnd_peak::Real, speed::Real;
+                close_ms::Real = 12.0, bnd_peak_max::Real = 1.0e3, vmin_ms::Real = 50.0/3.6)
+    hard = (closing > close_ms) || (bnd_peak > bnd_peak_max)
+    return hard && abs(speed) > vmin_ms
+end
+
 """Mass and front share from an ibt session's corner weights (N) — the conversion in one place."""
 function mass_from_corner_weights(cw)
     tot = sum(values(cw))

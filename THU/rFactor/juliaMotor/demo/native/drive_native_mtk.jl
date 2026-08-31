@@ -5111,8 +5111,12 @@ function main()
                     # square hit, which is exactly the distinction the PO is drawing.
                     # The fence keeps its own peak test -- driving off the edge of the world is
                     # never a graze.
-                    hard_hit = (cclose > WRECK_CLOSE) || (BND_PK[] > 1.0e3)
-                    if hard_hit && abs(cs.v) > WRECK_MS
+                    # S371: ONE implementation of the rule, shared with wreck_smoke.jl. A gate
+                    # holding its own copy passes against a sim that has moved on -- this one had,
+                    # missing the boundary branch below entirely.
+                    if DriveRT3D.wrecks(cclose, BND_PK[], cs.v;
+                                        close_ms = WRECK_CLOSE, bnd_peak_max = 1.0e3,
+                                        vmin_ms = WRECK_MS)
                         wreck!(abs(cs.v))
                     end
                     # E98: a stall in MANUAL drops straight to AUTO. Conditions, all required:

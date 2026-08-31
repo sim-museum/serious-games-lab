@@ -44,7 +44,12 @@ function hit(v0, lateral; r = 3.0, wallx = 60.0, nsteps = 500)
         touched && !inct && eafter < 0 && (eafter = e(c))
     end
     (touched=touched, closing=closing, kept=100*(eafter < 0 ? e(c) : eafter)/epre,
-     wrecks=(closing > WRECK_CLOSE && v0 > WRECK_MS), retreat=worst_back)
+     # S371: ask the SIM's rule, do not restate it. This line used to be the gate's own copy and
+     # the two had drifted -- the copy had no boundary branch at all, so the fence case was
+     # asserted by nothing. bnd_peak is 0 here because these are solid-object hits, not fences;
+     # the fence branch gets its own arms below.
+     wrecks=DriveRT3D.wrecks(closing, 0.0, v0; close_ms=WRECK_CLOSE, vmin_ms=WRECK_MS),
+     retreat=worst_back)
 end
 
 fails = Ref(0)
@@ -70,6 +75,19 @@ sq = hit(30.0, 0.0)
 chk("E95 square hit at 108 km/h WRECKS", sq.wrecks, @sprintf("closing %.1f m/s", sq.closing))
 sl = hit(4.0, 0.0)
 chk("E95 slow square hit does NOT wreck", !sl.wrecks, @sprintf("closing %.1f m/s (below the speed gate)", sl.closing))
+
+# S371: the boundary branch the gate's private copy never had. Driving off the edge of the world
+# is never a graze, so a large penetration peak wrecks even when the closing speed is mild --
+# and it must still respect the speed gate, or a slow nudge into the fence would total the car.
+chk("E95 fence: big boundary peak WRECKS at speed",
+    DriveRT3D.wrecks(0.5, 1.0e4, 30.0; close_ms=WRECK_CLOSE, vmin_ms=WRECK_MS),
+    "closing 0.5 m/s but peak 1e4")
+chk("E95 fence: big boundary peak does NOT wreck when slow",
+    !DriveRT3D.wrecks(0.5, 1.0e4, 2.0; close_ms=WRECK_CLOSE, vmin_ms=WRECK_MS),
+    "peak 1e4 at 7 km/h -- below the speed gate")
+chk("E99 mild peak + mild closing does NOT wreck",
+    !DriveRT3D.wrecks(0.5, 1.0e2, 30.0; close_ms=WRECK_CLOSE, vmin_ms=WRECK_MS),
+    "neither branch trips")
 
 @printf("\n  RESULT: %s\n", fails[] == 0 ? "COLLISION RULES OK ✓" : "FAIL ✗")
 exit(fails[] == 0 ? 0 : 1)
