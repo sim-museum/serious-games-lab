@@ -99,6 +99,39 @@ check("one impact damages corners AND engine",
       D.DAMAGE[1] > 0.0 && D.ENGINE_DAMAGE[] > 0.0,
       string("FL=", round(D.DAMAGE[1], digits=2), " eng=", round(D.ENGINE_DAMAGE[], digits=2)))
 
+# ---- INTEGRATION: does contact_force's output actually mean what damage_impact! assumes? ----
+# Every arm above tests damage_impact! against hand-written force vectors, which proves the
+# weighting and nothing about the WIRING. In the sim the force comes from contact_force, and the
+# sign convention between the two is exactly the kind of thing that is silently backwards: the
+# gate would stay green while every impact damaged the opposite side of the car.
+#
+# contact_force computes the contact POINT itself -- rx,ry = -n*arm in the body frame -- so there
+# is an authoritative answer to check against, rather than my algebra about which way n points.
+const ARM = 1.4
+for (label, nx, nz) in (("right", 0.0, 1.0), ("left", 0.0, -1.0), ("nose", -1.0, 0.0))
+    θ = 0.0
+    (fx, fy, mz) = D.contact_force(0.3, nx, nz, -15.0, θ; kind = :wall, dt = 1/60)
+    # the contact point in the body frame, from contact_force's own expression
+    rx = (-nx*cos(θ) - nz*sin(θ))*ARM
+    ry = ( nx*sin(θ) - nz*cos(θ))*ARM
+    D.damage_reset!()
+    D.damage_impact!(fx, fy, 15.0)
+    # Which corners took it, and which side is the contact actually on?
+    hit_left  = D.DAMAGE[1] + D.DAMAGE[3]      # FL + RL  (+y is LEFT)
+    hit_right = D.DAMAGE[2] + D.DAMAGE[4]
+    hit_front = D.DAMAGE[1] + D.DAMAGE[2]
+    hit_rear  = D.DAMAGE[3] + D.DAMAGE[4]
+    ok = if ry > 0.05        ; hit_left  > hit_right
+         elseif ry < -0.05   ; hit_right > hit_left
+         elseif rx > 0.05    ; hit_front > hit_rear
+         else                ; hit_rear  > hit_front
+         end
+    check("contact on the $label damages that side", ok,
+          string("contact point (", round(rx, digits=2), ",", round(ry, digits=2),
+                 ")  L=", round(hit_left, digits=2), " R=", round(hit_right, digits=2),
+                 " F=", round(hit_front, digits=2), " Rr=", round(hit_rear, digits=2)))
+end
+
 # Respawn is a new car.
 D.damage_reset!()
 check("respawn clears damage", !D.damaged(), string(D.DAMAGE))
