@@ -4598,7 +4598,7 @@ function main()
     # tracks whose centreline is the raw .trk (Monza, Zandvoort): re-centring shifts the dlat frame
     # and the dlong index with it. Says which file it used -- a silent fallback is the defect again.
     if AILINE !== nothing && get(ENV, "JM_AI_GPLLINE", "0") != "0"
-        if MONZA || ZANDVOORT
+        if MONZA || ZANDV
             lp = joinpath(ZD, "race.lp")
             if isfile(lp)
                 gv = GPLLP.lp_speed_mps(GPLLP.read_lp(lp))
