@@ -36,6 +36,10 @@ end
 
 """Decode a .mip file -> (width, height, rgba::Vector{UInt8}) of the largest level."""
 decode_mip(path::AbstractString) = decode_mip_bytes(read(path))
+"Palette byte order this decoder assumes; part of the decoded-texture cache key so a change here
+cannot be served stale pixels from disk."
+const CMAP_ORDER = "bgra-v2"
+
 function decode_mip_bytes(b::AbstractVector{UInt8})
     tag(b,0) == "PIM " || error("not a MIP")
     # DHPM/MPHD section at offset 12
@@ -46,9 +50,16 @@ function decode_mip_bytes(b::AbstractVector{UInt8})
     W = 1 << powW; H = 1 << powH
 
     # palette: shared CMAP for type 0/1; for type 2 each BMAP carries its own
+    # E83 (2026-08-30): CMAP entries are B,G,R,A -- Windows DIB order -- not R,G,B,A. Read as RGBA,
+    # every palettised texture had red and blue exchanged: bushes teal, dry grass cyan, the BOSCH
+    # banner blue, the German no-stopping sign a blue ring. That is the PO's "neon trees and
+    # shrubs" (types 0/1 are the vegetation cutouts). Decided by textures whose colour is not in
+    # doubt: BOSCH is red, dry grass is yellow. The 16-bit types (3/4/5) were already right.
+    # Gate: JuliaMotorMTK/tools/mipcolor_smoke.jl. Changing this invalidates the decoded-texture
+    # cache, which is why render.jl keys the cache on GPLMip.CMAP_ORDER.
     function read_cmap(off, sz)
         n = sz ÷ 4
-        [(b[off+i*4+1], b[off+i*4+2], b[off+i*4+3], b[off+i*4+4]) for i in 0:n-1]
+        [(b[off+i*4+3], b[off+i*4+2], b[off+i*4+1], b[off+i*4+4]) for i in 0:n-1]
     end
 
     secs = sections(b, 12)                    # everything after PIM header

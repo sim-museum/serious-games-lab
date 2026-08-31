@@ -891,7 +891,7 @@ function gpl_texture_index(dir)
     # Cost: ~1.2 GB on disk per track dir. JM_TEXCACHE=0 disables.
     cd = get(ENV,"JM_TEXCACHE","1") == "0" ? "" :
          joinpath(homedir(), ".cache", "juliamotor", "tex",
-                  string(hash((abspath(dir), get(ENV,"JM_NO_ALPHABLEED","0"))), base=16))
+                  string(hash((abspath(dir), get(ENV,"JM_NO_ALPHABLEED","0"), GPLMip.CMAP_ORDER)), base=16))   # E83: decoder version in the key
     cd != "" && (try; mkpath(cd); catch; cd = ""; end)
     GPLTex(paths, dat, cd)
 end

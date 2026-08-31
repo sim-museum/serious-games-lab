@@ -3516,3 +3516,29 @@ GPLRA under that prefix is the realistic route to the PO's "refer to the .rpy fi
 decoder blind. Files are 🔒 read-only; work on copies in `/tmp/rpy/`.
 
 **E89-S1 correction (GPL rails):** they are not a fixed ±4 m — that was the pit straight. Monza, per record: pass1−race: median +1.08 m, p10 +0.00, p90 +3.91, |dev|>1 m on 55% of the lap; pass2−race: median -3.39 m, p10 -4.24, p90 +0.00, |dev|>1 m on 78%; both rails within 0.5 m of the race line on 0% of records. GPL's passing space is asymmetric and opens only where the road allows; a fixed `RAIL = ±2.4` on both sides everywhere is not what GPL does.
+
+### E83 — ✅ ROOT-CAUSED AND FIXED (2026-08-30): the MIP palette is B,G,R,A and was read as R,G,B,A
+
+Judged the PO's way first — a gold Ring `nintendo` frame beside the PO's 2026-08-27 Ring drive: gold
+forest is deep green (mean 77,98,53 — red above blue); the PO frame's trees are **cyan** (129,201,155,
+blue above red) and its bushes pale yellow-white. Not a grade: the saturation medians match (0.41–0.47
+vs 0.36–0.48); the HUE is wrong on specific sprites.
+
+A per-MIP-type census of every Ring texture found it: **type 1 (shared-palette cutouts — the
+vegetation sprites): 47 of 60 green-dominant textures had B > R**, while the 16-bit types 3/4/5 were
+right (`brd_shel` = Shell red-yellow (191,117,1), `cocacol` red). The decoder's `read_cmap` took
+palette entries as R,G,B,A. Rendering the strongest R/B-asymmetric palettised textures both ways
+settled it by eye: `bo_sign2` is **BOSCH in red**, `x-sign` the German no-stopping sign (red ring, blue
+centre), `drygrass` yellow, `hgbush` olive green — only with B,G,R,A. GPL's CMAP is Windows DIB order.
+
+Fix: `gplmip.jl` `read_cmap` reads B,G,R,A; `GPLMip.CMAP_ORDER` is part of the decoded-texture cache
+key so 1.2 GB of swapped pixels on disk cannot be served again (and that cache was deleted). After the
+fix: type 1 teal 47 → 11, type 2 → 0. Gate `tools/mipcolor_smoke.jl` (in `gates.sh`) pins six
+known-colour textures including two 16-bit ones that must NOT change; proven to fail with RGBA
+restored (3 arms red).
+
+⚠️ This also rewrites the premise of **E70-S8**: the "alpha bleed" note measured `hgbush` opaque as
+(20,69,56) — that was the swapped decode; the true opaque colour is (56,69,20). The bleed pass itself is
+still valid (it acts on alpha, not hue), but any colour conclusion drawn from pre-fix decodes should be
+re-read. **Not yet verified on screen** — needs a Ring capture with the display, which bob's suite holds;
+queued after the E89 runs. The E69/E72 exposure dead end stands untouched: nothing here changes `GRADE_*`.
