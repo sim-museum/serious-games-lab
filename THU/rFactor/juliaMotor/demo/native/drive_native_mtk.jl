@@ -5235,7 +5235,13 @@ function main()
                 DriveRT3D.wheelmu3d!(cs, μFL*DriveRT3D.damage_mu(1), μFR*DriveRT3D.damage_mu(2),
                                          μRL*DriveRT3D.damage_mu(3), μRR*DriveRT3D.damage_mu(4))
             end
-            step_carX!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
+            # E94-P4 S3: a damaged engine makes less power for the same pedal, and a dead one
+            # makes none. Applied to the THROTTLE rather than inside the model so it cannot
+            # disturb the ibt-derived engine curve -- the PO's constraint is that the physics
+            # comes from the data, and this is the driver's input being throttled, not the
+            # engine being re-specified. With a dead engine the revs fall and E98's stall rule
+            # drops MANUAL to AUTO on its own, which is what a driver would want.
+            step_carX!(cs, inp.throttle * DriveRT3D.engine_power(), inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
                         groundz=groundz)
             if !SKIDPAD     # track position + lap timing

@@ -20,7 +20,7 @@ for f in ("tyre.jl","powertrain.jl","vehicle_3d.jl")
     include(joinpath(HERE, "components", f))
 end
 
-export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, wheelmu3d!, world_velocity, damage_hit!, damage_impact!, damage_mu, damaged, damage_reset!
+export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, wheelmu3d!, world_velocity, damage_hit!, damage_impact!, damage_engine!, damage_mu, engine_power, engine_dead, damaged, damage_reset!
 
 # E100: the transmission is SESSION data, not a car constant. The Lotus 49's gears are
 # adjustable and the ibt captures prove it -- Nurburgring runs [2.23,1.72,1.32,1.04,0.846]
@@ -161,6 +161,7 @@ function damage_impact!(fx::Real, fy::Real, closing::Real)
     mag = sqrt(float(fx)^2 + float(fy)^2)
     if mag < 1e-6                       # no direction to reason from: spread it
         for c in 1:4; damage_hit!(c, closing); end
+        damage_engine!(closing)
         return nothing
     end
     nx = -float(fx) / mag; ny = -float(fy) / mag        # unit vector back along the blow
@@ -174,14 +175,48 @@ function damage_impact!(fx::Real, fy::Real, closing::Real)
     for c in 1:4
         damage_hit!(c, closing * (w[c] / wmax))
     end
+    damage_engine!(closing)          # the engine takes the blow's full severity, not a corner share
     return nothing
 end
 
 """True if any corner carries damage — for telemetry and for the HUD to say so."""
-damaged() = any(d -> d > 0.0, DAMAGE)
+damaged() = any(d -> d > 0.0, DAMAGE) || ENGINE_DAMAGE[] > 0.0
+
+# The engine takes damage too. PO 2026-08-29 named three things "causes damage" should mean --
+# "a bent corner, lost grip, or a DEAD ENGINE" -- and the first two are the corner model above.
+# Higher onset than a corner: a knock that bends suspension usually leaves the engine running, so
+# it takes a heavier blow to hurt it and a heavier one again to kill it.
+const ENGINE_DAMAGE = Ref(0.0)
+const ENG_ONSET_MS  = 8.0        # below this the engine is untouched (corners onset at 3.0)
+const ENG_MIN_POWER = 0.25       # a sick engine still pulls; only a DEAD one gives nothing
+
+"""    damage_engine!(closing) -> Float64
+
+Accumulate engine damage from a contact's closing speed. Saturating like the corners, so repeated
+heavy hits kill it and no single one can overshoot.
+"""
+function damage_engine!(closing::Real)
+    excess = float(closing) - ENG_ONSET_MS
+    excess <= 0 && return ENGINE_DAMAGE[]
+    ENGINE_DAMAGE[] = clamp(ENGINE_DAMAGE[] + (1.0 - ENGINE_DAMAGE[]) * min(excess / 30.0, 1.0),
+                            0.0, 1.0)
+    return ENGINE_DAMAGE[]
+end
+
+"""Throttle multiplier: 1.0 healthy, falling to ENG_MIN_POWER, and 0.0 once the engine is DEAD.
+Multiply this into the driver's throttle -- a damaged engine makes less power for the same pedal."""
+function engine_power()
+    d = ENGINE_DAMAGE[]
+    d >= 1.0 && return 0.0                       # dead: no amount of pedal helps
+    return 1.0 - (1.0 - ENG_MIN_POWER) * d
+end
+
+"""True once the engine is destroyed. The stall rule (E98) then does the rest: with no power the
+revs fall through the floor and MANUAL drops to AUTO, which is what a driver would want."""
+engine_dead() = ENGINE_DAMAGE[] >= 1.0
 
 """Clear all damage. Called on respawn: that is a new car, not a repaired one."""
-damage_reset!() = (fill!(DAMAGE, 0.0); nothing)
+damage_reset!() = (fill!(DAMAGE, 0.0); ENGINE_DAMAGE[] = 0.0; nothing)
 
 """Mass and front share from an ibt session's corner weights (N) — the conversion in one place."""
 function mass_from_corner_weights(cw)

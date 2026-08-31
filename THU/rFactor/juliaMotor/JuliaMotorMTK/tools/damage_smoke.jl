@@ -65,9 +65,44 @@ D.damage_reset!()
 D.damage_impact!(0.0, 0.0, 20.0)
 check("a directionless impact spreads", all(d -> d > 0, D.DAMAGE), string(round.(D.DAMAGE, digits=2)))
 
+# ---- E94-P4 S3: the engine ---------------------------------------------------------------
+# PO 2026-08-29 named three things damage should mean: "a bent corner, lost grip, or a DEAD
+# ENGINE". The corner model covers the first two; this is the third.
+D.damage_reset!()
+check("a new engine is healthy", D.engine_power() == 1.0 && !D.engine_dead(), "power 1.0")
+
+D.damage_engine!(5.0)
+check("a 5 m/s knock leaves the engine alone", D.ENGINE_DAMAGE[] == 0.0,
+      "below the engine onset (8 m/s), which is HIGHER than a corner's 3 m/s")
+
+# A hit hard enough to bend a corner need not hurt the engine -- assert the onsets really differ,
+# because two constants that happen to be equal would make this distinction imaginary.
+D.damage_reset!()
+D.damage_hit!(1, 5.0); D.damage_engine!(5.0)
+check("5 m/s bends a corner but spares the engine",
+      D.DAMAGE[1] > 0.0 && D.ENGINE_DAMAGE[] == 0.0,
+      string("corner=", round(D.DAMAGE[1], digits=3), " engine=", D.ENGINE_DAMAGE[]))
+
+D.damage_reset!()
+D.damage_engine!(20.0)
+check("a heavy hit costs engine power", D.engine_power() < 1.0, string(round(D.engine_power(), digits=3)))
+check("a sick engine still pulls",      D.engine_power() >= 0.25, "not dead yet")
+
+for _ in 1:30; D.damage_engine!(40.0); end
+check("repeated heavy hits KILL the engine", D.engine_dead(), string(round(D.ENGINE_DAMAGE[], digits=3)))
+check("a dead engine makes NO power",        D.engine_power() == 0.0, "0.0")
+
+# An impact drives both, through one call.
+D.damage_reset!()
+D.damage_impact!(-1.0, 0.0, 20.0)
+check("one impact damages corners AND engine",
+      D.DAMAGE[1] > 0.0 && D.ENGINE_DAMAGE[] > 0.0,
+      string("FL=", round(D.DAMAGE[1], digits=2), " eng=", round(D.ENGINE_DAMAGE[], digits=2)))
+
 # Respawn is a new car.
 D.damage_reset!()
 check("respawn clears damage", !D.damaged(), string(D.DAMAGE))
+check("respawn revives the engine too", D.engine_power() == 1.0 && !D.engine_dead(), "power 1.0")
 
 # No tuning knobs: the PO's standing constraint is physics from the data with no modifiable
 # parameters, so the damage model must expose no JM_ env vars. Asserted by reading the source --
