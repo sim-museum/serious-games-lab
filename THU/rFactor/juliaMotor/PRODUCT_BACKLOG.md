@@ -3670,3 +3670,12 @@ correlation only 0.37. **The speed table is index-aligned (dlong) and safe; the 
 (`race`/`pass1`/`pass2` dlat) need the per-node align shift subtracted before use.** That shift is
 `ALIGNED − trk_centreline` projected on the left normal, available in the sim. GPL's rails relative to
 its own race line are asymmetric: left median +1.08 m, right −3.39 m, against our fixed ±2.4.
+
+**E84 frame caveat — CORRECTED (2026-08-30, measured):** `align_centreline` on Monza returns the
+identity (raw-`.trk` road coverage 0.979 > the 0.6 threshold), so GPL's dlat and our `rl` ARE in the
+same frame there. The 13.4 m on the pit straight is real: the `.trk` centreline runs down the middle
+of the pit-lane-plus-track area and GPL's line is 13 m left of it, while our synthesised line is
+clamped to ±3.8 m of the centreline — so on **30% of the lap GPL uses road our AI may not**, and on
+the pit straight our cars run 13 m right of GPL's line, toward the pit wall. The caveat stands only
+for tracks that re-centre (Watkins, Ring, Spa). On Monza/Zandvoort GPL's `race`/`pass1`/`pass2` dlat
+can drive the AI's lateral position directly. (`demo/native/e84_frame_shift.jl`.)
