@@ -41,6 +41,20 @@ else
     end
 end
 
+# PO 2026-08-27, standing: "I like the clutch attached to a slider - that way I can ride the
+# clutch. The clutch should be an axis." A joystick.conf written by juliaRacer.py or calibrate.jl
+# OVERRIDES the slider default above, and Ctrl(0,...) means "no axis, use clutch_btn" -- so a
+# recalibration can silently demote the clutch to a button (or to nothing, since clutch_btn is 0
+# in the shipped map) and the sim would just quietly stop having a ridable clutch. Say so loudly
+# rather than leaving the driver to discover it mid-corner. Gated by tools/controls_smoke.jl.
+if JOYMAP.clutch.axis < 1
+    @warn """clutch is NOT on an axis (clutch.axis=$(JOYMAP.clutch.axis)) — the PO's standing
+             requirement is a SLIDER you can ride. Check $(_JOYCONF); the X3D default is axis 4."""
+else
+    println("  clutch: axis ", JOYMAP.clutch.axis, " (ridable slider)",
+            isfile(_JOYCONF) ? "  <- joystick.conf" : "  <- X3D default")
+end
+
 # ---- track selection (upfront, before the long load) ----
 # Honour TRACK=zandvoort|skidpad if set; otherwise, when launched interactively,
 # prompt the driver to choose.  (nurburgring = TBD, shown but not yet selectable.)
