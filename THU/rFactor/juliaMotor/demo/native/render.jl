@@ -1110,7 +1110,7 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
     _wholly_out(t) = maxlat < Inf32 &&
         ((t.p[1][2] >  maxlat && t.p[2][2] >  maxlat && t.p[3][2] >  maxlat) ||
          (t.p[1][2] < -maxlat && t.p[2][2] < -maxlat && t.p[3][2] < -maxlat))
-    overlat(t) = trim ? _wholly_out(t) : _dropwide(t)
+    overlat(t) = trim != false ? _wholly_out(t) : _dropwide(t)   # post-pass applies the drop per texture
     cmax(t) = max(abs(t.p[1][1]),abs(t.p[1][2]),abs(t.p[1][3]), abs(t.p[2][1]),abs(t.p[2][2]),abs(t.p[2][3]),
                   abs(t.p[3][1]),abs(t.p[3][2]),abs(t.p[3][3]))
     keep(t) = let L = max(edge(t.p[1],t.p[2]), edge(t.p[2],t.p[3]), edge(t.p[1],t.p[3])),
@@ -1130,7 +1130,14 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
             (isempty(include_groups) || m.groups[i] in include_groups)]   # E64 S7: include_groups = keep ONLY these placing-node groups
     # E82-S3: cut the survivors at the lateral limit. Runs after the group/texture/garbage filters
     # so trimming can only ever reshape geometry those already accepted.
-    trim && maxlat < Inf32 && (kept = collect(Iterators.flatten(_clip_lat(t, maxlat) for t in kept)))
+    # `trim` is either a Bool (all textures) or a collection of texture names to trim; everything
+    # else keeps the historic drop. E82-S3 measured why the distinction is needed: these groups also
+    # carry `lid`/`arms`/`top`/`rear` mirror-copies (E64-S4's "spears"), and trimming those turns
+    # whole discarded panels into wide slivers that read on screen as chrome slabs across the tyres.
+    _dotrim(t) = trim isa Bool ? trim : (t.tex in trim)
+    trim != false && maxlat < Inf32 &&
+        (kept = collect(Iterators.flatten(_dotrim(t) ? _clip_lat(t, maxlat) :
+                                          (_dropwide(t) ? GPL3DO.Tri[] : [t]) for t in kept)))
     qk(p) = (round(Int,p[1]*2000), round(Int,p[2]*2000), round(Int,p[3]*2000))
     # de-duplicate coplanar panels: GPL signs/awnings/walls are double-sided (front+back),
     # often with a few-mm THICKNESS — so they're NOT exact-vertex duplicates and still

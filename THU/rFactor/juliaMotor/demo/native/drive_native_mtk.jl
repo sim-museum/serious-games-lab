@@ -1450,8 +1450,21 @@ const _RSONLY = get(ENV,"JM_RS_ONLY","")
 # Measured on group 27288: dropping gives 83 tris spanning |lat| 0.422..0.61; trimming gives 176
 # spanning 0.422..0.85 -- past the hub, terminating exactly at the wheel face, nothing outside it.
 # JM_SUSP_TRIM=0 restores the drop behaviour as the negative control.
-const SUSP_TRIM = get(ENV,"JM_SUSP_TRIM","1") != "0"
-const RSUSP_MAXLAT = parse(Float32, get(ENV,"JM_RSUSP_MAXLAT","0.85"))
+# Trim ONLY the driveshaft texture. Measured by texture (E82-S3): trimming the whole group also
+# cuts down its `lid`/`arms`/`top`/`rear` mirror-copies -- the "spears" E64-S4 recorded in 27288/39792
+# -- and a Monza chase capture showed them come back as wide chrome slabs lying across the tyres,
+# plainly worse than the stubs. `axlelot` is the driveshaft itself and is the part that must reach
+# the hub. Everything else in the group keeps the S2 drop. JM_SUSP_TRIM=0 = drop everything (S2).
+const SUSP_TRIM = get(ENV,"JM_SUSP_TRIM","1") != "0" ? (split(get(ENV,"JM_SUSP_TRIM_TEX","axlelot"), ",")...,) : false
+# E82-S3: clip the rear at the half-track the WHEELS ARE DRAWN AT (WTRACK_R), not at 0.85.
+# 0.85 is CARP_MAXLAT -- the BODY mesh's clip -- and using it here was a frame confusion that cost
+# this sprint two captures: the gate measured the part mesh against 0.85, reported "inside the
+# tyres", and the screen showed chrome rods sticking out past and below the rear wheels. The wheels
+# are drawn at half-track WTRACK_R = 0.74, so anything reaching 0.85 is 11 cm outside the wheel
+# centre plane by construction. Clipping at WTRACK_R puts the shaft end at the hub, inside the tyre.
+# (WTRACK_R itself is defined further down, so read the same env/default it does rather than
+#  referring to it -- a forward reference here parses fine and dies at load, which is what happened.)
+const RSUSP_MAXLAT = parse(Float32, get(ENV,"JM_RSUSP_MAXLAT", get(ENV,"JM_TRACK_R","0.74")))
 const RSUSPP_A = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(27288,), exclude=_RSEXC, maxlat=RSUSP_MAXLAT, trim=SUSP_TRIM) :
                                  Render.extract_gpl_car(LOT3DO; include_groups=(27288,), only=(_RSONLY,))   # one side each —
 const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(39792,), exclude=_RSEXC, maxlat=RSUSP_MAXLAT, trim=SUSP_TRIM) :

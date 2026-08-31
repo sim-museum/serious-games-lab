@@ -11,12 +11,12 @@ const LOT = "/home/admin/sgl-julia-racer/THU/WP/drive_c/Sierra/GPL/cars/cars67/l
 isfile(LOT) || (println("lotus.3do not found"); exit(2))
 # E82-S2: extract exactly as the sim does -- clipped at the wheel face (0.85). Without the clip these
 # assemblies reach |z| = 1.12-1.16, spearing through the rear tyres: the PO's "chrome spider-legs".
-const RSUSP_MAXLAT = parse(Float32, get(ENV, "JM_RSUSP_MAXLAT", "0.85"))
+const RSUSP_MAXLAT = parse(Float32, get(ENV,"JM_RSUSP_MAXLAT", get(ENV,"JM_TRACK_R","0.74")))   # E82-S3: the DRAWN rear half-track, not the body clip
 # E82-S3: the gate MUST extract the way the sim does. It did not: it called extract_gpl_car without
 # `trim`, so after the sim started trimming, the gate went on measuring the DROP behaviour and kept
 # printing the old |z| max 0.61 -- a green gate reporting a number the shipped build no longer
 # produces. Mirror the sim's JM_SUSP_TRIM default here.
-const TRIM = get(ENV,"JM_SUSP_TRIM","1") != "0"
+const TRIM = get(ENV,"JM_SUSP_TRIM","1") != "0" ? (split(get(ENV,"JM_SUSP_TRIM_TEX","axlelot"), ",")...,) : false
 fails = Ref(0)
 check(name, ok, msg) = (ok || (fails[] += 1); println("  ", ok ? "PASS" : "FAIL", "  ", rpad(name, 54), msg))
 println("E82 rear-suspension pose gate   (JM_RS_ROLL = ", SuspPose.RS_ROLL_DEG, ", maxlat = ", RSUSP_MAXLAT, ")")
@@ -46,13 +46,19 @@ for (grp, side) in ((27288, 1), (39792, -1))
     # hard on the 1.12-1.16 overhang.
     check("group $grp stays inside the tyres (|z| < 0.95)", zmax < 0.95, string(round(zmax, digits=2)))
     # E82-S3: and it must REACH. Dropping whole triangles left the driveshafts ending at 0.61,
-    # short of the hub at 0.772 -- stubs where gold shows shafts running to the wheel. That was
-    # invisible to a gate that only checked an upper bound, so check the lower one too.
+    # short of the wheel -- stubs where gold shows shafts running to the hub. That was invisible to
+    # a gate that only checked an upper bound, so check the lower one too.
+    #
+    # The threshold is the DRAWN rear half-track (WTRACK_R = 0.74), not the 0.772 of rsfix's hub
+    # line and not the 0.85 of CARP_MAXLAT. That distinction is the whole sprint: this gate used to
+    # measure the part mesh against 0.85, report "inside the tyres", and pass -- while the screen
+    # showed chrome rods standing out past the rear tyres and down to the road, because the wheels
+    # are DRAWN at 0.74. A gate whose frame is not the frame the eye judges will certify anything.
     # Deliberately NOT guarded on TRIM. Guarding it made JM_SUSP_TRIM=0 -- the knob that puts the
     # stubs back -- report PASS, i.e. the gate went green on the defect it exists to catch. The
     # check states the requirement (the shafts reach the hub); the knob is then a real negative
     # control that goes red, which is the only kind worth having.
-    check("group $grp reaches the hub (|z| >= 0.772)", zmax >= 0.772, string(round(zmax, digits=3)))
+    check("group $grp reaches the hub (|z| >= 0.73)", zmax >= 0.73, string(round(zmax, digits=3)))
 end
 println(fails[] == 0 ? "SUSP POSE GATE: PASS" : "SUSP POSE GATE: FAIL ($(fails[]))")
 exit(fails[] == 0 ? 0 : 1)

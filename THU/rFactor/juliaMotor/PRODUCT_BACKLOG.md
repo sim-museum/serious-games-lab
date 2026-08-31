@@ -3801,5 +3801,32 @@ That check is deliberately **not** guarded on `TRIM` — guarded, `JM_SUSP_TRIM=
 putting the stubs back, i.e. the gate went green on the defect it exists to catch. Unguarded, the
 knob is a real negative control: **treatment 0.85 PASS / control 0.61 FAIL (2)**.
 
-Full suite: **14/14 PASS**. Still owed the PO: an on-screen chase capture, since every number here is
-geometry rather than pixels.
+**The capture then refuted the first two versions of this fix, and the third is what shipped.**
+Three Monza chase arms, `parity/e82_s3/compare.png` (drop / trim@0.85 / trim@0.74, rear corner):
+
+| arm | what the screen showed |
+|---|---|
+| drop (S2, shipped) | correct car, **no driveshaft** — the stub gap S2 named |
+| trim everything @ 0.85 | **wide chrome slabs lying across both tyres** — 16921 px changed |
+| trim `axlelot` only @ 0.85 | slabs gone, but **a chrome rod out past the tyre and down to the road** |
+| trim `axlelot` @ 0.74 | **driveshaft from the gearbox to the hub, ending at the wheel** ✅ |
+
+Two distinct errors, both caught only by looking:
+
+1. **Trimming the whole group re-admits the mirror-copies.** By texture, trimming brought back
+   `lid`, `arms`, `top`, `rear` — the driver/body "spears" E64-S4 recorded in 27288/39792. Dropping
+   had been removing them as whole polys; trimming turns each into a wide sliver. `trim` now takes a
+   set of texture names, and only `axlelot` — the driveshaft itself — is trimmed.
+2. **The clip limit was in the wrong frame, and so was the gate.** 0.85 is `CARP_MAXLAT`, the
+   *body* mesh's clip. The wheels are **drawn** at half-track `WTRACK_R` = **0.74**, so anything
+   reaching 0.85 stands 11 cm outside the wheel centre plane by construction. The gate measured the
+   part mesh against 0.85, printed "inside the tyres (|z| < 0.95)", and passed — while the screen
+   showed rods sticking out past the rear tyres. **A gate whose frame is not the frame the eye
+   judges will certify anything.** Both the clip and the gate now use the drawn half-track.
+
+So the reach threshold is 0.73–0.74, not the 0.772 of `rsfix`'s hub line: **treatment 0.74 PASS /
+control (`JM_SUSP_TRIM=0`) 0.61 FAIL (2)**. Full suite **14/14**.
+
+⚠️ Also of note for any sprint that edits this file: `Meta.parseall` cannot see an undefined name.
+Setting `RSUSP_MAXLAT` from `WTRACK_R` parsed clean and died at load with `UndefVarError` — the
+constant is defined 80 lines further down.
