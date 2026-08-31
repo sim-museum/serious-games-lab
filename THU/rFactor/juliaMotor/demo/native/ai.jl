@@ -202,6 +202,20 @@ instead of arriving too hot and washing out."
 const GPLV = Ref{Union{Nothing,Vector{Float64}}}(nothing)
 set_gpl_speeds!(v) = (GPLV[] = v === nothing ? nothing : Float64.(v); nothing)
 
+# E84-S8: GPL's LATERAL tables too -- race.lp dlat as the racing line, pass1/pass2 dlat as the two
+# rails (per record, asymmetric: on Monza the left rail is median +1.1 m from the line, the right
+# -3.4 m). Same 3.0 m indexing as the speed table. Valid where align/recentre leave the .trk frame
+# alone (Monza: align shift measured 0.0). Where set, the +/-LANE_MAX clamp is lifted for the
+# line itself: GPL's dlat is on the road by construction, and our clamp forbade 30% of GPL's line.
+const GPLLAT = Ref{Union{Nothing,NTuple{3,Vector{Float64}}}}(nothing)
+set_gpl_lateral!(race, p1, p2) = (GPLLAT[] = race === nothing ? nothing : (Float64.(race), Float64.(p1), Float64.(p2)); nothing)
+@inline _gidx(line::AILine, s, n) = mod(floor(Int, mod(s, line.total) / 3.0), n) + 1
+"GPL race-line lateral at s, or `nothing` when no table is loaded."
+gpl_racelane(line::AILine, s) = (g = GPLLAT[]; g === nothing ? nothing : g[1][_gidx(line, s, length(g[1]))])
+"GPL rail offset from the race line at s for side +1 (left, pass1) / -1 (right, pass2); nothing without a table."
+gpl_rail(line::AILine, s, side) = (g = GPLLAT[]; g === nothing ? nothing :
+    (i = _gidx(line, s, length(g[1])); (side > 0 ? g[2][i] : g[3][i]) - g[1][i]))
+
 function _vtarget(line::AILine, s, v; amax, vmax, vmin, scale)
     g = GPLV[]
     if g !== nothing
@@ -329,9 +343,21 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
             (gap < car.v*0.6 + CAR_LEN && abs(car.lane - blane) < 1.6) && (vt = min(vt, b[3]); AISTAT.match += 1)  # still stuck behind → match speed
         end
         isfinite(rel) && player !== nothing && (vt = min(vt, max(player[3]*rel, 6.0)))   # ~player pace — never run away
-        tgt = clamp(racelane(line, car.s) + lanebias(i, length(cars)) + car.tlane, -LANE_MAX, LANE_MAX)   # racing line + per-car bias + pass deviation
-        car.lane += clamp(tgt - car.lane, -2.4*dt, 2.4*dt)        # deliberate lane changes (not twitchy)
-        car.lane  = clamp(car.lane, -LANE_MAX, LANE_MAX)
+        gl = gpl_racelane(line, car.s)
+        if gl === nothing
+            tgt = clamp(racelane(line, car.s) + lanebias(i, length(cars)) + car.tlane, -LANE_MAX, LANE_MAX)   # racing line + per-car bias + pass deviation
+            car.lane += clamp(tgt - car.lane, -2.4*dt, 2.4*dt)        # deliberate lane changes (not twitchy)
+            car.lane  = clamp(car.lane, -LANE_MAX, LANE_MAX)
+        else
+            # E84-S8: GPL's own line and rails. The pass deviation uses GPL's rail on that side
+            # (asymmetric, per record) instead of a fixed +/-RAIL; the lane is clamped to the wider
+            # of our band and GPL's own table, never tighter than GPL drives.
+            dev = car.tlane == 0.0 ? 0.0 : something(gpl_rail(line, car.s, car.tlane > 0 ? 1 : -1), car.tlane)
+            tgt = gl + lanebias(i, length(cars)) + dev
+            lim = max(LANE_MAX, abs(gl) + LANE_MAX)
+            car.lane += clamp(tgt - car.lane, -2.4*dt, 2.4*dt)
+            car.lane  = clamp(car.lane, -lim, lim)
+        end
         car.v     = advance_speed(car.v, vt, dt)            # realistic accel/brake (not slot-car)
         car.spin *= exp(-dt/0.45)                           # collision yaw decays back to the line heading
         prev = mod(car.s, total); car.s += car.v*dt

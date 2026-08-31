@@ -3679,3 +3679,20 @@ clamped to ±3.8 m of the centreline — so on **30% of the lap GPL uses road ou
 the pit straight our cars run 13 m right of GPL's line, toward the pit wall. The caveat stands only
 for tracks that re-centre (Watkins, Ring, Spa). On Monza/Zandvoort GPL's `race`/`pass1`/`pass2` dlat
 can drive the AI's lateral position directly. (`demo/native/e84_frame_shift.jl`.)
+
+### E84-S8 (2026-08-30) — GPL's lateral tables wired in behind `JM_AI_GPLLAT=1` (default OFF, measured)
+
+`race.lp` dlat as the racing line, `pass1`/`pass2` dlat as the two rails (asymmetric, per record), the
+lane clamp lifted to GPL's own extent. Monza, 4 cars, 270 s, headless field probe:
+
+| arm | lunge-fall cycles / car-lap | rail switches | queue-snaps | side-pushes | max \|lane\| |
+|---|---|---|---|---|---|
+| GPL speeds + gap control (shipped) | 0.46 | 0.46 | 0 | 3 | 2.6 m |
+| + GPL lateral tables | 1.2 | 0.28 | 0 | 6 | **12.9 m** |
+
+Lane use now follows GPL's line (12.9 m on the pit straight, where ours was pinned at 2.6) and rail
+switching drops further — but the field forms a **train**: speed-matched frames go 6402 → 38540 and
+trailing cars show 1.2 deficit cycles per car-lap, above the E89 gate's 1.0. With everyone on GPL's
+single line and rails of +1.1/−3.4 m, cars queue rather than run staggered. GPL's real fields do
+queue, so this may be right — but it is a visible behaviour change and stays **default OFF** until the
+PO's re-drive judges it. Not a fix candidate for E89's symptom; it is the E84 "as in GPL" lane model.
