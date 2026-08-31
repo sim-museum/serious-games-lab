@@ -3726,3 +3726,18 @@ fog, white balance, exposure — no lighting. Billboards and forest-edge panels 
 `JM_BILLBOARD_LIT=1` restores the old path. **Prediction, before the capture:** vegetation mean in the
 Ring chase shots falls to ≈ the texture mean (≈ 57,80,45), i.e. within ~15% of gold, with no teal.
 Not a grade change — `GRADE_*`, `uExposure` and `uWBal` are untouched, so the E69/E72 dead end is respected.
+
+**E83-S3 CONFIRMED ON SCREEN (2026-08-31).** Ring chase captures with the unlit sprite path, mid-band
+vegetation mean RGB, against the same points lit and against gold:
+
+| point | lit (before) | unlit (now) | gold Ring |
+|---|---|---|---|
+| s=600 | (137,154,86) | **(84,93,47)** | (58,78,41) |
+| s=2400 | (106,124,68) | **(89,96,42)** | (61,78,39) |
+| s=9000 | (80,90,46) | (79,89,44) | (59,74,37) |
+
+Teal ≤ 0.2% at the near points. By eye the bushes are olive/green, no mint, no cyan. The remaining
+gap to gold is ~1.4× on red and ~1.2× on green — smaller than the lighting error just removed, and
+NOT to be closed with a grade change (E69/E72 dead end). Candidate for the residue: the sprites are
+still fogged and white-balanced, and gold's forest is mostly mesh trees rather than billboards, so
+some of the difference is scene composition rather than sprite colour. **PO's eye needed on the Ring.**
