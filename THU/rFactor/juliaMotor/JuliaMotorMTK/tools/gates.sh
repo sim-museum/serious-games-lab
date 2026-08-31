@@ -25,7 +25,10 @@ for g in $SMOKES; do
   [ -f "$HERE/$g.jl" ] || { echo "  MISSING  $g.jl"; fail=$((fail+1)); failed="$failed $g(missing)"; continue; }
   log="/tmp/jm_gate_$g.log"
   printf "  %-22s " "$g"
-  timeout 900 julia --project="$PROJ" "$HERE/$g.jl" > "$log" 2>&1
+  # Gates that go through demo/native/render.jl (extract_gpl_car) need the app's project, which
+  # carries GLFW/ModernGL; the physics project does not. susp_pose_smoke failed on exactly that.
+  gproj="$PROJ"; case "$g" in susp_pose_smoke) gproj="$PROJ/../demo/native" ;; esac
+  timeout 900 julia --project="$gproj" "$HERE/$g.jl" > "$log" 2>&1
   rc=$?
   # Exit status FIRST -- it is the only signal a crashed run gives. The text is a second
   # opinion for the smokes that report "✓ OK" rather than an exit code they set themselves.
