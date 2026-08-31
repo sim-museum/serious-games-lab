@@ -3661,3 +3661,12 @@ and reports **queue-snaps 0, side-pushes 0, rail switches 1.2 per car-lap**, fou
 229–234 km/h over 120 s (the shipped κ model averaged far less). Note: the run queued as the
 "baseline" launched *after* the defaults flipped on, so it measured the treatment — the sim-side
 control is the headless gate's control arm, not this run.
+
+**E84 frame caveat (2026-08-30, measured):** GPL's `race.lp` dlat and our `rl` are NOT in the same
+lateral frame even on Monza. Our centreline is `align_centreline(trk, ROADHAT)` — aligned onto the
+road even where it is not re-centred — so on the pit straight GPL's line sits at dlat **+13.4 m** from
+the raw `.trk` centreline while ours reads 0 there; lap-wide the median offset is 2.34 m and the
+correlation only 0.37. **The speed table is index-aligned (dlong) and safe; the lateral tables
+(`race`/`pass1`/`pass2` dlat) need the per-node align shift subtracted before use.** That shift is
+`ALIGNED − trk_centreline` projected on the left normal, available in the sim. GPL's rails relative to
+its own race line are asymmetric: left median +1.08 m, right −3.39 m, against our fixed ±2.4.
