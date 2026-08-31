@@ -12,7 +12,8 @@ tstamp(lbl) = get(ENV,"JM_TIMING","0") != "0" && println("[t+", round(time()-_T0
 using JuliaMotor, RFactorData
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt.jl"))); using .DriveRT  # MTK physics (planar)
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt3d.jl"))); using .DriveRT3D
-include(joinpath(@__DIR__,"people_filter.jl")); using .PeopleFilter   # E101: loose-people name rule, shared with its gate  # full-3D physics (JM_3D=1)
+include(joinpath(@__DIR__,"people_filter.jl")); using .PeopleFilter   # E101: loose-people name rule, shared with its gate
+include(joinpath(@__DIR__,"gpl_lp.jl")); using .GPLLP                    # E84/E89: GPL .lp AI lines (race.lp speed table)  # full-3D physics (JM_3D=1)
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","ibt.jl"))); using .IBT           # iRacing .ibt telemetry writer
 include("render.jl"); using .Render
 include("gpltrack.jl"); using .GPLTrack
@@ -4589,6 +4590,34 @@ function main()
         flush(stdout); exit(0)
     end
     AILINE = (CLINE !== nothing && N_AI > 0) ? CLINE : nothing
+    # E84/E89 (2026-08-30): JM_AI_GPLLINE=1 -- the AI take their target speed from GPL's OWN race.lp
+    # (3.0 m records, index-aligned with our line on tracks that are not re-centred). Measured
+    # headlessly on Monza: κ-model free lap 122.9 s vs GPL 89.6 with 147 speed steps >1 m/s per 3 m;
+    # with the GPL table 94.8 s and 2 steps. The lone-car "lunge ahead, then fall back" was our
+    # racing-line curvature swinging R=153..745 m inside the constant R=304 Curva Grande. Only on
+    # tracks whose centreline is the raw .trk (Monza, Zandvoort): re-centring shifts the dlat frame
+    # and the dlong index with it. Says which file it used -- a silent fallback is the defect again.
+    if AILINE !== nothing && get(ENV, "JM_AI_GPLLINE", "0") != "0"
+        if MONZA || ZANDVOORT
+            lp = joinpath(ZD, "race.lp")
+            if isfile(lp)
+                gv = GPLLP.lp_speed_mps(GPLLP.read_lp(lp))
+                ini = joinpath(ZD, "track.ini"); adj = 1.0; vcap = 2.41*36.0
+                if isfile(ini)
+                    for l in eachline(ini)
+                        m = match(r"^\s*dlong_speed_adj_coeff\s*=\s*([0-9.]+)", l); m !== nothing && (adj = parse(Float64, m[1]))
+                        m = match(r"^\s*dlong_speed_maximum\s*=\s*([0-9.]+)", l);   m !== nothing && (vcap = parse(Float64, m[1])*36.0)
+                    end
+                end
+                RaceAI.set_gpl_speeds!(min.(gv .* adj, vcap))
+                println("  AI speed profile: GPL race.lp (", length(gv), " records, adj ", adj, ", cap ", round(vcap, digits=1), " m/s)  <- ", lp)
+            else
+                @warn "JM_AI_GPLLINE: no race.lp in $ZD -- AI keep the κ speed model"
+            end
+        else
+            @warn "JM_AI_GPLLINE: $(TRACKSEL) is re-centred, so GPL's dlong index does not align -- AI keep the κ speed model"
+        end
+    end
     AICARS = AILINE === nothing ? RaceAI.AICar[] : RaceAI.init_cars(AILINE, N_AI; start_s = 30.0)
     # B (PO): physics-based per-car pace.  power/weight → pace, tempered + normalised so the FASTEST car
     # present = 1.0 (it hits the GPLrank ref at 100 %); the rest spread back by their deficit so the field

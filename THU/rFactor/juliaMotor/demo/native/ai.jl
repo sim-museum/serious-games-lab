@@ -128,6 +128,17 @@ lanebias(i, n) = n <= 1 ? 0.0 : LANE_BIAS * (2.0*((0.41*i) % 1.0) - 1.0)   # pse
 
 # Longitudinal physics so the AI ACCELERATE like cars (not slot cars): traction-limited
 # off the line, power-limited + aero drag at speed → a natural build-up and top speed.
+# E89-S2: GPL-style following. gpl_ai.ini [follow_line]: desired_dlong_sep = 14.0 m (13.5 in
+# corners), avoidance keyed to time-to-collision, a pass initiated at straightaway_pass_dlong_sep =
+# 10 m while closing at only 0.022 m/tick (0.8 m/s), and min_cornering_outside_pass_radius = 400 m.
+# Our follower had NO gap control until it committed to a rail at gap < v+14 (80 m at 70 m/s) --
+# it closed at full speed and then either speed-matched hard or was queued back a car length: the
+# PO's "lunge ahead, then fall back". A/B switch only; the constants are GPL's, not tunables.
+const GAPCTL        = get(ENV, "JM_AI_GAPCTL", "0") != "0"
+const GPL_DESIRED_SEP = 14.0      # m, desired_dlong_sep
+const GPL_PASS_SEP    = 10.0      # m, straightaway_pass_dlong_sep
+const GPL_PASS_RADIUS = 400.0     # m, min_cornering_outside_pass_radius
+const GPL_CLOSE_TAU   = 1.5       # s over which the excess gap is closed (avoid_time_coeff-shaped)
 const AI_MASS = 560.0; const AI_PMAX = 300_000.0   # ~Lotus 49: 560 kg, ~400 bhp
 const AI_FMAX = 6800.0; const AI_DRAG = 0.42; const AI_BRAKE = 16.0   # traction N, ½ρ·CdA, brake m/s²
 function advance_speed(v, vtarget, dt)
@@ -175,7 +186,28 @@ end
 "Curvature-limited target speed at arc-length `s`, moving at `v` (m/s).  Scans a BRAKING
 HORIZON ahead (∝ speed) for the tightest corner, so the car slows BEFORE a tight bend
 instead of arriving too hot and washing out."
+# E84/E89 (2026-08-30): GPL's OWN speed profile as the target, when the track supplies one.
+# race.lp records sit at exactly 3.0 m dlong from the .trk start, index-aligned with this line on
+# tracks that are not re-centred. Measured on Monza against it: the κ model's free lap is 122.9 s
+# to GPL's 89.6, slower on 85% of the lap, with 147 speed steps >1 m/s per 3 m to GPL's 13 -- and
+# inside the constant R=304 m Curva Grande our racing-line κ swings R=153..745, collapsing vtarget
+# to 35 m/s where GPL carries 66. A lone car braking hard mid-corner and recovering IS "lunge
+# ahead, then fall back". The GPL table has no such noise. Set by the app (JM_AI_GPLLINE);
+# nothing = the κ model as before.
+const GPLV = Ref{Union{Nothing,Vector{Float64}}}(nothing)
+set_gpl_speeds!(v) = (GPLV[] = v === nothing ? nothing : Float64.(v); nothing)
+
 function _vtarget(line::AILine, s, v; amax, vmax, vmin, scale)
+    g = GPLV[]
+    if g !== nothing
+        n = length(g); i0 = mod(floor(Int, mod(s, line.total) / 3.0), n) + 1
+        vt = g[i0]
+        horizon = max(v*2.2, 30.0); off = 3.0             # same look-ahead shape: brake for what is coming
+        while off <= horizon
+            vt = min(vt, g[mod(i0 - 1 + round(Int, off/3.0), n) + 1]); off += 3.0
+        end
+        return clamp(vt*scale, vmin, vmax*scale)
+    end
     κ = max(line.κ[_locate(line, s)[1]], 1e-4)
     horizon = max(v*2.2, 30.0)                              # metres to look ahead (longer the faster you go)
     off = 5.0
@@ -248,11 +280,28 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
         b = blocker(car.s, i)
         gap   = b === nothing ? Inf : b[1]
         blane = b === nothing ? 0.0 : b[2]
+        bv    = b === nothing ? Inf : b[3]
+        if GAPCTL && b !== nothing && abs(car.lane - blane) < 2.2
+            # PROPORTIONAL gap control (GPL): target speed = leader's speed + the excess gap closed over
+            # GPL_CLOSE_TAU. Equals free speed when far back, the leader's speed at the desired gap, and
+            # LESS than the leader's inside it -- so the follower settles, it does not slam and rebound.
+            vt = min(vt, bv + (gap - GPL_DESIRED_SEP) / GPL_CLOSE_TAU)
+            vt = max(vt, 0.0)
+        end
         # HYSTERESIS so the AI commit to a pass instead of skittering between rails like a
         # water-insect: ENGAGE a move only when genuinely catching a car ahead in our lane;
         # once committed to a rail, HOLD it until well clear (a much larger release gap).
         if car.tlane == 0.0
-            if gap < car.v*1.0 + 14.0 && abs(car.lane - blane) < 2.2
+            if GAPCTL
+                # GPL: pull out only once SETTLED behind (gap near the pass separation), with the pace to
+                # pass, on a straight (corner radius > 400 m over the next ~2 s). Not 80 m back.
+                κa = 1e-4; off = 0.0; while off <= max(car.v*2.0, 45.0); κa = max(κa, line.κ[_locate(line, car.s+off)[1]]); off += 6.0; end
+                free = _vtarget(line, car.s, car.v; amax, vmax, vmin, scale) * car.pace
+                if b !== nothing && gap < GPL_PASS_SEP + 4.0 && abs(car.lane - blane) < 2.2 &&
+                   free > bv + 1.0 && κa < 1.0/GPL_PASS_RADIUS
+                    car.tlane = blane >= 0.0 ? -RAIL : RAIL; AISTAT.engage += 1
+                end
+            elseif gap < car.v*1.0 + 14.0 && abs(car.lane - blane) < 2.2
                 car.tlane = blane >= 0.0 ? -RAIL : RAIL     # pick ONE side and commit
                 AISTAT.engage += 1
             end

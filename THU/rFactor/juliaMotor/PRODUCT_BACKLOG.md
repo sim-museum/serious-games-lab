@@ -3562,3 +3562,33 @@ speed ← `race.lp` speed × `dlong_speed_adj_coeff` (track.ini, Monza 1.016) ca
 `dlong_speed_maximum` (2.41 m/tick = 86.8 m/s), rails ← `pass1`/`pass2` dlat (asymmetric, per record),
 following ← `gpl_ai.ini` `desired_dlong_sep` 14 m. On re-centred tracks the dlat frame shifts by the
 re-centring offset per node and must be corrected before use. Reader: `demo/native/gpl_lp.jl`.
+
+### E89-S1 addendum / E84-S7 (2026-08-30) — GPL's line is the oracle, and it says the kinks were real
+
+Headless, single free-running AI car on Monza against GPL's own `race.lp` speed at every 3 m:
+
+| target speed model | free lap | mean \|Δv\| vs GPL | speed steps >1 m/s per 3 m | min speed |
+|---|---|---|---|---|
+| shipped κ model, `amax=8` | **122.9 s** | 11.94 m/s | **147** | 15.3 |
+| κ model, `amax=14`, `vmax=86.8` | 101.7 s | 8.91 | 117 | 20.3 |
+| **GPL `race.lp` speeds** (`JM_AI_GPLLINE=1`) | **94.8 s** | **3.1** | **2** | 31.6 |
+| GPL itself | 89.6 s | — | 13 | 31.6 |
+
+Two things this settles:
+
+1. **E84-S5/S6's "the spikes are correct — one braking zone per corner" is REFUTED by the oracle it
+   lacked.** Through Curva Grande the `.trk` is a single R = 304 m arc for 382 m; our racing-line κ
+   there swings R = 350 → 515 → **153** → 745 → 426, and at s = 1012 that collapses `vtarget` to
+   34.9 m/s where GPL carries 66.5. A lone car braking hard mid-corner and recovering **is** "lunge
+   ahead, then fall back" — E89's symptom, with no other car involved. The noise comes from the
+   racing-line construction (relaxation + apex shift), not the centreline nodes (E84-S6 was right
+   that spacing is uniform) and not lateral kinks alone (E84-S5's clamp could not touch it).
+2. **Our grip cap is half of GPL's.** GPL's speeds on the `.trk` radii imply lateral p50 10.8, p90
+   14.1, max 16.9 m/s²; ours is `amax = 8`. That alone is 21 s of the 33 s lap gap.
+
+The fix that follows the PO's brief ("AI slot cars as in GPL") is to take GPL's speed table directly
+where the index aligns (Monza, Zandvoort — not re-centred). Implemented behind `JM_AI_GPLLINE=1`;
+the app says which file supplied it. Re-centred tracks (Watkins, Ring, Spa) need the dlat/dlong frame
+correction before they can use it. The remaining 5 s to GPL is our `advance_speed` accel/brake model.
+**Not yet run in the sim** — three self-test arms (baseline / gap control / gap control + GPL line) are
+queued behind the display.
