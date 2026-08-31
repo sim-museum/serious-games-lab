@@ -3623,3 +3623,34 @@ which is racing. Gate `tools/ai_field_smoke.jl` runs BOTH arms — the control m
 defect (1.83 / 739) or the treatment's clean numbers mean nothing. Suite 13/13. ⚠️ Not yet re-driven
 by the PO; the three sim self-test arms are still queued behind the display and will confirm the same
 code path live. Watkins/Ring/Spa keep the κ model until the re-centred dlat/dlong frame is mapped.
+
+### E82-S1 (2026-08-30) — the axles are not missing; the shipped fold draws them 1.2–1.9 m underground
+
+Gold (Monza/Ring `nintendo` frames): two driveshafts, radius arms and shocks run from the rear hubs
+inboard to the gearbox, clearly visible between the rear tyres. E75 spent 16 sprints on transforms
+without a gold comparison; this starts from the geometry itself, headlessly.
+
+`lotus.3do` inventory (`demo/native/lotus_inventory.jl`, `lotus_groups.jl`): the rear running gear IS
+in the model — `axlelot` 76 tris, `lsusp2–7`, `lshok`, `lbrdisc`, `rear`, `top` — and groups 27288 /
+39792 (the two halves `RSUSPP_A/B` extract) each carry the full set. `parse_3do` applies the positioner
+chain, so extracted vertices are already in car space. In car space (`rs_fold_probe.jl`, x fwd / y up /
+z lateral), group 27288 RAW:
+
+| part | x | y (up) | z (lateral) |
+|---|---|---|---|
+| `axlelot` | −1.80..−0.77 | **−0.08..0.23** | **−0.86..−0.42** |
+| `lsusp2` (upper link) | −1.76..−1.00 | 0.22..0.25 | −1.02..−0.52 |
+| `lsusp7` (lower link) | −1.66..−0.77 | −0.08..−0.05 | −1.01..−0.52 |
+| `lshok` | −1.74..−0.75 | −0.10..0.21 | −1.06..−0.49 |
+
+That is a correctly posed left-side rear assembly: driveshaft at hub height running from the gearbox
+(z −0.42) to the hub (−0.86), upper links above lower links. **It does not need folding.** The shipped
+`rsfix` (E64-S8: "authored flat, fold 90° about the hub line z=+0.772") rotates this LEFT-side half
+about the RIGHT hub line and lands every part at **y = −1.17..−1.87** — deep under the road — at
+z 0.55..0.9. With the matching side the fold still turns a horizontal shaft vertical and puts it at
+y ≈ −0.25. So the PO sees no axles because the axles are under the track, and E64-S8's "unfolded flat"
+reading was wrong: the "wings splayed flat" ARE the links, correctly horizontal.
+
+Prediction, stated before the capture: `JM_RS_ROLL=0` (identity — the positioner already placed
+the parts) shows driveshafts and links between the rear tyres in the chase view; the default shows
+none. Two Monza chase-shot runs (default / `JM_RS_ROLL=0`) are queued behind the display.
