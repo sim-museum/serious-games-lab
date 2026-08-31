@@ -1357,7 +1357,10 @@ const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0) 
 # (a Lotus 49 front wishbone is well under 1 m). JM_FSUSP_OLD=1 restores the empty-FSUSPP behaviour.
 const FSUSPP = haskey(ENV,"JM_FSUSP_OLD") ?
     Render.extract_gpl_car(LOT3DO; only=("lsusp1",), maxlat=1.3f0, exclude_groups=(6600,3560,27288,39792)) :
-    Render.extract_gpl_car(LOT3DO; only=("lsusp1","frontlot"), maxlat=1.3f0,
+    # E82-S2: the front carries the same overhang -- 4 of its 98 triangles are 1.3 m strips spanning
+    # x 1.54..2.73 at z = +-1.12, i.e. forward of the nose and outside the wheels. Clip at the wheel
+    # face like the rear; the 94 that make up the actual wishbone assembly (x <= 1.8, |z| <= 0.63) stay.
+    Render.extract_gpl_car(LOT3DO; only=("lsusp1","frontlot"), maxlat=parse(Float32,get(ENV,"JM_FSUSP_MAXLAT","0.85")),
                            maxedge=parse(Float32,get(ENV,"JM_FSUSP_MAXEDGE","1.5")))
 # Two corrections to the first attempt at this fix, both found by counting instead of eyeballing:
 #   (a) maxedge=1.0 dropped ALL of lsusp1 — measured survival 0 / 0 / 4 / 12 / 12 tris at
@@ -1426,9 +1429,16 @@ const _RSEXC = get(ENV,"JM_RS_NOFLAT","0") != "0" ? ("ltraymap","lshad","lsusp2"
 # E75-S13: draw the rear group ONE PART AT A TIME to find which renders as the broad chrome panel.
 # JM_RS_ONLY=<texture> restricts the rear suspension to that texture alone.
 const _RSONLY = get(ENV,"JM_RS_ONLY","")
-const RSUSPP_A = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(27288,), exclude=_RSEXC) :
+# E82-S2 (2026-08-31): CLIP THE REAR HALVES AT THE WHEEL FACE. These assemblies reach lateral 1.12-1.16
+# while the wheel face is 0.85 (CARP_MAXLAT) -- the code has recorded that overhang since E64-S4 as the
+# chase view's "chrome spider-legs through the rear tyres", and the 90-degree fold had merely hidden
+# them BELOW THE ROAD rather than fixing them (E82-S1). With the fold removed they became visible, so
+# the overhang has to be clipped where it belongs: at the tyre. The inboard portion (z 0.42..0.85), the
+# driveshaft and links gold shows between the wheels, is kept. JM_RSUSP_MAXLAT overrides.
+const RSUSP_MAXLAT = parse(Float32, get(ENV,"JM_RSUSP_MAXLAT","0.85"))
+const RSUSPP_A = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(27288,), exclude=_RSEXC, maxlat=RSUSP_MAXLAT) :
                                  Render.extract_gpl_car(LOT3DO; include_groups=(27288,), only=(_RSONLY,))   # one side each —
-const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(39792,), exclude=_RSEXC) :
+const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(39792,), exclude=_RSEXC, maxlat=RSUSP_MAXLAT) :
                                  Render.extract_gpl_car(LOT3DO; include_groups=(39792,), only=(_RSONLY,))   # the halves carry a residual ±roll our posmat mis-composes
 const ARMP   = Render.extract_gpl_car(LOT3DO; only=("lotarms",), maxlat=0.95f0)  # forearms/upper arms — static (their wheel-side ends are what the eye sees)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read

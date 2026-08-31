@@ -3741,3 +3741,28 @@ gap to gold is ~1.4× on red and ~1.2× on green — smaller than the lighting e
 NOT to be closed with a grade change (E69/E72 dead end). Candidate for the residue: the sprites are
 still fogged and white-balanced, and gold's forest is mostly mesh trees rather than billboards, so
 some of the difference is scene composition rather than sprite colour. **PO's eye needed on the Ring.**
+
+### E82-S2 (2026-08-31) — ✅ THE CHROME SPIDER-LEGS ARE GONE, verified on screen
+
+S1's roll fix was necessary but not sufficient, and the capture said so: with the 90° fold removed the
+rear assemblies stopped being *under the road* and became **visible chrome legs through the tyres** —
+the fold had been hiding a second defect, not fixing it.
+
+Measured, in car space (wheel face = 0.85 = `CARP_MAXLAT`, front axle x = +1.31, rear axle x = −1.10):
+
+| assembly | before | after clip at 0.85 |
+|---|---|---|
+| rear group 27288 | 456 v, x −2.50..−0.73, **z −1.12..−0.42** | 249 v, x −1.06..−0.73, z −0.61..−0.42 |
+| front (lsusp1+frontlot) | 294 v, x −1.06..**+2.73**, **z ±1.12** | 282 v, x −1.06..+1.63, z ±0.63 |
+
+The front's overhang is 4 triangles of 1.3 m strips reaching past the nose; the rear's is 42% of its
+triangles reaching through the tyres. The code has recorded this overhang since E64-S4 ("spear tips
+through the tyres", "shocks reach lateral 1.06 vs the 0.85 wheel face") without clipping it. Now
+clipped where the car ends. Monza chase capture: the starburst is gone, the car reads as wheels +
+gearbox + links. `JM_RSUSP_MAXLAT` / `JM_FSUSP_MAXLAT` override.
+
+⚠️ **Honest limit:** `maxlat` drops whole triangles, so the driveshafts now stop at z = 0.61 instead of
+reaching the hub at 0.772 — stubs rather than full shafts. Gold shows them running to the wheel. That
+is a smaller, different error than a starburst through the tyres, and closing it needs per-triangle
+*trimming* rather than dropping. Gate `susp_pose_smoke` now asserts the envelope on front and rear;
+unclipped it fails 4 arms.
