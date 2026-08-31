@@ -51,6 +51,36 @@ end
 
 """Where the live gearbox came from — print this at startup so a fallback cannot hide."""
 transmission_source() = TRANS_SRC[]
+
+# E100 S2: MASS is session data too. The ibt's four CornerWeights sum to the car's weight and
+# give its front share, and they VARY between captures exactly as the gears do -- Nurburgring
+# 1376/1376/1650/1650 (symmetric, 59.1 L of fuel), skidpad 1283/1547/1830/1509 (cross-weighted,
+# 75.0 L). The defaults below are the NURBURGRING session's (6052 N / 9.81 = 616.9 kg, front
+# share 0.4547), so they are right for the circuits and ~12 kg light for the skidpad.
+# Smaller in effect than the gearbox, and recorded rather than waved away: the PO's constraint
+# is that the physics comes from the data, not that the error is large enough to feel.
+const MASS       = Ref(617.0)
+const FRONT_FRAC = Ref(0.455)
+
+"""    set_mass!(m, front_frac; source) -> nothing
+
+Install the car mass and its front share, derived from an ibt session's CornerWeights. Like
+set_transmission!, this must run BEFORE a Car3D is built — m and front_frac are MTK parameters
+baked in at construction.
+"""
+function set_mass!(m::Real, front_frac::Real; source::AbstractString="unknown")
+    m > 0 || error("set_mass!: non-positive mass $m")
+    0.0 < front_frac < 1.0 || error("set_mass!: front_frac out of range: $front_frac")
+    MASS[] = float(m); FRONT_FRAC[] = float(front_frac)
+    nothing
+end
+
+"""Mass and front share from an ibt session's corner weights (N) — the conversion in one place."""
+function mass_from_corner_weights(cw)
+    tot = sum(values(cw))
+    tot > 0 || error("mass_from_corner_weights: corner weights sum to $tot")
+    (tot / 9.81, (cw[:LF] + cw[:RF]) / tot)
+end
 const MAXSTEER = 0.30
 const RW_R = 0.33
 const RH0 = 0.075                                  # static chassis ride height [m] (for the rideHeight channel)
@@ -97,7 +127,7 @@ end
 
 function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
                      brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
-    sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush, final = FINAL[]))   # physics brush by DEFAULT; JM_MAGIC ⇒ Magic-Formula tyre
+    sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush, final = FINAL[], m = MASS[], front_frac = FRONT_FRAC[]))   # physics brush by DEFAULT; JM_MAGIC ⇒ Magic-Formula tyre
     println(brush ? "  TYRE (3-D): physics-based brush model (default)" : "  TYRE (3-D): Magic-Formula tyre (JM_MAGIC)")
     prob = ODEProblem(sys, [sys.u => v0, sys.ωf => v0/0.30, sys.ωr => v0/RW_R,
                             sys.ωe => 209.4, sys.X => x0, sys.Y => z0, sys.ψ => θ0], (0.0, 1e7))
@@ -131,7 +161,7 @@ end
 """Compile the 3-D car ONCE and build `length(poses)` cars sharing the system (so a field of
 3-D AI doesn't pay N× mtkcompile).  `poses` = Vector of (x0,z0,θ0,v0)."""
 function build_cars3d(poses; brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
-    sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush, final = FINAL[]))
+    sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush, final = FINAL[], m = MASS[], front_frac = FRONT_FRAC[]))
     s_thr=setp(sys,sys.throttle); s_brk=setp(sys,sys.brake); s_st=setp(sys,sys.δ)
     s_gr=setp(sys,sys.gear); s_clu=setp(sys,sys.clutch); s_we=ModelingToolkit.setu(sys,sys.ωe)
     s_zr=(setp(sys,sys.zrFL),setp(sys,sys.zrFR),setp(sys,sys.zrRL),setp(sys,sys.zrRR))

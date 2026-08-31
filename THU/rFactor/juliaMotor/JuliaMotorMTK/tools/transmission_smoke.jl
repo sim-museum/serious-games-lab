@@ -53,12 +53,35 @@ if !isempty(files)
           DriveRT3D.transmission_source() == basename(f), DriveRT3D.transmission_source())
 end
 
+# 3b. Mass comes from the same session's corner weights, and it VARIES between sessions too.
+masses = Dict{String,Tuple{Float64,Float64}}()
+for f in files
+    p2 = Setup.setup_params(IBT.session_yaml(IBT.ibt_open(f)))
+    masses[basename(f)] = DriveRT3D.mass_from_corner_weights(p2.corner_weight_N)
+end
+check("corner-weight mass VARIES between sessions", length(unique(values(masses))) > 1,
+      string(length(unique(values(masses))), " distinct (mass, front_frac) pairs"))
+if !isempty(files)
+    f = first(files)
+    p2 = Setup.setup_params(IBT.session_yaml(IBT.ibt_open(f)))
+    (mm, ff) = DriveRT3D.mass_from_corner_weights(p2.corner_weight_N)
+    DriveRT3D.set_mass!(mm, ff; source = basename(f))
+    check("live MASS equals the session's",  DriveRT3D.MASS[] == mm, string(round(mm, digits=1), " kg"))
+    check("live FRONT_FRAC equals session's", DriveRT3D.FRONT_FRAC[] == ff, string(round(ff, digits=4)))
+end
+
 # 4. Rubbish must be refused rather than silently installed.
 for (name, gears, final) in (("wrong count", [1.0, 2.0], 4.11),
                              ("non-positive ratio", [2.23, 1.72, 1.32, 1.04, -0.5], 4.11),
                              ("non-positive final", [2.23, 1.72, 1.32, 1.04, 0.846], 0.0))
     threw = false
     try; DriveRT3D.set_transmission!(gears, final); catch; threw = true; end
+    check("rejects $name", threw, threw ? "threw" : "ACCEPTED IT")
+end
+for (name, m, ff) in (("non-positive mass", 0.0, 0.45), ("front_frac >= 1", 617.0, 1.0),
+                      ("front_frac <= 0", 617.0, 0.0))
+    threw = false
+    try; DriveRT3D.set_mass!(m, ff); catch; threw = true; end
     check("rejects $name", threw, threw ? "threw" : "ACCEPTED IT")
 end
 

@@ -378,6 +378,9 @@ let
         try
             pp = Setup.setup_params(IBT.session_yaml(IBT.ibt_open(IBTTMPL)))
             DriveRT3D.set_transmission!(pp.gear_ratios, pp.final_drive; source = basename(IBTTMPL))
+            # E100 S2: mass and its front share come from the same session's CornerWeights.
+            (mm, ff) = DriveRT3D.mass_from_corner_weights(pp.corner_weight_N)
+            DriveRT3D.set_mass!(mm, ff; source = basename(IBTTMPL))
         catch e
             @warn "E100: could not read the gearbox from $(basename(IBTTMPL)); the built-in \
                    fallback is the SKIDPAD setup and is wrong for a circuit" e
@@ -388,6 +391,8 @@ let
     # Always SAY where it came from: a silent fallback to constants is the defect itself.
     println("  gearbox: ", DriveRT3D.GEARS, "  final ", DriveRT3D.FINAL[],
             "   <- ", DriveRT3D.transmission_source())
+    println("  mass:    ", round(DriveRT3D.MASS[], digits=1), " kg  front ",
+            round(100*DriveRT3D.FRONT_FRAC[], digits=1), "%")
 end
 # PO 2026-08-27 (found by a real drive): every session ended with
 #   .ibt export failed: SystemError("opening file .../lotus49_... .ibt", 2, nothing)
