@@ -134,6 +134,7 @@ function parse_3do(path::AbstractString)
             push!(groups, grp)
         end
         push!(ALL_GROUPS, grp); PARKDEPTH[] > 0 && push!(PARKED_GROUPS, grp)
+        if get(ENV, "JM_POSDIAG", "") != ""; ps = join(string.(PATH, base=16), ">"); for _ in 2:length(P)-1; push!(TRIPATH, ps); end; end
     end
 
     # ---- walk the PRIM node tree (offsets are byte offsets into PRIM data) ----
@@ -146,13 +147,18 @@ function parse_3do(path::AbstractString)
     # "the tree contains only types X and Y, and we handle neither". JM_PRIMDIAG=<name substring>.
     PRIMTALLY = Dict{UInt32,Int}()
     PARKDEPTH = Ref(0); PARKED_GROUPS = Set{Int}(); ALL_GROUPS = Set{Int}()
+    PATH = UInt32[]; TRIPATH = String[]          # E82 diag: node-type path per triangle (JM_POSDIAG)
     function walk(off::Int, curtex::String, depth::Int, M, grp::Int)
+        n0 = length(PATH); _walk(off, curtex, depth, M, grp); resize!(PATH, n0)   # path bookkeeping (diag)
+    end
+    function _walk(off::Int, curtex::String, depth::Int, M, grp::Int)
         (off < 0 || off in visited || depth > 220) && return
         push!(visited, off)
         p = prim_off + off
         p + 4 > length(b) && return
         typ = u32(b, p)
         PRIMTALLY[typ] = get(PRIMTALLY, typ, 0) + 1
+        push!(PATH, typ)
         if typ == 0x04                              # group: 4, count, child*
             cnt = Int(u32(b, p+4))
             for k in 1:cnt
@@ -274,6 +280,19 @@ function parse_3do(path::AbstractString)
         for g in sort(collect(PARKED_GROUPS))
             texs = Dict{String,Int}(); for (k,gg) in enumerate(groups); gg == g && (texs[tris[k].tex] = get(texs, tris[k].tex, 0) + 1); end
             println("   [posdiag]   parked group ", g, ": ", join([string(k == "" ? "(untex)" : k, "=", v) for (k,v) in sort(collect(texs))], " "))
+        end
+    end
+    if get(ENV, "JM_POSDIAG", "") != "" && length(TRIPATH) == length(tris)
+        # which node-type paths carry the LONG strips (max edge > 1.4 m) vs the rest, per front group
+        for g in (3560, 6600)
+            long = Dict{String,Int}(); short = Dict{String,Int}()
+            for (k,t) in enumerate(tris)
+                groups[k] == g || continue
+                e(a,b) = sqrt(sum((a[i]-b[i])^2 for i in 1:3)); L = max(e(t.p[1],t.p[2]), e(t.p[2],t.p[3]), e(t.p[1],t.p[3]))
+                d = L > 1.4 ? long : short; d[TRIPATH[k]] = get(d, TRIPATH[k], 0) + 1
+            end
+            println("   [posdiag] group $g LONG-strip paths: ", join(["$v x [$k]" for (k,v) in sort(collect(long), by=x->-x[2])], "  "))
+            println("   [posdiag] group $g short paths:      ", join(["$v x [$k]" for (k,v) in sort(collect(short), by=x->-x[2])][1:min(end,3)], "  "))
         end
     end
     Mesh3DO(tris, sort(collect(used_tex)), groups)
