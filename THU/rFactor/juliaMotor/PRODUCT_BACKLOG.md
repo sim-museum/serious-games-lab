@@ -3478,3 +3478,39 @@ the symmetric Nordschleife setup, so the current constants are correct for every
 driven; only the skidpad diverges, and it is a physics test rig rather than a track the PO
 drives. Recommend LOW priority against that, and record the limitation rather than pretending
 the constants are session-derived.
+
+### E89-S1 (2026-08-30) — the "fix the kinks first" step is already dead; the live mechanism is the follower
+
+**The guidance above is STALE.** E84-S5/S6 (2026-08-29) refuted both centreline hypotheses after E89 was
+written: the second-difference clamp moved Monza 12 → 10 and made Watkins 4.5× worse; node spacing is
+uniform at 3.0 m with the highest-κ nodes at ordinary spacing. The conclusion that stood is that one
+large `vtarget` step per braking zone **is the right answer**. So E89 does not start there.
+
+**The Monza race ran the KINEMATIC field** (`step_field!` is the default; physics AI is opt-in via
+`JM_AI_PHYSICS`, and the video's env did not set it). Reading `step_field!` shows a textbook
+lunge-and-fall-back mechanism that owes nothing to the centreline:
+
+- an uncommitted follower (`tlane == 0`) has **no speed matching at all** — it closes at full target
+  speed until `gap < v·1.0 + 14`, then commits to a passing rail;
+- while committed and within `gap < v·0.6 + 4.2` it snaps its target to the leader's speed (braking at
+  16 m/s²), and the release gap is `v·1.7 + 30`, so it drops back to the line, catches up again, repeats;
+- phase 2's queue rule **teleports** a same-lane trailing car back to `s_leader − 4.2` and clamps its
+  speed — a visible jump backwards, every frame the overlap persists.
+
+A bang-bang follower with a dead band. The fix will be a proportional gap controller (target speed
+ramping from the leader's speed at the minimum gap to free speed at a larger one), not tuning.
+
+**Instrument built, parse-checked, NOT YET RUN** (the display is held by bob's suite): `RaceAI.AISTAT`
+counts engage/release/match/queue-snap/side-push/mishap events; `RaceAI.free_speed_profile` runs a lone
+car for a lap to give `v_free(s)` — the baseline a "fall back" must be measured against, because a car
+braking for Ascari is not falling back; and `JM_AI_TEST` now reports **fall-back episodes** (deficit
+> 5 m/s vs `v_free` held > 0.5 s) and **rail switches** per car-lap. State the prediction now: several
+episodes per car-lap and switches ≥ 2 per car-lap; after the fix, episodes ≈ 0 outside mishaps.
+
+**`.rpy`: partially decoded, body is not fixed-stride.** Header `RPLY` / `RPHD`, track name at 0x1c,
+frame count 5343 at 0x28, body length 361332, driver name at 0x38. No 4-byte field advances
+monotonically at any stride 48–128 across 2000 records, so frames are variable-length (delta-coded),
+and the two public projects (gplreplay.sourceforge.net, GPL Replay Analyser) publish no format. GPLRA
+exports telemetry to text and has command-line support, and the box has GPL under Wine — **running
+GPLRA under that prefix is the realistic route to the PO's "refer to the .rpy files"**, not writing a
+decoder blind. Files are 🔒 read-only; work on copies in `/tmp/rpy/`.

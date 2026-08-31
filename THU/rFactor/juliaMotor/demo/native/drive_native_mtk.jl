@@ -4797,6 +4797,37 @@ function main()
         end
         avgkmh = round.(Int, aidist ./ nsec .* 3.6)
         println("  KINEMATIC AI self-test on $(TRACKSEL) ($(nsec)s): dist=", round.(Int,aidist), "m  avg_kmh=$avgkmh  max_lat=$(round(maxlat,digits=1))m")
+        # E89: "AI cars dart around like june bugs, lunge ahead, then fall back" -- MEASURE it.
+        # A fall-back is a speed DEFICIT against what a lone car does at the same place on the line
+        # (a car braking for Ascari is not falling back). Episode = deficit > 5 m/s held > 0.5 s.
+        # Darting = target-rail switches (engage+release) per car-lap. The counters name which
+        # racecraft rule fired: match (speed-matching), qsnap (queued back a car length), sidepush.
+        let (fs, fv) = RaceAI.free_speed_profile(AILINE; scale=AI_SCALE),
+            ds = length(fs) > 1 ? fs[2]-fs[1] : 5.0
+            RaceAI.aistat_reset!()
+            AICARS2 = RaceAI.init_cars(AILINE, N; start_s = 30.0)
+            for (i, c) in enumerate(AICARS2); c.pace = AICARS[i].pace; end
+            deficit_ep = zeros(Int, N); ep_run = zeros(Int, N); worst = zeros(N); lapsdone = zeros(Int, N)
+            frames = nsec*60
+            for f in 1:frames
+                RaceAI.step_field!(AICARS2, AILINE, 1/60; scale=AI_SCALE, player=(-1e9,0.0,100.0), rel=AI_REL)
+                for (i, c) in enumerate(AICARS2)
+                    k = clamp(floor(Int, mod(c.s, AILINE.total) / ds) + 1, 1, length(fv))
+                    d = fv[k] - c.v
+                    worst[i] = max(worst[i], d)
+                    if d > 5.0; ep_run[i] += 1; if ep_run[i] == 30; deficit_ep[i] += 1; end
+                    else; ep_run[i] = 0; end
+                    lapsdone[i] = c.lap
+                end
+            end
+            st = RaceAI.AISTAT; tl = max(1, sum(lapsdone))
+            println("  [E89] field of $N over $(nsec)s, $(sum(lapsdone)) car-laps:")
+            println("  [E89]   fall-back episodes (deficit >5 m/s for >0.5 s) per car: ", deficit_ep,
+                    "  = ", round(sum(deficit_ep)/tl, digits=2), " per car-lap;  worst deficit per car (m/s): ", round.(worst, digits=1))
+            println("  [E89]   rail switches: engage=", st.engage, " release=", st.release,
+                    "  = ", round((st.engage+st.release)/tl, digits=2), " per car-lap")
+            println("  [E89]   speed-match frames=", st.match, "  queue-snaps=", st.qsnap, "  side-pushes=", st.sidepush, "  mishaps=", st.mishap)
+        end
         # R1 PROOF: progress = lap + lap-fraction.  The OLD standings used c.lap + c.s/total, but c.s
         # ACCUMULATES so c.s/total == the lap count again → ~2× (the bug).  The FIX uses the fraction.
         for (i,c) in enumerate(AICARS)

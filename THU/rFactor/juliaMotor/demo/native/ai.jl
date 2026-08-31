@@ -199,6 +199,29 @@ end
 `(poses, player_hit)`: each car's world pose (heading carries a collision yaw `spin`), and
 whether an AI made contact with the human (so the app can give the player a bump).  `rel`
 caps every AI to `rel × player_speed` so the field never runs away from the human."""
+# E89 instrument: count the racecraft events that a spectator reads as "lunge ahead, then fall back".
+# Plain counters, reset by the harness; step_field! only increments them.
+mutable struct AIStat; engage::Int; release::Int; match::Int; qsnap::Int; sidepush::Int; mishap::Int; end
+const AISTAT = AIStat(0, 0, 0, 0, 0, 0)
+aistat_reset!() = (AISTAT.engage = AISTAT.release = AISTAT.match = AISTAT.qsnap = AISTAT.sidepush = AISTAT.mishap = 0; nothing)
+
+"""Free-running speed profile: one car alone on the line for a lap, sampled every `ds` metres.
+Returns (s_samples, v_samples). This is what a car does with nobody ahead -- the baseline any
+'fall back' must be measured against, because a car braking for Ascari is not falling back."""
+function free_speed_profile(line::AILine; scale = 1.0, dt = 1/60, ds = 5.0, amax = 11.0, vmax = 74.0, vmin = 12.0)
+    car = AICar(0.0, 25.0, 0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+    n = max(2, round(Int, line.total / ds)); vs = fill(NaN, n)
+    for _ in 1:2                                     # two laps: the second overwrites the standing-start first
+        while car.lap < 1
+            step!(car, line, dt; amax, vmax, vmin, scale)
+            k = clamp(floor(Int, mod(car.s, line.total) / ds) + 1, 1, n); vs[k] = car.v
+        end
+        car.lap = 0
+    end
+    for k in 1:n; isnan(vs[k]) && (vs[k] = vs[k == 1 ? n : k-1]); end   # fill any gap from the neighbour
+    ((0:n-1) .* ds, vs)
+end
+
 function step_field!(cars::Vector{AICar}, line::AILine, dt;
                      scale = 1.0, player = nothing, rel = Inf,
                      amax = 11.0, vmax = 74.0, vmin = 12.0)
@@ -220,7 +243,7 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
         if car.mishap > 0.0                                    # GPL-style MISHAP in progress: ran wide / spun → crawl, drop right back
             car.mishap -= dt; vt *= 0.22
         elseif rand() < 8.0e-6                                 # rare: a fresh mishap (~1-2 across the field per race)
-            car.mishap = 2.4
+            car.mishap = 2.4; AISTAT.mishap += 1
         end
         b = blocker(car.s, i)
         gap   = b === nothing ? Inf : b[1]
@@ -231,10 +254,11 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
         if car.tlane == 0.0
             if gap < car.v*1.0 + 14.0 && abs(car.lane - blane) < 2.2
                 car.tlane = blane >= 0.0 ? -RAIL : RAIL     # pick ONE side and commit
+                AISTAT.engage += 1
             end
         else
-            (gap > car.v*1.7 + 30.0) && (car.tlane = 0.0)   # clear ahead → ease back to the race line
-            (gap < car.v*0.6 + CAR_LEN && abs(car.lane - blane) < 1.6) && (vt = min(vt, b[3]))  # still stuck behind → match speed
+            (gap > car.v*1.7 + 30.0) && (car.tlane = 0.0; AISTAT.release += 1)   # clear ahead → ease back to the race line
+            (gap < car.v*0.6 + CAR_LEN && abs(car.lane - blane) < 1.6) && (vt = min(vt, b[3]); AISTAT.match += 1)  # still stuck behind → match speed
         end
         isfinite(rel) && player !== nothing && (vt = min(vt, max(player[3]*rel, 6.0)))   # ~player pace — never run away
         tgt = clamp(racelane(line, car.s) + lanebias(i, length(cars)) + car.tlane, -LANE_MAX, LANE_MAX)   # racing line + per-car bias + pass deviation
@@ -255,6 +279,7 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
         dl = cars[a].lane - cars[b].lane
         Δs < CAR_LEN || continue
         if abs(dl) < CAR_WID*0.7                             # ~same lane → b queues single-file behind a
+            AISTAT.qsnap += 1
             cars[b].s = cars[a].s - CAR_LEN
             cars[b].v = min(cars[b].v, cars[a].v)
         elseif abs(dl) < CAR_WID                             # side-by-side overlap → resolve to single file.
@@ -265,7 +290,7 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
             # stop and clumped.  Fix: the TRAILING car (b) TUCKS into single file behind a — eased apart a bit
             # laterally, dropped back to a clean following gap, speed matched (NOT multiplied) — exactly how a
             # field threads a chicane.  No per-frame compounding, so no crawl.
-            push = (CAR_WID - abs(dl)) * 0.5; d = dl >= 0 ? 1.0 : -1.0
+            push = (CAR_WID - abs(dl)) * 0.5; d = dl >= 0 ? 1.0 : -1.0; AISTAT.sidepush += 1
             cars[a].lane = clamp(cars[a].lane + d*push, -LANE_MAX, LANE_MAX)
             cars[b].lane = clamp(cars[b].lane - d*push, -LANE_MAX, LANE_MAX)
             cars[b].s = cars[a].s - CAR_LEN                  # fall in BEHIND a (single file) — bounded, no compounding decel
