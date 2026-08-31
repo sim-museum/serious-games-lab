@@ -3714,3 +3714,15 @@ shows a hard seam and one enormous floating panel — that is E81 territory, not
 BODY group as well as the rear halves, so "parked" does not mean "hidden" in this model — that lead is
 closed. The front chrome legs need the Monza roll-0 / roll-90 captures against the gold Monza frame,
 which are queued.
+
+### E83-S3 (2026-08-30) — the residual brightness is LIGHTING: sprites were lit as geometry; now drawn unlit like GPL's
+
+After the palette fix the Ring's tree textures decode to gold's colour (`s_tree04` (57,80,45),
+`dopptann` (27,45,27) vs gold forest (60,78,40)) — yet the captures show them at ~(137,154,86): about
+2× too bright, pale mint. The shader lit every billboard as geometry — ambient + 1.15 × sun, then
+`BB_BRIGHT = 1.55` (an E70-S7 tunable added to fight the *cyan*, which was the palette all along).
+GPL's sprites are pre-lit art drawn at texture brightness. New `uUnlit` shader path: texture × tint,
+fog, white balance, exposure — no lighting. Billboards and forest-edge panels use it by default;
+`JM_BILLBOARD_LIT=1` restores the old path. **Prediction, before the capture:** vegetation mean in the
+Ring chase shots falls to ≈ the texture mean (≈ 57,80,45), i.e. within ~15% of gold, with no teal.
+Not a grade change — `GRADE_*`, `uExposure` and `uWBal` are untouched, so the E69/E72 dead end is respected.

@@ -322,6 +322,7 @@ uniform float uSat;       // output saturation multiplier (>1 = punchier sunny c
 uniform vec3 uSkyTint;    // GPL horizon-ring multiply (warm/brighten the overcast band toward sunny)
 uniform vec3 uTint;       // per-draw colour multiply (default white = no-op; e.g. de-blue the crowd MIP)
 uniform int uMirrorGlass; // 1 for the cockpit mirror glass quads → unlit round-masked RTT sample (E64)
+uniform int uUnlit;       // E83-S3: 1 = sprite drawn at texture brightness (fog/WB/exposure only), as GPL draws its billboards
 uniform int uMacro;       // 1 = macro tiling break-up on (default; JM_MACRO=0 disables — E68 S3 A/B)
 float shadow(vec3 N){
   vec3 lp = vLS.xyz/vLS.w*0.5+0.5;
@@ -363,6 +364,11 @@ void main(){
     vec2 d=vC.xy-vec2(0.5);                               // vC.xy = disc-local 0..1 coords (colour attr repurposed by the glass quad)
     if(dot(d,d)>0.25) discard;                            // round glass on a round disc
     o=vec4(t.rgb*uTint, 1.0); return;
+  }
+  if(uUnlit==1){                                          // E83-S3: GPL billboards are pre-lit art. Lighting them again
+    float fogu = clamp((length(vWorld-uCamPos)-uFogNear)/(uFogFar-uFogNear), 0.0, 1.0);   // doubled their brightness:
+    vec3 cu = mix(t.rgb*uTint, uFogCol, fogu*fogu) * uWBal * uExposure;                    // tree textures decode to gold's
+    o=vec4(cu, (uHasTex==1 ? t.a : 1.0)*uAlpha); return;                                 // (57,80,45) yet rendered ~(137,154,86).
   }
   vec3 N = dot(vN,vN) > 1e-6 ? normalize(vN) : vec3(0.0,1.0,0.0);  // guard zero/degenerate normals
   if(!gl_FrontFacing) N=-N;
@@ -1550,8 +1556,9 @@ const WBAL = let v = get(ENV,"JM_WBAL","")
     end
 end
 
-function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0, graze::Bool=false, alpha::Real=1.0, tint=(1f0,1f0,1f0), mirrorglass::Bool=false)
+function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0, graze::Bool=false, alpha::Real=1.0, tint=(1f0,1f0,1f0), mirrorglass::Bool=false, unlit::Bool=false)
     setmat(prog,"uVP",vp); setmat(prog,"uModel",model)
+    glUniform1i(glGetUniformLocation(prog,"uUnlit"), unlit ? 1 : 0)   # E83-S3: sprites at texture brightness
     glUniform3f(glGetUniformLocation(prog,"uTint"), Float32(tint[1]), Float32(tint[2]), Float32(tint[3]))   # per-draw colour multiply (default white = no-op)
     glUniform1i(glGetUniformLocation(prog,"uMirrorGlass"), mirrorglass ? 1 : 0)   # E64: live mirror glass quad
     glUniform1f(glGetUniformLocation(prog,"uBright"), Float32(bright))

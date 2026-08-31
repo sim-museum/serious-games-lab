@@ -1511,6 +1511,11 @@ const OBJ_CULL2 = 2200f0^2      # mesh objects (buildings/grandstands/trees) —
 # E70-S7: the restored billboards render vegetation CYAN (3.42% of frame vs 0.01% with them off).
 # Several Ring bush textures are blue-green at source (hgbush 20,69,56; bush 39,80,70; kwbush6
 # 30,67,62 — blue well above red), and drawing them at bright=1.55 pushes them past cyan.
+# E83-S3 (2026-08-30): billboards are drawn UNLIT by default. The tree sprites decode to gold's colour
+# (s_tree04 (57,80,45) vs gold forest (60,78,40)) yet rendered ~2x brighter ((137,154,86) at s=600)
+# because the shader lit them as geometry -- ambient + 1.15x sun x BB_BRIGHT 1.55. GPL draws its
+# sprites as pre-lit art. JM_BILLBOARD_LIT=1 restores the lit path (and BB_BRIGHT/BB_AMB with it).
+const BB_LIT    = get(ENV,"JM_BILLBOARD_LIT","0") != "0"
 const BB_BRIGHT = parse(Float32, get(ENV,"JM_BB_BRIGHT","1.55"))
 const BB_AMB    = parse(Float32, get(ENV,"JM_BB_AMB","0.85"))
 const BB_CULL2  = 1300f0^2      # billboards (tree/shrub/crowd sprites) — far ones add little
@@ -5826,13 +5831,13 @@ function main()
             end
             for (it,pos,w,h,yaw) in STATICTREES                      # wide forest-edge panels (authored yaw, graze-fade)
                 (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > BB_CULL2 && continue
-                Render.draw(prog, it, vp_, Render.translate(Float32[pos[1],pos[2],pos[3]])*Render.roty(yaw)*Render.scalexyz(w,h,1f0); bright=1.3, ambfill=0.8, graze=true)   # E63/MZ3: the comment always claimed graze-fade but the call never passed it → a wide Monza forest strip seen EDGE-ON rendered as a dark triangular SLAB at the S/F. graze=true fades edge-on quads (uGraze) so the strip shows face-on as a tree-line and vanishes edge-on
+                Render.draw(prog, it, vp_, Render.translate(Float32[pos[1],pos[2],pos[3]])*Render.roty(yaw)*Render.scalexyz(w,h,1f0); bright=1.3, ambfill=0.8, graze=true, unlit=!BB_LIT)   # E63/MZ3: the comment always claimed graze-fade but the call never passed it → a wide Monza forest strip seen EDGE-ON rendered as a dark triangular SLAB at the S/F. graze=true fades edge-on quads (uGraze) so the strip shows face-on as a tree-line and vanishes edge-on
             end
             OBJ_CULLFACE && glDisable(GL_CULL_FACE)
             glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
             for (it,pos,w,h) in BILLBOARDS                            # trees/sprites
                 (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > BB_CULL2 && continue       # distance cull
-                Render.draw(prog, it, vp_, Render.billboard_model(pos,w,h,eye_); bright=BB_BRIGHT, ambfill=BB_AMB)  # E70-S7: tunable — 1.55 pushes already blue-green bush textures to cyan
+                Render.draw(prog, it, vp_, Render.billboard_model(pos,w,h,eye_); bright=BB_BRIGHT, ambfill=BB_AMB, unlit=!BB_LIT)  # E83-S3: unlit by default (GPL pre-lit art); E70-S7 tunables only matter with JM_BILLBOARD_LIT=1
             end
             for (p, cm) in zip(ai_poses, AICHASSIS)                 # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper)
                 for it in cm.body; Render.draw(prog, it, vp_, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end
