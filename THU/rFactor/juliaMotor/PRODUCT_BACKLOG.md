@@ -3445,3 +3445,34 @@ capture the gearing came from (a run that silently falls back to constants is th
 
 **Gate it:** assert the live gear ratios equal the ones parsed from the session actually loaded.
 An equality assertion is what makes the constraint enforceable rather than aspirational.
+
+### E100 S3 — audit of the remaining car parameters (no code change; two false alarms retired)
+
+Widening the E100 audit past the gearbox and mass. Recorded because "looks hardcoded" and
+"is wrong" are different claims, and two candidates here died on inspection.
+
+**Innocent — genuine car constants.** `idle_rpm = 2000.0` and the `9500` rpm shift point match
+the ibt exactly and are identical in all nine captures. `n_gears = 5` matches the 5-element
+gear table. I predicted these would disagree; they do not.
+
+**Innocent — derived, not guessed.** `front_corner.ks = 18_250` and `rear_corner.ks = 29_200`
+look like magic numbers next to the ibt's 30 and 48 N/mm. They are not: both are the ibt value
+× **0.6083**, the *same* factor to four figures, which is a motion ratio squared (MR ≈ 0.78) —
+i.e. they are WHEEL rates correctly derived from SPRING rates. `corner_loads.jl` calibrates MR
+by least squares against telemetry, so the conversion is real physics with a measured constant.
+⚠️ Changing these to the raw ibt numbers would have stiffened the car by 64% while looking like
+a fix that "removes a hardcoded parameter". The factor is undocumented at the constant, which is
+what made it look like a violation — worth a comment there.
+
+**Real, but structurally blocked.** The rates are still frozen to the *Nürburgring* session, and
+spring rates are per-corner session data like the gears: skidpad runs LF 26 / RF 28 / LR 39 /
+RR 53 N/mm, asymmetric, against the Nordschleife's symmetric 30/30/48/48. The model carries ONE
+`front_corner` and ONE `rear_corner` spec, so **it cannot represent an asymmetric setup at all** —
+this is not a wiring job like the gearbox was. Same for `ride_height_mm` and `camber_deg`, which
+also differ per corner between sessions.
+
+**Next:** decide whether per-corner suspension is worth the model change. The circuits all use
+the symmetric Nordschleife setup, so the current constants are correct for every track actually
+driven; only the skidpad diverges, and it is a physics test rig rather than a track the PO
+drives. Recommend LOW priority against that, and record the limitation rather than pretending
+the constants are session-derived.
