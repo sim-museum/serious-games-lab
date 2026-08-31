@@ -3654,3 +3654,10 @@ reading was wrong: the "wings splayed flat" ARE the links, correctly horizontal.
 Prediction, stated before the capture: `JM_RS_ROLL=0` (identity — the positioner already placed
 the parts) shows driveshafts and links between the rear tyres in the chase view; the default shows
 none. Two Monza chase-shot runs (default / `JM_RS_ROLL=0`) are queued behind the display.
+
+**E89-S2 live confirmation (2026-08-30, first display slot):** the sim's own `JM_AI_TEST` on Monza
+prints `AI speed profile: GPL race.lp (1918 records, adj 1.016, cap 86.8 m/s) <- .../monza/race.lp`
+and reports **queue-snaps 0, side-pushes 0, rail switches 1.2 per car-lap**, four cars averaging
+229–234 km/h over 120 s (the shipped κ model averaged far less). Note: the run queued as the
+"baseline" launched *after* the defaults flipped on, so it measured the treatment — the sim-side
+control is the headless gate's control arm, not this run.
