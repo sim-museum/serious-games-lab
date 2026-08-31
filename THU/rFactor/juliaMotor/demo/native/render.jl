@@ -1033,7 +1033,49 @@ car rig frame (X fwd, Y up, Z left).  GPL is X=fwd, Y=lateral, Z=up; V is flippe
 # and lshad (blob shadow); we do our own shadows.  Untextured + lotblack interior
 # panels are KEPT now that positioners place them correctly (they were only "strays"
 # when collapsed to the origin) — needed for a solid cockpit.
-function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, dedup=nothing, drop_green=false)
+# E82-S3: TRIM a triangle to the lateral slab |gy| <= maxlat instead of DROPPING it.
+#
+# `maxlat` has always been all-or-nothing: any vertex past the limit and the whole triangle goes.
+# For the body that is what we want (E64-S4's "garbage" is whole polys). For the SUSPENSION it is
+# not: E82-S2 clipped the rear assembly at the 0.85 wheel face and the driveshafts, which run from
+# the gearbox OUT to the hub at 0.772 and are built from triangles whose far vertices sit past the
+# face, lost every such triangle -- so the shafts ended at 0.61 as stubs. Gold shows them reaching
+# the wheel. Cutting the triangle at the plane keeps the part of it that is inside the car.
+#
+# Sutherland-Hodgman against the two planes gy = +maxlat and gy = -maxlat, interpolating position,
+# normal and UV at each crossing, then fan-triangulating the (3..5)-gon. A triangle entirely inside
+# is returned untouched -- byte-identical, so `trim=true` costs nothing where nothing crosses.
+function _clip_lat(t, maxlat::Float32)
+    verts = [(t.p[i], t.n[i], t.uv[i]) for i in 1:3]
+    for (sgn, lim) in ((1f0, maxlat), (-1f0, maxlat))
+        isempty(verts) && break
+        # keep where sgn*gy <= lim
+        d(v) = sgn * v[1][2] - lim
+        out = eltype(verts)[]
+        n = length(verts)
+        for i in 1:n
+            a = verts[i]; b = verts[mod1(i+1, n)]
+            da = d(a); db = d(b)
+            da <= 0f0 && push!(out, a)
+            if (da < 0f0) != (db < 0f0) && da != db
+                w = da / (da - db)                       # crossing parameter, a -> b
+                lerp3(u, v) = ntuple(k -> u[k] + w*(v[k]-u[k]), 3)
+                lerp2(u, v) = ntuple(k -> u[k] + w*(v[k]-u[k]), 2)
+                push!(out, (lerp3(a[1], b[1]), lerp3(a[2], b[2]), lerp2(a[3], b[3])))
+            end
+        end
+        verts = out
+    end
+    length(verts) < 3 && return GPL3DO.Tri[]
+    length(verts) == 3 && verts[1][1] === t.p[1] && verts[2][1] === t.p[2] && verts[3][1] === t.p[3] &&
+        return [t]
+    [GPL3DO.Tri((verts[1][1], verts[i][1], verts[i+1][1]),
+                (verts[1][2], verts[i][2], verts[i+1][2]),
+                (verts[1][3], verts[i][3], verts[i+1][3]),
+                t.tex, t.col) for i in 2:length(verts)-1]
+end
+
+function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false)
     # text reads right when the texture mapping preserves handedness: the mirror=true
     # remap (gx,gz,-gy) is a rotation (no flip needed); mirror=false is a reflection
     # (needs V flipped to compensate).  So uflip=false, vflip=!mirror.
@@ -1062,7 +1104,13 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
     # untextured pure-green poly is the placeholder → drop it.  Gated by `drop_green`
     # (AI cars only) so the player Lotus's green-col cockpit tub is never touched.
     traygreen(c) = drop_green && c[2]>0.45f0 && c[1]<0.30f0 && c[3]<0.30f0
-    overlat(t) = maxlat < Inf32 && max(abs(t.p[1][2]),abs(t.p[2][2]),abs(t.p[3][2])) > maxlat  # GPL gy = lateral
+    _dropwide(t) = maxlat < Inf32 && max(abs(t.p[1][2]),abs(t.p[2][2]),abs(t.p[3][2])) > maxlat  # GPL gy = lateral
+    # E82-S3: with `trim`, a triangle that CROSSES the limit is cut at it (below) rather than
+    # dropped, so only one that lies wholly beyond one face is discarded here.
+    _wholly_out(t) = maxlat < Inf32 &&
+        ((t.p[1][2] >  maxlat && t.p[2][2] >  maxlat && t.p[3][2] >  maxlat) ||
+         (t.p[1][2] < -maxlat && t.p[2][2] < -maxlat && t.p[3][2] < -maxlat))
+    overlat(t) = trim ? _wholly_out(t) : _dropwide(t)
     cmax(t) = max(abs(t.p[1][1]),abs(t.p[1][2]),abs(t.p[1][3]), abs(t.p[2][1]),abs(t.p[2][2]),abs(t.p[2][3]),
                   abs(t.p[3][1]),abs(t.p[3][2]),abs(t.p[3][3]))
     keep(t) = let L = max(edge(t.p[1],t.p[2]), edge(t.p[2],t.p[3]), edge(t.p[1],t.p[3])),
@@ -1080,6 +1128,9 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
     end
     kept = [m.tris[i] for i in eachindex(m.tris) if keep(m.tris[i]) && !(m.groups[i] in exclude_groups) &&
             (isempty(include_groups) || m.groups[i] in include_groups)]   # E64 S7: include_groups = keep ONLY these placing-node groups
+    # E82-S3: cut the survivors at the lateral limit. Runs after the group/texture/garbage filters
+    # so trimming can only ever reshape geometry those already accepted.
+    trim && maxlat < Inf32 && (kept = collect(Iterators.flatten(_clip_lat(t, maxlat) for t in kept)))
     qk(p) = (round(Int,p[1]*2000), round(Int,p[2]*2000), round(Int,p[3]*2000))
     # de-duplicate coplanar panels: GPL signs/awnings/walls are double-sided (front+back),
     # often with a few-mm THICKNESS — so they're NOT exact-vertex duplicates and still

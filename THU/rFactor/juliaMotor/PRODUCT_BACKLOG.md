@@ -3766,3 +3766,40 @@ reaching the hub at 0.772 — stubs rather than full shafts. Gold shows them run
 is a smaller, different error than a starburst through the tyres, and closing it needs per-triangle
 *trimming* rather than dropping. Gate `susp_pose_smoke` now asserts the envelope on front and rear;
 unclipped it fails 4 arms.
+
+### E82-S3 (2026-08-31) — ✅ the driveshafts reach the hub: `maxlat` now TRIMS the rear instead of dropping it
+
+S2 closed the starburst and named its own residue honestly: `maxlat` discards any triangle with a
+vertex past the wheel face, so the driveshafts — which run from the gearbox **out** to the hub at
+|lat| 0.772, built from triangles whose far vertices sit past the 0.85 face — lost every one of those
+triangles and ended at **0.61 as stubs**. Gold shows them running to the wheel.
+
+Fixed by cutting the triangle at the plane rather than throwing it away: `Render._clip_lat` does a
+Sutherland–Hodgman clip against `gy = ±maxlat`, interpolating position, normal and UV at each
+crossing and fan-triangulating the 3–5-gon. A triangle wholly inside is returned untouched, so
+`trim=true` is a no-op wherever nothing crosses.
+
+| rear group 27288, maxlat 0.85 | tris | x | \|lat\| |
+|---|---|---|---|
+| drop (shipped since S2) | 83 | −1.06..−0.73 | 0.422..**0.61** |
+| trim (S3) | 176 | −2.15..−0.73 | 0.422..**0.85** |
+| unclipped, for reference | 152 | −2.50..−0.73 | 0.422..1.117 |
+
+So the shafts now pass the hub at 0.772 and stop exactly at the wheel face, with nothing outside it.
+
+⚠️ **The front does NOT trim, and that is measured rather than assumed.** Turning trim on there took
+the front assembly to **x max 2.13** — forward of the nose — and the gate went red on it. The front's
+overhang is 4 whole 1.3 m strips at |z| 1.12: stray geometry, not a part that should reach the wheel,
+so cutting them merely keeps their inboard halves. Drop at the front, trim at the rear.
+
+⚠️ **The gate was measuring the wrong build, and would have gone on doing so.** `susp_pose_smoke.jl`
+called `extract_gpl_car` **without** `trim`, so once the sim started trimming the gate kept printing
+the old `|z| max 0.61` — green, and reporting a number the shipped build no longer produces. It now
+mirrors the sim's `JM_SUSP_TRIM` default. It also only ever checked an **upper** bound, which is why
+stubs were invisible to it for a sprint; it now asserts the shafts **reach** the hub (|z| ≥ 0.772).
+That check is deliberately **not** guarded on `TRIM` — guarded, `JM_SUSP_TRIM=0` reported PASS while
+putting the stubs back, i.e. the gate went green on the defect it exists to catch. Unguarded, the
+knob is a real negative control: **treatment 0.85 PASS / control 0.61 FAIL (2)**.
+
+Full suite: **14/14 PASS**. Still owed the PO: an on-screen chase capture, since every number here is
+geometry rather than pixels.

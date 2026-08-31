@@ -1361,6 +1361,13 @@ const FSUSPP = haskey(ENV,"JM_FSUSP_OLD") ?
     # x 1.54..2.73 at z = +-1.12, i.e. forward of the nose and outside the wheels. Clip at the wheel
     # face like the rear; the 94 that make up the actual wishbone assembly (x <= 1.8, |z| <= 0.63) stay.
     Render.extract_gpl_car(LOT3DO; only=("lsusp1","frontlot"), maxlat=parse(Float32,get(ENV,"JM_FSUSP_MAXLAT","0.85")),
+                           # E82-S3: the front does NOT trim, and that is measured, not assumed.
+                           # Its overhang is 4 whole 1.3 m strips spanning x 1.54..2.73 at |z| 1.12 --
+                           # stray geometry, not a part that should reach the wheel. Trimming them at
+                           # the 0.85 face keeps their inboard halves, which still reach x 2.13, i.e.
+                           # forward of the nose (the gate goes red on exactly that). The rear is the
+                           # opposite case: its driveshafts genuinely run out to the hub. Drop here,
+                           # trim there.
                            maxedge=parse(Float32,get(ENV,"JM_FSUSP_MAXEDGE","1.5")))
 # Two corrections to the first attempt at this fix, both found by counting instead of eyeballing:
 #   (a) maxedge=1.0 dropped ALL of lsusp1 — measured survival 0 / 0 / 4 / 12 / 12 tris at
@@ -1435,10 +1442,19 @@ const _RSONLY = get(ENV,"JM_RS_ONLY","")
 # them BELOW THE ROAD rather than fixing them (E82-S1). With the fold removed they became visible, so
 # the overhang has to be clipped where it belongs: at the tyre. The inboard portion (z 0.42..0.85), the
 # driveshaft and links gold shows between the wheels, is kept. JM_RSUSP_MAXLAT overrides.
+# E82-S3: TRIM instead of DROP. maxlat used to discard any triangle with a vertex past the wheel
+# face, so the driveshafts -- which run from the gearbox OUT to the hub at |lat| 0.772 and are built
+# from triangles whose far vertices sit past the 0.85 face -- lost every one of those triangles and
+# ended at 0.61 as stubs. Gold shows them reaching the wheel. `trim=true` cuts each triangle AT the
+# plane (Sutherland-Hodgman, interpolating position/normal/UV) and keeps the inboard part.
+# Measured on group 27288: dropping gives 83 tris spanning |lat| 0.422..0.61; trimming gives 176
+# spanning 0.422..0.85 -- past the hub, terminating exactly at the wheel face, nothing outside it.
+# JM_SUSP_TRIM=0 restores the drop behaviour as the negative control.
+const SUSP_TRIM = get(ENV,"JM_SUSP_TRIM","1") != "0"
 const RSUSP_MAXLAT = parse(Float32, get(ENV,"JM_RSUSP_MAXLAT","0.85"))
-const RSUSPP_A = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(27288,), exclude=_RSEXC, maxlat=RSUSP_MAXLAT) :
+const RSUSPP_A = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(27288,), exclude=_RSEXC, maxlat=RSUSP_MAXLAT, trim=SUSP_TRIM) :
                                  Render.extract_gpl_car(LOT3DO; include_groups=(27288,), only=(_RSONLY,))   # one side each —
-const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(39792,), exclude=_RSEXC, maxlat=RSUSP_MAXLAT) :
+const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(39792,), exclude=_RSEXC, maxlat=RSUSP_MAXLAT, trim=SUSP_TRIM) :
                                  Render.extract_gpl_car(LOT3DO; include_groups=(39792,), only=(_RSONLY,))   # the halves carry a residual ±roll our posmat mis-composes
 const ARMP   = Render.extract_gpl_car(LOT3DO; only=("lotarms",), maxlat=0.95f0)  # forearms/upper arms — static (their wheel-side ends are what the eye sees)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read

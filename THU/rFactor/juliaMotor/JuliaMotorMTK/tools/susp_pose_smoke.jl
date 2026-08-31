@@ -12,12 +12,17 @@ isfile(LOT) || (println("lotus.3do not found"); exit(2))
 # E82-S2: extract exactly as the sim does -- clipped at the wheel face (0.85). Without the clip these
 # assemblies reach |z| = 1.12-1.16, spearing through the rear tyres: the PO's "chrome spider-legs".
 const RSUSP_MAXLAT = parse(Float32, get(ENV, "JM_RSUSP_MAXLAT", "0.85"))
+# E82-S3: the gate MUST extract the way the sim does. It did not: it called extract_gpl_car without
+# `trim`, so after the sim started trimming, the gate went on measuring the DROP behaviour and kept
+# printing the old |z| max 0.61 -- a green gate reporting a number the shipped build no longer
+# produces. Mirror the sim's JM_SUSP_TRIM default here.
+const TRIM = get(ENV,"JM_SUSP_TRIM","1") != "0"
 fails = Ref(0)
 check(name, ok, msg) = (ok || (fails[] += 1); println("  ", ok ? "PASS" : "FAIL", "  ", rpad(name, 54), msg))
 println("E82 rear-suspension pose gate   (JM_RS_ROLL = ", SuspPose.RS_ROLL_DEG, ", maxlat = ", RSUSP_MAXLAT, ")")
 # The FRONT carries the same defect: 4 of its 98 triangles are 1.3 m strips reaching x=2.73 (past the
 # nose) at z=+-1.12. Assert the clipped front stays inside the car too.
-let fp = Render.extract_gpl_car(LOT; only=("lsusp1","frontlot"), maxlat=parse(Float32, get(ENV,"JM_FSUSP_MAXLAT","0.85")), maxedge=1.5f0)
+let fp = Render.extract_gpl_car(LOT; only=("lsusp1","frontlot"), maxlat=parse(Float32, get(ENV,"JM_FSUSP_MAXLAT","0.85")), maxedge=1.5f0)   # front DROPS (no trim) -- see drive_native_mtk.jl
     xmax = -Inf; zmax = 0.0
     for p in fp, i in 1:11:length(p.verts)-10
         xmax = max(xmax, p.verts[i]); zmax = max(zmax, abs(p.verts[i+2]))
@@ -27,7 +32,7 @@ let fp = Render.extract_gpl_car(LOT; only=("lsusp1","frontlot"), maxlat=parse(Fl
     check("front stays inside the tyres (|z| < 0.95)", zmax < 0.95, string(round(zmax, digits=2)))
 end
 for (grp, side) in ((27288, 1), (39792, -1))
-    parts = Render.extract_gpl_car(LOT; include_groups=(grp,), exclude=("ltraymap","lshad"), maxlat=RSUSP_MAXLAT)
+    parts = Render.extract_gpl_car(LOT; include_groups=(grp,), exclude=("ltraymap","lshad"), maxlat=RSUSP_MAXLAT, trim=TRIM)
     M = SuspPose.rsfix(side, Render.translate, Render.rotx, Render.scalexyz)
     ymin = Inf; ymax = -Inf; zmax = 0.0; n = 0
     for p in parts, i in 1:11:length(p.verts)-10
@@ -40,6 +45,14 @@ for (grp, side) in ((27288, 1), (39792, -1))
     # what the PO photographed. 0.95 leaves a little room for the tyre's own width, and still fails
     # hard on the 1.12-1.16 overhang.
     check("group $grp stays inside the tyres (|z| < 0.95)", zmax < 0.95, string(round(zmax, digits=2)))
+    # E82-S3: and it must REACH. Dropping whole triangles left the driveshafts ending at 0.61,
+    # short of the hub at 0.772 -- stubs where gold shows shafts running to the wheel. That was
+    # invisible to a gate that only checked an upper bound, so check the lower one too.
+    # Deliberately NOT guarded on TRIM. Guarding it made JM_SUSP_TRIM=0 -- the knob that puts the
+    # stubs back -- report PASS, i.e. the gate went green on the defect it exists to catch. The
+    # check states the requirement (the shafts reach the hub); the knob is then a real negative
+    # control that goes red, which is the only kind worth having.
+    check("group $grp reaches the hub (|z| >= 0.772)", zmax >= 0.772, string(round(zmax, digits=3)))
 end
 println(fails[] == 0 ? "SUSP POSE GATE: PASS" : "SUSP POSE GATE: FAIL ($(fails[]))")
 exit(fails[] == 0 ? 0 : 1)
