@@ -5165,12 +5165,12 @@ function main()
                     # Damage is accumulated from the CLOSING speed, the same quantity the wreck
                     # rule uses, so both read the impact the same way and a rub below the onset
                     # costs nothing (the PO's low-impulse exception).
-                    # ⚠️ All four corners, equally: attributing damage to the corner that actually
-                    # struck needs the contact POINT, which the per-corner scan only computes once
-                    # the car is already wrecked. Spreading it is honest about that -- pretending
-                    # to know which wheel was hit would be a fiction the model cannot support.
+                    # E94-P4 S2: the corners that FACED the blow take it. The contact point is
+                    # not needed after all -- contact_force returns the force in the BODY frame
+                    # and a contact can only push, so the impact arrived from the direction
+                    # opposite that force. Each corner is weighted by how squarely it faces it.
                     if cpk > 1.0e3 && !WRECKED[] && cclose > 0.0
-                        for _c in 1:4; DriveRT3D.damage_hit!(_c, cclose); end
+                        DriveRT3D.damage_impact!(cfx, cfy, cclose)
                         if DriveRT3D.damaged()
                             println("  [damage] contact at ", round(cclose, digits=1),
                                     " m/s closing -- corner grip now ",

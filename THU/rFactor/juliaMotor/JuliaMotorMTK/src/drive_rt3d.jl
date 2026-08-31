@@ -20,7 +20,7 @@ for f in ("tyre.jl","powertrain.jl","vehicle_3d.jl")
     include(joinpath(HERE, "components", f))
 end
 
-export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, wheelmu3d!, world_velocity, damage_hit!, damage_mu, damaged, damage_reset!
+export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, wheelmu3d!, world_velocity, damage_hit!, damage_impact!, damage_mu, damaged, damage_reset!
 
 # E100: the transmission is SESSION data, not a car constant. The Lotus 49's gears are
 # adjustable and the ibt captures prove it -- Nurburgring runs [2.23,1.72,1.32,1.04,0.846]
@@ -141,6 +141,41 @@ end
 """Grip multiplier for a corner, 1.0 undamaged down to DMG_MU_FLOOR. MULTIPLY this into the
 surface μ rather than replacing it — a damaged wheel on grass is worse than either alone."""
 damage_mu(corner::Int) = 1.0 - (1.0 - DMG_MU_FLOOR) * DAMAGE[corner]
+
+"""    damage_impact!(fx, fy, closing) -> nothing
+
+Damage the corners that actually FACED the impact, from the body-frame contact force.
+
+E94-P4 first spread damage over all four corners because the contact POINT was not available.
+It does not need to be: `contact_force` returns the force in the BODY frame, and a contact can
+only push — so the blow arrived from the direction OPPOSITE the force it produced. Each corner is
+then weighted by how squarely it faces that direction, and a corner facing away takes nothing.
+
+Weights are normalised so the most-exposed corner takes the full hit; the rest scale down by the
+cosine. No tuning constants, and nothing here that a knob could adjust.
+
+Falls back to spreading evenly when the force is degenerate (|F| ~ 0), which is the honest
+behaviour when the direction genuinely is not known.
+"""
+function damage_impact!(fx::Real, fy::Real, closing::Real)
+    mag = sqrt(float(fx)^2 + float(fy)^2)
+    if mag < 1e-6                       # no direction to reason from: spread it
+        for c in 1:4; damage_hit!(c, closing); end
+        return nothing
+    end
+    nx = -float(fx) / mag; ny = -float(fy) / mag        # unit vector back along the blow
+    w = ntuple(4) do i
+        (xi, yi) = WHEELS[i]
+        r = sqrt(xi^2 + yi^2)
+        max(0.0, (xi/r) * nx + (yi/r) * ny)             # cosine to the incoming direction
+    end
+    wmax = maximum(w)
+    wmax <= 0.0 && return nothing                        # every corner faces away: nothing struck
+    for c in 1:4
+        damage_hit!(c, closing * (w[c] / wmax))
+    end
+    return nothing
+end
 
 """True if any corner carries damage — for telemetry and for the HUD to say so."""
 damaged() = any(d -> d > 0.0, DAMAGE)

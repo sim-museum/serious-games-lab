@@ -43,6 +43,28 @@ check("damage saturates at 1.0", D.DAMAGE[1] <= 1.0, string(round(D.DAMAGE[1], d
 check("a ruined corner keeps SOME grip", D.damage_mu(1) >= 0.3,
       string(round(D.damage_mu(1), digits=3), " -- a bent corner still rolls"))
 
+# ---- E94-P4 S2: the corners that FACED the blow take it -----------------------------------
+# WHEELS are FL(+x,+y) FR(+x,-y) RL(-x,+y) RR(-x,-y); +x forward, +y LEFT. A contact can only
+# push, so a force pointing +y means the blow came from the RIGHT.
+D.damage_reset!()
+D.damage_impact!(0.0, 1.0, 20.0)          # pushed left  => struck on the RIGHT
+check("a blow from the right damages FR/RR", D.DAMAGE[2] > 0 && D.DAMAGE[4] > 0,
+      string("FR=", round(D.DAMAGE[2], digits=2), " RR=", round(D.DAMAGE[4], digits=2)))
+check("and spares FL/RL",                    D.DAMAGE[1] == 0 && D.DAMAGE[3] == 0,
+      string("FL=", D.DAMAGE[1], " RL=", D.DAMAGE[3]))
+
+D.damage_reset!()
+D.damage_impact!(-1.0, 0.0, 20.0)         # pushed backwards => struck on the NOSE
+check("a head-on blow damages FL/FR", D.DAMAGE[1] > 0 && D.DAMAGE[2] > 0,
+      string("FL=", round(D.DAMAGE[1], digits=2), " FR=", round(D.DAMAGE[2], digits=2)))
+check("and spares the rear",          D.DAMAGE[3] == 0 && D.DAMAGE[4] == 0,
+      string("RL=", D.DAMAGE[3], " RR=", D.DAMAGE[4]))
+
+# Degenerate force: no direction to reason from, so it must spread rather than silently skip.
+D.damage_reset!()
+D.damage_impact!(0.0, 0.0, 20.0)
+check("a directionless impact spreads", all(d -> d > 0, D.DAMAGE), string(round.(D.DAMAGE, digits=2)))
+
 # Respawn is a new car.
 D.damage_reset!()
 check("respawn clears damage", !D.damaged(), string(D.DAMAGE))
