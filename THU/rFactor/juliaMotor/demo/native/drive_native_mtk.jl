@@ -13,7 +13,8 @@ using JuliaMotor, RFactorData
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt.jl"))); using .DriveRT  # MTK physics (planar)
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt3d.jl"))); using .DriveRT3D
 include(joinpath(@__DIR__,"people_filter.jl")); using .PeopleFilter   # E101: loose-people name rule, shared with its gate
-include(joinpath(@__DIR__,"gpl_lp.jl")); using .GPLLP                    # E84/E89: GPL .lp AI lines (race.lp speed table)  # full-3D physics (JM_3D=1)
+include(joinpath(@__DIR__,"gpl_lp.jl")); using .GPLLP                    # E84/E89: GPL .lp AI lines (race.lp speed table)
+include(joinpath(@__DIR__,"susp_pose.jl")); using .SuspPose             # E82: rear-suspension corrective transform, shared with its gate  # full-3D physics (JM_3D=1)
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","ibt.jl"))); using .IBT           # iRacing .ibt telemetry writer
 include("render.jl"); using .Render
 include("gpltrack.jl"); using .GPLTrack
@@ -3597,16 +3598,11 @@ rsuspItemsB = Render.build_gpl(susp_inboard(RSUSPP_B), GPLTEX)
 # and must fold ~90° about the HUB LINE (z=±0.772 — S7's 0.35 pivot was mid-driveshaft, hence the
 # under-fold/backward-fan artifacts).  50° vs 90° A/B'd near-identical from the chase (tyres +
 # gearbox occlude); 90° kept as the geometrically-motivated flat→vertical value.  JM_RS_* A/B.
-rsfix(side) = begin      # side = +1 (z>0 half) / −1
-    ax, ay = -1.05f0, 0.31f0
-    sx = parse(Float32, get(ENV,"JM_RS_SX","1.0")); sy = parse(Float32, get(ENV,"JM_RS_SY","1.0")); sz = parse(Float32, get(ENV,"JM_RS_SZ","1.0"))
-    dx, dy = parse(Float32, get(ENV,"JM_RS_DX","0.0")), parse(Float32, get(ENV,"JM_RS_DY","0.0"))
-    y0, z0 = parse(Float32, get(ENV,"JM_RS_Y0","0.02")), parse(Float32, get(ENV,"JM_RS_Z0","0.772"))
-    roll   = deg2rad(parse(Float32, get(ENV,"JM_RS_ROLL","90")))
-    Render.translate(Float32[dx, dy, 0]) *
-        Render.translate(Float32[ax, ay, 0]) * Render.scalexyz(sx, sy, sz) * Render.translate(Float32[-ax, -ay, 0]) *
-        Render.translate(Float32[0, y0, side*z0]) * Render.rotx(Float32(-side*roll)) * Render.translate(Float32[0, -y0, -side*z0])
-end
+# E82-S1: rsfix lives in demo/native/susp_pose.jl, shared with tools/susp_pose_smoke.jl so the gate
+# tests the transform the sim actually applies. Measured: the positioner-placed geometry is already
+# correctly posed (identity fits 84% of the rear suspension vertices in the hub-to-chassis envelope;
+# no rotation fits better), and the 90-degree fold puts every rear part 1.2-1.9 m UNDER the road.
+rsfix(side) = SuspPose.rsfix(side, Render.translate, Render.rotx, Render.scalexyz)
 # which extracted group is which side is settled empirically: JM_RS_SWAP=1 flips the pairing
 const RS_SWAP = get(ENV,"JM_RS_SWAP","0") != "0"
 const RSFIX_A = rsfix(RS_SWAP ? -1 : 1)

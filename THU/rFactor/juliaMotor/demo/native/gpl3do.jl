@@ -172,6 +172,13 @@ function parse_3do(path::AbstractString)
         elseif typ in (0x0D, 0x13, 0x16)            # positioner: type, dx,dy,dz, rx,ry,rz, scale, child
             d = (f32(b,p+4), f32(b,p+8), f32(b,p+12)); mm = (f32(b,p+16), f32(b,p+20), f32(b,p+24))
             s = f32(b,p+28); s = (s <= 0f0 ? 1.0 : Float64(s))
+            # E82 (S1): JM_POSDIAG="3560,6600" prints the positioner at those node offsets with the
+            # accumulated parent transform, so a misplaced assembly can be read off its chain.
+            if get(ENV, "JM_POSDIAG", "") != "" && (ENV["JM_POSDIAG"] == "all" || string(off) in split(ENV["JM_POSDIAG"], ","))
+                sc = sqrt(M[1,1]^2 + M[2,1]^2 + M[3,1]^2)
+                println("   [posdiag] node ", off, " type 0x", string(typ, base=16), " depth ", depth, "  d=", d, "  rot=", mm, "  s=", s,
+                        "  parent: translation (", round(M[1,4],digits=3), ",", round(M[2,4],digits=3), ",", round(M[3,4],digits=3), ") scale ", round(sc,digits=3))
+            end
             walk(Int(i32(b, p + 8*4)), curtex, depth+1, M * posmat(d, mm, s), off)
         elseif typ == 0x19                          # bounding cuboid: 8 vert#, then child
             walk(Int(i32(b, p + 9*4)), curtex, depth+1, M, grp)
