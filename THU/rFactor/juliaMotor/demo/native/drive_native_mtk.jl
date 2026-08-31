@@ -11,7 +11,8 @@ const _T0 = time()
 tstamp(lbl) = get(ENV,"JM_TIMING","0") != "0" && println("[t+", round(time()-_T0, digits=1), "s] ", lbl)
 using JuliaMotor, RFactorData
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt.jl"))); using .DriveRT  # MTK physics (planar)
-include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt3d.jl"))); using .DriveRT3D  # full-3D physics (JM_3D=1)
+include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt3d.jl"))); using .DriveRT3D
+include(joinpath(@__DIR__,"people_filter.jl")); using .PeopleFilter   # E101: loose-people name rule, shared with its gate  # full-3D physics (JM_3D=1)
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","ibt.jl"))); using .IBT           # iRacing .ibt telemetry writer
 include("render.jl"); using .Render
 include("gpltrack.jl"); using .GPLTrack
@@ -2441,12 +2442,10 @@ let objnames=Set{String}()
                ((startswith(nm,"treesrb") || startswith(nm,"treefill")) && !WATGLEN) ||  # forest-BACKDROP / gap-fill quads → streaky "painted tree" smear (non-Watkins; see WG3 note above)
                startswith(nm,"trbk") || startswith(nm,"brbk") ||             # Monza underpass tree/bush BANKS (trbk1-8/brbk1-3 at lapdist ~3100-3440, lat ~5 m) — MESH foliage that bypasses the sprite on-road filter and renders as dark vertical smears ACROSS the road (PO round 4: "7 stands of trees across the track near the underpass")
                startswith(nm,"tuntbk") ||                                    # tunnel-edge tree bank (same dark-smear foliage by the underpass)
-               startswith(nm,"ppl") || startswith(nm,"people") || startswith(nm,"pelf") ||  # loose standing spectators
-               startswith(nm,"p_s") || startswith(nm,"pform") ||             # Spa distributed standing-spectator sprites (p_s1..19 = p_s1srb, ~900) + pform1 (foreground photographer); NB not p_armco/p_*
-               nm in ("chrisa","sergioa","thomasa","hatzia","stefana","starter") ||  # Spa named loose figures (Chris/sergio/thomas/Hatzi/Stefan/starter) — NOT prinz*/spider* (cars)
-               startswith(nm,"grndp") || startswith(nm,"crowd") || startswith(nm,"spect") ||
-               startswith(nm,"flagger") || startswith(nm,"rescu") ||
-               startswith(nm,"photo") || startswith(nm,"fotograf")))         # marshals/photographers = loose people
+               # E101: the loose-people list now lives in PeopleFilter, shared with the gate
+               # that checks it (tools/people_smoke.jl). It was a closure nothing could test,
+               # and a name list stops covering tracks added later without saying so.
+               PeopleFilter.is_loose_person(nm)))
     istree(nm) = startswith(nm,"tree") || startswith(nm,"newt") || startswith(nm,"intree")  # foliage → graze-fade (no end-on smear)
     # E40: a kept STAND crowd row must not sit on the paved racing surface — at Spa the peprow* rows
     # by Eau Rouge (and on the start straight) projected to |lat| < ROAD_HALFW = a "line of people
