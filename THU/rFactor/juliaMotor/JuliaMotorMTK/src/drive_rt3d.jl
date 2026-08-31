@@ -20,7 +20,7 @@ for f in ("tyre.jl","powertrain.jl","vehicle_3d.jl")
     include(joinpath(HERE, "components", f))
 end
 
-export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, wheelmu3d!, world_velocity
+export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, wheelmu3d!, world_velocity, damage_hit!, damage_mu, damaged, damage_reset!
 
 # E100: the transmission is SESSION data, not a car constant. The Lotus 49's gears are
 # adjustable and the ibt captures prove it -- Nurburgring runs [2.23,1.72,1.32,1.04,0.846]
@@ -98,6 +98,55 @@ function wrecks(closing::Real, bnd_peak::Real, speed::Real;
     hard = (closing > close_ms) || (bnd_peak > bnd_peak_max)
     return hard && abs(speed) > vmin_ms
 end
+
+# ---- E94-P4 / E95: DAMAGE AS PERSISTENT STATE ------------------------------------------------
+# PO 2026-08-29: "when the car hits a barrier at speed it should damp out and get stuck,
+# indicating an inelastic collision that CAUSES DAMAGE."  Until now "damage" was satisfied only
+# in the sense that a hard enough hit ends the race; a survivable knock left the car mechanically
+# perfect, so a graze that "scrubs you but does not end your race" (E99) cost nothing afterwards.
+#
+# Persistent, per corner, and it only ever accumulates within a session — a bent corner does not
+# straighten itself. Respawn clears it, because that is a new car.
+#
+# NO TUNING KNOBS, deliberately. The PO's standing constraint is that the physics comes from the
+# data with no modifiable parameters, so this exposes no JM_ env vars: the onset is the same
+# closing speed the wreck rule already uses, and the scale is fixed. A damage model with a
+# tuning knob is a fudge factor wearing a different hat.
+const DAMAGE = [0.0, 0.0, 0.0, 0.0]        # FL FR RL RR, 0 = undamaged, 1 = ruined
+
+"""Onset: below this closing speed a contact is a rub and costs nothing (the PO's low-impulse
+exception). Above it, damage grows with the speed excess."""
+const DMG_ONSET_MS = 3.0
+
+"""Grip a fully-damaged corner keeps. Not zero: a bent corner still rolls, it just will not hold
+the car, and a zero would make the wheel a skid mark rather than a handicap."""
+const DMG_MU_FLOOR = 0.35
+
+"""    damage_hit!(corner, closing) -> Float64
+
+Accumulate damage at one corner from a contact with the given closing speed (m/s). Returns the
+corner's new damage. Corners are 1-4 = FL FR RL RR.
+"""
+function damage_hit!(corner::Int, closing::Real)
+    1 <= corner <= 4 || error("damage_hit!: corner $corner out of range")
+    excess = float(closing) - DMG_ONSET_MS
+    excess <= 0 && return DAMAGE[corner]          # a rub: nothing
+    # Saturating: each hit adds a fraction of what is left, so repeated knocks worsen a corner
+    # without any single one being able to overshoot 1.0.
+    DAMAGE[corner] = clamp(DAMAGE[corner] + (1.0 - DAMAGE[corner]) * min(excess / 20.0, 1.0),
+                           0.0, 1.0)
+    return DAMAGE[corner]
+end
+
+"""Grip multiplier for a corner, 1.0 undamaged down to DMG_MU_FLOOR. MULTIPLY this into the
+surface μ rather than replacing it — a damaged wheel on grass is worse than either alone."""
+damage_mu(corner::Int) = 1.0 - (1.0 - DMG_MU_FLOOR) * DAMAGE[corner]
+
+"""True if any corner carries damage — for telemetry and for the HUD to say so."""
+damaged() = any(d -> d > 0.0, DAMAGE)
+
+"""Clear all damage. Called on respawn: that is a new car, not a repaired one."""
+damage_reset!() = (fill!(DAMAGE, 0.0); nothing)
 
 """Mass and front share from an ibt session's corner weights (N) — the conversion in one place."""
 function mass_from_corner_weights(cw)

@@ -5090,7 +5090,7 @@ function main()
             cs.s_vreset(cs.integ, zeros(14))
             hR = groundz(pR[1], pR[3]; acquire=true); isfinite(hR) && (cs.zref = Float64(hR))
             cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
-        elseif rst; respawnX!(cs; groundz=groundz)
+        elseif rst; respawnX!(cs; groundz=groundz); DriveRT3D.damage_reset!()   # E94-P4: a respawn is a NEW car, not a repaired one
         else
             # E56 ALL-MODELICA human car: feed the trackside spring-damper CONTACT force (wall = bounce,
             # hedge/hay = bury & stick) + last frame's draft drag-scale into the chassis ODE BEFORE the
@@ -5158,6 +5158,26 @@ function main()
                                            fence = BND_PK[] > 1.0e4,
                                            fence_nx = BND_NX[], fence_nz = BND_NZ[])
                     end
+                    # E94-P4: a SURVIVABLE contact now costs something. Until this, a hit that did
+                    # not end the race left the car mechanically perfect, so the E99 graze rule
+                    # ("scrubs you but does not end your race") had no lasting cost at all -- you
+                    # could bounce off the scenery all lap and finish on a factory-fresh car.
+                    # Damage is accumulated from the CLOSING speed, the same quantity the wreck
+                    # rule uses, so both read the impact the same way and a rub below the onset
+                    # costs nothing (the PO's low-impulse exception).
+                    # ⚠️ All four corners, equally: attributing damage to the corner that actually
+                    # struck needs the contact POINT, which the per-corner scan only computes once
+                    # the car is already wrecked. Spreading it is honest about that -- pretending
+                    # to know which wheel was hit would be a fiction the model cannot support.
+                    if cpk > 1.0e3 && !WRECKED[] && cclose > 0.0
+                        for _c in 1:4; DriveRT3D.damage_hit!(_c, cclose); end
+                        if DriveRT3D.damaged()
+                            println("  [damage] contact at ", round(cclose, digits=1),
+                                    " m/s closing -- corner grip now ",
+                                    round(100*DriveRT3D.damage_mu(1)), "%")
+                            flush(stdout)
+                        end
+                    end
                     cpk > 1.0e3 && (ffb_jolt = clamp(sign(cmz != 0 ? cmz : 1.0) * min(cpk/4.0e4, 1.0), -1.0, 1.0))  # feel the hit (stronger — PO: object kick was too small)
                 end
                 # add last frame's world-edge physical-wall force (E56.6) to the trackside contact force
@@ -5209,7 +5229,11 @@ function main()
                         μRL = wmu(-1.096,  0.75); μRR = wmu(-1.096, -0.75)
                     end
                 end
-                DriveRT3D.wheelmu3d!(cs, μFL, μFR, μRL, μRR)
+                # E94-P4: damage MULTIPLIES into the surface grip rather than replacing it --
+                # a bent corner on grass is worse than either alone, and overwriting here would
+                # have quietly cancelled the grass-grip model whenever the car was damaged.
+                DriveRT3D.wheelmu3d!(cs, μFL*DriveRT3D.damage_mu(1), μFR*DriveRT3D.damage_mu(2),
+                                         μRL*DriveRT3D.damage_mu(3), μRR*DriveRT3D.damage_mu(4))
             end
             step_carX!(cs, inp.throttle, inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
