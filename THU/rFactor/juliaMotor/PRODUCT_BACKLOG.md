@@ -3542,3 +3542,23 @@ restored (3 arms red).
 still valid (it acts on alpha, not hue), but any colour conclusion drawn from pre-fix decodes should be
 re-read. **Not yet verified on screen** — needs a Ring capture with the display, which bob's suite holds;
 queued after the E89 runs. The E69/E72 exposure dead end stands untouched: nothing here changes `GRADE_*`.
+
+### E84 — design note from the .lp decode (2026-08-30): GPL's own AI lines are usable directly
+
+The PO's E84 brief is "AI slot cars as in GPL, behaving as they do in GPL". The GPL install carries the
+AI's lines themselves, and they map onto our track frame without transformation:
+
+- `race.lp` / `pass1.lp` / `pass2.lp` / `pit.lp`: 8-byte header, then N records of 5 × Float32 at
+  **exactly 3.0 m dlong** from the `.trk` start (Monza: 1918 × 3.0 = 5754 m against a 5747 m
+  centreline from `trk_centreline`). Our `build_line` also resamples to 3.0 m from the same `.trk`
+  start, so on tracks that are NOT re-centred (Monza is excluded from re-centring) the records are
+  **index-aligned with our `AILine`**: `s = 3·i`.
+- field 3 is **dlat in metres, positive to the LEFT** of the `.trk` centreline (Monza's pit lane is on
+  the right and `pit.lp` sits at −13 m while `race.lp` sits at +13 m) — the same sign as our `rl`.
+- field 1 is the AI's dlong speed in m/tick; × 36 = m/s. Smooth: ≤ 1.92 m/s change per 3 m.
+
+So a "GPL line" AI mode is a data swap, not a physics change: `AILine.rl ← race.lp dlat`, corner
+speed ← `race.lp` speed × `dlong_speed_adj_coeff` (track.ini, Monza 1.016) capped at
+`dlong_speed_maximum` (2.41 m/tick = 86.8 m/s), rails ← `pass1`/`pass2` dlat (asymmetric, per record),
+following ← `gpl_ai.ini` `desired_dlong_sep` 14 m. On re-centred tracks the dlat frame shifts by the
+re-centring offset per node and must be corrected before use. Reader: `demo/native/gpl_lp.jl`.
