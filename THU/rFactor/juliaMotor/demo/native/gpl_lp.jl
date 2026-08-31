@@ -6,7 +6,9 @@
 #   record (20 bytes, n_records of them at ~3.0 m dlong spacing): 5 × Float32
 #     [1] dlong speed in METRES PER TICK (36 ticks/s)  -> ×36 = m/s   (2.15 → 77 m/s on Monza's straight)
 #     [2] dlat velocity (m/tick; r = 0.93 against the per-record dlat difference)
-#     [3] dlat, metres (pass1 = race + 4.0, pass2 = race − 4.0 on the pit straight: GPL's rails are ±4 m)
+#     [3] dlat, metres. NB the passing rails are NOT a fixed offset: on the pit straight pass1/pass2 sit at
+#         race ±4.0 m, but over the Monza lap pass1 is median +1.1 m (min −2.5) and pass2 median −3.4 m
+#         (max +0.1) — asymmetric, hugging the race line and opening only where the road allows.
 #     [4] small; uncorrelated with d(field2) — unknown, kept
 #     [5] always 0 in every file inspected
 # Validation: Σ 3.0 m / speed over the 1918 Monza records = 91 s, against the 86.5 s human replay.

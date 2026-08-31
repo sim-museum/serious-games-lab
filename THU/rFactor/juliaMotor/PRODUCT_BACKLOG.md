@@ -3514,3 +3514,5 @@ and the two public projects (gplreplay.sourceforge.net, GPL Replay Analyser) pub
 exports telemetry to text and has command-line support, and the box has GPL under Wine — **running
 GPLRA under that prefix is the realistic route to the PO's "refer to the .rpy files"**, not writing a
 decoder blind. Files are 🔒 read-only; work on copies in `/tmp/rpy/`.
+
+**E89-S1 correction (GPL rails):** they are not a fixed ±4 m — that was the pit straight. Monza, per record: pass1−race: median +1.08 m, p10 +0.00, p90 +3.91, |dev|>1 m on 55% of the lap; pass2−race: median -3.39 m, p10 -4.24, p90 +0.00, |dev|>1 m on 78%; both rails within 0.5 m of the race line on 0% of records. GPL's passing space is asymmetric and opens only where the road allows; a fixed `RAIL = ±2.4` on both sides everywhere is not what GPL does.
