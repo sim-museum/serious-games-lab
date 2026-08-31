@@ -3696,3 +3696,21 @@ trailing cars show 1.2 deficit cycles per car-lap, above the E89 gate's 1.0. Wit
 single line and rails of +1.1/−3.4 m, cars queue rather than run staggered. GPL's real fields do
 queue, so this may be right — but it is a visible behaviour change and stays **default OFF** until the
 PO's re-drive judges it. Not a fix candidate for E89's symptom; it is the E84 "as in GPL" lane model.
+
+### E83-S2 (2026-08-30) — first on-screen check after the palette fix: the cyan is gone; a brightness gap remains
+
+Ring chase captures (`JM_SHOTS`, s = 600/2400/9000) after the BGRA fix, green-dominant vegetation
+pixels in the mid-band: **B > R ("teal") on 0.2–10.6%** of them (the PO's frame before the fix: the
+bushes were cyan outright). By eye the bushes are yellow-green/olive, no turquoise anywhere. But the
+native vegetation is **~1.7× brighter and yellower than gold** — mean RGB (137,154,86) at s=600 and
+(106,124,68) at s=2400 against gold's (60,78,40) — so "neon" may still read as *too bright* even though
+the hue is right. ⛔ Per the E69/E72 dead end this must NOT be answered with a grade change; the
+remaining candidates are the vegetation sprites' own decode brightness (4-bit vs 8-bit palette
+paths, the alpha-bleed pass pushing bright colour into edges) and the scene lighting on billboards.
+Needs the PO's eye on the Ring. Also visible in these captures, unrelated to colour: the horizon ring
+shows a hard seam and one enormous floating panel — that is E81 territory, noted for it.
+
+**E82 note from the same investigation:** the two depth-1 "park" positioners (d = (0,20,0)) hold the
+BODY group as well as the rear halves, so "parked" does not mean "hidden" in this model — that lead is
+closed. The front chrome legs need the Monza roll-0 / roll-90 captures against the gold Monza frame,
+which are queued.

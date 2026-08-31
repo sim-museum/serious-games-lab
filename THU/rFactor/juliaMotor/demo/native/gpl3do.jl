@@ -133,6 +133,7 @@ function parse_3do(path::AbstractString)
             push!(tris, Tri((P[1],P[k],P[k+1]), (N[1],N[k],N[k+1]), (UV[1],UV[k],UV[k+1]), tex, col))
             push!(groups, grp)
         end
+        push!(ALL_GROUPS, grp); PARKDEPTH[] > 0 && push!(PARKED_GROUPS, grp)
     end
 
     # ---- walk the PRIM node tree (offsets are byte offsets into PRIM data) ----
@@ -144,6 +145,7 @@ function parse_3do(path::AbstractString)
     # sprint to exactly that silence. Tally every node type reached, so "0 tris" can be answered with
     # "the tree contains only types X and Y, and we handle neither". JM_PRIMDIAG=<name substring>.
     PRIMTALLY = Dict{UInt32,Int}()
+    PARKDEPTH = Ref(0); PARKED_GROUPS = Set{Int}(); ALL_GROUPS = Set{Int}()
     function walk(off::Int, curtex::String, depth::Int, M, grp::Int)
         (off < 0 || off in visited || depth > 220) && return
         push!(visited, off)
@@ -179,7 +181,13 @@ function parse_3do(path::AbstractString)
                 println("   [posdiag] node ", off, " type 0x", string(typ, base=16), " depth ", depth, "  d=", d, "  rot=", mm, "  s=", s,
                         "  parent: translation (", round(M[1,4],digits=3), ",", round(M[2,4],digits=3), ",", round(M[3,4],digits=3), ") scale ", round(sc,digits=3))
             end
+            # E82 diagnostic: which placing groups sit under a PARKED (|d|>5, hide-marker) positioner?
+            # GPL parks geometry it does not draw statically at y=+20; posmat clamps that to 0 and we
+            # draw it at the origin. JM_POSDIAG reports the parked group set at the end of the parse.
+            parked = any(abs(x) > 5.0 for x in d)
+            parked && (PARKDEPTH[] += 1)
             walk(Int(i32(b, p + 8*4)), curtex, depth+1, M * posmat(d, mm, s), off)
+            parked && (PARKDEPTH[] -= 1)
         elseif typ == 0x19                          # bounding cuboid: 8 vert#, then child
             walk(Int(i32(b, p + 9*4)), curtex, depth+1, M, grp)
         elseif typ == 0x11                          # LOD/distance list: 11,int,int,int,count,(dist,childoff)*
@@ -260,6 +268,13 @@ function parse_3do(path::AbstractString)
                     t in handled ? "handled" : "*** NOT HANDLED ***")
         end
         flush(stdout)
+    end
+    if get(ENV, "JM_POSDIAG", "") != ""
+        println("   [posdiag] placing groups: ", length(ALL_GROUPS), " total, ", length(PARKED_GROUPS), " under a PARK (|d|>5) node")
+        for g in sort(collect(PARKED_GROUPS))
+            texs = Dict{String,Int}(); for (k,gg) in enumerate(groups); gg == g && (texs[tris[k].tex] = get(texs, tris[k].tex, 0) + 1); end
+            println("   [posdiag]   parked group ", g, ": ", join([string(k == "" ? "(untex)" : k, "=", v) for (k,v) in sort(collect(texs))], " "))
+        end
     end
     Mesh3DO(tris, sort(collect(used_tex)), groups)
 end
