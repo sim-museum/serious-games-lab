@@ -3443,6 +3443,8 @@ before starting — the sim currently opens an ibt only as a *header template* f
 supplies it must also decide what happens when no matching ibt exists, and must SAY which
 capture the gearing came from (a run that silently falls back to constants is the bug again).
 
+✅ **FIXED and VERIFIED IN A REAL LAUNCH (2026-08-30).** A Spa run prints `gearbox: [2.23, 1.72, 1.32, 1.04, 0.846]  final 4.11  <- lotus49_nurburgring nordschleife 2026-06-24 15-53-11.ibt` and `mass: 616.9 kg  front 45.5%` — the circuit capture, not the skidpad, so the short-course gearing is gone from every track. Gated headlessly by `tools/transmission_smoke.jl` (15/15) and run by `tools/gates.sh` (8/8).
+
 **Gate it:** assert the live gear ratios equal the ones parsed from the session actually loaded.
 An equality assertion is what makes the constraint enforceable rather than aspirational.
 
