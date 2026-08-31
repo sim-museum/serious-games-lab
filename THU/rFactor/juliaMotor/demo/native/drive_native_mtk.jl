@@ -4597,7 +4597,7 @@ function main()
     # racing-line curvature swinging R=153..745 m inside the constant R=304 Curva Grande. Only on
     # tracks whose centreline is the raw .trk (Monza, Zandvoort): re-centring shifts the dlat frame
     # and the dlong index with it. Says which file it used -- a silent fallback is the defect again.
-    if AILINE !== nothing && get(ENV, "JM_AI_GPLLINE", "0") != "0"
+    if AILINE !== nothing && get(ENV, "JM_AI_GPLLINE", "1") != "0"     # DEFAULT ON (S2): JM_AI_GPLLINE=0 reverts to the κ model
         if MONZA || ZANDV
             lp = joinpath(ZD, "race.lp")
             if isfile(lp)

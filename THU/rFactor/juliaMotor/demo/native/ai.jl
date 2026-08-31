@@ -134,11 +134,16 @@ lanebias(i, n) = n <= 1 ? 0.0 : LANE_BIAS * (2.0*((0.41*i) % 1.0) - 1.0)   # pse
 # Our follower had NO gap control until it committed to a rail at gap < v+14 (80 m at 70 m/s) --
 # it closed at full speed and then either speed-matched hard or was queued back a car length: the
 # PO's "lunge ahead, then fall back". A/B switch only; the constants are GPL's, not tunables.
-const GAPCTL        = get(ENV, "JM_AI_GAPCTL", "0") != "0"
+# DEFAULT ON (S2, 2026-08-30), JM_AI_GAPCTL=0 reverts. Measured headlessly on Monza, 4 cars, 270 s,
+# with the GPL speed table: without it 505 queue-snaps (the trailing car teleported back a car
+# length -- a visible jump); with it 0, rail switches 0.5 per car-lap, lunge-fall cycles 0.46.
+const GAPCTL        = get(ENV, "JM_AI_GAPCTL", "1") != "0"
 const GPL_DESIRED_SEP = 14.0      # m, desired_dlong_sep
-const GPL_PASS_SEP    = 10.0      # m, straightaway_pass_dlong_sep
-const GPL_PASS_RADIUS = 400.0     # m, min_cornering_outside_pass_radius
-const GPL_CLOSE_TAU   = 1.5       # s over which the excess gap is closed (avoid_time_coeff-shaped)
+# Time over which the excess gap is closed. Swept 1.5 / 3 / 5 / 8 s: 1.5 OSCILLATED (1.29 lunge-fall
+# cycles per car-lap -- an underdamped follower hunting round the desired gap), 3 and 5 gave 0.46,
+# 8 crept back up to 0.92 (too slow to close, the leader's braking zones catch it out). 4.0 sits in
+# the flat part of that curve. A constant, not a knob: the sweep is recorded here so it need not be redone.
+const GPL_CLOSE_TAU   = 4.0
 const AI_MASS = 560.0; const AI_PMAX = 300_000.0   # ~Lotus 49: 560 kg, ~400 bhp
 const AI_FMAX = 6800.0; const AI_DRAG = 0.42; const AI_BRAKE = 16.0   # traction N, ½ρ·CdA, brake m/s²
 function advance_speed(v, vtarget, dt)
@@ -277,31 +282,45 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
         elseif rand() < 8.0e-6                                 # rare: a fresh mishap (~1-2 across the field per race)
             car.mishap = 2.4; AISTAT.mishap += 1
         end
-        b = blocker(car.s, i)
+        b = blocker(car.s, i)                                # nearest ahead in ANY lane: drives the pass hysteresis
         gap   = b === nothing ? Inf : b[1]
         blane = b === nothing ? 0.0 : b[2]
         bv    = b === nothing ? Inf : b[3]
-        if GAPCTL && b !== nothing && abs(car.lane - blane) < 2.2
-            # PROPORTIONAL gap control (GPL): target speed = leader's speed + the excess gap closed over
-            # GPL_CLOSE_TAU. Equals free speed when far back, the leader's speed at the desired gap, and
-            # LESS than the leader's inside it -- so the follower settles, it does not slam and rebound.
-            vt = min(vt, bv + (gap - GPL_DESIRED_SEP) / GPL_CLOSE_TAU)
-            vt = max(vt, 0.0)
+        if GAPCTL
+            # SPEED is governed by the nearest car IN OUR PATH (lateral overlap within a car width plus
+            # margin), which is not the same car as the hysteresis blocker: with alternating grid lanes
+            # the nearest car is beside us in the other rail while the one we are closing on sits two
+            # places ahead in ours (measured: 650 queue-snaps per 120 s with the wrong car governing).
+            # It must NOT also drive engage/release: S2 tried that and the in-path car changes the
+            # moment we pull out, so release fired at once and engage/release flapped 925 times.
+            bg = Inf; bp = nothing
+            for (k, c) in enumerate(cars)
+                k == i && continue
+                g = mod(c.s - car.s, total)
+                (0.0 < g < bg && abs(c.lane - car.lane) < CAR_WID + 0.6) && (bg = g; bp = (g, c.lane, c.v))
+            end
+            if player !== nothing
+                g = mod(player[1] - car.s, total)
+                (0.0 < g < bg && abs(player[2] - car.lane) < CAR_WID + 0.6) && (bg = g; bp = (g, player[2], player[3]))
+            end
+            if bp !== nothing
+                # PROPORTIONAL gap control (GPL): target = leader's speed + the excess gap closed over
+                # GPL_CLOSE_TAU -- free speed far back, the leader's speed at the desired gap, LESS inside
+                # it, so the follower settles instead of slamming and rebounding.
+                vt = max(min(vt, bp[3] + (bp[1] - GPL_DESIRED_SEP) / GPL_CLOSE_TAU), 0.0)
+            end
+        end
+        if false
         end
         # HYSTERESIS so the AI commit to a pass instead of skittering between rails like a
         # water-insect: ENGAGE a move only when genuinely catching a car ahead in our lane;
         # once committed to a rail, HOLD it until well clear (a much larger release gap).
+        # (S2 measured a GPL-style "settled + pace + straight" ENGAGE rule here and it FLAPPED: with GPL
+        #  speeds every car has near-equal free speed, so "we are quicker" flickered and engage/release
+        #  ran 133/133 in 270 s -- 24.6 rail switches per car-lap against the baseline's 1.3. The
+        #  original hysteresis stays; gap control changes only WHOM we follow and HOW we close.)
         if car.tlane == 0.0
-            if GAPCTL
-                # GPL: pull out only once SETTLED behind (gap near the pass separation), with the pace to
-                # pass, on a straight (corner radius > 400 m over the next ~2 s). Not 80 m back.
-                κa = 1e-4; off = 0.0; while off <= max(car.v*2.0, 45.0); κa = max(κa, line.κ[_locate(line, car.s+off)[1]]); off += 6.0; end
-                free = _vtarget(line, car.s, car.v; amax, vmax, vmin, scale) * car.pace
-                if b !== nothing && gap < GPL_PASS_SEP + 4.0 && abs(car.lane - blane) < 2.2 &&
-                   free > bv + 1.0 && κa < 1.0/GPL_PASS_RADIUS
-                    car.tlane = blane >= 0.0 ? -RAIL : RAIL; AISTAT.engage += 1
-                end
-            elseif gap < car.v*1.0 + 14.0 && abs(car.lane - blane) < 2.2
+            if gap < car.v*1.0 + 14.0 && abs(car.lane - blane) < 2.2
                 car.tlane = blane >= 0.0 ? -RAIL : RAIL     # pick ONE side and commit
                 AISTAT.engage += 1
             end

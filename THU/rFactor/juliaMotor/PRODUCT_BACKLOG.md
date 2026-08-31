@@ -3592,3 +3592,34 @@ the app says which file supplied it. Re-centred tracks (Watkins, Ring, Spa) need
 correction before they can use it. The remaining 5 s to GPL is our `advance_speed` accel/brake model.
 **Not yet run in the sim** — three self-test arms (baseline / gap control / gap control + GPL line) are
 queued behind the display.
+
+### E89-S2 (2026-08-30) — measured headlessly, fixed, gated: the lunging was mostly OUR speed model
+
+The field measurement ran without the display after all: `build_line` on the raw Monza `.trk` is
+pure, and so is `step_field!`. Four cars, 300 s, 30 s warm-up, against a lone car's free speed:
+
+| arm | lunge-fall cycles / car-lap | rail switches / car-lap | queue-snap teleports |
+|---|---|---|---|
+| shipped (κ speeds, no gap control) | **1.83** | 1.26 | **739** |
+| GPL `race.lp` speeds only | **0.09** | 0.91 | 505 |
+| gap control only (τ = 1.5 s) | 3.68 ✗ | 1.15 | 1 |
+| GPL speeds + gap control τ = 1.5 | 1.29 ✗ | 0.64 | 0 |
+| GPL speeds + gap control τ = 3 / 5 / 8 | 0.46 / 0.46 / 0.92 | 0.55 / 0.46 / 0.46 | 0 / 0 / 0 |
+
+**Shipped now (defaults on, `JM_AI_GPLLINE=0` / `JM_AI_GAPCTL=0` revert):** GPL's `race.lp` speed
+table as the target, plus a proportional follower (target = leader speed + excess gap over
+`desired_dlong_sep` 14 m closed over τ = 4 s), with the speed-governing car being the nearest one
+**in our path** while the pass hysteresis keeps its any-lane blocker.
+
+Three of my own attempts failed on the way and are recorded so they are not retried:
+- a GPL-style "settled + quicker + straight" ENGAGE rule flapped (24.6 → 171 switches per car-lap)
+  because with GPL speeds every car's free speed is near-equal, so "we are quicker" flickers;
+- using the in-path car for the hysteresis too: the in-path car changes the instant we pull out, so
+  release fired at once — 925 engage/release pairs in 270 s;
+- τ = 1.5 s is an underdamped follower hunting round the desired gap — more cycles than no control.
+
+The remaining 0.46 cycles are cars 3–4 (the fastest pace) catching and being held behind slower cars,
+which is racing. Gate `tools/ai_field_smoke.jl` runs BOTH arms — the control must still show the
+defect (1.83 / 739) or the treatment's clean numbers mean nothing. Suite 13/13. ⚠️ Not yet re-driven
+by the PO; the three sim self-test arms are still queued behind the display and will confirm the same
+code path live. Watkins/Ring/Spa keep the κ model until the re-centred dlat/dlong frame is mapped.
