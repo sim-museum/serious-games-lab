@@ -4857,3 +4857,42 @@ most likely to hide.
 **Next (sprint 5):** two processes each running the SIM rather than a probe — the remote car drawn
 by `remote_poses_at` in the real render loop, with the E104(a) rule enforced end to end: a remote
 car's height must come from the terrain under it, never from the packet.
+
+### E102-S6 (2026-09-01) — 🔴 the 3-triangle sliver is NOT the stick: removing it changes nothing on screen
+
+S4 identified a 3-triangle `axlelot` solid whose measurements match the PO's report almost verbatim —
+thin, isolated, reaching the wheel plane at |lat| 0.74, dropping 0.099 m across 0.62 m of x — and S5
+confirmed `axlelot` as the texture on screen. This sprint built the only handle that shape offers
+and pulled it.
+
+**The tool works exactly as intended.** `min_component=N` drops connected solids below N triangles
+(union-find over vertices quantised to 1 mm — S4's own method, now in the extractor), restricted by
+texture so the assembly's legitimate small detail is untouched. `JM_MC_DIAG=1` reports it dropping
+**precisely one solid: `n=3, x −1.48..−0.86, |lat| 0.53..0.74, ydrop 0.099, tex axlelot`** — S4's
+signature to the centimetre, and nothing else.
+
+**And the chase capture with it ON still shows the chrome rod pointing outward and downward from the
+rear wheel, unchanged.** So the sliver is not what the PO is looking at. **Default OFF**
+(`JM_RSUSP_MINCOMP=4` re-enables); shipping a change that deletes geometry and fixes nothing would
+be worse than shipping none.
+
+⚠️ **This is a useful negative, not a wasted sprint — it eliminates the last separable candidate.**
+S5 established the sticks are `axlelot`; S6 establishes they are not the *separable* `axlelot` solid.
+By elimination the stick is **the driveshaft itself**, inside the 65-triangle connected mesh that
+E82-S3 deliberately trims to reach the hub. So the open question is its **POSE** — the angle the
+assembly is placed at — and E102-S4's *"there is no separable shaft to rotate"* is the obstacle to
+solve rather than the reason to stop.
+
+⚠️ **Two measurement errors of mine, both from working in the wrong frame.**
+`extract_gpl_car` returns PARTS with a flat strided vertex array, not triangles. I read
+`length(parts)` as a triangle count ("6 triangles"), then `length(verts) ÷ 3` as another
+("121 triangles removed") — both meaningless. The diagnostic now lives **inside** the extractor,
+where triangles are still triangles, and it reported the true figure immediately: one solid, three
+triangles. *The frame the data is in decides whether a measurement means anything* — the same lesson
+E104(a) taught in the render frame.
+
+**Next:** measure the driveshaft's angle as drawn against the horizontal, in the render frame — if
+the assembly carries a residual rotation our positioner mis-composes (the ±roll E82 notes on these
+halves), correcting the pose is what the PO asked for and would leave the geometry intact.
+
+Suite 22/22.

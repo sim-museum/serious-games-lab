@@ -1086,7 +1086,7 @@ function _clip_lat(t, maxlat::Float32)
                 t.tex, t.col) for i in 2:length(verts)-1]
 end
 
-function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false)
+function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=())
     # text reads right when the texture mapping preserves handedness: the mirror=true
     # remap (gx,gz,-gy) is a rotation (no flip needed); mirror=false is a reflection
     # (needs V flipped to compensate).  So uflip=false, vflip=!mirror.
@@ -1149,6 +1149,59 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
     trim != false && maxlat < Inf32 &&
         (kept = collect(Iterators.flatten(_dotrim(t) ? _clip_lat(t, maxlat) :
                                           (_dropwide(t) ? GPL3DO.Tri[] : [t]) for t in kept)))
+    # ── E102-S6: DROP TINY DISCONNECTED SLIVERS ────────────────────────────────────────────────
+    # `min_component=N` removes any connected solid of fewer than N triangles, where "connected"
+    # means sharing a vertex (quantised to 1 mm) -- the same union-find E102-S4 used to analyse this
+    # mesh. Default 0 = off; it is opt-in per extraction, because a small isolated component is
+    # perfectly legitimate elsewhere (a badge, a mirror stalk) and only suspect in a group known to
+    # carry GPL's runtime-hidden branches.
+    #
+    # Why it exists: the PO reported the rear axles as "sticks pointing outward and downward from
+    # the back wheels". E102-S4 decomposed the rear assembly into 5 solids and found the report's
+    # shape exactly -- a **3-triangle `axlelot` component** spanning 0.62 m in x, reaching the wheel
+    # plane at |lat| 0.74 and DROPPING 0.099 m across that run. It survives the lateral trim because
+    # it is inboard of it; nothing that filters by texture or by lateral extent can remove it,
+    # because the real driveshaft shares both. Its separability is the only handle it offers, so
+    # that is the handle used.
+    if min_component > 1 && !isempty(kept)
+        qv(p) = (round(Int,p[1]*1000), round(Int,p[2]*1000), round(Int,p[3]*1000))
+        parent = collect(1:length(kept))
+        find(a) = (while parent[a] != a; parent[a] = parent[parent[a]]; a = parent[a]; end; a)
+        union!(a, b) = (ra = find(a); rb = find(b); ra != rb && (parent[ra] = rb))
+        seen = Dict{NTuple{3,Int},Int}()
+        for (i, t) in enumerate(kept), k in (qv(t.p[1]), qv(t.p[2]), qv(t.p[3]))
+            j = get(seen, k, 0)
+            j == 0 ? (seen[k] = i) : union!(i, j)
+        end
+        count = Dict{Int,Int}()
+        for i in 1:length(kept); r = find(i); count[r] = get(count, r, 0) + 1; end
+        # ⚠️ RESTRICT BY TEXTURE, or this is far too blunt. Measured on the rear assembly:
+        # an unrestricted min_component=4 removes 121 of 1958 triangles -- dozens of small
+        # components, most of them legitimate detail. Only the driveshaft texture is suspect here,
+        # so a component is dropped only when EVERY triangle in it carries one of
+        # `min_component_tex` (empty = any texture, the unrestricted behaviour).
+        _mctex(i) = isempty(min_component_tex) || (kept[i].tex in min_component_tex)
+        okc = Dict{Int,Bool}()
+        for i in 1:length(kept); r = find(i); okc[r] = get(okc, r, true) && _mctex(i); end
+        # JM_MC_DIAG=1 reports what is about to be dropped, in the frame where the triangles still
+        # exist as triangles. Measuring this from the RETURNED parts is the wrong frame -- they
+        # carry a flat vertex array, and reconstructing triangles from it cost a sprint step.
+        if haskey(ENV, "JM_MC_DIAG")
+            for (r, n) in count
+                (n < min_component && get(okc, r, false)) || continue
+                idx = [i for i in 1:length(kept) if find(i) == r]
+                lat = [abs(p[2]) for i in idx for p in kept[i].p]
+                ys  = [p[3] for i in idx for p in kept[i].p]
+                xs  = [p[1] for i in idx for p in kept[i].p]
+                println("   [mc] dropping solid n=", n, "  x ", round(minimum(xs),digits=2), "..",
+                        round(maximum(xs),digits=2), "  |lat| ", round(minimum(lat),digits=2), "..",
+                        round(maximum(lat),digits=2), "  ydrop ", round(maximum(ys)-minimum(ys),digits=3),
+                        "  tex ", join(unique([kept[i].tex for i in idx]), ","))
+            end
+        end
+        kept = [t for (i, t) in enumerate(kept)
+                if count[find(i)] >= min_component || !okc[find(i)]]
+    end
     qk(p) = (round(Int,p[1]*2000), round(Int,p[2]*2000), round(Int,p[3]*2000))
     # de-duplicate coplanar panels: GPL signs/awnings/walls are double-sided (front+back),
     # often with a few-mm THICKNESS — so they're NOT exact-vertex duplicates and still

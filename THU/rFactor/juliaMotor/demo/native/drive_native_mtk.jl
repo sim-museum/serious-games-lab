@@ -1534,9 +1534,34 @@ const SUSP_TRIM = get(ENV,"JM_SUSP_TRIM","1") != "0" ? (split(get(ENV,"JM_SUSP_T
 # (WTRACK_R itself is defined further down, so read the same env/default it does rather than
 #  referring to it -- a forward reference here parses fine and dies at load, which is what happened.)
 const RSUSP_MAXLAT = parse(Float32, get(ENV,"JM_RSUSP_MAXLAT", get(ENV,"JM_TRACK_R","0.74")))
-const RSUSPP_A = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(27288,), exclude=_RSEXC, maxlat=RSUSP_MAXLAT, trim=SUSP_TRIM) :
+# E102-S6 (PO: "axles should be HORIZONTAL between centre of wheel and chassis, not sticks pointing
+# outward and downward from the back wheels"). E102-S4 decomposed this assembly into 5 connected
+# solids and found the report's shape exactly: a 3-triangle `axlelot` solid spanning 0.62 m in x,
+# reaching the wheel plane at |lat| 0.74 and DROPPING 0.099 m across that run -- a thin isolated
+# stick, out at the wheel, sloping down. E102-S5 confirmed it on screen.
+#
+# Nothing that filters by texture or by lateral extent can remove it: the real driveshaft is the
+# same texture and reaches the same place. Its SEPARABILITY is the only handle it offers, so the
+# filter drops connected solids smaller than 4 triangles, restricted to `axlelot` so the rest of
+# the assembly's small detail is untouched. Verified with JM_MC_DIAG=1: it drops EXACTLY one solid,
+# and its measurements are S4's signature to the centimetre.
+# ⚠️ Deliberately NOT "re-pose the shaft horizontal": E102-S4 established there is no shaft to
+# re-pose -- 65 of the 89 triangles are one connected mesh spanning five textures, so the driveshaft,
+# links and brake disc are a single solid. The stick is a separate artefact, not a mis-angled part.
+# 🔴 DEFAULT OFF (0), because IT DOES NOT FIX THE REPORTED DEFECT. The filter works exactly as
+# designed -- JM_MC_DIAG=1 shows it dropping precisely one solid, S4's signature to the centimetre --
+# but a chase capture with it ON still shows the chrome rod pointing outward and downward from the
+# rear wheel, unchanged. So the 3-triangle sliver is NOT what the PO is looking at.
+# That also narrows E102 usefully: E102-S5 identified the sticks as `axlelot` via JM_RS_ONLY, and
+# since the separable axlelot solid is not it, the stick must be the DRIVESHAFT ITSELF -- part of
+# the 65-triangle connected solid that E82-S3 deliberately trims to reach the hub. The open question
+# is therefore its POSE (the assembly's placement/angle), not its membership, and "there is no
+# separable shaft to rotate" (E102-S4) is the obstacle to solve rather than a reason to stop.
+# JM_RSUSP_MINCOMP=4 re-enables the filter for anyone continuing that line.
+const RSUSP_MINCOMP = parse(Int, get(ENV, "JM_RSUSP_MINCOMP", "0"))
+const RSUSPP_A = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(27288,), exclude=_RSEXC, maxlat=RSUSP_MAXLAT, trim=SUSP_TRIM, min_component=RSUSP_MINCOMP, min_component_tex=("axlelot",)) :
                                  Render.extract_gpl_car(LOT3DO; include_groups=(27288,), only=(_RSONLY,))   # one side each —
-const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(39792,), exclude=_RSEXC, maxlat=RSUSP_MAXLAT, trim=SUSP_TRIM) :
+const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(39792,), exclude=_RSEXC, maxlat=RSUSP_MAXLAT, trim=SUSP_TRIM, min_component=RSUSP_MINCOMP, min_component_tex=("axlelot",)) :
                                  Render.extract_gpl_car(LOT3DO; include_groups=(39792,), only=(_RSONLY,))   # the halves carry a residual ±roll our posmat mis-composes
 const ARMP   = Render.extract_gpl_car(LOT3DO; only=("lotarms",), maxlat=0.95f0)  # forearms/upper arms — static (their wheel-side ends are what the eye sees)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read
