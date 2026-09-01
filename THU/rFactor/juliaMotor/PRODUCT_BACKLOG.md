@@ -4821,3 +4821,39 @@ Suite **21/21**.
 driving the same track, with the packet rate and the observed position disagreement measured on
 both sides. State the expected disagreement first: at 10 Hz it should be the S2/S3 figures plus
 whatever the loopback adds, and anything larger is a defect in the wiring rather than in the model.
+
+### E85-S4 (2026-09-01) — ✅ dead reckoning measured across TWO REAL PROCESSES, and the wiring adds nothing
+
+S2 and S3 measured `predict` against a closed-form arc **inside one process**. That establishes the
+model and is deliberately blind to everything the *wiring* can get wrong: real latency, real jitter,
+a peer learned late, a clock read at the wrong moment. So, as S3's note required, this sprint puts
+two actual processes on a socket — and states the expectation first:
+
+> On loopback the transport adds sub-millisecond latency, so the host's drawn error should be the
+> S2/S3 figure and nothing more: **mean ≈0.025 m, worst ≈0.075 m**, with packet age between 0 and
+> 100 ms. Anything materially larger is a **wiring** fault, not a model limit.
+
+Measured, host and client as separate `julia` processes over UDP:
+
+| | age mean | age max | **err mean** | **err max** |
+|---|---|---|---|---|
+| two processes, 10 Hz | 0.041 s | 0.089 s | **0.0276 m** | **0.0625 m** |
+
+against a predicted 0.025 / 0.075. The client sent **120 packets in 12.0 s — exactly 10.0 Hz**.
+**The wiring contributes nothing measurable.**
+
+No shared clock is needed and none is assumed: the client stamps each packet with its own elapsed
+milliseconds, and the host reconstructs "where was it when I drew this frame?" as `stamp + age` —
+age being the one quantity it already tracks. A gate that needed two clocks agreed would be
+measuring the clocks.
+
+**`netplay_dr2_smoke`, 7 arms, suite now 22.** Its thresholds are deliberately **loose** (0.20 m
+mean, 1.0 m max) because it exists to catch a wiring fault — which shows up as metres, or as no
+samples at all — not to re-measure the model. The tight figures stay in `netplay_dr_smoke`, against
+closed form, where no scheduler can perturb them. One arm asserts the error is **non-zero**: a
+perfect 0.0 here would mean the comparison compared nothing, which is the failure this shape is
+most likely to hide.
+
+**Next (sprint 5):** two processes each running the SIM rather than a probe — the remote car drawn
+by `remote_poses_at` in the real render loop, with the E104(a) rule enforced end to end: a remote
+car's height must come from the terrain under it, never from the packet.
