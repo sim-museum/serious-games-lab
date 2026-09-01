@@ -23,7 +23,7 @@ this index was written; that is what it exists to stop.
 |---|---|---|
 | **E85** | EPIC: multiplayer, the way GPL did it | **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
 | **E105** | a setup tab exposing modest chassis-setup changes | **values + reset DONE and gated** (E105-S1); the UI shell is the PO's call. NEW 2026-08-31. Relaxes the "no modifiable parameters" constraint, scoped to setup. assessed |
-| **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | NEW 2026-08-31, seen in the Watkins race. Two symptoms, probably two causes. assessed |
+| **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | **half (b) FIXED** (E104-S1): a −999 "off the mesh" sentinel was passing an `isfinite` guard and reaching the physics — 20.9 m of vertical travel, now 0.00. Half (a), the floating, is still open and needs a capture. |
 | **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | NEW 2026-08-31. Reopens E82's fix. assessed |
 | **E103** | wheel loss in a collision hyperspaces the car to the start line | NEW 2026-08-31. assessed |
 | **E90** | Monza and Watkins have almost no collidable barrier objects | open; the gate passing IS the symptom. assessed |
@@ -4262,3 +4262,46 @@ instruction that does not work — worse than none, since it makes the way back 
 it is not. And the gate's camber check read FAIL on working code, because a `try/catch` at top level
 hits Julia's soft-scope rule and `threw` became a new local; the check is a function now. That is
 the same trap that bit the netplay probe earlier the same night.
+
+### E104-S1 (2026-09-01) — ✅ half (b) ROOT-CAUSED AND FIXED: an "off the terrain" sentinel was reaching the physics
+
+PO: *"elastic collisions (if any) if a car goes off the road, leading to levitating and bouncing."*
+
+**It is not a collision at all.** `groundz` reports "off the terrain mesh" as the sentinel **−999**,
+and render-side callers test it as `gz > -900f0`, so the sentinel is load-bearing and correct there.
+But `drive_rt3d.jl:454` guards the height it receives with
+
+```julia
+h = groundz(wx, wz);  isfinite(h) ? Float64(h) : c.zref
+```
+
+and **−999 is finite.** It sails through the guard, the wheel is told the ground is 999 m below it,
+the suspension goes to full droop, the car falls — and the next sample that IS on the mesh slams it
+back. Levitating and bouncing, with nothing hit. **The guard was written to catch exactly this case
+and checks the wrong property.**
+
+**Measured, both arms** (`JuliaMotorMTK/tools/offroad_smoke.jl`, in the suite — a physics test, no
+display needed):
+
+| ground query off-mesh | vertical travel |
+|---|---|
+| **−999 (the old path)** | y −14.1 … +6.8 → **20.9 m** |
+| **NaN (a real "unknown")** | y −0.0 … 0.0 → **0.00 m** |
+
+Fix: the physics is fed through `groundz_phys`, which maps the sentinel to `NaN` so the existing
+`isfinite` guard rejects it as designed and the car keeps its own `zref`. Renderers keep the
+sentinel — several depend on it. All six physics call sites now use the wrapper.
+`JM_GZ_SENTINEL=1` restores the old behaviour as the negative control.
+
+⚠️ **The sentinel arm is the control and MUST misbehave.** If both arms were quiet the guard would
+not be the mechanism and the gate would be testing nothing.
+
+⚠️ **CORRECTION to E104 as filed:** it named `JM_WHEEL_REST = 0.35` as the suspect for the elastic
+behaviour. **That is wrong** — `WHEEL_REST` scales the velocity given to a **detached wheel** flying
+off after a wreck (`drive_native_mtk.jl:1726`, inside the loose-wheel push). It never touches the
+car's own contact response, which E96-S5 already proved inelastic from 5 to 80 m/s. Anyone chasing
+it would have found a correct value doing an unrelated job.
+
+**Still open — half (a):** cars drawn floating 20–40 cm above the road. Untouched by this fix: a
+20–40 cm offset is the wrong order of magnitude for a 999 m sentinel, it affects cars *on* the road,
+and it is a draw-height question. Needs a capture, which needs the display.

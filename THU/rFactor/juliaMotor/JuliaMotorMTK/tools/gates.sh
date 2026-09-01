@@ -16,7 +16,7 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PROJ="$(cd "$HERE/.." && pwd)"
 FILTER="${1:-}"
-SMOKES="wreck_smoke contact_smoke boundary3d_smoke extforce3d_smoke wheelmu_smoke drive3d_smoke stall_smoke transmission_smoke controls_smoke people_smoke damage_smoke mipcolor_smoke ai_field_smoke susp_pose_smoke netplay_smoke setup_tab_smoke"
+SMOKES="wreck_smoke contact_smoke boundary3d_smoke extforce3d_smoke wheelmu_smoke drive3d_smoke stall_smoke transmission_smoke controls_smoke people_smoke damage_smoke mipcolor_smoke ai_field_smoke susp_pose_smoke netplay_smoke setup_tab_smoke offroad_smoke"
 
 pass=0; fail=0; failed=""
 echo "JuliaMotorMTK gates  (project: $PROJ)"
