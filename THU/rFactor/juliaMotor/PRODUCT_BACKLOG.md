@@ -25,7 +25,7 @@ this index was written; that is what it exists to stop.
 | **E105** | a setup tab exposing modest chassis-setup changes | **values + reset DONE and gated** (E105-S1); the UI shell is the PO's call. NEW 2026-08-31. Relaxes the "no modifiable parameters" constraint, scoped to setup. assessed |
 | **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | **half (b) FIXED** (E104-S1): a −999 "off the mesh" sentinel was passing an `isfinite` guard and reaching the physics — 20.9 m of vertical travel, now 0.00. Half (a), the floating, is still open and needs a capture. |
 | **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | NEW 2026-08-31. Reopens E82's fix. assessed |
-| **E103** | wheel loss in a collision hyperspaces the car to the start line | NEW 2026-08-31. assessed |
+| **E103** | wheel loss in a collision hyperspaces the car to the start line | **mechanism found + fixed + gated** (E103-S1): the containment seal PLACES the car at its last on-track point, which initialises to spawn. Not yet seen in a real wreck. |
 | **E90** | Monza and Watkins have almost no collidable barrier objects | open; the gate passing IS the symptom. assessed |
 | **E91** | "Tesla brakes" — lift-off decelerates ~1.67× too hard | PO confirmed right by measurement (S4). Fix not landed. assessed |
 | **E80** | 10 fps at Spa in cockpit view | analysis to S4; 725 s of load attributed to the trackside block. No fix landed. assessed |
@@ -4305,3 +4305,39 @@ it would have found a correct value doing an unrelated job.
 **Still open — half (a):** cars drawn floating 20–40 cm above the road. Untouched by this fix: a
 20–40 cm offset is the wrong order of magnitude for a 999 m sentinel, it affects cars *on* the road,
 and it is a draw-height question. Needs a capture, which needs the display.
+
+### E103-S1 (2026-09-01) — ✅ found the hyperspace: the containment seal PLACES the car at its last on-track point
+
+PO: *"when wheels come off during a collision, the car stops dead where the impact happened. It does
+not hyperspace back to the start line, which is the current behavior."*
+
+**The teleport is `containX!(cs, LASTGX[], LASTGZ[])`.** `contain3d!` does not push — it PLACES:
+
+```julia
+c.s_pos(c.integ, [xnew, znew]); c.x = xnew; c.z = znew
+```
+
+and `(LASTGX, LASTGZ)` is the last position that was **on track**, which stops updating the moment
+the car leaves the terrain mesh. **Both are initialised to the spawn point**, so a car that wrecks
+before ever registering on-track is sealed to the start line — precisely the report.
+
+⚠️ **E95g had already seen the symptom and fixed the wrong half.** Its note reads *"the car escaped
+the world, got caught somewhere else and was flung back to the start, over and over: the PO's
+infinite loop"* — and it changed the ENERGY of the seal (`vdamp = 0` for a wreck) without changing
+**where** the seal puts the car. The flinging was never about energy.
+
+**Fix:** a wreck is sealed **where it lies**; a driveable car is still rescued to its last on-track
+point, because that is a rescue and the race continues. The rule lives in `demo/native/wreck_seal.jl`
+and the sim calls it, so the gate tests the sim's rule rather than a copy — S371 caught a gate here
+carrying its own drifted reimplementation of the wreck rule, and *"a gate asserting its own
+reimplementation tests nothing about the sim."*
+
+`wreck_seal_smoke` (in the suite, no display needed) asserts: a wreck seals at the impact site,
+**882 m from spawn** in the modelled case; a driveable car is still rescued; `JM_WRECK_SEAL_BACK=1`
+reproduces the hyperspace on demand as the negative control; and — the assumption everything else
+rests on — **`contain3d!` really does teleport** (x 100.0 → 7.0), because if it merely pushed, where
+it is pointed would not matter and this whole item would be moot.
+
+⚠️ **Not yet seen in a real wreck.** This is the mechanism and its rule, gated headlessly. Confirming
+it end to end means wrecking a car on track and watching where it comes to rest, which needs the
+display. Suite **18/18**.

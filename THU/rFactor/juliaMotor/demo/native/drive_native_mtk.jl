@@ -14,7 +14,8 @@ include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt.jl"
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt3d.jl"))); using .DriveRT3D
 include(joinpath(@__DIR__,"people_filter.jl")); using .PeopleFilter   # E101: loose-people name rule, shared with its gate
 include(joinpath(@__DIR__,"gpl_lp.jl")); using .GPLLP                    # E84/E89: GPL .lp AI lines (race.lp speed table)
-include(joinpath(@__DIR__,"susp_pose.jl")); using .SuspPose             # E82: rear-suspension corrective transform, shared with its gate  # full-3D physics (JM_3D=1)
+include(joinpath(@__DIR__,"susp_pose.jl")); using .SuspPose
+include(joinpath(@__DIR__,"wreck_seal.jl")); using .WreckSeal   # E103: where a wreck is sealed, shared with its gate             # E82: rear-suspension corrective transform, shared with its gate  # full-3D physics (JM_3D=1)
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","ibt.jl"))); using .IBT           # iRacing .ibt telemetry writer
 include("render.jl"); using .Render
 include("gpltrack.jl"); using .GPLTrack
@@ -5525,9 +5526,29 @@ function main()
                     # was flung back to the start, over and over: the PO's infinite loop. Contain it,
                     # but with vdamp = 0 so the seal KILLS the velocity instead of returning any of
                     # it. A wreck is stopping; it must never be handed energy back.
-                    if nl > FENCE_GRACE + FENCE_FAR                  # the wall failed to contain → last-resort seal (rare; never in normal play)
-                        containX!(cs, LASTGX[], LASTGZ[]; vdamp=(WRECKED[] ? 0.0 : 0.3), settle=true, groundz=groundz_phys)
-                        BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0; BND_PK[] = 0.0; OFFDIST[] = 0.0
+                    # E103 (PO 2026-09-01): "when wheels come off during a collision, the car stops
+                    # dead where the impact happened. It does not hyperspace back to the start line,
+                    # which is the current behavior."
+                    #
+                    # THIS LINE WAS THE HYPERSPACE. containX! -> contain3d! does not push, it PLACES:
+                    #   c.s_pos(c.integ, [xnew, znew]); c.x = xnew; c.z = znew
+                    # and (LASTGX, LASTGZ) is the last position that was ON TRACK, which only updates
+                    # while ONTRACK[]. A car that wrecks and leaves the mesh stops updating it, so the
+                    # seal teleports the wreck back to wherever it last had grip -- and since both are
+                    # initialised to the SPAWN point, a car that wrecks before ever registering
+                    # on-track is sent to the start line exactly as the PO describes.
+                    #
+                    # E95g got close: it saw the car "flung back to the start, over and over" and
+                    # fixed the ENERGY (vdamp = 0 for a wreck) without changing WHERE it is sealed to.
+                    #
+                    # A wreck is not lost, it is finished: seal it WHERE IT IS. For a driveable car
+                    # the old behaviour stands -- putting it back on the track is a rescue and the
+                    # race continues. JM_WRECK_SEAL_BACK=1 restores the old path.
+                    if nl > FENCE_GRACE + FENCE_FAR                  # the wall failed to contain → last-resort seal (rare; never seen since E56)
+                        (sealx, sealz) = WreckSeal.seal_target(WRECKED[], cs.x, cs.z,
+                                             LASTGX[], LASTGZ[];
+                                             seal_back = haskey(ENV, "JM_WRECK_SEAL_BACK"))
+                        containX!(cs, sealx, sealz; vdamp=(WRECKED[] ? 0.0 : 0.3), settle=true, groundz=groundz_phys)                        BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0; BND_PK[] = 0.0; OFFDIST[] = 0.0
                     end
                 else
                     BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0; BND_PK[] = 0.0
