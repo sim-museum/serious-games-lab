@@ -21,6 +21,7 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
+| **E105** | a setup tab exposing modest chassis-setup changes | NEW 2026-08-31. Relaxes the "no modifiable parameters" constraint, scoped to setup. assessed |
 | **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | NEW 2026-08-31, seen in the Watkins race. Two symptoms, probably two causes. assessed |
 | **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | NEW 2026-08-31. Reopens E82's fix. assessed |
 | **E103** | wheel loss in a collision hyperspaces the car to the start line | NEW 2026-08-31. assessed |
@@ -4116,3 +4117,51 @@ speed from 5 to 80 m/s. **The wheel path was never covered by that work**, and 0
 twice certified geometry that was wrong on screen (E82-S3, and the susp_pose gate's frame). Take a
 Watkins chase shot on the road and one off it, measure the wheel-to-terrain gap, and state the
 expected numbers before the run.
+
+### E105 (PO 2026-08-31) — 🔴 a SETUP TAB, allowing modest changes to the chassis values easiest to set in the physics model
+
+PO, verbatim: *"setup tab, allowing modest changes to whatever chassis setup values are easiest to
+set in the physics model."*
+
+⚠️ **This deliberately relaxes a standing constraint, and that is the PO's call — but it must be
+recorded, not silently reversed.** The standing instruction has been *"the car physics should be
+determined entirely by the iracing ibt data, there should be no modifiable parameters"* (PO
+2026-08-27), and it is why `JM_BRAKE_MAX`/`JM_BRAKE_BIAS` were REMOVED and why E100 exists at all.
+The newer instruction governs, **scoped to setup values**: the ibt session remains the SOURCE and the
+DEFAULT, and the tab offers modest deltas from it. It is not a licence to reintroduce tuning knobs
+elsewhere in the physics.
+
+**The easiest values are already known, because E100 wired exactly them.** Each has a setter that
+must run before the car is built, validates its input, and prints its provenance:
+
+| value | setter | per corner? | notes |
+|---|---|---|---|
+| spring rates | `set_suspension!` | yes (FL/FR/RL/RR) | E100-S4. `wheel_rate(N/mm)` holds the units + motion ratio |
+| static ride height | `set_ride_height!` | yes | E100-S5. **Telemetry only** — changing it will not alter handling, so it must not be presented as if it does |
+| gearbox ratios + final drive | `set_transmission!` | n/a | E100 |
+| mass + front share | `set_mass!` | n/a | E100-S2, derived from CornerWeights |
+
+**Not easy, and the tab should NOT offer them without new physics:**
+* **camber** — read from the ibt but **NOT MODELLED** (E100-S6): the live tyre has no camber term at
+  all. A slider here would move nothing.
+* **tyre pressures** — only the thermal tyre models pressure, and that file is loaded by `test/`
+  only, not the live sim.
+* **brake bias / `Tbrake_max` / `CdA`** — constants, deliberately, under the standing constraint.
+
+**Design notes:**
+* **There is no UI framework to hang a tab on.** The only front end today is `choose_track()`, a
+  `readline()` menu on stdin (`drive_native_mtk.jl:64`). A "tab" therefore means either extending
+  that text menu or building an in-window screen — a real decision the PO should make, not one to
+  assume. Cheapest useful version is a pre-race text screen listing the session's values with
+  ±modest deltas.
+* **Defaults must remain the ibt session's values**, so "touch nothing" reproduces today's car
+  exactly and no existing capture or gate moves.
+* Keep the provenance line printing (`<- <session>.ibt`), and say when a value has been **modified
+  from** the session rather than read from it — a silent divergence from the reference is the exact
+  failure E100 exists to prevent.
+* **Ranges should be modest and validated.** The setters already reject non-positive values; the tab
+  should clamp to a sane band around the session value rather than exposing the full range.
+
+**Acceptance:** a pre-race screen exposes at least spring rates and gearbox ratios as modest deltas
+from the loaded session, the car is built with them, and the provenance line distinguishes
+"from the ibt" from "modified by the player".
