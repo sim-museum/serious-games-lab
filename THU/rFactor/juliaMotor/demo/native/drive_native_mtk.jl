@@ -1640,6 +1640,17 @@ const SHOTS = [let f = split(String(spec), ":")
                end for (i, spec) in enumerate(filter(!isempty, split(get(ENV, "JM_SHOTS", ""), ";")))]
 const SHOTS_DIR   = get(ENV, "JM_SHOTS_DIR", "/tmp")
 const SHOT_SETTLE = parse(Int, get(ENV, "JM_SHOT_SETTLE", "38"))
+# E104-S4 (PO: "every car FLOATS 20-40 cm above the road"). The probes so far measured the AI LINE
+# against the terrain (E104-S2/S3: exactly 0.0) and wheel RADII against their placement (within
+# 4 mm) -- both clean, which sent the item back to "my own eye may be wrong".
+# Neither measured the thing the eye actually sees. Both the player and every AI car are drawn as
+#     <car origin> * translate([wx, r, wz])
+# (`wheelmat` / `aiWheel`), so a wheel's contact patch lands on the road ONLY IF THE CAR ORIGIN'S
+# HEIGHT IS THE GROUND HEIGHT. If a car's y is its chassis, hub or CoG height instead, every wheel
+# on it is drawn exactly that far up -- player and AI alike, which is what "every car" means.
+# That quantity had never been printed. JM_WHEELGAP=<n> prints it every n frames, for the player
+# and for each AI car, in the RENDER frame the eye is looking at.
+const WHEELGAP = parse(Int, get(ENV, "JM_WHEELGAP", "0"))
 const FPSDIAG = parse(Int, get(ENV, "JM_FPSDIAG", "0"))   # E80: frame-time report, per view
 const FRAMEPROF = parse(Int, get(ENV, "JM_FRAMEPROF", "0"))  # E80: per-PHASE frame profiler
 const PROF_WORLD = Ref(0.0); const PROF_HUD = Ref(0.0); const PROF_N = Ref(0); const PROF_TOT = Ref(0.0)
@@ -5752,6 +5763,36 @@ function main()
         # exactly like the player's 3-D car (was yaw-only → they stayed flat).  6-tuple (x,y,z,θ,pitch,roll).
         aibankP(pc) = (isfinite(pc.pitch) ? pc.pitch : 0.0, (isfinite(pc.roll) ? pc.roll : 0.0) + terrain_roll(pc))
         aibankK(p)  = (cc=(x=p[1], z=p[3], θ=p[4]); (terrain_pitch(cc), terrain_roll(cc)))   # kinematic: terrain only (NB local must NOT be named `cs` — that would clobber the player car in the enclosing scope → cs.y FieldError)
+        # ── E104(a) FIX (S4) ────────────────────────────────────────────────────────────────────
+        # THE MEASURED DEFECT: AI cars are drawn up to 0.30 m off the terrain (median +0.09 m,
+        # 13 of 45 samples at or above +0.20 m, min -0.19 m) while the player measures 0.00 m.
+        # That is the PO's "every car floats 20-40 cm above the road", and the negatives are the
+        # same bug sinking a car into it.
+        #
+        # THE CAUSE is one line in `RaceAI.pose_at`: it interpolates the centreline's x, y, z and
+        # then applies the lane offset TO x AND z ONLY --
+        #     (x + lane*(-sin θ),  y,  z + lane*cos θ,  θ)
+        # -- so a car running `lane` metres to the side of the centreline is drawn at the
+        # CENTRELINE's height. Across a cambered or cross-sloped road that is off by
+        # lane x cross-slope, and lanes here are +-2.4 m, which is exactly the 0.2-0.3 m measured.
+        # Every wheel then inherits it, because `aiWheel` places wheels at <origin> + [wx, r, wz].
+        #
+        # ⚠️ This is why E104-S2's mechanism was RIGHT and E104-S3's refutation of it was WRONG:
+        # S3 measured `AILINE.y - groundz` at the line's OWN points, where lane = 0 and the error
+        # is zero BY CONSTRUCTION. It never sampled a car at its actual laterally-offset position.
+        # A refutation is only as wide as the case it tested.
+        #
+        # The fix re-grounds the drawn pose at the point the car is ACTUALLY drawn at. It is applied
+        # here rather than inside `pose_at` because `pose_at` lives in ai.jl and has no terrain --
+        # and because the same call feeds AI PLACEMENT, where the line's own y is what re-anchors a
+        # stuck car. Only what is DRAWN is re-grounded.
+        # ⚠️ hat3d, NOT groundz: groundz mutates LASTZ[]/ONTRACK[], the PLAYER's ground state, so
+        # calling it five times a frame for the AI field would rewrite what the player's next
+        # physics step reads. Off the terrain (h[3] false) the pose is left exactly as it was.
+        # The mechanism itself is RaceAI.reground (ai.jl) so it can be gated; this supplies the
+        # terrain query it needs, in the (y, ok) form it expects.
+        ai_height(x, z) = (h = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf); (Float64(h[1]), h[3]))
+        ai_ground(p) = RaceAI.reground(p, ai_height)
         ai_poses = if REPLAY                                       # E18: AI poses straight from the recording
             NTuple{6,Float64}[(a[1],a[2],a[3],a[4],0.0,0.0) for a in rep_ai_raw]
         elseif AILINE === nothing || phase[] != :race              # AI hidden until the race starts (after qualifying)
@@ -5759,7 +5800,7 @@ function main()
         elseif !race_go[] || (AI_HEADSTART > 0 && ai_release[] >= 0.0 && cs.t < ai_release[])
             # standing on the grid -- not yet launched, or held by the PO's head start
             AI_PHYSICS ? [(b=aibankP(pc); (pc.x, groundz(pc.x, pc.z), pc.z, pc.θ, b[1], b[2])) for pc in AIPHYS] :
-                         [(p=RaceAI.pose_at(AILINE, c.s, c.lane); b=aibankK(p); (p[1],p[2],p[3],p[4],b[1],b[2])) for c in AICARS]
+                         [(p=RaceAI.pose_at(AILINE, c.s, c.lane); b=aibankK(p); ai_ground((p[1],p[2],p[3],p[4],b[1],b[2]))) for c in AICARS]
         elseif AI_PHYSICS
             # GC HYBRID: project each physics car onto the line → update the brain → the controller
             # steers it toward its rail at the planned speed → step the JM 2-D physics.
@@ -5837,7 +5878,7 @@ function main()
             pp = RaceAI.project(AILINE, cs.x, cs.z)                # the human as a racecraft object (s, lateral, speed)
             poses, hit = RaceAI.step_field!(AICARS, AILINE, ddt; scale = AI_SCALE, player = (pp[1], pp[2], cs.v), rel = AI_REL)
             ai_hit[] = hit
-            [(b=aibankK(p); (p[1],p[2],p[3],p[4],b[1],b[2])) for p in poses]   # add terrain bank (kinematic has no body roll)
+            [(b=aibankK(p); ai_ground((p[1],p[2],p[3],p[4],b[1],b[2]))) for p in poses]   # E104-S4: re-grounded at the DRAWN position; add terrain bank (kinematic has no body roll)
         end
         # C: time each AI lap — works for BOTH the physics and kinematic fields (we watch AICARS[i].lap,
         # which both paths bump as the car crosses start/finish).  ai_best[i] = that car's fastest lap.
@@ -5937,6 +5978,23 @@ function main()
                     Render.rotz(Float32(p[5])) * Render.rotx(Float32(p[6]))   # body follows the hill (pitch + cross-slope/collision roll)
         aiBody(p, cm) = aiCar(p) * Render.translate(collect(cm.body_off))
         aiWheel(p,wx,wz,r) = aiCar(p) * Render.translate(Float32[wx, r, wz]) * Render.rotz(Float32(spin))
+        # E104-S4: the measurement the eye is actually making. See JM_WHEELGAP above.
+        if WHEELGAP > 0 && (frames % WHEELGAP) == 0
+            # ⚠️ MUST NOT call groundz(): it MUTATES LASTZ[] and ONTRACK[], the player's own
+            # ground-tracking state. The first cut of this probe did, so querying five AI positions
+            # per sample rewrote the height and on-track flag the PLAYER's next physics step reads --
+            # an instrument that changes the thing it measures. hat3d is the pure query underneath
+            # groundz; `ref=Inf` and the (x,z) order are copied from groundz itself so the probe and
+            # the sim ask the terrain exactly the same question.
+            wgap(y, x, z) = (h = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf);
+                             h[3] ? round(y - Float64(h[1]), digits=3) : NaN)
+            println("  [wheelgap] t=", round(cs.t, digits=1), "  player ", wgap(cs.y, cs.x, cs.z), " m",
+                    isempty(ai_poses) ? "   (no AI on track yet)" : "")
+            for (k, p) in enumerate(ai_poses)
+                println("  [wheelgap]      AI ", k, "  ", wgap(p[2], p[1], p[3]), " m")
+            end
+            flush(stdout)
+        end
         # ---- shadow pass: scene depth from the sun, light box on the car ----
         lightVP = Render.light_vp(Float32[cs.x, cs.y, -cs.z], LIGHTDIR)
         Render.shadow_pass(depthprog, shadowfbo, lightVP) do dp

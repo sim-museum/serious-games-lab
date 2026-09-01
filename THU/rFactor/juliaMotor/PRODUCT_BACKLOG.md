@@ -4681,3 +4681,60 @@ says so rather than pretending a predicate covers it.
 back when S1 wrote it. It now names `R` too. S1's own lesson was that an instruction which does not
 work is worse than none; an instruction that is merely *incomplete* fails the same way once a better
 route exists.
+
+### E104-S4 (2026-09-01) — ✅ **E104(a) FOUND, FIXED AND GATED. S2 was right; S3's refutation was too narrow.**
+
+**The measurement nobody had made.** Both the player and every AI car are drawn as
+`<car origin> * translate([wx, r, wz])` (`wheelmat` / `aiWheel`), so a wheel meets the road **only
+if the car origin's height is the ground height**. That single number had never been printed.
+`JM_WHEELGAP=<n>` now prints it, per car, in the render frame the eye is looking at.
+
+Watkins, 5 AI, before the fix:
+
+| | min | median | max | ≥ +0.20 m |
+|---|---|---|---|---|
+| **AI cars** | −0.192 m | **+0.093 m** | **+0.302 m** | **13 of 45 samples** |
+| player | — | **0.000 m** | — | 0 |
+
+That is the PO's *"every car floats 20–40 cm above the road"*, measured. The negatives are the same
+bug sinking a car **into** the road.
+
+**The cause is one line in `RaceAI.pose_at`:** it interpolates the centreline's `x, y, z` and then
+applies the lane offset **to `x` and `z` only** — `y` is never re-sampled. A car running `lane`
+metres to the side is posed at the *centreline's* height, wrong by `lane × cross-slope`. Lanes here
+are ±2.4 m, and 2.4 × a ~10 % camber is 0.24 m — the measured range.
+
+⚠️ **So E104-S2's mechanism was RIGHT and E104-S3's refutation of it was WRONG.** S3 measured
+`AILINE.y − groundz` **at the line's own points**, where `lane = 0` and the error is zero *by
+construction*, and reported `min 0.0 median 0.0 max 0.0` as if it closed the question. It never
+sampled a car at its actual laterally-offset position. **A refutation is only as wide as the case it
+tested** — and the "0.0 exactly" that made it feel conclusive was the tell, not the proof: an
+identity, not a measurement. S3 then concluded my eye was the weakest link and told the next sprint
+not to open another mechanism. My eye was right.
+
+**Fix:** `RaceAI.reground(pose, height)` re-grounds a pose at its own `(x, z)`. Applied to both
+kinematic draw branches (grid and racing). After: **every AI reads exactly 0.000 m — min, median
+and max.**
+
+⚠️ **NOT applied to placement**, only to what is DRAWN — re-anchoring a stuck AI onto the rail
+deliberately wants the line's own `y`.
+
+⚠️ **`hat3d`, never `groundz`.** `groundz` **mutates `LASTZ[]` and `ONTRACK[]`**, the *player's*
+ground-tracking state. **My first probe called it** — so sampling five AI positions per frame
+rewrote the height and on-track flag the player's next physics step reads: an instrument that
+changes what it measures. Re-measured through the pure `hat3d` query; the numbers held, but they
+were not entitled to.
+
+**Gated: `reground_smoke` (9 arms, suite now 20).** A straight road with a known constant
+cross-slope, so the correct height is closed-form and no terrain or sim is needed. It asserts the
+correction, that only the height changes, 4- and 6-tuples, that an off-terrain query returns the
+pose **untouched**, and — as a **positive control** — that the raw `pose_at` really is off by
+`lane × slope`, so the gate goes red instead of passing vacuously if that is ever fixed upstream.
+One arm pins S3's own trap: **at lane 0 there is nothing to correct.**
+
+`reground` lives in `ai.jl`, not inline in `drive_native_mtk.jl`, because that file launches the sim
+and no test can load it (E103-S2) — the same rule E105-S2 applied to the setup menu.
+
+⚠️ **Still open, and it needs the PO:** this fixes the AI field. If cars still look high after it,
+the remaining half is the *player's* car — which measures 0.000 m, so it would be a different
+mechanism entirely.

@@ -174,7 +174,33 @@ function pose_at(line::AILine, s, lane)
     z = line.z[i]*(1-f) + line.z[j]*f
     y = line.y[i]*(1-f) + line.y[j]*f
     θ = line.θ[i] + f*wrapπ(line.θ[j]-line.θ[i])
+    # ⚠️ E104(a): `y` is the CENTRELINE's height and the lane offset moves only x and z. A car
+    # running `lane` metres to the side is therefore posed at the centreline's height, which is
+    # wrong by lane x cross-slope wherever the road is cambered. Callers that DRAW the pose must
+    # put it back on the ground with `reground` below; callers that PLACE a car on the rail
+    # (re-anchoring a stuck AI) deliberately want the line's own y.
     (x + lane*(-sin(θ)), y, z + lane*cos(θ), θ)             # lane offset (left = (-sinθ, cosθ))
+end
+
+"""    reground(p, height) -> pose
+
+Return pose `p` with its height taken from the terrain AT THE POSE'S OWN (x, z), rather than from
+the racing line's centreline. `height(x, z)` must return `(y, ok)`; when `ok` is false the pose is
+returned UNCHANGED, because off the terrain there is no better answer than the line's.
+
+This exists because `pose_at` offsets a car laterally without re-sampling the ground under it
+(E104(a): AI cars measured up to 0.30 m off the terrain, median 0.09 m, while the player measured
+0.00 m — the PO's "every car floats 20–40 cm above the road"). Every wheel inherits the error,
+since wheels are drawn at `<car origin> + [wx, r, wz]`.
+
+It lives HERE, in the module, rather than inline in `drive_native_mtk.jl`, so it can be tested:
+that file launches the sim and cannot be loaded by a gate (E103-S2).
+Accepts a 4-tuple or a 6-tuple (the draw path carries pitch/roll too).
+"""
+function reground(p, height)
+    h = height(p[1], p[3])
+    h[2] || return p
+    length(p) >= 6 ? (p[1], h[1], p[3], p[4], p[5], p[6]) : (p[1], h[1], p[3], p[4])
 end
 
 "Project a world point onto the line → (arc-length s, signed lateral offset, left +)."
