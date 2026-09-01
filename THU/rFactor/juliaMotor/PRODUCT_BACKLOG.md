@@ -3908,3 +3908,35 @@ per-corner plumbing cannot pass by construction — the live `KS` equals the ins
 
 ⚠️ Still frozen, and honestly not fixed: `ride_height_mm` and `camber_deg` are also per-corner
 session data and are still constants. Same shape, same fix; not done here.
+
+### E100-S5 (2026-08-31) — ✅ static ride height comes from the ibt, per corner; the model had no rake at all
+
+E100-S4 closed by naming what was still frozen: *"`ride_height_mm` and `camber_deg` are also
+per-corner session data and are still constants."* This is the ride-height half.
+
+`RH0 = 0.075` was **one** number for all four corners. Measured against the sessions, it is wrong
+for both axles and cannot express rake at all:
+
+| session | ibt RideHeight mm (LF/RF/LR/RR) |
+|---|---|
+| Nordschleife (×6 captures) | 82.9 / 82.9 / **105.2 / 105.2** |
+| skidpad (×3) | 86.7 / 92.1 / 102.7 / 108.3 |
+
+Every session is **raked** — rear 22 mm higher than front on the circuit — and the skidpad is
+asymmetric as well. The shipped 75 mm matched **no corner of any session**.
+
+`set_ride_height!(fl, fr, rl, rr)` joins `set_transmission!`, `set_mass!` and `set_suspension!`, and
+`drive_native_mtk.jl` installs all four from the same session and prints where each came from.
+
+⚠️ **Scope, stated honestly: this is a TELEMETRY defect, not a handling one.** `c.rh` feeds only the
+exported `LF/RF/LR/RRrideHeight` channels (`drive_native_mtk.jl:5485`); it is not read by the
+physics. The cost is that every ride-height comparison against a reference ibt — which is exactly
+what `ibt_compare.jl` exists to do — was measured off a baseline that was wrong by 8 mm at the front
+and 30 mm at the rear, and rakeless where the real car is raked.
+
+Gated in `transmission_smoke.jl`: 9 sessions carry four RideHeights, they vary between sessions,
+**every session is raked** (so a single shared constant cannot pass), the live `RIDE_H` equals the
+installed session's, and **the shipped 75 mm matched no corner of it**. Rubbish heights are refused.
+
+⚠️ Still frozen: `camber_deg` (Nordschleife −0.4/−0.4/−0.5/−0.5, skidpad +0.5/−0.5/+0.3/−0.5 — sign
+changes across the car). Same shape again; not done here.

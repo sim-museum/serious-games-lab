@@ -402,6 +402,13 @@ let
             # The model used to share one spec per axle, so the rates could not follow the session
             # at all; they stayed frozen wherever they were once copied from. wheel_rate() carries
             # the N/mm -> N/m conversion and the motion ratio, so this stays a wiring job.
+            # E100 S5: static ride heights, per corner, from the same session (mm -> m).
+            let rh = pp.ride_height_mm
+                if all(k -> haskey(rh, k) && isfinite(rh[k]) && rh[k] > 0, (:LF,:RF,:LR,:RR))
+                    DriveRT3D.set_ride_height!(rh[:LF]/1000, rh[:RF]/1000, rh[:LR]/1000, rh[:RR]/1000;
+                                               source = basename(IBTTMPL))
+                end
+            end
             let sp = pp.spring_rate_Npmm
                 if all(k -> haskey(sp, k) && isfinite(sp[k]) && sp[k] > 0, (:LF,:RF,:LR,:RR))
                     DriveRT3D.set_suspension!(DriveRT3D.wheel_rate(sp[:LF]), DriveRT3D.wheel_rate(sp[:RF]),
@@ -425,6 +432,8 @@ let
     # constants is the defect, not the absence of one.
     println("  springs: ", join((round(Int, k) for k in DriveRT3D.KS[]), " / "),
             " N/m (FL/FR/RL/RR)   <- ", DriveRT3D.KS_SRC[])
+    println("  ride ht: ", join((round(1000*h, digits=1) for h in DriveRT3D.RIDE_H[]), " / "),
+            " mm (FL/FR/RL/RR)   <- ", DriveRT3D.RIDE_H_SRC[])
 end
 # PO 2026-08-27 (found by a real drive): every session ended with
 #   .ibt export failed: SystemError("opening file .../lotus49_... .ibt", 2, nothing)

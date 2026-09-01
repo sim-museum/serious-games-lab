@@ -20,7 +20,7 @@ for f in ("tyre.jl","powertrain.jl","vehicle_3d.jl")
     include(joinpath(HERE, "components", f))
 end
 
-export Car3D, build_car3d, set_suspension!, wheel_rate, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, wheelmu3d!, world_velocity, damage_hit!, damage_impact!, damage_engine!, damage_mu, engine_power, engine_dead, damaged, damage_reset!
+export Car3D, build_car3d, set_suspension!, wheel_rate, set_ride_height!, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, wheelmu3d!, world_velocity, damage_hit!, damage_impact!, damage_engine!, damage_mu, engine_power, engine_dead, damaged, damage_reset!
 
 # E100: the transmission is SESSION data, not a car constant. The Lotus 49's gears are
 # adjustable and the ibt captures prove it -- Nurburgring runs [2.23,1.72,1.32,1.04,0.846]
@@ -261,7 +261,27 @@ function mass_from_corner_weights(cw)
 end
 const MAXSTEER = 0.30
 const RW_R = 0.33
-const RH0 = 0.075                                  # static chassis ride height [m] (for the rideHeight channel)
+# E100 S5: STATIC RIDE HEIGHT is session data too, and per corner. The single 0.075 m constant was
+# wrong for both axles and carried NO RAKE: the Nordschleife session sets 82.9 mm front / 105.2 mm
+# rear, and the skidpad is asymmetric as well as raked (86.7 / 92.1 / 102.7 / 108.3). This feeds the
+# exported LF/RF/LR/RR rideHeight channels only -- not the physics -- so the cost is that every
+# ride-height comparison against the reference ibt was measured off a wrong baseline, which is
+# precisely what ibt_compare.jl exists to do.
+const RH0 = 0.075                                  # fallback only; see RIDE_H
+const RIDE_H = Ref((RH0, RH0, RH0, RH0))           # FL, FR, RL, RR static ride height [m]
+const RIDE_H_SRC = Ref("built-in fallback (0.075 m at every corner -- NOT from an ibt, and no rake)")
+
+"""    set_ride_height!(fl, fr, rl, rr; source) -> nothing
+
+Install per-corner STATIC ride heights [m] from an ibt session's four RideHeight channels.
+Unlike the gearbox/mass/springs this may be called at any time: it feeds the reported channel
+rather than an MTK parameter.
+"""
+function set_ride_height!(fl::Real, fr::Real, rl::Real, rr::Real; source::AbstractString="unknown")
+    all(h -> h > 0, (fl, fr, rl, rr)) || error("set_ride_height!: non-positive height in $((fl,fr,rl,rr))")
+    RIDE_H[] = (float(fl), float(fr), float(rl), float(rr)); RIDE_H_SRC[] = source
+    nothing
+end
 const TC_ON   = !haskey(ENV, "JM_NOTC")            # traction aid (see drive_rt.jl) — keeps the rear below its slip limit
 const TC_SLIP = parse(Float64, get(ENV, "JM_TC_SLIP", "0.06"))
 const TC_VLO  = parse(Float64, get(ENV, "JM_TC_VLO", "25.0"))   # speed gate: off below, full above (peel-out lives at low speed)
@@ -333,7 +353,7 @@ function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
               _musetters(sys),
               getall, 1, y0, ntuple(_->0.0,4),
               x0, y0, z0, θ0, v0, 0.0, 0.0, 1, ntuple(_->(0.0,0.0,0.0),4),
-              0.0, 0, 0.0, 0.0, true, 0.0, 0.0, 9.80665, 0.0, ntuple(_->RH0,4))
+              0.0, 0, 0.0, 0.0, true, 0.0, 0.0, 9.80665, 0.0, RIDE_H[])
     c.s_gr(c.integ, GEARS[c.gear]); getall(integ)
     for _ in 1:3; step_car3d!(c, 0.3, 0.0, 0.0, 1/60); end
     for _ in 1:3; step_car3d!(c, 0.3, 0.0, 0.0, 1/60; clutch = 0.5, manual = true); end
@@ -370,7 +390,7 @@ function build_cars3d(poses; brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
                   s_fx,s_fy,s_mz,s_cda, s_mu,
                   getall, 1, 0.0, ntuple(_->0.0,4),
                   x0, 0.0, z0, θ0, v0, 0.0, 0.0, 1, ntuple(_->(0.0,0.0,0.0),4),
-                  0.0, 0, 0.0, 0.0, true, 0.0, 0.0, 9.80665, 0.0, ntuple(_->RH0,4))
+                  0.0, 0, 0.0, 0.0, true, 0.0, 0.0, 9.80665, 0.0, RIDE_H[])
         c.s_gr(c.integ, GEARS[c.gear]); getall(integ)
         for _ in 1:3; step_car3d!(c, 0.3, 0.0, 0.0, 1/60); end
         for _ in 1:3; step_car3d!(c, 0.3, 0.0, 0.0, 1/60; clutch=0.5, manual=true); end
@@ -489,7 +509,7 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
     μc = (1.36, 1.36, 1.40, 1.40)
     c.tc = ntuple(i -> (a[6+i]/mg4, a[10+i]/mg4, μc[i]*max(a[18+i],1.0)/mg4), 4)
     # per-corner ride height = static + chassis-mount rise − road drop (grows when a wheel droops in the air)
-    c.rh = ntuple(i -> RH0 + (WHEELS[i][1]*c.pitch + WHEELS[i][2]*c.roll + c.heave) - (terr[i]-c.zref), 4)
+    c.rh = ntuple(i -> RIDE_H[][i] + (WHEELS[i][1]*c.pitch + WHEELS[i][2]*c.roll + c.heave) - (terr[i]-c.zref), 4)
     # E6: YAW-RATE divergence guard.  The stiff 3-D tyre/contact can spin the yaw rate r up to 100s of
     # rad/s on the big elevation/speed (Spa Eau Rouge, Nürburgring) — the integrator diverging, which the
     # VERTICAL guard above can't catch and place3d! can't reset.  A real spin is < ~3 rad/s, so a > 10 rad/s

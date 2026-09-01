@@ -105,6 +105,36 @@ let springs = Dict{String,NTuple{4,Float64}}()
           round(DriveRT3D.wheel_rate(48.0)) == 29_198, string(round(DriveRT3D.wheel_rate(48.0))))
 end
 
+# 3c. E100 S5: STATIC RIDE HEIGHT, per corner. The old single 0.075 m constant was wrong for both
+# axles and carried NO RAKE -- the Nordschleife runs 82.9 mm front / 105.2 mm rear. It feeds the
+# exported rideHeight channels, so every comparison against a reference ibt was measured off a
+# wrong baseline.
+let heights = Dict{String,NTuple{4,Float64}}()
+    for f in files
+        p4 = Setup.setup_params(IBT.session_yaml(IBT.ibt_open(f)))
+        rh = p4.ride_height_mm
+        all(k -> haskey(rh, k) && isfinite(rh[k]), (:LF,:RF,:LR,:RR)) || continue
+        heights[basename(f)] = Tuple(rh[k]/1000 for k in (:LF,:RF,:LR,:RR))
+    end
+    check("ibt carries a RideHeight for all four corners", !isempty(heights),
+          string(length(heights), " session(s)"))
+    check("ride heights VARY between sessions", length(unique(values(heights))) > 1,
+          string(length(unique(values(heights))), " distinct sets"))
+    # Rake is the point the old constant could not express at all: rear higher than front.
+    check("every session is RAKED (rear higher than front)",
+          !isempty(heights) && all(v -> v[3] > v[1] && v[4] > v[2], values(heights)),
+          string(count(v -> v[3] > v[1] && v[4] > v[2], collect(values(heights))), " raked"))
+    if !isempty(heights)
+        (nm, v) = first(sort(collect(heights); by = first))
+        DriveRT3D.set_ride_height!(v...; source = nm)
+        check("live RIDE_H equals the session's four heights", DriveRT3D.RIDE_H[] == v,
+              join((round(1000*h, digits=1) for h in DriveRT3D.RIDE_H[]), "/") * " mm")
+        check("the shipped 75 mm constant matched NO corner of it",
+              all(h -> abs(h - 0.075) > 1e-6, v),
+              join((round(1000*h, digits=1) for h in v), "/") * " mm vs 75.0")
+    end
+end
+
 # 4. Rubbish must be refused rather than silently installed.
 for (name, gears, final) in (("wrong count", [1.0, 2.0], 4.11),
                              ("non-positive ratio", [2.23, 1.72, 1.32, 1.04, -0.5], 4.11),
@@ -123,6 +153,12 @@ for (name, r) in (("non-positive spring rate", (18_250.0, 0.0, 29_200.0, 29_200.
                   ("negative spring rate", (18_250.0, 18_250.0, -1.0, 29_200.0)))
     threw = false
     try; DriveRT3D.set_suspension!(r...); catch; threw = true; end
+    check("rejects $name", threw, threw ? "threw" : "ACCEPTED IT")
+end
+for (name, h) in (("non-positive ride height", (0.083, 0.0, 0.105, 0.105)),
+                  ("negative ride height", (0.083, 0.083, -0.01, 0.105)))
+    threw = false
+    try; DriveRT3D.set_ride_height!(h...); catch; threw = true; end
     check("rejects $name", threw, threw ? "threw" : "ACCEPTED IT")
 end
 
