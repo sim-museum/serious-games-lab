@@ -4601,3 +4601,40 @@ ELEVATION was corrected the same way is exactly the open question.**
 ⚠️ Do not "fix" this by adding an offset. If `line.y` is wrong, the line is what to correct — or the
 AI should sample the terrain like the physics path already does. Three E102 sprints were lost to
 adjusting numbers before the object was identified.
+
+### E104-S3 (2026-09-01) — 🔴 BOTH mechanisms REFUTED by measurement, including S2's. And my reading of the capture may itself be wrong
+
+**S2's mechanism is dead.** It proposed that AI cars take their height from the racing line rather
+than the terrain. Measured directly in the sim (`JM_LINE_Y=1`, 209 samples round Watkins):
+
+```
+line.y - groundz:   min 0.0   median 0.0   max 0.0 m
+```
+
+**The AI line's elevation IS the terrain height, exactly.** The rail-follower path places AI cars on
+the ground, same as the player.
+
+**The follow-up hypothesis is dead too.** `wheelspec` reuses the Lotus hub geometry for every AI
+chassis while each loads its own wheel mesh, so a mismatched radius would float that car. Measured
+across all six:
+
+| chassis | front radius | rear radius |
+|---|---|---|
+| Lotus / Ferrari / Brabham / BRM / Eagle / Cooper | 0.311–0.312 | 0.336 |
+
+against placements of **0.31 front / 0.34 rear** — so every wheel's contact patch is **within 4 mm
+of the ground**. Nothing floats by construction.
+
+⚠️ **So the geometry says the cars are planted, and I should be honest that S2's evidence was my own
+eye on a 4× upscale of a distant car.** I described "a clear gap under its tyres and no contact
+shadow"; at that scale, on a receding road, that reading is not safe. Two measured refutations
+against one visual impression means **the impression is now the weakest link**, not the code.
+
+**What E104(a) actually needs next, and it is not another hypothesis:**
+1. a capture with a **known scale** — the car close to the camera, ideally side-on, where a 20–40 cm
+   gap is tens of pixels rather than three;
+2. the PO's own view: he reported it while driving, so **which cars, at what distance, on which
+   track** would narrow it far faster than more geometry.
+
+⚠️ Do not open a third mechanism before that. E102 cost three sprints to hypotheses that a single
+capture then settled; this item has now cost two.

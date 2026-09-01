@@ -4729,6 +4729,24 @@ function main()
             @warn "JM_AI_GPLLINE: $(TRACKSEL) is re-centred, so GPL's dlong index does not align -- AI keep the κ speed model"
         end
     end
+    # E104(a) probe (JM_LINE_Y=1): is the AI LINE's stored elevation the same as the TERRAIN's?
+    # AI cars are drawn at pose_at(...)[2] = line.y (the rail-follower path is the default, since
+    # AI_PHYSICS is opt-in), while the player's car takes cs.y from the physics, which tracks the
+    # terrain. If line.y sits above groundz, every AI car floats by that much and the player's does
+    # not -- which is exactly what the PO reported and what the capture shows.
+    if AILINE !== nothing && haskey(ENV, "JM_LINE_Y")
+        n = length(AILINE.x); diffs = Float64[]
+        for k in 1:max(1, n ÷ 200):n
+            g = groundz(AILINE.x[k], AILINE.z[k])
+            push!(diffs, AILINE.y[k] - Float64(g))
+        end
+        sort!(diffs)
+        md = diffs[max(1, length(diffs) ÷ 2)]
+        println("  [line_y] ", length(diffs), " samples  line.y - groundz:  min ",
+                round(minimum(diffs), digits=3), "  median ", round(md, digits=3),
+                "  max ", round(maximum(diffs), digits=3), " m")
+        flush(stdout)
+    end
     AICARS = AILINE === nothing ? RaceAI.AICar[] : RaceAI.init_cars(AILINE, N_AI; start_s = 30.0)
     # B (PO): physics-based per-car pace.  power/weight → pace, tempered + normalised so the FASTEST car
     # present = 1.0 (it hits the GPLrank ref at 100 %); the rest spread back by their deficit so the field
