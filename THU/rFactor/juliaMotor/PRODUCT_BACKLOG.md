@@ -21,6 +21,7 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
+| **E85** | EPIC: multiplayer, the way GPL did it | **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
 | **E105** | a setup tab exposing modest chassis-setup changes | NEW 2026-08-31. Relaxes the "no modifiable parameters" constraint, scoped to setup. assessed |
 | **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | NEW 2026-08-31, seen in the Watkins race. Two symptoms, probably two causes. assessed |
 | **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | NEW 2026-08-31. Reopens E82's fix. assessed |
@@ -4178,3 +4179,47 @@ must run before the car is built, validates its input, and prints its provenance
    The session's own value stays displayed beside the player's, so "what was it?" never needs
    answering from memory — and a car that has been reset must be **byte-identical** to one that was
    never touched, not merely close. That is gateable: build both and compare the installed values.
+
+### E85-S1 (2026-08-31) — ✅ sprint 1 done: car poses cross two processes, exactly, both ways
+
+The epic's own first sprint: *"Two processes, one car each, same track — poses on the wire. UDP,
+host + one client, fixed low tick rate."* Delivered as `demo/native/netplay.jl` (the transport),
+`demo/native/netplay_probe.jl` (host/join/solo) and `JuliaMotorMTK/tools/netplay_smoke.jl` (the
+gate, now in the suite).
+
+```
+control: no peer -> nothing received   PASS
+host received the client's poses       PASS   rx=20 dropped=0 sent=20  maxerr=0.0000
+client received the host's poses       PASS   rx=20 dropped=0 sent=20  maxerr=0.0000
+```
+
+Poses are compared against a known non-trivial trajectory, so a zeroed or truncated payload cannot
+pass; `maxerr=0.0000` is exact agreement on x/y/z/yaw. The **solo** arm is the negative control and
+is what makes the rest mean anything — it proves the probe can report ZERO.
+
+🔒 **The physics directive is untouched, and that is enforced by what the module does not import.**
+`netplay.jl` reaches nothing in `Car3D`, `vehicle_3d.jl` or `powertrain.jl`. A remote car is a
+received pose.
+
+⭐ **THE BUG WORTH REMEMBERING: in Julia/libuv, `send` on a UDPSocket with a pending `recvfrom`
+CANCELS that receive.** The host — which receives before it ever sends — worked perfectly and took
+all 20 packets. The client, which sends first, killed its own reader on its first send and reported
+**`rx=0 dropped=0` with a live reader task and no error**: not "packets rejected", not "reader
+died", simply permanent deafness. It presented as a one-way transport.
+
+Found by reproducing it with raw sockets outside the module and then **inverting the order** —
+starting the reader *after* the first send makes the identical code work. Fix: **two sockets per
+peer**, `rsock` bound and receive-only, `ssock` unbound and send-only. Because `ssock`'s source port
+is then ephemeral, every packet carries the sender's **listen port**, and that is what a host learns
+a peer by. Verified 5/5 bidirectional where it had been 0/5.
+
+⚠️ **Two of my own test-shape errors nearly hid this, and both are worth keeping:**
+1. The first probe had the host *wait* for the client and only then echo. Julia's startup meant the
+   client's packets landed after the wait expired, so the echo loop ran with an **empty peer list**
+   and sent nothing — host `rx=20`, client `rx=0`. That is a one-way TEST, not a one-way transport,
+   and the two look identical in the output.
+2. Top-level `while` loops in the probe hit Julia's soft-scope rule (`i += 1` became a new local and
+   threw `UndefVarError`). Each arm is now a function.
+
+**Next (sprint 2):** dead reckoning + jitter — extrapolate between packets and measure the position
+error at a realistic packet rate. **State the expected error before measuring it.**
