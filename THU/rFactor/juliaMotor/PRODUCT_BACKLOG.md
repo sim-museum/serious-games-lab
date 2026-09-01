@@ -4529,3 +4529,38 @@ comment sitting **between the `?` branch and the `:`** of a ternary, so that too
 unparseable for some time. Nothing includes it, so nothing noticed. Also fixed.
 
 Suite now **19/19**.
+
+### E102-S5 (2026-09-01) — ✅ **IDENTIFIED ON SCREEN: the "sticks" are `axlelot`, and julia captures never needed the display lock**
+
+Two results, and the second one unblocks a queue I had been treating as blocked for nineteen sprints.
+
+**1. ⭐ The capture confirms the PO exactly.** `parity/e102/e102_rear.png` — Watkins, chase view —
+shows **two chrome sticks protruding from behind each rear wheel, angling outward and downward to
+the road.** *"Sticks pointing outward and downward from the back wheels"*, verbatim.
+
+**And `JM_RS_ONLY=axlelot` identifies them** (`parity/e102/e102_only.png`): with only that texture
+drawn in the rear group the sticks remain — longer, since that path bypasses the E82-S3 trim — and
+nothing else does. **So S4's 3-triangle `axlelot` sliver is the culprit**, promoted from candidate
+to identified. Three headless approaches could not settle this; one capture did, in one run.
+
+**2. ⚠️ Julia captures do NOT need `gl-lock`.** The sim creates its window **hidden**
+(`GLFW.VISIBLE, false`) and `JM_SHOTS` reads the framebuffer with `glReadPixels`. This capture ran
+**alongside the PO's live BoB session**, no lock, no interference. E102 and E104(a) were never
+display-blocked; I assumed they were and never tested the assumption — the same error as
+`parity_2d` (headless all along) and BoB's four gates (guarded, not blocked).
+
+⚠️ **AND THE ATTEMPT EXPOSED TWO REAL DEFECTS I HAD SHIPPED:**
+* the sim would not load at all — E103's edit had joined two statements (fixed, and
+  `parse_smoke` now guards it);
+* **E104-S1's `groundz_phys` was defined in the wrong scope** and threw `UndefVarError` at runtime.
+  There are **TWO `groundz`** in this file: a local one at :2407 inside a `let` (object placement,
+  returns the −999 sentinel) and **`function groundz` at :4503**, which the render loop actually
+  uses — and which **never returns −999**: off the HAT it holds `LASTZ[]` and clears `ONTRACK`.
+  **So E104(b)'s diagnosis was wrong for the sim and its fix was inert.** Reverted; the physics
+  points at the live `groundz` again. `offroad_smoke` still tests a real robustness property of
+  `drive_rt3d` (a sentinel WOULD launch the car) but must not be read as describing the sim.
+  Same trap the codebase already warns about for `drive_rt.jl` vs `drive_rt3d.jl`: *"two physics
+  models, the same function names in both: check which one the sim actually runs."*
+
+**Next:** the sliver is 3 triangles of `axlelot` reaching |lat| 0.74. Decide whether it should be
+trimmed harder, excluded, or is mis-posed — with the capture as the oracle, not geometry.
