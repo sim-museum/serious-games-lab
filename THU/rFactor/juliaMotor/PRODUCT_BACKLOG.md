@@ -3830,3 +3830,45 @@ control (`JM_SUSP_TRIM=0`) 0.61 FAIL (2)**. Full suite **14/14**.
 ⚠️ Also of note for any sprint that edits this file: `Meta.parseall` cannot see an undefined name.
 Setting `RSUSP_MAXLAT` from `WTRACK_R` parsed clean and died at load with `UndefVarError` — the
 constant is defined 80 lines further down.
+
+### E96-S5 (2026-08-31) — ✅ acceptance 1 holds at EVERY approach speed, and the gate can now prove it
+
+E96's first acceptance is an absolute — *"no impact at ANY speed returns the car in the direction it
+came from"* — and `contact_smoke.jl` tested exactly **one** speed (30 m/s). One speed cannot support
+an "any speed" claim, and a spring-damper contact fails at the *ends*: too slow and the spring wins,
+too fast and the penetration does. Swept 5 → 80 m/s:
+
+| v0 | final x | maxpen | peak reverse | reversing for | carried back |
+|---|---|---|---|---|---|
+| 5 | −15.1 | 0.00 | +0.0 | 0.00 s | 0.0 |
+| 10 | −2.6 | 0.10 | −3.0 | 0.03 s | 0.0 |
+| 30 | −1.6 | 1.18 | −3.9 | 0.03 s | −0.6 |
+| 60 | +0.5 | 2.42 | −13.1 | 0.05 s | −2.3 |
+| 80 | +0.4 | 2.52 | −26.4 | 0.08 s | −1.8 |
+
+**No speed returns the car.** The reversal never lasts beyond 0.08 s and never carries the car back
+past where it first touched — that is the spring unloading the car out of its own penetration, not a
+bounce. **Acceptance 1 is met across the range.**
+
+⚠️ **Two instrument failures found on the way, and the second is the important one.**
+
+1. **The first metric flagged everything.** Peak instantaneous reverse velocity alone called 10 m/s
+   a bounce at −3.0 m/s — with **0.0 m** of actual backward travel. Position-delta velocity during a
+   stiff contact step is a spike, not a motion. Sustained duration + net displacement is the honest
+   measure.
+2. **`JM_ELASTIC_WALL` IS A DEAD KNOB.** It is documented as *"restores the old 4.0e5/1.5e5 for an
+   A/B"*, and it changes **nothing** — measured directly on `contact_force`, both settings return
+   **identical forces at every penetration and closing speed tested**, saturated and unsaturated
+   alike. E96's own outcome cap `Fn = min(Fn, m·(VN_OUT_MAX − vn)/dt)` bounds the RESULT, so the
+   spring/damper constants beneath it no longer reach the output. **Anyone reaching for it as a
+   negative control — as I did — gets a control arm identical to the treatment and would conclude
+   the fix does not matter.** The live knob is `JM_VN_OUT_MAX`.
+3. **And with a working control, the gate failed to fail.** `JM_VN_OUT_MAX=8` reverses the car for
+   **0.70 s** at 10 m/s and sends it **50–60 m clean through the wall** at 60–80 m/s — and the
+   sweep still printed *"no bounce-back ✓"*, because it required sustained reversal **AND**
+   displacement together, and computed "carried back" in a way that reports a pass-through as a
+   large positive. Three separate failure modes now, as alternatives: sustained reversal (>0.15 s),
+   returned (>3 m behind first contact), passed through (beyond the obstacle).
+
+**Treatment: all 7 speeds ok, exit 0. Control (`JM_VN_OUT_MAX=8`): 6 of 7 red, naming SUSTAINED
+REVERSAL at 10–45 m/s and PASSED THROUGH at 60–80. Suite 14/14.**
