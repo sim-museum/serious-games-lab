@@ -4564,3 +4564,40 @@ display-blocked; I assumed they were and never tested the assumption — the sam
 
 **Next:** the sliver is 3 triangles of `axlelot` reaching |lat| 0.74. Decide whether it should be
 trimmed harder, excluded, or is mis-posed — with the capture as the oracle, not geometry.
+
+### E104-S2 (2026-09-01) — ⭐ half (a) MECHANISM FOUND: AI cars take their height from the RACING LINE, not the terrain
+
+Captured headlessly (julia needs no display lock — E102-S5). A race at Watkins with 5 AI cars:
+`parity/e104/ai_zoom.png` shows an AI car with **a clear gap under its tyres and no contact
+shadow** — it is floating, exactly as reported. The player's own car, in the same frame and in the
+E102 capture, sits planted.
+
+**That asymmetry is the clue, and the code explains it:**
+
+```julia
+aiCar(p) = translate([p[1], p[2], -p[3]]) * ...      # AI height = p[2]
+```
+
+and `p[2]` comes from one of two paths:
+
+| path | height source |
+|---|---|
+| `AI_PHYSICS` | `groundz(pc.x, pc.z)` — **the terrain** |
+| rail follower (**the default**) | `RaceAI.pose_at(...)` → `y = line.y[i]` — **the racing line's stored elevation** |
+
+`const AI_PHYSICS = haskey(ENV, "JM_AI_PHYSICS")` — **off unless asked for**, so the rail follower
+is what actually runs. And `pose_at` interpolates `line.y` and never samples the terrain.
+
+**So every AI car is drawn at the AI line's height.** The player's car uses `cs.y` from the physics,
+which tracks `zref` off the terrain — hence one planted car and five floating ones, which is why
+this reads as "all cars" from behind a field.
+
+⚠️ **Suggestive but NOT yet the confirmed cause.** The confirming measurement is one comparison:
+**`line.y` against `groundz(x, z)` at the same points along the lap.** If the line sits 0.2–0.4 m
+high, that is the defect and its size. The centreline is known to be re-centred laterally onto the
+visible road (the loader logs *"re-centred on the visible road … max shift 4.0 m"*) — **whether its
+ELEVATION was corrected the same way is exactly the open question.**
+
+⚠️ Do not "fix" this by adding an offset. If `line.y` is wrong, the line is what to correct — or the
+AI should sample the terrain like the physics path already does. Three E102 sprints were lost to
+adjusting numbers before the object was identified.
