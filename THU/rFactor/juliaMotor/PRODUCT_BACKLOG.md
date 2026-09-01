@@ -24,7 +24,7 @@ this index was written; that is what it exists to stop.
 | **E85** | EPIC: multiplayer, the way GPL did it | **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
 | **E105** | a setup tab exposing modest chassis-setup changes | **values + reset DONE and gated** (E105-S1); the UI shell is the PO's call. NEW 2026-08-31. Relaxes the "no modifiable parameters" constraint, scoped to setup. assessed |
 | **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | **half (b) FIXED** (E104-S1): a −999 "off the mesh" sentinel was passing an `isfinite` guard and reaching the physics — 20.9 m of vertical travel, now 0.00. Half (a), the floating, is still open and needs a capture. |
-| **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | **OPEN — two of my own diagnoses withdrawn** (S1: omitted BODY_OFF; S2: conflated components sharing a texture). Established: the assembly and wheels agree (brake disc within 2.8 mm), and the shaft at the axle line is at hub height. Needs a capture or connected-component analysis, NOT more per-texture slicing. |
+| **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | **OPEN — two of my own diagnoses withdrawn** (S1: omitted BODY_OFF; S2: conflated components sharing a texture). Established: the assembly and wheels agree (brake disc within 2.8 mm). S4: 65 of 89 triangles are ONE connected mesh (so there is no separable shaft to level), but an isolated **3-triangle `axlelot` sliver** reaches the wheel plane and drops 0.099 m — the best candidate for the PO's "sticks". Needs a capture; three headless approaches are enough. |
 | **E103** | wheel loss in a collision hyperspaces the car to the start line | **mechanism found + fixed + gated** (E103-S1): the containment seal PLACES the car at its last on-track point, which initialises to spawn. Not yet seen in a real wreck. |
 | **E90** | Monza and Watkins have almost no collidable barrier objects | open; the gate passing IS the symptom. assessed |
 | **E91** | "Tesla brakes" — lift-off decelerates ~1.67× too hard | PO confirmed right by measurement (S4). Fix not landed. assessed |
@@ -4461,3 +4461,37 @@ not correspond to the object being described.
 (cluster triangles by shared vertices, then measure each solid separately) or — far cheaper — **a
 chase capture, which is how the PO reported it in the first place.** E82-S3's two failed attempts
 were caught the same way: by looking, after the geometry had said they were fine.
+
+### E102-S4 (2026-09-01) — connected-component analysis: the assembly is ONE mesh, but a 3-triangle sliver matches the report exactly
+
+The method S3 said to use instead of texture slicing: union-find over triangles sharing a vertex
+(quantised to 1 mm), then measure each **connected solid** separately. 89 triangles → **5 solids**:
+
+| n | x | y | \|lat\| | drop | textures |
+|---|---|---|---|---|---|
+| **65** | −1.48…−0.75 | 0.220…0.552 | 0.42…0.74 | 0.332 | axlelot, lbrdisc, lsusp2, lsusp6, untextured |
+| 17 | −1.06…−0.94 | 0.258…0.460 | 0.54…0.60 | 0.202 | frontlot |
+| **3** | **−1.48…−0.86** | **0.283…0.382** | **0.53…0.74** | **0.099** | **axlelot** |
+| 2 | −1.04…−0.73 | 0.177…0.483 | 0.58…0.59 | 0.306 | lbrdisc |
+| 2 | −1.04…−0.73 | 0.177…0.483 | 0.60…0.61 | 0.306 | lbrdisc |
+
+**Two conclusions, and the first closes off a whole line of work.**
+
+**1. There is no separable "driveshaft" to level.** 65 of the 89 triangles are ONE connected mesh
+spanning five textures — brake disc, links and shaft are a single solid. So "rotate the shaft about
+the hub to make it horizontal" is not implementable as posed: there is no shaft to rotate. That
+retires the fix S2 proposed, on top of S3 retiring its diagnosis.
+
+**2. ⭐ But the 3-triangle `axlelot` component is exactly the shape the PO describes.** It is
+separable, it is **thin** (3 triangles spanning 0.62 m in x), it reaches **|lat| 0.74 — the wheel
+plane** — and it **drops 0.099 m** across that run. A thin isolated sliver reaching out to the wheel
+and sloping down is *"sticks pointing outward and downward from the back wheels"*, almost verbatim.
+
+⚠️ **Still a candidate, not a finding.** It is consistent with the report and it is the only
+separable piece that is, but consistency is not identification — S1 and S2 were both consistent with
+the report too. **What settles it is one chase capture**, with this component drawn in isolation
+(`JM_RS_ONLY=axlelot` already exists for exactly that kind of A/B).
+
+**Three headless approaches have now been spent on E102** — per-texture statistics, positional
+binning, connected components. The third is the one that produced something usable, and it says the
+remaining question is visual. **Do not open a fourth: capture it.**
