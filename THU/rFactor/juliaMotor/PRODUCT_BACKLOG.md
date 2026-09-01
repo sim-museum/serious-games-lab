@@ -4123,13 +4123,19 @@ expected numbers before the run.
 PO, verbatim: *"setup tab, allowing modest changes to whatever chassis setup values are easiest to
 set in the physics model."*
 
-⚠️ **This deliberately relaxes a standing constraint, and that is the PO's call — but it must be
-recorded, not silently reversed.** The standing instruction has been *"the car physics should be
-determined entirely by the iracing ibt data, there should be no modifiable parameters"* (PO
-2026-08-27), and it is why `JM_BRAKE_MAX`/`JM_BRAKE_BIAS` were REMOVED and why E100 exists at all.
-The newer instruction governs, **scoped to setup values**: the ibt session remains the SOURCE and the
-DEFAULT, and the tab offers modest deltas from it. It is not a licence to reintroduce tuning knobs
-elsewhere in the physics.
+✅ **THE PO HAS CONFIRMED THIS AMENDS THE ORIGINAL RULE (2026-08-31):** *"yes, this is a
+modification of the original 'lock physics to .ibt' rule. Make it easy to return to default."*
+
+So the 2026-08-27 instruction — *"the car physics should be determined entirely by the iracing ibt
+data, there should be no modifiable parameters"* — **is now amended, not worked around.** The amended
+rule, to be treated as standing from here:
+
+> **The ibt session is the SOURCE and the DEFAULT for car physics. The player may make modest setup
+> changes from it, and returning to the session's values must be EASY and OBVIOUS.**
+
+What does *not* change: the ibt remains the origin of every value, a silent divergence from it is
+still the failure mode E100 exists to prevent, and this is **not** a licence to reintroduce tuning
+knobs elsewhere in the physics (`JM_BRAKE_MAX`/`JM_BRAKE_BIAS` stay removed).
 
 **The easiest values are already known, because E100 wired exactly them.** Each has a setter that
 must run before the car is built, validates its input, and prints its provenance:
@@ -4162,6 +4168,13 @@ must run before the car is built, validates its input, and prints its provenance
 * **Ranges should be modest and validated.** The setters already reject non-positive values; the tab
   should clamp to a sane band around the session value rather than exposing the full range.
 
-**Acceptance:** a pre-race screen exposes at least spring rates and gearbox ratios as modest deltas
-from the loaded session, the car is built with them, and the provenance line distinguishes
-"from the ibt" from "modified by the player".
+**Acceptance:**
+1. A pre-race screen exposes at least spring rates and gearbox ratios as modest deltas from the
+   loaded session, and the car is built with them.
+2. The provenance line distinguishes **"from the ibt"** from **"modified by the player"**.
+3. ⭐ **RETURN TO DEFAULT IS EASY AND OBVIOUS** (PO 2026-08-31, explicit). Both scopes:
+   * **reset ONE value** to the session's number, without having to remember what it was;
+   * **reset EVERYTHING** to the session in a single action.
+   The session's own value stays displayed beside the player's, so "what was it?" never needs
+   answering from memory — and a car that has been reset must be **byte-identical** to one that was
+   never touched, not merely close. That is gateable: build both and compare the installed values.
