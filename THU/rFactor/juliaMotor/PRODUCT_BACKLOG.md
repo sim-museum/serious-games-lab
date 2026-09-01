@@ -3940,3 +3940,25 @@ installed session's, and **the shipped 75 mm matched no corner of it**. Rubbish 
 
 ⚠️ Still frozen: `camber_deg` (Nordschleife −0.4/−0.4/−0.5/−0.5, skidpad +0.5/−0.5/+0.3/−0.5 — sign
 changes across the car). Same shape again; not done here.
+
+### E100-S6 (2026-08-31) — camber is not "still frozen": it is NOT MODELLED, so wiring it would change nothing
+
+E100-S4 and S5 both signed off with *"still frozen: `camber_deg`"*, which reads like a third wiring
+job waiting to be done. It is not, and a sprint that took it at face value would have added a setter
+feeding nothing.
+
+`camber_deg` is read from the ibt by `setup.jl` and has **no consumer on the live path**:
+
+* the only camber term in the codebase is `Fz*Cγ*γ` in `components/tyre_thermal.jl`;
+* `tyre_thermal.jl` and `thermal_vehicle.jl` are included **only by `test/`** — `test_tyre_thermal.jl`
+  and `test_thermal_vehicle.jl`;
+* the sim's chain is `drive_rt3d.jl` → `for f in ("tyre.jl","powertrain.jl","vehicle_3d.jl")`, and
+  **`tyre.jl` contains no camber term at all** (no `γ`, no `camber`).
+
+So the running car has no camber input to install one into. The correct entry is not "frozen
+constant" but **"unmodelled parameter"** — a much bigger and quite different piece of work
+(a camber-sensitive tyre), and one nobody has asked for.
+
+Recorded so the note in S4/S5 stops advertising a wiring job that does not exist. The genuinely
+frozen-and-wired trio is closed: **gearbox (E100), mass (E100-S2), spring rates (E100-S4), static
+ride height (E100-S5)** — all four now installed from the session and reported with their source.
