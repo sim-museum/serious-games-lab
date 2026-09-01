@@ -24,7 +24,7 @@ this index was written; that is what it exists to stop.
 | **E85** | EPIC: multiplayer, the way GPL did it | **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
 | **E105** | a setup tab exposing modest chassis-setup changes | **values + reset DONE and gated** (E105-S1); the UI shell is the PO's call. NEW 2026-08-31. Relaxes the "no modifiable parameters" constraint, scoped to setup. assessed |
 | **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | **half (b) FIXED** (E104-S1): a −999 "off the mesh" sentinel was passing an `isfinite` guard and reaching the physics — 20.9 m of vertical travel, now 0.00. Half (a), the floating, is still open and needs a capture. |
-| **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | **diagnosed** (E102-S2, correcting S1): the assembly is placed CORRECTLY (brake disc within 2.8 mm of the hub). The shaft's HUB end is right (+0.025); its CHASSIS end is 13 cm too high, giving the 0.11 m downward slope. Fix the inboard end, not the group. |
+| **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | **OPEN — two of my own diagnoses withdrawn** (S1: omitted BODY_OFF; S2: conflated components sharing a texture). Established: the assembly and wheels agree (brake disc within 2.8 mm), and the shaft at the axle line is at hub height. Needs a capture or connected-component analysis, NOT more per-texture slicing. |
 | **E103** | wheel loss in a collision hyperspaces the car to the start line | **mechanism found + fixed + gated** (E103-S1): the containment seal PLACES the car at its last on-track point, which initialises to spawn. Not yet seen in a real wreck. |
 | **E90** | Monza and Watkins have almost no collidable barrier objects | open; the gate passing IS the symptom. assessed |
 | **E91** | "Tesla brakes" — lift-off decelerates ~1.67× too hard | PO confirmed right by measurement (S4). Fix not landed. assessed |
@@ -4427,3 +4427,37 @@ E104(a) needs its own investigation and probably a capture.
 and did not check that they were in the same one. The brake disc was even used *as an oracle* — the
 right instinct — but against an unlifted figure, so the oracle "confirmed" a defect that was not
 there. **When a part is drawn through a chain of matrices, measure it through the same chain.**
+
+### E102-S3 (2026-09-01) — ⚠️ S2's tilt figure is ALSO an artifact. `axlelot` is not one part, and I should stop slicing geometry by texture
+
+S2 corrected S1 and then made the same class of mistake one level down. **The 0.1095 m "tilt" and
+the "chassis end 13 cm too high" are both artifacts of treating one TEXTURE as one PART.**
+
+Clustering `axlelot`'s 31 triangles by position instead:
+
+| region | n | y range | mean | vs hub (0.34) |
+|---|---|---|---|---|
+| x −1.30…−1.10 | 4 | 0.304–0.361 | **0.333** | −0.007 |
+| x −1.10…−0.95 (the axle line) | 4 | 0.285–0.349 | **0.310** | −0.030 |
+| x > −0.95 (forward of the axle) | 23 | 0.278–0.481 | 0.383 | +0.043 |
+
+**The pieces at the axle line — the actual shaft — sit at hub height.** The 23 triangles that
+dragged the average up and produced the apparent slope are **forward of the rear axle entirely**,
+so they are a different component that happens to share the texture (gearbox/housing). A linear fit
+across all of them gives −26.8°, which is a number about nothing.
+
+**So E102 has now produced two confident wrong answers from me**: S1 (whole assembly 0.3 m low —
+omitted `BODY_OFF`) and S2 (shaft tilted, chassis end 13 cm high — conflated components). Both were
+measurements; neither was the wrong *kind* of work; both sliced the model along an axis that does
+not correspond to the object being described.
+
+**What is actually established, and it is not nothing:**
+* the rear assembly and the wheels agree — `lbrdisc` within **2.8 mm** of the hub;
+* the shaft geometry at the axle line is at hub height;
+* `axlelot` spans at least two distinct components, so **any per-texture statistic about it is
+  meaningless** and the three published in S1/S2 should not be quoted.
+
+⚠️ **STOP MEASURING THIS BY TEXTURE.** The next step is either proper connected-component analysis
+(cluster triangles by shared vertices, then measure each solid separately) or — far cheaper — **a
+chase capture, which is how the PO reported it in the first place.** E82-S3's two failed attempts
+were caught the same way: by looking, after the geometry had said they were fine.
