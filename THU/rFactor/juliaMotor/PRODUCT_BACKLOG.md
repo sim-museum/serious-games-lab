@@ -22,7 +22,7 @@ this index was written; that is what it exists to stop.
 | item | what | state |
 |---|---|---|
 | **E85** | EPIC: multiplayer, the way GPL did it | **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
-| **E105** | a setup tab exposing modest chassis-setup changes | NEW 2026-08-31. Relaxes the "no modifiable parameters" constraint, scoped to setup. assessed |
+| **E105** | a setup tab exposing modest chassis-setup changes | **values + reset DONE and gated** (E105-S1); the UI shell is the PO's call. NEW 2026-08-31. Relaxes the "no modifiable parameters" constraint, scoped to setup. assessed |
 | **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | NEW 2026-08-31, seen in the Watkins race. Two symptoms, probably two causes. assessed |
 | **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | NEW 2026-08-31. Reopens E82's fix. assessed |
 | **E103** | wheel loss in a collision hyperspaces the car to the start line | NEW 2026-08-31. assessed |
@@ -4223,3 +4223,42 @@ a peer by. Verified 5/5 bidirectional where it had been 0/5.
 
 **Next (sprint 2):** dead reckoning + jitter — extrapolate between packets and measure the position
 error at a realistic packet rate. **State the expected error before measuring it.**
+
+### E105-S1 (2026-09-01) — ✅ the setup tab's VALUES and RESET are built and gated; the UI shell is still the PO's call
+
+The PO amended the physics rule and attached one condition — *"Make it easy to return to default."*
+That condition is the part with teeth, so it is what the gate asserts, **exactly**.
+
+`demo/native/setup_tab.jl` holds session and current values **separately**, so reset is a copy and
+can never fail because a file moved. Deltas are percentages **of the session value**, clamped to
+±15%, so repeated nudges cannot walk past the band and "+5%" always means the same car. Reset works
+at both scopes the PO named: one value, or everything.
+
+Wired into the sim between the session install and the car build — it has to be there, because the
+rates and ratios are MTK parameters baked in at construction. `JM_SETUP="springs=+5,ride=-3"`;
+`JM_SETUP=reset` or unset gives the session's car. Verified live on Monza, three arms:
+
+| arm | printed |
+|---|---|
+| unset | `setup: session default (unmodified)` |
+| `springs=+5,ride=-3` | `setup: MODIFIED by the player — JM_SETUP=reset restores the session` |
+| `reset` | `setup: session default (unmodified)` |
+
+`setup_tab_smoke` (in the suite) asserts 14 properties, and the reset ones use `===`: **a reset car
+must be byte-identical to one never touched, not merely close.** "Close to the session" is the real
+failure mode — it turns the tab into a one-way door away from the reference, which is what E100
+exists to prevent. Also asserted: the session values are never overwritten, a modified setup reports
+itself modified, per-corner edits touch only that corner, and **camber and tyre pressure are
+REFUSED** — E100-S6 established camber is not modelled and the thermal tyre is not on the live path,
+so a control for either would move nothing, which is worse than no control.
+
+⚠️ **Not done, and it is the PO's decision:** the tab has no UI. `choose_track()` — a `readline()`
+menu on stdin — is the only front end this sim has, so a "tab" means either extending that or
+building an in-window screen. The values and reset semantics are settled and gated either way; only
+the shell is open.
+
+⚠️ Two of my own errors worth keeping: `describe` first told the player to *"press R"*, an
+instruction that does not work — worse than none, since it makes the way back look available when
+it is not. And the gate's camber check read FAIL on working code, because a `try/catch` at top level
+hits Julia's soft-scope rule and `threw` became a new local; the check is a function now. That is
+the same trap that bit the netplay probe earlier the same night.

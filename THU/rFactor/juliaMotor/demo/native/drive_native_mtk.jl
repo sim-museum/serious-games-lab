@@ -439,6 +439,48 @@ let
     println("  ride ht: ", join((round(1000*h, digits=1) for h in DriveRT3D.RIDE_H[]), " / "),
             " mm (FL/FR/RL/RR)   <- ", DriveRT3D.RIDE_H_SRC[])
 end
+
+# ---- E105: the SETUP TAB ---------------------------------------------------------------------
+# PO 2026-08-31, amending the "lock physics to .ibt" rule: "yes, this is a modification of the
+# original 'lock physics to .ibt' rule. Make it easy to return to default."
+#
+# The ibt session remains the SOURCE and the DEFAULT. This applies modest deltas on top, and it
+# must run HERE -- after the session install, before the car is built -- because the rates and
+# ratios are MTK parameters baked in at construction.
+#
+# JM_SETUP="springs=+5,ride=-3,final=+2,mass=-1"  (percentages of the SESSION value)
+# JM_SETUP="reset"  or unset                      -> the session's car, untouched
+# Deliberately an env for now: `choose_track()` is the only front end this sim has (a readline
+# menu on stdin), and whether the tab should live there or in an in-window screen is the PO's
+# call, recorded in E105. The VALUES and the reset semantics are settled and gated either way.
+include(joinpath(@__DIR__,"setup_tab.jl")); using .SetupTab
+const SETUP = SetupTab.session_setup(DriveRT3D.KS[], DriveRT3D.RIDE_H[],
+                                     DriveRT3D.FINAL[], DriveRT3D.MASS[])
+let spec = get(ENV, "JM_SETUP", "")
+    if !isempty(spec) && lowercase(strip(spec)) != "reset"
+        for part in split(spec, ',')
+            kv = split(strip(part), '='); length(kv) == 2 || continue
+            fld = Symbol(lowercase(strip(kv[1]))); pct = tryparse(Float64, strip(kv[2]))
+            pct === nothing && continue
+            try
+                SetupTab.apply_delta(SETUP, fld, pct)
+            catch
+                @warn "JM_SETUP: ignoring unknown or unmodellable field" field=fld
+            end
+        end
+        # Install the modified values through the SAME validating setters the session used.
+        DriveRT3D.set_suspension!(SETUP.ks...; source = "player setup (from $(basename(IBTTMPL)))")
+        DriveRT3D.set_ride_height!(SETUP.rh...; source = "player setup (from $(basename(IBTTMPL)))")
+        DriveRT3D.set_mass!(SETUP.mass, DriveRT3D.FRONT_FRAC[]; source = "player setup")
+        DriveRT3D.FINAL[] = SETUP.final
+    end
+    # Always say which car is being driven. A silent divergence from the reference is the failure
+    # E100 exists to prevent, so "modified" has to be as loud as the provenance lines above.
+    print("  setup:   ")
+    println(SetupTab.is_default(SETUP) ? "session default (unmodified)" :
+            "MODIFIED by the player -- JM_SETUP=reset restores the session")
+    SetupTab.is_default(SETUP) || print(SetupTab.describe(SETUP))
+end
 # PO 2026-08-27 (found by a real drive): every session ended with
 #   .ibt export failed: SystemError("opening file .../lotus49_... .ibt", 2, nothing)
 # That is not a path bug -- data/iracing/ holds only parse_ibt.py and profile_ibt.py, so the

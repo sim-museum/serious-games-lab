@@ -16,7 +16,7 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PROJ="$(cd "$HERE/.." && pwd)"
 FILTER="${1:-}"
-SMOKES="wreck_smoke contact_smoke boundary3d_smoke extforce3d_smoke wheelmu_smoke drive3d_smoke stall_smoke transmission_smoke controls_smoke people_smoke damage_smoke mipcolor_smoke ai_field_smoke susp_pose_smoke netplay_smoke"
+SMOKES="wreck_smoke contact_smoke boundary3d_smoke extforce3d_smoke wheelmu_smoke drive3d_smoke stall_smoke transmission_smoke controls_smoke people_smoke damage_smoke mipcolor_smoke ai_field_smoke susp_pose_smoke netplay_smoke setup_tab_smoke"
 
 pass=0; fail=0; failed=""
 echo "JuliaMotorMTK gates  (project: $PROJ)"
@@ -27,7 +27,7 @@ for g in $SMOKES; do
   printf "  %-22s " "$g"
   # Gates that go through demo/native/render.jl (extract_gpl_car) need the app's project, which
   # carries GLFW/ModernGL; the physics project does not. susp_pose_smoke failed on exactly that.
-  gproj="$PROJ"; case "$g" in susp_pose_smoke|netplay_smoke) gproj="$PROJ/../demo/native" ;; esac
+  gproj="$PROJ"; case "$g" in susp_pose_smoke|netplay_smoke|setup_tab_smoke) gproj="$PROJ/../demo/native" ;; esac
   timeout 900 julia --project="$gproj" "$HERE/$g.jl" > "$log" 2>&1
   rc=$?
   # Exit status FIRST -- it is the only signal a crashed run gives. The text is a second
