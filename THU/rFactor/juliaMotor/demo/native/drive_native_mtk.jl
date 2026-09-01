@@ -5548,7 +5548,8 @@ function main()
                         (sealx, sealz) = WreckSeal.seal_target(WRECKED[], cs.x, cs.z,
                                              LASTGX[], LASTGZ[];
                                              seal_back = haskey(ENV, "JM_WRECK_SEAL_BACK"))
-                        containX!(cs, sealx, sealz; vdamp=(WRECKED[] ? 0.0 : 0.3), settle=true, groundz=groundz_phys)                        BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0; BND_PK[] = 0.0; OFFDIST[] = 0.0
+                        containX!(cs, sealx, sealz; vdamp=(WRECKED[] ? 0.0 : 0.3), settle=true, groundz=groundz_phys)
+                        BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0; BND_PK[] = 0.0; OFFDIST[] = 0.0
                     end
                 else
                     BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0; BND_PK[] = 0.0

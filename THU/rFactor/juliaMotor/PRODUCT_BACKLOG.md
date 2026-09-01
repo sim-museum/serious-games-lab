@@ -4495,3 +4495,37 @@ the report too. **What settles it is one chase capture**, with this component dr
 **Three headless approaches have now been spent on E102** — per-texture statistics, positional
 binning, connected components. The third is the one that produced something usable, and it says the
 remaining question is visual. **Do not open a fourth: capture it.**
+
+### E103-S2 / TOOLING (2026-09-01) — 🔴 **I shipped a sim that would not load, and my parse check could never have caught it**
+
+Found by accident: a capture run died with `ParseError` at `drive_native_mtk.jl:5551`. **E103-S1's
+edit had joined two statements onto one line** — the replacement consumed a newline — so the sim
+has not loaded since that commit, four sprints ago. It was committed and pushed.
+
+**Two failures made that possible, and the second is worse than the first.**
+
+**1. No gate loads the main sim file.** The suite stayed **18/18 green** throughout, because every
+gate exercises `JuliaMotorMTK` modules and small shared includes. The 5,900-line file the game
+actually runs was covered by nothing.
+
+**2. ⚠️ `Meta.parseall` DOES NOT THROW on a syntax error.** After every edit I ran
+
+```julia
+Meta.parseall(read(f, String)); println("parse ok")
+```
+
+and it printed "parse ok" every time — **including on the broken file**. Measured directly: given
+`"function f()\n  x = 1\n"` (no `end`) it returns an `Expr` normally, and the top-level args do not
+even contain a direct `:error` node; the error is nested. **The check could not fail.** It gave the
+same output for valid and invalid input, and I quoted it as evidence a dozen times.
+
+**Fixed:** the line is split, and `JuliaMotorMTK/tools/parse_smoke.jl` now **walks** the parse tree
+for `:error`/`:incomplete` nodes across all **110** `.jl` files, and runs **first** in the suite.
+It **self-tests before it scans** — it must reject known-bad syntax and accept known-good, printed
+every run — because the whole reason it exists is that the previous check could not fail.
+
+⭐ **It immediately found a second, pre-existing break:** `demo/native/render_obj.jl` had a trailing
+comment sitting **between the `?` branch and the `:`** of a ternary, so that tool has been
+unparseable for some time. Nothing includes it, so nothing noticed. Also fixed.
+
+Suite now **19/19**.
