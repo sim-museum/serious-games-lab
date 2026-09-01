@@ -451,24 +451,22 @@ end
 #
 # JM_SETUP="springs=+5,ride=-3,final=+2,mass=-1"  (percentages of the SESSION value)
 # JM_SETUP="reset"  or unset                      -> the session's car, untouched
-# Deliberately an env for now: `choose_track()` is the only front end this sim has (a readline
-# menu on stdin), and whether the tab should live there or in an in-window screen is the PO's
-# call, recorded in E105. The VALUES and the reset semantics are settled and gated either way.
+# E105-S2: the tab is now a STEP IN THAT MENU (SetupTab.setup_menu!), shown after the session
+# values are known -- it has to be, because the tab prints the session value beside the current one.
+# The env still works and still WINS: JM_SETUP set (to anything, including "reset") means no prompt,
+# so every gate, replay and scripted launch stays deterministic and nothing can block on stdin.
 include(joinpath(@__DIR__,"setup_tab.jl")); using .SetupTab
 const SETUP = SetupTab.session_setup(DriveRT3D.KS[], DriveRT3D.RIDE_H[],
                                      DriveRT3D.FINAL[], DriveRT3D.MASS[])
 let spec = get(ENV, "JM_SETUP", "")
-    if !isempty(spec) && lowercase(strip(spec)) != "reset"
-        for part in split(spec, ',')
-            kv = split(strip(part), '='); length(kv) == 2 || continue
-            fld = Symbol(lowercase(strip(kv[1]))); pct = tryparse(Float64, strip(kv[2]))
-            pct === nothing && continue
-            try
-                SetupTab.apply_delta(SETUP, fld, pct)
-            catch
-                @warn "JM_SETUP: ignoring unknown or unmodellable field" field=fld
-            end
-        end
+    SetupTab.apply_spec!(SETUP, spec)          # the one parser, shared with the menu
+    # Prompt only when a human is actually there to answer. Same guards as `choose_track()`, plus
+    # JM_SETUP itself: an explicit setup on the command line is an answer already given.
+    if !haskey(ENV, "JM_SETUP") && !haskey(ENV, "JM_SMOKE") &&
+       !haskey(ENV, "JM_NO_SETUP_MENU") && isa(stdin, Base.TTY)
+        SetupTab.setup_menu!(SETUP)
+    end
+    if !SetupTab.is_default(SETUP)
         # Install the modified values through the SAME validating setters the session used.
         DriveRT3D.set_suspension!(SETUP.ks...; source = "player setup (from $(basename(IBTTMPL)))")
         DriveRT3D.set_ride_height!(SETUP.rh...; source = "player setup (from $(basename(IBTTMPL)))")
@@ -479,7 +477,7 @@ let spec = get(ENV, "JM_SETUP", "")
     # E100 exists to prevent, so "modified" has to be as loud as the provenance lines above.
     print("  setup:   ")
     println(SetupTab.is_default(SETUP) ? "session default (unmodified)" :
-            "MODIFIED by the player -- JM_SETUP=reset restores the session")
+            "MODIFIED by the player -- the setup menu's R, or JM_SETUP=reset, restores the session")
     SetupTab.is_default(SETUP) || print(SetupTab.describe(SETUP))
 end
 # PO 2026-08-27 (found by a real drive): every session ended with

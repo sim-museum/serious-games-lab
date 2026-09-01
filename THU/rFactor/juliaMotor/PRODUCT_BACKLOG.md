@@ -4638,3 +4638,46 @@ against one visual impression means **the impression is now the weakest link**, 
 
 ⚠️ Do not open a third mechanism before that. E102 cost three sprints to hypotheses that a single
 capture then settled; this item has now cost two.
+
+### E105-S2 (2026-09-01) — ✅ the tab has a front end: it is a step in the track menu, and it is gated
+
+S1 built the values and reset semantics and left the shell as "the PO's decision". On reflection
+that was holding an ordinary judgement call for the PO: the request was for a **setup tab**, and the
+only front end this sim has is `choose_track()`, a readline menu on stdin. A step in that menu is
+the routine reading; an in-window screen would have been a bigger guess, not a smaller one.
+
+**Where it lives matters more than how it looks.** `setup_menu!` is in `SetupTab`, not inline in
+`drive_native_mtk.jl`, and takes `input`/`output` as parameters. That file cannot be loaded by a
+test — it launches the sim — so a menu written inside it could never be gated, and **E103-S2 is the
+standing reminder of what ships when nothing loads the file**: a sim that would not start, through
+an 18-gate suite, green. With stream parameters the gate drives the whole tab from an `IOBuffer`.
+
+The PO's condition — *"make it easy to return to default"* — decides the layout:
+
+* `R) reset EVERYTHING to the ibt session` is on screen at **all times**, not inside a submenu;
+* every value's own prompt offers `r` for **just that one** — the two scopes S1 gated;
+* `describe` reprints before every prompt, so the session value sits **beside** the current one
+  while you decide. "What was it?" is never answered from memory.
+
+`JM_SETUP` still works and now **wins**: set to anything (including `reset`), no prompt. So gates,
+replays and scripted launches stay deterministic and **nothing can block on stdin** — the menu also
+returns on EOF at either prompt, which the gate proves by terminating.
+
+One parser, `apply_spec!`, is shared by the env and the menu, and an arm asserts the two produce the
+**same car** — otherwise they drift into meaning different things.
+
+**11 new arms, all passing** (31 in the gate): the menu applies a delta and leaves the *session*
+values alone; `R` resets everything `===`; `r` resets one and leaves the others modified; junk input
+neither crashes nor applies anything; the ±15% band holds *through the menu* and **says** it
+clamped; the way back is visible without asking; and `+5` from the env equals `+5` from the menu.
+
+⚠️ **One arm of mine was worthless and is replaced.** I wrote `is_default(m5) || !is_default(m5)`
+to assert "the menu returns on EOF". That is true for every input — an arm that cannot fail is not
+an arm, it is decoration that makes the count look better. It now asserts the *value*: the answer
+given before EOF survives. The no-hang property is proved by the gate terminating, and the comment
+says so rather than pretending a predicate covers it.
+
+⚠️ **`describe` had a stale way-back line** (`JM_SETUP=reset (or unset)`), which was the only way
+back when S1 wrote it. It now names `R` too. S1's own lesson was that an instruction which does not
+work is worse than none; an instruction that is merely *incomplete* fails the same way once a better
+route exists.

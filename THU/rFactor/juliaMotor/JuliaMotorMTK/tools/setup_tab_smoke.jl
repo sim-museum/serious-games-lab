@@ -68,5 +68,46 @@ refuses(field) = (try; apply_delta(session_setup(KS, RH, FD, MASS), field, 1.0);
 chk("camber is refused (it is not modelled)", refuses(:camber), refuses(:camber) ? "threw" : "ACCEPTED IT")
 chk("tyre pressure is refused (not on the live path)", refuses(:pressure), refuses(:pressure) ? "threw" : "ACCEPTED IT")
 
+# 7. E105-S2 -- the TAB ITSELF. The menu lives in the module and takes its streams as parameters
+# precisely so this can exist: driven from an IOBuffer, no terminal, no sim launch.
+# What matters here is the PO's condition, so the reset arms use `===` like the rest of the gate.
+function menu(script::String; s = session_setup(KS, RH, FD, MASS))
+    out = IOBuffer()
+    setup_menu!(s; input = IOBuffer(script), output = out)
+    (s, String(take!(out)))
+end
+
+m1, _ = menu("1\n+5\n\n")
+chk("menu applies a delta", m1.ks != KS && all(m1.ks[i] ≈ KS[i]*1.05 for i in 1:4), "springs +5%")
+chk("menu leaves the SESSION values alone", m1.ks_session === KS, "session untouched")
+
+m2, _ = menu("2\n-4\nr\n\n")                     # modify, then R = reset everything
+chk("menu R resets EVERYTHING, exactly", m2.rh === RH && is_default(m2), "=== session")
+
+m3, _ = menu("3\n+6\n1\n+5\n1\nr\n\n")         # per-value reset leaves the others modified
+chk("menu r resets ONE value only", m3.ks === KS && m3.final != FD, "springs back, final still +6%")
+
+m4, out4 = menu("9\nzzz\n\n")                     # junk must not crash or apply anything
+chk("menu survives junk input", is_default(m4), "unchanged")
+chk("menu says what junk means", occursin("?", out4), "prompts again")
+
+# EOF at the next prompt must RETURN, not hang -- and the answer already given must still count.
+# (The no-hang property is proved by this gate TERMINATING; the assertion below is about the value,
+# because `x || !x` is true for every x and an arm that cannot fail is not an arm.)
+m5, _ = menu("1\n+5")
+chk("EOF returns, keeping the answer already given", all(m5.ks[i] ≈ KS[i]*1.05 for i in 1:4), "+5% survived EOF")
+
+m6, out6 = menu("1\n+999\n\n")                    # the band still holds through the menu
+chk("menu cannot exceed the ±15% band", all(m6.ks[i] ≈ KS[i]*1.15 for i in 1:4), "clamped")
+chk("menu SAYS it clamped", occursin("clamped", out6), "told the driver")
+
+_, out7 = menu("\n")
+chk("the way back is on screen without asking", occursin("reset EVERYTHING", out7), "R offered at top level")
+
+# 8. the env and the menu must share ONE parser, or they drift into meaning different things
+se = session_setup(KS, RH, FD, MASS); apply_spec!(se, "springs=+5")
+chk("apply_spec! agrees with the menu", se.ks == m1.ks, "same car from JM_SETUP and from the menu")
+chk("apply_spec!(\"reset\") is a no-op, not an error", apply_spec!(session_setup(KS,RH,FD,MASS), "reset") == 0, "0 deltas")
+
 println(fails[] == 0 ? "\n  SETUP TAB GATE: PASS ✓" : "\n  SETUP TAB GATE: FAIL ($(fails[]))")
 exit(fails[] == 0 ? 0 : 1)

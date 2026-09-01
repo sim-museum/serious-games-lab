@@ -22,7 +22,8 @@
 # not modelled at all, so a slider for it would move nothing, which is worse than no slider.
 module SetupTab
 
-export Setup4, session_setup, apply_delta, reset_one!, reset_all!, is_default, describe
+export Setup4, session_setup, apply_delta, reset_one!, reset_all!, is_default, describe,
+       apply_spec!, setup_menu!, FIELDS
 
 const BAND = 0.15          # +-15%: "modest". A setup tab is not a physics editor.
 
@@ -104,8 +105,99 @@ function describe(s::Setup4)
     # key) is worse than none: it makes "return to default" look available when it is not, which is
     # the one thing the PO asked to be easy.
     println(io, is_default(s) ? "  -> UNCHANGED from the ibt session" :
-                                "  -> MODIFIED by the player.  JM_SETUP=reset (or unset) restores the session.")
+                                "  -> MODIFIED by the player.  R here, or JM_SETUP=reset, restores the session.")
     String(take!(io))
+end
+
+# ── E105-S2: the TAB ────────────────────────────────────────────────────────────────────────────
+# S1 built the values and left the shell "the PO's call". The PO asked for a setup TAB, and the
+# only front end this sim has is `choose_track()`, a readline menu on stdin -- so the tab is a step
+# in that menu. That is the routine reading of the request; an in-window screen would be a bigger
+# guess, not a smaller one.
+#
+# Two things decide the shape, and both come from the PO's own condition -- "make it easy to return
+# to default":
+#   * the way back is on screen at ALL TIMES (`R) reset EVERYTHING`), not hidden behind a submenu,
+#     and every value's own prompt offers `r` for just that one -- the two scopes S1 gated;
+#   * `describe` is reprinted before every prompt, so the session value sits beside the current one
+#     while you decide. "What was it?" is never answered from memory.
+#
+# It lives HERE, in the module, and takes its streams as parameters -- not inline in
+# drive_native_mtk.jl. That file cannot be loaded by a test (it launches the sim), so a menu written
+# inside it could never be gated, and E103-S2 is the standing reminder of what ships when nothing
+# loads the file. With `input`/`output` parameters the gate drives it from an IOBuffer.
+
+const FIELDS = (:springs, :ride, :final, :mass)
+
+"""    apply_spec!(s, "springs=+5,ride=-3") -> number of deltas applied
+
+The ONE parser for a setup spec. `JM_SETUP` and any future front end go through it, so the env and
+the menu cannot drift into meaning different things. Unknown or unmodellable fields warn and are
+skipped rather than aborting -- a typo in one term should not silently discard the others.
+"""
+function apply_spec!(s::Setup4, spec::AbstractString)
+    n = 0
+    (isempty(strip(spec)) || lowercase(strip(spec)) == "reset") && return n
+    for part in split(spec, ',')
+        kv = split(strip(part), '='); length(kv) == 2 || continue
+        fld = Symbol(lowercase(strip(kv[1]))); pct = tryparse(Float64, strip(kv[2]))
+        pct === nothing && continue
+        try
+            apply_delta(s, fld, pct); n += 1
+        catch
+            @warn "setup: ignoring unknown or unmodellable field" field=fld
+        end
+    end
+    n
+end
+
+"""    setup_menu!(s; input, output) -> s
+
+Interactive tab. Returns when the driver presses Enter, and ALSO on EOF at either prompt -- a menu
+that loops forever on a closed stdin would hang every non-interactive launch that reached it.
+"""
+function setup_menu!(s::Setup4; input::IO = stdin, output::IO = stdout)
+    while true
+        println(output, """
+
+      ╔════════════════════════════════════════════════╗
+      ║          juliaMotor — car setup                 ║
+      ╚════════════════════════════════════════════════╝""")
+        print(output, describe(s))
+        println(output, "\n   1) springs     2) ride height     3) final drive     4) mass")
+        println(output, "   R) reset EVERYTHING to the ibt session          Enter) drive")
+        print(output, "\n  setup> "); flush(output)
+        eof(input) && return s
+        line = lowercase(strip(readline(input)))
+        isempty(line) && return s
+        if line == "r"
+            reset_all!(s); println(output, "  -> reset: the car is the ibt session's again.")
+            continue
+        end
+        idx = tryparse(Int, line)
+        if idx === nothing || !(1 <= idx <= length(FIELDS))
+            println(output, "  ?  1-$(length(FIELDS)), R to reset everything, Enter to drive.")
+            continue
+        end
+        fld = FIELDS[idx]
+        print(output, "  $(fld): percent of the session value (",
+              "-", round(Int,100BAND), " .. +", round(Int,100BAND),
+              "), or r to reset just this one: "); flush(output)
+        eof(input) && return s
+        a = lowercase(strip(readline(input)))
+        if a == "r"
+            reset_one!(s, fld); println(output, "  -> $(fld) is the session's again.")
+        else
+            pct = tryparse(Float64, a)
+            if pct === nothing
+                println(output, "  ?  a number, or r.")
+            else
+                apply_delta(s, fld, pct)
+                println(output, "  -> $(fld) set to $(pct >= 0 ? "+" : "")$(pct)% of the session",
+                        abs(pct) > 100BAND ? "  (clamped to the ±$(round(Int,100BAND))% band)" : "")
+            end
+        end
+    end
 end
 
 end # module
