@@ -24,7 +24,7 @@ this index was written; that is what it exists to stop.
 | **E85** | EPIC: multiplayer, the way GPL did it | **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
 | **E105** | a setup tab exposing modest chassis-setup changes | **values + reset DONE and gated** (E105-S1); the UI shell is the PO's call. NEW 2026-08-31. Relaxes the "no modifiable parameters" constraint, scoped to setup. assessed |
 | **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | **half (b) FIXED** (E104-S1): a −999 "off the mesh" sentinel was passing an `isfinite` guard and reaching the physics — 20.9 m of vertical travel, now 0.00. Half (a), the floating, is still open and needs a capture. |
-| **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | NEW 2026-08-31. Reopens E82's fix. assessed |
+| **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | **measured** (E102-S1): shaft drops 0.11 m, but the WHOLE rear group sits ~0.3 m below the wheel centre — the brake disc, which must be concentric, is 0.303 m low. May be the same defect as E104(a). |
 | **E103** | wheel loss in a collision hyperspaces the car to the start line | **mechanism found + fixed + gated** (E103-S1): the containment seal PLACES the car at its last on-track point, which initialises to spawn. Not yet seen in a real wreck. |
 | **E90** | Monza and Watkins have almost no collidable barrier objects | open; the gate passing IS the symptom. assessed |
 | **E91** | "Tesla brakes" — lift-off decelerates ~1.67× too hard | PO confirmed right by measurement (S4). Fix not landed. assessed |
@@ -4341,3 +4341,42 @@ it is pointed would not matter and this whole item would be moot.
 ⚠️ **Not yet seen in a real wreck.** This is the mechanism and its rule, gated headlessly. Confirming
 it end to end means wrecking a car on track and watching where it comes to rest, which needs the
 display. Suite **18/18**.
+
+### E102-S1 (2026-09-01) — ⭐ measured: the WHOLE rear assembly sits ~0.3 m below the wheel centre, and that may be E104(a) too
+
+PO: *"axles should be horizontal between center of wheel and chassis, not sticks pointing outward
+and downward from the back wheels."*
+
+**The shaft does point downward, measured:** `axlelot` drops **0.1095 m** from its inboard end
+(mean y 0.174) to its outboard end (mean y 0.065). So the PO's description is exact.
+
+**But the tilt is not the whole defect, and fixing the tilt alone would have been wrong.** The hub is
+at a known height: `wheelmat(wx,wz,steer,r) = carModel * translate([wx, r, wz])` places each wheel at
+**y = r = 0.34**. Against that, every part of the rear group:
+
+| part | mean y | vs hub (0.34) |
+|---|---|---|
+| lbrdisc (brake disc) | 0.037 | **−0.303** |
+| frontlot | 0.061 | −0.279 |
+| (untextured) | 0.060 | −0.280 |
+| axlelot (driveshaft) | 0.067 | −0.273 |
+| lsusp6 | 0.084 | −0.256 |
+| lsusp2 | 0.238 | −0.102 |
+
+⭐ **`lbrdisc` is the oracle: a brake disc is concentric with its wheel by construction.** It is
+**0.303 m below** where the wheel is drawn. So this is not a mis-authored driveshaft — **the rear
+assembly and the wheels disagree about where the hub is, by about 0.3 m.**
+
+⚠️ **AND THAT IS THE ORDER OF MAGNITUDE OF E104(a).** The PO separately reports *"all cars are
+displayed as floating about 20 cm – 40 cm above the road"*. A ~0.3 m mismatch between wheel
+placement (`y = r`) and the body/suspension model space would show as exactly that: wheels drawn
+high relative to the body, the body appearing to hover. **The two reports may be one defect.** Filed
+as a hypothesis, not a finding — it is consistent with both, which is not the same as proven.
+
+**What would settle it, and it needs no display:** find where the body model's ground reference is.
+If the chassis origin is at hub height rather than at the contact patch, then `translate([wx, r, wz])`
+is adding a radius that is already there. Compare the body mesh's lowest vertex against 0 and
+against −0.34.
+
+⚠️ **Do NOT "fix" this by tilting the driveshaft level.** That would put a level shaft 0.3 m below
+the hub it is supposed to reach, and the gate would pass it. The tilt is a symptom of the offset.
