@@ -20,7 +20,7 @@ for f in ("tyre.jl","powertrain.jl","vehicle_3d.jl")
     include(joinpath(HERE, "components", f))
 end
 
-export Car3D, build_car3d, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, wheelmu3d!, world_velocity, damage_hit!, damage_impact!, damage_engine!, damage_mu, engine_power, engine_dead, damaged, damage_reset!
+export Car3D, build_car3d, set_suspension!, wheel_rate, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, wheelmu3d!, world_velocity, damage_hit!, damage_impact!, damage_engine!, damage_mu, engine_power, engine_dead, damaged, damage_reset!
 
 # E100: the transmission is SESSION data, not a car constant. The Lotus 49's gears are
 # adjustable and the ibt captures prove it -- Nurburgring runs [2.23,1.72,1.32,1.04,0.846]
@@ -74,6 +74,41 @@ function set_mass!(m::Real, front_frac::Real; source::AbstractString="unknown")
     MASS[] = float(m); FRONT_FRAC[] = float(front_frac)
     nothing
 end
+
+# E100 S4: SPRING RATES are session data too, and the last of the big three the PO's constraint
+# ("the car physics should be determined entirely by the iracing ibt data") reaches. The ibt
+# carries a SpringRate per corner and setups are asymmetric: skidpad LF 26 / RF 28 / LR 39 /
+# RR 53 N/mm against the Nordschleife's symmetric 30/30/48/48. Until now DrivenVehicle3D shared
+# one spec per axle, so an asymmetric setup could not be represented and the rates stayed pinned
+# to whichever session someone once copied.
+#
+# MOTION RATIO. The model wants WHEEL rate; the ibt gives SPRING rate. The shipped constants are
+# the ibt values x 1000 (N/mm -> N/m) x 0.6083, and that factor is a motion ratio squared
+# (MR ~ 0.78) calibrated by least squares in corner_loads.jl -- 30 N/mm -> 18_249 (shipped
+# 18_250) and 48 N/mm -> 29_198 (shipped 29_200), to four figures. E100-S3 nearly "fixed" these
+# to the raw ibt numbers, which would have stiffened the car by 64% while looking like the
+# removal of a hardcoded parameter. The factor is real physics, so it is named here rather than
+# left to be rediscovered.
+const MR2 = 0.6083                       # (motion ratio)^2, wheel rate = spring rate x MR2
+const KS  = Ref((18_250.0, 18_250.0, 29_200.0, 29_200.0))    # FL, FR, RL, RR wheel rates [N/m]
+const KS_SRC = Ref("built-in fallback (Nurburgring setup -- NOT from an ibt)")
+
+"""    set_suspension!(fl, fr, rl, rr; source) -> nothing
+
+Install per-corner WHEEL rates [N/m] from an ibt session's four SpringRate channels. Like
+set_transmission! and set_mass!, this must run BEFORE a Car3D is built: the rates are MTK
+parameters baked in at construction.
+
+Pass ibt SpringRate values in N/mm through `wheel_rate` to get the units and motion ratio right.
+"""
+function set_suspension!(fl::Real, fr::Real, rl::Real, rr::Real; source::AbstractString="unknown")
+    all(k -> k > 0, (fl, fr, rl, rr)) || error("set_suspension!: non-positive rate in $((fl,fr,rl,rr))")
+    KS[] = (float(fl), float(fr), float(rl), float(rr)); KS_SRC[] = source
+    nothing
+end
+
+"""Wheel rate [N/m] from an ibt SpringRate [N/mm]. One place for the unit and motion-ratio change."""
+wheel_rate(spring_N_per_mm::Real) = float(spring_N_per_mm) * 1000.0 * MR2
 
 """
     wrecks(closing, bnd_peak, speed; close_ms, bnd_peak_max, vmin_ms) -> Bool
@@ -268,9 +303,16 @@ function _musetters(sys)
     end
 end
 
+"""One corner spec at wheel rate `ks`, keeping every other value at the axle's shipped default."""
+_corner(axle::Symbol, ks::Real) = axle === :f ?
+    (ks = float(ks), cs = 2500.0, m_s = 120.0, m_u = 20.0, kt = 180_000.0, ct = 1000.0) :
+    (ks = float(ks), cs = 3000.0, m_s = 148.0, m_u = 20.0, kt = 200_000.0, ct = 1100.0)
+
 function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
                      brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
-    sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush, final = FINAL[], m = MASS[], front_frac = FRONT_FRAC[]))   # physics brush by DEFAULT; JM_MAGIC ⇒ Magic-Formula tyre
+    sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush, final = FINAL[], m = MASS[], front_frac = FRONT_FRAC[],
+                    fl_corner = _corner(:f, KS[][1]), fr_corner = _corner(:f, KS[][2]),
+                    rl_corner = _corner(:r, KS[][3]), rr_corner = _corner(:r, KS[][4])))   # physics brush by DEFAULT; JM_MAGIC ⇒ Magic-Formula tyre
     println(brush ? "  TYRE (3-D): physics-based brush model (default)" : "  TYRE (3-D): Magic-Formula tyre (JM_MAGIC)")
     prob = ODEProblem(sys, [sys.u => v0, sys.ωf => v0/0.30, sys.ωr => v0/RW_R,
                             sys.ωe => 209.4, sys.X => x0, sys.Y => z0, sys.ψ => θ0], (0.0, 1e7))
@@ -304,7 +346,9 @@ end
 """Compile the 3-D car ONCE and build `length(poses)` cars sharing the system (so a field of
 3-D AI doesn't pay N× mtkcompile).  `poses` = Vector of (x0,z0,θ0,v0)."""
 function build_cars3d(poses; brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
-    sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush, final = FINAL[], m = MASS[], front_frac = FRONT_FRAC[]))
+    sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush, final = FINAL[], m = MASS[], front_frac = FRONT_FRAC[],
+                    fl_corner = _corner(:f, KS[][1]), fr_corner = _corner(:f, KS[][2]),
+                    rl_corner = _corner(:r, KS[][3]), rr_corner = _corner(:r, KS[][4])))
     s_thr=setp(sys,sys.throttle); s_brk=setp(sys,sys.brake); s_st=setp(sys,sys.δ)
     s_gr=setp(sys,sys.gear); s_clu=setp(sys,sys.clutch); s_we=ModelingToolkit.setu(sys,sys.ωe)
     s_zr=(setp(sys,sys.zrFL),setp(sys,sys.zrFR),setp(sys,sys.zrRL),setp(sys,sys.zrRR))

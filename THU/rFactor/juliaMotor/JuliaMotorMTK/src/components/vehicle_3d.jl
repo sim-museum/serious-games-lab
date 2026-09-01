@@ -43,9 +43,19 @@ function DrivenVehicle3D(; name,
         # "superball-bounced" on landing off a crest.  Raised to ~27% of critical so a jump landing is
         # absorbed (inelastic), not sprung back; mainly affects bumps/landings, not steady cornering.
         front_corner = (ks = 18_250.0, cs = 2500.0, m_s = 120.0, m_u = 20.0, kt = 180_000.0, ct = 1000.0),
-        rear_corner  = (ks = 29_200.0, cs = 3000.0, m_s = 148.0, m_u = 20.0, kt = 200_000.0, ct = 1100.0))
+        rear_corner  = (ks = 29_200.0, cs = 3000.0, m_s = 148.0, m_u = 20.0, kt = 200_000.0, ct = 1100.0),
+        # E100-S4 (PO: "physics entirely from the ibt data"): spring rates are SESSION data, exactly
+        # like the gearbox (E100) and the corner weights (E100-S2). The ibt carries a SpringRate per
+        # corner and real setups are asymmetric -- the skidpad session runs LF 26 / RF 28 / LR 39 /
+        # RR 53 N/mm against the Nordschleife's symmetric 30/30/48/48. Sharing one spec per axle,
+        # as the four `spec` rows below did, cannot represent that at all, so the rates stayed
+        # frozen to whichever session they were once copied from.
+        # Each corner may now carry its own spec. Defaults keep the axle-shared behaviour exactly,
+        # so a caller that passes nothing gets the previous model unchanged.
+        fl_corner = front_corner, fr_corner = front_corner,
+        rl_corner = rear_corner,  rr_corner = rear_corner)
     L = a + b; mf = m*front_frac; mr = m*(1 - front_frac)
-    M_s = 2*(front_corner.m_s + rear_corner.m_s)          # total sprung mass
+    M_s = fl_corner.m_s + fr_corner.m_s + rl_corner.m_s + rr_corner.m_s   # total sprung mass
 
     # brush=true ⇒ physics-based brush tyre (no fudge); else the Magic-Formula preset
     FL = brush ? BrushTyre(; name=:FL, BRUSH_FRONT...) : Tyre(; name=:FL, TYRE_SKIDPAD_FRONT...)
@@ -73,10 +83,10 @@ function DrivenVehicle3D(; name,
     εF = 80.0                                             # contact/clamp rounding scale [N]
 
     #            tyre  xi    yi    steer axle  m_s              m_u              ks/cs/kt/ct          zu     vu     zr     vr     Fz
-    spec = ((FL,  a,  tf/2,  δ, :f, front_corner, zuFL, vuFL, zrFL, vrFL, FzFL),
-            (FR,  a, -tf/2,  δ, :f, front_corner, zuFR, vuFR, zrFR, vrFR, FzFR),
-            (RL, -b,  tr/2,  0, :r, rear_corner,  zuRL, vuRL, zrRL, vrRL, FzRL),
-            (RR, -b, -tr/2,  0, :r, rear_corner,  zuRR, vuRR, zrRR, vrRR, FzRR))
+    spec = ((FL,  a,  tf/2,  δ, :f, fl_corner, zuFL, vuFL, zrFL, vrFL, FzFL),
+            (FR,  a, -tf/2,  δ, :f, fr_corner, zuFR, vuFR, zrFR, vrFR, FzFR),
+            (RL, -b,  tr/2,  0, :r, rl_corner, zuRL, vuRL, zrRL, vrRL, FzRL),
+            (RR, -b, -tr/2,  0, :r, rr_corner, zuRR, vuRR, zrRR, vrRR, FzRR))
 
     eqs = Equation[]; Fyb=Any[]; Fxb=Any[]; Mz=Any[]; Fx_f=Any[]; Fx_r=Any[]
     Fsusp=Any[]; xs=Any[]; ys=Any[]

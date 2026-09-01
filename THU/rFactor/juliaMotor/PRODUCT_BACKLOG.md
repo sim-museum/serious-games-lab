@@ -3872,3 +3872,39 @@ bounce. **Acceptance 1 is met across the range.**
 
 **Treatment: all 7 speeds ok, exit 0. Control (`JM_VN_OUT_MAX=8`): 6 of 7 red, naming SUSTAINED
 REVERSAL at 10–45 m/s and PASSED THROUGH at 60–80. Suite 14/14.**
+
+### E100-S4 (2026-08-31) — ✅ spring rates now come from the ibt, per corner; the model can represent an asymmetric setup
+
+E100-S3 recorded the rates as *"real, but structurally blocked … the model carries ONE `front_corner`
+and ONE `rear_corner` spec, so **it cannot represent an asymmetric setup at all** — this is not a
+wiring job like the gearbox was."*
+
+**It was a wiring job.** `DrivenVehicle3D` already builds four corner assemblies (FL/FR/RL/RR); it
+simply passed the *same* spec to both sides of each axle (`vehicle_3d.jl:76–79`). Each corner now
+takes its own spec, defaulting to the axle-shared values, so a caller that passes nothing gets the
+previous model unchanged.
+
+`set_suspension!(fl, fr, rl, rr)` joins `set_transmission!` (E100) and `set_mass!` (E100-S2), and
+`drive_native_mtk.jl` installs all three from the same session. `wheel_rate(N/mm)` holds the unit
+change and the motion ratio in one place.
+
+| session | ibt SpringRate N/mm (LF/RF/LR/RR) | installed wheel rate N/m |
+|---|---|---|
+| Nordschleife 15-53-11 | 30 / 30 / 48 / 48 | 18249 / 18249 / 29198 / 29198 |
+| skidpad 15-46-39 | 26 / 28 / 39 / 53 | **15816 / 17032 / 23724 / 32240** |
+
+The circuit session reproduces the shipped constants **18250 / 29200 to within 1–2 N/m**, which is
+both a clean regression check and independent confirmation of the motion ratio: the constants always
+*were* the ibt values × 1000 × 0.6083. E100-S3 nearly "fixed" them to the raw ibt numbers, which
+would have stiffened the car by 64% while looking like the removal of a hardcoded parameter — the
+factor is now named at the constant (`MR2`) instead of waiting to be rediscovered.
+
+The skidpad row is the point: four distinct rates where the model could previously hold two.
+
+Gated in `transmission_smoke.jl` (the session-data gate): the ibt carries four SpringRates in 9
+sessions, the rates vary between sessions, **3 sessions are genuinely asymmetric left/right** — so
+per-corner plumbing cannot pass by construction — the live `KS` equals the installed session's, and
+`wheel_rate` reproduces both shipped constants. Rubbish rates are refused. Suite **14/14**.
+
+⚠️ Still frozen, and honestly not fixed: `ride_height_mm` and `camber_deg` are also per-corner
+session data and are still constants. Same shape, same fix; not done here.

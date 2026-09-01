@@ -398,6 +398,17 @@ let
             # E100 S2: mass and its front share come from the same session's CornerWeights.
             (mm, ff) = DriveRT3D.mass_from_corner_weights(pp.corner_weight_N)
             DriveRT3D.set_mass!(mm, ff; source = basename(IBTTMPL))
+            # E100 S4: and the SPRING RATES, which are per-corner and asymmetric in real setups.
+            # The model used to share one spec per axle, so the rates could not follow the session
+            # at all; they stayed frozen wherever they were once copied from. wheel_rate() carries
+            # the N/mm -> N/m conversion and the motion ratio, so this stays a wiring job.
+            let sp = pp.spring_rate_Npmm
+                if all(k -> haskey(sp, k) && isfinite(sp[k]) && sp[k] > 0, (:LF,:RF,:LR,:RR))
+                    DriveRT3D.set_suspension!(DriveRT3D.wheel_rate(sp[:LF]), DriveRT3D.wheel_rate(sp[:RF]),
+                                              DriveRT3D.wheel_rate(sp[:LR]), DriveRT3D.wheel_rate(sp[:RR]);
+                                              source = basename(IBTTMPL))
+                end
+            end
         catch e
             @warn "E100: could not read the gearbox from $(basename(IBTTMPL)); the built-in \
                    fallback is the SKIDPAD setup and is wrong for a circuit" e
@@ -410,6 +421,10 @@ let
             "   <- ", DriveRT3D.transmission_source())
     println("  mass:    ", round(DriveRT3D.MASS[], digits=1), " kg  front ",
             round(100*DriveRT3D.FRONT_FRAC[], digits=1), "%")
+    # Say where the rates came from, for the same reason the gearbox does: a silent fallback to
+    # constants is the defect, not the absence of one.
+    println("  springs: ", join((round(Int, k) for k in DriveRT3D.KS[]), " / "),
+            " N/m (FL/FR/RL/RR)   <- ", DriveRT3D.KS_SRC[])
 end
 # PO 2026-08-27 (found by a real drive): every session ended with
 #   .ibt export failed: SystemError("opening file .../lotus49_... .ibt", 2, nothing)

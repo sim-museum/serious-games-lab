@@ -70,6 +70,41 @@ if !isempty(files)
     check("live FRONT_FRAC equals session's", DriveRT3D.FRONT_FRAC[] == ff, string(round(ff, digits=4)))
 end
 
+# 3b. E100 S4: SPRING RATES are session data too, and per CORNER. Real setups are asymmetric --
+# the skidpad runs LF 26 / RF 28 / LR 39 / RR 53 N/mm against the Nordschleife's 30/30/48/48 -- and
+# DrivenVehicle3D used to share ONE spec per axle, so an asymmetric setup could not be represented
+# at all and the rates stayed frozen wherever they were copied from.
+let springs = Dict{String,NTuple{4,Float64}}()
+    for f in files
+        p3 = Setup.setup_params(IBT.session_yaml(IBT.ibt_open(f)))
+        sp = p3.spring_rate_Npmm
+        all(k -> haskey(sp, k) && isfinite(sp[k]), (:LF,:RF,:LR,:RR)) || continue
+        springs[basename(f)] = Tuple(DriveRT3D.wheel_rate(sp[k]) for k in (:LF,:RF,:LR,:RR))
+    end
+    check("ibt carries a SpringRate for all four corners", !isempty(springs),
+          string(length(springs), " session(s)"))
+    check("spring rates VARY between sessions", length(unique(values(springs))) > 1,
+          string(length(unique(values(springs))), " distinct rate sets"))
+    # The point of the change: at least one session must be genuinely asymmetric, or per-corner
+    # plumbing would be untested by construction and the axle-shared model would still pass.
+    check("at least one session is ASYMMETRIC left/right",
+          any(v -> v[1] != v[2] || v[3] != v[4], values(springs)),
+          string(count(v -> v[1] != v[2] || v[3] != v[4], collect(values(springs))), " asymmetric"))
+    if !isempty(springs)
+        (nm, v) = first(sort(collect(springs); by = first))
+        DriveRT3D.set_suspension!(v...; source = nm)
+        check("live KS equals the session's four rates", DriveRT3D.KS[] == v,
+              join((round(Int, k) for k in DriveRT3D.KS[]), "/"))
+    end
+    # The motion ratio is real physics, not a fudge: the shipped constants ARE the ibt values
+    # through wheel_rate(). E100-S3 nearly "fixed" them to the raw ibt numbers, which would have
+    # stiffened the car 64% while looking like the removal of a hardcoded parameter.
+    check("wheel_rate reproduces the shipped front constant",
+          round(DriveRT3D.wheel_rate(30.0)) == 18_249, string(round(DriveRT3D.wheel_rate(30.0))))
+    check("wheel_rate reproduces the shipped rear constant",
+          round(DriveRT3D.wheel_rate(48.0)) == 29_198, string(round(DriveRT3D.wheel_rate(48.0))))
+end
+
 # 4. Rubbish must be refused rather than silently installed.
 for (name, gears, final) in (("wrong count", [1.0, 2.0], 4.11),
                              ("non-positive ratio", [2.23, 1.72, 1.32, 1.04, -0.5], 4.11),
@@ -82,6 +117,12 @@ for (name, m, ff) in (("non-positive mass", 0.0, 0.45), ("front_frac >= 1", 617.
                       ("front_frac <= 0", 617.0, 0.0))
     threw = false
     try; DriveRT3D.set_mass!(m, ff); catch; threw = true; end
+    check("rejects $name", threw, threw ? "threw" : "ACCEPTED IT")
+end
+for (name, r) in (("non-positive spring rate", (18_250.0, 0.0, 29_200.0, 29_200.0)),
+                  ("negative spring rate", (18_250.0, 18_250.0, -1.0, 29_200.0)))
+    threw = false
+    try; DriveRT3D.set_suspension!(r...); catch; threw = true; end
     check("rejects $name", threw, threw ? "threw" : "ACCEPTED IT")
 end
 
