@@ -86,5 +86,45 @@ chk("HEIGHT is never extrapolated (E104(a))", predict(p0, 0.1).y == p0.y,
 chk("speed and heading are carried, not invented",
     predict(p0, 0.1).v == p0.v && predict(p0, 0.1).yaw == p0.yaw, "unchanged")
 
+# ── E85-S3: LOSS, JITTER AND SILENCE ────────────────────────────────────────────────────────────
+# Predicted BEFORE running, from the same ½·a·Δt² the S2 arms confirmed:
+#   * error grows with the SQUARE of the gap, so ONE dropped packet at 10 Hz (Δt 0.1 -> 0.2 s)
+#     should give ~4x the error: 0.075 -> ~0.30 m. Holding would be 12 m at that age.
+#   * two dropped packets (0.3 s) would be ~9x -- which is why extrapolation is CAPPED.
+#   * a silent peer must VANISH, not keep driving.
+println("\n  -- loss, jitter and silence --")
+
+function err_at(age, w)                       # error of a dead-reckoned pose `age` after a packet
+    p = pose_at(0.0, w)
+    tx, tz = truth(age, w)
+    q = predict(p, min(age, NetPlay.EXTRAP_MAX))
+    hypot(tx - q.x, tz - q.z)
+end
+
+e1 = err_at(DT, W)          # clean:            0.1 s
+e2 = err_at(2DT, W)         # one packet lost:  0.2 s
+println("     1 interval ", round(e1, digits=4), " m    2 intervals ", round(e2, digits=4), " m",
+        "    (hold at 0.2 s would be ", round(V*2DT, digits=1), " m)")
+chk("one dropped packet costs ~4x, not ~2x (t^2)", 3.5 <= e2/e1 <= 4.5, "$(round(e2/e1,digits=2))x")
+chk("even with a packet lost, still << holding", e2 < V*2DT/20, "$(round(e2,digits=3)) vs $(round(V*2DT,digits=1)) m")
+
+# The cap: past EXTRAP_MAX the POSE must stop advancing.
+# ⚠️ My first two arms here asserted the ERROR stops growing, and they failed -- correctly. A frozen
+# pose does not freeze the error, because the real car keeps moving away from it. The property the
+# cap actually guarantees is about the POSE, and that is what is asserted now. The arms were wrong,
+# not the code; a gate that fails is only useful if you check which half is at fault.
+p_far  = predict(pose_at(0.0, W), min(1.0, NetPlay.EXTRAP_MAX))
+p_far2 = predict(pose_at(0.0, W), min(2.0, NetPlay.EXTRAP_MAX))
+p_cap  = predict(pose_at(0.0, W), NetPlay.EXTRAP_MAX)
+chk("past the cap the pose stops advancing", p_far === p_far2, "identical at 1 s and 2 s")
+chk("the frozen pose is the one at EXTRAP_MAX", p_far === p_cap, "$(NetPlay.EXTRAP_MAX) s")
+chk("and it HAS advanced up to the cap", p_cap.x != pose_at(0.0, W).x, "not simply held")
+
+# silence: a peer that stops sending must be DROPPED, not extrapolated forever
+chk("a peer silent past STALE_S is stale", NetPlay.is_stale(NetPlay.STALE_S), "$(NetPlay.STALE_S) s")
+chk("a peer heard from recently is not stale", !NetPlay.is_stale(NetPlay.STALE_S - 0.001), "just under")
+chk("the cap is shorter than the drop timeout", NetPlay.EXTRAP_MAX < NetPlay.STALE_S,
+    "freeze first, then remove -- never invent motion for a car that is gone")
+
 println(fails[] == 0 ? "\n  DEAD RECKONING GATE: PASS ✓" : "\n  DEAD RECKONING GATE: FAIL ($(fails[]))")
 exit(fails[] == 0 ? 0 : 1)

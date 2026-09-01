@@ -4782,3 +4782,42 @@ every car 20–40 cm into the air.
 stream; the real question is what happens when packets arrive late, out of order, or not at all.
 State the expected behaviour first again — in particular what should happen when a car goes
 silent, because extrapolating a missing car forever is how a ghost keeps driving.
+
+### E85-S3 (2026-09-01) — ✅ loss, jitter and silence: the error is quadratic, so extrapolation is capped and a silent car is REMOVED
+
+Stated before running, from the same `½·a·Δt²` S2 confirmed:
+
+> Loss and jitter only make the newest pose **older**, and the error grows with the **square** of
+> the gap — one dropped packet at 10 Hz doubles Δt and should **quadruple** the error, 0.075 →
+> ~0.30 m, against 12 m for holding. Two dropped packets would be ~9×, which is why extrapolation
+> must be **capped**. And **silence is different in kind**: a peer that stops sending is not a peer
+> moving predictably.
+
+Measured: **0.0750 → 0.3000 m, exactly 4.0×**, against **12.0 m** for holding at the same age.
+
+**The two failure modes are handled differently, deliberately:**
+
+* **Loss/jitter** needs nothing special — the degradation is graceful and the arm proves it stays
+  ~40× better than holding even with a packet gone.
+* **Silence** would otherwise produce a **ghost**: a car driving on smoothly, through corners it
+  cannot take, into scenery, for the rest of the session. That is worse than showing nothing,
+  because it is indistinguishable from a real car right up to the moment you crash into it.
+
+So: extrapolation is capped at **`EXTRAP_MAX = 0.25 s`** (past it the pose **freezes** — a frozen
+car is a smaller lie than a confidently wrong one), and past **`STALE_S = 2.0 s`** the peer is
+**dropped from the field**. `remote_poses_at` applies both, so a caller cannot forget to. An arm
+pins the ordering: **freeze first, then remove** — the cap must be shorter than the timeout.
+
+⚠️ **Two of my arms FAILED, and they were the wrong half.** I asserted that past the cap the
+*error* stops growing. It does not, and should not: a frozen pose does not freeze the error,
+because the real car keeps moving away from it. The property the cap actually guarantees is about
+the **pose**, and that is what is asserted now — identical at 1 s and 2 s, equal to the pose at
+`EXTRAP_MAX`, and *having advanced* up to it (so "capped" cannot be satisfied by never moving at
+all). **A gate that fails is only useful if you check which half is at fault.**
+
+Suite **21/21**.
+
+**Next (sprint 4):** two real processes rather than one process and analysis — a host and a client
+driving the same track, with the packet rate and the observed position disagreement measured on
+both sides. State the expected disagreement first: at 10 Hz it should be the S2/S3 figures plus
+whatever the loopback adds, and anything larger is a defect in the wiring rather than in the model.

@@ -14,7 +14,8 @@
 module NetPlay
 
 using Sockets
-export NetLink, netopen, netclose, send_pose!, poll!, remote_poses, predict, remote_poses_at
+export NetLink, netopen, netclose, send_pose!, poll!, remote_poses, predict, remote_poses_at,
+       EXTRAP_MAX, STALE_S, is_stale
 
 const MAGIC   = UInt32(0x4A4D5231)      # "JMR1" — a stray packet on a shared port must not parse
 const PKTSIZE = 4 + 1 + 4 + 2 + 6*4      # magic + car id + tick + listen port + 6 Float32
@@ -175,12 +176,50 @@ function predict(p, dt::Real)
        yaw = p.yaw, v = p.v, steer = p.steer, tick = p.tick)
 end
 
-"""    remote_poses_at(n, now) -> [(id, predicted pose)]
+# ── E85-S3: JITTER, LOSS AND SILENCE ────────────────────────────────────────────────────────────
+# S2 measured dead reckoning against a PERFECT 10 Hz stream. Real links drop and delay packets, and
+# the two failure modes are different in kind:
+#
+#   LOSS/JITTER — the newest pose is simply older. The error is still ½·a·Δt², so it grows with the
+#     SQUARE of the gap: one dropped packet at 10 Hz doubles Δt and quadruples the error (0.075 m ->
+#     0.30 m). That is a graceful degradation and needs no special handling.
+#
+#   SILENCE — a peer that stops sending is NOT a peer moving predictably. Extrapolating it forever
+#     produces a ghost: a car that drives on smoothly, through corners it cannot take, into
+#     scenery, for as long as the session lasts. That is worse than showing nothing, because it is
+#     indistinguishable from a real car right up to the moment you crash into it.
+#
+# So extrapolation is CAPPED at EXTRAP_MAX, and past STALE_S the car is dropped from the field
+# entirely. Between the two the car freezes in place -- honest about being out of date rather than
+# inventing motion.
 
-`remote_poses`, dead-reckoned to `now` using each packet's own arrival time. `now` is passed in
-rather than read here so a caller can use the frame's timestamp and a test can use a fixed clock.
+"""How far ahead dead reckoning may extrapolate (s). Past this the pose FREEZES: beyond a couple of
+packet intervals a straight-line guess is not evidence about where a car is, and a frozen car is a
+smaller lie than a confidently wrong one."""
+const EXTRAP_MAX = 0.25
+
+"""After this long with no packet (s) a peer is GONE and is removed from the field, rather than
+left driving as a ghost."""
+const STALE_S = 2.0
+
+"""True when `age` seconds have passed with no packet from a peer."""
+is_stale(age::Real) = age >= STALE_S
+
+"""    remote_poses_at(n, now) -> [(id, pose)]
+
+`remote_poses`, dead-reckoned to `now` using each packet's own arrival time, with the staleness
+policy applied: extrapolation capped at `EXTRAP_MAX`, and peers silent for `STALE_S` OMITTED.
+`now` is passed in rather than read here so a caller can use the frame's timestamp and a test can
+use a fixed clock.
 """
-remote_poses_at(n::NetLink, now::Real) =
-    [(id, predict(n.remote[id], now - get(n.rxtime, id, now))) for id in sort(collect(keys(n.remote)))]
+function remote_poses_at(n::NetLink, now::Real)
+    out = Tuple{UInt8,NamedTuple}[]
+    for id in sort(collect(keys(n.remote)))
+        age = now - get(n.rxtime, id, now)
+        is_stale(age) && continue                       # gone, not guessed at
+        push!(out, (id, predict(n.remote[id], min(age, EXTRAP_MAX))))
+    end
+    out
+end
 
 end # module
