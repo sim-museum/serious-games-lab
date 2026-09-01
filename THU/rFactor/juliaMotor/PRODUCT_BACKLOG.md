@@ -24,7 +24,7 @@ this index was written; that is what it exists to stop.
 | **E85** | EPIC: multiplayer, the way GPL did it | **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
 | **E105** | a setup tab exposing modest chassis-setup changes | **values + reset DONE and gated** (E105-S1); the UI shell is the PO's call. NEW 2026-08-31. Relaxes the "no modifiable parameters" constraint, scoped to setup. assessed |
 | **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | **half (b) FIXED** (E104-S1): a −999 "off the mesh" sentinel was passing an `isfinite` guard and reaching the physics — 20.9 m of vertical travel, now 0.00. Half (a), the floating, is still open and needs a capture. |
-| **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | **measured** (E102-S1): shaft drops 0.11 m, but the WHOLE rear group sits ~0.3 m below the wheel centre — the brake disc, which must be concentric, is 0.303 m low. May be the same defect as E104(a). |
+| **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | **diagnosed** (E102-S2, correcting S1): the assembly is placed CORRECTLY (brake disc within 2.8 mm of the hub). The shaft's HUB end is right (+0.025); its CHASSIS end is 13 cm too high, giving the 0.11 m downward slope. Fix the inboard end, not the group. |
 | **E103** | wheel loss in a collision hyperspaces the car to the start line | **mechanism found + fixed + gated** (E103-S1): the containment seal PLACES the car at its last on-track point, which initialises to spawn. Not yet seen in a real wreck. |
 | **E90** | Monza and Watkins have almost no collidable barrier objects | open; the gate passing IS the symptom. assessed |
 | **E91** | "Tesla brakes" — lift-off decelerates ~1.67× too hard | PO confirmed right by measurement (S4). Fix not landed. assessed |
@@ -4380,3 +4380,50 @@ against −0.34.
 
 ⚠️ **Do NOT "fix" this by tilting the driveshaft level.** That would put a level shaft 0.3 m below
 the hub it is supposed to reach, and the gate would pass it. The tilt is a symptom of the offset.
+
+### E102-S2 (2026-09-01) — 🔴 **S1 IS WRONG AND IS WITHDRAWN.** The assembly is correctly placed; the shaft's CHASSIS end is 13 cm too high
+
+**S1 claimed the whole rear assembly sits ~0.3 m below the hub, and offered that as a possible
+single cause for E104(a) as well. Both claims are withdrawn — the measurement omitted a transform.**
+
+The rear suspension is drawn with **`bodyModel * RSFIX_A`**, and `bodyModel = tiltModel *
+translate(BODY_OFF)` where **`BODY_OFF = [-0.55, 0.30, 0.0]`** — its own comment reads *"centre body
+on X, **lift onto the wheels**"*. S1 measured raw model space and never applied that +0.30. The
+"0.3 m too low" was the lift, not a defect.
+
+**With the lift applied, against a hub at y = 0.34:**
+
+| part | mean y | vs hub |
+|---|---|---|
+| **lbrdisc (brake disc)** | **0.3372** | **−0.0028** |
+| frontlot | 0.3607 | +0.021 |
+| (untextured) | 0.3601 | +0.020 |
+| axlelot | 0.3673 | +0.027 |
+| lsusp6 | 0.3838 | +0.044 |
+| lsusp2 | 0.5375 | +0.198 |
+
+⭐ **The brake disc lands within 2.8 mm of the hub.** A brake disc is concentric with its wheel by
+construction, so that is a strong validation: **the assembly is placed correctly and the wheels are
+placed correctly.** The two agree.
+
+**What survives S1 — and it is the PO's actual complaint — is the TILT**, which is a relative
+measurement inside one part and so is unaffected by any uniform offset:
+
+* driveshaft **hub end**: y 0.3647 — **+0.025 above the hub, near enough right**
+* driveshaft **chassis end**: y 0.4742 — **+0.134, i.e. 13 cm too high**
+* drop across the shaft: **0.1095 m**
+
+**So the fix is to bring the INBOARD end down to hub height, not to move the group.** The shaft
+should run level from the gearbox to the hub; today it starts 13 cm high at the chassis and slopes
+down to meet a hub that is in the right place. That is exactly *"sticks pointing outward and
+downward from the back wheels"*.
+
+⚠️ **E104(a) loses its proposed explanation.** S1 offered the 0.3 m as a possible single cause for
+the floating cars; there is no 0.3 m. The wheel model is centred on its own origin (−0.336…+0.336)
+and `wheelmat` places it at y = r = 0.34, putting its contact patch at **0.004** — on the ground.
+E104(a) needs its own investigation and probably a capture.
+
+⚠️ **Why this went wrong, worth keeping:** S1 compared numbers from two different coordinate spaces
+and did not check that they were in the same one. The brake disc was even used *as an oracle* — the
+right instinct — but against an unlifted figure, so the oracle "confirmed" a defect that was not
+there. **When a part is drawn through a chain of matrices, measure it through the same chain.**
