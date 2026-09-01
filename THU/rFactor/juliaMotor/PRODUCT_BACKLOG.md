@@ -4738,3 +4738,47 @@ and no test can load it (E103-S2) — the same rule E105-S2 applied to the setup
 ⚠️ **Still open, and it needs the PO:** this fixes the AI field. If cars still look high after it,
 the remaining half is the *player's* car — which measures 0.000 m, so it would be a different
 mechanism entirely.
+
+### E85-S2 (2026-09-01) — ✅ dead reckoning, with the expected error stated BEFORE the measurement
+
+S1's closing instruction was *"extrapolate between packets and measure the position error at a
+realistic packet rate. **State the expected error before measuring it.**"* So, stated first:
+
+> A remote pose arrives at the packet rate, not the frame rate. At R Hz the newest packet is 0–1/R
+> old (mean 1/2R). **Holding** it is a first-order error of `v·age` — at 10 Hz and 60 m/s, **mean
+> 3.0 m, max 6.0 m**. **Extrapolating** along the heading cancels that term exactly and leaves only
+> curvature, `½·a_lat·age²` — at 1.5 g, **mean ≈0.025 m, max ≈0.075 m**. So: ~100× better in a
+> corner, and **exact** on a straight.
+
+Measured:
+
+| | mean | max |
+|---|---|---|
+| hold | **3.000 m** | **6.000 m** |
+| extrapolate | **0.0252 m** | **0.0750 m** |
+
+**118.8×**, and the straight-line arm comes back at `3.6e-15 m` — exact to floating point. The
+prediction held to three significant figures, which is the point of stating it first: a number that
+merely *looks* small proves nothing, and I would have accepted anything under a metre as a success.
+
+`predict(pose, dt)` is a **pure function**, so the gate drives it against a closed-form
+constant-speed arc — no sockets, no second process, no stopwatch. **The error is measured against
+analysis, not against another run of the same code.**
+
+Deliberately NOT a filter: no smoothing, no history. A filter would need tuning, would hide the
+transport's real behaviour, and would leave the gate with no closed-form expectation to check.
+
+**`netplay_dr_smoke`, 11 arms, suite now 21.** Two are the positive control — the harness must
+reproduce `v·age` and `v/R` before any "improvement" against it means anything. Others pin the
+shape: `predict(p,0)` and `predict(p,−t)` are no-ops (**clock skew cannot rewind a car**), and speed
+and heading are carried rather than invented.
+
+⭐ **`y` is NEVER extrapolated, and that is a cross-item lesson, not a detail.** A remote car's
+height must come from the ground beneath it. E104(a), fixed the same day, was exactly this mistake
+in the AI field: a height carried from somewhere other than the terrain under the car, which drew
+every car 20–40 cm into the air.
+
+**Next (sprint 3):** jitter and loss. Dead reckoning is measured here against a *perfect* 10 Hz
+stream; the real question is what happens when packets arrive late, out of order, or not at all.
+State the expected behaviour first again — in particular what should happen when a car goes
+silent, because extrapolating a missing car forever is how a ghost keeps driving.

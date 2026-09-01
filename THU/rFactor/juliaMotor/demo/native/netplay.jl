@@ -14,7 +14,7 @@
 module NetPlay
 
 using Sockets
-export NetLink, netopen, netclose, send_pose!, poll!, remote_poses
+export NetLink, netopen, netclose, send_pose!, poll!, remote_poses, predict, remote_poses_at
 
 const MAGIC   = UInt32(0x4A4D5231)      # "JMR1" — a stray packet on a shared port must not parse
 const PKTSIZE = 4 + 1 + 4 + 2 + 6*4      # magic + car id + tick + listen port + 6 Float32
@@ -40,6 +40,7 @@ mutable struct NetLink
     port::Int
     peers::Vector{Tuple{IPAddr,Int}}          # who we send to
     remote::Dict{UInt8,NamedTuple}
+    rxtime::Dict{UInt8,Float64}                # when each id's newest packet ARRIVED (dead reckoning)
     inbox::Channel{Tuple{IPAddr,Int,Vector{UInt8}}}
     task::Union{Task,Nothing}
     rx::Int                                    # packets accepted
@@ -65,7 +66,7 @@ function netopen(; port::Int = DEFAULT_PORT, peer = nothing)
     sk = UDPSocket()
     peers = Tuple{IPAddr,Int}[]
     peer === nothing || push!(peers, (getaddrinfo(String(peer[1])), Int(peer[2])))
-    n = NetLink(r, sk, port, peers, Dict{UInt8,NamedTuple}(),
+    n = NetLink(r, sk, port, peers, Dict{UInt8,NamedTuple}(), Dict{UInt8,Float64}(),
                 Channel{Tuple{IPAddr,Int,Vector{UInt8}}}(256), nothing, 0, 0, true, "")
     n.task = @async begin
         while n.open
@@ -135,6 +136,7 @@ function poll!(n::NetLink; maxpkts::Int = 64)
         yaw = read(io, Float32); v = read(io, Float32); st = read(io, Float32)
         n.remote[id] = (tick = Int(tick), x = Float64(x), y = Float64(y), z = Float64(z),
                         yaw = Float64(yaw), v = Float64(v), steer = Float64(st))
+        n.rxtime[id] = time()
         n.rx += 1; got += 1
         any(p -> p[1] == host && p[2] == lport, n.peers) || push!(n.peers, (host, lport))
     end
@@ -143,5 +145,42 @@ end
 
 """The remote cars, as an id-ordered vector — the shape the AI field already draws."""
 remote_poses(n::NetLink) = [(id, n.remote[id]) for id in sort(collect(keys(n.remote)))]
+
+# ── E85-S2: DEAD RECKONING ──────────────────────────────────────────────────────────────────────
+# A remote car's pose arrives at the packet rate, not the frame rate. At 10 Hz the newest packet is
+# between 0 and 100 ms old, so simply HOLDING it puts the car `v * age` behind where it is — 3 m on
+# average at 60 m/s, 6 m at worst. At racing speeds that is not a stutter, it is a car in the wrong
+# place, and it is worst exactly when it matters (side by side at speed).
+#
+# `predict` advances the last known pose along its own heading at its own speed. What it CANNOT
+# follow is curvature: the residual is the second-order term, about ½·a_lat·Δt², which at 1.5 g and
+# 100 ms is ~7 cm. So this trades a first-order error for a second-order one and nothing else —
+# no smoothing, no history, no filter. Deliberately: a filter would need tuning and would hide the
+# transport's real behaviour behind it, and the gate could no longer state a closed-form
+# expectation to check against.
+#
+# ⚠️ It is a PURE function of (pose, Δt) so the gate can drive it with a synthetic trajectory whose
+# true position is known in closed form, instead of needing two live processes and a stopwatch.
+
+"""    predict(p, dt) -> NamedTuple
+
+`p` as delivered by `poll!`, advanced `dt` seconds along its own heading at its own speed.
+`dt <= 0` returns `p` unchanged. `y` is NOT extrapolated: height comes from the terrain under the
+car, and guessing it is how a remote car ends up flying (see E104(a) — a car's drawn height must be
+the ground beneath it, never a value carried from somewhere else).
+"""
+function predict(p, dt::Real)
+    dt <= 0 && return p
+    (; x = p.x + p.v*cos(p.yaw)*dt, y = p.y, z = p.z + p.v*sin(p.yaw)*dt,
+       yaw = p.yaw, v = p.v, steer = p.steer, tick = p.tick)
+end
+
+"""    remote_poses_at(n, now) -> [(id, predicted pose)]
+
+`remote_poses`, dead-reckoned to `now` using each packet's own arrival time. `now` is passed in
+rather than read here so a caller can use the frame's timestamp and a test can use a fixed clock.
+"""
+remote_poses_at(n::NetLink, now::Real) =
+    [(id, predict(n.remote[id], now - get(n.rxtime, id, now))) for id in sort(collect(keys(n.remote)))]
 
 end # module
