@@ -6,6 +6,58 @@ up to 5 AI cars, user-set lap count, GPL tracks (Zandvoort, Nürburgring, +Watki
 Glen, Monza, Spa), GPL-fidelity graphics (incl. the Lotus 49), glitch-free, and a
 **physics-based (Modelica-like) iRacing Lotus 49** model — no fudge factors.
 
+
+## STATUS INDEX (rebuilt 2026-08-31)
+
+Maintained by hand because the document cannot be scanned reliably: sections carry ✅/🔴 markers
+from *sub-sprints*, so an automated pass mis-attributes a sub-item's marker to its parent, and
+several parents are epics with mixed children. Two audits of this file gave different answers before
+this index was written; that is what it exists to stop.
+
+**Confidence is stated per row.** "assessed" = I verified it this session or landed it myself.
+"needs review" = I could not establish it from the document and did not guess.
+
+### 🔴 OPEN — PO-raised, actionable
+
+| item | what | state |
+|---|---|---|
+| **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | NEW 2026-08-31. Reopens E82's fix. assessed |
+| **E103** | wheel loss in a collision hyperspaces the car to the start line | NEW 2026-08-31. assessed |
+| **E90** | Monza and Watkins have almost no collidable barrier objects | open; the gate passing IS the symptom. assessed |
+| **E91** | "Tesla brakes" — lift-off decelerates ~1.67× too hard | PO confirmed right by measurement (S4). Fix not landed. assessed |
+| **E80** | 10 fps at Spa in cockpit view | analysis to S4; 725 s of load attributed to the trackside block. No fix landed. assessed |
+| **E81** | floating/misplaced billboards and buildings at the Ring | open; the Ring bypasses the pipeline the other tracks use. assessed |
+| **E76** | restore objects deleted after the Ring start/finish | open, lead only. assessed |
+| **E78** | improve all 5 tracks against the gold videos | epic, open. assessed |
+| **E79** | audit every row-of-people object on all 5 tracks | partially served by E101's filter; the 5-track audit is not done. assessed |
+| **E85** | EPIC: multiplayer, the way GPL did it | open, not started. assessed |
+| **E60** | Zandvoort gold-video parity | epic, ongoing. assessed |
+| **E64** | cockpit/chase parity | epic, ongoing (E82/E83 are its children). assessed |
+
+### 🟡 AWAITING THE PO — implemented, needs your eye
+
+| item | what | why it is not closed |
+|---|---|---|
+| **E83** | vegetation brightness | palette + unlit sprites fixed and seen on screen; a residual ~1.4× gap remains. Must NOT be closed with a grade change. |
+| **E84** | GPL's lateral tables as the AI line | implemented behind `JM_AI_GPLLAT`, **default OFF** — it makes the field run as a train, which may be correct (GPL's fields do queue). Needs a re-drive. |
+
+### ✅ CLOSED (assessed this session or landed by me)
+
+E57, E77, E86, E87, E88, E89 (AI lunging 1.83→0.46 cycles/car-lap), E92, E93 (clutch — physics
+exonerated), E94, E95, E96 (no bounce-back at any speed, S5), E97, E98, E99, E100 (gearbox, mass,
+spring rates, ride height all from the ibt; camber is *unmodelled*, not frozen), E101.
+
+**E82 is CLOSED-THEN-REOPENED:** the driveshafts were restored and verified on screen, and the PO
+then reported the remaining defect as E102.
+
+### ❓ NEEDS REVIEW — I could not establish these from the document
+
+**E56** (all-Modelica epic — gates exist and pass, but the epic's own closure is unstated),
+**E59** (sprint log; E59.2/E59.3 marked ◑ partial), **E65** (Monza banking & Lesmos scenery),
+**E67** (launch time — the cache fix landed, 762 s → 1.5 s, but S1 is marked ◑ PARTIAL),
+**E68** (per-face road-facing selection — an implementation spec; unclear whether built).
+
+
 ## Definition of Done (per item)
 - Builds + headless smoke (`JM_SMOKE`) clean; no regressions in `JuliaMotorMTK` tests.
 - For visible items: an offscreen snapshot verifies the change.
@@ -3962,3 +4014,59 @@ constant" but **"unmodelled parameter"** — a much bigger and quite different p
 Recorded so the note in S4/S5 stops advertising a wiring job that does not exist. The genuinely
 frozen-and-wired trio is closed: **gearbox (E100), mass (E100-S2), spring rates (E100-S4), static
 ride height (E100-S5)** — all four now installed from the session and reported with their source.
+
+### E102 (PO 2026-08-31) — 🔴 the rear axles point OUTWARD AND DOWNWARD from the wheels; they must be HORIZONTAL
+
+PO, verbatim: *"julia car axles should be horizontal between center of wheel and chassis, not sticks
+pointing outward and downward from the back wheels."*
+
+**This is a defect in E82-S3's own fix, reported against the shipped build.** That sprint restored
+the driveshafts by trimming them at the drawn wheel plane instead of dropping them, and the capture
+I judged it on (`parity/e82_s3/compare.png`, bottom panel) showed a shaft running from the gearbox
+out to the hub. The PO is looking at the same geometry and sees **sticks angled outward and down**,
+which the capture does not refute — a shaft that starts inboard-high and ends outboard-low reads
+exactly that way from the chase camera, and I called it "reaching the hub" without checking its
+ELEVATION at either end.
+
+**Acceptance:** the axle runs **horizontally** from the chassis/gearbox to the **centre of the
+wheel** — same height at both ends, at hub height. Not angled down, not projecting past the wheel.
+
+**Where to look, and what NOT to assume:**
+* `demo/native/susp_pose.jl` — `rsfix` places the rear halves. `RS_ROLL_DEG` is 0 (E82-S1 measured
+  the positioner already poses them); the remaining suspects are the `y0`/`z0` offsets
+  (`JM_RS_Y0=0.02`, `JM_RS_Z0=0.772`) and the per-corner draw placement.
+* ⚠️ **`JM_RS_Z0` is 0.772 but the wheels are DRAWN at half-track `WTRACK_R` = 0.74** (E82-S3). The
+  same frame confusion that made the gate certify protruding rods may also be tilting the shaft:
+  if the hub end is placed at 0.772 while the wheel centre is at 0.74, the shaft is aimed 3 cm past
+  the wheel and any height mismatch shows as a downward angle.
+* **Measure the shaft's y at BOTH ends before changing anything**, and state the expected numbers
+  first. `susp_pose_smoke` currently asserts only |z| bounds and a y RANGE for the whole group — it
+  cannot see a tilt, which is why this reached the PO. The gate needs a per-part elevation check.
+
+⚠️ Do not close this on a geometry table. E82-S3 passed its gate twice while being wrong on screen;
+this one is judged in the chase view.
+
+### E103 (PO 2026-08-31) — 🔴 losing wheels in a collision HYPERSPACES the car back to the start line
+
+PO, verbatim: *"when wheels come off during a collision, the car stops dead there the impact
+happened. It does not hyperspace back to the start line, which is the current behavior."*
+
+Current behaviour teleports the car to the start line when wheels detach. Required: **the car stops
+where it was hit and stays there.** That is the same principle as E95/E96 — *"you hit something
+hard, your race is over"*, *"the car should never bounce back, ever"* — extended to the wreck's
+aftermath: a wreck ENDS where it happened, it does not relocate.
+
+**Acceptance:**
+1. A collision that detaches a wheel leaves the car at the impact site, motion damped to zero.
+2. No teleport, respawn or reset of position is triggered by wheel loss.
+3. Position is preserved for the rest of the session — the wreck stays visible where it occurred.
+4. Deliberate `R` (respawn) / ⇧R (recover-to-track) are UNAFFECTED: those are the player asking.
+
+**Where to look:** the wreck latch (`WRECKED[]`, `drive_rt3d.jl`) and the damage/detach path
+(`damage_hit!`/`damage_impact!`), then whatever calls `respawn3d!` — that is the prime suspect for
+the teleport, and the question is what condition reaches it on wheel loss. E99's wreck rule and
+E94-P4's per-corner damage are the neighbouring code.
+
+⚠️ Check whether the teleport is the WRECK path or a containment/failsafe path (`contain3d!`,
+world-edge fence) firing on the wreck's low speed or odd pose — they would need different fixes, and
+the boundary gate's failsafe has been mistaken for game logic before.

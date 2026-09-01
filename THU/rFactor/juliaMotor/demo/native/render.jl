@@ -709,9 +709,20 @@ end
 right), throttle/brake/rpm bars, the four per-wheel traction circles (over the
 nose), and last/best lap times (top-left).  `tc`=(FL,FR,RL,RR) (long,lat,radius)
 or nothing; `lastlap`/`bestlap` in seconds (0 = none).  Returns the HUD vertex list."""
-function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,clu=0.0,tc=nothing; lastlap=0.0, bestlap=0.0, manual=false)
+function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,clu=0.0,tc=nothing; lastlap=0.0, bestlap=0.0, manual=false, countdown=-1.0)
     v=Float32[]
     white=(0.90,0.95,1.0); amber=(1.0,0.82,0.35); green=(0.42,0.82,0.42); red=(0.95,0.35,0.30); dim=(0.16,0.18,0.22); blue=(0.35,0.65,1.0)
+    # PO 2026-08-31: "start as a countdown timer". Seconds remaining, big and central, amber while
+    # counting and green on GO. Drawn first so the rest of the HUD stays on top of nothing.
+    if countdown >= 0.0
+        n = ceil(Int, countdown)
+        if n > 0
+            hdigit!(v, W÷2 - 45, H÷2 - 90, 90, 170, 22, clamp(n, 0, 9), amber)
+        else
+            # 0 = GO: three green bars where the digit was, so the change is unmistakable at a glance
+            for k in 0:2; hquad!(v, W÷2 - 90 + 66k, H÷2 - 20, 48, 40, green); end
+        end
+    end
     hnumber!(v, 40, H-104, 40, 76, 11, kmh, white)             # speed (big, bottom-left)
     hdigit!(v, W-92, H-150, 40, 76, 11, (round(Int,gear) <= 0 ? -1 : clamp(round(Int,gear),1,9)), amber)  # gear (N for neutral), raised so it isn't clipped
     hquad!(v, W-100, H-164, 12, 12, manual ? amber : green)    # shift-mode dot: green=auto amber=manual

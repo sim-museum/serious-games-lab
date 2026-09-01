@@ -189,6 +189,10 @@ const AI_AMAX   = clamp(parse(Float64, get(ENV, "JM_AI_AMAX", "8.0")), 4.0, 14.0
 # released (the existing "standing on the grid" branch below already draws them stationary), then
 # launch normally -- including the per-car getaway fumbles. 0 = the usual simultaneous start.
 const AI_HEADSTART = max(0.0, parse(Float64, get(ENV, "JM_AI_HEADSTART", "0")))
+# PO 2026-08-31: "start as a countdown timer". JM_COUNTDOWN=<seconds> holds the whole field on the
+# grid and counts down on the HUD; at zero the race goes GREEN for everyone at once. Default 0 keeps
+# the previous behaviour exactly (green on the player's first throttle), so no existing run changes.
+const COUNTDOWN = max(0.0, parse(Float64, get(ENV, "JM_COUNTDOWN", "0")))
 # PO 2026-08-28: JM_POLE=1 puts the HUMAN on pole regardless of qualifying. Without a practice lap
 # `grid_order` gives you no time and grids you LAST (correct, and what the PO saw as "P5 of 5").
 const POLE = get(ENV, "JM_POLE", "0") != "0"
@@ -4986,6 +4990,8 @@ function main()
     # the whole field launches together — so you never miss the start by looking away.
     HOLD_START = IS_RACE && N_AI > 0 && !SKIDPAD && !SMOKE
     race_go    = Ref(!HOLD_START)
+    cd_t0      = Ref(-1.0)      # wall time the countdown began (-1 = not started)
+    cd_left    = Ref(-1.0)      # seconds remaining, for the HUD (-1 = do not draw)
     ai_release = Ref(-1.0)          # PO head start: wall time at which the FIELD may launch
     launch_done = Ref(false)     # the initial standing-start getaway is over (car has reached speed once)
     # AI reference qual times: the paced target + a small per-car spread so the grid lines
@@ -5012,9 +5018,11 @@ function main()
         for (p, id) in enumerate(order)
             println("   P$p  ", id==0 ? (isfinite(qtime) ? "You — $(fmt_lap(qtime))" : "You (no practice lap)") : AICHASSIS[id].name)
         end
-        println("  → You start P$prank of $(length(order)) — floor it to launch the field\n"); flush(stdout)
+        println("  → You start P$prank of $(length(order)) — $(COUNTDOWN > 0 ? "wait for the countdown" : "floor it to launch the field")\n"); flush(stdout)
         prank
     end
+    COUNTDOWN > 0 && HOLD_START && println("\n  COUNTDOWN START — ", round(Int, COUNTDOWN),
+        " s on the clock, then GREEN for the whole field at once.")
     DO_QUAL && println("\n  PRACTICE ($(round(Int,PRACTICE_SEC/60)) min) — lap to set your grid slot (your best lap = your\n  starting position; no lap = back of the grid).  Press T to ACCELERATE TIME straight to the race.")
     # NO-QUAL race: form a proper 2-wide grid up front with YOU at the back (no qual time ⇒ last),
     # so the field starts in ordered rows ahead and you watch them launch — instead of the ad-hoc
@@ -5131,13 +5139,38 @@ function main()
             qt = best_lap > 0.0 ? best_lap : Inf       # no clean practice lap ⇒ start at the back
             player_grid[] = form_grid!(qt)
             phase[] = :race
+            cd_t0[] = cs.t                              # countdown starts when the grid forms
             cs.laps = 0; last_lap = 0.0; best_lap = 0.0; race_done = false; lap_t0 = cs.t
             launch_done[] = false                       # re-arm the launch assist for the actual race start
             FUEL_ON && (fuel[] = burn_lap * fuel_laps)   # always start the race on a FULL tank (no practice carry-over)
         end
         enterPrev = accelNow
+        # COUNTDOWN start (PO 2026-08-31). While it runs, nobody moves and the HUD shows the
+        # seconds; at zero the race goes green for the whole field at once, with no throttle gate --
+        # that is the difference between a countdown and the old "green when you decide to go".
+        if COUNTDOWN > 0 && HOLD_START && !race_go[] && phase[] == :race
+            # Arm on the first race frame, whatever put us here. The first cut armed cd_t0 ONLY in
+            # the practice->race transition, so with JM_POLE (no qualifying, grid formed up front)
+            # it stayed -1, the countdown never ran -- and because a countdown also disables the
+            # old throttle gate, the race could never go green at all. Caught on the grid, before
+            # the PO was left sitting on it.
+            cd_t0[] < 0 && (cd_t0[] = cs.t)
+            cd_left[] = COUNTDOWN - (cs.t - cd_t0[])
+            if cd_left[] <= 0
+                cd_left[] = 0.0
+                race_go[] = true; lap_t0 = cs.t
+                ai_release[] = cs.t + AI_HEADSTART
+                println("  → GREEN"); flush(stdout)
+                for c in AICARS
+                    rand() < 0.45 && (c.mishap = 0.4 + 1.4*rand())
+                end
+            end
+        elseif race_go[] && cd_left[] >= 0
+            # keep GO on screen for a moment after the start, then clear it
+            cd_left[] = (cs.t - cd_t0[] - COUNTDOWN) < 1.5 ? 0.0 : -1.0
+        end
         # green light: the field launches the moment you ask for throttle (standing start)
-        if HOLD_START && !race_go[] && phase[] == :race && inp.throttle > 0.15
+        if COUNTDOWN <= 0 && HOLD_START && !race_go[] && phase[] == :race && inp.throttle > 0.15
             race_go[] = true; lap_t0 = cs.t          # start the clock at the launch
             ai_release[] = cs.t + AI_HEADSTART        # PO head start: field held this long
             AI_HEADSTART > 0 && println("  → HEAD START: you go now, the field launches in ",
@@ -6046,7 +6079,8 @@ function main()
         _t_hud = time()
         Render.hud_draw(hudprog, hudvao, hudvbo,
             Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, 9500.0, inp.throttle, inp.brake, inp.clutch, tc_hud;
-                               lastlap=(SMOKE ? 94.3 : last_lap), bestlap=(SMOKE ? 92.1 : best_lap), manual=!CTL.auto), W, H)
+                               lastlap=(SMOKE ? 94.3 : last_lap), bestlap=(SMOKE ? 92.1 : best_lap), manual=!CTL.auto,
+                               countdown=cd_left[]), W, H)
         # E80 (PO 2026-08-27): "frame rate was low (10 frames/sec or so) in cockpit view, better in
         # nintendo view ... no excuse for 10 frames/sec on a PC with a 6 GB nvidia graphics card".
         # Report the frame time per VIEW, because the cockpit/chase asymmetry is the whole clue:
