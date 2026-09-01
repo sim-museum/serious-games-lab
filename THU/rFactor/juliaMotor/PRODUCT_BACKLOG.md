@@ -21,6 +21,7 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
+| **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | NEW 2026-08-31, seen in the Watkins race. Two symptoms, probably two causes. assessed |
 | **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | NEW 2026-08-31. Reopens E82's fix. assessed |
 | **E103** | wheel loss in a collision hyperspaces the car to the start line | NEW 2026-08-31. assessed |
 | **E90** | Monza and Watkins have almost no collidable barrier objects | open; the gate passing IS the symptom. assessed |
@@ -4070,3 +4071,48 @@ E94-P4's per-corner damage are the neighbouring code.
 ⚠️ Check whether the teleport is the WRECK path or a containment/failsafe path (`contain3d!`,
 world-edge fence) firing on the wreck's low speed or odd pose — they would need different fixes, and
 the boundary gate's failsafe has been mistaken for game logic before.
+
+### E104 (PO 2026-08-31, seen in the Watkins race) — 🔴 every car FLOATS 20–40 cm above the road, and going off-road produces elastic levitating/bouncing
+
+PO, verbatim: *"at watkin's glenn all cars are displayed as floating about 20 cm - 40 cm above the
+road, elastic collisions (if any) if a car goes off the road, leading to levitating and bouncing."*
+
+**Two symptoms, and they are probably NOT one bug.** Recorded together because the PO saw them
+together, but they have different suspects and must not be collapsed into a single hypothesis:
+
+**(a) Every car floats 20–40 cm above the road.** Affects *all* cars, player and AI, so it is a
+placement/draw-height issue rather than a per-car physics state. 20–40 cm is roughly a wheel radius
+(`Rw_f = 0.30`, `Rw_r = 0.33`), which makes a **double-counted wheel radius** the first thing to
+test: a body drawn at `terrain + Rw` when the model origin is already at hub height would float by
+exactly that. Look at the car draw placement against `hat3d(TERRAIN, …)` and at whether the chassis
+origin is hub-height or ground-height in the 3DO.
+
+⚠️ **Ruled out already: E100-S5.** Static ride height changed today (75 mm → 82.9/105.2 mm from the
+ibt), which is temporally suspicious. It is not the cause: `RIDE_H`/`c.rh` appear only in the struct
+init, the telemetry computation and the `.ibt` export rows — **nothing in the render path** — and
+3 cm is the wrong order of magnitude for 20–40 cm anyway. Checked rather than assumed.
+
+**(b) Off-road contact is elastic — levitating and bouncing.** `JM_WHEEL_REST = 0.35`
+(`drive_native_mtk.jl:1613`, *"wheel/wall restitution (<1 = inelastic)"*) is a **non-zero
+restitution on the wheel/wall path**. E96 established the PO's rule as an absolute — *"the car should
+never bounce back, ever"* — and E96-S5 proved the **car-body** contact obeys it at every approach
+speed from 5 to 80 m/s. **The wheel path was never covered by that work**, and 0.35 is precisely the
+"lossy but springy" behaviour the PO is describing.
+
+⚠️ **Do NOT assume the two halves share a cause, and do not assume this is only `WHEEL_REST`:**
+* **E86 precedent** — Spa's levitate/bounce turned out to be **20 INVISIBLE collidable houses**. If
+  Watkins has solids off-road that are not drawn, the car bounces off nothing visible, which reads
+  exactly like this report.
+* **E90 tension** — Monza and Watkins were measured to have *almost no collidable barrier objects*.
+  If that is still true, then whatever the car is hitting off-road is terrain or an invisible solid,
+  not a barrier — and that changes the fix.
+* The world-edge fence (`contain3d!`) and the boundary failsafe have been mistaken for game logic in
+  this codebase before.
+
+**Acceptance:** (1) cars sit ON the road with the tyre contact patch at the surface, on all tracks;
+(2) leaving the road produces no bounce and no levitation — consistent with E96's absolute.
+
+**First step is a capture, not a code read.** The floating is a visual claim and this backlog has
+twice certified geometry that was wrong on screen (E82-S3, and the susp_pose gate's frame). Take a
+Watkins chase shot on the road and one off it, measure the wheel-to-terrain gap, and state the
+expected numbers before the run.
