@@ -1673,6 +1673,41 @@ function _drop_box!(parts, x0, x1, y0, z0)
     parts
 end
 # (pod box-cut superseded: the 0.30 lateral clamp removes the flanks, pods included)
+# ── E106-S9: THE AXLES, synthesized straight (PO: "Axles are needed") ──────────────────────────
+# Every attempt to re-pose GPL's rear-half assemblies has failed the same way: the halves compose
+# several parts in DIFFERENT local frames through positioners our walk mis-chains, so any single
+# corrective transform fixes the driveshaft and breaks the radius arms (roll 20° levelled the shaft
+# and pointed the arms at the ground). Measured across E64/E75/E82/E102/S7/S9.
+# So the driveshafts are BUILT, not extracted: two straight cylinders from the diff (|z|=0.16) to
+# each hub (|z|=WTRACK_R), at hub height, wearing GPL's own axlelot texture -- correct pose by
+# construction, GPL's look by its own art. The rest of the halves stays off until someone decodes
+# the positioner chain. JM_AXLES=0 removes them; JM_AXLE_Y/R tune.
+const AXLE_Y = parse(Float32, get(ENV, "JM_AXLE_Y", "0.02"))
+const AXLE_R = parse(Float32, get(ENV, "JM_AXLE_R", "0.024"))
+function _axle_part(zsign)
+    segs = 10; x0 = -1.15f0
+    # WTRACK_R is defined ~300 lines below -- "a forward reference here parses fine and dies at
+    # load" (the file's own warning, now hit a third time). Read the same env/default it does.
+    z0, z1 = zsign*0.16f0, zsign*parse(Float32, get(ENV,"JM_TRACK_R","0.74"))
+    v = Float32[]
+    for k in 0:segs-1
+        a0 = 2f0*Float32(pi)*k/segs; a1 = 2f0*Float32(pi)*(k+1)/segs
+        # two triangles per segment; cylinder axis along z, circle in x/y
+        p00 = (x0 + AXLE_R*cos(a0), AXLE_Y + AXLE_R*sin(a0), z0)
+        p01 = (x0 + AXLE_R*cos(a1), AXLE_Y + AXLE_R*sin(a1), z0)
+        p10 = (x0 + AXLE_R*cos(a0), AXLE_Y + AXLE_R*sin(a0), z1)
+        p11 = (x0 + AXLE_R*cos(a1), AXLE_Y + AXLE_R*sin(a1), z1)
+        n0 = (cos(a0), sin(a0), 0f0); n1 = (cos(a1), sin(a1), 0f0)
+        uv00 = (Float32(k/segs), 0f0); uv01 = (Float32((k+1)/segs), 0f0)
+        uv10 = (Float32(k/segs), 1f0); uv11 = (Float32((k+1)/segs), 1f0)
+        for (P,N,UV) in ((p00,n0,uv00),(p10,n0,uv10),(p11,n1,uv11),
+                         (p00,n0,uv00),(p11,n1,uv11),(p01,n1,uv01))
+            append!(v, Float32[P[1],P[2],P[3], N[1],N[2],N[3], UV[1],UV[2], 1f0,1f0,1f0])
+        end
+    end
+    Render.TrackPart(v, "axlelot", (1f0,1f0,1f0))
+end
+const AXLEP = get(ENV,"JM_AXLES","1") != "0" ? [_axle_part(1f0), _axle_part(-1f0)] : Render.TrackPart[]
 const PIPE_LIFT = parse(Float32, get(ENV, "JM_PIPE_LIFT", "0.18"))
 # E106-S8 (PO: "still need to make those exhaust pipes symmetrical"): pipe3 carries a 5-tri
 # bracket authored on the RIGHT side only (its own connected solid); min_component=6 drops exactly
@@ -3750,6 +3785,7 @@ end
 
 carItems   = Render.build_gpl(CARP, GPLTEX)        # Lotus body, GPL .mip textures
 pipeItems  = Render.build_gpl(PIPEP, GPLTEX)       # E106-S4: exhausts, drawn lifted (see PIPEP)
+axleItems  = Render.build_gpl(AXLEP, GPLTEX)       # E106-S9: straight synthesized driveshafts
 carItemsIn = isempty(CARPIN) ? Render.Item[] : Render.build_gpl(CARPIN, GPLTEX)  # E106-S5: cockpit-view body
 # PO 2026-08-27: "remove the cockpit gauge panel, hands and sleeves". JM_GAUGE=0 hides the cluster
 # (hands + sleeves are JM_HANDS=0, which already existed).
@@ -6508,6 +6544,8 @@ function main()
         let pm = bodyModel * Render.translate(Float32[0, PIPE_LIFT, 0])
             for it in pipeItems; Render.draw(prog, it, vp, pm; bright=1.15, spec=0.25, ambfill=0.6); end
         end
+        # E106-S9: the driveshafts, horizontal from diff to hub
+        for it in axleItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.3, ambfill=0.55); end
         if CTL.view != 0   # the driver figure occludes the cockpit from the in-car eye (E36 black band) → chase only
             if get(ENV,"JM_RSUSP2","0") == "1"   # E75-S8: OFF by default — raw parts are unfolded strips, see e75_exterior.md
                 for it in rsusp2Items; Render.draw(prog, it, vp, bodyModel; bright=1.15, spec=RS_SPEC, ambfill=0.55); end

@@ -5353,3 +5353,30 @@ pose, and it is next after the engine UV.
 Suite 22/22. Revised order: **engine UV (lo133 slot offset) → rear-half re-pose (axles back,
 posed) → exhaust header mirroring → cockpit sills/cowl saturation → mirrors/windscreen polish →
 AI gold A/Bs → hands/arms LAST.**
+
+### E106-S9 (2026-09-02) — ✅ the axles are back, straight, by CONSTRUCTION
+
+The PO asked for the axles back after S7 hid the mis-posed halves. One more re-pose attempt was
+measured first: **roll 20° levels the driveshaft exactly (drop 0.192 → 0.039 m) — and points the
+radius arms at the ground.** That is the fifth failure of the same shape across E64/E75/E82/E102/S7:
+the halves compose parts in DIFFERENT local frames through positioners our walk mis-chains, so any
+single corrective transform fixes one part and breaks another. The transform family is exhausted.
+
+So the driveshafts are **built, not extracted**: two straight cylinders from the diff (|z| 0.16) to
+each hub (|z| = the drawn half-track), at hub height, wearing GPL's own `axlelot` texture with a
+cylindrical wrap. Correct pose by construction, GPL's look from its own art. `JM_AXLES=0` removes
+them; `JM_AXLE_Y`/`JM_AXLE_R` tune. The rest of the halves stays off until someone decodes the
+positioner chain properly.
+
+Also this sprint (S8 continuation): the engine "random shapes and colors" got further diagnosis —
+the striped pixels sample pink/salmon consistent with `lo133`'s own fuel/oil-line art (204 of 210
+engine tris map inside the atlas detail; only 6 stray past U 0.48), so the *colors* may be
+legitimate DFV plumbing rendered noisily, and the FLICKER component points at coplanar engine
+panels z-fighting — same family as the visor. Needs the live flicker, not stills; queued with the
+sills.
+
+⚠️ The `WTRACK_R` forward-reference trap fired a THIRD time (parses clean, dies at load); caught by
+running the sim, per the standing rule, and the constant is now read via its env default as the
+file's own comment instructs.
+
+Suite 22/22.
