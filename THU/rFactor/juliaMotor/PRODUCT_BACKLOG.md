@@ -4946,3 +4946,44 @@ Suite 22/22.
 between two probes — each side logging where it thinks the other is against where that side says it
 was. State the expected figure first: it should be the S4 envelope (~0.03 m mean) plus whatever the
 sim's frame pacing adds over a probe's fixed 10 Hz.
+
+### E85-S6 (2026-09-01) — ⭐ the sim can now DRIVE ITSELF headlessly, which the sim-to-sim measurement needs
+
+S5's next step was to measure the position disagreement between two SIMS the way S4 measured it
+between two probes. That turned out to need something the harness did not have: **a way to make the
+PLAYER's car move without a human.** `JM_AI_TEST` drives the AI field with *no player at all*, and
+every headless capture to date has been of a **stationary** car — fine for a screenshot, useless
+here, because a car that is not moving makes dead reckoning trivially exact. The measurement would
+have reported an error of 0.000 that meant nothing, which is the "arm that cannot fail" in another
+costume.
+
+**`JM_AUTODRIVE=1`** drives the player from the racing line using **the AI's own controller**
+against `CLINE` — deliberately the same code the field drives with, so this adds no second driving
+model to keep true. `JM_AUTODRIVE_V` sets the target speed (default 45 m/s),
+`JM_AUTODRIVE_DIAG=<n>` reports.
+
+Measured on Watkins: **0 → 38.7 → 154.0 km/h**, covering **s 39 → 417 m** of track under its own
+throttle and steering.
+
+⚠️ **Its limit, stated rather than discovered later:** it spins at around s 675 m
+(`thr=0.0 steer=-1.0 v=3.5 km/h`). That is ~20–30 s of clean driving — enough for a netplay
+measurement window and **not** enough to call this a lap-capable autopilot. Do not cite it as one.
+
+🔴 **Two of my own bugs, both in the same call, and both instructive.**
+1. I passed **`1.0` as the 10th argument** because I had not read what it was. It is the **YAW
+   RATE**, and the controller's anti-spin logic reads ~1 rad/s as a car already sliding — so it
+   correctly refused to accelerate a car it believed was spinning. Telemetry showed
+   `thr 0.0  kmh 0.0` while steer twitched: **the controller was working perfectly and I had told
+   it the car was in a spin.** A placeholder in a parameter whose semantics you have not read is
+   not a placeholder, it is a wrong value.
+2. The fix reached for **`cs.r`**, which does not exist — the model exposes yaw rate as a
+   *function*, `DriveRT3D.yawrate3d` (aliased `AIyaw`), which is what the AI field itself calls.
+   `cs.r` would have thrown `FieldError` at runtime; **`parse_smoke` cannot see a missing field**,
+   exactly as it cannot see an undefined name (E85-S5, E103-S2).
+
+Suite 22/22.
+
+**Next (sprint 7):** the measurement S5 asked for, now that it can be taken — both sims autodriving,
+each logging where it thinks the other is against where that side says it was. **State the expected
+figure first:** the S4 envelope (~0.03 m mean, <0.10 m max) plus whatever the sim's frame pacing adds
+over a probe's fixed 10 Hz, and bounded by the ~20 s the autodrive stays on track.

@@ -473,6 +473,10 @@ const NET_PORT = parse(Int, get(ENV, "JM_NET_PORT", "47700"))
 const NET_ID   = parse(Int, get(ENV, "JM_NET_ID", NETMODE == "host" ? "1" : "2"))
 const NET_HZ   = parse(Float64, get(ENV, "JM_NET_HZ", "10"))
 const NET_DIAG = parse(Int, get(ENV, "JM_NET_DIAG", "0"))
+# E85-S6: drive the player car from the racing line, for headless measurement runs.
+const AUTODRIVE   = get(ENV, "JM_AUTODRIVE", "0") != "0"
+const AUTODRIVE_V = parse(Float64, get(ENV, "JM_AUTODRIVE_V", "45"))   # target speed m/s
+const AUTODRIVE_DIAG = parse(Int, get(ENV, "JM_AUTODRIVE_DIAG", "0"))
 # Poses of the remote cars, refreshed each frame and read by the draw pass. A Ref rather than a
 # closure capture because the draw pass is a nested function built before this is known.
 const NETPOSES = Ref(NTuple{6,Float64}[])
@@ -5244,6 +5248,37 @@ function main()
         SMOKE && shots_done[] && !isempty(SHOTS) && break
         now = time(); dt = clamp(now-last, 0.0, 0.05); last = now
         inp, rst, recover = read_input()
+        # ── E85-S6: HEADLESS AUTODRIVE (JM_AUTODRIVE=1) ─────────────────────────────────────────
+        # There was no way to make the PLAYER's car move without a human: `JM_AI_TEST` drives the AI
+        # field with no player at all, and every headless capture so far has been of a stationary
+        # car. That is fine for a screenshot and useless for measuring netplay, where a car that is
+        # not moving makes dead reckoning trivially exact -- an error of 0.000 that means nothing.
+        # Reuse the AI's own controller against the centreline: same code the field drives with, so
+        # this adds no second driving model to keep true.
+        if AUTODRIVE && CLINE !== nothing
+            let (s0, lat0) = RaceAI.project(CLINE, cs.x, cs.z)
+                # ⚠️ The 10th argument is the YAW RATE, not a gain. I first passed a placeholder
+                # 1.0 and the car never moved: the controller's anti-spin logic reads ~1 rad/s as a
+                # car already sliding and cuts the throttle, so telemetry showed `thr 0.0 kmh 0.0`
+                # while steer twitched -- the controller WAS running and correctly refusing to
+                # accelerate a car it believed was spinning. Pass the real rate.
+                # `cs` has no yaw-rate FIELD -- the model exposes it as a function,
+                # DriveRT3D.yawrate3d (aliased AIyaw), which is what the AI field itself uses.
+                # `cs.r` would have thrown FieldError at runtime; parse_smoke cannot see that.
+                yawrate = try; y = AIyaw(cs); isfinite(y) ? y : 0.0; catch; 0.0; end
+                thr, brk, st = RaceAI.controller(CLINE, s0, lat0, 0.0, AUTODRIVE_V,
+                                                 cs.x, cs.z, cs.θ, cs.v, yawrate; power = 1.0)
+                if AUTODRIVE_DIAG > 0 && (frames % AUTODRIVE_DIAG) == 0
+                    println("  [auto] t=", round(cs.t,digits=1), " v=", round(cs.v*3.6,digits=1),
+                            " km/h  thr=", round(thr,digits=2), " brk=", round(brk,digits=2),
+                            " steer=", round(st,digits=2), " s=", round(s0,digits=1))
+                    flush(stdout)
+                end
+                inp = DriveInput(throttle = clamp(thr, 0, 1), brake = clamp(brk, 0, 1),
+                                 steer = clamp(st, -1, 1), clutch = inp.clutch,
+                                 shift_up = false, shift_down = false, autoshift = true)
+            end
+        end
         if REPLAY                                   # E18 PLAYBACK: VCR + set poses from the recording, skip the sim
             sp = key(GLFW.KEY_SPACE); (sp && !rep_psp[]) && (rep_play[] = !rep_play[]); rep_psp[] = sp
             up = key(GLFW.KEY_UP);   (up && !rep_pup[]) && (rep_speed[] = clamp(rep_speed[]*2, 0.25, 8.0)); rep_pup[] = up
