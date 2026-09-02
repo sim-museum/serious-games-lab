@@ -1460,7 +1460,7 @@ const HELMP = [Render.TrackPart(p.verts, p.tex=="" ? "clahelm" : p.tex, p.col)
 # unconditionally (pure garbage).  JM_CARP_MAXLAT stays an A/B knob; DEFAULT 0.85 = the coherent clip.
 const _GARBAGE_EXC = ("front1","front3")
 const CARP_MAXLAT  = parse(Float32, get(ENV,"JM_CARP_MAXLAT","0.85"))   # 0.85 = skinny clip (garbage-free); >1.0 exposes the GPL-hidden spider-leg suspension — see note above
-const CARP   = Render.extract_gpl_car(LOT3DO; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...), exclude_groups=(6600,3560,27288,39792), cockpit_clean=true, maxlat=CARP_MAXLAT, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # driver body + gauge + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0.  E64 S4 (D12): groups 27288/39792 are WHOLE DISPLACED ASSEMBLIES (suspension+exhaust+driver textures at y 0.42…1.16 / −1.12…−0.42, mirror copies) — GPL runtime-hidden branches our positioner walk mis-places; they were the chase view's "chrome spider-legs" through the rear tyres
+const CARP   = Render.extract_gpl_car(LOT3DO; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3"), exclude_groups=(6600,3560,27288,39792), cockpit_clean=true, maxlat=CARP_MAXLAT, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # driver body + gauge + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0.  E64 S4 (D12): groups 27288/39792 are WHOLE DISPLACED ASSEMBLIES (suspension+exhaust+driver textures at y 0.42…1.16 / −1.12…−0.42, mirror copies) — GPL runtime-hidden branches our positioner walk mis-places; they were the chase view's "chrome spider-legs" through the rear tyres
 const DRIVERP = Render.extract_gpl_car(LOT3DO; only=DRIVER_TEX, maxlat=0.95f0, exclude_groups=(6600,3560,27288,39792))   # the driver figure — drawn only in CHASE view (occludes the cockpit from the in-car eye).  E64 S4: the displaced assemblies 27288/39792 carry lid/arms-textured tris too — without the group filter they drew as the chase view's remaining "spears"
 const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (dial faces in the texture's lower-V region; keep default vflip)
 const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0)  # the plexiglass windscreen — drawn LAST, faintly visible glass, so the suspension shows through (GPL gold standard)
@@ -1612,6 +1612,19 @@ const RSUSPP_A = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(
                                  Render.extract_gpl_car(LOT3DO; include_groups=(27288,), only=(_RSONLY,))   # one side each —
 const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(39792,), exclude=_RSEXC, maxlat=RSUSP_MAXLAT, trim=SUSP_TRIM, min_component=RSUSP_MINCOMP, min_component_tex=("axlelot",)) :
                                  Render.extract_gpl_car(LOT3DO; include_groups=(39792,), only=(_RSONLY,))   # the halves carry a residual ±roll our posmat mis-composes
+# ── E106-S4: THE EXHAUSTS, placed where gold puts them ──────────────────────────────────────────
+# `pipe3` (the chrome header bundles + megaphones, 293 tris) decomposes into 7 connected solids:
+# two header bundles (x −0.72..−0.27), two megaphones (x −1.6..−0.69 — ending just past the rear
+# axle, the right length), a small bracket, and two 7-tri TIPS parked at z ±1.0 / x to −2.5 —
+# GPL runtime-hidden branches (the posmat-clamp family) that must never draw. In CARP the whole
+# group drew at its authored height, megaphone centreline y ≈ −0.06: dangling at the car's
+# underside, which is what every chase capture showed. Gold's megaphones run level with the rear
+# hubs. So: extract pipe3 on its own, drop the parked tips with the lateral clip (they sit at
+# |z| ≈ 1.0, everything real is inside 0.45), and draw lifted by JM_PIPE_LIFT (default 0.18 m,
+# putting the centreline at ≈ +0.12 — hub height).
+const PIPE_LIFT = parse(Float32, get(ENV, "JM_PIPE_LIFT", "0.18"))
+const PIPEP  = get(ENV, "JM_PIPES", "1") != "0" ?
+    Render.extract_gpl_car(LOT3DO; only=("pipe3",), maxlat=0.9f0) : Render.TrackPart[]
 const ARMP   = Render.extract_gpl_car(LOT3DO; only=("lotarms",), maxlat=0.95f0)  # forearms/upper arms — static (their wheel-side ends are what the eye sees)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read
 # upside-down.  Mirror the gauge in height about its own centre so the dial face turns up toward the eye.
@@ -3681,6 +3694,7 @@ if get(ENV,"JM_TEXDIAG","")!=""
 end
 
 carItems   = Render.build_gpl(CARP, GPLTEX)        # Lotus body, GPL .mip textures
+pipeItems  = Render.build_gpl(PIPEP, GPLTEX)       # E106-S4: exhausts, drawn lifted (see PIPEP)
 # PO 2026-08-27: "remove the cockpit gauge panel, hands and sleeves". JM_GAUGE=0 hides the cluster
 # (hands + sleeves are JM_HANDS=0, which already existed).
 gaugeItems = get(ENV,"JM_GAUGE","1") == "0" ? Render.Item[] : Render.build_gpl(GAUGEP, GPLTEX)
@@ -6356,6 +6370,10 @@ function main()
         # ambfill lifts the self-shadowed cockpit interior out of black (GPL pre-lights it
         # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
         for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly) so it stops reading as a hard black "plywood" notch
+        # E106-S4: exhausts at hub height (chrome: a touch of spec so the megaphones catch the sun)
+        let pm = bodyModel * Render.translate(Float32[0, PIPE_LIFT, 0])
+            for it in pipeItems; Render.draw(prog, it, vp, pm; bright=1.15, spec=0.25, ambfill=0.6); end
+        end
         if CTL.view != 0   # the driver figure occludes the cockpit from the in-car eye (E36 black band) → chase only
             if get(ENV,"JM_RSUSP2","0") == "1"   # E75-S8: OFF by default — raw parts are unfolded strips, see e75_exterior.md
                 for it in rsusp2Items; Render.draw(prog, it, vp, bodyModel; bright=1.15, spec=RS_SPEC, ambfill=0.55); end

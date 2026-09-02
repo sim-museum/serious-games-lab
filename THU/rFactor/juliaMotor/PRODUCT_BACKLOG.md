@@ -5159,3 +5159,41 @@ hands sit correctly at 10-and-2. The remaining wrongness is **UV smear** (the fi
 texture views at once). That is S4's first task, and it is a mapping bug, not an asset hunt.
 
 Suite 22/22.
+
+### E106 priority change (PO 2026-09-02)
+
+*"do not add the hands and gloves yet. It is last in the priority list."*
+
+So the working order is now: **exhausts → tub interior → livery → mirrors → windscreen → chase
+framing/AI gold A/Bs → hands/gloves LAST.** The S3 hands finding (textures right, UV smear, at
+10-and-2) stays on file for when the item comes up; nothing further on it until then.
+
+### E106-S4 (2026-09-02) — ✅ exhausts at hub height, parked branches gone; and a stride correction to S2/S3's numbers
+
+**The exhausts were never missing — they were drawn dangling under the car.** `pipe3` (the chrome
+headers + megaphones) decomposes into **7 connected solids**: two header bundles, two megaphones
+(x −1.6..−0.69 — ending just past the rear axle, the correct length), a bracket, and **two 7-tri
+tips PARKED at z ±1.0 / x to −2.5** — GPL runtime-hidden branches (the posmat-clamp family) that
+drew as stray chrome off the car's tail. The megaphone centreline sat at y ≈ −0.06: the underside.
+Gold runs them level with the rear hubs.
+
+**Fix:** `pipe3` is excluded from the body and drawn as its own item set, clipped at `maxlat=0.9`
+(the parked tips sit at |z| ≈ 1.0; everything real is inside 0.45 — so the standing lateral clip
+removes exactly the junk) and lifted `JM_PIPE_LIFT` (default **0.18 m**, centreline → +0.12 ≈ hub
+height), with a touch of specular so the chrome catches the sun. `JM_PIPES=0` removes them.
+Captured: megaphones visible at hub height on both sides, no stray tips.
+
+⚠️ **Open residual:** gold's megaphones run straighter and more inboard than ours, which angle
+slightly outward. Height and membership are right; the angle needs the gold A/B treatment next
+pass.
+
+⚠️ **CORRECTION to every triangle count in S2/S3 (and some earlier items): `TrackPart.verts` is a
+FLAT float array with an 11-float stride** (pos+normal+uv+col), and I had been quoting
+`length(verts) ÷ 3` — floats over three, a meaningless number, 11× too high. pipe3 is **293 tris**,
+not "3223"; the wheel is ~700, not "7700"; the helmet shell ~52, not "572". The *identifications*
+stand (they rested on textures and bboxes, and `parts_bbox` reads the stride correctly) — only the
+tri counts were nonsense. **This is the third frame/stride error in this epic's family**
+(E102-S6 logged two); the union-find above reads stride 11 and its solids match the on-screen
+structure exactly.
+
+Suite 22/22. Next per the PO's order: **tub interior, then livery** (mirrors after; hands LAST).
