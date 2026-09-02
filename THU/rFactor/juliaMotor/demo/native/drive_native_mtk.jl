@@ -480,6 +480,11 @@ const AUTODRIVE_DIAG = parse(Int, get(ENV, "JM_AUTODRIVE_DIAG", "0"))
 # Poses of the remote cars, refreshed each frame and read by the draw pass. A Ref rather than a
 # closure capture because the draw pass is a nested function built before this is known.
 const NETPOSES = Ref(NTuple{6,Float64}[])
+# E85-S7: receiver-side prediction-error census (JM_NET_ERR=1).
+const NET_ERR  = get(ENV, "JM_NET_ERR", "0") != "0"
+const NET_PREV = Ref(Dict{UInt8,NamedTuple}())
+const NET_ERRS = Float64[]
+const NET_DTS  = Float64[]
 # E85-S5: open the net link here -- after the world/car exist, before the game loop.
 include(joinpath(@__DIR__,"netplay.jl")); using .NetPlay
 const NETLINK = if NETMODE == "host"
@@ -6099,6 +6104,35 @@ function main()
             for (_, q) in NetPlay.remote_poses_at(NETLINK, time())
                 b = aibankK((q.x, 0.0, q.z, q.yaw))
                 push!(netp, ai_ground((q.x, q.y, q.z, q.yaw, b[1], b[2])))
+            end
+            # ── E85-S7: PREDICTION ERROR, measured receiver-side with no clock sync ─────────────
+            # When a NEW packet arrives for a car, we already know what the PREVIOUS packet
+            # predicted for that instant: dead-reckon the old pose forward by the tick difference
+            # and compare against the position the new packet actually reports. Both numbers come
+            # from the same sender's own clock, so nothing has to be synchronised and no two logs
+            # have to be correlated afterwards -- which is what made S4's version need an analytic
+            # trajectory. Here the trajectory is whatever the other car really did.
+            if NET_ERR
+                for (id, q) in NETLINK.remote
+                    pv = get(NET_PREV[], id, nothing)
+                    if pv !== nothing && q.tick != pv.tick
+                        dt = (q.tick - pv.tick) / 1000
+                        if 0 < dt < 1.0                       # ignore huge gaps (startup, stalls)
+                            pr = NetPlay.predict(pv, dt)
+                            push!(NET_ERRS, hypot(q.x - pr.x, q.z - pr.z))
+                            push!(NET_DTS, dt)
+                        end
+                    end
+                    NET_PREV[][id] = q
+                end
+                if !isempty(NET_ERRS) && (frames % 600) == 0
+                    m = sum(NET_ERRS)/length(NET_ERRS)
+                    println("  [neterr] n=", length(NET_ERRS),
+                            "  interval mean=", round(sum(NET_DTS)/length(NET_DTS), digits=3), "s",
+                            "  ERR mean=", round(m, digits=4), " m  max=",
+                            round(maximum(NET_ERRS), digits=4), " m")
+                    flush(stdout)
+                end
             end
             NETPOSES[] = netp
             # JM_NET_DIAG=<n>: report the link every n frames. "No car appeared" has at least four

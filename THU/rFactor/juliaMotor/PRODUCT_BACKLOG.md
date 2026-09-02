@@ -4987,3 +4987,41 @@ Suite 22/22.
 each logging where it thinks the other is against where that side says it was. **State the expected
 figure first:** the S4 envelope (~0.03 m mean, <0.10 m max) plus whatever the sim's frame pacing adds
 over a probe's fixed 10 Hz, and bounded by the ~20 s the autodrive stays on track.
+
+### E85-S7 (2026-09-01) — ✅ sim-to-sim prediction error measured, and the aggregate figure is a trap
+
+Stated before the run, from S4's probe-to-probe 0.0276 m mean / 0.0625 max: two autodriving sims
+accelerate and corner variably rather than following a constant arc, so **~0.03–0.10 m mean with
+peaks of a few tenths**, bounded by the ~20 s S6's autodrive stays on track.
+
+**The measurement needs no clock sync and no log correlation.** When a new packet arrives, compare
+where the PREVIOUS packet predicted that car would be at the new packet's tick against where the new
+packet says it actually is. Both numbers come from the sender's own clock. That is what let S4's
+analytic trajectory be replaced by "whatever the other car really did".
+
+Measured, both sims autodriving on Watkins, correlated against speed:
+
+| phase | speed / control | packets | **err mean** | **err max** |
+|---|---|---|---|---|
+| **driving cleanly** (t≈10 s) | 57 → 150 km/h, `thr 1.0` | 114 | **0.096 m** | **0.401 m** |
+| losing control (t≈21 s) | 124 km/h, `steer −1.0` | 211 | 0.307 m | 1.99 m |
+| spun, stopped (t≈31 s) | 3.6 km/h, stuck at s 624 | 314 | 0.590 m | 2.89 m |
+
+Packet interval **0.104 s** throughout — the 10 Hz send rate holds even while the car is out of
+control.
+
+**So the prediction was right for the regime it described, and the aggregate is a trap.** A single
+mean over the whole run reads **0.52 m** and reports the CRASH, not the model. Had I quoted that one
+number, I would have concluded dead reckoning was five times worse than S4 measured; had I quoted
+only the clean phase I would have hidden a real weakness. Both belong in the record.
+
+⭐ **The real finding is where the model fails.** Dead reckoning assumes constant velocity along the
+heading, and a spinning car violates that completely — so the error is worst **exactly when a car is
+out of control**, which is also when it is most likely to be close to someone. That is an argument
+for the `EXTRAP_MAX` freeze (S3) doing real work, and a candidate for sending more often when yaw
+rate is high rather than at a fixed 10 Hz.
+
+⚠️ **Bounded by S6's autodrive**, which spins at ~675 m. The clean-driving row rests on ~14 s of
+data; a longer measurement needs an autopilot that can hold a lap, which does not exist yet.
+
+Suite 22/22.
