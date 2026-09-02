@@ -1622,6 +1622,16 @@ const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(
 # hubs. So: extract pipe3 on its own, drop the parked tips with the lateral clip (they sit at
 # |z| ≈ 1.0, everything real is inside 0.45), and draw lifted by JM_PIPE_LIFT (default 0.18 m,
 # putting the centreline at ≈ +0.12 — hub height).
+# ── E106-S5: THE COCKPIT VIEW GETS ITS OWN BODY, dressed as GPL dresses it ─────────────────────
+# GPL renders the driver view through lotd.3DO: node 0x0E re-enters lotus.3do with a 9-slot
+# texture table (lotd/plaface/plahelm/dash7/ldashr/lotinsid/lotinsa/dash7a) -- the SAME mesh, a
+# different skin. The riveted-aluminium interior is not separate geometry; it is the tub re-skinned.
+# So the port now does the same: CARPIN is the body extraction with the cockpit-region untextured
+# panels dressed in `lotinsid` (their UVs are authored for it), drawn ONLY in cockpit view; the
+# chase/exterior keeps the undressed CARP with the green tub. JM_COCKPIT_DRESS=0 disables.
+const CARPIN = get(ENV,"JM_COCKPIT_DRESS","1") != "0" ?
+    Render.extract_gpl_car(LOT3DO; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3"), exclude_groups=(6600,3560,27288,39792), cockpit_clean=true, maxlat=CARP_MAXLAT, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0), cockpit_dress=(get(ENV,"JM_COCKPIT_TEX","lotinsid"), -0.1f0, 0.95f0, 0.02f0, 0.24f0)) :
+    Render.TrackPart[]
 const PIPE_LIFT = parse(Float32, get(ENV, "JM_PIPE_LIFT", "0.18"))
 const PIPEP  = get(ENV, "JM_PIPES", "1") != "0" ?
     Render.extract_gpl_car(LOT3DO; only=("pipe3",), maxlat=0.9f0) : Render.TrackPart[]
@@ -3695,6 +3705,7 @@ end
 
 carItems   = Render.build_gpl(CARP, GPLTEX)        # Lotus body, GPL .mip textures
 pipeItems  = Render.build_gpl(PIPEP, GPLTEX)       # E106-S4: exhausts, drawn lifted (see PIPEP)
+carItemsIn = isempty(CARPIN) ? Render.Item[] : Render.build_gpl(CARPIN, GPLTEX)  # E106-S5: cockpit-view body
 # PO 2026-08-27: "remove the cockpit gauge panel, hands and sleeves". JM_GAUGE=0 hides the cluster
 # (hands + sleeves are JM_HANDS=0, which already existed).
 gaugeItems = get(ENV,"JM_GAUGE","1") == "0" ? Render.Item[] : Render.build_gpl(GAUGEP, GPLTEX)
@@ -6369,7 +6380,11 @@ function main()
         FRAMEPROF > 0 && (PROF_WORLD[] += time() - _t_world)
         # ambfill lifts the self-shadowed cockpit interior out of black (GPL pre-lights it
         # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
-        for it in carItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly) so it stops reading as a hard black "plywood" notch
+        # E106-S5: in cockpit view the body wears GPL'"'"'s interior skin (riveted aluminium);
+        # every other view keeps the exterior body.
+        let _items = (CTL.view == 0 && !isempty(carItemsIn)) ? carItemsIn : carItems
+            for it in _items; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end
+        end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly)
         # E106-S4: exhausts at hub height (chrome: a touch of spec so the megaphones catch the sun)
         let pm = bodyModel * Render.translate(Float32[0, PIPE_LIFT, 0])
             for it in pipeItems; Render.draw(prog, it, vp, pm; bright=1.15, spec=0.25, ambfill=0.6); end

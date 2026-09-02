@@ -5197,3 +5197,34 @@ tri counts were nonsense. **This is the third frame/stride error in this epic's 
 structure exactly.
 
 Suite 22/22. Next per the PO's order: **tub interior, then livery** (mirrors after; hands LAST).
+
+### E106-S5 (2026-09-02) — ◐ the tub interior: mechanism FOUND, partially applied; the slot binding is now the gating work
+
+**The discovery that reframes the whole interior item: GPL's cockpit is not separate geometry.**
+`lotd.3DO` (172 bytes) is a WRAPPER: node 0x0E re-enters `lotus.3do` with a **9-slot texture table**
+bound by selector subtype 0x11 — `[lotd, lotd, plaface, plahelm, dash7, ldashr, lotinsid, lotinsa,
+dash7a]`. The driver view is the SAME monocoque re-skinned: riveted-aluminium walls, real dash, even
+the player's face/helmet for the mirror reflection. That is the identical wrapper mechanism the
+tyres used (llftire0), now seen carrying a full view's worth of textures.
+
+**What shipped this sprint:** the port now mirrors the two-rendering structure — `CARPIN`, a
+cockpit-view body with the cockpit-region untextured panels dressed in `lotinsid`, drawn only when
+`view == 0`; chase keeps the green exterior. The visible tub wall goes from flat dark green to a
+brushed-aluminium tone — closer to gold — **but the panel art does not map correctly**: a magnified
+corner of the texture (the strap) spans the wall. `JM_COCKPIT_DRESS=0` disables;
+`JM_COCKPIT_TEX` A/Bs (`lotinsa` measured worse — it samples a dark corner).
+
+**Why it cannot be finished geometrically: the authored UVs are per-SLOT.** Each untextured poly
+was authored against ONE of the nine slot textures, and the mesh records WHICH via a slot index the
+parser does not yet read (the poly types' third word, bound through the 0x0E/0x11 chain). Binding
+one texture to all of them is exactly why the wall shows the wrong region. The same mechanism gates
+the **body livery** (`lotd` is the full body skin — the exterior's lo133/lo134 are only decals) and
+the proper **dash**. Three items now converge on one piece of parser work:
+
+**NEXT (S6): implement the wrapper chain in gpl3do.jl** — node 0x0E (external mesh reference),
+selector subtype 0x11 (texture-slot table), and per-poly slot indices resolved against the bound
+table. Verify against the tyres first (the geometric dress already shows what RIGHT looks like, so
+the slot-bound render must match it), then render lotd.3DO directly for the cockpit and the body
+wrappers for the exterior.
+
+Suite 22/22.

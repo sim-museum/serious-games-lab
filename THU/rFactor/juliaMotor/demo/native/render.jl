@@ -1104,7 +1104,7 @@ function _clip_lat(t, maxlat::Float32)
                 t.tex, t.col) for i in 2:length(verts)-1]
 end
 
-function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing)
+function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing, cockpit_dress=nothing)
     # text reads right when the texture mapping preserves handedness: the mirror=true
     # remap (gx,gz,-gy) is a rotation (no flip needed); mirror=false is a reflection
     # (needs V flipped to compensate).  So uflip=false, vflip=!mirror.
@@ -1219,6 +1219,46 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
         end
         kept = [t for (i, t) in enumerate(kept)
                 if count[find(i)] >= min_component || !okc[find(i)]]
+    end
+    # ── E106-S5: DRESS THE TUB INTERIOR ────────────────────────────────────────────────────────
+    # GPL's driver view is a WRAPPER model (lotd.3DO): node 0x0E re-enters lotus.3do with a 9-slot
+    # texture table [lotd, lotd, plaface, plahelm, dash7, ldashr, lotinsid, lotinsa, dash7a] bound
+    # by selector subtype 0x11 -- the same wrapper mechanism as the tyres (llftire0). The monocoque
+    # is ONE 538-tri untextured solid whose vertices are ~87% UV-AUTHORED: authored for exactly
+    # these slot textures. Until the slot binding is implemented in the parser, dress the part gold
+    # shows most: INWARD-FACING side panels in the cockpit region take `lotinsid` (the riveted
+    # aluminium + straps) with their authored UVs.
+    # cockpit_dress = (tex, xmin, xmax, ymin, zmin) -- inward-facing means the face normal's z
+    # opposes the vertex z (panel looks toward the centreline).
+    if cockpit_dress !== nothing && !isempty(kept)
+        (cdtex, cdx0, cdx1, cdy0, cdz0) = cockpit_dress
+        newk2 = GPL3DO.Tri[]
+        for t in kept
+            if t.tex != ""; push!(newk2, t); continue; end
+            cx = (t.p[1][1] + t.p[2][1] + t.p[3][1]) / 3
+            cy = (t.p[1][3] + t.p[2][3] + t.p[3][3]) / 3          # GPL: index 3 = height
+            cz = (t.p[1][2] + t.p[2][2] + t.p[3][2]) / 3          # index 2 = lateral
+            inbox = (cdx0 <= cx <= cdx1) && (cy >= cdy0) && (abs(cz) >= cdz0)
+            if inbox
+                e1 = t.p[2] .- t.p[1]; e2 = t.p[3] .- t.p[1]
+                nlat = e1[3]*e2[1] - e1[1]*e2[3]                  # face-normal lateral component
+                # inward when the normal's lateral sign opposes the panel's side
+                hasuv = let us=(t.uv[1][1],t.uv[2][1],t.uv[3][1]), vs=(t.uv[1][2],t.uv[2][2],t.uv[3][2])
+                    (maximum(us)-minimum(us) > 1f-5) || (maximum(vs)-minimum(vs) > 1f-5)
+                end
+                # No facing test: GPL renders the SAME panels as exterior (green, via the body
+                # tables) and interior (aluminium, via the lotd table) -- two renderings of one
+                # mesh, selected by view. The caller builds this dressed variant for the COCKPIT
+                # view only, so "both faces take the interior texture" is exactly right here.
+                _ = nlat
+                if hasuv
+                    push!(newk2, GPL3DO.Tri(t.p, t.n, t.uv, cdtex, (1f0,1f0,1f0)))
+                    continue
+                end
+            end
+            push!(newk2, t)
+        end
+        kept = newk2
     end
     # ── E106-S2: DRESS A WHEEL WITH GPL'S OWN TYRE TEXTURES ────────────────────────────────────
     # GPL does not texture the wheel meshes directly. Each corner has a 120-byte WRAPPER 3DO
