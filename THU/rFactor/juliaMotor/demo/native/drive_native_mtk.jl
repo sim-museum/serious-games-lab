@@ -3783,8 +3783,18 @@ helmItems   = Render.build_gpl(HELMP, GPLTEX)      # Clark-blue helmet at the he
 # near-black treaded tyres (~0.16 screen).  0.17 + the ambfill-lifted wheel draw keeps the cylinder
 # shading while reading as dark rubber in both cockpit and chase.
 const TYRE_ALB = parse(Float32, get(ENV,"JM_TYRE_ALB","0.17"))
+# E106-S2: dress the wheels with GPL's own tyre art (see the wheel_dress comment in render.jl).
+# Per-corner texture sets read off the GPL wrapper 3DOs (llftire0/lrftire0/llrtire0/lrrtire0):
+# fronts tread with loftex1, rears with lortex1; the lettered outer face (l1out) goes on the
+# OUTBOARD side, which is +y for the left wheels and -y for the right (verified by capture -- the
+# Firestone lettering must face out, as in gold). JM_WHEEL_DRESS=0 restores the flat grey wheels.
+const WHEEL_DRESS = get(ENV, "JM_WHEEL_DRESS", "1") != "0" ? Dict(
+    "lotwlf" => ("l1out", "l1in", "loftex1"), "lotwrf" => ("l1in", "l1out", "loftex1"),
+    "lotwlr" => ("l1out", "l1in", "lortex1"), "lotwrr" => ("l1in", "l1out", "lortex1")) :
+    Dict{String,NTuple{3,String}}()
 load_wheel(nm) = Render.build_gpl(Render.extract_gpl_car(joinpath(LOTDIR,nm*".3do");
-                    exclude=("ltraymap","lshad"), tint=(TYRE_ALB,TYRE_ALB,TYRE_ALB+0.02f0)), GPLTEX)
+                    exclude=("ltraymap","lshad"), tint=(TYRE_ALB,TYRE_ALB,TYRE_ALB+0.02f0),
+                    wheel_dress=get(WHEEL_DRESS, nm, nothing)), GPLTEX)
 const WHEELITEMS = Dict(nm => load_wheel(nm) for nm in ("lotwlf","lotwrf","lotwlr","lotwrr"))
 tstamp("  [E80] wheel models loaded")
 swItems = Render.build_gpl(SWPARTS, GPLTEX)        # steering wheel (rotated with steer)

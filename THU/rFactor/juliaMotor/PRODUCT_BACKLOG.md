@@ -5098,3 +5098,43 @@ triggered: the three gauge-height captures were taken with the code live and sho
 "AI best lap about 1:40" could only be quoted from pacing arithmetic. Measured on Watkins at
 `JM_AI_PCT=66.9`: Eagle 1:37.1, Ferrari 1:38.2, BRM 1:40.6, Brabham 1:41.7, Cooper 1:44.4 —
 the field straddles 1:40 but the best is 3% quick. **`JM_AI_PCT=64.9` puts the best lap at ≈1:40.**
+
+### E106-S2 (2026-09-01) — ✅ **THE TYRES: dressed with GPL's own art, player and all five AI cars**
+
+The largest exterior gap (inventory item 7) is closed. The mechanism explains why the wheels ever
+looked wrong at all:
+
+**GPL never textures its wheel meshes directly.** Each corner has a ~120-byte WRAPPER 3DO
+(`llftire0.3do`, `flftire0.3do`, …) whose string table reads
+`<mesh> <outboard face> <inboard face> <tread> [spinner]`, bound to the mesh through a selector
+subtype (0x11) and an external-mesh node (0x0E) our parser never walked. Loading the mesh alone
+yields mostly-untextured geometry, which the port then tinted rubber-grey — the "smooth flat grey
+cylinders". The wheel textures were sitting unused in the install the whole time: `l1out`/`l1in`
+(the complete Firestone-lettered faces with silver spokes), `loftex1`/`lortex1` (tread),
+`lspinn1` (knock-off spinner).
+
+**Fix, in two parts:**
+1. `extract_gpl_car(...; wheel_dress=(posy, negy, tread))` — classify untextured triangles by face
+   normal in the mesh frame (axle = GPL y): |n_y| dominant = a face disc, else tread. Authored UVs
+   are KEPT where present (the 0x821 polys were authored for these textures); UV-less polys get
+   disc-projected / cylindrical coordinates (tread repeats ×4 around, GL_REPEAT).
+2. The texture set is read off the WRAPPERS themselves (`wheel_dress_for`): the wrapper encodes the
+   left/right outboard swap in its slot order, so no per-corner logic exists anywhere in our code —
+   for the player (hand table matching the Lotus wrappers) and all five AI cars (parsed at load).
+
+**Verified by capture, chase and cockpit:** cross-groove tread around every tyre, sidewall ring
+with gold pinstripe, spoke detail behind — player and AI both. The cockpit view now shows treaded
+front tyres either side of the (no-longer-blocking, S1) dash.
+
+⚠️ **One bug of mine cost a capture round: the 3DO magic is byte-reversed on disk (`"4OD3"`), like
+every chunk tag in this format (`NRTS`, `MIRP`).** The first cut checked `"3DO4"`, matched nothing,
+and every AI wheel silently rendered undressed — an empty cache and a missing feature look
+identical from outside. The parser's own source spells the reversed tags out; I typed the
+human-readable one anyway.
+
+`JM_WHEEL_DRESS=0` restores the flat wheels (player); suite 22/22.
+
+**Next (S3), from the inventory in impact order:** exhausts — `PIPE3.mip`/`lexhsup.mip` and the
+`trumplo/trumphi` intake meshes exist in the install and nothing loads them; gold's rear view shows
+the megaphone exhausts prominently between the rear wheels. Then the driver figure in chase
+(helmet/shoulders), then the tub interior + livery (items 3/10).

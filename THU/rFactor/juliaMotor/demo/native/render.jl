@@ -1104,7 +1104,7 @@ function _clip_lat(t, maxlat::Float32)
                 t.tex, t.col) for i in 2:length(verts)-1]
 end
 
-function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=())
+function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing)
     # text reads right when the texture mapping preserves handedness: the mirror=true
     # remap (gx,gz,-gy) is a rotation (no flip needed); mirror=false is a reflection
     # (needs V flipped to compensate).  So uflip=false, vflip=!mirror.
@@ -1219,6 +1219,61 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
         end
         kept = [t for (i, t) in enumerate(kept)
                 if count[find(i)] >= min_component || !okc[find(i)]]
+    end
+    # ── E106-S2: DRESS A WHEEL WITH GPL'S OWN TYRE TEXTURES ────────────────────────────────────
+    # GPL does not texture the wheel meshes directly. Each corner has a 120-byte WRAPPER 3DO
+    # (llftire0.3do …) whose string table names the mesh (lotulf) plus four textures -- the outer
+    # face (l1out: Firestone sidewall + silver spokes), inner face (l1in), tread (loftex1) and
+    # spinner -- bound to the mesh's polys through a selector subtype (0x11) and an external-mesh
+    # node (0x0E) this parser does not walk. Loading the mesh alone therefore yields a mostly
+    # UNTEXTURED wheel, which the port then tinted rubber-grey: the PO's "smooth flat grey
+    # cylinders", the largest exterior difference against gold by screen area.
+    #
+    # Rather than emulate the binding chain, dress GEOMETRICALLY -- in the mesh frame the axle is
+    # GPL y (component 2), so a triangle's face normal classifies it: |n_y| dominant = a FACE disc
+    # (+y/-y pick outer/inner), anything else = the TREAD band. Authored UVs are KEPT where the
+    # poly carried them (the 0x821 polys were authored against these very textures); only UV-less
+    # polys (0x81d) get generated coordinates -- disc-projected on faces, cylindrical on the tread.
+    # `wheel_dress = (posy_tex, negy_tex, tread_tex)`; JM_WHEEL_DRESS=0 disables upstream.
+    if wheel_dress !== nothing && !isempty(kept)
+        (typos, tyneg, tytread) = wheel_dress
+        ys = Float32[p[2] for t in kept for p in t.p]
+        y0, y1 = minimum(ys), max(maximum(ys), minimum(ys) + 1f-4)
+        Rw = maximum(sqrt(p[1]^2 + p[3]^2) for t in kept for p in t.p)
+        NREP = 4f0                     # tread repeats around the circumference (eyeballed vs gold)
+        dressed = GPL3DO.Tri[]
+        for t in kept
+            if t.tex != ""; push!(dressed, t); continue; end
+            e1 = t.p[2] .- t.p[1]; e2 = t.p[3] .- t.p[1]
+            nx = e1[2]*e2[3]-e1[3]*e2[2]; ny = e1[3]*e2[1]-e1[1]*e2[3]; nz = e1[1]*e2[2]-e1[2]*e2[1]
+            l = sqrt(nx*nx + ny*ny + nz*nz)
+            l < 1f-12 && (push!(dressed, t); continue)
+            hasuv = let us = (t.uv[1][1], t.uv[2][1], t.uv[3][1]), vs = (t.uv[1][2], t.uv[2][2], t.uv[3][2])
+                (maximum(us) - minimum(us) > 1f-5) || (maximum(vs) - minimum(vs) > 1f-5)
+            end
+            if abs(ny/l) > 0.55f0          # face disc
+                tex = ny > 0 ? typos : tyneg
+                uv = hasuv ? t.uv :
+                     ntuple(k -> (0.5f0 + t.p[k][1]/(2Rw), 0.5f0 + t.p[k][3]/(2Rw)), 3)
+            else                            # tread band
+                tex = tytread
+                uv = t.uv
+                if !hasuv
+                    a1 = atan(t.p[1][3], t.p[1][1]); a2 = atan(t.p[2][3], t.p[2][1]); a3 = atan(t.p[3][3], t.p[3][1])
+                    a2 - a1 >  Float32(pi) && (a2 -= 2f0*Float32(pi)); a2 - a1 < -Float32(pi) && (a2 += 2f0*Float32(pi))
+                    a3 - a1 >  Float32(pi) && (a3 -= 2f0*Float32(pi)); a3 - a1 < -Float32(pi) && (a3 += 2f0*Float32(pi))
+                    tv(y) = (y - y0) / (y1 - y0)
+                    uv = ((Float32(a1/(2pi)*NREP), Float32(tv(t.p[1][2]))),
+                          (Float32(a2/(2pi)*NREP), Float32(tv(t.p[2][2]))),
+                          (Float32(a3/(2pi)*NREP), Float32(tv(t.p[3][2]))))
+                end
+            end
+            # col WHITE: the flat colour on these polys decodes as near-black garbage (it is a
+            # texture-slot word, not a colour), and anything downstream that multiplies by it would
+            # kill the texture.
+            push!(dressed, GPL3DO.Tri(t.p, t.n, uv, tex, (1f0,1f0,1f0)))
+        end
+        kept = dressed
     end
     qk(p) = (round(Int,p[1]*2000), round(Int,p[2]*2000), round(Int,p[3]*2000))
     # de-duplicate coplanar panels: GPL signs/awnings/walls are double-sided (front+back),
@@ -1635,6 +1690,48 @@ reach (pass the player Lotus's `bbox.ymin + BODY_OFF[2]` so the whole grid sits 
 common height).  `wheelspec` reuses the Lotus hub geometry (all '67 cars are
 dimensionally near-identical) with each car's own wheel mesh names; a missing mesh
 loads as nothing (drawn wheel-less rather than crashing)."""
+
+# ── E106-S2: read a wheel's texture set off its GPL WRAPPER 3DO ─────────────────────────────────
+# Each corner has a tiny wrapper (llftire0.3do, flftire0.3do, …) whose string table is
+#   <mesh> <outboard face> <inboard face> <tread> [spinner]
+# and the wrapper ITSELF encodes the left/right swap (right wheels list the inner face first), so
+# no per-corner logic is needed here: slot 1 is always the +y face, slot 2 the −y face, slot 3 the
+# tread. Returns nothing when no wrapper names the mesh — the wheel then renders as before.
+const _WRAPPER_CACHE = Dict{String,Dict{String,NTuple{3,String}}}()
+function wheel_dress_for(dir, meshname)
+    tbl = get!(_WRAPPER_CACHE, dir) do
+        d = Dict{String,NTuple{3,String}}()
+        for f in readdir(dir; join=true)
+            endswith(lowercase(f), ".3do") || continue
+            filesize(f) > 512 && continue                  # wrappers are ~120 bytes
+            b = try read(f) catch; continue end
+            # ⚠️ the on-disk magic is byte-reversed, "4OD3" -- as are all the chunk tags in this
+            # format (NRTS, MIRP). The first cut checked "3DO4", matched NOTHING, and every AI
+            # wheel silently rendered undressed: an empty cache and a missing feature look
+            # identical from outside.
+            (length(b) > 24 && String(b[1:4]) == "4OD3") || continue
+            # find STRN
+            o = 12; names = String[]
+            while o + 12 <= length(b)
+                t = String(b[o+1:o+4]); sz = Int(reinterpret(UInt32, b[o+9:o+12])[1]); data = o + 12
+                if t == "NRTS"
+                    cur = UInt8[]
+                    for i in data+1:min(data+sz, length(b))
+                        c = b[i]
+                        c == 0xFF && break
+                        c == 0x00 ? (push!(names, String(copy(cur))); empty!(cur)) : push!(cur, c)
+                    end
+                    break
+                end
+                o = data + sz; o += (4 - o % 4) % 4
+            end
+            length(names) >= 4 || continue
+            d[lowercase(names[1])] = (names[2], names[3], names[4])
+        end
+        d
+    end
+    get(tbl, lowercase(meshname), nothing)
+end
 function load_gpl_car(name, dir, body3do, wheelspec;
                       exclude=("ltraymap","lshad"), maxlat=Inf32, exclude_groups=(),
                       body_floor=0.0f0, wheeltint=(0.12f0,0.12f0,0.13f0))
@@ -1650,7 +1747,8 @@ function load_gpl_car(name, dir, body3do, wheelspec;
         haskey(wheels, mesh) && continue
         path = joinpath(dir, mesh*".3do")
         wheels[mesh] = isfile(path) ?
-            build_gpl(extract_gpl_car(path; exclude=("ltraymap","lshad"), tint=wheeltint), tex) : Item[]
+            build_gpl(extract_gpl_car(path; exclude=("ltraymap","lshad"), tint=wheeltint,
+                                      wheel_dress=wheel_dress_for(dir, mesh)), tex) : Item[]
     end
     GPLCarModel(name, body, wheels, (Float32(off_x), Float32(off_y), Float32(off_z)),
                 Vector{Tuple{Float32,Float32,Bool,Float32,String}}(wheelspec))
