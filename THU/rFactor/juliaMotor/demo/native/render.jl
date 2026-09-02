@@ -1842,7 +1842,16 @@ const WBAL = let v = get(ENV,"JM_WBAL","")
     end
 end
 
-function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0, graze::Bool=false, alpha::Real=1.0, tint=(1f0,1f0,1f0), mirrorglass::Bool=false, unlit::Bool=false)
+function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0, graze::Bool=false, alpha::Real=1.0, tint=(1f0,1f0,1f0), mirrorglass::Bool=false, unlit::Bool=false, depthbias::Bool=false)
+    # E106-S8 (PO: "flicker, especially around visor and mirrors"): z-fighting between the lotd
+    # cockpit shell -- whose slot-bound windscreen-frame/mirror-pod faces escape the old
+    # texture-name excludes -- and the separately drawn windscreen/mirror glass at the same depth.
+    # Polygon offset pulls the later draw decisively in front instead of letting the rasteriser
+    # pick a winner per-pixel per-frame.
+    if depthbias
+        glEnable(GLenum(0x8037))            # GL_POLYGON_OFFSET_FILL
+        glPolygonOffset(-1f0, -1f0)
+    end
     setmat(prog,"uVP",vp); setmat(prog,"uModel",model)
     glUniform1i(glGetUniformLocation(prog,"uUnlit"), unlit ? 1 : 0)   # E83-S3: sprites at texture brightness
     glUniform3f(glGetUniformLocation(prog,"uTint"), Float32(tint[1]), Float32(tint[2]), Float32(tint[3]))   # per-draw colour multiply (default white = no-op)
@@ -1863,6 +1872,7 @@ function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, amb
         glUniform1i(glGetUniformLocation(prog,"uHasTex"),0)
     end
     glBindVertexArray(item.vao); glDrawArrays(GL_TRIANGLES,0,item.n)
+    depthbias && glDisable(GLenum(0x8037))
 end
 """Upload a bare interleaved blob as an untextured Item (car, wheels)."""
 function item(interleaved)

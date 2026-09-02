@@ -5316,3 +5316,40 @@ provenance belongs in the record.
 Suite 22/22. Remaining, in order: tailpipe symmetry → cockpit sill mis-map + cowl saturation →
 mirrors/windscreen polish → AI gold A/Bs → rear-half re-pose (restores articulated suspension) →
 hands/arms LAST.
+
+### E106-S8 (2026-09-02) — cockpit flicker biased, exhaust bracket dropped; engine UV diagnosed (not yet fixed)
+
+From the PO's second video (`~/Videos/260902-better.mp4`, "much better overall"):
+
+**1. "flicker, especially around visor and mirrors"** — z-fighting: the lotd cockpit shell's
+slot-bound windscreen-frame and mirror-pod faces sit at the SAME depth as the separately-drawn
+windscreen glass and mirror discs, so the rasteriser picks a winner per-pixel per-frame. Added a
+`depthbias` option to `Render.draw` (GL_POLYGON_OFFSET_FILL, −1/−1) and applied it to the three
+later coplanar draws — mirror disc, live mirror glass, windscreen. Deterministic front/back order
+now; a still can't prove a flicker gone, but the coplanar pair it removes is exactly the cause.
+
+**2. "make those exhaust pipes symmetrical"** — pipe3 carries a 5-tri BRACKET authored on the
+right side only (its own connected solid). `min_component=6` on the pipe extraction drops exactly
+it. ⚠️ Residual: the left/right HEADER bundles still differ (102 vs 96 tris) — that is the authored
+art, not a placement bug, so true symmetry needs mirroring one bundle onto the other; catalogued.
+
+**3. "engine in nintendo view … flicker and random shapes and colors"** — DIAGNOSED, deferred as
+its own careful task. The garish pink/purple striped panel low in the engine bay is `lo133` (the
+Ford-Cosworth DFV engine atlas — a correct, detailed texture) sampled at the WRONG region: the
+engine polys carry authored UVs spanning only U 0..0.58 / V 0..0.61, and the black inter-panel
+gaps of the atlas sit around U/V 0.5, so parts of the engine land in the gaps and read as garbage.
+This is the same slot-UV subtlety as the cockpit sills (S6): the wrapper binds the texture but the
+per-poly UVs need the slot-relative offset the parser does not yet apply. **Not a one-liner; not
+rushed.** Ruled out first: the texture resolves fine (`LO133.mip`, case-insensitive) and is the
+right art; dash-face textures are NOT the cause (excluding dash7/dash7a/ldashr left the panel).
+
+**4. "Axles are needed"** (reversing S7's removal) — the PO wants the rear suspension BACK, but
+correctly posed. That is the rear-half RE-POSE task already queued; it moves UP the priority order
+now that the PO has asked for it explicitly. S7 hid the sticks as a stopgap; the real fix is the
+pose, and it is next after the engine UV.
+
+**PO also confirmed:** cockpit "good except flicker", external "better". Overall "much better".
+
+Suite 22/22. Revised order: **engine UV (lo133 slot offset) → rear-half re-pose (axles back,
+posed) → exhaust header mirroring → cockpit sills/cowl saturation → mirrors/windscreen polish →
+AI gold A/Bs → hands/arms LAST.**

@@ -1469,7 +1469,13 @@ const CARP_MAXLAT  = parse(Float32, get(ENV,"JM_CARP_MAXLAT","0.85"))   # 0.85 =
 # yellow stripe, TEAM LOTUS roundels -- and gold's chase view shows exactly that paint where ours
 # showed untextured green facets.
 const _CARP_SRC = get(ENV,"JM_BODY_WRAP","1") != "0" ? joinpath(LOTDIR,"lotd.3DO") : LOT3DO
-const CARP   = Render.extract_gpl_car(_CARP_SRC; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm"), exclude_groups=(6600,3560,27288,39792), cockpit_clean=true, maxlat=CARP_MAXLAT, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # driver body + gauge + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0.  E64 S4 (D12): groups 27288/39792 are WHOLE DISPLACED ASSEMBLIES (suspension+exhaust+driver textures at y 0.42…1.16 / −1.12…−0.42, mirror copies) — GPL runtime-hidden branches our positioner walk mis-places; they were the chase view's "chrome spider-legs" through the rear tyres
+# E106-S8 (PO: "random shapes and colors on the engine" in nintendo view). The lotd wrapper binds
+# the INTERIOR slot textures -- the dashboard dial faces (dash7/dash7a/ldashr) and the cockpit wall
+# panels (lotinsa/lotinsid) -- and some of those polys sit low in the engine bay, so from the chase
+# camera a DIAL FACE lies flat across the engine as a garish striped panel. Those textures belong
+# to the DRIVER view only (CARPIN keeps them); the exterior body must not carry them.
+const _COCKPIT_ONLY = ("dash7","dash7a","ldashr")   # dial faces only; lotinsa/lotinsid are also body panels, lotd is the paint
+const CARP   = Render.extract_gpl_car(_CARP_SRC; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm",_COCKPIT_ONLY...), exclude_groups=(6600,3560,27288,39792), cockpit_clean=true, maxlat=CARP_MAXLAT, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # driver body + gauge + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0.  E64 S4 (D12): groups 27288/39792 are WHOLE DISPLACED ASSEMBLIES (suspension+exhaust+driver textures at y 0.42…1.16 / −1.12…−0.42, mirror copies) — GPL runtime-hidden branches our positioner walk mis-places; they were the chase view's "chrome spider-legs" through the rear tyres
 const DRIVERP = Render.extract_gpl_car(LOT3DO; only=DRIVER_TEX, maxlat=0.95f0, exclude_groups=(6600,3560,27288,39792))   # the driver figure — drawn only in CHASE view (occludes the cockpit from the in-car eye).  E64 S4: the displaced assemblies 27288/39792 carry lid/arms-textured tris too — without the group filter they drew as the chase view's remaining "spears"
 const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (dial faces in the texture's lower-V region; keep default vflip)
 const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0)  # the plexiglass windscreen — drawn LAST, faintly visible glass, so the suspension shows through (GPL gold standard)
@@ -1668,8 +1674,12 @@ function _drop_box!(parts, x0, x1, y0, z0)
 end
 # (pod box-cut superseded: the 0.30 lateral clamp removes the flanks, pods included)
 const PIPE_LIFT = parse(Float32, get(ENV, "JM_PIPE_LIFT", "0.18"))
+# E106-S8 (PO: "still need to make those exhaust pipes symmetrical"): pipe3 carries a 5-tri
+# bracket authored on the RIGHT side only (its own connected solid); min_component=6 drops exactly
+# it. The remaining left/right header difference (102 vs 96 tris) is the authored art itself.
 const PIPEP  = get(ENV, "JM_PIPES", "1") != "0" ?
-    Render.extract_gpl_car(LOT3DO; only=("pipe3",), maxlat=0.9f0) : Render.TrackPart[]
+    Render.extract_gpl_car(LOT3DO; only=("pipe3",), maxlat=0.9f0,
+                           min_component=6, min_component_tex=("pipe3",)) : Render.TrackPart[]
 const ARMP   = Render.extract_gpl_car(LOT3DO; only=("lotarms",), maxlat=0.95f0)  # forearms/upper arms — static (their wheel-side ends are what the eye sees)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read
 # upside-down.  Mirror the gauge in height about its own centre so the dial face turns up toward the eye.
@@ -6542,9 +6552,9 @@ function main()
         # rear-view mirrors — re-placed onto the cowl/plexiglass, faces tilted toward the eye (GPL look).
         # E64: with the RTT live, the silver disc is just the RIM/backing — the glass quad on top
         # carries the actual rear view (round-masked sample of the mirror FBO, uMirrorGlass).
-        for it in mirrorItems; Render.draw(prog, it, vp, bodyModel*MIRRORMAT; bright=1.25, spec=0.30, ambfill=0.75); end   # disc/rim (and the whole mirror when JM_MIRROR_RTT=0)
+        for it in mirrorItems; Render.draw(prog, it, vp, bodyModel*MIRRORMAT; bright=1.25, spec=0.30, ambfill=0.75, depthbias=true); end   # disc/rim (E106-S8: biased over the lotd pod faces)
         if mirror_live
-            for it in mirGlassItems; Render.draw(prog, it, vp, bodyModel*MIRRORMAT; mirrorglass=true); end   # live glass
+            for it in mirGlassItems; Render.draw(prog, it, vp, bodyModel*MIRRORMAT; mirrorglass=true, depthbias=true); end   # live glass (E106-S8: biased)
         end
         # steering wheel — spin about its column axis with steering input
         swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5)) * Render.translate(-SWCENTER)
@@ -6572,7 +6582,7 @@ function main()
             glDepthMask(GL_FALSE)
             # PO: flatter, dimmer lighting so the leather scuttle reads as smooth matte tan — not stark
             # cream "plywood" wedges clashing with the dark footwell notch the (omitted) driver would fill.
-            for it in windItems; Render.draw(prog, it, vp, bodyModel; bright=WIND_B, spec=0.02, ambfill=WIND_A, alpha=WIND_ALPHA); end
+            for it in windItems; Render.draw(prog, it, vp, bodyModel; bright=WIND_B, spec=0.02, ambfill=WIND_A, alpha=WIND_ALPHA, depthbias=true); end   # E106-S8: biased over the lotd frame faces
             glDepthMask(GL_TRUE)
         end
         α_tc = clamp(dt/0.10, 0.0, 1.0)              # smooth the traction-circle display (coarse-mesh Fz spikes → no flicker)
