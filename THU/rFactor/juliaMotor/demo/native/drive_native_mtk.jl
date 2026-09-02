@@ -477,6 +477,7 @@ const NET_DIAG = parse(Int, get(ENV, "JM_NET_DIAG", "0"))
 const AUTODRIVE   = get(ENV, "JM_AUTODRIVE", "0") != "0"
 const AUTODRIVE_V = parse(Float64, get(ENV, "JM_AUTODRIVE_V", "45"))   # target speed m/s
 const AUTODRIVE_DIAG = parse(Int, get(ENV, "JM_AUTODRIVE_DIAG", "0"))
+const AI_LAPDIAG = get(ENV, "JM_AI_LAPDIAG", "0") != "0"   # report each AI lap as it completes
 # Poses of the remote cars, refreshed each frame and read by the draw pass. A Ref rather than a
 # closure capture because the draw pass is a nested function built before this is known.
 const NETPOSES = Ref(NTuple{6,Float64}[])
@@ -1616,7 +1617,17 @@ const GCY = (b = Render.parts_bbox(GAUGEP); Float32((b.ymin + b.ymax)/2))
 # painting". Verified at Spa s=500/8000/12500 and Zandvoort s=1000: at 0.28 (with JM_GAUGE_Z=0.10)
 # the cluster sits ABOVE the rim with dial faces and markings legible, matching gold's arrangement
 # of a tachometer above the hub. JM_GAUGE_Y=0.16 JM_GAUGE_Z=0.0 restores the old placement.
-const GAUGE_DY = parse(Float32, get(ENV,"JM_GAUGE_Y","0.28"))
+# 🔴 E106 (PO 2026-09-01): "in cockpit view the salvador dali dashboard is above the steering
+# wheel, blocking the driver's view of the road". Measured at three heights on Watkins, same spot:
+#   0.28 (E74-S7's value) -- the cluster is a BILLBOARD filling the windscreen; the road is gone.
+#   0.20 -- the cluster sits in a dark binnacle behind the wheel, dials visible, road visible;
+#           top edge grazes the horizon. Closest of the three to gold's arrangement (the gold
+#           cockpit shows the binnacle BELOW the horizon with the road clearly over it).
+#   0.14 -- road fully visible but the dials vanish behind the wheel, which is the occlusion
+#           E74-S7 was fixing when it over-corrected to 0.28.
+# E74-S7 verified 0.28 against "dials legible" and never against "road visible" -- the two halves
+# of the same sightline, and fixing one broke the other. 0.20 holds both.
+const GAUGE_DY = parse(Float32, get(ENV,"JM_GAUGE_Y","0.20"))
 const GAUGE_DX = parse(Float32, get(ENV,"JM_GAUGE_X","-0.04"))
 # E74-S4: a SCALE knob for the gauge cluster. E74-S3 refuted brightness as the cause of the PO's
 # "Salvador Dali dials" and found the cluster is drawn far smaller than gold's — gold puts a large
@@ -4093,8 +4104,10 @@ function read_input()
     kg = key(GLFW.KEY_G)
     if kg && !CTL.prevG
         if CTL.auto && clu < 0.4
-            println("  [gearbox] staying in AUTO -- put the CLUTCH SLIDER DOWN (disengaged) before ",
-                    "switching to MANUAL. Slider is at ", round(clu, digits=2), " (need > 0.4).")
+            CLUTCH_GATE[] = 2.0        # PO 2026-09-01: show it ON SCREEN for 2 s, not just here
+            println("  [gearbox] staying in AUTO -- move the CLUTCH SLIDER to the DISENGAGED end ",
+                    "before switching to MANUAL. Slider is at ", round(clu, digits=2), " (need > 0.4). ",
+                    "The on-screen bar shows the axis and the threshold.")
             flush(stdout)
         else
             CTL.auto = !CTL.auto
@@ -5132,6 +5145,8 @@ function main()
     race_go    = Ref(!HOLD_START)
     cd_t0      = Ref(-1.0)      # wall time the countdown began (-1 = not started)
     cd_left    = Ref(-1.0)      # seconds remaining, for the HUD (-1 = do not draw)
+    # PO 2026-09-01: seconds remaining to show the clutch-gate bar after a refused G.
+    CLUTCH_GATE = Ref(-1.0)
     ai_release = Ref(-1.0)          # PO head start: wall time at which the FIELD may launch
     launch_done = Ref(false)     # the initial standing-start getaway is over (car has reached speed once)
     # AI reference qual times: the paced target + a small per-car spread so the grid lines
@@ -5988,6 +6003,16 @@ function main()
                 if AICARS[i].lap > ai_lap_prev[i]
                     lt = cs.t - ai_lapt0[i]; ai_lapt0[i] = cs.t
                     ai_lap_prev[i] > 0 && (ai_best[i] = min(ai_best[i], lt))   # skip lap 0→1 (the grid launch)
+                    # JM_AI_LAPDIAG=1: report each AI lap as it completes. Until now an AI lap time
+                    # existed only in `last_race_result.txt`, written when the RACE ENDS -- so a
+                    # session that is quit early (or any headless pace check) recorded nothing, and
+                    # "the AI lap at 1:40" could only ever be quoted from the pacing arithmetic
+                    # rather than measured. This makes the claim checkable in one run.
+                    if AI_LAPDIAG && ai_lap_prev[i] > 0
+                        println("  [ailap] ", rpad(ent_name(i), 9), " lap ", AICARS[i].lap,
+                                "  ", fmt_lap(lt), "   best ", fmt_lap(ai_best[i]))
+                        flush(stdout)
+                    end
                     ai_lap_prev[i] = AICARS[i].lap
                 end
             end
@@ -6395,7 +6420,9 @@ function main()
         Render.hud_draw(hudprog, hudvao, hudvbo,
             Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, 9500.0, inp.throttle, inp.brake, inp.clutch, tc_hud;
                                lastlap=(SMOKE ? 94.3 : last_lap), bestlap=(SMOKE ? 92.1 : best_lap), manual=!CTL.auto,
-                               countdown=cd_left[]), W, H)
+                               countdown=cd_left[],
+                               clutchgate=(CLUTCH_GATE[] > 0 ? inp.clutch : -1.0)), W, H)
+        CLUTCH_GATE[] > 0 && (CLUTCH_GATE[] -= dt)
         # E80 (PO 2026-08-27): "frame rate was low (10 frames/sec or so) in cockpit view, better in
         # nintendo view ... no excuse for 10 frames/sec on a PC with a 6 GB nvidia graphics card".
         # Report the frame time per VIEW, because the cockpit/chase asymmetry is the whole clue:

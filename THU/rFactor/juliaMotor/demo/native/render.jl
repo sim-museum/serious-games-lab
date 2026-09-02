@@ -709,7 +709,7 @@ end
 right), throttle/brake/rpm bars, the four per-wheel traction circles (over the
 nose), and last/best lap times (top-left).  `tc`=(FL,FR,RL,RR) (long,lat,radius)
 or nothing; `lastlap`/`bestlap` in seconds (0 = none).  Returns the HUD vertex list."""
-function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,clu=0.0,tc=nothing; lastlap=0.0, bestlap=0.0, manual=false, countdown=-1.0)
+function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,clu=0.0,tc=nothing; lastlap=0.0, bestlap=0.0, manual=false, countdown=-1.0, clutchgate=-1.0)
     v=Float32[]
     white=(0.90,0.95,1.0); amber=(1.0,0.82,0.35); green=(0.42,0.82,0.42); red=(0.95,0.35,0.30); dim=(0.16,0.18,0.22); blue=(0.35,0.65,1.0)
     # PO 2026-08-31: "start as a countdown timer". Seconds remaining, big and central, amber while
@@ -733,6 +733,24 @@ function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,clu=0.0,tc=nothing; lastlap
     # Digital rpm sits above the speed, amber past 80% of the limit and red past 95%.
     let rc = rpm >= 0.95*revlim ? red : rpm >= 0.80*revlim ? amber : white
         hnumber!(v, 40, H-176, 26, 48, 7, round(Int, rpm), rc)
+    end
+    # PO 2026-09-01: "pressing g had no effect - I was stuck in automatic".
+    # G was not ignored -- entering MANUAL requires the clutch disengaged (E93, the PO's own rule) --
+    # but the refusal was a `println` to the TERMINAL, and the player is looking at the game window.
+    # A key that appears to do nothing is indistinguishable from a broken key.
+    # So show the gate ON SCREEN, and show it as the CONTROL: a bar of the clutch axis with a tick
+    # at the threshold, so "move this past the line" needs no words. TRANSIENT -- drawn only while
+    # the refusal is live -- because E13 asked for a decluttered HUD and a permanent gauge would
+    # walk that back.
+    if clutchgate >= 0.0
+        bw, bh = 420, 26
+        bx, by = W÷2 - bw÷2, H - 150
+        hquad!(v, bx-3, by-3, bw+6, bh+6, dim)                       # frame
+        hquad!(v, bx, by, bw, bh, (0.10,0.10,0.13))                  # empty channel
+        fill = round(Int, clamp(clutchgate, 0.0, 1.0) * bw)
+        fill > 0 && hquad!(v, bx, by, fill, bh, red)                 # current clutch position
+        tick = round(Int, 0.4 * bw)                                  # the threshold it must pass
+        hquad!(v, bx + tick - 2, by - 8, 4, bh + 16, amber)
     end
     lastlap > 0 && htime!(v, 40, 28, lastlap, white)           # last lap (white, top-left)
     bestlap > 0 && htime!(v, 40, 74, bestlap, green)           # best lap (green, below)

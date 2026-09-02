@@ -5025,3 +5025,56 @@ rate is high rather than at a fixed 10 Hz.
 data; a longer measurement needs an autopilot that can hold a lap, which does not exist yet.
 
 Suite 22/22.
+
+### E106 (PO 2026-09-01) — 🔴 EPIC: make the cars look like GPL's — cockpit AND exteriors, player AND AI
+
+PO, verbatim: *"make the cars look better; refer to the gold standard car screenshots and videos.
+Right now the cars look like a dog's breakfast"* — and, clarifying scope: *"this includes the
+cockpit, but also the exterior views of player car and AI cars. All the graphics data used to make
+the GPL cars is available, along with gold standard data to compare to. The car look is so important
+for emersion, and GPL does this well, duplicating it would be great."*
+
+So the acceptance standard is GPL itself, and the method is the one every visual item here has
+converged on: **capture ours, put it beside gold, fix the largest visible difference, recapture.**
+Gold references already in the tree: `parity/watglen/sf_cockpit_gold_vs_native.jpg`,
+`parity/watglen/chase_gold_vs_native.jpg`, the `parity/gold_index/` set, and the gold screenshot
+archive at `/run/media/g/84AF-CC77/<track>/` (currently unmounted — remount for the full set).
+
+**Folded in:** the PO's same-day report *"the salvador dali dashboard is above the steering wheel,
+blocking the driver's view of the road"* — fixed this sprint, see E106-S1.
+
+**Known gaps vs the gold cockpit A/B, as a starting inventory (from
+`sf_cockpit_gold_vs_native.jpg`):**
+1. ~~gauge cluster blocks the road~~ (S1)
+2. no driver hands/sleeves on the wheel in-frame at rest (gold: white sleeves + gloves dominate)
+3. tub interior reads as flat green geometric shapes; gold is dark matte with riveted aluminium side
+   panels
+4. mirrors: ours are chunky trapezoids on the cowl; gold has round discs low at the frame edges,
+   with live reflections
+5. front tyres: ours read flat grey; gold shows tread + sidewall shading
+6. windscreen: ours is a strong yellow slab; gold is a faint low plexiglass
+7. chase view: assembly/pose issues already tracked as E102 (driveshaft pose) — that item continues
+   under its own number
+
+### E106-S1 (2026-09-01) — ✅ the dashboard no longer blocks the road, and the G-key refusal is visible
+
+**1. The Dali dashboard.** `JM_GAUGE_Y` default 0.28 → **0.20**, measured at three heights on the
+same Watkins spot: 0.28 is a billboard filling the windscreen (what the PO raced against), 0.14
+hides the dials behind the wheel (the occlusion E74-S7 was fixing when it over-corrected), **0.20
+holds both** — dials in a dark binnacle behind the wheel, road visible, top edge at the horizon.
+E74-S7's mistake is worth naming: it verified 0.28 against *"dials legible"* and never against
+*"road visible"* — two halves of one sightline, and fixing one broke the other.
+
+**2. "pressing g had no effect - I was stuck in automatic."** G was not broken — entering MANUAL
+requires the clutch disengaged (E93, the PO's own rule: slider past 0.4) — but the refusal was a
+`println` to the TERMINAL, and the player is looking at the game window. **A key that appears to do
+nothing is indistinguishable from a broken key.** The refusal now draws ON SCREEN: a transient bar
+(2 s) showing the clutch axis with an amber tick at the 0.4 threshold, so "move this past the line"
+needs no words. Transient because E13 asked for a decluttered HUD. Verified inert when not
+triggered: the three gauge-height captures were taken with the code live and show no stray bar.
+
+**3. AI lap times are now measurable per lap** (`JM_AI_LAPDIAG=1`): they existed only in
+`last_race_result.txt` at race END, so a session quit early recorded nothing — and the PO's
+"AI best lap about 1:40" could only be quoted from pacing arithmetic. Measured on Watkins at
+`JM_AI_PCT=66.9`: Eagle 1:37.1, Ferrari 1:38.2, BRM 1:40.6, Brabham 1:41.7, Cooper 1:44.4 —
+the field straddles 1:40 but the best is 3% quick. **`JM_AI_PCT=64.9` puts the best lap at ≈1:40.**
