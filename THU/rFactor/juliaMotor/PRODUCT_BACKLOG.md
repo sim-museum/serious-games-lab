@@ -5263,3 +5263,14 @@ has aluminium (tonally close, wrong texture region — isolated by a JM_COCKPIT_
 capture); the cowl reads washed vs gold's deep green (lighting pass); megaphone angle; E102's stick.
 
 Suite 22/22.
+
+### E106-S6b (2026-09-02) — ✅ the EXTERIOR body also renders through the wrapper
+
+GPL binds the exterior's slot table at runtime; `lotd` is the painted livery. The chase body now
+extracts from `lotd.3DO` with the standard excludes (`JM_BODY_WRAP=0` reverts to the bare mesh), so
+the painted cowl — green, yellow stripe, roundels — is what the outside views draw instead of
+untextured green facets. Verified from behind: no regression, helmet present, wrapper wheels on
+player and AI. A three-quarter gold A/B is the next judgement angle (the stripe runs along the
+nose, invisible from dead astern).
+
+Suite 22/22.
