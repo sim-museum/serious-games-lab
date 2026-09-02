@@ -1738,6 +1738,7 @@ loads as nothing (drawn wheel-less rather than crashing)."""
 # no per-corner logic is needed here: slot 1 is always the +y face, slot 2 the −y face, slot 3 the
 # tread. Returns nothing when no wrapper names the mesh — the wheel then renders as before.
 const _WRAPPER_CACHE = Dict{String,Dict{String,NTuple{3,String}}}()
+const _WRAPPER_PATHS = Dict{String,String}()   # mesh name -> wrapper .3do path (E106-S6)
 function wheel_dress_for(dir, meshname)
     tbl = get!(_WRAPPER_CACHE, dir) do
         d = Dict{String,NTuple{3,String}}()
@@ -1767,6 +1768,7 @@ function wheel_dress_for(dir, meshname)
             end
             length(names) >= 4 || continue
             d[lowercase(names[1])] = (names[2], names[3], names[4])
+            _WRAPPER_PATHS[lowercase(names[1])] = f
         end
         d
     end
@@ -1786,9 +1788,15 @@ function load_gpl_car(name, dir, body3do, wheelspec;
     for (_,_,_,_,mesh) in wheelspec
         haskey(wheels, mesh) && continue
         path = joinpath(dir, mesh*".3do")
-        wheels[mesh] = isfile(path) ?
-            build_gpl(extract_gpl_car(path; exclude=("ltraymap","lshad"), tint=wheeltint,
-                                      wheel_dress=wheel_dress_for(dir, mesh)), tex) : Item[]
+        # E106-S6: prefer the WRAPPER (slot-bound textures, authored UVs) over mesh + geometric
+        # dress; wheel_dress_for populates _WRAPPER_PATHS as a side effect of its scan.
+        dress = wheel_dress_for(dir, mesh)
+        wpath = get(_WRAPPER_PATHS, lowercase(mesh), "")
+        wheels[mesh] = wpath != "" ?
+            build_gpl(extract_gpl_car(wpath; exclude=("ltraymap","lshad"), tint=wheeltint), tex) :
+            (isfile(path) ?
+             build_gpl(extract_gpl_car(path; exclude=("ltraymap","lshad"), tint=wheeltint,
+                                       wheel_dress=dress), tex) : Item[])
     end
     GPLCarModel(name, body, wheels, (Float32(off_x), Float32(off_y), Float32(off_z)),
                 Vector{Tuple{Float32,Float32,Bool,Float32,String}}(wheelspec))

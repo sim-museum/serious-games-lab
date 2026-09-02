@@ -5228,3 +5228,38 @@ the slot-bound render must match it), then render lotd.3DO directly for the cock
 wrappers for the exterior.
 
 Suite 22/22.
+
+### E106-S6 (2026-09-02) — ⭐ **THE SLOT-BINDING MECHANISM IS IMPLEMENTED. Wheels are pixel-faithful; the cockpit has its real dash and painted cowl.**
+
+The wrapper chain GPL actually uses is now in the parser (`gpl3do.jl`), measured piece by piece:
+
+* **selector subtype 0x11** — binds a texture-slot TABLE (count + string offsets), as carried by
+  the wrapper 3DOs (`llftire0`: 4 slots; `lotd.3DO`: 9 slots);
+* **selector subtypes 0x20 / 0x24 / 0x2C** — select a 0-based SLOT from the bound table. Found by
+  instrumented walk: the tyre mesh uses 0x20 with slots {0,1,1,2,3}; `lotus.3do` uses 0x2C with
+  slots running exactly 0..8 against lotd's 9-entry table (slot 0 = `lotd`, the painted body skin,
+  ×21 sites);
+* **node 0x0E** — re-enter an external sibling .3do with the bound table and the current transform,
+  keeping the SUB-parse's group ids (overwriting them would silently break the
+  displaced-assembly excludes).
+
+**Verified against ground truth first**: parsing `llftire0.3do` directly yields the fully-textured
+wheel — `l1out` 166 / `loftex1` 104 / `l1in` 22 + disc — matching what S2's geometric dress
+established as correct.
+
+**Shipped on it:**
+1. **All wheels — player and every AI car — now load through their wrappers** (`JM_WHEEL_WRAP=0`
+   reverts). The tread is GPL's fine-ribbed pattern with authored UVs, visibly closer to gold than
+   S2's ×4 cylindrical guess; sidewall pinstripes and disc detail land as authored. Geometry matches
+   the old meshes to a millimetre (r 0.312 vs 0.311).
+2. **The cockpit body renders through `lotd.3DO`** — 644 tris of painted cowl (green, yellow
+   stripe, TEAM LOTUS roundels), the riveted interior panels, and the REAL dash (`dash7`/`dash7a`/
+   `ldashr`), replacing S5's single-texture dress. The dash dials are visible behind the wheel for
+   the first time. `plaface`/`plahelm` (the face/helmet GPL puts there for mirror reflections) are
+   excluded — ours draw separately.
+
+**Open polish, catalogued:** the cockpit sills show a pale mis-mapped region of `lotd` where gold
+has aluminium (tonally close, wrong texture region — isolated by a JM_COCKPIT_DRESS=0 control
+capture); the cowl reads washed vs gold's deep green (lighting pass); megaphone angle; E102's stick.
+
+Suite 22/22.

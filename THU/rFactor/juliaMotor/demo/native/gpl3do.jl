@@ -47,7 +47,7 @@ end
 tag(b, o) = String(b[o+1:o+4])
 
 """Parse a GPL .3do file into a `Mesh3DO` (triangulated, textured)."""
-function parse_3do(path::AbstractString)
+function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}=nothing, Mroot=nothing, extdepth::Int=0)
     b = read(path)
     String(b[1:4]) == "4OD3" || error("not a 3DO4 file: $path (magic=$(String(b[1:4])))")
 
@@ -96,6 +96,12 @@ function parse_3do(path::AbstractString)
     tris = Tri[]
     groups = Int[]
     used_tex = Set{String}()
+    # E106-S6 diagnostic: for polys reaching emit with NO selector-set texture, record the raw
+    # header words -- the suspected texture-SLOT reference lives in one of them. JM_SLOTDIAG=<file>.
+    slotdiag = get(ENV, "JM_SLOTDIAG", "") != "" &&
+               occursin(lowercase(ENV["JM_SLOTDIAG"]), lowercase(basename(path)))
+    slotrows = NTuple{6,Int}[]        # (tri_first_index, typ, w1, w2, w3, w4)
+    selrows  = NTuple{3,Int}[]        # (subtype, word3, word4) of every selector walked
     # count guard (a real polygon has 3..64 verts; bigger = a misparsed node) and
     # count-bounded array readers for vertex#/UV runs
     ok(c) = (0 < c <= 64) ? Int(c) : 0
@@ -171,7 +177,53 @@ function parse_3do(path::AbstractString)
             if sub in (0x1, 0x5, 0xD)
                 tex = get(stroff, Int(u32(b, p+12)), curtex)
             end
+            slotdiag && push!(selrows, (Int(sub), Int(u32(b, p+12)), Int(u32(b, p+16))))
+            # E106-S6: THE WRAPPER MECHANISM (measured on llftire0/lotd + lotulf).
+            # sub 0x11 = bind a texture-slot TABLE: word4 = count, then count string offsets.
+            # sub 0x20 = select a slot: word4 = 0-based index into the bound table. The tyre mesh
+            # carries five 0x20 selectors with slots {0,1,1,2,3} against a 4-entry table -- one per
+            # surface (outer face, inner x2, tread, spinner).
+            if sub == 0x11
+                cnt = Int(u32(b, p+12))
+                if 0 < cnt <= 64
+                    tbl = String[get(stroff, Int(u32(b, p+16+(k-1)*4)), "") for k in 1:cnt]
+                    curtable[] = tbl
+                end
+            elseif sub in (0x20, 0x24, 0x2C)
+                # 0x20 in the small wheel meshes, 0x2C (and one 0x24) in lotus.3do -- all carry a
+                # 0-based slot index in word4. lotus.3do's 0x2C values run exactly 0..8 against
+                # lotd.3DO's 9-entry table.
+                slot = Int(u32(b, p+12))
+                tt = curtable[]
+                if tt !== nothing && 0 <= slot < length(tt) && tt[slot+1] != ""
+                    tex = tt[slot+1]
+                end
+            end
             walk(child, tex, depth+1, M, grp)
+        elseif typ == 0x0E                          # external mesh: 0x0E, strofs(file), 0
+            # E106-S6: a wrapper's whole point -- re-enter another .3do with THIS file's bound
+            # texture table (llftire0 -> lotulf with the tyre set; lotd -> lotus with the cockpit
+            # set). Case-insensitive sibling lookup; depth-capped against cycles.
+            if extdepth < 2
+                nm = get(stroff, Int(u32(b, p+4)), "")
+                if nm != ""
+                    dir = dirname(path)
+                    hit = ""
+                    for f in readdir(dir)
+                        lowercase(f) == lowercase(nm * ".3do") && (hit = joinpath(dir, f); break)
+                    end
+                    if hit != ""
+                        sub3 = parse_3do(hit; textable=curtable[], Mroot=M, extdepth=extdepth+1)
+                        append!(tris, sub3.tris)
+                        # keep the SUB-parse's group ids: they are node offsets in the referenced
+                        # file, which is where exclude_groups(27288, …) point when the caller loads
+                        # a wrapper. Overwriting them with the wrapper's grp would break the
+                        # displaced-assembly excludes silently.
+                        append!(groups, sub3.groups)
+                        for t in sub3.textures; push!(used_tex, t); end
+                    end
+                end
+            end
         elseif typ in (0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B)   # plane node + 1..4 children
             nchild = typ==0x06 ? 1 : typ in (0x07,0x0B) ? 2 : typ==0x08 ? 4 : 3
             for k in 1:nchild                            # word1 = plane#, then children
@@ -247,23 +299,52 @@ function parse_3do(path::AbstractString)
         elseif typ == 0x81E                         # smooth+normals: col, count, vert*, col*, norm*
             cnt = ok(u32(b,p+8)); emit(rv(p+12,cnt), [], rv(p+12+2*cnt*4,cnt), curtex, M, grp, rgb(u32(b,p+4)))
         elseif typ == 0x81F                         # textured: 0, col, count, UV*, vert*
-            cnt = ok(u32(b,p+12)); emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), [], curtex, M, grp, rgb(u32(b,p+8)))
+            cnt = ok(u32(b,p+12))
+            slotdiag && curtex == "" && push!(slotrows, (length(tris), Int(typ), Int(u32(b,p+4)), Int(u32(b,p+8)), Int(u32(b,p+12)), Int(u32(b,p+16))))
+            emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), [], curtex, M, grp, rgb(u32(b,p+8)))
         elseif typ == 0x820                         # textured+smooth: 0, col, count, UV*, vert*, col*
             cnt = ok(u32(b,p+12)); emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), [], curtex, M, grp, rgb(u32(b,p+8)))
         elseif typ == 0x821                         # textured+normals: 0, col, count, UV*, vert*, norm*
-            cnt = ok(u32(b,p+12)); emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), rv(p+16+cnt*12,cnt), curtex, M, grp, rgb(u32(b,p+8)))
+            cnt = ok(u32(b,p+12))
+            slotdiag && curtex == "" && push!(slotrows, (length(tris), Int(typ), Int(u32(b,p+4)), Int(u32(b,p+8)), Int(u32(b,p+12)), Int(u32(b,p+16))))
+            emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), rv(p+16+cnt*12,cnt), curtex, M, grp, rgb(u32(b,p+8)))
         elseif typ == 0x1F                          # car textured: 1F, 0, int, count, UV*, vert*
-            cnt = ok(u32(b,p+12)); emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), [], curtex, M, grp, rgb(u32(b,p+8)))
+            cnt = ok(u32(b,p+12))
+            slotdiag && curtex == "" && push!(slotrows, (length(tris), Int(typ), Int(u32(b,p+4)), Int(u32(b,p+8)), Int(u32(b,p+12)), Int(u32(b,p+16))))
+            emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), [], curtex, M, grp, rgb(u32(b,p+8)))
         elseif typ == 0x20                          # car textured+smooth: 20,0,0,int,count,UV*,vert*,col*
             cnt = ok(u32(b,p+16)); emit(rv(p+20+cnt*8,cnt), ru(p+20,cnt), [], curtex, M, grp, (1f0,1f0,1f0))
         elseif typ == 0x21                          # car textured+normals: 21,0,int,count,UV*,vert*,norm*
-            cnt = ok(u32(b,p+12)); emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), rv(p+16+cnt*12,cnt), curtex, M, grp, (1f0,1f0,1f0))
+            cnt = ok(u32(b,p+12))
+            slotdiag && curtex == "" && push!(slotrows, (length(tris), Int(typ), Int(u32(b,p+4)), Int(u32(b,p+8)), Int(u32(b,p+12)), Int(u32(b,p+16))))
+            emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), rv(p+16+cnt*12,cnt), curtex, M, grp, (1f0,1f0,1f0))
         end
         # unknown types: we don't know their child layout, so that subtree is skipped
     end
 
+    curtable = Ref{Union{Nothing,Vector{String}}}(textable)
     root = Int(u32(b, prim_off))                    # first 4 bytes of PRIM data = root offset
-    walk(root, "", 0, I4, 0)
+    walk(root, "", 0, Mroot === nothing ? I4 : Mroot, 0)
+    if slotdiag && !isempty(selrows)
+        tal = Dict{NTuple{3,Int},Int}()
+        for r in selrows; tal[r] = get(tal, r, 0) + 1; end
+        println("  [slotdiag] selectors walked:")
+        for (k,c) in sort(collect(tal))
+            println("     sub 0x", string(k[1], base=16), "  w3=", k[2], " w4=", k[3], "  x", c)
+        end
+    end
+    if slotdiag && !isempty(slotrows)
+        println("  [slotdiag] ", basename(path), ": ", length(slotrows), " untextured poly headers")
+        shown = Dict{NTuple{4,Int},Int}()
+        for r in slotrows
+            k = (r[2], r[3], r[4], 0)
+            shown[k] = get(shown, k, 0) + 1
+        end
+        for (k, c) in sort(collect(shown))
+            println("     typ 0x", string(k[1], base=16), "  w1=", k[2], " w2=", k[3], "  x", c)
+        end
+        flush(stdout)
+    end
     if get(ENV,"JM_PRIMDIAG","") != "" && occursin(lowercase(ENV["JM_PRIMDIAG"]), lowercase(basename(path)))
         handled = Set{UInt32}([0x04,0x05,0x06,0x07,0x08,0x09,0x0A,0x0B,0x0D,0x13,0x16,0x19,0x11,
                                0x81B,0x81C,0x81D,0x81E,0x81F,0x820,0x821,0x822])

@@ -1629,9 +1629,35 @@ const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(
 # So the port now does the same: CARPIN is the body extraction with the cockpit-region untextured
 # panels dressed in `lotinsid` (their UVs are authored for it), drawn ONLY in cockpit view; the
 # chase/exterior keeps the undressed CARP with the green tub. JM_COCKPIT_DRESS=0 disables.
+# E106-S6: THE REAL THING. lotd.3DO re-enters lotus.3do with the cockpit texture table, and the
+# slot selectors (0x2C in the car mesh, now implemented) bind it: 644 tris of painted body skin
+# (lotd.mip -- green, yellow stripe, TEAM LOTUS roundels, rivets), the riveted interior panels
+# (lotinsid/lotinsa), the real dash (dash7/dash7a/ldashr). This replaces the S5 geometric dress
+# entirely. plaface/plahelm (the player face/helmet the mirrors reflect) are excluded here because
+# the helmet is drawn separately at the head pivot (E60), as are the hands, pipes and windscreen.
 const CARPIN = get(ENV,"JM_COCKPIT_DRESS","1") != "0" ?
-    Render.extract_gpl_car(LOT3DO; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3"), exclude_groups=(6600,3560,27288,39792), cockpit_clean=true, maxlat=CARP_MAXLAT, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0), cockpit_dress=(get(ENV,"JM_COCKPIT_TEX","lotinsid"), -0.1f0, 0.95f0, 0.02f0, 0.24f0)) :
+    Render.extract_gpl_car(joinpath(LOTDIR,"lotd.3DO"); exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm"), exclude_groups=(6600,3560,27288,39792), cockpit_clean=true, maxlat=parse(Float32,get(ENV,"JM_COCKPIT_MAXLAT","0.30")), grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0)) :
     Render.TrackPart[]
+# The lotd body carries its own MIRROR PODS, which land exactly where the port's live-RTT round
+# mirrors already draw -- so the pods (and only the pods) are cut here, by centroid box in the
+# render frame (x fwd, y up, z lateral). Stride 11 floats/vertex (pos+normal+uv+col).
+function _drop_box!(parts, x0, x1, y0, z0)
+    for (pi, p) in enumerate(parts)
+        v = p.verts; n = length(v) ÷ 33
+        keep = Float32[]
+        for t in 0:n-1
+            base = t*33
+            cx = (v[base+1] + v[base+12] + v[base+23]) / 3
+            cy = (v[base+2] + v[base+13] + v[base+24]) / 3
+            cz = (v[base+3] + v[base+14] + v[base+25]) / 3
+            inpod = (x0 <= cx <= x1) && (cy >= y0) && (abs(cz) >= z0)
+            inpod || append!(keep, @view v[base+1:base+33])
+        end
+        parts[pi] = Render.TrackPart(keep, p.tex, p.col)
+    end
+    parts
+end
+# (pod box-cut superseded: the 0.30 lateral clamp removes the flanks, pods included)
 const PIPE_LIFT = parse(Float32, get(ENV, "JM_PIPE_LIFT", "0.18"))
 const PIPEP  = get(ENV, "JM_PIPES", "1") != "0" ?
     Render.extract_gpl_car(LOT3DO; only=("pipe3",), maxlat=0.9f0) : Render.TrackPart[]
@@ -3819,11 +3845,21 @@ const TYRE_ALB = parse(Float32, get(ENV,"JM_TYRE_ALB","0.17"))
 # fronts tread with loftex1, rears with lortex1; the lettered outer face (l1out) goes on the
 # OUTBOARD side, which is +y for the left wheels and -y for the right (verified by capture -- the
 # Firestone lettering must face out, as in gold). JM_WHEEL_DRESS=0 restores the flat grey wheels.
-const WHEEL_DRESS = get(ENV, "JM_WHEEL_DRESS", "1") != "0" ? Dict(
+# E106-S6: the wheels now load through GPL'"'"'s own WRAPPER 3DOs (llftire0 …), which bind the
+# texture-slot table the slot selectors (0x20) resolve -- tread, both faces and the spinner land
+# exactly as authored, replacing S2'"'"'s geometric dress. LOD0 = the hires texture set. Geometry
+# matches the old lotw* meshes to a millimetre (radius 0.312 vs 0.311). JM_WHEEL_WRAP=0 restores
+# the S2 path (mesh + geometric dress).
+const WHEEL_WRAP = get(ENV, "JM_WHEEL_WRAP", "1") != "0" ? Dict(
+    "lotwlf" => "llftire0", "lotwrf" => "lrftire0",
+    "lotwlr" => "llrtire0", "lotwrr" => "lrrtire0") : Dict{String,String}()
+const WHEEL_DRESS = Dict(
     "lotwlf" => ("l1out", "l1in", "loftex1"), "lotwrf" => ("l1in", "l1out", "loftex1"),
-    "lotwlr" => ("l1out", "l1in", "lortex1"), "lotwrr" => ("l1in", "l1out", "lortex1")) :
-    Dict{String,NTuple{3,String}}()
-load_wheel(nm) = Render.build_gpl(Render.extract_gpl_car(joinpath(LOTDIR,nm*".3do");
+    "lotwlr" => ("l1out", "l1in", "lortex1"), "lotwrr" => ("l1in", "l1out", "lortex1"))
+load_wheel(nm) = haskey(WHEEL_WRAP, nm) ?
+    Render.build_gpl(Render.extract_gpl_car(joinpath(LOTDIR, WHEEL_WRAP[nm]*".3do");
+                    exclude=("ltraymap","lshad"), tint=(TYRE_ALB,TYRE_ALB,TYRE_ALB+0.02f0)), GPLTEX) :
+    Render.build_gpl(Render.extract_gpl_car(joinpath(LOTDIR,nm*".3do");
                     exclude=("ltraymap","lshad"), tint=(TYRE_ALB,TYRE_ALB,TYRE_ALB+0.02f0),
                     wheel_dress=get(WHEEL_DRESS, nm, nothing)), GPLTEX)
 const WHEELITEMS = Dict(nm => load_wheel(nm) for nm in ("lotwlf","lotwrf","lotwlr","lotwrr"))
