@@ -4896,3 +4896,53 @@ the assembly carries a residual rotation our positioner mis-composes (the ±roll
 halves), correcting the pose is what the PO asked for and would leave the geometry intact.
 
 Suite 22/22.
+
+### E85-S5 (2026-09-01) — ✅ **TWO SIMS SEE EACH OTHER: a remote car is drawn, on the ground, in the real render loop**
+
+S1–S4 built the transport, dead reckoning and the staleness policy and gated all of it — and
+**nothing in the game used any of it.** `grep netplay drive_native_mtk.jl` returned nothing; a remote
+car had never been drawn. This wires it in: `JM_NET=host` / `JM_NET=join` (with `JM_NET_HOST`,
+`JM_NET_PORT`, `JM_NET_ID`, `JM_NET_HZ`), off by default so an unset `JM_NET` changes nothing.
+
+Measured, two `julia` processes on Watkins, each with the other's car on screen:
+
+| | rx | peers | known | **drawn** |
+|---|---|---|---|---|
+| host | 363 | 1 | 1 | **1** |
+| client | 380 | 1 | 1 | **1** |
+
+~360 packets over ~40 s ≈ **9 Hz**, against the configured 10. The host's capture shows the client's
+Ferrari **on the road ahead**, correctly placed and grounded.
+
+⭐ **The remote car is drawn through the AI field's own path** (`aiBody`/`aiWheel`), so anything true
+of an AI car's placement is true of a remote one — including **E104(a)'s rule, enforced at the
+receiving end**: `predict` deliberately never extrapolates height, and the packet's `y` is the
+*sender's* ground, which is not this machine's ground. Every remote pose goes through `ai_ground`
+before it is drawn.
+
+🔴 **The bug that cost this sprint: the socket reader task was NEVER SCHEDULED.**
+First run: client `peers=1` (it was sending), host `rx=0 peers=0` (it received nothing, so never
+learned a peer, so never replied) — a one-way link. Not a port clash (nothing held 47700, no stale
+process) and not the transport (`netplay_dr2_smoke` proves it end to end). The reader is an `@async`
+task, and **a Julia task only runs when something yields.** The probe loops `sleep(0.002)` and yields
+constantly; the render loop does not sleep at all, so every packet sat in the kernel buffer. One
+`yield()` per frame took the host from `rx=0` to `rx=363`.
+**A design that works in a probe can fail in the sim for reasons the probe cannot express** — the
+probe's `sleep` was load-bearing and invisible.
+
+⭐ **And the staleness policy was observed working, unplanned:** the client's last sample reads
+`known=1 drawn=0` — the host had exited, and `STALE_S` dropped it rather than leaving a ghost
+driving on. S3 predicted that; here it is in a live run.
+
+⚠️ **I also re-committed a trap this very file warns about.** The `JM_NET_*` constants went in next
+to `JM_WHEELGAP`, a thousand lines *below* the `NETLINK` block that reads them. It parsed clean,
+passed `parse_smoke`, and died at load with `UndefVarError: NETMODE`. The file already carries that
+warning about `WTRACK_R` — *"a forward reference here parses fine and dies at load, which is what
+happened"*. **A parse check cannot see an undefined NAME; only running the sim can.**
+
+Suite 22/22.
+
+**Next (sprint 6):** measure the position disagreement between the two SIMS the way S4 measured it
+between two probes — each side logging where it thinks the other is against where that side says it
+was. State the expected figure first: it should be the S4 envelope (~0.03 m mean) plus whatever the
+sim's frame pacing adds over a probe's fixed 10 Hz.

@@ -455,6 +455,39 @@ end
 # values are known -- it has to be, because the tab prints the session value beside the current one.
 # The env still works and still WINS: JM_SETUP set (to anything, including "reset") means no prompt,
 # so every gate, replay and scripted launch stays deterministic and nothing can block on stdin.
+# ── E85-S5: NETPLAY IN THE SIM ──────────────────────────────────────────────────────────────────
+# S1-S4 built the transport, dead reckoning and the staleness policy, and gated all of it -- but
+# nothing in the game used any of it. A remote car had never been drawn. This wires it in:
+#   JM_NET=host                 host on JM_NET_PORT (default 47700)
+#   JM_NET=join                 join JM_NET_HOST:JM_NET_PORT
+# JM_NET_ID gives this car its id (host 1, client 2 by default); JM_NET_HZ is the send rate.
+# Off by default -- an unset JM_NET changes nothing.
+# ⚠️ DEFINED HERE, above first use. The first cut put these next to JM_WHEELGAP a thousand lines
+# BELOW the NETLINK block that reads them: it parsed clean, passed parse_smoke, and died at load
+# with `UndefVarError: NETMODE`. This file already carries that warning about WTRACK_R -- "a
+# forward reference here parses fine and dies at load, which is what happened" -- and I walked
+# into it anyway. A parse check cannot see an undefined NAME; only running the sim can.
+const NETMODE  = lowercase(get(ENV, "JM_NET", ""))
+const NET_HOST = get(ENV, "JM_NET_HOST", "127.0.0.1")
+const NET_PORT = parse(Int, get(ENV, "JM_NET_PORT", "47700"))
+const NET_ID   = parse(Int, get(ENV, "JM_NET_ID", NETMODE == "host" ? "1" : "2"))
+const NET_HZ   = parse(Float64, get(ENV, "JM_NET_HZ", "10"))
+const NET_DIAG = parse(Int, get(ENV, "JM_NET_DIAG", "0"))
+# Poses of the remote cars, refreshed each frame and read by the draw pass. A Ref rather than a
+# closure capture because the draw pass is a nested function built before this is known.
+const NETPOSES = Ref(NTuple{6,Float64}[])
+# E85-S5: open the net link here -- after the world/car exist, before the game loop.
+include(joinpath(@__DIR__,"netplay.jl")); using .NetPlay
+const NETLINK = if NETMODE == "host"
+        println("  net:     HOSTING on udp/", NET_PORT, " as car ", NET_ID); flush(stdout)
+        NetPlay.netopen(port = NET_PORT)
+    elseif NETMODE == "join"
+        println("  net:     JOINING ", NET_HOST, ":", NET_PORT, " as car ", NET_ID); flush(stdout)
+        NetPlay.netopen(port = NET_PORT + NET_ID, peer = (NET_HOST, NET_PORT))
+    else
+        nothing
+    end
+
 include(joinpath(@__DIR__,"setup_tab.jl")); using .SetupTab
 const SETUP = SetupTab.session_setup(DriveRT3D.KS[], DriveRT3D.RIDE_H[],
                                      DriveRT3D.FINAL[], DriveRT3D.MASS[])
@@ -3979,8 +4012,10 @@ const AICAR_PHYS = [
 ]
 AICARMODELS = Render.GPLCarModel[]
 tstamp("  [E80] AI car models begin")
-if !SKIDPAD && N_AI > 0
-    for (nm, dir, body, w) in AISPECS[1:N_AI]
+# E85-S5: netplay needs a chassis to draw the remote car with, even when there is no AI field.
+_ncars = max(N_AI, NETMODE == "" ? 0 : 1)
+if !SKIDPAD && _ncars > 0
+    for (nm, dir, body, w) in AISPECS[1:_ncars]
         print("  loading AI car: $nm … "); flush(stdout)
         push!(AICARMODELS, Render.load_gpl_car(nm, joinpath(AIBASE,dir), body, aiwheels(w...);
                               exclude=("ltraymap","lshad"), maxlat=0.9f0, body_floor=BODY_FLOOR))
@@ -5037,6 +5072,7 @@ function main()
     (ffb !== nothing && ffb.ok) ? println("  force feedback: ON  (", ffb.path, ", gain ", FFB_GAIN, ")") :
                                   println("  force feedback: off", FFB_ON ? " (no wheel found)" : " (JM_NOFFB)")
     spin = 0.0; last = time(); frames = 0; titleT = last
+    net_last = Ref(-1.0)          # E85-S5: last time a pose was sent (sim seconds)
     ai_stuck = zeros(Int, length(AIPHYS))     # GC: per-AI stalled-frame counter (stuck-recovery)
     ai_lap_prev = zeros(Int, length(AICARS))  # C: previous-frame AI lap counter → detect a completed lap → time it
     ai_onroad = trues(length(AIPHYS))         # per-AI: on the real racing surface this frame? (grass + draft gate)
@@ -6003,6 +6039,44 @@ function main()
                     Render.rotz(Float32(p[5])) * Render.rotx(Float32(p[6]))   # body follows the hill (pitch + cross-slope/collision roll)
         aiBody(p, cm) = aiCar(p) * Render.translate(collect(cm.body_off))
         aiWheel(p,wx,wz,r) = aiCar(p) * Render.translate(Float32[wx, r, wz]) * Render.rotz(Float32(spin))
+        # ── E85-S5: exchange poses with the peer, and place its cars ON THE GROUND ───────────────
+        if NETLINK !== nothing
+            # ⚠️ YIELD FIRST. The socket reader is an `@async` task (netplay.jl keeps one long-lived
+            # reader so `poll!` never blocks the frame), and a Julia task only runs when something
+            # yields to the scheduler. The probe loops `sleep(0.002)` and so yields constantly; this
+            # render loop does not sleep at all, so the reader was NEVER SCHEDULED and every packet
+            # sat in the kernel buffer. Measured before this line existed: client `peers=1` (it was
+            # sending) and host `rx=0 peers=0` (it received nothing, so never learned a peer, so
+            # never replied) -- a one-way link that was really a starved task.
+            yield()
+            NetPlay.poll!(NETLINK)
+            if cs.t - net_last[] >= 1/NET_HZ
+                net_last[] = cs.t
+                NetPlay.send_pose!(NETLINK, NET_ID, round(Int, cs.t*1000),
+                                   cs.x, cs.y, cs.z, cs.θ, cs.v, inp.steer)
+            end
+            # ⚠️ THE E104(a) RULE, ENFORCED AT THE RECEIVING END. `predict` deliberately does not
+            # extrapolate height, and the packet's y is the SENDER's ground -- which is not this
+            # machine's ground if the two disagree by so much as a terrain rounding. A remote car's
+            # height must come from the terrain UNDER IT, exactly as the AI field's does since
+            # E104-S4, or remote cars float for the same reason the AI did.
+            netp = NTuple{6,Float64}[]
+            for (_, q) in NetPlay.remote_poses_at(NETLINK, time())
+                b = aibankK((q.x, 0.0, q.z, q.yaw))
+                push!(netp, ai_ground((q.x, q.y, q.z, q.yaw, b[1], b[2])))
+            end
+            NETPOSES[] = netp
+            # JM_NET_DIAG=<n>: report the link every n frames. "No car appeared" has at least four
+            # causes -- nothing sent, nothing received, everything judged stale, or nothing drawn --
+            # and a screenshot cannot tell them apart, especially with the two cars 80 m apart on a
+            # curving track. Print the counts instead of squinting.
+            if NET_DIAG > 0 && (frames % NET_DIAG) == 0
+                println("  [net] t=", round(cs.t,digits=1), " rx=", NETLINK.rx,
+                        " dropped=", NETLINK.dropped, " peers=", length(NETLINK.peers),
+                        " known=", length(NETLINK.remote), " drawn=", length(netp))
+                flush(stdout)
+            end
+        end
         # E104-S4: the measurement the eye is actually making. See JM_WHEELGAP above.
         if WHEELGAP > 0 && (frames % WHEELGAP) == 0
             # ⚠️ MUST NOT call groundz(): it MUTATES LASTZ[] and ONTRACK[], the player's own
@@ -6101,6 +6175,15 @@ function main()
             for (p, cm) in zip(ai_poses, AICHASSIS)                 # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper)
                 for it in cm.body; Render.draw(prog, it, vp_, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end
                 for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp_, aiWheel(p,wx,wz,r)); end
+            end
+            # E85-S5: the REMOTE cars, drawn through exactly the same path as the AI field -- same
+            # body/wheel transforms, so anything true of an AI car's placement is true of theirs.
+            if !isempty(NETPOSES[]) && !isempty(AICARMODELS)
+                cm = AICARMODELS[1]
+                for p in NETPOSES[]
+                    for it in cm.body; Render.draw(prog, it, vp_, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end
+                    for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp_, aiWheel(p,wx,wz,r)); end
+                end
             end
         end
         # ---- E64 mirror pass: the rear view into the mirror RTT (cockpit view only) ----
