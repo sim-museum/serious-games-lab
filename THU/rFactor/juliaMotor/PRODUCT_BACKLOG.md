@@ -5053,8 +5053,28 @@ blocking the driver's view of the road"* — fixed this sprint, see E106-S1.
    with live reflections
 5. front tyres: ours read flat grey; gold shows tread + sidewall shading
 6. windscreen: ours is a strong yellow slab; gold is a faint low plexiglass
-7. chase view: assembly/pose issues already tracked as E102 (driveshaft pose) — that item continues
-   under its own number
+**⚠️ Corrected same day — the PO: "E106 says nothing about car exteriors." Right: the heading
+claimed exterior scope but the inventory above is all cockpit. The exterior half, from
+`chase_gold_vs_native.jpg` (gold: the Lotus from behind, close) plus today's E85-S5 chase
+captures:**
+
+7. **tyres** — gold shows moulded tread and sidewall shading, and they dominate the rear view; ours
+   are smooth flat dark-grey cylinders (the single largest exterior difference by screen area)
+8. **rear assembly** — gold shows a detailed silver suspension/driveshaft/exhaust cluster between
+   the wheels; ours is the E102 stick (pose, tracked under its own number) plus chrome slab
+   remnants; exhausts absent
+9. **driver figure** — gold's chase view is dominated by the blue helmet and shoulders above the
+   roll hoop; ours barely reads as occupied
+10. **livery** — gold's green + yellow nose stripe is crisp; ours is flat green with the tub's
+    geometric facets showing through (same root cause as cockpit item 3)
+11. **wheels/rims** — gold shows silver rims distinct from rubber; ours blur into the tyre
+12. **chase camera framing** — the old A/B shows gold low-and-close vs ours far-and-high; today's
+    captures sit closer, so REMEASURE before treating this as open (the A/B may be stale on this
+    axis)
+13. **AI car exteriors** — all five chassis (Ferrari/Brabham/BRM/Eagle/Cooper) load their own GPL
+    meshes but have NO gold A/B at all yet; every judgement so far has been about the Lotus. Fresh
+    captures of each chassis beside its GPL gold still is the first exterior task, because nothing
+    can be fixed against a reference that has not been looked at.
 
 ### E106-S1 (2026-09-01) — ✅ the dashboard no longer blocks the road, and the G-key refusal is visible
 
