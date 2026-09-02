@@ -1422,7 +1422,11 @@ const TUB_GREY = parse(Float32, get(ENV,"JM_TUB_GREY","0.11"))   # untextured co
 # mesh sits exactly at the wheel (lohand x 0.68–0.80 vs rim x 0.74–0.76, SWCENTER x 0.75).  So they
 # are now ALWAYS excluded from CARP and extracted separately like DRIVERP (textures lohand.mip /
 # lotarms.mip ship with the car); the hands ride the wheel rotation, the forearms draw static.
-const HANDS = get(ENV,"JM_HANDS","1") != "0"   # default ON to match gold; JM_HANDS=0 hides them
+# E106-S7 (PO video): "arms stationary and detached from gloves" -- the chrome shards around the
+# wheel. The hands/arms ITEM is last in the PO's priority order, so until it runs the broken
+# display is HIDDEN rather than shown wrong: an absent arm is a smaller lie than a detached one
+# (the same principle as the netplay ghost cars). JM_HANDS=1 restores the old display.
+const HANDS = get(ENV,"JM_HANDS","0") != "0"
 const _HAND_EXC = ("ltraymap","lshad","lohand","lotarms","dash7a","windlot")
 # E36 black band: `lotblack` is the matte-black cockpit surround/dash that fills the lower view as a
 # full-width band — the angular black "plywood" facets the PO flagged.  DROPPED by default now that the
@@ -3739,7 +3743,13 @@ pipeItems  = Render.build_gpl(PIPEP, GPLTEX)       # E106-S4: exhausts, drawn li
 carItemsIn = isempty(CARPIN) ? Render.Item[] : Render.build_gpl(CARPIN, GPLTEX)  # E106-S5: cockpit-view body
 # PO 2026-08-27: "remove the cockpit gauge panel, hands and sleeves". JM_GAUGE=0 hides the cluster
 # (hands + sleeves are JM_HANDS=0, which already existed).
-gaugeItems = get(ENV,"JM_GAUGE","1") == "0" ? Render.Item[] : Render.build_gpl(GAUGEP, GPLTEX)
+# E106-S7 (PO video 2026-09-02): "spurious enlarged dashboard floating over visor blocking the
+# driver's view of the road". That was the E74 gauge BILLBOARD -- the separately-lifted dash7a
+# cluster -- still drawn on top of the REAL dash that arrived with the lotd cockpit (S6). Two
+# dashboards, one of them floating. The billboard now defaults OFF whenever the lotd cockpit is
+# active; JM_GAUGE=1 forces it back (and it remains the dash for JM_COCKPIT_DRESS=0).
+gaugeItems = (get(ENV,"JM_GAUGE", get(ENV,"JM_COCKPIT_DRESS","1") != "0" ? "0" : "1") == "0") ?
+    Render.Item[] : Render.build_gpl(GAUGEP, GPLTEX)
 windItems  = Render.build_gpl(WINDP, GPLTEX)       # plexiglass windscreen (drawn last, transparent)
 mirrorItems = Render.build_gpl(MIRRORP, GPLTEX)    # rear-view mirrors (re-placed on the cowl, MIRRORMAT)
 # ---- E64: LIVE mirrors — a small rear-view RTT + a glass quad on each disc ----------------
@@ -3891,12 +3901,70 @@ rsfix(side) = SuspPose.rsfix(side, Render.translate, Render.rotx, Render.scalexy
 const RS_SWAP = get(ENV,"JM_RS_SWAP","0") != "0"
 const RSFIX_A = rsfix(RS_SWAP ? -1 : 1)
 const RSFIX_B = rsfix(RS_SWAP ? 1 : -1)
+# ── E106-S7 / E102 FIX: CLIP THE REAR HALVES IN THE FRAME THEY ARE DRAWN IN ────────────────────
+# The PO's "axles projecting improbably down and outward from the rear tires" (video,
+# 2026-09-02) survived every mesh-frame trim because the trim ran BEFORE RSFIX: E82-S3 clips
+# |lateral| at the wheel plane in MESH coordinates, then the fix matrix rotates the half -- so
+# clipped geometry still lands outside the wheel and below the hub after the transform. Proven by
+# A/B: JM_RSUSP=0 removes the sticks and nothing else.
+# So the transform is BAKED into the vertices at load and the clip runs on the DRAWN positions:
+# nothing survives outside the wheel plane (|z| > WTRACK_R + tyre halfwidth) or below the hub line
+# (y < -0.30, i.e. under the axle by more than a link's depth). The draw then uses identity.
+# JM_RS_BAKECLIP=0 restores the old order for A/B.
+# zmax = the wheel-centre plane exactly, ymin = 12 cm under the hub line: the E102 rods angle
+# down-forward INSIDE the old looser envelope (they pierce the wheels visually without exceeding
+# them laterally), so the clip has to hug the hub. The real driveshaft/link geometry lives within
+# a link-depth of the hub line; anything deeper is the mis-posed rod.
+function _bake_clip(parts, M; zmax=Float32(WTRACK_R), ymin=-0.12f0)
+    out = Render.TrackPart[]
+    R = [M[r,c] for r in 1:3, c in 1:3]
+    for p in parts
+        v = p.verts; n = length(v) ÷ 33
+        keep = Float32[]
+        for t in 0:n-1
+            base = t*33
+            ok = true
+            tv = zeros(Float32, 33)
+            for k in 0:2
+                o = base + k*11
+                x=v[o+1]; y=v[o+2]; z=v[o+3]
+                tx = Float32(M[1,1]*x+M[1,2]*y+M[1,3]*z+M[1,4])
+                ty = Float32(M[2,1]*x+M[2,2]*y+M[2,3]*z+M[2,4])
+                tz = Float32(M[3,1]*x+M[3,2]*y+M[3,3]*z+M[3,4])
+                (abs(tz) > zmax || ty < ymin) && (ok = false)
+                nx=v[o+4]; ny=v[o+5]; nz=v[o+6]
+                tv[k*11+1]=tx; tv[k*11+2]=ty; tv[k*11+3]=tz
+                tv[k*11+4]=Float32(R[1,1]*nx+R[1,2]*ny+R[1,3]*nz)
+                tv[k*11+5]=Float32(R[2,1]*nx+R[2,2]*ny+R[2,3]*nz)
+                tv[k*11+6]=Float32(R[3,1]*nx+R[3,2]*ny+R[3,3]*nz)
+                tv[k*11+7]=v[o+7]; tv[k*11+8]=v[o+8]
+                tv[k*11+9]=v[o+9]; tv[k*11+10]=v[o+10]; tv[k*11+11]=v[o+11]
+            end
+            ok && append!(keep, tv)
+        end
+        isempty(keep) || push!(out, Render.TrackPart(keep, p.tex, p.col))
+    end
+    out
+end
+const RS_BAKECLIP = get(ENV,"JM_RS_BAKECLIP","1") != "0"
+if RS_BAKECLIP
+    global rsuspItemsA = Render.build_gpl(_bake_clip(susp_inboard(RSUSPP_A), RSFIX_A), GPLTEX)
+    global rsuspItemsB = Render.build_gpl(_bake_clip(susp_inboard(RSUSPP_B), RSFIX_B), GPLTEX)
+end
 # E64 S8: ON by default — the positioner-chain dump settled the transform (hub-line fold; see
 # rsfix above); the gold nintendo chase shows this articulated rear end, so it ships.
 # E75-S13: the rear parts are all <= 1.04 m and correctly placed, so the broad chrome "panels" cannot
 # be oversized geometry — they must be shading. spec=0.25 on near-flat faces reads as a mirror plate.
 const RS_SPEC = parse(Float32, get(ENV,"JM_RS_SPEC","0.25"))
-const RSUSP_ON = get(ENV,"JM_RSUSP","1") != "0"
+# E106-S7 / E102 RESOLVED-BY-REMOVAL (PO video 2026-09-02: "axles still projecting improbably
+# down and outward from rear tires"). The sticks are the rsuspItemsA/B rear-half sets: JM_RSUSP=0
+# removes exactly them and nothing else (rsusp2Items was ALREADY default-off, so it was never the
+# source -- an earlier "coincident copies" reading of the A/Bs was wrong and is corrected here).
+# Clip-based fixes cannot work: in the body frame the rods sit at legitimate hub heights spanning
+# ordinary lateral range -- the POSE (angle) is wrong, not the position, so any clip tight enough
+# to cut the rods also cuts real links. Until the halves are re-posed, absence beats wrongness --
+# the clean rear reads far closer to gold's fine wishbones than the rods did. JM_RSUSP=1 restores.
+const RSUSP_ON = get(ENV,"JM_RSUSP","0") != "0"
 # E75-S5: what does the Lotus .3do actually CONTAIN, and which exclusion eats gold's rear linkage?
 # Four sprints of transform-tuning are closed (E75-S4: no fold angle works), and the code's own
 # words — "runtime-hidden branches" — suggest JM has been rehabilitating geometry GPL never draws.
@@ -6435,8 +6503,11 @@ function main()
                 for it in rsusp2Items; Render.draw(prog, it, vp, bodyModel; bright=1.15, spec=RS_SPEC, ambfill=0.55); end
             end
             if RSUSP_ON    # E64 S7: high-detail rear suspension (gold nintendo shows the full articulated rear end)
-                for it in rsuspItemsA; Render.draw(prog, it, vp, bodyModel*RSFIX_A; bright=1.15, spec=RS_SPEC, ambfill=0.55); end
-                for it in rsuspItemsB; Render.draw(prog, it, vp, bodyModel*RSFIX_B; bright=1.15, spec=RS_SPEC, ambfill=0.55); end
+                let mA = RS_BAKECLIP ? bodyModel : bodyModel*RSFIX_A,
+                    mB = RS_BAKECLIP ? bodyModel : bodyModel*RSFIX_B
+                    for it in rsuspItemsA; Render.draw(prog, it, vp, mA; bright=1.15, spec=RS_SPEC, ambfill=0.55); end
+                    for it in rsuspItemsB; Render.draw(prog, it, vp, mB; bright=1.15, spec=RS_SPEC, ambfill=0.55); end
+                end
             end
             for it in driverItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.10, ambfill=0.55); end
             helmModel = bodyModel * Render.translate(Float32[HELM_OFF[1],HELM_OFF[2],HELM_OFF[3]])

@@ -5274,3 +5274,45 @@ player and AI. A three-quarter gold A/B is the next judgement angle (the stripe 
 nose, invisible from dead astern).
 
 Suite 22/22.
+
+### E106-S7 (2026-09-02) — ✅ the PO's video triage: floating dashboard GONE, arm shards GONE, E102's sticks GONE
+
+Worked directly from frames of the PO's own video (`~/Videos/260902_first_look_new_cockpit.mp4`),
+which is the right reference: it shows the real session, not my captures.
+
+**PO's list → outcomes:**
+
+1. *"spurious enlarged dashboard floating over visor blocking driver's view of the road"* —
+   that was the **E74 gauge BILLBOARD still drawn on top of the real lotd dash** from S6: two
+   dashboards, one floating. The billboard now defaults OFF whenever the lotd cockpit is active
+   (`JM_GAUGE=1` forces it back; it remains the dash for `JM_COCKPIT_DRESS=0`). The cockpit capture
+   now shows: road fully visible, real dial panel below the wheel, nothing floating.
+
+2. *"arms stationary and detached from gloves"* — the chrome shards around the wheel. The
+   hands/arms ITEM is last by the PO's order, so until it runs the broken display is **hidden**
+   rather than shown wrong (`JM_HANDS=1` restores) — an absent arm is a smaller lie than a detached
+   one, the same principle as the netplay ghost cars.
+
+3. *"axles still projecting improbably down and outward from rear tires"* (**E102**) — the sticks
+   are the `rsuspItemsA/B` rear-half sets: `JM_RSUSP=0` removes exactly them and nothing else.
+   **Clip-based fixes cannot work** — measured in the baked frame, the rods sit at legitimate hub
+   heights across ordinary lateral range; the POSE (angle) is wrong, not the position, so any clip
+   tight enough to cut the rods also cuts real links. Until the halves are re-posed: default OFF.
+   The clean rear reads far closer to gold's fine wishbones than the rods ever did.
+   ⚠️ Two of my own mis-reads on the way are corrected in the code comment: I first read an A/B
+   pair as "sticks gone" when they were not (then over-corrected to a wrong "coincident copies"
+   theory when they were in fact gone the first time — rsusp2 was already default-off). The
+   pixel-diff harness stays; eyes alone mis-read near-identical captures twice today.
+
+4. *"tailpipes better but not symmetrical"* — **confirmed and still open**: `pipe3` carries an
+   asymmetric 5-tri bracket (right side only) and slightly different header bundles (102 vs 96
+   tris after trims); next pass.
+
+**Also recorded (PO, same day): the car art is GPL COMMUNITY-made content** — the hires packs,
+skins and wrapper files come from the GPL modding community, not the game's original publishers.
+The epic's fidelity target ("look like GPL") is thus a tribute to that community's work, and the
+provenance belongs in the record.
+
+Suite 22/22. Remaining, in order: tailpipe symmetry → cockpit sill mis-map + cowl saturation →
+mirrors/windscreen polish → AI gold A/Bs → rear-half re-pose (restores articulated suspension) →
+hands/arms LAST.
