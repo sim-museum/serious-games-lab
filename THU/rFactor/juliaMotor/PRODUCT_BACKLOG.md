@@ -5138,3 +5138,24 @@ human-readable one anyway.
 `trumplo/trumphi` intake meshes exist in the install and nothing loads them; gold's rear view shows
 the megaphone exhausts prominently between the rear wheels. Then the driver figure in chase
 (helmet/shoulders), then the tub interior + livery (items 3/10).
+
+### E106-S3 (2026-09-01) — ✅ the helmet wears GPL's own skin; the hands' art is located
+
+**The chase view's solid-black helmet blob: E60 retextured the WRONG PART.** `helmeg.3do` is two
+parts — a 176-tri `helblack` piece (visor/trim, black in gold too) and a **572-tri untextured shell
+that fully envelops it** (y 0.014..0.249 vs 0.09..0.167). The shell is the per-driver skin slot GPL
+binds at runtime (twenty `lNNhelm` skins ship with the car, plus `clahelm`). E60 mapped
+`helblack → clahelm`, painting the hidden trim and leaving the visible shell untextured black.
+Now the SHELL takes `clahelm` and `helblack` stays black, as gold does. Captured: a properly shaded
+dome with peak trim instead of a silhouette.
+
+⚠️ Checked against the art rather than assumed: `clahelm` decodes to a **dark** helmet (mean RGB
+50,49,50) with white peak strips — so a dark helmet is *faithful*, and the gold video's blue helmet
+is simply a different one of the twenty skins. Do not "fix" the colour.
+
+**The cockpit's chrome-jumble hands are NOT missing art.** `lohand.mip` decodes to four crisp
+white-gloved fist views and `lotarms.mip` to white sleeve fabric — the textures are right and the
+hands sit correctly at 10-and-2. The remaining wrongness is **UV smear** (the fist shows several
+texture views at once). That is S4's first task, and it is a mapping bug, not an asset hunt.
+
+Suite 22/22.

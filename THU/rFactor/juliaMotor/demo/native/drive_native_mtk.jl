@@ -1440,7 +1440,13 @@ const DRIVER_TEX = ("driver5","lotbody","lotsho","knees","neck","lid","arms")
 # places at the head position with the per-driver helmet skin — the chase gold shows Clark's blue
 # clahelm.  Retexture helblack→clahelm and place it at the neck top (JM_HELM_X/Y tune).
 const HELM_OFF = (parse(Float32,get(ENV,"JM_HELM_X","0.14")), parse(Float32,get(ENV,"JM_HELM_Y","0.34")), 0f0)
-const HELMP = [Render.TrackPart(p.verts, p.tex=="helblack" ? "clahelm" : p.tex, p.col)
+# E106-S3: E60 retextured the WRONG part. helmeg.3do is two parts: a 176-tri "helblack" piece
+# (the visor/trim -- black in gold too) and a 572-tri UNTEXTURED shell that fully envelops it
+# (y 0.014..0.249 vs 0.09..0.167) -- the per-driver skin slot GPL binds at runtime (l01helm..
+# l20helm / clahelm; twenty skins ship with the car). E60 mapped helblack->clahelm, which painted
+# the hidden trim and left the visible shell untextured: the chase view's solid-black blob of a
+# helmet. Texture the SHELL with Clark's skin and leave helblack black, as gold does.
+const HELMP = [Render.TrackPart(p.verts, p.tex=="" ? "clahelm" : p.tex, p.col)
                for p in Render.extract_gpl_car(joinpath(LOTDIR,"helmeg.3do"); maxlat=0.95f0)]
 # E62 (D12 chase body) — INVESTIGATED; the skinny 0.85 clip is confirmed correct, the residual is asset-LOD.
 # A per-part 3do audit (scratchpad lot_parts.jl) + a JM_CARP_MAXLAT=1.15 capture proved WHY opening the clip
