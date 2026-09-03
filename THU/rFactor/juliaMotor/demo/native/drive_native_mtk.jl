@@ -480,6 +480,19 @@ const NET_ID   = parse(Int, get(ENV, "JM_NET_ID", NETMODE == "host" ? "1" : "2")
 const NET_HZ   = parse(Float64, get(ENV, "JM_NET_HZ", "10"))
 const NET_DIAG = parse(Int, get(ENV, "JM_NET_DIAG", "0"))
 # E85-S6: drive the player car from the racing line, for headless measurement runs.
+# E106-S15: driveability watch (see the per-frame block in the autodrive branch).
+const DRIVECHECK  = get(ENV, "JM_DRIVECHECK", "0") != "0"
+const DC_AIR_MAX  = parse(Float64, get(ENV, "JM_DC_AIR",   "0.75"))  # m above ground = "levitating"
+const DC_VZ_MAX   = parse(Float64, get(ENV, "JM_DC_VZ",    "6.0"))   # m/s upward   = "bounced"
+const DC_STUCK_V  = parse(Float64, get(ENV, "JM_DC_STUCKV","2.0"))   # m/s
+const DC_STUCK_S  = parse(Float64, get(ENV, "JM_DC_STUCKS","8.0"))   # s under STUCKV = "stuck"
+mutable struct DriveCheck
+    airmax::Float64; air_s::Float64; air_bad::Int
+    vzmax::Float64;  vz_s::Float64;  vz_bad::Int
+    stuck::Float64;  stuckmax::Float64; stuck_s::Float64
+    lastz::Float64;  lastt::Float64;  maxs::Float64
+end
+const DC = Ref(DriveCheck(0.0,0.0,0, 0.0,0.0,0, 0.0,0.0,0.0, 0.0,0.0,0.0))
 const AUTODRIVE   = get(ENV, "JM_AUTODRIVE", "0") != "0"
 const AUTODRIVE_V = parse(Float64, get(ENV, "JM_AUTODRIVE_V", "45"))   # target speed m/s
 const AUTODRIVE_DIAG = parse(Int, get(ENV, "JM_AUTODRIVE_DIAG", "0"))
@@ -2663,7 +2676,8 @@ let objnames=Set{String}()
     # car must NEVER bounce back.
     # Converted HERE, at the physics boundary only: the app's own consumers below all test
     # `> -900f0` and keep the sentinel they were written against.
-    groundz_phys(x,y) = (g = groundz(x,y); g > -900f0 ? g : NaN32)
+    # (the physics-facing converter is defined INSIDE main(); see E106-S13b below -- defining it
+    # here put it in a scope main() cannot see, which is a runtime UndefVarError, not a parse error)
     # placement height: snap to OUR terrain where the HAT covers it (kills floaters from a
     # terrain mismatch); else fall back to the object's AUTHORED GPL height (same frame as the
     # track mesh) so far-trackside objects the HAT doesn't reach aren't lost.
@@ -4821,6 +4835,14 @@ end
 
 # ---- main loop (in a function — avoids top-level soft scope, runs faster) ----
 function main()
+    # E106-S13b: the physics-facing ground closure. It converts the app's -999 "off the HAT"
+    # SENTINEL into NaN, because drive_rt3d guards only `isfinite` and -999 is finite -- a wheel
+    # over a hole was told the ground lay 999 m below, sank toward it, and the correction on
+    # re-acquiring terrain launched the car (the PO's Nurburgring levitation; E106-S13).
+    # Defined HERE rather than beside `groundz`: that spot is inside a nested block main() cannot
+    # see, so the name resolved as a missing global and threw at RUNTIME -- parse_smoke cannot
+    # catch that, and the suite's gates do not run this path. Caught by driving the sim.
+    groundz_phys(x, y) = (g = groundz(x, y); g > -900f0 ? g : NaN32)
     cs0 = SKIDPAD ? (x=0.0, z=0.0, θ=0.0) : spawn(CAR; v0=0.0)   # spawn pose (skidpad: pad centre)
     LASTZ = Ref(0.0); ONTRACK = Ref(true)
     LASTGX = Ref(cs0.x); LASTGZ = Ref(cs0.z)   # last position INSIDE the world (terrain HAT) — for the boundary
@@ -5581,6 +5603,41 @@ function main()
                 yawrate = try; y = AIyaw(cs); isfinite(y) ? y : 0.0; catch; 0.0; end
                 thr, brk, st = RaceAI.controller(CLINE, s0, lat0, 0.0, AUTODRIVE_V,
                                                  cs.x, cs.z, cs.θ, cs.v, yawrate; power = 1.0)
+                # E106-S15 (PO: "ensure nurburgring and spa can be driven without obstacles
+                # (levitation, bouncing) etc on the part of the human driver"). While autodrive is
+                # running the lap, WATCH for the three failures the PO named, per frame:
+                #   * levitation -- the car's height above the ground under it exceeds AIR_MAX;
+                #   * bounce     -- an upward velocity spike with no jump to explain it;
+                #   * stuck      -- moving under STUCK_V for STUCK_S seconds ("a graze should scrub
+                #                   you but not end your race").
+                # Reported at exit as a verdict, so a lap either states it is clean or names where
+                # and by how much it was not. JM_DRIVECHECK=1.
+                if DRIVECHECK
+                    # cs.y is the car's WORLD HEIGHT (it is what the replay records as the pose's
+                    # y and what read back as 620.x at the Ring); cs.x/cs.z are the plan coords.
+                    # The step comes from the car's own clock, not an assumed `dt` in scope.
+                    step = max(Float64(cs.t) - DC[].lastt, 1e-4)
+                    DC[].lastt = Float64(cs.t)
+                    gh = groundz(cs.x, cs.z)
+                    if gh > -900f0
+                        air = Float64(cs.y) - Float64(gh)
+                        if air > DC[].airmax; DC[].airmax = air; DC[].air_s = s0; end
+                        air > DC_AIR_MAX && (DC[].air_bad += 1)
+                    end
+                    if DC[].lastz != 0.0
+                        vz = (Float64(cs.y) - DC[].lastz) / step
+                        if vz > DC[].vzmax; DC[].vzmax = vz; DC[].vz_s = s0; end
+                        vz > DC_VZ_MAX && (DC[].vz_bad += 1)
+                    end
+                    DC[].lastz = Float64(cs.y)
+                    if cs.v < DC_STUCK_V
+                        DC[].stuck += step
+                        if DC[].stuck > DC[].stuckmax; DC[].stuckmax = DC[].stuck; DC[].stuck_s = s0; end
+                    else
+                        DC[].stuck = 0.0
+                    end
+                    DC[].maxs = max(DC[].maxs, s0)
+                end
                 if AUTODRIVE_DIAG > 0 && (frames % AUTODRIVE_DIAG) == 0
                     println("  [auto] t=", round(cs.t,digits=1), " v=", round(cs.v*3.6,digits=1),
                             " km/h  thr=", round(thr,digits=2), " brk=", round(brk,digits=2),
@@ -6819,6 +6876,20 @@ function main()
         catch e
             println("  .ibt export failed: ", e)
         end
+    end
+    if DRIVECHECK
+        d = DC[]
+        println("\n  ══ DRIVEABILITY (", TRACKSEL, ") — autodrive reached s=", round(d.maxs, digits=1), " m ══")
+        println("    max height above ground : ", round(d.airmax, digits=2), " m at s=", round(d.air_s, digits=1),
+                "   (", d.air_bad, " frames over ", DC_AIR_MAX, " m)")
+        println("    max upward velocity     : ", round(d.vzmax, digits=2), " m/s at s=", round(d.vz_s, digits=1),
+                "   (", d.vz_bad, " frames over ", DC_VZ_MAX, " m/s)")
+        println("    longest slow spell      : ", round(d.stuckmax, digits=1), " s at s=", round(d.stuck_s, digits=1),
+                "   (stuck threshold ", DC_STUCK_S, " s under ", DC_STUCK_V, " m/s)")
+        bad = (d.airmax > DC_AIR_MAX) + (d.vzmax > DC_VZ_MAX) + (d.stuckmax > DC_STUCK_S)
+        println(bad == 0 ? "    VERDICT: CLEAN — no levitation, no bounce, never stuck" :
+                           "    VERDICT: $(bad) FAILURE MODE(S) SEEN — see the lines above")
+        flush(stdout)
     end
     if replay_buf !== nothing && !isempty(replay_buf)   # E18: save the all-car replay alongside the .ibt
         try

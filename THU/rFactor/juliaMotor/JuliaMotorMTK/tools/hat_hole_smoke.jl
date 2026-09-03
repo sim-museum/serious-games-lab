@@ -28,7 +28,10 @@ else
 end
 
 # 2. the converting closure must exist and map the sentinel to NaN.
-if occursin(r"groundz_phys\(x,y\)\s*=\s*\(g\s*=\s*groundz\(x,y\);\s*g\s*>\s*-900f0\s*\?\s*g\s*:\s*NaN32\)", SRC0)
+# whitespace-tolerant: the CONTRACT is "maps the sentinel to NaN", not a byte-exact spelling.
+# (The literal form failed the moment the definition was reformatted, which is a gate reporting
+#  its own brittleness rather than a real regression.)
+if occursin(r"groundz_phys\(\s*x\s*,\s*y\s*\)\s*=\s*\(\s*g\s*=\s*groundz\(\s*x\s*,\s*y\s*\)\s*;\s*g\s*>\s*-900f0\s*\?\s*g\s*:\s*NaN32\s*\)", SRC0)
     println("  the boundary closure maps the sentinel to NaN        PASS")
 else
     println("  the boundary closure maps the sentinel to NaN        FAIL")

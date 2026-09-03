@@ -5573,3 +5573,37 @@ excursion / no bounce-back / no terminal stop), and the "stuck against scenery, 
 Ring run ended pinned at 0 km/h, which the levitation fix does not by itself address.
 
 Suite 23/23.
+
+### E106-S15 (2026-09-03) — 🔴 **I SHIPPED A SIM THAT WOULD NOT RUN. Fixed, and the gap that let it through is named.**
+
+**The regression, plainly:** E106-S13's `groundz_phys` closure was defined at file scope beside
+`groundz` — which is inside a nested block `main()` cannot see. So `main()` resolved the name as a
+missing global and threw `UndefVarError: groundz_phys` **on every track**. That state was committed
+AND PUSHED (1998c2c, and carried through S14's 197731a). **Any race the PO started between those
+commits and this one died at startup.** The levitation fix itself was correct; its placement was not.
+
+Now defined INSIDE `main()`, where `groundz` is demonstrably in scope (the call sites already use
+it). Verified by running all three tracks to a clean exit: watglen, nurburgring, spa.
+
+**Why nothing caught it — the honest answer, because this is the second time (cf. E103-S2):**
+* `parse_smoke` walks the syntax tree, so a name that resolves at RUNTIME is invisible to it;
+* the 23-gate suite exercises modules and pure functions — **no gate starts the sim**;
+* the suite went 23/23 on the broken tree, and I trusted that instead of running the thing.
+
+The rule this re-proves: **a green suite is not a running program.** A sim change is not verified
+until the sim has been launched. I launched it only when the driveability sweep needed it — by luck
+of the next task, not by discipline.
+
+**Also this sprint — the driveability watch (`JM_DRIVECHECK=1`).** Per frame under autodrive it
+tracks the three failures the PO named — height above the ground beneath the car (levitation),
+upward velocity spikes (bounce), and time under a crawl (stuck, "a graze should scrub you but not
+end your race") — and prints a verdict naming where and by how much. It works and reports; ⚠️ the
+**sweep it was built to drive does not yet run a lap**: under `JM_SMOKE` the autodrive controller
+returns `thr=0.0` and the loop ends after ~0.1 s of sim time, so the numbers so far describe the
+first moments on the grid, not a lap. That is the next sprint's work, and the watch is ready for it.
+
+⚠️ My own `hat_hole_smoke` gate failed on this change — it asserted the closure's byte-exact
+spelling, so reformatting tripped it. Relaxed to a whitespace-tolerant match of the CONTRACT (maps
+the sentinel to NaN). A gate that fails on formatting trains people to ignore it.
+
+Suite 23/23, and the sim actually starts.
