@@ -36,6 +36,11 @@ struct Tri
     # with a textured one whose UVs happen to coincide -- and acting on that inference is what
     # turned the cockpit cowl bright yellow in S10.
     flat::Bool
+    # E106-S21: the GPL poly TYPE this triangle came from (0x81B/0x81C/0x81E flat, 0x820/0x821/
+    # 0x1F/0x20/0x21 textured). S19 showed the cowl's flat polys carry a bound texture, so the
+    # question became "what does GPL do with a flat-TYPE poly that has a texture?" -- which cannot
+    # be answered without knowing WHICH type each triangle is.
+    ptype::UInt32
 end
 
 struct Mesh3DO
@@ -118,7 +123,7 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
     # emit one polygon (vertex list, optional UVs, optional normals) as a triangle
     # fan, computing a face normal when per-vertex normals are absent.
     rgb(c) = (Float32(((c>>16)&0xff)/255), Float32(((c>>8)&0xff)/255), Float32((c&0xff)/255))  # ARGB→RGB
-    function emit(verts, uvs, norms, tex, M, grp, col)
+    function emit(verts, uvs, norms, tex, M, grp, col, ptype::UInt32 = UInt32(0))
         (length(verts) < 3 || length(verts) > 64) && return   # >64 = a misparsed node
         any(v -> v < 0 || v >= nverts, verts) && return       # vertex# out of range
         push!(used_tex, tex)
@@ -144,7 +149,7 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
         isflat = isempty(uvs)                    # no uv list authored => GPL flat-shaded poly
         UV = isflat ? [(0f0,0f0) for _ in P] : uvs
         for k in 2:length(P)-1                      # fan: (1, k, k+1)
-            push!(tris, Tri((P[1],P[k],P[k+1]), (N[1],N[k],N[k+1]), (UV[1],UV[k],UV[k+1]), tex, col, isflat))
+            push!(tris, Tri((P[1],P[k],P[k+1]), (N[1],N[k],N[k+1]), (UV[1],UV[k],UV[k+1]), tex, col, isflat, ptype))
             push!(groups, grp)
         end
         push!(ALL_GROUPS, grp); PARKDEPTH[] > 0 && push!(PARKED_GROUPS, grp)
@@ -299,33 +304,33 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
             end
         # ---- polygon leaves ----  (rv/ru read count-bounded vert# / UV arrays)
         elseif typ == 0x81B                         # flat: col, count, vert*
-            cnt = ok(u32(b,p+8)); vs = rv(p+12, cnt); emit(vs, [], [], curtex, M, grp, rgb(u32(b,p+4)))
+            cnt = ok(u32(b,p+8)); vs = rv(p+12, cnt); emit(vs, [], [], curtex, M, grp, rgb(u32(b,p+4)), UInt32(0x81B))
         elseif typ == 0x81C                         # smooth: col, count, vert*, col*
-            cnt = ok(u32(b,p+8)); vs = rv(p+12, cnt); emit(vs, [], [], curtex, M, grp, rgb(u32(b,p+4)))
+            cnt = ok(u32(b,p+8)); vs = rv(p+12, cnt); emit(vs, [], [], curtex, M, grp, rgb(u32(b,p+4)), UInt32(0x81C))
         elseif typ == 0x81D                         # normals: col, count, vert*, norm*
-            cnt = ok(u32(b,p+8)); emit(rv(p+12,cnt), [], rv(p+12+cnt*4,cnt), curtex, M, grp, rgb(u32(b,p+4)))
+            cnt = ok(u32(b,p+8)); emit(rv(p+12,cnt), [], rv(p+12+cnt*4,cnt), curtex, M, grp, rgb(u32(b,p+4)), UInt32(0x81D))
         elseif typ == 0x81E                         # smooth+normals: col, count, vert*, col*, norm*
-            cnt = ok(u32(b,p+8)); emit(rv(p+12,cnt), [], rv(p+12+2*cnt*4,cnt), curtex, M, grp, rgb(u32(b,p+4)))
+            cnt = ok(u32(b,p+8)); emit(rv(p+12,cnt), [], rv(p+12+2*cnt*4,cnt), curtex, M, grp, rgb(u32(b,p+4)), UInt32(0x81E))
         elseif typ == 0x81F                         # textured: 0, col, count, UV*, vert*
             cnt = ok(u32(b,p+12))
             slotdiag && curtex == "" && push!(slotrows, (length(tris), Int(typ), Int(u32(b,p+4)), Int(u32(b,p+8)), Int(u32(b,p+12)), Int(u32(b,p+16))))
-            emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), [], curtex, M, grp, rgb(u32(b,p+8)))
+            emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), [], curtex, M, grp, rgb(u32(b,p+8)), UInt32(0x81F))
         elseif typ == 0x820                         # textured+smooth: 0, col, count, UV*, vert*, col*
-            cnt = ok(u32(b,p+12)); emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), [], curtex, M, grp, rgb(u32(b,p+8)))
+            cnt = ok(u32(b,p+12)); emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), [], curtex, M, grp, rgb(u32(b,p+8)), UInt32(0x820))
         elseif typ == 0x821                         # textured+normals: 0, col, count, UV*, vert*, norm*
             cnt = ok(u32(b,p+12))
             slotdiag && curtex == "" && push!(slotrows, (length(tris), Int(typ), Int(u32(b,p+4)), Int(u32(b,p+8)), Int(u32(b,p+12)), Int(u32(b,p+16))))
-            emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), rv(p+16+cnt*12,cnt), curtex, M, grp, rgb(u32(b,p+8)))
+            emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), rv(p+16+cnt*12,cnt), curtex, M, grp, rgb(u32(b,p+8)), UInt32(0x821))
         elseif typ == 0x1F                          # car textured: 1F, 0, int, count, UV*, vert*
             cnt = ok(u32(b,p+12))
             slotdiag && curtex == "" && push!(slotrows, (length(tris), Int(typ), Int(u32(b,p+4)), Int(u32(b,p+8)), Int(u32(b,p+12)), Int(u32(b,p+16))))
-            emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), [], curtex, M, grp, rgb(u32(b,p+8)))
+            emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), [], curtex, M, grp, rgb(u32(b,p+8)), UInt32(0x1F))
         elseif typ == 0x20                          # car textured+smooth: 20,0,0,int,count,UV*,vert*,col*
-            cnt = ok(u32(b,p+16)); emit(rv(p+20+cnt*8,cnt), ru(p+20,cnt), [], curtex, M, grp, (1f0,1f0,1f0))
+            cnt = ok(u32(b,p+16)); emit(rv(p+20+cnt*8,cnt), ru(p+20,cnt), [], curtex, M, grp, (1f0,1f0,1f0), UInt32(0x20))
         elseif typ == 0x21                          # car textured+normals: 21,0,int,count,UV*,vert*,norm*
             cnt = ok(u32(b,p+12))
             slotdiag && curtex == "" && push!(slotrows, (length(tris), Int(typ), Int(u32(b,p+4)), Int(u32(b,p+8)), Int(u32(b,p+12)), Int(u32(b,p+16))))
-            emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), rv(p+16+cnt*12,cnt), curtex, M, grp, (1f0,1f0,1f0))
+            emit(rv(p+16+cnt*8,cnt), ru(p+16,cnt), rv(p+16+cnt*12,cnt), curtex, M, grp, (1f0,1f0,1f0), UInt32(0x21))
         end
         # unknown types: we don't know their child layout, so that subtree is skipped
     end

@@ -5816,3 +5816,37 @@ and if rods survive on some chassis the next step is a per-chassis capture besid
 (already an open E106 item).
 
 Suite 23/23.
+
+### E106-S21 (2026-09-03) — the engine-graphics item: the offending polys are **type 0x81D**, and the parser leaks a texture onto them
+
+S19 left a precise question: *what does GPL do with a flat-TYPE poly that has a bound texture?* To
+answer it the parser now records each triangle's **poly TYPE**, and the census is unambiguous:
+
+| type | tris | flat | carrying a texture | brass cowl polys |
+|---|---|---|---|---|
+| 0x81B (`col, count, vert*`) | 154 | 154 | 138 | 0 |
+| 0x81C (`… vert*, col*`) | 8 | 8 | 0 | 0 |
+| **0x81D (`col, count, vert*, norm*`)** | **136** | **136** | **100** | **all 48** |
+| 0x81F / 0x821 (textured) | 2,738 | 0 | 0 | 0 |
+
+**All 48 brass polys that paint the cowl yellow are type 0x81D** — an UNTEXTURED type (a colour plus
+per-vertex normals, no UV block). And **100 of the 136 0x81D polys carry a bound texture**, which is
+our own doing: `emit(...)` is passed `curtex` unconditionally, so whatever texture happened to be
+bound leaks onto poly types that have no mapping. That is a real defect independent of the cowl.
+
+They are also **genuinely visible geometry**, not hidden interior faces: of the 48, **40 face upward**
+and 8 sideways, none downward — they are the top of the nose, where gold shows green.
+
+**So the remaining suspect is the colour word itself.** Painting these polys with the value at `p+4`
+gives brass/yellow, which is wrong on screen; yet the same decode gives sensible greys, blacks and
+greens elsewhere. **Next step:** hexdump a few 0x81D headers and compare against a 0x81B one whose
+colour renders plausibly — the question is whether `p+4` is an RGB colour for THIS type, or an index
+/ shade that GPL uses differently.
+
+⚠️ **An instrument fault of mine, caught and corrected within the sprint.** I tagged the poly types by
+text-matching `emit(...)` calls — and adjacent branches share identical call shapes, so several tags
+landed on the wrong branch (the first census reported "0x81E" for what is actually 0x81D, and 0x81F
+for 0x820). Retagged by walking each `elseif typ ==` branch and using ITS id. Reporting the wrong
+type id would have sent the next sprint to the wrong code.
+
+Suite 23/23.
