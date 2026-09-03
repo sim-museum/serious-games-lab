@@ -5918,3 +5918,37 @@ cinematic cameras and `JM_REPLAY_FOCUS` selects the car), locate the rods on scr
 map back to geometry.
 
 Suite 23/23 (S20's clip change stands; the record is corrected, not the code).
+
+### E106-S24 (2026-09-03) — ⭐ the AI rods are LOCATED IN PIXELS at last, and three explanations are ruled out
+
+S23's lesson was that I had twice reasoned by analogy from the player car and been wrong both times.
+This sprint did what I said it would: **found the defect on screen first.**
+
+**Method:** the replay viewer focuses any car (`JM_REPLAY_FOCUS=5` = the Cooper) and has a
+rear-suspension camera (`JM_REPLAY_CAM=6`), so an AI car can be photographed close-up from a real
+race — no need to catch it in a live session.
+
+**What is there.** On the Cooper's rear wheel: a **ring of angular white-grey wedge plates radiating
+from the hub**, protruding past the wheel disc and over the tyre. That is the PO's "3 out-ward facing
+metal rods attached to each rear tire" — now a picture rather than a description
+(`scratchpad/e106/coopwheel.png`, from the Zandvoort replay).
+
+**Ruled out this sprint, by measurement:**
+
+| candidate | verdict |
+|---|---|
+| wheel mesh geometry protruding | **NO** — `cooplr.3do` and `clrtire0.3do` both max out at **radius 0.336**, with **zero** vertices beyond 0.36 |
+| a missing wheel wrapper (undressed geometry) | **NO** — the AI chassis DO resolve wrappers: Cooper `clrtire2`, Eagle `eLRTIRE2`, Brabham `rlrtire0` |
+| a wrong/partial wrapper variant | **NO** — `clrtire0/1/2` are three complete, fully-textured SKINS (388 tris each, 0 untextured; `c1*`/`c2*`/`c3*` texture sets) |
+
+**Two things worth noting that fell out of it:**
+* the wrapper scan picks a variant **arbitrarily** (the Cooper gets `clrtire2`, not `clrtire0`) — all
+  are valid skins so nothing breaks, but which wheel a car wears is currently accidental;
+* **the LOTUS resolves NO wrapper through this scan** — the player car works only because
+  `WHEEL_WRAP` names its wrappers explicitly. The two paths disagree, which is worth unifying.
+
+**Next:** the wedges are not the wheel and not the wrapper, so they come from something drawn AT the
+wheel — suppress the wheel draw and re-shoot the same replay frame; whatever remains in that ring is
+the culprit. The replay makes this exactly repeatable.
+
+No code changed this sprint; suite unaffected (23/23 at last run).
