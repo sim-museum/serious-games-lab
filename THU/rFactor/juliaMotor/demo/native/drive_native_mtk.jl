@@ -482,6 +482,7 @@ const NET_DIAG = parse(Int, get(ENV, "JM_NET_DIAG", "0"))
 # E85-S6: drive the player car from the racing line, for headless measurement runs.
 # E106-S15: driveability watch (see the per-frame block in the autodrive branch).
 const FIXED_DT    = parse(Float64, get(ENV, "JM_FIXED_DT", "0"))   # >0 = fixed sim step (headless sweeps)
+const AI_NOWHEELS = get(ENV, "JM_NO_AI_WHEELS", "0") != "0"   # E106-S25 probe
 const DRIVECHECK  = get(ENV, "JM_DRIVECHECK", "0") != "0"
 const DC_AIR_MAX  = parse(Float64, get(ENV, "JM_DC_AIR",   "0.75"))  # m above ground = "levitating"
 const DC_VZ_MAX   = parse(Float64, get(ENV, "JM_DC_VZ",    "6.0"))   # m/s upward   = "bounced"
@@ -6667,7 +6668,13 @@ function main()
             end
             for (p, cm) in zip(ai_poses, AICHASSIS)                 # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper)
                 for it in cm.body; Render.draw(prog, it, vp_, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end
-                for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp_, aiWheel(p,wx,wz,r)); end
+                # E106-S25: JM_NO_AI_WHEELS=1 suppresses the AI wheel draw. The rods on the AI rear
+                # tyre are neither the wheel mesh (max radius 0.336, nothing beyond) nor the wrapper
+                # (all variants complete) -- so shooting the SAME replay frame with the wheels gone
+                # says whether the ring survives, i.e. whether it is drawn by something else.
+                if !AI_NOWHEELS
+                    for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp_, aiWheel(p,wx,wz,r)); end
+                end
             end
             # E85-S5: the REMOTE cars, drawn through exactly the same path as the AI field -- same
             # body/wheel transforms, so anything true of an AI car's placement is true of theirs.

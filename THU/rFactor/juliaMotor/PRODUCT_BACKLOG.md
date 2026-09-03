@@ -5952,3 +5952,41 @@ wheel — suppress the wheel draw and re-shoot the same replay frame; whatever r
 the culprit. The replay makes this exactly repeatable.
 
 No code changed this sprint; suite unaffected (23/23 at last run).
+
+### E106-S25 (2026-09-03) — ✅ **THE AI ROD DEFECT IS FIXED: every AI car was drawing TWO wheels at each corner**
+
+S24 located the rods in pixels. This sprint found the cause by the method that finding them made
+possible — **suppress the wheel items and re-shoot the identical replay frame**:
+
+> With `JM_NO_AI_WHEELS=1` a **complete, better-looking wheel is STILL THERE.**
+
+So the AI body mesh carries its own wheels, and the car draws **two at every corner** — the embedded
+one and the separately-drawn wheel item. The lateral clip trimmed the outer part of the body's wheel
+and left the inner part interleaving with the drawn one, which is what reads as angular plates/rods
+sticking out of the tyre. That is the PO's report, and it was never the wheel mesh or the wrapper
+(both of which S24 had already cleared by measurement).
+
+**Two coupled defects, both fixed:**
+
+1. **The body drew wheels it should not.** `load_gpl_car` now reads the wheel meshes' OWN texture
+   names and excludes them from the body extraction — per-chassis and automatic, since the names
+   differ (Cooper `c1out`/`cortex1`, Eagle `out1a`/`tiretx1`, Lotus `l1out`). `JM_BODY_WHEELTEX=0`
+   reverts.
+2. **The wheel wrapper was chosen arbitrarily.** `readdir` order meant the LAST wrapper won, so a
+   chassis with skin variants got the wrong one — the Cooper wore `clrtire2` (textures `c3in`/
+   `c3out`/`cortex3`) while its body's wheel is authored around variant 1 (`c1in`/`c1out`/
+   `cortex1`). **Which wheel a car wore was accidental, and the two disagreed.** The FIRST (base)
+   variant now wins.
+
+⚠️ These two are coupled, and finding that out cost a wrong turn worth recording: fix (1) alone
+**changed nothing**, because the exclusion list was built from the *wrong variant's* texture names —
+it removed `c3*` names the body never uses. Only with (2) in place does (1) match the body's actual
+wheel. A fix that "does nothing" is a message, not a failure.
+
+**Result, same replay frame:** the doubled wheel is gone, and the AI Cooper's tyre now shows its
+**Firestone sidewall lettering** and a properly detailed hub — the same fidelity the player's car
+got from the wrapper work in S6. A few small wedges remain near the rim (candidates: the `cshok`
+shock parts and 42 untextured tris still at that position); the doubling that produced the PO's rods
+is resolved.
+
+Player car re-checked and unaffected. Suite 23/23.

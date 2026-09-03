@@ -1791,8 +1791,15 @@ function wheel_dress_for(dir, meshname)
                 o = data + sz; o += (4 - o % 4) % 4
             end
             length(names) >= 4 || continue
-            d[lowercase(names[1])] = (names[2], names[3], names[4])
-            _WRAPPER_PATHS[lowercase(names[1])] = f
+            # E106-S25: readdir order means the LAST wrapper wins, so a chassis with skin variants
+            # (Cooper clrtire0/1/2, Eagle eLRTIRE0/1/2) got variant 2 -- whose textures (c3in/c3out/
+            # cortex3) are NOT the ones the body's own embedded wheel uses (c1in/c1out/cortex1).
+            # Which wheel a car wears was therefore accidental, and the two disagreed. Keep the
+            # FIRST match, i.e. the base variant, which is the one the chassis is authored around.
+            if !haskey(d, lowercase(names[1]))
+                d[lowercase(names[1])] = (names[2], names[3], names[4])
+                _WRAPPER_PATHS[lowercase(names[1])] = f
+            end
         end
         d
     end
@@ -1802,7 +1809,30 @@ function load_gpl_car(name, dir, body3do, wheelspec;
                       exclude=("ltraymap","lshad"), maxlat=Inf32, exclude_groups=(),
                       body_floor=0.0f0, wheeltint=(0.12f0,0.12f0,0.13f0))
     tex   = gpl_texture_index(dir)
-    parts = extract_gpl_car(joinpath(dir, body3do); exclude=exclude, maxlat=maxlat, exclude_groups=exclude_groups, drop_green=true)
+    # E106-S25 (PO: "3 out-ward facing metal rods attached to each rear tire"). Proven by shooting
+    # the SAME replay frame with the wheel items suppressed (JM_NO_AI_WHEELS=1): a complete, better
+    # wheel is STILL there -- so the AI body mesh carries its OWN wheels and the car draws TWO at
+    # each corner. The overlap is the defect: the lateral clip trimmed the outer part of the body's
+    # wheel and left the inner part interleaving with the drawn wheel item, which reads as angular
+    # plates/rods sticking out of the tyre.
+    # The body must not draw wheels when wheels are drawn separately. Which textures those are is
+    # per-chassis (Cooper c1out/c1ouf, Eagle out1a/tiretx1, Lotus l1out...), so they are READ from
+    # the wheel meshes themselves rather than hardcoded. JM_BODY_WHEELTEX=0 reverts.
+    wheeltex = String[]
+    if get(ENV,"JM_BODY_WHEELTEX","1") != "0"
+        for (_,_,_,_,mesh) in wheelspec
+            wheel_dress_for(dir, mesh)      # populates _WRAPPER_PATHS as a side effect; the bare
+                                            # mesh (e.g. cooplr.3do) names only 3 textures while the
+                                            # WRAPPER (clrtire0) names the tyre ones we must exclude
+            wp = get(_WRAPPER_PATHS, lowercase(mesh), "")
+            src = wp != "" ? wp : joinpath(dir, mesh * ".3do")
+            isfile(src) || continue
+            for q in extract_gpl_car(src; exclude=("ltraymap","lshad"))
+                q.tex != "" && !(q.tex in wheeltex) && push!(wheeltex, q.tex)
+            end
+        end
+    end
+    parts = extract_gpl_car(joinpath(dir, body3do); exclude=(exclude..., wheeltex...), maxlat=maxlat, exclude_groups=exclude_groups, drop_green=true)
     body  = build_gpl(parts, tex)
     bb    = parts_bbox(parts)
     off_x = -(bb.xmin + bb.xmax) / 2f0
