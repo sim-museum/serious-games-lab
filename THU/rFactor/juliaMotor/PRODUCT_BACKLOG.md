@@ -6018,3 +6018,38 @@ on a straight with provably symmetric geometry, because the sun lights one side 
 The geometry measurement is the one to trust; the picture is for judging, not for scoring.
 
 Suite 23/23.
+
+### E106-S27 (2026-09-03) — ⭐ the FIRST real gold A/B of the player car's exterior, and it names the biggest remaining gap
+
+A gold chase reference of the Lotus 49 at Watkins Glen exists
+(`gold standard/julia racer/lotus49/…17-43-30.png`) and had never been compared against our render.
+Done now, same track, same camera family.
+
+**Three-way, rear view:**
+
+| | gold | ours (shipped, `JM_RSUSP=0`) | ours with `JM_RSUSP=1` |
+|---|---|---|---|
+| rear suspension | a **delicate chrome lattice** — upper/lower wishbones, radius rods, driveshafts — spanning gearbox → hub, INSIDE the wheel track | **nothing**; the space between gearbox and wheels is empty | **rods spearing OUTSIDE the wheels and down to the ground** |
+| overall read | airy, you see THROUGH the rear structure | solid, cluttered | wrong, and worse than nothing |
+| helmet | **blue** | dark grey/black | — |
+| gearbox / final drive | polished alloy, clearly detailed | a dark cluttered mass | — |
+| wheels | dark tyres with **pale visible rims** | rims indistinct | — |
+
+**The single biggest gap in the exterior is the missing rear suspension lattice.** Gold's rear end is
+*defined* by those thin chrome arms; ours has none. This also reframes the PO's *"Axles are needed"*:
+they were not asking only for driveshafts (which E106-S9 synthesized) — gold shows a full wishbone
+lattice, and that is what is absent.
+
+**And the A/B gives the re-pose a precise target, which is what it has always lacked:** the geometry
+EXISTS and is not missing — it is placed OUTSIDE the wheel track instead of between gearbox and hub.
+So the correct pose is the one that puts every arm within |lat| ≤ the half-track (~0.74) and running
+inboard-to-outboard, not radiating past the tyres. Five previous transform attempts had no reference
+picture to aim at; now there is one.
+
+**Smaller, concrete differences worth their own items:** the helmet should be BLUE (ours is dark), the
+gearbox needs its polished-alloy read, and the wheel rims should be visibly pale against the tyre.
+
+⚠️ Scope note: this is the PLAYER car. The five AI chassis still have no gold A/B — that remains open,
+and the same method (a fixed camera against the matching gold still) now applies to them.
+
+No code changed this sprint; last suite run 23/23.
