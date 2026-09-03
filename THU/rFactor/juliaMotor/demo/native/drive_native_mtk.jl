@@ -1804,6 +1804,40 @@ const CAM_TILT_TAU = parse(Float64, get(ENV,"JM_CAM_TILT_TAU","0.35"))
 # (was ±0.62/±0.66) — the Lotus 49 ran ~1.52 m tracks; the narrow stance read as "wheels bolted together".
 const WTRACK_F = parse(Float32, get(ENV,"JM_TRACK_F","0.78"))   # front half-track (m) — E62: 0.90 splayed the fronts well outboard of the tub in the chase gold; 0.78 (≈ the real Lotus 49 ~1.52 m track) tucks them back toward the body
 const WTRACK_R = parse(Float32, get(ENV,"JM_TRACK_R","0.74"))   # rear half-track (m)
+# E106-S12: probe the PHYSICS ground height on a world-coordinate grid. JM_HATPROBE="x,z"
+# prints the height the car's ground query returns around that point -- the instrument for
+# "the car levitated on a building": scenery baked into the terrain mesh reads as drivable
+# ground, and shows up here as a plateau metres above the surrounding road.
+if get(ENV,"JM_HATPROBE","") != ""
+    # a single "x,z" prints a grid; a ";"-separated LIST prints the height along a path (the
+    # instrument for "where did the ground go" -- a gap is a hole the car can drop through).
+    spec = get(ENV,"JM_HATPROBE","")
+    if occursin(";", spec)
+        println("== JM_HATPROBE path -- physics ground height along the car's track ==")
+        for tok in split(spec, ";")
+            isempty(strip(tok)) && continue
+            pr = split(tok, ","); px = parse(Float64, strip(pr[1])); pz = parse(Float64, strip(pr[2]))
+            h = JuliaMotor.hat3d(TERRAIN, px, pz; ref=Inf)
+            println("   (", lpad(round(px,digits=1),9), ",", lpad(round(pz,digits=1),9), ")  ",
+                    h[3] ? string("ground ", round(h[1], digits=2)) : "NO SURFACE  <-- HOLE")
+        end
+    else
+        pr = split(spec, ",")
+        px = parse(Float64, strip(pr[1])); pz = parse(Float64, strip(pr[2]))
+        println("== JM_HATPROBE around (", px, ", ", pz, ") -- physics ground height, 4 m grid ==")
+        for dz in -12:4:12
+            row = String[]
+            for dx in -12:4:12
+                h = JuliaMotor.hat3d(TERRAIN, px+dx, pz+dz; ref=Inf)
+                push!(row, h[3] ? string(round(h[1], digits=2)) : "  --  ")
+            end
+            println("   dz=", lpad(dz,4), "  ", join([lpad(r,8) for r in row]))
+        end
+    end
+    flush(stdout)
+end
+
+
 const WHEELS = (( 1.05f0, WTRACK_F,true, 0.31f0,"lotwlf"), ( 1.05f0,-WTRACK_F,true, 0.31f0,"lotwrf"),
                 (-1.15f0, WTRACK_R,false,0.34f0,"lotwlr"), (-1.15f0,-WTRACK_R,false,0.34f0,"lotwrr"))
 
@@ -2454,6 +2488,7 @@ if get(ENV,"JM_HAT_COUNT","0") != "0"
     JuliaMotor.HAT_TIME_ON[]  = get(ENV,"JM_HAT_TIME","0") != "0"
     JuliaMotor.hat_reset!()
 end
+
 tstamp("  [E80] trackside objects + billboards + trees begin")
 const DATPACK = TRACKDAT     # trackside objects come from the track's own .dat (generic across tracks)
 const TMPOBJ = mktempdir()

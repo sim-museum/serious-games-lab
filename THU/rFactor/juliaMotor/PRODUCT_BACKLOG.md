@@ -5431,3 +5431,29 @@ by running Spa: writes `lotus49_spa …ibt`. The mislabelled capture was renamed
 identity (data preserved, not deleted).
 
 Suite 22/22.
+
+## BACKLOG ITEM (PO, 2026-09-02): THE ENGINE GRAPHICS FIX
+
+**Ask:** fix the engine's appearance in nintendo/chase view — "random polygon/colors on back of
+engine, also flicker on engine" (PO video `260902_zand.mp4`). The engine fills the view whenever
+the chase camera is used, so it is high-visibility.
+
+**State: diagnosed, mechanism measured, fix specified but NOT yet shippable.**
+
+* The engine atlas (`lo133`) and the gearbox/back texture (`back4`) are CORRECT art — a detailed
+  Ford-Cosworth DFV. The UVs are fine (a full 0..1 span; the earlier "UV smear" claim was measured
+  with the wrong vertex offsets and is retracted — see E106-S10).
+* The actual defect: **46 of 156 engine polys are GPL flat-shaded polys** — all three UVs identical
+  — that still carry a texture. Each therefore samples ONE arbitrary texel and paints itself a solid
+  slab of that colour, which is why the engine shows magenta/copper patches taken from the wiring
+  strip of the atlas. Their authored colours are the right ones.
+* Drawing them in their own colour (`JM_FLATPOLY=1`) fixes the engine **and turns the cockpit cowl
+  bright yellow**, because those baked colours are GPL's MODULATION colours (texture × colour), not
+  replacements.
+
+**The fix to build:** modulate rather than substitute — sample the texture and multiply by the
+poly's colour, as GPL does, instead of choosing one or the other. That should fix the engine
+without touching the cowl. Verify with a chase capture AND a cockpit capture before shipping.
+
+**Flicker component:** partly addressed in E106-S10 (467 coincident duplicate tris removed by
+`dedup=:orient`); re-check on the PO's next video whether any engine flicker remains after that.
