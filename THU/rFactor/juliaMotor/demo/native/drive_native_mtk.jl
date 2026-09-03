@@ -1742,9 +1742,39 @@ const PIPE_LIFT = parse(Float32, get(ENV, "JM_PIPE_LIFT", "0.18"))
 # E106-S8 (PO: "still need to make those exhaust pipes symmetrical"): pipe3 carries a 5-tri
 # bracket authored on the RIGHT side only (its own connected solid); min_component=6 drops exactly
 # it. The remaining left/right header difference (102 vs 96 tris) is the authored art itself.
-const PIPEP  = get(ENV, "JM_PIPES", "1") != "0" ?
+# E106-S26 (PO: "tailpipes better (but not symetrical)"). Measured: after S8 dropped the right-only
+# bracket the two sides carry the same tri count (139 vs 140) and the same lateral span, but the
+# AUTHORED geometry still differs by 2-3 cm -- left max height 0.067 vs right 0.040, mean fwd -0.669
+# vs -0.686 -- and that is exactly the ~26 px height offset visible between the two megaphones in a
+# chase capture. So it is not a placement bug to hunt: the art itself is slightly asymmetric.
+# Make it symmetric by construction: keep ONE side and mirror it to the other, reversing the winding
+# so the mirrored faces still point outward. JM_PIPE_MIRROR=0 keeps GPL's authored asymmetry.
+function _mirror_pipes(parts)
+    out = Render.TrackPart[]
+    for p in parts
+        v = p.verts; n = length(v) ÷ 33
+        keep = Float32[]
+        for t in 0:n-1
+            b = t*33
+            cz = (v[b+3] + v[b+14] + v[b+25]) / 3
+            cz > 0 || continue                     # keep the LEFT side only
+            append!(keep, v[b+1:b+33])             # the original
+            # the mirror: negate lateral (z) on position and normal, and reverse the winding
+            for k in (2,1,0)
+                o = b + k*11
+                append!(keep, Float32[v[o+1], v[o+2], -v[o+3],
+                                      v[o+4], v[o+5], -v[o+6],
+                                      v[o+7], v[o+8], v[o+9], v[o+10], v[o+11]])
+            end
+        end
+        isempty(keep) || push!(out, Render.TrackPart(keep, p.tex, p.col))
+    end
+    out
+end
+const _PIPES_RAW = get(ENV, "JM_PIPES", "1") != "0" ?
     Render.extract_gpl_car(LOT3DO; only=("pipe3",), maxlat=0.9f0,
                            min_component=6, min_component_tex=("pipe3",)) : Render.TrackPart[]
+const PIPEP  = get(ENV, "JM_PIPE_MIRROR", "1") != "0" ? _mirror_pipes(_PIPES_RAW) : _PIPES_RAW
 const ARMP   = Render.extract_gpl_car(LOT3DO; only=("lotarms",), maxlat=0.95f0)  # forearms/upper arms — static (their wheel-side ends are what the eye sees)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read
 # upside-down.  Mirror the gauge in height about its own centre so the dial face turns up toward the eye.

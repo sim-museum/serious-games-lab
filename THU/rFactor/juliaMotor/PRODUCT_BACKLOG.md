@@ -5990,3 +5990,31 @@ shock parts and 42 untextured tris still at that position); the doubling that pr
 is resolved.
 
 Player car re-checked and unaffected. Suite 23/23.
+
+### E106-S26 (2026-09-03) — ✅ the exhausts are symmetric BY CONSTRUCTION, and part of what the PO saw was perspective
+
+PO: *"tailpipes better (but not symetrical)"*. S8 removed the right-only 5-tri bracket and left a
+note that the header bundles still differed. This sprint measured what was actually left.
+
+**What the geometry says.** After S8's bracket removal the two sides are close but not equal:
+**left 134 tris, right 140**, with the same lateral span and the same height extents. So a real
+6-triangle asymmetry survived — small, and not the 102-vs-96 S8 recorded (that count was taken
+before the bracket removal and is superseded).
+
+**Fixed by construction rather than by hunting a placement bug:** `_mirror_pipes` keeps ONE side and
+mirrors it to the other, negating the lateral axis on position AND normal and reversing the winding
+so the mirrored faces still point outward. Result **134 / 134**, identical extents.
+`JM_PIPE_MIRROR=0` keeps GPL's authored asymmetry.
+
+⚠️ **And an honest correction about what the PO and I were looking at.** My first capture showed the
+right megaphone clearly lower than the left — but that capture was taken on a CURVE, with the car
+yawed relative to the chase camera. Re-shot square-on from a straight, **the two megaphones sit at
+the same height and mirror each other cleanly**. So a good part of the visible "asymmetry" was
+perspective, not the model. The 6-tri difference was real and is now gone; the dramatic version in
+the earlier picture was the camera.
+
+⚠️ Also worth recording: a pixel mirror-diff is a poor instrument here — it reports 48% mismatch even
+on a straight with provably symmetric geometry, because the sun lights one side more than the other.
+The geometry measurement is the one to trust; the picture is for judging, not for scoring.
+
+Suite 23/23.
