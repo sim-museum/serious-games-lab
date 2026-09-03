@@ -5514,3 +5514,30 @@ pass the raw closure, the boundary closure must map the sentinel to NaN, and the
 exercised. Negative control: against the pre-fix wiring it flags all **5** raw call sites.
 
 Suite 23/23.
+
+## BACKLOG ITEM (PO, 2026-09-02): NURBURGRING AND SPA MUST BE DRIVEABLE END TO END
+
+**Ask:** ensure the Nurburgring and Spa can be driven by a human without obstacles — levitation,
+bouncing, and the like.
+
+**Standing rules this protects:** the car must NEVER bounce back; a graze at speed should scrub you
+but not end your race.
+
+**Already done (E106-S13):** the specific Nurburgring levitation the PO hit is fixed at the root —
+the off-mesh sentinel (−999) was reaching the physics, which guards only `isfinite`, so a wheel over
+a hole in the terrain mesh was told the ground lay 999 m below; it sank, then the correction
+launched it (+7 m, then a 6.65 m drop, measured from the PO's replay). Gated by `hat_hole_smoke`.
+
+**What this item still needs — the general case, not the one incident:**
+1. **A full-lap sweep of both circuits** that drives the racing line (the sim can drive itself
+   headlessly — E85-S6's autodrive) and asserts NO vertical excursion beyond a threshold, NO
+   bounce-back, and NO terminal stop. One pass per track, run as a gate.
+2. **A terrain-hole census** for both meshes: `JM_HATPROBE` (E106-S13) reads the physics ground
+   height anywhere, so sweep the corridor either side of the centreline and REPORT the holes rather
+   than discovering them by crashing into one. Holes are now survivable, but a hole is still a
+   missing surface and the count is the honest measure of each track's readiness.
+3. **Verify Spa specifically** — it has never been driven far in this port (the PO's session
+   reached 442 m). Spa is 14.1 km with 92,548 terrain triangles, so it has the most opportunity for
+   mesh gaps.
+4. Re-check the "stuck against scenery, race over" half: the Nurburgring run ended pinned at 0 km/h
+   at lateral 6.7 m. The levitation fix does not by itself address being unable to continue.
