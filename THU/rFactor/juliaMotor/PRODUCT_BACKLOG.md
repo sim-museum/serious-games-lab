@@ -5457,3 +5457,23 @@ without touching the cowl. Verify with a chase capture AND a cockpit capture bef
 
 **Flicker component:** partly addressed in E106-S10 (467 coincident duplicate tris removed by
 `dedup=:orient`); re-check on the PO's next video whether any engine flicker remains after that.
+
+## BACKLOG ITEM (PO, 2026-09-02): FIX AI CAR EXTERNAL GRAPHICS — outward rods on the rear tyres
+
+**Ask:** at least one AI car has **3 outward-facing metal rods attached to each rear tyre**.
+
+**Likely the same defect already solved for the player car, not a new one.** E102/E106-S7 measured
+exactly this on the Lotus: the rear-half assemblies (`rsuspItemsA/B`) compose parts in different
+local frames through positioners our walk mis-chains, so they render as rods spearing out past the
+wheels. The player car ships with them OFF (`JM_RSUSP=0` default) and the driveshafts synthesized
+straight instead (E106-S9).
+
+**Why the AI cars still show them:** the AI chassis (Ferrari, Brabham, BRM, Eagle, Cooper) load
+through a SEPARATE path from the player's Lotus, so neither the S7 suppression nor the S9
+synthesized axles were applied to them.
+
+**To do:** (1) identify which AI chassis show the rods and which mesh group they come from;
+(2) apply the same treatment as the player car — suppress the mis-posed halves and, if the axles
+read as missing, synthesize straight shafts as in S9; (3) verify with a chase capture of each of
+the five AI chassis beside its GPL gold still (that per-chassis A/B is itself an open E106 item
+and can be done in the same pass).
