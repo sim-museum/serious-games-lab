@@ -1473,7 +1473,15 @@ const HELM_OFF = (parse(Float32,get(ENV,"JM_HELM_X","0.14")), parse(Float32,get(
 # l20helm / clahelm; twenty skins ship with the car). E60 mapped helblack->clahelm, which painted
 # the hidden trim and left the visible shell untextured: the chase view's solid-black blob of a
 # helmet. Texture the SHELL with Clark's skin and leave helblack black, as gold does.
-const HELMP = [Render.TrackPart(p.verts, p.tex=="" ? "clahelm" : p.tex, p.col)
+# E106-S28 (from the S27 gold A/B): gold's helmet is BLUE -- its dome samples (85,91,128), i.e.
+# blue-dominant. Measured against every skin the car ships (clahelm, hilhelm, l01..l20), `clahelm`
+# -- what E60/S3 chose -- has NO blue at all (49,50,51; B/R 1.04) and `hilhelm` is blue but far too
+# dark (18,28,49). The closest by hue AND brightness is `l10helm` (114,110,138; B/R 1.21).
+# ⚠️ This is a COLOUR MATCH against one gold still, not proof of which skin GPL selects: the car's
+# .gplw configs describe versions ("Standard version with 3D helmet") and never name a helmet, so
+# there is nothing authoritative to read. JM_HELMET=<name> overrides.
+const HELMET_TEX = get(ENV, "JM_HELMET", "l10helm")
+const HELMP = [Render.TrackPart(p.verts, p.tex=="" ? HELMET_TEX : p.tex, p.col)
                for p in Render.extract_gpl_car(joinpath(LOTDIR,"helmeg.3do"); maxlat=0.95f0)]
 # E62 (D12 chase body) — INVESTIGATED; the skinny 0.85 clip is confirmed correct, the residual is asset-LOD.
 # A per-part 3do audit (scratchpad lot_parts.jl) + a JM_CARP_MAXLAT=1.15 capture proved WHY opening the clip

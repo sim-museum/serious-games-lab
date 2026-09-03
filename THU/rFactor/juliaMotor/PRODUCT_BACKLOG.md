@@ -6053,3 +6053,30 @@ gearbox needs its polished-alloy read, and the wheel rims should be visibly pale
 and the same method (a fixed camera against the matching gold still) now applies to them.
 
 No code changed this sprint; last suite run 23/23.
+
+### E106-S28 (2026-09-03) — ✅ the helmet is BLUE again, and E60/S3's choice of skin is corrected
+
+S27's gold A/B showed gold's driver wearing a **blue** helmet while ours was near-black. Measured
+rather than eyeballed — gold's dome samples **(85, 91, 128)**, clearly blue-dominant — and every
+helmet skin the car ships was measured over the same dome region:
+
+| skin | dome rgb | B/R | verdict |
+|---|---|---|---|
+| `clahelm` (what E60/S3 chose) | (49, 50, 51) | **1.04** | neutral grey — **no blue at all** |
+| `hilhelm` | (18, 28, 49) | 2.7 | blue, but far too dark |
+| **`l10helm`** | **(114, 110, 138)** | **1.21** | blue-dominant, and matches gold's brightness |
+| `l05helm` / `l13helm` | green / purple | — | similar ratio, wrong hue — why B/R alone is not enough |
+
+`l10helm` is now the default (`JM_HELMET=<name>` overrides). The rendered helmet is a blue dome
+instead of a near-black one, which is the character gold has.
+
+⚠️ **This corrects an earlier sprint's claim.** E106-S3 chose `clahelm` and recorded it as matching
+gold ("Texture the SHELL with Clark's skin … as gold does"). The measurement says otherwise: gold is
+blue, `clahelm` has no blue component whatsoever. That earlier reading was not measured.
+
+⚠️ **And it is a COLOUR MATCH, not an authority.** The car's `.gplw` configs describe versions
+("Standard version with 3D helmet, 3D wheels") and never name a helmet skin, so there is nothing to
+read that settles which driver GPL renders. If the PO wants a specific driver's livery, `JM_HELMET`
+takes any of the twenty-two skins; the default is simply the one that matches the gold still.
+
+Suite 23/23.
