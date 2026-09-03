@@ -493,8 +493,9 @@ mutable struct DriveCheck
     vzmax::Float64;  vz_s::Float64;  vz_bad::Int
     stuck::Float64;  stuckmax::Float64; stuck_s::Float64
     lastz::Float64;  lastt::Float64;  maxs::Float64
+    inair::Bool;     events::Vector{Tuple{Float64,Float64,Float64,Float64,Float64}}
 end
-const DC = Ref(DriveCheck(0.0,0.0,0, 0.0,0.0,0, 0.0,0.0,0.0, 0.0,0.0,0.0))
+const DC = Ref(DriveCheck(0.0,0.0,0, 0.0,0.0,0, 0.0,0.0,0.0, 0.0,0.0,0.0, false, Tuple{Float64,Float64,Float64,Float64,Float64}[]))
 const AUTODRIVE   = get(ENV, "JM_AUTODRIVE", "0") != "0"
 const AUTODRIVE_V = parse(Float64, get(ENV, "JM_AUTODRIVE_V", "45"))   # target speed m/s
 const AUTODRIVE_DIAG = parse(Int, get(ENV, "JM_AUTODRIVE_DIAG", "0"))
@@ -5640,7 +5641,24 @@ function main()
                     if gh > -900f0
                         air = Float64(cs.y) - Float64(gh)
                         if air > DC[].airmax; DC[].airmax = air; DC[].air_s = s0; end
-                        air > DC_AIR_MAX && (DC[].air_bad += 1)
+                        if air > DC_AIR_MAX
+                            DC[].air_bad += 1
+                            # log each DISTINCT excursion (a new one only after coming back down),
+                            # so the verdict names the SITES rather than one global maximum -- a
+                            # single "worst" figure cannot be cross-referenced against the track.
+                            if !DC[].inair && length(DC[].events) < 24
+                                push!(DC[].events, (s0, air, cs.v*3.6, Float64(cs.x), Float64(cs.z)))
+                            elseif DC[].inair && !isempty(DC[].events)
+                                # track the PEAK of this excursion, not its onset: recording only
+                                # the crossing value made a 9.4 m launch read as 0.84 m, which is
+                                # an instrument that understates exactly the thing it is for.
+                                (es, epk, ekmh, ex, ez) = DC[].events[end]
+                                air > epk && (DC[].events[end] = (es, air, ekmh, ex, ez))
+                            end
+                            DC[].inair = true
+                        elseif air < DC_AIR_MAX*0.5
+                            DC[].inair = false
+                        end
                     end
                     # Skip the first second: the car SETTLES onto the track at spawn, which is a
                     # legitimate one-frame height step (27.7 m/s on the Glen). Counting it made
@@ -6908,6 +6926,14 @@ function main()
                 "   (", d.vz_bad, " frames over ", DC_VZ_MAX, " m/s)")
         println("    longest slow spell      : ", round(d.stuckmax, digits=1), " s at s=", round(d.stuck_s, digits=1),
                 "   (stuck threshold ", DC_STUCK_S, " s under ", DC_STUCK_V, " m/s)")
+        if !isempty(d.events)
+            println("    launch SITES (each distinct excursion above ", DC_AIR_MAX, " m; height = that excursion's PEAK):")
+            for (es, eair, ekmh, ex, ez) in d.events
+                println("      s=", lpad(round(es, digits=1), 9), " m   air ", lpad(round(eair, digits=2), 6),
+                        " m   at ", lpad(round(ekmh, digits=0), 4), " km/h   world (",
+                        round(ex, digits=1), ", ", round(ez, digits=1), ")")
+            end
+        end
         bad = (d.airmax > DC_AIR_MAX) + (d.vzmax > DC_VZ_MAX) + (d.stuckmax > DC_STUCK_S)
         println(bad == 0 ? "    VERDICT: CLEAN — no levitation, no bounce, never stuck" :
                            "    VERDICT: $(bad) FAILURE MODE(S) SEEN — see the lines above")

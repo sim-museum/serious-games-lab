@@ -5647,3 +5647,46 @@ as useless as one that never does. The first second is now excluded.
 so suspect geometry or a seam), and the Ring's failure before s=776.
 
 Suite 23/23.
+
+### E106-S17 (2026-09-03) — ⭐ Spa's ejection site NAMED: a terrain SEAM — a 2 m step with a gap running through it
+
+The sweep localised a launch on Spa; this sprint identifies it. The verdict now logs **each distinct
+excursion with its own peak and world position**, so a defect can be probed rather than guessed at.
+
+**Spa, driving from s=4,000:**
+
+| site | peak air | speed | reading |
+|---|---|---|---|
+| s=6,650.8 | 0.96 m | 131 km/h | a small hop at speed — plausibly a legitimate crest |
+| **s=6,758.8** | **9.41 m** | **23 km/h** | **an ejection** |
+| s=6,761.8 | 8.37 m | 21 km/h | the same event repeating |
+
+**A car cannot jump 9 m at 23 km/h.** Probing the physics ground at the exact world position
+(−15.7, −2935.2) with `JM_HATPROBE` shows why — a **diagonal line of MISSING triangles** running
+through the car's position, separating a lower plateau at ~330.3 m from a higher one at ~332.4 m:
+
+```
+dz= -4   330.35    --    331.54  331.73 ...
+dz=  0   330.34  330.35  330.37    --   331.66     <- the car is here
+dz=  4   330.32  330.33  330.33  330.35   --
+```
+
+So: **a ~1.4–2 m terrain STEP with a gap along the seam.** E106-S13 made a missing sample survivable
+(the sentinel no longer drags the car down), but a step immediately beside a hole still resolves as a
+violent contact — which is what throws the car.
+
+**Why the hole census did not flag this** (worth recording, because the two instruments look
+redundant and are not): the census reports stations by how MANY lateral samples are missing, and this
+seam loses only one or two per station — far below the worst-ten cut, which needed five. **The census
+finds WIDE holes; the sweep finds the ones a car actually hits.** Neither alone would have found this.
+
+⚠️ **Two instrument faults of mine, both caught before they misled the record:** the event log first
+recorded each excursion's ONSET height, so a 9.41 m launch printed as 0.84 m — an instrument that
+understates precisely what it exists to measure; now it tracks the peak. And it had no world
+position, so nothing could be probed; now it logs one.
+
+**Next:** the same treatment for the Nürburgring (it fails before s=776 from a standing start), and
+then decide the fix — the honest options are to repair the two meshes' seams, or to make the physics
+tolerant of a step-beside-a-hole, which would cover every track including ones not yet tested.
+
+Suite 23/23.
