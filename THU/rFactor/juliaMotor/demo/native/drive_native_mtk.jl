@@ -4129,6 +4129,8 @@ const RS_SPEC = parse(Float32, get(ENV,"JM_RS_SPEC","0.25"))
 # ordinary lateral range -- the POSE (angle) is wrong, not the position, so any clip tight enough
 # to cut the rods also cuts real links. Until the halves are re-posed, absence beats wrongness --
 # the clean rear reads far closer to gold's fine wishbones than the rods did. JM_RSUSP=1 restores.
+# E106-S29: still OFF. The re-pose attempt in that sprint was measured against the UNCLIPPED
+# group geometry and was wrong; the production extraction already reaches the hub. See the backlog.
 const RSUSP_ON = get(ENV,"JM_RSUSP","0") != "0"
 # E75-S5: what does the Lotus .3do actually CONTAIN, and which exclusion eats gold's rear linkage?
 # Four sprints of transform-tuning are closed (E75-S4: no fold angle works), and the code's own

@@ -6080,3 +6080,44 @@ read that settles which driver GPL renders. If the PO wants a specific driver's 
 takes any of the twenty-two skins; the default is simply the one that matches the gold still.
 
 Suite 23/23.
+
+### E106-S29 (2026-09-03) — 🔴 the rear-suspension re-pose FAILED, my own gate caught it, and the failure is informative
+
+With S27's gold A/B finally supplying a target, I attacked the re-pose that five earlier sprints had
+failed. **It failed too, and for a reason worth recording.**
+
+**What I measured, and why it looked right.** Extracting group 27288 and applying `rsfix` at roll 0
+gives height **−0.15..0.25** (essentially the target ~−0.10..0.30) with lateral **0.42..1.12** — the
+right length in the wrong place, sticking ~0.38 m past the hub at 0.74. Rotations had all been tried
+(roll 0/20/45/90) and the family declared exhausted; a **translation** had not. `JM_RS_DZ=0.38`
+inboard put half A at −0.74..−0.04 and half B at 0.04..0.78: gearbox to hub, both sides, right
+height. The chase capture showed the rods no longer spearing past the wheels.
+
+**Then `susp_pose_smoke` failed** — the gate that exists for exactly this transform:
+
+```
+group 27288 (side 1): 267 verts after rsfix -> |z| max 0.36
+FAIL  group 27288 reaches the hub (|z| >= 0.73)   0.36
+```
+
+**I measured the wrong geometry.** My numbers came from the RAW group (456 verts, unclipped). The
+PRODUCTION extraction is trimmed (`maxlat`, `trim`, `min_component` → 267 verts) and **already
+reaches the hub**. So the 0.38 shift did not correct an overhang — it dragged a correctly-placed
+assembly 0.38 m inboard, to |z| 0.36. Both defaults reverted; suite back to 23/23.
+
+**What this is worth keeping:**
+1. **The gate did its job.** It encodes "reaches the hub AND stays inside the tyres AND above the
+   road", and it caught a change that looked right in a capture. This is the second time today a
+   suite has caught me shipping a fix built on a mismeasurement.
+2. ⚠️ **But the gate's tyre threshold is loose.** It passes `|z| < 0.95`, while the tyre's outer edge
+   is about 0.88 — so geometry can satisfy the gate and still visibly protrude, which is consistent
+   with the rods being visible when `JM_RSUSP=1` even though the gate is green. **Tightening that
+   bound to the real tyre extent is a small, concrete piece of work** and would make the gate say
+   what it means.
+3. The rear suspension therefore stays OFF, and the gold A/B's finding stands unchanged: the missing
+   lattice is still the biggest exterior gap.
+
+**For whoever takes this next:** measure the PRODUCTION extraction (`RSUSPP_A`/`RSUSPP_B` as built in
+`drive_native_mtk.jl`), not a fresh `extract_gpl_car` call — the trims are part of the pose.
+
+Suite 23/23 after the revert.

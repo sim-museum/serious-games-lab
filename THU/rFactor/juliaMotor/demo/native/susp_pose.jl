@@ -22,9 +22,21 @@ function rsfix(side, T, RX, S; roll = RS_ROLL_DEG)
     ax, ay = -1.05f0, 0.31f0
     sx = parse(Float32, get(ENV,"JM_RS_SX","1.0")); sy = parse(Float32, get(ENV,"JM_RS_SY","1.0")); sz = parse(Float32, get(ENV,"JM_RS_SZ","1.0"))
     dx, dy = parse(Float32, get(ENV,"JM_RS_DX","0.0")), parse(Float32, get(ENV,"JM_RS_DY","0.0"))
+    # E106-S29: a LATERAL offset, applied inboard on each side. Measured against the S27 gold A/B:
+    # at roll 0 the assembly's HEIGHT is already right (-0.15..0.25 against a target of about
+    # -0.10..0.30) and only its LATERAL placement is wrong -- it spans 0.42..1.12 where the hub is
+    # at 0.74, i.e. the arms are the right length in the wrong place, sticking ~0.38 m past the
+    # wheel. Five earlier attempts all tried ROTATIONS (roll 0/20/45/90) and the family was declared
+    # exhausted; a translation was never tried. Shifting inboard by 0.38 puts the OUTBOARD end
+    # exactly on the wheel plane, which is the end that must meet the hub.
+    # ⚠️ DEFAULT 0.0 -- see the E106-S29 retraction. The 0.38 figure was derived from the
+    # UNCLIPPED group geometry (456 verts, lateral 0.42..1.12); the PRODUCTION extraction is
+    # trimmed (267 verts) and ALREADY reaches the hub, so the shift moved it inboard to |z| 0.36
+    # and susp_pose_smoke caught it. Kept as a knob, not a default.
+    dz = parse(Float32, get(ENV,"JM_RS_DZ","0.0"))
     y0, z0 = parse(Float32, get(ENV,"JM_RS_Y0","0.02")), parse(Float32, get(ENV,"JM_RS_Z0","0.772"))
     r = deg2rad(Float32(roll))
-    T(Float32[dx, dy, 0]) * T(Float32[ax, ay, 0]) * S(sx, sy, sz) * T(Float32[-ax, -ay, 0]) *
+    T(Float32[dx, dy, side*dz]) * T(Float32[ax, ay, 0]) * S(sx, sy, sz) * T(Float32[-ax, -ay, 0]) *
         T(Float32[0, y0, side*z0]) * RX(Float32(-side*r)) * T(Float32[0, -y0, -side*z0])
 end
 end
