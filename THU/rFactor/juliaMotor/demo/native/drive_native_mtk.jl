@@ -481,11 +481,13 @@ const NET_HZ   = parse(Float64, get(ENV, "JM_NET_HZ", "10"))
 const NET_DIAG = parse(Int, get(ENV, "JM_NET_DIAG", "0"))
 # E85-S6: drive the player car from the racing line, for headless measurement runs.
 # E106-S15: driveability watch (see the per-frame block in the autodrive branch).
+const FIXED_DT    = parse(Float64, get(ENV, "JM_FIXED_DT", "0"))   # >0 = fixed sim step (headless sweeps)
 const DRIVECHECK  = get(ENV, "JM_DRIVECHECK", "0") != "0"
 const DC_AIR_MAX  = parse(Float64, get(ENV, "JM_DC_AIR",   "0.75"))  # m above ground = "levitating"
 const DC_VZ_MAX   = parse(Float64, get(ENV, "JM_DC_VZ",    "6.0"))   # m/s upward   = "bounced"
 const DC_STUCK_V  = parse(Float64, get(ENV, "JM_DC_STUCKV","2.0"))   # m/s
 const DC_STUCK_S  = parse(Float64, get(ENV, "JM_DC_STUCKS","8.0"))   # s under STUCKV = "stuck"
+const DC_SETTLE_S = parse(Float64, get(ENV, "JM_DC_SETTLE","1.0"))   # s of spawn settle to ignore
 mutable struct DriveCheck
     airmax::Float64; air_s::Float64; air_bad::Int
     vzmax::Float64;  vz_s::Float64;  vz_bad::Int
@@ -4905,6 +4907,7 @@ function main()
         nlat = Int(floor(2*halfw/latstep)) + 1
         println("== JM_HOLECENSUS ", TRACKSEL, ": ground coverage ±", halfw, " m of the centreline, every ", step_s, " m ==")
         total = 0; holes = 0; worst_s = -1.0; worst_n = -1; badstations = 0
+        holelist = Tuple{Float64,Int}[]
         sacc = 0.0
         while sacc < CLINE.total
             nhole = 0
@@ -4920,11 +4923,19 @@ function main()
             end
             nhole > 0 && (badstations += 1)
             nhole > worst_n && (worst_n = nhole; worst_s = sacc)
+            nhole > 0 && push!(holelist, (sacc, nhole))
             sacc += step_s
         end
         println("   samples=", total, "  holes=", holes, " (", round(100*holes/max(total,1), digits=2), "%)",
                 "   stations with any hole: ", badstations)
         println("   worst station: s=", round(worst_s, digits=1), " m with ", worst_n, " of ", nlat, " lateral samples missing")
+        # the WORST TEN, so a driveability failure at a given s can be cross-referenced against the
+        # terrain rather than guessed at (a single "worst" figure cannot be cross-referenced).
+        sort!(holelist, by = x -> -x[2])
+        println("   worst ten stations (s → missing/", nlat, "):")
+        for (ss, nn) in holelist[1:min(10, end)]
+            println("      s=", lpad(round(ss, digits=1), 9), "  ", lpad(nn, 3), " missing")
+        end
         flush(stdout)
     end
     if CLINE !== nothing && haskey(ENV,"JM_LATDIAG")   # diagnose grass-threshold false-fire at the start
@@ -5581,7 +5592,14 @@ function main()
         key(GLFW.KEY_ESCAPE) && break
         SMOKE && isempty(SHOTS) && frames >= 40 && break
         SMOKE && shots_done[] && !isempty(SHOTS) && break
-        now = time(); dt = clamp(now-last, 0.0, 0.05); last = now
+        # E106-S16: the timestep is WALL-CLOCK, so a headless run spins as fast as the CPU allows
+        # and advances almost no SIM time per frame -- the driveability sweep covered 0.1 s of sim
+        # time in thousands of frames. JM_FIXED_DT=<seconds> advances a fixed step instead, which
+        # both lets a headless run cover a whole lap and makes it DETERMINISTIC (a gate that
+        # depends on machine speed is not a gate). Unset = the shipped wall-clock behaviour.
+        now = time()
+        dt = FIXED_DT > 0 ? FIXED_DT : clamp(now-last, 0.0, 0.05)
+        last = now
         inp, rst, recover = read_input()
         # ── E85-S6: HEADLESS AUTODRIVE (JM_AUTODRIVE=1) ─────────────────────────────────────────
         # There was no way to make the PLAYER's car move without a human: `JM_AI_TEST` drives the AI
@@ -5624,7 +5642,11 @@ function main()
                         if air > DC[].airmax; DC[].airmax = air; DC[].air_s = s0; end
                         air > DC_AIR_MAX && (DC[].air_bad += 1)
                     end
-                    if DC[].lastz != 0.0
+                    # Skip the first second: the car SETTLES onto the track at spawn, which is a
+                    # legitimate one-frame height step (27.7 m/s on the Glen). Counting it made
+                    # every run report a "bounce" at s=0 -- an instrument that always fails is as
+                    # useless as one that never does.
+                    if DC[].lastz != 0.0 && cs.t > DC_SETTLE_S
                         vz = (Float64(cs.y) - DC[].lastz) / step
                         if vz > DC[].vzmax; DC[].vzmax = vz; DC[].vz_s = s0; end
                         vz > DC_VZ_MAX && (DC[].vz_bad += 1)

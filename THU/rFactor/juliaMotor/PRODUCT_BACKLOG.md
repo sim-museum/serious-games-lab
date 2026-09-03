@@ -5607,3 +5607,43 @@ spelling, so reformatting tripped it. Relaxed to a whitespace-tolerant match of 
 the sentinel to NaN). A gate that fails on formatting trains people to ignore it.
 
 Suite 23/23, and the sim actually starts.
+
+### E106-S16 (2026-09-03) — ✅ the driveability sweep RUNS, and it localises real defects on both tracks
+
+Deliverable 1 of the PO's driveability item. Two blockers had to go first:
+
+* **The timestep is WALL-CLOCK** (`dt = now - last`), so a headless run spins as fast as the CPU
+  allows and advances almost no SIM time — S15's sweep covered 0.1 s of sim time in thousands of
+  frames. `JM_FIXED_DT=<s>` advances a fixed step: a lap becomes possible AND the run becomes
+  deterministic (a gate whose result depends on machine speed is not a gate).
+* **`JM_SHOTS`' first field is a LAPDIST in metres, not a frame number** — so "run for 8000 frames"
+  was actually "place the car at s=8000 m and shoot immediately". `JM_SHOT_SETTLE` is the run
+  length. My S15 note that "the controller returns thr=0" was therefore reading a car that had been
+  alive for three frames.
+
+**Results — the sweep drives, and the three tracks differ sharply:**
+
+| track | from | reached | max air | max upward | longest stall | verdict |
+|---|---|---|---|---|---|---|
+| Watkins Glen | s=0 | **3,543 m of 3,750** | 0.10 m | 3.93 m/s | 12.8 s | clean but for one stall |
+| Nürburgring | s=0 | 776 m of 22,756 | **10.94 m** | 32.5 m/s | 372 s | fails near the start |
+| Spa | s=0 | 273 m of 14,125 | **11.02 m** | 104 m/s | 383 s | fails near the start |
+| Spa | s=4,000 | **8,440 m** (4.4 km driven) | **9.41 m at s≈6,760** | 18.5 m/s | 4.0 s | one launch site |
+
+**Watkins Glen completes 94% of a lap cleanly**, which is what makes the other two meaningful: the
+instrument can report clean, so the failures are not the harness. And starting Spa at s=4,000 drives
+4.4 km, so **the spawn is not inherently broken either** — the start REGION is.
+
+**Cross-referenced against the hole census (now listing the worst ten stations, not just one):**
+Spa's holes cluster at **s=270–520** — exactly where the from-zero sweep dies. But **s≈6,760, where
+the car was thrown 9.4 m into the air, is NOT in the hole list at all.** Those are two different
+defects and must not be conflated: a holed start region, and a launch site with another cause.
+
+⚠️ **Instrument fault of mine, fixed:** the bounce test counted the car SETTLING onto the track at
+spawn (27.7 m/s in one frame), so every run reported a "bounce" at s=0 — a check that always fails is
+as useless as one that never does. The first second is now excluded.
+
+**Next:** characterise s≈6,760 on Spa (probe the ground and the car's state through it — not a hole,
+so suspect geometry or a seam), and the Ring's failure before s=776.
+
+Suite 23/23.
