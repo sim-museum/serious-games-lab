@@ -5886,3 +5886,35 @@ is verified, and three hypotheses are eliminated with evidence. `JM_FLATPOLY` re
 nothing wrong has reached the PO's build. Switching projects per the standing rule.
 
 Suite 23/23.
+
+### E106-S23 (2026-09-03) — 🔴 **S20's RATIONALE WAS WRONG. The clipped band is TYRES, not suspension — and the AI rods are still unidentified.**
+
+S20 aligned the AI chassis clip with the player's `0.85` and justified it from a code comment
+("0.85 = skinny clip (garbage-free); >1.0 exposes the GPL-hidden spider-leg suspension"). I never
+looked at what was actually in the band. This sprint did, and it is not suspension:
+
+| chassis | tris beyond 0.85 | what they are |
+|---|---|---|
+| Cooper | 537 | **`c1out` 264 + `c1ouf` 263** — tyre textures — plus 10 others |
+| Eagle | 309 | **`out1a` 208 + `tiretx1` 96** — `tiretx` is literally a tyre texture |
+| Lotus (player, for comparison) | 118 | **`l1out` 102** — the same family |
+
+All of it sits at |lat| 0.85-0.89 and wheel height. It is **embedded tyre geometry inside the body
+mesh**, and the player car has had it clipped all along because the wheels are drawn separately from
+their own meshes.
+
+**So S20's change is defensible but for a different reason than I gave** — it makes the AI cars
+consistent with the player, removing duplicate tyre geometry the separate wheels replace. It is
+**NOT** the fix for the PO's rods, and I should not have implied it was.
+
+**The Lotus's mechanism does not transfer either.** Per-group height census: every Cooper and Eagle
+group lies within −0.32..0.58, whereas the Lotus's excluded groups `27288`/`39792` sit at 0.42..1.16
+— genuinely displaced. **The AI chassis have no displaced assemblies.**
+
+⚠️ **The lesson, and it is mine: I reasoned by analogy from the player car twice, and the analogy
+failed both times.** The rods must be found where the PO saw them — in pixels — before being
+explained. **Next sprint: get a close chase capture of an AI car** (the replay viewer has per-car
+cinematic cameras and `JM_REPLAY_FOCUS` selects the car), locate the rods on screen, and only then
+map back to geometry.
+
+Suite 23/23 (S20's clip change stands; the record is corrected, not the code).
