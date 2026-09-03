@@ -4871,6 +4871,40 @@ function main()
     # broke the wrap → laps never counted → no finish).  AILINE = CLINE when there's a field.
     CLINE  = !SKIDPAD ? RaceAI.build_line(ALIGNED, groundz) : nothing
     CLINE !== nothing && println("  CLINE: centreline length = ", round(Int, CLINE.total), " m  (", TRACKSEL, ")")
+    # E106-S14 (PO: "ensure nurburgring and spa can be driven without obstacles"): census the
+    # terrain HOLES along the whole lap instead of discovering them by crashing into one. Walks the
+    # centreline and samples the physics ground across the corridor the car can actually reach; a
+    # sample with no surface is a hole. E106-S13 made holes survivable -- this says how many there
+    # are, which is the honest measure of a track's readiness. JM_HOLECENSUS=<half-width m>.
+    if CLINE !== nothing && get(ENV,"JM_HOLECENSUS","") != ""
+        halfw   = parse(Float64, get(ENV,"JM_HOLECENSUS","12"))
+        step_s  = parse(Float64, get(ENV,"JM_HOLECENSUS_DS","10"))
+        latstep = 1.5
+        nlat = Int(floor(2*halfw/latstep)) + 1
+        println("== JM_HOLECENSUS ", TRACKSEL, ": ground coverage ±", halfw, " m of the centreline, every ", step_s, " m ==")
+        total = 0; holes = 0; worst_s = -1.0; worst_n = -1; badstations = 0
+        sacc = 0.0
+        while sacc < CLINE.total
+            nhole = 0
+            for k in 0:nlat-1
+                lat = -halfw + k*latstep
+                # pose_at returns (x, y, z, θ) and applies the lane offset itself -- use it rather
+                # than recomputing the normal (and do not mistake y for z, which indexing (x,y,z,θ)
+                # as (x,z) silently does).
+                pp = RaceAI.pose_at(CLINE, sacc, lat)
+                h = JuliaMotor.hat3d(TERRAIN, Float64(pp[1]), Float64(pp[3]); ref=Inf)
+                total += 1
+                h[3] || (holes += 1; nhole += 1)
+            end
+            nhole > 0 && (badstations += 1)
+            nhole > worst_n && (worst_n = nhole; worst_s = sacc)
+            sacc += step_s
+        end
+        println("   samples=", total, "  holes=", holes, " (", round(100*holes/max(total,1), digits=2), "%)",
+                "   stations with any hole: ", badstations)
+        println("   worst station: s=", round(worst_s, digits=1), " m with ", worst_n, " of ", nlat, " lateral samples missing")
+        flush(stdout)
+    end
     if CLINE !== nothing && haskey(ENV,"JM_LATDIAG")   # diagnose grass-threshold false-fire at the start
         pl = RaceAI.project(CLINE, cs.x, cs.z); ph = JuliaMotor.hat(TRKSURF, cs.x, cs.z)
         println("  LATDIAG spawn: CLINE lat=", round(pl[2],digits=2), "  TRKSURF found=", ph.found,

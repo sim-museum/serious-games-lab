@@ -5541,3 +5541,35 @@ launched it (+7 m, then a 6.65 m drop, measured from the PO's replay). Gated by 
    mesh gaps.
 4. Re-check the "stuck against scenery, race over" half: the Nurburgring run ended pinned at 0 km/h
    at lateral 6.7 m. The levitation fix does not by itself address being unable to continue.
+
+### E106-S14 (2026-09-03) — the terrain-hole census: both tracks measured, and Spa is worse than the Ring
+
+Deliverable 2 of the PO's driveability item. `JM_HOLECENSUS=<half-width m>` walks the centreline and
+samples the PHYSICS ground across the corridor the car can actually reach; a sample with no surface
+is a hole. E106-S13 made holes survivable — this says **how many there are**, which is the honest
+measure of a track's readiness, and it replaces discovering them by crashing into one.
+
+| track | samples | holes | stations with any hole | worst station |
+|---|---|---|---|---|
+| Nürburgring | 38,692 | **486 (1.26%)** | 154 | s=19,960 m — 5 of 17 lateral samples missing |
+| Spa | 24,004 | **365 (1.52%)** | 120 | **s=270 m — 8 of 17 missing** |
+
+Both circuits have holes, and **Spa is the worse of the two** — a higher rate, and its worst station
+is 270 m from the start with nearly half the sampled corridor missing. That is consistent with the
+PO's Spa session never getting far, and it is the first hard evidence about Spa's readiness, which
+had none.
+
+⚠️ Caveat stated rather than buried: the ±12 m corridor is wider than the racing surface, so some of
+these holes are off-track ground the car only reaches when it runs wide — which is exactly what the
+PO was doing at the Ring when it launched. The census counts reachable ground, not road.
+
+⚠️ A bug of my own, caught before it produced a number: `pose_at` returns `(x, y, z, θ)` and my first
+census read element 2 as z — the HEIGHT. It would have sampled a diagonal line through the terrain
+and reported confident nonsense. Fixed to use `pose_at`'s own lane offset instead of recomputing the
+normal.
+
+Still open on this item: the full-lap driveability sweep (autodrive both circuits, assert no vertical
+excursion / no bounce-back / no terminal stop), and the "stuck against scenery, race over" half — the
+Ring run ended pinned at 0 km/h, which the levitation fix does not by itself address.
+
+Suite 23/23.
