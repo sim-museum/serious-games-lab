@@ -1018,7 +1018,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
             ux=w[2][1]-w[1][1]; uy=w[2][2]-w[1][2]; uz=w[2][3]-w[1][3]
             vx=w[3][1]-w[1][1]; vy=w[3][2]-w[1][2]; vz=w[3][3]-w[1][3]
             nz=ux*vy-uy*vx; nl=sqrt((uy*vz-uz*vy)^2+(uz*vx-ux*vz)^2+nz^2)
-            (nl > 1f-6 && abs(nz)/nl > 0.4f0) && push!(hat, Render.GPL3DO.Tri(w, nn, tr.uv, tr.tex, tr.col))
+            (nl > 1f-6 && abs(nz)/nl > 0.4f0) && push!(hat, Render.GPL3DO.Tri(w, nn, tr.uv, tr.tex, tr.col, tr.flat))
             # E68 S9 (PO/Ring ~s18400): a section's UNLIT UNDERSIDE hovered beside the crest as a
             # dark angular slab — we render scenery two-sided, GPL's single-sided cull hides these.
             # Skip strongly DOWN-facing faces that sit ABOVE road level BESIDE the corridor

@@ -1101,7 +1101,7 @@ function _clip_lat(t, maxlat::Float32)
     [GPL3DO.Tri((verts[1][1], verts[i][1], verts[i+1][1]),
                 (verts[1][2], verts[i][2], verts[i+1][2]),
                 (verts[1][3], verts[i][3], verts[i+1][3]),
-                t.tex, t.col) for i in 2:length(verts)-1]
+                t.tex, t.col, t.flat) for i in 2:length(verts)-1]   # a clipped piece keeps the original's shading kind
 end
 
 function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing, cockpit_dress=nothing)
@@ -1252,7 +1252,7 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
                 # view only, so "both faces take the interior texture" is exactly right here.
                 _ = nlat
                 if hasuv
-                    push!(newk2, GPL3DO.Tri(t.p, t.n, t.uv, cdtex, (1f0,1f0,1f0)))
+                    push!(newk2, GPL3DO.Tri(t.p, t.n, t.uv, cdtex, (1f0,1f0,1f0), false))   # dressed: given real UVs
                     continue
                 end
             end
@@ -1311,7 +1311,7 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
             # col WHITE: the flat colour on these polys decodes as near-black garbage (it is a
             # texture-slot word, not a colour), and anything downstream that multiplies by it would
             # kill the texture.
-            push!(dressed, GPL3DO.Tri(t.p, t.n, uv, tex, (1f0,1f0,1f0)))
+            push!(dressed, GPL3DO.Tri(t.p, t.n, uv, tex, (1f0,1f0,1f0), false))   # dressed: given real UVs
         end
         kept = dressed
     end
@@ -1364,7 +1364,11 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
     end
     for t in kept
         # flat-shaded poly (see the note below): three identical UVs = no mapping, colour only.
-        flatpoly = FLATPOLY_FIX && t.tex != "" && t.uv[1] == t.uv[2] && t.uv[2] == t.uv[3]
+        # E106-S19: a poly GPL authored with no uv list is flat-shaded -- draw it in its own colour
+        # rather than sampling one arbitrary texel of a texture it was never mapped to. This is the
+        # parser's own flag, not the "all three UVs equal" INFERENCE S10 used: that inference also
+        # caught textured polys whose UVs coincide, which is what turned the cockpit cowl yellow.
+        flatpoly = FLATPOLY_FIX && t.tex != "" && t.flat
         v = get!(groups, flatpoly ? "" : t.tex, Float32[])
         mz = mirror ? -1f0 : 1f0   # negate render-Z → right-handed track frame (gx,gz,-gy)
         for i in 1:3

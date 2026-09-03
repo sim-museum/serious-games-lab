@@ -29,6 +29,13 @@ struct Tri
     uv::NTuple{3,NTuple{2,Float32}}   # 3 UVs
     tex::String                       # mip name ("" = untextured)
     col::NTuple{3,Float32}            # flat-shade surface colour (ARGB→RGB), for untextured polys
+    # E106-S19: TRUE when GPL authored this poly with NO uv list at all -- the FLAT poly types
+    # (0x81B/0x81C/0x81E: "col, count, vert*") as opposed to the textured ones (0x820/0x821/
+    # 0x1F/0x20/0x21, which carry a "UV*" block). The parser knows this exactly; downstream code
+    # could only INFER it from "all three UVs are equal", which conflates a genuinely flat poly
+    # with a textured one whose UVs happen to coincide -- and acting on that inference is what
+    # turned the cockpit cowl bright yellow in S10.
+    flat::Bool
 end
 
 struct Mesh3DO
@@ -134,9 +141,10 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
             fn = (nx/l, ny/l, nz/l)
         end
         N = isempty(norms) ? [fn for _ in P] : [txn(nrm(n)) for n in norms]
-        UV = isempty(uvs) ? [(0f0,0f0) for _ in P] : uvs
+        isflat = isempty(uvs)                    # no uv list authored => GPL flat-shaded poly
+        UV = isflat ? [(0f0,0f0) for _ in P] : uvs
         for k in 2:length(P)-1                      # fan: (1, k, k+1)
-            push!(tris, Tri((P[1],P[k],P[k+1]), (N[1],N[k],N[k+1]), (UV[1],UV[k],UV[k+1]), tex, col))
+            push!(tris, Tri((P[1],P[k],P[k+1]), (N[1],N[k],N[k+1]), (UV[1],UV[k],UV[k+1]), tex, col, isflat))
             push!(groups, grp)
         end
         push!(ALL_GROUPS, grp); PARKDEPTH[] > 0 && push!(PARKED_GROUPS, grp)

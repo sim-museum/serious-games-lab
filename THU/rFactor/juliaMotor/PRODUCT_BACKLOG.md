@@ -5744,3 +5744,43 @@ that survives it. This is the PO's call and the item is ready for it.
 ⚠️ Four sprints reached on this backlog item; switching projects next per the standing rule.
 
 Suite 23/23.
+
+### E106-S19 (2026-09-03) — the engine-graphics item: the flat-poly theory is REFUTED properly, and the real question is named
+
+S10 inferred "flat-shaded poly" from *all three UVs being equal* and painting those in their own
+colour turned the cockpit cowl bright yellow. This sprint replaced the inference with the truth and
+tested it again.
+
+**The parser now marks flat polys explicitly.** GPL's poly types split cleanly: 0x81B/0x81C/0x81E
+carry `col, count, vert*` and no uv block; 0x820/0x821/0x1F/0x20/0x21 carry a `UV*` block. `Tri`
+gained a `flat` field set from that, so downstream code no longer has to guess. The two disagree
+measurably: on `lotd.3DO`, **238 polys are genuinely flat AND textured, where the UV inference caught
+324** — it over-caught by 86.
+
+**And the cowl is STILL yellow.** So the yellow was never an artifact of the inference: those cowl
+polys really are flat-type. The theory that "GPL paints flat polys in their own colour" is refuted
+for this model, and `JM_FLATPOLY` stays **default OFF**.
+
+**What the measurements now say — all of it against the theory being a decode error:**
+* the flat polys' colours decode as **plausible surfaces**, not indices: brass `0xbfa338` (48),
+  dark grey `0x292929` (42), light grey `0xc7c7c7` (40), black (39), dark green `0x212921` (32),
+  silver `0xb2b2b5` — 21 distinct colours in all;
+* the 48 **brass** polys — the ones that paint the cowl yellow — sit at **x −0.18..1.04, lateral
+  ±0.29, height 0.20..0.35**: the top of the nose ahead of the cockpit, exactly the surface that
+  turns yellow;
+* and they are **bound to `lotd`, the painted livery texture**.
+
+**So GPL textures these polys despite their type carrying no UV block.** That is the real question,
+and it is now precise: *what does GPL do with a flat-TYPE poly that has a bound texture?* Our
+renderer currently samples texel (0,0) of `lotd` for them — which is why the shipped cowl looks
+plausibly pale-green rather than yellow. That is luck, not correctness.
+
+**Next step, concretely:** record the poly TYPE (0x81B / 0x81C / 0x81E) on each `Tri` and check
+whether the brass 48 are one specific subtype. If they are, that subtype is "textured with implicit
+coordinates" and needs its own mapping rule; if they are spread across subtypes, the colour word is
+doing something else entirely and the question moves to how GPL's renderer combines it.
+
+⚠️ Two failed attempts on this item now. Both were shipped default-OFF and neither reached the PO's
+build — but the record should say plainly that the fix is not yet found, only better bounded.
+
+Suite 23/23.
