@@ -370,8 +370,14 @@ end
 # for monza and watglen, so a Monza run was saved as `lotus49_zandvoort ...ibt` -- a mislabelled
 # capture is worse than no capture, because later analysis cannot tell it apart from the real
 # Zandvoort references it sits beside. (A parity capture must record the state it claims.)
-const IBTNAME = NURB ? "nurburgring nordschleife" : SKIDPAD ? "skidpad" :
-                MONZA ? "monza" : WATGLEN ? "watglen" : "zandvoort"
+# E106-S11 (2026-09-02): the same fall-through bit SPA -- a Spa race was written as
+# `lotus49_zandvoort ...ibt`. Fixing it track-by-track only postpones the next one, so the name now
+# DERIVES from the track selection and the hardcoded default is gone: an unlisted track names
+# itself instead of borrowing Zandvoort's identity. Only the long-form names that differ from the
+# selector key stay listed.
+const IBTNAME = get(Dict("nurburgring" => "nurburgring nordschleife",
+                         "zandvort"    => "zandvoort"),   # dir spelling vs the reference captures
+                    TRACKSEL, TRACKSEL)
 # Pick the reference capture by PREFIX, not by an exact dated filename. The hardcoded
 # "2026-06-14 11-11-37" names do not exist anywhere on this machine — the real captures are dated
 # 2026-06-24 — so the lookup could never succeed and every session ended with a SystemError. A

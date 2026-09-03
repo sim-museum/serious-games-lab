@@ -5415,3 +5415,19 @@ turns the cockpit cowl bright yellow**, because those baked colours are GPL's MO
 modulation path is done; that is the next task and it is now well-specified.
 
 Suite 22/22 (re-run after every edit).
+
+### E106-S11 (2026-09-02) — the .ibt mislabel bit again, at Spa; fixed at the root this time
+
+A Spa race wrote its telemetry as `lotus49_zandvoort 2026-09-02 21-44-59.ibt`. This is the SAME
+fall-through E91 fixed for Monza and Watkins Glen: `IBTNAME` was a chain of per-track ternaries
+ending in a hardcoded `"zandvoort"`, so every track nobody had listed borrowed Zandvoort's
+identity — and E91's own note says a mislabelled capture is worse than none, because later analysis
+cannot tell it from the real references it sits beside.
+
+Fixing it track-by-track only postpones the next one, so the name now **derives from the track
+selection** and the hardcoded default is gone: an unlisted track names itself. Only `nurburgring`
+(long form) and the `zandvort`/`zandvoort` directory-vs-reference spelling stay aliased. Verified
+by running Spa: writes `lotus49_spa …ibt`. The mislabelled capture was renamed to its true
+identity (data preserved, not deleted).
+
+Suite 22/22.
