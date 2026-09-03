@@ -117,6 +117,7 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
     # count guard (a real polygon has 3..64 verts; bigger = a misparsed node) and
     # count-bounded array readers for vertex#/UV runs
     ok(c) = (0 < c <= 64) ? Int(c) : 0
+    tdcount = Ref(0)                                  # E106-S22: JM_TYPEDUMP poly counter
     rv(base, cnt) = [Int(u32(b, base + (k-1)*4)) for k in 1:cnt]
     ru(base, cnt) = [(f32(b, base + (k-1)*8), f32(b, base + (k-1)*8 + 4)) for k in 1:cnt]
 
@@ -308,6 +309,19 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
         elseif typ == 0x81C                         # smooth: col, count, vert*, col*
             cnt = ok(u32(b,p+8)); vs = rv(p+12, cnt); emit(vs, [], [], curtex, M, grp, rgb(u32(b,p+4)), UInt32(0x81C))
         elseif typ == 0x81D                         # normals: col, count, vert*, norm*
+            # E106-S22: JM_TYPEDUMP=0x81D prints the raw header words of the first few polys of a
+            # type. The 48 polys that paint the cowl yellow are all 0x81D, and painting them with
+            # rgb(p+4) is wrong on screen while the same decode is right elsewhere -- so the
+            # question is whether p+4 is an RGB colour FOR THIS TYPE. Read the bytes, do not argue.
+            if get(ENV,"JM_TYPEDUMP","") == "0x81D" && tdcount[] < 6
+                tdcount[] += 1
+                println("  [0x81D #", tdcount[], "] p+4=0x", string(u32(b,p+4), base=16, pad=8),
+                        "  p+8=", u32(b,p+8), " (count)",
+                        "  p+12=0x", string(u32(b,p+12), base=16, pad=8),
+                        "  p+16=0x", string(u32(b,p+16), base=16, pad=8),
+                        "  tex='", curtex, "'")
+                flush(stdout)
+            end
             cnt = ok(u32(b,p+8)); emit(rv(p+12,cnt), [], rv(p+12+cnt*4,cnt), curtex, M, grp, rgb(u32(b,p+4)), UInt32(0x81D))
         elseif typ == 0x81E                         # smooth+normals: col, count, vert*, col*, norm*
             cnt = ok(u32(b,p+8)); emit(rv(p+12,cnt), [], rv(p+12+2*cnt*4,cnt), curtex, M, grp, rgb(u32(b,p+4)), UInt32(0x81E))

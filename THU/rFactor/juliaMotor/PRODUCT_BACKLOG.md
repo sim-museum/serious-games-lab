@@ -5850,3 +5850,39 @@ for 0x820). Retagged by walking each `elseif typ ==` branch and using ITS id. Re
 type id would have sent the next sprint to the wrong code.
 
 Suite 23/23.
+
+### E106-S22 (2026-09-03) — the colour decode is VERIFIED CORRECT; the yellow cowl is a BRANCH we draw and GPL does not. **Sprint limit reached.**
+
+The remaining suspect was the colour word. `JM_TYPEDUMP=0x81D` now prints raw poly headers, and the
+bytes answer it:
+
+```
+[0x81D #1] p+4=0xff0e160b  count=4  tex='frontlot'      -> A=ff RGB=0e160b  very dark green
+[0x81D #2] p+4=0xffb2b2b6  count=4  tex=''              -> A=ff RGB=b2b2b6  silver
+[0x81D #5] p+4=0xff0e160b  count=4  tex='frontlot'
+```
+
+**`p+4` is a genuine ARGB colour and our decode is right** — dark green and silver, exactly the
+surfaces those polys should be. So the 48 cowl polys really do carry brass `0xbfa338`; the decode was
+never the problem, and that line of enquiry is closed.
+
+**Which leaves the geometry itself.** Those 48 sit in a band at height **0.23–0.34**, face upward, and
+are **not covered by bodywork**: the only geometry above their footprint is the DRIVER figure —
+`helblack` 48, `plahelm` 6, `plaface` 4, `lotarms` 4 — plus 200 untextured. Nothing skins them.
+
+**So the best remaining hypothesis: we are walking a model BRANCH that GPL does not draw.** That is a
+known shape in this file — the player car already excludes groups `27288`/`39792` as "WHOLE DISPLACED
+ASSEMBLIES … GPL runtime-hidden branches our positioner walk mis-places", and E106-S6 established
+that GPL steers variants through SELECTORS whose subtypes we only partly decode. A brass-coloured
+plate under the driver is exactly the sort of thing a hidden branch contains.
+
+**Where the next sprint should start:** record each triangle's GROUP id alongside its type (the
+parser already tracks `grp`), then check whether the 48 brass polys share a group — and whether that
+group is reachable only through a selector subtype we currently walk unconditionally.
+
+⚠️ **This item has now had FOUR sprints (S10, S19, S21, S22) and is not fixed.** What it has gained:
+the flat/textured split is exact rather than inferred, the poly types are recorded, the colour decode
+is verified, and three hypotheses are eliminated with evidence. `JM_FLATPOLY` remains default OFF, so
+nothing wrong has reached the PO's build. Switching projects per the standing rule.
+
+Suite 23/23.
