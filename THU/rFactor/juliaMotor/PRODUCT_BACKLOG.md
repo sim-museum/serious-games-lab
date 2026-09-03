@@ -5690,3 +5690,57 @@ then decide the fix — the honest options are to repair the two meshes' seams, 
 tolerant of a step-beside-a-hole, which would cover every track including ones not yet tested.
 
 Suite 23/23.
+
+### E106-S18 (2026-09-03) — ⭐⭐ **THE GRANDSTAND IS IN THE PHYSICS SURFACE. The PO's original words were exactly right.**
+
+PO, on the Nürburgring: *"car crashed, levitated and bounced near the last grandstand building on
+the right."* Four sprints later the instruments name it, and the PO's reading of it was correct.
+
+**The Ring sweep's event log:**
+
+| site | peak air | speed | world |
+|---|---|---|---|
+| s=773.5 | 2.41 m | 56 km/h | (−1385.9, −2900.7) |
+| s=0.0 ×7 | **8.12 → 10.94 m** | **0 km/h** | **(−940.2, −2308.5)** — the same point each time |
+
+A car at **0 km/h** thrown 8–11 m into the air, repeatedly, at one fixed position. Probing the
+physics ground there:
+
+```
+dz=  8   619.78  627.86  619.91  619.96 ...
+dz= 12   627.85  628.21  627.99  619.98 ...
+```
+
+Smooth terrain at ~619.8 m — and a cluster of cells at **627.9–628.2 m, an 8.4 m STEP**. That is a
+**building baked into the terrain mesh and treated as drivable ground**. The car's excursions
+(8.12–10.94 m) match the step's height. It is the grandstand.
+
+**Why this was invisible before:** `SOLIDS` is EMPTY at the Ring by design — the code says "scenery
+baked in" — so the buildings are not collidable OBJECTS, they are part of the driving SURFACE. There
+was never a collision to find. And my earlier probe of the PO's own crash coordinates showed flat
+terrain because that is where the car came to REST; the offending geometry is ~70 m away, which is
+why the autodrive found it and a point-probe did not.
+
+**Both tracks now have a named defect, and they are the same family** — a step in the physics
+surface that a car cannot survive:
+* **Spa, s≈6,759**: a ~2 m step with a diagonal gap along the seam (E106-S17).
+* **Nürburgring, (−940, −2308)**: an 8.4 m building plateau.
+
+**The fix, and the choice for the PO.** A mechanism already exists: `HAT_EXCLUDE` drops named
+textures (`br_under`, `villone`) from the physics HAT, with the standing warning that
+`drop_overpass` must NOT be used because the Ring has bridges one genuinely drives over. Two honest
+options:
+1. **Name the offending geometry** (identify the grandstand's texture, add it to `HAT_EXCLUDE`) —
+   surgical, faithful, but per-building and per-track, and it will need repeating.
+2. **Make the physics tolerant of a step** — reject a ground sample that is implausibly far above
+   the car's current reference, the way E106-S13 now rejects the off-mesh sentinel. One rule,
+   covers every track including untested ones, and cannot be defeated by a building nobody has
+   named. Risk: it must not swallow legitimate terrain (the Ring's real jumps and banks), so the
+   threshold needs measuring against the steepest genuine ground on each circuit.
+
+**Recommendation: (2), with the threshold measured rather than guessed** — and (1) kept for anything
+that survives it. This is the PO's call and the item is ready for it.
+
+⚠️ Four sprints reached on this backlog item; switching projects next per the standing rule.
+
+Suite 23/23.
