@@ -2652,6 +2652,18 @@ let objnames=Set{String}()
     # SNAP every object to OUR terrain (the HAT) instead of its authored GPL height —
     # this kills floaters (GPL placed trees/crowds on dune terrain that ours doesn't match).
     groundz(x,y) = (h=JuliaMotor.hat3d(TERRAIN, Float64(x), Float64(y); ref=Inf); h[3] ? Float32(h[1]) : -999f0)  # -999 = OFF the HAT
+    # E106-S13 (PO 2026-09-02: "car crashed, levitated and bounced" at the Nurburgring).
+    # E104(b) established the contract that off-mesh must reach the PHYSICS as NaN ("unknown"), and
+    # offroad_smoke gates it -- but the PLAYER's closure above was never converted, so it still
+    # handed the physics the -999 SENTINEL. drive_rt3d guards only `isfinite`, and -999 is finite:
+    # a wheel sampling a hole was told the ground lay 999 m below, the car sank toward it, and the
+    # correction on re-acquiring real terrain launched it. Measured on the PO's replay: sank 1.4 m,
+    # rose 7 m over 0.8 s above ground that is FLAT at 620.1-620.4 (probed), then fell 6.65 m in a
+    # single frame -- the PO's "levitated and bounced", and a breach of the standing rule that the
+    # car must NEVER bounce back.
+    # Converted HERE, at the physics boundary only: the app's own consumers below all test
+    # `> -900f0` and keep the sentinel they were written against.
+    groundz_phys(x,y) = (g = groundz(x,y); g > -900f0 ? g : NaN32)
     # placement height: snap to OUR terrain where the HAT covers it (kills floaters from a
     # terrain mismatch); else fall back to the object's AUTHORED GPL height (same frame as the
     # track mesh) so far-trackside objects the HAT doesn't reach aren't lost.
@@ -5268,7 +5280,7 @@ function main()
             for (i,pc) in enumerate(AIPHYS)
                 r = AIyaw(pc); maxr = max(maxr, abs(r)); abs(r) > 2.5 && (spins += 1)
                 thr,brk,st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i], pc.x, pc.z, pc.θ, pc.v, r; power=AI_POWER)
-                DriveRT3D.step_car3d!(pc, thr, brk, st, 1/60; manual=false, groundz=groundz)
+                DriveRT3D.step_car3d!(pc, thr, brk, st, 1/60; manual=false, groundz=groundz_phys)
                 ho = solid_hit(pc.x, pc.z, pc.θ, pc.v); ho !== nothing && AIbump!(pc, ho[1], ho[2], ho[3], ho[4], ho[5], ho[6])   # E15 in the self-test too
             end
         end
@@ -5680,7 +5692,7 @@ function main()
             cs.s_vreset(cs.integ, zeros(14))
             hR = groundz(pR[1], pR[3]; acquire=true); isfinite(hR) && (cs.zref = Float64(hR))
             cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
-        elseif rst; respawnX!(cs; groundz=groundz); DriveRT3D.damage_reset!()   # E94-P4: a respawn is a NEW car, not a repaired one
+        elseif rst; respawnX!(cs; groundz=groundz_phys); DriveRT3D.damage_reset!()   # E94-P4: a respawn is a NEW car, not a repaired one
         else
             # E56 ALL-MODELICA human car: feed the trackside spring-damper CONTACT force (wall = bounce,
             # hedge/hay = bury & stick) + last frame's draft drag-scale into the chassis ODE BEFORE the
@@ -5833,7 +5845,7 @@ function main()
             # drops MANUAL to AUTO on its own, which is what a driver would want.
             step_carX!(cs, inp.throttle * DriveRT3D.engine_power(), inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
-                        groundz=groundz)
+                        groundz=groundz_phys)
             if !SKIDPAD     # track position + lap timing
             hr = JuliaMotor.hat(TRKSURF, cs.x, cs.z)            # track-relative position (for lapdist/lateral HUD)
             if hr.found
@@ -5922,7 +5934,7 @@ function main()
                         (sealx, sealz) = WreckSeal.seal_target(WRECKED[], cs.x, cs.z,
                                              LASTGX[], LASTGZ[];
                                              seal_back = haskey(ENV, "JM_WRECK_SEAL_BACK"))
-                        containX!(cs, sealx, sealz; vdamp=(WRECKED[] ? 0.0 : 0.3), settle=true, groundz=groundz)
+                        containX!(cs, sealx, sealz; vdamp=(WRECKED[] ? 0.0 : 0.3), settle=true, groundz=groundz_phys)
                         BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0; BND_PK[] = 0.0; OFFDIST[] = 0.0
                     end
                 else
@@ -6197,7 +6209,7 @@ function main()
             for (i, pc) in enumerate(AIPHYS)
                 thr, brk, st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i],
                                                  pc.x, pc.z, pc.θ, pc.v, AIyaw(pc); power = AI_POWER)
-                DriveRT3D.step_car3d!(pc, thr, brk, st, ddt; manual=false, groundz=groundz)
+                DriveRT3D.step_car3d!(pc, thr, brk, st, ddt; manual=false, groundz=groundz_phys)
                 # GRASS by the rendered road half-width (|lateral|>ROAD_HALFW), the SAME yardstick as the
                 # player — NOT TRKSURF.on_track, whose 9 m half-width is far wider than the visible road, so
                 # AI ran the verge near the finish straight penalty-free + drafting (PO saw them do exactly that).

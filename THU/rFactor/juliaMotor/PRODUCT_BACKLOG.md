@@ -5477,3 +5477,40 @@ synthesized axles were applied to them.
 read as missing, synthesize straight shafts as in S9; (3) verify with a chase capture of each of
 the five AI chassis beside its GPL gold still (that per-chassis A/B is itself an open E106 item
 and can be done in the same pass).
+
+### E106-S13 (2026-09-02) — ✅ THE LEVITATION AND BOUNCE: root cause found, fixed at the boundary, gated
+
+PO (Nurburgring): *"car crashed, levitated and bounced near the last grandstand building on the
+right."* Two standing rules broken at once — the car must NEVER bounce back, and a graze should
+scrub you but not end your race (it ended pinned at 0 km/h, race over).
+
+**Measured from the PO's own replay and telemetry, before touching anything:**
+* deceleration 177 → 5 km/h while drifting right (lateral 2.3 → 6.7 m), ending pinned;
+* the car **sank 1.4 m**, then **rose 7 m in 0.8 s** (620.28 → 627.26), then **fell 6.65 m in a
+  single frame**;
+* the ground under that whole climb is **flat: 620.11 → 620.39** (probed directly with a new
+  `JM_HATPROBE` instrument, grid and path modes). So it was neither a building plateau nor a hole
+  the car fell into — something applied a large upward impulse over flat terrain.
+* `SOLIDS` is EMPTY at the Ring by design, so it was not an object collision either.
+
+**Root cause:** the player's `groundz` closure returns the **sentinel −999** for "off the HAT", and
+was wired straight into `step_car3d!`. `drive_rt3d` guards only `isfinite` — and **−999 is finite**.
+A wheel sampling a hole in the mesh was therefore told the ground lay 999 m below: the car sank
+toward it, and the correction on re-acquiring real terrain launched it.
+
+**E104(b) had already established the right contract** — off-mesh must reach the physics as NaN —
+and `offroad_smoke` gates the physics side of it. The player's closure was simply never converted.
+Fixed at the **physics boundary only** (`groundz_phys`), leaving the app's twelve internal
+consumers on the `> -900f0` sentinel they were written against.
+
+⚠️ **A wrong first fix, caught by the suite.** I first guarded the sentinel inside `drive_rt3d`.
+That passed my own new gate — and broke `offroad_smoke`, whose CONTROL arm deliberately proves the
+sentinel still misbehaves in the physics. The suite caught me changing a contract another gate was
+built on; the fix moved to the producer, where it belonged.
+
+**New gate `hat_hole_smoke` (suite now 23).** It guards the half that was missing: `offroad_smoke`
+proves the physics handles NaN, this proves the APP actually sends it — no physics call site may
+pass the raw closure, the boundary closure must map the sentinel to NaN, and the mapping is
+exercised. Negative control: against the pre-fix wiring it flags all **5** raw call sites.
+
+Suite 23/23.
