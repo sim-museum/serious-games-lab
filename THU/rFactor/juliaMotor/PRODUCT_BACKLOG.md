@@ -5784,3 +5784,35 @@ doing something else entirely and the question moves to how GPL's renderer combi
 build — but the record should say plainly that the fix is not yet found, only better bounded.
 
 Suite 23/23.
+
+### E106-S20 (2026-09-03) — ✅ the AI cars' rods: they were loaded with a WIDER clip than the player's
+
+PO: *"at least one AI car has 3 out-ward facing metal rods attached to each rear tire."*
+
+**Cause, and it is embarrassingly simple.** The player's body is extracted at `CARP_MAXLAT = 0.85`,
+a value whose own comment records why: *"0.85 = skinny clip (garbage-free); >1.0 exposes the
+GPL-hidden spider-leg suspension"*. The AI chassis were loaded at **`maxlat = 0.9`** — a wider clip —
+so every AI car kept a band of geometry the player car deliberately throws away, in exactly the
+region documented as containing the spider-leg suspension.
+
+**Measured tris beyond the player's clip, per chassis:**
+
+| chassis | tris | beyond 0.85 |
+|---|---|---|
+| Ferrari | 3,498 | 32 |
+| BRM | 4,057 | 204 |
+| Brabham | 5,141 | 227 |
+| Eagle | 4,000 | 309 |
+| **Cooper** | 4,650 | **537** |
+
+So the PO's "at least one" is **all five**, worst on the Cooper by a wide margin — which is very
+likely the car they saw. The AI cars now use the player's clip (`JM_AI_MAXLAT` overrides for A/B).
+
+⚠️ **Stated at the right strength:** the *measurement* is solid — that band is removed, and it is the
+band the player car has always excluded for this exact reason. The *visual* confirmation is only
+suggestive: the A/B captures put the AI cars far up the road, where the new frame reads cleaner
+around the bodywork but no single rod can be pointed at. **The PO's next race is the real check**,
+and if rods survive on some chassis the next step is a per-chassis capture beside its GPL gold still
+(already an open E106 item).
+
+Suite 23/23.

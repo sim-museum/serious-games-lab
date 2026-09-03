@@ -4313,8 +4313,17 @@ _ncars = max(N_AI, NETMODE == "" ? 0 : 1)
 if !SKIDPAD && _ncars > 0
     for (nm, dir, body, w) in AISPECS[1:_ncars]
         print("  loading AI car: $nm … "); flush(stdout)
+        # E106-S20 (PO: "at least one AI car has 3 outward-facing metal rods attached to each rear
+        # tire"). The AI chassis were loaded at maxlat=0.9 while the PLAYER uses CARP_MAXLAT=0.85 --
+        # and that 0.85 is documented as "skinny clip (garbage-free)", the value chosen precisely
+        # because a wider clip "exposes the GPL-hidden spider-leg suspension". So every AI car kept a
+        # band the player car throws away. Measured tris beyond 0.85: Ferrari 32, BRM 204,
+        # Brabham 227, Eagle 309, Cooper 537 -- the PO's "at least one" is all five, worst on the
+        # Cooper. Use the player's clip; JM_AI_MAXLAT overrides for A/B.
         push!(AICARMODELS, Render.load_gpl_car(nm, joinpath(AIBASE,dir), body, aiwheels(w...);
-                              exclude=("ltraymap","lshad"), maxlat=0.9f0, body_floor=BODY_FLOOR))
+                              exclude=("ltraymap","lshad"),
+                              maxlat=parse(Float32, get(ENV,"JM_AI_MAXLAT", string(CARP_MAXLAT))),
+                              body_floor=BODY_FLOOR))
         println("$(length(AICARMODELS[end].body)) parts")
     end
 end
