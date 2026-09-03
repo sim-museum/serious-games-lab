@@ -1363,7 +1363,9 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
         l < 1f-6 ? fallback : (s[1]/l, s[2]/l, s[3]/l)
     end
     for t in kept
-        v = get!(groups, t.tex, Float32[])
+        # flat-shaded poly (see the note below): three identical UVs = no mapping, colour only.
+        flatpoly = FLATPOLY_FIX && t.tex != "" && t.uv[1] == t.uv[2] && t.uv[2] == t.uv[3]
+        v = get!(groups, flatpoly ? "" : t.tex, Float32[])
         mz = mirror ? -1f0 : 1f0   # negate render-Z → right-handed track frame (gx,gz,-gy)
         for i in 1:3
             p=t.p[i]; n = smooth ? sm(p, t.n[i]) : t.n[i]; uv=t.uv[i]
@@ -1372,6 +1374,17 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
             # cockpit_clean + a >0.2 grey so the DEFAULT dark tub is unchanged (no regression); only an
             # explicit silver JM_TUB_GREY recolours the tub.
             c = (cockpit_clean && t.tex=="" && grey[1] > 0.2f0) ? grey : (tint === nothing ? t.col : tint)   # GPL flat-shade colour (or override)
+            # E106-S10 (PO: "random polygon/colors on back of engine"): a poly whose three UVs are
+            # IDENTICAL is GPL's FLAT-SHADED poly -- it carries no mapping, only its own colour. Drawn
+            # textured it samples one arbitrary texel, so each such face becomes a solid slab of
+            # whatever happened to sit at that coordinate: the copper/magenta wiring strip of back4 and
+            # lo133 across the engine, exactly the PO's "random colours". Measured on lotd.3DO: 46 of
+            # 156 engine polys and 65 of 464 body polys are flat, and their authored colours are the
+            # right ones -- BRG (0,0.24,0.12), the yellow stripe (0.75,0.64,0.22), silver, dark engine
+            # tones. Route them to the untextured stream so they draw in those colours.
+            # ⚠️ This supersedes the S8 "UV smear / slot-relative offset" note, which was measured with
+            # the WRONG vertex offsets (floats 7-9 are the COLOUR; the UV is at 10-11) and was wrong:
+            # the real UVs span a full 0..1 and are fine. JM_FLATPOLY=0 restores the old behaviour.
             # E59 cockpit parity: GPL fills the lower cockpit with the DRIVER figure; we hide it (PO E36),
             # exposing untextured tub tris whose baked colours include bright white/cream panels — they read
             # as a black/white "checkerboard" in the footwell (gold shows a dark interior + dark-green tub
@@ -1404,6 +1417,13 @@ end
 
 # GPL Lotus steering-wheel face billboard textures (the painted red rim + spokes
 # + badge).  Extracted separately so the app can spin it about its column axis.
+# E106-S10: draw GPL's flat-shaded polys (three identical UVs) in their own colour instead of
+# sampling one arbitrary texel. TESTED AND DEFAULT OFF: it visibly improves the ENGINE (the
+# copper/magenta slabs become GPL's dark engine tones) but turns the COCKPIT COWL bright yellow,
+# because those baked colours are GPL's MODULATION colours (texture x colour), not replacements --
+# so substituting them is wrong wherever the texel matters. Kept, measured, and switchable while
+# the modulation path is worked out; JM_FLATPOLY=1 enables.
+const FLATPOLY_FIX = get(ENV,"JM_FLATPOLY","0") != "0"
 const STEER_TEX = ("sterlot","lotster","lsterlog")
 """Extract the steering wheel as its own parts + pivot (centre, column axis) in the
 rig frame (X fwd, Y up, Z left), so the app can rotate it with steering input."""
@@ -1850,7 +1870,7 @@ function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, amb
     # pick a winner per-pixel per-frame.
     if depthbias
         glEnable(GLenum(0x8037))            # GL_POLYGON_OFFSET_FILL
-        glPolygonOffset(-1f0, -1f0)
+        glPolygonOffset(-2.5f0, -4f0)   # E106-S10: -1/-1 left the mirrors still flickering (PO)
     end
     setmat(prog,"uVP",vp); setmat(prog,"uModel",model)
     glUniform1i(glGetUniformLocation(prog,"uUnlit"), unlit ? 1 : 0)   # E83-S3: sprites at texture brightness

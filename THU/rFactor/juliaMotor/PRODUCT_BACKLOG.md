@@ -5380,3 +5380,38 @@ running the sim, per the standing rule, and the constant is now read via its env
 file's own comment instructs.
 
 Suite 22/22.
+
+### E106-S10 (2026-09-02) — flicker: 467 duplicate tris removed; visor translucent; the S8 engine diagnosis RETRACTED
+
+From the PO's Zandvoort video ("much improved!"):
+
+**1. "flicker on engine and inside of rear tires" / "fix flicker on mirrors"** — measured cause:
+the body carries **467 COINCIDENT SAME-FACING triangles out of 2219 (21%)**. Stacked duplicates
+tie on depth, so the rasteriser picks a different winner per frame and the surface shimmers as the
+car moves — the extractor's own `dedup` comment already describes exactly this ("z-FIGHT, flickers
+only when moving"). `dedup=:orient` now runs on the body AND the cockpit: it collapses same-facing
+stacks while KEEPING opposite-facing pairs, so double-sided panels still read from each side.
+`JM_CAR_DEDUP=0` reverts. The mirror polygon offset also went from −1/−1 to −2.5/−4 after the
+weaker value left the mirrors flickering.
+
+**2. "make visor more transluscent"** — `JM_WIND_ALPHA` default 1.0 → 0.55. (The opaque default
+came from an earlier PO call that the tan scuttle must not read glassy; this is the newer call.)
+
+**3. ⚠️ THE S8 ENGINE DIAGNOSIS WAS WRONG AND IS RETRACTED.** S8 recorded that the engine's UVs
+"span only U 0..0.58 / V 0..0.61" and land in the atlas's black gaps, needing a slot-relative UV
+offset. That was measured with the **wrong vertex offsets**: the interleaved layout is
+pos(3), normal(3), **colour(3), uv(2)** — floats 7-9 are the COLOUR and the UV is at 10-11, as
+`upload()`'s attribute pointers show. Re-measured correctly, the engine UVs span a full 0..1 and
+are fine. No slot-relative offset is needed; that work item is cancelled.
+
+**What the engine mess actually is (measured, fix not yet shippable):** 46 of 156 engine polys and
+65 of 464 body polys are GPL **flat-shaded** polys — all three UVs identical — that nonetheless
+carry a texture, so each samples ONE arbitrary texel and paints a solid slab of it (the copper /
+magenta wiring strip of `back4` and `lo133`: the PO's "random polygon/colors"). Their authored
+colours are the right ones (BRG 0,0.24,0.12; the yellow stripe 0.75,0.64,0.22; silver; dark engine
+tones). Drawing them in those colours instead (`JM_FLATPOLY=1`) **visibly fixes the engine — and
+turns the cockpit cowl bright yellow**, because those baked colours are GPL's MODULATION colours
+(texture × colour), not replacements. Implemented, measured, and **default OFF** until the
+modulation path is done; that is the next task and it is now well-specified.
+
+Suite 22/22 (re-run after every edit).

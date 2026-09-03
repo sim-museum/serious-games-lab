@@ -1475,7 +1475,14 @@ const _CARP_SRC = get(ENV,"JM_BODY_WRAP","1") != "0" ? joinpath(LOTDIR,"lotd.3DO
 # camera a DIAL FACE lies flat across the engine as a garish striped panel. Those textures belong
 # to the DRIVER view only (CARPIN keeps them); the exterior body must not carry them.
 const _COCKPIT_ONLY = ("dash7","dash7a","ldashr")   # dial faces only; lotinsa/lotinsid are also body panels, lotd is the paint
-const CARP   = Render.extract_gpl_car(_CARP_SRC; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm",_COCKPIT_ONLY...), exclude_groups=(6600,3560,27288,39792), cockpit_clean=true, maxlat=CARP_MAXLAT, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # driver body + gauge + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0.  E64 S4 (D12): groups 27288/39792 are WHOLE DISPLACED ASSEMBLIES (suspension+exhaust+driver textures at y 0.42…1.16 / −1.12…−0.42, mirror copies) — GPL runtime-hidden branches our positioner walk mis-places; they were the chase view's "chrome spider-legs" through the rear tyres
+# E106-S10 (PO: "flicker on engine and inside of rear tires", Zandvoort video): the body carries
+# 467 COINCIDENT SAME-FACING triangles out of 2219 (21%) -- stacked duplicates whose depth values
+# tie, so the rasteriser picks a different winner per frame and the surface shimmers as the car
+# moves. That is precisely what `dedup=:orient` exists for (its own comment: "z-FIGHT (flickers
+# only when moving)"); :orient collapses same-facing stacks while KEEPING opposite-facing pairs,
+# so double-sided panels still read correctly from each side. JM_CAR_DEDUP=0 reverts.
+const _CAR_DEDUP = get(ENV,"JM_CAR_DEDUP","1") != "0" ? :orient : false
+const CARP   = Render.extract_gpl_car(_CARP_SRC; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm",_COCKPIT_ONLY...), exclude_groups=(6600,3560,27288,39792), cockpit_clean=true, maxlat=CARP_MAXLAT, dedup=_CAR_DEDUP, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # driver body + gauge + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0.  E64 S4 (D12): groups 27288/39792 are WHOLE DISPLACED ASSEMBLIES (suspension+exhaust+driver textures at y 0.42…1.16 / −1.12…−0.42, mirror copies) — GPL runtime-hidden branches our positioner walk mis-places; they were the chase view's "chrome spider-legs" through the rear tyres
 const DRIVERP = Render.extract_gpl_car(LOT3DO; only=DRIVER_TEX, maxlat=0.95f0, exclude_groups=(6600,3560,27288,39792))   # the driver figure — drawn only in CHASE view (occludes the cockpit from the in-car eye).  E64 S4: the displaced assemblies 27288/39792 carry lid/arms-textured tris too — without the group filter they drew as the chase view's remaining "spears"
 const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (dial faces in the texture's lower-V region; keep default vflip)
 const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0)  # the plexiglass windscreen — drawn LAST, faintly visible glass, so the suspension shows through (GPL gold standard)
@@ -1651,7 +1658,7 @@ const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(
 # entirely. plaface/plahelm (the player face/helmet the mirrors reflect) are excluded here because
 # the helmet is drawn separately at the head pivot (E60), as are the hands, pipes and windscreen.
 const CARPIN = get(ENV,"JM_COCKPIT_DRESS","1") != "0" ?
-    Render.extract_gpl_car(joinpath(LOTDIR,"lotd.3DO"); exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm"), exclude_groups=(6600,3560,27288,39792), cockpit_clean=true, maxlat=parse(Float32,get(ENV,"JM_COCKPIT_MAXLAT","0.30")), grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0)) :
+    Render.extract_gpl_car(joinpath(LOTDIR,"lotd.3DO"); exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm"), exclude_groups=(6600,3560,27288,39792), cockpit_clean=true, maxlat=parse(Float32,get(ENV,"JM_COCKPIT_MAXLAT","0.30")), dedup=_CAR_DEDUP, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0)) :   # E106-S10: dedup coincident stacks (visor/mirror flicker)
     Render.TrackPart[]
 # The lotd body carries its own MIRROR PODS, which land exactly where the port's live-RTT round
 # mirrors already draw -- so the pods (and only the pods) are cut here, by centroid box in the
@@ -1764,7 +1771,10 @@ const MIRROR_DX   = parse(Float32, get(ENV,"JM_MIRROR_X","0.075"))
 const MIRROR_TILT = deg2rad(parse(Float32, get(ENV,"JM_MIRROR_TILT","-25")))   # E48: stand the discs UPRIGHT facing the eye (+22 read as "angled down" — we saw the top faces)
 const MIRROR_SCALE = parse(Float32, get(ENV,"JM_MIRROR_SCALE","0.5"))    # disc SIZE (round-mirror size)
 const MIRROR_SPREAD = parse(Float32, get(ENV,"JM_MIRROR_SPREAD","1.7"))   # lateral separation multiplier — push the pair out to the screen edges
-const WIND_ALPHA   = parse(Float32, get(ENV,"JM_WIND_ALPHA","1.0"))      # PO: windlot = the tan LEATHER SCUTTLE (the defining GPL cockpit element). The earlier OFF default came from drawing it TRANSLUCENT (read as an angled "plywood board"); drawn OPAQUE (1.0) it is the GPL scuttle sweeping up to the cowl on both sides. JM_WIND_ALPHA<1 makes it glassy again.
+# E106-S10 (PO, Zandvoort video: "make visor more transluscent"). The opaque 1.0 came from an
+# earlier PO call that the tan scuttle must not read as glassy; 0.55 keeps it clearly a scuttle
+# while letting the road show through the screen area as the PO now wants.
+const WIND_ALPHA   = parse(Float32, get(ENV,"JM_WIND_ALPHA","0.55"))      # PO: windlot = the tan LEATHER SCUTTLE (the defining GPL cockpit element). The earlier OFF default came from drawing it TRANSLUCENT (read as an angled "plywood board"); drawn OPAQUE (1.0) it is the GPL scuttle sweeping up to the cowl on both sides. JM_WIND_ALPHA<1 makes it glassy again.
 # E61/E62 (gold cockpit videos): windlot was drawn bright=0.82/ambfill=0.72 → the lit scuttle wedge reached
 # ~0.56 albedo, a glaring olive-GOLD; the gold cockpit scuttle is a MUTED ~0.39 olive-grey.  E61 dimmed to
 # 0.60/0.55 but a fresh capture still read glary olive-gold; E62 dims further to 0.45/0.45 so it reads as
