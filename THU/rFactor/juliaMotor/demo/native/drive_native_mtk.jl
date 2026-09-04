@@ -1330,7 +1330,7 @@ else
         for part in TRACKMAIN0
             railfam(part.tex) || continue
             nparts += 1
-            v=part.verts; seen=Set{NTuple{4,Int}}()
+            local v = part.verts; seen = Set{NTuple{4,Int}}()   # `local`: v shadows a global
             for t in 1:33:length(v)-32
                 tot += 1; k=key(v,t)
                 k in seen ? (perpart += 1) : push!(seen,k)
@@ -1568,7 +1568,7 @@ if get(ENV,"JM_RSUSP2_DIAG","") != ""
     println("== JM_RSUSP2_DIAG: the parts RSUSPP2 actually hands to the renderer ==")
     println("   tex           tris   longitudinal x     lateral z          height y           longest edge")
     for pp in RSUSPP2
-        v = pp.verts; n = length(v) ÷ 11
+        local v = pp.verts; n = length(v) ÷ 11   # `local`: v shadows a global
         ex = [Inf32,-Inf32,Inf32,-Inf32,Inf32,-Inf32]
         for i in 1:11:length(v)-10
             ex[1]=min(ex[1],v[i]);   ex[2]=max(ex[2],v[i])
@@ -1871,7 +1871,9 @@ if get(ENV,"JM_HATPROBE","") != ""
         println("== JM_HATPROBE path -- physics ground height along the car's track ==")
         for tok in split(spec, ";")
             isempty(strip(tok)) && continue
-            pr = split(tok, ","); px = parse(Float64, strip(pr[1])); pz = parse(Float64, strip(pr[2]))
+            local pr = split(tok, ",")                       # `local`: pr/px/pz shadow globals
+            local px = parse(Float64, strip(pr[1]))
+            local pz = parse(Float64, strip(pr[2]))
             h = JuliaMotor.hat3d(TERRAIN, px, pz; ref=Inf)
             println("   (", lpad(round(px,digits=1),9), ",", lpad(round(pz,digits=1),9), ")  ",
                     h[3] ? string("ground ", round(h[1], digits=2)) : "NO SURFACE  <-- HOLE")
@@ -4241,7 +4243,7 @@ if get(ENV,"JM_CARPARTS","") != ""
     println("   texture       tris   longitudinal x     lateral z          height y           in CARP?  excluded by name?")
     rows = []
     for pp in allp
-        v = pp.verts; n = length(v) ÷ 11
+        local v = pp.verts; n = length(v) ÷ 11   # `local`: v shadows a global
         zmn=Inf32; zmx=-Inf32; ymn=Inf32; ymx=-Inf32; xmn=Inf32; xmx=-Inf32
         for i in 1:11:length(v)-10
             x=v[i]; y=v[i+1]; z=v[i+2]

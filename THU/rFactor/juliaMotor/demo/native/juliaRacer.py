@@ -792,6 +792,17 @@ class DriveTab(QWidget):
 
     def _done(self):
         self.log.appendPlainText("\n— game exited —")
+        # PO 2026-09-03: "when you type ESC in the 3D view, have it go back to the pyQt gui, not
+        # just exit the app". The GUI never hid itself -- it simply lost focus to the game window,
+        # so when the game quit the user was left looking at whatever was behind it, which reads as
+        # the whole application having closed. Bring this window back to the front and give it
+        # focus, so Esc returns you to the launcher.
+        w = self.window()
+        if w is not None:
+            if w.isMinimized():
+                w.showNormal()
+            w.raise_()
+            w.activateWindow()
         self.launch_b.setEnabled(True)
         self.stop_b.setEnabled(False)
         self.progress.setVisible(False)
