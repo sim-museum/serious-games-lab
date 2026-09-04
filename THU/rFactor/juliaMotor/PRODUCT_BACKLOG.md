@@ -6121,3 +6121,40 @@ assembly 0.38 m inboard, to |z| 0.36. Both defaults reverted; suite back to 23/2
 `drive_native_mtk.jl`), not a fresh `extract_gpl_car` call — the trims are part of the pose.
 
 Suite 23/23 after the revert.
+
+### E106-S30 (2026-09-03) — the suspension gate now measures against the REAL tyre, and that changes what S29 concluded
+
+S29 ended by noting the pose gate's tyre bound was loose. Measured properly this sprint:
+
+* the rear wheel mesh (`llrtire0.3do`) is **0.168 m half-width** about its own centre;
+* the centre sits at the **0.74** half-track;
+* so the tyre spans **0.572 (inner) … 0.908 (outer)**.
+
+The gate's bound was **0.95** — 4 cm OUTSIDE the tyre, so it could report *"stays inside the tyres"*
+for geometry that visibly protrudes. Now **0.91**, the measured edge. ⚠️ And S29's write-up guessed
+that edge at "about 0.88"; it is 0.908. Correcting my own number, since it is quoted there.
+
+**What the tightened gate then reveals is more interesting than the tightening.** With the shipped
+transform the production halves measure:
+
+```
+group 27288: |z| max 0.74     group 39792: |z| max 0.74
+PASS stays inside the tyres (< 0.91)   PASS reaches the hub (>= 0.73)
+```
+
+**The geometry is placed correctly** — arms reaching exactly the hub plane, comfortably inside the
+tyre. And `susp_inboard` (the drawn-parts shift) defaults to 0, so **the gate measures precisely what
+is drawn**; there is no gate-vs-eye frame mismatch here.
+
+⚠️ **Which leaves an honest contradiction I am NOT going to paper over.** S29 recorded, from a chase
+capture with `JM_RSUSP=1`, "rods spearing OUTSIDE the wheels and down to the ground". The geometry
+says |z| max 0.74 and y min −0.12 — inside the tyre and above the road. **Both cannot be right.**
+Either my reading of that capture was wrong (I have twice this session mistaken perspective for a
+defect — the exhausts on a curve, and the "screen-pinned" ellipse on bob), or something OTHER than
+these two groups draws those rods.
+
+**Next sprint should settle that specific question before any more re-pose work**, and the method is
+the one that has worked all day: shoot the frame, probe the pixels where the rods appear, and name
+the draw — rather than reason from the geometry OR from the picture alone.
+
+Suite 23/23.

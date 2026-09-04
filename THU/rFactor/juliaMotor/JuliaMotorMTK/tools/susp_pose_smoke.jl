@@ -29,7 +29,7 @@ let fp = Render.extract_gpl_car(LOT; only=("lsusp1","frontlot"), maxlat=parse(Fl
     end
     println("  front assembly: x max ", round(xmax, digits=2), "  |z| max ", round(zmax, digits=2))
     check("front stays behind the nose (x < 2.0)", xmax < 2.0, string(round(xmax, digits=2)))
-    check("front stays inside the tyres (|z| < 0.95)", zmax < 0.95, string(round(zmax, digits=2)))
+    check("front stays inside the tyres (|z| < 0.91)", zmax < 0.91, string(round(zmax, digits=2)))
 end
 for (grp, side) in ((27288, 1), (39792, -1))
     parts = Render.extract_gpl_car(LOT; include_groups=(grp,), exclude=("ltraymap","lshad"), maxlat=RSUSP_MAXLAT, trim=TRIM)
@@ -41,10 +41,15 @@ for (grp, side) in ((27288, 1), (39792, -1))
     end
     println("  group $grp (side $side): $n verts after rsfix -> y ", round(ymin, digits=2), "..", round(ymax, digits=2), "  |z| max ", round(zmax, digits=2))
     check("group $grp stays above the road (y > -0.35)", ymin > -0.35, string("lowest vertex y=", round(ymin, digits=2)))
-    # The wheel FACE is 0.85 (CARP_MAXLAT). Geometry beyond it is inside/through the tyre, which is
-    # what the PO photographed. 0.95 leaves a little room for the tyre's own width, and still fails
-    # hard on the 1.12-1.16 overhang.
-    check("group $grp stays inside the tyres (|z| < 0.95)", zmax < 0.95, string(round(zmax, digits=2)))
+    # E106-S30: the bound is now the MEASURED tyre, not an estimate. The rear wheel mesh
+    # (llrtire0.3do) is 0.168 m half-width about its own centre, and the centre sits at the 0.74
+    # half-track, so the tyre's OUTER edge is 0.908 m. The old 0.95 sat 4 cm OUTSIDE that, i.e. the
+    # gate could report "stays inside the tyres" for geometry that visibly protrudes -- which is
+    # consistent with the rods still being visible under JM_RSUSP=1 while this gate was green.
+    # A check should be able to fail for the thing it names.
+    # ⚠️ E106-S29 guessed this edge at "about 0.88"; measured, it is 0.908. Recorded because that
+    # guess appears in the S29 write-up.
+    check("group $grp stays inside the tyres (|z| < 0.91)", zmax < 0.91, string(round(zmax, digits=2)))
     # E82-S3: and it must REACH. Dropping whole triangles left the driveshafts ending at 0.61,
     # short of the wheel -- stubs where gold shows shafts running to the hub. That was invisible to
     # a gate that only checked an upper bound, so check the lower one too.
