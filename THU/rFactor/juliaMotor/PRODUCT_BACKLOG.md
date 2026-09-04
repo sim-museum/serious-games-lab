@@ -6158,3 +6158,21 @@ the one that has worked all day: shoot the frame, probe the pixels where the rod
 the draw — rather than reason from the geometry OR from the picture alone.
 
 Suite 23/23.
+
+### PO DECISION PENDING (2026-09-03): the terrain-step fix is DEFERRED TO FABLE 5.1
+
+E106-S18 put two options to the PO for the Nurburgring/Spa terrain steps (the grandstand plateau and
+the Spa seam):
+
+1. **Name the offending geometry** — identify each building's texture and add it to `HAT_EXCLUDE`.
+   Surgical and faithful, but per-building, per-track, and it will keep recurring.
+2. **Make the physics reject an implausible upward step** — one rule, covers tracks nobody has
+   tested, cannot be defeated by an unnamed building. The threshold must be MEASURED against the
+   steepest genuine ground on each circuit so it does not swallow the Ring's real jumps and banks.
+
+**PO ruling: ask Fable 5.1, when the token budget allows.** Not to be decided or implemented by me.
+Recorded here so the question is not silently re-opened or quietly actioned in a later sprint.
+
+The E106-S13 levitation fix (the off-mesh sentinel) and the `hat_hole_smoke` gate are already
+shipped and are independent of this decision — the tracks are survivable; what is deferred is
+whether to make the steps themselves impossible.
